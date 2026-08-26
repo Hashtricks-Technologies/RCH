@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Royal Care — F&B Inventory</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+:root{--ground:#F2F5F4;--surface:#FFF;--surface-2:#F7F9F8;--line:#DCE4E1;--line-s:#BFCCC8;
+ --ink:#0F1A18;--ink-2:#3D4D49;--ink-3:#6B7C77;--accent:#0E5C55;--accent-soft:#DFEDEA;--on:#FFF;
+ --a:#1D5B87;--a-s:#DFEAF3;--b:#A2500F;--b-s:#F6E7D6;--v:#6A4C93;--v-s:#E7E1F0;--g:#1F7A4C;--g-s:#DCEFE3}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]){
+ --ground:#0C1211;--surface:#141C1A;--surface-2:#192320;--line:#26332F;--line-s:#3B4A46;
+ --ink:#E9F0ED;--ink-2:#B2C0BB;--ink-3:#87958F;--accent:#4FB3A6;--accent-soft:#0F312C;--on:#062019;
+ --a:#6EAFDE;--a-s:#122636;--b:#E09452;--b-s:#33200E;--v:#A98BD6;--v-s:#221A33;--g:#5BBF8A;--g-s:#102C1E}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:Archivo,system-ui,sans-serif;font-size:15px;line-height:1.6}
+.mono{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums}
+.wrap{max-width:940px;margin:0 auto;padding:0 24px}
+header{background:var(--surface);border-bottom:1px solid var(--line);padding:52px 0 44px}
+.eb{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--accent);font-weight:600;margin:0 0 16px}
+h1{font-size:clamp(30px,5vw,46px);line-height:1.05;letter-spacing:-.028em;margin:0 0 16px;max-width:16ch;font-weight:700}
+.dek{font-size:17.5px;color:var(--ink-2);max-width:60ch;margin:0 0 28px}
+.cta{display:flex;gap:10px;flex-wrap:wrap}
+.btn{display:inline-flex;align-items:center;gap:8px;padding:11px 20px;border-radius:9px;background:var(--accent);
+ color:var(--on);font-weight:600;font-size:14px;text-decoration:none}
+.btn.gh{background:var(--surface);color:var(--ink-2);border:1px solid var(--line-s)}
+section{padding:44px 0;border-bottom:1px solid var(--line)}
+section:last-of-type{border:0}
+h2{font-size:20px;letter-spacing:-.018em;margin:0 0 6px;font-weight:700}
+.sub{color:var(--ink-3);font-size:14px;margin:0 0 22px;max-width:62ch}
+.cards{display:grid;gap:12px}
+@media(min-width:700px){.cards{grid-template-columns:1fr 1fr}.cards.c3{grid-template-columns:repeat(3,1fr)}}
+.card{display:block;background:var(--surface);border:1px solid var(--line);border-radius:11px;padding:17px 18px;text-decoration:none;color:inherit;transition:border-color .12s,transform .08s}
+.card:hover{border-color:var(--accent);transform:translateY(-1px)}
+.card b{display:block;font-size:15px;letter-spacing:-.012em;margin-bottom:5px}
+.card p{margin:0;font-size:13px;color:var(--ink-3);line-height:1.5}
+.card .code{font-family:"IBM Plex Mono",monospace;font-size:10.5px;color:var(--ink-3);letter-spacing:.05em;text-transform:uppercase;display:block;margin-bottom:7px}
+.roles{display:grid;gap:9px}
+.role{display:flex;gap:13px;align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px 15px}
+.role .av{width:34px;height:34px;border-radius:9px;display:grid;place-items:center;color:#fff;flex:none;
+ font-family:"IBM Plex Mono",monospace;font-size:11px;font-weight:600}
+.role .rt{flex:1;min-width:0}
+.role .rt b{display:block;font-size:14px;font-weight:600;line-height:1.3}
+.role .rt span{font-size:12px;color:var(--ink-3)}
+.role .land{font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--accent);background:var(--accent-soft);
+ padding:3px 9px;border-radius:20px;white-space:nowrap}
+@media(max-width:560px){.role .land{display:none}}
+.flow{background:var(--surface);border:1px solid var(--line);border-radius:11px;padding:18px;overflow-x:auto}
+.flow pre{margin:0;font-family:"IBM Plex Mono",monospace;font-size:12px;line-height:1.9;color:var(--ink-2);white-space:pre}
+footer{padding:34px 0 56px;color:var(--ink-3);font-size:13px}
+footer a{color:var(--accent)}
+</style></head><body>
+
+<header><div class="wrap">
+ <p class="eb">Royal Care Hospital &middot; Hashtricks Technologies</p>
+ <h1>Food &amp; beverage inventory, counter to kitchen.</h1>
+ <p class="dek">One item master and one stock ledger behind every counter in the building &mdash; purchase requisition, production, transfer and billing, with five roles that each see only their own work.</p>
+ <div class="cta"><a class="btn" href="app/index.html">Open the application</a>
+  <a class="btn gh" href="docs/user-flows.html">Read the user flows</a></div>
+</div></header>
+
+<section><div class="wrap">
+ <h2>Sign in as any role</h2>
+ <p class="sub">No password is checked in this build. Each account lands somewhere different and sees a different sidebar.</p>
+ <div class="roles">
+  <div class="role"><span class="av" style="background:#A2500F">KR</span><span class="rt"><b>Kavitha Raman</b><span>Counter Operator &middot; Coffee Shop, Floor 3</span></span><span class="land">Point of Sale</span></div>
+  <div class="role"><span class="av" style="background:#6A4C93">RK</span><span class="rt"><b>Ramesh Kumar</b><span>Outlet Manager &middot; all three outlets</span></span><span class="land">Approvals</span></div>
+  <div class="role"><span class="av" style="background:#1D5B87">SM</span><span class="rt"><b>Suresh Muthu</b><span>Store Keeper &middot; Central Store</span></span><span class="land">Issue Desk</span></div>
+  <div class="role"><span class="av" style="background:#1F7A4C">VP</span><span class="rt"><b>Vinoth Prakash</b><span>Production In-charge &middot; Central Kitchen</span></span><span class="land">Orders</span></div>
+  <div class="role"><span class="av" style="background:#8A4A0C">LN</span><span class="rt"><b>Latha Narayanan</b><span>Procurement Officer</span></span><span class="land">Requisitions</span></div>
+ </div>
+</div></section>
+
+<section><div class="wrap">
+ <h2>The request chain</h2>
+ <p class="sub">A counter cannot take stock on its own say-so. The manager approves and may trim the quantity; the store keeper issues a ticket; the ticket is what opens the store room.</p>
+ <div class="flow"><pre>Counter Operator        Outlet Manager          Store Keeper           Counter Operator
+raises request     →    approves / edits   →    issues ticket     →    collects &amp; receives
+multi-item              forwards to store       stock reserved         stock arrives
+
+Draft → Request sent → Manager approved → Ticket issued → Collected → Received → Closed
+                     ↘ Rejected         ↘ Cancelled     ↘ Partially approved
+
+Approval authorises. The scan moves.</pre></div>
+</div></section>
+
+<section><div class="wrap">
+ <h2>Specifications</h2>
+ <p class="sub">Three documents behind the build, written before it.</p>
+ <div class="cards c3">
+  <a class="card" href="docs/ua-spec.html"><span class="code">UA-01</span><b>Indent to Counter</b>
+   <p>The two product classes, thirteen stages with their ledger effects, and twenty-four acceptance scenarios.</p></a>
+  <a class="card" href="docs/system-design.html"><span class="code">SYS-01</span><b>One Store, Many Counters</b>
+   <p>How the world builds hospital food inventory, the building topology, request mechanics, floor pricing, data model.</p></a>
+  <a class="card" href="docs/user-flows.html"><span class="code">FLW-01</span><b>Eight Roles, One Ledger</b>
+   <p>Role map, a day on the clock, six end-to-end journeys and the screen-by-role access matrix.</p></a>
+ </div>
+</div></section>
+
+<section><div class="wrap">
+ <h2>Status</h2>
+ <p class="sub">Working frontend. The stock ledger, reservations, MRP ceiling, recipe depletion and role-based access are real logic. There is no backend, no database and no authentication yet &mdash; state lives in the browser tab for the session.</p>
+ <div class="cards">
+  <div class="card"><b>Built</b><p>Five roles &middot; 30 screens &middot; two-stage approval chain &middot; ticket-based issue &middot; multi-item requests &middot; per-shop pricing with MRP ceiling &middot; product on/off at counter, kitchen and master level.</p></div>
+  <div class="card"><b>Next</b><p>Backend contract in SYS-01 &middot; persistence &middot; real authentication &middot; barcode scanning &middot; patient billing interface &middot; GST output registers.</p></div>
+ </div>
+</div></section>
+
+<footer><div class="wrap">
+ <p>Prepared for Royal Care Hospital by Hashtricks Technologies &middot; <a href="https://github.com/Hashtricks-Technologies/RCH">github.com/Hashtricks-Technologies/RCH</a></p>
+</div></footer>
+</body></html>

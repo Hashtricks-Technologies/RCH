@@ -1,0 +1,779 @@
+<title>One Store, Many Counters</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&display=swap">
+
+<style>
+:root{
+  --ground:#F4F6F5; --surface:#FFFFFF; --surface-2:#EDF1EF; --surface-3:#E4EAE8;
+  --line:#D7DFDC; --line-strong:#B7C4C0;
+  --ink:#141F1D; --ink-2:#42524E; --ink-3:#6E807B;
+  --accent:#0E5C55; --accent-soft:#DCEBE8;
+  --a:#1D5B87; --a-soft:#DEE9F3;
+  --b:#A2500F; --b-soft:#F6E7D6;
+  --good:#2C7A51; --good-soft:#DBEDE2;
+  --warn:#846400; --warn-soft:#F4EACC;
+  --crit:#A62B22; --crit-soft:#F6DEDA;
+  --shadow:0 1px 2px rgba(20,31,29,.05), 0 6px 20px -12px rgba(20,31,29,.22);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --ground:#0E1513; --surface:#151F1D; --surface-2:#1B2624; --surface-3:#22302C;
+    --line:#283733; --line-strong:#3D4E49;
+    --ink:#E7EEEB; --ink-2:#AEBDB8; --ink-3:#87968F;
+    --accent:#4FB3A6; --accent-soft:#10332E;
+    --a:#6EAFDE; --a-soft:#122938;
+    --b:#E09452; --b-soft:#33200E;
+    --good:#5BBF8A; --good-soft:#123023;
+    --warn:#D6B14A; --warn-soft:#2F2810;
+    --crit:#E3776B; --crit-soft:#381915;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px -14px rgba(0,0,0,.8);
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#0E1513; --surface:#151F1D; --surface-2:#1B2624; --surface-3:#22302C;
+  --line:#283733; --line-strong:#3D4E49;
+  --ink:#E7EEEB; --ink-2:#AEBDB8; --ink-3:#87968F;
+  --accent:#4FB3A6; --accent-soft:#10332E;
+  --a:#6EAFDE; --a-soft:#122938;
+  --b:#E09452; --b-soft:#33200E;
+  --good:#5BBF8A; --good-soft:#123023;
+  --warn:#D6B14A; --warn-soft:#2F2810;
+  --crit:#E3776B; --crit-soft:#381915;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px -14px rgba(0,0,0,.8);
+}
+
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);
+  font-family:"Source Serif 4",Georgia,serif;font-size:16.5px;line-height:1.62;-webkit-font-smoothing:antialiased}
+h1,h2,h3,h4,.ui{font-family:Archivo,"Helvetica Neue",Arial,sans-serif}
+code,.mono,.num{font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums}
+a{color:var(--accent)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:3px}
+
+.wrap{max-width:1280px;margin:0 auto;padding:0 24px}
+.layout{display:block}
+@media(min-width:1120px){
+  .layout{display:grid;grid-template-columns:216px minmax(0,1fr);gap:56px;align-items:start}
+  .rail{position:sticky;top:24px;padding-top:8px}
+}
+.rail{display:none}
+@media(min-width:1120px){.rail{display:block}}
+.rail ol{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:1px}
+.rail a{display:grid;grid-template-columns:22px 1fr;gap:8px;align-items:baseline;
+  font-family:Archivo,sans-serif;font-size:12.5px;line-height:1.35;color:var(--ink-3);
+  text-decoration:none;padding:6px 8px;border-radius:5px}
+.rail a:hover{color:var(--ink);background:var(--surface-2)}
+.rail a span:first-child{font-family:"IBM Plex Mono",monospace;font-size:10.5px;color:var(--line-strong)}
+.rail-h{font-family:Archivo,sans-serif;font-size:10px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--ink-3);padding:0 8px 8px;border-bottom:1px solid var(--line);margin:0 0 8px}
+
+header.mast{border-bottom:1px solid var(--line);background:var(--surface)}
+.mast-in{max-width:1280px;margin:0 auto;padding:44px 24px 38px}
+.eyebrow{font-family:Archivo,sans-serif;font-size:11px;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--accent);font-weight:600;margin:0 0 18px}
+h1{font-size:clamp(34px,5.2vw,54px);line-height:1.02;letter-spacing:-.026em;font-weight:700;
+  margin:0 0 18px;text-wrap:balance;max-width:15ch}
+.dek{font-size:18.5px;color:var(--ink-2);max-width:64ch;margin:0 0 26px}
+.meta{display:flex;flex-wrap:wrap;border-top:1px solid var(--line);padding-top:18px}
+.meta div{padding-right:34px;margin-right:34px;border-right:1px solid var(--line)}
+.meta div:last-child{border-right:0;padding-right:0;margin-right:0}
+.meta dt{font-family:Archivo,sans-serif;font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-3);margin:0 0 3px}
+.meta dd{margin:0;font-family:"IBM Plex Mono",monospace;font-size:13px;color:var(--ink)}
+
+section{padding:60px 0;border-bottom:1px solid var(--line)}
+section:last-of-type{border-bottom:0}
+.sec-head{display:flex;gap:14px;align-items:baseline;margin:0 0 8px}
+.sec-num{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--accent);font-weight:500;padding-top:6px}
+h2{font-size:clamp(25px,3vw,32px);line-height:1.12;letter-spacing:-.02em;font-weight:700;margin:0;text-wrap:balance}
+.sec-sub{color:var(--ink-2);font-size:17px;max-width:66ch;margin:10px 0 30px}
+h3{font-size:18px;line-height:1.3;letter-spacing:-.008em;font-weight:600;margin:38px 0 12px}
+h4{font-size:13px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);margin:26px 0 10px}
+.prose{max-width:70ch}
+.prose p{margin:0 0 1.05em}
+.f{font-size:15.5px}
+ul.tight{margin:0 0 1em;padding-left:19px;font-size:15.5px;max-width:70ch}
+ul.tight li{margin-bottom:5px}
+ul.tight li::marker{color:var(--ink-3)}
+
+.chip{display:inline-flex;align-items:center;gap:5px;font-family:Archivo,sans-serif;font-size:10.5px;font-weight:600;
+  letter-spacing:.07em;text-transform:uppercase;padding:2.5px 7px;border-radius:3px;white-space:nowrap;vertical-align:.08em}
+.chip.a{background:var(--a-soft);color:var(--a)}
+.chip.b{background:var(--b-soft);color:var(--b)}
+.chip.r{background:var(--surface-3);color:var(--ink-2)}
+.chip.new{background:var(--accent-soft);color:var(--accent)}
+.chip.good{background:var(--good-soft);color:var(--good)}
+.chip.warn{background:var(--warn-soft);color:var(--warn)}
+.chip.crit{background:var(--crit-soft);color:var(--crit)}
+
+.tbl-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:8px;background:var(--surface);margin:20px 0}
+table{border-collapse:collapse;width:100%;min-width:640px;font-family:Archivo,sans-serif;font-size:13.5px;line-height:1.45}
+thead th{text-align:left;font-weight:600;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);
+  padding:11px 14px;border-bottom:1px solid var(--line-strong);background:var(--surface-2);white-space:nowrap;vertical-align:bottom}
+td{padding:11px 14px;border-bottom:1px solid var(--line);vertical-align:top;color:var(--ink-2)}
+th[scope="row"]{text-align:left;padding:11px 14px;border-bottom:1px solid var(--line);vertical-align:top;
+  font-size:13.5px;font-weight:600;color:var(--ink)}
+tbody tr:last-child td,tbody tr:last-child th[scope="row"]{border-bottom:0}
+td strong{color:var(--ink);font-weight:600}
+td .num,td.num{font-family:"IBM Plex Mono",monospace;font-size:12.5px}
+.yes{color:var(--good);font-weight:600}
+.no{color:var(--crit);font-weight:600}
+.part{color:var(--warn);font-weight:600}
+.cap{font-family:Archivo,sans-serif;font-size:12px;color:var(--ink-3);margin:-8px 0 24px}
+
+figure{margin:26px 0;border:1px solid var(--line);border-radius:10px;background:var(--surface);padding:20px 20px 14px;overflow-x:auto}
+figure svg{display:block;width:100%;min-width:640px;max-width:900px;height:auto;margin:0 auto;color:var(--ink-2)}
+figcaption{font-family:Archivo,sans-serif;font-size:12.5px;color:var(--ink-3);margin-top:14px;
+  padding-top:12px;border-top:1px solid var(--line);line-height:1.5;max-width:78ch}
+figcaption b{color:var(--ink-2);font-weight:600}
+.sv-box{fill:var(--surface-2);stroke:var(--line-strong);stroke-width:1.2}
+.sv-box-key{fill:var(--accent-soft);stroke:var(--accent);stroke-width:1.4}
+.sv-box-out{fill:var(--surface);stroke:var(--line-strong);stroke-width:1.2}
+.sv-panel{fill:none;stroke:var(--line-strong);stroke-width:1.2;stroke-dasharray:5 4}
+.sv-t{fill:var(--ink);font-family:Archivo,sans-serif;font-size:12.5px;font-weight:600}
+.sv-s{fill:var(--ink-3);font-family:Archivo,sans-serif;font-size:10.5px}
+.sv-l{fill:var(--ink-3);font-family:"IBM Plex Mono",monospace;font-size:10px}
+.sv-k{fill:var(--accent);font-family:"IBM Plex Mono",monospace;font-size:10px;font-weight:600}
+.sv-ln{stroke:var(--line-strong);stroke-width:1.4;fill:none}
+.sv-ln-d{stroke:var(--line-strong);stroke-width:1.4;fill:none;stroke-dasharray:5 4}
+.sv-ln-k{stroke:var(--accent);stroke-width:1.8;fill:none}
+.sv-tag{fill:var(--b);font-family:"IBM Plex Mono",monospace;font-size:10px;font-weight:600}
+
+.note{border-left:3px solid var(--accent);background:var(--accent-soft);padding:12px 15px;border-radius:0 6px 6px 0;
+  font-size:15px;margin:20px 0;max-width:74ch}
+.note.warnbox{border-left-color:var(--warn);background:var(--warn-soft)}
+.note.critbox{border-left-color:var(--crit);background:var(--crit-soft)}
+.note strong{font-family:Archivo,sans-serif;font-size:12.5px;letter-spacing:.03em;display:block;margin-bottom:3px}
+
+.cards{display:grid;gap:12px}
+@media(min-width:720px){.cards{grid-template-columns:1fr 1fr}}
+@media(min-width:1040px){.cards.three{grid-template-columns:1fr 1fr 1fr}}
+.card{border:1px solid var(--line);border-radius:8px;background:var(--surface);padding:15px 16px}
+.card h4{margin:0 0 6px;font-size:14px;text-transform:none;letter-spacing:-.005em;color:var(--ink);font-weight:600}
+.card p{margin:0;font-family:Archivo,sans-serif;font-size:13px;color:var(--ink-2);line-height:1.5}
+.card .src{display:block;margin-top:9px;font-family:"IBM Plex Mono",monospace;font-size:10.5px;color:var(--ink-3)}
+.card .src a{color:var(--accent);text-decoration:none;border-bottom:1px solid var(--line-strong)}
+
+.formula{background:var(--surface-2);border:1px solid var(--line);border-radius:8px;padding:16px 18px;margin:20px 0;
+  font-family:"IBM Plex Mono",monospace;font-size:13.5px;line-height:1.9;color:var(--ink);overflow-x:auto}
+.formula em{color:var(--accent);font-style:normal;font-weight:600}
+.formula .c{color:var(--ink-3);font-size:12px}
+
+.schema{display:grid;gap:0;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--surface);margin:20px 0}
+.schema .grp{display:grid;grid-template-columns:150px 1fr;gap:16px;padding:13px 16px;border-bottom:1px solid var(--line)}
+.schema .grp:last-child{border-bottom:0}
+.schema .gh{font-family:Archivo,sans-serif;font-size:12px;font-weight:600;color:var(--ink);letter-spacing:-.005em}
+.schema .gh span{display:block;font-family:"IBM Plex Mono",monospace;font-size:10px;color:var(--ink-3);font-weight:400;margin-top:2px}
+.schema .gt{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--ink-2);line-height:1.9}
+.schema .gt b{color:var(--accent);font-weight:500}
+
+.phases{display:grid;gap:12px}
+@media(min-width:820px){.phases{grid-template-columns:repeat(4,1fr)}}
+.ph{border:1px solid var(--line);border-top:3px solid var(--accent);border-radius:0 0 8px 8px;background:var(--surface);padding:14px 15px}
+.ph .pn{font-family:"IBM Plex Mono",monospace;font-size:10.5px;color:var(--accent);font-weight:600;margin:0 0 6px}
+.ph h4{margin:0 0 6px;font-size:13.5px;text-transform:none;letter-spacing:-.005em;color:var(--ink);font-weight:600}
+.ph p{margin:0;font-family:Archivo,sans-serif;font-size:12.5px;color:var(--ink-2);line-height:1.5}
+
+.qs{counter-reset:q;border:1px solid var(--line);border-radius:8px;background:var(--surface);overflow:hidden}
+.q{display:grid;grid-template-columns:34px 1fr;gap:14px;padding:15px 18px;border-bottom:1px solid var(--line)}
+.q:last-child{border-bottom:0}
+.q::before{counter-increment:q;content:"Q" counter(q);font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--ink-3);padding-top:3px}
+.q h4{margin:0 0 4px;font-size:14.5px;text-transform:none;letter-spacing:-.005em;color:var(--ink);font-weight:600;font-family:Archivo,sans-serif}
+.q p{margin:0;font-size:14.5px;color:var(--ink-2)}
+.q p em{color:var(--ink-3)}
+
+.screen{border:1px solid var(--line-strong);border-radius:9px;overflow:hidden;background:var(--surface);
+  box-shadow:var(--shadow);font-family:Archivo,sans-serif;font-size:11.5px;line-height:1.4;margin:20px 0}
+.sc-chrome{display:flex;align-items:center;gap:9px;padding:8px 11px;background:var(--surface-3);border-bottom:1px solid var(--line)}
+.dots{display:flex;gap:4px}.dots i{width:7px;height:7px;border-radius:50%;background:var(--line-strong);display:block}
+.sc-path{font-family:"IBM Plex Mono",monospace;font-size:10.5px;color:var(--ink-3);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sc-user{font-size:9.5px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--accent);
+  background:var(--accent-soft);padding:2px 6px;border-radius:3px;white-space:nowrap}
+.sc-body{padding:13px}
+.sc-title{font-size:13.5px;font-weight:700;letter-spacing:-.01em;margin:0 0 2px;color:var(--ink)}
+.sc-sub{font-family:"IBM Plex Mono",monospace;font-size:10.5px;color:var(--ink-3);margin:0 0 12px}
+.tiles{display:grid;gap:8px;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));margin-bottom:12px}
+.tile{border:1px solid var(--line);border-radius:6px;padding:9px 10px;background:var(--surface-2)}
+.tile b{display:block;font-size:9px;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-3);margin-bottom:4px}
+.tile .v{font-family:"IBM Plex Mono",monospace;font-size:18px;font-weight:600;color:var(--ink);letter-spacing:-.02em;line-height:1}
+.tile .d{font-size:10px;color:var(--ink-3);margin-top:4px}
+.sc-scroll{overflow-x:auto;margin:0 -13px;padding:0 13px}
+.sc-tbl{width:100%;border-collapse:collapse;min-width:0;font-size:11px}
+.sc-tbl th{font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);text-align:left;
+  padding:5px 7px;border-bottom:1px solid var(--line-strong);background:transparent;white-space:nowrap}
+.sc-tbl td{padding:6px 7px;border-bottom:1px solid var(--line);font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--ink-2);white-space:nowrap}
+.sc-tbl td.w{white-space:normal;font-family:Archivo,sans-serif;font-size:11.5px;color:var(--ink)}
+.sc-tbl .r{text-align:right}
+.alertline{display:flex;gap:8px;align-items:baseline;padding:6px 9px;border-radius:5px;font-size:11px;margin-bottom:5px}
+.alertline.w{background:var(--warn-soft);color:var(--warn)}
+.alertline.c{background:var(--crit-soft);color:var(--crit)}
+.alertline.g{background:var(--good-soft);color:var(--good)}
+.alertline .k{font-family:"IBM Plex Mono",monospace;font-size:10px;font-weight:600;flex:none}
+.btnrow{display:flex;gap:7px;flex-wrap:wrap;margin-top:13px}
+.btn{font-size:11px;font-weight:600;padding:6px 12px;border-radius:5px;background:var(--accent);color:#fff}
+.btn.ghost{background:transparent;color:var(--ink-2);border:1px solid var(--line-strong)}
+:root[data-theme="dark"] .btn{color:#08201D}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]) .btn{color:#08201D}}
+
+footer{padding:40px 0 64px;color:var(--ink-3);font-family:Archivo,sans-serif;font-size:12.5px}
+footer p{max-width:74ch;margin:0 0 8px}
+footer a{color:var(--accent)}
+.srclist{font-family:Archivo,sans-serif;font-size:12.5px;color:var(--ink-3);line-height:1.7;max-width:74ch}
+.srclist a{color:var(--accent);text-decoration:none;border-bottom:1px solid var(--line-strong)}
+@media(prefers-reduced-motion:no-preference){.rail a{transition:background .12s ease,color .12s ease}}
+</style>
+
+<header class="mast">
+  <div class="mast-in">
+    <p class="eyebrow">Royal Care Hospital &middot; F&amp;B Inventory on the Eateasy Platform &middot; System Design</p>
+    <h1>One Store, Many Counters</h1>
+    <p class="dek">Eateasy already knows how to take an order and split a bill across outlets. It has no idea what a bottle of milk is. This document works out the inventory half &mdash; one item master behind every counter in the building, stock that requests itself, and a ticket that is the only way anything physically leaves a store.</p>
+    <dl class="meta">
+      <div><dt>Document</dt><dd>RCH/HIMS/SYS-01 &middot; draft 1</dd></div>
+      <div><dt>Base platform</dt><dd>Synergeek/eateasy</dd></div>
+      <div><dt>Companion</dt><dd>UA-01 Indent to Counter</dd></div>
+      <div><dt>Status</dt><dd>For client review</dd></div>
+    </dl>
+  </div>
+</header>
+
+<div class="wrap layout">
+  <nav class="rail" aria-label="Sections">
+    <p class="rail-h">Contents</p>
+    <ol>
+      <li><a href="#world"><span>01</span><span>How the world does it</span></a></li>
+      <li><a href="#etc"><span>02</span><span>What Eateasy gives us</span></a></li>
+      <li><a href="#topology"><span>03</span><span>The building</span></a></li>
+      <li><a href="#request"><span>04</span><span>Request, approve, ticket</span></a></li>
+      <li><a href="#lateral"><span>05</span><span>Peer transfer &amp; exchange</span></a></li>
+      <li><a href="#onoff"><span>06</span><span>Items that switch themselves off</span></a></li>
+      <li><a href="#pricing"><span>07</span><span>Floor-wise pricing</span></a></li>
+      <li><a href="#procure"><span>08</span><span>Feeding procurement</span></a></li>
+      <li><a href="#tower"><span>09</span><span>The inventory desk</span></a></li>
+      <li><a href="#data"><span>10</span><span>Data model</span></a></li>
+      <li><a href="#build"><span>11</span><span>Build order</span></a></li>
+      <li><a href="#questions"><span>12</span><span>Your decisions</span></a></li>
+    </ol>
+  </nav>
+
+  <main>
+
+  <!-- 01 -->
+  <section id="world">
+    <div class="sec-head"><span class="sec-num">01</span><h2>How the world does it</h2></div>
+    <p class="sec-sub">Healthcare food inventory is a solved problem with a settled shape. Two vendor families dominate it, and the multi-outlet restaurant world independently arrived at the same loop. Worth knowing before we design, because it tells us which parts are non-negotiable.</p>
+
+    <div class="prose">
+      <p>Hospital foodservice software abroad splits into <strong>clinical nutrition suites</strong> and <strong>catering operations suites</strong>, and the leaders do both. <a href="https://www.computrition.com/product-solutions/mobile-floor-stock-software/">Computrition</a> runs inventory across catering, cafés, dining halls, hospital lounges and cook-chill finished goods in one solution, with floor stock tracked per cost centre. <a href="https://www.cbord.com/healthcare-food-mgmt-solutions/">CBORD</a> couples menu and recipe planning to nutritional analysis, production and inventory, and generates orders from planned menus, par levels or templates with receiving that updates stock and price automatically. In the UK, <a href="https://www.civica.com/en-us/product-pages/catering-management-software/">Civica Catering Management</a> &mdash; the system formerly called Saffron, in use at 275+ hospital sites &mdash; puts purchasing, stock control, menu engineering, supplier management, recipes, allergen management, food safety and cleaning schedules in a single tablet-based product.</p>
+      <p>Separately, the multi-unit restaurant industry built the same machine for commissary kitchens. The loop described by <a href="https://www.marketman.com/platform/multi-unit-restaurant-commissary-kitchen-inventory-software">MarketMan</a> and <a href="https://supy.io/blog/learn-commissary-kitchen-management">Supy</a> is exactly the one Royal Care needs: outlet sales draw down outlet stock, low outlet stock raises an indent to the central kitchen, the kitchen's production run draws down raw materials, and low raw materials draft a supplier order. Crucially, stock requests are actioned <em>only after review and approval by the central kitchen manager</em> &mdash; approval is a designed step, not an afterthought.</p>
+    </div>
+
+    <h3>Five patterns worth copying</h3>
+    <div class="cards three">
+      <div class="card"><h4>One item master, many stock locations</h4><p>Cafés, catering, dining halls and ward floor stock are locations inside one inventory, each mapped to a cost centre &mdash; not separate systems that reconcile monthly.</p><span class="src"><a href="https://www.computrition.com/product-solutions/mobile-floor-stock-software/">Computrition inStock</a></span></div>
+      <div class="card"><h4>Recipes are infrastructure</h4><p>With a recipe on every made item, the system knows what usage <em>should</em> have been. Actual-versus-theoretical variance becomes the single number that exposes theft, over-portioning and waste.</p><span class="src"><a href="https://www.crunchtime.com/blog/blog/explaining-actual-vs-theoretical-food-cost">CrunchTime</a> &middot; <a href="https://supy.io/blog/what-is-food-cost-variance-and-how-to-control-it">Supy</a></span></div>
+      <div class="card"><h4>Requisition before movement</h4><p>Nothing moves between locations on a phone call. A request is raised, reviewed, edited if needed, and approved before a single unit leaves the shelf.</p><span class="src"><a href="https://supy.io/blog/learn-commissary-kitchen-management">Supy commissary</a></span></div>
+      <div class="card"><h4>Compliance lives in the same system</h4><p>Allergens, temperature logs and cleaning schedules sit beside stock rather than in a separate folder, because the inspector asks for all of it together.</p><span class="src"><a href="https://www.civica.com/en-us/product-pages/catering-management-software/">Civica</a> &middot; <a href="https://www.fssai.gov.in/upload/uploadfiles/files/Guidance_Document_Catering_Sector_19_01_2018(4).pdf">FSSAI Schedule 4</a></span></div>
+      <div class="card"><h4>Location-aware retail</h4><p>Hospital café POS products handle many small counters under one roof with location-based inventory, inter-store transfers and per-location menu and price scheduling.</p><span class="src"><a href="https://arbapro.com/hospital-cafeteria-pos-system-software/">ARBA hospital cafeteria</a></span></div>
+      <div class="card"><h4>What none of them assume</h4><p>Every one of these treats retail counters, patient meals and ward stock as one inventory. Splitting them is the mistake to avoid, not a simplification to reach for.</p><span class="src">Synthesis</span></div>
+    </div>
+
+    <div class="note warnbox"><strong>The Indian compliance layer they don't cover</strong>A hospital canteen needs a State FSSAI licence regardless of turnover, and inspection runs against Schedule 4 GMP/GHP: food-handler health records, FoSTaC training certificates, temperature monitoring and pest control. Civica bundles the equivalent UK obligations into the catering system; we should do the same here rather than leaving a paper file, because the data the inspector wants &mdash; batch, supplier, temperature, who handled it &mdash; is already passing through this system.</div>
+  </section>
+
+  <!-- 02 -->
+  <section id="etc">
+    <div class="sec-head"><span class="sec-num">02</span><h2>What Eateasy gives us</h2></div>
+    <p class="sec-sub">I read the repo. It is a well-built food-court ordering and billing platform &mdash; and the half we need is almost entirely absent, which is good news, because nothing has to be undone.</p>
+
+    <div class="prose">
+      <p>Eateasy models a mall: <code>malls &rarr; food_courts &rarr; kitchens &rarr; menu_items</code>, with QR-coded <code>tables</code>, a single cart that fans out into <code>orders &rarr; sub_orders</code> (one per kitchen) <code>&rarr; order_items</code>, and a Razorpay money trail through <code>payments</code>, <code>refunds</code>, <code>ledger_entries</code>, <code>settlements</code> and <code>payouts</code>. Roles are <code>customer_role</code>, <code>kitchen_role</code>, <code>admin_role</code> and <code>super_admin_role</code>, enforced in TanStack Router <code>beforeLoad</code> guards. Stack is Hono on Bun, Drizzle, PostgreSQL, Better-Auth, Zod, React 19 and shadcn.</p>
+      <p>That hierarchy maps onto the hospital without a fight: <strong>mall becomes the hospital</strong>, <strong>food court becomes a floor or zone</strong>, <strong>kitchen becomes an outlet</strong> &mdash; the restaurant, each floor's shop, the central kitchen itself. Seat-based QR ordering becomes bedside and table ordering. The multi-outlet single cart is genuinely useful here: a visitor buys a coffee from the third-floor shop and a sandwich from the restaurant on one bill, and each outlet sees only its own line.</p>
+    </div>
+
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th style="width:26%">Capability</th><th style="width:12%">In Eateasy</th><th>What the hospital needs on top</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">Auth, RBAC, audit log</th><td class="yes">Yes</td><td>Seven more roles: store keeper, procurement, production, outlet manager, dietitian, finance, auditor</td></tr>
+          <tr><th scope="row">Outlet hierarchy</th><td class="yes">Yes</td><td>A <code>location</code> layer beneath it &mdash; a kitchen is a selling outlet <em>and</em> a stock location, and some locations (central store, quarantine) sell nothing</td></tr>
+          <tr><th scope="row">Menu, categories, images</th><td class="yes">Yes</td><td>Link each menu item to a catalog item, so the thing you sell and the thing you stock are the same object</td></tr>
+          <tr><th scope="row">Turn an item on / off</th><td class="part">Manual</td><td><code>is_available</code> exists as a hand-flipped boolean. Needs to be driven by stock &mdash; see &sect;06</td></tr>
+          <tr><th scope="row">Pricing</th><td class="part">One price</td><td><code>menu_items.price</code> is a single scalar per item. Floor-wise and customer-type pricing needs price lists &mdash; see &sect;07</td></tr>
+          <tr><th scope="row">Orders, bills, payments</th><td class="yes">Yes</td><td>Hook stock depletion onto the order-status transition, idempotent and reversible on cancellation</td></tr>
+          <tr><th scope="row">Settlement &amp; payouts</th><td class="yes">Yes</td><td>Built for third-party vendors. Keep it if outlets are leased; if the hospital owns them, payouts become internal cost-centre transfers &mdash; see <a href="#questions">Q1</a></td></tr>
+          <tr><th scope="row">SMS outbox with retry</th><td class="yes">Yes</td><td>Reuse directly for approval, ticket-ready and low-stock notifications</td></tr>
+          <tr><th scope="row">Item master &amp; UOM</th><td class="no">None</td><td>Build. Raw, packaging, traded, manufactured &mdash; with purchase-to-base unit conversion</td></tr>
+          <tr><th scope="row">Stock, batches, expiry</th><td class="no">None</td><td>Build. An append-only move ledger with a derived balance cache</td></tr>
+          <tr><th scope="row">Recipes / BOM</th><td class="no">None</td><td>Build. Without it there is no theoretical usage and no variance</td></tr>
+          <tr><th scope="row">Requests &amp; transfers</th><td class="no">None</td><td>Build. The centre of this document</td></tr>
+          <tr><th scope="row">Vendors, PR, PO, GRN</th><td class="no">None</td><td>Build. Procurement is fed by inventory, not typed by hand</td></tr>
+          <tr><th scope="row">Wastage, counts, variance</th><td class="no">None</td><td>Build. This is what makes the numbers true</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="note"><strong>On the name</strong>There is no repository called ETC on your account or in either organisation. The one you mean is <code>Synergeek-Technologies/eateasy</code> &mdash; food-court ordering and billing, last pushed 3 Aug. Everything above is read from that repo's <code>schema.ts</code>, <code>CLAUDE.md</code> and router layout. If ETC is a different codebase somewhere I cannot see, tell me and I will re-read against it.</div>
+  </section>
+
+  <!-- 03 -->
+  <section id="topology">
+    <div class="sec-head"><span class="sec-num">03</span><h2>The building</h2></div>
+    <p class="sec-sub">One central store, one central kitchen, a restaurant, a shop on several floors, and pantries that consume without selling. Every one of them is a stock location in a single ledger.</p>
+
+    <figure>
+      <svg viewBox="0 0 880 520" role="img" aria-label="Topology of the hospital food supply: vendors and procurement feed a central store, which issues raw materials to the central kitchen and traded goods to floor outlets; the kitchen sends finished goods to outlets; outlets transfer laterally between themselves and return stock to the store; sales at outlets deplete stock automatically and ward pantries consume against cost centres.">
+        <defs>
+          <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0 0 L10 5 L0 10 z" fill="currentColor"/>
+          </marker>
+          <marker id="ark" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0 0 L10 5 L0 10 z" fill="var(--accent)"/>
+          </marker>
+          <marker id="ar2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+            <path d="M0 0 L10 5 L0 10 z" fill="currentColor"/>
+          </marker>
+        </defs>
+
+        <!-- left column -->
+        <rect class="sv-box" x="20" y="60" width="120" height="58" rx="6"/>
+        <text class="sv-t" x="80" y="85" text-anchor="middle">Vendors</text>
+        <text class="sv-s" x="80" y="101" text-anchor="middle">rate contracts</text>
+
+        <rect class="sv-box" x="20" y="382" width="120" height="58" rx="6"/>
+        <text class="sv-t" x="80" y="407" text-anchor="middle">Procurement</text>
+        <text class="sv-s" x="80" y="423" text-anchor="middle">quotes, PO</text>
+
+        <!-- procurement -> vendors -->
+        <path class="sv-ln" d="M80 382 L80 118" marker-end="url(#ar)"/>
+        <text class="sv-l" x="88" y="200">PO</text>
+
+        <!-- vendors -> central store -->
+        <path class="sv-ln" d="M140 89 L204 89" marker-end="url(#ar)"/>
+        <text class="sv-l" x="172" y="80" text-anchor="middle">GRN</text>
+
+        <!-- central store -->
+        <rect class="sv-box-key" x="210" y="50" width="190" height="94" rx="7"/>
+        <text class="sv-t" x="305" y="82" text-anchor="middle">Central Store</text>
+        <text class="sv-s" x="305" y="100" text-anchor="middle">raw &middot; packaging &middot; traded</text>
+        <text class="sv-s" x="305" y="118" text-anchor="middle">batch &middot; expiry &middot; MRP</text>
+
+        <!-- store -> kitchen -->
+        <path class="sv-ln" d="M305 144 L305 206" marker-end="url(#ar)"/>
+        <text class="sv-l" x="314" y="180">issue &middot; raw</text>
+
+        <!-- central kitchen -->
+        <rect class="sv-box-key" x="210" y="212" width="190" height="94" rx="7"/>
+        <text class="sv-t" x="305" y="244" text-anchor="middle">Central Kitchen</text>
+        <text class="sv-s" x="305" y="262" text-anchor="middle">recipes &rarr; production batch</text>
+        <text class="sv-s" x="305" y="280" text-anchor="middle">shelf life in hours</text>
+
+        <!-- store -> requirement -> procurement -->
+        <path class="sv-ln-d" d="M210 128 L172 128 L172 411 L146 411" marker-end="url(#ar)"/>
+        <text class="sv-l" x="182" y="352">requirement &rarr; PR</text>
+
+        <!-- store -> floors : traded goods -->
+        <path class="sv-ln" d="M400 78 L484 78" marker-end="url(#ar)"/>
+        <text class="sv-l" x="442" y="69" text-anchor="middle">traded goods</text>
+
+        <!-- floors -> store : return / exchange -->
+        <path class="sv-ln-d" d="M484 116 L400 116" marker-end="url(#ar)"/>
+        <text class="sv-l" x="442" y="132" text-anchor="middle">return &middot; exchange</text>
+
+        <!-- kitchen -> floors : finished goods -->
+        <path class="sv-ln" d="M400 259 L484 259" marker-end="url(#ar)"/>
+        <text class="sv-l" x="442" y="250" text-anchor="middle">finished goods</text>
+
+        <!-- floors panel -->
+        <rect class="sv-panel" x="490" y="30" width="370" height="382" rx="9"/>
+        <text class="sv-k" x="506" y="50">ONE ITEM MASTER &middot; ONE STOCK LEDGER</text>
+
+        <rect class="sv-box-out" x="506" y="62" width="306" height="58" rx="6"/>
+        <text class="sv-t" x="518" y="85">Floor 3 &middot; Coffee shop</text>
+        <text class="sv-s" x="518" y="103">traded + brews on site</text>
+        <text class="sv-tag" x="800" y="103" text-anchor="end">price list B</text>
+
+        <rect class="sv-box-out" x="506" y="146" width="306" height="58" rx="6"/>
+        <text class="sv-t" x="518" y="169">Floor 1 &middot; Restaurant</text>
+        <text class="sv-s" x="518" y="187">sells + light prep</text>
+        <text class="sv-tag" x="800" y="187" text-anchor="end">price list A</text>
+
+        <rect class="sv-box-out" x="506" y="230" width="306" height="58" rx="6"/>
+        <text class="sv-t" x="518" y="253">Ground &middot; Snack kiosk</text>
+        <text class="sv-s" x="518" y="271">traded only</text>
+        <text class="sv-tag" x="800" y="271" text-anchor="end">price list A</text>
+
+        <rect class="sv-box-out" x="506" y="314" width="306" height="58" rx="6"/>
+        <text class="sv-t" x="518" y="337">Ward pantry</text>
+        <text class="sv-s" x="518" y="355">consumes, never sells</text>
+        <text class="sv-tag" x="800" y="355" text-anchor="end">cost centre</text>
+
+        <!-- lateral transfer arc -->
+        <path class="sv-ln-k" d="M812 91 C846 91 846 259 812 259" marker-end="url(#ark)" marker-start="url(#ark)"/>
+        <text class="sv-k" x="858" y="175" text-anchor="middle" transform="rotate(-90 858 175)">lateral transfer</text>
+
+        <!-- down to sale -->
+        <path class="sv-ln" d="M600 412 L600 452" marker-end="url(#ar)"/>
+        <rect class="sv-box" x="516" y="452" width="168" height="50" rx="6"/>
+        <text class="sv-t" x="600" y="474" text-anchor="middle">Counter sale</text>
+        <text class="sv-s" x="600" y="491" text-anchor="middle">Eateasy bill &rarr; auto-deplete</text>
+
+        <path class="sv-ln" d="M760 412 L760 452" marker-end="url(#ar)"/>
+        <rect class="sv-box" x="700" y="452" width="140" height="50" rx="6"/>
+        <text class="sv-t" x="770" y="474" text-anchor="middle">Consumption</text>
+        <text class="sv-s" x="770" y="491" text-anchor="middle">no cash, cost centre</text>
+      </svg>
+      <figcaption><b>Every arrow is a stock document.</b> Goods enter once, at the central store, and leave in exactly one of four ways: sold at a counter, consumed by a ward, returned to a vendor, or wasted. The teal arc is the movement most systems forget &mdash; outlets supplying each other directly instead of routing everything through the store. Procurement is fed by the store's own shortfall, shown as the dashed return path, not by anyone typing a wish list.</figcaption>
+    </figure>
+
+    <h3>Location types decide behaviour</h3>
+    <div class="prose"><p class="f">One table drives most of the system's validation. A location's type is what makes it impossible to sell from a quarantine bin or receive a vendor delivery straight into a ward pantry.</p></div>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Location type</th><th>Receives from vendor</th><th>Produces</th><th>Sells</th><th>Holds raw</th><th>Holds finished</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">Central store</th><td class="yes">Yes</td><td class="no">No</td><td class="no">No</td><td class="yes">Yes</td><td class="yes">Yes</td></tr>
+          <tr><th scope="row">Central kitchen</th><td class="no">Transfer only</td><td class="yes">Yes</td><td class="no">No</td><td class="yes">Yes</td><td class="yes">Yes</td></tr>
+          <tr><th scope="row">Restaurant</th><td class="no">Transfer only</td><td class="part">Light prep</td><td class="yes">Yes</td><td class="part">Limited</td><td class="yes">Yes</td></tr>
+          <tr><th scope="row">Floor shop</th><td class="no">Transfer only</td><td class="part">Beverages</td><td class="yes">Yes</td><td class="part">Beverage raw</td><td class="yes">Yes</td></tr>
+          <tr><th scope="row">Ward pantry</th><td class="no">Transfer only</td><td class="no">No</td><td class="no">No</td><td class="no">No</td><td class="yes">Yes</td></tr>
+          <tr><th scope="row">Quarantine</th><td class="yes">Yes</td><td class="no">No</td><td class="no">No</td><td class="yes">Yes</td><td class="yes">Yes</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="cap">The shops brew coffee and tea, so they are not pure retail &mdash; they hold beverage raw materials and run mini-recipes. That single fact is why every outlet needs a stock location, not just the kitchen.</p>
+  </section>
+
+  <!-- 04 -->
+  <section id="request">
+    <div class="sec-head"><span class="sec-num">04</span><h2>Request, approve, ticket</h2></div>
+    <p class="sec-sub">The mechanism you described, worked out properly. One document type covers every internal movement, and the ticket is the only thing that opens a store room door.</p>
+
+    <div class="prose">
+      <p>A single <strong>stock request</strong> handles replenishment from the central store, a production request to the kitchen, a lateral pull from another outlet, and a return or exchange going the other way. What differs is the source and therefore who approves; the lifecycle is identical, which keeps one queue, one audit trail and one report instead of four.</p>
+      <p>The design decision everything else hangs from: <strong>approval and movement are separate events.</strong> Approving a request does not move a single unit. It authorises a quantity and reserves it. Stock leaves the source only when someone scans the ticket at the counter, and arrives only when someone scans it again at the destination. Between those two scans the quantity sits in transit, owned by neither location &mdash; which is precisely how you find out that six litres of milk left the store and four arrived.</p>
+    </div>
+
+    <figure>
+      <svg viewBox="0 0 880 330" role="img" aria-label="Stock request lifecycle: draft, submitted and under review lead to a decision; rejection ends the request with no ticket; approval issues a pick ticket for the approved quantity only, which is then picked by scan, moves in transit, is received by scan, and closed. Stock physically moves at the pick scan, not at approval.">
+        <defs>
+          <marker id="a2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+            <path d="M0 0 L10 5 L0 10 z" fill="currentColor"/>
+          </marker>
+          <marker id="a2k" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+            <path d="M0 0 L10 5 L0 10 z" fill="var(--accent)"/>
+          </marker>
+        </defs>
+
+        <rect class="sv-box" x="40" y="40" width="150" height="52" rx="6"/>
+        <text class="sv-t" x="115" y="64" text-anchor="middle">Draft</text>
+        <text class="sv-s" x="115" y="80" text-anchor="middle">auto-filled from par</text>
+
+        <path class="sv-ln" d="M190 66 L224 66" marker-end="url(#a2)"/>
+
+        <rect class="sv-box" x="230" y="40" width="150" height="52" rx="6"/>
+        <text class="sv-t" x="305" y="64" text-anchor="middle">Submitted</text>
+        <text class="sv-s" x="305" y="80" text-anchor="middle">routed by source</text>
+
+        <path class="sv-ln" d="M380 66 L414 66" marker-end="url(#a2)"/>
+
+        <rect class="sv-box" x="420" y="40" width="150" height="52" rx="6"/>
+        <text class="sv-t" x="495" y="64" text-anchor="middle">Under review</text>
+        <text class="sv-s" x="495" y="80" text-anchor="middle">stock checked</text>
+
+        <path class="sv-ln" d="M570 66 L604 66" marker-end="url(#a2)"/>
+
+        <rect class="sv-box-key" x="610" y="40" width="150" height="52" rx="6"/>
+        <text class="sv-t" x="685" y="64" text-anchor="middle">Decision</text>
+        <text class="sv-s" x="685" y="80" text-anchor="middle">line by line</text>
+
+        <!-- rejected -->
+        <path class="sv-ln" d="M735 92 L735 244" marker-end="url(#a2)"/>
+        <rect class="sv-box" x="660" y="250" width="180" height="48" rx="6"/>
+        <text class="sv-t" x="750" y="272" text-anchor="middle">Rejected</text>
+        <text class="sv-s" x="750" y="288" text-anchor="middle">no ticket, reason logged</text>
+
+        <!-- approved path down and around -->
+        <path class="sv-ln-k" d="M650 92 L650 132 L110 132 L110 184" marker-end="url(#a2k)"/>
+        <text class="sv-k" x="380" y="125" text-anchor="middle">approved quantity only &mdash; 12 of the 20 asked for</text>
+
+        <rect class="sv-box" x="40" y="190" width="140" height="52" rx="6"/>
+        <text class="sv-t" x="110" y="214" text-anchor="middle">Ticket issued</text>
+        <text class="sv-s" x="110" y="230" text-anchor="middle">QR, expires 4 h</text>
+
+        <path class="sv-ln" d="M180 216 L199 216" marker-end="url(#a2)"/>
+
+        <rect class="sv-box-key" x="205" y="190" width="140" height="52" rx="6"/>
+        <text class="sv-t" x="275" y="214" text-anchor="middle">Picked</text>
+        <text class="sv-s" x="275" y="230" text-anchor="middle">scanned at store</text>
+
+        <path class="sv-ln" d="M345 216 L364 216" marker-end="url(#a2)"/>
+
+        <rect class="sv-box" x="370" y="190" width="140" height="52" rx="6"/>
+        <text class="sv-t" x="440" y="214" text-anchor="middle">In transit</text>
+        <text class="sv-s" x="440" y="230" text-anchor="middle">owned by neither</text>
+
+        <path class="sv-ln" d="M510 216 L529 216" marker-end="url(#a2)"/>
+
+        <rect class="sv-box-key" x="535" y="190" width="140" height="52" rx="6"/>
+        <text class="sv-t" x="605" y="214" text-anchor="middle">Received</text>
+        <text class="sv-s" x="605" y="230" text-anchor="middle">scanned at outlet</text>
+
+        <!-- annotation -->
+        <path class="sv-ln-k" d="M275 242 L275 268" marker-end="url(#a2k)"/>
+        <text class="sv-k" x="288" y="272">stock leaves the store here &mdash; not at approval</text>
+      </svg>
+      <figcaption><b>Approval authorises; the scan moves.</b> A partial approval produces a ticket for the approved quantity only, so the gate can never release the twenty that were asked for. Teal marks the three points that touch the stock ledger: the approval reserves, the pick scan debits the source, the receive scan credits the destination. A short-receive at the last step leaves a visible in-transit difference rather than quietly balancing itself.</figcaption>
+    </figure>
+
+    <h3>Rules that make it hold</h3>
+    <div class="cards">
+      <div class="card"><h4>Approve line by line, not all or nothing</h4><p>Asked for 20 litres, 12 available. The approver grants 12, and the remaining 8 stays open as a back-order against the next goods receipt rather than disappearing and being re-requested tomorrow.</p></div>
+      <div class="card"><h4>Approval reserves, with a clock</h4><p>Approved quantity is held at the source so two outlets cannot both be promised the same last carton. Uncollected reservations expire after a set window and the stock returns to available &mdash; otherwise approved-but-forgotten requests slowly freeze the store.</p></div>
+      <div class="card"><h4>The ticket is the authority</h4><p>Number plus QR, naming source, destination, item, approved quantity, batch and collector. Presented at the store, scanned, and only then does anything move. No ticket, no goods, whatever anyone says on the phone.</p></div>
+      <div class="card"><h4>Both ends scan</h4><p>The receiving outlet confirms what actually arrived. Difference between picked and received is a discrepancy with an owner and a reason code, not a rounding error absorbed by the store.</p></div>
+      <div class="card"><h4>Inventory can push, too</h4><p>The same document runs in reverse: the store originates a transfer against par level, or recalls near-expiry stock from a slow outlet to a busy one. The outlet acknowledges rather than requests. One document, a direction flag.</p></div>
+      <div class="card"><h4>Emergency path, still recorded</h4><p>An out-of-hours override lets a supervisor authorise collection against a PIN, generating the ticket retrospectively. The escape hatch exists because it will be used; making it a logged path is better than pretending it will not happen.</p></div>
+    </div>
+
+    <div class="formula">
+      <span class="c">// what the approver is actually looking at</span><br>
+      <em>available to promise</em> = on hand &minus; reserved &minus; allocated to production &minus; quarantined<br>
+      <span class="c">// and the number that decides whether to approve at all</span><br>
+      <em>days of cover</em> = available to promise &divide; average daily consumption at that location
+    </div>
+  </section>
+
+  <!-- 05 -->
+  <section id="lateral">
+    <div class="sec-head"><span class="sec-num">05</span><h2>Peer transfer and exchange</h2></div>
+    <p class="sec-sub">Sourcing from another counter in the same building is faster than sourcing from the store, and it is the movement most likely to happen off the books unless the system makes it easy.</p>
+
+    <div class="prose">
+      <p>The third-floor coffee shop runs out of milk at 4 pm. The store is closed, the restaurant on the first floor has twelve litres. Today that is a phone call and an unrecorded walk down two floors, and the stock ledger is wrong until someone notices at month end. So the system has to make the recorded path the <em>easy</em> path.</p>
+      <p>A lateral request differs from a store request in one respect that matters: <strong>the giving outlet approves it</strong>. Central store consent is not the control, because the store no longer owns the stock. The outlet manager who is being asked to give up twelve litres is the one who decides, and the central store is notified so the movement stays visible in a single ledger rather than becoming a private arrangement between two counters.</p>
+    </div>
+
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th style="width:20%">Movement</th><th style="width:20%">Approved by</th><th style="width:26%">Typical trigger</th><th>Ledger effect</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">Store replenishment</th><td>Store keeper</td><td>Below par at the outlet</td><td>Central store &minus;, outlet +</td></tr>
+          <tr><th scope="row">Production request</th><td>Production in-charge</td><td>Outlet needs made items</td><td>Kitchen raw &minus;, kitchen finished +, then outlet +</td></tr>
+          <tr><th scope="row">Lateral pull</th><td><strong>Giving outlet's manager</strong></td><td>Store shut, or the other counter has surplus</td><td>Outlet A &minus;, outlet B +. Store notified, not consulted</td></tr>
+          <tr><th scope="row">Push replenishment</th><td>Store keeper originates</td><td>Par-level sweep, or a promotion</td><td>Store &minus;, outlet + on acknowledgement</td></tr>
+          <tr><th scope="row">Recall</th><td>Store keeper</td><td>Near expiry at a slow counter</td><td>Outlet &minus;, store + &mdash; then redistributed</td></tr>
+          <tr><th scope="row">Return</th><td>Store keeper</td><td>Wrong item, damaged, over-supplied</td><td>Outlet &minus;, store or quarantine +</td></tr>
+          <tr><th scope="row">Exchange</th><td>Both sides</td><td>Swap surplus for shortage</td><td>Two paired lines, posted in one transaction</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="note"><strong>Why exchange is one document and not two</strong>An exchange posted as two independent transfers leaves a window where one outlet has given away stock and not yet received anything, and if the second half is forgotten the books stay wrong in a way nobody is chasing. Posting both legs in a single transaction means it either happens completely or not at all &mdash; and it gives the near-expiry redistribution the shops will actually use a clean audit line: <span class="num">4 L milk &rarr; Floor 1</span>, <span class="num">2 kg coffee &rarr; Floor 3</span>, one document, both managers' approval on it.</div>
+  </section>
+
+  <!-- 06 -->
+  <section id="onoff">
+    <div class="sec-head"><span class="sec-num">06</span><h2>Items that switch themselves off</h2></div>
+    <p class="sec-sub">Eateasy already has the on/off switch. Wiring it to stock is a small change with a large effect: a customer can no longer order something the counter cannot make.</p>
+
+    <div class="prose">
+      <p><code>menu_items.is_available</code> is a hand-flipped boolean today. It becomes a computed state with a mode, so that most items look after themselves and staff intervene only for the real exceptions.</p>
+    </div>
+
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th style="width:20%">Mode</th><th style="width:34%">Available when</th><th>Used for</th></tr></thead>
+        <tbody>
+          <tr><th scope="row"><code>STOCK_LINKED</code> <span class="chip a">traded</span></th><td>Outlet on-hand for that item is above zero</td><td>Bottled juice, packaged snacks. Switches off at the last unit sold, back on when a transfer is received</td></tr>
+          <tr><th scope="row"><code>RECIPE_LINKED</code> <span class="chip b">made</span></th><td>Every recipe ingredient has enough at that outlet's location for at least one portion</td><td>Coffee, tea, sandwiches. The UI names the binding ingredient: <em>"Cappuccino off &mdash; milk 0.0 L at Floor 3"</em></td></tr>
+          <tr><th scope="row"><code>SCHEDULE</code></th><td>Inside the item's time window</td><td>Breakfast items, the existing <code>available_from</code> / <code>available_until</code> columns</td></tr>
+          <tr><th scope="row"><code>MANUAL</code></th><td>Whatever a human last set</td><td>Machine broken, chef's call. Reason required, auto-clears at shift close so nothing stays wrongly off for a week</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>The switch-off is also a request</h3>
+    <div class="prose">
+      <p class="f">An item going dark is a demand signal, so the system should not merely alert. Crossing the low threshold <strong>drafts a stock request</strong> addressed to the right source &mdash; central store for traded goods, central kitchen for made items, and it offers a nearby outlet holding surplus as a lateral alternative. The outlet person confirms or edits and submits. This is the loop closing: the counter never types a request from scratch, and the inventory desk sees demand appear before anyone has run out.</p>
+    </div>
+    <div class="note warnbox"><strong>One guard rail</strong>Auto-off must respect an unfulfilled order. If three cappuccinos are already paid for and in the queue, the ingredients behind them are committed at the moment the order is accepted, not at the moment it is served &mdash; otherwise the counter cheerfully sells the last of the milk twice in the same minute.</div>
+  </section>
+
+  <!-- 07 -->
+  <section id="pricing">
+    <div class="sec-head"><span class="sec-num">07</span><h2>Floor-wise pricing</h2></div>
+    <p class="sec-sub">Different prices on different floors is the one requirement Eateasy's schema actively fights, because price is a single column on the item.</p>
+
+    <div class="prose">
+      <p>The tempting shortcut is to make each floor's shop its own outlet with its own menu items &mdash; which works, right up to the point where "Cappuccino" exists six times, has six recipes to keep in step, and consolidated reporting has to guess that they are the same drink. It also makes a recipe change a six-place edit.</p>
+      <p>The right shape is <strong>one catalog item, many price list entries</strong>. A price list is scoped and effective-dated; an outlet points at one. Resolution runs outlet override first, then the floor or zone list, then the hospital base price. Because entries carry <code>valid_from</code> and <code>valid_to</code>, a bill raised today can still be explained in a year.</p>
+    </div>
+
+    <div class="formula">
+      <span class="c">// price resolution at the counter</span><br>
+      price = outlet_override(item) <em>??</em> floor_price_list(item) <em>??</em> base_price(item)<br>
+      final = price &times; customer_level_modifier <span class="c">// visitor 1.00 &middot; staff 0.75 &middot; patient attender 1.00</span><br>
+      <span class="c">// and one hard ceiling that no floor and no level may cross</span><br>
+      <em>if</em> item.type = TRADED <em>then</em> final &le; batch.printed_mrp
+    </div>
+
+    <div class="prose">
+      <p class="f">Two axes, deliberately kept apart. <strong>Location</strong> explains why a coffee costs more in the private-ward lounge than at the ground-floor kiosk. <strong>Customer type</strong> explains why a nurse pays less than a visitor at the same counter. Fold them into one number and the subsidy becomes invisible &mdash; and someone will eventually ask what the staff canteen actually costs the hospital, which is a question only a separately modelled subsidy can answer.</p>
+    </div>
+
+    <div class="note critbox"><strong>Carried over from the UA document</strong>For traded goods the printed MRP on the received batch is an absolute ceiling, and it is a batch property, not an item property. If the third floor's price list says &#8377;22 and the counter is deducting a &#8377;20 batch, the bill must be &#8377;20. No floor, no customer level and no approval overrides that.</div>
+  </section>
+
+  <!-- 08 -->
+  <section id="procure">
+    <div class="sec-head"><span class="sec-num">08</span><h2>Feeding procurement</h2></div>
+    <p class="sec-sub">Procurement should never receive a hand-typed wish list. What inventory sends is a computed requirement, with the arithmetic attached.</p>
+
+    <div class="prose">
+      <p>The requirement is assembled from four inputs the system already holds: items below reorder point, open outlet requests that cannot currently be fulfilled, the coming period's production plan exploded through recipes into raw materials, and consumption velocity over a trailing window. Netted against stock on hand and quantity already on order, that produces a suggested purchase list grouped by vendor.</p>
+    </div>
+
+    <div class="formula">
+      <span class="c">// suggested quantity for one raw material</span><br>
+      demand = unfulfilled requests + (production plan &times; recipe qty) + (avg daily use &times; lead time days)<br>
+      <em>suggested</em> = demand + safety stock &minus; on hand &minus; on order<br>
+      <span class="c">// rounded up to the vendor's pack size, never below the minimum order quantity</span>
+    </div>
+
+    <div class="prose">
+      <p class="f">The store keeper reviews and edits that list, then submits it as a <strong>purchase requisition</strong> &mdash; the formal handover from inventory to procurement. Procurement takes it from there: rate contract lookup, quotation comparison for off-contract items, vendor selection, PO by the approval slabs in the companion document, and goods receipt back into the central store.</p>
+      <p class="f">The piece that is usually missed: when that receipt posts, <strong>the outlet requests that were waiting on it wake up</strong>. A back-ordered line links to the requisition, the requisition to the PO, the PO to the GRN. The outlet gets told that its request for six tins of oil can now be fulfilled, and the store keeper sees a ready-to-approve queue rather than a fresh round of identical requests. Without that chain, unfulfilled requests die silently and every shortage is requested three times.</p>
+    </div>
+
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th style="width:22%">Stage</th><th style="width:22%">Owner</th><th>What it produces</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">Requirement run</th><td>System, nightly</td><td>Suggested purchase list by vendor, with the arithmetic visible per line</td></tr>
+          <tr><th scope="row">Review &amp; edit</th><td>Store keeper</td><td>Adjusted quantities, items deferred or added, with reasons</td></tr>
+          <tr><th scope="row">Purchase requisition</th><td>Store keeper</td><td>The formal ask, approved per the value slab</td></tr>
+          <tr><th scope="row">Sourcing</th><td>Procurement</td><td>Rate contract or three quotes compared, vendor chosen and justified</td></tr>
+          <tr><th scope="row">Purchase order</th><td>Procurement</td><td>Approved PO to vendor. On-order quantity now visible to everyone</td></tr>
+          <tr><th scope="row">Goods receipt</th><td>Store keeper</td><td>Batch, expiry, MRP, landed cost. Back-orders reawakened</td></tr>
+          <tr><th scope="row">Three-way match</th><td>Accounts</td><td>PO, GRN and vendor invoice agree, or the payment is held</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- 09 -->
+  <section id="tower">
+    <div class="sec-head"><span class="sec-num">09</span><h2>The inventory desk</h2></div>
+    <p class="sec-sub">You asked that the inventory person know what is needed, what is available, and how to keep it that way. That is one screen and three habits.</p>
+
+    <div class="screen">
+      <div class="sc-chrome"><span class="dots"><i></i><i></i><i></i></span><span class="sc-path">inventory / control &mdash; all locations</span><span class="sc-user">Store Keeper</span></div>
+      <div class="sc-body">
+        <div class="tiles">
+          <div class="tile"><b>Requests waiting</b><span class="v">11</span><span class="d">3 marked urgent</span></div>
+          <div class="tile"><b>Reserved</b><span class="v">18</span><span class="d">tickets uncollected</span></div>
+          <div class="tile"><b>In transit</b><span class="v">4</span><span class="d">1 over 2 h</span></div>
+          <div class="tile"><b>Back-orders</b><span class="v">7</span><span class="d">awaiting GRN</span></div>
+          <div class="tile"><b>Below reorder</b><span class="v">14</span><span class="d">items</span></div>
+          <div class="tile"><b>Near expiry</b><span class="v">9</span><span class="d">&#8377;9,860</span></div>
+        </div>
+        <div class="alertline c"><span class="k">STUCK</span><span>REQ-2026-0914 &middot; Floor 3 Coffee &middot; picked 11:20, not received &mdash; 6 L milk in transit for 2 h 40 m</span></div>
+        <div class="alertline w"><span class="k">CLASH</span><span>Two requests for the last 12 L milk &middot; Floor 3 (urgent, 0 cover) and Restaurant (1.8 days cover) &mdash; approve Floor 3 first</span></div>
+        <div class="alertline w"><span class="k">EXPIRE</span><span>3 reservations expire in under 30 min &mdash; stock returns to available if uncollected</span></div>
+        <div class="alertline g"><span class="k">GRN</span><span>Refined oil received &mdash; 2 back-ordered requests are now fulfillable</span></div>
+        <div class="sc-scroll" style="margin-top:12px"><table class="sc-tbl">
+          <thead><tr><th>Item</th><th>Loc</th><th class="r">On hand</th><th class="r">Resvd</th><th class="r">Avail</th><th class="r">Daily use</th><th class="r">Cover</th><th>Action</th></tr></thead>
+          <tbody>
+            <tr><td class="w">Milk 1L</td><td>Store</td><td class="r">12</td><td class="r">12</td><td class="r">0</td><td class="r">34</td><td class="r">0.0 d</td><td class="w"><span class="chip crit">Order now</span></td></tr>
+            <tr><td class="w">Milk 1L</td><td>Restaurant</td><td class="r">14</td><td class="r">0</td><td class="r">14</td><td class="r">8</td><td class="r">1.8 d</td><td class="w"><span class="chip warn">Lateral source</span></td></tr>
+            <tr><td class="w">Coffee beans</td><td>Store</td><td class="r">18.4 kg</td><td class="r">2.0</td><td class="r">16.4</td><td class="r">2.1</td><td class="r">7.8 d</td><td class="w"><span class="chip good">Healthy</span></td></tr>
+            <tr><td class="w">Real Juice 200ml</td><td>Store</td><td class="r">180</td><td class="r">24</td><td class="r">156</td><td class="r">62</td><td class="r">2.5 d</td><td class="w"><span class="chip warn">Below par</span></td></tr>
+            <tr><td class="w">Paper cup 150ml</td><td>Store</td><td class="r">2,400</td><td class="r">300</td><td class="r">2,100</td><td class="r">410</td><td class="r">5.1 d</td><td class="w"><span class="chip good">Healthy</span></td></tr>
+          </tbody>
+        </table></div>
+        <div class="btnrow"><span class="btn">Approve queue</span><span class="btn ghost">Run requirement</span><span class="btn ghost">Print pick list</span><span class="btn ghost">Start count</span></div>
+      </div>
+    </div>
+
+    <h3>The three habits the system has to enforce</h3>
+    <div class="cards three">
+      <div class="card"><h4>Cycle counting, not an annual stocktake</h4><p>High-value and fast-moving items counted weekly, everything else on a rotation, so the book and the shelf never drift far enough to be unexplainable. The system schedules the count and refuses to let the counter see the expected figure until after it is entered.</p></div>
+      <div class="card"><h4>Par review on real consumption</h4><p>Reorder points set once at go-live become wrong within a month. A quarterly prompt shows actual consumption against the configured par and proposes new numbers.</p></div>
+      <div class="card"><h4>Expiry sweep before it becomes waste</h4><p>Near-expiry stock at a slow counter is a redistribution opportunity for about a week and a write-off after that. A daily list, with the recall or exchange one click away.</p></div>
+    </div>
+  </section>
+
+  <!-- 10 -->
+  <section id="data">
+    <div class="sec-head"><span class="sec-num">10</span><h2>Data model</h2></div>
+    <p class="sec-sub">New tables, in Eateasy's conventions &mdash; snake_case columns, prefixed text ids, Drizzle with Zod schemas in the shared package.</p>
+
+    <div class="schema">
+      <div class="grp"><div class="gh">Catalog<span>the things</span></div><div class="gt"><b>items</b> &middot; item_categories &middot; <b>uoms</b> &middot; uom_conversions &middot; item_barcodes &middot; allergens &middot; item_allergens</div></div>
+      <div class="grp"><div class="gh">Places<span>where stock sits</span></div><div class="gt"><b>locations</b> &middot; location_types &middot; bins &middot; cost_centres &middot; location_item_pars</div></div>
+      <div class="grp"><div class="gh">Stock<span>the ledger</span></div><div class="gt"><b>stock_moves</b> &middot; stock_balances &middot; <b>stock_batches</b> &middot; reservations &middot; in_transit</div></div>
+      <div class="grp"><div class="gh">Movement<span>&sect;04 and &sect;05</span></div><div class="gt"><b>stock_requests</b> &middot; stock_request_lines &middot; <b>pick_tickets</b> &middot; pick_ticket_lines &middot; transfer_receipts &middot; exchange_pairs</div></div>
+      <div class="grp"><div class="gh">Production<span>made items</span></div><div class="gt"><b>recipes</b> &middot; recipe_lines &middot; production_plans &middot; <b>production_batches</b> &middot; production_consumption &middot; yields</div></div>
+      <div class="grp"><div class="gh">Buying<span>&sect;08</span></div><div class="gt">vendors &middot; rate_contracts &middot; <b>purchase_requisitions</b> &middot; purchase_orders &middot; po_lines &middot; <b>grns</b> &middot; grn_lines &middot; purchase_returns</div></div>
+      <div class="grp"><div class="gh">Pricing<span>&sect;07</span></div><div class="gt"><b>price_lists</b> &middot; price_list_items &middot; customer_levels &middot; price_approvals &middot; price_history</div></div>
+      <div class="grp"><div class="gh">Truth<span>reconciliation</span></div><div class="gt">wastage &middot; wastage_reasons &middot; <b>stock_counts</b> &middot; count_lines &middot; adjustments &middot; variance_snapshots</div></div>
+      <div class="grp"><div class="gh">Compliance<span>FSSAI Schedule 4</span></div><div class="gt">temperature_logs &middot; cleaning_schedules &middot; handler_training &middot; supplier_certificates</div></div>
+      <div class="grp"><div class="gh">Touched<span>existing tables</span></div><div class="gt">menu_items <span style="color:var(--ink-3)">+ catalog_item_id, availability_mode, recipe_id</span> &middot; kitchens <span style="color:var(--ink-3)">+ location_id, price_list_id</span> &middot; order_items <span style="color:var(--ink-3)">+ depleted_at</span></div></div>
+    </div>
+
+    <div class="note"><strong>The one architectural rule</strong><code>stock_moves</code> is append-only and is the only source of truth. Every other table &mdash; receipt, transfer, production, sale, wastage, adjustment &mdash; writes moves and never edits a balance. <code>stock_balances</code> is a maintained cache that can be rebuilt from the moves at any time. Nothing is ever deleted; a mistake is corrected by a reversing move that carries the id of what it reverses. This is what makes the day-reconciliation test in the companion document provable rather than merely hoped for.</div>
+
+    <h3>Where the sale meets the stock</h3>
+    <div class="prose"><p class="f">The join between Eateasy and everything above is one hook on the order-status transition. When an <code>order_item</code> reaches its terminal served state, depletion runs: a traded item deducts one unit of itself at the outlet's location; a made item deducts its recipe lines. It must be <strong>idempotent</strong>, since order status can be written more than once, and <strong>reversible</strong>, since Eateasy already supports per-item kitchen cancellation with <code>cancelled_at</code>. A <code>depleted_at</code> stamp on the order item is the guard: set it in the same transaction as the moves, and skip if it is already set.</p></div>
+  </section>
+
+  <!-- 11 -->
+  <section id="build">
+    <div class="sec-head"><span class="sec-num">11</span><h2>Build order</h2></div>
+    <p class="sec-sub">Four phases, each one usable on its own. The sequencing is deliberate: nothing later can be built honestly without the ledger from phase one.</p>
+    <div class="phases">
+      <div class="ph"><p class="pn">PHASE 1</p><h4>The ledger</h4><p>Item master, UOM, locations, append-only stock moves, goods receipt, opening stock. Depletion hooked to Eateasy's order flow, and stock-linked availability. At the end of this phase, selling something changes a number that is actually true.</p></div>
+      <div class="ph"><p class="pn">PHASE 2</p><h4>Movement</h4><p>Stock requests, approval routing, reservations, pick tickets with QR scan at both ends, lateral transfer, exchange, return and recall. The whole of &sect;04 and &sect;05.</p></div>
+      <div class="ph"><p class="pn">PHASE 3</p><h4>Making and losing</h4><p>Recipes, production batches, yield and consumption variance, recipe-linked availability, wastage, cycle counts, adjustments. Theoretical versus actual becomes measurable.</p></div>
+      <div class="ph"><p class="pn">PHASE 4</p><h4>Buying and pricing</h4><p>Requirement run, purchase requisition, vendors and rate contracts, PO, three-way match, back-order reawakening. Price lists, customer levels, MRP ceiling. Compliance logs.</p></div>
+    </div>
+    <div class="note"><strong>Why availability is in phase 1 and not later</strong>It is the smallest visible win in the whole build &mdash; the counter stops selling what it does not have on day one &mdash; and it forces the depletion hook to be correct early, while the system is small enough to debug. Deferring it means discovering the hard parts of depletion during phase 3, with three more subsystems already leaning on it.</div>
+  </section>
+
+  <!-- 12 -->
+  <section id="questions">
+    <div class="sec-head"><span class="sec-num">12</span><h2>Your decisions</h2></div>
+    <p class="sec-sub">Eight this document turns on, on top of the ten in the UA specification.</p>
+    <div class="qs">
+      <div class="q"><div><h4>Are any outlets leased to third parties?</h4><p>If a coffee brand runs the lobby counter, Eateasy's settlement and payout machinery is exactly right and stays. If the hospital owns every outlet, payouts become internal cost-centre transfers and a chunk of the existing money code changes purpose. <em>This is the biggest single fork in the design.</em></p></div></div>
+      <div class="q"><div><h4>Do the shops actually produce, or only resell?</h4><p>You said coffee, tea and snacks. Brewing on site means each shop holds raw materials, runs mini-recipes and needs recipe-linked availability &mdash; a materially bigger build than pure retail counters.</p></div></div>
+      <div class="q"><div><h4>Does the restaurant cook, or plate what the central kitchen sends?</h4><p>Decides whether production exists in one place or several, and whether the restaurant needs its own raw stock and yield tracking.</p></div></div>
+      <div class="q"><div><h4>Who physically carries stock between floors?</h4><p>Porters, outlet staff, a service lift with time windows? The pick ticket can name a courier and timestamp both ends, but only if there is a person to name. <em>This decides whether in-transit is a real accountable state or a formality.</em></p></div></div>
+      <div class="q"><div><h4>How many price levels, and who funds the difference?</h4><p>Visitor, staff, doctor, patient attender. If staff pay a subsidised rate, the gap has to land in a cost centre someone owns, or the outlet's margin silently absorbs it.</p></div></div>
+      <div class="q"><div><h4>Can an outlet ever refuse a lateral request?</h4><p>Our design says yes &mdash; the giving manager approves. If hospital policy is that the store's word is final and outlets must comply, the routing changes and outlet managers lose a control.</p></div></div>
+      <div class="q"><div><h4>Is Eateasy the codebase we extend, or the reference we rebuild from?</h4><p>Extending is faster and inherits working auth, ordering and payments. Rebuilding gives a clean hospital-shaped schema without mall vocabulary. <em>Our recommendation is to extend &mdash; the ordering and money code is the expensive part and it already works.</em></p></div></div>
+      <div class="q"><div><h4>How far does patient food reach into this?</h4><p>Ward pantries are in the topology above as consuming locations. Whether patient diet planning itself lives here or in the separate HIMS module is still <a href="#">Q1 of the UA document</a> and still open.</p></div></div>
+    </div>
+  </section>
+
+  <footer>
+    <p>Prepared for Royal Care Hospital by Hashtricks Technologies. Read alongside <b>Indent to Counter</b> (RCH/HIMS/UA-01), which covers the procure-to-consume spine, the two product classes and the twenty-four acceptance scenarios. This document covers the platform, the building topology and the internal movement mechanism.</p>
+    <h4>Sources</h4>
+    <p class="srclist">
+      <a href="https://www.computrition.com/product-solutions/mobile-floor-stock-software/">Computrition &mdash; mobile floor stock</a> &middot;
+      <a href="https://www.computrition.com/product-solutions/foodservice-management-software/">Computrition &mdash; foodservice management</a> &middot;
+      <a href="https://www.cbord.com/healthcare-food-mgmt-solutions/">CBORD &mdash; healthcare food management</a> &middot;
+      <a href="https://www.civica.com/en-us/product-pages/catering-management-software/">Civica Catering Management (formerly Saffron)</a> &middot;
+      <a href="https://www.marketman.com/platform/multi-unit-restaurant-commissary-kitchen-inventory-software">MarketMan &mdash; multi-unit &amp; commissary</a> &middot;
+      <a href="https://supy.io/blog/learn-commissary-kitchen-management">Supy &mdash; commissary kitchen management</a> &middot;
+      <a href="https://supy.io/blog/what-is-food-cost-variance-and-how-to-control-it">Supy &mdash; food cost variance</a> &middot;
+      <a href="https://www.crunchtime.com/blog/blog/explaining-actual-vs-theoretical-food-cost">CrunchTime &mdash; actual vs theoretical</a> &middot;
+      <a href="https://arbapro.com/hospital-cafeteria-pos-system-software/">ARBA &mdash; hospital cafeteria POS</a> &middot;
+      <a href="https://www.fssai.gov.in/upload/uploadfiles/files/Guidance_Document_Catering_Sector_19_01_2018(4).pdf">FSSAI &mdash; catering sector guidance</a> &middot;
+      <a href="https://www.fssai.gov.in/cms/inspection-matrices.php">FSSAI &mdash; Schedule 4 inspection matrices</a>
+    </p>
+  </footer>
+
+  </main>
+</div>

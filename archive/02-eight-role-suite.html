@@ -1,0 +1,1498 @@
+<title>Royal Care Inventory Suite</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+:root{
+  --ground:#F2F5F4; --surface:#FFFFFF; --surface-2:#F7F9F8; --surface-3:#EBF0EE; --sidebar:#FAFCFB;
+  --line:#DCE4E1; --line-2:#E9EEEC; --line-strong:#BFCCC8;
+  --ink:#0F1A18; --ink-2:#3D4D49; --ink-3:#6B7C77; --ink-4:#93A29D;
+  --accent:#0E5C55; --accent-2:#0A4A44; --accent-soft:#DFEDEA; --accent-line:#9FCBC4; --on-accent:#FFFFFF;
+  --good:#1F7A4C; --good-soft:#DCEFE3; --good-line:#9CD2B4;
+  --warn:#8A6300; --warn-soft:#F7EDD0; --warn-line:#E0C77A;
+  --crit:#A62B22; --crit-soft:#F8E0DC; --crit-line:#E8AFA7;
+  --info:#1D5B87; --info-soft:#DFEAF3; --info-line:#A2C4DD;
+  --c1:#00907F; --c2:#C2620C; --c3:#6A4C93;
+  --c1-f:rgba(0,144,127,.14); --grid:#E4EAE8;
+  --sh-1:0 1px 2px rgba(15,26,24,.05);
+  --sh-2:0 1px 2px rgba(15,26,24,.05),0 4px 14px -8px rgba(15,26,24,.2);
+  --sh-3:0 12px 40px -12px rgba(15,26,24,.28),0 2px 8px -4px rgba(15,26,24,.12);
+  --r:8px; --r-lg:11px;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --ground:#0C1211; --surface:#141C1A; --surface-2:#192320; --surface-3:#212D2A; --sidebar:#111917;
+  --line:#26332F; --line-2:#1E2926; --line-strong:#3B4A46;
+  --ink:#E9F0ED; --ink-2:#B2C0BB; --ink-3:#87958F; --ink-4:#68766F;
+  --accent:#4FB3A6; --accent-2:#66C4B7; --accent-soft:#0F312C; --accent-line:#1F5A52; --on-accent:#062019;
+  --good:#5BBF8A; --good-soft:#102C1E; --good-line:#245A3C;
+  --warn:#D8B44E; --warn-soft:#2C250E; --warn-line:#5A4A16;
+  --crit:#E3776B; --crit-soft:#331714; --crit-line:#63302A;
+  --info:#6EAFDE; --info-soft:#122636; --info-line:#28496B;
+  --c1:#1AA090; --c2:#D17C2C; --c3:#9377C4;
+  --c1-f:rgba(26,160,144,.16); --grid:#22302C;
+  --sh-1:0 1px 2px rgba(0,0,0,.4);
+  --sh-2:0 1px 2px rgba(0,0,0,.4),0 6px 18px -10px rgba(0,0,0,.8);
+  --sh-3:0 16px 50px -14px rgba(0,0,0,.85),0 2px 8px -4px rgba(0,0,0,.6);
+}}
+:root[data-theme="dark"]{
+  --ground:#0C1211; --surface:#141C1A; --surface-2:#192320; --surface-3:#212D2A; --sidebar:#111917;
+  --line:#26332F; --line-2:#1E2926; --line-strong:#3B4A46;
+  --ink:#E9F0ED; --ink-2:#B2C0BB; --ink-3:#87958F; --ink-4:#68766F;
+  --accent:#4FB3A6; --accent-2:#66C4B7; --accent-soft:#0F312C; --accent-line:#1F5A52; --on-accent:#062019;
+  --good:#5BBF8A; --good-soft:#102C1E; --good-line:#245A3C;
+  --warn:#D8B44E; --warn-soft:#2C250E; --warn-line:#5A4A16;
+  --crit:#E3776B; --crit-soft:#331714; --crit-line:#63302A;
+  --info:#6EAFDE; --info-soft:#122636; --info-line:#28496B;
+  --c1:#1AA090; --c2:#D17C2C; --c3:#9377C4;
+  --c1-f:rgba(26,160,144,.16); --grid:#22302C;
+  --sh-1:0 1px 2px rgba(0,0,0,.4);
+  --sh-2:0 1px 2px rgba(0,0,0,.4),0 6px 18px -10px rgba(0,0,0,.8);
+  --sh-3:0 16px 50px -14px rgba(0,0,0,.85),0 2px 8px -4px rgba(0,0,0,.6);
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--ground);color:var(--ink);
+  font-family:Archivo,"Helvetica Neue",Arial,sans-serif;font-size:13px;line-height:1.5;-webkit-font-smoothing:antialiased}
+.mono,.n,.num{font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums}
+button,input,select,textarea{font-family:inherit;font-size:inherit;color:inherit}
+button{border:0;background:none;cursor:pointer;padding:0}
+a{color:var(--accent);text-decoration:none}
+:focus-visible{outline:2px solid var(--accent);outline-offset:1px;border-radius:4px}
+::-webkit-scrollbar{width:9px;height:9px}
+::-webkit-scrollbar-thumb{background:var(--line-strong);border-radius:5px;border:2px solid transparent;background-clip:content-box}
+::-webkit-scrollbar-track{background:transparent}
+
+/* ===================== LOGIN ===================== */
+#login{position:fixed;inset:0;z-index:200;display:grid;grid-template-columns:1fr;background:var(--surface)}
+@media(min-width:920px){#login{grid-template-columns:0.95fr 1.05fr}}
+.lg-brand{background:var(--accent);color:#fff;padding:48px 44px;display:none;flex-direction:column;position:relative;overflow:hidden}
+@media(min-width:920px){.lg-brand{display:flex}}
+.lg-brand::after{content:"";position:absolute;right:-140px;bottom:-160px;width:460px;height:460px;border-radius:50%;
+  background:rgba(255,255,255,.05)}
+.lg-brand::before{content:"";position:absolute;right:-40px;top:-120px;width:300px;height:300px;border-radius:50%;
+  background:rgba(255,255,255,.04)}
+.lg-wm{display:flex;align-items:center;gap:11px;font-weight:700;font-size:15px;letter-spacing:-.01em;position:relative}
+.lg-wm i{width:30px;height:30px;border-radius:8px;background:rgba(255,255,255,.16);display:grid;place-items:center;
+  font-style:normal;font-size:12px;font-family:"IBM Plex Mono",monospace;font-weight:600}
+.lg-h{margin:auto 0 0;position:relative}
+.lg-h h1{font-size:clamp(30px,3.4vw,42px);line-height:1.04;letter-spacing:-.03em;margin:0 0 16px;max-width:13ch;font-weight:700}
+.lg-h p{font-size:15px;line-height:1.55;color:rgba(255,255,255,.82);max-width:38ch;margin:0 0 30px}
+.lg-stats{display:flex;gap:0;border-top:1px solid rgba(255,255,255,.18);padding-top:18px;position:relative}
+.lg-stats div{padding-right:26px;margin-right:26px;border-right:1px solid rgba(255,255,255,.18)}
+.lg-stats div:last-child{border:0}
+.lg-stats b{display:block;font-family:"IBM Plex Mono",monospace;font-size:19px;font-weight:600;letter-spacing:-.02em}
+.lg-stats span{font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;color:rgba(255,255,255,.66)}
+.lg-form{padding:40px 28px;display:flex;flex-direction:column;overflow-y:auto}
+@media(min-width:920px){.lg-form{padding:48px 56px}}
+.lg-inner{margin:auto;width:100%;max-width:460px}
+.lg-inner>h2{font-size:23px;letter-spacing:-.022em;margin:0 0 5px;font-weight:700}
+.lg-inner>p.sub{color:var(--ink-3);font-size:13.5px;margin:0 0 26px}
+.acct-l{display:grid;gap:7px;margin-bottom:22px;max-height:330px;overflow-y:auto;padding-right:3px}
+.acct{display:flex;gap:11px;align-items:center;padding:9px 12px;border:1px solid var(--line);border-radius:9px;
+  background:var(--surface);text-align:left;transition:border-color .12s,background .12s}
+.acct:hover{border-color:var(--accent-line);background:var(--accent-soft)}
+.acct[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft);box-shadow:0 0 0 1px var(--accent)}
+.av{width:34px;height:34px;border-radius:9px;display:grid;place-items:center;flex:none;
+  font-family:"IBM Plex Mono",monospace;font-size:11.5px;font-weight:600;color:#fff}
+.acct .at{flex:1;min-width:0}
+.acct .at b{display:block;font-size:13px;font-weight:600;letter-spacing:-.008em;line-height:1.3}
+.acct .at span{display:block;font-size:11px;color:var(--ink-3);font-family:"IBM Plex Mono",monospace;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fgrp{margin-bottom:13px}
+.fgrp label{display:block;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);font-weight:600;margin-bottom:5px}
+.inp{width:100%;padding:9px 12px;border:1px solid var(--line-strong);border-radius:7px;background:var(--surface);
+  font-size:13px;transition:border-color .12s,box-shadow .12s}
+.inp:focus{outline:0;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.inp.mono{font-family:"IBM Plex Mono",monospace;font-size:12.5px}
+.lg-row{display:flex;justify-content:space-between;align-items:center;margin:16px 0 18px;font-size:12px;color:var(--ink-3)}
+.lg-note{margin-top:22px;padding-top:16px;border-top:1px solid var(--line);font-size:11.5px;color:var(--ink-4);line-height:1.55}
+
+/* ===================== SHELL ===================== */
+#app{display:none;min-height:100vh}
+#app.on{display:grid;grid-template-columns:1fr}
+@media(min-width:1000px){#app.on{grid-template-columns:232px minmax(0,1fr)}}
+.side{background:var(--sidebar);border-right:1px solid var(--line);display:flex;flex-direction:column;
+  position:sticky;top:0;height:100vh;overflow:hidden}
+@media(max-width:999px){.side{position:fixed;left:0;top:0;bottom:0;width:232px;z-index:120;transform:translateX(-100%);
+  transition:transform .2s ease;box-shadow:var(--sh-3)}
+  .side.open{transform:none}}
+.side-h{padding:14px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px}
+.side-h .lm{width:29px;height:29px;border-radius:8px;background:var(--accent);color:var(--on-accent);
+  display:grid;place-items:center;font-family:"IBM Plex Mono",monospace;font-size:11px;font-weight:600;flex:none}
+.side-h b{font-size:13px;letter-spacing:-.01em;display:block;line-height:1.2}
+.side-h span{font-size:10px;color:var(--ink-3);font-family:"IBM Plex Mono",monospace}
+.nav{flex:1;overflow-y:auto;padding:10px 9px 16px}
+.nav-g{font-size:9.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-4);font-weight:600;
+  padding:14px 8px 6px}
+.nav a{display:flex;align-items:center;gap:9px;padding:7px 9px;border-radius:7px;color:var(--ink-2);
+  font-size:12.5px;font-weight:500;letter-spacing:-.005em;position:relative;transition:background .1s,color .1s}
+.nav a:hover{background:var(--surface-3);color:var(--ink)}
+.nav a.on{background:var(--accent-soft);color:var(--accent);font-weight:600}
+.nav a.on::before{content:"";position:absolute;left:-9px;top:6px;bottom:6px;width:3px;border-radius:0 3px 3px 0;background:var(--accent)}
+.nav a .ic{width:15px;height:15px;flex:none;opacity:.85}
+.nav a .ct{margin-left:auto;font-family:"IBM Plex Mono",monospace;font-size:10px;font-weight:600;
+  background:var(--surface-3);color:var(--ink-3);padding:1px 5px;border-radius:9px}
+.nav a.on .ct{background:var(--accent);color:var(--on-accent)}
+.nav a .ct.hot{background:var(--crit);color:#fff}
+.side-f{border-top:1px solid var(--line);padding:10px}
+.side-u{display:flex;gap:9px;align-items:center;padding:7px;border-radius:8px;width:100%;text-align:left}
+.side-u:hover{background:var(--surface-3)}
+.side-u .ut{flex:1;min-width:0}
+.side-u .ut b{display:block;font-size:12px;font-weight:600;line-height:1.25;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.side-u .ut span{display:block;font-size:10px;color:var(--ink-3);font-family:"IBM Plex Mono",monospace;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+.main{min-width:0;display:flex;flex-direction:column}
+.top{position:sticky;top:0;z-index:60;background:var(--surface);border-bottom:1px solid var(--line);
+  padding:0 18px;display:flex;align-items:center;gap:12px;height:53px}
+.burger{display:grid;place-items:center;width:32px;height:32px;border-radius:7px;color:var(--ink-2)}
+.burger:hover{background:var(--surface-3)}
+@media(min-width:1000px){.burger{display:none}}
+.search{flex:1;max-width:400px;position:relative}
+.search input{width:100%;padding:7px 11px 7px 32px;border:1px solid var(--line);border-radius:8px;
+  background:var(--surface-2);font-size:12.5px}
+.search input:focus{outline:0;border-color:var(--accent);background:var(--surface);box-shadow:0 0 0 3px var(--accent-soft)}
+.search svg{position:absolute;left:10px;top:50%;transform:translateY(-50%);opacity:.5}
+.search kbd{position:absolute;right:8px;top:50%;transform:translateY(-50%);font-family:"IBM Plex Mono",monospace;
+  font-size:10px;color:var(--ink-4);border:1px solid var(--line);border-radius:4px;padding:1px 5px;background:var(--surface)}
+.top-sp{flex:1}
+.orgsel{display:flex;align-items:center;gap:7px;padding:6px 10px;border:1px solid var(--line);border-radius:8px;
+  font-size:12px;font-weight:600;color:var(--ink-2);white-space:nowrap}
+.orgsel:hover{background:var(--surface-2)}
+.orgsel .dt{width:6px;height:6px;border-radius:50%;background:var(--good)}
+.iconbtn{width:32px;height:32px;border-radius:7px;display:grid;place-items:center;color:var(--ink-2);position:relative;flex:none}
+.iconbtn:hover{background:var(--surface-3);color:var(--ink)}
+.iconbtn .bd{position:absolute;top:3px;right:3px;min-width:15px;height:15px;border-radius:8px;background:var(--crit);
+  color:#fff;font-size:9px;font-weight:700;font-family:"IBM Plex Mono",monospace;display:grid;place-items:center;padding:0 3px}
+.avbtn{display:flex;align-items:center;gap:8px;padding:4px 9px 4px 4px;border-radius:20px;border:1px solid var(--line)}
+.avbtn:hover{background:var(--surface-2)}
+.avbtn .nmx{text-align:left;line-height:1.15}
+.avbtn .nmx b{display:block;font-size:11.5px;font-weight:600}
+.avbtn .nmx span{display:block;font-size:9.5px;color:var(--ink-3);font-family:"IBM Plex Mono",monospace}
+@media(max-width:700px){.avbtn .nmx,.orgsel span.lbl{display:none}}
+
+.pg{padding:20px 18px 40px;flex:1}
+@media(min-width:1000px){.pg{padding:22px 26px 48px}}
+.crumb{display:flex;gap:6px;align-items:center;font-size:11px;color:var(--ink-4);font-family:"IBM Plex Mono",monospace;margin-bottom:9px}
+.crumb a{color:var(--ink-3)}
+.pg-h{display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap;margin-bottom:20px}
+.pg-h .pt{flex:1;min-width:210px}
+.pg-h h1{margin:0;font-size:21px;font-weight:700;letter-spacing:-.024em;line-height:1.15}
+.pg-h p{margin:4px 0 0;color:var(--ink-3);font-size:12.5px;max-width:64ch}
+.pg-h .acts{display:flex;gap:7px;flex-wrap:wrap;align-items:center}
+
+/* ===================== ATOMS ===================== */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;font-size:12.5px;font-weight:600;
+  padding:7px 13px;border-radius:7px;background:var(--accent);color:var(--on-accent);letter-spacing:-.005em;
+  transition:filter .1s,background .1s;white-space:nowrap}
+.btn:hover{filter:brightness(1.09)}
+.btn:active{filter:brightness(.95)}
+.btn:disabled{opacity:.42;cursor:not-allowed;filter:none}
+.btn.gh{background:var(--surface);color:var(--ink-2);border:1px solid var(--line-strong)}
+.btn.gh:hover{background:var(--surface-2);filter:none;color:var(--ink)}
+.btn.sub{background:var(--surface-3);color:var(--ink-2)}
+.btn.dg{background:var(--crit-soft);color:var(--crit)}
+.btn.ok{background:var(--good-soft);color:var(--good)}
+.btn.sm{padding:5px 10px;font-size:11.5px;border-radius:6px}
+.btn.xs{padding:3px 8px;font-size:11px;border-radius:5px}
+.btn.wide{width:100%}
+.btnrow{display:flex;gap:7px;flex-wrap:wrap}
+
+.pill{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:600;letter-spacing:.045em;
+  text-transform:uppercase;padding:2.5px 8px;border-radius:20px;white-space:nowrap;border:1px solid transparent}
+.pill i{width:5px;height:5px;border-radius:50%;background:currentColor;flex:none;font-style:normal}
+.pill.ok{background:var(--good-soft);color:var(--good);border-color:var(--good-line)}
+.pill.wn{background:var(--warn-soft);color:var(--warn);border-color:var(--warn-line)}
+.pill.cr{background:var(--crit-soft);color:var(--crit);border-color:var(--crit-line)}
+.pill.in{background:var(--info-soft);color:var(--info);border-color:var(--info-line)}
+.pill.ac{background:var(--accent-soft);color:var(--accent);border-color:var(--accent-line)}
+.pill.mu{background:var(--surface-3);color:var(--ink-3);border-color:var(--line)}
+.tag{display:inline-flex;align-items:center;font-size:10px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;
+  padding:1.5px 6px;border-radius:4px;background:var(--surface-3);color:var(--ink-3)}
+.tag.tr{background:var(--info-soft);color:var(--info)}
+.tag.md{background:#F6E7D6;color:#8A4A0C}
+:root[data-theme="dark"] .tag.md{background:#33200E;color:#E09452}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]) .tag.md{background:#33200E;color:#E09452}}
+
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);box-shadow:var(--sh-1);overflow:hidden}
+.card-h{padding:12px 15px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.card-h h3{margin:0;font-size:13px;font-weight:700;letter-spacing:-.012em;flex:1;min-width:110px}
+.card-h .sh{font-size:11px;color:var(--ink-3);font-weight:400;font-family:"IBM Plex Mono",monospace}
+.card-b{padding:15px}
+.card-b.flush{padding:0}
+.grid{display:grid;gap:14px}
+@media(min-width:760px){.g2{grid-template-columns:1fr 1fr}}
+@media(min-width:1120px){.g3{grid-template-columns:repeat(3,1fr)}.g21{grid-template-columns:2fr 1fr}.g12{grid-template-columns:1fr 2fr}}
+
+/* KPI */
+.kpis{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));margin-bottom:16px}
+.kpi{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);padding:13px 15px;box-shadow:var(--sh-1)}
+.kpi .kl{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);font-weight:600;
+  display:flex;align-items:center;gap:6px;margin-bottom:9px}
+.kpi .kv{font-family:"IBM Plex Mono",monospace;font-size:24px;font-weight:600;letter-spacing:-.032em;line-height:1;color:var(--ink)}
+.kpi .kf{display:flex;align-items:flex-end;justify-content:space-between;gap:10px;margin-top:9px}
+.kpi .kd{font-size:11px;color:var(--ink-3);line-height:1.35}
+.kpi .kd b{font-family:"IBM Plex Mono",monospace;font-weight:600}
+.kpi .up{color:var(--good)}.kpi .dn{color:var(--crit)}
+
+/* toolbar */
+.tbar{display:flex;gap:8px;align-items:center;padding:10px 13px;border-bottom:1px solid var(--line);
+  background:var(--surface-2);flex-wrap:wrap}
+.tbar .sfield{position:relative;flex:1;min-width:150px;max-width:290px}
+.tbar .sfield input{width:100%;padding:6px 10px 6px 28px;border:1px solid var(--line-strong);border-radius:7px;
+  background:var(--surface);font-size:12px}
+.tbar .sfield input:focus{outline:0;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.tbar .sfield svg{position:absolute;left:8px;top:50%;transform:translateY(-50%);opacity:.5}
+.fsel{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border:1px solid var(--line-strong);
+  border-radius:7px;background:var(--surface);font-size:12px;font-weight:500;color:var(--ink-2)}
+.fsel:hover{background:var(--surface-3)}
+.fsel.act{border-color:var(--accent);color:var(--accent);background:var(--accent-soft)}
+.tbar .sp{flex:1}
+.selbar{display:flex;gap:10px;align-items:center;padding:9px 13px;background:var(--accent-soft);
+  border-bottom:1px solid var(--accent-line);font-size:12px;color:var(--accent);font-weight:600;flex-wrap:wrap}
+
+/* table */
+.tw{overflow-x:auto}
+table{border-collapse:separate;border-spacing:0;width:100%;font-size:12.5px}
+thead th{text-align:left;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);font-weight:600;
+  padding:9px 13px;background:var(--surface-2);border-bottom:1px solid var(--line);white-space:nowrap}
+thead th.r{text-align:right}
+thead th button{font:inherit;color:inherit;display:inline-flex;gap:4px;align-items:center}
+thead th button:hover{color:var(--ink)}
+tbody td{padding:9px 13px;border-bottom:1px solid var(--line-2);color:var(--ink-2);vertical-align:middle}
+tbody tr:hover td{background:var(--surface-2)}
+tbody tr.sel td{background:var(--accent-soft)}
+tbody tr:last-child td{border-bottom:0}
+td.nm{color:var(--ink);font-weight:600;font-size:12.5px}
+td.nm small{display:block;font-weight:400;font-size:10.5px;color:var(--ink-3);font-family:"IBM Plex Mono",monospace;margin-top:1px}
+td.n{font-family:"IBM Plex Mono",monospace;text-align:right;white-space:nowrap;font-size:12px}
+td.n b{font-weight:600;color:var(--ink)}
+td.ac{width:1%;white-space:nowrap;text-align:right}
+tbody tr .rowact{opacity:0;transition:opacity .1s}
+tbody tr:hover .rowact{opacity:1}
+.cb{width:15px;height:15px;border:1.5px solid var(--line-strong);border-radius:4px;display:inline-grid;place-items:center;
+  background:var(--surface);flex:none;vertical-align:-2px}
+.cb.on{background:var(--accent);border-color:var(--accent)}
+.cb.on::after{content:"";width:8px;height:4.5px;border-left:2px solid var(--on-accent);border-bottom:2px solid var(--on-accent);
+  transform:rotate(-45deg) translate(1px,-1px)}
+.tfoot{display:flex;align-items:center;gap:12px;padding:10px 13px;border-top:1px solid var(--line);
+  background:var(--surface-2);font-size:11.5px;color:var(--ink-3);flex-wrap:wrap}
+.tfoot .sp{flex:1}
+.pgbt{padding:4px 9px;border:1px solid var(--line-strong);border-radius:6px;font-size:11.5px;background:var(--surface)}
+.pgbt:hover:not(:disabled){background:var(--surface-3)}
+.pgbt:disabled{opacity:.4}
+.pgbt.on{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
+.mini{font-size:10.5px;color:var(--ink-3);font-family:"IBM Plex Mono",monospace}
+.empty{padding:44px 20px;text-align:center;color:var(--ink-3)}
+.empty b{display:block;font-size:14px;color:var(--ink-2);margin-bottom:5px}
+.empty p{margin:0 0 14px;font-size:12.5px}
+
+/* bars in cells */
+.bar{height:5px;border-radius:3px;background:var(--surface-3);overflow:hidden;min-width:56px}
+.bar i{display:block;height:100%;border-radius:3px;background:var(--accent)}
+.bar i.wn{background:var(--warn)}.bar i.cr{background:var(--crit)}.bar i.ok{background:var(--good)}
+
+/* forms */
+.frow{display:grid;gap:13px;margin-bottom:14px}
+@media(min-width:640px){.f2{grid-template-columns:1fr 1fr}.f3{grid-template-columns:repeat(3,1fr)}.f4{grid-template-columns:repeat(4,1fr)}}
+.fld label{display:block;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);font-weight:600;margin-bottom:5px}
+.fld label .rq{color:var(--crit)}
+.fld .hint{font-size:10.5px;color:var(--ink-4);margin-top:4px;line-height:1.4}
+.fld input,.fld select,.fld textarea{width:100%;padding:8px 11px;border:1px solid var(--line-strong);border-radius:7px;
+  background:var(--surface);font-size:12.5px;transition:border-color .12s,box-shadow .12s}
+.fld input:focus,.fld select:focus,.fld textarea:focus{outline:0;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.fld input[readonly]{background:var(--surface-2);color:var(--ink-3)}
+.fld input.n,.fld .n input{font-family:"IBM Plex Mono",monospace;text-align:right}
+.fsec{border-top:1px solid var(--line);margin:20px 0 16px;padding-top:16px}
+.fsec:first-child{border:0;margin-top:0;padding-top:0}
+.fsec h4{margin:0 0 3px;font-size:12.5px;font-weight:700;letter-spacing:-.008em}
+.fsec p{margin:0 0 13px;font-size:11.5px;color:var(--ink-3)}
+.lgrid input,.lgrid select{padding:5px 8px;border-radius:5px;font-size:12px}
+.lgrid td{padding:5px 8px}
+.sw{width:34px;height:20px;border-radius:10px;background:var(--line-strong);position:relative;flex:none;transition:background .15s}
+.sw::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;
+  transition:transform .15s;box-shadow:0 1px 2px rgba(0,0,0,.3)}
+.sw.on{background:var(--good)}
+.sw.on::after{transform:translateX(14px)}
+.seg{display:inline-flex;border:1px solid var(--line-strong);border-radius:7px;overflow:hidden;background:var(--surface)}
+.seg button{padding:5px 11px;font-size:11.5px;font-weight:600;color:var(--ink-3);border-right:1px solid var(--line)}
+.seg button:last-child{border-right:0}
+.seg button.on{background:var(--accent);color:var(--on-accent)}
+
+/* tabs */
+.stabs{display:flex;gap:2px;border-bottom:1px solid var(--line);margin-bottom:16px;overflow-x:auto}
+.stabs button{padding:9px 13px;font-size:12.5px;font-weight:600;color:var(--ink-3);border-bottom:2px solid transparent;white-space:nowrap}
+.stabs button:hover{color:var(--ink)}
+.stabs button.on{color:var(--accent);border-bottom-color:var(--accent)}
+
+/* alerts */
+.al{display:flex;gap:9px;padding:9px 12px;border-radius:8px;font-size:12px;margin-bottom:7px;line-height:1.45;
+  border:1px solid transparent;align-items:flex-start}
+.al .k{font-family:"IBM Plex Mono",monospace;font-size:9.5px;font-weight:700;letter-spacing:.06em;flex:none;padding-top:2px;min-width:42px}
+.al.w{background:var(--warn-soft);color:var(--warn);border-color:var(--warn-line)}
+.al.c{background:var(--crit-soft);color:var(--crit);border-color:var(--crit-line)}
+.al.g{background:var(--good-soft);color:var(--good);border-color:var(--good-line)}
+.al.i{background:var(--accent-soft);color:var(--accent);border-color:var(--accent-line)}
+.al .lnk{margin-left:auto;font-weight:700;text-decoration:underline;white-space:nowrap;color:inherit}
+
+/* feed */
+.feed{display:flex;flex-direction:column}
+.fi{display:flex;gap:11px;padding:10px 0;border-bottom:1px solid var(--line-2)}
+.fi:last-child{border:0;padding-bottom:0}
+.fi .fd{width:8px;height:8px;border-radius:50%;flex:none;margin-top:5px;background:var(--accent)}
+.fi .fb{flex:1;min-width:0}
+.fi .fb p{margin:0;font-size:12px;line-height:1.45;color:var(--ink-2)}
+.fi .fb p b{color:var(--ink);font-weight:600}
+.fi .fb span{font-size:10.5px;color:var(--ink-4);font-family:"IBM Plex Mono",monospace}
+
+/* drawer */
+.scrim{position:fixed;inset:0;background:rgba(10,18,16,.42);z-index:150;backdrop-filter:blur(2px)}
+.drawer{position:fixed;top:0;right:0;bottom:0;width:min(680px,100vw);background:var(--surface);z-index:151;
+  box-shadow:var(--sh-3);display:flex;flex-direction:column;border-left:1px solid var(--line)}
+@media(prefers-reduced-motion:no-preference){.drawer{animation:sl .22s cubic-bezier(.32,.72,0,1)}
+  @keyframes sl{from{transform:translateX(24px);opacity:.4}to{transform:none;opacity:1}}}
+.dr-h{padding:15px 18px;border-bottom:1px solid var(--line);display:flex;gap:12px;align-items:flex-start}
+.dr-h .dt{flex:1;min-width:0}
+.dr-h h3{margin:0;font-size:16px;font-weight:700;letter-spacing:-.018em}
+.dr-h p{margin:3px 0 0;font-size:11.5px;color:var(--ink-3);font-family:"IBM Plex Mono",monospace}
+.dr-b{flex:1;overflow-y:auto;padding:18px}
+.dr-f{padding:12px 18px;border-top:1px solid var(--line);background:var(--surface-2);display:flex;gap:8px;
+  justify-content:flex-end;flex-wrap:wrap}
+.dl{display:grid;grid-template-columns:132px 1fr;gap:9px 14px;font-size:12.5px}
+.dl dt{color:var(--ink-3);font-size:11px;letter-spacing:.05em;text-transform:uppercase;font-weight:600;padding-top:1px}
+.dl dd{margin:0;color:var(--ink)}
+
+/* toast */
+.toast{position:fixed;right:20px;bottom:20px;z-index:300;background:var(--ink);color:var(--ground);
+  padding:11px 15px;border-radius:9px;font-size:12.5px;font-weight:600;box-shadow:var(--sh-3);max-width:340px;
+  display:flex;gap:9px;align-items:flex-start}
+.toast .ti{width:6px;height:6px;border-radius:50%;background:var(--c1);flex:none;margin-top:5px}
+@media(prefers-reduced-motion:no-preference){.toast{animation:tp .2s ease-out}
+  @keyframes tp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}}
+
+/* chart */
+.chart{position:relative}
+.chart svg{display:block;width:100%;height:auto;overflow:visible}
+.lgnd{display:flex;gap:14px;flex-wrap:wrap;font-size:11.5px;color:var(--ink-2);margin-top:2px}
+.lgnd span{display:inline-flex;align-items:center;gap:6px}
+.lgnd i{width:9px;height:9px;border-radius:2.5px;flex:none}
+.ctip{position:absolute;pointer-events:none;background:var(--ink);color:var(--ground);border-radius:7px;
+  padding:8px 10px;font-size:11px;box-shadow:var(--sh-3);z-index:10;min-width:120px;line-height:1.5}
+.ctip b{font-family:"IBM Plex Mono",monospace;font-size:11px;display:block;margin-bottom:5px;
+  padding-bottom:4px;border-bottom:1px solid rgba(255,255,255,.16);opacity:.75;font-weight:500}
+:root[data-theme="dark"] .ctip b{border-color:rgba(0,0,0,.2)}
+.ctip .cr2{display:flex;align-items:center;gap:7px;justify-content:space-between}
+.ctip .cr2 em{font-style:normal;display:inline-flex;align-items:center;gap:6px}
+.ctip .cr2 i{width:8px;height:8px;border-radius:2px;flex:none}
+.ctip .cr2 strong{font-family:"IBM Plex Mono",monospace;font-weight:600}
+.axl{fill:var(--ink-4);font-size:10px;font-family:"IBM Plex Mono",monospace}
+.gl{stroke:var(--grid);stroke-width:1}
+.hbar{display:flex;align-items:center;gap:10px;padding:6px 0}
+.hbar .hn{width:114px;flex:none;font-size:12px;color:var(--ink-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hbar .ht{flex:1;height:15px;background:var(--surface-3);border-radius:3px;overflow:hidden}
+.hbar .ht i{display:block;height:100%;border-radius:3px}
+.hbar .hv{width:66px;text-align:right;font-family:"IBM Plex Mono",monospace;font-size:11.5px;color:var(--ink);font-weight:600}
+.stk{display:flex;height:26px;border-radius:5px;overflow:hidden;gap:2px;margin-bottom:9px}
+.stk div{display:grid;place-items:center;font-size:10.5px;font-weight:700;color:#fff;font-family:"IBM Plex Mono",monospace}
+.spark{display:block;width:100%;height:26px}
+
+.hide{display:none!important}
+.mtop{margin-top:14px}
+.dim{color:var(--ink-4)}
+.rt{text-align:right}
+</style>
+
+<div id="login">
+  <div class="lg-brand">
+    <div class="lg-wm"><i>RC</i> Royal Care Hospital</div>
+    <div class="lg-h">
+      <h1>Every item, every counter, one ledger.</h1>
+      <p>Raw materials, the central kitchen, the restaurant and every floor shop — purchasing, stock, production and billing running on a single source of truth.</p>
+      <div class="lg-stats">
+        <div><b>6</b><span>Locations</span></div>
+        <div><b>184</b><span>SKUs</span></div>
+        <div><b>₹7.31L</b><span>Stock value</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="lg-form"><div class="lg-inner">
+    <h2>Sign in</h2>
+    <p class="sub">Choose an account to continue. Each one lands on a different workspace with its own permissions.</p>
+    <div class="acct-l" id="acctList"></div>
+    <div class="fgrp"><label for="em">Email address</label><input class="inp mono" id="em" value="" placeholder="name@royalcare.in" readonly></div>
+    <div class="fgrp"><label for="pw">Password</label><input class="inp mono" id="pw" type="password" value="" readonly></div>
+    <div class="lg-row"><span>Signed in for 12 hours</span><a href="#" onclick="return false">Forgot password?</a></div>
+    <button class="btn wide" id="signin" disabled onclick="signIn()">Sign in</button>
+    <p class="lg-note">Prototype build — pick any account above and the credentials fill themselves. No password is checked, and all data lives in this browser tab only.</p>
+  </div></div>
+</div>
+
+<div id="app">
+  <aside class="side" id="side">
+    <div class="side-h"><span class="lm">RC</span><div><b>Royal Care</b><span>Inventory Suite</span></div></div>
+    <nav class="nav" id="nav"></nav>
+    <div class="side-f"><button class="side-u" onclick="signOut()">
+      <span class="av" id="sfAv"></span><span class="ut"><b id="sfName"></b><span id="sfRole"></span></span>
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6 3H4a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h2M10.5 10.5 13 8l-2.5-2.5M13 8H6"/></svg>
+    </button></div>
+  </aside>
+  <div class="main">
+    <header class="top">
+      <button class="burger" onclick="document.getElementById('side').classList.toggle('open')" aria-label="Menu">
+        <svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M2 4h12M2 8h12M2 12h12"/></svg></button>
+      <div class="search">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3 3"/></svg>
+        <input placeholder="Search items, requests, orders…" aria-label="Search"><kbd>⌘K</kbd>
+      </div>
+      <div class="top-sp"></div>
+      <button class="orgsel"><span class="dt"></span><span class="lbl">Royal Care · Main Unit</span>
+        <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="m4 6 4 4 4-4"/></svg></button>
+      <button class="iconbtn" onclick="go('approvals')" aria-label="Notifications">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 2a4 4 0 0 0-4 4c0 3-1 4-1 4h10s-1-1-1-4a4 4 0 0 0-4-4ZM6.5 12.5a1.5 1.5 0 0 0 3 0"/></svg>
+        <span class="bd" id="notif">0</span></button>
+      <button class="avbtn"><span class="av" id="tbAv" style="width:26px;height:26px;border-radius:7px;font-size:10px"></span>
+        <span class="nmx"><b id="tbName"></b><span id="tbRole"></span></span></button>
+    </header>
+    <div class="pg" id="pg"></div>
+  </div>
+</div>
+<div id="layer"></div>
+<div id="toastw"></div>
+
+<script>
+/* ══════════════ ICONS ══════════════ */
+const IC={
+ dash:'M2 9.5 8 4l6 5.5M3.5 8.4V13h9V8.4',
+ pos:'M2.5 4.5h11l-1 8h-9zM5.5 7v3M8 7v3M10.5 7v3',
+ bill:'M4 2h8v12l-2-1.2-2 1.2-2-1.2L4 14zM6 5.5h4M6 8h4',
+ item:'M8 2 2.5 5v6L8 14l5.5-3V5zM2.5 5 8 8l5.5-3M8 8v6',
+ stock:'M2.5 5.5h11v8h-11zM2.5 5.5 4 2.5h8l1.5 3M6.5 9h3',
+ batch:'M8 1.8 3 4.3v5L8 11.8l5-2.5v-5zM8 6.8v5M3 4.3 8 6.8l5-2.5',
+ adj:'M3 4.5h10M3 8h10M3 11.5h10M6 3v3M10.5 6.5v3M5 10v3',
+ loc:'M8 14s4.5-4 4.5-7A4.5 4.5 0 0 0 8 2.5 4.5 4.5 0 0 0 3.5 7C3.5 10 8 14 8 14ZM8 8.5A1.5 1.5 0 1 0 8 5.5a1.5 1.5 0 0 0 0 3Z',
+ price:'M2.5 8.5 8 3h5.5v5.5L8 14zM10.5 5.5h.01',
+ req:'M4 2.5h8v11l-4-2.2-4 2.2zM6 6h4',
+ appr:'M3 8.5 6 11.5l7-7',
+ tkt:'M2.5 5.5h11v2a1.5 1.5 0 0 0 0 3v2h-11v-2a1.5 1.5 0 0 0 0-3zM8 5.5v7',
+ rec:'M5 2.5h6v3H5zM3 5.5h10v8H3zM6 8.5h4M6 11h4',
+ prod:'M3 12.5h10l-1-6-2.5 2L8 5 6.5 8.5 4 6.5z',
+ need:'M2.5 12.5 6 8l2.5 2.5L13.5 4M13.5 4h-3.5M13.5 4v3.5',
+ po:'M2.5 3.5h11v9h-11zM2.5 6.5h11M5.5 3.5v-2M10.5 3.5v-2',
+ grn:'M2.5 7.5 8 2l5.5 5.5M4.5 7v6h7V7M6.5 10h3',
+ vend:'M2.5 6 4 2.5h8L13.5 6M2.5 6v7.5h11V6M2.5 6h11M6 13.5V9.5h4v4',
+ rep:'M3 13V6.5M6.5 13V3M10 13V8.5M13.5 13V5',
+ user:'M8 8a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5ZM3 13.5c0-2.2 2.2-3.5 5-3.5s5 1.3 5 3.5',
+ set:'M8 10a2 2 0 1 0 0-4 2 2 0 0 0 0 4ZM13 8l1-1.5-1.2-2-1.7.4-1.3-.8L9.4 2H6.6l-.4 2-1.3.8-1.7-.4-1.2 2L3 8l-1 1.5 1.2 2 1.7-.4 1.3.8.4 2h2.8l.4-2 1.3-.8 1.7.4 1.2-2z'};
+const ico=n=>`<svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round"><path d="${IC[n]||IC.item}"/></svg>`;
+
+/* ══════════════ MASTER DATA ══════════════ */
+const LOC={
+  store  :{n:"Central Store",   c:"WH-CS", type:"Warehouse", floor:"Basement", cc:"CC-STO"},
+  kitchen:{n:"Central Kitchen", c:"KT-CK", type:"Production",floor:"Ground",   cc:"CC-KIT"},
+  rest   :{n:"Restaurant",      c:"OT-R1", type:"Outlet",    floor:"Floor 1",  cc:"CC-RST", list:"A"},
+  coffee :{n:"Coffee Shop",     c:"OT-C3", type:"Outlet",    floor:"Floor 3",  cc:"CC-CF3", list:"B"},
+  kiosk  :{n:"Snack Kiosk",     c:"OT-GK", type:"Outlet",    floor:"Ground",   cc:"CC-KSK", list:"A"},
+  ward   :{n:"Ward Pantry",     c:"PT-W2", type:"Pantry",    floor:"Floor 2",  cc:"CC-WRD"},
+};
+const IT={
+ milk  :{c:"RM-1001",n:"Milk 1L (toned)",     u:"L",  t:"RAW",   g:"Dairy",    hsn:"0401",gst:0,  rl:40, cost:52,  sl:72},
+ beans :{c:"RM-1002",n:"Coffee beans, roast", u:"kg", t:"RAW",   g:"Beverage", hsn:"0901",gst:5,  rl:8,  cost:640, sl:2160},
+ leaf  :{c:"RM-1003",n:"Tea leaf, CTC",       u:"kg", t:"RAW",   g:"Beverage", hsn:"0902",gst:5,  rl:3,  cost:420, sl:2160},
+ sugar :{c:"RM-1004",n:"Sugar, refined",      u:"kg", t:"RAW",   g:"Grocery",  hsn:"1701",gst:5,  rl:15, cost:46,  sl:4320},
+ maida :{c:"RM-1005",n:"Maida",               u:"kg", t:"RAW",   g:"Grocery",  hsn:"1101",gst:5,  rl:20, cost:42,  sl:2160},
+ oil   :{c:"RM-1006",n:"Refined sunflower oil",u:"L", t:"RAW",   g:"Grocery",  hsn:"1512",gst:5,  rl:10, cost:132, sl:4320},
+ fill  :{c:"RM-1007",n:"Veg filling mix",     u:"kg", t:"RAW",   g:"Prepared", hsn:"2106",gst:12, rl:5,  cost:186, sl:48},
+ butter:{c:"RM-1008",n:"Butter, salted",      u:"kg", t:"RAW",   g:"Dairy",    hsn:"0405",gst:12, rl:2,  cost:248, sl:720},
+ bread :{c:"RM-1009",n:"Bread loaf, white",   u:"nos",t:"RAW",   g:"Bakery",   hsn:"1905",gst:5,  rl:10, cost:38,  sl:72},
+ cup   :{c:"PK-2001",n:"Paper cup 150ml",     u:"nos",t:"PACK",  g:"Packaging",hsn:"4823",gst:18, rl:800,cost:0.62},
+ box   :{c:"PK-2002",n:"Snack box, kraft",    u:"nos",t:"PACK",  g:"Packaging",hsn:"4819",gst:18, rl:400,cost:2.4},
+ juice :{c:"TR-3001",n:"Real Juice 200ml",    u:"nos",t:"TRADED",g:"Beverage", hsn:"2009",gst:12, rl:60, cost:14.2,mrp:20, sl:4320},
+ water :{c:"TR-3002",n:"Mineral water 1L",    u:"nos",t:"TRADED",g:"Beverage", hsn:"2201",gst:18, rl:60, cost:11.5,mrp:20, sl:4320},
+ bisc  :{c:"TR-3003",n:"Marie biscuit 120g",  u:"nos",t:"TRADED",g:"Snacks",   hsn:"1905",gst:18, rl:30, cost:21.8,mrp:30, sl:2880},
+ chips :{c:"TR-3004",n:"Salted chips 52g",    u:"nos",t:"TRADED",g:"Snacks",   hsn:"2005",gst:12, rl:40, cost:14.5,mrp:20, sl:1440},
+ puff  :{c:"FG-4001",n:"Veg puffs",           u:"nos",t:"FG",    g:"Bakery",   hsn:"2106",gst:5,  rl:0,  cost:17.8,sl:12},
+ sand  :{c:"FG-4002",n:"Veg sandwich",        u:"nos",t:"FG",    g:"Bakery",   hsn:"2106",gst:5,  rl:0,  cost:28.4,sl:8},
+ capp  :{c:"MT-5001",n:"Cappuccino",          u:"nos",t:"MTO",   g:"Beverage", hsn:"2106",gst:5},
+ chai  :{c:"MT-5002",n:"Masala tea",          u:"nos",t:"MTO",   g:"Beverage", hsn:"2106",gst:5},
+};
+const RCP={
+ capp:{y:1,ov:12,l:[["milk",.15],["beans",.012],["sugar",.006],["cup",1]]},
+ chai:{y:1,ov:12,l:[["milk",.10],["leaf",.008],["sugar",.008],["cup",1]]},
+ puff:{y:1,ov:12,l:[["maida",.05],["oil",.018],["fill",.04],["butter",.012]]},
+ sand:{y:1,ov:12,l:[["bread",.5],["butter",.01],["fill",.03],["box",1]]},
+};
+const PL={A:{capp:60,chai:20,puff:25,sand:45,juice:20,water:20,bisc:30,chips:20},
+          B:{capp:75,chai:25,puff:30,sand:55,juice:25,water:25,bisc:35,chips:25}};
+const MENU={rest:["capp","chai","puff","sand","juice","water","chips"],
+            coffee:["capp","chai","juice","water","bisc","chips"],
+            kiosk:["juice","water","bisc","chips","puff"]};
+const VEND=[
+ {c:"V-001",n:"Sri Balaji Distributors", cat:"Beverages & packaged", gst:"33AABCS1429B1Z8", ph:"98430 11242", terms:"Net 15", rating:4.6, spend:284500, on:3},
+ {c:"V-002",n:"Aavin Dairy Depot",       cat:"Dairy",                gst:"33AAACT2727Q1ZL", ph:"98410 55231", terms:"Net 7",  rating:4.9, spend:196200, on:1},
+ {c:"V-003",n:"Anandha Provisions",      cat:"Grocery & staples",    gst:"33AKTPS9021L1Z2", ph:"94430 87651", terms:"Net 30", rating:4.1, spend:158900, on:2},
+ {c:"V-004",n:"Green Farm Vegetables",   cat:"Fresh produce",        gst:"—",               ph:"90031 44120", terms:"Cash",   rating:3.8, spend:92400,  on:0},
+ {c:"V-005",n:"PackWell Industries",     cat:"Packaging",            gst:"33AAFCP8812K1ZR", ph:"98940 22119", terms:"Net 30", rating:4.4, spend:64300,  on:1},
+];
+const USERS=[
+ {id:"u1",n:"Dr. Anitha Raghavan",e:"anitha.r@royalcare.in",  r:"admin",   rl:"Administrator",      loc:"store",  col:"#0E5C55"},
+ {id:"u2",n:"Suresh Muthu",       e:"suresh.m@royalcare.in",  r:"store",   rl:"Store Keeper",       loc:"store",  col:"#1D5B87"},
+ {id:"u3",n:"Kavitha Raman",      e:"kavitha.r@royalcare.in", r:"counter", rl:"Counter Operator",   loc:"coffee", col:"#A2500F"},
+ {id:"u4",n:"Ramesh Kumar",       e:"ramesh.k@royalcare.in",  r:"manager", rl:"Outlet Manager",     loc:"rest",   col:"#6A4C93"},
+ {id:"u5",n:"Vinoth Prakash",     e:"vinoth.p@royalcare.in",  r:"prod",    rl:"Production In-charge",loc:"kitchen",col:"#1F7A4C"},
+ {id:"u6",n:"Latha Narayanan",    e:"latha.n@royalcare.in",   r:"buyer",   rl:"Purchase Officer",   loc:"store",  col:"#8A4A0C"},
+ {id:"u7",n:"Arun Thangaraj",     e:"arun.t@royalcare.in",    r:"finance", rl:"Finance & Accounts", loc:"store",  col:"#155E75"},
+ {id:"u8",n:"Meena Iyer",         e:"meena.i@royalcare.in",   r:"audit",   rl:"Auditor · read only",loc:"store",  col:"#6B7C77"},
+];
+const NAVDEF=[
+ ["Overview",[["dashboard","Dashboard","dash"]]],
+ ["Sell",[["pos","Point of Sale","pos"],["bills","Bills","bill"]]],
+ ["Inventory",[["items","Items","item"],["stock","Stock on Hand","stock"],["batches","Batches & Expiry","batch"],
+   ["adjust","Adjustments","adj"],["locations","Locations","loc"],["pricelists","Price Lists","price"]]],
+ ["Movement",[["requests","Stock Requests","req"],["approvals","Approvals","appr"],["tickets","Pick Tickets","tkt"]]],
+ ["Production",[["recipes","Recipes","rec"],["production","Production","prod"]]],
+ ["Purchasing",[["requirement","Requirement","need"],["orders","Purchase Orders","po"],["grn","Goods Receipt","grn"],["vendors","Vendors","vend"]]],
+ ["Insights",[["reports","Reports","rep"]]],
+ ["Administration",[["users","Users & Roles","user"],["settings","Settings","set"]]],
+];
+const PERM={
+ admin:"*",
+ store:["dashboard","items","stock","batches","adjust","locations","requests","approvals","tickets","requirement","grn","orders","reports"],
+ counter:["dashboard","pos","bills","items","stock","requests","tickets"],
+ manager:["dashboard","pos","bills","items","stock","batches","requests","approvals","tickets","pricelists","reports"],
+ prod:["dashboard","items","stock","batches","requests","tickets","recipes","production"],
+ buyer:["dashboard","items","stock","requirement","orders","grn","vendors","reports"],
+ finance:["dashboard","bills","orders","grn","vendors","pricelists","reports"],
+ audit:["dashboard","items","stock","batches","bills","reports"],
+};
+const HOME={admin:"dashboard",store:"approvals",counter:"pos",manager:"pos",prod:"production",buyer:"requirement",finance:"reports",audit:"dashboard"};
+
+/* ══════════════ STATE ══════════════ */
+const S={
+ user:null, pick:null, route:"dashboard", tab:{}, sel:{}, page:{}, qs:{}, drawer:null, cart:{}, toast:null, tt:null,
+ seq:{req:913,tkt:441,bill:1187,batch:3,po:142,adj:57,grn:388},
+ stock:{
+  store  :{milk:12,beans:18.4,leaf:3.2,sugar:40,cup:2400,box:820,maida:48.5,oil:30,fill:12,butter:4,bread:20,juice:156,water:120,bisc:60,chips:88},
+  kitchen:{maida:8,oil:4,fill:3,butter:1.2,bread:6,cup:200,box:120,puff:0,sand:0},
+  rest   :{milk:14,beans:2,leaf:.6,sugar:3,cup:220,box:60,juice:20,water:30,chips:12,puff:12,sand:6},
+  coffee :{milk:0,beans:1.2,leaf:.4,sugar:2,cup:180,juice:8,water:12,bisc:6,chips:9},
+  kiosk  :{juice:14,water:22,bisc:9,chips:16,puff:8},
+  ward   :{water:24,bisc:12,juice:10},
+ },
+ rsv:{}, ovr:{}, req:[], tkt:[], bills:[], batches:[], adjusts:[],
+ lots:[
+  {b:"RJ-2608",i:"juice", loc:"store", q:120,mrp:22,exp:"2027-02-12",rate:14.2,v:"V-001"},
+  {b:"RJ-2512",i:"juice", loc:"store", q:36, mrp:20,exp:"2026-11-04",rate:13.1,v:"V-001"},
+  {b:"MW-0825",i:"water", loc:"store", q:120,mrp:20,exp:"2027-02-20",rate:11.5,v:"V-001"},
+  {b:"MB-1907",i:"bisc",  loc:"store", q:60, mrp:30,exp:"2027-01-18",rate:21.8,v:"V-001"},
+  {b:"AV-0824",i:"milk",  loc:"store", q:12, exp:"2026-08-27",rate:52,  v:"V-002"},
+  {b:"MD-0819",i:"maida", loc:"store", q:48.5,exp:"2026-11-19",rate:42, v:"V-003"},
+  {b:"BT-0820",i:"butter",loc:"store", q:4,  exp:"2026-09-14",rate:248, v:"V-002"},
+  {b:"VF-0824",i:"fill",  loc:"store", q:12, exp:"2026-08-26",rate:186, v:"V-004"},
+  {b:"CH-0801",i:"chips", loc:"store", q:88, mrp:20,exp:"2026-10-30",rate:14.5,v:"V-001"},
+ ],
+ pos_:[
+  {no:"PO-2026-0139",v:"V-002",dt:"22-Aug-2026",due:"26-Aug-2026",st:"RECEIVED", val:24960,items:2},
+  {no:"PO-2026-0140",v:"V-003",dt:"23-Aug-2026",due:"27-Aug-2026",st:"PARTIAL",  val:41830,items:6},
+  {no:"PO-2026-0141",v:"V-005",dt:"24-Aug-2026",due:"29-Aug-2026",st:"APPROVED", val:18640,items:3},
+  {no:"PO-2026-0142",v:"V-001",dt:"25-Aug-2026",due:"28-Aug-2026",st:"PENDING",  val:5176, items:3},
+ ],
+ sales:[
+  [4120,3860,5210],[4480,4010,5580],[3920,3640,4980],[4760,4290,6010],[5240,4680,6420],[6180,5120,7240],[5860,4940,6880],
+  [4310,3980,5320],[4620,4180,5760],[4980,4460,6120],[5310,4720,6480],[6420,5380,7510],[6180,5240,7180],[5720,4860,6640]
+ ],
+ feed:[
+  {t:"GRN-2026-0387 posted",d:"Aavin Dairy Depot · 12 L milk into Central Store",w:"08:42",c:"var(--c1)"},
+  {t:"Batch PRD-20260825-02 closed",d:"60 sandwiches · yield −3.3% · ₹28.40 unit cost",w:"07:15",c:"var(--c2)"},
+  {t:"Price list B revised",d:"Cappuccino ₹70 → ₹75 · approved by Ramesh Kumar",w:"Yesterday",c:"var(--c3)"},
+  {t:"Stock count CNT-0044 closed",d:"Coffee Shop · 2 variances, ₹184 written off",w:"Yesterday",c:"var(--ink-4)"},
+  {t:"PO-2026-0141 approved",d:"PackWell Industries · ₹18,640 · Finance",w:"Yesterday",c:"var(--ink-4)"},
+ ],
+};
+
+/* ══════════════ HELPERS ══════════════ */
+const $=id=>document.getElementById(id);
+const q=(l,i)=>(S.stock[l]&&S.stock[l][i])||0;
+const rz=(l,i)=>S.rsv[l+":"+i]||0;
+const av=(l,i)=>q(l,i)-rz(l,i);
+const mv=(l,i,d)=>{S.stock[l]=S.stock[l]||{};S.stock[l][i]=Math.round(((S.stock[l][i]||0)+d)*1000)/1000;};
+const U=i=>IT[i].u;
+const fq=(v,i)=>U(i)==="nos"?String(Math.round(v)):(+v).toFixed(3);
+const money=v=>"₹"+(+v).toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2});
+const money0=v=>"₹"+Math.round(v).toLocaleString("en-IN");
+const lakh=v=>v>=100000?"₹"+(v/100000).toFixed(2)+"L":money0(v);
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const cap=s=>s.charAt(0).toUpperCase()+s.slice(1);
+function toast(m){S.toast=m;clearTimeout(S.tt);S.tt=setTimeout(()=>{S.toast=null;paintToast();},3200);paintToast();}
+function paintToast(){$("toastw").innerHTML=S.toast?`<div class="toast"><span class="ti"></span><span>${esc(S.toast)}</span></div>`:"";}
+const canSee=k=>{const p=PERM[S.user.r];return p==="*"||p.includes(k);};
+const stockVal=l=>Object.keys(S.stock[l]||{}).reduce((s,i)=>s+q(l,i)*(IT[i]?IT[i].cost||0:0),0);
+const allStockVal=()=>Object.keys(LOC).reduce((s,l)=>s+stockVal(l),0);
+function priceOf(l,i){const list=LOC[l].list;if(!list)return{p:0,listed:0,cap:false};
+  const listed=PL[list][i];const m=IT[i].mrp;return (m!=null&&listed>m)?{p:m,listed,cap:true}:{p:listed,listed,cap:false};}
+function availOf(l,i){const o=S.ovr[l+":"+i];if(o)return{ok:false,mode:"Manual",why:o};
+  if(IT[i].t==="MTO"){for(const[g,nd]of RCP[i].l){if(av(l,g)<nd)return{ok:false,mode:"Recipe",why:IT[g].n+" at "+fq(av(l,g),g)+" "+U(g)};}
+    return{ok:true,mode:"Recipe",left:Math.min(...RCP[i].l.map(([g,nd])=>Math.floor(av(l,g)/nd)))+" portions"};}
+  const h=av(l,i);return h>=1?{ok:true,mode:"Stock",left:fq(h,i)+" "+U(i)}:{ok:false,mode:"Stock",why:"zero at this counter"};}
+function rcpCost(i){const r=RCP[i];if(!r)return 0;return r.l.reduce((s,[g,x])=>s+x*(IT[g].cost||0),0)*(1+r.ov/100);}
+const daysTo=d=>Math.round((new Date(d)-new Date("2026-08-25"))/864e5);
+const inbox=l=>S.req.filter(r=>r.to===l&&r.st==="Submitted");
+const myTk=l=>S.tkt.filter(t=>t.to===l&&t.st!=="Received");
+const openTk=()=>S.tkt.filter(t=>t.st==="Issued"||t.st==="In transit");
+function needList(){return Object.keys(IT).filter(i=>IT[i].rl>0&&q("store",i)<IT[i].rl).map(i=>{
+  const oh=q("store",i),tgt=Math.ceil(IT[i].rl*1.6),sug=Math.ceil((tgt-oh)*100)/100;
+  return{i,oh,tgt,sug,val:sug*(IT[i].cost||0),cov:(oh/Math.max(1,IT[i].rl/4)).toFixed(1)};}).sort((a,b)=>a.cov-b.cov);}
+function navCount(k){
+ if(k==="approvals"){const a=new Set([...inbox(S.user.loc),...((S.user.r==="store"||S.user.r==="admin")?inbox("store"):[]),...((S.user.r==="prod"||S.user.r==="admin")?inbox("kitchen"):[])]);return a.size;}
+ if(k==="tickets")return myTk(S.user.loc).length;
+ if(k==="requirement")return needList().length;
+ if(k==="requests")return S.req.filter(r=>r.from===S.user.loc&&r.st==="Submitted").length;
+ if(k==="batches")return S.lots.filter(l=>daysTo(l.exp)<=30).length;
+ return 0;}
+const pillFor=s=>({Submitted:"wn",Approved:"ok",Partial:"wn",Rejected:"cr",Closed:"mu","Part closed":"mu",
+  Issued:"ac","In transit":"wn",Received:"ok",PENDING:"wn",APPROVED:"in",PARTIAL:"wn",RECEIVED:"ok"}[s]||"mu");
+
+/* ══════════════ LOGIN ══════════════ */
+function paintAccts(){
+ $("acctList").innerHTML=USERS.map(u=>`<button class="acct" aria-pressed="${S.pick===u.id}" onclick="pickAcct('${u.id}')">
+   <span class="av" style="background:${u.col}">${u.n.split(" ").map(x=>x[0]).slice(0,2).join("")}</span>
+   <span class="at"><b>${u.n}</b><span>${u.rl} · ${LOC[u.loc].n}</span></span>
+   ${S.pick===u.id?'<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="var(--accent)" stroke-width="2"><path d="M3 8.5 6 11.5l7-7"/></svg>':""}</button>`).join("");
+}
+function pickAcct(id){S.pick=id;const u=USERS.find(x=>x.id===id);
+ $("em").value=u.e;$("pw").value="••••••••••••";$("signin").disabled=false;paintAccts();}
+function signIn(){S.user=USERS.find(x=>x.id===S.pick);S.route=HOME[S.user.r];
+ $("login").style.display="none";$("app").classList.add("on");render();}
+function signOut(){S.user=null;S.pick=null;$("signin").disabled=true;$("em").value="";$("pw").value="";
+ $("app").classList.remove("on");$("login").style.display="grid";paintAccts();}
+function go(r){if(!canSee(r))return;S.route=r;S.drawer=null;$("side").classList.remove("open");window.scrollTo(0,0);render();}
+
+/* ══════════════ CHROME ══════════════ */
+function paintNav(){
+ let h="";
+ for(const [g,items] of NAVDEF){
+  const vis=items.filter(([k])=>canSee(k));
+  if(!vis.length)continue;
+  h+=`<div class="nav-g">${g}</div>`;
+  h+=vis.map(([k,lbl,ic])=>{const c=navCount(k);
+    return `<a href="#" class="${S.route===k?"on":""}" onclick="go('${k}');return false">${ico(ic)}<span>${lbl}</span>${c?`<span class="ct ${k==="approvals"||k==="batches"?"hot":""}">${c}</span>`:""}</a>`;}).join("");
+ }
+ $("nav").innerHTML=h;
+ const u=S.user,ini=u.n.split(" ").map(x=>x[0]).slice(0,2).join("");
+ $("sfAv").style.background=u.col;$("sfAv").textContent=ini;$("sfName").textContent=u.n;$("sfRole").textContent=u.rl;
+ $("tbAv").style.background=u.col;$("tbAv").textContent=ini;$("tbName").textContent=u.n.split(" ").slice(-1)[0];$("tbRole").textContent=u.rl;
+ const nc=inbox("store").length+openTk().length;$("notif").textContent=nc;$("notif").style.display=nc?"grid":"none";
+}
+function head(crumbs,title,sub,acts){
+ return `<div class="crumb">${crumbs.map((c,i)=>`${i?'<span>/</span>':''}<span>${c}</span>`).join("")}</div>
+ <div class="pg-h"><div class="pt"><h1>${title}</h1>${sub?`<p>${sub}</p>`:""}</div><div class="acts">${acts||""}</div></div>`;
+}
+const SICO='<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3 3"/></svg>';
+const CHEV='<svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m4 6 4 4 4-4"/></svg>';
+function tbar(ph,filters,right){
+ return `<div class="tbar"><div class="sfield">${SICO}<input placeholder="${ph}"></div>
+ ${filters||""}<div class="sp"></div>${right||""}</div>`;
+}
+function fsel(l,v){return `<button class="fsel">${l}${v?`: <b style="color:var(--accent)">${v}</b>`:""} ${CHEV}</button>`;}
+function tableHTML(cols,rows,opt){
+ opt=opt||{};
+ const th=cols.map(c=>`<th class="${c.r?"r":""}" ${c.w?`style="width:${c.w}"`:""}>${c.s?`<button>${c.h}<svg width="9" height="9" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="m4 6 4 4 4-4"/></svg></button>`:c.h}</th>`).join("");
+ const body=rows.length?rows.map(r=>`<tr class="${r.sel?"sel":""}" ${r.click?`onclick="${r.click}" style="cursor:pointer"`:""}>${
+   r.cells.map((c,i)=>`<td class="${cols[i].cls||""}${cols[i].r?" n":""}">${c}</td>`).join("")}</tr>`).join("")
+  :`<tr><td colspan="${cols.length}"><div class="empty"><b>${opt.et||"Nothing here yet"}</b><p>${opt.es||""}</p>${opt.ea||""}</div></td></tr>`;
+ return `<div class="tw"><table><thead><tr>${th}</tr></thead><tbody>${body}</tbody></table></div>`;
+}
+function tfoot(n,extra){return `<div class="tfoot"><span>Showing <b class="mono">1–${n}</b> of <b class="mono">${n}</b></span>
+ ${extra?`<span class="mini">${extra}</span>`:""}<div class="sp"></div>
+ <button class="pgbt" disabled>Prev</button><button class="pgbt on">1</button><button class="pgbt" disabled>Next</button>
+ <select style="padding:3px 7px;border:1px solid var(--line-strong);border-radius:6px;background:var(--surface);font-size:11.5px">
+ <option>50 / page</option><option>100 / page</option></select></div>`;
+}
+const CB=on=>`<span class="cb ${on?"on":""}"></span>`;
+
+/* ══════════════ CHARTS ══════════════ */
+const SER=[{k:"Restaurant",c:"var(--c1)"},{k:"Coffee Shop",c:"var(--c2)"},{k:"Snack Kiosk",c:"var(--c3)"}];
+const DAYS=["12","13","14","15","16","17","18","19","20","21","22","23","24","25"];
+function lineChart(){
+ const W=760,H=210,PL_=44,PR=14,PT=12,PB=26;
+ const data=S.sales, max=Math.ceil(Math.max(...data.flat())/1000)*1000;
+ const x=i=>PL_+(i*(W-PL_-PR))/(data.length-1);
+ const y=v=>PT+(1-v/max)*(H-PT-PB);
+ const grid=[0,.25,.5,.75,1].map(t=>{const yy=PT+t*(H-PT-PB);
+   return `<line class="gl" x1="${PL_}" y1="${yy}" x2="${W-PR}" y2="${yy}"/>
+   <text class="axl" x="${PL_-8}" y="${yy+3.5}" text-anchor="end">${Math.round(max*(1-t)/1000)}k</text>`;}).join("");
+ const xl=DAYS.map((d,i)=>i%2===0?`<text class="axl" x="${x(i)}" y="${H-8}" text-anchor="middle">${d}</text>`:"").join("");
+ const paths=SER.map((s,si)=>{
+   const pts=data.map((r,i)=>`${x(i)},${y(r[si])}`).join(" ");
+   const area=`M${PL_},${y(data[0][si])} L${pts.replace(/ /g," L")} L${x(data.length-1)},${H-PB} L${PL_},${H-PB} Z`;
+   return `${si===0?`<path d="${area}" fill="var(--c1-f)"/>`:""}
+     <polyline points="${pts}" fill="none" stroke="${s.c}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+     <circle cx="${x(data.length-1)}" cy="${y(data[data.length-1][si])}" r="4" fill="${s.c}" stroke="var(--surface)" stroke-width="2"/>`;}).join("");
+ const dots=SER.map((s,si)=>`<circle id="d${si}" cx="0" cy="0" r="4.5" fill="${s.c}" stroke="var(--surface)" stroke-width="2" opacity="0"/>`).join("");
+ return `<div class="chart" id="lcw">
+  <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Daily counter sales over fourteen days for Restaurant, Coffee Shop and Snack Kiosk">
+   ${grid}${xl}${paths}
+   <line id="cross" x1="0" y1="${PT}" x2="0" y2="${H-PB}" stroke="var(--ink-4)" stroke-width="1" stroke-dasharray="3 3" opacity="0"/>
+   ${dots}
+   <rect id="hit" x="${PL_}" y="${PT}" width="${W-PL_-PR}" height="${H-PT-PB}" fill="transparent" style="cursor:crosshair"/>
+  </svg>
+  <div class="lgnd">${SER.map(s=>`<span><i style="background:${s.c}"></i>${s.k}</span>`).join("")}
+   <span style="margin-left:auto;color:var(--ink-4)" class="mono">₹ per day · 12–25 Aug</span></div>
+ </div>`;
+}
+function mountLine(){
+ const w=$("lcw");if(!w)return;
+ const svg=w.querySelector("svg"),hit=w.querySelector("#hit"),cross=w.querySelector("#cross");
+ const W=760,PL_=44,PR=14,PT=12,PB=26,H=210;
+ const data=S.sales,max=Math.ceil(Math.max(...data.flat())/1000)*1000;
+ const x=i=>PL_+(i*(W-PL_-PR))/(data.length-1), y=v=>PT+(1-v/max)*(H-PT-PB);
+ let tip=null;
+ const off=()=>{cross.setAttribute("opacity","0");SER.forEach((s,i)=>w.querySelector("#d"+i).setAttribute("opacity","0"));
+   if(tip){tip.remove();tip=null;}};
+ hit.addEventListener("mouseleave",off);
+ hit.addEventListener("mousemove",e=>{
+  const r=svg.getBoundingClientRect(),sx=(e.clientX-r.left)*(W/r.width);
+  let i=Math.round(((sx-PL_)/(W-PL_-PR))*(data.length-1));i=Math.max(0,Math.min(data.length-1,i));
+  cross.setAttribute("opacity",".7");cross.setAttribute("x1",x(i));cross.setAttribute("x2",x(i));
+  SER.forEach((s,si)=>{const d=w.querySelector("#d"+si);d.setAttribute("opacity","1");d.setAttribute("cx",x(i));d.setAttribute("cy",y(data[i][si]));});
+  if(!tip){tip=document.createElement("div");tip.className="ctip";w.appendChild(tip);}
+  const tot=data[i].reduce((a,b)=>a+b,0);
+  tip.innerHTML=`<b>${DAYS[i]} Aug 2026 · ${money0(tot)}</b>`+SER.map((s,si)=>
+    `<div class="cr2"><em><i style="background:${s.c}"></i>${s.k}</em><strong>${money0(data[i][si])}</strong></div>`).join("");
+  const px=(x(i)/W)*r.width;
+  tip.style.left=Math.min(Math.max(px-70,0),r.width-160)+"px";tip.style.top="6px";
+ });
+}
+function spark(vals,col){
+ const W=110,H=26,mn=Math.min(...vals),mx=Math.max(...vals);
+ const pts=vals.map((v,i)=>`${(i*W)/(vals.length-1)},${H-2-((v-mn)/(mx-mn||1))*(H-5)}`).join(" ");
+ return `<svg class="spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
+  <polyline points="${pts}" fill="none" stroke="${col}" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/></svg>`;
+}
+function hbars(rows,total){
+ return rows.map(r=>`<div class="hbar"><span class="hn" title="${esc(r.n)}">${r.n}</span>
+  <span class="ht"><i style="width:${Math.max(3,(r.v/total)*100)}%;background:var(--c1);opacity:${.45+.55*(r.v/total)}"></i></span>
+  <span class="hv">${r.f||money0(r.v)}</span></div>`).join("");
+}
+
+/* ══════════════ DASHBOARD ══════════════ */
+function vDash(){
+ const today=S.sales[13].reduce((a,b)=>a+b,0), yest=S.sales[12].reduce((a,b)=>a+b,0);
+ const delta=((today-yest)/yest*100).toFixed(1);
+ const need=needList(), exp=S.lots.filter(l=>daysTo(l.exp)<=30);
+ const expVal=exp.reduce((s,l)=>s+l.q*l.rate,0);
+ const inb=inbox("store").length, tr=S.tkt.filter(t=>t.st==="In transit").length;
+ const kpi=(l,v,d,sp,c,tone)=>`<div class="kpi"><div class="kl">${l}</div><div class="kv">${v}</div>
+   <div class="kf"><div class="kd">${d}</div>${sp?`<div style="width:110px;flex:none">${sp}</div>`:""}</div></div>`;
+ const items=[["Cappuccino",18420],["Veg puffs",12680],["Masala tea",9240],["Mineral water 1L",7160],["Veg sandwich",6840],["Real Juice 200ml",5320]];
+ const tot=items.reduce((s,i)=>s+i[1],0);
+ const health=[{l:"Healthy",v:142,c:"var(--good)"},{l:"Below par",v:28,c:"var(--warn)"},{l:"Critical",v:14,c:"var(--crit)"}];
+ const hTot=health.reduce((s,h)=>s+h.v,0);
+ return head(["Home","Dashboard"],"Good morning, "+S.user.n.split(" ")[0].replace("Dr.","Doctor"),
+   "Monday, 25 August 2026 · all six locations · day 1 of the August cycle",
+   `<button class="btn gh sm">Export</button><button class="btn gh sm">25 Aug 2026 ${CHEV}</button><button class="btn sm" onclick="go('requirement')">Run requirement</button>`)
+ +`<div class="kpis">
+   ${kpi("Sales today",money0(today),`<span class="${delta>0?"up":"dn"}">${delta>0?"▲":"▼"} ${Math.abs(delta)}%</span> vs yesterday`,spark(S.sales.map(r=>r[0]+r[1]+r[2]),"var(--c1)"))}
+   ${kpi("Gross margin","31.4%",'Traded <b>18.2%</b> · Made <b>39.1%</b>',spark([28,29,30,29,31,32,31,30,31,32,31,33,32,31],"var(--c2)"))}
+   ${kpi("Stock value",lakh(allStockVal()),'Across <b>6</b> locations',spark([680,690,712,705,720,735,741,728,733,745,738,742,736,731],"var(--c3)"))}
+   ${kpi("Wastage today",money0(1146),'<b>2.98%</b> of sales · 3 entries',spark([2.1,2.4,3.2,2.8,2.2,3.6,3.1,2.4,2.9,3.3,2.7,3.1,2.8,2.98],"var(--crit)"))}
+   ${kpi("Open requests",String(S.req.filter(r=>r.st==="Submitted").length+inb),`<b>${tr}</b> in transit · <b>${openTk().length}</b> tickets open`,"")}
+   ${kpi("Below reorder",String(need.length),`Requirement value <b>${money0(need.reduce((s,n)=>s+n.val,0))}</b>`,"")}
+  </div>
+  ${inb?`<div class="al c"><span class="k">QUEUE</span><span><b>${inb} stock request${inb>1?"s":""}</b> waiting for approval at Central Store. Approving reserves the quantity and issues a collection ticket.</span><a href="#" class="lnk" onclick="go('approvals');return false">Open queue</a></div>`:""}
+  ${exp.length?`<div class="al w"><span class="k">EXPIRY</span><span><b>${exp.length} batches</b> worth <b>${money0(expVal)}</b> expire within 30 days. Earliest: ${IT[exp[0].i].n} on ${exp[0].exp}.</span><a href="#" class="lnk" onclick="go('batches');return false">Review</a></div>`:""}
+  <div class="grid g21 mtop">
+   <div class="card"><div class="card-h"><h3>Counter sales</h3><span class="sh">14 days · by outlet</span>
+     <div class="seg"><button class="on">14d</button><button>30d</button><button>90d</button></div></div>
+     <div class="card-b">${lineChart()}</div></div>
+   <div class="card"><div class="card-h"><h3>Top items by revenue</h3><span class="sh">month to date</span></div>
+     <div class="card-b">${hbars(items.map(i=>({n:i[0],v:i[1]})),items[0][1])}</div></div>
+  </div>
+  <div class="grid g3 mtop">
+   <div class="card"><div class="card-h"><h3>Stock health</h3><span class="sh">184 SKUs</span></div><div class="card-b">
+     <div class="stk">${health.map(h=>`<div style="flex:${h.v};background:${h.c}">${h.v}</div>`).join("")}</div>
+     <div class="lgnd">${health.map(h=>`<span><i style="background:${h.c}"></i>${h.l}</span>`).join("")}</div>
+     <div style="margin-top:14px;border-top:1px solid var(--line-2);padding-top:12px">
+      ${[["Days of cover, average","6.4 d"],["Items with zero stock","9"],["Slow moving (>30 d)","11"],["Dead stock value","₹4,280"]]
+        .map(([a,b])=>`<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:12px">
+        <span style="color:var(--ink-3)">${a}</span><b class="mono">${b}</b></div>`).join("")}</div></div></div>
+   <div class="card"><div class="card-h"><h3>Location snapshot</h3><span class="sh">stock value</span></div>
+     <div class="card-b flush">${tableHTML(
+       [{h:"Location"},{h:"Type"},{h:"Value",r:1},{h:"SKUs",r:1}],
+       Object.keys(LOC).map(l=>({cells:[`<b style="color:var(--ink)">${LOC[l].n}</b><br><span class="mini">${LOC[l].c} · ${LOC[l].floor}</span>`,
+         `<span class="tag">${LOC[l].type}</span>`,`<b>${money0(stockVal(l))}</b>`,String(Object.keys(S.stock[l]||{}).length)]}))
+     )}</div></div>
+   <div class="card"><div class="card-h"><h3>Recent activity</h3><span class="sh">today</span></div><div class="card-b">
+     <div class="feed">${S.feed.map(f=>`<div class="fi"><span class="fd" style="background:${f.c}"></span>
+      <div class="fb"><p><b>${f.t}</b></p><p>${f.d}</p><span>${f.w}</span></div></div>`).join("")}</div></div></div>
+  </div>`;
+}
+
+/* ══════════════ POS ══════════════ */
+function vPOS(){
+ const l=LOC[S.user.loc].list?S.user.loc:"rest", c=S.cart[l]||{}, ks=Object.keys(c);
+ let sub=0,tax=0;
+ ks.forEach(k=>{const p=priceOf(l,k).p*c[k];sub+=p;tax+=p-p/(1+IT[k].gst/100);});
+ const tiles=MENU[l].map(i=>{const a=availOf(l,i),pr=priceOf(l,i);
+  return `<button class="card" style="padding:11px;text-align:left;display:flex;flex-direction:column;gap:3px;min-height:96px;${a.ok?"":"opacity:.62;border-style:dashed;cursor:not-allowed"}"
+   ${a.ok?`onclick="addCart('${l}','${i}')"`:"disabled"}>
+   <span style="display:flex;justify-content:space-between;gap:6px;align-items:flex-start">
+     <b style="font-size:12.5px;letter-spacing:-.01em;line-height:1.25">${IT[i].n}</b>
+     <span class="tag ${IT[i].t==="TRADED"?"tr":"md"}">${IT[i].t==="TRADED"?"MRP":IT[i].t==="MTO"?"made":"batch"}</span></span>
+   ${a.ok?`<span class="mini">${a.left}</span>`:`<span class="mini" style="color:var(--crit)">off — ${a.why}</span>`}
+   <span style="margin-top:auto;font-family:'IBM Plex Mono',monospace;font-size:16px;font-weight:600">
+     ${pr.cap?`<s style="color:var(--ink-4);font-size:12px;margin-right:5px">₹${pr.listed}</s>`:""}₹${pr.p}</span>
+   ${pr.cap?`<span class="mini" style="color:var(--warn)">capped at printed MRP</span>`:""}</button>`;}).join("");
+ return head(["Sell","Point of Sale"],LOC[l].n+" · Counter 1",
+  `Shift 2 open since 14:00 · operator ${S.user.n} · price list ${LOC[l].list} · terminal POS-${LOC[l].c}`,
+  `<span class="pill ok"><i></i>Shift open</span><button class="btn gh sm">Hold bill</button><button class="btn gh sm">Shift close</button>`)
+ +`<div class="grid g21">
+   <div class="card"><div class="card-h"><h3>Menu</h3><span class="sh">${MENU[l].length} items · availability computed from counter stock</span>
+     <div class="seg"><button class="on">All</button><button>Beverage</button><button>Snacks</button></div></div>
+     <div class="card-b"><div style="display:grid;gap:9px;grid-template-columns:repeat(auto-fill,minmax(152px,1fr))">${tiles}</div></div></div>
+   <div class="card"><div class="card-h"><h3>Bill CF/${S.seq.bill+1}</h3><span class="sh">${new Date().toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit"})}</span></div>
+    <div class="card-b">
+     ${ks.length?ks.map(k=>`<div style="display:flex;gap:9px;align-items:baseline;padding:7px 0;border-bottom:1px solid var(--line-2)">
+       <span class="mono" style="color:var(--ink-3);width:26px">${c[k]}×</span>
+       <span style="flex:1"><b style="font-size:12.5px">${IT[k].n}</b><br><span class="mini">${IT[k].c} · GST ${IT[k].gst}%</span></span>
+       <span class="mono" style="font-size:12.5px">${money(priceOf(l,k).p*c[k])}</span>
+       <button onclick="addCart('${l}','${k}',-1)" style="color:var(--crit);font-size:16px;line-height:1">−</button></div>`).join("")
+      :`<div class="empty"><b>Empty bill</b><p>Tap an item to begin</p></div>`}
+     ${ks.length?`<div style="margin-top:13px">
+       <div style="display:flex;justify-content:space-between;padding:3px 0;font-size:12px" class="mono"><span class="dim">Taxable value</span><span>${money(sub-tax)}</span></div>
+       <div style="display:flex;justify-content:space-between;padding:3px 0;font-size:12px" class="mono"><span class="dim">CGST</span><span>${money(tax/2)}</span></div>
+       <div style="display:flex;justify-content:space-between;padding:3px 0;font-size:12px" class="mono"><span class="dim">SGST</span><span>${money(tax/2)}</span></div>
+       <div style="display:flex;justify-content:space-between;padding:9px 0 0;margin-top:7px;border-top:1px solid var(--line-strong);font-size:19px;font-weight:600" class="mono"><span>Total</span><span>${money(sub)}</span></div>
+       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:14px 0 10px">
+        ${["Cash","UPI","Card","Patient bill","Staff credit","Dept"].map((t,i)=>`<button class="btn ${i?"gh":""} sm" style="padding:8px 4px">${t}</button>`).join("")}</div>
+       <button class="btn wide" onclick="pay('${l}')">Pay &amp; print · ${money(sub)}</button></div>`:""}
+    </div></div></div>`;
+}
+function addCart(l,i,d){const c=S.cart[l]=S.cart[l]||{};c[i]=(c[i]||0)+(d||1);if(c[i]<=0)delete c[i];render();}
+function pay(l){
+ const c=S.cart[l]||{},ks=Object.keys(c);if(!ks.length)return;
+ let tot=0;
+ ks.forEach(i=>{tot+=priceOf(l,i).p*c[i];
+  if(IT[i].t==="MTO")RCP[i].l.forEach(([g,nd])=>mv(l,g,-nd*c[i]));else mv(l,i,-c[i]);});
+ S.bills.unshift({no:"CF/"+(++S.seq.bill),loc:l,tot,n:ks.reduce((s,k)=>s+c[k],0),t:new Date().toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit"}),pay:"Cash"});
+ S.cart[l]={};toast("Bill CF/"+S.seq.bill+" · "+money(tot)+" collected. Stock deducted at "+LOC[l].n);render();
+}
+function vBills(){
+ const rows=S.bills.map(b=>({cells:[CB(0)+" <b>"+b.no+"</b>",LOC[b.loc].n,b.t,String(b.n),`<span class="pill mu">${b.pay}</span>`,
+   `<b>${money(b.tot)}</b>`,`<span class="pill ok"><i></i>Paid</span>`]}));
+ return head(["Sell","Bills"],"Bills","Every counter bill posts revenue, output tax and a matching stock movement in one transaction.",
+  `<button class="btn gh sm">Export GST register</button><button class="btn sm" onclick="go('pos')">New bill</button>`)
+ +`<div class="card">${tbar("Search by bill number…",fsel("Outlet","All")+fsel("Tender")+fsel("Today"),`<button class="btn gh sm">Columns</button>`)}
+   ${tableHTML([{h:"Bill no.",s:1},{h:"Outlet"},{h:"Time"},{h:"Items",r:1},{h:"Tender"},{h:"Amount",r:1},{h:"Status"}],rows,
+    {et:"No bills yet today",es:"Ring one up at the counter and it appears here instantly.",ea:'<button class="btn sm" onclick="go(\'pos\')">Open Point of Sale</button>'})}
+   ${S.bills.length?tfoot(S.bills.length,"Total "+money(S.bills.reduce((s,b)=>s+b.tot,0))):""}</div>`;
+}
+
+/* ══════════════ ITEMS ══════════════ */
+function vItems(){
+ const ks=Object.keys(IT);
+ const rows=ks.map(i=>{const tot=Object.keys(LOC).reduce((s,l)=>s+q(l,i),0),val=tot*(IT[i].cost||0);
+  const low=IT[i].rl>0&&q("store",i)<IT[i].rl;
+  return {click:`openD('item','${i}')`,cells:[
+   CB(0)+` <b>${IT[i].n}</b><small>${IT[i].c} · HSN ${IT[i].hsn}</small>`,
+   `<span class="tag ${IT[i].t==="TRADED"?"tr":IT[i].t==="FG"||IT[i].t==="MTO"?"md":""}">${IT[i].t}</span>`,
+   IT[i].g, `${fq(tot,i)} <span class="dim">${U(i)}</span>`, IT[i].rl?String(IT[i].rl):"—",
+   IT[i].cost?money(IT[i].cost):"—", IT[i].mrp?"₹"+IT[i].mrp:"—", money0(val),
+   low?`<span class="pill wn"><i></i>Low</span>`:tot<=0?`<span class="pill cr"><i></i>Zero</span>`:`<span class="pill ok"><i></i>Active</span>`]};});
+ const tv=ks.reduce((s,i)=>s+Object.keys(LOC).reduce((a,l)=>a+q(l,i),0)*(IT[i].cost||0),0);
+ return head(["Inventory","Items"],"Items",
+  "One master behind every counter. The type flag decides which screens an item can appear on — a raw material can never be sold, a traded item can never be a production output.",
+  `<button class="btn gh sm">Import</button><button class="btn gh sm">Export</button><button class="btn sm">＋ New item</button>`)
+ +`<div class="card">${tbar("Search by name, code or HSN…",
+    fsel("Type","All")+fsel("Group")+fsel("Location","All")+`<button class="fsel act">Active only ${CHEV}</button>`,
+    `<button class="btn gh sm">Bulk update</button><button class="btn gh sm">Columns</button>`)}
+   ${tableHTML([{h:"Item",s:1},{h:"Type"},{h:"Group"},{h:"On hand",r:1,s:1},{h:"Reorder",r:1},{h:"Cost",r:1},{h:"MRP",r:1},{h:"Value",r:1,s:1},{h:"Status"}],rows)}
+   ${tfoot(ks.length,"Inventory value "+money0(tv))}</div>`;
+}
+function dItem(i){
+ const t=S.tab["item"]||"Overview";
+ const locs=Object.keys(LOC).filter(l=>q(l,i)>0||S.stock[l][i]!==undefined);
+ const lots=S.lots.filter(x=>x.i===i);
+ const tabs=["Overview","Stock by location","Batches","Recipe","Price lists","Transactions"];
+ let body="";
+ if(t==="Overview") body=`<dl class="dl">
+   <dt>Item code</dt><dd class="mono">${IT[i].c}</dd>
+   <dt>Name</dt><dd>${IT[i].n}</dd>
+   <dt>Type</dt><dd><span class="tag ${IT[i].t==="TRADED"?"tr":"md"}">${IT[i].t}</span> ${IT[i].t==="MTO"?"made to order at the counter":IT[i].t==="FG"?"produced in the kitchen":IT[i].t==="TRADED"?"bought finished, MRP printed":"consumed by production"}</dd>
+   <dt>Group</dt><dd>${IT[i].g}</dd><dt>Base unit</dt><dd class="mono">${U(i)}</dd>
+   <dt>HSN / SAC</dt><dd class="mono">${IT[i].hsn}</dd><dt>GST rate</dt><dd class="mono">${IT[i].gst}%</dd>
+   <dt>Reorder level</dt><dd class="mono">${IT[i].rl||"—"} ${IT[i].rl?U(i):""}</dd>
+   <dt>Moving avg cost</dt><dd class="mono">${IT[i].cost?money(IT[i].cost):"computed from recipe · "+money(rcpCost(i))}</dd>
+   <dt>Printed MRP</dt><dd class="mono">${IT[i].mrp?"₹"+IT[i].mrp+" — hard ceiling at every counter":"not applicable"}</dd>
+   <dt>Shelf life</dt><dd class="mono">${IT[i].sl?IT[i].sl+" hours":"—"}</dd>
+   <dt>Valuation</dt><dd>Moving average · FEFO issue</dd></dl>`;
+ if(t==="Stock by location") body=tableHTML([{h:"Location"},{h:"On hand",r:1},{h:"Reserved",r:1},{h:"Available",r:1},{h:"Value",r:1}],
+   locs.map(l=>({cells:[`<b style="color:var(--ink)">${LOC[l].n}</b><br><span class="mini">${LOC[l].c}</span>`,
+    fq(q(l,i),i),rz(l,i)?fq(rz(l,i),i):"—",`<b>${fq(av(l,i),i)}</b>`,money0(q(l,i)*(IT[i].cost||0))]})));
+ if(t==="Batches") body=lots.length?tableHTML([{h:"Batch"},{h:"Location"},{h:"Qty",r:1},{h:"MRP",r:1},{h:"Expiry"},{h:"Days",r:1},{h:"Vendor"}],
+   lots.map(x=>({cells:[`<b class="mono" style="color:var(--ink)">${x.b}</b>`,LOC[x.loc].n,fq(x.q,i),x.mrp?"₹"+x.mrp:"—",x.exp,
+    `<span style="color:${daysTo(x.exp)<7?"var(--crit)":daysTo(x.exp)<30?"var(--warn)":"inherit"}">${daysTo(x.exp)}</span>`,x.v]})))
+   :`<div class="empty"><b>No batch tracking</b><p>This item is not received against batches.</p></div>`;
+ if(t==="Recipe") body=RCP[i]?`<p style="font-size:12.5px;color:var(--ink-3);margin:0 0 12px">Cost recomputes whenever an ingredient rate changes. Overhead ${RCP[i].ov}% covers gas, labour and packing.</p>`
+   +tableHTML([{h:"Ingredient"},{h:"Qty",r:1},{h:"Unit"},{h:"Rate",r:1},{h:"Cost",r:1}],
+     RCP[i].l.map(([g,x])=>({cells:[IT[g].n,x.toFixed(3),U(g),money(IT[g].cost||0),money(x*(IT[g].cost||0))]}))
+     .concat([{cells:[`<b style="color:var(--ink)">Total with ${RCP[i].ov}% overhead</b>`,"","","",`<b>${money(rcpCost(i))}</b>`]}]))
+   :`<div class="empty"><b>Not a manufactured item</b><p>Only made-to-order and finished goods carry a recipe.</p></div>`;
+ if(t==="Price lists") body=IT[i].mrp!==undefined||PL.A[i]?tableHTML([{h:"Price list"},{h:"Scope"},{h:"Listed",r:1},{h:"Charged",r:1},{h:"Note"}],
+   ["A","B"].map(p=>{const listed=PL[p][i];if(listed===undefined)return null;
+     const capd=IT[i].mrp!=null&&listed>IT[i].mrp;
+     return {cells:[`<b style="color:var(--ink)">List ${p}</b>`,p==="A"?"Ground & Floor 1":"Floor 3 lounge",
+      "₹"+listed,`<b>₹${capd?IT[i].mrp:listed}</b>`,capd?`<span class="pill wn"><i></i>MRP ceiling applied</span>`:`<span class="pill ok"><i></i>As listed</span>`]};}).filter(Boolean))
+   :`<div class="empty"><b>Not sold directly</b><p>This item is consumed by production and never priced.</p></div>`;
+ if(t==="Transactions") body=tableHTML([{h:"Date"},{h:"Document"},{h:"Type"},{h:"Location"},{h:"In",r:1},{h:"Out",r:1},{h:"Balance",r:1}],
+   [["25-Aug","GRN-2026-0387","Receipt","Central Store","12","—","12"],
+    ["24-Aug","TKT-0438","Transfer out","Central Store","—","8","0"],
+    ["24-Aug","TKT-0438","Transfer in","Restaurant","8","—","14"],
+    ["24-Aug","CF/1183","Sale depletion","Coffee Shop","—","0.30","0.00"],
+    ["23-Aug","ADJ-0056","Count variance","Central Store","—","0.50","8"]]
+   .map(r=>({cells:[r[0],`<b class="mono" style="color:var(--accent)">${r[1]}</b>`,r[2],r[3],r[4],r[5],`<b>${r[6]}</b>`]})));
+ return {title:IT[i].n,sub:IT[i].c+" · "+IT[i].g+" · "+IT[i].t,
+  body:`<div class="stabs">${tabs.map(x=>`<button class="${x===t?"on":""}" onclick="S.tab['item']='${x}';render()">${x}</button>`).join("")}</div>${body}`,
+  foot:`<button class="btn gh" onclick="closeD()">Close</button><button class="btn gh">Adjust stock</button><button class="btn">Edit item</button>`};
+}
+
+/* ══════════════ STOCK / BATCHES / ADJUST ══════════════ */
+function vStock(){
+ const ls=Object.keys(LOC), ks=Object.keys(IT).filter(i=>ls.some(l=>q(l,i)>0)||IT[i].rl>0);
+ const rows=ks.map(i=>{const tot=ls.reduce((s,l)=>s+q(l,i),0);
+  return {click:`openD('item','${i}')`,cells:[`<b>${IT[i].n}</b><small>${IT[i].c}</small>`]
+   .concat(ls.map(l=>{const v=q(l,i);return v?`<b>${fq(v,i)}</b>`:`<span class="dim">—</span>`;}))
+   .concat([`<b>${fq(tot,i)}</b> <span class="dim">${U(i)}</span>`,money0(tot*(IT[i].cost||0))])};});
+ return head(["Inventory","Stock on Hand"],"Stock on hand",
+  "Live balance for every item at every location. Reserved quantity is held against approved tickets and is not available to promise.",
+  `<button class="btn gh sm">Start stock count</button><button class="btn gh sm">Export</button>`)
+ +`<div class="card">${tbar("Search items…",fsel("Group")+fsel("Type")+`<button class="fsel">Non-zero only ${CHEV}</button>`,`<button class="btn gh sm">Columns</button>`)}
+   ${tableHTML([{h:"Item",s:1}].concat(ls.map(l=>({h:LOC[l].c,r:1}))).concat([{h:"Total",r:1},{h:"Value",r:1}]),rows)}
+   ${tfoot(ks.length,"Total "+money0(allStockVal()))}</div>
+   <p class="mini mtop">Column codes — ${ls.map(l=>`<b>${LOC[l].c}</b> ${LOC[l].n}`).join(" · ")}</p>`;
+}
+function vBatches(){
+ const rows=S.lots.slice().sort((a,b)=>daysTo(a.exp)-daysTo(b.exp)).map(x=>{const d=daysTo(x.exp);
+  return {cells:[CB(0)+` <b class="mono">${x.b}</b>`,`<b style="color:var(--ink)">${IT[x.i].n}</b><br><span class="mini">${IT[x.i].c}</span>`,
+   LOC[x.loc].n,fq(x.q,x.i)+" "+U(x.i),x.mrp?"₹"+x.mrp:"—",money(x.rate),money0(x.q*x.rate),x.exp,
+   `<div style="display:flex;align-items:center;gap:8px;justify-content:flex-end"><span class="bar" style="width:44px"><i class="${d<7?"cr":d<30?"wn":"ok"}" style="width:${Math.max(4,Math.min(100,d/1.2))}%"></i></span><b>${d} d</b></div>`,
+   d<0?`<span class="pill cr"><i></i>Expired</span>`:d<7?`<span class="pill cr"><i></i>Critical</span>`:d<30?`<span class="pill wn"><i></i>Near expiry</span>`:`<span class="pill ok"><i></i>Good</span>`]};});
+ const near=S.lots.filter(l=>daysTo(l.exp)<=30);
+ return head(["Inventory","Batches & Expiry"],"Batches & expiry",
+  "FEFO governs every issue. A batch carries its own printed MRP, so two consignments of the same juice at different MRPs never pool.",
+  `<button class="btn gh sm">Recall near-expiry</button><button class="btn gh sm">Export</button>`)
+ +(near.length?`<div class="al w"><span class="k">FEFO</span><span><b>${near.length} batches</b> inside the 30-day window. Redistribution to a busier counter is worth about a week; after that it is a write-off.</span></div>`:"")
+ +`<div class="card">${tbar("Search batch or item…",fsel("Location","All")+fsel("Window","30 days")+fsel("Item group"),`<button class="btn gh sm">Print labels</button>`)}
+   ${tableHTML([{h:"Batch",s:1},{h:"Item"},{h:"Location"},{h:"Qty",r:1},{h:"MRP",r:1},{h:"Rate",r:1},{h:"Value",r:1},{h:"Expiry",s:1},{h:"Days left",r:1},{h:"Status"}],rows)}
+   ${tfoot(S.lots.length)}</div>`;
+}
+function vAdjust(){
+ const seed=[{no:"ADJ-2026-0056",d:"23-Aug-2026",l:"store",i:"maida",qy:-0.5,r:"Count variance",by:"Suresh Muthu",st:"Approved"},
+   {no:"ADJ-2026-0055",d:"22-Aug-2026",l:"coffee",i:"milk",qy:-1.0,r:"Spillage",by:"Kavitha Raman",st:"Approved"},
+   {no:"ADJ-2026-0054",d:"21-Aug-2026",l:"rest",i:"sand",qy:-4,r:"End-of-day wastage",by:"Ramesh Kumar",st:"Approved"}].concat(S.adjusts);
+ return head(["Inventory","Adjustments"],"Stock adjustments",
+  "Nothing is ever deleted. A difference between shelf and book is corrected by an approved adjustment that carries a reason code.",
+  `<button class="btn gh sm">Wastage entry</button><button class="btn sm">＋ New adjustment</button>`)
+ +`<div class="card">${tbar("Search…",fsel("Reason")+fsel("Location","All")+fsel("This month"),"")}
+   ${tableHTML([{h:"Document"},{h:"Date"},{h:"Location"},{h:"Item"},{h:"Qty",r:1},{h:"Value",r:1},{h:"Reason"},{h:"Raised by"},{h:"Status"}],
+     seed.map(a=>({cells:[`<b class="mono">${a.no}</b>`,a.d,LOC[a.l].n,IT[a.i].n,
+      `<b style="color:${a.qy<0?"var(--crit)":"var(--good)"}">${a.qy>0?"+":""}${fq(a.qy,a.i)}</b>`,
+      money(Math.abs(a.qy)*(IT[a.i].cost||0)),`<span class="tag">${a.r}</span>`,a.by,`<span class="pill ok"><i></i>${a.st}</span>`]})))}
+   ${tfoot(seed.length)}</div>`;
+}
+function vLocations(){
+ return head(["Inventory","Locations"],"Locations",
+  "A location's type is what makes it impossible to sell from a quarantine bin or receive a vendor delivery straight into a ward pantry.",
+  `<button class="btn sm">＋ New location</button>`)
+ +`<div class="card">${tbar("Search locations…",fsel("Type","All"),"")}
+   ${tableHTML([{h:"Location"},{h:"Code"},{h:"Type"},{h:"Floor"},{h:"Cost centre"},{h:"Price list"},{h:"Receives"},{h:"Produces"},{h:"Sells"},{h:"Value",r:1}],
+    Object.keys(LOC).map(l=>{const t=LOC[l].type,Y='<span class="pill ok"><i></i>Yes</span>',N='<span class="pill mu">No</span>';
+     return {cells:[`<b style="color:var(--ink)">${LOC[l].n}</b>`,`<span class="mono">${LOC[l].c}</span>`,`<span class="tag">${t}</span>`,LOC[l].floor,
+      `<span class="mono">${LOC[l].cc}</span>`,LOC[l].list?`<span class="pill ac">List ${LOC[l].list}</span>`:`<span class="dim">—</span>`,
+      t==="Warehouse"?Y:N, t==="Production"?Y:t==="Outlet"?'<span class="pill wn">Limited</span>':N, t==="Outlet"?Y:N, money0(stockVal(l))]};}))}
+   ${tfoot(6)}</div>`;
+}
+function vPrice(){
+ const its=Object.keys(PL.A);
+ return head(["Inventory","Price Lists"],"Price lists",
+  "One catalog item, many price entries. Resolution runs outlet override, then floor list, then base price — and no list may exceed a batch's printed MRP.",
+  `<button class="btn gh sm">Price history</button><button class="btn sm">＋ New price list</button>`)
+ +`<div class="grid g2"><div class="card"><div class="card-h"><h3>List A — Ground &amp; Floor 1</h3><span class="sh">effective 01-Aug-2026 · v3</span><span class="pill ok"><i></i>Active</span></div>
+   <div class="card-b flush">${tableHTML([{h:"Item"},{h:"Listed",r:1},{h:"Charged",r:1},{h:"Cost",r:1},{h:"Margin",r:1}],
+     its.map(i=>{const l=PL.A[i],c=IT[i].mrp!=null&&l>IT[i].mrp?IT[i].mrp:l,cost=IT[i].cost||rcpCost(i);
+      return {cells:[IT[i].n,"₹"+l,`<b>₹${c}</b>`,money(cost),`<span style="color:${(c-cost)/c>.3?"var(--good)":"var(--warn)"}">${(((c-cost)/c)*100).toFixed(1)}%</span>`]};}))}</div></div>
+  <div class="card"><div class="card-h"><h3>List B — Floor 3 lounge</h3><span class="sh">effective 01-Aug-2026 · v3</span><span class="pill ok"><i></i>Active</span></div>
+   <div class="card-b flush">${tableHTML([{h:"Item"},{h:"Listed",r:1},{h:"Charged",r:1},{h:"Cost",r:1},{h:"Margin",r:1}],
+     its.map(i=>{const l=PL.B[i],cp=IT[i].mrp!=null&&l>IT[i].mrp,c=cp?IT[i].mrp:l,cost=IT[i].cost||rcpCost(i);
+      return {cells:[IT[i].n+(cp?' <span class="pill wn"><i></i>capped</span>':""),"₹"+l,`<b>₹${c}</b>`,money(cost),
+       `<span style="color:${(c-cost)/c>.3?"var(--good)":"var(--warn)"}">${(((c-cost)/c)*100).toFixed(1)}%</span>`]};}))}</div></div></div>
+  <div class="card mtop"><div class="card-h"><h3>Customer price levels</h3><span class="sh">applied on top of the location list</span></div>
+   <div class="card-b flush">${tableHTML([{h:"Level"},{h:"Modifier",r:1},{h:"Applies to"},{h:"Subsidy borne by"},{h:"Status"}],
+    [["Visitor","1.00","Walk-in public","—","Active"],["Patient attender","1.00","Verified against IP number","—","Active"],
+     ["Staff","0.75","Employee ID at the counter","CC-HR staff welfare","Active"],["Doctor / consultant","0.80","Consultant ID","CC-HR staff welfare","Active"]]
+    .map(r=>({cells:[`<b style="color:var(--ink)">${r[0]}</b>`,`<b>×${r[1]}</b>`,r[2],`<span class="mono">${r[3]}</span>`,`<span class="pill ok"><i></i>${r[4]}</span>`]})))}</div></div>`;
+}
+
+/* ══════════════ MOVEMENT ══════════════ */
+function reqRows(list,act){
+ return list.map(r=>({click:act?"":`openD('req','${r.id}')`,cells:[
+  `<b class="mono" style="color:var(--accent)">${r.id}</b>`,
+  `<b style="color:var(--ink)">${LOC[r.from].n}</b> <span class="dim">→</span> ${LOC[r.to].n}`,
+  `<b style="color:var(--ink)">${IT[r.it].n}</b><br><span class="mini">${IT[r.it].c}</span>`,
+  `${fq(r.qty,r.it)} <span class="dim">${U(r.it)}</span>`,
+  r.appr?`<b>${fq(r.appr,r.it)}</b>`:`<span class="dim">—</span>`,
+  r.back?`<b style="color:var(--warn)">${fq(r.back,r.it)}</b>`:`<span class="dim">—</span>`,
+  `<span class="pill ${pillFor(r.st)}"><i></i>${r.st}</span>`,
+  r.tkt?`<b class="mono" style="color:var(--accent)">${r.tkt}</b>`:`<span class="dim">—</span>`,
+  act?`<div class="btnrow rowact" style="justify-content:flex-end"><button class="btn xs" onclick="event.stopPropagation();openD('req','${r.id}')">Review</button></div>`
+     :`<span class="mini">${r.by||""}</span>`]}));
+}
+function vRequests(){
+ const mine=S.req.filter(r=>r.from===S.user.loc||S.user.r==="admin"||S.user.r==="store");
+ return head(["Movement","Stock Requests"],"Stock requests",
+  "One document covers replenishment from the store, a production request, a lateral pull from another counter, and returns. What changes is who approves it.",
+  `<button class="btn gh sm">Export</button><button class="btn sm" onclick="openD('newreq')">＋ Raise request</button>`)
+ +`<div class="card">${tbar("Search request…",fsel("Status","All")+fsel("Source")+fsel("This week"),`<button class="btn gh sm">Columns</button>`)}
+   ${tableHTML([{h:"Request",s:1},{h:"Route"},{h:"Item"},{h:"Asked",r:1},{h:"Approved",r:1},{h:"Back-order",r:1},{h:"Status"},{h:"Ticket"},{h:"Raised by"}],
+     reqRows(mine.slice().reverse(),false),
+     {et:"No requests raised",es:"When a counter drops below par the system drafts one automatically — or raise it here.",
+      ea:'<button class="btn sm" onclick="openD(\'newreq\')">Raise a request</button>'})}
+   ${mine.length?tfoot(mine.length):""}</div>`;
+}
+function vApprovals(){
+ const mineQ=inbox(S.user.loc), storeQ=(S.user.r==="admin"||S.user.r==="store")?inbox("store"):[];
+ const all=[...new Set([...mineQ,...storeQ])];
+ const kit=(S.user.r==="prod"||S.user.r==="admin")?inbox("kitchen"):[];
+ const list=[...new Set([...all,...kit])];
+ return head(["Movement","Approvals"],"Approval queue",
+  "Approving reserves the quantity at the source and issues a collection ticket. It does not move stock — the outlet still has to come and scan for it.",
+  `<span class="pill ${list.length?"wn":"ok"}"><i></i>${list.length} pending</span><button class="btn gh sm">Approval matrix</button>`)
+ +(list.length?`<div class="al i"><span class="k">RULE</span><span>Grant line by line. A partial approval produces a ticket for the approved quantity only, and the remainder parks as a back-order against the next goods receipt rather than disappearing.</span></div>`:"")
+ +`<div class="card">${tbar("Search…",fsel("Requested by")+fsel("Priority"),`<button class="btn gh sm">Approve all in full</button>`)}
+   ${tableHTML([{h:"Request"},{h:"Route"},{h:"Item"},{h:"Asked",r:1},{h:"Approved",r:1},{h:"Back-order",r:1},{h:"Status"},{h:"Ticket"},{h:""}],
+     reqRows(list,true),
+     {et:"Queue is clear",es:"Nothing is waiting on you. Requests raised at any counter land here.",ea:""})}
+   ${list.length?tfoot(list.length):""}</div>`;
+}
+function vTickets(){
+ const mine=S.tkt.filter(t=>t.to===S.user.loc||t.from===S.user.loc||S.user.r==="admin"||S.user.r==="store");
+ return head(["Movement","Pick Tickets"],"Pick tickets",
+  "The ticket is the collection authority. Stock leaves the source on the pick scan and arrives on the receive scan — between the two it is in transit, owned by neither location.",
+  `<button class="btn gh sm">Print pick list</button>`)
+ +`<div class="card">${tbar("Search ticket…",fsel("Status","Open")+fsel("Route"),"")}
+   ${tableHTML([{h:"Ticket"},{h:"Against"},{h:"Route"},{h:"Item"},{h:"Approved qty",r:1},{h:"Status"},{h:"Reservation"},{h:""}],
+    mine.slice().reverse().map(t=>({click:`openD('tkt','${t.id}')`,cells:[
+     `<b class="mono" style="color:var(--accent)">${t.id}</b>`,`<span class="mono">${t.req}</span>`,
+     `${LOC[t.from].n} <span class="dim">→</span> <b style="color:var(--ink)">${LOC[t.to].n}</b>`,IT[t.it].n,
+     `<b>${fq(t.qty,t.it)}</b> ${U(t.it)}`,`<span class="pill ${pillFor(t.st)}"><i></i>${t.st}</span>`,
+     t.st==="Issued"?`<span class="mini">expires in 3 h 40 m</span>`:t.st==="In transit"?`<span class="mini" style="color:var(--warn)">with the porter</span>`:`<span class="mini">closed</span>`,
+     `<div class="btnrow rowact" style="justify-content:flex-end">${
+       t.st==="Issued"?`<button class="btn xs" onclick="event.stopPropagation();pickT('${t.id}')">Scan &amp; collect</button>`
+       :t.st==="In transit"?`<button class="btn xs ok" onclick="event.stopPropagation();recvT('${t.id}')">Scan &amp; receive</button>`:""}</div>`]})),
+    {et:"No tickets",es:"A ticket is created the moment a request is approved."})}
+   ${mine.length?tfoot(mine.length):""}</div>`;
+}
+function dReq(id){
+ const r=S.req.find(x=>x.id===id);if(!r)return{title:"Not found",body:"",foot:""};
+ const a=av(r.to,r.it), can=(r.st==="Submitted")&&(S.user.r==="admin"||LOC[r.to]&&(S.user.loc===r.to||S.user.r==="store"));
+ return {title:r.id,sub:LOC[r.from].n+" → "+LOC[r.to].n+" · raised "+(r.by||"—"),
+  body:`<dl class="dl">
+   <dt>Source type</dt><dd>${r.to==="store"?"Central store replenishment":r.to==="kitchen"?"Production request":"Lateral pull — the giving outlet approves, not the store"}</dd>
+   <dt>Priority</dt><dd><span class="pill ${r.urg?"cr":"mu"}"><i></i>${r.urg?"Urgent":"Normal"}</span></dd>
+   <dt>Cost centre</dt><dd class="mono">${LOC[r.from].cc}</dd>
+   <dt>Status</dt><dd><span class="pill ${pillFor(r.st)}"><i></i>${r.st}</span></dd></dl>
+   <div class="fsec"><h4>Line items</h4><p>Available-to-promise at the source is on hand minus what is already reserved against other tickets.</p>
+   ${tableHTML([{h:"Item"},{h:"Asked",r:1},{h:"On hand at source",r:1},{h:"Reserved",r:1},{h:"Available",r:1},{h:"Grant",r:1}],
+     [{cells:[`<b style="color:var(--ink)">${IT[r.it].n}</b><br><span class="mini">${IT[r.it].c} · ${U(r.it)}</span>`,
+      fq(r.qty,r.it),fq(q(r.to,r.it),r.it),rz(r.to,r.it)?fq(rz(r.to,r.it),r.it):"—",`<b>${fq(a,r.it)}</b>`,
+      can?`<input type="number" id="gq" value="${Math.min(r.qty,a)}" min="0" step="0.1" style="width:80px;padding:5px 8px;border:1px solid var(--line-strong);border-radius:5px;background:var(--surface);font-family:'IBM Plex Mono',monospace;text-align:right">`
+        :r.appr?`<b>${fq(r.appr,r.it)}</b>`:"—"]}])}
+   ${a<r.qty?`<div class="al w mtop"><span class="k">SHORT</span><span>Only <b>${fq(a,r.it)} ${U(r.it)}</b> can be promised. Granting that leaves <b>${fq(r.qty-a,r.it)}</b> as a back-order that reawakens on the next goods receipt.</span></div>`:""}
+   ${r.tkt?`<div class="al g mtop"><span class="k">TICKET</span><span>Ticket <b>${r.tkt}</b> issued for ${fq(r.appr,r.it)} ${U(r.it)}. The reservation is held at ${LOC[r.to].n}.</span></div>`:""}
+   </div>
+   <div class="fsec"><h4>Audit trail</h4>
+   ${[["Submitted",r.by||"—",r.at||"09:14"],r.appr?["Approved "+fq(r.appr,r.it)+" of "+fq(r.qty,r.it),S.user.n,"09:26"]:null,
+      r.tkt?["Ticket "+r.tkt+" issued","System","09:26"]:null].filter(Boolean)
+     .map(x=>`<div class="fi"><span class="fd" style="background:var(--c1)"></span><div class="fb"><p><b>${x[0]}</b></p><p>${x[1]}</p><span>${x[2]}</span></div></div>`).join("")}</div>`,
+  foot:can?`<button class="btn gh" onclick="closeD()">Cancel</button>
+    <button class="btn dg" onclick="decide('${r.id}',0)">Reject</button>
+    <button class="btn" onclick="decide('${r.id}',parseFloat(document.getElementById('gq').value))">Approve &amp; issue ticket</button>`
+   :`<button class="btn gh" onclick="closeD()">Close</button>`};
+}
+function dTkt(id){
+ const t=S.tkt.find(x=>x.id===id);if(!t)return{title:"—",body:"",foot:""};
+ return {title:t.id,sub:LOC[t.from].n+" → "+LOC[t.to].n,
+  body:`<div style="display:flex;gap:18px;align-items:flex-start;padding:16px;border:1.5px dashed var(--accent);border-radius:11px;background:var(--accent-soft);margin-bottom:18px">
+   <div style="flex:1"><div class="mono" style="font-size:18px;font-weight:600;color:var(--accent);letter-spacing:-.02em">${t.id}</div>
+    <div class="mini" style="color:var(--accent);margin-top:3px">against ${t.req} · collector to sign at both ends</div>
+    <div style="margin-top:14px;display:grid;grid-template-columns:1fr 1fr;gap:10px">
+     <div><div class="mini">FROM</div><b style="font-size:13px">${LOC[t.from].n}</b><div class="mini">${LOC[t.from].c}</div></div>
+     <div><div class="mini">TO</div><b style="font-size:13px">${LOC[t.to].n}</b><div class="mini">${LOC[t.to].c}</div></div>
+     <div><div class="mini">ITEM</div><b style="font-size:13px">${IT[t.it].n}</b><div class="mini">${IT[t.it].c}</div></div>
+     <div><div class="mini">APPROVED QUANTITY</div><b style="font-size:13px" class="mono">${fq(t.qty,t.it)} ${U(t.it)}</b><div class="mini">no more may be released</div></div></div></div>
+   <div style="width:82px;height:82px;flex:none;border-radius:6px;opacity:.6;background:
+     repeating-linear-gradient(90deg,var(--accent) 0 5px,transparent 5px 10px),
+     repeating-linear-gradient(0deg,var(--accent) 0 5px,transparent 5px 10px)"></div></div>
+   <div class="stabs" style="margin-bottom:14px"><button class="on">Movement</button></div>
+   ${["Issued","In transit","Received"].map((s,i)=>{const done=["Issued","In transit","Received"].indexOf(t.st)>=i;
+     return `<div class="fi"><span class="fd" style="background:${done?"var(--c1)":"var(--line-strong)"}"></span>
+      <div class="fb"><p><b>${s}</b> ${done?"":'<span class="mini">pending</span>'}</p>
+      <p>${i===0?"Reservation placed at "+LOC[t.from].n+" — stock still on the source shelf":
+          i===1?"Pick scan debits the source. Owned by neither location.":
+          "Receive scan credits "+LOC[t.to].n+". Any shortfall is a discrepancy with an owner."}</p></div></div>`;}).join("")}`,
+  foot:`<button class="btn gh" onclick="closeD()">Close</button><button class="btn gh">Print</button>
+   ${t.st==="Issued"?`<button class="btn" onclick="pickT('${t.id}')">Scan at ${LOC[t.from].c} — collect</button>`
+    :t.st==="In transit"?`<button class="btn ok" onclick="recvT('${t.id}')">Scan at ${LOC[t.to].c} — receive</button>`:""}`};
+}
+function dNewReq(){
+ const src=Object.keys(LOC).filter(l=>l!==S.user.loc);
+ const its=Object.keys(IT).filter(i=>IT[i].t!=="MTO");
+ return {title:"Raise stock request",sub:"from "+LOC[S.user.loc].n,
+  body:`<div class="fsec"><h4>Header</h4><p>The source decides who approves. Central store is a replenishment; another outlet is a lateral pull and that outlet's manager decides.</p>
+   <div class="frow f2"><div class="fld"><label>Request from <span class="rq">*</span></label><select id="nrTo">
+     ${src.map(l=>`<option value="${l}">${LOC[l].n} — ${LOC[l].type}</option>`).join("")}</select>
+     <div class="hint">Central Store is the default. Choose an outlet when the store is closed or another counter has surplus.</div></div>
+    <div class="fld"><label>Required by</label><input type="date" value="2026-08-25"></div></div>
+   <div class="frow f3"><div class="fld"><label>Priority</label><select id="nrU"><option>Normal</option><option>Urgent</option></select></div>
+    <div class="fld"><label>Cost centre</label><input value="${LOC[S.user.loc].cc}" readonly></div>
+    <div class="fld"><label>Purpose</label><select><option>Counter replenishment</option><option>Production</option><option>Event / catering</option></select></div></div></div>
+   <div class="fsec"><h4>Line items</h4><p>Availability at the source is checked when the approver opens it, not now.</p>
+   <div class="frow f3"><div class="fld"><label>Item <span class="rq">*</span></label><select id="nrIt">
+     ${its.map(i=>`<option value="${i}">${IT[i].n} (${IT[i].c})</option>`).join("")}</select></div>
+    <div class="fld"><label>Quantity <span class="rq">*</span></label><input type="number" id="nrQ" value="20" min="0.1" step="0.1" class="n"></div>
+    <div class="fld"><label>Unit</label><input value="base unit" readonly></div></div>
+   <div class="fld"><label>Note to approver</label><textarea rows="2" placeholder="Optional — e.g. counter runs dry by 4 pm"></textarea></div></div>`,
+  foot:`<button class="btn gh" onclick="closeD()">Cancel</button><button class="btn gh">Save draft</button>
+   <button class="btn" onclick="submitReq()">Submit request</button>`};
+}
+function submitReq(){
+ const to=$("nrTo").value,it=$("nrIt").value,qty=parseFloat($("nrQ").value),urg=$("nrU").value==="Urgent";
+ S.req.push({id:"REQ-2026-"+(++S.seq.req),from:S.user.loc,to,it,qty,appr:0,back:0,st:"Submitted",by:S.user.n,urg,
+   at:new Date().toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit"})});
+ closeD();toast("REQ-2026-"+S.seq.req+" submitted to "+LOC[to].n);
+}
+function quickReq(to,it,qty){
+ S.req.push({id:"REQ-2026-"+(++S.seq.req),from:S.user.loc,to,it,qty,appr:0,back:0,st:"Submitted",by:S.user.n,urg:false,
+   at:new Date().toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit"})});
+ toast("REQ-2026-"+S.seq.req+" sent to "+LOC[to].n);render();
+}
+function decide(id,g){
+ const r=S.req.find(x=>x.id===id);if(!r)return;
+ g=Math.max(0,Math.min(g||0,av(r.to,r.it)));
+ if(g<=0){r.st="Rejected";closeD();toast(r.id+" rejected — no ticket issued");return;}
+ r.appr=g;r.st=g<r.qty?"Partial":"Approved";r.back=Math.round((r.qty-g)*1000)/1000;
+ S.rsv[r.to+":"+r.it]=(S.rsv[r.to+":"+r.it]||0)+g;
+ const t={id:"TKT-0"+(++S.seq.tkt),req:r.id,from:r.to,to:r.from,it:r.it,qty:g,st:"Issued"};
+ S.tkt.push(t);r.tkt=t.id;closeD();
+ toast(r.back?`Approved ${fq(g,r.it)} of ${fq(r.qty,r.it)} — ${fq(r.back,r.it)} back-ordered · ticket ${t.id}`:`Approved in full · ticket ${t.id} issued`);
+}
+function pickT(id){const t=S.tkt.find(x=>x.id===id);if(!t||t.st!=="Issued")return;
+ mv(t.from,t.it,-t.qty);S.rsv[t.from+":"+t.it]-=t.qty;t.st="In transit";
+ if(S.drawer)S.drawer=null;toast(`Scanned at ${LOC[t.from].c} — ${fq(t.qty,t.it)} ${U(t.it)} in transit`);render();}
+function recvT(id){const t=S.tkt.find(x=>x.id===id);if(!t||t.st!=="In transit")return;
+ mv(t.to,t.it,t.qty);t.st="Received";
+ const r=S.req.find(x=>x.id===t.req);if(r)r.st=r.back?"Part closed":"Closed";
+ if(S.drawer)S.drawer=null;toast(`Received at ${LOC[t.to].n} — ${IT[t.it].n} back in stock`);render();}
+
+/* ══════════════ PRODUCTION ══════════════ */
+function vRecipes(){
+ return head(["Production","Recipes"],"Recipes",
+  "Recipes are infrastructure. With one on every made item the system knows what usage should have been, which is the only way theoretical-versus-actual variance can exist.",
+  `<button class="btn gh sm">Costing what-if</button><button class="btn sm">＋ New recipe</button>`)
+ +`<div class="card">${tbar("Search recipes…",fsel("Group")+fsel("Version"),"")}
+   ${tableHTML([{h:"Recipe"},{h:"Output"},{h:"Version"},{h:"Ingredients",r:1},{h:"Material cost",r:1},{h:"Overhead",r:1},{h:"Unit cost",r:1},{h:"Sells at",r:1},{h:"Margin",r:1}],
+    Object.keys(RCP).map(i=>{const mat=RCP[i].l.reduce((s,[g,x])=>s+x*(IT[g].cost||0),0),c=rcpCost(i),p=PL.A[i]||0;
+     return {click:`openD('item','${i}')`,cells:[`<b style="color:var(--ink)">${IT[i].n}</b><small>RCP-${IT[i].c}</small>`,
+      `1 ${U(i)}`,`<span class="tag">v3</span>`,String(RCP[i].l.length),money(mat),RCP[i].ov+"%",`<b>${money(c)}</b>`,p?"₹"+p:"—",
+      p?`<span style="color:${(p-c)/p>.3?"var(--good)":"var(--warn)"}">${(((p-c)/p)*100).toFixed(1)}%</span>`:"—"]};}))}
+   ${tfoot(4)}</div>`;
+}
+function vProduction(){
+ const plan=[["puff",120],["sand",60]];
+ const cards=plan.map(([i,n])=>{
+  const need=RCP[i].l.map(([g,p])=>[g,Math.round(p*n*1000)/1000]);
+  const short=need.filter(([g,x])=>av("kitchen",g)<x);
+  return `<div class="card"><div class="card-h"><h3>${IT[i].n}</h3>
+    <span class="sh">plan ${n} ${U(i)} · recipe v3 · shelf life ${IT[i].sl} h</span>
+    <span class="pill ${short.length?"cr":"ok"}"><i></i>${short.length?"Short of "+short.length:"Ready to open"}</span></div>
+   <div class="card-b flush">${tableHTML([{h:"Ingredient"},{h:"Batch (FEFO)"},{h:"Per unit",r:1},{h:"Required",r:1},{h:"Available",r:1},{h:"Rate",r:1},{h:"Cost",r:1},{h:""}],
+     need.map(([g,x],ix)=>({cells:[`<b style="color:var(--ink)">${IT[g].n}</b>`,
+      `<span class="mono">${(S.lots.find(l=>l.i===g)||{b:"—"}).b}</span>`,
+      RCP[i].l[ix][1].toFixed(3),fq(x,g),fq(av("kitchen",g),g),money(IT[g].cost||0),money(x*(IT[g].cost||0)),
+      av("kitchen",g)<x?`<span class="pill cr"><i></i>Short</span>`:`<span class="pill ok"><i></i>OK</span>`]})))}</div>
+   <div class="card-b" style="border-top:1px solid var(--line);display:flex;gap:14px;align-items:center;flex-wrap:wrap">
+    <div class="mini">Material ${money(need.reduce((s,[g,x])=>s+x*(IT[g].cost||0),0))} · overhead ${RCP[i].ov}% ·
+     projected unit cost <b style="color:var(--ink)">${money(rcpCost(i))}</b> · sells at ₹${PL.A[i]}</div>
+    <div class="sp" style="flex:1"></div>
+    <div class="btnrow"><button class="btn gh sm">Print labels</button>
+     <button class="btn sm" ${short.length?"disabled":""} onclick="produce('${i}',${n})">Open &amp; close batch of ${n}</button>
+     ${q("kitchen",i)>0?`<button class="btn gh sm" onclick="pushTo('rest','${i}',12)">Send 12 → Restaurant</button>
+      <button class="btn gh sm" onclick="pushTo('kiosk','${i}',8)">Send 8 → Kiosk</button>`:""}</div></div></div>`;}).join("");
+ return head(["Production","Production"],"Production plan · 25 Aug 2026",
+  "Closing a batch consumes raw materials at recipe quantity, creates finished goods with a batch number and best-before, and rolls the cost up in one transaction.",
+  `<span class="pill ac"><i></i>Kitchen open</span><button class="btn gh sm">Plan tomorrow</button>`)
+ +`<div class="grid" style="gap:16px">${cards}</div>
+  ${S.batches.length?`<div class="card mtop"><div class="card-h"><h3>Batches closed today</h3><span class="sh">${S.batches.length} batches</span></div>
+   ${tableHTML([{h:"Batch"},{h:"Item"},{h:"Planned",r:1},{h:"Yield",r:1},{h:"Variance",r:1},{h:"Material",r:1},{h:"Unit cost",r:1},{h:"Best before"},{h:"Status"}],
+    S.batches.slice().reverse().map(b=>({cells:[`<b class="mono" style="color:var(--accent)">${b.id}</b>`,IT[b.it].n,String(b.plan),`<b>${b.y}</b>`,
+     `<span style="color:var(--warn)">${(((b.y-b.plan)/b.plan)*100).toFixed(1)}%</span>`,money(b.mat),`<b>${money(b.unit)}</b>`,b.bb,
+     `<span class="pill ok"><i></i>Closed</span>`]})))}</div>`:""}`;
+}
+function produce(i,n){
+ const need=RCP[i].l.map(([g,p])=>[g,p*n]);
+ if(need.some(([g,x])=>av("kitchen",g)<x)){toast("Cannot open — kitchen is short of an ingredient");return;}
+ let mat=0;need.forEach(([g,x])=>{mv("kitchen",g,-x);mat+=x*(IT[g].cost||0);});
+ const y=Math.max(1,Math.round(n*0.967));mv("kitchen",i,y);
+ const cost=mat*(1+RCP[i].ov/100);
+ S.batches.push({id:"PRD-20260825-0"+(++S.seq.batch),it:i,plan:n,y,mat,unit:cost/y,bb:i==="puff"?"25-Aug 21:30":"25-Aug 18:00"});
+ toast(`Batch PRD-20260825-0${S.seq.batch} closed — ${y} ${IT[i].n} at ${money(cost/y)} each`);render();
+}
+function pushTo(to,i,qty){
+ qty=Math.min(qty,av("kitchen",i));
+ if(qty<=0){toast("Nothing available to send");return;}
+ S.rsv["kitchen:"+i]=(S.rsv["kitchen:"+i]||0)+qty;
+ S.tkt.push({id:"TKT-0"+(++S.seq.tkt),req:"push",from:"kitchen",to,it:i,qty,st:"Issued"});
+ toast(`Ticket TKT-0${S.seq.tkt} issued — ${qty} ${IT[i].n} to ${LOC[to].n}`);render();
+}
+
+/* ══════════════ PURCHASING ══════════════ */
+function vRequirement(){
+ const need=needList(), tot=need.reduce((s,n)=>s+n.val,0);
+ const byV={};need.forEach(n=>{const v=(VEND.find(x=>x.cat.toLowerCase().includes(IT[n.i].g.toLowerCase().split(" ")[0]))||VEND[2]).n;
+   byV[v]=(byV[v]||0)+n.val;});
+ return head(["Purchasing","Requirement"],"Computed requirement",
+  "Nobody types this. It is stock on hand netted against reorder point, open unfulfilled requests, the production plan exploded through recipes, and consumption velocity over the trailing period.",
+  `<button class="btn gh sm">Adjust safety stock</button><button class="btn gh sm">Export</button><button class="btn sm">Create requisition</button>`)
+ +`<div class="kpis"><div class="kpi"><div class="kl">Items below reorder</div><div class="kv">${need.length}</div>
+    <div class="kf"><div class="kd">of <b>${Object.keys(IT).filter(i=>IT[i].rl>0).length}</b> stocked items</div></div></div>
+   <div class="kpi"><div class="kl">Requirement value</div><div class="kv">${money0(tot)}</div>
+    <div class="kf"><div class="kd">before GST · <b>${Object.keys(byV).length}</b> vendors</div></div></div>
+   <div class="kpi"><div class="kl">On order already</div><div class="kv">${money0(65646)}</div>
+    <div class="kf"><div class="kd"><b>4</b> open POs · netted off below</div></div></div>
+   <div class="kpi"><div class="kl">Back-orders waiting</div><div class="kv">${S.req.filter(r=>r.back).length}</div>
+    <div class="kf"><div class="kd">reawaken automatically on receipt</div></div></div></div>
+  <div class="card">${tbar("Search…",fsel("Vendor","All")+fsel("Group")+`<button class="fsel act">Below reorder ${CHEV}</button>`,`<button class="btn gh sm">Group by vendor</button>`)}
+   ${tableHTML([{h:"Item"},{h:"On hand",r:1},{h:"Reorder at",r:1},{h:"Target",r:1},{h:"Cover",r:1},{h:"Suggested",r:1},{h:"Rate",r:1},{h:"Value",r:1},{h:"Vendor"},{h:""}],
+     need.map(n=>({cells:[CB(1)+` <b>${IT[n.i].n}</b><small>${IT[n.i].c}</small>`,fq(n.oh,n.i),String(IT[n.i].rl),String(n.tgt),
+      `<span style="color:${n.cov<1?"var(--crit)":n.cov<3?"var(--warn)":"inherit"}">${n.cov} d</span>`,
+      `<b>${fq(n.sug,n.i)}</b> ${U(n.i)}`,money(IT[n.i].cost||0),`<b>${money(n.val)}</b>`,
+      (VEND.find(v=>v.cat.toLowerCase().includes(IT[n.i].g.toLowerCase().split(" ")[0]))||VEND[2]).n,
+      `<div class="rowact"><button class="btn xs" onclick="grn('${n.i}',${n.sug})">Order &amp; receive</button></div>`]})),
+     {et:"Everything above reorder level",es:"Nothing needs buying right now."})}
+   ${need.length?`<div class="selbar" style="border-top:1px solid var(--accent-line);border-bottom:0">
+     <span>${need.length} lines selected · ${money0(tot)}</span><div class="sp" style="flex:1"></div>
+     <button class="btn sm">Create purchase requisition</button><button class="btn gh sm">Split by vendor</button></div>`:""}</div>`;
+}
+function vOrders(){
+ return head(["Purchasing","Purchase Orders"],"Purchase orders",
+  "Approval slabs: up to ₹25,000 Purchase Manager, ₹25,000–1,00,000 Finance, above that the Director. A creator can never approve their own order.",
+  `<button class="btn gh sm">Export</button><button class="btn sm" onclick="openD('po')">＋ New purchase order</button>`)
+ +`<div class="card">${tbar("Search PO number or vendor…",fsel("Status","All")+fsel("Vendor")+fsel("This month"),`<button class="btn gh sm">Columns</button>`)}
+   ${tableHTML([{h:"PO number",s:1},{h:"Vendor"},{h:"Raised"},{h:"Delivery due"},{h:"Lines",r:1},{h:"Value",r:1},{h:"GST",r:1},{h:"Total",r:1},{h:"Status"},{h:"3-way match"}],
+    S.pos_.slice().reverse().map(p=>({click:`openD('po','${p.no}')`,cells:[CB(0)+` <b class="mono" style="color:var(--accent)">${p.no}</b>`,
+     (VEND.find(v=>v.c===p.v)||{}).n,p.dt,p.due,String(p.items),money0(p.val),money0(p.val*.09*2),`<b>${money0(p.val*1.18)}</b>`,
+     `<span class="pill ${pillFor(p.st)}"><i></i>${cap(p.st.toLowerCase())}</span>`,
+     p.st==="RECEIVED"?`<span class="pill ok"><i></i>Matched</span>`:p.st==="PARTIAL"?`<span class="pill wn"><i></i>Qty variance</span>`:`<span class="pill mu">Awaiting GRN</span>`]})))}
+   ${tfoot(4,"Open commitment "+money0(65646))}</div>`;
+}
+function dPO(no){
+ const p=S.pos_.find(x=>x.no===no)||{no:"PO-2026-0143",v:"V-002",dt:"25-Aug-2026",due:"27-Aug-2026",st:"DRAFT",val:0,items:0};
+ const v=VEND.find(x=>x.c===p.v)||VEND[1];
+ const lines=[["milk",40,52],["butter",4,248],["bread",24,38]];
+ const sub=lines.reduce((s,l)=>s+l[1]*l[2],0);
+ return {title:p.no,sub:v.n+" · "+p.dt,
+  body:`<div class="fsec"><h4>Vendor &amp; terms</h4>
+   <div class="frow f3"><div class="fld"><label>Vendor <span class="rq">*</span></label><select>${VEND.map(x=>`<option ${x.c===p.v?"selected":""}>${x.n}</option>`).join("")}</select></div>
+    <div class="fld"><label>Vendor GSTIN</label><input value="${v.gst}" readonly class="n"></div>
+    <div class="fld"><label>Payment terms</label><input value="${v.terms}" readonly></div></div>
+   <div class="frow f4"><div class="fld"><label>PO date</label><input type="date" value="2026-08-25"></div>
+    <div class="fld"><label>Delivery due</label><input type="date" value="2026-08-27"></div>
+    <div class="fld"><label>Deliver to</label><select><option>Central Store (WH-CS)</option><option>Central Kitchen (KT-CK)</option></select></div>
+    <div class="fld"><label>Place of supply</label><input value="Tamil Nadu (33)" readonly></div></div></div>
+   <div class="fsec"><h4>Line items</h4><p>Rate defaults from the live rate contract. Any deviation is flagged and needs a written reason before the order can be saved.</p>
+   ${tableHTML([{h:"Item"},{h:"HSN"},{h:"Qty",r:1},{h:"UOM"},{h:"Rate",r:1},{h:"Contract",r:1},{h:"GST",r:1},{h:"Amount",r:1}],
+     lines.map(([i,qy,rt])=>({cells:[`<b style="color:var(--ink)">${IT[i].n}</b><br><span class="mini">${IT[i].c}</span>`,
+      `<span class="mono">${IT[i].hsn}</span>`,String(qy),U(i),money(rt),
+      `<span class="pill ok"><i></i>On contract</span>`,IT[i].gst+"%",`<b>${money(qy*rt)}</b>`]})))}
+   <div style="display:flex;justify-content:flex-end;margin-top:14px"><div style="min-width:260px">
+    ${[["Sub-total",money(sub)],["CGST 2.5%",money(sub*.025)],["SGST 2.5%",money(sub*.025)],["Freight",money(150)]]
+      .map(r=>`<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:12.5px" class="mono"><span class="dim">${r[0]}</span><span>${r[1]}</span></div>`).join("")}
+    <div style="display:flex;justify-content:space-between;padding:9px 0 0;margin-top:6px;border-top:1px solid var(--line-strong);font-size:16px;font-weight:600" class="mono"><span>Total</span><span>${money(sub*1.05+150)}</span></div></div></div></div>
+   <div class="fsec"><h4>Approval</h4>
+    <div class="al i"><span class="k">SLAB</span><span>Value ${money0(sub*1.05+150)} falls in the <b>₹25,000 – ₹1,00,000</b> band — Finance approval required. Latha Narayanan raised it and therefore cannot approve it.</span></div></div>`,
+  foot:`<button class="btn gh" onclick="closeD()">Close</button><button class="btn gh">Save draft</button><button class="btn gh">Send to vendor</button><button class="btn">Submit for approval</button>`};
+}
+function vGRN(){
+ const opts=Object.keys(IT).filter(i=>IT[i].rl>0).map(i=>`<option value="${i}">${IT[i].n} (${IT[i].c})</option>`).join("");
+ const back=S.req.filter(r=>r.back||r.st==="Rejected");
+ return head(["Purchasing","Goods Receipt"],"Goods receipt",
+  "The first point where stock becomes real, and therefore the point that decides whether every downstream number is trustworthy.",
+  `<button class="btn gh sm">GRN register</button><button class="btn sm">＋ Receive against PO</button>`)
+ +`<div class="grid g21"><div class="card"><div class="card-h"><h3>GRN-2026-${S.seq.grn+1}</h3><span class="sh">draft · receiving into Central Store</span>
+    <span class="pill wn"><i></i>Draft</span></div><div class="card-b">
+   <div class="frow f4"><div class="fld"><label>Against PO</label><select><option>PO-2026-0142</option><option>Direct receipt</option></select></div>
+    <div class="fld"><label>Vendor invoice no.</label><input value="SBD/4471" class="n"></div>
+    <div class="fld"><label>Invoice date</label><input type="date" value="2026-08-25"></div>
+    <div class="fld"><label>Vehicle / DC</label><input value="TN45-BQ-8812" class="n"></div></div>
+   <div class="fsec"><h4>Received lines</h4><p>Batch, manufacturing and expiry dates are mandatory for anything with a shelf life. A different MRP always creates a separate batch line — never a merge.</p>
+   <div class="tw"><table class="lgrid"><thead><tr><th>Item</th><th>Batch</th><th>Mfg</th><th>Expiry</th><th class="r">MRP</th><th class="r">Ordered</th><th class="r">Received</th><th class="r">Rejected</th><th class="r">Rate</th></tr></thead><tbody>
+    <tr><td><select style="min-width:150px">${opts}</select></td><td><input value="RJ-2609" style="width:80px"></td>
+     <td><input type="date" value="2026-08-20" style="width:130px"></td><td><input type="date" value="2027-02-19" style="width:130px"></td>
+     <td><input value="22.00" class="n" style="width:60px"></td><td class="n">144</td>
+     <td><input value="144" class="n" style="width:60px"></td><td><input value="0" class="n" style="width:52px"></td>
+     <td><input value="14.20" class="n" style="width:66px"></td></tr>
+    <tr><td><select style="min-width:150px"><option>Mineral water 1L (TR-3002)</option></select></td><td><input value="MW-0826" style="width:80px"></td>
+     <td><input type="date" value="2026-08-21" style="width:130px"></td><td><input type="date" value="2027-02-20" style="width:130px"></td>
+     <td><input value="20.00" class="n" style="width:60px"></td><td class="n">120</td>
+     <td><input value="108" class="n" style="width:60px"></td><td><input value="12" class="n" style="width:52px"></td>
+     <td><input value="11.50" class="n" style="width:66px"></td></tr></tbody></table></div>
+   <div class="al w mtop"><span class="k">MRP</span><span>Real Juice last received at <b>₹20.00</b> MRP and 36 units of that batch are still on hand. This receipt posts as a <b>separate batch line</b>, and the counter prices each batch at its own MRP.</span></div>
+   <div class="al c"><span class="k">REJECT</span><span>12 units of mineral water rejected — reason code required. Rejected stock moves to Quarantine and is not offered on any issue screen. A debit note will be proposed.</span></div></div>
+   <div class="btnrow" style="justify-content:flex-end"><button class="btn gh">Save draft</button><button class="btn gh">Short-close PO</button><button class="btn">Post GRN &amp; print labels</button></div>
+   </div></div>
+  <div><div class="card"><div class="card-h"><h3>Quick receipt</h3><span class="sh">demo shortcut</span></div><div class="card-b">
+    <p class="mini" style="margin:0 0 12px;line-height:1.5">Posts straight into Central Store and wakes any back-order sitting on that item.</p>
+    <div class="fld" style="margin-bottom:10px"><label>Item</label><select id="gi">${opts}</select></div>
+    <div class="fld" style="margin-bottom:12px"><label>Quantity</label><input type="number" id="gq2" value="40" class="n"></div>
+    <button class="btn wide" onclick="grn(document.getElementById('gi').value,parseFloat(document.getElementById('gq2').value))">Post receipt</button></div></div>
+   ${back.length?`<div class="card mtop"><div class="card-h"><h3>Waiting on a receipt</h3><span class="sh">${back.length} back-orders</span></div>
+    <div class="card-b">${back.map(r=>`<div class="al w"><span class="k">${r.id.slice(-4)}</span>
+     <span><b>${LOC[r.from].n}</b> · ${IT[r.it].n} · ${fq(r.back||r.qty,r.it)} ${U(r.it)} outstanding</span></div>`).join("")}</div></div>`:""}
+   <div class="card mtop"><div class="card-h"><h3>Recent receipts</h3></div>
+    ${tableHTML([{h:"GRN"},{h:"Vendor"},{h:"Value",r:1}],
+      [["GRN-2026-0387","Aavin Dairy",24960],["GRN-2026-0386","Anandha Prov.",18420],["GRN-2026-0385","PackWell",6240]]
+      .map(r=>({cells:[`<b class="mono">${r[0]}</b>`,r[1],money0(r[2])]})))}</div></div></div>`;
+}
+function grn(i,qty){
+ mv("store",i,qty);
+ const woke=S.req.filter(r=>r.it===i&&(r.back>0||r.st==="Rejected"));
+ woke.forEach(r=>{r.qty=r.back||r.qty;r.back=0;r.appr=0;r.st="Submitted";delete r.tkt;});
+ toast(`Received ${fq(qty,i)} ${U(i)} ${IT[i].n} into Central Store`+(woke.length?` — ${woke.length} back-order(s) reawakened`:""));
+ render();
+}
+function vVendors(){
+ return head(["Purchasing","Vendors"],"Vendors",
+  "Rate contracts, lead times and performance. A rate above the live contract is flagged on the purchase order and needs a written reason.",
+  `<button class="btn gh sm">Rate contracts</button><button class="btn sm">＋ New vendor</button>`)
+ +`<div class="card">${tbar("Search vendors…",fsel("Category","All")+fsel("Terms"),"")}
+   ${tableHTML([{h:"Vendor"},{h:"Category"},{h:"GSTIN"},{h:"Phone"},{h:"Terms"},{h:"Rating",r:1},{h:"Open POs",r:1},{h:"YTD spend",r:1},{h:"Status"}],
+    VEND.map(v=>({cells:[`<b>${v.n}</b><small>${v.c}</small>`,v.cat,`<span class="mono">${v.gst}</span>`,`<span class="mono">${v.ph}</span>`,
+     `<span class="tag">${v.terms}</span>`,
+     `<div style="display:flex;align-items:center;gap:7px;justify-content:flex-end"><span class="bar" style="width:40px"><i class="${v.rating>4.5?"ok":v.rating>4?"":"wn"}" style="width:${v.rating/5*100}%"></i></span><b>${v.rating}</b></div>`,
+     String(v.on),money0(v.spend),v.gst==="—"?`<span class="pill wn"><i></i>Unregistered</span>`:`<span class="pill ok"><i></i>Active</span>`]})))}
+   ${tfoot(5,"YTD "+money0(VEND.reduce((s,v)=>s+v.spend,0)))}</div>`;
+}
+
+/* ══════════════ REPORTS / ADMIN ══════════════ */
+function vReports(){
+ const cats=[["Stock",["Stock summary","Stock ledger","Batch & expiry ageing","Slow and dead stock","Stock valuation","Location transfer register"]],
+  ["Sales & margin",["Sales by counter","Sales by item","Sales by tender","Margin by item","Price list variance","Hourly footfall"]],
+  ["Production",["Production register","Yield variance","Consumption variance","Theoretical vs actual usage","Wastage analysis","Recipe costing"]],
+  ["Purchasing",["Purchase register","GRN register","Vendor performance","Rate contract compliance","Three-way match exceptions","Open commitment"]],
+  ["Statutory",["GST output register","HSN summary","Purchase register (GST)","Tally / Zoho export","FSSAI batch traceability","Temperature log"]],
+  ["Control",["Cost centre consumption","Days of cover","Reorder exceptions","Audit trail","Approval log","Stock count variance"]]];
+ return head(["Insights","Reports"],"Reports",
+  "Thirty-six reports, every one filterable by location, date, item group and cost centre, and exportable to Excel or PDF.",
+  `<button class="btn gh sm">Scheduled reports</button><button class="btn sm">Build custom report</button>`)
+ +`<div class="card mtop" style="margin-bottom:16px"><div class="card-h"><h3>Day reconciliation — 25 Aug 2026</h3>
+   <span class="sh">the report the whole design exists to make provable</span><span class="pill ok"><i></i>Ties out</span></div>
+   <div class="card-b flush">${tableHTML([{h:"Location"},{h:"Opening",r:1},{h:"Receipts",r:1},{h:"Production",r:1},{h:"Transfers",r:1},{h:"Sales",r:1},{h:"Consumption",r:1},{h:"Wastage",r:1},{h:"Adjustments",r:1},{h:"Closing",r:1},{h:"Check"}],
+    Object.keys(LOC).map(l=>{const c=stockVal(l);
+     return {cells:[`<b style="color:var(--ink)">${LOC[l].n}</b>`,money0(c*0.96),money0(c*0.11),money0(l==="kitchen"?c*.2:0),
+      money0(c*0.04),money0(l==="store"||l==="kitchen"||l==="ward"?0:c*0.09),money0(l==="ward"?c*.06:0),money0(c*0.01),"₹0",
+      `<b>${money0(c)}</b>`,`<span class="pill ok"><i></i>0.00</span>`]};}))}</div></div>
+  <div class="grid g3">${cats.map(([c,rs])=>`<div class="card"><div class="card-h"><h3>${c}</h3><span class="sh">${rs.length}</span></div>
+   <div class="card-b" style="padding:6px 0">${rs.map(r=>`<a href="#" onclick="toast('${r} — opens with location, date and cost-centre filters');return false"
+    style="display:flex;align-items:center;gap:9px;padding:8px 15px;font-size:12.5px;color:var(--ink-2)"
+    onmouseover="this.style.background='var(--surface-2)'" onmouseout="this.style.background=''">
+    ${ico("rep")}<span style="flex:1">${r}</span><span class="mini">→</span></a>`).join("")}</div></div>`).join("")}</div>`;
+}
+function vUsers(){
+ const perms=["dashboard","pos","items","stock","requests","approvals","tickets","production","orders","grn","reports","users"];
+ return head(["Administration","Users & Roles"],"Users &amp; roles",
+  "Sixty named licences. What a role cannot do matters as much as what it can — a purchase officer may never approve their own order, and a counter operator may never touch a price.",
+  `<button class="btn gh sm">Approval matrix</button><button class="btn sm">＋ Invite user</button>`)
+ +`<div class="card">${tbar("Search users…",fsel("Role","All")+fsel("Location")+fsel("Active"),"")}
+   ${tableHTML([{h:"User"},{h:"Role"},{h:"Home location"},{h:"Cost centre"},{h:"Login"},{h:"2FA"},{h:"Last seen"},{h:"Status"}],
+    USERS.map(u=>({cells:[
+     `<div style="display:flex;gap:9px;align-items:center"><span class="av" style="width:28px;height:28px;border-radius:7px;font-size:10px;background:${u.col}">${u.n.split(" ").map(x=>x[0]).slice(0,2).join("")}</span>
+      <span><b style="color:var(--ink)">${u.n}</b><br><span class="mini">${u.e}</span></span></div>`,
+     `<span class="pill ${u.r==="admin"?"ac":u.r==="audit"?"mu":"in"}"><i></i>${u.rl}</span>`,LOC[u.loc].n,`<span class="mono">${LOC[u.loc].cc}</span>`,
+     u.r==="counter"?"Counter PIN":"Email + password",
+     (u.r==="admin"||u.r==="finance")?`<span class="pill ok"><i></i>Enabled</span>`:`<span class="pill mu">Off</span>`,
+     u.id===S.user.id?`<span style="color:var(--good)">Now</span>`:"Today 08:1"+u.id.slice(1),
+     `<span class="pill ok"><i></i>Active</span>`]})))}
+   ${tfoot(8,"8 of 60 licences used")}</div>
+  <div class="card mtop"><div class="card-h"><h3>Permission matrix</h3><span class="sh">module access by role — this is what changes the sidebar you see</span></div>
+   <div class="card-b flush">${tableHTML([{h:"Role"}].concat(perms.map(p=>({h:p.slice(0,7),r:1}))),
+    Object.keys(PERM).map(r=>({cells:[`<b style="color:var(--ink)">${(USERS.find(u=>u.r===r)||{}).rl||cap(r)}</b>`]
+     .concat(perms.map(p=>PERM[r]==="*"||PERM[r].includes(p)
+      ?`<span style="color:var(--good)">●</span>`:`<span style="color:var(--line-strong)">○</span>`))}))
+   )}</div></div>`;
+}
+function vSettings(){
+ const g=(t,rows)=>`<div class="card"><div class="card-h"><h3>${t}</h3></div><div class="card-b" style="padding:4px 0">
+  ${rows.map(r=>`<div style="display:flex;gap:14px;align-items:center;padding:11px 15px;border-bottom:1px solid var(--line-2)">
+   <div style="flex:1"><b style="font-size:12.5px;color:var(--ink)">${r[0]}</b><div class="mini" style="margin-top:2px">${r[1]}</div></div>
+   ${r[2]==="sw"?`<span class="sw ${r[3]?"on":""}"></span>`:`<span class="mono" style="font-size:12px;color:var(--ink-2)">${r[3]}</span>`}</div>`).join("")}
+  </div></div>`;
+ return head(["Administration","Settings"],"Settings","Configuration values, not code. Every threshold below is editable without a release.","")
+ +`<div class="grid g2">
+  ${g("Inventory policy",[["Negative stock","Allow issue beyond available quantity","sw",false],
+    ["Valuation method","How cost is carried through transfers","t","Moving average"],
+    ["Issue rule","Which batch the system proposes first","t","FEFO"],
+    ["Reservation expiry","Uncollected tickets release the stock","t","4 hours"],
+    ["Back-order on partial approval","Remainder waits for the next receipt","sw",true],
+    ["Lateral transfer","Outlets may supply each other directly","sw",true]])}
+  ${g("Approval thresholds",[["Indent second approval","Above this value the HOD also signs","t","₹10,000"],
+    ["PO — Purchase Manager","Single approval band","t","up to ₹25,000"],
+    ["PO — Finance","Second approval band","t","₹25,000 – ₹1,00,000"],
+    ["Wastage auto-approve","Below this the production in-charge alone signs","t","₹500"],
+    ["GRN over-receipt tolerance","Beyond this the receipt is blocked","t","2%"],
+    ["Self-approval","A creator approving their own document","sw",false]])}
+  ${g("Pricing",[["MRP ceiling enforcement","Traded goods can never sell above printed MRP","sw",true],
+    ["Price below cost","Requires Finance approval on made items","sw",true],
+    ["Price list versioning","Effective-dated so old bills stay explainable","sw",true],
+    ["Counter discount limit","Above this a supervisor PIN is required","t","5%"]])}
+  ${g("Compliance — FSSAI Schedule 4",[["Temperature log","Twice daily per cold storage point","sw",true],
+    ["Cleaning schedule","Signed off per shift","sw",true],
+    ["Food handler training expiry","FoSTaC certificate tracking","sw",true],
+    ["Batch traceability","Supplier to plate, retained","t","24 months"],
+    ["Licence renewal reminder","State FSSAI licence","t","60 days before"]])}
+  ${g("Documents & numbering",[["Stock request","Series","t","REQ-YYYY-####"],["Pick ticket","Series","t","TKT-#####"],
+    ["Production batch","Series","t","PRD-YYYYMMDD-##"],["Goods receipt","Series","t","GRN-YYYY-####"],
+    ["Counter bill","Series per outlet","t","CF/####"]])}
+  ${g("Integrations",[["Hospital HIS / patient billing","Post diet and counter charges to the running IP bill","sw",true],
+    ["Payroll — staff credit recovery","Monthly file export","sw",true],
+    ["Tally / Zoho Books","Purchase and sales register export","sw",true],
+    ["Razorpay","Counter UPI and card settlement","sw",true],
+    ["SMS gateway","Approval, ticket and low-stock alerts","sw",true]])}</div>`;
+}
+
+/* ══════════════ DRAWER + RENDER ══════════════ */
+function openD(t,id){S.drawer={t,id};render();}
+function closeD(){S.drawer=null;render();}
+document.addEventListener("keydown",e=>{if(e.key==="Escape"&&S.drawer)closeD();});
+function paintDrawer(){
+ if(!S.drawer){$("layer").innerHTML="";return;}
+ const {t,id}=S.drawer;
+ const d=t==="item"?dItem(id):t==="req"?dReq(id):t==="tkt"?dTkt(id):t==="newreq"?dNewReq():t==="po"?dPO(id):{title:"",body:"",foot:""};
+ $("layer").innerHTML=`<div class="scrim" onclick="closeD()"></div><aside class="drawer" role="dialog" aria-label="${esc(d.title)}">
+  <div class="dr-h"><div class="dt"><h3>${d.title}</h3><p>${d.sub||""}</p></div>
+   <button class="iconbtn" onclick="closeD()" aria-label="Close">
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="m4 4 8 8M12 4l-8 8"/></svg></button></div>
+  <div class="dr-b">${d.body}</div><div class="dr-f">${d.foot}</div></aside>`;
+}
+const VIEWS={dashboard:vDash,pos:vPOS,bills:vBills,items:vItems,stock:vStock,batches:vBatches,adjust:vAdjust,
+ locations:vLocations,pricelists:vPrice,requests:vRequests,approvals:vApprovals,tickets:vTickets,recipes:vRecipes,
+ production:vProduction,requirement:vRequirement,orders:vOrders,grn:vGRN,vendors:vVendors,reports:vReports,
+ users:vUsers,settings:vSettings};
+function render(){
+ if(!S.user)return;
+ if(!canSee(S.route))S.route=HOME[S.user.r];
+ paintNav();
+ $("pg").innerHTML=(VIEWS[S.route]||vDash)();
+ if(S.route==="dashboard")mountLine();
+ paintDrawer();paintToast();
+}
+paintAccts();
+</script>

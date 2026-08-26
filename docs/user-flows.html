@@ -1,0 +1,890 @@
+<title>Eight Roles, One Ledger</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&display=swap">
+<style>
+:root{
+  --ground:#F4F6F5;--surface:#FFFFFF;--surface-2:#EDF1EF;--surface-3:#E4EAE8;
+  --line:#D7DFDC;--line-strong:#B7C4C0;
+  --ink:#141F1D;--ink-2:#42524E;--ink-3:#6E807B;--ink-4:#94A29D;
+  --accent:#0E5C55;--accent-soft:#DCEBE8;--accent-line:#9FCBC4;
+  --a:#1D5B87;--a-soft:#DEE9F3;--b:#A2500F;--b-soft:#F6E7D6;--v:#6A4C93;--v-soft:#E7E1F0;
+  --good:#2C7A51;--good-soft:#DBEDE2;--warn:#846400;--warn-soft:#F4EACC;--crit:#A62B22;--crit-soft:#F6DEDA;
+  --shadow:0 1px 2px rgba(20,31,29,.05),0 6px 20px -12px rgba(20,31,29,.22);
+}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --ground:#0E1513;--surface:#151F1D;--surface-2:#1B2624;--surface-3:#22302C;
+  --line:#283733;--line-strong:#3D4E49;
+  --ink:#E7EEEB;--ink-2:#AEBDB8;--ink-3:#87958F;--ink-4:#6C7A74;
+  --accent:#4FB3A6;--accent-soft:#10332E;--accent-line:#1F5A52;
+  --a:#6EAFDE;--a-soft:#122938;--b:#E09452;--b-soft:#33200E;--v:#A98BD6;--v-soft:#221A33;
+  --good:#5BBF8A;--good-soft:#123023;--warn:#D6B14A;--warn-soft:#2F2810;--crit:#E3776B;--crit-soft:#3A1A16;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px -14px rgba(0,0,0,.8);
+}}
+:root[data-theme="dark"]{
+  --ground:#0E1513;--surface:#151F1D;--surface-2:#1B2624;--surface-3:#22302C;
+  --line:#283733;--line-strong:#3D4E49;
+  --ink:#E7EEEB;--ink-2:#AEBDB8;--ink-3:#87958F;--ink-4:#6C7A74;
+  --accent:#4FB3A6;--accent-soft:#10332E;--accent-line:#1F5A52;
+  --a:#6EAFDE;--a-soft:#122938;--b:#E09452;--b-soft:#33200E;--v:#A98BD6;--v-soft:#221A33;
+  --good:#5BBF8A;--good-soft:#123023;--warn:#D6B14A;--warn-soft:#2F2810;--crit:#E3776B;--crit-soft:#3A1A16;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px -14px rgba(0,0,0,.8);
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);
+  font-family:"Source Serif 4",Georgia,serif;font-size:16.5px;line-height:1.62;-webkit-font-smoothing:antialiased}
+h1,h2,h3,h4,.ui{font-family:Archivo,"Helvetica Neue",Arial,sans-serif}
+code,.mono,.num{font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums}
+a{color:var(--accent)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:3px}
+.wrap{max-width:1280px;margin:0 auto;padding:0 24px}
+.layout{display:block}
+@media(min-width:1120px){.layout{display:grid;grid-template-columns:216px minmax(0,1fr);gap:56px;align-items:start}
+  .rail{position:sticky;top:24px;padding-top:8px}}
+.rail{display:none}
+@media(min-width:1120px){.rail{display:block}}
+.rail ol{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:1px}
+.rail a{display:grid;grid-template-columns:22px 1fr;gap:8px;align-items:baseline;font-family:Archivo,sans-serif;
+  font-size:12.5px;line-height:1.35;color:var(--ink-3);text-decoration:none;padding:6px 8px;border-radius:5px}
+.rail a:hover{color:var(--ink);background:var(--surface-2)}
+.rail a span:first-child{font-family:"IBM Plex Mono",monospace;font-size:10.5px;color:var(--line-strong)}
+.rail-h{font-family:Archivo,sans-serif;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);
+  padding:0 8px 8px;border-bottom:1px solid var(--line);margin:0 0 8px}
+header.mast{border-bottom:1px solid var(--line);background:var(--surface)}
+.mast-in{max-width:1280px;margin:0 auto;padding:44px 24px 38px}
+.eyebrow{font-family:Archivo,sans-serif;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--accent);
+  font-weight:600;margin:0 0 18px}
+h1{font-size:clamp(34px,5.2vw,54px);line-height:1.02;letter-spacing:-.026em;font-weight:700;margin:0 0 18px;
+  text-wrap:balance;max-width:15ch}
+.dek{font-size:18.5px;color:var(--ink-2);max-width:64ch;margin:0 0 26px}
+.meta{display:flex;flex-wrap:wrap;border-top:1px solid var(--line);padding-top:18px}
+.meta div{padding-right:34px;margin-right:34px;border-right:1px solid var(--line)}
+.meta div:last-child{border:0;padding:0;margin:0}
+.meta dt{font-family:Archivo,sans-serif;font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-3);margin:0 0 3px}
+.meta dd{margin:0;font-family:"IBM Plex Mono",monospace;font-size:13px;color:var(--ink)}
+section{padding:58px 0;border-bottom:1px solid var(--line)}
+section:last-of-type{border-bottom:0}
+.sec-head{display:flex;gap:14px;align-items:baseline;margin:0 0 8px}
+.sec-num{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--accent);font-weight:500;padding-top:6px}
+h2{font-size:clamp(25px,3vw,32px);line-height:1.12;letter-spacing:-.02em;font-weight:700;margin:0;text-wrap:balance}
+.sec-sub{color:var(--ink-2);font-size:17px;max-width:66ch;margin:10px 0 28px}
+h3{font-size:18px;line-height:1.3;letter-spacing:-.008em;font-weight:600;margin:36px 0 12px}
+h4{font-size:12.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);margin:22px 0 9px}
+.prose{max-width:70ch}.prose p{margin:0 0 1.05em}
+.f{font-size:15.5px}
+ul.tight{margin:0 0 1em;padding-left:19px;font-size:15.5px;max-width:70ch}
+ul.tight li{margin-bottom:5px}ul.tight li::marker{color:var(--ink-3)}
+.chip{display:inline-flex;align-items:center;gap:5px;font-family:Archivo,sans-serif;font-size:10.5px;font-weight:600;
+  letter-spacing:.07em;text-transform:uppercase;padding:2.5px 7px;border-radius:3px;white-space:nowrap;vertical-align:.08em}
+.chip.a{background:var(--a-soft);color:var(--a)}.chip.b{background:var(--b-soft);color:var(--b)}
+.chip.v{background:var(--v-soft);color:var(--v)}.chip.r{background:var(--surface-3);color:var(--ink-2)}
+.chip.k{background:var(--accent-soft);color:var(--accent)}
+.chip.good{background:var(--good-soft);color:var(--good)}.chip.warn{background:var(--warn-soft);color:var(--warn)}
+.chip.crit{background:var(--crit-soft);color:var(--crit)}
+.tbl-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:8px;background:var(--surface);margin:20px 0}
+table{border-collapse:collapse;width:100%;min-width:620px;font-family:Archivo,sans-serif;font-size:13.5px;line-height:1.45}
+thead th{text-align:left;font-weight:600;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);
+  padding:11px 14px;border-bottom:1px solid var(--line-strong);background:var(--surface-2);white-space:nowrap;vertical-align:bottom}
+thead th.c{text-align:center}
+td{padding:11px 14px;border-bottom:1px solid var(--line);vertical-align:top;color:var(--ink-2)}
+td.c{text-align:center}
+th[scope=row]{text-align:left;padding:11px 14px;border-bottom:1px solid var(--line);vertical-align:top;font-size:13.5px;
+  font-weight:600;color:var(--ink);white-space:nowrap}
+tbody tr:last-child td,tbody tr:last-child th[scope=row]{border-bottom:0}
+td strong{color:var(--ink);font-weight:600}
+.yes{color:var(--good);font-weight:700}.no{color:var(--line-strong)}.ro{color:var(--warn);font-weight:700}
+.cap{font-family:Archivo,sans-serif;font-size:12px;color:var(--ink-3);margin:-8px 0 24px}
+figure{margin:24px 0;border:1px solid var(--line);border-radius:10px;background:var(--surface);padding:20px 20px 14px;overflow-x:auto}
+figure svg{display:block;width:100%;min-width:660px;max-width:920px;height:auto;margin:0 auto;color:var(--ink-2)}
+figcaption{font-family:Archivo,sans-serif;font-size:12.5px;color:var(--ink-3);margin-top:14px;padding-top:12px;
+  border-top:1px solid var(--line);line-height:1.5;max-width:80ch}
+figcaption b{color:var(--ink-2);font-weight:600}
+.nb{fill:var(--surface-2);stroke:var(--line-strong);stroke-width:1.2}
+.nk{fill:var(--accent-soft);stroke:var(--accent);stroke-width:1.5}
+.nl{fill:var(--surface);stroke:var(--line-strong);stroke-width:1.2}
+.lane{fill:var(--surface-2)}
+.lane2{fill:var(--surface-3)}
+.t1{fill:var(--ink);font-family:Archivo,sans-serif;font-size:12.5px;font-weight:600}
+.t2{fill:var(--ink-3);font-family:Archivo,sans-serif;font-size:10.5px}
+.tl{fill:var(--ink-3);font-family:"IBM Plex Mono",monospace;font-size:10px}
+.tk{fill:var(--accent);font-family:"IBM Plex Mono",monospace;font-size:10px;font-weight:600}
+.tn{fill:var(--ink-4);font-family:"IBM Plex Mono",monospace;font-size:9.5px;letter-spacing:.1em}
+.ln{stroke:var(--line-strong);stroke-width:1.4;fill:none}
+.lnk{stroke:var(--accent);stroke-width:1.8;fill:none}
+.lnd{stroke:var(--line-strong);stroke-width:1.4;fill:none;stroke-dasharray:5 4}
+.num-b{fill:var(--accent);}
+.num-t{fill:var(--surface);font-family:"IBM Plex Mono",monospace;font-size:9.5px;font-weight:600}
+.note{border-left:3px solid var(--accent);background:var(--accent-soft);padding:12px 15px;border-radius:0 6px 6px 0;
+  font-size:15px;margin:20px 0;max-width:74ch}
+.note.wb{border-left-color:var(--warn);background:var(--warn-soft)}
+.note.cb{border-left-color:var(--crit);background:var(--crit-soft)}
+.note strong{font-family:Archivo,sans-serif;font-size:12.5px;letter-spacing:.03em;display:block;margin-bottom:3px}
+.roles{display:grid;gap:14px}
+@media(min-width:820px){.roles{grid-template-columns:1fr 1fr}}
+.role{border:1px solid var(--line);border-radius:10px;background:var(--surface);overflow:hidden;box-shadow:var(--shadow)}
+.role-h{padding:13px 16px;border-bottom:1px solid var(--line);background:var(--surface-2);display:flex;gap:11px;align-items:center}
+.role-h .mk{width:32px;height:32px;border-radius:8px;display:grid;place-items:center;color:#fff;flex:none;
+  font-family:"IBM Plex Mono",monospace;font-size:11px;font-weight:600}
+.role-h .rt{flex:1;min-width:0}
+.role-h h3{margin:0;font-size:15px;font-weight:700;letter-spacing:-.012em;line-height:1.2}
+.role-h p{margin:2px 0 0;font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--ink-3)}
+.role-b{padding:15px 16px}
+.role-b p{margin:0 0 10px;font-size:14.5px}
+.lands{display:flex;gap:8px;align-items:baseline;font-family:Archivo,sans-serif;font-size:12.5px;color:var(--ink-3);
+  padding:8px 11px;background:var(--surface-2);border-radius:6px;margin-bottom:13px}
+.lands b{color:var(--accent);font-weight:600}
+.chain{display:flex;flex-wrap:wrap;gap:5px;align-items:center;margin:0 0 14px}
+.chain span.s{font-family:Archivo,sans-serif;font-size:11.5px;font-weight:600;padding:4px 9px;border-radius:5px;
+  background:var(--surface-3);color:var(--ink-2);white-space:nowrap}
+.chain span.s.k{background:var(--accent-soft);color:var(--accent)}
+.chain span.ar{color:var(--ink-4);font-size:11px}
+.role h4{margin:14px 0 6px;font-size:10.5px}
+.role ul{margin:0;padding-left:17px;font-family:Archivo,sans-serif;font-size:12.5px;color:var(--ink-2);line-height:1.5}
+.role ul li{margin-bottom:3px}
+.role .stop{margin-top:12px;padding-top:11px;border-top:1px dashed var(--line);font-family:Archivo,sans-serif;
+  font-size:12px;color:var(--crit);line-height:1.5}
+.steps{counter-reset:st;display:grid;gap:0;border:1px solid var(--line);border-radius:9px;background:var(--surface);overflow:hidden;margin:20px 0}
+.st{display:grid;grid-template-columns:36px 132px 1fr;gap:14px;padding:13px 16px;border-bottom:1px solid var(--line);align-items:start}
+.st:last-child{border-bottom:0}
+.st::before{counter-increment:st;content:counter(st);font-family:"IBM Plex Mono",monospace;font-size:10.5px;
+  color:var(--accent);background:var(--accent-soft);border-radius:5px;width:24px;height:24px;display:grid;place-items:center;font-weight:600}
+.st .who{font-family:Archivo,sans-serif;font-size:12px;font-weight:600;color:var(--ink);line-height:1.3;padding-top:3px}
+.st .who span{display:block;font-family:"IBM Plex Mono",monospace;font-size:10px;color:var(--ink-3);font-weight:400;margin-top:2px}
+.st .wh{font-size:14.5px;color:var(--ink-2);padding-top:2px}
+.st .wh b{color:var(--ink);font-weight:600}
+.st .wh .eff{display:block;margin-top:5px;font-family:"IBM Plex Mono",monospace;font-size:11.5px;color:var(--ink-3)}
+.st .wh .eff em{font-style:normal;color:var(--good)}
+.st .wh .eff s{color:var(--crit);text-decoration:none}
+footer{padding:40px 0 64px;color:var(--ink-3);font-family:Archivo,sans-serif;font-size:12.5px}
+footer p{max-width:74ch;margin:0 0 8px}
+@media(prefers-reduced-motion:no-preference){.rail a{transition:background .12s,color .12s}}
+</style>
+
+<header class="mast"><div class="mast-in">
+  <p class="eyebrow">Royal Care Hospital &middot; F&amp;B Inventory &amp; Billing &middot; User Flow Specification</p>
+  <h1>Eight Roles, One Ledger</h1>
+  <p class="dek">Who signs in, what they see, what they touch, and where each document changes hands. Every arrow in here is a moment when one person finishes and another becomes responsible &mdash; and those handoffs are where systems like this succeed or quietly rot.</p>
+  <dl class="meta">
+    <div><dt>Document</dt><dd>RCH/HIMS/FLW-01 &middot; draft 1</dd></div>
+    <div><dt>Prepared</dt><dd>26-Aug-2026</dd></div>
+    <div><dt>Reads with</dt><dd>UA-01 &middot; SYS-01</dd></div>
+    <div><dt>Status</dt><dd>For client review</dd></div>
+  </dl>
+</div></header>
+
+<div class="wrap layout">
+<nav class="rail" aria-label="Sections"><p class="rail-h">Contents</p><ol>
+  <li><a href="#map"><span>01</span><span>The role map</span></a></li>
+  <li><a href="#day"><span>02</span><span>A day in the building</span></a></li>
+  <li><a href="#roles"><span>03</span><span>The eight roles</span></a></li>
+  <li><a href="#sale"><span>04</span><span>Journey: a sale</span></a></li>
+  <li><a href="#replenish"><span>05</span><span>Journey: running dry</span></a></li>
+  <li><a href="#lateral"><span>06</span><span>Journey: peer transfer</span></a></li>
+  <li><a href="#make"><span>07</span><span>Journey: production</span></a></li>
+  <li><a href="#buy"><span>08</span><span>Journey: buying</span></a></li>
+  <li><a href="#close"><span>09</span><span>Journey: day close</span></a></li>
+  <li><a href="#matrix"><span>10</span><span>Screen &times; role matrix</span></a></li>
+  <li><a href="#states"><span>11</span><span>Document lifecycles</span></a></li>
+  <li><a href="#integrity"><span>12</span><span>Where it breaks</span></a></li>
+</ol></nav>
+
+<main>
+
+<!-- 01 -->
+<section id="map">
+  <div class="sec-head"><span class="sec-num">01</span><h2>The role map</h2></div>
+  <p class="sec-sub">Seven working roles and the documents that pass between them. Read the arrows as responsibility changing hands &mdash; not as data moving.</p>
+
+  <figure>
+    <svg viewBox="0 0 900 600" role="img" aria-label="Role map. The store keeper is the hub: they send a requirement to procurement, who raise a purchase order to vendors, whose goods come back as a goods receipt. The store issues raw materials to production, which sends finished goods to the counter. The counter raises stock requests to the store and receives approvals and pick tickets back. The outlet manager supervises the counter with overrides and price control. Both the store and procurement send documents to finance for three-way matching.">
+      <defs>
+        <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+          <path d="M0 0 L10 5 L0 10 z" fill="currentColor"/></marker>
+        <marker id="ak" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+          <path d="M0 0 L10 5 L0 10 z" fill="var(--accent)"/></marker>
+        <marker id="as" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+          <path d="M10 0 L0 5 L10 10 z" fill="currentColor"/></marker>
+      </defs>
+
+      <rect class="nl" x="370" y="14" width="160" height="56" rx="8"/>
+      <text class="t1" x="450" y="38" text-anchor="middle">Vendors</text>
+      <text class="t2" x="450" y="55" text-anchor="middle">external &middot; rate contracts</text>
+
+      <rect class="nb" x="370" y="112" width="160" height="56" rx="8"/>
+      <text class="t1" x="450" y="136" text-anchor="middle">Procurement</text>
+      <text class="t2" x="450" y="153" text-anchor="middle">Purchase Officer</text>
+
+      <rect class="nk" x="370" y="222" width="160" height="64" rx="8"/>
+      <text class="t1" x="450" y="248" text-anchor="middle">Central Store</text>
+      <text class="t2" x="450" y="265" text-anchor="middle">Store Keeper</text>
+      <text class="tk" x="450" y="279" text-anchor="middle">THE HUB</text>
+
+      <rect class="nb" x="110" y="340" width="160" height="56" rx="8"/>
+      <text class="t1" x="190" y="364" text-anchor="middle">Central Kitchen</text>
+      <text class="t2" x="190" y="381" text-anchor="middle">Production In-charge</text>
+
+      <rect class="nb" x="630" y="340" width="160" height="56" rx="8"/>
+      <text class="t1" x="710" y="364" text-anchor="middle">Outlet Manager</text>
+      <text class="t2" x="710" y="381" text-anchor="middle">supervises the floor</text>
+
+      <rect class="nk" x="630" y="452" width="160" height="56" rx="8"/>
+      <text class="t1" x="710" y="476" text-anchor="middle">Counter</text>
+      <text class="t2" x="710" y="493" text-anchor="middle">Counter Operator</text>
+
+      <rect class="nb" x="370" y="452" width="160" height="56" rx="8"/>
+      <text class="t1" x="450" y="476" text-anchor="middle">Finance</text>
+      <text class="t2" x="450" y="493" text-anchor="middle">Accounts &middot; Administrator</text>
+
+      <path class="ln" d="M430 222 L430 174" marker-end="url(#a)"/>
+      <text class="tl" x="424" y="200" text-anchor="end">requirement &rarr; PR</text>
+
+      <path class="ln" d="M470 112 L470 76" marker-end="url(#a)"/>
+      <text class="tl" x="476" y="96">purchase order</text>
+
+      <path class="ln" d="M530 42 L584 42 L584 250 L536 250" marker-end="url(#a)"/>
+      <text class="tl" x="590" y="150">goods + invoice</text>
+      <text class="tl" x="590" y="163">&rarr; GRN</text>
+
+      <path class="ln" d="M370 262 L310 262 L310 362 L276 362" marker-end="url(#a)"/>
+      <text class="tl" x="316" y="310">issue &middot; raw</text>
+
+      <path class="ln" d="M190 396 L190 534 L690 534 L690 514" marker-end="url(#a)"/>
+      <text class="tl" x="440" y="528" text-anchor="middle">finished goods &middot; pick ticket</text>
+
+      <path class="lnk" d="M630 466 L560 466 L560 240 L536 240" marker-end="url(#ak)"/>
+      <text class="tk" x="566" y="412">stock request</text>
+
+      <path class="lnk" d="M536 268 L592 268 L592 494 L624 494" marker-end="url(#ak)"/>
+      <text class="tk" x="598" y="430">approval &middot; ticket</text>
+
+      <path class="ln" d="M710 396 L710 446" marker-end="url(#a)" marker-start="url(#as)"/>
+      <text class="tl" x="718" y="418">overrides &middot; price</text>
+      <text class="tl" x="718" y="431">cancellations</text>
+
+      <path class="ln" d="M450 286 L450 446" marker-end="url(#a)"/>
+      <text class="tl" x="456" y="360">GRN &rarr; 3-way match</text>
+
+      <path class="ln" d="M370 140 L340 140 L340 480 L364 480" marker-end="url(#a)"/>
+      <text class="tl" x="334" y="300" text-anchor="end">PO for approval</text>
+    </svg>
+    <figcaption><b>The store keeper is the hub, and that is a design choice, not an accident.</b> Every purchase enters through them and every internal movement is authorised by them, so one person can always answer "where is it and who has it". The two teal arrows are the round trip that runs dozens of times a day &mdash; a counter asks, the store answers with an approval and a ticket. Not shown, to keep the picture readable: ward pantries receive consumption issues from the store, the counter sends its day-close tender file to finance, and the auditor reads every document here without writing any of them.</figcaption>
+  </figure>
+
+  <div class="prose">
+    <p>Three properties of this map are worth stating plainly, because they are the ones that will be argued about.</p>
+    <ul class="tight">
+      <li><strong>Nothing enters except through the central store.</strong> No outlet takes a delivery directly from a vendor. It costs a little convenience and buys a single, trustworthy point of entry where batch, expiry, MRP and landed cost are captured once.</li>
+      <li><strong>The counter never talks to procurement.</strong> A shortage at a counter becomes a request to the store; only the store's <em>own</em> shortfall becomes a purchase requisition. That keeps buying decisions in one place and stops five outlets independently ordering milk.</li>
+      <li><strong>Finance approves but never originates.</strong> They see the purchase order for approval and the goods receipt for matching, and they reconcile the day. They cannot raise an indent, a request or a receipt.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- 02 -->
+<section id="day">
+  <div class="sec-head"><span class="sec-num">02</span><h2>A day in the building</h2></div>
+  <p class="sec-sub">The same seven roles laid against the clock. This is the rhythm the software has to fit into &mdash; not the other way round.</p>
+
+  <figure>
+    <svg viewBox="0 0 900 380" role="img" aria-label="Timeline of a working day from five in the morning to eleven at night, showing when each role is active: production runs early batches, the store receives deliveries and issues stock, counters sell all day across two shifts, procurement runs the requirement at mid-morning, and finance reconciles at night.">
+      <defs><marker id="a2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+        <path d="M0 0 L10 5 L0 10 z" fill="currentColor"/></marker></defs>
+
+      <line class="ln" x1="150" y1="44" x2="880" y2="44" marker-end="url(#a2)"/>
+      <text class="tn" x="150" y="26">05:00</text><text class="tn" x="241" y="26">07:00</text>
+      <text class="tn" x="332" y="26">09:00</text><text class="tn" x="423" y="26">11:00</text>
+      <text class="tn" x="514" y="26">13:00</text><text class="tn" x="605" y="26">15:00</text>
+      <text class="tn" x="696" y="26">17:00</text><text class="tn" x="787" y="26">19:00</text>
+      <text class="tn" x="852" y="26">22:00</text>
+
+      <rect class="lane" x="150" y="56" width="730" height="42" rx="4"/>
+      <text class="t1" x="12" y="82">Production</text>
+      <rect class="nk" x="155" y="63" width="150" height="28" rx="5"/>
+      <text class="t2" x="230" y="81" text-anchor="middle">Morning batches</text>
+      <rect class="nb" x="423" y="63" width="96" height="28" rx="5"/>
+      <text class="t2" x="471" y="81" text-anchor="middle">Refill batch</text>
+      <rect class="nb" x="628" y="63" width="96" height="28" rx="5"/>
+      <text class="t2" x="676" y="81" text-anchor="middle">Evening</text>
+
+      <rect class="lane2" x="150" y="104" width="730" height="42" rx="4"/>
+      <text class="t1" x="12" y="130">Store</text>
+      <rect class="nk" x="196" y="111" width="118" height="28" rx="5"/>
+      <text class="t2" x="255" y="129" text-anchor="middle">Receive · GRN</text>
+      <rect class="nb" x="332" y="111" width="118" height="28" rx="5"/>
+      <text class="t2" x="391" y="129" text-anchor="middle">Approve queue</text>
+      <rect class="nb" x="650" y="111" width="118" height="28" rx="5"/>
+      <text class="t2" x="709" y="129" text-anchor="middle">Approve queue</text>
+      <rect class="nb" x="800" y="111" width="76" height="28" rx="5"/>
+      <text class="t2" x="838" y="129" text-anchor="middle">Count</text>
+
+      <rect class="lane" x="150" y="152" width="730" height="42" rx="4"/>
+      <text class="t1" x="12" y="178">Counter</text>
+      <rect class="nk" x="241" y="159" width="590" height="28" rx="5"/>
+      <text class="t2" x="536" y="177" text-anchor="middle">Selling · shift 1 → shift 2 changeover at 14:00 · stock depletes on every bill</text>
+      <rect class="nb" x="831" y="159" width="45" height="28" rx="5"/>
+      <text class="t2" x="853" y="177" text-anchor="middle">Close</text>
+
+      <rect class="lane2" x="150" y="200" width="730" height="42" rx="4"/>
+      <text class="t1" x="12" y="226">Outlet Mgr</text>
+      <rect class="nb" x="332" y="207" width="96" height="28" rx="5"/>
+      <text class="t2" x="380" y="225" text-anchor="middle">Lateral OKs</text>
+      <rect class="nb" x="514" y="207" width="110" height="28" rx="5"/>
+      <text class="t2" x="569" y="225" text-anchor="middle">Price review</text>
+      <rect class="nb" x="796" y="207" width="80" height="28" rx="5"/>
+      <text class="t2" x="836" y="225" text-anchor="middle">Sign off</text>
+
+      <rect class="lane" x="150" y="248" width="730" height="42" rx="4"/>
+      <text class="t1" x="12" y="274">Procurement</text>
+      <rect class="nk" x="378" y="255" width="118" height="28" rx="5"/>
+      <text class="t2" x="437" y="273" text-anchor="middle">Requirement run</text>
+      <rect class="nb" x="505" y="255" width="96" height="28" rx="5"/>
+      <text class="t2" x="553" y="273" text-anchor="middle">PO release</text>
+
+      <rect class="lane2" x="150" y="296" width="730" height="42" rx="4"/>
+      <text class="t1" x="12" y="322">Finance</text>
+      <rect class="nb" x="696" y="303" width="118" height="28" rx="5"/>
+      <text class="t2" x="755" y="321" text-anchor="middle">3-way match</text>
+      <rect class="nk" x="820" y="303" width="56" height="28" rx="5"/>
+      <text class="t2" x="848" y="321" text-anchor="middle">Recon</text>
+
+      <line class="lnd" x1="514" y1="56" x2="514" y2="338"/>
+      <text class="tk" x="518" y="356">shift changeover</text>
+      <line class="lnd" x1="831" y1="56" x2="831" y2="338"/>
+      <text class="tk" x="827" y="356" text-anchor="end">day close begins</text>
+    </svg>
+    <figcaption><b>Two moments carry disproportionate risk.</b> The 14:00 shift changeover is when cash, stock and responsibility all transfer at once, and the 21:30 day close is when unsold short-life stock must be written off rather than quietly carried forward. Teal blocks mark the work that changes the ledger; the rest is review and decision. Note that the store's approval queue is worked twice, deliberately &mdash; a single daily window would leave an afternoon shortage unanswered until the next morning.</figcaption>
+  </figure>
+</section>
+
+<!-- 03 -->
+<section id="roles">
+  <div class="sec-head"><span class="sec-num">03</span><h2>The eight roles</h2></div>
+  <p class="sec-sub">For each one: what they see the moment they sign in, the screens they move through, the loop they repeat all day, and &mdash; just as important &mdash; what the system will not let them do.</p>
+
+  <div class="roles">
+
+    <div class="role"><div class="role-h"><span class="mk" style="background:var(--b)">CO</span>
+      <div class="rt"><h3>Counter Operator</h3><p>~12 users &middot; coffee shop, restaurant, kiosk</p></div></div>
+      <div class="role-b">
+        <div class="lands">Signs in and lands on <b>Point of Sale</b></div>
+        <div class="chain"><span class="s k">Point of Sale</span><span class="ar">→</span><span class="s">Bills</span><span class="ar">→</span>
+          <span class="s">Stock on Hand</span><span class="ar">→</span><span class="s">Stock Requests</span><span class="ar">→</span><span class="s">Pick Tickets</span></div>
+        <p class="f">Signs in with a four-digit PIN against a terminal already bound to an open shift &mdash; a full password at a queue-facing counter is shared within a week. The shift ties the operator, the terminal and the cash drawer together, so every bill has an owner.</p>
+        <p class="f">Their day is one loop: take an order, tap or scan, tender, print. Everything else is interruption &mdash; an item goes dark, they raise a request, and later they collect a ticket.</p>
+        <h4>Decisions they own</h4>
+        <ul><li>What goes on the bill and how it is tendered</li><li>Whether to hold a bill or take the next customer</li><li>Confirming a system-drafted stock request</li><li>Declaring cash at shift open and close</li></ul>
+        <p class="stop"><b>Hard stops.</b> Cannot change a price, exceed the discount limit, cancel a bill alone, edit stock, or open any purchasing screen &mdash; the modules are absent from their sidebar, not merely disabled.</p>
+      </div></div>
+
+    <div class="role"><div class="role-h"><span class="mk" style="background:var(--v)">OM</span>
+      <div class="rt"><h3>Outlet Manager</h3><p>3 users &middot; one per selling outlet</p></div></div>
+      <div class="role-b">
+        <div class="lands">Signs in and lands on <b>Point of Sale</b>, with approvals badged</div>
+        <div class="chain"><span class="s">Point of Sale</span><span class="ar">→</span><span class="s k">Approvals</span><span class="ar">→</span>
+          <span class="s">Price Lists</span><span class="ar">→</span><span class="s">Stock on Hand</span><span class="ar">→</span><span class="s">Bills</span><span class="ar">→</span><span class="s">Reports</span></div>
+        <p class="f">The supervisor on the floor. They can do everything a counter operator can, plus the things an operator is deliberately barred from: authorising a discount above the limit, cancelling a bill, and overriding an item's availability when a machine breaks rather than when stock runs out.</p>
+        <p class="f">Their distinctive power is <strong>approving a lateral request</strong> &mdash; when another outlet asks for stock this outlet is holding, the decision is theirs, not the store's.</p>
+        <h4>Decisions they own</h4>
+        <ul><li>Giving away their own stock to a peer outlet</li><li>Selling price within the approved band</li><li>Discounts, cancellations and complimentary items</li><li>Signing off the outlet's day close and cash variance</li></ul>
+        <p class="stop"><b>Hard stops.</b> Cannot receive from a vendor, raise a purchase order, or set a price above a batch's printed MRP &mdash; that last one no role can do.</p>
+      </div></div>
+
+    <div class="role"><div class="role-h"><span class="mk" style="background:var(--a)">SK</span>
+      <div class="rt"><h3>Store Keeper</h3><p>6 users &middot; central and kitchen stores</p></div></div>
+      <div class="role-b">
+        <div class="lands">Signs in and lands on <b>Approvals</b></div>
+        <div class="chain"><span class="s k">Approvals</span><span class="ar">→</span><span class="s">Pick Tickets</span><span class="ar">→</span>
+          <span class="s">Goods Receipt</span><span class="ar">→</span><span class="s">Batches &amp; Expiry</span><span class="ar">→</span>
+          <span class="s">Requirement</span><span class="ar">→</span><span class="s">Adjustments</span></div>
+        <p class="f">The busiest role and the hub of the map. Deliveries land in the morning and become goods receipts with batch, manufacturing date, expiry, MRP and a quality decision. Requests arrive all day and become approvals, reservations and tickets. Stock leaves on a scan.</p>
+        <p class="f">They land on the approval queue rather than a dashboard because a waiting request is a counter that cannot sell.</p>
+        <h4>Decisions they own</h4>
+        <ul><li>How much of a request to grant, line by line</li><li>Accept, partially accept or reject a delivery at quality check</li><li>Which batch is issued when overriding the FEFO proposal</li><li>What the requirement list should actually say before it goes to procurement</li></ul>
+        <p class="stop"><b>Hard stops.</b> Cannot change a purchase rate, approve their own stock adjustment, or sell anything. Receiving into a store they are not assigned to is not offered at all.</p>
+      </div></div>
+
+    <div class="role"><div class="role-h"><span class="mk" style="background:var(--good)">PI</span>
+      <div class="rt"><h3>Production In-charge</h3><p>4 users &middot; central kitchen</p></div></div>
+      <div class="role-b">
+        <div class="lands">Signs in and lands on <b>Production</b></div>
+        <div class="chain"><span class="s k">Production</span><span class="ar">→</span><span class="s">Recipes</span><span class="ar">→</span>
+          <span class="s">Stock on Hand</span><span class="ar">→</span><span class="s">Stock Requests</span><span class="ar">→</span><span class="s">Pick Tickets</span></div>
+        <p class="f">Opens the day against a production plan. The screen shows each planned item with its recipe exploded into required quantities and a straight yes or no on whether the kitchen holds enough. Short of something, they raise a request to the store before the ovens are on.</p>
+        <p class="f">Closing a batch is the single most consequential action in the system: raw materials leave stock, finished goods appear with a batch number and a best-before, and a unit cost is computed that every downstream price decision leans on.</p>
+        <h4>Decisions they own</h4>
+        <ul><li>Batch size, and whether to open at all</li><li>Actual consumption against the recipe, with a reason for any variance</li><li>Recorded yield, rejects and production wastage</li><li>Pushing finished goods out to the outlets</li></ul>
+        <p class="stop"><b>Hard stops.</b> Cannot set the selling price of what they produce, and cannot close a batch with an unexplained consumption variance.</p>
+      </div></div>
+
+    <div class="role"><div class="role-h"><span class="mk" style="background:#8A4A0C">PO</span>
+      <div class="rt"><h3>Purchase Officer</h3><p>3 users &middot; procurement</p></div></div>
+      <div class="role-b">
+        <div class="lands">Signs in and lands on <b>Requirement</b></div>
+        <div class="chain"><span class="s k">Requirement</span><span class="ar">→</span><span class="s">Vendors</span><span class="ar">→</span>
+          <span class="s">Purchase Orders</span><span class="ar">→</span><span class="s">Goods Receipt</span><span class="ar">→</span><span class="s">Reports</span></div>
+        <p class="f">Never types a shopping list. The requirement arrives computed &mdash; stock netted against reorder point, unfulfilled requests, the production plan exploded through recipes, and trailing consumption &mdash; grouped by vendor with the arithmetic visible on every line.</p>
+        <p class="f">Their work is sourcing: rate contract lookup, three quotes compared for anything off contract, vendor chosen and the choice justified in writing.</p>
+        <h4>Decisions they own</h4>
+        <ul><li>Which vendor, and why, when a rate contract does not cover it</li><li>Order quantity after pack-size and minimum-order rounding</li><li>Delivery date and terms</li><li>Chasing short supply and short-closing an order</li></ul>
+        <p class="stop"><b>Hard stops.</b> Cannot approve their own purchase order at any value, and cannot post a goods receipt &mdash; ordering and receiving are deliberately different people.</p>
+      </div></div>
+
+    <div class="role"><div class="role-h"><span class="mk" style="background:#155E75">FA</span>
+      <div class="rt"><h3>Finance &amp; Accounts</h3><p>4 users</p></div></div>
+      <div class="role-b">
+        <div class="lands">Signs in and lands on <b>Reports</b></div>
+        <div class="chain"><span class="s k">Reports</span><span class="ar">→</span><span class="s">Purchase Orders</span><span class="ar">→</span>
+          <span class="s">Goods Receipt</span><span class="ar">→</span><span class="s">Vendors</span><span class="ar">→</span><span class="s">Bills</span><span class="ar">→</span><span class="s">Price Lists</span></div>
+        <p class="f">Two jobs. During the day they approve purchase orders that cross the value slab and clear three-way match exceptions where the vendor invoice, the order and the receipt disagree. At night they reconcile: counter tender against system tender, UPI and card settlement against the bank.</p>
+        <p class="f">They also hold the second approval on any selling price that falls below computed cost, which is the control that stops non-MRP pricing drifting quietly into loss.</p>
+        <h4>Decisions they own</h4>
+        <ul><li>Purchase order approval above &#8377;25,000</li><li>Releasing payment, or holding it on a mismatch</li><li>Accepting a below-cost price</li><li>Signing the day's reconciliation</li></ul>
+        <p class="stop"><b>Hard stops.</b> Cannot raise an indent, a request, or a goods receipt. Approves and reconciles; never originates.</p>
+      </div></div>
+
+    <div class="role"><div class="role-h"><span class="mk" style="background:var(--accent)">AD</span>
+      <div class="rt"><h3>Administrator</h3><p>2 users &middot; IT</p></div></div>
+      <div class="role-b">
+        <div class="lands">Signs in and lands on <b>Dashboard</b> &mdash; all twenty modules visible</div>
+        <div class="chain"><span class="s k">Dashboard</span><span class="ar">→</span><span class="s">Items</span><span class="ar">→</span>
+          <span class="s">Locations</span><span class="ar">→</span><span class="s">Users &amp; Roles</span><span class="ar">→</span><span class="s">Settings</span></div>
+        <p class="f">Maintains the master data every other role depends on: items and their type flags, units and conversions, locations and their behaviour, tax codes, document numbering, the approval matrix and the period lock. Signs in with a password plus a one-time code, because these are the screens that can change what everyone else is allowed to do.</p>
+        <h4>Decisions they own</h4>
+        <ul><li>Item master and the type flag that governs every screen</li><li>Who holds which role, and at which location</li><li>Approval thresholds and reservation expiry</li><li>Opening and closing the financial period</li></ul>
+        <p class="stop"><b>Hard stops.</b> Deliberately excluded from transacting &mdash; cannot post a bill or approve a purchase order. Segregation of duties applies to the person who configures the rules more than to anyone else.</p>
+      </div></div>
+
+    <div class="role"><div class="role-h"><span class="mk" style="background:var(--ink-3)">AU</span>
+      <div class="rt"><h3>Auditor</h3><p>read only &middot; management and internal audit</p></div></div>
+      <div class="role-b">
+        <div class="lands">Signs in and lands on <b>Dashboard</b></div>
+        <div class="chain"><span class="s k">Dashboard</span><span class="ar">→</span><span class="s">Reports</span><span class="ar">→</span>
+          <span class="s">Items</span><span class="ar">→</span><span class="s">Stock on Hand</span><span class="ar">→</span><span class="s">Batches &amp; Expiry</span><span class="ar">→</span><span class="s">Bills</span></div>
+        <p class="f">Sees everything and changes nothing. Every dashboard, every report, the full audit trail including reversals and overrides, and export to Excel and PDF.</p>
+        <p class="f">The role exists so that "let me just give them my login" never becomes the answer to an audit request &mdash; which is how transaction rights quietly spread through an organisation.</p>
+        <h4>What they look for</h4>
+        <ul><li>Adjustments clustered around one person or one item</li><li>Overrides of the FEFO proposal without a good reason</li><li>Cash variances that repeat on the same shift</li><li>Wastage rising faster than sales</li></ul>
+        <p class="stop"><b>Hard stops.</b> No transaction rights of any kind, anywhere, at any value.</p>
+      </div></div>
+
+    <div class="role"><div class="role-h"><span class="mk" style="background:#7A5C1F">DT</span>
+      <div class="rt"><h3>Dietitian</h3><p>3 users &middot; if patient diet is in scope &mdash; see UA-01 Q1</p></div></div>
+      <div class="role-b">
+        <div class="lands">Signs in and lands on <b>Ward census</b></div>
+        <div class="chain"><span class="s k">Ward census</span><span class="ar">→</span><span class="s">Diet plans</span><span class="ar">→</span>
+          <span class="s">Meal count</span><span class="ar">→</span><span class="s">Consumption posting</span></div>
+        <p class="f">Confirms meal counts per diet type against the ward census for each meal cycle, which deducts finished goods from the kitchen and posts either a diet charge to the patient's running bill or a cost to the ward cost centre.</p>
+        <p class="f">Shown here in outline because whether this role lives in this module or in the separate HIMS diet module is still an open question.</p>
+        <p class="stop"><b>Hard stops.</b> Handles no cash and no stock directly &mdash; only confirms counts, which the system turns into movements.</p>
+      </div></div>
+
+  </div>
+</section>
+
+<!-- 04 -->
+<section id="sale">
+  <div class="sec-head"><span class="sec-num">04</span><h2>Journey: a customer buys a coffee</h2></div>
+  <p class="sec-sub">Thirty seconds at a counter, and the shortest path in the system. Everything else in this document exists so that this one stays fast and stays true.</p>
+
+  <figure>
+    <svg viewBox="0 0 900 300" role="img" aria-label="Swimlane flow of a counter sale across three lanes: customer, counter operator and system. The customer orders, the operator adds items, the system resolves the price against the price list and MRP ceiling, the operator takes payment, the system deducts stock by recipe and posts revenue and tax, and the customer receives the bill.">
+      <defs><marker id="b1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+        <path d="M0 0 L10 5 L0 10 z" fill="currentColor"/></marker></defs>
+      <rect class="lane"  x="130" y="40"  width="760" height="66" rx="5"/>
+      <rect class="lane2" x="130" y="114" width="760" height="66" rx="5"/>
+      <rect class="lane"  x="130" y="188" width="760" height="66" rx="5"/>
+      <text class="t1" x="10" y="78">Customer</text>
+      <text class="t1" x="10" y="152">Counter Op</text>
+      <text class="t1" x="10" y="226">System</text>
+
+      <rect class="nb" x="142" y="50" width="112" height="46" rx="6"/>
+      <circle class="num-b" cx="152" cy="60" r="8"/><text class="num-t" x="152" y="63.5" text-anchor="middle">1</text>
+      <text class="t2" x="198" y="76" text-anchor="middle">Orders at</text><text class="t2" x="198" y="89" text-anchor="middle">the counter</text>
+
+      <rect class="nk" x="268" y="124" width="112" height="46" rx="6"/>
+      <circle class="num-b" cx="278" cy="134" r="8"/><text class="num-t" x="278" y="137.5" text-anchor="middle">2</text>
+      <text class="t2" x="324" y="150" text-anchor="middle">Tap tile or</text><text class="t2" x="324" y="163" text-anchor="middle">scan barcode</text>
+
+      <rect class="nb" x="394" y="198" width="112" height="46" rx="6"/>
+      <circle class="num-b" cx="404" cy="208" r="8"/><text class="num-t" x="404" y="211.5" text-anchor="middle">3</text>
+      <text class="t2" x="450" y="224" text-anchor="middle">Price resolved</text><text class="t2" x="450" y="237" text-anchor="middle">MRP ceiling held</text>
+
+      <rect class="nk" x="520" y="124" width="112" height="46" rx="6"/>
+      <circle class="num-b" cx="530" cy="134" r="8"/><text class="num-t" x="530" y="137.5" text-anchor="middle">4</text>
+      <text class="t2" x="576" y="150" text-anchor="middle">Tender &mdash; cash,</text><text class="t2" x="576" y="163" text-anchor="middle">UPI, IP bill</text>
+
+      <rect class="nk" x="646" y="198" width="112" height="46" rx="6"/>
+      <circle class="num-b" cx="656" cy="208" r="8"/><text class="num-t" x="656" y="211.5" text-anchor="middle">5</text>
+      <text class="t2" x="702" y="224" text-anchor="middle">Stock out, tax</text><text class="t2" x="702" y="237" text-anchor="middle">and cost posted</text>
+
+      <rect class="nb" x="772" y="50" width="112" height="46" rx="6"/>
+      <circle class="num-b" cx="782" cy="60" r="8"/><text class="num-t" x="782" y="63.5" text-anchor="middle">6</text>
+      <text class="t2" x="828" y="76" text-anchor="middle">Bill printed,</text><text class="t2" x="828" y="89" text-anchor="middle">walks away</text>
+
+      <path class="ln" d="M254 73 L261 73 L261 147 L262 147" marker-end="url(#b1)"/>
+      <path class="ln" d="M380 147 L387 147 L387 221 L388 221" marker-end="url(#b1)"/>
+      <path class="ln" d="M506 221 L513 221 L513 147 L514 147" marker-end="url(#b1)"/>
+      <path class="ln" d="M632 147 L639 147 L639 221 L640 221" marker-end="url(#b1)"/>
+      <path class="ln" d="M758 221 L765 221 L765 73 L766 73" marker-end="url(#b1)"/>
+
+      <text class="tk" x="450" y="278" text-anchor="middle">a made-to-order drink deducts milk, beans, sugar and a cup &mdash; not &ldquo;one cappuccino&rdquo;</text>
+    </svg>
+    <figcaption><b>Step 5 is where the two halves of the system meet.</b> A traded item deducts one unit of itself; a made-to-order item deducts its recipe lines from that counter's own stock. Raw materials for a finished good like a puff are <em>not</em> touched here &mdash; they left at production. Deducting them again would double-count, and the day reconciliation would never tie.</figcaption>
+  </figure>
+</section>
+
+<!-- 05 -->
+<section id="replenish">
+  <div class="sec-head"><span class="sec-num">05</span><h2>Journey: a counter runs dry</h2></div>
+  <p class="sec-sub">The loop that runs dozens of times a day and touches four roles. If only one flow in this document gets tested properly, make it this one.</p>
+
+  <figure>
+    <svg viewBox="0 0 900 340" role="img" aria-label="Swimlane flow of counter replenishment across three lanes: system, counter operator and store keeper. The system detects low stock and drafts a request, the counter submits it, the store keeper reviews available-to-promise and approves a partial quantity issuing a ticket, the counter scans to collect and again to receive, and the system switches the menu item back on.">
+      <defs><marker id="b2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+        <path d="M0 0 L10 5 L0 10 z" fill="currentColor"/></marker>
+        <marker id="b2k" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+        <path d="M0 0 L10 5 L0 10 z" fill="var(--accent)"/></marker></defs>
+      <rect class="lane"  x="130" y="40"  width="760" height="66" rx="5"/>
+      <rect class="lane2" x="130" y="114" width="760" height="66" rx="5"/>
+      <rect class="lane"  x="130" y="188" width="760" height="66" rx="5"/>
+      <text class="t1" x="10" y="78">System</text>
+      <text class="t1" x="10" y="152">Counter Op</text>
+      <text class="t1" x="10" y="226">Store Keeper</text>
+
+      <rect class="nb" x="142" y="50" width="112" height="46" rx="6"/>
+      <circle class="num-b" cx="152" cy="60" r="8"/><text class="num-t" x="152" y="63.5" text-anchor="middle">1</text>
+      <text class="t2" x="198" y="76" text-anchor="middle">Milk hits zero</text><text class="t2" x="198" y="89" text-anchor="middle">drink goes dark</text>
+
+      <rect class="nb" x="268" y="124" width="112" height="46" rx="6"/>
+      <circle class="num-b" cx="278" cy="134" r="8"/><text class="num-t" x="278" y="137.5" text-anchor="middle">2</text>
+      <text class="t2" x="324" y="150" text-anchor="middle">Confirms draft,</text><text class="t2" x="324" y="163" text-anchor="middle">asks for 20 L</text>
+
+      <rect class="nb" x="394" y="198" width="112" height="46" rx="6"/>
+      <circle class="num-b" cx="404" cy="208" r="8"/><text class="num-t" x="404" y="211.5" text-anchor="middle">3</text>
+      <text class="t2" x="450" y="224" text-anchor="middle">Opens queue,</text><text class="t2" x="450" y="237" text-anchor="middle">sees 12 available</text>
+
+      <rect class="nk" x="520" y="198" width="112" height="46" rx="6"/>
+      <circle class="num-b" cx="530" cy="208" r="8"/><text class="num-t" x="530" y="211.5" text-anchor="middle">4</text>
+      <text class="t2" x="576" y="224" text-anchor="middle">Grants 12 &mdash; ticket</text><text class="t2" x="576" y="237" text-anchor="middle">8 back-ordered</text>
+
+      <rect class="nk" x="646" y="124" width="112" height="46" rx="6"/>
+      <circle class="num-b" cx="656" cy="134" r="8"/><text class="num-t" x="656" y="137.5" text-anchor="middle">5</text>
+      <text class="t2" x="702" y="150" text-anchor="middle">Scans at store,</text><text class="t2" x="702" y="163" text-anchor="middle">scans at counter</text>
+
+      <rect class="nk" x="772" y="50" width="112" height="46" rx="6"/>
+      <circle class="num-b" cx="782" cy="60" r="8"/><text class="num-t" x="782" y="63.5" text-anchor="middle">6</text>
+      <text class="t2" x="828" y="76" text-anchor="middle">Drink switches</text><text class="t2" x="828" y="89" text-anchor="middle">back on</text>
+
+      <path class="ln" d="M254 73 L261 73 L261 147 L262 147" marker-end="url(#b2)"/>
+      <path class="ln" d="M380 147 L387 147 L387 221 L388 221" marker-end="url(#b2)"/>
+      <path class="ln" d="M506 221 L514 221" marker-end="url(#b2)"/>
+      <path class="lnk" d="M632 221 L639 221 L639 147 L640 147" marker-end="url(#b2k)"/>
+      <path class="lnk" d="M758 147 L765 147 L765 73 L766 73" marker-end="url(#b2k)"/>
+
+      <line class="lnd" x1="639" y1="112" x2="639" y2="264"/>
+      <text class="tk" x="645" y="286">stock physically moves here &mdash; not at step 4</text>
+      <text class="tl" x="450" y="308" text-anchor="middle">the 8 litres not granted stay open, and reawaken when the next delivery is received</text>
+    </svg>
+    <figcaption><b>Approval authorises; the scan moves.</b> Step 4 reserves twelve litres so no second counter can be promised them, and issues a ticket for twelve &mdash; never for the twenty that were asked. Between the two scans in step 5 the stock is in transit, owned by neither location, which is how a shortfall on arrival becomes a visible discrepancy instead of a silent loss.</figcaption>
+  </figure>
+</section>
+
+<!-- 06 -->
+<section id="lateral">
+  <div class="sec-head"><span class="sec-num">06</span><h2>Journey: one counter supplies another</h2></div>
+  <p class="sec-sub">Four in the afternoon, the store is shut, and the restaurant two floors down has what the coffee shop needs. This is the movement most likely to happen off the books unless the recorded path is the easy one.</p>
+
+  <figure>
+    <svg viewBox="0 0 900 300" role="img" aria-label="Swimlane flow of a lateral transfer across three lanes: requesting counter, giving outlet manager and system. The counter selects a peer outlet as the source, the system routes the request to that outlet's manager rather than the store, the manager approves from their own stock, a ticket is issued, and the two counters scan out and in while the central store is notified.">
+      <defs><marker id="b3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+        <path d="M0 0 L10 5 L0 10 z" fill="currentColor"/></marker></defs>
+      <rect class="lane"  x="130" y="40"  width="760" height="66" rx="5"/>
+      <rect class="lane2" x="130" y="114" width="760" height="66" rx="5"/>
+      <rect class="lane"  x="130" y="188" width="760" height="66" rx="5"/>
+      <text class="t1" x="10" y="72">Coffee Shop</text><text class="t2" x="10" y="86">asking</text>
+      <text class="t1" x="10" y="146">Restaurant</text><text class="t2" x="10" y="160">giving</text>
+      <text class="t1" x="10" y="226">System</text>
+
+      <rect class="nb" x="142" y="50" width="112" height="46" rx="6"/>
+      <circle class="num-b" cx="152" cy="60" r="8"/><text class="num-t" x="152" y="63.5" text-anchor="middle">1</text>
+      <text class="t2" x="198" y="76" text-anchor="middle">Picks Restaurant</text><text class="t2" x="198" y="89" text-anchor="middle">as the source</text>
+
+      <rect class="nb" x="268" y="198" width="112" height="46" rx="6"/>
+      <circle class="num-b" cx="278" cy="208" r="8"/><text class="num-t" x="278" y="211.5" text-anchor="middle">2</text>
+      <text class="t2" x="324" y="224" text-anchor="middle">Routes to that</text><text class="t2" x="324" y="237" text-anchor="middle">outlet's manager</text>
+
+      <rect class="nk" x="394" y="124" width="112" height="46" rx="6"/>
+      <circle class="num-b" cx="404" cy="134" r="8"/><text class="num-t" x="404" y="137.5" text-anchor="middle">3</text>
+      <text class="t2" x="450" y="150" text-anchor="middle">Manager grants</text><text class="t2" x="450" y="163" text-anchor="middle">6 of their 14 L</text>
+
+      <rect class="nb" x="520" y="198" width="112" height="46" rx="6"/>
+      <circle class="num-b" cx="530" cy="208" r="8"/><text class="num-t" x="530" y="211.5" text-anchor="middle">4</text>
+      <text class="t2" x="576" y="224" text-anchor="middle">Ticket issued,</text><text class="t2" x="576" y="237" text-anchor="middle">store notified</text>
+
+      <rect class="nk" x="646" y="124" width="112" height="46" rx="6"/>
+      <circle class="num-b" cx="656" cy="134" r="8"/><text class="num-t" x="656" y="137.5" text-anchor="middle">5</text>
+      <text class="t2" x="702" y="150" text-anchor="middle">Scan out</text><text class="t2" x="702" y="163" text-anchor="middle">at Floor 1</text>
+
+      <rect class="nk" x="772" y="50" width="112" height="46" rx="6"/>
+      <circle class="num-b" cx="782" cy="60" r="8"/><text class="num-t" x="782" y="63.5" text-anchor="middle">6</text>
+      <text class="t2" x="828" y="76" text-anchor="middle">Scan in</text><text class="t2" x="828" y="89" text-anchor="middle">at Floor 3</text>
+
+      <path class="ln" d="M254 73 L261 73 L261 221 L262 221" marker-end="url(#b3)"/>
+      <path class="ln" d="M380 221 L387 221 L387 147 L388 147" marker-end="url(#b3)"/>
+      <path class="ln" d="M506 147 L513 147 L513 221 L514 221" marker-end="url(#b3)"/>
+      <path class="ln" d="M632 221 L639 221 L639 147 L640 147" marker-end="url(#b3)"/>
+      <path class="ln" d="M758 147 L765 147 L765 73 L766 73" marker-end="url(#b3)"/>
+
+      <text class="tk" x="450" y="278" text-anchor="middle">the store keeper never approves this &mdash; they are only told it happened</text>
+    </svg>
+    <figcaption><b>The giving outlet holds the consent.</b> Central store approval would be meaningless here because the store no longer owns the stock; the manager being asked to give up six litres is the one with something to lose. The store is notified so the movement still lands in a single ledger rather than becoming a private arrangement between two counters &mdash; which is exactly what happens today with a phone call.</figcaption>
+  </figure>
+
+  <div class="note"><strong>Exchange is the same document, both ways at once</strong>When two outlets swap &mdash; four litres of milk one way, two kilos of beans the other &mdash; both legs post in a single transaction. Two independent transfers would leave a window where one outlet has given stock away and not yet received anything, and if the second half is forgotten the books stay wrong with nobody chasing it.</div>
+</section>
+
+<!-- 07 -->
+<section id="make">
+  <div class="sec-head"><span class="sec-num">07</span><h2>Journey: production morning</h2></div>
+  <p class="sec-sub">Half past five, and the day's puffs and sandwiches do not exist yet. This is the flow that turns raw materials into something with a price.</p>
+
+  <figure>
+    <svg viewBox="0 0 900 340" role="img" aria-label="Swimlane flow of a production morning across three lanes: production in-charge, store keeper and system. The in-charge opens the plan, the system explodes recipes and flags a shortage, a request goes to the store which issues raw materials on a ticket, the in-charge closes the batch consuming raws and creating finished goods with a best-before and unit cost, and pushes them out to the outlets.">
+      <defs><marker id="b4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+        <path d="M0 0 L10 5 L0 10 z" fill="currentColor"/></marker>
+        <marker id="b4k" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+        <path d="M0 0 L10 5 L0 10 z" fill="var(--accent)"/></marker></defs>
+      <rect class="lane"  x="130" y="40"  width="760" height="66" rx="5"/>
+      <rect class="lane2" x="130" y="114" width="760" height="66" rx="5"/>
+      <rect class="lane"  x="130" y="188" width="760" height="66" rx="5"/>
+      <text class="t1" x="10" y="78">Production</text>
+      <text class="t1" x="10" y="152">Store Keeper</text>
+      <text class="t1" x="10" y="226">System</text>
+
+      <rect class="nb" x="142" y="50" width="112" height="46" rx="6"/>
+      <circle class="num-b" cx="152" cy="60" r="8"/><text class="num-t" x="152" y="63.5" text-anchor="middle">1</text>
+      <text class="t2" x="198" y="76" text-anchor="middle">Opens plan:</text><text class="t2" x="198" y="89" text-anchor="middle">120 puffs, 60 sand.</text>
+
+      <rect class="nb" x="268" y="198" width="112" height="46" rx="6"/>
+      <circle class="num-b" cx="278" cy="208" r="8"/><text class="num-t" x="278" y="211.5" text-anchor="middle">2</text>
+      <text class="t2" x="324" y="224" text-anchor="middle">Explodes recipes,</text><text class="t2" x="324" y="237" text-anchor="middle">flags short maida</text>
+
+      <rect class="nb" x="394" y="124" width="112" height="46" rx="6"/>
+      <circle class="num-b" cx="404" cy="134" r="8"/><text class="num-t" x="404" y="137.5" text-anchor="middle">3</text>
+      <text class="t2" x="450" y="150" text-anchor="middle">Issues raw on</text><text class="t2" x="450" y="163" text-anchor="middle">a ticket, FEFO</text>
+
+      <rect class="nk" x="520" y="50" width="112" height="46" rx="6"/>
+      <circle class="num-b" cx="530" cy="60" r="8"/><text class="num-t" x="530" y="63.5" text-anchor="middle">4</text>
+      <text class="t2" x="576" y="76" text-anchor="middle">Closes batch:</text><text class="t2" x="576" y="89" text-anchor="middle">116 of 120</text>
+
+      <rect class="nk" x="646" y="198" width="112" height="46" rx="6"/>
+      <circle class="num-b" cx="656" cy="208" r="8"/><text class="num-t" x="656" y="211.5" text-anchor="middle">5</text>
+      <text class="t2" x="702" y="224" text-anchor="middle">Raw out, goods in,</text><text class="t2" x="702" y="237" text-anchor="middle">cost rolled up</text>
+
+      <rect class="nk" x="772" y="50" width="112" height="46" rx="6"/>
+      <circle class="num-b" cx="782" cy="60" r="8"/><text class="num-t" x="782" y="63.5" text-anchor="middle">6</text>
+      <text class="t2" x="828" y="76" text-anchor="middle">Pushes out</text><text class="t2" x="828" y="89" text-anchor="middle">to outlets</text>
+
+      <path class="ln" d="M254 73 L261 73 L261 221 L262 221" marker-end="url(#b4)"/>
+      <path class="ln" d="M380 221 L387 221 L387 147 L388 147" marker-end="url(#b4)"/>
+      <path class="ln" d="M506 147 L513 147 L513 73 L514 73" marker-end="url(#b4)"/>
+      <path class="lnk" d="M632 73 L639 73 L639 221 L640 221" marker-end="url(#b4k)"/>
+      <path class="lnk" d="M758 221 L765 221 L765 73 L766 73" marker-end="url(#b4k)"/>
+
+      <text class="tk" x="450" y="278" text-anchor="middle">yield 116 of 120 planned &mdash; &minus;3.3%, reason code required before the batch will close</text>
+      <text class="tl" x="450" y="300" text-anchor="middle">unit cost &#8377;17.79 &rarr; sells at &#8377;25 on list A, &#8377;30 on list B &rarr; margin 28.8% and 40.7%</text>
+    </svg>
+    <figcaption><b>Step 5 is the only place in the system where stock changes species.</b> Maida, oil, filling and butter leave; veg puffs arrive, carrying a batch number, a best-before twelve hours out, and a computed unit cost that every price decision downstream leans on. The variance between what the recipe said and what was actually used is captured here and nowhere else &mdash; skip it, and theoretical-versus-actual can never be measured.</figcaption>
+  </figure>
+</section>
+
+<!-- 08 -->
+<section id="buy">
+  <div class="sec-head"><span class="sec-num">08</span><h2>Journey: buying what ran out</h2></div>
+  <p class="sec-sub">Four roles, an external party, and the longest chain in the system. Its distinguishing feature is that it starts with a computation, not with someone's opinion.</p>
+
+  <figure>
+    <svg viewBox="0 0 900 380" role="img" aria-label="Swimlane flow of procurement across four lanes: store keeper, procurement, finance and vendor. The store reviews a computed requirement and submits a purchase requisition, procurement sources and raises a purchase order, finance approves it by value slab, the vendor delivers, the store posts a goods receipt with batch and expiry which reawakens back-orders, and finance completes the three-way match.">
+      <defs><marker id="b5" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+        <path d="M0 0 L10 5 L0 10 z" fill="currentColor"/></marker>
+        <marker id="b5k" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+        <path d="M0 0 L10 5 L0 10 z" fill="var(--accent)"/></marker></defs>
+      <rect class="lane"  x="130" y="40"  width="760" height="60" rx="5"/>
+      <rect class="lane2" x="130" y="108" width="760" height="60" rx="5"/>
+      <rect class="lane"  x="130" y="176" width="760" height="60" rx="5"/>
+      <rect class="lane2" x="130" y="244" width="760" height="60" rx="5"/>
+      <text class="t1" x="10" y="76">Store</text>
+      <text class="t1" x="10" y="144">Procurement</text>
+      <text class="t1" x="10" y="212">Finance</text>
+      <text class="t1" x="10" y="280">Vendor</text>
+
+      <rect class="nb" x="142" y="47" width="112" height="46" rx="6"/>
+      <circle class="num-b" cx="152" cy="57" r="8"/><text class="num-t" x="152" y="60.5" text-anchor="middle">1</text>
+      <text class="t2" x="198" y="73" text-anchor="middle">Reviews computed</text><text class="t2" x="198" y="86" text-anchor="middle">requirement &rarr; PR</text>
+
+      <rect class="nb" x="268" y="115" width="112" height="46" rx="6"/>
+      <circle class="num-b" cx="278" cy="125" r="8"/><text class="num-t" x="278" y="128.5" text-anchor="middle">2</text>
+      <text class="t2" x="324" y="141" text-anchor="middle">Sources: contract</text><text class="t2" x="324" y="154" text-anchor="middle">or three quotes</text>
+
+      <rect class="nb" x="394" y="183" width="112" height="46" rx="6"/>
+      <circle class="num-b" cx="404" cy="193" r="8"/><text class="num-t" x="404" y="196.5" text-anchor="middle">3</text>
+      <text class="t2" x="450" y="209" text-anchor="middle">Approves by slab</text><text class="t2" x="450" y="222" text-anchor="middle">&mdash; not the raiser</text>
+
+      <rect class="nb" x="520" y="251" width="112" height="46" rx="6"/>
+      <circle class="num-b" cx="530" cy="261" r="8"/><text class="num-t" x="530" y="264.5" text-anchor="middle">4</text>
+      <text class="t2" x="576" y="277" text-anchor="middle">Delivers against</text><text class="t2" x="576" y="290" text-anchor="middle">the order</text>
+
+      <rect class="nk" x="646" y="47" width="112" height="46" rx="6"/>
+      <circle class="num-b" cx="656" cy="57" r="8"/><text class="num-t" x="656" y="60.5" text-anchor="middle">5</text>
+      <text class="t2" x="702" y="73" text-anchor="middle">GRN: batch, expiry,</text><text class="t2" x="702" y="86" text-anchor="middle">MRP, quality check</text>
+
+      <rect class="nk" x="772" y="183" width="112" height="46" rx="6"/>
+      <circle class="num-b" cx="782" cy="193" r="8"/><text class="num-t" x="782" y="196.5" text-anchor="middle">6</text>
+      <text class="t2" x="828" y="209" text-anchor="middle">3-way match,</text><text class="t2" x="828" y="222" text-anchor="middle">payment released</text>
+
+      <path class="ln" d="M254 70 L261 70 L261 138 L262 138" marker-end="url(#b5)"/>
+      <path class="ln" d="M380 138 L387 138 L387 206 L388 206" marker-end="url(#b5)"/>
+      <path class="ln" d="M506 206 L513 206 L513 274 L514 274" marker-end="url(#b5)"/>
+      <path class="lnk" d="M632 274 L639 274 L639 70 L640 70" marker-end="url(#b5k)"/>
+      <path class="ln" d="M758 70 L765 70 L765 206 L766 206" marker-end="url(#b5)"/>
+
+      <path class="lnd" d="M702 93 L702 330 L198 330 L198 100" marker-end="url(#b5)"/>
+      <text class="tk" x="450" y="326" text-anchor="middle">back-orders on this item reawaken &mdash; the counter is told its request can now be filled</text>
+      <text class="tl" x="450" y="352" text-anchor="middle">up to &#8377;25,000 Purchase Manager &middot; &#8377;25,000&ndash;1,00,000 Finance &middot; above that the Director</text>
+    </svg>
+    <figcaption><b>The dashed return path is the step most systems miss.</b> A request that could not be filled parks as a back-order linked to the requisition, the requisition to the order, and the order to the receipt. When goods land, the counter that asked three days ago is told automatically. Without that chain, unfulfilled requests die quietly and every shortage gets requested three separate times.</figcaption>
+  </figure>
+</section>
+
+<!-- 09 -->
+<section id="close">
+  <div class="sec-head"><span class="sec-num">09</span><h2>Journey: closing the day</h2></div>
+  <p class="sec-sub">The stage most systems skip, and the one that makes the whole ledger true. At close of business the counter must be emptied on screen the same way it is emptied physically.</p>
+
+  <div class="steps">
+    <div class="st"><div class="who">Counter Operator<span>21:30 · POS</span></div>
+      <div class="wh">Stops taking orders and opens shift close. The screen lists everything still on the counter, split by whether it survives the night.
+        <span class="eff">Class A traded goods &rarr; roll over &nbsp;·&nbsp; Class B short-life &rarr; must be cleared</span></div></div>
+    <div class="st"><div class="who">Counter Operator<span>21:35 · Adjustments</span></div>
+      <div class="wh">Records <b>wastage</b> for unsold short-life stock with a reason code. Nine puffs at &#8377;17.79 go to the wastage account, not into tomorrow's opening stock.
+        <span class="eff"><s>&minus; 9 nos</s> counter &nbsp;&rarr;&nbsp; <em>+ &#8377;160.11</em> wastage &nbsp;·&nbsp; closing stock for that item is now zero</span></div></div>
+    <div class="st"><div class="who">Counter Operator<span>21:40 · POS</span></div>
+      <div class="wh">Declares cash in the drawer. The system compares it against the tender recorded across the shift and records the difference &mdash; a variance is explained, never absorbed.
+        <span class="eff">declared &#8377;18,420 &nbsp;·&nbsp; system &#8377;18,460 &nbsp;·&nbsp; variance &minus;&#8377;40 with a note</span></div></div>
+    <div class="st"><div class="who">Outlet Manager<span>21:45 · Approvals</span></div>
+      <div class="wh">Signs off the wastage and the cash variance. Above the auto-approve threshold both need a second pair of eyes, which is the whole point of having a supervisor on the floor.</div></div>
+    <div class="st"><div class="who">System<span>21:45</span></div>
+      <div class="wh">Locks the shift. From here a bill can no longer be cancelled &mdash; it can only be reversed by a credit note, which is a different document with its own approval.
+        <span class="eff">day locked against back-dated entry</span></div></div>
+    <div class="st"><div class="who">Finance<span>22:00 · Reports</span></div>
+      <div class="wh">Reconciles UPI and card settlement against the tender report, then runs the day reconciliation across every location.
+        <span class="eff">opening + receipts + production &minus; issues &minus; sales &minus; consumption &minus; wastage &plusmn; adjustments = closing</span></div></div>
+  </div>
+
+  <div class="note wb"><strong>Why wastage is made deliberately visible rather than convenient</strong>It would be easy to let unsold stock roll forward silently, and every counter would prefer it. But the daily wastage value per outlet is the single most useful signal you will get about whether the production plan matches real demand &mdash; a sandwich sell-through under 70% for four days running means the kitchen is making too many, and no other number tells you that.</div>
+</section>
+
+<!-- 10 -->
+<section id="matrix">
+  <div class="sec-head"><span class="sec-num">10</span><h2>Screen &times; role matrix</h2></div>
+  <p class="sec-sub">Which of the twenty modules each role can reach. This is not cosmetic &mdash; a module a role cannot use is absent from their sidebar entirely, and a direct link to it is refused and logged.</p>
+  <div class="tbl-wrap"><table>
+    <thead><tr><th style="width:20%">Module</th><th class="c">Counter</th><th class="c">Outlet Mgr</th><th class="c">Store</th>
+      <th class="c">Production</th><th class="c">Purchase</th><th class="c">Finance</th><th class="c">Admin</th><th class="c">Auditor</th></tr></thead>
+    <tbody>
+      <tr><th scope="row">Dashboard</th><td class="c"><span class="yes">●</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="ro">◐</span></td></tr>
+      <tr><th scope="row">Point of Sale</th><td class="c"><span class="yes">●</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="no">○</span></td></tr>
+      <tr><th scope="row">Bills</th><td class="c"><span class="yes">●</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="ro">◐</span></td></tr>
+      <tr><th scope="row">Items</th><td class="c"><span class="ro">◐</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="ro">◐</span></td></tr>
+      <tr><th scope="row">Stock on Hand</th><td class="c"><span class="ro">◐</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="ro">◐</span></td></tr>
+      <tr><th scope="row">Batches &amp; Expiry</th><td class="c"><span class="no">○</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="ro">◐</span></td></tr>
+      <tr><th scope="row">Adjustments</th><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="no">○</span></td></tr>
+      <tr><th scope="row">Locations</th><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="no">○</span></td></tr>
+      <tr><th scope="row">Price Lists</th><td class="c"><span class="no">○</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="no">○</span></td></tr>
+      <tr><th scope="row">Stock Requests</th><td class="c"><span class="yes">●</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="no">○</span></td></tr>
+      <tr><th scope="row">Approvals</th><td class="c"><span class="no">○</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="no">○</span></td></tr>
+      <tr><th scope="row">Pick Tickets</th><td class="c"><span class="yes">●</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="no">○</span></td></tr>
+      <tr><th scope="row">Recipes</th><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="no">○</span></td></tr>
+      <tr><th scope="row">Production</th><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="no">○</span></td></tr>
+      <tr><th scope="row">Requirement</th><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="no">○</span></td></tr>
+      <tr><th scope="row">Purchase Orders</th><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="no">○</span></td></tr>
+      <tr><th scope="row">Goods Receipt</th><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="ro">◐</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="no">○</span></td></tr>
+      <tr><th scope="row">Vendors</th><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="no">○</span></td></tr>
+      <tr><th scope="row">Reports</th><td class="c"><span class="no">○</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="yes">●</span></td></tr>
+      <tr><th scope="row">Users &amp; Roles</th><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="no">○</span></td></tr>
+      <tr><th scope="row">Settings</th><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="no">○</span></td></tr>
+    </tbody>
+  </table></div>
+  <p class="cap"><span class="yes">●</span> full access &nbsp;·&nbsp; <span class="ro">◐</span> read only &nbsp;·&nbsp; <span class="no">○</span> not in the sidebar at all. The Purchase Officer's read-only access to Goods Receipt lets them see what arrived without being able to post it.</p>
+</section>
+
+<!-- 11 -->
+<section id="states">
+  <div class="sec-head"><span class="sec-num">11</span><h2>Document lifecycles</h2></div>
+  <p class="sec-sub">Four documents carry the system. Each has a fixed set of states, and each state names who is holding it.</p>
+
+  <h3>Stock request</h3>
+  <div class="chain"><span class="s">Draft</span><span class="ar">→</span><span class="s">Submitted</span><span class="ar">→</span>
+    <span class="s">Under review</span><span class="ar">→</span><span class="s k">Approved / Partial</span><span class="ar">→</span>
+    <span class="s">Ticket issued</span><span class="ar">→</span><span class="s">Picked</span><span class="ar">→</span>
+    <span class="s">In transit</span><span class="ar">→</span><span class="s">Received</span><span class="ar">→</span><span class="s">Closed</span></div>
+  <div class="prose"><p class="f">Branches: <strong>Rejected</strong> at the decision, which issues no ticket at all. <strong>Part closed</strong> when a partial approval is fully collected but a back-order is still open. A reservation that is never collected <strong>expires</strong> and the stock returns to available.</p></div>
+
+  <h3>Pick ticket</h3>
+  <div class="chain"><span class="s">Issued</span><span class="ar">→</span><span class="s k">Picked &mdash; source debited</span><span class="ar">→</span>
+    <span class="s">In transit</span><span class="ar">→</span><span class="s k">Received &mdash; destination credited</span><span class="ar">→</span><span class="s">Closed</span></div>
+  <div class="prose"><p class="f">Branches: <strong>Short received</strong> when the quantity scanned in is less than the quantity scanned out, which raises a discrepancy with an owner rather than balancing itself. <strong>Expired</strong> if never collected inside the reservation window.</p></div>
+
+  <h3>Production batch</h3>
+  <div class="chain"><span class="s">Planned</span><span class="ar">→</span><span class="s">Open</span><span class="ar">→</span>
+    <span class="s">Consumption recorded</span><span class="ar">→</span><span class="s k">Closed &mdash; goods created</span><span class="ar">→</span><span class="s">Labelled</span></div>
+  <div class="prose"><p class="f">A batch cannot close with an unexplained consumption or yield variance. Once closed it cannot be edited &mdash; a mistake is corrected by an adjustment against the batch, which keeps the variance history honest.</p></div>
+
+  <h3>Purchase order</h3>
+  <div class="chain"><span class="s">Draft</span><span class="ar">→</span><span class="s">Pending approval</span><span class="ar">→</span>
+    <span class="s">Approved</span><span class="ar">→</span><span class="s">Sent to vendor</span><span class="ar">→</span>
+    <span class="s">Partially received</span><span class="ar">→</span><span class="s k">Received</span><span class="ar">→</span>
+    <span class="s">Matched</span><span class="ar">→</span><span class="s">Paid</span></div>
+  <div class="prose"><p class="f">Branches: <strong>Returned for revision</strong> with a reason, <strong>Short closed</strong> when the balance will never arrive, and <strong>Held</strong> when the vendor invoice disagrees with the order or the receipt.</p></div>
+
+  <div class="note"><strong>One rule spans all four</strong>Nothing is ever deleted and no posted quantity is ever edited. A correction is a new document that reverses the old one and carries its identifier. That is what makes the day reconciliation in &sect;09 provable rather than merely hoped for.</div>
+</section>
+
+<!-- 12 -->
+<section id="integrity">
+  <div class="sec-head"><span class="sec-num">12</span><h2>Where it breaks</h2></div>
+  <p class="sec-sub">Every handoff in this document is a place where a person can decide the software is slower than a phone call. These are the six most likely, what happens next, and what the design does about it.</p>
+
+  <div class="tbl-wrap"><table>
+    <thead><tr><th style="width:22%">The shortcut</th><th style="width:30%">What goes wrong</th><th>What the design does</th></tr></thead>
+    <tbody>
+      <tr><th scope="row">Stock handed over without a ticket</th>
+        <td>Source shows stock it no longer has, destination sells what the system says it does not hold. Both counters' figures are wrong and neither knows.</td>
+        <td>The ticket, not the approval, is what opens the store room. A supervisor override exists for out-of-hours, but it generates the ticket retrospectively and is logged as an override.</td></tr>
+      <tr><th scope="row">Receiving scan skipped</th>
+        <td>Quantity sits in transit forever. It belongs to nobody, so nobody chases it.</td>
+        <td>In-transit items over a threshold appear on the store keeper's control screen as <em>stuck</em>, with the ticket, the time and the person who picked it.</td></tr>
+      <tr><th scope="row">Production entered after the fact</th>
+        <td>Raw material consumption is guessed at the end of the shift, so variance is meaningless and the unit cost behind every price is fiction.</td>
+        <td>Finished goods cannot exist without a closed batch. Nothing can be issued to an outlet that the kitchen never recorded making.</td></tr>
+      <tr><th scope="row">Wastage rolled forward instead of written off</th>
+        <td>Closing stock is permanently overstated, yesterday's sandwiches never expire, and the production plan is never corrected.</td>
+        <td>Shift close will not complete while short-life stock remains on the counter. The entry is required; only its reason is a choice.</td></tr>
+      <tr><th scope="row">FEFO proposal overridden habitually</th>
+        <td>Old batches sit at the back until they expire, and the expiry write-off is blamed on demand rather than on picking.</td>
+        <td>Every override carries a reason and lands on the issue document. A report ranks overrides by person, which makes the pattern visible without anyone having to accuse anyone.</td></tr>
+      <tr><th scope="row">One login shared across a counter</th>
+        <td>The audit trail names a person who was not there. Cash variance cannot be attributed, so it stops being investigated.</td>
+        <td>Counter access is a PIN bound to an open shift, so signing in is cheap enough that sharing has no benefit. The shift ties operator, terminal and drawer together.</td></tr>
+    </tbody>
+  </table></div>
+
+  <div class="note cb"><strong>The one that matters most</strong>Of the six, the ticket is the load-bearing one. If stock moves between floors without a document, nothing downstream in this design works &mdash; not the availability calculation, not the reconciliation, not the wastage number, not the requirement run. Everything else in these three documents assumes that every physical movement has a scan behind it. That assumption is worth defending in training more than any feature is worth building.</div>
+</section>
+
+<footer>
+  <p>Prepared for Royal Care Hospital by Hashtricks Technologies. Reads alongside <b>Indent to Counter</b> (UA-01), which carries the two product classes and the twenty-four acceptance scenarios, and <b>One Store, Many Counters</b> (SYS-01), which carries the platform decision, the building topology and the data model.</p>
+  <p>Mark up any role whose day does not match how the hospital actually works &mdash; particularly the outlet manager's authority over lateral transfers, and whether the dietitian belongs in this module at all. Those two answers change the flows above more than anything else on this page.</p>
+</footer>
+
+</main></div>

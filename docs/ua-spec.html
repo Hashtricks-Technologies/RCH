@@ -1,0 +1,1126 @@
+<title>Indent to Counter</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&display=swap">
+
+<style>
+:root{
+  --ground:#F4F6F5; --surface:#FFFFFF; --surface-2:#EDF1EF; --surface-3:#E4EAE8;
+  --line:#D7DFDC; --line-strong:#B7C4C0;
+  --ink:#141F1D; --ink-2:#42524E; --ink-3:#6E807B;
+  --accent:#0E5C55; --accent-soft:#DCEBE8;
+  --a:#1D5B87; --a-soft:#DEE9F3;
+  --b:#A2500F; --b-soft:#F6E7D6;
+  --good:#2C7A51; --good-soft:#DBEDE2;
+  --warn:#846400; --warn-soft:#F4EACC;
+  --crit:#A62B22; --crit-soft:#F6DEDA;
+  --shadow:0 1px 2px rgba(20,31,29,.05), 0 6px 20px -12px rgba(20,31,29,.22);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --ground:#0E1513; --surface:#151F1D; --surface-2:#1B2624; --surface-3:#22302C;
+    --line:#283733; --line-strong:#3D4E49;
+    --ink:#E7EEEB; --ink-2:#AEBDB8; --ink-3:#87968F;
+    --accent:#4FB3A6; --accent-soft:#10332E;
+    --a:#6EAFDE; --a-soft:#122938;
+    --b:#E09452; --b-soft:#33200E;
+    --good:#5BBF8A; --good-soft:#123023;
+    --warn:#D6B14A; --warn-soft:#2F2810;
+    --crit:#E3776B; --crit-soft:#381915;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px -14px rgba(0,0,0,.8);
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#0E1513; --surface:#151F1D; --surface-2:#1B2624; --surface-3:#22302C;
+  --line:#283733; --line-strong:#3D4E49;
+  --ink:#E7EEEB; --ink-2:#AEBDB8; --ink-3:#87968F;
+  --accent:#4FB3A6; --accent-soft:#10332E;
+  --a:#6EAFDE; --a-soft:#122938;
+  --b:#E09452; --b-soft:#33200E;
+  --good:#5BBF8A; --good-soft:#123023;
+  --warn:#D6B14A; --warn-soft:#2F2810;
+  --crit:#E3776B; --crit-soft:#381915;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px -14px rgba(0,0,0,.8);
+}
+
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--ground); color:var(--ink);
+  font-family:"Source Serif 4",Georgia,serif; font-size:16.5px; line-height:1.62;
+  -webkit-font-smoothing:antialiased;
+}
+h1,h2,h3,h4,.ui{font-family:Archivo,"Helvetica Neue",Arial,sans-serif}
+code,.mono,.num{font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums}
+a{color:var(--accent)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:3px}
+
+/* ---------- shell ---------- */
+.wrap{max-width:1280px;margin:0 auto;padding:0 24px}
+.layout{display:block}
+@media(min-width:1120px){
+  .layout{display:grid;grid-template-columns:216px minmax(0,1fr);gap:56px;align-items:start}
+  .rail{position:sticky;top:24px;padding-top:8px}
+}
+.rail{display:none}
+@media(min-width:1120px){.rail{display:block}}
+.rail ol{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:1px}
+.rail a{
+  display:grid;grid-template-columns:22px 1fr;gap:8px;align-items:baseline;
+  font-family:Archivo,sans-serif;font-size:12.5px;line-height:1.35;letter-spacing:.005em;
+  color:var(--ink-3);text-decoration:none;padding:6px 8px;border-radius:5px;
+}
+.rail a:hover{color:var(--ink);background:var(--surface-2)}
+.rail a span:first-child{font-family:"IBM Plex Mono",monospace;font-size:10.5px;color:var(--line-strong)}
+.rail .rail-h{font-family:Archivo,sans-serif;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);padding:0 8px 8px;border-bottom:1px solid var(--line);margin-bottom:8px}
+
+.col{max-width:none}
+.prose{max-width:70ch}
+.prose p{margin:0 0 1.05em}
+
+/* ---------- masthead ---------- */
+header.mast{border-bottom:1px solid var(--line);background:var(--surface);}
+.mast-in{max-width:1280px;margin:0 auto;padding:44px 24px 38px}
+.eyebrow{font-family:Archivo,sans-serif;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--accent);font-weight:600;margin:0 0 18px}
+h1{
+  font-size:clamp(34px,5.2vw,54px);line-height:1.02;letter-spacing:-.026em;font-weight:700;
+  margin:0 0 18px;text-wrap:balance;max-width:16ch;
+}
+h1 em{font-style:normal;color:var(--ink-3);font-weight:400}
+.dek{font-size:18.5px;color:var(--ink-2);max-width:62ch;margin:0 0 26px}
+.meta{display:flex;flex-wrap:wrap;gap:0;border-top:1px solid var(--line);padding-top:18px}
+.meta div{padding-right:34px;margin-right:34px;border-right:1px solid var(--line)}
+.meta div:last-child{border-right:0}
+.meta dt{font-family:Archivo,sans-serif;font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-3);margin:0 0 3px}
+.meta dd{margin:0;font-family:"IBM Plex Mono",monospace;font-size:13px;color:var(--ink)}
+
+/* ---------- sections ---------- */
+section{padding:60px 0;border-bottom:1px solid var(--line)}
+section:last-of-type{border-bottom:0}
+.sec-head{display:flex;gap:14px;align-items:baseline;margin:0 0 8px}
+.sec-num{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--accent);font-weight:500;padding-top:6px}
+h2{font-size:clamp(25px,3vw,32px);line-height:1.12;letter-spacing:-.02em;font-weight:700;margin:0;text-wrap:balance}
+.sec-sub{color:var(--ink-2);font-size:17px;max-width:66ch;margin:10px 0 30px}
+h3{font-size:18px;line-height:1.3;letter-spacing:-.008em;font-weight:600;margin:38px 0 12px}
+h4{font-size:13px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);margin:26px 0 10px}
+
+/* ---------- chips ---------- */
+.chip{display:inline-flex;align-items:center;gap:5px;font-family:Archivo,sans-serif;font-size:10.5px;font-weight:600;
+  letter-spacing:.07em;text-transform:uppercase;padding:2.5px 7px;border-radius:3px;white-space:nowrap;vertical-align:.08em}
+.chip.a{background:var(--a-soft);color:var(--a)}
+.chip.b{background:var(--b-soft);color:var(--b)}
+.chip.r{background:var(--surface-3);color:var(--ink-2)}
+.chip.new{background:var(--accent-soft);color:var(--accent)}
+.chip.good{background:var(--good-soft);color:var(--good)}
+.chip.warn{background:var(--warn-soft);color:var(--warn)}
+.chip.crit{background:var(--crit-soft);color:var(--crit)}
+
+/* ---------- tables ---------- */
+.tbl-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:8px;background:var(--surface);margin:20px 0}
+table{border-collapse:collapse;width:100%;min-width:640px;font-family:Archivo,sans-serif;font-size:13.5px;line-height:1.45}
+thead th{
+  text-align:left;font-weight:600;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);
+  padding:11px 14px;border-bottom:1px solid var(--line-strong);background:var(--surface-2);white-space:nowrap;vertical-align:bottom}
+td{padding:11px 14px;border-bottom:1px solid var(--line);vertical-align:top;color:var(--ink-2)}
+tbody tr:last-child td{border-bottom:0}
+td strong,th[scope="row"]{color:var(--ink);font-weight:600}
+th[scope="row"]{text-align:left;padding:11px 14px;border-bottom:1px solid var(--line);vertical-align:top;font-size:13.5px;font-weight:600;color:var(--ink)}
+tbody tr:last-child th[scope="row"]{border-bottom:0}
+td.num,td .num{font-family:"IBM Plex Mono",monospace;font-size:12.5px}
+.tbl-a th[scope="row"]{border-left:3px solid transparent}
+.compare td:nth-child(2){background:color-mix(in srgb,var(--a-soft) 45%,transparent)}
+.compare td:nth-child(3){background:color-mix(in srgb,var(--b-soft) 45%,transparent)}
+.compare thead th:nth-child(2){color:var(--a)}
+.compare thead th:nth-child(3){color:var(--b)}
+.cap{font-family:Archivo,sans-serif;font-size:12px;color:var(--ink-3);margin:-8px 0 24px}
+
+/* ---------- stage rail (overview strip) ---------- */
+.strip{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(126px,1fr);gap:0;overflow-x:auto;
+  border:1px solid var(--line);border-radius:8px;background:var(--surface);margin:26px 0 8px}
+.strip div{padding:13px 13px 15px;border-right:1px solid var(--line);min-width:126px}
+.strip div:last-child{border-right:0}
+.strip .n{font-family:"IBM Plex Mono",monospace;font-size:10.5px;color:var(--ink-3);display:block;margin-bottom:6px}
+.strip .t{font-family:Archivo,sans-serif;font-size:12.5px;font-weight:600;line-height:1.25;display:block;letter-spacing:-.005em}
+.strip .s{font-family:Archivo,sans-serif;font-size:10.5px;color:var(--ink-3);display:block;margin-top:5px;line-height:1.3}
+.strip div.added{background:var(--accent-soft)}
+.strip div.added .t{color:var(--accent)}
+
+/* ---------- stage cards ---------- */
+.stage{border:1px solid var(--line);border-radius:10px;background:var(--surface);margin:0 0 16px;overflow:hidden;box-shadow:var(--shadow)}
+.stage-h{display:flex;gap:14px;align-items:flex-start;padding:16px 18px;border-bottom:1px solid var(--line);background:var(--surface-2)}
+.stage-n{font-family:"IBM Plex Mono",monospace;font-size:11px;font-weight:600;color:var(--surface);background:var(--accent);
+  width:26px;height:26px;border-radius:5px;display:grid;place-items:center;flex:none;margin-top:1px}
+.stage.is-new .stage-n{background:var(--b)}
+.stage-t{flex:1;min-width:0}
+.stage-t h3{margin:0;font-size:17px}
+.stage-t p{margin:3px 0 0;font-family:Archivo,sans-serif;font-size:12.5px;color:var(--ink-3)}
+.stage-tags{display:flex;gap:6px;flex-wrap:wrap;align-items:center;padding-top:2px}
+.stage-b{padding:18px}
+.grid2{display:grid;gap:22px}
+@media(min-width:760px){.grid2{grid-template-columns:1fr 1fr}}
+.grid2 p{margin:0 0 .8em}
+.stage-b p:last-child{margin-bottom:0}
+.f{font-size:15.5px}
+ul.tight{margin:0;padding-left:19px;font-size:15.5px}
+ul.tight li{margin-bottom:5px}
+ul.tight li::marker{color:var(--ink-3)}
+
+/* ledger block */
+.ledger{background:var(--surface-2);border:1px solid var(--line);border-radius:7px;padding:12px 14px;margin:0}
+.ledger .lh{font-family:Archivo,sans-serif;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);margin:0 0 9px}
+.ledger table{min-width:0;width:100%;font-family:"IBM Plex Mono",monospace;font-size:12px}
+.ledger td{padding:3px 0;border:0;color:var(--ink-2)}
+.ledger td:nth-child(2){text-align:right;white-space:nowrap;padding-left:12px;font-weight:500}
+.plus{color:var(--good)}
+.minus{color:var(--crit)}
+.zero{color:var(--ink-3)}
+
+.note{border-left:3px solid var(--accent);background:var(--accent-soft);padding:12px 15px;border-radius:0 6px 6px 0;font-size:15px;margin:20px 0}
+.note.warnbox{border-left-color:var(--warn);background:var(--warn-soft)}
+.note strong{font-family:Archivo,sans-serif;font-size:12.5px;letter-spacing:.03em;display:block;margin-bottom:3px}
+
+/* ---------- screen mockups ---------- */
+.screens{display:grid;gap:26px}
+@media(min-width:900px){.screens.two{grid-template-columns:1fr 1fr}}
+.screen{border:1px solid var(--line-strong);border-radius:9px;overflow:hidden;background:var(--surface);box-shadow:var(--shadow);
+  font-family:Archivo,sans-serif;font-size:11.5px;line-height:1.4}
+.sc-chrome{display:flex;align-items:center;gap:9px;padding:8px 11px;background:var(--surface-3);border-bottom:1px solid var(--line)}
+.dots{display:flex;gap:4px}.dots i{width:7px;height:7px;border-radius:50%;background:var(--line-strong);display:block}
+.sc-path{font-family:"IBM Plex Mono",monospace;font-size:10.5px;color:var(--ink-3);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sc-user{font-size:9.5px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--accent);background:var(--accent-soft);padding:2px 6px;border-radius:3px;white-space:nowrap}
+.sc-body{padding:13px}
+.sc-title{font-size:13.5px;font-weight:700;letter-spacing:-.01em;margin:0 0 2px;color:var(--ink)}
+.sc-sub{font-family:"IBM Plex Mono",monospace;font-size:10.5px;color:var(--ink-3);margin:0 0 12px}
+.fields{display:grid;gap:8px;grid-template-columns:repeat(auto-fit,minmax(112px,1fr));margin-bottom:12px}
+.fld{border:1px solid var(--line);border-radius:5px;padding:5px 8px;background:var(--surface-2);min-width:0}
+.fld b{display:block;font-size:9px;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-3);font-weight:600;margin-bottom:2px}
+.fld span{font-family:"IBM Plex Mono",monospace;font-size:11.5px;color:var(--ink);display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sc-tbl{width:100%;border-collapse:collapse;min-width:0;font-size:11px}
+.sc-tbl th{font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);text-align:left;padding:5px 7px;border-bottom:1px solid var(--line-strong);background:transparent;white-space:nowrap}
+.sc-tbl td{padding:6px 7px;border-bottom:1px solid var(--line);font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--ink-2);white-space:nowrap}
+.sc-tbl td.w{white-space:normal;font-family:Archivo,sans-serif;font-size:11.5px;color:var(--ink)}
+.sc-tbl .r{text-align:right}
+.sc-scroll{overflow-x:auto;margin:0 -13px;padding:0 13px}
+.btnrow{display:flex;gap:7px;flex-wrap:wrap;margin-top:13px}
+.btn{font-size:11px;font-weight:600;padding:6px 12px;border-radius:5px;background:var(--accent);color:#fff;letter-spacing:.01em}
+:root[data-theme="dark"] .btn{color:#08201D}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]) .btn{color:#08201D}}
+.btn.ghost{background:transparent;color:var(--ink-2);border:1px solid var(--line-strong)}
+.tile{border:1px solid var(--line);border-radius:6px;padding:9px 10px;background:var(--surface-2)}
+.tile b{display:block;font-size:9px;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-3);margin-bottom:4px}
+.tile .v{font-family:"IBM Plex Mono",monospace;font-size:18px;font-weight:600;color:var(--ink);letter-spacing:-.02em;line-height:1}
+.tile .d{font-size:10px;color:var(--ink-3);margin-top:4px}
+.tiles{display:grid;gap:8px;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));margin-bottom:12px}
+.alertline{display:flex;gap:8px;align-items:baseline;padding:6px 9px;border-radius:5px;font-size:11px;margin-bottom:5px}
+.alertline.w{background:var(--warn-soft);color:var(--warn)}
+.alertline.c{background:var(--crit-soft);color:var(--crit)}
+.alertline.g{background:var(--good-soft);color:var(--good)}
+.alertline .k{font-family:"IBM Plex Mono",monospace;font-size:10px;font-weight:600;flex:none}
+.split{display:grid;gap:11px}
+@media(min-width:520px){.split{grid-template-columns:1.55fr 1fr}}
+.pay{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:9px}
+.pay div{border:1px solid var(--line-strong);border-radius:5px;padding:7px 4px;text-align:center;font-size:10.5px;font-weight:600;color:var(--ink-2)}
+.pay div.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+:root[data-theme="dark"] .pay div.on{color:#08201D}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]) .pay div.on{color:#08201D}}
+.totrow{display:flex;justify-content:space-between;font-family:"IBM Plex Mono",monospace;font-size:11.5px;padding:3px 0;color:var(--ink-2)}
+.totrow.big{font-size:16px;font-weight:600;color:var(--ink);border-top:1px solid var(--line-strong);margin-top:6px;padding-top:8px}
+
+/* ---------- role cards ---------- */
+.roles{display:grid;gap:12px}
+@media(min-width:700px){.roles{grid-template-columns:1fr 1fr}}
+@media(min-width:1000px){.roles{grid-template-columns:1fr 1fr 1fr}}
+.role{border:1px solid var(--line);border-radius:8px;background:var(--surface);padding:14px 15px}
+.role h4{margin:0 0 2px;font-size:14px;letter-spacing:-.005em;text-transform:none;color:var(--ink);font-weight:600}
+.role .who{font-family:"IBM Plex Mono",monospace;font-size:10.5px;color:var(--ink-3);margin:0 0 9px}
+.role ul{margin:0;padding-left:16px;font-family:Archivo,sans-serif;font-size:12.5px;color:var(--ink-2);line-height:1.45}
+.role li{margin-bottom:3px}
+.role .no{margin-top:9px;padding-top:9px;border-top:1px dashed var(--line);font-family:Archivo,sans-serif;font-size:11.5px;color:var(--crit)}
+
+/* ---------- UA cases ---------- */
+.ua td:first-child{font-family:"IBM Plex Mono",monospace;font-size:11.5px;color:var(--accent);font-weight:500;white-space:nowrap}
+.ua td:last-child{color:var(--ink)}
+
+/* ---------- questions ---------- */
+.qs{counter-reset:q;display:grid;gap:0;border:1px solid var(--line);border-radius:8px;background:var(--surface);overflow:hidden}
+.q{display:grid;grid-template-columns:34px 1fr;gap:14px;padding:15px 18px;border-bottom:1px solid var(--line)}
+.q:last-child{border-bottom:0}
+.q::before{counter-increment:q;content:"Q" counter(q);font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--ink-3);padding-top:3px}
+.q h4{margin:0 0 4px;font-size:14.5px;text-transform:none;letter-spacing:-.005em;color:var(--ink);font-weight:600;font-family:Archivo,sans-serif}
+.q p{margin:0;font-size:14.5px;color:var(--ink-2)}
+.q p em{color:var(--ink-3)}
+
+footer{padding:40px 0 64px;color:var(--ink-3);font-family:Archivo,sans-serif;font-size:12.5px}
+footer p{max-width:70ch;margin:0 0 8px}
+@media(prefers-reduced-motion:no-preference){.rail a{transition:background .12s ease,color .12s ease}}
+</style>
+
+<header class="mast">
+  <div class="mast-in">
+    <p class="eyebrow">Royal Care Hospital · HIMS Food &amp; Raw-Material Module · Ideation + UA Specification</p>
+    <h1>Indent to Counter</h1>
+    <p class="dek">Two supply chains meet at one counter. Everything the hospital's kitchen and canteen moves either arrives sealed with a price printed on it, or is made on site with a price the hospital sets. This document works out what that means for every screen, every login and every stock movement in between &mdash; and defines how you will sign it off.</p>
+    <dl class="meta">
+      <div><dt>Document</dt><dd>RCH/HIMS/UA-01 &middot; draft 1</dd></div>
+      <div><dt>Prepared</dt><dd>25-Aug-2026</dd></div>
+      <div><dt>Status</dt><dd>For client review</dd></div>
+      <div><dt>Supersedes</dt><dd>Flow chart v1</dd></div>
+    </dl>
+  </div>
+</header>
+
+<div class="wrap layout">
+  <nav class="rail" aria-label="Sections">
+    <p class="rail-h">Contents</p>
+    <ol>
+      <li><a href="#scope"><span>01</span><span>What we are building</span></a></li>
+      <li><a href="#classes"><span>02</span><span>The two product classes</span></a></li>
+      <li><a href="#roles"><span>03</span><span>Who logs in</span></a></li>
+      <li><a href="#approvals"><span>04</span><span>Approval matrix</span></a></li>
+      <li><a href="#flow"><span>05</span><span>Stage by stage</span></a></li>
+      <li><a href="#screens"><span>06</span><span>How it looks</span></a></li>
+      <li><a href="#map"><span>07</span><span>Screen inventory</span></a></li>
+      <li><a href="#ua"><span>08</span><span>User acceptance</span></a></li>
+      <li><a href="#gaps"><span>09</span><span>Added to your flow</span></a></li>
+      <li><a href="#questions"><span>10</span><span>Your decisions</span></a></li>
+    </ol>
+  </nav>
+
+  <main class="col">
+
+  <!-- ============ 01 ============ -->
+  <section id="scope">
+    <div class="sec-head"><span class="sec-num">01</span><h2>What we are building</h2></div>
+    <p class="sec-sub">One ledger from the vendor's lorry to the customer's bill, covering raw materials, in-house production and resale goods without letting any of them fall between the cracks.</p>
+
+    <div class="prose">
+      <p>The system tracks every edible and every packaging item that enters Royal Care Hospital through the kitchen and stores supply chain, follows it through storage, production and issue, and retires it in exactly one of four ways: <strong>sold</strong> at a counter, <strong>consumed</strong> by a department or patient, <strong>returned</strong> to the vendor, or <strong>wasted</strong>. Nothing is allowed to simply disappear &mdash; every unit that leaves stock has a document behind it, and every document has a person behind it.</p>
+      <p>Billing is not a bolted-on module. A bill line is a stock document that happens to also collect money, and it posts both in the same transaction: revenue and tax on one side, quantity and cost of goods on the other. That is what makes the closing-stock reconciliation in <a href="#ua">UA-24</a> possible at all.</p>
+    </div>
+
+    <h3>In scope</h3>
+    <div class="prose"><p class="f">Item &amp; recipe masters, vendors and rate contracts, indent, approval, purchase order, goods receipt, quality rejection, multi-store stock with batch and expiry, issue to kitchen and outlets, in-house production, outlet stock and price control, counter billing with all tender types, patient and department consumption posting, wastage and day close, physical stock take, purchase and sales returns, GST output, dashboards and reports, audit trail.</p></div>
+
+    <h3>Out of scope for this module</h3>
+    <div class="prose"><p class="f">Pharmacy and medicine inventory, surgical consumables, linen, the asset register and patient clinical records &mdash; these are separate HIMS modules in the same platform and share the same login, masters and audit trail. Payroll is external; staff credit recovery is produced as a file, not a payroll posting. The existing HIS / patient-billing software is <em>interfaced</em>, not replaced.</p></div>
+
+    <div class="note"><strong>Reading the colour code</strong>Everywhere in this document, <span class="chip a">Class A · MRP</span> means bought-in goods sold as they arrive, and <span class="chip b">Class B · In-house</span> means goods the kitchen produces. Where a rule applies to only one of them, it carries the chip.</div>
+  </section>
+
+  <!-- ============ 02 ============ -->
+  <section id="classes">
+    <div class="sec-head"><span class="sec-num">02</span><h2>The two product classes</h2></div>
+    <p class="sec-sub">The MRP / non-MRP split you described is not a labelling difference. It changes costing, pricing authority, expiry maths, the number of stock ledgers involved and what a sale actually deducts.</p>
+
+    <div class="tbl-wrap">
+      <table class="compare">
+        <thead><tr><th style="width:20%">&nbsp;</th><th style="width:40%">Class A &mdash; MRP / trade goods</th><th style="width:40%">Class B &mdash; In-house / non-MRP</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">Examples</th><td>Bottled juice, mineral water, tetra milk, biscuits, chips, sealed snacks, soft drinks</td><td>Veg &amp; egg puffs, sandwiches, tea and coffee, fresh juice, meals, patient diet trays, bakery</td></tr>
+          <tr><th scope="row">Where it comes from</th><td>Bought finished from a distributor</td><td>Produced in the kitchen from raw materials</td></tr>
+          <tr><th scope="row">Who sets the price</th><td>The manufacturer. MRP is a <strong>statutory ceiling</strong> &mdash; the counter may sell at or below it, never above</td><td>The hospital. No statutory MRP, so the system must supply the discipline: a costed, approved, version-controlled price list</td></tr>
+          <tr><th scope="row">Cost</th><td>Landed cost = purchase rate + freight &minus; scheme discount. Known at GRN</td><td>Recipe cost = &sum; (ingredient qty &times; moving average rate) + overhead %. Recomputed at every production batch</td></tr>
+          <tr><th scope="row">Stock ledgers involved</th><td>One. The purchase unit is the selling unit</td><td>Two. Raw materials in kg / L / nos, finished goods in nos / plate. Production is the bridge</td></tr>
+          <tr><th scope="row">Batch identity</th><td>Vendor's printed batch or lot number</td><td>System-generated production batch, e.g. <span class="num">PRD-20260825-03</span></td></tr>
+          <tr><th scope="row">Expiry</th><td>Printed date, measured in months. FEFO issue</td><td>Shelf life in <strong>hours</strong>, set on the recipe. Best-before is stamped when the batch is produced</td></tr>
+          <tr><th scope="row">Stock goes up at</th><td>GRN posting</td><td>Production entry &mdash; and raw material stock goes down in the same transaction</td></tr>
+          <tr><th scope="row">A sale deducts</th><td>One selling unit from the counter's stock of that MRP batch</td><td>One finished unit from the counter. The raw materials were already consumed at production time, not at sale time</td></tr>
+          <tr><th scope="row">When it does not sell</th><td>Near-expiry &rarr; vendor return or approved markdown</td><td>Unsold at day close &rarr; <strong>wastage</strong>. No vendor to send it back to</td></tr>
+          <tr><th scope="row">Reordering</th><td>Reorder level and lead time on the item itself</td><td>Reorder level lives on the <em>raw materials</em>. Finished goods are driven by a production plan against a par level</td></tr>
+          <tr><th scope="row">Tax</th><td>The item's own HSN and slab. MRP is tax-inclusive, so output tax is back-calculated</td><td>Slab of the prepared item, and possibly a different treatment when served rather than sold &mdash; see <a href="#questions">Q5</a></td></tr>
+          <tr><th scope="row">Barcode</th><td>Vendor EAN, scanned as printed</td><td>Label the system prints: item, batch, best-before, price</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>There are actually four item types, not two</h3>
+    <div class="prose"><p>Classes A and B are the two things you <em>sell</em>. Underneath them the master needs two more types that never reach a customer directly, and giving them their own type is what keeps the reports honest &mdash; otherwise flour and finished puffs sit in the same stock value column and nobody can tell margin from consumption.</p></div>
+
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Type</th><th>Sold?</th><th>Examples</th><th>Behaviour</th></tr></thead>
+        <tbody>
+          <tr><th scope="row"><span class="chip r">Raw</span></th><td>No</td><td>Maida, oil, vegetables, milk, masala, LPG</td><td>Purchased, stored, consumed by production. Valued at moving average</td></tr>
+          <tr><th scope="row"><span class="chip r">Packaging</span></th><td>No</td><td>Paper cups, foil, covers, carry bags, tissue</td><td>Consumed at production or at the counter. Optionally part of the recipe cost</td></tr>
+          <tr><th scope="row"><span class="chip a">Traded</span></th><td>Yes</td><td>Juice, water, biscuits</td><td>Bought sellable. MRP ceiling enforced</td></tr>
+          <tr><th scope="row"><span class="chip b">Manufactured</span></th><td>Yes</td><td>Puffs, sandwich, tea</td><td>Has a recipe. Produced in batches. Hospital-set price</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="note warnbox"><strong>The MRP trap worth designing for now</strong>The same juice arrives at &#8377;20 MRP in August and &#8377;22 MRP in September. Those are <em>not</em> the same stock. If they are pooled, the counter will sell an old &#8377;20 bottle at &#8377;22, which is a legal metrology violation, or a new &#8377;22 bottle at &#8377;20 and lose the margin. Stock for Class A must therefore be held <strong>batch-wise <em>and</em> MRP-wise</strong>, and the POS must pick the price from the batch it is deducting, not from the item master.</div>
+  </section>
+
+  <!-- ============ 03 ============ -->
+  <section id="roles">
+    <div class="sec-head"><span class="sec-num">03</span><h2>Who logs in</h2></div>
+    <p class="sec-sub">Eleven named roles. The commercial scope covers 60 named users; the split below is our proposal for how those licences are spent, for you to confirm.</p>
+
+    <div class="roles">
+      <div class="role"><h4>System Administrator</h4><p class="who">IT &middot; 2 users</p><ul><li>Users, roles, permissions, device registration</li><li>Item, vendor, store, UOM, tax and HSN masters</li><li>Document numbering series, financial period open/close</li><li>Full audit trail access</li></ul><p class="no">Cannot post a bill, approve a PO or change a posted stock figure.</p></div>
+
+      <div class="role"><h4>Department Indentor</h4><p class="who">Kitchen, cafeteria, pantry, dietary &middot; ~10 users</p><ul><li>Raises daily, weekly and emergency indents</li><li>Sees par level and current stock for their own department only</li><li>Acknowledges receipt of issued goods</li></ul><p class="no">Cannot see other departments, costs or vendor rates.</p></div>
+
+      <div class="role"><h4>Food &amp; Beverage Manager / HOD</h4><p class="who">Approver &middot; 2 users</p><ul><li>Approves or returns indents</li><li>Sets the daily production plan and par levels</li><li>Approves recipes and Class B selling prices within limit</li><li>Approves wastage and stock adjustments</li><li>Sees every outlet and every cost</li></ul><p class="no">Cannot create a PO or receive goods.</p></div>
+
+      <div class="role"><h4>Purchase Officer</h4><p class="who">Purchase department &middot; 3 users</p><ul><li>Vendor master and rate contracts</li><li>Quotation comparison</li><li>Converts approved indents into purchase orders</li><li>Follows up delivery and short supply</li></ul><p class="no">Cannot approve their own PO. Cannot post a GRN.</p></div>
+
+      <div class="role"><h4>Purchase Manager / Finance Approver</h4><p class="who">Approver &middot; 2 users</p><ul><li>Approves POs by value slab</li><li>Clears 3-way match exceptions</li><li>Authorises debit and credit notes</li></ul><p class="no">Cannot edit the PO they are approving &mdash; only approve, or return with a reason.</p></div>
+
+      <div class="role"><h4>Store Keeper</h4><p class="who">Central store, kitchen store &middot; 6 users</p><ul><li>GRN with batch, MRP, manufacturing and expiry date</li><li>Quality check, partial receipt, rejection to quarantine</li><li>Bin and rack allocation</li><li>Issue against approved indent, FEFO enforced</li><li>Stock take, cycle count, purchase return</li></ul><p class="no">Cannot change a rate or approve their own adjustment.</p></div>
+
+      <div class="role"><h4>Production In-charge</h4><p class="who">Kitchen &middot; 4 users</p><ul><li>Opens and closes production batches</li><li>Records actual raw material consumption against recipe</li><li>Records yield, rejects and production wastage</li><li>Prints batch labels with best-before</li></ul><p class="no">Cannot set the selling price of what they produce.</p></div>
+
+      <div class="role"><h4>Counter Operator</h4><p class="who">Cafeteria, canteen counters &middot; ~12 users</p><ul><li>Shift open with opening cash declaration</li><li>Billing, all tender types, held bills</li><li>Charge to patient bill or staff credit after lookup</li><li>Shift close with cash declaration and variance</li></ul><p class="no">Cannot change a price, exceed the discount limit, edit stock or cancel a bill alone.</p></div>
+
+      <div class="role"><h4>Dietitian</h4><p class="who">Dietary &middot; 3 users</p><ul><li>Patient diet plans by diet type</li><li>Ward-wise meal count against census</li><li>Approves diet consumption posting</li></ul><p class="no">Cannot handle cash or stock.</p></div>
+
+      <div class="role"><h4>Accounts / Finance</h4><p class="who">Finance &middot; 4 users</p><ul><li>Books vendor invoices against GRN, 3-way match</li><li>Vendor ledger, payments, credit notes</li><li>Day-end cash and tender reconciliation</li><li>GST registers, cost centre reports, Tally / Zoho export</li></ul><p class="no">Cannot create or approve an indent or PO.</p></div>
+
+      <div class="role"><h4>Auditor / Management</h4><p class="who">Read-only &middot; unlimited within licence</p><ul><li>Every dashboard and every report</li><li>Full audit trail, including reversals and overrides</li><li>Export to Excel and PDF</li></ul><p class="no">No transaction rights of any kind, anywhere.</p></div>
+    </div>
+
+    <h3>How login actually works on the floor</h3>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th style="width:22%">Context</th><th style="width:30%">Method</th><th>Why</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">Office / store desktop</th><td>Named user ID + password, session timeout after 15 idle minutes</td><td>Every posting is attributable to one person; the audit trail is only as good as this</td></tr>
+          <tr><th scope="row">Admin &amp; Finance</th><td>Password + OTP second factor</td><td>These roles can change masters, rates and periods</td></tr>
+          <tr><th scope="row">Billing counter</th><td>4-digit PIN against a terminal already bound to an open shift</td><td>Full passwords at a queue-facing counter get shared within a week. The shift binds the operator, the terminal and the cash drawer together</td></tr>
+          <tr><th scope="row">Android scanner</th><td>User login on a device registered to a specific store</td><td>Stops stock from being received into the wrong store from a phone</td></tr>
+          <tr><th scope="row">Supervisor override</th><td>Supervisor PIN entered on the operator's screen, logged as an override event</td><td>Discounts, cancellations and price overrides stay possible but never invisible</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ============ 04 ============ -->
+  <section id="approvals">
+    <div class="sec-head"><span class="sec-num">04</span><h2>Approval matrix</h2></div>
+    <p class="sec-sub">Proposed thresholds. These are the numbers most likely to change after you see them &mdash; every row is a configuration value, not code.</p>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Document</th><th>Raised by</th><th>Level 1</th><th>Level 2</th><th>Rule</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">Indent</th><td>Department Indentor</td><td>Supervisor</td><td>F&amp;B Manager</td><td>Level 2 only if value &gt; <span class="num">&#8377;10,000</span> or flagged emergency</td></tr>
+          <tr><th scope="row">Purchase order</th><td>Purchase Officer</td><td>Purchase Manager</td><td>Finance</td><td>&le; <span class="num">&#8377;25,000</span> L1 &middot; <span class="num">&#8377;25k&ndash;1L</span> L2 &middot; &gt; <span class="num">&#8377;1,00,000</span> Director</td></tr>
+          <tr><th scope="row">Off-contract rate</th><td>Purchase Officer</td><td>Purchase Manager</td><td>&mdash;</td><td>Any rate above the rate contract needs a written reason</td></tr>
+          <tr><th scope="row">GRN over-receipt</th><td>Store Keeper</td><td>Purchase Manager</td><td>&mdash;</td><td>Auto-allowed up to 2% tolerance, blocked above</td></tr>
+          <tr><th scope="row">Class B price <span class="chip b">B</span></th><td>F&amp;B Manager</td><td>F&amp;B Manager</td><td>Finance</td><td>L2 if change &gt; 10%, or if price falls below computed cost</td></tr>
+          <tr><th scope="row">Class A markdown <span class="chip a">A</span></th><td>Counter Supervisor</td><td>F&amp;B Manager</td><td>&mdash;</td><td>Never above MRP under any approval &mdash; hard block</td></tr>
+          <tr><th scope="row">Wastage</th><td>Production In-charge</td><td>Auto &le; <span class="num">&#8377;500</span></td><td>F&amp;B Manager</td><td>Reason code mandatory on every entry</td></tr>
+          <tr><th scope="row">Stock adjustment</th><td>Store Keeper</td><td>F&amp;B Manager</td><td>Finance if &gt; <span class="num">&#8377;5,000</span></td><td>No self-approval at any value</td></tr>
+          <tr><th scope="row">Bill cancellation</th><td>Counter Operator</td><td>Counter Supervisor PIN</td><td>&mdash;</td><td>Same shift only. After shift close it becomes a credit note</td></tr>
+          <tr><th scope="row">Vendor invoice mismatch</th><td>Accounts</td><td>Purchase Manager</td><td>Finance</td><td>Held automatically when invoice, PO and GRN disagree</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ============ 05 ============ -->
+  <section id="flow">
+    <div class="sec-head"><span class="sec-num">05</span><h2>Stage by stage</h2></div>
+    <p class="sec-sub">Your flow chart has seven stages. Working it through against in-house production and billing, it needs thirteen. The four highlighted below are the ones we are adding &mdash; without them, Class B never actually becomes stock and the day never closes.</p>
+
+    <div class="strip">
+      <div><span class="n">00</span><span class="t">Masters</span><span class="s">Setup, once</span></div>
+      <div><span class="n">01</span><span class="t">Indent</span><span class="s">Demand</span></div>
+      <div><span class="n">02</span><span class="t">Approval</span><span class="s">Control</span></div>
+      <div><span class="n">03</span><span class="t">PO</span><span class="s">Commitment</span></div>
+      <div><span class="n">04</span><span class="t">GRN</span><span class="s">Stock in</span></div>
+      <div><span class="n">05</span><span class="t">Store</span><span class="s">At rest</span></div>
+      <div><span class="n">06</span><span class="t">Issue</span><span class="s">Move</span></div>
+      <div class="added"><span class="n">07</span><span class="t">Production</span><span class="s">Added</span></div>
+      <div class="added"><span class="n">08</span><span class="t">Outlet &amp; price</span><span class="s">Added</span></div>
+      <div class="added"><span class="n">09</span><span class="t">Sale / billing</span><span class="s">Added</span></div>
+      <div><span class="n">10</span><span class="t">Consumption</span><span class="s">Non-cash</span></div>
+      <div class="added"><span class="n">11</span><span class="t">Day close</span><span class="s">Added</span></div>
+      <div><span class="n">12</span><span class="t">Reports</span><span class="s">Control</span></div>
+    </div>
+    <p class="cap">Highlighted stages are additions to flow chart v1.</p>
+
+    <!-- stage 0 -->
+    <div class="stage">
+      <div class="stage-h"><span class="stage-n">00</span><div class="stage-t"><h3>Masters and opening balance</h3><p>System Administrator, Purchase Officer, F&amp;B Manager &middot; one time, then maintained</p></div></div>
+      <div class="stage-b"><div class="grid2">
+        <div>
+          <p class="f">Nothing works until the item master carries the right type flag, because that flag decides which screens the item appears on. A raw material must never be sellable at a counter; a traded item must never appear in a recipe as an output.</p>
+          <ul class="tight">
+            <li>Item master: code, name, <strong>type</strong> (raw / packaging / traded / manufactured), category, base UOM and purchase UOM with conversion, HSN, GST slab, shelf life, reorder level, par level</li>
+            <li>Recipes for every Class B item, with yield and overhead %</li>
+            <li>Vendors, rate contracts, lead times</li>
+            <li>Stores, outlets, bins, cost centres</li>
+            <li>Price list v1 for both classes</li>
+            <li>Opening stock upload, batch-wise, as at cut-over date</li>
+          </ul>
+        </div>
+        <div class="ledger"><p class="lh">Inventory effect</p>
+          <table><tbody>
+            <tr><td>Store &mdash; opening stock</td><td class="plus">+ as uploaded</td></tr>
+            <tr><td>Opening stock value</td><td class="plus">+ &#8377; as uploaded</td></tr>
+            <tr><td>All other ledgers</td><td class="zero">nil</td></tr>
+          </tbody></table>
+          <p style="font-family:Archivo,sans-serif;font-size:11.5px;color:var(--ink-3);margin:10px 0 0;line-height:1.4">Opening upload is a one-shot, permission-gated document. Once the period is opened for transactions it is locked; corrections after that are stock adjustments with approval.</p>
+        </div>
+      </div></div>
+    </div>
+
+    <!-- stage 1 -->
+    <div class="stage">
+      <div class="stage-h"><span class="stage-n">01</span><div class="stage-t"><h3>Indent</h3><p>Department Indentor &middot; kitchen, cafeteria, pantry, dietary</p></div><div class="stage-tags"><span class="chip r">Demand</span></div></div>
+      <div class="stage-b"><div class="grid2">
+        <div>
+          <p class="f">The department states what it needs. The screen opens pre-filled from par level minus current department stock, so the common case is a review rather than a data-entry exercise. Three indent types &mdash; daily, weekly, emergency &mdash; each with its own approval path and its own colour in the queue.</p>
+          <p class="f">Every line carries item, quantity, required-by date, usage purpose and cost centre. An indent for a Class B finished item is legitimate and becomes a <em>production request</em>, not a purchase request &mdash; the system routes it by item type.</p>
+        </div>
+        <div class="ledger"><p class="lh">Inventory effect</p>
+          <table><tbody>
+            <tr><td>Physical stock</td><td class="zero">no change</td></tr>
+            <tr><td>Indented quantity</td><td class="plus">+ qty (soft)</td></tr>
+          </tbody></table>
+          <p style="font-family:Archivo,sans-serif;font-size:11.5px;color:var(--ink-3);margin:10px 0 0;line-height:1.4">An indent moves no stock. It creates visible demand so the same shortage is not indented twice by two departments on the same morning.</p>
+        </div>
+      </div></div>
+    </div>
+
+    <!-- stage 2 -->
+    <div class="stage">
+      <div class="stage-h"><span class="stage-n">02</span><div class="stage-t"><h3>Approval</h3><p>Supervisor, then F&amp;B Manager / HOD by threshold</p></div><div class="stage-tags"><span class="chip r">Control</span></div></div>
+      <div class="stage-b"><div class="grid2">
+        <div>
+          <p class="f">The approver sees, on the same screen, what was asked for, what is already in stock, what is already on order and what this department consumed last week. Approving blind is the failure mode this stage exists to prevent.</p>
+          <p class="f">Actions are approve, approve with modified quantity, or return for revision with a mandatory reason. A returned indent goes back to the raiser's queue, not into a void. Nothing is deleted; the revision history stays on the document.</p>
+        </div>
+        <div class="ledger"><p class="lh">Inventory effect</p>
+          <table><tbody>
+            <tr><td>Physical stock</td><td class="zero">no change</td></tr>
+            <tr><td>Indent status</td><td>&rarr; approved</td></tr>
+            <tr><td>Routed to</td><td>PO or Production</td></tr>
+          </tbody></table>
+        </div>
+      </div></div>
+    </div>
+
+    <!-- stage 3 -->
+    <div class="stage">
+      <div class="stage-h"><span class="stage-n">03</span><div class="stage-t"><h3>Purchase order</h3><p>Purchase Officer creates &middot; Purchase Manager / Finance approves</p></div><div class="stage-tags"><span class="chip a">A</span><span class="chip r">Raw</span></div></div>
+      <div class="stage-b"><div class="grid2">
+        <div>
+          <p class="f">Approved indents for raw materials, packaging and Class A goods are pooled by vendor so one PO covers several departments' indents. Rate defaults from the live rate contract; any deviation is flagged and needs a reason before it can be saved.</p>
+          <p class="f">Quotation comparison sits here for non-contract items: three quotes side by side, one selected, the reason recorded. The approved PO goes to the vendor as PDF, email or WhatsApp, and the document is locked from edit &mdash; changes after approval become an amendment with its own version number.</p>
+        </div>
+        <div class="ledger"><p class="lh">Inventory effect</p>
+          <table><tbody>
+            <tr><td>Physical stock</td><td class="zero">no change</td></tr>
+            <tr><td>On-order quantity</td><td class="plus">+ qty</td></tr>
+            <tr><td>Indented quantity</td><td class="minus">&minus; qty</td></tr>
+            <tr><td>Financial commitment</td><td class="plus">+ &#8377; PO value</td></tr>
+          </tbody></table>
+          <p style="font-family:Archivo,sans-serif;font-size:11.5px;color:var(--ink-3);margin:10px 0 0;line-height:1.4">On-order shows in every stock enquiry. This is what stops the second PO for rice that already arrives tomorrow.</p>
+        </div>
+      </div></div>
+    </div>
+
+    <!-- stage 4 -->
+    <div class="stage">
+      <div class="stage-h"><span class="stage-n">04</span><div class="stage-t"><h3>Goods receipt</h3><p>Store Keeper &middot; central store or kitchen store</p></div><div class="stage-tags"><span class="chip a">A</span><span class="chip r">Raw</span></div></div>
+      <div class="stage-b"><div class="grid2">
+        <div>
+          <p class="f">The first point where stock becomes real, and therefore the point that decides whether every downstream number is trustworthy. Receipt is against the PO, so ordered quantity, received quantity and rejected quantity are all on one line.</p>
+          <ul class="tight">
+            <li>Batch or lot number, manufacturing date, expiry date &mdash; mandatory for anything with a shelf life</li>
+            <li><span class="chip a">A</span> MRP captured per batch. A different MRP creates a separate batch line, never a merge</li>
+            <li>Quality check: accept, partial accept, or reject to a quarantine bin that is not sellable and not issuable</li>
+            <li>Weight capture for loose goods, against the vendor's stated weight</li>
+            <li>Landed cost built up: rate, freight, scheme discount</li>
+            <li>Barcode label printed for anything without a usable vendor EAN</li>
+          </ul>
+        </div>
+        <div class="ledger"><p class="lh">Inventory effect</p>
+          <table><tbody>
+            <tr><td>Central store, new batch</td><td class="plus">+ accepted qty</td></tr>
+            <tr><td>Quarantine bin</td><td class="plus">+ rejected qty</td></tr>
+            <tr><td>On-order quantity</td><td class="minus">&minus; received qty</td></tr>
+            <tr><td>Stock value</td><td class="plus">+ landed cost</td></tr>
+            <tr><td>Moving average rate</td><td>recalculated</td></tr>
+            <tr><td>Vendor liability</td><td class="plus">+ &#8377; pending invoice</td></tr>
+          </tbody></table>
+        </div>
+      </div></div>
+      <div class="stage-b" style="border-top:1px solid var(--line);padding-top:0">
+        <div class="note warnbox" style="margin:18px 0 0"><strong>Hard blocks at GRN</strong>Expired or same-day-expiring batch cannot be received. Expiry earlier than manufacturing date is rejected. Receipt beyond PO quantity + 2% is blocked pending approval. Receiving into a store the user is not assigned to is not offered at all.</div>
+      </div>
+    </div>
+
+    <!-- stage 5 -->
+    <div class="stage">
+      <div class="stage-h"><span class="stage-n">05</span><div class="stage-t"><h3>Stock at rest</h3><p>Store Keeper &middot; central, kitchen, outlet and quarantine stores</p></div></div>
+      <div class="stage-b"><div class="grid2">
+        <div>
+          <p class="f">Not a transaction but a state, and the state that everything else reads. Stock is held at four levels of identity: store &rarr; bin &rarr; item &rarr; batch. Valuation is moving average by default; FEFO governs which batch leaves first, and the system proposes it rather than leaving it to memory.</p>
+          <p class="f">Alerts run continuously rather than on a report anyone has to remember to open: below reorder level, below minimum, above maximum, near expiry at configurable horizons, expired, slow-moving, and negative-stock attempts.</p>
+        </div>
+        <div class="ledger"><p class="lh">Inventory effect</p>
+          <table><tbody>
+            <tr><td>Balances</td><td class="zero">steady state</td></tr>
+            <tr><td>Ageing clock</td><td>running</td></tr>
+            <tr><td>Alerts</td><td>evaluated hourly</td></tr>
+          </tbody></table>
+          <p style="font-family:Archivo,sans-serif;font-size:11.5px;color:var(--ink-3);margin:10px 0 0;line-height:1.4">Negative stock is disallowed system-wide. If the shelf disagrees with the screen, the answer is a stock adjustment with approval, never a silent negative.</p>
+        </div>
+      </div></div>
+    </div>
+
+    <!-- stage 6 -->
+    <div class="stage">
+      <div class="stage-h"><span class="stage-n">06</span><div class="stage-t"><h3>Issue</h3><p>Store Keeper issues &middot; receiving department acknowledges</p></div></div>
+      <div class="stage-b"><div class="grid2">
+        <div>
+          <p class="f">Issue is always against an approved indent, and always to a named store or cost centre. The system proposes batches by FEFO; overriding the proposal requires a reason, which is how expiry discipline survives a busy morning.</p>
+          <p class="f">Two different things share this screen, and the distinction matters for the P&amp;L: a <strong>transfer</strong> moves stock and its cost to another store where it is still stock, while a <strong>consumption issue</strong> takes it out of stock entirely and charges a cost centre. Issuing rice to the kitchen store is the first; issuing cleaning consumables to housekeeping is the second.</p>
+        </div>
+        <div class="ledger"><p class="lh">Inventory effect &mdash; transfer</p>
+          <table><tbody>
+            <tr><td>Central store</td><td class="minus">&minus; qty</td></tr>
+            <tr><td>Kitchen store / outlet</td><td class="plus">+ qty</td></tr>
+            <tr><td>Total stock value</td><td class="zero">unchanged</td></tr>
+          </tbody></table>
+          <p class="lh" style="margin:14px 0 9px">Inventory effect &mdash; consumption</p>
+          <table><tbody>
+            <tr><td>Issuing store</td><td class="minus">&minus; qty</td></tr>
+            <tr><td>Cost centre expense</td><td class="plus">+ &#8377; issue value</td></tr>
+            <tr><td>Total stock value</td><td class="minus">&minus; &#8377; issue value</td></tr>
+          </tbody></table>
+        </div>
+      </div></div>
+    </div>
+
+    <!-- stage 7 -->
+    <div class="stage is-new">
+      <div class="stage-h"><span class="stage-n">07</span><div class="stage-t"><h3>Production</h3><p>Production In-charge &middot; kitchen</p></div><div class="stage-tags"><span class="chip b">B only</span><span class="chip new">Added</span></div></div>
+      <div class="stage-b"><div class="grid2">
+        <div>
+          <p class="f">The stage that turns raw materials into something with a price. It is missing from flow chart v1, and without it a puff can never legitimately exist in stock &mdash; it would have to be invented at the counter, which is exactly how kitchens lose track of flour.</p>
+          <p class="f">A batch is opened against a recipe and a planned quantity. The system computes required ingredients, the in-charge confirms or corrects actual consumption, and on closing the batch the raw materials come out of the kitchen store and the finished goods go in, carrying a batch number, a best-before timestamp and a computed unit cost.</p>
+          <ul class="tight">
+            <li><strong>Yield variance</strong>: planned 120, actual 116, &minus;3.3% with a reason code</li>
+            <li><strong>Consumption variance</strong>: recipe said 6 kg maida, 6.4 kg was used &mdash; visible, and the trend is a report</li>
+            <li><strong>Cost roll-up</strong>: material + overhead % = unit cost, which is what the price approval in stage 08 is checked against</li>
+            <li><strong>Labels</strong>: one per unit or per tray, with item, batch and best-before</li>
+          </ul>
+        </div>
+        <div class="ledger"><p class="lh">Inventory effect</p>
+          <table><tbody>
+            <tr><td>Kitchen store &mdash; maida</td><td class="minus">&minus; 6.400 kg</td></tr>
+            <tr><td>Kitchen store &mdash; oil</td><td class="minus">&minus; 2.100 L</td></tr>
+            <tr><td>Kitchen store &mdash; filling</td><td class="minus">&minus; 4.800 kg</td></tr>
+            <tr><td>Packaging &mdash; covers</td><td class="minus">&minus; 116 nos</td></tr>
+            <tr><td>FG store &mdash; veg puffs</td><td class="plus">+ 116 nos</td></tr>
+            <tr><td>Batch PRD-20260825-03</td><td class="plus">created</td></tr>
+            <tr><td>Best before</td><td>25-Aug 21:30</td></tr>
+            <tr><td>Unit cost</td><td class="plus">&#8377; 17.78</td></tr>
+            <tr><td>Production wastage</td><td class="minus">4 nos</td></tr>
+          </tbody></table>
+        </div>
+      </div></div>
+      <div class="stage-b" style="border-top:1px solid var(--line);padding-top:0">
+        <div class="note" style="margin:18px 0 0"><strong>This stage depends on one answer from you</strong>If the kitchen works to standard recipes, the system can back-flush automatically and only ask for exceptions. If production is judgement-based &mdash; a cook deciding by eye &mdash; then the recipe becomes a costing estimate and actual consumption has to be entered by hand at every batch. Both are buildable; they are different screens and different training. See <a href="#questions">Q4</a>.</div>
+      </div>
+    </div>
+
+    <!-- stage 8 -->
+    <div class="stage is-new">
+      <div class="stage-h"><span class="stage-n">08</span><div class="stage-t"><h3>Outlet stock and pricing</h3><p>Store Keeper transfers &middot; F&amp;B Manager prices</p></div><div class="stage-tags"><span class="chip a">A</span><span class="chip b">B</span><span class="chip new">Added</span></div></div>
+      <div class="stage-b"><div class="grid2">
+        <div>
+          <p class="f">A counter can only sell what has been transferred to that counter. This is the control that makes counter-wise accountability possible at all &mdash; without it, every shortage belongs to everybody.</p>
+          <p class="f"><span class="chip a">A</span> Price is carried on the batch and capped at that batch's printed MRP. The POS reads the batch, not the item.</p>
+          <p class="f"><span class="chip b">B</span> Price comes from an approved price list version. The approval screen shows computed cost, proposed price and resulting margin side by side, so a price below cost is a deliberate decision and not an accident. Price lists are dated, so today's bill can always be re-explained six months later.</p>
+        </div>
+        <div class="ledger"><p class="lh">Inventory effect</p>
+          <table><tbody>
+            <tr><td>FG store / central store</td><td class="minus">&minus; qty</td></tr>
+            <tr><td>Counter stock</td><td class="plus">+ qty</td></tr>
+            <tr><td>Price list version</td><td>bound to batch</td></tr>
+          </tbody></table>
+        </div>
+      </div></div>
+    </div>
+
+    <!-- stage 9 -->
+    <div class="stage is-new">
+      <div class="stage-h"><span class="stage-n">09</span><div class="stage-t"><h3>Sale and billing</h3><p>Counter Operator &middot; cafeteria, canteen, kiosk</p></div><div class="stage-tags"><span class="chip a">A</span><span class="chip b">B</span><span class="chip new">Added</span></div></div>
+      <div class="stage-b"><div class="grid2">
+        <div>
+          <p class="f">One cart routinely holds both classes &mdash; a bottled juice and two puffs &mdash; and the bill has to handle them with different price sources, possibly different tax slabs, and identical speed. Scan an EAN for Class A, tap a tile for Class B.</p>
+          <h4 style="margin-top:0">Tender types</h4>
+          <ul class="tight">
+            <li>Cash, UPI, card &mdash; split tender allowed on one bill</li>
+            <li><strong>Charge to patient bill</strong> after IP number lookup: no cash, posts to the running bill in HIS</li>
+            <li><strong>Staff credit</strong> after employee lookup, against a monthly limit, recovered through payroll</li>
+            <li><strong>Department consumption</strong>: no money, charges a cost centre</li>
+            <li>Complimentary, with reason and supervisor PIN</li>
+          </ul>
+          <p class="f">Bill is a GST tax invoice with HSN-wise summary. Cancellation within the shift restores stock and voids the bill; after shift close it becomes a credit note instead.</p>
+        </div>
+        <div class="ledger"><p class="lh">Inventory effect &mdash; one mixed bill</p>
+          <table><tbody>
+            <tr><td>Counter &mdash; veg puffs <span class="chip b">B</span></td><td class="minus">&minus; 2 nos</td></tr>
+            <tr><td>Counter &mdash; juice 200ml <span class="chip a">A</span></td><td class="minus">&minus; 1 nos</td></tr>
+            <tr><td>Revenue</td><td class="plus">+ &#8377; 66.10</td></tr>
+            <tr><td>Output GST</td><td class="plus">+ &#8377; 3.90</td></tr>
+            <tr><td>Cost of goods sold</td><td class="plus">+ &#8377; 49.56</td></tr>
+            <tr><td>Stock value</td><td class="minus">&minus; &#8377; 49.56</td></tr>
+            <tr><td>Cash drawer</td><td class="plus">+ &#8377; 70.00</td></tr>
+          </tbody></table>
+          <p style="font-family:Archivo,sans-serif;font-size:11.5px;color:var(--ink-3);margin:10px 0 0;line-height:1.4">Note what does <em>not</em> move: no raw material. The maida left stock at production, not at sale. Deducting it here would double-count it.</p>
+        </div>
+      </div></div>
+    </div>
+
+    <!-- stage 10 -->
+    <div class="stage">
+      <div class="stage-h"><span class="stage-n">10</span><div class="stage-t"><h3>Consumption without a sale</h3><p>Dietitian, Department Indentor &middot; wards, pantry, staff canteen</p></div></div>
+      <div class="stage-b"><div class="grid2">
+        <div>
+          <p class="f">Patient diet trays and departmental use are real stock movements with no cash attached, and if they are not captured the kitchen's consumption will never reconcile with its purchases.</p>
+          <p class="f">Diet consumption is driven by ward census and the day's meal cycles: breakfast, lunch, snacks, dinner. The dietitian confirms counts per diet type, the system deducts the finished items and posts either a diet charge to the patient's running bill or a cost to the ward cost centre, depending on the answer to <a href="#questions">Q1</a>.</p>
+        </div>
+        <div class="ledger"><p class="lh">Inventory effect</p>
+          <table><tbody>
+            <tr><td>Kitchen / FG store</td><td class="minus">&minus; qty served</td></tr>
+            <tr><td>Patient bill or cost centre</td><td class="plus">+ &#8377; charge</td></tr>
+            <tr><td>Cash drawer</td><td class="zero">no movement</td></tr>
+          </tbody></table>
+        </div>
+      </div></div>
+    </div>
+
+    <!-- stage 11 -->
+    <div class="stage is-new">
+      <div class="stage-h"><span class="stage-n">11</span><div class="stage-t"><h3>Day close, wastage and reconciliation</h3><p>Counter Operator, Production In-charge, Accounts</p></div><div class="stage-tags"><span class="chip b">B critical</span><span class="chip new">Added</span></div></div>
+      <div class="stage-b"><div class="grid2">
+        <div>
+          <p class="f">The stage that makes the whole ledger true, and the one most systems skip. At close of business the counter must be emptied on screen the same way it is emptied physically.</p>
+          <ul class="tight">
+            <li><span class="chip b">B</span> Unsold short-shelf-life stock is written off as wastage with a reason code. Value goes to the wastage account, not into tomorrow's opening stock</li>
+            <li><span class="chip a">A</span> Unsold stock simply rolls over; near-expiry items are listed for markdown or vendor return</li>
+            <li>Counter cash declared and compared against system tender; variance recorded and explained</li>
+            <li>Shift closed; the day is locked against back-dated entry</li>
+            <li>Accounts reconciles UPI and card settlement against the tender report</li>
+          </ul>
+          <p class="f">Wastage is deliberately made visible rather than convenient. The daily wastage value per outlet is a management number, and over a month it is the single most useful signal about whether the production plan matches demand.</p>
+        </div>
+        <div class="ledger"><p class="lh">Inventory effect</p>
+          <table><tbody>
+            <tr><td>Counter &mdash; unsold Class B</td><td class="minus">&minus; 9 nos</td></tr>
+            <tr><td>Wastage account</td><td class="plus">+ &#8377; 160.02</td></tr>
+            <tr><td>Counter closing stock <span class="chip b">B</span></td><td class="zero">0</td></tr>
+            <tr><td>Counter closing stock <span class="chip a">A</span></td><td>carried forward</td></tr>
+            <tr><td>Shift</td><td>closed &amp; locked</td></tr>
+          </tbody></table>
+        </div>
+      </div></div>
+    </div>
+
+    <!-- stage 12 -->
+    <div class="stage">
+      <div class="stage-h"><span class="stage-n">12</span><div class="stage-t"><h3>Reporting, settlement and control</h3><p>Accounts, F&amp;B Manager, Management, Auditor</p></div></div>
+      <div class="stage-b"><div class="grid2">
+        <div>
+          <h4 style="margin-top:0">Reports</h4>
+          <ul class="tight">
+            <li>Stock summary and stock ledger, store-wise and batch-wise</li>
+            <li>Purchase register, GRN register, vendor performance and short supply</li>
+            <li>Consumption by department and cost centre</li>
+            <li>Production report with yield and consumption variance <span class="chip b">B</span></li>
+            <li>Sales by counter, shift, operator, item and tender</li>
+            <li>Margin report: selling price against computed cost</li>
+            <li>Wastage and expiry loss</li>
+            <li>Near expiry, expired, slow and dead stock</li>
+            <li>GST output register and HSN summary, purchase register, Tally / Zoho CSV</li>
+            <li>Staff credit recovery statement for payroll</li>
+          </ul>
+        </div>
+        <div>
+          <h4 style="margin-top:0">Controls</h4>
+          <ul class="tight">
+            <li>Role-based access, right down to which store a user may touch</li>
+            <li>Full audit trail: who, what, before value, after value, when, from which terminal</li>
+            <li>Every override and approval stored on the document</li>
+            <li>3-way match &mdash; PO, GRN, vendor invoice &mdash; before payment is released</li>
+            <li>Periodic physical stock take with variance report and approval</li>
+            <li>Cycle count on high-value and fast-moving items</li>
+            <li>Period lock after day close and month close</li>
+            <li>No deletion anywhere; reversal documents only</li>
+          </ul>
+        </div>
+      </div></div>
+    </div>
+  </section>
+
+  <!-- ============ 06 ============ -->
+  <section id="screens">
+    <div class="sec-head"><span class="sec-num">06</span><h2>How it looks</h2></div>
+    <p class="sec-sub">Six screens that carry the weight of the system. These are indicative layouts for this review, not final UI &mdash; the point is to agree what is on each screen and what it prevents you from doing wrong.</p>
+
+    <h3>Sign in, and where each role lands</h3>
+    <div class="screens two">
+      <div class="screen">
+        <div class="sc-chrome"><span class="dots"><i></i><i></i><i></i></span><span class="sc-path">rch-hims.local / sign-in</span></div>
+        <div class="sc-body">
+          <p class="sc-title">Royal Care Hospital</p>
+          <p class="sc-sub">Food &amp; Raw Material Inventory &middot; v1.0</p>
+          <div class="fields" style="grid-template-columns:1fr">
+            <div class="fld"><b>User ID</b><span>kavitha.r</span></div>
+            <div class="fld"><b>Password</b><span>&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;</span></div>
+            <div class="fld"><b>Store / outlet</b><span>Cafeteria Counter 1 &nbsp;&#9662;</span></div>
+          </div>
+          <div class="alertline g"><span class="k">i</span><span>Shift 2 is open at this terminal. You will resume it.</span></div>
+          <div class="btnrow"><span class="btn">Sign in</span><span class="btn ghost">Use counter PIN</span></div>
+        </div>
+      </div>
+      <div class="screen">
+        <div class="sc-chrome"><span class="dots"><i></i><i></i><i></i></span><span class="sc-path">landing page by role</span></div>
+        <div class="sc-body">
+          <div class="sc-scroll"><table class="sc-tbl">
+            <thead><tr><th>Role</th><th>Lands on</th><th>First action</th></tr></thead>
+            <tbody>
+              <tr><td class="w">Indentor</td><td>My indents</td><td>Raise daily indent</td></tr>
+              <tr><td class="w">F&amp;B Manager</td><td>Approval queue</td><td>Clear 6 pending</td></tr>
+              <tr><td class="w">Purchase Officer</td><td>Approved indents</td><td>Generate PO</td></tr>
+              <tr><td class="w">Store Keeper</td><td>Store dashboard</td><td>Post GRN</td></tr>
+              <tr><td class="w">Production</td><td>Today's plan</td><td>Open batch</td></tr>
+              <tr><td class="w">Counter Operator</td><td>Billing screen</td><td>Open shift</td></tr>
+              <tr><td class="w">Dietitian</td><td>Ward census</td><td>Confirm meal count</td></tr>
+              <tr><td class="w">Accounts</td><td>Invoices to book</td><td>3-way match</td></tr>
+              <tr><td class="w">Management</td><td>Dashboard</td><td>&mdash; read only</td></tr>
+            </tbody>
+          </table></div>
+        </div>
+      </div>
+    </div>
+
+    <h3>Store keeper &mdash; dashboard</h3>
+    <div class="screen">
+      <div class="sc-chrome"><span class="dots"><i></i><i></i><i></i></span><span class="sc-path">stores / central-store / dashboard</span><span class="sc-user">Store Keeper</span></div>
+      <div class="sc-body">
+        <div class="tiles">
+          <div class="tile"><b>Stock value</b><span class="v">4.86L</span><span class="d">&#8377; central store</span></div>
+          <div class="tile"><b>Below reorder</b><span class="v">14</span><span class="d">items</span></div>
+          <div class="tile"><b>Near expiry</b><span class="v">7</span><span class="d">within 15 days</span></div>
+          <div class="tile"><b>GRN pending</b><span class="v">3</span><span class="d">POs due today</span></div>
+          <div class="tile"><b>Indents open</b><span class="v">9</span><span class="d">to issue</span></div>
+          <div class="tile"><b>Quarantine</b><span class="v">2</span><span class="d">awaiting return</span></div>
+        </div>
+        <div class="alertline c"><span class="k">EXP</span><span>Amul Butter 500g &middot; batch B-4471 &middot; 18 nos &middot; expired yesterday &mdash; blocked from issue, move to quarantine</span></div>
+        <div class="alertline w"><span class="k">LOW</span><span>Refined oil 15L tin &middot; 2 tins left, reorder level 6 &middot; lead time 3 days &mdash; raise indent</span></div>
+        <div class="alertline w"><span class="k">MRP</span><span>Real Juice 200ml &middot; new consignment at &#8377;22 MRP against existing &#8377;20 stock &mdash; will post as a separate batch</span></div>
+        <div class="sc-scroll" style="margin-top:12px"><table class="sc-tbl">
+          <thead><tr><th>Item</th><th>Type</th><th>Batch</th><th>Expiry</th><th class="r">Qty</th><th class="r">Rate</th><th class="r">Value</th><th>Bin</th></tr></thead>
+          <tbody>
+            <tr><td class="w">Real Juice 200ml</td><td><span class="chip a">A</span></td><td>RJ-2608</td><td>12-Feb-27</td><td class="r">144</td><td class="r">14.20</td><td class="r">2,044.80</td><td>A-03</td></tr>
+            <tr><td class="w">Real Juice 200ml</td><td><span class="chip a">A</span></td><td>RJ-2512</td><td>04-Nov-26</td><td class="r">36</td><td class="r">13.10</td><td class="r">471.60</td><td>A-03</td></tr>
+            <tr><td class="w">Maida</td><td><span class="chip r">Raw</span></td><td>MD-0819</td><td>19-Nov-26</td><td class="r">48.500 kg</td><td class="r">42.00</td><td class="r">2,037.00</td><td>C-11</td></tr>
+            <tr><td class="w">Refined oil 15L</td><td><span class="chip r">Raw</span></td><td>OL-0812</td><td>10-Jun-27</td><td class="r">2 tin</td><td class="r">1,980.00</td><td class="r">3,960.00</td><td>C-02</td></tr>
+            <tr><td class="w">Paper cup 150ml</td><td><span class="chip r">Pack</span></td><td>&mdash;</td><td>&mdash;</td><td class="r">2,400</td><td class="r">0.62</td><td class="r">1,488.00</td><td>D-07</td></tr>
+          </tbody>
+        </table></div>
+      </div>
+    </div>
+
+    <h3>Goods receipt <span class="chip a">Class A</span></h3>
+    <div class="screen">
+      <div class="sc-chrome"><span class="dots"><i></i><i></i><i></i></span><span class="sc-path">purchase / grn / new &mdash; against PO-2026-0142</span><span class="sc-user">Store Keeper</span></div>
+      <div class="sc-body">
+        <p class="sc-title">Goods Receipt Note</p>
+        <p class="sc-sub">GRN-2026-0388 &middot; draft &middot; receiving into Central Store</p>
+        <div class="fields">
+          <div class="fld"><b>Vendor</b><span>Sri Balaji Distributors</span></div>
+          <div class="fld"><b>PO</b><span>PO-2026-0142</span></div>
+          <div class="fld"><b>Invoice no.</b><span>SBD/4471</span></div>
+          <div class="fld"><b>Invoice date</b><span>25-Aug-2026</span></div>
+          <div class="fld"><b>Vehicle / DC</b><span>TN45-BQ-8812</span></div>
+          <div class="fld"><b>Received by</b><span>M. Suresh</span></div>
+        </div>
+        <div class="sc-scroll"><table class="sc-tbl">
+          <thead><tr><th>Item</th><th>Batch</th><th>Mfg</th><th>Expiry</th><th class="r">MRP</th><th class="r">Ord</th><th class="r">Recd</th><th class="r">Rej</th><th class="r">Rate</th><th class="r">Value</th></tr></thead>
+          <tbody>
+            <tr><td class="w">Real Juice 200ml</td><td>RJ-2608</td><td>08-Aug-26</td><td>12-Feb-27</td><td class="r">22.00</td><td class="r">144</td><td class="r">144</td><td class="r">0</td><td class="r">14.20</td><td class="r">2,044.80</td></tr>
+            <tr><td class="w">Mineral water 1L</td><td>MW-0825</td><td>21-Aug-26</td><td>20-Feb-27</td><td class="r">20.00</td><td class="r">120</td><td class="r">108</td><td class="r">12</td><td class="r">11.50</td><td class="r">1,242.00</td></tr>
+            <tr><td class="w">Marie biscuit 120g</td><td>MB-1907</td><td>19-Jul-26</td><td>18-Jan-27</td><td class="r">30.00</td><td class="r">60</td><td class="r">60</td><td class="r">0</td><td class="r">21.80</td><td class="r">1,308.00</td></tr>
+          </tbody>
+        </table></div>
+        <div class="alertline w" style="margin-top:11px"><span class="k">MRP</span><span>Real Juice 200ml last received at &#8377;20.00 MRP. 36 nos of that batch are still in stock &mdash; a separate batch line will be created and the counter will price each batch at its own MRP.</span></div>
+        <div class="alertline c"><span class="k">REJ</span><span>12 nos mineral water rejected &mdash; reason required. Rejected stock moves to quarantine and is not issuable.</span></div>
+        <div class="split" style="margin-top:12px">
+          <div>
+            <div class="alertline g"><span class="k">QC</span><span>Quality check passed by M. Suresh at 09:42</span></div>
+          </div>
+          <div>
+            <div class="totrow"><span>Goods value</span><span>4,594.80</span></div>
+            <div class="totrow"><span>Freight</span><span>150.00</span></div>
+            <div class="totrow"><span>Scheme discount</span><span>&minus;120.00</span></div>
+            <div class="totrow"><span>GST</span><span>551.38</span></div>
+            <div class="totrow big"><span>Total</span><span>5,176.18</span></div>
+          </div>
+        </div>
+        <div class="btnrow"><span class="btn">Post GRN &amp; print labels</span><span class="btn ghost">Save draft</span><span class="btn ghost">Short-close PO</span></div>
+      </div>
+    </div>
+
+    <h3>Production batch <span class="chip b">Class B</span></h3>
+    <div class="screen">
+      <div class="sc-chrome"><span class="dots"><i></i><i></i><i></i></span><span class="sc-path">kitchen / production / PRD-20260825-03</span><span class="sc-user">Production In-charge</span></div>
+      <div class="sc-body">
+        <p class="sc-title">Veg Puffs &mdash; production batch</p>
+        <p class="sc-sub">PRD-20260825-03 &middot; recipe RCP-014 v3 &middot; opened 06:10 &middot; kitchen store</p>
+        <div class="fields">
+          <div class="fld"><b>Planned qty</b><span>120 nos</span></div>
+          <div class="fld"><b>Actual yield</b><span>116 nos</span></div>
+          <div class="fld"><b>Variance</b><span>&minus;4 &nbsp;(&minus;3.3%)</span></div>
+          <div class="fld"><b>Shelf life</b><span>12 hours</span></div>
+          <div class="fld"><b>Best before</b><span>25-Aug 21:30</span></div>
+          <div class="fld"><b>Outlet</b><span>Cafeteria Counter 1</span></div>
+        </div>
+        <div class="sc-scroll"><table class="sc-tbl">
+          <thead><tr><th>Ingredient</th><th>Batch (FEFO)</th><th class="r">Per recipe</th><th class="r">Required</th><th class="r">Actual used</th><th class="r">Rate</th><th class="r">Cost</th></tr></thead>
+          <tbody>
+            <tr><td class="w">Maida</td><td>MD-0819</td><td class="r">0.050 kg</td><td class="r">6.000</td><td class="r">6.400</td><td class="r">42.00</td><td class="r">268.80</td></tr>
+            <tr><td class="w">Refined oil</td><td>OL-0812</td><td class="r">0.018 L</td><td class="r">2.160</td><td class="r">2.100</td><td class="r">132.00</td><td class="r">277.20</td></tr>
+            <tr><td class="w">Veg filling mix</td><td>VF-0824</td><td class="r">0.040 kg</td><td class="r">4.800</td><td class="r">4.800</td><td class="r">186.00</td><td class="r">892.80</td></tr>
+            <tr><td class="w">Butter</td><td>BT-0820</td><td class="r">0.012 kg</td><td class="r">1.440</td><td class="r">1.440</td><td class="r">248.00</td><td class="r">357.12</td></tr>
+            <tr><td class="w">Packing cover</td><td>&mdash;</td><td class="r">1 nos</td><td class="r">120</td><td class="r">116</td><td class="r">0.40</td><td class="r">46.40</td></tr>
+          </tbody>
+        </table></div>
+        <div class="alertline w" style="margin-top:11px"><span class="k">VAR</span><span>Maida consumption 6.7% above recipe. Reason code required before the batch can be closed.</span></div>
+        <div class="split" style="margin-top:12px">
+          <div>
+            <div class="alertline g"><span class="k">OK</span><span>All ingredients available in kitchen store. FEFO batches auto-selected.</span></div>
+            <div class="alertline g"><span class="k">LBL</span><span>116 labels queued &mdash; item, PRD-20260825-03, best before 21:30</span></div>
+          </div>
+          <div>
+            <div class="totrow"><span>Material cost</span><span>1,842.32</span></div>
+            <div class="totrow"><span>Overhead @ 12%</span><span>221.08</span></div>
+            <div class="totrow"><span>Batch cost</span><span>2,063.40</span></div>
+            <div class="totrow"><span>Cost per unit</span><span>17.79</span></div>
+            <div class="totrow"><span>Selling price</span><span>25.00</span></div>
+            <div class="totrow big"><span>Margin</span><span>28.8%</span></div>
+          </div>
+        </div>
+        <div class="btnrow"><span class="btn">Close batch &amp; post to FG</span><span class="btn ghost">Record wastage</span><span class="btn ghost">Hold</span></div>
+      </div>
+    </div>
+
+    <h3>Billing counter &mdash; a mixed cart</h3>
+    <div class="screen">
+      <div class="sc-chrome"><span class="dots"><i></i><i></i><i></i></span><span class="sc-path">counter / billing &mdash; Cafeteria 1 &middot; Shift 2</span><span class="sc-user">Counter Operator</span></div>
+      <div class="sc-body">
+        <div class="split">
+          <div>
+            <p class="sc-title">Bill CF1/2026/08/1187</p>
+            <p class="sc-sub">Operator R. Kavitha &middot; 25-Aug 16:42 &middot; scan or tap to add</p>
+            <div class="sc-scroll"><table class="sc-tbl">
+              <thead><tr><th>Item</th><th>Batch</th><th class="r">Qty</th><th class="r">Rate</th><th class="r">Amount</th></tr></thead>
+              <tbody>
+                <tr><td class="w">Veg Puffs <span class="chip b">B</span></td><td>PRD-…-03</td><td class="r">2</td><td class="r">25.00</td><td class="r">50.00</td></tr>
+                <tr><td class="w">Real Juice 200ml <span class="chip a">A</span></td><td>RJ-2512</td><td class="r">1</td><td class="r">20.00</td><td class="r">20.00</td></tr>
+              </tbody>
+            </table></div>
+            <div class="alertline w" style="margin-top:10px"><span class="k">MRP</span><span>This juice is from the &#8377;20 MRP batch. Price is locked to &#8377;20.00, not the &#8377;22 shelf price.</span></div>
+            <div class="alertline c"><span class="k">EXP</span><span>Veg Puffs best before 21:30 &middot; 4 h 48 m left &middot; 9 nos remaining at this counter</span></div>
+            <div class="pay">
+              <div class="on">Cash</div><div>UPI</div><div>Card</div>
+              <div>Patient bill</div><div>Staff credit</div><div>Dept</div>
+            </div>
+          </div>
+          <div>
+            <div class="totrow"><span>Taxable</span><span>66.10</span></div>
+            <div class="totrow"><span>CGST</span><span>1.95</span></div>
+            <div class="totrow"><span>SGST</span><span>1.95</span></div>
+            <div class="totrow"><span>Round off</span><span>0.00</span></div>
+            <div class="totrow big"><span>Total</span><span>70.00</span></div>
+            <div class="totrow" style="margin-top:8px"><span>Tendered</span><span>100.00</span></div>
+            <div class="totrow"><span>Change</span><span>30.00</span></div>
+            <div class="btnrow" style="margin-top:14px"><span class="btn">Pay &amp; print</span></div>
+            <div class="btnrow"><span class="btn ghost">Hold bill</span><span class="btn ghost">Void line</span></div>
+            <p style="font-family:Archivo,sans-serif;font-size:10px;color:var(--ink-3);margin:12px 0 0;line-height:1.4">Price change, discount above 5% and bill cancellation need a supervisor PIN and are written to the audit trail.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <h3>Management dashboard</h3>
+    <div class="screen">
+      <div class="sc-chrome"><span class="dots"><i></i><i></i><i></i></span><span class="sc-path">dashboard / today</span><span class="sc-user">Read only</span></div>
+      <div class="sc-body">
+        <div class="tiles">
+          <div class="tile"><b>Sales today</b><span class="v">38,420</span><span class="d">&#8377; across 3 counters</span></div>
+          <div class="tile"><b>Gross margin</b><span class="v">31.4%</span><span class="d">A 18.2% &middot; B 39.1%</span></div>
+          <div class="tile"><b>Wastage</b><span class="v">1,146</span><span class="d">&#8377; &middot; 2.98% of sales</span></div>
+          <div class="tile"><b>Consumption</b><span class="v">22,905</span><span class="d">&#8377; raw material</span></div>
+          <div class="tile"><b>Stock value</b><span class="v">7.31L</span><span class="d">&#8377; all stores</span></div>
+          <div class="tile"><b>Near expiry</b><span class="v">9,860</span><span class="d">&#8377; within 15 days</span></div>
+        </div>
+        <div class="sc-scroll"><table class="sc-tbl">
+          <thead><tr><th>Item</th><th>Class</th><th class="r">Produced / recd</th><th class="r">Sold</th><th class="r">Wasted</th><th class="r">Sell-through</th><th class="r">Margin</th></tr></thead>
+          <tbody>
+            <tr><td class="w">Veg Puffs</td><td><span class="chip b">B</span></td><td class="r">116</td><td class="r">107</td><td class="r">9</td><td class="r">92.2%</td><td class="r">28.8%</td></tr>
+            <tr><td class="w">Sandwich</td><td><span class="chip b">B</span></td><td class="r">60</td><td class="r">41</td><td class="r">19</td><td class="r">68.3%</td><td class="r">34.1%</td></tr>
+            <tr><td class="w">Filter coffee</td><td><span class="chip b">B</span></td><td class="r">310</td><td class="r">310</td><td class="r">0</td><td class="r">100%</td><td class="r">61.0%</td></tr>
+            <tr><td class="w">Real Juice 200ml</td><td><span class="chip a">A</span></td><td class="r">144</td><td class="r">62</td><td class="r">0</td><td class="r">&mdash;</td><td class="r">29.0%</td></tr>
+            <tr><td class="w">Mineral water 1L</td><td><span class="chip a">A</span></td><td class="r">108</td><td class="r">88</td><td class="r">0</td><td class="r">&mdash;</td><td class="r">42.5%</td></tr>
+          </tbody>
+        </table></div>
+        <div class="alertline w" style="margin-top:11px"><span class="k">PLAN</span><span>Sandwich sell-through under 70% for 4 consecutive days &mdash; production plan is above demand. Suggested batch: 42.</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 07 ============ -->
+  <section id="map">
+    <div class="sec-head"><span class="sec-num">07</span><h2>Screen inventory</h2></div>
+    <p class="sec-sub">The full build, grouped as it will appear in the menu. This is the list we will estimate and schedule against.</p>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th style="width:20%">Module</th><th>Screens</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">Masters</th><td>Item master &middot; item type &amp; category &middot; UOM and conversion &middot; HSN and tax &middot; recipe / BOM builder &middot; vendor master &middot; rate contract &middot; store and bin &middot; outlet and counter &middot; cost centre &middot; department &middot; user and role &middot; approval matrix &middot; document numbering &middot; price list and versions</td></tr>
+          <tr><th scope="row">Indent</th><td>Raise indent &middot; my indents &middot; approval queue &middot; indent status tracker &middot; par level maintenance</td></tr>
+          <tr><th scope="row">Purchase</th><td>Indent to PO conversion &middot; quotation comparison &middot; PO entry &middot; PO approval &middot; PO print / send &middot; PO amendment &middot; pending PO tracker &middot; short close</td></tr>
+          <tr><th scope="row">Receipt</th><td>GRN against PO &middot; direct GRN &middot; quality check and rejection &middot; batch and MRP capture &middot; label printing &middot; purchase return &middot; debit note</td></tr>
+          <tr><th scope="row">Stock</th><td>Stock enquiry &middot; batch-wise stock &middot; store transfer &middot; issue against indent &middot; direct issue &middot; consumption issue &middot; stock adjustment &middot; physical stock take &middot; cycle count &middot; quarantine handling &middot; expiry write-off</td></tr>
+          <tr><th scope="row">Production</th><td>Daily production plan &middot; open batch &middot; ingredient consumption and variance &middot; yield and rejects &middot; close batch &middot; cost roll-up &middot; label print &middot; recipe costing what-if</td></tr>
+          <tr><th scope="row">Pricing</th><td>Price list entry &middot; cost vs price comparison &middot; price approval &middot; MRP ceiling check &middot; markdown approval &middot; price history</td></tr>
+          <tr><th scope="row">Billing</th><td>Shift open with cash declaration &middot; POS billing &middot; item tile board &middot; barcode scan &middot; hold and recall bill &middot; patient lookup and charge &middot; staff lookup and credit &middot; split tender &middot; bill cancellation &middot; credit note &middot; reprint &middot; shift close and variance</td></tr>
+          <tr><th scope="row">Diet</th><td>Diet type master &middot; patient diet plan &middot; ward census and meal count &middot; diet consumption posting &middot; tray tracking</td></tr>
+          <tr><th scope="row">Accounts</th><td>Vendor invoice booking &middot; 3-way match exceptions &middot; vendor ledger &middot; payment advice &middot; day-end reconciliation &middot; tender settlement &middot; GST registers &middot; export</td></tr>
+          <tr><th scope="row">Reports</th><td>The suite listed in stage 12, each with store, date, class and cost centre filters, Excel and PDF export</td></tr>
+          <tr><th scope="row">Mobile</th><td>Android scanner: GRN scan &middot; issue scan &middot; stock take scan &middot; stock enquiry &middot; label verify</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ============ 08 ============ -->
+  <section id="ua">
+    <div class="sec-head"><span class="sec-num">08</span><h2>User acceptance</h2></div>
+    <p class="sec-sub">Twenty-four scenarios. Acceptance is not a demo &mdash; it is your team running these on your data and signing each line. Two UAT cycles are in the delivery plan.</p>
+
+    <h4>Access and setup</h4>
+    <div class="tbl-wrap"><table class="ua">
+      <thead><tr><th style="width:9%">ID</th><th style="width:14%">Role</th><th style="width:36%">Scenario</th><th>Expected result</th></tr></thead>
+      <tbody>
+        <tr><td>UA-01</td><td>Counter Operator</td><td>Attempt to open the purchase order screen, including by direct link</td><td>Menu item absent and direct link refused with a clear message. Attempt written to the audit trail</td></tr>
+        <tr><td>UA-02</td><td>Store Keeper</td><td>Attempt to post a GRN into a store the user is not assigned to</td><td>That store is not offered in the list at all</td></tr>
+        <tr><td>UA-03</td><td>Administrator</td><td>Create a Class B item without attaching a recipe, then try to produce it</td><td>Item saves; production entry blocked with "recipe required before production"</td></tr>
+      </tbody>
+    </table></div>
+
+    <h4>Indent, approval and purchase</h4>
+    <div class="tbl-wrap"><table class="ua">
+      <thead><tr><th style="width:9%">ID</th><th style="width:14%">Role</th><th style="width:36%">Scenario</th><th>Expected result</th></tr></thead>
+      <tbody>
+        <tr><td>UA-04</td><td>Indentor</td><td>Open a daily indent for the kitchen</td><td>Lines pre-filled from par level minus current stock; on-order quantity shown against each line</td></tr>
+        <tr><td>UA-05</td><td>F&amp;B Manager</td><td>Return an indent for revision with a reason</td><td>Returns to the raiser's queue with the reason attached; original quantities retained in history; nothing deleted</td></tr>
+        <tr><td>UA-06</td><td>Purchase Officer</td><td>Create a PO for &#8377;40,000 and attempt to approve it personally</td><td>Approve action unavailable to the creator; routes to Finance because it exceeds the &#8377;25,000 slab</td></tr>
+        <tr><td>UA-07</td><td>Purchase Officer</td><td>Enter a rate above the live rate contract</td><td>Line flagged; reason mandatory; PO routes one level higher</td></tr>
+      </tbody>
+    </table></div>
+
+    <h4>Receipt and stock</h4>
+    <div class="tbl-wrap"><table class="ua">
+      <thead><tr><th style="width:9%">ID</th><th style="width:14%">Role</th><th style="width:36%">Scenario</th><th>Expected result</th></tr></thead>
+      <tbody>
+        <tr><td>UA-08</td><td>Store Keeper</td><td>Receive 150 against a PO for 144</td><td>Within 2% allowed with a note; beyond it blocked and held for Purchase Manager approval</td></tr>
+        <tr><td>UA-09</td><td>Store Keeper</td><td>Receive the same juice at &#8377;22 MRP while &#8377;20 stock is on hand <span class="chip a">A</span></td><td>Two separate batch lines. Stock report shows both. The counter prices each batch at its own MRP</td></tr>
+        <tr><td>UA-10</td><td>Store Keeper</td><td>Receive a batch whose expiry date has passed</td><td>Blocked. Also blocked where expiry precedes manufacturing date</td></tr>
+        <tr><td>UA-11</td><td>Store Keeper</td><td>Reject 12 of 120 at quality check</td><td>108 to sellable stock, 12 to quarantine, quarantine not offered on any issue screen, debit note proposed</td></tr>
+        <tr><td>UA-12</td><td>Store Keeper</td><td>Issue an item held in two batches</td><td>Earliest expiry proposed first. Overriding requires a reason, which appears on the issue document</td></tr>
+        <tr><td>UA-13</td><td>Store Keeper</td><td>Issue 50 kg when 48.5 kg is on hand</td><td>Blocked. No negative stock anywhere in the system. Message names the available quantity</td></tr>
+      </tbody>
+    </table></div>
+
+    <h4>Production and pricing</h4>
+    <div class="tbl-wrap"><table class="ua">
+      <thead><tr><th style="width:9%">ID</th><th style="width:14%">Role</th><th style="width:36%">Scenario</th><th>Expected result</th></tr></thead>
+      <tbody>
+        <tr><td>UA-14</td><td>Production</td><td>Produce 120 veg puffs, actual yield 116 <span class="chip b">B</span></td><td>Ingredients deducted from kitchen store at FEFO rates; 116 posted to finished goods with batch and best-before; yield variance &minus;3.3% recorded with reason</td></tr>
+        <tr><td>UA-15</td><td>Production</td><td>Use 6.4 kg maida where the recipe requires 6.0 kg</td><td>Variance flagged, reason mandatory, and it appears on the consumption variance report</td></tr>
+        <tr><td>UA-16</td><td>Administrator</td><td>Raise the maida purchase rate, then open the recipe</td><td>Recipe cost and computed unit cost update. Any selling price now below cost is listed for review</td></tr>
+        <tr><td>UA-17</td><td>F&amp;B Manager</td><td>Set the juice counter price above its batch MRP <span class="chip a">A</span></td><td>Hard block, not an approval. No role can override it</td></tr>
+        <tr><td>UA-18</td><td>F&amp;B Manager</td><td>Set a Class B price below computed cost <span class="chip b">B</span></td><td>Allowed but routed to Finance for approval; margin shown as negative on the approval screen</td></tr>
+      </tbody>
+    </table></div>
+
+    <h4>Billing, consumption and close</h4>
+    <div class="tbl-wrap"><table class="ua">
+      <thead><tr><th style="width:9%">ID</th><th style="width:14%">Role</th><th style="width:36%">Scenario</th><th>Expected result</th></tr></thead>
+      <tbody>
+        <tr><td>UA-19</td><td>Counter Operator</td><td>Bill 2 puffs and 1 juice, tender cash</td><td>Counter stock of both drops immediately; no raw material moves; GST split correctly; bill prints with HSN summary</td></tr>
+        <tr><td>UA-20</td><td>Counter Operator</td><td>Two counters sell the last unit of the same item at the same moment</td><td>First bill succeeds, second is refused with current availability. Stock never goes negative</td></tr>
+        <tr><td>UA-21</td><td>Counter Operator</td><td>Charge a sale to an inpatient, then to a staff member</td><td>No cash movement. Posts to the running IP bill and to the employee's credit ledger respectively, both within limit checks</td></tr>
+        <tr><td>UA-22</td><td>Counter Operator</td><td>Cancel a bill inside the shift, then attempt the same after shift close</td><td>In-shift cancellation restores stock and needs a supervisor PIN. Post-close it is refused and offers a credit note instead. Both are audited</td></tr>
+        <tr><td>UA-23</td><td>Counter Operator</td><td>Close the shift with 9 unsold puffs and a &#8377;40 cash shortfall</td><td>Wastage entry required before close; &#8377;160.02 posted to wastage; Class B closing stock zero; cash variance recorded with explanation; day locked</td></tr>
+        <tr><td>UA-24</td><td>Accounts</td><td><strong>Reconcile a full day, item by item</strong></td><td><strong>Opening + receipts + production &minus; issues &minus; sales &minus; consumption &minus; wastage &plusmn; adjustments = closing</strong>, for every item in every store, with no unexplained difference. GST register ties to the sales register; purchase register ties to GRN</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>Exit criteria for sign-off</h3>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th style="width:16%">Severity</th><th style="width:44%">Definition</th><th>Sign-off rule</th></tr></thead>
+      <tbody>
+        <tr><th scope="row"><span class="chip crit">Critical</span></th><td>Wrong stock or wrong money. Reconciliation fails, a bill computes incorrectly, or access control leaks</td><td>Zero open. No exceptions</td></tr>
+        <tr><th scope="row"><span class="chip warn">Major</span></th><td>A required workflow cannot be completed, or a control can be bypassed</td><td>Zero open at go-live</td></tr>
+        <tr><th scope="row"><span class="chip r">Minor</span></th><td>Workflow completes but with a workaround, wrong label, awkward sequence</td><td>Up to 10 open, each with a committed fix date inside hyper-care</td></tr>
+        <tr><th scope="row"><span class="chip r">Cosmetic</span></th><td>Wording, alignment, print formatting</td><td>Logged, fixed during hyper-care</td></tr>
+      </tbody>
+    </table></div>
+    <div class="prose"><p class="f">Each of UA-01 to UA-24 is signed by the role that owns it. UA-24 is signed by Accounts and is the gate for go-live &mdash; if the ledger does not tie out on a full simulated day, nothing else in this list matters.</p></div>
+  </section>
+
+  <!-- ============ 09 ============ -->
+  <section id="gaps">
+    <div class="sec-head"><span class="sec-num">09</span><h2>Added to your flow</h2></div>
+    <p class="sec-sub">What flow chart v1 covers well, and the eight things it does not yet account for. Each of these is a real screen and real effort &mdash; flagging them now is what keeps the estimate honest.</p>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th style="width:24%">Addition</th><th style="width:38%">Why it is needed</th><th>Cost of leaving it out</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">Production / recipe stage <span class="chip b">B</span></th><td>Class B items must be created from raw materials with a batch, a cost and a best-before</td><td>Finished goods have no legitimate origin. Raw material consumption is never captured, so the kitchen cannot be costed</td></tr>
+        <tr><th scope="row">Outlet stock and price control</th><td>Counters must hold their own stock and their own price source</td><td>No counter-wise accountability. MRP ceiling cannot be enforced per batch</td></tr>
+        <tr><th scope="row">Billing and tender types</th><td>The system is inventory <em>and</em> billing; the sale is where stock and money meet</td><td>Stock deduction stays manual and margin is never known</td></tr>
+        <tr><th scope="row">Day close and wastage</th><td>Short-shelf-life stock must be retired every night</td><td>Yesterday's sandwiches stay in stock forever and closing stock is permanently overstated</td></tr>
+        <tr><th scope="row">Shift and cash management</th><td>Counter cash needs opening declaration, tender reconciliation and variance</td><td>Cash differences are invisible and unattributable</td></tr>
+        <tr><th scope="row">Price approval workflow <span class="chip b">B</span></th><td>Non-MRP means the hospital is the pricing authority, so the discipline must be in the system</td><td>Prices drift below cost with nobody noticing until the monthly P&amp;L</td></tr>
+        <tr><th scope="row">Staff credit ledger</th><td>Staff canteen purchases recovered through payroll</td><td>Manual registers, disputes at month end, leakage</td></tr>
+        <tr><th scope="row">Physical stock take cadence</th><td>Book stock and shelf stock diverge; only counting resolves it</td><td>The reconciliation in UA-24 can be run but never corrected</td></tr>
+      </tbody>
+    </table></div>
+    <div class="note"><strong>What v1 already gets right</strong>The indent &rarr; approval &rarr; PO &rarr; GRN &rarr; store spine is correct and complete, including batch and expiry tracking, FIFO/FEFO, cost centre mapping, the alert set and the report list. Sections 03 to 05 above keep all of it and build the missing half onto it.</div>
+  </section>
+
+  <!-- ============ 10 ============ -->
+  <section id="questions">
+    <div class="sec-head"><span class="sec-num">10</span><h2>Your decisions</h2></div>
+    <p class="sec-sub">Ten answers we need before the SRS can be written. Most change scope; two change the architecture.</p>
+    <div class="qs">
+      <div class="q"><div><h4>Is patient diet inside this module?</h4><p>Diet planning and ward meal counts could sit here, or in the separate HIMS diet module with only the stock deduction crossing over. <em>Changes scope by roughly one module.</em></p></div></div>
+      <div class="q"><div><h4>Do the counters need to keep billing when the network is down?</h4><p>Offline-capable billing with sync-on-reconnect is a materially different build from a browser-only POS. <em>Architectural.</em></p></div></div>
+      <div class="q"><div><h4>How many outlets, counters and stores, and where?</h4><p>The quotation assumes five stock locations. Every counter beyond that is a licence, a terminal and a training slot.</p></div></div>
+      <div class="q"><div><h4>Does the kitchen actually work to standard recipes?</h4><p>If yes, the system back-flushes automatically and only asks about exceptions. If cooking is by judgement, actual consumption must be entered at every batch. <em>Architectural &mdash; see stage 07.</em></p></div></div>
+      <div class="q"><div><h4>What is the GST position on food served to inpatients versus sold to visitors?</h4><p>These are commonly treated differently, and the treatment decides whether one counter can issue both a tax invoice and an exempt document. <em>Please have your CA confirm the position in writing &mdash; we will build to that, not to an assumption.</em></p></div></div>
+      <div class="q"><div><h4>Is staff canteen credit recovered through payroll?</h4><p>If yes, we produce a monthly recovery file. Tell us the format your payroll accepts and whether a credit limit per employee applies.</p></div></div>
+      <div class="q"><div><h4>What POS hardware exists today?</h4><p>Thermal printer models, cash drawer, barcode scanners, weighing scales for loose goods, label printer. Integration effort depends entirely on the answer.</p></div></div>
+      <div class="q"><div><h4>Do you want made-to-order handling with a kitchen order ticket?</h4><p>Relevant if items such as sandwiches are prepared after the order rather than in advance batches. It adds an order queue screen for the kitchen.</p></div></div>
+      <div class="q"><div><h4>Which billing or HIS software must we post patient charges into?</h4><p>Name, version, and whether it exposes an API or only a database. This determines whether posting is real time or a file at day end.</p></div></div>
+      <div class="q"><div><h4>What is the cut-over date and who owns opening stock?</h4><p>We need item masters and batch-wise opening stock in clean spreadsheets, and one named person per department to sign that the counted opening figure is correct.</p></div></div>
+    </div>
+  </section>
+
+  <footer>
+    <p>Prepared for Royal Care Hospital by Hashtricks Technologies. Draft 1 for review &mdash; figures in the screens are illustrative, thresholds in section 04 are configuration values, and every stage is open to change before the SRS is signed.</p>
+    <p>Mark up anything in sections 02, 03, 04 and 09 that does not match how the hospital actually works, and answer section 10. That is enough to write the SRS.</p>
+  </footer>
+
+  </main>
+</div>
