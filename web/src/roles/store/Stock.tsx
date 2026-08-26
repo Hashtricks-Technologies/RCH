@@ -1,0 +1,143 @@
+import { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { IT, LOC } from "../../data/master";
+import { useApp } from "../../store";
+import { avail, daysCover, qty, resv, stateLabel, stateTone, stockValue } from "../../lib/selectors";
+import { U, fq, money, money0, sum } from "../../lib/fmt";
+import {
+  Btn, Card, DataTable, FilterBtn, PageHead, Pill, TableFoot, Tag, Toolbar,
+} from "../../ui/kit";
+
+const TYPES = ["All", "RAW", "PACK", "TRADED", "FG"] as const;
+
+export default function Stock() {
+  const s = useApp();
+  const nav = useNavigate();
+  const prqDraft = useApp((x) => x.prqDraft);
+  const setPrqDraft = useApp((x) => x.setPrqDraft);
+  const notify = useApp((x) => x.notify);
+
+  const [q, setQ] = useState("");
+  const [ti, setTi] = useState(0);
+  const [lowOnly, setLowOnly] = useState(false);
+
+  const type = TYPES[ti];
+
+  const all = Object.keys(s.stock.store)
+    .filter((it) => IT[it])
+    .map((it) => {
+      const on = qty(s, "store", it);
+      const rv = resv(s, "store", it);
+      const av = avail(s, "store", it);
+      const rl = IT[it].rl;
+      return { it, on, rv, av, rl, low: rl > 0 && av < rl, dc: daysCover(av, it), val: on * IT[it].cost };
+    })
+    .sort((a, b) => IT[a.it].c.localeCompare(IT[b.it].c));
+
+  const term = q.trim().toLowerCase();
+  const rows = all.filter((r) => {
+    const i = IT[r.it];
+    if (type !== "All" && i.t !== type) return false;
+    if (lowOnly && !r.low) return false;
+    if (!term) return true;
+    return i.n.toLowerCase().includes(term) || i.c.toLowerCase().includes(term) || i.g.toLowerCase().includes(term);
+  });
+
+  const shown = sum(rows, (r) => r.val);
+  const total = stockValue(s, "store");
+  const lowCount = all.filter((r) => r.low).length;
+
+  const addToRequisition = (it: string, rl: number, on: number) => {
+    const want = Math.max(1, Math.ceil(rl * 1.6 - on));
+    const at = prqDraft.findIndex((l) => l.it === it);
+    if (at >= 0) {
+      const next = prqDraft.slice();
+      next[at] = { it, qty: want };
+      setPrqDraft(next);
+    } else {
+      setPrqDraft([...prqDraft, { it, qty: want }]);
+    }
+    notify(`${IT[it].n} staged for requisition — ${want} ${U(it)} suggested`);
+    nav("/procure");
+  };
+
+  return (
+    <>
+      <PageHead
+        crumbs={["Royal Care", "Central Store"]}
+        title="Stock in hand"
+        sub={`${LOC.store.n} only · ${LOC.store.c} · ${all.length} stocked lines worth ${money0(total)} at cost`}
+        actions={<Btn variant="gh" onClick={() => nav("/procure")}>Requisitions</Btn>}
+      />
+
+      <Card title="Central store ledger" sub="On hand, reserved against open tickets, and free to promise" flush>
+        <Toolbar
+          placeholder="Search item, code or group…"
+          value={q}
+          onSearch={setQ}
+          filters={
+            <>
+              <FilterBtn label="Type" value={type} onClick={() => setTi((n) => (n + 1) % TYPES.length)} />
+              <FilterBtn label="Below reorder only" active={lowOnly} onClick={() => setLowOnly((v) => !v)} />
+            </>
+          }
+          right={<span className="mini">{lowCount} below reorder</span>}
+        />
+        <DataTable
+          cols={[
+            { h: "Item", cls: "nm", w: "20%" },
+            { h: "Type", w: "8%" },
+            { h: "Group", w: "10%" },
+            { h: "On hand", r: true },
+            { h: "Reserved", r: true },
+            { h: "Available", r: true },
+            { h: "Reorder level", r: true },
+            { h: "Days of cover", r: true },
+            { h: "Cost", r: true },
+            { h: "Value", r: true },
+            { h: "State", w: "10%" },
+            { h: "Action", w: "12%" },
+          ]}
+          rows={rows.map((r) => {
+            const i = IT[r.it];
+            return {
+              key: r.it,
+              cells: [
+                <>
+                  {i.n}
+                  <small>{i.c}</small>
+                </>,
+                <Tag kind={i.t === "TRADED" ? "tr" : undefined}>{i.t}</Tag>,
+                <>{i.g}</>,
+                <>{fq(r.on, r.it)} <span className="dim">{U(r.it)}</span></>,
+                <>{r.rv > 0 ? fq(r.rv, r.it) : <span className="dim">—</span>}</>,
+                <b>{fq(r.av, r.it)}</b>,
+                <>{fq(r.rl, r.it)}</>,
+                <>{r.dc.toFixed(1)} d</>,
+                <>{money(i.cost)}</>,
+                <>{money0(r.val)}</>,
+                <Pill tone={stateTone(r.av, r.rl)}>{stateLabel(r.av, r.rl)}</Pill>,
+                r.low ? (
+                  <Btn size="xs" variant="gh" onClick={() => addToRequisition(r.it, r.rl, r.on)}>
+                    Add to requisition
+                  </Btn>
+                ) : (
+                  <span className="dim mini">—</span>
+                ),
+              ],
+            };
+          })}
+          empty={{
+            title: "No items match this filter",
+            sub: "Clear the search or switch the type filter back to All.",
+            action: <Btn size="sm" variant="gh" onClick={() => { setQ(""); setTi(0); setLowOnly(false); }}>Reset filters</Btn>,
+          }}
+        />
+        <TableFoot
+          count={rows.length}
+          extra={<>Value shown {money0(shown)} · total central store {money0(total)}</>}
+        />
+      </Card>
+    </>
+  );
+}

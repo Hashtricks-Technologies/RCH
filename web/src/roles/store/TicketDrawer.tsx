@@ -1,0 +1,118 @@
+import { IT, LOC } from "../../data/master";
+import { useApp } from "../../store";
+import { U, fq, money, sum } from "../../lib/fmt";
+import { Btn, DataTable, Feed, Pill, QR, StatusPill } from "../../ui/kit";
+import { DrawerFrame } from "../../ui/Drawer";
+import { registerDrawer, type DrawerProps } from "../../drawers";
+
+const STEPS = ["Issued", "Collected", "Received"] as const;
+
+function TicketDrawer({ id }: DrawerProps) {
+  const tkt = useApp((s) => s.tkt);
+  const req = useApp((s) => s.req);
+  const close = useApp((s) => s.closeDrawer);
+  const handover = useApp((s) => s.handover);
+
+  const t = tkt.find((x) => x.id === id);
+  if (!t) {
+    return (
+      <DrawerFrame title="Ticket not found" sub={id}>
+        <p className="mini">This ticket is no longer on the issue desk.</p>
+      </DrawerFrame>
+    );
+  }
+
+  const r = req.find((x) => x.id === t.req);
+  const step = STEPS.indexOf(t.st);
+  const value = sum(t.lines, (l) => l.qty * (IT[l.it]?.cost ?? 0));
+
+  const when = (s: string) => r?.hist.find((h) => h.s === s)?.t;
+  const body: Record<string, string> = {
+    Issued: `Stock reserved in ${LOC[t.from].n} and the ticket printed at the window.`,
+    Collected: `Scanned at the store window — quantities left ${LOC[t.from].n}.`,
+    Received: `${LOC[t.to].n} confirms the goods on the shelf and the request closes.`,
+  };
+
+  return (
+    <DrawerFrame
+      title={t.id}
+      sub={`${LOC[t.from].n} → ${LOC[t.to].n} · against ${t.req}`}
+      foot={
+        <>
+          <Btn variant="gh" onClick={close}>Close</Btn>
+          <div className="sp" />
+          {t.st === "Issued" ? (
+            <Btn variant="ok" onClick={() => handover(t.id)}>Scan &amp; hand over</Btn>
+          ) : (
+            <span className="mini">{t.st === "Collected" ? "Waiting on the receiving counter" : "Closed"}</span>
+          )}
+        </>
+      }
+    >
+      <div className="tktbox">
+        <div style={{ flex: 1 }}>
+          <div className="mini">Collection authority</div>
+          <div className="mono-id" style={{ fontSize: 26, letterSpacing: "0.04em" }}>{t.id}</div>
+          <div className="mtop" style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <StatusPill status={t.st} />
+            <span className="mini">{t.lines.length} line{t.lines.length > 1 ? "s" : ""} · {sum(t.lines, (l) => l.qty)} units · {money(value)}</span>
+          </div>
+          <div className="mini mtop">
+            From <b>{LOC[t.from].n}</b> ({LOC[t.from].c}) → To <b>{LOC[t.to].n}</b> ({LOC[t.to].c}, {LOC[t.to].floor})
+          </div>
+        </div>
+        <QR size={86} />
+      </div>
+
+      <div className="mtop">
+        <DataTable
+          cols={[
+            { h: "Item", cls: "nm", w: "44%" },
+            { h: "Approved qty", r: true },
+            { h: "Unit" },
+            { h: "Value", r: true },
+          ]}
+          rows={t.lines.map((l) => ({
+            key: l.it,
+            cells: [
+              <>
+                {IT[l.it]?.n ?? l.it}
+                <small>{IT[l.it]?.c}</small>
+              </>,
+              <b>{fq(l.qty, l.it)}</b>,
+              <span className="dim">{U(l.it)}</span>,
+              <>{money(l.qty * (IT[l.it]?.cost ?? 0))}</>,
+            ],
+          }))}
+          empty={{ title: "No lines on this ticket" }}
+        />
+      </div>
+
+      <div className="mtop">
+        <div className="mini" style={{ marginBottom: 8 }}>Movement</div>
+        <Feed
+          items={STEPS.map((sName, i) => ({
+            key: sName,
+            title: (
+              <>
+                {sName}{" "}
+                {i < step ? <Pill tone="ok">Done</Pill> : i === step ? <Pill tone="ac">Now</Pill> : <Pill tone="mu">Pending</Pill>}
+              </>
+            ),
+            body: body[sName],
+            when: i <= step ? (when(sName) ?? "today") : undefined,
+            color: i < step ? "var(--good)" : i === step ? "var(--accent)" : "var(--line-strong)",
+          }))}
+        />
+      </div>
+
+      {r && r.mgrNote && (
+        <div className="mini mtop">Manager note: {r.mgrNote}</div>
+      )}
+    </DrawerFrame>
+  );
+}
+
+registerDrawer("stkt", TicketDrawer);
+
+export default TicketDrawer;
