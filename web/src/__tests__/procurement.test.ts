@@ -288,3 +288,62 @@ describe("draft purchase orders", () => {
     expect(S().prq.find((x) => x.id === "PRQ-2026-013")!.lines[0].ordered).toBe(60);
   });
 });
+
+describe("sending a purchase order", () => {
+  it("moves a draft to ordered and stamps the approval slab", () => {
+    as("buyer");
+    S().sendPo("PO-2026-0140");
+    const o = S().po.find((x) => x.id === "PO-2026-0140")!;
+    expect(o.st).toBe("Ordered");
+    expect(o.needsApproval).toBe(false);
+    expect(o.hist.at(-1)!.s).toBe("Ordered");
+  });
+
+  it("flags an order over the finance slab but still sends it", () => {
+    as("buyer");
+    S().updatePoLine("PO-2026-0140", 0, { rate: 2000 });
+    S().sendPo("PO-2026-0140");
+    const o = S().po.find((x) => x.id === "PO-2026-0140")!;
+    expect(o.st).toBe("Ordered");
+    expect(o.needsApproval).toBe(true);
+    expect(S().toast).toMatch(/finance approval/i);
+  });
+
+  it("refuses to send to an inactive vendor", () => {
+    as("buyer");
+    S().setVendorActive("VN-003", false);
+    S().sendPo("PO-2026-0140");
+    expect(S().po.find((x) => x.id === "PO-2026-0140")!.st).toBe("Draft");
+    expect(S().toast).toMatch(/inactive/i);
+  });
+
+  it("refuses to send an empty order", () => {
+    as("buyer");
+    S().removePoLine("PO-2026-0140", 0);
+    S().sendPo("PO-2026-0140");
+    expect(S().po.find((x) => x.id === "PO-2026-0140")!.st).toBe("Draft");
+    expect(S().toast).toMatch(/no lines/i);
+  });
+
+  it("cancels an order and returns every claim to the pool", () => {
+    as("buyer");
+    S().cancelPo("PO-2026-0140", "Vendor cannot supply this week.");
+    expect(S().po.find((x) => x.id === "PO-2026-0140")!.st).toBe("Cancelled");
+    const p = S().prq.find((x) => x.id === "PRQ-2026-014")!;
+    expect(p.lines[0].ordered).toBe(0);
+    expect(procurementList(S()).some((l) => l.it === "sugar")).toBe(true);
+  });
+
+  it("will not cancel once anything has been received", () => {
+    as("buyer");
+    S().cancelPo("PO-2026-0142", "Too late.");
+    expect(S().po.find((x) => x.id === "PO-2026-0142")!.st).toBe("Partially received");
+    expect(S().toast).toMatch(/already received/i);
+  });
+
+  it("requires a reason to cancel", () => {
+    as("buyer");
+    S().cancelPo("PO-2026-0140", "  ");
+    expect(S().po.find((x) => x.id === "PO-2026-0140")!.st).toBe("Draft");
+  });
+});

@@ -1,8 +1,8 @@
 import type { PoLine, PoLineSrc, Requisition, Vendor } from "../types";
 import type { AppState } from "./index";
-import { IT } from "../data/master";
-import { fq, now } from "../lib/fmt";
-import { procurementList } from "../lib/selectors";
+import { IT, PO_APPROVAL_LIMIT } from "../data/master";
+import { fq, money0, now } from "../lib/fmt";
+import { poValue, procurementList } from "../lib/selectors";
 
 type Set_ = (p: Partial<AppState>) => void;
 type Get = () => AppState;
@@ -41,6 +41,8 @@ export interface ProcurementSlice {
   removePoLine: (poId: string, lineIdx: number) => void;
   setPoVendor: (poId: string, vendorId: string) => void;
   setPoEta: (poId: string, eta: string) => void;
+  sendPo: (poId: string) => void;
+  cancelPo: (poId: string, reason: string) => void;
 }
 
 export const createProcurementSlice = (set: Set_, get: Get): ProcurementSlice => ({
@@ -240,4 +242,51 @@ export const createProcurementSlice = (set: Set_, get: Get): ProcurementSlice =>
 
   setPoEta: (poId, eta) =>
     set({ po: get().po.map((x) => (x.id === poId && x.st === "Draft" ? { ...x, eta } : x)) }),
+
+  sendPo: (poId) => {
+    const s = get();
+    const o = s.po.find((x) => x.id === poId);
+    if (!o || o.st !== "Draft" || !s.user) return;
+    if (!o.lines.length) { s.notify(`${poId} has no lines — add some from the procurement list`); return; }
+    const v = s.vendors.find((x) => x.id === o.vendor);
+    if (!v) { s.notify("Choose a vendor before sending"); return; }
+    if (!v.active) { s.notify(`${v.n} is inactive — reactivate it or move this order to another vendor`); return; }
+
+    const value = poValue(o);
+    const needsApproval = value > PO_APPROVAL_LIMIT;
+    set({
+      po: s.po.map((x) => x.id !== poId ? x : {
+        ...x, st: "Ordered" as const, needsApproval, at: now(),
+        hist: [...x.hist, { s: "Ordered", who: s.user!.n, t: now() }],
+      }),
+      drawer: null,
+    });
+    s.notify(needsApproval
+      ? `${poId} raised on ${v.n} — ${money0(value)} is over the ${money0(PO_APPROVAL_LIMIT)} slab and needs finance approval`
+      : `${poId} raised on ${v.n} — expected ${o.eta}`);
+  },
+
+  cancelPo: (poId, reason) => {
+    const s = get();
+    const o = s.po.find((x) => x.id === poId);
+    if (!o || !s.user) return;
+    // Anything received must be checked before the status guard, or a
+    // partially received order fails the status check silently instead of
+    // getting a real explanation.
+    if (o.lines.some((l) => l.recv > 0)) {
+      s.notify(`${poId} already received against — close it short instead of cancelling`);
+      return;
+    }
+    if (o.st !== "Draft" && o.st !== "Ordered") return;
+    if (!reason.trim()) { s.notify("Give a reason for cancelling this order"); return; }
+    set({
+      prq: claim(s.prq, o.lines.flatMap((l) => l.src), -1),
+      po: s.po.map((x) => x.id !== poId ? x : {
+        ...x, st: "Cancelled" as const, shortNote: reason,
+        hist: [...x.hist, { s: "Cancelled", who: s.user!.n, t: now() }],
+      }),
+      drawer: null,
+    });
+    s.notify(`${poId} cancelled — ${o.lines.length} line(s) back on the procurement list`);
+  },
 });
