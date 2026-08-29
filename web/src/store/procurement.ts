@@ -1,9 +1,34 @@
-import type { Vendor } from "../types";
+import type { PoLine, PoLineSrc, Requisition, Vendor } from "../types";
 import type { AppState } from "./index";
-import { now } from "../lib/fmt";
+import { IT } from "../data/master";
+import { fq, now } from "../lib/fmt";
+import { procurementList } from "../lib/selectors";
 
 type Set_ = (p: Partial<AppState>) => void;
 type Get = () => AppState;
+
+const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+export const inDays = (n: number) => {
+  const d = new Date();
+  d.setDate(d.getDate() + n);
+  return `${String(d.getDate()).padStart(2, "0")}-${MON[d.getMonth()]}-${d.getFullYear()}`;
+};
+
+/** Move `delta` onto (positive) or off (negative) the `ordered` claim of a
+ *  requisition line. The procurement list is derived from appr - ordered, so
+ *  this is the only thing that adds or returns pool quantity. */
+const claim = (prq: Requisition[], src: PoLineSrc[], sign: 1 | -1): Requisition[] =>
+  prq.map((p) => {
+    const mine = src.filter((x) => x.prq === p.id);
+    if (!mine.length) return p;
+    return {
+      ...p,
+      lines: p.lines.map((l, i) => {
+        const d = mine.filter((x) => x.line === i).reduce((t, x) => t + x.qty, 0);
+        return d ? { ...l, ordered: Math.round((l.ordered + sign * d) * 1000) / 1000 } : l;
+      }),
+    };
+  });
 
 export interface ProcurementSlice {
   addVendor: (v: Omit<Vendor, "id" | "active">) => void;
@@ -11,6 +36,11 @@ export interface ProcurementSlice {
   setVendorActive: (id: string, active: boolean) => void;
   approveRequisition: (prqId: string, appr: number[], note: string) => void;
   declineRequisition: (prqId: string, note: string) => void;
+  createPo: (vendorId: string, picks: { prq: string; line: number; qty: number }[]) => void;
+  updatePoLine: (poId: string, lineIdx: number, patch: { qty?: number; rate?: number }) => void;
+  removePoLine: (poId: string, lineIdx: number) => void;
+  setPoVendor: (poId: string, vendorId: string) => void;
+  setPoEta: (poId: string, eta: string) => void;
 }
 
 export const createProcurementSlice = (set: Set_, get: Get): ProcurementSlice => ({
@@ -87,4 +117,115 @@ export const createProcurementSlice = (set: Set_, get: Get): ProcurementSlice =>
     });
     s.notify(`${prqId} declined`);
   },
+
+  createPo: (vendorId, picks) => {
+    const s = get();
+    if (!s.user) return;
+    if (!picks.length) { s.notify("Pick at least one line before raising an order"); return; }
+    const v = s.vendors.find((x) => x.id === vendorId);
+    if (!v) { s.notify("Choose a vendor for this order"); return; }
+    if (!v.active) { s.notify(`${v.n} is inactive — reactivate it or choose another vendor`); return; }
+
+    // Every pick must still be free on its source line.
+    const pool = procurementList(s);
+    for (const pk of picks) {
+      const av = pool.find((l) => l.prq === pk.prq && l.line === pk.line);
+      const free = av?.pending ?? 0;
+      if (!(pk.qty > 0)) { s.notify("Enter a quantity on every line you pick"); return; }
+      if (pk.qty > free) {
+        const nm = IT[av?.it ?? ""]?.n ?? "That line";
+        s.notify(`${nm} — only ${fq(free, av?.it ?? "")} still pending on ${pk.prq}`);
+        return;
+      }
+    }
+
+    // Merge picks of the same item into one line carrying several sources.
+    const lines: PoLine[] = [];
+    for (const pk of picks) {
+      const it = s.prq.find((p) => p.id === pk.prq)!.lines[pk.line].it;
+      const at = lines.find((l) => l.it === it);
+      if (at) {
+        at.qty = Math.round((at.qty + pk.qty) * 1000) / 1000;
+        at.src.push({ ...pk });
+      } else {
+        lines.push({ it, qty: pk.qty, rate: IT[it]?.cost ?? 0, src: [{ ...pk }], recv: 0, rejected: 0 });
+      }
+    }
+
+    const id = "PO-2026-0" + (s.seq.po + 1);
+    set({
+      seq: { ...s.seq, po: s.seq.po + 1 },
+      prq: claim(s.prq, picks.map((p) => ({ ...p })), 1),
+      po: [{ id, vendor: vendorId, at: now(), lines, st: "Draft", eta: inDays(v.lead),
+             hist: [{ s: "Draft", who: s.user.n, t: now() }] }, ...s.po],
+      drawer: null,
+    });
+    s.notify(`${id} drafted on ${v.n} — ${lines.length} line(s), review the rates before sending`);
+  },
+
+  updatePoLine: (poId, lineIdx, patch) => {
+    const s = get();
+    const o = s.po.find((x) => x.id === poId);
+    if (!o || o.st !== "Draft") return;
+    const line = o.lines[lineIdx];
+    if (!line) return;
+
+    if (patch.rate != null) {
+      const rate = patch.rate > 0 ? patch.rate : 0;
+      set({ po: s.po.map((x) => x.id !== poId ? x : {
+        ...x, lines: x.lines.map((l, i) => (i === lineIdx ? { ...l, rate } : l)),
+      }) });
+      return;
+    }
+    if (patch.qty == null) return;
+
+    const want = Math.round(Math.max(0, patch.qty) * 1000) / 1000;
+    if (want > line.qty) {
+      s.notify("Add another pick from the procurement list to increase this line");
+      return;
+    }
+    // Give the difference back, last source first.
+    let give = Math.round((line.qty - want) * 1000) / 1000;
+    const released: PoLineSrc[] = [];
+    const src: PoLineSrc[] = [];
+    for (const x of [...line.src].reverse()) {
+      const take = Math.min(give, x.qty);
+      give = Math.round((give - take) * 1000) / 1000;
+      if (take > 0) released.push({ ...x, qty: take });
+      const left = Math.round((x.qty - take) * 1000) / 1000;
+      if (left > 0) src.unshift({ ...x, qty: left });
+    }
+    set({
+      prq: claim(s.prq, released, -1),
+      po: s.po.map((x) => x.id !== poId ? x : {
+        ...x,
+        lines: want === 0
+          ? x.lines.filter((_, i) => i !== lineIdx)
+          : x.lines.map((l, i) => (i === lineIdx ? { ...l, qty: want, src } : l)),
+      }),
+    });
+  },
+
+  removePoLine: (poId, lineIdx) => {
+    const s = get();
+    const o = s.po.find((x) => x.id === poId);
+    if (!o || o.st !== "Draft" || !o.lines[lineIdx]) return;
+    set({
+      prq: claim(s.prq, o.lines[lineIdx].src, -1),
+      po: s.po.map((x) => x.id !== poId ? x
+        : { ...x, lines: x.lines.filter((_, i) => i !== lineIdx) }),
+    });
+    s.notify(`${IT[o.lines[lineIdx].it]?.n ?? "Line"} returned to the procurement list`);
+  },
+
+  setPoVendor: (poId, vendorId) => {
+    const s = get();
+    const v = s.vendors.find((x) => x.id === vendorId);
+    if (!v) return;
+    set({ po: s.po.map((x) => (x.id === poId && x.st === "Draft"
+      ? { ...x, vendor: vendorId, eta: inDays(v.lead) } : x)) });
+  },
+
+  setPoEta: (poId, eta) =>
+    set({ po: get().po.map((x) => (x.id === poId && x.st === "Draft" ? { ...x, eta } : x)) }),
 });

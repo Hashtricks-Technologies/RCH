@@ -171,7 +171,7 @@ const belowrl = (s: AppState): Rep => {
 
 const prqst = (s: AppState): Rep => {
   const rows = s.prq.map((p) => {
-    const o = s.po.find((x) => x.prq === p.id);
+    const o = s.po.find((x) => x.lines.some((l) => l.src.some((sr) => sr.prq === p.id)));
     return [
       p.id, p.by, p.at, String(p.lines.length), unitTotal(p.lines),
       money0(sum(p.lines, (l) => l.qty * costOf(l.it))),

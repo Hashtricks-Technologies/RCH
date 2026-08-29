@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { IT, LOC, MENU, RCP, USERS } from "../data/master";
 import {
-  DAY_LABELS, seedBatch, seedBills, seedPo, seedPord, seedPrq, seedReq, seedRsv, seedSales,
+  DAY_LABELS, seedBatch, seedBills, seedGrn, seedPo, seedPord, seedPrq, seedReq, seedRsv, seedSales,
   seedStock, seedTkt,
 } from "../data/seed";
 import { seedVendors } from "../data/vendors";
@@ -101,7 +101,7 @@ export const useApp = create<AppState>((set, get) => ({
   pord: clone(seedPord),
   batch: clone(seedBatch),
   bills: clone(seedBills),
-  grn: [],
+  grn: clone(seedGrn),
   vendors: clone(seedVendors),
   sales: clone(seedSales),
   dayLabels: DAY_LABELS,

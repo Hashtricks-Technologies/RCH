@@ -37,10 +37,18 @@ export interface Requisition {
   lines: PrqLine[]; st: PrqStatus; note: string;
   apprBy?: string; apprNote?: string; hist: HistEntry[];
 }
-export interface PoLine { it: string; qty: number; rate: number }
+export interface PoLineSrc { prq: string; line: number; qty: number }
+export interface PoLine {
+  it: string; qty: number; rate: number;
+  src: PoLineSrc[];
+  recv: number; rejected: number;
+}
+export type PoStatus = "Draft" | "Ordered" | "Partially received" | "Received" | "Cancelled";
 export interface PurchaseOrder {
-  id: string; prq: string; vendor: string; at: string;
-  lines: PoLine[]; st: "Ordered" | "Received"; eta: string; recv?: string; needsApproval?: boolean;
+  id: string; vendor: string; at: string;
+  lines: PoLine[]; st: PoStatus; eta: string;
+  needsApproval?: boolean; shortNote?: string; recv?: string;
+  hist: HistEntry[];
 }
 export interface ProdOrder {
   id: string; from: LocKey; by: string; at: string;
@@ -56,8 +64,10 @@ export interface ReceiptLine {
   recv: number; batch: string; mrp: number; mfg: string; exp: string; rejected: number;
 }
 export interface Grn {
-  id: string; prq: string; it: string; qty: number; rejected: number;
-  batch: string; mrp: number; mfg: string; exp: string; at: string; by: string;
+  id: string; po: string; it: string; qty: number; rejected: number;
+  batch: string; mrp: number; mfg: string; exp: string;
+  dc: string; invoice: string; invDate: string;
+  at: string; by: string;
 }
 export interface BillLine { it: string; qty: number; rate: number }
 export interface Bill {

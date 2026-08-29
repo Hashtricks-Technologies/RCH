@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { ALL_LOCS, LOC, PAR_FACTOR } from "../data/master";
 import { seedVendors, suggestVendor, vendorName } from "../data/vendors";
-import { parOf, qty } from "../lib/selectors";
+import { parOf, procurementList, qty } from "../lib/selectors";
 import { as, resetStore, S } from "./fixture";
 
 beforeEach(resetStore);
@@ -18,8 +18,8 @@ describe("procurement room location", () => {
     expect(parOf("procure", "milk")).toBe(0);
   });
 
-  it("starts empty", () => {
-    expect(qty(S(), "procure", "milk")).toBe(0);
+  it("opens with the stock its partially received order delivered", () => {
+    expect(qty(S(), "procure", "milk")).toBe(60);
   });
 });
 
@@ -167,5 +167,112 @@ describe("sending a requisition", () => {
     expect(p.hist).toHaveLength(1);
     expect(p.hist[0].s).toBe("Sent");
     expect(p.hist[0].who).toBe("Suresh Muthu");
+  });
+});
+
+describe("procurement list", () => {
+  it("lists approved lines that are not yet on an order", () => {
+    const pool = procurementList(S());
+    expect(pool.map((l) => l.it)).toEqual(["maida", "milk"]);
+    expect(pool[0].pending).toBe(20);
+    expect(pool[0].prq).toBe("PRQ-2026-014");
+  });
+
+  it("grows when a new requisition is approved", () => {
+    as("buyer");
+    S().approveRequisition("PRQ-2026-013", [60, 6], "");
+    const pool = procurementList(S());
+    expect(pool.map((l) => l.it)).toEqual(["maida", "milk", "butter", "milk"]);
+    expect(pool.find((l) => l.it === "milk" && l.prq === "PRQ-2026-013")!.pending).toBe(60);
+    expect(pool).toHaveLength(4);
+  });
+});
+
+describe("draft purchase orders", () => {
+  const approve13 = () => { as("buyer"); S().approveRequisition("PRQ-2026-013", [60, 6], ""); };
+
+  it("merges two requisitions' worth of the same item into one PO line", () => {
+    as("buyer");
+    S().approveRequisition("PRQ-2026-013", [60, 6], "");
+    S().createPo("VN-001", [
+      { prq: "PRQ-2026-013", line: 0, qty: 60 },
+      { prq: "PRQ-2026-011", line: 0, qty: 25 },
+    ]);
+    const po = S().po.find((o) => o.st === "Draft" && o.id === "PO-2026-0143")!;
+    const milk = po.lines.filter((l) => l.it === "milk");
+    expect(milk).toHaveLength(1);
+    expect(milk[0].qty).toBe(85);
+    expect(milk[0].src).toEqual([
+      { prq: "PRQ-2026-013", line: 0, qty: 60 },
+      { prq: "PRQ-2026-011", line: 0, qty: 25 },
+    ]);
+  });
+
+  it("claims against every source requisition of a merged line", () => {
+    as("buyer");
+    S().approveRequisition("PRQ-2026-013", [60, 6], "");
+    S().createPo("VN-001", [
+      { prq: "PRQ-2026-013", line: 0, qty: 60 },
+      { prq: "PRQ-2026-011", line: 0, qty: 25 },
+    ]);
+    expect(S().prq.find((x) => x.id === "PRQ-2026-013")!.lines[0].ordered).toBe(60);
+    expect(S().prq.find((x) => x.id === "PRQ-2026-011")!.lines[0].ordered).toBe(25);
+    expect(procurementList(S()).some((l) => l.it === "milk")).toBe(false);
+  });
+
+  it("claims the quantity on the source line as soon as the draft exists", () => {
+    approve13();
+    S().createPo("VN-001", [{ prq: "PRQ-2026-013", line: 0, qty: 40 }]);
+    const p = S().prq.find((x) => x.id === "PRQ-2026-013")!;
+    expect(p.lines[0].ordered).toBe(40);
+    expect(procurementList(S()).find((l) => l.it === "milk" && l.prq === "PRQ-2026-013")!.pending).toBe(20);
+  });
+
+  it("refuses a pick larger than what is still pending", () => {
+    approve13();
+    S().createPo("VN-001", [{ prq: "PRQ-2026-013", line: 0, qty: 80 }]);
+    expect(S().po.some((o) => o.id === "PO-2026-0143")).toBe(false);
+    expect(S().toast).toMatch(/only 60/i);
+  });
+
+  it("stops two drafts claiming the same quantity", () => {
+    approve13();
+    S().createPo("VN-001", [{ prq: "PRQ-2026-013", line: 0, qty: 60 }]);
+    S().createPo("VN-001", [{ prq: "PRQ-2026-013", line: 0, qty: 60 }]);
+    expect(S().po.filter((o) => o.id === "PO-2026-0143")).toHaveLength(1);
+  });
+
+  it("refuses an unknown or inactive vendor", () => {
+    approve13();
+    S().setVendorActive("VN-001", false);
+    S().createPo("VN-001", [{ prq: "PRQ-2026-013", line: 0, qty: 60 }]);
+    expect(S().po.some((o) => o.id === "PO-2026-0143")).toBe(false);
+    expect(S().toast).toMatch(/inactive/i);
+  });
+
+  it("releases the claim when a line is removed", () => {
+    approve13();
+    S().createPo("VN-001", [{ prq: "PRQ-2026-013", line: 0, qty: 60 }]);
+    const po = S().po.find((o) => o.st === "Draft")!;
+    S().removePoLine(po.id, 0);
+    expect(S().prq.find((x) => x.id === "PRQ-2026-013")!.lines[0].ordered).toBe(0);
+  });
+
+  it("releases the difference when a draft quantity is reduced", () => {
+    approve13();
+    S().createPo("VN-001", [{ prq: "PRQ-2026-013", line: 0, qty: 60 }]);
+    const po = S().po.find((o) => o.st === "Draft")!;
+    S().updatePoLine(po.id, 0, { qty: 25 });
+    expect(S().prq.find((x) => x.id === "PRQ-2026-013")!.lines[0].ordered).toBe(25);
+    expect(S().po.find((o) => o.id === po.id)!.lines[0].src[0].qty).toBe(25);
+  });
+
+  it("edits a rate without touching the claim", () => {
+    approve13();
+    S().createPo("VN-001", [{ prq: "PRQ-2026-013", line: 0, qty: 60 }]);
+    const po = S().po.find((o) => o.st === "Draft")!;
+    S().updatePoLine(po.id, 0, { rate: 56 });
+    expect(S().po.find((o) => o.id === po.id)!.lines[0].rate).toBe(56);
+    expect(S().prq.find((x) => x.id === "PRQ-2026-013")!.lines[0].ordered).toBe(60);
   });
 });

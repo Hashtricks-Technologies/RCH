@@ -1,6 +1,6 @@
 import { IT, LOC, MENU, PAR_FACTOR, PL, RCP } from "../data/master";
 import type {
-  Availability, Bill, LocKey, Price, Requisition, ReqStatus, StockRequest, Ticket, Tone,
+  Availability, Bill, LocKey, Price, PurchaseOrder, Requisition, ReqStatus, StockRequest, Ticket, Tone,
 } from "../types";
 import { fq, U } from "./fmt";
 
@@ -81,6 +81,26 @@ export const onOrder = (s: { prq: Requisition[] }, it: string) =>
   s.prq
     .filter((p) => p.st === "Sent" || p.st === "Approved" || p.st === "Partially approved")
     .reduce((t, p) => t + p.lines.filter((l) => l.it === it).reduce((n, l) => n + l.qty, 0), 0);
+
+export interface PoolLine {
+  prq: string; line: number; it: string;
+  asked: number; pending: number; by: string; at: string;
+}
+
+/** Approved requisition lines not yet claimed by a purchase order. Derived —
+ *  there is no stored "procurement list" to keep in sync. */
+export const procurementList = (s: { prq: Requisition[] }): PoolLine[] =>
+  s.prq
+    .filter((p) => p.st === "Approved" || p.st === "Partially approved")
+    .flatMap((p) => p.lines.flatMap((l, i) => {
+      const pending = Math.round((l.appr - l.ordered) * 1000) / 1000;
+      return pending > 0
+        ? [{ prq: p.id, line: i, it: l.it, asked: l.qty, pending, by: p.by, at: p.at }]
+        : [];
+    }));
+
+export const poValue = (o: PurchaseOrder) =>
+  o.lines.reduce((t, l) => t + l.qty * l.rate, 0);
 
 /** Handed over but not yet confirmed — owned by neither location (M8). */
 export const inTransit = (s: { tkt: Ticket[] }, it: string) =>

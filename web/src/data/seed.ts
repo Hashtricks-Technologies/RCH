@@ -1,8 +1,8 @@
-import type { Bill, Batch, LocKey, ProdOrder, PurchaseOrder, Requisition, StockRequest, Ticket } from "../types";
+import type { Bill, Batch, Grn, LocKey, ProdOrder, PurchaseOrder, Requisition, StockRequest, Ticket } from "../types";
 
 export const seedStock: Record<LocKey, Record<string, number>> = {
   store:   { milk: 12, beans: 18.4, leaf: 3.2, sugar: 40, maida: 48.5, oil: 30, fill: 12, butter: 4, bread: 20, cup: 2400, box: 820, juice: 156, water: 120, bisc: 60, chips: 88 },
-  procure: {},
+  procure: { milk: 60, butter: 6 },
   kitchen: { maida: 8, oil: 4, fill: 3, butter: 1.2, bread: 6, cup: 200, box: 120, milk: 6, sugar: 4, puff: 24, sand: 8, salad: 5 },
   rest:    { milk: 14, beans: 2, leaf: 0.6, sugar: 3, cup: 220, box: 60, juice: 20, water: 30, chips: 12, puff: 12, sand: 6, salad: 4 },
   coffee:  { milk: 0, beans: 1.2, leaf: 0.4, sugar: 2, cup: 180, juice: 8, water: 12, bisc: 6, chips: 9 },
@@ -64,7 +64,47 @@ export const seedPrq: Requisition[] = [
     hist: [{ s: "Sent", who: "Suresh Muthu", t: "06:30" },
            { s: "Approved", who: "Latha Narayanan", t: "06:40" }] },
 ];
-export const seedPo: PurchaseOrder[] = [];
+export const seedPo: PurchaseOrder[] = [
+  { id: "PO-2026-0142", vendor: "VN-001", at: "07:10", st: "Partially received",
+    eta: "29-Aug-2026", needsApproval: false,
+    lines: [
+      { it: "milk", qty: 80, rate: 54, recv: 60, rejected: 0,
+        src: [{ prq: "PRQ-2026-012", line: 0, qty: 80 }] },
+      { it: "butter", qty: 6, rate: 258, recv: 6, rejected: 0,
+        src: [{ prq: "PRQ-2026-012", line: 1, qty: 6 }] },
+    ],
+    hist: [{ s: "Draft", who: "Latha Narayanan", t: "07:06" },
+           { s: "Ordered", who: "Latha Narayanan", t: "07:10" },
+           { s: "Partially received", who: "Latha Narayanan", t: "09:15" }] },
+  { id: "PO-2026-0141", vendor: "VN-002", at: "07:38", st: "Ordered",
+    eta: "31-Aug-2026", needsApproval: false,
+    lines: [
+      { it: "juice", qty: 120, rate: 14.2, recv: 0, rejected: 0,
+        src: [{ prq: "PRQ-2026-015", line: 0, qty: 120 }] },
+      { it: "water", qty: 90, rate: 11.5, recv: 0, rejected: 0,
+        src: [{ prq: "PRQ-2026-015", line: 1, qty: 90 }] },
+    ],
+    hist: [{ s: "Draft", who: "Latha Narayanan", t: "07:34" },
+           { s: "Ordered", who: "Latha Narayanan", t: "07:38" }] },
+  { id: "PO-2026-0140", vendor: "VN-003", at: "07:55", st: "Draft",
+    eta: "31-Aug-2026", needsApproval: false,
+    lines: [
+      { it: "sugar", qty: 30, rate: 48, recv: 0, rejected: 0,
+        src: [{ prq: "PRQ-2026-014", line: 0, qty: 30 }] },
+    ],
+    hist: [{ s: "Draft", who: "Latha Narayanan", t: "07:55" }] },
+];
+
+export const seedGrn: Grn[] = [
+  { id: "GRN-142-01", po: "PO-2026-0142", it: "milk", qty: 60, rejected: 0,
+    batch: "AAV-8891", mrp: 0, mfg: "2026-08-27", exp: "2026-08-30",
+    dc: "DC-88213", invoice: "INV/AAV/4471", invDate: "2026-08-29",
+    at: "09:15", by: "Latha Narayanan" },
+  { id: "GRN-142-02", po: "PO-2026-0142", it: "butter", qty: 6, rejected: 0,
+    batch: "AAV-8892", mrp: 0, mfg: "2026-08-10", exp: "2026-11-10",
+    dc: "DC-88213", invoice: "INV/AAV/4471", invDate: "2026-08-29",
+    at: "09:15", by: "Latha Narayanan" },
+];
 export const seedPord: ProdOrder[] = [
   { id: "PRD-2026-029", from: "rest", by: "Ramesh Kumar", at: "07:10", lines: [{ it: "puff", qty: 40 }],
     st: "New", note: "Lunch rush.", hist: [{ s: "New", who: "Ramesh Kumar", t: "07:10" }] },
