@@ -1,25 +1,9 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { useApp } from "../store";
 import { avail, availOf, priceOf, qty, resv } from "../lib/selectors";
-import {
-  seedBills, seedBatch, seedPo, seedPord, seedPrq, seedReq, seedRsv, seedStock, seedTkt,
-} from "../data/seed";
-import { basePrices } from "../lib/selectors";
-import { MENU, USERS } from "../data/master";
+import { resetStore, S, as } from "./fixture";
 
-const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v));
-const S = () => useApp.getState();
-const as = (role: string) => useApp.getState().signIn(USERS.find((u) => u.r === role)!.id);
-
-beforeEach(() => {
-  useApp.setState({
-    user: null, stock: clone(seedStock), rsv: clone(seedRsv()), ovr: {}, prices: basePrices(), menu: clone(MENU),
-    req: clone(seedReq), tkt: clone(seedTkt), prq: clone(seedPrq), po: clone(seedPo),
-    pord: clone(seedPord), batch: clone(seedBatch), bills: clone(seedBills),
-    seq: { req: 912, tkt: 440, bill: 1187, prq: 13, po: 142, pord: 30, bat: 1 },
-    cart: {}, draft: [], prqDraft: [], drawer: null, toast: null, shopFilter: null, grn: [],
-  });
-});
+beforeEach(resetStore);
 
 describe("counter operator", () => {
   it("raises a multi-item request", () => {

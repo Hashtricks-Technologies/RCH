@@ -1,5 +1,5 @@
 export type ItemType = "RAW" | "PACK" | "TRADED" | "FG" | "MTO";
-export type LocKey = "store" | "kitchen" | "rest" | "coffee" | "kiosk";
+export type LocKey = "store" | "kitchen" | "rest" | "coffee" | "kiosk" | "procure";
 export type Role = "counter" | "manager" | "store" | "prod" | "buyer";
 export type ReqStatus =
   | "Draft" | "Request sent" | "Manager approved" | "Partially approved"
@@ -63,3 +63,7 @@ export interface DraftLine { it: string; qty: number }
 export interface Availability { ok: boolean; mode: "Manual" | "Recipe" | "Stock"; why?: string; left?: string }
 export interface Price { p: number; listed: number; capped: boolean }
 export interface DrawerState { t: string; id: string }
+export interface Vendor {
+  id: string; n: string; gstin: string; contact: string; ph: string;
+  terms: string; lead: number; groups: string[]; active: boolean;
+}

@@ -10,7 +10,7 @@ import {
 import type { LocKey, Ticket } from "../../types";
 
 const PRODS = ["puff", "sand", "salad"];
-const DESTS: LocKey[] = ALL_LOCS.filter((l) => l !== "kitchen");
+export const DESTS: LocKey[] = ALL_LOCS.filter((l) => l !== "kitchen" && l !== "procure");
 
 /** A best-before that names another day reads better with the day on its own line (H9). */
 function BestBefore({ bb }: { bb: string }) {

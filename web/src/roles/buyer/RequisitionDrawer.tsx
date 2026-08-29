@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { IT, LOC, PO_APPROVAL_LIMIT, RATE_CONTRACT, VENDOR_FOR } from "../../data/master";
+import { IT, LOC, PO_APPROVAL_LIMIT, RATE_CONTRACT } from "../../data/master";
+import { suggestVendor } from "../../data/vendors";
 import { useApp } from "../../store";
 import { avail, stateTone } from "../../lib/selectors";
 import { U, fq, money, money0, pct, sum } from "../../lib/fmt";
@@ -49,7 +50,7 @@ function RequisitionDrawer({ id }: DrawerProps) {
 
   const [rates, setRates] = useState<number[]>(() => (p?.lines ?? []).map((l) => IT[l.it]?.cost ?? 0));
   const [vendor, setVendor] = useState<string>(() =>
-    first ? VENDOR_FOR(IT[first.it]?.g ?? "") : VENDORS[0]);
+    first ? suggestVendor(s.vendors, IT[first.it]?.g ?? "")?.n ?? "—" : VENDORS[0]);
   const [eta, setEta] = useState<string>(() => inDays(2));
 
   if (!p) {
@@ -87,7 +88,7 @@ function RequisitionDrawer({ id }: DrawerProps) {
           <Pill tone={stateTone(have, it?.rl ?? 0)}>{have <= 0 ? "Out" : have < (it?.rl ?? 0) ? "Low" : "OK"}</Pill>
         </>,
         <>{fq(it?.rl ?? 0, l.it)}</>,
-        <>{VENDOR_FOR(it?.g ?? "")}</>,
+        <>{suggestVendor(s.vendors, it?.g ?? "")?.n ?? "—"}</>,
         <>{RATE_CONTRACT[l.it] > 0 ? money(RATE_CONTRACT[l.it]) : <span className="dim">No contract</span>}</>,
         <>
           <input type="number" className="mono" min={0} step="0.01" value={rates[i] ?? 0}

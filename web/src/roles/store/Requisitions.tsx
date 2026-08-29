@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { IT, LOC, VENDOR_FOR } from "../../data/master";
+import { IT, LOC } from "../../data/master";
+import { suggestVendor } from "../../data/vendors";
 import { useApp } from "../../store";
 import { avail, onOrder, qty } from "../../lib/selectors";
 import { U, fq, money, money0, sum } from "../../lib/fmt";
@@ -193,7 +194,7 @@ export default function Requisitions() {
               label="Note to procurement"
               hint={
                 prqDraft.length
-                  ? `Likely vendors: ${[...new Set(prqDraft.map((l) => VENDOR_FOR(IT[l.it]?.g ?? "")))].join(", ")}`
+                  ? `Likely vendors: ${[...new Set(prqDraft.map((l) => suggestVendor(s.vendors, IT[l.it]?.g ?? "")?.n ?? "—"))].join(", ")}`
                   : "Say why the stock is needed — procurement uses this to pick a vendor and a delivery date."
               }
             >

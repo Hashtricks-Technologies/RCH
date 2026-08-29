@@ -4,15 +4,16 @@ import {
   DAY_LABELS, seedBatch, seedBills, seedPo, seedPord, seedPrq, seedReq, seedRsv, seedSales,
   seedStock, seedTkt,
 } from "./data/seed";
+import { seedVendors } from "./data/vendors";
 import type {
   Batch, Bill, DraftLine, DrawerState, Grn, LocKey, Payer, PordStatus, ProdOrder, PurchaseOrder,
-  ReceiptLine, Requisition, StockRequest, Ticket, User,
+  ReceiptLine, Requisition, StockRequest, Ticket, User, Vendor,
 } from "./types";
 import { basePrices, freeToPromise, priceOf, qty, resv } from "./lib/selectors";
 import { bestBefore, fq, now, U } from "./lib/fmt";
 import { applyTheme, nextTheme, readStoredTheme, storeTheme, type ThemePref } from "./lib/theme";
 
-interface Seq { req: number; tkt: number; bill: number; prq: number; po: number; pord: number; bat: number }
+interface Seq { req: number; tkt: number; bill: number; prq: number; po: number; pord: number; bat: number; vn: number }
 
 export interface AppState {
   user: User | null;
@@ -29,6 +30,7 @@ export interface AppState {
   batch: Batch[];
   bills: Bill[];
   grn: Grn[];
+  vendors: Vendor[];
   sales: number[][];
   dayLabels: string[];
   seq: Seq;
@@ -103,9 +105,10 @@ export const useApp = create<AppState>((set, get) => ({
   batch: clone(seedBatch),
   bills: clone(seedBills),
   grn: [],
+  vendors: clone(seedVendors),
   sales: clone(seedSales),
   dayLabels: DAY_LABELS,
-  seq: { req: 912, tkt: 440, bill: 1187, prq: 13, po: 142, pord: 30, bat: 1 },
+  seq: { req: 912, tkt: 440, bill: 1187, prq: 13, po: 142, pord: 30, bat: 1, vn: 5 },
   cart: {},
   draft: [],
   prqDraft: [],

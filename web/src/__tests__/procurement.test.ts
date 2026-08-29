@@ -1,0 +1,57 @@
+import { beforeEach, describe, expect, it } from "vitest";
+import { ALL_LOCS, LOC, PAR_FACTOR } from "../data/master";
+import { seedVendors, suggestVendor, vendorName } from "../data/vendors";
+import { parOf, qty } from "../lib/selectors";
+import { resetStore, S } from "./fixture";
+
+beforeEach(resetStore);
+
+describe("procurement room location", () => {
+  it("is a known location that counts in valuation", () => {
+    expect(LOC.procure.n).toBe("Procurement Room");
+    expect(ALL_LOCS).toContain("procure");
+    expect(S().stock.procure).toBeDefined();
+  });
+
+  it("carries no reorder level, because it is a transit room", () => {
+    expect(PAR_FACTOR.procure).toBe(0);
+    expect(parOf("procure", "milk")).toBe(0);
+  });
+
+  it("starts empty", () => {
+    expect(qty(S(), "procure", "milk")).toBe(0);
+  });
+});
+
+describe("vendor master", () => {
+  it("seeds five active vendors with unique ids", () => {
+    expect(seedVendors).toHaveLength(5);
+    expect(seedVendors.every((v) => v.active)).toBe(true);
+    expect(new Set(seedVendors.map((v) => v.id)).size).toBe(5);
+  });
+
+  it("suggests the vendor that supplies an item group", () => {
+    expect(suggestVendor(seedVendors, "Dairy")!.n).toBe("Aavin Dairy Depot");
+    expect(suggestVendor(seedVendors, "Packaging")!.n).toBe("PackWell Industries");
+    expect(suggestVendor(seedVendors, "Prepared")!.n).toBe("Green Farm Vegetables");
+  });
+
+  it("never suggests an inactive vendor", () => {
+    const off = seedVendors.map((v) => (v.groups.includes("Dairy") ? { ...v, active: false } : v));
+    expect(suggestVendor(off, "Dairy")).toBeNull();
+  });
+
+  it("resolves a name for an inactive vendor so history stays readable", () => {
+    const off = seedVendors.map((v) => ({ ...v, active: false }));
+    expect(vendorName(off, "VN-001")).toBe("Aavin Dairy Depot");
+    expect(vendorName(off, "VN-999")).toBe("Unknown vendor");
+  });
+});
+
+describe("kitchen distribution", () => {
+  it("cannot distribute finished goods into the procurement room", async () => {
+    const mod = await import("../roles/prod/MakeDistribute");
+    expect(mod.DESTS).not.toContain("procure");
+    expect(mod.DESTS).not.toContain("kitchen");
+  });
+});
