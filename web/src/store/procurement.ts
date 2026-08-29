@@ -1,7 +1,7 @@
 import type { Grn, PoLine, PoLineSrc, ReceiptDoc, ReceiptLine, Requisition, Vendor } from "../types";
 import type { AppState } from "./index";
 import { IT, LOC, PO_APPROVAL_LIMIT } from "../data/master";
-import { fq, money, money0, now } from "../lib/fmt";
+import { fq, money, money0, now, unitTotal } from "../lib/fmt";
 import { poValue, procurementList } from "../lib/selectors";
 
 type Set_ = (p: Partial<AppState>) => void;
@@ -333,13 +333,18 @@ export const createProcurementSlice = (set: Set_, get: Get): ProcurementSlice =>
 
     const stock = clone(s.stock);
     const grn: Grn[] = [];
-    let accepted = 0, rejected = 0, n = s.grn.filter((g) => g.po === poId).length;
+    // Kept as {it, qty} rather than a running number — an instalment can span
+    // items in different units (litres of milk, kilos of butter), and a bare
+    // sum across units would be meaningless.
+    const accepted: { it: string; qty: number }[] = [];
+    const rejected: { it: string; qty: number }[] = [];
+    let n = s.grn.filter((g) => g.po === poId).length;
     const poLines = o.lines.map((l, i) => {
       const r = lines[i];
       if (!r || !(r.recv > 0)) return l;
       const good = Math.round((r.recv - r.rejected) * 1000) / 1000;
-      accepted += good;
-      rejected += r.rejected;
+      accepted.push({ it: l.it, qty: good });
+      if (r.rejected > 0) rejected.push({ it: l.it, qty: r.rejected });
       // Accepted goods land in the procurement room, not the central store —
       // the store keeper draws them out later on a pick ticket.
       stock.procure[l.it] = Math.round(((stock.procure[l.it] ?? 0) + good) * 1000) / 1000;
@@ -367,8 +372,8 @@ export const createProcurementSlice = (set: Set_, get: Get): ProcurementSlice =>
         hist: [...x.hist, { s: st, who: s.user!.n, t: now() }],
       }),
     });
-    s.notify(rejected > 0
-      ? `Booked into ${LOC.procure.n} — ${accepted} accepted, ${rejected} rejected`
+    s.notify(rejected.length > 0
+      ? `Booked into ${LOC.procure.n} — ${unitTotal(accepted)} accepted, ${unitTotal(rejected)} rejected`
       : `Booked into ${LOC.procure.n} — ${grn.length} batch(es) against ${doc.dc.trim()}`);
   },
 

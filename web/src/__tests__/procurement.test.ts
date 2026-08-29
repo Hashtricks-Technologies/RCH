@@ -383,6 +383,16 @@ describe("receiving against a purchase order", () => {
     expect(S().toast).toMatch(/rejected/i);
   });
 
+  it("reports a mixed-unit instalment's accepted and rejected quantities by unit, not summed", () => {
+    as("buyer");
+    // PO-2026-0142: milk (L) 80 ordered / 60 received, butter (kg) 6 ordered /
+    // 6 received. One instalment touching both units, with a rejection on
+    // only the milk line — a bare number here would silently add litres to
+    // kilos.
+    S().receivePo("PO-2026-0142", doc, [line({ recv: 20, rejected: 5 }), line({ recv: 0.12 })]);
+    expect(S().toast).toBe("Booked into Procurement Room — 15.000 L · 0.120 kg accepted, 5.000 L rejected");
+  });
+
   it("accumulates instalments and stays partially received in between", () => {
     as("buyer");
     S().receivePo("PO-2026-0141", doc, [line({ recv: 50 }), line({ recv: 0 })]);
@@ -415,7 +425,12 @@ describe("receiving against a purchase order", () => {
   it("refuses a line without a batch or with a bad expiry", () => {
     as("buyer");
     S().receivePo("PO-2026-0141", doc, [line({ recv: 10, batch: "" }), line()]);
-    expect(S().toast).toMatch(/batch/i);
+    // "/batch/i" alone also matches the success toast ("...N batch(es) against
+    // DC-..."), so a deleted guard would let this call through and still pass.
+    // Match the guard's own wording, and check the call was actually refused.
+    expect(S().toast).toMatch(/batch or lot/i);
+    expect(S().po.find((x) => x.id === "PO-2026-0141")!.st).toBe("Ordered");
+    expect(S().grn).toHaveLength(2);
     S().receivePo("PO-2026-0141", doc, [line({ recv: 10, mfg: "2026-08-01", exp: "2026-07-01" }), line()]);
     expect(S().toast).toMatch(/expiry/i);
     S().receivePo("PO-2026-0141", doc, [line({ recv: 10, mfg: "2019-01-01", exp: "2020-01-01" }), line()]);
@@ -446,5 +461,32 @@ describe("receiving against a purchase order", () => {
     expect(S().po.find((x) => x.id === "PO-2026-0142")!.st).toBe("Partially received");
     S().closePoShort("PO-2026-0141", "Nothing arrived.");
     expect(S().po.find((x) => x.id === "PO-2026-0141")!.st).toBe("Ordered");
+  });
+
+  it("splits a shortfall across multiple source requisitions, releasing the last-added source first", () => {
+    as("buyer");
+    S().approveRequisition("PRQ-2026-013", [60, 6], "Approved in full.");
+    // One merged milk line with two src entries: 60 from PRQ-013, 25 from
+    // PRQ-011 (already approved in the seed) — every seeded PO line has only
+    // one source, so this is the only way to exercise the reverse-walk split.
+    S().createPo("VN-001", [
+      { prq: "PRQ-2026-013", line: 0, qty: 60 },
+      { prq: "PRQ-2026-011", line: 0, qty: 25 },
+    ]);
+    S().sendPo("PO-2026-0143");
+    S().receivePo("PO-2026-0143", doc, [line({ recv: 70 })]);
+    expect(S().po.find((x) => x.id === "PO-2026-0143")!.st).toBe("Partially received");
+
+    S().closePoShort("PO-2026-0143", "Vendor could not supply the rest.");
+    expect(S().po.find((x) => x.id === "PO-2026-0143")!.st).toBe("Received");
+
+    // The 15-unit shortfall (85 ordered − 70 received) must come off the
+    // LAST source added first: PRQ-011 drops from 25 to 10, PRQ-013 is untouched.
+    expect(S().prq.find((x) => x.id === "PRQ-2026-011")!.lines[0].ordered).toBe(10);
+    expect(S().prq.find((x) => x.id === "PRQ-2026-013")!.lines[0].ordered).toBe(60);
+
+    const milk = procurementList(S()).find((l) => l.it === "milk")!;
+    expect(milk.prq).toBe("PRQ-2026-011");
+    expect(milk.pending).toBe(15);
   });
 });
