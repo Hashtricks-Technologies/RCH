@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
 import {
-  avail, daysCover, inTransit, onOrder, qty, resv, stateLabel, stateTone, stockValue,
+  avail, awaitingApproval, daysCover, inTransit, onOrder, qty, resv, stateLabel, stateTone, stockValue,
 } from "../../lib/selectors";
 import { U, fq, money, money0, sum } from "../../lib/fmt";
 import {
@@ -53,7 +53,10 @@ export default function Stock() {
 
   const addToRequisition = (it: string, rl: number, on: number) => {
     const want = Math.max(1, Math.ceil(rl * 1.6 - on));
-    const open = onOrder(s, it);
+    // Same M3 duplicate-order guard as Requisitions.tsx: onOrder() alone
+    // misses a requisition still awaiting a decision, the highest-risk
+    // window for a duplicate ask, so awaitingApproval() is added in.
+    const open = onOrder(s, it) + awaitingApproval(s, it);
     if (open > 0) notify(`${IT[it].n} already has ${fq(open, it)} ${U(it)} on an open requisition`);
     const at = prqDraft.findIndex((l) => l.it === it);
     if (at >= 0) {

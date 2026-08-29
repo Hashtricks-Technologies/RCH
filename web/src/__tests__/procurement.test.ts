@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { ALL_LOCS, LOC, PAR_FACTOR } from "../data/master";
 import { seedVendors, suggestVendor, vendorName } from "../data/vendors";
-import { apportion, onOrder, parOf, prqProgress, procurementList, qty, resv } from "../lib/selectors";
+import { apportion, awaitingApproval, onOrder, parOf, prqProgress, procurementList, qty, resv } from "../lib/selectors";
 import type { ReceiptLine } from "../types";
 import { as, resetStore, S } from "./fixture";
 
@@ -597,5 +597,32 @@ describe("onOrder", () => {
     as("buyer");
     S().cancelPo("PO-2026-0141", "Vendor closed.");
     expect(onOrder(S(), "juice")).toBe(120);
+  });
+
+  it("does not count a requisition still awaiting approval", () => {
+    // PRQ-2026-013 (Sent) asks for 6 units of butter. PRQ-2026-012's butter
+    // line is fully claimed (pool pending 0) and PO-2026-0142's butter line
+    // is fully received (undelivered balance 0), so onOrder alone — which
+    // only reflects an approved commitment — must stay at zero until
+    // PRQ-2026-013 is actually decided on.
+    expect(onOrder(S(), "butter")).toBe(0);
+  });
+});
+
+describe("awaitingApproval", () => {
+  it("counts a Sent requisition's asked quantity, the half onOrder excludes", () => {
+    expect(awaitingApproval(S(), "butter")).toBe(6);
+    // This is exactly the expression the M3 raise-side guard uses
+    // (Requisitions.tsx's warnOnOrder/alreadyOpen, Stock.tsx's
+    // addToRequisition): onOrder alone is 0 here, so without this half the
+    // guard would silently miss a duplicate ask for a still-unapproved item.
+    expect(onOrder(S(), "butter") + awaitingApproval(S(), "butter")).toBeGreaterThan(0);
+    expect(onOrder(S(), "butter") + awaitingApproval(S(), "butter")).toBe(6);
+  });
+
+  it("stops counting once the requisition is approved", () => {
+    as("buyer");
+    S().approveRequisition("PRQ-2026-013", [60, 6], "");
+    expect(awaitingApproval(S(), "butter")).toBe(0);
   });
 });

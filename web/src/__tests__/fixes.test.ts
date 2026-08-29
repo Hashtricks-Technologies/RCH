@@ -316,7 +316,11 @@ describe("M3 · what is already on order is visible", () => {
     expect(pool.length).toBeGreaterThan(0);
     const it = pool[0].it;
     const pending = pool[0].appr - pool[0].ordered;
-    expect(onOrder(S(), it)).toBeGreaterThanOrEqual(pending);
+    // Exact, not >=: pool[0] (maida, off PRQ-2026-014) is the seed's only
+    // pending line for this item and no purchase order references it, so
+    // onOrder must equal this line's pending amount exactly — a loose bound
+    // would still pass if onOrder over-counted.
+    expect(onOrder(S(), it)).toBe(pending);
   });
 });
 

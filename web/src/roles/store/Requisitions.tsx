@@ -2,7 +2,7 @@ import { useState } from "react";
 import { IT, LOC } from "../../data/master";
 import { suggestVendor } from "../../data/vendors";
 import { useApp } from "../../store";
-import { avail, onOrder, prqProgress, qty } from "../../lib/selectors";
+import { avail, awaitingApproval, onOrder, prqProgress, qty } from "../../lib/selectors";
 import { U, fq, money, money0, sum } from "../../lib/fmt";
 import {
   Alert, Btn, BtnRow, Card, DataTable, Field, Grid, PageHead, StatusPill, TableFoot, Toolbar,
@@ -31,9 +31,13 @@ export default function Requisitions() {
   };
   const removeLine = (i: number) => setPrqDraft(prqDraft.filter((_, n) => n !== i));
 
-  /** Ordering something procurement is already sourcing doubles the cover (M3). */
+  /** Ordering something procurement is already sourcing doubles the cover
+   *  (M3). onOrder() alone only reflects an approved commitment — a
+   *  requisition still awaiting a decision is the highest-risk window for a
+   *  duplicate ask, so the guard adds awaitingApproval() in too. */
+  const openQty = (it: string) => onOrder(s, it) + awaitingApproval(s, it);
   const warnOnOrder = (it: string) => {
-    const open = onOrder(s, it);
+    const open = openQty(it);
     if (open > 0) notify(`${IT[it].n} already has ${fq(open, it)} ${U(it)} on an open requisition`);
   };
   const pickLine = (i: number, it: string) => { setLine(i, { it }); warnOnOrder(it); };
@@ -64,7 +68,7 @@ export default function Requisitions() {
 
   const draftValue = sum(prqDraft, (l) => (IT[l.it]?.cost ?? 0) * l.qty);
   const draftQty = sum(prqDraft, (l) => l.qty);
-  const alreadyOpen = prqDraft.filter((l) => onOrder(s, l.it) > 0);
+  const alreadyOpen = prqDraft.filter((l) => openQty(l.it) > 0);
 
   const term = q.trim().toLowerCase();
   const history = prq.filter(
@@ -86,7 +90,7 @@ export default function Requisitions() {
 
       {alreadyOpen.length > 0 && (
         <Alert tone="w" label="ALREADY ON ORDER">
-          {alreadyOpen.map((l) => `${IT[l.it]?.n ?? l.it} (${fq(onOrder(s, l.it), l.it)} ${U(l.it)})`).join(", ")}
+          {alreadyOpen.map((l) => `${IT[l.it]?.n ?? l.it} (${fq(openQty(l.it), l.it)} ${U(l.it)})`).join(", ")}
           {" "}{alreadyOpen.length > 1 ? "sit" : "sits"} on a requisition procurement has not closed yet. Requisition
           again only if the open quantity will not cover you.
         </Alert>
@@ -136,7 +140,7 @@ export default function Requisitions() {
                 ) : (
                   prqDraft.map((l, i) => {
                     const it = IT[l.it];
-                    const open = onOrder(s, l.it);
+                    const open = openQty(l.it);
                     return (
                       <tr key={l.it + ":" + i}>
                         <td>

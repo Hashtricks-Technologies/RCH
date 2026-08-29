@@ -108,6 +108,8 @@ export function prqProgress(
       return n + l.src.reduce((m, x, i) => m + (x.prq === prqId ? got[i] : 0), 0);
     }, 0), 0));
 
+  // >= rather than === throughout: intentional float-safety, not a typo —
+  // received/ordered can round to a hair over appr and must still count as done.
   const label =
     p.st === "Sent" ? "Awaiting approval"
       : p.st === "Declined" ? "Declined"
@@ -129,6 +131,22 @@ export const onOrder = (
     .reduce((t, o) => t + o.lines
       .filter((l) => l.it === it)
       .reduce((n, l) => n + Math.max(0, l.qty - l.recv), 0), 0),
+);
+
+/** The other half of the M3 duplicate-order guard: quantity asked on a
+ *  requisition still awaiting a procurement decision (status "Sent").
+ *  onOrder() deliberately excludes this — it reports only what has actually
+ *  been approved, which is exactly the narrower meaning prqProgress() and
+ *  the stock ledger need. But a requisition that has not even been decided
+ *  on yet is the highest-risk window for a duplicate ask (nothing has been
+ *  approved, trimmed or declined), so anything guarding against a duplicate
+ *  raise must add this in alongside onOrder(). */
+export const awaitingApproval = (
+  s: { prq: Requisition[] }, it: string,
+) => round3(
+  s.prq
+    .filter((p) => p.st === "Sent")
+    .reduce((t, p) => t + p.lines.filter((l) => l.it === it).reduce((n, l) => n + l.qty, 0), 0),
 );
 
 export interface PoolLine {
