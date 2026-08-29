@@ -2,7 +2,7 @@ import { useState } from "react";
 import { IT, LOC } from "../../data/master";
 import { suggestVendor } from "../../data/vendors";
 import { useApp } from "../../store";
-import { avail, onOrder, qty } from "../../lib/selectors";
+import { avail, onOrder, prqProgress, qty } from "../../lib/selectors";
 import { U, fq, money, money0, sum } from "../../lib/fmt";
 import {
   Alert, Btn, BtnRow, Card, DataTable, Field, Grid, PageHead, StatusPill, TableFoot, Toolbar,
@@ -71,7 +71,7 @@ export default function Requisitions() {
     (p) => !term || p.id.toLowerCase().includes(term) || p.by.toLowerCase().includes(term) || p.st.toLowerCase().includes(term),
   );
   const openValue = sum(
-    prq.filter((p) => p.st === "Sent" || p.st === "Approved" || p.st === "Partially approved"),
+    prq.filter((p) => p.st !== "Declined"),
     (p) => sum(p.lines, (l) => (IT[l.it]?.cost ?? 0) * l.qty),
   );
 
@@ -236,22 +236,28 @@ export default function Requisitions() {
               { h: "Status", w: "12%" },
               { h: "Note", w: "24%" },
             ]}
-            rows={history.map((p) => ({
-              key: p.id,
-              cells: [
-                <>
-                  {p.id}
-                  <small>{p.lines.map((l) => IT[l.it]?.c ?? l.it).join(", ")}</small>
-                </>,
-                <span className="mono">{p.at}</span>,
-                <>{p.by}</>,
-                <>{p.lines.length}</>,
-                <b>{sum(p.lines, (l) => l.qty)}</b>,
-                <>{money0(sum(p.lines, (l) => (IT[l.it]?.cost ?? 0) * l.qty))}</>,
-                <StatusPill status={p.st} />,
-                <span className="mini">{p.note || "—"}</span>,
-              ],
-            }))}
+            rows={history.map((p) => {
+              const g = prqProgress(s, p.id);
+              return {
+                key: p.id,
+                cells: [
+                  <>
+                    {p.id}
+                    <small>{p.lines.map((l) => IT[l.it]?.c ?? l.it).join(", ")}</small>
+                  </>,
+                  <span className="mono">{p.at}</span>,
+                  <>{p.by}</>,
+                  <>{p.lines.length}</>,
+                  <b>{sum(p.lines, (l) => l.qty)}</b>,
+                  <>{money0(sum(p.lines, (l) => (IT[l.it]?.cost ?? 0) * l.qty))}</>,
+                  <>
+                    <StatusPill status={g.label} />
+                    <div className="mini">{fq(g.ordered, "")} of {fq(g.appr, "")} ordered · {fq(g.received, "")} received</div>
+                  </>,
+                  <span className="mini">{p.note || "—"}</span>,
+                ],
+              };
+            })}
             empty={{
               title: "No requisitions raised yet",
               sub: "Build one above and send it to the procurement team.",

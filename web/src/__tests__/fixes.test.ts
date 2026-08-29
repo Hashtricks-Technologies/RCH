@@ -306,11 +306,17 @@ describe("M1 · non-cash tenders need a payer", () => {
 
 /* ---------------------------------------------------------------- M3 */
 describe("M3 · what is already on order is visible", () => {
-  it("counts quantities on open requisitions and orders", () => {
-    const open = seedPrq.filter((p) => p.st === "Sent");
-    expect(open.length).toBeGreaterThan(0);
-    const it = open[0].lines[0].it;
-    expect(onOrder(S(), it)).toBeGreaterThanOrEqual(open[0].lines[0].qty);
+  it("counts quantities pending on the procurement pool", () => {
+    // onOrder is derived from what is approved-and-pending plus live purchase
+    // orders (Task 11) — a requisition still "Sent" has not been approved and
+    // contributes nothing on its own, so this picks from the approved pool.
+    const pool = seedPrq
+      .filter((p) => p.st === "Approved" || p.st === "Partially approved")
+      .flatMap((p) => p.lines.filter((l) => l.appr > l.ordered));
+    expect(pool.length).toBeGreaterThan(0);
+    const it = pool[0].it;
+    const pending = pool[0].appr - pool[0].ordered;
+    expect(onOrder(S(), it)).toBeGreaterThanOrEqual(pending);
   });
 });
 

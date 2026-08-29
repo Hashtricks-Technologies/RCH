@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { ALL_LOCS, LOC, PAR_FACTOR } from "../data/master";
 import { seedVendors, suggestVendor, vendorName } from "../data/vendors";
-import { parOf, procurementList, qty, resv } from "../lib/selectors";
+import { apportion, onOrder, parOf, prqProgress, procurementList, qty, resv } from "../lib/selectors";
 import type { ReceiptLine } from "../types";
 import { as, resetStore, S } from "./fixture";
 
@@ -535,5 +535,67 @@ describe("procurement room to central store", () => {
     S().receiveTicket(id);
     expect(qty(S(), "store", "milk")).toBe(before + 40);
     expect(S().tkt.find((t) => t.id === id)!.st).toBe("Received");
+  });
+});
+
+describe("requisition progress", () => {
+  it("reports awaiting approval before a decision", () => {
+    expect(prqProgress(S(), "PRQ-2026-013").label).toBe("Awaiting approval");
+  });
+
+  it("reports awaiting order once approved but unclaimed", () => {
+    as("buyer");
+    S().approveRequisition("PRQ-2026-013", [60, 6], "");
+    expect(prqProgress(S(), "PRQ-2026-013").label).toBe("Awaiting order");
+  });
+
+  it("reports partly ordered when only some lines are claimed", () => {
+    as("buyer");
+    S().approveRequisition("PRQ-2026-013", [60, 6], "");
+    S().createPo("VN-001", [{ prq: "PRQ-2026-013", line: 0, qty: 60 }]);
+    const p = prqProgress(S(), "PRQ-2026-013");
+    expect(p.ordered).toBe(60);
+    expect(p.appr).toBe(66);
+    expect(p.label).toBe("Partly ordered");
+  });
+
+  it("reports partly received, then received", () => {
+    expect(prqProgress(S(), "PRQ-2026-012").label).toBe("Partly received");
+    expect(prqProgress(S(), "PRQ-2026-012").received).toBe(66);
+    expect(prqProgress(S(), "PRQ-2026-015").label).toBe("Ordered");
+  });
+
+  it("reports declined", () => {
+    as("buyer");
+    S().declineRequisition("PRQ-2026-013", "Store has three weeks of cover.");
+    expect(prqProgress(S(), "PRQ-2026-013").label).toBe("Declined");
+  });
+});
+
+describe("apportioning a receipt to its sources", () => {
+  it("fills sources in order", () => {
+    const src = [{ prq: "A", line: 0, qty: 60 }, { prq: "B", line: 0, qty: 25 }];
+    expect(apportion(0, src)).toEqual([0, 0]);
+    expect(apportion(40, src)).toEqual([40, 0]);
+    expect(apportion(70, src)).toEqual([60, 10]);
+    expect(apportion(200, src)).toEqual([60, 25]);
+  });
+});
+
+describe("onOrder", () => {
+  it("counts pool pending plus undelivered balance on live orders", () => {
+    // maida: 20 pending on the pool, nothing ordered
+    expect(onOrder(S(), "maida")).toBe(20);
+    // milk: 25 still pending on the pool (PRQ-2026-011), plus a 20-unit
+    // undelivered balance on PO-2026-0142 (80 ordered, 60 received) → 45
+    expect(onOrder(S(), "milk")).toBe(45);
+    // juice: 120 ordered, none received
+    expect(onOrder(S(), "juice")).toBe(120);
+  });
+
+  it("ignores cancelled and fully received orders", () => {
+    as("buyer");
+    S().cancelPo("PO-2026-0141", "Vendor closed.");
+    expect(onOrder(S(), "juice")).toBe(120);
   });
 });

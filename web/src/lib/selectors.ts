@@ -1,8 +1,12 @@
 import { IT, LOC, MENU, PAR_FACTOR, PL, RCP } from "../data/master";
 import type {
-  Availability, Bill, LocKey, Price, PurchaseOrder, Requisition, ReqStatus, StockRequest, Ticket, Tone,
+  Availability, Bill, LocKey, PoLineSrc, PoStatus, Price, PurchaseOrder, Requisition, ReqStatus,
+  StockRequest, Ticket, Tone,
 } from "../types";
 import { fq, U } from "./fmt";
+
+/** Round to three decimals — the tolerance every quantity in this app is kept at. */
+const round3 = (v: number) => Math.round(v * 1000) / 1000;
 
 export interface StockShape {
   stock: Record<LocKey, Record<string, number>>;
@@ -76,11 +80,56 @@ export const freeToPromise = (
   s: StockShape & { req: StockRequest[] }, l: LocKey, it: string,
 ) => qty(s, l, it) - resv(s, l, it) - committed(s.req, l, it);
 
-/** Quantity sitting on an open requisition or a placed order (M3). */
-export const onOrder = (s: { prq: Requisition[] }, it: string) =>
-  s.prq
-    .filter((p) => p.st === "Sent" || p.st === "Approved" || p.st === "Partially approved")
-    .reduce((t, p) => t + p.lines.filter((l) => l.it === it).reduce((n, l) => n + l.qty, 0), 0);
+/** A receipt fills its source lines in `src` order — deterministic and
+ *  explainable when one PO line funds several requisitions. */
+export const apportion = (recv: number, src: PoLineSrc[]): number[] => {
+  let left = recv;
+  return src.map((x) => {
+    const take = round3(Math.min(Math.max(left, 0), x.qty));
+    left = round3(left - take);
+    return take;
+  });
+};
+
+const LIVE: PoStatus[] = ["Ordered", "Partially received"];
+
+export function prqProgress(
+  s: { prq: Requisition[]; po: PurchaseOrder[] }, prqId: string,
+) {
+  const p = s.prq.find((x) => x.id === prqId);
+  if (!p) return { appr: 0, ordered: 0, received: 0, label: "Unknown" };
+
+  const appr = round3(p.lines.reduce((t, l) => t + l.appr, 0));
+  const ordered = round3(p.lines.reduce((t, l) => t + l.ordered, 0));
+  const received = round3(s.po
+    .filter((o) => o.st !== "Cancelled")
+    .reduce((t, o) => t + o.lines.reduce((n, l) => {
+      const got = apportion(l.recv, l.src);
+      return n + l.src.reduce((m, x, i) => m + (x.prq === prqId ? got[i] : 0), 0);
+    }, 0), 0));
+
+  const label =
+    p.st === "Sent" ? "Awaiting approval"
+      : p.st === "Declined" ? "Declined"
+        : appr > 0 && received >= appr ? "Received"
+          : received > 0 ? "Partly received"
+            : appr > 0 && ordered >= appr ? "Ordered"
+              : ordered > 0 ? "Partly ordered"
+                : "Awaiting order";
+  return { appr, ordered, received, label };
+}
+
+/** Approved but not yet on the shelf: what is still pending on the procurement
+ *  list, plus the undelivered balance of every live purchase order (M3). */
+export const onOrder = (
+  s: { prq: Requisition[]; po: PurchaseOrder[] }, it: string,
+) => round3(
+  procurementList(s).filter((l) => l.it === it).reduce((t, l) => t + l.pending, 0)
+  + s.po.filter((o) => LIVE.includes(o.st))
+    .reduce((t, o) => t + o.lines
+      .filter((l) => l.it === it)
+      .reduce((n, l) => n + Math.max(0, l.qty - l.recv), 0), 0),
+);
 
 export interface PoolLine {
   prq: string; line: number; it: string;
@@ -124,6 +173,7 @@ const TONES: Record<string, Tone> = {
   "Ticket issued": "ac", Collected: "wn", Received: "ok", Closed: "mu", Rejected: "cr", Cancelled: "mu",
   Sent: "wn", Ordered: "in", New: "wn", Accepted: "in", "In kitchen": "ac", Ready: "ok",
   Dispatched: "mu", Declined: "cr", Issued: "ac", Approved: "in", "Partially received": "wn",
+  "Awaiting approval": "wn", "Awaiting order": "wn", "Partly ordered": "wn", "Partly received": "wn",
 };
 export const toneFor = (st: string): Tone => TONES[st] ?? "mu";
 export const stateTone = (a: number, rl: number): Tone => (a <= 0 ? "cr" : rl > 0 && a < rl ? "wn" : "ok");
