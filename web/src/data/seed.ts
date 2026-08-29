@@ -37,22 +37,22 @@ export const seedPo: PurchaseOrder[] = [];
 export const seedPord: ProdOrder[] = [
   { id: "PRD-2026-029", from: "rest", by: "Ramesh Kumar", at: "07:10", lines: [{ it: "puff", qty: 40 }],
     st: "New", note: "Lunch rush.", hist: [{ s: "New", who: "Ramesh Kumar", t: "07:10" }] },
-  { id: "PRD-2026-030", from: "coffee", by: "Kavitha Raman", at: "07:35", lines: [{ it: "sand", qty: 20 }, { it: "salad", qty: 10 }],
-    st: "Accepted", note: "", hist: [{ s: "New", who: "Kavitha Raman", t: "07:35" }, { s: "Accepted", who: "Vinoth Prakash", t: "07:41" }] },
+  { id: "PRD-2026-030", from: "rest", by: "Ramesh Kumar", at: "07:35", lines: [{ it: "sand", qty: 20 }, { it: "salad", qty: 10 }],
+    st: "Accepted", note: "", hist: [{ s: "New", who: "Ramesh Kumar", t: "07:35" }, { s: "Accepted", who: "Vinoth Prakash", t: "07:41" }] },
 ];
 export const seedBatch: Batch[] = [
   { id: "BAT-20260826-01", it: "puff", qty: 120, made: 116, at: "06:40", bb: "21:30" },
 ];
 export const seedBills: Bill[] = [
-  { no: "CF/1187", loc: "coffee", opr: "Kavitha Raman", oprCol: "#A2500F", tot: 120, tax: 5.71, t: "09:02", pay: "UPI",
-    lines: [{ it: "juice", qty: 2, rate: 20 }, { it: "chips", qty: 2, rate: 25 }, { it: "bisc", qty: 1, rate: 30 }] },
-  { no: "CF/1186", loc: "rest", opr: "Ramesh Kumar", oprCol: "#6A4C93", tot: 150, tax: 7.14, t: "08:48", pay: "Cash",
+  { no: "CF/1187", loc: "coffee", opr: "Kavitha Raman", oprCol: "#B45309", tot: 110, tax: 13.15, t: "09:02", pay: "UPI",
+    lines: [{ it: "juice", qty: 2, rate: 20 }, { it: "chips", qty: 2, rate: 20 }, { it: "bisc", qty: 1, rate: 30 }] },
+  { no: "CF/1186", loc: "rest", opr: "Ramesh Kumar", oprCol: "#7C3AED", tot: 155, tax: 7.38, t: "08:48", pay: "Cash",
     lines: [{ it: "puff", qty: 2, rate: 25 }, { it: "sand", qty: 1, rate: 45 }, { it: "capp", qty: 1, rate: 60 }] },
-  { no: "CF/1185", loc: "kiosk", opr: "Deepa Selvam", oprCol: "#155E75", tot: 70, tax: 6.68, t: "08:31", pay: "Cash",
-    lines: [{ it: "water", qty: 2, rate: 20 }, { it: "chips", qty: 1, rate: 20 }, { it: "bisc", qty: 1, rate: 30 }] },
-  { no: "CF/1184", loc: "coffee", opr: "Kavitha Raman", oprCol: "#A2500F", tot: 95, tax: 4.52, t: "08:12", pay: "Card",
-    lines: [{ it: "chai", qty: 2, rate: 25 }, { it: "juice", qty: 1, rate: 20 }, { it: "chips", qty: 1, rate: 25 }] },
-  { no: "CF/1183", loc: "rest", opr: "Ramesh Kumar", oprCol: "#6A4C93", tot: 185, tax: 8.81, t: "07:55", pay: "Cash",
+  { no: "CF/1185", loc: "kiosk", opr: "Deepa Selvam", oprCol: "#475569", tot: 82, tax: 11.69, t: "08:31", pay: "Cash",
+    lines: [{ it: "water", qty: 2, rate: 18 }, { it: "chips", qty: 1, rate: 18 }, { it: "bisc", qty: 1, rate: 28 }] },
+  { no: "CF/1184", loc: "coffee", opr: "Kavitha Raman", oprCol: "#B45309", tot: 90, tax: 6.67, t: "08:12", pay: "Card",
+    lines: [{ it: "chai", qty: 2, rate: 25 }, { it: "juice", qty: 1, rate: 20 }, { it: "chips", qty: 1, rate: 20 }] },
+  { no: "CF/1183", loc: "rest", opr: "Ramesh Kumar", oprCol: "#7C3AED", tot: 185, tax: 8.81, t: "07:55", pay: "Cash",
     lines: [{ it: "salad", qty: 1, rate: 55 }, { it: "sand", qty: 2, rate: 45 }, { it: "chai", qty: 2, rate: 20 }] },
 ];
 export const seedSales: number[][] = [
@@ -61,3 +61,17 @@ export const seedSales: number[][] = [
   [5310, 4720, 6480], [6420, 5380, 7510], [6180, 5240, 7180], [5720, 4860, 6640],
 ];
 export const DAY_LABELS = ["12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25"];
+
+/**
+ * A ticket that is already issued has stock committed against it, so the
+ * reservation ledger must start populated or those units look free (C5).
+ */
+export const seedRsv = (): Record<string, number> => {
+  const rsv: Record<string, number> = {};
+  seedTkt
+    .filter((t) => t.st === "Issued")
+    .forEach((t) => t.lines.forEach((l) => {
+      rsv[t.from + ":" + l.it] = (rsv[t.from + ":" + l.it] ?? 0) + l.qty;
+    }));
+  return rsv;
+};

@@ -2,7 +2,7 @@ import { useNavigate } from "react-router-dom";
 import { IT, LOC, OUTLETS } from "../../data/master";
 import { DAY_LABELS } from "../../data/seed";
 import { useApp } from "../../store";
-import { stockValue } from "../../lib/selectors";
+import { availOf, menuOf, stockValue } from "../../lib/selectors";
 import { lakh, money, money0, sum } from "../../lib/fmt";
 import {
   Alert, Btn, Card, DataTable, Grid, HBars, Kpis, LineChart, PageHead, Pill, TableFoot,
@@ -11,11 +11,29 @@ import type { LocKey } from "../../types";
 
 const SERIES_COLOURS = ["var(--c1)", "var(--c2)", "var(--c3)"];
 
+interface Off { n: number; manual: number; stock: number; recipe: number }
+
+const why = (o: Off) =>
+  [
+    o.manual ? `${o.manual} switched off` : "",
+    o.stock ? `${o.stock} out of stock` : "",
+    o.recipe ? `${o.recipe} missing an ingredient` : "",
+  ].filter(Boolean).join(" · ");
+
 export default function Dashboard() {
   const s = useApp();
   const nav = useNavigate();
 
-  const offAt = (loc: LocKey) => Object.keys(s.ovr).filter((k) => k.startsWith(loc + ":")).length;
+  /* A manual switch is only one of the three ways a product stops selling (H5). */
+  const offAt = (loc: LocKey): Off => {
+    const bad = menuOf(s, loc).map((it) => availOf(s, loc, it)).filter((a) => !a.ok);
+    return {
+      n: bad.length,
+      manual: bad.filter((a) => a.mode === "Manual").length,
+      stock: bad.filter((a) => a.mode === "Stock").length,
+      recipe: bad.filter((a) => a.mode === "Recipe").length,
+    };
+  };
 
   const rows = OUTLETS.map((loc, i) => {
     const bills = s.bills.filter((b) => b.loc === loc);
@@ -36,8 +54,14 @@ export default function Dashboard() {
   const total = sum(rows, (r) => r.sales);
   const billCount = sum(rows, (r) => r.bills);
   const best = rows.reduce((a, b) => (b.sales > a.sales ? b : a), rows[0]);
-  const totalOff = sum(rows, (r) => r.off);
-  const offOutlets = rows.filter((r) => r.off > 0);
+  const offAll: Off = {
+    n: sum(rows, (r) => r.off.n),
+    manual: sum(rows, (r) => r.off.manual),
+    stock: sum(rows, (r) => r.off.stock),
+    recipe: sum(rows, (r) => r.off.recipe),
+  };
+  const totalOff = offAll.n;
+  const offOutlets = rows.filter((r) => r.off.n > 0);
   const dayTotals = s.sales.map((d) => (d[0] ?? 0) + (d[1] ?? 0) + (d[2] ?? 0));
 
   const waiting = s.req.filter((r) => r.st === "Request sent");
@@ -74,8 +98,8 @@ export default function Dashboard() {
       )}
       {offOutlets.length > 0 && (
         <Alert tone="c" label="OFF" action={<Btn size="xs" variant="gh" onClick={() => nav("/avail")}>Product on / off</Btn>}>
-          <b>{totalOff}</b> product{totalOff > 1 ? "s are" : " is"} switched off and cannot be billed at{" "}
-          {offOutlets.map((r) => r.name).join(", ")}.
+          <b>{totalOff}</b> product{totalOff > 1 ? "s" : ""} cannot be billed at{" "}
+          {offOutlets.map((r) => r.name).join(", ")} — {why(offAll)}.
         </Alert>
       )}
 
@@ -107,9 +131,9 @@ export default function Dashboard() {
             d: urgent > 0 ? <><Pill tone="cr">{urgent} urgent</Pill></> : <>Nothing marked urgent</>,
           },
           {
-            l: "Products switched off",
+            l: "Products that cannot be sold",
             v: String(totalOff),
-            d: totalOff > 0 ? <>{offOutlets.map((r) => r.name).join(" · ")}</> : <>Every listed product is sellable</>,
+            d: totalOff > 0 ? <>{why(offAll)}</> : <>Every listed product is sellable</>,
           },
         ]}
       />
@@ -149,7 +173,9 @@ export default function Dashboard() {
               r.bills,
               money(r.bills ? r.sales / r.bills : 0),
               lakh(r.value),
-              r.off > 0 ? <Pill tone="wn">{r.off}</Pill> : <span className="dim">0</span>,
+              r.off.n > 0
+                ? <><Pill tone="wn">{r.off.n}</Pill><small className="dim" style={{ display: "block" }}>{why(r.off)}</small></>
+                : <span className="dim">0</span>,
               <>
                 <span className="bar" style={{ width: 76 }}>
                   <i style={{ width: `${total > 0 ? (r.sales / total) * 100 : 0}%` }} />

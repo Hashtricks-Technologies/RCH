@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { IT, LOC, OUTLETS } from "../../data/master";
 import { useApp } from "../../store";
-import { availOf, qty } from "../../lib/selectors";
+import { availOf, menuOf, qty } from "../../lib/selectors";
 import { fq, U } from "../../lib/fmt";
 import {
   Alert, Card, DataTable, PageHead, Pill, Switch, TableFoot, Tag, Toolbar,
@@ -44,13 +44,15 @@ export default function Availability() {
             { h: "Type", w: "9%" },
             { h: "Kitchen stock", r: true, w: "13%" },
             { h: "Computed state", w: "22%" },
-            { h: "Switched off downstream" },
+            { h: "At the outlets that list it" },
             { h: "Kitchen switch", w: "12%" },
           ]}
           rows={keys.map((k) => {
             const a = availOf(s, "kitchen", k);
             const on = !s.ovr["kitchen:" + k];
-            const downstream = OUTLETS.filter((l) => s.ovr[l + ":" + k]);
+            // Only the outlets that actually carry the product have a say (M10).
+            const carries = OUTLETS.filter((l) => menuOf(s, l).includes(k));
+            const downstream = carries.map((l) => ({ l, a: availOf(s, l, k) })).filter((x) => !x.a.ok);
             return {
               key: k,
               cells: [
@@ -60,11 +62,17 @@ export default function Availability() {
                 a.ok
                   ? <Pill tone="ok">On · {a.left}</Pill>
                   : <Pill tone={a.mode === "Manual" ? "cr" : "wn"}>Off · {a.why}</Pill>,
-                downstream.length
-                  ? <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
-                      {downstream.map((l) => <Pill key={l} tone="wn">{LOC[l].n} off</Pill>)}
-                    </div>
-                  : <span className="dim mini">On at all three outlets</span>,
+                !carries.length
+                  ? <span className="dim mini">Not listed at any outlet</span>
+                  : downstream.length
+                    ? <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                        {downstream.map(({ l, a: d }) => (
+                          <Pill key={l} tone={d.mode === "Manual" ? "wn" : "cr"}>
+                            {LOC[l].n} {d.mode === "Manual" ? "off" : "out"}
+                          </Pill>
+                        ))}
+                      </div>
+                    : <span className="dim mini">On at {carries.map((l) => LOC[l].n).join(", ")}</span>,
                 <Switch on={on} onChange={() => toggleAvail("kitchen", k)} label={`${IT[k].n} in the kitchen`} />,
               ],
             };

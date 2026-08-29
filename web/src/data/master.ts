@@ -1,4 +1,4 @@
-import type { Item, Location, LocKey, Recipe, User } from "../types";
+import type { Item, Location, LocKey, Recipe, User, Payer } from "../types";
 
 export const LOC: Record<LocKey, Location> = {
   store:   { n: "Central Store",   c: "WH-CS", type: "Store",   floor: "Basement", cc: "CC-STO" },
@@ -35,10 +35,13 @@ export const IT: Record<string, Item> = {
 export const RCP: Record<string, Recipe> = {
   capp: { ov: 12, l: [["milk", 0.15], ["beans", 0.012], ["sugar", 0.006], ["cup", 1]] },
   chai: { ov: 12, l: [["milk", 0.10], ["leaf", 0.008], ["sugar", 0.008], ["cup", 1]] },
+  puff: { ov: 15, l: [["maida", 0.035], ["fill", 0.030], ["oil", 0.008], ["box", 1]] },
+  sand: { ov: 15, l: [["bread", 0.10], ["butter", 0.008], ["fill", 0.040], ["box", 1]] },
+  salad: { ov: 15, l: [["fill", 0.060], ["oil", 0.005], ["box", 1]] },
 };
 export const PL: Record<"A" | "B", Record<string, number>> = {
-  A: { capp: 60, chai: 20, puff: 25, sand: 45, salad: 55, juice: 20, water: 20, bisc: 30, chips: 20 },
-  B: { capp: 75, chai: 25, puff: 30, sand: 55, salad: 65, juice: 25, water: 25, bisc: 35, chips: 25 },
+  A: { capp: 60, chai: 20, puff: 25, sand: 45, salad: 55, juice: 18, water: 18, bisc: 28, chips: 18 },
+  B: { capp: 75, chai: 25, puff: 30, sand: 55, salad: 65, juice: 20, water: 20, bisc: 30, chips: 20 },
 };
 export const MENU: Record<string, string[]> = {
   rest:   ["capp", "chai", "puff", "sand", "salad", "juice", "water", "chips"],
@@ -46,13 +49,49 @@ export const MENU: Record<string, string[]> = {
   kiosk:  ["juice", "water", "bisc", "chips", "puff"],
 };
 export const USERS: User[] = [
-  { id: "u1", n: "Kavitha Raman",   e: "kavitha.r@royalcare.in", r: "counter", rl: "Counter Operator",     loc: "coffee",  col: "#A2500F", emp: "RC-4471", ph: "98430 22118" },
-  { id: "u2", n: "Ramesh Kumar",    e: "ramesh.k@royalcare.in",  r: "manager", rl: "Outlet Manager",       loc: "rest",    col: "#6A4C93", emp: "RC-3120", ph: "98410 77210" },
-  { id: "u3", n: "Suresh Muthu",    e: "suresh.m@royalcare.in",  r: "store",   rl: "Store Keeper",         loc: "store",   col: "#1D5B87", emp: "RC-2088", ph: "94430 51194" },
-  { id: "u4", n: "Vinoth Prakash",  e: "vinoth.p@royalcare.in",  r: "prod",    rl: "Production In-charge", loc: "kitchen", col: "#1F7A4C", emp: "RC-1902", ph: "90031 66402" },
-  { id: "u5", n: "Latha Narayanan", e: "latha.n@royalcare.in",   r: "buyer",   rl: "Procurement Officer",  loc: "store",   col: "#8A4A0C", emp: "RC-1550", ph: "98940 30117" },
+  { id: "u1", n: "Kavitha Raman",   e: "kavitha.r@royalcare.in", r: "counter", rl: "Counter Operator",     loc: "coffee",  col: "#B45309", emp: "RC-4471", ph: "98430 22118" },
+  { id: "u2", n: "Ramesh Kumar",    e: "ramesh.k@royalcare.in",  r: "manager", rl: "Outlet Manager",       loc: "rest",    col: "#7C3AED", emp: "RC-3120", ph: "98410 77210" },
+  { id: "u3", n: "Suresh Muthu",    e: "suresh.m@royalcare.in",  r: "store",   rl: "Store Keeper",         loc: "store",   col: "#0F766E", emp: "RC-2088", ph: "94430 51194" },
+  { id: "u4", n: "Vinoth Prakash",  e: "vinoth.p@royalcare.in",  r: "prod",    rl: "Production In-charge", loc: "kitchen", col: "#15803D", emp: "RC-1902", ph: "90031 66402" },
+  { id: "u5", n: "Latha Narayanan", e: "latha.n@royalcare.in",   r: "buyer",   rl: "Procurement Officer",  loc: "store",   col: "#BE123C", emp: "RC-1550", ph: "98940 30117" },
 ];
 export const VENDOR_FOR = (group: string): string => ({
   Dairy: "Aavin Dairy Depot", Beverage: "Sri Balaji Distributors", Snacks: "Sri Balaji Distributors",
   Grocery: "Anandha Provisions", Bakery: "Anandha Provisions", Packaging: "PackWell Industries",
 } as Record<string, string>)[group] || "Green Farm Vegetables";
+
+/* Reorder levels on the item are sized for the central store. A counter that holds
+   a day of stock must not be judged against a warehouse par, so each location
+   carries its own factor (M11). */
+export const PAR_FACTOR: Record<LocKey, number> = {
+  store: 1, kitchen: 0.35, rest: 0.22, coffee: 0.18, kiosk: 0.15,
+};
+
+/* Payers for the non-cash tenders (M1). No backend, so these stand in for the
+   patient, payroll and cost-centre masters the live system would look up. */
+export const PATIENTS: Payer[] = [
+  { kind: "patient", id: "IP-4471", name: "Anand Kumar · Ward 3B" },
+  { kind: "patient", id: "IP-4488", name: "Meera Devi · Ward 2A" },
+  { kind: "patient", id: "IP-4502", name: "Rajesh Iyer · ICU 1" },
+  { kind: "patient", id: "OP-9910", name: "Sundar Rajan · OP" },
+];
+export const STAFF: Payer[] = [
+  { kind: "staff", id: "RC-4471", name: "Kavitha Raman · F&B" },
+  { kind: "staff", id: "RC-3120", name: "Ramesh Kumar · F&B" },
+  { kind: "staff", id: "RC-2088", name: "Suresh Muthu · Stores" },
+  { kind: "staff", id: "RC-1902", name: "Vinoth Prakash · Kitchen" },
+];
+export const DEPTS: Payer[] = [
+  { kind: "dept", id: "CC-NUR", name: "Nursing" },
+  { kind: "dept", id: "CC-ADM", name: "Administration" },
+  { kind: "dept", id: "CC-OT", name: "Operating Theatre" },
+];
+/** Staff credit ceiling per month, in rupees. */
+export const STAFF_CREDIT_LIMIT = 3000;
+/** A purchase order above this value needs finance approval (M2). */
+export const PO_APPROVAL_LIMIT = 25000;
+/** Contracted rate per unit; a purchase above this is challenged (M2). */
+export const RATE_CONTRACT: Record<string, number> = {
+  milk: 54, beans: 660, leaf: 440, sugar: 48, maida: 44, oil: 138, fill: 195,
+  butter: 258, bread: 40, cup: 0.68, box: 2.6, juice: 15, water: 12, bisc: 23, chips: 15,
+};

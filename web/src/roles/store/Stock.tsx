@@ -2,7 +2,9 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
-import { avail, daysCover, qty, resv, stateLabel, stateTone, stockValue } from "../../lib/selectors";
+import {
+  avail, daysCover, inTransit, onOrder, qty, resv, stateLabel, stateTone, stockValue,
+} from "../../lib/selectors";
 import { U, fq, money, money0, sum } from "../../lib/fmt";
 import {
   Btn, Card, DataTable, FilterBtn, PageHead, Pill, TableFoot, Tag, Toolbar,
@@ -30,7 +32,9 @@ export default function Stock() {
       const rv = resv(s, "store", it);
       const av = avail(s, "store", it);
       const rl = IT[it].rl;
-      return { it, on, rv, av, rl, low: rl > 0 && av < rl, dc: daysCover(av, it), val: on * IT[it].cost };
+      const oo = onOrder(s, it);
+      const tr = inTransit(s, it);
+      return { it, on, rv, av, rl, oo, tr, low: rl > 0 && av < rl, dc: daysCover(av, it), val: on * IT[it].cost };
     })
     .sort((a, b) => IT[a.it].c.localeCompare(IT[b.it].c));
 
@@ -49,6 +53,8 @@ export default function Stock() {
 
   const addToRequisition = (it: string, rl: number, on: number) => {
     const want = Math.max(1, Math.ceil(rl * 1.6 - on));
+    const open = onOrder(s, it);
+    if (open > 0) notify(`${IT[it].n} already has ${fq(open, it)} ${U(it)} on an open requisition`);
     const at = prqDraft.findIndex((l) => l.it === it);
     if (at >= 0) {
       const next = prqDraft.slice();
@@ -70,7 +76,11 @@ export default function Stock() {
         actions={<Btn variant="gh" onClick={() => nav("/procure")}>Requisitions</Btn>}
       />
 
-      <Card title="Central store ledger" sub="On hand, reserved against open tickets, and free to promise" flush>
+      <Card
+        title="Central store ledger"
+        sub="On hand, reserved, on order with procurement and in transit to the outlets"
+        flush
+      >
         <Toolbar
           placeholder="Search item, code or group…"
           value={q}
@@ -91,6 +101,8 @@ export default function Stock() {
             { h: "On hand", r: true },
             { h: "Reserved", r: true },
             { h: "Available", r: true },
+            { h: "On order", r: true },
+            { h: "In transit", r: true },
             { h: "Reorder level", r: true },
             { h: "Days of cover", r: true },
             { h: "Cost", r: true },
@@ -110,8 +122,10 @@ export default function Stock() {
                 <Tag kind={i.t === "TRADED" ? "tr" : undefined}>{i.t}</Tag>,
                 <>{i.g}</>,
                 <>{fq(r.on, r.it)} <span className="dim">{U(r.it)}</span></>,
-                <>{r.rv > 0 ? fq(r.rv, r.it) : <span className="dim">—</span>}</>,
+                <>{r.rv > 0 ? fq(r.rv, r.it) : <span className="dim">{fq(0, r.it)}</span>}</>,
                 <b>{fq(r.av, r.it)}</b>,
+                <>{r.oo > 0 ? fq(r.oo, r.it) : <span className="dim">{fq(0, r.it)}</span>}</>,
+                <>{r.tr > 0 ? fq(r.tr, r.it) : <span className="dim">{fq(0, r.it)}</span>}</>,
                 <>{fq(r.rl, r.it)}</>,
                 <>{r.dc.toFixed(1)} d</>,
                 <>{money(i.cost)}</>,

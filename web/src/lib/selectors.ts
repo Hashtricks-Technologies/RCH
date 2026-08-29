@@ -1,5 +1,7 @@
-import { IT, LOC, MENU, PL, RCP } from "../data/master";
-import type { Availability, LocKey, Price, ReqStatus, Tone } from "../types";
+import { IT, LOC, MENU, PAR_FACTOR, PL, RCP } from "../data/master";
+import type {
+  Availability, Bill, LocKey, Price, Requisition, ReqStatus, StockRequest, Ticket, Tone,
+} from "../types";
 import { fq, U } from "./fmt";
 
 export interface StockShape {
@@ -42,9 +44,59 @@ export function availOf(s: StockShape, l: LocKey, it: string): Availability {
     : { ok: false, mode: "Stock", why: "zero at this location" };
 }
 
+/** Σ(ingredient × its cost) plus the recipe's overhead. 0 when there is no recipe (H1). */
+export function recipeCost(it: string): number {
+  const r = RCP[it];
+  if (!r) return 0;
+  const raw = r.l.reduce((t, [g, q]) => t + q * (IT[g]?.cost ?? 0), 0);
+  return raw * (1 + r.ov / 100);
+}
+/** What a unit of this item actually costs — from its recipe if it has one. */
+export const costOf = (it: string) => (RCP[it] ? recipeCost(it) : IT[it]?.cost ?? 0);
+
+/** Reorder level for this item at this location (M11). */
+export const parOf = (l: LocKey, it: string) => {
+  const base = IT[it]?.rl ?? 0;
+  if (!base) return 0;
+  const f = PAR_FACTOR[l] ?? 1;
+  return U(it) === "nos" ? Math.round(base * f) : Math.round(base * f * 1000) / 1000;
+};
+
+/** Quantity already promised by an approval that has not yet become a ticket. */
+export const committed = (reqs: StockRequest[], l: LocKey, it: string) =>
+  reqs
+    .filter((r) => (r.st === "Manager approved" || r.st === "Partially approved") && !r.ticket)
+    .reduce((t, r) => t + r.lines.filter((x) => x.it === it).reduce((n, x) => n + x.appr, 0), l === "store" ? 0 : 0);
+
+/**
+ * What may still be promised: on hand, less what tickets have reserved, less
+ * what other approvals have already committed (C6).
+ */
+export const freeToPromise = (
+  s: StockShape & { req: StockRequest[] }, l: LocKey, it: string,
+) => qty(s, l, it) - resv(s, l, it) - committed(s.req, l, it);
+
+/** Quantity sitting on an open requisition or a placed order (M3). */
+export const onOrder = (s: { prq: Requisition[] }, it: string) =>
+  s.prq
+    .filter((p) => p.st === "Sent" || p.st === "Ordered")
+    .reduce((t, p) => t + p.lines.filter((l) => l.it === it).reduce((n, l) => n + l.qty, 0), 0);
+
+/** Handed over but not yet confirmed — owned by neither location (M8). */
+export const inTransit = (s: { tkt: Ticket[] }, it: string) =>
+  s.tkt
+    .filter((t) => t.st === "Collected")
+    .reduce((n, t) => n + t.lines.filter((l) => l.it === it).reduce((q, l) => q + l.qty, 0), 0);
+
+/** Only cash reaches the drawer; everything else settles elsewhere (H4). */
+export const isCashTender = (pay: string) => pay === "Cash";
+export const cashCollected = (bills: Pick<Bill, "pay" | "tot">[]) =>
+  bills.filter((b) => isCashTender(b.pay)).reduce((t, b) => t + b.tot, 0);
+
 export const stockValue = (s: StockShape, l: LocKey) =>
-  Object.keys(s.stock[l] ?? {}).reduce((t, it) => t + qty(s, l, it) * (IT[it]?.cost ?? 0), 0);
-export const daysCover = (a: number, it: string) => a / Math.max(1, (IT[it]?.rl ?? 4) / 4);
+  Object.keys(s.stock[l] ?? {}).reduce((t, it) => t + qty(s, l, it) * costOf(it), 0);
+export const daysCover = (a: number, it: string, l: LocKey = "store") =>
+  a / Math.max(0.001, parOf(l, it) / 4);
 export const menuOf = (s: StockShape, l: LocKey) => s.menu[l] ?? MENU[l] ?? [];
 
 const TONES: Record<string, Tone> = {

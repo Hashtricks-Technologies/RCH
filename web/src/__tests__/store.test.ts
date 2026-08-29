@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { useApp } from "../store";
-import { avail, availOf, priceOf, qty } from "../lib/selectors";
-import { seedBills, seedBatch, seedPo, seedPord, seedPrq, seedReq, seedStock, seedTkt } from "../data/seed";
+import { avail, availOf, priceOf, qty, resv } from "../lib/selectors";
+import {
+  seedBills, seedBatch, seedPo, seedPord, seedPrq, seedReq, seedRsv, seedStock, seedTkt,
+} from "../data/seed";
 import { basePrices } from "../lib/selectors";
 import { MENU, USERS } from "../data/master";
 
@@ -11,11 +13,11 @@ const as = (role: string) => useApp.getState().signIn(USERS.find((u) => u.r === 
 
 beforeEach(() => {
   useApp.setState({
-    user: null, stock: clone(seedStock), rsv: {}, ovr: {}, prices: basePrices(), menu: clone(MENU),
+    user: null, stock: clone(seedStock), rsv: clone(seedRsv()), ovr: {}, prices: basePrices(), menu: clone(MENU),
     req: clone(seedReq), tkt: clone(seedTkt), prq: clone(seedPrq), po: clone(seedPo),
     pord: clone(seedPord), batch: clone(seedBatch), bills: clone(seedBills),
     seq: { req: 912, tkt: 440, bill: 1187, prq: 13, po: 142, pord: 30, bat: 1 },
-    cart: {}, draft: [], prqDraft: [], drawer: null, toast: null, shopFilter: null,
+    cart: {}, draft: [], prqDraft: [], drawer: null, toast: null, shopFilter: null, grn: [],
   });
 });
 
@@ -53,7 +55,9 @@ describe("counter operator", () => {
   });
 
   it("holds the printed MRP as a ceiling on floor 3", () => {
-    expect(S().prices.B.juice).toBe(25);
+    // Seeded lists now sit at or under MRP, so push a breaching price straight
+    // into state — the till must still refuse to charge above the printed MRP.
+    useApp.setState({ prices: { ...S().prices, B: { ...S().prices.B, juice: 25 } } });
     const p = priceOf(S(), "coffee", "juice");
     expect(p.p).toBe(20);
     expect(p.capped).toBe(true);
@@ -108,10 +112,12 @@ describe("the two-stage approval chain", () => {
     expect(availOf(S(), "coffee", "capp").ok).toBe(true);
   });
 
-  it("a manager cannot approve more than was asked", () => {
+  it("a manager cannot approve more than was asked, nor more than the store can cover", () => {
     as("manager");
     S().approveRequest("REQ-2026-0911", [999], "");
-    expect(S().req.find((x) => x.id === "REQ-2026-0911")!.lines[0].appr).toBe(20);
+    const line = S().req.find((x) => x.id === "REQ-2026-0911")!.lines[0];
+    expect(line.appr).toBeLessThanOrEqual(line.qty);
+    expect(line.appr).toBe(qty(S(), "store", "milk"));
   });
 
   it("rejecting issues no ticket", () => {
@@ -129,8 +135,9 @@ describe("the two-stage approval chain", () => {
 describe("pricing", () => {
   it("refuses a price above the printed MRP", () => {
     as("manager");
+    const before = S().prices.B.juice;
     S().savePrice("B", "juice", 99);
-    expect(S().prices.B.juice).toBe(25);
+    expect(S().prices.B.juice).toBe(before);
   });
   it("accepts a price at or below MRP", () => {
     as("manager");
@@ -158,6 +165,10 @@ describe("production", () => {
     const tktBefore = S().tkt.length;
     S().dispatchOrder("PRD-2026-029");
     expect(S().tkt).toHaveLength(tktBefore + 1);
+    // The ticket reserves; the scan at the window is what moves the stock.
+    expect(qty(S(), "kitchen", "puff")).toBe(kitchenBefore + 60);
+    expect(resv(S(), "kitchen", "puff")).toBe(40);
+    S().handover(S().tkt[S().tkt.length - 1].id);
     expect(qty(S(), "kitchen", "puff")).toBe(kitchenBefore + 60 - 40);
     expect(S().pord.find((o) => o.id === "PRD-2026-029")!.st).toBe("Dispatched");
   });
@@ -184,8 +195,11 @@ describe("procurement", () => {
     expect(S().po).toHaveLength(1);
 
     const storeBefore = qty(S(), "store", "milk");
-    S().receiveRequisition(p.id);
+    S().receiveRequisition(p.id, [{
+      recv: 80, batch: "AAV-7712", mrp: 0, mfg: "2026-08-20", exp: "2026-09-20", rejected: 0,
+    }]);
     expect(qty(S(), "store", "milk")).toBe(storeBefore + 80);
+    expect(S().grn[0].batch).toBe("AAV-7712");
     expect(S().prq.find((x) => x.id === p.id)!.st).toBe("Received");
     expect(S().po[0].st).toBe("Received");
   });

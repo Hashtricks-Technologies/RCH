@@ -6,7 +6,24 @@
     <title>Royal Care Inventory</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+    <script>
+      // Stamp the stored theme before first paint so a dark-mode user never
+      // sees a white flash. Mirrors applyTheme() in src/lib/theme.ts.
+      (function () {
+        try {
+          var p = localStorage.getItem("rch-theme");
+          if (p === "light" || p === "dark") {
+            document.documentElement.setAttribute("data-theme", p);
+            document.documentElement.style.colorScheme = p;
+          } else {
+            document.documentElement.style.colorScheme = "light dark";
+          }
+        } catch (e) {
+          /* storage blocked — fall through to the OS preference */
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

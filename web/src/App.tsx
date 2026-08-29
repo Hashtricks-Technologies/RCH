@@ -1,6 +1,7 @@
+import { useEffect } from "react";
 import { Navigate, Route, Routes, useParams } from "react-router-dom";
 import { useApp } from "./store";
-import { HOME, canSee } from "./nav";
+import { HOME, NAV, canSee } from "./nav";
 import Shell from "./ui/Shell";
 import Login from "./pages/Login";
 import Settings from "./pages/Settings";
@@ -14,11 +15,25 @@ import type { Role } from "./types";
 
 const REGISTRY: Record<Role, Record<string, React.ComponentType>> = { counter, manager, store, prod, buyer };
 
+const labelOf = (k: string) =>
+  Object.values(NAV).flat().flatMap((g) => g.items).find((i) => i.k === k)?.label ?? k;
+
+/** UA-01: a refused screen says so on the way out instead of bouncing in silence. */
+function Denied({ k }: { k: string }) {
+  const user = useApp((s) => s.user)!;
+  const notify = useApp((s) => s.notify);
+  useEffect(() => {
+    const a = /^[AEIOU]/.test(user.rl) ? "an" : "a";
+    notify(`${labelOf(k)} is not available to ${a} ${user.rl} — you are back on ${labelOf(HOME[user.r])}`);
+  }, [k, user, notify]);
+  return <Navigate to={"/" + HOME[user.r]} replace />;
+}
+
 function Screen() {
   const { key = "" } = useParams();
   const user = useApp((s) => s.user);
   if (!user) return <Navigate to="/login" replace />;
-  if (!canSee(user.r, key)) return <Navigate to={"/" + HOME[user.r]} replace />;
+  if (!canSee(user.r, key)) return <Denied k={key} />;
   if (key === "settings") return <Settings />;
   const C = REGISTRY[user.r][key];
   if (!C) {

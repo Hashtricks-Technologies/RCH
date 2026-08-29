@@ -1,11 +1,11 @@
 import { useState } from "react";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
-import { fq, sum } from "../../lib/fmt";
+import { unitTotal } from "../../lib/fmt";
 import {
   Alert, Btn, Card, DataTable, PageHead, Pill, StatusPill, TableFoot, Toolbar,
 } from "../../ui/kit";
-import type { StockRequest } from "../../types";
+import type { ReqLine, StockRequest } from "../../types";
 
 const lineSummary = (r: StockRequest) =>
   r.lines.map((l) => IT[l.it]?.n ?? l.it).join(", ");
@@ -28,15 +28,12 @@ export default function Approvals() {
   const actioned = all.filter((r) => r.st !== "Request sent");
   const urgent = waiting.filter((r) => r.urg).length;
 
-  const asked = (r: StockRequest) => sum(r.lines, (l) => l.qty);
-  const approved = (r: StockRequest) => sum(r.lines, (l) => l.appr);
-
-  const totals = (r: StockRequest) => (
-    <>
-      <b>{r.lines.length === 1 ? fq(r.lines[0].qty, r.lines[0].it) : Math.round(asked(r) * 1000) / 1000}</b>
-      <small className="dim"> {r.lines.length === 1 ? IT[r.lines[0].it]?.u ?? "" : "units"}</small>
-    </>
-  );
+  /* Litres and cups do not add up, so every total is shown per unit (M4). */
+  const asked = (r: StockRequest) => unitTotal(r.lines);
+  const approved = (r: StockRequest) => unitTotal(r.lines.map((l) => ({ it: l.it, qty: l.appr })));
+  const shortQty = (l: ReqLine) => l.short ?? Math.max(0, l.qty - l.appr);
+  const shortOf = (r: StockRequest) =>
+    r.lines.filter((l) => shortQty(l) > 0).map((l) => ({ it: l.it, qty: shortQty(l) }));
 
   return (
     <>
@@ -81,7 +78,7 @@ export default function Approvals() {
               r.by,
               r.at,
               r.lines.length,
-              totals(r),
+              <b>{asked(r)}</b>,
               r.urg ? <Pill tone="cr">Urgent</Pill> : <Pill tone="mu">Normal</Pill>,
               <Btn size="xs" onClick={() => openDrawer("mreq", r.id)}>Review</Btn>,
             ],
@@ -110,24 +107,31 @@ export default function Approvals() {
             { h: "Lines", r: true },
             { h: "Total asked", r: true },
             { h: "Total approved", r: true },
+            { h: "Not approved", r: true },
             { h: "Status" },
           ]}
-          rows={actioned.map((r) => ({
-            key: r.id,
-            onClick: () => openDrawer("mreq", r.id),
-            cells: [
-              <>{r.id}<small>{r.ticket ?? lineSummary(r)}</small></>,
-              LOC[r.from].n,
-              r.by,
-              r.at,
-              r.lines.length,
-              totals(r),
-              approved(r) < asked(r)
-                ? <span style={{ color: "var(--warn)" }}>{approved(r)}</span>
-                : <b>{approved(r)}</b>,
-              <StatusPill status={r.st} />,
-            ],
-          }))}
+          rows={actioned.map((r) => {
+            const short = shortOf(r);
+            return {
+              key: r.id,
+              onClick: () => openDrawer("mreq", r.id),
+              cells: [
+                <>{r.id}<small>{r.ticket ?? lineSummary(r)}</small></>,
+                LOC[r.from].n,
+                r.by,
+                r.at,
+                r.lines.length,
+                <b>{asked(r)}</b>,
+                short.length
+                  ? <span style={{ color: "var(--warn)" }}>{approved(r)}</span>
+                  : <b>{approved(r)}</b>,
+                short.length
+                  ? <span style={{ color: "var(--warn)" }}>{unitTotal(short)}</span>
+                  : <span className="dim">—</span>,
+                <StatusPill status={r.st} />,
+              ],
+            };
+          })}
           empty={{
             title: "Nothing actioned yet",
             sub: "Once you approve or reject a counter request it is listed here with its full history.",

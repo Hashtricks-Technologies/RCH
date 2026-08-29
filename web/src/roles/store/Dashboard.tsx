@@ -153,7 +153,7 @@ export default function Dashboard() {
                   <small>{IT[r.it].c} · {IT[r.it].g}</small>
                 </>,
                 <>{fq(r.on, r.it)} <span className="dim">{U(r.it)}</span></>,
-                <>{r.rv > 0 ? fq(r.rv, r.it) : <span className="dim">—</span>}</>,
+                <>{r.rv > 0 ? fq(r.rv, r.it) : <span className="dim">{fq(0, r.it)}</span>}</>,
                 <b>{fq(r.av, r.it)}</b>,
                 <>{fq(r.rl, r.it)}</>,
                 <>{r.dc.toFixed(1)} d</>,

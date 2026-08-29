@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { IT, LOC, VENDOR_FOR } from "../../data/master";
+import { IT, LOC, PO_APPROVAL_LIMIT, RATE_CONTRACT, VENDOR_FOR } from "../../data/master";
 import { useApp } from "../../store";
 import { avail, stateTone } from "../../lib/selectors";
-import { U, fq, money, sum } from "../../lib/fmt";
+import { U, fq, money, money0, pct, sum } from "../../lib/fmt";
 import {
   Alert, Btn, DataTable, Field, FormRow, Pill, Section, TableFoot,
 } from "../../ui/kit";
@@ -26,6 +26,13 @@ const inDays = (n: number) => {
   d.setDate(d.getDate() + n);
   return isoDay(d);
 };
+/** Anything more than a tenth above the contracted rate is challenged before it is ordered (M2). */
+const TOLERANCE = 0.1;
+const overContract = (it: string, rate: number) => {
+  const c = RATE_CONTRACT[it];
+  return c > 0 && rate > c * (1 + TOLERANCE) ? c : null;
+};
+
 export const etaLabel = (v: string) => {
   const [y, m, d] = v.split("-");
   if (!y || !m || !d) return v;
@@ -62,10 +69,13 @@ function RequisitionDrawer({ id }: DrawerProps) {
   };
   const total = sum(p.lines.map((l, i) => l.qty * rateAt(i)), (v) => v);
   const open = p.st === "Sent";
+  const challenged = p.lines.filter((l, i) => overContract(l.it, rateAt(i)) !== null);
+  const needsApproval = total > PO_APPROVAL_LIMIT;
 
   const rows: Row[] = p.lines.map((l, i) => {
     const have = avail(s, "store", l.it);
     const it = IT[l.it];
+    const contracted = overContract(l.it, rateAt(i));
     return {
       key: l.it + i,
       cells: [
@@ -78,12 +88,20 @@ function RequisitionDrawer({ id }: DrawerProps) {
         </>,
         <>{fq(it?.rl ?? 0, l.it)}</>,
         <>{VENDOR_FOR(it?.g ?? "")}</>,
-        <input type="number" className="mono" min={0} step="0.01" value={rates[i] ?? 0}
-          disabled={!open} aria-label={`Rate for ${it?.n ?? l.it}`}
-          onChange={(e) => {
-            const v = Number(e.target.value);
-            setRates((r) => r.map((x, j) => (j === i ? v : x)));
-          }} />,
+        <>{RATE_CONTRACT[l.it] > 0 ? money(RATE_CONTRACT[l.it]) : <span className="dim">No contract</span>}</>,
+        <>
+          <input type="number" className="mono" min={0} step="0.01" value={rates[i] ?? 0}
+            disabled={!open} aria-label={`Rate for ${it?.n ?? l.it}`}
+            onChange={(e) => {
+              const v = Number(e.target.value);
+              setRates((r) => r.map((x, j) => (j === i ? v : x)));
+            }} />
+          {contracted !== null && (
+            <div className="mini" style={{ color: "var(--warn)" }}>
+              {pct(rateAt(i) / contracted - 1, 0)} over contract
+            </div>
+          )}
+        </>,
         <>{money(l.qty * rateAt(i))}</>,
       ],
     };
@@ -99,7 +117,7 @@ function RequisitionDrawer({ id }: DrawerProps) {
           <div className="sp" />
           <Btn variant="gh" onClick={close}>Close</Btn>
           <Btn onClick={() => order(p.id, p.lines.map((_, i) => rateAt(i)), vendor, etaLabel(eta))}>
-            Raise purchase order
+            {needsApproval ? "Raise for finance approval" : "Raise purchase order"}
           </Btn>
         </>
       ) : undefined}
@@ -121,7 +139,8 @@ function RequisitionDrawer({ id }: DrawerProps) {
               { h: "Store now", r: true },
               { h: "Reorder", r: true },
               { h: "Suggested vendor" },
-              { h: "Rate", r: true, w: "11%" },
+              { h: "Contract rate", r: true },
+              { h: "Rate", r: true, w: "12%" },
               { h: "Line value", r: true },
             ]}
             rows={rows}
@@ -129,7 +148,30 @@ function RequisitionDrawer({ id }: DrawerProps) {
           />
         </div>
         <TableFoot count={rows.length} extra={<>{Math.round(sum(p.lines, (l) => l.qty))} units requested</>} />
-        <div className="totrow big"><span>Estimated total</span><span>{money(total)}</span></div>
+        <div className="totrow"><span>Finance approval slab</span><span>{money0(PO_APPROVAL_LIMIT)}</span></div>
+        <div className="totrow big"><span>Order total</span><span>{money(total)}</span></div>
+
+        {challenged.length > 0 && (
+          <div className="mtop">
+            <Alert tone="w" label="RATE CONTRACT">
+              {challenged.map((l) => IT[l.it]?.n ?? l.it).join(", ")} priced more than
+              {" "}{pct(TOLERANCE, 0)} above the contracted rate. Challenge the vendor or record the reason
+              before the order goes out.
+            </Alert>
+          </div>
+        )}
+        <div className="mtop">
+          {needsApproval ? (
+            <Alert tone="c" label="FINANCE APPROVAL">
+              {money(total)} is over the {money0(PO_APPROVAL_LIMIT)} slab, so this order cannot be placed on the
+              vendor until finance approves it. It is raised and held for approval.
+            </Alert>
+          ) : (
+            <Alert tone="g" label="WITHIN LIMIT">
+              {money(total)} is inside the {money0(PO_APPROVAL_LIMIT)} slab — you can place this order yourself.
+            </Alert>
+          )}
+        </div>
       </Section>
 
       <Section title="Order terms" sub="Applied to the purchase order raised against this requisition.">

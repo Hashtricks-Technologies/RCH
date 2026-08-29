@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
-import { avail } from "../../lib/selectors";
+import { freeToPromise } from "../../lib/selectors";
 import { U, fq, sum } from "../../lib/fmt";
 import {
   Alert, Btn, Card, DataTable, Grid, PageHead, Pill, StatusPill, TableFoot, Toolbar,
@@ -10,16 +10,21 @@ import type { StockRequest } from "../../types";
 
 type Line = StockRequest["lines"][number];
 
-function worstLine(av: (it: string) => number, lines: Line[]) {
+function worstLine(free: (l: Line) => number, lines: Line[]) {
   let worst: { l: Line; have: number; ratio: number } | null = null;
   for (const l of lines) {
     if (l.appr <= 0) continue;
-    const have = av(l.it);
+    const have = free(l);
     const ratio = have / l.appr;
     if (!worst || ratio < worst.ratio) worst = { l, have, ratio };
   }
   return worst;
 }
+
+/** Seeded requests carry no apprBy, so fall back to the last approval on the trail (H6). */
+const approver = (r: StockRequest) =>
+  r.apprBy
+  ?? [...r.hist].reverse().find((h) => h.s === "Manager approved" || h.s === "Partially approved")?.who;
 
 export default function IssueDesk() {
   const s = useApp();
@@ -31,7 +36,9 @@ export default function IssueDesk() {
   const [qb, setQb] = useState("");
   const [qc, setQc] = useState("");
 
-  const av = (it: string) => avail(s, "store", it);
+  /** freeToPromise nets off every open approval including this one, so add the line back:
+   *  what matters is the stock left after the *other* approvals (C6). */
+  const free = (l: Line) => freeToPromise(s, "store", l.it) + l.appr;
 
   const approved = s.req
     .filter((r) => (r.st === "Manager approved" || r.st === "Partially approved") && r.ticket === null)
@@ -55,7 +62,7 @@ export default function IssueDesk() {
     });
 
   const shortCount = approved.filter((r) => {
-    const w = worstLine(av, r.lines);
+    const w = worstLine(free, r.lines);
     return w !== null && w.ratio < 1;
   }).length;
 
@@ -87,11 +94,11 @@ export default function IssueDesk() {
             { h: "Approved by", w: "16%" },
             { h: "Lines", r: true },
             { h: "Approved qty", r: true },
-            { h: "Available now", w: "20%" },
+            { h: "Free to promise", w: "20%" },
             { h: "Action", w: "14%" },
           ]}
           rows={approved.map((r) => {
-            const w = worstLine(av, r.lines);
+            const w = worstLine(free, r.lines);
             const appr = sum(r.lines, (l) => l.appr);
             return {
               key: r.id,
@@ -102,7 +109,7 @@ export default function IssueDesk() {
                 </>,
                 <>{LOC[r.from].n}<div className="mini">{LOC[r.from].floor}</div></>,
                 <>
-                  {r.by}
+                  {approver(r) ?? <span className="dim">Not recorded</span>}
                   <div className="mini">{r.st === "Partially approved" ? "quantities trimmed" : "approved in full"}</div>
                 </>,
                 <>{r.lines.filter((l) => l.appr > 0).length}</>,
@@ -112,7 +119,7 @@ export default function IssueDesk() {
                 ) : w.ratio < 1 ? (
                   <>
                     <Pill tone="wn">Short {IT[w.l.it].n}</Pill>
-                    <div className="mini">{fq(w.have, w.l.it)} of {fq(w.l.appr, w.l.it)} {U(w.l.it)} available</div>
+                    <div className="mini">{fq(w.have, w.l.it)} of {fq(w.l.appr, w.l.it)} {U(w.l.it)} free after other approvals</div>
                   </>
                 ) : (
                   <>
@@ -120,7 +127,14 @@ export default function IssueDesk() {
                     <div className="mini">tightest {IT[w.l.it].n} {fq(w.have, w.l.it)} {U(w.l.it)}</div>
                   </>
                 ),
-                <Btn size="sm" disabled={w === null} onClick={() => issueTicket(r.id)}>Generate ticket</Btn>,
+                <Btn
+                  size="sm"
+                  disabled={w === null || w.ratio < 1}
+                  title={w !== null && w.ratio < 1 ? `${IT[w.l.it].n} is committed elsewhere` : undefined}
+                  onClick={() => issueTicket(r.id)}
+                >
+                  Generate ticket
+                </Btn>,
               ],
             };
           })}

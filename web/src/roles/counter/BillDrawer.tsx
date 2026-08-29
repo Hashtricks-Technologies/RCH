@@ -50,6 +50,7 @@ function BillDrawer({ id }: DrawerProps) {
         <dt>Cost centre</dt><dd className="mono">{L.cc}</dd>
         <dt>Time</dt><dd className="mono">{bill.t}</dd>
         <dt>Tender</dt><dd>{bill.pay}</dd>
+        {bill.payer && <><dt>Posted to</dt><dd>{bill.payer.name} <span className="mini mono">({bill.payer.id})</span></dd></>}
       </dl>
 
       <Section title="Line items" sub={`${bill.lines.length} line${bill.lines.length === 1 ? "" : "s"} · rates are GST inclusive`} />

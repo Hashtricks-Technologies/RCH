@@ -1,13 +1,13 @@
 import { useState } from "react";
 import { ALL_LOCS, IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
-import { avail, qty, stateTone, stockValue } from "../../lib/selectors";
+import { avail, inTransit, qty, stateTone, stockValue } from "../../lib/selectors";
 import { fq, lakh, money, money0, sum } from "../../lib/fmt";
 import {
   Card, DataTable, FilterBtn, Kpis, PageHead, Pill, Tag, TableFoot, Toolbar,
 } from "../../ui/kit";
 import type { Row } from "../../ui/kit";
-import type { ItemType } from "../../types";
+import type { ItemType, LocKey } from "../../types";
 
 const KEYS = Object.keys(IT);
 const TYPES: string[] = ["All", "RAW", "PACK", "TRADED", "FG", "MTO"];
@@ -22,9 +22,12 @@ export default function Inventory() {
   const [group, setGroup] = useState("All");
 
   const totalOf = (k: string) => sum(ALL_LOCS, (l) => qty(s, l, k));
+  /** A dash means the location does not carry the line at all; zero means it is dry (M12). */
+  const stocked = (l: LocKey, k: string) => k in (s.stock[l] ?? {});
+  const anywhere = (k: string) => ALL_LOCS.some((l) => stocked(l, k));
   const netValue = sum(ALL_LOCS, (l) => stockValue(s, l));
   const below = KEYS.filter((k) => IT[k].rl > 0 && avail(s, "store", k) < IT[k].rl);
-  const zero = KEYS.filter((k) => IT[k].t !== "MTO" && IT[k].rl > 0 && avail(s, "store", k) <= 0);
+  const zero = KEYS.filter((k) => k in s.stock.store && avail(s, "store", k) <= 0);
 
   const t = q.trim().toLowerCase();
   const keys = KEYS.filter((k) =>
@@ -39,6 +42,7 @@ export default function Inventory() {
     const here = qty(s, "store", k);
     const a = avail(s, "store", k);
     const all = totalOf(k);
+    const tr = inTransit(s, k);
     return {
       key: k,
       cells: [
@@ -49,11 +53,12 @@ export default function Inventory() {
         <>{it.hsn}</>,
         <>{it.gst}%</>,
         <>{money(it.cost)}</>,
-        <>{fq(here, k)}</>,
-        <>{fq(all, k)}</>,
+        <>{stocked("store", k) ? fq(here, k) : <span className="dim">—</span>}</>,
+        <>{anywhere(k) ? fq(all, k) : <span className="dim">—</span>}</>,
+        <>{tr > 0 ? fq(tr, k) : <span className="dim">{anywhere(k) ? fq(0, k) : "—"}</span>}</>,
         <>{money0(all * it.cost)}</>,
         <>{it.rl > 0 ? fq(it.rl, k) : <span className="dim">—</span>}</>,
-        it.t === "MTO"
+        !stocked("store", k)
           ? <Pill tone="mu">Not stocked</Pill>
           : <Pill tone={stateTone(a, it.rl)}>
             {a <= 0 ? "Out" : it.rl > 0 && a < it.rl ? "Below reorder" : "Healthy"}
@@ -108,6 +113,7 @@ export default function Inventory() {
             { h: "Cost", r: true },
             { h: LOC.store.n, r: true },
             { h: "All locations", r: true },
+            { h: "In transit", r: true },
             { h: "Value", r: true },
             { h: "Reorder", r: true },
             { h: "State" },

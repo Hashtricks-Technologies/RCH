@@ -1,7 +1,7 @@
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
 import { isReqOpen } from "../../lib/selectors";
-import { fq, sum, U } from "../../lib/fmt";
+import { fq, U, unitTotal } from "../../lib/fmt";
 import { DrawerFrame } from "../../ui/Drawer";
 import { registerDrawer, type DrawerProps } from "../../drawers";
 import { Alert, Btn, DataTable, Feed, Pill, Section, StatusPill } from "../../ui/kit";
@@ -31,8 +31,9 @@ function RequestDrawer({ id }: DrawerProps) {
   }
 
   const L = LOC[req.from];
-  const asked = sum(req.lines, (l) => l.qty);
-  const appr = sum(req.lines, (l) => l.appr);
+  const asked = unitTotal(req.lines);
+  const appr = unitTotal(req.lines.map((l) => ({ it: l.it, qty: l.appr })));
+  const short = req.lines.filter((l) => (l.short ?? 0) > 0).map((l) => ({ it: l.it, qty: l.short ?? 0 }));
   const open = isReqOpen(req.st);
 
   return (
@@ -58,20 +59,28 @@ function RequestDrawer({ id }: DrawerProps) {
           counter still needs the stock.
         </Alert>
       )}
+      {short.length > 0 && (
+        <Alert tone="w" label="SHORT">
+          <b>{unitTotal(short)}</b> across {short.length} line{short.length === 1 ? "" : "s"} was not approved
+          {req.apprBy ? ` by ${req.apprBy}` : ""} — {short.map((l) => `${IT[l.it]?.n ?? l.it} ${fq(l.qty, l.it)} ${U(l.it)}`).join(", ")}.
+          Only the approved quantity reaches the pick ticket; raise a fresh request for the balance.
+        </Alert>
+      )}
       {req.ticket && (
         <Alert tone="g" label="TICKET">
           Pick ticket <b className="mono">{req.ticket}</b> has been issued. Quote it at {LOC.store.n} to collect.
         </Alert>
       )}
 
-      <Section title="Lines" sub="What the counter asked for against what the manager approved." />
+      <Section title="Lines" sub="What the counter asked for, what the manager approved, and what is still outstanding." />
       <DataTable
         cols={[
-          { h: "Item", cls: "nm", w: "38%" },
-          { h: "Code", w: "16%" },
-          { h: "Asked", r: true, w: "16%" },
-          { h: "Approved", r: true, w: "16%" },
-          { h: "Unit", w: "14%" },
+          { h: "Item", cls: "nm", w: "32%" },
+          { h: "Code", w: "15%" },
+          { h: "Asked", r: true, w: "14%" },
+          { h: "Approved", r: true, w: "14%" },
+          { h: "Back-ordered", r: true, w: "15%" },
+          { h: "Unit", w: "10%" },
         ]}
         rows={req.lines.map((l) => ({
           key: l.it,
@@ -81,6 +90,9 @@ function RequestDrawer({ id }: DrawerProps) {
             fq(l.qty, l.it),
             l.appr > 0
               ? <b style={{ color: l.appr < l.qty ? "var(--warn)" : "var(--good)" }}>{fq(l.appr, l.it)}</b>
+              : <span className="dim">—</span>,
+            (l.short ?? 0) > 0
+              ? <b style={{ color: "var(--warn)" }}>{fq(l.short ?? 0, l.it)}</b>
               : <span className="dim">—</span>,
             <span className="mini">{U(l.it)}</span>,
           ],

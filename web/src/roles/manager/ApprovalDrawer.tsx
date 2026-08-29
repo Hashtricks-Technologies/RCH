@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
-import { avail } from "../../lib/selectors";
-import { fq, money, sum, U } from "../../lib/fmt";
+import { costOf, freeToPromise, qty } from "../../lib/selectors";
+import { fq, money, sum, U, unitTotal } from "../../lib/fmt";
 import { Alert, Btn, DataTable, Feed, Pill, Section, StatusPill, Tag } from "../../ui/kit";
 import { DrawerFrame } from "../../ui/Drawer";
 import { registerDrawer, type DrawerProps } from "../../drawers";
@@ -22,7 +22,7 @@ function ApprovalDrawer({ id }: DrawerProps) {
 
   const [appr, setAppr] = useState<number[]>(() =>
     (req?.lines ?? []).map((l) =>
-      Math.max(0, Math.min(l.qty, req && req.st === "Request sent" ? avail(s, "store", l.it) : l.appr))
+      Math.max(0, Math.min(l.qty, req && req.st === "Request sent" ? freeToPromise(s, "store", l.it) : l.appr))
     )
   );
   const [note, setNote] = useState(req?.mgrNote ?? "");
@@ -43,11 +43,17 @@ function ApprovalDrawer({ id }: DrawerProps) {
     setAppr(appr.map((x, j) => (j === i ? v : x)));
   };
 
-  const asked = sum(req.lines, (l) => l.qty);
   const giving = sum(appr, (v) => v);
   const trimmed = req.lines.some((l, i) => (appr[i] ?? 0) < l.qty);
-  const value = req.lines.reduce(
-    (t, l, i) => t + (open ? appr[i] ?? 0 : l.appr) * (IT[l.it]?.cost ?? 0), 0);
+  const value = req.lines.reduce((t, l, i) => t + (open ? appr[i] ?? 0 : l.appr) * costOf(l.it), 0);
+  const askedTotal = unitTotal(req.lines);
+  const givingTotal = unitTotal(req.lines.map((l, i) => ({ it: l.it, qty: open ? appr[i] ?? 0 : l.appr })));
+  const shortOf = (l: { qty: number; appr: number; short?: number }) => l.short ?? Math.max(0, l.qty - l.appr);
+  const shortLines = open
+    ? []
+    : req.lines.filter((l) => shortOf(l) > 0).map((l) => ({ it: l.it, qty: shortOf(l) }));
+  const overCommitted = req.lines.filter((l) => freeToPromise(s, "store", l.it) < l.qty);
+  const reason = note.trim();
 
   return (
     <DrawerFrame
@@ -57,7 +63,14 @@ function ApprovalDrawer({ id }: DrawerProps) {
         open ? (
           <>
             <Btn variant="gh" onClick={close}>Close</Btn>
-            <Btn variant="dg" onClick={() => { rejectRequest(req.id, note); close(); }}>Reject</Btn>
+            <Btn
+              variant="dg"
+              disabled={!reason}
+              title={reason ? undefined : "Write the reason in the manager note first"}
+              onClick={() => { rejectRequest(req.id, note); close(); }}
+            >
+              Reject
+            </Btn>
             <Btn onClick={() => { approveRequest(req.id, appr, note); close(); }}>
               Approve &amp; forward to store
             </Btn>
@@ -90,15 +103,17 @@ function ApprovalDrawer({ id }: DrawerProps) {
         <div className="lgrid">
           <DataTable
             cols={[
-              { h: "Item", cls: "nm", w: "34%" },
+              { h: "Item", cls: "nm", w: "26%" },
               { h: "Type" },
               { h: "Asked", r: true },
-              { h: "At Central Store", r: true },
+              { h: "On hand", r: true },
+              { h: "Free to promise", r: true },
               { h: open ? "Approve" : "Approved", r: true, w: "16%" },
             ]}
             rows={req.lines.map((l, i) => {
-              const have = avail(s, "store", l.it);
-              const short = have < l.qty;
+              const have = qty(s, "store", l.it);
+              const free = freeToPromise(s, "store", l.it);
+              const over = free < l.qty;
               return {
                 key: l.it + i,
                 cells: [
@@ -107,9 +122,10 @@ function ApprovalDrawer({ id }: DrawerProps) {
                     {IT[l.it]?.t}
                   </Tag>,
                   <>{fq(l.qty, l.it)} <small className="dim">{U(l.it)}</small></>,
-                  short
-                    ? <span style={{ color: "var(--warn)" }}>{fq(have, l.it)}</span>
-                    : <>{fq(have, l.it)}</>,
+                  <>{fq(have, l.it)}</>,
+                  over
+                    ? <span style={{ color: "var(--warn)" }} title="Already promised elsewhere">{fq(free, l.it)}</span>
+                    : <>{fq(free, l.it)}</>,
                   open ? (
                     <input
                       type="number"
@@ -121,7 +137,14 @@ function ApprovalDrawer({ id }: DrawerProps) {
                       aria-label={`Approved quantity for ${IT[l.it]?.n ?? l.it}`}
                     />
                   ) : (
-                    <b>{fq(l.appr, l.it)}</b>
+                    <>
+                      <b>{fq(l.appr, l.it)}</b>
+                      {shortOf(l) > 0 && (
+                        <small style={{ display: "block", color: "var(--warn)" }}>
+                          {fq(shortOf(l), l.it)} short
+                        </small>
+                      )}
+                    </>
                   ),
                 ],
               };
@@ -129,18 +152,34 @@ function ApprovalDrawer({ id }: DrawerProps) {
             empty={{ title: "This request has no lines", sub: "Ask the counter to raise it again." }}
           />
         </div>
-        <div className="totrow mtop"><span>Total asked</span><span>{Math.round(asked * 1000) / 1000} units</span></div>
+        <div className="totrow mtop"><span>Total asked</span><span>{askedTotal}</span></div>
         <div className="totrow">
           <span>{open ? "You are approving" : "Approved"}</span>
-          <span>{Math.round((open ? giving : sum(req.lines, (l) => l.appr)) * 1000) / 1000} units</span>
+          <span>{givingTotal}</span>
         </div>
+        {shortLines.length > 0 && (
+          <div className="totrow"><span>Not approved</span><span>{unitTotal(shortLines)}</span></div>
+        )}
         <div className="totrow"><span>Cost value of the issue</span><span>{money(value)}</span></div>
       </Section>
 
+      {open && overCommitted.length > 0 && (
+        <Alert tone="w" label="PROMISED">
+          Free to promise is what the Central Store holds less what issued tickets have reserved and what other
+          approvals have already promised. It will not cover{" "}
+          {overCommitted.map((l) => IT[l.it]?.n ?? l.it).join(", ")} in full.
+        </Alert>
+      )}
       {open && trimmed && giving > 0 && (
         <Alert tone="w" label="SHORT">
-          You are approving less than the counter asked for. The remainder will park as a back-order against{" "}
-          {req.id} — the counter can raise a fresh request once the Central Store is replenished.
+          You are approving less than the counter asked for. The shortfall is recorded on {req.id} — there is no
+          back-order document, so the counter raises a fresh request once the Central Store is replenished.
+        </Alert>
+      )}
+      {!open && shortLines.length > 0 && (
+        <Alert tone="w" label="SHORT">
+          <b>{unitTotal(shortLines)}</b> of what {LOC[req.from].n} asked for was not approved. It is recorded on
+          this request; nothing is on back-order, so the counter must raise it again.
         </Alert>
       )}
       {open && giving === 0 && (
@@ -158,7 +197,11 @@ function ApprovalDrawer({ id }: DrawerProps) {
             placeholder="Why you trimmed a line, or what the counter should do next…"
             disabled={!open}
           />
-          <div className="hint">Kept on the request history against your name.</div>
+          <div className="hint" style={open && !reason ? { color: "var(--warn)" } : undefined}>
+            {open && !reason
+              ? "A reason is required — the counter sees it. Reject stays disabled until you write one."
+              : "Kept on the request history against your name."}
+          </div>
         </div>
       </Section>
 

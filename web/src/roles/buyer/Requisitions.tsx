@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { IT, LOC } from "../../data/master";
+import { IT, LOC, PO_APPROVAL_LIMIT } from "../../data/master";
 import { useApp } from "../../store";
 import { money, money0, sum } from "../../lib/fmt";
 import {
@@ -8,6 +8,7 @@ import {
 import type { Row } from "../../ui/kit";
 import type { PurchaseOrder, Requisition, TktLine } from "../../types";
 import "./RequisitionDrawer";
+import "./ReceiptDrawer";
 
 const lineValue = (lines: TktLine[]) => sum(lines, (l) => l.qty * (IT[l.it]?.cost ?? 0));
 const qtyOf = (r: Requisition) => Math.round(sum(r.lines, (l) => l.qty) * 1000) / 1000;
@@ -24,7 +25,6 @@ const hits = (r: Requisition, q: string) => {
 export default function Requisitions() {
   const s = useApp();
   const openDrawer = useApp((x) => x.openDrawer);
-  const receive = useApp((x) => x.receiveRequisition);
 
   const [qw, setQw] = useState("");
   const [qo, setQo] = useState("");
@@ -64,15 +64,17 @@ export default function Requisitions() {
         <>{o ? money0(poValue(o)) : money0(lineValue(p.lines))}</>,
         <>{o?.eta ?? <span className="dim">—</span>}</>,
         <Pill tone="in">On order</Pill>,
-        <Btn size="xs" variant="ok" onClick={() => receive(p.id)}>Mark received</Btn>,
+        <Btn size="xs" variant="ok" onClick={() => openDrawer("bgrn", p.id)}>Receive goods</Btn>,
       ],
     };
   });
 
   const doneRows: Row[] = done.map((p) => {
     const o = poFor(p.id);
+    const grn = s.grn.filter((g) => g.prq === p.id);
     return {
       key: p.id,
+      onClick: () => openDrawer("bgrn", p.id),
       cells: [
         <>{p.id}<small>{p.by}</small></>,
         <>{p.at}</>,
@@ -80,7 +82,10 @@ export default function Requisitions() {
         <>{o ? money0(poValue(o)) : money0(lineValue(p.lines))}</>,
         <>{o?.vendor ?? <span className="dim">Not ordered</span>}</>,
         p.st === "Received"
-          ? <Pill tone="ok">Received into store</Pill>
+          ? <>
+            <Pill tone="ok">Received into store</Pill>
+            <div className="mini">{grn.length} batch{grn.length === 1 ? "" : "es"} booked in</div>
+          </>
           : <Pill tone="cr">Declined</Pill>,
       ],
     };
@@ -101,7 +106,12 @@ export default function Requisitions() {
       <>{o.lines.length}</>,
       <>{money(poValue(o))}</>,
       <>{o.eta}</>,
-      <StatusPill status={o.st} />,
+      o.needsApproval && o.st === "Ordered"
+        ? <>
+          <Pill tone="wn">Finance approval</Pill>
+          <div className="mini">over the {money0(PO_APPROVAL_LIMIT)} slab</div>
+        </>
+        : <StatusPill status={o.st} />,
     ],
   }));
 

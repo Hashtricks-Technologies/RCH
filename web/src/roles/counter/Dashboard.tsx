@@ -1,7 +1,7 @@
 import { useNavigate } from "react-router-dom";
 import { IT, LOC, OUTLETS } from "../../data/master";
 import { useApp } from "../../store";
-import { availOf, menuOf } from "../../lib/selectors";
+import { availOf, isCashTender, menuOf } from "../../lib/selectors";
 import { money, money0, sum } from "../../lib/fmt";
 import { Alert, Avatar, Btn, Card, Feed, Grid, HBars, Kpis, PageHead } from "../../ui/kit";
 import type { ReqStatus } from "../../types";
@@ -20,7 +20,7 @@ export default function Dashboard() {
   const salesToday = sum(mine, (b) => b.tot);
   const itemsSold = sum(mine, (b) => sum(b.lines, (l) => l.qty));
   const avgBill = mine.length ? salesToday / mine.length : 0;
-  const cashToday = sum(mine.filter((b) => b.pay === "Cash"), (b) => b.tot);
+  const cashToday = sum(mine.filter((b) => isCashTender(b.pay)), (b) => b.tot);
 
   const menu = menuOf(s, loc);
   const off = menu
@@ -49,7 +49,7 @@ export default function Dashboard() {
     title: <>{b.no} · {money(b.tot)}</>,
     body: <>{sum(b.lines, (l) => l.qty)} items · {b.pay}</>,
     when: b.t,
-    color: b.pay === "Cash" ? "var(--c2)" : "var(--c1)",
+    color: isCashTender(b.pay) ? "var(--c2)" : "var(--c1)",
   }));
 
   return (

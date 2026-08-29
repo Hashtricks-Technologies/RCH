@@ -2,15 +2,18 @@ import { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
-import { qty } from "../../lib/selectors";
+import { availOf, qty } from "../../lib/selectors";
 import { fq, sum, U } from "../../lib/fmt";
-import { Alert, Btn, Card, Feed, Grid, HBars, Kpis, PageHead, Pill } from "../../ui/kit";
+import {
+  Alert, Btn, Card, DataTable, Feed, Grid, HBars, Kpis, PageHead, Pill, StatusPill, TableFoot,
+} from "../../ui/kit";
 
 const PRODS = ["puff", "sand", "salad"];
 
 export default function Dashboard() {
   const nav = useNavigate();
   const s = useApp();
+  const handover = useApp((x) => x.handover);
   const { pord, batch, tkt, ovr } = s;
 
   const newOrders = useMemo(() => pord.filter((o) => o.st === "New"), [pord]);
@@ -20,10 +23,10 @@ export default function Dashboard() {
   );
   const ready = useMemo(() => pord.filter((o) => o.st === "Ready"), [pord]);
   const dispatches = useMemo(() => tkt.filter((t) => t.from === "kitchen"), [tkt]);
-  const off = useMemo(
-    () => Object.keys(ovr).filter((k) => k.startsWith("kitchen:")).map((k) => k.slice(8)),
-    [ovr],
-  );
+  const toHand = useMemo(() => dispatches.filter((t) => t.st === "Issued"), [dispatches]);
+  const moving = useMemo(() => dispatches.filter((t) => t.st !== "Received"), [dispatches]);
+  // A product the kitchen cannot make is as unavailable as one switched off by hand.
+  const off = useMemo(() => PRODS.map((k) => ({ k, a: availOf(s, "kitchen", k) })).filter((x) => !x.a.ok), [s]);
 
   const madeToday = sum(batch, (b) => b.qty);
   const perProduct = PRODS.map((k) => ({
@@ -74,8 +77,8 @@ export default function Dashboard() {
         { l: "Orders in progress", v: working.length, d: <><b>{openQty}</b> units promised</>, spark: [2, 3, 2, 4, 3, 3, working.length], color: "var(--c2)" },
         { l: "Ready to dispatch", v: ready.length, d: <>waiting on the pass</> },
         { l: "Units made today", v: madeToday, d: <>across <b>{batch.length}</b> batch{batch.length === 1 ? "" : "es"}</>, spark: [40, 62, 88, 96, 104, 116, madeToday], color: "var(--c3)" },
-        { l: "Products switched off", v: off.length, d: <>not being made today</> },
-        { l: "Dispatches out today", v: dispatches.length, d: <>pick tickets from the kitchen</> },
+        { l: "Products not available", v: off.length, d: <>switched off or nothing to give</> },
+        { l: "Dispatches out today", v: dispatches.length, d: <><b>{toHand.length}</b> waiting at the pass</> },
       ]} />
 
       {newOrders.length > 0 && (
@@ -89,9 +92,16 @@ export default function Dashboard() {
           {ready.map((o) => o.id).join(", ")} {ready.length > 1 ? "are" : "is"} plated and waiting to go out.
         </Alert>
       )}
+      {toHand.length > 0 && (
+        <Alert tone="w" label="HAND OVER" action={<Btn size="sm" variant="gh" onClick={() => nav("/make")}>Open the pass</Btn>}>
+          {toHand.map((t) => t.id).join(", ")} {toHand.length > 1 ? "are" : "is"} issued and still on the rack —
+          scan {toHand.length > 1 ? "them" : "it"} out when the counter arrives.
+        </Alert>
+      )}
       {off.length > 0 && (
         <Alert tone="c" label="OFF" action={<Btn size="sm" variant="gh" onClick={() => nav("/avail")}>Review</Btn>}>
-          {off.map((k) => IT[k]?.n ?? k).join(", ")} switched off in the kitchen — nothing is being made or issued.
+          {off.map(({ k, a }) => `${IT[k]?.n ?? k} (${a.mode === "Manual" ? "switched off" : a.why})`).join(", ")}{" "}
+          — the kitchen cannot issue {off.length > 1 ? "these" : "this"} right now.
         </Alert>
       )}
 
@@ -113,6 +123,41 @@ export default function Dashboard() {
             );
           })}
         </div>
+      </Card>
+
+      <Card title="Tickets out of the kitchen" sub="Issued and waiting at the pass, or handed over and in transit" flush className="mtop">
+        <DataTable
+          cols={[
+            { h: "Ticket ID", cls: "nm", w: "18%" },
+            { h: "To", w: "18%" },
+            { h: "Lines" },
+            { h: "Qty", r: true, w: "10%" },
+            { h: "Status", w: "12%" },
+            { h: "Action", w: "17%" },
+          ]}
+          rows={moving.map((t) => ({
+            key: t.id,
+            cells: [
+              <>{t.id}<small>{t.req}</small></>,
+              <>{LOC[t.to].n}<div className="mini">{LOC[t.to].floor}</div></>,
+              t.lines.map((l) => `${l.qty} × ${IT[l.it].n}`).join(" · "),
+              <b>{sum(t.lines, (l) => l.qty)}</b>,
+              <StatusPill status={t.st} />,
+              t.st === "Issued"
+                ? <Btn size="sm" variant="ok" onClick={() => handover(t.id)}>Scan &amp; hand over</Btn>
+                : <span className="mini dim">awaiting confirmation at {LOC[t.to].n}</span>,
+            ],
+          }))}
+          empty={{
+            title: "Nothing waiting to go out",
+            sub: "Dispatch a ready order, or send stock out from Make & distribute.",
+            action: <Btn size="sm" onClick={() => nav("/make")}>Make &amp; distribute</Btn>,
+          }}
+        />
+        <TableFoot
+          count={moving.length}
+          extra={<>{toHand.length} at the pass · {moving.length - toHand.length} in transit</>}
+        />
       </Card>
 
       <Grid cols="g21">

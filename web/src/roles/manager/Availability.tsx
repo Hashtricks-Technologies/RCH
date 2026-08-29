@@ -23,12 +23,16 @@ export default function Availability() {
     (it) => !term || IT[it].n.toLowerCase().includes(term) || IT[it].c.toLowerCase().includes(term)
   );
 
+  /* Counted against the products this outlet actually lists, and against every
+     reason a product cannot be sold — not the manual switch alone (M10). */
   const counts = OUTLETS.map((loc) => {
     const items = listed(loc);
-    const off = items.filter((it) => isOff(loc, it)).length;
-    return { loc, listed: items.length, off, on: items.length - off };
+    const bad = items.filter((it) => !availOf(s, loc, it).ok);
+    const manual = bad.filter((it) => isOff(loc, it)).length;
+    return { loc, listed: items.length, off: bad.length, manual, blocked: bad.length - manual, on: items.length - bad.length };
   });
   const totalOff = counts.reduce((t, c) => t + c.off, 0);
+  const totalManual = counts.reduce((t, c) => t + c.manual, 0);
 
   const cell = (loc: LocKey, it: string) => {
     if (!listed(loc).includes(it))
@@ -59,15 +63,16 @@ export default function Availability() {
       </Alert>
       {totalOff > 0 && (
         <Alert tone="w" label="OFF">
-          <b>{totalOff}</b> product-counter combination{totalOff > 1 ? "s are" : " is"} switched off right now.
+          <b>{totalOff}</b> product-counter combination{totalOff > 1 ? "s" : ""} cannot be sold right now —{" "}
+          <b>{totalManual}</b> switched off here, <b>{totalOff - totalManual}</b> out of stock or short an ingredient.
         </Alert>
       )}
 
       <Kpis
         items={counts.map((c) => ({
           l: LOC[c.loc].n,
-          v: <>{c.on} on</>,
-          d: <>{c.off} off · {c.listed} listed · {LOC[c.loc].floor}</>,
+          v: <>{c.on} of {c.listed} sellable</>,
+          d: <>{c.manual} switched off · {c.blocked} out of stock or short an ingredient · {LOC[c.loc].floor}</>,
         }))}
       />
 
@@ -94,7 +99,7 @@ export default function Availability() {
         />
         <TableFoot
           count={rows.length}
-          extra={counts.map((c) => `${LOC[c.loc].n} ${c.on}/${c.listed} on`).join(" · ")}
+          extra={counts.map((c) => `${LOC[c.loc].n} ${c.on}/${c.listed} sellable`).join(" · ")}
         />
       </Card>
     </>

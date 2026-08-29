@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { LOC } from "../../data/master";
 import { useApp } from "../../store";
+import { cashCollected } from "../../lib/selectors";
 import { money, money0, sum } from "../../lib/fmt";
 import { Avatar, Btn, Card, DataTable, FilterBtn, PageHead, Pill, TableFoot, Toolbar } from "../../ui/kit";
 import { billStatus } from "./status";
@@ -23,7 +24,8 @@ export default function Bills() {
     return !t || b.no.toLowerCase().includes(t) || b.opr.toLowerCase().includes(t) || b.pay.toLowerCase().includes(t);
   });
 
-  const total = sum(rows, (b) => b.tot);
+  const billed = sum(rows, (b) => b.tot);
+  const cash = cashCollected(rows);
 
   return (
     <>
@@ -44,7 +46,7 @@ export default function Bills() {
               setTender(i + 1 >= tenders.length ? null : tenders[i + 1]);
             }} />
           </>}
-          right={<span className="mini">Collected {money0(total)}</span>}
+          right={<span className="mini">Billed {money0(billed)} · cash collected {money0(cash)}</span>}
         />
         <DataTable
           cols={[
@@ -69,7 +71,7 @@ export default function Bills() {
                   <span>{b.opr}</span>
                 </div>,
                 sum(b.lines, (l) => l.qty),
-                b.pay,
+                <>{b.pay}{b.payer && <span className="mini" style={{ display: "block" }}>{b.payer.name}</span>}</>,
                 money(b.tot),
                 <Pill tone={st.tone}>{st.label}</Pill>,
               ],
@@ -83,8 +85,13 @@ export default function Bills() {
             </Btn>,
           }}
         />
-        <TableFoot count={rows.length} extra={<>{L.n} · {L.c} · total {money(total)}</>} />
+        <TableFoot count={rows.length}
+          extra={<>{L.n} · {L.c} · billed {money(billed)} · cash collected {money(cash)}</>} />
       </Card>
+      <p className="mini mtop">
+        <b>Billed</b> is every tender raised at this counter. <b>Cash collected</b> is what is actually in the drawer —
+        card, UPI and patient-bill takings settle to the hospital account and are not counted in the drawer.
+      </p>
     </>
   );
 }

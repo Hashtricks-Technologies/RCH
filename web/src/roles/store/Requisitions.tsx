@@ -1,14 +1,17 @@
 import { useState } from "react";
 import { IT, LOC, VENDOR_FOR } from "../../data/master";
 import { useApp } from "../../store";
-import { avail, qty } from "../../lib/selectors";
-import { U, money, money0, sum } from "../../lib/fmt";
+import { avail, onOrder, qty } from "../../lib/selectors";
+import { U, fq, money, money0, sum } from "../../lib/fmt";
 import {
   Alert, Btn, BtnRow, Card, DataTable, Field, Grid, PageHead, StatusPill, TableFoot, Toolbar,
 } from "../../ui/kit";
 import type { DraftLine } from "../../types";
 
-const BUYABLE = Object.keys(IT).filter((k) => IT[k].t === "RAW" || IT[k].t === "PACK" || IT[k].t === "TRADED");
+const BUYABLE = Object.keys(IT)
+  .filter((k) => IT[k].t === "RAW" || IT[k].t === "PACK" || IT[k].t === "TRADED")
+  .sort((a, b) => IT[a].g.localeCompare(IT[b].g) || IT[a].n.localeCompare(IT[b].n));
+const BUY_GROUPS = [...new Set(BUYABLE.map((k) => IT[k].g))];
 
 export default function Requisitions() {
   const s = useApp();
@@ -26,10 +29,18 @@ export default function Requisitions() {
     setPrqDraft(next);
   };
   const removeLine = (i: number) => setPrqDraft(prqDraft.filter((_, n) => n !== i));
+
+  /** Ordering something procurement is already sourcing doubles the cover (M3). */
+  const warnOnOrder = (it: string) => {
+    const open = onOrder(s, it);
+    if (open > 0) notify(`${IT[it].n} already has ${fq(open, it)} ${U(it)} on an open requisition`);
+  };
+  const pickLine = (i: number, it: string) => { setLine(i, { it }); warnOnOrder(it); };
   const addLine = () => {
     const used = new Set(prqDraft.map((l) => l.it));
     const next = BUYABLE.find((k) => !used.has(k)) ?? BUYABLE[0];
     setPrqDraft([...prqDraft, { it: next, qty: 0 }]);
+    warnOnOrder(next);
   };
 
   const low = Object.keys(s.stock.store)
@@ -52,6 +63,7 @@ export default function Requisitions() {
 
   const draftValue = sum(prqDraft, (l) => (IT[l.it]?.cost ?? 0) * l.qty);
   const draftQty = sum(prqDraft, (l) => l.qty);
+  const alreadyOpen = prqDraft.filter((l) => onOrder(s, l.it) > 0);
 
   const term = q.trim().toLowerCase();
   const history = prq.filter(
@@ -71,6 +83,14 @@ export default function Requisitions() {
         actions={<Btn variant="gh" onClick={fillFromLow}>Fill from below-reorder items</Btn>}
       />
 
+      {alreadyOpen.length > 0 && (
+        <Alert tone="w" label="ALREADY ON ORDER">
+          {alreadyOpen.map((l) => `${IT[l.it]?.n ?? l.it} (${fq(onOrder(s, l.it), l.it)} ${U(l.it)})`).join(", ")}
+          {" "}{alreadyOpen.length > 1 ? "sit" : "sits"} on a requisition procurement has not closed yet. Requisition
+          again only if the open quantity will not cover you.
+        </Alert>
+      )}
+
       {low.length > 0 && (
         <Alert tone="w" label="REORDER" action={<Btn size="sm" onClick={fillFromLow}>Stage {low.length} item{low.length > 1 ? "s" : ""}</Btn>}>
           {low.length} central store line{low.length > 1 ? "s are" : " is"} below reorder level. Suggested quantity
@@ -88,19 +108,20 @@ export default function Requisitions() {
             <table className="lgrid">
               <thead>
                 <tr>
-                  <th style={{ width: "34%" }}>Item</th>
-                  <th style={{ width: "14%" }} className="r">Quantity</th>
-                  <th style={{ width: "10%" }}>Unit</th>
-                  <th style={{ width: "12%" }} className="r">On hand</th>
-                  <th style={{ width: "12%" }} className="r">Reorder</th>
-                  <th style={{ width: "14%" }} className="r">Est. value</th>
-                  <th style={{ width: "8%" }} />
+                  <th style={{ width: "28%" }}>Item</th>
+                  <th style={{ width: "12%" }} className="r">Quantity</th>
+                  <th style={{ width: "8%" }}>Unit</th>
+                  <th style={{ width: "11%" }} className="r">On hand</th>
+                  <th style={{ width: "12%" }} className="r">On order</th>
+                  <th style={{ width: "11%" }} className="r">Reorder</th>
+                  <th style={{ width: "12%" }} className="r">Est. value</th>
+                  <th style={{ width: "6%" }} />
                 </tr>
               </thead>
               <tbody>
                 {prqDraft.length === 0 ? (
                   <tr>
-                    <td colSpan={7}>
+                    <td colSpan={8}>
                       <div className="empty">
                         <b>No lines on this requisition yet</b>
                         <p>Add a line by hand, or stage every central store item that is below its reorder level.</p>
@@ -114,12 +135,17 @@ export default function Requisitions() {
                 ) : (
                   prqDraft.map((l, i) => {
                     const it = IT[l.it];
+                    const open = onOrder(s, l.it);
                     return (
                       <tr key={l.it + ":" + i}>
                         <td>
-                          <select value={l.it} onChange={(e) => setLine(i, { it: e.target.value })}>
-                            {BUYABLE.map((k) => (
-                              <option key={k} value={k}>{IT[k].n} · {IT[k].c}</option>
+                          <select value={l.it} onChange={(e) => pickLine(i, e.target.value)}>
+                            {BUY_GROUPS.map((g) => (
+                              <optgroup key={g} label={g}>
+                                {BUYABLE.filter((k) => IT[k].g === g).map((k) => (
+                                  <option key={k} value={k}>{IT[k].n} · {IT[k].c}</option>
+                                ))}
+                              </optgroup>
                             ))}
                           </select>
                         </td>
@@ -129,12 +155,18 @@ export default function Requisitions() {
                             min={0}
                             step={it && it.u === "nos" ? 1 : 0.5}
                             value={l.qty}
+                            aria-label={it ? `Quantity of ${it.n}` : `Quantity on line ${i + 1}`}
                             onChange={(e) => setLine(i, { qty: Number(e.target.value) })}
                           />
                         </td>
                         <td className="dim">{U(l.it)}</td>
-                        <td className="n">{qty(s, "store", l.it)}</td>
-                        <td className="n">{it ? it.rl : 0}</td>
+                        <td className="n">{fq(qty(s, "store", l.it), l.it)}</td>
+                        <td className="n">
+                          {open > 0
+                            ? <b style={{ color: "var(--warn)" }} title="Already on an open requisition">{fq(open, l.it)}</b>
+                            : <span className="dim">{fq(0, l.it)}</span>}
+                        </td>
+                        <td className="n">{fq(it ? it.rl : 0, l.it)}</td>
                         <td className="n">{money0((it?.cost ?? 0) * l.qty)}</td>
                         <td className="rt">
                           <Btn size="xs" variant="gh" onClick={() => removeLine(i)}>Remove</Btn>

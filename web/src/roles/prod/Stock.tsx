@@ -1,24 +1,25 @@
 import { useState } from "react";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
-import { qty, stateLabel, stateTone, stockValue } from "../../lib/selectors";
+import { isReqOpen, parOf, qty, stateLabel, stateTone, stockValue } from "../../lib/selectors";
 import { fq, money, money0, sum } from "../../lib/fmt";
 import {
   Alert, Btn, Card, DataTable, PageHead, Pill, TableFoot, Tag, Toolbar,
 } from "../../ui/kit";
 
-/* The kitchen works to its own par levels — they are deliberately smaller than the
-   reorder levels the central store keeps for the same item. */
-const KPAR: Record<string, number> = {
-  maida: 10, oil: 5, fill: 4, butter: 1.5, bread: 8, cup: 150, box: 100, milk: 6, sugar: 4,
-};
-const parOf = (k: string) => KPAR[k] ?? (IT[k]?.rl ?? 0) * 0.4;
+/* The kitchen works to its own par levels — deliberately smaller than the reorder
+   levels the central store keeps for the same item. */
+const par = (k: string) => parOf("kitchen", k);
+/** Bring the item back to par, never less than one unit of it. */
+const topUp = (k: string, have: number) =>
+  Math.max(IT[k]?.u === "nos" ? 1 : 0.5, Math.round((par(k) - have) * 1000) / 1000);
 
 export default function Stock() {
   const s = useApp();
-  const notify = useApp((x) => x.notify);
+  const requestFromStore = useApp((x) => x.requestFromStore);
   const [q, setQ] = useState("");
   const [rq, setRq] = useState("");
+  const [want, setWant] = useState<Record<string, string>>({});
 
   const held = Object.keys(s.stock.kitchen);
   const hit = (term: string) => (k: string) =>
@@ -29,7 +30,14 @@ export default function Stock() {
 
   const valueOf = (k: string) => qty(s, "kitchen", k) * IT[k].cost;
   const total = stockValue(s, "kitchen");
-  const lowRaw = raw.filter((k) => qty(s, "kitchen", k) < parOf(k));
+  const lowRaw = raw.filter((k) => qty(s, "kitchen", k) < par(k));
+  const openReq = (k: string) =>
+    s.req.find((r) => r.from === "kitchen" && isReqOpen(r.st) && r.lines.some((l) => l.it === k));
+
+  const ask = (k: string, dflt: number) => {
+    requestFromStore(k, Number(want[k] ?? dflt) || 0);
+    setWant((w) => { const n = { ...w }; delete n[k]; return n; });
+  };
 
   const baseCols = [
     { h: "Item", cls: "nm", w: "26%" },
@@ -43,7 +51,6 @@ export default function Stock() {
 
   const baseCells = (k: string) => {
     const have = qty(s, "kitchen", k);
-    const par = parOf(k);
     return [
       <>{IT[k].n}<small>{IT[k].c} · {IT[k].g}</small></>,
       <Tag kind={IT[k].t === "FG" ? "md" : undefined}>{IT[k].t}</Tag>,
@@ -51,7 +58,7 @@ export default function Stock() {
       IT[k].u,
       money(IT[k].cost),
       money0(valueOf(k)),
-      <Pill tone={stateTone(have, par)}>{stateLabel(have, par)}</Pill>,
+      <Pill tone={stateTone(have, par(k))}>{stateLabel(have, par(k))}</Pill>,
     ];
   };
 
@@ -94,29 +101,44 @@ export default function Stock() {
         className="mtop"
       >
         <Toolbar placeholder="Search raw material or packaging…" value={rq} onSearch={setRq} />
-        <DataTable
-          cols={[...baseCols, { h: "Action", w: "16%" }]}
-          rows={raw.map((k) => {
-            const have = qty(s, "kitchen", k);
-            const par = parOf(k);
-            return {
-              key: k,
-              cells: [
-                ...baseCells(k),
-                have < par
-                  ? <Btn size="xs" variant="gh" onClick={() =>
-                      notify(`Request for ${IT[k].n} has gone to the store keeper at ${LOC.store.n}`)}>
-                      Request from store
-                    </Btn>
-                  : <span className="dim mini">Par {fq(par, k)}</span>,
-              ],
-            };
-          })}
-          empty={{
-            title: "No raw materials in the kitchen",
-            sub: "Ask the store keeper to issue against a stock request.",
-          }}
-        />
+        <div className="lgrid">
+          <DataTable
+            cols={[...baseCols, { h: "Request from store", w: "22%" }]}
+            rows={raw.map((k) => {
+              const have = qty(s, "kitchen", k);
+              const dflt = topUp(k, have);
+              const open = openReq(k);
+              return {
+                key: k,
+                cells: [
+                  ...baseCells(k),
+                  have < par(k)
+                    ? <>
+                        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                          <input
+                            type="number" min={0} step="any" inputMode="decimal"
+                            value={want[k] ?? String(dflt)}
+                            onChange={(e) => setWant({ ...want, [k]: e.target.value })}
+                            aria-label={`Quantity of ${IT[k].n} to request`}
+                          />
+                          <Btn size="xs" onClick={() => ask(k, dflt)}>Request</Btn>
+                        </div>
+                        <div className="hint">
+                          {open
+                            ? <>{open.id} is already with the outlet manager.</>
+                            : <>{fq(dflt, k)} {IT[k].u} brings the kitchen back to par {fq(par(k), k)}.</>}
+                        </div>
+                      </>
+                    : <span className="dim mini">Par {fq(par(k), k)}</span>,
+                ],
+              };
+            })}
+            empty={{
+              title: "No raw materials in the kitchen",
+              sub: "Ask the store keeper to issue against a stock request.",
+            }}
+          />
+        </div>
         <TableFoot
           count={raw.length}
           extra={<>Raw &amp; packaging {money0(sum(raw, valueOf))} · Kitchen stock value <b>{money0(total)}</b></>}

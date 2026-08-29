@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { IT, LOC, RCP } from "../../data/master";
 import { useApp } from "../../store";
-import { avail, daysCover, menuOf, qty, resv, stateLabel, stateTone } from "../../lib/selectors";
+import { avail, daysCover, menuOf, parOf, qty, resv, stateLabel, stateTone } from "../../lib/selectors";
 import { fq, money0, U } from "../../lib/fmt";
 import { Btn, Card, DataTable, FilterBtn, PageHead, Pill, TableFoot, Toolbar } from "../../ui/kit";
 import { TypeTag } from "./Pos";
@@ -16,7 +16,8 @@ export default function Stock() {
   const [q, setQ] = useState("");
   const [lowOnly, setLowOnly] = useState(false);
 
-  const keys = new Set<string>(Object.keys(s.stock[loc] ?? {}));
+  const held = new Set(Object.keys(s.stock[loc] ?? {}));
+  const keys = new Set<string>(held);
   menuOf(s, loc).forEach((it) => {
     if (IT[it]?.t === "MTO") RCP[it]?.l.forEach(([g]) => keys.add(g));
     else keys.add(it);
@@ -28,9 +29,13 @@ export default function Stock() {
       const on = qty(s, loc, it);
       const rv = resv(s, loc, it);
       const a = avail(s, loc, it);
-      const rl = IT[it].rl;
+      // Judged against this counter's own par, never the central store's (M11).
+      const rl = parOf(loc, it);
       const target = rl > 0 ? rl : 12;
-      return { it, on, rv, a, rl, cover: daysCover(a, it), low: a <= 0 || (rl > 0 && a < rl), suggested: Math.max(1, Math.ceil(target - a)) };
+      return {
+        it, on, rv, a, rl, held: held.has(it), cover: daysCover(a, it, loc),
+        low: a <= 0 || (rl > 0 && a < rl), suggested: Math.max(1, Math.ceil(target - a)),
+      };
     })
     .sort((x, y) => (Number(y.low) - Number(x.low)) || IT[x.it].n.localeCompare(IT[y.it].n));
 
@@ -42,6 +47,7 @@ export default function Stock() {
 
   const value = all.reduce((t, r) => t + r.on * IT[r.it].cost, 0);
   const lowCount = all.filter((r) => r.low).length;
+  const dash = <span className="dim">—</span>;
 
   const request = (it: string, n: number) => {
     s.setDraft([...s.draft.filter((l) => l.it !== it), { it, qty: n }]);
@@ -68,12 +74,13 @@ export default function Stock() {
         />
         <DataTable
           cols={[
-            { h: "Item", cls: "nm", w: "26%" },
-            { h: "Type", w: "10%" },
-            { h: "On hand", r: true, w: "12%" },
-            { h: "Reserved", r: true, w: "11%" },
-            { h: "Available", r: true, w: "12%" },
-            { h: "Days of cover", r: true, w: "12%" },
+            { h: "Item", cls: "nm", w: "22%" },
+            { h: "Type", w: "8%" },
+            { h: "On hand", r: true, w: "11%" },
+            { h: "Reserved", r: true, w: "10%" },
+            { h: "Available", r: true, w: "11%" },
+            { h: "Par here", r: true, w: "10%" },
+            { h: "Days of cover", r: true, w: "11%" },
             { h: "State", w: "10%" },
             { h: "", w: "7%" },
           ]}
@@ -82,11 +89,19 @@ export default function Stock() {
             cells: [
               <>{IT[r.it].n}<small>{IT[r.it].c} · {IT[r.it].g}</small></>,
               <TypeTag t={IT[r.it].t} />,
-              <>{fq(r.on, r.it)} <span className="dim">{U(r.it)}</span></>,
-              r.rv > 0 ? fq(r.rv, r.it) : <span className="dim">—</span>,
-              fq(r.a, r.it),
-              r.a > 0 ? r.cover.toFixed(1) + " d" : <span className="dim">—</span>,
-              <Pill tone={stateTone(r.a, r.rl)}>{stateLabel(r.a, r.rl)}</Pill>,
+              // A dash means the item is not stocked at this counter; zero is written as zero (M12).
+              r.held ? <>{fq(r.on, r.it)} <span className="dim">{U(r.it)}</span></> : dash,
+              r.held ? <span className={r.rv > 0 ? undefined : "dim"}>{fq(r.rv, r.it)}</span> : dash,
+              r.held
+                ? <b style={r.a <= 0 ? { color: "var(--crit)" } : undefined}>{fq(r.a, r.it)}</b>
+                : dash,
+              r.rl > 0 ? <span className="dim">{fq(r.rl, r.it)}</span> : dash,
+              r.held
+                ? <span style={r.a <= 0 ? { color: "var(--crit)" } : undefined}>{r.cover.toFixed(1)} d</span>
+                : dash,
+              r.held
+                ? <Pill tone={stateTone(r.a, r.rl)}>{stateLabel(r.a, r.rl)}</Pill>
+                : <Pill tone="mu">Not stocked</Pill>,
               r.low
                 ? <Btn size="xs" variant="gh" onClick={() => request(r.it, r.suggested)}>Request</Btn>
                 : <span className="mini dim">ok</span>,
@@ -107,7 +122,8 @@ export default function Stock() {
       </Card>
       <p className="mini mtop">
         This screen shows <b>{L.n} ({L.c})</b> and nothing else. Stock at the central store, the kitchen and the
-        other outlets is not visible from a counter terminal.
+        other outlets is not visible from a counter terminal. <b>Par here</b> is this outlet's own reorder level — a
+        counter holds a day of stock, so it is far below the central store's par and only what falls under it reads low.
       </p>
     </>
   );

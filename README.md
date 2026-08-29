@@ -71,9 +71,25 @@ position.
 
 ## Status
 
-React + Vite frontend, strict TypeScript. The stock ledger, reservations, MRP ceiling, recipe
-depletion and role-based access are real logic; there is no backend, no database and
-no authentication yet. The backend contract is described in `docs/system-design.html`.
+React + Vite frontend, strict TypeScript, light and dark themes. Real logic sits behind the
+screens rather than mock data:
+
+- **One ledger.** Nothing is created or destroyed without a document. Production consumes its
+  recipe from the kitchen in the same transaction that books the finished units; a ticket
+  reserves stock, the handover scan moves it, and the receipt scan lands it.
+- **Free to promise.** On hand, less what open tickets reserve, less what other approvals have
+  already committed — so the same stock cannot be promised twice.
+- **MRP as a ceiling.** A price above the printed MRP is refused on save and capped at the till.
+- **Goods receipt.** Batch or lot number, printed MRP, manufacturing and expiry dates, received
+  against ordered within a 2% tolerance, and a quality rejection that goes to quarantine
+  rather than the shelf.
+- **Costing.** Made items cost what their recipe costs, overhead included, not zero.
+- **Role-based access.** A module a role cannot use is absent from its sidebar and refused by
+  direct link with a message.
+
+There is no backend, no database and no authentication yet — state lives in memory for the
+session, and the theme is the only thing persisted to the device. The backend contract is
+described in `docs/system-design.html`.
 
 ---
 

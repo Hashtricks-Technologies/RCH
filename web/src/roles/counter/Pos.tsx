@@ -1,12 +1,18 @@
 import { useState } from "react";
-import { IT, LOC } from "../../data/master";
+import { DEPTS, IT, LOC, PATIENTS, STAFF, STAFF_CREDIT_LIMIT } from "../../data/master";
 import { useApp } from "../../store";
 import { availOf, menuOf, priceOf } from "../../lib/selectors";
-import { money } from "../../lib/fmt";
-import { Avatar, Btn, Card, Grid, PageHead, Tag } from "../../ui/kit";
-import type { ItemType } from "../../types";
+import { money, money0, sum } from "../../lib/fmt";
+import { Alert, Avatar, Btn, Card, Field, Grid, PageHead, Tag } from "../../ui/kit";
+import type { ItemType, Payer } from "../../types";
 
 const TENDERS = ["Cash", "UPI", "Card", "Patient bill", "Staff credit", "Dept"];
+/** The three tenders that post to somebody's account, and the master each picks from (M1). */
+const PAYERS: Record<string, { label: string; list: Payer[] }> = {
+  "Patient bill": { label: "Patient", list: PATIENTS },
+  "Staff credit": { label: "Staff member", list: STAFF },
+  Dept: { label: "Department", list: DEPTS },
+};
 
 export function TypeTag({ t }: { t: ItemType }) {
   if (t === "TRADED") return <Tag kind="tr">MRP</Tag>;
@@ -21,6 +27,9 @@ export default function Pos() {
   const loc = user.loc;
   const L = LOC[loc];
   const [tender, setTender] = useState(TENDERS[0]);
+  const [payer, setPayer] = useState<Payer | null>(null);
+  const [pq, setPq] = useState("");
+  const [edit, setEdit] = useState<Record<string, string>>({});
 
   const menu = menuOf(s, loc);
   const cart = s.cart[loc] ?? {};
@@ -36,6 +45,23 @@ export default function Pos() {
   const taxable = lines.reduce((t, l) => t + l.taxable, 0);
   const tax = total - taxable;
   const billNo = "CF/" + (s.seq.bill + 1);
+
+  const need = PAYERS[tender];
+  const hits = need?.list.filter((p) => {
+    const t = pq.trim().toLowerCase();
+    return !t || p.name.toLowerCase().includes(t) || p.id.toLowerCase().includes(t);
+  }) ?? [];
+  const taken = payer ? sum(s.bills.filter((b) => b.payer?.id === payer.id), (b) => b.tot) : 0;
+  const overLimit = tender === "Staff credit" && !!payer && taken + total > STAFF_CREDIT_LIMIT;
+
+  const pickTender = (t: string) => { setTender(t); setPayer(null); setPq(""); };
+  /** The tile adds one; this sets the line to whatever was typed, as a signed delta. */
+  const setQty = (it: string, v: string) => {
+    const n = Math.floor(Number(v));
+    const ok = v !== "" && Number.isFinite(n) && n >= 0;
+    setEdit(ok && n === 0 ? {} : { [it]: v });
+    if (ok) s.addToCart(loc, it, n - (cart[it] ?? 0));
+  };
 
   return (
     <>
@@ -96,14 +122,21 @@ export default function Pos() {
               </p>
             )}
             {lines.map((l) => (
-              <div className="cartline" key={l.it}>
-                <span className="mono" style={{ width: 26, fontWeight: 600 }}>{l.n}×</span>
+              <div className="cartline" style={{ alignItems: "center" }} key={l.it}>
                 <span style={{ flex: 1, minWidth: 0 }}>
                   <b style={{ fontSize: 12.5 }}>{IT[l.it].n}</b>
                   <span className="mini" style={{ display: "block" }}>{IT[l.it].c} · {money(l.p)} each</span>
                 </span>
-                <span className="mono" style={{ fontWeight: 600 }}>{money(l.amt)}</span>
-                <Btn variant="gh" size="xs" onClick={() => s.addToCart(loc, l.it, -1)} title="Remove one">−</Btn>
+                <span style={{ display: "flex", gap: 3, alignItems: "center", flex: "none" }}>
+                  <Btn variant="gh" size="xs" onClick={() => s.addToCart(loc, l.it, -1)} title="One less">−</Btn>
+                  <input className="mono" inputMode="numeric" aria-label={`${IT[l.it].n} quantity`}
+                    value={edit[l.it] ?? String(l.n)}
+                    onChange={(e) => setQty(l.it, e.target.value)}
+                    onBlur={() => setEdit({})}
+                    style={{ width: 44, textAlign: "center", padding: "4px 2px", fontSize: 12.5, fontWeight: 600, border: "1px solid var(--line-strong)", borderRadius: 5, background: "var(--surface)" }} />
+                  <Btn variant="gh" size="xs" onClick={() => s.addToCart(loc, l.it, 1)} title="One more">+</Btn>
+                </span>
+                <span className="mono" style={{ fontWeight: 600, width: 74, textAlign: "right", flex: "none" }}>{money(l.amt)}</span>
               </div>
             ))}
           </div>
@@ -115,15 +148,60 @@ export default function Pos() {
 
           <div className="paygrid">
             {TENDERS.map((t) => (
-              <Btn key={t} size="sm" variant={t === tender ? "solid" : "gh"} onClick={() => setTender(t)}>{t}</Btn>
+              <Btn key={t} size="sm" variant={t === tender ? "solid" : "gh"} onClick={() => pickTender(t)}>{t}</Btn>
             ))}
           </div>
 
-          <Btn wide disabled={!lines.length} onClick={() => s.pay(loc, tender)}>
+          {need && (payer
+            ? (
+              <div style={{ display: "flex", gap: 9, alignItems: "center", border: "1px solid var(--line-strong)", borderRadius: 8, padding: "8px 10px", marginBottom: 11 }}>
+                <span style={{ flex: 1, minWidth: 0 }}>
+                  <b style={{ fontSize: 12.5 }}>{payer.name}</b>
+                  <span className="mini" style={{ display: "block" }}>{need.label} · <span className="mono">{payer.id}</span></span>
+                </span>
+                <Btn variant="gh" size="xs" onClick={() => setPayer(null)}>Clear</Btn>
+              </div>
+            )
+            : (
+              <Field label={need.label} hint={`A ${tender.toLowerCase()} cannot be raised without one.`}>
+                <input value={pq} onChange={(e) => setPq(e.target.value)}
+                  placeholder={`Search ${need.label.toLowerCase()} or ID…`} />
+                <div style={{ marginTop: 6, maxHeight: 132, overflowY: "auto", border: "1px solid var(--line)", borderRadius: 7 }}>
+                  {hits.map((p) => (
+                    <button key={p.id} type="button" onClick={() => setPayer(p)}
+                      style={{ display: "block", width: "100%", textAlign: "left", padding: "7px 10px", borderBottom: "1px solid var(--line-2)" }}>
+                      <b style={{ fontSize: 12.5 }}>{p.name}</b>
+                      <span className="mini" style={{ display: "block" }}><span className="mono">{p.id}</span></span>
+                    </button>
+                  ))}
+                  {hits.length === 0 && (
+                    <p className="mini" style={{ padding: "9px 10px" }}>Nothing matches “{pq}”.</p>
+                  )}
+                </div>
+              </Field>
+            ))}
+
+          {tender === "Staff credit" && payer && (
+            <p className="mini" style={{ margin: "0 0 11px" }}>
+              Credit taken by {payer.name} this session <b className="mono">{money(taken)}</b> of{" "}
+              <b className="mono">{money0(STAFF_CREDIT_LIMIT)}</b> — this bill would take it to{" "}
+              <b className="mono" style={overLimit ? { color: "var(--crit)" } : undefined}>{money(taken + total)}</b>.
+            </p>
+          )}
+          {overLimit && (
+            <Alert tone="c" label="LIMIT">
+              {money(taken + total)} breaches the {money0(STAFF_CREDIT_LIMIT)} staff credit limit for {payer?.name}.
+              Take another tender or split the bill.
+            </Alert>
+          )}
+
+          <Btn wide disabled={!lines.length || (!!need && !payer) || overLimit}
+            onClick={() => { s.pay(loc, tender, payer ?? undefined); setPayer(null); setPq(""); setEdit({}); }}>
             Pay &amp; print · {money(total)}
           </Btn>
           <p className="mini mtop">
-            Tender <b>{tender}</b>. Stock and recipe ingredients are drawn down from {L.n} the moment the bill is printed.
+            Tender <b>{tender}</b>{payer ? <> · posted to <b>{payer.name}</b></> : need ? <> · pick a {need.label.toLowerCase()} to settle it</> : null}.
+            Stock and recipe ingredients are drawn down from {L.n} the moment the bill is printed.
           </p>
         </Card>
       </Grid>

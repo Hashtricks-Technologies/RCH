@@ -22,12 +22,12 @@ export interface User {
   loc: LocKey; col: string; emp: string; ph: string;
 }
 export interface Recipe { ov: number; l: [string, number][] }
-export interface ReqLine { it: string; qty: number; appr: number }
+export interface ReqLine { it: string; qty: number; appr: number; short?: number }
 export interface HistEntry { s: string; who: string; t: string }
 export interface StockRequest {
   id: string; from: LocKey; by: string; at: string;
   lines: ReqLine[]; st: ReqStatus; ticket: string | null;
-  mgrNote: string; urg?: boolean; hist: HistEntry[];
+  mgrNote: string; urg?: boolean; hist: HistEntry[]; apprBy?: string;
 }
 export interface TktLine { it: string; qty: number }
 export interface Ticket { id: string; req: string; from: LocKey; to: LocKey; lines: TktLine[]; st: TktStatus }
@@ -35,17 +35,29 @@ export interface Requisition { id: string; by: string; at: string; lines: TktLin
 export interface PoLine { it: string; qty: number; rate: number }
 export interface PurchaseOrder {
   id: string; prq: string; vendor: string; at: string;
-  lines: PoLine[]; st: "Ordered" | "Received"; eta: string; recv?: string;
+  lines: PoLine[]; st: "Ordered" | "Received"; eta: string; recv?: string; needsApproval?: boolean;
 }
 export interface ProdOrder {
   id: string; from: LocKey; by: string; at: string;
   lines: TktLine[]; st: PordStatus; note: string; hist: HistEntry[];
 }
-export interface Batch { id: string; it: string; qty: number; made: number; at: string; bb: string }
+export interface Batch {
+  id: string; it: string; qty: number; made: number; at: string; bb: string; note?: string;
+}
+export type PayerKind = "patient" | "staff" | "dept";
+export interface Payer { kind: PayerKind; id: string; name: string }
+/** What a store keeper recorded when the goods actually landed. */
+export interface ReceiptLine {
+  recv: number; batch: string; mrp: number; mfg: string; exp: string; rejected: number;
+}
+export interface Grn {
+  id: string; prq: string; it: string; qty: number; rejected: number;
+  batch: string; mrp: number; mfg: string; exp: string; at: string; by: string;
+}
 export interface BillLine { it: string; qty: number; rate: number }
 export interface Bill {
   no: string; loc: LocKey; opr: string; oprCol: string;
-  tot: number; tax: number; t: string; pay: string; lines: BillLine[];
+  tot: number; tax: number; t: string; pay: string; lines: BillLine[]; payer?: Payer;
 }
 export interface DraftLine { it: string; qty: number }
 export interface Availability { ok: boolean; mode: "Manual" | "Recipe" | "Stock"; why?: string; left?: string }

@@ -1,6 +1,8 @@
-import type { ReactNode } from "react";
+import { Children, cloneElement, isValidElement, useId, type ReactElement, type ReactNode } from "react";
 import type { Tone } from "../types";
 import { toneFor } from "../lib/selectors";
+import type { ThemePref } from "../lib/theme";
+import { useApp } from "../store";
 
 /* ---------- icons ---------- */
 const P: Record<string, string> = {
@@ -41,6 +43,45 @@ const Chev = () => (
 );
 
 /* ---------- atoms ---------- */
+const ThemeIcon = ({ pref }: { pref: ThemePref }) => {
+  if (pref === "light") return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.5} aria-hidden>
+      <circle cx="8" cy="8" r="3.1" />
+      <path d="M8 1.5v1.6M8 12.9v1.6M14.5 8h-1.6M3.1 8H1.5M12.6 3.4l-1.1 1.1M4.5 11.5l-1.1 1.1M12.6 12.6l-1.1-1.1M4.5 4.5 3.4 3.4" />
+    </svg>
+  );
+  if (pref === "dark") return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.5} aria-hidden>
+      <path d="M13.2 9.6A5.6 5.6 0 0 1 6.4 2.8a5.6 5.6 0 1 0 6.8 6.8Z" />
+    </svg>
+  );
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.5} aria-hidden>
+      <circle cx="8" cy="8" r="5.4" />
+      <path d="M8 2.6v10.8" />
+      <path d="M8 13.4A5.4 5.4 0 0 0 8 2.6Z" fill="currentColor" stroke="none" />
+    </svg>
+  );
+};
+
+const THEME_LABEL: Record<ThemePref, string> = {
+  light: "Light",
+  dark: "Dark",
+  system: "Match system",
+};
+
+/** One button that cycles Light -> Dark -> Match system. */
+export function ThemeButton() {
+  const theme = useApp((s) => s.theme);
+  const cycleTheme = useApp((s) => s.cycleTheme);
+  return (
+    <button className="ib" type="button" onClick={cycleTheme}
+      title={`Theme: ${THEME_LABEL[theme]}`} aria-label={`Theme: ${THEME_LABEL[theme]}. Change theme.`}>
+      <ThemeIcon pref={theme} />
+    </button>
+  );
+}
+
 export function Pill({ children, tone = "mu" }: { children: ReactNode; tone?: Tone }) {
   return <span className={`pill ${tone}`}><i />{children}</span>;
 }
@@ -288,20 +329,35 @@ export function LineChart({ series, labels }: {
     </div>
   );
 }
-export const Field = ({ label, hint, children }: { label: string; hint?: ReactNode; children: ReactNode }) => (
-  <div className="fld"><label>{label}</label>{children}{hint && <div className="hint">{hint}</div>}</div>
-);
+const LABELABLE = ["input", "select", "textarea"];
+/** The label is tied to the first control it wraps, so every field is named (M13). */
+export function Field({ label, hint, children }: { label: string; hint?: ReactNode; children: ReactNode }) {
+  const auto = useId();
+  const kids = Children.toArray(children);
+  const at = kids.findIndex((c) => isValidElement(c) && typeof c.type === "string" && LABELABLE.includes(c.type));
+  const own = at < 0 ? undefined : (kids[at] as ReactElement<{ id?: string }>).props.id;
+  return (
+    <div className="fld">
+      <label htmlFor={at < 0 ? undefined : own ?? auto}>{label}</label>
+      {at < 0 || own ? children
+        : kids.map((c, i) => (i === at ? cloneElement(c as ReactElement<{ id?: string }>, { id: auto }) : c))}
+      {hint && <div className="hint">{hint}</div>}
+    </div>
+  );
+}
 export const FormRow = ({ cols, children }: { cols?: "f2" | "f3" | "f4"; children: ReactNode }) => (
   <div className={`frow${cols ? " " + cols : ""}`}>{children}</div>
 );
 export const Section = ({ title, sub, children }: { title: string; sub?: string; children?: ReactNode }) => (
   <div className="fsec"><h4>{title}</h4>{sub && <p>{sub}</p>}{children}</div>
 );
-export function Avatar({ name, color, size = 34 }: { name: string; color: string; size?: number }) {
+export function Avatar({ name, color, size = 34, src }: {
+  name: string; color: string; size?: number; src?: string | null;
+}) {
   const ini = name.split(" ").map((x) => x[0]).slice(0, 2).join("");
   return (
     <span className="av" style={{ background: color, width: size, height: size, borderRadius: size / 3.8, fontSize: size / 3 }}>
-      {ini}
+      {src ? <img src={src} alt="" /> : ini}
     </span>
   );
 }
