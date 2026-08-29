@@ -162,7 +162,7 @@ export default function PurchaseOrders() {
           rows={orderedRows}
           empty={{ title: "Nothing on order", sub: "Send a draft to a vendor to see it here." }}
         />
-        <TableFoot count={orderedRows.length} extra={<>{money0(orderedValue)} placed with vendors</>} />
+        <TableFoot count={orderedRows.length} extra={<>{money0(sum(ordered, poValue))} placed with vendors</>} />
       </Card>
 
       <div className="mtop" />
