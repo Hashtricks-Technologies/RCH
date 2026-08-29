@@ -73,6 +73,7 @@ describe("drawers render", () => {
     ["mreq", "REQ-2026-0911", "manager"], ["stkt", "TKT-0440", "store"],
     ["pord", "PRD-2026-029", "prod"], ["bprq", "PRQ-2026-013", "buyer"],
     ["bpo", "PO-2026-0140", "buyer"],
+    ["bgrn", "PO-2026-0141", "buyer"],
   ];
   for (const [key, id, role] of cases) {
     it(key, () => {

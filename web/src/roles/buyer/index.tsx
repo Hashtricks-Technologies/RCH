@@ -5,6 +5,7 @@ import PurchaseOrders from "./PurchaseOrders";
 import Inventory from "./Inventory";
 import "./RequisitionDrawer";
 import "./PoDrawer";
+import "./PoReceiptDrawer";
 
 export const screens: Record<string, ComponentType> = {
   dash: Dashboard, requisitions: Requisitions, orders: PurchaseOrders, inventory: Inventory,
