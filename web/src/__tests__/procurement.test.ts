@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { ALL_LOCS, LOC, PAR_FACTOR } from "../data/master";
 import { seedVendors, suggestVendor, vendorName } from "../data/vendors";
 import { parOf, procurementList, qty } from "../lib/selectors";
+import type { ReceiptLine } from "../types";
 import { as, resetStore, S } from "./fixture";
 
 beforeEach(resetStore);
@@ -345,5 +346,105 @@ describe("sending a purchase order", () => {
     as("buyer");
     S().cancelPo("PO-2026-0140", "  ");
     expect(S().po.find((x) => x.id === "PO-2026-0140")!.st).toBe("Draft");
+  });
+});
+
+describe("receiving against a purchase order", () => {
+  const doc = { dc: "DC-90112", invoice: "INV/SB/8890", invDate: "2026-08-29" };
+  const line = (over: Partial<ReceiptLine> = {}): ReceiptLine => ({
+    recv: 0, rejected: 0, batch: "SB-4410", mrp: 0,
+    mfg: "2026-08-01", exp: "2027-08-01", ...over,
+  });
+
+  it("books accepted stock into the procurement room, not the central store", () => {
+    as("buyer");
+    const store = qty(S(), "store", "juice");
+    S().receivePo("PO-2026-0141", doc, [line({ recv: 120 }), line({ recv: 90 })]);
+    expect(qty(S(), "procure", "juice")).toBe(120);
+    expect(qty(S(), "store", "juice")).toBe(store);
+    expect(S().po.find((x) => x.id === "PO-2026-0141")!.st).toBe("Received");
+  });
+
+  it("writes one GRN per received line, stamped with the delivery note", () => {
+    as("buyer");
+    S().receivePo("PO-2026-0141", doc, [line({ recv: 120 }), line({ recv: 90 })]);
+    const g = S().grn.filter((x) => x.po === "PO-2026-0141");
+    expect(g).toHaveLength(2);
+    expect(g[0].dc).toBe("DC-90112");
+    expect(g[0].invoice).toBe("INV/SB/8890");
+    expect(g[0].by).toBe("Latha Narayanan");
+  });
+
+  it("subtracts the rejected quantity without stocking it", () => {
+    as("buyer");
+    S().receivePo("PO-2026-0141", doc, [line({ recv: 120, rejected: 20 }), line({ recv: 90 })]);
+    expect(qty(S(), "procure", "juice")).toBe(100);
+    expect(S().grn.find((g) => g.it === "juice")!.rejected).toBe(20);
+    expect(S().toast).toMatch(/rejected/i);
+  });
+
+  it("accumulates instalments and stays partially received in between", () => {
+    as("buyer");
+    S().receivePo("PO-2026-0141", doc, [line({ recv: 50 }), line({ recv: 0 })]);
+    let o = S().po.find((x) => x.id === "PO-2026-0141")!;
+    expect(o.st).toBe("Partially received");
+    expect(o.lines[0].recv).toBe(50);
+
+    S().receivePo("PO-2026-0141", doc, [line({ recv: 70 }), line({ recv: 90 })]);
+    o = S().po.find((x) => x.id === "PO-2026-0141")!;
+    expect(o.st).toBe("Received");
+    expect(o.lines[0].recv).toBe(120);
+    expect(qty(S(), "procure", "juice")).toBe(120);
+  });
+
+  it("refuses a receipt with no delivery note", () => {
+    as("buyer");
+    S().receivePo("PO-2026-0141", { dc: " ", invoice: "", invDate: "" }, [line({ recv: 10 }), line()]);
+    expect(S().po.find((x) => x.id === "PO-2026-0141")!.st).toBe("Ordered");
+    expect(S().toast).toMatch(/delivery note/i);
+  });
+
+  it("refuses a cumulative over-delivery beyond the 2% tolerance", () => {
+    as("buyer");
+    S().receivePo("PO-2026-0141", doc, [line({ recv: 100 }), line({ recv: 0 })]);
+    S().receivePo("PO-2026-0141", doc, [line({ recv: 40 }), line({ recv: 0 })]);
+    expect(S().po.find((x) => x.id === "PO-2026-0141")!.lines[0].recv).toBe(100);
+    expect(S().toast).toMatch(/2%/);
+  });
+
+  it("refuses a line without a batch or with a bad expiry", () => {
+    as("buyer");
+    S().receivePo("PO-2026-0141", doc, [line({ recv: 10, batch: "" }), line()]);
+    expect(S().toast).toMatch(/batch/i);
+    S().receivePo("PO-2026-0141", doc, [line({ recv: 10, mfg: "2026-08-01", exp: "2026-07-01" }), line()]);
+    expect(S().toast).toMatch(/expiry/i);
+    S().receivePo("PO-2026-0141", doc, [line({ recv: 10, mfg: "2019-01-01", exp: "2020-01-01" }), line()]);
+    expect(S().toast).toMatch(/expired/i);
+    expect(S().grn).toHaveLength(2);
+  });
+
+  it("refuses a rejected quantity larger than what arrived", () => {
+    as("buyer");
+    S().receivePo("PO-2026-0141", doc, [line({ recv: 10, rejected: 40 }), line()]);
+    expect(S().toast).toMatch(/cannot exceed/i);
+  });
+
+  it("returns the undelivered balance to the pool when closed short", () => {
+    as("buyer");
+    S().closePoShort("PO-2026-0142", "Vendor could not supply the balance.");
+    const o = S().po.find((x) => x.id === "PO-2026-0142")!;
+    expect(o.st).toBe("Received");
+    expect(o.shortNote).toMatch(/could not supply/);
+    const p = S().prq.find((x) => x.id === "PRQ-2026-012")!;
+    expect(p.lines[0].ordered).toBe(60);
+    expect(procurementList(S()).find((l) => l.it === "milk")!.pending).toBe(20);
+  });
+
+  it("closes short only with a reason, and only when partly received", () => {
+    as("buyer");
+    S().closePoShort("PO-2026-0142", "  ");
+    expect(S().po.find((x) => x.id === "PO-2026-0142")!.st).toBe("Partially received");
+    S().closePoShort("PO-2026-0141", "Nothing arrived.");
+    expect(S().po.find((x) => x.id === "PO-2026-0141")!.st).toBe("Ordered");
   });
 });

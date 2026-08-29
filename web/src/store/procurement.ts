@@ -1,11 +1,13 @@
-import type { PoLine, PoLineSrc, Requisition, Vendor } from "../types";
+import type { Grn, PoLine, PoLineSrc, ReceiptDoc, ReceiptLine, Requisition, Vendor } from "../types";
 import type { AppState } from "./index";
-import { IT, PO_APPROVAL_LIMIT } from "../data/master";
-import { fq, money0, now } from "../lib/fmt";
+import { IT, LOC, PO_APPROVAL_LIMIT } from "../data/master";
+import { fq, money, money0, now } from "../lib/fmt";
 import { poValue, procurementList } from "../lib/selectors";
 
 type Set_ = (p: Partial<AppState>) => void;
 type Get = () => AppState;
+
+const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v));
 
 const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 export const inDays = (n: number) => {
@@ -43,6 +45,8 @@ export interface ProcurementSlice {
   setPoEta: (poId: string, eta: string) => void;
   sendPo: (poId: string) => void;
   cancelPo: (poId: string, reason: string) => void;
+  receivePo: (poId: string, doc: ReceiptDoc, lines: ReceiptLine[]) => void;
+  closePoShort: (poId: string, reason: string) => void;
 }
 
 export const createProcurementSlice = (set: Set_, get: Get): ProcurementSlice => ({
@@ -288,5 +292,112 @@ export const createProcurementSlice = (set: Set_, get: Get): ProcurementSlice =>
       drawer: null,
     });
     s.notify(`${poId} cancelled — ${o.lines.length} line(s) back on the procurement list`);
+  },
+
+  receivePo: (poId, doc, lines) => {
+    const s = get();
+    const o = s.po.find((x) => x.id === poId);
+    if (!o || !s.user) return;
+    if (o.st !== "Ordered" && o.st !== "Partially received") return;
+    if (!doc.dc.trim()) { s.notify("Record the vendor's delivery note number before booking goods in"); return; }
+    if (!lines.some((r) => r?.recv > 0)) { s.notify("Enter what arrived on at least one line"); return; }
+
+    // Nothing enters stock without a batch behind it, and no batch is accepted
+    // that is already expired or mis-dated. Every line is checked in full
+    // before anything is written — a rejected receipt must leave no trace.
+    const today = new Date(new Date().toDateString());
+    for (let i = 0; i < o.lines.length; i++) {
+      const l = o.lines[i];
+      const r = lines[i];
+      const name = IT[l.it]?.n ?? l.it;
+      if (!r || !(r.recv > 0)) continue;
+      if (l.recv + r.recv > l.qty * 1.02) {
+        s.notify(`${name} — ${fq(l.recv + r.recv, l.it)} exceeds the ordered ${fq(l.qty, l.it)} by more than 2%; hold it for purchase approval`);
+        return;
+      }
+      if (r.rejected < 0 || r.rejected > r.recv) {
+        s.notify(`${name} — rejected quantity cannot exceed what arrived`); return;
+      }
+      if (!r.batch.trim()) { s.notify(`${name} needs its batch or lot number`); return; }
+      if (!r.mfg || !r.exp) { s.notify(`${name} needs a manufacturing and an expiry date`); return; }
+      if (new Date(r.exp) <= new Date(r.mfg)) {
+        s.notify(`${name} — expiry cannot fall on or before the manufacturing date`); return;
+      }
+      if (new Date(r.exp) < today) {
+        s.notify(`${name} — batch ${r.batch} has already expired; do not book it in`); return;
+      }
+      if (IT[l.it]?.mrp != null && r.mrp > 0 && r.mrp < (s.prices.A[l.it] ?? 0)) {
+        s.notify(`${name} — printed MRP ${money(r.mrp)} is below the shelf price; reprice before selling`); return;
+      }
+    }
+
+    const stock = clone(s.stock);
+    const grn: Grn[] = [];
+    let accepted = 0, rejected = 0, n = s.grn.filter((g) => g.po === poId).length;
+    const poLines = o.lines.map((l, i) => {
+      const r = lines[i];
+      if (!r || !(r.recv > 0)) return l;
+      const good = Math.round((r.recv - r.rejected) * 1000) / 1000;
+      accepted += good;
+      rejected += r.rejected;
+      // Accepted goods land in the procurement room, not the central store —
+      // the store keeper draws them out later on a pick ticket.
+      stock.procure[l.it] = Math.round(((stock.procure[l.it] ?? 0) + good) * 1000) / 1000;
+      n += 1;
+      grn.push({
+        id: `GRN-${poId.slice(-3)}-${String(n).padStart(2, "0")}`,
+        po: poId, it: l.it, qty: good, rejected: r.rejected, batch: r.batch.trim(),
+        mrp: r.mrp, mfg: r.mfg, exp: r.exp,
+        dc: doc.dc.trim(), invoice: doc.invoice.trim(), invDate: doc.invDate,
+        at: now(), by: s.user!.n,
+      });
+      return {
+        ...l,
+        recv: Math.round((l.recv + r.recv) * 1000) / 1000,
+        rejected: Math.round((l.rejected + r.rejected) * 1000) / 1000,
+      };
+    });
+
+    const done = poLines.every((l) => l.recv >= l.qty);
+    const st = done ? "Received" as const : "Partially received" as const;
+    set({
+      stock, drawer: null, grn: [...grn, ...s.grn],
+      po: s.po.map((x) => x.id !== poId ? x : {
+        ...x, lines: poLines, st, recv: now(),
+        hist: [...x.hist, { s: st, who: s.user!.n, t: now() }],
+      }),
+    });
+    s.notify(rejected > 0
+      ? `Booked into ${LOC.procure.n} — ${accepted} accepted, ${rejected} rejected`
+      : `Booked into ${LOC.procure.n} — ${grn.length} batch(es) against ${doc.dc.trim()}`);
+  },
+
+  closePoShort: (poId, reason) => {
+    const s = get();
+    const o = s.po.find((x) => x.id === poId);
+    if (!o || o.st !== "Partially received" || !s.user) return;
+    if (!reason.trim()) { s.notify("Give a reason for closing this order short"); return; }
+
+    // The balance never arrived, so give the demand back to the store keeper
+    // rather than letting it vanish. Walk each line's sources in reverse, the
+    // same convention updatePoLine/removePoLine use for returning a claim.
+    const back: PoLineSrc[] = [];
+    for (const l of o.lines) {
+      let miss = Math.round(Math.max(0, l.qty - l.recv) * 1000) / 1000;
+      for (const x of [...l.src].reverse()) {
+        const take = Math.min(miss, x.qty);
+        miss = Math.round((miss - take) * 1000) / 1000;
+        if (take > 0) back.push({ ...x, qty: take });
+      }
+    }
+    set({
+      prq: claim(s.prq, back, -1),
+      po: s.po.map((x) => x.id !== poId ? x : {
+        ...x, st: "Received" as const, shortNote: reason,
+        hist: [...x.hist, { s: "Closed short", who: s.user!.n, t: now() }],
+      }),
+      drawer: null,
+    });
+    s.notify(`${poId} closed short — the undelivered balance is back on the procurement list`);
   },
 });

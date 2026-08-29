@@ -63,6 +63,10 @@ export interface Payer { kind: PayerKind; id: string; name: string }
 export interface ReceiptLine {
   recv: number; batch: string; mrp: number; mfg: string; exp: string; rejected: number;
 }
+/** The vendor's paperwork behind one instalment of a delivery. */
+export interface ReceiptDoc {
+  dc: string; invoice: string; invDate: string;
+}
 export interface Grn {
   id: string; po: string; it: string; qty: number; rejected: number;
   batch: string; mrp: number; mfg: string; exp: string;
