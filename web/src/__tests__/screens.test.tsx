@@ -13,6 +13,9 @@ import { screens as manager } from "../roles/manager";
 import { screens as store } from "../roles/store";
 import { screens as prod } from "../roles/prod";
 import { screens as buyer } from "../roles/buyer";
+import { groupPool, picksFor, type PoolGroup } from "../roles/buyer/ProcurementList";
+import { seedVendors } from "../data/vendors";
+import type { PoolLine } from "../lib/selectors";
 import type { Role } from "../types";
 
 const REGISTRY: Record<Role, Record<string, ComponentType>> = { counter, manager, store, prod, buyer };
@@ -103,5 +106,66 @@ describe("sign-in", () => {
     act(() => { useApp.setState({ user: null }); });
     const html = render(createElement(Login));
     for (const u of USERS) expect(html).toContain(u.n);
+  });
+});
+
+describe("procurement list", () => {
+  it("renders the pooled lines, grouped by item, with a source breakdown", () => {
+    act(() => { useApp.getState().signIn(USERS.find((u) => u.r === "buyer")!.id); });
+    const html = render(createElement(buyer.pool));
+    expect(html).toContain("Procurement list");
+    expect(html).toMatch(/Maida/);
+    // The seeded pool: maida 20 from PRQ-2026-014, milk 25 from PRQ-2026-011 —
+    // both must show up as their own source chip.
+    expect(html).toContain("PRQ-2026-014");
+    expect(html).toContain("PRQ-2026-011");
+  });
+
+  it("folds several requisitions for the same item into one pooled group", () => {
+    // A flat list of raw pool lines would list milk twice; the screen's job
+    // is to read it as one row with two sources, so this pins the merge
+    // logic directly rather than through rendered HTML.
+    const pool: PoolLine[] = [
+      { prq: "PRQ-2026-011", line: 0, it: "milk", asked: 25, pending: 25, by: "Suresh Muthu", at: "06:30" },
+      { prq: "PRQ-2026-013", line: 0, it: "milk", asked: 60, pending: 60, by: "Suresh Muthu", at: "07:50" },
+      { prq: "PRQ-2026-014", line: 1, it: "maida", asked: 20, pending: 20, by: "Suresh Muthu", at: "07:40" },
+    ];
+    const groups = groupPool(pool, seedVendors);
+    expect(groups).toHaveLength(2);
+
+    const milk = groups.find((g) => g.it === "milk")!;
+    expect(milk.pending).toBe(85);
+    expect(milk.sources.map((s) => s.prq)).toEqual(["PRQ-2026-011", "PRQ-2026-013"]);
+    expect(milk.vendor?.n).toBe("Aavin Dairy Depot");
+
+    const maida = groups.find((g) => g.it === "maida")!;
+    expect(maida.sources).toHaveLength(1);
+    expect(maida.vendor?.n).toBe("Anandha Provisions");
+  });
+
+  it("splits a picked quantity across a group's sources, capped by what each still has pending", () => {
+    const g: PoolGroup = {
+      it: "milk",
+      pending: 85,
+      vendor: null,
+      sources: [
+        { prq: "PRQ-2026-011", line: 0, it: "milk", asked: 25, pending: 25, by: "Suresh Muthu", at: "06:30" },
+        { prq: "PRQ-2026-013", line: 0, it: "milk", asked: 60, pending: 60, by: "Suresh Muthu", at: "07:50" },
+      ],
+    };
+    // Taking less than the first source covers stays on that source alone —
+    // this is the "take part now, the rest on a second pass" split.
+    expect(picksFor(g, 10)).toEqual([{ prq: "PRQ-2026-011", line: 0, qty: 10 }]);
+    // Spilling past the first source's pending draws the remainder from the next.
+    expect(picksFor(g, 40)).toEqual([
+      { prq: "PRQ-2026-011", line: 0, qty: 25 },
+      { prq: "PRQ-2026-013", line: 0, qty: 15 },
+    ]);
+    // Never over-allocates past the group's total pending.
+    expect(picksFor(g, 999)).toEqual([
+      { prq: "PRQ-2026-011", line: 0, qty: 25 },
+      { prq: "PRQ-2026-013", line: 0, qty: 60 },
+    ]);
+    expect(picksFor(g, 0)).toEqual([]);
   });
 });

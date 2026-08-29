@@ -5,7 +5,7 @@ import { NavLink, useNavigate } from "react-router-dom";
 import { IT, LOC, OUTLETS } from "../data/master";
 import { NAV, canSee } from "../nav";
 import { useApp, type AppState } from "../store";
-import { availOf, menuOf } from "../lib/selectors";
+import { availOf, menuOf, procurementList } from "../lib/selectors";
 import type { LocKey, Role } from "../types";
 import { Avatar, Icon, SearchIcon, Tag, ThemeButton } from "./kit";
 import { applyPrefs, readPrefs, usePhoto } from "./prefs";
@@ -215,6 +215,7 @@ const NOTE: Record<string, [string, string]> = {
   issue: ["Documents on the issue desk", "Approvals to ticket, and tickets to hand over"],
   procure: ["Requisitions with procurement", "Sent and not yet turned into an order"],
   requisitions: ["Requisitions waiting on you", "Raised by the store keeper"],
+  pool: ["Lines on the procurement list", "Approved and not yet claimed by a purchase order"],
   orders: ["New kitchen orders", "Received and not yet accepted"],
   avail: ["Products that cannot be sold", "Switched off, out of stock, or short an ingredient"],
   inbound: ["Transfers to confirm", "Handed over by procurement and not yet received"],
@@ -297,6 +298,7 @@ function navCounts(s: AppState): Record<string, number> {
   }
   if (u.r === "buyer") {
     c.requisitions = s.prq.filter((p) => p.st === "Sent").length;
+    c.pool = procurementList(s).length;
     c.room = s.tkt.filter((t) => t.from === "procure" && t.st === "Issued").length;
   }
   return c;
