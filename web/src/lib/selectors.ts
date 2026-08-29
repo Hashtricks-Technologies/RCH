@@ -79,7 +79,7 @@ export const freeToPromise = (
 /** Quantity sitting on an open requisition or a placed order (M3). */
 export const onOrder = (s: { prq: Requisition[] }, it: string) =>
   s.prq
-    .filter((p) => p.st === "Sent" || p.st === "Ordered")
+    .filter((p) => p.st === "Sent" || p.st === "Approved" || p.st === "Partially approved")
     .reduce((t, p) => t + p.lines.filter((l) => l.it === it).reduce((n, l) => n + l.qty, 0), 0);
 
 /** Handed over but not yet confirmed — owned by neither location (M8). */

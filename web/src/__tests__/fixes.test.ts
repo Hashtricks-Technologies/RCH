@@ -182,55 +182,6 @@ describe("H1 · made items cost what their recipe costs", () => {
   });
 });
 
-/* ---------------------------------------------------------------- H2 */
-describe("H2 · goods receipt captures what arrived", () => {
-  const receipt = (over: Record<string, unknown> = {}) => ({
-    recv: 64, batch: "AAV-8891", mrp: 0, mfg: "2026-08-20", exp: "2026-09-20", rejected: 0, ...over,
-  });
-
-  it("posts the accepted quantity and records a batch", () => {
-    as("buyer");
-    S().orderRequisition("PRQ-2026-013", [52, 248], "Aavin Dairy Depot", "2026-08-31");
-    const before = qty(S(), "store", "milk");
-    const p = S().prq.find((x) => x.id === "PRQ-2026-013")!;
-    S().receiveRequisition("PRQ-2026-013", p.lines.map((l) => receipt({ recv: l.qty })));
-    expect(qty(S(), "store", "milk")).toBeGreaterThan(before);
-    expect(S().grn.length).toBe(p.lines.length);
-    expect(S().grn[0].batch).toBe("AAV-8891");
-  });
-
-  it("posts only what passed quality check", () => {
-    as("buyer");
-    S().orderRequisition("PRQ-2026-013", [52, 248], "Aavin Dairy Depot", "2026-08-31");
-    const before = qty(S(), "store", "milk");
-    const p = S().prq.find((x) => x.id === "PRQ-2026-013")!;
-    const first = p.lines[0];
-    S().receiveRequisition("PRQ-2026-013",
-      p.lines.map((l, i) => receipt({ recv: l.qty, rejected: i === 0 ? 4 : 0 })));
-    expect(qty(S(), "store", first.it)).toBeCloseTo(before + first.qty - 4, 3);
-  });
-
-  it("refuses a batch whose expiry precedes its manufacture", () => {
-    as("buyer");
-    S().orderRequisition("PRQ-2026-013", [52, 248], "Aavin Dairy Depot", "2026-08-31");
-    const before = qty(S(), "store", "milk");
-    const p = S().prq.find((x) => x.id === "PRQ-2026-013")!;
-    S().receiveRequisition("PRQ-2026-013",
-      p.lines.map((l) => receipt({ recv: l.qty, mfg: "2026-09-20", exp: "2026-08-20" })));
-    expect(qty(S(), "store", "milk")).toBe(before);
-    expect(S().prq.find((x) => x.id === "PRQ-2026-013")!.st).toBe("Ordered");
-  });
-
-  it("refuses a receipt more than 2% over the ordered quantity", () => {
-    as("buyer");
-    S().orderRequisition("PRQ-2026-013", [52, 248], "Aavin Dairy Depot", "2026-08-31");
-    const p = S().prq.find((x) => x.id === "PRQ-2026-013")!;
-    S().receiveRequisition("PRQ-2026-013", p.lines.map((l) => receipt({ recv: l.qty * 1.5 })));
-    expect(S().prq.find((x) => x.id === "PRQ-2026-013")!.st).toBe("Ordered");
-    expect(S().toast).toMatch(/over/i);
-  });
-});
-
 /* ---------------------------------------------------------------- H3 */
 describe("H3 · a removed product can be put back", () => {
   it("restores a product to the outlet menu", () => {
@@ -360,17 +311,6 @@ describe("M3 · what is already on order is visible", () => {
     expect(open.length).toBeGreaterThan(0);
     const it = open[0].lines[0].it;
     expect(onOrder(S(), it)).toBeGreaterThanOrEqual(open[0].lines[0].qty);
-  });
-
-  it("stops counting once the goods are received", () => {
-    as("buyer");
-    S().orderRequisition("PRQ-2026-013", [52, 248], "Aavin Dairy Depot", "2026-08-31");
-    const p = S().prq.find((x) => x.id === "PRQ-2026-013")!;
-    const it = p.lines[0].it;
-    S().receiveRequisition("PRQ-2026-013", p.lines.map((l) => ({
-      recv: l.qty, batch: "B1", mrp: 0, mfg: "2026-08-20", exp: "2026-09-20", rejected: 0,
-    })));
-    expect(onOrder(S(), it)).toBe(0);
   });
 });
 

@@ -92,3 +92,53 @@ describe("vendor maintenance", () => {
     expect(S().vendors.find((x) => x.id === "VN-001")!.active).toBe(false);
   });
 });
+
+describe("requisition approval", () => {
+  it("approves every line in full", () => {
+    as("buyer");
+    S().approveRequisition("PRQ-2026-013", [60, 6], "Approved in full.");
+    const p = S().prq.find((x) => x.id === "PRQ-2026-013")!;
+    expect(p.st).toBe("Approved");
+    expect(p.lines[0].appr).toBe(60);
+    expect(p.lines[0].ordered).toBe(0);
+    expect(p.lines[0].short).toBe(0);
+    expect(p.apprBy).toBe("Latha Narayanan");
+  });
+
+  it("trims a line and records the shortfall", () => {
+    as("buyer");
+    S().approveRequisition("PRQ-2026-013", [40, 6], "Budget cap this week.");
+    const p = S().prq.find((x) => x.id === "PRQ-2026-013")!;
+    expect(p.st).toBe("Partially approved");
+    expect(p.lines[0].appr).toBe(40);
+    expect(p.lines[0].short).toBe(20);
+  });
+
+  it("never approves more than was asked", () => {
+    as("buyer");
+    S().approveRequisition("PRQ-2026-013", [500, 6], "");
+    expect(S().prq.find((x) => x.id === "PRQ-2026-013")!.lines[0].appr).toBe(60);
+  });
+
+  it("declines when nothing is approved", () => {
+    as("buyer");
+    S().approveRequisition("PRQ-2026-013", [0, 0], "Nothing needed this week.");
+    expect(S().prq.find((x) => x.id === "PRQ-2026-013")!.st).toBe("Declined");
+  });
+
+  it("declines only with a reason", () => {
+    as("buyer");
+    S().declineRequisition("PRQ-2026-013", "   ");
+    expect(S().prq.find((x) => x.id === "PRQ-2026-013")!.st).toBe("Sent");
+    expect(S().toast).toMatch(/reason/i);
+
+    S().declineRequisition("PRQ-2026-013", "Store still holds three weeks of cover.");
+    expect(S().prq.find((x) => x.id === "PRQ-2026-013")!.st).toBe("Declined");
+  });
+
+  it("acts only on a requisition still waiting", () => {
+    as("buyer");
+    S().approveRequisition("PRQ-2026-012", [10, 1], "");
+    expect(S().prq.find((x) => x.id === "PRQ-2026-012")!.lines[0].appr).toBe(80);
+  });
+});

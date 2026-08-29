@@ -189,7 +189,7 @@ const prqst = (s: AppState): Rep => {
     ],
     rows,
     pill: 10,
-    foot: `${waiting} still with procurement · ${s.prq.filter((p) => p.st === "Ordered").length} ordered · ${s.prq.filter((p) => p.st === "Received").length} received`,
+    foot: `${waiting} still with procurement · ${s.prq.filter((p) => p.st === "Approved").length} approved · ${s.prq.filter((p) => p.st === "Partially approved").length} partially approved`,
     empty: { title: "No requisition has been raised", sub: "Build one on the requisitions screen and send it to procurement." },
   };
 };

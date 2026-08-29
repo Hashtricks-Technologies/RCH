@@ -85,7 +85,7 @@ export default function Dashboard() {
           {
             l: "Requisitions with procurement",
             v: String(withProc.length),
-            d: <>{s.prq.filter((p) => p.st === "Ordered").length} ordered · {s.prq.filter((p) => p.st === "Received").length} received</>,
+            d: <>{s.prq.filter((p) => p.st === "Approved").length} approved · {s.prq.filter((p) => p.st === "Partially approved").length} partially approved</>,
           },
           {
             l: "Items reserved",

@@ -5,7 +5,7 @@ export type ReqStatus =
   | "Draft" | "Request sent" | "Manager approved" | "Partially approved"
   | "Ticket issued" | "Collected" | "Received" | "Closed" | "Rejected" | "Cancelled";
 export type TktStatus = "Issued" | "Collected" | "Received";
-export type PrqStatus = "Sent" | "Ordered" | "Received" | "Declined";
+export type PrqStatus = "Sent" | "Approved" | "Partially approved" | "Declined";
 export type PordStatus = "New" | "Accepted" | "In kitchen" | "Ready" | "Dispatched" | "Declined";
 export type Tone = "ok" | "wn" | "cr" | "in" | "ac" | "mu";
 
@@ -31,7 +31,12 @@ export interface StockRequest {
 }
 export interface TktLine { it: string; qty: number }
 export interface Ticket { id: string; req: string; from: LocKey; to: LocKey; lines: TktLine[]; st: TktStatus }
-export interface Requisition { id: string; by: string; at: string; lines: TktLine[]; st: PrqStatus; note: string }
+export interface PrqLine { it: string; qty: number; appr: number; ordered: number; short?: number }
+export interface Requisition {
+  id: string; by: string; at: string;
+  lines: PrqLine[]; st: PrqStatus; note: string;
+  apprBy?: string; apprNote?: string; hist: HistEntry[];
+}
 export interface PoLine { it: string; qty: number; rate: number }
 export interface PurchaseOrder {
   id: string; prq: string; vendor: string; at: string;

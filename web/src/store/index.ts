@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { IT, LOC, MENU, PO_APPROVAL_LIMIT, RCP, USERS } from "../data/master";
+import { IT, LOC, MENU, RCP, USERS } from "../data/master";
 import {
   DAY_LABELS, seedBatch, seedBills, seedPo, seedPord, seedPrq, seedReq, seedRsv, seedSales,
   seedStock, seedTkt,
@@ -7,7 +7,7 @@ import {
 import { seedVendors } from "../data/vendors";
 import type {
   Batch, Bill, DraftLine, DrawerState, Grn, LocKey, Payer, PordStatus, ProdOrder, PurchaseOrder,
-  ReceiptLine, Requisition, StockRequest, Ticket, User, Vendor,
+  Requisition, StockRequest, Ticket, User, Vendor,
 } from "../types";
 import { basePrices, freeToPromise, priceOf, qty, resv } from "../lib/selectors";
 import { bestBefore, fq, now, U } from "../lib/fmt";
@@ -71,10 +71,6 @@ export interface AppState extends ProcurementSlice {
   setPrqDraft: (d: DraftLine[]) => void;
   sendRequisition: (note: string) => void;
 
-  orderRequisition: (prqId: string, rates: number[], vendor: string, eta: string) => void;
-  declineRequisition: (prqId: string) => void;
-  receiveRequisition: (prqId: string, receipt: ReceiptLine[]) => void;
-
   setOrderStatus: (id: string, st: PordStatus) => void;
   dispatchOrder: (id: string) => void;
   makeProduct: (it: string, started: number, made?: number, note?: string) => void;
@@ -109,7 +105,7 @@ export const useApp = create<AppState>((set, get) => ({
   vendors: clone(seedVendors),
   sales: clone(seedSales),
   dayLabels: DAY_LABELS,
-  seq: { req: 912, tkt: 440, bill: 1187, prq: 13, po: 142, pord: 30, bat: 1, vn: 5 },
+  seq: { req: 912, tkt: 440, bill: 1187, prq: 15, po: 142, pord: 30, bat: 1, vn: 5 },
   cart: {},
   draft: [],
   prqDraft: [],
@@ -324,100 +320,15 @@ export const useApp = create<AppState>((set, get) => ({
   sendRequisition: (note) => {
     const s = get();
     if (!s.user) return;
-    const lines = s.prqDraft.filter((l) => l.it && l.qty > 0).map((l) => ({ it: l.it, qty: l.qty }));
+    const lines = s.prqDraft.filter((l) => l.it && l.qty > 0)
+      .map((l) => ({ it: l.it, qty: l.qty, appr: 0, ordered: 0 }));
     if (!lines.length) { get().notify("Add at least one line before sending"); return; }
     const id = "PRQ-2026-0" + (s.seq.prq + 1);
     set({
       seq: { ...s.seq, prq: s.seq.prq + 1 }, prqDraft: [],
-      prq: [{ id, by: s.user.n, at: now(), lines, st: "Sent", note }, ...s.prq],
+      prq: [{ id, by: s.user.n, at: now(), lines, st: "Sent", note, hist: [hist(s.user.n, "Sent")] }, ...s.prq],
     });
     get().notify(`${id} sent to procurement`);
-  },
-
-  orderRequisition: (prqId, rates, vendor, eta) => {
-    const s = get();
-    const p = s.prq.find((x) => x.id === prqId);
-    if (!p || p.st !== "Sent") return;
-    const lines = p.lines.map((l, i) => ({
-      it: l.it, qty: l.qty,
-      rate: Number.isFinite(rates[i]) && rates[i] > 0 ? rates[i] : IT[l.it].cost,
-    }));
-    const id = "PO-2026-0" + (s.seq.po + 1);
-    const value = lines.reduce((t, l) => t + l.qty * l.rate, 0);
-    const needsApproval = value > PO_APPROVAL_LIMIT;
-    set({
-      seq: { ...s.seq, po: s.seq.po + 1 }, drawer: null,
-      po: [{ id, prq: prqId, vendor, at: now(), lines, st: "Ordered", eta, needsApproval }, ...s.po],
-      prq: s.prq.map((x) => x.id === prqId ? { ...x, st: "Ordered" as const } : x),
-    });
-    get().notify(needsApproval
-      ? `${id} raised on ${vendor} — ₹${Math.round(value).toLocaleString("en-IN")} is over the ₹${PO_APPROVAL_LIMIT.toLocaleString("en-IN")} slab and needs finance approval`
-      : `${id} raised on ${vendor} — expected ${eta}`);
-  },
-  declineRequisition: (prqId) => {
-    set((s) => ({ prq: s.prq.map((x) => x.id === prqId ? { ...x, st: "Declined" as const } : x), drawer: null }));
-    get().notify(`${prqId} declined`);
-  },
-  receiveRequisition: (prqId, receipt) => {
-    const s = get();
-    const p = s.prq.find((x) => x.id === prqId);
-    if (!p || p.st !== "Ordered" || !s.user) return;
-
-    // Nothing enters stock without a batch behind it, and no batch is accepted
-    // that is already expired or mis-dated (H2, UA-08/09/10/11).
-    for (let i = 0; i < p.lines.length; i++) {
-      const l = p.lines[i];
-      const r = receipt[i];
-      const name = IT[l.it].n;
-      if (!r) { get().notify(`Record what arrived for ${name}`); return; }
-      if (!(r.recv > 0)) { get().notify(`Enter the quantity received for ${name}`); return; }
-      if (r.recv > l.qty * 1.02) {
-        get().notify(`${name} — ${r.recv} is over the ordered ${l.qty} by more than 2%; hold it for purchase approval`);
-        return;
-      }
-      if (r.rejected < 0 || r.rejected > r.recv) {
-        get().notify(`${name} — rejected quantity cannot exceed what arrived`);
-        return;
-      }
-      if (!r.batch.trim()) { get().notify(`${name} needs its batch or lot number`); return; }
-      if (!r.mfg || !r.exp) { get().notify(`${name} needs a manufacturing and an expiry date`); return; }
-      if (new Date(r.exp) <= new Date(r.mfg)) {
-        get().notify(`${name} — expiry cannot fall on or before the manufacturing date`);
-        return;
-      }
-      if (new Date(r.exp) < new Date(new Date().toDateString())) {
-        get().notify(`${name} — batch ${r.batch} has already expired; move it to quarantine`);
-        return;
-      }
-      if (IT[l.it].mrp != null && r.mrp > 0 && r.mrp < (s.prices.A[l.it] ?? 0)) {
-        get().notify(`${name} — printed MRP ₹${r.mrp} is below the shelf price; reprice before selling`);
-        return;
-      }
-    }
-
-    const stock = clone(s.stock);
-    const grn: Grn[] = [];
-    let accepted = 0, rejected = 0;
-    p.lines.forEach((l, i) => {
-      const r = receipt[i];
-      const good = Math.round((r.recv - r.rejected) * 1000) / 1000;
-      accepted += good;
-      rejected += r.rejected;
-      stock.store[l.it] = Math.round(((stock.store[l.it] ?? 0) + good) * 1000) / 1000;
-      grn.push({
-        id: `GRN-${prqId.slice(-3)}-${String(i + 1).padStart(2, "0")}`,
-        prq: prqId, it: l.it, qty: good, rejected: r.rejected, batch: r.batch.trim(),
-        mrp: r.mrp, mfg: r.mfg, exp: r.exp, at: now(), by: s.user!.n,
-      });
-    });
-    set({
-      stock, drawer: null, grn: [...grn, ...s.grn],
-      prq: s.prq.map((x) => x.id === prqId ? { ...x, st: "Received" as const } : x),
-      po: s.po.map((x) => x.prq === prqId ? { ...x, st: "Received" as const, recv: now() } : x),
-    });
-    get().notify(rejected > 0
-      ? `Goods received into ${LOC.store.n} — ${accepted} accepted, ${rejected} rejected to quarantine`
-      : `Goods received into ${LOC.store.n} — ${p.lines.length} batch${p.lines.length > 1 ? "es" : ""} booked in`);
   },
 
   setOrderStatus: (id, st) => {

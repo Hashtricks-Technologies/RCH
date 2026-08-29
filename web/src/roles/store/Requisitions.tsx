@@ -71,7 +71,7 @@ export default function Requisitions() {
     (p) => !term || p.id.toLowerCase().includes(term) || p.by.toLowerCase().includes(term) || p.st.toLowerCase().includes(term),
   );
   const openValue = sum(
-    prq.filter((p) => p.st === "Sent" || p.st === "Ordered"),
+    prq.filter((p) => p.st === "Sent" || p.st === "Approved" || p.st === "Partially approved"),
     (p) => sum(p.lines, (l) => (IT[l.it]?.cost ?? 0) * l.qty),
   );
 

@@ -163,28 +163,3 @@ describe("production", () => {
     expect(S().tkt).toHaveLength(before);
   });
 });
-
-describe("procurement", () => {
-  it("store raises a requisition, procurement orders and receives it", () => {
-    as("store");
-    S().setPrqDraft([{ it: "milk", qty: 80 }]);
-    S().sendRequisition("Two counters affected");
-    const p = S().prq[0];
-    expect(p.lines[0].qty).toBe(80);
-    expect(p.st).toBe("Sent");
-
-    as("buyer");
-    S().orderRequisition(p.id, [52], "Aavin Dairy Depot", "28-Aug-2026");
-    expect(S().prq.find((x) => x.id === p.id)!.st).toBe("Ordered");
-    expect(S().po).toHaveLength(1);
-
-    const storeBefore = qty(S(), "store", "milk");
-    S().receiveRequisition(p.id, [{
-      recv: 80, batch: "AAV-7712", mrp: 0, mfg: "2026-08-20", exp: "2026-09-20", rejected: 0,
-    }]);
-    expect(qty(S(), "store", "milk")).toBe(storeBefore + 80);
-    expect(S().grn[0].batch).toBe("AAV-7712");
-    expect(S().prq.find((x) => x.id === p.id)!.st).toBe("Received");
-    expect(S().po[0].st).toBe("Received");
-  });
-});
