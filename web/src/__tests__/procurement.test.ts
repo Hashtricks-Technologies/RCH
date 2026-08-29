@@ -235,11 +235,23 @@ describe("draft purchase orders", () => {
     expect(S().toast).toMatch(/only 60/i);
   });
 
+  it("refuses two picks against the same source line that together overrun what's pending", () => {
+    approve13();
+    S().createPo("VN-001", [
+      { prq: "PRQ-2026-013", line: 0, qty: 40 },
+      { prq: "PRQ-2026-013", line: 0, qty: 40 },
+    ]);
+    expect(S().po.some((o) => o.id === "PO-2026-0143")).toBe(false);
+    expect(S().toast).toMatch(/only 60/i);
+    expect(S().prq.find((x) => x.id === "PRQ-2026-013")!.lines[0].ordered).toBe(0);
+  });
+
   it("stops two drafts claiming the same quantity", () => {
     approve13();
     S().createPo("VN-001", [{ prq: "PRQ-2026-013", line: 0, qty: 60 }]);
     S().createPo("VN-001", [{ prq: "PRQ-2026-013", line: 0, qty: 60 }]);
-    expect(S().po.filter((o) => o.id === "PO-2026-0143")).toHaveLength(1);
+    expect(S().po).toHaveLength(4);
+    expect(S().po.some((o) => o.id === "PO-2026-0144")).toBe(false);
   });
 
   it("refuses an unknown or inactive vendor", () => {
@@ -253,7 +265,7 @@ describe("draft purchase orders", () => {
   it("releases the claim when a line is removed", () => {
     approve13();
     S().createPo("VN-001", [{ prq: "PRQ-2026-013", line: 0, qty: 60 }]);
-    const po = S().po.find((o) => o.st === "Draft")!;
+    const po = S().po.find((o) => o.id === "PO-2026-0143")!;
     S().removePoLine(po.id, 0);
     expect(S().prq.find((x) => x.id === "PRQ-2026-013")!.lines[0].ordered).toBe(0);
   });
@@ -261,7 +273,7 @@ describe("draft purchase orders", () => {
   it("releases the difference when a draft quantity is reduced", () => {
     approve13();
     S().createPo("VN-001", [{ prq: "PRQ-2026-013", line: 0, qty: 60 }]);
-    const po = S().po.find((o) => o.st === "Draft")!;
+    const po = S().po.find((o) => o.id === "PO-2026-0143")!;
     S().updatePoLine(po.id, 0, { qty: 25 });
     expect(S().prq.find((x) => x.id === "PRQ-2026-013")!.lines[0].ordered).toBe(25);
     expect(S().po.find((o) => o.id === po.id)!.lines[0].src[0].qty).toBe(25);
@@ -270,7 +282,7 @@ describe("draft purchase orders", () => {
   it("edits a rate without touching the claim", () => {
     approve13();
     S().createPo("VN-001", [{ prq: "PRQ-2026-013", line: 0, qty: 60 }]);
-    const po = S().po.find((o) => o.st === "Draft")!;
+    const po = S().po.find((o) => o.id === "PO-2026-0143")!;
     S().updatePoLine(po.id, 0, { rate: 56 });
     expect(S().po.find((o) => o.id === po.id)!.lines[0].rate).toBe(56);
     expect(S().prq.find((x) => x.id === "PRQ-2026-013")!.lines[0].ordered).toBe(60);

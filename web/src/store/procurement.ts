@@ -126,13 +126,25 @@ export const createProcurementSlice = (set: Set_, get: Get): ProcurementSlice =>
     if (!v) { s.notify("Choose a vendor for this order"); return; }
     if (!v.active) { s.notify(`${v.n} is inactive — reactivate it or choose another vendor`); return; }
 
-    // Every pick must still be free on its source line.
-    const pool = procurementList(s);
     for (const pk of picks) {
+      if (!(pk.qty > 0)) { s.notify("Enter a quantity on every line you pick"); return; }
+    }
+
+    // Aggregate by source line before checking what's free — two picks
+    // against the same (prq, line) must not each pass individually while
+    // their sum overruns what's still pending on that line.
+    const pool = procurementList(s);
+    const seen = new Set<string>();
+    for (const pk of picks) {
+      const key = pk.prq + "␟" + pk.line;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const total = Math.round(
+        picks.filter((x) => x.prq === pk.prq && x.line === pk.line).reduce((t, x) => t + x.qty, 0) * 1000,
+      ) / 1000;
       const av = pool.find((l) => l.prq === pk.prq && l.line === pk.line);
       const free = av?.pending ?? 0;
-      if (!(pk.qty > 0)) { s.notify("Enter a quantity on every line you pick"); return; }
-      if (pk.qty > free) {
+      if (total > free) {
         const nm = IT[av?.it ?? ""]?.n ?? "That line";
         s.notify(`${nm} — only ${fq(free, av?.it ?? "")} still pending on ${pk.prq}`);
         return;
