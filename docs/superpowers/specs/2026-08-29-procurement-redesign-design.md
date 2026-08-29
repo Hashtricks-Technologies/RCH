@@ -42,9 +42,12 @@ stays a warning label, as it is today.
 
 ## 3. Architecture
 
-The single `useApp` zustand store is retained. Procurement actions move into a
-slice at `web/src/store/procurement.ts`, composed into the root store, so
-`useApp` is unchanged for every consumer and every existing test.
+The single `useApp` zustand store is retained. `web/src/store.ts` moves to
+`web/src/store/index.ts` and procurement actions land in a sibling slice at
+`web/src/store/procurement.ts`, composed into the root store. Every existing
+import is `from "../store"` or `from "../../store"`, which resolves to
+`store/index.ts` after the move, so **no import statement changes** and `useApp`
+is unchanged for every consumer and every existing test.
 
 Rationale: `store.ts` is 531 lines carrying all five roles and this work adds
 ~250 more. Extracting only the domain being changed is a targeted improvement,
