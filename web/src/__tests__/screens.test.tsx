@@ -83,6 +83,19 @@ describe("drawers render", () => {
       expect(render(createElement(C, { id })).length).toBeGreaterThan(200);
     });
   }
+
+  // Not a row in `cases` above: PO-2026-0142 (milk, butter — neither has a printed MRP)
+  // shares the "bgrn" key with PO-2026-0141 (juice, water — both have one), and the shared
+  // loop titles each case by `key` alone, so a second "bgrn" row there would collide on
+  // test title. Rendered directly instead, pinning both arms of the "Not printed" branch.
+  it("bgrn shows 'Not printed' only for lines with no printed MRP", () => {
+    act(() => { useApp.getState().signIn(USERS.find((u) => u.r === "buyer")!.id); });
+    const C = DRAWERS.bgrn;
+    const withMrp = render(createElement(C, { id: "PO-2026-0141" }));
+    const withoutMrp = render(createElement(C, { id: "PO-2026-0142" }));
+    expect(withoutMrp).toContain("Not printed");
+    expect(withMrp).not.toContain("Not printed");
+  });
 });
 
 describe("sign-in", () => {
