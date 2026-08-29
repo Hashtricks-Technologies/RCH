@@ -217,6 +217,8 @@ const NOTE: Record<string, [string, string]> = {
   requisitions: ["Requisitions waiting on you", "Raised by the store keeper"],
   orders: ["New kitchen orders", "Received and not yet accepted"],
   avail: ["Products that cannot be sold", "Switched off, out of stock, or short an ingredient"],
+  inbound: ["Transfers to confirm", "Handed over by procurement and not yet received"],
+  room: ["Transfers to hand over", "Issued from the procurement room, not yet collected"],
 };
 
 /* ---------- search index ---------- */
@@ -286,12 +288,16 @@ function navCounts(s: AppState): Record<string, number> {
     c.issue = s.req.filter((r) => (r.st === "Manager approved" || r.st === "Partially approved") && !r.ticket).length
       + s.tkt.filter((t) => t.from === "store" && t.st === "Issued").length;
     c.procure = s.prq.filter((p) => p.st === "Sent").length;
+    c.inbound = s.tkt.filter((t) => t.to === "store" && t.st === "Collected").length;
   }
   if (u.r === "prod") {
     c.orders = s.pord.filter((o) => o.st === "New").length;
     c.avail = Object.keys(s.stock.kitchen)
       .filter((k) => IT[k]?.t === "FG" && !availOf(s, "kitchen", k).ok).length;
   }
-  if (u.r === "buyer") c.requisitions = s.prq.filter((p) => p.st === "Sent").length;
+  if (u.r === "buyer") {
+    c.requisitions = s.prq.filter((p) => p.st === "Sent").length;
+    c.room = s.tkt.filter((t) => t.from === "procure" && t.st === "Issued").length;
+  }
   return c;
 }

@@ -3,10 +3,11 @@ import Dashboard from "./Dashboard";
 import Requisitions from "./Requisitions";
 import PurchaseOrders from "./PurchaseOrders";
 import Inventory from "./Inventory";
+import ProcurementRoom from "./ProcurementRoom";
 import "./RequisitionDrawer";
 import "./PoDrawer";
 import "./PoReceiptDrawer";
 
 export const screens: Record<string, ComponentType> = {
-  dash: Dashboard, requisitions: Requisitions, orders: PurchaseOrders, inventory: Inventory,
+  dash: Dashboard, requisitions: Requisitions, orders: PurchaseOrders, inventory: Inventory, room: ProcurementRoom,
 };

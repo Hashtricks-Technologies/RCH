@@ -1,8 +1,8 @@
 import type { Grn, PoLine, PoLineSrc, ReceiptDoc, ReceiptLine, Requisition, Vendor } from "../types";
 import type { AppState } from "./index";
 import { IT, LOC, PO_APPROVAL_LIMIT } from "../data/master";
-import { fq, money, money0, now, unitTotal } from "../lib/fmt";
-import { poValue, procurementList } from "../lib/selectors";
+import { fq, money, money0, now, U, unitTotal } from "../lib/fmt";
+import { avail, poValue, procurementList } from "../lib/selectors";
 
 type Set_ = (p: Partial<AppState>) => void;
 type Get = () => AppState;
@@ -47,6 +47,7 @@ export interface ProcurementSlice {
   cancelPo: (poId: string, reason: string) => void;
   receivePo: (poId: string, doc: ReceiptDoc, lines: ReceiptLine[]) => void;
   closePoShort: (poId: string, reason: string) => void;
+  issueToStore: (picks: { it: string; qty: number }[]) => void;
 }
 
 export const createProcurementSlice = (set: Set_, get: Get): ProcurementSlice => ({
@@ -404,5 +405,33 @@ export const createProcurementSlice = (set: Set_, get: Get): ProcurementSlice =>
       drawer: null,
     });
     s.notify(`${poId} closed short — the undelivered balance is back on the procurement list`);
+  },
+
+  issueToStore: (picks) => {
+    const s = get();
+    if (!s.user) return;
+    const want = picks.filter((p) => p.qty > 0);
+    if (!want.length) { s.notify("Enter a quantity to hand over"); return; }
+    for (const p of want) {
+      const free = avail(s, "procure", p.it);
+      if (p.qty > free) {
+        s.notify(`${IT[p.it]?.n ?? p.it} — only ${fq(free, p.it)} ${U(p.it)} free in the ${LOC.procure.n}`);
+        return;
+      }
+    }
+    // Approval authorises, the scan moves: reserve here, deduct at handover.
+    const rsv = { ...s.rsv };
+    want.forEach((p) => {
+      rsv["procure:" + p.it] = Math.round(((rsv["procure:" + p.it] ?? 0) + p.qty) * 1000) / 1000;
+    });
+    const id = "TKT-0" + (s.seq.tkt + 1);
+    set({
+      rsv, seq: { ...s.seq, tkt: s.seq.tkt + 1 }, drawer: null,
+      tkt: [...s.tkt, {
+        id, req: "Procurement transfer", from: "procure" as const, to: "store" as const,
+        lines: want.map((p) => ({ it: p.it, qty: p.qty })), st: "Issued" as const,
+      }],
+    });
+    s.notify(`${id} issued — ${LOC.store.n} can collect ${want.length} line(s) from the ${LOC.procure.n}`);
   },
 });

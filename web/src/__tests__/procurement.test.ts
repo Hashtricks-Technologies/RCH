@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { ALL_LOCS, LOC, PAR_FACTOR } from "../data/master";
 import { seedVendors, suggestVendor, vendorName } from "../data/vendors";
-import { parOf, procurementList, qty } from "../lib/selectors";
+import { parOf, procurementList, qty, resv } from "../lib/selectors";
 import type { ReceiptLine } from "../types";
 import { as, resetStore, S } from "./fixture";
 
@@ -488,5 +488,52 @@ describe("receiving against a purchase order", () => {
     const milk = procurementList(S()).find((l) => l.it === "milk")!;
     expect(milk.prq).toBe("PRQ-2026-011");
     expect(milk.pending).toBe(15);
+  });
+});
+
+describe("procurement room to central store", () => {
+  it("issues a pick ticket and reserves the stock", () => {
+    as("buyer");
+    S().issueToStore([{ it: "milk", qty: 40 }]);
+    const t = S().tkt.at(-1)!;
+    expect(t.from).toBe("procure");
+    expect(t.to).toBe("store");
+    expect(t.st).toBe("Issued");
+    expect(t.req).toBe("Procurement transfer");
+    expect(resv(S(), "procure", "milk")).toBe(40);
+    expect(qty(S(), "procure", "milk")).toBe(60);
+  });
+
+  it("refuses more than is free to promise in the room", () => {
+    as("buyer");
+    S().issueToStore([{ it: "milk", qty: 40 }]);
+    S().issueToStore([{ it: "milk", qty: 40 }]);
+    expect(S().tkt.filter((t) => t.from === "procure")).toHaveLength(1);
+    expect(S().toast).toMatch(/only 20/i);
+  });
+
+  it("refuses an empty or zero pick", () => {
+    as("buyer");
+    S().issueToStore([]);
+    S().issueToStore([{ it: "milk", qty: 0 }]);
+    expect(S().tkt.filter((t) => t.from === "procure")).toHaveLength(0);
+  });
+
+  it("moves stock room to store across handover and receipt", () => {
+    as("buyer");
+    const before = qty(S(), "store", "milk");
+    S().issueToStore([{ it: "milk", qty: 40 }]);
+    const id = S().tkt.at(-1)!.id;
+
+    S().handover(id);
+    expect(qty(S(), "procure", "milk")).toBe(20);
+    expect(resv(S(), "procure", "milk")).toBe(0);
+    expect(qty(S(), "store", "milk")).toBe(before);
+    expect(S().tkt.find((t) => t.id === id)!.st).toBe("Collected");
+
+    as("store");
+    S().receiveTicket(id);
+    expect(qty(S(), "store", "milk")).toBe(before + 40);
+    expect(S().tkt.find((t) => t.id === id)!.st).toBe("Received");
   });
 });
