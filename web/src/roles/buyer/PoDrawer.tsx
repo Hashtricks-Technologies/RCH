@@ -80,7 +80,7 @@ function PoDrawer({ id }: DrawerProps) {
             )}
           </>,
           <>{money0(l.qty * l.rate)}</>,
-          <>{l.src.map((x, si) => <div key={si}>{x.prq} · {x.qty}</div>)}</>,
+          <>{l.src.map((x, si) => <div key={si}>{x.prq} · {fq(x.qty, l.it)}</div>)}</>,
           <Btn size="xs" variant="gh" onClick={() => removePoLine(po.id, i)}>Remove</Btn>,
         ],
       };
