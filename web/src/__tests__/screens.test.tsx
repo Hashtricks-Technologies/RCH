@@ -77,6 +77,7 @@ describe("drawers render", () => {
     ["pord", "PRD-2026-029", "prod"], ["bprq", "PRQ-2026-013", "buyer"],
     ["bpo", "PO-2026-0140", "buyer"],
     ["bgrn", "PO-2026-0141", "buyer"],
+    ["bven", "VN-001", "buyer"],
   ];
   for (const [key, id, role] of cases) {
     it(key, () => {
@@ -98,6 +99,19 @@ describe("drawers render", () => {
     const withoutMrp = render(createElement(C, { id: "PO-2026-0142" }));
     expect(withoutMrp).toContain("Not printed");
     expect(withMrp).not.toContain("Not printed");
+  });
+
+  // Not a row in `cases` above: id "new" opens the empty create-vendor form,
+  // which shares the "bven" key with VN-001's edit form and would collide on
+  // the shared loop's test title. Rendered directly instead, to pin the
+  // create-mode branch — no vendor loaded, so no Deactivate/Reactivate
+  // footer control — that VN-001's row never exercises.
+  it("bven shows an empty create form for a new vendor, with no deactivate control", () => {
+    act(() => { useApp.getState().signIn(USERS.find((u) => u.r === "buyer")!.id); });
+    const html = render(createElement(DRAWERS.bven, { id: "new" }));
+    expect(html).toContain("Add vendor");
+    expect(html).not.toContain("Deactivate");
+    expect(html).not.toContain("Reactivate");
   });
 });
 

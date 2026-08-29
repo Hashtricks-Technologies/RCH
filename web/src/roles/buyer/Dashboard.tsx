@@ -1,13 +1,14 @@
 import { useNavigate } from "react-router-dom";
 import { IT, LOC } from "../../data/master";
+import { vendorName } from "../../data/vendors";
 import { useApp } from "../../store";
-import { avail, daysCover, stateTone } from "../../lib/selectors";
+import { avail, daysCover, poValue, procurementList, qty, stateTone, stockValue } from "../../lib/selectors";
 import { U, fq, lakh, money0, sum } from "../../lib/fmt";
 import {
   Alert, Btn, Card, DataTable, Feed, Grid, HBars, Kpis, PageHead, Pill, TableFoot,
 } from "../../ui/kit";
 import type { FeedItem, Row } from "../../ui/kit";
-import type { TktLine } from "../../types";
+import type { PoStatus, TktLine } from "../../types";
 
 /** Procurement only ever buys what the central store carries: raw, packing and traded goods.
  *  Finished goods and made-to-order drinks are produced in-house, never purchased. */
@@ -15,21 +16,31 @@ const BOUGHT: string[] = Object.keys(IT).filter(
   (k) => IT[k].t === "RAW" || IT[k].t === "PACK" || IT[k].t === "TRADED",
 );
 const lineValue = (lines: TktLine[]) => sum(lines, (l) => l.qty * (IT[l.it]?.cost ?? 0));
+/** A purchase order still represents an open commitment until it is fully
+ *  received or cancelled — a partial receipt does not close it. */
+const LIVE: PoStatus[] = ["Ordered", "Partially received"];
 
 export default function Dashboard() {
   const s = useApp();
   const nav = useNavigate();
 
   const waiting = s.prq.filter((p) => p.st === "Sent");
-  const ordered = s.po.filter((p) => p.st === "Ordered");
-  const openValue = sum(waiting, (p) => lineValue(p.lines));
-  const onOrderValue = sum(ordered, (p) => sum(p.lines, (l) => l.qty * l.rate));
+  const pool = procurementList(s);
+  const drafts = s.po.filter((o) => o.st === "Draft");
+  const live = s.po.filter((o) => LIVE.includes(o.st));
+  const partial = s.po.filter((o) => o.st === "Partially received");
+  const liveValue = sum(live, poValue);
 
   const below = BOUGHT.filter((k) => IT[k].rl > 0 && avail(s, "store", k) < IT[k].rl);
   const zero = BOUGHT.filter((k) => avail(s, "store", k) <= 0);
 
-  const onRequisition = new Set(waiting.flatMap((p) => p.lines.map((l) => l.it)));
-  const onOrder = new Set(ordered.flatMap((p) => p.lines.map((l) => l.it)));
+  // The cover table's Commitment column distinguishes an item already tied to
+  // a live purchase order from one that is merely approved and pooled,
+  // waiting for a buyer to raise an order against it.
+  const poolItems = new Set(pool.map((l) => l.it));
+  const onLivePo = (k: string) => live.some((o) => o.lines.some((l) => l.it === k && l.qty - l.recv > 0));
+
+  const roomLines = Object.keys(s.stock.procure).filter((k) => IT[k] && qty(s, "procure", k) > 0);
 
   const kpis = [
     {
@@ -37,22 +48,25 @@ export default function Dashboard() {
       d: <>from the central store</>, spark: [1, 0, 2, 1, 3, 1, waiting.length], color: "var(--c1)",
     },
     {
-      l: "Value of open requisitions", v: money0(openValue),
-      d: <>{sum(waiting, (p) => p.lines.length)} lines to price</>,
+      l: "Lines on the procurement list", v: String(pool.length),
+      d: <>approved, not yet claimed by an order</>,
     },
     {
-      l: "Purchase orders placed", v: String(s.po.length),
-      d: <>{ordered.length} still open</>, spark: [2, 3, 2, 4, 3, 5, Math.max(1, s.po.length)], color: "var(--c2)",
+      l: "Drafts open", v: String(drafts.length),
+      d: <>awaiting your review before they go to a vendor</>,
     },
     {
-      l: "Value on order", v: lakh(onOrderValue),
-      d: <>across {new Set(ordered.map((p) => p.vendor)).size} vendor(s)</>,
+      l: "Value on order", v: lakh(liveValue),
+      d: <>across {new Set(live.map((o) => o.vendor)).size} vendor(s)</>,
+    },
+    {
+      l: `Held in ${LOC.procure.n}`, v: lakh(stockValue(s, "procure")),
+      d: <>{roomLines.length} line(s) ready to hand over</>,
     },
     {
       l: "Below reorder · central store", v: String(below.length),
       d: <>{zero.length} at zero</>, spark: [3, 4, 4, 5, 4, 6, Math.max(1, below.length)], color: "var(--c3)",
     },
-    { l: "Average lead time", v: "2.4 d", d: <>order to goods receipt</> },
   ];
 
   const cover = BOUGHT
@@ -70,14 +84,14 @@ export default function Dashboard() {
       <Pill tone={stateTone(a, IT[k].rl)}>
         {a <= 0 ? "Out" : IT[k].rl > 0 && a < IT[k].rl ? "Below reorder" : "Healthy"}
       </Pill>,
-      onOrder.has(k) ? <Pill tone="in">On order</Pill>
-        : onRequisition.has(k) ? <Pill tone="wn">On requisition</Pill>
+      onLivePo(k) ? <Pill tone="in">On order</Pill>
+        : poolItems.has(k) ? <Pill tone="wn">On the list</Pill>
           : <span className="dim">—</span>,
     ],
   }));
 
   const byItem = new Map<string, number>();
-  ordered.forEach((p) => p.lines.forEach((l) => {
+  live.forEach((o) => o.lines.forEach((l) => {
     byItem.set(l.it, (byItem.get(l.it) ?? 0) + l.qty * l.rate);
   }));
   const bars = [...byItem.entries()]
@@ -94,8 +108,8 @@ export default function Dashboard() {
     })),
     ...s.po.map((o) => ({
       key: "o" + o.id,
-      title: <>{o.id} · {o.st === "Received" ? "goods received" : "raised on " + o.vendor}</>,
-      body: <>{money0(sum(o.lines, (l) => l.qty * l.rate))} · expected {o.eta}</>,
+      title: <>{o.id} · {o.st === "Received" ? "goods received" : "raised on " + vendorName(s.vendors, o.vendor)}</>,
+      body: <>{money0(poValue(o))} · expected {o.eta}</>,
       when: o.recv ?? o.at,
       color: o.st === "Received" ? "var(--good)" : "var(--c2)",
     })),
@@ -119,13 +133,20 @@ export default function Dashboard() {
           about {money0(lineValue(p.lines))}.{p.note ? " " + p.note : ""}
         </Alert>
       ))}
+      {partial.map((o) => (
+        <Alert key={o.id} tone="w" label="PARTIAL"
+          action={<Btn size="xs" variant="gh" onClick={() => nav("/orders")}>Review</Btn>}>
+          <b>{o.id}</b> with {vendorName(s.vendors, o.vendor)} is partially received —
+          {" "}{money0(poValue(o))} on order, the balance is still outstanding.
+        </Alert>
+      ))}
       {zero.map((k) => (
         <Alert key={k} tone="c" label="AT ZERO"
           action={<Btn size="xs" variant="gh" onClick={() => nav("/inventory")}>See item</Btn>}>
           {IT[k].n} ({IT[k].c}) is at zero in the {LOC.store.n} — reorder level {fq(IT[k].rl, k)} {U(k)}.
         </Alert>
       ))}
-      {waiting.length === 0 && zero.length === 0 && (
+      {waiting.length === 0 && partial.length === 0 && zero.length === 0 && (
         <Alert tone="g" label="CLEAR">
           Nothing is waiting on you. The {LOC.store.n} has raised no new requisition.
         </Alert>

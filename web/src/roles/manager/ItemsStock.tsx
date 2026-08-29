@@ -43,7 +43,7 @@ export default function ItemsStock() {
       <PageHead
         crumbs={["Royal Care", "Outlets", "Items & Stock"]}
         title="Items and stock in hand"
-        sub="Every item on the master with the quantity each of the five locations is holding right now."
+        sub="Every item on the master with the quantity each of the six locations is holding right now."
       />
 
       <Kpis
@@ -51,7 +51,7 @@ export default function ItemsStock() {
           {
             l: "Inventory value · all locations",
             v: lakh(totalValue),
-            d: <>Store, kitchen and three counters at cost</>,
+            d: <>Store, {LOC.procure.n}, kitchen and three counters at cost</>,
             spark: ALL_LOCS.map((l) => stockValue(s, l)),
             color: "var(--c1)",
           },

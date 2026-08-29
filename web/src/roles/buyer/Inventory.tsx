@@ -72,7 +72,7 @@ export default function Inventory() {
       <PageHead
         crumbs={["Royal Care", "Procurement", "Inventory"]}
         title="Inventory"
-        sub="Read-only. Procurement observes stock across all five locations — it does not move it. Issues and receipts are made by the store keeper."
+        sub="Read-only. Procurement observes stock across all six locations — it does not move it. Issues and receipts are made by the store keeper."
       />
       <Kpis items={[
         {

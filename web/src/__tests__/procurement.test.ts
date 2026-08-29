@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { ALL_LOCS, LOC, PAR_FACTOR } from "../data/master";
 import { seedVendors, suggestVendor, vendorName } from "../data/vendors";
-import { apportion, awaitingApproval, onOrder, parOf, prqProgress, procurementList, qty, resv } from "../lib/selectors";
+import {
+  apportion, awaitingApproval, onOrder, parOf, poValue, prqProgress, procurementList, qty, resv,
+} from "../lib/selectors";
 import type { ReceiptLine } from "../types";
 import { as, resetStore, S } from "./fixture";
 
@@ -624,5 +626,87 @@ describe("awaitingApproval", () => {
     as("buyer");
     S().approveRequisition("PRQ-2026-013", [60, 6], "");
     expect(awaitingApproval(S(), "butter")).toBe(0);
+  });
+});
+
+/**
+ * The single test proving the redesigned pipeline hangs together end to end:
+ * a requisition raised by the store keeper becomes visible to procurement,
+ * gets pooled, ordered, partially delivered into the procurement room (never
+ * the central store), handed over, and only lands on the store's shelf once
+ * the store keeper confirms receipt. Every stage asserts a concrete quantity,
+ * not merely that the call did not throw.
+ */
+describe("end to end: requisition to shelf through the procurement room", () => {
+  it("carries PRQ-2026-013 from approval through a partial receipt, a room transfer and a store receipt", () => {
+    const procureBefore = qty(S(), "procure", "milk"); // seeded at 60
+    const storeBefore = qty(S(), "store", "milk"); // seeded at 12
+    expect(procureBefore).toBe(60);
+    expect(storeBefore).toBe(12);
+
+    // 1. Approve the requisition in full.
+    as("buyer");
+    S().approveRequisition("PRQ-2026-013", [60, 6], "Approved in full.");
+    const approved = S().prq.find((x) => x.id === "PRQ-2026-013")!;
+    expect(approved.st).toBe("Approved");
+
+    // 2. Its lines now sit on the procurement list, pending an order.
+    const pool = procurementList(S());
+    expect(pool.find((l) => l.prq === "PRQ-2026-013" && l.it === "milk")!.pending).toBe(60);
+    expect(pool.find((l) => l.prq === "PRQ-2026-013" && l.it === "butter")!.pending).toBe(6);
+
+    // 3. Raise a purchase order on Aavin drawing both lines off the list.
+    S().createPo("VN-001", [
+      { prq: "PRQ-2026-013", line: 0, qty: 60 },
+      { prq: "PRQ-2026-013", line: 1, qty: 6 },
+    ]);
+    const poId = "PO-2026-0143";
+    const po = S().po.find((o) => o.id === poId)!;
+    expect(po.vendor).toBe("VN-001");
+    expect(po.lines.map((l) => l.it).sort()).toEqual(["butter", "milk"]);
+    expect(poValue(po)).toBe(60 * 52 + 6 * 248); // 4608, at the item master's standard cost
+    expect(procurementList(S()).some((l) => l.prq === "PRQ-2026-013")).toBe(false);
+
+    // 4. Send it to the vendor.
+    S().sendPo(poId);
+    expect(S().po.find((o) => o.id === poId)!.st).toBe("Ordered");
+
+    // 5. Receive part of the order — only the milk line, and only 40 of the 60 ordered.
+    S().receivePo(
+      poId,
+      { dc: "DC-90200", invoice: "INV/AAV/5501", invDate: "2026-08-30" },
+      [
+        { recv: 40, rejected: 0, batch: "AAV-9001", mrp: 0, mfg: "2026-08-01", exp: "2027-08-01" },
+        { recv: 0, rejected: 0, batch: "", mrp: 0, mfg: "", exp: "" },
+      ],
+    );
+    expect(S().po.find((o) => o.id === poId)!.st).toBe("Partially received");
+    expect(S().grn.filter((g) => g.po === poId)).toHaveLength(1);
+    // The accepted quantity lands in the procurement room — never the central store.
+    expect(qty(S(), "procure", "milk")).toBe(100); // 60 + 40
+    expect(qty(S(), "store", "milk")).toBe(storeBefore); // untouched: still 12
+
+    // 6. Issue a pick ticket moving 55 L from the room toward the central store.
+    S().issueToStore([{ it: "milk", qty: 55 }]);
+    const tkt = S().tkt.at(-1)!;
+    expect(tkt.from).toBe("procure");
+    expect(tkt.to).toBe("store");
+    expect(tkt.st).toBe("Issued");
+
+    // 7. Hand it over — stock leaves the room but has not yet reached the store.
+    S().handover(tkt.id);
+    expect(S().tkt.find((t) => t.id === tkt.id)!.st).toBe("Collected");
+    expect(qty(S(), "procure", "milk")).toBe(45); // 100 - 55
+    expect(qty(S(), "store", "milk")).toBe(storeBefore); // still in transit, not yet 67
+
+    // 8. Sign in as the store keeper and confirm receipt on Inbound.
+    as("store");
+    S().receiveTicket(tkt.id);
+    expect(S().tkt.find((t) => t.id === tkt.id)!.st).toBe("Received");
+
+    // 9. The central store rose by exactly the handed-over quantity, and the
+    //    procurement room fell by exactly that same quantity.
+    expect(qty(S(), "store", "milk")).toBe(storeBefore + 55); // 67
+    expect(qty(S(), "procure", "milk")).toBe(procureBefore + 40 - 55); // 45, unchanged since handover
   });
 });

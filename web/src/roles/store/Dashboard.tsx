@@ -1,7 +1,7 @@
 import { useNavigate } from "react-router-dom";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
-import { avail, daysCover, qty, resv, stateLabel, stateTone, stockValue } from "../../lib/selectors";
+import { avail, daysCover, prqProgress, qty, resv, stateLabel, stateTone, stockValue } from "../../lib/selectors";
 import { U, fq, lakh, money0, sum } from "../../lib/fmt";
 import { Alert, Btn, Card, DataTable, Grid, HBars, Kpis, PageHead, Pill, TableFoot } from "../../ui/kit";
 
@@ -26,7 +26,14 @@ export default function Dashboard() {
   );
   const issued = s.tkt.filter((t) => t.from === "store" && t.st === "Issued");
   const transit = s.tkt.filter((t) => t.from === "store" && t.st === "Collected");
-  const withProc = s.prq.filter((p) => p.st === "Sent");
+  // Raw status alone under-counts: an approved requisition still sits with
+  // procurement until its purchase order is fully received, not just while
+  // it is "Sent". Derive the same open/closed distinction prqProgress uses
+  // rather than repeating the old two-status union here.
+  const withProc = s.prq.filter((p) => {
+    const label = prqProgress(s, p.id).label;
+    return label !== "Received" && label !== "Declined";
+  });
   const value = stockValue(s, "store");
 
   const queuedQty = sum(queued, (r) => sum(r.lines, (l) => l.appr));

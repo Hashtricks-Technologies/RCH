@@ -5,11 +5,13 @@ import ProcurementList from "./ProcurementList";
 import PurchaseOrders from "./PurchaseOrders";
 import Inventory from "./Inventory";
 import ProcurementRoom from "./ProcurementRoom";
+import Vendors from "./Vendors";
 import "./RequisitionDrawer";
 import "./PoDrawer";
 import "./PoReceiptDrawer";
+import "./VendorDrawer";
 
 export const screens: Record<string, ComponentType> = {
-  dash: Dashboard, requisitions: Requisitions, pool: ProcurementList, orders: PurchaseOrders,
-  inventory: Inventory, room: ProcurementRoom,
+  dash: Dashboard, requisitions: Requisitions, pool: ProcurementList,
+  orders: PurchaseOrders, room: ProcurementRoom, vendors: Vendors, inventory: Inventory,
 };
