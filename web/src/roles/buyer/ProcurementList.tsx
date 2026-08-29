@@ -191,8 +191,13 @@ export default function ProcurementList() {
       </Card>
 
       {groups.length > 0 && (
-        <>
-          <div className="mtop" />
+        <div
+          className="mtop"
+          style={{
+            position: "sticky", bottom: 0, zIndex: 5,
+            background: "var(--surface)", borderTop: "1px solid var(--line-strong)",
+          }}
+        >
           <Card
             title="Raise a purchase order"
             sub={selected.length
@@ -221,7 +226,7 @@ export default function ProcurementList() {
               <Btn disabled={!canRaise} onClick={raise}>Raise purchase order</Btn>
             </div>
           </Card>
-        </>
+        </div>
       )}
     </>
   );
