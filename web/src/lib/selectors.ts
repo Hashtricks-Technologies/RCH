@@ -123,7 +123,7 @@ const TONES: Record<string, Tone> = {
   Draft: "mu", "Request sent": "wn", "Manager approved": "in", "Partially approved": "wn",
   "Ticket issued": "ac", Collected: "wn", Received: "ok", Closed: "mu", Rejected: "cr", Cancelled: "mu",
   Sent: "wn", Ordered: "in", New: "wn", Accepted: "in", "In kitchen": "ac", Ready: "ok",
-  Dispatched: "mu", Declined: "cr", Issued: "ac",
+  Dispatched: "mu", Declined: "cr", Issued: "ac", Approved: "in", "Partially received": "wn",
 };
 export const toneFor = (st: string): Tone => TONES[st] ?? "mu";
 export const stateTone = (a: number, rl: number): Tone => (a <= 0 ? "cr" : rl > 0 && a < rl ? "wn" : "ok");
