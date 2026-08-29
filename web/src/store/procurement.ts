@@ -52,6 +52,11 @@ export const createProcurementSlice = (set: Set_, get: Get): ProcurementSlice =>
       return { ...l, appr: ok, ordered: 0, short: Math.round((l.qty - ok) * 1000) / 1000 };
     });
     const total = lines.reduce((t, l) => t + l.appr, 0);
+    // Zeroing every line is a decline in all but name, and a decline always carries a reason.
+    if (total === 0 && !note.trim()) {
+      s.notify("Give a reason — the store keeper sees it on the requisition");
+      return;
+    }
     const st = total === 0
       ? "Declined" as const
       : lines.every((l) => l.appr === l.qty) ? "Approved" as const : "Partially approved" as const;

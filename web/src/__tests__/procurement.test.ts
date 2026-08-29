@@ -126,6 +126,16 @@ describe("requisition approval", () => {
     expect(S().prq.find((x) => x.id === "PRQ-2026-013")!.st).toBe("Declined");
   });
 
+  it("refuses to decline-by-zero without a reason", () => {
+    as("buyer");
+    S().approveRequisition("PRQ-2026-013", [0, 0], "   ");
+    expect(S().prq.find((x) => x.id === "PRQ-2026-013")!.st).toBe("Sent");
+    expect(S().toast).toMatch(/reason/i);
+
+    S().approveRequisition("PRQ-2026-013", [0, 0], "Nothing needed this week.");
+    expect(S().prq.find((x) => x.id === "PRQ-2026-013")!.st).toBe("Declined");
+  });
+
   it("declines only with a reason", () => {
     as("buyer");
     S().declineRequisition("PRQ-2026-013", "   ");
@@ -140,5 +150,22 @@ describe("requisition approval", () => {
     as("buyer");
     S().approveRequisition("PRQ-2026-012", [10, 1], "");
     expect(S().prq.find((x) => x.id === "PRQ-2026-012")!.lines[0].appr).toBe(80);
+  });
+});
+
+describe("sending a requisition", () => {
+  it("mints the next id with the new line shape and a history entry", () => {
+    as("store");
+    S().setPrqDraft([{ it: "milk", qty: 30 }]);
+    S().sendRequisition("Coffee shop is running low again.");
+
+    const p = S().prq.find((x) => x.id === "PRQ-2026-016")!;
+    expect(p).toBeDefined();
+    expect(p.by).toBe("Suresh Muthu");
+    expect(p.st).toBe("Sent");
+    expect(p.lines[0]).toEqual({ it: "milk", qty: 30, appr: 0, ordered: 0 });
+    expect(p.hist).toHaveLength(1);
+    expect(p.hist[0].s).toBe("Sent");
+    expect(p.hist[0].who).toBe("Suresh Muthu");
   });
 });
