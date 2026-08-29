@@ -11,7 +11,11 @@ export default function Shell({ children }: { children: ReactNode }) {
   const user = useApp((s) => s.user)!;
   const signOut = useApp((s) => s.signOut);
   const toast = useApp((s) => s.toast);
-  const counts = useApp(navCounts);
+  // NOTE: navCounts builds a fresh object, so it must never be passed to useApp()
+  // as a selector — zustand v5 feeds the selector result to useSyncExternalStore and a
+  // new identity on every call re-renders forever. Read the whole (stable) state instead.
+  const state = useApp();
+  const counts = navCounts(state);
   const nav = useNavigate();
   const total = Object.values(counts).reduce((a, b) => a + b, 0);
 
