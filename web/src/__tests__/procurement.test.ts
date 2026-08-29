@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { ALL_LOCS, LOC, PAR_FACTOR } from "../data/master";
 import { seedVendors, suggestVendor, vendorName } from "../data/vendors";
 import { parOf, qty } from "../lib/selectors";
-import { resetStore, S } from "./fixture";
+import { as, resetStore, S } from "./fixture";
 
 beforeEach(resetStore);
 
@@ -53,5 +53,42 @@ describe("kitchen distribution", () => {
     const mod = await import("../roles/prod/MakeDistribute");
     expect(mod.DESTS).not.toContain("procure");
     expect(mod.DESTS).not.toContain("kitchen");
+  });
+});
+
+describe("vendor maintenance", () => {
+  it("adds a vendor with the next id, active by default", () => {
+    as("buyer");
+    S().addVendor({
+      n: "Kovai Cold Storage", gstin: "33AAGCK1102P1ZW", contact: "Ravi T",
+      ph: "99401 55823", terms: "21 days", lead: 4, groups: ["Dairy"],
+    });
+    const v = S().vendors.find((x) => x.n === "Kovai Cold Storage")!;
+    expect(v.id).toBe("VN-006");
+    expect(v.active).toBe(true);
+    expect(S().vendors).toHaveLength(6);
+  });
+
+  it("refuses a vendor with no name", () => {
+    as("buyer");
+    S().addVendor({ n: "  ", gstin: "", contact: "", ph: "", terms: "", lead: 1, groups: [] });
+    expect(S().vendors).toHaveLength(5);
+    expect(S().toast).toMatch(/name/i);
+  });
+
+  it("edits a vendor in place", () => {
+    as("buyer");
+    S().updateVendor("VN-001", { terms: "45 days", lead: 4 });
+    const v = S().vendors.find((x) => x.id === "VN-001")!;
+    expect(v.terms).toBe("45 days");
+    expect(v.lead).toBe(4);
+    expect(v.n).toBe("Aavin Dairy Depot");
+  });
+
+  it("deactivates rather than deletes", () => {
+    as("buyer");
+    S().setVendorActive("VN-001", false);
+    expect(S().vendors).toHaveLength(5);
+    expect(S().vendors.find((x) => x.id === "VN-001")!.active).toBe(false);
   });
 });

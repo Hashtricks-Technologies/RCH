@@ -1,21 +1,22 @@
 import { create } from "zustand";
-import { IT, LOC, MENU, PO_APPROVAL_LIMIT, RCP, USERS } from "./data/master";
+import { IT, LOC, MENU, PO_APPROVAL_LIMIT, RCP, USERS } from "../data/master";
 import {
   DAY_LABELS, seedBatch, seedBills, seedPo, seedPord, seedPrq, seedReq, seedRsv, seedSales,
   seedStock, seedTkt,
-} from "./data/seed";
-import { seedVendors } from "./data/vendors";
+} from "../data/seed";
+import { seedVendors } from "../data/vendors";
 import type {
   Batch, Bill, DraftLine, DrawerState, Grn, LocKey, Payer, PordStatus, ProdOrder, PurchaseOrder,
   ReceiptLine, Requisition, StockRequest, Ticket, User, Vendor,
-} from "./types";
-import { basePrices, freeToPromise, priceOf, qty, resv } from "./lib/selectors";
-import { bestBefore, fq, now, U } from "./lib/fmt";
-import { applyTheme, nextTheme, readStoredTheme, storeTheme, type ThemePref } from "./lib/theme";
+} from "../types";
+import { basePrices, freeToPromise, priceOf, qty, resv } from "../lib/selectors";
+import { bestBefore, fq, now, U } from "../lib/fmt";
+import { applyTheme, nextTheme, readStoredTheme, storeTheme, type ThemePref } from "../lib/theme";
+import { createProcurementSlice, type ProcurementSlice } from "./procurement";
 
 interface Seq { req: number; tkt: number; bill: number; prq: number; po: number; pord: number; bat: number; vn: number }
 
-export interface AppState {
+export interface AppState extends ProcurementSlice {
   user: User | null;
   stock: Record<LocKey, Record<string, number>>;
   rsv: Record<string, number>;
@@ -531,4 +532,6 @@ export const useApp = create<AppState>((set, get) => ({
     set({ theme });
   },
   cycleTheme: () => get().setTheme(nextTheme(get().theme)),
+
+  ...createProcurementSlice(set as (p: Partial<AppState>) => void, get),
 }));
