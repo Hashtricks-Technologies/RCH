@@ -1,0 +1,33 @@
+# Royal Care Hospital — F&B inventory and billing
+#
+# The repository publishes three things from one site: the project home, the
+# specifications, and the application. scripts/build-site.sh assembles them.
+
+[build]
+  command = "bash scripts/build-site.sh"
+  publish = "dist"
+
+[build.environment]
+  # Vite 8 requires ^22.22.2 || ^24.15.0 || >=26.
+  NODE_VERSION = "24"
+
+# Vite fingerprints every asset filename, so they can be cached indefinitely.
+[[headers]]
+  for = "/app/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+# The HTML entry points must never be cached, or a deploy would not be picked up.
+[[headers]]
+  for = "/*.html"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+
+# The application routes on the hash (#/pos), so a deep link never reaches the
+# server as a path and no SPA rewrite is needed. This only tidies /app.
+[[redirects]]
+  from = "/app"
+  to = "/app/"
+  status = 301
