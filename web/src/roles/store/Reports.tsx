@@ -318,7 +318,7 @@ const REPORTS: ReportDef[] = [
   { k: "turn", n: "Ticket turnaround", icon: "rep", build: turn, d: "Time from manager approval to ticket, and from ticket to collection." },
   { k: "resage", n: "Reservation ageing", icon: "req", build: resage, d: "Stock reserved against tickets nobody has collected yet." },
   { k: "belowrl", n: "Below-reorder exceptions", icon: "need", build: belowrl, d: "Lines under reorder level, with the suggested requisition quantity." },
-  { k: "prqst", n: "Requisition status", icon: "order", build: prqst, d: "Requisitions raised on procurement — sent, ordered, received or declined." },
+  { k: "prqst", n: "Requisition status", icon: "order", build: prqst, d: "Requisitions raised on procurement — sent, approved, partially approved or declined." },
   { k: "ageing", n: "Stock ageing", icon: "item", build: ageing, d: "How long each lot has been sitting against its shelf life." },
   { k: "movers", n: "Fast and slow movers", icon: "dash", build: movers, d: "Issue velocity per item against counter sales." },
   { k: "resvav", n: "Reserved versus available", icon: "power", build: resvav, d: "Free-to-promise position per item after reservations and approvals." },

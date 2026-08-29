@@ -213,7 +213,7 @@ const NOTE: Record<string, [string, string]> = {
   requests: ["Requests awaiting approval", "Sent to the outlet manager, no decision yet"],
   approvals: ["Requests awaiting your approval", "Counters cannot move until you decide"],
   issue: ["Documents on the issue desk", "Approvals to ticket, and tickets to hand over"],
-  procure: ["Requisitions with procurement", "Sent and not yet turned into an order"],
+  procure: ["Requisitions with procurement", "Sent and not yet decided on"],
   requisitions: ["Requisitions waiting on you", "Raised by the store keeper"],
   pool: ["Lines on the procurement list", "Approved and not yet claimed by a purchase order"],
   orders: ["New kitchen orders", "Received and not yet accepted"],

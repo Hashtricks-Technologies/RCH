@@ -149,6 +149,15 @@ describe("requisition approval", () => {
     expect(S().prq.find((x) => x.id === "PRQ-2026-013")!.st).toBe("Declined");
   });
 
+  it("reports the full shortfall on a plain decline, same as an all-zero approval", () => {
+    as("buyer");
+    S().declineRequisition("PRQ-2026-013", "Store still holds three weeks of cover.");
+    const p = S().prq.find((x) => x.id === "PRQ-2026-013")!;
+    expect(p.lines[0].short).toBe(60);
+    expect(p.lines[1].short).toBe(6);
+    expect(p.lines.every((l) => l.appr === 0 && l.ordered === 0)).toBe(true);
+  });
+
   it("acts only on a requisition still waiting", () => {
     as("buyer");
     S().approveRequisition("PRQ-2026-012", [10, 1], "");
@@ -280,6 +289,17 @@ describe("draft purchase orders", () => {
     S().updatePoLine(po.id, 0, { qty: 25 });
     expect(S().prq.find((x) => x.id === "PRQ-2026-013")!.lines[0].ordered).toBe(25);
     expect(S().po.find((o) => o.id === po.id)!.lines[0].src[0].qty).toBe(25);
+  });
+
+  it("treats a qty of zero as a no-op, not a delete — removePoLine is the only way to drop a line", () => {
+    approve13();
+    S().createPo("VN-001", [{ prq: "PRQ-2026-013", line: 0, qty: 60 }]);
+    const po = S().po.find((o) => o.id === "PO-2026-0143")!;
+    S().updatePoLine(po.id, 0, { qty: 0 });
+    const after = S().po.find((o) => o.id === po.id)!;
+    expect(after.lines).toHaveLength(1);
+    expect(after.lines[0].qty).toBe(60);
+    expect(S().prq.find((x) => x.id === "PRQ-2026-013")!.lines[0].ordered).toBe(60);
   });
 
   it("edits a rate without touching the claim", () => {
@@ -599,6 +619,15 @@ describe("onOrder", () => {
     as("buyer");
     S().cancelPo("PO-2026-0141", "Vendor closed.");
     expect(onOrder(S(), "juice")).toBe(120);
+  });
+
+  it("counts a Draft PO's claim, not only Ordered/Partially received", () => {
+    // PO-2026-0140 is a Draft carrying 30 kg of sugar claimed from
+    // PRQ-2026-014 — createPo() moved that claim out of the pool the moment
+    // the draft was created, before it was ever sent to a vendor. A selector
+    // that only recognises Ordered/Partially received would report 0 here
+    // while 30 kg sits claimed and unaccounted for.
+    expect(onOrder(S(), "sugar")).toBe(30);
   });
 
   it("does not count a requisition still awaiting approval", () => {

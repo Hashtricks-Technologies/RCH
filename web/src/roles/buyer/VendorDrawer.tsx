@@ -66,7 +66,7 @@ function VendorDrawer({ id }: DrawerProps) {
           )}
           <div className="sp" />
           <Btn variant="gh" onClick={close}>Close</Btn>
-          <Btn onClick={save}>Save</Btn>
+          <Btn disabled={!n.trim()} onClick={save}>Save</Btn>
         </>
       }
     >

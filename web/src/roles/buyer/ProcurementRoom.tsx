@@ -39,8 +39,13 @@ export default function ProcurementRoom() {
 
   const submit = () => {
     const want = held.map((r) => ({ it: r.it, qty: wanted(r.it) })).filter((p) => p.qty > 0);
+    // issueToStore() returns void and toasts either way (a new ticket, or a
+    // refusal), so success is read back from the store: a refused pick never
+    // creates a ticket, so the pick list must survive to let the operator fix
+    // the offending line instead of being wiped alongside the error toast.
+    const before = useApp.getState().tkt.length;
     issueToStore(want);
-    setPicks({});
+    if (useApp.getState().tkt.length > before) setPicks({});
   };
 
   return (

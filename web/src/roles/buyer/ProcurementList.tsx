@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { IT, LOC } from "../../data/master";
 import { suggestVendor } from "../../data/vendors";
 import { useApp } from "../../store";
-import { costOf, procurementList, qty } from "../../lib/selectors";
+import { costOf, procurementList, qty, round3 } from "../../lib/selectors";
 import { fq, money0, sum, U } from "../../lib/fmt";
 import {
   Btn, Card, DataTable, Field, FilterBtn, PageHead, Tag, TableFoot, Toolbar,
@@ -32,7 +32,7 @@ export function groupPool(pool: PoolLine[], vendors: Vendor[]): PoolGroup[] {
   for (const line of pool) {
     const g = groups.find((x) => x.it === line.it);
     if (g) {
-      g.pending = Math.round((g.pending + line.pending) * 1000) / 1000;
+      g.pending = round3(g.pending + line.pending);
       g.sources.push(line);
     } else {
       groups.push({
@@ -55,14 +55,14 @@ export interface Pick { prq: string; line: number; qty: number }
  * with two smaller quantities — no separate UI is needed for that.
  */
 export function picksFor(g: PoolGroup, wanted: number): Pick[] {
-  let left = Math.round(Math.max(0, wanted) * 1000) / 1000;
+  let left = round3(Math.max(0, wanted));
   const picks: Pick[] = [];
   for (const src of g.sources) {
     if (left <= 0) break;
-    const take = Math.round(Math.min(left, src.pending) * 1000) / 1000;
+    const take = round3(Math.min(left, src.pending));
     if (take > 0) {
       picks.push({ prq: src.prq, line: src.line, qty: take });
-      left = Math.round((left - take) * 1000) / 1000;
+      left = round3(left - take);
     }
   }
   return picks;
@@ -108,8 +108,13 @@ export default function ProcurementList() {
   const canRaise = picks.length > 0 && vendorOk;
 
   const raise = () => {
+    // createPo() returns void and toasts either way (a new draft, or a
+    // refusal), so success is read back from the store: navigating away on a
+    // refused pick would strand the operator on /orders with no clue why
+    // nothing showed up there.
+    const before = useApp.getState().po.length;
     createPo(effectiveVendor, picks);
-    nav("/orders");
+    if (useApp.getState().po.length > before) nav("/orders");
   };
 
   const rows: Row[] = shown.map((g) => {

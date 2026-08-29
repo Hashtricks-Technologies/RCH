@@ -2,7 +2,7 @@ import type { Grn, PoLine, PoLineSrc, ReceiptDoc, ReceiptLine, Requisition, Vend
 import type { AppState } from "./index";
 import { IT, LOC, PO_APPROVAL_LIMIT } from "../data/master";
 import { fq, money, money0, now, U, unitTotal } from "../lib/fmt";
-import { avail, poValue, procurementList } from "../lib/selectors";
+import { avail, poValue, procurementList, round3 } from "../lib/selectors";
 
 type Set_ = (p: Partial<AppState>) => void;
 type Get = () => AppState;
@@ -27,7 +27,7 @@ const claim = (prq: Requisition[], src: PoLineSrc[], sign: 1 | -1): Requisition[
       ...p,
       lines: p.lines.map((l, i) => {
         const d = mine.filter((x) => x.line === i).reduce((t, x) => t + x.qty, 0);
-        return d ? { ...l, ordered: Math.round((l.ordered + sign * d) * 1000) / 1000 } : l;
+        return d ? { ...l, ordered: round3(l.ordered + sign * d) } : l;
       }),
     };
   });
@@ -85,8 +85,8 @@ export const createProcurementSlice = (set: Set_, get: Get): ProcurementSlice =>
     // Never approve more than the store keeper asked for.
     const lines = p.lines.map((l, i) => {
       const want = Number.isFinite(appr[i]) ? appr[i] : 0;
-      const ok = Math.round(Math.max(0, Math.min(l.qty, want)) * 1000) / 1000;
-      return { ...l, appr: ok, ordered: 0, short: Math.round((l.qty - ok) * 1000) / 1000 };
+      const ok = round3(Math.max(0, Math.min(l.qty, want)));
+      return { ...l, appr: ok, ordered: 0, short: round3(l.qty - ok) };
     });
     const total = lines.reduce((t, l) => t + l.appr, 0);
     // Zeroing every line is a decline in all but name, and a decline always carries a reason.
@@ -118,6 +118,9 @@ export const createProcurementSlice = (set: Set_, get: Get): ProcurementSlice =>
     set({
       prq: s.prq.map((x) => x.id === prqId
         ? { ...x, st: "Declined" as const, apprBy: s.user!.n, apprNote: note,
+            // A decline approves nothing — every line's shortfall is the full
+            // asked quantity, exactly like an all-zero approveRequisition().
+            lines: x.lines.map((l) => ({ ...l, appr: 0, ordered: 0, short: l.qty })),
             hist: [...x.hist, { s: "Declined", who: s.user!.n, t: now() }] }
         : x),
       drawer: null,
@@ -146,9 +149,9 @@ export const createProcurementSlice = (set: Set_, get: Get): ProcurementSlice =>
       const key = pk.prq + "␟" + pk.line;
       if (seen.has(key)) continue;
       seen.add(key);
-      const total = Math.round(
-        picks.filter((x) => x.prq === pk.prq && x.line === pk.line).reduce((t, x) => t + x.qty, 0) * 1000,
-      ) / 1000;
+      const total = round3(
+        picks.filter((x) => x.prq === pk.prq && x.line === pk.line).reduce((t, x) => t + x.qty, 0),
+      );
       const av = pool.find((l) => l.prq === pk.prq && l.line === pk.line);
       const free = av?.pending ?? 0;
       if (total > free) {
@@ -164,7 +167,7 @@ export const createProcurementSlice = (set: Set_, get: Get): ProcurementSlice =>
       const it = s.prq.find((p) => p.id === pk.prq)!.lines[pk.line].it;
       const at = lines.find((l) => l.it === it);
       if (at) {
-        at.qty = Math.round((at.qty + pk.qty) * 1000) / 1000;
+        at.qty = round3(at.qty + pk.qty);
         at.src.push({ ...pk });
       } else {
         lines.push({ it, qty: pk.qty, rate: IT[it]?.cost ?? 0, src: [{ ...pk }], recv: 0, rejected: 0 });
@@ -198,29 +201,30 @@ export const createProcurementSlice = (set: Set_, get: Get): ProcurementSlice =>
     }
     if (patch.qty == null) return;
 
-    const want = Math.round(Math.max(0, patch.qty) * 1000) / 1000;
+    // A quantity of zero or less is a no-op, not a delete — removePoLine is
+    // the one explicit, toasted path for dropping a line from the order.
+    const want = round3(patch.qty);
+    if (want <= 0) return;
     if (want > line.qty) {
       s.notify("Add another pick from the procurement list to increase this line");
       return;
     }
     // Give the difference back, last source first.
-    let give = Math.round((line.qty - want) * 1000) / 1000;
+    let give = round3(line.qty - want);
     const released: PoLineSrc[] = [];
     const src: PoLineSrc[] = [];
     for (const x of [...line.src].reverse()) {
       const take = Math.min(give, x.qty);
-      give = Math.round((give - take) * 1000) / 1000;
+      give = round3(give - take);
       if (take > 0) released.push({ ...x, qty: take });
-      const left = Math.round((x.qty - take) * 1000) / 1000;
+      const left = round3(x.qty - take);
       if (left > 0) src.unshift({ ...x, qty: left });
     }
     set({
       prq: claim(s.prq, released, -1),
       po: s.po.map((x) => x.id !== poId ? x : {
         ...x,
-        lines: want === 0
-          ? x.lines.filter((_, i) => i !== lineIdx)
-          : x.lines.map((l, i) => (i === lineIdx ? { ...l, qty: want, src } : l)),
+        lines: x.lines.map((l, i) => (i === lineIdx ? { ...l, qty: want, src } : l)),
       }),
     });
   },
@@ -324,7 +328,10 @@ export const createProcurementSlice = (set: Set_, get: Get): ProcurementSlice =>
       if (new Date(r.exp) <= new Date(r.mfg)) {
         s.notify(`${name} — expiry cannot fall on or before the manufacturing date`); return;
       }
-      if (new Date(r.exp) < today) {
+      // Parsed with an explicit local time-of-day: a bare "YYYY-MM-DD" parses as UTC
+      // midnight, while `today` (built from toDateString()) is local midnight — behind
+      // it in any timezone west of UTC, which wrongly rejects a same-day expiry.
+      if (new Date(r.exp + "T00:00:00") < today) {
         s.notify(`${name} — batch ${r.batch} has already expired; do not book it in`); return;
       }
       if (IT[l.it]?.mrp != null && r.mrp > 0 && r.mrp < (s.prices.A[l.it] ?? 0)) {
@@ -343,12 +350,12 @@ export const createProcurementSlice = (set: Set_, get: Get): ProcurementSlice =>
     const poLines = o.lines.map((l, i) => {
       const r = lines[i];
       if (!r || !(r.recv > 0)) return l;
-      const good = Math.round((r.recv - r.rejected) * 1000) / 1000;
+      const good = round3(r.recv - r.rejected);
       accepted.push({ it: l.it, qty: good });
       if (r.rejected > 0) rejected.push({ it: l.it, qty: r.rejected });
       // Accepted goods land in the procurement room, not the central store —
       // the store keeper draws them out later on a pick ticket.
-      stock.procure[l.it] = Math.round(((stock.procure[l.it] ?? 0) + good) * 1000) / 1000;
+      stock.procure[l.it] = round3((stock.procure[l.it] ?? 0) + good);
       n += 1;
       grn.push({
         id: `GRN-${poId.slice(-3)}-${String(n).padStart(2, "0")}`,
@@ -359,8 +366,8 @@ export const createProcurementSlice = (set: Set_, get: Get): ProcurementSlice =>
       });
       return {
         ...l,
-        recv: Math.round((l.recv + r.recv) * 1000) / 1000,
-        rejected: Math.round((l.rejected + r.rejected) * 1000) / 1000,
+        recv: round3(l.recv + r.recv),
+        rejected: round3(l.rejected + r.rejected),
       };
     });
 
@@ -389,10 +396,10 @@ export const createProcurementSlice = (set: Set_, get: Get): ProcurementSlice =>
     // same convention updatePoLine/removePoLine use for returning a claim.
     const back: PoLineSrc[] = [];
     for (const l of o.lines) {
-      let miss = Math.round(Math.max(0, l.qty - l.recv) * 1000) / 1000;
+      let miss = round3(Math.max(0, l.qty - l.recv));
       for (const x of [...l.src].reverse()) {
         const take = Math.min(miss, x.qty);
-        miss = Math.round((miss - take) * 1000) / 1000;
+        miss = round3(miss - take);
         if (take > 0) back.push({ ...x, qty: take });
       }
     }
@@ -422,7 +429,7 @@ export const createProcurementSlice = (set: Set_, get: Get): ProcurementSlice =>
     // Approval authorises, the scan moves: reserve here, deduct at handover.
     const rsv = { ...s.rsv };
     want.forEach((p) => {
-      rsv["procure:" + p.it] = Math.round(((rsv["procure:" + p.it] ?? 0) + p.qty) * 1000) / 1000;
+      rsv["procure:" + p.it] = round3((rsv["procure:" + p.it] ?? 0) + p.qty);
     });
     const id = "TKT-0" + (s.seq.tkt + 1);
     set({

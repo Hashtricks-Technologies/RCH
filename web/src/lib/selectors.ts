@@ -6,7 +6,7 @@ import type {
 import { fq, U } from "./fmt";
 
 /** Round to three decimals — the tolerance every quantity in this app is kept at. */
-const round3 = (v: number) => Math.round(v * 1000) / 1000;
+export const round3 = (v: number) => Math.round(v * 1000) / 1000;
 
 export interface StockShape {
   stock: Record<LocKey, Record<string, number>>;
@@ -63,7 +63,7 @@ export const parOf = (l: LocKey, it: string) => {
   const base = IT[it]?.rl ?? 0;
   if (!base) return 0;
   const f = PAR_FACTOR[l] ?? 1;
-  return U(it) === "nos" ? Math.round(base * f) : Math.round(base * f * 1000) / 1000;
+  return U(it) === "nos" ? Math.round(base * f) : round3(base * f);
 };
 
 /** Quantity already promised by an approval that has not yet become a ticket. */
@@ -91,7 +91,14 @@ export const apportion = (recv: number, src: PoLineSrc[]): number[] => {
   });
 };
 
-const LIVE: PoStatus[] = ["Ordered", "Partially received"];
+/** Purchase-order statuses that already hold a claim on procurement-list quantity.
+ *  createPo() moves a requisition line's `ordered` claim out of the pool the instant
+ *  a Draft is created — before it is ever sent to a vendor — so Draft must be counted
+ *  here or that claimed quantity is visible nowhere. Named CLAIMED, not LIVE, on
+ *  purpose: buyer/Dashboard.tsx and buyer/Vendors.tsx each define their own LIVE
+ *  constant meaning "open commitment to a vendor", which correctly excludes Draft —
+ *  do not merge this with those. */
+const CLAIMED: PoStatus[] = ["Draft", "Ordered", "Partially received"];
 
 export function prqProgress(
   s: { prq: Requisition[]; po: PurchaseOrder[] }, prqId: string,
@@ -127,7 +134,7 @@ export const onOrder = (
   s: { prq: Requisition[]; po: PurchaseOrder[] }, it: string,
 ) => round3(
   procurementList(s).filter((l) => l.it === it).reduce((t, l) => t + l.pending, 0)
-  + s.po.filter((o) => LIVE.includes(o.st))
+  + s.po.filter((o) => CLAIMED.includes(o.st))
     .reduce((t, o) => t + o.lines
       .filter((l) => l.it === it)
       .reduce((n, l) => n + Math.max(0, l.qty - l.recv), 0), 0),
@@ -160,7 +167,7 @@ export const procurementList = (s: { prq: Requisition[] }): PoolLine[] =>
   s.prq
     .filter((p) => p.st === "Approved" || p.st === "Partially approved")
     .flatMap((p) => p.lines.flatMap((l, i) => {
-      const pending = Math.round((l.appr - l.ordered) * 1000) / 1000;
+      const pending = round3(l.appr - l.ordered);
       return pending > 0
         ? [{ prq: p.id, line: i, it: l.it, asked: l.qty, pending, by: p.by, at: p.at }]
         : [];

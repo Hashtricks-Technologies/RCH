@@ -16,6 +16,55 @@ const overContract = (it: string, rate: number) => {
   return c > 0 && rate > c * (1 + TOLERANCE) ? c : null;
 };
 
+/**
+ * Quantity and rate cells on a draft line are edited freely as the operator
+ * types, so they cannot write to the store on every keystroke — an
+ * in-progress edit (clearing the field to retype, or typing a multi-digit
+ * increase one character at a time) would otherwise be sent to the store a
+ * character at a time. Local state absorbs the typing; the value only
+ * reaches the store on blur or Enter. If the store's own value changes
+ * underneath (or a commit was rejected/no-op'd and the store didn't move),
+ * the field snaps back to whatever the store actually holds.
+ */
+function DraftLineInput({
+  value, min, step, ariaLabel, positiveOnly, onCommit,
+}: {
+  value: number; min: number; step: number; ariaLabel: string;
+  positiveOnly?: boolean; onCommit: (n: number) => void;
+}) {
+  const [local, setLocal] = useState(String(value));
+  const [synced, setSynced] = useState(value);
+  // Reset the field whenever the store's own value moves out from under it —
+  // adjusted during render (React's own pattern for this), not in an effect,
+  // so the field never has a chance to paint a stale value first.
+  if (value !== synced) {
+    setSynced(value);
+    setLocal(String(value));
+  }
+
+  const commit = () => {
+    const n = Number(local);
+    if (Number.isFinite(n) && (!positiveOnly || n > 0)) onCommit(n);
+    // Whether or not the store accepted the value, resync the field to
+    // whatever it currently holds rather than leaving a stale or blank input:
+    // if the commit changed it, the render-time check above catches the new
+    // value on the next render; if it didn't (rejected, no-op or invalid),
+    // this line is what puts the field back to the true value.
+    setSynced(value);
+    setLocal(String(value));
+  };
+
+  return (
+    <input
+      type="number" className="mono" min={min} step={step}
+      value={local} aria-label={ariaLabel}
+      onChange={(e) => setLocal(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+    />
+  );
+}
+
 const dotFor = (state: string) =>
   state === "Cancelled" ? "var(--crit)"
     : state === "Partially received" ? "var(--warn)"
@@ -60,16 +109,16 @@ function PoDrawer({ id }: DrawerProps) {
         key: l.it + i,
         cells: [
           <>{IT[l.it]?.n ?? l.it}<small>{IT[l.it]?.c ?? ""}</small></>,
-          <input
-            type="number" className="mono" min={0} step={U(l.it) === "nos" ? 1 : 0.5}
-            value={l.qty} aria-label={`Quantity of ${IT[l.it]?.n ?? l.it}`}
-            onChange={(e) => updatePoLine(po.id, i, { qty: Number(e.target.value) })}
+          <DraftLineInput
+            value={l.qty} min={0} step={U(l.it) === "nos" ? 1 : 0.5} positiveOnly
+            ariaLabel={`Quantity of ${IT[l.it]?.n ?? l.it}`}
+            onCommit={(n) => updatePoLine(po.id, i, { qty: n })}
           />,
           <>{U(l.it)}</>,
-          <input
-            type="number" className="mono" min={0} step={0.01}
-            value={l.rate} aria-label={`Rate for ${IT[l.it]?.n ?? l.it}`}
-            onChange={(e) => updatePoLine(po.id, i, { rate: Number(e.target.value) })}
+          <DraftLineInput
+            value={l.rate} min={0} step={0.01}
+            ariaLabel={`Rate for ${IT[l.it]?.n ?? l.it}`}
+            onCommit={(n) => updatePoLine(po.id, i, { rate: n })}
           />,
           <>
             {contract > 0 ? money(contract) : <span className="dim">—</span>}
@@ -126,8 +175,11 @@ function PoDrawer({ id }: DrawerProps) {
           <FormRow cols="f2">
             <Field label="Vendor">
               <select value={po.vendor} onChange={(e) => setPoVendor(po.id, e.target.value)}>
-                {s.vendors.filter((v) => v.active).map((v) => (
-                  <option key={v.id} value={v.id}>{v.n}</option>
+                {/* The order's own vendor must always have a matching <option>, even when
+                    deactivated after this draft was raised — otherwise the browser silently
+                    selects the first option in the list, showing a vendor the order isn't on. */}
+                {s.vendors.filter((v) => v.active || v.id === po.vendor).map((v) => (
+                  <option key={v.id} value={v.id}>{v.active ? v.n : `${v.n} (inactive)`}</option>
                 ))}
               </select>
             </Field>
