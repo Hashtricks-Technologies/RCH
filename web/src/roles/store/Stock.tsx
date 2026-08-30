@@ -1,4 +1,5 @@
 import { useState } from "react";
+import ProductRequests from "./ProductRequests";
 import { useNavigate } from "react-router-dom";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
@@ -187,6 +188,7 @@ export default function Stock() {
           extra={<>Value shown {money0(shown)} · total central store {money0(total)}</>}
         />
       </Card>
+          <ProductRequests />
     </>
   );
 }

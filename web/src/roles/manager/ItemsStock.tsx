@@ -7,13 +7,13 @@ import {
   Alert, Btn, Card, DataTable, Field, FilterBtn, FormRow, Grid, PageHead,
   StatusPill, TableFoot, Tag, Toolbar,
 } from "../../ui/kit";
+import type { ItemType, LocKey, TicketPriority } from "../../types";
 import { emptyFor, sortRows, useSort, type SortValue } from "./useSort";
-import type { IssuePriority, ItemType, LocKey } from "../../types";
 
 const TYPES: (ItemType | "All")[] = ["All", "RAW", "PACK", "MRP", "FG", "MTO"];
 const STATES = ["All", "Below reorder in store", "At zero somewhere", "Not held anywhere"] as const;
 const TSTATES = ["All", "Reserved", "In transit", "Received"] as const;
-const PRIORITIES: IssuePriority[] = ["Normal", "High", "Low"];
+const PRIORITIES: TicketPriority[] = ["Normal", "Urgent", "Low"];
 const tagKind = (t: ItemType) => (t === "MRP" ? "tr" : t === "FG" || t === "MTO" ? "md" : undefined);
 
 /** A shop transfer ticket's stage, in the words the manager needs. */
@@ -22,7 +22,7 @@ const stageOf = (st: string) => (st === "Issued" ? "Reserved" : st === "Collecte
 export default function ItemsStock() {
   const s = useApp();
   const addProduct = useApp((x) => x.addProduct);
-  const raiseIssue = useApp((x) => x.raiseIssue);
+  const requestNewProduct = useApp((x) => x.requestNewProduct);
   const notify = useApp((x) => x.notify);
 
   const [q, setQ] = useState("");
@@ -123,16 +123,11 @@ export default function ItemsStock() {
     const name = nName.trim();
     if (!name) { notify("Name the product you want the central store to stock"); return; }
     const opening = nQty.trim();
-    raiseIssue({
-      kind: "Stock",
-      title: `New product request — ${name}`,
-      detail: [
-        `New-product request raised by the outlet manager for ${LOC[shop].n}.`,
-        opening ? `Quantity wanted to start with: ${opening}.` : "",
-        nDetail.trim(),
-        "This product is not on the item master. The central store must create it before it can be requested or priced.",
-      ].filter(Boolean).join(" "),
-      priority: PRIORITIES[nPrio],
+    requestNewProduct({
+      name,
+      why: [opening ? `Quantity wanted to start with: ${opening}.` : "", nDetail.trim()]
+        .filter(Boolean).join(" "),
+      forLoc: shop,
     });
     setNName(""); setNDetail(""); setNQty("");
   };

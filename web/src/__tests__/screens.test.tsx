@@ -7,7 +7,7 @@ import { USERS } from "../data/master";
 import { NAV } from "../nav";
 import { DRAWERS } from "../drawers";
 import Settings from "../pages/Settings";
-import Issues from "../pages/Issues";
+import Issues from "../pages/Support";
 import Login from "../pages/Login";
 import { screens as counter } from "../roles/counter";
 import { screens as manager } from "../roles/manager";

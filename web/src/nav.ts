@@ -9,7 +9,7 @@ export const NAV: Record<Role, NavGroup[]> = {
     { group: "Sell", items: [{ k: "pos", label: "Point of Sale", icon: "pos" }, { k: "bills", label: "Bills", icon: "bill" }] },
     { group: "My counter", items: [{ k: "stock", label: "Stock in Hand", icon: "stock" }, { k: "avail", label: "Product Availability", icon: "power" }] },
     { group: "Movement", items: [{ k: "requests", label: "Stock Requests", icon: "req" }, { k: "tickets", label: "Pick Tickets", icon: "tkt" }] },
-    { group: "Account", items: [{ k: "issues", label: "Issues", icon: "req" }, { k: "settings", label: "Settings", icon: "set" }] },
+    { group: "Account", items: [{ k: "issues", label: "Support", icon: "req" }, { k: "settings", label: "Settings", icon: "set" }] },
   ],
   manager: [
     { group: "Overview", items: [{ k: "dash", label: "Dashboard", icon: "dash" }] },
@@ -18,7 +18,7 @@ export const NAV: Record<Role, NavGroup[]> = {
       { k: "stock", label: "Items & Stock", icon: "item" },
       { k: "prices", label: "Price Lists", icon: "price" },
       { k: "avail", label: "Product On / Off", icon: "power" }] },
-    { group: "Account", items: [{ k: "issues", label: "Issues", icon: "req" }, { k: "settings", label: "Settings", icon: "set" }] },
+    { group: "Account", items: [{ k: "issues", label: "Support", icon: "req" }, { k: "settings", label: "Settings", icon: "set" }] },
   ],
   store: [
     { group: "Overview", items: [{ k: "dash", label: "Dashboard", icon: "dash" }] },
@@ -30,14 +30,14 @@ export const NAV: Record<Role, NavGroup[]> = {
       { k: "procure", label: "Requisitions", icon: "need" },
       { k: "contracts", label: "Rate Contracts", icon: "price" }] },
     { group: "Insights", items: [{ k: "reports", label: "Reports", icon: "rep" }] },
-    { group: "Account", items: [{ k: "issues", label: "Issues", icon: "req" }, { k: "settings", label: "Settings", icon: "set" }] },
+    { group: "Account", items: [{ k: "issues", label: "Support", icon: "req" }, { k: "settings", label: "Settings", icon: "set" }] },
   ],
   prod: [
     { group: "Overview", items: [{ k: "dash", label: "Dashboard", icon: "dash" }] },
     { group: "Kitchen", items: [{ k: "orders", label: "Orders", icon: "order" }, { k: "make", label: "Make & Distribute", icon: "make" }] },
     { group: "Stock", items: [{ k: "stock", label: "Kitchen Stock", icon: "stock" }, { k: "avail", label: "Product On / Off", icon: "power" }] },
     { group: "Movement", items: [{ k: "requests", label: "Stock Requests", icon: "req" }, { k: "tickets", label: "Pick Tickets", icon: "tkt" }] },
-    { group: "Account", items: [{ k: "issues", label: "Issues", icon: "req" }, { k: "settings", label: "Settings", icon: "set" }] },
+    { group: "Account", items: [{ k: "issues", label: "Support", icon: "req" }, { k: "settings", label: "Settings", icon: "set" }] },
   ],
   buyer: [
     { group: "Overview", items: [{ k: "dash", label: "Dashboard", icon: "dash" }] },
@@ -48,7 +48,7 @@ export const NAV: Record<Role, NavGroup[]> = {
     { group: "Goods", items: [{ k: "room", label: "Procurement Room", icon: "stock" }] },
     { group: "Inventory", items: [{ k: "inventory", label: "Inventory", icon: "item" }] },
     { group: "Masters", items: [{ k: "vendors", label: "Vendors", icon: "item" }] },
-    { group: "Account", items: [{ k: "issues", label: "Issues", icon: "req" }, { k: "settings", label: "Settings", icon: "set" }] },
+    { group: "Account", items: [{ k: "issues", label: "Support", icon: "req" }, { k: "settings", label: "Settings", icon: "set" }] },
   ],
 };
 export const HOME: Record<Role, string> = {

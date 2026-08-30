@@ -92,15 +92,31 @@ export interface Vendor {
   terms: string; lead: number; groups: string[]; active: boolean;
 }
 
-export type IssueKind = "Stock" | "Equipment" | "Quality" | "System" | "Other";
-export type IssuePriority = "Low" | "Normal" | "High";
-export type IssueStatus = "Open" | "Acknowledged" | "Resolved" | "Closed";
-export interface Issue {
-  id: string; kind: IssueKind; title: string; detail: string;
-  priority: IssuePriority; st: IssueStatus;
-  by: string; role: Role; loc: LocKey; at: string;
-  hist: HistEntry[];
+/** Customer care for the portal itself — not an operational problem in the kitchen. */
+export type TicketTopic =
+  | "Sign in & access" | "A screen will not load" | "A number looks wrong"
+  | "Printing & receipts" | "Slow or freezing" | "Training & how do I"
+  | "Feature request" | "Something else";
+export type TicketPriority = "Low" | "Normal" | "Urgent";
+export type TicketStatus = "Open" | "With support" | "Waiting on you" | "Resolved" | "Closed";
+export interface TicketMessage {
+  id: string; from: "user" | "support"; who: string; at: string; body: string;
 }
+export interface SupportTicket {
+  id: string; topic: TicketTopic; subject: string; priority: TicketPriority;
+  st: TicketStatus; by: string; role: Role; loc: LocKey; at: string;
+  screen: string;
+  messages: TicketMessage[];
+  rating?: 1 | 2 | 3 | 4 | 5;
+}
+
+/** A shop asking the central store to put a product on the master that is not there yet. */
+export type ProductReqStatus = "Requested" | "Created" | "Declined";
+export interface ProductRequest {
+  id: string; name: string; why: string; forLoc: LocKey;
+  by: string; at: string; st: ProductReqStatus; note?: string; itemKey?: string;
+}
+
 export interface RateContract {
   id: string; vendor: string; it: string; rate: number;
   from: string; to: string; moq: number; active: boolean;

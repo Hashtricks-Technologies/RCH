@@ -585,3 +585,58 @@ describe("two shops deal with each other directly", () => {
     expect(S().tkt).toHaveLength(tickets);
   });
 });
+
+describe("support is customer care for the portal", () => {
+  it("raises a ticket carrying the screen it is about, and threads the reply", () => {
+    as("counter");
+    S().raiseTicket({
+      topic: "A number looks wrong", subject: "Cash collected stuck at zero",
+      body: "Sales is climbing but cash is not.", priority: "Urgent", screen: "Dashboard",
+    });
+    const t = S().tickets[0];
+    expect(t.st).toBe("Open");
+    expect(t.screen).toBe("Dashboard");
+    expect(t.by).toBe("Kavitha Raman");
+    expect(t.messages).toHaveLength(1);
+
+    S().replyToTicket(t.id, "Still happening after a refresh.");
+    expect(S().tickets[0].messages).toHaveLength(2);
+
+    S().setTicketStatus(t.id, "Resolved");
+    S().rateTicket(t.id, 5);
+    expect(S().tickets[0].st).toBe("Resolved");
+    expect(S().tickets[0].rating).toBe(5);
+  });
+
+  it("a reply on a ticket waiting on the user hands it back to support", () => {
+    as("counter");
+    const waiting = S().tickets.find((t) => t.st === "Waiting on you")!;
+    S().replyToTicket(waiting.id, "Yes, that covers it — thank you.");
+    expect(S().tickets.find((t) => t.id === waiting.id)!.st).toBe("With support");
+  });
+
+  it("refuses a ticket with no subject", () => {
+    as("counter");
+    const before = S().tickets.length;
+    S().raiseTicket({ topic: "Something else", subject: "  ", body: "x", priority: "Low", screen: "Dashboard" });
+    expect(S().tickets).toHaveLength(before);
+  });
+});
+
+describe("a new product a shop wants goes to the central store, not to support", () => {
+  it("the manager raises it and the store keeper answers it", () => {
+    as("manager");
+    const before = S().productReqs.length;
+    S().requestNewProduct({ name: "Sugar-free iced tea 250ml", why: "Diabetic attenders ask daily", forLoc: "coffee" });
+    expect(S().productReqs).toHaveLength(before + 1);
+    const r = S().productReqs[0];
+    expect(r.st).toBe("Requested");
+    expect(r.by).toBe("Ramesh Kumar");
+    // it must not have landed on the support desk
+    expect(S().tickets.some((t) => t.subject.includes("Sugar-free"))).toBe(false);
+
+    as("store");
+    S().answerProductRequest(r.id, "Declined", "Vendor cannot supply reliably");
+    expect(S().productReqs.find((p) => p.id === r.id)!.st).toBe("Declined");
+  });
+});

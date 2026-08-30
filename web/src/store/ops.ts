@@ -1,7 +1,8 @@
 import { IT, LOC, OUTLETS } from "../data/master";
-import { seedContracts, seedIssues } from "../data/ops";
+import { seedContracts, seedProductRequests, seedTickets } from "../data/ops";
 import type {
-  Issue, IssueKind, IssuePriority, IssueStatus, Item, ItemType, LocKey, RateContract, ShopAsk,
+  Item, ItemType, LocKey, ProductRequest, RateContract, ShopAsk,
+  SupportTicket, TicketPriority, TicketStatus, TicketTopic,
 } from "../types";
 import { fq, makeOtp, now, U } from "../lib/fmt";
 import type { AppState } from "./index";
@@ -16,13 +17,21 @@ export interface NewItemInput {
 }
 
 export interface OpsSlice {
-  issues: Issue[];
+  tickets: SupportTicket[];
+  productReqs: ProductRequest[];
   contracts: RateContract[];
   /** Bumped whenever the catalogue gains an item, so lists re-read it. */
   catalogVersion: number;
 
-  raiseIssue: (p: { kind: IssueKind; title: string; detail: string; priority: IssuePriority }) => void;
-  setIssueStatus: (id: string, st: IssueStatus) => void;
+  /** Customer care for the portal — a screen misbehaving, a number that looks wrong. */
+  raiseTicket: (p: { topic: TicketTopic; subject: string; body: string; priority: TicketPriority; screen: string }) => void;
+  replyToTicket: (id: string, body: string) => void;
+  setTicketStatus: (id: string, st: TicketStatus) => void;
+  rateTicket: (id: string, rating: 1 | 2 | 3 | 4 | 5) => void;
+
+  /** A shop asking the central store to put a brand-new product on the master. */
+  requestNewProduct: (p: { name: string; why: string; forLoc: LocKey }) => void;
+  answerProductRequest: (id: string, st: "Created" | "Declined", note: string, itemKey?: string) => void;
 
   addContract: (c: Omit<RateContract, "id">) => void;
   updateContract: (id: string, patch: Partial<Omit<RateContract, "id">>) => void;
@@ -41,37 +50,78 @@ export interface OpsSlice {
   declineShopAsk: (id: string, reason: string) => void;
 }
 
-const hist = (who: string, s: string) => ({ s, who, t: now() });
 const slug = (name: string) =>
   name.toLowerCase().replace(/[^a-z0-9]+/g, "").slice(0, 12) || "item";
 
 export const createOpsSlice = (set: Set_, get: Get): OpsSlice => ({
-  issues: seedIssues(),
+  tickets: seedTickets(),
+  productReqs: seedProductRequests(),
   contracts: seedContracts(),
   catalogVersion: 0,
   shopAsks: [],
 
-  raiseIssue: ({ kind, title, detail, priority }) => {
+  raiseTicket: ({ topic, subject, body, priority, screen }) => {
     const s = get();
     if (!s.user) return;
-    if (!title.trim()) { s.notify("Give the issue a title before raising it"); return; }
-    const id = "ISS-" + String(s.issues.length + 41).padStart(4, "0");
+    if (!subject.trim()) { s.notify("Give the ticket a subject so support knows what it is about"); return; }
+    const id = "SUP-00" + (s.tickets.length + 41);
     set({
-      issues: [{
-        id, kind, title: title.trim(), detail: detail.trim(), priority, st: "Open",
-        by: s.user.n, role: s.user.r, loc: s.user.loc, at: now(),
-        hist: [hist(s.user.n, "Open")],
-      }, ...s.issues],
+      tickets: [{
+        id, topic, subject: subject.trim(), priority, st: "Open",
+        by: s.user.n, role: s.user.r, loc: s.user.loc, at: now(), screen,
+        messages: body.trim()
+          ? [{ id: "m1", from: "user", who: s.user.n, at: now(), body: body.trim() }]
+          : [],
+      }, ...s.tickets],
     });
-    s.notify(`${id} raised — ${title.trim()}`);
+    s.notify(`${id} raised — support replies to urgent tickets within the hour`);
   },
-  setIssueStatus: (id, st) => {
+  replyToTicket: (id, body) => {
+    const s = get();
+    if (!s.user || !body.trim()) { s.notify("Write a reply first"); return; }
+    set({
+      tickets: s.tickets.map((t) => t.id === id ? {
+        ...t,
+        st: (t.st === "Waiting on you" || t.st === "Resolved" ? "With support" : t.st) as TicketStatus,
+        messages: [...t.messages, {
+          id: "m" + (t.messages.length + 1), from: "user" as const,
+          who: s.user!.n, at: now(), body: body.trim(),
+        }],
+      } : t),
+    });
+    s.notify(`Reply sent on ${id}`);
+  },
+  setTicketStatus: (id, st) => {
+    const s = get();
+    set({ tickets: s.tickets.map((t) => (t.id === id ? { ...t, st } : t)) });
+    s.notify(`${id} — ${st.toLowerCase()}`);
+  },
+  rateTicket: (id, rating) => {
+    const s = get();
+    set({ tickets: s.tickets.map((t) => (t.id === id ? { ...t, rating } : t)) });
+    s.notify(`Thank you — ${rating} out of 5 recorded against ${id}`);
+  },
+
+  requestNewProduct: ({ name, why, forLoc }) => {
+    const s = get();
+    if (!s.user) return;
+    if (!name.trim()) { s.notify("Name the product you want added"); return; }
+    const id = "NPR-00" + (s.productReqs.length + 12);
+    set({
+      productReqs: [{
+        id, name: name.trim(), why: why.trim(), forLoc,
+        by: s.user.n, at: now(), st: "Requested",
+      }, ...s.productReqs],
+    });
+    s.notify(`${id} sent to the central store — they add it to the master`);
+  },
+  answerProductRequest: (id, st, note, itemKey) => {
     const s = get();
     set({
-      issues: s.issues.map((i) =>
-        i.id === id ? { ...i, st, hist: [...i.hist, hist(s.user?.n ?? "", st)] } : i),
+      productReqs: s.productReqs.map((p) =>
+        p.id === id ? { ...p, st, note: note.trim(), itemKey } : p),
     });
-    s.notify(`${id} — ${st.toLowerCase()}`);
+    s.notify(st === "Created" ? `${id} — product created on the master` : `${id} declined`);
   },
 
   addContract: (c) => {
