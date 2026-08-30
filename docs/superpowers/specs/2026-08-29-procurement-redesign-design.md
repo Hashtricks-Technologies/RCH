@@ -1,7 +1,29 @@
 # Procurement redesign — design
 
 Date: 2026-08-29
-Status: Approved for implementation
+Amended: 2026-08-30 — see "Amendment" below
+Status: Implemented, with the custody model since reversed
+
+## Amendment — 2026-08-30
+
+Two decisions in this document were reversed after the redesign shipped, on the
+user's instruction. The rest of the spec stands.
+
+**The Procurement Room is gone.** Received goods now go straight onto the
+central store's shelf. `LocKey` is back to its five real locations, and the
+transit room, its screen, the `issueToStore` action, the room-to-store pick
+ticket and the store keeper's Inbound screen were all removed. §4.1, the
+custody row in §2, §5.5 and the room's entries in §7 are struck through below
+and no longer describe the code.
+
+**A vendor is chosen per line, not per order.** The procurement list picks a
+vendor on each row rather than one vendor for the whole selection, because the
+same item can legitimately come from several suppliers. Lines sharing a vendor
+combine into one draft; lines on different vendors become separate drafts.
+
+Two layout changes landed at the same time and are not otherwise recorded here:
+the Requisitions screen shows its Waiting / Approved / Declined cards side by
+side, and every role can collapse the sidebar.
 
 ## 1. Problem
 
@@ -30,9 +52,10 @@ Settled with the user before writing this spec:
 | Decision | Choice |
 |---|---|
 | Procurement list ↔ PO | Pool freely across requisitions; provenance moves to the PO line |
-| Custody after receipt | Goods land in a Procurement Room, then a pick ticket transfers them to the central store |
+| Custody after receipt | ~~Goods land in a Procurement Room, then a pick ticket transfers them to the central store~~ — **reversed 2026-08-30: received goods go directly onto the central store's shelf** |
 | Requisition approval | Per line, with editable approved quantity |
 | Vendor record scope | Contacts, terms and supply groups; contract rates stay global per item |
+| Vendor choice | ~~One vendor per order, chosen when the order is raised~~ — **reversed 2026-08-30: chosen per line, fanning out into one draft per vendor** |
 | PO lifecycle | Draft → Ordered → Partially received → Received, plus Cancelled |
 | Receive step extras | Instalment receipt with running balance; delivery-note and invoice capture |
 
@@ -51,35 +74,26 @@ is unchanged for every consumer and every existing test.
 
 Rationale: `store.ts` is 531 lines carrying all five roles and this work adds
 ~250 more. Extracting only the domain being changed is a targeted improvement,
-not a general refactor. A separate procurement store was rejected — Procurement
-Room stock must live in the same `stock` record as every other location or
-`stockValue` and every inventory screen fork into two sources of truth.
+not a general refactor. A separate procurement store was rejected — stock for
+every location must live in one `stock` record, or `stockValue` and every
+inventory screen fork into two sources of truth.
 
 ## 4. Data model
 
-### 4.1 New location
+### 4.1 New location — REMOVED 2026-08-30
 
-`LocKey` gains `"procure"`. It is a closed union, so the compiler will flag every
-site that must be updated.
+~~`LocKey` gains `"procure"`, a Procurement Room that takes custody of received
+goods before the central store accepts them.~~
+
+This was removed. `LocKey` is the five real locations again:
 
 ```ts
-export type LocKey = "store" | "kitchen" | "rest" | "coffee" | "kiosk" | "procure";
+export type LocKey = "store" | "kitchen" | "rest" | "coffee" | "kiosk";
 ```
 
-- `LOC.procure` = `{ n: "Procurement Room", c: "PR-PC", type: "Store", floor: "Basement", cc: "CC-PRC" }`
-- `ALL_LOCS` includes `"procure"` — held stock is owned stock and must count in
-  valuation.
-- `PAR_FACTOR.procure` = `0`. A transit room has no reorder level; `parOf` already
-  returns 0 for a zero factor.
-- `seedStock.procure` = `{}`.
-- `LOC.procure` has no `list`, so `priceOf` returns 0 and it is never an outlet.
-- `OUTLETS` is unchanged.
-
-One consumer needs a guard rather than a mechanical update. `MakeDistribute.tsx:13`
-derives the kitchen's distribution destinations as `ALL_LOCS.filter(l => l !== "kitchen")`.
-Adding the room to `ALL_LOCS` would make it a legal target for finished goods,
-which is backwards — stock flows out of the room, never into it from the kitchen.
-That filter must exclude `"procure"` as well.
+`receivePo` writes accepted quantity straight to `stock.store`. Nothing else in
+the receipt path changed — the batch, expiry, MRP and over-delivery validations
+are untouched.
 
 ### 4.2 Vendor
 
@@ -269,19 +283,15 @@ All live in the procurement slice.
     `ordered` on the source lines by the shortfall, so the store keeper's demand
     reappears rather than vanishing.
 
-### 5.5 Transfer to the central store
+### 5.5 Transfer to the central store — REMOVED 2026-08-30
 
-- `issueToStore(picks: { it: string; qty: number }[])`
-  - Refuses a qty of 0 or one above `avail(s, "procure", it)`.
-  - Creates `Ticket { id, req: "Procurement transfer", from: "procure", to: "store", lines, st: "Issued" }`
-    and reserves `rsv["procure:" + it]`.
-  - Follows the pattern `distribute` already uses for a non-requisition ticket
-    (`store.ts:499`).
+~~`issueToStore(picks)` reserves room stock and raises a pick ticket the store
+keeper confirms.~~
 
-Handover and confirmation reuse the **existing** `handover` and `receiveTicket`
-unchanged — both are already location-generic (`store.ts:284-317`), and their
-`req.map` over a non-requisition ticket id is a no-op, as `distribute` already
-relies on.
+Removed along with the room. There is no transfer step: `receivePo` puts the
+goods on the central store's shelf directly. The store→outlet pick-ticket chain
+that serves counter requests is untouched — only the procurement-to-store
+tickets are gone.
 
 ## 6. Selectors
 
@@ -340,9 +350,8 @@ Overview     Dashboard
 Purchasing   Requisitions          reworked
              Procurement List      new
              Purchase Orders       new
-Goods        Procurement Room      new
+Inventory    Inventory             unchanged
 Masters      Vendors               new
-Inventory    Inventory             gains a Procurement Room column
 Account      Settings
 ```
 
@@ -351,29 +360,34 @@ Account      Settings
 - **Requisitions** — inbound queue only. All pricing, vendor and ETA controls are
   removed. The `bprq` drawer becomes an approval drawer with an editable approved
   quantity per line, a computed short column, and a mandatory reason on decline.
-  Sections: Waiting on you / Approved / Declined, each showing derived progress.
+  Sections: Waiting on you / Approved / Declined, each showing derived progress,
+  laid out side by side (amended 2026-08-30 — they were stacked).
 - **Procurement List** — the pooled backlog, grouped by item so three
   requisitions asking for milk read as one 85 L row with a source breakdown.
-  Filter by item group and by suggested vendor. Select lines, choose a vendor,
-  raise a draft PO.
+  Filter by item group and by vendor. Each row carries its own vendor picker
+  (amended 2026-08-30 — it was one vendor for the whole order), and the contract
+  rate shown follows the vendor chosen on that row. Raising fans the selection
+  out into one draft PO per distinct vendor. The cart sits beside the table and
+  names the orders it is about to raise.
 - **Purchase Orders** — the full lifecycle. List with status tabs and a detail
   drawer: a Draft is fully editable and can be sent or cancelled; an Ordered PO
   offers Receive; a Partially received PO offers Receive again or Close short.
   The ₹25,000 slab shows as a warning pill.
-- **Procurement Room** — quantity per item held, traced to its GRN and PO.
-  Select quantities and issue a pick ticket to the central store; open tickets
-  stay listed with a Scan & hand over action until the store keeper confirms.
 - **Vendors** — directory with add, edit and deactivate, each vendor showing its
   open POs and value on order.
-- **Inventory** — unchanged except that Procurement Room joins the location
-  columns.
+- **Inventory** — unchanged.
 
 ### Store keeper
 
-A new **Inbound** screen under a `Receive` nav group, listing tickets where
-`to === "store" && st !== "Received"`, with a confirm-receipt action calling the
-existing `receiveTicket`. Without it, pick tickets from the Procurement Room would
-hang at `Collected` forever.
+~~A new **Inbound** screen to confirm pick tickets arriving from the Procurement
+Room.~~ Removed 2026-08-30 with the room — nothing transfers into the central
+store any more, so there is nothing to confirm. The store keeper's screens are
+unchanged by this redesign.
+
+### Shell — amended 2026-08-30
+
+Every role can collapse the sidebar from an × in its header; the burger, hidden
+on desktop until then, is the way back, so no state leaves the rail unreachable.
 
 ### Shell
 
@@ -430,10 +444,8 @@ New coverage in `web/src/__tests__/procurement.test.ts`:
 - `web/src/roles/buyer/PurchaseOrders.tsx`
 - `web/src/roles/buyer/PoDrawer.tsx`
 - `web/src/roles/buyer/PoReceiptDrawer.tsx`
-- `web/src/roles/buyer/ProcurementRoom.tsx`
 - `web/src/roles/buyer/Vendors.tsx`
 - `web/src/roles/buyer/VendorDrawer.tsx`
-- `web/src/roles/store/Inbound.tsx`
 
 **Modified (17)**
 

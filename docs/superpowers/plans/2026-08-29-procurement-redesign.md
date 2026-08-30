@@ -1,5 +1,12 @@
 # Procurement Redesign Implementation Plan
 
+> **Historical record — partly superseded.** This plan was executed as written
+> on 2026-08-29. On 2026-08-30 the Procurement Room and its room-to-store pick
+> ticket were removed, and vendor choice moved from per-order to per-line. Tasks
+> 1, 7, 8 and 9 therefore describe code that no longer exists. The plan is kept
+> as the record of what was built and why; see the Amendment at the top of the
+> spec for the current design.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Rebuild the Procurement Officer role so requisitions are approved line by line into a pooled procurement list, purchase orders have a real lifecycle on their own page, vendors are managed records, and received goods take custody in a Procurement Room before transferring to the central store by pick ticket.
