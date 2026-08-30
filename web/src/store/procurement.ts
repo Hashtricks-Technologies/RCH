@@ -1,8 +1,8 @@
 import type { Grn, PoLine, PoLineSrc, ReceiptDoc, ReceiptLine, Requisition, Vendor } from "../types";
 import type { AppState } from "./index";
 import { IT, LOC, PO_APPROVAL_LIMIT } from "../data/master";
-import { fq, makeOtp, money, money0, now, U, unitTotal } from "../lib/fmt";
-import { avail, poValue, procurementList, round3 } from "../lib/selectors";
+import { fq, money, money0, now, unitTotal } from "../lib/fmt";
+import { poValue, procurementList, round3 } from "../lib/selectors";
 
 type Set_ = (p: Partial<AppState>) => void;
 type Get = () => AppState;
@@ -47,7 +47,6 @@ export interface ProcurementSlice {
   cancelPo: (poId: string, reason: string) => void;
   receivePo: (poId: string, doc: ReceiptDoc, lines: ReceiptLine[]) => void;
   closePoShort: (poId: string, reason: string) => void;
-  issueToStore: (picks: { it: string; qty: number }[]) => void;
 }
 
 export const createProcurementSlice = (set: Set_, get: Get): ProcurementSlice => ({
@@ -355,7 +354,8 @@ export const createProcurementSlice = (set: Set_, get: Get): ProcurementSlice =>
       if (r.rejected > 0) rejected.push({ it: l.it, qty: r.rejected });
       // Accepted goods land in the procurement room, not the central store —
       // the store keeper draws them out later on a pick ticket.
-      stock.procure[l.it] = round3((stock.procure[l.it] ?? 0) + good);
+      // Accepted goods go straight onto the central store's shelf.
+      stock.store[l.it] = round3((stock.store[l.it] ?? 0) + good);
       n += 1;
       grn.push({
         id: `GRN-${poId.slice(-3)}-${String(n).padStart(2, "0")}`,
@@ -381,8 +381,8 @@ export const createProcurementSlice = (set: Set_, get: Get): ProcurementSlice =>
       }),
     });
     s.notify(rejected.length > 0
-      ? `Booked into ${LOC.procure.n} — ${unitTotal(accepted)} accepted, ${unitTotal(rejected)} rejected`
-      : `Booked into ${LOC.procure.n} — ${grn.length} batch(es) against ${doc.dc.trim()}`);
+      ? `Booked into ${LOC.store.n} — ${unitTotal(accepted)} accepted, ${unitTotal(rejected)} rejected`
+      : `Booked into ${LOC.store.n} — ${grn.length} batch(es) against ${doc.dc.trim()}`);
   },
 
   closePoShort: (poId, reason) => {
@@ -414,31 +414,4 @@ export const createProcurementSlice = (set: Set_, get: Get): ProcurementSlice =>
     s.notify(`${poId} closed short — the undelivered balance is back on the procurement list`);
   },
 
-  issueToStore: (picks) => {
-    const s = get();
-    if (!s.user) return;
-    const want = picks.filter((p) => p.qty > 0);
-    if (!want.length) { s.notify("Enter a quantity to hand over"); return; }
-    for (const p of want) {
-      const free = avail(s, "procure", p.it);
-      if (p.qty > free) {
-        s.notify(`${IT[p.it]?.n ?? p.it} — only ${fq(free, p.it)} ${U(p.it)} free in the ${LOC.procure.n}`);
-        return;
-      }
-    }
-    // Approval authorises, the scan moves: reserve here, deduct at handover.
-    const rsv = { ...s.rsv };
-    want.forEach((p) => {
-      rsv["procure:" + p.it] = round3((rsv["procure:" + p.it] ?? 0) + p.qty);
-    });
-    const id = "TKT-0" + (s.seq.tkt + 1);
-    set({
-      rsv, seq: { ...s.seq, tkt: s.seq.tkt + 1 }, drawer: null,
-      tkt: [...s.tkt, {
-        id, req: "Procurement transfer", from: "procure" as const, to: "store" as const,
-        lines: want.map((p) => ({ it: p.it, qty: p.qty })), st: "Issued" as const, otp: makeOtp(s.seq.tkt + 1),
-      }],
-    });
-    s.notify(`${id} issued — ${LOC.store.n} can collect ${want.length} line(s) from the ${LOC.procure.n}`);
-  },
 });

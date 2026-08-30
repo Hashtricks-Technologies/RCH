@@ -1,5 +1,5 @@
 export type ItemType = "RAW" | "PACK" | "MRP" | "FG" | "MTO";
-export type LocKey = "store" | "kitchen" | "rest" | "coffee" | "kiosk" | "procure";
+export type LocKey = "store" | "kitchen" | "rest" | "coffee" | "kiosk";
 export type Role = "counter" | "manager" | "store" | "prod" | "buyer";
 export type ReqStatus =
   | "Draft" | "Request sent" | "Manager approved" | "Partially approved"

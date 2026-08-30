@@ -32,6 +32,9 @@ describe("the whole app mounts for every role on every route", () => {
         const html = mountApp("/" + k);
         // the shell itself must be present, not just the screen
         expect(html, "sidebar missing — the shell did not render").toContain("Royal Care");
+        // every role can put the sidebar away, and get it back
+        expect(html, "no way to hide the sidebar").toContain('aria-label="Hide the sidebar"');
+        expect(html, "no way to bring the sidebar back").toContain('aria-label="Show the sidebar"');
         expect(html.length).toBeGreaterThan(1500);
       });
     }

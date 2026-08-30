@@ -29,7 +29,7 @@ const approver = (r: StockRequest) =>
 
 /** "All" plus every location a ticket or request can come from — the same
  *  cycle drives all three filter buttons, so they read the same way. */
-const LOC_OPTS: (LocKey | null)[] = [null, ...ALL_LOCS.filter((l) => l !== "store" && l !== "procure")];
+const LOC_OPTS: (LocKey | null)[] = [null, ...ALL_LOCS.filter((l) => l !== "store")];
 const locLabel = (l: LocKey | null) => (l === null ? "All" : LOC[l].n);
 
 export default function IssueDesk() {

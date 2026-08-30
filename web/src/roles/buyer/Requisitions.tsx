@@ -3,7 +3,9 @@ import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
 import { round3 } from "../../lib/selectors";
 import { money0, sum } from "../../lib/fmt";
-import { Btn, Card, DataTable, FilterBtn, PageHead, Pill, StatusPill, TableFoot, Toolbar } from "../../ui/kit";
+import {
+  Btn, Card, DataTable, FilterBtn, Grid, PageHead, Pill, StatusPill, TableFoot, Toolbar,
+} from "../../ui/kit";
 import type { Row } from "../../ui/kit";
 import type { PrqLine, Requisition } from "../../types";
 import { cycle, recap, reconcile } from "./lib";
@@ -75,14 +77,10 @@ export default function Requisitions() {
     key: p.id,
     onClick: () => openDrawer("bprq", p.id),
     cells: [
-      <>{p.id}<small>{LOC.store.n}</small></>,
-      <>{p.by}</>,
-      <>{p.at}</>,
+      <>{p.id}<small>{p.by} · {p.at}</small></>,
       <>{p.lines.length}</>,
-      <>{qtyOf(p)}</>,
       <>{money0(lineValue(p.lines))}</>,
-      <span className="dim">{p.note || "—"}</span>,
-      <Btn size="xs" onClick={() => openDrawer("bprq", p.id)}>Review &amp; approve</Btn>,
+      <Btn size="xs" onClick={() => openDrawer("bprq", p.id)}>Approve</Btn>,
     ],
   }));
 
@@ -92,21 +90,15 @@ export default function Requisitions() {
       key: p.id,
       onClick: () => openDrawer("bprq", p.id),
       cells: [
-        <>{p.id}<small>{p.by}</small></>,
-        <>{p.apprBy ?? "—"}</>,
-        <>{p.lines.length}</>,
-        <>{apprQtyOf(p)} <small className="dim">of {qtyOf(p)} asked</small></>,
-        <>{r.ordered}</>,
-        <>{r.received}</>,
-        <>{money0(apprValue(p.lines))}</>,
+        <>{p.id}<small>{p.apprBy ?? p.by}</small></>,
+        <>{apprQtyOf(p)} <small className="dim">of {qtyOf(p)}</small></>,
         p.st === "Approved"
-          ? <Pill tone="ok">Approved in full</Pill>
-          : <Pill tone="wn">Partially approved</Pill>,
+          ? <Pill tone="ok">In full</Pill>
+          : <Pill tone="wn">Partial</Pill>,
         <>
           <StatusPill status={r.label} />
-          <div className="mini dim">{r.done} of {r.total} item(s) received</div>
+          <div className="mini dim">{r.done} of {r.total} received</div>
         </>,
-        <Btn size="xs" variant="gh" onClick={() => openDrawer("bprq", p.id)}>What was ordered</Btn>,
       ],
     };
   });
@@ -115,11 +107,8 @@ export default function Requisitions() {
     key: p.id,
     onClick: () => openDrawer("bprq", p.id),
     cells: [
-      <>{p.id}<small>{p.by}</small></>,
-      <>{p.at}</>,
-      <>{p.apprBy ?? "—"}</>,
+      <>{p.id}<small>{p.apprBy ?? p.by} · {p.at}</small></>,
       <span className="dim">{p.apprNote || "—"}</span>,
-      <Btn size="xs" variant="gh" onClick={() => openDrawer("bprq", p.id)}>View</Btn>,
     ],
   }));
 
@@ -136,6 +125,7 @@ export default function Requisitions() {
         actions={<Pill tone={waiting.length ? "wn" : "ok"}>{waiting.length} waiting on you</Pill>}
       />
 
+      <Grid cols="g3">
       <Card title="Waiting on you" sub={`${waiting.length} requisition(s) · ${money0(waitValue)} estimated`} flush>
         <Toolbar
           placeholder="Search requisition, store keeper, note or item…"
@@ -148,13 +138,9 @@ export default function Requisitions() {
         />
         <DataTable
           cols={[
-            { h: "Requisition", cls: "nm", w: "17%" },
-            { h: "Raised by", w: "13%" },
-            { h: "Time" },
+            { h: "Requisition", cls: "nm", w: "40%" },
             { h: "Items", r: true },
-            { h: "Total qty", r: true },
-            { h: "Estimated value", r: true },
-            { h: "Note", w: "22%" },
+            { h: "Value", r: true },
             { h: "" },
           ]}
           rows={waitRows}
@@ -172,7 +158,6 @@ export default function Requisitions() {
         <TableFoot count={waitRows.length} extra={<>Estimated value <b className="mono">{money0(waitValue)}</b></>} />
       </Card>
 
-      <div className="mtop" />
       <Card
         title="Approved — and what was ordered"
         sub="Approved quantity against what purchase orders actually claim, and what has landed so far"
@@ -191,16 +176,10 @@ export default function Requisitions() {
         />
         <DataTable
           cols={[
-            { h: "Requisition", cls: "nm", w: "14%" },
-            { h: "Approved by", w: "13%" },
-            { h: "Items", r: true },
-            { h: "Approved qty", r: true },
-            { h: "Ordered qty", r: true },
-            { h: "Received qty", r: true },
-            { h: "Value", r: true },
+            { h: "Requisition", cls: "nm", w: "30%" },
+            { h: "Approved", r: true },
             { h: "Outcome" },
-            { h: "Order progress", w: "15%" },
-            { h: "" },
+            { h: "Progress", w: "28%" },
           ]}
           rows={apprRows}
           empty={apprNarrowed
@@ -213,11 +192,15 @@ export default function Requisitions() {
         />
         <TableFoot
           count={apprRows.length}
-          extra={<>{shownOrdered} ordered · {shownReceived} received across the rows shown</>}
+          extra={
+            <>
+              {money0(sum(approved, (p) => apprValue(p.lines)))} approved ·{" "}
+              {shownOrdered} ordered · {shownReceived} received
+            </>
+          }
         />
       </Card>
 
-      <div className="mtop" />
       <Card title="Declined" sub="Nothing was approved — the store keeper sees your reason" flush>
         <Toolbar
           placeholder="Search requisition, reason or item…"
@@ -230,11 +213,8 @@ export default function Requisitions() {
         />
         <DataTable
           cols={[
-            { h: "Requisition", cls: "nm", w: "18%" },
-            { h: "Raised" },
-            { h: "Declined by", w: "16%" },
-            { h: "Reason", w: "34%" },
-            { h: "" },
+            { h: "Requisition", cls: "nm", w: "42%" },
+            { h: "Reason" },
           ]}
           rows={declRows}
           empty={declNarrowed
@@ -247,6 +227,7 @@ export default function Requisitions() {
         />
         <TableFoot count={declRows.length} />
       </Card>
+      </Grid>
     </>
   );
 }

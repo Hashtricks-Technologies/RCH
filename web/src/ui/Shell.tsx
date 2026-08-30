@@ -12,7 +12,11 @@ import { applyPrefs, readPrefs, usePhoto } from "./prefs";
 import Drawer from "./Drawer";
 
 export default function Shell({ children }: { children: ReactNode }) {
+  // `open` is the mobile drawer; `collapsed` hides the rail on a wide screen.
+  // The burger is the way back in both cases — on desktop it only appears once
+  // the sidebar is collapsed, so there is never a state with no way to reopen.
   const [open, setOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
   const user = useApp((s) => s.user)!;
   const signOut = useApp((s) => s.signOut);
   const toast = useApp((s) => s.toast);
@@ -28,9 +32,20 @@ export default function Shell({ children }: { children: ReactNode }) {
   useEffect(() => { applyPrefs(readPrefs()); }, []);
 
   return (
-    <div id="app" className="on">
+    <div id="app" className={`on${collapsed ? " sc" : ""}`}>
       <aside className={`side${open ? " open" : ""}`}>
-        <div className="sh"><span className="lm">RC</span><div><b>Royal Care</b><span>Inventory</span></div></div>
+        <div className="sh">
+          <span className="lm">RC</span>
+          <div><b>Royal Care</b><span>Inventory</span></div>
+          <button
+            className="ib sx" type="button" aria-label="Hide the sidebar"
+            onClick={() => { setCollapsed(true); setOpen(false); }}
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.6}>
+              <path d="m4 4 8 8M12 4l-8 8" />
+            </svg>
+          </button>
+        </div>
         <nav className="nav">
           {NAV[user.r].map((g) => (
             <div key={g.group}>
@@ -57,7 +72,10 @@ export default function Shell({ children }: { children: ReactNode }) {
       </aside>
       <div className="main">
         <header className="top">
-          <button className="burger" type="button" onClick={() => setOpen(!open)} aria-label="Menu">
+          <button
+            className="burger" type="button" aria-label="Show the sidebar"
+            onClick={() => { setCollapsed(false); setOpen(!open); }}
+          >
             <svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.6}>
               <path d="M2 4h12M2 8h12M2 12h12" /></svg>
           </button>
@@ -218,8 +236,6 @@ const NOTE: Record<string, [string, string]> = {
   pool: ["Lines on the procurement list", "Approved and not yet claimed by a purchase order"],
   orders: ["New kitchen orders", "Received and not yet accepted"],
   avail: ["Products that cannot be sold", "Switched off, out of stock, or short an ingredient"],
-  inbound: ["Transfers to confirm", "Handed over by procurement and not yet received"],
-  room: ["Transfers to hand over", "Issued from the procurement room, not yet collected"],
 };
 
 /* ---------- search index ---------- */
@@ -289,7 +305,6 @@ function navCounts(s: AppState): Record<string, number> {
     c.issue = s.req.filter((r) => (r.st === "Manager approved" || r.st === "Partially approved") && !r.ticket).length
       + s.tkt.filter((t) => t.from === "store" && t.st === "Issued").length;
     c.procure = s.prq.filter((p) => p.st === "Sent").length;
-    c.inbound = s.tkt.filter((t) => t.to === "store" && t.st === "Collected").length;
   }
   if (u.r === "prod") {
     c.orders = s.pord.filter((o) => o.st === "New").length;
@@ -299,7 +314,6 @@ function navCounts(s: AppState): Record<string, number> {
   if (u.r === "buyer") {
     c.requisitions = s.prq.filter((p) => p.st === "Sent").length;
     c.pool = procurementList(s).length;
-    c.room = s.tkt.filter((t) => t.from === "procure" && t.st === "Issued").length;
   }
   return c;
 }

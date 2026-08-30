@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { IT, LOC } from "../../data/master";
 import { vendorName } from "../../data/vendors";
 import { useApp } from "../../store";
-import { avail, daysCover, poValue, procurementList, qty, stateTone, stockValue } from "../../lib/selectors";
+import { avail, daysCover, poValue, procurementList, stateTone, stockValue } from "../../lib/selectors";
 import { U, fq, lakh, money0, sum } from "../../lib/fmt";
 import {
   Alert, Btn, Card, DataTable, Feed, FilterBtn, Grid, Kpis, PageHead, Pill, TableFoot, Toolbar,
@@ -52,8 +52,6 @@ export default function Dashboard() {
   const commitmentOf = (k: string) =>
     onLivePo(k) ? "On order" : poolItems.has(k) ? "On the list" : "Nothing committed";
 
-  const roomLines = Object.keys(s.stock.procure).filter((k) => IT[k] && qty(s, "procure", k) > 0);
-
   const kpis = [
     {
       l: "Requisitions waiting on you", v: String(waiting.length),
@@ -72,8 +70,8 @@ export default function Dashboard() {
       d: <>across {new Set(live.map((o) => o.vendor)).size} vendor(s)</>,
     },
     {
-      l: `Held in ${LOC.procure.n}`, v: lakh(stockValue(s, "procure")),
-      d: <>{roomLines.length} item(s) ready to hand over</>,
+      l: `Stock value · ${LOC.store.n}`, v: lakh(stockValue(s, "store")),
+      d: <>received goods land here directly</>,
     },
     {
       l: "Below reorder · central store", v: String(below.length),

@@ -2,7 +2,6 @@ import type { Bill, Batch, Grn, LocKey, ProdOrder, PurchaseOrder, Requisition, S
 
 export const seedStock: Record<LocKey, Record<string, number>> = {
   store:   { milk: 12, beans: 18.4, leaf: 3.2, sugar: 40, maida: 48.5, oil: 30, fill: 12, butter: 4, bread: 20, cup: 2400, box: 820, juice: 156, water: 120, bisc: 60, chips: 88 },
-  procure: { milk: 60, butter: 6 },
   rest:    { milk: 14, beans: 2, leaf: 0.6, sugar: 3, cup: 220, box: 60, juice: 20, water: 30, chips: 12, puff: 12, sand: 6, salad: 4 },
   kitchen: { maida: 8, oil: 4, fill: 3, butter: 1.2, bread: 6, cup: 200, box: 120, milk: 6, sugar: 4, puff: 24, sand: 8, salad: 5 },
   coffee:  { milk: 0, beans: 1.2, leaf: 0.4, sugar: 2, cup: 180, juice: 8, water: 12, bisc: 6, chips: 9 },

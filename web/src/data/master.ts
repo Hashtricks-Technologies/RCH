@@ -2,14 +2,13 @@ import type { Item, Location, LocKey, Recipe, User, Payer } from "../types";
 
 export const LOC: Record<LocKey, Location> = {
   store:   { n: "Central Store",   c: "WH-CS", type: "Store",   floor: "Basement", cc: "CC-STO" },
-  procure: { n: "Procurement Room", c: "PR-PC", type: "Store",  floor: "Basement", cc: "CC-PRC" },
   kitchen: { n: "Central Kitchen", c: "KT-CK", type: "Kitchen", floor: "Ground",   cc: "CC-KIT" },
   rest:    { n: "Restaurant",      c: "OT-R1", type: "Outlet",  floor: "Floor 1",  cc: "CC-RST", list: "A" },
   coffee:  { n: "Coffee Shop",     c: "OT-C3", type: "Outlet",  floor: "Floor 3",  cc: "CC-CF3", list: "B" },
   kiosk:   { n: "Snack Kiosk",     c: "OT-GK", type: "Outlet",  floor: "Ground",   cc: "CC-KSK", list: "A" },
 };
 export const OUTLETS: LocKey[] = ["rest", "coffee", "kiosk"];
-export const ALL_LOCS: LocKey[] = ["store", "procure", "kitchen", "rest", "coffee", "kiosk"];
+export const ALL_LOCS: LocKey[] = ["store", "kitchen", "rest", "coffee", "kiosk"];
 
 /** Mutable on purpose: the central store can add a product that did not exist before.
  *  Bump `catalogVersion` in the app store after writing so React re-reads it. */
@@ -62,7 +61,7 @@ export const USERS: User[] = [
    a day of stock must not be judged against a warehouse par, so each location
    carries its own factor (M11). */
 export const PAR_FACTOR: Record<LocKey, number> = {
-  store: 1, procure: 0, kitchen: 0.35, rest: 0.22, coffee: 0.18, kiosk: 0.15,
+  store: 1, kitchen: 0.35, rest: 0.22, coffee: 0.18, kiosk: 0.15,
 };
 
 /* Payers for the non-cash tenders (M1). No backend, so these stand in for the

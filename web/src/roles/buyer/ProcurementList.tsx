@@ -1,12 +1,12 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { IT, LOC } from "../../data/master";
-import { suggestVendor } from "../../data/vendors";
+import { suggestVendor, vendorName } from "../../data/vendors";
 import { useApp } from "../../store";
 import { costOf, procurementList, qty, round3 } from "../../lib/selectors";
 import { fq, money, money0, sum, U } from "../../lib/fmt";
 import {
-  Btn, Card, DataTable, Field, FilterBtn, PageHead, Tag, TableFoot, Toolbar,
+  Alert, Btn, Card, DataTable, FilterBtn, Grid, PageHead, Tag, TableFoot, Toolbar,
 } from "../../ui/kit";
 import type { Row } from "../../ui/kit";
 import type { PoolLine } from "../../lib/selectors";
@@ -69,9 +69,28 @@ export function picksFor(g: PoolGroup, wanted: number): Pick[] {
   return picks;
 }
 
+/**
+ * A purchase order is always to ONE vendor, so a selection spanning several
+ * vendors becomes several orders — grouped here rather than forcing one vendor
+ * across the whole selection, which is what lets a buyer clear a list whose
+ * items come from different suppliers in a single pass.
+ */
+export function ordersFor(
+  picked: { group: PoolGroup; vendor: string; qty: number }[],
+): { vendor: string; picks: Pick[] }[] {
+  const byVendor = new Map<string, Pick[]>();
+  for (const { group, vendor, qty: want } of picked) {
+    const p = picksFor(group, want);
+    if (!vendor || !p.length) continue;
+    byVendor.set(vendor, [...(byVendor.get(vendor) ?? []), ...p]);
+  }
+  return [...byVendor].map(([vendor, picks]) => ({ vendor, picks }));
+}
+
 export default function ProcurementList() {
   const s = useApp();
   const createPo = useApp((x) => x.createPo);
+  const notify = useApp((x) => x.notify);
   const nav = useNavigate();
 
   const [q, setQ] = useState("");
@@ -80,13 +99,17 @@ export default function ProcurementList() {
   const [stockFilter, setStockFilter] = useState("All");
   const [sel, setSel] = useState<Record<string, boolean>>({});
   const [qtyOverride, setQtyOverride] = useState<Record<string, number>>({});
-  const [vendorId, setVendorId] = useState("");
+  // Vendor is chosen PER LINE, not once for the whole order — the same item can
+  // legitimately come from several suppliers, and the buyer picks which one on
+  // the row itself. An unset entry means "still following the suggestion".
+  const [vendorFor, setVendorFor] = useState<Record<string, string>>({});
 
   const groups = groupPool(procurementList(s), s.vendors);
   const qtyFor = (g: PoolGroup) => qtyOverride[g.it] ?? g.pending;
   const setQtyForItem = (g: PoolGroup, v: number) =>
     setQtyOverride((m) => ({ ...m, [g.it]: Math.max(0, Math.min(v, g.pending)) }));
   const toggle = (it: string) => setSel((m) => ({ ...m, [it]: !m[it] }));
+  const vendorOf = (g: PoolGroup) => vendorFor[g.it] ?? g.vendor?.id ?? "";
 
   const GROUPS = ["All", ...[...new Set(groups.map((g) => IT[g.it]?.g ?? ""))].sort()];
   const VENDOR_NAMES = ["All", ...[...new Set(groups.map((g) => g.vendor?.n ?? NO_VENDOR))].sort()];
@@ -115,14 +138,14 @@ export default function ProcurementList() {
   };
 
   const selected = groups.filter((g) => sel[g.it]);
-  const picks = selected.flatMap((g) => picksFor(g, qtyFor(g)));
   const runningTotal = sum(selected, (g) => qtyFor(g) * costOf(g.it));
-  // Sticks to the suggestion for the first selected row until the buyer
-  // overrides it — an empty vendorId means "still following the suggestion".
-  const suggested = selected[0]?.vendor?.id ?? "";
-  const effectiveVendor = vendorId || suggested;
-  const vendorOk = s.vendors.some((v) => v.id === effectiveVendor && v.active);
-  const canRaise = picks.length > 0 && vendorOk;
+  const activeVendor = (id: string) => s.vendors.find((v) => v.id === id && v.active);
+
+  const planned = ordersFor(
+    selected.map((g) => ({ group: g, vendor: vendorOf(g), qty: qtyFor(g) })),
+  );
+  const missingVendor = selected.filter((g) => !activeVendor(vendorOf(g)));
+  const canRaise = planned.length > 0 && missingVendor.length === 0;
 
   const raise = () => {
     // createPo() returns void and toasts either way (a new draft, or a
@@ -130,8 +153,13 @@ export default function ProcurementList() {
     // refused pick would strand the operator on /orders with no clue why
     // nothing showed up there.
     const before = useApp.getState().po.length;
-    createPo(effectiveVendor, picks);
-    if (useApp.getState().po.length > before) nav("/orders");
+    for (const o of planned) createPo(o.vendor, o.picks);
+    const made = useApp.getState().po.length - before;
+    if (made <= 0) return;
+    // Each createPo toasts, and only the last would survive — so when the
+    // selection fanned out across vendors, say so plainly instead.
+    if (made > 1) notify(`${made} draft purchase orders raised across ${made} vendors`);
+    nav("/orders");
   };
 
   const rows: Row[] = shown.map((g) => {
@@ -152,10 +180,18 @@ export default function ProcurementList() {
           onChange={(e) => setQtyForItem(g, Number(e.target.value))}
         />,
         <>{fq(qty(s, "store", g.it), g.it)}</>,
-        it?.rl ? <>{fq(it.rl, g.it)}</> : <span className="dim">—</span>,
-        g.vendor ? <>{g.vendor.n}</> : <span className="dim">No active vendor</span>,
+        <select
+          value={vendorOf(g)} aria-label={`Vendor for ${it?.n ?? g.it}`}
+          onChange={(e) => setVendorFor((m) => ({ ...m, [g.it]: e.target.value }))}
+        >
+          <option value="">Choose a vendor…</option>
+          {s.vendors.filter((v) => v.active).map((v) => (
+            <option key={v.id} value={v.id}>{v.n}</option>
+          ))}
+        </select>,
         (() => {
-          const c = effectiveVendor ? contractFor(s, effectiveVendor, g.it) : undefined;
+          const chosen = vendorOf(g);
+          const c = chosen ? contractFor(s, chosen, g.it) : undefined;
           if (!c) return <span className="dim">Off contract</span>;
           return (
             <>
@@ -190,6 +226,7 @@ export default function ProcurementList() {
         sub="Every approved requisition item not yet claimed by an order, pooled by item — pick what to buy here and raise a purchase order."
       />
 
+      <Grid cols="g21">
       <Card title="Pending lines" sub={`${shown.length} of ${groups.length} item(s) waiting on an order`} flush>
         <Toolbar
           placeholder="Search item name or code…"
@@ -211,8 +248,7 @@ export default function ProcurementList() {
             { h: "Pending", r: true },
             { h: "Pick qty", r: true, w: "10%" },
             { h: LOC.store.n, r: true },
-            { h: "Reorder", r: true },
-            { h: "Suggested vendor", w: "14%" },
+            { h: "Vendor", w: "18%" },
             { h: "Contract rate", r: true, w: "13%" },
             { h: "Sources", w: "14%" },
           ]}
@@ -235,43 +271,51 @@ export default function ProcurementList() {
       </Card>
 
       {groups.length > 0 && (
-        <div
-          className="mtop"
-          style={{
-            position: "sticky", bottom: 0, zIndex: 5,
-            background: "var(--surface)", borderTop: "1px solid var(--line-strong)",
-          }}
-        >
+        <div style={{ position: "sticky", top: 12, alignSelf: "start" }}>
           <Card
-            title="Raise a purchase order"
+            title="Order cart"
             sub={selected.length
-              ? `${selected.length} item(s) selected across ${picks.length} source(s)`
-              : "Tick an item above to start an order."}
+              ? `${selected.length} item(s) · ${planned.length} order(s) to raise`
+              : "Tick an item to start an order."}
           >
-            <div style={{ display: "flex", gap: 16, alignItems: "flex-end", flexWrap: "wrap" }}>
-              <div style={{ minWidth: 220 }}>
-                <Field
-                  label="Vendor"
-                  hint={!vendorId && suggested
-                    ? "Defaulted to the vendor suggested for the first line you picked."
-                    : "Only active vendors can be chosen."}
-                >
-                  <select value={effectiveVendor} onChange={(e) => setVendorId(e.target.value)}>
-                    <option value="">Choose a vendor…</option>
-                    {s.vendors.filter((v) => v.active).map((v) => (
-                      <option key={v.id} value={v.id}>{v.n}</option>
-                    ))}
-                  </select>
-                </Field>
-              </div>
-              <div className="totrow big" style={{ flex: 1, minWidth: 200, paddingBottom: 8 }}>
-                <span>Total at standard cost</span><span>{money0(runningTotal)}</span>
-              </div>
-              <Btn disabled={!canRaise} onClick={raise}>Raise purchase order</Btn>
+            {selected.length === 0 ? (
+              <p className="mini dim">
+                Pick the items you want to buy. Items sharing a vendor are combined into one
+                order; items on different vendors become separate orders.
+              </p>
+            ) : (
+              <>
+                {planned.map((o) => (
+                  <div key={o.vendor} className="mtop">
+                    <b className="mono-id">{vendorName(s.vendors, o.vendor)}</b>
+                    <div className="mini dim">
+                      {o.picks.length} source line(s) ·{" "}
+                      {selected.filter((g) => vendorOf(g) === o.vendor).map((g) => IT[g.it]?.n ?? g.it).join(", ")}
+                    </div>
+                  </div>
+                ))}
+                {missingVendor.length > 0 && (
+                  <div className="mtop">
+                    <Alert tone="w" label="NO VENDOR">
+                      {missingVendor.map((g) => IT[g.it]?.n ?? g.it).join(", ")} still{" "}
+                      {missingVendor.length > 1 ? "need" : "needs"} an active vendor on its row.
+                    </Alert>
+                  </div>
+                )}
+                <div className="totrow big mtop">
+                  <span>Total at standard cost</span><span>{money0(runningTotal)}</span>
+                </div>
+              </>
+            )}
+            <div className="mtop">
+              <Btn disabled={!canRaise} onClick={raise}>
+                {planned.length > 1 ? `Raise ${planned.length} purchase orders` : "Raise purchase order"}
+              </Btn>
             </div>
           </Card>
         </div>
       )}
+      </Grid>
     </>
   );
 }

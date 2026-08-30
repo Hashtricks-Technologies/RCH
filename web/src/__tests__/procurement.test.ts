@@ -1,28 +1,20 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { ALL_LOCS, LOC, PAR_FACTOR } from "../data/master";
+import { ALL_LOCS, LOC } from "../data/master";
 import { seedVendors, suggestVendor, vendorName } from "../data/vendors";
 import {
-  apportion, awaitingApproval, onOrder, parOf, poValue, prqProgress, procurementList, qty, resv,
+  apportion, awaitingApproval, onOrder, poValue, prqProgress, procurementList, qty,
 } from "../lib/selectors";
 import type { ReceiptLine } from "../types";
+import { ordersFor } from "../roles/buyer/ProcurementList";
+import type { PoolGroup } from "../roles/buyer/ProcurementList";
 import { as, resetStore, S } from "./fixture";
 
 beforeEach(resetStore);
 
-describe("procurement room location", () => {
-  it("is a known location that counts in valuation", () => {
-    expect(LOC.procure.n).toBe("Procurement Room");
-    expect(ALL_LOCS).toContain("procure");
-    expect(S().stock.procure).toBeDefined();
-  });
-
-  it("carries no reorder level, because it is a transit room", () => {
-    expect(PAR_FACTOR.procure).toBe(0);
-    expect(parOf("procure", "milk")).toBe(0);
-  });
-
-  it("opens with the stock its partially received order delivered", () => {
-    expect(qty(S(), "procure", "milk")).toBe(60);
+describe("stock locations", () => {
+  it("carries exactly the five real locations — there is no transit room", () => {
+    expect(ALL_LOCS).toEqual(["store", "kitchen", "rest", "coffee", "kiosk"]);
+    expect(Object.keys(LOC).sort()).toEqual([...ALL_LOCS].sort());
   });
 });
 
@@ -52,9 +44,8 @@ describe("vendor master", () => {
 });
 
 describe("kitchen distribution", () => {
-  it("cannot distribute finished goods into the procurement room", async () => {
+  it("never lists the kitchen as its own destination", async () => {
     const mod = await import("../roles/prod/MakeDistribute");
-    expect(mod.DESTS).not.toContain("procure");
     expect(mod.DESTS).not.toContain("kitchen");
   });
 });
@@ -378,12 +369,11 @@ describe("receiving against a purchase order", () => {
     mfg: "2026-08-01", exp: "2027-08-01", ...over,
   });
 
-  it("books accepted stock into the procurement room, not the central store", () => {
+  it("books accepted stock straight onto the central store's shelf", () => {
     as("buyer");
     const store = qty(S(), "store", "juice");
     S().receivePo("PO-2026-0141", doc, [line({ recv: 120 }), line({ recv: 90 })]);
-    expect(qty(S(), "procure", "juice")).toBe(120);
-    expect(qty(S(), "store", "juice")).toBe(store);
+    expect(qty(S(), "store", "juice")).toBe(store + 120);
     expect(S().po.find((x) => x.id === "PO-2026-0141")!.st).toBe("Received");
   });
 
@@ -399,8 +389,9 @@ describe("receiving against a purchase order", () => {
 
   it("subtracts the rejected quantity without stocking it", () => {
     as("buyer");
+    const store = qty(S(), "store", "juice");
     S().receivePo("PO-2026-0141", doc, [line({ recv: 120, rejected: 20 }), line({ recv: 90 })]);
-    expect(qty(S(), "procure", "juice")).toBe(100);
+    expect(qty(S(), "store", "juice")).toBe(store + 100);
     expect(S().grn.find((g) => g.it === "juice")!.rejected).toBe(20);
     expect(S().toast).toMatch(/rejected/i);
   });
@@ -412,7 +403,7 @@ describe("receiving against a purchase order", () => {
     // only the milk line — a bare number here would silently add litres to
     // kilos.
     S().receivePo("PO-2026-0142", doc, [line({ recv: 20, rejected: 5 }), line({ recv: 0.12 })]);
-    expect(S().toast).toBe("Booked into Procurement Room — 15.000 L · 0.120 kg accepted, 5.000 L rejected");
+    expect(S().toast).toBe("Booked into Central Store — 15.000 L · 0.120 kg accepted, 5.000 L rejected");
   });
 
   it("accumulates instalments and stays partially received in between", () => {
@@ -426,7 +417,7 @@ describe("receiving against a purchase order", () => {
     o = S().po.find((x) => x.id === "PO-2026-0141")!;
     expect(o.st).toBe("Received");
     expect(o.lines[0].recv).toBe(120);
-    expect(qty(S(), "procure", "juice")).toBe(120);
+    expect(qty(S(), "store", "juice")).toBe(156 + 120);
   });
 
   it("refuses a receipt with no delivery note", () => {
@@ -513,52 +504,6 @@ describe("receiving against a purchase order", () => {
   });
 });
 
-describe("procurement room to central store", () => {
-  it("issues a pick ticket and reserves the stock", () => {
-    as("buyer");
-    S().issueToStore([{ it: "milk", qty: 40 }]);
-    const t = S().tkt.at(-1)!;
-    expect(t.from).toBe("procure");
-    expect(t.to).toBe("store");
-    expect(t.st).toBe("Issued");
-    expect(t.req).toBe("Procurement transfer");
-    expect(resv(S(), "procure", "milk")).toBe(40);
-    expect(qty(S(), "procure", "milk")).toBe(60);
-  });
-
-  it("refuses more than is free to promise in the room", () => {
-    as("buyer");
-    S().issueToStore([{ it: "milk", qty: 40 }]);
-    S().issueToStore([{ it: "milk", qty: 40 }]);
-    expect(S().tkt.filter((t) => t.from === "procure")).toHaveLength(1);
-    expect(S().toast).toMatch(/only 20/i);
-  });
-
-  it("refuses an empty or zero pick", () => {
-    as("buyer");
-    S().issueToStore([]);
-    S().issueToStore([{ it: "milk", qty: 0 }]);
-    expect(S().tkt.filter((t) => t.from === "procure")).toHaveLength(0);
-  });
-
-  it("moves stock room to store across handover and receipt", () => {
-    as("buyer");
-    const before = qty(S(), "store", "milk");
-    S().issueToStore([{ it: "milk", qty: 40 }]);
-    const id = S().tkt.at(-1)!.id;
-
-    S().handover(id);
-    expect(qty(S(), "procure", "milk")).toBe(20);
-    expect(resv(S(), "procure", "milk")).toBe(0);
-    expect(qty(S(), "store", "milk")).toBe(before);
-    expect(S().tkt.find((t) => t.id === id)!.st).toBe("Collected");
-
-    as("store");
-    S().receiveTicket(id);
-    expect(qty(S(), "store", "milk")).toBe(before + 40);
-    expect(S().tkt.find((t) => t.id === id)!.st).toBe("Received");
-  });
-});
 
 describe("requisition progress", () => {
   it("reports awaiting approval before a decision", () => {
@@ -661,16 +606,14 @@ describe("awaitingApproval", () => {
 /**
  * The single test proving the redesigned pipeline hangs together end to end:
  * a requisition raised by the store keeper becomes visible to procurement,
- * gets pooled, ordered, partially delivered into the procurement room (never
- * the central store), handed over, and only lands on the store's shelf once
- * the store keeper confirms receipt. Every stage asserts a concrete quantity,
- * not merely that the call did not throw.
+ * gets pooled, ordered, and delivered in instalments straight onto the central
+ * store's shelf. Every stage asserts a concrete quantity, not merely that the
+ * call did not throw.
  */
-describe("end to end: requisition to shelf through the procurement room", () => {
-  it("carries PRQ-2026-013 from approval through a partial receipt, a room transfer and a store receipt", () => {
-    const procureBefore = qty(S(), "procure", "milk"); // seeded at 60
+describe("end to end: requisition to shelf", () => {
+  it("carries PRQ-2026-013 from approval through two instalments onto the store's shelf", () => {
     const storeBefore = qty(S(), "store", "milk"); // seeded at 12
-    expect(procureBefore).toBe(60);
+    const butterBefore = qty(S(), "store", "butter"); // seeded at 4
     expect(storeBefore).toBe(12);
 
     // 1. Approve the requisition in full.
@@ -711,31 +654,75 @@ describe("end to end: requisition to shelf through the procurement room", () => 
     );
     expect(S().po.find((o) => o.id === poId)!.st).toBe("Partially received");
     expect(S().grn.filter((g) => g.po === poId)).toHaveLength(1);
-    // The accepted quantity lands in the procurement room — never the central store.
-    expect(qty(S(), "procure", "milk")).toBe(100); // 60 + 40
-    expect(qty(S(), "store", "milk")).toBe(storeBefore); // untouched: still 12
+    // The accepted quantity goes straight onto the central store's shelf —
+    // no transit room, no pick ticket, no second confirmation step.
+    expect(qty(S(), "store", "milk")).toBe(storeBefore + 40); // 52
+    expect(S().tkt.filter((t) => t.to === "store")).toHaveLength(0);
 
-    // 6. Issue a pick ticket moving 55 L from the room toward the central store.
-    S().issueToStore([{ it: "milk", qty: 55 }]);
-    const tkt = S().tkt.at(-1)!;
-    expect(tkt.from).toBe("procure");
-    expect(tkt.to).toBe("store");
-    expect(tkt.st).toBe("Issued");
+    // 6. The balance arrives later and lands on the same shelf.
+    S().receivePo(
+      poId,
+      { dc: "DC-90244", invoice: "INV/AAV/5510", invDate: "2026-08-31" },
+      [
+        { recv: 20, rejected: 0, batch: "AAV-9002", mrp: 0, mfg: "2026-08-02", exp: "2027-08-02" },
+        { recv: 6, rejected: 0, batch: "AAV-9003", mrp: 0, mfg: "2026-08-02", exp: "2027-08-02" },
+      ],
+    );
+    expect(S().po.find((o) => o.id === poId)!.st).toBe("Received");
+    expect(qty(S(), "store", "milk")).toBe(storeBefore + 60); // 72 — the whole ordered quantity
+    expect(qty(S(), "store", "butter")).toBe(butterBefore + 6);
 
-    // 7. Hand it over — stock leaves the room but has not yet reached the store.
-    S().handover(tkt.id);
-    expect(S().tkt.find((t) => t.id === tkt.id)!.st).toBe("Collected");
-    expect(qty(S(), "procure", "milk")).toBe(45); // 100 - 55
-    expect(qty(S(), "store", "milk")).toBe(storeBefore); // still in transit, not yet 67
+    // 7. The requisition now reads as fully received, derived from its order.
+    expect(prqProgress(S(), "PRQ-2026-013").label).toBe("Received");
+  });
+});
 
-    // 8. Sign in as the store keeper and confirm receipt on Inbound.
-    as("store");
-    S().receiveTicket(tkt.id);
-    expect(S().tkt.find((t) => t.id === tkt.id)!.st).toBe("Received");
+describe("per-line vendor selection on the procurement list", () => {
+  const group = (it: string, sources: { prq: string; line: number; pending: number }[]): PoolGroup => ({
+    it,
+    pending: sources.reduce((t, x) => t + x.pending, 0),
+    sources: sources.map((x) => ({ ...x, it, asked: x.pending, by: "Suresh Muthu", at: "07:00" })),
+    vendor: null,
+  });
+  const milk = () => group("milk", [{ prq: "PRQ-2026-013", line: 0, pending: 60 }]);
+  const maida = () => group("maida", [{ prq: "PRQ-2026-014", line: 1, pending: 20 }]);
 
-    // 9. The central store rose by exactly the handed-over quantity, and the
-    //    procurement room fell by exactly that same quantity.
-    expect(qty(S(), "store", "milk")).toBe(storeBefore + 55); // 67
-    expect(qty(S(), "procure", "milk")).toBe(procureBefore + 40 - 55); // 45, unchanged since handover
+  it("combines items that share a vendor into one order", () => {
+    const orders = ordersFor([
+      { group: milk(), vendor: "VN-001", qty: 60 },
+      { group: group("butter", [{ prq: "PRQ-2026-013", line: 1, pending: 6 }]), vendor: "VN-001", qty: 6 },
+    ]);
+    expect(orders).toHaveLength(1);
+    expect(orders[0].vendor).toBe("VN-001");
+    expect(orders[0].picks).toHaveLength(2);
+  });
+
+  it("splits items across vendors into one order each", () => {
+    const orders = ordersFor([
+      { group: milk(), vendor: "VN-001", qty: 60 },
+      { group: maida(), vendor: "VN-003", qty: 20 },
+    ]);
+    expect(orders.map((o) => o.vendor)).toEqual(["VN-001", "VN-003"]);
+    expect(orders.every((o) => o.picks.length === 1)).toBe(true);
+  });
+
+  it("drops an item with no vendor rather than folding it into someone else's order", () => {
+    const orders = ordersFor([
+      { group: milk(), vendor: "VN-001", qty: 60 },
+      { group: maida(), vendor: "", qty: 20 },
+    ]);
+    expect(orders).toHaveLength(1);
+    expect(orders[0].picks.map((p) => p.prq)).toEqual(["PRQ-2026-013"]);
+  });
+
+  it("raises one real draft per vendor through the store", () => {
+    as("buyer");
+    S().approveRequisition("PRQ-2026-013", [60, 6], "");
+    const before = S().po.length;
+    S().createPo("VN-001", [{ prq: "PRQ-2026-013", line: 0, qty: 60 }]);
+    S().createPo("VN-003", [{ prq: "PRQ-2026-014", line: 1, qty: 20 }]);
+    expect(S().po.length).toBe(before + 2);
+    const raised = S().po.slice(0, 2).map((o) => o.vendor).sort();
+    expect(raised).toEqual(["VN-001", "VN-003"]);
   });
 });
