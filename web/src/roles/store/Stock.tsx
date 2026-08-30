@@ -9,8 +9,9 @@ import { U, fq, money, money0, sum } from "../../lib/fmt";
 import {
   Btn, Card, DataTable, FilterBtn, PageHead, Pill, TableFoot, Tag, Toolbar,
 } from "../../ui/kit";
+import "./NewProduct";
 
-const TYPES = ["All", "RAW", "PACK", "MRP", "FG"] as const;
+const TYPES = ["All", "RAW", "PACK", "MRP", "FG", "MTO"] as const;
 
 export default function Stock() {
   const s = useApp();
@@ -18,14 +19,27 @@ export default function Stock() {
   const prqDraft = useApp((x) => x.prqDraft);
   const setPrqDraft = useApp((x) => x.setPrqDraft);
   const notify = useApp((x) => x.notify);
+  const openDrawer = useApp((x) => x.openDrawer);
 
   const [q, setQ] = useState("");
   const [ti, setTi] = useState(0);
+  const [gi, setGi] = useState(0);
   const [lowOnly, setLowOnly] = useState(false);
+  const [heldOnly, setHeldOnly] = useState(false);
 
   const type = TYPES[ti];
+  // IT is a module-level record that createItem mutates in place, so the read
+  // below is pinned to catalogVersion: that is what tells React it changed.
+  void s.catalogVersion;
+  const GROUPS = ["All", ...new Set(Object.values(IT).map((i) => i.g))].sort(
+    (a, b) => (a === "All" ? -1 : b === "All" ? 1 : a.localeCompare(b)),
+  );
+  const group = GROUPS[Math.min(gi, GROUPS.length - 1)];
 
-  const all = Object.keys(s.stock.store)
+  // A product the central store has never carried still belongs on its stock
+  // list at zero — otherwise a newly added item is invisible until it is bought.
+  const catalogue = [...new Set([...Object.keys(s.stock.store), ...Object.keys(IT)])];
+  const all = catalogue
     .filter((it) => IT[it])
     .map((it) => {
       const on = qty(s, "store", it);
@@ -42,10 +56,15 @@ export default function Stock() {
   const rows = all.filter((r) => {
     const i = IT[r.it];
     if (type !== "All" && i.t !== type) return false;
+    if (group !== "All" && i.g !== group) return false;
     if (lowOnly && !r.low) return false;
+    if (heldOnly && r.on <= 0) return false;
     if (!term) return true;
-    return i.n.toLowerCase().includes(term) || i.c.toLowerCase().includes(term) || i.g.toLowerCase().includes(term);
+    return i.n.toLowerCase().includes(term) || i.c.toLowerCase().includes(term)
+      || i.g.toLowerCase().includes(term) || i.t.toLowerCase().includes(term)
+      || i.hsn.toLowerCase().includes(term);
   });
+  const resetFilters = () => { setQ(""); setTi(0); setGi(0); setLowOnly(false); setHeldOnly(false); };
 
   const shown = sum(rows, (r) => r.val);
   const total = stockValue(s, "store");
@@ -75,8 +94,13 @@ export default function Stock() {
       <PageHead
         crumbs={["Royal Care", "Central Store"]}
         title="Stock in hand"
-        sub={`${LOC.store.n} only · ${LOC.store.c} · ${all.length} stocked lines worth ${money0(total)} at cost`}
-        actions={<Btn variant="gh" onClick={() => nav("/procure")}>Requisitions</Btn>}
+        sub={`${LOC.store.n} · ${LOC.store.c} · ${all.length} catalogue items worth ${money0(total)} at cost`}
+        actions={
+          <>
+            <Btn variant="gh" onClick={() => nav("/procure")}>Requisitions</Btn>
+            <Btn onClick={() => openDrawer("sitem", "new")}>Add product</Btn>
+          </>
+        }
       />
 
       <Card
@@ -85,16 +109,18 @@ export default function Stock() {
         flush
       >
         <Toolbar
-          placeholder="Search item, code or group…"
+          placeholder="Search item, code, group, type or HSN…"
           value={q}
           onSearch={setQ}
           filters={
             <>
               <FilterBtn label="Type" value={type} onClick={() => setTi((n) => (n + 1) % TYPES.length)} />
+              <FilterBtn label="Group" value={group} onClick={() => setGi((n) => (n + 1) % GROUPS.length)} />
               <FilterBtn label="Below reorder only" active={lowOnly} onClick={() => setLowOnly((v) => !v)} />
+              <FilterBtn label="Holding stock only" active={heldOnly} onClick={() => setHeldOnly((v) => !v)} />
             </>
           }
-          right={<span className="mini">{lowCount} below reorder</span>}
+          right={<span className="mini">{rows.length} of {all.length} · {lowCount} below reorder</span>}
         />
         <DataTable
           cols={[
@@ -144,11 +170,17 @@ export default function Stock() {
               ],
             };
           })}
-          empty={{
-            title: "No items match this filter",
-            sub: "Clear the search or switch the type filter back to All.",
-            action: <Btn size="sm" variant="gh" onClick={() => { setQ(""); setTi(0); setLowOnly(false); }}>Reset filters</Btn>,
-          }}
+          empty={all.length === 0
+            ? {
+              title: "The catalogue is empty",
+              sub: "Add a product to open the central store stock list.",
+              action: <Btn size="sm" onClick={() => openDrawer("sitem", "new")}>Add product</Btn>,
+            }
+            : {
+              title: "Nothing matches those filters",
+              sub: `${all.length} catalogue item${all.length > 1 ? "s are" : " is"} on the list, but none of them match.`,
+              action: <Btn size="sm" variant="gh" onClick={resetFilters}>Reset filters</Btn>,
+            }}
         />
         <TableFoot
           count={rows.length}

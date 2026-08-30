@@ -4,6 +4,9 @@ import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
 import { fq, sum } from "../../lib/fmt";
 import { Alert, Btn, Card, DataTable, FilterBtn, PageHead, StatusPill, TableFoot, Toolbar } from "../../ui/kit";
+import type { LocKey, TktStatus } from "../../types";
+
+const STATUSES: TktStatus[] = ["Issued", "Collected", "Received"];
 
 export default function Tickets() {
   const s = useApp();
@@ -12,21 +15,37 @@ export default function Tickets() {
   const loc = user.loc;
   const L = LOC[loc];
   const [q, setQ] = useState("");
-  const [openOnly, setOpenOnly] = useState(false);
+  const [st, setSt] = useState<TktStatus | null>(null);
+  const [from, setFrom] = useState<LocKey | null>(null);
 
   const mine = s.tkt.filter((t) => t.to === loc);
+  const sources = Array.from(new Set(mine.map((t) => t.from))).sort();
   const rows = mine
     .filter((t) => {
-      if (openOnly && t.st === "Received") return false;
+      if (st && t.st !== st) return false;
+      if (from && t.from !== from) return false;
       const k = q.trim().toLowerCase();
       return !k || t.id.toLowerCase().includes(k) || t.req.toLowerCase().includes(k)
-        || t.lines.some((l) => (IT[l.it]?.n ?? "").toLowerCase().includes(k));
+        || t.otp.includes(k) || LOC[t.from].n.toLowerCase().includes(k)
+        || t.lines.some((l) => (IT[l.it]?.n ?? "").toLowerCase().includes(k)
+          || (IT[l.it]?.c ?? "").toLowerCase().includes(k));
     })
     .slice()
     .reverse();
 
   const toCollect = mine.filter((t) => t.st === "Issued").length;
   const inTransit = mine.filter((t) => t.st === "Collected").length;
+
+  const filtered = Boolean(q || st || from);
+  const clearAll = () => { setQ(""); setSt(null); setFrom(null); };
+  const cycleSt = () => {
+    const i = st == null ? -1 : STATUSES.indexOf(st);
+    setSt(i + 1 >= STATUSES.length ? null : STATUSES[i + 1]);
+  };
+  const cycleFrom = () => {
+    const i = from == null ? -1 : sources.indexOf(from);
+    setFrom(i + 1 >= sources.length ? null : sources[i + 1]);
+  };
 
   return (
     <>
@@ -52,11 +71,16 @@ export default function Tickets() {
 
       <Card flush>
         <Toolbar
-          placeholder="Search ticket ID, request or item…"
+          placeholder="Search ticket ID, request, OTP, source or item…"
           value={q}
           onSearch={setQ}
-          filters={<FilterBtn label="Show" value={openOnly ? "Not received" : "All"} active={openOnly}
-            onClick={() => setOpenOnly(!openOnly)} />}
+          filters={<>
+            <FilterBtn label="Status" value={st ?? "All"} active={Boolean(st)} onClick={cycleSt} />
+            {sources.length > 1 && (
+              <FilterBtn label="From" value={from ? LOC[from].n : "All"} active={Boolean(from)} onClick={cycleFrom} />
+            )}
+            {filtered && <FilterBtn label="Clear filters" onClick={clearAll} />}
+          </>}
           right={<span className="mini">{mine.length} addressed to {L.c}</span>}
         />
         <DataTable
@@ -64,7 +88,7 @@ export default function Tickets() {
             { h: "Ticket ID", cls: "nm", w: "16%" },
             { h: "Against request", w: "16%" },
             { h: "From", w: "16%" },
-            { h: "Lines", w: "22%" },
+            { h: "Items", w: "22%" },
             { h: "Approved qty", r: true, w: "12%" },
             { h: "Status", w: "11%" },
             { h: "", w: "7%" },
@@ -88,15 +112,17 @@ export default function Tickets() {
               ],
             };
           })}
-          empty={{
-            title: q || openOnly ? "No ticket matches this filter" : "No pick ticket for this counter",
-            sub: q || openOnly
-              ? "Clear the search or switch the filter back to All."
-              : "A ticket appears here once the store keeper issues one against an approved request.",
-            action: <Btn size="sm" onClick={() => (q || openOnly ? (setQ(""), setOpenOnly(false)) : nav("/requests"))}>
-              {q || openOnly ? "Clear filters" : "Raise a request"}
-            </Btn>,
-          }}
+          empty={filtered
+            ? {
+              title: "Nothing matches those filters",
+              sub: `No ticket addressed to ${L.n} matches ${[q && `“${q}”`, st && `status ${st}`, from && `from ${LOC[from].n}`].filter(Boolean).join(", ")}.`,
+              action: <Btn size="sm" onClick={clearAll}>Clear filters</Btn>,
+            }
+            : {
+              title: "No pick ticket for this counter",
+              sub: "A ticket appears here once the store keeper issues one against an approved request.",
+              action: <Btn size="sm" onClick={() => nav("/requests")}>Raise a request</Btn>,
+            }}
         />
         <TableFoot count={rows.length}
           extra={<>{L.n} · {L.c} · {toCollect} to collect · {inTransit} in transit</>} />

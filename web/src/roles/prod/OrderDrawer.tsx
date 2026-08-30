@@ -56,7 +56,7 @@ function OrderDrawer({ id }: DrawerProps) {
         </div>
       )}
 
-      <Section title="Lines" sub="Quantity ordered against what the kitchen is holding right now">
+      <Section title="Items" sub="Quantity ordered against what the kitchen is holding right now">
         <DataTable
           cols={[
             { h: "Product", cls: "nm", w: "32%" },
@@ -80,9 +80,9 @@ function OrderDrawer({ id }: DrawerProps) {
               ],
             };
           })}
-          empty={{ title: "No lines on this order" }}
+          empty={{ title: "No items on this order" }}
         />
-        <TableFoot count={o.lines.length} extra={<>Total <b>{sum(o.lines, (l) => l.qty)}</b> units</>} />
+        <TableFoot count={o.lines.length} extra={<>{o.lines.length} item{o.lines.length === 1 ? "" : "s"} · total <b>{sum(o.lines, (l) => l.qty)}</b> units</>} />
       </Section>
 
       <Section title="Note from the outlet" sub="Sent along with the order">

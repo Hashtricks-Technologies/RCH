@@ -4,11 +4,12 @@ export const LOC: Record<LocKey, Location> = {
   store:   { n: "Central Store",   c: "WH-CS", type: "Store",   floor: "Basement", cc: "CC-STO" },
   procure: { n: "Procurement Room", c: "PR-PC", type: "Store",  floor: "Basement", cc: "CC-PRC" },
   kitchen: { n: "Central Kitchen", c: "KT-CK", type: "Kitchen", floor: "Ground",   cc: "CC-KIT" },
+  rest:    { n: "Restaurant",      c: "OT-R1", type: "Outlet",  floor: "Floor 1",  cc: "CC-RST", list: "A" },
   coffee:  { n: "Coffee Shop",     c: "OT-C3", type: "Outlet",  floor: "Floor 3",  cc: "CC-CF3", list: "B" },
   kiosk:   { n: "Snack Kiosk",     c: "OT-GK", type: "Outlet",  floor: "Ground",   cc: "CC-KSK", list: "A" },
 };
-export const OUTLETS: LocKey[] = ["coffee", "kiosk"];
-export const ALL_LOCS: LocKey[] = ["store", "procure", "kitchen", "coffee", "kiosk"];
+export const OUTLETS: LocKey[] = ["rest", "coffee", "kiosk"];
+export const ALL_LOCS: LocKey[] = ["store", "procure", "kitchen", "rest", "coffee", "kiosk"];
 
 /** Mutable on purpose: the central store can add a product that did not exist before.
  *  Bump `catalogVersion` in the app store after writing so React re-reads it. */
@@ -46,12 +47,13 @@ export const PL: Record<"A" | "B", Record<string, number>> = {
   B: { capp: 75, chai: 25, puff: 30, sand: 55, salad: 65, juice: 20, water: 20, bisc: 30, chips: 20 },
 };
 export const MENU: Record<string, string[]> = {
+  rest:   ["capp", "chai", "puff", "sand", "salad", "juice", "water", "chips"],
   coffee: ["capp", "chai", "juice", "water", "bisc", "chips"],
   kiosk:  ["juice", "water", "bisc", "chips", "puff"],
 };
 export const USERS: User[] = [
   { id: "u1", n: "Kavitha Raman",   e: "kavitha.r@royalcare.in", r: "counter", rl: "Counter Operator",     loc: "coffee",  col: "#B45309", emp: "RC-4471", ph: "98430 22118" },
-  { id: "u2", n: "Ramesh Kumar",    e: "ramesh.k@royalcare.in",  r: "manager", rl: "Outlet Manager",       loc: "coffee",  col: "#7C3AED", emp: "RC-3120", ph: "98410 77210" },
+  { id: "u2", n: "Ramesh Kumar",    e: "ramesh.k@royalcare.in",  r: "manager", rl: "Outlet Manager",       loc: "rest",    col: "#7C3AED", emp: "RC-3120", ph: "98410 77210" },
   { id: "u3", n: "Suresh Muthu",    e: "suresh.m@royalcare.in",  r: "store",   rl: "Store Keeper",         loc: "store",   col: "#0F766E", emp: "RC-2088", ph: "94430 51194" },
   { id: "u4", n: "Vinoth Prakash",  e: "vinoth.p@royalcare.in",  r: "prod",    rl: "Production In-charge", loc: "kitchen", col: "#15803D", emp: "RC-1902", ph: "90031 66402" },
   { id: "u5", n: "Latha Narayanan", e: "latha.n@royalcare.in",   r: "buyer",   rl: "Procurement Officer",  loc: "store",   col: "#BE123C", emp: "RC-1550", ph: "98940 30117" },
@@ -60,7 +62,7 @@ export const USERS: User[] = [
    a day of stock must not be judged against a warehouse par, so each location
    carries its own factor (M11). */
 export const PAR_FACTOR: Record<LocKey, number> = {
-  store: 1, procure: 0, kitchen: 0.35, coffee: 0.18, kiosk: 0.15,
+  store: 1, procure: 0, kitchen: 0.35, rest: 0.22, coffee: 0.18, kiosk: 0.15,
 };
 
 /* Payers for the non-cash tenders (M1). No backend, so these stand in for the

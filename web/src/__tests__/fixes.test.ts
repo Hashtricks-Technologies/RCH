@@ -447,3 +447,141 @@ describe("countable units still show a fraction when there is one", () => {
     expect(fq(0.035, "maida")).toBe("0.035");
   });
 });
+
+/* ------------------------------- a production order dispatches whole */
+describe("a production order goes out whole, to the place that raised it", () => {
+  /** The seeded two-item order: sandwiches and salad for the Snack Kiosk. */
+  const twoItem = () => S().pord.find((x) => x.lines.length > 1)!;
+
+  it("puts every item on one ticket addressed to the ordering outlet", () => {
+    as("prod");
+    const o = twoItem();
+    expect(o.lines).toHaveLength(2);
+    o.lines.forEach((l) => S().makeProduct(l.it, l.qty));
+
+    S().dispatchOrder(o.id);
+
+    const raised = S().tkt.filter((t) => t.req === o.id);
+    // One order, one ticket — not one ticket per item.
+    expect(raised).toHaveLength(1);
+    const t = raised[0];
+    expect(t.from).toBe("kitchen");
+    expect(t.to).toBe(o.from);
+    expect(t.lines).toHaveLength(o.lines.length);
+    o.lines.forEach((l) => expect(t.lines.find((x) => x.it === l.it)!.qty).toBe(l.qty));
+    expect(S().pord.find((x) => x.id === o.id)!.st).toBe("Dispatched");
+  });
+
+  it("lands both items, in full, on the ordering outlet's shelf", () => {
+    as("prod");
+    const o = twoItem();
+    o.lines.forEach((l) => S().makeProduct(l.it, l.qty));
+    const before = o.lines.map((l) => qty(S(), o.from, l.it));
+
+    S().dispatchOrder(o.id);
+    const t = S().tkt.find((x) => x.req === o.id)!;
+    S().handover(t.id, t.otp);
+    S().receiveTicket(t.id);
+
+    o.lines.forEach((l, i) => expect(qty(S(), o.from, l.it)).toBe(before[i] + l.qty));
+  });
+
+  it("dispatches nothing when one item of the order is short, and names it", () => {
+    as("prod");
+    const o = twoItem();
+    // Only the first item is made — a part dispatch must not slip through.
+    S().makeProduct(o.lines[0].it, o.lines[0].qty);
+
+    S().dispatchOrder(o.id);
+
+    expect(S().tkt.some((t) => t.req === o.id)).toBe(false);
+    expect(S().pord.find((x) => x.id === o.id)!.st).not.toBe("Dispatched");
+    expect(S().toast).toMatch(new RegExp(IT[o.lines[1].it].n, "i"));
+  });
+
+  it("refuses to raise a second ticket for an order already dispatched", () => {
+    as("prod");
+    const o = twoItem();
+    o.lines.forEach((l) => S().makeProduct(l.it, l.qty));
+    S().dispatchOrder(o.id);
+    const after = S().tkt.length;
+
+    S().dispatchOrder(o.id);
+
+    expect(S().tkt).toHaveLength(after);
+    expect(S().toast).toMatch(/already gone out/i);
+  });
+});
+
+describe("a rejection records who made the call", () => {
+  it("stores the decider on the request, not only in the history", () => {
+    as("manager");
+    S().rejectRequest("REQ-2026-0911", "Nothing to spare until the delivery lands");
+    const r = S().req.find((x) => x.id === "REQ-2026-0911")!;
+    expect(r.st).toBe("Rejected");
+    expect(r.apprBy).toBe("Ramesh Kumar");
+    expect(r.mgrNote).toContain("Nothing to spare");
+  });
+  it("refuses to reject without a reason", () => {
+    as("manager");
+    S().rejectRequest("REQ-2026-0912", "   ");
+    expect(S().req.find((x) => x.id === "REQ-2026-0912")!.st).toBe("Request sent");
+  });
+});
+
+describe("two shops deal with each other directly", () => {
+  it("one shop asks another, the other grants, and a ticket carries it across", () => {
+    as("counter");                                   // Kavitha at the Coffee Shop
+    S().askShop("kiosk", "bisc", 4, "Out until the store opens");
+    const ask = S().shopAsks[0];
+    expect(ask.from).toBe("coffee");
+    expect(ask.to).toBe("kiosk");
+    expect(ask.st).toBe("Asked");
+
+    const kioskBefore = qty(S(), "kiosk", "bisc");
+    const coffeeBefore = qty(S(), "coffee", "bisc");
+    const tickets = S().tkt.length;
+
+    S().answerShopAsk(ask.id, 4);
+    const answered = S().shopAsks.find((a) => a.id === ask.id)!;
+    expect(answered.st).toBe("Sent");
+    expect(answered.grant).toBe(4);
+    expect(S().tkt).toHaveLength(tickets + 1);
+
+    // reserved at the giving shop, nothing has physically moved yet
+    const t = S().tkt[S().tkt.length - 1];
+    expect(t.from).toBe("kiosk");
+    expect(t.to).toBe("coffee");
+    expect(qty(S(), "kiosk", "bisc")).toBe(kioskBefore);
+    expect(resv(S(), "kiosk", "bisc")).toBe(4);
+    expect(t.otp).toMatch(/^\d{6}$/);
+
+    S().handover(t.id, t.otp);
+    expect(qty(S(), "kiosk", "bisc")).toBe(kioskBefore - 4);
+    S().receiveTicket(t.id);
+    expect(qty(S(), "coffee", "bisc")).toBe(coffeeBefore + 4);
+  });
+
+  it("a wrong OTP does not release the goods", () => {
+    as("counter");
+    S().askShop("kiosk", "bisc", 2, "");
+    S().answerShopAsk(S().shopAsks[0].id, 2);
+    const t = S().tkt[S().tkt.length - 1];
+    const before = qty(S(), "kiosk", "bisc");
+    S().handover(t.id, "000000");
+    expect(S().tkt.find((x) => x.id === t.id)!.st).toBe("Issued");
+    expect(qty(S(), "kiosk", "bisc")).toBe(before);
+  });
+
+  it("declining needs a reason and sends nothing", () => {
+    as("counter");
+    S().askShop("kiosk", "bisc", 3, "");
+    const id = S().shopAsks[0].id;
+    const tickets = S().tkt.length;
+    S().declineShopAsk(id, "   ");
+    expect(S().shopAsks.find((a) => a.id === id)!.st).toBe("Asked");
+    S().declineShopAsk(id, "Needed for the evening rush");
+    expect(S().shopAsks.find((a) => a.id === id)!.st).toBe("Declined");
+    expect(S().tkt).toHaveLength(tickets);
+  });
+});

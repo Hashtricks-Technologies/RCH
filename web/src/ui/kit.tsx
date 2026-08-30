@@ -1,4 +1,4 @@
-import { Children, cloneElement, isValidElement, useId, type ReactElement, type ReactNode } from "react";
+import { Children, cloneElement, isValidElement, useId, type CSSProperties, type ReactElement, type ReactNode } from "react";
 import type { Tone } from "../types";
 import { toneFor } from "../lib/selectors";
 import type { ThemePref } from "../lib/theme";
@@ -180,17 +180,53 @@ export function Sparkline({ values, color }: { values: number[]; color: string }
 }
 
 /* ---------- table ---------- */
-export interface Col { h: string; r?: boolean; cls?: string; w?: string }
+export type SortDir = "asc" | "desc";
+/** Which column a table is ordered by, and which way. */
+export interface SortState { key: string; dir: SortDir }
+/** `sort` names the key this column orders by; omit it and the header stays plain text. */
+export interface Col { h: string; r?: boolean; cls?: string; w?: string; sort?: string }
 export interface Row { key: string; cells: ReactNode[]; onClick?: () => void }
-export function DataTable({ cols, rows, empty }: {
+
+const SortCaret = ({ dir }: { dir: SortDir | null }) => (
+  <svg width="9" height="9" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth={1.7}
+    strokeLinecap="round" strokeLinejoin="round" aria-hidden
+    style={{ opacity: dir ? 1 : 0.32, flex: "none" }}>
+    {dir === "desc" ? <path d="M2 4l3 3 3-3" /> : <path d="M2 6l3-3 3 3" />}
+  </svg>
+);
+
+const SORT_BTN: CSSProperties = {
+  display: "inline-flex", alignItems: "center", gap: 4, font: "inherit", color: "inherit",
+  letterSpacing: "inherit", textTransform: "inherit", cursor: "pointer", padding: 0,
+  background: "none", border: 0,
+};
+
+export function DataTable({ cols, rows, empty, sort, onSort }: {
   cols: Col[]; rows: Row[]; empty?: { title: string; sub?: string; action?: ReactNode };
+  /** Current order — pass with `onSort` to make the flagged headers clickable. */
+  sort?: SortState | null;
+  onSort?: (key: string) => void;
 }) {
   return (
     <div className="tw">
       <table>
-        <thead><tr>{cols.map((c, i) => (
-          <th key={c.h + i} className={c.r ? "r" : undefined} style={c.w ? { width: c.w } : undefined}>{c.h}</th>
-        ))}</tr></thead>
+        <thead><tr>{cols.map((c, i) => {
+          const dir = c.sort && sort?.key === c.sort ? sort.dir : null;
+          return (
+            <th key={c.h + i} className={c.r ? "r" : undefined} style={c.w ? { width: c.w } : undefined}
+              aria-sort={c.sort ? (dir === "asc" ? "ascending" : dir === "desc" ? "descending" : "none") : undefined}>
+              {c.sort && onSort ? (
+                <button type="button" style={{ ...SORT_BTN, flexDirection: c.r ? "row-reverse" : "row" }}
+                  onClick={() => onSort(c.sort!)}
+                  title={dir === "asc" ? `${c.h}: low to high — click to reverse`
+                    : dir === "desc" ? `${c.h}: high to low — click to reverse`
+                      : `Sort by ${c.h}`}>
+                  {c.h}<SortCaret dir={dir} />
+                </button>
+              ) : c.h}
+            </th>
+          );
+        })}</tr></thead>
         <tbody>
           {rows.length === 0 ? (
             <tr><td colSpan={cols.length}>

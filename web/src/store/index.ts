@@ -7,7 +7,7 @@ import {
 import { seedVendors } from "../data/vendors";
 import type {
   Batch, Bill, DraftLine, DrawerState, Grn, LocKey, Payer, PordStatus, ProdOrder, PurchaseOrder,
-  Requisition, StockRequest, Ticket, User, Vendor,
+  Requisition, StockRequest, Ticket, TktLine, User, Vendor,
 } from "../types";
 import { basePrices, freeToPromise, priceOf, qty, resv } from "../lib/selectors";
 import { bestBefore, fq, now, U, makeOtp } from "../lib/fmt";
@@ -259,7 +259,8 @@ export const useApp = create<AppState>((set, get) => ({
     if (!note.trim()) { get().notify("Give a reason — the counter sees it on the request"); return; }
     set({
       req: s.req.map((x) => x.id === id
-        ? { ...x, st: "Rejected" as const, mgrNote: note, hist: [...x.hist, hist(s.user!.n, "Rejected")] } : x),
+        ? { ...x, st: "Rejected" as const, mgrNote: note, apprBy: s.user!.n,
+            hist: [...x.hist, hist(s.user!.n, "Rejected")] } : x),
     });
     get().notify(`${id} rejected`);
   },
@@ -349,21 +350,46 @@ export const useApp = create<AppState>((set, get) => ({
     const s = get();
     const o = s.pord.find((x) => x.id === id);
     if (!o) return;
-    const short = o.lines.find((l) => qty(s, "kitchen", l.it) - resv(s, "kitchen", l.it) < l.qty);
-    if (short) { get().notify(`Kitchen is short of ${IT[short.it].n}`); return; }
+    // One order, one ticket. Dispatching twice would raise a second ticket for
+    // stock already promised, which is how half an order ends up in two places.
+    if (o.st === "Dispatched") {
+      get().notify(`${id} has already gone out — it is on one ticket to ${LOC[o.from].n}`);
+      return;
+    }
+    if (o.st === "Declined") { get().notify(`${id} was declined — it cannot be dispatched`); return; }
+    // Fold a repeated item into a single line so the cover check is made against
+    // the whole quantity the order asks for, not one line of it at a time.
+    const lines: TktLine[] = [];
+    o.lines.forEach((l) => {
+      const seen = lines.find((x) => x.it === l.it);
+      if (seen) seen.qty = Math.round((seen.qty + l.qty) * 1000) / 1000;
+      else lines.push({ it: l.it, qty: l.qty });
+    });
+    if (!lines.length) { get().notify(`${id} has no items on it`); return; }
+    // All or nothing: a part-dispatched order leaves the outlet guessing what is
+    // still coming, so every item short is named and nothing moves.
+    const short = lines.filter((l) => qty(s, "kitchen", l.it) - resv(s, "kitchen", l.it) < l.qty);
+    if (short.length) {
+      get().notify(
+        `Nothing dispatched — the kitchen is short of ${short.map((l) => IT[l.it].n).join(", ")}`,
+      );
+      return;
+    }
     // Approval authorises, the scan moves: reserve here, deduct at handover.
     const rsv = { ...s.rsv };
-    o.lines.forEach((l) => {
+    lines.forEach((l) => {
       rsv["kitchen:" + l.it] = (rsv["kitchen:" + l.it] ?? 0) + l.qty;
     });
     const tid = "TKT-0" + (s.seq.tkt + 1);
     set({
       rsv, seq: { ...s.seq, tkt: s.seq.tkt + 1 }, drawer: null,
-      tkt: [...s.tkt, { id: tid, req: id, from: "kitchen", to: o.from, lines: o.lines, st: "Issued", otp: makeOtp(s.seq.tkt + 1) }],
+      tkt: [...s.tkt, { id: tid, req: id, from: "kitchen", to: o.from, lines, st: "Issued", otp: makeOtp(s.seq.tkt + 1) }],
       pord: s.pord.map((x) => x.id === id
         ? { ...x, st: "Dispatched" as const, hist: [...x.hist, hist(s.user?.n ?? "", "Dispatched")] } : x),
     });
-    get().notify(`${tid} issued — ${LOC[o.from].n} can collect`);
+    get().notify(
+      `${tid} issued — all ${lines.length} item${lines.length === 1 ? "" : "s"} of ${id} reserved for ${LOC[o.from].n}`,
+    );
   },
   makeProduct: (it, n, yielded, note) => {
     const s = get();

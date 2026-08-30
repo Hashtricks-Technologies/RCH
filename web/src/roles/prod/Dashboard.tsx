@@ -5,7 +5,7 @@ import { useApp } from "../../store";
 import { availOf, qty } from "../../lib/selectors";
 import { fq, sum, U } from "../../lib/fmt";
 import {
-  Alert, Btn, Card, DataTable, Feed, Grid, HBars, Kpis, PageHead, Pill, StatusPill, TableFoot,
+  Alert, Btn, Card, DataTable, Feed, Grid, Kpis, PageHead, Pill, StatusPill, TableFoot,
 } from "../../ui/kit";
 
 const PRODS = ["puff", "sand", "salad"];
@@ -32,6 +32,7 @@ export default function Dashboard() {
   const perProduct = PRODS.map((k) => ({
     n: IT[k].n,
     v: sum(batch.filter((b) => b.it === k), (b) => b.qty),
+    made: sum(batch.filter((b) => b.it === k), (b) => b.made),
   }));
 
   const feed = useMemo(() => {
@@ -73,10 +74,10 @@ export default function Dashboard() {
       />
 
       <Kpis items={[
-        { l: "New orders waiting", v: newOrders.length, d: <>needing accept or decline</>, spark: [1, 0, 2, 1, 3, 2, newOrders.length], color: "var(--c1)" },
-        { l: "Orders in progress", v: working.length, d: <><b>{openQty}</b> units promised</>, spark: [2, 3, 2, 4, 3, 3, working.length], color: "var(--c2)" },
+        { l: "New orders waiting", v: newOrders.length, d: <>needing accept or decline</> },
+        { l: "Orders in progress", v: working.length, d: <><b>{openQty}</b> units promised</> },
         { l: "Ready to dispatch", v: ready.length, d: <>waiting on the pass</> },
-        { l: "Units made today", v: madeToday, d: <>across <b>{batch.length}</b> batch{batch.length === 1 ? "" : "es"}</>, spark: [40, 62, 88, 96, 104, 116, madeToday], color: "var(--c3)" },
+        { l: "Units made today", v: madeToday, d: <>across <b>{batch.length}</b> batch{batch.length === 1 ? "" : "es"}</> },
         { l: "Products not available", v: off.length, d: <>switched off or nothing to give</> },
         { l: "Dispatches out today", v: dispatches.length, d: <><b>{toHand.length}</b> waiting at the pass</> },
       ]} />
@@ -130,7 +131,7 @@ export default function Dashboard() {
           cols={[
             { h: "Ticket ID", cls: "nm", w: "18%" },
             { h: "To", w: "18%" },
-            { h: "Lines" },
+            { h: "Items" },
             { h: "Qty", r: true, w: "10%" },
             { h: "Status", w: "12%" },
             { h: "Action", w: "17%" },
@@ -161,8 +162,20 @@ export default function Dashboard() {
       </Card>
 
       <Grid cols="g21">
-        <Card title="Units made today" sub="By product, from the batch log">
-          <HBars rows={perProduct.map((p) => ({ n: p.n, v: p.v, f: String(p.v) }))} />
+        <Card title="Units made today" sub="By product, from the batch log" flush>
+          <DataTable
+            cols={[
+              { h: "Product", cls: "nm" },
+              { h: "Started", r: true, w: "22%" },
+              { h: "Made", r: true, w: "22%" },
+            ]}
+            rows={perProduct.map((p) => ({
+              key: p.n,
+              cells: [p.n, <b>{p.v}</b>, <b>{p.made}</b>],
+            }))}
+            empty={{ title: "Nothing made yet today", sub: "Batches appear here as the kitchen books them." }}
+          />
+          <TableFoot count={perProduct.length} extra={<>Total made <b>{sum(batch, (b) => b.made)}</b></>} />
         </Card>
         <Card title="Today in the kitchen" sub="Batches and order movement">
           <Feed items={feed.map((f) => ({ key: f.key, title: f.title, body: f.body, when: f.when, color: f.color }))} />

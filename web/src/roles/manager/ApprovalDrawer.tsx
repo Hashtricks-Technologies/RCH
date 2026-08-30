@@ -6,11 +6,27 @@ import { fq, money, sum, U, unitTotal } from "../../lib/fmt";
 import { Alert, Btn, DataTable, Feed, Pill, Section, StatusPill, Tag } from "../../ui/kit";
 import { DrawerFrame } from "../../ui/Drawer";
 import { registerDrawer, type DrawerProps } from "../../drawers";
+import type { StockRequest } from "../../types";
 
 const dotFor = (state: string) =>
   state === "Rejected" || state === "Cancelled" ? "var(--crit)"
     : state === "Received" || state === "Closed" ? "var(--good)"
       : state === "Request sent" ? "var(--warn)" : "var(--c1)";
+
+/** Ready-made reasons the counter will understand; they fill the box, they do not replace it. */
+const QUICK = [
+  "The Central Store cannot cover this today.",
+  "Duplicate of a request already raised for this counter.",
+  "Not due yet — the counter is still holding enough.",
+  "Raise this against the Central Kitchen, not the store.",
+];
+
+/** Who actually took the decision, from the trail the store keeps. */
+const decidedBy = (r: StockRequest) => {
+  const h = [...r.hist].reverse()
+    .find((x) => x.s === "Rejected" || x.s === "Manager approved" || x.s === "Partially approved");
+  return h ? { who: h.who, at: h.t, what: h.s } : null;
+};
 
 function ApprovalDrawer({ id }: DrawerProps) {
   const s = useApp();
@@ -25,7 +41,9 @@ function ApprovalDrawer({ id }: DrawerProps) {
       Math.max(0, Math.min(l.qty, req && req.st === "Request sent" ? freeToPromise(s, "store", l.it) : l.appr))
     )
   );
-  const [note, setNote] = useState(req?.mgrNote ?? "");
+  const [killed, setKilled] = useState<boolean[]>(() => (req?.lines ?? []).map(() => false));
+  const [lineWhy, setLineWhy] = useState<string[]>(() => (req?.lines ?? []).map(() => ""));
+  const [note, setNote] = useState(req?.st === "Request sent" ? "" : req?.mgrNote ?? "");
 
   if (!req) {
     return (
@@ -42,18 +60,45 @@ function ApprovalDrawer({ id }: DrawerProps) {
     const v = Number.isFinite(n) ? Math.max(0, Math.min(max, n)) : 0;
     setAppr(appr.map((x, j) => (j === i ? v : x)));
   };
+  const toggleKill = (i: number) => setKilled(killed.map((x, j) => (j === i ? !x : x)));
+  const setWhy = (i: number, v: string) => setLineWhy(lineWhy.map((x, j) => (j === i ? v : x)));
 
-  const giving = sum(appr, (v) => v);
-  const trimmed = req.lines.some((l, i) => (appr[i] ?? 0) < l.qty);
-  const value = req.lines.reduce((t, l, i) => t + (open ? appr[i] ?? 0 : l.appr) * costOf(l.it), 0);
+  const effective = req.lines.map((_, i) => (killed[i] ? 0 : appr[i] ?? 0));
+  const giving = sum(effective, (v) => v);
+  const trimmed = req.lines.some((l, i) => effective[i] < l.qty && !killed[i]);
+  const value = req.lines.reduce((t, l, i) => t + (open ? effective[i] : l.appr) * costOf(l.it), 0);
   const askedTotal = unitTotal(req.lines);
-  const givingTotal = unitTotal(req.lines.map((l, i) => ({ it: l.it, qty: open ? appr[i] ?? 0 : l.appr })));
+  const givingTotal = unitTotal(req.lines.map((l, i) => ({ it: l.it, qty: open ? effective[i] : l.appr })));
   const shortOf = (l: { qty: number; appr: number; short?: number }) => l.short ?? Math.max(0, l.qty - l.appr);
   const shortLines = open
     ? []
     : req.lines.filter((l) => shortOf(l) > 0).map((l) => ({ it: l.it, qty: shortOf(l) }));
   const overCommitted = req.lines.filter((l) => freeToPromise(s, "store", l.it) < l.qty);
+
   const reason = note.trim();
+  const killedIdx = req.lines.map((_, i) => i).filter((i) => killed[i]);
+  const missingWhy = killedIdx.filter((i) => !lineWhy[i].trim());
+  const canApprove = giving > 0 && missingWhy.length === 0;
+  const decided = decidedBy(req);
+
+  /* Line reasons travel with the request, because a counter that is told "no" on
+     one item and nothing else has no way to find out why. */
+  const composed = () => {
+    const perLine = killedIdx.map((i) => `${IT[req.lines[i].it]?.n ?? req.lines[i].it}: ${lineWhy[i].trim()}`);
+    return [reason, perLine.length ? `Not approved — ${perLine.join("; ")}` : ""]
+      .filter(Boolean).join(" · ");
+  };
+
+  const doApprove = () => {
+    if (!canApprove) return;
+    approveRequest(req.id, effective, composed());
+    close();
+  };
+  const doReject = () => {
+    if (!reason) return;
+    rejectRequest(req.id, composed());
+    close();
+  };
 
   return (
     <DrawerFrame
@@ -63,16 +108,23 @@ function ApprovalDrawer({ id }: DrawerProps) {
         open ? (
           <>
             <Btn variant="gh" onClick={close}>Close</Btn>
+            <div className="sp" />
             <Btn
               variant="dg"
               disabled={!reason}
-              title={reason ? undefined : "Write the reason in the manager note first"}
-              onClick={() => { rejectRequest(req.id, note); close(); }}
+              title={reason ? "Reject the whole request" : "Write the reason below — reject stays locked without one"}
+              onClick={doReject}
             >
-              Reject
+              Reject the request
             </Btn>
-            <Btn onClick={() => { approveRequest(req.id, appr, note); close(); }}>
-              Approve &amp; forward to store
+            <Btn
+              disabled={!canApprove}
+              title={giving === 0
+                ? "Nothing is left to approve — use Reject the request"
+                : missingWhy.length > 0 ? "Give a reason for every rejected item" : undefined}
+              onClick={doApprove}
+            >
+              Approve {killedIdx.length > 0 ? "the rest" : ""} &amp; forward
             </Btn>
           </>
         ) : (
@@ -80,6 +132,18 @@ function ApprovalDrawer({ id }: DrawerProps) {
         )
       }
     >
+      {!open && req.st === "Rejected" && (
+        <Alert tone="c" label="REJECTED">
+          {decided ? <>Rejected by <b>{decided.who}</b> at <b className="mono">{decided.at}</b>.</> : <>This request was rejected.</>}
+          {" "}The counter sees this reason on its own screen: <b>{req.mgrNote || "no reason was recorded"}</b>.
+        </Alert>
+      )}
+      {!open && req.st !== "Rejected" && decided && (
+        <Alert tone="i" label="DECIDED">
+          {decided.what} by <b>{decided.who}</b> at <b className="mono">{decided.at}</b>.
+        </Alert>
+      )}
+
       <Section title="Request" sub="Raised by the counter operator">
         <dl className="dl">
           <dt>Outlet</dt>
@@ -89,31 +153,35 @@ function ApprovalDrawer({ id }: DrawerProps) {
           <dt>Priority</dt>
           <dd>{req.urg ? <Pill tone="cr">Urgent</Pill> : <Pill tone="mu">Normal</Pill>}</dd>
           <dt>Status</dt><dd><StatusPill status={req.st} /></dd>
+          <dt>Decided by</dt>
+          <dd>{decided ? <>{decided.who} <span className="mini">{decided.at}</span></> : <span className="dim">Not decided yet.</span>}</dd>
           <dt>Counter's note</dt>
-          <dd>{req.mgrNote ? req.mgrNote : <span className="dim">No note was left with this request.</span>}</dd>
+          <dd>{open && req.mgrNote ? req.mgrNote : !open ? (req.mgrNote || <span className="dim">No note.</span>) : <span className="dim">No note was left with this request.</span>}</dd>
         </dl>
       </Section>
 
       <Section
-        title="Lines"
+        title="Items"
         sub={open
-          ? "Trim a quantity if the Central Store cannot cover it. You cannot approve more than the counter asked for."
+          ? "Trim a quantity the Central Store cannot cover, or reject a single item and approve the rest. You cannot approve more than the counter asked for."
           : "Quantities as they were forwarded to the store keeper."}
       >
         <div className="lgrid">
           <DataTable
             cols={[
-              { h: "Item", cls: "nm", w: "26%" },
+              { h: "Item", cls: "nm", w: "24%" },
               { h: "Type" },
               { h: "Asked", r: true },
               { h: "On hand", r: true },
               { h: "Free to promise", r: true },
-              { h: open ? "Approve" : "Approved", r: true, w: "16%" },
+              { h: open ? "Approve" : "Approved", r: true, w: "14%" },
+              ...(open ? [{ h: "This item", w: "26%" }] : []),
             ]}
             rows={req.lines.map((l, i) => {
               const have = qty(s, "store", l.it);
               const free = freeToPromise(s, "store", l.it);
               const over = free < l.qty;
+              const dead = killed[i];
               return {
                 key: l.it + i,
                 cells: [
@@ -127,15 +195,17 @@ function ApprovalDrawer({ id }: DrawerProps) {
                     ? <span style={{ color: "var(--warn)" }} title="Already promised elsewhere">{fq(free, l.it)}</span>
                     : <>{fq(free, l.it)}</>,
                   open ? (
-                    <input
-                      type="number"
-                      min={0}
-                      max={l.qty}
-                      step={U(l.it) === "nos" ? 1 : 0.5}
-                      value={appr[i] ?? 0}
-                      onChange={(e) => set(i, e.target.value)}
-                      aria-label={`Approved quantity for ${IT[l.it]?.n ?? l.it}`}
-                    />
+                    dead
+                      ? <span style={{ color: "var(--crit)" }}>rejected</span>
+                      : <input
+                        type="number"
+                        min={0}
+                        max={l.qty}
+                        step={U(l.it) === "nos" ? 1 : 0.5}
+                        value={appr[i] ?? 0}
+                        onChange={(e) => set(i, e.target.value)}
+                        aria-label={`Approved quantity for ${IT[l.it]?.n ?? l.it}`}
+                      />
                   ) : (
                     <>
                       <b>{fq(l.appr, l.it)}</b>
@@ -146,10 +216,32 @@ function ApprovalDrawer({ id }: DrawerProps) {
                       )}
                     </>
                   ),
+                  ...(open ? [
+                    <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                      <Btn size="xs" variant={dead ? "gh" : "dg"} onClick={() => toggleKill(i)}>
+                        {dead ? "Put this item back" : "Reject this item"}
+                      </Btn>
+                      {dead && (
+                        <>
+                          <input
+                            value={lineWhy[i]}
+                            onChange={(e) => setWhy(i, e.target.value)}
+                            placeholder="Why this item is refused…"
+                            aria-label={`Reason for rejecting ${IT[l.it]?.n ?? l.it}`}
+                          />
+                          {!lineWhy[i].trim() && (
+                            <span className="mini" style={{ color: "var(--warn)" }}>
+                              A reason is required before you can forward the rest.
+                            </span>
+                          )}
+                        </>
+                      )}
+                    </div>,
+                  ] : []),
                 ],
               };
             })}
-            empty={{ title: "This request has no lines", sub: "Ask the counter to raise it again." }}
+            empty={{ title: "This request has no items", sub: "Ask the counter to raise it again." }}
           />
         </div>
         <div className="totrow mtop"><span>Total asked</span><span>{askedTotal}</span></div>
@@ -159,6 +251,9 @@ function ApprovalDrawer({ id }: DrawerProps) {
         </div>
         {shortLines.length > 0 && (
           <div className="totrow"><span>Not approved</span><span>{unitTotal(shortLines)}</span></div>
+        )}
+        {open && killedIdx.length > 0 && (
+          <div className="totrow"><span>Items rejected outright</span><span>{killedIdx.length} of {req.lines.length}</span></div>
         )}
         <div className="totrow"><span>Cost value of the issue</span><span>{money(value)}</span></div>
       </Section>
@@ -183,27 +278,45 @@ function ApprovalDrawer({ id }: DrawerProps) {
         </Alert>
       )}
       {open && giving === 0 && (
-        <Alert tone="c" label="NIL">
-          Every line is at zero. Forwarding this now records it as a rejection and no pick ticket will be issued.
+        <Alert tone="c" label="NOTHING LEFT">
+          Every item is at zero or rejected. Use <b>Reject the request</b> below — it records the decision against
+          your name and sends the reason to {LOC[req.from].n}.
         </Alert>
       )}
 
-      <Section title="Manager note" sub="Goes to the counter and to the store keeper with this request.">
-        <div className="fld">
-          <textarea
-            rows={3}
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            placeholder="Why you trimmed a line, or what the counter should do next…"
-            disabled={!open}
-          />
-          <div className="hint" style={open && !reason ? { color: "var(--warn)" } : undefined}>
-            {open && !reason
-              ? "A reason is required — the counter sees it. Reject stays disabled until you write one."
-              : "Kept on the request history against your name."}
+      {open && (
+        <Section
+          title="Reason for the counter"
+          sub="Goes to the counter and to the store keeper with this request, against your name. Required to reject; worth writing whenever you trim."
+        >
+          <div className="btnrow" style={{ flexWrap: "wrap", marginBottom: 8 }}>
+            {QUICK.map((r) => (
+              <Btn key={r} size="xs" variant="sub" onClick={() => setNote(r)}>{r}</Btn>
+            ))}
           </div>
-        </div>
-      </Section>
+          <div className="fld">
+            <textarea
+              rows={3}
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder="Why you trimmed or refused, and what the counter should do next…"
+            />
+            <div className="hint" style={!reason ? { color: "var(--warn)" } : undefined}>
+              {reason
+                ? "Kept on the request history against your name."
+                : "No reason, no reject — the counter must be told why. Approving without one is allowed."}
+            </div>
+          </div>
+          <div className="btnrow mtop">
+            <Btn variant="dg" wide disabled={!reason} onClick={doReject}>
+              Reject the whole request
+            </Btn>
+            <Btn wide disabled={!canApprove} onClick={doApprove}>
+              Approve {killedIdx.length > 0 ? "the remaining items" : "and forward to store"}
+            </Btn>
+          </div>
+        </Section>
+      )}
 
       <Section title="History" sub="Every hand this request has passed through">
         <Feed

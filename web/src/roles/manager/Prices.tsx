@@ -4,10 +4,13 @@ import { useApp } from "../../store";
 import { costOf, menuOf, priceOf } from "../../lib/selectors";
 import { money, sum } from "../../lib/fmt";
 import {
-  Alert, Btn, Card, DataTable, Field, FormRow, Grid, PageHead, Pill, TableFoot, Tag, Toolbar,
+  Alert, Btn, Card, DataTable, Field, FilterBtn, FormRow, Grid, PageHead, Pill, TableFoot, Tag, Toolbar,
 } from "../../ui/kit";
+import { emptyFor, sortRows, useSort, type SortValue } from "./useSort";
 import type { ItemType, LocKey } from "../../types";
 
+const TYPES: (ItemType | "All")[] = ["All", "MRP", "FG", "MTO"];
+const PSTATE = ["All", "Priced", "Not priced", "Capped at MRP", "Margin under 40%"] as const;
 const tagKind = (t: ItemType) => (t === "MRP" ? "tr" : t === "FG" || t === "MTO" ? "md" : undefined);
 const marginOf = (p: number, cost: number) => (p > 0 ? ((p - cost) / p) * 100 : 0);
 
@@ -22,10 +25,15 @@ export default function Prices() {
   const shop = s.shopFilter;
   const [edit, setEdit] = useState<Record<string, string>>({});
   const [q, setQ] = useState("");
+  const [type, setType] = useState(0);
+  const [pstate, setPstate] = useState(0);
   const [drop, setDrop] = useState<string | null>(null);
   const [add, setAdd] = useState("");
+  const psort = useSort("name");
 
-  const go = (loc: LocKey | null) => { setQ(""); setDrop(null); setAdd(""); setShopFilter(loc); };
+  const go = (loc: LocKey | null) => {
+    setQ(""); setType(0); setPstate(0); setDrop(null); setAdd(""); setShopFilter(loc);
+  };
 
   const priced = (loc: LocKey) => menuOf(s, loc).filter((it) => priceOf(s, loc, it).p > 0);
   /* A made item costs what its recipe costs, so its margin is never 100% (H1). */
@@ -76,9 +84,32 @@ export default function Prices() {
   const list = LOC[shop].list ?? "A";
   const term = q.trim().toLowerCase();
   const listed = menuOf(s, shop);
-  const items = listed.filter(
-    (it) => !term || (IT[it]?.n ?? "").toLowerCase().includes(term) || (IT[it]?.c ?? "").toLowerCase().includes(term)
-  );
+  const wantType = TYPES[type];
+  const items = listed
+    .filter((it) => wantType === "All" || IT[it]?.t === wantType)
+    .filter((it) => {
+      if (pstate === 0) return true;
+      const pr = priceOf(s, shop, it);
+      if (pstate === 1) return pr.p > 0;
+      if (pstate === 2) return pr.p <= 0;
+      if (pstate === 3) return pr.capped;
+      return pr.p > 0 && marginOf(pr.p, costOf(it)) < 40;
+    })
+    .filter(
+      (it) => !term || (IT[it]?.n ?? "").toLowerCase().includes(term)
+        || (IT[it]?.c ?? "").toLowerCase().includes(term)
+        || (IT[it]?.g ?? "").toLowerCase().includes(term)
+    );
+  const filtered = term !== "" || type > 0 || pstate > 0;
+  const sortedItems = sortRows(items, psort.sort, (it, k): SortValue => {
+    const pr = priceOf(s, shop, it);
+    return k === "type" ? (IT[it]?.t ?? "")
+      : k === "cost" ? costOf(it)
+        : k === "listed" ? pr.listed
+          : k === "charged" ? pr.p
+            : k === "margin" ? marginOf(pr.p, costOf(it))
+              : (IT[it]?.n ?? it);
+  });
   const missing = Object.keys(s.prices[list]).filter((it) => !listed.includes(it));
 
   const save = (it: string) => {
@@ -126,25 +157,35 @@ export default function Prices() {
         )}
       </Card>
 
-      <Card title="Products and prices" sub={`${items.length} listed at this counter`} flush className="mtop">
+      <Card title="Products and prices" sub={`${items.length} of ${listed.length} listed at this counter`} flush className="mtop">
         <Toolbar
-          placeholder="Search product name or code…"
+          placeholder="Search product name, code or group…"
           value={q}
           onSearch={setQ}
+          filters={
+            <>
+              <FilterBtn label="Type" value={String(TYPES[type])} active={type > 0}
+                onClick={() => setType((type + 1) % TYPES.length)} />
+              <FilterBtn label="Price" value={PSTATE[pstate]} active={pstate > 0}
+                onClick={() => setPstate((pstate + 1) % PSTATE.length)} />
+            </>
+          }
           right={<Btn variant="gh" size="sm" onClick={() => go(null)}>Back to all shops</Btn>}
         />
         <div className="lgrid">
           <DataTable
+            sort={psort.sort}
+            onSort={psort.onSort}
             cols={[
-              { h: "Item", cls: "nm", w: "22%" },
-              { h: "Type" },
-              { h: "Cost", r: true },
-              { h: "Listed price", r: true },
-              { h: "Charged price", r: true },
-              { h: "Margin %", r: true },
+              { h: "Item", cls: "nm", w: "22%", sort: "name" },
+              { h: "Type", sort: "type" },
+              { h: "Cost", r: true, sort: "cost" },
+              { h: "Listed price", r: true, sort: "listed" },
+              { h: "Charged price", r: true, sort: "charged" },
+              { h: "Margin %", r: true, sort: "margin" },
               { h: "Actions", w: "26%" },
             ]}
-            rows={items.map((it) => {
+            rows={sortedItems.map((it) => {
               const pr = priceOf(s, shop, it);
               const cost = costOf(it);
               const mrp = IT[it]?.mrp;
@@ -193,11 +234,10 @@ export default function Prices() {
                 ],
               };
             })}
-            empty={{
-              title: "No product priced here",
-              sub: "Clear the search, or go back and pick another shop to manage.",
-              action: <Btn onClick={() => go(null)}>Back to all shops</Btn>,
-            }}
+            empty={emptyFor(filtered, {
+              title: "No product listed at this counter",
+              sub: "Add one above, or go back and pick another shop to manage.",
+            })}
           />
         </div>
         <TableFoot

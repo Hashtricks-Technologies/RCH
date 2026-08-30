@@ -4,7 +4,7 @@ import { useApp } from "../../store";
 import { avail, menuOf, qty, recipeCost } from "../../lib/selectors";
 import { fq, money, sum, U } from "../../lib/fmt";
 import {
-  Alert, Btn, Card, DataTable, Field, FormRow, Grid, PageHead, Pill, StatusPill,
+  Alert, Btn, Card, DataTable, Field, FilterBtn, FormRow, Grid, PageHead, Pill, StatusPill,
   TableFoot, Toolbar,
 } from "../../ui/kit";
 import type { LocKey, Ticket } from "../../types";
@@ -30,10 +30,24 @@ export default function MakeDistribute() {
   const [why, setWhy] = useState<Record<string, string>>({});
   const [dItem, setDItem] = useState("puff");
   const [dQty, setDQty] = useState("");
-  const [dTo, setDTo] = useState<LocKey>("coffee");
+  const [dTo, setDTo] = useState<LocKey>(DESTS.find((l) => LOC[l].type === "Outlet") ?? "store");
   const [bq, setBq] = useState("");
+  const [bProd, setBProd] = useState<string | null>(null);
   const [tq, setTq] = useState("");
+  const [tDest, setTDest] = useState<LocKey | null>(null);
   const [cq, setCq] = useState("");
+  const [cDest, setCDest] = useState<LocKey | null>(null);
+  const [rq, setRq] = useState("");
+  const [rDest, setRDest] = useState<LocKey | null>(null);
+
+  /** Steps a destination filter through every place the kitchen can send to. */
+  const nextDest = (v: LocKey | null): LocKey | null => {
+    const at = v ? DESTS.indexOf(v) : -1;
+    return at + 1 >= DESTS.length ? null : DESTS[at + 1];
+  };
+  const destBtn = (v: LocKey | null, set: (x: LocKey | null) => void) => (
+    <FilterBtn label="To" value={v ? LOC[v].n : "All"} active={Boolean(v)} onClick={() => set(nextDest(v))} />
+  );
 
   /** How many units the ingredients on the kitchen rack still allow. */
   const ceiling = (k: string) => {
@@ -60,14 +74,34 @@ export default function MakeDistribute() {
     setDQty("");
   };
 
-  const batches = batch.filter((b) =>
-    !bq.trim() || (b.id + " " + IT[b.it].n).toLowerCase().includes(bq.trim().toLowerCase()));
-  const match = (term: string) => (t: Ticket) =>
-    !term.trim() || (t.id + " " + t.req + " " + LOC[t.to].n).toLowerCase().includes(term.trim().toLowerCase());
+  const allBatches = batch;
+  const bFiltering = Boolean(bq.trim() || bProd);
+  const batches = allBatches
+    .filter((b) => !bProd || b.it === bProd)
+    .filter((b) => !bq.trim()
+      || (b.id + " " + IT[b.it].n + " " + IT[b.it].c + " " + (b.note ?? ""))
+        .toLowerCase().includes(bq.trim().toLowerCase()));
+  const cycleProd = () => {
+    const at = bProd ? PRODS.indexOf(bProd) : -1;
+    setBProd(at + 1 >= PRODS.length ? null : PRODS[at + 1]);
+  };
+
+  const match = (term: string, dest: LocKey | null) => (t: Ticket) => {
+    if (dest && t.to !== dest) return false;
+    const k = term.trim().toLowerCase();
+    return !k || (t.id + " " + t.req + " " + LOC[t.to].n + " " + LOC[t.to].c
+      + " " + t.lines.map((l) => IT[l.it]?.n ?? l.it).join(" ")).toLowerCase().includes(k);
+  };
   const kt = tkt.filter((t) => t.from === "kitchen");
-  const toHand = kt.filter((t) => t.st === "Issued").filter(match(tq));
-  const transit = kt.filter((t) => t.st === "Collected").filter(match(cq));
-  const done = kt.filter((t) => t.st === "Received");
+  const allToHand = kt.filter((t) => t.st === "Issued");
+  const allTransit = kt.filter((t) => t.st === "Collected");
+  const allDone = kt.filter((t) => t.st === "Received");
+  const toHand = allToHand.filter(match(tq, tDest));
+  const transit = allTransit.filter(match(cq, cDest));
+  const done = allDone.filter(match(rq, rDest));
+  const tFiltering = Boolean(tq.trim() || tDest);
+  const cFiltering = Boolean(cq.trim() || cDest);
+  const rFiltering = Boolean(rq.trim() || rDest);
 
   const dFree = avail(s, "kitchen", dItem);
   const dWant = Number(dQty) || 0;
@@ -188,7 +222,16 @@ export default function MakeDistribute() {
       </Grid>
 
       <Card title="Made today" sub="Batch log from the Central Kitchen" flush className="mtop">
-        <Toolbar placeholder="Search batch or product…" value={bq} onSearch={setBq} />
+        <Toolbar
+          placeholder="Search batch, product or reason…"
+          value={bq}
+          onSearch={setBq}
+          filters={<FilterBtn label="Product" value={bProd ? IT[bProd].n : "All"}
+            active={Boolean(bProd)} onClick={cycleProd} />}
+          right={bFiltering
+            ? <Btn size="sm" variant="gh" onClick={() => { setBq(""); setBProd(null); }}>Clear filters</Btn>
+            : <span className="mini">{allBatches.length} batch{allBatches.length === 1 ? "" : "es"} today</span>}
+        />
         <DataTable
           cols={[
             { h: "Batch ID", cls: "nm", w: "20%" },
@@ -217,8 +260,13 @@ export default function MakeDistribute() {
             ],
           }))}
           empty={{
-            title: "Nothing made yet today",
-            sub: "Enter a quantity on a product tile above and mark it made.",
+            title: bFiltering ? "Nothing matches those filters" : "Nothing made yet today",
+            sub: bFiltering
+              ? `${allBatches.length} batch${allBatches.length === 1 ? "" : "es"} were logged today with the filters cleared.`
+              : "Enter a quantity on a product tile above and mark it made.",
+            action: bFiltering
+              ? <Btn size="sm" onClick={() => { setBq(""); setBProd(null); }}>Clear filters</Btn>
+              : undefined,
           }}
         />
         <TableFoot
@@ -233,12 +281,20 @@ export default function MakeDistribute() {
       </Alert>
 
       <Card title="Dispatched" sub="Issued out of the kitchen — scan when the counter arrives" flush className="mtop">
-        <Toolbar placeholder="Search ticket or destination…" value={tq} onSearch={setTq} />
+        <Toolbar
+          placeholder="Search ticket, order or product…"
+          value={tq}
+          onSearch={setTq}
+          filters={destBtn(tDest, setTDest)}
+          right={tFiltering
+            ? <Btn size="sm" variant="gh" onClick={() => { setTq(""); setTDest(null); }}>Clear filters</Btn>
+            : <span className="mini">{allToHand.length} at the pass</span>}
+        />
         <DataTable
           cols={[
             { h: "Ticket ID", cls: "nm", w: "18%" },
             { h: "To", w: "18%" },
-            { h: "Lines" },
+            { h: "Items" },
             { h: "Qty", r: true, w: "10%" },
             { h: "Status", w: "12%" },
             { h: "Action", w: "17%" },
@@ -255,8 +311,13 @@ export default function MakeDistribute() {
             ],
           }))}
           empty={{
-            title: "Nothing waiting at the pass",
-            sub: "Dispatch a ready order, or send stock straight out with the distribute form above.",
+            title: tFiltering ? "Nothing matches those filters" : "Nothing waiting at the pass",
+            sub: tFiltering
+              ? `${allToHand.length} ticket${allToHand.length === 1 ? "" : "s"} are at the pass with the filters cleared.`
+              : "Dispatch a ready order, or send stock straight out with the distribute form above.",
+            action: tFiltering
+              ? <Btn size="sm" onClick={() => { setTq(""); setTDest(null); }}>Clear filters</Btn>
+              : undefined,
           }}
         />
         <TableFoot
@@ -266,12 +327,20 @@ export default function MakeDistribute() {
       </Card>
 
       <Card title="In transit" sub="Handed over — the receiving counter must now confirm" flush className="mtop">
-        <Toolbar placeholder="Search ticket or destination…" value={cq} onSearch={setCq} />
+        <Toolbar
+          placeholder="Search ticket, order or product…"
+          value={cq}
+          onSearch={setCq}
+          filters={destBtn(cDest, setCDest)}
+          right={cFiltering
+            ? <Btn size="sm" variant="gh" onClick={() => { setCq(""); setCDest(null); }}>Clear filters</Btn>
+            : <span className="mini">{allTransit.length} on the move</span>}
+        />
         <DataTable
           cols={[
             { h: "Ticket ID", cls: "nm", w: "18%" },
             { h: "To", w: "18%" },
-            { h: "Lines" },
+            { h: "Items" },
             { h: "Qty", r: true, w: "10%" },
             { h: "Status", w: "29%" },
           ]}
@@ -289,8 +358,13 @@ export default function MakeDistribute() {
             ],
           }))}
           empty={{
-            title: "Nothing in transit",
-            sub: "A ticket moves here the moment it is scanned and handed over at the pass.",
+            title: cFiltering ? "Nothing matches those filters" : "Nothing in transit",
+            sub: cFiltering
+              ? `${allTransit.length} ticket${allTransit.length === 1 ? "" : "s"} are in transit with the filters cleared.`
+              : "A ticket moves here the moment it is scanned and handed over at the pass.",
+            action: cFiltering
+              ? <Btn size="sm" onClick={() => { setCq(""); setCDest(null); }}>Clear filters</Btn>
+              : undefined,
           }}
         />
         <TableFoot
@@ -300,11 +374,20 @@ export default function MakeDistribute() {
       </Card>
 
       <Card title="Delivered today" sub="Confirmed by the counter and on their shelf" flush className="mtop">
+        <Toolbar
+          placeholder="Search ticket, order or product…"
+          value={rq}
+          onSearch={setRq}
+          filters={destBtn(rDest, setRDest)}
+          right={rFiltering
+            ? <Btn size="sm" variant="gh" onClick={() => { setRq(""); setRDest(null); }}>Clear filters</Btn>
+            : <span className="mini">{allDone.length} confirmed today</span>}
+        />
         <DataTable
           cols={[
             { h: "Ticket ID", cls: "nm", w: "18%" },
             { h: "To", w: "18%" },
-            { h: "Lines" },
+            { h: "Items" },
             { h: "Qty", r: true, w: "10%" },
             { h: "Status", w: "29%" },
           ]}
@@ -319,8 +402,13 @@ export default function MakeDistribute() {
             ],
           }))}
           empty={{
-            title: "Nothing confirmed yet today",
-            sub: "A ticket lands here once the counter confirms receipt.",
+            title: rFiltering ? "Nothing matches those filters" : "Nothing confirmed yet today",
+            sub: rFiltering
+              ? `${allDone.length} ticket${allDone.length === 1 ? "" : "s"} were confirmed today with the filters cleared.`
+              : "A ticket lands here once the counter confirms receipt.",
+            action: rFiltering
+              ? <Btn size="sm" onClick={() => { setRq(""); setRDest(null); }}>Clear filters</Btn>
+              : undefined,
           }}
         />
         <TableFoot

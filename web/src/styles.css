@@ -357,3 +357,39 @@ td.n b{font-weight:600;color:var(--ink)}
 .otp-v{font-family:"IBM Plex Mono",monospace;font-size:26px;font-weight:600;letter-spacing:.14em;
   color:var(--accent);line-height:1.05}
 .otp-in{font-family:"IBM Plex Mono",monospace;font-size:18px;letter-spacing:.22em;text-align:center}
+
+/* kanban — the kitchen order board (one column per stage, no drag and drop) */
+.kan{display:flex;gap:11px;align-items:flex-start;overflow-x:auto;padding:2px 2px 12px}
+.kan-col{flex:0 0 282px;width:282px;display:flex;flex-direction:column;gap:8px;
+ background:var(--surface-2);border:1px solid var(--line);border-radius:var(--rl);padding:10px}
+.kan-h{display:flex;align-items:center;gap:8px}
+.kan-h .sp{flex:1}
+.kan-n{flex:none;font-family:"IBM Plex Mono",monospace;font-size:11px;font-weight:600;
+ min-width:22px;text-align:center;padding:1px 7px;border-radius:9px;
+ background:var(--surface-3);color:var(--ink-2);border:1px solid var(--line)}
+.kan-sub{margin:-2px 0 2px;font-size:10.5px;color:var(--ink-3)}
+.kan-card{background:var(--surface);border:1px solid var(--line);border-radius:9px;padding:10px;
+ display:flex;flex-direction:column;gap:7px;cursor:pointer;box-shadow:var(--sh1);
+ transition:border-color .12s,transform .08s}
+.kan-card:hover{border-color:var(--accent);transform:translateY(-1px)}
+.kan-card:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.kan-top{display:flex;align-items:baseline;gap:8px}
+.kan-top b{font-size:12px;font-weight:600;color:var(--ink)}
+.kan-t{margin-left:auto;font-size:10.5px;color:var(--ink-3)}
+.kan-who{display:flex;flex-direction:column;gap:1px}
+.kan-who b{font-size:12px;font-weight:600;color:var(--ink-2)}
+.kan-who span{font-size:10.5px;color:var(--ink-3)}
+.kan-items{list-style:none;margin:0;padding:6px 0 0;border-top:1px solid var(--line-2);
+ display:flex;flex-direction:column;gap:5px}
+.kan-items li{display:grid;grid-template-columns:auto 1fr;gap:2px 7px;align-items:baseline}
+.kan-q{font-size:12px;font-weight:600;color:var(--ink)}
+.kan-nm{font-size:12px;color:var(--ink-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.kan-st{grid-column:2;font-size:10.5px;font-family:"IBM Plex Mono",monospace}
+.kan-st.ok{color:var(--good)}
+.kan-st.short{color:var(--crit)}
+.kan-foot{display:flex;align-items:center;gap:6px;flex-wrap:wrap;
+ padding-top:7px;border-top:1px solid var(--line-2)}
+.kan-empty{padding:20px 12px;text-align:center;border:1px dashed var(--line-strong);border-radius:9px;
+ background:var(--surface);display:flex;flex-direction:column;gap:4px}
+.kan-empty b{font-size:12px;font-weight:600;color:var(--ink-3)}
+.kan-empty span{font-size:10.5px;color:var(--ink-4)}

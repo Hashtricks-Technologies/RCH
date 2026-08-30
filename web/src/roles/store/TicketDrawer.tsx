@@ -1,7 +1,8 @@
+import { useState } from "react";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
 import { U, fq, money, sum } from "../../lib/fmt";
-import { Btn, DataTable, Feed, Pill, QR, StatusPill } from "../../ui/kit";
+import { Btn, DataTable, Feed, Field, Otp, Pill, StatusPill } from "../../ui/kit";
 import { DrawerFrame } from "../../ui/Drawer";
 import { registerDrawer, type DrawerProps } from "../../drawers";
 
@@ -12,6 +13,8 @@ function TicketDrawer({ id }: DrawerProps) {
   const req = useApp((s) => s.req);
   const close = useApp((s) => s.closeDrawer);
   const handover = useApp((s) => s.handover);
+  const [otp, setOtp] = useState("");
+  const [override, setOverride] = useState(false);
 
   const t = tkt.find((x) => x.id === id);
   if (!t) {
@@ -29,7 +32,7 @@ function TicketDrawer({ id }: DrawerProps) {
   const when = (s: string) => r?.hist.find((h) => h.s === s)?.t;
   const body: Record<string, string> = {
     Issued: `Stock reserved in ${LOC[t.from].n} and the ticket printed at the window.`,
-    Collected: `Scanned at the store window — quantities left ${LOC[t.from].n}.`,
+    Collected: `OTP verified at the store window — quantities left ${LOC[t.from].n}.`,
     Received: `${LOC[t.to].n} confirms the goods on the shelf and the request closes.`,
   };
 
@@ -42,7 +45,9 @@ function TicketDrawer({ id }: DrawerProps) {
           <Btn variant="gh" onClick={close}>Close</Btn>
           <div className="sp" />
           {t.st === "Issued" ? (
-            <Btn variant="ok" onClick={() => handover(t.id)}>Scan &amp; hand over</Btn>
+            <Btn variant="ok" disabled={otp.trim().length !== 6} onClick={() => handover(t.id, otp)}>
+              Hand over on OTP
+            </Btn>
           ) : (
             <span className="mini">{t.st === "Collected" ? "Waiting on the receiving counter" : "Closed"}</span>
           )}
@@ -55,14 +60,48 @@ function TicketDrawer({ id }: DrawerProps) {
           <div className="mono-id" style={{ fontSize: 26, letterSpacing: "0.04em" }}>{t.id}</div>
           <div className="mtop" style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             <StatusPill status={t.st} />
-            <span className="mini">{t.lines.length} line{t.lines.length > 1 ? "s" : ""} · {sum(t.lines, (l) => l.qty)} units · {money(value)}</span>
+            <span className="mini">{t.lines.length} item{t.lines.length > 1 ? "s" : ""} · {sum(t.lines, (l) => l.qty)} units · {money(value)}</span>
           </div>
           <div className="mini mtop">
             From <b>{LOC[t.from].n}</b> ({LOC[t.from].c}) → To <b>{LOC[t.to].n}</b> ({LOC[t.to].c}, {LOC[t.to].floor})
           </div>
         </div>
-        <QR size={86} />
+        <Otp value={t.otp} />
       </div>
+
+      {t.st === "Issued" && (
+        <div className="mtop">
+          <Field
+            label="OTP quoted by the collector"
+            hint="Six digits, read out at the window. The store refuses a handover on the wrong OTP."
+          >
+            <input
+              className="otp-in"
+              inputMode="numeric"
+              maxLength={6}
+              placeholder="000000"
+              value={otp}
+              onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+            />
+          </Field>
+          <div className="mini">
+            {override ? (
+              <>
+                Supervisor override hands the stock over without an OTP. It is recorded against your name.
+                {" "}
+                <Btn size="xs" variant="dg" onClick={() => handover(t.id)}>Confirm override handover</Btn>
+                {" "}
+                <Btn size="xs" variant="gh" onClick={() => setOverride(false)}>Cancel override</Btn>
+              </>
+            ) : (
+              <>
+                Collector cannot produce the OTP?{" "}
+                <Btn size="xs" variant="gh" onClick={() => setOverride(true)}>Supervisor override</Btn>
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       <div className="mtop">
         <DataTable
@@ -84,7 +123,7 @@ function TicketDrawer({ id }: DrawerProps) {
               <>{money(l.qty * (IT[l.it]?.cost ?? 0))}</>,
             ],
           }))}
-          empty={{ title: "No lines on this ticket" }}
+          empty={{ title: "No items on this ticket" }}
         />
       </div>
 

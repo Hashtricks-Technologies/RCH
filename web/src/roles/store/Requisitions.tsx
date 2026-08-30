@@ -1,13 +1,21 @@
 import { useState } from "react";
 import { IT, LOC } from "../../data/master";
-import { suggestVendor } from "../../data/vendors";
+import { suggestVendor, vendorName } from "../../data/vendors";
 import { useApp } from "../../store";
 import { avail, awaitingApproval, onOrder, prqProgress, qty } from "../../lib/selectors";
 import { U, fq, money, money0, sum } from "../../lib/fmt";
 import {
-  Alert, Btn, BtnRow, Card, DataTable, Field, Grid, PageHead, StatusPill, TableFoot, Toolbar,
+  Alert, Btn, BtnRow, Card, DataTable, Field, FilterBtn, Grid, PageHead, StatusPill, TableFoot, Toolbar,
 } from "../../ui/kit";
 import type { DraftLine } from "../../types";
+import "./RequisitionDetail";
+
+/** The progress labels prqProgress() can return, plus "All" — a real filter
+ *  over what procurement has done, not over the raw requisition status. */
+const STAGES = [
+  "All", "Awaiting approval", "Awaiting order", "Partly ordered", "Ordered",
+  "Partly received", "Received", "Declined",
+] as const;
 
 const BUYABLE = Object.keys(IT)
   .filter((k) => IT[k].t === "RAW" || IT[k].t === "PACK" || IT[k].t === "MRP")
@@ -22,8 +30,14 @@ export default function Requisitions() {
   const sendRequisition = useApp((x) => x.sendRequisition);
   const notify = useApp((x) => x.notify);
 
+  const openDrawer = useApp((x) => x.openDrawer);
+
   const [note, setNote] = useState("");
   const [q, setQ] = useState("");
+  const [si, setSi] = useState(0);
+  const [openOnly, setOpenOnly] = useState(false);
+
+  const stage = STAGES[si];
 
   const setLine = (i: number, patch: Partial<DraftLine>) => {
     const next = prqDraft.map((l, n) => (n === i ? { ...l, ...patch } : l));
@@ -71,9 +85,27 @@ export default function Requisitions() {
   const alreadyOpen = prqDraft.filter((l) => openQty(l.it) > 0);
 
   const term = q.trim().toLowerCase();
-  const history = prq.filter(
-    (p) => !term || p.id.toLowerCase().includes(term) || p.by.toLowerCase().includes(term) || p.st.toLowerCase().includes(term),
-  );
+  /** Every purchase order this requisition ended up on — the buyer's paperwork
+   *  is exactly what the client wants to search a previous requisition by. */
+  const posFor = (id: string) =>
+    s.po.filter((o) => o.st !== "Cancelled" && o.lines.some((l) => l.src.some((x) => x.prq === id)));
+
+  const history = prq.filter((p) => {
+    const label = prqProgress(s, p.id).label;
+    if (stage !== "All" && label !== stage) return false;
+    if (openOnly && (label === "Received" || label === "Declined")) return false;
+    if (!term) return true;
+    const pos = posFor(p.id);
+    return p.id.toLowerCase().includes(term)
+      || p.by.toLowerCase().includes(term)
+      || p.st.toLowerCase().includes(term)
+      || label.toLowerCase().includes(term)
+      || p.note.toLowerCase().includes(term)
+      || p.lines.some((l) => (IT[l.it]?.n ?? l.it).toLowerCase().includes(term) || (IT[l.it]?.c ?? "").toLowerCase().includes(term))
+      || pos.some((o) => o.id.toLowerCase().includes(term) || vendorName(s.vendors, o.vendor).toLowerCase().includes(term));
+  });
+  const filtered = prq.length > 0 && history.length === 0;
+  const resetFilters = () => { setQ(""); setSi(0); setOpenOnly(false); };
   const openValue = sum(
     prq.filter((p) => p.st !== "Declined"),
     (p) => sum(p.lines, (l) => (IT[l.it]?.cost ?? 0) * l.qty),
@@ -98,7 +130,7 @@ export default function Requisitions() {
 
       {low.length > 0 && (
         <Alert tone="w" label="REORDER" action={<Btn size="sm" onClick={fillFromLow}>Stage {low.length} item{low.length > 1 ? "s" : ""}</Btn>}>
-          {low.length} central store line{low.length > 1 ? "s are" : " is"} below reorder level. Suggested quantity
+          {low.length} central store item{low.length > 1 ? "s are" : " is"} below reorder level. Suggested quantity
           brings each back to 1.6 × the reorder level.
         </Alert>
       )}
@@ -106,7 +138,7 @@ export default function Requisitions() {
       <Grid>
         <Card
           title="New requisition"
-          sub={`${prqDraft.length} line${prqDraft.length === 1 ? "" : "s"} · ${draftQty} units · ${money0(draftValue)} estimated`}
+          sub={`${prqDraft.length} item${prqDraft.length === 1 ? "" : "s"} · ${draftQty} units · ${money0(draftValue)} estimated`}
           right={<Btn size="sm" variant="gh" onClick={fillFromLow}>Fill from below-reorder items</Btn>}
         >
           <div className="tw">
@@ -128,10 +160,10 @@ export default function Requisitions() {
                   <tr>
                     <td colSpan={8}>
                       <div className="empty">
-                        <b>No lines on this requisition yet</b>
-                        <p>Add a line by hand, or stage every central store item that is below its reorder level.</p>
+                        <b>No items on this requisition yet</b>
+                        <p>Add an item by hand, or stage every central store item that is below its reorder level.</p>
                         <BtnRow>
-                          <Btn size="sm" onClick={addLine}>Add line</Btn>
+                          <Btn size="sm" onClick={addLine}>Add item</Btn>
                           <Btn size="sm" variant="gh" onClick={fillFromLow}>Fill from below-reorder items</Btn>
                         </BtnRow>
                       </div>
@@ -160,7 +192,7 @@ export default function Requisitions() {
                             min={0}
                             step={it && it.u === "nos" ? 1 : 0.5}
                             value={l.qty}
-                            aria-label={it ? `Quantity of ${it.n}` : `Quantity on line ${i + 1}`}
+                            aria-label={it ? `Quantity of ${it.n}` : `Quantity on item ${i + 1}`}
                             onChange={(e) => setLine(i, { qty: Number(e.target.value) })}
                           />
                         </td>
@@ -186,9 +218,9 @@ export default function Requisitions() {
 
           <div className="mtop">
             <BtnRow>
-              <Btn size="sm" variant="gh" onClick={addLine}>Add line</Btn>
+              <Btn size="sm" variant="gh" onClick={addLine}>Add item</Btn>
               {prqDraft.length > 0 && (
-                <Btn size="sm" variant="gh" onClick={() => setPrqDraft([])}>Clear all lines</Btn>
+                <Btn size="sm" variant="gh" onClick={() => setPrqDraft([])}>Clear all items</Btn>
               )}
             </BtnRow>
           </div>
@@ -222,51 +254,83 @@ export default function Requisitions() {
           </BtnRow>
         </Card>
 
-        <Card title="Previous requisitions" sub="Raised by the central store on procurement" flush>
+        <Card
+          title="Previous requisitions"
+          sub="Raised by the central store on procurement · open a row to see what was actually ordered"
+          flush
+        >
           <Toolbar
-            placeholder="Search requisition, raiser or status…"
+            placeholder="Search requisition, raiser, item, purchase order or vendor…"
             value={q}
             onSearch={setQ}
+            filters={
+              <>
+                <FilterBtn label="Stage" value={stage} onClick={() => setSi((n) => (n + 1) % STAGES.length)} />
+                <FilterBtn label="Still open only" active={openOnly} onClick={() => setOpenOnly((v) => !v)} />
+              </>
+            }
             right={<span className="mini">{money0(openValue)} open with procurement</span>}
           />
           <DataTable
             cols={[
-              { h: "Requisition ID", cls: "nm", w: "16%" },
-              { h: "Raised", w: "8%" },
-              { h: "Raised by", w: "14%" },
-              { h: "Lines", r: true },
+              { h: "Requisition ID", cls: "nm", w: "15%" },
+              { h: "Raised", w: "7%" },
+              { h: "Raised by", w: "12%" },
+              { h: "Items", r: true },
               { h: "Total qty", r: true },
               { h: "Estimated value", r: true },
-              { h: "Status", w: "12%" },
-              { h: "Note", w: "24%" },
+              { h: "Ordered on", w: "18%" },
+              { h: "Received", r: true },
+              { h: "Stage", w: "13%" },
             ]}
             rows={history.map((p) => {
               const g = prqProgress(s, p.id);
+              const pos = posFor(p.id);
               return {
                 key: p.id,
+                onClick: () => openDrawer("sprq", p.id),
                 cells: [
                   <>
                     {p.id}
-                    <small>{p.lines.map((l) => IT[l.it]?.c ?? l.it).join(", ")}</small>
+                    <small>{p.lines.map((l) => IT[l.it]?.n ?? l.it).join(", ")}</small>
                   </>,
                   <span className="mono">{p.at}</span>,
                   <>{p.by}</>,
                   <>{p.lines.length}</>,
                   <b>{sum(p.lines, (l) => l.qty)}</b>,
                   <>{money0(sum(p.lines, (l) => (IT[l.it]?.cost ?? 0) * l.qty))}</>,
+                  pos.length ? (
+                    <>
+                      <span className="mono-id">{pos.map((o) => o.id).join(", ")}</span>
+                      <div className="mini">
+                        {[...new Set(pos.map((o) => vendorName(s.vendors, o.vendor)))].join(", ")} · due{" "}
+                        {[...new Set(pos.map((o) => o.eta))].join(", ")}
+                      </div>
+                    </>
+                  ) : (
+                    <span className="dim">No purchase order yet</span>
+                  ),
+                  <>
+                    {fq(g.received, "")} <span className="dim">of {fq(g.ordered, "")}</span>
+                  </>,
                   <>
                     <StatusPill status={g.label} />
-                    <div className="mini">{fq(g.ordered, "")} of {fq(g.appr, "")} ordered · {fq(g.received, "")} received</div>
+                    <div className="mini">{fq(g.ordered, "")} of {fq(g.appr, "")} approved ordered</div>
                   </>,
-                  <span className="mini">{p.note || "—"}</span>,
                 ],
               };
             })}
-            empty={{
-              title: "No requisitions raised yet",
-              sub: "Build one above and send it to the procurement team.",
-              action: <Btn size="sm" onClick={fillFromLow}>Fill from below-reorder items</Btn>,
-            }}
+            empty={filtered
+              ? {
+                title: "Nothing matches those filters",
+                sub: `${prq.length} requisition${prq.length > 1 ? "s are" : " is"} on file, but none of them match.`,
+                action: <Btn size="sm" variant="gh" onClick={resetFilters}>Reset filters</Btn>,
+              }
+              : {
+                title: "No requisitions raised yet",
+                sub: "Build one above and send it to the procurement team.",
+                action: <Btn size="sm" onClick={fillFromLow}>Fill from below-reorder items</Btn>,
+              }}
           />
           <TableFoot
             count={history.length}

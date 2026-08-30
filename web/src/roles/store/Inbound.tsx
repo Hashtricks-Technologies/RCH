@@ -1,15 +1,47 @@
-import { LOC } from "../../data/master";
+import { useState } from "react";
+import { ALL_LOCS, IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
 import { sum } from "../../lib/fmt";
-import { Alert, Btn, Card, DataTable, PageHead, StatusPill, TableFoot } from "../../ui/kit";
+import {
+  Alert, Btn, Card, DataTable, FilterBtn, PageHead, StatusPill, TableFoot, Toolbar,
+} from "../../ui/kit";
+import type { LocKey, Ticket } from "../../types";
+
+/** "All" plus every location that can send stock to the central store. */
+const FROM_OPTS: (LocKey | null)[] = [null, ...ALL_LOCS.filter((l) => l !== "store")];
+const fromLabel = (l: LocKey | null) => (l === null ? "All" : LOC[l].n);
 
 export default function Inbound() {
   const s = useApp();
   const receiveTicket = useApp((x) => x.receiveTicket);
 
-  const inbound = s.tkt.filter((t) => t.to === "store" && t.st !== "Received");
-  const collected = inbound.filter((t) => t.st === "Collected");
-  const received = s.tkt.filter((t) => t.to === "store" && t.st === "Received").slice(-10).reverse();
+  const [qa, setQa] = useState("");
+  const [qb, setQb] = useState("");
+  const [fa, setFa] = useState(0);
+  const [fb, setFb] = useState(0);
+  const [readyOnly, setReadyOnly] = useState(false);
+
+  const fromA = FROM_OPTS[fa];
+  const fromB = FROM_OPTS[fb];
+
+  const match = (t: Ticket, q: string) => {
+    const term = q.trim().toLowerCase();
+    if (!term) return true;
+    return t.id.toLowerCase().includes(term)
+      || t.req.toLowerCase().includes(term)
+      || LOC[t.from].n.toLowerCase().includes(term)
+      || t.st.toLowerCase().includes(term)
+      || t.lines.some((l) => (IT[l.it]?.n ?? l.it).toLowerCase().includes(term));
+  };
+
+  const allInbound = s.tkt.filter((t) => t.to === "store" && t.st !== "Received");
+  const inbound = allInbound.filter((t) =>
+    (!fromA || t.from === fromA) && (!readyOnly || t.st === "Collected") && match(t, qa));
+
+  const allReceived = s.tkt.filter((t) => t.to === "store" && t.st === "Received").slice(-10).reverse();
+  const received = allReceived.filter((t) => (!fromB || t.from === fromB) && match(t, qb));
+
+  const collected = allInbound.filter((t) => t.st === "Collected");
 
   return (
     <>
@@ -32,11 +64,23 @@ export default function Inbound() {
         sub="Handed over by the issuing location — count the goods in before confirming"
         flush
       >
+        <Toolbar
+          placeholder="Search ticket, request, sender or item…"
+          value={qa}
+          onSearch={setQa}
+          filters={
+            <>
+              <FilterBtn label="From" value={fromLabel(fromA)} onClick={() => setFa((n) => (n + 1) % FROM_OPTS.length)} />
+              <FilterBtn label="On site only" active={readyOnly} onClick={() => setReadyOnly((v) => !v)} />
+            </>
+          }
+          right={<span className="mini">{inbound.length} of {allInbound.length}</span>}
+        />
         <DataTable
           cols={[
             { h: "Ticket ID", cls: "nm", w: "18%" },
             { h: "From", w: "18%" },
-            { h: "Lines", r: true },
+            { h: "Items", r: true },
             { h: "Qty", r: true },
             { h: "Status", w: "16%" },
             { h: "Action", w: "20%" },
@@ -57,10 +101,16 @@ export default function Inbound() {
               </Btn>,
             ],
           }))}
-          empty={{
-            title: "Nothing inbound",
-            sub: "A transfer appears here once another location issues a pick ticket addressed to the central store.",
-          }}
+          empty={allInbound.length > 0
+            ? {
+              title: "Nothing matches those filters",
+              sub: `${allInbound.length} transfer${allInbound.length > 1 ? "s are" : " is"} inbound, but none of them match.`,
+              action: <Btn size="sm" variant="gh" onClick={() => { setQa(""); setFa(0); setReadyOnly(false); }}>Reset filters</Btn>,
+            }
+            : {
+              title: "Nothing inbound",
+              sub: "A transfer appears here once another location issues a pick ticket addressed to the central store.",
+            }}
         />
         <TableFoot
           count={inbound.length}
@@ -69,11 +119,20 @@ export default function Inbound() {
       </Card>
 
       <Card title="Recently received" sub="Last 10 transfers confirmed at the central store" flush className="mtop">
+        <Toolbar
+          placeholder="Search ticket, request, sender or item…"
+          value={qb}
+          onSearch={setQb}
+          filters={
+            <FilterBtn label="From" value={fromLabel(fromB)} onClick={() => setFb((n) => (n + 1) % FROM_OPTS.length)} />
+          }
+          right={<span className="mini">{received.length} of {allReceived.length}</span>}
+        />
         <DataTable
           cols={[
             { h: "Ticket ID", cls: "nm", w: "18%" },
             { h: "From", w: "18%" },
-            { h: "Lines", r: true },
+            { h: "Items", r: true },
             { h: "Qty", r: true },
             { h: "Status", w: "16%" },
           ]}
@@ -87,10 +146,16 @@ export default function Inbound() {
               <StatusPill status={t.st} />,
             ],
           }))}
-          empty={{
-            title: "Nothing received yet",
-            sub: "Confirmed transfers appear here, most recent first.",
-          }}
+          empty={allReceived.length > 0
+            ? {
+              title: "Nothing matches those filters",
+              sub: `${allReceived.length} confirmed transfer${allReceived.length > 1 ? "s are" : " is"} on file, but none of them match.`,
+              action: <Btn size="sm" variant="gh" onClick={() => { setQb(""); setFb(0); }}>Reset filters</Btn>,
+            }
+            : {
+              title: "Nothing received yet",
+              sub: "Confirmed transfers appear here, most recent first.",
+            }}
         />
         <TableFoot count={received.length} />
       </Card>

@@ -3,7 +3,7 @@ import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
 import { avail, daysCover, prqProgress, qty, resv, stateLabel, stateTone, stockValue } from "../../lib/selectors";
 import { U, fq, lakh, money0, sum } from "../../lib/fmt";
-import { Alert, Btn, Card, DataTable, Grid, HBars, Kpis, PageHead, Pill, TableFoot } from "../../ui/kit";
+import { Alert, Btn, Card, DataTable, Grid, Kpis, PageHead, Pill, TableFoot } from "../../ui/kit";
 
 export default function Dashboard() {
   const s = useApp();
@@ -40,10 +40,7 @@ export default function Dashboard() {
   const reservedValue = sum(reserved, (r) => r.rv * IT[r.it].cost);
 
   const cover = [...rows].sort((a, b) => a.dc - b.dc).slice(0, 8);
-  const holdings = [...rows]
-    .sort((a, b) => b.val - a.val)
-    .slice(0, 7)
-    .map((r) => ({ n: IT[r.it].n, v: Math.round(r.val), f: money0(r.val) }));
+  const holdings = [...rows].sort((a, b) => b.val - a.val).slice(0, 7);
 
   return (
     <>
@@ -64,30 +61,22 @@ export default function Dashboard() {
           {
             l: "Approved, awaiting issue",
             v: String(queued.length),
-            d: <>{queuedQty} approved units across {sum(queued, (r) => r.lines.length)} lines</>,
-            spark: [1, 2, 1, 3, 2, 4, queued.length || 1],
-            color: "var(--c1)",
+            d: <>{queuedQty} approved units across {sum(queued, (r) => r.lines.length)} items</>,
           },
           {
             l: "Tickets open",
             v: String(issued.length + transit.length),
             d: <>{issued.length} to hand over · {transit.length} in transit</>,
-            spark: [3, 2, 4, 3, 5, 3, issued.length + transit.length || 1],
-            color: "var(--c2)",
           },
           {
             l: "Items below reorder",
             v: String(low.length),
-            d: <>of {rows.length} stocked lines in the central store</>,
-            spark: [4, 5, 4, 6, 5, 6, low.length || 1],
-            color: "var(--c3)",
+            d: <>of {rows.length} stocked items in the central store</>,
           },
           {
             l: "Central store stock value",
             v: lakh(value),
-            d: <>at weighted cost, {rows.length} lines</>,
-            spark: [212, 208, 221, 216, 229, 224, Math.round(value / 1000)],
-            color: "var(--c1)",
+            d: <>at weighted cost, {rows.length} items</>,
           },
           {
             l: "Requisitions with procurement",
@@ -116,10 +105,10 @@ export default function Dashboard() {
         <Alert
           tone="i"
           label="HANDOVER"
-          action={<Btn size="sm" variant="gh" onClick={() => nav("/issue")}>Scan tickets</Btn>}
+          action={<Btn size="sm" variant="gh" onClick={() => nav("/issue")}>Open tickets</Btn>}
         >
           {issued.length} ticket{issued.length > 1 ? "s" : ""} issued but not yet collected — stock stays reserved
-          until the counter scans at the store window.
+          until the collector quotes the OTP at the store window.
         </Alert>
       )}
       {low.length > 0 && (
@@ -135,13 +124,13 @@ export default function Dashboard() {
       )}
       {queued.length === 0 && issued.length === 0 && low.length === 0 && (
         <Alert tone="g" label="CLEAR">
-          Nothing waiting at the store window and every line is above its reorder level.
+          Nothing waiting at the store window and every item is above its reorder level.
         </Alert>
       )}
 
       <div className="mtop">
       <Grid cols="g21">
-        <Card title="Lowest days of cover" sub={`${LOC.store.n} · eight tightest lines`} flush>
+        <Card title="Lowest days of cover" sub={`${LOC.store.n} · eight tightest items`} flush>
           <DataTable
             cols={[
               { h: "Item", cls: "nm", w: "26%" },
@@ -170,12 +159,36 @@ export default function Dashboard() {
             }))}
             empty={{ title: "No stock recorded", sub: "Raise a requisition to bring goods in.", action: <Btn size="sm" onClick={() => nav("/procure")}>Raise requisition</Btn> }}
           />
-          <TableFoot count={cover.length} extra={<>{low.length} of {rows.length} lines below reorder</>} />
+          <TableFoot count={cover.length} extra={<>{low.length} of {rows.length} items below reorder</>} />
         </Card>
 
-        <Card title="Highest-value holdings" sub="Central store, at cost">
-          <HBars rows={holdings} />
-          <div className="mini mtop">Total holding {money0(value)} across {rows.length} stocked lines.</div>
+        <Card title="Highest-value holdings" sub="Central store, at cost · top seven" flush>
+          <DataTable
+            cols={[
+              { h: "Item", cls: "nm", w: "44%" },
+              { h: "On hand", r: true },
+              { h: "Value at cost", r: true },
+              { h: "Share", r: true },
+            ]}
+            rows={holdings.map((r) => ({
+              key: r.it,
+              cells: [
+                <>
+                  {IT[r.it].n}
+                  <small>{IT[r.it].c} · {IT[r.it].g}</small>
+                </>,
+                <>{fq(r.on, r.it)} <span className="dim">{U(r.it)}</span></>,
+                <b>{money0(r.val)}</b>,
+                <>{value > 0 ? ((r.val / value) * 100).toFixed(1) : "0.0"}%</>,
+              ],
+              onClick: () => nav("/stock"),
+            }))}
+            empty={{ title: "No stock recorded", sub: "Receive a purchase order and the holdings open." }}
+          />
+          <TableFoot
+            count={holdings.length}
+            extra={<>Total holding {money0(value)} across {rows.length} stocked items</>}
+          />
         </Card>
       </Grid>
       </div>

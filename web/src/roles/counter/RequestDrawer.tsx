@@ -50,7 +50,7 @@ function RequestDrawer({ id }: DrawerProps) {
         <StatusPill status={req.st} />
         {req.urg && <Pill tone="cr">Urgent</Pill>}
         <div className="sp" />
-        <span className="mini">{req.lines.length} line{req.lines.length === 1 ? "" : "s"} · {asked} asked · {appr} approved</span>
+        <span className="mini">{req.lines.length} item{req.lines.length === 1 ? "" : "s"} · {asked} asked · {appr} approved</span>
       </div>
 
       {req.st === "Rejected" && (
@@ -61,7 +61,7 @@ function RequestDrawer({ id }: DrawerProps) {
       )}
       {short.length > 0 && (
         <Alert tone="w" label="SHORT">
-          <b>{unitTotal(short)}</b> across {short.length} line{short.length === 1 ? "" : "s"} was not approved
+          <b>{unitTotal(short)}</b> across {short.length} item{short.length === 1 ? "" : "s"} was not approved
           {req.apprBy ? ` by ${req.apprBy}` : ""} — {short.map((l) => `${IT[l.it]?.n ?? l.it} ${fq(l.qty, l.it)} ${U(l.it)}`).join(", ")}.
           Only the approved quantity reaches the pick ticket; raise a fresh request for the balance.
         </Alert>
@@ -72,7 +72,7 @@ function RequestDrawer({ id }: DrawerProps) {
         </Alert>
       )}
 
-      <Section title="Lines" sub="What the counter asked for, what the manager approved, and what is still outstanding." />
+      <Section title="Items" sub="What the counter asked for, what the manager approved, and what is still outstanding." />
       <DataTable
         cols={[
           { h: "Item", cls: "nm", w: "32%" },
@@ -97,7 +97,7 @@ function RequestDrawer({ id }: DrawerProps) {
             <span className="mini">{U(l.it)}</span>,
           ],
         }))}
-        empty={{ title: "This request carries no line" }}
+        empty={{ title: "This request carries no item" }}
       />
 
       <Section title="Manager's note" />

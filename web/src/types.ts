@@ -1,5 +1,5 @@
 export type ItemType = "RAW" | "PACK" | "MRP" | "FG" | "MTO";
-export type LocKey = "store" | "kitchen" | "coffee" | "kiosk" | "procure";
+export type LocKey = "store" | "kitchen" | "rest" | "coffee" | "kiosk" | "procure";
 export type Role = "counter" | "manager" | "store" | "prod" | "buyer";
 export type ReqStatus =
   | "Draft" | "Request sent" | "Manager approved" | "Partially approved"
@@ -104,4 +104,12 @@ export interface Issue {
 export interface RateContract {
   id: string; vendor: string; it: string; rate: number;
   from: string; to: string; moq: number; active: boolean;
+}
+
+export type ShopAskStatus = "Asked" | "Sent" | "Declined";
+/** One shop asking another for stock it is holding. The manager sees it; it never routes through them. */
+export interface ShopAsk {
+  id: string; from: LocKey; to: LocKey; it: string; qty: number;
+  st: ShopAskStatus; by: string; at: string; note: string;
+  grant?: number; ticket?: string; reason?: string;
 }

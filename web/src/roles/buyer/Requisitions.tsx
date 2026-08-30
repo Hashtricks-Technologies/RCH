@@ -1,10 +1,12 @@
 import { useState } from "react";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
+import { round3 } from "../../lib/selectors";
 import { money0, sum } from "../../lib/fmt";
-import { Btn, Card, DataTable, PageHead, Pill, TableFoot, Toolbar } from "../../ui/kit";
+import { Btn, Card, DataTable, FilterBtn, PageHead, Pill, StatusPill, TableFoot, Toolbar } from "../../ui/kit";
 import type { Row } from "../../ui/kit";
 import type { PrqLine, Requisition } from "../../types";
+import { cycle, recap, reconcile } from "./lib";
 import "./RequisitionDrawer";
 
 const lineValue = (lines: PrqLine[]) => sum(lines, (l) => l.qty * (IT[l.it]?.cost ?? 0));
@@ -17,20 +19,57 @@ const hits = (r: Requisition, q: string) => {
   return r.id.toLowerCase().includes(t)
     || r.by.toLowerCase().includes(t)
     || r.note.toLowerCase().includes(t)
+    || (r.apprBy ?? "").toLowerCase().includes(t)
+    || (r.apprNote ?? "").toLowerCase().includes(t)
     || r.lines.some((l) => (IT[l.it]?.n ?? l.it).toLowerCase().includes(t));
 };
+
+const OUTCOMES = ["All", "Approved in full", "Partially approved"];
+const PROGRESS = ["All", "Not ordered", "Ordered", "Partially received", "Received"];
 
 export default function Requisitions() {
   const s = useApp();
   const openDrawer = useApp((x) => x.openDrawer);
 
   const [qw, setQw] = useState("");
+  const [raisedBy, setRaisedBy] = useState("All");
   const [qa, setQa] = useState("");
+  const [outcome, setOutcome] = useState("All");
+  const [progress, setProgress] = useState("All");
   const [qd, setQd] = useState("");
+  const [declinedBy, setDeclinedBy] = useState("All");
 
-  const waiting = s.prq.filter((p) => p.st === "Sent" && hits(p, qw));
-  const approved = s.prq.filter((p) => (p.st === "Approved" || p.st === "Partially approved") && hits(p, qa));
-  const declined = s.prq.filter((p) => p.st === "Declined" && hits(p, qd));
+  const RAISERS = ["All", ...[...new Set(s.prq.filter((p) => p.st === "Sent").map((p) => p.by))].sort()];
+  const DECLINERS = [
+    "All",
+    ...[...new Set(s.prq.filter((p) => p.st === "Declined").map((p) => p.apprBy ?? "—"))].sort(),
+  ];
+
+  // Reconciled once per requisition, then read from the map — the filter, the
+  // rows and the footer all need the same numbers.
+  const recaps = new Map(s.prq.map((p) =>
+    [p.id, recap(reconcile(s, p), p.st === "Approved" || p.st === "Partially approved")] as const));
+  const summaryOf = (p: Requisition) => recaps.get(p.id)!;
+
+  const waiting = s.prq.filter((p) =>
+    p.st === "Sent" && hits(p, qw) && (raisedBy === "All" || p.by === raisedBy));
+  const approved = s.prq.filter((p) => {
+    if (p.st !== "Approved" && p.st !== "Partially approved") return false;
+    if (!hits(p, qa)) return false;
+    const label = p.st === "Approved" ? "Approved in full" : "Partially approved";
+    if (outcome !== "All" && label !== outcome) return false;
+    return progress === "All" || summaryOf(p).label === progress;
+  });
+  const declined = s.prq.filter((p) =>
+    p.st === "Declined" && hits(p, qd) && (declinedBy === "All" || (p.apprBy ?? "—") === declinedBy));
+
+  const waitNarrowed = qw.trim() !== "" || raisedBy !== "All";
+  const apprNarrowed = qa.trim() !== "" || outcome !== "All" || progress !== "All";
+  const declNarrowed = qd.trim() !== "" || declinedBy !== "All";
+
+  const clearWait = () => { setQw(""); setRaisedBy("All"); };
+  const clearAppr = () => { setQa(""); setOutcome("All"); setProgress("All"); };
+  const clearDecl = () => { setQd(""); setDeclinedBy("All"); };
 
   const waitRows: Row[] = waiting.map((p) => ({
     key: p.id,
@@ -47,21 +86,30 @@ export default function Requisitions() {
     ],
   }));
 
-  const apprRows: Row[] = approved.map((p) => ({
-    key: p.id,
-    onClick: () => openDrawer("bprq", p.id),
-    cells: [
-      <>{p.id}<small>{p.by}</small></>,
-      <>{p.apprBy ?? "—"}</>,
-      <>{p.lines.length}</>,
-      <>{apprQtyOf(p)} <small className="dim">of {qtyOf(p)} asked</small></>,
-      <>{money0(apprValue(p.lines))}</>,
-      p.st === "Approved"
-        ? <Pill tone="ok">Approved in full</Pill>
-        : <Pill tone="wn">Partially approved</Pill>,
-      <Btn size="xs" variant="gh" onClick={() => openDrawer("bprq", p.id)}>View decision</Btn>,
-    ],
-  }));
+  const apprRows: Row[] = approved.map((p) => {
+    const r = summaryOf(p);
+    return {
+      key: p.id,
+      onClick: () => openDrawer("bprq", p.id),
+      cells: [
+        <>{p.id}<small>{p.by}</small></>,
+        <>{p.apprBy ?? "—"}</>,
+        <>{p.lines.length}</>,
+        <>{apprQtyOf(p)} <small className="dim">of {qtyOf(p)} asked</small></>,
+        <>{r.ordered}</>,
+        <>{r.received}</>,
+        <>{money0(apprValue(p.lines))}</>,
+        p.st === "Approved"
+          ? <Pill tone="ok">Approved in full</Pill>
+          : <Pill tone="wn">Partially approved</Pill>,
+        <>
+          <StatusPill status={r.label} />
+          <div className="mini dim">{r.done} of {r.total} item(s) received</div>
+        </>,
+        <Btn size="xs" variant="gh" onClick={() => openDrawer("bprq", p.id)}>What was ordered</Btn>,
+      ],
+    };
+  });
 
   const declRows: Row[] = declined.map((p) => ({
     key: p.id,
@@ -76,60 +124,110 @@ export default function Requisitions() {
   }));
 
   const waitValue = sum(waiting, (p) => lineValue(p.lines));
+  const shownOrdered = round3(sum(approved, (p) => summaryOf(p).ordered));
+  const shownReceived = round3(sum(approved, (p) => summaryOf(p).received));
 
   return (
     <>
       <PageHead
         crumbs={["Royal Care", "Procurement", "Requisitions"]}
         title="Requisitions"
-        sub="Requirements raised by the Central Store. Approve what should be bought — approved lines collect on the procurement list."
+        sub="Requirements raised by the Central Store. Approve what should be bought — approved items collect on the procurement list, and every one shows what was ordered against it."
         actions={<Pill tone={waiting.length ? "wn" : "ok"}>{waiting.length} waiting on you</Pill>}
       />
 
       <Card title="Waiting on you" sub={`${waiting.length} requisition(s) · ${money0(waitValue)} estimated`} flush>
-        <Toolbar placeholder="Search requisition, store keeper or item…" value={qw} onSearch={setQw} />
+        <Toolbar
+          placeholder="Search requisition, store keeper, note or item…"
+          value={qw}
+          onSearch={setQw}
+          filters={
+            <FilterBtn label="Raised by" value={raisedBy}
+              onClick={() => setRaisedBy(cycle(RAISERS, raisedBy))} />
+          }
+        />
         <DataTable
           cols={[
             { h: "Requisition", cls: "nm", w: "17%" },
             { h: "Raised by", w: "13%" },
             { h: "Time" },
-            { h: "Lines", r: true },
+            { h: "Items", r: true },
             { h: "Total qty", r: true },
             { h: "Estimated value", r: true },
             { h: "Note", w: "22%" },
             { h: "" },
           ]}
           rows={waitRows}
-          empty={{
-            title: "Nothing waiting on you",
-            sub: `The ${LOC.store.n} has not raised a new requirement.`,
-          }}
+          empty={waitNarrowed
+            ? {
+              title: "Nothing matches those filters",
+              sub: "Clear the search box or set Raised by back to All.",
+              action: <Btn size="sm" variant="gh" onClick={clearWait}>Clear filters</Btn>,
+            }
+            : {
+              title: "Nothing waiting on you",
+              sub: `The ${LOC.store.n} has not raised a new requirement.`,
+            }}
         />
         <TableFoot count={waitRows.length} extra={<>Estimated value <b className="mono">{money0(waitValue)}</b></>} />
       </Card>
 
       <div className="mtop" />
-      <Card title="Approved" sub="Fully or partially approved — the approved lines are ready for a purchase order" flush>
-        <Toolbar placeholder="Search requisition or item…" value={qa} onSearch={setQa} />
+      <Card
+        title="Approved — and what was ordered"
+        sub="Approved quantity against what purchase orders actually claim, and what has landed so far"
+        flush
+      >
+        <Toolbar
+          placeholder="Search requisition, approver or item…"
+          value={qa}
+          onSearch={setQa}
+          filters={
+            <>
+              <FilterBtn label="Outcome" value={outcome} onClick={() => setOutcome(cycle(OUTCOMES, outcome))} />
+              <FilterBtn label="Progress" value={progress} onClick={() => setProgress(cycle(PROGRESS, progress))} />
+            </>
+          }
+        />
         <DataTable
           cols={[
-            { h: "Requisition", cls: "nm", w: "16%" },
-            { h: "Approved by", w: "16%" },
-            { h: "Lines", r: true },
+            { h: "Requisition", cls: "nm", w: "14%" },
+            { h: "Approved by", w: "13%" },
+            { h: "Items", r: true },
             { h: "Approved qty", r: true },
+            { h: "Ordered qty", r: true },
+            { h: "Received qty", r: true },
             { h: "Value", r: true },
             { h: "Outcome" },
+            { h: "Order progress", w: "15%" },
             { h: "" },
           ]}
           rows={apprRows}
-          empty={{ title: "Nothing approved yet", sub: "Approve a waiting requisition to see it here." }}
+          empty={apprNarrowed
+            ? {
+              title: "Nothing matches those filters",
+              sub: "Clear the search box or cycle Outcome and Progress back to All.",
+              action: <Btn size="sm" variant="gh" onClick={clearAppr}>Clear filters</Btn>,
+            }
+            : { title: "Nothing approved yet", sub: "Approve a waiting requisition to see it here." }}
         />
-        <TableFoot count={apprRows.length} />
+        <TableFoot
+          count={apprRows.length}
+          extra={<>{shownOrdered} ordered · {shownReceived} received across the rows shown</>}
+        />
       </Card>
 
       <div className="mtop" />
       <Card title="Declined" sub="Nothing was approved — the store keeper sees your reason" flush>
-        <Toolbar placeholder="Search requisition…" value={qd} onSearch={setQd} />
+        <Toolbar
+          placeholder="Search requisition, reason or item…"
+          value={qd}
+          onSearch={setQd}
+          filters={
+            <FilterBtn label="Declined by" value={declinedBy}
+              onClick={() => setDeclinedBy(cycle(DECLINERS, declinedBy))} />
+          }
+        />
         <DataTable
           cols={[
             { h: "Requisition", cls: "nm", w: "18%" },
@@ -139,7 +237,13 @@ export default function Requisitions() {
             { h: "" },
           ]}
           rows={declRows}
-          empty={{ title: "No declined requisitions", sub: "Declined requisitions are kept here." }}
+          empty={declNarrowed
+            ? {
+              title: "Nothing matches those filters",
+              sub: "Clear the search box or set Declined by back to All.",
+              action: <Btn size="sm" variant="gh" onClick={clearDecl}>Clear filters</Btn>,
+            }
+            : { title: "No declined requisitions", sub: "Declined requisitions are kept here." }}
         />
         <TableFoot count={declRows.length} />
       </Card>

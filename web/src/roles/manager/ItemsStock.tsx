@@ -1,20 +1,51 @@
 import { useState } from "react";
-import { ALL_LOCS, IT, LOC } from "../../data/master";
+import { ALL_LOCS, IT, LOC, OUTLETS } from "../../data/master";
 import { useApp } from "../../store";
-import { costOf, qty, stockValue } from "../../lib/selectors";
+import { costOf, menuOf, qty, resv, stockValue } from "../../lib/selectors";
 import { fq, lakh, money, money0, sum } from "../../lib/fmt";
 import {
-  Card, DataTable, FilterBtn, Kpis, PageHead, TableFoot, Tag, Toolbar,
+  Alert, Btn, Card, DataTable, Field, FilterBtn, FormRow, Grid, PageHead,
+  StatusPill, TableFoot, Tag, Toolbar,
 } from "../../ui/kit";
-import type { ItemType, LocKey } from "../../types";
+import { emptyFor, sortRows, useSort, type SortValue } from "./useSort";
+import type { IssuePriority, ItemType, LocKey } from "../../types";
 
 const TYPES: (ItemType | "All")[] = ["All", "RAW", "PACK", "MRP", "FG", "MTO"];
+const STATES = ["All", "Below reorder in store", "At zero somewhere", "Not held anywhere"] as const;
+const TSTATES = ["All", "Reserved", "In transit", "Received"] as const;
+const PRIORITIES: IssuePriority[] = ["Normal", "High", "Low"];
 const tagKind = (t: ItemType) => (t === "MRP" ? "tr" : t === "FG" || t === "MTO" ? "md" : undefined);
+
+/** A shop transfer ticket's stage, in the words the manager needs. */
+const stageOf = (st: string) => (st === "Issued" ? "Reserved" : st === "Collected" ? "In transit" : "Received");
 
 export default function ItemsStock() {
   const s = useApp();
+  const addProduct = useApp((x) => x.addProduct);
+  const raiseIssue = useApp((x) => x.raiseIssue);
+  const notify = useApp((x) => x.notify);
+
   const [q, setQ] = useState("");
   const [type, setType] = useState(0);
+  const [loc, setLoc] = useState(0);
+  const [state, setState] = useState(0);
+
+  const [tq, setTq] = useState("");
+  const [tstate, setTstate] = useState(0);
+  const [tfrom, setTfrom] = useState(0);
+  const [tto, setTto] = useState(0);
+
+  const home = s.user && OUTLETS.includes(s.user.loc) ? s.user.loc : OUTLETS[0];
+  const [shop, setShop] = useState<LocKey>(home);
+  const [pick, setPick] = useState("");
+
+  const [nName, setNName] = useState("");
+  const [nDetail, setNDetail] = useState("");
+  const [nQty, setNQty] = useState("");
+  const [nPrio, setNPrio] = useState(0);
+
+  const items = useSort("name");
+  const tsort = useSort("id", "desc");
 
   const keys = Object.keys(IT);
   const stocked = keys.filter((k) => IT[k].t !== "MTO");
@@ -25,75 +56,294 @@ export default function ItemsStock() {
   const zeroSomewhere = stocked.filter((k) => ALL_LOCS.some((l) => carries(l, k) && qty(s, l, k) <= 0)).length;
   const belowReorder = stocked.filter((k) => IT[k].rl > 0 && qty(s, "store", k) <= IT[k].rl).length;
 
+  /* ---------------- shop to shop, oversight only ---------------- */
+  const transfers = s.tkt.filter((t) => OUTLETS.includes(t.from) && OUTLETS.includes(t.to));
+  const shopNames = ["All", ...OUTLETS.map((l) => LOC[l].n)];
+  const tTerm = tq.trim().toLowerCase();
+  const tRows = transfers
+    .filter((t) => tstate === 0 || stageOf(t.st) === TSTATES[tstate])
+    .filter((t) => tfrom === 0 || LOC[t.from].n === shopNames[tfrom])
+    .filter((t) => tto === 0 || LOC[t.to].n === shopNames[tto])
+    .filter((t) => !tTerm
+      || t.id.toLowerCase().includes(tTerm)
+      || LOC[t.from].n.toLowerCase().includes(tTerm)
+      || LOC[t.to].n.toLowerCase().includes(tTerm)
+      || t.lines.some((l) => (IT[l.it]?.n ?? l.it).toLowerCase().includes(tTerm)));
+  const tSorted = sortRows(tRows, tsort.sort, (t, k): SortValue =>
+    k === "from" ? LOC[t.from].n
+      : k === "to" ? LOC[t.to].n
+        : k === "item" ? (IT[t.lines[0]?.it]?.n ?? "")
+          : k === "qty" ? sum(t.lines, (l) => l.qty)
+            : k === "stage" ? stageOf(t.st)
+              : t.id);
+  const tFiltered = tTerm !== "" || tstate > 0 || tfrom > 0 || tto > 0;
+
+  /* ---------------- list an existing product at a shop ---------------- */
+  const listed = menuOf(s, shop);
+  const listable = keys.filter((k) => !listed.includes(k) && IT[k].t !== "RAW" && IT[k].t !== "PACK");
+  const list = LOC[shop].list ?? "A";
+  const pickPrice = pick ? s.prices[list]?.[pick] : undefined;
+
+  /* ---------------- item master ---------------- */
+  const locNames = ["All", ...ALL_LOCS.map((l) => LOC[l].n)];
   const term = q.trim().toLowerCase();
   const want = TYPES[type];
   const rows = keys
     .filter((k) => (want === "All" ? true : IT[k].t === want))
-    .filter((k) => !term || IT[k].n.toLowerCase().includes(term) || IT[k].c.toLowerCase().includes(term))
+    .filter((k) => loc === 0 || carries(ALL_LOCS[loc - 1], k))
+    .filter((k) => !term || IT[k].n.toLowerCase().includes(term) || IT[k].c.toLowerCase().includes(term)
+      || IT[k].g.toLowerCase().includes(term))
     .map((k) => {
       const per = ALL_LOCS.map((l) => qty(s, l, k));
       const tot = sum(per, (v) => v);
-      return { k, per, tot, held: ALL_LOCS.some((l) => carries(l, k)), value: tot * costOf(k) };
-    });
+      return {
+        k, per, tot,
+        held: ALL_LOCS.some((l) => carries(l, k)),
+        value: tot * costOf(k),
+        zero: ALL_LOCS.some((l) => carries(l, k) && qty(s, l, k) <= 0),
+        low: IT[k].rl > 0 && qty(s, "store", k) <= IT[k].rl,
+      };
+    })
+    .filter((r) => state === 0
+      || (state === 1 ? r.low : state === 2 ? r.zero : !r.held));
 
+  const sorted = sortRows(rows, items.sort, (r, k): SortValue => {
+    if (k.startsWith("loc:")) return r.per[ALL_LOCS.indexOf(k.slice(4) as LocKey)] ?? 0;
+    return k === "type" ? IT[r.k].t
+      : k === "unit" ? IT[r.k].u
+        : k === "cost" ? costOf(r.k)
+          : k === "total" ? r.tot
+            : k === "value" ? r.value
+              : IT[r.k].n;
+  });
+  const filtered = term !== "" || type > 0 || loc > 0 || state > 0;
   const shownValue = sum(rows, (r) => r.value);
+
+  const raiseNew = () => {
+    const name = nName.trim();
+    if (!name) { notify("Name the product you want the central store to stock"); return; }
+    const opening = nQty.trim();
+    raiseIssue({
+      kind: "Stock",
+      title: `New product request — ${name}`,
+      detail: [
+        `New-product request raised by the outlet manager for ${LOC[shop].n}.`,
+        opening ? `Quantity wanted to start with: ${opening}.` : "",
+        nDetail.trim(),
+        "This product is not on the item master. The central store must create it before it can be requested or priced.",
+      ].filter(Boolean).join(" "),
+      priority: PRIORITIES[nPrio],
+    });
+    setNName(""); setNDetail(""); setNQty("");
+  };
 
   return (
     <>
       <PageHead
         crumbs={["Royal Care", "Outlets", "Items & Stock"]}
         title="Items and stock in hand"
-        sub="Every item on the master with the quantity each of the six locations is holding right now."
+        sub={`Every item on the master with what each of the ${ALL_LOCS.length} locations is holding, plus the transfers running directly between the shops.`}
       />
 
-      <Kpis
-        items={[
-          {
-            l: "Inventory value · all locations",
-            v: lakh(totalValue),
-            d: <>Store, {LOC.procure.n}, kitchen and three counters at cost</>,
-            spark: ALL_LOCS.map((l) => stockValue(s, l)),
-            color: "var(--c1)",
-          },
-          { l: "Items tracked", v: String(keys.length), d: <>{stocked.length} stocked · {keys.length - stocked.length} made to order</> },
-          {
-            l: "Items at zero somewhere",
-            v: String(zeroSomewhere),
-            d: <>A location that carries it is holding none</>,
-          },
-          {
-            l: "Below reorder in Central Store",
-            v: String(belowReorder),
-            d: <>Needs a requisition to procurement</>,
-          },
-        ]}
-      />
+      <Alert tone="i" label="SHOP TO SHOP">
+        When one shop needs an MRP product another shop is holding, the two settle it between themselves against
+        a ticket and its OTP — any of the {OUTLETS.length} counters to any other. You are informed, not in the
+        middle: nothing below is yours to approve.
+      </Alert>
 
-      <Card title="Item master and stock in hand" sub={`${rows.length} of ${keys.length} items`} flush>
+      <Card
+        title="Transfers between the shops"
+        sub={`${tRows.length} of ${transfers.length} on record`}
+        flush
+      >
         <Toolbar
-          placeholder="Search by item name or code…"
-          value={q}
-          onSearch={setQ}
+          placeholder="Search ticket, shop or product…"
+          value={tq}
+          onSearch={setTq}
           filters={
-            <FilterBtn
-              label="Type"
-              value={String(TYPES[type])}
-              active={type > 0}
-              onClick={() => setType((type + 1) % TYPES.length)}
-            />
+            <>
+              <FilterBtn label="Stage" value={TSTATES[tstate]} active={tstate > 0}
+                onClick={() => setTstate((tstate + 1) % TSTATES.length)} />
+              <FilterBtn label="From" value={shopNames[tfrom]} active={tfrom > 0}
+                onClick={() => setTfrom((tfrom + 1) % shopNames.length)} />
+              <FilterBtn label="To" value={shopNames[tto]} active={tto > 0}
+                onClick={() => setTto((tto + 1) % shopNames.length)} />
+            </>
           }
         />
         <DataTable
+          sort={tsort.sort}
+          onSort={tsort.onSort}
           cols={[
-            { h: "Item", cls: "nm", w: "20%" },
-            { h: "Type" },
-            { h: "Unit" },
-            { h: "Cost", r: true },
-            ...ALL_LOCS.map((l) => ({ h: LOC[l].n, r: true })),
-            { h: "Total", r: true },
-            { h: "Total value", r: true },
+            { h: "Ticket", cls: "nm", w: "14%", sort: "id" },
+            { h: "From", sort: "from" },
+            { h: "To", sort: "to" },
+            { h: "Product", sort: "item" },
+            { h: "Quantity", r: true, sort: "qty" },
+            { h: "Stage", sort: "stage" },
+            { h: "Handover OTP", r: true, w: "13%" },
           ]}
-          rows={rows.map((r) => ({
+          rows={tSorted.map((t) => {
+            const stage = stageOf(t.st);
+            return {
+              key: t.id,
+              cells: [
+                <>{t.id}<small>{t.req}</small></>,
+                LOC[t.from].n,
+                LOC[t.to].n,
+                t.lines.map((l) => IT[l.it]?.n ?? l.it).join(", "),
+                t.lines.map((l) => `${fq(l.qty, l.it)} ${IT[l.it]?.u ?? ""}`).join(" · "),
+                <>
+                  <StatusPill status={t.st} />
+                  <small className="dim" style={{ display: "block" }}>
+                    {stage === "Reserved" ? `Held back at ${LOC[t.from].n}`
+                      : stage === "In transit" ? `Off the ${LOC[t.from].n} shelf, not yet on the ${LOC[t.to].n} one`
+                        : `On the shelf at ${LOC[t.to].n}`}
+                  </small>
+                </>,
+                stage === "Received"
+                  ? <span className="dim">used</span>
+                  : <span className="mono">{t.otp.replace(/(\d{3})(\d{3})/, "$1 $2")}</span>,
+              ],
+            };
+          })}
+          empty={emptyFor(tFiltered, {
+            title: "No shop-to-shop transfer yet",
+            sub: "A counter raises one from its own stock screen when the other shop is holding what it needs.",
+          })}
+        />
+        <TableFoot
+          count={tRows.length}
+          extra={<>{transfers.filter((t) => t.st !== "Received").length} still moving · read-only</>}
+        />
+      </Card>
+
+      <Grid cols="g2">
+        <Card title="List an existing product at a shop" sub="Puts a catalogue product on that counter's till">
+          <FormRow cols="f2">
+            <Field label="Shop">
+              <select value={shop} onChange={(e) => { setShop(e.target.value as LocKey); setPick(""); }}>
+                {OUTLETS.map((l) => <option key={l} value={l}>{LOC[l].n} — list {LOC[l].list}</option>)}
+              </select>
+            </Field>
+            <Field label="Product" hint={`${listable.length} catalogue product${listable.length === 1 ? "" : "s"} not yet on this till.`}>
+              <select value={pick} onChange={(e) => setPick(e.target.value)}>
+                <option value="">Pick a product…</option>
+                {listable.map((k) => (
+                  <option key={k} value={k}>{IT[k].n} — {IT[k].t}</option>
+                ))}
+              </select>
+            </Field>
+          </FormRow>
+          {pick !== "" && pickPrice == null && (
+            <Alert tone="w" label="NO PRICE">
+              {IT[pick].n} has no price on list {list}. Add it here, then set a price on the Price Lists screen —
+              until then the counter cannot bill it.
+            </Alert>
+          )}
+          <div className="totrow"><span>Currently listed at {LOC[shop].n}</span><span>{listed.length}</span></div>
+          <div className="totrow">
+            <span>Price on list {list}</span>
+            <span>{pick === "" ? "—" : pickPrice == null ? "not priced" : money(pickPrice)}</span>
+          </div>
+          <div className="mtop">
+            <Btn wide disabled={!pick} title={pick ? undefined : "Pick a product first"}
+              onClick={() => { addProduct(shop, pick); setPick(""); }}>
+              List at {LOC[shop].n}
+            </Btn>
+          </div>
+        </Card>
+
+        <Card title="Request a new product from inventory" sub="For something the item master does not carry yet">
+          <p className="mini" style={{ margin: "0 0 12px" }}>
+            You cannot create a catalogue item — the central store does. This raises a stock issue against them,
+            tracked on the Issues screen until they answer.
+          </p>
+          <FormRow cols="f2">
+            <Field label="Product wanted" hint="Brand and pack size, as you would order it.">
+              <input value={nName} onChange={(e) => setNName(e.target.value)} placeholder="e.g. Buttermilk 200ml" />
+            </Field>
+            <Field label="Opening quantity" hint="What you would want to start with.">
+              <input value={nQty} onChange={(e) => setNQty(e.target.value)} placeholder="e.g. 48 nos" />
+            </Field>
+          </FormRow>
+          <Field label="Why it is needed" hint={`Raised for ${LOC[shop].n}. Change the shop on the left to switch it.`}>
+            <textarea rows={3} value={nDetail} onChange={(e) => setNDetail(e.target.value)}
+              placeholder="Customers keep asking for it, the kiosk has run the trial, and so on…" />
+          </Field>
+          <FormRow>
+            <Field label="Priority">
+              <select value={nPrio} onChange={(e) => setNPrio(Number(e.target.value))}>
+                {PRIORITIES.map((p, i) => <option key={p} value={i}>{p}</option>)}
+              </select>
+            </Field>
+          </FormRow>
+          <Btn wide disabled={!nName.trim()} title={nName.trim() ? undefined : "Name the product first"}
+            onClick={raiseNew}>
+            Raise new-product request
+          </Btn>
+        </Card>
+      </Grid>
+
+      <Card title="Inventory at a glance" sub="Stock at cost, by location" flush className="mtop">
+        <DataTable
+          cols={[
+            { h: "Location", cls: "nm", w: "26%" },
+            { h: "Type" },
+            { h: "Items held", r: true },
+            { h: "At zero", r: true },
+            { h: "Stock value", r: true },
+          ]}
+          rows={ALL_LOCS.map((l) => {
+            const held = Object.keys(s.stock[l] ?? {});
+            return {
+              key: l,
+              cells: [
+                <>{LOC[l].n}<small>{LOC[l].c} · {LOC[l].floor}</small></>,
+                LOC[l].type,
+                held.length,
+                held.filter((k) => qty(s, l, k) <= 0).length,
+                lakh(stockValue(s, l)),
+              ],
+            };
+          })}
+          empty={{ title: "No locations configured" }}
+        />
+        <TableFoot
+          count={ALL_LOCS.length}
+          extra={<>All locations {lakh(totalValue)} · {keys.length} items tracked · {belowReorder} below reorder in the Central Store · {zeroSomewhere} at zero somewhere</>}
+        />
+      </Card>
+
+      <Card title="Item master and stock in hand" sub={`${rows.length} of ${keys.length} items`} flush className="mtop">
+        <Toolbar
+          placeholder="Search by item name, code or group…"
+          value={q}
+          onSearch={setQ}
+          filters={
+            <>
+              <FilterBtn label="Type" value={String(TYPES[type])} active={type > 0}
+                onClick={() => setType((type + 1) % TYPES.length)} />
+              <FilterBtn label="Carried at" value={locNames[loc]} active={loc > 0}
+                onClick={() => setLoc((loc + 1) % locNames.length)} />
+              <FilterBtn label="State" value={STATES[state]} active={state > 0}
+                onClick={() => setState((state + 1) % STATES.length)} />
+            </>
+          }
+        />
+        <DataTable
+          sort={items.sort}
+          onSort={items.onSort}
+          cols={[
+            { h: "Item", cls: "nm", w: "20%", sort: "name" },
+            { h: "Type", sort: "type" },
+            { h: "Unit", sort: "unit" },
+            { h: "Cost", r: true, sort: "cost" },
+            ...ALL_LOCS.map((l) => ({ h: LOC[l].n, r: true, sort: "loc:" + l })),
+            { h: "Total", r: true, sort: "total" },
+            { h: "Total value", r: true, sort: "value" },
+          ]}
+          rows={sorted.map((r) => ({
             key: r.k,
             cells: [
               <>{IT[r.k].n}<small>{IT[r.k].c} · HSN {IT[r.k].hsn}</small></>,
@@ -104,20 +354,23 @@ export default function ItemsStock() {
                 const v = r.per[i];
                 if (!carries(l, r.k))
                   return <span className="dim" title={`${LOC[l].n} does not carry this item`}>–</span>;
+                const held = resv(s, l, r.k);
                 if (v <= 0)
                   return <span style={{ color: "var(--crit)" }} title={`${LOC[l].n} is out of stock`}>{fq(0, r.k)}</span>;
                 if (l === "store" && IT[r.k].rl > 0 && v <= IT[r.k].rl)
                   return <span style={{ color: "var(--warn)" }} title={`Reorder level ${IT[r.k].rl}`}>{fq(v, r.k)}</span>;
-                return <>{fq(v, r.k)}</>;
+                return held > 0
+                  ? <span title={`${fq(held, r.k)} reserved against a ticket`}>{fq(v, r.k)} <small className="dim">−{fq(held, r.k)}</small></span>
+                  : <>{fq(v, r.k)}</>;
               }),
               r.held ? <b>{fq(r.tot, r.k)}</b> : <span className="dim">–</span>,
               r.held ? money0(r.value) : <span className="dim">–</span>,
             ],
           }))}
-          empty={{
-            title: "No item matches this filter",
-            sub: "Clear the search box or cycle the type filter back to All.",
-          }}
+          empty={emptyFor(filtered, {
+            title: "The item master is empty",
+            sub: "Nothing has been created in the catalogue yet.",
+          })}
         />
         <TableFoot
           count={rows.length}

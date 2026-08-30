@@ -3,8 +3,14 @@ import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
 import { availOf, menuOf, priceOf } from "../../lib/selectors";
 import { money } from "../../lib/fmt";
-import { Alert, Card, DataTable, FilterBtn, PageHead, Pill, Switch, TableFoot, Toolbar } from "../../ui/kit";
+import { Alert, Btn, Card, DataTable, FilterBtn, PageHead, Pill, Switch, TableFoot, Toolbar } from "../../ui/kit";
 import { TypeTag } from "./Pos";
+import type { Availability } from "../../types";
+
+const VIEWS = ["All", "Off only", "On only", "Switched off by hand"] as const;
+type View = (typeof VIEWS)[number];
+/** Manual, Recipe or Stock — why a product reads on or off. */
+type AvailMode = Availability["mode"];
 
 export default function Availability() {
   const s = useApp();
@@ -12,7 +18,8 @@ export default function Availability() {
   const loc = user.loc;
   const L = LOC[loc];
   const [q, setQ] = useState("");
-  const [offOnly, setOffOnly] = useState(false);
+  const [view, setView] = useState<View>("All");
+  const [mode, setMode] = useState<AvailMode | null>(null);
 
   const all = menuOf(s, loc).map((it) => {
     const a = availOf(s, loc, it);
@@ -21,13 +28,26 @@ export default function Availability() {
     return { it, a, p, manualOff };
   });
 
+  const modes = Array.from(new Set(all.map((r) => r.a.mode))).sort();
+
   const rows = all.filter((r) => {
-    if (offOnly && r.a.ok) return false;
+    if (view === "Off only" && r.a.ok) return false;
+    if (view === "On only" && !r.a.ok) return false;
+    if (view === "Switched off by hand" && !r.manualOff) return false;
+    if (mode && r.a.mode !== mode) return false;
     const t = q.trim().toLowerCase();
-    return !t || IT[r.it].n.toLowerCase().includes(t) || IT[r.it].c.toLowerCase().includes(t);
+    return !t || IT[r.it].n.toLowerCase().includes(t) || IT[r.it].c.toLowerCase().includes(t)
+      || IT[r.it].g.toLowerCase().includes(t) || (r.a.why ?? "").toLowerCase().includes(t);
   });
 
   const offCount = all.filter((r) => !r.a.ok).length;
+  const filtered = Boolean(q || view !== "All" || mode);
+  const clearAll = () => { setQ(""); setView("All"); setMode(null); };
+  const cycleView = () => setView(VIEWS[(VIEWS.indexOf(view) + 1) % VIEWS.length]);
+  const cycleMode = () => {
+    const i = mode == null ? -1 : modes.indexOf(mode);
+    setMode(i + 1 >= modes.length ? null : modes[i + 1]);
+  };
 
   return (
     <>
@@ -45,11 +65,16 @@ export default function Availability() {
       <div className="mtop" />
       <Card flush>
         <Toolbar
-          placeholder="Search product or code…"
+          placeholder="Search product, code, group or reason…"
           value={q}
           onSearch={setQ}
-          filters={<FilterBtn label="Show" value={offOnly ? "Off only" : "All"} active={offOnly}
-            onClick={() => setOffOnly(!offOnly)} />}
+          filters={<>
+            <FilterBtn label="Show" value={view} active={view !== "All"} onClick={cycleView} />
+            {modes.length > 1 && (
+              <FilterBtn label="Mode" value={mode ?? "All"} active={Boolean(mode)} onClick={cycleMode} />
+            )}
+            {filtered && <FilterBtn label="Clear filters" onClick={clearAll} />}
+          </>}
           right={<span className="mini">{L.n} · price list {L.list ?? "—"}</span>}
         />
         <DataTable
@@ -77,12 +102,16 @@ export default function Availability() {
                 onChange={() => s.toggleAvail(loc, r.it)} />,
             ],
           }))}
-          empty={{
-            title: offOnly ? "Every listed product is available" : "No product is listed at this counter",
-            sub: offOnly
-              ? "Switch the filter back to All to see the full menu."
-              : "The outlet manager assigns products to this outlet's menu.",
-          }}
+          empty={filtered
+            ? {
+              title: "Nothing matches those filters",
+              sub: `No product on the ${L.n} menu matches ${[q && `“${q}”`, view !== "All" && view.toLowerCase(), mode && `${mode.toLowerCase()} mode`].filter(Boolean).join(", ")}.`,
+              action: <Btn size="sm" onClick={clearAll}>Clear filters</Btn>,
+            }
+            : {
+              title: "No product is listed at this counter",
+              sub: "The outlet manager assigns products to this outlet's menu.",
+            }}
         />
         <TableFoot count={rows.length}
           extra={<>{L.n} · {L.c} · {offCount} product{offCount === 1 ? "" : "s"} cannot be sold right now</>} />

@@ -4,7 +4,7 @@ import { useApp, type AppState } from "../../store";
 import { committed, costOf, freeToPromise, onOrder, parOf, qty, resv } from "../../lib/selectors";
 import { U, fq, money0, now, pct, sum, unitTotal } from "../../lib/fmt";
 import {
-  Btn, Card, DataTable, Icon, PageHead, Pill, StatusPill, TableFoot, Toolbar,
+  Btn, Card, DataTable, FilterBtn, Icon, PageHead, Pill, StatusPill, TableFoot, Toolbar,
 } from "../../ui/kit";
 import type { Col } from "../../ui/kit";
 
@@ -13,6 +13,9 @@ interface Rep {
   cols: Col[];
   rows: string[][];
   pill?: number;
+  /** Column whose distinct values drive the report's own filter button.
+   *  Defaults to the status column where the report has one. */
+  facet?: number;
   foot?: string;
   empty: { title: string; sub: string };
 }
@@ -43,23 +46,23 @@ const ledger = (s: AppState): Rep => {
   const rows = storeKeys(s).sort(byCode).map((k) => {
     const grn = s.grn.filter((g) => g.it === k);
     const recd = sum(grn, (g) => g.qty);
-    const rej = sum(grn, (g) => g.rejected);
     const out = sum(fromStore(s).filter((t) => t.st !== "Issued"),
       (t) => sum(t.lines.filter((l) => l.it === k), (l) => l.qty));
     const close = qty(s, "store", k);
     return [
       IT[k].n, IT[k].c, U(k),
-      fq(close - recd + out, k), fq(recd, k), fq(rej, k), fq(out, k), fq(close, k),
+      fq(close - recd + out, k), fq(recd, k), fq(out, k), fq(close, k),
       money0(close * costOf(k)),
     ];
   });
   return {
     cols: [
       { h: "Item", cls: "nm", w: "18%" }, { h: "Code" }, { h: "Unit" },
-      { h: "Opening", r: true }, { h: "Received", r: true }, { h: "Rejected", r: true },
+      { h: "Opening", r: true }, { h: "Received", r: true },
       { h: "Issued out", r: true }, { h: "Closing", r: true }, { h: "Value at cost", r: true },
     ],
     rows,
+    facet: 2,
     foot: `Closing value ${money0(sum(storeKeys(s), (k) => qty(s, "store", k) * costOf(k)))} · receipts from goods receipt notes, issues from collected tickets`,
     empty: { title: "The central store carries no lines", sub: "Receive a purchase order and the ledger opens." },
   };
@@ -84,6 +87,7 @@ const issreg = (s: AppState): Rep => {
       { h: "At the window", r: true },
     ],
     rows,
+    facet: 0,
     foot: `${out.length} ticket${out.length === 1 ? "" : "s"} raised against ${LOC.store.n}`,
     empty: { title: "Nothing has been issued yet", sub: "Generate a ticket on the issue desk and it lands here." },
   };
@@ -116,6 +120,7 @@ const turn = (s: AppState): Rep => {
     ],
     rows,
     pill: 9,
+    facet: 9,
     foot: "Slowest approval-to-ticket first. A dash means the ticket has not reached that step yet.",
     empty: { title: "No ticket has been raised yet", sub: "Turnaround is measured from the approval trail on each request." },
   };
@@ -139,6 +144,7 @@ const resage = (s: AppState): Rep => {
       { h: "Held since" }, { h: "Age", r: true }, { h: "Value at cost", r: true },
     ],
     rows,
+    facet: 2,
     foot: `${held.length} reservation line${held.length === 1 ? "" : "s"} on the ledger, worth ${money0(sum(held, ([k, v]) => v * costOf(k.split(":")[1])))} at cost`,
     empty: { title: "Nothing is reserved", sub: "Stock is reserved when a ticket is generated and released when it is collected." },
   };
@@ -164,6 +170,7 @@ const belowrl = (s: AppState): Rep => {
       { h: "Suggested top-up", r: true }, { h: "Top-up value", r: true },
     ],
     rows,
+    facet: 2,
     foot: `Reorder levels are the ${LOC.store.n} par, and the suggestion brings each line back to 1.6 times it`,
     empty: { title: "Every line is above its reorder level", sub: `Nothing in ${LOC.store.n} needs replenishing right now.` },
   };
@@ -189,6 +196,7 @@ const prqst = (s: AppState): Rep => {
     ],
     rows,
     pill: 10,
+    facet: 10,
     foot: `${waiting} still with procurement · ${s.prq.filter((p) => p.st === "Approved").length} approved · ${s.prq.filter((p) => p.st === "Partially approved").length} partially approved`,
     empty: { title: "No requisition has been raised", sub: "Build one on the requisitions screen and send it to procurement." },
   };
@@ -221,6 +229,7 @@ const ageing = (s: AppState): Rep => {
       { h: "Age", r: true }, { h: "Shelf life left", r: true }, { h: "Value at cost", r: true },
     ],
     rows,
+    facet: 2,
     foot: `${s.grn.length} purchased lot${s.grn.length === 1 ? "" : "s"} and ${s.batch.length} produced batch${s.batch.length === 1 ? "" : "es"} on file`,
     empty: { title: "No lot is on file", sub: "Purchased lots appear once a goods receipt is booked in; produced lots once the kitchen makes a batch." },
   };
@@ -255,6 +264,7 @@ const movers = (s: AppState): Rep => {
       { h: "Movement", w: "16%" },
     ],
     rows,
+    facet: 8,
     foot: "Ranked by what has left the store window and what the counters have billed",
     empty: { title: "The central store carries no lines", sub: "Velocity is measured against issues and counter sales." },
   };
@@ -279,6 +289,7 @@ const resvav = (s: AppState): Rep => {
       { h: "Spoken for", r: true }, { h: "Free value", r: true },
     ],
     rows,
+    facet: 2,
     foot: "Free to promise is on hand less open ticket reservations less approvals that have no ticket yet",
     empty: { title: "The central store carries no lines", sub: "Nothing can be promised until stock is received." },
   };
@@ -307,6 +318,7 @@ const disc = (s: AppState): Rep => {
     ],
     rows,
     pill: 9,
+    facet: 9,
     foot: `${open} ticket${open === 1 ? " is" : "s are"} still open, so their confirmed quantity is not known yet`,
     empty: { title: "No ticket has left the store", sub: "Discrepancies are measured once a ticket is raised and the outlet confirms it." },
   };
@@ -333,11 +345,27 @@ export default function Reports() {
   const notify = useApp((x) => x.notify);
   const [sel, setSel] = useState("issreg");
   const [q, setQ] = useState("");
+  const [fi, setFi] = useState(0);
 
   const def = REPORTS.find((r) => r.k === sel) ?? REPORTS[0];
   const rep = def.build(s);
+
+  // Each report names the column worth filtering on; its distinct values are
+  // the filter, so the button always narrows something that is really there.
+  const at = rep.facet ?? rep.pill;
+  const facetCol = at != null ? rep.cols[at] : undefined;
+  const facetOpts = at == null
+    ? ["All"]
+    : ["All", ...new Set(rep.rows.map((r) => r[at]).filter((v) => v && v !== DASH))];
+  const facet = facetOpts[Math.min(fi, facetOpts.length - 1)];
+
   const term = q.trim().toLowerCase();
-  const rows = term ? rep.rows.filter((r) => r.some((c) => c.toLowerCase().includes(term))) : rep.rows;
+  const rows = rep.rows.filter((r) => {
+    if (at != null && facet !== "All" && r[at] !== facet) return false;
+    return !term || r.some((c) => c.toLowerCase().includes(term));
+  });
+  const narrowed = rep.rows.length > 0 && rows.length === 0;
+  const pick = (k: string) => { setSel(k); setQ(""); setFi(0); };
 
   const exportCsv = () => {
     if (!rows.length) { notify(`${def.n} has no rows to export`); return; }
@@ -370,7 +398,7 @@ export default function Reports() {
               className="tile"
               aria-pressed={sel === r.k}
               style={sel === r.k ? { borderColor: "var(--accent)", background: "var(--accent-soft)" } : undefined}
-              onClick={() => { setSel(r.k); setQ(""); }}
+              onClick={() => pick(r.k)}
             >
               <span style={{ display: "flex", alignItems: "center", gap: 7 }}>
                 <Icon name={r.icon} />
@@ -393,7 +421,15 @@ export default function Reports() {
           placeholder={`Search ${def.n.toLowerCase()}…`}
           value={q}
           onSearch={setQ}
-          right={<Btn size="sm" variant="gh" onClick={exportCsv}>Export</Btn>}
+          filters={facetCol && facetOpts.length > 1
+            ? <FilterBtn label={facetCol.h} value={facet} onClick={() => setFi((n) => (n + 1) % facetOpts.length)} />
+            : undefined}
+          right={
+            <>
+              <span className="mini">{rows.length} of {rep.rows.length}</span>
+              <Btn size="sm" variant="gh" onClick={exportCsv}>Export</Btn>
+            </>
+          }
         />
         <DataTable
           cols={rep.cols}
@@ -401,7 +437,13 @@ export default function Reports() {
             key: sel + ":" + i,
             cells: cells.map((v, j) => (j === rep.pill ? <StatusPill status={v} /> : v)),
           }))}
-          empty={term ? { title: "Nothing matches this search", sub: `Clear the box to see all ${rep.rows.length} rows.` } : rep.empty}
+          empty={narrowed
+            ? {
+              title: "Nothing matches those filters",
+              sub: `${def.n} has ${rep.rows.length} row${rep.rows.length > 1 ? "s" : ""}, but none of them match.`,
+              action: <Btn size="sm" variant="gh" onClick={() => { setQ(""); setFi(0); }}>Reset filters</Btn>,
+            }
+            : rep.empty}
         />
         <TableFoot count={rows.length} extra={rep.foot} />
       </Card>

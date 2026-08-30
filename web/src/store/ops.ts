@@ -1,7 +1,7 @@
 import { IT, LOC, OUTLETS } from "../data/master";
 import { seedContracts, seedIssues } from "../data/ops";
 import type {
-  Issue, IssueKind, IssuePriority, IssueStatus, Item, ItemType, LocKey, RateContract,
+  Issue, IssueKind, IssuePriority, IssueStatus, Item, ItemType, LocKey, RateContract, ShopAsk,
 } from "../types";
 import { fq, makeOtp, now, U } from "../lib/fmt";
 import type { AppState } from "./index";
@@ -32,6 +32,13 @@ export interface OpsSlice {
   createItem: (input: NewItemInput, loc: LocKey, opening: number) => void;
   /** Shop to shop, no manager in the middle. */
   transferToOutlet: (from: LocKey, to: LocKey, it: string, qty: number) => void;
+
+  shopAsks: ShopAsk[];
+  /** Counter at `from` asks the shop at `to` for stock it is holding. */
+  askShop: (to: LocKey, it: string, qty: number, note: string) => void;
+  /** The holding shop grants some or all of it, which issues the transfer ticket. */
+  answerShopAsk: (id: string, grant: number) => void;
+  declineShopAsk: (id: string, reason: string) => void;
 }
 
 const hist = (who: string, s: string) => ({ s, who, t: now() });
@@ -42,6 +49,7 @@ export const createOpsSlice = (set: Set_, get: Get): OpsSlice => ({
   issues: seedIssues(),
   contracts: seedContracts(),
   catalogVersion: 0,
+  shopAsks: [],
 
   raiseIssue: ({ kind, title, detail, priority }) => {
     const s = get();
@@ -151,5 +159,51 @@ export const createOpsSlice = (set: Set_, get: Get): OpsSlice => ({
       }],
     });
     s.notify(`${id} issued — ${fq(qty, it)} ${U(it)} reserved at ${LOC[from].n} for ${LOC[to].n}`);
+  },
+
+  askShop: (to, it, qty, note) => {
+    const s = get();
+    if (!s.user) return;
+    const from = s.user.loc;
+    if (from === to) { s.notify("Pick a different shop"); return; }
+    if (!OUTLETS.includes(to)) { s.notify("Only another shop can be asked directly"); return; }
+    if (!(qty > 0)) { s.notify("Enter a quantity"); return; }
+    const id = "ASK-0" + (s.shopAsks.length + 61);
+    set({
+      shopAsks: [{
+        id, from, to, it, qty, st: "Asked", by: s.user.n, at: now(), note: note.trim(),
+      }, ...s.shopAsks],
+    });
+    s.notify(`${id} sent to ${LOC[to].n} — they decide, not the manager`);
+  },
+
+  answerShopAsk: (id, grant) => {
+    const s = get();
+    const a = s.shopAsks.find((x) => x.id === id);
+    if (!a || a.st !== "Asked") return;
+    const give = Math.max(0, Math.min(grant, a.qty));
+    if (give <= 0) { s.notify("Grant a quantity, or decline the ask"); return; }
+    const free = (s.stock[a.to]?.[a.it] ?? 0) - (s.rsv[`${a.to}:${a.it}`] ?? 0);
+    if (free < give) {
+      s.notify(`${LOC[a.to].n} has only ${fq(free, a.it)} ${U(a.it)} free to send`);
+      return;
+    }
+    const ticketId = "TKT-0" + (s.seq.tkt + 1);
+    // reserves at the giving shop and raises the ticket the asker collects against
+    get().transferToOutlet(a.to, a.from, a.it, give);
+    set({
+      shopAsks: get().shopAsks.map((x) =>
+        x.id === id ? { ...x, st: "Sent" as const, grant: give, ticket: ticketId } : x),
+    });
+  },
+
+  declineShopAsk: (id, reason) => {
+    const s = get();
+    if (!reason.trim()) { s.notify("Give a reason — the other shop sees it"); return; }
+    set({
+      shopAsks: s.shopAsks.map((x) =>
+        x.id === id ? { ...x, st: "Declined" as const, reason: reason.trim() } : x),
+    });
+    s.notify(`${id} declined`);
   },
 });

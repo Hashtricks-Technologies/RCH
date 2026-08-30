@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { IT, PO_APPROVAL_LIMIT, RATE_CONTRACT } from "../../data/master";
+import { useEffect, useRef, useState } from "react";
+import { IT, PO_APPROVAL_LIMIT } from "../../data/master";
 import { vendorName } from "../../data/vendors";
 import { useApp } from "../../store";
 import { poValue } from "../../lib/selectors";
@@ -8,13 +8,9 @@ import { Alert, Btn, BtnRow, DataTable, Feed, Field, FormRow, Pill, Section, Tab
 import type { Row } from "../../ui/kit";
 import { DrawerFrame } from "../../ui/Drawer";
 import { registerDrawer, type DrawerProps } from "../../drawers";
+import { contractFor } from "./lib";
 
-/** A rate more than 10% above the contract rate is challenged before the order goes out (M2). */
-const TOLERANCE = 0.1;
-const overContract = (it: string, rate: number) => {
-  const c = RATE_CONTRACT[it];
-  return c > 0 && rate > c * (1 + TOLERANCE) ? c : null;
-};
+const warn = { color: "var(--warn)" };
 
 /**
  * Quantity and rate cells on a draft line are edited freely as the operator
@@ -86,6 +82,36 @@ function PoDrawer({ id }: DrawerProps) {
   const [cancelling, setCancelling] = useState(false);
   const [reason, setReason] = useState("");
 
+  /**
+   * A draft is priced off the rate contract wherever one is live for this
+   * vendor and item. A rate the buyer has typed is never overwritten: only a
+   * line still sitting on the item's standard cost (what createPo() seeds) or
+   * on the previous vendor's contract rate is re-priced, so switching vendor
+   * re-prices the order without wiping a hand-negotiated rate.
+   */
+  const priced = useRef<string | null>(null);
+  const vendor = po?.vendor;
+  const status = po?.st;
+  useEffect(() => {
+    const st = useApp.getState();
+    const o = st.po.find((x) => x.id === id);
+    if (!o || o.st !== "Draft") return;
+    const key = o.id + "|" + o.vendor;
+    if (priced.current === key) return;
+    const prev = priced.current;
+    priced.current = key;
+    const prevVendor = prev?.startsWith(o.id + "|") ? prev.slice(o.id.length + 1) : null;
+    o.lines.forEach((l, i) => {
+      const c = contractFor(st, o.vendor, l.it);
+      if (!c || !(c.rate > 0) || l.rate === c.rate) return;
+      const standard = IT[l.it]?.cost ?? 0;
+      const before = prevVendor ? contractFor(st, prevVendor, l.it)?.rate : undefined;
+      if (l.rate === standard || (before != null && l.rate === before)) {
+        st.updatePoLine(o.id, i, { rate: c.rate });
+      }
+    });
+  }, [id, vendor, status]);
+
   if (!po) {
     return (
       <DrawerFrame title="Purchase order not found" sub={id}>
@@ -99,35 +125,63 @@ function PoDrawer({ id }: DrawerProps) {
 
   const value = poValue(po);
   const grns = s.grn.filter((g) => g.po === po.id);
+  const vendorLabel = vendorName(s.vendors, po.vendor);
 
   if (po.st === "Draft") {
     const overSlab = value > PO_APPROVAL_LIMIT;
+    const offContract = po.lines.filter((l) => !contractFor(s, po.vendor, l.it)).length;
+    const deviating = po.lines.filter((l) => {
+      const c = contractFor(s, po.vendor, l.it);
+      return c != null && l.rate !== c.rate;
+    }).length;
+    const belowMoq = po.lines.filter((l) => {
+      const c = contractFor(s, po.vendor, l.it);
+      return c != null && c.moq > 0 && l.qty < c.moq;
+    }).length;
+
     const rows: Row[] = po.lines.map((l, i) => {
-      const contract = RATE_CONTRACT[l.it];
-      const over = overContract(l.it, l.rate);
+      const c = contractFor(s, po.vendor, l.it);
+      const diff = c ? Math.round((l.rate - c.rate) * 100) / 100 : 0;
+      const short = c != null && c.moq > 0 && l.qty < c.moq;
       return {
         key: l.it + i,
         cells: [
           <>{IT[l.it]?.n ?? l.it}<small>{IT[l.it]?.c ?? ""}</small></>,
-          <DraftLineInput
-            value={l.qty} min={0} step={U(l.it) === "nos" ? 1 : 0.5} positiveOnly
-            ariaLabel={`Quantity of ${IT[l.it]?.n ?? l.it}`}
-            onCommit={(n) => updatePoLine(po.id, i, { qty: n })}
-          />,
+          <>
+            <DraftLineInput
+              value={l.qty} min={0} step={U(l.it) === "nos" ? 1 : 0.5} positiveOnly
+              ariaLabel={`Quantity of ${IT[l.it]?.n ?? l.it}`}
+              onCommit={(n) => updatePoLine(po.id, i, { qty: n })}
+            />
+            {short && (
+              <div className="mini" style={warn}>
+                below the {fq(c!.moq, l.it)} {U(l.it)} minimum on {c!.id}
+              </div>
+            )}
+          </>,
           <>{U(l.it)}</>,
           <DraftLineInput
             value={l.rate} min={0} step={0.01}
             ariaLabel={`Rate for ${IT[l.it]?.n ?? l.it}`}
             onCommit={(n) => updatePoLine(po.id, i, { rate: n })}
           />,
-          <>
-            {contract > 0 ? money(contract) : <span className="dim">—</span>}
-            {over != null && (
-              <div className="mini" style={{ color: "var(--warn)" }}>
-                {pct((l.rate - over) / over)} over contract
-              </div>
-            )}
-          </>,
+          c ? (
+            <>
+              <Pill tone="ok">On contract</Pill>
+              <div className="mini">{money(c.rate)} · {c.id} · to {c.to}</div>
+              {diff !== 0 && (
+                <div className="mini" style={warn}>
+                  {money(Math.abs(diff))} {diff > 0 ? "above" : "below"} the contract rate
+                  {" "}{money(c.rate)} ({pct(diff / c.rate)})
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              <Pill tone="mu">Off contract</Pill>
+              <div className="mini dim">no live contract with {vendorLabel}</div>
+            </>
+          ),
           <>{money0(l.qty * l.rate)}</>,
           <>{l.src.map((x, si) => <div key={si}>{x.prq} · {fq(x.qty, l.it)}</div>)}</>,
           <Btn size="xs" variant="gh" onClick={() => removePoLine(po.id, i)}>Remove</Btn>,
@@ -138,7 +192,7 @@ function PoDrawer({ id }: DrawerProps) {
     return (
       <DrawerFrame
         title={po.id}
-        sub={`Draft · ${vendorName(s.vendors, po.vendor)} · ${po.lines.length} line${po.lines.length > 1 ? "s" : ""}`}
+        sub={`Draft · ${vendorLabel} · ${po.lines.length} item${po.lines.length > 1 ? "s" : ""}`}
         foot={
           <>
             <Btn variant="dg" onClick={() => setCancelling(true)}>Cancel order</Btn>
@@ -148,32 +202,51 @@ function PoDrawer({ id }: DrawerProps) {
           </>
         }
       >
-        <Section title="Lines" sub="Quantity can only be trimmed, not raised, from here — pick another line from the procurement list to add more.">
+        <Section title="Items" sub="Rates default to the live rate contract for this vendor. Quantity can only be trimmed, not raised, from here — pick another item from the procurement list to add more.">
           <div className="lgrid">
             <DataTable
               cols={[
-                { h: "Item", cls: "nm", w: "18%" },
-                { h: "Quantity", r: true },
+                { h: "Item", cls: "nm", w: "16%" },
+                { h: "Quantity", r: true, w: "13%" },
                 { h: "Unit" },
-                { h: "Rate", r: true },
-                { h: "Contract", r: true },
+                { h: "Rate", r: true, w: "11%" },
+                { h: "Rate contract", w: "22%" },
                 { h: "Value", r: true },
-                { h: "Source requisition", w: "16%" },
+                { h: "Source requisition", w: "15%" },
                 { h: "" },
               ]}
               rows={rows}
               empty={{
-                title: "No lines on this order",
-                sub: "Every line was removed — cancel the order or pick another line from the procurement list.",
+                title: "No items on this order",
+                sub: "Every item was removed — cancel the order or pick another item from the procurement list.",
               }}
             />
           </div>
           <TableFoot count={rows.length} extra={<>{money0(value)} order value</>} />
         </Section>
 
+        {deviating > 0 && (
+          <Alert tone="w" label="OFF THE CONTRACT RATE">
+            {deviating} item(s) are priced away from the rate agreed with {vendorLabel}. Each one names the
+            contract rate and the difference above — correct them, or be ready to justify the variance.
+          </Alert>
+        )}
+        {belowMoq > 0 && (
+          <Alert tone="w" label="BELOW MINIMUM ORDER">
+            {belowMoq} item(s) are under the minimum order quantity on their contract. The vendor may refuse the
+            line or drop the contracted rate.
+          </Alert>
+        )}
+        {offContract > 0 && (
+          <Alert tone="i" label="OFF CONTRACT">
+            {offContract} item(s) have no live rate contract with {vendorLabel} — those rates are yours to
+            negotiate. Ask the store keeper to record a contract if this becomes a standing buy.
+          </Alert>
+        )}
+
         <Section title="Order terms" sub="Vendor and expected delivery — editable while this order is a draft.">
           <FormRow cols="f2">
-            <Field label="Vendor">
+            <Field label="Vendor" hint="Changing the vendor re-prices every item off that vendor's contract, unless you typed the rate yourself.">
               <select value={po.vendor} onChange={(e) => setPoVendor(po.id, e.target.value)}>
                 {/* The order's own vendor must always have a matching <option>, even when
                     deactivated after this draft was raised — otherwise the browser silently
@@ -215,11 +288,11 @@ function PoDrawer({ id }: DrawerProps) {
   return (
     <DrawerFrame
       title={po.id}
-      sub={`${vendorName(s.vendors, po.vendor)} · ${po.st} · ${po.lines.length} line${po.lines.length > 1 ? "s" : ""}`}
+      sub={`${vendorLabel} · ${po.st} · ${po.lines.length} item${po.lines.length > 1 ? "s" : ""}`}
     >
       <Section title="Order" sub={`Raised ${po.at} · expected ${po.eta}`}>
         <Alert tone={po.st === "Cancelled" ? "c" : po.st === "Received" ? "g" : "i"} label={po.st.toUpperCase()}>
-          {money0(value)} on this order with {vendorName(s.vendors, po.vendor)}.
+          {money0(value)} on this order with {vendorLabel}.
         </Alert>
         {po.needsApproval && <Pill tone="wn">Needed finance approval when raised</Pill>}
       </Section>
@@ -228,31 +301,47 @@ function PoDrawer({ id }: DrawerProps) {
         <Alert tone="c" label={po.st === "Cancelled" ? "CANCELLED" : "SHORT"}>{po.shortNote}</Alert>
       )}
 
-      <Section title="Lines" sub="Ordered, received and the balance still outstanding.">
+      <Section title="Items" sub="Ordered, received and the balance still outstanding.">
         <div className="lgrid">
           <DataTable
             cols={[
-              { h: "Item", cls: "nm", w: "20%" },
+              { h: "Item", cls: "nm", w: "18%" },
               { h: "Ordered", r: true },
               { h: "Unit" },
               { h: "Received", r: true },
               { h: "Balance", r: true },
               { h: "Rate", r: true },
+              { h: "Rate contract", w: "18%" },
               { h: "Value", r: true },
             ]}
-            rows={po.lines.map((l, i) => ({
-              key: l.it + i,
-              cells: [
-                <>{IT[l.it]?.n ?? l.it}<small>{IT[l.it]?.c ?? ""}</small></>,
-                <>{fq(l.qty, l.it)}</>,
-                <>{U(l.it)}</>,
-                <>{fq(l.recv, l.it)}</>,
-                <>{fq(Math.max(0, l.qty - l.recv), l.it)}</>,
-                <>{money(l.rate)}</>,
-                <>{money0(l.qty * l.rate)}</>,
-              ],
-            }))}
-            empty={{ title: "No lines on this order" }}
+            rows={po.lines.map((l, i) => {
+              const c = contractFor(s, po.vendor, l.it);
+              const diff = c ? Math.round((l.rate - c.rate) * 100) / 100 : 0;
+              return {
+                key: l.it + i,
+                cells: [
+                  <>{IT[l.it]?.n ?? l.it}<small>{IT[l.it]?.c ?? ""}</small></>,
+                  <>{fq(l.qty, l.it)}</>,
+                  <>{U(l.it)}</>,
+                  <>{fq(l.recv, l.it)}</>,
+                  <>{fq(Math.max(0, l.qty - l.recv), l.it)}</>,
+                  <>{money(l.rate)}</>,
+                  c ? (
+                    <>
+                      <Pill tone="ok">On contract</Pill>
+                      <div className="mini">{money(c.rate)} · {c.id}</div>
+                      {diff !== 0 && (
+                        <div className="mini" style={warn}>
+                          {money(Math.abs(diff))} {diff > 0 ? "above" : "below"} contract
+                        </div>
+                      )}
+                    </>
+                  ) : <Pill tone="mu">Off contract</Pill>,
+                  <>{money0(l.qty * l.rate)}</>,
+                ],
+              };
+            })}
+            empty={{ title: "No items on this order" }}
           />
         </div>
         <TableFoot count={po.lines.length} extra={<>{money0(value)} order value</>} />
@@ -262,9 +351,8 @@ function PoDrawer({ id }: DrawerProps) {
         <DataTable
           cols={[
             { h: "GRN", cls: "nm", w: "18%" },
-            { h: "Item", w: "20%" },
+            { h: "Item", w: "22%" },
             { h: "Received", r: true },
-            { h: "Rejected", r: true },
             { h: "Batch" },
             { h: "Invoice" },
             { h: "Received by" },
@@ -275,7 +363,6 @@ function PoDrawer({ id }: DrawerProps) {
               <>{g.id}<small>{g.at}</small></>,
               <>{IT[g.it]?.n ?? g.it}</>,
               <>{fq(g.qty, g.it)}</>,
-              <>{g.rejected > 0 ? fq(g.rejected, g.it) : <span className="dim">{fq(0, g.it)}</span>}</>,
               <>{g.batch}</>,
               <>{g.invoice}</>,
               <>{g.by}</>,

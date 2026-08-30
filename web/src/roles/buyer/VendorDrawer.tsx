@@ -1,9 +1,12 @@
 import { useState } from "react";
 import { IT } from "../../data/master";
 import { useApp } from "../../store";
-import { Alert, Btn, Field, FormRow, Section } from "../../ui/kit";
+import { U, fq, money } from "../../lib/fmt";
+import { Alert, Btn, DataTable, Field, FormRow, Pill, Section, TableFoot } from "../../ui/kit";
+import type { Row } from "../../ui/kit";
 import { DrawerFrame } from "../../ui/Drawer";
 import { registerDrawer, type DrawerProps } from "../../drawers";
+import { contractsOf } from "./lib";
 
 const GROUPS = [...new Set(Object.values(IT).map((i) => i.g))].sort();
 
@@ -113,6 +116,45 @@ function VendorDrawer({ id }: DrawerProps) {
           ))}
         </div>
       </Section>
+
+      {!isNew && (() => {
+        const contracts = contractsOf(s.contracts, existing!);
+        const live = contracts.filter((c) => c.active).length;
+        const rows: Row[] = contracts.map((c) => ({
+          key: c.id,
+          cells: [
+            <>{c.id}</>,
+            <>{IT[c.it]?.n ?? c.it}<small>{IT[c.it]?.c ?? ""}</small></>,
+            <>{money(c.rate)} <span className="dim">/ {U(c.it)}</span></>,
+            <>{fq(c.moq, c.it)} <span className="dim">{U(c.it)}</span></>,
+            <>{c.from} – {c.to}</>,
+            c.active ? <Pill tone="ok">Live</Pill> : <Pill tone="mu">Closed</Pill>,
+          ],
+        }));
+        return (
+          <Section
+            title="Rate contracts"
+            sub="Read-only here. A live contract prices every draft purchase order raised on this vendor; the store keeper adds, edits and closes them."
+          >
+            <DataTable
+              cols={[
+                { h: "Contract", cls: "nm", w: "14%" },
+                { h: "Item", w: "26%" },
+                { h: "Contracted rate", r: true },
+                { h: "Minimum order", r: true },
+                { h: "Valid" },
+                { h: "State" },
+              ]}
+              rows={rows}
+              empty={{
+                title: "No rate contract with this vendor",
+                sub: "Every order on this vendor is priced off contract until the store keeper records one.",
+              }}
+            />
+            <TableFoot count={rows.length} extra={<>{live} live · {contracts.length - live} closed</>} />
+          </Section>
+        );
+      })()}
 
       {!isNew && !existing!.active && (
         <Alert tone="c" label="INACTIVE">

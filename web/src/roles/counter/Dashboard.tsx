@@ -1,13 +1,18 @@
 import { useNavigate } from "react-router-dom";
-import { IT, LOC, OUTLETS } from "../../data/master";
+import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
-import { availOf, isCashTender, menuOf } from "../../lib/selectors";
-import { money, money0, sum } from "../../lib/fmt";
-import { Alert, Avatar, Btn, Card, Feed, Grid, HBars, Kpis, PageHead } from "../../ui/kit";
+import { availOf, menuOf } from "../../lib/selectors";
+import { money, money0, sum, unitTotal } from "../../lib/fmt";
+import {
+  Alert, Avatar, Btn, Card, DataTable, Feed, Grid, Kpis, PageHead, StatusPill,
+} from "../../ui/kit";
+import { settlementOf } from "./status";
 import type { ReqStatus } from "../../types";
 
 const SETTLED: ReqStatus[] = ["Closed", "Cancelled", "Rejected", "Received"];
-const OPENING_CASH = 2000;
+/** The float handed to the operator at the start of Shift 2, before a single bill is
+ *  raised. It is the only figure on this card that is not derived from a bill. */
+const OPENING_FLOAT = 2000;
 
 export default function Dashboard() {
   const s = useApp();
@@ -17,39 +22,53 @@ export default function Dashboard() {
   const L = LOC[loc];
 
   const mine = s.bills.filter((b) => b.loc === loc);
-  const salesToday = sum(mine, (b) => b.tot);
+  const billed = sum(mine, (b) => b.tot);
   const itemsSold = sum(mine, (b) => sum(b.lines, (l) => l.qty));
-  const avgBill = mine.length ? salesToday / mine.length : 0;
-  const cashToday = sum(mine.filter((b) => isCashTender(b.pay)), (b) => b.tot);
+  const avgBill = mine.length ? billed / mine.length : 0;
+
+  // Cash is the tender, not the total: a bill charged to a patient, to staff credit
+  // or to a department is billed value and never reaches this drawer.
+  const cashBills = mine.filter((b) => settlementOf(b.pay) === "drawer");
+  const bankBills = mine.filter((b) => settlementOf(b.pay) === "bank");
+  const acctBills = mine.filter((b) => settlementOf(b.pay) === "account");
+  const cashTaken = sum(cashBills, (b) => b.tot);
+  const banked = sum(bankBills, (b) => b.tot);
+  const charged = sum(acctBills, (b) => b.tot);
+  const drawer = OPENING_FLOAT + cashTaken;
 
   const menu = menuOf(s, loc);
   const off = menu
     .map((it) => ({ it, a: availOf(s, loc, it) }))
     .filter((r) => !r.a.ok);
 
-  const openReq = s.req.filter((r) => r.from === loc && !SETTLED.includes(r.st));
-  const rejected = s.req.filter((r) => r.from === loc && r.st === "Rejected");
+  const myReq = s.req.filter((r) => r.from === loc);
+  const openReq = myReq.filter((r) => !SETTLED.includes(r.st));
+  const rejected = myReq.filter((r) => r.st === "Rejected");
+  const withManager = myReq.filter((r) => r.st === "Request sent" || r.st === "Draft");
+  const awaitingTicket = myReq.filter(
+    (r) => (r.st === "Manager approved" || r.st === "Partially approved") && !r.ticket,
+  );
   const waiting = s.tkt.filter((t) => t.to === loc && t.st === "Issued");
   const inTransit = s.tkt.filter((t) => t.to === loc && t.st === "Collected");
+  // What a manager trimmed off a request and will never be issued against it.
+  const shortLines = myReq.flatMap((r) =>
+    r.lines.filter((l) => (l.short ?? 0) > 0).map((l) => ({ it: l.it, qty: l.short ?? 0 })));
+  const shortReqs = myReq.filter((r) => r.lines.some((l) => (l.short ?? 0) > 0)).length;
+  const recentReq = myReq.slice().reverse().slice(0, 5);
 
-  const si = Math.max(0, OUTLETS.indexOf(loc));
-  const trend = s.sales.map((r) => r[si] ?? 0).slice(-7);
-  const billTrend = trend.map((v) => Math.round(v / 118));
-  const itemTrend = trend.map((v) => Math.round(v / 41));
-
-  const rev: Record<string, number> = {};
-  mine.forEach((b) => b.lines.forEach((l) => { rev[l.it] = (rev[l.it] ?? 0) + l.qty * l.rate; }));
-  const top = Object.entries(rev)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 5)
-    .map(([it, v]) => ({ n: IT[it]?.n ?? it, v, f: money0(v) }));
+  const rev: Record<string, { qty: number; amt: number }> = {};
+  mine.forEach((b) => b.lines.forEach((l) => {
+    const e = rev[l.it] ?? { qty: 0, amt: 0 };
+    rev[l.it] = { qty: e.qty + l.qty, amt: e.amt + l.qty * l.rate };
+  }));
+  const top = Object.entries(rev).sort((a, b) => b[1].amt - a[1].amt).slice(0, 5);
 
   const feed = mine.slice(0, 5).map((b) => ({
     key: b.no,
     title: <>{b.no} · {money(b.tot)}</>,
     body: <>{sum(b.lines, (l) => l.qty)} items · {b.pay}</>,
     when: b.t,
-    color: isCashTender(b.pay) ? "var(--c2)" : "var(--c1)",
+    color: settlementOf(b.pay) === "drawer" ? "var(--c2)" : "var(--c1)",
   }));
 
   return (
@@ -65,12 +84,12 @@ export default function Dashboard() {
       />
 
       <Kpis items={[
-        { l: "Sales today", v: money0(salesToday), d: <>{L.n} · all tenders</>, spark: trend, color: "var(--c1)" },
-        { l: "Bills raised", v: String(mine.length), d: <>last bill {mine[0]?.t ?? "—"}</>, spark: billTrend, color: "var(--c2)" },
-        { l: "Items sold", v: String(itemsSold), d: <>across {menu.length} listed products</>, spark: itemTrend, color: "var(--c3)" },
+        { l: "Billed today", v: money0(billed), d: <>{L.n} · every tender</> },
+        { l: "Cash in drawer", v: money0(drawer), d: <>float {money0(OPENING_FLOAT)} + {money0(cashTaken)} cash</> },
+        { l: "Bills raised", v: String(mine.length), d: <>last bill {mine[0]?.t ?? "—"}</> },
+        { l: "Items sold", v: String(itemsSold), d: <>across {menu.length} listed products</> },
         { l: "Average bill", v: money0(avgBill), d: <>{mine.length ? money(avgBill) : "no bills yet"}</> },
         { l: "Products switched off", v: String(off.length), d: <>of {menu.length} on this menu</> },
-        { l: "Open requests", v: String(openReq.length), d: <>{waiting.length} ticket{waiting.length === 1 ? "" : "s"} to collect</> },
       ]} />
 
       {off.map((r) => (
@@ -81,7 +100,7 @@ export default function Dashboard() {
       {waiting.map((t) => (
         <Alert key={t.id} tone="w" label="COLLECT"
           action={<Btn size="xs" variant="gh" onClick={() => nav("/tickets")}>Open tickets</Btn>}>
-          Ticket <b className="mono">{t.id}</b> is waiting at {LOC[t.from].n} — {t.lines.length} line{t.lines.length === 1 ? "" : "s"} against {t.req}.
+          Ticket <b className="mono">{t.id}</b> is waiting at {LOC[t.from].n} — {t.lines.length} item{t.lines.length === 1 ? "" : "s"} against {t.req}.
         </Alert>
       ))}
       {inTransit.map((t) => (
@@ -98,12 +117,84 @@ export default function Dashboard() {
       ))}
 
       <div className="mtop" />
+      <Card
+        title="Stock requests from this counter"
+        sub={`Everything ${L.n} has asked the central store for today`}
+        right={<Btn variant="gh" size="sm" onClick={() => nav("/requests")}>All requests</Btn>}
+      >
+        <Kpis items={[
+          { l: "Raised today", v: String(myReq.length), d: <>{openReq.length} still open</> },
+          { l: "With the outlet manager", v: String(withManager.length), d: <>awaiting approval</> },
+          { l: "Approved, no ticket yet", v: String(awaitingTicket.length), d: <>waiting on the store keeper</> },
+          { l: "Tickets to collect", v: String(waiting.length), d: <>stock reserved at the store</> },
+          { l: "In transit", v: String(inTransit.length), d: <>handed over, not yet received</> },
+          {
+            l: "Quantity short",
+            v: shortLines.length ? unitTotal(shortLines) : "None",
+            d: shortLines.length
+              ? <>trimmed on {shortReqs} request{shortReqs === 1 ? "" : "s"}</>
+              : <>nothing was trimmed</>,
+          },
+        ]} />
+        <div className="mtop" />
+        <DataTable
+          cols={[
+            { h: "Request ID", cls: "nm", w: "22%" },
+            { h: "Items", w: "30%" },
+            { h: "Asked", r: true, w: "12%" },
+            { h: "Approved", r: true, w: "13%" },
+            { h: "Status", w: "23%" },
+          ]}
+          rows={recentReq.map((r) => {
+            const first = IT[r.lines[0]?.it]?.n ?? "—";
+            const more = r.lines.length - 1;
+            const appr = sum(r.lines, (l) => l.appr);
+            return {
+              key: r.id,
+              onClick: () => s.openDrawer("creq", r.id),
+              cells: [
+                <><span className="mono">{r.id}</span><small>{r.at} · by {r.by}</small></>,
+                <>{r.lines.length} item{r.lines.length === 1 ? "" : "s"} · {first}{more > 0 ? ` +${more} more` : ""}</>,
+                sum(r.lines, (l) => l.qty),
+                appr > 0 ? appr : <span className="dim">—</span>,
+                <StatusPill status={r.st} />,
+              ],
+            };
+          })}
+          empty={{
+            title: "No request raised from this counter yet",
+            sub: "Raise one against the central store and it will be tracked here until the stock is on the shelf.",
+            action: <Btn size="sm" onClick={() => nav("/requests")}>Raise a request</Btn>,
+          }}
+        />
+      </Card>
+
+      <div className="mtop" />
       <Grid cols="g21">
         <div>
           <Card title="Top five sellers today" sub={`by revenue at ${L.n}`}>
-            {top.length ? <HBars rows={top} /> : (
-              <p className="mini">No sale has been billed at this counter yet today. Open the till to start.</p>
-            )}
+            <DataTable
+              cols={[
+                { h: "Product", cls: "nm", w: "46%" },
+                { h: "Code", w: "18%" },
+                { h: "Sold", r: true, w: "16%" },
+                { h: "Revenue", r: true, w: "20%" },
+              ]}
+              rows={top.map(([it, v]) => ({
+                key: it,
+                cells: [
+                  IT[it]?.n ?? it,
+                  <span className="mono">{IT[it]?.c ?? "—"}</span>,
+                  v.qty,
+                  money(v.amt),
+                ],
+              }))}
+              empty={{
+                title: "Nothing billed at this counter yet",
+                sub: "Open the till — the first bill of the shift starts this table.",
+                action: <Btn size="sm" onClick={() => nav("/pos")}>Open till</Btn>,
+              }}
+            />
           </Card>
           <div className="mtop" />
           <Card title="Last five bills" sub="this counter" right={<Btn variant="gh" size="sm" onClick={() => nav("/bills")}>All bills</Btn>}>
@@ -126,12 +217,28 @@ export default function Dashboard() {
             <dt>Shift</dt><dd>Shift 2 · 14:00 – 22:00</dd>
             <dt>Terminal</dt><dd className="mono">{L.c}</dd>
             <dt>Cost centre</dt><dd className="mono">{L.cc}</dd>
-            <dt>Opening cash</dt><dd className="mono">{money0(OPENING_CASH)}</dd>
-            <dt>Cash collected</dt><dd className="mono">{money(cashToday)}</dd>
-            <dt>Drawer expected</dt><dd className="mono">{money(OPENING_CASH + cashToday)}</dd>
+            <dt>Opening float</dt><dd className="mono">{money(OPENING_FLOAT)}</dd>
+            <dt>Cash bills</dt>
+            <dd className="mono">
+              {money(cashTaken)} <span className="mini">({cashBills.length} of {mine.length})</span>
+            </dd>
+            <dt>Cash in drawer</dt><dd className="mono"><b>{money(drawer)}</b></dd>
+            <dt>Card &amp; UPI</dt>
+            <dd className="mono">
+              {money(banked)} <span className="mini">({bankBills.length} bill{bankBills.length === 1 ? "" : "s"})</span>
+            </dd>
+            <dt>Charged to accounts</dt>
+            <dd className="mono">
+              {money(charged)} <span className="mini">({acctBills.length} bill{acctBills.length === 1 ? "" : "s"})</span>
+            </dd>
+            <dt>Total billed</dt><dd className="mono"><b>{money(billed)}</b></dd>
           </dl>
           <p className="mini mtop">
-            Card, UPI and patient-bill takings settle to the hospital account and are not counted in the drawer.
+            The <b>opening float</b> is the {money0(OPENING_FLOAT)} handed to you at the start of Shift 2, so cash in
+            drawer = {money0(OPENING_FLOAT)} float + {money(cashTaken)} taken in cash = <b>{money(drawer)}</b> to count
+            out at the end. Card and UPI are taken at the till but settle to the hospital account; patient, staff and
+            department bills collect nothing at all. Neither belongs in the drawer, which is why{" "}
+            <b>total billed {money(billed)}</b> and the drawer figure differ.
           </p>
         </Card>
       </Grid>

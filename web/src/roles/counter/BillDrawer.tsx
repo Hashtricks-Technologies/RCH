@@ -53,7 +53,7 @@ function BillDrawer({ id }: DrawerProps) {
         {bill.payer && <><dt>Posted to</dt><dd>{bill.payer.name} <span className="mini mono">({bill.payer.id})</span></dd></>}
       </dl>
 
-      <Section title="Line items" sub={`${bill.lines.length} line${bill.lines.length === 1 ? "" : "s"} · rates are GST inclusive`} />
+      <Section title="Items on this bill" sub={`${bill.lines.length} item${bill.lines.length === 1 ? "" : "s"} · rates are GST inclusive`} />
       <DataTable
         cols={[
           { h: "Item", cls: "nm", w: "34%" },
@@ -74,7 +74,7 @@ function BillDrawer({ id }: DrawerProps) {
             money(l.rate * l.qty),
           ],
         }))}
-        empty={{ title: "This bill carries no line" }}
+        empty={{ title: "This bill carries no item" }}
       />
 
       <div className="mtop">

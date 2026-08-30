@@ -3,7 +3,7 @@ import { useApp } from "../../store";
 import { fq, U } from "../../lib/fmt";
 import { DrawerFrame } from "../../ui/Drawer";
 import { registerDrawer, type DrawerProps } from "../../drawers";
-import { Btn, DataTable, Feed, QR, Section, StatusPill } from "../../ui/kit";
+import { Btn, DataTable, Feed, Otp, Section, StatusPill } from "../../ui/kit";
 import type { TktStatus } from "../../types";
 
 const STEPS: { st: TktStatus; title: string; body: string }[] = [
@@ -40,18 +40,22 @@ function TicketDrawer({ id }: DrawerProps) {
       </>}
     >
       <div className="tktbox">
-        <QR size={84} />
+        <Otp value={tkt.otp} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div className="mono" style={{ fontSize: 21, fontWeight: 700, letterSpacing: ".02em" }}>{tkt.id}</div>
           <div className="mini" style={{ marginTop: 4 }}>
             {LOC[tkt.from].c} {LOC[tkt.from].n} → {LOC[tkt.to].c} {LOC[tkt.to].n}
           </div>
-          <div className="mini">Against {tkt.req} · {tkt.lines.length} line{tkt.lines.length === 1 ? "" : "s"}</div>
+          <div className="mini">Against {tkt.req} · {tkt.lines.length} item{tkt.lines.length === 1 ? "" : "s"}</div>
           <div style={{ marginTop: 8 }}><StatusPill status={tkt.st} /></div>
         </div>
       </div>
+      <p className="mini mtop">
+        Nothing is scanned: whoever collects reads these six digits aloud to the store keeper at {LOC[tkt.from].n},
+        who types them in to release the goods.
+      </p>
 
-      <Section title="Approved lines" sub="Exactly what may be collected against this ticket." />
+      <Section title="Approved items" sub="Exactly what may be collected against this ticket." />
       <DataTable
         cols={[
           { h: "Item", cls: "nm", w: "44%" },
@@ -68,7 +72,7 @@ function TicketDrawer({ id }: DrawerProps) {
             <span className="mini">{U(l.it)}</span>,
           ],
         }))}
-        empty={{ title: "No line on this ticket" }}
+        empty={{ title: "No item on this ticket" }}
       />
 
       <Section title="Where it is" sub="Three steps from the store shelf to this counter." />

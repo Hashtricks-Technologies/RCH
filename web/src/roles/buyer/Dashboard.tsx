@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { IT, LOC } from "../../data/master";
 import { vendorName } from "../../data/vendors";
@@ -5,12 +6,13 @@ import { useApp } from "../../store";
 import { avail, daysCover, poValue, procurementList, qty, stateTone, stockValue } from "../../lib/selectors";
 import { U, fq, lakh, money0, sum } from "../../lib/fmt";
 import {
-  Alert, Btn, Card, DataTable, Feed, Grid, HBars, Kpis, PageHead, Pill, TableFoot,
+  Alert, Btn, Card, DataTable, Feed, FilterBtn, Grid, Kpis, PageHead, Pill, TableFoot, Toolbar,
 } from "../../ui/kit";
 import type { FeedItem, Row } from "../../ui/kit";
 import type { PoStatus, TktLine } from "../../types";
+import { cycle } from "./lib";
 
-/** Procurement only ever buys what the central store carries: raw, packing and traded goods.
+/** Procurement only ever buys what the central store carries: raw, packing and MRP goods.
  *  Finished goods and made-to-order drinks are produced in-house, never purchased. */
 const BOUGHT: string[] = Object.keys(IT).filter(
   (k) => IT[k].t === "RAW" || IT[k].t === "PACK" || IT[k].t === "MRP",
@@ -20,9 +22,17 @@ const lineValue = (lines: TktLine[]) => sum(lines, (l) => l.qty * (IT[l.it]?.cos
  *  received or cancelled — a partial receipt does not close it. */
 const LIVE: PoStatus[] = ["Ordered", "Partially received"];
 
+const STATES = ["All", "Out", "Below reorder", "Healthy"];
+const COMMITMENTS = ["All", "On order", "On the list", "Nothing committed"];
+const stateOf = (a: number, rl: number) => (a <= 0 ? "Out" : rl > 0 && a < rl ? "Below reorder" : "Healthy");
+
 export default function Dashboard() {
   const s = useApp();
   const nav = useNavigate();
+
+  const [q, setQ] = useState("");
+  const [state, setState] = useState("All");
+  const [commitment, setCommitment] = useState("All");
 
   const waiting = s.prq.filter((p) => p.st === "Sent");
   const pool = procurementList(s);
@@ -39,16 +49,18 @@ export default function Dashboard() {
   // waiting for a buyer to raise an order against it.
   const poolItems = new Set(pool.map((l) => l.it));
   const onLivePo = (k: string) => live.some((o) => o.lines.some((l) => l.it === k && l.qty - l.recv > 0));
+  const commitmentOf = (k: string) =>
+    onLivePo(k) ? "On order" : poolItems.has(k) ? "On the list" : "Nothing committed";
 
   const roomLines = Object.keys(s.stock.procure).filter((k) => IT[k] && qty(s, "procure", k) > 0);
 
   const kpis = [
     {
       l: "Requisitions waiting on you", v: String(waiting.length),
-      d: <>from the central store</>, spark: [1, 0, 2, 1, 3, 1, waiting.length], color: "var(--c1)",
+      d: <>from the central store</>,
     },
     {
-      l: "Lines on the procurement list", v: String(pool.length),
+      l: "Items on the procurement list", v: String(pool.length),
       d: <>approved, not yet claimed by an order</>,
     },
     {
@@ -61,15 +73,25 @@ export default function Dashboard() {
     },
     {
       l: `Held in ${LOC.procure.n}`, v: lakh(stockValue(s, "procure")),
-      d: <>{roomLines.length} line(s) ready to hand over</>,
+      d: <>{roomLines.length} item(s) ready to hand over</>,
     },
     {
       l: "Below reorder · central store", v: String(below.length),
-      d: <>{zero.length} at zero</>, spark: [3, 4, 4, 5, 4, 6, Math.max(1, below.length)], color: "var(--c3)",
+      d: <>{zero.length} at zero</>,
     },
   ];
 
-  const cover = BOUGHT
+  const t = q.trim().toLowerCase();
+  const filtered = BOUGHT.filter((k) => {
+    const a = avail(s, "store", k);
+    return (state === "All" || stateOf(a, IT[k].rl) === state)
+      && (commitment === "All" || commitmentOf(k) === commitment)
+      && (!t || IT[k].n.toLowerCase().includes(t) || IT[k].c.toLowerCase().includes(t)
+        || IT[k].g.toLowerCase().includes(t));
+  });
+  const narrowed = t !== "" || state !== "All" || commitment !== "All";
+
+  const cover = filtered
     .map((k) => ({ k, a: avail(s, "store", k), dc: daysCover(avail(s, "store", k), k) }))
     .sort((x, y) => x.dc - y.dc)
     .slice(0, 8);
@@ -81,28 +103,39 @@ export default function Dashboard() {
       <>{fq(a, k)} {U(k)}</>,
       <>{fq(IT[k].rl, k)}</>,
       <>{dc.toFixed(1)} d</>,
-      <Pill tone={stateTone(a, IT[k].rl)}>
-        {a <= 0 ? "Out" : IT[k].rl > 0 && a < IT[k].rl ? "Below reorder" : "Healthy"}
-      </Pill>,
+      <Pill tone={stateTone(a, IT[k].rl)}>{stateOf(a, IT[k].rl)}</Pill>,
       onLivePo(k) ? <Pill tone="in">On order</Pill>
         : poolItems.has(k) ? <Pill tone="wn">On the list</Pill>
           : <span className="dim">—</span>,
     ],
   }));
 
-  const byItem = new Map<string, number>();
+  // What used to be a bar chart. The same numbers read better as a table, and
+  // the quantity outstanding is worth showing next to the money.
+  const byItem = new Map<string, { qty: number; value: number }>();
   live.forEach((o) => o.lines.forEach((l) => {
-    byItem.set(l.it, (byItem.get(l.it) ?? 0) + l.qty * l.rate);
+    const at = byItem.get(l.it) ?? { qty: 0, value: 0 };
+    at.qty += Math.max(0, l.qty - l.recv);
+    at.value += l.qty * l.rate;
+    byItem.set(l.it, at);
   }));
-  const bars = [...byItem.entries()]
-    .sort((a, b) => b[1] - a[1]).slice(0, 7)
-    .map(([k, v]) => ({ n: IT[k]?.n ?? k, v, f: money0(v) }));
+  const commitRows: Row[] = [...byItem.entries()]
+    .sort((a, b) => b[1].value - a[1].value)
+    .slice(0, 8)
+    .map(([k, v]) => ({
+      key: k,
+      cells: [
+        <>{IT[k]?.n ?? k}<small>{IT[k]?.c ?? ""}</small></>,
+        <>{fq(v.qty, k)} <span className="dim">{U(k)}</span></>,
+        <>{money0(v.value)}</>,
+      ],
+    }));
 
   const feed: FeedItem[] = [
     ...s.prq.map((p) => ({
       key: "p" + p.id,
       title: <>{p.id} · {p.st === "Sent" ? "requisition received" : p.st.toLowerCase()}</>,
-      body: <>{p.by} · {p.lines.length} line{p.lines.length > 1 ? "s" : ""} · {money0(lineValue(p.lines))}</>,
+      body: <>{p.by} · {p.lines.length} item{p.lines.length > 1 ? "s" : ""} · {money0(lineValue(p.lines))}</>,
       when: p.at,
       color: p.st === "Sent" ? "var(--warn)" : p.st === "Declined" ? "var(--crit)" : "var(--c1)",
     })),
@@ -129,7 +162,7 @@ export default function Dashboard() {
       {waiting.map((p) => (
         <Alert key={p.id} tone="w" label="WAITING"
           action={<Btn size="xs" variant="gh" onClick={() => nav("/requisitions")}>Review &amp; order</Btn>}>
-          {p.by} raised <b>{p.id}</b> — {p.lines.length} line{p.lines.length > 1 ? "s" : ""},
+          {p.by} raised <b>{p.id}</b> — {p.lines.length} item{p.lines.length > 1 ? "s" : ""},
           about {money0(lineValue(p.lines))}.{p.note ? " " + p.note : ""}
         </Alert>
       ))}
@@ -154,8 +187,20 @@ export default function Dashboard() {
       <div className="mtop" />
 
       <Grid cols="g21">
-        <Card title="Central store cover" sub="Eight items closest to running out"
+        <Card title="Central store cover" sub="The eight matching items closest to running out"
           right={<Btn variant="gh" size="sm" onClick={() => nav("/inventory")}>Full inventory</Btn>} flush>
+          <Toolbar
+            placeholder="Search item, code or group…"
+            value={q}
+            onSearch={setQ}
+            filters={
+              <>
+                <FilterBtn label="State" value={state} onClick={() => setState(cycle(STATES, state))} />
+                <FilterBtn label="Commitment" value={commitment}
+                  onClick={() => setCommitment(cycle(COMMITMENTS, commitment))} />
+              </>
+            }
+          />
           <DataTable
             cols={[
               { h: "Item", cls: "nm", w: "30%" },
@@ -166,19 +211,33 @@ export default function Dashboard() {
               { h: "Commitment" },
             ]}
             rows={coverRows}
-            empty={{ title: "No purchased items on file", sub: "The item master carries nothing to buy." }}
+            empty={narrowed
+              ? {
+                title: "Nothing matches those filters",
+                sub: "Clear the search box or cycle State and Commitment back to All.",
+                action: <Btn size="sm" variant="gh"
+                  onClick={() => { setQ(""); setState("All"); setCommitment("All"); }}>Clear filters</Btn>,
+              }
+              : { title: "No purchased items on file", sub: "The item master carries nothing to buy." }}
           />
           <TableFoot count={coverRows.length} extra={<>{below.length} of {BOUGHT.length} below reorder</>} />
         </Card>
         <div>
-          <Card title="Open commitments" sub="By item, on live purchase orders">
-            {bars.length ? <HBars rows={bars} /> : (
-              <div className="empty">
-                <b>Nothing on order</b>
-                <p>Raise a purchase order against a requisition to see commitments here.</p>
-                <Btn size="sm" onClick={() => nav("/requisitions")}>Go to requisitions</Btn>
-              </div>
-            )}
+          <Card title="Open commitments" sub="By item, on live purchase orders" flush>
+            <DataTable
+              cols={[
+                { h: "Item", cls: "nm", w: "44%" },
+                { h: "Outstanding", r: true },
+                { h: "On order", r: true },
+              ]}
+              rows={commitRows}
+              empty={{
+                title: "Nothing on order",
+                sub: "Raise a purchase order against a requisition to see commitments here.",
+                action: <Btn size="sm" onClick={() => nav("/requisitions")}>Go to requisitions</Btn>,
+              }}
+            />
+            <TableFoot count={commitRows.length} extra={<>{money0(liveValue)} on live orders</>} />
           </Card>
           <div className="mtop" />
           <Card title="Recent procurement activity" sub="Requisitions and purchase orders">

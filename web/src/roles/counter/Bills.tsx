@@ -2,10 +2,21 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { LOC } from "../../data/master";
 import { useApp } from "../../store";
-import { cashCollected } from "../../lib/selectors";
 import { money, money0, sum } from "../../lib/fmt";
 import { Avatar, Btn, Card, DataTable, FilterBtn, PageHead, Pill, TableFoot, Toolbar } from "../../ui/kit";
-import { billStatus } from "./status";
+import { billStatus, settlementOf, type Settlement } from "./status";
+
+/** Cycles are the only affordance the kit gives a filter button, so every filter here
+ *  walks a fixed list and comes back to "All" — no state a click cannot undo. */
+const SETTLEMENTS: { k: Settlement; label: string }[] = [
+  { k: "drawer", label: "Cash in drawer" },
+  { k: "bank", label: "Card & UPI" },
+  { k: "account", label: "Charged" },
+];
+const next = <T,>(list: T[], cur: T | null): T | null => {
+  const i = cur == null ? -1 : list.indexOf(cur);
+  return i + 1 >= list.length ? null : list[i + 1];
+};
 
 export default function Bills() {
   const s = useApp();
@@ -15,17 +26,29 @@ export default function Bills() {
   const L = LOC[loc];
   const [q, setQ] = useState("");
   const [tender, setTender] = useState<string | null>(null);
+  const [settle, setSettle] = useState<Settlement | null>(null);
 
   const mine = s.bills.filter((b) => b.loc === loc);
-  const tenders = Array.from(new Set(mine.map((b) => b.pay)));
+  const tenders = Array.from(new Set(mine.map((b) => b.pay))).sort();
   const rows = mine.filter((b) => {
     if (tender && b.pay !== tender) return false;
+    if (settle && settlementOf(b.pay) !== settle) return false;
     const t = q.trim().toLowerCase();
-    return !t || b.no.toLowerCase().includes(t) || b.opr.toLowerCase().includes(t) || b.pay.toLowerCase().includes(t);
+    if (!t) return true;
+    return b.no.toLowerCase().includes(t)
+      || b.opr.toLowerCase().includes(t)
+      || b.pay.toLowerCase().includes(t)
+      || b.t.includes(t)
+      || (b.payer?.name.toLowerCase().includes(t) ?? false)
+      || (b.payer?.id.toLowerCase().includes(t) ?? false);
   });
 
+  const filtered = Boolean(q || tender || settle);
+  const clearAll = () => { setQ(""); setTender(null); setSettle(null); };
+
   const billed = sum(rows, (b) => b.tot);
-  const cash = cashCollected(rows);
+  const cash = sum(rows.filter((b) => settlementOf(b.pay) === "drawer"), (b) => b.tot);
+  const settleLabel = settle ? SETTLEMENTS.find((x) => x.k === settle)!.label : "All";
 
   return (
     <>
@@ -37,16 +60,19 @@ export default function Bills() {
       />
       <Card flush>
         <Toolbar
-          placeholder="Search bill number, operator or tender…"
+          placeholder="Search bill number, operator, tender, time or payer…"
           value={q}
           onSearch={setQ}
           filters={<>
-            <FilterBtn label="Tender" value={tender ?? "All"} onClick={() => {
-              const i = tenders.indexOf(tender ?? "");
-              setTender(i + 1 >= tenders.length ? null : tenders[i + 1]);
-            }} />
+            {tenders.length > 1 && (
+              <FilterBtn label="Tender" value={tender ?? "All"} active={Boolean(tender)}
+                onClick={() => setTender(next(tenders, tender))} />
+            )}
+            <FilterBtn label="Settles to" value={settleLabel} active={Boolean(settle)}
+              onClick={() => setSettle(next(SETTLEMENTS.map((x) => x.k), settle))} />
+            {filtered && <FilterBtn label="Clear filters" onClick={clearAll} />}
           </>}
-          right={<span className="mini">Billed {money0(billed)} · cash collected {money0(cash)}</span>}
+          right={<span className="mini">Billed {money0(billed)} · cash in drawer {money0(cash)}</span>}
         />
         <DataTable
           cols={[
@@ -64,7 +90,7 @@ export default function Bills() {
               key: b.no,
               onClick: () => s.openDrawer("cbill", b.no),
               cells: [
-                <><span className="mono">{b.no}</span><small>{b.lines.length} line{b.lines.length === 1 ? "" : "s"}</small></>,
+                <><span className="mono">{b.no}</span><small>{b.lines.length} item{b.lines.length === 1 ? "" : "s"}</small></>,
                 <span className="mono">{b.t}</span>,
                 <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                   <Avatar name={b.opr} color={b.oprCol} size={22} />
@@ -77,20 +103,25 @@ export default function Bills() {
               ],
             };
           })}
-          empty={{
-            title: q || tender ? "No bill matches this filter" : "No bill raised at this counter yet",
-            sub: q || tender ? "Clear the search or the tender filter to see the full day." : "Open the till and print the first bill of the shift.",
-            action: <Btn size="sm" onClick={() => (q || tender ? (setQ(""), setTender(null)) : nav("/pos"))}>
-              {q || tender ? "Clear filters" : "Open till"}
-            </Btn>,
-          }}
+          empty={filtered
+            ? {
+              title: "Nothing matches those filters",
+              sub: `No bill at ${L.n} matches ${[q && `“${q}”`, tender && `tender ${tender}`, settle && `settling to ${settleLabel.toLowerCase()}`].filter(Boolean).join(", ")}.`,
+              action: <Btn size="sm" onClick={clearAll}>Clear filters</Btn>,
+            }
+            : {
+              title: "No bill raised at this counter yet",
+              sub: "Open the till and print the first bill of the shift.",
+              action: <Btn size="sm" onClick={() => nav("/pos")}>Open till</Btn>,
+            }}
         />
         <TableFoot count={rows.length}
-          extra={<>{L.n} · {L.c} · billed {money(billed)} · cash collected {money(cash)}</>} />
+          extra={<>{L.n} · {L.c} · billed {money(billed)} · cash in drawer {money(cash)}</>} />
       </Card>
       <p className="mini mtop">
-        <b>Billed</b> is every tender raised at this counter. <b>Cash collected</b> is what is actually in the drawer —
-        card, UPI and patient-bill takings settle to the hospital account and are not counted in the drawer.
+        <b>Billed</b> is every tender raised at this counter. <b>Cash in drawer</b> is what is actually in the till —
+        card and UPI are taken at the till but settle to the hospital account, and patient, staff and department
+        bills collect nothing at the counter at all.
       </p>
     </>
   );

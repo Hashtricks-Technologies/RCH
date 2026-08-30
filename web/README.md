@@ -83,6 +83,27 @@ counter, not a finished unit. Finished goods made in the kitchen deduct by the u
 items switch off when any ingredient runs out, naming the one that blocked it. The toggle is
 a manual override on top.
 
+## Recent capabilities
+
+**Issues, for every role.** Anyone can raise an operational issue — a jammed grinder, stock
+that never arrived, a screen behaving oddly — from `/issues`, which sits on every sidebar.
+Kind, priority, and an Open → Acknowledged → Resolved → Closed lifecycle with history.
+
+**OTP instead of a scanned code.** A pick ticket carries six digits. The collector reads them
+to the store keeper, who types them at handover; a wrong OTP is refused. A supervisor override
+exists and is labelled as one.
+
+**Rate contracts.** Vendor and item, rate, validity window and minimum order quantity. The
+store keeper maintains them; procurement prices an order from them and is warned when a rate
+deviates or a quantity falls under the minimum.
+
+**New products.** The central store — and the kitchen, for what it makes — can add a product
+that was not in the catalogue before, with an opening balance booked at a location.
+
+**Shop-to-shop transfer.** When one outlet needs an MRP product another is holding, the stock
+moves directly between them: reserved at the source, released against an OTP, received at the
+destination. The outlet manager sees it happen rather than standing in the middle of it.
+
 ## Not built yet
 
 Persistence, real authentication, barcode scanning, patient-bill posting, GST output

@@ -4,22 +4,30 @@ import { useApp } from "../../store";
 import { availOf, menuOf, qty } from "../../lib/selectors";
 import { fq, U } from "../../lib/fmt";
 import {
-  Alert, Card, DataTable, PageHead, Pill, Switch, TableFoot, Tag, Toolbar,
+  Alert, Btn, Card, DataTable, FilterBtn, PageHead, Pill, Switch, TableFoot, Tag, Toolbar,
 } from "../../ui/kit";
 
 const PRODS = ["puff", "sand", "salad"];
+const SWITCH = ["All", "Switched on", "Switched off"] as const;
+type SwitchF = (typeof SWITCH)[number];
 
 export default function Availability() {
   const s = useApp();
   const toggleAvail = useApp((x) => x.toggleAvail);
   const [q, setQ] = useState("");
+  const [sw, setSw] = useState<SwitchF>("All");
 
-  const keys = [
+  const all = [
     ...PRODS,
     ...Object.keys(s.stock.kitchen).filter((k) => IT[k]?.t === "FG" && !PRODS.includes(k)),
-  ].filter((k) => !q.trim() || (IT[k].n + " " + IT[k].c).toLowerCase().includes(q.trim().toLowerCase()));
+  ];
+  const keys = all
+    .filter((k) => !q.trim() || (IT[k].n + " " + IT[k].c + " " + IT[k].g).toLowerCase().includes(q.trim().toLowerCase()))
+    .filter((k) => sw === "All" || (sw === "Switched off") === Boolean(s.ovr["kitchen:" + k]));
 
-  const offHere = keys.filter((k) => s.ovr["kitchen:" + k]);
+  const filtering = Boolean(q.trim() || sw !== "All");
+  const cycleSwitch = () => setSw(SWITCH[(SWITCH.indexOf(sw) + 1) % SWITCH.length]);
+  const clearFilters = () => { setQ(""); setSw("All"); };
 
   return (
     <>
@@ -27,7 +35,9 @@ export default function Availability() {
         crumbs={["Royal Care", "Central Kitchen", "Product On / Off"]}
         title="Product turn-on and turn-off"
         sub="Switch a product off and the kitchen stops making and issuing it for the day."
-        actions={<span className="mini">{keys.length - offHere.length} on · {offHere.length} off</span>}
+        actions={<span className="mini">
+          {all.filter((k) => !s.ovr["kitchen:" + k]).length} on · {all.filter((k) => s.ovr["kitchen:" + k]).length} off
+        </span>}
       />
 
       <Alert tone="i" label="SCOPE">
@@ -37,7 +47,15 @@ export default function Availability() {
       </Alert>
 
       <Card title="Made products" sub="Computed state is what the kitchen can actually give out" flush className="mtop">
-        <Toolbar placeholder="Search product…" value={q} onSearch={setQ} />
+        <Toolbar
+          placeholder="Search product, code or group…"
+          value={q}
+          onSearch={setQ}
+          filters={<FilterBtn label="Switch" value={sw} active={sw !== "All"} onClick={cycleSwitch} />}
+          right={filtering
+            ? <Btn size="sm" variant="gh" onClick={clearFilters}>Clear filters</Btn>
+            : <span className="mini">{all.length} product{all.length === 1 ? "" : "s"} the kitchen can make or hold</span>}
+        />
         <DataTable
           cols={[
             { h: "Product", cls: "nm", w: "22%" },
@@ -78,8 +96,11 @@ export default function Availability() {
             };
           })}
           empty={{
-            title: "No products to switch",
-            sub: "Clear the search to see puffs, sandwiches and salad.",
+            title: filtering ? "Nothing matches those filters" : "No products to switch",
+            sub: filtering
+              ? `${all.length} product${all.length === 1 ? "" : "s"} are listed with the filters cleared.`
+              : "The kitchen holds no finished goods to switch on or off.",
+            action: filtering ? <Btn size="sm" onClick={clearFilters}>Clear filters</Btn> : undefined,
           }}
         />
         <TableFoot

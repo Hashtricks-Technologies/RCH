@@ -4,16 +4,17 @@ import { IT, LOC } from "../../data/master";
 import { suggestVendor } from "../../data/vendors";
 import { useApp } from "../../store";
 import { costOf, procurementList, qty, round3 } from "../../lib/selectors";
-import { fq, money0, sum, U } from "../../lib/fmt";
+import { fq, money, money0, sum, U } from "../../lib/fmt";
 import {
   Btn, Card, DataTable, Field, FilterBtn, PageHead, Tag, TableFoot, Toolbar,
 } from "../../ui/kit";
 import type { Row } from "../../ui/kit";
 import type { PoolLine } from "../../lib/selectors";
 import type { Vendor } from "../../types";
+import { contractFor, cycle } from "./lib";
 
-const cycle = (list: string[], v: string) => list[(list.indexOf(v) + 1) % list.length];
 const NO_VENDOR = "No suggested vendor";
+const STOCK_STATES = ["All", "Below reorder", "At or above reorder"];
 
 export interface PoolGroup {
   it: string;
@@ -76,6 +77,7 @@ export default function ProcurementList() {
   const [q, setQ] = useState("");
   const [groupFilter, setGroupFilter] = useState("All");
   const [vendorFilter, setVendorFilter] = useState("All");
+  const [stockFilter, setStockFilter] = useState("All");
   const [sel, setSel] = useState<Record<string, boolean>>({});
   const [qtyOverride, setQtyOverride] = useState<Record<string, number>>({});
   const [vendorId, setVendorId] = useState("");
@@ -90,12 +92,27 @@ export default function ProcurementList() {
   const VENDOR_NAMES = ["All", ...[...new Set(groups.map((g) => g.vendor?.n ?? NO_VENDOR))].sort()];
 
   const t = q.trim().toLowerCase();
+  const belowReorder = (it: string) => {
+    const rl = IT[it]?.rl ?? 0;
+    return rl > 0 && qty(s, "store", it) < rl;
+  };
   const shown = groups.filter((g) => {
     const it = IT[g.it];
     return (groupFilter === "All" || it?.g === groupFilter)
       && (vendorFilter === "All" || (g.vendor?.n ?? NO_VENDOR) === vendorFilter)
-      && (!t || it?.n.toLowerCase().includes(t) || it?.c.toLowerCase().includes(t));
+      && (stockFilter === "All"
+        || (stockFilter === "Below reorder" ? belowReorder(g.it) : !belowReorder(g.it)))
+      && (!t || it?.n.toLowerCase().includes(t) || it?.c.toLowerCase().includes(t)
+        || it?.g.toLowerCase().includes(t)
+        || g.sources.some((src) => src.prq.toLowerCase().includes(t)));
   });
+  const narrowed = t !== "" || groupFilter !== "All" || vendorFilter !== "All" || stockFilter !== "All";
+  const clearFilters = () => {
+    setQ("");
+    setGroupFilter("All");
+    setVendorFilter("All");
+    setStockFilter("All");
+  };
 
   const selected = groups.filter((g) => sel[g.it]);
   const picks = selected.flatMap((g) => picksFor(g, qtyFor(g)));
@@ -137,6 +154,20 @@ export default function ProcurementList() {
         <>{fq(qty(s, "store", g.it), g.it)}</>,
         it?.rl ? <>{fq(it.rl, g.it)}</> : <span className="dim">—</span>,
         g.vendor ? <>{g.vendor.n}</> : <span className="dim">No active vendor</span>,
+        (() => {
+          const c = effectiveVendor ? contractFor(s, effectiveVendor, g.it) : undefined;
+          if (!c) return <span className="dim">Off contract</span>;
+          return (
+            <>
+              <b>{money(c.rate)}</b>
+              {c.moq > 0 && qtyFor(g) < c.moq && (
+                <div className="mini" style={{ color: "var(--warn)" }}>
+                  below the {fq(c.moq, g.it)} {U(g.it)} minimum on {c.id}
+                </div>
+              )}
+            </>
+          );
+        })(),
         <details>
           <summary className="mini">
             {g.sources.length} requisition{g.sources.length > 1 ? "s" : ""}
@@ -156,7 +187,7 @@ export default function ProcurementList() {
       <PageHead
         crumbs={["Royal Care", "Procurement", "Procurement List"]}
         title="Procurement list"
-        sub="Every approved requisition line not yet claimed by an order, pooled by item — pick lines here and raise a purchase order."
+        sub="Every approved requisition item not yet claimed by an order, pooled by item — pick what to buy here and raise a purchase order."
       />
 
       <Card title="Pending lines" sub={`${shown.length} of ${groups.length} item(s) waiting on an order`} flush>
@@ -168,6 +199,7 @@ export default function ProcurementList() {
             <>
               <FilterBtn label="Group" value={groupFilter} onClick={() => setGroupFilter(cycle(GROUPS, groupFilter))} />
               <FilterBtn label="Vendor" value={vendorFilter} onClick={() => setVendorFilter(cycle(VENDOR_NAMES, vendorFilter))} />
+              <FilterBtn label="Central store" value={stockFilter} onClick={() => setStockFilter(cycle(STOCK_STATES, stockFilter))} />
             </>
           }
         />
@@ -180,14 +212,21 @@ export default function ProcurementList() {
             { h: "Pick qty", r: true, w: "10%" },
             { h: LOC.store.n, r: true },
             { h: "Reorder", r: true },
-            { h: "Suggested vendor", w: "15%" },
-            { h: "Sources", w: "16%" },
+            { h: "Suggested vendor", w: "14%" },
+            { h: "Contract rate", r: true, w: "13%" },
+            { h: "Sources", w: "14%" },
           ]}
           rows={rows}
-          empty={{
-            title: "Nothing on the procurement list",
-            sub: "Approve a requisition and its lines collect here.",
-          }}
+          empty={narrowed
+            ? {
+              title: "Nothing matches those filters",
+              sub: "Clear the search box, or cycle Group, Vendor and Central store back to All.",
+              action: <Btn size="sm" variant="gh" onClick={clearFilters}>Clear filters</Btn>,
+            }
+            : {
+              title: "Nothing on the procurement list",
+              sub: "Approve a requisition and its items collect here.",
+            }}
         />
         <TableFoot
           count={rows.length}
@@ -206,8 +245,8 @@ export default function ProcurementList() {
           <Card
             title="Raise a purchase order"
             sub={selected.length
-              ? `${selected.length} line(s) selected across ${picks.length} source(s)`
-              : "Tick a line above to start an order."}
+              ? `${selected.length} item(s) selected across ${picks.length} source(s)`
+              : "Tick an item above to start an order."}
           >
             <div style={{ display: "flex", gap: 16, alignItems: "flex-end", flexWrap: "wrap" }}>
               <div style={{ minWidth: 220 }}>

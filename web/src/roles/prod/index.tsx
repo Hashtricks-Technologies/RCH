@@ -4,6 +4,8 @@ import Orders from "./Orders";
 import MakeDistribute from "./MakeDistribute";
 import Stock from "./Stock";
 import Availability from "./Availability";
+import Requests from "./Requests";
+import Tickets from "./Tickets";
 import "./OrderDrawer";
 
 export const screens: Record<string, ComponentType> = {
@@ -12,4 +14,6 @@ export const screens: Record<string, ComponentType> = {
   make: MakeDistribute,
   stock: Stock,
   avail: Availability,
+  requests: Requests,
+  tickets: Tickets,
 };

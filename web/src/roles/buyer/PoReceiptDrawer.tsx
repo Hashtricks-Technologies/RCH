@@ -25,6 +25,8 @@ function PoReceiptDrawer({ id }: DrawerProps) {
 
   const [doc, setDoc] = useState<ReceiptDoc>({ dc: "", invoice: "", invDate: "" });
   // recv defaults to the outstanding balance — this is one instalment, not the full order.
+  // `rejected` stays on the receipt record for compatibility but is always zero:
+  // there is no reject-at-QC step in this flow, so nothing offers a way to raise it.
   const [lines, setLines] = useState<ReceiptLine[]>(() =>
     (po?.lines ?? []).map((l) => ({
       recv: Math.round(Math.max(0, l.qty - l.recv) * 1000) / 1000,
@@ -56,10 +58,9 @@ function PoReceiptDrawer({ id }: DrawerProps) {
         <Section title="Goods received" sub="GRNs booked against this order.">
           <DataTable
             cols={[
-              { h: "GRN", cls: "nm", w: "16%" },
-              { h: "Item", w: "20%" },
-              { h: "Accepted", r: true },
-              { h: "Rejected", r: true },
+              { h: "GRN", cls: "nm", w: "18%" },
+              { h: "Item", w: "22%" },
+              { h: "Received", r: true },
               { h: "Batch" },
               { h: "Expiry" },
               { h: "Delivery note" },
@@ -70,7 +71,6 @@ function PoReceiptDrawer({ id }: DrawerProps) {
                 <>{g.id}<small>{g.by} · {g.at}</small></>,
                 <>{IT[g.it]?.n ?? g.it}</>,
                 <b>{fq(g.qty, g.it)}</b>,
-                <>{g.rejected > 0 ? fq(g.rejected, g.it) : <span className="dim">{fq(0, g.it)}</span>}</>,
                 <span className="mono">{g.batch}</span>,
                 <span className="mono">{g.exp}</span>,
                 <>{g.dc}</>,
@@ -90,8 +90,8 @@ function PoReceiptDrawer({ id }: DrawerProps) {
   const at = (i: number, patch: Partial<ReceiptLine>) =>
     setLines((r) => r.map((x, j) => (j === i ? { ...x, ...patch } : x)));
 
-  const good = po.lines.map((_l, i) =>
-    Math.max(0, Math.round(((lines[i]?.recv ?? 0) - (lines[i]?.rejected ?? 0)) * 1000) / 1000));
+  // Everything that arrives goes into stock: there is no reject-at-QC step here.
+  const good = po.lines.map((_l, i) => Math.max(0, Math.round((lines[i]?.recv ?? 0) * 1000) / 1000));
   const value = po.lines.reduce((t, l, i) => t + good[i] * l.rate, 0);
   const balance = po.lines.map((l, i) => ({
     it: l.it,
@@ -114,9 +114,6 @@ function PoReceiptDrawer({ id }: DrawerProps) {
             <div className="mini" style={warn}>over the ordered {fq(l.qty, l.it)} by more than 2%</div>
           )}
         </>,
-        <input type="number" className="mono" min={0} step={U(l.it) === "nos" ? 1 : 0.001}
-          value={r.rejected} aria-label={`Rejected at QC for ${IT[l.it]?.n ?? l.it}`}
-          onChange={(e) => at(i, { rejected: num(e.target.value) })} />,
         <b>{fq(good[i], l.it)}</b>,
         <>{money(good[i] * l.rate)}</>,
       ],
@@ -190,20 +187,19 @@ function PoReceiptDrawer({ id }: DrawerProps) {
         </FormRow>
       </Section>
 
-      <Section title="Quantities" sub="Receiving now defaults to what's still outstanding on this order.">
+      <Section title="Quantities" sub="Receiving now defaults to what's still outstanding on this order. Everything booked in goes into stock — there is no reject-at-QC step.">
         <div className="lgrid">
           <DataTable
             cols={[
               { h: "Item", cls: "nm", w: "20%" },
               { h: "Ordered", r: true },
               { h: "Already received", r: true, w: "14%" },
-              { h: "Receiving now", r: true, w: "14%" },
-              { h: "Rejected at QC", r: true, w: "14%" },
+              { h: "Receiving now", r: true, w: "16%" },
               { h: "Into stock", r: true },
               { h: "Value", r: true },
             ]}
             rows={qtyRows}
-            empty={{ title: "No lines on this order", sub: "Nothing to receive." }}
+            empty={{ title: "No items on this order", sub: "Nothing to receive." }}
           />
         </div>
         <TableFoot count={qtyRows.length} extra={<>{unitTotal(po.lines.map((l, i) => ({ it: l.it, qty: good[i] })))} into stock</>} />
@@ -222,7 +218,7 @@ function PoReceiptDrawer({ id }: DrawerProps) {
               { h: "Expires", w: "20%" },
             ]}
             rows={batchRows}
-            empty={{ title: "No lines on this order", sub: "Nothing to receive." }}
+            empty={{ title: "No items on this order", sub: "Nothing to receive." }}
           />
         </div>
       </Section>

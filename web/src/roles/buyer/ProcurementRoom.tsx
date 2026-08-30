@@ -4,8 +4,12 @@ import { useApp } from "../../store";
 import { avail, qty, resv } from "../../lib/selectors";
 import { fq, money0, sum, U } from "../../lib/fmt";
 import {
-  Alert, Btn, Card, DataTable, Grid, Kpis, PageHead, StatusPill, TableFoot,
+  Alert, Btn, Card, DataTable, FilterBtn, Grid, Kpis, PageHead, StatusPill, TableFoot, Toolbar,
 } from "../../ui/kit";
+import { cycle } from "./lib";
+
+const HOLD_STATES = ["All", "Free to move", "Fully reserved"];
+const TKT_STATES = ["All", "Issued", "Collected"];
 
 export default function ProcurementRoom() {
   const s = useApp();
@@ -13,8 +17,12 @@ export default function ProcurementRoom() {
   const handover = useApp((x) => x.handover);
 
   const [picks, setPicks] = useState<Record<string, string>>({});
+  const [qh, setQh] = useState("");
+  const [holdState, setHoldState] = useState("All");
+  const [qt, setQt] = useState("");
+  const [tktState, setTktState] = useState("All");
 
-  const held = Object.keys(s.stock.procure)
+  const allHeld = Object.keys(s.stock.procure)
     .filter((it) => IT[it] && qty(s, "procure", it) > 0)
     .map((it) => {
       const on = qty(s, "procure", it);
@@ -28,17 +36,34 @@ export default function ProcurementRoom() {
     })
     .sort((a, b) => IT[a.it].c.localeCompare(IT[b.it].c));
 
-  const open = s.tkt.filter((t) => t.from === "procure" && t.st !== "Received");
-  const collected = open.filter((t) => t.st === "Collected");
+  const th = qh.trim().toLowerCase();
+  const held = allHeld.filter((r) =>
+    (holdState === "All" || (holdState === "Free to move" ? r.free > 0 : r.free <= 0))
+    && (!th || IT[r.it].n.toLowerCase().includes(th) || IT[r.it].c.toLowerCase().includes(th)
+      || IT[r.it].g.toLowerCase().includes(th)
+      || r.batches.some((g) => g.id.toLowerCase().includes(th) || g.batch.toLowerCase().includes(th))));
+  const heldNarrowed = th !== "" || holdState !== "All";
 
-  const valueHeld = sum(held, (r) => r.val);
+  const allOpen = s.tkt.filter((t) => t.from === "procure" && t.st !== "Received");
+  const tt = qt.trim().toLowerCase();
+  const open = allOpen.filter((t) =>
+    (tktState === "All" || t.st === tktState)
+    && (!tt || t.id.toLowerCase().includes(tt)
+      || t.lines.some((l) => (IT[l.it]?.n ?? l.it).toLowerCase().includes(tt))));
+  const openNarrowed = tt !== "" || tktState !== "All";
+  const collected = allOpen.filter((t) => t.st === "Collected");
+
+  const valueHeld = sum(allHeld, (r) => r.val);
+  const shownValue = sum(held, (r) => r.val);
   const linesAwaiting = sum(collected, (t) => t.lines.length);
 
   const wanted = (it: string) => Number(picks[it]) || 0;
-  const lineCount = held.filter((r) => wanted(r.it) > 0).length;
+  const lineCount = allHeld.filter((r) => wanted(r.it) > 0).length;
 
   const submit = () => {
-    const want = held.map((r) => ({ it: r.it, qty: wanted(r.it) })).filter((p) => p.qty > 0);
+    // Every held row, not just the filtered ones — a quantity typed before a
+    // filter was applied must still be issued rather than silently dropped.
+    const want = allHeld.map((r) => ({ it: r.it, qty: wanted(r.it) })).filter((p) => p.qty > 0);
     // issueToStore() returns void and toasts either way (a new ticket, or a
     // refusal), so success is read back from the store: a refused pick never
     // creates a ticket, so the pick list must survive to let the operator fix
@@ -57,10 +82,10 @@ export default function ProcurementRoom() {
       />
 
       <Kpis items={[
-        { l: "Items held", v: String(held.length), d: <>in the {LOC.procure.n}</> },
+        { l: "Items held", v: String(allHeld.length), d: <>in the {LOC.procure.n}</> },
         { l: "Value held", v: money0(valueHeld), d: <>at cost</> },
-        { l: "Transfers open", v: String(open.length), d: <>{collected.length} handed over, awaiting confirmation</> },
-        { l: "Lines awaiting confirmation", v: String(linesAwaiting), d: <>with {LOC.store.n} now</> },
+        { l: "Transfers open", v: String(allOpen.length), d: <>{collected.length} handed over, awaiting confirmation</> },
+        { l: "Items awaiting confirmation", v: String(linesAwaiting), d: <>with {LOC.store.n} now</> },
       ]}
       />
       <div className="mtop" />
@@ -76,11 +101,20 @@ export default function ProcurementRoom() {
           sub="Booked in from a purchase order, not yet moved to the central store"
           right={
             <Btn size="sm" disabled={lineCount === 0} onClick={submit}>
-              {lineCount > 0 ? `Issue pick ticket — ${lineCount} line${lineCount > 1 ? "s" : ""}` : "Issue pick ticket"}
+              {lineCount > 0 ? `Issue pick ticket — ${lineCount} item${lineCount > 1 ? "s" : ""}` : "Issue pick ticket"}
             </Btn>
           }
           flush
         >
+          <Toolbar
+            placeholder="Search item, group, GRN or batch…"
+            value={qh}
+            onSearch={setQh}
+            filters={
+              <FilterBtn label="Availability" value={holdState}
+                onClick={() => setHoldState(cycle(HOLD_STATES, holdState))} />
+            }
+          />
           <DataTable
             cols={[
               { h: "Item", cls: "nm", w: "17%" },
@@ -111,12 +145,19 @@ export default function ProcurementRoom() {
                 />,
               ],
             }))}
-            empty={{
-              title: "Nothing held in the procurement room",
-              sub: "Goods appear here once procurement books a purchase order receipt in.",
-            }}
+            empty={heldNarrowed
+              ? {
+                title: "Nothing matches those filters",
+                sub: "Clear the search box, or set Availability back to All.",
+                action: <Btn size="sm" variant="gh"
+                  onClick={() => { setQh(""); setHoldState("All"); }}>Clear filters</Btn>,
+              }
+              : {
+                title: "Nothing held in the procurement room",
+                sub: "Goods appear here once procurement books a purchase order receipt in.",
+              }}
           />
-          <TableFoot count={held.length} extra={<>{money0(valueHeld)} at cost</>} />
+          <TableFoot count={held.length} extra={<>{money0(shownValue)} at cost</>} />
         </Card>
 
         <Card
@@ -124,10 +165,19 @@ export default function ProcurementRoom() {
           sub="Issued from the procurement room, not yet confirmed by the central store"
           flush
         >
+          <Toolbar
+            placeholder="Search ticket or item…"
+            value={qt}
+            onSearch={setQt}
+            filters={
+              <FilterBtn label="Status" value={tktState}
+                onClick={() => setTktState(cycle(TKT_STATES, tktState))} />
+            }
+          />
           <DataTable
             cols={[
               { h: "Ticket ID", cls: "nm", w: "20%" },
-              { h: "Lines", r: true },
+              { h: "Items", r: true },
               { h: "Qty", r: true },
               { h: "Status", w: "18%" },
               { h: "Action", w: "24%" },
@@ -144,14 +194,21 @@ export default function ProcurementRoom() {
                   : <span className="dim mini">With the central store</span>,
               ],
             }))}
-            empty={{
-              title: "No open transfers",
-              sub: "Issue a pick ticket from the table above to move goods to the central store.",
-            }}
+            empty={openNarrowed
+              ? {
+                title: "Nothing matches those filters",
+                sub: "Clear the search box, or set Status back to All.",
+                action: <Btn size="sm" variant="gh"
+                  onClick={() => { setQt(""); setTktState("All"); }}>Clear filters</Btn>,
+              }
+              : {
+                title: "No open transfers",
+                sub: "Issue a pick ticket from the table above to move goods to the central store.",
+              }}
           />
           <TableFoot
             count={open.length}
-            extra={<>{linesAwaiting} line(s) awaiting the store&rsquo;s confirmation</>}
+            extra={<>{linesAwaiting} item(s) awaiting the store&rsquo;s confirmation</>}
           />
         </Card>
       </Grid>
