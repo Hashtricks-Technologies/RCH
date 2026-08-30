@@ -10,7 +10,7 @@ import {
   Btn, Card, DataTable, FilterBtn, PageHead, Pill, TableFoot, Tag, Toolbar,
 } from "../../ui/kit";
 
-const TYPES = ["All", "RAW", "PACK", "TRADED", "FG"] as const;
+const TYPES = ["All", "RAW", "PACK", "MRP", "FG"] as const;
 
 export default function Stock() {
   const s = useApp();
@@ -122,7 +122,7 @@ export default function Stock() {
                   {i.n}
                   <small>{i.c}</small>
                 </>,
-                <Tag kind={i.t === "TRADED" ? "tr" : undefined}>{i.t}</Tag>,
+                <Tag kind={i.t === "MRP" ? "tr" : undefined}>{i.t}</Tag>,
                 <>{i.g}</>,
                 <>{fq(r.on, r.it)} <span className="dim">{U(r.it)}</span></>,
                 <>{r.rv > 0 ? fq(r.rv, r.it) : <span className="dim">{fq(0, r.it)}</span>}</>,

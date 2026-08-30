@@ -8,8 +8,8 @@ import {
 } from "../../ui/kit";
 import type { ItemType, LocKey } from "../../types";
 
-const TYPES: (ItemType | "All")[] = ["All", "RAW", "PACK", "TRADED", "FG", "MTO"];
-const tagKind = (t: ItemType) => (t === "TRADED" ? "tr" : t === "FG" || t === "MTO" ? "md" : undefined);
+const TYPES: (ItemType | "All")[] = ["All", "RAW", "PACK", "MRP", "FG", "MTO"];
+const tagKind = (t: ItemType) => (t === "MRP" ? "tr" : t === "FG" || t === "MTO" ? "md" : undefined);
 
 export default function ItemsStock() {
   const s = useApp();

@@ -30,7 +30,7 @@ export default function MakeDistribute() {
   const [why, setWhy] = useState<Record<string, string>>({});
   const [dItem, setDItem] = useState("puff");
   const [dQty, setDQty] = useState("");
-  const [dTo, setDTo] = useState<LocKey>("rest");
+  const [dTo, setDTo] = useState<LocKey>("coffee");
   const [bq, setBq] = useState("");
   const [tq, setTq] = useState("");
   const [cq, setCq] = useState("");

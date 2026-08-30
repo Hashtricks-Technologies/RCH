@@ -15,7 +15,7 @@ const PAYERS: Record<string, { label: string; list: Payer[] }> = {
 };
 
 export function TypeTag({ t }: { t: ItemType }) {
-  if (t === "TRADED") return <Tag kind="tr">MRP</Tag>;
+  if (t === "MRP") return <Tag kind="tr">MRP</Tag>;
   if (t === "MTO") return <Tag kind="md">made</Tag>;
   if (t === "FG") return <Tag kind="md">batch</Tag>;
   return <Tag>{t.toLowerCase()}</Tag>;

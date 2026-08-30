@@ -10,7 +10,7 @@ import type {
   Requisition, StockRequest, Ticket, User, Vendor,
 } from "../types";
 import { basePrices, freeToPromise, priceOf, qty, resv } from "../lib/selectors";
-import { bestBefore, fq, now, U } from "../lib/fmt";
+import { bestBefore, fq, now, U, makeOtp } from "../lib/fmt";
 import { applyTheme, nextTheme, readStoredTheme, storeTheme, type ThemePref } from "../lib/theme";
 import { createProcurementSlice, type ProcurementSlice } from "./procurement";
 
@@ -275,7 +275,7 @@ export const useApp = create<AppState>((set, get) => ({
     lines.forEach((l) => { rsv["store:" + l.it] = (rsv["store:" + l.it] ?? 0) + l.qty; });
     set({
       rsv, seq: { ...s.seq, tkt: s.seq.tkt + 1 },
-      tkt: [...s.tkt, { id, req: reqId, from: "store", to: r.from, lines, st: "Issued" }],
+      tkt: [...s.tkt, { id, req: reqId, from: "store", to: r.from, lines, st: "Issued", otp: makeOtp(s.seq.tkt + 1) }],
       req: s.req.map((x) => x.id === reqId
         ? { ...x, ticket: id, st: "Ticket issued" as const, hist: [...x.hist, hist(s.user!.n, "Ticket issued")] } : x),
     });
@@ -353,7 +353,7 @@ export const useApp = create<AppState>((set, get) => ({
     const tid = "TKT-0" + (s.seq.tkt + 1);
     set({
       rsv, seq: { ...s.seq, tkt: s.seq.tkt + 1 }, drawer: null,
-      tkt: [...s.tkt, { id: tid, req: id, from: "kitchen", to: o.from, lines: o.lines, st: "Issued" }],
+      tkt: [...s.tkt, { id: tid, req: id, from: "kitchen", to: o.from, lines: o.lines, st: "Issued", otp: makeOtp(s.seq.tkt + 1) }],
       pord: s.pord.map((x) => x.id === id
         ? { ...x, st: "Dispatched" as const, hist: [...x.hist, hist(s.user?.n ?? "", "Dispatched")] } : x),
     });
@@ -411,7 +411,7 @@ export const useApp = create<AppState>((set, get) => ({
     set({
       rsv: { ...s.rsv, ["kitchen:" + it]: (s.rsv["kitchen:" + it] ?? 0) + n },
       seq: { ...s.seq, tkt: s.seq.tkt + 1 },
-      tkt: [...s.tkt, { id: tid, req: "Direct issue", from: "kitchen", to, lines: [{ it, qty: n }], st: "Issued" }],
+      tkt: [...s.tkt, { id: tid, req: "Direct issue", from: "kitchen", to, lines: [{ it, qty: n }], st: "Issued", otp: makeOtp(s.seq.tkt + 1) }],
     });
     get().notify(`${tid} issued — ${n} ${IT[it].n} reserved for ${LOC[to].n}`);
   },

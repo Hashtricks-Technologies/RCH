@@ -1,7 +1,7 @@
 import type { Grn, PoLine, PoLineSrc, ReceiptDoc, ReceiptLine, Requisition, Vendor } from "../types";
 import type { AppState } from "./index";
 import { IT, LOC, PO_APPROVAL_LIMIT } from "../data/master";
-import { fq, money, money0, now, U, unitTotal } from "../lib/fmt";
+import { fq, makeOtp, money, money0, now, U, unitTotal } from "../lib/fmt";
 import { avail, poValue, procurementList, round3 } from "../lib/selectors";
 
 type Set_ = (p: Partial<AppState>) => void;
@@ -436,7 +436,7 @@ export const createProcurementSlice = (set: Set_, get: Get): ProcurementSlice =>
       rsv, seq: { ...s.seq, tkt: s.seq.tkt + 1 }, drawer: null,
       tkt: [...s.tkt, {
         id, req: "Procurement transfer", from: "procure" as const, to: "store" as const,
-        lines: want.map((p) => ({ it: p.it, qty: p.qty })), st: "Issued" as const,
+        lines: want.map((p) => ({ it: p.it, qty: p.qty })), st: "Issued" as const, otp: makeOtp(s.seq.tkt + 1),
       }],
     });
     s.notify(`${id} issued — ${LOC.store.n} can collect ${want.length} line(s) from the ${LOC.procure.n}`);

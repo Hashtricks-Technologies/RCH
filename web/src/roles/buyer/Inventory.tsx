@@ -10,10 +10,10 @@ import type { Row } from "../../ui/kit";
 import type { ItemType, LocKey } from "../../types";
 
 const KEYS = Object.keys(IT);
-const TYPES: string[] = ["All", "RAW", "PACK", "TRADED", "FG", "MTO"];
+const TYPES: string[] = ["All", "RAW", "PACK", "MRP", "FG", "MTO"];
 const GROUPS: string[] = ["All", ...[...new Set(KEYS.map((k) => IT[k].g))].sort()];
 const cycle = (list: string[], v: string) => list[(list.indexOf(v) + 1) % list.length];
-const tagKind = (t: ItemType) => (t === "TRADED" ? "tr" : t === "MTO" || t === "FG" ? "md" : undefined);
+const tagKind = (t: ItemType) => (t === "MRP" ? "tr" : t === "MTO" || t === "FG" ? "md" : undefined);
 
 export default function Inventory() {
   const s = useApp();

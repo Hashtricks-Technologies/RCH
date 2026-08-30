@@ -8,7 +8,7 @@ import {
 } from "../../ui/kit";
 import type { ItemType, LocKey } from "../../types";
 
-const tagKind = (t: ItemType) => (t === "TRADED" ? "tr" : t === "FG" || t === "MTO" ? "md" : undefined);
+const tagKind = (t: ItemType) => (t === "MRP" ? "tr" : t === "FG" || t === "MTO" ? "md" : undefined);
 const marginOf = (p: number, cost: number) => (p > 0 ? ((p - cost) / p) * 100 : 0);
 
 export default function Prices() {

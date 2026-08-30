@@ -45,7 +45,7 @@ describe("C2 · kitchen tickets move like store tickets", () => {
   it("reserves rather than deducts when the kitchen dispatches", () => {
     as("prod");
     const before = qty(S(), "kitchen", "puff");
-    S().distribute("puff", 5, "rest");
+    S().distribute("puff", 5, "kiosk");
     expect(qty(S(), "kitchen", "puff")).toBe(before);
     expect(resv(S(), "kitchen", "puff")).toBe(5);
   });
@@ -53,7 +53,8 @@ describe("C2 · kitchen tickets move like store tickets", () => {
   it("lets a kitchen ticket be handed over, then received", () => {
     as("prod");
     const before = qty(S(), "kitchen", "puff");
-    S().distribute("puff", 5, "rest");
+    const atKiosk = qty(S(), "kiosk", "puff");
+    S().distribute("puff", 5, "kiosk");
     const t = S().tkt[S().tkt.length - 1];
     S().handover(t.id);
     expect(S().tkt.find((x) => x.id === t.id)!.st).toBe("Collected");
@@ -61,7 +62,7 @@ describe("C2 · kitchen tickets move like store tickets", () => {
     expect(resv(S(), "kitchen", "puff")).toBe(0);
     S().receiveTicket(t.id);
     expect(S().tkt.find((x) => x.id === t.id)!.st).toBe("Received");
-    expect(qty(S(), "rest", "puff")).toBe(17);
+    expect(qty(S(), "kiosk", "puff")).toBe(atKiosk + 5);
   });
 
   it("reserves rather than deducts when a production order is dispatched", () => {
@@ -352,7 +353,7 @@ describe("M9 · the kitchen cannot push stock a counter cannot sell", () => {
   it("allows a destination that lists it", () => {
     as("prod");
     const before = S().tkt.length;
-    S().distribute("puff", 5, "rest");
+    S().distribute("puff", 5, "kiosk");
     expect(S().tkt).toHaveLength(before + 1);
   });
 });

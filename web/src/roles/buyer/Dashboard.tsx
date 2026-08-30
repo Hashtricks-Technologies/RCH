@@ -13,7 +13,7 @@ import type { PoStatus, TktLine } from "../../types";
 /** Procurement only ever buys what the central store carries: raw, packing and traded goods.
  *  Finished goods and made-to-order drinks are produced in-house, never purchased. */
 const BOUGHT: string[] = Object.keys(IT).filter(
-  (k) => IT[k].t === "RAW" || IT[k].t === "PACK" || IT[k].t === "TRADED",
+  (k) => IT[k].t === "RAW" || IT[k].t === "PACK" || IT[k].t === "MRP",
 );
 const lineValue = (lines: TktLine[]) => sum(lines, (l) => l.qty * (IT[l.it]?.cost ?? 0));
 /** A purchase order still represents an open commitment until it is fully

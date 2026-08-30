@@ -10,7 +10,7 @@ import {
 import type { DraftLine } from "../../types";
 
 const BUYABLE = Object.keys(IT)
-  .filter((k) => IT[k].t === "RAW" || IT[k].t === "PACK" || IT[k].t === "TRADED")
+  .filter((k) => IT[k].t === "RAW" || IT[k].t === "PACK" || IT[k].t === "MRP")
   .sort((a, b) => IT[a].g.localeCompare(IT[b].g) || IT[a].n.localeCompare(IT[b].n));
 const BUY_GROUPS = [...new Set(BUYABLE.map((k) => IT[k].g))];
 

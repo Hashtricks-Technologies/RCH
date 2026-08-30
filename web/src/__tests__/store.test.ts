@@ -56,11 +56,13 @@ describe("availability", () => {
     expect(a.why).toContain("Milk");
   });
   it("manual override wins and reverses", () => {
-    S().toggleAvail("rest", "capp");
-    expect(availOf(S(), "rest", "capp").ok).toBe(false);
-    expect(availOf(S(), "rest", "capp").mode).toBe("Manual");
-    S().toggleAvail("rest", "capp");
-    expect(availOf(S(), "rest", "capp").ok).toBe(true);
+    // juice is stocked at the kiosk, so only the manual switch can take it off sale
+    expect(availOf(S(), "kiosk", "juice").ok).toBe(true);
+    S().toggleAvail("kiosk", "juice");
+    expect(availOf(S(), "kiosk", "juice").ok).toBe(false);
+    expect(availOf(S(), "kiosk", "juice").mode).toBe("Manual");
+    S().toggleAvail("kiosk", "juice");
+    expect(availOf(S(), "kiosk", "juice").ok).toBe(true);
   });
 });
 
@@ -159,7 +161,7 @@ describe("production", () => {
   it("refuses to distribute more than the kitchen holds", () => {
     as("prod");
     const before = S().tkt.length;
-    S().distribute("salad", 9999, "rest");
+    S().distribute("salad", 9999, "kiosk");
     expect(S().tkt).toHaveLength(before);
   });
 });

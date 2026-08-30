@@ -118,7 +118,7 @@ function ApprovalDrawer({ id }: DrawerProps) {
                 key: l.it + i,
                 cells: [
                   <>{IT[l.it]?.n ?? l.it}<small>{IT[l.it]?.c}</small></>,
-                  <Tag kind={IT[l.it]?.t === "TRADED" ? "tr" : IT[l.it]?.t === "RAW" ? undefined : "md"}>
+                  <Tag kind={IT[l.it]?.t === "MRP" ? "tr" : IT[l.it]?.t === "RAW" ? undefined : "md"}>
                     {IT[l.it]?.t}
                   </Tag>,
                   <>{fq(l.qty, l.it)} <small className="dim">{U(l.it)}</small></>,

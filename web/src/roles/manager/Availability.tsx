@@ -7,7 +7,7 @@ import {
 } from "../../ui/kit";
 import type { ItemType, LocKey } from "../../types";
 
-const tagKind = (t: ItemType) => (t === "TRADED" ? "tr" : t === "FG" || t === "MTO" ? "md" : undefined);
+const tagKind = (t: ItemType) => (t === "MRP" ? "tr" : t === "FG" || t === "MTO" ? "md" : undefined);
 
 export default function Availability() {
   const s = useApp();

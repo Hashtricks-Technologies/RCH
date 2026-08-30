@@ -47,3 +47,8 @@ export function unitTotal(lines: { it: string; qty: number }[]): string {
     .map(([u, v]) => `${u === "nos" ? String(Math.round(v)) : v.toFixed(3)} ${u}`)
     .join(" · ");
 }
+
+/** Six digits quoted at handover. Not a security token — an operational check
+ *  that the person collecting is the person the ticket was issued to. */
+export const makeOtp = (seed: number): string =>
+  String(((seed * 7919 + 104729) % 900000) + 100000);

@@ -1,5 +1,5 @@
-export type ItemType = "RAW" | "PACK" | "TRADED" | "FG" | "MTO";
-export type LocKey = "store" | "kitchen" | "rest" | "coffee" | "kiosk" | "procure";
+export type ItemType = "RAW" | "PACK" | "MRP" | "FG" | "MTO";
+export type LocKey = "store" | "kitchen" | "coffee" | "kiosk" | "procure";
 export type Role = "counter" | "manager" | "store" | "prod" | "buyer";
 export type ReqStatus =
   | "Draft" | "Request sent" | "Manager approved" | "Partially approved"
@@ -30,7 +30,12 @@ export interface StockRequest {
   mgrNote: string; urg?: boolean; hist: HistEntry[]; apprBy?: string;
 }
 export interface TktLine { it: string; qty: number }
-export interface Ticket { id: string; req: string; from: LocKey; to: LocKey; lines: TktLine[]; st: TktStatus }
+export interface Ticket {
+  id: string; req: string; from: LocKey; to: LocKey;
+  lines: TktLine[]; st: TktStatus;
+  /** Six digits quoted at handover in place of a scanned code. */
+  otp: string;
+}
 export interface PrqLine { it: string; qty: number; appr: number; ordered: number; short?: number }
 export interface Requisition {
   id: string; by: string; at: string;
@@ -85,4 +90,18 @@ export interface DrawerState { t: string; id: string }
 export interface Vendor {
   id: string; n: string; gstin: string; contact: string; ph: string;
   terms: string; lead: number; groups: string[]; active: boolean;
+}
+
+export type IssueKind = "Stock" | "Equipment" | "Quality" | "System" | "Other";
+export type IssuePriority = "Low" | "Normal" | "High";
+export type IssueStatus = "Open" | "Acknowledged" | "Resolved" | "Closed";
+export interface Issue {
+  id: string; kind: IssueKind; title: string; detail: string;
+  priority: IssuePriority; st: IssueStatus;
+  by: string; role: Role; loc: LocKey; at: string;
+  hist: HistEntry[];
+}
+export interface RateContract {
+  id: string; vendor: string; it: string; rate: number;
+  from: string; to: string; moq: number; active: boolean;
 }
