@@ -361,6 +361,15 @@ export function Avatar({ name, color, size = 34, src }: {
     </span>
   );
 }
+/** The six digits a collector reads out at handover. */
+export function Otp({ value, label = "Collection OTP" }: { value: string; label?: string }) {
+  return (
+    <div className="otp">
+      <span className="otp-l">{label}</span>
+      <span className="otp-v">{value.replace(/(\d{3})(\d{3})/, "$1 $2")}</span>
+    </div>
+  );
+}
 export const QR = ({ size = 80 }: { size?: number }) => (
   <div className="qr" style={{ width: size, height: size, flex: "none" }} aria-hidden />
 );

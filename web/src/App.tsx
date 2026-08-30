@@ -5,6 +5,7 @@ import { HOME, NAV, canSee } from "./nav";
 import Shell from "./ui/Shell";
 import Login from "./pages/Login";
 import Settings from "./pages/Settings";
+import Issues from "./pages/Issues";
 import { PageHead, Card } from "./ui/kit";
 import { screens as counter } from "./roles/counter";
 import { screens as manager } from "./roles/manager";
@@ -35,6 +36,7 @@ function Screen() {
   if (!user) return <Navigate to="/login" replace />;
   if (!canSee(user.r, key)) return <Denied k={key} />;
   if (key === "settings") return <Settings />;
+  if (key === "issues") return <Issues />;
   const C = REGISTRY[user.r][key];
   if (!C) {
     return (

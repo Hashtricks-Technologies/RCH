@@ -349,3 +349,11 @@ td.n b{font-weight:600;color:var(--ink)}
 :root[data-compact="true"] tbody td{padding:4px 10px}
 :root[data-compact="true"] .lgrid td{padding:3px 6px}
 :root[data-compact="true"] .fi{padding:6px 0}
+
+/* collection OTP — replaces the old scannable block */
+.otp{display:inline-flex;flex-direction:column;gap:4px;padding:10px 14px;border-radius:10px;
+  background:var(--accent-soft);border:1px dashed var(--accent);flex:none}
+.otp-l{font-size:9.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--accent);font-weight:600}
+.otp-v{font-family:"IBM Plex Mono",monospace;font-size:26px;font-weight:600;letter-spacing:.14em;
+  color:var(--accent);line-height:1.05}
+.otp-in{font-family:"IBM Plex Mono",monospace;font-size:18px;letter-spacing:.22em;text-align:center}

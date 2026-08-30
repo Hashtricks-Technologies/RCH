@@ -7,6 +7,7 @@ import { USERS } from "../data/master";
 import { NAV } from "../nav";
 import { DRAWERS } from "../drawers";
 import Settings from "../pages/Settings";
+import Issues from "../pages/Issues";
 import Login from "../pages/Login";
 import { screens as counter } from "../roles/counter";
 import { screens as manager } from "../roles/manager";
@@ -37,7 +38,7 @@ describe("every screen renders for its role", () => {
     for (const k of NAV[u.r].flatMap((g) => g.items.map((i) => i.k))) {
       it(`${u.r}/${k}`, () => {
         act(() => { useApp.getState().signIn(u.id); });
-        const C = k === "settings" ? Settings : REGISTRY[u.r][k];
+        const C = k === "settings" ? Settings : k === "issues" ? Issues : REGISTRY[u.r][k];
         expect(C, `no component registered for ${u.r}/${k}`).toBeTruthy();
         expect(render(createElement(C)).length).toBeGreaterThan(400);
       });
@@ -48,7 +49,7 @@ describe("every screen renders for its role", () => {
 describe("the sidebar matches the screen registry", () => {
   for (const u of USERS) {
     it(`${u.r}`, () => {
-      const navKeys = NAV[u.r].flatMap((g) => g.items.map((i) => i.k)).filter((k) => k !== "settings");
+      const navKeys = NAV[u.r].flatMap((g) => g.items.map((i) => i.k)).filter((k) => k !== "settings" && k !== "issues");
       expect(navKeys.sort()).toEqual(Object.keys(REGISTRY[u.r]).sort());
     });
   }

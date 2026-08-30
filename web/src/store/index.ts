@@ -13,10 +13,11 @@ import { basePrices, freeToPromise, priceOf, qty, resv } from "../lib/selectors"
 import { bestBefore, fq, now, U, makeOtp } from "../lib/fmt";
 import { applyTheme, nextTheme, readStoredTheme, storeTheme, type ThemePref } from "../lib/theme";
 import { createProcurementSlice, type ProcurementSlice } from "./procurement";
+import { createOpsSlice, type OpsSlice } from "./ops";
 
 interface Seq { req: number; tkt: number; bill: number; prq: number; po: number; pord: number; bat: number; vn: number }
 
-export interface AppState extends ProcurementSlice {
+export interface AppState extends ProcurementSlice, OpsSlice {
   user: User | null;
   stock: Record<LocKey, Record<string, number>>;
   rsv: Record<string, number>;
@@ -65,7 +66,8 @@ export interface AppState extends ProcurementSlice {
   rejectRequest: (id: string, note: string) => void;
 
   issueTicket: (reqId: string) => void;
-  handover: (tktId: string) => void;
+  /** `otp` is required from the collecting side; omit it only for a supervisor override. */
+  handover: (tktId: string, otp?: string) => void;
   receiveTicket: (tktId: string) => void;
 
   setPrqDraft: (d: DraftLine[]) => void;
@@ -281,10 +283,14 @@ export const useApp = create<AppState>((set, get) => ({
     });
     get().notify(`${id} issued — ${LOC[r.from].n} can collect against this ticket`);
   },
-  handover: (tktId) => {
+  handover: (tktId, otp) => {
     const s = get();
     const t = s.tkt.find((x) => x.id === tktId);
     if (!t || t.st !== "Issued") return;
+    if (otp !== undefined && otp.trim() !== t.otp) {
+      s.notify(`That OTP does not match ${tktId}. Ask the collector to read it again.`);
+      return;
+    }
     const stock = clone(s.stock);
     const rsv = { ...s.rsv };
     t.lines.forEach((l) => {
@@ -445,4 +451,5 @@ export const useApp = create<AppState>((set, get) => ({
   cycleTheme: () => get().setTheme(nextTheme(get().theme)),
 
   ...createProcurementSlice(set as (p: Partial<AppState>) => void, get),
+  ...createOpsSlice(set as (p: Partial<AppState>) => void, get),
 }));
