@@ -4,7 +4,7 @@ Frontend for the hospital's kitchen, restaurant and retail-counter operation: on
 master and one stock ledger behind every counter in the building, from purchase
 requisition through production to the customer's bill.
 
-**Application source:** [`web/`](web) — React 19 + Vite 8 + TypeScript · **Project home:** [`index.html`](index.html)
+**Application source:** [`UI/`](UI) — React 19 + Vite 8 + TypeScript · **Project home:** [`index.html`](index.html)
 
 ---
 
@@ -51,20 +51,19 @@ and arrives on the receive scan — in between it is in transit, owned by neithe
 ## Repository layout
 
     index.html                     project home
-    web/                           the application — React 19, Vite 8, TypeScript, Zustand
-    web/README.md                  stack, scripts, source layout, domain rules
+    UI/                            the application — React 19, Vite 8, TypeScript, Zustand
+    UI/README.md                   stack, scripts, source layout, domain rules
     docs/ua-spec.html              user-acceptance specification — product classes, 24 UAT scenarios
     docs/system-design.html        platform, building topology, data model
     docs/user-flows.html           role map, day timeline, six end-to-end journeys
     docs/ideation.md               running notes and open questions
-    archive/                       earlier single-file iterations, kept for reference
 
 ## Running it
 
-    cd web
+    cd UI
     npm install
     npm run dev        # http://localhost:5173
-    npm run build      # -> web/dist
+    npm run build      # -> UI/dist
 
 State lives in memory for the session — a refresh returns to the seeded starting
 position.

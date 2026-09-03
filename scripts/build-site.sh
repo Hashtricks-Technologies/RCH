@@ -15,20 +15,20 @@ root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$root"
 
 # Netlify starts from a clean checkout; a local run usually has the modules already.
-if [ ! -d web/node_modules ]; then
+if [ ! -d UI/node_modules ]; then
   echo "→ installing application dependencies"
-  npm --prefix web ci
+  npm --prefix UI ci
 fi
 
 echo "→ building the application"
-npm --prefix web run build
+npm --prefix UI run build
 
 echo "→ assembling the site"
 rm -rf dist
 mkdir -p dist
 cp index.html dist/index.html
 cp -R docs dist/docs
-cp -R web/dist dist/app
+cp -R UI/dist dist/app
 
 echo "✓ site assembled"
 printf '  %s\n' \
