@@ -5,11 +5,15 @@ export type ErrorCode =
 export class AppError extends Error {
   readonly code: ErrorCode;
   readonly status: number;
+  /** Mirrors `status`. Fastify-adjacent code (plugins, error handlers upstream of ours)
+   *  reads `err.statusCode`, not `err.status` — keep both in sync. */
+  readonly statusCode: number;
   readonly details?: unknown;
   constructor(code: ErrorCode, status: number, message: string, details?: unknown) {
     super(message);
     this.code = code;
     this.status = status;
+    this.statusCode = status;
     this.details = details;
     this.name = new.target.name;
   }

@@ -16,7 +16,10 @@ export default fp<{ config: Config }>(async (app, { config }) => {
     max: config.rateLimitPerMinute,
     timeWindow: "1 minute",
     keyGenerator: (req) => (req as { user?: { sub?: string } }).user?.sub ?? req.ip,
-    errorResponseBuilder: () => new RateLimitedError().toEnvelope(),
+    // @fastify/rate-limit throws whatever this returns — hand it a real Error (with
+    // .status/.statusCode) so plugins/errors.ts's `err instanceof AppError` branch maps it
+    // to 429, not a plain object it can't recognize.
+    errorResponseBuilder: () => new RateLimitedError(),
   });
   await app.register(underPressure, {
     maxEventLoopDelay: 1000,
@@ -24,6 +27,7 @@ export default fp<{ config: Config }>(async (app, { config }) => {
     maxRssBytes: 0,
     message: "The service is overloaded — try again shortly.",
     retryAfter: 5,
-    customError: class extends Error {},
+    // No customError: under-pressure's default error carries our `message` and a real
+    // `statusCode: 503`; a bare `class extends Error {}` here drops both.
   });
 }, { name: "security" });
