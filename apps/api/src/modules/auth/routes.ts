@@ -10,7 +10,7 @@ export default fp(async (app) => {
   const svc = createAuthService(app.db, app.config);
   const meta = (req: { headers: Record<string, unknown>; ip: string }) => ({ userAgent: String(req.headers["user-agent"] ?? "").slice(0, 200), ip: req.ip });
   const respond = async (reply: FastifyReply, s: Awaited<ReturnType<typeof svc.login>>) => {
-    setRefreshCookie(reply, app.config, s.refreshToken);
+    setRefreshCookie(reply, app.config, s.refreshToken, s.expiresAt);
     return { accessToken: await app.signAccess(s.claims), user: s.user, mustChangePassword: s.mustChangePassword };
   };
   mount(app, routes.login, async (req, reply) => respond(reply, await svc.login(req.body.emp, req.body.password, meta(req))),

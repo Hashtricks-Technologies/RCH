@@ -2,7 +2,7 @@ import { parseArgs } from "node:util";
 import { loadConfig } from "../config.js";
 import { createDb } from "../db/client.js";
 import { createUser, deactivateUser, resetPassword } from "../lib/users-admin.js";
-import { RoleSchema, type LocKey, type Role } from "@rch/contract";
+import { LocKeySchema, RoleSchema, type LocKey, type Role } from "@rch/contract";
 
 const { positionals, values } = parseArgs({
   allowPositionals: true,
@@ -15,12 +15,18 @@ const needRole = (): Role => {
   if (!parsed.success) { console.error(`--role must be one of ${RoleSchema.options.join("|")} (got "${v}")`); process.exit(2); }
   return parsed.data;
 };
+const needLoc = (): LocKey => {
+  const v = need("loc");
+  const parsed = LocKeySchema.safeParse(v);
+  if (!parsed.success) { console.error(`--loc must be one of ${LocKeySchema.options.join("|")} (got "${v}")`); process.exit(2); }
+  return parsed.data;
+};
 const config = loadConfig(process.env);
 const { db, pool } = createDb(config.databaseUrl, config.databaseSsl, { max: 1 });
 try {
   switch (positionals[0]) {
     case "create": {
-      const { id } = await createUser(db, { emp: need("emp"), name: need("name"), email: need("email"), role: needRole(), loc: need("loc") as LocKey, phone: values.phone, password: need("password") });
+      const { id } = await createUser(db, { emp: need("emp"), name: need("name"), email: need("email"), role: needRole(), loc: needLoc(), phone: values.phone, password: need("password") });
       console.log(`created ${id} (${values.emp}) - must change password at first sign-in`); break;
     }
     case "reset-password": await resetPassword(db, need("emp"), need("password")); console.log(`password reset for ${values.emp}; sessions revoked`); break;

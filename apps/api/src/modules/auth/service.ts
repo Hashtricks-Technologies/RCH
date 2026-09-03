@@ -9,7 +9,7 @@ import { toWireUser } from "../../lib/wire.js";
 import { authRepo } from "./repo.js";
 
 export type Meta = { userAgent?: string; ip?: string };
-export type Session = { user: User; mustChangePassword: boolean; refreshToken: string; claims: { id: string; role: User["r"]; loc: User["loc"]; mcp: boolean } };
+export type Session = { user: User; mustChangePassword: boolean; refreshToken: string; expiresAt: Date; claims: { id: string; role: User["r"]; loc: User["loc"]; mcp: boolean } };
 
 const sha256 = (v: string) => createHash("sha256").update(v).digest("hex");
 const newRaw = () => randomBytes(32).toString("base64url");
@@ -70,17 +70,17 @@ export function createAuthService(db: Db, config: Config) {
   const attempts = new Attempts(config.loginRateLimitPerEmpPerMinute);
   const expiry = () => new Date(Date.now() + config.refreshTokenTtlDays * 86400_000);
 
-  async function issue(tx: Parameters<Parameters<typeof withTransaction>[1]>[0], u: NonNullable<Awaited<ReturnType<typeof authRepo.userById>>>, family: string, meta: Meta): Promise<Session> {
+  async function issue(tx: Parameters<Parameters<typeof withTransaction>[1]>[0], u: NonNullable<Awaited<ReturnType<typeof authRepo.userById>>>, family: string, meta: Meta, startedAt?: Date): Promise<Session> {
     const raw = newRaw();
     // A refresh family is only as long-lived as its first token: rotation resets the *idle*
     // clock (`expiry()`, from now) but must never push the family's absolute lifetime past 30
     // days from when it was first issued at login. A brand-new family (no rows yet) has no
     // earlier start to be capped by, so it gets the ordinary now+30d.
-    const familyStartedAt = (await authRepo.familyStartedAt(tx, family)) ?? new Date();
+    const familyStartedAt = startedAt ?? (await authRepo.familyStartedAt(tx, family)) ?? new Date();
     const familyCap = new Date(familyStartedAt.getTime() + config.refreshTokenTtlDays * 86400_000);
     const expiresAt = new Date(Math.min(expiry().getTime(), familyCap.getTime()));
     await authRepo.insertRefresh(tx, { userId: u.id, family, tokenHash: sha256(raw), expiresAt, userAgent: meta.userAgent, ip: meta.ip });
-    return { user: toWireUser(u), mustChangePassword: u.mustChangePassword, refreshToken: raw, claims: { id: u.id, role: u.role, loc: u.loc as User["loc"], mcp: u.mustChangePassword } };
+    return { user: toWireUser(u), mustChangePassword: u.mustChangePassword, refreshToken: raw, expiresAt, claims: { id: u.id, role: u.role, loc: u.loc as User["loc"], mcp: u.mustChangePassword } };
   }
 
   return {
@@ -116,7 +116,11 @@ export function createAuthService(db: Db, config: Config) {
           await authRepo.revokeFamily(tx, t.family);
           return { ok: false as const, message: "Your session was used from somewhere else and has been closed - sign in again." };
         }
-        return { ok: true as const, session: await issue(tx, u, t.family, meta) };
+        // A family past its 30 days is dead even when this row's own expiry says otherwise (rows
+        // minted before the absolute cap existed): refuse, rather than mint an already-expired token.
+        const startedAt = await authRepo.familyStartedAt(tx, t.family);
+        if (startedAt && startedAt.getTime() + config.refreshTokenTtlDays * 86400_000 <= Date.now()) return { ok: false as const, message: "Your session has expired - sign in again." };
+        return { ok: true as const, session: await issue(tx, u, t.family, meta, startedAt) };
       });
       if (!outcome.ok) throw new UnauthenticatedError(outcome.message);
       return outcome.session;
@@ -143,7 +147,7 @@ export function createAuthService(db: Db, config: Config) {
       // so an inactive account and a wrong current password are indistinguishable to the caller.
       const ok = u ? await verifyPassword(u.passwordHash, current) : (await verifyPassword(DUMMY_HASH, current), false);
       if (!u || !ok || !u.active) throw new UnauthenticatedError("Your current password is not right.");
-      if (next === current) throw new RuleError("Choose a different password from your current one");
+      if (next === current) throw new RuleError("Choose a different password from your current one.");
       const hash = await hashPassword(next);
       return withTransaction(db, async (tx) => {
         await authRepo.setPassword(tx, userId, hash);

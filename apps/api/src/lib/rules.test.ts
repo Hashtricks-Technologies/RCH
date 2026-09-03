@@ -8,11 +8,11 @@ describe("assertRule", () => {
   });
   it("throws a RuleError carrying the message when the condition fails", () => {
     try {
-      assertRule(false, "Choose a different password from your current one");
+      assertRule(false, "Choose a different password from your current one.");
       expect.unreachable();
     } catch (err) {
       expect(err).toBeInstanceOf(RuleError);
-      expect((err as RuleError).message).toBe("Choose a different password from your current one");
+      expect((err as RuleError).message).toBe("Choose a different password from your current one.");
       expect((err as RuleError).status).toBe(422);
     }
   });

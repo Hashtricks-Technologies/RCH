@@ -4,6 +4,7 @@ import type { Db } from "../../../db/client.js";
 import * as s from "../../../db/schema/index.js";
 import { readHistories } from "../../../lib/history.js";
 import { iso } from "../../../lib/time.js";
+import { toWireBill } from "../../../lib/wire.js";
 
 const strip = <T extends object>(o: T): T => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)) as T;
 const groupBy = <T, K extends string>(rows: T[], key: (r: T) => K): Map<K, T[]> => { const m = new Map<K, T[]>(); for (const r of rows) { const k = key(r); (m.get(k) ?? m.set(k, []).get(k)!).push(r); } return m; };
@@ -97,11 +98,8 @@ export async function readBills(db: Db, sinceDays: number, pre?: UserNames): Pro
     db.select().from(s.bills).where(gte(s.bills.at, since)).orderBy(desc(s.bills.at), desc(s.bills.no)), db.select().from(s.billLines).orderBy(asc(s.billLines.lineNo)), pre ? Promise.resolve(pre) : userNames(db),
   ]);
   const by = groupBy(lines, (l) => l.billNo);
-  return heads.map((b) => strip({
-    no: b.no, loc: b.loc as LocKey, opr: names.get(b.operatorId)?.name ?? b.operatorId, oprCol: names.get(b.operatorId)?.colour ?? "#64748B", tot: b.total, tax: b.tax, t: iso(b.at), pay: b.tender,
-    lines: (by.get(b.no) ?? []).map((l) => ({ it: l.itemKey, qty: l.qty, rate: l.rate })),
-    payer: b.payerKind ? { kind: b.payerKind, id: b.payerId ?? "", name: b.payerName ?? "" } : undefined,
-  }));
+  // One mapping for a bill however it reaches the wire: POST /bills answers with the same shape.
+  return heads.map((b) => toWireBill(b, by.get(b.no) ?? [], { name: names.get(b.operatorId)?.name ?? b.operatorId, colour: names.get(b.operatorId)?.colour ?? "#64748B" }));
 }
 
 export async function readVendors(db: Db): Promise<Vendor[]> {

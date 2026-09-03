@@ -69,9 +69,12 @@ export const fromWireBestBefore = (isoStr: string): string => {
   const days = Math.round(
     (Date.parse(`${kolkataYmd(due)}T00:00:00Z`) - Date.parse(`${kolkataYmd(made)}T00:00:00Z`)) / 86400000,
   );
-  if (days === 0) return hhmm(due);
-  if (days === 1) return `${hhmm(due)} tomorrow`;
-  return `${hhmm(due)} ${due.toLocaleDateString("en-IN", { day: "2-digit", month: "short" })}`;
+  // The clock face is the hospital's too: `hhmm` reads the host's zone, which is right for a
+  // batch time typed at the kitchen but wrong for an instant the server sent.
+  const time = fromWireTime(isoStr);
+  if (days === 0) return time;
+  if (days === 1) return `${time} tomorrow`;
+  return `${time} ${due.toLocaleDateString("en-IN", { day: "2-digit", month: "short", timeZone: TZ })}`;
 };
 
 /**

@@ -64,20 +64,27 @@ describe("document readers", () => {
   it("userNames() is one query for the whole snapshot; readers accept it pre-fetched instead of re-querying", async () => {
     const names = await D.userNames(t.db);
     expect(names.size).toBeGreaterThan(0);
-    // A doctored name proves the readers below actually use the map they were handed rather
-    // than fetching their own copy: if they re-queried, this override would never show up.
-    const [anyId, real] = [...names.entries()][0]!;
-    const doctored = new Map(names);
-    doctored.set(anyId, { ...real, name: "Overridden Name" });
+    // Doctor every name: if a reader fetched its own copy instead of using the map it was
+    // handed, a real name would surface in its output. Checked per collection — one boolean
+    // across all eight would stay green with seven readers reverted.
+    const doctored: D.UserNames = new Map([...names].map(([id, v]) => [id, { ...v, name: `~${id}` }]));
     const [req, prq, grn, pord, bills, sup, prod, asks] = await Promise.all([
       D.readRequests(t.db, doctored), D.readRequisitions(t.db, doctored), D.readGrns(t.db, doctored), D.readProdOrders(t.db, doctored),
       D.readBills(t.db, 7, doctored), D.readSupportTickets(t.db, doctored), D.readProductRequests(t.db, doctored), D.readShopAsks(t.db, doctored),
     ]);
-    const usesOverride = req.some((r) => r.by === "Overridden Name") || prq.some((p) => p.by === "Overridden Name")
-      || grn.some((g) => g.by === "Overridden Name") || pord.some((o) => o.by === "Overridden Name")
-      || bills.some((b) => b.opr === "Overridden Name") || sup.some((t2) => t2.by === "Overridden Name")
-      || prod.some((p) => p.by === "Overridden Name") || asks.some((a) => a.by === "Overridden Name");
-    expect(usesOverride).toBe(true);
+    const onlyDoctored = (label: string, authors: Array<string | undefined>) => {
+      const named = authors.filter((a): a is string => a != null);
+      expect(named.length, `${label}: no authors to check`).toBeGreaterThan(0);
+      expect(named.every((a) => a.startsWith("~")), `${label}: ${named.filter((a) => !a.startsWith("~")).join(", ")}`).toBe(true);
+    };
+    onlyDoctored("requests", req.map((r) => r.by));
+    onlyDoctored("requisitions", prq.map((p) => p.by));
+    onlyDoctored("grns", grn.map((g) => g.by));
+    onlyDoctored("production orders", pord.map((o) => o.by));
+    onlyDoctored("bills", bills.map((b) => b.opr));
+    onlyDoctored("support tickets", sup.map((t2) => t2.by));
+    onlyDoctored("product requests", prod.map((p) => p.by));
+    onlyDoctored("shop asks", asks.map((a) => a.by));
   });
   it("sales are 14 day-rows of 3 outlet columns from bills, with day-of-month labels", async () => {
     const { sales, dayLabels } = await D.readSales(t.db, 14);

@@ -63,7 +63,7 @@ describe("postMoves", () => {
     expect(await onHand("store", "milk")).toBe(4);
     expect(await onHand("store", "milk 2")).toBe(6);
   });
-  it("survives 20 writers touching the same pair of balances in alternating lock orders without deadlocking", async () => {
+  it("survives 20 writers, four at a time (the test pool), touching the same pair of balances in alternating lock orders without deadlocking", async () => {
     // postMoves sorts the (loc, item) keys it locks into a fixed order, so writers that submit
     // the pair in opposite orders still take their row locks in the same sequence — no deadlock.
     const writers = Array.from({ length: 20 }, (_, i) =>

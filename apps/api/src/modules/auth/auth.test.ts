@@ -123,6 +123,20 @@ describe("refresh", () => {
     expect(Math.abs(rotated.expiresAt.getTime() - expectedCap)).toBeLessThan(5000);
     // Well short of an ordinary now+30d expiry, which is what a bug would give it.
     expect(rotated.expiresAt.getTime()).toBeLessThan(Date.now() + 29 * day);
+    // The cookie dies with the row: its Expires carries the same cap.
+    const cookieExpires = (r2.cookies.find((c) => c.name === "rch_refresh") as { expires?: Date } | undefined)?.expires;
+    expect(Math.abs((cookieExpires?.getTime() ?? 0) - expectedCap)).toBeLessThan(5000);
+  });
+  it("refuses to rotate a family older than 30 days even when the row's own expiry is still ahead", async () => {
+    const day = 86400_000;
+    const first = await login(a, "RC-1902");
+    const c1 = cookieOf(first).value;
+    const [row] = await a.db.select().from(refreshTokens).where(eq(refreshTokens.userId, first.json().user.id)).orderBy(sql`created_at desc`).limit(1);
+    // A row minted before the absolute cap existed: created 31 days ago, its own expiry still ahead.
+    await a.db.update(refreshTokens).set({ createdAt: new Date(Date.now() - 31 * day) }).where(eq(refreshTokens.id, row.id));
+    const r2 = await a.inject({ method: "POST", url: "/api/v1/auth/refresh", cookies: { rch_refresh: c1 } });
+    expect(r2.statusCode).toBe(401);
+    expect(r2.json().error.message).toBe("Your session has expired - sign in again.");
   });
 });
 
@@ -181,7 +195,7 @@ describe("change-password", () => {
     const h = { authorization: `Bearer ${l.json().accessToken}` };
     const r = await a.inject({ method: "POST", url: "/api/v1/auth/change-password", headers: h, payload: { current: "a-much-longer-secret", next: "a-much-longer-secret" } });
     expect(r.statusCode).toBe(422);
-    expect(r.json().error.message).toBe("Choose a different password from your current one");
+    expect(r.json().error.message).toBe("Choose a different password from your current one.");
   });
 });
 
