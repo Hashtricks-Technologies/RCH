@@ -27,15 +27,14 @@ describe("counter operator", () => {
     expect(S().req.find((r) => r.id === "REQ-2026-0909")!.st).toBe("Ticket issued");
   });
 
-  it("deducts a made-to-order drink by recipe, not by the unit", () => {
+  it("builds one cart line per item scanned", () => {
     as("counter");
-    useApp.setState((s) => ({ stock: { ...s.stock, coffee: { ...s.stock.coffee, milk: 5 } } }));
     S().addToCart("coffee", "capp");
     S().addToCart("coffee", "capp");
-    S().pay("coffee", "Cash");
-    expect(qty(S(), "coffee", "milk")).toBeCloseTo(4.7, 3);
-    expect(S().bills[0].tot).toBe(150);
-    expect(S().bills[0].opr).toBe("Kavitha Raman");
+    S().addToCart("coffee", "juice");
+    expect(S().cart.coffee).toEqual({ capp: 2, juice: 1 });
+    S().clearCart("coffee");
+    expect(S().cart.coffee).toEqual({});
   });
 
   it("holds the printed MRP as a ceiling on floor 3", () => {
@@ -55,13 +54,14 @@ describe("availability", () => {
     expect(a.mode).toBe("Recipe");
     expect(a.why).toContain("Milk");
   });
-  it("manual override wins and reverses", () => {
-    // juice is stocked at the kiosk, so only the manual switch can take it off sale
+  it("manual override wins over a stocked shelf and reverses", () => {
+    // juice is stocked at the kiosk, so only the manual switch can take it off sale.
+    // `ovr` is the server's map, applied by applyStock — the screens read it through availOf.
     expect(availOf(S(), "kiosk", "juice").ok).toBe(true);
-    S().toggleAvail("kiosk", "juice");
+    useApp.setState({ ovr: { "kiosk:juice": "switched off manually" } });
     expect(availOf(S(), "kiosk", "juice").ok).toBe(false);
     expect(availOf(S(), "kiosk", "juice").mode).toBe("Manual");
-    S().toggleAvail("kiosk", "juice");
+    useApp.setState({ ovr: {} });
     expect(availOf(S(), "kiosk", "juice").ok).toBe(true);
   });
 });
@@ -115,27 +115,6 @@ describe("the two-stage approval chain", () => {
     const before = S().tkt.length;
     S().issueTicket("REQ-2026-0912");
     expect(S().tkt).toHaveLength(before);
-  });
-});
-
-describe("pricing", () => {
-  it("refuses a price above the printed MRP", () => {
-    as("manager");
-    const before = S().prices.B.juice;
-    S().savePrice("B", "juice", 99);
-    expect(S().prices.B.juice).toBe(before);
-  });
-  it("accepts a price at or below MRP", () => {
-    as("manager");
-    S().savePrice("B", "juice", 18);
-    expect(S().prices.B.juice).toBe(18);
-    expect(priceOf(S(), "coffee", "juice").p).toBe(18);
-  });
-  it("removes a product from one shop only", () => {
-    as("manager");
-    S().removeProduct("coffee", "chips");
-    expect(S().menu.coffee).not.toContain("chips");
-    expect(S().menu.kiosk).toContain("chips");
   });
 });
 

@@ -39,4 +39,7 @@ export const RecipesResponseSchema = z.record(z.string(), D.RecipeSchema);
 export const PricesResponseSchema = SnapshotSchema.shape.prices;
 export const MenusResponseSchema = SnapshotSchema.shape.menu;
 export const StockResponseSchema = z.strictObject({ stock: SnapshotSchema.shape.stock, rsv: SnapshotSchema.shape.rsv, ovr: SnapshotSchema.shape.ovr });
+/** How many days of bills a caller gets — the snapshot's window and `GET /bills`'s default,
+ *  one number so that `applyBills` replacing the store's list wholesale stays correct. */
+export const BILL_DAYS = 7;
 export const BillsResponseSchema = z.array(D.BillSchema);

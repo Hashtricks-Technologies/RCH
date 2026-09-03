@@ -30,6 +30,9 @@ export default function Pos() {
   const [payer, setPayer] = useState<Payer | null>(null);
   const [pq, setPq] = useState("");
   const [edit, setEdit] = useState<Record<string, string>>({});
+  // The cart now survives until the server answers, so a second tap inside one round trip
+  // would post a second bill under a second Idempotency-Key. One tap, one bill.
+  const [busy, setBusy] = useState(false);
 
   const menu = menuOf(s, loc);
   const cart = s.cart[loc] ?? {};
@@ -44,7 +47,6 @@ export default function Pos() {
   const total = lines.reduce((t, l) => t + l.amt, 0);
   const taxable = lines.reduce((t, l) => t + l.taxable, 0);
   const tax = total - taxable;
-  const billNo = "CF/" + (s.seq.bill + 1);
 
   const need = PAYERS[tender];
   const hits = need?.list.filter((p) => {
@@ -118,7 +120,7 @@ export default function Pos() {
           )}
         </Card>
 
-        <Card title={`Bill ${billNo}`} sub={L.c}
+        <Card title="New bill" sub={L.c}
           right={lines.length ? <Btn variant="gh" size="sm" onClick={() => s.clearCart(loc)}>Clear</Btn> : undefined}>
           <div style={{ display: "flex", gap: 10, alignItems: "center", paddingBottom: 11, borderBottom: "1px solid var(--line)" }}>
             <Avatar name={user.n} color={user.col} size={34} />
@@ -128,8 +130,8 @@ export default function Pos() {
             </div>
             <div className="sp" />
             <div className="rt">
-              <div className="mono" style={{ fontSize: 13, fontWeight: 600 }}>{billNo}</div>
-              <div className="mini">{L.n}</div>
+              <div style={{ fontSize: 12.5, fontWeight: 600 }}>{L.n}</div>
+              <div className="mini">Numbered by the server when it is paid</div>
             </div>
           </div>
 
@@ -213,9 +215,13 @@ export default function Pos() {
             </Alert>
           )}
 
-          <Btn wide disabled={!lines.length || (!!need && !payer) || overLimit}
-            onClick={() => { s.pay(loc, tender, payer ?? undefined); setPayer(null); setPq(""); setEdit({}); }}>
-            Pay &amp; print · {money(total)}
+          <Btn wide disabled={!lines.length || (!!need && !payer) || overLimit || busy}
+            onClick={async () => {
+              setBusy(true);
+              try { await s.pay(loc, tender, payer ?? undefined); } finally { setBusy(false); }
+              setPayer(null); setPq(""); setEdit({});
+            }}>
+            {busy ? "Taking the bill…" : <>Pay &amp; print · {money(total)}</>}
           </Btn>
           <p className="mini mtop">
             Tender <b>{tender}</b>{payer ? <> · posted to <b>{payer.name}</b></> : need ? <> · pick a {need.label.toLowerCase()} to settle it</> : null}.

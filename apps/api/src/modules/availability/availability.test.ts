@@ -62,7 +62,37 @@ describe("POST /availability/toggle", () => {
     expect(r.json().error.message).toBe("There is no item totally-fake.");
   });
 
-  it("hides the route entirely from a role that is not counter or manager", async () => {
+  it("lets the kitchen in-charge switch a made product off, then on, at their own kitchen", async () => {
+    const off = await toggle(await hdr("u4"), { loc: "kitchen", it: "puff" });
+    expect(off.statusCode).toBe(200);
+    expect(off.json()).toEqual({
+      result: { loc: "kitchen", it: "puff", off: true, reason: "switched off manually" },
+      changed: ["ovr"],
+      message: "Veg puffs switched off at Central Kitchen",
+    });
+
+    const on = await toggle(await hdr("u4"), { loc: "kitchen", it: "puff" });
+    expect(on.statusCode).toBe(200);
+    expect(on.json()).toEqual({
+      result: { loc: "kitchen", it: "puff", off: false },
+      changed: ["ovr"],
+      message: "Veg puffs switched on at Central Kitchen",
+    });
+  });
+
+  it("refuses the kitchen in-charge toggling a counter", async () => {
+    const r = await toggle(await hdr("u4"), { loc: "coffee", it: "juice" });
+    expect(r.statusCode).toBe(403);
+    expect(r.json().error.message).toBe("You can only do this for your own kitchen.");
+  });
+
+  it("refuses a bought-in item at the kitchen: what it can switch off is what it can make", async () => {
+    const r = await toggle(await hdr("u4"), { loc: "kitchen", it: "chips" });
+    expect(r.statusCode).toBe(422);
+    expect(r.json().error.message).toBe("Salted chips 52g is not made at Central Kitchen");
+  });
+
+  it("hides the route entirely from a role that is neither counter, manager nor kitchen", async () => {
     const r = await toggle(await hdr("u3"), { loc: "store", it: "chips" });
     expect(r.statusCode).toBe(404);
   });
