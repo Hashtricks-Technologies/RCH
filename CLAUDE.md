@@ -10,20 +10,20 @@ requisition → purchase order → goods receipt → production → issue → co
 
 There is **no backend, no database and no authentication**. State lives in memory for the
 session; only the theme and a few UI prefs reach `localStorage`. A refresh returns to the
-seeded starting position in `web/src/data/seed.ts`.
+seeded starting position in `UI/src/data/seed.ts`.
 
 ## Commands
 
-All application commands run from `web/`:
+All application commands run from `UI/`:
 
 ```bash
 npm install
 npm run dev          # http://localhost:5173
 npm run typecheck    # tsc --noEmit -p tsconfig.app.json
-npm run lint         # oxlint (config: web/.oxlintrc.json)
+npm run lint         # oxlint (config: UI/.oxlintrc.json)
 npm test             # vitest run
 npm run test:watch
-npm run build        # tsc -b && vite build -> web/dist
+npm run build        # tsc -b && vite build -> UI/dist
 ```
 
 Run a single test file or case:
@@ -46,16 +46,15 @@ Every change must pass all four.
 index.html               project home page (published at /)
 docs/*.html              UA spec, system design, user flows — the product contract
 docs/superpowers/        plans and specs from prior agent-driven work
-scripts/build-site.sh    assembles index.html + docs/ + web/dist into dist/
-archive/                 earlier single-file prototypes, reference only
-web/                     the application (React 19, TS 6 strict, Vite 8, Zustand 5)
+scripts/build-site.sh    assembles index.html + docs/ + UI/dist into dist/
+UI/                      the application (React 19, TS 6 strict, Vite 8, Zustand 5)
 ```
 
 ## Architecture
 
 ### Role-partitioned screens, one registry
 
-Five roles: `counter` · `manager` · `store` · `prod` · `buyer` (see `web/src/types.ts`).
+Five roles: `counter` · `manager` · `store` · `prod` · `buyer` (see `UI/src/types.ts`).
 Three files must agree for a screen to exist:
 
 1. `src/nav.ts` — `NAV[role]` lists the sidebar groups and route keys; `HOME[role]` is the
@@ -172,6 +171,6 @@ the host does not supply one):
 ## Docs
 
 `docs/ua-spec.html`, `docs/system-design.html` and `docs/user-flows.html` are the product
-contract, and `README.md` / `web/README.md` describe current behaviour. When a change alters
+contract, and `README.md` / `UI/README.md` describe current behaviour. When a change alters
 a rule, a role's screens or the request chain, update the affected docs in the same commit —
 recent history shows them drifting and needing a catch-up pass.
