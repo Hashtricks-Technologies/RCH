@@ -67,6 +67,8 @@ export default function Requests() {
 
   const [grant, setGrant] = useState<Record<string, number>>({});
   const [reason, setReason] = useState<Record<string, string>>({});
+  /** Which ask is mid-decline — the reason field only exists while one is. */
+  const [declineFor, setDeclineFor] = useState<string | null>(null);
 
   const submitInventory = () => {
     s.setDraft([{ it: invItem, qty: invQty }]);
@@ -110,32 +112,82 @@ export default function Requests() {
       />
 
       {inbound.length > 0 && (
-        <Card title="Another shop is asking you" sub={`${inbound.length} waiting on you`} className="mtop">
-          <Alert tone="i" label="DIRECT">
-            You decide this, not the outlet manager. Granting reserves the stock here and issues a
-            ticket with an OTP the other counter quotes when they collect.
-          </Alert>
+        <Card
+          title="Another shop is asking you"
+          sub="You decide these, not the outlet manager"
+          right={<Pill tone="wn">{inbound.length} waiting</Pill>}
+          className="mtop"
+        >
           {inbound.map((a) => {
             const free = avail(s, loc, a.it);
             const g = grant[a.id] ?? Math.min(a.qty, free);
+            const short = free < a.qty;
+            const declining = declineFor === a.id;
             return (
-              <div key={a.id} className="raisecard-product mtop" style={{ alignItems: "flex-start" }}>
-                <ImagePlaceholder />
-                <div className="txt" style={{ flex: 1 }}>
-                  <b>{IT[a.it].n}</b>
-                  <span>{LOC[a.from].n} asked for {fq(a.qty, a.it)} {U(a.it)} · {fq(free, a.it)} {U(a.it)} free here</span>
-                  {a.note && <span style={{ marginTop: 4 }}>“{a.note}”</span>}
-                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 9 }}>
-                    <input type="number" min={0} max={a.qty} value={g} style={{ width: 90 }}
-                      onChange={(e) => setGrant({ ...grant, [a.id]: Number(e.target.value) })} />
-                    <input placeholder="Reason to decline" style={{ width: 180 }}
-                      value={reason[a.id] ?? ""} onChange={(e) => setReason({ ...reason, [a.id]: e.target.value })} />
-                    <Btn size="sm" disabled={free <= 0} onClick={() => s.answerShopAsk(a.id, g)}>
-                      Send {fq(g, a.it)} {U(a.it)}
-                    </Btn>
-                    <Btn size="sm" variant="dg" onClick={() => s.declineShopAsk(a.id, reason[a.id] ?? "")}>Decline</Btn>
+              <div key={a.id} className="askcard">
+                <div className="askcard-top">
+                  <ImagePlaceholder size="thumb" />
+                  <div className="askcard-id">
+                    <b>{IT[a.it].n}</b>
+                    <span className="mini">{a.id} · {LOC[a.from].n} · {a.at}</span>
+                  </div>
+                  <Pill tone="mu">{IT[a.it].c}</Pill>
+                </div>
+
+                {a.note && <p className="askcard-note">{a.note}</p>}
+
+                <div className="askcard-stats">
+                  <div className="askcard-stat">
+                    <span className="k">They asked for</span>
+                    <span className="v">{fq(a.qty, a.it)}<small>{U(a.it)}</small></span>
+                  </div>
+                  <div className="askcard-stat">
+                    <span className="k">Free here</span>
+                    <span className={`v${short ? " short" : ""}`}>
+                      {fq(free, a.it)}<small>{U(a.it)}</small>
+                    </span>
                   </div>
                 </div>
+
+                {short && free > 0 && (
+                  <Alert tone="w" label="SHORT">
+                    You hold {fq(free, a.it)} of the {fq(a.qty, a.it)} {U(a.it)} asked for. Sending what
+                    you have is fine — the rest stays their problem to source.
+                  </Alert>
+                )}
+                {free <= 0 && (
+                  <Alert tone="c" label="NONE">
+                    Nothing free at this counter to send. Decline with a reason so they can look elsewhere.
+                  </Alert>
+                )}
+
+                {declining ? (
+                  <div className="askcard-act askcard-decline">
+                    <Field label="Why are you declining" hint="The other counter sees this.">
+                      <input autoFocus placeholder="We need it for the evening rush"
+                        value={reason[a.id] ?? ""}
+                        onChange={(e) => setReason({ ...reason, [a.id]: e.target.value })} />
+                    </Field>
+                    <Btn size="sm" variant="dg" disabled={!(reason[a.id] ?? "").trim()}
+                      onClick={() => { s.declineShopAsk(a.id, reason[a.id] ?? ""); setDeclineFor(null); }}>
+                      Confirm decline
+                    </Btn>
+                    <Btn size="sm" variant="gh" onClick={() => setDeclineFor(null)}>Cancel</Btn>
+                  </div>
+                ) : (
+                  <div className="askcard-act">
+                    <div className="askcard-qty">
+                      <label htmlFor={`g-${a.id}`}>Send</label>
+                      <input id={`g-${a.id}`} type="number" min={0} max={Math.min(a.qty, free)} value={g}
+                        onChange={(e) => setGrant({ ...grant, [a.id]: Number(e.target.value) })} />
+                    </div>
+                    <Btn size="sm" disabled={free <= 0 || g <= 0} onClick={() => s.answerShopAsk(a.id, g)}>
+                      Send {fq(g, a.it)} {U(a.it)}
+                    </Btn>
+                    <div className="askcard-spacer" />
+                    <Btn size="sm" variant="gh" onClick={() => setDeclineFor(a.id)}>Decline</Btn>
+                  </div>
+                )}
               </div>
             );
           })}

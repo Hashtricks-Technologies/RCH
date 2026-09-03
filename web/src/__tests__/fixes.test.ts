@@ -710,3 +710,24 @@ describe("a shop-to-shop ask is answerable from the receiving counter", () => {
     expect(new Set(counters.map((u) => u.loc)).size).toBeGreaterThanOrEqual(2);
   });
 });
+
+describe("declining an inbound ask takes two steps", () => {
+  it("refuses to decline without a reason, and records it when given", () => {
+    as("counter");
+    const ask = S().shopAsks.find((a) => a.to === "coffee" && a.st === "Asked")!;
+    S().declineShopAsk(ask.id, "   ");
+    expect(S().shopAsks.find((a) => a.id === ask.id)!.st).toBe("Asked");
+    S().declineShopAsk(ask.id, "Needed for the evening rush");
+    const after = S().shopAsks.find((a) => a.id === ask.id)!;
+    expect(after.st).toBe("Declined");
+    expect(after.reason).toBe("Needed for the evening rush");
+  });
+
+  it("a declined ask issues no ticket", () => {
+    as("counter");
+    const ask = S().shopAsks.find((a) => a.to === "coffee" && a.st === "Asked")!;
+    const before = S().tkt.length;
+    S().declineShopAsk(ask.id, "Nothing to spare");
+    expect(S().tkt).toHaveLength(before);
+  });
+});
