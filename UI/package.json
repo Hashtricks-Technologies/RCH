@@ -13,6 +13,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.app.json"
   },
   "dependencies": {
+    "@rch/contract": "workspace:*",
     "@rch/domain": "workspace:*",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",

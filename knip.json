@@ -24,17 +24,11 @@
       "project": [
         "src/**/*.ts"
       ]
-    },
-    "UI": {
-      "entry": [
-        "src/main.tsx",
-        "vite.config.ts"
-      ],
-      "project": [
-        "src/**/*.{ts,tsx}"
-      ]
     }
   },
+  "ignoreWorkspaces": [
+    "UI"
+  ],
   "ignoreDependencies": [
     "@vitejs/plugin-react"
   ],
