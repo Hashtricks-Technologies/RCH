@@ -16,6 +16,13 @@ cd "$(dirname "$0")/../../../.."
 : "${JWT_PRIVATE_KEY:?set JWT_PRIVATE_KEY (base64 PKCS8 Ed25519 private key) before running install-test.sh}"
 : "${JWT_PUBLIC_KEY:?set JWT_PUBLIC_KEY (base64 SPKI Ed25519 public key) before running install-test.sh}"
 
+# Every mounted route lives under API_PREFIX (packages/contract/src/routes.ts) — only
+# /healthz, /readyz, /metrics on the api, and the UI's own nginx-served /healthz, are not
+# prefixed. Keep this in one place so a script edit can't silently drift from the contract.
+API=http://localhost:3000
+API_PREFIX=/api/v1
+UI=http://localhost:8080
+
 SET_ARGS=(
   --set-string "secrets.values.JWT_PRIVATE_KEY=$JWT_PRIVATE_KEY"
   --set-string "secrets.values.JWT_PUBLIC_KEY=$JWT_PUBLIC_KEY"
@@ -36,8 +43,21 @@ on_failure() {
   kubectl get pods -A || true
   kubectl logs deploy/rch-api -c migrate --tail=50 || true
   kubectl logs deploy/rch-api -c api --tail=50 || true
+  cat /tmp/pf-api.log 2>/dev/null || true
+  cat /tmp/pf-ui.log 2>/dev/null || true
 }
 trap on_failure ERR
+
+# fail <message>: every explicit status-code assertion below goes through this instead of a
+# bare `exit 1` inside a `[ ... ] || { ...; exit 1; }` block — that form runs in the current
+# shell but an explicit `exit` there bypasses the `trap ... ERR` above (ERR does not fire for
+# a command whose failure is already being handled by `||`), so a login/healthz assertion
+# failure would previously print nothing about the cluster before the job died.
+fail() {
+  echo "$*" >&2
+  on_failure
+  exit 1
+}
 
 # wait_for <url>: retry a plain GET for up to ~30s (port-forward needs a beat
 # to come up; the readiness probe needs a beat to pass on a fresh pod).
@@ -62,20 +82,20 @@ kubectl exec deploy/rch-api -c api -- /nodejs/bin/node dist/cli/seed.mjs
 echo "== api: /readyz and login =="
 kubectl port-forward svc/rch-api 3000:3000 >/tmp/pf-api.log 2>&1 &
 API_PF_PID=$!
-wait_for http://localhost:3000/readyz
-curl -fsS http://localhost:3000/readyz
+wait_for "$API/readyz"
+curl -fsS "$API/readyz"
 
 LOGIN_CODE=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' \
-  -d '{"emp":"RC-3120","password":"changeme"}' http://localhost:3000/auth/login)
-[ "$LOGIN_CODE" = 200 ] || { echo "login: expected 200, got $LOGIN_CODE" >&2; exit 1; }
+  -d '{"emp":"RC-3120","password":"changeme"}' "$API$API_PREFIX/auth/login")
+[ "$LOGIN_CODE" = 200 ] || fail "login: expected 200, got $LOGIN_CODE"
 
 echo "== ui: /healthz =="
 kubectl rollout status deploy/rch-ui --timeout=120s
 kubectl port-forward svc/rch-ui 8080:8080 >/tmp/pf-ui.log 2>&1 &
 UI_PF_PID=$!
-wait_for http://localhost:8080/healthz
-UI_CODE=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/healthz)
-[ "$UI_CODE" = 200 ] || { echo "ui healthz: expected 200, got $UI_CODE" >&2; exit 1; }
+wait_for "$UI/healthz"
+UI_CODE=$(curl -s -o /dev/null -w '%{http_code}' "$UI/healthz")
+[ "$UI_CODE" = 200 ] || fail "ui healthz: expected 200, got $UI_CODE"
 
 kill_pf
 
@@ -84,8 +104,8 @@ helm upgrade --install rch deploy/chart/rch -f deploy/chart/rch/ci/values-ci.yam
 
 kubectl port-forward svc/rch-api 3000:3000 >/tmp/pf-api.log 2>&1 &
 API_PF_PID=$!
-wait_for http://localhost:3000/readyz
-curl -fsS http://localhost:3000/readyz
+wait_for "$API/readyz"
+curl -fsS "$API/readyz"
 
 kill_pf
 trap - ERR
