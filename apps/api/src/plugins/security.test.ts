@@ -30,3 +30,16 @@ describe("the global rate limit", () => {
     expect(over.json().error.code).toBe("rate_limited");
   });
 });
+
+describe("server timeouts", () => {
+  it("bounds a request well inside the idempotency claim's stale window", () => {
+    // See app.ts and plugins/idempotency.ts's CLAIM_STALE_MS: a retry must not be able to take
+    // over a claim still held by a legitimately slow, still-running request.
+    //
+    // `requestTimeout` is a real, validated Fastify constructor option (fastify's own test
+    // suite asserts it round-trips through `initialConfig`) but this Fastify version's
+    // `initialConfig` type omits it - a gap in @fastify/fastify's types, not a typo here.
+    expect((app.initialConfig as { requestTimeout?: number }).requestTimeout).toBe(30_000);
+    expect(app.initialConfig.connectionTimeout).toBe(10_000);
+  });
+});

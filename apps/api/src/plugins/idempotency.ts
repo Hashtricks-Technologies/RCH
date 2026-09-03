@@ -12,8 +12,10 @@ declare module "fastify" {
 }
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const TTL_MS = 24 * 3600_000;
-/** A claim older than this with no response is assumed abandoned (the pod died mid-write). */
-const CLAIM_STALE_MS = 60_000;
+/** A claim older than this with no response is assumed abandoned (the pod died mid-write).
+ *  Kept comfortably above app.ts's `requestTimeout` (30s) so a takeover can only happen once
+ *  Fastify has already killed any legitimately slow request that held the claim. */
+const CLAIM_STALE_MS = 120_000;
 /** `status_code = 0` is the claim marker: no real response ever carries it. */
 const CLAIMED = 0;
 const IN_FLIGHT = "That request is still being processed — try again in a moment.";
@@ -45,6 +47,14 @@ export default fp(async (app) => {
     const userId = req.user.sub; const hash = hashOf(req);
     const mine = and(eq(idempotencyKeys.key, key), eq(idempotencyKeys.userId, userId));
 
+    // This preHandler runs before the global rate limiter (plugins/security.ts registers it
+    // with `hook: "preHandler"`, keyed on `req.user.sub`, which this route's own preHandler
+    // array — auth → roleGate → idempotency — sits ahead of), so a request that ends up
+    // throttled still performs this claim INSERT first. That is accepted deliberately: undoing
+    // the claim would mean reordering the limiter ahead of authentication, which would key it
+    // on IP instead of user again (see security.ts's comment). The claim briefly exists, then
+    // `onSend` below deletes it once the 429 lands, so nothing is left to replay.
+    //
     // onConflictDoNothing().returning() is the unique-violation branch without the thrown
     // error: zero rows back means the primary key was already there.
     const claimed = await app.db.insert(idempotencyKeys)
@@ -76,9 +86,14 @@ export default fp(async (app) => {
     if (!req.idem || reply.getHeader("idempotency-replayed")) return payload;
     const mine = and(eq(idempotencyKeys.key, req.idem.key), eq(idempotencyKeys.userId, req.idem.userId));
     try {
-      // A 5xx is not an outcome worth replaying, and leaving the claim behind would lock the
-      // key out for a minute. Drop it so the client's retry is a clean first attempt.
-      if (reply.statusCode >= 500) { await app.db.delete(idempotencyKeys).where(mine); return payload; }
+      // A 5xx, or a 429 from the rate limiter, is not an outcome worth replaying: the write
+      // never happened. The limiter (plugins/security.ts) runs at `preHandler` *after* this
+      // claim is inserted, so a throttled write already owns a claim row by the time it is
+      // rejected - recording the 429 into it would replay "too many requests" as the write's
+      // permanent answer for the rest of the key's TTL, and the write itself would never run.
+      // Drop the claim instead, so the client's retry (same key, once the budget refills) is a
+      // clean first attempt rather than a stuck replay.
+      if (reply.statusCode >= 500 || reply.statusCode === 429) { await app.db.delete(idempotencyKeys).where(mine); return payload; }
       let body: unknown = null;
       if (typeof payload === "string") {
         try { body = JSON.parse(payload); } catch { body = null; }
