@@ -38,3 +38,5 @@ export const LocationsResponseSchema = z.record(z.string(), D.LocationSchema);
 export const RecipesResponseSchema = z.record(z.string(), D.RecipeSchema);
 export const PricesResponseSchema = SnapshotSchema.shape.prices;
 export const MenusResponseSchema = SnapshotSchema.shape.menu;
+export const StockResponseSchema = z.strictObject({ stock: SnapshotSchema.shape.stock, rsv: SnapshotSchema.shape.rsv, ovr: SnapshotSchema.shape.ovr });
+export const BillsResponseSchema = z.array(D.BillSchema);
