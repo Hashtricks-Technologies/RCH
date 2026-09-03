@@ -109,6 +109,24 @@ migration (§3 explains why that's usually fine). A production push additionally
 GitHub environment approval before the deploy job runs, and a fast-forward guard checks
 `staging ⊂ develop` and `production ⊂ staging` so the branches can never diverge.
 
+### CI: a real `helm install`
+
+Every push to `develop`/`staging`/`production` and every pull request exercises the chart for
+real, not just `helm lint`/`helm template`: the `images` job in `.github/workflows/ci.yml`
+builds `rch-api:ci` and `rch-ui:ci`, spins up a throwaway [kind](https://kind.sigs.k8s.io/)
+cluster (`helm/kind-action`), loads both images into it, applies a CI-only single-replica
+Postgres (`deploy/chart/rch/ci/postgres.yaml`), then runs `deploy/chart/rch/ci/install-test.sh`:
+`helm install` with `deploy/chart/rch/ci/values-ci.yaml` (a freshly generated Ed25519 pair
+passed via `--set-string`, never committed), seed the database, confirm `/readyz` and a login
+as `RC-3120` succeed through a port-forward, confirm the UI's `/healthz` succeeds too, then
+`helm upgrade --install` with the same values and check `/readyz` again — proving the upgrade
+path keeps the rendered Secret in place and the `migrate` initContainer no-ops the second time.
+The cluster is deleted with the runner at the end of the job. Run it locally with `kind`
+installed: `deploy/chart/rch/ci/install-test.sh` against a cluster that already has
+`rch-api:ci`/`rch-ui:ci` loaded (`kind load docker-image`) and `JWT_PRIVATE_KEY`/
+`JWT_PUBLIC_KEY` exported (the two lines `pnpm --filter @rch/api keys:generate` prints, already
+base64-encoded — export them as-is).
+
 Required repository secrets: `AWS_ROLE_ARN`, `AWS_REGION`, `ECR_REGISTRY`,
 `EKS_CLUSTER_STAGING`, `EKS_CLUSTER_PROD`. Required GitHub **environment** secrets for
 `staging`: `DATABASE_URL`, `JWT_PRIVATE_KEY`, `JWT_PUBLIC_KEY` (these populate
