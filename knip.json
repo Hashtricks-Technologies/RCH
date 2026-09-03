@@ -20,7 +20,10 @@
     }
   },
   "ignoreFiles": [
-    "apps/api/src/lib/rules.ts"
+    "apps/api/src/lib/rules.ts",
+    // Copy-paste module skeleton (spec §5.1); routes.ts is never imported on purpose — it
+    // is not registered in modules/index.ts. See apps/api/src/modules/_template/routes.ts.
+    "apps/api/src/modules/_template/**"
   ],
   "ignoreExportsUsedInFile": true
 }

@@ -3,6 +3,35 @@
   "plugins": ["react", "typescript", "oxc"],
   "rules": {
     "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
+    "react/only-export-components": ["warn", { "allowConstantExport": true }],
+    "no-restricted-imports": [
+      "error",
+      {
+        "patterns": [
+          {
+            "group": ["**/apps/**", "@rch/api"],
+            "message": "UI may not import from apps/api. Share code through @rch/contract or @rch/domain (see docs/superpowers/specs/2026-09-03-backend-design.md §5.1)."
+          }
+        ]
+      }
+    ]
+  },
+  "overrides": [
+    {
+      "files": ["src/roles/**", "src/pages/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["**/apps/**", "@rch/api", "**/api/client"],
+                "message": "Screens read/write through useApp, not api/client directly (see docs/superpowers/specs/2026-09-03-backend-design.md §5.1). UI may not import from apps/api either."
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
 }

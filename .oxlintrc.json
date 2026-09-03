@@ -1,0 +1,53 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "overrides": [
+    {
+      "files": ["apps/api/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["**/UI/**", "@rch/ui"],
+                "message": "apps/api may not import from UI. Share code through @rch/contract or @rch/domain (see docs/superpowers/specs/2026-09-03-backend-design.md §5.1)."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["UI/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["**/apps/**", "@rch/api"],
+                "message": "UI may not import from apps/api. Share code through @rch/contract or @rch/domain (see docs/superpowers/specs/2026-09-03-backend-design.md §5.1)."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["UI/src/roles/**", "UI/src/pages/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["**/apps/**", "@rch/api", "**/api/client"],
+                "message": "Screens read/write through useApp, not api/client directly (see docs/superpowers/specs/2026-09-03-backend-design.md §5.1). UI may not import from apps/api either."
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

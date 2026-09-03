@@ -26,6 +26,11 @@ jobs:
       # Not a turbo task: `pnpm lint` is oxlint per package plus knip, and knip is
       # repo-wide, so turbo never runs it. Keep it as its own step.
       - run: pnpm lint
+      # `pnpm lint` already runs this (spec §5.1's boundaries oxlint cannot see: protected
+      # tables, the ledger's one door, module skeletons); a separate named step just makes a
+      # boundary failure obvious in the CI log instead of buried at the end of `pnpm lint`.
+      - name: Check module and boundary rules (spec §5.1)
+        run: pnpm check:boundaries
       - run: pnpm audit --audit-level=high
       - name: Build the site
         run: bash scripts/build-site.sh
