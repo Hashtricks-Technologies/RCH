@@ -18,7 +18,7 @@ export default function Shell({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const user = useApp((s) => s.user)!;
-  const signOut = useApp((s) => s.signOut);
+  const logout = useApp((s) => s.logout);
   const toast = useApp((s) => s.toast);
   // NOTE: navCounts builds a fresh object, so it must never be passed to useApp()
   // as a selector — zustand v5 feeds the selector result to useSyncExternalStore and a
@@ -61,7 +61,9 @@ export default function Shell({ children }: { children: ReactNode }) {
           ))}
         </nav>
         <div className="sf">
-          <button className="su" type="button" onClick={() => { signOut(); nav("/login"); }}>
+          {/* Navigate once the token and the cookie are actually gone, or the
+              guard on /login bounces straight back to the screen just left. */}
+          <button className="su" type="button" onClick={() => { void logout().then(() => nav("/login")); }}>
             <Avatar name={user.n} color={user.col} size={30} src={photo} />
             <span className="ut"><b>{user.n}</b><span>{user.rl}</span></span>
             <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.5}>

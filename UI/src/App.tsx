@@ -4,6 +4,7 @@ import { useApp } from "./store";
 import { HOME, NAV, canSee } from "./nav";
 import Shell from "./ui/Shell";
 import Login from "./pages/Login";
+import ChangePassword from "./pages/ChangePassword";
 import Settings from "./pages/Settings";
 import Support from "./pages/Support";
 import { PageHead, Card } from "./ui/kit";
@@ -51,10 +52,23 @@ function Screen() {
 
 export default function App() {
   const user = useApp((s) => s.user);
+  const auth = useApp((s) => s.auth);
+  const mcp = useApp((s) => s.mustChangePassword);
+  // The snapshot is the whole application's data: show that it is on its way
+  // rather than a screen full of the seed nobody asked for.
+  if (auth === "loading") {
+    return (
+      <div className="lgi" style={{ margin: "20vh auto" }}>
+        <h2>Loading…</h2>
+        <p className="sub">Fetching today's stock, requests and bills.</p>
+      </div>
+    );
+  }
   return (
     <Routes>
-      <Route path="/login" element={user ? <Navigate to={"/" + HOME[user.r]} replace /> : <Login />} />
-      <Route path="/:key" element={user ? <Shell><Screen /></Shell> : <Navigate to="/login" replace />} />
+      <Route path="/login" element={user ? <Navigate to={mcp ? "/change-password" : "/" + HOME[user.r]} replace /> : <Login />} />
+      <Route path="/change-password" element={user ? <ChangePassword /> : <Navigate to="/login" replace />} />
+      <Route path="/:key" element={user ? (mcp ? <Navigate to="/change-password" replace /> : <Shell><Screen /></Shell>) : <Navigate to="/login" replace />} />
       <Route path="*" element={<Navigate to={user ? "/" + HOME[user.r] : "/login"} replace />} />
     </Routes>
   );

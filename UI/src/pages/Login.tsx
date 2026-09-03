@@ -1,15 +1,23 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { USERS, homeLabel } from "../data/master";
 import { HOME } from "../nav";
 import { useApp } from "../store";
-import { Avatar } from "../ui/kit";
 
 export default function Login() {
-  const [pick, setPick] = useState<string | null>(null);
-  const signIn = useApp((s) => s.signIn);
+  const [emp, setEmp] = useState("");
+  const [pw, setPw] = useState("");
+  const login = useApp((s) => s.login);
+  const auth = useApp((s) => s.auth);
   const nav = useNavigate();
-  const chosen = USERS.find((u) => u.id === pick);
+  const busy = auth === "signing-in" || auth === "loading";
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!emp.trim() || !pw) return;
+    const ok = await login(emp.trim(), pw);
+    if (!ok) return;
+    const s = useApp.getState();
+    nav(s.mustChangePassword ? "/change-password" : "/" + HOME[s.user!.r]);
+  };
 
   return (
     <div id="login" style={{ display: "grid" }}>
@@ -25,32 +33,16 @@ export default function Login() {
           </div>
         </div>
       </div>
-      <div className="lgf"><div className="lgi">
+      <div className="lgf"><form className="lgi" onSubmit={submit}>
         <h2>Sign in</h2>
-        <p className="sub">Choose an account. Each role has its own workspace, screens and permissions.</p>
-        <div className="acl">
-          {USERS.map((u) => (
-            <button key={u.id} type="button" className="acc" aria-pressed={pick === u.id} onClick={() => setPick(u.id)}>
-              <Avatar name={u.n} color={u.col} />
-              <span className="at"><b>{u.n}</b><span>{u.rl}{homeLabel(u) ? ` · ${homeLabel(u)}` : ""}</span></span>
-              {pick === u.id && (
-                <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="var(--accent)" strokeWidth={2}>
-                  <path d="M3 8.5 6 11.5l7-7" />
-                </svg>
-              )}
-            </button>
-          ))}
-        </div>
-        <div className="fg"><label htmlFor="em">Email address</label>
-          <input className="inp mono" id="em" readOnly value={chosen?.e ?? ""} placeholder="name@royalcare.in" /></div>
+        <p className="sub">Use your employee id and the password you were given. Each role has its own workspace, screens and permissions.</p>
+        <div className="fg"><label htmlFor="emp">Employee id</label>
+          <input className="inp mono" id="emp" autoComplete="username" autoFocus value={emp} onChange={(e) => setEmp(e.target.value)} placeholder="RC-0000" /></div>
         <div className="fg"><label htmlFor="pw">Password</label>
-          <input className="inp mono" id="pw" type="password" readOnly value={chosen ? "••••••••••" : ""} /></div>
-        <button className="btn wide" disabled={!chosen} type="button"
-          onClick={() => { if (!chosen) return; signIn(chosen.id); nav("/" + HOME[chosen.r]); }}>
-          Sign in
-        </button>
-        <p className="lgn">Prototype build — pick an account and the credentials fill themselves. State lives in this browser tab for the session.</p>
-      </div></div>
+          <input className="inp mono" id="pw" type="password" autoComplete="current-password" value={pw} onChange={(e) => setPw(e.target.value)} /></div>
+        <button className="btn wide" disabled={busy || !emp.trim() || !pw} type="submit">{busy ? "Signing in…" : "Sign in"}</button>
+        <p className="lgn">Forgotten your password? Ask the store keeper to reset it — you will be asked to choose a new one when you next sign in.</p>
+      </form></div>
     </div>
   );
 }

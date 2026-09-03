@@ -35,6 +35,37 @@ export function bestBefore(made: Date, hours: number): string {
   return `${hhmm(due)} ${due.toLocaleDateString("en-IN", { day: "2-digit", month: "short" })}`;
 }
 
+const TZ = "Asia/Kolkata";
+/** An ISO instant from the API as the "HH:MM" the screens have always shown. */
+export const fromWireTime = (isoStr: string): string =>
+  /^\d{2}:\d{2}$/.test(isoStr)
+    ? isoStr
+    : new Date(isoStr).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: TZ });
+
+/** "2026-08-31" -> "31-Aug-2026"; anything else passes through. */
+export const fromWireDate = (d: string): string => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(d);
+  if (!m) return d;
+  const dt = new Date(`${d}T00:00:00+05:30`);
+  return `${m[3]}-${dt.toLocaleDateString("en-IN", { month: "short", timeZone: TZ })}-${m[1]}`;
+};
+
+/**
+ * The same three-way wording as `bestBefore`, for a best-before the server has
+ * already worked out: an absolute instant instead of a batch time plus hours.
+ */
+export const fromWireBestBefore = (isoStr: string): string => {
+  const due = new Date(isoStr);
+  const made = new Date();
+  const days = Math.round(
+    (new Date(due.getFullYear(), due.getMonth(), due.getDate()).getTime() -
+      new Date(made.getFullYear(), made.getMonth(), made.getDate()).getTime()) / 86400000,
+  );
+  if (days === 0) return hhmm(due);
+  if (days === 1) return `${hhmm(due)} tomorrow`;
+  return `${hhmm(due)} ${due.toLocaleDateString("en-IN", { day: "2-digit", month: "short" })}`;
+};
+
 /**
  * Quantities in different units cannot be added. Group by unit and show each,
  * so a request never reads "510 units" for 10 L of milk and 500 cups (M4).

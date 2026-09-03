@@ -95,7 +95,7 @@ export default function Settings() {
             </Field>
           </FormRow>
           <BtnRow>
-            <Btn onClick={() => { saveProfile(form); notify("Profile saved"); }}>Save changes</Btn>
+            <Btn onClick={() => void saveProfile(form)}>Save changes</Btn>
             <Btn variant="gh" onClick={() => setForm({ n: user.n, emp: user.emp, e: user.e, ph: user.ph })}>Discard</Btn>
           </BtnRow>
         </Card>

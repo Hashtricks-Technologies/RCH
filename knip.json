@@ -27,11 +27,5 @@
       ]
     }
   },
-  "ignoreWorkspaces": [
-    "UI"
-  ],
-  "ignoreDependencies": [
-    "@vitejs/plugin-react"
-  ],
   "ignoreExportsUsedInFile": true
 }

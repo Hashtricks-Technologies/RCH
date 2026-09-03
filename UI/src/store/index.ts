@@ -1,4 +1,8 @@
 import { create } from "zustand";
+import { routes } from "@rch/contract";
+import { ApiError, call } from "../api/client";
+import { onSessionLost, setAccessToken } from "../api/session";
+import { applySnapshot } from "../api/wire";
 import { IT, LOC, MENU, RCP, USERS } from "../data/master";
 import {
   DAY_LABELS, seedBatch, seedBills, seedGrn, seedPo, seedPord, seedPrq, seedReq, seedRsv, seedSales,
@@ -19,6 +23,9 @@ interface Seq { req: number; tkt: number; bill: number; prq: number; po: number;
 
 export interface AppState extends ProcurementSlice, OpsSlice {
   user: User | null;
+  /** Where the session is: no token, asking for one, fetching the snapshot, or usable. */
+  auth: "signed-out" | "signing-in" | "loading" | "ready";
+  mustChangePassword: boolean;
   stock: Record<LocKey, Record<string, number>>;
   rsv: Record<string, number>;
   ovr: Record<string, string>;
@@ -44,12 +51,17 @@ export interface AppState extends ProcurementSlice, OpsSlice {
   shopFilter: LocKey | null;
   theme: ThemePref;
 
+  login: (emp: string, password: string) => Promise<boolean>;
+  logout: () => Promise<void>;
+  loadSnapshot: () => Promise<void>;
+  changePassword: (current: string, next: string) => Promise<boolean>;
+  /** Local sign-in, kept for the tests and the Denied flow. */
   signIn: (id: string) => void;
   signOut: () => void;
   notify: (m: string) => void;
   openDrawer: (t: string, id: string) => void;
   closeDrawer: () => void;
-  saveProfile: (p: Partial<User>) => void;
+  saveProfile: (p: Partial<User>) => Promise<void>;
 
   addToCart: (loc: LocKey, it: string, d?: number) => void;
   clearCart: (loc: LocKey) => void;
@@ -91,6 +103,8 @@ const hist = (who: string, s: string) => ({ s, who, t: now() });
 
 export const useApp = create<AppState>((set, get) => ({
   user: null,
+  auth: "signed-out",
+  mustChangePassword: false,
   stock: clone(seedStock),
   rsv: seedRsv(),
   ovr: {},
@@ -116,6 +130,40 @@ export const useApp = create<AppState>((set, get) => ({
   shopFilter: null,
   theme: readStoredTheme(),
 
+  login: async (emp, password) => {
+    set({ auth: "signing-in" });
+    try {
+      const r = await call(routes.login, { body: { emp, password } });
+      setAccessToken(r.accessToken);
+      set({ user: r.user, mustChangePassword: r.mustChangePassword, auth: r.mustChangePassword ? "ready" : "loading" });
+      if (!r.mustChangePassword) await get().loadSnapshot();
+      return true;
+    } catch (e) {
+      set({ auth: "signed-out", user: null });
+      get().notify(e instanceof ApiError ? e.message : "Could not reach the server — check the connection and try again.");
+      return false;
+    }
+  },
+  loadSnapshot: async () => {
+    set({ auth: "loading" });
+    try { applySnapshot(await call(routes.snapshot)); set({ auth: "ready" }); }
+    catch (e) { set({ auth: "ready" }); get().notify(e instanceof ApiError ? e.message : "Could not load the latest data — showing what is in memory."); }
+  },
+  logout: async () => {
+    try { await call(routes.logout); } catch { /* the cookie is gone either way */ }
+    setAccessToken(null);
+    set({ user: null, auth: "signed-out", drawer: null, mustChangePassword: false });
+  },
+  changePassword: async (current, next) => {
+    try {
+      await call(routes.changePassword, { body: { current, next } });
+      set({ mustChangePassword: false, auth: "loading" });
+      await get().loadSnapshot();
+      get().notify("Password changed — you are signed in.");
+      return true;
+    } catch (e) { get().notify(e instanceof ApiError ? e.message : "Could not change the password."); return false; }
+  },
+
   signIn: (id) => set({ user: USERS.find((u) => u.id === id) ?? null, drawer: null }),
   signOut: () => set({ user: null, drawer: null }),
   notify: (m) => {
@@ -124,7 +172,13 @@ export const useApp = create<AppState>((set, get) => ({
   },
   openDrawer: (t, id) => set({ drawer: { t, id } }),
   closeDrawer: () => set({ drawer: null }),
-  saveProfile: (p) => set((s) => (s.user ? { user: { ...s.user, ...p } } : {})),
+  saveProfile: async (p) => {
+    try {
+      const r = await call(routes.patchMe, { body: { n: p.n, e: p.e, ph: p.ph } });
+      set({ user: r.user });
+      get().notify("Profile saved");
+    } catch (e) { get().notify(e instanceof ApiError ? e.message : "Could not save the profile."); }
+  },
 
   addToCart: (loc, it, d = 1) =>
     set((s) => {
@@ -479,3 +533,10 @@ export const useApp = create<AppState>((set, get) => ({
   ...createProcurementSlice(set as (p: Partial<AppState>) => void, get),
   ...createOpsSlice(set as (p: Partial<AppState>) => void, get),
 }));
+
+// A refresh that fails is the end of the session: drop the user rather than
+// leave the screens showing data nobody is signed in to see.
+onSessionLost(() => {
+  useApp.setState({ user: null, auth: "signed-out" });
+  useApp.getState().notify("Your session ended — sign in again.");
+});

@@ -131,10 +131,12 @@ describe("drawers render", () => {
 });
 
 describe("sign-in", () => {
-  it("lists all five accounts", () => {
-    act(() => { useApp.setState({ user: null }); });
+  it("asks for an employee id and a password", () => {
+    act(() => { useApp.setState({ user: null, auth: "signed-out" }); });
     const html = render(createElement(Login));
-    for (const u of USERS) expect(html).toContain(u.n);
+    expect(html).toContain("Employee id");
+    expect(html).toContain("Password");
+    for (const u of USERS) expect(html).not.toContain(u.n);
   });
 });
 
