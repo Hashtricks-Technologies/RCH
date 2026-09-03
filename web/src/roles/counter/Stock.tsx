@@ -5,7 +5,7 @@ import { useApp } from "../../store";
 import { avail, daysCover, menuOf, parOf, qty, resv, stateLabel, stateTone } from "../../lib/selectors";
 import { fq, money0, U } from "../../lib/fmt";
 import {
-  Btn, Card, FilterBtn, ImagePlaceholder, PageHead, Pill, TileMenu, Toolbar,
+  Btn, Card, FilterBtn, FilterSelect, ImagePlaceholder, PageHead, Pill, TileMenu, Toolbar,
 } from "../../ui/kit";
 import { TypeTag } from "./Pos";
 import "./ConfigureDrawer";
@@ -63,11 +63,6 @@ export default function Stock() {
 
   const filtered = Boolean(q || view !== "All" || group);
   const clearAll = () => { setQ(""); setView("All"); setGroup(null); };
-  const cycleView = () => setView(VIEWS[(VIEWS.indexOf(view) + 1) % VIEWS.length]);
-  const cycleGroup = () => {
-    const i = group == null ? -1 : groups.indexOf(group);
-    setGroup(i + 1 >= groups.length ? null : groups[i + 1]);
-  };
 
   const value = all.reduce((t, r) => t + r.on * IT[r.it].cost, 0);
   const lowCount = all.filter((r) => r.low).length;
@@ -92,9 +87,10 @@ export default function Stock() {
           value={q}
           onSearch={setQ}
           filters={<>
-            <FilterBtn label="Show" value={view} active={view !== "All"} onClick={cycleView} />
+            <FilterSelect label="Show" value={view} options={VIEWS} onChange={(v) => setView(v as View)} />
             {groups.length > 1 && (
-              <FilterBtn label="Group" value={group ?? "All"} active={Boolean(group)} onClick={cycleGroup} />
+              <FilterSelect label="Group" value={group ?? "All"} options={["All", ...groups]}
+                onChange={(v) => setGroup(v === "All" ? null : v)} />
             )}
             {filtered && <FilterBtn label="Clear filters" onClick={clearAll} />}
           </>}

@@ -4,7 +4,7 @@ import { NAV } from "../nav";
 import { useApp } from "../store";
 import type { TicketPriority, TicketStatus, TicketTopic } from "../types";
 import {
-  Alert, Avatar, Btn, BtnRow, Card, DataTable, Field, FilterBtn, FormRow,
+  Alert, Avatar, Btn, BtnRow, Card, DataTable, Field, FilterBtn, FilterSelect, FormRow,
   Grid, Kpis, PageHead, Pill, Section, TableFoot, Toolbar,
 } from "../ui/kit";
 import { DrawerFrame } from "../ui/Drawer";
@@ -150,8 +150,8 @@ export default function Support() {
               value={q} onSearch={setQ}
               filters={
                 <>
-                  <FilterBtn label="Status" value={status}
-                    onClick={() => setStatus(FILTERS[(FILTERS.indexOf(status) + 1) % FILTERS.length])} />
+                  <FilterSelect label="Status" value={status} options={FILTERS}
+                    onChange={(v) => setStatus(v as TicketStatus | "All")} />
                   <FilterBtn label="Only mine" active={mineOnly} onClick={() => setMineOnly(!mineOnly)} />
                 </>
               }

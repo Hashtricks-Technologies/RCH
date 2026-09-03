@@ -3,20 +3,14 @@ import { useNavigate } from "react-router-dom";
 import { LOC } from "../../data/master";
 import { useApp } from "../../store";
 import { money, money0, sum } from "../../lib/fmt";
-import { Avatar, Btn, Card, DataTable, FilterBtn, PageHead, Pill, TableFoot, Toolbar } from "../../ui/kit";
+import { Avatar, Btn, Card, DataTable, FilterBtn, FilterSelect, PageHead, Pill, TableFoot, Toolbar } from "../../ui/kit";
 import { billStatus, settlementOf, type Settlement } from "./status";
 
-/** Cycles are the only affordance the kit gives a filter button, so every filter here
- *  walks a fixed list and comes back to "All" — no state a click cannot undo. */
 const SETTLEMENTS: { k: Settlement; label: string }[] = [
   { k: "drawer", label: "Cash in drawer" },
   { k: "bank", label: "Card & UPI" },
   { k: "account", label: "Charged" },
 ];
-const next = <T,>(list: T[], cur: T | null): T | null => {
-  const i = cur == null ? -1 : list.indexOf(cur);
-  return i + 1 >= list.length ? null : list[i + 1];
-};
 
 export default function Bills() {
   const s = useApp();
@@ -65,11 +59,13 @@ export default function Bills() {
           onSearch={setQ}
           filters={<>
             {tenders.length > 1 && (
-              <FilterBtn label="Tender" value={tender ?? "All"} active={Boolean(tender)}
-                onClick={() => setTender(next(tenders, tender))} />
+              <FilterSelect label="Tender" value={tender ?? "All"}
+                options={["All", ...tenders]}
+                onChange={(v) => setTender(v === "All" ? null : v)} />
             )}
-            <FilterBtn label="Settles to" value={settleLabel} active={Boolean(settle)}
-              onClick={() => setSettle(next(SETTLEMENTS.map((x) => x.k), settle))} />
+            <FilterSelect label="Settles to" value={settleLabel}
+              options={["All", ...SETTLEMENTS.map((x) => x.label)]}
+              onChange={(v) => setSettle(v === "All" ? null : SETTLEMENTS.find((x) => x.label === v)!.k)} />
             {filtered && <FilterBtn label="Clear filters" onClick={clearAll} />}
           </>}
           right={<span className="mini">Billed {money0(billed)} · cash in drawer {money0(cash)}</span>}

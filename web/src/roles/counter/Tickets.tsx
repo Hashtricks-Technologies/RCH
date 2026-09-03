@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
 import { fq, sum } from "../../lib/fmt";
-import { Alert, Btn, Card, DataTable, FilterBtn, PageHead, StatusPill, TableFoot, Toolbar } from "../../ui/kit";
+import { Alert, Btn, Card, DataTable, FilterBtn, FilterSelect, PageHead, StatusPill, TableFoot, Toolbar } from "../../ui/kit";
 import type { LocKey, TktStatus } from "../../types";
 
 const STATUSES: TktStatus[] = ["Issued", "Collected", "Received"];
@@ -38,14 +38,6 @@ export default function Tickets() {
 
   const filtered = Boolean(q || st || from);
   const clearAll = () => { setQ(""); setSt(null); setFrom(null); };
-  const cycleSt = () => {
-    const i = st == null ? -1 : STATUSES.indexOf(st);
-    setSt(i + 1 >= STATUSES.length ? null : STATUSES[i + 1]);
-  };
-  const cycleFrom = () => {
-    const i = from == null ? -1 : sources.indexOf(from);
-    setFrom(i + 1 >= sources.length ? null : sources[i + 1]);
-  };
 
   return (
     <>
@@ -75,9 +67,12 @@ export default function Tickets() {
           value={q}
           onSearch={setQ}
           filters={<>
-            <FilterBtn label="Status" value={st ?? "All"} active={Boolean(st)} onClick={cycleSt} />
+            <FilterSelect label="Status" value={st ?? "All"} options={["All", ...STATUSES]}
+              onChange={(v) => setSt(v === "All" ? null : (v as TktStatus))} />
             {sources.length > 1 && (
-              <FilterBtn label="From" value={from ? LOC[from].n : "All"} active={Boolean(from)} onClick={cycleFrom} />
+              <FilterSelect label="From" value={from ? LOC[from].n : "All"}
+                options={["All", ...sources.map((l) => LOC[l].n)]}
+                onChange={(v) => setFrom(v === "All" ? null : sources.find((l) => LOC[l].n === v)!)} />
             )}
             {filtered && <FilterBtn label="Clear filters" onClick={clearAll} />}
           </>}
