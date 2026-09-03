@@ -40,21 +40,54 @@ jobs:
     name: Container images
     runs-on: ubuntu-latest
     needs: check
+    # Build + scan normally finish well inside this, but the kind install at the end of
+    # this job (a real `helm install`/`helm upgrade` — see the last few steps) budgets 15m
+    # of its own on top of that.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v3
       - name: Build api
         uses: docker/build-push-action@v6
-        with: { context: ., file: apps/api/Dockerfile, push: false, load: true, tags: rch-api:ci, cache-from: type=gha, cache-to: type=gha,mode=max }
+        # load: true (both here and for ui below) puts the image into the local Docker
+        # daemon so Trivy and `kind load docker-image` can see it — that requires a single
+        # platform, hence pinning it rather than leaving it to buildx's default.
+        with: { context: ., file: apps/api/Dockerfile, push: false, load: true, platforms: linux/amd64, tags: rch-api:ci, cache-from: type=gha, cache-to: type=gha,mode=max }
       - name: Build ui
         uses: docker/build-push-action@v6
-        with: { context: ., file: UI/Dockerfile, push: false, load: true, tags: rch-ui:ci, cache-from: type=gha, cache-to: type=gha,mode=max }
+        with: { context: ., file: UI/Dockerfile, push: false, load: true, platforms: linux/amd64, tags: rch-ui:ci, cache-from: type=gha, cache-to: type=gha,mode=max }
       - name: Scan api
         uses: aquasecurity/trivy-action@0.28.0
         with: { image-ref: rch-api:ci, severity: CRITICAL, exit-code: "1", ignore-unfixed: true }
       - name: Scan ui
         uses: aquasecurity/trivy-action@0.28.0
         with: { image-ref: rch-ui:ci, severity: CRITICAL, exit-code: "1", ignore-unfixed: true }
+      # From here on: a real `helm install` against a throwaway kind cluster (spec §16,
+      # §14 Phase 1 exit amendment). Lives at the end of this job, not a separate one that
+      # `needs: images`, because the images above are only in this runner's local Docker
+      # daemon (load: true) — a second job would have to rebuild or re-push/pull them.
+      - uses: azure/setup-helm@v4
+      - name: Create kind cluster
+        uses: helm/kind-action@v1
+        with: { cluster_name: rch }
+      - name: Load images into kind
+        run: kind load docker-image rch-api:ci rch-ui:ci --name rch
+      - name: Generate a throwaway JWT signing key
+        # openssl, not `pnpm --filter @rch/api keys:generate` — this job has no pnpm/Node
+        # setup and doesn't otherwise need one; openssl keeps it that way. Masked because
+        # it's still a private key, even though the cluster it signs tokens in is deleted
+        # at the end of this job.
+        run: |
+          openssl genpkey -algorithm ed25519 -out /tmp/jwt-priv.pem
+          openssl pkey -in /tmp/jwt-priv.pem -pubout -out /tmp/jwt-pub.pem
+          PRIV_B64=$(base64 -w0 /tmp/jwt-priv.pem)
+          PUB_B64=$(base64 -w0 /tmp/jwt-pub.pem)
+          rm -f /tmp/jwt-priv.pem /tmp/jwt-pub.pem
+          echo "::add-mask::$PRIV_B64"
+          echo "::add-mask::$PUB_B64"
+          { echo "JWT_PRIVATE_KEY=$PRIV_B64"; echo "JWT_PUBLIC_KEY=$PUB_B64"; } >> "$GITHUB_ENV"
+      - name: helm install into kind
+        run: deploy/chart/rch/ci/install-test.sh
   chart:
     name: Helm chart
     runs-on: ubuntu-latest

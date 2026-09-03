@@ -1,0 +1,40 @@
+# CI-only throwaway Postgres for `helm install`/`helm upgrade` inside a kind cluster
+# (deploy/chart/rch/ci/install-test.sh). Not part of the chart itself, not applied by
+# any real environment — emptyDir storage, single replica, plaintext creds scoped to
+# a cluster that is torn down at the end of the job.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  labels: { app: postgres }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: postgres } }
+  template:
+    metadata: { labels: { app: postgres } }
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:17
+          env:
+            - { name: POSTGRES_USER, value: rch }
+            - { name: POSTGRES_PASSWORD, value: rch }
+            - { name: POSTGRES_DB, value: rch }
+            - { name: PGDATA, value: /var/lib/postgresql/data/pgdata }
+          ports: [{ name: postgres, containerPort: 5432 }]
+          # Readiness must actually check the server is accepting connections — the
+          # default (no probe) marks the container Ready as soon as the process starts,
+          # which races `initdb`. `kubectl rollout status deploy/postgres` (the next step
+          # in install-test.sh) would otherwise return before Postgres can serve the
+          # migrate initContainer's first connection.
+          readinessProbe: { exec: { command: [pg_isready, -U, rch] }, periodSeconds: 3, failureThreshold: 30 }
+          livenessProbe: { exec: { command: [pg_isready, -U, rch] }, periodSeconds: 10, failureThreshold: 6 }
+          volumeMounts:
+            - { name: data, mountPath: /var/lib/postgresql/data }
+      volumes:
+        - { name: data, emptyDir: {} }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: postgres }
+spec: { selector: { app: postgres }, ports: [{ name: postgres, port: 5432, targetPort: postgres }] }
