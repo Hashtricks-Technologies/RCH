@@ -1,8 +1,10 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
+import { and, eq } from "drizzle-orm";
 import { buildTestApp } from "../../test/app.js";
 import { seedTestDb } from "../../test/seed.js";
 import { authHeaders } from "../../test/auth.js";
+import { availabilityOverrides } from "../../db/schema/index.js";
 import type { App } from "../../app.js";
 
 let app: App;
@@ -48,6 +50,18 @@ describe("POST /availability/toggle", () => {
     });
   });
 
+  it("refuses a manager toggling a location that is not an outlet", async () => {
+    const r = await toggle(await hdr("u2"), { loc: "store", it: "chips" });
+    expect(r.statusCode).toBe(422);
+    expect(r.json().error.message).toBe("Central Store is not an outlet");
+  });
+
+  it("refuses an unknown item key with a 404 instead of crashing", async () => {
+    const r = await toggle(await hdr("u1"), { loc: "coffee", it: "totally-fake" });
+    expect(r.statusCode).toBe(404);
+    expect(r.json().error.message).toBe("There is no item totally-fake.");
+  });
+
   it("hides the route entirely from a role that is not counter or manager", async () => {
     const r = await toggle(await hdr("u3"), { loc: "store", it: "chips" });
     expect(r.statusCode).toBe(404);
@@ -66,5 +80,21 @@ describe("POST /availability/toggle", () => {
     const stock = await app.inject({ method: "GET", url: "/api/v1/stock", headers: await authHeaders(app, "u1") });
     expect(stock.statusCode).toBe(200);
     expect(stock.json().ovr["coffee:water"]).toBe("switched off manually");
+  });
+
+  it("two concurrent first-toggles for the same (loc, item) both succeed, deterministically", async () => {
+    const [headersA, headersB] = await Promise.all([hdr("u1"), hdr("u1")]);
+    const [a, b] = await Promise.all([
+      toggle(headersA, { loc: "coffee", it: "bisc" }),
+      toggle(headersB, { loc: "coffee", it: "bisc" }),
+    ]);
+    expect(a.statusCode).toBe(200);
+    expect(b.statusCode).toBe(200);
+    expect(a.json().result.off).toBe(true);
+    expect(b.json().result.off).toBe(true);
+
+    const rows = await app.testDb!.db.select().from(availabilityOverrides)
+      .where(and(eq(availabilityOverrides.loc, "coffee"), eq(availabilityOverrides.itemKey, "bisc")));
+    expect(rows).toHaveLength(1);
   });
 });

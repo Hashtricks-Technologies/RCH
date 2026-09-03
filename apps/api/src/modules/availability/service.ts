@@ -4,6 +4,7 @@ import type { z } from "zod";
 import type { ToggleAvailBodySchema, ToggleResultSchema, WriteResponse } from "@rch/contract";
 import type { Db } from "../../db/client.js";
 import { withTransaction } from "../../lib/db.js";
+import { NotFoundError } from "../../lib/errors.js";
 import { loadMaster } from "../../lib/master.js";
 import { assertRule } from "../../lib/rules.js";
 import type { AccessClaims } from "../../plugins/auth.js";
@@ -28,10 +29,19 @@ export function createAvailabilityService(db: Db) {
         const master = await loadMaster(tx);
         const loc = master.locations[body.loc];
         const item = master.items[body.it];
+        // Before the outlet check and before isListed, so an unknown key or a since-
+        // deactivated item (dropped from loadMaster's active-only items) 404s cleanly
+        // instead of crashing on `item.n` below.
+        if (!item) throw new NotFoundError(`There is no item ${body.it}.`);
         if (claims.role === "manager") assertRule(loc.type === "Outlet", `${loc.n} is not an outlet`);
         const listed = await availabilityRepo.isListed(tx, body.loc, body.it);
         assertRule(listed, `${item.n} is not listed at ${loc.n}`);
 
+        // Two concurrent "no override yet" toggles can both read `find` as empty before
+        // either commits; the insert/delete below is made deterministic at the database
+        // level (onConflictDoNothing / a plain delete, both with `.returning()`) so the
+        // loser of that race gets a normal idempotent result instead of a raw PK-violation
+        // 500 — the caller's intent (switch off / switch on) is satisfied either way.
         const existing = await availabilityRepo.find(tx, body.loc, body.it);
         if (existing) {
           await availabilityRepo.remove(tx, body.loc, body.it);
