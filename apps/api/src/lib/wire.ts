@@ -1,5 +1,6 @@
-import type { Item, Location, User, UserMin } from "@rch/contract";
-import type { items, locations, users } from "../db/schema/index.js";
+import type { Bill, Item, Location, User, UserMin } from "@rch/contract";
+import type { billLines, bills, items, locations, users } from "../db/schema/index.js";
+import { iso } from "./time.js";
 
 /** Row -> wire mappers that more than one module needs (modules never import each other). */
 
@@ -25,4 +26,16 @@ export const toWireItem = (r: ItemRow): Item => strip({
 export type LocationRow = typeof locations.$inferSelect;
 export const toWireLocation = (r: LocationRow): Location => strip({
   n: r.name, c: r.code, type: r.type, floor: r.floor, cc: r.costCentre, list: r.priceList ?? undefined,
+});
+
+export type BillRow = typeof bills.$inferSelect;
+export type BillLineRow = typeof billLines.$inferSelect;
+/** The operator travels as a name and a colour, never an id: a bill is read on a screen, and
+ *  the till that wrote it only ever shows as the badge beside the number. Lines arrive already
+ *  in `line_no` order — the caller owns the query. */
+export const toWireBill = (b: BillRow, lines: BillLineRow[], operator: { name: string; colour: string }): Bill => strip({
+  no: b.no, loc: b.loc as Bill["loc"], opr: operator.name, oprCol: operator.colour,
+  tot: b.total, tax: b.tax, t: iso(b.at), pay: b.tender,
+  lines: lines.map((l) => ({ it: l.itemKey, qty: l.qty, rate: l.rate })),
+  payer: b.payerKind ? { kind: b.payerKind, id: b.payerId ?? "", name: b.payerName ?? "" } : undefined,
 });
