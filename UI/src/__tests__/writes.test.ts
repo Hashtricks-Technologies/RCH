@@ -1,8 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { act, createElement } from "react";
+import { createRoot } from "react-dom/client";
+import { MemoryRouter } from "react-router-dom";
 import * as FX from "@rch/contract/fixtures";
 import { refetch } from "../api/refetch";
 import { setAccessToken } from "../api/session";
 import { qty } from "../lib/selectors";
+import Pos from "../roles/counter/Pos";
 import { resetStore, S, as } from "./fixture";
 
 /**
@@ -127,6 +131,81 @@ describe("pay — POST /bills", () => {
     as("counter");
     await S().pay("coffee", "Cash");
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps the bill's own sentence when only the read-back fails", async () => {
+    as("counter");
+    S().addToCart("coffee", "juice", 1);
+    serve({
+      "POST /api/v1/bills": () => json({ result: BILL, changed: ["stock", "bills"], message: "Bill CF/1188 · ₹20.00 collected at Floor 3 Coffee Bar" }),
+      "GET /api/v1/stock": () => json({ error: { code: "internal", message: "boom" } }, 500),
+      "GET /api/v1/bills": () => json([BILL]),
+    });
+
+    await S().pay("coffee", "Cash");
+
+    // The bill was taken. Telling the operator it failed would send them round to take it twice.
+    expect(S().toast).toBe("Bill CF/1188 · ₹20.00 collected at Floor 3 Coffee Bar — the screen could not be refreshed; reload to see the latest.");
+    expect(S().cart.coffee).toEqual({});
+  });
+});
+
+describe("the till takes one bill per tap", () => {
+  /** Render the POS the way the app runs it, and hand back the host to query. */
+  function mount() {
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    act(() => { root.render(createElement(MemoryRouter, null, createElement(Pos))); });
+    return {
+      host,
+      button: (starts: string) =>
+        [...host.querySelectorAll("button")].find((b) => (b.textContent ?? "").startsWith(starts)),
+      unmount: () => { act(() => { root.unmount(); }); host.remove(); },
+    };
+  }
+
+  it("refuses a second tap while the first bill is still in flight", async () => {
+    as("counter");
+    S().addToCart("coffee", "juice", 1);
+    // Hold POST /bills open so both taps land inside one round trip.
+    let release!: () => void;
+    const inFlight = new Promise<void>((r) => { release = r; });
+    fetchMock.mockImplementation(async (u: string, init: RequestInit) => {
+      const at = `${init.method} ${String(u).split("?")[0]}`;
+      if (at === "POST /api/v1/bills") {
+        await inFlight;
+        return json({ result: BILL, changed: ["stock", "bills"], message: "Bill CF/1188 · ₹20.00 collected at Floor 3 Coffee Bar" });
+      }
+      return at === "GET /api/v1/bills" ? json([BILL]) : json(STOCK);
+    });
+
+    const ui = mount();
+    expect(ui.button("Pay & print")).toBeDefined();
+
+    act(() => { ui.button("Pay & print")!.click(); });
+
+    // The button has swapped to its in-flight label and is disabled, so the second tap
+    // lands on nothing. (A human's second tap comes after a paint, which is this flush.)
+    const busy = ui.button("Taking the bill");
+    expect(busy).toBeDefined();
+    expect(busy!.disabled).toBe(true);
+    act(() => { busy!.click(); });
+
+    release();
+    await act(async () => { await inFlight; });
+
+    expect(hit("POST /api/v1/bills")).toHaveLength(1);
+    ui.unmount();
+  });
+
+  it("shows no guessed bill number before the server has issued one", () => {
+    as("counter");
+    const ui = mount();
+    // The number is the server's; nothing local may put one on the card.
+    expect(ui.host.textContent).toContain("New bill");
+    expect(ui.host.textContent).not.toMatch(/CF\//);
+    ui.unmount();
   });
 });
 
@@ -266,5 +345,11 @@ describe("refetch — what a write says it changed is what gets read", () => {
     serve({ "GET /api/v1/stock": () => json({ error: { code: "internal", message: "boom" } }, 500) });
     await refetch(["stock"]);
     expect(S().toast).toBe("Saved — but the screen could not be refreshed. Reload to see the latest.");
+  });
+
+  it("keeps the caller's own sentence in front when it is given one", async () => {
+    serve({ "GET /api/v1/stock": () => json({ error: { code: "internal", message: "boom" } }, 500) });
+    await refetch(["stock"], "Veg puffs switched off at Central Kitchen");
+    expect(S().toast).toBe("Veg puffs switched off at Central Kitchen — the screen could not be refreshed; reload to see the latest.");
   });
 });

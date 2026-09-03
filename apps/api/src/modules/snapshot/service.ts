@@ -1,4 +1,5 @@
 import type { z } from "zod";
+import { BILL_DAYS } from "@rch/contract";
 import type { Bill, SnapshotSchema, StockResponseSchema } from "@rch/contract";
 import type { Db } from "../../db/client.js";
 import { NotFoundError } from "../../lib/errors.js";
@@ -12,7 +13,6 @@ import * as D from "./readers/documents.js";
 
 export type Snapshot = z.infer<typeof SnapshotSchema>;
 export type StockResponse = z.infer<typeof StockResponseSchema>;
-const BILL_DAYS = 7;
 const SALES_DAYS = 14;
 
 export function createSnapshotService(db: Db) {

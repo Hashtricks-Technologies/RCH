@@ -21,7 +21,7 @@ import { applyTheme, nextTheme, readStoredTheme, storeTheme, type ThemePref } fr
 import { createProcurementSlice, type ProcurementSlice } from "./procurement";
 import { createOpsSlice, type OpsSlice } from "./ops";
 
-interface Seq { req: number; tkt: number; bill: number; prq: number; po: number; pord: number; bat: number; vn: number }
+interface Seq { req: number; tkt: number; prq: number; po: number; pord: number; bat: number; vn: number }
 
 export interface AppState extends ProcurementSlice, OpsSlice {
   user: User | null;
@@ -125,7 +125,7 @@ export const useApp = create<AppState>((set, get) => ({
   vendors: clone(seedVendors),
   sales: clone(seedSales),
   dayLabels: DAY_LABELS,
-  seq: { req: 912, tkt: 440, bill: 1187, prq: 15, po: 142, pord: 30, bat: 1, vn: 5 },
+  seq: { req: 912, tkt: 440, prq: 15, po: 142, pord: 30, bat: 1, vn: 5 },
   cart: {},
   draft: [],
   prqDraft: [],
@@ -235,7 +235,7 @@ export const useApp = create<AppState>((set, get) => ({
       const r = await call(routes.pay, { body: { loc, tender, payer, lines } });
       set((x) => ({ cart: { ...x.cart, [loc]: {} } }));
       get().notify(r.message);
-      await refetch(r.changed);
+      await refetch(r.changed, r.message);
     } catch (e) {
       get().notify(e instanceof ApiError ? e.message : "Could not take the bill — check the connection and try again.");
     }
@@ -245,7 +245,7 @@ export const useApp = create<AppState>((set, get) => ({
     try {
       const r = await call(routes.toggleAvail, { body: { loc, it } });
       get().notify(r.message);
-      await refetch(r.changed);
+      await refetch(r.changed, r.message);
     } catch (e) {
       get().notify(e instanceof ApiError ? e.message : "Could not change what is on sale — check the connection and try again.");
     }
@@ -521,7 +521,7 @@ export const useApp = create<AppState>((set, get) => ({
     try {
       const r = await call(routes.savePrice, { params: { list, it }, body: { price } });
       get().notify(r.message);
-      await refetch(r.changed);
+      await refetch(r.changed, r.message);
     } catch (e) {
       get().notify(e instanceof ApiError ? e.message : "Could not save the price — check the connection and try again.");
     }
@@ -530,7 +530,7 @@ export const useApp = create<AppState>((set, get) => ({
     try {
       const r = await call(routes.removeMenuItem, { params: { loc, it } });
       get().notify(r.message);
-      await refetch(r.changed);
+      await refetch(r.changed, r.message);
     } catch (e) {
       get().notify(e instanceof ApiError ? e.message : "Could not take the product off the menu — check the connection and try again.");
     }
@@ -539,7 +539,7 @@ export const useApp = create<AppState>((set, get) => ({
     try {
       const r = await call(routes.addMenuItem, { params: { loc }, body: { it } });
       get().notify(r.message);
-      await refetch(r.changed);
+      await refetch(r.changed, r.message);
     } catch (e) {
       get().notify(e instanceof ApiError ? e.message : "Could not add the product to the menu — check the connection and try again.");
     }

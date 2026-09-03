@@ -13,8 +13,11 @@ const STOCK: readonly Changed[] = ["stock", "rsv", "ovr"];
  * at most once however many times the write named them. Anything else — prices, menus, the
  * document slices — has no narrow reader yet, so it costs one snapshot; phase 3 replaces
  * that with SSE and finer GETs.
+ *
+ * `after` is the sentence the write already succeeded with. When the read-back fails it is
+ * kept and qualified rather than replaced, so the operator still learns their bill was taken.
  */
-export async function refetch(changed: readonly Changed[]): Promise<void> {
+export async function refetch(changed: readonly Changed[], after?: string): Promise<void> {
   const want = new Set<Changed>(changed);
   try {
     if ([...want].some((c) => c !== "bills" && !STOCK.includes(c))) {
@@ -27,8 +30,10 @@ export async function refetch(changed: readonly Changed[]): Promise<void> {
     ]);
   } catch {
     // The write itself landed; only the read-back did not. Saying "could not take the bill"
-    // here would send the operator round to do it a second time, so this names what actually
-    // failed. (`loadSnapshot` reports its own failures and never throws.)
-    useApp.getState().notify("Saved — but the screen could not be refreshed. Reload to see the latest.");
+    // here would send the operator round to do it a second time, so this keeps what did
+    // happen in front of them. (`loadSnapshot` reports its own failures and never throws.)
+    useApp.getState().notify(after
+      ? `${after} — the screen could not be refreshed; reload to see the latest.`
+      : "Saved — but the screen could not be refreshed. Reload to see the latest.");
   }
 }

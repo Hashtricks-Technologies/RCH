@@ -19,23 +19,29 @@ const REASON = "switched off manually";
 export function createAvailabilityService(db: Db) {
   return {
     /**
-     * Toggle whether `body.it` may be sold at `body.loc` right now. Location scoping for a
-     * counter is enforced by the caller (it needs the request); a manager may reach any
-     * Outlet-type location, never a Store or Kitchen. An existing override is removed
-     * (switched back on); otherwise one is recorded (switched off).
+     * Toggle whether `body.it` may be sold at `body.loc` — or, for the kitchen, made there —
+     * right now. Location scoping for a counter and for the kitchen is enforced by the caller
+     * (it needs the request); a manager may reach any Outlet-type location, never a Store or
+     * Kitchen. An existing override is removed (switched back on); otherwise one is recorded
+     * (switched off).
      */
     async toggle(claims: AccessClaims, body: ToggleAvailBody): Promise<WriteResponse<ToggleResult>> {
       return withTransaction(db, async (tx) => {
         const master = await loadMaster(tx);
         const loc = master.locations[body.loc];
         const item = master.items[body.it];
-        // Before the outlet check and before isListed, so an unknown key or a since-
-        // deactivated item (dropped from loadMaster's active-only items) 404s cleanly
+        // Before the location-type check and before the listing check, so an unknown key or a
+        // since-deactivated item (dropped from loadMaster's active-only items) 404s cleanly
         // instead of crashing on `item.n` below.
         if (!item) throw new NotFoundError(`There is no item ${body.it}.`);
         if (claims.role === "manager") assertRule(loc.type === "Outlet", `${loc.n} is not an outlet`);
-        const listed = await availabilityRepo.isListed(tx, body.loc, body.it);
-        assertRule(listed, `${item.n} is not listed at ${loc.n}`);
+        if (claims.role === "prod") assertRule(loc.type === "Kitchen", `${loc.n} is not a kitchen`);
+        // A kitchen has no menu — what it can switch off is what it can make, so "listed"
+        // there means the item has a recipe. Everywhere else it is the location's menu.
+        const listed = loc.type === "Kitchen"
+          ? Boolean(master.recipes[body.it])
+          : await availabilityRepo.isListed(tx, body.loc, body.it);
+        assertRule(listed, loc.type === "Kitchen" ? `${item.n} is not made at ${loc.n}` : `${item.n} is not listed at ${loc.n}`);
 
         // Two concurrent "no override yet" toggles can both read `find` as empty before
         // either commits; the insert/delete below is made deterministic at the database
