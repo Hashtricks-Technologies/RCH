@@ -1,4 +1,4 @@
-import { round3 } from "./round";
+import { round3 } from "./round.js";
 
 /** A receipt fills its source lines in order — deterministic and explainable
  *  when one purchase-order line funds several requisitions. */
