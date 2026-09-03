@@ -1,8 +1,14 @@
-// Availability: what a counter may sell right now, and the manual override. Wave 3 fills this in.
-//
-// The folder exists now, registered and inert, so the next wave's modules can be built in
-// parallel without three agents editing modules/index.ts at once. Registering no route is
-// deliberate: nothing in packages/contract's manifest points here yet.
+// Availability: what a counter may sell right now, and the manual override.
 import fp from "fastify-plugin";
+import { routes } from "@rch/contract";
+import { mount } from "../../routes.js";
+import { requireLoc } from "../../plugins/rbac.js";
+import { createAvailabilityService } from "./service.js";
 
-export default fp(async () => {}, { name: "module:availability" });
+export default fp(async (app) => {
+  const svc = createAvailabilityService(app.db);
+  mount(app, routes.toggleAvail, async (req) => {
+    if (req.user.role === "counter") requireLoc(req, req.body.loc, "your own counter");
+    return svc.toggle(req.user, req.body);
+  });
+}, { name: "module:availability", dependencies: ["auth", "rbac", "idempotency", "db"] });
