@@ -1,0 +1,270 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import * as FX from "@rch/contract/fixtures";
+import { refetch } from "../api/refetch";
+import { setAccessToken } from "../api/session";
+import { qty } from "../lib/selectors";
+import { resetStore, S, as } from "./fixture";
+
+/**
+ * The five writes the counter and the outlet manager make, as seen from the wire: which
+ * route each store action calls, what it puts in the body, and which reads it pulls back
+ * afterwards. The rules those routes enforce belong to the server's own suites
+ * (pos.test.ts, availability.test.ts, catalog.test.ts) — nothing here re-asserts them.
+ */
+
+const json = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+const refusal = (message: string, status = 422) => json({ error: { code: "rule", message } }, status);
+
+const fetchMock = vi.fn();
+/** Stub by "METHOD /path" — POST /bills and GET /bills are two different endpoints. */
+type Stubs = Record<string, () => Response>;
+function serve(stubs: Stubs): void {
+  fetchMock.mockImplementation((u: string, init: RequestInit) => {
+    const make = stubs[`${init.method} ${String(u).split("?")[0]}`];
+    return make
+      ? Promise.resolve(make())
+      : Promise.resolve(json({ error: { code: "internal", message: `no stub for ${init.method} ${u}` } }, 500));
+  });
+}
+const calls = () =>
+  fetchMock.mock.calls.map((c) => {
+    const [u, init] = c as [string, RequestInit];
+    return {
+      at: `${init.method} ${String(u).split("?")[0]}`,
+      body: init.body === undefined ? undefined : (JSON.parse(String(init.body)) as unknown),
+    };
+  });
+const hit = (at: string) => calls().filter((c) => c.at === at);
+
+const STOCK = { stock: { coffee: { juice: 4, milk: 5 } }, rsv: { "coffee:milk": 1 }, ovr: { "coffee:juice": "switched off manually" } };
+const BILL = {
+  no: "CF/1188", loc: "coffee", opr: "Kavitha Raman", oprCol: "#0EA5E9", tot: 40, tax: 1.9,
+  t: "2026-09-04T04:30:00.000Z", pay: "Cash", lines: [{ it: "juice", qty: 2, rate: 20 }],
+};
+/** A whole snapshot, built from the same fixtures the registries already hold, so the
+ *  `hydrateMaster` inside `applySnapshot` restores exactly what was there. */
+const snapshot = (prices: { A: Record<string, number>; B: Record<string, number> } = FX.PL) => ({
+  user: FX.USERS.find((u) => u.r === "manager"), items: FX.IT, locations: FX.LOC, recipes: FX.RCP,
+  users: FX.USERS, stock: {}, rsv: {}, ovr: {}, prices, menu: FX.MENU,
+  req: [], tkt: [], prq: [], po: [], pord: [], batch: [], bills: [], grn: [], vendors: [],
+  contracts: [], tickets: [], productReqs: [], shopAsks: [], sales: [], dayLabels: [],
+});
+
+beforeEach(() => {
+  resetStore();
+  vi.stubGlobal("fetch", fetchMock);
+  fetchMock.mockReset();
+  setAccessToken("tok");
+});
+afterEach(() => { vi.unstubAllGlobals(); setAccessToken(null); });
+
+describe("pay — POST /bills", () => {
+  it("sends the cart as lines, clears it, and reads stock and bills back", async () => {
+    as("counter");
+    S().addToCart("coffee", "juice", 2);
+    serve({
+      "POST /api/v1/bills": () => json({ result: BILL, changed: ["stock", "bills"], message: "Bill CF/1188 · ₹40.00 collected at Floor 3 Coffee Bar" }),
+      "GET /api/v1/stock": () => json(STOCK),
+      "GET /api/v1/bills": () => json([BILL]),
+    });
+
+    await S().pay("coffee", "Cash");
+
+    expect(hit("POST /api/v1/bills")[0].body).toEqual({ loc: "coffee", tender: "Cash", lines: [{ it: "juice", qty: 2 }] });
+    expect(S().cart.coffee).toEqual({});
+    expect(S().toast).toBe("Bill CF/1188 · ₹40.00 collected at Floor 3 Coffee Bar");
+    // Two narrow reads, not a snapshot.
+    expect(hit("GET /api/v1/stock")).toHaveLength(1);
+    expect(hit("GET /api/v1/bills")).toHaveLength(1);
+    expect(hit("GET /api/v1/snapshot")).toHaveLength(0);
+    expect(qty(S(), "coffee", "juice")).toBe(4);
+    expect(S().bills[0].no).toBe("CF/1188");
+    expect(S().bills[0].t).toMatch(/^\d{2}:\d{2}$/);   // ISO -> HH:MM on the way in
+  });
+
+  it("names the payer in the body", async () => {
+    as("counter");
+    S().addToCart("coffee", "juice", 1);
+    serve({
+      "POST /api/v1/bills": () => json({ result: BILL, changed: ["stock", "bills"], message: "Bill CF/1188 · ₹20.00 posted to Anand Kumar" }),
+      "GET /api/v1/stock": () => json(STOCK),
+      "GET /api/v1/bills": () => json([BILL]),
+    });
+
+    await S().pay("coffee", "Patient bill", { kind: "patient", id: "IP-4471", name: "Anand Kumar" });
+
+    expect(hit("POST /api/v1/bills")[0].body).toEqual({
+      loc: "coffee", tender: "Patient bill", payer: { kind: "patient", id: "IP-4471", name: "Anand Kumar" },
+      lines: [{ it: "juice", qty: 1 }],
+    });
+  });
+
+  it("keeps the cart and repeats the server's refusal when the bill is refused", async () => {
+    as("counter");
+    S().addToCart("coffee", "juice", 3);
+    serve({ "POST /api/v1/bills": () => refusal("Only 2 nos of Fresh Juice 200ml left at Floor 3 Coffee Bar") });
+
+    await S().pay("coffee", "Cash");
+
+    expect(S().toast).toBe("Only 2 nos of Fresh Juice 200ml left at Floor 3 Coffee Bar");
+    expect(S().cart.coffee).toEqual({ juice: 3 });   // the scan survives, so it can be retried
+    expect(calls()).toHaveLength(1);                 // nothing refetched behind a refusal
+  });
+
+  it("falls back to its own sentence when the server cannot be reached", async () => {
+    as("counter");
+    S().addToCart("coffee", "juice", 1);
+    fetchMock.mockRejectedValue(new TypeError("Failed to fetch"));
+
+    await S().pay("coffee", "Cash");
+
+    expect(S().toast).toBe("Could not take the bill — check the connection and try again.");
+    expect(S().cart.coffee).toEqual({ juice: 1 });
+  });
+
+  it("sends nothing at all for an empty cart", async () => {
+    as("counter");
+    await S().pay("coffee", "Cash");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("toggleAvail — POST /availability/toggle", () => {
+  it("posts the location and item and reads only the balances back", async () => {
+    as("counter");
+    serve({
+      "POST /api/v1/availability/toggle": () => json({ result: { loc: "coffee", it: "juice", off: true, reason: "switched off manually" }, changed: ["ovr"], message: "Fresh Juice 200ml switched off at Floor 3 Coffee Bar" }),
+      "GET /api/v1/stock": () => json(STOCK),
+    });
+
+    await S().toggleAvail("coffee", "juice");
+
+    expect(hit("POST /api/v1/availability/toggle")[0].body).toEqual({ loc: "coffee", it: "juice" });
+    expect(S().toast).toBe("Fresh Juice 200ml switched off at Floor 3 Coffee Bar");
+    expect(hit("GET /api/v1/stock")).toHaveLength(1);
+    expect(hit("GET /api/v1/snapshot")).toHaveLength(0);
+    expect(S().ovr["coffee:juice"]).toBe("switched off manually");
+  });
+
+  it("repeats a refusal and changes nothing", async () => {
+    as("manager");
+    serve({ "POST /api/v1/availability/toggle": () => refusal("Central Store is not an outlet") });
+
+    await S().toggleAvail("store", "juice");
+
+    expect(S().toast).toBe("Central Store is not an outlet");
+    expect(S().ovr).toEqual({});
+    expect(calls()).toHaveLength(1);
+  });
+});
+
+describe("savePrice — PUT /prices/:list/:it", () => {
+  it("puts the price on the named list and takes a fresh snapshot", async () => {
+    as("manager");
+    serve({
+      "PUT /api/v1/prices/B/juice": () => json({ result: { list: "B", it: "juice", price: 18 }, changed: ["prices"], message: "Fresh Juice 200ml priced at ₹18 on list B" }),
+      "GET /api/v1/snapshot": () => json(snapshot({ A: FX.PL.A, B: { ...FX.PL.B, juice: 18 } })),
+    });
+
+    await S().savePrice("B", "juice", 18);
+
+    expect(hit("PUT /api/v1/prices/B/juice")[0].body).toEqual({ price: 18 });
+    expect(S().toast).toBe("Fresh Juice 200ml priced at ₹18 on list B");
+    // "prices" has no narrow reader yet, so it costs one snapshot.
+    expect(hit("GET /api/v1/snapshot")).toHaveLength(1);
+    expect(hit("GET /api/v1/stock")).toHaveLength(0);
+    expect(S().prices.B.juice).toBe(18);
+  });
+
+  it("hands the MRP refusal to the operator word for word and leaves the list alone", async () => {
+    as("manager");
+    const before = S().prices.B.juice;
+    serve({ "PUT /api/v1/prices/B/juice": () => refusal("Refused — printed MRP of ₹20 is a hard ceiling for Fresh Juice 200ml") });
+
+    await S().savePrice("B", "juice", 99);
+
+    expect(S().toast).toBe("Refused — printed MRP of ₹20 is a hard ceiling for Fresh Juice 200ml");
+    expect(S().prices.B.juice).toBe(before);
+    expect(calls()).toHaveLength(1);
+  });
+});
+
+describe("addProduct / removeProduct — the menu routes", () => {
+  it("posts a new listing to /menus/:loc/items", async () => {
+    as("manager");
+    serve({
+      "POST /api/v1/menus/coffee/items": () => json({ result: { loc: "coffee", items: ["juice"] }, changed: ["menu"], message: "Fresh Juice 200ml listed at Floor 3 Coffee Bar" }),
+      "GET /api/v1/snapshot": () => json(snapshot()),
+    });
+
+    await S().addProduct("coffee", "juice");
+
+    expect(hit("POST /api/v1/menus/coffee/items")[0].body).toEqual({ it: "juice" });
+    expect(S().toast).toBe("Fresh Juice 200ml listed at Floor 3 Coffee Bar");
+    expect(hit("GET /api/v1/snapshot")).toHaveLength(1);
+  });
+
+  it("deletes a listing at /menus/:loc/items/:it, with no body", async () => {
+    as("manager");
+    serve({
+      "DELETE /api/v1/menus/coffee/items/chips": () => json({ result: { loc: "coffee", items: [] }, changed: ["menu"], message: "Potato Chips 30g removed from Floor 3 Coffee Bar" }),
+      "GET /api/v1/snapshot": () => json(snapshot()),
+    });
+
+    await S().removeProduct("coffee", "chips");
+
+    expect(hit("DELETE /api/v1/menus/coffee/items/chips")[0].body).toBeUndefined();
+    expect(S().toast).toBe("Potato Chips 30g removed from Floor 3 Coffee Bar");
+    expect(hit("GET /api/v1/snapshot")).toHaveLength(1);
+  });
+
+  it("repeats the refusal for an item already on the menu", async () => {
+    as("manager");
+    serve({ "POST /api/v1/menus/coffee/items": () => refusal("Fresh Juice 200ml is already listed at Floor 3 Coffee Bar") });
+
+    await S().addProduct("coffee", "juice");
+
+    expect(S().toast).toBe("Fresh Juice 200ml is already listed at Floor 3 Coffee Bar");
+    expect(calls()).toHaveLength(1);
+  });
+});
+
+describe("refetch — what a write says it changed is what gets read", () => {
+  it("answers the three balance slices with one GET /stock", async () => {
+    serve({ "GET /api/v1/stock": () => json(STOCK) });
+    await refetch(["stock", "rsv", "ovr"]);
+    expect(hit("GET /api/v1/stock")).toHaveLength(1);
+    expect(hit("GET /api/v1/snapshot")).toHaveLength(0);
+    expect(S().rsv["coffee:milk"]).toBe(1);
+  });
+
+  it("answers stock and bills with one of each, never a snapshot", async () => {
+    serve({ "GET /api/v1/stock": () => json(STOCK), "GET /api/v1/bills": () => json([BILL]) });
+    await refetch(["stock", "bills"]);
+    expect(calls().map((c) => c.at).sort()).toEqual(["GET /api/v1/bills", "GET /api/v1/stock"]);
+  });
+
+  it("falls back to the whole snapshot for a slice with no narrow reader", async () => {
+    serve({ "GET /api/v1/snapshot": () => json(snapshot()) });
+    await refetch(["menu"]);
+    expect(calls().map((c) => c.at)).toEqual(["GET /api/v1/snapshot"]);
+  });
+
+  it("takes the snapshot alone when a write touched both kinds", async () => {
+    serve({ "GET /api/v1/snapshot": () => json(snapshot()) });
+    await refetch(["stock", "prices"]);
+    expect(calls().map((c) => c.at)).toEqual(["GET /api/v1/snapshot"]);
+  });
+
+  it("reads nothing when a write changed nothing", async () => {
+    await refetch([]);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("says the refresh failed, not that the write did", async () => {
+    serve({ "GET /api/v1/stock": () => json({ error: { code: "internal", message: "boom" } }, 500) });
+    await refetch(["stock"]);
+    expect(S().toast).toBe("Saved — but the screen could not be refreshed. Reload to see the latest.");
+  });
+});

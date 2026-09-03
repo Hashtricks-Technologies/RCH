@@ -3,6 +3,7 @@ import { routes } from "@rch/contract";
 import * as FX from "@rch/contract/fixtures";
 import { ApiError, call } from "../api/client";
 import { getAccessToken, onSessionLost, setAccessToken } from "../api/session";
+import { refetch } from "../api/refetch";
 import { applySnapshot } from "../api/wire";
 import { IT, LOC, MENU, RCP } from "../data/master";
 import {
@@ -14,7 +15,7 @@ import type {
   Batch, Bill, DraftLine, DrawerState, Grn, LocKey, Payer, PordStatus, ProdOrder, PurchaseOrder,
   Requisition, StockRequest, Ticket, TktLine, User, Vendor,
 } from "../types";
-import { basePrices, freeToPromise, priceOf, qty, resv } from "../lib/selectors";
+import { basePrices, freeToPromise, qty, resv } from "../lib/selectors";
 import { bestBefore, fq, now, U, makeOtp } from "../lib/fmt";
 import { applyTheme, nextTheme, readStoredTheme, storeTheme, type ThemePref } from "../lib/theme";
 import { createProcurementSlice, type ProcurementSlice } from "./procurement";
@@ -68,9 +69,9 @@ export interface AppState extends ProcurementSlice, OpsSlice {
 
   addToCart: (loc: LocKey, it: string, d?: number) => void;
   clearCart: (loc: LocKey) => void;
-  pay: (loc: LocKey, tender: string, payer?: Payer) => void;
+  pay: (loc: LocKey, tender: string, payer?: Payer) => Promise<void>;
 
-  toggleAvail: (loc: LocKey, it: string) => void;
+  toggleAvail: (loc: LocKey, it: string) => Promise<void>;
 
   setDraft: (d: DraftLine[]) => void;
   submitRequest: (note: string, urgent: boolean) => void;
@@ -93,9 +94,9 @@ export interface AppState extends ProcurementSlice, OpsSlice {
   makeProduct: (it: string, started: number, made?: number, note?: string) => void;
   distribute: (it: string, n: number, to: LocKey) => void;
 
-  savePrice: (list: "A" | "B", it: string, price: number) => void;
-  removeProduct: (loc: LocKey, it: string) => void;
-  addProduct: (loc: LocKey, it: string) => void;
+  savePrice: (list: "A" | "B", it: string, price: number) => Promise<void>;
+  removeProduct: (loc: LocKey, it: string) => Promise<void>;
+  addProduct: (loc: LocKey, it: string) => Promise<void>;
   setShopFilter: (l: LocKey | null) => void;
   setTheme: (t: ThemePref) => void;
   cycleTheme: () => void;
@@ -220,53 +221,35 @@ export const useApp = create<AppState>((set, get) => ({
     }),
   clearCart: (loc) => set((s) => ({ cart: { ...s.cart, [loc]: {} } })),
 
-  pay: (loc, tender, payer) => {
+  /**
+   * One counter sale. Pricing, the payer rule, the cover check and the recipe explosion all
+   * live on the server now (POST /bills); the cart is cleared only once it has answered, so
+   * a refusal leaves the operator's scan exactly as it was.
+   */
+  pay: async (loc, tender, payer) => {
     const s = get();
     const cart = s.cart[loc] ?? {};
-    const keys = Object.keys(cart);
-    if (!keys.length || !s.user) return;
-    const NEEDS_PAYER: Record<string, string> = {
-      "Patient bill": "patient", "Staff credit": "staff member", Dept: "department",
-    };
-    if (NEEDS_PAYER[tender] && !payer) {
-      get().notify(`Choose a ${NEEDS_PAYER[tender]} before taking a ${tender.toLowerCase()}`);
-      return;
+    const lines = Object.entries(cart).map(([it, qty]) => ({ it, qty }));
+    if (!lines.length || !s.user) return;
+    try {
+      const r = await call(routes.pay, { body: { loc, tender, payer, lines } });
+      set((x) => ({ cart: { ...x.cart, [loc]: {} } }));
+      get().notify(r.message);
+      await refetch(r.changed);
+    } catch (e) {
+      get().notify(e instanceof ApiError ? e.message : "Could not take the bill — check the connection and try again.");
     }
-    const stock = clone(s.stock);
-    let tot = 0, tax = 0;
-    const lines = keys.map((it) => {
-      const { p } = priceOf(s, loc, it);
-      const amt = p * cart[it];
-      tot += amt;
-      tax += amt - amt / (1 + IT[it].gst / 100);
-      if (IT[it].t === "MTO") {
-        for (const [g, need] of RCP[it].l)
-          stock[loc][g] = Math.round(((stock[loc][g] ?? 0) - need * cart[it]) * 1000) / 1000;
-      } else {
-        stock[loc][it] = Math.round(((stock[loc][it] ?? 0) - cart[it]) * 1000) / 1000;
-      }
-      return { it, qty: cart[it], rate: p };
-    });
-    const no = "CF/" + (s.seq.bill + 1);
-    set({
-      stock, seq: { ...s.seq, bill: s.seq.bill + 1 },
-      cart: { ...s.cart, [loc]: {} },
-      bills: [{ no, loc, opr: s.user.n, oprCol: s.user.col, tot, tax, t: now(), pay: tender, lines, payer }, ...s.bills],
-    });
-    get().notify(payer
-      ? `Bill ${no} · ₹${tot.toFixed(2)} posted to ${payer.name}`
-      : `Bill ${no} · ₹${tot.toFixed(2)} ${tender === "Cash" ? "collected" : "settled by " + tender.toLowerCase()} at ${LOC[loc].n}`);
   },
 
-  toggleAvail: (loc, it) =>
-    set((s) => {
-      const k = loc + ":" + it;
-      const ovr = { ...s.ovr };
-      if (ovr[k]) delete ovr[k];
-      else ovr[k] = "switched off manually";
-      setTimeout(() => get().notify(`${IT[it].n} ${ovr[k] ? "switched off" : "switched on"} at ${LOC[loc].n}`), 0);
-      return { ovr };
-    }),
+  toggleAvail: async (loc, it) => {
+    try {
+      const r = await call(routes.toggleAvail, { body: { loc, it } });
+      get().notify(r.message);
+      await refetch(r.changed);
+    } catch (e) {
+      get().notify(e instanceof ApiError ? e.message : "Could not change what is on sale — check the connection and try again.");
+    }
+  },
 
   setDraft: (draft) => set({ draft }),
   submitRequest: (note, urgent) => {
@@ -533,25 +516,33 @@ export const useApp = create<AppState>((set, get) => ({
     get().notify(`${tid} issued — ${n} ${IT[it].n} reserved for ${LOC[to].n}`);
   },
 
-  savePrice: (list, it, price) => {
-    const mrp = IT[it]?.mrp;
-    if (mrp != null && price > mrp) {
-      get().notify(`Refused — printed MRP of ₹${mrp} is a hard ceiling for ${IT[it].n}`);
-      return;
+  /** The MRP ceiling is the server's to hold (PUT /prices/:list/:it); its refusal is the toast. */
+  savePrice: async (list, it, price) => {
+    try {
+      const r = await call(routes.savePrice, { params: { list, it }, body: { price } });
+      get().notify(r.message);
+      await refetch(r.changed);
+    } catch (e) {
+      get().notify(e instanceof ApiError ? e.message : "Could not save the price — check the connection and try again.");
     }
-    set((s) => ({ prices: { ...s.prices, [list]: { ...s.prices[list], [it]: price } } }));
-    get().notify(`${IT[it].n} priced at ₹${price} on list ${list}`);
   },
-  removeProduct: (loc, it) => {
-    set((s) => ({ menu: { ...s.menu, [loc]: (s.menu[loc] ?? []).filter((x) => x !== it) } }));
-    get().notify(`${IT[it].n} removed from ${LOC[loc].n}`);
+  removeProduct: async (loc, it) => {
+    try {
+      const r = await call(routes.removeMenuItem, { params: { loc, it } });
+      get().notify(r.message);
+      await refetch(r.changed);
+    } catch (e) {
+      get().notify(e instanceof ApiError ? e.message : "Could not take the product off the menu — check the connection and try again.");
+    }
   },
-  addProduct: (loc, it) => {
-    const s = get();
-    const listed = s.menu[loc] ?? MENU[loc] ?? [];
-    if (listed.includes(it)) { get().notify(`${IT[it].n} is already listed at ${LOC[loc].n}`); return; }
-    set({ menu: { ...s.menu, [loc]: [...listed, it] } });
-    get().notify(`${IT[it].n} listed at ${LOC[loc].n}`);
+  addProduct: async (loc, it) => {
+    try {
+      const r = await call(routes.addMenuItem, { params: { loc }, body: { it } });
+      get().notify(r.message);
+      await refetch(r.changed);
+    } catch (e) {
+      get().notify(e instanceof ApiError ? e.message : "Could not add the product to the menu — check the connection and try again.");
+    }
   },
   setShopFilter: (shopFilter) => set({ shopFilter }),
   setTheme: (theme) => {

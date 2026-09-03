@@ -183,22 +183,11 @@ describe("H1 · made items cost what their recipe costs", () => {
   });
 });
 
-/* ---------------------------------------------------------------- H3 */
-describe("H3 · a removed product can be put back", () => {
-  it("restores a product to the outlet menu", () => {
-    as("manager");
-    S().removeProduct("coffee", "juice");
-    expect(S().menu.coffee).not.toContain("juice");
-    S().addProduct("coffee", "juice");
-    expect(S().menu.coffee).toContain("juice");
-  });
-
-  it("does not list the same product twice", () => {
-    as("manager");
-    S().addProduct("coffee", "juice");
-    expect(S().menu.coffee.filter((x) => x === "juice")).toHaveLength(1);
-  });
-});
+/* ---------------------------------------------------------------- H3
+ * H3 · a removed product can be put back. The menu is the server's since Phase 2:
+ * apps/api/src/modules/catalog/catalog.test.ts pins both halves of this tag — "adds and
+ * removes a menu item, preserving the order of the rest" and "422s adding an item already
+ * on the menu". The store call that reaches those routes is in writes.test.ts. */
 
 /* ---------------------------------------------------------------- H4 */
 describe("H4 · only cash counts as collected", () => {
@@ -276,34 +265,12 @@ describe("H9 · best-before says which day it means", () => {
   });
 });
 
-/* ---------------------------------------------------------------- M1 */
-describe("M1 · non-cash tenders need a payer", () => {
-  it("refuses a patient bill with no patient attached", () => {
-    as("counter");
-    S().addToCart("coffee", "juice", 1);
-    const before = S().bills.length;
-    S().pay("coffee", "Patient bill");
-    expect(S().bills).toHaveLength(before);
-    expect(S().toast).toMatch(/patient/i);
-  });
-
-  it("posts the bill against the payer it was given", () => {
-    as("counter");
-    S().addToCart("coffee", "juice", 1);
-    S().pay("coffee", "Patient bill", { kind: "patient", id: "IP-4471", name: "Anand Kumar" });
-    const b = S().bills[0];
-    expect(b.pay).toBe("Patient bill");
-    expect(b.payer?.id).toBe("IP-4471");
-  });
-
-  it("needs no payer for cash", () => {
-    as("counter");
-    S().addToCart("coffee", "juice", 1);
-    const before = S().bills.length;
-    S().pay("coffee", "Cash");
-    expect(S().bills).toHaveLength(before + 1);
-  });
-});
+/* ---------------------------------------------------------------- M1
+ * M1 · non-cash tenders need a payer. The sale is POST /bills since Phase 2:
+ * apps/api/src/modules/pos/pos.test.ts pins this tag — "wants a patient before it takes a
+ * patient bill", "wants a staff member before it takes a staff credit", "wants a department
+ * before it takes a dept bill", and "names the payer on a credit tender". writes.test.ts
+ * proves the payer this store sends reaches the body. */
 
 /* ---------------------------------------------------------------- M3 */
 describe("M3 · what is already on order is visible", () => {
