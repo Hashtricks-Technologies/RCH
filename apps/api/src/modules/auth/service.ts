@@ -17,25 +17,52 @@ const BAD_LOGIN = "That employee id and password do not match.";
 /** Any valid Argon2id string, produced once by `hashPassword("x")` — verified against on an
  *  unknown employee id so "no such user" takes about as long as "wrong password". */
 const DUMMY_HASH = "$argon2id$v=19$m=65536,t=3,p=1$LOmzJu8PWUsCPtFBwcH39w$RNwG8DhqDVFkCZWhCIv2DvxlqKkAP91CtOmSexvaOVk";
+/** How many `hit()` calls between sweeps of keys whose window has gone quiet. */
+const SWEEP_EVERY = 1000;
 
-/** Per-employee sliding window, in memory. Per pod, which is fine: the per-IP limit is cluster-wide via the LB. */
-class Attempts {
+/**
+ * Per-employee sliding window, in memory. Per pod, which is fine: the per-IP limit is
+ * cluster-wide via the LB.
+ *
+ * The key is an employee id off the wire, so the map is an attack surface of its own: without
+ * a bound, a script posting a fresh `emp` every request grows it until the pod dies. Two
+ * things keep it small — a key whose window has aged out is dropped instead of kept as an
+ * empty array, and the map is capped, evicting the oldest key (Map preserves insertion order)
+ * when a new one would push it past `cap`. Evicting the oldest can only ever forget attempts,
+ * never invent them, and the schema caps `emp` at 64 characters so a key is cheap.
+ */
+export class Attempts {
   private m = new Map<string, number[]>();
   private max: number;
   private windowMs: number;
-  constructor(max: number, windowMs = 60_000) {
+  private cap: number;
+  private hits = 0;
+  constructor(max: number, windowMs = 60_000, cap = 10_000) {
     this.max = max;
     this.windowMs = windowMs;
+    this.cap = cap;
   }
   hit(key: string): boolean {
     const now = Date.now();
+    if (++this.hits % SWEEP_EVERY === 0) this.sweep();
     const a = (this.m.get(key) ?? []).filter((t) => now - t < this.windowMs);
     a.push(now);
+    // Re-insert so the key moves to the back of the eviction order.
+    this.m.delete(key);
+    while (this.m.size >= this.cap) this.m.delete(this.m.keys().next().value as string);
     this.m.set(key, a);
     return a.length > this.max;
   }
   clear(key: string) {
     this.m.delete(key);
+  }
+  /** Drops every key whose window has emptied. Called on a sweep, not on the hot path. */
+  sweep(): void {
+    const now = Date.now();
+    for (const [k, a] of this.m) if (a.every((t) => now - t >= this.windowMs)) this.m.delete(k);
+  }
+  get size(): number {
+    return this.m.size;
   }
 }
 
@@ -94,13 +121,26 @@ export function createAuthService(db: Db, config: Config) {
         if (t) await authRepo.revokeFamily(tx, t.family);
       });
     },
-    async changePassword(userId: string, current: string, next: string): Promise<void> {
+    /**
+     * Changing the password hands back a whole new session, not an `{ ok: true }`. Every other
+     * token the user holds is revoked — including the caller's own refresh cookie, and the
+     * access token they authenticated this very request with, which still carries `mcp: true`
+     * for the must-change case. Without a replacement the client would be left holding two dead
+     * credentials: the access token is refused by `roleGate`, and the cookie that could renew it
+     * has just been revoked. So the new family is minted inside the same transaction.
+     */
+    async changePassword(userId: string, current: string, next: string, meta: Meta): Promise<Session> {
       const u = await authRepo.userById(db, userId);
       if (!u || !(await verifyPassword(u.passwordHash, current))) throw new UnauthenticatedError("Your current password is not right.");
       const hash = await hashPassword(next);
-      await withTransaction(db, async (tx) => {
+      return withTransaction(db, async (tx) => {
         await authRepo.setPassword(tx, userId, hash);
         await authRepo.revokeAllForUser(tx, userId);
+        // Re-read inside the transaction so the session is minted from the row as it now
+        // stands — `must_change_password` cleared, so the fresh access token carries mcp: false.
+        const fresh = await authRepo.userById(tx, userId);
+        if (!fresh) throw new UnauthenticatedError("That account no longer exists.");
+        return issue(tx, fresh, randomUUID(), meta);
       });
     },
   };

@@ -1,9 +1,12 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { buildTestApp } from "../../test/app.js";
 import { seedTestDb } from "../../test/seed.js";
 import type { App } from "../../app.js";
 import { refreshTokens, users } from "../../db/schema/index.js";
+import { Attempts } from "./service.js";
+import { purgeRefreshTokens } from "./repo.js";
 
 /**
  * Two apps, per the controller ruling: the login route carries a per-IP rate limit
@@ -126,10 +129,28 @@ describe("change-password", () => {
     expect((await login(a, "RC-1550", "changeme")).statusCode).toBe(401);
     expect((await login(a, "RC-1550", "a-much-longer-secret")).statusCode).toBe(200);
   });
+  it("hands back a working session: the old cookie is dead, the new token and cookie are not", async () => {
+    const l = await login(a, "RC-1902");
+    const oldCookie = cookieOf(l).value;
+    const h = { authorization: `Bearer ${l.json().accessToken}` };
+    const cp = await a.inject({ method: "POST", url: "/api/v1/auth/change-password", headers: h, payload: { current: "changeme", next: "a-much-longer-secret-3" } });
+    expect(cp.statusCode).toBe(200);
+    const body = cp.json();
+    expect(body.mustChangePassword).toBe(false);
+    expect(body.user.id).toBe("u4");
+    // The token in the reply is usable straight away - no reload, no second sign-in.
+    const snap = await a.inject({ method: "GET", url: "/api/v1/snapshot", headers: { authorization: `Bearer ${body.accessToken}` } });
+    expect(snap.statusCode).toBe(200);
+    // The cookie it set refreshes; the one the caller arrived with was revoked by the change.
+    const fresh = cookieOf(cp).value;
+    expect(fresh).not.toBe(oldCookie);
+    expect((await a.inject({ method: "POST", url: "/api/v1/auth/refresh", cookies: { rch_refresh: oldCookie } })).statusCode).toBe(401);
+    expect((await a.inject({ method: "POST", url: "/api/v1/auth/refresh", cookies: { rch_refresh: fresh } })).statusCode).toBe(200);
+  });
 });
 
 describe("must-change password", () => {
-  it("a must-change user can reach change-password but not /snapshot", async () => {
+  it("a must-change user can reach change-password but not /snapshot, and the reply un-gates them", async () => {
     await a.db.update(users).set({ mustChangePassword: true }).where(eq(users.id, "u2"));
     const l = await login(a, "RC-3120");
     expect(l.json().mustChangePassword).toBe(true);
@@ -144,5 +165,48 @@ describe("must-change password", () => {
       payload: { current: "changeme", next: "a-much-longer-secret-2" },
     });
     expect(cp.statusCode).toBe(200);
+    expect(cp.json().mustChangePassword).toBe(false);
+    // The whole point of I1: the token that comes back is no longer mcp-gated, so the very
+    // next call the client makes - loadSnapshot() - succeeds instead of 403-ing.
+    const after = await a.inject({ method: "GET", url: "/api/v1/snapshot", headers: { authorization: `Bearer ${cp.json().accessToken}` } });
+    expect(after.statusCode).toBe(200);
+  });
+});
+
+describe("per-employee attempt map", () => {
+  it("evicts the oldest key once it is full, so an unbounded stream of employee ids cannot grow it", () => {
+    const at = new Attempts(5, 60_000, 3);
+    for (const k of ["a", "b", "c", "d", "e"]) at.hit(k);
+    expect(at.size).toBe(3);
+    // "a" and "b" were pushed out; the survivors keep their windows.
+    expect(at.hit("c")).toBe(false);
+    expect(at.size).toBe(3);
+  });
+  it("drops keys whose window has gone quiet", () => {
+    const at = new Attempts(5, 10);
+    at.hit("gone");
+    expect(at.size).toBe(1);
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(Date.now() + 1000);
+      at.sweep();
+      expect(at.size).toBe(0);
+    } finally { vi.useRealTimers(); }
+  });
+});
+
+describe("purging refresh tokens", () => {
+  it("removes expired and long-revoked rows and keeps live ones", async () => {
+    const day = 86400_000;
+    const rows = [
+      { id: randomUUID(), userId: "u1", family: randomUUID(), tokenHash: "expired", expiresAt: new Date(Date.now() - day) },
+      { id: randomUUID(), userId: "u1", family: randomUUID(), tokenHash: "old-revoke", expiresAt: new Date(Date.now() + day), revokedAt: new Date(Date.now() - 8 * day) },
+      { id: randomUUID(), userId: "u1", family: randomUUID(), tokenHash: "just-revoked", expiresAt: new Date(Date.now() + day), revokedAt: new Date() },
+      { id: randomUUID(), userId: "u1", family: randomUUID(), tokenHash: "live", expiresAt: new Date(Date.now() + day) },
+    ];
+    await b.db.insert(refreshTokens).values(rows);
+    expect(await purgeRefreshTokens(b.db)).toBe(2);
+    const left = (await b.db.select().from(refreshTokens)).map((t) => t.tokenHash).sort();
+    expect(left).toEqual(["just-revoked", "live"]);
   });
 });

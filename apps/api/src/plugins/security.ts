@@ -15,6 +15,18 @@ export default fp<{ config: Config }>(async (app, { config }) => {
     global: true,
     max: config.rateLimitPerMinute,
     timeWindow: "1 minute",
+    // Default is `onRequest`, which runs long before `authenticate` (a route preHandler) —
+    // so `req.user` was always undefined and every authenticated request keyed on the IP,
+    // giving a whole ward behind one NAT a single shared budget. `preHandler` is appended to
+    // each route's existing preHandler array (see the plugin's onRoute hook), i.e. after the
+    // ones mount() attached, so by the time the limiter runs an authenticated request has a
+    // `req.user` to key on and a public one still falls back to the IP.
+    //
+    // The cost of moving it: a request `authenticate` or `roleGate` rejects never reaches the
+    // limiter, so bad tokens no longer eat an IP budget. The brute-forceable surface — login
+    // and refresh — is public, has no preHandler in front of the limiter, and keeps its
+    // per-IP budget (login carries a tighter route-level one on top).
+    hook: "preHandler",
     keyGenerator: (req) => (req as { user?: { sub?: string } }).user?.sub ?? req.ip,
     // @fastify/rate-limit throws whatever this returns — hand it a real Error (with
     // .status/.statusCode) so plugins/errors.ts's `err instanceof AppError` branch maps it

@@ -18,8 +18,11 @@ describe("fixtures", () => {
     for (const o of seedPo) for (const l of o.lines) expect(items.has(l.it)).toBe(true);
     for (const b of seedBills) { expect(locs.has(b.loc)).toBe(true); for (const l of b.lines) expect(items.has(l.it)).toBe(true); }
   });
-  it("users are unique by id and employee number", () => {
+  it("users are unique by id, employee number and display name", () => {
     expect(new Set(USERS.map((u) => u.id)).size).toBe(USERS.length);
     expect(new Set(USERS.map((u) => u.emp)).size).toBe(USERS.length);
+    // Support tickets are scoped to their raiser by display name (snapshot/scope.ts), so two
+    // people sharing a name would see each other's tickets.
+    expect(new Set(USERS.map((u) => u.n)).size).toBe(USERS.length);
   });
 });

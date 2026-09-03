@@ -1,4 +1,4 @@
-import { bigint, index, integer, jsonb, pgTable, primaryKey, text, uuid } from "drizzle-orm/pg-core";
+import { bigint, index, integer, jsonb, pgTable, primaryKey, text, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { ts, users } from "./master.js";
 
 export const documentHistory = pgTable("document_history", {
@@ -37,4 +37,11 @@ export const refreshTokens = pgTable("refresh_tokens", {
   userAgent: text("user_agent"),
   ip: text("ip"),
   createdAt: ts("created_at").notNull().defaultNow(),
-}, (t) => [index("refresh_tokens_family_idx").on(t.family), index("refresh_tokens_user_idx").on(t.userId)]);
+}, (t) => [
+  // Every refresh and logout looks a token up by its hash; without this index that is a
+  // sequential scan over every session the hospital has ever opened. Unique, because two rows
+  // sharing a hash would mean two sessions sharing a secret.
+  uniqueIndex("refresh_tokens_token_hash_uq").on(t.tokenHash),
+  index("refresh_tokens_family_idx").on(t.family),
+  index("refresh_tokens_user_idx").on(t.userId),
+]);

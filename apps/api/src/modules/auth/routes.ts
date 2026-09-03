@@ -26,5 +26,6 @@ export default fp(async (app) => {
     }
   });
   mount(app, routes.logout, async (req, reply) => { await svc.logout(req.cookies[REFRESH_COOKIE]); clearRefreshCookie(reply, app.config); return { ok: true as const }; });
-  mount(app, routes.changePassword, async (req) => { await svc.changePassword(req.user.sub, req.body.current, req.body.next); return { ok: true as const }; });
+  // The reply carries a whole new session: the change revoked every token the caller held.
+  mount(app, routes.changePassword, async (req, reply) => respond(reply, await svc.changePassword(req.user.sub, req.body.current, req.body.next, meta(req))));
 }, { name: "module:auth", dependencies: ["auth", "rbac", "db"] });

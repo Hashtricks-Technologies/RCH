@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { setAccessToken } from "../api/session";
+import { getAccessToken, setAccessToken } from "../api/session";
 import { useApp } from "../store";
 import type { User } from "../types";
 
@@ -57,6 +57,30 @@ describe("restoring the session at boot", () => {
     useApp.setState({ user: USER, auth: "ready" });
     await useApp.getState().restore();
     expect(fetchMock).not.toHaveBeenCalled();
+    expect(useApp.getState().auth).toBe("ready");
+  });
+});
+
+describe("changing the password", () => {
+  const fetchMock = vi.fn();
+  beforeEach(() => {
+    vi.stubGlobal("fetch", fetchMock);
+    fetchMock.mockReset();
+    setAccessToken("must-change");
+    useApp.setState({ user: USER, auth: "ready", mustChangePassword: true, toast: null });
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("swaps in the session the change hands back, then loads the snapshot", async () => {
+    fetchMock
+      .mockResolvedValueOnce(ok({ accessToken: "after-change", user: USER, mustChangePassword: false }))
+      .mockResolvedValueOnce(ok(SNAPSHOT));
+    expect(await useApp.getState().changePassword("changeme", "a-much-longer-secret")).toBe(true);
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/v1/auth/change-password");
+    // The old token still says "must change password"; keeping it would 403 the snapshot.
+    expect(getAccessToken()).toBe("after-change");
+    expect(fetchMock.mock.calls[1][1].headers.authorization).toBe("Bearer after-change");
+    expect(useApp.getState().mustChangePassword).toBe(false);
     expect(useApp.getState().auth).toBe("ready");
   });
 });

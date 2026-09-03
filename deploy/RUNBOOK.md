@@ -134,8 +134,11 @@ kubectl create namespace rch
 ### Housekeeping
 
 A `CronJob` (`deploy/chart/rch/templates/purge-cronjob.yaml`, `purge.enabled` in `values.yaml`)
-runs `dist/cli/purge.mjs` nightly at `15 2 * * *` (02:15) and deletes expired
-`idempotency_keys` rows. It needs no manual attention; if it's ever suspicious, run it by hand:
+runs `dist/cli/purge.mjs` nightly at `15 2 * * *` (02:15). It deletes expired
+`idempotency_keys` rows, and `refresh_tokens` rows that can no longer authorise anything —
+expired ones, and revoked ones more than seven days old, so a recent "why was I signed out?"
+is still answerable from the table. It prints a count for each and needs no manual attention;
+if it's ever suspicious, run it by hand:
 
 ```bash
 kubectl create job --from=cronjob/rch-purge rch-purge-manual -n rch
@@ -202,8 +205,11 @@ kubectl exec deploy/rch-api -n rch -- /nodejs/bin/node dist/cli/users.mjs deacti
 
 `create` accepts `--emp --name --email --role --loc --password` (required) and `--phone`
 (optional); the created account has `must_change_password = true`, so the temporary password
-must be changed at first sign-in. `reset-password` and `deactivate` both revoke every refresh
-token for that user (all of that employee's active sessions are signed out immediately).
+must be changed at first sign-in. That change revokes the employee's other sessions and hands
+the browser a fresh one in the same reply (a new access token and refresh cookie), so they
+land in the app rather than being bounced back to the sign-in screen. `reset-password` and
+`deactivate` both revoke every refresh token for that user (all of that employee's active
+sessions are signed out immediately).
 `--role` is one of `counter|manager|store|prod|buyer`; `--loc` is one of
 `store|kitchen|rest|coffee|kiosk`.
 

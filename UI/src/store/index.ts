@@ -179,8 +179,12 @@ export const useApp = create<AppState>((set, get) => ({
   },
   changePassword: async (current, next) => {
     try {
-      await call(routes.changePassword, { body: { current, next } });
-      set({ mustChangePassword: false, auth: "loading" });
+      // The change revokes every token the tab is holding — the access token (still stamped
+      // "must change password") and the refresh cookie behind it. The reply carries their
+      // replacements, so take them before anything else calls the server.
+      const r = await call(routes.changePassword, { body: { current, next } });
+      setAccessToken(r.accessToken);
+      set({ user: r.user, mustChangePassword: r.mustChangePassword, auth: "loading" });
       await get().loadSnapshot();
       get().notify("Password changed — you are signed in.");
       return true;
