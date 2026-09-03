@@ -39,13 +39,29 @@ jobs:
       - uses: azure/setup-helm@v4
       - run: aws eks update-kubeconfig --name "$CLUSTER" --region "${{ secrets.AWS_REGION }}"
       - name: helm upgrade
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          JWT_PRIVATE_KEY: ${{ secrets.JWT_PRIVATE_KEY }}
+          JWT_PUBLIC_KEY: ${{ secrets.JWT_PUBLIC_KEY }}
         run: |
-          EXTRA=""
+          # Secrets are passed through env: and read from quoted shell
+          # variables, never interpolated into the command text — GitHub
+          # substitutes ${{ }} expressions textually before bash runs, which
+          # would otherwise be a shell-injection vector (a secret containing
+          # `;`, `$(...)` or quotes) and would land the PEM contents in argv.
+          # --set-string (not --set) so Helm's strvals parser doesn't choke
+          # on commas/`=` inside the values, and EXTRA is a bash array, not
+          # a string, so no further word-splitting or re-quoting happens.
+          EXTRA=()
           if [ "${{ github.ref_name }}" = staging ]; then
-            EXTRA="--set secrets.values.DATABASE_URL=${{ secrets.DATABASE_URL }} --set secrets.values.JWT_PRIVATE_KEY=${{ secrets.JWT_PRIVATE_KEY }} --set secrets.values.JWT_PUBLIC_KEY=${{ secrets.JWT_PUBLIC_KEY }}"
+            EXTRA=(
+              --set-string "secrets.values.DATABASE_URL=$DATABASE_URL"
+              --set-string "secrets.values.JWT_PRIVATE_KEY=$JWT_PRIVATE_KEY"
+              --set-string "secrets.values.JWT_PUBLIC_KEY=$JWT_PUBLIC_KEY"
+            )
           fi
           helm upgrade --install rch deploy/chart/rch -n "$NS" --create-namespace -f "deploy/chart/rch/$VALUES" \
-            --set image.registry="${{ secrets.ECR_REGISTRY }}" --set image.tag="${{ github.sha }}" $EXTRA --wait --timeout 10m
+            --set image.registry="${{ secrets.ECR_REGISTRY }}" --set image.tag="${{ github.sha }}" "${EXTRA[@]}" --wait --timeout 10m
       - name: Tag production
         if: github.ref_name == 'production' && success()
         run: |
