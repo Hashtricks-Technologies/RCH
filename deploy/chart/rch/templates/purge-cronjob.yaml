@@ -8,10 +8,9 @@ spec:
   jobTemplate:
     spec:
       template:
-        metadata:
-          annotations: { checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }} }
         spec:
           restartPolicy: Never
+          serviceAccountName: {{ include "rch.sa" . }}
           securityContext: { runAsNonRoot: true, runAsUser: 65532 }
           containers:
             - name: purge
