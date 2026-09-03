@@ -37,3 +37,6 @@ apps/api/dist/
 
 # Agent worktrees (Claude Code)
 .claude/worktrees/
+
+# Agent scratch (plans keep their ledger under docs/superpowers/plans)
+.superpowers/
