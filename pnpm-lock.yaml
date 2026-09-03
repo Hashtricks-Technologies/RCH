@@ -23,6 +23,9 @@ importers:
 
   UI:
     dependencies:
+      '@rch/domain':
+        specifier: workspace:*
+        version: link:../packages/domain
       react:
         specifier: ^19.2.8
         version: 19.2.8
@@ -54,6 +57,12 @@ importers:
       vite:
         specifier: ^8.2.2
         version: 8.2.2(@types/node@24.13.3)(jiti@2.7.0)(yaml@2.9.0)
+      vitest:
+        specifier: ^4.1.11
+        version: 4.1.11(@types/node@24.13.3)(jsdom@30.0.1)(vite@8.2.2(@types/node@24.13.3)(jiti@2.7.0)(yaml@2.9.0))
+
+  packages/domain:
+    devDependencies:
       vitest:
         specifier: ^4.1.11
         version: 4.1.11(@types/node@24.13.3)(jsdom@30.0.1)(vite@8.2.2(@types/node@24.13.3)(jiti@2.7.0)(yaml@2.9.0))

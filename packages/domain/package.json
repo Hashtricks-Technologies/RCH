@@ -1,0 +1,13 @@
+{
+  "name": "@rch/domain",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "oxlint",
+    "test": "vitest run"
+  },
+  "devDependencies": { "vitest": "^4.1.11" }
+}

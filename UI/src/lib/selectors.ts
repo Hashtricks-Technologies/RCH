@@ -1,12 +1,11 @@
+import { apportion, round3 } from "@rch/domain";
+export { apportion, round3 };
 import { IT, LOC, MENU, PAR_FACTOR, PL, RCP } from "../data/master";
 import type {
-  Availability, Bill, LocKey, PoLineSrc, PoStatus, Price, PurchaseOrder, Requisition, ReqStatus,
+  Availability, Bill, LocKey, PoStatus, Price, PurchaseOrder, Requisition, ReqStatus,
   StockRequest, Ticket, Tone,
 } from "../types";
 import { fq, U } from "./fmt";
-
-/** Round to three decimals — the tolerance every quantity in this app is kept at. */
-export const round3 = (v: number) => Math.round(v * 1000) / 1000;
 
 export interface StockShape {
   stock: Record<LocKey, Record<string, number>>;
@@ -79,17 +78,6 @@ export const committed = (reqs: StockRequest[], l: LocKey, it: string) =>
 export const freeToPromise = (
   s: StockShape & { req: StockRequest[] }, l: LocKey, it: string,
 ) => qty(s, l, it) - resv(s, l, it) - committed(s.req, l, it);
-
-/** A receipt fills its source lines in `src` order — deterministic and
- *  explainable when one PO line funds several requisitions. */
-export const apportion = (recv: number, src: PoLineSrc[]): number[] => {
-  let left = recv;
-  return src.map((x) => {
-    const take = round3(Math.min(Math.max(left, 0), x.qty));
-    left = round3(left - take);
-    return take;
-  });
-};
 
 /** Purchase-order statuses that already hold a claim on procurement-list quantity.
  *  createPo() moves a requisition line's `ordered` claim out of the pool the instant
