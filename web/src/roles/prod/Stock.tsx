@@ -4,7 +4,7 @@ import { useApp } from "../../store";
 import { isReqOpen, parOf, qty, stateLabel, stateTone, stockValue } from "../../lib/selectors";
 import { fq, money, money0, sum } from "../../lib/fmt";
 import {
-  Alert, Btn, BtnRow, Card, DataTable, Field, FilterBtn, FormRow, PageHead, Pill, Section,
+  Alert, Btn, BtnRow, Card, DataTable, Field, FilterSelect, FormRow, PageHead, Pill, Section,
   TableFoot, Tag, Toolbar,
 } from "../../ui/kit";
 import { DrawerFrame } from "../../ui/Drawer";
@@ -194,8 +194,6 @@ export default function Stock() {
   const rawFiltering = Boolean(rq.trim() || kind !== "All");
   const clearFg = () => { setQ(""); setFgState("All"); };
   const clearRaw = () => { setRq(""); setKind("All"); };
-  const cycleState = () => setFgState(STATES[(STATES.indexOf(fgState) + 1) % STATES.length]);
-  const cycleKind = () => setKind(KINDS[(KINDS.indexOf(kind) + 1) % KINDS.length]);
 
   const valueOf = (k: string) => qty(s, "kitchen", k) * IT[k].cost;
   const total = stockValue(s, "kitchen");
@@ -255,7 +253,7 @@ export default function Stock() {
           placeholder="Search item, code or group…"
           value={q}
           onSearch={setQ}
-          filters={<FilterBtn label="State" value={fgState} active={fgState !== "All"} onClick={cycleState} />}
+          filters={<FilterSelect label="State" value={fgState} options={STATES} onChange={(v) => setFgState(v as StateF)} />}
           right={fgFiltering
             ? <Btn size="sm" variant="gh" onClick={clearFg}>Clear filters</Btn>
             : <Btn size="sm" variant="gh" onClick={() => openDrawer("pnew", "new")}>New product</Btn>}
@@ -289,7 +287,7 @@ export default function Stock() {
           placeholder="Search raw material or packaging…"
           value={rq}
           onSearch={setRq}
-          filters={<FilterBtn label="Kind" value={kind} active={kind !== "All"} onClick={cycleKind} />}
+          filters={<FilterSelect label="Kind" value={kind} options={KINDS} onChange={(v) => setKind(v as KindF)} />}
           right={rawFiltering
             ? <Btn size="sm" variant="gh" onClick={clearRaw}>Clear filters</Btn>
             : <span className="mini">{lowRaw.length} under par</span>}

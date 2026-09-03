@@ -3,7 +3,7 @@ import { IT, LOC, OUTLETS } from "../../data/master";
 import { useApp } from "../../store";
 import { availOf, menuOf } from "../../lib/selectors";
 import {
-  Alert, Card, DataTable, FilterBtn, ImagePlaceholder, PageHead, Pill, Switch, TableFoot, Tag, Toolbar,
+  Alert, Card, DataTable, FilterSelect, ImagePlaceholder, PageHead, Pill, Switch, TableFoot, Tag, Toolbar,
 } from "../../ui/kit";
 import { emptyFor, sortRows, useSort, type SortValue } from "./useSort";
 import type { ItemType, LocKey } from "../../types";
@@ -136,12 +136,12 @@ export default function Availability() {
           onSearch={setQ}
           filters={
             <>
-              <FilterBtn label="Type" value={String(TYPES[type])} active={type > 0}
-                onClick={() => setType((type + 1) % TYPES.length)} />
-              <FilterBtn label="Counter" value={outletNames[outlet]} active={outlet > 0}
-                onClick={() => setOutlet((outlet + 1) % outletNames.length)} />
-              <FilterBtn label="State" value={STATES[state]} active={state > 0}
-                onClick={() => setState((state + 1) % STATES.length)} />
+              <FilterSelect label="Type" value={String(TYPES[type])} options={TYPES}
+                onChange={(v) => setType(TYPES.indexOf(v as (typeof TYPES)[number]))} />
+              <FilterSelect label="Counter" value={outletNames[outlet]} options={outletNames}
+                onChange={(v) => setOutlet(outletNames.indexOf(v))} />
+              <FilterSelect label="State" value={STATES[state]} options={STATES}
+                onChange={(v) => setState(STATES.indexOf(v as typeof STATES[number]))} />
             </>
           }
         />

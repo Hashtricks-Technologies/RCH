@@ -6,11 +6,10 @@ import { useApp } from "../../store";
 import { avail, daysCover, poValue, procurementList, stateTone, stockValue } from "../../lib/selectors";
 import { U, fq, lakh, money0, sum } from "../../lib/fmt";
 import {
-  Alert, Btn, Card, DataTable, Feed, FilterBtn, Grid, Kpis, PageHead, Pill, TableFoot, Toolbar,
+  Alert, Btn, Card, DataTable, Feed, FilterSelect, Grid, Kpis, PageHead, Pill, TableFoot, Toolbar,
 } from "../../ui/kit";
 import type { FeedItem, Row } from "../../ui/kit";
 import type { PoStatus, TktLine } from "../../types";
-import { cycle } from "./lib";
 
 /** Procurement only ever buys what the central store carries: raw, packing and MRP goods.
  *  Finished goods and made-to-order drinks are produced in-house, never purchased. */
@@ -193,9 +192,8 @@ export default function Dashboard() {
             onSearch={setQ}
             filters={
               <>
-                <FilterBtn label="State" value={state} onClick={() => setState(cycle(STATES, state))} />
-                <FilterBtn label="Commitment" value={commitment}
-                  onClick={() => setCommitment(cycle(COMMITMENTS, commitment))} />
+                <FilterSelect label="State" value={state} options={STATES} onChange={setState} />
+                <FilterSelect label="Commitment" value={commitment} options={COMMITMENTS} onChange={setCommitment} />
               </>
             }
           />

@@ -4,7 +4,7 @@ import { useApp } from "../../store";
 import { freeToPromise } from "../../lib/selectors";
 import { U, fq, sum } from "../../lib/fmt";
 import {
-  Alert, Btn, Card, DataTable, FilterBtn, Grid, PageHead, Pill, StatusPill, TableFoot, Toolbar,
+  Alert, Btn, Card, DataTable, FilterBtn, FilterSelect, Grid, PageHead, Pill, StatusPill, TableFoot, Toolbar,
 } from "../../ui/kit";
 import type { LocKey, StockRequest } from "../../types";
 import "./IssueDetail";
@@ -31,6 +31,7 @@ const approver = (r: StockRequest) =>
  *  cycle drives all three filter buttons, so they read the same way. */
 const LOC_OPTS: (LocKey | null)[] = [null, ...ALL_LOCS.filter((l) => l !== "store")];
 const locLabel = (l: LocKey | null) => (l === null ? "All" : LOC[l].n);
+const LOC_LABELS = LOC_OPTS.map(locLabel);
 
 export default function IssueDesk() {
   const s = useApp();
@@ -131,7 +132,7 @@ export default function IssueDesk() {
           onSearch={setQa}
           filters={
             <>
-              <FilterBtn label="Outlet" value={locLabel(outletA)} onClick={() => setLa((n) => (n + 1) % LOC_OPTS.length)} />
+              <FilterSelect label="Outlet" value={locLabel(outletA)} options={LOC_LABELS} onChange={(v) => setLa(LOC_LABELS.indexOf(v))} />
               <FilterBtn label="Short on stock only" active={shortOnly} onClick={() => setShortOnly((v) => !v)} />
               <FilterBtn label="Urgent only" active={urgentOnly} onClick={() => setUrgentOnly((v) => !v)} />
             </>
@@ -218,7 +219,7 @@ export default function IssueDesk() {
           value={qb}
           onSearch={setQb}
           filters={
-            <FilterBtn label="Outlet" value={locLabel(outletB)} onClick={() => setLb((n) => (n + 1) % LOC_OPTS.length)} />
+            <FilterSelect label="Outlet" value={locLabel(outletB)} options={LOC_LABELS} onChange={(v) => setLb(LOC_LABELS.indexOf(v))} />
           }
           right={<span className="mini">{toHand.length} of {allToHand.length}</span>}
         />
@@ -275,7 +276,7 @@ export default function IssueDesk() {
           value={qc}
           onSearch={setQc}
           filters={
-            <FilterBtn label="Outlet" value={locLabel(outletC)} onClick={() => setLc((n) => (n + 1) % LOC_OPTS.length)} />
+            <FilterSelect label="Outlet" value={locLabel(outletC)} options={LOC_LABELS} onChange={(v) => setLc(LOC_LABELS.indexOf(v))} />
           }
           right={<span className="mini">{inTransit.length} of {allTransit.length}</span>}
         />

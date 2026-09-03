@@ -3,10 +3,10 @@ import { IT } from "../../data/master";
 import { useApp } from "../../store";
 import { poValue } from "../../lib/selectors";
 import { money0, sum } from "../../lib/fmt";
-import { Btn, Card, DataTable, FilterBtn, PageHead, Pill, Tag, TableFoot, Toolbar } from "../../ui/kit";
+import { Btn, Card, DataTable, FilterSelect, PageHead, Pill, Tag, TableFoot, Toolbar } from "../../ui/kit";
 import type { Row } from "../../ui/kit";
 import type { PoStatus, Vendor } from "../../types";
-import { cycle, liveContractsOf } from "./lib";
+import { liveContractsOf } from "./lib";
 
 /** Purchase orders that still represent an open commitment to a vendor. */
 const LIVE: PoStatus[] = ["Ordered", "Partially received"];
@@ -96,10 +96,9 @@ export default function Vendors() {
           onSearch={setQ}
           filters={
             <>
-              <FilterBtn label="Status" value={status} onClick={() => setStatus(cycle(STATUSES, status))} />
-              <FilterBtn label="Supply group" value={group} onClick={() => setGroup(cycle(ALL_GROUPS, group))} />
-              <FilterBtn label="Contracts" value={contracted}
-                onClick={() => setContracted(cycle(CONTRACTS, contracted))} />
+              <FilterSelect label="Status" value={status} options={STATUSES} onChange={setStatus} />
+              <FilterSelect label="Supply group" value={group} options={ALL_GROUPS} onChange={setGroup} />
+              <FilterSelect label="Contracts" value={contracted} options={CONTRACTS} onChange={setContracted} />
             </>
           }
         />

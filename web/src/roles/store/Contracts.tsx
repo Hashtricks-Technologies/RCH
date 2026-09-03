@@ -4,7 +4,7 @@ import { useApp } from "../../store";
 import { costOf } from "../../lib/selectors";
 import { U, money, money0, pct, sum } from "../../lib/fmt";
 import {
-  Alert, Btn, BtnRow, Card, DataTable, Field, FilterBtn, FormRow, Kpis, PageHead, Pill,
+  Alert, Btn, BtnRow, Card, DataTable, Field, FilterBtn, FilterSelect, FormRow, Kpis, PageHead, Pill,
   TableFoot, Toolbar,
 } from "../../ui/kit";
 import type { RateContract } from "../../types";
@@ -212,8 +212,8 @@ export default function Contracts() {
             onSearch={setQ}
             filters={
               <>
-                <FilterBtn label="Vendor" value={vendor} onClick={() => setVi((n) => (n + 1) % VENDOR_OPTS.length)} />
-                <FilterBtn label="State" value={state} onClick={() => setSi((n) => (n + 1) % STATE.length)} />
+                <FilterSelect label="Vendor" value={vendor} options={VENDOR_OPTS} onChange={(v) => setVi(VENDOR_OPTS.indexOf(v))} />
+                <FilterSelect label="State" value={state} options={STATE} onChange={(v) => setSi(STATE.indexOf(v as (typeof STATE)[number]))} />
                 <FilterBtn label="Above cost only" active={overOnly} onClick={() => setOverOnly((v) => !v)} />
               </>
             }

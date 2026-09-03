@@ -7,7 +7,7 @@ import {
 } from "../../lib/selectors";
 import { U, fq, money, money0, sum } from "../../lib/fmt";
 import {
-  Btn, Card, DataTable, FilterBtn, PageHead, Pill, TableFoot, Tag, Toolbar,
+  Btn, Card, DataTable, FilterBtn, FilterSelect, PageHead, Pill, TableFoot, Tag, Toolbar,
 } from "../../ui/kit";
 
 const TYPES = ["All", "RAW", "PACK", "MRP", "FG", "MTO"] as const;
@@ -113,8 +113,8 @@ export default function Stock() {
           onSearch={setQ}
           filters={
             <>
-              <FilterBtn label="Type" value={type} onClick={() => setTi((n) => (n + 1) % TYPES.length)} />
-              <FilterBtn label="Group" value={group} onClick={() => setGi((n) => (n + 1) % GROUPS.length)} />
+              <FilterSelect label="Type" value={type} options={TYPES} onChange={(v) => setTi(TYPES.indexOf(v as (typeof TYPES)[number]))} />
+              <FilterSelect label="Group" value={group} options={GROUPS} onChange={(v) => setGi(GROUPS.indexOf(v))} />
               <FilterBtn label="Below reorder only" active={lowOnly} onClick={() => setLowOnly((v) => !v)} />
               <FilterBtn label="Holding stock only" active={heldOnly} onClick={() => setHeldOnly((v) => !v)} />
             </>

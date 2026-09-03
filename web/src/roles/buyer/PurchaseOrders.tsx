@@ -5,11 +5,10 @@ import { useApp } from "../../store";
 import { poValue, round3 } from "../../lib/selectors";
 import { money0, sum, unitTotal } from "../../lib/fmt";
 import {
-  Btn, Card, DataTable, FilterBtn, Kpis, PageHead, Pill, StatusPill, TableFoot, Toolbar,
+  Btn, Card, DataTable, FilterSelect, Kpis, PageHead, Pill, StatusPill, TableFoot, Toolbar,
 } from "../../ui/kit";
 import type { Row } from "../../ui/kit";
 import type { PurchaseOrder, Vendor } from "../../types";
-import { cycle } from "./lib";
 import "./PoDrawer";
 
 const hits = (o: PurchaseOrder, vendors: Vendor[], q: string) => {
@@ -170,8 +169,7 @@ export default function PurchaseOrders() {
           value={qd}
           onSearch={setQd}
           filters={
-            <FilterBtn label="Vendor" value={vd}
-              onClick={() => setVd(cycle(vendorsFor(allDrafts), vd))} />
+            <FilterSelect label="Vendor" value={vd} options={vendorsFor(allDrafts)} onChange={setVd} />
           }
         />
         <DataTable
@@ -202,10 +200,8 @@ export default function PurchaseOrders() {
           onSearch={setQo}
           filters={
             <>
-              <FilterBtn label="Vendor" value={vo}
-                onClick={() => setVo(cycle(vendorsFor(allOrdered), vo))} />
-              <FilterBtn label="Approval" value={approval}
-                onClick={() => setApproval(cycle(APPROVAL, approval))} />
+              <FilterSelect label="Vendor" value={vo} options={vendorsFor(allOrdered)} onChange={setVo} />
+              <FilterSelect label="Approval" value={approval} options={APPROVAL} onChange={setApproval} />
             </>
           }
         />
@@ -234,8 +230,7 @@ export default function PurchaseOrders() {
           value={qp}
           onSearch={setQp}
           filters={
-            <FilterBtn label="Vendor" value={vp}
-              onClick={() => setVp(cycle(vendorsFor(allPartial), vp))} />
+            <FilterSelect label="Vendor" value={vp} options={vendorsFor(allPartial)} onChange={setVp} />
           }
         />
         <DataTable
@@ -263,10 +258,8 @@ export default function PurchaseOrders() {
           onSearch={setQc}
           filters={
             <>
-              <FilterBtn label="Vendor" value={vc}
-                onClick={() => setVc(cycle(vendorsFor(allClosed), vc))} />
-              <FilterBtn label="Outcome" value={closedState}
-                onClick={() => setClosedState(cycle(CLOSED_STATES, closedState))} />
+              <FilterSelect label="Vendor" value={vc} options={vendorsFor(allClosed)} onChange={setVc} />
+              <FilterSelect label="Outcome" value={closedState} options={CLOSED_STATES} onChange={setClosedState} />
             </>
           }
         />

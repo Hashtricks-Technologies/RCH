@@ -4,7 +4,7 @@ import { useApp } from "../../store";
 import { costOf, menuOf, qty, resv, stockValue } from "../../lib/selectors";
 import { fq, lakh, money, money0, sum } from "../../lib/fmt";
 import {
-  Alert, Btn, Card, DataTable, Field, FilterBtn, FormRow, Grid, PageHead,
+  Alert, Btn, Card, DataTable, Field, FilterSelect, FormRow, Grid, PageHead,
   StatusPill, TableFoot, Tag, Toolbar,
 } from "../../ui/kit";
 import type { ItemType, LocKey, TicketPriority } from "../../types";
@@ -157,12 +157,12 @@ export default function ItemsStock() {
           onSearch={setTq}
           filters={
             <>
-              <FilterBtn label="Stage" value={TSTATES[tstate]} active={tstate > 0}
-                onClick={() => setTstate((tstate + 1) % TSTATES.length)} />
-              <FilterBtn label="From" value={shopNames[tfrom]} active={tfrom > 0}
-                onClick={() => setTfrom((tfrom + 1) % shopNames.length)} />
-              <FilterBtn label="To" value={shopNames[tto]} active={tto > 0}
-                onClick={() => setTto((tto + 1) % shopNames.length)} />
+              <FilterSelect label="Stage" value={TSTATES[tstate]} options={TSTATES}
+                onChange={(v) => setTstate(TSTATES.indexOf(v as typeof TSTATES[number]))} />
+              <FilterSelect label="From" value={shopNames[tfrom]} options={shopNames}
+                onChange={(v) => setTfrom(shopNames.indexOf(v))} />
+              <FilterSelect label="To" value={shopNames[tto]} options={shopNames}
+                onChange={(v) => setTto(shopNames.indexOf(v))} />
             </>
           }
         />
@@ -317,12 +317,12 @@ export default function ItemsStock() {
           onSearch={setQ}
           filters={
             <>
-              <FilterBtn label="Type" value={String(TYPES[type])} active={type > 0}
-                onClick={() => setType((type + 1) % TYPES.length)} />
-              <FilterBtn label="Carried at" value={locNames[loc]} active={loc > 0}
-                onClick={() => setLoc((loc + 1) % locNames.length)} />
-              <FilterBtn label="State" value={STATES[state]} active={state > 0}
-                onClick={() => setState((state + 1) % STATES.length)} />
+              <FilterSelect label="Type" value={String(TYPES[type])} options={TYPES}
+                onChange={(v) => setType(TYPES.indexOf(v as (typeof TYPES)[number]))} />
+              <FilterSelect label="Carried at" value={locNames[loc]} options={locNames}
+                onChange={(v) => setLoc(locNames.indexOf(v))} />
+              <FilterSelect label="State" value={STATES[state]} options={STATES}
+                onChange={(v) => setState(STATES.indexOf(v as typeof STATES[number]))} />
             </>
           }
         />

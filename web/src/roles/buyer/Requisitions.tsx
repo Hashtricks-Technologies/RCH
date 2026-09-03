@@ -4,11 +4,11 @@ import { useApp } from "../../store";
 import { round3 } from "../../lib/selectors";
 import { money0, sum } from "../../lib/fmt";
 import {
-  Btn, Card, DataTable, FilterBtn, Grid, PageHead, Pill, StatusPill, TableFoot, Toolbar,
+  Btn, Card, DataTable, FilterSelect, Grid, PageHead, Pill, StatusPill, TableFoot, Toolbar,
 } from "../../ui/kit";
 import type { Row } from "../../ui/kit";
 import type { PrqLine, Requisition } from "../../types";
-import { cycle, recap, reconcile } from "./lib";
+import { recap, reconcile } from "./lib";
 import "./RequisitionDrawer";
 
 const lineValue = (lines: PrqLine[]) => sum(lines, (l) => l.qty * (IT[l.it]?.cost ?? 0));
@@ -132,8 +132,7 @@ export default function Requisitions() {
           value={qw}
           onSearch={setQw}
           filters={
-            <FilterBtn label="Raised by" value={raisedBy}
-              onClick={() => setRaisedBy(cycle(RAISERS, raisedBy))} />
+            <FilterSelect label="Raised by" value={raisedBy} options={RAISERS} onChange={setRaisedBy} />
           }
         />
         <DataTable
@@ -169,8 +168,8 @@ export default function Requisitions() {
           onSearch={setQa}
           filters={
             <>
-              <FilterBtn label="Outcome" value={outcome} onClick={() => setOutcome(cycle(OUTCOMES, outcome))} />
-              <FilterBtn label="Progress" value={progress} onClick={() => setProgress(cycle(PROGRESS, progress))} />
+              <FilterSelect label="Outcome" value={outcome} options={OUTCOMES} onChange={setOutcome} />
+              <FilterSelect label="Progress" value={progress} options={PROGRESS} onChange={setProgress} />
             </>
           }
         />
@@ -207,8 +206,7 @@ export default function Requisitions() {
           value={qd}
           onSearch={setQd}
           filters={
-            <FilterBtn label="Declined by" value={declinedBy}
-              onClick={() => setDeclinedBy(cycle(DECLINERS, declinedBy))} />
+            <FilterSelect label="Declined by" value={declinedBy} options={DECLINERS} onChange={setDeclinedBy} />
           }
         />
         <DataTable

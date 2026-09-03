@@ -5,7 +5,7 @@ import { useApp } from "../../store";
 import { availOf, menuOf, stockValue } from "../../lib/selectors";
 import { lakh, money, money0, sum, unitTotal } from "../../lib/fmt";
 import {
-  Alert, Btn, Card, DataTable, FilterBtn, PageHead, Pill, TableFoot, Toolbar,
+  Alert, Btn, Card, DataTable, FilterSelect, PageHead, Pill, TableFoot, Toolbar,
 } from "../../ui/kit";
 import { emptyFor, sortRows, useSort, type SortValue } from "./useSort";
 import type { LocKey, StockRequest } from "../../types";
@@ -229,10 +229,10 @@ export default function Dashboard() {
           onSearch={setRq}
           filters={
             <>
-              <FilterBtn label="Outlet" value={outletNames[outlet]} active={outlet > 0}
-                onClick={() => setOutlet((outlet + 1) % outletNames.length)} />
-              <FilterBtn label="Priority" value={PRIORITY[prio]} active={prio > 0}
-                onClick={() => setPrio((prio + 1) % PRIORITY.length)} />
+              <FilterSelect label="Outlet" value={outletNames[outlet]} options={outletNames}
+                onChange={(v) => setOutlet(outletNames.indexOf(v))} />
+              <FilterSelect label="Priority" value={PRIORITY[prio]} options={PRIORITY}
+                onChange={(v) => setPrio(PRIORITY.indexOf(v as typeof PRIORITY[number]))} />
             </>
           }
           right={<Btn size="sm" variant="gh" onClick={() => nav("/approvals")}>Full approvals screen</Btn>}
@@ -278,8 +278,8 @@ export default function Dashboard() {
           value={aq}
           onSearch={setAq}
           filters={
-            <FilterBtn label="Kind" value={ACTIVITY[akind]} active={akind > 0}
-              onClick={() => setAkind((akind + 1) % ACTIVITY.length)} />
+            <FilterSelect label="Kind" value={ACTIVITY[akind]} options={ACTIVITY}
+              onChange={(v) => setAkind(ACTIVITY.indexOf(v as typeof ACTIVITY[number]))} />
           }
         />
         <DataTable

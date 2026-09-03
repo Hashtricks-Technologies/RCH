@@ -4,11 +4,10 @@ import { useApp } from "../../store";
 import { avail, inTransit, qty, stateTone, stockValue } from "../../lib/selectors";
 import { fq, lakh, money, money0, sum } from "../../lib/fmt";
 import {
-  Btn, Card, DataTable, FilterBtn, Kpis, PageHead, Pill, Tag, TableFoot, Toolbar,
+  Btn, Card, DataTable, FilterSelect, Kpis, PageHead, Pill, Tag, TableFoot, Toolbar,
 } from "../../ui/kit";
 import type { Col, Row } from "../../ui/kit";
 import type { ItemType, LocKey } from "../../types";
-import { cycle } from "./lib";
 
 const KEYS = Object.keys(IT);
 const TYPES: string[] = ["All", "RAW", "PACK", "MRP", "FG", "MTO"];
@@ -129,10 +128,10 @@ export default function Inventory() {
           onSearch={setQ}
           filters={
             <>
-              <FilterBtn label="Type" value={type} onClick={() => setType(cycle(TYPES, type))} />
-              <FilterBtn label="Group" value={group} onClick={() => setGroup(cycle(GROUPS, group))} />
-              <FilterBtn label="State" value={state} onClick={() => setState(cycle(STATES, state))} />
-              <FilterBtn label="Stocked at" value={place} onClick={() => setPlace(cycle(PLACES, place))} />
+              <FilterSelect label="Type" value={type} options={TYPES} onChange={setType} />
+              <FilterSelect label="Group" value={group} options={GROUPS} onChange={setGroup} />
+              <FilterSelect label="State" value={state} options={STATES} onChange={setState} />
+              <FilterSelect label="Stocked at" value={place} options={PLACES} onChange={setPlace} />
             </>
           }
           right={<span className="mini">Valued at standard cost</span>}

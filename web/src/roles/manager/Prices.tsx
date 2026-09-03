@@ -4,7 +4,7 @@ import { useApp } from "../../store";
 import { costOf, menuOf, priceOf } from "../../lib/selectors";
 import { money, sum } from "../../lib/fmt";
 import {
-  Alert, Btn, Card, DataTable, Field, FilterBtn, FormRow, Grid, ImagePlaceholder, PageHead, Pill, TableFoot, Tag, Toolbar,
+  Alert, Btn, Card, DataTable, Field, FilterSelect, FormRow, Grid, ImagePlaceholder, PageHead, Pill, TableFoot, Tag, Toolbar,
 } from "../../ui/kit";
 import { emptyFor, sortRows, useSort, type SortValue } from "./useSort";
 import type { ItemType, LocKey } from "../../types";
@@ -164,10 +164,10 @@ export default function Prices() {
           onSearch={setQ}
           filters={
             <>
-              <FilterBtn label="Type" value={String(TYPES[type])} active={type > 0}
-                onClick={() => setType((type + 1) % TYPES.length)} />
-              <FilterBtn label="Price" value={PSTATE[pstate]} active={pstate > 0}
-                onClick={() => setPstate((pstate + 1) % PSTATE.length)} />
+              <FilterSelect label="Type" value={String(TYPES[type])} options={TYPES}
+                onChange={(v) => setType(TYPES.indexOf(v as (typeof TYPES)[number]))} />
+              <FilterSelect label="Price" value={PSTATE[pstate]} options={PSTATE}
+                onChange={(v) => setPstate(PSTATE.indexOf(v as typeof PSTATE[number]))} />
             </>
           }
           right={<Btn variant="gh" size="sm" onClick={() => go(null)}>Back to all shops</Btn>}

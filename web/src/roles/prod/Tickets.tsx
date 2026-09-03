@@ -4,7 +4,7 @@ import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
 import { fq, sum, unitTotal } from "../../lib/fmt";
 import {
-  Alert, Btn, Card, DataTable, FilterBtn, Otp, PageHead, StatusPill, TableFoot, Toolbar,
+  Alert, Btn, Card, DataTable, FilterSelect, Otp, PageHead, StatusPill, TableFoot, Toolbar,
 } from "../../ui/kit";
 import type { Ticket, TktStatus } from "../../types";
 
@@ -26,9 +26,8 @@ function useTicketFilter() {
       || (t.id + " " + t.req + " " + LOC[t.from].n + " " + LOC[t.to].n + " " + itemText(t))
         .toLowerCase().includes(k);
   };
-  const cycle = () => setShow(SHOW[(SHOW.indexOf(show) + 1) % SHOW.length]);
   const clear = () => { setQ(""); setShow("All"); };
-  return { q, setQ, show, filtering, keep, cycle, clear };
+  return { q, setQ, show, setShow, filtering, keep, clear };
 }
 
 export default function Tickets() {
@@ -78,7 +77,7 @@ export default function Tickets() {
           placeholder="Search ticket, request, item…"
           value={inb.q}
           onSearch={inb.setQ}
-          filters={<FilterBtn label="Status" value={inb.show} active={inb.show !== "All"} onClick={inb.cycle} />}
+          filters={<FilterSelect label="Status" value={inb.show} options={SHOW} onChange={(v) => inb.setShow(v as Show)} />}
           right={inb.filtering
             ? <Btn size="sm" variant="gh" onClick={inb.clear}>Clear filters</Btn>
             : <span className="mini">{inbound.length} addressed to {LOC.kitchen.c}</span>}
@@ -126,7 +125,7 @@ export default function Tickets() {
           placeholder="Search ticket, order, destination, item…"
           value={out.q}
           onSearch={out.setQ}
-          filters={<FilterBtn label="Status" value={out.show} active={out.show !== "All"} onClick={out.cycle} />}
+          filters={<FilterSelect label="Status" value={out.show} options={SHOW} onChange={(v) => out.setShow(v as Show)} />}
           right={out.filtering
             ? <Btn size="sm" variant="gh" onClick={out.clear}>Clear filters</Btn>
             : <span className="mini">{atPass.length} still at the pass</span>}

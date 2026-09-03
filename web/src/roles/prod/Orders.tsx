@@ -4,7 +4,7 @@ import { useApp } from "../../store";
 import { avail, qty } from "../../lib/selectors";
 import { fq, sum, U } from "../../lib/fmt";
 import {
-  Alert, Btn, Card, DataTable, FilterBtn, PageHead, Pill, StatusPill, TableFoot, Toolbar,
+  Alert, Btn, Card, DataTable, FilterSelect, PageHead, Pill, StatusPill, TableFoot, Toolbar,
 } from "../../ui/kit";
 import type { LocKey, PordStatus, ProdOrder } from "../../types";
 
@@ -44,11 +44,7 @@ export default function Orders() {
   const onBoard = filtered.filter((o) => o.st !== "Declined");
   const ticketFor = (o: ProdOrder) => tkt.find((t) => t.req === o.id);
 
-  /** Cycles All → Coffee Shop → Snack Kiosk → All. */
-  const cycleOutlet = () => {
-    const at = outlet ? OUTLETS.indexOf(outlet) : -1;
-    setOutlet(at + 1 >= OUTLETS.length ? null : OUTLETS[at + 1]);
-  };
+  const OUTLET_NAMES = ["All", ...OUTLETS.map((l) => LOC[l].n)];
   const clearFilters = () => { setQ(""); setOutlet(null); };
 
   /** The one control that moves a card one column right. */
@@ -133,8 +129,12 @@ export default function Orders() {
           placeholder="Search order, outlet, person or product…"
           value={q}
           onSearch={setQ}
-          filters={<FilterBtn label="Outlet" value={outlet ? LOC[outlet].n : "All"}
-            active={Boolean(outlet)} onClick={cycleOutlet} />}
+          filters={<FilterSelect
+            label="Outlet"
+            value={outlet ? LOC[outlet].n : "All"}
+            options={OUTLET_NAMES}
+            onChange={(name) => setOutlet(name === "All" ? null : OUTLETS.find((l) => LOC[l].n === name) ?? null)}
+          />}
           right={filtering
             ? <Btn size="sm" variant="gh" onClick={clearFilters}>Clear filters</Btn>
             : <span className="mini">{OUTLETS.map((l) => LOC[l].n).join(" · ")}</span>}

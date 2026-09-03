@@ -6,12 +6,12 @@ import { useApp } from "../../store";
 import { costOf, procurementList, qty, round3 } from "../../lib/selectors";
 import { fq, money, money0, sum, U } from "../../lib/fmt";
 import {
-  Alert, Btn, Card, DataTable, FilterBtn, Grid, PageHead, Tag, TableFoot, Toolbar,
+  Alert, Btn, Card, DataTable, FilterSelect, Grid, PageHead, Tag, TableFoot, Toolbar,
 } from "../../ui/kit";
 import type { Row } from "../../ui/kit";
 import type { PoolLine } from "../../lib/selectors";
 import type { Vendor } from "../../types";
-import { contractFor, cycle } from "./lib";
+import { contractFor } from "./lib";
 
 const NO_VENDOR = "No suggested vendor";
 const STOCK_STATES = ["All", "Below reorder", "At or above reorder"];
@@ -234,9 +234,9 @@ export default function ProcurementList() {
           onSearch={setQ}
           filters={
             <>
-              <FilterBtn label="Group" value={groupFilter} onClick={() => setGroupFilter(cycle(GROUPS, groupFilter))} />
-              <FilterBtn label="Vendor" value={vendorFilter} onClick={() => setVendorFilter(cycle(VENDOR_NAMES, vendorFilter))} />
-              <FilterBtn label="Central store" value={stockFilter} onClick={() => setStockFilter(cycle(STOCK_STATES, stockFilter))} />
+              <FilterSelect label="Group" value={groupFilter} options={GROUPS} onChange={setGroupFilter} />
+              <FilterSelect label="Vendor" value={vendorFilter} options={VENDOR_NAMES} onChange={setVendorFilter} />
+              <FilterSelect label="Central store" value={stockFilter} options={STOCK_STATES} onChange={setStockFilter} />
             </>
           }
         />

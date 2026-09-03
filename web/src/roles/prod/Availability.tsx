@@ -4,7 +4,7 @@ import { useApp } from "../../store";
 import { availOf, menuOf, qty } from "../../lib/selectors";
 import { fq, U } from "../../lib/fmt";
 import {
-  Alert, Btn, Card, DataTable, FilterBtn, PageHead, Pill, Switch, TableFoot, Tag, Toolbar,
+  Alert, Btn, Card, DataTable, FilterSelect, PageHead, Pill, Switch, TableFoot, Tag, Toolbar,
 } from "../../ui/kit";
 
 const PRODS = ["puff", "sand", "salad"];
@@ -26,7 +26,6 @@ export default function Availability() {
     .filter((k) => sw === "All" || (sw === "Switched off") === Boolean(s.ovr["kitchen:" + k]));
 
   const filtering = Boolean(q.trim() || sw !== "All");
-  const cycleSwitch = () => setSw(SWITCH[(SWITCH.indexOf(sw) + 1) % SWITCH.length]);
   const clearFilters = () => { setQ(""); setSw("All"); };
 
   return (
@@ -51,7 +50,7 @@ export default function Availability() {
           placeholder="Search product, code or group…"
           value={q}
           onSearch={setQ}
-          filters={<FilterBtn label="Switch" value={sw} active={sw !== "All"} onClick={cycleSwitch} />}
+          filters={<FilterSelect label="Switch" value={sw} options={SWITCH} onChange={(v) => setSw(v as SwitchF)} />}
           right={filtering
             ? <Btn size="sm" variant="gh" onClick={clearFilters}>Clear filters</Btn>
             : <span className="mini">{all.length} product{all.length === 1 ? "" : "s"} the kitchen can make or hold</span>}

@@ -3,7 +3,7 @@ import { LOC } from "../../data/master";
 import { useApp } from "../../store";
 import type { ProductReqStatus } from "../../types";
 import {
-  Alert, Btn, Card, DataTable, FilterBtn, PageHead, Pill, TableFoot, Toolbar,
+  Alert, Btn, Card, DataTable, FilterSelect, PageHead, Pill, TableFoot, Toolbar,
 } from "../../ui/kit";
 
 const STAGES: (ProductReqStatus | "All")[] = ["All", "Requested", "Created", "Declined"];
@@ -56,8 +56,8 @@ export default function NewProducts() {
             placeholder="Search product, shop or who asked…"
             value={q} onSearch={setQ}
             filters={
-              <FilterBtn label="Stage" value={stage}
-                onClick={() => setStage(STAGES[(STAGES.indexOf(stage) + 1) % STAGES.length])} />
+              <FilterSelect label="Stage" value={stage} options={STAGES}
+                onChange={(v) => setStage(v as ProductReqStatus | "All")} />
             }
           />
         }

@@ -4,7 +4,7 @@ import { useApp } from "../../store";
 import { avail, menuOf, qty, recipeCost } from "../../lib/selectors";
 import { fq, money, sum, U } from "../../lib/fmt";
 import {
-  Alert, Btn, Card, DataTable, Field, FilterBtn, FormRow, Grid, PageHead, Pill, StatusPill,
+  Alert, Btn, Card, DataTable, Field, FilterSelect, FormRow, Grid, PageHead, Pill, StatusPill,
   TableFoot, Toolbar,
 } from "../../ui/kit";
 import type { LocKey, Ticket } from "../../types";
@@ -40,13 +40,15 @@ export default function MakeDistribute() {
   const [rq, setRq] = useState("");
   const [rDest, setRDest] = useState<LocKey | null>(null);
 
-  /** Steps a destination filter through every place the kitchen can send to. */
-  const nextDest = (v: LocKey | null): LocKey | null => {
-    const at = v ? DESTS.indexOf(v) : -1;
-    return at + 1 >= DESTS.length ? null : DESTS[at + 1];
-  };
-  const destBtn = (v: LocKey | null, set: (x: LocKey | null) => void) => (
-    <FilterBtn label="To" value={v ? LOC[v].n : "All"} active={Boolean(v)} onClick={() => set(nextDest(v))} />
+  /** Destination filter options: "All" plus every place the kitchen can send to. */
+  const DEST_NAMES = ["All", ...DESTS.map((l) => LOC[l].n)];
+  const destSelect = (v: LocKey | null, set: (x: LocKey | null) => void) => (
+    <FilterSelect
+      label="To"
+      value={v ? LOC[v].n : "All"}
+      options={DEST_NAMES}
+      onChange={(name) => set(name === "All" ? null : DESTS.find((l) => LOC[l].n === name) ?? null)}
+    />
   );
 
   /** How many units the ingredients on the kitchen rack still allow. */
@@ -81,10 +83,7 @@ export default function MakeDistribute() {
     .filter((b) => !bq.trim()
       || (b.id + " " + IT[b.it].n + " " + IT[b.it].c + " " + (b.note ?? ""))
         .toLowerCase().includes(bq.trim().toLowerCase()));
-  const cycleProd = () => {
-    const at = bProd ? PRODS.indexOf(bProd) : -1;
-    setBProd(at + 1 >= PRODS.length ? null : PRODS[at + 1]);
-  };
+  const PROD_NAMES = ["All", ...PRODS.map((k) => IT[k].n)];
 
   const match = (term: string, dest: LocKey | null) => (t: Ticket) => {
     if (dest && t.to !== dest) return false;
@@ -226,8 +225,12 @@ export default function MakeDistribute() {
           placeholder="Search batch, product or reason…"
           value={bq}
           onSearch={setBq}
-          filters={<FilterBtn label="Product" value={bProd ? IT[bProd].n : "All"}
-            active={Boolean(bProd)} onClick={cycleProd} />}
+          filters={<FilterSelect
+            label="Product"
+            value={bProd ? IT[bProd].n : "All"}
+            options={PROD_NAMES}
+            onChange={(name) => setBProd(name === "All" ? null : PRODS.find((k) => IT[k].n === name) ?? null)}
+          />}
           right={bFiltering
             ? <Btn size="sm" variant="gh" onClick={() => { setBq(""); setBProd(null); }}>Clear filters</Btn>
             : <span className="mini">{allBatches.length} batch{allBatches.length === 1 ? "" : "es"} today</span>}
@@ -285,7 +288,7 @@ export default function MakeDistribute() {
           placeholder="Search ticket, order or product…"
           value={tq}
           onSearch={setTq}
-          filters={destBtn(tDest, setTDest)}
+          filters={destSelect(tDest, setTDest)}
           right={tFiltering
             ? <Btn size="sm" variant="gh" onClick={() => { setTq(""); setTDest(null); }}>Clear filters</Btn>
             : <span className="mini">{allToHand.length} at the pass</span>}
@@ -331,7 +334,7 @@ export default function MakeDistribute() {
           placeholder="Search ticket, order or product…"
           value={cq}
           onSearch={setCq}
-          filters={destBtn(cDest, setCDest)}
+          filters={destSelect(cDest, setCDest)}
           right={cFiltering
             ? <Btn size="sm" variant="gh" onClick={() => { setCq(""); setCDest(null); }}>Clear filters</Btn>
             : <span className="mini">{allTransit.length} on the move</span>}
@@ -378,7 +381,7 @@ export default function MakeDistribute() {
           placeholder="Search ticket, order or product…"
           value={rq}
           onSearch={setRq}
-          filters={destBtn(rDest, setRDest)}
+          filters={destSelect(rDest, setRDest)}
           right={rFiltering
             ? <Btn size="sm" variant="gh" onClick={() => { setRq(""); setRDest(null); }}>Clear filters</Btn>
             : <span className="mini">{allDone.length} confirmed today</span>}

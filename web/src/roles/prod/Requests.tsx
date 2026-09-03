@@ -4,7 +4,7 @@ import { useApp } from "../../store";
 import { isReqOpen, qty } from "../../lib/selectors";
 import { fq, sum, U, unitTotal } from "../../lib/fmt";
 import {
-  Alert, Btn, BtnRow, Card, DataTable, Field, FilterBtn, FormRow, PageHead, Section,
+  Alert, Btn, BtnRow, Card, DataTable, Field, FilterSelect, FormRow, PageHead, Section,
   StatusPill, TableFoot, Toolbar,
 } from "../../ui/kit";
 import type { DraftLine, ReqLine } from "../../types";
@@ -77,7 +77,6 @@ export default function Requests() {
   const usable = draft.filter((l) => !lineErr(l)).length;
   const skipped = draft.length - usable;
   const backOrder = mine.flatMap((r) => shortOf(r.lines));
-  const cycleShow = () => setShow(SHOW[(SHOW.indexOf(show) + 1) % SHOW.length]);
   const clearFilters = () => { setQ(""); setShow("All"); };
 
   return (
@@ -200,7 +199,7 @@ export default function Requests() {
           placeholder="Search request ID, status, person or item…"
           value={q}
           onSearch={setQ}
-          filters={<FilterBtn label="Show" value={show} active={show !== "All"} onClick={cycleShow} />}
+          filters={<FilterSelect label="Show" value={show} options={SHOW} onChange={(v) => setShow(v as Show)} />}
           right={filtering
             ? <Btn size="sm" variant="gh" onClick={clearFilters}>Clear filters</Btn>
             : <span className="mini">{L.n} · {mine.length} raised today</span>}

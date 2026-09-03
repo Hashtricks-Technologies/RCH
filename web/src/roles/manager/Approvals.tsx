@@ -3,7 +3,7 @@ import { IT, LOC, OUTLETS } from "../../data/master";
 import { useApp } from "../../store";
 import { unitTotal } from "../../lib/fmt";
 import {
-  Alert, Btn, Card, DataTable, FilterBtn, PageHead, Pill, StatusPill, TableFoot, Toolbar,
+  Alert, Btn, Card, DataTable, FilterSelect, PageHead, Pill, StatusPill, TableFoot, Toolbar,
 } from "../../ui/kit";
 import { emptyFor, sortRows, useSort, type SortValue } from "./useSort";
 import type { ReqLine, ReqStatus, StockRequest } from "../../types";
@@ -121,10 +121,10 @@ export default function Approvals() {
           onSearch={setWq}
           filters={
             <>
-              <FilterBtn label="Outlet" value={outletNames[wOutlet]} active={wOutlet > 0}
-                onClick={() => setWOutlet((wOutlet + 1) % outletNames.length)} />
-              <FilterBtn label="Priority" value={PRIORITY[wPrio]} active={wPrio > 0}
-                onClick={() => setWPrio((wPrio + 1) % PRIORITY.length)} />
+              <FilterSelect label="Outlet" value={outletNames[wOutlet]} options={outletNames}
+                onChange={(v) => setWOutlet(outletNames.indexOf(v))} />
+              <FilterSelect label="Priority" value={PRIORITY[wPrio]} options={PRIORITY}
+                onChange={(v) => setWPrio(PRIORITY.indexOf(v as typeof PRIORITY[number]))} />
             </>
           }
         />
@@ -175,10 +175,10 @@ export default function Approvals() {
           onSearch={setAq}
           filters={
             <>
-              <FilterBtn label="Outlet" value={outletNames[aOutlet]} active={aOutlet > 0}
-                onClick={() => setAOutlet((aOutlet + 1) % outletNames.length)} />
-              <FilterBtn label="Outcome" value={OUTCOME[aOutcome]} active={aOutcome > 0}
-                onClick={() => setAOutcome((aOutcome + 1) % OUTCOME.length)} />
+              <FilterSelect label="Outlet" value={outletNames[aOutlet]} options={outletNames}
+                onChange={(v) => setAOutlet(outletNames.indexOf(v))} />
+              <FilterSelect label="Outcome" value={OUTCOME[aOutcome]} options={OUTCOME}
+                onChange={(v) => setAOutcome(OUTCOME.indexOf(v as typeof OUTCOME[number]))} />
             </>
           }
         />

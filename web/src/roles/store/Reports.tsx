@@ -4,7 +4,7 @@ import { useApp, type AppState } from "../../store";
 import { committed, costOf, freeToPromise, onOrder, parOf, qty, resv } from "../../lib/selectors";
 import { U, fq, money0, now, pct, sum, unitTotal } from "../../lib/fmt";
 import {
-  Btn, Card, DataTable, FilterBtn, Icon, PageHead, Pill, StatusPill, TableFoot, Toolbar,
+  Btn, Card, DataTable, FilterSelect, Icon, PageHead, Pill, StatusPill, TableFoot, Toolbar,
 } from "../../ui/kit";
 import type { Col } from "../../ui/kit";
 
@@ -422,7 +422,7 @@ export default function Reports() {
           value={q}
           onSearch={setQ}
           filters={facetCol && facetOpts.length > 1
-            ? <FilterBtn label={facetCol.h} value={facet} onClick={() => setFi((n) => (n + 1) % facetOpts.length)} />
+            ? <FilterSelect label={facetCol.h} value={facet} options={facetOpts} onChange={(v) => setFi(facetOpts.indexOf(v))} />
             : undefined}
           right={
             <>

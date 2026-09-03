@@ -5,7 +5,7 @@ import { useApp } from "../../store";
 import { avail, awaitingApproval, onOrder, prqProgress, qty } from "../../lib/selectors";
 import { U, fq, money, money0, sum } from "../../lib/fmt";
 import {
-  Alert, Btn, BtnRow, Card, DataTable, Field, FilterBtn, Grid, PageHead, StatusPill, TableFoot, Toolbar,
+  Alert, Btn, BtnRow, Card, DataTable, Field, FilterBtn, FilterSelect, Grid, PageHead, StatusPill, TableFoot, Toolbar,
 } from "../../ui/kit";
 import type { DraftLine } from "../../types";
 import "./RequisitionDetail";
@@ -265,7 +265,7 @@ export default function Requisitions() {
             onSearch={setQ}
             filters={
               <>
-                <FilterBtn label="Stage" value={stage} onClick={() => setSi((n) => (n + 1) % STAGES.length)} />
+                <FilterSelect label="Stage" value={stage} options={STAGES} onChange={(v) => setSi(STAGES.indexOf(v as (typeof STAGES)[number]))} />
                 <FilterBtn label="Still open only" active={openOnly} onClick={() => setOpenOnly((v) => !v)} />
               </>
             }
