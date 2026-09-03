@@ -1,8 +1,7 @@
-import { useNavigate } from "react-router-dom";
 import { IT, LOC, RCP } from "../../data/master";
 import { useApp } from "../../store";
 import {
-  avail, availOf, daysCover, menuOf, parOf, qty, resv, stateLabel, stateTone,
+  avail, availOf, daysCover, menuOf, parOf, qty, stateLabel, stateTone,
 } from "../../lib/selectors";
 import { fq, money, U } from "../../lib/fmt";
 import { Alert, Btn, ImagePlaceholder, Pill, Switch } from "../../ui/kit";
@@ -11,17 +10,15 @@ import { registerDrawer, type DrawerProps } from "../../drawers";
 import { TypeTag } from "./Pos";
 
 /**
- * The built-in on/off control for Stock in Hand — every detail the card
- * already showed, plus the same switch as the dedicated Product Availability
- * screen, reachable without leaving the stock grid. Configure is for a
- * sellable product; a raw ingredient gets its details with a plain note,
- * since there is nothing to switch on or off.
+ * Configure — the same panel opened from the POS tile menu and the Stock in
+ * Hand card menu. Full detail plus the on/off switch for a sellable product;
+ * a raw ingredient gets its details with a plain note, since there is
+ * nothing to switch on or off.
  */
 function ConfigureDrawer({ id: it }: DrawerProps) {
   const s = useApp();
   const user = useApp((x) => x.user)!;
   const toggleAvail = useApp((x) => x.toggleAvail);
-  const nav = useNavigate();
   const close = useApp((x) => x.closeDrawer);
   const loc = user.loc;
   const item = IT[it];
@@ -30,7 +27,6 @@ function ConfigureDrawer({ id: it }: DrawerProps) {
   const held = Object.prototype.hasOwnProperty.call(s.stock[loc] ?? {}, it)
     || (item.t === "MTO" && RCP[it]?.l.some(([g]) => Object.prototype.hasOwnProperty.call(s.stock[loc] ?? {}, g)));
   const on = qty(s, loc, it);
-  const rv = resv(s, loc, it);
   const a = avail(s, loc, it);
   const rl = parOf(loc, it);
   const cover = daysCover(a, it, loc);
@@ -55,12 +51,6 @@ function ConfigureDrawer({ id: it }: DrawerProps) {
 
       <div className="stkcard-stats" style={{ marginBottom: 12 }}>
         <div className="totrow"><span>On hand</span><span>{held ? <>{fq(on, it)} {U(it)}</> : "—"}</span></div>
-        <div className="totrow"><span>Reserved</span><span className={held && rv > 0 ? undefined : "dim"}>{held ? fq(rv, it) : "—"}</span></div>
-        <div className="totrow"><span>Available</span>
-          <span style={held && a <= 0 ? { color: "var(--crit)", fontWeight: 600 } : { fontWeight: 600 }}>
-            {held ? fq(a, it) : "—"}
-          </span>
-        </div>
         <div className="totrow"><span>Par here</span><span className="dim">{rl > 0 ? fq(rl, it) : "—"}</span></div>
         <div className="totrow"><span>Days of cover</span>
           <span style={held && a <= 0 ? { color: "var(--crit)" } : undefined}>{held ? `${cover.toFixed(1)} d` : "—"}</span>
@@ -87,10 +77,7 @@ function ConfigureDrawer({ id: it }: DrawerProps) {
               : <Alert tone="c" label="OFF">{computed.why ?? "unavailable"} — the switch cannot override this by itself.</Alert>}
           </div>
           <p className="mini mtop">
-            Sells for {money(s.prices[LOC[loc].list ?? "A"]?.[it] ?? 0)} at this counter.{" "}
-            <a onClick={() => { close(); nav("/avail"); }} style={{ cursor: "pointer" }}>
-              See every product at once →
-            </a>
+            Sells for {money(s.prices[LOC[loc].list ?? "A"]?.[it] ?? 0)} at this counter.
           </p>
         </>
       ) : (

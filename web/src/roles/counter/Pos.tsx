@@ -3,7 +3,7 @@ import { DEPTS, IT, LOC, PATIENTS, STAFF, STAFF_CREDIT_LIMIT } from "../../data/
 import { useApp } from "../../store";
 import { availOf, menuOf, priceOf } from "../../lib/selectors";
 import { money, money0, sum } from "../../lib/fmt";
-import { Alert, Avatar, Btn, Card, Field, Grid, ImagePlaceholder, PageHead, Tag } from "../../ui/kit";
+import { Alert, Avatar, Btn, Card, Field, Grid, ImagePlaceholder, PageHead, Tag, TileMenu } from "../../ui/kit";
 import type { ItemType, Payer } from "../../types";
 
 const TENDERS = ["Cash", "UPI", "Card", "Patient bill", "Staff credit", "Dept"];
@@ -77,11 +77,26 @@ export default function Pos() {
               const item = IT[it];
               const a = availOf(s, loc, it);
               const { p, listed, capped } = priceOf(s, loc, it);
+              const manualOff = Boolean(s.ovr[loc + ":" + it]);
               return (
-                <button key={it} type="button" className="tile tile-pic" disabled={!a.ok}
-                  onClick={() => s.addToCart(loc, it, 1)}
-                  title={a.ok ? `Add ${item.n}` : `${item.n} — ${a.why ?? "unavailable"}`}>
+                <div key={it} className={`tile tile-pic${a.ok ? "" : " is-off"}`}>
+                  <button type="button" className="tile-pic-hit" disabled={!a.ok}
+                    onClick={() => s.addToCart(loc, it, 1)}
+                    aria-label={a.ok ? `Add ${item.n}` : `${item.n} — ${a.why ?? "unavailable"}`}
+                    title={a.ok ? `Add ${item.n}` : `${item.n} — ${a.why ?? "unavailable"}`} />
                   <ImagePlaceholder size="card" />
+                  <TileMenu
+                    className="tile-pic-kebab"
+                    items={[
+                      { key: "cfg", label: "Configure", onClick: () => s.openDrawer("cconfig", it) },
+                      {
+                        key: "toggle",
+                        label: manualOff ? "Turn on" : "Turn off",
+                        onClick: () => s.toggleAvail(loc, it),
+                        tone: manualOff ? "default" : "danger",
+                      },
+                    ]}
+                  />
                   <div className="tile-pic-body">
                     <b style={{ fontSize: 12.5, lineHeight: 1.3 }}>{item.n}</b>
                     <span><TypeTag t={item.t} /></span>
@@ -94,7 +109,7 @@ export default function Pos() {
                     </span>
                     {capped && <span className="mini">capped at MRP {money(item.mrp ?? p)}</span>}
                   </div>
-                </button>
+                </div>
               );
             })}
           </div>

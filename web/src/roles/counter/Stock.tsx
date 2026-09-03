@@ -5,7 +5,7 @@ import { useApp } from "../../store";
 import { avail, daysCover, menuOf, parOf, qty, resv, stateLabel, stateTone } from "../../lib/selectors";
 import { fq, money0, U } from "../../lib/fmt";
 import {
-  Btn, Card, FilterBtn, ImagePlaceholder, KebabIcon, PageHead, Pill, Toolbar,
+  Btn, Card, FilterBtn, ImagePlaceholder, PageHead, Pill, TileMenu, Toolbar,
 } from "../../ui/kit";
 import { TypeTag } from "./Pos";
 import "./ConfigureDrawer";
@@ -117,6 +117,8 @@ export default function Stock() {
           <div className="stkgrid" style={{ padding: 13 }}>
             {rows.map((r) => {
               const item = IT[r.it];
+              const sellableHere = menuOf(s, loc).includes(r.it);
+              const manualOff = Boolean(s.ovr[loc + ":" + r.it]);
               return (
                 <div className="card stkcard" key={r.it}>
                   <div className="stkcard-media">
@@ -126,10 +128,18 @@ export default function Stock() {
                         ? <Pill tone={stateTone(r.a, r.rl)}>{stateLabel(r.a, r.rl)}</Pill>
                         : <Pill tone="mu">Not stocked</Pill>}
                     </span>
-                    <button type="button" className="stkcard-kebab" title={`Configure ${item.n}`}
-                      onClick={() => openDrawer("cconfig", r.it)}>
-                      <KebabIcon />
-                    </button>
+                    <TileMenu
+                      className="stkcard-kebab"
+                      items={[
+                        { key: "cfg", label: "Configure", onClick: () => openDrawer("cconfig", r.it) },
+                        ...(sellableHere ? [{
+                          key: "toggle",
+                          label: manualOff ? "Turn on" : "Turn off",
+                          onClick: () => s.toggleAvail(loc, r.it),
+                          tone: (manualOff ? "default" : "danger") as "default" | "danger",
+                        }] : []),
+                      ]}
+                    />
                   </div>
                   <div className="stkcard-body">
                     <div>
@@ -142,18 +152,6 @@ export default function Stock() {
                       <div className="totrow">
                         <span>On hand</span>
                         <span>{r.held ? <>{fq(r.on, r.it)} {U(r.it)}</> : "—"}</span>
-                      </div>
-                      <div className="totrow">
-                        <span>Reserved</span>
-                        <span className={r.held && r.rv > 0 ? undefined : "dim"}>
-                          {r.held ? fq(r.rv, r.it) : "—"}
-                        </span>
-                      </div>
-                      <div className="totrow">
-                        <span>Available</span>
-                        <span style={r.held && r.a <= 0 ? { color: "var(--crit)", fontWeight: 600 } : { fontWeight: 600 }}>
-                          {r.held ? fq(r.a, r.it) : "—"}
-                        </span>
                       </div>
                       <div className="totrow">
                         <span>Par here</span>

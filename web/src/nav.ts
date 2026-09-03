@@ -7,7 +7,7 @@ export const NAV: Record<Role, NavGroup[]> = {
   counter: [
     { group: "Overview", items: [{ k: "dash", label: "Dashboard", icon: "dash" }] },
     { group: "Sell", items: [{ k: "pos", label: "Point of Sale", icon: "pos" }, { k: "bills", label: "Bills", icon: "bill" }] },
-    { group: "My counter", items: [{ k: "stock", label: "Stock in Hand", icon: "stock" }, { k: "avail", label: "Product Availability", icon: "power" }] },
+    { group: "My counter", items: [{ k: "stock", label: "Stock in Hand", icon: "stock" }] },
     { group: "Movement", items: [{ k: "requests", label: "Stock Requests", icon: "req" }, { k: "tickets", label: "Pick Tickets", icon: "tkt" }] },
     { group: "Account", items: [{ k: "issues", label: "Support", icon: "req" }, { k: "settings", label: "Settings", icon: "set" }] },
   ],

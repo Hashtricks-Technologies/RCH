@@ -421,10 +421,62 @@ td.n b{font-weight:600;color:var(--ink)}
 .stkcard{display:flex;flex-direction:column;overflow:hidden}
 .stkcard-media{position:relative}
 .stkcard-pill{position:absolute;top:8px;left:8px}
-.stkcard-kebab{position:absolute;top:7px;right:7px;width:27px;height:27px;border-radius:8px;
-  display:grid;place-items:center;background:var(--surface);border:1px solid var(--line);
-  color:var(--ink-2);box-shadow:var(--sh-1)}
-.stkcard-kebab:hover{background:var(--surface-3);color:var(--ink)}
+.stkcard-kebab{position:absolute;top:7px;right:7px;z-index:5}
 .stkcard-body{padding:11px 12px 12px;display:flex;flex-direction:column;gap:8px;flex:1}
 .stkcard-stats{border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:7px 0}
 .stkcard-stats .totrow{padding:2px 0;font-size:11.5px}
+
+/* dropdown filter (FilterSelect) — a native select overlaid on the .fsel look */
+.fselect{position:relative;cursor:pointer}
+.fselect-txt{pointer-events:none}
+.fselect svg{pointer-events:none}
+.fselect select{position:absolute;inset:0;width:100%;height:100%;opacity:0;border:0;
+  margin:0;padding:0;cursor:pointer;-webkit-appearance:none;appearance:none}
+
+/* Burger-King-style card overflow menu */
+.tilemenu{position:relative}
+.tilemenu-trigger{width:27px;height:27px;border-radius:8px;display:grid;place-items:center;
+  background:var(--surface);border:1px solid var(--line);color:var(--ink-2);box-shadow:var(--sh1)}
+.tilemenu-trigger:hover{background:var(--surface-3);color:var(--ink)}
+.tilemenu-pop{position:absolute;top:32px;right:0;min-width:184px;background:var(--surface);
+  border:1px solid var(--line);border-radius:10px;box-shadow:var(--sh3);padding:6px;
+  z-index:30;display:flex;flex-direction:column;gap:1px}
+.tilemenu-item{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:7px;
+  font-size:12.5px;text-align:left;color:var(--ink-2);width:100%}
+.tilemenu-item:hover{background:var(--surface-3);color:var(--ink)}
+.tilemenu-item.danger{color:var(--crit)}
+.tilemenu-item.danger:hover{background:var(--crit-soft)}
+
+/* POS tile: the whole card is a hit target under the visuals, kebab sits above it */
+.tile-pic{position:relative}
+.tile-pic.is-off{background:var(--surface-2);border-style:dashed;opacity:.72}
+.tile-pic-hit{position:absolute;inset:0;z-index:1;background:transparent;border:0;padding:0;
+  cursor:pointer;border-radius:inherit}
+.tile-pic-hit:disabled{cursor:not-allowed}
+.tile-pic-kebab{position:absolute;top:8px;right:8px;z-index:5}
+
+/* Stock Requests — the two raise-actions + the minimal raise card */
+.reqactions{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-bottom:16px}
+.reqaction{display:flex;align-items:center;gap:12px;padding:14px 16px;border-radius:12px;
+  border:1px solid var(--line);background:var(--surface);text-align:left;
+  transition:border-color .12s,transform .08s,background .12s}
+.reqaction:hover{border-color:var(--accent-line);transform:translateY(-1px)}
+.reqaction.on{border-color:var(--accent);background:var(--accent-soft)}
+.reqaction-ic{width:38px;height:38px;border-radius:10px;display:grid;place-items:center;flex:none;
+  background:var(--accent-soft);color:var(--accent)}
+.reqaction.on .reqaction-ic{background:var(--accent);color:var(--on-accent)}
+.reqaction-tx{min-width:0}
+.reqaction-tx b{display:block;font-size:13px}
+.reqaction-tx span{display:block;font-size:11px;color:var(--ink-3);margin-top:1px}
+
+.raisecard{border:1px solid var(--accent-line);border-radius:12px;background:var(--surface);
+  padding:16px;margin-bottom:16px;box-shadow:var(--sh2)}
+.raisecard-h{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:14px}
+.raisecard-h b{font-size:13.5px}
+.raisecard-product{display:flex;align-items:center;gap:12px;padding:10px;border:1px solid var(--line);
+  border-radius:10px;background:var(--surface-2);margin-bottom:14px}
+.raisecard-product .imgph-sm{flex:none}
+.raisecard-product .txt{flex:1;min-width:0}
+.raisecard-product .txt b{display:block;font-size:12.5px}
+.raisecard-product .txt span{display:block;font-size:10.5px;color:var(--ink-3)}
+.raisecard-product select{width:100%}

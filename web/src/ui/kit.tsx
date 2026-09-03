@@ -1,4 +1,7 @@
-import { Children, cloneElement, isValidElement, useId, type CSSProperties, type ReactElement, type ReactNode } from "react";
+import {
+  Children, cloneElement, isValidElement, useEffect, useId, useRef, useState,
+  type CSSProperties, type ReactElement, type ReactNode,
+} from "react";
 import type { Tone } from "../types";
 import { toneFor } from "../lib/selectors";
 import type { ThemePref } from "../lib/theme";
@@ -22,6 +25,8 @@ const P: Record<string, string> = {
   rep: "M3 13V6.5M6.5 13V3M10 13V8.5M13.5 13V5",
   set: "M8 10a2 2 0 1 0 0-4 2 2 0 0 0 0 4ZM13 8l1-1.5-1.2-2-1.7.4-1.3-.8L9.4 2H6.6l-.4 2-1.3.8-1.7-.4-1.2 2L3 8l-1 1.5 1.2 2 1.7-.4 1.3.8.4 2h2.8l.4-2 1.3-.8 1.7.4 1.2-2z",
   search: "M11.5 11.5 14 14",
+  swap: "M2.5 5.5h9l-2-2M11.5 5.5l-2 2M13.5 10.5h-9l2-2M4.5 10.5l2 2",
+  warehouse: "M2 6.5 8 2l6 4.5M3 6v7h10V6M6.5 13V9.5h3V13",
 };
 export function Icon({ name, size = 15 }: { name: string; size?: number }) {
   return (
@@ -285,6 +290,31 @@ export function FilterBtn({ label, value, onClick, active }: {
   );
 }
 
+/**
+ * A real dropdown filter — a native `<select>` styled to match `.fsel`, so it
+ * opens a genuine option list (keyboard- and touch-friendly) instead of
+ * cycling through values one click at a time.
+ */
+export function FilterSelect({ label, value, options, onChange, active }: {
+  label: string; value: string; options: readonly string[];
+  onChange: (v: string) => void; active?: boolean;
+}) {
+  const isActive = active ?? (options.length > 0 && value !== options[0]);
+  return (
+    <span className={`fsel fselect${isActive ? " act" : ""}`}>
+      <span className="fselect-txt">{label}{value ? <>: <b>{value}</b></> : null}</span>
+      <Chev />
+      <select
+        aria-label={label}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+      >
+        {options.map((o) => <option key={o} value={o}>{o}</option>)}
+      </select>
+    </span>
+  );
+}
+
 /* ---------- feedback ---------- */
 export function Alert({ tone = "i", label, children, action }: {
   tone?: "w" | "c" | "g" | "i"; label: string; children: ReactNode; action?: ReactNode;
@@ -436,5 +466,61 @@ export function KebabIcon({ size = 15 }: { size?: number }) {
       <circle cx="8" cy="8" r="1.35" />
       <circle cx="8" cy="12.6" r="1.35" />
     </svg>
+  );
+}
+
+export interface TileMenuItem {
+  key: string; label: string; onClick: () => void; tone?: "default" | "danger";
+}
+/**
+ * The overflow menu that sits on a product card's corner — a kebab trigger
+ * that opens a small popover of actions (Configure, Turn on/off, …) rather
+ * than a full drawer. Closes on an outside click or Escape.
+ */
+export function TileMenu({ items, className }: { items: TileMenuItem[]; className?: string }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  return (
+    <div className={`tilemenu${className ? " " + className : ""}`} ref={ref}>
+      <button
+        type="button"
+        className="tilemenu-trigger"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={(e) => { e.preventDefault(); e.stopPropagation(); setOpen((v) => !v); }}
+      >
+        <KebabIcon />
+      </button>
+      {open && (
+        <div className="tilemenu-pop" role="menu" onClick={(e) => e.stopPropagation()}>
+          {items.map((it) => (
+            <button
+              key={it.key}
+              type="button"
+              role="menuitem"
+              className={`tilemenu-item${it.tone === "danger" ? " danger" : ""}`}
+              onClick={(e) => { e.preventDefault(); it.onClick(); setOpen(false); }}
+            >
+              {it.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
