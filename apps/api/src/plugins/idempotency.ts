@@ -5,6 +5,7 @@ import type { FastifyReply, FastifyRequest } from "fastify";
 import type { Db } from "../db/client.js";
 import { idempotencyKeys } from "../db/schema/index.js";
 import { ConflictError, ValidationError } from "../lib/errors.js";
+import { resolveClaim } from "./idempotency-claim.js";
 
 declare module "fastify" {
   interface FastifyInstance { idempotency: (req: FastifyRequest, reply: FastifyReply) => Promise<void> }
@@ -31,13 +32,17 @@ const JSON_NULL = sql`'null'::jsonb`;
  * the write's COMMIT and the record leaving no trace at all, so the client's retry ran the
  * write a second time.
  *
- * So the preHandler inserts a claim row and the outcome of that one INSERT decides everything:
+ * So the preHandler inserts a claim row and only proceeds while it holds one — `resolveClaim`
+ * (idempotency-claim.ts) makes that call from three ops (insert / lookup / takeover) built
+ * from Drizzle here:
  *
- * - it wins           → this request owns the key, the handler runs, `onSend` fills the row in.
- * - row has a response→ replay it verbatim.
+ * - insert wins        → this request owns the key, the handler runs, `onSend` fills the row in.
+ * - row has a response → replay it verbatim.
  * - row is a fresh claim → someone else is mid-write: 409, come back in a moment.
  * - row is a stale claim → the owner never returned: take it over and run.
  * - row has a different hash → the key was reused for a different request: 409, as before.
+ * - lookup finds nothing (purged from under us, e.g. `onSend` deleting a 429/503's claim) →
+ *   never proceed bare; retry the insert instead, since only holding a row lets us proceed.
  */
 export default fp(async (app) => {
   app.decorate("idempotency", async (req: FastifyRequest, reply: FastifyReply) => {
@@ -54,33 +59,41 @@ export default fp(async (app) => {
     // the claim would mean reordering the limiter ahead of authentication, which would key it
     // on IP instead of user again (see security.ts's comment). The claim briefly exists, then
     // `onSend` below deletes it once the 429 lands, so nothing is left to replay.
-    //
-    // onConflictDoNothing().returning() is the unique-violation branch without the thrown
-    // error: zero rows back means the primary key was already there.
-    const claimed = await app.db.insert(idempotencyKeys)
-      .values({ key, userId, requestHash: hash, statusCode: CLAIMED, response: JSON_NULL, expiresAt: new Date(Date.now() + TTL_MS) })
-      .onConflictDoNothing()
-      .returning({ key: idempotencyKeys.key });
-    if (claimed.length > 0) { req.idem = { key, userId, hash }; return; }
+    const staleBefore = () => new Date(Date.now() - CLAIM_STALE_MS);
+    const outcome = await resolveClaim({
+      requestHash: hash,
+      staleMs: CLAIM_STALE_MS,
+      now: () => Date.now(),
+      // onConflictDoNothing().returning() is the unique-violation branch without the thrown
+      // error: zero rows back means the primary key was already there.
+      tryInsert: async () => {
+        const r = await app.db.insert(idempotencyKeys)
+          .values({ key, userId, requestHash: hash, statusCode: CLAIMED, response: JSON_NULL, expiresAt: new Date(Date.now() + TTL_MS) })
+          .onConflictDoNothing()
+          .returning({ key: idempotencyKeys.key });
+        return r.length > 0;
+      },
+      lookup: async () => {
+        const [hit] = await app.db.select().from(idempotencyKeys).where(mine);
+        return hit;
+      },
+      // Take the abandoned claim over, atomically: whoever re-stamps `created_at` owns it, and
+      // a second would-be taker's WHERE no longer matches.
+      tryTakeover: async () => {
+        const taken = await app.db.update(idempotencyKeys)
+          .set({ createdAt: new Date() })
+          .where(and(mine, eq(idempotencyKeys.statusCode, CLAIMED), lt(idempotencyKeys.createdAt, staleBefore())))
+          .returning({ key: idempotencyKeys.key });
+        return taken.length > 0;
+      },
+    });
 
-    const [hit] = await app.db.select().from(idempotencyKeys).where(mine);
-    // Purged out from under us between the two statements; nothing is being replayed, so run.
-    if (!hit) { req.idem = { key, userId, hash }; return; }
-    if (hit.requestHash !== hash) throw new ConflictError("That Idempotency-Key was already used for a different request.");
-    if (hit.statusCode !== CLAIMED) {
-      reply.header("idempotency-replayed", "true").code(hit.statusCode).send(hit.response);
-      return;
+    switch (outcome.kind) {
+      case "proceed": req.idem = { key, userId, hash }; return;
+      case "replay": reply.header("idempotency-replayed", "true").code(outcome.statusCode).send(outcome.response); return;
+      case "conflict": throw new ConflictError("That Idempotency-Key was already used for a different request.");
+      case "in_progress": throw new ConflictError(IN_FLIGHT);
     }
-    const staleBefore = new Date(Date.now() - CLAIM_STALE_MS);
-    if (hit.createdAt >= staleBefore) throw new ConflictError(IN_FLIGHT);
-    // Take the abandoned claim over, atomically: whoever re-stamps `created_at` owns it, and
-    // a second would-be taker's WHERE no longer matches.
-    const taken = await app.db.update(idempotencyKeys)
-      .set({ createdAt: new Date() })
-      .where(and(mine, eq(idempotencyKeys.statusCode, CLAIMED), lt(idempotencyKeys.createdAt, staleBefore)))
-      .returning({ key: idempotencyKeys.key });
-    if (taken.length === 0) throw new ConflictError(IN_FLIGHT);
-    req.idem = { key, userId, hash };
   });
   app.addHook("onSend", async (req, reply, payload) => {
     if (!req.idem || reply.getHeader("idempotency-replayed")) return payload;
