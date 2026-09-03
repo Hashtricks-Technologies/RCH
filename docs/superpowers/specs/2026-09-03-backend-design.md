@@ -1,7 +1,7 @@
 # RCH Backend — Design
 
 **Date:** 2026-09-03
-**Status:** For review
+**Status:** Approved 2026-09-03 — implementation plans in docs/superpowers/plans/
 **Scope:** The server, database, auth and deployment behind the existing `UI/` frontend, and the frontend's cutover from in-memory state to the API.
 
 ---
