@@ -22,7 +22,7 @@ export async function buildApp(config: Config, deps: AppDeps = {}): Promise<App>
   const app = Fastify({
     logger: loggerOptions(config.logLevel),
     genReqId,
-    trustProxy: true,
+    trustProxy: config.trustProxy,
     bodyLimit: 1024 * 1024,
     forceCloseConnections: "idle",
     disableRequestLogging: true, // the logging plugin writes one structured line per request instead
