@@ -44,10 +44,30 @@ describe("api client", () => {
     expect(fetchMock.mock.calls[2][1].headers.authorization).toBe("Bearer new");
     expect(getAccessToken()).toBe("new");
   });
+  it("reuses one Idempotency-Key across the refresh retry", async () => {
+    setAccessToken("old");
+    const write = defineRoute({ method: "POST", path: "/things/do", access: "any", body: z.object({ n: z.number() }), response: z.object({ ok: z.literal(true) }) });
+    fetchMock
+      .mockResolvedValueOnce(ok({ error: { code: "unauthenticated", message: "expired" } }, 401))
+      .mockResolvedValueOnce(ok({ accessToken: "new", user: { id: "u1" }, mustChangePassword: false }))
+      .mockResolvedValueOnce(ok({ ok: true }));
+    await call(write, { body: { n: 1 } });
+    const [first, , retry] = fetchMock.mock.calls.map((c) => c[1]);
+    // A second key would present the retry as a brand-new write, and the server would run it
+    // again - the one thing the header exists to prevent.
+    expect(first.headers["idempotency-key"]).toMatch(/^[0-9a-f-]{36}$/);
+    expect(retry.headers["idempotency-key"]).toBe(first.headers["idempotency-key"]);
+    expect(retry.headers.authorization).toBe("Bearer new");
+  });
   it("surfaces the server's message as an ApiError", async () => {
     setAccessToken("tok");
     fetchMock.mockResolvedValueOnce(ok({ error: { code: "rule", message: "Not enough Milk 1L free to promise." } }, 422));
     await expect(call(routes.me)).rejects.toMatchObject(new ApiError("rule", "Not enough Milk 1L free to promise.", 422));
+  });
+  it("turns a non-JSON error page into a readable ApiError", async () => {
+    setAccessToken("tok");
+    fetchMock.mockResolvedValueOnce(new Response("<html>502 Bad Gateway</html>", { status: 502, headers: { "content-type": "text/html" } }));
+    await expect(call(routes.me)).rejects.toMatchObject(new ApiError("internal", "The server returned an unexpected response (502).", 502));
   });
 });
 

@@ -1,4 +1,4 @@
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, lt, or, sql } from "drizzle-orm";
 import type { Db } from "../../db/client.js";
 import type { Tx } from "../../lib/db.js";
 import { refreshTokens, users } from "../../db/schema/index.js";
@@ -17,3 +17,16 @@ export const authRepo = {
   revokeAllForUser: (tx: Tx, userId: string) => tx.update(refreshTokens).set({ revokedAt: new Date() }).where(and(eq(refreshTokens.userId, userId), isNull(refreshTokens.revokedAt))),
   setPassword: (tx: Tx, userId: string, passwordHash: string) => tx.update(users).set({ passwordHash, mustChangePassword: false, updatedAt: new Date() }).where(eq(users.id, userId)),
 };
+
+/**
+ * Nightly housekeeping (cli/purge.ts). Nothing else ever deletes from this table, so without
+ * it every sign-in the hospital ever performs stays on disk for good. Rows that can no longer
+ * authorise anything go: expired ones, and revoked ones past a week's grace — long enough that
+ * "why was I signed out on Tuesday?" can still be answered from the row.
+ */
+export async function purgeRefreshTokens(db: Db): Promise<number> {
+  const r = await db.delete(refreshTokens).where(
+    or(lt(refreshTokens.expiresAt, new Date()), lt(refreshTokens.revokedAt, sql`now() - interval '7 days'`)),
+  );
+  return r.rowCount ?? 0;
+}

@@ -29,18 +29,30 @@ function url(route: AnyRoute, input: Input): string {
   return `${BASE}${API_PREFIX}${p}`;
 }
 
-async function raw(route: AnyRoute, input: Input, token: string | null): Promise<Response> {
-  const isWrite = route.write ?? route.method !== "GET";
+/** A write's Idempotency-Key, or undefined for anything that does not need one. */
+const idempotencyKeyFor = (route: AnyRoute): string | undefined =>
+  (route.write ?? route.method !== "GET") && route.access !== "public" ? crypto.randomUUID() : undefined;
+
+async function raw(route: AnyRoute, input: Input, token: string | null, idempotencyKey?: string): Promise<Response> {
   const headers: Record<string, string> = { accept: "application/json" };
   if (input.body !== undefined) headers["content-type"] = "application/json";
   if (token) headers.authorization = `Bearer ${token}`;
-  if (isWrite && route.access !== "public") headers["idempotency-key"] = crypto.randomUUID();
+  if (idempotencyKey) headers["idempotency-key"] = idempotencyKey;
   return fetch(url(route, input), { method: route.method, headers, credentials: "include", body: input.body === undefined ? undefined : JSON.stringify(input.body) });
 }
 
 async function parse(res: Response): Promise<unknown> {
   const text = await res.text();
-  const body: unknown = text ? JSON.parse(text) : null;
+  let body: unknown = null;
+  if (text) {
+    try {
+      body = JSON.parse(text);
+    } catch {
+      // Not our envelope at all: a gateway's HTML error page, a proxy timeout. Raising the
+      // raw SyntaxError would put "Unexpected token '<'" in front of the operator.
+      throw new ApiError("internal", `The server returned an unexpected response (${res.status}).`, res.status);
+    }
+  }
   if (res.ok) return body;
   const e = (body as { error?: { code?: string; message?: string; details?: unknown } } | null)?.error;
   throw new ApiError(e?.code ?? "internal", e?.message ?? `Request failed (${res.status}).`, res.status, e?.details);
@@ -62,9 +74,12 @@ async function refresh(): Promise<boolean> {
 
 /** Call a manifest route. Adding an endpoint is one manifest entry — never a new function here. */
 export async function call<R extends AnyRoute>(route: R, input: Input = {}): Promise<z.infer<R["response"]>> {
-  let res = await raw(route, input, getAccessToken());
+  // Minted once per call, not once per fetch: the retry after a refresh is the *same* write,
+  // and a second key would let the server run it twice — exactly what the header is for.
+  const key = idempotencyKeyFor(route);
+  let res = await raw(route, input, getAccessToken(), key);
   if (res.status === 401 && !route.path.startsWith("/auth/")) {
-    if (await refresh()) res = await raw(route, input, getAccessToken());
+    if (await refresh()) res = await raw(route, input, getAccessToken(), key);
     else { sessionLost(); }
   }
   return parse(res) as Promise<z.infer<R["response"]>>;
