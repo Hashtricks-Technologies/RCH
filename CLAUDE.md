@@ -8,12 +8,14 @@ Royal Care Hospital's F&B inventory and billing frontend: one item master and on
 ledger behind a central store, a kitchen and three retail outlets, covering purchase
 requisition → purchase order → goods receipt → production → issue → counter sale.
 
-The backend is **designed but not yet built** — the design is
-`docs/superpowers/specs/2026-09-03-backend-design.md` and it is the contract for all backend
-work (see *Backend* below). Until its phase 1 lands, the frontend has no server, no database
-and no authentication: state lives in memory for the session, only the theme and a few UI
-prefs reach `localStorage`, and a refresh returns to the seeded starting position in
-`UI/src/data/seed.ts`.
+**Phase 1 of the backend is implemented** — a Fastify + Drizzle API on PostgreSQL, per the
+design in `docs/superpowers/specs/2026-09-03-backend-design.md` (the contract for all backend
+work; see *Backend* below). Sign-in is real (employee id + password), and after signing in the
+frontend reads its state — the item master, locations, prices, menus and every open document
+— from the server (`GET /snapshot`) instead of `UI/src/data/seed.ts`. Every mutation (billing,
+approvals, tickets, purchase orders, …) still runs against the in-memory Zustand store; only
+the theme and a few UI prefs reach `localStorage`. Later phases (spec §14) move mutations to
+the server one role at a time.
 
 ## Branches
 
@@ -203,10 +205,9 @@ the host does not supply one):
 
 ## Backend
 
-Status: **Phase 1 (Foundation) implemented on branch `feat/phase-1-foundation`; phases 2–6
-pending — see spec §14.** Read `docs/superpowers/specs/2026-09-03-backend-design.md` before
-touching anything server-side; it records every decision already taken (§2) so they are not
-reopened in chat.
+Status: **Phase 1 (Foundation) implemented; phases 2–6 pending — see spec §14.** Read
+`docs/superpowers/specs/2026-09-03-backend-design.md` before touching anything server-side;
+it records every decision already taken (§2) so they are not reopened in chat.
 
 What it commits to, in one breath: a standalone TypeScript backend in a pnpm + Turborepo
 monorepo — `packages/contract` (Zod schemas; `types.ts` moves here), `packages/domain` (pure

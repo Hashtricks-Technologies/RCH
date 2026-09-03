@@ -45,6 +45,27 @@ Seed password is `SEED_PASSWORD` from `.env` (dev default `changeme`). In stagin
 
 Sign in at `http://localhost:5173` with an employee id and the seed password.
 
+### Auth and rate-limit settings
+
+From `.env` / `apps/api/src/config.ts` (mirrored in `deploy/chart/rch/values.yaml`'s `api.env`
+in the cluster):
+
+- `LOGIN_RATE_LIMIT_PER_MINUTE` (default `10`) — `/auth/login` attempts per minute, keyed by
+  the caller's IP.
+- `LOGIN_RATE_LIMIT_PER_EMP_PER_MINUTE` (default `5`) — `/auth/login` attempts per minute,
+  keyed by the employee id being signed in as, independently of the per-IP limit above.
+- `TRUST_PROXY` (default `"1"`) — how many hops of `X-Forwarded-*` to trust when deriving the
+  caller's IP (which both limits above key on). `"1"` trusts exactly the nearest hop — the ALB
+  in the cluster, the Vite dev proxy locally — which is correct for both topologies as shipped.
+  Set it to a different hop count, or to a CIDR/IP list, if a deployment adds another hop (a
+  CDN in front of the ALB, say) or otherwise doesn't match. `values.yaml` does not currently
+  override it, so the cluster runs on this default.
+- `ACCESS_TOKEN_TTL` (default `15m`) — JWT access-token lifetime.
+- `REFRESH_TOKEN_TTL_DAYS` (default `30`) — `rch_refresh` cookie lifetime; the cookie itself
+  rotates on every refresh regardless of this setting.
+- `COOKIE_SECURE` (default `true`; `.env.example` sets it `false` for local http) — whether the
+  `rch_refresh` cookie requires HTTPS.
+
 ### Migration workflow
 
 Never hand-edit a migration. To change the schema:
@@ -109,6 +130,16 @@ kubectl create namespace rch
 - **ACM certificate ARN:** set `ingress.certificateArn` in `deploy/chart/rch/values-staging.yaml`
   and `values-prod.yaml` to the ACM certificate for `rch-staging.<host>` / `rch.<host>` before
   the first deploy — the ingress template only adds the ALB annotation when it is non-empty.
+
+### Housekeeping
+
+A `CronJob` (`deploy/chart/rch/templates/purge-cronjob.yaml`, `purge.enabled` in `values.yaml`)
+runs `dist/cli/purge.mjs` nightly at `15 2 * * *` (02:15) and deletes expired
+`idempotency_keys` rows. It needs no manual attention; if it's ever suspicious, run it by hand:
+
+```bash
+kubectl create job --from=cronjob/rch-purge rch-purge-manual -n rch
+```
 
 ## 3. Roll back
 
@@ -210,24 +241,36 @@ kubectl exec deploy/rch-api -n rch -- /nodejs/bin/node dist/cli/rebuild-balances
 ```
 
 `rebuildBalances()` (`apps/api/src/lib/ledger.ts`) takes `LOCK TABLE stock_balances IN EXCLUSIVE
-MODE` for the duration of the rebuild — every read of a balance blocks until it completes.
-Prefer a quiet period (off-hours) for a production run; it is a straight `SELECT ... GROUP BY`
-over `stock_moves` and is fast for this dataset's size, but the exclusive lock still stalls
-readers while it holds it.
+MODE` for the duration of the rebuild. `EXCLUSIVE` conflicts with every lock mode except
+`ACCESS SHARE`, so a plain read of `stock_balances` is not blocked, but every writer —
+`postMoves()`, and so every sale, handover, receipt or any other move-writing endpoint — blocks
+until the rebuild commits. Prefer a quiet period (off-hours) for a production run regardless:
+it is a straight `SELECT ... GROUP BY` over `stock_moves` and fast for this dataset's size, but
+in-flight writes will queue for however long it takes.
 
 ## 8. Read a document's history
 
-Every status change on a document (request, ticket, requisition, purchase order, production
-order) is a row in `document_history`, keyed by `(doc_type, doc_id)`:
+Every status change on a request, requisition, purchase order or production order is a row in
+`document_history`, keyed by `(doc_type, doc_id)`:
 
 ```sql
 select * from document_history where doc_type = 'request' and doc_id = 'REQ-2026-0913' order by at;
 ```
 
-`doc_type` is one of `request`, `ticket`, `prod_order`, `requisition`, `purchase_order` (the
-same strings the snapshot document readers and `appendHistory()` use). Connect with `psql` (or
-any Postgres client) against the target `DATABASE_URL` — locally that's
-`postgres://rch:rch@localhost:5439/rch`.
+`doc_type` is one of `request`, `requisition`, `purchase_order`, `prod_order` (confirmed by
+`grep -rn "appendHistory(" apps/api/src`, which as of Phase 1 turns up exactly these four
+calls, all from `apps/api/src/db/seed.ts` — the modules that write these documents outside the
+seed, in later phases, call the same helper). Tickets do **not** write to `document_history`; a
+ticket carries its own lifecycle timestamps directly on the row instead — `issued_at`,
+nullable `collected_at`, nullable `received_at` (`apps/api/src/db/schema/movement.ts`) — so to
+see when a ticket moved, read the ticket itself:
+
+```sql
+select id, status, issued_at, collected_at, received_at from tickets where id = 'TKT-0441';
+```
+
+Connect with `psql` (or any Postgres client) against the target `DATABASE_URL` — locally
+that's `postgres://rch:rch@localhost:5439/rch`.
 
 ## 9. Alerts
 

@@ -31,7 +31,7 @@ A module a role cannot use is absent from its sidebar entirely.
 | Counter Operator | Kavitha Raman | Point of Sale | Billing, counter stock, product on/off, raising requests, collecting tickets |
 | Outlet Manager | Ramesh Kumar | Approvals | Approving and **editing** counter requests, prices across all shops, on/off master |
 | Store Keeper | Suresh Muthu | Issue Desk | Issuing approved stock against a ticket, central-store stock, requisitions to procurement |
-| Production In-charge | Vinoth Prakash | Orders | Accepting orders, making products, distributing to stores and counters |
+| Kitchen In-charge | Vinoth Prakash | Orders | Accepting orders, making products, distributing to stores and counters |
 | Procurement Officer | Latha Narayanan | Requisitions | Acting on store requisitions, raising purchase orders, receiving goods |
 
 Sign in with an employee id and password (see `UI/README.md` for the seeded accounts).
