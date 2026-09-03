@@ -15,6 +15,7 @@ beforeEach(async () => {
     { key: "coffee", name: "Coffee Shop", code: "OT-C3", type: "Outlet", floor: "3", costCentre: "CC", priceList: "B", sellable: true },
   ]);
   await t.db.insert(items).values({ key: "milk", code: "RM-1001", name: "Milk 1L", unit: "L", type: "RAW", grp: "Dairy", hsn: "0401", gst: 0 });
+  await t.db.insert(items).values({ key: "sugar", code: "RM-1002", name: "Sugar 1kg", unit: "kg", type: "RAW", grp: "Dry", hsn: "1701", gst: 0 });
 });
 
 const onHand = async (loc: string, it: string) =>
@@ -61,6 +62,23 @@ describe("postMoves", () => {
     ]));
     expect(await onHand("store", "milk")).toBe(4);
     expect(await onHand("store", "milk 2")).toBe(6);
+  });
+  it("survives 20 writers touching the same pair of balances in alternating lock orders without deadlocking", async () => {
+    // postMoves sorts the (loc, item) keys it locks into a fixed order, so writers that submit
+    // the pair in opposite orders still take their row locks in the same sequence — no deadlock.
+    const writers = Array.from({ length: 20 }, (_, i) =>
+      withTransaction(t.db, (tx) => postMoves(tx, i % 2 === 0
+        ? [
+            { loc: "store", it: "milk", qty: 1, kind: "opening", refType: "seed", refId: "c" },
+            { loc: "store", it: "sugar", qty: 2, kind: "opening", refType: "seed", refId: "c" },
+          ]
+        : [
+            { loc: "store", it: "sugar", qty: 2, kind: "opening", refType: "seed", refId: "c" },
+            { loc: "store", it: "milk", qty: 1, kind: "opening", refType: "seed", refId: "c" },
+          ])));
+    await expect(Promise.all(writers)).resolves.toBeDefined();
+    expect(await onHand("store", "milk")).toBe(20);
+    expect(await onHand("store", "sugar")).toBe(40);
   });
   it("rebuildBalances reproduces the cache from the moves", async () => {
     await withTransaction(t.db, (tx) => postMoves(tx, [{ loc: "store", it: "milk", qty: 7, kind: "opening", refType: "seed", refId: "o" }]));

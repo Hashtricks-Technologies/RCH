@@ -63,7 +63,7 @@ export const ProdOrderSchema = z.object({
   id: z.string(), from: LocKeySchema, by: z.string(), at: IsoTime, lines: z.array(TktLineSchema), st: PordStatusSchema, note: z.string(), hist: z.array(HistEntrySchema),
 });
 export const BatchSchema = z.object({ id: z.string(), it: z.string(), qty: Qty, made: Qty, at: IsoTime, bb: IsoTime, note: z.string().optional() });
-export const PayerSchema = z.object({ kind: PayerKindSchema, id: z.string(), name: z.string() });
+export const PayerSchema = z.strictObject({ kind: PayerKindSchema, id: z.string(), name: z.string() });
 /** What a store keeper recorded when the goods actually landed. */
 export const ReceiptLineSchema = z.object({ recv: Qty, batch: z.string(), mrp: Money, mfg: z.string(), exp: z.string(), rejected: Qty });
 /** The vendor's paperwork behind one instalment of a delivery. */

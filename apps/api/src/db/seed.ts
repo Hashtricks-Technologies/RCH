@@ -26,6 +26,18 @@ const vendorId = (name: string) => vendorIdByName.get(name) ?? name;
 const seededTicketIds = new Set(FX.seedTkt.map((t) => t.id));
 const allTableNames = () => Object.values(s).filter((t) => is(t, PgTable)).map((t) => getTableName(t));
 
+/**
+ * The PO line a GRN receives against. A GRN naming a PO/item pair that was never ordered is a
+ * fixture error, not a "receive against line 0" — silently defaulting there would post the
+ * receipt against the wrong line's ordered/received quantities.
+ * @internal exported for seed.test.ts
+ */
+export function grnPoLineNo(po: { lines: { it: string }[] } | undefined, g: { id: string; po: string; it: string }): number {
+  const poLineNo = po?.lines.findIndex((l) => l.it === g.it) ?? -1;
+  if (poLineNo < 0) throw new Error(`GRN ${g.id}: ${g.it} is not on ${g.po}`);
+  return poLineNo;
+}
+
 export async function seedDatabase(db: Db, opts: { password: string; forcePasswordChange: boolean; force?: boolean }): Promise<void> {
   const existing = Number(((await db.execute(sql`select count(*)::int as n from users`)).rows[0] as { n: number }).n);
   if (existing > 0 && !opts.force) throw new Error(`database already has ${existing} users - pass --force to reseed`);
@@ -120,7 +132,7 @@ async function seedProcurement(tx: Tx) {
   }
   for (const g of FX.seedGrn) {
     const po = FX.seedPo.find((o) => o.id === g.po);
-    const poLineNo = Math.max(0, po?.lines.findIndex((l) => l.it === g.it) ?? 0);
+    const poLineNo = grnPoLineNo(po, g);
     await tx.insert(s.grns).values({
       id: g.id, poId: g.po, poLineNo, itemKey: g.it, acceptedQty: g.qty, rejectedQty: g.rejected, batchNo: g.batch, mrp: g.mrp, mfg: g.mfg, exp: g.exp,
       dcNo: g.dc, invoiceNo: g.invoice, invoiceDate: g.invDate || null, at: parseFixtureTime(g.at), byUser: who(g.by),

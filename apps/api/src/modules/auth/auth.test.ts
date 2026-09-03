@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { randomUUID } from "node:crypto";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { buildTestApp } from "../../test/app.js";
 import { seedTestDb } from "../../test/seed.js";
 import type { App } from "../../app.js";
@@ -105,6 +105,25 @@ describe("refresh", () => {
     // the winner just minted in the same race.
     expect((await a.inject({ method: "POST", url: "/api/v1/auth/refresh", cookies: { rch_refresh: c2 } })).statusCode).toBe(401);
   });
+  it("caps a rotated token's expiry at 30 days from the family's first issue, not 30 days from the rotation", async () => {
+    const day = 86400_000;
+    const first = await login(a, "RC-1902");
+    const c1 = cookieOf(first).value;
+    const [row] = await a.db.select().from(refreshTokens).where(eq(refreshTokens.userId, first.json().user.id)).orderBy(sql`created_at desc`).limit(1);
+    // Back-date the family's first (only, so far) row by 29 days: a rotation issued "now" would
+    // ordinarily get a fresh now+30d expiry, but the family itself is only a day from its
+    // absolute 30-day lifetime, so the rotated token must inherit that cap.
+    const backdated = new Date(Date.now() - 29 * day);
+    await a.db.update(refreshTokens).set({ createdAt: backdated }).where(eq(refreshTokens.id, row.id));
+    const r2 = await a.inject({ method: "POST", url: "/api/v1/auth/refresh", cookies: { rch_refresh: c1 } });
+    expect(r2.statusCode).toBe(200);
+    const familyRows = await a.db.select().from(refreshTokens).where(eq(refreshTokens.family, row.family));
+    const rotated = familyRows.find((x) => x.id !== row.id)!;
+    const expectedCap = backdated.getTime() + 30 * day;
+    expect(Math.abs(rotated.expiresAt.getTime() - expectedCap)).toBeLessThan(5000);
+    // Well short of an ordinary now+30d expiry, which is what a bug would give it.
+    expect(rotated.expiresAt.getTime()).toBeLessThan(Date.now() + 29 * day);
+  });
 });
 
 describe("logout", () => {
@@ -146,6 +165,23 @@ describe("change-password", () => {
     expect(fresh).not.toBe(oldCookie);
     expect((await a.inject({ method: "POST", url: "/api/v1/auth/refresh", cookies: { rch_refresh: oldCookie } })).statusCode).toBe(401);
     expect((await a.inject({ method: "POST", url: "/api/v1/auth/refresh", cookies: { rch_refresh: fresh } })).statusCode).toBe(200);
+  });
+  it("refuses an account deactivated after the access token was issued, with the same message as a bad current password", async () => {
+    const l = await login(a, "RC-4471");
+    const h = { authorization: `Bearer ${l.json().accessToken}` };
+    await a.db.update(users).set({ active: false }).where(eq(users.id, "u1"));
+    const inactive = await a.inject({ method: "POST", url: "/api/v1/auth/change-password", headers: h, payload: { current: "changeme", next: "a-much-longer-secret" } });
+    const badCurrent = await a.inject({ method: "POST", url: "/api/v1/auth/change-password", headers: h, payload: { current: "wrong", next: "a-much-longer-secret" } });
+    expect(inactive.statusCode).toBe(401);
+    expect(badCurrent.statusCode).toBe(401);
+    expect(inactive.json().error.message).toBe(badCurrent.json().error.message);
+  });
+  it("refuses a next password equal to the current one", async () => {
+    const l = await login(a, "RC-1550", "a-much-longer-secret");
+    const h = { authorization: `Bearer ${l.json().accessToken}` };
+    const r = await a.inject({ method: "POST", url: "/api/v1/auth/change-password", headers: h, payload: { current: "a-much-longer-secret", next: "a-much-longer-secret" } });
+    expect(r.statusCode).toBe(422);
+    expect(r.json().error.message).toBe("Choose a different password from your current one");
   });
 });
 

@@ -17,3 +17,10 @@ describe("fixtures satisfy the document schemas", () => {
     all(D.ProductRequestSchema, FX.seedProductRequests(), "npr"); all(D.RateContractSchema, FX.seedContracts(), "rc"); all(D.ShopAskSchema, FX.seedShopAsks(), "ask");
   });
 });
+
+describe("PayerSchema", () => {
+  it("is strict: an unrecognised field on a bill's payer is a schema error, not a silent pass-through", () => {
+    expect(D.PayerSchema.safeParse({ kind: "staff", id: "S1", name: "A" }).success).toBe(true);
+    expect(D.PayerSchema.safeParse({ kind: "staff", id: "S1", name: "A", extra: "x" }).success).toBe(false);
+  });
+});

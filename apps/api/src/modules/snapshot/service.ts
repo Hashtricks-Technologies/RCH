@@ -18,14 +18,16 @@ const SALES_DAYS = 14;
 export function createSnapshotService(db: Db) {
   return {
     async snapshot(claims: AccessClaims): Promise<Snapshot> {
-      const u = await snapshotRepo.userById(db, claims.sub);
+      // One users lookup for the whole snapshot, not one per document reader that stamps a
+      // name onto a byUser id — fetched alongside the caller's own row, then threaded through.
+      const [u, names] = await Promise.all([snapshotRepo.userById(db, claims.sub), D.userNames(db)]);
       if (!u) throw new NotFoundError("That account no longer exists.");
       // Independent reads run together; the pool serialises what it must.
       const [items, locations, recipes, users, prices, menu, stock, rsv, ovr, req, tkt, prq, po, grn, pord, batch, bills, vendors, contracts, tickets, productReqs, shopAsks, salesBlock] = await Promise.all([
         M.readItems(db), M.readLocations(db), M.readRecipes(db), M.readUsers(db), M.readPrices(db), M.readMenu(db),
         S.readStock(db), S.readRsv(db), S.readOvr(db),
-        D.readRequests(db), D.readTickets(db), D.readRequisitions(db), D.readPurchaseOrders(db), D.readGrns(db), D.readProdOrders(db), D.readBatches(db),
-        D.readBills(db, BILL_DAYS), D.readVendors(db), D.readContracts(db), D.readSupportTickets(db), D.readProductRequests(db), D.readShopAsks(db), D.readSales(db, SALES_DAYS),
+        D.readRequests(db, names), D.readTickets(db), D.readRequisitions(db, names), D.readPurchaseOrders(db), D.readGrns(db, names), D.readProdOrders(db, names), D.readBatches(db),
+        D.readBills(db, BILL_DAYS, names), D.readVendors(db), D.readContracts(db), D.readSupportTickets(db, names), D.readProductRequests(db, names), D.readShopAsks(db, names), D.readSales(db, SALES_DAYS),
       ]);
       const full: Snapshot = { user: toWireUser(u), items, locations, recipes, users, prices, menu, stock, rsv, ovr, req, tkt, prq, po, pord, batch, bills, grn, vendors, contracts, tickets, productReqs, shopAsks, sales: salesBlock.sales, dayLabels: salesBlock.dayLabels };
       return scope(full, { role: claims.role, loc: claims.loc, sub: claims.sub });

@@ -33,4 +33,10 @@ describe("users-admin", () => {
     const [u] = await t.db.select().from(users).where(eq(users.id, "u6"));
     expect(u.active).toBe(false);
   });
+  it("reset-password refuses an unknown employee number", async () => {
+    await expect(resetPassword(t.db, "RC-0000", "another-temp-pass")).rejects.toThrow(/RC-0000/);
+  });
+  it("deactivate refuses an unknown employee number", async () => {
+    await expect(deactivateUser(t.db, "RC-0000")).rejects.toThrow(/RC-0000/);
+  });
 });

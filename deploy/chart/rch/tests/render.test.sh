@@ -41,6 +41,14 @@ grep -A3 'kind: ServiceMonitor' <<<"$out" | grep -q 'component: api'
 ! (grep -A2 'name: JWT_PRIVATE_KEY' <<<"$out" | grep -q 'value:')
 ! (grep -A2 'name: DATABASE_URL' <<<"$out" | grep -q 'value:')
 grep -q 'secretKeyRef' <<<"$out"
+# I: the api Deployment's migrate initContainer and its api container both
+# build their env from rch.envList (see _helpers.tpl) so they can never drift.
+# Guard the invariant directly: the secretKeyRef lines in each container's env
+# block must be identical, in the same order.
+init_secrets=$(sed -n '/name: migrate$/,/name: api$/p' <<<"$out" | grep 'secretKeyRef')
+api_secrets=$(sed -n '/name: api$/,/readinessProbe:/p' <<<"$out" | grep 'secretKeyRef')
+[ -n "$init_secrets" ]
+[ "$init_secrets" = "$api_secrets" ]
 
 out=$(helm template rch . -f values-staging.yaml --set image.registry=r,image.tag=t,secrets.values.DATABASE_URL=x,secrets.values.JWT_PRIVATE_KEY=x,secrets.values.JWT_PUBLIC_KEY=x)
 grep -q 'kind: Secret' <<<"$out"

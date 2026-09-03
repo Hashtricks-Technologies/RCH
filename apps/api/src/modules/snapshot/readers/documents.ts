@@ -8,13 +8,24 @@ import { iso } from "../../../lib/time.js";
 const strip = <T extends object>(o: T): T => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)) as T;
 const groupBy = <T, K extends string>(rows: T[], key: (r: T) => K): Map<K, T[]> => { const m = new Map<K, T[]>(); for (const r of rows) { const k = key(r); (m.get(k) ?? m.set(k, []).get(k)!).push(r); } return m; };
 const hist = (m: Map<string, HistEntry[]>, id: string) => m.get(id) ?? [];
-const userNames = async (db: Db) => new Map((await db.select({ id: s.users.id, name: s.users.name, colour: s.users.colour }).from(s.users)).map((u) => [u.id, u]));
 
-export async function readRequests(db: Db): Promise<StockRequest[]> {
+export type UserNames = Map<string, { id: string; name: string; colour: string }>;
+/**
+ * Every document reader below stamps a name (and sometimes a colour) onto a `byUser`/
+ * `operatorId` id, so each used to fetch its own copy of the whole users table. `snapshot()`
+ * now fetches this once and threads it through as the optional trailing `names` param; a
+ * reader called on its own (`GET /bills`, tests) still works — it just fetches its own copy,
+ * same as before.
+ * @public — consumed by service.ts.
+ */
+export const userNames = async (db: Db): Promise<UserNames> =>
+  new Map((await db.select({ id: s.users.id, name: s.users.name, colour: s.users.colour }).from(s.users)).map((u) => [u.id, u]));
+
+export async function readRequests(db: Db, pre?: UserNames): Promise<StockRequest[]> {
   const [heads, lines, h, names] = await Promise.all([
     db.select().from(s.stockRequests).orderBy(asc(s.stockRequests.at), asc(s.stockRequests.id)),
     db.select().from(s.stockRequestLines).orderBy(asc(s.stockRequestLines.lineNo)),
-    readHistories(db, "request"), userNames(db),
+    readHistories(db, "request"), pre ? Promise.resolve(pre) : userNames(db),
   ]);
   const byReq = groupBy(lines, (l) => l.requestId);
   return heads.map((r) => strip({
@@ -31,10 +42,10 @@ export async function readTickets(db: Db): Promise<Ticket[]> {
   return heads.map((t) => ({ id: t.id, req: t.refId, from: t.fromLoc as LocKey, to: t.toLoc as LocKey, lines: (byTkt.get(t.id) ?? []).map((l) => ({ it: l.itemKey, qty: l.qty })), st: t.status, otp: t.otp }));
 }
 
-export async function readRequisitions(db: Db): Promise<Requisition[]> {
+export async function readRequisitions(db: Db, pre?: UserNames): Promise<Requisition[]> {
   const [heads, lines, h, names] = await Promise.all([
     db.select().from(s.requisitions).orderBy(desc(s.requisitions.at), desc(s.requisitions.id)),
-    db.select().from(s.requisitionLines).orderBy(asc(s.requisitionLines.lineNo)), readHistories(db, "requisition"), userNames(db),
+    db.select().from(s.requisitionLines).orderBy(asc(s.requisitionLines.lineNo)), readHistories(db, "requisition"), pre ? Promise.resolve(pre) : userNames(db),
   ]);
   const byPrq = groupBy(lines, (l) => l.requisitionId);
   return heads.map((p) => strip({
@@ -59,17 +70,17 @@ export async function readPurchaseOrders(db: Db): Promise<PurchaseOrder[]> {
   }));
 }
 
-export async function readGrns(db: Db): Promise<Grn[]> {
-  const [rows, names] = await Promise.all([db.select().from(s.grns).orderBy(desc(s.grns.at), desc(s.grns.id)), userNames(db)]);
+export async function readGrns(db: Db, pre?: UserNames): Promise<Grn[]> {
+  const [rows, names] = await Promise.all([db.select().from(s.grns).orderBy(desc(s.grns.at), desc(s.grns.id)), pre ? Promise.resolve(pre) : userNames(db)]);
   return rows.map((g) => ({
     id: g.id, po: g.poId, it: g.itemKey, qty: g.acceptedQty, rejected: g.rejectedQty, batch: g.batchNo, mrp: g.mrp, mfg: g.mfg, exp: g.exp,
     dc: g.dcNo, invoice: g.invoiceNo, invDate: g.invoiceDate ?? "", at: iso(g.at), by: g.byUser ? names.get(g.byUser)?.name ?? g.byUser : "",
   }));
 }
 
-export async function readProdOrders(db: Db): Promise<ProdOrder[]> {
+export async function readProdOrders(db: Db, pre?: UserNames): Promise<ProdOrder[]> {
   const [heads, lines, h, names] = await Promise.all([
-    db.select().from(s.prodOrders).orderBy(asc(s.prodOrders.at), asc(s.prodOrders.id)), db.select().from(s.prodOrderLines).orderBy(asc(s.prodOrderLines.lineNo)), readHistories(db, "prod_order"), userNames(db),
+    db.select().from(s.prodOrders).orderBy(asc(s.prodOrders.at), asc(s.prodOrders.id)), db.select().from(s.prodOrderLines).orderBy(asc(s.prodOrderLines.lineNo)), readHistories(db, "prod_order"), pre ? Promise.resolve(pre) : userNames(db),
   ]);
   const by = groupBy(lines, (l) => l.orderId);
   return heads.map((o) => ({ id: o.id, from: o.fromLoc as LocKey, by: names.get(o.byUser)?.name ?? o.byUser, at: iso(o.at), lines: (by.get(o.id) ?? []).map((l) => ({ it: l.itemKey, qty: l.qty })), st: o.status, note: o.note, hist: hist(h, o.id) }));
@@ -80,10 +91,10 @@ export async function readBatches(db: Db): Promise<Batch[]> {
   return rows.map((b) => strip({ id: b.id, it: b.itemKey, qty: b.startedQty, made: b.madeQty, at: iso(b.at), bb: iso(b.bestBefore), note: b.note ?? undefined }));
 }
 
-export async function readBills(db: Db, sinceDays: number): Promise<Bill[]> {
+export async function readBills(db: Db, sinceDays: number, pre?: UserNames): Promise<Bill[]> {
   const since = new Date(Date.now() - sinceDays * 86400_000);
   const [heads, lines, names] = await Promise.all([
-    db.select().from(s.bills).where(gte(s.bills.at, since)).orderBy(desc(s.bills.at), desc(s.bills.no)), db.select().from(s.billLines).orderBy(asc(s.billLines.lineNo)), userNames(db),
+    db.select().from(s.bills).where(gte(s.bills.at, since)).orderBy(desc(s.bills.at), desc(s.bills.no)), db.select().from(s.billLines).orderBy(asc(s.billLines.lineNo)), pre ? Promise.resolve(pre) : userNames(db),
   ]);
   const by = groupBy(lines, (l) => l.billNo);
   return heads.map((b) => strip({
@@ -104,9 +115,9 @@ export async function readContracts(db: Db): Promise<RateContract[]> {
   }).from(s.rateContracts).innerJoin(s.vendors, eq(s.rateContracts.vendorId, s.vendors.id)).orderBy(asc(s.rateContracts.id));
   return rows.map((c) => ({ id: c.id, vendor: c.vendorName, it: c.itemKey, rate: c.rate, from: c.validFrom, to: c.validTo, moq: c.moq, active: c.active }));
 }
-export async function readSupportTickets(db: Db): Promise<SupportTicket[]> {
+export async function readSupportTickets(db: Db, pre?: UserNames): Promise<SupportTicket[]> {
   const [heads, msgs, names] = await Promise.all([
-    db.select().from(s.supportTickets).orderBy(desc(s.supportTickets.at), desc(s.supportTickets.id)), db.select().from(s.supportMessages).orderBy(asc(s.supportMessages.at), asc(s.supportMessages.id)), userNames(db),
+    db.select().from(s.supportTickets).orderBy(desc(s.supportTickets.at), desc(s.supportTickets.id)), db.select().from(s.supportMessages).orderBy(asc(s.supportMessages.at), asc(s.supportMessages.id)), pre ? Promise.resolve(pre) : userNames(db),
   ]);
   const by = groupBy(msgs, (m) => m.ticketId);
   return heads.map((t) => strip({
@@ -115,12 +126,12 @@ export async function readSupportTickets(db: Db): Promise<SupportTicket[]> {
     rating: (t.rating ?? undefined) as SupportTicket["rating"],
   }));
 }
-export async function readProductRequests(db: Db): Promise<ProductRequest[]> {
-  const [rows, names] = await Promise.all([db.select().from(s.productRequests).orderBy(desc(s.productRequests.at)), userNames(db)]);
+export async function readProductRequests(db: Db, pre?: UserNames): Promise<ProductRequest[]> {
+  const [rows, names] = await Promise.all([db.select().from(s.productRequests).orderBy(desc(s.productRequests.at)), pre ? Promise.resolve(pre) : userNames(db)]);
   return rows.map((p) => strip({ id: p.id, name: p.name, why: p.why, forLoc: p.forLoc as LocKey, by: names.get(p.byUser)?.name ?? p.byUser, at: iso(p.at), st: p.status, note: p.note ?? undefined, itemKey: p.itemKey ?? undefined }));
 }
-export async function readShopAsks(db: Db): Promise<ShopAsk[]> {
-  const [rows, names] = await Promise.all([db.select().from(s.shopAsks).orderBy(asc(s.shopAsks.at)), userNames(db)]);
+export async function readShopAsks(db: Db, pre?: UserNames): Promise<ShopAsk[]> {
+  const [rows, names] = await Promise.all([db.select().from(s.shopAsks).orderBy(asc(s.shopAsks.at)), pre ? Promise.resolve(pre) : userNames(db)]);
   return rows.map((a) => strip({ id: a.id, from: a.fromLoc as LocKey, to: a.toLoc as LocKey, it: a.itemKey, qty: a.qty, st: a.status, by: names.get(a.byUser)?.name ?? a.byUser, at: iso(a.at), note: a.note, grant: a.grantedQty ?? undefined, ticket: a.ticketId ?? undefined, reason: a.reason ?? undefined }));
 }
 

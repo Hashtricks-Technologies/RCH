@@ -12,7 +12,7 @@ server {
   # alike. Without it, proxy_pass with a literal host resolves eagerly at
   # nginx startup and the whole process fails to start if the API service
   # isn't resolvable yet.
-  resolver ${NGINX_LOCAL_RESOLVERS};
+  resolver ${NGINX_LOCAL_RESOLVERS} valid=10s;
 
   add_header X-Content-Type-Options nosniff always;
   add_header X-Frame-Options SAMEORIGIN always;

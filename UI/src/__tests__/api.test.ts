@@ -75,4 +75,14 @@ describe("wire formats", () => {
   it("renders ISO instants as HH:MM in the hospital's zone", () => { expect(fromWireTime("2026-09-03T01:02:00.000Z")).toBe("06:32"); });
   it("renders dates as DD-MMM-YYYY", () => { expect(fromWireDate("2026-08-31")).toBe("31-Aug-2026"); });
   it("renders a best-before like bestBefore()", () => { expect(fromWireBestBefore(new Date(Date.now() + 3600_000).toISOString())).toMatch(/^\d{2}:\d{2}/); });
+  it("computes the best-before day boundary in Asia/Kolkata, not the host's own zone", () => {
+    // "now" is 2026-09-04T00:30 IST but still 2026-09-03 in UTC; the due instant is later the
+    // same IST calendar day (2026-09-04T07:30 IST) though its UTC date bucket is already
+    // 2026-09-04. A host-local/UTC day comparison would misread this pair as spanning a day
+    // boundary and print "tomorrow" - it does not, in the hospital's own zone.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-03T19:00:00.000Z"));
+    expect(fromWireBestBefore("2026-09-04T02:00:00.000Z")).toBe("07:30");
+    vi.useRealTimers();
+  });
 });

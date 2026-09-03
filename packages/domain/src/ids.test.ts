@@ -22,5 +22,9 @@ describe("formatId", () => {
     expect(SEQUENCE_START.req).toBe(913);
     expect(SEQUENCE_START.tkt).toBe(441);
     expect(SEQUENCE_START.bill).toBe(1188);
+    expect(SEQUENCE_START.support).toBe(44);
+    expect(SEQUENCE_START.product_req).toBe(13);
+    expect(SEQUENCE_START.contract).toBe(109);
+    expect(SEQUENCE_START.shop_ask).toBe(63);
   });
 });
