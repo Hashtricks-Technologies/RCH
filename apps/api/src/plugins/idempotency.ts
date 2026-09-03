@@ -36,7 +36,11 @@ export default fp(async (app) => {
     } else {
       body = payload ?? null;
     }
-    await app.db.insert(idempotencyKeys).values({ key: req.idem.key, userId: req.idem.userId, requestHash: req.idem.hash, statusCode: reply.statusCode, response: body, expiresAt: new Date(Date.now() + TTL_MS) }).onConflictDoNothing();
+    try {
+      await app.db.insert(idempotencyKeys).values({ key: req.idem.key, userId: req.idem.userId, requestHash: req.idem.hash, statusCode: reply.statusCode, response: body, expiresAt: new Date(Date.now() + TTL_MS) }).onConflictDoNothing();
+    } catch (err) {
+      req.log.warn({ err }, "idempotency record not stored");
+    }
     return payload;
   });
 }, { name: "idempotency", dependencies: ["auth", "db"] });

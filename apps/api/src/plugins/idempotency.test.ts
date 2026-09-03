@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { randomUUID } from "node:crypto";
 import { buildTestApp } from "../test/app.js";
 import { seedTestDb } from "../test/seed.js";
@@ -6,6 +6,7 @@ import { authHeaders } from "../test/auth.js";
 import type { App } from "../app.js";
 import { purgeIdempotencyKeys } from "./idempotency.js";
 import { idempotencyKeys } from "../db/schema/index.js";
+import { meRepo } from "../modules/me/repo.js";
 
 let app: App;
 beforeAll(async () => { app = await buildTestApp({ schema: "idem" }); await seedTestDb(app.testDb!.db); await app.ready(); });
@@ -22,6 +23,18 @@ describe("Idempotency-Key", () => {
     const b = await app.inject({ method: "PATCH", url: "/api/v1/me", headers: h, payload: { ph: "11111 11111" } });
     expect(b.statusCode).toBe(a.statusCode); expect(b.body).toBe(a.body); expect(b.headers["idempotency-replayed"]).toBe("true");
     expect(a.headers["idempotency-replayed"]).toBeUndefined();
+  });
+  it("a replay does not re-run the write", async () => {
+    const key = randomUUID(); const h = { ...(await authHeaders(app, "u1")), "idempotency-key": key };
+    const spy = vi.spyOn(meRepo, "update");
+    const a = await app.inject({ method: "PATCH", url: "/api/v1/me", headers: h, payload: { ph: "50000 00005" } });
+    expect(a.statusCode).toBe(200);
+    expect(spy).toHaveBeenCalledTimes(1);
+    const b = await app.inject({ method: "PATCH", url: "/api/v1/me", headers: h, payload: { ph: "50000 00005" } });
+    expect(b.statusCode).toBe(200);
+    expect(b.headers["idempotency-replayed"]).toBe("true");
+    expect(spy).toHaveBeenCalledTimes(1); // still just once - the replay never reached the repo
+    spy.mockRestore();
   });
   it("refuses the same key with a different body", async () => {
     const key = randomUUID(); const h = { ...(await authHeaders(app, "u1")), "idempotency-key": key };
