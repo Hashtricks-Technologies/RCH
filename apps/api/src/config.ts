@@ -21,6 +21,10 @@ const Env = z.object({
   SEED_FORCE_PASSWORD_CHANGE: bool.default(true),
   RATE_LIMIT_PER_MINUTE: int(10, 100_000).default(300),
   LOGIN_RATE_LIMIT_PER_MINUTE: int(1, 1000).default(10),
+  LOGIN_RATE_LIMIT_PER_EMP_PER_MINUTE: int(1, 1000).default(5),
+  /** "true"/"false", a hop count ("1", "2", …, translated to an equivalent trust function —
+   *  see `parseTrustProxy`), or a raw CIDR/IP (list) handed straight to `proxy-addr`. */
+  TRUST_PROXY: z.string().min(1).default("1"),
 });
 
 export class ConfigError extends Error {}
@@ -41,9 +45,37 @@ export type Config = Readonly<{
   seedForcePasswordChange: boolean;
   rateLimitPerMinute: number;
   loginRateLimitPerMinute: number;
+  loginRateLimitPerEmpPerMinute: number;
+  /** What Fastify's own `trustProxy` option accepts: `true`/`false`, a CIDR/IP (list) string,
+   *  or — for a hop count — a function, per the note on `parseTrustProxy` below. */
+  trustProxy: boolean | string | ((address: string, hop: number) => boolean);
 }>;
 
 const pem = (b64: string) => Buffer.from(b64, "base64").toString("utf8");
+
+/**
+ * "true"/"false" -> boolean; anything else that isn't a bare integer (a CIDR, an IP, a
+ * comma-separated list of either) passed through as a string for `@fastify/proxy-addr` to
+ * parse. A bare integer ("1", "2", …) is the interesting case: Fastify 5 treats a raw
+ * `number` here as a no-op for security — see its `trustProxy` docs: "Hop-count-only trust is
+ * disabled because it cannot validate the immediate peer and lets direct clients spoof
+ * X-Forwarded-* values" — and its TS type doesn't even accept `number`. So a hop count is
+ * reproduced with an equivalent trust function instead: trust exactly the nearest `hops`
+ * entries in the forwarded chain and take the address beyond them as the client. This is only
+ * as safe as Fastify's own docs say hop-count trust ever is — it assumes the origin cannot be
+ * reached except through that many trusted hops (e.g. a ClusterIP Service reachable only via
+ * the ALB/ingress, or the local Vite dev proxy on one machine); it does not itself validate
+ * *which* addresses those hops are.
+ */
+function parseTrustProxy(v: string): Config["trustProxy"] {
+  if (v === "true") return true;
+  if (v === "false") return false;
+  if (/^\d+$/.test(v)) {
+    const hops = Number(v);
+    return (_address: string, hop: number) => hop < hops;
+  }
+  return v;
+}
 
 export function loadConfig(env: NodeJS.ProcessEnv): Config {
   const r = Env.safeParse(env);
@@ -72,5 +104,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): Config {
     seedForcePasswordChange: e.SEED_FORCE_PASSWORD_CHANGE,
     rateLimitPerMinute: e.RATE_LIMIT_PER_MINUTE,
     loginRateLimitPerMinute: e.LOGIN_RATE_LIMIT_PER_MINUTE,
+    loginRateLimitPerEmpPerMinute: e.LOGIN_RATE_LIMIT_PER_EMP_PER_MINUTE,
+    trustProxy: parseTrustProxy(e.TRUST_PROXY),
   });
 }

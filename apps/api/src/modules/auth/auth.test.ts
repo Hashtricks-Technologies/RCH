@@ -76,13 +76,31 @@ describe("refresh", () => {
     const c2 = cookieOf(r2).value;
     expect(c2).not.toBe(c1);
     // replaying the used token is reuse: family revoked, and the fresh token dies with it
-    expect((await a.inject({ method: "POST", url: "/api/v1/auth/refresh", cookies: { rch_refresh: c1 } })).statusCode).toBe(401);
+    const reuse = await a.inject({ method: "POST", url: "/api/v1/auth/refresh", cookies: { rch_refresh: c1 } });
+    expect(reuse.statusCode).toBe(401);
+    // a dead refresh cookie is also cleared client-side, so the browser stops presenting it
+    expect(reuse.headers["set-cookie"]).toMatch(/rch_refresh=;/);
     expect((await a.inject({ method: "POST", url: "/api/v1/auth/refresh", cookies: { rch_refresh: c2 } })).statusCode).toBe(401);
     const rows = await a.db.select().from(refreshTokens).where(eq(refreshTokens.userId, "u3"));
     expect(rows.every((t) => t.revokedAt !== null)).toBe(true);
   });
   it("refuses without a cookie", async () => {
     expect((await a.inject({ method: "POST", url: "/api/v1/auth/refresh" })).statusCode).toBe(401);
+  });
+  it("under concurrent reuse of the same cookie, exactly one refresh wins and the family dies with it", async () => {
+    const first = await login(a, "RC-2088");
+    const c1 = cookieOf(first).value;
+    const [r1, r2] = await Promise.all([
+      a.inject({ method: "POST", url: "/api/v1/auth/refresh", cookies: { rch_refresh: c1 } }),
+      a.inject({ method: "POST", url: "/api/v1/auth/refresh", cookies: { rch_refresh: c1 } }),
+    ]);
+    const statuses = [r1.statusCode, r2.statusCode].sort();
+    expect(statuses).toEqual([200, 401]);
+    const winner = r1.statusCode === 200 ? r1 : r2;
+    const c2 = cookieOf(winner).value;
+    // The loser's atomic claim fails, which revokes the whole family - including the token
+    // the winner just minted in the same race.
+    expect((await a.inject({ method: "POST", url: "/api/v1/auth/refresh", cookies: { rch_refresh: c2 } })).statusCode).toBe(401);
   });
 });
 

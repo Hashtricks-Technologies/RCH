@@ -40,7 +40,7 @@ class Attempts {
 }
 
 export function createAuthService(db: Db, config: Config) {
-  const attempts = new Attempts(Math.max(1, Math.floor(config.loginRateLimitPerMinute / 2)));
+  const attempts = new Attempts(config.loginRateLimitPerEmpPerMinute);
   const expiry = () => new Date(Date.now() + config.refreshTokenTtlDays * 86400_000);
 
   async function issue(tx: Parameters<Parameters<typeof withTransaction>[1]>[0], u: NonNullable<Awaited<ReturnType<typeof authRepo.userById>>>, family: string, meta: Meta): Promise<Session> {
@@ -68,14 +68,20 @@ export function createAuthService(db: Db, config: Config) {
       const outcome = await withTransaction(db, async (tx) => {
         const t = await authRepo.refreshByHash(tx, sha256(raw));
         if (!t || t.revokedAt) return { ok: false as const, message: "Your session has ended - sign in again." };
-        if (t.usedAt) {
-          await authRepo.revokeFamily(tx, t.family);
-          return { ok: false as const, message: "Your session was used from somewhere else and has been closed - sign in again." };
-        }
         if (t.expiresAt < new Date()) return { ok: false as const, message: "Your session has expired - sign in again." };
         const u = await authRepo.userById(tx, t.userId);
         if (!u || !u.active) return { ok: false as const, message: "Your session has ended - sign in again." };
-        await authRepo.markUsed(tx, t.id);
+        // Claim the token atomically: UPDATE ... WHERE used_at IS NULL RETURNING id. This is
+        // the only thing that decides who wins a race between two concurrent refreshes of the
+        // same cookie - a plain "if (t.usedAt)" read-then-write would let both requests see
+        // used_at = null and both proceed. Postgres serialises the two UPDATEs on the row: the
+        // loser blocks, then re-reads used_at as already set and claims zero rows, which is
+        // exactly the reuse case below.
+        const claimed = await authRepo.markUsed(tx, t.id);
+        if (claimed.length === 0) {
+          await authRepo.revokeFamily(tx, t.family);
+          return { ok: false as const, message: "Your session was used from somewhere else and has been closed - sign in again." };
+        }
         return { ok: true as const, session: await issue(tx, u, t.family, meta) };
       });
       if (!outcome.ok) throw new UnauthenticatedError(outcome.message);
