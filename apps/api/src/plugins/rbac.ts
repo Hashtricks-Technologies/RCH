@@ -16,7 +16,10 @@ export default fp(async (app) => {
   });
 }, { name: "rbac", dependencies: ["auth"] });
 
-/** For location-scoped writes: the caller's location must be the row's. */
+/**
+ * For location-scoped writes: the caller's location must be the row's.
+ * @public — consumed by Phase 2 write endpoints (spec §9.2).
+ */
 export function requireLoc(req: FastifyRequest, loc: LocKey | string, what = "that location"): void {
   if (req.user.loc !== loc) throw new ForbiddenError(`You can only do this for ${what}.`);
 }

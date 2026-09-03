@@ -71,7 +71,8 @@ From the repo root, `bash scripts/build-site.sh` assembles the published site in
 same way.
 
 CI (`.github/workflows/ci.yml`) runs `pnpm install --frozen-lockfile` → `pnpm turbo typecheck
-lint test` → `bash scripts/build-site.sh` on Node 24. Every change must pass all of it.
+test` → `pnpm lint` (oxlint per package plus knip, which turbo never runs) →
+`bash scripts/build-site.sh` on Node 24. Every change must pass all of it.
 `deploy.yml` builds and deploys the API and UI containers on push to `staging`/`production` —
 see `deploy/RUNBOOK.md` §2.
 

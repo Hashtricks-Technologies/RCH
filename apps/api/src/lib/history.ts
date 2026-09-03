@@ -9,6 +9,7 @@ export type HistEntry = { s: string; who: string; t: string };
 export async function appendHistory(tx: Tx, docType: string, docId: string, status: string, who: string, at: Date = new Date()): Promise<void> {
   await tx.insert(documentHistory).values({ docType, docId, status, who, at });
 }
+/** @public — consumed by Phase 2 write endpoints (spec §9.2). */
 export async function readHistory(db: Db | Tx, docType: string, docId: string): Promise<HistEntry[]> {
   const rows = await db.select().from(documentHistory)
     .where(and(eq(documentHistory.docType, docType), eq(documentHistory.docId, docId)))

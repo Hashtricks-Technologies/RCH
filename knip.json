@@ -6,26 +6,21 @@
       "project": []
     },
     "packages/*": {
-      "entry": [
-        "src/index.ts",
-        "src/fixtures/index.ts"
-      ],
       "project": [
         "src/**/*.ts"
       ]
     },
     "apps/api": {
       "entry": [
-        "src/server.ts",
-        "src/cli/*.ts",
-        "drizzle.config.ts",
-        "tsup.config.ts",
-        "scripts/strip-public-schema.mjs"
+        "src/cli/*.ts"
       ],
       "project": [
         "src/**/*.ts"
       ]
     }
   },
+  "ignoreFiles": [
+    "apps/api/src/lib/rules.ts"
+  ],
   "ignoreExportsUsedInFile": true
 }

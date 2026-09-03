@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { routes } from "@rch/contract";
 import { ApiError, call } from "../api/client";
-import { onSessionLost, setAccessToken } from "../api/session";
+import { getAccessToken, onSessionLost, setAccessToken } from "../api/session";
 import { applySnapshot } from "../api/wire";
 import { IT, LOC, MENU, RCP, USERS } from "../data/master";
 import {
@@ -53,6 +53,8 @@ export interface AppState extends ProcurementSlice, OpsSlice {
 
   login: (emp: string, password: string) => Promise<boolean>;
   logout: () => Promise<void>;
+  /** Boot: turn the refresh cookie back into a session. Silent when there is no cookie. */
+  restore: () => Promise<void>;
   loadSnapshot: () => Promise<void>;
   changePassword: (current: string, next: string) => Promise<boolean>;
   /** Local sign-in, kept for the tests and the Denied flow. */
@@ -144,10 +146,31 @@ export const useApp = create<AppState>((set, get) => ({
       return false;
     }
   },
+  restore: async () => {
+    // A token in memory means this tab already has a live session.
+    if (getAccessToken()) return;
+    set({ auth: "loading" });
+    try {
+      const r = await call(routes.refresh);
+      setAccessToken(r.accessToken);
+      set({ user: r.user, mustChangePassword: r.mustChangePassword });
+      if (r.mustChangePassword) set({ auth: "ready" });
+      else await get().loadSnapshot();
+    } catch {
+      // A first-time visitor has no cookie. That is not a session ending, so it
+      // says nothing and simply shows the sign-in form.
+      set({ auth: "signed-out", user: null });
+    }
+  },
   loadSnapshot: async () => {
     set({ auth: "loading" });
     try { applySnapshot(await call(routes.snapshot)); set({ auth: "ready" }); }
-    catch (e) { set({ auth: "ready" }); get().notify(e instanceof ApiError ? e.message : "Could not load the latest data — showing what is in memory."); }
+    catch (e) {
+      // A 401 here has already signed the user out via onSessionLost; do not
+      // pull the app back to "ready" behind that.
+      if (get().user) set({ auth: "ready" });
+      get().notify(e instanceof ApiError ? e.message : "Could not load the latest data — showing what is in memory.");
+    }
   },
   logout: async () => {
     try { await call(routes.logout); } catch { /* the cookie is gone either way */ }

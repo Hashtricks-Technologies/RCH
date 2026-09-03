@@ -22,7 +22,10 @@ jobs:
       - uses: actions/setup-node@v7
         with: { node-version-file: .nvmrc, cache: pnpm }
       - run: pnpm install --frozen-lockfile
-      - run: pnpm turbo typecheck lint test
+      - run: pnpm turbo typecheck test
+      # Not a turbo task: `pnpm lint` is oxlint per package plus knip, and knip is
+      # repo-wide, so turbo never runs it. Keep it as its own step.
+      - run: pnpm lint
       - run: pnpm audit --audit-level=high
       - name: Build the site
         run: bash scripts/build-site.sh
