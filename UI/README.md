@@ -1,7 +1,7 @@
 # Royal Care — F&B Inventory (React + Vite)
 
 Frontend for the hospital's kitchen, restaurant and retail-counter operation. Five roles,
-one shared stock ledger, no backend yet.
+one shared stock ledger, backed by the `apps/api` Fastify service (Phase 1 — spec §14).
 
 ## Stack
 
@@ -15,28 +15,48 @@ one shared stock ledger, no backend yet.
 
 ## Run
 
+This app is part of the root pnpm + Turborepo workspace — run it from the repo root, not from
+inside `UI/` (the API and a local Postgres need to be up too; see `deploy/RUNBOOK.md` for the
+full sequence):
+
 ```bash
-npm install
-npm run dev      # http://localhost:5173
-npm run build    # → dist/
-npm run preview
+pnpm install
+pnpm db:up                                   # postgres:17 in Docker, host port 5439
+cp .env.example .env
+pnpm --filter @rch/api keys:generate >> .env
+pnpm --filter @rch/api db:migrate
+pnpm --filter @rch/api db:seed
+pnpm dev                                     # apps/api on :3000, this app on :5173
 ```
 
-No environment variables, no backend, no database. State lives in memory for the session;
-a refresh returns to the seeded starting position.
+Just this package, once the API is already running elsewhere:
+
+```bash
+pnpm --filter @rch/ui dev        # http://localhost:5173
+pnpm --filter @rch/ui build      # → dist/
+pnpm --filter @rch/ui test
+```
+
+The dev server proxies `/api` to the Fastify API on `:3000`. Master data, prices, menus and
+every open document are hydrated from `GET /snapshot` on load (`hydrateMaster`); every
+mutation (billing, approvals, tickets, …) still runs against the in-memory Zustand store until
+later phases move it server-side (spec §14).
 
 ## Sign in
 
-No password is checked. Pick an account on the sign-in screen — each lands somewhere
-different and sees a different sidebar.
+Real authentication — employee id and password, checked against the API. Each account lands
+somewhere different and sees a different sidebar. The seed password is `SEED_PASSWORD` from
+`.env` (dev default `changeme`); a staging/prod seed sets `must_change_password`, which routes
+first sign-in through a change-password step before anything else.
 
-| Account | Role | Lands on |
-|---|---|---|
-| Kavitha Raman | Counter Operator · Coffee Shop | Point of Sale |
-| Ramesh Kumar | Outlet Manager · All outlets | Approvals |
-| Suresh Muthu | Store Keeper · Central Store | Issue Desk |
-| Vinoth Prakash | Kitchen In-charge · Central Kitchen | Orders |
-| Latha Narayanan | Procurement Officer (not tied to one counter) | Requisitions |
+| Employee id | Account | Role | Lands on |
+|---|---|---|---|
+| `RC-4471` | Kavitha Raman | Counter Operator · Coffee Shop | Point of Sale |
+| `RC-3120` | Ramesh Kumar | Outlet Manager · All outlets | Approvals |
+| `RC-2088` | Suresh Muthu | Store Keeper · Central Store | Issue Desk |
+| `RC-1902` | Vinoth Prakash | Kitchen In-charge · Central Kitchen | Orders |
+| `RC-1550` | Latha Narayanan | Procurement Officer (not tied to one counter) | Requisitions |
+| `RC-4482` | Deepa Selvam | Counter Operator · Kiosk | Point of Sale |
 
 ## Layout
 
@@ -109,5 +129,7 @@ destination. The outlet manager sees it happen rather than standing in the middl
 
 ## Not built yet
 
-Persistence, real authentication, barcode scanning, patient-bill posting, GST output
-registers. The backend contract is described in `../docs/system-design.html`.
+Mutations are still in-memory (billing, approvals, tickets, purchase orders, …) — Phase 1
+delivered persistence and real authentication for reads only (spec §14 has the phase-by-phase
+cutover). Barcode scanning, patient-bill posting and GST output registers remain out of scope.
+The backend design is `../docs/superpowers/specs/2026-09-03-backend-design.md`.

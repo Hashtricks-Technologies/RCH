@@ -34,7 +34,7 @@ A module a role cannot use is absent from its sidebar entirely.
 | Production In-charge | Vinoth Prakash | Orders | Accepting orders, making products, distributing to stores and counters |
 | Procurement Officer | Latha Narayanan | Requisitions | Acting on store requisitions, raising purchase orders, receiving goods |
 
-No password is checked in this build — pick an account on the sign-in screen.
+Sign in with an employee id and password (see `UI/README.md` for the seeded accounts).
 
 ## The request chain
 
@@ -60,18 +60,29 @@ and arrives on the receive scan — in between it is in transit, owned by neithe
 
 ## Running it
 
-    cd UI
-    npm install
-    npm run dev        # http://localhost:5173
-    npm run build      # -> UI/dist
+This is a pnpm + Turborepo monorepo. From the repo root:
 
-State lives in memory for the session — a refresh returns to the seeded starting
-position.
+    pnpm install
+    pnpm db:up          # postgres:17 in Docker, host port 5439
+    cp .env.example .env
+    pnpm --filter @rch/api keys:generate >> .env
+    pnpm --filter @rch/api db:migrate
+    pnpm --filter @rch/api db:seed
+    pnpm dev             # api on :3000, UI on :5173
+
+    pnpm build           # every package
+    pnpm typecheck
+    pnpm lint
+    pnpm test
+
+Sign in at `http://localhost:5173` with a seeded employee id (see `UI/README.md`) and the seed
+password. Full sequence, CLI reference and deployment procedures are in `deploy/RUNBOOK.md`.
 
 ## Status
 
-React + Vite frontend, strict TypeScript, light and dark themes. Real logic sits behind the
-screens rather than mock data:
+React + Vite frontend, strict TypeScript, light and dark themes, backed by a Fastify + Drizzle
++ PostgreSQL API (`apps/api`) under Phase 1 of the backend rollout (spec §14). Real logic sits
+behind the screens rather than mock data:
 
 - **One ledger.** Nothing is created or destroyed without a document. Production consumes its
   recipe from the kitchen in the same transaction that books the finished units; a ticket
@@ -86,9 +97,11 @@ screens rather than mock data:
 - **Role-based access.** A module a role cannot use is absent from its sidebar and refused by
   direct link with a message.
 
-There is no backend, no database and no authentication yet — state lives in memory for the
-session, and the theme is the only thing persisted to the device. The backend contract is
-described in `docs/system-design.html`.
+Sign-in is real (employee id + password against the API) and state — the item master,
+locations, prices, menus and every open document — is read from the server on load. Every
+mutation (billing, approvals, tickets, purchase orders, …) is still in-memory in the browser
+store until Phase 2 and later phases move it server-side (spec §14). The backend design is
+`docs/superpowers/specs/2026-09-03-backend-design.md`; operations are `deploy/RUNBOOK.md`.
 
 ---
 

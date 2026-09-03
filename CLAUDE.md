@@ -33,31 +33,45 @@ from `staging` into `production`. Never merge the other way except a hotfix: bra
 
 ## Commands
 
-All application commands run from `UI/`:
+This is a pnpm + Turborepo monorepo (`pnpm-workspace.yaml`: `apps/*`, `packages/*`, `UI`).
+Run everything from the repo root:
 
 ```bash
-npm install
-npm run dev          # http://localhost:5173
-npm run typecheck    # tsc --noEmit -p tsconfig.app.json
-npm run lint         # oxlint (config: UI/.oxlintrc.json)
-npm test             # vitest run
-npm run test:watch
-npm run build        # tsc -b && vite build -> UI/dist
+pnpm install
+pnpm dev          # turbo run dev --parallel: apps/api on :3000, UI on :5173 (Vite proxying /api)
+pnpm build        # turbo run build, every package
+pnpm typecheck    # turbo run typecheck, every package
+pnpm lint         # turbo run lint (oxlint per package) + knip (repo-wide unused-export check)
+pnpm test         # turbo run test, every package (Postgres must be reachable for apps/api)
 ```
 
-Run a single test file or case:
+Database and API commands (see `deploy/RUNBOOK.md` for the full local-dev sequence and what
+each one does):
 
 ```bash
-npx vitest run src/__tests__/procurement.test.ts
-npx vitest run -t "raises a multi-item request"
+pnpm db:up                                            # postgres:17 in Docker, host port 5439
+pnpm db:down
+pnpm --filter @rch/api db:generate                    # drizzle-kit generate; review + commit the SQL
+pnpm --filter @rch/api db:migrate
+pnpm --filter @rch/api db:seed [--force]
+pnpm --filter @rch/api db:rebuild-balances
+pnpm --filter @rch/api users <create|reset-password|deactivate> --emp E1234 ...
+pnpm --filter @rch/api keys:generate                  # prints a new JWT_PRIVATE_KEY= / JWT_PUBLIC_KEY= pair
+pnpm helm:test                                        # deploy/chart/rch/tests/render.test.sh
 ```
+
+`pnpm --filter @rch/ui test` runs just the UI's vitest suite (`npx vitest run
+src/__tests__/procurement.test.ts` etc. still works from inside `UI/` for a single file).
 
 From the repo root, `bash scripts/build-site.sh` assembles the published site into `dist/`
-(`/` = `index.html`, `/docs/` = the HTML specs, `/app/` = the built React app). Netlify and
-CI both run this exact script, so a broken assembly fails locally the same way.
+(`/` = `index.html`, `/docs/` = the HTML specs, `/app/` = the built React app, from
+`UI/dist`). Netlify and CI both run this exact script, so a broken assembly fails locally the
+same way.
 
-CI (`.github/workflows/ci.yml`) runs typecheck → lint → test → build-site on Node 24.
-Every change must pass all four.
+CI (`.github/workflows/ci.yml`) runs `pnpm install --frozen-lockfile` → `pnpm turbo typecheck
+lint test` → `bash scripts/build-site.sh` on Node 24. Every change must pass all of it.
+`deploy.yml` builds and deploys the API and UI containers on push to `staging`/`production` —
+see `deploy/RUNBOOK.md` §2.
 
 ## Repository layout
 
@@ -189,9 +203,10 @@ the host does not supply one):
 
 ## Backend
 
-Status: **spec written, implementation not started.** Read
-`docs/superpowers/specs/2026-09-03-backend-design.md` before touching anything server-side;
-it records every decision already taken (§2) so they are not reopened in chat.
+Status: **Phase 1 (Foundation) implemented on branch `feat/phase-1-foundation`; phases 2–6
+pending — see spec §14.** Read `docs/superpowers/specs/2026-09-03-backend-design.md` before
+touching anything server-side; it records every decision already taken (§2) so they are not
+reopened in chat.
 
 What it commits to, in one breath: a standalone TypeScript backend in a pnpm + Turborepo
 monorepo — `packages/contract` (Zod schemas; `types.ts` moves here), `packages/domain` (pure
@@ -214,8 +229,10 @@ Rules that bind once code exists — spec §5.1 has the enforcement mechanism fo
 
 Build order is spec §14 — six phases, each cutting one role over to the server and deleting
 its in-memory path; nothing dual-runs. "Production ready" is the checklist in spec §12 and
-gates every phase. When phase 1 lands, the *Commands* section above changes to `pnpm` /
-`turbo` at the repo root — update it in the same commit.
+gates every phase. Phase 1's frontend cutover is real sign-in and `/snapshot` hydration
+(`hydrateMaster`) in place of `data/master.ts`'s static registries; every mutation is still
+local to the store until phase 2 lands. Operational procedures — deploy, roll back, rotate
+keys, accounts, restore drill — are `deploy/RUNBOOK.md`.
 
 ## Docs
 
