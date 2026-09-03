@@ -1,0 +1,47 @@
+{
+  "name": "@rch/api",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch --env-file=../../.env src/server.ts",
+    "build": "tsup",
+    "start": "node dist/server.mjs",
+    "typecheck": "tsc --noEmit",
+    "lint": "oxlint",
+    "test": "vitest run",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "tsx --env-file=../../.env src/cli/migrate.ts",
+    "db:seed": "tsx --env-file=../../.env src/cli/seed.ts",
+    "db:rebuild-balances": "tsx --env-file=../../.env src/cli/rebuild-balances.ts",
+    "users": "tsx --env-file=../../.env src/cli/users.ts",
+    "keys:generate": "tsx src/cli/keys.ts"
+  },
+  "dependencies": {
+    "@fastify/cookie": "^11.1.2",
+    "@fastify/cors": "^11.3.0",
+    "@fastify/helmet": "^13.1.1",
+    "@fastify/jwt": "^10.2.2",
+    "@fastify/rate-limit": "^11.2.0",
+    "@fastify/sensible": "^6.0.5",
+    "@fastify/under-pressure": "^9.1.0",
+    "@node-rs/argon2": "^2.2.0",
+    "@rch/contract": "workspace:*",
+    "@rch/domain": "workspace:*",
+    "drizzle-orm": "^0.45.2",
+    "fastify": "^5.12.1",
+    "fastify-plugin": "^6.0.0",
+    "fastify-type-provider-zod": "^7.0.0",
+    "pg": "^8.23.0",
+    "prom-client": "^15.1.3",
+    "zod": "^4.5.4"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.3",
+    "@types/pg": "^8.23.1",
+    "drizzle-kit": "^0.31.10",
+    "tsup": "^8.5.1",
+    "tsx": "^4.23.13",
+    "vitest": "^4.1.11"
+  }
+}
