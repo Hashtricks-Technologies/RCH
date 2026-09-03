@@ -81,8 +81,8 @@ password. Full sequence, CLI reference and deployment procedures are in `deploy/
 ## Status
 
 React + Vite frontend, strict TypeScript, light and dark themes, backed by a Fastify + Drizzle
-+ PostgreSQL API (`apps/api`) under Phase 1 of the backend rollout (spec §14). Real logic sits
-behind the screens rather than mock data:
++ PostgreSQL API (`apps/api`) under Phases 1–2 of the backend rollout (spec §14). Real logic
+sits behind the screens rather than mock data:
 
 - **One ledger.** Nothing is created or destroyed without a document. Production consumes its
   recipe from the kitchen in the same transaction that books the finished units; a ticket
@@ -98,10 +98,14 @@ behind the screens rather than mock data:
   direct link with a message.
 
 Sign-in is real (employee id + password against the API) and state — the item master,
-locations, prices, menus and every open document — is read from the server on load. Every
-mutation (billing, approvals, tickets, purchase orders, …) is still in-memory in the browser
-store until Phase 2 and later phases move it server-side (spec §14). The backend design is
-`docs/superpowers/specs/2026-09-03-backend-design.md`; operations are `deploy/RUNBOOK.md`.
+locations, prices, menus and every open document — is read from the server on load. Counter
+billing and the outlet manager's prices and menus are on the server too: a sale is decided by
+`POST /bills` (pricing, the payer rule and the stock check all run there, so two counters can
+never both sell the last unit), and availability toggles and price/menu edits go through the
+same round trip. Every other mutation (approvals, tickets, purchase orders, …) is still
+in-memory in the browser store until later phases move it server-side (spec §14). The backend
+design is `docs/superpowers/specs/2026-09-03-backend-design.md`; operations are
+`deploy/RUNBOOK.md`.
 
 ---
 

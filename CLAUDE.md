@@ -8,14 +8,16 @@ Royal Care Hospital's F&B inventory and billing frontend: one item master and on
 ledger behind a central store, a kitchen and three retail outlets, covering purchase
 requisition → purchase order → goods receipt → production → issue → counter sale.
 
-**Phase 1 of the backend is implemented** — a Fastify + Drizzle API on PostgreSQL, per the
+**Phases 1–2 of the backend are implemented** — a Fastify + Drizzle API on PostgreSQL, per the
 design in `docs/superpowers/specs/2026-09-03-backend-design.md` (the contract for all backend
 work; see *Backend* below). Sign-in is real (employee id + password), and after signing in the
 frontend reads its state — the item master, locations, prices, menus and every open document
-— from the server (`GET /snapshot`) instead of `UI/src/data/seed.ts`. Every mutation (billing,
-approvals, tickets, purchase orders, …) still runs against the in-memory Zustand store; only
-the theme and a few UI prefs reach `localStorage`. Later phases (spec §14) move mutations to
-the server one role at a time.
+— from the server (`GET /snapshot`) instead of `UI/src/data/seed.ts`. Counter billing
+(`POST /bills`), availability toggles and the manager's price/menu writes run against the
+server too, refetching just what changed; every other mutation (approvals, tickets, purchase
+orders, …) still runs against the in-memory Zustand store, and only the theme and a few UI
+prefs reach `localStorage`. Later phases (spec §14) move the rest to the server one role at a
+time.
 
 ## Branches
 
@@ -118,6 +120,13 @@ bottom of the same `create()` call and share one `AppState`:
 Slices take `(set, get)` typed against `AppState`, so any action can read the whole store.
 Components subscribe with narrow selectors: `useApp((s) => s.req)`.
 
+Five actions are no longer local: `pay`, `toggleAvail`, `savePrice`, `addProduct` and
+`removeProduct` call the API (`UI/src/api/client.ts`) instead of mutating `set` directly, then
+`refetch` (`UI/src/api/refetch.ts`) pulls back only the slices the write says it changed —
+`GET /stock` for `stock`/`rsv`/`ovr`, `GET /bills` for `bills`, a full `loadSnapshot` for
+anything else. A refusal (wrong tender, MRP breach, short stock) throws and is toasted; the
+cart or price form is left exactly as it was.
+
 ### Derived state is computed, never stored
 
 `src/lib/selectors.ts` is the source of truth for everything derived. Do not add mirrored
@@ -164,12 +173,16 @@ choice wins in both directions. No CSS framework.
 
 These are enforced in code and pinned by tests. Breaking one is a bug, not a style choice.
 
-- **MRP is a hard ceiling.** Traded items carry a printed MRP. `savePrice` refuses a price
-  above it and `priceOf` caps at the till. No role, list or approval may exceed it.
+- **MRP is a hard ceiling.** Traded items carry a printed MRP. `packages/domain` holds the
+  rule; the server enforces it (`PUT /prices/:list/:it` refuses above it, verbatim: `Refused —
+  printed MRP of ₹<mrp> is a hard ceiling for <item>`) and `priceOf` in `selectors.ts` still
+  caps client-side previews at the till. No role, list or approval may exceed it.
 - **Nothing is created or destroyed without a document.** `makeProduct` deducts the recipe
   from the kitchen in the same `set` that books the finished units; ingredients go against
   what was *started*, only the yielded units reach the rack.
-- **Selling deducts by recipe for MTO items**, by the unit otherwise (`pay` in `store/index.ts`).
+- **Selling deducts by recipe for MTO items**, by the unit otherwise — now decided server-side
+  in `apps/api/src/modules/pos` (`POST /bills`) against the same rule in `packages/domain`;
+  `pay` in `store/index.ts` just calls it and refetches.
 - **Dispatch is all-or-nothing.** A short production order names every missing item and moves
   nothing; a repeated item is folded into one line before the cover check.
 - **Costing.** `costOf` prices a made item from its recipe plus overhead — never zero.
@@ -203,12 +216,30 @@ the host does not supply one):
   (C6, M3, M8, H4, UA-14…). Read the surrounding comment before changing behaviour one covers.
 - `screens.test.tsx` / `app.test.tsx` — every role × every nav key renders, bare and in-shell.
 - `theme.test.ts` — theme resolution and persistence.
+- `writes.test.ts` — the five API-backed actions (`pay`, `toggleAvail`, `savePrice`,
+  `addProduct`, `removeProduct`) against a mocked client: success refetches the right slices,
+  a refusal toasts and leaves state untouched.
+
+`apps/api`'s tests give each file its own Postgres schema, `t_<name>_<pid>` (`process.pid`
+keeps parallel runs from colliding), migrated once and dropped on close
+(`apps/api/src/test/db.ts`). Both `apps/api/vitest.config.ts` and `UI/vite.config.ts` pin
+`TZ=UTC` so IST-sensitive assertions (bill numbering across midnight, best-before rendering)
+prove something on every host, not just ones already in UTC.
 
 ## Backend
 
-Status: **Phase 1 (Foundation) implemented; phases 2–6 pending — see spec §14.** Read
+Status: **Phases 1–2 implemented; phases 3–6 pending — see spec §14.** Read
 `docs/superpowers/specs/2026-09-03-backend-design.md` before touching anything server-side;
-it records every decision already taken (§2) so they are not reopened in chat.
+it records every decision already taken (§2), plus every amendment recorded during Phases 1–2
+(§16), so they are not reopened in chat.
+
+Phase 2 added three modules to `apps/api/src/modules`, each `routes.ts` / `service.ts` /
+`repo.ts` / `<name>.test.ts` like every other: `pos` (`POST /bills`, the ledger sale — pricing,
+the payer rule and the cover check all run server-side, then `postMoves()` writes the stock
+move and a post-lock re-read asserts `on_hand ≥ 0`), `availability` (`POST
+/availability/toggle`, admitting `counter`/`manager`/`prod` each for their own scope), and
+`catalog` (`PUT /prices/:list/:it`, menu add/remove — the MRP ceiling and `seq = max+1`
+enforced here). `GET /stock` and `GET /bills` are scoped like `/snapshot` for a counter.
 
 What it commits to, in one breath: a standalone TypeScript backend in a pnpm + Turborepo
 monorepo — `packages/contract` (Zod schemas; `types.ts` moves here), `packages/domain` (pure
@@ -232,9 +263,11 @@ Rules that bind once code exists — spec §5.1 has the enforcement mechanism fo
 Build order is spec §14 — six phases, each cutting one role over to the server and deleting
 its in-memory path; nothing dual-runs. "Production ready" is the checklist in spec §12 and
 gates every phase. Phase 1's frontend cutover is real sign-in and `/snapshot` hydration
-(`hydrateMaster`) in place of `data/master.ts`'s static registries; every mutation is still
-local to the store until phase 2 lands. Operational procedures — deploy, roll back, rotate
-keys, accounts, restore drill — are `deploy/RUNBOOK.md`.
+(`hydrateMaster`) in place of `data/master.ts`'s static registries. Phase 2 cuts counter
+billing, availability toggles and the manager's price/menu writes over to the server (`pay`,
+`toggleAvail`, `savePrice`, `addProduct`, `removeProduct`, above); everything else stays local
+to the store until phase 3 lands. Operational procedures — deploy, roll back, rotate keys,
+accounts, restore drill — are `deploy/RUNBOOK.md`.
 
 ## Docs
 

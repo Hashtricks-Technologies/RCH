@@ -40,3 +40,4 @@ apps/api/dist/
 
 # Agent scratch (plans keep their ledger under docs/superpowers/plans)
 .superpowers/
+.playwright-mcp/

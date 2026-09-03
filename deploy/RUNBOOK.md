@@ -268,9 +268,15 @@ Before go-live and quarterly:
 
 ## 7. Rebuild balances
 
-`stock_balances` is a cache derived from the append-only `stock_moves` ledger. Rebuild it after
-a suspected balance drift, after a restore drill (§6), or any other time the cache is
-in doubt:
+`stock_balances` is a cache derived from the append-only `stock_moves` ledger. "Append-only" is
+enforced in the database, not just by convention: migration `0002` installs a trigger that
+refuses any `UPDATE` or `DELETE` on `stock_moves` (`TRUNCATE` is still allowed — the test
+harness and `db:seed --force` use it to reset between runs). There is no in-place correction of
+a move; the schema already carries a `reverses_id` column and a `reversal` move kind
+(`apps/api/src/db/schema/ledger.ts`, `enums.ts`) for the day a correction posts a new move
+pointing back at the one it undoes, the same way a wrong ledger entry is corrected in
+accounting rather than edited. Rebuild the cache after a suspected balance drift, after a
+restore drill (§6), or any other time the cache is in doubt:
 
 ```bash
 pnpm --filter @rch/api db:rebuild-balances                                       # local
@@ -304,6 +310,14 @@ see when a ticket moved, read the ticket itself:
 
 ```sql
 select id, status, issued_at, collected_at, received_at from tickets where id = 'TKT-0441';
+```
+
+A bill (Phase 2, `POST /bills`) writes no `document_history` either — it is a single
+create-and-settle document, not something that moves through statuses — so read what it did
+from the ledger instead, keyed by `ref_type = 'bill'` and `ref_id = <bill number>`:
+
+```sql
+select * from stock_moves where ref_type = 'bill' and ref_id = 'CF/1188';
 ```
 
 Connect with `psql` (or any Postgres client) against the target `DATABASE_URL` — locally

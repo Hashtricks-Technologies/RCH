@@ -1,7 +1,7 @@
 # Royal Care — F&B Inventory (React + Vite)
 
 Frontend for the hospital's kitchen, restaurant and retail-counter operation. Five roles,
-one shared stock ledger, backed by the `apps/api` Fastify service (Phase 1 — spec §14).
+one shared stock ledger, backed by the `apps/api` Fastify service (Phases 1–2 — spec §14).
 
 ## Stack
 
@@ -129,7 +129,8 @@ destination. The outlet manager sees it happen rather than standing in the middl
 
 ## Not built yet
 
-Mutations are still in-memory (billing, approvals, tickets, purchase orders, …) — Phase 1
-delivered persistence and real authentication for reads only (spec §14 has the phase-by-phase
-cutover). Barcode scanning, patient-bill posting and GST output registers remain out of scope.
-The backend design is `../docs/superpowers/specs/2026-09-03-backend-design.md`.
+Most mutations are still in-memory (approvals, tickets, purchase orders, …) — Phase 1
+delivered persistence and real authentication for reads, and Phase 2 cut billing, availability
+and prices/menus over to the server (spec §14 has the phase-by-phase cutover). Barcode
+scanning, patient-bill posting and GST output registers remain out of scope. The backend
+design is `../docs/superpowers/specs/2026-09-03-backend-design.md`.
