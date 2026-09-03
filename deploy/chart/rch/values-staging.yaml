@@ -1,0 +1,4 @@
+api: { replicas: 2, hpa: { minReplicas: 2, maxReplicas: 3 }, env: { LOG_LEVEL: debug, CORS_ORIGIN: https://rch-staging.example.com } }
+ui: { replicas: 1 }
+ingress: { host: rch-staging.example.com }
+secrets: { create: true }
