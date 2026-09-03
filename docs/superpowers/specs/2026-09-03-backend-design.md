@@ -493,3 +493,23 @@ Phase 1 is the largest and least visible. It is where the production-readiness p
 - The GST invoice is the existing bill format; statutory e-invoicing (IRP) is not in scope.
 - Thermal printing and barcode scanning remain browser-side concerns and are unaffected.
 - The six seeded users (five roles; two counter operators) are the initial accounts; real staff are added with the CLI before go-live.
+
+## 16. Amendments recorded during Phase 1 (2026-09-04)
+
+Decisions taken while executing Phase 1 that refine or correct the sections above. Later phases plan against these.
+
+| Section | Amendment | Why |
+|---|---|---|
+| §7.2 `refresh_tokens` | Add a unique index on `token_hash`; the nightly purge also deletes rows past `expires_at` or revoked more than 7 days ago. | The refresh path looked up `token_hash` with no index and nothing pruned the table. |
+| §8.1 rate limits | The per-user limit needs `@fastify/rate-limit` registered with `hook: "preHandler"`; its default `onRequest` runs before authentication, so `req.user` is never set and every limit becomes per-IP. A separate `LOGIN_RATE_LIMIT_PER_EMP_PER_MINUTE` (default 5) governs the per-employee login cap; `TRUST_PROXY` (default `"1"`, one hop) governs which `X-Forwarded-For` entry counts as the client. | Found in review; the spec's "300 per minute per user" was unachievable as first implemented. |
+| §8.1 change-password | `POST /auth/change-password` returns `AuthResponse` — a fresh access token (`mcp: false`) and a rotated refresh cookie — after revoking the user's other families. | Revoking everything without reissuing stranded the user behind the must-change gate. |
+| §6 idempotency | The `Idempotency-Key` row is claimed in the pre-handler (status 0), not recorded after the response; a concurrent duplicate gets `409` "still being processed"; a claim older than 60 s with no response may be taken over. The client generates one key per logical call and reuses it on the post-refresh retry. | Two concurrent same-key requests both executed under the record-after design. |
+| §9.1 snapshot | `stock` is a partial record (a counter's snapshot omits other locations); `sales` is scoped to the counter's own outlet column. | Exhaustive records could not serialise a scoped snapshot; hospital-wide revenue was leaking to counters. |
+| §11.1 chart | Pod env for the four secrets is always `secretKeyRef` (never inlined values); the `ExternalSecret` is a `pre-install,pre-upgrade` hook (weight −5) so the migration Job can reference the Secret on a first install; `JWT_PREVIOUS_PUBLIC_KEY` is `optional: true`; every container (api, ui, migrate, purge) runs read-only-root with caps dropped; the ServiceMonitor selects `component: api` only. | Found in review; the staging path exposed the signing key as plaintext env and the prod first install could not start. |
+| §11.3 local database | Local Postgres is Docker on host port **5439** (a native PostgreSQL commonly holds 5432); CI's service container is 5432 with `TEST_DATABASE_URL` set explicitly. | Machine reality. |
+| §11.4 CI | `pnpm lint` = turbo lint + knip + `scripts/check-boundaries.sh` (the §5.1 mechanisms) and CI runs it; `deploy.yml` passes staging secrets via `env` + `--set-string`, never in argv. | The plan had no task for §5.1's tooling; knip was not in CI; secrets were interpolated into a shell string. |
+| §12 `/metrics` | Pool stats, sequence-allocation counter and the SSE gauge are Phase 2/3 deliverables, not Phase 1. | Only the request histogram shipped in Phase 1. |
+| §14 Phase 1 exit | The staging deploy line of the exit check cannot run without the AWS account (§3). Phase 1 is complete on the local exit check; the chart's staging and production paths have been rendered and reasoned about but never installed. Phase 2 adds a `helm install` against a throwaway kind/k3d cluster in CI. | Two chart defects survived every review because nothing installed the chart. |
+| §5.1 domain | `priceOf`, `availOf`, `freeToPromise`, `committed`, `recipeCost` still live in `UI/src/lib/selectors.ts`; moving them into `packages/domain` is the first task of Phase 2, before any server rule is written. | Phase 1 had no server-side rule to share yet. |
+| §7.3 ids | `SEQUENCE_START.shop_ask` is 63 (the fixture holds two asks). | Fixture count. |
+| §7.2 `document_history` | Only `request`, `requisition`, `purchase_order`, `prod_order` write history; tickets carry `issued_at` / `collected_at` / `received_at` on the row. | As implemented; the runbook documents it. |
