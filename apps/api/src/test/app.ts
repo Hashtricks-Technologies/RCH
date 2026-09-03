@@ -43,7 +43,7 @@ export async function buildTestApp(opts: BuildTestAppOpts): Promise<App> {
   const config = testConfig(opts.env);
   if (opts.withDb === false) return buildApp(config);
   const testDb: TestDb = await withTestSchema(opts.schema);
-  const app = await buildApp(config, { db: testDb.db, migrationsSchema: testDb.schemaName });
+  const app = await buildApp(config, { db: testDb.db, pool: testDb.pool, migrationsSchema: testDb.schemaName });
   app.addHook("onClose", async () => { await testDb.close(); });
   return Object.assign(app, { testDb });
 }

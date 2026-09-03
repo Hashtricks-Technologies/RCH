@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import { formatId, SEQUENCE_START, type IdKind } from "@rch/domain";
 import { sequences } from "../db/schema/index.js";
 import type { Tx } from "./db.js";
+import { recordAllocation } from "./metrics-db.js";
 
 /** Insert any series that is missing, starting where the seeded documents leave off. */
 export async function ensureSequences(tx: Tx): Promise<void> {
@@ -14,5 +15,6 @@ export async function allocateId(tx: Tx, kind: IdKind, at: Date = new Date()): P
   const r = await tx.execute(sql`update sequences set next = next + 1 where kind = ${kind} returning next - 1 as n`);
   const row = r.rows[0] as { n: number | string } | undefined;
   if (!row) throw new Error(`sequence "${kind}" is not initialised - run ensureSequences()`);
+  recordAllocation(kind);
   return formatId(kind, Number(row.n), at);
 }

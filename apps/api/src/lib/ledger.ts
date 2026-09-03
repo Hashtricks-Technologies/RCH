@@ -7,26 +7,36 @@ import type { Tx } from "./db.js";
 export type MoveKind = (typeof stockMoves.$inferInsert)["kind"];
 export type Move = { loc: string; it: string; qty: number; kind: MoveKind; refType: string; refId: string; by?: string; at?: Date };
 
+/** Only ever a map key inside this file — the (loc, item) pair travels with it, never re-split out of it. */
+const SEP = " ";
+
 /**
  * The one door to the ledger. Locks every (loc, item) balance the batch touches, in a fixed
  * order so two writers cannot deadlock, appends the moves, then adds the deltas to the cache.
  */
 export async function postMoves(tx: Tx, moves: Move[]): Promise<void> {
   if (moves.length === 0) return;
-  const keys = [...new Set(moves.map((m) => `${m.loc} ${m.it}`))].sort();
-  for (const k of keys) {
-    const [loc, it] = k.split(" ");
+  // The map is keyed by a string so a repeated (loc, item) folds into one lock and one delta,
+  // but the pair itself is carried alongside: an item key the central store typed may contain
+  // the separator, and splitting the key back apart would silently move the wrong balance.
+  const cells = new Map<string, { loc: string; it: string; delta: number }>();
+  for (const m of moves) {
+    const k = `${m.loc}${SEP}${m.it}`;
+    const cell = cells.get(k) ?? { loc: m.loc, it: m.it, delta: 0 };
+    cell.delta = round3(cell.delta + m.qty);
+    cells.set(k, cell);
+  }
+  // A fixed order across every writer, so two batches touching the same pair cannot deadlock.
+  const ordered = [...cells.keys()].sort().map((k) => cells.get(k)!);
+  for (const { loc, it } of ordered) {
     await tx.insert(stockBalances).values({ loc, itemKey: it, onHand: 0 }).onConflictDoNothing();
     await tx.execute(sql`select 1 from stock_balances where loc = ${loc} and item_key = ${it} for update`);
   }
   await tx.insert(stockMoves).values(moves.map((m) => ({
     loc: m.loc, itemKey: m.it, qty: round3(m.qty), kind: m.kind, refType: m.refType, refId: m.refId, byUser: m.by, at: m.at,
   })));
-  const delta = new Map<string, number>();
-  for (const m of moves) { const k = `${m.loc} ${m.it}`; delta.set(k, round3((delta.get(k) ?? 0) + m.qty)); }
-  for (const [k, d] of delta) {
-    const [loc, it] = k.split(" ");
-    await tx.execute(sql`update stock_balances set on_hand = round(on_hand + ${d}::numeric, 3), updated_at = now() where loc = ${loc} and item_key = ${it}`);
+  for (const { loc, it, delta } of ordered) {
+    await tx.execute(sql`update stock_balances set on_hand = round(on_hand + ${delta}::numeric, 3), updated_at = now() where loc = ${loc} and item_key = ${it}`);
   }
 }
 

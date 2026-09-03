@@ -1,4 +1,5 @@
 import Fastify, { type FastifyInstance } from "fastify";
+import type { Pool } from "pg";
 import { serializerCompiler, validatorCompiler, type ZodTypeProvider } from "fastify-type-provider-zod";
 import type { Config } from "./config.js";
 import type { Db } from "./db/client.js";
@@ -16,7 +17,8 @@ import { registerModules } from "./modules/index.js";
 declare module "fastify" { interface FastifyInstance { config: Config } }
 
 export type App = FastifyInstance;
-export type AppDeps = { db?: Db; searchPath?: string; migrationsSchema?: string };
+/** A caller that brings its own database brings the pool behind it too, so /metrics can still report its depth. */
+export type AppDeps = { db?: Db; pool?: Pool; searchPath?: string; migrationsSchema?: string };
 
 export async function buildApp(config: Config, deps: AppDeps = {}): Promise<App> {
   const app = Fastify({
@@ -44,7 +46,7 @@ export async function buildApp(config: Config, deps: AppDeps = {}): Promise<App>
   await app.register(metrics);
   await app.register(health);
   await app.register(security, { config });
-  await app.register(db, { url: config.databaseUrl, ssl: config.databaseSsl, searchPath: deps.searchPath, migrationsSchema: deps.migrationsSchema, db: deps.db });
+  await app.register(db, { url: config.databaseUrl, ssl: config.databaseSsl, searchPath: deps.searchPath, migrationsSchema: deps.migrationsSchema, db: deps.db, pool: deps.pool });
   await app.register(auth, { config });
   await app.register(rbac);
   await app.register(idempotency);

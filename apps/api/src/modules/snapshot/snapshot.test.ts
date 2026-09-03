@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import * as FX from "@rch/contract/fixtures";
-import { SnapshotSchema } from "@rch/contract";
+import { BillsResponseSchema, SnapshotSchema, StockResponseSchema, UserMinSchema } from "@rch/contract";
 import { buildTestApp } from "../../test/app.js";
 import { seedTestDb } from "../../test/seed.js";
 import { authHeaders } from "../../test/auth.js";
@@ -9,7 +9,8 @@ import type { App } from "../../app.js";
 let app: App;
 beforeAll(async () => { app = await buildTestApp({ schema: "snapshot" }); await seedTestDb(app.testDb!.db); await app.ready(); });
 afterAll(async () => { await app.close(); });
-const get = async (userId: string) => { const r = await app.inject({ method: "GET", url: "/api/v1/snapshot", headers: await authHeaders(app, userId) }); expect(r.statusCode).toBe(200); return r.json(); };
+const getAs = async (userId: string, url: string) => { const r = await app.inject({ method: "GET", url, headers: await authHeaders(app, userId) }); expect(r.statusCode, r.body).toBe(200); return r.json(); };
+const get = (userId: string) => getAs(userId, "/api/v1/snapshot");
 
 describe("GET /snapshot", () => {
   it("validates against the contract and carries the caller", async () => {
@@ -61,5 +62,58 @@ describe("GET /snapshot", () => {
       best = Math.min(best, performance.now() - t0);
     }
     expect(best).toBeLessThan(150);
+  });
+});
+
+describe("the colleague directory is a name badge, not a contact list", () => {
+  it("carries only what a screen renders — no email, employee number or phone", async () => {
+    const s = await get("u2");
+    expect(s.users.length).toBeGreaterThan(1);
+    for (const u of s.users) {
+      expect(UserMinSchema.safeParse(u).success, JSON.stringify(u)).toBe(true);
+      expect(Object.keys(u).sort()).toEqual(["col", "id", "loc", "n", "r", "rl"]);
+    }
+  });
+  it("still hands the caller their own record whole — Settings prints the employee number", async () => {
+    const s = await get("u2");
+    expect(s.user.emp).toBeTruthy();
+    expect(s.user.e).toBeTruthy();
+    expect(s.user.ph).toBeTruthy();
+  });
+});
+
+describe("GET /stock", () => {
+  it("answers with the three maps the snapshot carries, and nothing else", async () => {
+    const [s, st] = await Promise.all([get("u3"), getAs("u3", "/api/v1/stock")]);
+    expect(StockResponseSchema.safeParse(st).success).toBe(true);
+    expect(st).toEqual({ stock: s.stock, rsv: s.rsv, ovr: s.ovr });
+  });
+  it("is scoped to a counter operator's own counter, exactly as the snapshot is", async () => {
+    const [s, st] = await Promise.all([get("u1"), getAs("u1", "/api/v1/stock")]);
+    expect(Object.keys(st.stock)).toEqual(["coffee"]);
+    expect(Object.keys(st.rsv).every((k: string) => k.startsWith("coffee:"))).toBe(true);
+    expect(st).toEqual({ stock: s.stock, rsv: s.rsv, ovr: s.ovr });
+  });
+});
+
+describe("GET /bills", () => {
+  it("defaults to the same week the snapshot shows", async () => {
+    const [s, bills] = await Promise.all([get("u3"), getAs("u3", "/api/v1/bills")]);
+    expect(BillsResponseSchema.safeParse(bills).success).toBe(true);
+    expect(bills).toEqual(s.bills);
+  });
+  it("takes a wider window on ?days=", async () => {
+    const wide = await getAs("u3", "/api/v1/bills?days=90");
+    const week = await getAs("u3", "/api/v1/bills");
+    expect(wide.length).toBeGreaterThanOrEqual(week.length);
+  });
+  it("refuses a window outside the contract rather than guessing", async () => {
+    const r = await app.inject({ method: "GET", url: "/api/v1/bills?days=0", headers: await authHeaders(app, "u3") });
+    expect(r.statusCode).toBe(400);
+  });
+  it("is scoped to a counter operator's own counter", async () => {
+    const bills = await getAs("u1", "/api/v1/bills?days=90");
+    expect(bills.length).toBeGreaterThan(0);
+    expect(bills.every((b: { loc: string }) => b.loc === "coffee")).toBe(true);
   });
 });

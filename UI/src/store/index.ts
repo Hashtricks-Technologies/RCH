@@ -1,9 +1,10 @@
 import { create } from "zustand";
 import { routes } from "@rch/contract";
+import * as FX from "@rch/contract/fixtures";
 import { ApiError, call } from "../api/client";
 import { getAccessToken, onSessionLost, setAccessToken } from "../api/session";
 import { applySnapshot } from "../api/wire";
-import { IT, LOC, MENU, RCP, USERS } from "../data/master";
+import { IT, LOC, MENU, RCP } from "../data/master";
 import {
   DAY_LABELS, seedBatch, seedBills, seedGrn, seedPo, seedPord, seedPrq, seedReq, seedRsv, seedSales,
   seedStock, seedTkt,
@@ -191,7 +192,10 @@ export const useApp = create<AppState>((set, get) => ({
     } catch (e) { get().notify(e instanceof ApiError ? e.message : "Could not change the password."); return false; }
   },
 
-  signIn: (id) => set({ user: USERS.find((u) => u.id === id) ?? null, drawer: null }),
+  // Test-only: the app signs in through `login()`. The registry the screens read is the
+  // server's `UserMin[]`, which has no email or employee number, so the whole record a
+  // signed-in person needs comes from the fixtures instead.
+  signIn: (id) => set({ user: FX.USERS.find((u) => u.id === id) ?? null, drawer: null }),
   signOut: () => set({ user: null, drawer: null }),
   notify: (m) => {
     set({ toast: m });

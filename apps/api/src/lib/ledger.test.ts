@@ -51,6 +51,17 @@ describe("postMoves", () => {
       withTransaction(t.db, (tx) => postMoves(tx, [{ loc: "store", it: "milk", qty: 1, kind: "opening", refType: "seed", refId: "c" }]))));
     expect(await onHand("store", "milk")).toBe(25);
   });
+  it("keeps a key that contains a space apart from its neighbours", async () => {
+    // A new product's key is whatever the central store types. The batch is keyed by
+    // (loc, item) internally; nothing may re-derive the pair by splitting the key back apart.
+    await t.db.insert(items).values({ key: "milk 2", code: "RM-1010", name: "Milk 2L", unit: "L", type: "RAW", grp: "Dairy", hsn: "0401", gst: 0 });
+    await withTransaction(t.db, (tx) => postMoves(tx, [
+      { loc: "store", it: "milk", qty: 4, kind: "opening", refType: "seed", refId: "o" },
+      { loc: "store", it: "milk 2", qty: 6, kind: "opening", refType: "seed", refId: "o" },
+    ]));
+    expect(await onHand("store", "milk")).toBe(4);
+    expect(await onHand("store", "milk 2")).toBe(6);
+  });
   it("rebuildBalances reproduces the cache from the moves", async () => {
     await withTransaction(t.db, (tx) => postMoves(tx, [{ loc: "store", it: "milk", qty: 7, kind: "opening", refType: "seed", refId: "o" }]));
     await t.db.update(stockBalances).set({ onHand: 999 });

@@ -1,0 +1,35 @@
+import { asc } from "drizzle-orm";
+import type { Master } from "@rch/domain";
+import type { Db } from "../db/client.js";
+import { items, locations, recipeLines, recipes } from "../db/schema/index.js";
+import type { Tx } from "./db.js";
+import { toWireItem, toWireLocation } from "./wire.js";
+
+/** A service passes its own transaction, so the master it validates against is the one its
+ *  write commits with; a read-only caller passes the pool. */
+type Reader = Db | Tx;
+
+/** Withdrawn items are left out: no rule may price something the master no longer sells. */
+export const loadItems = async (db: Reader): Promise<Master["items"]> =>
+  Object.fromEntries((await db.select().from(items).orderBy(asc(items.key))).filter((r) => r.active).map((r) => [r.key, toWireItem(r)]));
+
+/** Every location, quarantine included. The rules ignore it; they do not need it hidden,
+ *  and the reader that feeds the UI (readers/master.ts) is the one that cuts it out. */
+export const loadLocations = async (db: Reader): Promise<Master["locations"]> =>
+  Object.fromEntries((await db.select().from(locations).orderBy(asc(locations.key))).map((r) => [r.key, toWireLocation(r)]));
+
+export async function loadRecipes(db: Reader): Promise<Master["recipes"]> {
+  const [heads, lines] = await Promise.all([
+    db.select().from(recipes).orderBy(asc(recipes.itemKey)),
+    db.select().from(recipeLines).orderBy(asc(recipeLines.itemKey), asc(recipeLines.seq)),
+  ]);
+  return Object.fromEntries(heads.map((h) => [h.itemKey, {
+    ov: h.overheadPct, l: lines.filter((l) => l.itemKey === h.itemKey).map((l) => [l.ingredientKey, l.qty] as [string, number]),
+  }]));
+}
+
+/** Everything `packages/domain` needs to answer a question, read once per request. */
+export async function loadMaster(db: Reader): Promise<Master> {
+  const [items, locations, recipes] = await Promise.all([loadItems(db), loadLocations(db), loadRecipes(db)]);
+  return { items, locations, recipes };
+}

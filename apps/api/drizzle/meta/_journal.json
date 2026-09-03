@@ -15,6 +15,13 @@
       "when": 1788469711974,
       "tag": "0001_refresh_token_hash",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1788474117963,
+      "tag": "0002_stock_moves_append_only",
+      "breakpoints": true
     }
   ]
 }

@@ -11,7 +11,7 @@ export const SnapshotSchema = z.object({
   items: z.record(z.string(), D.ItemSchema),
   locations: z.record(z.string(), D.LocationSchema),
   recipes: z.record(z.string(), D.RecipeSchema),
-  users: z.array(D.UserSchema),
+  users: z.array(D.UserMinSchema),   // the directory, not a contact list — `user` above is the caller's own, whole
   stock: byLoc(z.record(z.string(), Qty)),
   rsv: z.record(z.string(), Qty),          // "loc:item" -> reserved
   ovr: z.record(z.string(), z.string()),   // "loc:item" -> reason

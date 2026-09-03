@@ -1,6 +1,7 @@
 import { useApp } from "../store";
 import { basePrices } from "../lib/selectors";
-import { MENU, USERS } from "../data/master";
+import * as FX from "@rch/contract/fixtures";
+import { MENU } from "../data/master";
 import { seedVendors } from "../data/vendors";
 import { seedShopAsks } from "../data/ops";
 import {
@@ -10,8 +11,10 @@ import {
 
 export const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v));
 export const S = () => useApp.getState();
+/** The screens' registry is the server's `UserMin[]`; a signed-in person needs their whole
+ *  record, so the role -> user lookup goes to the fixtures the store's `signIn` reads. */
 export const as = (role: string) =>
-  useApp.getState().signIn(USERS.find((u) => u.r === role)!.id);
+  useApp.getState().signIn(FX.USERS.find((u) => u.r === role)!.id);
 
 export function resetStore() {
   useApp.setState({

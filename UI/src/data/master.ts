@@ -1,4 +1,4 @@
-import type { User } from "../types";
+import type { UserMin } from "../types";
 import * as FX from "@rch/contract/fixtures";
 
 // Registries. Mutable on purpose: the store can add a product, and hydrateMaster()
@@ -9,7 +9,10 @@ export const IT: Record<string, import("../types").Item> = { ...FX.IT };
 export const RCP = { ...FX.RCP };
 export const PL = { A: { ...FX.PL.A }, B: { ...FX.PL.B } };
 export const MENU: Record<string, string[]> = Object.fromEntries(Object.entries(FX.MENU).map(([k, v]) => [k, [...v]]));
-export const USERS: User[] = [...FX.USERS];
+/** The directory the server sends: a name badge each. Nobody's contact details but your own
+ *  travel over the wire, so this is `UserMin`, not `User` — the signed-in person's own full
+ *  record lives in the store's `user`. */
+export const USERS: UserMin[] = [...FX.USERS];
 export const OUTLETS = [...FX.OUTLETS];
 export const ALL_LOCS = [...FX.ALL_LOCS];
 export const { PAR_FACTOR, PATIENTS, STAFF, DEPTS, STAFF_CREDIT_LIMIT, PO_APPROVAL_LIMIT } = FX;
@@ -20,7 +23,7 @@ export type MasterData = {
   recipes: typeof FX.RCP;
   prices: { A: Record<string, number>; B: Record<string, number> };
   menu: Record<string, string[]>;
-  users: User[];
+  users: UserMin[];
 };
 
 const replaceKeys = <T extends object>(target: T, next: T) => {
@@ -45,7 +48,7 @@ export function hydrateMaster(m: MasterData): void {
  * location is the useful thing to show. An outlet manager oversees every shop
  * at once and a procurement officer is not tied to a single counter either.
  */
-export function homeLabel(u: User): string | null {
+export function homeLabel(u: UserMin): string | null {
   if (u.r === "manager") return "All outlets";
   if (u.r === "buyer") return null;
   return LOC[u.loc].n;

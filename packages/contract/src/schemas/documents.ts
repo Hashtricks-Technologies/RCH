@@ -28,6 +28,11 @@ export const UserSchema = z.object({
   id: z.string(), n: z.string(), e: z.string(), r: RoleSchema, rl: z.string(),
   loc: LocKeySchema, col: z.string(), emp: z.string(), ph: z.string(),
 });
+/** What one colleague sees of another. Email, employee number and phone belong to the person
+ *  they describe: the caller's own record travels whole, in `snapshot.user`, and nobody else's does. */
+export const UserMinSchema = z.strictObject({
+  id: z.string(), n: z.string(), r: RoleSchema, rl: z.string(), loc: LocKeySchema, col: z.string(),
+});
 export const RecipeSchema = z.object({ ov: z.number(), l: z.array(z.tuple([z.string(), Qty])) });
 export const ReqLineSchema = z.object({ it: z.string(), qty: Qty, appr: Qty, short: Qty.optional() });
 export const HistEntrySchema = z.object({ s: z.string(), who: z.string(), t: IsoTime });

@@ -7,7 +7,7 @@ import * as schema from "../db/schema/index.js";
 
 const BASE = process.env.TEST_DATABASE_URL ?? "postgres://rch:rch@localhost:5439/rch_test";
 
-export type TestDb = { db: Db; schemaName: string; close(): Promise<void> };
+export type TestDb = { db: Db; pool: Pool; schemaName: string; close(): Promise<void> };
 
 /** Creates schema `t_<name>` (dropping any leftover), migrates into it, returns a Db whose search_path is that schema. */
 export async function withTestSchema(name: string): Promise<TestDb> {
@@ -18,7 +18,7 @@ export async function withTestSchema(name: string): Promise<TestDb> {
   await admin.end();
   const { db, pool } = createDb(BASE, false, { max: 4, searchPath: `${schemaName},public` });
   await runMigrations(db, schemaName);
-  return { db, schemaName, close: async () => { await pool.end(); } };
+  return { db, pool, schemaName, close: async () => { await pool.end(); } };
 }
 
 /** Empty every business table between tests; keep sequences and migrations. */
