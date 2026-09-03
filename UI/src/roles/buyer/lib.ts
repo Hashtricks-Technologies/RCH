@@ -3,9 +3,6 @@ import { apportion, round3 } from "../../lib/selectors";
 import type { AppState } from "../../store";
 import type { PoStatus, PurchaseOrder, RateContract, Requisition, Vendor } from "../../types";
 
-/** Step a filter button through a fixed list of values, wrapping at the end. */
-export const cycle = (list: string[], v: string) => list[(list.indexOf(v) + 1) % list.length];
-
 /**
  * A rate contract records its vendor by name, while a purchase order carries
  * the vendor's id — both are tried so a contract resolves whichever way the

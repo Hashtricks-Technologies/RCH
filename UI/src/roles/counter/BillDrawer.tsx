@@ -91,5 +91,3 @@ function BillDrawer({ id }: DrawerProps) {
 }
 
 registerDrawer("cbill", BillDrawer);
-
-export default BillDrawer;

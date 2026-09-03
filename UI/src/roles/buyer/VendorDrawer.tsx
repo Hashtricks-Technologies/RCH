@@ -167,4 +167,3 @@ function VendorDrawer({ id }: DrawerProps) {
 }
 
 registerDrawer("bven", VendorDrawer);
-export default VendorDrawer;

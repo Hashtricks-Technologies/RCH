@@ -124,5 +124,3 @@ function RequestDrawer({ id }: DrawerProps) {
 }
 
 registerDrawer("creq", RequestDrawer);
-
-export default RequestDrawer;

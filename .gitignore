@@ -29,3 +29,8 @@ out/
 *.sqlite
 *.sqlite3
 *.db
+
+# Turborepo
+.turbo/
+# API build
+apps/api/dist/

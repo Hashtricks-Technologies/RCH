@@ -153,5 +153,3 @@ function TicketDrawer({ id }: DrawerProps) {
 }
 
 registerDrawer("stkt", TicketDrawer);
-
-export default TicketDrawer;

@@ -334,5 +334,3 @@ function ApprovalDrawer({ id }: DrawerProps) {
 }
 
 registerDrawer("mreq", ApprovalDrawer);
-
-export default ApprovalDrawer;

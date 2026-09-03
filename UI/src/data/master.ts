@@ -91,11 +91,6 @@ export const DEPTS: Payer[] = [
 export const STAFF_CREDIT_LIMIT = 3000;
 /** A purchase order above this value needs finance approval (M2). */
 export const PO_APPROVAL_LIMIT = 25000;
-/** Contracted rate per unit; a purchase above this is challenged (M2). */
-export const RATE_CONTRACT: Record<string, number> = {
-  milk: 54, beans: 660, leaf: 440, sugar: 48, maida: 44, oil: 138, fill: 195,
-  butter: 258, bread: 40, cup: 0.68, box: 2.6, juice: 15, water: 12, bisc: 23, chips: 15,
-};
 
 /**
  * What to show as a person's "base" next to their role. A counter operator,

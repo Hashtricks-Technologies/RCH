@@ -223,4 +223,3 @@ function RequisitionDrawer({ id }: DrawerProps) {
 }
 
 registerDrawer("bprq", RequisitionDrawer);
-export default RequisitionDrawer;

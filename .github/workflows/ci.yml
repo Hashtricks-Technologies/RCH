@@ -18,28 +18,20 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.28.2
+
       - uses: actions/setup-node@v7
         with:
-          # Vite 8 requires ^22.22.2 || ^24.15.0 || >=26.
-          node-version: "24"
-          cache: npm
-          cache-dependency-path: UI/package-lock.json
+          node-version-file: .nvmrc
+          cache: pnpm
 
       - name: Install
-        working-directory: UI
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
-      - name: Typecheck
-        working-directory: UI
-        run: npm run typecheck
-
-      - name: Lint
-        working-directory: UI
-        run: npm run lint
-
-      - name: Test
-        working-directory: UI
-        run: npm test
+      - name: Typecheck, lint, test
+        run: pnpm turbo typecheck lint test
 
       # Runs the same script Netlify does, so a broken assembly fails here first.
       - name: Build the site

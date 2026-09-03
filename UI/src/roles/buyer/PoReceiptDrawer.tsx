@@ -240,4 +240,3 @@ function PoReceiptDrawer({ id }: DrawerProps) {
 }
 
 registerDrawer("bgrn", PoReceiptDrawer);
-export default PoReceiptDrawer;

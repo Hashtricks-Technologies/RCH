@@ -1,0 +1,42 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "workspaces": {
+    ".": {
+      "entry": [],
+      "project": []
+    },
+    "packages/*": {
+      "entry": [
+        "src/index.ts",
+        "src/fixtures/index.ts"
+      ],
+      "project": [
+        "src/**/*.ts"
+      ]
+    },
+    "apps/api": {
+      "entry": [
+        "src/server.ts",
+        "src/cli/*.ts",
+        "drizzle.config.ts",
+        "tsup.config.ts"
+      ],
+      "project": [
+        "src/**/*.ts"
+      ]
+    },
+    "UI": {
+      "entry": [
+        "src/main.tsx",
+        "vite.config.ts"
+      ],
+      "project": [
+        "src/**/*.{ts,tsx}"
+      ]
+    }
+  },
+  "ignoreDependencies": [
+    "@vitejs/plugin-react"
+  ],
+  "ignoreExportsUsedInFile": true
+}

@@ -20,9 +20,3 @@ export type Settlement = "drawer" | "bank" | "account";
 const CHARGED = ["Patient bill", "Staff credit", "Dept"];
 export const settlementOf = (pay: string): Settlement =>
   pay === "Cash" ? "drawer" : CHARGED.includes(pay) ? "account" : "bank";
-
-export const SETTLEMENT_LABEL: Record<Settlement, string> = {
-  drawer: "Cash in drawer",
-  bank: "Card & UPI",
-  account: "Charged to an account",
-};

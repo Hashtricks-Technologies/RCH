@@ -223,5 +223,3 @@ function RequisitionDetail({ id }: DrawerProps) {
 }
 
 registerDrawer("sprq", RequisitionDetail);
-
-export default RequisitionDetail;

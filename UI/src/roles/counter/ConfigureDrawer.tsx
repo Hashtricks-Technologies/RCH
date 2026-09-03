@@ -90,5 +90,3 @@ function ConfigureDrawer({ id: it }: DrawerProps) {
 }
 
 registerDrawer("cconfig", ConfigureDrawer);
-
-export default ConfigureDrawer;

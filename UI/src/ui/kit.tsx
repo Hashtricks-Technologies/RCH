@@ -342,59 +342,6 @@ export const Feed = ({ items }: { items: FeedItem[] }) => (
     ))}
   </div>
 );
-export function HBars({ rows }: { rows: { n: string; v: number; f?: string }[] }) {
-  const max = Math.max(...rows.map((r) => r.v), 1);
-  return (
-    <>{rows.map((r) => (
-      <div className="hbar" key={r.n}>
-        <span className="hn" title={r.n}>{r.n}</span>
-        <span className="ht"><i style={{ width: `${Math.max(3, (r.v / max) * 100).toFixed(1)}%`, background: "var(--c1)", opacity: 0.45 + 0.55 * (r.v / max) }} /></span>
-        <span className="hv">{r.f ?? r.v}</span>
-      </div>
-    ))}</>
-  );
-}
-export function LineChart({ series, labels }: {
-  series: { k: string; c: string; vals: number[] }[]; labels: string[];
-}) {
-  const W = 760, H = 210, PLx = 46, PR = 14, PT = 12, PB = 26;
-  const all = series.flatMap((s) => s.vals);
-  const max = Math.ceil(Math.max(...all, 1) / 1000) * 1000 || 1000;
-  const n = series[0]?.vals.length ?? 0;
-  const x = (i: number) => PLx + (i * (W - PLx - PR)) / Math.max(1, n - 1);
-  const y = (v: number) => PT + (1 - v / max) * (H - PT - PB);
-  return (
-    <div className="chart">
-      <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Daily sales by outlet">
-        {[0, 0.25, 0.5, 0.75, 1].map((t) => {
-          const yy = PT + t * (H - PT - PB);
-          return (
-            <g key={t}>
-              <line className="gl" x1={PLx} y1={yy} x2={W - PR} y2={yy} />
-              <text className="axl" x={PLx - 8} y={yy + 3.5} textAnchor="end">{Math.round((max * (1 - t)) / 1000)}k</text>
-            </g>
-          );
-        })}
-        {labels.map((d, i) => i % 2 === 0 && (
-          <text className="axl" key={d} x={x(i)} y={H - 8} textAnchor="middle">{d}</text>
-        ))}
-        {series.map((s, si) => {
-          const pts = s.vals.map((v, i) => `${x(i)},${y(v)}`).join(" ");
-          return (
-            <g key={s.k}>
-              {si === 0 && <path d={`M${PLx},${y(s.vals[0])} L${pts.split(" ").join(" L")} L${x(n - 1)},${H - PB} L${PLx},${H - PB} Z`} fill="var(--c1-f)" />}
-              <polyline points={pts} fill="none" stroke={s.c} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
-              <circle cx={x(n - 1)} cy={y(s.vals[n - 1])} r={4} fill={s.c} stroke="var(--surface)" strokeWidth={2} />
-            </g>
-          );
-        })}
-      </svg>
-      <div className="lgnd">{series.map((s) => (
-        <span key={s.k}><i style={{ background: s.c }} />{s.k}</span>
-      ))}</div>
-    </div>
-  );
-}
 const LABELABLE = ["input", "select", "textarea"];
 /** The label is tied to the first control it wraps, so every field is named (M13). */
 export function Field({ label, hint, children }: { label: string; hint?: ReactNode; children: ReactNode }) {
@@ -436,10 +383,6 @@ export function Otp({ value, label = "Collection OTP" }: { value: string; label?
     </div>
   );
 }
-export const QR = ({ size = 80 }: { size?: number }) => (
-  <div className="qr" style={{ width: size, height: size, flex: "none" }} aria-hidden />
-);
-
 /**
  * A blank product-photo slot. This build has no photography and no upload
  * path — pulling images from the internet risks copyright and trademark

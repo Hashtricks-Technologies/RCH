@@ -110,5 +110,3 @@ function OrderDrawer({ id }: DrawerProps) {
 }
 
 registerDrawer("pord", OrderDrawer);
-
-export default OrderDrawer;

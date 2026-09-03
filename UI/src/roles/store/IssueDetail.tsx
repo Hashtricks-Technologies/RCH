@@ -240,5 +240,3 @@ function IssueDetail({ id }: DrawerProps) {
 }
 
 registerDrawer("sissue", IssueDetail);
-
-export default IssueDetail;

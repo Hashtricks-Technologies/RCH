@@ -384,4 +384,3 @@ function PoDrawer({ id }: DrawerProps) {
 }
 
 registerDrawer("bpo", PoDrawer);
-export default PoDrawer;

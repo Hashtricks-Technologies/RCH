@@ -124,5 +124,3 @@ function NewProductDrawer({ id }: DrawerProps) {
 }
 
 registerDrawer("bnewitem", NewProductDrawer);
-
-export default NewProductDrawer;

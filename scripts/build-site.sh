@@ -15,13 +15,13 @@ root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$root"
 
 # Netlify starts from a clean checkout; a local run usually has the modules already.
-if [ ! -d UI/node_modules ]; then
+if [ ! -d node_modules ]; then
   echo "→ installing application dependencies"
-  npm --prefix UI ci
+  pnpm install --frozen-lockfile
 fi
 
 echo "→ building the application"
-npm --prefix UI run build
+pnpm --filter @rch/ui build
 
 echo "→ assembling the site"
 rm -rf dist
