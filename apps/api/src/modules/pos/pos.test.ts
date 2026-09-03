@@ -117,8 +117,10 @@ describe("the rules refuse before anything is written", () => {
   it("refuses an item the counter does not list", async () => {
     await rejects({ loc: "coffee", tender: "Cash", lines: [{ it: "puff", qty: 1 }] }, "Veg puffs is not listed at Coffee Shop");
   });
-  it("refuses an item the master has never heard of", async () => {
-    await rejects({ loc: "coffee", tender: "Cash", lines: [{ it: "nosuch", qty: 1 }] }, "nosuch is not listed at Coffee Shop");
+  it("answers 404 for an item the master has never heard of", async () => {
+    const r = await pay("u1", { loc: "coffee", tender: "Cash", lines: [{ it: "nosuch", qty: 1 }] });
+    expect(r.statusCode, r.body).toBe(404);
+    expect(r.json().error.message).toBe("There is no item nosuch.");
   });
   it("refuses a made-to-order item whose ingredient has run out, and names it", async () => {
     await rejects({ loc: "coffee", tender: "Cash", lines: [{ it: "capp", qty: 1 }] }, "Cappuccino is not available at Coffee Shop — Milk 1L (toned) at 0.000 L");

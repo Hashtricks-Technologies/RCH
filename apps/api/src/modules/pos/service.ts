@@ -2,9 +2,10 @@
 // the arithmetic of the sale is `planBill` in packages/domain.
 import type { z } from "zod";
 import type { Bill, PayBodySchema, WriteResponse } from "@rch/contract";
-import { avail, availOf, planBill, round3, type Master } from "@rch/domain";
+import { avail, availOf, fq, planBill, round3, type Master } from "@rch/domain";
 import type { Db } from "../../db/client.js";
 import { withTransaction } from "../../lib/db.js";
+import { NotFoundError } from "../../lib/errors.js";
 import { allocateId } from "../../lib/ids.js";
 import { postMoves } from "../../lib/ledger.js";
 import { loadMaster } from "../../lib/master.js";
@@ -21,13 +22,6 @@ const NEEDS_PAYER: Record<string, string> = { "Patient bill": "patient", "Staff 
 /** Money is stored and read at two decimals; `planBill` totals at full precision so the tax
  *  split is derived from the real amounts, not from a rounded one. */
 const money = (n: number): number => Math.round(n * 100) / 100;
-
-/** The same wording the shelf uses (`availOf`): countable units are whole, everything else
- *  carries three decimals. */
-const fq = (v: number, unit: string): string => {
-  const n = v || 0;
-  return unit === "nos" && Number.isInteger(n) ? String(n) : n.toFixed(3);
-};
 
 /** How many of `it` the location could sell right now: units for a traded item, whole
  *  portions for a made-to-order one, whichever ingredient runs out first. */
@@ -70,7 +64,8 @@ export function createPosService(db: Db) {
 
         for (const it of keys) {
           const item = master.items[it];
-          assertRule(item && menu.has(it), `${item?.n ?? it} is not listed at ${locName}`);
+          if (!item) throw new NotFoundError(`There is no item ${it}.`);
+          assertRule(menu.has(it), `${item.n} is not listed at ${locName}`);
           const a = availOf(master, stock, rsv, ovr, loc, it);
           assertRule(a.ok, `${item.n} is not available at ${locName} — ${a.why}`);
           const cover = coverOf(master, stock, rsv, loc, it);
@@ -87,7 +82,10 @@ export function createPosService(db: Db) {
         const lines = await posRepo.insertBillLines(tx, no, plan.lines);
         await postMoves(tx, plan.moves.map((m) => ({ ...m, kind: "sale" as const, refType: "bill", refId: no, by: claims.sub, at })));
 
-        // What the sale actually took off each shelf, folded the way postMoves folded it.
+        // What the sale actually took off each shelf, folded the way postMoves folded it. The
+        // pre-check above spoke for the dish in portions; this one, keyed by what moved, names the
+        // shelf item that went negative — for a made-to-order dish that is the ingredient. Same
+        // refusal, two voices: the first is friendlier, the second is the guarantee.
         const took = new Map<string, number>();
         for (const m of plan.moves) took.set(m.it, round3((took.get(m.it) ?? 0) + -m.qty));
         const onHand = await posRepo.onHandAt(tx, loc, [...took.keys()]);

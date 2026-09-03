@@ -3,7 +3,6 @@ import auth from "./auth/routes.js";
 import me from "./me/routes.js";
 import master from "./master/routes.js";
 import snapshot from "./snapshot/routes.js";
-// Registered but inert — Wave 3 fills these in (see each folder's routes.ts).
 import pos from "./pos/routes.js";
 import availability from "./availability/routes.js";
 import catalog from "./catalog/routes.js";

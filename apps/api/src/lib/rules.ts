@@ -1,5 +1,5 @@
-// Nothing imports this yet: the Phase 2 write endpoints (spec §9.2) are its
-// callers, which is why knip.json lists it under `ignoreFiles`.
+// The 422 half of every write (spec §9.2): the pos, availability and catalog modules refuse
+// through here, and later phases add their own callers.
 import { RuleError } from "./errors.js";
 
 /**

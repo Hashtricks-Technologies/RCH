@@ -5,8 +5,9 @@ import type { Master, OvrMap, RsvMap, StockMap } from "./master.js";
 const unitOf = (m: Master, it: string): string => m.items[it]?.u ?? "nos";
 
 /** Countable units are whole on the shelf but fractional in a recipe; other
- *  units always show three decimals — the same wording the UI has always used. */
-const fq = (v: number, unit: string): string => {
+ *  units always show three decimals — the same wording the UI has always used.
+ *  Exported so a server refusal ("Only 9 nos … left") speaks with the shelf's voice. */
+export const fq = (v: number, unit: string): string => {
   const n = v || 0;
   if (unit === "nos") return Number.isInteger(n) ? String(n) : n.toFixed(3);
   return n.toFixed(3);

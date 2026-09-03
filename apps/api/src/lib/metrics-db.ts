@@ -18,7 +18,9 @@ export function bindMetrics(registry: Registry): void {
   });
 }
 
-/** One document number was handed out. Silent until an app has bound a registry. */
+/** One document number was handed out. Counts attempts: a sale the post-lock check rolls back
+ *  gives its number back (see lib/ids.ts) but has already been counted here, so read this as
+ *  "allocations tried", not "documents committed". Silent until an app has bound a registry. */
 export function recordAllocation(kind: string): void {
   allocations?.labels(kind).inc();
 }

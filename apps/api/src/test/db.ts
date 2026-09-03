@@ -9,16 +9,26 @@ const BASE = process.env.TEST_DATABASE_URL ?? "postgres://rch:rch@localhost:5439
 
 export type TestDb = { db: Db; pool: Pool; schemaName: string; close(): Promise<void> };
 
-/** Creates schema `t_<name>` (dropping any leftover), migrates into it, returns a Db whose search_path is that schema. */
+/** Creates schema `t_<name>_<pid>`, migrates into it, returns a Db whose search_path is that schema.
+ *  The pid keeps two checkouts running the same file against one database (parallel worktrees
+ *  share port 5439) from dropping each other's schema mid-test; `close` drops it again. */
 export async function withTestSchema(name: string): Promise<TestDb> {
-  const schemaName = `t_${name.replace(/[^a-z0-9_]/gi, "_").toLowerCase()}`;
+  const schemaName = `t_${name.replace(/[^a-z0-9_]/gi, "_").toLowerCase()}_${process.pid}`;
   const admin = new Pool({ connectionString: BASE, max: 1 });
   await admin.query(`drop schema if exists "${schemaName}" cascade`);
   await admin.query(`create schema "${schemaName}"`);
   await admin.end();
   const { db, pool } = createDb(BASE, false, { max: 4, searchPath: `${schemaName},public` });
   await runMigrations(db, schemaName);
-  return { db, pool, schemaName, close: async () => { await pool.end(); } };
+  return {
+    db, pool, schemaName,
+    close: async () => {
+      await pool.end();
+      const admin = new Pool({ connectionString: BASE, max: 1 });
+      await admin.query(`drop schema if exists "${schemaName}" cascade`);
+      await admin.end();
+    },
+  };
 }
 
 /** Empty every business table between tests; keep sequences and migrations. */
