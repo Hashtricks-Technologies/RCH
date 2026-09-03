@@ -1,14 +1,59 @@
-// Catalog: the flow — transaction, rules, moves, history, id. Compose the helpers in
-// apps/api/src/lib/; domain rules belong in packages/domain. See modules/_template/service.ts.
+// Catalog: the flow — transaction, rules, id. Compose the helpers in apps/api/src/lib/;
+// domain rules belong in packages/domain. See modules/_template/service.ts.
+import type { Changed, LocKey } from "@rch/contract";
 import type { Db } from "../../db/client.js";
 import { withTransaction } from "../../lib/db.js";
+import { assertRule } from "../../lib/rules.js";
+import { NotFoundError } from "../../lib/errors.js";
+import { loadItems, loadLocations } from "../../lib/master.js";
 import { catalogRepo } from "./repo.js";
+
+type Write<T> = { result: T; changed: Changed[]; message: string };
 
 export function createCatalogService(db: Db) {
   return {
-    /** Placeholder so the module compiles before Wave 3 gives it real methods. */
-    async noop(): Promise<void> {
-      await withTransaction(db, (tx) => catalogRepo.ping(tx));
+    /** MRP is a hard ceiling (spec §9.2): a priced item that also carries an MRP can never be
+     *  sold above the number printed on its own pack. */
+    async savePrice(list: "A" | "B", it: string, price: number): Promise<Write<{ list: "A" | "B"; it: string; price: number }>> {
+      return withTransaction(db, async (tx) => {
+        const item = (await loadItems(tx))[it];
+        if (!item) throw new NotFoundError(`There is no item ${it}.`);
+        assertRule(!(item.mrp != null && price > item.mrp), `Refused — printed MRP of ₹${item.mrp} is a hard ceiling for ${item.n}`);
+        await catalogRepo.upsertPrice(tx, list, it, price);
+        return { result: { list, it, price }, changed: ["prices"], message: `${item.n} priced at ₹${price} on list ${list}` };
+      });
+    },
+
+    async addMenuItem(loc: LocKey, it: string): Promise<Write<{ loc: LocKey; items: string[] }>> {
+      return withTransaction(db, async (tx) => {
+        // A location key that fails this lookup never reaches here: LocKeySchema only ever
+        // accepts the five seeded keys, so the branch is unreachable, not user-facing.
+        const location = (await loadLocations(tx))[loc];
+        if (!location) throw new NotFoundError(`There is no location ${loc}.`);
+        assertRule(location.type === "Outlet", `${location.n} is not an outlet`);
+        const item = (await loadItems(tx))[it];
+        if (!item) throw new NotFoundError(`There is no item ${it}.`);
+        const listed = await catalogRepo.isListed(tx, loc, it);
+        assertRule(!listed, `${item.n} is already listed at ${location.n}`);
+        const seq = (await catalogRepo.maxSeq(tx, loc)) + 1;
+        await catalogRepo.insertMenuItem(tx, loc, it, seq);
+        const items = await catalogRepo.menuItems(tx, loc);
+        return { result: { loc, items }, changed: ["menu"], message: `${item.n} listed at ${location.n}` };
+      });
+    },
+
+    async removeMenuItem(loc: LocKey, it: string): Promise<Write<{ loc: LocKey; items: string[] }>> {
+      return withTransaction(db, async (tx) => {
+        const location = (await loadLocations(tx))[loc];
+        if (!location) throw new NotFoundError(`There is no location ${loc}.`);
+        const item = (await loadItems(tx))[it];
+        if (!item) throw new NotFoundError(`There is no item ${it}.`);
+        const listed = await catalogRepo.isListed(tx, loc, it);
+        assertRule(listed, `${item.n} is not listed at ${location.n}`);
+        await catalogRepo.deleteMenuItem(tx, loc, it);
+        const items = await catalogRepo.menuItems(tx, loc);
+        return { result: { loc, items }, changed: ["menu"], message: `${item.n} removed from ${location.n}` };
+      });
     },
   };
 }
