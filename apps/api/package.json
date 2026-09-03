@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "oxlint",
     "test": "vitest run",
-    "db:generate": "drizzle-kit generate",
+    "db:generate": "drizzle-kit generate && node scripts/strip-public-schema.mjs",
     "db:migrate": "tsx --env-file=../../.env src/cli/migrate.ts",
     "db:seed": "tsx --env-file=../../.env src/cli/seed.ts",
     "db:rebuild-balances": "tsx --env-file=../../.env src/cli/rebuild-balances.ts",

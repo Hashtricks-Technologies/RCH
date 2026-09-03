@@ -30,7 +30,9 @@ export const reservations = pgTable("reservations", {
   loc: text("loc").notNull().references(() => locations.key),
   itemKey: text("item_key").notNull().references(() => items.key),
   qty: qty("qty").notNull(),
-  ticketId: text("ticket_id").notNull(),   // FK added in movement.ts via relation; kept text to avoid an import cycle
+  ticketId: text("ticket_id").notNull(),   // text, not an FK: tickets is defined in movement.ts and a
+                                            // reference here would create an import cycle; the movement
+                                            // service inserts both in one transaction.
   createdAt: ts("created_at").notNull().defaultNow(),
   releasedAt: ts("released_at"),
 }, (t) => [index("reservations_open_idx").on(t.loc, t.itemKey).where(sql`released_at is null`)]);

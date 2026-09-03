@@ -19,7 +19,8 @@
         "src/server.ts",
         "src/cli/*.ts",
         "drizzle.config.ts",
-        "tsup.config.ts"
+        "tsup.config.ts",
+        "scripts/strip-public-schema.mjs"
       ],
       "project": [
         "src/**/*.ts"
