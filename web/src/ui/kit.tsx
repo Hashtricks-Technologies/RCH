@@ -446,7 +446,7 @@ export const QR = ({ size = 80 }: { size?: number }) => (
  * problems, and there is no image-generation tool available here either.
  * "card" tops a menu tile; "sm" is the inline swatch next to a product name.
  */
-export function ImagePlaceholder({ size = "sm" }: { size?: "sm" | "card" }) {
+export function ImagePlaceholder({ size = "sm" }: { size?: "sm" | "thumb" | "card" }) {
   return (
     <div className={`imgph imgph-${size}`} aria-hidden="true">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round">

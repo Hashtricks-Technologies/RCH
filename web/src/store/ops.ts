@@ -1,5 +1,5 @@
 import { IT, LOC, OUTLETS } from "../data/master";
-import { seedContracts, seedProductRequests, seedTickets } from "../data/ops";
+import { seedContracts, seedProductRequests, seedShopAsks, seedTickets } from "../data/ops";
 import type {
   Item, ItemType, LocKey, ProductRequest, RateContract, ShopAsk,
   SupportTicket, TicketPriority, TicketStatus, TicketTopic,
@@ -58,7 +58,7 @@ export const createOpsSlice = (set: Set_, get: Get): OpsSlice => ({
   productReqs: seedProductRequests(),
   contracts: seedContracts(),
   catalogVersion: 0,
-  shopAsks: [],
+  shopAsks: seedShopAsks(),
 
   raiseTicket: ({ topic, subject, body, priority, screen }) => {
     const s = get();

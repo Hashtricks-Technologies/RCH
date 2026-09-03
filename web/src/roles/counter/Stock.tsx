@@ -115,17 +115,19 @@ export default function Stock() {
               const item = IT[r.it];
               const sellableHere = menuOf(s, loc).includes(r.it);
               const manualOff = Boolean(s.ovr[loc + ":" + r.it]);
+              const state = !r.held ? "na" : r.a <= 0 ? "out" : r.low ? "low" : "ok";
+              // A meter needs a ceiling: three days of cover is a comfortable
+              // counter, so that is full. Anything more just reads as full.
+              const coverPct = Math.max(0, Math.min(100, (r.cover / 3) * 100));
               return (
-                <div className="card stkcard" key={r.it}>
-                  <div className="stkcard-media">
-                    <ImagePlaceholder size="card" />
-                    <span className="stkcard-pill">
-                      {r.held
-                        ? <Pill tone={stateTone(r.a, r.rl)}>{stateLabel(r.a, r.rl)}</Pill>
-                        : <Pill tone="mu">Not stocked</Pill>}
-                    </span>
+                <div className={`card stkcard is-${state}`} key={r.it}>
+                  <div className="stkcard-head">
+                    <ImagePlaceholder size="thumb" />
+                    <div className="stkcard-id">
+                      <b title={item.n}>{item.n}</b>
+                      <span className="mini">{item.c} · {item.g}</span>
+                    </div>
                     <TileMenu
-                      className="stkcard-kebab"
                       items={[
                         { key: "cfg", label: "Configure", onClick: () => openDrawer("cconfig", r.it) },
                         ...(sellableHere ? [{
@@ -137,35 +139,45 @@ export default function Stock() {
                       ]}
                     />
                   </div>
-                  <div className="stkcard-body">
-                    <div>
-                      <b style={{ fontSize: 13 }}>{item.n}</b>
-                      <div className="mini">{item.c} · {item.g}</div>
-                    </div>
-                    <div><TypeTag t={item.t} /></div>
 
-                    <div className="stkcard-stats">
-                      <div className="totrow">
-                        <span>On hand</span>
-                        <span>{r.held ? <>{fq(r.on, r.it)} {U(r.it)}</> : "—"}</span>
-                      </div>
-                      <div className="totrow">
-                        <span>Par here</span>
-                        <span className="dim">{r.rl > 0 ? fq(r.rl, r.it) : "—"}</span>
-                      </div>
-                      <div className="totrow">
-                        <span>Days of cover</span>
-                        <span style={r.held && r.a <= 0 ? { color: "var(--crit)" } : undefined}>
-                          {r.held ? `${r.cover.toFixed(1)} d` : "—"}
+                  <div className="stkcard-tags">
+                    <TypeTag t={item.t} />
+                    {r.held
+                      ? <Pill tone={stateTone(r.a, r.rl)}>{stateLabel(r.a, r.rl)}</Pill>
+                      : <Pill tone="mu">Not stocked</Pill>}
+                  </div>
+
+                  <div className="stkcard-stats">
+                    <div className="stkcard-stat">
+                      <span className="k">On hand</span>
+                      <span className={`v${r.held && r.a <= 0 ? " crit" : ""}`}>
+                        {r.held ? <>{fq(r.on, r.it)}<small>{U(r.it)}</small></> : <span className="muted">—</span>}
+                      </span>
+                    </div>
+                    <div className="stkcard-stat">
+                      <span className="k">Par here</span>
+                      <span className="v muted">{r.rl > 0 ? fq(r.rl, r.it) : "—"}</span>
+                    </div>
+                    <div className="stkcard-stat" style={{ gridColumn: "1 / -1" }}>
+                      <span className="k">Days of cover</span>
+                      <span className={`v${r.held && r.a <= 0 ? " crit" : ""}`}>
+                        {r.held ? <>{r.cover.toFixed(1)}<small>days</small></> : <span className="muted">—</span>}
+                      </span>
+                      {r.held && (
+                        <span className="covermeter">
+                          <i className={state === "out" ? "out" : state === "low" ? "low" : ""}
+                            style={{ width: `${coverPct}%` }} />
                         </span>
-                      </div>
+                      )}
                     </div>
+                  </div>
 
-                    <div style={{ marginTop: "auto" }}>
-                      {r.low
-                        ? <Btn size="sm" wide variant="gh" onClick={() => request(r.it, r.suggested)}>Request</Btn>
-                        : <p className="mini dim" style={{ margin: 0, textAlign: "center" }}>Sufficient stock</p>}
-                    </div>
+                  <div className="stkcard-foot">
+                    {r.low
+                      ? <Btn size="sm" variant="gh" onClick={() => request(r.it, r.suggested)}>
+                          Request {fq(r.suggested, r.it)} {U(r.it)}
+                        </Btn>
+                      : <span className="stkcard-ok">Sufficient stock</span>}
                   </div>
                 </div>
               );

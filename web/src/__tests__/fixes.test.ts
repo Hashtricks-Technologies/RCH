@@ -681,3 +681,32 @@ describe("a role that spans every outlet is not shown living in one", () => {
     expect(kitchen.rl).toBe("Kitchen In-charge");
   });
 });
+
+describe("a shop-to-shop ask is answerable from the receiving counter", () => {
+  it("seeds one waiting ask in each direction, so the flow is visible on sign-in", () => {
+    const inbound = S().shopAsks.find((a) => a.to === "coffee" && a.st === "Asked");
+    expect(inbound, "the Coffee Shop must have something to answer").toBeTruthy();
+    expect(inbound!.from).toBe("kiosk");
+    // it must be grantable in full from what that counter actually holds,
+    // or the first thing anyone tries hits the not-enough-stock guard
+    expect(inbound!.qty).toBeLessThanOrEqual(qty(S(), "coffee", inbound!.it));
+  });
+
+  it("granting it moves stock the other way, on a ticket", () => {
+    as("counter");
+    const ask = S().shopAsks.find((a) => a.to === "coffee" && a.st === "Asked")!;
+    const before = S().tkt.length;
+    S().answerShopAsk(ask.id, ask.qty);
+    expect(S().tkt).toHaveLength(before + 1);
+    const t = S().tkt[S().tkt.length - 1];
+    expect(t.from).toBe("coffee");
+    expect(t.to).toBe("kiosk");
+    expect(S().shopAsks.find((a) => a.id === ask.id)!.st).toBe("Sent");
+  });
+
+  it("both counters have a login, so either end can be signed into", () => {
+    const counters = USERS.filter((u) => u.r === "counter");
+    expect(counters.length).toBeGreaterThanOrEqual(2);
+    expect(new Set(counters.map((u) => u.loc)).size).toBeGreaterThanOrEqual(2);
+  });
+});

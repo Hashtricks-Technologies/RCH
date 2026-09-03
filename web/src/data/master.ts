@@ -56,6 +56,10 @@ export const USERS: User[] = [
   { id: "u3", n: "Suresh Muthu",    e: "suresh.m@royalcare.in",  r: "store",   rl: "Store Keeper",         loc: "store",   col: "#0F766E", emp: "RC-2088", ph: "94430 51194" },
   { id: "u4", n: "Vinoth Prakash",  e: "vinoth.p@royalcare.in",  r: "prod",    rl: "Kitchen In-charge",     loc: "kitchen", col: "#15803D", emp: "RC-1902", ph: "90031 66402" },
   { id: "u5", n: "Latha Narayanan", e: "latha.n@royalcare.in",   r: "buyer",   rl: "Procurement Officer",  loc: "store",   col: "#BE123C", emp: "RC-1550", ph: "98940 30117" },
+  // A second counter, so a shop-to-shop ask can be seen from both ends: the
+  // Coffee Shop asks, the Snack Kiosk answers. She already appears throughout
+  // the seeded bills and requests — this gives her the login to match.
+  { id: "u6", n: "Deepa Selvam",    e: "deepa.s@royalcare.in",   r: "counter", rl: "Counter Operator",     loc: "kiosk",   col: "#475569", emp: "RC-4482", ph: "97890 41205" },
 ];
 /* Reorder levels on the item are sized for the central store. A counter that holds
    a day of stock must not be judged against a warehouse par, so each location

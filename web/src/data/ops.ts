@@ -1,4 +1,4 @@
-import type { ProductRequest, RateContract, SupportTicket } from "../types";
+import type { ProductRequest, RateContract, ShopAsk, SupportTicket } from "../types";
 
 export const seedTickets = (): SupportTicket[] => [
   {
@@ -53,4 +53,25 @@ export const seedContracts = (): RateContract[] => [
   { id: "RC-106", vendor: "Anandha Provisions",      it: "sugar",  rate: 46,   from: "01-Apr-2026", to: "31-Mar-2027", moq: 50,   active: true },
   { id: "RC-107", vendor: "PackWell Industries",     it: "cup",    rate: 0.62, from: "01-Jun-2026", to: "31-May-2027", moq: 2000, active: true },
   { id: "RC-108", vendor: "Green Farm Vegetables",   it: "fill",   rate: 190,  from: "01-Aug-2026", to: "31-Oct-2026", moq: 10,   active: false },
+];
+
+/**
+ * One ask already waiting in each direction, so the shop-to-shop flow is
+ * visible from either counter the moment you sign in — the Coffee Shop has
+ * something to answer, and something of its own already answered.
+ */
+export const seedShopAsks = (): ShopAsk[] => [
+  {
+    // 6 of the Coffee Shop's 9 packets — grantable in full, so the flow can be
+    // walked end to end without first hitting the not-enough-stock guard.
+    id: "ASK-0060", from: "kiosk", to: "coffee", it: "chips", qty: 6,
+    st: "Asked", by: "Deepa Selvam", at: "10:24",
+    note: "Lunch rush cleared us out, the store van is not in until four.",
+  },
+  {
+    id: "ASK-0059", from: "coffee", to: "kiosk", it: "water", qty: 24,
+    st: "Sent", by: "Kavitha Raman", at: "09:05",
+    note: "Ran dry over the morning clinic.",
+    grant: 18, ticket: "TKT-0439",
+  },
 ];

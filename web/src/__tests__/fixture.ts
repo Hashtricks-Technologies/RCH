@@ -2,6 +2,7 @@ import { useApp } from "../store";
 import { basePrices } from "../lib/selectors";
 import { MENU, USERS } from "../data/master";
 import { seedVendors } from "../data/vendors";
+import { seedShopAsks } from "../data/ops";
 import {
   DAY_LABELS, seedBatch, seedBills, seedGrn, seedPo, seedPord, seedPrq, seedReq, seedRsv, seedSales,
   seedStock, seedTkt,
@@ -20,5 +21,6 @@ export function resetStore() {
     vendors: clone(seedVendors), sales: clone(seedSales), dayLabels: DAY_LABELS,
     seq: { req: 912, tkt: 440, bill: 1187, prq: 15, po: 142, pord: 30, bat: 1, vn: 5 },
     cart: {}, draft: [], prqDraft: [], drawer: null, toast: null, shopFilter: null, grn: clone(seedGrn),
+    shopAsks: seedShopAsks(),
   });
 }
