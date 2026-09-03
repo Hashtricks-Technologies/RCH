@@ -2,7 +2,10 @@ import { z } from "zod";
 import { LocKeySchema, Qty } from "./common.js";
 import * as D from "./documents.js";
 
-const byLoc = <T extends z.ZodTypeAny>(v: T) => z.record(LocKeySchema, v);
+// Not every caller sees every location - a counter operator's snapshot is scoped down to their
+// own (Task 11's `scope()`), so this can't require all five keys the way an exhaustive
+// z.record(enum, ...) would.
+const byLoc = <T extends z.ZodTypeAny>(v: T) => z.partialRecord(LocKeySchema, v);
 export const SnapshotSchema = z.object({
   user: D.UserSchema,
   items: z.record(z.string(), D.ItemSchema),
