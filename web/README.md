@@ -97,8 +97,11 @@ exists and is labelled as one.
 store keeper maintains them; procurement prices an order from them and is warned when a rate
 deviates or a quantity falls under the minimum.
 
-**New products.** The central store — and the kitchen, for what it makes — can add a product
-that was not in the catalogue before, with an opening balance booked at a location.
+**New products.** An outlet manager asks for something not on the master; procurement is the
+one who sources it, so procurement is the one who adds it — a short form (name, type, unit,
+cost, MRP if applicable), with everything else defaulted. Stock arrives the normal way,
+through a purchase order, not as an opening balance typed in on the spot. The kitchen can
+still add its own raw materials and finished goods directly, for its own use.
 
 **Shop-to-shop transfer.** When one outlet needs an MRP product another is holding, the stock
 moves directly between them: reserved at the source, released against an OTP, received at the

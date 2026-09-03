@@ -43,7 +43,9 @@ export const NAV: Record<Role, NavGroup[]> = {
       { k: "requisitions", label: "Requisitions", icon: "need" },
       { k: "pool", label: "Procurement List", icon: "req" },
       { k: "orders", label: "Purchase Orders", icon: "order" }] },
-    { group: "Inventory", items: [{ k: "inventory", label: "Inventory", icon: "item" }] },
+    { group: "Inventory", items: [
+      { k: "inventory", label: "Inventory", icon: "item" },
+      { k: "newproducts", label: "New Products", icon: "need" }] },
     { group: "Masters", items: [{ k: "vendors", label: "Vendors", icon: "item" }] },
     { group: "Account", items: [{ k: "issues", label: "Support", icon: "req" }, { k: "settings", label: "Settings", icon: "set" }] },
   ],

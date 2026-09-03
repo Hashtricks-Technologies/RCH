@@ -623,8 +623,8 @@ describe("support is customer care for the portal", () => {
   });
 });
 
-describe("a new product a shop wants goes to the central store, not to support", () => {
-  it("the manager raises it and the store keeper answers it", () => {
+describe("a new product a shop wants goes to procurement, not to support", () => {
+  it("the manager raises it and procurement answers it", () => {
     as("manager");
     const before = S().productReqs.length;
     S().requestNewProduct({ name: "Sugar-free iced tea 250ml", why: "Diabetic attenders ask daily", forLoc: "coffee" });
@@ -635,9 +635,30 @@ describe("a new product a shop wants goes to the central store, not to support",
     // it must not have landed on the support desk
     expect(S().tickets.some((t) => t.subject.includes("Sugar-free"))).toBe(false);
 
-    as("store");
+    as("buyer");
     S().answerProductRequest(r.id, "Declined", "Vendor cannot supply reliably");
     expect(S().productReqs.find((p) => p.id === r.id)!.st).toBe("Declined");
+  });
+
+  it("procurement creates the item and the request links to it", () => {
+    as("manager");
+    S().requestNewProduct({ name: "Iced lemon tea 300ml", why: "Warm-weather demand", forLoc: "kiosk" });
+    const r = S().productReqs[0];
+
+    as("buyer");
+    const before = new Set(Object.keys(IT));
+    S().createItem(
+      { key: "", name: "Iced lemon tea 300ml", code: "", unit: "nos", type: "MRP", group: "", hsn: "", gst: 5, reorder: 0, cost: 18, mrp: 25 },
+      "store", 0,
+    );
+    const newKey = Object.keys(IT).find((k) => !before.has(k))!;
+    expect(newKey).toBeDefined();
+    expect(IT[newKey].mrp).toBe(25);
+
+    S().answerProductRequest(r.id, "Created", `Added as ${IT[newKey].c}`, newKey);
+    const answered = S().productReqs.find((p) => p.id === r.id)!;
+    expect(answered.st).toBe("Created");
+    expect(answered.itemKey).toBe(newKey);
   });
 });
 

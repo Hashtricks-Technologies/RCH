@@ -1,5 +1,4 @@
 import { useState } from "react";
-import ProductRequests from "./ProductRequests";
 import { useNavigate } from "react-router-dom";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
@@ -10,7 +9,6 @@ import { U, fq, money, money0, sum } from "../../lib/fmt";
 import {
   Btn, Card, DataTable, FilterBtn, PageHead, Pill, TableFoot, Tag, Toolbar,
 } from "../../ui/kit";
-import "./NewProduct";
 
 const TYPES = ["All", "RAW", "PACK", "MRP", "FG", "MTO"] as const;
 
@@ -188,7 +186,6 @@ export default function Stock() {
           extra={<>Value shown {money0(shown)} · total central store {money0(total)}</>}
         />
       </Card>
-          <ProductRequests />
     </>
   );
 }
