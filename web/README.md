@@ -33,10 +33,10 @@ different and sees a different sidebar.
 | Account | Role | Lands on |
 |---|---|---|
 | Kavitha Raman | Counter Operator · Coffee Shop | Point of Sale |
-| Ramesh Kumar | Outlet Manager · all outlets | Approvals |
+| Ramesh Kumar | Outlet Manager · All outlets | Approvals |
 | Suresh Muthu | Store Keeper · Central Store | Issue Desk |
-| Vinoth Prakash | Production In-charge · Kitchen | Orders |
-| Latha Narayanan | Procurement Officer | Requisitions |
+| Vinoth Prakash | Kitchen In-charge · Central Kitchen | Orders |
+| Latha Narayanan | Procurement Officer (not tied to one counter) | Requisitions |
 
 ## Layout
 

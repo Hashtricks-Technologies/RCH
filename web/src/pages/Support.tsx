@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { LOC } from "../data/master";
+import { LOC, homeLabel } from "../data/master";
 import { NAV } from "../nav";
 import { useApp } from "../store";
 import type { TicketPriority, TicketStatus, TicketTopic } from "../types";
@@ -100,7 +100,7 @@ export default function Support() {
       )}
 
       <Grid cols="g12">
-        <Card title="Raise a ticket" sub={`${user.rl} · ${LOC[user.loc].n}`}>
+        <Card title="Raise a ticket" sub={homeLabel(user) ? `${user.rl} · ${homeLabel(user)}` : user.rl}>
           <FormRow cols="f2">
             <Field label="What is it about">
               <select value={topic} onChange={(e) => setTopic(e.target.value as TicketTopic)}>

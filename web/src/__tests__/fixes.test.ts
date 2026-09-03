@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { useApp } from "../store";
-import { IT, MENU, PL, RCP } from "../data/master";
+import { IT, LOC, MENU, PL, RCP, USERS, homeLabel } from "../data/master";
 import {
   cashCollected, costOf, freeToPromise, inTransit, isCashTender,
   onOrder, parOf, qty, recipeCost, resv,
@@ -638,5 +638,25 @@ describe("a new product a shop wants goes to the central store, not to support",
     as("store");
     S().answerProductRequest(r.id, "Declined", "Vendor cannot supply reliably");
     expect(S().productReqs.find((p) => p.id === r.id)!.st).toBe("Declined");
+  });
+});
+
+describe("a role that spans every outlet is not shown living in one", () => {
+  it("the outlet manager reads as covering every shop, not based at one", () => {
+    const manager = USERS.find((u) => u.r === "manager")!;
+    expect(homeLabel(manager)).toBe("All outlets");
+  });
+  it("the procurement officer carries no shop suffix at all", () => {
+    const buyer = USERS.find((u) => u.r === "buyer")!;
+    expect(homeLabel(buyer)).toBeNull();
+  });
+  it("a role tied to one place still shows it", () => {
+    const counter = USERS.find((u) => u.r === "counter")!;
+    const store = USERS.find((u) => u.r === "store")!;
+    const kitchen = USERS.find((u) => u.r === "prod")!;
+    expect(homeLabel(counter)).toBe(LOC[counter.loc].n);
+    expect(homeLabel(store)).toBe(LOC.store.n);
+    expect(homeLabel(kitchen)).toBe(LOC.kitchen.n);
+    expect(kitchen.rl).toBe("Kitchen In-charge");
   });
 });

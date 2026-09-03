@@ -2,7 +2,7 @@ import {
   useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode, type RefObject,
 } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
-import { IT, LOC, OUTLETS } from "../data/master";
+import { IT, LOC, OUTLETS, homeLabel } from "../data/master";
 import { NAV, canSee } from "../nav";
 import { useApp, type AppState } from "../store";
 import { availOf, menuOf, procurementList } from "../lib/selectors";
@@ -82,7 +82,7 @@ export default function Shell({ children }: { children: ReactNode }) {
           <Search />
           <div className="tsp" />
           <button className="org" type="button"><span className="dt" />
-            <span className="lbl">Royal Care · {LOC[user.loc].n}</span></button>
+            <span className="lbl">Royal Care{homeLabel(user) ? ` · ${homeLabel(user)}` : ""}</span></button>
           <ThemeButton />
           <Bell counts={counts} />
           <button className="avb" type="button" onClick={() => nav("/settings")}>

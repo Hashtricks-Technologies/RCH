@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { LOC } from "../data/master";
+import { homeLabel } from "../data/master";
 import { useApp } from "../store";
 import type { ThemePref } from "../lib/theme";
 import { Avatar, Btn, BtnRow, Card, Field, FormRow, Grid, PageHead, Switch, Tag } from "../ui/kit";
@@ -64,7 +64,7 @@ export default function Settings() {
             <Avatar name={user.n} color={user.col} size={52} src={photo} />
             <div>
               <b style={{ fontSize: 15 }}>{user.n}</b>
-              <div className="mini">{user.emp} · {LOC[user.loc].n}</div>
+              <div className="mini">{user.emp}{homeLabel(user) ? ` · ${homeLabel(user)}` : ""}</div>
               <div className="hint">Kept on this device for this session only.</div>
             </div>
             <div className="sp" />
@@ -87,7 +87,12 @@ export default function Settings() {
           </FormRow>
           <FormRow cols="f2">
             <Field label="Role" hint="Only an administrator can change a role."><input value={user.rl} readOnly /></Field>
-            <Field label="Home location"><input value={`${LOC[user.loc].n} (${LOC[user.loc].c})`} readOnly /></Field>
+            <Field label={user.r === "manager" || user.r === "buyer" ? "Scope" : "Home location"}>
+              <input
+                value={homeLabel(user) ?? `${user.rl} — not tied to one counter`}
+                readOnly
+              />
+            </Field>
           </FormRow>
           <BtnRow>
             <Btn onClick={() => { saveProfile(form); notify("Profile saved"); }}>Save changes</Btn>

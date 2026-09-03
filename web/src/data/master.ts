@@ -54,7 +54,7 @@ export const USERS: User[] = [
   { id: "u1", n: "Kavitha Raman",   e: "kavitha.r@royalcare.in", r: "counter", rl: "Counter Operator",     loc: "coffee",  col: "#B45309", emp: "RC-4471", ph: "98430 22118" },
   { id: "u2", n: "Ramesh Kumar",    e: "ramesh.k@royalcare.in",  r: "manager", rl: "Outlet Manager",       loc: "rest",    col: "#7C3AED", emp: "RC-3120", ph: "98410 77210" },
   { id: "u3", n: "Suresh Muthu",    e: "suresh.m@royalcare.in",  r: "store",   rl: "Store Keeper",         loc: "store",   col: "#0F766E", emp: "RC-2088", ph: "94430 51194" },
-  { id: "u4", n: "Vinoth Prakash",  e: "vinoth.p@royalcare.in",  r: "prod",    rl: "Production In-charge", loc: "kitchen", col: "#15803D", emp: "RC-1902", ph: "90031 66402" },
+  { id: "u4", n: "Vinoth Prakash",  e: "vinoth.p@royalcare.in",  r: "prod",    rl: "Kitchen In-charge",     loc: "kitchen", col: "#15803D", emp: "RC-1902", ph: "90031 66402" },
   { id: "u5", n: "Latha Narayanan", e: "latha.n@royalcare.in",   r: "buyer",   rl: "Procurement Officer",  loc: "store",   col: "#BE123C", emp: "RC-1550", ph: "98940 30117" },
 ];
 /* Reorder levels on the item are sized for the central store. A counter that holds
@@ -92,3 +92,17 @@ export const RATE_CONTRACT: Record<string, number> = {
   milk: 54, beans: 660, leaf: 440, sugar: 48, maida: 44, oil: 138, fill: 195,
   butter: 258, bread: 40, cup: 0.68, box: 2.6, juice: 15, water: 12, bisc: 23, chips: 15,
 };
+
+/**
+ * What to show as a person's "base" next to their role. A counter operator,
+ * store keeper or kitchen in-charge genuinely works out of one place, so their
+ * location is the useful thing to show. An outlet manager oversees every shop
+ * at once and a procurement officer is not tied to a single counter either —
+ * showing their `loc` (kept internally as a default for things like which shop
+ * tab opens first) would read as if they were based there, which they are not.
+ */
+export function homeLabel(u: User): string | null {
+  if (u.r === "manager") return "All outlets";
+  if (u.r === "buyer") return null;
+  return LOC[u.loc].n;
+}

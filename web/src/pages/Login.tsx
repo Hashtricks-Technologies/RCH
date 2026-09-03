@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { USERS, LOC } from "../data/master";
+import { USERS, homeLabel } from "../data/master";
 import { HOME } from "../nav";
 import { useApp } from "../store";
 import { Avatar } from "../ui/kit";
@@ -32,7 +32,7 @@ export default function Login() {
           {USERS.map((u) => (
             <button key={u.id} type="button" className="acc" aria-pressed={pick === u.id} onClick={() => setPick(u.id)}>
               <Avatar name={u.n} color={u.col} />
-              <span className="at"><b>{u.n}</b><span>{u.rl} · {LOC[u.loc].n}</span></span>
+              <span className="at"><b>{u.n}</b><span>{u.rl}{homeLabel(u) ? ` · ${homeLabel(u)}` : ""}</span></span>
               {pick === u.id && (
                 <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="var(--accent)" strokeWidth={2}>
                   <path d="M3 8.5 6 11.5l7-7" />
