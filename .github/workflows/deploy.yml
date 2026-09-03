@@ -20,6 +20,7 @@ jobs:
     needs: guard
     if: ${{ vars.DEPLOY_ENABLED == 'true' }}
     runs-on: ubuntu-latest
+    permissions: { id-token: write, contents: write }
     environment: ${{ github.ref_name == 'production' && 'production' || 'staging' }}
     env:
       NS: ${{ github.ref_name == 'production' && 'rch' || 'rch-staging' }}
@@ -46,7 +47,7 @@ jobs:
           helm upgrade --install rch deploy/chart/rch -n "$NS" --create-namespace -f "deploy/chart/rch/$VALUES" \
             --set image.registry="${{ secrets.ECR_REGISTRY }}" --set image.tag="${{ github.sha }}" $EXTRA --wait --timeout 10m
       - name: Tag production
-        if: github.ref_name == 'production'
+        if: github.ref_name == 'production' && success()
         run: |
           git config user.name ci && git config user.email ci@users.noreply.github.com
           TAG="v$(date -u +%Y.%m.%d)-${GITHUB_RUN_NUMBER}"; git tag "$TAG" && git push origin "$TAG"
