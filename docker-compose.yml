@@ -6,7 +6,7 @@ services:
       POSTGRES_USER: rch
       POSTGRES_PASSWORD: rch
       POSTGRES_DB: rch
-    ports: ["5432:5432"]
+    ports: ["5439:5432"]
     volumes:
       - rch-pg:/var/lib/postgresql/data
       - ./scripts/pg-init.sql:/docker-entrypoint-initdb.d/10-test-db.sql:ro

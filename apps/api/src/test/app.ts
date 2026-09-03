@@ -1,6 +1,7 @@
 import { generateKeyPairSync } from "node:crypto";
 import { buildApp, type App } from "../app.js";
 import { loadConfig, type Config } from "../config.js";
+import { withTestSchema, type TestDb } from "./db.js";
 
 const keys = generateKeyPairSync("ed25519");
 const b64 = (pem: string) => Buffer.from(pem).toString("base64");
@@ -17,9 +18,13 @@ export function testConfig(overrides: Partial<NodeJS.ProcessEnv> = {}): Config {
   return loadConfig({ ...TEST_ENV, ...overrides });
 }
 
-/** `withDb: false` builds the app without a database (Task 4 tests). Task 5 adds the `withDb` path. */
-export async function buildTestApp(opts: { withDb?: boolean; env?: Partial<NodeJS.ProcessEnv> } = {}): Promise<App> {
+/** `withDb: false` builds the app without a database (Task 4 tests). Otherwise a fresh
+ *  per-file schema is created and migrated, and the app is bound to it. */
+export async function buildTestApp(opts: { withDb?: boolean; schema?: string; env?: Partial<NodeJS.ProcessEnv> } = {}): Promise<App & { testDb?: TestDb }> {
   const config = testConfig(opts.env);
-  const app = await buildApp(config);
-  return app;
+  if (opts.withDb === false) return buildApp(config);
+  const testDb = await withTestSchema(opts.schema ?? "app");
+  const app = await buildApp(config, { db: testDb.db, migrationsSchema: testDb.schemaName });
+  app.addHook("onClose", async () => { await testDb.close(); });
+  return Object.assign(app, { testDb });
 }
