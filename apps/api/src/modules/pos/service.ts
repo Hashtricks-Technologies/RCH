@@ -1,14 +1,110 @@
-// Pos: the flow — transaction, rules, moves, history, id. Compose the helpers in
-// apps/api/src/lib/; domain rules belong in packages/domain. See modules/_template/service.ts.
+// Pos: the flow — transaction, rules, moves, id. Composes the helpers in apps/api/src/lib/;
+// the arithmetic of the sale is `planBill` in packages/domain.
+import type { z } from "zod";
+import type { Bill, PayBodySchema, WriteResponse } from "@rch/contract";
+import { avail, availOf, planBill, round3, type Master } from "@rch/domain";
 import type { Db } from "../../db/client.js";
 import { withTransaction } from "../../lib/db.js";
+import { allocateId } from "../../lib/ids.js";
+import { postMoves } from "../../lib/ledger.js";
+import { loadMaster } from "../../lib/master.js";
+import { assertRule } from "../../lib/rules.js";
+import { toWireBill } from "../../lib/wire.js";
+import type { AccessClaims } from "../../plugins/auth.js";
 import { posRepo } from "./repo.js";
+
+export type PayBody = z.infer<typeof PayBodySchema>;
+
+/** A tender that is not money changing hands has to name whose account it lands on. */
+const NEEDS_PAYER: Record<string, string> = { "Patient bill": "patient", "Staff credit": "staff member", Dept: "department" };
+
+/** Money is stored and read at two decimals; `planBill` totals at full precision so the tax
+ *  split is derived from the real amounts, not from a rounded one. */
+const money = (n: number): number => Math.round(n * 100) / 100;
+
+/** The same wording the shelf uses (`availOf`): countable units are whole, everything else
+ *  carries three decimals. */
+const fq = (v: number, unit: string): string => {
+  const n = v || 0;
+  return unit === "nos" && Number.isInteger(n) ? String(n) : n.toFixed(3);
+};
+
+/** How many of `it` the location could sell right now: units for a traded item, whole
+ *  portions for a made-to-order one, whichever ingredient runs out first. */
+function coverOf(m: Master, stock: Record<string, Record<string, number>>, rsv: Record<string, number>, loc: string, it: string): number {
+  const recipe = m.items[it]?.t === "MTO" ? m.recipes[it] : undefined;
+  if (!recipe) return avail(stock, rsv, loc, it);
+  return Math.min(...recipe.l.map(([g, need]) => Math.floor(avail(stock, rsv, loc, g) / need)));
+}
 
 export function createPosService(db: Db) {
   return {
-    /** Placeholder so the module compiles before Wave 3 gives it real methods. */
-    async noop(): Promise<void> {
-      await withTransaction(db, (tx) => posRepo.ping(tx));
+    /**
+     * One counter sale, in one transaction: price it, refuse it if the shelf cannot cover it,
+     * number it, write it, and post the moves. The friendly refusals read the balances before
+     * the locks — so they can name the item and the number left — and `postMoves` then locks
+     * every touched row; the re-read afterwards is the guarantee, because between the two a
+     * second till may have sold the same last unit. A refusal there rolls the whole bill back.
+     */
+    async pay(claims: AccessClaims, body: PayBody): Promise<WriteResponse<Bill>> {
+      return withTransaction(db, async (tx) => {
+        const loc = body.loc;
+        // A cart is a bag of scans: the same item read twice is one line of two, and the
+        // cover check has to see the total, not each half.
+        const cart: Record<string, number> = {};
+        for (const l of body.lines) cart[l.it] = round3((cart[l.it] ?? 0) + l.qty);
+        const keys = Object.keys(cart);
+        assertRule(keys.length > 0, "Add at least one item to the bill");
+
+        const need = NEEDS_PAYER[body.tender];
+        assertRule(!(need && !body.payer), `Choose a ${need} before taking a ${body.tender.toLowerCase()}`);
+
+        const master = await loadMaster(tx);
+        const locName = master.locations[loc]?.n ?? loc;
+        // One connection carries the transaction, so these queue behind each other anyway.
+        const menu = await posRepo.menuAt(tx, loc);
+        const stock = await posRepo.stockAt(tx, loc);
+        const rsv = await posRepo.rsvAt(tx, loc);
+        const ovr = await posRepo.ovrAt(tx, loc);
+        const prices = await posRepo.prices(tx);
+
+        for (const it of keys) {
+          const item = master.items[it];
+          assertRule(item && menu.has(it), `${item?.n ?? it} is not listed at ${locName}`);
+          const a = availOf(master, stock, rsv, ovr, loc, it);
+          assertRule(a.ok, `${item.n} is not available at ${locName} — ${a.why}`);
+          const cover = coverOf(master, stock, rsv, loc, it);
+          assertRule(cover >= cart[it], `Only ${fq(cover, item.u)} ${item.u} of ${item.n} left at ${locName}`);
+        }
+
+        const plan = planBill(master, prices, loc, cart);
+        const at = new Date();
+        const no = await allocateId(tx, "bill", at);
+        const head = await posRepo.insertBill(tx, {
+          no, loc, operatorId: claims.sub, total: money(plan.tot), tax: money(plan.tax), at, tender: body.tender,
+          payerKind: body.payer?.kind ?? null, payerId: body.payer?.id ?? null, payerName: body.payer?.name ?? null,
+        });
+        const lines = await posRepo.insertBillLines(tx, no, plan.lines);
+        await postMoves(tx, plan.moves.map((m) => ({ ...m, kind: "sale" as const, refType: "bill", refId: no, by: claims.sub, at })));
+
+        // What the sale actually took off each shelf, folded the way postMoves folded it.
+        const took = new Map<string, number>();
+        for (const m of plan.moves) took.set(m.it, round3((took.get(m.it) ?? 0) + -m.qty));
+        const onHand = await posRepo.onHandAt(tx, loc, [...took.keys()]);
+        for (const [it, sold] of took) {
+          const left = Math.max(0, round3((onHand[it] ?? 0) + sold - (rsv[`${loc}:${it}`] ?? 0)));
+          const item = master.items[it];
+          assertRule((onHand[it] ?? 0) >= 0, `Only ${fq(left, item?.u ?? "nos")} ${item?.u ?? "nos"} of ${item?.n ?? it} left at ${locName}`);
+        }
+
+        const operator = await posRepo.operator(tx, claims.sub);
+        const result = toWireBill(head, lines, { name: operator?.name ?? claims.sub, colour: operator?.colour ?? "#64748B" });
+        const total = money(plan.tot).toFixed(2);
+        const message = body.payer
+          ? `Bill ${no} · ₹${total} posted to ${body.payer.name}`
+          : `Bill ${no} · ₹${total} ${body.tender === "Cash" ? "collected" : "settled by " + body.tender.toLowerCase()} at ${locName}`;
+        return { result, changed: ["stock", "bills"], message };
+      });
     },
   };
 }

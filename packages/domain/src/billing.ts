@@ -16,8 +16,6 @@ export type BillPlan = {
  * derive GST from the inclusive prices, and explode a made-to-order line into
  * negative stock moves for its recipe. Does not check availability or payer
  * rules — those are `assertRule`s in the service, using `availOf`.
- *
- * @public — consumed by the pos module (Phase 2 Task 4).
  */
 export function planBill(m: Master, prices: Prices, l: string, cart: Record<string, number>): BillPlan {
   let tot = 0;
