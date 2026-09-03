@@ -1,0 +1,13 @@
+import type { App } from "../app.js";
+import auth from "./auth/routes.js";
+import me from "./me/routes.js";
+import master from "./master/routes.js";
+import snapshot from "./snapshot/routes.js";
+
+/** Every module, registered in one place. Adding a module = one import + one line here. */
+export async function registerModules(app: App): Promise<void> {
+  await app.register(auth);
+  await app.register(me);
+  await app.register(master);
+  await app.register(snapshot);
+}

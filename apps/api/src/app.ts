@@ -8,6 +8,12 @@ import errors from "./plugins/errors.js";
 import metrics from "./plugins/metrics.js";
 import health from "./plugins/health.js";
 import db from "./plugins/db.js";
+import auth from "./plugins/auth.js";
+import rbac from "./plugins/rbac.js";
+import idempotency from "./plugins/idempotency.js";
+import { registerModules } from "./modules/index.js";
+
+declare module "fastify" { interface FastifyInstance { config: Config } }
 
 export type App = FastifyInstance;
 export type AppDeps = { db?: Db; searchPath?: string; migrationsSchema?: string };
@@ -21,6 +27,7 @@ export async function buildApp(config: Config, deps: AppDeps = {}): Promise<App>
     forceCloseConnections: "idle",
     disableRequestLogging: true, // the logging plugin writes one structured line per request instead
   }).withTypeProvider<ZodTypeProvider>();
+  app.decorate("config", config);
   app.setValidatorCompiler(validatorCompiler);
   app.setSerializerCompiler(serializerCompiler);
 
@@ -30,6 +37,9 @@ export async function buildApp(config: Config, deps: AppDeps = {}): Promise<App>
   await app.register(health);
   await app.register(security, { config });
   await app.register(db, { url: config.databaseUrl, ssl: config.databaseSsl, searchPath: deps.searchPath, migrationsSchema: deps.migrationsSchema, db: deps.db });
-  // Task 8 adds the route mount.
+  await app.register(auth, { config });
+  await app.register(rbac);
+  await app.register(idempotency);
+  await registerModules(app);
   return app;
 }
