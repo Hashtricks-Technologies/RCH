@@ -1,0 +1,3 @@
+RCH is available at https://{{ .Values.ingress.host }}
+To create a user: kubectl exec deploy/{{ .Release.Name }}-api -- /nodejs/bin/node dist/cli/users.mjs create --email <email> --role <role>
+To roll back this release: helm rollback {{ .Release.Name }}

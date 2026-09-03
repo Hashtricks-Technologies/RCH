@@ -9,6 +9,7 @@
     "typecheck": "turbo run typecheck",
     "lint": "turbo run lint && knip",
     "test": "turbo run test",
+    "helm:test": "deploy/chart/rch/tests/render.test.sh",
     "db:up": "docker compose up -d postgres",
     "db:down": "docker compose down"
   },

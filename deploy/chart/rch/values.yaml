@@ -1,0 +1,50 @@
+image:
+  registry: ""            # e.g. 123456789012.dkr.ecr.ap-south-1.amazonaws.com
+  api: rch-api
+  ui: rch-ui
+  tag: latest
+  pullPolicy: IfNotPresent
+api:
+  replicas: 2
+  resources: { requests: { cpu: 200m, memory: 256Mi }, limits: { cpu: "1", memory: 512Mi } }
+  hpa: { enabled: true, minReplicas: 2, maxReplicas: 6, cpu: 70 }
+  pdb: { minAvailable: 1 }
+  env:
+    LOG_LEVEL: info
+    CORS_ORIGIN: https://rch.example.com
+    RATE_LIMIT_PER_MINUTE: "300"
+    LOGIN_RATE_LIMIT_PER_MINUTE: "10"
+    DATABASE_SSL: "true"
+    COOKIE_SECURE: "true"
+    ACCESS_TOKEN_TTL: 15m
+    REFRESH_TOKEN_TTL_DAYS: "30"
+    OTEL_EXPORTER_OTLP_ENDPOINT: ""
+ui:
+  replicas: 2
+  resources: { requests: { cpu: 50m, memory: 64Mi }, limits: { cpu: 200m, memory: 128Mi } }
+ingress:
+  enabled: true
+  className: alb
+  host: rch.example.com
+  certificateArn: ""
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443},{"HTTP":80}]'
+    alb.ingress.kubernetes.io/ssl-redirect: "443"
+    alb.ingress.kubernetes.io/load-balancer-attributes: idle_timeout.timeout_seconds=3600
+    alb.ingress.kubernetes.io/healthcheck-path: /healthz
+secrets:
+  create: false           # true: build the Secret from the values below (staging, dev)
+  values: { DATABASE_URL: "", JWT_PRIVATE_KEY: "", JWT_PUBLIC_KEY: "", JWT_PREVIOUS_PUBLIC_KEY: "" }
+  externalSecret:
+    enabled: false        # true: sync from AWS Secrets Manager via External Secrets Operator (prod)
+    storeName: aws-secrets-manager
+    storeKind: ClusterSecretStore
+    remoteKey: rch/prod   # JSON secret with the four keys above
+serviceAccount:
+  create: true
+  annotations: {}         # eks.amazonaws.com/role-arn for IRSA when the pod itself reads AWS
+serviceMonitor: { enabled: false, interval: 30s }
+migrate: { enabled: true, backoffLimit: 1, activeDeadlineSeconds: 600 }
+purge: { enabled: true, schedule: "15 2 * * *" }

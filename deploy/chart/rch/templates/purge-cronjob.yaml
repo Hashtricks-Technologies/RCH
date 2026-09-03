@@ -1,0 +1,22 @@
+{{- if .Values.purge.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata: { name: {{ .Release.Name }}-purge }
+spec:
+  schedule: {{ .Values.purge.schedule | quote }}
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          annotations: { checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }} }
+        spec:
+          restartPolicy: Never
+          securityContext: { runAsNonRoot: true, runAsUser: 65532 }
+          containers:
+            - name: purge
+              image: {{ include "rch.image" (dict "registry" .Values.image.registry "name" .Values.image.api "tag" .Values.image.tag) }}
+              args: ["dist/cli/purge.mjs"]
+              env:
+                {{- include "rch.envList" . | nindent 16 }}
+{{- end }}

@@ -1,0 +1,4 @@
+api: { replicas: 3, hpa: { minReplicas: 3, maxReplicas: 6 }, env: { CORS_ORIGIN: https://rch.example.com } }
+ingress: { host: rch.example.com }
+secrets: { create: false, externalSecret: { enabled: true, remoteKey: rch/prod } }
+serviceMonitor: { enabled: true }
