@@ -3,7 +3,7 @@ import type { User } from "@rch/contract";
 import type { Db } from "../../db/client.js";
 import type { Config } from "../../config.js";
 import { withTransaction } from "../../lib/db.js";
-import { RateLimitedError, UnauthenticatedError } from "../../lib/errors.js";
+import { RateLimitedError, RuleError, UnauthenticatedError } from "../../lib/errors.js";
 import { hashPassword, verifyPassword } from "../../lib/password.js";
 import { toWireUser } from "../../lib/wire.js";
 import { authRepo } from "./repo.js";
@@ -72,7 +72,14 @@ export function createAuthService(db: Db, config: Config) {
 
   async function issue(tx: Parameters<Parameters<typeof withTransaction>[1]>[0], u: NonNullable<Awaited<ReturnType<typeof authRepo.userById>>>, family: string, meta: Meta): Promise<Session> {
     const raw = newRaw();
-    await authRepo.insertRefresh(tx, { userId: u.id, family, tokenHash: sha256(raw), expiresAt: expiry(), userAgent: meta.userAgent, ip: meta.ip });
+    // A refresh family is only as long-lived as its first token: rotation resets the *idle*
+    // clock (`expiry()`, from now) but must never push the family's absolute lifetime past 30
+    // days from when it was first issued at login. A brand-new family (no rows yet) has no
+    // earlier start to be capped by, so it gets the ordinary now+30d.
+    const familyStartedAt = (await authRepo.familyStartedAt(tx, family)) ?? new Date();
+    const familyCap = new Date(familyStartedAt.getTime() + config.refreshTokenTtlDays * 86400_000);
+    const expiresAt = new Date(Math.min(expiry().getTime(), familyCap.getTime()));
+    await authRepo.insertRefresh(tx, { userId: u.id, family, tokenHash: sha256(raw), expiresAt, userAgent: meta.userAgent, ip: meta.ip });
     return { user: toWireUser(u), mustChangePassword: u.mustChangePassword, refreshToken: raw, claims: { id: u.id, role: u.role, loc: u.loc as User["loc"], mcp: u.mustChangePassword } };
   }
 
@@ -131,7 +138,12 @@ export function createAuthService(db: Db, config: Config) {
      */
     async changePassword(userId: string, current: string, next: string, meta: Meta): Promise<Session> {
       const u = await authRepo.userById(db, userId);
-      if (!u || !(await verifyPassword(u.passwordHash, current))) throw new UnauthenticatedError("Your current password is not right.");
+      // Verify (or dummy-verify, for timing parity with the active/found case) regardless of
+      // whether the account is active, then gate on both together — same message either way,
+      // so an inactive account and a wrong current password are indistinguishable to the caller.
+      const ok = u ? await verifyPassword(u.passwordHash, current) : (await verifyPassword(DUMMY_HASH, current), false);
+      if (!u || !ok || !u.active) throw new UnauthenticatedError("Your current password is not right.");
+      if (next === current) throw new RuleError("Choose a different password from your current one");
       const hash = await hashPassword(next);
       return withTransaction(db, async (tx) => {
         await authRepo.setPassword(tx, userId, hash);

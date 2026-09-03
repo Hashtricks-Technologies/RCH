@@ -61,6 +61,24 @@ describe("document readers", () => {
     });
     expect(noTimes(byId(gotAsks))).toEqual(noTimes(byId(fxAsks)));
   });
+  it("userNames() is one query for the whole snapshot; readers accept it pre-fetched instead of re-querying", async () => {
+    const names = await D.userNames(t.db);
+    expect(names.size).toBeGreaterThan(0);
+    // A doctored name proves the readers below actually use the map they were handed rather
+    // than fetching their own copy: if they re-queried, this override would never show up.
+    const [anyId, real] = [...names.entries()][0]!;
+    const doctored = new Map(names);
+    doctored.set(anyId, { ...real, name: "Overridden Name" });
+    const [req, prq, grn, pord, bills, sup, prod, asks] = await Promise.all([
+      D.readRequests(t.db, doctored), D.readRequisitions(t.db, doctored), D.readGrns(t.db, doctored), D.readProdOrders(t.db, doctored),
+      D.readBills(t.db, 7, doctored), D.readSupportTickets(t.db, doctored), D.readProductRequests(t.db, doctored), D.readShopAsks(t.db, doctored),
+    ]);
+    const usesOverride = req.some((r) => r.by === "Overridden Name") || prq.some((p) => p.by === "Overridden Name")
+      || grn.some((g) => g.by === "Overridden Name") || pord.some((o) => o.by === "Overridden Name")
+      || bills.some((b) => b.opr === "Overridden Name") || sup.some((t2) => t2.by === "Overridden Name")
+      || prod.some((p) => p.by === "Overridden Name") || asks.some((a) => a.by === "Overridden Name");
+    expect(usesOverride).toBe(true);
+  });
   it("sales are 14 day-rows of 3 outlet columns from bills, with day-of-month labels", async () => {
     const { sales, dayLabels } = await D.readSales(t.db, 14);
     expect(sales.length).toBe(14); expect(dayLabels.length).toBe(14);

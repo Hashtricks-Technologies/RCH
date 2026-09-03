@@ -16,7 +16,7 @@ export const SnapshotSchema = z.object({
   rsv: z.record(z.string(), Qty),          // "loc:item" -> reserved
   ovr: z.record(z.string(), z.string()),   // "loc:item" -> reason
   prices: z.object({ A: z.record(z.string(), z.number()), B: z.record(z.string(), z.number()) }),
-  menu: z.record(z.string(), z.array(z.string())),
+  menu: byLoc(z.array(z.string())),
   req: z.array(D.StockRequestSchema),
   tkt: z.array(D.TicketSchema),
   prq: z.array(D.RequisitionSchema),

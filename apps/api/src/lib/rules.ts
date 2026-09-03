@@ -1,5 +1,5 @@
-// Nothing imports this yet: the Phase 2 write endpoints (spec §9.2) are its
-// callers, which is why knip.json lists it under `ignoreFiles`.
+// No production caller yet: the Phase 2 write endpoints (spec §9.2) are its callers.
+// rules.test.ts exercises it directly in the meantime.
 import { RuleError } from "./errors.js";
 
 /**

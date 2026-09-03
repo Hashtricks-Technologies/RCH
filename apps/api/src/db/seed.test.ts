@@ -4,7 +4,7 @@ import type { PgTable } from "drizzle-orm/pg-core";
 import * as FX from "@rch/contract/fixtures";
 import { withTestSchema, type TestDb } from "../test/db.js";
 import { seedTestDb } from "../test/seed.js";
-import { seedDatabase } from "./seed.js";
+import { seedDatabase, grnPoLineNo } from "./seed.js";
 import { rebuildBalances } from "../lib/ledger.js";
 import { bills, grns, items, locations, purchaseOrders, rateContracts, reservations, sequences, shopAsks, stockBalances, stockRequests, supportTickets, tickets, users } from "./schema/index.js";
 
@@ -49,5 +49,18 @@ describe("seed", () => {
   });
   it("refuses to run twice without --force", async () => {
     await expect(seedDatabase(t.db, { password: "changeme", forcePasswordChange: false })).rejects.toThrow(/already/);
+  });
+});
+
+describe("grnPoLineNo", () => {
+  const po = { lines: [{ it: "milk" }, { it: "sugar" }] };
+  it("resolves the ordered line's index", () => {
+    expect(grnPoLineNo(po, { id: "G1", po: "PO-1", it: "sugar" })).toBe(1);
+  });
+  it("throws a clear error instead of defaulting to line 0 when the item was never ordered", () => {
+    expect(() => grnPoLineNo(po, { id: "G1", po: "PO-1", it: "flour" })).toThrow("GRN G1: flour is not on PO-1");
+  });
+  it("throws when the PO itself is missing", () => {
+    expect(() => grnPoLineNo(undefined, { id: "G1", po: "PO-404", it: "milk" })).toThrow("GRN G1: milk is not on PO-404");
   });
 });

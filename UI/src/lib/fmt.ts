@@ -50,16 +50,24 @@ export const fromWireDate = (d: string): string => {
   return `${m[3]}-${dt.toLocaleDateString("en-IN", { month: "short", timeZone: TZ })}-${m[1]}`;
 };
 
+/** "YYYY-MM-DD" for a Date, read in Asia/Kolkata regardless of the host's own zone. */
+const kolkataYmd = (d: Date): string => {
+  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(d);
+  const get = (t: string) => parts.find((p) => p.type === t)!.value;
+  return `${get("year")}-${get("month")}-${get("day")}`;
+};
+
 /**
  * The same three-way wording as `bestBefore`, for a best-before the server has
  * already worked out: an absolute instant instead of a batch time plus hours.
+ * The day boundary is Asia/Kolkata's, not the browser's/host's own zone — a host
+ * running in UTC must still call an 11pm-IST due date "tonight", not "tomorrow".
  */
 export const fromWireBestBefore = (isoStr: string): string => {
   const due = new Date(isoStr);
   const made = new Date();
   const days = Math.round(
-    (new Date(due.getFullYear(), due.getMonth(), due.getDate()).getTime() -
-      new Date(made.getFullYear(), made.getMonth(), made.getDate()).getTime()) / 86400000,
+    (Date.parse(`${kolkataYmd(due)}T00:00:00Z`) - Date.parse(`${kolkataYmd(made)}T00:00:00Z`)) / 86400000,
   );
   if (days === 0) return hhmm(due);
   if (days === 1) return `${hhmm(due)} tomorrow`;
