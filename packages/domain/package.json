@@ -9,5 +9,6 @@
     "lint": "oxlint",
     "test": "vitest run"
   },
+  "dependencies": { "@rch/contract": "workspace:*" },
   "devDependencies": { "vitest": "^4.1.11" }
 }
