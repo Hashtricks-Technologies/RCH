@@ -7,7 +7,15 @@ spec:
   template:
     metadata: { labels: { {{- include "rch.labels" . | nindent 8 }}, app.kubernetes.io/component: ui } }
     spec:
-      securityContext: { runAsNonRoot: true, seccompProfile: { type: RuntimeDefault } }
+      # fsGroup: 101 matches nginxinc/nginx-unprivileged's built-in nginx
+      # user/group (uid 101, gid 101) so kubelet chowns the emptyDir
+      # volumes below to a group the container can write — plain emptyDir
+      # volumes default to root ownership, which a non-root, read-only-root
+      # container can't write into otherwise (confirmed empirically: the
+      # equivalent `docker run --read-only --tmpfs ...` without a writable
+      # group/world mode on /etc/nginx/conf.d fails envsubst with "not
+      # writable" and nginx ends up with no server block).
+      securityContext: { runAsNonRoot: true, runAsUser: 101, fsGroup: 101, seccompProfile: { type: RuntimeDefault } }
       containers:
         - name: ui
           image: {{ include "rch.image" (dict "registry" .Values.image.registry "name" .Values.image.ui "tag" .Values.image.tag) }}
@@ -17,4 +25,18 @@ spec:
           readinessProbe: { httpGet: { path: /healthz, port: http }, periodSeconds: 5 }
           livenessProbe: { httpGet: { path: /healthz, port: http }, periodSeconds: 10 }
           resources: {{- toYaml .Values.ui.resources | nindent 12 }}
-          securityContext: { allowPrivilegeEscalation: false, capabilities: { drop: [ALL] } }
+          securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
+          # nginx-unprivileged's envsubst entrypoint writes the rendered
+          # config into /etc/nginx/conf.d, and nginx itself needs /tmp
+          # (pid file + proxy/client/fastcgi/uwsgi/scgi temp paths — see
+          # nginx.conf in the base image) and /var/cache/nginx writable.
+          # A read-only root filesystem requires all three to be mounted
+          # from writable emptyDir volumes.
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+            - { name: cache, mountPath: /var/cache/nginx }
+            - { name: conf, mountPath: /etc/nginx/conf.d }
+      volumes:
+        - { name: tmp, emptyDir: {} }
+        - { name: cache, emptyDir: {} }
+        - { name: conf, emptyDir: {} }
