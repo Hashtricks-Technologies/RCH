@@ -1,3 +1,4 @@
+import * as D from "@rch/domain";
 import { apportion, round3 } from "@rch/domain";
 export { apportion, round3 };
 import { IT, LOC, MENU, PAR_FACTOR, PL, RCP } from "../data/master";
@@ -5,7 +6,7 @@ import type {
   Availability, Bill, LocKey, PoStatus, Price, PurchaseOrder, Requisition, ReqStatus,
   StockRequest, Ticket, Tone,
 } from "../types";
-import { fq, U } from "./fmt";
+import { U } from "./fmt";
 
 export interface StockShape {
   stock: Record<LocKey, Record<string, number>>;
@@ -14,48 +15,28 @@ export interface StockShape {
   prices: Record<"A" | "B", Record<string, number>>;
   menu: Record<string, string[]>;
 }
-export const qty = (s: StockShape, l: LocKey, it: string) => s.stock[l]?.[it] ?? 0;
-export const resv = (s: StockShape, l: LocKey, it: string) => s.rsv[l + ":" + it] ?? 0;
-export const avail = (s: StockShape, l: LocKey, it: string) => qty(s, l, it) - resv(s, l, it);
+
+/** The master data every domain rule below is parameterised by. */
+const MASTER: D.Master = { items: IT, locations: LOC, recipes: RCP };
+
+export const qty = (s: StockShape, l: LocKey, it: string) => D.qty(s.stock, l, it);
+export const resv = (s: StockShape, l: LocKey, it: string) => D.resv(s.rsv, l, it);
+export const avail = (s: StockShape, l: LocKey, it: string) => D.avail(s.stock, s.rsv, l, it);
 
 export function priceOf(s: StockShape, l: LocKey, it: string): Price {
-  const list = LOC[l]?.list;
-  if (!list) return { p: 0, listed: 0, capped: false };
-  const listed = s.prices[list]?.[it];
-  if (listed == null) return { p: 0, listed: 0, capped: false };
-  const mrp = IT[it]?.mrp;
-  return mrp != null && listed > mrp
-    ? { p: mrp, listed, capped: true }
-    : { p: listed, listed, capped: false };
+  return D.priceOf(MASTER, s.prices, l, it);
 }
 
 export function availOf(s: StockShape, l: LocKey, it: string): Availability {
-  const o = s.ovr[l + ":" + it];
-  if (o) return { ok: false, mode: "Manual", why: o };
-  if (IT[it]?.t === "MTO") {
-    const r = RCP[it];
-    for (const [g, need] of r.l) {
-      if (avail(s, l, g) < need)
-        return { ok: false, mode: "Recipe", why: `${IT[g].n} at ${fq(avail(s, l, g), g)} ${U(g)}` };
-    }
-    const portions = Math.min(...r.l.map(([g, need]) => Math.floor(avail(s, l, g) / need)));
-    return { ok: true, mode: "Recipe", left: `${portions} portions` };
-  }
-  const have = avail(s, l, it);
-  return have >= 1
-    ? { ok: true, mode: "Stock", left: `${fq(have, it)} ${U(it)}` }
-    : { ok: false, mode: "Stock", why: "zero at this location" };
+  return D.availOf(MASTER, s.stock, s.rsv, s.ovr, l, it);
 }
 
 /** Σ(ingredient × its cost) plus the recipe's overhead. 0 when there is no recipe (H1). */
 export function recipeCost(it: string): number {
-  const r = RCP[it];
-  if (!r) return 0;
-  const raw = r.l.reduce((t, [g, q]) => t + q * (IT[g]?.cost ?? 0), 0);
-  return raw * (1 + r.ov / 100);
+  return D.recipeCost(MASTER, it);
 }
 /** What a unit of this item actually costs — from its recipe if it has one. */
-export const costOf = (it: string) => (RCP[it] ? recipeCost(it) : IT[it]?.cost ?? 0);
+export const costOf = (it: string) => D.costOf(MASTER, it);
 
 /** Reorder level for this item at this location (M11). */
 export const parOf = (l: LocKey, it: string) => {
@@ -66,10 +47,7 @@ export const parOf = (l: LocKey, it: string) => {
 };
 
 /** Quantity already promised by an approval that has not yet become a ticket. */
-export const committed = (reqs: StockRequest[], l: LocKey, it: string) =>
-  reqs
-    .filter((r) => (r.st === "Manager approved" || r.st === "Partially approved") && !r.ticket)
-    .reduce((t, r) => t + r.lines.filter((x) => x.it === it).reduce((n, x) => n + x.appr, 0), l === "store" ? 0 : 0);
+export const committed = (reqs: StockRequest[], l: LocKey, it: string) => D.committed(reqs, l, it);
 
 /**
  * What may still be promised: on hand, less what tickets have reserved, less
@@ -77,7 +55,7 @@ export const committed = (reqs: StockRequest[], l: LocKey, it: string) =>
  */
 export const freeToPromise = (
   s: StockShape & { req: StockRequest[] }, l: LocKey, it: string,
-) => qty(s, l, it) - resv(s, l, it) - committed(s.req, l, it);
+) => D.freeToPromise(s.stock, s.rsv, s.req, l, it);
 
 /** Purchase-order statuses that already hold a claim on procurement-list quantity.
  *  createPo() moves a requisition line's `ordered` claim out of the pool the instant
