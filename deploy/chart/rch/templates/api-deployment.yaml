@@ -13,6 +13,23 @@ spec:
       serviceAccountName: {{ include "rch.sa" . }}
       terminationGracePeriodSeconds: 30
       securityContext: { runAsNonRoot: true, runAsUser: 65532, fsGroup: 65532, seccompProfile: { type: RuntimeDefault } }
+      # Migrations run as an initContainer (not a pre-upgrade hook Job) so they can never be
+      # orphaned by Helm's diff of hook vs. release-tracked resources (see secret.yaml/
+      # externalsecret.yaml for the same reasoning). Every pod that starts runs this; the
+      # advisory lock taken in cli/migrate.ts serialises concurrent replicas so only one of
+      # them actually applies pending migrations while the rest block, then no-op. A failing
+      # migration keeps this initContainer from ever completing, so the pod never becomes
+      # Ready and, with maxUnavailable: 0 below, `helm upgrade --wait` aborts the rollout
+      # rather than replacing healthy old pods.
+      initContainers:
+        - name: migrate
+          image: {{ include "rch.image" (dict "registry" .Values.image.registry "name" .Values.image.api "tag" .Values.image.tag) }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: ["dist/cli/migrate.mjs"]
+          env:
+            {{- include "rch.envList" . | nindent 12 }}
+          securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
+          resources: { requests: { cpu: 100m, memory: 128Mi }, limits: { cpu: 500m, memory: 256Mi } }
       containers:
         - name: api
           image: {{ include "rch.image" (dict "registry" .Values.image.registry "name" .Values.image.api "tag" .Values.image.tag) }}
