@@ -82,18 +82,31 @@ breaks the per-test-file schemas (`t_<file>`, via `search_path`) that `apps/api/
 creates for parallel test runs. Review the generated SQL in `apps/api/drizzle/`, then commit it
 — migrations are forward-only (§3) and reviewed like any other change.
 
-`pnpm --filter @rch/api db:migrate` applies pending migrations; it is what the `migrate-job`
-Helm hook also runs (`dist/cli/migrate.mjs`) before every install/upgrade.
+`pnpm --filter @rch/api db:migrate` applies pending migrations; it is what the `migrate`
+initContainer on every api pod also runs (`dist/cli/migrate.mjs`) — see §2.
 
 ## 2. Deploy
 
 Pushing to `staging` or `production` triggers `.github/workflows/deploy.yml`, gated by the
 repository variable `DEPLOY_ENABLED=true`. It builds and pushes the `api` and `UI` images to
 ECR, then `helm upgrade --install rch deploy/chart/rch -f values-<env>.yaml --set
-image.tag=<sha> --namespace <namespace> --create-namespace`, with the migration Job (a
-`pre-install,pre-upgrade` Helm hook) running `dist/cli/migrate.mjs` before the new pods start —
-the upgrade aborts if migration fails. A production push additionally waits for a GitHub
-environment approval before the deploy job runs, and a fast-forward guard checks
+image.tag=<sha> --namespace <namespace> --create-namespace --wait`.
+
+Migrations are not a separate Helm hook Job — they run as a `migrate` **initContainer** on
+every api pod (`dist/cli/migrate.mjs`, `deploy/chart/rch/templates/api-deployment.yaml`), ahead
+of the `api` container on that same pod. Several replicas can start together during a rollout,
+so the CLI takes a Postgres advisory lock (`pg_advisory_lock(727272)`, `apps/api/src/cli/
+migrate.ts`) before running migrations: the first pod to acquire it applies pending migrations
+and releases the lock; the rest block on the same lock, then find nothing left to apply. A
+failing migration means the initContainer never completes, so that pod never becomes Ready;
+with `rollingUpdate.maxUnavailable: 0` on the api Deployment, the old pods keep serving traffic
+and `helm upgrade --wait` — the deploy workflow's install/upgrade step — times out rather than
+completing, and the previous release stays live. **To recover:** inspect the stuck pod
+(`kubectl describe pod`, `kubectl logs <pod> -c migrate -n <namespace>`) to see the migration
+error, then either fix it forward with a new migration or `helm rollback rch <revision> -n
+<namespace>` (§3) to abandon the attempt — rolling back does not undo an already-applied
+migration (§3 explains why that's usually fine). A production push additionally waits for a
+GitHub environment approval before the deploy job runs, and a fast-forward guard checks
 `staging ⊂ develop` and `production ⊂ staging` so the branches can never diverge.
 
 Required repository secrets: `AWS_ROLE_ARN`, `AWS_REGION`, `ECR_REGISTRY`,
@@ -315,7 +328,7 @@ at the RDS instance — not part of this chart, wired at the observability-stack
    once and hardcode the threshold in the alert rule. The app pool itself never exceeds 60
    connections (10 per pod × 6 max pods, per spec §11.2), well under any RDS instance's limit,
    so this alert is a safety net for connections opened outside the app (a psql session left
-   open, a migration Job overlapping normal traffic).
+   open, a burst of migrate initContainers opening a connection each during a large rollout).
 5. **RDS free storage < 20%**
    ```promql
    aws_rds_free_storage_space_average{dbinstance_identifier="rch-prod"}

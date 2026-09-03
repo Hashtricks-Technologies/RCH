@@ -8,21 +8,32 @@ out=$(helm template rch . -f values-prod.yaml --set image.registry=r,image.tag=t
 grep -q 'kind: ExternalSecret' <<<"$out"
 ! grep -q 'kind: Secret$' <<<"$out"
 grep -q 'readOnlyRootFilesystem: true' <<<"$out"
-# I12: api Deployment, migrate Job, purge CronJob and ui Deployment containers
-# must all run with a read-only root filesystem.
+# I12: api Deployment's migrate initContainer and api container, the purge
+# CronJob and the ui Deployment must all run with a read-only root filesystem.
 [ "$(grep -c 'readOnlyRootFilesystem: true' <<<"$out")" -ge 4 ]
-grep -q 'helm.sh/hook: pre-install,pre-upgrade' <<<"$out"
-# I3: the ExternalSecret itself (not just the migrate Job) must carry the
-# pre-install hook, ordered ahead of the migrate Job's hook-weight "0".
-grep -A15 'kind: ExternalSecret' <<<"$out" | grep -q 'helm.sh/hook: pre-install,pre-upgrade'
-grep -A15 'kind: ExternalSecret' <<<"$out" | grep -q 'hook-weight: "-5"'
+# N2/N3: secret.yaml and externalsecret.yaml must be plain release resources —
+# no helm.sh/hook annotations. A hook Secret/ExternalSecret is deleted at the
+# end of the first upgrade of a release installed from the previous chart
+# (hooks live outside Release.Manifest, so Helm's diff drops the "old" plain
+# resource), and with before-hook-creation + ESO creationPolicy: Owner it was
+# destroyed and re-synced on every upgrade.
+! grep -q 'helm.sh/hook' <<<"$out"
+! (grep -A20 'kind: Secret$' <<<"$out" | grep -q 'helm.sh/hook')
+! (grep -A20 'kind: ExternalSecret' <<<"$out" | grep -q 'helm.sh/hook')
+# N2/N3: migrations run as an initContainer on the api Deployment, not a
+# pre-upgrade hook Job.
+! grep -q 'kind: Job' <<<"$out"
+grep -q 'initContainers:' <<<"$out"
+grep -q 'dist/cli/migrate.mjs' <<<"$out"
 # I3: JWT_PREVIOUS_PUBLIC_KEY is only populated during key rotation, so its
 # secretKeyRef must be optional.
 grep -q 'key: JWT_PREVIOUS_PUBLIC_KEY, optional: true' <<<"$out"
 grep -q 'path: /readyz' <<<"$out"
 grep -q 'idle_timeout.timeout_seconds=3600' <<<"$out"
-# I9: the ServiceMonitor must select only the api Service, not the ui Service
-# (both share app.kubernetes.io/instance and expose a port named "http").
+# I9: the ServiceMonitor's spec.selector matches Service metadata labels, so
+# the api Service itself (not just the ServiceMonitor) must carry
+# app.kubernetes.io/component: api or the monitor selects zero Services.
+grep -A4 '# Source: rch/templates/api-service.yaml' <<<"$out" | grep -q 'component: api'
 grep -A3 'kind: ServiceMonitor' <<<"$out" | grep -q 'component: api'
 # C1: secret values must never be inlined as plaintext env `value:` entries —
 # always sourced via secretKeyRef, on both the prod (ExternalSecret) and
@@ -33,9 +44,10 @@ grep -q 'secretKeyRef' <<<"$out"
 
 out=$(helm template rch . -f values-staging.yaml --set image.registry=r,image.tag=t,secrets.values.DATABASE_URL=x,secrets.values.JWT_PRIVATE_KEY=x,secrets.values.JWT_PUBLIC_KEY=x)
 grep -q 'kind: Secret' <<<"$out"
-# The staging Secret is also a pre-install hook, ordered ahead of the migrate
-# Job, for the same first-install ordering reason as the prod ExternalSecret.
-grep -A15 'kind: Secret$' <<<"$out" | grep -q 'helm.sh/hook: pre-install,pre-upgrade'
+! grep -q 'helm.sh/hook' <<<"$out"
+! grep -q 'kind: Job' <<<"$out"
+grep -q 'initContainers:' <<<"$out"
+grep -q 'dist/cli/migrate.mjs' <<<"$out"
 ! (grep -A2 'name: JWT_PRIVATE_KEY' <<<"$out" | grep -q 'value:')
 ! (grep -A2 'name: DATABASE_URL' <<<"$out" | grep -q 'value:')
 grep -q 'secretKeyRef' <<<"$out"

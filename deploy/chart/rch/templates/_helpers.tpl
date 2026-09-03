@@ -12,10 +12,10 @@ app.kubernetes.io/name: {{ include "rch.name" . }}, app.kubernetes.io/instance: 
 {{- define "rch.sa" -}}{{ if .Values.serviceAccount.create }}{{ .Release.Name }}{{ else }}default{{ end }}{{- end -}}
 {{- /*
 rch.envList renders an explicit `env:` list for containers that need the API's
-runtime configuration. It exists so the Deployment and the pre-upgrade
-migration Job (and, for consistency, the purge CronJob) never drift: all three
-build their env from the same values instead of an envFrom/ConfigMap+Secret
-reference for the non-secret settings.
+runtime configuration. It exists so the api Deployment's migrate initContainer
+and api container (and, for consistency, the purge CronJob) never drift: all
+three build their env from the same values instead of an envFrom/ConfigMap+
+Secret reference for the non-secret settings.
 
 The four secret keys (DATABASE_URL, JWT_PRIVATE_KEY, JWT_PUBLIC_KEY,
 JWT_PREVIOUS_PUBLIC_KEY) are ALWAYS wired via valueFrom.secretKeyRef against
@@ -26,9 +26,8 @@ decides whether externalsecret.yaml renders an ExternalSecret that has the
 External Secrets Operator sync the same Secret name from the external store
 (prod). Either way the consuming containers read the same secretKeyRef, so
 which template produced the Secret is invisible to them. Both secret.yaml and
-externalsecret.yaml run as pre-install,pre-upgrade hooks ordered before the
-migrate Job so the Secret exists by the time it's referenced (see those
-templates for details).
+externalsecret.yaml are plain release resources (no helm.sh/hook annotations)
+— see those templates for why turning them into hooks was tried and reverted.
 
 JWT_PREVIOUS_PUBLIC_KEY is marked optional: true because it is only populated
 during a key-rotation window; outside of that window the key legitimately

@@ -47,5 +47,4 @@ serviceAccount:
   create: true
   annotations: {}         # eks.amazonaws.com/role-arn for IRSA when the pod itself reads AWS
 serviceMonitor: { enabled: false, interval: 30s }
-migrate: { enabled: true, backoffLimit: 1, activeDeadlineSeconds: 600 }
 purge: { enabled: true, schedule: "15 2 * * *" }
