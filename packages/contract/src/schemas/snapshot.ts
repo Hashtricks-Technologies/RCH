@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { LocKeySchema, Qty } from "./common";
-import * as D from "./documents";
+import { LocKeySchema, Qty } from "./common.js";
+import * as D from "./documents.js";
 
 const byLoc = <T extends z.ZodTypeAny>(v: T) => z.record(LocKeySchema, v);
 export const SnapshotSchema = z.object({

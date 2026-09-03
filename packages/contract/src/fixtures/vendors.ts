@@ -1,4 +1,4 @@
-import type { Vendor } from "../types";
+import type { Vendor } from "../types.js";
 
 /* Vendor records replace the hardcoded VENDORS array that used to live inside
    the requisition drawer and the separate VENDOR_FOR group mapping. One list,

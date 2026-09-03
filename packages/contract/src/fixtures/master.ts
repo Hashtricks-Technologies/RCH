@@ -1,4 +1,4 @@
-import type { Item, Location, LocKey, Recipe, User, Payer } from "../types";
+import type { Item, Location, LocKey, Recipe, User, Payer } from "../types.js";
 
 export const LOC: Record<LocKey, Location> = {
   store:   { n: "Central Store",   c: "WH-CS", type: "Store",   floor: "Basement", cc: "CC-STO" },

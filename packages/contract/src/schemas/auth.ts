@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { UserSchema } from "./documents";
+import { UserSchema } from "./documents.js";
 
 export const LoginBodySchema = z.object({ emp: z.string().trim().min(1), password: z.string().min(1) });
 export const AuthResponseSchema = z.object({ accessToken: z.string(), user: UserSchema, mustChangePassword: z.boolean() });

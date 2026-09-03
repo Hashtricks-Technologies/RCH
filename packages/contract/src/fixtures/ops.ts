@@ -1,4 +1,4 @@
-import type { ProductRequest, RateContract, ShopAsk, SupportTicket } from "../types";
+import type { ProductRequest, RateContract, ShopAsk, SupportTicket } from "../types.js";
 
 export const seedTickets = (): SupportTicket[] => [
   {

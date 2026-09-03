@@ -1,4 +1,4 @@
-import type { Bill, Batch, Grn, LocKey, ProdOrder, PurchaseOrder, Requisition, StockRequest, Ticket } from "../types";
+import type { Bill, Batch, Grn, LocKey, ProdOrder, PurchaseOrder, Requisition, StockRequest, Ticket } from "../types.js";
 
 export const seedStock: Record<LocKey, Record<string, number>> = {
   store:   { milk: 12, beans: 18.4, leaf: 3.2, sugar: 40, maida: 48.5, oil: 30, fill: 12, butter: 4, bread: 20, cup: 2400, box: 820, juice: 156, water: 120, bisc: 60, chips: 88 },

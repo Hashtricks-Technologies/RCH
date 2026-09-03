@@ -1,6 +1,6 @@
 import type { z } from "zod";
-import type * as C from "./schemas/common";
-import type * as D from "./schemas/documents";
+import type * as C from "./schemas/common.js";
+import type * as D from "./schemas/documents.js";
 
 export type ItemType = z.infer<typeof C.ItemTypeSchema>;
 export type LocKey = z.infer<typeof C.LocKeySchema>;
