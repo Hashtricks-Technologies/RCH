@@ -4,7 +4,9 @@ import { IT, LOC, RCP } from "../../data/master";
 import { useApp } from "../../store";
 import { avail, daysCover, menuOf, parOf, qty, resv, stateLabel, stateTone } from "../../lib/selectors";
 import { fq, money0, U } from "../../lib/fmt";
-import { Btn, Card, DataTable, FilterBtn, Icon, PageHead, Pill, TableFoot, Toolbar } from "../../ui/kit";
+import {
+  Btn, Card, FilterBtn, ImagePlaceholder, KebabIcon, PageHead, Pill, Toolbar,
+} from "../../ui/kit";
 import { TypeTag } from "./Pos";
 import "./ConfigureDrawer";
 
@@ -69,7 +71,6 @@ export default function Stock() {
 
   const value = all.reduce((t, r) => t + r.on * IT[r.it].cost, 0);
   const lowCount = all.filter((r) => r.low).length;
-  const dash = <span className="dim">—</span>;
 
   const request = (it: string, n: number) => {
     s.setDraft([...s.draft.filter((l) => l.it !== it), { it, qty: n }]);
@@ -99,60 +100,89 @@ export default function Stock() {
           </>}
           right={<span className="mini">{lowCount} need topping up</span>}
         />
-        <DataTable
-          cols={[
-            { h: "Item", cls: "nm", w: "22%" },
-            { h: "Type", w: "8%" },
-            { h: "On hand", r: true, w: "11%" },
-            { h: "Reserved", r: true, w: "10%" },
-            { h: "Available", r: true, w: "11%" },
-            { h: "Par here", r: true, w: "10%" },
-            { h: "Days of cover", r: true, w: "11%" },
-            { h: "State", w: "10%" },
-            { h: "", w: "7%" },
-            { h: "", w: "5%" },
-          ]}
-          rows={rows.map((r) => ({
-            key: r.it,
-            cells: [
-              <>{IT[r.it].n}<small>{IT[r.it].c} · {IT[r.it].g}</small></>,
-              <TypeTag t={IT[r.it].t} />,
-              // A dash means the item is not stocked at this counter; zero is written as zero (M12).
-              r.held ? <>{fq(r.on, r.it)} <span className="dim">{U(r.it)}</span></> : dash,
-              r.held ? <span className={r.rv > 0 ? undefined : "dim"}>{fq(r.rv, r.it)}</span> : dash,
-              r.held
-                ? <b style={r.a <= 0 ? { color: "var(--crit)" } : undefined}>{fq(r.a, r.it)}</b>
-                : dash,
-              r.rl > 0 ? <span className="dim">{fq(r.rl, r.it)}</span> : dash,
-              r.held
-                ? <span style={r.a <= 0 ? { color: "var(--crit)" } : undefined}>{r.cover.toFixed(1)} d</span>
-                : dash,
-              r.held
-                ? <Pill tone={stateTone(r.a, r.rl)}>{stateLabel(r.a, r.rl)}</Pill>
-                : <Pill tone="mu">Not stocked</Pill>,
-              r.low
-                ? <Btn size="xs" variant="gh" onClick={() => request(r.it, r.suggested)}>Request</Btn>
-                : <span className="mini dim">ok</span>,
-              <button type="button" className="cfgbtn" title={`Configure ${IT[r.it].n}`}
-                onClick={() => openDrawer("cconfig", r.it)}>
-                <Icon name="set" size={13} />
-              </button>,
-            ],
-          }))}
-          empty={filtered
-            ? {
-              title: "Nothing matches those filters",
-              sub: `No item at ${L.n} matches ${[q && `“${q}”`, view !== "All" && view.toLowerCase(), group && `group ${group}`].filter(Boolean).join(", ")}.`,
-              action: <Btn size="sm" onClick={clearAll}>Clear filters</Btn>,
-            }
-            : {
-              title: "No stock held at this counter",
-              sub: `Raise a request on the central store to bring stock into ${L.n}.`,
-              action: <Btn size="sm" onClick={() => nav("/requests")}>Raise a request</Btn>,
-            }}
-        />
-        <TableFoot count={rows.length}
-          extra={<>{L.n} · {L.c} · {L.floor} · stock at cost {money0(value)}</>} />
+
+        {rows.length === 0 ? (
+          <div className="empty">
+            <b>{filtered ? "Nothing matches those filters" : "No stock held at this counter"}</b>
+            <p>
+              {filtered
+                ? `No item at ${L.n} matches ${[q && `“${q}”`, view !== "All" && view.toLowerCase(), group && `group ${group}`].filter(Boolean).join(", ")}.`
+                : `Raise a request on the central store to bring stock into ${L.n}.`}
+            </p>
+            {filtered
+              ? <Btn size="sm" onClick={clearAll}>Clear filters</Btn>
+              : <Btn size="sm" onClick={() => nav("/requests")}>Raise a request</Btn>}
+          </div>
+        ) : (
+          <div className="stkgrid" style={{ padding: 13 }}>
+            {rows.map((r) => {
+              const item = IT[r.it];
+              return (
+                <div className="card stkcard" key={r.it}>
+                  <div className="stkcard-media">
+                    <ImagePlaceholder size="card" />
+                    <span className="stkcard-pill">
+                      {r.held
+                        ? <Pill tone={stateTone(r.a, r.rl)}>{stateLabel(r.a, r.rl)}</Pill>
+                        : <Pill tone="mu">Not stocked</Pill>}
+                    </span>
+                    <button type="button" className="stkcard-kebab" title={`Configure ${item.n}`}
+                      onClick={() => openDrawer("cconfig", r.it)}>
+                      <KebabIcon />
+                    </button>
+                  </div>
+                  <div className="stkcard-body">
+                    <div>
+                      <b style={{ fontSize: 13 }}>{item.n}</b>
+                      <div className="mini">{item.c} · {item.g}</div>
+                    </div>
+                    <div><TypeTag t={item.t} /></div>
+
+                    <div className="stkcard-stats">
+                      <div className="totrow">
+                        <span>On hand</span>
+                        <span>{r.held ? <>{fq(r.on, r.it)} {U(r.it)}</> : "—"}</span>
+                      </div>
+                      <div className="totrow">
+                        <span>Reserved</span>
+                        <span className={r.held && r.rv > 0 ? undefined : "dim"}>
+                          {r.held ? fq(r.rv, r.it) : "—"}
+                        </span>
+                      </div>
+                      <div className="totrow">
+                        <span>Available</span>
+                        <span style={r.held && r.a <= 0 ? { color: "var(--crit)", fontWeight: 600 } : { fontWeight: 600 }}>
+                          {r.held ? fq(r.a, r.it) : "—"}
+                        </span>
+                      </div>
+                      <div className="totrow">
+                        <span>Par here</span>
+                        <span className="dim">{r.rl > 0 ? fq(r.rl, r.it) : "—"}</span>
+                      </div>
+                      <div className="totrow">
+                        <span>Days of cover</span>
+                        <span style={r.held && r.a <= 0 ? { color: "var(--crit)" } : undefined}>
+                          {r.held ? `${r.cover.toFixed(1)} d` : "—"}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div style={{ marginTop: "auto" }}>
+                      {r.low
+                        ? <Btn size="sm" wide variant="gh" onClick={() => request(r.it, r.suggested)}>Request</Btn>
+                        : <p className="mini dim" style={{ margin: 0, textAlign: "center" }}>Sufficient stock</p>}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        <div className="tfoot">
+          <span>Showing <b className="mono">{rows.length}</b> of <b className="mono">{rows.length}</b></span>
+          <span className="mini">{L.n} · {L.c} · {L.floor} · stock at cost {money0(value)}</span>
+        </div>
       </Card>
       <p className="mini mtop">
         This screen shows <b>{L.n} ({L.c})</b> and nothing else. Stock at the central store, the kitchen and the

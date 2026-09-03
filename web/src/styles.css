@@ -415,3 +415,16 @@ td.n b{font-weight:600;color:var(--ink)}
 .cfgbtn{width:26px;height:26px;border-radius:7px;display:grid;place-items:center;color:var(--ink-3);
   border:1px solid var(--line);flex:none}
 .cfgbtn:hover{background:var(--surface-3);color:var(--ink)}
+
+/* stock-in-hand card grid */
+.stkgrid{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(220px,1fr))}
+.stkcard{display:flex;flex-direction:column;overflow:hidden}
+.stkcard-media{position:relative}
+.stkcard-pill{position:absolute;top:8px;left:8px}
+.stkcard-kebab{position:absolute;top:7px;right:7px;width:27px;height:27px;border-radius:8px;
+  display:grid;place-items:center;background:var(--surface);border:1px solid var(--line);
+  color:var(--ink-2);box-shadow:var(--sh-1)}
+.stkcard-kebab:hover{background:var(--surface-3);color:var(--ink)}
+.stkcard-body{padding:11px 12px 12px;display:flex;flex-direction:column;gap:8px;flex:1}
+.stkcard-stats{border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:7px 0}
+.stkcard-stats .totrow{padding:2px 0;font-size:11.5px}

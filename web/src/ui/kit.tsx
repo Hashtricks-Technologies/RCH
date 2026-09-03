@@ -427,3 +427,14 @@ export function ImagePlaceholder({ size = "sm" }: { size?: "sm" | "card" }) {
     </div>
   );
 }
+
+/** The "⋮" trigger for a card's Configure menu. */
+export function KebabIcon({ size = 15 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="currentColor" aria-hidden>
+      <circle cx="8" cy="3.4" r="1.35" />
+      <circle cx="8" cy="8" r="1.35" />
+      <circle cx="8" cy="12.6" r="1.35" />
+    </svg>
+  );
+}

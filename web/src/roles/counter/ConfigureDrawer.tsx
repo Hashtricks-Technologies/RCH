@@ -1,18 +1,21 @@
 import { useNavigate } from "react-router-dom";
-import { IT, LOC } from "../../data/master";
+import { IT, LOC, RCP } from "../../data/master";
 import { useApp } from "../../store";
-import { availOf, menuOf } from "../../lib/selectors";
-import { money } from "../../lib/fmt";
+import {
+  avail, availOf, daysCover, menuOf, parOf, qty, resv, stateLabel, stateTone,
+} from "../../lib/selectors";
+import { fq, money, U } from "../../lib/fmt";
 import { Alert, Btn, ImagePlaceholder, Pill, Switch } from "../../ui/kit";
 import { DrawerFrame } from "../../ui/Drawer";
 import { registerDrawer, type DrawerProps } from "../../drawers";
 import { TypeTag } from "./Pos";
 
 /**
- * The built-in on/off control for Stock in Hand — the same switch as the
- * dedicated Product Availability screen, reachable without leaving the stock
- * table. Configure is for a sellable product; a raw ingredient just gets its
- * details, since there is nothing to switch on or off.
+ * The built-in on/off control for Stock in Hand — every detail the card
+ * already showed, plus the same switch as the dedicated Product Availability
+ * screen, reachable without leaving the stock grid. Configure is for a
+ * sellable product; a raw ingredient gets its details with a plain note,
+ * since there is nothing to switch on or off.
  */
 function ConfigureDrawer({ id: it }: DrawerProps) {
   const s = useApp();
@@ -24,9 +27,17 @@ function ConfigureDrawer({ id: it }: DrawerProps) {
   const item = IT[it];
   if (!item) return <DrawerFrame title="Not found"><p className="mini">That product is no longer on the master.</p></DrawerFrame>;
 
+  const held = Object.prototype.hasOwnProperty.call(s.stock[loc] ?? {}, it)
+    || (item.t === "MTO" && RCP[it]?.l.some(([g]) => Object.prototype.hasOwnProperty.call(s.stock[loc] ?? {}, g)));
+  const on = qty(s, loc, it);
+  const rv = resv(s, loc, it);
+  const a = avail(s, loc, it);
+  const rl = parOf(loc, it);
+  const cover = daysCover(a, it, loc);
+
   const sellableHere = menuOf(s, loc).includes(it);
   const manualOff = Boolean(s.ovr[loc + ":" + it]);
-  const a = availOf(s, loc, it);
+  const computed = availOf(s, loc, it);
 
   return (
     <DrawerFrame
@@ -42,6 +53,25 @@ function ConfigureDrawer({ id: it }: DrawerProps) {
         <span className="mini">{item.c} · {item.g}</span>
       </div>
 
+      <div className="stkcard-stats" style={{ marginBottom: 12 }}>
+        <div className="totrow"><span>On hand</span><span>{held ? <>{fq(on, it)} {U(it)}</> : "—"}</span></div>
+        <div className="totrow"><span>Reserved</span><span className={held && rv > 0 ? undefined : "dim"}>{held ? fq(rv, it) : "—"}</span></div>
+        <div className="totrow"><span>Available</span>
+          <span style={held && a <= 0 ? { color: "var(--crit)", fontWeight: 600 } : { fontWeight: 600 }}>
+            {held ? fq(a, it) : "—"}
+          </span>
+        </div>
+        <div className="totrow"><span>Par here</span><span className="dim">{rl > 0 ? fq(rl, it) : "—"}</span></div>
+        <div className="totrow"><span>Days of cover</span>
+          <span style={held && a <= 0 ? { color: "var(--crit)" } : undefined}>{held ? `${cover.toFixed(1)} d` : "—"}</span>
+        </div>
+        <div className="totrow"><span>State</span>
+          <span>{held
+            ? <Pill tone={stateTone(a, rl)}>{stateLabel(a, rl)}</Pill>
+            : <Pill tone="mu">Not stocked</Pill>}</span>
+        </div>
+      </div>
+
       {sellableHere ? (
         <>
           <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 0", borderTop: "1px solid var(--line)", borderBottom: "1px solid var(--line)" }}>
@@ -52,9 +82,9 @@ function ConfigureDrawer({ id: it }: DrawerProps) {
             </div>
           </div>
           <div className="mtop">
-            {a.ok
-              ? <Alert tone="g" label="ON">{a.left} — computed from stock, on top of the switch above.</Alert>
-              : <Alert tone="c" label="OFF">{a.why ?? "unavailable"} — the switch cannot override this by itself.</Alert>}
+            {computed.ok
+              ? <Alert tone="g" label="ON">{computed.left} — computed from stock, on top of the switch above.</Alert>
+              : <Alert tone="c" label="OFF">{computed.why ?? "unavailable"} — the switch cannot override this by itself.</Alert>}
           </div>
           <p className="mini mtop">
             Sells for {money(s.prices[LOC[loc].list ?? "A"]?.[it] ?? 0)} at this counter.{" "}
@@ -66,7 +96,6 @@ function ConfigureDrawer({ id: it }: DrawerProps) {
       ) : (
         <Alert tone="i" label="NOTE">
           Not sold directly at {LOC[loc].n} — it is a recipe ingredient here, so there is nothing to switch on or off.
-          {" "}<Pill tone="mu">{item.t}</Pill>
         </Alert>
       )}
     </DrawerFrame>
