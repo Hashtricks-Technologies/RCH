@@ -399,3 +399,19 @@ td.n b{font-weight:600;color:var(--ink)}
  background:var(--surface);display:flex;flex-direction:column;gap:4px}
 .kan-empty b{font-size:12px;font-weight:600;color:var(--ink-3)}
 .kan-empty span{font-size:10.5px;color:var(--ink-4)}
+
+/* image placeholder — no real photography in this build (see ImagePlaceholder) */
+.imgph{display:flex;align-items:center;justify-content:center;flex:none;color:var(--ink-4);
+  background:repeating-linear-gradient(45deg,var(--surface-3) 0 8px,var(--surface-2) 8px 16px);
+  border:1px solid var(--line)}
+.imgph-card{width:100%;aspect-ratio:16/10;border-radius:9px 9px 0 0;border-width:0 0 1px 0}
+.imgph-card svg{width:15%;height:15%;max-width:34px;max-height:34px}
+.imgph-sm{width:30px;height:30px;border-radius:6px}
+.imgph-sm svg{width:15px;height:15px}
+.tile-pic{padding:0;gap:0;overflow:hidden}
+.tile-pic-body{display:flex;flex-direction:column;gap:4px;flex:1;min-width:0;padding:10px 12px 12px}
+.nm-pic{display:flex;align-items:center;gap:9px;min-width:0}
+.nm-pic > div{min-width:0}
+.cfgbtn{width:26px;height:26px;border-radius:7px;display:grid;place-items:center;color:var(--ink-3);
+  border:1px solid var(--line);flex:none}
+.cfgbtn:hover{background:var(--surface-3);color:var(--ink)}

@@ -11,6 +11,7 @@ import Tickets from "./Tickets";
 import "./BillDrawer";
 import "./RequestDrawer";
 import "./TicketDrawer";
+import "./ConfigureDrawer";
 
 export const screens: Record<string, ComponentType> = {
   dash: Dashboard,

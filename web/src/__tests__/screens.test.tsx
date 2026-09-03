@@ -80,6 +80,7 @@ describe("drawers render", () => {
     ["bpo", "PO-2026-0141", "buyer"],
     ["bgrn", "PO-2026-0141", "buyer"],
     ["bven", "VN-001", "buyer"],
+    ["cconfig", "juice", "counter"],
   ];
   for (const [key, id, role] of cases) {
     it(key, () => {
@@ -114,6 +115,18 @@ describe("drawers render", () => {
     expect(html).toContain("Add vendor");
     expect(html).not.toContain("Deactivate");
     expect(html).not.toContain("Reactivate");
+  });
+
+  // Not a row in `cases` above: id "milk" opens Configure for an ingredient that is
+  // not on the Coffee Shop's own menu, which shares the "cconfig" key with "juice"
+  // (a sellable product) and would collide on the shared loop's test title.
+  it("cconfig shows a note instead of a switch for a non-sellable ingredient", () => {
+    act(() => { useApp.getState().signIn(USERS.find((u) => u.r === "counter")!.id); });
+    const notSellable = render(createElement(DRAWERS.cconfig, { id: "milk" }));
+    const sellable = render(createElement(DRAWERS.cconfig, { id: "juice" }));
+    expect(notSellable).toContain("nothing to switch on or off");
+    expect(notSellable).not.toContain("Available at");
+    expect(sellable).toContain("Available at");
   });
 });
 

@@ -4,8 +4,9 @@ import { IT, LOC, RCP } from "../../data/master";
 import { useApp } from "../../store";
 import { avail, daysCover, menuOf, parOf, qty, resv, stateLabel, stateTone } from "../../lib/selectors";
 import { fq, money0, U } from "../../lib/fmt";
-import { Btn, Card, DataTable, FilterBtn, PageHead, Pill, TableFoot, Toolbar } from "../../ui/kit";
+import { Btn, Card, DataTable, FilterBtn, Icon, PageHead, Pill, TableFoot, Toolbar } from "../../ui/kit";
 import { TypeTag } from "./Pos";
+import "./ConfigureDrawer";
 
 /** Four states, one button: the kit gives a filter a click and nothing else, so the
  *  view cycles and always returns to "All". */
@@ -15,6 +16,7 @@ type View = (typeof VIEWS)[number];
 export default function Stock() {
   const s = useApp();
   const user = useApp((x) => x.user)!;
+  const openDrawer = useApp((x) => x.openDrawer);
   const nav = useNavigate();
   const loc = user.loc;
   const L = LOC[loc];
@@ -108,6 +110,7 @@ export default function Stock() {
             { h: "Days of cover", r: true, w: "11%" },
             { h: "State", w: "10%" },
             { h: "", w: "7%" },
+            { h: "", w: "5%" },
           ]}
           rows={rows.map((r) => ({
             key: r.it,
@@ -130,6 +133,10 @@ export default function Stock() {
               r.low
                 ? <Btn size="xs" variant="gh" onClick={() => request(r.it, r.suggested)}>Request</Btn>
                 : <span className="mini dim">ok</span>,
+              <button type="button" className="cfgbtn" title={`Configure ${IT[r.it].n}`}
+                onClick={() => openDrawer("cconfig", r.it)}>
+                <Icon name="set" size={13} />
+              </button>,
             ],
           }))}
           empty={filtered

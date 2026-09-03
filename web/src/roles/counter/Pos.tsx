@@ -3,7 +3,7 @@ import { DEPTS, IT, LOC, PATIENTS, STAFF, STAFF_CREDIT_LIMIT } from "../../data/
 import { useApp } from "../../store";
 import { availOf, menuOf, priceOf } from "../../lib/selectors";
 import { money, money0, sum } from "../../lib/fmt";
-import { Alert, Avatar, Btn, Card, Field, Grid, PageHead, Tag } from "../../ui/kit";
+import { Alert, Avatar, Btn, Card, Field, Grid, ImagePlaceholder, PageHead, Tag } from "../../ui/kit";
 import type { ItemType, Payer } from "../../types";
 
 const TENDERS = ["Cash", "UPI", "Card", "Patient bill", "Staff credit", "Dept"];
@@ -78,19 +78,22 @@ export default function Pos() {
               const a = availOf(s, loc, it);
               const { p, listed, capped } = priceOf(s, loc, it);
               return (
-                <button key={it} type="button" className="tile" disabled={!a.ok}
+                <button key={it} type="button" className="tile tile-pic" disabled={!a.ok}
                   onClick={() => s.addToCart(loc, it, 1)}
                   title={a.ok ? `Add ${item.n}` : `${item.n} — ${a.why ?? "unavailable"}`}>
-                  <b style={{ fontSize: 12.5, lineHeight: 1.3 }}>{item.n}</b>
-                  <span><TypeTag t={item.t} /></span>
-                  {a.ok
-                    ? <span className="mini">{a.left} left</span>
-                    : <span className="mini" style={{ color: "var(--crit)" }}>{a.why ?? "unavailable"}</span>}
-                  <div className="sp" />
-                  <span className="mono" style={{ fontSize: 13, fontWeight: 600 }}>
-                    {capped ? <><s className="dim">{money(listed)}</s>{" "}{money(p)}</> : money(p)}
-                  </span>
-                  {capped && <span className="mini">capped at MRP {money(item.mrp ?? p)}</span>}
+                  <ImagePlaceholder size="card" />
+                  <div className="tile-pic-body">
+                    <b style={{ fontSize: 12.5, lineHeight: 1.3 }}>{item.n}</b>
+                    <span><TypeTag t={item.t} /></span>
+                    {a.ok
+                      ? <span className="mini">{a.left} left</span>
+                      : <span className="mini" style={{ color: "var(--crit)" }}>{a.why ?? "unavailable"}</span>}
+                    <div className="sp" />
+                    <span className="mono" style={{ fontSize: 13, fontWeight: 600 }}>
+                      {capped ? <><s className="dim">{money(listed)}</s>{" "}{money(p)}</> : money(p)}
+                    </span>
+                    {capped && <span className="mini">capped at MRP {money(item.mrp ?? p)}</span>}
+                  </div>
                 </button>
               );
             })}

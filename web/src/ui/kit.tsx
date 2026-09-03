@@ -409,3 +409,21 @@ export function Otp({ value, label = "Collection OTP" }: { value: string; label?
 export const QR = ({ size = 80 }: { size?: number }) => (
   <div className="qr" style={{ width: size, height: size, flex: "none" }} aria-hidden />
 );
+
+/**
+ * A blank product-photo slot. This build has no photography and no upload
+ * path — pulling images from the internet risks copyright and trademark
+ * problems, and there is no image-generation tool available here either.
+ * "card" tops a menu tile; "sm" is the inline swatch next to a product name.
+ */
+export function ImagePlaceholder({ size = "sm" }: { size?: "sm" | "card" }) {
+  return (
+    <div className={`imgph imgph-${size}`} aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round">
+        <rect x="3" y="4" width="18" height="16" rx="2.5" />
+        <circle cx="8.5" cy="9.5" r="1.6" />
+        <path d="M20 15.5 15.5 11a1.5 1.5 0 0 0-2.1 0L5 19" />
+      </svg>
+    </div>
+  );
+}

@@ -3,7 +3,9 @@ import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
 import { availOf, menuOf, priceOf } from "../../lib/selectors";
 import { money } from "../../lib/fmt";
-import { Alert, Btn, Card, DataTable, FilterBtn, PageHead, Pill, Switch, TableFoot, Toolbar } from "../../ui/kit";
+import {
+  Alert, Btn, Card, DataTable, FilterBtn, ImagePlaceholder, PageHead, Pill, Switch, TableFoot, Toolbar,
+} from "../../ui/kit";
 import { TypeTag } from "./Pos";
 import type { Availability } from "../../types";
 
@@ -89,7 +91,10 @@ export default function Availability() {
           rows={rows.map((r) => ({
             key: r.it,
             cells: [
-              <>{IT[r.it].n}<small>{IT[r.it].c} · {IT[r.it].g}</small></>,
+              <span className="nm-pic">
+                <ImagePlaceholder />
+                <div>{IT[r.it].n}<small>{IT[r.it].c} · {IT[r.it].g}</small></div>
+              </span>,
               <TypeTag t={IT[r.it].t} />,
               <span className="mini">{r.a.mode}</span>,
               r.a.ok

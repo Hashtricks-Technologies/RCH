@@ -3,7 +3,7 @@ import { IT, LOC, OUTLETS } from "../../data/master";
 import { useApp } from "../../store";
 import { availOf, menuOf } from "../../lib/selectors";
 import {
-  Alert, Card, DataTable, FilterBtn, PageHead, Pill, Switch, TableFoot, Tag, Toolbar,
+  Alert, Card, DataTable, FilterBtn, ImagePlaceholder, PageHead, Pill, Switch, TableFoot, Tag, Toolbar,
 } from "../../ui/kit";
 import { emptyFor, sortRows, useSort, type SortValue } from "./useSort";
 import type { ItemType, LocKey } from "../../types";
@@ -158,7 +158,10 @@ export default function Availability() {
           rows={sorted.map((it) => ({
             key: it,
             cells: [
-              <>{IT[it].n}<small>{IT[it].c} · HSN {IT[it].hsn}</small></>,
+              <span className="nm-pic">
+                <ImagePlaceholder />
+                <div>{IT[it].n}<small>{IT[it].c} · HSN {IT[it].hsn}</small></div>
+              </span>,
               <Tag kind={tagKind(IT[it].t)}>{IT[it].t}</Tag>,
               IT[it].g,
               offCount(it) > 0

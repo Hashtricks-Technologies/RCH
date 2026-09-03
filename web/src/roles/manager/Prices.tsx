@@ -4,7 +4,7 @@ import { useApp } from "../../store";
 import { costOf, menuOf, priceOf } from "../../lib/selectors";
 import { money, sum } from "../../lib/fmt";
 import {
-  Alert, Btn, Card, DataTable, Field, FilterBtn, FormRow, Grid, PageHead, Pill, TableFoot, Tag, Toolbar,
+  Alert, Btn, Card, DataTable, Field, FilterBtn, FormRow, Grid, ImagePlaceholder, PageHead, Pill, TableFoot, Tag, Toolbar,
 } from "../../ui/kit";
 import { emptyFor, sortRows, useSort, type SortValue } from "./useSort";
 import type { ItemType, LocKey } from "../../types";
@@ -192,7 +192,10 @@ export default function Prices() {
               return {
                 key: it,
                 cells: [
-                  <>{IT[it]?.n ?? it}<small>{IT[it]?.c}</small></>,
+                  <span className="nm-pic">
+                    <ImagePlaceholder />
+                    <div>{IT[it]?.n ?? it}<small>{IT[it]?.c}</small></div>
+                  </span>,
                   <Tag kind={tagKind(IT[it]?.t ?? "RAW")}>{IT[it]?.t}</Tag>,
                   RCP[it] ? <>{money(cost)} <small className="dim">recipe</small></> : money(cost),
                   money(pr.listed),
