@@ -1,0 +1,60 @@
+name: Deploy
+on:
+  push: { branches: [staging, production] }
+permissions: { id-token: write, contents: read }
+concurrency: { group: "deploy-${{ github.ref }}", cancel-in-progress: false }
+jobs:
+  guard:
+    name: Fast-forward guard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with: { fetch-depth: 0 }
+      - name: staging must be an ancestor of develop; production of staging
+        run: |
+          set -e
+          if [ "${GITHUB_REF_NAME}" = staging ]; then git merge-base --is-ancestor HEAD origin/develop; fi
+          if [ "${GITHUB_REF_NAME}" = production ]; then git merge-base --is-ancestor HEAD origin/staging; fi
+  deploy:
+    name: Deploy ${{ github.ref_name }}
+    needs: guard
+    if: ${{ vars.DEPLOY_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    permissions: { id-token: write, contents: write }
+    environment: ${{ github.ref_name == 'production' && 'production' || 'staging' }}
+    env:
+      NS: ${{ github.ref_name == 'production' && 'rch' || 'rch-staging' }}
+      VALUES: ${{ github.ref_name == 'production' && 'values-prod.yaml' || 'values-staging.yaml' }}
+      CLUSTER: ${{ github.ref_name == 'production' && secrets.EKS_CLUSTER_PROD || secrets.EKS_CLUSTER_STAGING }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: aws-actions/configure-aws-credentials@v4
+        with: { role-to-assume: "${{ secrets.AWS_ROLE_ARN }}", aws-region: "${{ secrets.AWS_REGION }}" }
+      - uses: aws-actions/amazon-ecr-login@v2
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with: { context: ., file: apps/api/Dockerfile, push: true, tags: "${{ secrets.ECR_REGISTRY }}/rch-api:${{ github.sha }}", cache-from: type=gha, cache-to: type=gha,mode=max }
+      - uses: docker/build-push-action@v6
+        with: { context: ., file: UI/Dockerfile, push: true, tags: "${{ secrets.ECR_REGISTRY }}/rch-ui:${{ github.sha }}", cache-from: type=gha, cache-to: type=gha,mode=max }
+      - uses: azure/setup-helm@v4
+      - run: aws eks update-kubeconfig --name "$CLUSTER" --region "${{ secrets.AWS_REGION }}"
+      - name: helm upgrade
+        run: |
+          EXTRA=""
+          if [ "${{ github.ref_name }}" = staging ]; then
+            EXTRA="--set secrets.values.DATABASE_URL=${{ secrets.DATABASE_URL }} --set secrets.values.JWT_PRIVATE_KEY=${{ secrets.JWT_PRIVATE_KEY }} --set secrets.values.JWT_PUBLIC_KEY=${{ secrets.JWT_PUBLIC_KEY }}"
+          fi
+          helm upgrade --install rch deploy/chart/rch -n "$NS" --create-namespace -f "deploy/chart/rch/$VALUES" \
+            --set image.registry="${{ secrets.ECR_REGISTRY }}" --set image.tag="${{ github.sha }}" $EXTRA --wait --timeout 10m
+      - name: Tag production
+        if: github.ref_name == 'production' && success()
+        run: |
+          git config user.name ci && git config user.email ci@users.noreply.github.com
+          TAG="v$(date -u +%Y.%m.%d)-${GITHUB_RUN_NUMBER}"; git tag "$TAG" && git push origin "$TAG"
+  skipped:
+    name: Deploy skipped (DEPLOY_ENABLED is not true)
+    needs: guard
+    if: ${{ vars.DEPLOY_ENABLED != 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Set repository variable DEPLOY_ENABLED=true and the AWS secrets to enable deploys. See deploy/RUNBOOK.md."
