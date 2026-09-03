@@ -1,10 +1,12 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { randomUUID } from "node:crypto";
 import { eq, sql } from "drizzle-orm";
-import { buildTestApp } from "../test/app.js";
+import { defineRoute, OkResponseSchema } from "@rch/contract";
+import { buildTestApp, testConfig } from "../test/app.js";
 import { seedTestDb } from "../test/seed.js";
 import { authHeaders } from "../test/auth.js";
-import type { App } from "../app.js";
+import { buildApp, type App } from "../app.js";
+import { mount } from "../routes.js";
 import { purgeIdempotencyKeys } from "./idempotency.js";
 import { idempotencyKeys } from "../db/schema/index.js";
 import { meRepo } from "../modules/me/repo.js";
@@ -96,10 +98,60 @@ describe("Idempotency-Key", () => {
     const where = eq(idempotencyKeys.key, key);
     await app.db.update(idempotencyKeys).set({ ...claim, createdAt: new Date() }).where(where);
     expect((await app.inject({ method: "PATCH", url: "/api/v1/me", headers: h, payload })).statusCode).toBe(409);
-    await app.db.update(idempotencyKeys).set({ ...claim, createdAt: new Date(Date.now() - 120_000) }).where(where);
+    // Comfortably past CLAIM_STALE_MS (120_000) - a bare 120_000 would sit right on the
+    // boundary and could flake depending on how much wall-clock time elapses between this
+    // write and the request below.
+    await app.db.update(idempotencyKeys).set({ ...claim, createdAt: new Date(Date.now() - 130_000) }).where(where);
     const retry = await app.inject({ method: "PATCH", url: "/api/v1/me", headers: h, payload });
     expect(retry.statusCode).toBe(200);
     expect(retry.headers["idempotency-replayed"]).toBeUndefined();
+  });
+  it("never records a 429 from the rate limiter as the idempotent outcome", async () => {
+    // A dedicated app with a tiny budget, sharing `app`'s already-migrated schema/db so this
+    // test does not have to seed or migrate anything of its own, and does not drag every other
+    // test in this file onto a shared limiter (see security.test.ts for the same pattern).
+    const throttled = await buildApp(testConfig({ RATE_LIMIT_PER_MINUTE: "10" }), { db: app.db, migrationsSchema: app.testDb!.schemaName });
+    await throttled.ready();
+    try {
+      const h = await authHeaders(throttled, "u1");
+      // Burn the budget with reads: they need no Idempotency-Key, so none of this leaves a claim.
+      for (let i = 0; i < 10; i++) {
+        expect((await throttled.inject({ method: "GET", url: "/api/v1/me", headers: h })).statusCode, `read ${i + 1}`).toBe(200);
+      }
+      const key = randomUUID();
+      const r = await throttled.inject({ method: "PATCH", url: "/api/v1/me", headers: { ...h, "idempotency-key": key }, payload: { ph: "80000 00008" } });
+      expect(r.statusCode).toBe(429);
+      expect((await app.db.select().from(idempotencyKeys).where(eq(idempotencyKeys.key, key))).length).toBe(0);
+      // The claim is gone, so retrying the same key is a fresh attempt rather than a replay -
+      // even though it is still throttled (the budget has not refilled).
+      const retry = await throttled.inject({ method: "PATCH", url: "/api/v1/me", headers: { ...h, "idempotency-key": key }, payload: { ph: "80000 00008" } });
+      expect(retry.statusCode).toBe(429);
+      expect(retry.headers["idempotency-replayed"]).toBeUndefined();
+    } finally {
+      await throttled.close();
+    }
+  });
+  it("never records a transient 503 as the idempotent outcome", async () => {
+    // A test-only write route, mounted (via the real `mount()` a module would use) before
+    // `ready()` so it picks up the same authenticate -> roleGate -> idempotency preHandler
+    // chain as a real write, then made to fail the way an overloaded dependency would.
+    const boomRoute = defineRoute({ method: "POST", path: "/__test/boom", access: "any", response: OkResponseSchema });
+    const boomApp = await buildApp(testConfig(), { db: app.db, migrationsSchema: app.testDb!.schemaName });
+    mount(boomApp, boomRoute, async () => {
+      const err = new Error("simulated overload");
+      (err as { statusCode?: number }).statusCode = 503;
+      throw err;
+    });
+    await boomApp.ready();
+    try {
+      const h = await authHeaders(boomApp, "u1");
+      const key = randomUUID();
+      const r = await boomApp.inject({ method: "POST", url: "/api/v1/__test/boom", headers: { ...h, "idempotency-key": key } });
+      expect(r.statusCode).toBe(503);
+      expect((await app.db.select().from(idempotencyKeys).where(eq(idempotencyKeys.key, key))).length).toBe(0);
+    } finally {
+      await boomApp.close();
+    }
   });
   it("purge removes expired rows only", async () => {
     await app.db.update(idempotencyKeys).set({ expiresAt: new Date(Date.now() - 1000) });

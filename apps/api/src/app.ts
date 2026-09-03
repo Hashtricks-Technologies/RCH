@@ -26,6 +26,14 @@ export async function buildApp(config: Config, deps: AppDeps = {}): Promise<App>
     bodyLimit: 1024 * 1024,
     forceCloseConnections: "idle",
     disableRequestLogging: true, // the logging plugin writes one structured line per request instead
+    // Requests must finish inside the idempotency stale window (CLAIM_STALE_MS,
+    // plugins/idempotency.ts): otherwise a client's retry could take over a claim while the
+    // original, merely-slow request is still running, and both would execute the write.
+    // `requestTimeout` bounds how long Fastify lets a request run once headers are in;
+    // `connectionTimeout` bounds how long it waits for those headers to arrive at all. Both
+    // are well inside CLAIM_STALE_MS (120s), so a takeover only ever finds a truly dead claim.
+    requestTimeout: 30_000,
+    connectionTimeout: 10_000,
   }).withTypeProvider<ZodTypeProvider>();
   app.decorate("config", config);
   app.setValidatorCompiler(validatorCompiler);
