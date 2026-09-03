@@ -8,9 +8,28 @@ Royal Care Hospital's F&B inventory and billing frontend: one item master and on
 ledger behind a central store, a kitchen and three retail outlets, covering purchase
 requisition → purchase order → goods receipt → production → issue → counter sale.
 
-There is **no backend, no database and no authentication**. State lives in memory for the
-session; only the theme and a few UI prefs reach `localStorage`. A refresh returns to the
-seeded starting position in `UI/src/data/seed.ts`.
+The backend is **designed but not yet built** — the design is
+`docs/superpowers/specs/2026-09-03-backend-design.md` and it is the contract for all backend
+work (see *Backend* below). Until its phase 1 lands, the frontend has no server, no database
+and no authentication: state lives in memory for the session, only the theme and a few UI
+prefs reach `localStorage`, and a refresh returns to the seeded starting position in
+`UI/src/data/seed.ts`.
+
+## Branches
+
+Three long-lived branches, one environment each. Code moves forward only, by fast-forward
+merge, so what reaches production is byte-identical to what passed on staging.
+
+| Branch | Role | Deploys to |
+|---|---|---|
+| `develop` | **Default.** All work lands here (feature branches by PR, or direct commits while the team is one person). | nothing — CI only |
+| `staging` | Release candidate | `rch-staging` namespace, on push |
+| `production` | What the hospital runs | `rch` namespace, on push, behind a GitHub environment approval |
+
+Promote with `git checkout staging && git merge --ff-only develop && git push`, then the same
+from `staging` into `production`. Never merge the other way except a hotfix: branch from
+`production`, PR into `production`, then merge `production` back into `staging` and `develop`.
+`main` no longer exists; it was renamed to `develop` on 2026-09-03.
 
 ## Commands
 
@@ -167,6 +186,36 @@ the host does not supply one):
   (C6, M3, M8, H4, UA-14…). Read the surrounding comment before changing behaviour one covers.
 - `screens.test.tsx` / `app.test.tsx` — every role × every nav key renders, bare and in-shell.
 - `theme.test.ts` — theme resolution and persistence.
+
+## Backend
+
+Status: **spec written, implementation not started.** Read
+`docs/superpowers/specs/2026-09-03-backend-design.md` before touching anything server-side;
+it records every decision already taken (§2) so they are not reopened in chat.
+
+What it commits to, in one breath: a standalone TypeScript backend in a pnpm + Turborepo
+monorepo — `packages/contract` (Zod schemas; `types.ts` moves here), `packages/domain` (pure
+rules shared by UI and server), `apps/api` (Fastify 5 + Drizzle on PostgreSQL 17), `UI/`
+(this app, its store becoming an API client), `deploy/chart/rch` (Helm, for EKS). Database is
+Amazon RDS in staging/production and a `postgres:17` Docker container locally and in CI.
+Auth is employee id + password with rotating refresh tokens. Offline mode is out of scope.
+
+Rules that bind once code exists — spec §5.1 has the enforcement mechanism for each:
+
+- A business rule is written once, in `packages/domain`; the server enforces it, the UI only
+  previews with it. A rule inlined in a route handler or a component is a defect.
+- Wire types are Zod schemas in `packages/contract`; nothing else declares them.
+- One route manifest in `packages/contract/routes.ts` drives both the server's registration
+  and the single generic API client in `UI/src/api/client.ts`. No hand-written fetch wrappers.
+- Every server module is `routes.ts` / `service.ts` / `repo.ts` / `<name>.test.ts`.
+- `stock_moves` is append-only and `postMoves()` in `apps/api/src/lib/ledger.ts` is the only
+  thing that writes it or `stock_balances`.
+- Status transitions are a table in `packages/domain/transitions.ts`, read by both sides.
+
+Build order is spec §14 — six phases, each cutting one role over to the server and deleting
+its in-memory path; nothing dual-runs. "Production ready" is the checklist in spec §12 and
+gates every phase. When phase 1 lands, the *Commands* section above changes to `pnpm` /
+`turbo` at the repo root — update it in the same commit.
 
 ## Docs
 
