@@ -133,7 +133,8 @@ export function createPurchaseOrdersService(db: Db) {
       });
     },
 
-    /** A rate the buyer negotiated, or a quantity they cut. Only the second moves a claim. */
+    /** A rate the buyer negotiated, a quantity they cut, or both in one press. Only the
+     *  quantity moves a claim, so a rate on its own tells the procurement list nothing. */
     // Editing a draft line writes no history row — the store never signed one either, and a
     // draft is not a decision. The claims are taken all the same, so the route reads like its
     // siblings and a later audit trail has the caller to hand.
@@ -161,16 +162,26 @@ export function createPurchaseOrdersService(db: Db) {
         // dropping a line, and it is the one that says what went back on the list.
         assertRule(want > 0, "Enter a quantity, or remove the line");
         assertRule(want <= line.qty, "Add another pick from the procurement list to increase this line");
+        // A patch may carry both, and both are honoured in the one rewrite below: the claim
+        // moves for the quantity and the negotiated rate is written on the same line. Letting
+        // the quantity win would drop a number the buyer just typed without saying so.
+        const rate = body.rate ?? line.rate;
         const { released, left } = releaseClaim(line.src, round3(line.qty - want));
         await returnClaims(tx, released);
-        await purchaseOrdersRepo.writeLines(tx, id, lines.map((l, i) => (i === n ? { ...l, qty: want, src: left } : l)));
+        await purchaseOrdersRepo.writeLines(tx, id, lines.map((l, i) => (i === n ? { ...l, qty: want, rate, src: left } : l)));
         const back = round3(line.qty - want);
         const unit = item?.u ?? "nos";
+        const name = item?.n ?? line.it;
         const changed = ["po", "prq"] as const;
         await emitChanged(tx, changed);
         return {
           result: await purchaseOrdersRepo.wire(tx, id), changed: [...changed],
-          message: `${item?.n ?? line.it} cut to ${fq(want, unit)} — ${fq(back, unit)} back on the procurement list`,
+          // The two single-field sentences composed rather than a third invented one: "cut to
+          // <qty>" from this branch and "at <rate>" from the rate-only branch, so a buyer who
+          // changed both reads one line naming both in the words each change already had.
+          message: body.rate === undefined
+            ? `${name} cut to ${fq(want, unit)} — ${fq(back, unit)} back on the procurement list`
+            : `${name} cut to ${fq(want, unit)} at ${money(rate)} — ${fq(back, unit)} back on the procurement list`,
         };
       });
     },

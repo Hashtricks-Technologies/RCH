@@ -195,6 +195,15 @@ describe("PATCH and DELETE on a draft's lines", () => {
     expect(await pending(prq, 0)).toBe(20);
   });
 
+  it("applies a quantity and a rate sent together, and names both", async () => {
+    const { prq, id } = await draft();
+    const b = (await patch("u5", `/purchase-orders/${id}/lines/0`, { qty: 45, rate: 51.5 })).json();
+    expect(b.result.lines[0]).toMatchObject({ qty: 45, rate: 51.5, src: [{ prq, line: 0, qty: 45 }] });
+    expect(b.changed).toEqual(["po", "prq"]);
+    expect(b.message).toBe("Milk 1L (toned) cut to 45.000 at ₹51.50 — 15.000 back on the procurement list");
+    expect(await pending(prq, 0)).toBe(35);
+  });
+
   it("removes a line, gives its whole claim back, and closes the gap in the numbering", async () => {
     const prq = await given.requisition(app.testDb!.db, { st: "Approved", lines: [
       { it: "milk", qty: 80, appr: 80 }, { it: "butter", qty: 6, appr: 6 },
