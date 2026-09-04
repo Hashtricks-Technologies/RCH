@@ -19,23 +19,25 @@ fail_with() {
 }
 
 # ---------------------------------------------------------------------------
-# 1) Protected tables. stockMoves, stockBalances, sequences, documentHistory and
-#    idempotencyKeys may be written only from apps/api/src/lib/**, apps/api/src/db/**,
-#    apps/api/src/plugins/idempotency.ts, and test files (elsewhere they may be
-#    imported for reads only — oxlint cannot see call shape, so this is a grep).
+# 1) Protected tables. stockMoves, stockBalances, sequences, documentHistory,
+#    idempotencyKeys and reservations may be written only from apps/api/src/lib/**,
+#    apps/api/src/db/**, apps/api/src/plugins/idempotency.ts, and test files (elsewhere
+#    they may be imported for reads only — oxlint cannot see call shape, so this is a
+#    grep). `reservations` joined the list with lib/reservations.ts: a reservation is a
+#    promise against a balance, and a module that wrote one itself would skip the lock.
 # ---------------------------------------------------------------------------
 echo "== protected tables: writes stay behind lib/, db/, idempotency.ts =="
 
 allowed_path_re='src/lib/|src/db/|plugins/idempotency\.ts|\.test\.ts'
 
-orm_pattern='insert\(stockMoves\)|insert\(stockBalances\)|update\(stockBalances\)|delete\(stockBalances\)|insert\(sequences\)|update\(sequences\)|insert\(documentHistory\)|insert\(idempotencyKeys\)|update\(idempotencyKeys\)'
+orm_pattern='insert\(stockMoves\)|insert\(stockBalances\)|update\(stockBalances\)|delete\(stockBalances\)|insert\(sequences\)|update\(sequences\)|insert\(documentHistory\)|insert\(idempotencyKeys\)|update\(idempotencyKeys\)|insert\(reservations\)|update\(reservations\)|delete\(reservations\)'
 orm_hits="$(grep -rn -E "$orm_pattern" apps/api/src --include="*.ts" | grep -v -E "$allowed_path_re" || true)"
 if [ -n "$orm_hits" ]; then
   fail_with "a protected table is written (via Drizzle) outside apps/api/src/lib, apps/api/src/db, plugins/idempotency.ts, or a test file:"
   echo "$orm_hits" >&2
 fi
 
-raw_sql_pattern='insert +into +(stock_moves|stock_balances|sequences|document_history|idempotency_keys)|update +(stock_balances|sequences|idempotency_keys)|delete +from +stock_balances'
+raw_sql_pattern='insert +into +(stock_moves|stock_balances|sequences|document_history|idempotency_keys|reservations)|update +(stock_balances|sequences|idempotency_keys|reservations)|delete +from +(stock_balances|reservations)'
 raw_sql_hits="$(grep -rn -i -E "$raw_sql_pattern" apps/api/src --include="*.ts" | grep -v -E "$allowed_path_re" || true)"
 if [ -n "$raw_sql_hits" ]; then
   fail_with "a protected table is written (via raw sql\`...\`) outside apps/api/src/lib, apps/api/src/db, plugins/idempotency.ts, or a test file:"

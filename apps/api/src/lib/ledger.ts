@@ -15,6 +15,27 @@ export type MoveKind = (typeof stockMoves.$inferInsert)["kind"];
 export type Move = { loc: string; it: string; qty: number; kind: MoveKind; refType: string; refId: string; by?: string; at?: Date };
 
 /**
+ * Take the balance row locks for these (loc, item) pairs, creating a zero row where none
+ * exists, in one fixed order across every writer so two batches cannot deadlock. `postMoves`
+ * calls it before appending; a path that only reserves — issuing a ticket, a shop transfer —
+ * calls it before reading `on_hand`, because a reservation is a promise against a balance and
+ * two promises made from the same read are the same stock promised twice.
+ *
+ * Duplicates are folded and the pairs are visited in (loc, item) order. Nested rather than
+ * keyed by a joined string, for the reason postMoves gives: no separator can collide.
+ */
+export async function lockBalances(tx: Tx, cells: readonly { loc: string; it: string }[]): Promise<void> {
+  const byLoc = new Map<string, Set<string>>();
+  for (const c of cells) (byLoc.get(c.loc) ?? byLoc.set(c.loc, new Set()).get(c.loc)!).add(c.it);
+  for (const loc of [...byLoc.keys()].sort()) {
+    for (const it of [...byLoc.get(loc)!].sort()) {
+      await tx.insert(stockBalances).values({ loc, itemKey: it, onHand: 0 }).onConflictDoNothing();
+      await tx.execute(sql`select 1 from stock_balances where loc = ${loc} and item_key = ${it} for update`);
+    }
+  }
+}
+
+/**
  * The one door to the ledger. Locks every (loc, item) balance the batch touches, in a fixed
  * order so two writers cannot deadlock, appends the moves, then adds the deltas to the cache.
  */
@@ -32,10 +53,7 @@ export async function postMoves(tx: Tx, moves: Move[]): Promise<void> {
   // A fixed order across every writer, so two batches touching the same pair cannot deadlock.
   const ordered = [...byLoc.keys()].sort().flatMap((loc) =>
     [...byLoc.get(loc)!.keys()].sort().map((it) => ({ loc, it, delta: byLoc.get(loc)!.get(it)! })));
-  for (const { loc, it } of ordered) {
-    await tx.insert(stockBalances).values({ loc, itemKey: it, onHand: 0 }).onConflictDoNothing();
-    await tx.execute(sql`select 1 from stock_balances where loc = ${loc} and item_key = ${it} for update`);
-  }
+  await lockBalances(tx, ordered);
   await tx.insert(stockMoves).values(moves.map((m) => ({
     loc: m.loc, itemKey: m.it, qty: round3(m.qty), kind: m.kind, refType: m.refType, refId: m.refId, byUser: m.by, at: m.at,
   })));

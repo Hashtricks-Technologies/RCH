@@ -21,6 +21,7 @@ const SAMPLES: Record<string, Record<string, unknown>> = {
   askShop: { to: "kiosk", it: "SKU-1", qty: 6, note: "Lunch rush cleared us out" },
   answerShopAsk: { grant: 6 },
   declineShopAsk: { reason: "We are short ourselves" },
+  distribute: { it: "SKU-1", qty: 5, to: "kiosk" },
 };
 // `routes` is a const object, so `r.body` is a union of every literal schema type; the cast
 // keeps this loop about the shared `safeParse` and not about zod's generics.

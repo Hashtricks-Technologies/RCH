@@ -16,10 +16,16 @@ export default fp(async (app) => {
   });
 }, { name: "rbac", dependencies: ["auth"] });
 
+/** For a location-scoped write whose location is only known once the document is read: a
+ *  handover carries a ticket id and nothing else, so the row decides, not the request. */
+export function requireLocOf(claims: { loc: string }, loc: string, what = "that location"): void {
+  if (claims.loc !== loc) throw new ForbiddenError(`You can only do this for ${what}.`);
+}
+
 /**
- * For location-scoped writes: the caller's location must be the row's.
+ * For a location-scoped write whose location is in the request.
  * @public — consumed by Phase 2 write endpoints (spec §9.2).
  */
 export function requireLoc(req: FastifyRequest, loc: LocKey | string, what = "that location"): void {
-  if (req.user.loc !== loc) throw new ForbiddenError(`You can only do this for ${what}.`);
+  requireLocOf(req.user, loc, what);
 }

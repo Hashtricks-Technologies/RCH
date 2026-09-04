@@ -43,3 +43,8 @@ export const StockResponseSchema = z.strictObject({ stock: SnapshotSchema.shape.
  *  one number so that `applyBills` replacing the store's list wholesale stays correct. */
 export const BILL_DAYS = 7;
 export const BillsResponseSchema = z.array(D.BillSchema);
+/** The three movement collections on their own, so a write can refetch just the slice it
+ *  named in `changed` instead of pulling the whole snapshot back down. */
+export const RequestsResponseSchema = z.array(D.StockRequestSchema);
+export const TicketsResponseSchema = z.array(D.TicketSchema);
+export const ShopAsksResponseSchema = z.array(D.ShopAskSchema);

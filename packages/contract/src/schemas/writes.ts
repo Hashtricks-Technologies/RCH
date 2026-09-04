@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { LocKeySchema, PriceListSchema, TenderSchema } from "./common.js";
-import { PayerSchema, ShopAskSchema, StockRequestSchema, TicketSchema } from "./documents.js";
+import { PayerSchema, ProdOrderSchema, ShopAskSchema, StockRequestSchema, TicketSchema } from "./documents.js";
 
 /** Every domain slice a write can touch, so a client can invalidate/refetch precisely instead
  *  of reloading the whole snapshot after each mutation. Extracted so `events.ts` can name one
@@ -41,7 +41,7 @@ export const QtySchema = z.number().finite().multipleOf(0.001).max(100000);
 export const ReqLineInputSchema = z.strictObject({ it: z.string().min(1).max(64), qty: QtySchema });
 export const CreateRequestBodySchema = z.strictObject({ lines: z.array(ReqLineInputSchema).min(1).max(50), note: z.string().max(500).default(""), urgent: z.boolean().default(false) });
 export const DocIdParamsSchema = z.strictObject({ id: z.string().min(1).max(40) });
-export const ApproveRequestBodySchema = z.strictObject({ appr: z.array(z.number().finite().max(100000)).min(1).max(50), note: z.string().max(500).default("") });
+export const ApproveRequestBodySchema = z.strictObject({ appr: z.array(QtySchema).min(1).max(50), note: z.string().max(500).default("") });
 export const RejectRequestBodySchema = z.strictObject({ note: z.string().max(500) });
 export const HandoverBodySchema = z.strictObject({ otp: z.string().regex(/^\d{6}$/).optional() });
 export const TransferBodySchema = z.strictObject({ from: LocKeySchema, to: LocKeySchema, it: z.string().min(1).max(64), qty: QtySchema });
@@ -55,3 +55,10 @@ export const DeclineShopAskBodySchema = z.strictObject({ reason: z.string().max(
 export const ApprovalResultSchema = z.strictObject({ request: StockRequestSchema, trimmed: z.boolean() });
 export const IssueResultSchema = z.strictObject({ request: StockRequestSchema, ticket: TicketSchema });
 export const ShopAskSentResultSchema = z.strictObject({ ask: ShopAskSchema, ticket: TicketSchema });
+
+// The kitchen's two ticket paths (Task 12). A distribution names one item and one destination;
+// the kitchen decides the quantity, so there is no request behind it to read the lines from.
+export const DistributeBodySchema = z.strictObject({ it: z.string().min(1).max(64), qty: QtySchema, to: LocKeySchema });
+/** Dispatch changes the order and mints the ticket that carries it, and the kitchen needs both
+ *  in one breath: the order moves to Dispatched and the collector is read the OTP. */
+export const DispatchResultSchema = z.strictObject({ order: ProdOrderSchema, ticket: TicketSchema });

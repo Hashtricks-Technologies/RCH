@@ -8,4 +8,7 @@ export default fp(async (app) => {
   // Reads of the same collections the snapshot carries, scoped the same way — so they live here.
   mount(app, routes.stock, async (req) => svc.stock(req.user));
   mount(app, routes.bills, async (req) => svc.bills(req.user, req.query.days));
+  mount(app, routes.requests, async (req) => svc.requests(req.user));
+  mount(app, routes.ticketsList, async (req) => svc.tickets(req.user));
+  mount(app, routes.shopAsks, async (req) => svc.shopAsks(req.user));
 }, { name: "module:snapshot", dependencies: ["auth", "rbac", "db"] });

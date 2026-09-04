@@ -1,12 +1,12 @@
 import type { z } from "zod";
 import { BILL_DAYS } from "@rch/contract";
-import type { Bill, SnapshotSchema, StockResponseSchema } from "@rch/contract";
+import type { Bill, ShopAsk, SnapshotSchema, StockRequest, StockResponseSchema, Ticket } from "@rch/contract";
 import type { Db } from "../../db/client.js";
 import { NotFoundError } from "../../lib/errors.js";
 import { toWireUser } from "../../lib/wire.js";
 import type { AccessClaims } from "../../plugins/auth.js";
 import { snapshotRepo } from "./repo.js";
-import { scope, scopeBills, scopeStock } from "./scope.js";
+import { scope, scopeBills, scopeRequests, scopeShopAsks, scopeStock, scopeTickets } from "./scope.js";
 import * as M from "./readers/master.js";
 import * as S from "./readers/stock.js";
 import * as D from "./readers/documents.js";
@@ -41,5 +41,9 @@ export function createSnapshotService(db: Db) {
     async bills(claims: AccessClaims, days: number): Promise<Bill[]> {
       return scopeBills(await D.readBills(db, days), claims);
     },
+    /** The request desk on its own — what a write naming "req" refetches. */
+    async requests(claims: AccessClaims): Promise<StockRequest[]> { return scopeRequests(await D.readRequests(db), claims); },
+    async tickets(claims: AccessClaims): Promise<Ticket[]> { return scopeTickets(await D.readTickets(db), claims); },
+    async shopAsks(claims: AccessClaims): Promise<ShopAsk[]> { return scopeShopAsks(await D.readShopAsks(db), claims); },
   };
 }
