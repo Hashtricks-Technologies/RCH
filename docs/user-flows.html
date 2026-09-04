@@ -834,6 +834,7 @@ footer p{max-width:74ch;margin:0 0 8px}
   <div class="chain"><span class="s">Issued</span><span class="ar">→</span><span class="s k">Picked &mdash; source debited</span><span class="ar">→</span>
     <span class="s">In transit</span><span class="ar">→</span><span class="s k">Received &mdash; destination credited</span><span class="ar">→</span><span class="s">Closed</span></div>
   <div class="prose"><p class="f">Branches: <strong>Short received</strong> when the quantity scanned in is less than the quantity scanned out, which raises a discrepancy with an owner rather than balancing itself. <strong>Expired</strong> if never collected inside the reservation window.</p></div>
+  <div class="note"><strong>Every screen watching a document updates itself</strong>The request &rarr; approval &rarr; issue &rarr; handover &rarr; receipt chain above runs on the server, and every open screen holds one live connection to it. The outlet manager does not refresh the approval queue to see a request the counter just raised, and the counter does not refresh to see the store keeper's ticket &mdash; the screen already changed by the time either of them looks.</div>
 
   <h3>Production batch</h3>
   <div class="chain"><span class="s">Planned</span><span class="ar">→</span><span class="s">Open</span><span class="ar">→</span>
@@ -860,7 +861,7 @@ footer p{max-width:74ch;margin:0 0 8px}
     <tbody>
       <tr><th scope="row">Stock handed over without a ticket</th>
         <td>Source shows stock it no longer has, destination sells what the system says it does not hold. Both counters' figures are wrong and neither knows.</td>
-        <td>The ticket, not the approval, is what opens the store room. A supervisor override exists for out-of-hours, but it generates the ticket retrospectively and is logged as an override.</td></tr>
+        <td>The ticket, not the approval, is what opens the store room. A supervisor override exists for out-of-hours &mdash; at the store or the kitchen only &mdash; but it skips the collector's six-digit code on a ticket that already exists, not the ticket itself, and it writes one line to the audit trail: "Handed over &mdash; supervisor override".</td></tr>
       <tr><th scope="row">Receiving scan skipped</th>
         <td>Quantity sits in transit forever. It belongs to nobody, so nobody chases it.</td>
         <td>In-transit items over a threshold appear on the store keeper's control screen as <em>stuck</em>, with the ticket, the time and the person who picked it.</td></tr>

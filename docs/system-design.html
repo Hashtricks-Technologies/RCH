@@ -533,7 +533,7 @@ footer a{color:var(--accent)}
       <div class="card"><h4>The ticket is the authority</h4><p>Number plus QR, naming source, destination, item, approved quantity, batch and collector. Presented at the store, scanned, and only then does anything move. No ticket, no goods, whatever anyone says on the phone.</p></div>
       <div class="card"><h4>Both ends scan</h4><p>The receiving outlet confirms what actually arrived. Difference between picked and received is a discrepancy with an owner and a reason code, not a rounding error absorbed by the store.</p></div>
       <div class="card"><h4>Inventory can push, too</h4><p>The same document runs in reverse: the store originates a transfer against par level, or recalls near-expiry stock from a slow outlet to a busy one. The outlet acknowledges rather than requests. One document, a direction flag.</p></div>
-      <div class="card"><h4>Emergency path, still recorded</h4><p>An out-of-hours override lets a supervisor authorise collection against a PIN, generating the ticket retrospectively. The escape hatch exists because it will be used; making it a logged path is better than pretending it will not happen.</p></div>
+      <div class="card"><h4>Emergency path, still recorded</h4><p>An out-of-hours handover lets the store or the kitchen wave a collector through on a supervisor override instead of the usual code &mdash; the ticket already exists, only the code is skipped. The escape hatch exists because it will be used; making it a logged path is better than pretending it will not happen. It writes one line to the audit trail naming exactly what ran: <code>Handed over &mdash; supervisor override</code>.</p></div>
     </div>
 
     <div class="formula">
@@ -542,6 +542,8 @@ footer a{color:var(--accent)}
       <span class="c">// and the number that decides whether to approve at all</span><br>
       <em>days of cover</em> = available to promise &divide; average daily consumption at that location
     </div>
+
+    <div class="note"><strong>Every open screen hears it happen</strong>The approver's queue, the store's issue desk and the counter's own request list all watch one persistent connection per browser rather than polling. A write commits, Postgres <code>NOTIFY</code>s every server replica, and each one forwards the notice down every stream it is holding; the browser that receives it re-reads only the slice that changed. A request approved in one window appears in another's queue with no reload and no delay worth noticing.</div>
   </section>
 
   <!-- 05 -->

@@ -81,7 +81,7 @@ password. Full sequence, CLI reference and deployment procedures are in `deploy/
 ## Status
 
 React + Vite frontend, strict TypeScript, light and dark themes, backed by a Fastify + Drizzle
-+ PostgreSQL API (`apps/api`) under Phases 1–2 of the backend rollout (spec §14). Real logic
++ PostgreSQL API (`apps/api`) under Phases 1–3 of the backend rollout (spec §14). Real logic
 sits behind the screens rather than mock data:
 
 - **One ledger.** Nothing is created or destroyed without a document. Production consumes its
@@ -102,10 +102,23 @@ locations, prices, menus and every open document — is read from the server on 
 billing and the outlet manager's prices and menus are on the server too: a sale is decided by
 `POST /bills` (pricing, the payer rule and the stock check all run there, so two counters can
 never both sell the last unit), and availability toggles and price/menu edits go through the
-same round trip. Every other mutation (approvals, tickets, purchase orders, …) is still
-in-memory in the browser store until later phases move it server-side (spec §14). The backend
-design is `docs/superpowers/specs/2026-09-03-backend-design.md`; operations are
-`deploy/RUNBOOK.md`.
+same round trip.
+
+The whole stock-request chain is server-side as well: a counter raises a request, the outlet
+manager approves or trims it against what the central store can still promise, the store
+keeper turns the approval into a pick ticket, the collector hands it over on a six-digit OTP
+(or, at the store or the kitchen, a labelled supervisor override), and the receiving counter
+scans it in. The same ticket machinery carries a shop-to-shop transfer, a shop directly asking
+a peer shop for stock it is holding, and the kitchen pushing a production order or a tray out
+the door. Every signed-in browser hears about it as it happens — a request raised in one
+window shows up on another's approvals screen without a reload, over one persistent connection
+per browser (`GET /events`).
+
+Every other mutation — the rest of production (making a batch, moving a board status) and all
+of procurement (requisitions, purchase orders, goods receipt) — is still in-memory in the
+browser store until later phases move it server-side (spec §14). The backend design is
+`docs/superpowers/specs/2026-09-03-backend-design.md`; operations, including how to read the
+event stream's health, are `deploy/RUNBOOK.md`.
 
 ---
 

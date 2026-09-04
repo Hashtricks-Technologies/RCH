@@ -1,7 +1,7 @@
 # Royal Care — F&B Inventory (React + Vite)
 
 Frontend for the hospital's kitchen, restaurant and retail-counter operation. Five roles,
-one shared stock ledger, backed by the `apps/api` Fastify service (Phases 1–2 — spec §14).
+one shared stock ledger, backed by the `apps/api` Fastify service (Phases 1–3 — spec §14).
 
 ## Stack
 
@@ -38,9 +38,14 @@ pnpm --filter @rch/ui test
 ```
 
 The dev server proxies `/api` to the Fastify API on `:3000`. Master data, prices, menus and
-every open document are hydrated from `GET /snapshot` on load (`hydrateMaster`); every
-mutation (billing, approvals, tickets, …) still runs against the in-memory Zustand store until
-later phases move it server-side (spec §14).
+every open document are hydrated from `GET /snapshot` on load (`hydrateMaster`). Billing,
+availability, prices and menus (Phase 2), and the whole stock-request chain, shop transfers,
+shop asks and the kitchen's two ticket-raising writes (Phase 3) all run against the server —
+nineteen store actions in total, listed in `../CLAUDE.md`'s *One Zustand store*. `UI/src/api/
+events.ts` opens one `fetch`-based SSE connection per session and refetches whatever a write
+elsewhere changed, so two open tabs stay in sync without a reload. The rest of production
+(`setOrderStatus`, `makeProduct`) and all of procurement still run against the in-memory
+Zustand store until later phases move them server-side (spec §14).
 
 ## Sign in
 
@@ -91,7 +96,9 @@ merely hidden from the sidebar.
 
 **Two approval stages.** A counter raises a request → the **outlet manager** approves and may
 trim quantities → the **store keeper** issues a pick ticket → the counter collects and
-receives. Approval reserves stock; the handover scan is what actually moves it.
+receives. Approval reserves stock; the handover scan is what actually moves it. The whole
+chain is server-side (`apps/api/src/modules/{requests,tickets}`); a trim beyond what the
+central store can still promise is the server's own decision, not the browser's.
 
 **MRP is a hard ceiling.** Traded goods carry a printed MRP. No price list, floor or role may
 sell above it — `savePrice` refuses and says so.
@@ -111,7 +118,9 @@ Kind, priority, and an Open → Acknowledged → Resolved → Closed lifecycle w
 
 **OTP instead of a scanned code.** A pick ticket carries six digits. The collector reads them
 to the store keeper, who types them at handover; a wrong OTP is refused. A supervisor override
-exists and is labelled as one.
+exists and is labelled as one — restricted to the store and the kitchen, and recorded as
+`Handed over — supervisor override` in `document_history` so it stays traceable to who did it
+and when.
 
 **Rate contracts.** Vendor and item, rate, validity window and minimum order quantity. The
 store keeper maintains them; procurement prices an order from them and is warned when a rate
@@ -129,8 +138,11 @@ destination. The outlet manager sees it happen rather than standing in the middl
 
 ## Not built yet
 
-Most mutations are still in-memory (approvals, tickets, purchase orders, …) — Phase 1
-delivered persistence and real authentication for reads, and Phase 2 cut billing, availability
-and prices/menus over to the server (spec §14 has the phase-by-phase cutover). Barcode
-scanning, patient-bill posting and GST output registers remain out of scope. The backend
-design is `../docs/superpowers/specs/2026-09-03-backend-design.md`.
+The rest of production (`setOrderStatus`, `makeProduct`) and all of procurement (vendors,
+rate contracts, requisitions, purchase orders, goods receipt) are still in-memory — Phase 1
+delivered persistence and real authentication for reads, Phase 2 cut billing, availability and
+prices/menus over to the server, and Phase 3 cut over the request chain, tickets, transfers,
+shop asks and the kitchen's two ticket-raising writes, adding live updates over SSE (spec §14
+has the phase-by-phase cutover). Barcode scanning, patient-bill posting and GST output
+registers remain out of scope. The backend design is
+`../docs/superpowers/specs/2026-09-03-backend-design.md`.
