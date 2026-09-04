@@ -12,11 +12,6 @@ afterAll(async () => { await app.close(); });
 const getAs = async (userId: string, url: string) => { const r = await app.inject({ method: "GET", url, headers: await authHeaders(app, userId) }); expect(r.statusCode, r.body).toBe(200); return r.json(); };
 const get = (userId: string) => getAs(userId, "/api/v1/snapshot");
 
-/** What the readers that feed the UI still serve: the five locations an operator works at.
- *  `FX.LOC` gained `quarantine` with Phase 5's `StockLoc`, and `readers/master.ts` keeps
- *  filtering it out until the store's stock screen can show it. */
-const WORKING_LOCS = Object.fromEntries(FX.ALL_LOCS.map((l) => [l, FX.LOC[l]]));
-
 describe("GET /snapshot", () => {
   it("validates against the contract and carries the caller", async () => {
     const s = await get("u2");
@@ -26,7 +21,7 @@ describe("GET /snapshot", () => {
   it("master data equals the fixtures", async () => {
     const s = await get("u2");
     expect(s.items).toEqual(FX.IT);
-    expect(s.locations).toEqual(WORKING_LOCS);
+    expect(s.locations).toEqual(FX.LOC);
     expect(s.recipes).toEqual(FX.RCP);
     expect(s.prices).toEqual(FX.PL);
     expect(s.menu).toEqual(FX.MENU);
@@ -195,5 +190,50 @@ describe("GET /prod-orders and GET /batches", () => {
     const orders = (await app.inject({ method: "GET", url: "/api/v1/prod-orders", headers: await authHeaders(app, "u6") })).json();
     expect(orders.length).toBeGreaterThan(0);
     expect(orders.every((o: { from: string }) => o.from === "kiosk")).toBe(true);
+  });
+});
+
+describe("the six buying reads", () => {
+  const READS = [
+    ["requisitions", "prq"], ["purchase-orders", "po"], ["grns", "grn"],
+    ["vendors", "vendors"], ["contracts", "contracts"], ["product-requests", "productReqs"],
+  ] as const;
+
+  it("hand the buyer exactly what the buyer's snapshot carries", async () => {
+    const snap = await getAs("u5", "/api/v1/snapshot");
+    for (const [path, slice] of READS) {
+      const rows = await getAs("u5", `/api/v1/${path}`);
+      expect(rows.map((r: { id: string }) => r.id), path).toEqual(snap[slice].map((r: { id: string }) => r.id));
+      expect(rows.length, path).toBeGreaterThan(0);
+    }
+  });
+
+  it("give a counter operator nothing of buying but the requests their own shop raised", async () => {
+    // u1 is the Coffee Shop. The seeded product request was raised for the Coffee Shop, so it
+    // is the one buying collection a counter sees anything in.
+    for (const [path] of READS.filter(([, s]) => s !== "productReqs")) {
+      expect(await getAs("u1", `/api/v1/${path}`), path).toEqual([]);
+    }
+    const mine = await getAs("u1", "/api/v1/product-requests");
+    expect(mine.every((p: { forLoc: string }) => p.forLoc === "coffee")).toBe(true);
+    expect(await getAs("u6", "/api/v1/product-requests")).toEqual([]);   // u6 is the Snack Kiosk
+  });
+});
+
+describe("quarantine", () => {
+  it("is a location the store keeper can see, with a shelf of its own", async () => {
+    const snap = await getAs("u3", "/api/v1/snapshot");
+    expect(snap.locations.quarantine).toMatchObject({ n: "Quarantine", type: "Store" });
+    // Empty on the seed — nothing has been rejected — but present, so a screen can read it.
+    expect(snap.stock.quarantine).toEqual({});
+    expect((await getAs("u3", "/api/v1/stock")).stock.quarantine).toEqual({});
+  });
+
+  it("is nowhere in a counter operator's world", async () => {
+    const snap = await getAs("u1", "/api/v1/snapshot");
+    expect(Object.keys(snap.stock)).toEqual(["coffee"]);
+    // Locations are master data and are never cut down — the counter sees the name, and has no
+    // route that would let them name it.
+    expect(snap.locations.quarantine).toBeDefined();
   });
 });

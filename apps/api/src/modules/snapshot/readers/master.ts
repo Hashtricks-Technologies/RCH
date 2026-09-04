@@ -1,5 +1,5 @@
 import { asc } from "drizzle-orm";
-import type { Location, UserMin } from "@rch/contract";
+import type { UserMin } from "@rch/contract";
 import type { Db } from "../../../db/client.js";
 import { locationItems, priceListItems, users } from "../../../db/schema/index.js";
 import { loadItems, loadLocations, loadRecipes } from "../../../lib/master.js";
@@ -9,11 +9,9 @@ import { toWireUserMin } from "../../../lib/wire.js";
 export const readItems = loadItems;
 export const readRecipes = loadRecipes;
 
-/** The five UI locations only; quarantine joins the contract in Phase 5. */
-export async function readLocations(db: Db): Promise<Record<string, Location>> {
-  const all = await loadLocations(db);
-  return Object.fromEntries(Object.entries(all).filter(([key]) => key !== "quarantine"));
-}
+/** Every location the hospital has, quarantine included: the store's screens name it, and
+ *  `LocationSchema` is keyed by a plain string, so nothing about the wire shape changes. */
+export const readLocations = loadLocations;
 /** The directory, not a contact list: a colleague's email, employee number and phone are theirs. */
 export async function readUsers(db: Db): Promise<UserMin[]> {
   return (await db.select().from(users).orderBy(asc(users.id))).filter((u) => u.active).map(toWireUserMin);

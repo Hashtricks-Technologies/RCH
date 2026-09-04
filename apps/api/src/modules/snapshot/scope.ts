@@ -1,4 +1,4 @@
-import type { Batch, Bill, LocKey, ProdOrder, Role, ShopAsk, StockRequest, Ticket } from "@rch/contract";
+import type { Batch, Bill, LocKey, ProdOrder, ProductRequest, Role, ShopAsk, StockRequest, Ticket } from "@rch/contract";
 import type { Snapshot } from "./service.js";
 
 /** The columns of `sales`, in order — mirrors OUTLET_COLS in readers/documents.ts. */
@@ -40,6 +40,13 @@ export const scopeProdOrders = (pord: ProdOrder[], who: Who): ProdOrder[] =>
 /** The batch log is the kitchen's own record of what it made. A counter sells the output and
  *  has no window on the production behind it — the snapshot has always sent them none. */
 export const scopeBatches = (batch: Batch[], who: Who): Batch[] => (who.role !== "counter" ? batch : []);
+/** Buying is not a counter operator's business. A requisition, an order, a goods receipt, a
+ *  vendor and a rate contract are all read by the store, the kitchen, the manager and the
+ *  buyer; a counter sees none of them, which is what their snapshot has always contained. */
+export const scopeBuying = <T>(rows: T[], who: Who): T[] => (who.role !== "counter" ? rows : []);
+/** The exception: a shop sees what it asked the central store to stock, and only that. */
+export const scopeProductRequests = (rows: ProductRequest[], who: Who): ProductRequest[] =>
+  who.role !== "counter" ? rows : rows.filter((p) => p.forLoc === who.loc);
 
 /** A counter operator's world is their counter. Master data is never cut down; documents and stock are. */
 export function scope(s: Snapshot, who: Who & { sub: string }): Snapshot {
@@ -59,10 +66,11 @@ export function scope(s: Snapshot, who: Who & { sub: string }): Snapshot {
     bills: scopeBills(s.bills, who),
     shopAsks: scopeShopAsks(s.shopAsks, who),
     tickets: s.tickets.filter(mine),
-    productReqs: s.productReqs.filter((p) => p.forLoc === L),
+    productReqs: scopeProductRequests(s.productReqs, who),
     pord: scopeProdOrders(s.pord, who),
     batch: scopeBatches(s.batch, who),
     sales: s.sales.map((row) => (col === -1 ? [] : [row[col] ?? 0])),
-    prq: [], po: [], grn: [], vendors: [], contracts: [],
+    prq: scopeBuying(s.prq, who), po: scopeBuying(s.po, who), grn: scopeBuying(s.grn, who),
+    vendors: scopeBuying(s.vendors, who), contracts: scopeBuying(s.contracts, who),
   };
 }

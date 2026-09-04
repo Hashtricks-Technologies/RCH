@@ -1,12 +1,12 @@
 import type { z } from "zod";
 import { BILL_DAYS } from "@rch/contract";
-import type { Batch, Bill, ProdOrder, ShopAsk, SnapshotSchema, StockRequest, StockResponseSchema, Ticket } from "@rch/contract";
+import type { Batch, Bill, Grn, ProdOrder, ProductRequest, PurchaseOrder, RateContract, Requisition, ShopAsk, SnapshotSchema, StockRequest, StockResponseSchema, Ticket, Vendor } from "@rch/contract";
 import type { Db } from "../../db/client.js";
 import { NotFoundError } from "../../lib/errors.js";
 import { toWireUser } from "../../lib/wire.js";
 import type { AccessClaims } from "../../plugins/auth.js";
 import { snapshotRepo } from "./repo.js";
-import { scope, scopeBatches, scopeBills, scopeProdOrders, scopeRequests, scopeShopAsks, scopeStock, scopeTickets } from "./scope.js";
+import { scope, scopeBatches, scopeBills, scopeBuying, scopeProdOrders, scopeProductRequests, scopeRequests, scopeShopAsks, scopeStock, scopeTickets } from "./scope.js";
 import * as M from "./readers/master.js";
 import * as S from "./readers/stock.js";
 import * as D from "./readers/documents.js";
@@ -49,5 +49,13 @@ export function createSnapshotService(db: Db) {
     async prodOrders(claims: AccessClaims): Promise<ProdOrder[]> { return scopeProdOrders(await D.readProdOrders(db), claims); },
     /** The batch log on its own — what a make naming "batch" refetches. */
     async batches(claims: AccessClaims): Promise<Batch[]> { return scopeBatches(await D.readBatches(db), claims); },
+    /** The requisition desk on its own — what a write naming "prq" refetches. */
+    async requisitions(claims: AccessClaims): Promise<Requisition[]> { return scopeBuying(await D.readRequisitions(db), claims); },
+    async purchaseOrders(claims: AccessClaims): Promise<PurchaseOrder[]> { return scopeBuying(await D.readPurchaseOrders(db), claims); },
+    async grns(claims: AccessClaims): Promise<Grn[]> { return scopeBuying(await D.readGrns(db), claims); },
+    async vendors(claims: AccessClaims): Promise<Vendor[]> { return scopeBuying(await D.readVendors(db), claims); },
+    async contracts(claims: AccessClaims): Promise<RateContract[]> { return scopeBuying(await D.readContracts(db), claims); },
+    /** A shop sees the new-product asks it raised itself; everyone else sees the queue. */
+    async productRequests(claims: AccessClaims): Promise<ProductRequest[]> { return scopeProductRequests(await D.readProductRequests(db), claims); },
   };
 }
