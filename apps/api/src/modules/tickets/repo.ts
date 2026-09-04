@@ -1,15 +1,16 @@
 // Tickets: SQL only. No rules, no transaction of its own — service.ts passes `tx` in.
 import { and, asc, eq, inArray } from "drizzle-orm";
-import type { ReqStatus, TktStatus } from "@rch/contract";
+import type { PordStatus, ReqStatus, TktStatus } from "@rch/contract";
 import type { Tx } from "../../lib/db.js";
-import { stockBalances, stockRequests, ticketLines, tickets, users } from "../../db/schema/index.js";
+import type { TicketRefType } from "../../lib/tickets.js";
+import { prodOrders, stockBalances, stockRequestLines, stockRequests, ticketLines, tickets, users } from "../../db/schema/index.js";
 
 /** What a ticket carries in `ref_id` when there is no document behind it to close. */
 const NO_DOCUMENT: readonly string[] = ["Shop transfer", "Direct issue"];
 
 /** The head row under its lock, with the lines every caller needs in the same breath. */
 type LockedTicket = {
-  id: string; req: string; from: string; to: string; st: TktStatus; otp: string;
+  id: string; req: string; refType: TicketRefType; from: string; to: string; st: TktStatus; otp: string;
   lines: { it: string; qty: number }[];
 };
 
@@ -22,10 +23,15 @@ export const ticketsRepo = {
    *
    * The lines come along unlocked on purpose: they are written once when the ticket is issued
    * and never change, so there is nothing for a second writer to move under us.
+   *
+   * `refType` is what a cancellation reads to know which document is behind the ticket:
+   * `linkedRequest` answers `undefined` both for a ticket that has none and for a `PRD-` id
+   * that was never a request, and the two take different branches. `handover` and `receive`
+   * have no use for it.
    */
   async head(tx: Tx, id: string): Promise<LockedTicket | undefined> {
     const [t] = await tx.select({
-      id: tickets.id, req: tickets.refId, from: tickets.fromLoc, to: tickets.toLoc, st: tickets.status, otp: tickets.otp,
+      id: tickets.id, req: tickets.refId, refType: tickets.refType, from: tickets.fromLoc, to: tickets.toLoc, st: tickets.status, otp: tickets.otp,
     }).from(tickets).where(eq(tickets.id, id)).for("update");
     if (!t) return undefined;
     const lines = await tx.select().from(ticketLines).where(eq(ticketLines.ticketId, id)).orderBy(asc(ticketLines.lineNo));
@@ -52,6 +58,32 @@ export const ticketsRepo = {
 
   async setRequestStatus(tx: Tx, id: string, status: ReqStatus): Promise<void> {
     await tx.update(stockRequests).set({ status, updatedAt: new Date() }).where(eq(stockRequests.id, id));
+  },
+
+  /** The decided lines of the request behind a ticket, for `approvedStatus`. */
+  async requestLines(tx: Tx, id: string): Promise<{ qty: number; appr: number }[]> {
+    const rows = await tx.select({ qty: stockRequestLines.qty, appr: stockRequestLines.approvedQty })
+      .from(stockRequestLines).where(eq(stockRequestLines.requestId, id)).orderBy(asc(stockRequestLines.lineNo));
+    return rows;
+  },
+
+  /** Back to an approved status with no ticket against it, so the issue desk can raise another.
+   *  Separate from `setRequestStatus` because clearing `ticket_id` is exactly what makes this
+   *  different from every other status write on a request. */
+  async releaseRequest(tx: Tx, id: string, status: ReqStatus): Promise<void> {
+    await tx.update(stockRequests).set({ status, ticketId: null, updatedAt: new Date() }).where(eq(stockRequests.id, id));
+  },
+
+  /** The production order behind a dispatch ticket, locked like every other document a write
+   *  moves. Only called when the ticket's ref_type says there is one. */
+  async linkedProdOrder(tx: Tx, id: string): Promise<{ id: string; status: PordStatus } | undefined> {
+    const [o] = await tx.select({ id: prodOrders.id, status: prodOrders.status })
+      .from(prodOrders).where(eq(prodOrders.id, id)).for("update");
+    return o;
+  },
+
+  async setProdOrderStatus(tx: Tx, id: string, status: PordStatus): Promise<void> {
+    await tx.update(prodOrders).set({ status, updatedAt: new Date() }).where(eq(prodOrders.id, id));
   },
 
   /** Read back after `postMoves` has taken the locks — the only number a movement may trust. */

@@ -6,8 +6,9 @@ import type { LocKey, Ticket, TktStatus } from "@rch/contract";
 import { makeOtp, round3 } from "@rch/domain";
 import { ticketLines, tickets } from "../db/schema/index.js";
 import type { Tx } from "./db.js";
+import { appendHistory } from "./history.js";
 import { allocateNumber } from "./ids.js";
-import { reserve } from "./reservations.js";
+import { releaseForTicket, reserve } from "./reservations.js";
 
 export type TicketRefType = NonNullable<(typeof tickets.$inferInsert)["refType"]>;
 export type TicketDraft = {
@@ -54,6 +55,27 @@ export async function writeTicket(tx: Tx, draft: TicketDraft, no: TicketNumber):
   await tx.insert(ticketLines).values(lines.map((l, lineNo) => ({ ticketId: id, lineNo, itemKey: l.it, qty: l.qty })));
   await reserve(tx, lines.map((l) => ({ loc: draft.from, it: l.it, qty: l.qty, ticketId: id })));
   return { id, req: draft.refId, from: draft.from as LocKey, to: draft.to as LocKey, lines, st: "Issued", otp };
+}
+
+/**
+ * Put a ticket back. The hold it placed is released and the stock is free again exactly where
+ * it stands — nothing moves, because nothing ever moved: a ticket that has not been handed
+ * over is a promise, and this is the promise being withdrawn.
+ *
+ * The reason is written to `document_history` because the ticket's row has nowhere to put it.
+ * That makes a cancellation the second thing a ticket records there, after the supervisor
+ * override (spec §16, Phase 3) — and for the same reason: an action that cannot be read back
+ * afterwards cannot be audited. `by` is the operator's display name, as `appendHistory` wants.
+ *
+ * The caller has already locked the ticket's row and checked the transition; this is the write.
+ * Returns how many open holds were released, so a caller can tell a first cancellation from a
+ * replay.
+ */
+export async function voidTicket(tx: Tx, id: string, reason: string, by: string, at: Date = new Date()): Promise<number> {
+  const released = await releaseForTicket(tx, id, at);
+  await tx.update(tickets).set({ status: "Cancelled" }).where(eq(tickets.id, id));
+  await appendHistory(tx, "ticket", id, `Cancelled — ${reason}`, by, at);
+  return released;
 }
 
 /** The wire shape of one ticket, for a service that has just changed it. */

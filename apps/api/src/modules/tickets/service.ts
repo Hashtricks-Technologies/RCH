@@ -2,8 +2,8 @@
 // is the one place stock leaves a location on this path, a receipt the one place it lands, and
 // between the two it is in transit and owned by neither.
 import type { z } from "zod";
-import type { HandoverBodySchema, Ticket, TransferBodySchema, WriteResponse } from "@rch/contract";
-import { canTransition, fq, REQUEST_TRANSITIONS, round3, TICKET_TRANSITIONS } from "@rch/domain";
+import type { CancelTicketBodySchema, Changed, HandoverBodySchema, Ticket, TransferBodySchema, WriteResponse } from "@rch/contract";
+import { approvedStatus, canTransition, fq, PROD_ORDER_TRANSITIONS, REQUEST_TRANSITIONS, round3, TICKET_TRANSITIONS } from "@rch/domain";
 import type { Db } from "../../db/client.js";
 import { withTransaction, type Tx } from "../../lib/db.js";
 import { NotFoundError } from "../../lib/errors.js";
@@ -13,13 +13,14 @@ import { lockBalances, postMoves } from "../../lib/ledger.js";
 import { loadItems, loadLocations } from "../../lib/master.js";
 import { releaseForTicket, reservedAt } from "../../lib/reservations.js";
 import { assertRule, assertTransition } from "../../lib/rules.js";
-import { allocateTicket, readTicket, writeTicket } from "../../lib/tickets.js";
+import { allocateTicket, readTicket, voidTicket, writeTicket } from "../../lib/tickets.js";
 import type { AccessClaims } from "../../plugins/auth.js";
 import { requireLocOf } from "../../plugins/rbac.js";
 import { ticketsRepo } from "./repo.js";
 
 export type HandoverBody = z.infer<typeof HandoverBodySchema>;
 export type TransferBody = z.infer<typeof TransferBodySchema>;
+export type CancelTicketBody = z.infer<typeof CancelTicketBodySchema>;
 
 /** The ticket as it now stands. The row is locked and was just written, so this cannot miss;
  *  the guard is here because `readTicket` answers for any id, including one that never was. */
@@ -130,6 +131,78 @@ export function createTicketsService(db: Db) {
         const changed = ["tkt", "req", "stock"] as const;
         await emitChanged(tx, changed);
         return { result: await reread(tx, id), changed: [...changed], message: `Received at ${toName} — stock is on the shelf` };
+      });
+    },
+
+    /**
+     * A ticket withdrawn before anyone collected against it.
+     *
+     * Phase 3 gave `releaseForTicket` one caller — the handover — so a ticket nobody came for
+     * held its stock for ever: free-to-promise stayed smaller than the shelf and the request
+     * behind it had nowhere to go. This is the way back. Nothing moves, because nothing had
+     * moved; what changes is that the promise is withdrawn and the document behind the ticket
+     * goes back to where it was before the ticket was raised.
+     *
+     * No balance locks: a release only ever makes free-to-promise larger, so a writer racing it
+     * is right either way. What must not race is two cancellations of one ticket, and the
+     * ticket's own `for update` above is what stops that.
+     */
+    async cancel(claims: AccessClaims, id: string, body: CancelTicketBody): Promise<WriteResponse<Ticket>> {
+      return withTransaction(db, async (tx) => {
+        const t = await ticketsRepo.head(tx, id);
+        if (!t) throw new NotFoundError(`There is no ticket ${id}.`);
+        requireLocOf(claims, t.from, "the location the ticket is issued from");
+        const reason = body.reason.trim();
+        assertRule(reason.length > 0, "Say why the ticket is being cancelled");
+
+        const locations = await loadLocations(tx);
+        const fromName = locations[t.from]?.n ?? t.from;
+        const toName = locations[t.to]?.n ?? t.to;
+        assertRule(
+          canTransition(TICKET_TRANSITIONS, t.st, "Cancelled"),
+          t.st === "Cancelled"
+            ? `${id} is already cancelled`
+            : `${id} has already been handed over — the stock is on its way to ${toName}`,
+        );
+
+        // Documents before ids before balances, and this write needs no id and no balance: the
+        // ticket's row is locked above and the document behind it right here.
+        const at = new Date();
+        const request = t.refType === "request" ? await ticketsRepo.linkedRequest(tx, t.req) : undefined;
+        const order = t.refType === "prod_order" ? await ticketsRepo.linkedProdOrder(tx, t.req) : undefined;
+
+        const who = await ticketsRepo.userName(tx, claims.sub);
+        await voidTicket(tx, id, reason, who, at);
+
+        const changed: Changed[] = ["tkt", "rsv"];
+        let tail = `the stock is free again at ${fromName}`;
+        if (request) {
+          // The store's pick is not the manager's decision. Back to whatever the approval
+          // amounted to, with the ticket reference cleared so a fresh one can be issued.
+          //
+          // An explicit source guard, not a `canTransition` lookup: this edge is deliberately
+          // absent from REQUEST_TRANSITIONS, because listing it would also re-open `approve`
+          // — whose only guard is that same table — for a request holding a live ticket, and
+          // through it a second ticket for stock already promised once. One door, one guard.
+          assertRule(request.status === "Ticket issued", `${request.id} is ${request.status.toLowerCase()} — this ticket cannot be cancelled`);
+          const back = approvedStatus(await ticketsRepo.requestLines(tx, request.id));
+          await ticketsRepo.releaseRequest(tx, request.id, back);
+          await appendHistory(tx, "request", request.id, back, who, at);
+          changed.push("req");
+          tail = `${request.id} is approved again and can be issued a new ticket`;
+        }
+        if (order) {
+          // Same principle for the kitchen: the order was not delivered, so the board must not
+          // keep saying it was. `Dispatched -> Ready` exists in the table for this and nothing else.
+          assertRule(canTransition(PROD_ORDER_TRANSITIONS, order.status, "Ready"), `${order.id} is ${order.status.toLowerCase()} — this ticket cannot be cancelled`);
+          await ticketsRepo.setProdOrderStatus(tx, order.id, "Ready");
+          await appendHistory(tx, "prod_order", order.id, "Ready", who, at);
+          changed.push("pord");
+          tail = `${order.id} is back on the board, ready to dispatch again`;
+        }
+
+        await emitChanged(tx, changed);
+        return { result: await reread(tx, id), changed, message: `${id} cancelled — ${tail}` };
       });
     },
 

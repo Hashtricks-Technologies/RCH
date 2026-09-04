@@ -1,13 +1,14 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
 import { and, eq, sql } from "drizzle-orm";
-import { lockBalances } from "../../lib/ledger.js";
+import { lockBalances, postMoves } from "../../lib/ledger.js";
 import { buildTestApp } from "../../test/app.js";
 import { seedTestDb } from "../../test/seed.js";
 import { authHeaders } from "../../test/auth.js";
 import { given } from "../../test/builders.js";
 import { truncateAll, warmPool } from "../../test/db.js";
-import { documentHistory, reservations, stockMoves } from "../../db/schema/index.js";
+import { readHistory } from "../../lib/history.js";
+import { documentHistory, reservations, stockMoves, tickets } from "../../db/schema/index.js";
 import type { App } from "../../app.js";
 
 let app: App;
@@ -35,6 +36,9 @@ const onHand = async (loc: string, it: string) => {
  *  last one printed. What the case is about is that the row exists, once, signed by the person
  *  who made the movement. */
 const trail = (req: { hist: { s: string; who: string }[] }, status: string) => req.hist.filter((h) => h.s === status);
+/** Bake enough of an item that the kitchen can cover a dispatch. */
+const bake = (it: string, n: number) =>
+  app.testDb!.db.transaction((tx) => postMoves(tx, [{ loc: "kitchen", it, qty: n, kind: "production_yield", refType: "test", refId: "bake" }]));
 const requestById = async (id: string) => {
   const r = await app.inject({ method: "GET", url: "/api/v1/requests", headers: await authHeaders(app, "u2") });
   return r.json().find((x: { id: string }) => x.id === id) as { st: string; hist: { s: string; who: string }[] };
@@ -250,5 +254,141 @@ describe("POST /transfers", () => {
     // come first; what this case pins is the outcome, not which lock produced it.
     expect(both.filter((r) => r.statusCode === 200)).toHaveLength(1);
     expect(both.filter((r) => r.statusCode === 422)).toHaveLength(1);
+  });
+});
+
+describe("POST /tickets/:id/cancel", () => {
+  it("gives the stock back and puts the request where the manager left it", async () => {
+    // Approved in full, for whatever the store's shelf actually holds — issue-ticket re-checks
+    // free-to-promise under the balance locks, so a number typed into the case rather than read
+    // off the fixture is a case about the seed, not about the cancellation.
+    const whole = await onHand("store", "milk");
+    const req = await given.request(app.testDb!.db, {
+      from: "coffee", lines: [{ it: "milk", qty: whole, appr: whole }], st: "Manager approved",
+    });
+    const issued = await post("u3", `/requests/${req}/issue-ticket`);
+    const tkt = issued.json().result.ticket.id;
+    const heldBefore = await app.testDb!.db.select().from(reservations).where(eq(reservations.ticketId, tkt));
+    expect(heldBefore.every((h) => h.releasedAt === null)).toBe(true);
+    const onShelf = await onHand("store", "milk");
+    const movesBefore = (await app.testDb!.db.select().from(stockMoves)).length;
+
+    const r = await post("u3", `/tickets/${tkt}/cancel`, { reason: "The counter closed before the collector came" });
+    expect(r.statusCode, r.body).toBe(200);
+    const b = r.json();
+    expect(b.result).toMatchObject({ id: tkt, st: "Cancelled" });
+    expect(b.changed).toEqual(["tkt", "rsv", "req"]);
+    expect(b.message).toBe(`${tkt} cancelled — ${req} is approved again and can be issued a new ticket`);
+
+    // The hold is gone and the shelf never moved: nothing had left it.
+    const held = await app.testDb!.db.select().from(reservations).where(eq(reservations.ticketId, tkt));
+    expect(held.every((h) => h.releasedAt !== null)).toBe(true);
+    expect(await onHand("store", "milk")).toBe(onShelf);
+    expect((await app.testDb!.db.select().from(stockMoves)).length).toBe(movesBefore);
+
+    // The reason is the only record there is, so it has to be findable.
+    const hist = await readHistory(app.testDb!.db, "ticket", tkt);
+    expect(hist.at(-1)).toMatchObject({ s: "Cancelled — The counter closed before the collector came", who: "Suresh Muthu" });
+  });
+
+  it("lets the issue desk raise a fresh ticket afterwards", async () => {
+    const whole = await onHand("store", "milk");
+    const req = await given.request(app.testDb!.db, {
+      from: "coffee", lines: [{ it: "milk", qty: whole, appr: whole }], st: "Manager approved",
+    });
+    const first = (await post("u3", `/requests/${req}/issue-ticket`)).json().result.ticket.id;
+    await post("u3", `/tickets/${first}/cancel`, { reason: "Wrong outlet" });
+
+    const second = await post("u3", `/requests/${req}/issue-ticket`);
+    expect(second.statusCode, second.body).toBe(200);
+    expect(second.json().result.ticket.id).not.toBe(first);
+  });
+
+  it("remembers that the approval was only partial", async () => {
+    // Asked for more than the shelf carries and cut to what it does: the trim is the point.
+    const whole = await onHand("store", "milk");
+    const req = await given.request(app.testDb!.db, {
+      from: "coffee", lines: [{ it: "milk", qty: whole + 8, appr: whole }], st: "Partially approved",
+    });
+    const tkt = (await post("u3", `/requests/${req}/issue-ticket`)).json().result.ticket.id;
+    await post("u3", `/tickets/${tkt}/cancel`, { reason: "Collector never came" });
+
+    const list = (await app.inject({ method: "GET", url: "/api/v1/requests", headers: await authHeaders(app, "u2") })).json();
+    expect(list.find((r: { id: string }) => r.id === req)).toMatchObject({ st: "Partially approved", ticket: null });
+  });
+
+  it("puts a dispatched order back on the board", async () => {
+    const id = await given.prodOrder(app.testDb!.db, { st: "Ready", lines: [{ it: "puff", qty: 5 }] });
+    await bake("puff", 5);
+    const tkt = (await post("u4", `/prod-orders/${id}/dispatch`)).json().result.ticket.id;
+
+    const r = await post("u4", `/tickets/${tkt}/cancel`, { reason: "Kiosk shut early" });
+    expect(r.statusCode, r.body).toBe(200);
+    expect(r.json().changed).toEqual(["tkt", "rsv", "pord"]);
+    expect(r.json().message).toBe(`${tkt} cancelled — ${id} is back on the board, ready to dispatch again`);
+
+    // `GET /prod-orders` is Task 3's and lands in the same wave; the snapshot has carried the
+    // board since Phase 1, so the board is read from there and the assertion is the same one.
+    const board = (await app.inject({ method: "GET", url: "/api/v1/snapshot", headers: await authHeaders(app, "u4") })).json().pord;
+    expect(board.find((o: { id: string }) => o.id === id).st).toBe("Ready");
+    // And it can go out again.
+    expect((await post("u4", `/prod-orders/${id}/dispatch`)).statusCode).toBe(200);
+  });
+
+  it("takes back a direct issue with nothing behind it", async () => {
+    await bake("puff", 10);
+    const tkt = (await post("u4", "/distributions", { it: "puff", qty: 5, to: "kiosk" })).json().result.id;
+    const r = await post("u4", `/tickets/${tkt}/cancel`, { reason: "Sent to the wrong counter" });
+    expect(r.statusCode, r.body).toBe(200);
+    expect(r.json().changed).toEqual(["tkt", "rsv"]);
+    expect(r.json().message).toBe(`${tkt} cancelled — the stock is free again at Central Kitchen`);
+  });
+
+  it("refuses a ticket already handed over, and one already cancelled", async () => {
+    const tkt = await given.ticket(app.testDb!.db, { from: "store", to: "coffee", lines: [{ it: "milk", qty: 2 }] });
+    const otp = (await app.testDb!.db.select().from(tickets).where(eq(tickets.id, tkt)))[0]!.otp;
+    await post("u3", `/tickets/${tkt}/handover`, { otp });
+    const gone = await post("u3", `/tickets/${tkt}/cancel`, { reason: "Changed our minds" });
+    expect(gone.statusCode).toBe(422);
+    expect(gone.json().error.message).toBe(`${tkt} has already been handed over — the stock is on its way to Coffee Shop`);
+
+    const other = await given.ticket(app.testDb!.db, { from: "store", to: "coffee", lines: [{ it: "milk", qty: 2 }] });
+    expect((await post("u3", `/tickets/${other}/cancel`, { reason: "Not needed" })).statusCode).toBe(200);
+    const again = await post("u3", `/tickets/${other}/cancel`, { reason: "Not needed" });
+    expect(again.statusCode).toBe(422);
+    expect(again.json().error.message).toBe(`${other} is already cancelled`);
+  });
+
+  it("refuses a cancellation with nothing said about it", async () => {
+    const tkt = await given.ticket(app.testDb!.db, { from: "store", to: "coffee", lines: [{ it: "milk", qty: 2 }] });
+    const r = await post("u3", `/tickets/${tkt}/cancel`, { reason: "   " });
+    expect(r.statusCode).toBe(422);
+    expect(r.json().error.message).toBe("Say why the ticket is being cancelled");
+  });
+
+  it("keeps each side to its own tickets", async () => {
+    const store = await given.ticket(app.testDb!.db, { from: "store", to: "coffee", lines: [{ it: "milk", qty: 2 }] });
+    const kitchen = await given.ticket(app.testDb!.db, { from: "kitchen", to: "kiosk", lines: [{ it: "puff", qty: 2 }] });
+    // The kitchen may not cancel the store's ticket, nor the store the kitchen's.
+    expect((await post("u4", `/tickets/${store}/cancel`, { reason: "no" })).statusCode).toBe(403);
+    expect((await post("u3", `/tickets/${kitchen}/cancel`, { reason: "no" })).statusCode).toBe(403);
+    // And nobody else has the door at all.
+    for (const u of ["u1", "u2", "u5"]) expect((await post(u, `/tickets/${store}/cancel`, { reason: "no" })).statusCode).toBe(404);
+  });
+
+  it("404s a ticket that is not there", async () => {
+    expect((await post("u3", "/tickets/TKT-9999/cancel", { reason: "no" })).json().error.message).toBe("There is no ticket TKT-9999.");
+  });
+
+  it("cancels once when two windows press together", async () => {
+    const tkt = await given.ticket(app.testDb!.db, { from: "store", to: "coffee", lines: [{ it: "milk", qty: 2 }] });
+    await warmPool(app.testDb!, 2);
+    const both = await Promise.all([
+      post("u3", `/tickets/${tkt}/cancel`, { reason: "Not needed" }),
+      post("u3", `/tickets/${tkt}/cancel`, { reason: "Not needed" }),
+    ]);
+    expect(both.filter((r) => r.statusCode === 200)).toHaveLength(1);
+    const held = await app.testDb!.db.select().from(reservations).where(eq(reservations.ticketId, tkt));
+    expect(held.every((h) => h.releasedAt !== null)).toBe(true);
   });
 });
