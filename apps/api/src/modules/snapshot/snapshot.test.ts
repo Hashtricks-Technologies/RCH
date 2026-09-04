@@ -8,7 +8,7 @@ import { buildTestApp } from "../../test/app.js";
 import { seedTestDb } from "../../test/seed.js";
 import { authHeaders } from "../../test/auth.js";
 import { given } from "../../test/builders.js";
-import { resetDocuments, truncateAll } from "../../test/db.js";
+import { resetDocuments, truncateAll, warmPool } from "../../test/db.js";
 import type { App } from "../../app.js";
 
 let app: App;
@@ -348,5 +348,66 @@ describe("what a ticket carries, and to whom", () => {
     const others = (await get("u5")).tickets.map((t: { id: string }) => t.id);
     expect(others).toEqual(expect.arrayContaining([theirs]));
     expect(others).not.toContain(mine);
+  });
+});
+
+describe("one request, one connection", () => {
+  // `pg` checks a client out of the pool per query and emits `acquire` each time, so counting
+  // that event over one injected request counts exactly what the pool was asked for. Before the
+  // readers were folded into a single read-only transaction, `GET /snapshot` fanned out with
+  // `Promise.all` and this counted about forty against a pool of ten — which is the whole of
+  // RUNBOOK §12's c=30 finding (`pg_pool_idle` 0, `pg_pool_waiting` peaking at 771, p95 2.9 s).
+  // A number greater than one here is that defect coming back, whatever the latency looks like.
+  const acquiresDuring = async (url: string, userId: string): Promise<number> => {
+    const headers = await authHeaders(app, userId);              // minted before the count starts
+    const pool = app.testDb!.pool;
+    let n = 0;
+    const tick = () => { n += 1; };
+    pool.on("acquire", tick);
+    try {
+      const r = await app.inject({ method: "GET", url, headers });
+      expect(r.statusCode, r.body).toBe(200);
+    } finally {
+      pool.off("acquire", tick);
+    }
+    return n;
+  };
+
+  it("reads the whole snapshot on a single pooled connection", async () => {
+    expect(await acquiresDuring("/api/v1/snapshot", "u2")).toBe(1);
+  });
+
+  it("does the same for every standalone read that fans out", async () => {
+    // Each of these used to be its own `Promise.all`: /stock is three readers, /tickets three
+    // queries, /bills two plus a follow-up, /requisitions four.
+    expect(await acquiresDuring("/api/v1/stock", "u3")).toBe(1);
+    expect(await acquiresDuring("/api/v1/tickets", "u3")).toBe(1);
+    expect(await acquiresDuring("/api/v1/bills?days=7", "u2")).toBe(1);
+    expect(await acquiresDuring("/api/v1/requisitions", "u5")).toBe(1);
+  });
+
+  it("still asks for one connection each when three snapshots run at once", async () => {
+    // The concurrent form of the same fact, which is the one the load check actually exercised:
+    // three requests in flight must want three connections, not three times forty. The pool is
+    // warmed first so the count is about what the readers ask for rather than about how lazily
+    // `pg` opens sockets (`warmPool`, test/db.ts).
+    //
+    // `pg_pool_waiting` is deliberately not what this asserts. `pg-pool` queues a caller before
+    // it looks for an idle client, so the gauge reads 1 for a moment even when every caller is
+    // served on the same tick — a real reading for an alert, too noisy for a zero-or-not
+    // assertion. The acquisition count is exact.
+    await warmPool(app.testDb!, 3);
+    const headers = await authHeaders(app, "u2");
+    const pool = app.testDb!.pool;
+    let n = 0;
+    const tick = () => { n += 1; };
+    pool.on("acquire", tick);
+    try {
+      const rs = await Promise.all([1, 2, 3].map(() => app.inject({ method: "GET", url: "/api/v1/snapshot", headers })));
+      for (const r of rs) expect(r.statusCode, r.body).toBe(200);
+    } finally {
+      pool.off("acquire", tick);
+    }
+    expect(n).toBe(3);
   });
 });

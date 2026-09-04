@@ -14,7 +14,7 @@ import type {
 import { SUPPORT_TRANSITIONS, mayRate, mayReply, mayUserSet, statusAfterReply } from "@rch/domain";
 import type { Db } from "../../db/client.js";
 import type { Tx } from "../../lib/db.js";
-import { withTransaction } from "../../lib/db.js";
+import { withReadTransaction, withTransaction } from "../../lib/db.js";
 import { NotFoundError } from "../../lib/errors.js";
 import { emitChanged } from "../../lib/events.js";
 import { allocateId } from "../../lib/ids.js";
@@ -40,9 +40,12 @@ export function createSupportService(db: Db) {
   return {
     /** Spec §9.2 scopes every support write to the caller's own tickets, so the list is scoped
      *  the same way: a row nobody may act on is a row nobody should be shown. Keyed on the user
-     *  id in the token, never on a display name. */
+     *  id in the token, never on a display name.
+     *
+     *  `listFor` makes three queries, so it runs in a `read only` transaction like every other
+     *  read that fans out (`lib/db.ts`): one request, one connection out of the pool. */
     async list(claims: AccessClaims): Promise<SupportTicket[]> {
-      return supportRepo.listFor(db, claims.sub);
+      return withReadTransaction(db, async (tx) => supportRepo.listFor(tx, claims.sub));
     },
 
     async raise(claims: AccessClaims, body: RaiseTicketBody): Promise<WriteResponse<SupportTicket>> {

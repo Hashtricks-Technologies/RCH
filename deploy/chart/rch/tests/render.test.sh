@@ -90,6 +90,7 @@ grep -q 'sse_listener_up' <<<"$out"
 refute grep -q 'certificate-arn: *$' <<<"$out"
 out_tls=$(helm template rch . -f values-prod.yaml --set image.registry=r,image.tag=t,ingress.certificateArn=arn:aws:acm:x)
 grep -q 'alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:x' <<<"$out_tls"
+grep -q 'name: DB_POOL_MAX' <<<"$out"
 # Three replicas that land on one node make the PodDisruptionBudget decorative.
 grep -q 'topologySpreadConstraints' <<<"$out"
 # Production resources must be its own, not staging's inherited defaults. `-A6` never reaches
@@ -111,5 +112,14 @@ grep -q 'dist/cli/migrate.mjs' <<<"$out"
 refute bash -c 'grep -A2 "name: JWT_PRIVATE_KEY" <<<"$1" | grep -q "value:"' _ "$out"
 refute bash -c 'grep -A2 "name: DATABASE_URL" <<<"$1" | grep -q "value:"' _ "$out"
 grep -q 'secretKeyRef' <<<"$out"
+# Staging carries the same `certificateArn` FILL as production, and must behave the same way with
+# it empty: no annotation at all rather than `certificate-arn: ""`, which the ALB controller
+# rejects. Staging had no such key until the Phase 6 fix wave, which is why it needs its own line.
+refute grep -q 'certificate-arn: *$' <<<"$out"
+out_staging_tls=$(helm template rch . -f values-staging.yaml --set image.registry=r,image.tag=t,secrets.values.DATABASE_URL=x,secrets.values.JWT_PRIVATE_KEY=x,secrets.values.JWT_PUBLIC_KEY=x,ingress.certificateArn=arn:aws:acm:y)
+grep -q 'alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:y' <<<"$out_staging_tls"
+# The pool size is an env knob now, not a literal in db/client.ts. Both files set it, and the
+# api container reads it — a rendered pod without it is one silently back on the code's default.
+grep -q 'name: DB_POOL_MAX' <<<"$out"
 
 echo "chart renders"

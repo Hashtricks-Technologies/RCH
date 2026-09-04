@@ -744,22 +744,26 @@ git merge-base --is-ancestor origin/staging origin/develop && echo ok    # ok
 | Line | Key | What goes in |
 |---|---|---|
 | 5 | `image.registry` | `<account>.dkr.ecr.<region>.amazonaws.com`. `deploy.yml` also passes it as `--set image.registry=${{ secrets.ECR_REGISTRY }}`, so the file's own value only matters to a manual `helm template` / `helm upgrade`. |
-| 22 | `api.env.CORS_ORIGIN` | The real hostname, no trailing slash (currently `https://rch.example.com`). |
-| 39 | `ingress.host` | The real hostname (currently `rch.example.com`). |
-| 40 | `ingress.certificateArn` | The ACM certificate ARN for that host. Empty renders **no** TLS annotation — HTTP on `:80`, correct rather than broken, but not what go-live wants. |
-| 73 | `alerts.runbookUrl` | The real URL of this document, so a paged engineer's alert links somewhere. |
+| 23 | `api.env.CORS_ORIGIN` | The real hostname, no trailing slash (currently `https://rch.example.com`). |
+| 41 | `ingress.host` | The real hostname (currently `rch.example.com`). |
+| 42 | `ingress.certificateArn` | The ACM certificate ARN for that host. Empty renders **no** TLS annotation — HTTP on `:80`, correct rather than broken, but not what go-live wants. |
+| 75 | `alerts.runbookUrl` | The real URL of this document, so a paged engineer's alert links somewhere. |
+
+**And one in the other file**, the same shape and the same decision:
+
+| File | Line | Key | What goes in |
+|---|---|---|---|
+| `deploy/chart/rch/values-staging.yaml` | 6 | `ingress.certificateArn` | The ACM certificate ARN for `rch-staging.example.com`. Empty renders no TLS annotation — staging on HTTP `:80`, correct rather than broken. Fill it, or decide out loud that staging runs on `:80`. |
+
+The key was absent from that file entirely until the Phase 6 fix wave, while step 1 below had
+always said both files need one; it is now present and empty, with production's own `# FILL`
+comment beside it, and `render.test.sh` asserts for staging what it asserts for production —
+empty renders **no** annotation, a supplied ARN renders one.
 
 Two more carry a `FILL` comment but are conditional, not blocking: `serviceAccount.annotations`
 (only for IRSA, if the pod reads Secrets Manager itself) and
 `ingress.annotations.'alb.ingress.kubernetes.io/wafv2-acl-arn'`, whose own comment says
 "optional; leave empty to skip".
-
-**A sixth, in the other file.** `deploy/chart/rch/values-staging.yaml` has **no
-`ingress.certificateArn` key at all** — its whole ingress block is `ingress: { host:
-rch-staging.example.com }` — while step 1 below has always said both files need one. Either add
-the key there before staging needs HTTPS on its own hostname, or decide staging runs on `:80`
-and say so out loud. Phase 6 deliberately left the chart alone rather than change behaviour in a
-verification task; this is the note that keeps it from being discovered by an outage.
 
 Render the production chart before pushing anything, supplying the values on the command line:
 
@@ -805,10 +809,11 @@ the account owner, not the executor of this phase's tasks. Nothing on this list 
 against a real AWS account; Phase 6 prepared the chart, the workflow and this checklist and
 stopped there (spec §16, Phase 6) — running it is a release decision.
 
-1. **Fill in the AWS facts `values-prod.yaml` is still missing** — the five `# FILL` markers,
-   the two conditional ones, and `values-staging.yaml`'s absent `certificateArn`, all tabulated
-   with their line numbers under "The release, prepared and not performed" above. Render the
-   chart with the values supplied on the command line before pushing anything.
+1. **Fill in the AWS facts the two values files are still missing** — `values-prod.yaml`'s five
+   `# FILL` markers, its two conditional ones, and `values-staging.yaml`'s own
+   `ingress.certificateArn`, all tabulated with their line numbers under "The release, prepared
+   and not performed" above. Render the chart with the values supplied on the command line
+   before pushing anything.
 2. **Provision the RDS instance to spec §11.2's own settings**, before anything points at it:
    Multi-AZ, `db.t4g.medium` to start with storage autoscaling, automated backups retained 14
    days, point-in-time recovery, encryption at rest, deletion protection, in private subnets
@@ -905,33 +910,65 @@ wrong before they were understood:
   average beside every number this script prints; a number with no load average beside it is not
   evidence of anything.
 
-**Recorded: 2026-09-04, the first measurement anyone can attribute.** MacBook Air (Mac14,2,
-Apple silicon, 8 cores, 16 GB, macOS 26.6.2), node v24.20.0, **Postgres 17 in Docker on the same
+**Recorded: 2026-09-04, the first measurement anyone can attribute**, and re-measured the same
+day once `GET /snapshot` stopped fanning out across the pool. MacBook Air (Mac14,2, Apple
+silicon, 8 cores, 16 GB, macOS 26.6.2), node v24.20.0, **Postgres 17 in Docker on the same
 machine** — which production's will not be. The API was the only thing running, started with
 `RATE_LIMIT_PER_MINUTE=100000`, against a fresh seed with `coffee`'s `water` topped up to 200,012
-by a `stock_moves` adjustment and a rebuild, exactly as the three bullets above prescribe.
+by a `stock_moves` adjustment and a rebuild, exactly as the three bullets above prescribe. No run
+in either column returned a single non-2xx. (The snapshot-only row also carried a once-a-second
+`curl /metrics` beside it, for the pool depths quoted below — one request a second against a run
+throwing thirty at a time.)
 
 | Concurrency | Load average at the start | `GET /snapshot` | `POST /bills` |
 |---|---|---|---|
-| 10 | 2.72 | **PASS** p50 76.8 ms · **p95 104.5 ms** · p99 122.8 ms · n=2662 | **PASS** p50 47.5 ms · **p95 141.6 ms** · p99 217.8 ms · n=3331 |
-| 30 | 2.56 | **FAIL** p50 2665.7 ms · **p95 2860.3 ms** · n=245 | **FAIL** p50 152.2 ms · **p95 262.2 ms** · n=3725 |
-| 30, `--no-writes` | 3.34 | **FAIL** p50 4074.3 ms · **p95 4429.7 ms** · n=172 | — |
+| 10 | 3.59 | **PASS** p50 74.8 ms · **p95 102.7 ms** · p99 122.6 ms · max 151.5 ms · n=2601 | **PASS** p50 43.6 ms · **p95 126.1 ms** · p99 194.4 ms · max 362.8 ms · n=3656 |
+| 30 | 3.81 | **FAIL** p50 1440.6 ms · **p95 1548.1 ms** · p99 1601.6 ms · n=441 | **FAIL** p50 134.3 ms · **p95 248.0 ms** · p99 1061.7 ms · n=3833 |
+| 30, `--no-writes` | 3.00 | **FAIL** p50 2904.0 ms · **p95 3347.3 ms** · p99 3631.9 ms · n=228 | — |
 
-The c=30 failure was measured, not guessed at. During the snapshot-only run `pg_pool_idle` sat at
-**0** the whole time and `pg_pool_waiting` peaked at **771** — against a pool of `max: 10`.
-`GET /snapshot` runs its readers in one `Promise.all` of 24, about **13 committed transactions per
-request** (measured as a `pg_stat_database.xact_commit` delta over five requests), so thirty
-concurrent requests queue hundreds of connection acquisitions behind ten connections. That is the
-second of the three things below, and it is the one to act on first when this is re-measured
-against staging — where §12 states the targets, and where the numbers that count will be taken.
-Throughput bears it out: 133 snapshots a second at c=10, 12 a second at c=30.
+**What changed, and what it bought.** Every read now runs inside one `read only` transaction
+(`withReadTransaction`, `apps/api/src/lib/db.ts`), so one request takes **one** connection instead
+of the ~40 acquisitions `GET /snapshot`'s `Promise.all` of twenty-four readers used to make. The
+queue depth says it plainly: sampled once a second through the c=30 snapshot-only run,
+`pg_pool_total` 10, `pg_pool_idle` 0, and `pg_pool_waiting` peaking at **20** — which is exactly
+30 concurrent requests minus a pool of 10, where the same sampling before the change read
+**771**. c=30 `GET /snapshot` came down from p95 2860.3 ms to 1548.1 ms and throughput from 12
+snapshots a second to 22; c=10 is unchanged within noise (104.5 → 102.7 ms), which is the point —
+the fan-out never bought latency, it only bought queueing.
+
+**It still misses 150 ms at c=30, and that is now honestly the pool, not the request.** Thirty
+concurrent readers against ten connections means two thirds of them wait, and on this laptop a
+snapshot holds its one connection for the whole of its ~40 sequential round trips. `DB_POOL_MAX`
+is the knob (default 10, deliberately not raised here — see the three things below), and §12
+states the target **for the staging instance**, which is where the numbers that count will be
+taken. Nothing about correctness is in question: these are latencies under queueing, and
+`RchApiPoolSaturated` already alerts on exactly the `pg_pool_waiting > 0 and pg_pool_idle == 0`
+condition the table above shows.
+
+**The previous measurement, kept for the comparison** (same machine, load averages 2.72 / 2.56 /
+3.34, before the read transaction): c=10 `GET /snapshot` p95 104.5 ms and `POST /bills` p95
+141.6 ms, both PASS; c=30 p95 **2860.3 ms** (n=245) and 262.2 ms; c=30 `--no-writes` p95
+**4429.7 ms** (n=172), with `pg_pool_waiting` peaking at 771. Note the load averages: the second
+measurement was taken on a *busier* machine than the first and still came out ahead.
 
 When a target is missed on a genuinely idle machine, the first three things to look at, in
-order: **the snapshot's query count** (does one request make one round trip per collection
-instead of one `Promise.all`?), **the pool size** (`apps/api/src/db/client.ts`'s `max: 10` — is
-the run's own concurrency higher than the pool, so requests queue for a connection before they
-even reach the database?), and **the RDS instance class** (`db.t4g.medium` in staging is not
-sized for a load test's concurrency, only for real traffic's).
+order:
+
+1. **Connections per request.** This is the one that was actually wrong, and it is fixed: every
+   read now runs inside one `read only` transaction (`withReadTransaction`,
+   `apps/api/src/lib/db.ts`), so `GET /snapshot` takes **one** connection rather than the ~40 its
+   `Promise.all` of twenty-four readers used to ask for. `apps/api/src/modules/snapshot/
+   snapshot.test.ts`'s "one request, one connection" cases count the pool's own `acquire` event
+   and fail if that ever comes back. If a *new* read is slow under concurrency, check it went
+   through `withReadTransaction` before checking anything else.
+2. **The pool size**, now the env knob `DB_POOL_MAX` (default **10**, set in the chart's
+   `api.env` for both environments). With one connection per request this is "how many requests
+   at once", so `pg_pool_waiting > 0` with `pg_pool_idle == 0` — which is exactly what
+   `RchApiPoolSaturated` alerts on — means genuinely that many concurrent requests, not one
+   request holding forty. Raise it only alongside the instance behind it: three replicas × 10 is
+   already 30 of RDS's own connection budget.
+3. **The RDS instance class** (`db.t4g.medium` in staging is not sized for a load test's
+   concurrency, only for real traffic's).
 
 ## 13. The end-to-end smoke
 

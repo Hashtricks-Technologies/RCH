@@ -47,7 +47,7 @@ export async function buildApp(config: Config, deps: AppDeps = {}): Promise<App>
   await app.register(metrics);
   await app.register(health);
   await app.register(security, { config });
-  await app.register(db, { url: config.databaseUrl, ssl: config.databaseSsl, searchPath: deps.searchPath, migrationsSchema: deps.migrationsSchema, db: deps.db, pool: deps.pool });
+  await app.register(db, { url: config.databaseUrl, ssl: config.databaseSsl, max: config.dbPoolMax, searchPath: deps.searchPath, migrationsSchema: deps.migrationsSchema, db: deps.db, pool: deps.pool });
   await app.register(auth, { config });
   await app.register(rbac);
   await app.register(sse, { config, searchPath: deps.searchPath });

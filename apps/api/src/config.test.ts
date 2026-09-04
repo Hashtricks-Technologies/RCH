@@ -15,6 +15,10 @@ describe("loadConfig", () => {
     expect(c.rateLimitPerMinute).toBe(300);
     expect(c.loginRateLimitPerMinute).toBe(10);
     expect(c.loginRateLimitPerEmpPerMinute).toBe(5);
+    // One pod's share of the instance's connections. A request takes exactly one of them
+    // (`withReadTransaction`, lib/db.ts), so this is "how many requests at once" — the default
+    // is what the chart ships and what the load check was measured against.
+    expect(c.dbPoolMax).toBe(10);
     // The heartbeat has to sit under every idle timer on the path (nginx 3600s, the ALB's
     // 3600s) and comfortably under a browser's own patience; the retry hint is what a
     // dropped stream waits before coming back.
@@ -47,6 +51,11 @@ describe("loadConfig", () => {
       expect(msg).toContain("JWT_PUBLIC_KEY");
       expect(msg).toContain("PORT");
     }
+  });
+  it("takes a pool size from the environment, and refuses a nonsensical one", () => {
+    expect(loadConfig({ ...good, DB_POOL_MAX: "25" }).dbPoolMax).toBe(25);
+    expect(() => loadConfig({ ...good, DB_POOL_MAX: "0" })).toThrow(ConfigError);
+    expect(() => loadConfig({ ...good, DB_POOL_MAX: "lots" })).toThrow(ConfigError);
   });
   it("splits a comma-separated CORS list", () => {
     expect(loadConfig({ ...good, CORS_ORIGIN: "https://a.example, https://b.example" }).corsOrigins)
