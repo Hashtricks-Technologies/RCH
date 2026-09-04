@@ -1,12 +1,37 @@
 // Catalog: SQL only. No rules, no transaction of its own — service.ts passes `tx` in.
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, like, sql } from "drizzle-orm";
 import type { LocKey } from "@rch/contract";
 import type { Tx } from "../../lib/db.js";
-import { locationItems, priceListItems } from "../../db/schema/index.js";
+import { items, locationItems, priceListItems } from "../../db/schema/index.js";
 
 type PriceList = "A" | "B";
+export type ItemRow = typeof items.$inferSelect;
+export type NewItemRow = typeof items.$inferInsert;
 
 export const catalogRepo = {
+  /** Serialise the suffix scan for one slug, so two different names that slug alike cannot both
+   *  compute the same key. Transaction-scoped: it is released with the commit or the rollback. */
+  async lockSlug(tx: Tx, slug: string): Promise<void> {
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${"item:" + slug}))`);
+  },
+
+  /** Every existing key equal to the slug or the slug plus digits. A plain `like` also catches
+   *  an unrelated key that happens to start with the slug — harmless, since the caller only
+   *  ever tests membership of the exact candidates it generates (`slug`, `slug2`, `slug3`, …). */
+  async keysLike(tx: Tx, slug: string): Promise<Set<string>> {
+    const rows = await tx.select({ key: items.key }).from(items).where(like(items.key, `${slug}%`));
+    return new Set(rows.map((r) => r.key));
+  },
+
+  /** `on conflict do nothing` covers both constraints a new row can hit — the primary key
+   *  (which the slug's advisory lock has already made unreachable in practice) and
+   *  `items_name_ci_uq`, which is the one this is actually here for: the case-insensitive
+   *  name clash reads no row back, and the caller's own sentence is what the loser sees. */
+  async insertItem(tx: Tx, row: NewItemRow): Promise<ItemRow | undefined> {
+    const [inserted] = await tx.insert(items).values(row).onConflictDoNothing().returning();
+    return inserted;
+  },
+
   /** `onConflictDoUpdate` on the table's own primary key `(list, item_key)`. One clock reading
    *  for both branches — inserted or updated, the row records the same moment. */
   upsertPrice: (tx: Tx, list: PriceList, itemKey: string, price: number) => {

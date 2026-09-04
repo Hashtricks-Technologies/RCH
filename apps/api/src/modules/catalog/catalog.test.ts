@@ -1,10 +1,11 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
-import { locationItems } from "../../db/schema/index.js";
+import { locationItems, stockBalances, stockMoves } from "../../db/schema/index.js";
 import { buildTestApp } from "../../test/app.js";
 import { seedTestDb } from "../../test/seed.js";
 import { authHeaders } from "../../test/auth.js";
+import { warmPool } from "../../test/db.js";
 import type { App } from "../../app.js";
 
 let app: App;
@@ -129,5 +130,74 @@ describe("catalog: role gate", () => {
     expect(add.statusCode).toBe(404);
     const remove = await del("/menus/coffee/items/juice", await hdr("u1"));
     expect(remove.statusCode).toBe(404);
+  });
+});
+
+describe("catalog: a new product on the master", () => {
+  const base = { name: "Cold coffee premix 1kg", unit: "kg", type: "RAW" as const, cost: 320, loc: "store" as const, opening: 0 };
+
+  it("adds an item, chooses its key, and applies the store's own defaults", async () => {
+    const r = await post("/items", await hdr("u3"), base);
+    expect(r.statusCode, r.body).toBe(200);
+    const b = r.json();
+    expect(b.result.key).toBe("coldcoffeepr");                // the name, slugged and cut to 12
+    expect(b.result.item).toMatchObject({ n: base.name, u: "kg", t: "RAW", g: "Other", hsn: "2106", gst: 5, cost: 320, c: "COLDCOFFEEPR" });
+    expect(b.result.item.mrp).toBeUndefined();
+    expect(b.changed).toEqual(["items"]);
+    expect(b.message).toBe("Cold coffee premix 1kg added to the catalogue");
+    expect((await get("/items"))[b.result.key]).toMatchObject({ n: base.name });
+  });
+
+  it("books opening stock as an opening move, and says where", async () => {
+    const r = await post("/items", await hdr("u4"), { ...base, name: "Kitchen premix 2kg", loc: "kitchen", opening: 12 });
+    const b = r.json();
+    expect(b.changed).toEqual(["items", "stock"]);
+    expect(b.message).toBe("Kitchen premix 2kg added to the catalogue with 12.000 kg at Central Kitchen");
+    const moves = await app.testDb!.db.select().from(stockMoves).where(eq(stockMoves.itemKey, b.result.key));
+    expect(moves).toHaveLength(1);
+    expect(moves[0]).toMatchObject({ kind: "opening", loc: "kitchen", qty: 12, refType: "item" });
+  });
+
+  it("leaves no balance row at all when nothing is booked in", async () => {
+    // A row's presence means "this location carries the line" (M12); a new item nobody has
+    // bought yet carries nowhere, and the store's list shows it because it unions the catalogue.
+    const b = (await post("/items", await hdr("u3"), { ...base, name: "Nothing yet 1kg" })).json();
+    expect(await app.testDb!.db.select().from(stockBalances).where(eq(stockBalances.itemKey, b.result.key))).toHaveLength(0);
+  });
+
+  it("de-duplicates a key with a numeric suffix, and still refuses a duplicate name", async () => {
+    // Two different names that slug the same way inside twelve characters — which is exactly
+    // the case the advisory lock on the slug exists for.
+    const one = (await post("/items", await hdr("u3"), { ...base, name: "Masala tea premix A" })).json();
+    const two = (await post("/items", await hdr("u3"), { ...base, name: "Masala tea premix B" })).json();
+    expect(one.result.key).toBe("masalateapre");
+    expect(two.result.key).toBe("masalateapre2");             // the slug is taken, so a suffix
+    const dup = await post("/items", await hdr("u3"), { ...base, name: "masala TEA premix a" });
+    expect(dup.statusCode).toBe(422);
+    expect(dup.json().error.message).toBe("masala TEA premix a is already in the catalogue");
+  });
+
+  it("refuses a nameless product and one that costs nothing", async () => {
+    expect((await post("/items", await hdr("u3"), { ...base, name: "  " })).json().error.message).toBe("Give the product a name");
+    expect((await post("/items", await hdr("u3"), { ...base, name: "Free stuff", cost: 0 })).json().error.message).toBe("Cost must be more than zero");
+  });
+
+  it("books at the caller's own shelf and nowhere else", async () => {
+    expect((await post("/items", await hdr("u4"), { ...base, name: "Wrong shelf 1", loc: "store" })).json().error.message)
+      .toBe("A new product's opening stock is booked at Central Kitchen");
+    expect((await post("/items", await hdr("u3"), { ...base, name: "Wrong shelf 2", loc: "kitchen" })).json().error.message)
+      .toBe("A new product's opening stock is booked at Central Store");
+    expect((await post("/items", await hdr("u5"), { ...base, name: "Buyer's own" })).statusCode).toBe(200);
+    for (const u of ["u1", "u2"]) {
+      expect((await post("/items", await hdr(u), { ...base, name: "Not yours" })).statusCode).toBe(404);
+    }
+  });
+
+  it("adds one item, not two, when the same name is submitted twice at once", async () => {
+    await warmPool(app.testDb!, 2);
+    const body = { ...base, name: "Twice premix 1kg" };
+    const both = await Promise.all([post("/items", await hdr("u3"), body), post("/items", await hdr("u3"), body)]);
+    expect(both.filter((r) => r.statusCode === 200)).toHaveLength(1);
+    expect(both.filter((r) => r.statusCode === 422)).toHaveLength(1);
   });
 });
