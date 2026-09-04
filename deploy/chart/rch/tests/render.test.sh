@@ -1,12 +1,20 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
+
+# `! command` does NOT trip `set -e` — bash explicitly exempts a command whose exit status is
+# inverted with a leading `!` (see `set -e`'s own documentation of what it does not catch), so
+# every assertion below that used to read `! grep -q PATTERN <<<"$out"` would silently pass even
+# when PATTERN was present: the script kept going instead of failing. `refute` is `set -e`-safe —
+# it runs its argument list as a command and exits 1 itself if that command succeeds (a match).
+refute() { if "$@"; then echo "FAIL: unexpected match — $*" >&2; exit 1; fi; }
+
 helm lint . -f values-staging.yaml --set image.registry=r,image.tag=t,secrets.values.DATABASE_URL=x,secrets.values.JWT_PRIVATE_KEY=x,secrets.values.JWT_PUBLIC_KEY=x
 helm lint . -f values-prod.yaml --set image.registry=r,image.tag=t
 
 out=$(helm template rch . -f values-prod.yaml --set image.registry=r,image.tag=t)
 grep -q 'kind: ExternalSecret' <<<"$out"
-! grep -q 'kind: Secret$' <<<"$out"
+refute grep -q 'kind: Secret$' <<<"$out"
 grep -q 'readOnlyRootFilesystem: true' <<<"$out"
 # I12: api Deployment's migrate initContainer and api container, the purge
 # CronJob and the ui Deployment must all run with a read-only root filesystem.
@@ -17,12 +25,12 @@ grep -q 'readOnlyRootFilesystem: true' <<<"$out"
 # (hooks live outside Release.Manifest, so Helm's diff drops the "old" plain
 # resource), and with before-hook-creation + ESO creationPolicy: Owner it was
 # destroyed and re-synced on every upgrade.
-! grep -q 'helm.sh/hook' <<<"$out"
-! (grep -A20 'kind: Secret$' <<<"$out" | grep -q 'helm.sh/hook')
-! (grep -A20 'kind: ExternalSecret' <<<"$out" | grep -q 'helm.sh/hook')
+refute grep -q 'helm.sh/hook:' <<<"$out"
+refute bash -c 'grep -A20 "kind: Secret\$" <<<"$1" | grep -q "helm.sh/hook"' _ "$out"
+refute bash -c 'grep -A20 "kind: ExternalSecret" <<<"$1" | grep -q "helm.sh/hook"' _ "$out"
 # N2/N3: migrations run as an initContainer on the api Deployment, not a
 # pre-upgrade hook Job.
-! grep -q 'kind: Job' <<<"$out"
+refute grep -q 'kind: Job' <<<"$out"
 grep -q 'initContainers:' <<<"$out"
 grep -q 'dist/cli/migrate.mjs' <<<"$out"
 # I3: JWT_PREVIOUS_PUBLIC_KEY is only populated during key rotation, so its
@@ -48,8 +56,8 @@ grep -A3 'kind: ServiceMonitor' <<<"$out" | grep -q 'component: api'
 # C1: secret values must never be inlined as plaintext env `value:` entries —
 # always sourced via secretKeyRef, on both the prod (ExternalSecret) and
 # staging (Secret) paths.
-! (grep -A2 'name: JWT_PRIVATE_KEY' <<<"$out" | grep -q 'value:')
-! (grep -A2 'name: DATABASE_URL' <<<"$out" | grep -q 'value:')
+refute bash -c 'grep -A2 "name: JWT_PRIVATE_KEY" <<<"$1" | grep -q "value:"' _ "$out"
+refute bash -c 'grep -A2 "name: DATABASE_URL" <<<"$1" | grep -q "value:"' _ "$out"
 grep -q 'secretKeyRef' <<<"$out"
 # I: the api Deployment's migrate initContainer and its api container both
 # build their env from rch.envList (see _helpers.tpl) so they can never drift.
@@ -60,14 +68,48 @@ api_secrets=$(sed -n '/name: api$/,/readinessProbe:/p' <<<"$out" | grep 'secretK
 [ -n "$init_secrets" ]
 [ "$init_secrets" = "$api_secrets" ]
 
+# Phase 6: the five §12 alerts plus the SSE listener ship with the chart, so the alert text lives
+# beside the metric it reads instead of only in the runbook.
+grep -q 'kind: PrometheusRule' <<<"$out"
+for a in RchApiHigh5xxRate RchApiHighLatencyP95 RchApiDown RchApiPoolSaturated RchSseListenerDown; do
+  grep -q "alert: $a" <<<"$out" || { echo "missing alert: $a"; exit 1; }
+done
+# Every rule must name a metric the API actually publishes. `sse_listener_up` and
+# `http_request_duration_seconds` are decorated in apps/api/src/plugins/metrics.ts; an alert on a
+# metric that does not exist is an alert that never fires, which is worse than no alert.
+grep -q 'http_request_duration_seconds_count' <<<"$out"
+grep -q 'sse_listener_up' <<<"$out"
+# Every alert carries a runbook link, so whoever is woken has somewhere to go.
+[ "$(grep -c 'runbook_url:' <<<"$out")" -ge 5 ]
+
+# TLS must be wired, and must never render as an EMPTY annotation — the ALB controller reads
+# `certificate-arn: ""` and fails, where an absent annotation falls back cleanly.
+# `templates/ingress.yaml:7-9` already guards it on a non-empty `certificateArn`, so the
+# assertion has to hold in BOTH states: nothing rendered with the FILL placeholder in place,
+# and the real value rendered once one is supplied.
+refute grep -q 'certificate-arn: *$' <<<"$out"
+out_tls=$(helm template rch . -f values-prod.yaml --set image.registry=r,image.tag=t,ingress.certificateArn=arn:aws:acm:x)
+grep -q 'alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:x' <<<"$out_tls"
+# Three replicas that land on one node make the PodDisruptionBudget decorative.
+grep -q 'topologySpreadConstraints' <<<"$out"
+# Production resources must be its own, not staging's inherited defaults. `-A6` never reaches
+# `resources:` (the api container is `- name: api` and resources is nine lines below it), which
+# is why the file's existing tests use a sed range — copy that shape, not a fixed window.
+sed -n '/name: api$/,/readinessProbe:/p' <<<"$out" | grep -q 'memory: 1Gi'
+
+# The alerts are off wherever the ServiceMonitor is off: a PrometheusRule with no Prometheus
+# Operator installed is a CRD apply that fails the whole release.
+out_staging_norule=$(helm template rch . -f values-staging.yaml --set image.registry=r,image.tag=t,secrets.values.DATABASE_URL=x,secrets.values.JWT_PRIVATE_KEY=x,secrets.values.JWT_PUBLIC_KEY=x)
+refute grep -q 'kind: PrometheusRule' <<<"$out_staging_norule"
+
 out=$(helm template rch . -f values-staging.yaml --set image.registry=r,image.tag=t,secrets.values.DATABASE_URL=x,secrets.values.JWT_PRIVATE_KEY=x,secrets.values.JWT_PUBLIC_KEY=x)
 grep -q 'kind: Secret' <<<"$out"
-! grep -q 'helm.sh/hook' <<<"$out"
-! grep -q 'kind: Job' <<<"$out"
+refute grep -q 'helm.sh/hook:' <<<"$out"
+refute grep -q 'kind: Job' <<<"$out"
 grep -q 'initContainers:' <<<"$out"
 grep -q 'dist/cli/migrate.mjs' <<<"$out"
-! (grep -A2 'name: JWT_PRIVATE_KEY' <<<"$out" | grep -q 'value:')
-! (grep -A2 'name: DATABASE_URL' <<<"$out" | grep -q 'value:')
+refute bash -c 'grep -A2 "name: JWT_PRIVATE_KEY" <<<"$1" | grep -q "value:"' _ "$out"
+refute bash -c 'grep -A2 "name: DATABASE_URL" <<<"$1" | grep -q "value:"' _ "$out"
 grep -q 'secretKeyRef' <<<"$out"
 
 echo "chart renders"

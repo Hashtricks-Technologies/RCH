@@ -1,4 +1,73 @@
-api: { replicas: 3, hpa: { minReplicas: 3, maxReplicas: 6 }, env: { CORS_ORIGIN: https://rch.example.com } }
-ingress: { host: rch.example.com }
-secrets: { create: false, externalSecret: { enabled: true, remoteKey: rch/prod } }
-serviceMonitor: { enabled: true }
+# What the hospital runs. Everything here is a deliberate difference from values.yaml, which is
+# sized for a laptop and a kind cluster. The placeholders marked FILL are the five facts only the
+# account owner has; deploy/RUNBOOK.md §2 "First-time cluster setup" lists where each comes from.
+image:
+  registry: ""                      # FILL: <account>.dkr.ecr.<region>.amazonaws.com — deploy.yml passes it
+api:
+  replicas: 3
+  # Sized against the load check (apps/api/scripts/loadcheck.mjs): one pod holds ten Postgres
+  # connections and the snapshot is the heaviest read in the system.
+  resources: { requests: { cpu: 500m, memory: 512Mi }, limits: { cpu: "2", memory: 1Gi } }
+  hpa: { enabled: true, minReplicas: 3, maxReplicas: 6, cpu: 70 }
+  pdb: { minAvailable: 2 }
+  # Three replicas on one node make the PodDisruptionBudget decorative: draining that node takes
+  # the whole service with it whatever minAvailable says.
+  topologySpread:
+    enabled: true
+    maxSkew: 1
+    topologyKey: topology.kubernetes.io/zone
+    whenUnsatisfiable: ScheduleAnyway
+  env:
+    LOG_LEVEL: info
+    CORS_ORIGIN: https://rch.example.com          # FILL: the real hostname, no trailing slash
+    RATE_LIMIT_PER_MINUTE: "300"
+    LOGIN_RATE_LIMIT_PER_MINUTE: "10"
+    LOGIN_RATE_LIMIT_PER_EMP_PER_MINUTE: "5"
+    DATABASE_SSL: "true"
+    COOKIE_SECURE: "true"
+    ACCESS_TOKEN_TTL: 15m
+    REFRESH_TOKEN_TTL_DAYS: "30"
+    TRUST_PROXY: "1"                              # one hop: the ALB. More hops and the client IP is wrong.
+    SSE_HEARTBEAT_MS: "25000"
+    SSE_RETRY_MS: "1000"
+ui:
+  replicas: 3
+  resources: { requests: { cpu: 100m, memory: 128Mi }, limits: { cpu: 500m, memory: 256Mi } }
+ingress:
+  enabled: true
+  className: alb
+  host: rch.example.com                           # FILL
+  certificateArn: ""                              # FILL: without it the ALB serves :80 only
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443},{"HTTP":80}]'
+    alb.ingress.kubernetes.io/ssl-redirect: "443"
+    alb.ingress.kubernetes.io/ssl-policy: ELBSecurityPolicy-TLS13-1-2-2021-06
+    # An hour, because a live-update stream is one request that never ends (RUNBOOK §10). Every
+    # timeout on the path — this, nginx's proxy_read_timeout, the heartbeat — moves together.
+    alb.ingress.kubernetes.io/load-balancer-attributes: >-
+      idle_timeout.timeout_seconds=3600,
+      deletion_protection.enabled=true,
+      access_logs.s3.enabled=true,
+      access_logs.s3.bucket=rch-alb-logs,
+      access_logs.s3.prefix=rch
+    alb.ingress.kubernetes.io/healthcheck-path: /healthz
+    alb.ingress.kubernetes.io/healthcheck-interval-seconds: "15"
+    alb.ingress.kubernetes.io/wafv2-acl-arn: ""   # optional; leave empty to skip
+secrets:
+  create: false
+  externalSecret:
+    enabled: true
+    storeName: aws-secrets-manager
+    storeKind: ClusterSecretStore
+    remoteKey: rch/prod                           # a JSON secret with the four keys
+serviceAccount:
+  create: true
+  annotations: {}                                 # FILL if the pod itself reads Secrets Manager (IRSA)
+serviceMonitor: { enabled: true, interval: 30s }
+purge: { enabled: true, schedule: "15 2 * * *" }
+alerts:
+  errorRate: 0.01
+  p95Seconds: 1
+  runbookUrl: https://github.com/<org>/<repo>/blob/production/deploy/RUNBOOK.md   # FILL

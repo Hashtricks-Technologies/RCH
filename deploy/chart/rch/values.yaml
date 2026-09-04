@@ -9,6 +9,9 @@ api:
   resources: { requests: { cpu: 200m, memory: 256Mi }, limits: { cpu: "1", memory: 512Mi } }
   hpa: { enabled: true, minReplicas: 2, maxReplicas: 6, cpu: 70 }
   pdb: { minAvailable: 1 }
+  # Off everywhere but production: a laptop or a kind cluster has one node, so spreading across
+  # topology.kubernetes.io/zone would only ever find one candidate.
+  topologySpread: { enabled: false, maxSkew: 1, topologyKey: topology.kubernetes.io/zone, whenUnsatisfiable: ScheduleAnyway }
   env:
     LOG_LEVEL: info
     CORS_ORIGIN: https://rch.example.com
@@ -47,4 +50,10 @@ serviceAccount:
   create: true
   annotations: {}         # eks.amazonaws.com/role-arn for IRSA when the pod itself reads AWS
 serviceMonitor: { enabled: false, interval: 30s }
+# Thresholds for the PrometheusRule (rendered only when serviceMonitor.enabled). Spec §12 sets
+# the first two; the last is the link an on-call engineer follows at three in the morning.
+alerts:
+  errorRate: 0.01          # 5xx share of all requests, over 5 minutes
+  p95Seconds: 1            # §12's ceiling; the SLO underneath it is 150ms/200ms, measured by the load check
+  runbookUrl: https://github.com/<org>/<repo>/blob/production/deploy/RUNBOOK.md
 purge: { enabled: true, schedule: "15 2 * * *" }
