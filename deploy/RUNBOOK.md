@@ -643,6 +643,14 @@ against the system store. `DATABASE_SSL=true` alone decides TLS — keep the URL
 (`createDb` now strips it, but a URL that says nothing is clearer). The bundle itself verified the
 `rds-ca-rsa2048-g1` chain fine from inside the cluster.
 
+**The site stops resolving after a failed or re-done install.** The ingress owns the ALB, and
+`helm --atomic` rolling a first install back deletes the ingress and the ALB with it; the next
+install creates a new ALB with a new DNS name, and the Route 53 alias still points at the old one
+(Route 53 answers NOERROR with no address). Re-point it: `kubectl -n rch-dev get ingress rch -o
+jsonpath='{.status.loadBalancer.ingress[0].hostname}'`, then the UPSERT alias with that name and
+the ALB's canonical hosted zone id (`aws elbv2 describe-load-balancers`). The durable fix is
+external-dns (IRSA + the `external-dns` chart watching the ingress host) — not installed yet.
+
 **Every `/api` request from the browser answers 502, the API pod logs only probes.** The UI's
 nginx proxies `/api` to `API_UPSTREAM`, and nginx's `resolver` directive ignores `/etc/resolv.conf`'s
 search domains, so the value must be the API Service's full cluster name —
