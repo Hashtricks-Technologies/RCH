@@ -92,4 +92,21 @@ describe("PATCH /vendors/:id", () => {
       expect((await post(u, "/vendors", { n: "Nope" })).statusCode).toBe(404);
     }
   });
+
+  it("refuses a rename onto another vendor's name, leaving the row unchanged, but allows a case-only rename of its own name", async () => {
+    const a = await given.vendor(app.testDb!.db, { n: "Rename Source" });
+    const b = await given.vendor(app.testDb!.db, { n: "Rename Target" });
+
+    const r = await patch("u5", `/vendors/${a}`, { n: "rename target" });
+    expect(r.statusCode).toBe(422);
+    expect(r.json().error.message).toBe("rename target is already on the vendor list");
+    // The update is the arbiter: the row it failed to write is unchanged.
+    expect((await vendorsList()).find((v: { id: string }) => v.id === a).n).toBe("Rename Source");
+
+    // Renaming a vendor to a differently-cased spelling of its own current name is not a
+    // collision — the unique index never sees two rows sharing the value, only this one.
+    const same = await patch("u5", `/vendors/${b}`, { n: "RENAME TARGET" });
+    expect(same.statusCode, same.body).toBe(200);
+    expect(same.json().result.n).toBe("RENAME TARGET");
+  });
 });

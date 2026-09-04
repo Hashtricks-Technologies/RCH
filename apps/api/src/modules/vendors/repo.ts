@@ -10,6 +10,17 @@ export type VendorPatch = Partial<{
   leadDays: number; groups: string[]; active: boolean;
 }>;
 
+/** Postgres reports a unique violation the same way whether the arbiter is a table constraint
+ *  or (as here) a unique index — `code` 23505, `constraint` the index's own name. Drizzle wraps
+ *  the raw `pg` error in a `DrizzleQueryError` and carries it as `.cause`, so that is where the
+ *  code and constraint name are read from. `UPDATE` has no `onConflictDoNothing`, so this is how
+ *  a rename is made the arbiter the way an insert is: catch the one violation this table can
+ *  raise and let the caller turn it into a refusal. */
+const isUniqueViolation = (err: unknown, constraint: string): boolean => {
+  const cause = (err as { cause?: unknown } | null)?.cause as { code?: string; constraint?: string } | undefined;
+  return cause?.code === "23505" && cause?.constraint === constraint;
+};
+
 export const vendorsRepo = {
   /** Locking read: `.for("update")` on the vendor's own row, so two patches of one vendor
    *  cannot both read the row that is about to change under them. */
@@ -27,9 +38,20 @@ export const vendorsRepo = {
     return v;
   },
 
-  async update(tx: Tx, id: string, patch: VendorPatch): Promise<VendorRow> {
-    const [row] = await tx.update(vendors).set({ ...patch, updatedAt: new Date() }).where(eq(vendors.id, id)).returning();
-    if (!row) throw new Error(`vendor ${id} vanished inside its own transaction`);
-    return row;
+  /** `undefined` means the same thing here it means for `insertIfNew`: the row this call would
+   *  have produced already exists under another id. A rename into a name another vendor holds
+   *  hits `vendors_name_ci_uq` on the UPDATE itself, caught here rather than left to surface as
+   *  a raw 500 — the caller reads the same "already on the vendor list" sentence the insert's
+   *  arbiter gives a new vendor. Renaming a vendor to a case-only variant of its own current
+   *  name is not a violation (the index only ever sees one row with that value) and succeeds. */
+  async update(tx: Tx, id: string, patch: VendorPatch): Promise<VendorRow | undefined> {
+    try {
+      const [row] = await tx.update(vendors).set({ ...patch, updatedAt: new Date() }).where(eq(vendors.id, id)).returning();
+      if (!row) throw new Error(`vendor ${id} vanished inside its own transaction`);
+      return row;
+    } catch (err) {
+      if (isUniqueViolation(err, "vendors_name_ci_uq")) return undefined;
+      throw err;
+    }
   },
 };

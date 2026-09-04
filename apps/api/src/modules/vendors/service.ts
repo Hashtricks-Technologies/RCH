@@ -76,7 +76,10 @@ export function createVendorsService(db: Db) {
         if (body.groups !== undefined) patch.groups = body.groups;
         if (body.active !== undefined) patch.active = body.active;
 
+        // The trim/GSTIN checks ran above; the update is the arbiter for the name (`update`
+        // catches `vendors_name_ci_uq` the way `insertIfNew` catches it on a create).
         const row = await vendorsRepo.update(tx, id, patch);
+        assertRule(row, `${(body.n ?? existing.name).trim()} is already on the vendor list`);
 
         const changed = ["vendors"] as const;
         await emitChanged(tx, changed);
