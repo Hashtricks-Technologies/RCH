@@ -76,11 +76,15 @@ export const posRepo = {
    * What this staff member has already put on credit inside the window. Deliberately unscoped
    * by location: the ceiling belongs to the person, so a bill they ran up at the kiosk counts
    * against them at the coffee shop.
+   *
+   * The tender is part of the filter, not only the payer: the ceiling measures credit, and
+   * credit is what the "Staff credit" tender creates. A bill somebody paid for in cash while
+   * their name was on it took the money then and there, and must not eat their room.
    */
   async staffCreditTaken(tx: Tx, payerId: string, since: Date): Promise<number> {
     const [row] = await tx.select({ taken: sql<string>`coalesce(round(sum(${bills.total}), 2), 0)` })
       .from(bills)
-      .where(and(eq(bills.payerKind, "staff"), eq(bills.payerId, payerId), gte(bills.at, since)));
+      .where(and(eq(bills.tender, "Staff credit"), eq(bills.payerKind, "staff"), eq(bills.payerId, payerId), gte(bills.at, since)));
     return Number(row?.taken ?? 0);
   },
 };

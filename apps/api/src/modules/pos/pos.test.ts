@@ -117,6 +117,18 @@ describe("the rules refuse before anything is written", () => {
   it("wants a department before it takes a dept bill", async () => {
     await rejects({ loc: "coffee", tender: "Dept", lines: [{ it: "juice", qty: 1 }] }, "Choose a department before taking a dept");
   });
+  it("refuses a staff credit posted to somebody who is not staff", async () => {
+    // The tender and the payer have to agree, or the bill runs up a balance the ceiling never
+    // measures: it counts staff payers, and this one would land on a patient's account.
+    await rejects(
+      { loc: "coffee", tender: "Staff credit", payer: { kind: "patient", id: "IP-4471", name: "Anitha, Room 312" }, lines: [{ it: "water", qty: 1 }] },
+      "Choose a staff member for a staff credit — Anitha, Room 312 is not one");
+  });
+  it("refuses a patient bill posted to a staff member", async () => {
+    await rejects(
+      { loc: "coffee", tender: "Patient bill", payer: { kind: "staff", id: "RC-2088", name: "Suresh Muthu · Stores" }, lines: [{ it: "water", qty: 1 }] },
+      "Choose a patient for a patient bill — Suresh Muthu · Stores is not one");
+  });
   it("refuses an item the counter does not list", async () => {
     await rejects({ loc: "coffee", tender: "Cash", lines: [{ it: "puff", qty: 1 }] }, "Veg puffs is not listed at Coffee Shop");
   });
@@ -252,12 +264,14 @@ describe("the ledger, not the pre-check, is the guarantee", () => {
     });
     await sleep(50);
     const t0 = Date.now();
-    const sale = pay("u1", { loc: "coffee", tender: "Cash", lines: [{ it: "bisc", qty: have }] });
-    const [r] = await Promise.all([sale, drained]);
+    // The sale's own elapsed time, not the pair's: `drained` sleeps 400 ms by itself, so timing
+    // the `Promise.all` would pass however fast the bill came back.
+    const sale = pay("u1", { loc: "coffee", tender: "Cash", lines: [{ it: "bisc", qty: have }] }).then((r) => ({ r, ms: Date.now() - t0 }));
+    const [{ r, ms }] = await Promise.all([sale, drained]);
 
     // It could only have taken that long by waiting on the lock, which is past the pre-check:
     // the refusal below is the post-lock read talking, not the friendly one.
-    expect(Date.now() - t0).toBeGreaterThan(250);
+    expect(ms).toBeGreaterThan(250);
     expect(r.statusCode, r.body).toBe(422);
     expect(r.json().error).toMatchObject({ code: "rule", message: "Only 0 nos of Marie biscuit 120g left at Coffee Shop" });
     expect(await onHand("coffee", "bisc")).toBe(0);
@@ -338,6 +352,13 @@ describe("the staff credit ceiling", () => {
     await given.bill(app.db, { loc: "coffee", total: 5000, payer: STAFF("RC-2088", "Suresh Muthu · Stores") });
     expect((await pay("u1", oneWater())).statusCode).toBe(200);                                    // Cash
   });
+
+  it("counts credit, not money already taken, when a cash bill carries a staff member's name", async () => {
+    // ₹2,999 that was paid for at the till is not credit, so it must not eat their room.
+    await given.bill(app.db, { loc: "coffee", total: 2999, tender: "Cash", payer: STAFF("RC-4471", "Kavitha Raman · F&B") });
+    const r = await pay("u1", oneWater(STAFF("RC-4471", "Kavitha Raman · F&B")));
+    expect(r.statusCode, r.body).toBe(200);
+  });
 });
 
 describe("a sale cannot take stock another document is holding", () => {
@@ -381,11 +402,14 @@ describe("a sale cannot take stock another document is holding", () => {
     });
     await sleep(50);
     const t0 = Date.now();
-    const [sale] = await Promise.all([pay("u1", { loc: "coffee", tender: "Cash", lines: [{ it: "water", qty: free }] }), holder]);
+    // The sale's own elapsed time, not the pair's: `holder` sleeps 400 ms by itself, so timing
+    // the `Promise.all` would pass however fast the bill came back.
+    const saleP = pay("u1", { loc: "coffee", tender: "Cash", lines: [{ it: "water", qty: free }] }).then((r) => ({ r, ms: Date.now() - t0 }));
+    const [{ r: sale, ms }] = await Promise.all([saleP, holder]);
 
     // It could only have taken that long by waiting on the lock, which is past the pre-check:
     // the refusal below is the post-lock read talking, not the friendly one.
-    expect(Date.now() - t0).toBeGreaterThan(250);
+    expect(ms).toBeGreaterThan(250);
     expect(sale.statusCode, sale.body).toBe(422);
     expect(sale.json().error).toMatchObject({ code: "rule", message: "Only 0 nos of Mineral water 1L left at Coffee Shop" });
     expect(await onHand("coffee", "water")).toBe(have);                     // the sale's moves rolled back

@@ -1,7 +1,7 @@
 // Pos: the flow — transaction, rules, moves, id. Composes the helpers in apps/api/src/lib/;
 // the arithmetic of the sale is `planBill` in packages/domain.
 import type { z } from "zod";
-import type { Bill, PayBodySchema, Tender, WriteResponse } from "@rch/contract";
+import type { Bill, PayBodySchema, PayerKind, Tender, WriteResponse } from "@rch/contract";
 import { avail, availOf, breachesCredit, creditBreachMessage, creditRoom, fq, planBill, round3, type Master } from "@rch/domain";
 import type { Db } from "../../db/client.js";
 import { withTransaction } from "../../lib/db.js";
@@ -19,9 +19,16 @@ import { posRepo } from "./repo.js";
 
 export type PayBody = z.infer<typeof PayBodySchema>;
 
-/** A tender that is not money changing hands has to name whose account it lands on. Keyed by
- *  the closed set of tenders, so a new one added to `TenderSchema` has to be considered here. */
-const NEEDS_PAYER: Partial<Record<Tender, string>> = { "Patient bill": "patient", "Staff credit": "staff member", Dept: "department" };
+/** A tender that is not money changing hands has to name whose account it lands on: the word
+ *  the operator reads, and the kind of payer that word means. One table for both, because a
+ *  tender that accepts the wrong kind of payer is a bill nothing later counts — a staff credit
+ *  posted to a patient is invisible to the ceiling below. Keyed by the closed set of tenders,
+ *  so a new one added to `TenderSchema` has to be considered here. */
+const NEEDS_PAYER: Partial<Record<Tender, { label: string; kind: PayerKind }>> = {
+  "Patient bill": { label: "patient", kind: "patient" },
+  "Staff credit": { label: "staff member", kind: "staff" },
+  Dept: { label: "department", kind: "dept" },
+};
 
 /** Money is stored and read at two decimals; `planBill` totals at full precision so the tax
  *  split is derived from the real amounts, not from a rounded one. */
@@ -55,7 +62,12 @@ export function createPosService(db: Db) {
         assertRule(keys.length > 0, "Add at least one item to the bill");
 
         const need = NEEDS_PAYER[body.tender];
-        assertRule(!(need && !body.payer), `Choose a ${need} before taking a ${body.tender.toLowerCase()}`);
+        assertRule(!(need && !body.payer), `Choose a ${need?.label} before taking a ${body.tender.toLowerCase()}`);
+        // And the payer has to be of the kind the tender means. Without this the two halves
+        // disagree — the ceiling below counts staff payers, so a staff credit posted to a
+        // patient would run up a balance no rule ever measures.
+        assertRule(!need || body.payer?.kind === need.kind,
+          `Choose a ${need?.label} for a ${body.tender.toLowerCase()} — ${body.payer?.name} is not one`);
 
         const master = await loadMaster(tx);
         const locName = master.locations[loc]?.n ?? loc;
