@@ -1,18 +1,26 @@
 import { routes, type Changed } from "@rch/contract";
 import { call } from "./client";
-import { applyBills, applyStock } from "./wire";
+import { applyBills, applyRequests, applyShopAsks, applyStock, applyTickets } from "./wire";
 import { useApp } from "../store";
 
 /** The slices `GET /stock` answers for, in one call. */
 const STOCK: readonly Changed[] = ["stock", "rsv", "ovr"];
 
+/** One reader per slice that has one; everything else falls through to the snapshot. */
+const NARROW: Partial<Record<Changed, () => Promise<void>>> = {
+  bills: () => call(routes.bills).then(applyBills),
+  req: () => call(routes.requests).then(applyRequests),
+  tkt: () => call(routes.ticketsList).then(applyTickets),
+  shopAsks: () => call(routes.shopAsks).then(applyShopAsks),
+};
+
 /**
  * Pull back exactly what a write said it changed.
  *
- * `stock`/`rsv`/`ovr` come from `GET /stock` and `bills` from `GET /bills`, each fetched
- * at most once however many times the write named them. Anything else — prices, menus, the
- * document slices — has no narrow reader yet, so it costs one snapshot; phase 3 replaces
- * that with SSE and finer GETs.
+ * `stock`/`rsv`/`ovr` come from `GET /stock`, and `bills`, `req`, `tkt` and `shopAsks` each
+ * from their own GET, every one of them fetched at most once however many times the write
+ * named it. Anything else — prices, menus, the collections later phases add — has no narrow
+ * reader yet, so it costs one snapshot, and a mixed set takes that snapshot alone.
  *
  * `after` is the sentence the write already succeeded with. When the read-back fails it is
  * kept and qualified rather than replaced, so the operator still learns their bill was taken.
@@ -20,13 +28,13 @@ const STOCK: readonly Changed[] = ["stock", "rsv", "ovr"];
 export async function refetch(changed: readonly Changed[], after?: string): Promise<void> {
   const want = new Set<Changed>(changed);
   try {
-    if ([...want].some((c) => c !== "bills" && !STOCK.includes(c))) {
+    if ([...want].some((c) => !NARROW[c] && !STOCK.includes(c))) {
       await useApp.getState().loadSnapshot();
       return;
     }
     await Promise.all([
       ...(STOCK.some((c) => want.has(c)) ? [call(routes.stock).then(applyStock)] : []),
-      ...(want.has("bills") ? [call(routes.bills).then(applyBills)] : []),
+      ...[...want].filter((c) => NARROW[c]).map((c) => NARROW[c]!()),
     ]);
   } catch {
     // The write itself landed; only the read-back did not. Saying "could not take the bill"

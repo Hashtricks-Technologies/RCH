@@ -7,6 +7,7 @@ import { refetch } from "../api/refetch";
 import { setAccessToken } from "../api/session";
 import { qty } from "../lib/selectors";
 import Pos from "../roles/counter/Pos";
+import CounterRequests from "../roles/counter/Requests";
 import { resetStore, S, as } from "./fixture";
 
 /**
@@ -351,5 +352,361 @@ describe("refetch — what a write says it changed is what gets read", () => {
     serve({ "GET /api/v1/stock": () => json({ error: { code: "internal", message: "boom" } }, 500) });
     await refetch(["stock"], "Veg puffs switched off at Central Kitchen");
     expect(S().toast).toBe("Veg puffs switched off at Central Kitchen — the screen could not be refreshed; reload to see the latest.");
+  });
+});
+
+/**
+ * The request chain, the tickets, the shop asks and the kitchen's two ticket paths, seen the
+ * same way: route, body, the sentence that comes back, and which reads follow. The rules
+ * themselves belong to requests.test.ts, tickets.test.ts, shopasks.test.ts and
+ * production.test.ts — nothing here re-asserts one.
+ */
+const REQ = {
+  id: "REQ-2026-0913", from: "coffee", by: "Kavitha Raman", at: "2026-09-04T04:30:00.000Z",
+  lines: [{ it: "milk", qty: 20, appr: 0 }], st: "Request sent", ticket: null, mgrNote: "", hist: [],
+};
+const TKT = { id: "TKT-0441", req: "REQ-2026-0913", from: "store", to: "coffee", lines: [{ it: "milk", qty: 12 }], st: "Issued", otp: "989089" };
+const ASK = { id: "ASK-063", from: "coffee", to: "kiosk", it: "water", qty: 24, st: "Asked", by: "Kavitha Raman", at: "2026-09-04T04:30:00.000Z", note: "Ran dry" };
+
+describe("the request chain — the twelve writes", () => {
+  it("submitRequest posts the draft and reads the requests back", async () => {
+    as("counter");
+    S().setDraft([{ it: "milk", qty: 20 }, { it: "sugar", qty: 4 }]);
+    serve({
+      "POST /api/v1/requests": () => json({ result: REQ, changed: ["req"], message: "REQ-2026-0913 sent to the outlet manager — 2 lines" }),
+      "GET /api/v1/requests": () => json([REQ]),
+    });
+
+    const ok = await S().submitRequest("Counter runs dry by 4pm", true);
+
+    expect(ok).toBe(true);                                    // the screen resets on this, not on the click
+    expect(hit("POST /api/v1/requests")[0].body).toEqual({ lines: [{ it: "milk", qty: 20 }, { it: "sugar", qty: 4 }], note: "Counter runs dry by 4pm", urgent: true });
+    expect(S().draft).toEqual([]);
+    expect(S().toast).toBe("REQ-2026-0913 sent to the outlet manager — 2 lines");
+    expect(hit("GET /api/v1/requests")).toHaveLength(1);
+    expect(hit("GET /api/v1/snapshot")).toHaveLength(0);
+    expect(S().req.at(-1)!.id).toBe("REQ-2026-0913");
+    expect(S().req.at(-1)!.at).toMatch(/^\d{2}:\d{2}$/);       // ISO -> HH:MM on the way in
+  });
+
+  it("requestFromStore names the screen it came from", async () => {
+    as("counter");
+    serve({ "POST /api/v1/requests": () => json({ result: REQ, changed: ["req"], message: "REQ-2026-0913 raised for 20 Milk 1L — with the outlet manager now" }), "GET /api/v1/requests": () => json([REQ]) });
+    await S().requestFromStore("milk", 20);
+    expect(hit("POST /api/v1/requests")[0].body).toEqual({ lines: [{ it: "milk", qty: 20 }], note: "Raised from Coffee Shop stock screen", urgent: false });
+  });
+
+  it("sends nothing at all for an empty draft", async () => {
+    as("counter");
+    S().setDraft([]);
+    await S().submitRequest("", false);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(S().toast).toBe("Add at least one line with a quantity");
+  });
+
+  it("cancelRequest names the request in the path and sends no body", async () => {
+    as("counter");
+    serve({ "POST /api/v1/requests/REQ-2026-0911/cancel": () => json({ result: REQ, changed: ["req"], message: "REQ-2026-0911 cancelled" }), "GET /api/v1/requests": () => json([REQ]) });
+    await S().cancelRequest("REQ-2026-0911");
+    expect(hit("POST /api/v1/requests/REQ-2026-0911/cancel")[0].body).toBeUndefined();
+    expect(S().toast).toBe("REQ-2026-0911 cancelled");
+    expect(hit("GET /api/v1/requests")).toHaveLength(1);
+  });
+
+  it("approveRequest sends the manager's numbers and repeats the server's sentence", async () => {
+    as("manager");
+    serve({
+      "POST /api/v1/requests/REQ-2026-0911/approve": () => json({ result: { request: { ...REQ, id: "REQ-2026-0911", st: "Partially approved" }, trimmed: true }, changed: ["req"], message: "REQ-2026-0911 trimmed — the central store cannot cover the full quantity" }),
+      "GET /api/v1/requests": () => json([REQ]),
+    });
+    await S().approveRequest("REQ-2026-0911", [20], "Store only holds 12 L.");
+    expect(hit("POST /api/v1/requests/REQ-2026-0911/approve")[0].body).toEqual({ appr: [20], note: "Store only holds 12 L." });
+    expect(S().toast).toBe("REQ-2026-0911 trimmed — the central store cannot cover the full quantity");
+  });
+
+  it("hands a rejection refusal to the manager word for word and changes nothing", async () => {
+    as("manager");
+    const before = S().req.find((r) => r.id === "REQ-2026-0912")!.st;
+    serve({ "POST /api/v1/requests/REQ-2026-0912/reject": () => refusal("Give a reason — the counter sees it on the request") });
+    const ok = await S().rejectRequest("REQ-2026-0912", "   ");
+    expect(ok).toBe(false);                                   // so the drawer stays open, reason and trims intact
+    expect(S().toast).toBe("Give a reason — the counter sees it on the request");
+    expect(S().req.find((r) => r.id === "REQ-2026-0912")!.st).toBe(before);
+    expect(calls()).toHaveLength(1);
+  });
+
+  it("issueTicket reads requests, tickets and balances back", async () => {
+    as("store");
+    serve({
+      "POST /api/v1/requests/REQ-2026-0911/issue-ticket": () => json({ result: { request: { ...REQ, id: "REQ-2026-0911", st: "Ticket issued", ticket: "TKT-0441" }, ticket: TKT }, changed: ["req", "tkt", "rsv"], message: "TKT-0441 issued — Coffee Shop can collect against this ticket" }),
+      "GET /api/v1/requests": () => json([REQ]), "GET /api/v1/tickets": () => json([TKT]), "GET /api/v1/stock": () => json(STOCK),
+    });
+    await S().issueTicket("REQ-2026-0911");
+    expect(calls().map((c) => c.at).sort()).toEqual(["GET /api/v1/requests", "GET /api/v1/stock", "GET /api/v1/tickets", "POST /api/v1/requests/REQ-2026-0911/issue-ticket"]);
+    expect(hit("GET /api/v1/snapshot")).toHaveLength(0);
+    expect(S().tkt.at(-1)!.id).toBe("TKT-0441");
+  });
+
+  it("handover sends the OTP the store keeper typed", async () => {
+    as("store");
+    serve({
+      "POST /api/v1/tickets/TKT-0440/handover": () => json({ result: { ...TKT, id: "TKT-0440", st: "Collected" }, changed: ["tkt", "req", "rsv", "stock"], message: "TKT-0440 handed over — stock is in transit to Coffee Shop" }),
+      "GET /api/v1/requests": () => json([REQ]), "GET /api/v1/tickets": () => json([TKT]), "GET /api/v1/stock": () => json(STOCK),
+    });
+    await S().handover("TKT-0440", " 418327 ");
+    expect(hit("POST /api/v1/tickets/TKT-0440/handover")[0].body).toEqual({ otp: "418327" });
+    expect(S().toast).toBe("TKT-0440 handed over — stock is in transit to Coffee Shop");
+  });
+
+  it("handover sends an empty body for the supervisor override", async () => {
+    as("store");
+    serve({
+      "POST /api/v1/tickets/TKT-0440/handover": () => json({ result: { ...TKT, id: "TKT-0440", st: "Collected" }, changed: ["tkt", "req", "rsv", "stock"], message: "TKT-0440 handed over on a supervisor override — stock is in transit to Coffee Shop" }),
+      "GET /api/v1/requests": () => json([REQ]), "GET /api/v1/tickets": () => json([TKT]), "GET /api/v1/stock": () => json(STOCK),
+    });
+    await S().handover("TKT-0440");
+    expect(hit("POST /api/v1/tickets/TKT-0440/handover")[0].body).toEqual({});
+  });
+
+  it("repeats a wrong-OTP refusal and moves nothing", async () => {
+    as("store");
+    serve({ "POST /api/v1/tickets/TKT-0440/handover": () => refusal("That OTP does not match TKT-0440. Ask the collector to read it again.") });
+    await S().handover("TKT-0440", "000000");
+    expect(S().toast).toBe("That OTP does not match TKT-0440. Ask the collector to read it again.");
+    expect(S().tkt.find((t) => t.id === "TKT-0440")!.st).toBe("Issued");
+    expect(calls()).toHaveLength(1);
+  });
+
+  it("receiveTicket closes the drawer once the server has taken it", async () => {
+    as("counter");
+    S().openDrawer("tkt", "TKT-0440");
+    serve({
+      "POST /api/v1/tickets/TKT-0440/receive": () => json({ result: { ...TKT, id: "TKT-0440", st: "Received" }, changed: ["tkt", "req", "stock"], message: "Received at Coffee Shop — stock is on the shelf" }),
+      "GET /api/v1/requests": () => json([REQ]), "GET /api/v1/tickets": () => json([TKT]), "GET /api/v1/stock": () => json(STOCK),
+    });
+    await S().receiveTicket("TKT-0440");
+    expect(S().drawer).toBeNull();
+    expect(S().toast).toBe("Received at Coffee Shop — stock is on the shelf");
+  });
+
+  it("transferToOutlet posts both ends and the quantity", async () => {
+    as("counter");
+    serve({ "POST /api/v1/transfers": () => json({ result: TKT, changed: ["tkt", "rsv"], message: "TKT-0441 issued — 6 nos reserved at Coffee Shop for Snack Kiosk" }), "GET /api/v1/tickets": () => json([TKT]), "GET /api/v1/stock": () => json(STOCK) });
+    await S().transferToOutlet("coffee", "kiosk", "chips", 6);
+    expect(hit("POST /api/v1/transfers")[0].body).toEqual({ from: "coffee", to: "kiosk", it: "chips", qty: 6 });
+  });
+
+  it("askShop names only the shop being asked — the sender's own is the token's", async () => {
+    as("counter");
+    serve({ "POST /api/v1/shop-asks": () => json({ result: ASK, changed: ["shopAsks"], message: "ASK-063 sent to Snack Kiosk — they decide, not the manager" }), "GET /api/v1/shop-asks": () => json([ASK]) });
+    await S().askShop("kiosk", "water", 24, "  Ran dry  ");
+    expect(hit("POST /api/v1/shop-asks")[0].body).toEqual({ to: "kiosk", it: "water", qty: 24, note: "Ran dry" });
+    expect(hit("GET /api/v1/shop-asks")).toHaveLength(1);
+    expect(S().shopAsks[0].id).toBe("ASK-063");
+  });
+
+  it("answerShopAsk grants and raises the ticket in one call, not two", async () => {
+    as("counter");
+    serve({
+      "POST /api/v1/shop-asks/ASK-0060/answer": () => json({ result: { ask: { ...ASK, id: "ASK-0060", st: "Sent", grant: 6, ticket: "TKT-0441" }, ticket: TKT }, changed: ["shopAsks", "tkt", "rsv"], message: "ASK-0060 granted — TKT-0441 issued for 6 nos to Snack Kiosk" }),
+      "GET /api/v1/shop-asks": () => json([ASK]), "GET /api/v1/tickets": () => json([TKT]), "GET /api/v1/stock": () => json(STOCK),
+    });
+    await S().answerShopAsk("ASK-0060", 6);
+    expect(hit("POST /api/v1/shop-asks/ASK-0060/answer")[0].body).toEqual({ grant: 6 });
+    expect(hit("POST /api/v1/transfers")).toHaveLength(0);       // one endpoint, one ticket
+    expect(S().toast).toBe("ASK-0060 granted — TKT-0441 issued for 6 nos to Snack Kiosk");
+  });
+
+  it("declineShopAsk trims the reason it sends", async () => {
+    as("counter");
+    serve({ "POST /api/v1/shop-asks/ASK-0060/decline": () => json({ result: { ...ASK, id: "ASK-0060", st: "Declined", reason: "We are short ourselves" }, changed: ["shopAsks"], message: "ASK-0060 declined" }), "GET /api/v1/shop-asks": () => json([ASK]) });
+    await S().declineShopAsk("ASK-0060", "  We are short ourselves  ");
+    expect(hit("POST /api/v1/shop-asks/ASK-0060/decline")[0].body).toEqual({ reason: "We are short ourselves" });
+  });
+});
+
+describe("the kitchen's two ticket paths", () => {
+  it("dispatchOrder posts the order id and closes the drawer behind it", async () => {
+    as("prod");
+    S().openDrawer("pord", "PRD-2026-029");
+    serve({
+      "POST /api/v1/prod-orders/PRD-2026-029/dispatch": () => json({ result: { order: { id: "PRD-2026-029" }, ticket: TKT }, changed: ["pord", "tkt", "rsv"], message: "TKT-0441 issued — all 2 items of PRD-2026-029 reserved for Snack Kiosk" }),
+      "GET /api/v1/snapshot": () => json(snapshot()),
+    });
+    await S().dispatchOrder("PRD-2026-029");
+    expect(hit("POST /api/v1/prod-orders/PRD-2026-029/dispatch")[0].body).toBeUndefined();
+    expect(S().drawer).toBeNull();
+    expect(S().toast).toBe("TKT-0441 issued — all 2 items of PRD-2026-029 reserved for Snack Kiosk");
+    // "pord" has no narrow reader, so the whole set costs one snapshot.
+    expect(hit("GET /api/v1/snapshot")).toHaveLength(1);
+  });
+
+  it("distribute names the item, the quantity and where it is going", async () => {
+    as("prod");
+    serve({
+      "POST /api/v1/distributions": () => json({ result: TKT, changed: ["tkt", "rsv"], message: "TKT-0441 issued — 5 Veg puff reserved for Snack Kiosk" }),
+      "GET /api/v1/tickets": () => json([TKT]), "GET /api/v1/stock": () => json(STOCK),
+    });
+    await S().distribute("puff", 5, "kiosk");
+    expect(hit("POST /api/v1/distributions")[0].body).toEqual({ it: "puff", qty: 5, to: "kiosk" });
+    expect(S().toast).toBe("TKT-0441 issued — 5 Veg puff reserved for Snack Kiosk");
+    expect(hit("GET /api/v1/snapshot")).toHaveLength(0);
+  });
+
+  it("repeats a short-kitchen refusal and raises no ticket", async () => {
+    as("prod");
+    const before = S().tkt.length;
+    serve({ "POST /api/v1/distributions": () => refusal("Kitchen has only 5 nos free to promise") });
+    await S().distribute("salad", 9999, "kiosk");
+    expect(S().toast).toBe("Kitchen has only 5 nos free to promise");
+    expect(S().tkt).toHaveLength(before);
+    expect(calls()).toHaveLength(1);
+  });
+});
+
+describe("refetch — the movement slices have narrow readers now", () => {
+  it("answers req, tkt and shopAsks without a snapshot", async () => {
+    serve({ "GET /api/v1/requests": () => json([REQ]), "GET /api/v1/tickets": () => json([TKT]), "GET /api/v1/shop-asks": () => json([ASK]) });
+    await refetch(["req", "tkt", "shopAsks"]);
+    expect(calls().map((c) => c.at).sort()).toEqual(["GET /api/v1/requests", "GET /api/v1/shop-asks", "GET /api/v1/tickets"]);
+  });
+
+  it("still takes one snapshot when a write touched a slice with no reader", async () => {
+    serve({ "GET /api/v1/snapshot": () => json(snapshot()) });
+    await refetch(["req", "prices"]);
+    expect(calls().map((c) => c.at)).toEqual(["GET /api/v1/snapshot"]);
+  });
+});
+
+/**
+ * A write that is refused must leave the operator's typing where it is. The store says so with
+ * its answer — `true` only once the server has taken the write — and the screens reset on that
+ * answer and nothing else.
+ */
+describe("a refusal keeps what the operator typed", () => {
+  /** Set a controlled field the way a person does, through React's own value setter. */
+  const type = (el: HTMLTextAreaElement | HTMLInputElement, v: string) => {
+    const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+    Object.getOwnPropertyDescriptor(proto, "value")!.set!.call(el, v);
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+  };
+  /** Render the counter's request screen the way the app runs it. */
+  function mount() {
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    act(() => { root.render(createElement(MemoryRouter, null, createElement(CounterRequests))); });
+    return {
+      host,
+      button: (starts: string) =>
+        [...host.querySelectorAll("button")].find((b) => (b.textContent ?? "").startsWith(starts)),
+      note: () => host.querySelector("textarea")!,
+      unmount: () => { act(() => { root.unmount(); }); host.remove(); },
+    };
+  }
+  const settle = async (fn: () => void) => {
+    await act(async () => { fn(); await new Promise((r) => { setTimeout(r, 0); }); });
+  };
+
+  it("leaves the raise card open, with its note, when the server refuses", async () => {
+    as("counter");
+    serve({ "POST /api/v1/requests": () => refusal("Refused — Coffee Shop already has REQ-2026-0911 open for Milk 1L") });
+    const ui = mount();
+    act(() => { ui.button("From inventory")!.click(); });
+    act(() => { type(ui.note(), "Milk finished at 09:10"); });
+
+    await settle(() => { ui.button("Submit request")!.click(); });
+
+    expect(S().toast).toBe("Refused — Coffee Shop already has REQ-2026-0911 open for Milk 1L");
+    // The card is still open and still carries the note — nothing to retype.
+    expect(ui.button("Submit request")).toBeDefined();
+    expect(ui.note().value).toBe("Milk finished at 09:10");
+    ui.unmount();
+  });
+
+  it("clears the card only once the server has taken it", async () => {
+    as("counter");
+    serve({
+      "POST /api/v1/requests": () => json({ result: REQ, changed: ["req"], message: "REQ-2026-0913 sent to the outlet manager — 1 line" }),
+      "GET /api/v1/requests": () => json([REQ]),
+    });
+    const ui = mount();
+    act(() => { ui.button("From inventory")!.click(); });
+    act(() => { type(ui.note(), "Milk finished at 09:10"); });
+
+    await settle(() => { ui.button("Submit request")!.click(); });
+
+    expect(S().toast).toBe("REQ-2026-0913 sent to the outlet manager — 1 line");
+    expect(ui.button("Submit request")).toBeUndefined();   // the card closed behind the answer
+    ui.unmount();
+  });
+
+  it("locks the button while the request is in flight", async () => {
+    as("counter");
+    let release!: () => void;
+    const inFlight = new Promise<void>((r) => { release = r; });
+    fetchMock.mockImplementation(async (u: string, init: RequestInit) => {
+      const at = `${init.method} ${String(u).split("?")[0]}`;
+      if (at === "POST /api/v1/requests") {
+        await inFlight;
+        return json({ result: REQ, changed: ["req"], message: "REQ-2026-0913 sent to the outlet manager — 1 line" });
+      }
+      return json([REQ]);
+    });
+    const ui = mount();
+    act(() => { ui.button("From inventory")!.click(); });
+
+    act(() => { ui.button("Submit request")!.click(); });
+
+    const busy = ui.button("Sending…");
+    expect(busy).toBeDefined();
+    expect(busy!.disabled).toBe(true);
+    act(() => { busy!.click(); });                          // a second tap lands on nothing
+
+    release();
+    await act(async () => { await inFlight; await new Promise((r) => { setTimeout(r, 0); }); });
+    expect(hit("POST /api/v1/requests")).toHaveLength(1);
+    ui.unmount();
+  });
+});
+
+/** Every action's own sentence when the server cannot be reached at all. */
+const OFFLINE: [name: string, run: () => Promise<unknown>, sentence: string][] = [
+  ["submitRequest", () => { S().setDraft([{ it: "milk", qty: 20 }]); return S().submitRequest("", false); },
+    "Could not send the request — check the connection and try again."],
+  ["requestFromStore", () => S().requestFromStore("milk", 20),
+    "Could not send the request — check the connection and try again."],
+  ["cancelRequest", () => S().cancelRequest("REQ-2026-0911"),
+    "Could not cancel the request — check the connection and try again."],
+  ["approveRequest", () => S().approveRequest("REQ-2026-0911", [12], "Store is tight"),
+    "Could not save the approval — check the connection and try again."],
+  ["rejectRequest", () => S().rejectRequest("REQ-2026-0911", "Nothing to spare"),
+    "Could not save the rejection — check the connection and try again."],
+  ["issueTicket", () => S().issueTicket("REQ-2026-0911"),
+    "Could not issue the ticket — check the connection and try again."],
+  ["handover", () => S().handover("TKT-0440", "418327"),
+    "Could not hand the ticket over — check the connection and try again."],
+  ["receiveTicket", () => S().receiveTicket("TKT-0440"),
+    "Could not receive the ticket — check the connection and try again."],
+  ["transferToOutlet", () => S().transferToOutlet("coffee", "kiosk", "chips", 6),
+    "Could not send the transfer — check the connection and try again."],
+  ["askShop", () => S().askShop("kiosk", "water", 24, "Ran dry"),
+    "Could not send the ask — check the connection and try again."],
+  ["answerShopAsk", () => S().answerShopAsk("ASK-0060", 6),
+    "Could not answer the ask — check the connection and try again."],
+  ["declineShopAsk", () => S().declineShopAsk("ASK-0060", "We are short ourselves"),
+    "Could not decline the ask — check the connection and try again."],
+  ["dispatchOrder", () => S().dispatchOrder("PRD-2026-029"),
+    "Could not dispatch the order — check the connection and try again."],
+  ["distribute", () => S().distribute("puff", 5, "kiosk"),
+    "Could not send it out — check the connection and try again."],
+];
+
+describe("a dropped connection names the write that did not land", () => {
+  it.each(OFFLINE)("%s says so in its own words", async (_name, run, sentence) => {
+    as("counter");
+    fetchMock.mockRejectedValue(new TypeError("Failed to fetch"));
+    await run();
+    expect(S().toast).toBe(sentence);
   });
 });

@@ -69,15 +69,24 @@ export default function Requests() {
   const [reason, setReason] = useState<Record<string, string>>({});
   /** Which ask is mid-decline — the reason field only exists while one is. */
   const [declineFor, setDeclineFor] = useState<string | null>(null);
+  /** What is in flight, so the control that sent it is locked and nothing is cleared
+   *  until the server has actually taken it. A refusal leaves the card exactly as typed. */
+  const [busy, setBusy] = useState<string | null>(null);
 
-  const submitInventory = () => {
+  const submitInventory = async () => {
     s.setDraft([{ it: invItem, qty: invQty }]);
-    s.submitRequest(invNote.trim(), invPriority === "Urgent");
+    setBusy("inv");
+    const ok = await s.submitRequest(invNote.trim(), invPriority === "Urgent");
+    setBusy(null);
+    if (!ok) return;
     setInvQty(1); setInvPriority("Normal"); setInvNote(""); setOpen(null);
   };
-  const submitShopAsk = () => {
+  const submitShopAsk = async () => {
     const note = shopPriority === "Urgent" ? `[Urgent] ${shopNote.trim()}`.trim() : shopNote.trim();
-    s.askShop(shopTo, shopItem, shopQty, note);
+    setBusy("shop");
+    const ok = await s.askShop(shopTo, shopItem, shopQty, note);
+    setBusy(null);
+    if (!ok) return;
     setShopQty(1); setShopPriority("Normal"); setShopNote(""); setOpen(null);
   };
 
@@ -168,9 +177,14 @@ export default function Requests() {
                         value={reason[a.id] ?? ""}
                         onChange={(e) => setReason({ ...reason, [a.id]: e.target.value })} />
                     </Field>
-                    <Btn size="sm" variant="dg" disabled={!(reason[a.id] ?? "").trim()}
-                      onClick={() => { s.declineShopAsk(a.id, reason[a.id] ?? ""); setDeclineFor(null); }}>
-                      Confirm decline
+                    <Btn size="sm" variant="dg" disabled={!(reason[a.id] ?? "").trim() || busy !== null}
+                      onClick={async () => {
+                        setBusy(`decline:${a.id}`);
+                        const ok = await s.declineShopAsk(a.id, reason[a.id] ?? "");
+                        setBusy(null);
+                        if (ok) setDeclineFor(null);
+                      }}>
+                      {busy === `decline:${a.id}` ? "Declining…" : "Confirm decline"}
                     </Btn>
                     <Btn size="sm" variant="gh" onClick={() => setDeclineFor(null)}>Cancel</Btn>
                   </div>
@@ -181,8 +195,12 @@ export default function Requests() {
                       <input id={`g-${a.id}`} type="number" min={0} max={Math.min(a.qty, free)} value={g}
                         onChange={(e) => setGrant({ ...grant, [a.id]: Number(e.target.value) })} />
                     </div>
-                    <Btn size="sm" disabled={free <= 0 || g <= 0} onClick={() => s.answerShopAsk(a.id, g)}>
-                      Send {fq(g, a.it)} {U(a.it)}
+                    <Btn size="sm" disabled={free <= 0 || g <= 0 || busy !== null}
+                      onClick={async () => {
+                        setBusy(`answer:${a.id}`);
+                        try { await s.answerShopAsk(a.id, g); } finally { setBusy(null); }
+                      }}>
+                      {busy === `answer:${a.id}` ? "Sending…" : <>Send {fq(g, a.it)} {U(a.it)}</>}
                     </Btn>
                     <div className="askcard-spacer" />
                     <Btn size="sm" variant="gh" onClick={() => setDeclineFor(a.id)}>Decline</Btn>
@@ -231,7 +249,9 @@ export default function Requests() {
               placeholder="Out until the store opens" />
           </Field>
           <BtnRow>
-            <Btn onClick={submitShopAsk} disabled={!(shopQty > 0)}>Ask {LOC[shopTo].n}</Btn>
+            <Btn onClick={submitShopAsk} disabled={!(shopQty > 0) || busy !== null}>
+              {busy === "shop" ? "Asking…" : `Ask ${LOC[shopTo].n}`}
+            </Btn>
             <Btn variant="gh" onClick={() => setOpen(null)}>Cancel</Btn>
           </BtnRow>
         </div>
@@ -256,7 +276,9 @@ export default function Requests() {
               placeholder="Milk finished at 09:10, cappuccino and tea are both off." />
           </Field>
           <BtnRow>
-            <Btn onClick={submitInventory} disabled={!(invQty > 0)}>Submit request</Btn>
+            <Btn onClick={submitInventory} disabled={!(invQty > 0) || busy !== null}>
+              {busy === "inv" ? "Sending…" : "Submit request"}
+            </Btn>
             <Btn variant="gh" onClick={() => setOpen(null)}>Cancel</Btn>
           </BtnRow>
         </div>

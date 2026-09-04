@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
-import { availOf, qty } from "../../lib/selectors";
+import { availOf, canHandOver, qty } from "../../lib/selectors";
 import { fq, sum, U } from "../../lib/fmt";
 import {
   Alert, Btn, Card, DataTable, Feed, Grid, Kpis, PageHead, Pill, StatusPill, TableFoot,
@@ -144,7 +144,7 @@ export default function Dashboard() {
               t.lines.map((l) => `${l.qty} × ${IT[l.it].n}`).join(" · "),
               <b>{sum(t.lines, (l) => l.qty)}</b>,
               <StatusPill status={t.st} />,
-              t.st === "Issued"
+              canHandOver(t.st)
                 ? <Btn size="sm" variant="ok" onClick={() => handover(t.id)}>Scan &amp; hand over</Btn>
                 : <span className="mini dim">awaiting confirmation at {LOC[t.to].n}</span>,
             ],

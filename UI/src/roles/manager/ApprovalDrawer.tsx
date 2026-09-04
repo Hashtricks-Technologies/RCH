@@ -44,6 +44,7 @@ function ApprovalDrawer({ id }: DrawerProps) {
   const [killed, setKilled] = useState<boolean[]>(() => (req?.lines ?? []).map(() => false));
   const [lineWhy, setLineWhy] = useState<string[]>(() => (req?.lines ?? []).map(() => ""));
   const [note, setNote] = useState(req?.st === "Request sent" ? "" : req?.mgrNote ?? "");
+  const [busy, setBusy] = useState<"approve" | "reject" | null>(null);
 
   if (!req) {
     return (
@@ -89,15 +90,22 @@ function ApprovalDrawer({ id }: DrawerProps) {
       .filter(Boolean).join(" · ");
   };
 
-  const doApprove = () => {
-    if (!canApprove) return;
-    approveRequest(req.id, effective, composed());
-    close();
+  // The drawer closes only once the server has taken the decision. A refusal — an empty
+  // reason, a request someone else has already decided, a dropped connection — leaves every
+  // per-line trim and the reason exactly where the manager typed them.
+  const doApprove = async () => {
+    if (!canApprove || busy) return;
+    setBusy("approve");
+    const ok = await approveRequest(req.id, effective, composed());
+    setBusy(null);
+    if (ok) close();
   };
-  const doReject = () => {
-    if (!reason) return;
-    rejectRequest(req.id, composed());
-    close();
+  const doReject = async () => {
+    if (!reason || busy) return;
+    setBusy("reject");
+    const ok = await rejectRequest(req.id, composed());
+    setBusy(null);
+    if (ok) close();
   };
 
   return (
@@ -111,20 +119,22 @@ function ApprovalDrawer({ id }: DrawerProps) {
             <div className="sp" />
             <Btn
               variant="dg"
-              disabled={!reason}
+              disabled={!reason || busy !== null}
               title={reason ? "Reject the whole request" : "Write the reason below — reject stays locked without one"}
               onClick={doReject}
             >
-              Reject the request
+              {busy === "reject" ? "Rejecting…" : "Reject the request"}
             </Btn>
             <Btn
-              disabled={!canApprove}
+              disabled={!canApprove || busy !== null}
               title={giving === 0
                 ? "Nothing is left to approve — use Reject the request"
                 : missingWhy.length > 0 ? "Give a reason for every rejected item" : undefined}
               onClick={doApprove}
             >
-              Approve {killedIdx.length > 0 ? "the rest" : ""} &amp; forward
+              {busy === "approve"
+                ? "Approving…"
+                : <>Approve {killedIdx.length > 0 ? "the rest" : ""} &amp; forward</>}
             </Btn>
           </>
         ) : (

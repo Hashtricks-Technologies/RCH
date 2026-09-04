@@ -175,6 +175,8 @@ export default function Stock() {
   const [rq, setRq] = useState("");
   const [kind, setKind] = useState<KindF>("All");
   const [want, setWant] = useState<Record<string, string>>({});
+  /** Which item's request is in flight — the typed quantity is only dropped once it landed. */
+  const [busy, setBusy] = useState<string | null>(null);
 
   const held = Object.keys(s.stock.kitchen);
   const hit = (term: string) => (k: string) =>
@@ -201,8 +203,11 @@ export default function Stock() {
   const openReq = (k: string) =>
     s.req.find((r) => r.from === "kitchen" && isReqOpen(r.st) && r.lines.some((l) => l.it === k));
 
-  const ask = (k: string, dflt: number) => {
-    requestFromStore(k, Number(want[k] ?? dflt) || 0);
+  const ask = async (k: string, dflt: number) => {
+    setBusy(k);
+    const ok = await requestFromStore(k, Number(want[k] ?? dflt) || 0);
+    setBusy(null);
+    if (!ok) return;
     setWant((w) => { const n = { ...w }; delete n[k]; return n; });
   };
 
@@ -312,7 +317,9 @@ export default function Stock() {
                             onChange={(e) => setWant({ ...want, [k]: e.target.value })}
                             aria-label={`Quantity of ${IT[k].n} to request`}
                           />
-                          <Btn size="xs" onClick={() => ask(k, dflt)}>Request</Btn>
+                          <Btn size="xs" disabled={busy !== null} onClick={() => ask(k, dflt)}>
+                            {busy === k ? "Sending…" : "Request"}
+                          </Btn>
                         </div>
                         <div className="hint">
                           {open

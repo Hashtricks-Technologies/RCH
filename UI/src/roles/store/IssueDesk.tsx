@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { ALL_LOCS, IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
-import { freeToPromise } from "../../lib/selectors";
+import { canIssueTicket, freeToPromise } from "../../lib/selectors";
 import { U, fq, sum } from "../../lib/fmt";
 import {
   Alert, Btn, Card, DataTable, FilterBtn, FilterSelect, Grid, PageHead, Pill, StatusPill, TableFoot, Toolbar,
@@ -59,9 +59,7 @@ export default function IssueDesk() {
     return w !== null && w.ratio < 1;
   };
 
-  const allApproved = s.req.filter(
-    (r) => (r.st === "Manager approved" || r.st === "Partially approved") && r.ticket === null,
-  );
+  const allApproved = s.req.filter((r) => canIssueTicket(r.st) && r.ticket === null);
   const approved = allApproved.filter((r) => {
     if (outletA && r.from !== outletA) return false;
     if (shortOnly && !isShort(r)) return false;

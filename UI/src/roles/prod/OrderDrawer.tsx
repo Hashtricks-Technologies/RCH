@@ -1,6 +1,6 @@
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
-import { qty } from "../../lib/selectors";
+import { avail, canDispatch, qty } from "../../lib/selectors";
 import { fq, sum, U } from "../../lib/fmt";
 import {
   Alert, Btn, DataTable, Feed, Pill, Section, StatusPill, TableFoot,
@@ -23,7 +23,9 @@ function OrderDrawer({ id }: DrawerProps) {
     );
   }
 
-  const short = o.lines.filter((l) => qty(s, "kitchen", l.it) < l.qty);
+  // Free to promise, not on hand — the same measure the board's Dispatch control uses, so the
+  // two never disagree about whether this order can go out.
+  const short = o.lines.filter((l) => avail(s, "kitchen", l.it) < l.qty);
 
   const foot = (
     <>
@@ -34,7 +36,13 @@ function OrderDrawer({ id }: DrawerProps) {
       </>}
       {o.st === "Accepted" && <Btn onClick={() => setOrderStatus(o.id, "In kitchen")}>Start making</Btn>}
       {o.st === "In kitchen" && <Btn onClick={() => setOrderStatus(o.id, "Ready")}>Mark ready</Btn>}
-      {o.st === "Ready" && <Btn variant="ok" onClick={() => dispatchOrder(o.id)}>Dispatch to counter</Btn>}
+      {canDispatch(o.st) && (
+        <Btn variant="ok" disabled={short.length > 0}
+          title={short.length ? `Short of ${short.map((l) => IT[l.it].n).join(", ")}` : "Issue one pick ticket for the whole order"}
+          onClick={() => dispatchOrder(o.id)}>
+          {short.length ? "Short — cannot dispatch" : "Dispatch to counter"}
+        </Btn>
+      )}
     </>
   );
 

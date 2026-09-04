@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { ALL_LOCS, IT, LOC, RCP } from "../../data/master";
 import { useApp } from "../../store";
-import { avail, menuOf, qty, recipeCost } from "../../lib/selectors";
+import { avail, canHandOver, menuOf, qty, recipeCost } from "../../lib/selectors";
 import { fq, money, sum, U } from "../../lib/fmt";
 import {
   Alert, Btn, Card, DataTable, Field, FilterSelect, FormRow, Grid, PageHead, Pill, StatusPill,
@@ -39,6 +39,7 @@ export default function MakeDistribute() {
   const [cDest, setCDest] = useState<LocKey | null>(null);
   const [rq, setRq] = useState("");
   const [rDest, setRDest] = useState<LocKey | null>(null);
+  const [sending, setSending] = useState(false);
 
   /** Destination filter options: "All" plus every place the kitchen can send to. */
   const DEST_NAMES = ["All", ...DESTS.map((l) => LOC[l].n)];
@@ -71,9 +72,12 @@ export default function MakeDistribute() {
     setDItem(it);
     if (!listedAt(dTo, it)) setDTo(DESTS.find((l) => listedAt(l, it)) ?? "store");
   };
-  const send = () => {
-    distribute(dItem, Number(dQty) || 0, dTo);
-    setDQty("");
+  // The quantity stays in the box until the kitchen's issue has actually landed.
+  const send = async () => {
+    setSending(true);
+    const ok = await distribute(dItem, Number(dQty) || 0, dTo);
+    setSending(false);
+    if (ok) setDQty("");
   };
 
   const allBatches = batch;
@@ -92,7 +96,7 @@ export default function MakeDistribute() {
       + " " + t.lines.map((l) => IT[l.it]?.n ?? l.it).join(" ")).toLowerCase().includes(k);
   };
   const kt = tkt.filter((t) => t.from === "kitchen");
-  const allToHand = kt.filter((t) => t.st === "Issued");
+  const allToHand = kt.filter((t) => canHandOver(t.st));
   const allTransit = kt.filter((t) => t.st === "Collected");
   const allDone = kt.filter((t) => t.st === "Received");
   const toHand = allToHand.filter(match(tq, tDest));
@@ -212,7 +216,9 @@ export default function MakeDistribute() {
               the balance first.
             </Alert>
           )}
-          <Btn wide disabled={!listedAt(dTo, dItem)} onClick={send}>Send to {LOC[dTo].n}</Btn>
+          <Btn wide disabled={!listedAt(dTo, dItem) || sending} onClick={send}>
+            {sending ? "Sending…" : `Send to ${LOC[dTo].n}`}
+          </Btn>
           <p className="mini" style={{ marginTop: 10 }}>
             A direct issue reserves the stock and raises a pick ticket. It leaves the rack when you scan it out
             below, and {LOC[dTo].n} confirms receipt at their end.

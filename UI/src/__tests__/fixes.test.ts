@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { useApp } from "../store";
-import { IT, LOC, MENU, PL, RCP, USERS, homeLabel } from "../data/master";
+import { IT, LOC, PL, RCP, USERS, homeLabel } from "../data/master";
 import {
-  cashCollected, costOf, freeToPromise, inTransit, isCashTender,
+  cashCollected, costOf, inTransit, isCashTender,
   onOrder, parOf, qty, recipeCost, resv,
 } from "../lib/selectors";
 import { bestBefore, fq, unitTotal } from "../lib/fmt";
@@ -40,86 +40,25 @@ describe("C1 · production consumes its ingredients", () => {
   });
 });
 
-/* ---------------------------------------------------------------- C2 */
-describe("C2 · kitchen tickets move like store tickets", () => {
-  it("reserves rather than deducts when the kitchen dispatches", () => {
-    as("prod");
-    const before = qty(S(), "kitchen", "puff");
-    S().distribute("puff", 5, "kiosk");
-    expect(qty(S(), "kitchen", "puff")).toBe(before);
-    expect(resv(S(), "kitchen", "puff")).toBe(5);
-  });
+/* ---------------------------------------------------------------- C2
+ * C2 · kitchen tickets move like store tickets. Both halves are the server's since Phase 3:
+ * apps/api/src/modules/production/production.test.ts pins the reservation — "puts every item
+ * on one ticket addressed to the ordering outlet, and reserves rather than moves" and
+ * "reserves at the kitchen and raises the ticket the outlet collects against" — and
+ * apps/api/src/modules/tickets/tickets.test.ts pins the movement, "lets the kitchen hand its
+ * own ticket over (C2)" and "books the stock in and closes the request behind it". The store
+ * calls that reach those routes are in writes.test.ts. */
 
-  it("lets a kitchen ticket be handed over, then received", () => {
-    as("prod");
-    const before = qty(S(), "kitchen", "puff");
-    const atKiosk = qty(S(), "kiosk", "puff");
-    S().distribute("puff", 5, "kiosk");
-    const t = S().tkt[S().tkt.length - 1];
-    S().handover(t.id);
-    expect(S().tkt.find((x) => x.id === t.id)!.st).toBe("Collected");
-    expect(qty(S(), "kitchen", "puff")).toBe(before - 5);
-    expect(resv(S(), "kitchen", "puff")).toBe(0);
-    S().receiveTicket(t.id);
-    expect(S().tkt.find((x) => x.id === t.id)!.st).toBe("Received");
-    expect(qty(S(), "kiosk", "puff")).toBe(atKiosk + 5);
-  });
+/* ---------------------------------------------------------------- C3
+ * C3 · the kitchen can actually request from the store. POST /requests admits `prod` since
+ * Phase 3: apps/api/src/modules/requests/requests.test.ts pins both halves — "lets the kitchen
+ * raise one too, from the kitchen" and "refuses a line with no quantity, in the operator's
+ * words (C3)". */
 
-  it("reserves rather than deducts when a production order is dispatched", () => {
-    as("prod");
-    const o = S().pord.find((x) => x.st === "Accepted")!;
-    o.lines.forEach((l) => S().makeProduct(l.it, l.qty));
-    const it = o.lines[0].it;
-    const before = qty(S(), "kitchen", it);
-    S().dispatchOrder(o.id);
-    expect(qty(S(), "kitchen", it)).toBe(before);
-    expect(resv(S(), "kitchen", it)).toBeGreaterThan(0);
-  });
-});
-
-/* ---------------------------------------------------------------- C3 */
-describe("C3 · the kitchen can actually request from the store", () => {
-  it("creates a real request the store side can see", () => {
-    as("prod");
-    const before = S().req.length;
-    S().requestFromStore("maida", 25);
-    expect(S().req).toHaveLength(before + 1);
-    const r = S().req[S().req.length - 1];
-    expect(r.from).toBe("kitchen");
-    expect(r.st).toBe("Request sent");
-    expect(r.lines).toEqual([{ it: "maida", qty: 25, appr: 0 }]);
-  });
-
-  it("refuses a quantity of zero", () => {
-    as("prod");
-    const before = S().req.length;
-    S().requestFromStore("maida", 0);
-    expect(S().req).toHaveLength(before);
-  });
-});
-
-/* ---------------------------------------------------------------- C4 */
-describe("C4 · a trimmed request records its shortfall", () => {
-  it("records the unapproved remainder on the line", () => {
-    as("manager");
-    const r = S().req.find((x) => x.id === "REQ-2026-0911")!;
-    S().approveRequest(r.id, [12], "Store is tight");
-    const after = S().req.find((x) => x.id === "REQ-2026-0911")!;
-    expect(after.st).toBe("Partially approved");
-    expect(after.lines[0].short).toBe(8);
-  });
-
-  it("records no shortfall when the store can cover the request in full", () => {
-    as("manager");
-    // REQ-0910 asks for 5 kg sugar and 1 kg butter, both comfortably in stock.
-    const r = S().req.find((x) => x.id === "REQ-2026-0910")!;
-    useApp.setState({ req: S().req.map((x) => x.id === r.id ? { ...x, st: "Request sent" as const } : x) });
-    S().approveRequest(r.id, r.lines.map((l) => l.qty), "All of it");
-    const after = S().req.find((x) => x.id === r.id)!;
-    expect(after.st).toBe("Manager approved");
-    expect(after.lines.every((l) => l.short === 0)).toBe(true);
-  });
-});
+/* ---------------------------------------------------------------- C4
+ * C4 · a trimmed request records its shortfall. The approval runs server-side since Phase 3:
+ * requests.test.ts pins "trims to what the store can cover and records the shortfall (C4, C6)"
+ * and "approves in full and forwards it, with no shortfall". */
 
 /* ---------------------------------------------------------------- C5 */
 describe("C5 · open tickets from seed reserve their stock", () => {
@@ -133,40 +72,15 @@ describe("C5 · open tickets from seed reserve their stock", () => {
     });
   });
 
-  it("frees the reservation when the seeded ticket is handed over", () => {
-    as("store");
-    const t = seedTkt.find((x) => x.st === "Issued" && x.from === "store")!;
-    S().handover(t.id);
-    expect(resv(S(), "store", t.lines[0].it)).toBe(0);
-  });
+  // Handover frees the hold on the server now — tickets.test.ts "moves the stock out on the
+  // OTP, releases the hold, and closes nothing else".
 });
 
-/* ---------------------------------------------------------------- C6 */
-describe("C6 · the same stock cannot be promised twice", () => {
-  it("nets approved-but-unticketed quantities out of free to promise", () => {
-    as("manager");
-    const onHand = qty(S(), "store", "milk");
-    S().approveRequest("REQ-2026-0911", [12], "");
-    expect(qty(S(), "store", "milk")).toBe(onHand);
-    expect(freeToPromise(S(), "store", "milk")).toBe(onHand - 12);
-  });
-
-  it("clamps an approval to what is still free to promise", () => {
-    as("manager");
-    S().approveRequest("REQ-2026-0911", [12], "");
-    S().setDraft([]);
-    useApp.setState({
-      req: [...S().req, {
-        id: "REQ-2026-0999", from: "coffee", by: "Kavitha Raman", at: "10:00",
-        lines: [{ it: "milk", qty: 10, appr: 0 }], st: "Request sent", ticket: null,
-        mgrNote: "", hist: [],
-      }],
-    });
-    S().approveRequest("REQ-2026-0999", [10], "");
-    const after = S().req.find((x) => x.id === "REQ-2026-0999")!;
-    expect(after.lines[0].appr).toBe(0);
-  });
-});
+/* ---------------------------------------------------------------- C6
+ * C6 · the same stock cannot be promised twice. The netting is the server's since Phase 3:
+ * requests.test.ts pins "nets an approval already made against the next one (C6)" and
+ * "trims to what the store can cover and records the shortfall (C4, C6)". The rule itself is
+ * still one shared `freeToPromise` in packages/domain. */
 
 /* ---------------------------------------------------------------- H1 */
 describe("H1 · made items cost what their recipe costs", () => {
@@ -207,36 +121,14 @@ describe("H4 · only cash counts as collected", () => {
   });
 });
 
-/* ---------------------------------------------------------------- H6 */
-describe("H6 · the approver is recorded", () => {
-  it("names the manager who approved, not the operator who raised", () => {
-    as("manager");
-    const me = S().user!.n;
-    const raiser = S().req.find((x) => x.id === "REQ-2026-0911")!.by;
-    S().approveRequest("REQ-2026-0911", [12], "");
-    const after = S().req.find((x) => x.id === "REQ-2026-0911")!;
-    expect(after.apprBy).toBe(me);
-    expect(after.apprBy).not.toBe(raiser);
-  });
-});
+/* ---------------------------------------------------------------- H6
+ * H6 · the approver is recorded. The server stamps it from the token: requests.test.ts
+ * "names the manager who approved, not the operator who raised (H6)". */
 
-/* ---------------------------------------------------------------- H7 */
-describe("H7 · rejection needs a reason", () => {
-  it("refuses to reject without a note", () => {
-    as("manager");
-    S().rejectRequest("REQ-2026-0912", "   ");
-    expect(S().req.find((x) => x.id === "REQ-2026-0912")!.st).toBe("Request sent");
-    expect(S().toast).toMatch(/reason/i);
-  });
-
-  it("rejects when a reason is given", () => {
-    as("manager");
-    S().rejectRequest("REQ-2026-0912", "Kiosk is overstocked already");
-    const after = S().req.find((x) => x.id === "REQ-2026-0912")!;
-    expect(after.st).toBe("Rejected");
-    expect(after.mgrNote).toBe("Kiosk is overstocked already");
-  });
-});
+/* ---------------------------------------------------------------- H7
+ * H7 · rejection needs a reason. Both halves are the server's: requests.test.ts "refuses to
+ * reject without a reason (H7)" and "rejects when a reason is given, and issues no ticket".
+ * writes.test.ts proves the refusal reaches the manager word for word. */
 
 /* ---------------------------------------------------------------- H8 */
 describe("H8 · no seeded price breaches its MRP", () => {
@@ -294,36 +186,23 @@ describe("M3 · what is already on order is visible", () => {
 
 /* ---------------------------------------------------------------- M8 */
 describe("M8 · stock in transit is visible", () => {
+  // `inTransit` is still a UI selector over whatever the tickets say, so the ticket's status
+  // is driven directly here — the moves that set it belong to tickets.test.ts.
   it("reports quantity handed over but not yet received", () => {
-    as("store");
     const t = seedTkt.find((x) => x.st === "Issued" && x.from === "store")!;
     const it = t.lines[0].it;
     expect(inTransit(S(), it)).toBe(0);
-    S().handover(t.id);
+    useApp.setState({ tkt: S().tkt.map((x) => (x.id === t.id ? { ...x, st: "Collected" as const } : x)) });
     expect(inTransit(S(), it)).toBe(t.lines[0].qty);
-    S().receiveTicket(t.id);
+    useApp.setState({ tkt: S().tkt.map((x) => (x.id === t.id ? { ...x, st: "Received" as const } : x)) });
     expect(inTransit(S(), it)).toBe(0);
   });
 });
 
-/* ---------------------------------------------------------------- M9 */
-describe("M9 · the kitchen cannot push stock a counter cannot sell", () => {
-  it("refuses a destination that does not list the product", () => {
-    as("prod");
-    expect(MENU.coffee).not.toContain("puff");
-    const before = S().tkt.length;
-    S().distribute("puff", 5, "coffee");
-    expect(S().tkt).toHaveLength(before);
-    expect(S().toast).toMatch(/not listed/i);
-  });
-
-  it("allows a destination that lists it", () => {
-    as("prod");
-    const before = S().tkt.length;
-    S().distribute("puff", 5, "kiosk");
-    expect(S().tkt).toHaveLength(before + 1);
-  });
-});
+/* ---------------------------------------------------------------- M9
+ * M9 · the kitchen cannot push stock a counter cannot sell. POST /distributions holds it:
+ * production.test.ts "refuses a destination that does not list the product (M9)", with the
+ * happy path in "reserves at the kitchen and raises the ticket the outlet collects against". */
 
 /* ---------------------------------------------------------------- M11 */
 describe("M11 · reorder levels are per location", () => {
@@ -415,143 +294,21 @@ describe("countable units still show a fraction when there is one", () => {
   });
 });
 
-/* ------------------------------- a production order dispatches whole */
-describe("a production order goes out whole, to the place that raised it", () => {
-  /** The seeded two-item order: sandwiches and salad for the Snack Kiosk. */
-  const twoItem = () => S().pord.find((x) => x.lines.length > 1)!;
+/* ------------------------------- a production order dispatches whole
+ * All four cases are the server's since Phase 3, on POST /prod-orders/:id/dispatch:
+ * production.test.ts "puts every item on one ticket addressed to the ordering outlet, and
+ * reserves rather than moves", "dispatches nothing when one item is short, and names every
+ * item that is" and "refuses to raise a second ticket for an order already dispatched"; the
+ * landing half is tickets.test.ts "books the stock in and closes the request behind it". */
 
-  it("puts every item on one ticket addressed to the ordering outlet", () => {
-    as("prod");
-    const o = twoItem();
-    expect(o.lines).toHaveLength(2);
-    o.lines.forEach((l) => S().makeProduct(l.it, l.qty));
+/* A rejection records who made the call — the server stamps `apprBy` from the token and
+ * refuses an empty reason: requests.test.ts "names the manager who approved, not the operator
+ * who raised (H6)" and "refuses to reject without a reason (H7)". */
 
-    S().dispatchOrder(o.id);
-
-    const raised = S().tkt.filter((t) => t.req === o.id);
-    // One order, one ticket — not one ticket per item.
-    expect(raised).toHaveLength(1);
-    const t = raised[0];
-    expect(t.from).toBe("kitchen");
-    expect(t.to).toBe(o.from);
-    expect(t.lines).toHaveLength(o.lines.length);
-    o.lines.forEach((l) => expect(t.lines.find((x) => x.it === l.it)!.qty).toBe(l.qty));
-    expect(S().pord.find((x) => x.id === o.id)!.st).toBe("Dispatched");
-  });
-
-  it("lands both items, in full, on the ordering outlet's shelf", () => {
-    as("prod");
-    const o = twoItem();
-    o.lines.forEach((l) => S().makeProduct(l.it, l.qty));
-    const before = o.lines.map((l) => qty(S(), o.from, l.it));
-
-    S().dispatchOrder(o.id);
-    const t = S().tkt.find((x) => x.req === o.id)!;
-    S().handover(t.id, t.otp);
-    S().receiveTicket(t.id);
-
-    o.lines.forEach((l, i) => expect(qty(S(), o.from, l.it)).toBe(before[i] + l.qty));
-  });
-
-  it("dispatches nothing when one item of the order is short, and names it", () => {
-    as("prod");
-    const o = twoItem();
-    // Only the first item is made — a part dispatch must not slip through.
-    S().makeProduct(o.lines[0].it, o.lines[0].qty);
-
-    S().dispatchOrder(o.id);
-
-    expect(S().tkt.some((t) => t.req === o.id)).toBe(false);
-    expect(S().pord.find((x) => x.id === o.id)!.st).not.toBe("Dispatched");
-    expect(S().toast).toMatch(new RegExp(IT[o.lines[1].it].n, "i"));
-  });
-
-  it("refuses to raise a second ticket for an order already dispatched", () => {
-    as("prod");
-    const o = twoItem();
-    o.lines.forEach((l) => S().makeProduct(l.it, l.qty));
-    S().dispatchOrder(o.id);
-    const after = S().tkt.length;
-
-    S().dispatchOrder(o.id);
-
-    expect(S().tkt).toHaveLength(after);
-    expect(S().toast).toMatch(/already gone out/i);
-  });
-});
-
-describe("a rejection records who made the call", () => {
-  it("stores the decider on the request, not only in the history", () => {
-    as("manager");
-    S().rejectRequest("REQ-2026-0911", "Nothing to spare until the delivery lands");
-    const r = S().req.find((x) => x.id === "REQ-2026-0911")!;
-    expect(r.st).toBe("Rejected");
-    expect(r.apprBy).toBe("Ramesh Kumar");
-    expect(r.mgrNote).toContain("Nothing to spare");
-  });
-  it("refuses to reject without a reason", () => {
-    as("manager");
-    S().rejectRequest("REQ-2026-0912", "   ");
-    expect(S().req.find((x) => x.id === "REQ-2026-0912")!.st).toBe("Request sent");
-  });
-});
-
-describe("two shops deal with each other directly", () => {
-  it("one shop asks another, the other grants, and a ticket carries it across", () => {
-    as("counter");                                   // Kavitha at the Coffee Shop
-    S().askShop("kiosk", "bisc", 4, "Out until the store opens");
-    const ask = S().shopAsks[0];
-    expect(ask.from).toBe("coffee");
-    expect(ask.to).toBe("kiosk");
-    expect(ask.st).toBe("Asked");
-
-    const kioskBefore = qty(S(), "kiosk", "bisc");
-    const coffeeBefore = qty(S(), "coffee", "bisc");
-    const tickets = S().tkt.length;
-
-    S().answerShopAsk(ask.id, 4);
-    const answered = S().shopAsks.find((a) => a.id === ask.id)!;
-    expect(answered.st).toBe("Sent");
-    expect(answered.grant).toBe(4);
-    expect(S().tkt).toHaveLength(tickets + 1);
-
-    // reserved at the giving shop, nothing has physically moved yet
-    const t = S().tkt[S().tkt.length - 1];
-    expect(t.from).toBe("kiosk");
-    expect(t.to).toBe("coffee");
-    expect(qty(S(), "kiosk", "bisc")).toBe(kioskBefore);
-    expect(resv(S(), "kiosk", "bisc")).toBe(4);
-    expect(t.otp).toMatch(/^\d{6}$/);
-
-    S().handover(t.id, t.otp);
-    expect(qty(S(), "kiosk", "bisc")).toBe(kioskBefore - 4);
-    S().receiveTicket(t.id);
-    expect(qty(S(), "coffee", "bisc")).toBe(coffeeBefore + 4);
-  });
-
-  it("a wrong OTP does not release the goods", () => {
-    as("counter");
-    S().askShop("kiosk", "bisc", 2, "");
-    S().answerShopAsk(S().shopAsks[0].id, 2);
-    const t = S().tkt[S().tkt.length - 1];
-    const before = qty(S(), "kiosk", "bisc");
-    S().handover(t.id, "000000");
-    expect(S().tkt.find((x) => x.id === t.id)!.st).toBe("Issued");
-    expect(qty(S(), "kiosk", "bisc")).toBe(before);
-  });
-
-  it("declining needs a reason and sends nothing", () => {
-    as("counter");
-    S().askShop("kiosk", "bisc", 3, "");
-    const id = S().shopAsks[0].id;
-    const tickets = S().tkt.length;
-    S().declineShopAsk(id, "   ");
-    expect(S().shopAsks.find((a) => a.id === id)!.st).toBe("Asked");
-    S().declineShopAsk(id, "Needed for the evening rush");
-    expect(S().shopAsks.find((a) => a.id === id)!.st).toBe("Declined");
-    expect(S().tkt).toHaveLength(tickets);
-  });
-});
+/* Two shops deal with each other directly — the whole exchange is server-side since Phase 3:
+ * shopasks.test.ts "asks the other shop directly, not the manager", "grants it, reserves at
+ * the shop that holds it, and raises the ticket the asker collects" and "needs a reason the
+ * other shop can read"; tickets.test.ts "refuses a wrong OTP and moves nothing". */
 
 describe("support is customer care for the portal", () => {
   it("raises a ticket carrying the screen it is about, and threads the reply", () => {
@@ -659,17 +416,9 @@ describe("a shop-to-shop ask is answerable from the receiving counter", () => {
     expect(inbound!.qty).toBeLessThanOrEqual(qty(S(), "coffee", inbound!.it));
   });
 
-  it("granting it moves stock the other way, on a ticket", () => {
-    as("counter");
-    const ask = S().shopAsks.find((a) => a.to === "coffee" && a.st === "Asked")!;
-    const before = S().tkt.length;
-    S().answerShopAsk(ask.id, ask.qty);
-    expect(S().tkt).toHaveLength(before + 1);
-    const t = S().tkt[S().tkt.length - 1];
-    expect(t.from).toBe("coffee");
-    expect(t.to).toBe("kiosk");
-    expect(S().shopAsks.find((a) => a.id === ask.id)!.st).toBe("Sent");
-  });
+  // Granting it is one server call that both books the grant and raises the ticket —
+  // shopasks.test.ts "grants it, reserves at the shop that holds it, and raises the ticket
+  // the asker collects".
 
   it("both counters have a login, so either end can be signed into", () => {
     const counters = USERS.filter((u) => u.r === "counter");
@@ -678,23 +427,5 @@ describe("a shop-to-shop ask is answerable from the receiving counter", () => {
   });
 });
 
-describe("declining an inbound ask takes two steps", () => {
-  it("refuses to decline without a reason, and records it when given", () => {
-    as("counter");
-    const ask = S().shopAsks.find((a) => a.to === "coffee" && a.st === "Asked")!;
-    S().declineShopAsk(ask.id, "   ");
-    expect(S().shopAsks.find((a) => a.id === ask.id)!.st).toBe("Asked");
-    S().declineShopAsk(ask.id, "Needed for the evening rush");
-    const after = S().shopAsks.find((a) => a.id === ask.id)!;
-    expect(after.st).toBe("Declined");
-    expect(after.reason).toBe("Needed for the evening rush");
-  });
-
-  it("a declined ask issues no ticket", () => {
-    as("counter");
-    const ask = S().shopAsks.find((a) => a.to === "coffee" && a.st === "Asked")!;
-    const before = S().tkt.length;
-    S().declineShopAsk(ask.id, "Nothing to spare");
-    expect(S().tkt).toHaveLength(before);
-  });
-});
+/* Declining an inbound ask takes two steps — shopasks.test.ts "needs a reason the other shop
+ * can read" and "declines with the reason, and issues no ticket". */

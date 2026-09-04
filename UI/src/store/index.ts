@@ -13,15 +13,15 @@ import {
 import { seedVendors } from "../data/vendors";
 import type {
   Batch, Bill, DraftLine, DrawerState, Grn, LocKey, Payer, PordStatus, ProdOrder, PurchaseOrder,
-  Requisition, StockRequest, Tender, Ticket, TktLine, User, Vendor,
+  Requisition, StockRequest, Tender, Ticket, User, Vendor,
 } from "../types";
-import { basePrices, freeToPromise, qty, resv } from "../lib/selectors";
-import { bestBefore, fq, now, U, makeOtp } from "../lib/fmt";
+import { basePrices, qty, resv } from "../lib/selectors";
+import { bestBefore, fq, now, U } from "../lib/fmt";
 import { applyTheme, nextTheme, readStoredTheme, storeTheme, type ThemePref } from "../lib/theme";
 import { createProcurementSlice, type ProcurementSlice } from "./procurement";
 import { createOpsSlice, type OpsSlice } from "./ops";
 
-interface Seq { req: number; tkt: number; prq: number; po: number; pord: number; bat: number; vn: number }
+interface Seq { req: number; prq: number; po: number; pord: number; bat: number; vn: number }
 
 export interface AppState extends ProcurementSlice, OpsSlice {
   user: User | null;
@@ -74,25 +74,27 @@ export interface AppState extends ProcurementSlice, OpsSlice {
   toggleAvail: (loc: LocKey, it: string) => Promise<void>;
 
   setDraft: (d: DraftLine[]) => void;
-  submitRequest: (note: string, urgent: boolean) => void;
-  requestFromStore: (it: string, qty: number) => void;
-  cancelRequest: (id: string) => void;
+  /** The form-carrying writes answer `true` only once the server has taken them, so the screen
+   *  can keep what the operator typed in front of them when it is refused. */
+  submitRequest: (note: string, urgent: boolean) => Promise<boolean>;
+  requestFromStore: (it: string, qty: number) => Promise<boolean>;
+  cancelRequest: (id: string) => Promise<void>;
 
-  approveRequest: (id: string, appr: number[], note: string) => void;
-  rejectRequest: (id: string, note: string) => void;
+  approveRequest: (id: string, appr: number[], note: string) => Promise<boolean>;
+  rejectRequest: (id: string, note: string) => Promise<boolean>;
 
-  issueTicket: (reqId: string) => void;
+  issueTicket: (reqId: string) => Promise<void>;
   /** `otp` is required from the collecting side; omit it only for a supervisor override. */
-  handover: (tktId: string, otp?: string) => void;
-  receiveTicket: (tktId: string) => void;
+  handover: (tktId: string, otp?: string) => Promise<void>;
+  receiveTicket: (tktId: string) => Promise<void>;
 
   setPrqDraft: (d: DraftLine[]) => void;
   sendRequisition: (note: string) => void;
 
   setOrderStatus: (id: string, st: PordStatus) => void;
-  dispatchOrder: (id: string) => void;
+  dispatchOrder: (id: string) => Promise<void>;
   makeProduct: (it: string, started: number, made?: number, note?: string) => void;
-  distribute: (it: string, n: number, to: LocKey) => void;
+  distribute: (it: string, n: number, to: LocKey) => Promise<boolean>;
 
   savePrice: (list: "A" | "B", it: string, price: number) => Promise<void>;
   removeProduct: (loc: LocKey, it: string) => Promise<void>;
@@ -125,7 +127,7 @@ export const useApp = create<AppState>((set, get) => ({
   vendors: clone(seedVendors),
   sales: clone(seedSales),
   dayLabels: DAY_LABELS,
-  seq: { req: 912, tkt: 440, prq: 15, po: 142, pord: 30, bat: 1, vn: 5 },
+  seq: { req: 912, prq: 15, po: 142, pord: 30, bat: 1, vn: 5 },
   cart: {},
   draft: [],
   prqDraft: [],
@@ -252,143 +254,103 @@ export const useApp = create<AppState>((set, get) => ({
   },
 
   setDraft: (draft) => set({ draft }),
-  submitRequest: (note, urgent) => {
+  /**
+   * The request chain is the server's from here (Phase 3). Every action below builds a body,
+   * posts it, repeats the sentence the server answered with, and refetches exactly what the
+   * write said it changed. No rule is previewed locally — a refusal is the server's words.
+   */
+  submitRequest: async (note, urgent) => {
     const s = get();
-    if (!s.user) return;
-    const lines = s.draft.filter((l) => l.it && l.qty > 0).map((l) => ({ it: l.it, qty: l.qty, appr: 0 }));
-    if (!lines.length) { get().notify("Add at least one line with a quantity"); return; }
-    const id = "REQ-2026-0" + (s.seq.req + 1);
-    set({
-      seq: { ...s.seq, req: s.seq.req + 1 }, draft: [],
-      req: [...s.req, {
-        id, from: s.user.loc, by: s.user.n, at: now(), lines,
-        st: "Request sent", ticket: null, mgrNote: note, urg: urgent,
-        hist: [hist(s.user.n, "Request sent")],
-      }],
-    });
-    get().notify(`${id} sent to the outlet manager — ${lines.length} line${lines.length > 1 ? "s" : ""}`);
+    const lines = s.draft.filter((l) => l.it && l.qty > 0).map((l) => ({ it: l.it, qty: l.qty }));
+    if (!lines.length || !s.user) { get().notify("Add at least one line with a quantity"); return false; }
+    try {
+      const r = await call(routes.createRequest, { body: { lines, note, urgent } });
+      set({ draft: [] });                       // the draft is client-only state; clear it once it landed
+      get().notify(r.message);
+      await refetch(r.changed, r.message);
+      return true;
+    } catch (e) {
+      get().notify(e instanceof ApiError ? e.message : "Could not send the request — check the connection and try again.");
+      return false;
+    }
   },
-  requestFromStore: (it, want) => {
+  requestFromStore: async (it, want) => {
     const s = get();
-    if (!s.user) return;
-    if (!(want > 0)) { get().notify("Enter a quantity to request"); return; }
-    const id = "REQ-2026-0" + (s.seq.req + 1);
-    set({
-      seq: { ...s.seq, req: s.seq.req + 1 },
-      req: [...s.req, {
-        id, from: s.user.loc, by: s.user.n, at: now(),
-        lines: [{ it, qty: want, appr: 0 }],
-        st: "Request sent", ticket: null,
-        mgrNote: `Raised from ${LOC[s.user.loc].n} stock screen`,
-        hist: [hist(s.user.n, "Request sent")],
-      }],
-    });
-    get().notify(`${id} raised for ${want} ${IT[it].n} — with the outlet manager now`);
-  },
-  cancelRequest: (id) =>
-    set((s) => {
-      const req = s.req.map((r) => {
-        if (r.id !== id || (r.st !== "Draft" && r.st !== "Request sent")) return r;
-        return { ...r, st: "Cancelled" as const, hist: [...r.hist, hist(s.user?.n ?? "", "Cancelled")] };
+    if (!s.user) return false;
+    try {
+      const r = await call(routes.createRequest, {
+        body: { lines: [{ it, qty: want }], note: `Raised from ${LOC[s.user.loc].n} stock screen`, urgent: false },
       });
-      setTimeout(() => get().notify(`${id} cancelled`), 0);
-      return { req };
-    }),
-
-  approveRequest: (id, appr, note) => {
-    const s = get();
-    const r = s.req.find((x) => x.id === id);
-    if (!r || !s.user) return;
-    // Never promise more than the counter asked for, nor more than is still free
-    // to promise once other approvals and open tickets are netted off (C6).
-    const lines = r.lines.map((l, i) => {
-      const asked = Number.isFinite(appr[i]) ? appr[i] : 0;
-      const free = freeToPromise(s, "store", l.it);
-      const ok = Math.max(0, Math.min(l.qty, asked, free));
-      return { ...l, appr: ok, short: Math.round((l.qty - ok) * 1000) / 1000 };
-    });
-    const total = lines.reduce((t, l) => t + l.appr, 0);
-    const st = total === 0 ? "Rejected" : lines.every((l) => l.appr === l.qty) ? "Manager approved" : "Partially approved";
-    const trimmed = lines.some((l, i) => l.appr < Math.min(l.qty, Number.isFinite(appr[i]) ? appr[i] : 0));
-    set({
-      req: s.req.map((x) => x.id === id
-        ? { ...x, lines, st, mgrNote: note, apprBy: s.user!.n, hist: [...x.hist, hist(s.user!.n, st)] } : x),
-    });
-    if (trimmed) {
-      get().notify(`${id} trimmed — the central store cannot cover the full quantity`);
-      return;
+      get().notify(r.message);
+      await refetch(r.changed, r.message);
+      return true;
+    } catch (e) {
+      get().notify(e instanceof ApiError ? e.message : "Could not send the request — check the connection and try again.");
+      return false;
     }
-    get().notify(st === "Rejected" ? `${id} rejected — no ticket will be issued`
-      : `${id} ${st.toLowerCase()} and forwarded to the store keeper`);
   },
-  rejectRequest: (id, note) => {
-    const s = get();
-    if (!s.user) return;
-    if (!note.trim()) { get().notify("Give a reason — the counter sees it on the request"); return; }
-    set({
-      req: s.req.map((x) => x.id === id
-        ? { ...x, st: "Rejected" as const, mgrNote: note, apprBy: s.user!.n,
-            hist: [...x.hist, hist(s.user!.n, "Rejected")] } : x),
-    });
-    get().notify(`${id} rejected`);
+  cancelRequest: async (id) => {
+    try {
+      const r = await call(routes.cancelRequest, { params: { id } });
+      get().notify(r.message);
+      await refetch(r.changed, r.message);
+    } catch (e) {
+      get().notify(e instanceof ApiError ? e.message : "Could not cancel the request — check the connection and try again.");
+    }
   },
 
-  issueTicket: (reqId) => {
-    const s = get();
-    const r = s.req.find((x) => x.id === reqId);
-    if (!r || !s.user) return;
-    const lines = r.lines.filter((l) => l.appr > 0).map((l) => ({ it: l.it, qty: l.appr }));
-    if (!lines.length) { get().notify("Nothing approved on this request"); return; }
-    const short = lines.find((l) => qty(s, "store", l.it) - resv(s, "store", l.it) < l.qty);
-    if (short) { get().notify(`Not enough ${IT[short.it].n} available to promise`); return; }
-    const id = "TKT-0" + (s.seq.tkt + 1);
-    const rsv = { ...s.rsv };
-    lines.forEach((l) => { rsv["store:" + l.it] = (rsv["store:" + l.it] ?? 0) + l.qty; });
-    set({
-      rsv, seq: { ...s.seq, tkt: s.seq.tkt + 1 },
-      tkt: [...s.tkt, { id, req: reqId, from: "store", to: r.from, lines, st: "Issued", otp: makeOtp(s.seq.tkt + 1) }],
-      req: s.req.map((x) => x.id === reqId
-        ? { ...x, ticket: id, st: "Ticket issued" as const, hist: [...x.hist, hist(s.user!.n, "Ticket issued")] } : x),
-    });
-    get().notify(`${id} issued — ${LOC[r.from].n} can collect against this ticket`);
-  },
-  handover: (tktId, otp) => {
-    const s = get();
-    const t = s.tkt.find((x) => x.id === tktId);
-    if (!t || t.st !== "Issued") return;
-    if (otp !== undefined && otp.trim() !== t.otp) {
-      s.notify(`That OTP does not match ${tktId}. Ask the collector to read it again.`);
-      return;
+  approveRequest: async (id, appr, note) => {
+    try {
+      const r = await call(routes.approveRequest, { params: { id }, body: { appr, note } });
+      get().notify(r.message);
+      await refetch(r.changed, r.message);
+      return true;
+    } catch (e) {
+      get().notify(e instanceof ApiError ? e.message : "Could not save the approval — check the connection and try again.");
+      return false;
     }
-    const stock = clone(s.stock);
-    const rsv = { ...s.rsv };
-    t.lines.forEach((l) => {
-      stock[t.from][l.it] = Math.round(((stock[t.from][l.it] ?? 0) - l.qty) * 1000) / 1000;
-      rsv[t.from + ":" + l.it] = Math.max(0, (rsv[t.from + ":" + l.it] ?? 0) - l.qty);
-    });
-    set({
-      stock, rsv,
-      tkt: s.tkt.map((x) => x.id === tktId ? { ...x, st: "Collected" as const } : x),
-      req: s.req.map((x) => x.id === t.req
-        ? { ...x, st: "Collected" as const, hist: [...x.hist, hist(s.user?.n ?? "", "Collected")] } : x),
-    });
-    get().notify(`${tktId} handed over — stock is in transit to ${LOC[t.to].n}`);
   },
-  receiveTicket: (tktId) => {
-    const s = get();
-    const t = s.tkt.find((x) => x.id === tktId);
-    if (!t || t.st !== "Collected") return;
-    const stock = clone(s.stock);
-    t.lines.forEach((l) => {
-      stock[t.to][l.it] = Math.round(((stock[t.to][l.it] ?? 0) + l.qty) * 1000) / 1000;
-    });
-    set({
-      stock, drawer: null,
-      tkt: s.tkt.map((x) => x.id === tktId ? { ...x, st: "Received" as const } : x),
-      req: s.req.map((x) => x.id === t.req
-        ? { ...x, st: "Closed" as const, hist: [...x.hist, hist(s.user?.n ?? "", "Received")] } : x),
-    });
-    get().notify(`Received at ${LOC[t.to].n} — stock is on the shelf`);
+  rejectRequest: async (id, note) => {
+    try {
+      const r = await call(routes.rejectRequest, { params: { id }, body: { note } });
+      get().notify(r.message);
+      await refetch(r.changed, r.message);
+      return true;
+    } catch (e) {
+      get().notify(e instanceof ApiError ? e.message : "Could not save the rejection — check the connection and try again.");
+      return false;
+    }
+  },
+
+  issueTicket: async (reqId) => {
+    try {
+      const r = await call(routes.issueTicket, { params: { id: reqId } });
+      get().notify(r.message);
+      await refetch(r.changed, r.message);
+    } catch (e) {
+      get().notify(e instanceof ApiError ? e.message : "Could not issue the ticket — check the connection and try again.");
+    }
+  },
+  handover: async (tktId, otp) => {
+    try {
+      // The body is a strict object either way: `{ otp }` when the collector read one out,
+      // `{}` for the labelled supervisor override. Omitting it entirely is a 400.
+      const r = await call(routes.handover, { params: { id: tktId }, body: otp === undefined ? {} : { otp: otp.trim() } });
+      get().notify(r.message);
+      await refetch(r.changed, r.message);
+    } catch (e) {
+      get().notify(e instanceof ApiError ? e.message : "Could not hand the ticket over — check the connection and try again.");
+    }
+  },
+  receiveTicket: async (tktId) => {
+    try {
+      const r = await call(routes.receiveTicket, { params: { id: tktId } });
+      set({ drawer: null });
+      get().notify(r.message);
+      await refetch(r.changed, r.message);
+    } catch (e) {
+      get().notify(e instanceof ApiError ? e.message : "Could not receive the ticket — check the connection and try again.");
+    }
   },
 
   setPrqDraft: (prqDraft) => set({ prqDraft }),
@@ -414,50 +376,16 @@ export const useApp = create<AppState>((set, get) => ({
     });
     get().notify(`${id} — ${st.toLowerCase()}`);
   },
-  dispatchOrder: (id) => {
-    const s = get();
-    const o = s.pord.find((x) => x.id === id);
-    if (!o) return;
-    // One order, one ticket. Dispatching twice would raise a second ticket for
-    // stock already promised, which is how half an order ends up in two places.
-    if (o.st === "Dispatched") {
-      get().notify(`${id} has already gone out — it is on one ticket to ${LOC[o.from].n}`);
-      return;
+  /** One order, one ticket, all or nothing — all of it the server's, on POST /prod-orders/:id/dispatch. */
+  dispatchOrder: async (id) => {
+    try {
+      const r = await call(routes.dispatchProdOrder, { params: { id } });
+      set({ drawer: null });
+      get().notify(r.message);
+      await refetch(r.changed, r.message);
+    } catch (e) {
+      get().notify(e instanceof ApiError ? e.message : "Could not dispatch the order — check the connection and try again.");
     }
-    if (o.st === "Declined") { get().notify(`${id} was declined — it cannot be dispatched`); return; }
-    // Fold a repeated item into a single line so the cover check is made against
-    // the whole quantity the order asks for, not one line of it at a time.
-    const lines: TktLine[] = [];
-    o.lines.forEach((l) => {
-      const seen = lines.find((x) => x.it === l.it);
-      if (seen) seen.qty = Math.round((seen.qty + l.qty) * 1000) / 1000;
-      else lines.push({ it: l.it, qty: l.qty });
-    });
-    if (!lines.length) { get().notify(`${id} has no items on it`); return; }
-    // All or nothing: a part-dispatched order leaves the outlet guessing what is
-    // still coming, so every item short is named and nothing moves.
-    const short = lines.filter((l) => qty(s, "kitchen", l.it) - resv(s, "kitchen", l.it) < l.qty);
-    if (short.length) {
-      get().notify(
-        `Nothing dispatched — the kitchen is short of ${short.map((l) => IT[l.it].n).join(", ")}`,
-      );
-      return;
-    }
-    // Approval authorises, the scan moves: reserve here, deduct at handover.
-    const rsv = { ...s.rsv };
-    lines.forEach((l) => {
-      rsv["kitchen:" + l.it] = (rsv["kitchen:" + l.it] ?? 0) + l.qty;
-    });
-    const tid = "TKT-0" + (s.seq.tkt + 1);
-    set({
-      rsv, seq: { ...s.seq, tkt: s.seq.tkt + 1 }, drawer: null,
-      tkt: [...s.tkt, { id: tid, req: id, from: "kitchen", to: o.from, lines, st: "Issued", otp: makeOtp(s.seq.tkt + 1) }],
-      pord: s.pord.map((x) => x.id === id
-        ? { ...x, st: "Dispatched" as const, hist: [...x.hist, hist(s.user?.n ?? "", "Dispatched")] } : x),
-    });
-    get().notify(
-      `${tid} issued — all ${lines.length} item${lines.length === 1 ? "" : "s"} of ${id} reserved for ${LOC[o.from].n}`,
-    );
   },
   makeProduct: (it, n, yielded, note) => {
     const s = get();
@@ -496,24 +424,17 @@ export const useApp = create<AppState>((set, get) => ({
       ? `${id} — ${n} ${IT[it].n} made, best before ${bb}`
       : `${id} — ${made} of ${n} ${IT[it].n} yielded (${(((made - n) / n) * 100).toFixed(1)}%), best before ${bb}`);
   },
-  distribute: (it, n, to) => {
-    const s = get();
-    if (!(n > 0)) { get().notify("Enter a quantity"); return; }
-    // Stock that arrives somewhere it cannot be sold is stock lost (M9).
-    const listed = s.menu[to] ?? MENU[to] ?? [];
-    if (LOC[to].type === "Outlet" && !listed.includes(it)) {
-      get().notify(`${IT[it].n} is not listed at ${LOC[to].n} — add it to that menu first`);
-      return;
+  /** A direct issue out of the kitchen: no request behind it, so the body carries the quantity. */
+  distribute: async (it, n, to) => {
+    try {
+      const r = await call(routes.distribute, { body: { it, qty: n, to } });
+      get().notify(r.message);
+      await refetch(r.changed, r.message);
+      return true;
+    } catch (e) {
+      get().notify(e instanceof ApiError ? e.message : "Could not send it out — check the connection and try again.");
+      return false;
     }
-    const free = qty(s, "kitchen", it) - resv(s, "kitchen", it);
-    if (free < n) { get().notify(`Kitchen has only ${fq(free, it)} ${U(it)} free to promise`); return; }
-    const tid = "TKT-0" + (s.seq.tkt + 1);
-    set({
-      rsv: { ...s.rsv, ["kitchen:" + it]: (s.rsv["kitchen:" + it] ?? 0) + n },
-      seq: { ...s.seq, tkt: s.seq.tkt + 1 },
-      tkt: [...s.tkt, { id: tid, req: "Direct issue", from: "kitchen", to, lines: [{ it, qty: n }], st: "Issued", otp: makeOtp(s.seq.tkt + 1) }],
-    });
-    get().notify(`${tid} issued — ${n} ${IT[it].n} reserved for ${LOC[to].n}`);
   },
 
   /** The MRP ceiling is the server's to hold (PUT /prices/:list/:it); its refusal is the toast. */
