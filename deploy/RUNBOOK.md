@@ -636,6 +636,13 @@ looking for one here.
      / <allocated_storage_bytes> < 0.2
    ```
 
+**The migrate initContainer dies with `SELF_SIGNED_CERT_IN_CHAIN` although the image ships the
+RDS bundle.** The `DATABASE_URL` carried `?sslmode=require`: the driver then builds its own TLS
+setting from the string and ignores the bundle the code hands it, so the chain was checked
+against the system store. `DATABASE_SSL=true` alone decides TLS — keep the URL free of `sslmode`
+(`createDb` now strips it, but a URL that says nothing is clearer). The bundle itself verified the
+`rds-ca-rsa2048-g1` chain fine from inside the cluster.
+
 **Every `/api` request from the browser answers 502, the API pod logs only probes.** The UI's
 nginx proxies `/api` to `API_UPSTREAM`, and nginx's `resolver` directive ignores `/etc/resolv.conf`'s
 search domains, so the value must be the API Service's full cluster name —
