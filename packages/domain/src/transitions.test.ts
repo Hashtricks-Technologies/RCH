@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { REQUEST_TRANSITIONS, SHOP_ASK_TRANSITIONS, TICKET_TRANSITIONS, canTransition } from "./transitions";
+import { PROD_ORDER_TRANSITIONS, REQUEST_TRANSITIONS, SHOP_ASK_TRANSITIONS, TICKET_TRANSITIONS, canTransition } from "./transitions";
 
 describe("request transitions", () => {
   it("walks the chain the outlet actually walks", () => {
@@ -41,5 +41,25 @@ describe("shop ask transitions", () => {
     expect(canTransition(SHOP_ASK_TRANSITIONS, "Asked", "Declined")).toBe(true);
     expect(canTransition(SHOP_ASK_TRANSITIONS, "Sent", "Declined")).toBe(false);
     expect(canTransition(SHOP_ASK_TRANSITIONS, "Declined", "Sent")).toBe(false);
+  });
+});
+
+describe("production order transitions", () => {
+  it("may go out from any open stage, because a kitchen sends when it is ready", () => {
+    for (const st of ["New", "Accepted", "In kitchen", "Ready"] as const) {
+      expect(canTransition(PROD_ORDER_TRANSITIONS, st, "Dispatched")).toBe(true);
+    }
+  });
+  it("walks the board in order otherwise", () => {
+    expect(canTransition(PROD_ORDER_TRANSITIONS, "New", "Accepted")).toBe(true);
+    expect(canTransition(PROD_ORDER_TRANSITIONS, "New", "Declined")).toBe(true);
+    expect(canTransition(PROD_ORDER_TRANSITIONS, "Accepted", "In kitchen")).toBe(true);
+    expect(canTransition(PROD_ORDER_TRANSITIONS, "In kitchen", "Ready")).toBe(true);
+    expect(canTransition(PROD_ORDER_TRANSITIONS, "New", "Ready")).toBe(false);
+    expect(canTransition(PROD_ORDER_TRANSITIONS, "Ready", "Accepted")).toBe(false);
+  });
+  it("is finished once it has gone out or been turned down", () => {
+    expect(PROD_ORDER_TRANSITIONS.Dispatched).toEqual([]);
+    expect(PROD_ORDER_TRANSITIONS.Declined).toEqual([]);
   });
 });

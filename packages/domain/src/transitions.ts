@@ -1,4 +1,4 @@
-import type { ReqStatus, ShopAskStatus, TktStatus } from "@rch/contract";
+import type { PordStatus, ReqStatus, ShopAskStatus, TktStatus } from "@rch/contract";
 
 /**
  * Spec §5.1: "Status transitions are data, shared by both sides." One table, two consumers —
@@ -28,6 +28,22 @@ export const TICKET_TRANSITIONS: TransitionTable<TktStatus> = {
   Issued: ["Collected"],
   Collected: ["Received"],
   Received: [],
+};
+
+/**
+ * The kitchen's board. `Dispatched` is reachable from every open stage on purpose: the kitchen
+ * sends an order out the moment it is ready to, whatever word the board is showing — the
+ * store's own `dispatchOrder` refuses only an order already gone or turned down. The rest is
+ * spec §9.2's `setOrderStatus` walk, written down now so Phase 4's status endpoint and the
+ * board's buttons read one table.
+ */
+export const PROD_ORDER_TRANSITIONS: TransitionTable<PordStatus> = {
+  New: ["Accepted", "Declined", "Dispatched"],
+  Accepted: ["In kitchen", "Dispatched"],
+  "In kitchen": ["Ready", "Dispatched"],
+  Ready: ["Dispatched"],
+  Dispatched: [],
+  Declined: [],
 };
 
 export const SHOP_ASK_TRANSITIONS: TransitionTable<ShopAskStatus> = {

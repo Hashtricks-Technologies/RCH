@@ -1,12 +1,13 @@
-// The kitchen's dispatch and its distributions.
-//
-// Wired but empty: the module is registered from the moment it lands so the four wave-3 tasks
-// can each fill one in without four of them editing modules/index.ts. It mounts nothing yet —
-// the module task adds the mount() calls.
+// Production: the two ways the kitchen puts stock on a ticket — an order it was asked for, and
+// a tray it decided to push out. Batches and the board's own statuses are Phase 4.
 import fp from "fastify-plugin";
+import { routes } from "@rch/contract";
+import { mount } from "../../routes.js";
 import { createProductionService } from "./service.js";
 
 export default fp(async (app) => {
   const svc = createProductionService(app.db);
-  await svc.ready();
+  // Neither is location-scoped: the prod role has one kitchen, and both rules pin `from` to it.
+  mount(app, routes.dispatchProdOrder, async (req) => svc.dispatch(req.user, req.params.id));
+  mount(app, routes.distribute, async (req) => svc.distribute(req.user, req.body));
 }, { name: "module:production", dependencies: ["auth", "rbac", "idempotency", "db"] });
