@@ -183,8 +183,11 @@ Resources:
                 token.actions.githubusercontent.com:aud: sts.amazonaws.com
               StringLike:
                 token.actions.githubusercontent.com:sub:
+                  # develop deploys the dev environment; staging and production keep their paths.
+                  - !Sub "repo:${GitHubRepo}:ref:refs/heads/develop"
                   - !Sub "repo:${GitHubRepo}:ref:refs/heads/staging"
                   - !Sub "repo:${GitHubRepo}:ref:refs/heads/production"
+                  - !Sub "repo:${GitHubRepo}:environment:dev"
                   - !Sub "repo:${GitHubRepo}:environment:staging"
                   - !Sub "repo:${GitHubRepo}:environment:production"
       Policies:
