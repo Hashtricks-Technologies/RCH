@@ -33,6 +33,7 @@ function useTicketFilter() {
 
 export default function Tickets() {
   const s = useApp();
+  const user = useApp((x) => x.user)!;
   const receiveTicket = useApp((x) => x.receiveTicket);
   const handover = useApp((x) => x.handover);
   const cancelTicket = useApp((x) => x.cancelTicket);
@@ -162,11 +163,16 @@ export default function Tickets() {
               <>{LOC[t.to].n}<small>{LOC[t.to].floor}</small></>,
               itemText(t),
               <b>{sum(t.lines, (l) => l.qty)}</b>,
-              canHandOver(t.st)
+              // Outbound: the kitchen is the *issuing* side, so the server sends it no digits.
+              // The panel is drawn only where they actually arrive — the collecting location's
+              // own screen — and the rest of the time it says who is holding them.
+              t.to === user.loc && t.st === "Issued"
                 ? <Otp value={t.otp} />
-                : <span className="dim mini">
-                    {t.st === "Cancelled" ? "withdrawn — the OTP was never used" : "used at handover"}
-                  </span>,
+                : canHandOver(t.st)
+                  ? <span className="mini">Held by {LOC[t.to].n}</span>
+                  : <span className="dim mini">
+                      {t.st === "Cancelled" ? "withdrawn — the OTP was never used" : "used at handover"}
+                    </span>,
               canHandOver(t.st)
                 ? <>
                     <StatusPill status={t.st} />

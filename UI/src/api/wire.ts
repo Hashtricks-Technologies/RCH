@@ -1,6 +1,6 @@
 import type { z } from "zod";
 import type { SnapshotSchema, StockResponseSchema } from "@rch/contract";
-import { hydrateItems, hydrateMaster } from "../data/master";
+import { hydrateItems, hydrateMaster, hydrateRoster } from "../data/master";
 import { fromWireBestBefore, fromWireDate, fromWireTime } from "../lib/fmt";
 import { useApp } from "../store";
 import { basePrices } from "../lib/selectors";
@@ -25,12 +25,19 @@ const stockOf = (s: Snapshot["stock"]): Record<StockLoc, Record<string, number>>
 
 /** Server shape -> the store's shape. Times become "HH:MM", dates "DD-MMM-YYYY"; nothing else changes. */
 export function applySnapshot(s: Snapshot): void {
-  hydrateMaster({ items: s.items, locations: s.locations as never, recipes: s.recipes, prices: s.prices, menu: s.menu, users: s.users });
-  useApp.setState({
+  hydrateMaster({ items: s.items, locations: s.locations, recipes: s.recipes, prices: s.prices, menu: s.menu, users: s.users });
+  // Who a bill may be charged to comes off the `payers` table the till has been checked
+  // against since Phase 3, so a patient admitted this morning is billable without a release.
+  hydrateRoster(s.roster);
+  useApp.setState((prev) => ({
     user: s.user,
+    // The catalogue is a module-level registry, not store state, so a snapshot that replaces
+    // it changes nothing React can see. `applyItems` has always bumped this; a full snapshot —
+    // an SSE `resync`, or the fallback refetch — brings new items the same way and must too.
+    catalogVersion: prev.catalogVersion + 1,
     stock: stockOf(s.stock), rsv: s.rsv, ovr: s.ovr, prices: basePrices(), menu: s.menu,
     req: s.req.map((r) => ({ ...r, at: t(r.at), hist: hist(r.hist) })),
-    tkt: s.tkt,
+    tkt: s.tkt.map((x) => ({ ...x, hist: hist(x.hist) })),
     prq: s.prq.map((p) => ({ ...p, at: t(p.at), hist: hist(p.hist) })),
     po: s.po.map((o) => ({ ...o, at: t(o.at), eta: fromWireDate(o.eta), recv: o.recv ? t(o.recv) : undefined, hist: hist(o.hist) })),
     pord: s.pord.map((o) => ({ ...o, at: t(o.at), hist: hist(o.hist) })),
@@ -44,7 +51,7 @@ export function applySnapshot(s: Snapshot): void {
     productReqs: s.productReqs.map((p) => ({ ...p, at: t(p.at) })),
     shopAsks: s.shopAsks.map((a) => ({ ...a, at: t(a.at) })),
     sales: s.sales, dayLabels: s.dayLabels,
-  });
+  }));
 }
 
 /**
@@ -65,8 +72,17 @@ export function applyRequests(req: Snapshot["req"]): void {
   useApp.setState({ req: req.map((r) => ({ ...r, at: t(r.at), hist: hist(r.hist) })) });
 }
 
-/** GET /tickets -> the tickets. Nothing on a ticket is a time, so it passes straight through. */
-export function applyTickets(tkt: Snapshot["tkt"]): void { useApp.setState({ tkt }); }
+/** GET /tickets -> the tickets. The lines and the OTP pass through; the history does not.
+ *  This is what every handover, receipt and cancellation refetches through, so leaving it a
+ *  pass-through would put raw ISO stamps into the drawer's trail the moment anything moved. */
+export function applyTickets(tkt: Snapshot["tkt"]): void {
+  useApp.setState({ tkt: tkt.map((x) => ({ ...x, hist: hist(x.hist) })) });
+}
+
+/** GET /support/tickets -> the desk. Times as "HH:MM", on the ticket and on every message. */
+export function applySupportTickets(rows: Snapshot["tickets"]): void {
+  useApp.setState({ tickets: rows.map((x) => ({ ...x, at: t(x.at), messages: x.messages.map((m) => ({ ...m, at: t(m.at) })) })) });
+}
 
 /** GET /shop-asks -> the shop-to-shop asks, times as "HH:MM". */
 export function applyShopAsks(asks: Snapshot["shopAsks"]): void {

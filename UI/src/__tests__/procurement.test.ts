@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ALL_LOCS, LOC } from "../data/master";
-import { seedPrq } from "../data/seed";
-import { seedVendors, suggestVendor, vendorName } from "../data/vendors";
+import { seedPrq, seedVendors } from "@rch/contract/fixtures";
+import { suggestVendor, vendorName } from "../data/vendors";
 import {
   awaitingApproval, onOrder, poValue, prqProgress, procurementList,
 } from "../lib/selectors";

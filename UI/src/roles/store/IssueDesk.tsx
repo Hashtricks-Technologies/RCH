@@ -31,12 +31,14 @@ const approver = (r: StockRequest) =>
  *  cycle drives all three filter buttons, so they read the same way. */
 const LOC_OPTS: (LocKey | null)[] = [null, ...ALL_LOCS.filter((l) => l !== "store")];
 const locLabel = (l: LocKey | null) => (l === null ? "All" : LOC[l].n);
-const LOC_LABELS = LOC_OPTS.map(locLabel);
 
 export default function IssueDesk() {
   const s = useApp();
   const issueTicket = useApp((x) => x.issueTicket);
   const openDrawer = useApp((x) => x.openDrawer);
+  // `LOC` is empty until the snapshot lands and is replaced in place after that, so the filter's
+  // labels are read during render rather than frozen when this module was first imported.
+  const LOC_LABELS = LOC_OPTS.map(locLabel);
 
   const [qa, setQa] = useState("");
   const [qb, setQb] = useState("");
@@ -81,7 +83,6 @@ export default function IssueDesk() {
     return t.id.toLowerCase().includes(q)
       || t.req.toLowerCase().includes(q)
       || LOC[t.to].n.toLowerCase().includes(q)
-      || t.otp.includes(q)
       || t.lines.some((l) => (IT[l.it]?.n ?? l.it).toLowerCase().includes(q));
   });
 
@@ -113,8 +114,9 @@ export default function IssueDesk() {
 
       <Alert tone="i" label="HOW THIS WORKS">
         The ticket is the collection authority. Approving a request reserves the stock in the central store; the
-        six-digit OTP quoted at the window is what actually moves it. Open any row for the full detail — who
-        asked, what was approved, what is free to promise and the OTP on the ticket.
+        six-digit OTP quoted at the window is what actually moves it. The digits reach the collecting outlet's
+        own screen and never this desk — ask for them at the window. Open any row for the full detail: who
+        asked, what was approved and what is free to promise.
       </Alert>
 
       <Grid>
@@ -213,7 +215,7 @@ export default function IssueDesk() {
         flush
       >
         <Toolbar
-          placeholder="Search ticket, request, outlet, item or OTP…"
+          placeholder="Search ticket, request, outlet or item…"
           value={qb}
           onSearch={setQb}
           filters={
@@ -228,7 +230,6 @@ export default function IssueDesk() {
             { h: "Outlet", w: "16%" },
             { h: "Items", r: true },
             { h: "Qty", r: true },
-            { h: "OTP", w: "12%" },
             { h: "Action", w: "16%" },
           ]}
           rows={toHand.map((t) => ({
@@ -243,7 +244,6 @@ export default function IssueDesk() {
               <>{LOC[t.to].n}<div className="mini">{LOC[t.to].floor}</div></>,
               <>{t.lines.length}</>,
               <b>{sum(t.lines, (l) => l.qty)}</b>,
-              <span className="mono">{t.otp.replace(/(\d{3})(\d{3})/, "$1 $2")}</span>,
               <Btn size="sm" variant="ok" onClick={() => openDrawer("stkt", t.id)}>Take OTP</Btn>,
             ],
           }))}

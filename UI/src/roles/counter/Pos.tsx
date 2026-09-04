@@ -1,17 +1,19 @@
-import { useState } from "react";
-import { BILL_DAYS, TenderSchema } from "@rch/contract";
+import { useEffect, useState } from "react";
+import { TenderSchema } from "@rch/contract";
 import { breachesCredit } from "@rch/domain";
-import { DEPTS, IT, LOC, PATIENTS, STAFF, STAFF_CREDIT_LIMIT } from "../../data/master";
+import { DEPTS, IT, LOC, PATIENTS, STAFF } from "../../data/master";
 import { useApp } from "../../store";
 import { availOf, menuOf, priceOf } from "../../lib/selectors";
-import { money, money0, sum } from "../../lib/fmt";
+import { money, money0 } from "../../lib/fmt";
 import { Alert, Avatar, Btn, Card, Field, Grid, ImagePlaceholder, PageHead, Tag, TileMenu } from "../../ui/kit";
-import type { ItemType, Payer, Tender } from "../../types";
+import type { CreditResponse, ItemType, Payer, Tender } from "../../types";
 
 /** The buttons are the contract's own list — the server refuses anything else outright, so the
  *  till must not offer a seventh tender the schema has never heard of. */
 const TENDERS = TenderSchema.options;
-/** The three tenders that post to somebody's account, and the master each picks from (M1). */
+/** The three tenders that post to somebody's account, and the master each picks from (M1). The
+ *  three lists are the snapshot's own `roster`, off the `payers` table the server validates a
+ *  bill against — so a patient admitted this morning is billable without a new build. */
 const PAYERS: Partial<Record<Tender, { label: string; list: Payer[] }>> = {
   "Patient bill": { label: "Patient", list: PATIENTS },
   "Staff credit": { label: "Staff member", list: STAFF },
@@ -57,13 +59,22 @@ export default function Pos() {
     const t = pq.trim().toLowerCase();
     return !t || p.name.toLowerCase().includes(t) || p.id.toLowerCase().includes(t);
   }) ?? [];
-  // Credit, and only credit: the ceiling measures what the "Staff credit" tender creates, so a
-  // bill this person paid cash for must not be counted against their room. This is a preview of
-  // the server's own sum (`posRepo.staffCreditTaken`) over the bills the till happens to be
-  // holding — the last BILL_DAYS days, not the calendar month the ceiling is settled on — so it
-  // can read low. The server has the whole month and the last word; the label says so.
-  const taken = payer ? sum(s.bills.filter((b) => b.pay === "Staff credit" && b.payer?.id === payer.id), (b) => b.tot) : 0;
-  const overLimit = tender === "Staff credit" && !!payer && breachesCredit(taken, total, STAFF_CREDIT_LIMIT);
+  // The ceiling is settled over the calendar month across every counter, which this till cannot
+  // see — it holds seven days of its own outlet. Ask the server for the number it will refuse on
+  // (`GET /reports/credit/:kind/:id`, which sums the same bills as `creditTakenThisMonth` in
+  // `apps/api/src/lib/credit.ts` does inside the sale's own transaction).
+  const readCredit = useApp((x) => x.readCredit);
+  const [credit, setCredit] = useState<CreditResponse | null>(null);
+  useEffect(() => {
+    if (tender !== "Staff credit" || !payer) { setCredit(null); return; }
+    let live = true;
+    void readCredit(payer).then((r) => { if (live) setCredit(r); });
+    return () => { live = false; };
+  }, [tender, payer, readCredit]);
+  const taken = credit?.taken ?? 0;
+  // Blocked only on a figure that actually arrived: refusing a legitimate sale because a read
+  // has not landed would be worse than letting the server say no, which it still will.
+  const overLimit = tender === "Staff credit" && !!payer && !!credit && breachesCredit(taken, total, credit.limit);
 
   const pickTender = (t: Tender) => { setTender(t); setPayer(null); setPq(""); };
   /** The tile adds one; this sets the line to whatever was typed, as a signed delta. */
@@ -212,15 +223,20 @@ export default function Pos() {
 
           {tender === "Staff credit" && payer && (
             <p className="mini" style={{ margin: "0 0 11px" }}>
-              Credit taken by {payer.name} in the last {BILL_DAYS} days <b className="mono">{money(taken)}</b> of{" "}
-              <b className="mono">{money0(STAFF_CREDIT_LIMIT)}</b> — this bill would take it to{" "}
-              <b className="mono" style={overLimit ? { color: "var(--crit)" } : undefined}>{money(taken + total)}</b>.
-              The store settles the ceiling over the calendar month, so the figure it refuses on may be higher.
+              {credit
+                ? <>
+                  Credit taken by {payer.name} this month <b className="mono">{money(taken)}</b> of{" "}
+                  <b className="mono">{money0(credit.limit)}</b> — this bill would take it to{" "}
+                  <b className="mono" style={overLimit ? { color: "var(--crit)" } : undefined}>{money(taken + total)}</b>.
+                </>
+                // Never a zero here: "₹0.00 taken" is the one thing this line must not say while
+                // it does not know, because it reads as "nothing owing" rather than "not asked yet".
+                : <>Checking what {payer.name} has taken this month…</>}
             </p>
           )}
-          {overLimit && (
+          {overLimit && credit && (
             <Alert tone="c" label="LIMIT">
-              {money(taken + total)} breaches the {money0(STAFF_CREDIT_LIMIT)} staff credit limit for {payer?.name}.
+              {money(taken + total)} breaches the {money0(credit.limit)} staff credit limit for {payer?.name}.
               Take another tender or split the bill.
             </Alert>
           )}

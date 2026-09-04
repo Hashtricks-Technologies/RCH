@@ -1,10 +1,10 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { act, createElement, type ComponentType, type ReactElement } from "react";
 import { createRoot } from "react-dom/client";
 import { MemoryRouter } from "react-router-dom";
 import { creditBreachMessage } from "@rch/domain";
 import { useApp } from "../store";
-import { STAFF_CREDIT_LIMIT, USERS } from "../data/master";
+import { STAFF_CREDIT_LIMIT } from "../data/master";
 import { money, money0 } from "../lib/fmt";
 import { NAV } from "../nav";
 import { DRAWERS } from "../drawers";
@@ -17,10 +17,15 @@ import { screens as store } from "../roles/store";
 import { screens as prod } from "../roles/prod";
 import { screens as buyer } from "../roles/buyer";
 import { groupPool, picksFor, type PoolGroup } from "../roles/buyer/ProcurementList";
-import { seedVendors } from "../data/vendors";
+import { USERS, seedVendors } from "@rch/contract/fixtures";
 import type { PoolLine } from "../lib/selectors";
 import type { Role } from "../types";
-import { resetStore } from "./fixture";
+import { as, resetStore } from "./fixture";
+
+// Nothing in production code carries data any more: the registries are empty until a snapshot
+// lands, so the roles this suite iterates come from the fixtures (which is where a test reads
+// them, per spec 5.1) and each case seeds the demo hospital before it renders.
+beforeEach(resetStore);
 
 const REGISTRY: Record<Role, Record<string, ComponentType>> = { counter, manager, store, prod, buyer };
 
@@ -40,7 +45,7 @@ describe("every screen renders for its role", () => {
   for (const u of USERS) {
     for (const k of NAV[u.r].flatMap((g) => g.items.map((i) => i.k))) {
       it(`${u.r}/${k}`, () => {
-        act(() => { useApp.getState().signIn(u.id); });
+        act(() => { as(u.r); });
         const C = k === "settings" ? Settings : k === "issues" ? Issues : REGISTRY[u.r][k];
         expect(C, `no component registered for ${u.r}/${k}`).toBeTruthy();
         expect(render(createElement(C)).length).toBeGreaterThan(400);
@@ -95,7 +100,7 @@ describe("drawers render", () => {
   ];
   for (const [key, id, role] of cases) {
     it(key, () => {
-      act(() => { useApp.getState().signIn(USERS.find((u) => u.r === role)!.id); });
+      act(() => { as(role); });
       const C = DRAWERS[key];
       expect(C, `drawer "${key}" is not registered`).toBeTruthy();
       expect(render(createElement(C, { id })).length).toBeGreaterThan(200);
@@ -107,7 +112,7 @@ describe("drawers render", () => {
   // loop titles each case by `key` alone, so a second "bgrn" row there would collide on
   // test title. Rendered directly instead, pinning both arms of the "Not printed" branch.
   it("bgrn shows 'Not printed' only for lines with no printed MRP", () => {
-    act(() => { useApp.getState().signIn(USERS.find((u) => u.r === "buyer")!.id); });
+    act(() => { as("buyer"); });
     const C = DRAWERS.bgrn;
     const withMrp = render(createElement(C, { id: "PO-2026-0141" }));
     const withoutMrp = render(createElement(C, { id: "PO-2026-0142" }));
@@ -121,7 +126,7 @@ describe("drawers render", () => {
   // create-mode branch — no vendor loaded, so no Deactivate/Reactivate
   // footer control — that VN-001's row never exercises.
   it("bven shows an empty create form for a new vendor, with no deactivate control", () => {
-    act(() => { useApp.getState().signIn(USERS.find((u) => u.r === "buyer")!.id); });
+    act(() => { as("buyer"); });
     const html = render(createElement(DRAWERS.bven, { id: "new" }));
     expect(html).toContain("Add vendor");
     expect(html).not.toContain("Deactivate");
@@ -132,7 +137,7 @@ describe("drawers render", () => {
   // not on the Coffee Shop's own menu, which shares the "cconfig" key with "juice"
   // (a sellable product) and would collide on the shared loop's test title.
   it("cconfig shows a note instead of a switch for a non-sellable ingredient", () => {
-    act(() => { useApp.getState().signIn(USERS.find((u) => u.r === "counter")!.id); });
+    act(() => { as("counter"); });
     const notSellable = render(createElement(DRAWERS.cconfig, { id: "milk" }));
     const sellable = render(createElement(DRAWERS.cconfig, { id: "juice" }));
     expect(notSellable).toContain("nothing to switch on or off");
@@ -153,7 +158,7 @@ describe("sign-in", () => {
 
 describe("procurement list", () => {
   it("renders the pooled lines, grouped by item, with a source breakdown", () => {
-    act(() => { useApp.getState().signIn(USERS.find((u) => u.r === "buyer")!.id); });
+    act(() => { as("buyer"); });
     const html = render(createElement(buyer.pool));
     expect(html).toContain("Procurement list");
     expect(html).toMatch(/Maida/);
@@ -213,21 +218,19 @@ describe("procurement list", () => {
 });
 
 describe("the kitchen order board", () => {
-  afterEach(resetStore);
-
   it("names the ticket the outlet will actually collect against (I1)", () => {
     // An order withdrawn off its ticket goes back to Ready and can be dispatched again, so it
     // ends the day carrying two — and the server hands them over oldest first. The card used
     // to print the first one it found, which is the withdrawn one.
     act(() => {
-      useApp.getState().signIn(USERS.find((u) => u.r === "prod")!.id);
+      as("prod");
       useApp.setState({
         pord: [{ id: "PRD-2026-029", from: "kiosk", by: "Ramesh Kumar", at: "07:10",
           lines: [{ it: "puff", qty: 40 }], st: "Dispatched", note: "",
           hist: [{ s: "New", who: "Ramesh Kumar", t: "07:10" }] }],
         tkt: [
-          { id: "TKT-0801", req: "PRD-2026-029", from: "kitchen", to: "kiosk", lines: [{ it: "puff", qty: 40 }], st: "Cancelled", otp: "111111" },
-          { id: "TKT-0802", req: "PRD-2026-029", from: "kitchen", to: "kiosk", lines: [{ it: "puff", qty: 40 }], st: "Issued", otp: "222222" },
+          { id: "TKT-0801", req: "PRD-2026-029", from: "kitchen", to: "kiosk", lines: [{ it: "puff", qty: 40 }], st: "Cancelled", otp: "", hist: [] },
+          { id: "TKT-0802", req: "PRD-2026-029", from: "kitchen", to: "kiosk", lines: [{ it: "puff", qty: 40 }], st: "Issued", otp: "", hist: [] },
         ],
       });
     });

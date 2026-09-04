@@ -1,10 +1,11 @@
 import { useMemo, useState } from "react";
+import { SUPPORT_TRANSITIONS, canTransition, mayRate, mayReply, mayUserSet } from "@rch/domain";
 import { LOC, homeLabel } from "../data/master";
 import { NAV } from "../nav";
 import { useApp } from "../store";
 import type { TicketPriority, TicketStatus, TicketTopic } from "../types";
 import {
-  Alert, Avatar, Btn, BtnRow, Card, DataTable, Field, FilterBtn, FilterSelect, FormRow,
+  Alert, Avatar, Btn, BtnRow, Card, DataTable, Field, FilterSelect, FormRow,
   Grid, Kpis, PageHead, Pill, Section, TableFoot, Toolbar,
 } from "../ui/kit";
 import { DrawerFrame } from "../ui/Drawer";
@@ -30,9 +31,20 @@ const FAQ = [
    "A made-to-order drink deducts its ingredients, not a finished unit, so milk and cups move rather than 'cappuccino'. A packaged item deducts one of itself."],
   ["The counter says an item is off but there is stock on the shelf.",
    "Something is either reserved against an open pick ticket, or the item has been switched off by hand. Product Availability names which of the two it is."],
-  ["Refreshing lost everything I entered.",
-   "This build keeps data in the browser for the session only. Nothing is saved to a server yet, so a refresh returns to the starting position."],
+  ["Someone else's change did not show up on my screen.",
+   "It should, within a second, without a reload — the portal keeps a live connection open for exactly that. If the header's status dot is not green, the connection has dropped and is retrying; a reload brings everything back either way."],
 ];
+
+/** Which words this person may set on their own ticket from here, and what each one is called.
+ *  Both halves come from `@rch/domain` — `mayUserSet` says the desk's three words are not the
+ *  reporter's to write, the table says which are reachable from where it stands — so a button
+ *  the server would refuse is never drawn. Reopening is not among them: a reply does that. */
+const SETTABLE: { st: TicketStatus; label: string }[] = [
+  { st: "Resolved", label: "Mark resolved" },
+  { st: "Closed", label: "Close ticket" },
+];
+const offers = (from: TicketStatus, to: TicketStatus) =>
+  mayUserSet(to) && canTransition(SUPPORT_TRANSITIONS, from, to);
 
 /** Customer care for the portal — every role has this screen. */
 export default function Support() {
@@ -54,27 +66,32 @@ export default function Support() {
 
   const [q, setQ] = useState("");
   const [status, setStatus] = useState<TicketStatus | "All">("All");
-  const [mineOnly, setMineOnly] = useState(true);
+  const [busy, setBusy] = useState(false);
 
+  // Every ticket here is this person's own: the server scopes the desk to what the caller
+  // raised, for every role, so there is nothing to filter "only mine" out of.
   const rows = useMemo(() => {
     const needle = q.trim().toLowerCase();
     return tickets.filter((t) => {
       if (status !== "All" && t.st !== status) return false;
-      if (mineOnly && t.by !== user.n) return false;
       if (!needle) return true;
-      return (t.id + t.subject + t.topic + t.by + t.messages.map((m) => m.body).join(" "))
+      return (t.id + t.subject + t.topic + t.messages.map((m) => m.body).join(" "))
         .toLowerCase().includes(needle);
     });
-  }, [tickets, q, status, mineOnly, user.n]);
+  }, [tickets, q, status]);
 
-  const mine = tickets.filter((t) => t.by === user.n);
-  const waiting = mine.filter((t) => t.st === "Waiting on you").length;
-  const live = tickets.filter((t) => t.st !== "Closed" && t.st !== "Resolved").length;
+  const waiting = tickets.filter((t) => t.st === "Waiting on you").length;
+  const done = tickets.filter((t) => t.st === "Resolved" || t.st === "Closed").length;
   const filtered = q.trim() !== "" || status !== "All";
 
-  const submit = () => {
-    raiseTicket({ topic, subject, body, priority, screen });
-    setSubject(""); setBody(""); setPriority("Normal");
+  const submit = async () => {
+    setBusy(true);
+    try {
+      // Only clear the form once the server has taken it: a refusal must land on what was typed.
+      if (await raiseTicket({ topic, subject, body, priority, screen })) {
+        setSubject(""); setBody(""); setPriority("Normal");
+      }
+    } finally { setBusy(false); }
   };
 
   return (
@@ -86,9 +103,9 @@ export default function Support() {
       />
 
       <Kpis items={[
-        { l: "Your open tickets", v: String(mine.filter((t) => t.st !== "Closed" && t.st !== "Resolved").length), d: "raised by you" },
+        { l: "Your open tickets", v: String(tickets.filter((t) => t.st !== "Closed" && t.st !== "Resolved").length), d: "raised by you" },
         { l: "Waiting on your reply", v: String(waiting), d: waiting ? "support has asked you something" : "nothing pending" },
-        { l: "Open across the hospital", v: String(live), d: "all roles" },
+        { l: "Resolved and closed", v: String(done), d: "your history" },
         { l: "Typical first reply", v: "22 min", d: "urgent tickets, working hours" },
       ]} />
 
@@ -130,7 +147,9 @@ export default function Support() {
           </Field>
           <div style={{ height: 12 }} />
           <BtnRow>
-            <Btn onClick={submit} disabled={!subject.trim()}>Send to support</Btn>
+            <Btn onClick={submit} disabled={!subject.trim() || busy}>
+              {busy ? "Sending…" : "Send to support"}
+            </Btn>
             <Btn variant="gh" onClick={() => { setSubject(""); setBody(""); }}>Clear</Btn>
           </BtnRow>
           <div className="mtop" />
@@ -149,11 +168,8 @@ export default function Support() {
               placeholder="Search subject, topic or conversation…"
               value={q} onSearch={setQ}
               filters={
-                <>
-                  <FilterSelect label="Status" value={status} options={FILTERS}
-                    onChange={(v) => setStatus(v as TicketStatus | "All")} />
-                  <FilterBtn label="Only mine" active={mineOnly} onClick={() => setMineOnly(!mineOnly)} />
-                </>
+                <FilterSelect label="Status" value={status} options={FILTERS}
+                  onChange={(v) => setStatus(v as TicketStatus | "All")} />
               }
             />
           }
@@ -161,26 +177,25 @@ export default function Support() {
           <DataTable
             cols={[
               { h: "Ticket", cls: "nm" }, { h: "Topic" }, { h: "Screen" },
-              { h: "Priority" }, { h: "Raised by" }, { h: "Replies", r: true }, { h: "Status" },
+              { h: "Priority" }, { h: "Raised" }, { h: "Replies", r: true }, { h: "Status" },
             ]}
             rows={rows.map((t) => ({
               key: t.id,
               onClick: () => openDrawer("sup", t.id),
               cells: [
-                <>{t.subject}<small>{t.id} · {t.at}</small></>,
+                // Every row was raised by the person reading it, so the id is the only thing
+                // worth carrying under the subject — the time has a column of its own now.
+                <>{t.subject}<small>{t.id}</small></>,
                 t.topic,
                 <span className="mini">{t.screen}</span>,
                 <Pill tone={prioTone(t.priority)}>{t.priority}</Pill>,
-                <span style={{ display: "flex", alignItems: "center", gap: 7 }}>
-                  <Avatar name={t.by} color={t.by === user.n ? user.col : "var(--ink-3)"} size={22} />
-                  {t.by}
-                </span>,
+                <span className="mono">{t.at}</span>,
                 String(t.messages.length),
                 <Pill tone={tone(t.st)}>{t.st}</Pill>,
               ],
             }))}
             empty={{
-              title: filtered ? "Nothing matches those filters" : mineOnly ? "You have not raised a ticket" : "No tickets",
+              title: filtered ? "Nothing matches those filters" : "You have not raised a ticket",
               sub: filtered
                 ? "Clear the search or the status filter."
                 : "If something in the portal is not behaving, raise it on the left and we will pick it up.",
@@ -214,7 +229,15 @@ function SupportDrawer({ id }: DrawerProps) {
   const rateTicket = useApp((s) => s.rateTicket);
   const close = useApp((s) => s.closeDrawer);
   const [reply, setReply] = useState("");
+  const [busy, setBusy] = useState(false);
   if (!t) return <DrawerFrame title="Not found"><p className="mini">That ticket no longer exists.</p></DrawerFrame>;
+
+  const st = t.st;
+  const send = async () => {
+    setBusy(true);
+    // The box empties only once the reply is on the server, so a refusal keeps the words.
+    try { if (await replyToTicket(t.id, reply)) setReply(""); } finally { setBusy(false); }
+  };
 
   return (
     <DrawerFrame
@@ -223,12 +246,14 @@ function SupportDrawer({ id }: DrawerProps) {
       foot={
         <>
           <Btn variant="gh" onClick={close}>Close</Btn>
-          {t.st === "Resolved"
-            ? <Btn variant="gh" onClick={() => setTicketStatus(t.id, "With support")}>Reopen</Btn>
-            : <Btn variant="ok" onClick={() => setTicketStatus(t.id, "Resolved")}>Mark resolved</Btn>}
-          <Btn onClick={() => { replyToTicket(t.id, reply); setReply(""); }} disabled={!reply.trim()}>
-            Send reply
-          </Btn>
+          {SETTABLE.filter((x) => offers(st, x.st)).map((x) => (
+            <Btn key={x.st} variant="ok" onClick={() => setTicketStatus(t.id, x.st)}>{x.label}</Btn>
+          ))}
+          {mayReply(st) && (
+            <Btn onClick={send} disabled={!reply.trim() || busy}>
+              {busy ? "Sending…" : "Send reply"}
+            </Btn>
+          )}
         </>
       }
     >
@@ -256,14 +281,21 @@ function SupportDrawer({ id }: DrawerProps) {
         ))}
       </Section>
 
-      <Section title="Reply">
-        <Field label="Your message">
-          <textarea rows={4} value={reply} onChange={(e) => setReply(e.target.value)}
-            placeholder="Add anything that would help support reproduce it…" />
-        </Field>
-      </Section>
+      {mayReply(st) ? (
+        <Section title="Reply"
+          sub={st === "Resolved" ? "Replying puts it back with support — say so if the fix did not land." : undefined}>
+          <Field label="Your message">
+            <textarea rows={4} value={reply} onChange={(e) => setReply(e.target.value)}
+              placeholder="Add anything that would help support reproduce it…" />
+          </Field>
+        </Section>
+      ) : (
+        <Section title="Reply">
+          <p className="mini">This ticket is closed. Raise a new one if the problem has come back.</p>
+        </Section>
+      )}
 
-      {t.st === "Resolved" && (
+      {mayRate(st) && (
         <Section title="Was this sorted?" sub="Your rating tells the desk whether the fix actually landed.">
           <BtnRow>
             {[1, 2, 3, 4, 5].map((n) => (

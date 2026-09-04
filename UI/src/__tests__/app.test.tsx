@@ -1,12 +1,17 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { MemoryRouter } from "react-router-dom";
 import App from "../App";
 import { useApp } from "../store";
-import { USERS } from "../data/master";
+import { USERS } from "@rch/contract/fixtures";
 import { NAV, HOME } from "../nav";
-import { resetStore } from "./fixture";
+import { as, resetStore, signedOut } from "./fixture";
+
+// The store starts empty now and the registries with it, so the roles this suite iterates come
+// from the fixtures — a test file is where they belong — and every case seeds the demo hospital
+// before it renders anything.
+beforeEach(resetStore);
 
 /**
  * Renders the WHOLE app — router, Shell and screen together.
@@ -29,7 +34,7 @@ describe("the whole app mounts for every role on every route", () => {
   for (const u of USERS) {
     for (const k of NAV[u.r].flatMap((g) => g.items.map((i) => i.k))) {
       it(`${u.r} at /${k}`, () => {
-        act(() => { useApp.getState().signIn(u.id); });
+        act(() => { as(u.r); });
         const html = mountApp("/" + k);
         // the shell itself must be present, not just the screen
         expect(html, "sidebar missing — the shell did not render").toContain("Royal Care");
@@ -44,18 +49,18 @@ describe("the whole app mounts for every role on every route", () => {
 
 describe("routing", () => {
   it("signed out, any route falls back to the sign-in screen", () => {
-    act(() => { useApp.getState().signOut(); });
+    act(() => { signedOut(); });
     expect(mountApp("/pos")).toContain("Sign in");
   });
   it("a role sent to another role's route is redirected home", () => {
-    act(() => { useApp.getState().signIn("u1") });   // counter operator
+    act(() => { as("counter"); });
     const html = mountApp("/approvals");             // outlet manager territory
     expect(html).not.toContain("Approval queue");
     expect(html).toContain("Royal Care");
   });
   it("each role lands on its own home screen", () => {
     for (const u of USERS) {
-      act(() => { useApp.getState().signIn(u.id); });
+      act(() => { as(u.r); });
       expect(mountApp("/" + HOME[u.r]).length).toBeGreaterThan(1500);
     }
   });
@@ -76,11 +81,9 @@ function badge(route: string, key: string): number {
 }
 
 describe("the sidebar badge counts what is still coming", () => {
-  afterEach(resetStore);
-
   it("stops counting a ticket once it has been withdrawn (I2)", () => {
     // TKT-0440 is the Coffee Shop's only ticket: 500 cups, still at the store's window.
-    act(() => { useApp.getState().signIn("u1"); });
+    act(() => { as("counter"); });
     expect(badge("/pos", "tickets")).toBe(1);
 
     // Received and withdrawn are both nothing to go and collect — the badge counted the

@@ -2,15 +2,13 @@ import { routes } from "@rch/contract";
 import { contractInWindow, istDate } from "@rch/domain";
 import { ApiError, call } from "../api/client";
 import { refetch } from "../api/refetch";
-import { seedContracts, seedProductRequests, seedShopAsks, seedTickets } from "../data/ops";
 import type {
   ItemType, LocKey, ProductRequest, RateContract, ShopAsk,
   SupportTicket, TicketPriority, TicketStatus, TicketTopic,
 } from "../types";
-import { now, toInputDate } from "../lib/fmt";
+import { toInputDate } from "../lib/fmt";
 import type { AppState } from "./index";
 
-type Set_ = (p: Partial<AppState>) => void;
 type Get = () => AppState;
 
 export interface NewItemInput {
@@ -26,11 +24,13 @@ export interface OpsSlice {
   /** Bumped whenever the catalogue gains an item, so lists re-read it. */
   catalogVersion: number;
 
-  /** Customer care for the portal — a screen misbehaving, a number that looks wrong. */
-  raiseTicket: (p: { topic: TicketTopic; subject: string; body: string; priority: TicketPriority; screen: string }) => void;
-  replyToTicket: (id: string, body: string) => void;
-  setTicketStatus: (id: string, st: TicketStatus) => void;
-  rateTicket: (id: string, rating: 1 | 2 | 3 | 4 | 5) => void;
+  /** Customer care for the portal — a screen misbehaving, a number that looks wrong. The two
+   *  that carry a form answer `true` only once the server has taken them, so a refusal lands on
+   *  what the operator typed; the two that are a single press answer nothing but a toast. */
+  raiseTicket: (p: { topic: TicketTopic; subject: string; body: string; priority: TicketPriority; screen: string }) => Promise<boolean>;
+  replyToTicket: (id: string, body: string) => Promise<boolean>;
+  setTicketStatus: (id: string, st: TicketStatus) => Promise<void>;
+  rateTicket: (id: string, rating: 1 | 2 | 3 | 4 | 5) => Promise<void>;
 
   /** A shop asking the central store to put a brand-new product on the master. */
   requestNewProduct: (p: { name: string; why: string; forLoc: LocKey }) => Promise<boolean>;
@@ -58,61 +58,59 @@ export interface OpsSlice {
   declineShopAsk: (id: string, reason: string) => Promise<boolean>;
 }
 
-/** Buying's half of this slice is the server's from Phase 5: post the body, repeat the sentence
- *  that came back, refetch what the write named. The four support actions are Phase 6's and are
- *  still local. */
+/** Every action in this slice is the server's now: post the body, repeat the sentence that came
+ *  back, refetch what the write named. Nothing here decides anything — the support desk's
+ *  status words come from `@rch/domain`'s table and its refusals are the server's own. */
 const fail = (get: Get, e: unknown, what: string): false => {
   get().notify(e instanceof ApiError ? e.message : `Could not ${what} — check the connection and try again.`);
   return false;
 };
 
-export const createOpsSlice = (set: Set_, get: Get): OpsSlice => ({
-  tickets: seedTickets(),
-  productReqs: seedProductRequests(),
-  contracts: seedContracts(),
+export const createOpsSlice = (get: Get): OpsSlice => ({
+  tickets: [],
+  productReqs: [],
+  contracts: [],
   catalogVersion: 0,
-  shopAsks: seedShopAsks(),
+  shopAsks: [],
 
-  raiseTicket: ({ topic, subject, body, priority, screen }) => {
-    const s = get();
-    if (!s.user) return;
-    if (!subject.trim()) { s.notify("Give the ticket a subject so support knows what it is about"); return; }
-    const id = "SUP-00" + (s.tickets.length + 41);
-    set({
-      tickets: [{
-        id, topic, subject: subject.trim(), priority, st: "Open",
-        by: s.user.n, role: s.user.r, loc: s.user.loc, at: now(), screen,
-        messages: body.trim()
-          ? [{ id: "m1", from: "user", who: s.user.n, at: now(), body: body.trim() }]
-          : [],
-      }, ...s.tickets],
-    });
-    s.notify(`${id} raised — support replies to urgent tickets within the hour`);
+  /**
+   * The support desk (POST /support/tickets and its three `:id` doors). The subject rule, the
+   * status a reply lands the ticket on, which words a person may set and when a rating is
+   * taken are all the server's, read from `@rch/domain`'s `support.ts` — nothing is decided
+   * here and no sentence is written here. Every one of the four names `changed: ["tickets"]`,
+   * which has its own narrow reader, so a reply costs one GET rather than a whole snapshot.
+   */
+  raiseTicket: async (p) => {
+    try {
+      // The body carries what was typed: trimming is the server's, and its refusal has to land
+      // on the operator's own words rather than on something the browser tidied first.
+      const r = await call(routes.raiseTicket, { body: p });
+      get().notify(r.message);
+      await refetch(r.changed, r.message);
+      return true;
+    } catch (e) { return fail(get, e, "raise the ticket"); }
   },
-  replyToTicket: (id, body) => {
-    const s = get();
-    if (!s.user || !body.trim()) { s.notify("Write a reply first"); return; }
-    set({
-      tickets: s.tickets.map((t) => t.id === id ? {
-        ...t,
-        st: (t.st === "Waiting on you" || t.st === "Resolved" ? "With support" : t.st) as TicketStatus,
-        messages: [...t.messages, {
-          id: "m" + (t.messages.length + 1), from: "user" as const,
-          who: s.user!.n, at: now(), body: body.trim(),
-        }],
-      } : t),
-    });
-    s.notify(`Reply sent on ${id}`);
+  replyToTicket: async (id, body) => {
+    try {
+      const r = await call(routes.replyToTicket, { params: { id }, body: { body } });
+      get().notify(r.message);
+      await refetch(r.changed, r.message);
+      return true;
+    } catch (e) { return fail(get, e, "send the reply"); }
   },
-  setTicketStatus: (id, st) => {
-    const s = get();
-    set({ tickets: s.tickets.map((t) => (t.id === id ? { ...t, st } : t)) });
-    s.notify(`${id} — ${st.toLowerCase()}`);
+  setTicketStatus: async (id, st) => {
+    try {
+      const r = await call(routes.setTicketStatus, { params: { id }, body: { st } });
+      get().notify(r.message);
+      await refetch(r.changed, r.message);
+    } catch (e) { fail(get, e, "change the ticket"); }
   },
-  rateTicket: (id, rating) => {
-    const s = get();
-    set({ tickets: s.tickets.map((t) => (t.id === id ? { ...t, rating } : t)) });
-    s.notify(`Thank you — ${rating} out of 5 recorded against ${id}`);
+  rateTicket: async (id, rating) => {
+    try {
+      const r = await call(routes.rateTicket, { params: { id }, body: { rating } });
+      get().notify(r.message);
+      await refetch(r.changed, r.message);
+    } catch (e) { fail(get, e, "record the rating"); }
   },
 
   requestNewProduct: async ({ name, why, forLoc }) => {

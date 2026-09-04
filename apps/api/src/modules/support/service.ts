@@ -11,7 +11,7 @@ import type {
   RaiseTicketBodySchema, RateTicketBodySchema, ReplyToTicketBodySchema, SetTicketStatusBodySchema,
   SupportTicket, WriteResponse,
 } from "@rch/contract";
-import { SUPPORT_TRANSITIONS, mayRate, mayUserSet, statusAfterReply } from "@rch/domain";
+import { SUPPORT_TRANSITIONS, mayRate, mayReply, mayUserSet, statusAfterReply } from "@rch/domain";
 import type { Db } from "../../db/client.js";
 import type { Tx } from "../../lib/db.js";
 import { withTransaction } from "../../lib/db.js";
@@ -73,7 +73,7 @@ export function createSupportService(db: Db) {
         const row = await mine(tx, id, claims.sub);
         const text = body.body.trim();
         assertRule(text.length > 0, "Write a reply first");
-        assertRule(row.status !== "Closed", `${id} is closed — raise a new ticket if it has come back`);
+        assertRule(mayReply(row.status), `${id} is closed — raise a new ticket if it has come back`);
         const me = await supportRepo.author(tx, claims.sub);
         await supportRepo.appendMessage(tx, id, "user", me.name, text);
         const next = statusAfterReply(row.status);

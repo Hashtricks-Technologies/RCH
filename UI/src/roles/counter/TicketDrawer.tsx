@@ -1,10 +1,11 @@
+import { useState } from "react";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
-import { canReceiveTicket } from "../../lib/selectors";
+import { canCancelTicket, canReceiveTicket } from "../../lib/selectors";
 import { fq, U } from "../../lib/fmt";
 import { DrawerFrame } from "../../ui/Drawer";
 import { registerDrawer, type DrawerProps } from "../../drawers";
-import { Alert, Btn, DataTable, Feed, Otp, Section, StatusPill } from "../../ui/kit";
+import { Alert, Btn, DataTable, Feed, Field, Otp, Section, StatusPill } from "../../ui/kit";
 import type { TktStatus } from "../../types";
 
 const STEPS: { st: TktStatus; title: string; body: string }[] = [
@@ -16,8 +17,18 @@ const ORDER: TktStatus[] = ["Issued", "Collected", "Received"];
 
 function TicketDrawer({ id }: DrawerProps) {
   const tkt = useApp((s) => s.tkt.find((t) => t.id === id));
+  const user = useApp((s) => s.user)!;
   const close = useApp((s) => s.closeDrawer);
   const receiveTicket = useApp((s) => s.receiveTicket);
+  const cancelTicket = useApp((s) => s.cancelTicket);
+  const [why, setWhy] = useState("");
+  const [cancelling, setCancelling] = useState(false);
+  const [cancelBusy, setCancelBusy] = useState(false);
+  const withdraw = async () => {
+    setCancelBusy(true);
+    // No reset on success: the store action closes the drawer, so this component is gone.
+    try { await cancelTicket(id, why.trim()); } finally { setCancelBusy(false); }
+  };
 
   if (!tkt) {
     return (
@@ -29,6 +40,12 @@ function TicketDrawer({ id }: DrawerProps) {
 
   const at = ORDER.indexOf(tkt.st);
   const canReceive = canReceiveTicket(tkt.st);
+  // A transfer this counter granted out of its own stock is its own to withdraw while nobody
+  // has collected it. A ticket bound *for* here is the store's or the kitchen's to withdraw.
+  const canWithdraw = tkt.from === user.loc && canCancelTicket(tkt.st);
+  // The server sends the six digits to the collecting location and to nobody else, so an empty
+  // string is not a missing OTP — it is one that was never this screen's to show.
+  const holdsOtp = tkt.otp !== "";
 
   return (
     <DrawerFrame
@@ -41,7 +58,7 @@ function TicketDrawer({ id }: DrawerProps) {
       </>}
     >
       <div className="tktbox">
-        <Otp value={tkt.otp} />
+        {holdsOtp && <Otp value={tkt.otp} />}
         <div style={{ flex: 1, minWidth: 0 }}>
           <div className="mono" style={{ fontSize: 21, fontWeight: 700, letterSpacing: ".02em" }}>{tkt.id}</div>
           <div className="mini" style={{ marginTop: 4 }}>
@@ -52,8 +69,11 @@ function TicketDrawer({ id }: DrawerProps) {
         </div>
       </div>
       <p className="mini mtop">
-        Nothing is scanned: whoever collects reads these six digits aloud to the store keeper at {LOC[tkt.from].n},
-        who types them in to release the goods.
+        {holdsOtp
+          ? <>Nothing is scanned: whoever collects reads these six digits aloud to the store keeper at {LOC[tkt.from].n},
+            who types them in to release the goods.</>
+          : <>The six digits sit on {LOC[tkt.to].n}&apos;s own screen — this ticket was raised here, so the
+            collector reads them out to you at the window.</>}
       </p>
 
       <Section title="Approved items" sub="Exactly what may be collected against this ticket." />
@@ -76,6 +96,29 @@ function TicketDrawer({ id }: DrawerProps) {
         empty={{ title: "No item on this ticket" }}
       />
 
+      {canWithdraw && (
+        <Section title="Withdraw this ticket" sub={`Nobody collected against it, and the stock should go back to ${LOC[tkt.from].n}`}>
+          {cancelling ? (
+            <>
+              <Field label="Reason" hint="Kept with the ticket's history.">
+                <input
+                  placeholder="Asked for it back, wrong outlet…"
+                  aria-label={`Why ${tkt.id} is being cancelled`}
+                  value={why}
+                  onChange={(e) => setWhy(e.target.value)}
+                />
+              </Field>
+              <Btn size="xs" variant="dg" disabled={!why.trim() || cancelBusy} onClick={withdraw}>
+                {cancelBusy ? "Cancelling…" : "Confirm cancellation"}
+              </Btn>{" "}
+              <Btn size="xs" variant="gh" onClick={() => setCancelling(false)}>Keep the ticket</Btn>
+            </>
+          ) : (
+            <Btn size="xs" variant="gh" onClick={() => setCancelling(true)}>Cancel ticket</Btn>
+          )}
+        </Section>
+      )}
+
       {tkt.st === "Cancelled" && (
         <Alert tone="w" label="CANCELLED">
           This ticket was withdrawn before it was collected — nothing was sent. Raise a new request
@@ -95,6 +138,16 @@ function TicketDrawer({ id }: DrawerProps) {
           }))} />
         </>
       )}
+
+      <Section title="History" sub={`Every hand ${tkt.id} has passed through`} />
+      <Feed items={tkt.hist.map((h, i) => ({
+        key: h.s + i,
+        title: h.s,
+        body: h.who,
+        when: h.t,
+        color: h.s.startsWith("Cancelled") ? "var(--crit)"
+          : h.s === "Received" ? "var(--good)" : "var(--accent)",
+      }))} />
 
       <p className="mini mtop">
         Issued means the store keeper has generated it. Collected means it has been handed over and is in transit.

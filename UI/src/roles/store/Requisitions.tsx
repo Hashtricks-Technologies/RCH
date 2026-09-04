@@ -190,7 +190,8 @@ export default function Requisitions() {
                     return (
                       <tr key={l.it + ":" + i}>
                         <td>
-                          <select value={l.it} onChange={(e) => pickLine(i, e.target.value)}>
+                          <select value={l.it} aria-label={`Item on line ${i + 1}`}
+                            onChange={(e) => pickLine(i, e.target.value)}>
                             {BUY_GROUPS.map((g) => (
                               <optgroup key={g} label={g}>
                                 {BUYABLE.filter((k) => IT[k].g === g).map((k) => (

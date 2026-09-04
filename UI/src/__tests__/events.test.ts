@@ -54,9 +54,6 @@ let pill: ReturnType<typeof mountPill> | undefined;
 beforeEach(() => {
   vi.useFakeTimers();
   resetStore();
-  // `resetStore` sets 22 fields but not `auth`, and these cases turn on it — so set it here
-  // rather than depending on what the case before left behind. (Task 8 owns fixture.ts.)
-  useApp.setState({ auth: "signed-out" });
   vi.stubGlobal("fetch", fetchMock);
   fetchMock.mockReset();
   vi.mocked(refetch).mockClear();

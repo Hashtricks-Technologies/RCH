@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
-import { canReceiveTicket } from "../../lib/selectors";
+import { canCancelTicket, canReceiveTicket } from "../../lib/selectors";
 import { fq, sum } from "../../lib/fmt";
 import { Alert, Btn, Card, DataTable, FilterBtn, FilterSelect, PageHead, StatusPill, TableFoot, Toolbar } from "../../ui/kit";
 import type { LocKey, TktStatus } from "../../types";
@@ -36,6 +36,12 @@ export default function Tickets() {
 
   const toCollect = mine.filter((t) => t.st === "Issued").length;
   const inTransit = mine.filter((t) => t.st === "Collected").length;
+
+  /** The other direction: stock this counter granted to another shop. It is the only ticket a
+   *  counter can withdraw — the door the server opens for the location a ticket is issued
+   *  *from* — and until this list existed there was no way to reach one. */
+  const sent = s.tkt.filter((t) => t.from === loc).slice().reverse();
+  const uncollected = sent.filter((t) => canCancelTicket(t.st)).length;
 
   const filtered = Boolean(q || st || from);
   const clearAll = () => { setQ(""); setSt(null); setFrom(null); };
@@ -123,6 +129,48 @@ export default function Tickets() {
         <TableFoot count={rows.length}
           extra={<>{L.n} · {L.c} · {toCollect} to collect · {inTransit} in transit</>} />
       </Card>
+      {sent.length > 0 && (
+        <div className="mtop">
+          <Card
+            title="Sent from this counter"
+            sub={`Stock ${L.n} granted to another shop · the six digits are on their screen, not yours`}
+            flush
+            right={<span className="mini">{uncollected} not collected yet</span>}
+          >
+            <DataTable
+              cols={[
+                { h: "Ticket ID", cls: "nm", w: "18%" },
+                { h: "To", w: "18%" },
+                { h: "Items", w: "26%" },
+                { h: "Quantity", r: true, w: "14%" },
+                { h: "Status", w: "12%" },
+                { h: "", w: "12%" },
+              ]}
+              rows={sent.map((t) => {
+                const first = IT[t.lines[0]?.it]?.n ?? "—";
+                const more = t.lines.length - 1;
+                return {
+                  key: "out:" + t.id,
+                  onClick: () => s.openDrawer("ctkt", t.id),
+                  cells: [
+                    <b className="mono">{t.id}</b>,
+                    LOC[t.to].n,
+                    <>{first}{more > 0 ? ` +${more} more` : ""}</>,
+                    t.lines.length === 1 ? fq(t.lines[0].qty, t.lines[0].it) : sum(t.lines, (l) => l.qty),
+                    <StatusPill status={t.st} />,
+                    <Btn size="xs" variant="gh" onClick={() => s.openDrawer("ctkt", t.id)}>
+                      {canCancelTicket(t.st) ? "Withdraw" : "Open"}
+                    </Btn>,
+                  ],
+                };
+              })}
+              empty={{ title: "Nothing sent from this counter", sub: "" }}
+            />
+            <TableFoot count={sent.length} extra={<>{uncollected} still at this counter&apos;s window</>} />
+          </Card>
+        </div>
+      )}
+
       <p className="mini mtop">
         <b>Issued</b> means the store keeper has generated the ticket and reserved the stock. <b>Collected</b> means it
         has been handed over and is in transit. <b>Received</b> means it has been confirmed at this counter and is on

@@ -1,26 +1,41 @@
-import type { UserMin } from "../types";
-import * as FX from "@rch/contract/fixtures";
+import type { Item, Location, Payer, PayerRoster, Recipe, UserMin } from "../types";
+
+export { ALL_LOCS, OUTLETS, PAR_FACTOR, STAFF_CREDIT_LIMIT, PO_APPROVAL_LIMIT } from "@rch/contract";
 
 // Registries. Mutable on purpose: the store can add a product, and hydrateMaster()
 // replaces the contents with what the server returns. Screens import these directly,
 // so they must keep their identity — assign into them, never reassign them.
-export const LOC = { ...FX.LOC };
-export const IT: Record<string, import("../types").Item> = { ...FX.IT };
-export const RCP = { ...FX.RCP };
-export const PL = { A: { ...FX.PL.A }, B: { ...FX.PL.B } };
-export const MENU: Record<string, string[]> = Object.fromEntries(Object.entries(FX.MENU).map(([k, v]) => [k, [...v]]));
+//
+// They start **empty**. Nothing here is data: the app renders no screen until `auth` reaches
+// "ready", which only a snapshot can do, and the snapshot is what fills every one of them.
+// The demo hospital lives in `@rch/contract/fixtures` and is imported by tests alone (§5.1).
+export const LOC: Record<string, Location> = {};
+export const IT: Record<string, Item> = {};
+export const RCP: Record<string, Recipe> = {};
+export const PL: { A: Record<string, number>; B: Record<string, number> } = { A: {}, B: {} };
+export const MENU: Record<string, string[]> = {};
 /** The directory the server sends: a name badge each. Nobody's contact details but your own
  *  travel over the wire, so this is `UserMin`, not `User` — the signed-in person's own full
  *  record lives in the store's `user`. */
-export const USERS: UserMin[] = [...FX.USERS];
-export const OUTLETS = [...FX.OUTLETS];
-export const ALL_LOCS = [...FX.ALL_LOCS];
-export const { PAR_FACTOR, PATIENTS, STAFF, DEPTS, STAFF_CREDIT_LIMIT, PO_APPROVAL_LIMIT } = FX;
+export const USERS: UserMin[] = [];
+
+/** Who a bill may be charged to. Mutable registries like IT and LOC, for the same reason: the
+ *  counter's screen imports them directly, so they must keep their identity — assign into them,
+ *  never reassign them. Filled by `hydrateRoster` from the snapshot's `roster`, which the server
+ *  reads out of the `payers` table it has been validating the till against since Phase 3. */
+export const PATIENTS: Payer[] = [];
+export const STAFF: Payer[] = [];
+export const DEPTS: Payer[] = [];
+export function hydrateRoster(r: PayerRoster): void {
+  PATIENTS.splice(0, PATIENTS.length, ...r.patients);
+  STAFF.splice(0, STAFF.length, ...r.staff);
+  DEPTS.splice(0, DEPTS.length, ...r.depts);
+}
 
 export type MasterData = {
-  items: Record<string, import("../types").Item>;
-  locations: typeof FX.LOC;
-  recipes: typeof FX.RCP;
+  items: Record<string, Item>;
+  locations: Record<string, Location>;
+  recipes: Record<string, Recipe>;
   prices: { A: Record<string, number>; B: Record<string, number> };
   menu: Record<string, string[]>;
   users: UserMin[];
@@ -36,7 +51,7 @@ const replaceKeys = <T extends object>(target: T, next: T) => {
  *  and `catalogVersion` in the store is what tells React the lists changed. */
 export function hydrateItems(items: MasterData["items"]): void { replaceKeys(IT, items); }
 
-/** Replace every registry's contents with the server's master data (Task 16 calls this). */
+/** Replace every registry's contents with the server's master data (`applySnapshot` calls this). */
 export function hydrateMaster(m: MasterData): void {
   replaceKeys(IT, m.items);
   replaceKeys(LOC, m.locations);

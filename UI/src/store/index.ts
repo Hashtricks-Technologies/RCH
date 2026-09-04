@@ -1,21 +1,14 @@
 import { create } from "zustand";
-import { routes } from "@rch/contract";
-import * as FX from "@rch/contract/fixtures";
+import { routes, StockLocSchema } from "@rch/contract";
 import { ApiError, call } from "../api/client";
 import { getAccessToken, onSessionLost, setAccessToken } from "../api/session";
 import { refetch } from "../api/refetch";
 import { applySnapshot } from "../api/wire";
-import { LOC, MENU } from "../data/master";
-import {
-  DAY_LABELS, seedBatch, seedBills, seedGrn, seedPo, seedPord, seedPrq, seedReq, seedRsv, seedSales,
-  seedStock, seedTkt,
-} from "../data/seed";
-import { seedVendors } from "../data/vendors";
+import { LOC } from "../data/master";
 import type {
-  Batch, Bill, DraftLine, DrawerState, Grn, LocKey, Payer, PordStatus, ProdOrder, PurchaseOrder,
-  Requisition, StockLoc, StockRequest, Tender, Ticket, User, Vendor,
+  Batch, Bill, CreditResponse, DraftLine, DrawerState, Grn, LocKey, Payer, PordStatus, ProdOrder,
+  PurchaseOrder, Requisition, StockLedgerRow, StockLoc, StockRequest, Tender, Ticket, User, Vendor,
 } from "../types";
-import { basePrices } from "../lib/selectors";
 import { applyTheme, nextTheme, readStoredTheme, storeTheme, type ThemePref } from "../lib/theme";
 import { createProcurementSlice, type ProcurementSlice } from "./procurement";
 import { createOpsSlice, type OpsSlice } from "./ops";
@@ -57,9 +50,6 @@ export interface AppState extends ProcurementSlice, OpsSlice {
   restore: () => Promise<void>;
   loadSnapshot: () => Promise<void>;
   changePassword: (current: string, next: string) => Promise<boolean>;
-  /** Local sign-in, kept for the tests and the Denied flow. */
-  signIn: (id: string) => void;
-  signOut: () => void;
   notify: (m: string) => void;
   openDrawer: (t: string, id: string) => void;
   closeDrawer: () => void;
@@ -105,33 +95,32 @@ export interface AppState extends ProcurementSlice, OpsSlice {
   savePrice: (list: "A" | "B", it: string, price: number) => Promise<void>;
   removeProduct: (loc: LocKey, it: string) => Promise<void>;
   addProduct: (loc: LocKey, it: string) => Promise<void>;
+  /** The central store's ledger over a window, from the server's own sum of `stock_moves`.
+   *  Answers `[]` and toasts when the read fails: a report that cannot load says so and leaves
+   *  the screen usable, rather than throwing inside a render. */
+  readStockLedger: (loc: StockLoc, days: number) => Promise<StockLedgerRow[]>;
+  /** What one payer has put on credit this calendar month, hospital-wide — the number the
+   *  server will refuse on. `null` when the read fails, so the till can say "checking…" rather
+   *  than print a zero, which would read as "no credit taken". */
+  readCredit: (payer: Payer) => Promise<CreditResponse | null>;
+
   setShopFilter: (l: LocKey | null) => void;
   setTheme: (t: ThemePref) => void;
   cycleTheme: () => void;
 }
 
-const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v));
+/** Every collection starts empty and is filled by `applySnapshot`. Nothing here is data: the
+ *  screens do not render until `auth` reaches "ready", which only a snapshot can do. `stock` is
+ *  exhaustive because every `stock[loc][it]` read would otherwise throw on a missing location. */
+const EMPTY_STOCK = Object.fromEntries(StockLocSchema.options.map((l) => [l, {}])) as Record<StockLoc, Record<string, number>>;
 
 export const useApp = create<AppState>((set, get) => ({
   user: null,
   auth: "signed-out",
   mustChangePassword: false,
-  stock: clone(seedStock),
-  rsv: seedRsv(),
-  ovr: {},
-  prices: basePrices(),
-  menu: clone(MENU),
-  req: clone(seedReq),
-  tkt: clone(seedTkt),
-  prq: clone(seedPrq),
-  po: clone(seedPo),
-  pord: clone(seedPord),
-  batch: clone(seedBatch),
-  bills: clone(seedBills),
-  grn: clone(seedGrn),
-  vendors: clone(seedVendors),
-  sales: clone(seedSales),
-  dayLabels: DAY_LABELS,
+  stock: EMPTY_STOCK, rsv: {}, ovr: {}, prices: { A: {}, B: {} }, menu: {},
+  req: [], tkt: [], prq: [], po: [], pord: [], batch: [], bills: [], grn: [], vendors: [],
+  sales: [], dayLabels: [],
   cart: {},
   draft: [],
   prqDraft: [],
@@ -199,11 +188,6 @@ export const useApp = create<AppState>((set, get) => ({
     } catch (e) { get().notify(e instanceof ApiError ? e.message : "Could not change the password."); return false; }
   },
 
-  // Test-only: the app signs in through `login()`. The registry the screens read is the
-  // server's `UserMin[]`, which has no email or employee number, so the whole record a
-  // signed-in person needs comes from the fixtures instead.
-  signIn: (id) => set({ user: FX.USERS.find((u) => u.id === id) ?? null, drawer: null }),
-  signOut: () => set({ user: null, drawer: null }),
   notify: (m) => {
     set({ toast: m });
     setTimeout(() => { if (get().toast === m) set({ toast: null }); }, 3400);
@@ -471,6 +455,24 @@ export const useApp = create<AppState>((set, get) => ({
       get().notify(e instanceof ApiError ? e.message : "Could not add the product to the menu — check the connection and try again.");
     }
   },
+  /**
+   * The two figures the browser cannot compute for itself. Both are reads, not writes, so
+   * neither notifies a success nor refetches anything — they answer the caller and nothing else.
+   * They live here rather than in the screens because `.oxlintrc.json` makes `api/client` a
+   * forbidden import under `roles/` and `pages/`: a screen that fetches for itself is a screen
+   * that cannot be tested without a network.
+   */
+  readStockLedger: async (loc, days) => {
+    try { return (await call(routes.stockLedger, { query: { loc, days } })).rows; }
+    catch (e) { get().notify(e instanceof ApiError ? e.message : "Could not read the stock ledger."); return []; }
+  },
+  readCredit: async (payer) => {
+    // Silent on failure on purpose: this runs on every payer selection at a busy till, and a
+    // toast per keystroke would bury the sentence that matters. The server still refuses.
+    try { return await call(routes.creditReport, { params: { kind: payer.kind, id: payer.id } }); }
+    catch { return null; }
+  },
+
   setShopFilter: (shopFilter) => set({ shopFilter }),
   setTheme: (theme) => {
     applyTheme(theme);
@@ -480,7 +482,9 @@ export const useApp = create<AppState>((set, get) => ({
   cycleTheme: () => get().setTheme(nextTheme(get().theme)),
 
   ...createProcurementSlice(set as (p: Partial<AppState>) => void, get),
-  ...createOpsSlice(set as (p: Partial<AppState>) => void, get),
+  // The ops slice writes nothing directly any more — every action of it posts and refetches —
+  // so it takes only the reader.
+  ...createOpsSlice(get),
 }));
 
 // A refresh that fails is the end of the session: drop the user rather than

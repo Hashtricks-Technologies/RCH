@@ -16,5 +16,5 @@ export { money, money0, dmy, istDate, unitTotal } from "./format.js";
 export { foldClaims, releaseClaim, shortfallClaims, type ClaimSrc } from "./claims.js";
 export { checkReceiptLine, receiptStatus, type ReceiptCheckInput, type ReceiptCheckLine } from "./receipt.js";
 export { contractInWindow, etaFrom, needsApproval, poValue, rateFor } from "./purchasing.js";
-export { SUPPORT_TRANSITIONS, mayUserSet, statusAfterReply, mayRate } from "./support.js";
+export { SUPPORT_TRANSITIONS, mayUserSet, statusAfterReply, mayRate, mayReply } from "./support.js";
 export { ledgerRow, ledgerTotals, type LedgerRow } from "./reports.js";

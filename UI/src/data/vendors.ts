@@ -1,5 +1,4 @@
 import type { Vendor } from "../types";
-export { seedVendors } from "@rch/contract/fixtures";
 
 /** First active vendor that supplies this item group. */
 export const suggestVendor = (vendors: Vendor[], group: string): Vendor | null =>

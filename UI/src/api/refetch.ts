@@ -2,8 +2,8 @@ import { routes, type Changed } from "@rch/contract";
 import { call } from "./client";
 import {
   applyBatches, applyBills, applyContracts, applyGrns, applyItems, applyPos, applyProdOrders,
-  applyProductRequests, applyRequests, applyRequisitions, applyShopAsks, applyStock, applyTickets,
-  applyVendors,
+  applyProductRequests, applyRequests, applyRequisitions, applyShopAsks, applyStock,
+  applySupportTickets, applyTickets, applyVendors,
 } from "./wire";
 import { useApp } from "../store";
 
@@ -25,16 +25,18 @@ const NARROW: Partial<Record<Changed, () => Promise<void>>> = {
   contracts: () => call(routes.contracts).then(applyContracts),
   productReqs: () => call(routes.productRequests).then(applyProductRequests),
   items: () => call(routes.items).then(applyItems),
+  tickets: () => call(routes.tickets).then(applySupportTickets),
 };
 
 /**
  * Pull back exactly what a write said it changed.
  *
  * `stock`/`rsv`/`ovr` come from `GET /stock`, and `bills`, `req`, `tkt`, `shopAsks`, `pord`,
- * `batch`, `prq`, `po`, `grn`, `vendors`, `contracts`, `productReqs` and `items` each from their
- * own GET, every one of them fetched at most once however many times the write named it. Only
- * `prices`, `menu` and `tickets` have no narrow reader now — the manager's price and menu writes
- * and Phase 6's support desk — so those cost one snapshot, and a mixed set takes that alone.
+ * `batch`, `prq`, `po`, `grn`, `vendors`, `contracts`, `productReqs`, `items` and `tickets` (the
+ * support desk, `GET /support/tickets`) each from their own GET, every one of them fetched at
+ * most once however many times the write named it. Only `prices` and `menu` have no narrow
+ * reader — the manager's price and menu writes — so those cost one snapshot, and a mixed set
+ * takes that alone.
  *
  * `after` is the sentence the write already succeeded with. When the read-back fails it is
  * kept and qualified rather than replaced, so the operator still learns their bill was taken.

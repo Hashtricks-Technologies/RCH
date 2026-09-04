@@ -11,10 +11,10 @@ import type { DraftLine, ReqLine } from "../../types";
 
 /* The kitchen asks the central store for what it consumes — raw materials and
    packaging. Finished goods it makes itself, and MRP goods never pass through it. */
-const REQUESTABLE = Object.keys(IT)
+const requestable = () => Object.keys(IT)
   .filter((k) => IT[k].t === "RAW" || IT[k].t === "PACK")
   .sort((a, b) => IT[a].g.localeCompare(IT[b].g) || IT[a].n.localeCompare(IT[b].n));
-const REQ_GROUPS = REQUESTABLE.reduce<[string, string[]][]>((g, k) => {
+const groupsOf = (keys: string[]) => keys.reduce<[string, string[]][]>((g, k) => {
   const last = g[g.length - 1];
   if (last && last[0] === IT[k].g) last[1].push(k);
   else g.push([IT[k].g, [k]]);
@@ -35,6 +35,12 @@ export default function Requests() {
   const s = useApp();
   const user = useApp((x) => x.user)!;
   const L = LOC.kitchen;
+  // `IT` is empty until the snapshot lands and is replaced in place after that
+  // (`hydrateMaster` / `hydrateItems`), so this list is built during render and pinned to
+  // `catalogVersion` — the signal that tells React the catalogue moved.
+  void s.catalogVersion;
+  const REQUESTABLE = requestable();
+  const REQ_GROUPS = groupsOf(REQUESTABLE);
 
   const [note, setNote] = useState("");
   const [priority, setPriority] = useState("Normal");

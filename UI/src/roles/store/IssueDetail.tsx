@@ -4,7 +4,7 @@ import { useApp } from "../../store";
 import { canHandOver, canIssueTicket, freeToPromise } from "../../lib/selectors";
 import { U, fq, money, money0, sum } from "../../lib/fmt";
 import {
-  Alert, Btn, DataTable, Feed, Field, Otp, Pill, Section, StatusPill, TableFoot,
+  Alert, Btn, DataTable, Feed, Field, Pill, Section, StatusPill, TableFoot,
 } from "../../ui/kit";
 import { DrawerFrame } from "../../ui/Drawer";
 import { registerDrawer, type DrawerProps } from "../../drawers";
@@ -196,7 +196,11 @@ function IssueDetail({ id }: DrawerProps) {
                 <Btn size="xs" variant="gh" onClick={() => openDrawer("stkt", ticket.id)}>Open ticket</Btn>
               </div>
             </div>
-            <Otp value={ticket.otp} />
+            {/* The digits are the collector's, not the issuing desk's: the server sends "" to
+                every location but the ticket's destination, so there is nothing here to print. */}
+            <p className="mini" style={{ maxWidth: 210 }}>
+              Ask {LOC[ticket.to].n} to read out the six digits on their ticket.
+            </p>
           </div>
 
           {ticket.st === "Issued" && (
@@ -244,6 +248,16 @@ function IssueDetail({ id }: DrawerProps) {
           }))}
         />
       </Section>
+
+      {ticket && (
+        <Section title="Ticket history" sub={`Every hand ${ticket.id} has passed through`}>
+          <Feed
+            items={ticket.hist.map((h, i) => ({
+              key: h.s + i, title: h.s, body: h.who, when: h.t, color: dotFor(h.s),
+            }))}
+          />
+        </Section>
+      )}
     </DrawerFrame>
   );
 }
