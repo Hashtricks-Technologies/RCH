@@ -35,11 +35,13 @@ jobs:
         # The registry's audit endpoint times out now and then. A network failure is a
         # retry and, at worst, a warning; an advisory is a failure — the two must never be
         # confused, or a flaky endpoint would either block every merge or hide a real CVE.
+        # Each attempt is capped at two minutes: pnpm's own retries once stretched one
+        # attempt to four, and a slow registry held the whole job for a quarter of an hour.
         run: |
           for attempt in 1 2 3; do
-            if out=$(pnpm audit --audit-level=high 2>&1); then echo "$out"; exit 0; fi
-            if echo "$out" | grep -qE 'ERR_SOCKET_TIMEOUT|FetchError|ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN'; then
-              echo "audit endpoint unreachable (attempt $attempt)"; sleep 20; continue
+            if out=$(timeout 120 pnpm audit --audit-level=high 2>&1); then echo "$out"; exit 0; fi
+            if [ -z "$out" ] || echo "$out" | grep -qE 'ERR_SOCKET_TIMEOUT|FetchError|ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN'; then
+              echo "audit endpoint unreachable (attempt $attempt)"; sleep 10; continue
             fi
             echo "$out"; echo "::error::pnpm audit reports high or critical advisories"; exit 1
           done
