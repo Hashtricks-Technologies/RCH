@@ -1,6 +1,7 @@
 import type { z } from "zod";
 import type * as C from "./schemas/common.js";
 import type * as D from "./schemas/documents.js";
+import type * as R from "./schemas/reports.js";
 
 export type ItemType = z.infer<typeof C.ItemTypeSchema>;
 export type LocKey = z.infer<typeof C.LocKeySchema>;
@@ -54,3 +55,11 @@ export type SupportTicket = z.infer<typeof D.SupportTicketSchema>;
 export type ProductRequest = z.infer<typeof D.ProductRequestSchema>;
 export type RateContract = z.infer<typeof D.RateContractSchema>;
 export type ShopAsk = z.infer<typeof D.ShopAskSchema>;
+
+/** The two reports (spec §9.1, Phase 6): the store's stock ledger and a payer's credit for the
+ *  calendar month — the two figures a caller cannot compute from its own snapshot. */
+export type StockLedgerQuery = z.infer<typeof R.StockLedgerQuerySchema>;
+export type StockLedgerRow = z.infer<typeof R.StockLedgerRowSchema>;
+export type StockLedgerResponse = z.infer<typeof R.StockLedgerResponseSchema>;
+export type CreditParams = z.infer<typeof R.CreditParamsSchema>;
+export type CreditResponse = z.infer<typeof R.CreditResponseSchema>;

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { z } from "zod";
-import { CreatePoBodySchema, EVENTS_PATH, EventNoticeSchema, LocKeySchema, MakeBatchBodySchema, PatchContractBodySchema, PatchPoBodySchema, PatchVendorBodySchema, PO_APPROVAL_LIMIT, RaiseTicketBodySchema, RateTicketBodySchema, ReceivePoBodySchema, SetOrderStatusBodySchema, SetTicketStatusBodySchema, StockLocSchema, TktStatusSchema, TransferBodySchema } from "./index";
+import { CreatePoBodySchema, CreditParamsSchema, CreditResponseSchema, EVENTS_PATH, EventNoticeSchema, LocKeySchema, MakeBatchBodySchema, PatchContractBodySchema, PatchPoBodySchema, PatchVendorBodySchema, PO_APPROVAL_LIMIT, RaiseTicketBodySchema, RateTicketBodySchema, ReceivePoBodySchema, SetOrderStatusBodySchema, SetTicketStatusBodySchema, StockLedgerQuerySchema, StockLocSchema, TktStatusSchema, TransferBodySchema } from "./index";
 import { routes } from "./routes";
 
 /** One valid body per route that takes one. The coverage case below fails if a new route
@@ -117,6 +117,39 @@ describe("what buying puts on the wire", () => {
   });
   it("carries the finance slab as a rule's constant, not as seed data", () => {
     expect(PO_APPROVAL_LIMIT).toBe(25000);
+  });
+});
+
+describe("what the two reports put on the wire", () => {
+  it("answers a bare stock-ledger URL, because the manifest's own probe sends one", () => {
+    // `apps/api/src/contract.test.ts` probes every param-less GET with no query string at all.
+    // A required `loc` would make that probe a 400, so `loc` carries the report's home screen
+    // as its default and `days` the month the store keeper reads.
+    expect(StockLedgerQuerySchema.parse({})).toEqual({ loc: "store", days: 30 });
+  });
+  it("takes the window as a number the URL spelled as a string, inside one year", () => {
+    expect(StockLedgerQuerySchema.parse({ loc: "quarantine", days: "7" })).toEqual({ loc: "quarantine", days: 7 });
+    expect(StockLedgerQuerySchema.safeParse({ days: 0 }).success).toBe(false);
+    expect(StockLedgerQuerySchema.safeParse({ days: 366 }).success).toBe(false);
+    expect(StockLedgerQuerySchema.safeParse({ days: 1.5 }).success).toBe(false);
+  });
+  it("reports a StockLoc, so quarantine has a ledger and a canteen does not", () => {
+    // The rejected-goods shelf is the only view anyone has of what a goods receipt turned away,
+    // and this is a report, not a write body — `StockLocSchema`, never `LocKeySchema`.
+    expect(StockLedgerQuerySchema.safeParse({ loc: "quarantine" }).success).toBe(true);
+    expect(StockLedgerQuerySchema.safeParse({ loc: "canteen" }).success).toBe(false);
+    expect(StockLedgerQuerySchema.safeParse({ loc: "store", surprise: 1 }).success).toBe(false);
+  });
+  it("names a payer by a kind the roster has and an id that is not blank", () => {
+    expect(CreditParamsSchema.safeParse({ kind: "staff", id: "RC-4471" }).success).toBe(true);
+    expect(CreditParamsSchema.safeParse({ kind: "supplier", id: "RC-4471" }).success).toBe(false);
+    expect(CreditParamsSchema.safeParse({ kind: "staff", id: "" }).success).toBe(false);
+  });
+  it("carries the window it settled the ceiling over, not just the number", () => {
+    const body = { kind: "staff", id: "RC-4471", name: "Kavitha Raman · F&B", since: "2026-09-01T00:00:00.000Z", taken: 240, limit: 3000, room: 2760 };
+    expect(CreditResponseSchema.safeParse(body).success).toBe(true);
+    const { since: _since, ...withoutSince } = body;
+    expect(CreditResponseSchema.safeParse(withoutSince).success).toBe(false);
   });
 });
 
