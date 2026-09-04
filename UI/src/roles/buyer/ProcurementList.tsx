@@ -103,6 +103,7 @@ export default function ProcurementList() {
   // legitimately come from several suppliers, and the buyer picks which one on
   // the row itself. An unset entry means "still following the suggestion".
   const [vendorFor, setVendorFor] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState(false);
 
   const groups = groupPool(procurementList(s), s.vendors);
   const qtyFor = (g: PoolGroup) => qtyOverride[g.it] ?? g.pending;
@@ -147,18 +148,22 @@ export default function ProcurementList() {
   const missingVendor = selected.filter((g) => !activeVendor(vendorOf(g)));
   const canRaise = planned.length > 0 && missingVendor.length === 0;
 
-  const raise = () => {
-    // createPo() returns void and toasts either way (a new draft, or a
-    // refusal), so success is read back from the store: navigating away on a
-    // refused pick would strand the operator on /orders with no clue why
-    // nothing showed up there.
-    const before = useApp.getState().po.length;
-    for (const o of planned) createPo(o.vendor, o.picks);
-    const made = useApp.getState().po.length - before;
-    if (made <= 0) return;
+  const raise = async () => {
+    if (busy) return;
+    setBusy(true);
+    // One at a time, never in parallel: two orders raised off the same procurement lines claim
+    // against the same requisitions, and the second must see what the first took. createPo
+    // answers with the new draft's id, or null when the server refused and already said why.
+    const made: string[] = [];
+    for (const o of planned) {
+      const id = await createPo(o.vendor, o.picks);
+      if (id) made.push(id);
+    }
+    setBusy(false);
+    if (made.length === 0) return;      // every refusal already said why; stay where we are
     // Each createPo toasts, and only the last would survive — so when the
     // selection fanned out across vendors, say so plainly instead.
-    if (made > 1) notify(`${made} draft purchase orders raised across ${made} vendors`);
+    if (made.length > 1) notify(`${made.length} draft purchase orders raised across ${made.length} vendors`);
     nav("/orders");
   };
 
@@ -308,8 +313,8 @@ export default function ProcurementList() {
               </>
             )}
             <div className="mtop">
-              <Btn disabled={!canRaise} onClick={raise}>
-                {planned.length > 1 ? `Raise ${planned.length} purchase orders` : "Raise purchase order"}
+              <Btn disabled={busy || !canRaise} onClick={raise}>
+                {busy ? "Raising…" : planned.length > 1 ? `Raise ${planned.length} purchase orders` : "Raise purchase order"}
               </Btn>
             </div>
           </Card>

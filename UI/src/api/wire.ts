@@ -1,10 +1,10 @@
 import type { z } from "zod";
 import type { SnapshotSchema, StockResponseSchema } from "@rch/contract";
-import { hydrateMaster } from "../data/master";
+import { hydrateItems, hydrateMaster } from "../data/master";
 import { fromWireBestBefore, fromWireDate, fromWireTime } from "../lib/fmt";
 import { useApp } from "../store";
 import { basePrices } from "../lib/selectors";
-import type { Bill, LocKey } from "../types";
+import type { Bill, StockLoc } from "../types";
 
 export type Snapshot = z.infer<typeof SnapshotSchema>;
 export type StockResponse = z.infer<typeof StockResponseSchema>;
@@ -12,14 +12,16 @@ const t = fromWireTime;
 const hist = (h: { s: string; who: string; t: string }[]) => h.map((x) => ({ ...x, t: t(x.t) }));
 const billed = (b: Bill[]) => b.map((x) => ({ ...x, t: t(x.t) }));
 
-const ALL_LOC: LocKey[] = ["store", "kitchen", "rest", "coffee", "kiosk"];
+/** Quarantine is here and nowhere else that an operator acts: stock is *reported* for the
+ *  rejected-goods shelf, so the store keeper can see what was turned away at a goods receipt. */
+const ALL_LOC: StockLoc[] = ["store", "kitchen", "rest", "coffee", "kiosk", "quarantine"];
 /**
  * A counter operator's snapshot is scoped to its own location, so the server
  * omits the rest. The store's map is exhaustive — an absent location is empty,
  * not missing, or every `stock[loc][it]` read would throw.
  */
-const stockOf = (s: Snapshot["stock"]): Record<LocKey, Record<string, number>> =>
-  Object.fromEntries(ALL_LOC.map((l) => [l, s[l] ?? {}])) as Record<LocKey, Record<string, number>>;
+const stockOf = (s: Snapshot["stock"]): Record<StockLoc, Record<string, number>> =>
+  Object.fromEntries(ALL_LOC.map((l) => [l, s[l] ?? {}])) as Record<StockLoc, Record<string, number>>;
 
 /** Server shape -> the store's shape. Times become "HH:MM", dates "DD-MMM-YYYY"; nothing else changes. */
 export function applySnapshot(s: Snapshot): void {
@@ -79,4 +81,38 @@ export function applyProdOrders(pord: Snapshot["pord"]): void {
 /** GET /batches -> the batch log. `bb` is an instant on the wire and a best-before on screen. */
 export function applyBatches(batch: Snapshot["batch"]): void {
   useApp.setState({ batch: batch.map((b) => ({ ...b, at: t(b.at), bb: fromWireBestBefore(b.bb) })) });
+}
+
+/** GET /requisitions -> the buyer's desk, times as "HH:MM" and history stamps with them. */
+export function applyRequisitions(prq: Snapshot["prq"]): void {
+  useApp.setState({ prq: prq.map((p) => ({ ...p, at: t(p.at), hist: hist(p.hist) })) });
+}
+
+/** GET /purchase-orders -> the orders. `eta` is a wire date and is shown as DD-MMM-YYYY. */
+export function applyPos(po: Snapshot["po"]): void {
+  useApp.setState({ po: po.map((o) => ({ ...o, at: t(o.at), eta: fromWireDate(o.eta), recv: o.recv ? t(o.recv) : undefined, hist: hist(o.hist) })) });
+}
+
+/** GET /grns -> the receipts. `mfg`, `exp` and `invDate` are the vendor's printed dates, raw. */
+export function applyGrns(grn: Snapshot["grn"]): void {
+  useApp.setState({ grn: grn.map((g) => ({ ...g, at: t(g.at) })) });
+}
+
+/** GET /vendors -> the vendor master. Nothing on a vendor is a time or a date. */
+export function applyVendors(vendors: Snapshot["vendors"]): void { useApp.setState({ vendors }); }
+
+/** GET /contracts -> the rate contracts, their two validity dates as DD-MMM-YYYY. */
+export function applyContracts(contracts: Snapshot["contracts"]): void {
+  useApp.setState({ contracts: contracts.map((c) => ({ ...c, from: fromWireDate(c.from), to: fromWireDate(c.to) })) });
+}
+
+/** GET /product-requests -> the shops' asks for something not on the master yet. */
+export function applyProductRequests(rows: Snapshot["productReqs"]): void {
+  useApp.setState({ productReqs: rows.map((p) => ({ ...p, at: t(p.at) })) });
+}
+
+/** GET /items -> the catalogue every screen reads directly. `catalogVersion` is the signal. */
+export function applyItems(items: Snapshot["items"]): void {
+  hydrateItems(items);
+  useApp.setState((s) => ({ catalogVersion: s.catalogVersion + 1 }));
 }

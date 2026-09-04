@@ -3,6 +3,7 @@ import { IT } from "../../data/master";
 import { vendorName } from "../../data/vendors";
 import { useApp } from "../../store";
 import { U, fq, money, unitTotal } from "../../lib/fmt";
+import { canCloseShort } from "../../lib/selectors";
 import { Alert, Btn, BtnRow, DataTable, Field, FormRow, Section, TableFoot } from "../../ui/kit";
 import type { Row } from "../../ui/kit";
 import { DrawerFrame } from "../../ui/Drawer";
@@ -25,8 +26,8 @@ function PoReceiptDrawer({ id }: DrawerProps) {
 
   const [doc, setDoc] = useState<ReceiptDoc>({ dc: "", invoice: "", invDate: "" });
   // recv defaults to the outstanding balance — this is one instalment, not the full order.
-  // `rejected` stays on the receipt record for compatibility but is always zero:
-  // there is no reject-at-QC step in this flow, so nothing offers a way to raise it.
+  // Whatever is rejected off it goes to quarantine rather than onto the shelf, so it is a
+  // number the store keeper types here, not a placeholder.
   const [lines, setLines] = useState<ReceiptLine[]>(() =>
     (po?.lines ?? []).map((l) => ({
       recv: Math.round(Math.max(0, l.qty - l.recv) * 1000) / 1000,
@@ -38,6 +39,7 @@ function PoReceiptDrawer({ id }: DrawerProps) {
     })));
   const [closingShort, setClosingShort] = useState(false);
   const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
 
   const grns = s.grn.filter((g) => g.po === id);
 
@@ -90,8 +92,29 @@ function PoReceiptDrawer({ id }: DrawerProps) {
   const at = (i: number, patch: Partial<ReceiptLine>) =>
     setLines((r) => r.map((x, j) => (j === i ? { ...x, ...patch } : x)));
 
-  // Everything that arrives goes into stock: there is no reject-at-QC step here.
-  const good = po.lines.map((_l, i) => Math.max(0, Math.round((lines[i]?.recv ?? 0) * 1000) / 1000));
+  /** Both doors carry a form — a delivery note and every batch on one, a reason on the other —
+   *  so each waits for the server and closes only when it has taken it. A refused receipt
+   *  leaves every batch number and date exactly where the store keeper typed it. */
+  const book = async () => {
+    if (busy) return;
+    setBusy(true);
+    const ok = await receive(po.id, doc, lines);
+    setBusy(false);
+    if (ok) close();
+  };
+  const confirmShort = async () => {
+    if (busy) return;
+    setBusy(true);
+    const ok = await closeShort(po.id, reason);
+    setBusy(false);
+    if (ok) close();
+  };
+
+  /** What reaches the central store's shelf: what arrived, less what quality control turned
+   *  away. The rejected balance is booked to quarantine instead, by the same receipt. */
+  const good = po.lines.map((_l, i) => Math.max(
+    0, Math.round(((lines[i]?.recv ?? 0) - (lines[i]?.rejected ?? 0)) * 1000) / 1000,
+  ));
   const value = po.lines.reduce((t, l, i) => t + good[i] * l.rate, 0);
   const balance = po.lines.map((l, i) => ({
     it: l.it,
@@ -112,6 +135,14 @@ function PoReceiptDrawer({ id }: DrawerProps) {
             onChange={(e) => at(i, { recv: num(e.target.value) })} />
           {l.recv + r.recv > l.qty * 1.02 && (
             <div className="mini" style={warn}>over the ordered {fq(l.qty, l.it)} by more than 2%</div>
+          )}
+        </>,
+        <>
+          <input type="number" className="mono" min={0} step={U(l.it) === "nos" ? 1 : 0.001}
+            value={r.rejected} aria-label={`Quantity rejected for ${IT[l.it]?.n ?? l.it}`}
+            onChange={(e) => at(i, { rejected: num(e.target.value) })} />
+          {r.rejected > r.recv && (
+            <div className="mini" style={warn}>more than arrived on this line</div>
           )}
         </>,
         <b>{fq(good[i], l.it)}</b>,
@@ -157,12 +188,14 @@ function PoReceiptDrawer({ id }: DrawerProps) {
       sub={`${vendorName(s.vendors, po.vendor)} · ${po.st} · expected ${po.eta}`}
       foot={
         <>
-          {po.st === "Partially received" && (
+          {canCloseShort(po.st) && (
             <Btn variant="dg" onClick={() => setClosingShort(true)}>Close short</Btn>
           )}
           <div className="sp" />
           <Btn variant="gh" onClick={close}>Close</Btn>
-          <Btn variant="ok" onClick={() => receive(po.id, doc, lines)}>Book into Procurement Room</Btn>
+          <Btn variant="ok" disabled={busy} onClick={book}>
+            {busy ? "Booking in…" : "Book into the central store"}
+          </Btn>
         </>
       }
     >
@@ -187,14 +220,15 @@ function PoReceiptDrawer({ id }: DrawerProps) {
         </FormRow>
       </Section>
 
-      <Section title="Quantities" sub="Receiving now defaults to what's still outstanding on this order. Everything booked in goes into stock — there is no reject-at-QC step.">
+      <Section title="Quantities" sub="Receiving now defaults to what's still outstanding on this order. What you reject goes to Quarantine instead of the shelf, and there is no way back out of it.">
         <div className="lgrid">
           <DataTable
             cols={[
               { h: "Item", cls: "nm", w: "20%" },
               { h: "Ordered", r: true },
               { h: "Already received", r: true, w: "14%" },
-              { h: "Receiving now", r: true, w: "16%" },
+              { h: "Receiving now", r: true, w: "14%" },
+              { h: "Rejected", r: true, w: "12%" },
               { h: "Into stock", r: true },
               { h: "Value", r: true },
             ]}
@@ -231,7 +265,9 @@ function PoReceiptDrawer({ id }: DrawerProps) {
           </Field>
           <BtnRow end>
             <Btn variant="gh" onClick={() => { setClosingShort(false); setReason(""); }}>Never mind</Btn>
-            <Btn variant="dg" onClick={() => closeShort(po.id, reason)}>Confirm close short</Btn>
+            <Btn variant="dg" disabled={busy} onClick={confirmShort}>
+              {busy ? "Closing…" : "Confirm close short"}
+            </Btn>
           </BtnRow>
         </Section>
       )}

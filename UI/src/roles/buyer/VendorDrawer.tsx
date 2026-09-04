@@ -27,6 +27,7 @@ function VendorDrawer({ id }: DrawerProps) {
   const [terms, setTerms] = useState(existing?.terms ?? "");
   const [lead, setLead] = useState(existing?.lead ?? 1);
   const [groups, setGroups] = useState<string[]>(existing?.groups ?? []);
+  const [busy, setBusy] = useState(false);
 
   if (!isNew && !existing) {
     return (
@@ -42,15 +43,25 @@ function VendorDrawer({ id }: DrawerProps) {
   const toggleGroup = (g: string) =>
     setGroups((gs) => (gs.includes(g) ? gs.filter((x) => x !== g) : [...gs, g]));
 
-  const save = () => {
+  const save = async () => {
+    if (busy) return;
     const patch = {
       n, gstin, contact, ph, terms,
       lead: Math.max(1, Math.round(lead) || 1),
       groups,
     };
-    if (isNew) addVendor(patch);
-    else updateVendor(existing!.id, patch);
-    close();
+    setBusy(true);
+    const ok = isNew ? await addVendor(patch) : await updateVendor(existing!.id, patch);
+    setBusy(false);
+    // Only a saved vendor closes the panel: a refusal has to land on the operator's own typing.
+    if (ok) close();
+  };
+
+  const toggleActive = async () => {
+    if (busy) return;
+    setBusy(true);
+    await setVendorActive(existing!.id, !existing!.active);
+    setBusy(false);
   };
 
   return (
@@ -62,14 +73,15 @@ function VendorDrawer({ id }: DrawerProps) {
           {!isNew && (
             <Btn
               variant={existing!.active ? "dg" : "ok"}
-              onClick={() => setVendorActive(existing!.id, !existing!.active)}
+              disabled={busy}
+              onClick={toggleActive}
             >
               {existing!.active ? "Deactivate" : "Reactivate"}
             </Btn>
           )}
           <div className="sp" />
           <Btn variant="gh" onClick={close}>Close</Btn>
-          <Btn disabled={!n.trim()} onClick={save}>Save</Btn>
+          <Btn disabled={busy || !n.trim()} onClick={save}>{busy ? "Saving…" : "Save"}</Btn>
         </>
       }
     >
@@ -78,7 +90,7 @@ function VendorDrawer({ id }: DrawerProps) {
           <Field label="Vendor name">
             <input value={n} onChange={(e) => setN(e.target.value)} placeholder="e.g. Aavin Dairy Depot" />
           </Field>
-          <Field label="GSTIN">
+          <Field label="GSTIN" hint="15 characters, like 33AAACA1234F1Z5. Leave it blank if you do not have it yet.">
             <input value={gstin} onChange={(e) => setGstin(e.target.value)} placeholder="33AAACA1234F1Z5" />
           </Field>
         </FormRow>

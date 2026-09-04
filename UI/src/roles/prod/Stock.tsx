@@ -47,6 +47,7 @@ function NewProductDrawer() {
   const [cost, setCost] = useState("");
   const [shelf, setShelf] = useState("");
   const [opening, setOpening] = useState("");
+  const [busy, setBusy] = useState(false);
 
   const trimmed = name.trim();
   const duplicate = trimmed.length > 0
@@ -58,9 +59,10 @@ function NewProductDrawer() {
   const costErr = badCost ? "Cost must be above zero — stock value is read off it" : "";
   const ok = !nameErr && !costErr;
 
-  const save = () => {
-    if (!ok) return;
-    createItem({
+  const save = async () => {
+    if (!ok || busy) return;
+    setBusy(true);
+    const key = await createItem({
       key: "",
       name: trimmed,
       code: code.trim(),
@@ -73,7 +75,9 @@ function NewProductDrawer() {
       cost: costN,
       ...(Number(shelf) > 0 ? { shelfLife: Number(shelf) } : {}),
     }, "kitchen", openingN);
-    close();
+    setBusy(false);
+    // The panel closes only on a product the master actually took.
+    if (key) close();
   };
 
   return (
@@ -82,7 +86,7 @@ function NewProductDrawer() {
       sub="Books into the Central Kitchen · KT-CK"
       foot={<>
         <Btn variant="gh" onClick={close}>Cancel</Btn>
-        <Btn disabled={!ok} onClick={save}>Add to the catalogue</Btn>
+        <Btn disabled={!ok || busy} onClick={save}>{busy ? "Adding…" : "Add to the catalogue"}</Btn>
       </>}
     >
       <Alert tone="i" label="SCOPE">
@@ -156,7 +160,7 @@ function NewProductDrawer() {
       </Field>
 
       <BtnRow>
-        <Btn disabled={!ok} onClick={save}>Add to the catalogue</Btn>
+        <Btn disabled={!ok || busy} onClick={save}>{busy ? "Adding…" : "Add to the catalogue"}</Btn>
       </BtnRow>
     </DrawerFrame>
   );

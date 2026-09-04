@@ -8,6 +8,7 @@ import Reports from "./Reports";
 import "./TicketDrawer";
 import "./IssueDetail";
 import "./RequisitionDetail";
+import "./NewProductDrawer";
 
 export const screens: Record<string, ComponentType> = {
   dash: Dashboard, issue: IssueDesk, stock: Stock,

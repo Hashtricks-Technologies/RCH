@@ -26,6 +26,7 @@ function RequisitionDrawer({ id }: DrawerProps) {
 
   const [appr, setAppr] = useState<number[]>(() => (p?.lines ?? []).map((l) => l.qty));
   const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
 
   if (!p) {
     return (
@@ -49,6 +50,17 @@ function RequisitionDrawer({ id }: DrawerProps) {
     setAppr((a) => a.map((x, j) => (j === i ? n : x)));
   };
   const approving = p.lines.filter((_, i) => apprAt(i) > 0).length;
+
+  /** The server closes nothing: the decision leaves this panel open until it is taken, so a
+   *  refusal — a decline with no reason, a requisition somebody else already decided — lands
+   *  on the note the buyer just typed rather than on an empty screen. */
+  const decide = async (run: () => Promise<boolean>) => {
+    if (busy) return;
+    setBusy(true);
+    const ok = await run();
+    setBusy(false);
+    if (ok) close();
+  };
 
   // What purchase orders actually claim against each requisition line, read
   // from each PO line's `src` back-reference rather than matched by item code.
@@ -112,11 +124,11 @@ function RequisitionDrawer({ id }: DrawerProps) {
       sub={`Raised by ${p.by} · ${p.at} · ${p.lines.length} item${p.lines.length > 1 ? "s" : ""}`}
       foot={open ? (
         <>
-          <Btn variant="dg" onClick={() => decline(p.id, note)}>Decline</Btn>
+          <Btn variant="dg" disabled={busy} onClick={() => decide(() => decline(p.id, note))}>Decline</Btn>
           <div className="sp" />
           <Btn variant="gh" onClick={close}>Close</Btn>
-          <Btn onClick={() => approve(p.id, p.lines.map((_, i) => apprAt(i)), note)}>
-            Approve {p.lines.filter((_, i) => apprAt(i) > 0).length} item(s)
+          <Btn disabled={busy} onClick={() => decide(() => approve(p.id, p.lines.map((_, i) => apprAt(i)), note))}>
+            {busy ? "Saving…" : `Approve ${p.lines.filter((_, i) => apprAt(i) > 0).length} item(s)`}
           </Btn>
         </>
       ) : undefined}

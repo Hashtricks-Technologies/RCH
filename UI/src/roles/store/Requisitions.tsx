@@ -33,6 +33,7 @@ export default function Requisitions() {
   const openDrawer = useApp((x) => x.openDrawer);
 
   const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
   const [q, setQ] = useState("");
   const [si, setSi] = useState(0);
   const [openOnly, setOpenOnly] = useState(false);
@@ -78,7 +79,15 @@ export default function Requisitions() {
     notify(`${low.length} below-reorder item${low.length > 1 ? "s" : ""} staged on the requisition`);
   };
 
-  const send = () => { sendRequisition(note); setNote(""); };
+  /** The draft and its note are cleared only once the server has taken the requisition —
+   *  a refusal has to land on what the store keeper just built, not on an empty card. */
+  const send = async () => {
+    if (busy) return;
+    setBusy(true);
+    const ok = await sendRequisition(note);
+    setBusy(false);
+    if (ok) setNote("");
+  };
 
   const draftValue = sum(prqDraft, (l) => (IT[l.it]?.cost ?? 0) * l.qty);
   const draftQty = sum(prqDraft, (l) => l.qty);
@@ -250,7 +259,9 @@ export default function Requisitions() {
 
           <BtnRow end>
             <Btn variant="gh" onClick={() => { setPrqDraft([]); setNote(""); }}>Discard</Btn>
-            <Btn disabled={prqDraft.length === 0} onClick={send}>Send to procurement</Btn>
+            <Btn disabled={busy || prqDraft.length === 0} onClick={send}>
+              {busy ? "Sending…" : "Send to procurement"}
+            </Btn>
           </BtnRow>
         </Card>
 

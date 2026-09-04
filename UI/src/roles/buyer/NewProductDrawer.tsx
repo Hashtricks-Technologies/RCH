@@ -35,6 +35,7 @@ function NewProductDrawer({ id }: DrawerProps) {
   const [reorder, setReorder] = useState("0");
   const [cost, setCost] = useState("");
   const [mrp, setMrp] = useState("");
+  const [busy, setBusy] = useState(false);
 
   const trimmed = name.trim();
   const duplicate = trimmed !== ""
@@ -51,10 +52,13 @@ function NewProductDrawer({ id }: DrawerProps) {
             : isMrp && mrpN < costN ? "The printed MRP is below cost — check the figures."
               : null;
 
-  const save = () => {
+  const save = async () => {
+    if (busy) return;
     if (error) { notify(error); return; }
-    const before = new Set(Object.keys(IT));
-    createItem(
+    setBusy(true);
+    // createItem answers with the key the server chose — the one thing this screen could not
+    // work out for itself, and what the request behind the drawer has to be linked to.
+    const key = await createItem(
       {
         key: "", name: trimmed, code: "", unit, type, group: "",
         hsn: "", gst: 5, reorder: num(reorder), cost: costN,
@@ -63,10 +67,12 @@ function NewProductDrawer({ id }: DrawerProps) {
       "store",
       0,
     );
-    const newKey = Object.keys(IT).find((k) => !before.has(k));
-    if (!newKey) return; // createItem refused (duplicate) and already toasted why
-    if (req) answerProductRequest(req.id, "Created", `Added as ${IT[newKey].c}`, newKey);
-    close();
+    if (!key) { setBusy(false); return; }   // refused, and the server already said why
+    const answered = req
+      ? await answerProductRequest(req.id, "Created", `Added as ${IT[key]?.c ?? key}`, key)
+      : true;
+    setBusy(false);
+    if (answered) close();
   };
 
   return (
@@ -77,7 +83,7 @@ function NewProductDrawer({ id }: DrawerProps) {
         <>
           <Btn variant="gh" onClick={close}>Cancel</Btn>
           <div className="sp" />
-          <Btn disabled={error !== null} onClick={save}>Add to catalogue</Btn>
+          <Btn disabled={busy || error !== null} onClick={save}>{busy ? "Adding…" : "Add to catalogue"}</Btn>
         </>
       }
     >

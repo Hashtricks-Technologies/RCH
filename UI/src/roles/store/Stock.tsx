@@ -69,6 +69,13 @@ export default function Stock() {
   const total = stockValue(s, "store");
   const lowCount = all.filter((r) => r.low).length;
 
+  // What a goods receipt turned away. Quarantine is a shelf stock is *reported* on, never one
+  // an operator works at: there is no return-to-vendor document anywhere in this system, so
+  // nothing on this card is actionable — it is a record of what is not on the good shelf.
+  const rejected = Object.keys(s.stock.quarantine ?? {})
+    .filter((it) => IT[it] && (s.stock.quarantine[it] ?? 0) > 0)
+    .sort((a, b) => IT[a].n.localeCompare(IT[b].n));
+
   const addToRequisition = (it: string, rl: number, on: number) => {
     const want = Math.max(1, Math.ceil(rl * 1.6 - on));
     // Same M3 duplicate-order guard as Requisitions.tsx: onOrder() alone
@@ -185,6 +192,41 @@ export default function Stock() {
           count={rows.length}
           extra={<>Value shown {money0(shown)} · total central store {money0(total)}</>}
         />
+      </Card>
+
+      <Card
+        title="Quarantine"
+        sub="Rejected at goods receipt — off the good shelf and out of every count above"
+        flush
+        className="mtop"
+      >
+        <DataTable
+          cols={[
+            { h: "Item", cls: "nm", w: "30%" },
+            { h: "Type", w: "10%" },
+            { h: "Held", r: true },
+            { h: "At cost", r: true },
+          ]}
+          rows={rejected.map((it) => ({
+            key: it,
+            cells: [
+              <>{IT[it].n}<small>{IT[it].c}</small></>,
+              <Tag>{IT[it].t}</Tag>,
+              <b>{fq(s.stock.quarantine[it], it)} <span className="dim">{U(it)}</span></b>,
+              <>{money0(s.stock.quarantine[it] * IT[it].cost)}</>,
+            ],
+          }))}
+          empty={{
+            title: "Nothing has been rejected at goods receipt.",
+            sub: "A quantity turned away on a delivery lands here instead of on the shelf.",
+          }}
+        />
+        {rejected.length > 0 && (
+          <TableFoot
+            count={rejected.length}
+            extra={<>Held pending a decision with the vendor · nothing here is issuable</>}
+          />
+        )}
       </Card>
     </>
   );

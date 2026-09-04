@@ -51,6 +51,11 @@ export default function PurchaseOrders() {
   const byVendor = (o: PurchaseOrder, pick: string) =>
     pick === "All" || vendorName(s.vendors, o.vendor) === pick;
 
+  // Four buckets, not four controls: every comparison below sorts orders into the tables the
+  // buyer reads them in. What an order may still *have done to it* is asked with the domain's
+  // transition table — `canSendPo`, `canCancelPo` and `canCloseShort` in lib/selectors.ts —
+  // and every one of those buttons lives in PoDrawer or PoReceiptDrawer, which is where the
+  // order is acted on. A row here only opens one of those two.
   const allDrafts = s.po.filter((o) => o.st === "Draft");
   const allOrdered = s.po.filter((o) => o.st === "Ordered");
   const allPartial = s.po.filter((o) => o.st === "Partially received");

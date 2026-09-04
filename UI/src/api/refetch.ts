@@ -1,6 +1,10 @@
 import { routes, type Changed } from "@rch/contract";
 import { call } from "./client";
-import { applyBatches, applyBills, applyProdOrders, applyRequests, applyShopAsks, applyStock, applyTickets } from "./wire";
+import {
+  applyBatches, applyBills, applyContracts, applyGrns, applyItems, applyPos, applyProdOrders,
+  applyProductRequests, applyRequests, applyRequisitions, applyShopAsks, applyStock, applyTickets,
+  applyVendors,
+} from "./wire";
 import { useApp } from "../store";
 
 /** The slices `GET /stock` answers for, in one call. */
@@ -14,15 +18,23 @@ const NARROW: Partial<Record<Changed, () => Promise<void>>> = {
   shopAsks: () => call(routes.shopAsks).then(applyShopAsks),
   pord: () => call(routes.prodOrders).then(applyProdOrders),
   batch: () => call(routes.batches).then(applyBatches),
+  prq: () => call(routes.requisitions).then(applyRequisitions),
+  po: () => call(routes.purchaseOrders).then(applyPos),
+  grn: () => call(routes.grns).then(applyGrns),
+  vendors: () => call(routes.vendors).then(applyVendors),
+  contracts: () => call(routes.contracts).then(applyContracts),
+  productReqs: () => call(routes.productRequests).then(applyProductRequests),
+  items: () => call(routes.items).then(applyItems),
 };
 
 /**
  * Pull back exactly what a write said it changed.
  *
- * `stock`/`rsv`/`ovr` come from `GET /stock`, and `bills`, `req`, `tkt`, `shopAsks`, `pord`
- * and `batch` each from their own GET, every one of them fetched at most once however many
- * times the write named it. Anything else — prices, menus, the collections later phases add —
- * has no narrow reader yet, so it costs one snapshot, and a mixed set takes that snapshot alone.
+ * `stock`/`rsv`/`ovr` come from `GET /stock`, and `bills`, `req`, `tkt`, `shopAsks`, `pord`,
+ * `batch`, `prq`, `po`, `grn`, `vendors`, `contracts`, `productReqs` and `items` each from their
+ * own GET, every one of them fetched at most once however many times the write named it. Only
+ * `prices`, `menu` and `tickets` have no narrow reader now — the manager's price and menu writes
+ * and Phase 6's support desk — so those cost one snapshot, and a mixed set takes that alone.
  *
  * `after` is the sentence the write already succeeded with. When the read-back fails it is
  * kept and qualified rather than replaced, so the operator still learns their bill was taken.
