@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { z } from "zod";
-import { CreatePoBodySchema, EVENTS_PATH, EventNoticeSchema, LocKeySchema, MakeBatchBodySchema, PatchContractBodySchema, PatchPoBodySchema, PatchVendorBodySchema, PO_APPROVAL_LIMIT, ReceivePoBodySchema, SetOrderStatusBodySchema, StockLocSchema, TktStatusSchema, TransferBodySchema } from "./index";
+import { CreatePoBodySchema, EVENTS_PATH, EventNoticeSchema, LocKeySchema, MakeBatchBodySchema, PatchContractBodySchema, PatchPoBodySchema, PatchVendorBodySchema, PO_APPROVAL_LIMIT, RaiseTicketBodySchema, RateTicketBodySchema, ReceivePoBodySchema, SetOrderStatusBodySchema, SetTicketStatusBodySchema, StockLocSchema, TktStatusSchema, TransferBodySchema } from "./index";
 import { routes } from "./routes";
 
 /** One valid body per route that takes one. The coverage case below fails if a new route
@@ -42,6 +42,12 @@ const SAMPLES: Record<string, Record<string, unknown>> = {
   createItem:           { name: "Cold coffee premix 1kg", unit: "kg", type: "RAW", cost: 320, loc: "store", opening: 0 },
   createProductRequest: { name: "Sugar-free lemon iced tea 250ml", why: "Diabetic attenders ask daily", forLoc: "coffee" },
   answerProductRequest: { st: "Declined", note: "Vendor cannot supply reliably" },
+  raiseTicket:     { topic: "A number looks wrong", subject: "Cash collected shows zero all morning",
+                     body: "Sales is climbing but cash collected has not moved since I opened.",
+                     priority: "Urgent", screen: "Dashboard" },
+  replyToTicket:   { body: "Refreshed and it reads correctly now — thank you." },
+  setTicketStatus: { st: "Resolved" },
+  rateTicket:      { rating: 5 },
 };
 // `routes` is a const object, so `r.body` is a union of every literal schema type; the cast
 // keeps this loop about the shared `safeParse` and not about zod's generics.
@@ -111,5 +117,28 @@ describe("what buying puts on the wire", () => {
   });
   it("carries the finance slab as a rule's constant, not as seed data", () => {
     expect(PO_APPROVAL_LIMIT).toBe(25000);
+  });
+});
+
+describe("what the support desk puts on the wire", () => {
+  it("takes a ticket with an empty body — the first message is optional, the subject is not", () => {
+    const base = { topic: "Something else", subject: "s", priority: "Low", screen: "Dashboard" } as const;
+    expect(RaiseTicketBodySchema.safeParse({ ...base, body: "" }).success).toBe(true);
+    // An empty subject is a service rule, not a schema rule: the operator reads the store's own
+    // sentence ("Give the ticket a subject so support knows what it is about"), not a 400.
+    expect(RaiseTicketBodySchema.safeParse({ ...base, subject: "", body: "" }).success).toBe(true);
+    expect(RaiseTicketBodySchema.safeParse({ ...base, body: "", topic: "Kitchen fire" }).success).toBe(false);
+  });
+
+  it("takes only the five words a ticket can be in, and only the five ratings", () => {
+    expect(SetTicketStatusBodySchema.safeParse({ st: "Closed" }).success).toBe(true);
+    // "Waiting on you" is a real status but never one a user may set; the service refuses it
+    // with a sentence, so the schema still accepts it. What the schema refuses is a non-status.
+    expect(SetTicketStatusBodySchema.safeParse({ st: "Waiting on you" }).success).toBe(true);
+    expect(SetTicketStatusBodySchema.safeParse({ st: "Done" }).success).toBe(false);
+    expect(RateTicketBodySchema.safeParse({ rating: 3 }).success).toBe(true);
+    expect(RateTicketBodySchema.safeParse({ rating: 0 }).success).toBe(false);
+    expect(RateTicketBodySchema.safeParse({ rating: 6 }).success).toBe(false);
+    expect(RateTicketBodySchema.safeParse({ rating: 4.5 }).success).toBe(false);
   });
 });

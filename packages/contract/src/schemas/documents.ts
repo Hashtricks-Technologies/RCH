@@ -49,6 +49,9 @@ export const TicketSchema = z.object({
   lines: z.array(TktLineSchema), st: TktStatusSchema,
   /** Six digits quoted at handover in place of a scanned code. */
   otp: z.string(),
+  /** Issued, handed over (including a supervisor override), received, withdrawn. Required, like
+   *  every other document's trail: an optional history is one half the screens forget to render. */
+  hist: z.array(HistEntrySchema),
 });
 export const PrqLineSchema = z.object({ it: z.string(), qty: Qty, appr: Qty, ordered: Qty, short: Qty.optional() });
 export const RequisitionSchema = z.object({
@@ -66,6 +69,11 @@ export const ProdOrderSchema = z.object({
 });
 export const BatchSchema = z.object({ id: z.string(), it: z.string(), qty: Qty, made: Qty, at: IsoTime, bb: IsoTime, note: z.string().optional() });
 export const PayerSchema = z.strictObject({ kind: PayerKindSchema, id: z.string(), name: z.string() });
+/** Who a bill may be charged to. Served from the `payers` table, not from a fixture: the till
+ *  has validated its payer against that table since Phase 3 and the two lists must be one. */
+export const PayerRosterSchema = z.strictObject({
+  patients: z.array(PayerSchema), staff: z.array(PayerSchema), depts: z.array(PayerSchema),
+});
 /** What a store keeper recorded when the goods actually landed. */
 export const ReceiptLineSchema = z.object({ recv: Qty, batch: z.string(), mrp: Money, mfg: z.string(), exp: z.string(), rejected: Qty });
 /** The vendor's paperwork behind one instalment of a delivery. */

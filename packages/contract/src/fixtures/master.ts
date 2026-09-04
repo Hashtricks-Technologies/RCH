@@ -1,4 +1,4 @@
-import type { Item, Location, LocKey, Recipe, StockLoc, User, Payer } from "../types.js";
+import type { Item, Location, Recipe, StockLoc, User, Payer } from "../types.js";
 
 export const LOC: Record<StockLoc, Location> = {
   store:   { n: "Central Store",   c: "WH-CS", type: "Store",   floor: "Basement", cc: "CC-STO" },
@@ -11,8 +11,6 @@ export const LOC: Record<StockLoc, Location> = {
   // should grow a sixth column. The store's own stock screen reads it by name.
   quarantine: { n: "Quarantine", c: "WH-QR", type: "Store", floor: "Basement", cc: "CC-STO" },
 };
-export const OUTLETS: LocKey[] = ["rest", "coffee", "kiosk"];
-export const ALL_LOCS: LocKey[] = ["store", "kitchen", "rest", "coffee", "kiosk"];
 
 /** Mutable on purpose: the central store can add a product that did not exist before.
  *  Bump `catalogVersion` in the app store after writing so React re-reads it. */
@@ -65,12 +63,6 @@ export const USERS: User[] = [
   // the seeded bills and requests — this gives her the login to match.
   { id: "u6", n: "Deepa Selvam",    e: "deepa.s@royalcare.in",   r: "counter", rl: "Counter Operator",     loc: "kiosk",   col: "#475569", emp: "RC-4482", ph: "97890 41205" },
 ];
-/* Reorder levels on the item are sized for the central store. A counter that holds
-   a day of stock must not be judged against a warehouse par, so each location
-   carries its own factor (M11). */
-export const PAR_FACTOR: Record<LocKey, number> = {
-  store: 1, kitchen: 0.35, rest: 0.22, coffee: 0.18, kiosk: 0.15,
-};
 
 /* Payers for the non-cash tenders (M1). No backend, so these stand in for the
    patient, payroll and cost-centre masters the live system would look up. */
@@ -98,3 +90,9 @@ export { STAFF_CREDIT_LIMIT } from "../schemas/common.js";
  *  fixture, so it is declared in ../schemas/common.ts and re-exported here for the same reason
  *  STAFF_CREDIT_LIMIT is: the buyer's drawer keeps its single import from data/master. */
 export { PO_APPROVAL_LIMIT } from "../schemas/common.js";
+/** Not fixtures either: the shape of the deployment and the tuning of a par level. `ALL_LOCS`
+ *  is `LocKeySchema`'s own list, `OUTLETS` the three that sell, and `PAR_FACTOR` the
+ *  per-location cover a reorder suggestion is worked out against (M11). Declared in
+ *  ../schemas/common.ts and re-exported here so `UI/src/data/master.ts` keeps its single
+ *  import and no screen's import line moves. */
+export { ALL_LOCS, OUTLETS, PAR_FACTOR } from "../schemas/common.js";

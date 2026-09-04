@@ -29,7 +29,10 @@ export const seedReq: StockRequest[] = [
 ];
 
 export const seedTkt: Ticket[] = [
-  { id: "TKT-0440", req: "REQ-2026-0909", from: "store", to: "coffee", lines: [{ it: "cup", qty: 500 }], st: "Issued", otp: "418327" },
+  // The trail matches the request behind it: REQ-2026-0909's own "Ticket issued" row, same hand,
+  // same minute. A ticket carries `hist` like every other document from Phase 6 on.
+  { id: "TKT-0440", req: "REQ-2026-0909", from: "store", to: "coffee", lines: [{ it: "cup", qty: 500 }], st: "Issued", otp: "418327",
+    hist: [{ s: "Issued", who: "Suresh Muthu", t: "08:34" }] },
 ];
 export const seedPrq: Requisition[] = [
   { id: "PRQ-2026-015", by: "Suresh Muthu", at: "07:20", st: "Approved",

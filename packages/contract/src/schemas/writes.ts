@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { IsoDate, ItemTypeSchema, LocKeySchema, PriceListSchema, TenderSchema } from "./common.js";
-import { GrnSchema, ItemSchema, PayerSchema, PordStatusSchema, ProdOrderSchema, PurchaseOrderSchema, ShopAskSchema, StockRequestSchema, TicketSchema } from "./documents.js";
+import { GrnSchema, ItemSchema, PayerSchema, PordStatusSchema, ProdOrderSchema, PurchaseOrderSchema, ShopAskSchema, StockRequestSchema, TicketPrioritySchema, TicketSchema, TicketStatusSchema, TicketTopicSchema } from "./documents.js";
 
 /** Every domain slice a write can touch, so a client can invalidate/refetch precisely instead
  *  of reloading the whole snapshot after each mutation. Extracted so `events.ts` can name one
@@ -182,3 +182,20 @@ export const AnswerProductRequestBodySchema = z.strictObject({
 // second channel for a fact one read already carries.
 export const ReceiptResultSchema = z.strictObject({ po: PurchaseOrderSchema, grns: z.array(GrnSchema) });
 export const NewItemResultSchema = z.strictObject({ key: z.string(), item: ItemSchema });
+
+// ---- The support desk (spec §9.2). Customer care for the portal itself: every role raises,
+// replies to, resolves and rates its own tickets, and nothing here moves stock.
+export const RaiseTicketBodySchema = z.strictObject({
+  topic: TicketTopicSchema,
+  // Non-empty is a service rule, so an empty subject reaches the operator as the store's own
+  // sentence rather than a 400 with a Zod path in it. The cap is what a subject line can be.
+  subject: z.string().max(200),
+  body: z.string().max(4000),
+  priority: TicketPrioritySchema,
+  screen: z.string().max(60),
+});
+export const ReplyToTicketBodySchema = z.strictObject({ body: z.string().max(4000) });
+/** The schema takes any of the five words; which of them a *user* may choose is the service's
+ *  rule (§9.2: "user may set Resolved/Closed only"), because that is a sentence, not a 400. */
+export const SetTicketStatusBodySchema = z.strictObject({ st: TicketStatusSchema });
+export const RateTicketBodySchema = z.strictObject({ rating: z.number().int().min(1).max(5) });
