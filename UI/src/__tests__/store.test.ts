@@ -2,8 +2,10 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { useApp } from "../store";
 import {
   availOf, canCancelTicket, canDispatch, canHandOver, canIssueTicket, canMoveOrder,
-  canReceiveTicket, isReqOpen, isTicketOpen, priceOf,
+  canReceiveTicket, hasLeft, isReqOpen, isTicketOpen, priceOf,
 } from "../lib/selectors";
+import { REPORTS } from "../roles/store/Reports";
+import type { TktStatus } from "../types";
 import { resetStore, S, as } from "./fixture";
 
 beforeEach(resetStore);
@@ -113,6 +115,57 @@ describe("what a button may offer is what the server accepts", () => {
     expect(isTicketOpen("Received")).toBe(false);
     // The reason this predicate exists: `!== "Received"` called a withdrawn ticket moving.
     expect(isTicketOpen("Cancelled")).toBe(false);
+  });
+  it("counts stock as gone from the window only once it has actually left", () => {
+    // A ticket still at the window has moved nothing, and a withdrawn one never will.
+    expect(hasLeft("Issued")).toBe(false);
+    expect(hasLeft("Cancelled")).toBe(false);
+    expect(hasLeft("Collected")).toBe(true);
+    expect(hasLeft("Received")).toBe(true);
+  });
+});
+
+/**
+ * The store's reports are pure `AppState -> Rep` builds, so what a report counts can be driven
+ * straight rather than read out of rendered HTML. TKT-0440 — 500 paper cups, store to the
+ * Coffee Shop — is the only seeded ticket the store raised, which makes it the whole of both
+ * of these numbers.
+ */
+describe("the store's reports read a withdrawn ticket as withdrawn", () => {
+  const report = (k: string) => REPORTS.find((r) => r.k === k)!.build(S());
+  const cell = (k: string, row: string, col: string) => {
+    const rep = report(k);
+    return rep.rows.find((r) => r[0] === row)![rep.cols.findIndex((c) => c.h === col)];
+  };
+  const setTicketStatus = (st: TktStatus) =>
+    useApp.setState({ tkt: S().tkt.map((t) => (t.id === "TKT-0440" ? { ...t, st } : t)) });
+
+  it("leaves Issued out and Opening exactly where they were when the ticket is cancelled (I3)", () => {
+    // The store holds 2400 cups and has received none today, so closing is opening less
+    // whatever went out — and nothing has gone out while the ticket is still at the window.
+    expect(cell("ledger", "Paper cup 150ml", "Issued out")).toBe("0");
+    expect(cell("ledger", "Paper cup 150ml", "Opening")).toBe("2400");
+
+    setTicketStatus("Collected");                       // the collector came: the stock left
+    expect(cell("ledger", "Paper cup 150ml", "Issued out")).toBe("500");
+    expect(cell("ledger", "Paper cup 150ml", "Opening")).toBe("2900");
+
+    setTicketStatus("Cancelled");                       // withdrawn: it never left after all
+    expect(cell("ledger", "Paper cup 150ml", "Issued out")).toBe("0");
+    expect(cell("ledger", "Paper cup 150ml", "Opening")).toBe("2400");
+  });
+
+  it("drops a withdrawn ticket out of the issue register so the row adds up (I4)", () => {
+    // At the window: one ticket, one line, 500 cups, and the "At the window" column agrees.
+    expect(cell("issreg", "Coffee Shop", "Tickets")).toBe("1");
+    expect(cell("issreg", "Coffee Shop", "Quantity")).toBe("500 nos");
+    expect(cell("issreg", "Coffee Shop", "At the window")).toBe("1");
+
+    setTicketStatus("Cancelled");
+    // The three status columns can no longer account for it, so neither may the totals — the
+    // Coffee Shop drops off the register altogether, because that ticket was all it had.
+    expect(report("issreg").rows.find((r) => r[0] === "Coffee Shop")).toBeUndefined();
+    expect(report("issreg").foot).toBe("0 tickets standing against Central Store — withdrawn tickets are left out");
   });
 });
 

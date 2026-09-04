@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { ALL_LOCS, IT, LOC, RCP } from "../../data/master";
 import { useApp } from "../../store";
-import { avail, canHandOver, isTicketOpen, menuOf, qty, recipeCost } from "../../lib/selectors";
+import { avail, canHandOver, hasLeft, isTicketOpen, menuOf, qty, recipeCost } from "../../lib/selectors";
 import { fq, money, sum, U } from "../../lib/fmt";
 import {
   Alert, Btn, Card, DataTable, Field, FilterSelect, FormRow, Grid, PageHead, Pill, StatusPill,
@@ -104,6 +104,10 @@ export default function MakeDistribute() {
   const allToHand = kt.filter((t) => canHandOver(t.st));
   const allTransit = kt.filter((t) => t.st === "Collected");
   const allDone = kt.filter((t) => t.st === "Received");
+  /** What went out of the kitchen today: still on its way, or already there. The pill beside
+   *  this number counts the open ones, so the total has to include them — what it must not
+   *  include is a ticket that was withdrawn, which went nowhere at all. */
+  const outToday = kt.filter((t) => isTicketOpen(t.st) || hasLeft(t.st));
   const toHand = allToHand.filter(match(tq, tDest));
   const transit = allTransit.filter(match(cq, cDest));
   const done = allDone.filter(match(rq, rDest));
@@ -427,7 +431,7 @@ export default function MakeDistribute() {
         />
         <TableFoot
           count={done.length}
-          extra={<>Out of the kitchen today <b>{kt.length}</b>{" "}
+          extra={<>Out of the kitchen today <b>{outToday.length}</b>{" "}
             <Pill tone="in">{kt.filter((t) => isTicketOpen(t.st)).length} still open</Pill></>}
         />
       </Card>

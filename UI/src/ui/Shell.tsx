@@ -5,7 +5,7 @@ import { NavLink, useNavigate } from "react-router-dom";
 import { IT, LOC, OUTLETS, homeLabel } from "../data/master";
 import { NAV, canSee } from "../nav";
 import { useApp, type AppState } from "../store";
-import { availOf, menuOf, procurementList } from "../lib/selectors";
+import { availOf, isTicketOpen, menuOf, procurementList } from "../lib/selectors";
 import type { LocKey, Role } from "../types";
 import { useStreamState } from "../api/events";
 import { Avatar, Icon, Pill, SearchIcon, Tag, ThemeButton } from "./kit";
@@ -299,7 +299,9 @@ function navCounts(s: AppState): Record<string, number> {
   if (!u) return {};
   const c: Record<string, number> = {};
   if (u.r === "counter") {
-    c.tickets = s.tkt.filter((t) => t.to === u.loc && t.st !== "Received").length;
+    // What is still coming, not what is merely unconfirmed: a withdrawn ticket has nowhere
+    // left to go, and `!== "Received"` kept it on the badge for the rest of the day.
+    c.tickets = s.tkt.filter((t) => t.to === u.loc && isTicketOpen(t.st)).length;
     c.requests = s.req.filter((r) => r.from === u.loc && r.st === "Request sent").length;
     c.avail = offCount(s, u.loc);
   }

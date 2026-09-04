@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useApp } from "../store";
 import { IT, LOC, PL, RCP, USERS, homeLabel } from "../data/master";
 import {
@@ -126,16 +126,21 @@ describe("H9 · best-before says which day it means", () => {
   // The wording itself is pinned in packages/domain/src/shelf.test.ts, where it now lives
   // (the server puts it in a toast, this table puts it in a column). What is left to check
   // here is that the batch log reads an ISO instant from the wire through that wording.
+  //
+  // The clock is fixed rather than read off the host: the day boundary these cases turn on is
+  // Asia/Kolkata's while the suite runs in UTC, so asking "is this still today?" of the host's
+  // own date let the second case excuse itself for five and a half hours out of every
+  // twenty-four. A guard that can silently skip is not a pin, so there is none.
+  const at = new Date("2026-08-29T10:00:00+05:30");
+  beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(at); });
+  afterEach(() => { vi.useRealTimers(); });
+
   it("marks a best-before that lands on the next day", () => {
-    const due = new Date(Date.now() + 30 * 3600_000).toISOString();
-    expect(fromWireBestBefore(due)).toMatch(/^\d{2}:\d{2} /);
+    expect(fromWireBestBefore(new Date(at.getTime() + 30 * 3600_000).toISOString())).toBe("16:00 tomorrow");
   });
 
   it("leaves a best-before a few minutes out as a plain time", () => {
-    // Five minutes from now is the same IST day unless the run straddles midnight, which the
-    // suite's own clock decides; skip that one minute rather than pin a flake.
-    const due = new Date(Date.now() + 5 * 60_000);
-    if (due.getDate() === new Date().getDate()) expect(fromWireBestBefore(due.toISOString())).toMatch(/^\d{2}:\d{2}$/);
+    expect(fromWireBestBefore(new Date(at.getTime() + 5 * 60_000).toISOString())).toBe("10:05");
   });
 });
 

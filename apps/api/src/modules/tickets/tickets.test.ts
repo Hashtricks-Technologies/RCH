@@ -391,4 +391,57 @@ describe("POST /tickets/:id/cancel", () => {
     const held = await app.testDb!.db.select().from(reservations).where(eq(reservations.ticketId, tkt));
     expect(held.every((h) => h.releasedAt !== null)).toBe(true);
   });
+
+  it("either withdraws the ticket or hands it over, never both", async () => {
+    // The two ends of one ticket racing each other. Both read `Issued` without the `for update`
+    // in `ticketsRepo.head`, both pass their guard, and the ticket is withdrawn *and* collected:
+    // the hold released twice over with `ticket_out` moves standing against a cancelled ticket.
+    // Removing `.for("update")` from `head` is what this case is written to catch.
+    const tkt = await given.ticket(app.testDb!.db, { from: "store", to: "coffee", lines: [{ it: "milk", qty: 2 }] });
+    const otp = (await app.testDb!.db.select().from(tickets).where(eq(tickets.id, tkt)))[0]!.otp;
+    await warmPool(app.testDb!, 2);
+    const [cancelled, handed] = await Promise.all([
+      post("u3", `/tickets/${tkt}/cancel`, { reason: "The counter closed" }),
+      post("u3", `/tickets/${tkt}/handover`, { otp }),
+    ]);
+    expect([cancelled, handed].filter((r) => r.statusCode === 200)).toHaveLength(1);
+
+    // Whichever won, the hold is gone; what tells the two apart is whether stock moved with it.
+    const held = await app.testDb!.db.select().from(reservations).where(eq(reservations.ticketId, tkt));
+    expect(held.every((h) => h.releasedAt !== null)).toBe(true);
+    const moves = await app.testDb!.db.select().from(stockMoves).where(eq(stockMoves.refId, tkt));
+    const st = (await app.testDb!.db.select().from(tickets).where(eq(tickets.id, tkt)))[0]!.status;
+    if (cancelled.statusCode === 200) {
+      expect(st).toBe("Cancelled");
+      expect(moves).toHaveLength(0);                 // withdrawn: nothing left the store
+    } else {
+      expect(st).toBe("Collected");
+      expect(moves).toMatchObject([{ loc: "store", itemKey: "milk", qty: -2, kind: "ticket_out" }]);
+    }
+  });
+});
+
+describe("a cancelled ticket is the end of it", () => {
+  const cancelled = async () => {
+    const tkt = await given.ticket(app.testDb!.db, { from: "store", to: "coffee", lines: [{ it: "milk", qty: 2 }] });
+    expect((await post("u3", `/tickets/${tkt}/cancel`, { reason: "Counter closed early" })).statusCode).toBe(200);
+    return tkt;
+  };
+
+  it("cannot be handed over, and says which word stopped it (M6)", async () => {
+    const tkt = await cancelled();
+    const otp = (await app.testDb!.db.select().from(tickets).where(eq(tickets.id, tkt)))[0]!.otp;
+    const r = await post("u3", `/tickets/${tkt}/handover`, { otp });
+    expect(r.statusCode).toBe(422);
+    expect(r.json().error.message).toBe(`${tkt} is already cancelled`);
+    expect(await app.testDb!.db.select().from(stockMoves).where(eq(stockMoves.refId, tkt))).toHaveLength(0);
+  });
+
+  it("cannot be received either", async () => {
+    const tkt = await cancelled();
+    const r = await post("u1", `/tickets/${tkt}/receive`);
+    expect(r.statusCode).toBe(422);
+    expect(r.json().error.message).toBe(`${tkt} is already cancelled`);
+    expect(await app.testDb!.db.select().from(stockMoves).where(eq(stockMoves.refId, tkt))).toHaveLength(0);
+  });
 });

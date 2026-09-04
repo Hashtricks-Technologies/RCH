@@ -177,7 +177,10 @@ describe("GET /prod-orders and GET /batches", () => {
     const batches = (await app.inject({ method: "GET", url: "/api/v1/batches", headers: await authHeaders(app, "u1") })).json();
 
     expect(orders.map((o: { id: string }) => o.id)).toEqual(snap.pord.map((o: { id: string }) => o.id));
-    expect(orders.every((o: { from: string }) => o.from === "coffee")).toBe(true);
+    // Spelled out rather than left to `orders.every(...)`, which is true of an empty array and
+    // would have gone on passing if the route stopped scoping by outlet altogether. The
+    // positive — a counter seeing its own orders and nobody else's — is the u6 case below.
+    expect(orders).toEqual([]);
     expect(batches).toEqual([]);
     expect(snap.batch).toEqual([]);
   });
