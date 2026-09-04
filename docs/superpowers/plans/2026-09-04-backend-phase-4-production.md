@@ -4,7 +4,7 @@
 
 **Goal:** The Central Kitchen moves to the server — the board walks New → Accepted → In kitchen → Ready through one transition table, and a batch draws its recipe out of the kitchen's raw materials and books the finished units onto the rack in a single transaction, with a best-before stamped from the item's shelf life; nothing in `UI/src/store/index.ts` touches kitchen stock any more. And the movement chain gains the door it has been missing since Phase 3: a ticket that was issued and never collected can be cancelled, which puts its reservation back.
 
-**Architecture:** Three write endpoints land. Two are spec §9.2's remaining Phase 4 rows and extend the module Phase 3 already built — `apps/api/src/modules/production/` gains `POST /prod-orders/:id/status` and `POST /batches` beside `dispatch` and `distribute`, composing the same platform: `withTransaction` → rules from `@rch/domain` through `assertRule` → `allocateNumber`/`lockBalances`/`postMoves` → `appendHistory` → `emitChanged` → `{ result, changed, message }`. **A make is the one write in this system that creates stock**, so it is also the one that must not be able to create it out of nothing: ingredients go against what was *started* and only the yielded units reach the rack, in the same `postMoves` call, under balance locks taken over the ingredients *and* the finished item before anything is read. The third is `POST /tickets/:id/cancel`: Phase 3 built `releaseForTicket` but gave only `handover` a way to call it, so an issued ticket that is never collected strands its reservation for good and the request behind it is frozen at `Ticket issued` — this phase adds `Cancelled` to `TktStatus`, `voidTicket` to `lib/tickets.ts`, and one endpoint that releases the hold and puts the document behind the ticket back where it was. Two reads (`GET /prod-orders`, `GET /batches`) join the snapshot module so a write naming `"pord"` or `"batch"` refetches that slice instead of the whole snapshot. `PROD_ORDER_TRANSITIONS` already exists (Phase 3, Task 12); this phase makes the status endpoint and the board's buttons read it from both ends.
+**Architecture:** Three write endpoints land. Two are spec §9.2's remaining Phase 4 rows and extend the module Phase 3 already built — `apps/api/src/modules/production/` gains `POST /prod-orders/:id/status` and `POST /batches` beside `dispatch` and `distribute`, composing the same platform: `withTransaction` → rules from `@rch/domain` through `assertRule` → `allocateNumber`/`lockBalances`/`postMoves` → `appendHistory` → `emitChanged` → `{ result, changed, message }`. **A make is the one write in this system that creates stock**, so it is also the one that must not be able to create it out of nothing: ingredients go against what was *started* and only the yielded units reach the rack, in the same `postMoves` call, under balance locks taken before anything is read over exactly the cells the write will move. The third is `POST /tickets/:id/cancel`: Phase 3 built `releaseForTicket` but gave only `handover` a way to call it, so an issued ticket that is never collected strands its reservation for good and the request behind it is frozen at `Ticket issued` — this phase adds `Cancelled` to `TktStatus`, `voidTicket` to `lib/tickets.ts`, and one endpoint that releases the hold and puts the document behind the ticket back where it was. Two reads (`GET /prod-orders`, `GET /batches`) join the snapshot module so a write naming `"pord"` or `"batch"` refetches that slice instead of the whole snapshot. `PROD_ORDER_TRANSITIONS` already exists (Phase 3, Task 12); this phase makes the status endpoint and the board's buttons read it from both ends.
 
 **Tech Stack:** unchanged from Phases 1–3 — Node 24, pnpm 10, Turborepo 2, TypeScript ~6.0, Fastify 5, fastify-type-provider-zod 7, Zod 4, Drizzle 0.45 + drizzle-kit 0.31, pg 8, PostgreSQL 17, Vitest 4, tsup 8, Helm 3. **No new dependency.** One migration, and only one: `ticket_status` gains a `Cancelled` value. `prod_orders`, `prod_order_lines` and `batches` were created by Phase 1's first migration and are unchanged.
 
@@ -31,9 +31,10 @@ Every task's requirements implicitly include this section. The first eleven bull
 - **Test builders are the only place default field values are written** (spec §5.1). `given.request`, `given.ticket`, `given.shopAsk`, `given.bill` and `given.prodOrder` already exist in `apps/api/src/test/builders.ts`; a suite that hand-builds a document instead of asking for one is rejected in review. This phase adds no builder — a batch is created by the endpoint under test, never around it.
 - **Assertions are relative to what the fixtures hold, not to a number typed into the test.** Read the balance, act, then assert the difference (`expect(after).toBeCloseTo(before - 0.035 * 60, 3)`), and pick the order to act on by filtering the board rather than naming `PRD-2026-029`. The seed moves; a test that hard-codes its arithmetic breaks for a reason that has nothing to do with the code.
 - **`emitChanged` is called inside the transaction**, last in the service, with the same array the response's `changed` carries. Postgres withholds a `pg_notify` until the transaction commits, so a refusal announces nothing. There is no after-commit hook — do not go looking for one (spec §16, Phase 3).
-- **A make locks every cell it touches in one call.** `lockBalances(tx, [...ingredient cells, the finished-item cell])` **before** reading on-hand and reservations, so the `postMoves` that follows re-takes only locks this transaction already holds and can never need a new one out of (loc, item) order. Locking the ingredients alone would leave `postMoves` reaching for the finished item's row while holding four others — the shape a deadlock is made of.
+- **A make locks every cell it will actually move, in one call.** `lockBalances(tx, cells)` **before** reading on-hand and reservations, where `cells` is every ingredient cell plus the finished-item cell **when `made > 0`**, so the `postMoves` that follows re-takes only locks this transaction already holds and can never need a new one out of (loc, item) order. Locking the ingredients alone when a yield is coming would leave `postMoves` reaching for a fifth row while holding four — the shape a deadlock is made of. Locking the finished item when **nothing** is yielded is the opposite mistake: `lockBalances` creates the row it locks, and spec §16 is explicit that a writer locks only the cells it moves or reserves, because a stray zero row reads as "this location carries the line" on every stock screen (M12).
 - **Never widen a status union with `string`.** `PordStatus` and `TktStatus` are closed; let the compiler find the call sites. `TktStatus` gains one member this phase, and it gains it in the same commit as the `ticket_status` pg enum — the two are one change, because `ticketsRepo.setStatus` types its patch against the contract union and writes it into the enum column.
-- **Migrations are generated, never hand-numbered.** Run `pnpm --filter @rch/api db:generate`, review the SQL it emits, and commit it with `drizzle/meta/_journal.json`. **The Phase 3 fix wave is landing `0004_payers`** — `payers(kind, id, name, active)` seeded from the fixtures, which `pos` validates a bill's payer against — so this phase's enum migration will be `0005` or later. Do not assume a number, and **do not touch `payers`**: it is Phase 3's, it is the roster, and a Phase 4 read of `bills` by payer joins it rather than building a second one.
+- **Migrations are generated, never hand-numbered.** Run `pnpm --filter @rch/api db:generate`, review the SQL it emits, and commit it with `drizzle/meta/_journal.json`. The Phase 3 fix wave's `0004_payers` — `payers(kind, id, name, active)` seeded from the fixtures, which `pos` validates a bill's payer against — **is merged**, so the journal ends at idx 4 and this phase's one migration is `0005`. **Do not touch `payers`**: it is Phase 3's, it is the roster, and a Phase 4 read of `bills` by payer joins it rather than building a second one.
+- **Before dispatching a wave, the controller verifies the journal.** `apps/api/drizzle/meta/_journal.json`'s last entry must be what this plan says it is (`0004_payers` for wave 1), and every worktree forks from the phase branch **head**, never from an older commit. Two branches that each emit the same idx produce a journal conflict no merge strategy can resolve — the loser has to regenerate, and a hand-renumbered migration is worse than either.
 - **Every phase ends with its guides refreshed, in one commit with the spec §16 rows.** That is the root `CLAUDE.md`, the root `README.md`'s status-by-phase section, and the four nested guides — `apps/api/CLAUDE.md`, `packages/contract/CLAUDE.md`, `packages/domain/CLAUDE.md`, `UI/CLAUDE.md` (all four created on the Phase 3 branch). A nested guide is what a fresh agent reads before touching that package, so it names what the package now holds and what rule it now enforces; a phase that adds an endpoint, a table, a domain function or a screen and leaves its guide describing the phase before is a defect, not a follow-up. **This carries into Phases 5 and 6.**
 - **Every task ends green:** `pnpm turbo typecheck test && pnpm lint` (turbo lint + knip + `scripts/check-boundaries.sh`) at the repo root. Never leave a test asserting behaviour that moved — each task that deletes a UI rule test names the server test that replaces it, in the commit body. If turbo replays a stale green for you, re-run the gate with `--force`.
 - **`scripts/check-boundaries.sh` greps for call shape**, including `update reservations` case-insensitively in raw SQL. Do not write a comment or a string containing a phrase like `insert into stock_moves` outside `lib/`, or the boundary script fails on prose.
@@ -64,8 +65,8 @@ packages/contract/src/
   routes.ts               + setOrderStatus, makeBatch, cancelTicket (Task 1) ; + prodOrders, batches GETs (Task 3)
   routes.test.ts          + the three write samples
 packages/domain/src/
-  transitions.ts          TICKET_TRANSITIONS gains Cancelled; REQUEST_TRANSITIONS and
-                          PROD_ORDER_TRANSITIONS gain the way back a cancellation needs
+  transitions.ts          TICKET_TRANSITIONS gains Cancelled; PROD_ORDER_TRANSITIONS gains
+                          the way back a cancellation needs. REQUEST_TRANSITIONS is unchanged
   shelf.ts                DEFAULT_SHELF_LIFE_HOURS, bestBeforeAt, bestBeforeText   (new)
   shelf.test.ts           the H9 wording and the eight-hour default                (new)
   approval.ts             + approvedStatus(lines), which planApproval now uses
@@ -114,7 +115,7 @@ UI/src/
 
 **Files:**
 - Modify: `packages/contract/src/schemas/documents.ts`, `packages/contract/src/schemas/writes.ts`, `packages/contract/src/routes.ts`, `packages/contract/src/routes.test.ts`, `packages/domain/src/transitions.ts`, `packages/domain/src/transitions.test.ts`, `apps/api/src/db/schema/enums.ts`
-- Create: the migration `pnpm --filter @rch/api db:generate` emits (plus its `drizzle/meta/` entries) — **whatever number drizzle-kit assigns**; the Phase 3 fix wave is landing `0004_payers`, so expect `0005`.
+- Create: the migration `pnpm --filter @rch/api db:generate` emits (plus its `drizzle/meta/` entries) — `0005_*`, because the journal ends at `0004_payers`. Generated, never renumbered; Step 5 says what to do if a different number comes out.
 
 **Scope note — writes only.** `apps/api/src/contract.test.ts` probes **every** param-less GET in the manifest and asserts a 200 (Phase 2 removed its skip-on-404 branch on purpose), so a GET declared before its handler exists turns the API suite red. The two reads this phase adds — `GET /prod-orders` and `GET /batches` — are therefore declared in **Task 3**, in the same commit as the handlers that answer them. Write routes are inert until a module mounts them, so all three land here.
 
@@ -135,11 +136,11 @@ UI/src/
   });
   export const CancelTicketBodySchema = z.strictObject({ reason: z.string().max(500) });
 
-  // packages/domain/src/transitions.ts — three tables gain the way back a cancellation needs
+  // packages/domain/src/transitions.ts — two tables gain the way back a cancellation needs
   TICKET_TRANSITIONS.Issued        = ["Collected", "Cancelled"];
   TICKET_TRANSITIONS.Cancelled     = [];
-  REQUEST_TRANSITIONS["Ticket issued"] = ["Collected", "Manager approved", "Partially approved"];
-  PROD_ORDER_TRANSITIONS.Dispatched    = ["Ready"];
+  PROD_ORDER_TRANSITIONS.Dispatched = ["Ready"];
+  // REQUEST_TRANSITIONS is NOT touched — see the table below.
   ```
 - `routes.ts` additions, appended immediately after `distribute` and before the three movement GETs:
   ```ts
@@ -154,13 +155,15 @@ UI/src/
 - Why `made` and `note` are `.optional()` and not `.default(...)`: the kitchen leaves the yield box blank when every unit came good, and the store already reads that as "all of them" (`yielded == null ? n : yielded`). A default of `0` would silently turn a blank box into a lost tray. `note` is optional because `BatchSchema.note` is, and `readBatches` strips it when the column is null.
 - Why `started` is `QtySchema` and not `.positive()`: a zero must reach the kitchen as the store's own `"Enter a quantity to make"`, not as a generic 400 (spec §16, Phase 3). Likewise `made` admits a negative on the wire and is refused in the service with the store's own sentence. `reason` is `z.string().max(500)` for the same reason — an empty one is refused in the service with a sentence.
 
-**The three transition-table edits, and why each is exactly this shape:**
+**The two transition-table edits, and why each is exactly this shape:**
 
 | Table | Change | Why |
 |---|---|---|
 | `TICKET_TRANSITIONS` | `Issued: ["Collected", "Cancelled"]`, and a new `Cancelled: []` | Only a ticket that has not been collected may be withdrawn. Once it has been handed over the stock is in transit and the way back is a receipt followed by a movement of its own, not an undo. |
-| `REQUEST_TRANSITIONS` | `"Ticket issued": ["Collected", "Manager approved", "Partially approved"]` | Cancelling the store's pick must not discard the manager's approval — the outlet is still waiting on stock somebody decided it could have. The request goes back to whichever approved status its lines amount to and can be issued a fresh ticket. `isReqOpen` and `canIssueTicket` are unaffected: neither asks about a transition *out of* `Ticket issued` to `Cancelled`. |
 | `PROD_ORDER_TRANSITIONS` | `Dispatched: ["Ready"]` | The same principle for the kitchen: cancelling a dispatch ticket leaves the order undelivered, and saying it is still `Dispatched` is a lie. **This is the only way back** — `POST /prod-orders/:id/status` refuses `Dispatched` as a source (Task 4) and `canMoveOrder` refuses it as well (Task 6), so no board button offers it and no stale tab can reach it. |
+| `REQUEST_TRANSITIONS` | **unchanged** | A cancelled ticket does put its request back to an approved status, but that edge is *not* added to the table. `modules/requests/service.ts`'s `approve` guards a second decision with `assertTransition(REQUEST_TRANSITIONS, r.status, plan.st, id)`, and its `issue` guards a second ticket with the same lookup — so listing `"Ticket issued" -> "Manager approved"` would let a manager re-approve a request that has a live ticket, rewrite `approved_qty` under an open reservation, and then mint a **second** ticket and a **second** hold for it. No Phase 4 task owns `modules/requests/**`, and adding two guards there to undo a table edge nobody else needs is the wrong trade. Task 5's `cancel` puts the request back through an explicit guard of its own and a direct write (`ticketsRepo.releaseRequest`) — which is exactly the rule this plan already applies to `PROD_ORDER_TRANSITIONS.Dispatched`: **an edge reachable through one door only is guarded at that door; it does not become a general edge in the table.** |
+
+**The intended effect on a request, stated plainly**, because Task 5 depends on it: a cancelled ticket leaves its request at `Manager approved` or `Partially approved` with `ticket_id` null — precisely the state `issue` requires — so **the issue desk can raise a fresh ticket for it, and that is the point**. Nothing else about the request changes: the manager's decision, its lines and its approved quantities are untouched.
 
 - [ ] **Step 1: Write the failing contract test**
 
@@ -204,26 +207,35 @@ describe("a ticket that was never collected", () => {
   it("is finished once it is cancelled", () => {
     expect(TICKET_TRANSITIONS.Cancelled).toEqual([]);
   });
-  it("puts the request behind it back where the manager left it", () => {
-    expect(canTransition(REQUEST_TRANSITIONS, "Ticket issued", "Manager approved")).toBe(true);
-    expect(canTransition(REQUEST_TRANSITIONS, "Ticket issued", "Partially approved")).toBe(true);
-    // And the way forward is untouched.
-    expect(canTransition(REQUEST_TRANSITIONS, "Ticket issued", "Collected")).toBe(true);
-    expect(canTransition(REQUEST_TRANSITIONS, "Manager approved", "Ticket issued")).toBe(true);
-  });
   it("puts the production order behind it back on the board, and nowhere else", () => {
     expect(canTransition(PROD_ORDER_TRANSITIONS, "Dispatched", "Ready")).toBe(true);
     expect(canTransition(PROD_ORDER_TRANSITIONS, "Dispatched", "Accepted")).toBe(false);
     expect(canTransition(PROD_ORDER_TRANSITIONS, "Dispatched", "Dispatched")).toBe(false);
   });
+  it("leaves the request table alone — a request comes back through the cancel endpoint's own guard", () => {
+    expect(canTransition(REQUEST_TRANSITIONS, "Ticket issued", "Manager approved")).toBe(false);
+    expect(canTransition(REQUEST_TRANSITIONS, "Ticket issued", "Collected")).toBe(true);
+    expect(REQUEST_TRANSITIONS["Ticket issued"]).toEqual(["Collected"]);
+  });
 });
 ```
 (`REQUEST_TRANSITIONS`, `TICKET_TRANSITIONS` and `PROD_ORDER_TRANSITIONS` are already imported by that file.)
 
+**And one case already in that file has to change with the table.** `transitions.test.ts`'s `it("is finished once it has gone out or been turned down")` asserts `expect(PROD_ORDER_TRANSITIONS.Dispatched).toEqual([])`, which is exactly what this task stops being true. **Split it in place** — do not leave it, and do not delete the half that still holds:
+```ts
+  it("is finished once it has been turned down", () => {
+    expect(PROD_ORDER_TRANSITIONS.Declined).toEqual([]);
+  });
+  it("comes back from Dispatched only for a cancelled ticket", () => {
+    expect(PROD_ORDER_TRANSITIONS.Dispatched).toEqual(["Ready"]);
+  });
+```
+This is the whole of what Task 1 changes in an existing case; every other assertion in that file stands.
+
 - [ ] **Step 3: Run both to see them fail**
 
 Run: `pnpm --filter @rch/contract test && pnpm --filter @rch/domain test`
-Expected: FAIL — `MakeBatchBodySchema` is not exported, the samples case reports the three route names as missing, and `TICKET_TRANSITIONS` has no `Cancelled`.
+Expected: FAIL — `MakeBatchBodySchema` is not exported, the samples case reports the three route names as missing, and `TICKET_TRANSITIONS` has no `Cancelled`. (The two rewritten `PROD_ORDER_TRANSITIONS.Dispatched` cases fail in opposite directions before and after Step 4; that is the point of splitting them.)
 
 - [ ] **Step 4: Write the schemas, the tables, the enum and the manifest entries**
 
@@ -259,7 +271,7 @@ export const CancelTicketBodySchema = z.strictObject({ reason: z.string().max(50
 
 In `packages/contract/src/routes.ts` add the three manifest entries exactly as spelled out in **Interfaces**, importing `CancelTicketBodySchema`, `MakeBatchBodySchema` and `SetOrderStatusBodySchema` from `./schemas/writes.js` and adding `BatchSchema` and `ProdOrderSchema` to the existing `./schemas/documents.js` import (`TicketSchema` is already there).
 
-In `packages/domain/src/transitions.ts` make the three edits from the table above, each with the sentence that explains it:
+In `packages/domain/src/transitions.ts` make the two edits from the table above, each with the sentence that explains it. **`REQUEST_TRANSITIONS` is not touched.**
 ```ts
 export const TICKET_TRANSITIONS: TransitionTable<TktStatus> = {
   // A ticket that was never collected can be withdrawn, which releases the hold it placed.
@@ -270,13 +282,6 @@ export const TICKET_TRANSITIONS: TransitionTable<TktStatus> = {
   Received: [],
   Cancelled: [],
 };
-```
-and, in `REQUEST_TRANSITIONS`:
-```ts
-  // Cancelling the store's pick must not discard the manager's decision: the outlet is still
-  // waiting on stock somebody said it could have, so the request goes back to whichever
-  // approved status its lines amount to (`approvedStatus`) and can be issued a fresh ticket.
-  "Ticket issued": ["Collected", "Manager approved", "Partially approved"],
 ```
 and, in `PROD_ORDER_TRANSITIONS`:
 ```ts
@@ -297,7 +302,11 @@ export const ticketStatusEnum = pgEnum("ticket_status", ["Issued", "Collected", 
 - [ ] **Step 5: Generate and review the migration**
 
 Run: `pnpm --filter @rch/api db:generate`
-It emits a migration whose whole body is one `ALTER TYPE "public"."ticket_status" ADD VALUE 'Cancelled';`. Read it before committing it. Postgres 17 allows `ADD VALUE` inside a transaction as long as the new value is not *used* in the same transaction, and drizzle's runner does exactly that, so no `--no-transaction` marker is needed. Then apply it locally:
+It emits **`0005_*`** — `apps/api/drizzle/meta/_journal.json` ends at idx 4, `0004_payers` (the Phase 3 fix wave, merged) — and its whole body is one `ALTER TYPE "public"."ticket_status" ADD VALUE 'Cancelled';`. Read it before committing it. Postgres 17 allows `ADD VALUE` inside a transaction as long as the new value is not *used* in the same transaction, and drizzle's runner does exactly that, so no `--no-transaction` marker is needed.
+
+**If what comes out is `0004_*`, stop:** `0004_payers` is not in your base, and two branches each claiming idx 4 produce a `_journal.json` that cannot be merged by taking either side. Delete the emitted `.sql`, its `meta/*_snapshot.json` and its journal entry, tell the controller, re-merge the phase branch and run `db:generate` again. **Never renumber a migration by hand.**
+
+Then apply it locally:
 ```bash
 pnpm db:up
 pnpm --filter @rch/api db:migrate
@@ -319,12 +328,16 @@ A status the kitchen presses and a batch it logs. `made` is optional rather than
 the yield box is left blank when every unit came good, and a default of zero would read that
 as a lost tray.
 
-And "Cancelled" — a ticket status, a pg enum value and three transition-table edits in one
+And "Cancelled" — a ticket status, a pg enum value and two transition-table edits in one
 commit, because the repo types its update patch against the contract union and writes it into
-the enum column, so the three are one change. A cancelled ticket puts the request behind it
-back to whichever approved status its lines amount to, and a dispatched order back onto the
-board at Ready; that edge exists for the cancellation and for nothing else, which is why both
-the status endpoint and the board's own helper refuse Dispatched as a source.
+the enum column, so those three are one change. A cancelled ticket puts a dispatched order back
+onto the board at Ready; that edge exists for the cancellation and for nothing else, which is
+why both the status endpoint and the board's own helper refuse Dispatched as a source.
+
+REQUEST_TRANSITIONS is deliberately left alone. A cancelled ticket does put its request back to
+an approved status, but listing that edge would also re-open approve — whose only guard is the
+same table — for a request with a live ticket, and through it a second ticket and a second
+hold. An edge reachable through one door is guarded at that door.
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
 Claude-Session: https://claude.ai/code/session_017gC3R1QMaDuNzqPHRtMTEw
@@ -353,10 +366,11 @@ EOF
   export function bestBeforeAt(made: Date, hours?: number): Date;
   export function bestBeforeText(due: Date, made?: Date): string;   // `made` defaults to now
   ```
-- `packages/domain/src/index.ts` gains one line:
+- `packages/domain/src/index.ts` gains one line — the two functions only:
   ```ts
-  export { DEFAULT_SHELF_LIFE_HOURS, bestBeforeAt, bestBeforeText } from "./shelf.js";
+  export { bestBeforeAt, bestBeforeText } from "./shelf.js";
   ```
+  `DEFAULT_SHELF_LIFE_HOURS` stays exported from `shelf.ts` (its own test imports it from there) and is **not** re-exported: no consumer outside the rule needs the number, and knip reports an export nothing imports.
 
 **The day boundary is the hospital's, not the host's.** `fromWireBestBefore` already computes its "days apart" from Asia/Kolkata calendar dates, and that is the behaviour to keep: an API pod running in UTC must still call a batch due at 23:30 IST "tonight". The `bestBefore` being deleted computed the difference from host-local dates, which was right only because the browser sits in the hospital. Keep the correct one.
 
@@ -397,6 +411,10 @@ describe("bestBeforeText (H9)", () => {
     const made = ist("2026-08-29T20:34:00");
     expect(bestBeforeText(bestBeforeAt(made, 48), made)).toMatch(/^20:34 31 Aug$/);
   });
+  // ^ This is a new exact-ICU assertion: no existing test pins `en-IN` + `{ day: "2-digit",
+  // month: "short" }`. Run it on Node 24 before keeping the anchor — if the runtime spells the
+  // month differently, loosen to /^20:34 31 \w{3}\.?$/ rather than changing the formatter,
+  // which has to keep matching what `fromWireBestBefore` has always printed.
 
   it("measures the day boundary in the hospital's zone, not the host's", () => {
     // 23:30 IST on the 29th, due 00:30 IST on the 30th. A host running in UTC sees both
@@ -448,7 +466,7 @@ export function bestBeforeText(due: Date, made: Date = new Date()): string {
 ```
 Add the export line to `packages/domain/src/index.ts`, after the `costing` line:
 ```ts
-export { DEFAULT_SHELF_LIFE_HOURS, bestBeforeAt, bestBeforeText } from "./shelf.js";
+export { bestBeforeAt, bestBeforeText } from "./shelf.js";
 ```
 Run: `pnpm --filter @rch/domain test` → PASS.
 
@@ -512,6 +530,7 @@ and change the file's `import { bestBefore, fq, unitTotal } from "../lib/fmt";` 
 
 Run: `pnpm turbo typecheck test && pnpm lint`
 Expected: PASS. `knip` must stay quiet: `bestBefore` was exported and, after the store stops importing it, would have been reachable only from a test — which is why it is deleted here rather than left for later.
+Nothing outside `shelf.ts` and its test reads `DEFAULT_SHELF_LIFE_HOURS`, which is why Step 2 keeps it off the `index.ts` line: `knip.json` covers `packages/*` with `ignoreExportsUsedInFile: true`, and a re-export nobody imports is exactly what it reports.
 
 - [ ] **Step 7: Commit**
 
@@ -570,7 +589,9 @@ EOF
 
 - [ ] **Step 1: Write the failing test**
 
-Append to `apps/api/src/modules/snapshot/snapshot.test.ts` (read the top of that file first and reuse its existing `app`, `beforeEach` and helpers rather than adding your own):
+Append to `apps/api/src/modules/snapshot/snapshot.test.ts`. Read the top of that file first: it seeds **once**, in `beforeAll`, and has no `beforeEach` and no truncate — so reuse its `app` and its `getAs(userId, url)` helper (which injects the GET, asserts 200 and returns the parsed body), and keep every new case a **read**. A case here that wrote something would leak into every case after it.
+
+The cases below are written against `app.inject` directly so the status code is visible in the assertion; if you prefer `getAs`, use it and drop the `statusCode` lines — it asserts the same 200 itself.
 ```ts
 describe("GET /prod-orders and GET /batches", () => {
   it("hand the kitchen its whole board and its whole batch log", async () => {
@@ -716,7 +737,7 @@ EOF
 | Endpoint | Rules, in this order | Message |
 |---|---|---|
 | `POST /prod-orders/:id/status` (prod) | order exists, read `for update` (404 `There is no production order <id>.`); **NEW** `assertRule(body.st !== "Dispatched", \`${id} goes out on a pick ticket — dispatch it from the order instead\`)`; **NEW** `assertRule(o.status !== "Dispatched", \`${id} has already gone out — cancel its ticket to bring it back onto the board\`)`; **NEW** `assertRule(canTransition(PROD_ORDER_TRANSITIONS, o.status, body.st), \`${id} is ${o.status.toLowerCase()} — it cannot go straight to ${body.st.toLowerCase()}\`)`; `setStatus`; history row carrying the new status and the kitchen in-charge's name | `` `${id} — ${st.toLowerCase()}` `` |
-| `POST /batches` (prod) | `assertRule(started > 0, "Enter a quantity to make")`; `assertRule(made >= 0 && made <= started, \`Yield cannot exceed the ${started} started\`)`; item exists (404 `There is no item <key>.`); `assertRule(!off, \`${item.n} is switched off in the kitchen\`)`; `assertRule(recipe, \`${item.n} has no recipe — it cannot be produced\`)`; `allocateNumber(tx, "batch", at)`; `lockBalances` over every ingredient cell **and** the finished-item cell at the kitchen; read on hand and open reservations; the first ingredient in recipe order whose free-to-promise will not stretch refuses with `` `Kitchen is short of ${ing.n} — ${fq(free, unit)} ${unit} left` ``; `postMoves` — one `production_consume` per ingredient for `need × started` and, when `made > 0`, one `production_yield` for `made`; **NEW (post-lock)** re-read and assert `on_hand − reserved ≥ 0` per ingredient with the same sentence; insert the `batches` row | made === started: `` `${id} — ${started} ${item.n} made, best before ${bb}` ``<br>otherwise: `` `${id} — ${made} of ${started} ${item.n} yielded (${(((made - started) / started) * 100).toFixed(1)}%), best before ${bb}` `` |
+| `POST /batches` (prod) | `assertRule(started > 0, "Enter a quantity to make")`; `assertRule(made >= 0 && made <= started, \`Yield cannot exceed the ${started} started\`)`; item exists (404 `There is no item <key>.`); `assertRule(!off, \`${item.n} is switched off in the kitchen\`)`; `assertRule(recipe, \`${item.n} has no recipe — it cannot be produced\`)`; `allocateNumber(tx, "batch", at)`; `lockBalances` over every ingredient cell at the kitchen, **plus the finished-item cell when `made > 0`**; read on hand and open reservations; the first ingredient in recipe order whose free-to-promise will not stretch refuses with `` `Kitchen is short of ${ing.n} — ${fq(free, unit)} ${unit} left` ``; `postMoves` — one `production_consume` per ingredient for `need × started` and, when `made > 0`, one `production_yield` for `made`; **NEW (post-lock)** re-read and assert `on_hand − reserved ≥ 0` per ingredient with the same sentence; insert the `batches` row | made === started: `` `${id} — ${started} ${item.n} made, best before ${bb}` ``<br>otherwise: `` `${id} — ${made} of ${started} ${item.n} yielded (${(((made - started) / started) * 100).toFixed(1)}%), best before ${bb}` `` |
 
 `changed`: status `["pord"]`; batch `["batch", "stock"]`. Each is emitted with `await emitChanged(tx, changed)` inside the transaction. **A make names no `"rsv"`** — it reserves nothing and releases nothing; the reservations it reads are other tickets' and it leaves them exactly where they were.
 
@@ -887,6 +908,22 @@ describe("POST /batches", () => {
     expect(mine.filter((m) => m.kind === "production_yield")).toHaveLength(0);
   });
 
+  it("leaves no phantom shelf line when a total loss is of something the kitchen never carried", async () => {
+    // The kitchen carries no `chai` — it has a recipe but has never been made here. A batch
+    // that yields nothing must not lock, and so must not create, its balance row: a zero row
+    // reads as "this location carries the line" on every stock screen (M12, spec §16).
+    expect((await app.testDb!.db.select().from(stockBalances)
+      .where(and(eq(stockBalances.loc, "kitchen"), eq(stockBalances.itemKey, "chai")))))
+      .toHaveLength(0);
+
+    const r = await post("u4", "/batches", { it: "chai", started: 4, made: 0, note: "Urn boiled dry" });
+    expect(r.statusCode, r.body).toBe(200);
+
+    expect((await app.testDb!.db.select().from(stockBalances)
+      .where(and(eq(stockBalances.loc, "kitchen"), eq(stockBalances.itemKey, "chai")))))
+      .toHaveLength(0);
+  });
+
   it("refuses a yield greater than the quantity started, and writes nothing at all", async () => {
     const before = await onHand("kitchen", "puff");
     const count = await moveCount();
@@ -952,7 +989,7 @@ describe("POST /batches", () => {
   });
 });
 ```
-Add to the file's imports what these cases need and it does not already have: `bestBeforeText` from `@rch/domain`; `batches as batchesTable` from `../../db/schema/index.js` (aliased because `batches` reads as a helper here); `warmPool` from `../../test/db.js`; `eq` from `drizzle-orm` and `stockMoves`, `given` are already there from Phase 3.
+Add to the file's imports only what these cases need and it does not already have: `bestBeforeText` from `@rch/domain`; `and` alongside the `eq` it already imports from `drizzle-orm`; and `batches as batchesTable` plus `stockBalances` added to the existing `../../db/schema/index.js` import (`batches` is aliased because the file already reads better with `allBatches()` as the helper name). **`warmPool`, `given`, `eq`, `stockMoves`, `postMoves`, `truncateAll` and `authHeaders` are already imported** — do not add them twice; `noUnusedLocals` and oxlint will both complain.
 
 Run: `pnpm --filter @rch/api test src/modules/production` → FAIL (404 on both new URLs).
 
@@ -1035,10 +1072,12 @@ After `setStatus`:
      * (UA-14). A tray dropped is stock consumed and nothing produced, and the batch row is what
      * records the difference.
      *
-     * Lock order, as everywhere: ids before balances (`lib/ledger.ts`'s header). The cells are
-     * locked in one call covering the ingredients *and* the finished item, so the `postMoves`
-     * below re-takes only locks this transaction already holds — a make that locked the
-     * ingredients alone would reach for the finished item's row while holding four others.
+     * Lock order, as everywhere: ids before balances (`lib/ledger.ts`'s header). One call takes
+     * every cell this write will move — the ingredients, and the finished item when there is a
+     * yield to book — so the `postMoves` below re-takes only locks this transaction already
+     * holds. A make that locked the ingredients alone would reach for a fifth row while holding
+     * four; one that locked the finished item with nothing to yield would create a balance row
+     * it never moves, and a zero row reads as "this location carries the line" (M12, spec §16).
      */
     async makeBatch(claims: AccessClaims, body: MakeBatchBody): Promise<WriteResponse<Batch>> {
       return withTransaction(db, async (tx) => {
@@ -1060,7 +1099,12 @@ After `setStatus`:
         const need = recipe.l.map(([g, per]) => ({ it: g, qty: round3(per * started) }));
         const at = new Date();
         const no = await allocateNumber(tx, "batch", at);
-        const cells = [...need.map((n) => ({ loc: KITCHEN, it: n.it })), { loc: KITCHEN, it: body.it }];
+        // Every cell this write will move, and no others: the finished item joins only when
+        // there is a yield to book, because `lockBalances` creates the row it locks.
+        const cells = [
+          ...need.map((n) => ({ loc: KITCHEN, it: n.it })),
+          ...(made > 0 ? [{ loc: KITCHEN, it: body.it }] : []),
+        ];
         await lockBalances(tx, cells);
         const keys = cells.map((c) => c.it);
         const onHand = await productionRepo.balancesAt(tx, KITCHEN, keys);
@@ -1074,15 +1118,18 @@ After `setStatus`:
           const unit = ing?.u ?? "nos";
           return `Kitchen is short of ${ing?.n ?? g} — ${fq(free(g), unit)} ${unit} left`;
         };
-        // The first in recipe order, which is the one the kitchen's own screen names.
+        // The first in recipe order, which is the one the kitchen's own screen names. Written as
+        // an `if` rather than `assertRule(!short, short ? … : "")`: a refusal sentence computed
+        // on the success path is a blank toast waiting for someone to drop the ternary.
         const short = need.find((n) => free(n.it) < n.qty);
-        assertRule(!short, short ? shortOf(short.it) : "");
+        if (short) assertRule(false, shortOf(short.it));
 
         const moves: Move[] = need.map((n) => ({
           loc: KITCHEN, it: n.it, qty: -n.qty, kind: "production_consume", refType: "batch", refId: no.id, by: claims.sub, at,
         }));
-        // A yield of nothing is not a movement. The batch row records the lost tray; its
-        // balance row already exists, because `lockBalances` above created it.
+        // A yield of nothing is not a movement. The batch row records the lost tray, and the
+        // kitchen's shelf list is left exactly as it was — no row is created for a line the
+        // kitchen has never carried.
         if (made > 0) {
           moves.push({ loc: KITCHEN, it: body.it, qty: made, kind: "production_yield", refType: "batch", refId: no.id, by: claims.sub, at });
         }
@@ -1178,7 +1225,7 @@ Make the kitchen's board and its batches the server's
 
 A batch is the one write that creates stock, so it is the one that must not create it out of
 nothing: the recipe comes off the kitchen's rack and the finished units go onto it in the same
-postMoves call, under locks taken over the ingredients and the finished item together.
+postMoves call, under locks taken over exactly the cells the write moves.
 Ingredients go against what was started and only the yield reaches the rack; a tray lost
 consumes its ingredients and posts no yield move at all.
 
@@ -1208,7 +1255,7 @@ EOF
 - Modify: `apps/api/src/lib/tickets.ts`, `apps/api/src/modules/tickets/{repo,service,routes,tickets.test}.ts`, `packages/domain/src/{approval.ts,approval.test.ts,index.ts}`
 
 **Interfaces:**
-- Consumes: everything the module already imports, plus `CancelTicketBodySchema` and the widened `TktStatus` (Task 1), `REQUEST_TRANSITIONS`, `PROD_ORDER_TRANSITIONS`, `TICKET_TRANSITIONS`, `canTransition` from `@rch/domain`, `releaseForTicket` from `../../lib/reservations.js`, `appendHistory` from `../../lib/history.js`, `requireLocOf` from `../../plugins/rbac.js`, and `given.ticket`/`given.request`/`given.prodOrder` from `../../test/builders.js` in the test.
+- Consumes: everything the module already imports, plus `CancelTicketBodySchema` and the widened `TktStatus` (Task 1), `PROD_ORDER_TRANSITIONS`, `TICKET_TRANSITIONS`, `canTransition` and `approvedStatus` from `@rch/domain` (**not** `REQUEST_TRANSITIONS` — the request's way back is an explicit guard, see below), `releaseForTicket` from `../../lib/reservations.js`, `appendHistory` from `../../lib/history.js`, `requireLocOf` from `../../plugins/rbac.js`, and `given.ticket`/`given.request`/`given.prodOrder` from `../../test/builders.js` in the test.
 - Produces:
   ```ts
   // packages/domain/src/approval.ts
@@ -1227,7 +1274,7 @@ EOF
   cancel(claims: AccessClaims, id: string, body: CancelTicketBody): Promise<WriteResponse<Ticket>>;
   export type CancelTicketBody = z.infer<typeof CancelTicketBodySchema>;
   ```
-- `ticketsRepo.head` gains one selected column, `refType: tickets.refType`, and `LockedTicket` gains `refType: TicketRefType` (imported from `../../lib/tickets.js`). `handover` and `receive` ignore it; the cancellation needs it to know which document is behind the ticket, because a `PRD-` id looked up in `stock_requests` finds nothing and a missing row must not be confused with "there was never one".
+- `ticketsRepo.head` gains one selected column, `refType: tickets.refType`, and `LockedTicket` gains `refType: TicketRefType` (imported from `../../lib/tickets.js`). `handover` and `receive` ignore it; the cancellation needs it because `linkedRequest` answers `undefined` both for a ticket that has no request and for a `PRD-`/`ASK-` id that was never in `stock_requests` — and the two must take different branches. `refType` is what separates them, and it is the only thing this task asks of that column: a `request` ticket whose row has genuinely vanished is not a case the service distinguishes (it cannot happen — `stock_requests` has no delete path — and inventing a 404 for it would be a rule nobody can reach).
 
 **What "putting it back" means, per reference type:**
 
@@ -1246,7 +1293,7 @@ EOF
 | `requireLocOf(claims, t.from, "the location the ticket is issued from")` | 403, the existing wording |
 | a reason was given | `Say why the ticket is being cancelled` |
 | `canTransition(TICKET_TRANSITIONS, t.st, "Cancelled")` | already cancelled: `` `${id} is already cancelled` ``; otherwise `` `${id} has already been handed over — the stock is on its way to ${toName}` `` |
-| the document behind it can take the step back | `` `${linked.id} is ${linked.status.toLowerCase()} — this ticket cannot be cancelled` `` |
+| the document behind it can take the step back — a request must be at `Ticket issued` (an explicit source guard, **not** a `REQUEST_TRANSITIONS` lookup: Task 1 deliberately does not add that edge); an order must satisfy `canTransition(PROD_ORDER_TRANSITIONS, order.status, "Ready")` | `` `${linked.id} is ${linked.status.toLowerCase()} — this ticket cannot be cancelled` `` (the same sentence either way) |
 
 `changed` is built from what actually moved: `["tkt", "rsv"]`, plus `"req"` when a request went back and `"pord"` when an order did. Naming a slice that did not change costs every open browser a refetch, which is the same reason a make does not name `"rsv"`. **`"stock"` is never named**: a cancellation moves nothing, because nothing had moved — that is the whole point of the movement rule.
 
@@ -1540,8 +1587,13 @@ Into the object `createTicketsService` returns, after `receive`:
         if (request) {
           // The store's pick is not the manager's decision. Back to whatever the approval
           // amounted to, with the ticket reference cleared so a fresh one can be issued.
+          //
+          // An explicit source guard, not a `canTransition` lookup: this edge is deliberately
+          // absent from REQUEST_TRANSITIONS, because listing it would also re-open `approve`
+          // — whose only guard is that same table — for a request holding a live ticket, and
+          // through it a second ticket for stock already promised once. One door, one guard.
+          assertRule(request.status === "Ticket issued", `${request.id} is ${request.status.toLowerCase()} — this ticket cannot be cancelled`);
           const back = approvedStatus(await ticketsRepo.requestLines(tx, request.id));
-          assertRule(canTransition(REQUEST_TRANSITIONS, request.status, back), `${request.id} is ${request.status.toLowerCase()} — this ticket cannot be cancelled`);
           await ticketsRepo.releaseRequest(tx, request.id, back);
           await appendHistory(tx, "request", request.id, back, who, at);
           changed.push("req");
@@ -1942,9 +1994,8 @@ Four screens, and the pattern is the same one the store's drawer already uses fo
   const [busy, setBusy] = useState(false);
   const withdraw = async () => {
     setBusy(true);
-    const ok = await cancelTicket(t.id, why.trim());
-    setBusy(false);
-    if (ok) setWhy("");
+    // No reset on success: the store action closes the drawer, so this component is gone.
+    try { await cancelTicket(t.id, why.trim()); } finally { setBusy(false); }
   };
 ```
 and, inside the body under the override section:
@@ -1972,9 +2023,35 @@ and, inside the body under the override section:
         </Section>
       )}
 ```
-with `Section` added to the `../../ui/kit` import and `canCancelTicket` to the `../../lib/selectors` import. The store action closes the drawer on success, so nothing here has to.
+with `Section` and `Alert` added to the `../../ui/kit` import and `canCancelTicket` to the `../../lib/selectors` import. The store action closes the drawer on success, so there is nothing to reset afterwards — `withdraw` can drop the `if (ok) setWhy("")` entirely rather than set state on a component that is going away.
 
-`UI/src/roles/prod/Tickets.tsx` — the kitchen looks at its own tickets in a table, so the confirm lives in the row's action cell. Beside the existing `handover` hook add `cancelTicket`, and one piece of state for which row is open:
+**The same drawer's stepper has to learn the new word, and it will not compile until it does.** Line 10 is `const STEPS = ["Issued", "Collected", "Received"] as const;` and line 38 is `const step = STEPS.indexOf(t.st);` — with `TktStatus` widened, `t.st` is no longer assignable to that tuple's element type, so `typecheck` fails here first. Two edits:
+```ts
+  // A cancelled ticket is not a step on the way to anywhere, so it sits outside this list and
+  // `indexOf` answers -1 for it. The read is widened rather than the list.
+  const step = (STEPS as readonly string[]).indexOf(t.st);
+```
+and, above the `Movement` feed, the same answer the counter's drawer gets — the store keeper is the person who just cancelled it, so this is the first screen they see afterwards:
+```tsx
+      {t.st === "Cancelled" ? (
+        <div className="mtop">
+          <Alert tone="w" label="CANCELLED">
+            This ticket was withdrawn before it was collected — the stock never left {LOC[t.from].n}
+            and the hold against it has been released.
+          </Alert>
+        </div>
+      ) : (
+        <div className="mtop">
+          {/* the existing Movement heading and <Feed …/>, unchanged */}
+        </div>
+      )}
+```
+
+`UI/src/roles/prod/Tickets.tsx` — first the filter, line 12, so the kitchen can find what it just cancelled:
+```ts
+const SHOW = ["All", "Issued", "Collected", "Received", "Cancelled"] as const;
+```
+Then the control. The kitchen looks at its own tickets in a table, so the confirm lives in the row's action cell. Beside the existing `handover` hook add `cancelTicket`, and one piece of state for which row is open:
 ```tsx
   const cancelTicket = useApp((x) => x.cancelTicket);
   const [cancelId, setCancelId] = useState<string | null>(null);
@@ -1984,7 +2061,7 @@ with `Section` added to the `../../ui/kit` import and `canCancelTicket` to the `
     setBusy(true);
     const ok = await cancelTicket(id, why.trim());
     setBusy(false);
-    if (ok) { setCancelId(null); setWhy(""); }
+    if (ok) { setCancelId(null); setWhy(""); }   // this screen is a table, not the drawer, so it stays mounted
   };
 ```
 and in the out-table's action cell, after the "Hand over" button:
@@ -2044,7 +2121,7 @@ and the whole `UA-14 · a batch records the yield it actually got` block with:
  * a whole tray lost: the ingredients go, nothing reaches the rack" and "refuses a yield
  * greater than the quantity started, and writes nothing at all". */
 ```
-Then delete from the file's imports whatever those two blocks were the last users of — `RCP` and `qty` at minimum; `noUnusedLocals` names the rest.
+Then remove from the file's imports **only what the compiler actually names as unused** once those two blocks are gone. Do not guess: `RCP` survives (H1 reads `RCP.capp`) and so does `qty` (M11 and the shop-ask block both call it), so the answer may well be "nothing at all". Run `pnpm --filter @rch/ui typecheck` and delete what it lists, no more.
 
 `UI/src/__tests__/store.test.ts` — replace the `production` describe block's body with a pointer, keeping the file's existing note about dispatch and handover:
 ```ts
@@ -2119,7 +2196,7 @@ EOF
 - [ ] **Step 1: The root `CLAUDE.md`**
 
 - *What this is*: "**Phases 1–3 of the backend are implemented**" → "**Phases 1–4**", and rewrite the sentence that follows: the last in-memory paths are procurement (`store/procurement.ts` and `sendRequisition`) and the rest of `store/ops.ts` — support tickets, rate contracts, new-product requests and catalogue additions — which Phases 5 and 6 close.
-- *Domain invariants → "Nothing is created or destroyed without a document"*: the rule is now enforced in `apps/api/src/modules/production/service.ts` — one `postMoves` call carries the `production_consume` moves and the `production_yield`, ingredients against what was started and only the yielded units onto the rack — and the balance locks are taken over the ingredients and the finished item together before anything is read.
+- *Domain invariants → "Nothing is created or destroyed without a document"*: the rule is now enforced in `apps/api/src/modules/production/service.ts` — one `postMoves` call carries the `production_consume` moves and the `production_yield`, ingredients against what was started and only the yielded units onto the rack — and the balance locks are taken over exactly the cells that write moves — the ingredients, and the finished item only when there is a yield to book — before anything is read.
 - *Domain invariants → "Costing"*: unchanged, but add that `batches` carries no cost column: a batch's value is derived from `costOf` at read time, not stamped.
 - *Derived state is computed, never stored*: add one line — a make measures free-to-promise (`on_hand − reserved`) and not what is on the shelf, so stock another ticket is holding cannot be baked with.
 - *The movement rule*: add the way back — a ticket nobody collected can be cancelled (`POST /tickets/:id/cancel`), which releases its hold and puts the document behind it back where it was; nothing moves, because nothing had moved.
@@ -2128,11 +2205,11 @@ EOF
 
 - [ ] **Step 2: The four nested guides**
 
-Read each one first — they are being written on the Phase 3 branch and their shape is theirs, not this plan's. Each gains what Phase 4 put in *that* package, in that guide's own voice, and nothing that belongs in another. **If one of the four is not there when you get here**, Phase 3 did not land it: create it, short, following the root `CLAUDE.md`'s tone — what the package is, its file layout, the rules that bind anyone editing it, how to run its tests — and then add this phase's material below. Do not skip it and do not write a placeholder.
+All four exist — they landed on the Phase 3 branch and are in this branch's base. Read each one first; their shape is theirs, not this plan's. Each gains what Phase 4 put in *that* package, in that guide's own voice, and nothing that belongs in another.
 
-- **`apps/api/CLAUDE.md`** — the `production` module now answers four endpoints, not two: `POST /prod-orders/:id/status` and `POST /batches` beside `dispatch` and `distribute`; `tickets` answers a fifth, `POST /tickets/:id/cancel`. Three rules to state where the guide states rules: (a) **every negative-going move takes the post-lock re-read** — `postMoves` holds the balance locks, and a service that moved stock down re-reads `on_hand − reserved` and refuses if any cell went below zero, which now covers `production_consume` as it already covered `sale` and `ticket_out`; (b) a write that both reads a balance and promises against it takes `lockBalances` over **every** cell it will touch in one call before reading, ingredients and finished item together, so `postMoves` never reaches for a new lock out of order; (c) `voidTicket` in `lib/tickets.ts` is the one door out of a ticket that was never collected, and `releaseForTicket` now has two callers rather than one. Add `batch` to whatever list of id kinds the guide keeps, and note that `batches` is written from `modules/production/repo.ts` and is not a protected table.
+- **`apps/api/CLAUDE.md`** — the `production` module now answers four endpoints, not two: `POST /prod-orders/:id/status` and `POST /batches` beside `dispatch` and `distribute`; `tickets` answers a fifth, `POST /tickets/:id/cancel`. Three rules to state where the guide states rules: (a) **every negative-going move takes the post-lock re-read** — `postMoves` holds the balance locks, and a service that moved stock down re-reads `on_hand − reserved` and refuses if any cell went below zero, which now covers `production_consume` as it already covered `sale` and `ticket_out`; (b) a write that both reads a balance and promises against it takes `lockBalances` in one call before reading, over **every cell it will move and no others** — `lockBalances` creates the row it locks, so a speculative cell becomes a phantom "carried at zero" shelf line (M12), while a missing one leaves `postMoves` reaching for a lock out of (loc, item) order; (c) `voidTicket` in `lib/tickets.ts` is the one door out of a ticket that was never collected, and `releaseForTicket` now has two callers rather than one. Add `batch` to whatever list of id kinds the guide keeps, and note that `batches` is written from `modules/production/repo.ts` and is not a protected table.
 - **`packages/contract/CLAUDE.md`** — three new write routes (`setOrderStatus`, `makeBatch`, `cancelTicket`) and two new reads (`prodOrders`, `batches`); `TktStatusSchema` gained `Cancelled`, which is the one place to say that a status union and its pg enum in `apps/api/src/db/schema/enums.ts` are edited together or neither.
-- **`packages/domain/CLAUDE.md`** — `shelf.ts` (`DEFAULT_SHELF_LIFE_HOURS`, `bestBeforeAt`, `bestBeforeText`) is new and is the only place the best-before or its H9 wording is computed; `approvedStatus` joins `planApproval` in `approval.ts`; and the transition tables gained three edges whose doors are not what the table says — `TICKET_TRANSITIONS.Issued → Cancelled` (the cancel endpoint), `REQUEST_TRANSITIONS["Ticket issued"] → the approved statuses` (a cancellation, not a screen) and `PROD_ORDER_TRANSITIONS.Dispatched → Ready` (a cancellation only, which is why `setStatus` and `canMoveOrder` both refuse `Dispatched` as a source). State that rule as a rule: **when a table's edge is reachable through one door only, both sides carry the same explicit guard** — the server in its service and the UI in its selector — rather than one side quietly offering a button the other refuses.
+- **`packages/domain/CLAUDE.md`** — `shelf.ts` (`DEFAULT_SHELF_LIFE_HOURS`, `bestBeforeAt`, `bestBeforeText`) is new and is the only place the best-before or its H9 wording is computed; `approvedStatus` joins `planApproval` in `approval.ts`; and the tables gained two edges whose doors are not what the table says — `TICKET_TRANSITIONS.Issued → Cancelled` (the cancel endpoint) and `PROD_ORDER_TRANSITIONS.Dispatched → Ready` (a cancellation only, which is why `setStatus` and `canMoveOrder` both refuse `Dispatched` as a source). State the rule that governs both, and the one edge deliberately **not** added: **an edge reachable through one door only is guarded at that door.** A general edge in the table opens every consumer of it — which is why a cancelled ticket puts its request back through an explicit `status === "Ticket issued"` guard and a direct write in `modules/tickets/service.ts`, rather than a `REQUEST_TRANSITIONS` entry that would also let `approve` re-decide a request holding a live ticket.
 - **`UI/CLAUDE.md`** — `makeProduct`, `setOrderStatus` and the new `cancelTicket` are API calls; the kitchen's screens keep only previews (`ceiling`, the Dispatch cover check), computed with the same `@rch/domain` functions the server enforces with. `Seq` is down to the procurement counters. Restate the two settled patterns with their new members: an action that a screen resets a form for answers `Promise<boolean>` and the screen awaits it behind a busy lock (`makeProduct`, `cancelTicket`); a button with no form is fire-and-forget (`setOrderStatus`, `handover`, `dispatchOrder`). And `refetch` now has narrow readers for `pord` and `batch`, so only the collections with no reader still cost a snapshot.
 
 - [ ] **Step 3: `README.md` and `UI/README.md`**
@@ -2166,10 +2243,10 @@ Retitle the section "Amendments recorded during Phases 1–4" and append:
 | §9.2 raising a production order | **No `POST /prod-orders` is built.** Nothing in the frontend creates one: the store has no action that appends to `pord`, `seq.pord` was never incremented, and both orders on the board come from `packages/contract/src/fixtures/seed.ts`. §9.2 has no row for it either. Parked with the product question it depends on — who raises one, the outlet's counter or the outlet manager — and one manifest entry plus one service function away when that is answered. | Phase 4 is a cutover; there is nothing to cut over. Inventing the screen and the endpoint together would be a product change made in an implementation phase. |
 | §9.2 `setOrderStatus` | `Dispatched` is refused here with `<id> goes out on a pick ticket — dispatch it from the order instead`, and an illegal transition reads `<id> is <from> — it cannot go straight to <to>` rather than `assertTransition`'s `<id> is already <status>`. The guard still reads `PROD_ORDER_TRANSITIONS`. | Both sentences are new: the browser's board only ever offered a legal button, so it had none. "Is already new" is the wrong half of the sentence for a New order asked to jump to Ready — the §16 (Phase 3) note about that wording is what made this the place to fix it. |
 | §9.2 `makeProduct` | Every refusal is the store's own sentence in the store's own order — quantity, then yield, then the kitchen's switch, then the recipe, then the rack — and the cover measure is free to promise (`on_hand − reserved`), not on hand. | A different order produces a different sentence for the same input, and the tests that moved from `fixes.test.ts` assert the sentence. |
-| §9.2 `makeProduct` | A make with `made = 0` posts its `production_consume` moves and **no** `production_yield` move; the `batches` row (started N, made 0) is what records the lost tray. Its balance row exists regardless, because `lockBalances` creates one for every cell the write touches. | A move of zero is not a movement, and the ledger reads better without rows that mean nothing. |
+| §9.2 `makeProduct` | A make with `made = 0` posts its `production_consume` moves and **no** `production_yield` move, and does not lock — so does not create — the finished item's balance row; the `batches` row (started N, made 0) is what records the lost tray. | A move of zero is not a movement, and the ledger reads better without rows that mean nothing. And §16's own rule: a writer locks only the cells it moves or reserves, because `lockBalances` creates the row it locks and a stray zero row reads as "this location carries the line" on every stock screen (M12). |
 | §9.2 `makeProduct` | The rule is the spec's — a recipe exists — and not "the item is a finished good". `chai` and `capp` are batchable server-side; the kitchen's screen offers only the three FG products, which is a screen decision. | Narrowing the rule to `t === "FG"` would be a new rule, not the one §9.2 wrote down. |
 | §9.3 `changed` | A batch names `["batch", "stock"]` and a status change names `["pord"]`. A make reserves nothing and releases nothing, so it does not name `"rsv"`. | `changed` is what the other browsers refetch; naming a slice that did not move costs every open window a request. |
-| §5.1 lock order | A batch takes `allocateNumber(tx, "batch", at)` → `lockBalances` over the ingredient cells **and the finished-item cell in one call** → read → rules → `postMoves`. The id kind is `"batch"`, not `"bat"`. | Locking the ingredients alone would leave `postMoves` reaching for the finished item's row while already holding four others — a lock taken out of (loc, item) order, which is the shape a deadlock is made of. |
+| §5.1 lock order | A batch takes `allocateNumber(tx, "batch", at)` → `lockBalances` over the ingredient cells **plus the finished-item cell when `made > 0`, in one call** → read → rules → `postMoves`. The id kind is `"batch"`, not `"bat"`. | Locking the ingredients alone when a yield is coming would leave `postMoves` reaching for a fifth row while already holding four — a lock taken out of (loc, item) order, which is the shape a deadlock is made of. Locking the finished item when nothing is yielded is the opposite error, and §16 already forbids it. |
 | §12 correctness | The post-lock re-read in `makeBatch` cannot fire, because the cover check above it already runs under the locks. It is kept as the invariant §12 asks for on every negative-going move, at the cost of two queries. | The same belt-and-braces as `reserve()` re-taking `lockBalances`: it is there for the next caller that reads a balance before locking it. |
 | §5.1 domain | The best-before and its wording are `packages/domain/src/shelf.ts` — `DEFAULT_SHELF_LIFE_HOURS` (8), `bestBeforeAt(made, hours?)`, `bestBeforeText(due, made?)`. `UI/src/lib/fmt.ts`'s `bestBefore` and its private `hhmm`/`kolkataYmd` are deleted and `fromWireBestBefore` delegates. The day boundary is Asia/Kolkata's on both sides. | The server has to put H9's wording in a toast, and the browser had two copies of it — one of which measured the day in the host's zone, which is right only while the host sits in the hospital. |
 | §7.3 batch ids | `BAT-<yyyymmdd>-<nn>` takes its date from the make and its number from one global `sequences` row (`SEQUENCE_START.batch`), which does not reset daily; `<nn>` widens past two digits rather than wrapping. | The number has to be unique and increasing, which it is. A per-day series would need a second table and a reset, for a number nobody counts. |
@@ -2178,7 +2255,7 @@ Retitle the section "Amendments recorded during Phases 1–4" and append:
 | §7.2 `tickets` / §9.2 (new row) | **`POST /tickets/:id/cancel {reason}`**, `["store", "prod"]`, scoped by `requireLocOf` on the ticket's `from`. `TktStatus` and the `ticket_status` enum gain `Cancelled`; `voidTicket` in `lib/tickets.ts` releases the ticket's open holds, sets the status and writes the reason to `document_history`. Nothing moves and `"stock"` is never in `changed`. | Phase 3 gave `releaseForTicket` one caller. A ticket nobody collected therefore held its stock for ever, and the request behind it was frozen at `Ticket issued` with no transition out but `Collected` — a correctness gap that only became visible when a make started refusing on free-to-promise. |
 | §7.2 `document_history` | A ticket now writes history for two things: the supervisor override and a cancellation, the latter as `Cancelled — <reason>`. | The reason is the only record a cancellation leaves, and `tickets` has no column for prose. |
 | §9.2 cancellation, the document behind it | A `request` ticket puts its request back to `approvedStatus(lines)` with `ticket_id` cleared; a `prod_order` ticket puts its order back to `Ready`; a `direct` ticket has nothing behind it. `approvedStatus` moves into `packages/domain/src/approval.ts` and `planApproval` now uses it. | Cancelling the store's pick must not discard the manager's approval, and a dispatched order that was never delivered must not keep saying it was. The status a request returns to is the same computation the approval made, so it is written once. |
-| §5.1 transitions | `TICKET_TRANSITIONS.Issued` gains `Cancelled`; `REQUEST_TRANSITIONS["Ticket issued"]` gains both approved statuses; `PROD_ORDER_TRANSITIONS.Dispatched` gains `Ready`. The last edge is reachable **only** through a cancellation: `POST /prod-orders/:id/status` refuses `Dispatched` as a source and `canMoveOrder` excludes it too. | The table says what may follow what; it cannot say by which door. Where those differ, both sides carry the same explicit guard rather than one side silently offering a button the other refuses. |
+| §5.1 transitions | `TICKET_TRANSITIONS.Issued` gains `Cancelled`; `PROD_ORDER_TRANSITIONS.Dispatched` gains `Ready`, reachable **only** through a cancellation — `POST /prod-orders/:id/status` refuses `Dispatched` as a source and `canMoveOrder` excludes it too. **`REQUEST_TRANSITIONS` is not touched**: a cancelled ticket returns its request to `approvedStatus(lines)` through an explicit `status === "Ticket issued"` guard and a direct write (`ticketsRepo.releaseRequest`), not a table edge. | The table says what may follow what; it cannot say by which door. Listing `"Ticket issued" → "Manager approved"` would have re-opened `approve` — whose only guard is that lookup — for a request holding a live ticket, and through it `issue`, minting a second ticket and a second hold for stock already promised. An edge reachable through one door is guarded at that door. |
 | §9.2 cancellation, scope | A shop transfer's and a shop ask's ticket cannot be cancelled: both leave from an outlet, and the route admits only the store keeper at the store and the kitchen in-charge at the kitchen. Phase 6 gives the counter that door. | Keeping the role list honest was better than adding a counter path this phase has no screen for and no test budget to cover. |
 | §9.3 `changed` | A cancellation names `["tkt", "rsv"]` plus `"req"` or `"pord"` only when one of those actually moved. | Naming a slice that did not change costs every open browser a refetch — the same reason a make does not name `"rsv"`. |
 | §5.1 locks | A cancellation takes no balance locks. The ticket's own `for update` serialises two cancellations; a release can only make free-to-promise larger, so a writer racing it is correct either way. | The lock-before-read rule exists to stop the same stock being promised twice. Giving stock back is not a promise. |
