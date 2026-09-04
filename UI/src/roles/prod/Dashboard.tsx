@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
-import { availOf, canHandOver, isTicketOpen, qty } from "../../lib/selectors";
+import { availOf, canHandOver, hasLeft, isTicketOpen, qty } from "../../lib/selectors";
 import { fq, sum, U } from "../../lib/fmt";
 import {
   Alert, Btn, Card, DataTable, Feed, Grid, Kpis, PageHead, Pill, StatusPill, TableFoot,
@@ -22,7 +22,11 @@ export default function Dashboard() {
     [pord],
   );
   const ready = useMemo(() => pord.filter((o) => o.st === "Ready"), [pord]);
-  const dispatches = useMemo(() => tkt.filter((t) => t.from === "kitchen"), [tkt]);
+  const raised = useMemo(() => tkt.filter((t) => t.from === "kitchen"), [tkt]);
+  // What actually went out: still on its way, or already there. Same reading as Make &
+  // Distribute's "Out of the kitchen today", and for the same reason — a ticket that was
+  // taken back is not a dispatch, and counting it flattered the day's figure for ever.
+  const dispatches = useMemo(() => raised.filter((t) => isTicketOpen(t.st) || hasLeft(t.st)), [raised]);
   const toHand = useMemo(() => dispatches.filter((t) => t.st === "Issued"), [dispatches]);
   // Still on its way: at the pass or in transit. A withdrawn ticket is neither.
   const moving = useMemo(() => dispatches.filter((t) => isTicketOpen(t.st)), [dispatches]);

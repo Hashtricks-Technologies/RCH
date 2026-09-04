@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { act, createElement, type ComponentType, type ReactElement } from "react";
 import { createRoot } from "react-dom/client";
 import { MemoryRouter } from "react-router-dom";
@@ -20,6 +20,7 @@ import { groupPool, picksFor, type PoolGroup } from "../roles/buyer/ProcurementL
 import { seedVendors } from "../data/vendors";
 import type { PoolLine } from "../lib/selectors";
 import type { Role } from "../types";
+import { resetStore } from "./fixture";
 
 const REGISTRY: Record<Role, Record<string, ComponentType>> = { counter, manager, store, prod, buyer };
 
@@ -208,5 +209,30 @@ describe("procurement list", () => {
       { prq: "PRQ-2026-013", line: 0, qty: 60 },
     ]);
     expect(picksFor(g, 0)).toEqual([]);
+  });
+});
+
+describe("the kitchen order board", () => {
+  afterEach(resetStore);
+
+  it("names the ticket the outlet will actually collect against (I1)", () => {
+    // An order withdrawn off its ticket goes back to Ready and can be dispatched again, so it
+    // ends the day carrying two — and the server hands them over oldest first. The card used
+    // to print the first one it found, which is the withdrawn one.
+    act(() => {
+      useApp.getState().signIn(USERS.find((u) => u.r === "prod")!.id);
+      useApp.setState({
+        pord: [{ id: "PRD-2026-029", from: "kiosk", by: "Ramesh Kumar", at: "07:10",
+          lines: [{ it: "puff", qty: 40 }], st: "Dispatched", note: "",
+          hist: [{ s: "New", who: "Ramesh Kumar", t: "07:10" }] }],
+        tkt: [
+          { id: "TKT-0801", req: "PRD-2026-029", from: "kitchen", to: "kiosk", lines: [{ it: "puff", qty: 40 }], st: "Cancelled", otp: "111111" },
+          { id: "TKT-0802", req: "PRD-2026-029", from: "kitchen", to: "kiosk", lines: [{ it: "puff", qty: 40 }], st: "Issued", otp: "222222" },
+        ],
+      });
+    });
+    const html = render(createElement(prod.orders));
+    expect(html).toContain("TKT-0802");
+    expect(html).not.toContain("TKT-0801");
   });
 });

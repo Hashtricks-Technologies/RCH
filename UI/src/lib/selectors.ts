@@ -207,3 +207,12 @@ export const canCancelTicket = (st: TktStatus) => D.canTransition(D.TICKET_TRANS
  * shelf it never reached.
  */
 export const isTicketOpen = (st: TktStatus) => canHandOver(st) || canReceiveTicket(st);
+
+/**
+ * Whether the stock on a ticket has actually left the location that raised it — the measure
+ * the store's ledger counts an issue by. Read from the table rather than written as
+ * `!== "Issued"`: a ticket that can still be handed over has moved nothing, and a withdrawn
+ * one never will, so counting one put stock off the shelf that is still standing on it and
+ * overstated both the opening balance and what went out.
+ */
+export const hasLeft = (st: TktStatus) => st !== "Cancelled" && !canHandOver(st);

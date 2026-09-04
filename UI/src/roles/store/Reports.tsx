@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { IT, LOC } from "../../data/master";
 import { useApp, type AppState } from "../../store";
-import { committed, costOf, freeToPromise, isTicketOpen, onOrder, parOf, qty, resv } from "../../lib/selectors";
+import { committed, costOf, freeToPromise, hasLeft, isTicketOpen, onOrder, parOf, qty, resv } from "../../lib/selectors";
 import { U, fq, money0, now, pct, sum, unitTotal } from "../../lib/fmt";
 import {
   Btn, Card, DataTable, FilterSelect, Icon, PageHead, Pill, StatusPill, TableFoot, Toolbar,
@@ -46,7 +46,10 @@ const ledger = (s: AppState): Rep => {
   const rows = storeKeys(s).sort(byCode).map((k) => {
     const grn = s.grn.filter((g) => g.it === k);
     const recd = sum(grn, (g) => g.qty);
-    const out = sum(fromStore(s).filter((t) => t.st !== "Issued"),
+    // Only what has actually gone out of the window. A withdrawn ticket moved nothing, so
+    // counting it against issues also walked the opening balance up by the same quantity —
+    // opening is worked back from closing here, and the two errors do not cancel.
+    const out = sum(fromStore(s).filter((t) => hasLeft(t.st)),
       (t) => sum(t.lines.filter((l) => l.it === k), (l) => l.qty));
     const close = qty(s, "store", k);
     return [
@@ -69,7 +72,10 @@ const ledger = (s: AppState): Rep => {
 };
 
 const issreg = (s: AppState): Rep => {
-  const out = fromStore(s);
+  // The three status columns count confirmed, in transit and at the window; a withdrawn
+  // ticket is none of those, so leaving it in the ticket, line, quantity and value columns
+  // gave an outlet a row that did not add up.
+  const out = fromStore(s).filter((t) => t.st !== "Cancelled");
   const rows = [...new Set(out.map((t) => t.to))].map((l) => {
     const ts = out.filter((t) => t.to === l);
     const lines = ts.flatMap((t) => t.lines);
@@ -88,7 +94,7 @@ const issreg = (s: AppState): Rep => {
     ],
     rows,
     facet: 0,
-    foot: `${out.length} ticket${out.length === 1 ? "" : "s"} raised against ${LOC.store.n}`,
+    foot: `${out.length} ticket${out.length === 1 ? "" : "s"} standing against ${LOC.store.n} — withdrawn tickets are left out`,
     empty: { title: "Nothing has been issued yet", sub: "Generate a ticket on the issue desk and it lands here." },
   };
 };
@@ -236,7 +242,9 @@ const ageing = (s: AppState): Rep => {
 };
 
 const movers = (s: AppState): Rep => {
-  const out = fromStore(s);
+  // "Issued from store" is stock that left the window, so it is measured the way the ledger
+  // measures it — a withdrawn ticket moved nothing and must not make an item look fast.
+  const out = fromStore(s).filter((t) => hasLeft(t.st));
   const rows = storeKeys(s)
     .map((k) => ({
       k,
@@ -324,7 +332,9 @@ const disc = (s: AppState): Rep => {
   };
 };
 
-const REPORTS: ReportDef[] = [
+/** Exported for the suite: each report is a pure `AppState -> Rep` build, so a case about
+ *  what a report counts can drive the arithmetic without going through the screen. */
+export const REPORTS: ReportDef[] = [
   { k: "ledger", n: "Central store stock ledger", icon: "stock", build: ledger, d: "Every receipt, issue and adjustment against each item in the central store." },
   { k: "issreg", n: "Issue register by outlet", icon: "tkt", build: issreg, d: "What left the store window, grouped by receiving outlet." },
   { k: "turn", n: "Ticket turnaround", icon: "rep", build: turn, d: "Time from manager approval to ticket, and from ticket to collection." },

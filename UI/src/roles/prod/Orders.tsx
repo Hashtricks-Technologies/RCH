@@ -42,7 +42,13 @@ export default function Orders() {
   const inColumn = (st: PordStatus) => filtered.filter((o) => o.st === st);
   const declined = inColumn("Declined");
   const onBoard = filtered.filter((o) => o.st !== "Declined");
-  const ticketFor = (o: ProdOrder) => tkt.find((t) => t.req === o.id);
+  /** An order cancelled off its ticket and dispatched again carries two, oldest first (the
+   *  server hands them over in issue order). The card must name the one the outlet will
+   *  collect against, so take the newest that is still standing and fall back to the newest. */
+  const ticketFor = (o: ProdOrder) => {
+    const raised = tkt.filter((t) => t.req === o.id);
+    return raised.findLast((t) => t.st !== "Cancelled") ?? raised.at(-1);
+  };
 
   const OUTLET_NAMES = ["All", ...OUTLETS.map((l) => LOC[l].n)];
   const clearFilters = () => { setQ(""); setOutlet(null); };

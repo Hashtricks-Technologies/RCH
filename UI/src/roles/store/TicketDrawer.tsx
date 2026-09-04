@@ -156,7 +156,7 @@ function TicketDrawer({ id }: DrawerProps) {
         <Section title="Cancel this ticket" sub="Nobody collected against it, and the stock should go back">
           {cancelling ? (
             <>
-              <Field label="Reason" hint="Written to the ticket's history — it is the only record of the cancellation.">
+              <Field label="Reason" hint="Kept with the ticket's history.">
                 <input
                   placeholder="Counter closed, wrong outlet…"
                   aria-label={`Why ${t.id} is being cancelled`}

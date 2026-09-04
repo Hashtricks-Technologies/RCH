@@ -161,6 +161,8 @@ export function createProductionService(db: Db) {
         const recipe = master.recipes[body.it];
         assertRule(recipe, `${item.n} has no recipe — it cannot be produced`);
 
+        // No fold across the lines: `recipes` is keyed on (item_key, ingredient_key), so an
+        // ingredient cannot appear twice in one recipe and there is nothing to add together.
         const need = recipe.l.map(([g, per]) => ({ it: g, qty: round3(per * started) }));
         const at = new Date();
         const no = await allocateNumber(tx, "batch", at);
