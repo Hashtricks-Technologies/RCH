@@ -154,7 +154,8 @@ export const given = {
         id, vendorId: p.vendor ?? "VN-001", status: st, eta: p.eta ?? "2026-09-30",
         needsApproval: p.needsApproval ?? false,
       });
-      await tx.insert(s.poLines).values(p.lines.map((l, lineNo) => ({
+      // An order may be built without lines (a send must refuse it); drizzle refuses an empty values().
+      if (p.lines.length > 0) await tx.insert(s.poLines).values(p.lines.map((l, lineNo) => ({
         poId: id, lineNo, itemKey: l.it, qty: l.qty, rate: l.rate ?? 10,
         receivedQty: l.recv ?? 0, rejectedQty: l.rejected ?? 0,
       })));
