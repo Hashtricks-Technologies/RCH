@@ -283,6 +283,19 @@ describe("the collection OTP reaches the collector's screen and no other", () =>
     expect(html).not.toContain("otp-v");
     expect(html).toContain("used at handover");
   });
+
+  it("says the digits were never used on an inbound ticket somebody withdrew", () => {
+    // A cancelled ticket comes back with `otp: ""` like a received one, and the empty cell used
+    // to read "used at handover" for both — which is a lie about a ticket nobody collected.
+    act(() => {
+      as("prod");
+      useApp.setState({ tkt: [tkt({ id: "TKT-0904", st: "Cancelled", otp: "" })] });
+    });
+    const html = render(createElement(prod.tickets));
+    expect(html).not.toContain("otp-v");
+    expect(html).toContain("withdrawn — the OTP was never used");
+    expect(html).not.toContain("used at handover");
+  });
 });
 
 /** The counter's own ticket drawer opens on both directions, and almost every sentence on it
@@ -317,6 +330,16 @@ describe("the counter's ticket drawer reads its own direction", () => {
     expect(html).toContain("were used at handover");
     // and not the sentence for a ticket this counter raised, which it did not
     expect(html).not.toContain("this ticket was raised here");
+  });
+
+  it("says the digits were never used on an inbound ticket somebody withdrew", () => {
+    // Withdrawn and collected both arrive with `otp: ""`, and only the status separates them.
+    // Telling a counter its digits "were used at handover" on a ticket nobody ever collected
+    // would have it looking for goods that never left the store.
+    const html = open(inbound({ st: "Cancelled", otp: "" }));
+    expect(html).toContain("withdrawn before anyone collected against it");
+    expect(html).not.toContain("otp-v");
+    expect(html).not.toContain("were used at handover");
   });
 
   it("offers Confirm receipt only on a ticket addressed to this counter", () => {

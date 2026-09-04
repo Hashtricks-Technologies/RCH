@@ -23,14 +23,16 @@ export function createSnapshotService(db: Db) {
       const [u, names] = await Promise.all([snapshotRepo.userById(db, claims.sub), D.userNames(db)]);
       if (!u) throw new NotFoundError("That account no longer exists.");
       // Independent reads run together; the pool serialises what it must.
-      const [items, locations, recipes, users, prices, menu, roster, stock, rsv, ovr, req, tkt, prq, po, grn, pord, batch, bills, vendors, contracts, tickets, owners, productReqs, shopAsks, salesBlock] = await Promise.all([
+      const [items, locations, recipes, users, prices, menu, roster, stock, rsv, ovr, req, tkt, prq, po, grn, pord, batch, bills, vendors, contracts, support, productReqs, shopAsks, salesBlock] = await Promise.all([
         M.readItems(db), M.readLocations(db), M.readRecipes(db), M.readUsers(db), M.readPrices(db), M.readMenu(db), M.readRoster(db),
         S.readStock(db), S.readRsv(db), S.readOvr(db),
         D.readRequests(db, names), D.readTickets(db), D.readRequisitions(db, names), D.readPurchaseOrders(db), D.readGrns(db, names), D.readProdOrders(db, names), D.readBatches(db),
-        D.readBills(db, BILL_DAYS, names), D.readVendors(db), D.readContracts(db), D.readSupportTickets(db, names), D.readSupportTicketOwners(db), D.readProductRequests(db, names), D.readShopAsks(db, names), D.readSales(db, SALES_DAYS),
+        D.readBills(db, BILL_DAYS, names), D.readVendors(db), D.readContracts(db), D.readSupportTickets(db, names), D.readProductRequests(db, names), D.readShopAsks(db, names), D.readSales(db, SALES_DAYS),
       ]);
-      const full: Snapshot = { user: toWireUser(u), items, locations, recipes, users, prices, menu, stock, rsv, ovr, req, tkt, prq, po, pord, batch, bills, grn, vendors, contracts, tickets, productReqs, shopAsks, roster, sales: salesBlock.sales, dayLabels: salesBlock.dayLabels };
-      return scope(full, { role: claims.role, loc: claims.loc, sub: claims.sub }, owners);
+      // The desk and its owners come off one read: `scope()` cuts the list on `owners`, so a
+      // ticket in one and not the other is a ticket its own author cannot see.
+      const full: Snapshot = { user: toWireUser(u), items, locations, recipes, users, prices, menu, stock, rsv, ovr, req, tkt, prq, po, pord, batch, bills, grn, vendors, contracts, tickets: support.tickets, productReqs, shopAsks, roster, sales: salesBlock.sales, dayLabels: salesBlock.dayLabels };
+      return scope(full, { role: claims.role, loc: claims.loc, sub: claims.sub }, support.owners);
     },
     /** The ledger on its own, for a client that has the master already and only wants the numbers. */
     async stock(claims: AccessClaims): Promise<StockResponse> {

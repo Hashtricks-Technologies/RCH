@@ -1,6 +1,6 @@
 import type { Item, Location, Payer, PayerRoster, Recipe, UserMin } from "../types";
 
-export { ALL_LOCS, OUTLETS, PAR_FACTOR, STAFF_CREDIT_LIMIT, PO_APPROVAL_LIMIT } from "@rch/contract";
+export { ALL_LOCS, OUTLETS, STAFF_CREDIT_LIMIT, PO_APPROVAL_LIMIT } from "@rch/contract";
 
 // Registries. Mutable on purpose: the store can add a product, and hydrateMaster()
 // replaces the contents with what the server returns. Screens import these directly,

@@ -19,7 +19,7 @@ describe("allocateId", () => {
   });
   // Relative, not absolute: this file shares one schema and one `sequences` row across its
   // cases, and the case above has already consumed tkt 441-461.
-  it("hands back the raw number alongside the id, so an OTP can be minted from it", async () => {
+  it("hands back the raw number alongside the id, so the series can be read without parsing", async () => {
     const a = await withTransaction(t.db, (tx) => allocateNumber(tx, "tkt"));
     const b = await withTransaction(t.db, (tx) => allocateNumber(tx, "tkt"));
     expect(b.n).toBe(a.n + 1);

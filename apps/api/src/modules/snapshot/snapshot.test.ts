@@ -316,9 +316,13 @@ describe("what a ticket carries, and to whom", () => {
     expect(snap.roster.depts.length).toBeGreaterThan(0);
     expect(snap.roster.staff.every((p: { kind: string }) => p.kind === "staff")).toBe(true);
     // A payer switched off is not offered at the till.
-    await app.testDb!.db.update(s.payers).set({ active: false })
-      .where(and(eq(s.payers.kind, "staff"), eq(s.payers.id, snap.roster.staff[0].id)));
+    const off = and(eq(s.payers.kind, "staff"), eq(s.payers.id, snap.roster.staff[0].id));
+    await app.testDb!.db.update(s.payers).set({ active: false }).where(off);
     expect((await get("u1")).roster.staff.length).toBe(snap.roster.staff.length - 1);
+    // Put them back on: `beforeEach` runs `resetDocuments`, which never touches `payers`, so a
+    // case that leaves one deactivated leaves it deactivated for every case after it in the file.
+    await app.testDb!.db.update(s.payers).set({ active: true }).where(off);
+    expect((await get("u1")).roster.staff.length).toBe(snap.roster.staff.length);
   });
 
   it("shows every role its own support tickets and nobody else's", async () => {

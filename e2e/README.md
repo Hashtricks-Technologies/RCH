@@ -95,13 +95,13 @@ artifact.
 
 ## Known switches
 
-Two assertions are gated, because at this tree they would pass whatever the server did — and an
-assertion that cannot fail is worse than none. Each prints a `not asserted` annotation into the
-run while it is off, so neither can go quiet. Set the variable on the `helm install into kind`
-step in `.github/workflows/ci.yml` in the same commit that lands the change, and delete the
-switch in the one after.
+None. Two assertions were gated while the changes they check were still landing — the issue
+desk's OTP redaction (`E2E_OTP_REDACTED`) and the support desk's scoping (`E2E_SUPPORT_SERVER`)
+— and both are now unconditional, so the only environment variables the suite reads are
+`E2E_BASE_URL` and `E2E_PASSWORD`.
 
-| Variable | The assertion it turns on | What has to land first |
-|---|---|---|
-| `E2E_OTP_REDACTED=1` | The issue desk prints none of the six digits it is checking — neither through `<Otp>` nor as the bare `span.mono` column `store/IssueDesk.tsx` and `manager/ItemsStock.tsx` write | The wire withholding `otp` from the sending location, **and** the store's screens no longer rendering it |
-| `E2E_SUPPORT_SERVER=1` | A support ticket raised at one counter is not in another role's list | The support desk moving off `UI/src/store/ops.ts`, which today mints the id in the browser and keeps the conversation in memory |
+If a scenario ever needs a switch again, the rule that governed those two still holds: an
+assertion that cannot fail is worse than none, so gate it, print a `not asserted` annotation
+into the run while it is off, set the variable on the `helm install into kind` step in
+`.github/workflows/ci.yml` in the same commit that lands the change, and delete the switch in
+the one after.

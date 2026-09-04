@@ -7,10 +7,13 @@
  * job: on a shared runner it would measure the runner, and a number nobody can attribute to a
  * machine is not evidence. Run it where you can say what the machine was, and write that down.
  *
- *   node apps/api/scripts/loadcheck.mjs --base http://localhost:3000 --emp RC-4471 --password changeme
+ *   LOADCHECK_PASSWORD=changeme node apps/api/scripts/loadcheck.mjs --base http://localhost:3000 --emp RC-4471
  *
- * Flags: --base (default http://localhost:3000), --emp, --password, --concurrency (default 10),
+ * Flags: --base (default http://localhost:3000), --emp, --concurrency (default 10),
  *        --duration (seconds, default 20), --warmup (seconds, default 3), --no-writes, --help.
+ *
+ * The password comes from LOADCHECK_PASSWORD. `--password` still works and is still honoured
+ * last, but it warns: a flag lands in the shell's history and in every `ps` on the box.
  *
  * The rate limiter keys an authenticated request on the caller's user id (RATE_LIMIT_PER_MINUTE,
  * default 300/min) — this script shares one bearer token across every concurrent worker, so raise
@@ -22,18 +25,15 @@
 import { performance } from "node:perf_hooks";
 import { randomUUID } from "node:crypto";
 
-const arg = (name, fallback) => {
-  const i = process.argv.indexOf(`--${name}`);
-  return i === -1 ? fallback : process.argv[i + 1];
-};
-const flag = (name) => process.argv.includes(`--${name}`);
-
 const HELP = `Measures GET /snapshot and POST /bills against §12's 150ms / 200ms p95 targets.
 
-  node apps/api/scripts/loadcheck.mjs --base http://localhost:3000 --emp RC-4471 --password changeme
+  LOADCHECK_PASSWORD=changeme node apps/api/scripts/loadcheck.mjs --base http://localhost:3000 --emp RC-4471
 
-Flags: --base (default http://localhost:3000), --emp, --password, --concurrency (default 10),
+Flags: --base (default http://localhost:3000), --emp, --concurrency (default 10),
        --duration (seconds, default 20), --warmup (seconds, default 3), --no-writes, --help.
+
+The password comes from LOADCHECK_PASSWORD. --password still works and is honoured after it, but
+it warns: a flag lands in the shell's history and in every \`ps\` on the box.
 
 The rate limiter keys an authenticated request on the caller's user id (RATE_LIMIT_PER_MINUTE,
 default 300/min) — this script shares one bearer token across every concurrent worker, so raise
@@ -41,6 +41,29 @@ that limit, or point at a deployment where it already is, before trusting a FAIL
 
 It sells one unit of one item per write, on the counter's own outlet, with a fresh
 Idempotency-Key each time — so it moves real stock. Point it at a database you can reseed.`;
+
+/** A bad invocation stops here, saying which flag and what it wanted. The alternative is a NaN
+ *  duration that runs the hammer for zero milliseconds and prints a confident PASS off n=0. */
+const usage = (why) => {
+  console.error(`loadcheck: ${why}\n\n${HELP}`);
+  process.exit(2);
+};
+
+const arg = (name, fallback) => {
+  const i = process.argv.indexOf(`--${name}`);
+  if (i === -1) return fallback;
+  const v = process.argv[i + 1];
+  // `--duration --no-writes` is a missing value, not a duration of "--no-writes".
+  if (v === undefined || v.startsWith("--")) usage(`--${name} needs a value`);
+  return v;
+};
+const num = (name, fallback, min = 1) => {
+  const raw = arg(name, fallback);
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < min) usage(`--${name} takes a number of at least ${min}, not "${raw}"`);
+  return n;
+};
+const flag = (name) => process.argv.includes(`--${name}`);
 
 if (flag("help")) {
   console.log(HELP);
@@ -50,10 +73,15 @@ if (flag("help")) {
 const BASE = (arg("base", "http://localhost:3000")).replace(/\/$/, "");
 const API = `${BASE}/api/v1`;
 const EMP = arg("emp", "RC-4471");
-const PASSWORD = arg("password", "changeme");
-const CONCURRENCY = Number(arg("concurrency", "10"));
-const DURATION_MS = Number(arg("duration", "20")) * 1000;
-const WARMUP_MS = Number(arg("warmup", "3")) * 1000;
+const PASSWORD_FLAG = arg("password", undefined);
+if (PASSWORD_FLAG !== undefined) {
+  console.warn("# --password is in your shell history and in `ps` for as long as this runs. Set LOADCHECK_PASSWORD instead.");
+}
+const PASSWORD = process.env.LOADCHECK_PASSWORD ?? PASSWORD_FLAG ?? "changeme";
+const CONCURRENCY = num("concurrency", "10");
+const DURATION_MS = num("duration", "20") * 1000;
+// Zero is a legitimate warm-up — "I have already hammered this process" — so this one floors at 0.
+const WARMUP_MS = num("warmup", "3", 0) * 1000;
 
 /** §12's two ceilings, in milliseconds. */
 const TARGETS = { "GET /snapshot": 150, "POST /bills": 200 };

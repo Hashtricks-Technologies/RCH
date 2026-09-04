@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
-import { and, eq, gt } from "drizzle-orm";
+import { and, asc, eq, gt } from "drizzle-orm";
 import * as FX from "@rch/contract/fixtures";
 import type { CreditResponse, StockLedgerResponse } from "@rch/contract";
 import { round3, STAFF_CREDIT_LIMIT } from "@rch/domain";
@@ -70,9 +70,13 @@ const sellPastTheCeiling = async (payer: { kind: "staff"; id: string; name: stri
 
 describe("GET /reports/stock-ledger", () => {
   it("opens at what the moves before the window sum to and closes at the balance", async () => {
-    // Pick the item by filtering rather than naming one: the seed moves.
+    // Pick the item by filtering rather than naming one: the seed moves. Ordered, though —
+    // `limit(1)` off an unordered select is whichever row Postgres happens to hand back first,
+    // and the four literals below are that one item's numbers, so an unordered pick would make
+    // this case pass or fail on the planner's mood.
     const [{ itemKey: it }] = await app.db.select({ itemKey: s.stockBalances.itemKey }).from(s.stockBalances)
-      .where(and(eq(s.stockBalances.loc, "store"), gt(s.stockBalances.onHand, 0))).limit(1);
+      .where(and(eq(s.stockBalances.loc, "store"), gt(s.stockBalances.onHand, 0)))
+      .orderBy(asc(s.stockBalances.itemKey)).limit(1);
 
     const body = await ledger("store", 30);
     const row = body.rows.find((r) => r.it === it)!;

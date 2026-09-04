@@ -36,7 +36,7 @@ export const QUARANTINE = "quarantine";
 export const StockLocSchema = z.enum([...LocKeySchema.options, QUARANTINE]);
 
 // `LocKey` itself is declared in ../types.js, which imports *from* this file — naming it there
-// would be a cycle, so the three constants below take a local alias of the same inference.
+// would be a cycle, so the two lists below take a local alias of the same inference.
 type LocKey = z.infer<typeof LocKeySchema>;
 /** The five places an operator works, in the order the sidebar and every stock screen list them.
  *  Spread out of `LocKeySchema` rather than typed out again, so the two can never disagree — and
@@ -45,10 +45,6 @@ type LocKey = z.infer<typeof LocKeySchema>;
 export const ALL_LOCS: LocKey[] = [...LocKeySchema.options];
 /** The three that sell. `sales`'s columns are these, in this order (readers/documents.ts). */
 export const OUTLETS: LocKey[] = ["rest", "coffee", "kiosk"];
-/** How much of a location's average daily issue one par level covers, per location — read as
- *  `PAR_FACTOR[l] ?? 1` by `parOf` in `UI/src/lib/selectors.ts`. It is a record, not a number:
- *  the central store carries a day, an outlet a fifth of one (M11). */
-export const PAR_FACTOR: Record<LocKey, number> = { store: 1, kitchen: 0.35, rest: 0.22, coffee: 0.18, kiosk: 0.15 };
 /** The order value above which a purchase order needs finance approval, in rupees. The rule
  *  that reads it is `needsApproval` in @rch/domain; this is only the number. */
 export const PO_APPROVAL_LIMIT = 25000;

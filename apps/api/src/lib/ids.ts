@@ -11,7 +11,8 @@ export async function ensureSequences(tx: Tx): Promise<void> {
 }
 
 /** Gapless and serialised: the row lock taken by UPDATE holds until the caller's transaction
- *  ends. Returns the raw number too, because a ticket's OTP is minted from it (`makeOtp`). */
+ *  ends. Returns the raw number alongside the formatted id, for a caller that needs the counter
+ *  itself rather than the string it prints. */
 export async function allocateNumber(tx: Tx, kind: IdKind, at: Date = new Date()): Promise<{ n: number; id: string }> {
   const r = await tx.execute(sql`update sequences set next = next + 1 where kind = ${kind} returning next - 1 as n`);
   const row = r.rows[0] as { n: number | string } | undefined;

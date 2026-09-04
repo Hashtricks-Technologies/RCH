@@ -18,7 +18,7 @@ test("a requisition becomes an order, and the delivery splits between two shelve
     // 1. The store keeper asks.
     await store.getByRole("navigation").getByRole("link", { name: "Requisitions" }).click();
     await store.getByRole("button", { name: "Add item" }).first().click();
-    await store.locator("table.lgrid tbody select").first().selectOption("milk");
+    await store.getByLabel("Item on line 1").selectOption("milk");
     await store.getByLabel(`Quantity of ${MILK}`).fill("60");
     await store.getByLabel("Note to procurement").fill("Weekly dairy");
     await store.getByRole("button", { name: "Send to procurement" }).click();

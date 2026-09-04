@@ -128,25 +128,29 @@ export async function readContracts(db: Db): Promise<RateContract[]> {
   }).from(s.rateContracts).innerJoin(s.vendors, eq(s.rateContracts.vendorId, s.vendors.id)).orderBy(asc(s.rateContracts.id));
   return rows.map((c) => ({ id: c.id, vendor: c.vendorName, it: c.itemKey, rate: c.rate, from: c.validFrom, to: c.validTo, moq: c.moq, active: c.active }));
 }
-export async function readSupportTickets(db: Db, pre?: UserNames): Promise<SupportTicket[]> {
+/**
+ * The support desk, and who owns each of its tickets, off **one** read of `support_tickets`.
+ *
+ * The pair is returned together rather than fetched by two exported readers, because the second
+ * read would be a second snapshot of a table the first has already left behind: a ticket raised
+ * between them would arrive in `tickets` with no entry in `owners`, and `scope()` cuts on
+ * `owners` — so the counter that had just raised it would not see it until the next refetch.
+ *
+ * `owners` maps ticket id to the **user id** that raised it. `SupportTicket.by` on the wire is a
+ * display name and two people can share one, so the scope cannot cut on it; it has to cut on an
+ * identity.
+ */
+export async function readSupportTickets(db: Db, pre?: UserNames): Promise<{ tickets: SupportTicket[]; owners: Map<string, string> }> {
   const [heads, msgs, names] = await Promise.all([
     db.select().from(s.supportTickets).orderBy(desc(s.supportTickets.at), desc(s.supportTickets.id)), db.select().from(s.supportMessages).orderBy(asc(s.supportMessages.at), asc(s.supportMessages.id)), pre ? Promise.resolve(pre) : userNames(db),
   ]);
   const by = groupBy(msgs, (m) => m.ticketId);
-  return heads.map((t) => strip({
+  const tickets = heads.map((t) => strip({
     id: t.id, topic: t.topic, subject: t.subject, priority: t.priority, st: t.status, by: names.get(t.byUser)?.name ?? t.byUser, role: t.role, loc: t.loc as LocKey, at: iso(t.at), screen: t.screen,
     messages: (by.get(t.id) ?? []).map((m) => ({ id: m.id.includes("/") ? m.id.slice(m.id.indexOf("/") + 1) : m.id, from: m.from, who: m.who, at: iso(m.at), body: m.body })),
     rating: (t.rating ?? undefined) as SupportTicket["rating"],
   }));
-}
-/**
- * Ticket id -> the user id that raised it. `SupportTicket.by` on the wire is a display name and
- * two people can share one, so the scope cannot cut on it; it has to cut on an identity.
- * @public — consumed by service.ts, which threads it into `scope()`.
- */
-export async function readSupportTicketOwners(db: Db): Promise<Map<string, string>> {
-  const rows = await db.select({ id: s.supportTickets.id, byUser: s.supportTickets.byUser }).from(s.supportTickets);
-  return new Map(rows.map((r) => [r.id, r.byUser]));
+  return { tickets, owners: new Map(heads.map((t) => [t.id, t.byUser])) };
 }
 export async function readProductRequests(db: Db, pre?: UserNames): Promise<ProductRequest[]> {
   const [rows, names] = await Promise.all([db.select().from(s.productRequests).orderBy(desc(s.productRequests.at)), pre ? Promise.resolve(pre) : userNames(db)]);

@@ -3,7 +3,7 @@
 // carries when nothing is said about it, and which ticket statuses hold their stock.
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { SEQUENCE_START, makeOtp } from "@rch/domain";
+import { SEQUENCE_START } from "@rch/domain";
 import { withTestSchema, truncateAll, type TestDb } from "./db.js";
 import { seedTestDb } from "./seed.js";
 import * as s from "../db/schema/index.js";
@@ -11,7 +11,7 @@ import { readHistory } from "../lib/history.js";
 import { reservedAt } from "../lib/reservations.js";
 import { readTicket } from "../lib/tickets.js";
 import { readRequests, readShopAsks } from "../modules/snapshot/readers/documents.js";
-import { given } from "./builders.js";
+import { BUILDER_OTP, given } from "./builders.js";
 
 let t: TestDb;
 beforeAll(async () => { t = await withTestSchema("builders"); });
@@ -43,7 +43,10 @@ describe("given", () => {
     const issued = await given.ticket(t.db, { from: "kitchen", to: "kiosk", lines: [{ it: "puff", qty: 5 }] });
     const collected = await given.ticket(t.db, { from: "kitchen", to: "kiosk", lines: [{ it: "puff", qty: 7 }], st: "Collected" });
     expect(await t.db.transaction((tx) => reservedAt(tx, "kitchen", ["puff"]))).toEqual({ "kitchen:puff": 5 });
-    expect(await t.db.transaction((tx) => readTicket(tx, issued))).toMatchObject({ st: "Issued", otp: makeOtp(700), lines: [{ it: "puff", qty: 5 }] });
+    // The builder's fixed code is on the row and nowhere in the read: `readTicket` never quotes
+    // six digits, because it has no reader's location to check them against.
+    expect((await t.db.select().from(s.tickets).where(eq(s.tickets.id, issued)))[0]?.otp).toBe(BUILDER_OTP);
+    expect(await t.db.transaction((tx) => readTicket(tx, issued))).toMatchObject({ st: "Issued", otp: "", lines: [{ it: "puff", qty: 5 }] });
     expect(await t.db.transaction((tx) => readTicket(tx, collected))).toMatchObject({ st: "Collected", from: "kitchen", to: "kiosk" });
   });
 
@@ -106,8 +109,9 @@ describe("given", () => {
     expect(id).toMatch(/^SUP-00\d+$/);
     // The fixtures stop at SUP-0043 and the sequence starts at 44; `nextId` pads to four, so the
     // builder's band is SUP-000101+ — above both, and a builder-made ticket can collide with
-    // neither a seeded one nor an allocated one.
-    expect(Number(id.slice(-3))).toBeGreaterThan(100);
+    // neither a seeded one nor an allocated one. Read the number off the prefix, not off the
+    // tail: the tail of the builder's 900th id is "000", which is not the number at all.
+    expect(Number(id.slice("SUP-00".length))).toBeGreaterThan(100);
 
     const rows = await t.db.select().from(s.supportTickets).where(eq(s.supportTickets.id, id));
     expect(rows[0]?.status).toBe("Open");

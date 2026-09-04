@@ -55,8 +55,12 @@ describe("document readers", () => {
     expect(contracts.map((c) => strip(c, ["from", "to"]))).toEqual(fxContracts.map((c) => strip(c, ["from", "to"])));
     for (const c of contracts) { expect(c.from).toMatch(/^\d{4}-\d{2}-\d{2}$/); expect(c.to).toMatch(/^\d{4}-\d{2}-\d{2}$/); }
     const sup = await D.readSupportTickets(t.db);
-    expect(noTimes(sup)).toEqual(noTimes(FX.seedTickets()));
-    expect(sup[0].messages[0].id).toBe(FX.seedTickets()[0].messages[0].id);
+    expect(noTimes(sup.tickets)).toEqual(noTimes(FX.seedTickets()));
+    expect(sup.tickets[0].messages[0].id).toBe(FX.seedTickets()[0].messages[0].id);
+    // The owners map comes off the same read of the same rows, so it covers exactly the tickets
+    // the list carries — that is the whole point of returning the pair together.
+    expect([...sup.owners.keys()].sort()).toEqual(sup.tickets.map((x) => x.id).sort());
+    expect(sup.owners.get(FX.seedTickets()[0].id)).toBeTruthy();
     expect(noTimes(await D.readProductRequests(t.db))).toEqual(noTimes(FX.seedProductRequests()));
     const seededTicketIds = new Set(FX.seedTkt.map((tk) => tk.id));
     const gotAsks = await D.readShopAsks(t.db);
@@ -88,7 +92,7 @@ describe("document readers", () => {
     onlyDoctored("grns", grn.map((g) => g.by));
     onlyDoctored("production orders", pord.map((o) => o.by));
     onlyDoctored("bills", bills.map((b) => b.opr));
-    onlyDoctored("support tickets", sup.map((t2) => t2.by));
+    onlyDoctored("support tickets", sup.tickets.map((t2) => t2.by));
     onlyDoctored("product requests", prod.map((p) => p.by));
     onlyDoctored("shop asks", asks.map((a) => a.by));
   });
