@@ -11,3 +11,11 @@ export function todayAt(hhmm: string): Date {
 export function dateAt(yyyyMmDd: string, hhmm: string): Date {
   return new Date(`${yyyyMmDd}T${hhmm}:00+05:30`);
 }
+
+/** Midnight on the first of the current month, in the hospital's zone. Staff credit is
+ *  settled monthly, so that is the window a ceiling is measured over. */
+export function monthStartIST(at: Date = new Date()): Date {
+  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit" }).formatToParts(at);
+  const get = (t: string) => parts.find((p) => p.type === t)!.value;
+  return dateAt(`${get("year")}-${get("month")}-01`, "00:00");
+}

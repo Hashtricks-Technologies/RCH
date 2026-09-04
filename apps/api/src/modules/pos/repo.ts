@@ -1,5 +1,5 @@
 // Pos: SQL only. No rules, no transaction of its own — service.ts passes `tx` in.
-import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, isNull, sql } from "drizzle-orm";
 import type { OvrMap, Prices, RsvMap, StockMap } from "@rch/domain";
 import type { Tx } from "../../lib/db.js";
 import type { BillLineRow, BillRow } from "../../lib/wire.js";
@@ -70,5 +70,17 @@ export const posRepo = {
     const rows = await tx.select().from(stockBalances)
       .where(and(eq(stockBalances.loc, loc), inArray(stockBalances.itemKey, itemKeys))).orderBy(asc(stockBalances.itemKey));
     return Object.fromEntries(rows.map((r) => [r.itemKey, r.onHand]));
+  },
+
+  /**
+   * What this staff member has already put on credit inside the window. Deliberately unscoped
+   * by location: the ceiling belongs to the person, so a bill they ran up at the kiosk counts
+   * against them at the coffee shop.
+   */
+  async staffCreditTaken(tx: Tx, payerId: string, since: Date): Promise<number> {
+    const [row] = await tx.select({ taken: sql<string>`coalesce(round(sum(${bills.total}), 2), 0)` })
+      .from(bills)
+      .where(and(eq(bills.payerKind, "staff"), eq(bills.payerId, payerId), gte(bills.at, since)));
+    return Number(row?.taken ?? 0);
   },
 };

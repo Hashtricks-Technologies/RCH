@@ -19,3 +19,7 @@ export const Money = z.number().finite();
 /** Times on the wire are ISO 8601 strings; the UI formats them (Task 16). */
 export const IsoTime = z.string();
 export const IsoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+
+/** The ceiling one staff member may run up on credit inside one calendar month, in rupees.
+ *  The rule that reads it is `breachesCredit` in @rch/domain; this is only the number. */
+export const STAFF_CREDIT_LIMIT = 3000;

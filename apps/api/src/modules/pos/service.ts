@@ -2,7 +2,7 @@
 // the arithmetic of the sale is `planBill` in packages/domain.
 import type { z } from "zod";
 import type { Bill, PayBodySchema, Tender, WriteResponse } from "@rch/contract";
-import { avail, availOf, fq, planBill, round3, type Master } from "@rch/domain";
+import { avail, availOf, breachesCredit, creditBreachMessage, creditRoom, fq, planBill, round3, type Master } from "@rch/domain";
 import type { Db } from "../../db/client.js";
 import { withTransaction } from "../../lib/db.js";
 import { NotFoundError } from "../../lib/errors.js";
@@ -10,7 +10,9 @@ import { emitChanged } from "../../lib/events.js";
 import { allocateId } from "../../lib/ids.js";
 import { postMoves } from "../../lib/ledger.js";
 import { loadMaster } from "../../lib/master.js";
+import { reservedAt } from "../../lib/reservations.js";
 import { assertRule } from "../../lib/rules.js";
+import { monthStartIST } from "../../lib/time.js";
 import { toWireBill } from "../../lib/wire.js";
 import type { AccessClaims } from "../../plugins/auth.js";
 import { posRepo } from "./repo.js";
@@ -76,6 +78,18 @@ export function createPosService(db: Db) {
 
         const plan = planBill(master, prices, loc, cart);
         const at = new Date();
+        // A tender that takes no money now runs up a balance somebody settles later. The ceiling
+        // is the person's, over the calendar month the hospital settles on, and it is checked
+        // here rather than only on the counter's screen — a second tab or a stale page would
+        // otherwise walk straight past a disabled button.
+        if (body.tender === "Staff credit" && body.payer) {
+          const taken = await posRepo.staffCreditTaken(tx, body.payer.id, monthStartIST(at));
+          assertRule(
+            !breachesCredit(taken, plan.tot),
+            creditBreachMessage(taken, plan.tot, body.payer.name),
+            { taken, room: creditRoom(taken) },
+          );
+        }
         const no = await allocateId(tx, "bill", at);
         const head = await posRepo.insertBill(tx, {
           no, loc, operatorId: claims.sub, total: money(plan.tot), tax: money(plan.tax), at, tender: body.tender,
@@ -86,15 +100,26 @@ export function createPosService(db: Db) {
 
         // What the sale actually took off each shelf, folded the way postMoves folded it. The
         // pre-check above spoke for the dish in portions; this one, keyed by what moved, names the
-        // shelf item that went negative — for a made-to-order dish that is the ingredient. Same
+        // shelf item that went short — for a made-to-order dish that is the ingredient. Same
         // refusal, two voices: the first is friendlier, the second is the guarantee.
+        //
+        // Phase 3 puts holds on outlet shelves too — a shop transfer or a granted shop ask keeps
+        // stock at a counter without moving it — so "short" now means on hand less what is held,
+        // not merely negative. The hold is re-read here rather than reused from the pre-check
+        // because every path that holds stock takes `lockBalances` first (see
+        // apps/api/src/lib/ledger.ts): while this transaction holds those locks nothing new can
+        // be held, so this read is the last word.
         const took = new Map<string, number>();
         for (const m of plan.moves) took.set(m.it, round3((took.get(m.it) ?? 0) + -m.qty));
-        const onHand = await posRepo.onHandAt(tx, loc, [...took.keys()]);
+        const moved = [...took.keys()];
+        const onHand = await posRepo.onHandAt(tx, loc, moved);
+        const heldNow = await reservedAt(tx, loc, moved);
         for (const [it, sold] of took) {
-          const left = Math.max(0, round3((onHand[it] ?? 0) + sold - (rsv[`${loc}:${it}`] ?? 0)));
           const item = master.items[it];
-          assertRule((onHand[it] ?? 0) >= 0, `Only ${fq(left, item?.u ?? "nos")} ${item?.u ?? "nos"} of ${item?.n ?? it} left at ${locName}`);
+          const unit = item?.u ?? "nos";
+          const free = round3((onHand[it] ?? 0) - (heldNow[`${loc}:${it}`] ?? 0));
+          const left = Math.max(0, round3(free + sold));
+          assertRule(free >= 0, `Only ${fq(left, unit)} ${unit} of ${item?.n ?? it} left at ${locName}`);
         }
 
         const operator = await posRepo.operator(tx, claims.sub);

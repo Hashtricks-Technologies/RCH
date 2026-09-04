@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import { act, createElement, type ComponentType, type ReactElement } from "react";
 import { createRoot } from "react-dom/client";
 import { MemoryRouter } from "react-router-dom";
+import { creditBreachMessage } from "@rch/domain";
 import { useApp } from "../store";
-import { USERS } from "../data/master";
+import { STAFF_CREDIT_LIMIT, USERS } from "../data/master";
+import { money, money0 } from "../lib/fmt";
 import { NAV } from "../nav";
 import { DRAWERS } from "../drawers";
 import Settings from "../pages/Settings";
@@ -68,6 +70,14 @@ describe("a role cannot reach another role's screens", () => {
   it("every role has settings", () => {
     for (const r of Object.keys(NAV) as Role[])
       expect(NAV[r].flatMap((g) => g.items.map((i) => i.k))).toContain("settings");
+  });
+});
+
+describe("the counter's staff credit warning", () => {
+  it("is the sentence the server refuses with", () => {
+    // Pos.tsx renders the Alert as two sentences in one node; the server sends the same string.
+    const rendered = `${money(3010)} breaches the ${money0(STAFF_CREDIT_LIMIT)} staff credit limit for Vinoth Prakash · Kitchen. Take another tender or split the bill.`;
+    expect(rendered).toBe(creditBreachMessage(2990, 20, "Vinoth Prakash · Kitchen"));
   });
 });
 

@@ -10,3 +10,4 @@ export { recipeCost, costOf } from "./costing.js";
 export { planBill, type BillPlan } from "./billing.js";
 export { REQUEST_TRANSITIONS, TICKET_TRANSITIONS, SHOP_ASK_TRANSITIONS, canTransition, type TransitionTable } from "./transitions.js";
 export { planApproval, type ApprovalLine, type ApprovalPlan } from "./approval.js";
+export { STAFF_CREDIT_LIMIT, creditRoom, breachesCredit, creditBreachMessage } from "./credit.js";
