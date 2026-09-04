@@ -1,0 +1,1 @@
+CREATE INDEX "bills_staff_credit_idx" ON "bills" USING btree ("payer_kind","payer_id","at") WHERE payer_kind = 'staff';

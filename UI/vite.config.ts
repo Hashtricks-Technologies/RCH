@@ -13,5 +13,8 @@ export default defineConfig({
     env: { TZ: "UTC" },
     setupFiles: ["./src/__tests__/setup.ts"],
     include: ["src/**/*.test.{ts,tsx}"],
+    // Screen tests render whole role shells; on a busy machine (parallel API suites on the
+    // same box) the default 5 s has timed out on a test that passes alone in a second.
+    testTimeout: 20_000,
   },
 });

@@ -1,4 +1,5 @@
 import { index, integer, pgTable, primaryKey, text } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { payerKindEnum } from "./enums.js";
 import { items, locations, money, qty, ts, users } from "./master.js";
 
@@ -13,7 +14,12 @@ export const bills = pgTable("bills", {
   payerKind: payerKindEnum("payer_kind"),
   payerId: text("payer_id"),
   payerName: text("payer_name"),
-}, (t) => [index("bills_loc_at_idx").on(t.loc, t.at)]);
+}, (t) => [
+  index("bills_loc_at_idx").on(t.loc, t.at),
+  // The staff-credit ceiling sums one payer's bills for the month on every credit sale; without
+  // this the read is a sequential scan that grows with the till's history.
+  index("bills_staff_credit_idx").on(t.payerKind, t.payerId, t.at).where(sql`payer_kind = 'staff'`),
+]);
 export const billLines = pgTable("bill_lines", {
   billNo: text("bill_no").notNull().references(() => bills.no),
   lineNo: integer("line_no").notNull(),

@@ -22,6 +22,13 @@
       "when": 1788474117963,
       "tag": "0002_stock_moves_append_only",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1788488787741,
+      "tag": "0003_bills_staff_credit_idx",
+      "breakpoints": true
     }
   ]
 }
