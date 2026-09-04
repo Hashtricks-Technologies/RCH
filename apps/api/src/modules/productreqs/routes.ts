@@ -1,8 +1,11 @@
+// The shop's new-product ask, and the central store's answer to it.
 import fp from "fastify-plugin";
+import { routes } from "@rch/contract";
+import { mount } from "../../routes.js";
 import { createProductReqsService } from "./service.js";
 
-// The shop's new-product ask. No route is mounted yet — the manifest entries exist (they are
-// inert without a handler) and the endpoints land with their tests in this module's own task.
 export default fp(async (app) => {
-  createProductReqsService(app.db);
+  const svc = createProductReqsService(app.db);
+  mount(app, routes.createProductRequest, async (req) => svc.create(req.user, req.body));
+  mount(app, routes.answerProductRequest, async (req) => svc.answer(req.params.id, req.body));
 }, { name: "module:productreqs", dependencies: ["auth", "rbac", "idempotency", "db"] });
