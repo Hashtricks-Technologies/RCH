@@ -30,6 +30,8 @@ const onHand = async (loc: string, it: string) =>
 /** The location's display name, read from the master the server itself serves. */
 const locName = async (key: string) =>
   (await app.inject({ method: "GET", url: "/api/v1/locations", headers: await authHeaders(app, "u4") })).json()[key].n;
+/** The board `GET /batches` serves — `readBatches`'s own shape, for round-tripping a write. */
+const getBatches = async () => (await app.inject({ method: "GET", url: "/api/v1/batches", headers: await authHeaders(app, "u4") })).json();
 /** Bake enough of an item that the kitchen can cover a dispatch. */
 const bake = (it: string, n: number) =>
   app.testDb!.db.transaction((tx) => postMoves(tx, [{ loc: "kitchen", it, qty: n, kind: "production_yield", refType: "test", refId: "bake" }]));
@@ -301,6 +303,21 @@ describe("POST /batches", () => {
     expect(mine.every((m) => m.refType === "batch" && m.loc === "kitchen")).toBe(true);
   });
 
+  it("carries a blank note the same way the write responded and the board reads it back", async () => {
+    // readBatches (modules/snapshot/readers/documents.ts) keeps `note: ""` rather than dropping
+    // it — a null column has nothing to show, but a note typed as empty is still a note. The
+    // write response has to agree, or a client sees the field appear out of nowhere on the next
+    // GET /batches.
+    const r = await post("u4", "/batches", { it: "puff", started: 10, note: "" });
+    expect(r.statusCode, r.body).toBe(200);
+    const written = r.json().result;
+    expect(written).toHaveProperty("note", "");
+
+    const fetched = (await getBatches()).find((b: { id: string }) => b.id === written.id);
+    expect(fetched).toHaveProperty("note", "");
+    expect(fetched).toEqual(written);
+  });
+
   it("stamps the best-before from the item's shelf life, in the kitchen's own words", async () => {
     const r = await post("u4", "/batches", { it: "puff", started: 10 });
     const b = r.json();
@@ -406,6 +423,10 @@ describe("POST /batches", () => {
 
   it("makes one of two races and refuses the other, leaving no ingredient below zero", async () => {
     // The kitchen's filling covers 100 puffs. Two makes of 60 cannot both be right.
+    // What this does not pin: the `batch` sequence row serialises minting, so both calls queue
+    // there before either reads a balance — the balance lock itself is proven by the
+    // neighbouring batch-vs-distribution case below, which races a make against a distribution
+    // instead of a make against a make.
     await warmPool(app.testDb!, 2);
     const both = await Promise.all([
       post("u4", "/batches", { it: "puff", started: 60 }),

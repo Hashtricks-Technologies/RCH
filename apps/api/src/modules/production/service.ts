@@ -177,17 +177,19 @@ export function createProductionService(db: Db) {
         // What another ticket is holding is not the kitchen's to bake with, so the measure is
         // free to promise and not what is on the shelf.
         const free = (g: string) => round3((onHand[g] ?? 0) - (held[`${KITCHEN}:${g}`] ?? 0));
-        /** The kitchen's own sentence for an ingredient that will not stretch. */
-        const shortOf = (g: string): string => {
+        /** The kitchen's own sentence for an ingredient that will not stretch — one helper for
+         *  both the pre-check below and the post-lock invariant loop further down, so the two
+         *  never drift into saying it two different ways. */
+        const shortOf = (g: string, freeQty: number): string => {
           const ing = master.items[g];
           const unit = ing?.u ?? "nos";
-          return `Kitchen is short of ${ing?.n ?? g} — ${fq(free(g), unit)} ${unit} left`;
+          return `Kitchen is short of ${ing?.n ?? g} — ${fq(freeQty, unit)} ${unit} left`;
         };
         // The first in recipe order, which is the one the kitchen's own screen names. Written as
         // an `if` rather than `assertRule(!short, short ? … : "")`: a refusal sentence computed
         // on the success path is a blank toast waiting for someone to drop the ternary.
         const short = need.find((n) => free(n.it) < n.qty);
-        if (short) assertRule(false, shortOf(short.it));
+        if (short) assertRule(false, shortOf(short.it, free(short.it)));
 
         const moves: Move[] = need.map((n) => ({
           loc: KITCHEN, it: n.it, qty: -n.qty, kind: "production_consume", refType: "batch", refId: no.id, by: claims.sub, at,
@@ -207,9 +209,7 @@ export function createProductionService(db: Db) {
         const heldAfter = await reservedAt(tx, KITCHEN, need.map((n) => n.it));
         for (const n of need) {
           const left = round3((after[n.it] ?? 0) - (heldAfter[`${KITCHEN}:${n.it}`] ?? 0));
-          const ing = master.items[n.it];
-          const unit = ing?.u ?? "nos";
-          assertRule(left >= 0, `Kitchen is short of ${ing?.n ?? n.it} — ${fq(Math.max(0, round3(left + n.qty)), unit)} ${unit} left`);
+          assertRule(left >= 0, shortOf(n.it, Math.max(0, round3(left + n.qty))));
         }
 
         const bb = bestBeforeAt(at, item.sl);
@@ -217,10 +217,12 @@ export function createProductionService(db: Db) {
           id: no.id, itemKey: body.it, startedQty: started, madeQty: made, at, bestBefore: bb,
           note: body.note ?? null, byUser: claims.sub,
         });
-        // The shape readers/documents.ts's readBatches produces, for the one batch just written.
+        // The shape readers/documents.ts's readBatches produces, for the one batch just written —
+        // including its treatment of the column: a null note has nothing to show and is left off,
+        // but a note written as "" is still a note the kitchen typed, so it stays on the wire.
         const result: Batch = {
           id: row.id, it: row.itemKey, qty: row.startedQty, made: row.madeQty,
-          at: iso(row.at), bb: iso(row.bestBefore), ...(row.note ? { note: row.note } : {}),
+          at: iso(row.at), bb: iso(row.bestBefore), ...(row.note !== null ? { note: row.note } : {}),
         };
 
         const text = bestBeforeText(bb, at);

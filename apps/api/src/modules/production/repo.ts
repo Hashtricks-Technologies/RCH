@@ -46,12 +46,13 @@ export const productionRepo = {
     return new Set(rows.map((r) => r.itemKey));
   },
 
-  /** Whether the kitchen has switched this product off, and the reason it recorded.
-   *  Read inside the write's transaction, so a switch flipped a moment ago is seen. */
-  async overrideAt(tx: Tx, loc: string, itemKey: string): Promise<string | undefined> {
+  /** Whether the kitchen has switched this product off. Read inside the write's transaction, so
+   *  a switch flipped a moment ago is seen. Returns the row itself, the way `availabilityRepo.find`
+   *  does — not its `reason` alone, which would let a blank reason read as no override at all. */
+  async overrideAt(tx: Tx, loc: string, itemKey: string): Promise<{ reason: string } | undefined> {
     const [o] = await tx.select({ reason: availabilityOverrides.reason }).from(availabilityOverrides)
       .where(and(eq(availabilityOverrides.loc, loc), eq(availabilityOverrides.itemKey, itemKey)));
-    return o?.reason;
+    return o;
   },
 
   /** The batch document. `.returning()` hands back what the database stored — the defaulted
