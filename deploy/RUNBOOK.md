@@ -670,9 +670,10 @@ earliest. Until then, a correction is an `adjustment` move written by hand throu
 **A refused receipt:** a `POST …/receive` that answered 422 has written nothing — no GRN row,
 no move, no change to `received_qty` — because every line is validated before the first write.
 
-**A 500 on reactivating a rate contract:** `PATCH /contracts/:id {"active":true}` checks for an
-existing live contract on that vendor and item, but the check locks nothing when it finds none,
-so two reactivations of two closed contracts for the same pair race and the partial unique
-index `rate_contracts_live_uq` is the backstop. The loser gets a 500 and **the retry reads the
-ordinary refusal** (`<item> already has a live contract with <vendor>`), because the winner is
-committed by then. No data is at risk; tell the operator to try again.
+**Two reactivations of a rate contract at once:** `PATCH /contracts/:id {"active":true}` checks
+for an existing live contract on that vendor and item, but the check locks nothing when it finds
+none, so two reactivations of two closed contracts for the same pair race and the partial unique
+index `rate_contracts_live_uq` decides. The loser reads the ordinary refusal (`<item> already has
+a live contract with <vendor>`), not a 500: `contractsRepo.update` catches the violation on that
+index by constraint name (`isUniqueViolation` in `lib/db.ts`, the same helper `vendors` uses) and
+the service refuses with the sentence it had already composed. Nothing to do; no data is at risk.
