@@ -27,8 +27,9 @@ export default function Stock() {
   const [heldOnly, setHeldOnly] = useState(false);
 
   const type = TYPES[ti];
-  // IT is a module-level record that createItem mutates in place, so the read
-  // below is pinned to catalogVersion: that is what tells React it changed.
+  // `IT` is the registry every screen reads, and a refetch of "items" replaces its contents in
+  // place (`applyItems` -> `hydrateItems`) rather than handing back a new object, so the read
+  // below is pinned to catalogVersion: that is what tells React a product was added.
   void s.catalogVersion;
   const GROUPS = ["All", ...new Set(Object.values(IT).map((i) => i.g))].sort(
     (a, b) => (a === "All" ? -1 : b === "All" ? 1 : a.localeCompare(b)),

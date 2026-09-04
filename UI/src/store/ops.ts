@@ -35,9 +35,10 @@ export interface OpsSlice {
   requestNewProduct: (p: { name: string; why: string; forLoc: LocKey }) => Promise<boolean>;
   answerProductRequest: (id: string, st: "Created" | "Declined", note: string, itemKey?: string) => Promise<boolean>;
 
-  /** A rate is agreed with a vendor, and the server only answers for a vendor it can find —
-   *  which is an id, never the name the register prints. */
-  addContract: (c: Omit<RateContract, "id"> & { vendorId: string }) => Promise<boolean>;
+  /** Exactly what `ContractBodySchema` takes, and nothing else. The vendor travels as an **id**
+   *  — "vendor and item exist" is a question only an id can answer — while the register on
+   *  screen goes on printing the name the contract carries back. */
+  addContract: (c: { vendorId: string; it: string; rate: number; from: string; to: string; moq: number }) => Promise<boolean>;
   updateContract: (id: string, patch: { rate?: number; from?: string; to?: string; moq?: number; active?: boolean }) => Promise<boolean>;
   removeContract: (id: string) => Promise<void>;
   contractRate: (vendor: string, it: string) => RateContract | undefined;

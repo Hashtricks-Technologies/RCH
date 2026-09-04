@@ -17,11 +17,6 @@ const STAGES = [
   "Partly received", "Received", "Declined",
 ] as const;
 
-const BUYABLE = Object.keys(IT)
-  .filter((k) => IT[k].t === "RAW" || IT[k].t === "PACK" || IT[k].t === "MRP")
-  .sort((a, b) => IT[a].g.localeCompare(IT[b].g) || IT[a].n.localeCompare(IT[b].n));
-const BUY_GROUPS = [...new Set(BUYABLE.map((k) => IT[k].g))];
-
 export default function Requisitions() {
   const s = useApp();
   const prq = useApp((x) => x.prq);
@@ -37,6 +32,16 @@ export default function Requisitions() {
   const [q, setQ] = useState("");
   const [si, setSi] = useState(0);
   const [openOnly, setOpenOnly] = useState(false);
+
+  // `IT` is the registry every screen reads, and a refetch of "items" replaces its contents in
+  // place (`applyItems` -> `hydrateItems`) rather than handing back a new object. The list below
+  // is therefore built during render and pinned to `catalogVersion`, which is what tells React a
+  // product was added.
+  void s.catalogVersion;
+  const BUYABLE = Object.keys(IT)
+    .filter((k) => IT[k].t === "RAW" || IT[k].t === "PACK" || IT[k].t === "MRP")
+    .sort((a, b) => IT[a].g.localeCompare(IT[b].g) || IT[a].n.localeCompare(IT[b].n));
+  const BUY_GROUPS = [...new Set(BUYABLE.map((k) => IT[k].g))];
 
   const stage = STAGES[si];
 
@@ -259,7 +264,10 @@ export default function Requisitions() {
 
           <BtnRow end>
             <Btn variant="gh" onClick={() => { setPrqDraft([]); setNote(""); }}>Discard</Btn>
-            <Btn disabled={busy || prqDraft.length === 0} onClick={send}>
+            {/* A line with no quantity on it is dropped before the post, so a draft of nothing
+                but zeroes would reach the server as an empty `lines` array and come back as a
+                generic 400 instead of the service's own sentence. */}
+            <Btn disabled={busy || !prqDraft.some((l) => l.qty > 0)} onClick={send}>
               {busy ? "Sending…" : "Send to procurement"}
             </Btn>
           </BtnRow>

@@ -19,7 +19,8 @@ export interface ProcurementSlice {
   removePoLine: (poId: string, lineIdx: number) => Promise<void>;
   setPoVendor: (poId: string, vendorId: string) => Promise<void>;
   setPoEta: (poId: string, eta: string) => Promise<boolean>;
-  sendPo: (poId: string) => Promise<void>;
+  /** Answers `true` once the order is with the vendor, so the drawer closes behind it. */
+  sendPo: (poId: string) => Promise<boolean>;
   cancelPo: (poId: string, reason: string) => Promise<boolean>;
   receivePo: (poId: string, doc: ReceiptDoc, lines: ReceiptLine[]) => Promise<boolean>;
   closePoShort: (poId: string, reason: string) => Promise<boolean>;
@@ -149,7 +150,8 @@ export const createProcurementSlice = (_set: Set_, get: Get): ProcurementSlice =
       const r = await call(routes.sendPo, { params: { id: poId } });
       get().notify(r.message);
       await refetch(r.changed, r.message);
-    } catch (e) { fail(get, e, "send the order"); }
+      return true;
+    } catch (e) { return fail(get, e, "send the order"); }
   },
 
   cancelPo: async (poId, reason) => {

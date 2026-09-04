@@ -40,7 +40,10 @@ function DraftLineInput({
 
   const commit = () => {
     const n = Number(local);
-    if (Number.isFinite(n) && (!positiveOnly || n > 0)) onCommit(n);
+    // A blur is not an edit. Tabbing across a draft line touches every cell on the way past,
+    // and each one would otherwise post a PATCH and toast a sentence about a value nobody
+    // changed — so only a number that actually moved reaches the server.
+    if (Number.isFinite(n) && n !== value && (!positiveOnly || n > 0)) onCommit(n);
     // Whether or not the store accepted the value, resync the field to
     // whatever it currently holds rather than leaving a stale or blank input:
     // if the commit changed it, the render-time check above catches the new
@@ -54,6 +57,48 @@ function DraftLineInput({
     <input
       type="number" className="mono" min={min} step={step}
       value={local} aria-label={ariaLabel}
+      onChange={(e) => setLocal(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+    />
+  );
+}
+
+/**
+ * The expected delivery date, in the only form an `<input type="date">` speaks.
+ *
+ * Same shape as `DraftLineInput` above, for the same reason and one more: a date box fires
+ * `change` on every intermediate *valid* date, so a year typed digit by digit is four writes —
+ * and each write's refetch snaps the box back under the operator's fingers. Local state absorbs
+ * the typing and the value reaches the server on blur, once, and only when it actually moved.
+ * The store holds a display date ("11-Sep-2026"), so `toInputDate` converts on the way in and
+ * the input's own ISO value goes straight out, which is what `PatchPoBodySchema.eta` wants.
+ */
+function EtaInput({ value, busy, onCommit }: {
+  value: string; busy: boolean; onCommit: (iso: string) => void;
+}) {
+  const iso = toInputDate(value);
+  const [local, setLocal] = useState(iso);
+  const [synced, setSynced] = useState(iso);
+  if (iso !== synced) {
+    setSynced(iso);
+    setLocal(iso);
+  }
+
+  const commit = () => {
+    // A cleared box is not a date and an unchanged one is not a change. Neither is worth a
+    // write, and an empty string would reach the buyer as a generic 400 rather than a sentence.
+    if (local && local !== iso) onCommit(local);
+    // Then resync to whatever the store actually holds, exactly as `DraftLineInput` does: if the
+    // write landed, the render-time check above picks the new date up a moment later; if it was
+    // refused, this is what stops a second tab-out sending the same refused date again.
+    setSynced(iso);
+    setLocal(iso);
+  };
+
+  return (
+    <input
+      type="date" value={local} aria-label="Expected delivery date" disabled={busy}
       onChange={(e) => setLocal(e.target.value)}
       onBlur={commit}
       onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
@@ -125,6 +170,20 @@ function PoDrawer({ id }: DrawerProps) {
       setBusy(false);
       if (ok) close();
     };
+    /** Sending is a commitment to a vendor: one press, and the panel closes behind the answer. */
+    const send = async () => {
+      if (busy) return;
+      setBusy(true);
+      const ok = await sendPo(po.id);
+      setBusy(false);
+      if (ok) close();
+    };
+    const saveEta = async (iso: string) => {
+      if (busy) return;
+      setBusy(true);
+      await setPoEta(po.id, iso);
+      setBusy(false);
+    };
 
     const rows: Row[] = po.lines.map((l, i) => {
       const c = contractFor(s, po.vendor, l.it);
@@ -188,7 +247,7 @@ function PoDrawer({ id }: DrawerProps) {
             <div className="sp" />
             <Btn variant="gh" onClick={close}>Close</Btn>
             {canSendPo(po.st) && (
-              <Btn onClick={() => { void sendPo(po.id); }}>Send to vendor</Btn>
+              <Btn disabled={busy} onClick={send}>{busy ? "Sending…" : "Send to vendor"}</Btn>
             )}
           </>
         }
@@ -248,15 +307,7 @@ function PoDrawer({ id }: DrawerProps) {
               </select>
             </Field>
             <Field label="Expected delivery" hint={`Currently ${po.eta}.`}>
-              {/* The store keeps a display date ("11-Sep-2026") and a date input speaks only
-                  YYYY-MM-DD, so the conversion happens here at the edge — in through
-                  `toInputDate`, and the input's own ISO value straight back out to the body,
-                  which is what `PatchPoBodySchema.eta` wants. A cleared box is not a date and
-                  is not sent. */}
-              <input
-                type="date" value={toInputDate(po.eta)} aria-label="Expected delivery date"
-                onChange={(e) => { if (e.target.value) void setPoEta(po.id, e.target.value); }}
-              />
+              <EtaInput value={po.eta} busy={busy} onCommit={(iso) => { void saveEta(iso); }} />
             </Field>
           </FormRow>
         </Section>

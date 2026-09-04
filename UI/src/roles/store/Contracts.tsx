@@ -9,10 +9,6 @@ import {
 } from "../../ui/kit";
 import type { RateContract } from "../../types";
 
-const CONTRACTABLE = Object.keys(IT)
-  .filter((k) => IT[k].t === "RAW" || IT[k].t === "PACK" || IT[k].t === "MRP")
-  .sort((a, b) => IT[a].g.localeCompare(IT[b].g) || IT[a].n.localeCompare(IT[b].n));
-
 const STATE = ["All", "Live", "Closed"] as const;
 
 /** A contract rate above the item's moving-average cost is the number a buyer
@@ -31,7 +27,7 @@ const variance = (c: RateContract) => {
  */
 type Draft = { vendorId: string; it: string; rate: number; from: string; to: string; moq: number };
 
-const BLANK: Draft = { vendorId: "", it: CONTRACTABLE[0] ?? "", rate: 0, from: "", to: "", moq: 0 };
+const BLANK: Draft = { vendorId: "", it: "", rate: 0, from: "", to: "", moq: 0 };
 
 export default function Contracts() {
   const contracts = useApp((s) => s.contracts);
@@ -52,6 +48,18 @@ export default function Contracts() {
   const [editId, setEditId] = useState<string | null>(null);
   const [edit, setEdit] = useState<Draft>(BLANK);
   const [busy, setBusy] = useState(false);
+  const catalogVersion = useApp((s) => s.catalogVersion);
+
+  // `IT` is the registry every screen reads, and a refetch of "items" replaces its contents in
+  // place (`applyItems` -> `hydrateItems`) rather than handing back a new object. The list below
+  // is therefore built during render and pinned to `catalogVersion`, which is what tells React a
+  // product was added.
+  void catalogVersion;
+  const CONTRACTABLE = Object.keys(IT)
+    .filter((k) => IT[k].t === "RAW" || IT[k].t === "PACK" || IT[k].t === "MRP")
+    .sort((a, b) => IT[a].g.localeCompare(IT[b].g) || IT[a].n.localeCompare(IT[b].n));
+  /** A blank draft has no item chosen yet, so the picker falls back to the first buyable one. */
+  const item = draft.it || CONTRACTABLE[0] || "";
 
   const VENDOR_OPTS = ["All", ...new Set([
     ...vendors.filter((v) => v.active).map((v) => v.n),
@@ -95,12 +103,11 @@ export default function Contracts() {
 
   const submitAdd = async () => {
     if (busy) return;
-    const bad = !draft.vendorId ? "Pick the vendor this rate is agreed with" : incomplete(draft);
+    const bad = !draft.vendorId ? "Pick the vendor this rate is agreed with" : incomplete({ ...draft, it: item });
     if (bad) { notify(bad); return; }
     setBusy(true);
     const ok = await addContract({
-      vendorId: draft.vendorId, vendor: vendors.find((v) => v.id === draft.vendorId)?.n ?? "",
-      it: draft.it, rate: draft.rate, from: draft.from, to: draft.to, moq: draft.moq, active: true,
+      vendorId: draft.vendorId, it: item, rate: draft.rate, from: draft.from, to: draft.to, moq: draft.moq,
     });
     setBusy(false);
     // The form empties only once the register actually carries the contract — a refusal
@@ -178,8 +185,8 @@ export default function Contracts() {
                 ))}
               </select>
             </Field>
-            <Field label="Item" hint={IT[draft.it] ? `Moving average ${money(costOf(draft.it))} per ${U(draft.it)}` : undefined}>
-              <select value={draft.it} onChange={(e) => setDraft({ ...draft, it: e.target.value })}>
+            <Field label="Item" hint={IT[item] ? `Moving average ${money(costOf(item))} per ${U(item)}` : undefined}>
+              <select value={item} onChange={(e) => setDraft({ ...draft, it: e.target.value })}>
                 {CONTRACTABLE.map((k) => (
                   <option key={k} value={k}>{IT[k].n} · {IT[k].c}</option>
                 ))}
@@ -187,8 +194,8 @@ export default function Contracts() {
             </Field>
             <Field
               label="Contract rate (₹)"
-              hint={draft.rate > 0 && IT[draft.it]
-                ? `${draft.rate > costOf(draft.it) ? "Above" : draft.rate < costOf(draft.it) ? "Below" : "Level with"} the moving average by ${money(Math.abs(draft.rate - costOf(draft.it)))}`
+              hint={draft.rate > 0 && IT[item]
+                ? `${draft.rate > costOf(item) ? "Above" : draft.rate < costOf(item) ? "Below" : "Level with"} the moving average by ${money(Math.abs(draft.rate - costOf(item)))}`
                 : "Per unit, exclusive of GST."}
             >
               <input type="number" min={0} step={0.01} value={draft.rate || ""}
@@ -204,7 +211,7 @@ export default function Contracts() {
               <input type="date" aria-label="Valid to" value={toInputDate(draft.to)}
                 onChange={(e) => setDraft({ ...draft, to: e.target.value })} />
             </Field>
-            <Field label="Minimum order quantity" hint={`In ${U(draft.it)}.`}>
+            <Field label="Minimum order quantity" hint={`In ${U(item)}.`}>
               <input type="number" min={0} step={1} value={draft.moq || ""}
                 onChange={(e) => setDraft({ ...draft, moq: Number(e.target.value) })} />
             </Field>

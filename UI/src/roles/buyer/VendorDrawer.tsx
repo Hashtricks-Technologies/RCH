@@ -8,8 +8,6 @@ import { DrawerFrame } from "../../ui/Drawer";
 import { registerDrawer, type DrawerProps } from "../../drawers";
 import { contractsOf } from "./lib";
 
-const GROUPS = [...new Set(Object.values(IT).map((i) => i.g))].sort();
-
 function VendorDrawer({ id }: DrawerProps) {
   const s = useApp();
   const addVendor = useApp((x) => x.addVendor);
@@ -28,6 +26,13 @@ function VendorDrawer({ id }: DrawerProps) {
   const [lead, setLead] = useState(existing?.lead ?? 1);
   const [groups, setGroups] = useState<string[]>(existing?.groups ?? []);
   const [busy, setBusy] = useState(false);
+
+  // `IT` is the registry every screen reads, and a refetch of "items" replaces its contents in
+  // place (`applyItems` -> `hydrateItems`) rather than handing back a new object. The list below
+  // is therefore built during render and pinned to `catalogVersion`, which is what tells React a
+  // product was added.
+  void s.catalogVersion;
+  const GROUPS = [...new Set(Object.values(IT).map((i) => i.g))].sort();
 
   if (!isNew && !existing) {
     return (
