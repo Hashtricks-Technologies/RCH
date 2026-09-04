@@ -25,6 +25,13 @@ vpc:
       ap-south-1c: { id: subnet-08d892f0f99bd8097 }
 iam:
   withOIDC: true
+# The three EKS add-ons a cluster cannot run pods without. The first cluster came up without
+# coredns (eksctl's run was cut short after the control plane), and every pod's DNS — the API's
+# RDS lookup, the load balancer controller's AWS calls — failed until it was installed by hand.
+addons:
+  - name: vpc-cni
+  - name: coredns
+  - name: kube-proxy
 managedNodeGroups:
   # Dev runs on ONE spot node: a t3.medium (4 GiB) holds the controller, CoreDNS, one API pod and
   # one UI pod with room to spare, and spot is ~70% off on-demand. A spot reclaim (two minutes'
