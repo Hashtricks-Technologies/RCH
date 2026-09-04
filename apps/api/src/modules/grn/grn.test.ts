@@ -8,7 +8,7 @@ import { authHeaders } from "../../test/auth.js";
 import { given } from "../../test/builders.js";
 import { truncateAll, warmPool } from "../../test/db.js";
 import { rebuildBalances } from "../../lib/ledger.js";
-import { grns, stockBalances, stockMoves } from "../../db/schema/index.js";
+import { documentHistory, grns, purchaseOrders, requisitionLines, stockBalances, stockMoves } from "../../db/schema/index.js";
 import type { App } from "../../app.js";
 
 let app: App;
@@ -255,6 +255,26 @@ describe("POST /purchase-orders/:id/close-short", () => {
     await post("u5", `/purchase-orders/${id}/close-short`, { reason: "x" });
     expect((await post("u5", `/purchase-orders/${id}/close-short`, { reason: "x" })).json().error.message)
       .toBe(`${id} is received — only a partly received order can be closed short`);
+  });
+
+  it("refuses to close an order short when nothing has been received against it yet", async () => {
+    const { prq, id } = await ordered([{ it: "milk", qty: 80 }]);
+    const before = await app.testDb!.db.select().from(requisitionLines)
+      .where(and(eq(requisitionLines.requisitionId, prq), eq(requisitionLines.lineNo, 0)));
+    const r = (await post("u5", `/purchase-orders/${id}/close-short`, { reason: "Vendor cannot deliver" }));
+    expect(r.statusCode).toBe(422);
+    expect(r.json().error.message).toBe(`${id} is ordered — only a partly received order can be closed short`);
+
+    const after = await app.testDb!.db.select().from(requisitionLines)
+      .where(and(eq(requisitionLines.requisitionId, prq), eq(requisitionLines.lineNo, 0)));
+    expect(after[0]?.orderedQty).toBe(before[0]?.orderedQty);
+
+    const [po] = await app.testDb!.db.select().from(purchaseOrders).where(eq(purchaseOrders.id, id));
+    expect(po?.status).toBe("Ordered");
+
+    const hist = await app.testDb!.db.select().from(documentHistory)
+      .where(and(eq(documentHistory.docType, "purchase_order"), eq(documentHistory.docId, id), eq(documentHistory.status, "Closed short")));
+    expect(hist).toHaveLength(0);
   });
 
   it("gives the balance back exactly once when two screens close together", async () => {

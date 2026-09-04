@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { etaFrom, needsApproval, poValue, rateFor } from "./purchasing.js";
+import { contractInWindow, etaFrom, needsApproval, poValue, rateFor } from "./purchasing.js";
 
 describe("poValue and needsApproval", () => {
   it("values an order at quantity times rate", () => {
@@ -28,5 +28,22 @@ describe("etaFrom", () => {
     expect(etaFrom(new Date("2026-08-29T18:00:00.000Z"), 2)).toBe("2026-08-31");
     expect(etaFrom(new Date("2026-08-29T19:00:00.000Z"), 2)).toBe("2026-09-01");  // already the 30th in IST
     expect(etaFrom(new Date("2026-08-29T06:00:00.000Z"), 0)).toBe("2026-08-29");
+  });
+});
+
+describe("contractInWindow", () => {
+  it("is open on any day from validFrom through validTo inclusive", () => {
+    const c = { from: "2026-04-01", to: "2027-03-31" };
+    expect(contractInWindow(c, "2026-04-01")).toBe(true);
+    expect(contractInWindow(c, "2027-03-31")).toBe(true);
+    expect(contractInWindow(c, "2026-09-04")).toBe(true);
+  });
+  it("is closed before it starts or after it ends", () => {
+    const c = { from: "2026-04-01", to: "2027-03-31" };
+    expect(contractInWindow(c, "2026-03-31")).toBe(false);
+    expect(contractInWindow(c, "2027-04-01")).toBe(false);
+  });
+  it("is closed for a lapsed contract whose to-date is yesterday", () => {
+    expect(contractInWindow({ from: "2026-01-01", to: "2026-09-03" }, "2026-09-04")).toBe(false);
   });
 });

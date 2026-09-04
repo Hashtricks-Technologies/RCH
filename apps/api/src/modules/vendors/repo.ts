@@ -1,6 +1,6 @@
 // Vendors: SQL only. No rules, no transaction of its own — service.ts passes `tx` in.
 import { eq } from "drizzle-orm";
-import type { Tx } from "../../lib/db.js";
+import { isUniqueViolation, type Tx } from "../../lib/db.js";
 import { vendors } from "../../db/schema/index.js";
 
 export type VendorRow = typeof vendors.$inferSelect;
@@ -9,17 +9,6 @@ export type VendorPatch = Partial<{
   name: string; gstin: string; contact: string; phone: string; terms: string;
   leadDays: number; groups: string[]; active: boolean;
 }>;
-
-/** Postgres reports a unique violation the same way whether the arbiter is a table constraint
- *  or (as here) a unique index — `code` 23505, `constraint` the index's own name. Drizzle wraps
- *  the raw `pg` error in a `DrizzleQueryError` and carries it as `.cause`, so that is where the
- *  code and constraint name are read from. `UPDATE` has no `onConflictDoNothing`, so this is how
- *  a rename is made the arbiter the way an insert is: catch the one violation this table can
- *  raise and let the caller turn it into a refusal. */
-const isUniqueViolation = (err: unknown, constraint: string): boolean => {
-  const cause = (err as { cause?: unknown } | null)?.cause as { code?: string; constraint?: string } | undefined;
-  return cause?.code === "23505" && cause?.constraint === constraint;
-};
 
 export const vendorsRepo = {
   /** Locking read: `.for("update")` on the vendor's own row, so two patches of one vendor
