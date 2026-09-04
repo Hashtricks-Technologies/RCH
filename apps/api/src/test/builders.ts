@@ -15,7 +15,7 @@ import type { TicketRefType } from "../lib/tickets.js";
  *  collided often enough to matter. Each test file is its own module instance and its own
  *  schema, so the counters need not be unique across files. Bands sit above the fixtures and
  *  above each sequence's start; padStart keeps the printed width when a band runs past 999. */
-const counters = { req: 0, tkt: 0, ask: 0 };
+const counters = { req: 0, tkt: 0, ask: 0, bill: 0 };
 const nextId = (prefix: string, base: number, family: keyof typeof counters): string =>
   `${prefix}${String(base + ++counters[family]).padStart(4, "0")}`;
 
@@ -71,5 +71,28 @@ export const given = {
       status: p.st ?? "Asked", byUser: p.by ?? "u1", note: p.note ?? "",
     });
     return id;
+  },
+
+  /** A bill already taken, for a case that needs history rather than a sale. The line exists so
+   *  the document is whole; the staff-credit ceiling reads the head's total. */
+  async bill(db: Db, p: {
+    no?: string; loc: LocKey; operator?: string; total: number; tax?: number; tender?: string;
+    payer?: { kind: "patient" | "staff" | "dept"; id: string; name: string };
+    at?: Date; lines?: { it: string; qty: number; rate: number }[];
+  }): Promise<string> {
+    // Above the fixtures' own numbers and above the bill sequence's start, for the reason the
+    // other families give: a builder-made bill must collide with neither the seed nor an
+    // allocated number.
+    const no = p.no ?? nextId("CF/", 9000, "bill");
+    const lines = p.lines ?? [{ it: "water", qty: 1, rate: p.total }];
+    await db.transaction(async (tx) => {
+      await tx.insert(s.bills).values({
+        no, loc: p.loc, operatorId: p.operator ?? "u1", total: p.total, tax: p.tax ?? 0,
+        at: p.at ?? new Date(), tender: p.tender ?? "Staff credit",
+        payerKind: p.payer?.kind ?? null, payerId: p.payer?.id ?? null, payerName: p.payer?.name ?? null,
+      });
+      await tx.insert(s.billLines).values(lines.map((l, lineNo) => ({ billNo: no, lineNo, itemKey: l.it, qty: l.qty, rate: l.rate })));
+    });
+    return no;
   },
 };

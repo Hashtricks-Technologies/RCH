@@ -87,7 +87,8 @@ export const DEPTS: Payer[] = [
   { kind: "dept", id: "CC-ADM", name: "Administration" },
   { kind: "dept", id: "CC-OT", name: "Operating Theatre" },
 ];
-/** Staff credit ceiling per month, in rupees. */
-export const STAFF_CREDIT_LIMIT = 3000;
+// A limit, not a fixture — declared in ../schemas/common.ts and re-exported here so the
+// counter's screen keeps its single import from data/master.
+export { STAFF_CREDIT_LIMIT } from "../schemas/common.js";
 /** A purchase order above this value needs finance approval (M2). */
 export const PO_APPROVAL_LIMIT = 25000;
