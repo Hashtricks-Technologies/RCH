@@ -259,7 +259,7 @@ describe("the ledger, not the pre-check, is the guarantee", () => {
 
     const drained = app.db.transaction(async (tx) => {
       await tx.execute(sql`select 1 from stock_balances where loc = 'coffee' and item_key = 'bisc' for update`); // hold the row
-      await sleep(400);                                                                                          // the sale reads, then blocks on it
+      await sleep(1000);                                                                                          // the sale reads, then blocks on it
       await postMoves(tx, [{ loc: "coffee", it: "bisc", qty: -have, kind: "adjustment", refType: "test", refId: "drain" }]);
     });
     await sleep(50);
@@ -397,7 +397,7 @@ describe("a sale cannot take stock another document is holding", () => {
 
     const holder = app.db.transaction(async (tx) => {
       await lockBalances(tx, [{ loc: "coffee", it: "water" }]);   // the lock every holding path takes first
-      await sleep(400);                                          // the sale reads, then blocks on it
+      await sleep(1000);                                          // the sale reads, then blocks on it
       await reserve(tx, [{ loc: "coffee", it: "water", qty: free, ticketId: ticket }]);
     });
     await sleep(50);

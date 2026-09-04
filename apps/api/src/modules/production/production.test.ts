@@ -7,9 +7,8 @@ import { authHeaders } from "../../test/auth.js";
 import { given } from "../../test/builders.js";
 import { truncateAll, warmPool } from "../../test/db.js";
 import { postMoves } from "../../lib/ledger.js";
-import { prodOrderLines, prodOrders, reservations, stockMoves } from "../../db/schema/index.js";
+import { reservations, stockMoves } from "../../db/schema/index.js";
 import type { InjectOptions } from "fastify";
-import type { PordStatus } from "@rch/contract";
 import type { App } from "../../app.js";
 
 let app: App;
@@ -38,14 +37,6 @@ const bake = (it: string, n: number) =>
  * write its own board. Ids are drawn above both the fixtures (PRD-2026-029/030) and the
  * sequence's start, and the counter never resets — `beforeEach` truncates, so no id repeats.
  */
-let boards = 0;
-const givenOrder = async (st: PordStatus, lines: { it: string; qty: number }[] = [{ it: "puff", qty: 5 }]): Promise<string> => {
-  const id = `PRD-2026-9${String(++boards).padStart(2, "0")}`;
-  await app.testDb!.db.insert(prodOrders).values({ id, fromLoc: "kiosk", byUser: "u4", status: st, note: "" });
-  await app.testDb!.db.insert(prodOrderLines).values(lines.map((l, lineNo) => ({ orderId: id, lineNo, itemKey: l.it, qty: l.qty })));
-  return id;
-};
-
 describe("POST /prod-orders/:id/dispatch", () => {
   it("puts every item on one ticket addressed to the ordering outlet, and reserves rather than moves", async () => {
     const [order] = (await orders()).filter((o: { st: string }) => o.st !== "Dispatched" && o.st !== "Declined");
@@ -96,7 +87,7 @@ describe("POST /prod-orders/:id/dispatch", () => {
   });
 
   it("refuses a declined order in its own words", async () => {
-    const id = await givenOrder("Declined");
+    const id = await given.prodOrder(app.testDb!.db, { st: "Declined" });
     await bake("puff", 20);                                     // the shelf is not what says no
     const r = await post("u4", `/prod-orders/${id}/dispatch`);
     expect(r.statusCode).toBe(422);
@@ -106,7 +97,7 @@ describe("POST /prod-orders/:id/dispatch", () => {
   // The other half of PROD_ORDER_TRANSITIONS: the kitchen sends when it is ready to, whatever
   // word the board is showing, so every open stage must go out — not just the two the seed has.
   it.each(["New", "Accepted", "In kitchen", "Ready"] as const)("dispatches an order sitting at %s", async (st) => {
-    const id = await givenOrder(st);
+    const id = await given.prodOrder(app.testDb!.db, { st });
     await bake("puff", 20);
     const r = await post("u4", `/prod-orders/${id}/dispatch`);
     expect(r.statusCode, r.body).toBe(200);

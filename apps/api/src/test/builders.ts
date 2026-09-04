@@ -2,7 +2,7 @@
 // document instead of asking for one here is rejected in review — the defaults belong in one
 // place, so a case says only what it is about.
 import { eq } from "drizzle-orm";
-import type { LocKey, ReqStatus, ShopAskStatus, TktStatus } from "@rch/contract";
+import type { LocKey, PordStatus, ReqStatus, ShopAskStatus, TktStatus } from "@rch/contract";
 import { makeOtp } from "@rch/domain";
 import type { Db } from "../db/client.js";
 import * as s from "../db/schema/index.js";
@@ -15,7 +15,7 @@ import type { TicketRefType } from "../lib/tickets.js";
  *  collided often enough to matter. Each test file is its own module instance and its own
  *  schema, so the counters need not be unique across files. Bands sit above the fixtures and
  *  above each sequence's start; padStart keeps the printed width when a band runs past 999. */
-const counters = { req: 0, tkt: 0, ask: 0, bill: 0 };
+const counters = { req: 0, tkt: 0, ask: 0, bill: 0, pord: 0 };
 const nextId = (prefix: string, base: number, family: keyof typeof counters): string =>
   `${prefix}${String(base + ++counters[family]).padStart(4, "0")}`;
 
@@ -94,5 +94,16 @@ export const given = {
       await tx.insert(s.billLines).values(lines.map((l, lineNo) => ({ billNo: no, lineNo, itemKey: l.it, qty: l.qty, rate: l.rate })));
     });
     return no;
+  },
+  /** A production order the kitchen has not touched yet (or has, if `st` says so). Ids sit at
+   *  PRD-2026-9NN, above the seeded 029/030 and the sequence start. */
+  async prodOrder(db: Db, p: { id?: string; st?: PordStatus; from?: LocKey; by?: string; lines?: { it: string; qty: number }[]; note?: string }): Promise<string> {
+    const id = p.id ?? `PRD-2026-${String(900 + ++counters.pord)}`;
+    const lines = p.lines ?? [{ it: "puff", qty: 5 }];
+    await db.transaction(async (tx) => {
+      await tx.insert(s.prodOrders).values({ id, fromLoc: p.from ?? "kiosk", byUser: p.by ?? "u4", status: p.st ?? "New", note: p.note ?? "" });
+      await tx.insert(s.prodOrderLines).values(lines.map((l, lineNo) => ({ orderId: id, lineNo, itemKey: l.it, qty: l.qty })));
+    });
+    return id;
   },
 };
