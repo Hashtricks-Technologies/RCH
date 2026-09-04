@@ -4,6 +4,8 @@ import { Pool } from "pg";
 import { createDb, type Db } from "../db/client.js";
 import { runMigrations } from "../db/migrate.js";
 import * as schema from "../db/schema/index.js";
+import { seedDocuments } from "../db/seed.js";
+import { withTransaction } from "../lib/db.js";
 
 const BASE = process.env.TEST_DATABASE_URL ?? "postgres://rch:rch@localhost:5439/rch_test";
 
@@ -52,4 +54,27 @@ export async function truncateAll(db: Db): Promise<void> {
     .map((t) => getTableName(t))
     .filter((n) => n !== "sequences");
   await db.execute(sql.raw(`truncate table ${names.map((n) => `"${n}"`).join(", ")} restart identity cascade`));
+}
+
+/**
+ * The per-case reset: empty the document and vendor tables and re-seed them, leaving master data,
+ * users and payers exactly as the file's `beforeAll` left them. A suite that was paying for a
+ * whole hospital between cases pays for the documents instead.
+ *
+ * The table list is explicit rather than derived: `truncateAll` takes every table in the schema
+ * and that is what makes it slow, and a derived "everything except master" list would silently
+ * start truncating each new table a later phase adds. Add a table here on purpose or not at all.
+ */
+export async function resetDocuments(db: Db): Promise<void> {
+  const names = [
+    "stock_requests", "stock_request_lines", "tickets", "ticket_lines", "shop_asks",
+    "requisitions", "requisition_lines", "purchase_orders", "po_lines", "po_line_sources", "grns",
+    "prod_orders", "prod_order_lines", "batches", "bills", "bill_lines",
+    "support_tickets", "support_messages", "product_requests",
+    "vendors", "rate_contracts",
+    "stock_moves", "stock_balances", "reservations", "availability_overrides",
+    "document_history", "idempotency_keys",
+  ];
+  await db.execute(sql.raw(`truncate table ${names.map((n) => `"${n}"`).join(", ")} restart identity cascade`));
+  await withTransaction(db, async (tx) => { await seedDocuments(tx); });
 }

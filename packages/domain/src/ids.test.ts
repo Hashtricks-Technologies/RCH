@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatId, SEQUENCE_START } from "./ids";
+import { formatId, grnId, SEQUENCE_START } from "./ids";
 
 const at = new Date("2026-09-03T10:00:00+05:30");
 
@@ -26,5 +26,19 @@ describe("formatId", () => {
     expect(SEQUENCE_START.product_req).toBe(13);
     expect(SEQUENCE_START.contract).toBe(109);
     expect(SEQUENCE_START.shop_ask).toBe(63);
+  });
+});
+
+describe("a goods receipt's number", () => {
+  it("carries the year and the whole order number, so two orders cannot share it", () => {
+    expect(grnId("PO-2026-0143", 1)).toBe("GRN-260143-01");
+    expect(grnId("PO-2026-0143", 2)).toBe("GRN-260143-02");
+    // The old format was the last three characters of the PO id, which these three share.
+    expect(grnId("PO-2027-0143", 1)).not.toBe(grnId("PO-2026-0143", 1));
+    expect(grnId("PO-2026-1143", 1)).not.toBe(grnId("PO-2026-0143", 1));
+  });
+
+  it("pads the instalment to two, like a batch's", () => {
+    expect(grnId("PO-2026-0143", 12)).toBe("GRN-260143-12");
   });
 });

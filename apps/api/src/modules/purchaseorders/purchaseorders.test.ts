@@ -6,16 +6,16 @@ import { buildTestApp } from "../../test/app.js";
 import { seedTestDb } from "../../test/seed.js";
 import { authHeaders } from "../../test/auth.js";
 import { given } from "../../test/builders.js";
-import { truncateAll, warmPool } from "../../test/db.js";
+import { resetDocuments, warmPool } from "../../test/db.js";
 import { rateContracts } from "../../db/schema/index.js";
 import { purchaseOrdersRepo } from "./repo.js";
 import type { InjectOptions } from "fastify";
 import type { App } from "../../app.js";
 
 let app: App;
-beforeAll(async () => { app = await buildTestApp({ schema: "purchaseorders" }); await app.ready(); });
+beforeAll(async () => { app = await buildTestApp({ schema: "purchaseorders" }); await app.ready(); await seedTestDb(app.testDb!.db); });
 afterAll(async () => { await app.close(); });
-beforeEach(async () => { await truncateAll(app.testDb!.db); await seedTestDb(app.testDb!.db); });
+beforeEach(async () => { await resetDocuments(app.testDb!.db); });
 
 const hdr = async (id: string) => ({ ...(await authHeaders(app, id)), "idempotency-key": randomUUID() });
 /** Send and cancel carry no body, so the payload is optional — spread in rather than sent as
