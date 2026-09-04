@@ -1,13 +1,12 @@
 import { routes } from "@rch/contract";
 import { ApiError, call } from "../api/client";
 import { refetch } from "../api/refetch";
-import { IT, LOC } from "../data/master";
 import { seedContracts, seedProductRequests, seedShopAsks, seedTickets } from "../data/ops";
 import type {
-  Item, ItemType, LocKey, ProductRequest, RateContract, ShopAsk,
+  ItemType, LocKey, ProductRequest, RateContract, ShopAsk,
   SupportTicket, TicketPriority, TicketStatus, TicketTopic,
 } from "../types";
-import { fq, now, U } from "../lib/fmt";
+import { now } from "../lib/fmt";
 import type { AppState } from "./index";
 
 type Set_ = (p: Partial<AppState>) => void;
@@ -33,15 +32,19 @@ export interface OpsSlice {
   rateTicket: (id: string, rating: 1 | 2 | 3 | 4 | 5) => void;
 
   /** A shop asking the central store to put a brand-new product on the master. */
-  requestNewProduct: (p: { name: string; why: string; forLoc: LocKey }) => void;
-  answerProductRequest: (id: string, st: "Created" | "Declined", note: string, itemKey?: string) => void;
+  requestNewProduct: (p: { name: string; why: string; forLoc: LocKey }) => Promise<boolean>;
+  answerProductRequest: (id: string, st: "Created" | "Declined", note: string, itemKey?: string) => Promise<boolean>;
 
-  addContract: (c: Omit<RateContract, "id">) => void;
-  updateContract: (id: string, patch: Partial<Omit<RateContract, "id">>) => void;
-  removeContract: (id: string) => void;
+  /** Exactly what `ContractBodySchema` takes, and nothing else. The vendor travels as an **id**
+   *  — "vendor and item exist" is a question only an id can answer — while the register on
+   *  screen goes on printing the name the contract carries back. */
+  addContract: (c: { vendorId: string; it: string; rate: number; from: string; to: string; moq: number }) => Promise<boolean>;
+  updateContract: (id: string, patch: { rate?: number; from?: string; to?: string; moq?: number; active?: boolean }) => Promise<boolean>;
+  removeContract: (id: string) => Promise<void>;
   contractRate: (vendor: string, it: string) => RateContract | undefined;
 
-  createItem: (input: NewItemInput, loc: LocKey, opening: number) => void;
+  /** The key the server chose, or null — the drawers need it to link a product request. */
+  createItem: (input: NewItemInput, loc: LocKey, opening: number) => Promise<string | null>;
   /** Shop to shop, no manager in the middle. Answers `true` only once the server took it, so
    *  a screen can hold on to what the operator typed when it is refused. */
   transferToOutlet: (from: LocKey, to: LocKey, it: string, qty: number) => Promise<boolean>;
@@ -54,8 +57,13 @@ export interface OpsSlice {
   declineShopAsk: (id: string, reason: string) => Promise<boolean>;
 }
 
-const slug = (name: string) =>
-  name.toLowerCase().replace(/[^a-z0-9]+/g, "").slice(0, 12) || "item";
+/** Buying's half of this slice is the server's from Phase 5: post the body, repeat the sentence
+ *  that came back, refetch what the write named. The four support actions are Phase 6's and are
+ *  still local. */
+const fail = (get: Get, e: unknown, what: string): false => {
+  get().notify(e instanceof ApiError ? e.message : `Could not ${what} — check the connection and try again.`);
+  return false;
+};
 
 export const createOpsSlice = (set: Set_, get: Get): OpsSlice => ({
   tickets: seedTickets(),
@@ -106,89 +114,71 @@ export const createOpsSlice = (set: Set_, get: Get): OpsSlice => ({
     s.notify(`Thank you — ${rating} out of 5 recorded against ${id}`);
   },
 
-  requestNewProduct: ({ name, why, forLoc }) => {
-    const s = get();
-    if (!s.user) return;
-    if (!name.trim()) { s.notify("Name the product you want added"); return; }
-    const id = "NPR-00" + (s.productReqs.length + 12);
-    set({
-      productReqs: [{
-        id, name: name.trim(), why: why.trim(), forLoc,
-        by: s.user.n, at: now(), st: "Requested",
-      }, ...s.productReqs],
-    });
-    s.notify(`${id} sent to the central store — they add it to the master`);
+  requestNewProduct: async ({ name, why, forLoc }) => {
+    try {
+      const r = await call(routes.createProductRequest, { body: { name: name.trim(), why: why.trim(), forLoc } });
+      get().notify(r.message);
+      await refetch(r.changed, r.message);
+      return true;
+    } catch (e) { return fail(get, e, "send the request"); }
   },
-  answerProductRequest: (id, st, note, itemKey) => {
-    const s = get();
-    set({
-      productReqs: s.productReqs.map((p) =>
-        p.id === id ? { ...p, st, note: note.trim(), itemKey } : p),
-    });
-    s.notify(st === "Created" ? `${id} — product created on the master` : `${id} declined`);
+  answerProductRequest: async (id, st, note, itemKey) => {
+    try {
+      const r = await call(routes.answerProductRequest, { params: { id }, body: { st, note: note.trim(), itemKey } });
+      get().notify(r.message);
+      await refetch(r.changed, r.message);
+      return true;
+    } catch (e) { return fail(get, e, "answer the request"); }
   },
 
-  addContract: (c) => {
-    const s = get();
-    if (s.contracts.some((x) => x.vendor === c.vendor && x.it === c.it && x.active)) {
-      s.notify(`${IT[c.it]?.n ?? c.it} already has a live contract with ${c.vendor}`);
-      return;
-    }
-    const id = "RC-" + String(s.contracts.length + 101);
-    set({ contracts: [{ ...c, id }, ...s.contracts] });
-    s.notify(`${id} — ${IT[c.it]?.n ?? c.it} at ₹${c.rate} with ${c.vendor}`);
+  addContract: async (c) => {
+    try {
+      const r = await call(routes.addContract, {
+        body: { vendorId: c.vendorId, it: c.it, rate: c.rate, from: c.from, to: c.to, moq: c.moq },
+      });
+      get().notify(r.message);
+      await refetch(r.changed, r.message);
+      return true;
+    } catch (e) { return fail(get, e, "save the contract"); }
   },
-  updateContract: (id, patch) => {
-    const s = get();
-    set({ contracts: s.contracts.map((c) => (c.id === id ? { ...c, ...patch } : c)) });
-    s.notify(`${id} updated`);
+  updateContract: async (id, patch) => {
+    try {
+      const r = await call(routes.updateContract, {
+        params: { id },
+        body: { rate: patch.rate, from: patch.from, to: patch.to, moq: patch.moq, active: patch.active },
+      });
+      get().notify(r.message);
+      await refetch(r.changed, r.message);
+      return true;
+    } catch (e) { return fail(get, e, "save the contract"); }
   },
-  removeContract: (id) => {
-    const s = get();
-    set({ contracts: s.contracts.map((c) => (c.id === id ? { ...c, active: false } : c)) });
-    s.notify(`${id} closed — it stays on record but no longer prices an order`);
+  removeContract: async (id) => {
+    try {
+      const r = await call(routes.removeContract, { params: { id } });
+      get().notify(r.message);
+      await refetch(r.changed, r.message);
+    } catch (e) { fail(get, e, "close the contract"); }
   },
   contractRate: (vendor, it) =>
     get().contracts.find((c) => c.active && c.vendor === vendor && c.it === it),
 
-  createItem: (input, loc, opening) => {
-    const s = get();
-    const name = input.name.trim();
-    if (!name) { s.notify("Give the product a name"); return; }
-    let key = input.key.trim() || slug(name);
-    if (IT[key]) {
-      let n = 2;
-      while (IT[`${key}${n}`]) n += 1;
-      key = `${key}${n}`;
-    }
-    if (Object.values(IT).some((i) => i.n.toLowerCase() === name.toLowerCase())) {
-      s.notify(`${name} is already in the catalogue`);
-      return;
-    }
-    const item: Item = {
-      c: input.code.trim() || key.toUpperCase(),
-      n: name,
-      u: input.unit || "nos",
-      t: input.type,
-      g: input.group || "Other",
-      hsn: input.hsn || "2106",
-      gst: Number.isFinite(input.gst) ? input.gst : 5,
-      rl: Number.isFinite(input.reorder) ? input.reorder : 0,
-      cost: Number.isFinite(input.cost) ? input.cost : 0,
-      ...(input.mrp ? { mrp: input.mrp } : {}),
-      ...(input.shelfLife ? { sl: input.shelfLife } : {}),
-    };
-    // The catalogue is a module-level record every screen reads directly, so it is
-    // mutated in place; catalogVersion is what tells React the lists changed.
-    IT[key] = item;
-    const stock = JSON.parse(JSON.stringify(s.stock)) as AppState["stock"];
-    if (opening > 0) stock[loc][key] = opening;
-    set({ stock, catalogVersion: s.catalogVersion + 1 });
-    s.notify(
-      opening > 0
-        ? `${name} added to the catalogue with ${fq(opening, key)} ${U(key)} at ${LOC[loc].n}`
-        : `${name} added to the catalogue`
-    );
+  /** The catalogue is a module-level registry every screen reads directly, so nothing is
+   *  written here: `changed` names "items" and `refetch`'s reader replaces its contents in
+   *  place, bumping `catalogVersion` — which is what tells React the lists moved. */
+  createItem: async (input, loc, opening) => {
+    try {
+      const r = await call(routes.createItem, {
+        body: {
+          key: input.key.trim(), name: input.name.trim(), code: input.code.trim(),
+          unit: input.unit, type: input.type, grp: input.group, hsn: input.hsn,
+          gst: input.gst, reorder: input.reorder, cost: input.cost,
+          mrp: input.mrp, sl: input.shelfLife, loc, opening,
+        },
+      });
+      get().notify(r.message);
+      await refetch(r.changed, r.message);
+      return r.result.key;
+    } catch (e) { fail(get, e, "add the product"); return null; }
   },
 
   /**

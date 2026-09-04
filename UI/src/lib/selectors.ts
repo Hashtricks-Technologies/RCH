@@ -4,12 +4,14 @@ export { apportion, round3 };
 import { IT, LOC, MENU, PAR_FACTOR, PL, RCP } from "../data/master";
 import type {
   Availability, Bill, LocKey, PoStatus, PordStatus, Price, PurchaseOrder, Requisition, ReqStatus,
-  StockRequest, Ticket, TktStatus, Tone,
+  StockLoc, StockRequest, Ticket, TktStatus, Tone,
 } from "../types";
 import { U } from "./fmt";
 
 export interface StockShape {
-  stock: Record<LocKey, Record<string, number>>;
+  /** Quarantine included — the store keeper's screen reports the rejected-goods shelf. Every
+   *  reader below still takes a `LocKey`: stock is shown there, never moved from there. */
+  stock: Record<StockLoc, Record<string, number>>;
   rsv: Record<string, number>;
   ovr: Record<string, string>;
   prices: Record<"A" | "B", Record<string, number>>;
@@ -140,8 +142,11 @@ export const procurementList = (s: { prq: Requisition[] }): PoolLine[] =>
         : [];
     }));
 
-export const poValue = (o: PurchaseOrder) =>
-  o.lines.reduce((t, l) => t + l.qty * l.rate, 0);
+/** The order's value is `@rch/domain`'s arithmetic, not a second copy of it: the server stamps
+ *  `needsApproval` from the same function, and two implementations of one number is exactly the
+ *  §5.1 defect Phase 5 exists to remove. Kept as a one-line delegate because three screens and
+ *  `procurement.test.ts` already import it from here. */
+export const poValue = (o: PurchaseOrder) => D.poValue(o.lines);
 
 /** Handed over but not yet confirmed — owned by neither location (M8). */
 export const inTransit = (s: { tkt: Ticket[] }, it: string) =>
@@ -199,6 +204,19 @@ export const canMoveOrder = (st: PordStatus, to: PordStatus) =>
 
 /** Whether a ticket can still be withdrawn: only one nobody has collected against. */
 export const canCancelTicket = (st: TktStatus) => D.canTransition(D.TICKET_TRANSITIONS, st, "Cancelled");
+
+/** Whether a draft may still go out to its vendor — one table, two consumers (spec §5.1). */
+export const canSendPo = (st: PoStatus) => D.canTransition(D.PO_TRANSITIONS, st, "Ordered");
+/**
+ * Whether an order may still be cancelled. `Ordered -> Cancelled` is a real edge in the table,
+ * but the endpoint refuses it outright once anything has arrived — with its own sentence telling
+ * the buyer to close it short — so the button has to ask both questions, in that order.
+ */
+export const canCancelPo = (st: PoStatus, anyReceived: boolean) =>
+  !anyReceived && D.canTransition(D.PO_TRANSITIONS, st, "Cancelled");
+/** Closing short is not a transition to a new word — it is the only door out of a part-delivered
+ *  order, and it takes the order to `Received` with the balance handed back. */
+export const canCloseShort = (st: PoStatus) => st === "Partially received";
 
 /**
  * Whether a ticket is still on its way — the measure every "still open" count and every "where

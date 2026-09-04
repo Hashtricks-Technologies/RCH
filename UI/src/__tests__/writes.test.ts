@@ -6,11 +6,14 @@ import * as FX from "@rch/contract/fixtures";
 import { refetch } from "../api/refetch";
 import { setAccessToken } from "../api/session";
 import { qty } from "../lib/selectors";
+import { IT } from "../data/master";
 import Pos from "../roles/counter/Pos";
 import CounterRequests from "../roles/counter/Requests";
 import MakeDistribute from "../roles/prod/MakeDistribute";
+import StoreRequisitions from "../roles/store/Requisitions";
 import Drawer from "../ui/Drawer";
 import "../roles/store/TicketDrawer";          // registers "stkt" on the drawer registry
+import "../roles/buyer/PoDrawer";                // registers "bpo"
 import { resetStore, S, as } from "./fixture";
 
 /**
@@ -697,6 +700,238 @@ describe("refetch — the movement slices have narrow readers now", () => {
  * its answer — `true` only once the server has taken the write — and the screens reset on that
  * answer and nothing else.
  */
+/* ------------------------------------------------------------------ buying (Phase 5) */
+
+const PRQ = { ...FX.seedPrq[3], st: "Approved" };            // PRQ-2026-013, decided
+const PO = { ...FX.seedPo[2], st: "Ordered" };               // PO-2026-0140, sent
+const GRN = { ...FX.seedGrn[0], id: "GRN-140-01", po: PO.id };
+
+describe("sendRequisition — POST /requisitions", () => {
+  it("sends the draft's lines and the note, clears the draft, and pulls the desk back", async () => {
+    as("store");
+    S().setPrqDraft([{ it: "milk", qty: 60 }, { it: "butter", qty: 0 }]);
+    serve({
+      "POST /api/v1/requisitions": () => json({ result: PRQ, changed: ["prq"], message: `${PRQ.id} sent to procurement` }),
+      "GET /api/v1/requisitions": () => json([PRQ]),
+    });
+
+    expect(await S().sendRequisition("Weekly dairy")).toBe(true);
+
+    // A zero line is client-side noise, not something to send and have refused.
+    expect(hit("POST /api/v1/requisitions")[0].body).toEqual({ lines: [{ it: "milk", qty: 60 }], note: "Weekly dairy" });
+    expect(hit("GET /api/v1/requisitions")).toHaveLength(1);
+    expect(S().prqDraft).toEqual([]);
+    expect(S().toast).toBe(`${PRQ.id} sent to procurement`);
+  });
+
+  it("keeps the draft when the server refuses", async () => {
+    as("store");
+    S().setPrqDraft([{ it: "milk", qty: 60 }]);
+    serve({ "POST /api/v1/requisitions": () => refusal("Combine the Milk 1L (toned) lines into one") });
+    expect(await S().sendRequisition("")).toBe(false);
+    expect(S().prqDraft).toHaveLength(1);
+    expect(S().toast).toBe("Combine the Milk 1L (toned) lines into one");
+  });
+});
+
+describe("the requisition desk's two decisions", () => {
+  it("posts the trimmed quantities and the note, and pulls the desk back", async () => {
+    as("buyer");
+    serve({
+      [`POST /api/v1/requisitions/${PRQ.id}/approve`]: () => json({ result: PRQ, changed: ["prq"], message: `${PRQ.id} approved — 2 line(s) on the procurement list` }),
+      [`POST /api/v1/requisitions/${PRQ.id}/decline`]: () => json({ result: PRQ, changed: ["prq"], message: `${PRQ.id} declined` }),
+      "GET /api/v1/requisitions": () => json([PRQ]),
+    });
+    expect(await S().approveRequisition(PRQ.id, [60, 6], "Approved in full.")).toBe(true);
+    expect(hit(`POST /api/v1/requisitions/${PRQ.id}/approve`)[0].body).toEqual({ appr: [60, 6], note: "Approved in full." });
+    expect(await S().declineRequisition(PRQ.id, "Three weeks of cover.")).toBe(true);
+    expect(hit(`POST /api/v1/requisitions/${PRQ.id}/decline`)[0].body).toEqual({ note: "Three weeks of cover." });
+    expect(hit("GET /api/v1/requisitions")).toHaveLength(2);
+  });
+
+  it("answers false on a refusal so the drawer keeps the note", async () => {
+    as("buyer");
+    serve({ [`POST /api/v1/requisitions/${PRQ.id}/decline`]: () => refusal("Give a reason — the store keeper sees it on the requisition") });
+    expect(await S().declineRequisition(PRQ.id, "  ")).toBe(false);
+    expect(S().toast).toBe("Give a reason — the store keeper sees it on the requisition");
+  });
+});
+
+describe("createPo — POST /purchase-orders", () => {
+  it("sends the vendor and the picks, and answers with the new draft's id", async () => {
+    as("buyer");
+    serve({
+      "POST /api/v1/purchase-orders": () => json({ result: PO, changed: ["po", "prq"], message: `${PO.id} drafted on Anandha Provisions — 1 line(s), review the rates before sending` }),
+      "GET /api/v1/purchase-orders": () => json([PO]),
+      "GET /api/v1/requisitions": () => json([PRQ]),
+    });
+
+    const picks = [{ prq: PRQ.id, line: 0, qty: 30 }];
+    expect(await S().createPo("VN-003", picks)).toBe(PO.id);
+
+    expect(hit("POST /api/v1/purchase-orders")[0].body).toEqual({ vendorId: "VN-003", picks });
+    expect(hit("GET /api/v1/purchase-orders")).toHaveLength(1);
+    expect(hit("GET /api/v1/requisitions")).toHaveLength(1);
+    expect(hit("GET /api/v1/snapshot")).toHaveLength(0);       // both slices have narrow readers
+  });
+
+  it("answers null on a refusal so the list can stay where it is", async () => {
+    as("buyer");
+    serve({ "POST /api/v1/purchase-orders": () => refusal(`Milk 1L (toned) — only 20.000 still pending on ${PRQ.id}`) });
+    expect(await S().createPo("VN-003", [{ prq: PRQ.id, line: 0, qty: 30 }])).toBeNull();
+    expect(S().toast).toBe(`Milk 1L (toned) — only 20.000 still pending on ${PRQ.id}`);
+  });
+});
+
+describe("the purchase order's other doors", () => {
+  const ok = (message: string, changed: string[] = ["po"]) => () => json({ result: PO, changed, message });
+  beforeEach(() => {
+    as("buyer");
+    serve({
+      [`PATCH /api/v1/purchase-orders/${PO.id}/lines/0`]: ok("Milk 1L (toned) at ₹58.00"),
+      [`DELETE /api/v1/purchase-orders/${PO.id}/lines/0`]: ok("Milk 1L (toned) returned to the procurement list", ["po", "prq"]),
+      [`PATCH /api/v1/purchase-orders/${PO.id}`]: ok(`${PO.id} expected 30-Sep-2026`),
+      [`POST /api/v1/purchase-orders/${PO.id}/send`]: ok(`${PO.id} raised on Anandha Provisions — expected 31-Aug-2026`),
+      [`POST /api/v1/purchase-orders/${PO.id}/cancel`]: ok(`${PO.id} cancelled — 1 line(s) back on the procurement list`, ["po", "prq"]),
+      [`POST /api/v1/purchase-orders/${PO.id}/receive`]: () => json({ result: { po: PO, grns: [GRN] }, changed: ["po", "grn", "stock"], message: "Booked into Central Store — 1 batch(es) against DC-88214" }),
+      [`POST /api/v1/purchase-orders/${PO.id}/close-short`]: ok(`${PO.id} closed short — the undelivered balance is back on the procurement list`, ["po", "prq"]),
+      "GET /api/v1/purchase-orders": () => json([PO]),
+      "GET /api/v1/requisitions": () => json([PRQ]),
+      "GET /api/v1/grns": () => json([GRN]),
+      "GET /api/v1/stock": () => json(STOCK),
+    });
+  });
+
+  it("puts a line's quantity and a line's rate in the same PATCH body, one field each", async () => {
+    await S().updatePoLine(PO.id, 0, { rate: 58 });
+    expect(hit(`PATCH /api/v1/purchase-orders/${PO.id}/lines/0`)[0].body).toEqual({ rate: 58 });
+    await S().updatePoLine(PO.id, 0, { qty: 40 });
+    expect(hit(`PATCH /api/v1/purchase-orders/${PO.id}/lines/0`)[1].body).toEqual({ qty: 40 });
+  });
+
+  it("returns a line to the procurement list through its own DELETE", async () => {
+    await S().removePoLine(PO.id, 0);
+    expect(hit(`DELETE /api/v1/purchase-orders/${PO.id}/lines/0`)).toHaveLength(1);
+    expect(hit("GET /api/v1/requisitions")).toHaveLength(1);
+    expect(S().toast).toBe("Milk 1L (toned) returned to the procurement list");
+  });
+
+  it("sends a vendor change and a date change through the order's own PATCH", async () => {
+    await S().setPoVendor(PO.id, "VN-002");
+    expect(hit(`PATCH /api/v1/purchase-orders/${PO.id}`)[0].body).toEqual({ vendorId: "VN-002" });
+    await S().setPoEta(PO.id, "2026-09-30");
+    expect(hit(`PATCH /api/v1/purchase-orders/${PO.id}`)[1].body).toEqual({ eta: "2026-09-30" });
+  });
+
+  it("sends an order with no body of its own", async () => {
+    await S().sendPo(PO.id);
+    expect(hit(`POST /api/v1/purchase-orders/${PO.id}/send`)[0].body).toBeUndefined();
+    expect(S().toast).toBe(`${PO.id} raised on Anandha Provisions — expected 31-Aug-2026`);
+  });
+
+  it("sends the receipt's paperwork and every line, and reads stock and the GRNs back", async () => {
+    const doc = { dc: "DC-88214", invoice: "INV/AAV/4472", invDate: "2026-09-04" };
+    const lines = [{ recv: 30, rejected: 2, batch: "AAV-8893", mrp: 0, mfg: "2026-09-01", exp: "2027-09-01" }];
+    expect(await S().receivePo(PO.id, doc, lines)).toBe(true);
+    expect(hit(`POST /api/v1/purchase-orders/${PO.id}/receive`)[0].body).toEqual({ ...doc, lines });
+    expect(hit("GET /api/v1/grns")).toHaveLength(1);
+    expect(hit("GET /api/v1/stock")).toHaveLength(1);
+    expect(S().grn[0].id).toBe(GRN.id);
+  });
+
+  it("closes an order short with its reason", async () => {
+    expect(await S().closePoShort(PO.id, "Vendor could not supply the balance.")).toBe(true);
+    expect(hit(`POST /api/v1/purchase-orders/${PO.id}/close-short`)[0].body).toEqual({ reason: "Vendor could not supply the balance." });
+    expect(hit("GET /api/v1/requisitions")).toHaveLength(1);
+  });
+
+  it("keeps a refusal's words and changes nothing", async () => {
+    serve({ [`POST /api/v1/purchase-orders/${PO.id}/cancel`]: () => refusal(`${PO.id} already received against — close it short instead of cancelling`) });
+    expect(await S().cancelPo(PO.id, "no reason")).toBe(false);
+    expect(S().toast).toBe(`${PO.id} already received against — close it short instead of cancelling`);
+    expect(S().po.find((o) => o.id === PO.id)!.st).toBe(FX.seedPo[2].st);
+  });
+});
+
+describe("vendors, contracts and a new product", () => {
+  const V = { ...FX.seedVendors[0], id: "VN-006", n: "Kumaran Traders" };
+  const C = { id: "RC-109", vendor: "Aavin Dairy Depot", it: "bread", rate: 38, from: "2026-04-01", to: "2027-03-31", moq: 20, active: true };
+  const NPR = { id: "NPR-0013", name: "Iced lemon tea 300ml", why: "", forLoc: "kiosk", by: "Ramesh Kumar", at: "2026-09-04T04:30:00.000Z", st: "Requested" };
+
+  it("posts a vendor and patches one, including the on-off switch", async () => {
+    as("buyer");
+    serve({
+      "POST /api/v1/vendors": () => json({ result: V, changed: ["vendors"], message: `Kumaran Traders added as ${V.id}` }),
+      [`PATCH /api/v1/vendors/${V.id}`]: () => json({ result: { ...V, active: false }, changed: ["vendors"], message: "Kumaran Traders deactivated — existing orders keep it, new drafts cannot pick it" }),
+      "GET /api/v1/vendors": () => json([V]),
+    });
+    expect(await S().addVendor({ n: "Kumaran Traders", gstin: "", contact: "", ph: "", terms: "", lead: 2, groups: ["Grocery"] })).toBe(true);
+    expect(hit("POST /api/v1/vendors")[0].body).toMatchObject({ n: "Kumaran Traders", lead: 2, groups: ["Grocery"] });
+    await S().setVendorActive(V.id, false);
+    expect(hit(`PATCH /api/v1/vendors/${V.id}`)[0].body).toEqual({ active: false });
+    expect(hit("GET /api/v1/vendors")).toHaveLength(2);
+  });
+
+  it("patches only the fields the drawer touched, so 'Nothing to change' stays reachable", async () => {
+    as("buyer");
+    serve({
+      [`PATCH /api/v1/vendors/${V.id}`]: () => json({ result: V, changed: ["vendors"], message: "Kumaran Traders updated" }),
+      "GET /api/v1/vendors": () => json([V]),
+    });
+    expect(await S().updateVendor(V.id, { terms: "45 days" })).toBe(true);
+    expect(hit(`PATCH /api/v1/vendors/${V.id}`)[0].body).toEqual({ terms: "45 days" });
+  });
+
+  it("posts a contract by vendor id, not by the name on screen", async () => {
+    as("store");
+    let live = true;
+    serve({
+      "POST /api/v1/contracts": () => json({ result: C, changed: ["contracts"], message: `${C.id} — Bread loaf, white at ₹38 with Aavin Dairy Depot` }),
+      [`DELETE /api/v1/contracts/${C.id}`]: () => {
+        live = false;
+        return json({ result: { ...C, active: false }, changed: ["contracts"], message: `${C.id} closed — it stays on record but no longer prices an order` });
+      },
+      // The register is whatever the read-back says it is — nothing is written locally.
+      "GET /api/v1/contracts": () => json([{ ...C, active: live }]),
+    });
+    expect(await S().addContract({ vendorId: "VN-001", it: "bread", rate: 38, from: "2026-04-01", to: "2027-03-31", moq: 20 })).toBe(true);
+    expect(hit("POST /api/v1/contracts")[0].body).toEqual({ vendorId: "VN-001", it: "bread", rate: 38, from: "2026-04-01", to: "2027-03-31", moq: 20 });
+    // Wire dates in, display dates on screen — the same convention the snapshot follows.
+    expect(S().contracts.find((x) => x.id === C.id)!.from).toBe("01-Apr-2026");
+    await S().removeContract(C.id);
+    expect(S().contracts.find((x) => x.id === C.id)!.active).toBe(false);
+  });
+
+  it("answers with the key the server chose, and refetches the catalogue", async () => {
+    as("buyer");
+    const items = { ...FX.IT, icedlemontea: { c: "MR-3005", n: "Iced lemon tea 300ml", u: "nos", t: "MRP", g: "Snacks", hsn: "2106", gst: 5, rl: 0, cost: 18, mrp: 25 } };
+    serve({
+      "POST /api/v1/items": () => json({ result: { key: "icedlemontea", item: items.icedlemontea }, changed: ["items"], message: "Iced lemon tea 300ml added to the catalogue" }),
+      "GET /api/v1/items": () => json(items),
+    });
+    const key = await S().createItem({ key: "", name: "Iced lemon tea 300ml", code: "", unit: "nos", type: "MRP", group: "", hsn: "", gst: 5, reorder: 0, cost: 18, mrp: 25 }, "store", 0);
+    expect(key).toBe("icedlemontea");
+    expect(hit("POST /api/v1/items")[0].body).toMatchObject({ name: "Iced lemon tea 300ml", type: "MRP", cost: 18, mrp: 25, loc: "store", opening: 0 });
+    // The registry every screen reads is refreshed, and catalogVersion is what tells React.
+    expect(IT.icedlemontea).toBeDefined();
+    expect(S().catalogVersion).toBeGreaterThan(0);
+  });
+
+  it("raises a shop's ask and answers it, linking the item it became", async () => {
+    as("manager");
+    serve({
+      "POST /api/v1/product-requests": () => json({ result: NPR, changed: ["productReqs"], message: `${NPR.id} sent to the central store — they add it to the master` }),
+      [`POST /api/v1/product-requests/${NPR.id}/answer`]: () => json({ result: { ...NPR, st: "Created", itemKey: "bisc" }, changed: ["productReqs"], message: `${NPR.id} — product created on the master` }),
+      "GET /api/v1/product-requests": () => json([NPR]),
+    });
+    expect(await S().requestNewProduct({ name: "Iced lemon tea 300ml", why: "Warm-weather demand", forLoc: "kiosk" })).toBe(true);
+    expect(hit("POST /api/v1/product-requests")[0].body).toEqual({ name: "Iced lemon tea 300ml", why: "Warm-weather demand", forLoc: "kiosk" });
+    as("buyer");
+    expect(await S().answerProductRequest(NPR.id, "Created", "Added as MR-3005", "bisc")).toBe(true);
+    expect(hit(`POST /api/v1/product-requests/${NPR.id}/answer`)[0].body).toEqual({ st: "Created", note: "Added as MR-3005", itemKey: "bisc" });
+  });
+});
+
 describe("a refusal keeps what the operator typed", () => {
   /** Set a controlled field the way a person does, through React's own value setter. */
   const type = (el: HTMLTextAreaElement | HTMLInputElement, v: string) => {
@@ -704,6 +939,9 @@ describe("a refusal keeps what the operator typed", () => {
     Object.getOwnPropertyDescriptor(proto, "value")!.set!.call(el, v);
     el.dispatchEvent(new Event("input", { bubbles: true }));
   };
+  /** Leaving a field. React maps `onBlur` onto the bubbling `focusout`, which is what actually
+   *  fires when the operator tabs on — and tabbing on is the case these tests are about. */
+  const leave = (el: HTMLInputElement) => { el.dispatchEvent(new FocusEvent("focusout", { bubbles: true })); };
   /** Render the counter's request screen the way the app runs it. */
   function mount() {
     const host = document.createElement("div");
@@ -734,6 +972,17 @@ describe("a refusal keeps what the operator typed", () => {
   }
   const settle = async (fn: () => void) => {
     await act(async () => { fn(); await new Promise((r) => { setTimeout(r, 0); }); });
+  };
+  /**
+   * Drain the queue until `ok()` holds, rather than for exactly one turn. A write's read-back
+   * sits two awaits behind the click — the POST, then the GETs `refetch` fans out — so a single
+   * `setTimeout(0)` was one turn short whenever the machine was loaded, which is what made the
+   * make-tile cases flake. Twenty turns is a ceiling, not a wait: it exits the moment it can.
+   */
+  const settleUntil = async (ok: () => boolean) => {
+    for (let i = 0; i < 20 && !ok(); i += 1) {
+      await act(async () => { await new Promise((r) => { setTimeout(r, 0); }); });
+    }
   };
 
   it("leaves the raise card open, with its note, when the server refuses", async () => {
@@ -804,6 +1053,7 @@ describe("a refusal keeps what the operator typed", () => {
     act(() => { type(ui.field("Quantity of Veg puffs to start"), "200"); });
 
     await settle(() => { ui.button("Make")!.click(); });
+    await settleUntil(() => S().toast !== null);
 
     expect(hit("POST /api/v1/batches")[0].body).toEqual({ it: "puff", started: 200 });
     expect(S().toast).toBe("Kitchen is short of Veg filling mix — 1.200 kg left");
@@ -837,10 +1087,147 @@ describe("a refusal keeps what the operator typed", () => {
     act(() => { busy!.click(); });
 
     release();
-    await act(async () => { await inFlight; await new Promise((r) => { setTimeout(r, 0); }); });
+    await act(async () => { await inFlight; });
+    await settleUntil(() => ui.field("Quantity of Veg puffs to start").value === "");
     expect(hit("POST /api/v1/batches")).toHaveLength(1);
     // And once it has landed the boxes are the kitchen's again.
     expect(ui.field("Quantity of Veg puffs to start").value).toBe("");
+    ui.unmount();
+  });
+
+  it("leaves the requisition card and its note alone when procurement refuses it", async () => {
+    as("store");
+    S().setPrqDraft([{ it: "milk", qty: 60 }]);
+    serve({ "POST /api/v1/requisitions": () => refusal("Combine the Milk 1L (toned) lines into one") });
+    const ui = mountNode(StoreRequisitions);
+    act(() => { type(ui.host.querySelector("textarea")!, "Coffee shop is dry"); });
+
+    await settle(() => { ui.button("Send to procurement")!.click(); });
+    await settleUntil(() => S().toast !== null);
+
+    expect(S().toast).toBe("Combine the Milk 1L (toned) lines into one");
+    // Nothing to rebuild: the draft and the note are exactly where they were.
+    expect(S().prqDraft).toHaveLength(1);
+    expect(ui.host.querySelector("textarea")!.value).toBe("Coffee shop is dry");
+    ui.unmount();
+  });
+
+  it("locks the requisition button while it is in flight, so one ask is not sent twice", async () => {
+    as("store");
+    S().setPrqDraft([{ it: "milk", qty: 60 }]);
+    let release!: () => void;
+    const inFlight = new Promise<void>((r) => { release = r; });
+    fetchMock.mockImplementation(async (u: string, init: RequestInit) => {
+      const at = `${init.method} ${String(u).split("?")[0]}`;
+      if (at === "POST /api/v1/requisitions") {
+        await inFlight;
+        return json({ result: { ...FX.seedPrq[3] }, changed: ["prq"], message: "PRQ-2026-016 sent to procurement" });
+      }
+      return json([FX.seedPrq[3]]);
+    });
+    const ui = mountNode(StoreRequisitions);
+
+    act(() => { ui.button("Send to procurement")!.click(); });
+
+    const busy = ui.button("Sending…");
+    expect(busy).toBeDefined();
+    expect(busy!.disabled).toBe(true);
+    act(() => { busy!.click(); });                          // a second tap lands on nothing
+
+    release();
+    await act(async () => { await inFlight; });
+    await settleUntil(() => S().prqDraft.length === 0);
+    expect(hit("POST /api/v1/requisitions")).toHaveLength(1);
+    ui.unmount();
+  });
+
+  const DRAFT_PO = FX.seedPo[2];                     // PO-2026-0140, one line of sugar
+
+  it("does not post a draft line the buyer only tabbed through", async () => {
+    as("buyer");
+    serve({
+      [`PATCH /api/v1/purchase-orders/${DRAFT_PO.id}/lines/0`]: () => json({ result: DRAFT_PO, changed: ["po"], message: "Sugar, refined at ₹52.00" }),
+      "GET /api/v1/purchase-orders": () => json([DRAFT_PO]),
+    });
+    S().openDrawer("bpo", DRAFT_PO.id);
+    const ui = mountNode(Drawer);
+    const box = () => ui.field("Quantity of Sugar, refined");
+
+    // Tabbing past the cell touches it and changes nothing, so nothing is sent.
+    await settle(() => { leave(box()); });
+    expect(calls()).toHaveLength(0);
+
+    // A number that actually moved is a different matter.
+    act(() => { type(box(), "20"); });
+    await settle(() => { leave(box()); });
+    await settleUntil(() => hit(`PATCH /api/v1/purchase-orders/${DRAFT_PO.id}/lines/0`).length === 1);
+    expect(hit(`PATCH /api/v1/purchase-orders/${DRAFT_PO.id}/lines/0`)[0].body).toEqual({ qty: 20 });
+    ui.unmount();
+  });
+
+  it("writes the expected date on leaving the box, once, and never on a digit", async () => {
+    as("buyer");
+    serve({
+      [`PATCH /api/v1/purchase-orders/${DRAFT_PO.id}`]: () => json({ result: DRAFT_PO, changed: ["po"], message: `${DRAFT_PO.id} expected 15-Oct-2026` }),
+      "GET /api/v1/purchase-orders": () => json([DRAFT_PO]),
+    });
+    S().openDrawer("bpo", DRAFT_PO.id);
+    const ui = mountNode(Drawer);
+    const eta = () => ui.field("Expected delivery date");
+    const wrote = () => hit(`PATCH /api/v1/purchase-orders/${DRAFT_PO.id}`);
+
+    // A year typed a digit at a time passes through several valid dates. None is a decision.
+    act(() => { type(eta(), "2026-10-01"); });
+    act(() => { type(eta(), "2026-10-15"); });
+    expect(calls()).toHaveLength(0);
+
+    await settle(() => { leave(eta()); });
+    await settleUntil(() => wrote().length === 1);
+    expect(wrote()).toHaveLength(1);
+    expect(wrote()[0].body).toEqual({ eta: "2026-10-15" });
+
+    // The box resyncs to whatever the store holds — the stub's order never moved its date — so
+    // leaving it a second time is not a second write of a date the server already has.
+    expect(eta().value).toBe("2026-08-31");
+    await settle(() => { leave(eta()); });
+    expect(wrote()).toHaveLength(1);
+    ui.unmount();
+  });
+
+  it("will not send a requisition whose every line sits at zero", async () => {
+    as("store");
+    S().setPrqDraft([{ it: "milk", qty: 0 }]);
+    serve({});
+    const ui = mountNode(StoreRequisitions);
+    // Zero lines are dropped before the post, so this one would reach the server as an empty
+    // `lines` array and come back as a generic 400 rather than the service's own sentence.
+    expect(ui.button("Send to procurement")!.disabled).toBe(true);
+    act(() => { S().setPrqDraft([{ it: "milk", qty: 0 }, { it: "butter", qty: 2 }]); });
+    expect(ui.button("Send to procurement")!.disabled).toBe(false);
+    expect(calls()).toHaveLength(0);
+    ui.unmount();
+  });
+
+  it("offers a product the store keeper has just added, without a reload", async () => {
+    as("store");
+    const cardamom = { c: "RM-1012", n: "Cardamom pods 100g", u: "nos", t: "RAW", g: "Grocery", hsn: "2106", gst: 5, rl: 0, cost: 240 };
+    serve({
+      "POST /api/v1/items": () => json({ result: { key: "cardamom", item: cardamom }, changed: ["items"], message: "Cardamom pods 100g added to the catalogue" }),
+      "GET /api/v1/items": () => json({ ...FX.IT, cardamom }),
+    });
+    S().setPrqDraft([{ it: "milk", qty: 4 }]);
+    const ui = mountNode(StoreRequisitions);
+    const offered = () => [...ui.host.querySelectorAll("option")].map((o) => o.textContent ?? "");
+    expect(offered().some((t) => t.includes("Cardamom"))).toBe(false);
+
+    await settle(() => {
+      void S().createItem({ key: "", name: "Cardamom pods 100g", code: "", unit: "nos", type: "RAW", group: "Grocery", hsn: "2106", gst: 5, reorder: 0, cost: 240 }, "store", 0);
+    });
+    await settleUntil(() => offered().some((t) => t.includes("Cardamom")));
+
+    // The picker is built during render off `IT` and pinned to catalogVersion, so the refetch
+    // the write named is enough — nobody has to reload to buy what was just added.
+    expect(offered().some((t) => t.includes("Cardamom"))).toBe(true);
     ui.unmount();
   });
 
@@ -905,6 +1292,48 @@ const OFFLINE: [name: string, run: () => Promise<unknown>, sentence: string][] =
     "Could not record the batch — check the connection and try again."],
   ["cancelTicket", () => S().cancelTicket("TKT-0440", "Counter closed"),
     "Could not cancel the ticket — check the connection and try again."],
+  ["sendRequisition", () => S().sendRequisition("Weekly dairy"),
+    "Could not send the requisition — check the connection and try again."],
+  ["addVendor", () => S().addVendor({ n: "Kumaran Traders", gstin: "", contact: "", ph: "", terms: "", lead: 2, groups: [] }),
+    "Could not save the vendor — check the connection and try again."],
+  ["updateVendor", () => S().updateVendor("VN-001", { terms: "45 days" }),
+    "Could not save the vendor — check the connection and try again."],
+  ["setVendorActive", () => S().setVendorActive("VN-001", false),
+    "Could not save the vendor — check the connection and try again."],
+  ["approveRequisition", () => S().approveRequisition("PRQ-2026-013", [60, 6], ""),
+    "Could not save the decision — check the connection and try again."],
+  ["declineRequisition", () => S().declineRequisition("PRQ-2026-013", "Three weeks of cover"),
+    "Could not save the decision — check the connection and try again."],
+  ["createPo", () => S().createPo("VN-001", [{ prq: "PRQ-2026-013", line: 0, qty: 60 }]),
+    "Could not raise the order — check the connection and try again."],
+  ["updatePoLine", () => S().updatePoLine("PO-2026-0140", 0, { rate: 58 }),
+    "Could not change the line — check the connection and try again."],
+  ["removePoLine", () => S().removePoLine("PO-2026-0140", 0),
+    "Could not remove the line — check the connection and try again."],
+  ["setPoVendor", () => S().setPoVendor("PO-2026-0140", "VN-002"),
+    "Could not change the order — check the connection and try again."],
+  ["setPoEta", () => S().setPoEta("PO-2026-0140", "2026-09-30"),
+    "Could not change the order — check the connection and try again."],
+  ["sendPo", () => S().sendPo("PO-2026-0140"),
+    "Could not send the order — check the connection and try again."],
+  ["cancelPo", () => S().cancelPo("PO-2026-0140", "Vendor closed"),
+    "Could not cancel the order — check the connection and try again."],
+  ["receivePo", () => S().receivePo("PO-2026-0141", { dc: "DC-1", invoice: "", invDate: "" }, []),
+    "Could not book the goods in — check the connection and try again."],
+  ["closePoShort", () => S().closePoShort("PO-2026-0142", "Nothing more is coming"),
+    "Could not close the order short — check the connection and try again."],
+  ["addContract", () => S().addContract({ vendorId: "VN-001", it: "bread", rate: 38, from: "2026-04-01", to: "2027-03-31", moq: 20 }),
+    "Could not save the contract — check the connection and try again."],
+  ["updateContract", () => S().updateContract("RC-101", { rate: 54 }),
+    "Could not save the contract — check the connection and try again."],
+  ["removeContract", () => S().removeContract("RC-101"),
+    "Could not close the contract — check the connection and try again."],
+  ["requestNewProduct", () => S().requestNewProduct({ name: "Buttermilk 200ml", why: "", forLoc: "kiosk" }),
+    "Could not send the request — check the connection and try again."],
+  ["answerProductRequest", () => S().answerProductRequest("NPR-0012", "Declined", "Not stocking this line"),
+    "Could not answer the request — check the connection and try again."],
+  ["createItem", () => S().createItem({ key: "", name: "Buttermilk 200ml", code: "", unit: "nos", type: "MRP", group: "", hsn: "", gst: 5, reorder: 0, cost: 18, mrp: 25 }, "store", 0),
+    "Could not add the product — check the connection and try again."],
 ];
 
 describe("a dropped connection names the write that did not land", () => {

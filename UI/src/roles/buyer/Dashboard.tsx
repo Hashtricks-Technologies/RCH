@@ -11,11 +11,6 @@ import {
 import type { FeedItem, Row } from "../../ui/kit";
 import type { PoStatus, TktLine } from "../../types";
 
-/** Procurement only ever buys what the central store carries: raw, packing and MRP goods.
- *  Finished goods and made-to-order drinks are produced in-house, never purchased. */
-const BOUGHT: string[] = Object.keys(IT).filter(
-  (k) => IT[k].t === "RAW" || IT[k].t === "PACK" || IT[k].t === "MRP",
-);
 const lineValue = (lines: TktLine[]) => sum(lines, (l) => l.qty * (IT[l.it]?.cost ?? 0));
 /** A purchase order still represents an open commitment until it is fully
  *  received or cancelled — a partial receipt does not close it. */
@@ -32,6 +27,17 @@ export default function Dashboard() {
   const [q, setQ] = useState("");
   const [state, setState] = useState("All");
   const [commitment, setCommitment] = useState("All");
+
+  // `IT` is the registry every screen reads, and a refetch of "items" replaces its contents in
+  // place (`applyItems` -> `hydrateItems`) rather than handing back a new object. The list below
+  // is therefore built during render and pinned to `catalogVersion`, which is what tells React a
+  // product was added.
+  void s.catalogVersion;
+  /** Procurement only ever buys what the central store carries: raw, packing and MRP goods.
+   *  Finished goods and made-to-order drinks are produced in-house, never purchased. */
+  const BOUGHT: string[] = Object.keys(IT).filter(
+    (k) => IT[k].t === "RAW" || IT[k].t === "PACK" || IT[k].t === "MRP",
+  );
 
   const waiting = s.prq.filter((p) => p.st === "Sent");
   const pool = procurementList(s);

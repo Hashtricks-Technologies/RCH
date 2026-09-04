@@ -9,9 +9,7 @@ import {
 import type { Col, Row } from "../../ui/kit";
 import type { ItemType, LocKey } from "../../types";
 
-const KEYS = Object.keys(IT);
 const TYPES: string[] = ["All", "RAW", "PACK", "MRP", "FG", "MTO"];
-const GROUPS: string[] = ["All", ...[...new Set(KEYS.map((k) => IT[k].g))].sort()];
 const STATES = ["All", "Out", "Below reorder", "Healthy", "Not stocked"];
 /** Locations come from the master list, never a hardcoded set — the estate changes. */
 const PLACES = ["All", ...ALL_LOCS.map((l) => LOC[l].n)];
@@ -24,6 +22,14 @@ export default function Inventory() {
   const [group, setGroup] = useState("All");
   const [state, setState] = useState("All");
   const [place, setPlace] = useState("All");
+
+  // `IT` is the registry every screen reads, and a refetch of "items" replaces its contents in
+  // place (`applyItems` -> `hydrateItems`) rather than handing back a new object. The list below
+  // is therefore built during render and pinned to `catalogVersion`, which is what tells React a
+  // product was added.
+  void s.catalogVersion;
+  const KEYS = Object.keys(IT);
+  const GROUPS: string[] = ["All", ...[...new Set(KEYS.map((k) => IT[k].g))].sort()];
 
   const totalOf = (k: string) => sum(ALL_LOCS, (l) => qty(s, l, k));
   /** A dash means the location does not carry the line at all; zero means it is dry (M12). */

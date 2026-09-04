@@ -31,6 +31,11 @@ const replaceKeys = <T extends object>(target: T, next: T) => {
   Object.assign(target, next);
 };
 
+/** Just the item master, for a write that added one (`POST /items` names "items"). The registry
+ *  keeps its identity — screens hold a reference to it — so the contents are replaced in place,
+ *  and `catalogVersion` in the store is what tells React the lists changed. */
+export function hydrateItems(items: MasterData["items"]): void { replaceKeys(IT, items); }
+
 /** Replace every registry's contents with the server's master data (Task 16 calls this). */
 export function hydrateMaster(m: MasterData): void {
   replaceKeys(IT, m.items);

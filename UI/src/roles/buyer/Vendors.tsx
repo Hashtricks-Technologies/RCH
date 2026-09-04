@@ -12,8 +12,6 @@ import { liveContractsOf } from "./lib";
 const LIVE: PoStatus[] = ["Ordered", "Partially received"];
 const STATUSES = ["All", "Active", "Inactive"];
 const CONTRACTS = ["All", "On contract", "No live contract"];
-const ALL_GROUPS = ["All", ...[...new Set(Object.values(IT).map((i) => i.g))].sort()];
-
 export default function Vendors() {
   const s = useApp();
   const openDrawer = useApp((x) => x.openDrawer);
@@ -21,6 +19,13 @@ export default function Vendors() {
   const [status, setStatus] = useState("All");
   const [group, setGroup] = useState("All");
   const [contracted, setContracted] = useState("All");
+
+  // `IT` is the registry every screen reads, and a refetch of "items" replaces its contents in
+  // place (`applyItems` -> `hydrateItems`) rather than handing back a new object. The list below
+  // is therefore built during render and pinned to `catalogVersion`, which is what tells React a
+  // product was added.
+  void s.catalogVersion;
+  const ALL_GROUPS = ["All", ...[...new Set(Object.values(IT).map((i) => i.g))].sort()];
 
   const t = q.trim().toLowerCase();
   const hits = (v: Vendor) =>

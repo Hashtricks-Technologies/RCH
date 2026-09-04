@@ -3,7 +3,7 @@ import { basePrices } from "../lib/selectors";
 import * as FX from "@rch/contract/fixtures";
 import { MENU } from "../data/master";
 import { seedVendors } from "../data/vendors";
-import { seedShopAsks } from "../data/ops";
+import { seedContracts, seedProductRequests, seedShopAsks, seedTickets } from "../data/ops";
 import {
   DAY_LABELS, seedBatch, seedBills, seedGrn, seedPo, seedPord, seedPrq, seedReq, seedRsv, seedSales,
   seedStock, seedTkt,
@@ -22,8 +22,11 @@ export function resetStore() {
     menu: clone(MENU), req: clone(seedReq), tkt: clone(seedTkt), prq: clone(seedPrq),
     po: clone(seedPo), pord: clone(seedPord), batch: clone(seedBatch), bills: clone(seedBills),
     vendors: clone(seedVendors), sales: clone(seedSales), dayLabels: DAY_LABELS,
-    seq: { prq: 15, po: 142, vn: 5 },
     cart: {}, draft: [], prqDraft: [], drawer: null, toast: null, shopFilter: null, grn: clone(seedGrn),
-    shopAsks: seedShopAsks(),
+    // The ops slice's four collections reset like every other one. `tickets` never did — a
+    // pre-existing gap, and fixes.test.ts now asserts against the support desk, which must not
+    // read what a previous case left behind.
+    shopAsks: seedShopAsks(), contracts: clone(seedContracts()),
+    productReqs: clone(seedProductRequests()), tickets: seedTickets(),
   });
 }

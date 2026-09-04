@@ -22,6 +22,17 @@ export default function NewProducts() {
   const [q, setQ] = useState("");
   const [stage, setStage] = useState<ProductReqStatus | "All">("Requested");
   const [reason, setReason] = useState<Record<string, string>>({});
+  // One lock per row: declining NPR-0012 must not grey out the button on NPR-0013.
+  const [busy, setBusy] = useState<string | null>(null);
+
+  const decline = async (id: string) => {
+    if (busy) return;
+    setBusy(id);
+    const ok = await answer(id, "Declined", reason[id] ?? "Not stocking this line");
+    setBusy(null);
+    // The reason box is cleared only once the server has taken it.
+    if (ok) setReason((m) => ({ ...m, [id]: "" }));
+  };
 
   const pending = reqs.filter((r) => r.st === "Requested");
   const filtered = q.trim() !== "" || stage !== "All";
@@ -86,10 +97,9 @@ export default function NewProducts() {
                     value={reason[r.id] ?? ""}
                     onChange={(e) => setReason({ ...reason, [r.id]: e.target.value })}
                   />
-                  <Btn size="xs" onClick={() => openDrawer("bnewitem", r.id)}>Create</Btn>
-                  <Btn size="xs" variant="dg"
-                    onClick={() => answer(r.id, "Declined", reason[r.id] ?? "Not stocking this line")}>
-                    Decline
+                  <Btn size="xs" disabled={busy !== null} onClick={() => openDrawer("bnewitem", r.id)}>Create</Btn>
+                  <Btn size="xs" variant="dg" disabled={busy !== null} onClick={() => { void decline(r.id); }}>
+                    {busy === r.id ? "Declining…" : "Decline"}
                   </Btn>
                 </div>
               ) : <span className="dim">—</span>,

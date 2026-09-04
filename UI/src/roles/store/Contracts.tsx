@@ -2,16 +2,12 @@ import { useState } from "react";
 import { IT } from "../../data/master";
 import { useApp } from "../../store";
 import { costOf } from "../../lib/selectors";
-import { U, money, money0, pct, sum } from "../../lib/fmt";
+import { U, money, money0, pct, sum, toInputDate } from "../../lib/fmt";
 import {
   Alert, Btn, BtnRow, Card, DataTable, Field, FilterBtn, FilterSelect, FormRow, Kpis, PageHead, Pill,
   TableFoot, Toolbar,
 } from "../../ui/kit";
 import type { RateContract } from "../../types";
-
-const CONTRACTABLE = Object.keys(IT)
-  .filter((k) => IT[k].t === "RAW" || IT[k].t === "PACK" || IT[k].t === "MRP")
-  .sort((a, b) => IT[a].g.localeCompare(IT[b].g) || IT[a].n.localeCompare(IT[b].n));
 
 const STATE = ["All", "Live", "Closed"] as const;
 
@@ -22,9 +18,16 @@ const variance = (c: RateContract) => {
   return { avg, gap: c.rate - avg, ratio: avg > 0 ? (c.rate - avg) / avg : 0 };
 };
 
-type Draft = Pick<RateContract, "vendor" | "it" | "rate" | "from" | "to" | "moq">;
+/**
+ * The form's own shape, not a contract's. Two things differ deliberately: the vendor is held by
+ * **id**, because "vendor and item exist" is a question only an id can answer, while the
+ * register below still prints the name the contract carries; and `from`/`to` are held as wire
+ * dates (`YYYY-MM-DD`), because that is what a date input speaks and what the body wants — the
+ * conversion happens once, on the way into the form.
+ */
+type Draft = { vendorId: string; it: string; rate: number; from: string; to: string; moq: number };
 
-const BLANK: Draft = { vendor: "", it: CONTRACTABLE[0] ?? "", rate: 0, from: "", to: "", moq: 0 };
+const BLANK: Draft = { vendorId: "", it: "", rate: 0, from: "", to: "", moq: 0 };
 
 export default function Contracts() {
   const contracts = useApp((s) => s.contracts);
@@ -44,6 +47,19 @@ export default function Contracts() {
 
   const [editId, setEditId] = useState<string | null>(null);
   const [edit, setEdit] = useState<Draft>(BLANK);
+  const [busy, setBusy] = useState(false);
+  const catalogVersion = useApp((s) => s.catalogVersion);
+
+  // `IT` is the registry every screen reads, and a refetch of "items" replaces its contents in
+  // place (`applyItems` -> `hydrateItems`) rather than handing back a new object. The list below
+  // is therefore built during render and pinned to `catalogVersion`, which is what tells React a
+  // product was added.
+  void catalogVersion;
+  const CONTRACTABLE = Object.keys(IT)
+    .filter((k) => IT[k].t === "RAW" || IT[k].t === "PACK" || IT[k].t === "MRP")
+    .sort((a, b) => IT[a].g.localeCompare(IT[b].g) || IT[a].n.localeCompare(IT[b].n));
+  /** A blank draft has no item chosen yet, so the picker falls back to the first buyable one. */
+  const item = draft.it || CONTRACTABLE[0] || "";
 
   const VENDOR_OPTS = ["All", ...new Set([
     ...vendors.filter((v) => v.active).map((v) => v.n),
@@ -75,36 +91,44 @@ export default function Contracts() {
   const above = live.filter((c) => variance(c).gap > 0);
   const exposure = sum(live, (c) => c.moq * c.rate);
 
-  const validate = (d: Draft): string | null => {
-    if (!d.vendor.trim()) return "Pick the vendor this rate is agreed with";
+  /** Whether the form is complete enough to be worth a round trip. Every one of these is a rule
+   *  the server holds too; nothing here decides anything, it only saves a needless refusal. */
+  const incomplete = (d: Draft): string | null => {
     if (!d.it || !IT[d.it]) return "Pick the item the rate covers";
     if (!(d.rate > 0)) return "A contract rate must be more than zero";
-    if (!d.from.trim() || !d.to.trim()) return "A contract needs a valid-from and a valid-to date";
+    if (!d.from || !d.to) return "A contract needs a valid-from and a valid-to date";
     if (d.moq < 0) return "Minimum order quantity cannot be negative";
     return null;
   };
 
-  const submitAdd = () => {
-    const bad = validate(draft);
+  const submitAdd = async () => {
+    if (busy) return;
+    const bad = !draft.vendorId ? "Pick the vendor this rate is agreed with" : incomplete({ ...draft, it: item });
     if (bad) { notify(bad); return; }
-    const before = useApp.getState().contracts.length;
-    addContract({ ...draft, vendor: draft.vendor.trim(), active: true });
-    // addContract refuses a second live contract for the same vendor and item.
-    if (useApp.getState().contracts.length > before) {
-      setDraft(BLANK);
-      setAdding(false);
-    }
+    setBusy(true);
+    const ok = await addContract({
+      vendorId: draft.vendorId, it: item, rate: draft.rate, from: draft.from, to: draft.to, moq: draft.moq,
+    });
+    setBusy(false);
+    // The form empties only once the register actually carries the contract — a refusal
+    // ("already has a live contract with …") leaves every box as it was typed.
+    if (ok) { setDraft(BLANK); setAdding(false); }
   };
 
   const startEdit = (c: RateContract) => {
     setEditId(c.id);
-    setEdit({ vendor: c.vendor, it: c.it, rate: c.rate, from: c.from, to: c.to, moq: c.moq });
+    // In through `toInputDate`, out as the input's own ISO value: the register keeps printing
+    // the display dates the store holds, and the form works in the only thing a date input reads.
+    setEdit({ vendorId: "", it: c.it, rate: c.rate, from: toInputDate(c.from), to: toInputDate(c.to), moq: c.moq });
   };
-  const saveEdit = (id: string) => {
-    const bad = validate(edit);
+  const saveEdit = async (id: string) => {
+    if (busy) return;
+    const bad = incomplete(edit);
     if (bad) { notify(bad); return; }
-    updateContract(id, { rate: edit.rate, from: edit.from.trim(), to: edit.to.trim(), moq: edit.moq });
-    setEditId(null);
+    setBusy(true);
+    const ok = await updateContract(id, { rate: edit.rate, from: edit.from, to: edit.to, moq: edit.moq });
+    setBusy(false);
+    if (ok) setEditId(null);
   };
 
   return (
@@ -154,15 +178,15 @@ export default function Contracts() {
         <Card title="New rate contract" sub="One live contract per vendor and item">
           <FormRow cols="f3">
             <Field label="Vendor" hint="The rate is agreed with this vendor.">
-              <select value={draft.vendor} onChange={(e) => setDraft({ ...draft, vendor: e.target.value })}>
+              <select value={draft.vendorId} onChange={(e) => setDraft({ ...draft, vendorId: e.target.value })}>
                 <option value="">Choose a vendor…</option>
                 {vendors.filter((v) => v.active).map((v) => (
-                  <option key={v.id} value={v.n}>{v.n} · {v.terms}</option>
+                  <option key={v.id} value={v.id}>{v.n} · {v.terms}</option>
                 ))}
               </select>
             </Field>
-            <Field label="Item" hint={IT[draft.it] ? `Moving average ${money(costOf(draft.it))} per ${U(draft.it)}` : undefined}>
-              <select value={draft.it} onChange={(e) => setDraft({ ...draft, it: e.target.value })}>
+            <Field label="Item" hint={IT[item] ? `Moving average ${money(costOf(item))} per ${U(item)}` : undefined}>
+              <select value={item} onChange={(e) => setDraft({ ...draft, it: e.target.value })}>
                 {CONTRACTABLE.map((k) => (
                   <option key={k} value={k}>{IT[k].n} · {IT[k].c}</option>
                 ))}
@@ -170,8 +194,8 @@ export default function Contracts() {
             </Field>
             <Field
               label="Contract rate (₹)"
-              hint={draft.rate > 0 && IT[draft.it]
-                ? `${draft.rate > costOf(draft.it) ? "Above" : draft.rate < costOf(draft.it) ? "Below" : "Level with"} the moving average by ${money(Math.abs(draft.rate - costOf(draft.it)))}`
+              hint={draft.rate > 0 && IT[item]
+                ? `${draft.rate > costOf(item) ? "Above" : draft.rate < costOf(item) ? "Below" : "Level with"} the moving average by ${money(Math.abs(draft.rate - costOf(item)))}`
                 : "Per unit, exclusive of GST."}
             >
               <input type="number" min={0} step={0.01} value={draft.rate || ""}
@@ -179,22 +203,22 @@ export default function Contracts() {
             </Field>
           </FormRow>
           <FormRow cols="f3">
-            <Field label="Valid from" hint="For example 01-Apr-2026.">
-              <input value={draft.from} placeholder="01-Apr-2026"
+            <Field label="Valid from" hint="The day the rate starts applying.">
+              <input type="date" aria-label="Valid from" value={toInputDate(draft.from)}
                 onChange={(e) => setDraft({ ...draft, from: e.target.value })} />
             </Field>
-            <Field label="Valid to" hint="For example 31-Mar-2027.">
-              <input value={draft.to} placeholder="31-Mar-2027"
+            <Field label="Valid to" hint="The last day it prices an order.">
+              <input type="date" aria-label="Valid to" value={toInputDate(draft.to)}
                 onChange={(e) => setDraft({ ...draft, to: e.target.value })} />
             </Field>
-            <Field label="Minimum order quantity" hint={`In ${U(draft.it)}.`}>
+            <Field label="Minimum order quantity" hint={`In ${U(item)}.`}>
               <input type="number" min={0} step={1} value={draft.moq || ""}
                 onChange={(e) => setDraft({ ...draft, moq: Number(e.target.value) })} />
             </Field>
           </FormRow>
           <BtnRow end>
             <Btn variant="gh" onClick={() => { setDraft(BLANK); setAdding(false); }}>Discard</Btn>
-            <Btn onClick={submitAdd}>Add contract</Btn>
+            <Btn disabled={busy} onClick={submitAdd}>{busy ? "Saving…" : "Add contract"}</Btn>
           </BtnRow>
         </Card>
       )}
@@ -264,13 +288,13 @@ export default function Contracts() {
                       <span className="dim">Level</span>
                     ),
                     editing ? (
-                      <input value={edit.from} aria-label={`Valid from for ${c.id}`}
+                      <input type="date" value={toInputDate(edit.from)} aria-label={`Valid from for ${c.id}`}
                         onChange={(e) => setEdit({ ...edit, from: e.target.value })} />
                     ) : (
                       <span className="mono">{c.from}</span>
                     ),
                     editing ? (
-                      <input value={edit.to} aria-label={`Valid to for ${c.id}`}
+                      <input type="date" value={toInputDate(edit.to)} aria-label={`Valid to for ${c.id}`}
                         onChange={(e) => setEdit({ ...edit, to: e.target.value })} />
                     ) : (
                       <span className="mono">{c.to}</span>
@@ -285,16 +309,18 @@ export default function Contracts() {
                     c.active ? <Pill tone="ok">Live</Pill> : <Pill tone="mu">Closed</Pill>,
                     editing ? (
                       <BtnRow>
-                        <Btn size="xs" onClick={() => saveEdit(c.id)}>Update</Btn>
+                        <Btn size="xs" disabled={busy} onClick={() => { void saveEdit(c.id); }}>
+                          {busy ? "Saving…" : "Update"}
+                        </Btn>
                         <Btn size="xs" variant="gh" onClick={() => setEditId(null)}>Cancel</Btn>
                       </BtnRow>
                     ) : (
                       <BtnRow>
                         <Btn size="xs" variant="gh" onClick={() => startEdit(c)}>Edit</Btn>
                         {c.active ? (
-                          <Btn size="xs" variant="dg" onClick={() => removeContract(c.id)}>Close</Btn>
+                          <Btn size="xs" variant="dg" onClick={() => { void removeContract(c.id); }}>Close</Btn>
                         ) : (
-                          <Btn size="xs" variant="gh" onClick={() => updateContract(c.id, { active: true })}>
+                          <Btn size="xs" variant="gh" onClick={() => { void updateContract(c.id, { active: true }); }}>
                             Reopen
                           </Btn>
                         )}

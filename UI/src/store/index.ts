@@ -13,22 +13,21 @@ import {
 import { seedVendors } from "../data/vendors";
 import type {
   Batch, Bill, DraftLine, DrawerState, Grn, LocKey, Payer, PordStatus, ProdOrder, PurchaseOrder,
-  Requisition, StockRequest, Tender, Ticket, User, Vendor,
+  Requisition, StockLoc, StockRequest, Tender, Ticket, User, Vendor,
 } from "../types";
 import { basePrices } from "../lib/selectors";
-import { now } from "../lib/fmt";
 import { applyTheme, nextTheme, readStoredTheme, storeTheme, type ThemePref } from "../lib/theme";
 import { createProcurementSlice, type ProcurementSlice } from "./procurement";
 import { createOpsSlice, type OpsSlice } from "./ops";
-
-interface Seq { prq: number; po: number; vn: number }
 
 export interface AppState extends ProcurementSlice, OpsSlice {
   user: User | null;
   /** Where the session is: no token, asking for one, fetching the snapshot, or usable. */
   auth: "signed-out" | "signing-in" | "loading" | "ready";
   mustChangePassword: boolean;
-  stock: Record<LocKey, Record<string, number>>;
+  /** Quarantine is in here: the store keeper sees what a goods receipt turned away. It is a
+   *  place stock is *reported*, never one an operator acts at, so no write body admits it. */
+  stock: Record<StockLoc, Record<string, number>>;
   rsv: Record<string, number>;
   ovr: Record<string, string>;
   prices: Record<"A" | "B", Record<string, number>>;
@@ -44,7 +43,6 @@ export interface AppState extends ProcurementSlice, OpsSlice {
   vendors: Vendor[];
   sales: number[][];
   dayLabels: string[];
-  seq: Seq;
   cart: Record<string, Record<string, number>>;
   draft: DraftLine[];
   prqDraft: DraftLine[];
@@ -93,7 +91,9 @@ export interface AppState extends ProcurementSlice, OpsSlice {
   cancelTicket: (tktId: string, reason: string) => Promise<boolean>;
 
   setPrqDraft: (d: DraftLine[]) => void;
-  sendRequisition: (note: string) => void;
+  /** The central store's ask (POST /requisitions). Answers `true` only once the server has
+   *  taken it, so the draft and its note survive a refusal. */
+  sendRequisition: (note: string) => Promise<boolean>;
 
   setOrderStatus: (id: string, st: PordStatus) => Promise<void>;
   dispatchOrder: (id: string) => Promise<void>;
@@ -111,7 +111,6 @@ export interface AppState extends ProcurementSlice, OpsSlice {
 }
 
 const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v));
-const hist = (who: string, s: string) => ({ s, who, t: now() });
 
 export const useApp = create<AppState>((set, get) => ({
   user: null,
@@ -133,7 +132,6 @@ export const useApp = create<AppState>((set, get) => ({
   vendors: clone(seedVendors),
   sales: clone(seedSales),
   dayLabels: DAY_LABELS,
-  seq: { prq: 15, po: 142, vn: 5 },
   cart: {},
   draft: [],
   prqDraft: [],
@@ -374,18 +372,21 @@ export const useApp = create<AppState>((set, get) => ({
   },
 
   setPrqDraft: (prqDraft) => set({ prqDraft }),
-  sendRequisition: (note) => {
-    const s = get();
-    if (!s.user) return;
-    const lines = s.prqDraft.filter((l) => l.it && l.qty > 0)
-      .map((l) => ({ it: l.it, qty: l.qty, appr: 0, ordered: 0 }));
-    if (!lines.length) { get().notify("Add at least one line before sending"); return; }
-    const id = "PRQ-2026-0" + (s.seq.prq + 1);
-    set({
-      seq: { ...s.seq, prq: s.seq.prq + 1 }, prqDraft: [],
-      prq: [{ id, by: s.user.n, at: now(), lines, st: "Sent", note, hist: [hist(s.user.n, "Sent")] }, ...s.prq],
-    });
-    get().notify(`${id} sent to procurement`);
+  /** Buying starts here (POST /requisitions). A line with no quantity on it is client-side
+   *  noise rather than something to send and have refused, so it is dropped before the post;
+   *  the draft itself is cleared only once the server has taken it. */
+  sendRequisition: async (note) => {
+    const lines = get().prqDraft.filter((l) => l.it && l.qty > 0).map((l) => ({ it: l.it, qty: l.qty }));
+    try {
+      const r = await call(routes.createRequisition, { body: { lines, note } });
+      set({ prqDraft: [] });
+      get().notify(r.message);
+      await refetch(r.changed, r.message);
+      return true;
+    } catch (e) {
+      get().notify(e instanceof ApiError ? e.message : "Could not send the requisition — check the connection and try again.");
+      return false;
+    }
   },
 
   /** One press on the board (POST /prod-orders/:id/status); the transition table is the

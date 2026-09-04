@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { IT, PO_APPROVAL_LIMIT } from "../../data/master";
 import { vendorName } from "../../data/vendors";
 import { useApp } from "../../store";
-import { poValue } from "../../lib/selectors";
-import { U, fq, money, money0, pct } from "../../lib/fmt";
+import { canCancelPo, canSendPo, poValue } from "../../lib/selectors";
+import { U, fq, money, money0, pct, toInputDate } from "../../lib/fmt";
 import { Alert, Btn, BtnRow, DataTable, Feed, Field, FormRow, Pill, Section, TableFoot } from "../../ui/kit";
 import type { Row } from "../../ui/kit";
 import { DrawerFrame } from "../../ui/Drawer";
@@ -40,7 +40,10 @@ function DraftLineInput({
 
   const commit = () => {
     const n = Number(local);
-    if (Number.isFinite(n) && (!positiveOnly || n > 0)) onCommit(n);
+    // A blur is not an edit. Tabbing across a draft line touches every cell on the way past,
+    // and each one would otherwise post a PATCH and toast a sentence about a value nobody
+    // changed — so only a number that actually moved reaches the server.
+    if (Number.isFinite(n) && n !== value && (!positiveOnly || n > 0)) onCommit(n);
     // Whether or not the store accepted the value, resync the field to
     // whatever it currently holds rather than leaving a stale or blank input:
     // if the commit changed it, the render-time check above catches the new
@@ -54,6 +57,48 @@ function DraftLineInput({
     <input
       type="number" className="mono" min={min} step={step}
       value={local} aria-label={ariaLabel}
+      onChange={(e) => setLocal(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+    />
+  );
+}
+
+/**
+ * The expected delivery date, in the only form an `<input type="date">` speaks.
+ *
+ * Same shape as `DraftLineInput` above, for the same reason and one more: a date box fires
+ * `change` on every intermediate *valid* date, so a year typed digit by digit is four writes —
+ * and each write's refetch snaps the box back under the operator's fingers. Local state absorbs
+ * the typing and the value reaches the server on blur, once, and only when it actually moved.
+ * The store holds a display date ("11-Sep-2026"), so `toInputDate` converts on the way in and
+ * the input's own ISO value goes straight out, which is what `PatchPoBodySchema.eta` wants.
+ */
+function EtaInput({ value, busy, onCommit }: {
+  value: string; busy: boolean; onCommit: (iso: string) => void;
+}) {
+  const iso = toInputDate(value);
+  const [local, setLocal] = useState(iso);
+  const [synced, setSynced] = useState(iso);
+  if (iso !== synced) {
+    setSynced(iso);
+    setLocal(iso);
+  }
+
+  const commit = () => {
+    // A cleared box is not a date and an unchanged one is not a change. Neither is worth a
+    // write, and an empty string would reach the buyer as a generic 400 rather than a sentence.
+    if (local && local !== iso) onCommit(local);
+    // Then resync to whatever the store actually holds, exactly as `DraftLineInput` does: if the
+    // write landed, the render-time check above picks the new date up a moment later; if it was
+    // refused, this is what stops a second tab-out sending the same refused date again.
+    setSynced(iso);
+    setLocal(iso);
+  };
+
+  return (
+    <input
+      type="date" value={local} aria-label="Expected delivery date" disabled={busy}
       onChange={(e) => setLocal(e.target.value)}
       onBlur={commit}
       onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
@@ -81,36 +126,13 @@ function PoDrawer({ id }: DrawerProps) {
 
   const [cancelling, setCancelling] = useState(false);
   const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
 
-  /**
-   * A draft is priced off the rate contract wherever one is live for this
-   * vendor and item. A rate the buyer has typed is never overwritten: only a
-   * line still sitting on the item's standard cost (what createPo() seeds) or
-   * on the previous vendor's contract rate is re-priced, so switching vendor
-   * re-prices the order without wiping a hand-negotiated rate.
-   */
-  const priced = useRef<string | null>(null);
-  const vendor = po?.vendor;
-  const status = po?.st;
-  useEffect(() => {
-    const st = useApp.getState();
-    const o = st.po.find((x) => x.id === id);
-    if (!o || o.st !== "Draft") return;
-    const key = o.id + "|" + o.vendor;
-    if (priced.current === key) return;
-    const prev = priced.current;
-    priced.current = key;
-    const prevVendor = prev?.startsWith(o.id + "|") ? prev.slice(o.id.length + 1) : null;
-    o.lines.forEach((l, i) => {
-      const c = contractFor(st, o.vendor, l.it);
-      if (!c || !(c.rate > 0) || l.rate === c.rate) return;
-      const standard = IT[l.it]?.cost ?? 0;
-      const before = prevVendor ? contractFor(st, prevVendor, l.it)?.rate : undefined;
-      if (l.rate === standard || (before != null && l.rate === before)) {
-        st.updatePoLine(o.id, i, { rate: c.rate });
-      }
-    });
-  }, [id, vendor, status]);
+  // A draft is priced off its vendor's live rate contract, and a hand-negotiated rate is never
+  // overwritten — both of them server-side now: `createPo` prices the draft when it is raised
+  // and `PATCH /purchase-orders/:id` re-prices it when the vendor moves. The effect that used
+  // to do it here is gone rather than awaited: it would have fired one network write per line
+  // on every open of this drawer.
 
   if (!po) {
     return (
@@ -124,6 +146,7 @@ function PoDrawer({ id }: DrawerProps) {
   }
 
   const value = poValue(po);
+  const anyReceived = po.lines.some((l) => l.recv > 0);
   const grns = s.grn.filter((g) => g.po === po.id);
   const vendorLabel = vendorName(s.vendors, po.vendor);
 
@@ -139,6 +162,29 @@ function PoDrawer({ id }: DrawerProps) {
       return c != null && c.moq > 0 && l.qty < c.moq;
     }).length;
 
+    /** A cancellation carries a reason, so it keeps the box open until the server takes it. */
+    const cancel = async () => {
+      if (busy) return;
+      setBusy(true);
+      const ok = await cancelPo(po.id, reason);
+      setBusy(false);
+      if (ok) close();
+    };
+    /** Sending is a commitment to a vendor: one press, and the panel closes behind the answer. */
+    const send = async () => {
+      if (busy) return;
+      setBusy(true);
+      const ok = await sendPo(po.id);
+      setBusy(false);
+      if (ok) close();
+    };
+    const saveEta = async (iso: string) => {
+      if (busy) return;
+      setBusy(true);
+      await setPoEta(po.id, iso);
+      setBusy(false);
+    };
+
     const rows: Row[] = po.lines.map((l, i) => {
       const c = contractFor(s, po.vendor, l.it);
       const diff = c ? Math.round((l.rate - c.rate) * 100) / 100 : 0;
@@ -151,7 +197,7 @@ function PoDrawer({ id }: DrawerProps) {
             <DraftLineInput
               value={l.qty} min={0} step={U(l.it) === "nos" ? 1 : 0.5} positiveOnly
               ariaLabel={`Quantity of ${IT[l.it]?.n ?? l.it}`}
-              onCommit={(n) => updatePoLine(po.id, i, { qty: n })}
+              onCommit={(n) => { void updatePoLine(po.id, i, { qty: n }); }}
             />
             {short && (
               <div className="mini" style={warn}>
@@ -163,7 +209,7 @@ function PoDrawer({ id }: DrawerProps) {
           <DraftLineInput
             value={l.rate} min={0} step={0.01}
             ariaLabel={`Rate for ${IT[l.it]?.n ?? l.it}`}
-            onCommit={(n) => updatePoLine(po.id, i, { rate: n })}
+            onCommit={(n) => { void updatePoLine(po.id, i, { rate: n }); }}
           />,
           c ? (
             <>
@@ -184,7 +230,7 @@ function PoDrawer({ id }: DrawerProps) {
           ),
           <>{money0(l.qty * l.rate)}</>,
           <>{l.src.map((x, si) => <div key={si}>{x.prq} · {fq(x.qty, l.it)}</div>)}</>,
-          <Btn size="xs" variant="gh" onClick={() => removePoLine(po.id, i)}>Remove</Btn>,
+          <Btn size="xs" variant="gh" onClick={() => { void removePoLine(po.id, i); }}>Remove</Btn>,
         ],
       };
     });
@@ -195,10 +241,14 @@ function PoDrawer({ id }: DrawerProps) {
         sub={`Draft · ${vendorLabel} · ${po.lines.length} item${po.lines.length > 1 ? "s" : ""}`}
         foot={
           <>
-            <Btn variant="dg" onClick={() => setCancelling(true)}>Cancel order</Btn>
+            {canCancelPo(po.st, anyReceived) && (
+              <Btn variant="dg" onClick={() => setCancelling(true)}>Cancel order</Btn>
+            )}
             <div className="sp" />
             <Btn variant="gh" onClick={close}>Close</Btn>
-            <Btn onClick={() => sendPo(po.id)}>Send to vendor</Btn>
+            {canSendPo(po.st) && (
+              <Btn disabled={busy} onClick={send}>{busy ? "Sending…" : "Send to vendor"}</Btn>
+            )}
           </>
         }
       >
@@ -247,7 +297,7 @@ function PoDrawer({ id }: DrawerProps) {
         <Section title="Order terms" sub="Vendor and expected delivery — editable while this order is a draft.">
           <FormRow cols="f2">
             <Field label="Vendor" hint="Changing the vendor re-prices every item off that vendor's contract, unless you typed the rate yourself.">
-              <select value={po.vendor} onChange={(e) => setPoVendor(po.id, e.target.value)}>
+              <select value={po.vendor} onChange={(e) => { void setPoVendor(po.id, e.target.value); }}>
                 {/* The order's own vendor must always have a matching <option>, even when
                     deactivated after this draft was raised — otherwise the browser silently
                     selects the first option in the list, showing a vendor the order isn't on. */}
@@ -256,8 +306,8 @@ function PoDrawer({ id }: DrawerProps) {
                 ))}
               </select>
             </Field>
-            <Field label="Expected delivery">
-              <input value={po.eta} onChange={(e) => setPoEta(po.id, e.target.value)} placeholder="DD-Mon-YYYY" />
+            <Field label="Expected delivery" hint={`Currently ${po.eta}.`}>
+              <EtaInput value={po.eta} busy={busy} onCommit={(iso) => { void saveEta(iso); }} />
             </Field>
           </FormRow>
         </Section>
@@ -277,7 +327,9 @@ function PoDrawer({ id }: DrawerProps) {
             </Field>
             <BtnRow end>
               <Btn variant="gh" onClick={() => { setCancelling(false); setReason(""); }}>Never mind</Btn>
-              <Btn variant="dg" onClick={() => cancelPo(po.id, reason)}>Confirm cancellation</Btn>
+              <Btn variant="dg" disabled={busy} onClick={cancel}>
+                {busy ? "Cancelling…" : "Confirm cancellation"}
+              </Btn>
             </BtnRow>
           </Section>
         )}

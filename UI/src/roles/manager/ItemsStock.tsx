@@ -45,6 +45,7 @@ export default function ItemsStock() {
   const [nDetail, setNDetail] = useState("");
   const [nQty, setNQty] = useState("");
   const [nPrio, setNPrio] = useState(0);
+  const [busy, setBusy] = useState(false);
 
   const items = useSort("name");
   const tsort = useSort("id", "desc");
@@ -121,17 +122,21 @@ export default function ItemsStock() {
   const filtered = term !== "" || type > 0 || loc > 0 || state > 0;
   const shownValue = sum(rows, (r) => r.value);
 
-  const raiseNew = () => {
+  const raiseNew = async () => {
+    if (busy) return;
     const name = nName.trim();
     if (!name) { notify("Name the product you want the central store to stock"); return; }
     const opening = nQty.trim();
-    requestNewProduct({
+    setBusy(true);
+    const ok = await requestNewProduct({
       name,
       why: [opening ? `Quantity wanted to start with: ${opening}.` : "", nDetail.trim()]
         .filter(Boolean).join(" "),
       forLoc: shop,
     });
-    setNName(""); setNDetail(""); setNQty("");
+    setBusy(false);
+    // Only a request the central store has actually taken empties the three boxes.
+    if (ok) { setNName(""); setNDetail(""); setNQty(""); }
   };
 
   return (
@@ -275,9 +280,9 @@ export default function ItemsStock() {
               </select>
             </Field>
           </FormRow>
-          <Btn wide disabled={!nName.trim()} title={nName.trim() ? undefined : "Name the product first"}
+          <Btn wide disabled={busy || !nName.trim()} title={nName.trim() ? undefined : "Name the product first"}
             onClick={raiseNew}>
-            Raise new-product request
+            {busy ? "Sending…" : "Raise new-product request"}
           </Btn>
         </Card>
       </Grid>
