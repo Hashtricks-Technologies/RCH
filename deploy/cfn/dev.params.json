@@ -49,6 +49,6 @@
   },
   {
     "ParameterKey": "CreateCaaRecord",
-    "ParameterValue": "false"
+    "ParameterValue": "true"
   }
 ]

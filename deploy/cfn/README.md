@@ -148,3 +148,17 @@ moment `dev`'s stack already owns them. That's why `IsDev` gates them and every 
 environment imports by `Fn::ImportValue` instead — see "Why the resources are split" above.
 Nothing about this is specific to the OIDC provider; it's the sharpest example of a pattern that
 applies to all five.
+
+## What an IMPORT change set will and will not accept (learned importing `rch-dev`)
+
+- It may create nothing: every resource the template declares must be in the import list, so a
+  resource that does not exist yet (the CAA record on a fresh name) sits behind a condition
+  (`CreateCaaRecord`, `false` for the import) and is created by the UPDATE that follows.
+- It may add no `Outputs` and no stack-level `--tags`: run the import with a copy of the template
+  whose `Outputs:` section is removed and without `--tags`; the follow-up
+  `aws cloudformation deploy` with the full template adds both.
+- Every imported resource must carry a `DeletionPolicy` (all are `Retain` here).
+- A Route 53 record's import identifier is `{HostedZoneId, Name, Type}` — it was simpler to let
+  the update create the CAA record than to import a hand-made one.
+- `dev.params.json` is committed with `CreateCaaRecord=true`, the value the stack holds after the
+  update; pass `false` only for a first import.
