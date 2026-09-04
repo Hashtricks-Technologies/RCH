@@ -1,4 +1,4 @@
-import type { Bill, LocKey, Role, ShopAsk, StockRequest, Ticket } from "@rch/contract";
+import type { Batch, Bill, LocKey, ProdOrder, Role, ShopAsk, StockRequest, Ticket } from "@rch/contract";
 import type { Snapshot } from "./service.js";
 
 /** The columns of `sales`, in order — mirrors OUTLET_COLS in readers/documents.ts. */
@@ -34,6 +34,12 @@ export const scopeTickets = (tkt: Ticket[], who: Who): Ticket[] =>
 /** Shop to shop: the asker and the shop being asked, nobody in between. */
 export const scopeShopAsks = (asks: ShopAsk[], who: Who): ShopAsk[] =>
   who.role !== "counter" ? asks : asks.filter((a) => a.from === who.loc || a.to === who.loc);
+/** The kitchen's board belongs to the kitchen; an outlet sees the orders it raised itself. */
+export const scopeProdOrders = (pord: ProdOrder[], who: Who): ProdOrder[] =>
+  who.role !== "counter" ? pord : pord.filter((o) => o.from === who.loc);
+/** The batch log is the kitchen's own record of what it made. A counter sells the output and
+ *  has no window on the production behind it — the snapshot has always sent them none. */
+export const scopeBatches = (batch: Batch[], who: Who): Batch[] => (who.role !== "counter" ? batch : []);
 
 /** A counter operator's world is their counter. Master data is never cut down; documents and stock are. */
 export function scope(s: Snapshot, who: Who & { sub: string }): Snapshot {
@@ -54,8 +60,9 @@ export function scope(s: Snapshot, who: Who & { sub: string }): Snapshot {
     shopAsks: scopeShopAsks(s.shopAsks, who),
     tickets: s.tickets.filter(mine),
     productReqs: s.productReqs.filter((p) => p.forLoc === L),
-    pord: s.pord.filter((o) => o.from === L),
+    pord: scopeProdOrders(s.pord, who),
+    batch: scopeBatches(s.batch, who),
     sales: s.sales.map((row) => (col === -1 ? [] : [row[col] ?? 0])),
-    prq: [], po: [], grn: [], batch: [], vendors: [], contracts: [],
+    prq: [], po: [], grn: [], vendors: [], contracts: [],
   };
 }

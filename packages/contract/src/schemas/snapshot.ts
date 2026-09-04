@@ -48,3 +48,5 @@ export const BillsResponseSchema = z.array(D.BillSchema);
 export const RequestsResponseSchema = z.array(D.StockRequestSchema);
 export const TicketsResponseSchema = z.array(D.TicketSchema);
 export const ShopAsksResponseSchema = z.array(D.ShopAskSchema);
+export const ProdOrdersResponseSchema = z.array(D.ProdOrderSchema);
+export const BatchesResponseSchema = z.array(D.BatchSchema);
