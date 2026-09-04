@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { EVENT_DEBOUNCE_MS, startEventStream, useStreamState } from "../api/events";
+import { act, createElement, useEffect } from "react";
+import { createRoot } from "react-dom/client";
+import { EVENT_DEBOUNCE_MS, startEventStream, useStreamState, type StreamState } from "../api/events";
 import { setAccessToken } from "../api/session";
 import { useApp } from "../store";
 import { as, resetStore, S } from "./fixture";
@@ -20,8 +22,34 @@ function stream() {
   return { body, push, close };
 }
 
+/**
+ * The shell's connection pill, mounted for real. `useStreamState` is a subscription, so the
+ * only honest way to read what the operator is being told is to render something that uses it
+ * — reading the module's variable would prove the module talks to itself.
+ */
+function mountPill() {
+  // Written in an effect, not during the render: what a committed render actually put on the
+  // screen is what the operator sees, and it is the only thing worth asserting on.
+  const shown: { state?: StreamState } = {};
+  const Pill = () => {
+    const state = useStreamState();
+    useEffect(() => { shown.state = state; }, [state]);
+    return null;
+  };
+  const host = document.createElement("div");
+  document.body.appendChild(host);
+  const root = createRoot(host);
+  act(() => { root.render(createElement(Pill)); });
+  return {
+    /** Let React settle whatever the stream just told it, then read what the pill shows. */
+    async read(): Promise<StreamState | undefined> { await act(async () => {}); return shown.state; },
+    unmount() { act(() => { root.unmount(); }); host.remove(); },
+  };
+}
+
 const fetchMock = vi.fn();
 let stop: (() => void) | undefined;
+let pill: ReturnType<typeof mountPill> | undefined;
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -34,7 +62,10 @@ beforeEach(() => {
   vi.mocked(refetch).mockClear();
   setAccessToken("tok");
 });
-afterEach(() => { stop?.(); stop = undefined; vi.unstubAllGlobals(); vi.useRealTimers(); setAccessToken(null); });
+afterEach(() => {
+  pill?.unmount(); pill = undefined;
+  stop?.(); stop = undefined; vi.unstubAllGlobals(); vi.useRealTimers(); setAccessToken(null);
+});
 
 /** Let the stream's reader loop run: microtasks, then whatever timers the test asked for. */
 const turn = async (ms = 0) => { await vi.advanceTimersByTimeAsync(ms); };
@@ -43,8 +74,10 @@ describe("the event stream", () => {
   it("opens only once the session is ready, and sends the token in a header", async () => {
     const s = stream();
     fetchMock.mockResolvedValue(new Response(s.body, { status: 200, headers: { "content-type": "text/event-stream" } }));
+    pill = mountPill();
     stop = startEventStream();
     expect(fetchMock).not.toHaveBeenCalled();          // signed out: nothing to listen for
+    expect(await pill.read()).toBe("off");             // and the shell says so
 
     useApp.setState({ auth: "ready" });
     await turn();
@@ -55,7 +88,7 @@ describe("the event stream", () => {
     expect((init.headers as Record<string, string>).authorization).toBe("Bearer tok");
     // The token is a header, never a query string: it must not reach a log or the history.
     expect(url).not.toContain("tok");
-    expect(useStreamState === undefined).toBe(false);
+    expect(await pill.read()).toBe("live");
   });
 
   it("refetches exactly the collections the notices named, once, after the debounce", async () => {
@@ -126,22 +159,32 @@ describe("the event stream", () => {
   it("reconnects with backoff, quoting the last id it saw, and says so while it is down", async () => {
     const first = stream();
     fetchMock.mockResolvedValueOnce(new Response(first.body, { status: 200 }));
+    pill = mountPill();
     stop = startEventStream();
     useApp.setState({ auth: "ready" });
     await turn();
     first.push(`id: 42\nevent: changed\ndata: {"collection":"req","at":"2026-09-04T04:30:00.000Z"}\n\n`);
     await turn(EVENT_DEBOUNCE_MS);
+    expect(await pill.read()).toBe("live");
+    // The documents the shell is showing while the stream drops and comes back. A drop must
+    // not disturb them: the refetch that follows a reconnect is what replaces them, and until
+    // it lands the operator keeps reading exactly what they were reading.
+    const tkt = S().tkt;
+    expect(tkt.length).toBeGreaterThan(0);
 
     const second = stream();
     fetchMock.mockResolvedValueOnce(new Response(second.body, { status: 200 }));
     first.close();
     await turn();
-    expect(useApp.getState() && true).toBe(true);      // the store is untouched by a drop
+    expect(await pill.read()).toBe("reconnecting");     // the shell tells the operator it is down
+    expect(S().tkt).toBe(tkt);                          // same array, not merely an equal one
 
     await turn(5000);                                   // past the first backoff step
     expect(fetchMock).toHaveBeenCalledTimes(2);
     const [, init] = fetchMock.mock.calls[1] as [string, RequestInit];
     expect((init.headers as Record<string, string>)["last-event-id"]).toBe("42");
+    expect(await pill.read()).toBe("live");
+    expect(S().tkt).toBe(tkt);
   });
 
   it("refreshes once on a 401 and retries with the new token", async () => {

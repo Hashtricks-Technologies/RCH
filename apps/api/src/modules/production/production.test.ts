@@ -7,7 +7,7 @@ import { authHeaders } from "../../test/auth.js";
 import { given } from "../../test/builders.js";
 import { truncateAll, warmPool } from "../../test/db.js";
 import { postMoves } from "../../lib/ledger.js";
-import { reservations, stockMoves } from "../../db/schema/index.js";
+import { reservations, stockMoves, tickets } from "../../db/schema/index.js";
 import type { InjectOptions } from "fastify";
 import type { App } from "../../app.js";
 
@@ -146,6 +146,21 @@ describe("POST /distributions", () => {
     const r = await post("u4", "/distributions", { it: "puff", qty: 5, to: "coffee" });   // coffee's menu has no puff
     expect(r.statusCode).toBe(422);
     expect(r.json().error.message).toBe("Veg puffs is not listed at Coffee Shop — add it to that menu first");
+  });
+
+  it("refuses the kitchen as a destination, and mints no ticket for it", async () => {
+    // The tray is already in the kitchen. Sent to itself it would move nothing, and still take
+    // a ticket number and hold the stock against a collection nobody is coming for. The prod
+    // screen's own list of destinations leaves the kitchen out (`DESTS`); so does the server.
+    await bake("puff", 20);
+    const before = await app.testDb!.db.select().from(tickets);
+    const r = await post("u4", "/distributions", { it: "puff", qty: 5, to: "kitchen" });
+    expect(r.statusCode, r.body).toBe(422);
+    expect(r.json().error).toMatchObject({
+      code: "rule",
+      message: "A tray cannot be distributed to the kitchen it came from — choose the store or an outlet",
+    });
+    expect(await app.testDb!.db.select().from(tickets)).toHaveLength(before.length);
   });
 
   it("refuses more than the kitchen has free", async () => {

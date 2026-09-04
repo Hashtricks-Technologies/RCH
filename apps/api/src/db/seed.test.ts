@@ -6,7 +6,7 @@ import { withTestSchema, type TestDb } from "../test/db.js";
 import { seedTestDb } from "../test/seed.js";
 import { seedDatabase, grnPoLineNo } from "./seed.js";
 import { rebuildBalances } from "../lib/ledger.js";
-import { bills, grns, items, locations, purchaseOrders, rateContracts, reservations, sequences, shopAsks, stockBalances, stockRequests, supportTickets, tickets, users } from "./schema/index.js";
+import { bills, grns, items, locations, payers, purchaseOrders, rateContracts, reservations, sequences, shopAsks, stockBalances, stockRequests, supportTickets, tickets, users } from "./schema/index.js";
 
 let t: TestDb;
 beforeAll(async () => { t = await withTestSchema("seed"); await seedTestDb(t.db); });
@@ -19,6 +19,11 @@ describe("seed", () => {
     expect(await count(locations)).toBe(Object.keys(FX.LOC).length + 1); // + quarantine
     expect(await count(items)).toBe(Object.keys(FX.IT).length);
     expect(await count(users)).toBe(FX.USERS.length);
+    // The three rosters a non-cash bill may be posted to, in one table. A patient the counter
+    // can pick but the server cannot find is a bill it would refuse, so the lists have to match.
+    expect(await count(payers)).toBe(FX.PATIENTS.length + FX.STAFF.length + FX.DEPTS.length);
+    const staff = await t.db.select().from(payers).where(eq(payers.id, "RC-1902"));
+    expect(staff.map((p) => [p.kind, p.name, p.active])).toEqual([["staff", "Vinoth Prakash · Kitchen", true]]);
   });
   it("opening stock equals the fixture at every location and the cache matches the moves", async () => {
     for (const [loc, byItem] of Object.entries(FX.seedStock)) for (const [it, q] of Object.entries(byItem)) {

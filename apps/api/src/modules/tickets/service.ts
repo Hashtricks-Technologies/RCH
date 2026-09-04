@@ -102,6 +102,12 @@ export function createTicketsService(db: Db) {
       return withTransaction(db, async (tx) => {
         const t = await ticketsRepo.head(tx, id);
         if (!t) throw new NotFoundError(`There is no ticket ${id}.`);
+        // Documents locked before ids, ids before balances (lib/ledger.ts's header): this
+        // ticket's own row is locked above, and the request behind it — the only other document
+        // this write touches — right here, both ahead of the balance locks `postMoves` takes.
+        // Taken after the moves it would invert that order against every other writer, and a
+        // receipt racing something that holds the request first would deadlock instead of queue.
+        const linked = await ticketsRepo.linkedRequest(tx, t.req);
         requireLocOf(claims, t.to, "the location the ticket is coming to");
         assertTransition(TICKET_TRANSITIONS, t.st, "Received", id);
 
@@ -114,7 +120,6 @@ export function createTicketsService(db: Db) {
         await ticketsRepo.setStatus(tx, id, { status: "Received", receivedAt: at });
 
         const who = await ticketsRepo.userName(tx, claims.sub);
-        const linked = await ticketsRepo.linkedRequest(tx, t.req);
         // The request closes here, and the word printed on its trail is the ticket's own
         // "Received" — the word the operator reads at the shelf, kept verbatim from the store.
         if (linked && canTransition(REQUEST_TRANSITIONS, linked.status, "Closed")) {

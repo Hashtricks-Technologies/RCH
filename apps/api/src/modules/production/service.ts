@@ -40,7 +40,9 @@ export function createProductionService(db: Db) {
         const o = await productionRepo.head(tx, id);
         if (!o) throw new NotFoundError(`There is no production order ${id}.`);
         const master = await loadMaster(tx);
-        const to = master.locations[o.fromLoc];
+        // The name if the master has one, the key if it does not. A location deactivated after
+        // the order was raised must not turn a refusal the kitchen can read into a 500.
+        const toName = master.locations[o.fromLoc]?.n ?? o.fromLoc;
         // The table decides; the sentence only explains. PROD_ORDER_TRANSITIONS is the same
         // data the board's Dispatch button is drawn from (spec §5.1), so a stage the UI offers
         // and a stage the server accepts cannot drift apart. One order, one ticket: dispatching
@@ -50,7 +52,7 @@ export function createProductionService(db: Db) {
           canTransition(PROD_ORDER_TRANSITIONS, o.status, "Dispatched"),
           o.status === "Declined"
             ? `${id} was declined — it cannot be dispatched`
-            : `${id} has already gone out — it is on one ticket to ${to.n}`,
+            : `${id} has already gone out — it is on one ticket to ${toName}`,
         );
 
         // Fold a repeated item into a single line so the cover check is made against the whole
@@ -80,7 +82,7 @@ export function createProductionService(db: Db) {
         return {
           result: { order: await productionRepo.wire(tx, id), ticket },
           changed: [...changed],
-          message: `${ticket.id} issued — all ${lines.length} item${lines.length === 1 ? "" : "s"} of ${id} reserved for ${to.n}`,
+          message: `${ticket.id} issued — all ${lines.length} item${lines.length === 1 ? "" : "s"} of ${id} reserved for ${toName}`,
         };
       });
     },
@@ -96,7 +98,15 @@ export function createProductionService(db: Db) {
         const master = await loadMaster(tx);
         const item = master.items[body.it];
         if (!item) throw new NotFoundError(`There is no item ${body.it}.`);
+        // The destination is the caller's word, so it is looked up rather than assumed — a key
+        // the schema accepts but the master no longer carries is a 404 the kitchen can read,
+        // not a crash halfway through the write.
         const to = master.locations[body.to];
+        if (!to) throw new NotFoundError(`There is no location ${body.to}.`);
+        // The tray is already in the kitchen; sending it to the kitchen moves nothing and would
+        // still mint a ticket and hold the stock against itself. The screen's own list of
+        // destinations leaves the kitchen out, and so does the server.
+        assertRule(body.to !== KITCHEN, "A tray cannot be distributed to the kitchen it came from — choose the store or an outlet");
         // Stock that lands where it cannot be sold is stock lost (M9). Only an outlet has a
         // menu to be on; the store and the kitchen carry whatever they are sent.
         if (to.type === "Outlet") {
