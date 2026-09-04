@@ -21,9 +21,12 @@ export default fp<DbPluginOptions>(async (app, opts) => {
   if (pool) registerPoolGauges(app.metrics.registry, pool);
   // The message this check throws is what /readyz prints back (plugins/health.ts), so it is a
   // phrase written for an operator, never the driver's own: a DrizzleQueryError carries the
-  // failing SQL, and spec §12 keeps SQL out of responses. Two reasons, and they are the two an
-  // operator actually has to tell apart — a database that cannot be reached at all, and one
-  // whose schema is behind the image trying to serve from it.
+  // failing SQL and an fs error carries the image's own paths, and spec §12 keeps both out of
+  // responses. Three reasons, and they are the three an operator has to act on differently — a
+  // database that cannot be reached, an image whose migration journal is not readable, and a
+  // schema behind the image trying to serve from it. Nothing that can throw is left outside a
+  // `try`: `expectedMigrationCount` reads `drizzle/meta/_journal.json` off disk and would
+  // otherwise put `ENOENT … /app/drizzle/meta/_journal.json` into the body.
   app.readiness.addCheck("database", async () => {
     let applied: number;
     try {
@@ -32,7 +35,12 @@ export default fp<DbPluginOptions>(async (app, opts) => {
     } catch (cause) {
       throw new Error("unreachable or unmigrated", { cause });
     }
-    const expected = expectedMigrationCount();
+    let expected: number;
+    try {
+      expected = expectedMigrationCount();
+    } catch (cause) {
+      throw new Error("migration journal unreadable", { cause });
+    }
     if (applied !== expected) throw new Error(`schema at ${applied}/${expected} migrations`);
   });
   // Only the pool this plugin opened is its to close; a supplied one belongs to the caller.

@@ -86,10 +86,10 @@ Take a ticket number *before* the balance locks, never while holding a shelf.
 **A read is composed the same way, minus the locks: one transaction, one connection.** Every
 read that makes more than one query runs inside `withReadTransaction(db, …)` (`lib/db.ts`,
 `begin … read only`) and awaits its queries **in sequence**. `modules/snapshot/service.ts` is the
-worked example: `GET /snapshot` and its thirteen standalone siblings, `reports`' two queries and
-`support`'s list all take exactly **one** connection out of the pool per request, and
-`snapshot.test.ts`'s "one request, one connection" cases pin that by counting the pool's own
-`acquire` event. The reason is measured, not stylistic: `pg` checks a client out per query, so
+worked example: `GET /snapshot` and its thirteen standalone siblings, `reports`' two queries,
+`support`'s list and `master`'s `GET /recipes` (heads and lines, the one outside this module) all
+take exactly **one** connection out of the pool per request, and `snapshot.test.ts`'s "one
+request, one connection" cases pin that by counting the pool's own `acquire` event. The reason is measured, not stylistic: `pg` checks a client out per query, so
 the `Promise.all` fan-out this replaced asked for ~40 connections per snapshot against a pool of
 10 — thirty concurrent readers queued hundreds of acquisitions, `pg_pool_idle` 0,
 `pg_pool_waiting` peaking at 771, p95 2.9 s (RUNBOOK §12). Sequential rather than `Promise.all`
@@ -305,4 +305,6 @@ failing check's own `Error` **message** is appended to the 503's sentence (`Not 
 — schema at 0/7 migrations.`) as well as logged, so a check writes a phrase for an operator and
 never the driver's own message (a `DrizzleQueryError` carries the failing SQL, and spec §12 keeps
 SQL out of responses). `plugins/db.ts` is where that curation happens for the one check that
-exists: `unreachable or unmigrated`, or `schema at <n>/<m> migrations`.
+exists, and nothing that can throw is left outside a `try` there — `unreachable or unmigrated`,
+`migration journal unreadable` (`expectedMigrationCount` reads `drizzle/meta/_journal.json` off
+disk, and an `ENOENT` names paths inside the image), or `schema at <n>/<m> migrations`.

@@ -379,11 +379,15 @@ describe("one request, one connection", () => {
 
   it("does the same for every standalone read that fans out", async () => {
     // Each of these used to be its own `Promise.all`: /stock is three readers, /tickets three
-    // queries, /bills two plus a follow-up, /requisitions four.
+    // queries, /bills two plus a follow-up, /requisitions four. `/recipes` belongs to the
+    // `master` module rather than this one and reads heads and lines separately — it is the last
+    // multi-query read in the API that was still taking two connections, so it is pinned here
+    // beside the rest rather than left as the exception to the guide's own sentence.
     expect(await acquiresDuring("/api/v1/stock", "u3")).toBe(1);
     expect(await acquiresDuring("/api/v1/tickets", "u3")).toBe(1);
     expect(await acquiresDuring("/api/v1/bills?days=7", "u2")).toBe(1);
     expect(await acquiresDuring("/api/v1/requisitions", "u5")).toBe(1);
+    expect(await acquiresDuring("/api/v1/recipes", "u2")).toBe(1);
   });
 
   it("still asks for one connection each when three snapshots run at once", async () => {
