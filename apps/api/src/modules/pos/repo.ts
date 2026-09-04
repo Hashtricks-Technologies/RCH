@@ -1,5 +1,5 @@
 // Pos: SQL only. No rules, no transaction of its own — service.ts passes `tx` in.
-import { and, asc, eq, gte, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import type { PayerKind } from "@rch/contract";
 import type { OvrMap, Prices, RsvMap, StockMap } from "@rch/domain";
 import type { Tx } from "../../lib/db.js";
@@ -61,12 +61,12 @@ export const posRepo = {
   /**
    * Queue every staff-credit sale for one person behind the one before it.
    *
-   * `staffCreditTaken` below sums bills that are already committed, so two tills reading in the
-   * same instant both see the room that existed before either of them wrote — and both fit
-   * under a ceiling only one of them fits under. There is no row to lock instead: the read is a
-   * sum over bills that do not exist yet. A transaction-scoped advisory lock on the payer is
-   * the narrowest thing that serialises exactly that pair, and Postgres releases it when the
-   * transaction ends, whichever way it ends.
+   * `creditTakenThisMonth` (apps/api/src/lib/credit.ts) sums bills that are already committed,
+   * so two tills reading in the same instant both see the room that existed before either of
+   * them wrote — and both fit under a ceiling only one of them fits under. There is no row to
+   * lock instead: the read is a sum over bills that do not exist yet. A transaction-scoped
+   * advisory lock on the payer is the narrowest thing that serialises exactly that pair, and
+   * Postgres releases it when the transaction ends, whichever way it ends.
    */
   async lockStaffCredit(tx: Tx, payerId: string): Promise<void> {
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${"staff-credit:" + payerId}))`);
@@ -98,19 +98,10 @@ export const posRepo = {
     return Object.fromEntries(rows.map((r) => [r.itemKey, r.onHand]));
   },
 
-  /**
-   * What this staff member has already put on credit inside the window. Deliberately unscoped
-   * by location: the ceiling belongs to the person, so a bill they ran up at the kiosk counts
-   * against them at the coffee shop.
-   *
-   * The tender is part of the filter, not only the payer: the ceiling measures credit, and
-   * credit is what the "Staff credit" tender creates. A bill somebody paid for in cash while
-   * their name was on it took the money then and there, and must not eat their room.
-   */
-  async staffCreditTaken(tx: Tx, payerId: string, since: Date): Promise<number> {
-    const [row] = await tx.select({ taken: sql<string>`coalesce(round(sum(${bills.total}), 2), 0)` })
-      .from(bills)
-      .where(and(eq(bills.tender, "Staff credit"), eq(bills.payerKind, "staff"), eq(bills.payerId, payerId), gte(bills.at, since)));
-    return Number(row?.taken ?? 0);
-  },
+  // What this staff member has already put on credit is `creditTakenThisMonth` in
+  // apps/api/src/lib/credit.ts now. It moved because the credit report has to answer with the
+  // same number this sale refuses on, and a second copy of the query is a report that can
+  // disagree with the refusal (spec §5.1). `lockStaffCredit` above stays here: the lock belongs
+  // to the sale, not to the sum, and a report that took it would put every till behind whoever
+  // opened the credit screen.
 };

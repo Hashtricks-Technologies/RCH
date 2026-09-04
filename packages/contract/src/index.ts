@@ -5,4 +5,5 @@ export * from "./schemas/auth.js";
 export * from "./schemas/snapshot.js";
 export * from "./schemas/writes.js";
 export * from "./schemas/events.js";
+export * from "./schemas/reports.js";
 export * from "./routes.js";
