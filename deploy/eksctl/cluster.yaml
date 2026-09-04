@@ -1,0 +1,40 @@
+# The RCH cluster, as eksctl builds it. One cluster serves both environments as namespaces
+# (`rch-staging`, `rch` — see the branch table in CLAUDE.md). It lives in the account's default
+# VPC on its three public subnets (tagged kubernetes.io/role/elb=1 for the load balancer
+# controller), so the RDS instances in the same VPC are reachable without peering or a NAT.
+#
+#   eksctl create cluster -f deploy/eksctl/cluster.yaml      # first time
+#   eksctl create nodegroup -f deploy/eksctl/cluster.yaml    # nodegroup changes
+#   eksctl utils associate-iam-oidc-provider -f deploy/eksctl/cluster.yaml --approve
+#
+# Everything else the environment needs (RDS, ECR, the deploy role, secrets, the certificate and
+# DNS) is deploy/cfn/rch-env.yaml, one CloudFormation stack per environment.
+apiVersion: eksctl.io/v1alpha5
+kind: ClusterConfig
+metadata:
+  name: rch
+  region: ap-south-1
+  version: "1.31"
+  tags: { app: rch }
+vpc:
+  id: vpc-01ca67a181cb36d34
+  subnets:
+    public:
+      ap-south-1a: { id: subnet-05be7e2c146d6ede8 }
+      ap-south-1b: { id: subnet-04f03f730a553b579 }
+      ap-south-1c: { id: subnet-08d892f0f99bd8097 }
+iam:
+  withOIDC: true
+managedNodeGroups:
+  # Dev runs on ONE spot node: a t3.medium (4 GiB) holds the controller, CoreDNS, one API pod and
+  # one UI pod with room to spare, and spot is ~70% off on-demand. A spot reclaim (two minutes'
+  # notice) means a short outage in dev, which is the trade. Production gets an on-demand group.
+  - name: ng-spot
+    instanceTypes: [t3.medium, t3a.medium]
+    spot: true
+    desiredCapacity: 1
+    minSize: 1
+    maxSize: 2
+    volumeSize: 40
+    volumeType: gp3
+    tags: { app: rch, env: dev }

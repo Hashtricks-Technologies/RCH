@@ -1,6 +1,6 @@
 name: Deploy
 on:
-  push: { branches: [staging, production] }
+  push: { branches: [develop, staging, production] }
 permissions: { id-token: write, contents: read }
 concurrency: { group: "deploy-${{ github.ref }}", cancel-in-progress: false }
 jobs:
@@ -24,11 +24,11 @@ jobs:
     # not slow, and holding the concurrency group open costs the next push its deploy.
     timeout-minutes: 45
     permissions: { id-token: write, contents: write }
-    environment: ${{ github.ref_name == 'production' && 'production' || 'staging' }}
+    environment: ${{ github.ref_name == 'production' && 'production' || github.ref_name == 'staging' && 'staging' || 'dev' }}
     env:
-      NS: ${{ github.ref_name == 'production' && 'rch' || 'rch-staging' }}
-      VALUES: ${{ github.ref_name == 'production' && 'values-prod.yaml' || 'values-staging.yaml' }}
-      CLUSTER: ${{ github.ref_name == 'production' && secrets.EKS_CLUSTER_PROD || secrets.EKS_CLUSTER_STAGING }}
+      NS: ${{ github.ref_name == 'production' && 'rch' || github.ref_name == 'staging' && 'rch-staging' || 'rch-dev' }}
+      VALUES: ${{ github.ref_name == 'production' && 'values-prod.yaml' || github.ref_name == 'staging' && 'values-staging.yaml' || 'values-dev.yaml' }}
+      CLUSTER: ${{ github.ref_name == 'production' && secrets.EKS_CLUSTER_PROD || github.ref_name == 'staging' && secrets.EKS_CLUSTER_STAGING || secrets.EKS_CLUSTER_DEV }}
     steps:
       - uses: actions/checkout@v7
       - uses: aws-actions/configure-aws-credentials@v4
@@ -56,7 +56,9 @@ jobs:
           # on commas/`=` inside the values, and EXTRA is a bash array, not
           # a string, so no further word-splitting or re-quoting happens.
           EXTRA=()
-          if [ "${{ github.ref_name }}" = staging ]; then
+          # dev and staging read their secrets from the GitHub environment; production from
+          # AWS Secrets Manager through the External Secrets Operator (values-prod.yaml).
+          if [ "${{ github.ref_name }}" != production ]; then
             EXTRA=(
               --set-string "secrets.values.DATABASE_URL=$DATABASE_URL"
               --set-string "secrets.values.JWT_PRIVATE_KEY=$JWT_PRIVATE_KEY"

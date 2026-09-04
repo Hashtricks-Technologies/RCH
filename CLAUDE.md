@@ -30,7 +30,7 @@ merge, so what reaches production is byte-identical to what passed on staging.
 
 | Branch | Role | Deploys to |
 |---|---|---|
-| `develop` | **Default.** All work lands here (feature branches by PR, or direct commits while the team is one person). | nothing — CI only |
+| `develop` | **Default.** All work lands here (feature branches by PR, or direct commits while the team is one person). | `rch-dev` namespace, on push — the dev environment at https://rch.hashtrickstechnologies.com, one spot node, `values-dev.yaml` |
 | `staging` | Release candidate | `rch-staging` namespace, on push |
 | `production` | What the hospital runs | `rch` namespace, on push, behind a GitHub environment approval |
 

@@ -1,0 +1,8 @@
+# The dev environment — the only one deployed for now, at the smallest footprint the chart allows:
+# one API pod, one UI pod, no HPA, one spot node behind it (deploy/eksctl/cluster.yaml). It is
+# reachable at https://rch.hashtrickstechnologies.com (Route 53 zone hashtrickstechnologies.com,
+# account 830283280199, ap-south-1); the certificate below is DNS-validated in that zone.
+api: { replicas: 1, hpa: { enabled: false }, env: { LOG_LEVEL: debug, CORS_ORIGIN: https://rch.hashtrickstechnologies.com, DB_POOL_MAX: "10" } }
+ui: { replicas: 1 }
+ingress: { host: rch.hashtrickstechnologies.com, certificateArn: arn:aws:acm:ap-south-1:830283280199:certificate/68a3b4db-2bfe-449a-8b79-8201a30bde0c }
+secrets: { create: true }
