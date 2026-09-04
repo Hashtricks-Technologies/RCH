@@ -26,8 +26,9 @@ Every task's requirements implicitly include this section.
 - **Quantities on the wire** are `z.number().finite().max(100000)` and positivity is a **service rule**, not a schema rule, so a zero reaches the operator as the store's own sentence (`"Enter a quantity"`) instead of a generic 400. Times are ISO; money `numeric(12,2)`; quantities `numeric(12,3)` rounded with `round3`.
 - **The movement rule (CLAUDE.md):** approval authorises, the scan moves. Approve and issue write reservations only. `handover` posts `ticket_out` at `from_loc` and releases the ticket's reservations in the same transaction. `receive` posts `ticket_in` at `to_loc`. Every negative-going move gets the Phase 2 post-lock re-read: `postMoves` takes the row locks, then the service re-reads `on_hand` for every touched `(loc, item)` and refuses if any went below zero, rolling the whole transaction back.
 - **Every reservation-creating path takes the balance locks first.** `lockBalances(tx, cells)` before reading `on_hand` and open reservations, then insert. Without the lock two concurrent issues both read the same balance and both reserve it.
+- **Lock order, server-wide: ids first, balance rows second.** `apps/api/src/lib/ledger.ts`'s header already records it and `modules/pos/service.ts` already keeps it — `allocateId`/`allocateNumber` (which locks a `sequences` row) runs *before* `postMoves`/`lockBalances` (which lock `stock_balances` rows), never after. Every write that needs both takes them in that sequence, so a sale and an issue on the same shelf cannot sit each holding one and waiting for the other. In practice this means a ticket's number is allocated **before** the cover check: `allocateTicket(tx)` → `lockBalances(tx, cells)` → read → `writeTicket(tx, draft, no)`. A refused write rolls the allocation back with everything else; the sequence simply skips a number, which is why `SEQUENCE_START` is a counter and not a count.
 - **Every status transition reads its own row `for update`.** A module's `repo.head(tx, id)` is a locking read — `.for("update")` in Drizzle, i.e. `select … where id = $1 for update`. A transition guard that reads without the lock is not a guard: two handovers of one ticket both see `Issued`, both pass `assertTransition`, and both post `ticket_out`. The lock is held to the end of the transaction, so the second caller reads the status the first committed and is refused. This applies to `stock_requests`, `tickets` and `shop_asks` alike.
-- **Phase seam (do not "fix"):** `dispatchOrder`, `makeProduct` and `distribute` remain in-memory until Phase 4, so tickets those two actions create locally exist only until the next refetch. Leave them exactly as they are; Task 10 records the seam in spec §16.
+- **The kitchen's two ticket paths cross with everything else.** `dispatchOrder` and `distribute` are the only writes in production that create a ticket, and Task 6 makes `handover` a server call — so a locally minted `TKT-0xxx` would answer `404 There is no ticket TKT-0xxx.` Task 12 moves both, and spec §14's "nothing dual-runs" is met. **`setOrderStatus`, `makeProduct` and everything in `store/procurement.ts` stay in memory for Phases 4–5** — they create no ticket, so they cross no seam. Leave them exactly as they are.
 - **Every task ends green:** `pnpm turbo typecheck test && pnpm lint` (turbo lint + knip + `scripts/check-boundaries.sh`) at the repo root. Never leave a test asserting behaviour that moved — each task that deletes a UI rule test names the server test that replaces it, in the commit body.
 - **Commit messages:** imperative, sentence-case, no prefixes, plus the trailers
   ```
@@ -41,18 +42,18 @@ Every task's requirements implicitly include this section.
 
 ```
 packages/contract/src/
-  schemas/writes.ts       CollectionSchema (extracted) + the eleven Phase 3 bodies/params/results
+  schemas/writes.ts       CollectionSchema (extracted) + the thirteen Phase 3 bodies/params/results
   schemas/events.ts       EVENTS_PATH, EventNoticeSchema
   schemas/snapshot.ts     + RequestsResponseSchema, TicketsResponseSchema, ShopAsksResponseSchema
-  routes.ts               + 11 writes + 3 GETs
+  routes.ts               + 13 writes + 3 GETs
 packages/domain/src/
-  transitions.ts          REQUEST_TRANSITIONS, TICKET_TRANSITIONS, SHOP_ASK_TRANSITIONS, canTransition
+  transitions.ts          REQUEST_TRANSITIONS, TICKET_TRANSITIONS, SHOP_ASK_TRANSITIONS, PROD_ORDER_TRANSITIONS, canTransition
   approval.ts             planApproval(lines, appr, freeFor) -> { lines, st, trimmed }
   credit.ts               STAFF_CREDIT_LIMIT, creditRoom, breachesCredit, creditBreachMessage
 apps/api/src/
   lib/events.ts           emitChanged(tx, changed) -> pg_notify inside the write's transaction
   lib/reservations.ts     reserve / releaseForTicket / reservedAt
-  lib/tickets.ts          issueTicketRow(tx, draft) -> number, OTP, head + lines + reservations
+  lib/tickets.ts          allocateTicket(tx) -> number+OTP ; writeTicket(tx, draft, no) -> head + lines + holds
   lib/ledger.ts           + lockBalances(tx, cells), used by postMoves and by every reservation path
   lib/ids.ts              + allocateNumber(tx, kind, at) -> { n, id }
   lib/rules.ts            + assertTransition(table, from, to, what)
@@ -63,6 +64,7 @@ apps/api/src/
   modules/requests/       POST /requests, /:id/cancel, /:id/approve, /:id/reject, /:id/issue-ticket
   modules/tickets/        POST /tickets/:id/handover, /:id/receive, POST /transfers
   modules/shopasks/       POST /shop-asks, /:id/answer, /:id/decline
+  modules/production/     POST /prod-orders/:id/dispatch, POST /distributions
   modules/pos/            + the staff-credit ceiling; the post-lock check nets reservations
   modules/snapshot/       + GET /requests, GET /tickets, GET /shop-asks
 UI/src/
@@ -70,7 +72,7 @@ UI/src/
   api/refetch.ts          "req" -> GET /requests, "tkt" -> GET /tickets, "shopAsks" -> GET /shop-asks
   api/wire.ts             + applyRequests, applyTickets, applyShopAsks
   api/client.ts           refreshOnce() exported for the stream's 401 path
-  store/index.ts          the eight request/ticket actions become API calls
+  store/index.ts          the ten request/ticket/kitchen actions become API calls; seq.tkt goes
   store/ops.ts            transferToOutlet, askShop, answerShopAsk, declineShopAsk become API calls
   lib/selectors.ts        isReqOpen/canIssueTicket/canHandOver/canReceiveTicket over the transitions table
   ui/Shell.tsx            a Pill that reads "Reconnecting" when the stream is down
@@ -96,8 +98,10 @@ UI/src/
   export type Changed = z.infer<typeof CollectionSchema>;
 
   // Three decimals is the whole precision of a quantity anywhere in this system (`round3`), so
-  // `PayBodySchema` already refuses more; match it. Positivity is deliberately NOT here — a zero
-  // must reach the operator as the store's own "Enter a quantity", not a generic 400.
+  // anything finer is a client bug, as `PayBodySchema` already says. The ceiling is 100000
+  // rather than a till line's 10000 because a stock request moves warehouse quantities, not a
+  // cart. Positivity is deliberately NOT here — a zero must reach the operator as the store's
+  // own "Enter a quantity", not a generic 400.
   export const QtySchema = z.number().finite().multipleOf(0.001).max(100000);
   export const ReqLineInputSchema = z.strictObject({ it: z.string().min(1).max(64), qty: QtySchema });
   export const CreateRequestBodySchema = z.strictObject({ lines: z.array(ReqLineInputSchema).min(1).max(50), note: z.string().max(500).default(""), urgent: z.boolean().default(false) });
@@ -691,6 +695,7 @@ describe("GET /events", () => {
   });
 
   it("counts open streams in /metrics", async () => {
+    await settle();      // sockets aborted by earlier cases close asynchronously
     const a = await open("u1");
     const b = await open("u2");
     await a.until((x) => x.includes("retry:"));
@@ -855,7 +860,10 @@ export default fp<{ config: Config; searchPath?: string }>(async (app, { config,
   }
 
   app.metrics.sseListenerUp.set(0);
-  await connect();
+  // A DB-less app (`buildTestApp({ withDb: false })`) has no database to listen to; opening a
+  // raw Client against `config.databaseUrl` there would make a test that wants no Postgres
+  // depend on one being reachable to stay quiet.
+  if (app.hasDecorator("db")) await connect();
 
   // ---- the heartbeat -----------------------------------------------------------
   // A comment line keeps proxies and load balancers from reaping an idle stream, and gives the
@@ -934,7 +942,7 @@ Expected: FAIL on the "tells every open stream what a committed write changed" c
 
 - [ ] **Step 10: Have the Phase 2 writes announce themselves**
 
-In each of `apps/api/src/modules/pos/service.ts`, `apps/api/src/modules/availability/service.ts` and `apps/api/src/modules/catalog/service.ts`: import `emitChanged` (`import { emitChanged } from "../../lib/events.js";`), hoist the `changed` array into a local so the notice and the response cannot drift, and emit as the last statement inside the transaction. In `pos`:
+In each of `apps/api/src/modules/pos/service.ts`, `apps/api/src/modules/availability/service.ts` and `apps/api/src/modules/catalog/service.ts`: import `emitChanged` (`import { emitChanged } from "../../lib/events.js";`), hoist the `changed` array into a local so the notice and the response cannot drift, and emit it once every write in the transaction has been made (a read-back for the response may follow; Postgres withholds the notice until commit either way). In `pos`:
 ```ts
         const changed = ["stock", "bills"] as const;
         await emitChanged(tx, changed);
@@ -954,11 +962,11 @@ Append to `deploy/chart/rch/tests/render.test.sh`, next to the existing `idle_ti
 # Phase 3 SSE: the ALB must hold a stream open for an hour, and nginx must neither buffer it
 # nor time it out at the 60s it uses for ordinary /api calls.
 grep -q 'idle_timeout.timeout_seconds=3600' <<<"$out"
-grep -q 'proxy_buffering off' deploy/nginx/default.conf.template
-grep -q 'proxy_read_timeout 3600s' deploy/nginx/default.conf.template
-grep -q 'location /api/v1/events' deploy/nginx/default.conf.template
+grep -q 'proxy_buffering off' ../../nginx/default.conf.template
+grep -q 'proxy_read_timeout 3600s' ../../nginx/default.conf.template
+grep -q 'location /api/v1/events' ../../nginx/default.conf.template
 ```
-(the script runs from `deploy/chart/rch`, so use `../../nginx/default.conf.template` for the three file greps).
+(the script's first line is `cd "$(dirname "$0")/.."`, so its cwd is `deploy/chart/rch` — hence the `../../` on the three file greps; the `$out` greps read `helm template`'s output and take no path. All three lines already exist in the template.)
 Then, by hand: `pnpm db:up && pnpm --filter @rch/api db:migrate && pnpm --filter @rch/api db:seed --force && pnpm dev`, sign in at `http://localhost:5173`, and in another shell run
 `curl -N -H "Authorization: Bearer <token from the browser's devtools>" http://localhost:5173/api/v1/events`.
 Frames must appear one at a time, not in a burst at the end — Vite's dev proxy pipes the upstream response, so no `UI/vite.config.ts` change is needed. If they do arrive buffered, stop and report it rather than editing the proxy config on a guess.
@@ -988,8 +996,8 @@ EOF
 ### Task 4: Movement primitives — balance locks, reservations, ticket issue, builders, and `GET /requests|/tickets|/shop-asks`
 
 **Files:**
-- Create: `apps/api/src/lib/reservations.ts`, `apps/api/src/lib/reservations.test.ts`, `apps/api/src/lib/tickets.ts`, `apps/api/src/lib/tickets.test.ts`, `apps/api/src/test/builders.ts`, and module stubs `apps/api/src/modules/{requests,tickets,shopasks}/{routes,service,repo}.ts` + `{requests,tickets,shopasks}/<name>.test.ts`
-- Modify: `packages/contract/src/schemas/snapshot.ts`, `packages/contract/src/routes.ts`, `packages/contract/src/index.ts`, `apps/api/src/lib/ledger.ts`, `apps/api/src/lib/ids.ts`, `apps/api/src/lib/ids.test.ts`, `apps/api/src/lib/rules.ts`, `apps/api/src/lib/rules.test.ts`, `apps/api/src/plugins/rbac.ts`, `apps/api/src/modules/index.ts`, `apps/api/src/modules/snapshot/{routes,service,scope}.ts`, `apps/api/src/modules/snapshot/snapshot.test.ts`, `scripts/check-boundaries.sh`
+- Create: `apps/api/src/lib/reservations.ts`, `apps/api/src/lib/reservations.test.ts`, `apps/api/src/lib/tickets.ts`, `apps/api/src/lib/tickets.test.ts`, `apps/api/src/test/builders.ts`, and four wired module stubs `apps/api/src/modules/{requests,tickets,shopasks,production}/{routes,service,repo}.ts` + `{requests,tickets,shopasks,production}/<name>.test.ts`
+- Modify: `packages/contract/src/schemas/{snapshot,writes}.ts`, `packages/contract/src/routes.ts`, `packages/contract/src/routes.test.ts`, `packages/contract/src/index.ts`, `apps/api/src/lib/ledger.test.ts`, `apps/api/src/lib/ledger.ts`, `apps/api/src/lib/ids.ts`, `apps/api/src/lib/ids.test.ts`, `apps/api/src/lib/rules.ts`, `apps/api/src/lib/rules.test.ts`, `apps/api/src/plugins/rbac.ts`, `apps/api/src/modules/index.ts`, `apps/api/src/modules/snapshot/{routes,service,scope}.ts`, `apps/api/src/modules/snapshot/snapshot.test.ts`, `scripts/check-boundaries.sh`
 
 **Interfaces:**
 - Consumes from Task 2: `TransitionTable`, `canTransition`.
@@ -1006,7 +1014,7 @@ EOF
   shopAsks:    defineRoute({ method: "GET", path: "/shop-asks",  access: "any", response: ShopAsksResponseSchema }),
   ```
   `ticketsList`, not `tickets` — `tickets` is the support-ticket collection name in `ChangedSchema` and will be the Phase 6 route name; two manifest keys must not collide.
-- Produces (Tasks 5, 6 and 7 build entirely on these):
+- Produces (Tasks 5, 6, 7 and 12 build entirely on these):
   ```ts
   // apps/api/src/lib/ledger.ts — new export; postMoves is refactored to call it
   export async function lockBalances(tx: Tx, cells: readonly { loc: string; it: string }[]): Promise<void>;
@@ -1023,7 +1031,11 @@ EOF
   // apps/api/src/lib/tickets.ts
   export type TicketRefType = "request" | "prod_order" | "direct" | "shop_transfer" | "shop_ask";
   export type TicketDraft = { refType: TicketRefType; refId: string; from: string; to: string; lines: readonly { it: string; qty: number }[]; by: string; at?: Date };
-  export async function issueTicketRow(tx: Tx, draft: TicketDraft): Promise<Ticket>;   // Ticket = the @rch/contract wire shape
+  export type TicketNumber = { n: number; id: string; otp: string };
+  /** Two calls, not one, because the server's lock order is ids first and balance rows second
+   *  (lib/ledger.ts's header): the caller takes the number, THEN the locks, THEN checks cover. */
+  export async function allocateTicket(tx: Tx, at?: Date): Promise<TicketNumber>;
+  export async function writeTicket(tx: Tx, draft: TicketDraft, no: TicketNumber): Promise<Ticket>;   // Ticket = the @rch/contract wire shape
   export async function readTicket(tx: Tx, id: string): Promise<Ticket | undefined>;
 
   // apps/api/src/lib/rules.ts — new export beside assertRule
@@ -1039,16 +1051,30 @@ EOF
     shopAsk(db: Db, p: { id?: string; from: LocKey; to: LocKey; it: string; qty: number; by?: string; st?: ShopAskStatus; note?: string }): Promise<string>;
   };
   ```
-- The three module stubs exist only so wave 3 can run three worktrees in parallel without three tasks editing `modules/index.ts`. `scripts/check-boundaries.sh` requires `routes.ts`, `service.ts`, `repo.ts` and a `*.test.ts` in every module directory, so the stubs must be complete rather than empty. For `<name>` in `requests`, `tickets`, `shopasks` — with `<Svc>` `createRequestsService`, `createTicketsService`, `createShopAsksService` and `<repo>` `requestsRepo`, `ticketsRepo`, `shopAsksRepo`:
+- **The four module stubs** exist only so wave 3 can run four worktrees in parallel without four tasks editing `modules/index.ts`. Two checks bracket what a stub may be: `scripts/check-boundaries.sh` fails a module directory missing `routes.ts`, `service.ts`, `repo.ts` or a `*.test.ts`, and `knip` fails a file no entry point can reach (`knip.json` exempts `apps/api/src/modules/_template/**` and nothing else). So the stub is all four files **wired together**, exactly as `_template` is — `routes.ts` builds the service, `service.ts` touches the repo — and not an empty shell. For `<name>` in `requests`, `tickets`, `shopasks`, `production`, with `<Svc>` `createRequestsService`, `createTicketsService`, `createShopAsksService`, `createProductionService` and `<repo>` `requestsRepo`, `ticketsRepo`, `shopAsksRepo`, `productionRepo`:
   ```ts
-  // routes.ts
+  // routes.ts — mounts nothing yet; the module task adds the mount() calls.
   import fp from "fastify-plugin";
-  export default fp(async () => {}, { name: "module:<name>", dependencies: ["auth", "rbac", "idempotency", "db"] });
+  import { create<Name>Service } from "./service.js";
+  export default fp(async (app) => {
+    const svc = create<Name>Service(app.db);
+    await svc.ready();
+  }, { name: "module:<name>", dependencies: ["auth", "rbac", "idempotency", "db"] });
+
   // service.ts
   import type { Db } from "../../db/client.js";
-  export function <Svc>(_db: Db) { return {}; }
+  import { withTransaction } from "../../lib/db.js";
+  import { <repo> } from "./repo.js";
+  /** Placeholder so the stub compiles and the graph is connected from the moment it lands.
+   *  The module task replaces this with the real service. */
+  export function create<Name>Service(db: Db) {
+    return { async ready(): Promise<void> { await withTransaction(db, (tx) => <repo>.ping(tx)); } };
+  }
+
   // repo.ts
-  export const <repo> = {};
+  import type { Tx } from "../../lib/db.js";
+  export const <repo> = { async ping(_tx: Tx): Promise<void> {} };
+
   // <name>.test.ts
   import { afterAll, beforeAll, expect, it } from "vitest";
   import { buildTestApp } from "../../test/app.js";
@@ -1058,9 +1084,31 @@ EOF
   afterAll(async () => { await app.close(); });
   it("registers", () => { expect(app.hasPlugin("module:<name>")).toBe(true); });
   ```
-  Wave 3 replaces all four files; `knip` tolerates the unused stub exports because each is referenced by its own module's files within the wave.
+  Each wave-3 task then **modifies** all four files rather than creating them — its Files block says so — and deletes `ping`/`ready` as it goes.
 
-**Why the lock:** issue-ticket, transfers and shop-ask answers create reservations without posting a move, so nothing else serialises them — two store keepers issuing the last 12 L of milk would both read `on_hand 12`, both see no reservation, and both reserve it. `lockBalances` takes the same `(loc, item)` row locks in the same fixed order `postMoves` uses, so every path that consumes stock — sale, issue, transfer, and Phase 4's dispatch — queues behind one another on the same rows.
+- **Contract entries for Task 12** land here too, in the same commit as the three GETs, because Task 1 is already merged and nobody else touches `packages/contract` in wave 2. In `packages/contract/src/schemas/writes.ts`:
+  ```ts
+  export const DistributeBodySchema = z.strictObject({ it: z.string().min(1).max(64), qty: QtySchema, to: LocKeySchema });
+  export const DispatchResultSchema = z.strictObject({ order: ProdOrderSchema, ticket: TicketSchema });
+  ```
+  and in `packages/contract/src/routes.ts`, beside the other Phase 3 writes:
+  ```ts
+  dispatchProdOrder: defineRoute({ method: "POST", path: "/prod-orders/:id/dispatch", access: ["prod"], params: DocIdParamsSchema, response: writeResponse(DispatchResultSchema) }),
+  distribute:        defineRoute({ method: "POST", path: "/distributions",            access: ["prod"], body: DistributeBodySchema,  response: writeResponse(TicketSchema) }),
+  ```
+  Both are writes, so they are inert until Task 12 mounts them and `apps/api/src/contract.test.ts` (which iterates GETs) never sees them. Add one sample to `packages/contract/src/routes.test.ts`'s `SAMPLES`, or its "every route that takes a body has a sample here" case fails:
+  ```ts
+    distribute: { it: "SKU-1", qty: 5, to: "kiosk" },
+  ```
+  `"pord"` is already a member of `CollectionSchema`, so nothing there changes.
+
+- **S13 — `appr` uses `QtySchema` like every other Phase 3 quantity.** Task 1 declared `ApproveRequestBodySchema` with `z.array(z.number().finite().max(100000))`, which skips the three-decimal bound §16 claims for the whole phase. Change it here (Task 1 is merged, so this is the compensating edit):
+  ```ts
+  export const ApproveRequestBodySchema = z.strictObject({ appr: z.array(QtySchema).min(1).max(50), note: z.string().max(500).default("") });
+  ```
+  Positivity stays a service concern — `planApproval` clamps with `Math.max(0, …)`, and a manager typing a negative number means zero, not a 400.
+
+**Why the lock:** issue-ticket, transfers and shop-ask answers create reservations without posting a move, so nothing else serialises them — two store keepers issuing the last 12 L of milk would both read `on_hand 12`, both see no reservation, and both reserve it. `lockBalances` takes the same `(loc, item)` row locks in the same fixed order `postMoves` uses, so every path that consumes stock — sale, issue, transfer, shop-ask grant and kitchen dispatch — queues behind one another on the same rows.
 
 - [ ] **Step 1: Write the failing tests for the primitives**
 
@@ -1131,19 +1179,20 @@ import { makeOtp } from "@rch/domain";
 import { withTestSchema, truncateAll, type TestDb } from "../test/db.js";
 import { seedDatabase } from "../db/seed.js";
 import { reservations } from "../db/schema/index.js";
-import { issueTicketRow, readTicket } from "./tickets.js";
+import { allocateTicket, readTicket, writeTicket } from "./tickets.js";
 
 let t: TestDb;
 beforeAll(async () => { t = await withTestSchema("tickets_lib"); });
 afterAll(async () => { await t.close(); });
 beforeEach(async () => { await truncateAll(t.db); await seedDatabase(t.db, { password: "changeme", forcePasswordChange: false, force: true }); });
 
-describe("issueTicketRow", () => {
+describe("allocateTicket + writeTicket", () => {
   it("continues the visible series, mints the OTP from the same number, and reserves the lines", async () => {
-    const tkt = await t.db.transaction((tx) => issueTicketRow(tx, {
-      refType: "request", refId: "REQ-2026-0911", from: "store", to: "coffee",
-      lines: [{ it: "milk", qty: 12 }], by: "u3",
-    }));
+    const tkt = await t.db.transaction(async (tx) => {
+      // Ids first, balance rows second — the caller would take the locks between these two.
+      const no = await allocateTicket(tx);
+      return writeTicket(tx, { refType: "request", refId: "REQ-2026-0911", from: "store", to: "coffee", lines: [{ it: "milk", qty: 12 }], by: "u3" }, no);
+    });
     expect(tkt.id).toBe("TKT-0441");                  // SEQUENCE_START.tkt is 441
     expect(tkt.otp).toBe(makeOtp(441));
     expect(tkt.otp).toMatch(/^\d{6}$/);
@@ -1155,10 +1204,8 @@ describe("issueTicketRow", () => {
   });
 
   it("folds a repeated item into one line before it reserves", async () => {
-    const tkt = await t.db.transaction((tx) => issueTicketRow(tx, {
-      refType: "shop_transfer", refId: "Shop transfer", from: "coffee", to: "kiosk",
-      lines: [{ it: "chips", qty: 2 }, { it: "chips", qty: 4 }], by: "u1",
-    }));
+    const tkt = await t.db.transaction(async (tx) =>
+      writeTicket(tx, { refType: "shop_transfer", refId: "Shop transfer", from: "coffee", to: "kiosk", lines: [{ it: "chips", qty: 2 }, { it: "chips", qty: 4 }], by: "u1" }, await allocateTicket(tx)));
     expect(tkt.lines).toEqual([{ it: "chips", qty: 6 }]);
     const held = await t.db.select().from(reservations).where(eq(reservations.ticketId, tkt.id));
     expect(held).toHaveLength(1);
@@ -1166,25 +1213,28 @@ describe("issueTicketRow", () => {
   });
 
   it("reads a ticket back in the wire shape, and nothing for an id that is not there", async () => {
-    const made = await t.db.transaction((tx) => issueTicketRow(tx, { refType: "direct", refId: "Direct issue", from: "kitchen", to: "kiosk", lines: [{ it: "puff", qty: 5 }], by: "u4" }));
+    const made = await t.db.transaction(async (tx) =>
+      writeTicket(tx, { refType: "direct", refId: "Direct issue", from: "kitchen", to: "kiosk", lines: [{ it: "puff", qty: 5 }], by: "u4" }, await allocateTicket(tx)));
     expect(await t.db.transaction((tx) => readTicket(tx, made.id))).toEqual(made);
     expect(await t.db.transaction((tx) => readTicket(tx, "TKT-0000"))).toBeUndefined();
   });
 });
 ```
 
-Add to `apps/api/src/lib/ids.test.ts`:
+Add to `apps/api/src/lib/ids.test.ts`. The file shares one schema across its cases and its first case already consumes `tkt` 441-461, so the assertion must be **relative** — allocate, capture, allocate again — never a hard-coded number:
 ```ts
   it("hands back the raw number alongside the id, so an OTP can be minted from it", async () => {
     const a = await db.transaction((tx) => allocateNumber(tx, "tkt"));
     const b = await db.transaction((tx) => allocateNumber(tx, "tkt"));
-    expect(a).toEqual({ n: 441, id: "TKT-0441" });
-    expect(b).toEqual({ n: 442, id: "TKT-0442" });
+    expect(b.n).toBe(a.n + 1);
+    expect(a.id).toBe(formatId("tkt", a.n));
+    expect(b.id).toBe(formatId("tkt", b.n));
+    expect(await db.transaction((tx) => allocateId(tx, "tkt"))).toBe(formatId("tkt", b.n + 1));
   });
 ```
-(match the file's existing `db`/`withTestSchema` setup rather than inventing a new one).
+with `formatId` added to the file's `@rch/domain` import and `allocateNumber` to its `./ids.js` import; match the file's existing `db`/`withTestSchema` setup rather than inventing a new one.
 
-Add to `apps/api/src/lib/rules.test.ts`:
+Add to `apps/api/src/lib/rules.test.ts`, with `assertTransition` added to the `./rules.js` import, `RuleError` imported from `./errors.js` and `TICKET_TRANSITIONS` from `@rch/domain`:
 ```ts
   it("assertTransition refuses a status change the table does not list, in the operator's words", () => {
     expect(() => assertTransition(TICKET_TRANSITIONS, "Received", "Collected", "TKT-0440")).toThrow(RuleError);
@@ -1197,7 +1247,7 @@ Run: `pnpm --filter @rch/api test src/lib` → FAIL.
 
 - [ ] **Step 2: Add `lockBalances` to `apps/api/src/lib/ledger.ts`**
 
-Lift the locking loop out of `postMoves` so both callers use one implementation:
+Lift the locking loop out of `postMoves` so both callers use one implementation. `postMoves` folds into a **nested** `Map<loc, Map<item, delta>>` on purpose — an item key is whatever the central store typed, so any joined-string key could fold two different pairs into one (`ledger.ts`'s own comment) — and `lockBalances` keeps that shape rather than reintroducing a separator:
 ```ts
 /**
  * Take the balance row locks for these (loc, item) pairs, creating a zero row where none
@@ -1205,18 +1255,42 @@ Lift the locking loop out of `postMoves` so both callers use one implementation:
  * calls it before appending; a path that only reserves — issuing a ticket, a shop transfer —
  * calls it before reading `on_hand`, because a reservation is a promise against a balance and
  * two promises made from the same read are the same stock promised twice.
+ *
+ * Duplicates are folded and the pairs are visited in (loc, item) order. Nested rather than
+ * keyed by a joined string, for the reason postMoves gives: no separator can collide.
  */
 export async function lockBalances(tx: Tx, cells: readonly { loc: string; it: string }[]): Promise<void> {
-  const seen = new Map<string, { loc: string; it: string }>();
-  for (const c of cells) seen.set(`${c.loc}${SEP}${c.it}`, { loc: c.loc, it: c.it });
-  for (const k of [...seen.keys()].sort()) {
-    const { loc, it } = seen.get(k)!;
-    await tx.insert(stockBalances).values({ loc, itemKey: it, onHand: 0 }).onConflictDoNothing();
-    await tx.execute(sql`select 1 from stock_balances where loc = ${loc} and item_key = ${it} for update`);
+  const byLoc = new Map<string, Set<string>>();
+  for (const c of cells) (byLoc.get(c.loc) ?? byLoc.set(c.loc, new Set()).get(c.loc)!).add(c.it);
+  for (const loc of [...byLoc.keys()].sort()) {
+    for (const it of [...byLoc.get(loc)!].sort()) {
+      await tx.insert(stockBalances).values({ loc, itemKey: it, onHand: 0 }).onConflictDoNothing();
+      await tx.execute(sql`select 1 from stock_balances where loc = ${loc} and item_key = ${it} for update`);
+    }
   }
 }
 ```
-and in `postMoves`, replace the existing `for (const { loc, it } of ordered) { … }` locking loop with `await lockBalances(tx, ordered);`. Everything else in `postMoves` — the folding, the insert, the deltas — is unchanged.
+In `postMoves`, replace the existing locking loop
+```ts
+  for (const { loc, it } of ordered) {
+    await tx.insert(stockBalances).values({ loc, itemKey: it, onHand: 0 }).onConflictDoNothing();
+    await tx.execute(sql`select 1 from stock_balances where loc = ${loc} and item_key = ${it} for update`);
+  }
+```
+with `await lockBalances(tx, ordered);` — `ordered` is already `{ loc, it, delta }[]` sorted the same way, and the extra `delta` field is ignored by the parameter's structural type. Everything else in `postMoves` — the nested fold, the insert, the deltas — is unchanged, as is `rebuildBalances`.
+
+Add one case to `apps/api/src/lib/ledger.test.ts` so the extraction is pinned rather than assumed:
+```ts
+it("locks a pair the same way whoever asks, and folds a repeat into one lock", async () => {
+  // Two writers taking the same two cells in opposite input order must not deadlock: both
+  // visit (kitchen, milk) before (store, milk) because lockBalances sorts, not its caller.
+  const both = await Promise.allSettled([
+    db.transaction(async (tx) => { await lockBalances(tx, [{ loc: "store", it: "milk" }, { loc: "kitchen", it: "milk" }, { loc: "store", it: "milk" }]); }),
+    db.transaction(async (tx) => { await lockBalances(tx, [{ loc: "kitchen", it: "milk" }, { loc: "store", it: "milk" }]); }),
+  ]);
+  expect(both.every((r) => r.status === "fulfilled")).toBe(true);
+});
+```
 
 - [ ] **Step 3: Add `allocateNumber` to `apps/api/src/lib/ids.ts`**
 
@@ -1320,24 +1394,36 @@ export type TicketDraft = {
   lines: readonly { it: string; qty: number }[]; by: string; at?: Date;
 };
 
+export type TicketNumber = { n: number; id: string; otp: string };
+
+/**
+ * Take the ticket's number, and the OTP minted from it so the series the operators know
+ * carries on. Call this **before** `lockBalances`: the server's lock order is ids first and
+ * balance rows second (`lib/ledger.ts`'s header), so a write that needs both must not hold a
+ * shelf while it waits for the sequence. A refusal afterwards rolls the allocation back with
+ * everything else and the series skips a number, which is what a counter is for.
+ */
+export async function allocateTicket(tx: Tx, at: Date = new Date()): Promise<TicketNumber> {
+  const { n, id } = await allocateNumber(tx, "tkt", at);
+  return { n, id, otp: makeOtp(n) };
+}
+
 /**
  * One ticket, however it was asked for: a request the manager approved, a shop transfer, a
- * kitchen distribution. Allocates the number, mints the OTP from the same number so the
- * series the operators know carries on, writes head and lines, and reserves the stock at
- * `from` — the whole of "approval authorises" in one call.
+ * kitchen distribution. Writes head and lines and reserves the stock at `from` — the whole of
+ * "approval authorises" once the number is in hand.
  *
  * The caller must already have taken the balance locks (`lockBalances`) and checked that
  * `on_hand - reserved` covers every line; this does not check, because what "covers" means
  * differs by caller (free-to-promise at the store, plain availability at an outlet).
  */
-export async function issueTicketRow(tx: Tx, draft: TicketDraft): Promise<Ticket> {
+export async function writeTicket(tx: Tx, draft: TicketDraft, no: TicketNumber): Promise<Ticket> {
   const at = draft.at ?? new Date();
   const folded = new Map<string, number>();
   for (const l of draft.lines) folded.set(l.it, round3((folded.get(l.it) ?? 0) + l.qty));
   const lines = [...folded].map(([it, qty]) => ({ it, qty }));
 
-  const { n, id } = await allocateNumber(tx, "tkt", at);
-  const otp = makeOtp(n);
+  const { id, otp } = no;
   await tx.insert(tickets).values({
     id, refType: draft.refType, refId: draft.refId, fromLoc: draft.from, toLoc: draft.to,
     status: "Issued", otp, issuedBy: draft.by, issuedAt: at,
@@ -1376,13 +1462,21 @@ import { appendHistory } from "../lib/history.js";
 import { reserve } from "../lib/reservations.js";
 import type { TicketRefType } from "../lib/tickets.js";
 
+/** A monotonic suffix, so two builder calls in one file cannot draw the same id — a random
+ *  draw collided often enough to matter (a builder three suites use). Each test file is its own
+ *  module instance and its own schema, so the counter need not be unique across files. */
+let seq = 0;
+const next = (): number => ++seq;
+
 /** Defaults live here and nowhere else, so a suite says only what its case is about. */
 export const given = {
   async request(db: Db, p: {
     id?: string; from: LocKey; by?: string; lines: { it: string; qty: number; appr?: number }[];
     st?: ReqStatus; ticket?: string | null; mgrNote?: string; urgent?: boolean;
   }): Promise<string> {
-    const id = p.id ?? `REQ-2026-0${900 + Math.floor(Math.random() * 90)}`;
+    // Above everything the fixtures use (REQ-2026-0909..0912) and above the sequence's start
+    // (913), so a builder-made request can collide with neither the seed nor an allocated id.
+    const id = p.id ?? `REQ-2026-0${990 + next()}`;
     const st = p.st ?? "Request sent";
     await db.transaction(async (tx) => {
       await tx.insert(s.stockRequests).values({
@@ -1401,7 +1495,7 @@ export const given = {
     id?: string; refType?: TicketRefType; refId?: string; from: LocKey; to: LocKey;
     lines: { it: string; qty: number }[]; st?: TktStatus; otp?: string; reserve?: boolean;
   }): Promise<string> {
-    const id = p.id ?? `TKT-0${800 + Math.floor(Math.random() * 90)}`;
+    const id = p.id ?? `TKT-0${800 + next()}`;
     const st = p.st ?? "Issued";
     await db.transaction(async (tx) => {
       await tx.insert(s.tickets).values({
@@ -1417,7 +1511,7 @@ export const given = {
   },
 
   async shopAsk(db: Db, p: { id?: string; from: LocKey; to: LocKey; it: string; qty: number; by?: string; st?: ShopAskStatus; note?: string }): Promise<string> {
-    const id = p.id ?? `ASK-0${100 + Math.floor(Math.random() * 800)}`;
+    const id = p.id ?? `ASK-0${100 + next()}`;
     await db.insert(s.shopAsks).values({
       id, fromLoc: p.from, toLoc: p.to, itemKey: p.it, qty: p.qty,
       status: p.st ?? "Asked", byUser: p.by ?? "u1", note: p.note ?? "",
@@ -1499,16 +1593,19 @@ and rewrite the three lines inside `scope()` to call them (`req: scopeRequests(s
   mount(app, routes.ticketsList, async (req) => svc.tickets(req.user));
   mount(app, routes.shopAsks, async (req) => svc.shopAsks(req.user));
 ```
-Then create the three module stubs described in **Interfaces** and register them in `apps/api/src/modules/index.ts`:
+Then create the **four** wired module stubs described in **Interfaces** — `requests`, `tickets`, `shopasks`, `production`, each with all four files and `routes.ts → service.ts → repo.ts` connected — and register them in `apps/api/src/modules/index.ts`:
 ```ts
 import requests from "./requests/routes.js";
 import tickets from "./tickets/routes.js";
 import shopasks from "./shopasks/routes.js";
+import production from "./production/routes.js";
 …
   await app.register(requests);
   await app.register(tickets);
   await app.register(shopasks);
+  await app.register(production);
 ```
+Run `pnpm lint` before moving on: `scripts/check-boundaries.sh` proves the four files exist in each directory and `knip` proves none of them is unreachable. A stub that satisfies one and not the other is not done.
 
 - [ ] **Step 12: Close the reservations door in `scripts/check-boundaries.sh`**
 
@@ -1543,10 +1640,10 @@ EOF
 ### Task 5: `requests` module — raise, cancel, approve, reject, issue a ticket
 
 **Files:**
-- Modify (they exist as stubs): `apps/api/src/modules/requests/{routes,service,repo,requests.test}.ts`
+- Modify (all four exist as Task 4's wired stub — replace their bodies and delete the stub's `ready`/`ping`): `apps/api/src/modules/requests/routes.ts`, `service.ts`, `repo.ts`, `requests.test.ts`
 
 **Interfaces:**
-- Consumes: `mount` from `../../routes.js`; `requireLoc`/`requireLocOf` from `../../plugins/rbac.js`; `withTransaction` from `../../lib/db.js`; `assertRule`/`assertTransition` from `../../lib/rules.js`; `NotFoundError` from `../../lib/errors.js`; `loadMaster` from `../../lib/master.js`; `allocateId` from `../../lib/ids.js`; `appendHistory` from `../../lib/history.js`; `lockBalances` from `../../lib/ledger.js`; `reservedAt` from `../../lib/reservations.js`; `issueTicketRow` from `../../lib/tickets.js`; `emitChanged` from `../../lib/events.js`; `planApproval`, `committed`, `round3`, `fq`, `REQUEST_TRANSITIONS` from `@rch/domain`; `routes` and the schema types from `@rch/contract`.
+- Consumes: `mount` from `../../routes.js`; `requireLoc`/`requireLocOf` from `../../plugins/rbac.js`; `withTransaction` from `../../lib/db.js`; `assertRule`/`assertTransition` from `../../lib/rules.js`; `NotFoundError` from `../../lib/errors.js`; `loadMaster` from `../../lib/master.js`; `allocateId` from `../../lib/ids.js`; `appendHistory` from `../../lib/history.js`; `lockBalances` from `../../lib/ledger.js`; `reservedAt` from `../../lib/reservations.js`; `allocateTicket`/`writeTicket` from `../../lib/tickets.js`; `emitChanged` from `../../lib/events.js`; `planApproval`, `committed`, `round3`, `fq`, `REQUEST_TRANSITIONS` from `@rch/domain`; `routes` and the schema types from `@rch/contract`.
 - Produces:
   ```ts
   export function createRequestsService(db: Db): {
@@ -1564,14 +1661,14 @@ EOF
 | Endpoint | Rules | Message |
 |---|---|---|
 | `POST /requests` | `from = claims.loc` (never from the body); every line's item exists (else 404 `There is no item <key>.`); `assertRule(lines.every(l => l.qty > 0), "Add at least one line with a quantity")`; status `Request sent`; history row `Request sent` | one line → `` `${id} raised for ${qty} ${item.n} — with the outlet manager now` ``; more → `` `${id} sent to the outlet manager — ${n} line${n > 1 ? "s" : ""}` `` |
-| `POST /requests/:id/cancel` | request exists (404 `There is no request <id>.`); `requireLocOf(claims, r.from, "your own counter")`; `assertTransition(REQUEST_TRANSITIONS, r.st, "Cancelled", id)`; history row `Cancelled` | `` `${id} cancelled` `` |
-| `POST /requests/:id/approve` | request exists; `assertTransition(REQUEST_TRANSITIONS, r.st, "Manager approved", id)`; `planApproval(lines, body.appr, freeFor)` where `freeFor(it) = avail(store) − committed(otherOpenRequests, it)`; write `approved_qty`/`short_qty` per line, `manager_note = body.note`, `approved_by = claims.sub`; history row named for the resulting status | `trimmed` → `` `${id} trimmed — the central store cannot cover the full quantity` ``; `Rejected` → `` `${id} rejected — no ticket will be issued` ``; else `` `${id} ${st.toLowerCase()} and forwarded to the store keeper` `` |
+| `POST /requests/:id/cancel` | request exists (404 `There is no request <id>.`); `requireLocOf(claims, r.fromLoc, "your own counter")` (the row's column is `from_loc`; `from` is the wire name); `assertTransition(REQUEST_TRANSITIONS, r.st, "Cancelled", id)`; history row `Cancelled` | `` `${id} cancelled` `` |
+| `POST /requests/:id/approve` | request exists; `planApproval(lines, body.appr, freeFor)` where `freeFor(it) = avail(store) − committed(otherOpenRequests, it)`; then `assertTransition(REQUEST_TRANSITIONS, r.st, plan.st, id)` — the guard names the status that will actually be written, and all three outcomes are listed under `Request sent`, so a request already decided is refused whichever way this one would have gone; write `approved_qty`/`short_qty` per line, `manager_note = body.note`, `approved_by = claims.sub`; history row named for the resulting status | `trimmed` → `` `${id} trimmed — the central store cannot cover the full quantity` ``; `Rejected` → `` `${id} rejected — no ticket will be issued` ``; else `` `${id} ${st.toLowerCase()} and forwarded to the store keeper` `` |
 | `POST /requests/:id/reject` | request exists; `assertRule(body.note.trim().length > 0, "Give a reason — the counter sees it on the request")`; `assertTransition(REQUEST_TRANSITIONS, r.st, "Rejected", id)`; history row `Rejected` | `` `${id} rejected` `` |
-| `POST /requests/:id/issue-ticket` | request exists; `assertTransition(REQUEST_TRANSITIONS, r.st, "Ticket issued", id)` (which also covers a request that already has one: only `Manager approved` and `Partially approved` may reach `Ticket issued`, and neither carries a ticket); lines with `appr > 0`, else `assertRule(false, "Nothing approved on this request")`; **then** `lockBalances`, re-read `on_hand` and open reservations at `store`, and for the first line where `on_hand − reserved < appr` refuse `` `Not enough ${item.n} available to promise` ``; `issueTicketRow(tx, { refType: "request", refId: id, from: "store", to: r.from, lines, by: claims.sub })`; set `ticket_id` and status `Ticket issued`; history row `Ticket issued` | `` `${tkt.id} issued — ${loc.n} can collect against this ticket` `` |
+| `POST /requests/:id/issue-ticket` | request exists; `assertTransition(REQUEST_TRANSITIONS, r.st, "Ticket issued", id)` (which also covers a request that already has one: only `Manager approved` and `Partially approved` may reach `Ticket issued`, and neither carries a ticket); lines with `appr > 0`, else `assertRule(false, "Nothing approved on this request")`; `allocateTicket(tx, at)` (ids before locks); **then** `lockBalances`, re-read `on_hand` and open reservations at `store`, and for the first line where `on_hand − reserved < appr` refuse `` `Not enough ${item.n} available to promise` ``; `writeTicket(tx, { refType: "request", refId: id, from: "store", to: r.fromLoc, lines, by: claims.sub, at }, no)`; set `ticket_id` and status `Ticket issued`; history row `Ticket issued` | `` `${tkt.id} issued — ${loc.n} can collect against this ticket` `` |
 
 The approval reads free-to-promise the same way the browser did (C6): `avail = on_hand − open reservations` at `store`, minus `committed()` over every **other** open request. The request being approved sits in `Request sent`, which `committed()` does not count, so no exclusion is needed — and the transition guard makes a second approval impossible anyway.
 
-`changed`: create `["req"]`; cancel `["req"]`; approve `["req"]`; reject `["req"]`; issue `["req", "tkt", "rsv"]`. Each is emitted with `await emitChanged(tx, changed)` as the last statement inside the transaction.
+`changed`: create `["req"]`; cancel `["req"]`; approve `["req"]`; reject `["req"]`; issue `["req", "tkt", "rsv"]`. Each is emitted with `await emitChanged(tx, changed)` once every write in the transaction has been made — a read-back for the response (`repo.wire`, `readTicket`) may follow it, since the notice is withheld by Postgres until the whole transaction commits either way.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -1602,16 +1699,26 @@ describe("POST /requests", () => {
     const r = await post("u1", "/requests", { lines: [{ it: "milk", qty: 20 }, { it: "sugar", qty: 4 }], note: "Counter runs dry by 4pm", urgent: true });
     expect(r.statusCode).toBe(200);
     const b = r.json();
-    expect(b.result).toMatchObject({ id: "REQ-2026-0913", from: "coffee", by: "Kavitha Raman", st: "Request sent", ticket: null, mgrNote: "Counter runs dry by 4pm", urg: true });
+    // Never a literal id: `truncateAll` deliberately keeps `sequences` (apps/api/src/test/db.ts)
+    // and `ensureSequences` is onConflictDoNothing, so the series carries on across cases.
+    expect(b.result.id).toMatch(/^REQ-\d{4}-0\d+$/);
+    expect(b.result).toMatchObject({ from: "coffee", by: "Kavitha Raman", st: "Request sent", ticket: null, mgrNote: "Counter runs dry by 4pm", urg: true });
     expect(b.result.lines).toEqual([{ it: "milk", qty: 20, appr: 0 }, { it: "sugar", qty: 4, appr: 0 }]);
     expect(b.result.hist).toEqual([{ s: "Request sent", who: "Kavitha Raman", t: expect.any(String) }]);
     expect(b.changed).toEqual(["req"]);
-    expect(b.message).toBe("REQ-2026-0913 sent to the outlet manager — 2 lines");
+    expect(b.message).toBe(`${b.result.id} sent to the outlet manager — 2 lines`);
+  });
+
+  it("issues the next number in the series each time", async () => {
+    const first = (await post("u1", "/requests", { lines: [{ it: "milk", qty: 1 }] })).json().result.id;
+    const second = (await post("u1", "/requests", { lines: [{ it: "milk", qty: 1 }] })).json().result.id;
+    const n = (id: string) => Number(id.slice("REQ-2026-0".length));
+    expect(n(second)).toBe(n(first) + 1);
   });
 
   it("names the item when only one line was asked for", async () => {
     const r = await post("u1", "/requests", { lines: [{ it: "milk", qty: 20 }] });
-    expect(r.json().message).toBe("REQ-2026-0913 raised for 20 Milk 1L — with the outlet manager now");
+    expect(r.json().message).toBe(`${r.json().result.id} raised for 20 Milk 1L — with the outlet manager now`);
   });
 
   it("lets the kitchen raise one too, from the kitchen", async () => {
@@ -1639,6 +1746,7 @@ describe("POST /requests", () => {
   it("refuses without an Idempotency-Key, and replays one", async () => {
     const headers = await hdr("u1");
     const payload = { lines: [{ it: "milk", qty: 20 }] };
+    // The replay must return the first response byte for byte — including its id.
     expect((await app.inject({ method: "POST", url: "/api/v1/requests", headers: await authHeaders(app, "u1"), payload })).statusCode).toBe(400);
     const first = await app.inject({ method: "POST", url: "/api/v1/requests", headers, payload });
     const again = await app.inject({ method: "POST", url: "/api/v1/requests", headers, payload });
@@ -1828,7 +1936,6 @@ Each method is `withTransaction(db, async (tx) => { … })`, in this order: read
       return withTransaction(db, async (tx) => {
         const r = await requestsRepo.head(tx, id);
         if (!r) throw new NotFoundError(`There is no request ${id}.`);
-        assertTransition(REQUEST_TRANSITIONS, r.status, "Manager approved", id);
         const lines = await requestsRepo.lines(tx, id);
         const master = await loadMaster(tx);
         // What the store may still promise: on hand, less open reservations, less what other
@@ -1840,6 +1947,10 @@ Each method is `withTransaction(db, async (tx) => { … })`, in this order: read
         const plan = planApproval(lines, body.appr, (it) => round3(
           (stock[it] ?? 0) - (held[`store:${it}`] ?? 0) - committed(open, it)));
 
+        // Guard on what will actually be written, not on one representative status. All three
+        // outcomes are listed under "Request sent", so a request already decided is refused
+        // whichever way this one would have gone.
+        assertTransition(REQUEST_TRANSITIONS, r.status, plan.st, id);
         await requestsRepo.setLineApprovals(tx, id, plan.lines);
         await requestsRepo.setStatus(tx, id, { status: plan.st, managerNote: body.note, approvedBy: claims.sub });
         const who = await requestsRepo.userName(tx, claims.sub);
@@ -1861,6 +1972,10 @@ Each method is `withTransaction(db, async (tx) => { … })`, in this order: read
         const master = await loadMaster(tx);
         const lines = (await requestsRepo.lines(tx, id)).filter((l) => l.appr > 0).map((l) => ({ it: l.it, qty: l.appr }));
         assertRule(lines.length > 0, "Nothing approved on this request");
+        // Ids before balance rows (lib/ledger.ts's header): take the ticket's number while
+        // holding no shelf, so a sale that already holds the sequences row cannot deadlock us.
+        const at = new Date();
+        const no = await allocateTicket(tx, at);
         // The approval may be hours old and another ticket may have taken the same stock since.
         // Lock first, then read: two store keepers pressing together queue on these rows.
         await lockBalances(tx, lines.map((l) => ({ loc: "store", it: l.it })));
@@ -1868,7 +1983,7 @@ Each method is `withTransaction(db, async (tx) => { … })`, in this order: read
         const held = await reservedAt(tx, "store", lines.map((l) => l.it));
         const short = lines.find((l) => round3((stock[l.it] ?? 0) - (held[`store:${l.it}`] ?? 0)) < l.qty);
         if (short) assertRule(false, `Not enough ${master.items[short.it]?.n ?? short.it} available to promise`);
-        const ticket = await issueTicketRow(tx, { refType: "request", refId: id, from: "store", to: r.fromLoc, lines, by: claims.sub });
+        const ticket = await writeTicket(tx, { refType: "request", refId: id, from: "store", to: r.fromLoc, lines, by: claims.sub, at }, no);
 ```
 
 - [ ] **Step 4: Write `routes.ts`**
@@ -1915,9 +2030,8 @@ issuing writes only reservations — no stock leaves the central store until the
 OTP. Free-to-promise is netted at approval and re-checked under the balance locks at issue,
 because an approval can be hours old.
 
-Replaces the UI rule tests store.test.ts "raises a multi-item request", "cancels only while
-the request is still open", "a manager cannot approve more than was asked, nor more than the
-store can cover" and "rejecting issues no ticket", and fixes.test.ts C4, C6 and H6/H7.
+Free-to-promise is netted at approval and re-checked under the balance locks at issue,
+because an approval can be hours old.
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
 Claude-Session: https://claude.ai/code/session_017gC3R1QMaDuNzqPHRtMTEw
@@ -1930,10 +2044,10 @@ EOF
 ### Task 6: `tickets` module — OTP handover, receipt, and shop-to-shop transfers
 
 **Files:**
-- Modify (they exist as stubs): `apps/api/src/modules/tickets/{routes,service,repo,tickets.test}.ts`
+- Modify (all four exist as Task 4's wired stub — replace their bodies and delete the stub's `ready`/`ping`): `apps/api/src/modules/tickets/routes.ts`, `service.ts`, `repo.ts`, `tickets.test.ts`
 
 **Interfaces:**
-- Consumes: `mount`; `requireLoc`/`requireLocOf` from `../../plugins/rbac.js`; `withTransaction`; `assertRule`/`assertTransition` from `../../lib/rules.js`; `NotFoundError`; `loadMaster`; `appendHistory`; `postMoves`/`lockBalances` from `../../lib/ledger.js`; `releaseForTicket`/`reservedAt` from `../../lib/reservations.js`; `issueTicketRow`/`readTicket` from `../../lib/tickets.js`; `emitChanged`; `fq`, `round3`, `canTransition`, `TICKET_TRANSITIONS`, `REQUEST_TRANSITIONS` from `@rch/domain`.
+- Consumes: `mount`; `requireLoc`/`requireLocOf` from `../../plugins/rbac.js`; `withTransaction`; `assertRule`/`assertTransition` from `../../lib/rules.js`; `NotFoundError`; `loadMaster`; `appendHistory`; `postMoves`/`lockBalances` from `../../lib/ledger.js`; `releaseForTicket`/`reservedAt` from `../../lib/reservations.js`; `allocateTicket`/`writeTicket`/`readTicket` from `../../lib/tickets.js`; `emitChanged`; `fq`, `round3`, `canTransition`, `TICKET_TRANSITIONS`, `REQUEST_TRANSITIONS` from `@rch/domain`.
 - Produces:
   ```ts
   export function createTicketsService(db: Db): {
@@ -1948,13 +2062,13 @@ EOF
 
 | Endpoint | Rules | Message |
 |---|---|---|
-| `POST /tickets/:id/handover` | ticket exists (404 `There is no ticket <id>.`); `requireLocOf(claims, t.from, "the location the ticket is issued from")`; `assertTransition(TICKET_TRANSITIONS, t.st, "Collected", id)`; **OTP**: if `body.otp` is given, `assertRule(body.otp.trim() === t.otp, \`That OTP does not match ${id}. Ask the collector to read it again.\`)`; if omitted, `assertRule(claims.role === "store" \|\| claims.role === "prod", "Only the store or the kitchen may hand over without the OTP")` **(NEW)** and write `appendHistory(tx, "ticket", id, "Collected — override", who)`; then `postMoves` the negative `ticket_out` moves at `t.from` (`refType: "ticket"`, `refId: id`), the post-lock re-read, and `releaseForTicket(tx, id)`; ticket → `Collected`, `collected_at = now`; a linked request in `Ticket issued` → `Collected` with a history row `Collected` | with OTP: `` `${id} handed over — stock is in transit to ${to.n}` ``; override: `` `${id} handed over on a supervisor override — stock is in transit to ${to.n}` `` **(NEW)** |
+| `POST /tickets/:id/handover` | ticket exists (404 `There is no ticket <id>.`); `requireLocOf(claims, t.from, "the location the ticket is issued from")`; `assertTransition(TICKET_TRANSITIONS, t.st, "Collected", id)`; **OTP**: if `body.otp` is given, `assertRule(body.otp.trim() === t.otp, \`That OTP does not match ${id}. Ask the collector to read it again.\`)`; if omitted, `assertRule(claims.role === "store" \|\| claims.role === "prod", "Only the store or the kitchen may hand over without the OTP")` **(NEW)** and write `appendHistory(tx, "ticket", id, "Handed over — supervisor override", who)`; then `postMoves` the negative `ticket_out` moves at `t.from` (`refType: "ticket"`, `refId: id`), the post-lock re-read — whose refusal `` `${to.n} cannot collect ${fq(qty, unit)} ${unit} of ${item.n} — ${from.n} no longer has it` `` is **(NEW)**, because the browser never re-read after moving and so never had one — and `releaseForTicket(tx, id)`; ticket → `Collected`, `collected_at = now`; a linked request in `Ticket issued` → `Collected` with a history row `Collected` | with OTP: `` `${id} handed over — stock is in transit to ${to.n}` ``; override: `` `${id} handed over on a supervisor override — stock is in transit to ${to.n}` `` **(NEW)** |
 | `POST /tickets/:id/receive` | ticket exists; `requireLocOf(claims, t.to, "the location the ticket is coming to")`; `assertTransition(TICKET_TRANSITIONS, t.st, "Received", id)`; `postMoves` the positive `ticket_in` moves at `t.to`; ticket → `Received`, `received_at = now`; a linked request in `Collected` → `Closed` with a history row **`Received`** (the word the operator reads on the request, kept verbatim from the store) | `` `Received at ${to.n} — stock is on the shelf` `` |
-| `POST /transfers` | `assertRule(body.qty > 0, "Enter a quantity")`; item exists (404); `assertRule(from !== to && both are Outlet-type, "A shop transfer runs between two different outlets")`; `lockBalances` at `from`, then `assertRule(on_hand − reserved ≥ qty, \`${from.n} has only ${fq(free, item.u)} ${item.u} free to send\`)`; `issueTicketRow(tx, { refType: "shop_transfer", refId: "Shop transfer", from, to, lines: [{ it, qty }], by: claims.sub })` — a reservation, no move | `` `${tkt.id} issued — ${fq(qty, item.u)} ${item.u} reserved at ${from.n} for ${to.n}` `` |
+| `POST /transfers` | `assertRule(body.qty > 0, "Enter a quantity")`; item exists (404); `assertRule(from !== to && both are Outlet-type, "A shop transfer runs between two different outlets")`; `allocateTicket(tx, at)` (ids before locks); then `lockBalances` at `from`, `assertRule(on_hand − reserved ≥ qty, \`${from.n} has only ${fq(free, item.u)} ${item.u} free to send\`)`; `writeTicket(tx, { refType: "shop_transfer", refId: "Shop transfer", from, to, lines: [{ it, qty }], by: claims.sub, at }, no)` — a reservation, no move | `` `${tkt.id} issued — ${fq(qty, item.u)} ${item.u} reserved at ${from.n} for ${to.n}` `` |
 
 `changed`: handover `["tkt", "req", "rsv", "stock"]`; receive `["tkt", "req", "stock"]`; transfer `["tkt", "rsv"]`.
 
-**The supervisor override is the only thing tickets write to `document_history`.** Spec §16 fixed the normal lifecycle as three timestamps on the row (`issued_at`/`collected_at`/`received_at`) precisely because a ticket's status carries no prose; but §8.3 and §12 require the override to be auditable, and it is the exception rather than the lifecycle. So `document_history` gains the doc type `ticket` for this one status, `"Collected — override"`, which nothing reads back into the wire (`TicketSchema` has no `hist`) and the runbook queries directly. Task 10 records this in spec §16.
+**The supervisor override is the only thing tickets write to `document_history`,** and its status string is spec §8.3's verbatim — `"Handed over — supervisor override"`, not a variation on the ticket's own status word. Spec §16 fixed the normal lifecycle as three timestamps on the row (`issued_at`/`collected_at`/`received_at`) precisely because a ticket's status carries no prose; but §8.3 and §12 require the override to be auditable, and it is the exception rather than the lifecycle. So `document_history` gains the doc type `ticket` for this one status, `"Handed over — supervisor override"`, which nothing reads back into the wire (`TicketSchema` has no `hist`) and the runbook queries directly. Task 10 records this in spec §16.
 
 **The OTP stays in the clear.** `makeOtp`'s own comment calls it "an operational check that the collector is the person the ticket was issued to — not a security token", and the store's own screens print it today (`UI/src/roles/store/IssueDetail.tsx`, `IssueDesk.tsx`, `TicketDrawer.tsx` all render it). Hashing it would break those screens, which is a product change and out of this phase's scope. Store and serve it exactly as the snapshot does now; Task 10 records the decision and the reason in spec §16.
 
@@ -2028,7 +2142,7 @@ describe("POST /tickets/:id/handover", () => {
     const audit = await app.testDb!.db.select().from(documentHistory)
       .where(and(eq(documentHistory.docType, "ticket"), eq(documentHistory.docId, "TKT-0440")));
     expect(audit).toHaveLength(1);
-    expect(audit[0]).toMatchObject({ status: "Collected — override", who: "Suresh Muthu" });
+    expect(audit[0]).toMatchObject({ status: "Handed over — supervisor override", who: "Suresh Muthu" });
   });
 
   it("refuses the override to a counter", async () => {
@@ -2186,7 +2300,7 @@ Run: `pnpm --filter @rch/api test src/modules/tickets` → FAIL (the stub regist
         await ticketsRepo.setStatus(tx, id, { status: "Collected", collectedAt: at });
 
         const who = await ticketsRepo.userName(tx, claims.sub);
-        if (override) await appendHistory(tx, "ticket", id, "Collected — override", who, at);
+        if (override) await appendHistory(tx, "ticket", id, "Handed over — supervisor override", who, at);
         const linked = await ticketsRepo.linkedRequest(tx, t.req);
         if (linked && canTransition(REQUEST_TRANSITIONS, linked.status, "Collected")) {
           await ticketsRepo.setRequestStatus(tx, linked.id, "Collected");
@@ -2206,7 +2320,7 @@ Run: `pnpm --filter @rch/api test src/modules/tickets` → FAIL (the stub regist
     },
 ```
 `receive` is the mirror: `ticket_in` moves at `t.to` (no post-lock check — nothing goes negative booking stock in), status `Received` with `receivedAt`, and a linked request in `Collected` moved to `Closed` with a history row reading **`Received`**.
-`transfer` reads the master, asserts the three rules, `lockBalances` at `from`, reads `on_hand` and `reservedAt`, asserts the cover, then `issueTicketRow`.
+`transfer` reads the master, asserts the three rules, takes the ticket's number with `allocateTicket(tx, at)`, **then** `lockBalances` at `from`, reads `on_hand` and `reservedAt`, asserts the cover, and finally `writeTicket(tx, draft, no)` — ids before balance rows, as `lib/ledger.ts`'s header requires.
 
 - [ ] **Step 3: Write `routes.ts`**
 
@@ -2250,11 +2364,10 @@ Handover posts the ticket_out moves and releases the ticket's reservations in on
 transaction; receipt posts ticket_in at the other end. Between them the stock is in transit
 and neither location holds it. A wrong OTP refuses and moves nothing; omitting it is the
 labelled supervisor override, open to the store and the kitchen only and written to
-document_history as "Collected — override".
+document_history as "Handed over — supervisor override" — spec §8.3's wording, verbatim.
 
-Replaces the UI rule tests store.test.ts "manager trims the quantity, store issues a ticket
-for only what was approved" (its handover/receive half) and fixes.test.ts C2 and C5's
-"frees the reservation when the seeded ticket is handed over".
+A shop transfer gets its own endpoint here too: it raises a ticket between two outlets with
+no request behind it, reserving at the sender and moving nothing.
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
 Claude-Session: https://claude.ai/code/session_017gC3R1QMaDuNzqPHRtMTEw
@@ -2267,10 +2380,10 @@ EOF
 ### Task 7: `shopasks` module — one shop asks another, and the other decides
 
 **Files:**
-- Modify (they exist as stubs): `apps/api/src/modules/shopasks/{routes,service,repo,shopasks.test}.ts`
+- Modify (all four exist as Task 4's wired stub — replace their bodies and delete the stub's `ready`/`ping`): `apps/api/src/modules/shopasks/routes.ts`, `service.ts`, `repo.ts`, `shopasks.test.ts`
 
 **Interfaces:**
-- Consumes: `mount`; `requireLocOf`; `withTransaction`; `assertRule`/`assertTransition`; `NotFoundError`; `loadMaster`; `allocateId`; `lockBalances`; `reservedAt`; `issueTicketRow`; `emitChanged`; `fq`, `round3`, `SHOP_ASK_TRANSITIONS` from `@rch/domain`.
+- Consumes: `mount`; `requireLocOf`; `withTransaction`; `assertRule`/`assertTransition`; `NotFoundError`; `loadMaster`; `allocateId`; `lockBalances`; `reservedAt`; `allocateTicket`/`writeTicket`; `emitChanged`; `fq`, `round3`, `SHOP_ASK_TRANSITIONS` from `@rch/domain`.
 - Produces:
   ```ts
   export function createShopAsksService(db: Db): {
@@ -2284,7 +2397,7 @@ EOF
 | Endpoint | Rules | Message |
 |---|---|---|
 | `POST /shop-asks` | `from = claims.loc`; `assertRule(body.to !== claims.loc, "Pick a different shop")`; `assertRule(locations[to].type === "Outlet" && locations[from].type === "Outlet", "Only another shop can be asked directly")`; `assertRule(body.qty > 0, "Enter a quantity")`; item exists (404); id from `allocateId(tx, "shop_ask")`; status `Asked` | `` `${id} sent to ${to.n} — they decide, not the manager` `` |
-| `POST /shop-asks/:id/answer` | ask exists (404 `There is no shop ask <id>.`); `requireLocOf(claims, a.to, "your own counter")`; `assertTransition(SHOP_ASK_TRANSITIONS, a.st, "Sent", id)`; `give = round3(Math.min(body.grant, a.qty))`; `assertRule(give > 0, "Grant a quantity, or decline the ask")`; `lockBalances` at `a.to`, then `assertRule(on_hand − reserved ≥ give, \`${to.n} has only ${fq(free, item.u)} ${item.u} free to send\`)`; `issueTicketRow(tx, { refType: "shop_ask", refId: id, from: a.to, to: a.from, lines: [{ it: a.it, qty: give }], by: claims.sub })`; ask → `Sent` with `granted_qty` and `ticket_id` | `` `${id} granted — ${tkt.id} issued for ${fq(give, item.u)} ${item.u} to ${from.n}` `` **(NEW)** |
+| `POST /shop-asks/:id/answer` | ask exists (404 `There is no shop ask <id>.`); `requireLocOf(claims, a.to, "your own counter")`; `assertTransition(SHOP_ASK_TRANSITIONS, a.st, "Sent", id)`; `assertRule(body.grant > 0, "Grant a quantity, or decline the ask")`; `assertRule(body.grant <= a.qty, \`${from.n} asked for ${fq(a.qty, item.u)} ${item.u} — grant that or less\`)` **(NEW)**; `give = round3(body.grant)`; `allocateTicket(tx, at)` (ids before locks); then `lockBalances` at `a.to`, `assertRule(on_hand − reserved ≥ give, \`${to.n} has only ${fq(free, item.u)} ${item.u} free to send\`)`; `writeTicket(tx, { refType: "shop_ask", refId: id, from: a.to, to: a.from, lines: [{ it: a.it, qty: give }], by: claims.sub, at }, no)`; ask → `Sent` with `granted_qty` and `ticket_id` | `` `${id} granted — ${tkt.id} issued for ${fq(give, item.u)} ${item.u} to ${from.n}` `` **(NEW)** |
 | `POST /shop-asks/:id/decline` | ask exists; `requireLocOf(claims, a.to, "your own counter")`; `assertRule(body.reason.trim().length > 0, "Give a reason — the other shop sees it")`; `assertTransition(SHOP_ASK_TRANSITIONS, a.st, "Declined", id)`; ask → `Declined` with the trimmed reason | `` `${id} declined` `` |
 
 `changed`: ask `["shopAsks"]`; answer `["shopAsks", "tkt", "rsv"]`; decline `["shopAsks"]`.
@@ -2356,10 +2469,19 @@ describe("POST /shop-asks/:id/answer", () => {
     expect(await app.testDb!.db.select().from(stockMoves).where(eq(stockMoves.refId, b.result.ticket.id))).toHaveLength(0);
   });
 
-  it("never grants more than was asked for", async () => {
+  it("refuses more than was asked for rather than quietly trimming it", async () => {
     const r = await post("u1", "/shop-asks/ASK-0060/answer", { grant: 99 });
-    expect(r.json().result.ask.grant).toBe(6);
-    expect(r.json().result.ticket.lines).toEqual([{ it: "chips", qty: 6 }]);
+    expect(r.statusCode).toBe(422);
+    expect(r.json().error.message).toBe("Snack Kiosk asked for 6 nos — grant that or less");
+    expect((await app.inject({ method: "GET", url: "/api/v1/shop-asks", headers: await authHeaders(app, "u1") })).json()
+      .find((a: { id: string }) => a.id === "ASK-0060").st).toBe("Asked");
+  });
+
+  it("grants less than was asked when that is all the shop can spare", async () => {
+    const r = await post("u1", "/shop-asks/ASK-0060/answer", { grant: 4 });
+    expect(r.statusCode).toBe(200);
+    expect(r.json().result.ask.grant).toBe(4);
+    expect(r.json().result.ticket.lines).toEqual([{ it: "chips", qty: 4 }]);
   });
 
   it("refuses a grant of nothing, and one the shelf cannot cover", async () => {
@@ -2420,10 +2542,16 @@ Run: `pnpm --filter @rch/api test src/modules/shopasks` → FAIL.
         const master = await loadMaster(tx);
         const item = master.items[a.itemKey];
         if (!item) throw new NotFoundError(`There is no item ${a.itemKey}.`);
-        // Grant no more than was asked for; a bigger number is a slip, not a bigger ask.
-        const give = round3(Math.min(body.grant, a.qty));
-        assertRule(give > 0, "Grant a quantity, or decline the ask");
+        // Spec §9.2: 0 < grant <= asked. The browser silently clamped a bigger number down to
+        // the ask; the server says so instead, because a counter who typed 60 for a 6 meant
+        // something, and sending 6 without a word is the wrong kind of helpful.
+        assertRule(body.grant > 0, "Grant a quantity, or decline the ask");
+        assertRule(body.grant <= a.qty, `${master.locations[a.fromLoc].n} asked for ${fq(a.qty, item.u)} ${item.u} — grant that or less`);
+        const give = round3(body.grant);
 
+        // Ids before balance rows (lib/ledger.ts's header).
+        const at = new Date();
+        const no = await allocateTicket(tx, at);
         await lockBalances(tx, [{ loc: a.toLoc, it: a.itemKey }]);
         const stock = await shopAsksRepo.balancesAt(tx, a.toLoc, [a.itemKey]);
         const held = await reservedAt(tx, a.toLoc, [a.itemKey]);
@@ -2431,7 +2559,7 @@ Run: `pnpm --filter @rch/api test src/modules/shopasks` → FAIL.
         assertRule(free >= give, `${master.locations[a.toLoc].n} has only ${fq(free, item.u)} ${item.u} free to send`);
 
         // The ask runs asker -> holder; the ticket runs back the other way.
-        const ticket = await issueTicketRow(tx, { refType: "shop_ask", refId: id, from: a.toLoc, to: a.fromLoc, lines: [{ it: a.itemKey, qty: give }], by: claims.sub });
+        const ticket = await writeTicket(tx, { refType: "shop_ask", refId: id, from: a.toLoc, to: a.fromLoc, lines: [{ it: a.itemKey, qty: give }], by: claims.sub, at }, no);
         await shopAsksRepo.setAnswer(tx, id, { status: "Sent", grantedQty: give, ticketId: ticket.id });
 
         const changed = ["shopAsks", "tkt", "rsv"] as const;
@@ -2482,7 +2610,7 @@ EOF
 
 **Files:**
 - Create: `packages/domain/src/credit.ts`, `packages/domain/src/credit.test.ts`
-- Modify: `packages/domain/src/index.ts`, `packages/contract/src/fixtures/master.ts`, `apps/api/src/lib/time.ts`, `apps/api/src/lib/time.test.ts`, `apps/api/src/test/builders.ts`, `apps/api/src/modules/pos/{service,repo,pos.test}.ts`, `UI/src/__tests__/screens.test.tsx`
+- Modify: `packages/domain/src/index.ts`, `packages/contract/src/schemas/common.ts`, `packages/contract/src/fixtures/master.ts`, `apps/api/src/lib/time.ts`, `apps/api/src/lib/time.test.ts`, `apps/api/src/test/builders.ts`, `apps/api/src/modules/pos/{service,repo,pos.test}.ts`, `UI/src/__tests__/screens.test.tsx`
 
 **Interfaces:**
 - Consumes: `assertRule` from `../../lib/rules.js`; `reservedAt` from `../../lib/reservations.js` (Task 4's, whose exact signature is `reservedAt(tx: Tx, loc: string, itemKeys?: readonly string[]): Promise<RsvMap>`, returning a map keyed `"loc:item"`); `fq`, `round3` from `@rch/domain`; `given.ticket` from `../../test/builders.js` (Task 4's, whose exact signature is `given.ticket(db: Db, p: { id?: string; refType?: TicketRefType; refId?: string; from: LocKey; to: LocKey; lines: { it: string; qty: number }[]; st?: TktStatus; otp?: string; reserve?: boolean }): Promise<string>`, which reserves the lines at `from` when the status is `Issued`).
@@ -2735,7 +2863,10 @@ describe("the staff credit ceiling", () => {
 });
 
 describe("a sale cannot take stock another document is holding", () => {
-  it("refuses more than on hand less reserved, and takes nothing", async () => {
+  // This first case is caught by the *pre-check* (`coverOf` over `posRepo.rsvAt`), which already
+  // nets reservations — it pins that the two voices agree. The race below is what exercises the
+  // post-lock re-read, because only a concurrent writer can reserve after the pre-check read.
+  it("pins the friendlier pre-check: more than on hand less reserved is refused, and takes nothing", async () => {
     // A shop transfer out of this counter holds 10 of its water; only what is left is sellable.
     const free = await onHand("coffee", "water");
     await given.ticket(app.db, { refType: "shop_transfer", refId: "Shop transfer", from: "coffee", to: "kiosk", lines: [{ it: "water", qty: free - 2 }] });
@@ -2878,10 +3009,344 @@ EOF
 
 ---
 
-### Task 8: UI cutover — the twelve request, ticket and shop-ask actions call the server
+### Task 12: `production` module — `POST /prod-orders/:id/dispatch` and `POST /distributions`
+
+*(Wave 3, alongside Tasks 5, 6, 7 and 11. It owns `apps/api/src/modules/production/*` — Task 4 pre-registers the stub — plus `PROD_ORDER_TRANSITIONS` in `packages/domain/src/transitions.ts` and one name added to the existing transitions export line in `packages/domain/src/index.ts`. Task 11 also edits `packages/domain/src/index.ts`, on the credit line; the two edits are on different lines and the controller resolves a trivial adjacent-line conflict if git raises one.)*
+
+**Why this is in Phase 3 and not Phase 4.** The kitchen creates tickets two ways — dispatching a production order and distributing finished goods — and Task 6 makes `handover`/`receive` server calls. Leave those two in memory and the kitchen's own tickets carry ids the server has never heard of, so handing one over answers `404 There is no ticket TKT-0xxx.` Spec §14's "nothing dual-runs" is what forces the pair across the line now; **Phase 4 keeps the rest of production** — `POST /prod-orders/:id/status`, batches, `makeProduct` — which create no tickets and so cross no seam.
+
+**Files:**
+- Create: `apps/api/src/modules/production/{service,repo,production.test}.ts`
+- Modify: `apps/api/src/modules/production/routes.ts` (Task 4's wired stub), `packages/domain/src/transitions.ts`, `packages/domain/src/index.ts`
+
+**Interfaces:**
+- Consumes: `mount` from `../../routes.js`; `withTransaction` from `../../lib/db.js`; `assertRule` from `../../lib/rules.js`; `NotFoundError` from `../../lib/errors.js`; `loadMaster` from `../../lib/master.js`; `appendHistory` from `../../lib/history.js`; `lockBalances` from `../../lib/ledger.js`; `reservedAt` from `../../lib/reservations.js`; `allocateTicket` and `writeTicket` from `../../lib/tickets.js` (Task 4's, whose exact signatures are `allocateTicket(tx: Tx, at?: Date): Promise<TicketNumber>` with `TicketNumber = { n: number; id: string; otp: string }`, and `writeTicket(tx: Tx, draft: TicketDraft, no: TicketNumber): Promise<Ticket>`); `emitChanged` from `../../lib/events.js`; `fq`, `round3` from `@rch/domain`; `given.ticket` from `../../test/builders.js` in the test.
+- Produces:
+  ```ts
+  // packages/domain/src/transitions.ts
+  export const PROD_ORDER_TRANSITIONS: TransitionTable<PordStatus>;
+
+  // apps/api/src/modules/production/service.ts
+  export function createProductionService(db: Db): {
+    dispatch(claims: AccessClaims, id: string): Promise<WriteResponse<DispatchResult>>;
+    distribute(claims: AccessClaims, body: DistributeBody): Promise<WriteResponse<Ticket>>;
+  };
+  ```
+- `repo.ts`: `head(tx, id)` — a **locking** read (`.for("update")` on `prod_orders`), so one order cannot be dispatched twice; `lines(tx, id)`; `setStatus(tx, id, status)`; `balancesAt(tx, loc, itemKeys)`; `menuAt(tx, loc)` (a `Set<string>` of `location_items` at one location); `userName(tx, id)`; `wire(tx, id)` returning the `ProdOrder` wire shape (`{ id, from, by, at, lines, st, note, hist }`, lines in `line_no` order, `hist` from `readHistory(tx, "prod_order", id)`, `by` resolved to a name) — the same shape `modules/snapshot/readers/documents.ts`'s `readProdOrders` produces.
+- The contract entries (`distribute`, `dispatchProdOrder`, `DistributeBodySchema`, `DispatchResultSchema`) are declared by **Task 4**, in the same commit as its three GETs, and are inert until this task mounts them. `"pord"` is already a member of `CollectionSchema`, so nothing there changes.
+
+**The transition table.** Add to `packages/domain/src/transitions.ts`:
+```ts
+export const PROD_ORDER_TRANSITIONS: TransitionTable<PordStatus> = {
+  New: ["Accepted", "Declined", "Dispatched"],
+  Accepted: ["In kitchen", "Dispatched"],
+  "In kitchen": ["Ready", "Dispatched"],
+  Ready: ["Dispatched"],
+  Dispatched: [],
+  Declined: [],
+};
+```
+`Dispatched` is reachable from every open status because the kitchen may send an order out the moment it is ready to, whatever stage the board says (`UI/src/store/index.ts`'s `dispatchOrder` refuses only `Dispatched` and `Declined`). `New → Accepted/Declined`, `Accepted → In kitchen` and `In kitchen → Ready` are spec §9.2's `setOrderStatus` rules, declared here now so Phase 4's status endpoint reads the same table the board's buttons do. Add `PROD_ORDER_TRANSITIONS` to the **existing** transitions export line in `packages/domain/src/index.ts` rather than a new line:
+```ts
+export { REQUEST_TRANSITIONS, TICKET_TRANSITIONS, SHOP_ASK_TRANSITIONS, PROD_ORDER_TRANSITIONS, canTransition, type TransitionTable } from "./transitions.js";
+```
+
+**Rules, verbatim (spec §9.2's `dispatchOrder` and `distribute` rows; every message below is the store's current `notify()` text):**
+
+| Endpoint | Rules | Message |
+|---|---|---|
+| `POST /prod-orders/:id/dispatch` (prod) | order exists (404 `There is no production order <id>.`); `assertRule(o.st !== "Dispatched", \`${id} has already gone out — it is on one ticket to ${from.n}\`)`; `assertRule(o.st !== "Declined", \`${id} was declined — it cannot be dispatched\`)`; fold the lines by item, summing with `round3`; `assertRule(lines.length > 0, \`${id} has no items on it\`)`; `allocateTicket`; **then** `lockBalances` at `kitchen` for every folded item, re-read `on_hand` and open reservations, and refuse **all or nothing** naming every item short: `assertRule(short.length === 0, \`Nothing dispatched — the kitchen is short of ${short.map((l) => master.items[l.it].n).join(", ")}\`)`; `writeTicket` with `refType: "prod_order"`, `refId: id`, `from: "kitchen"`, `to: o.fromLoc`; order → `Dispatched`; history row `Dispatched` | `` `${tkt.id} issued — all ${lines.length} item${lines.length === 1 ? "" : "s"} of ${id} reserved for ${from.n}` `` |
+| `POST /distributions` (prod) | `assertRule(body.qty > 0, "Enter a quantity")`; item exists (404 `There is no item <key>.`); stock that lands where it cannot be sold is stock lost (M9), so `assertRule(!(locations[to].type === "Outlet" && !menu.has(it)), \`${item.n} is not listed at ${to.n} — add it to that menu first\`)`; `allocateTicket`; then `lockBalances` at `kitchen`, re-read, `assertRule(free >= qty, \`Kitchen has only ${fq(free, item.u)} ${item.u} free to promise\`)`; `writeTicket` with `refType: "direct"`, `refId: "Direct issue"`, `from: "kitchen"`, `to: body.to` | `` `${tkt.id} issued — ${qty} ${item.n} reserved for ${to.n}` `` |
+
+Neither endpoint is location-scoped by `requireLoc`: the `prod` role has exactly one kitchen, and both rules pin `from` to `"kitchen"` in the service rather than taking it from the caller. Both are **reservations only** — the movement rule holds, and `handover` is still what moves the stock.
+
+`changed`: dispatch `["pord", "tkt", "rsv"]`; distribute `["tkt", "rsv"]`. Each is emitted with `await emitChanged(tx, changed)` inside the transaction.
+
+**Neither uses `assertTransition`.** The table exists for the board's buttons, but `dispatchOrder`'s two refusals say more than "already dispatched" — one names the ticket's destination and the other says the order was declined — and both sentences are what the kitchen reads today. Keep them verbatim; the table is what `UI/src/lib/selectors.ts` gates the Dispatch button on.
+
+- [ ] **Step 1: Write the failing domain test**
+
+Append to `packages/domain/src/transitions.test.ts`:
+```ts
+describe("production order transitions", () => {
+  it("may go out from any open stage, because a kitchen sends when it is ready", () => {
+    for (const st of ["New", "Accepted", "In kitchen", "Ready"] as const) {
+      expect(canTransition(PROD_ORDER_TRANSITIONS, st, "Dispatched")).toBe(true);
+    }
+  });
+  it("walks the board in order otherwise", () => {
+    expect(canTransition(PROD_ORDER_TRANSITIONS, "New", "Accepted")).toBe(true);
+    expect(canTransition(PROD_ORDER_TRANSITIONS, "New", "Declined")).toBe(true);
+    expect(canTransition(PROD_ORDER_TRANSITIONS, "Accepted", "In kitchen")).toBe(true);
+    expect(canTransition(PROD_ORDER_TRANSITIONS, "In kitchen", "Ready")).toBe(true);
+    expect(canTransition(PROD_ORDER_TRANSITIONS, "New", "Ready")).toBe(false);
+    expect(canTransition(PROD_ORDER_TRANSITIONS, "Ready", "Accepted")).toBe(false);
+  });
+  it("is finished once it has gone out or been turned down", () => {
+    expect(PROD_ORDER_TRANSITIONS.Dispatched).toEqual([]);
+    expect(PROD_ORDER_TRANSITIONS.Declined).toEqual([]);
+  });
+});
+```
+with `PROD_ORDER_TRANSITIONS` added to the file's import. Run: `pnpm --filter @rch/domain test` → FAIL.
+
+- [ ] **Step 2: Add the table and export it**
+
+Write `PROD_ORDER_TRANSITIONS` into `packages/domain/src/transitions.ts` exactly as spelled out above (importing `PordStatus` from `@rch/contract` alongside the three status types already imported there), and add the name to the existing transitions export line in `packages/domain/src/index.ts`. Run: `pnpm --filter @rch/domain test` → PASS.
+
+- [ ] **Step 3: Write the failing module tests**
+
+`apps/api/src/modules/production/production.test.ts`
+```ts
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { randomUUID } from "node:crypto";
+import { eq } from "drizzle-orm";
+import { buildTestApp } from "../../test/app.js";
+import { seedTestDb } from "../../test/seed.js";
+import { authHeaders } from "../../test/auth.js";
+import { given } from "../../test/builders.js";
+import { truncateAll } from "../../test/db.js";
+import { postMoves } from "../../lib/ledger.js";
+import { reservations, stockMoves } from "../../db/schema/index.js";
+import type { App } from "../../app.js";
+
+let app: App;
+beforeAll(async () => { app = await buildTestApp({ schema: "production" }); await app.ready(); });
+afterAll(async () => { await app.close(); });
+beforeEach(async () => { await truncateAll(app.testDb!.db); await seedTestDb(app.testDb!.db); });
+
+const hdr = async (id: string) => ({ ...(await authHeaders(app, id)), "idempotency-key": randomUUID() });
+const post = async (user: string, url: string, payload?: unknown) =>
+  app.inject({ method: "POST", url: `/api/v1${url}`, headers: await hdr(user), ...(payload === undefined ? {} : { payload }) });
+const orders = async () => (await app.inject({ method: "GET", url: "/api/v1/snapshot", headers: await authHeaders(app, "u4") })).json().pord;
+const onHand = async (loc: string, it: string) =>
+  (await app.inject({ method: "GET", url: "/api/v1/stock", headers: await authHeaders(app, "u2") })).json().stock[loc]?.[it] ?? 0;
+/** The location's display name, read from the master the server itself serves. */
+const locName = async (key: string) =>
+  (await app.inject({ method: "GET", url: "/api/v1/locations", headers: await authHeaders(app, "u4") })).json()[key].n;
+/** Bake enough of an item that the kitchen can cover a dispatch. */
+const bake = (it: string, n: number) =>
+  app.testDb!.db.transaction((tx) => postMoves(tx, [{ loc: "kitchen", it, qty: n, kind: "production_yield", refType: "test", refId: "bake" }]));
+
+describe("POST /prod-orders/:id/dispatch", () => {
+  it("puts every item on one ticket addressed to the ordering outlet, and reserves rather than moves", async () => {
+    const [order] = (await orders()).filter((o: { st: string }) => o.st !== "Dispatched" && o.st !== "Declined");
+    for (const l of order.lines) await bake(l.it, l.qty);
+    const before = await onHand("kitchen", order.lines[0].it);
+    const movesBefore = (await app.testDb!.db.select().from(stockMoves)).length;
+
+    const r = await post("u4", `/prod-orders/${order.id}/dispatch`);
+    expect(r.statusCode, r.body).toBe(200);
+    const b = r.json();
+    expect(b.result.ticket).toMatchObject({ req: order.id, from: "kitchen", to: order.from, st: "Issued" });
+    expect(b.result.ticket.lines).toHaveLength(order.lines.length);
+    expect(b.result.ticket.otp).toMatch(/^\d{6}$/);
+    expect(b.result.order.st).toBe("Dispatched");
+    expect(b.result.order.hist.at(-1)).toMatchObject({ s: "Dispatched", who: "Vinoth Prakash" });
+    expect(b.changed).toEqual(["pord", "tkt", "rsv"]);
+    expect(b.message).toBe(`${b.result.ticket.id} issued — all ${order.lines.length} item${order.lines.length === 1 ? "" : "s"} of ${order.id} reserved for ${await locName(order.from)}`);
+
+    // Approval authorises; the scan moves.
+    expect(await onHand("kitchen", order.lines[0].it)).toBe(before);
+    expect((await app.testDb!.db.select().from(stockMoves)).length).toBe(movesBefore);
+    const held = await app.testDb!.db.select().from(reservations).where(eq(reservations.ticketId, b.result.ticket.id));
+    expect(held).toHaveLength(order.lines.length);
+    expect(held.every((h) => h.loc === "kitchen" && h.releasedAt === null)).toBe(true);
+  });
+
+  it("dispatches nothing when one item is short, and names every item that is", async () => {
+    const [order] = (await orders()).filter((o: { st: string; lines: unknown[] }) => o.st !== "Dispatched" && o.st !== "Declined" && o.lines.length > 1);
+    await bake(order.lines[0].it, order.lines[0].qty);          // only the first is covered
+    const movesBefore = (await app.testDb!.db.select().from(stockMoves)).length;
+
+    const r = await post("u4", `/prod-orders/${order.id}/dispatch`);
+    expect(r.statusCode).toBe(422);
+    expect(r.json().error.message).toMatch(/^Nothing dispatched — the kitchen is short of /);
+    expect((await app.testDb!.db.select().from(stockMoves)).length).toBe(movesBefore);
+    expect(await app.testDb!.db.select().from(reservations).where(eq(reservations.ticketId, "any"))).toEqual([]);
+    expect((await orders()).find((o: { id: string }) => o.id === order.id).st).not.toBe("Dispatched");
+  });
+
+  it("refuses to raise a second ticket for an order already dispatched", async () => {
+    const [order] = (await orders()).filter((o: { st: string }) => o.st !== "Dispatched" && o.st !== "Declined");
+    for (const l of order.lines) await bake(l.it, l.qty);
+    expect((await post("u4", `/prod-orders/${order.id}/dispatch`)).statusCode).toBe(200);
+
+    const again = await post("u4", `/prod-orders/${order.id}/dispatch`);
+    expect(again.statusCode).toBe(422);
+    expect(again.json().error.message).toBe(`${order.id} has already gone out — it is on one ticket to ${await locName(order.from)}`);
+  });
+
+  it("refuses a declined order in its own words", async () => {
+    const declined = (await orders()).find((o: { st: string }) => o.st === "Declined");
+    if (declined) {
+      const r = await post("u4", `/prod-orders/${declined.id}/dispatch`);
+      expect(r.statusCode).toBe(422);
+      expect(r.json().error.message).toBe(`${declined.id} was declined — it cannot be dispatched`);
+    }
+  });
+
+  it("dispatches exactly once when two screens press together", async () => {
+    const [order] = (await orders()).filter((o: { st: string }) => o.st !== "Dispatched" && o.st !== "Declined");
+    for (const l of order.lines) await bake(l.it, l.qty);
+    const both = await Promise.all([post("u4", `/prod-orders/${order.id}/dispatch`), post("u4", `/prod-orders/${order.id}/dispatch`)]);
+    expect(both.filter((r) => r.statusCode === 200)).toHaveLength(1);
+    expect(both.filter((r) => r.statusCode === 422)).toHaveLength(1);
+  });
+
+  it("404s an order that is not there, and is absent for every other role", async () => {
+    expect((await post("u4", "/prod-orders/PRD-2026-999/dispatch")).json().error.message).toBe("There is no production order PRD-2026-999.");
+    for (const u of ["u1", "u2", "u3", "u5"]) expect((await post(u, "/prod-orders/PRD-2026-029/dispatch")).statusCode).toBe(404);
+  });
+});
+
+describe("POST /distributions", () => {
+  it("reserves at the kitchen and raises the ticket the outlet collects against", async () => {
+    await bake("puff", 20);
+    const before = await onHand("kitchen", "puff");
+
+    const r = await post("u4", "/distributions", { it: "puff", qty: 5, to: "kiosk" });
+    expect(r.statusCode, r.body).toBe(200);
+    const b = r.json();
+    expect(b.result).toMatchObject({ req: "Direct issue", from: "kitchen", to: "kiosk", st: "Issued" });
+    expect(b.result.lines).toEqual([{ it: "puff", qty: 5 }]);
+    expect(b.changed).toEqual(["tkt", "rsv"]);
+    expect(b.message).toBe(`${b.result.id} issued — 5 Veg puffs reserved for Snack Kiosk`);
+    expect(await onHand("kitchen", "puff")).toBe(before);
+    expect(await app.testDb!.db.select().from(stockMoves).where(eq(stockMoves.refId, b.result.id))).toHaveLength(0);
+  });
+
+  it("refuses a destination that does not list the product (M9)", async () => {
+    await bake("puff", 20);
+    const r = await post("u4", "/distributions", { it: "puff", qty: 5, to: "coffee" });   // coffee's menu has no puff
+    expect(r.statusCode).toBe(422);
+    expect(r.json().error.message).toBe("Veg puffs is not listed at Coffee Shop — add it to that menu first");
+  });
+
+  it("refuses more than the kitchen has free", async () => {
+    const free = await onHand("kitchen", "puff");
+    const r = await post("u4", "/distributions", { it: "puff", qty: free + 1, to: "kiosk" });
+    expect(r.statusCode).toBe(422);
+    expect(r.json().error.message).toBe(`Kitchen has only ${free} nos free to promise`);
+  });
+
+  it("counts what another ticket is already holding", async () => {
+    const free = await onHand("kitchen", "puff");
+    await given.ticket(app.testDb!.db, { from: "kitchen", to: "kiosk", lines: [{ it: "puff", qty: free }] });
+    const r = await post("u4", "/distributions", { it: "puff", qty: 1, to: "kiosk" });
+    expect(r.statusCode).toBe(422);
+    expect(r.json().error.message).toBe("Kitchen has only 0 nos free to promise");
+  });
+
+  it("refuses a quantity of nothing, 404s an unknown item, and is absent for a counter", async () => {
+    expect((await post("u4", "/distributions", { it: "puff", qty: 0, to: "kiosk" })).json().error.message).toBe("Enter a quantity");
+    expect((await post("u4", "/distributions", { it: "totally-fake", qty: 1, to: "kiosk" })).json().error.message).toBe("There is no item totally-fake.");
+    expect((await post("u1", "/distributions", { it: "puff", qty: 1, to: "kiosk" })).statusCode).toBe(404);
+  });
+});
+```
+Run: `pnpm --filter @rch/api test src/modules/production` → FAIL (the stub mounts nothing).
+
+- [ ] **Step 4: Write `repo.ts`, then `service.ts`**
+
+`dispatch`, in full, because it is where the all-or-nothing rule and the lock order both live:
+```ts
+    async dispatch(claims: AccessClaims, id: string): Promise<WriteResponse<DispatchResult>> {
+      return withTransaction(db, async (tx) => {
+        const o = await productionRepo.head(tx, id);
+        if (!o) throw new NotFoundError(`There is no production order ${id}.`);
+        const master = await loadMaster(tx);
+        const to = master.locations[o.fromLoc];
+        // One order, one ticket. Dispatching twice would raise a second ticket for stock already
+        // promised, which is how half an order ends up in two places.
+        assertRule(o.status !== "Dispatched", `${id} has already gone out — it is on one ticket to ${to.n}`);
+        assertRule(o.status !== "Declined", `${id} was declined — it cannot be dispatched`);
+
+        // Fold a repeated item into a single line so the cover check is made against the whole
+        // quantity the order asks for, not one line of it at a time.
+        const folded = new Map<string, number>();
+        for (const l of await productionRepo.lines(tx, id)) folded.set(l.it, round3((folded.get(l.it) ?? 0) + l.qty));
+        const lines = [...folded].map(([it, qty]) => ({ it, qty }));
+        assertRule(lines.length > 0, `${id} has no items on it`);
+
+        // Ids before balance locks, always (see lib/ledger.ts's header): a sale that has taken
+        // the sequences lock must never wait behind a dispatch holding a shelf, or the reverse.
+        const at = new Date();
+        const no = await allocateTicket(tx, at);
+        await lockBalances(tx, lines.map((l) => ({ loc: "kitchen", it: l.it })));
+        const stock = await productionRepo.balancesAt(tx, "kitchen", lines.map((l) => l.it));
+        const held = await reservedAt(tx, "kitchen", lines.map((l) => l.it));
+        // All or nothing: a part-dispatched order leaves the outlet guessing what is still
+        // coming, so every item short is named and nothing moves.
+        const short = lines.filter((l) => round3((stock[l.it] ?? 0) - (held[`kitchen:${l.it}`] ?? 0)) < l.qty);
+        assertRule(short.length === 0, `Nothing dispatched — the kitchen is short of ${short.map((l) => master.items[l.it]?.n ?? l.it).join(", ")}`);
+
+        const ticket = await writeTicket(tx, { refType: "prod_order", refId: id, from: "kitchen", to: o.fromLoc, lines, by: claims.sub, at }, no);
+        await productionRepo.setStatus(tx, id, "Dispatched");
+        const who = await productionRepo.userName(tx, claims.sub);
+        await appendHistory(tx, "prod_order", id, "Dispatched", who, at);
+
+        const changed = ["pord", "tkt", "rsv"] as const;
+        await emitChanged(tx, changed);
+        return {
+          result: { order: await productionRepo.wire(tx, id), ticket },
+          changed: [...changed],
+          message: `${ticket.id} issued — all ${lines.length} item${lines.length === 1 ? "" : "s"} of ${id} reserved for ${to.n}`,
+        };
+      });
+    },
+```
+`distribute` is the same shape with one line: the quantity rule, the item lookup, the menu rule (`productionRepo.menuAt(tx, body.to)` only when the destination is an Outlet), `allocateTicket` → `lockBalances` → read → cover rule → `writeTicket` with `refType: "direct"`, `refId: "Direct issue"`. It writes no history: `document_history` carries `request`, `requisition`, `purchase_order` and `prod_order` only (spec §16), and a direct issue is none of those.
+
+- [ ] **Step 5: Write `routes.ts`**
+
+```ts
+// Production: the two ways the kitchen puts stock on a ticket — an order it was asked for, and
+// a tray it decided to push out. Batches and the board's own statuses are Phase 4.
+import fp from "fastify-plugin";
+import { routes } from "@rch/contract";
+import { mount } from "../../routes.js";
+import { createProductionService } from "./service.js";
+
+export default fp(async (app) => {
+  const svc = createProductionService(app.db);
+  // Neither is location-scoped: the prod role has one kitchen, and both rules pin `from` to it.
+  mount(app, routes.dispatchProdOrder, async (req) => svc.dispatch(req.user, req.params.id));
+  mount(app, routes.distribute, async (req) => svc.distribute(req.user, req.body));
+}, { name: "module:production", dependencies: ["auth", "rbac", "idempotency", "db"] });
+```
+
+- [ ] **Step 6: Run the tests, gate and commit**
+
+Run: `pnpm --filter @rch/api test src/modules/production` → PASS, then `pnpm turbo typecheck test && pnpm lint`.
+Then on a seeded local database, dispatch an order and confirm `pnpm --filter @rch/api db:rebuild-balances` leaves `GET /stock` unchanged — a dispatch reserves and must post no move.
+```bash
+git add packages/domain apps/api/src/modules/production
+git commit -m "$(cat <<'EOF'
+Put the kitchen's two ticket paths on the server
+
+Dispatching an order and distributing a tray are the only writes in production that create a
+ticket, and Phase 3 makes handover a server call — so they cross now, or the kitchen's own
+tickets carry ids the server has never heard of. Both reserve and move nothing; a dispatch
+that cannot be covered names every item short and writes nothing at all.
+
+Batches, makeProduct and the board's own statuses stay in memory for Phase 4: they create no
+ticket, so they cross no seam.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_017gC3R1QMaDuNzqPHRtMTEw
+EOF
+)"
+```
+
+---
+
+### Task 8: UI cutover — the fourteen request, ticket, shop-ask and kitchen actions call the server
 
 **Files:**
 - Modify: `UI/src/store/index.ts`, `UI/src/store/ops.ts`, `UI/src/api/refetch.ts`, `UI/src/api/wire.ts`, `UI/src/lib/selectors.ts`, `UI/src/roles/store/{IssueDesk,IssueDetail,TicketDrawer}.tsx`, `UI/src/roles/counter/TicketDrawer.tsx`, `UI/src/roles/prod/Tickets.tsx`, `UI/src/__tests__/writes.test.ts`, `UI/src/__tests__/store.test.ts`, `UI/src/__tests__/fixes.test.ts`
+- Also: `UI/src/__tests__/fixture.ts` (drop `seq.tkt` from `resetStore`; see **Leave alone** below).
+- **Not** `UI/src/__tests__/screens.test.tsx` — Task 11 edited it in wave 3. Task 9 does not touch `fixture.ts`: its Note-31 fix sets `auth` explicitly inside `events.test.ts` instead.
 
 **Interfaces:**
 - Consumes: `routes` from `@rch/contract`; `call`, `ApiError` from `../api/client`; `refetch` from `../api/refetch`; `REQUEST_TRANSITIONS`, `TICKET_TRANSITIONS`, `canTransition` from `@rch/domain`.
@@ -2899,6 +3364,8 @@ EOF
   askShop: (to: LocKey, it: string, qty: number, note: string) => Promise<void>;
   answerShopAsk: (id: string, grant: number) => Promise<void>;
   declineShopAsk: (id: string, reason: string) => Promise<void>;
+  dispatchOrder: (id: string) => Promise<void>;
+  distribute: (it: string, n: number, to: LocKey) => Promise<void>;
   ```
 - Produces, in `UI/src/api/wire.ts`:
   ```ts
@@ -2946,10 +3413,12 @@ The remaining eleven follow the same shape with these bodies and fallback senten
 | `askShop(to, it, qty, note)` | `routes.askShop`, `{ body: { to, it, qty, note: note.trim() } }` | `"Could not send the ask — check the connection and try again."` |
 | `answerShopAsk(id, grant)` | `routes.answerShopAsk`, `{ params: { id }, body: { grant } }` | `"Could not answer the ask — check the connection and try again."` |
 | `declineShopAsk(id, reason)` | `routes.declineShopAsk`, `{ params: { id }, body: { reason: reason.trim() } }` | `"Could not decline the ask — check the connection and try again."` |
+| `dispatchOrder(id)` | `routes.dispatchProdOrder`, `{ params: { id } }`; on success also `set({ drawer: null })`, as it does today | `"Could not dispatch the order — check the connection and try again."` |
+| `distribute(it, n, to)` | `routes.distribute`, `{ body: { it, qty: n, to } }` | `"Could not send it out — check the connection and try again."` |
 
 `answerShopAsk` **must not** call `transferToOutlet` any more: on the server it is one endpoint that both grants the ask and raises the ticket, and calling both would raise two tickets.
 
-**Leave alone:** `setOrderStatus`, `dispatchOrder`, `makeProduct`, `distribute` and everything in `store/procurement.ts`. They stay in memory until Phases 4 and 5, they still read `seq.tkt` and `makeOtp`, and `qty`/`resv` stay imported for them. Only `freeToPromise` leaves `store/index.ts`'s import list — `noUnusedLocals` will point at it.
+**Leave alone:** `setOrderStatus`, `makeProduct` and everything in `store/procurement.ts`. They stay in memory until Phases 4 and 5, they still read `seq` and `hist`/`now`, and `qty`/`resv` stay imported for `makeProduct`'s ingredient check. `freeToPromise` and `makeOtp` both leave `store/index.ts`'s import list once `approveRequest`, `dispatchOrder` and `distribute` are cut over — no local path mints a ticket any more — and `seq.tkt` becomes dead; delete it from the `Seq` interface, from the store's initial state and from `UI/src/__tests__/fixture.ts`'s `resetStore`. `noUnusedLocals` will point at the imports; the `seq.tkt` field needs the grep.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -3195,11 +3664,41 @@ Keep the existing doc comment on `refetch` (updating its "phase 3 replaces that"
 
 Rewrite them in `UI/src/store/index.ts` (`submitRequest`, `requestFromStore`, `cancelRequest`, `approveRequest`, `rejectRequest`, `issueTicket`, `handover`, `receiveTicket`) and `UI/src/store/ops.ts` (`transferToOutlet`, `askShop`, `answerShopAsk`, `declineShopAsk`) to the pattern and the table above, updating the `AppState`/`OpsSlice` signatures to `Promise<void>`. Delete every local rule, every local id (`"REQ-2026-0" + …`, `"TKT-0" + …`), every optimistic `set()` of `req`/`tkt`/`rsv`/`stock`/`shopAsks`, and the now-unused `freeToPromise` import. `ops.ts`'s `OUTLETS`, `fq` and `U` imports may become unused for these four actions but are still used by `createItem` — let `noUnusedLocals` decide.
 
-- [ ] **Step 4: Move the rule tests to the server, and gate the buttons on the table**
+- [ ] **Step 4: Move every test of a cut-over action to the server, and gate the buttons on the table**
 
-Delete from `UI/src/__tests__/store.test.ts`: `"raises a multi-item request"`, `"cancels only while the request is still open"` (replaced by the transition case in Step 1), `"manager trims the quantity, store issues a ticket for only what was approved"`, `"a manager cannot approve more than was asked, nor more than the store can cover"`, `"rejecting issues no ticket"`.
-Delete from `UI/src/__tests__/fixes.test.ts`: the whole `C4` describe, `C5`'s `"frees the reservation when the seeded ticket is handed over"` (keep `"reserves the lines of every issued ticket at start-up"` — it asserts the seed, not an action), the whole `C6` describe, `H6`, and both `H7` cases.
-Rewrite `M8`'s `"reports quantity handed over but not yet received"` so it exercises the selector without an action, since `inTransit` is still a UI selector:
+Fourteen store actions become `async` + `fetch` in this task. **Every** UI case that calls one of them asserts synchronously against local state in a file with no fetch stub, so every one of them must go or be rewritten — `pnpm --filter @rch/ui test` cannot pass otherwise. The list below is exhaustive; regenerate it before you start and confirm it still matches:
+```bash
+grep -rn 'S()\.\(handover\|receiveTicket\|approveRequest\|rejectRequest\|issueTicket\|cancelRequest\|submitRequest\|requestFromStore\|transferToOutlet\|askShop\|answerShopAsk\|declineShopAsk\|dispatchOrder\|distribute\)(' UI/src/__tests__/
+```
+
+**Delete, because the server owns the rule now** (name each one and its replacement in the commit body):
+
+| File · describe · case | Replaced by |
+|---|---|
+| `store.test.ts` · counter operator · "raises a multi-item request" | `requests.test.ts` "a counter raises a multi-line request from their own counter" |
+| `store.test.ts` · counter operator · "cancels only while the request is still open" | `requests.test.ts` "cancels only while the request is still open" (plus the transition case added in Step 1) |
+| `store.test.ts` · the two-stage approval chain · "manager trims the quantity, store issues a ticket for only what was approved" | `requests.test.ts` "trims to what the store can cover and records the shortfall (C4, C6)" + "issues for what was approved, reserves it, and moves nothing" + `tickets.test.ts` "moves the stock out on the OTP, releases the hold, and closes nothing else" |
+| `store.test.ts` · the two-stage approval chain · "a manager cannot approve more than was asked, nor more than the store can cover" | `requests.test.ts` "trims to what the store can cover and records the shortfall (C4, C6)" |
+| `store.test.ts` · the two-stage approval chain · "rejecting issues no ticket" | `requests.test.ts` "rejects when a reason is given, and issues no ticket" |
+| `store.test.ts` · production · "refuses to distribute more than the kitchen holds" | `production.test.ts` "refuses more than the kitchen has free" |
+| `fixes.test.ts` · **C2** (all three cases) | `production.test.ts` "reserves rather than moves" half of "puts every item on one ticket…" and "reserves at the kitchen and raises the ticket…"; `tickets.test.ts` "lets the kitchen hand its own ticket over (C2)" and "books the stock in and closes the request behind it" |
+| `fixes.test.ts` · **C3** (both cases) | `requests.test.ts` "lets the kitchen raise one too, from the kitchen" and "refuses a line with no quantity, in the operator's words (C3)" |
+| `fixes.test.ts` · **C4** (both cases) | `requests.test.ts` "trims to what the store can cover and records the shortfall (C4, C6)" and "approves in full and forwards it, with no shortfall" |
+| `fixes.test.ts` · **C5** · "frees the reservation when the seeded ticket is handed over" | `tickets.test.ts` "moves the stock out on the OTP, releases the hold, and closes nothing else" |
+| `fixes.test.ts` · **C6** (both cases) | `requests.test.ts` "nets an approval already made against the next one (C6)" |
+| `fixes.test.ts` · **H6** | `requests.test.ts` "names the manager who approved, not the operator who raised (H6)" |
+| `fixes.test.ts` · **H7** (both cases) | `requests.test.ts` "refuses to reject without a reason (H7)" and "rejects when a reason is given, and issues no ticket" |
+| `fixes.test.ts` · **M9** (both cases) | `production.test.ts` "refuses a destination that does not list the product (M9)" and the happy path in "reserves at the kitchen and raises the ticket the outlet collects against" |
+| `fixes.test.ts` · "a production order goes out whole, to the place that raised it" (all four cases) | `production.test.ts` "puts every item on one ticket addressed to the ordering outlet…", "dispatches nothing when one item is short, and names every item that is", "refuses to raise a second ticket for an order already dispatched"; `tickets.test.ts` "books the stock in and closes the request behind it" for the landing half |
+| `fixes.test.ts` · "a rejection records who made the call" (both cases) | `requests.test.ts` "names the manager who approved…" (for `apprBy`) and "refuses to reject without a reason (H7)" |
+| `fixes.test.ts` · "two shops deal with each other directly" (all three cases) | `shopasks.test.ts` "asks the other shop directly, not the manager", "grants it, reserves at the shop that holds it…", "needs a reason the other shop can read"; `tickets.test.ts` "refuses a wrong OTP and moves nothing" |
+| `fixes.test.ts` · "a shop-to-shop ask is answerable from the receiving counter" · "granting it moves stock the other way, on a ticket" | `shopasks.test.ts` "grants it, reserves at the shop that holds it, and raises the ticket the asker collects" |
+| `fixes.test.ts` · "declining an inbound ask takes two steps" (both cases) | `shopasks.test.ts` "needs a reason the other shop can read" and "declines with the reason, and issues no ticket" |
+
+**Keep, untouched** — they call no cut-over action: `fixes.test.ts` C1, C5's "reserves the lines of every issued ticket at start-up", H1, H4, H8, H9, M3, M4, M11, UA-14, "countable units…", the support describes, the new-product describes, the role-label describes, "a shop-to-shop ask is answerable…" cases 1 and 3; `store.test.ts` "builds one cart line per item scanned", "holds the printed MRP as a ceiling on floor 3" and the whole `availability` describe.
+
+**Rewrite, because the assertion is about a selector rather than an action:**
+- `fixes.test.ts` · **M8** · "reports quantity handed over but not yet received" — `inTransit` is still a UI selector, so drive the ticket's status directly:
 ```ts
   it("reports quantity handed over but not yet received", () => {
     const t = seedTkt.find((x) => x.st === "Issued" && x.from === "store")!;
@@ -3211,14 +3710,27 @@ Rewrite `M8`'s `"reports quantity handed over but not yet received"` so it exerc
     expect(inTransit(S(), it)).toBe(0);
   });
 ```
-Leave `C1`, `C2`, `C3`, `M9`, `UA-14` and everything else alone — they exercise production, which is Phase 4.
-Then the button gates, so no screen can offer a transition the server refuses:
-- `UI/src/lib/selectors.ts`: reimplement `isReqOpen` and add the three helpers from **Interfaces**.
+- `store.test.ts` · production · "accepts, makes and dispatches, creating a ticket" — split it. `setOrderStatus` and `makeProduct` stay local until Phase 4, so keep those assertions and drop the dispatch and handover half (which `production.test.ts` "puts every item on one ticket…" and `tickets.test.ts` "moves the stock out on the OTP…" now hold):
+```ts
+  it("accepts an order and makes what it asks for", () => {
+    as("prod");
+    S().setOrderStatus("PRD-2026-029", "Accepted");
+    expect(S().pord.find((o) => o.id === "PRD-2026-029")!.st).toBe("Accepted");
+    const before = qty(S(), "kitchen", "puff");
+    S().makeProduct("puff", 60);
+    expect(qty(S(), "kitchen", "puff")).toBe(before + 60);
+    expect(S().batch[0].qty).toBe(60);
+  });
+```
+
+**Then the button gates,** so no screen can offer a transition the server refuses:
+- `UI/src/lib/selectors.ts`: reimplement `isReqOpen` and add the three helpers from **Interfaces**, plus `export const canDispatch = (st: PordStatus) => canTransition(PROD_ORDER_TRANSITIONS, st, "Dispatched");`.
 - `UI/src/roles/store/IssueDesk.tsx:63` and `UI/src/roles/store/IssueDetail.tsx:64` — replace `(r.st === "Manager approved" || r.st === "Partially approved")` with `canIssueTicket(r.st)`.
 - `UI/src/roles/store/TicketDrawer.tsx:46` — `{t.st === "Issued" ? (` becomes `{canHandOver(t.st) ? (`.
 - `UI/src/roles/store/IssueDetail.tsx:82` — `ticket && ticket.st === "Issued" ?` becomes `ticket && canHandOver(ticket.st) ?`.
 - `UI/src/roles/counter/TicketDrawer.tsx:30` — `const canReceive = tkt.st === "Collected";` becomes `const canReceive = canReceiveTicket(tkt.st);`.
 - `UI/src/roles/prod/Tickets.tsx:151` and `:154` — the two `t.st === "Issued"` **on the handover control** become `canHandOver(t.st)`. Leave the list filters and the status wording at `:47`, `:48`, `:49`, `:104`, `:106` and `:164` alone; they describe a status, they do not offer an action.
+- The Dispatch control on the kitchen's order board (`grep -rn 'dispatchOrder' UI/src/roles/prod/`) — gate it on `canDispatch(o.st)` rather than on a status literal.
 
 - [ ] **Step 5: Run the UI suite**
 
@@ -3235,24 +3747,36 @@ Run: `pnpm turbo typecheck test && pnpm lint`
 ```bash
 git add UI
 git commit -m "$(cat <<'EOF'
-Cut the request chain, tickets and shop asks over to the server
+Cut the request chain, tickets, shop asks and the kitchen's two ticket paths over
 
-The twelve actions call their endpoint, show the server's sentence and refetch what it says
+The fourteen actions call their endpoint, show the server's sentence and refetch what it says
 changed; their local rules are deleted, not kept as a preview. Buttons are gated on the
-shared transition table, so a control the UI offers is a transition the server accepts.
+shared transition table, so a control the UI offers is a transition the server accepts. No
+local path mints a ticket number any longer, so seq.tkt goes.
 
 Rules that moved, and the server test that now holds them:
-  store.test.ts "raises a multi-item request"                         -> requests.test.ts "a counter raises a multi-line request from their own counter"
-  store.test.ts "cancels only while the request is still open"        -> requests.test.ts "cancels only while the request is still open"
-  store.test.ts "manager trims the quantity, store issues a ticket…"  -> requests.test.ts "trims to what the store can cover…" + tickets.test.ts "moves the stock out on the OTP…"
-  store.test.ts "a manager cannot approve more than was asked…"       -> requests.test.ts "trims to what the store can cover and records the shortfall (C4, C6)"
-  store.test.ts "rejecting issues no ticket"                          -> requests.test.ts "rejects when a reason is given, and issues no ticket"
-  fixes.test.ts C4 (both cases)                                       -> requests.test.ts "trims to what the store can cover…" + "approves in full and forwards it, with no shortfall"
-  fixes.test.ts C5 "frees the reservation when the seeded ticket…"    -> tickets.test.ts "moves the stock out on the OTP, releases the hold…"
-  fixes.test.ts C6 (both cases)                                       -> requests.test.ts "nets an approval already made against the next one (C6)"
-  fixes.test.ts H6                                                    -> requests.test.ts "names the manager who approved, not the operator who raised (H6)"
-  fixes.test.ts H7 (both cases)                                       -> requests.test.ts "refuses to reject without a reason (H7)" + "rejects when a reason is given…"
-M8 keeps its UI case, rewritten to set the ticket status directly — inTransit is still a selector.
+  store.test "raises a multi-item request"                      -> requests.test "a counter raises a multi-line request from their own counter"
+  store.test "cancels only while the request is still open"     -> requests.test "cancels only while the request is still open"
+  store.test "manager trims the quantity, store issues…"        -> requests.test "trims to what the store can cover…" + tickets.test "moves the stock out on the OTP…"
+  store.test "a manager cannot approve more than was asked…"    -> requests.test "trims to what the store can cover and records the shortfall (C4, C6)"
+  store.test "rejecting issues no ticket"                       -> requests.test "rejects when a reason is given, and issues no ticket"
+  store.test "refuses to distribute more than the kitchen holds"-> production.test "refuses more than the kitchen has free"
+  fixes.test C2 (3 cases)                                       -> production.test "puts every item on one ticket…" + tickets.test "lets the kitchen hand its own ticket over (C2)" and "books the stock in and closes the request behind it"
+  fixes.test C3 (2 cases)                                       -> requests.test "lets the kitchen raise one too, from the kitchen" + "refuses a line with no quantity, in the operator's words (C3)"
+  fixes.test C4 (2 cases)                                       -> requests.test "trims to what the store can cover…" + "approves in full and forwards it, with no shortfall"
+  fixes.test C5 "frees the reservation when the seeded ticket…" -> tickets.test "moves the stock out on the OTP, releases the hold…"
+  fixes.test C6 (2 cases)                                       -> requests.test "nets an approval already made against the next one (C6)"
+  fixes.test H6                                                 -> requests.test "names the manager who approved, not the operator who raised (H6)"
+  fixes.test H7 (2 cases)                                       -> requests.test "refuses to reject without a reason (H7)" + "rejects when a reason is given…"
+  fixes.test M9 (2 cases)                                       -> production.test "refuses a destination that does not list the product (M9)" + "reserves at the kitchen and raises the ticket…"
+  fixes.test "a production order goes out whole…" (4 cases)     -> production.test "puts every item on one ticket…", "dispatches nothing when one item is short…", "refuses to raise a second ticket…"
+  fixes.test "a rejection records who made the call" (2 cases)  -> requests.test "names the manager who approved…" + "refuses to reject without a reason (H7)"
+  fixes.test "two shops deal with each other directly" (3)      -> shopasks.test "asks the other shop directly…", "grants it, reserves at the shop that holds it…", "needs a reason the other shop can read" + tickets.test "refuses a wrong OTP and moves nothing"
+  fixes.test "granting it moves stock the other way, on a ticket" -> shopasks.test "grants it, reserves at the shop that holds it…"
+  fixes.test "declining an inbound ask takes two steps" (2)     -> shopasks.test "needs a reason the other shop can read" + "declines with the reason, and issues no ticket"
+M8 keeps its UI case, rewritten to drive the ticket status with setState — inTransit is still
+a selector. store.test's production case keeps its accept-and-make half, which stays local
+until Phase 4.
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
 Claude-Session: https://claude.ai/code/session_017gC3R1QMaDuNzqPHRtMTEw
@@ -3318,6 +3842,9 @@ let stop: (() => void) | undefined;
 beforeEach(() => {
   vi.useFakeTimers();
   resetStore();
+  // `resetStore` sets 22 fields but not `auth`, and these cases turn on it — so set it here
+  // rather than depending on what the case before left behind. (Task 8 owns fixture.ts.)
+  useApp.setState({ auth: "signed-out" });
   vi.stubGlobal("fetch", fetchMock);
   fetchMock.mockReset();
   vi.mocked(refetch).mockClear();
@@ -3646,7 +4173,7 @@ with `import { useSyncExternalStore } from "react";` at the top.
 // Live updates follow the session; this is the only place that turns the follower on.
 startEventStream();
 ```
-`UI/src/ui/Shell.tsx` — the kit already has `Pill`; do not invent a component. Import `Pill` (it is already imported from `./kit` in this file's import list — add it there) and `useStreamState` from `../api/events`, then in the header, immediately before `<ThemeButton />`:
+`UI/src/ui/Shell.tsx` — the kit already has `Pill` (`UI/src/ui/kit.tsx:90`); do not invent a component. Line 10 currently imports `Avatar, Icon, SearchIcon, Tag, ThemeButton` from `./kit` — add `Pill` to that list — and import `useStreamState` from `../api/events`. Then in the header, immediately before `<ThemeButton />`:
 ```tsx
           {live === "reconnecting" && <Pill tone="wn">Reconnecting</Pill>}
 ```
@@ -3690,21 +4217,21 @@ EOF
 
 - [ ] **Step 1: `CLAUDE.md`**
 
-- *What this is*: "**Phase 1 of the backend is implemented**" → "**Phases 1–3 of the backend are implemented**", and rewrite the sentence that follows: sign-in is real, the snapshot hydrates the frontend, and counter billing, availability, prices, menus, the whole request chain, tickets, shop transfers and shop asks are server-side; production (`store/index.ts`'s `setOrderStatus`, `dispatchOrder`, `makeProduct`, `distribute`) and procurement (`store/procurement.ts`) are the last in-memory paths, and Phases 4–5 close them.
+- *What this is*: "**Phase 1 of the backend is implemented**" → "**Phases 1–3 of the backend are implemented**", and rewrite the sentence that follows: sign-in is real, the snapshot hydrates the frontend, and counter billing, availability, prices, menus, the whole request chain, tickets, shop transfers and shop asks are server-side; the kitchen's two ticket paths (dispatch and distribute) are server-side too; the last in-memory paths are the rest of production (`setOrderStatus`, `makeProduct`) and procurement (`store/procurement.ts`), which Phases 4–5 close.
 - *Architecture → One Zustand store*: note that the request/ticket/shop-ask actions are API calls and the store holds what the server returned.
-- *The movement rule*: add one sentence — the rule is now enforced in `apps/api/src/modules/tickets/service.ts`, and `packages/domain/src/transitions.ts` is the table both sides read for which status may follow which.
+- *The movement rule*: add one sentence — the rule is now enforced in `apps/api/src/modules/tickets/service.ts` (and reserved by `modules/{requests,shopasks,production}`), and `packages/domain/src/transitions.ts` is the table both sides read for which status may follow which.
 - *Domain invariants*: add the staff-credit ceiling beside the MRP ceiling — `STAFF_CREDIT_LIMIT` is a hard monthly ceiling per staff member, enforced by `breachesCredit` in `packages/domain/src/credit.ts` at the till and refused with `creditBreachMessage`.
 - *Derived state is computed, never stored*: `freeToPromise` is enforced on the server at approval and re-checked under the balance locks at issue; the UI's copy is a preview.
 - *Backend*: status line → "Phases 1–3 (Foundation, Ledger + POS, Movement chain + SSE) implemented; phases 4–6 pending — see spec §14"; add `lib/events.ts`, `lib/reservations.ts`, `lib/tickets.ts` and `plugins/sse.ts` to the rules paragraph and note that `GET /events` is the one route outside the manifest.
 
 - [ ] **Step 2: `README.md` and `UI/README.md`**
 
-State what a person can now do against a real server: raise, approve, issue, hand over on an OTP, receive, transfer between shops and answer a shop ask — and that two browsers see each other's changes live. Say plainly that production and procurement are still in-memory.
+State what a person can now do against a real server: raise, approve, issue, hand over on an OTP, receive, transfer between shops, answer a shop ask, dispatch a production order and push a tray out of the kitchen — and that two browsers see each other's changes live. Say plainly that batches, the kitchen's order board and procurement are still in-memory.
 
 - [ ] **Step 3: `docs/*.html` — the product contract**
 
 Read each file and change only what this phase changed:
-- `docs/user-flows.html`: the request → approval → issue → handover → receipt flow is the server's; add the supervisor override as a named step ("Collected — override", store and kitchen only, recorded in the document history) and note that the other screens update by themselves.
+- `docs/user-flows.html`: the request → approval → issue → handover → receipt flow is the server's; add the supervisor override as a named step ("Handed over — supervisor override", store and kitchen only, recorded in the document history) and note that the other screens update by themselves.
 - `docs/ua-spec.html`: the UAT scenarios covering the request chain now name their server tests; where the spec described a rule the browser enforced, say the server enforces it and the browser shows its sentence.
 - `docs/system-design.html`: add the event stream to the architecture — one `GET /events` per browser, `LISTEN`/`NOTIFY` between replicas, refetch on notice.
 Run `bash scripts/build-site.sh` afterwards and confirm `dist/` assembles.
@@ -3730,7 +4257,7 @@ Append these rows to the amendments table (retitle the section "Amendments recor
 | §6 SSE | `GET /events` is registered by `plugins/sse.ts`, not by the route manifest, and both sides build its URL from `API_PREFIX + EVENTS_PATH`. `contract.test.ts` probes every param-less manifest GET for a 200 and would hang on a stream; `mount()` would try to serialise a body that never ends. | Found while planning; §5.1's manifest rule is about JSON endpoints, as `/healthz` and `/metrics` already show. |
 | §6 SSE | The browser subscribes with `fetch` over a `ReadableStream`, not `EventSource`. | `EventSource` cannot send `Authorization`, which would put the access token in the URL and therefore in nginx's log, the ALB's, and the browser's history. |
 | §11.1 timeouts | The SSE route calls `req.raw.socket.setTimeout(0)` and sets `config: { rateLimit: false }`. Fastify's `connectionTimeout` is Node's per-socket inactivity timer and would kill a stream between heartbeats; `requestTimeout` bounds *receiving* a request and never applies. `SSE_HEARTBEAT_MS` (25 s) and `SSE_RETRY_MS` (1 s) are config. | The Phase 1 ledger parked "requestTimeout vs Phase 3 SSE" for this phase. |
-| §7.2 `document_history` | Tickets write history for the supervisor override only, as `doc_type = 'ticket'`, `status = 'Collected — override'`. The normal lifetime stays three timestamps on the row. | §8.3 and §12 require the override to be auditable; the lifecycle needs no prose. |
+| §7.2 `document_history` | Tickets write history for the supervisor override only, as `doc_type = 'ticket'`, `status = 'Handed over — supervisor override'`. The normal lifetime stays three timestamps on the row. | §8.3 and §12 require the override to be auditable; the lifecycle needs no prose. |
 | §7.2 `tickets.otp` | The OTP is stored and served in the clear, as the snapshot already does. | `makeOtp` is an operational check, not a security token, and the store's own screens print it — hashing it is a product change, not a security fix. |
 | §9.2 `submitRequest`/`requestFromStore` | One endpoint, `POST /requests`. A single-line request gets the sentence naming the item; a multi-line one gets the sentence naming the line count. | Two store actions, one document; the sentence follows the shape of the request rather than the screen it came from. |
 | §9.3 write responses | `result` is the document acted on, except `approve` (`{ request, trimmed }`), `issue-ticket` (`{ request, ticket }`) and shop-ask `answer` (`{ ask, ticket }`). | `trimmed` is a property of the decision, not the row; and the store window needs the OTP in the same breath as the request. |
@@ -3740,7 +4267,13 @@ Append these rows to the amendments table (retitle the section "Amendments recor
 | §5.1 protected tables | `reservations` joins the protected list; `apps/api/src/lib/reservations.ts` is its one door, and `lockBalances` in `lib/ledger.ts` is the one place a reservation path takes the balance locks. | Three more callers arrive in Phases 4–5, and a reservation made from an unlocked read is the same stock promised twice. |
 | §9.2 `pay` staff credit | The `Staff credit` ceiling (`STAFF_CREDIT_LIMIT`, ₹3,000) is enforced server-side inside the sale's transaction, over **every bill charged to that staff id hospital-wide since midnight on the first of the current month in Asia/Kolkata**. The number moves to `packages/contract/src/schemas/common.ts` (the fixtures re-export it, so `UI/src/data/master.ts` and `Pos.tsx` are unchanged); the rule and its sentence are `breachesCredit`/`creditBreachMessage` in `packages/domain/src/credit.ts`. | `Pos.tsx` only disabled a button, which a second tab or a stale page walks straight past. "This session" is not a window a server has; the hospital settles staff credit monthly, and the ceiling belongs to the person rather than the till. |
 | §9.2 `pay` post-lock check | The re-read after `postMoves` now asserts `on_hand − reserved ≥ 0`, with the hold read inside the locked window through `reservedAt`. The refusal sentence is unchanged. | Phase 3 puts reservations on outlet shelves (a shop transfer, a granted shop ask), so "not negative" stopped meaning "not oversold". |
-| §14 Phase 3/4 seam | `dispatchOrder`, `makeProduct` and `distribute` stay in memory until Phase 4, so a ticket they create locally lives only until the next refetch. Handover and receipt of a *server* ticket from the kitchen work today. | Phase 3 cuts over three roles; the kitchen's own two write paths are Phase 4's row. |
+| §14 Phase 3/4 split | Phase 3 moves the kitchen's ticket creation — `POST /prod-orders/:id/dispatch` and `POST /distributions` — because they are the only production writes that raise a ticket and Phase 3 makes handover a server call. **Phase 4 owns the rest of production**: `POST /prod-orders/:id/status`, batches and `makeProduct`. `PROD_ORDER_TRANSITIONS` lands in Phase 3 so both phases read one table. | Leaving them behind would have left the kitchen's own tickets carrying ids the server has never heard of, so handing one over would 404 — spec §14's "nothing dual-runs". |
+| §9.2/§8.3 requests | `prod` may raise and cancel stock requests for the kitchen, alongside `counter`. | The Central Kitchen has always done so from its stock screen (`requestFromStore`, pinned by `fixes.test.ts` C3); §8.3's role table omitted it. |
+| §16 Phase 3 item (c) | Closed by `emitChanged` (`pg_notify` inside the write's transaction), not by the parked `withTransaction(db, fn, { onCommit })` hook. **No `onCommit` hook exists** — do not go looking for one. | Postgres itself withholds a notice until the transaction commits, which is the same guarantee with nothing to maintain. |
+| §8.3 override history | The override's `document_history` row is `doc_type = 'ticket'`, `status = 'Handed over — supervisor override'` — §8.3's wording, verbatim, and the only history a ticket writes. | §16 (Phase 1) fixed a ticket's normal lifecycle as three timestamps on the row; the override is the exception §8.3 and §12 require to be auditable. |
+| §9.2 `answerShopAsk` | A grant larger than the ask is **refused** (`<shop> asked for <qty> <unit> — grant that or less`), not clamped. | §9.2's rule is `0 < grant ≤ asked`; the browser clamped silently, and a counter who typed 60 for a 6 meant something. |
+| §9.2 `handover` | The post-lock re-read has its own refusal — `<to> cannot collect <qty> <unit> of <item> — <from> no longer has it` — new in this phase. | The browser never re-read after moving, so it had no sentence for a shelf that emptied under a handover. |
+| §5.1 lock order | Ids before balance rows, everywhere: `allocateTicket(tx)` → `lockBalances(tx, cells)` → read → `writeTicket(tx, draft, no)`. `lib/tickets.ts` is split into those two calls so a caller cannot get it backwards. | `lib/ledger.ts`'s header already recorded the order and `pos` already kept it; a ticket path that locked first could deadlock against a concurrent sale on `sequences` vs `stock_balances`. |
 
 - [ ] **Step 6: Run the exit check (spec §14 row 3)**
 
@@ -3793,11 +4326,21 @@ curl -sS -X POST $API/transfers -H "Authorization: Bearer $COUNTER" -H "content-
 curl -sS -X POST $API/tickets/TKT-0440/handover -H "Authorization: Bearer $STORE" -H "content-type: application/json" -H "Idempotency-Key: $(K)" -d '{}' | jq -r .message
 #    expect "… handed over on a supervisor override — stock is in transit to Coffee Shop"
 
-# 7. The stream heard all of it, live.
+# 7. The kitchen's own two ticket paths, which cross in this phase too.
+PROD=$(login RC-1902)
+curl -sS -X POST $API/distributions -H "Authorization: Bearer $PROD" -H "content-type: application/json" -H "Idempotency-Key: $(K)" \
+  -d '{"it":"puff","qty":5,"to":"kiosk"}' | jq -r '.result.id, .message'
+PRD=$(curl -sS -H "Authorization: Bearer $PROD" $API/snapshot | jq -r '[.pord[] | select(.st != "Dispatched" and .st != "Declined")][0].id')
+curl -sS -X POST $API/prod-orders/$PRD/dispatch -H "Authorization: Bearer $PROD" -H "Idempotency-Key: $(K)" | jq -r '.message, .result.order.st'
+#    a second press must refuse with "… has already gone out — it is on one ticket to …"
+curl -sS -X POST $API/prod-orders/$PRD/dispatch -H "Authorization: Bearer $PROD" -H "Idempotency-Key: $(K)" | jq -r '.error.message'
+
+# 8. The stream heard all of it, live.
 grep -c 'event: changed' /tmp/rch-events.txt        # > 0, and it grew as each step ran
 grep 'data: {"collection":"req"' /tmp/rch-events.txt | head -1
 
-# 8. The cache is exactly the sum of the moves.
+# 9. The cache is exactly the sum of the moves. Nothing above posted a move except the
+#    handover and the receipt, so a rebuild must change nothing.
 curl -sS -H "Authorization: Bearer $STORE" $API/stock > /tmp/before.json
 pnpm --filter @rch/api db:rebuild-balances
 curl -sS -H "Authorization: Bearer $STORE" $API/stock > /tmp/after.json
@@ -3826,9 +4369,9 @@ EOF
 | Wave | Tasks | Notes |
 |---|---|---|
 | 1 | **1** (contract writes + event notice) ∥ **2** (domain transitions + `planApproval`) | Worktrees. Disjoint packages: Task 1 owns `packages/contract`, Task 2 owns `packages/domain`. Task 1 declares **writes only** — a manifest GET without a handler fails `apps/api/src/contract.test.ts`, which no longer skips a 404. |
-| 2 | **3** (SSE transport) ∥ **4** (movement primitives + the three reads) | Worktrees, both from the merge of wave 1. Disjoint: Task 3 owns `lib/events.ts`, `plugins/sse.ts`, `plugins/metrics.ts`, `app.ts`, `config.ts`, `db/client.ts`, `test/app.ts`, the three Phase 2 module services and `deploy/chart/rch/tests/render.test.sh`. Task 4 owns `lib/{ledger,ids,rules,reservations,tickets}.ts`, `plugins/rbac.ts`, `test/builders.ts`, `modules/snapshot/*`, `modules/index.ts`, `scripts/check-boundaries.sh`, and the three GET entries in `packages/contract`. Neither touches a file the other does. **Task 4 pre-registers the `requests`, `tickets` and `shopasks` module stubs in `modules/index.ts`** so wave 3 never edits that shared line. |
-| 3 | **5** (`requests`) ∥ **6** (`tickets`) ∥ **7** (`shopasks`) ∥ **11** (`pos`) | Worktrees. Tasks 5, 6 and 7 each own exactly one `apps/api/src/modules/<name>/` directory and nothing else — registration is already done by Task 4's stubs, and every helper they need (`lockBalances`, `reservations`, `tickets`, `events`, `rules`, `rbac`, `builders`) exists read-only from wave 2. Task 11 owns `apps/api/src/modules/pos/*` — free from here on, since Task 3 last touched `pos/service.ts` in wave 2 to add `emitChanged` — plus `packages/domain/src/credit.ts` and its export line in `packages/domain/src/index.ts` (nobody has touched `packages/domain` since wave 1), `packages/contract/src/{schemas/common.ts,fixtures/master.ts}` (nobody has touched `packages/contract` since Task 4's three GET entries in wave 2), `apps/api/src/lib/time.ts` and its test, and `UI/src/__tests__/screens.test.tsx`. **Task 11 is the only wave-3 task that edits `apps/api/src/test/builders.ts`** — it appends `given.bill`; Tasks 5, 6 and 7 import that file and never edit it. |
-| 4 | **8** (store cutover) ∥ **9** (event stream client) | Worktrees. Disjoint by file: Task 8 owns `UI/src/store/*`, `UI/src/lib/selectors.ts`, `UI/src/api/{refetch,wire}.ts`, `UI/src/roles/**` and `UI/src/__tests__/{writes,store,fixes}.test.ts` — not `screens.test.tsx`, which Task 11 edited back in wave 3. Task 9 owns `UI/src/api/{events,client}.ts`, `UI/src/main.tsx`, `UI/src/ui/Shell.tsx` and `UI/src/__tests__/events.test.ts`. Task 9 **stubs `refetch` with `vi.mock`** rather than exercising it, so Task 8's change to that file cannot invalidate Task 9's assertions. |
+| 2 | **3** (SSE transport) ∥ **4** (movement primitives + the three reads) | Worktrees, both from the merge of wave 1. Disjoint: Task 3 owns `lib/events.ts`, `plugins/sse.ts`, `plugins/metrics.ts`, `app.ts`, `config.ts`, `db/client.ts`, `test/app.ts`, the three Phase 2 module services and `deploy/chart/rch/tests/render.test.sh`. Task 4 owns `lib/{ledger,ids,rules,reservations,tickets}.ts`, `plugins/rbac.ts`, `test/builders.ts`, `modules/snapshot/*`, `modules/index.ts`, `scripts/check-boundaries.sh`, and the three GET entries in `packages/contract`. Neither touches a file the other does. **Task 4 pre-registers the four wired module stubs (`requests`, `tickets`, `shopasks`, `production`) in `modules/index.ts`** so wave 3 never edits that shared line, and declares Task 12's two write routes so `packages/contract` is touched once here and never in wave 3. |
+| 3 | **5** (`requests`) ∥ **6** (`tickets`) ∥ **7** (`shopasks`) ∥ **12** (`production`) ∥ **11** (`pos`) | Worktrees. Tasks 5, 6, 7 and 12 each own exactly one `apps/api/src/modules/<name>/` directory and nothing else — registration and the four wired stubs are already done by Task 4, and every helper they need (`lockBalances`, `reservations`, `allocateTicket`/`writeTicket`, `events`, `rules`, `rbac`, `builders`) exists read-only from wave 2. Task 12 also owns `packages/domain/src/transitions.ts`. Task 11 owns `apps/api/src/modules/pos/*` — free from here on, since Task 3 last touched `pos/service.ts` in wave 2 to add `emitChanged` — plus `packages/domain/src/credit.ts` and its export line in `packages/domain/src/index.ts` (nobody has touched `packages/domain` since wave 1), `packages/contract/src/{schemas/common.ts,fixtures/master.ts}` (nobody has touched `packages/contract` since Task 4's three GET entries in wave 2), `apps/api/src/lib/time.ts` and its test, and `UI/src/__tests__/screens.test.tsx`. **Tasks 11 and 12 both add one line to `packages/domain/src/index.ts`** — Task 11 a new `credit` export line, Task 12 a name on the existing transitions line; different lines, and the controller resolves a trivial adjacent-line conflict if git raises one. **Task 11 is the only wave-3 task that edits `apps/api/src/test/builders.ts`** — it appends `given.bill`; the four module tasks import that file and never edit it. |
+| 4 | **8** (store cutover) ∥ **9** (event stream client) | Worktrees, from the merge of wave 3 — Task 8 cuts over fourteen actions, four of which (`dispatchOrder`, `distribute`, and the two the kitchen's tickets flow through) need Task 12 merged. Disjoint by file: Task 8 owns `UI/src/store/*`, `UI/src/lib/selectors.ts`, `UI/src/api/{refetch,wire}.ts`, `UI/src/roles/**` and `UI/src/__tests__/{writes,store,fixes}.test.ts` and `UI/src/__tests__/fixture.ts` — not `screens.test.tsx`, which Task 11 edited back in wave 3. Task 9 owns `UI/src/api/{events,client}.ts`, `UI/src/main.tsx`, `UI/src/ui/Shell.tsx` and `UI/src/__tests__/events.test.ts`. Task 9 **stubs `refetch` with `vi.mock`** rather than exercising it, so Task 8's change to that file cannot invalidate Task 9's assertions, and it sets `auth` inside its own test file rather than editing `fixture.ts`. |
 | 5 | **10** (docs, spec §16, runbook, exit check) | In-tree, after everything is merged. It is the only task that edits `docs/`, `README.md`, `CLAUDE.md` and `deploy/RUNBOOK.md`. |
 
-Worktree agents do not commit to the shared branch; the controller reviews and merges each branch, then dispatches the next wave from the merge commit. **Parallel tasks never edit the same file**; where a shared file is unavoidable it is pre-edited in the preceding wave — the module stubs in `modules/index.ts` (Task 4, for wave 3) and the searchPath in `test/app.ts` (Task 3, for everyone downstream).
+Worktree agents do not commit to the shared branch; the controller reviews and merges each branch, then dispatches the next wave from the merge commit. **Parallel tasks never edit the same file**; where a shared file is unavoidable it is pre-edited in the preceding wave — the four wired module stubs in `modules/index.ts` (Task 4, for wave 3), Task 12's two contract route entries (Task 4, so `packages/contract` is touched once in wave 2 and never in wave 3), and the searchPath in `test/app.ts` (Task 3, for everyone downstream).
