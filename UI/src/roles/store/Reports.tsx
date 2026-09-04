@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { IT, LOC } from "../../data/master";
 import { useApp, type AppState } from "../../store";
-import { committed, costOf, freeToPromise, onOrder, parOf, qty, resv } from "../../lib/selectors";
+import { committed, costOf, freeToPromise, isTicketOpen, onOrder, parOf, qty, resv } from "../../lib/selectors";
 import { U, fq, money0, now, pct, sum, unitTotal } from "../../lib/fmt";
 import {
   Btn, Card, DataTable, FilterSelect, Icon, PageHead, Pill, StatusPill, TableFoot, Toolbar,
@@ -303,12 +303,12 @@ const disc = (s: AppState): Rep => {
       const done = t.st === "Received";
       return [
         t.id, t.req, LOC[t.to].n, IT[l.it]?.n ?? l.it, fq(appr, l.it), fq(l.qty, l.it),
-        done ? fq(l.qty, l.it) : "Not yet confirmed",
+        done ? fq(l.qty, l.it) : t.st === "Cancelled" ? "Cancelled — never sent" : "Not yet confirmed",
         fq(Math.round((l.qty - appr) * 1000) / 1000, l.it), done ? fq(0, l.it) : DASH, t.st,
       ];
     });
   });
-  const open = fromStore(s).filter((t) => t.st !== "Received").length;
+  const open = fromStore(s).filter((t) => isTicketOpen(t.st)).length;
   return {
     cols: [
       { h: "Ticket", cls: "nm", w: "13%" }, { h: "Request", w: "14%" }, { h: "Outlet" },

@@ -182,3 +182,28 @@ export const canIssueTicket = (st: ReqStatus) => D.canTransition(D.REQUEST_TRANS
 export const canHandOver = (st: TktStatus) => D.canTransition(D.TICKET_TRANSITIONS, st, "Collected");
 export const canReceiveTicket = (st: TktStatus) => D.canTransition(D.TICKET_TRANSITIONS, st, "Received");
 export const canDispatch = (st: PordStatus) => D.canTransition(D.PROD_ORDER_TRANSITIONS, st, "Dispatched");
+
+/**
+ * Whether the board may move an order from one word to another — the same table the server
+ * refuses through, so a button the kitchen can see is a press the server will take.
+ *
+ * The two guards either side of the table are `setStatus`'s own, in the same order it applies
+ * them. `Dispatched` is refused as a *destination* because a dispatch is a movement, not a
+ * word: it mints the ticket the outlet collects against, so it has its own endpoint and
+ * `canDispatch` is the predicate that draws its button. And `Dispatched` is refused as a
+ * *source* even though the table has `Dispatched -> Ready`: that edge exists so cancelling the
+ * ticket a dispatch raised can put the order back, and it is not a button either.
+ */
+export const canMoveOrder = (st: PordStatus, to: PordStatus) =>
+  to !== "Dispatched" && st !== "Dispatched" && D.canTransition(D.PROD_ORDER_TRANSITIONS, st, to);
+
+/** Whether a ticket can still be withdrawn: only one nobody has collected against. */
+export const canCancelTicket = (st: TktStatus) => D.canTransition(D.TICKET_TRANSITIONS, st, "Cancelled");
+
+/**
+ * Whether a ticket is still on its way — the measure every "still open" count and every "where
+ * is it" sentence reads. Derived from the table rather than written as `!== "Received"`: a
+ * cancelled ticket has nowhere left to go either, and counting it as moving put stock on a
+ * shelf it never reached.
+ */
+export const isTicketOpen = (st: TktStatus) => canHandOver(st) || canReceiveTicket(st);

@@ -70,3 +70,13 @@ export function applyTickets(tkt: Snapshot["tkt"]): void { useApp.setState({ tkt
 export function applyShopAsks(asks: Snapshot["shopAsks"]): void {
   useApp.setState({ shopAsks: asks.map((a) => ({ ...a, at: t(a.at) })) });
 }
+
+/** GET /prod-orders -> the kitchen's board, times as "HH:MM" and history stamps with them. */
+export function applyProdOrders(pord: Snapshot["pord"]): void {
+  useApp.setState({ pord: pord.map((o) => ({ ...o, at: t(o.at), hist: hist(o.hist) })) });
+}
+
+/** GET /batches -> the batch log. `bb` is an instant on the wire and a best-before on screen. */
+export function applyBatches(batch: Snapshot["batch"]): void {
+  useApp.setState({ batch: batch.map((b) => ({ ...b, at: t(b.at), bb: fromWireBestBefore(b.bb) })) });
+}

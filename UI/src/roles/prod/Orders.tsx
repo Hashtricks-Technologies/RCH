@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { IT, LOC, OUTLETS } from "../../data/master";
 import { useApp } from "../../store";
-import { avail, canDispatch, qty } from "../../lib/selectors";
+import { avail, canDispatch, canMoveOrder, qty } from "../../lib/selectors";
 import { fq, sum, U } from "../../lib/fmt";
 import {
   Alert, Btn, Card, DataTable, FilterSelect, PageHead, Pill, StatusPill, TableFoot, Toolbar,
@@ -49,9 +49,9 @@ export default function Orders() {
 
   /** The one control that moves a card one column right. */
   const advance = (o: ProdOrder) => {
-    if (o.st === "New") return <Btn size="xs" onClick={() => setOrderStatus(o.id, "Accepted")}>Accept</Btn>;
-    if (o.st === "Accepted") return <Btn size="xs" onClick={() => setOrderStatus(o.id, "In kitchen")}>Start making</Btn>;
-    if (o.st === "In kitchen") return <Btn size="xs" onClick={() => setOrderStatus(o.id, "Ready")}>Mark ready</Btn>;
+    if (canMoveOrder(o.st, "Accepted")) return <Btn size="xs" onClick={() => setOrderStatus(o.id, "Accepted")}>Accept</Btn>;
+    if (canMoveOrder(o.st, "In kitchen")) return <Btn size="xs" onClick={() => setOrderStatus(o.id, "In kitchen")}>Start making</Btn>;
+    if (canMoveOrder(o.st, "Ready")) return <Btn size="xs" onClick={() => setOrderStatus(o.id, "Ready")}>Mark ready</Btn>;
     if (canDispatch(o.st)) {
       const short = o.lines.filter((l) => avail(s, "kitchen", l.it) < l.qty);
       return (
@@ -97,7 +97,7 @@ export default function Orders() {
         <div className="kan-foot">
           <span className="mini">{o.lines.length} item{o.lines.length === 1 ? "" : "s"} · {totalQty(o)} units</span>
           <div className="sp" />
-          {o.st === "New" && <Btn size="xs" variant="dg" onClick={() => setOrderStatus(o.id, "Declined")}>Decline</Btn>}
+          {canMoveOrder(o.st, "Declined") && <Btn size="xs" variant="dg" onClick={() => setOrderStatus(o.id, "Declined")}>Decline</Btn>}
           {advance(o)}
           {o.st === "Dispatched" && (t
             ? <Pill tone="ac">{t.id}</Pill>

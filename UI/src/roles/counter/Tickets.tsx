@@ -7,7 +7,7 @@ import { fq, sum } from "../../lib/fmt";
 import { Alert, Btn, Card, DataTable, FilterBtn, FilterSelect, PageHead, StatusPill, TableFoot, Toolbar } from "../../ui/kit";
 import type { LocKey, TktStatus } from "../../types";
 
-const STATUSES: TktStatus[] = ["Issued", "Collected", "Received"];
+const STATUSES: TktStatus[] = ["Issued", "Collected", "Received", "Cancelled"];
 
 export default function Tickets() {
   const s = useApp();

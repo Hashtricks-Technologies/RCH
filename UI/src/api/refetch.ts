@@ -1,6 +1,6 @@
 import { routes, type Changed } from "@rch/contract";
 import { call } from "./client";
-import { applyBills, applyRequests, applyShopAsks, applyStock, applyTickets } from "./wire";
+import { applyBatches, applyBills, applyProdOrders, applyRequests, applyShopAsks, applyStock, applyTickets } from "./wire";
 import { useApp } from "../store";
 
 /** The slices `GET /stock` answers for, in one call. */
@@ -12,15 +12,17 @@ const NARROW: Partial<Record<Changed, () => Promise<void>>> = {
   req: () => call(routes.requests).then(applyRequests),
   tkt: () => call(routes.ticketsList).then(applyTickets),
   shopAsks: () => call(routes.shopAsks).then(applyShopAsks),
+  pord: () => call(routes.prodOrders).then(applyProdOrders),
+  batch: () => call(routes.batches).then(applyBatches),
 };
 
 /**
  * Pull back exactly what a write said it changed.
  *
- * `stock`/`rsv`/`ovr` come from `GET /stock`, and `bills`, `req`, `tkt` and `shopAsks` each
- * from their own GET, every one of them fetched at most once however many times the write
- * named it. Anything else — prices, menus, the collections later phases add — has no narrow
- * reader yet, so it costs one snapshot, and a mixed set takes that snapshot alone.
+ * `stock`/`rsv`/`ovr` come from `GET /stock`, and `bills`, `req`, `tkt`, `shopAsks`, `pord`
+ * and `batch` each from their own GET, every one of them fetched at most once however many
+ * times the write named it. Anything else — prices, menus, the collections later phases add —
+ * has no narrow reader yet, so it costs one snapshot, and a mixed set takes that snapshot alone.
  *
  * `after` is the sentence the write already succeeded with. When the read-back fails it is
  * kept and qualified rather than replaced, so the operator still learns their bill was taken.

@@ -8,6 +8,9 @@ import { setAccessToken } from "../api/session";
 import { qty } from "../lib/selectors";
 import Pos from "../roles/counter/Pos";
 import CounterRequests from "../roles/counter/Requests";
+import MakeDistribute from "../roles/prod/MakeDistribute";
+import Drawer from "../ui/Drawer";
+import "../roles/store/TicketDrawer";          // registers "stkt" on the drawer registry
 import { resetStore, S, as } from "./fixture";
 
 /**
@@ -531,14 +534,17 @@ describe("the kitchen's two ticket paths", () => {
     S().openDrawer("pord", "PRD-2026-029");
     serve({
       "POST /api/v1/prod-orders/PRD-2026-029/dispatch": () => json({ result: { order: { id: "PRD-2026-029" }, ticket: TKT }, changed: ["pord", "tkt", "rsv"], message: "TKT-0441 issued — all 2 items of PRD-2026-029 reserved for Snack Kiosk" }),
-      "GET /api/v1/snapshot": () => json(snapshot()),
+      "GET /api/v1/prod-orders": () => json([]),
+      "GET /api/v1/tickets": () => json([TKT]),
+      "GET /api/v1/stock": () => json(STOCK),
     });
     await S().dispatchOrder("PRD-2026-029");
     expect(hit("POST /api/v1/prod-orders/PRD-2026-029/dispatch")[0].body).toBeUndefined();
     expect(S().drawer).toBeNull();
     expect(S().toast).toBe("TKT-0441 issued — all 2 items of PRD-2026-029 reserved for Snack Kiosk");
-    // "pord" has no narrow reader, so the whole set costs one snapshot.
-    expect(hit("GET /api/v1/snapshot")).toHaveLength(1);
+    // The board has its own reader since Phase 4, so all three slices come back narrow.
+    expect(hit("GET /api/v1/prod-orders")).toHaveLength(1);
+    expect(hit("GET /api/v1/snapshot")).toHaveLength(0);
   });
 
   it("distribute names the item, the quantity and where it is going", async () => {
@@ -561,6 +567,114 @@ describe("the kitchen's two ticket paths", () => {
     expect(S().toast).toBe("Kitchen has only 5 nos free to promise");
     expect(S().tkt).toHaveLength(before);
     expect(calls()).toHaveLength(1);
+  });
+});
+
+const ORDER = { ...FX.seedPord[0], st: "Accepted", hist: [...FX.seedPord[0].hist, { s: "Accepted", who: "Vinoth Prakash", t: "07:41" }] };
+const BATCH = {
+  id: "BAT-20260904-01", it: "puff", qty: 60, made: 58,
+  at: "2026-09-04T01:10:00.000Z", bb: "2026-09-04T13:10:00.000Z", note: "Oven tray dropped",
+};
+
+describe("setOrderStatus — POST /prod-orders/:id/status", () => {
+  it("names the status in the body and pulls the board back", async () => {
+    as("prod");
+    serve({
+      [`POST /api/v1/prod-orders/${ORDER.id}/status`]: () => json({ result: ORDER, changed: ["pord"], message: `${ORDER.id} — accepted` }),
+      "GET /api/v1/prod-orders": () => json([ORDER]),
+    });
+
+    await S().setOrderStatus(ORDER.id, "Accepted");
+
+    expect(hit(`POST /api/v1/prod-orders/${ORDER.id}/status`)[0].body).toEqual({ st: "Accepted" });
+    expect(hit("GET /api/v1/prod-orders")).toHaveLength(1);
+    expect(S().pord.find((o) => o.id === ORDER.id)!.st).toBe("Accepted");
+    expect(S().toast).toBe(`${ORDER.id} — accepted`);
+  });
+
+  it("keeps a refusal's words and leaves the board where it was", async () => {
+    as("prod");
+    const before = S().pord.find((o) => o.id === ORDER.id)!.st;
+    serve({ [`POST /api/v1/prod-orders/${ORDER.id}/status`]: () => refusal(`${ORDER.id} is new — it cannot go straight to ready`) });
+
+    await S().setOrderStatus(ORDER.id, "Ready");
+
+    expect(S().toast).toBe(`${ORDER.id} is new — it cannot go straight to ready`);
+    expect(S().pord.find((o) => o.id === ORDER.id)!.st).toBe(before);
+  });
+});
+
+describe("makeProduct — POST /batches", () => {
+  it("sends what was started and what came good, and reads the batch log and stock back", async () => {
+    as("prod");
+    serve({
+      "POST /api/v1/batches": () => json({ result: BATCH, changed: ["batch", "stock"], message: "BAT-20260904-01 — 58 of 60 Veg puffs yielded (-3.3%), best before 18:40" }),
+      "GET /api/v1/batches": () => json([BATCH]),
+      "GET /api/v1/stock": () => json(STOCK),
+    });
+
+    expect(await S().makeProduct("puff", 60, 58, "Oven tray dropped")).toBe(true);
+
+    expect(hit("POST /api/v1/batches")[0].body).toEqual({ it: "puff", started: 60, made: 58, note: "Oven tray dropped" });
+    expect(hit("GET /api/v1/batches")).toHaveLength(1);
+    expect(hit("GET /api/v1/stock")).toHaveLength(1);
+    expect(S().batch[0].id).toBe("BAT-20260904-01");
+    // The wire's instant, in the kitchen's words.
+    expect(S().batch[0].bb).toMatch(/^\d{2}:\d{2}/);
+    expect(S().toast).toMatch(/yielded/);
+  });
+
+  it("leaves the blank boxes out of the body", async () => {
+    as("prod");
+    serve({
+      "POST /api/v1/batches": () => json({ result: { ...BATCH, qty: 10, made: 10, note: undefined }, changed: ["batch", "stock"], message: "BAT-20260904-01 — 10 Veg puffs made, best before 18:40" }),
+      "GET /api/v1/batches": () => json([]),
+      "GET /api/v1/stock": () => json(STOCK),
+    });
+
+    await S().makeProduct("puff", 10);
+
+    expect(hit("POST /api/v1/batches")[0].body).toEqual({ it: "puff", started: 10 });
+  });
+
+  it("answers false on a refusal, so the tile can keep what was typed", async () => {
+    as("prod");
+    const before = S().batch.length;
+    serve({ "POST /api/v1/batches": () => refusal("Kitchen is short of Veg filling mix — 1.200 kg left") });
+
+    expect(await S().makeProduct("puff", 200)).toBe(false);
+
+    expect(S().toast).toBe("Kitchen is short of Veg filling mix — 1.200 kg left");
+    expect(S().batch).toHaveLength(before);
+  });
+});
+
+describe("cancelTicket — POST /tickets/:id/cancel", () => {
+  const TKT = { ...FX.seedTkt[0], st: "Cancelled" };
+
+  it("sends the reason and pulls the tickets, the holds and the request back", async () => {
+    as("store");
+    serve({
+      [`POST /api/v1/tickets/${TKT.id}/cancel`]: () => json({ result: TKT, changed: ["tkt", "rsv", "req"], message: `${TKT.id} cancelled — ${TKT.req} is approved again and can be issued a new ticket` }),
+      "GET /api/v1/tickets": () => json([TKT]),
+      "GET /api/v1/stock": () => json(STOCK),
+      "GET /api/v1/requests": () => json([]),
+    });
+
+    expect(await S().cancelTicket(TKT.id, "The counter closed before the collector came")).toBe(true);
+
+    expect(hit(`POST /api/v1/tickets/${TKT.id}/cancel`)[0].body).toEqual({ reason: "The counter closed before the collector came" });
+    expect(S().tkt.find((t) => t.id === TKT.id)!.st).toBe("Cancelled");
+    expect(S().toast).toMatch(/cancelled/);
+  });
+
+  it("answers false on a refusal, so the drawer can keep the reason", async () => {
+    as("store");
+    serve({ [`POST /api/v1/tickets/${TKT.id}/cancel`]: () => refusal(`${TKT.id} has already been handed over — the stock is on its way to Floor 3 Coffee Bar`) });
+
+    expect(await S().cancelTicket(TKT.id, "Changed our minds")).toBe(false);
+
+    expect(S().toast).toBe(`${TKT.id} has already been handed over — the stock is on its way to Floor 3 Coffee Bar`);
   });
 });
 
@@ -601,6 +715,20 @@ describe("a refusal keeps what the operator typed", () => {
       button: (starts: string) =>
         [...host.querySelectorAll("button")].find((b) => (b.textContent ?? "").startsWith(starts)),
       note: () => host.querySelector("textarea")!,
+      unmount: () => { act(() => { root.unmount(); }); host.remove(); },
+    };
+  }
+  /** The same, for a screen that takes no props of its own. */
+  function mountNode(node: Parameters<typeof createElement>[0]) {
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    act(() => { root.render(createElement(MemoryRouter, null, createElement(node))); });
+    return {
+      host,
+      button: (starts: string) =>
+        [...host.querySelectorAll("button")].find((b) => (b.textContent ?? "").startsWith(starts)),
+      field: (label: string) => host.querySelector<HTMLInputElement>(`input[aria-label="${label}"]`)!,
       unmount: () => { act(() => { root.unmount(); }); host.remove(); },
     };
   }
@@ -668,6 +796,77 @@ describe("a refusal keeps what the operator typed", () => {
     expect(hit("POST /api/v1/requests")).toHaveLength(1);
     ui.unmount();
   });
+
+  it("leaves the quantity on the make tile when the kitchen is short", async () => {
+    as("prod");
+    serve({ "POST /api/v1/batches": () => refusal("Kitchen is short of Veg filling mix — 1.200 kg left") });
+    const ui = mountNode(MakeDistribute);
+    act(() => { type(ui.field("Quantity of Veg puffs to start"), "200"); });
+
+    await settle(() => { ui.button("Make")!.click(); });
+
+    expect(hit("POST /api/v1/batches")[0].body).toEqual({ it: "puff", started: 200 });
+    expect(S().toast).toBe("Kitchen is short of Veg filling mix — 1.200 kg left");
+    // Nothing to retype: the refusal landed on the kitchen's own typing.
+    expect(ui.field("Quantity of Veg puffs to start").value).toBe("200");
+    ui.unmount();
+  });
+
+  it("locks the make tile while the batch is in flight, so one tray is not baked twice", async () => {
+    as("prod");
+    let release!: () => void;
+    const inFlight = new Promise<void>((r) => { release = r; });
+    fetchMock.mockImplementation(async (u: string, init: RequestInit) => {
+      const at = `${init.method} ${String(u).split("?")[0]}`;
+      if (at === "POST /api/v1/batches") {
+        await inFlight;
+        return json({ result: BATCH, changed: ["batch", "stock"], message: "BAT-20260904-01 — 58 of 60 Veg puffs yielded (-3.3%), best before 18:40" });
+      }
+      return at === "GET /api/v1/batches" ? json([BATCH]) : json(STOCK);
+    });
+    const ui = mountNode(MakeDistribute);
+    act(() => { type(ui.field("Quantity of Veg puffs to start"), "60"); });
+
+    act(() => { ui.button("Make")!.click(); });
+
+    // The tile has swapped to its in-flight label and is disabled, so the second tap lands on
+    // nothing. (A human's second tap comes after a paint, which is this flush.)
+    const busy = ui.button("Making…");
+    expect(busy).toBeDefined();
+    expect(busy!.disabled).toBe(true);
+    act(() => { busy!.click(); });
+
+    release();
+    await act(async () => { await inFlight; await new Promise((r) => { setTimeout(r, 0); }); });
+    expect(hit("POST /api/v1/batches")).toHaveLength(1);
+    // And once it has landed the boxes are the kitchen's again.
+    expect(ui.field("Quantity of Veg puffs to start").value).toBe("");
+    ui.unmount();
+  });
+
+  it("withdraws a ticket nobody collected, and closes the drawer behind it", async () => {
+    as("store");
+    const tkt = { ...FX.seedTkt[0], st: "Cancelled" };
+    serve({
+      [`POST /api/v1/tickets/${tkt.id}/cancel`]: () => json({ result: tkt, changed: ["tkt", "rsv"], message: `${tkt.id} cancelled — the stock is free again at Central Store` }),
+      "GET /api/v1/tickets": () => json([tkt]),
+      "GET /api/v1/stock": () => json(STOCK),
+    });
+    S().openDrawer("stkt", tkt.id);
+    const ui = mountNode(Drawer);
+
+    act(() => { ui.button("Cancel ticket")!.click(); });
+    // A cancellation cannot be undone, so the first press only reveals the confirm.
+    expect(hit(`POST /api/v1/tickets/${tkt.id}/cancel`)).toHaveLength(0);
+    act(() => { type(ui.field(`Why ${tkt.id} is being cancelled`), "The counter closed before the collector came"); });
+
+    await settle(() => { ui.button("Confirm cancellation")!.click(); });
+
+    expect(hit(`POST /api/v1/tickets/${tkt.id}/cancel`)[0].body).toEqual({ reason: "The counter closed before the collector came" });
+    expect(S().drawer).toBeNull();
+    expect(S().toast).toBe(`${tkt.id} cancelled — the stock is free again at Central Store`);
+    ui.unmount();
+  });
 });
 
 /** Every action's own sentence when the server cannot be reached at all. */
@@ -700,6 +899,12 @@ const OFFLINE: [name: string, run: () => Promise<unknown>, sentence: string][] =
     "Could not dispatch the order — check the connection and try again."],
   ["distribute", () => S().distribute("puff", 5, "kiosk"),
     "Could not send it out — check the connection and try again."],
+  ["setOrderStatus", () => S().setOrderStatus("PRD-2026-029", "Accepted"),
+    "Could not move the order on — check the connection and try again."],
+  ["makeProduct", () => S().makeProduct("puff", 10),
+    "Could not record the batch — check the connection and try again."],
+  ["cancelTicket", () => S().cancelTicket("TKT-0440", "Counter closed"),
+    "Could not cancel the ticket — check the connection and try again."],
 ];
 
 describe("a dropped connection names the write that did not land", () => {

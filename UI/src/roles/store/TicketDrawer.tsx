@@ -1,9 +1,9 @@
 import { useState } from "react";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
-import { canHandOver } from "../../lib/selectors";
+import { canCancelTicket, canHandOver } from "../../lib/selectors";
 import { U, fq, money, sum } from "../../lib/fmt";
-import { Btn, DataTable, Feed, Field, Otp, Pill, StatusPill } from "../../ui/kit";
+import { Alert, Btn, DataTable, Feed, Field, Otp, Pill, Section, StatusPill } from "../../ui/kit";
 import { DrawerFrame } from "../../ui/Drawer";
 import { registerDrawer, type DrawerProps } from "../../drawers";
 
@@ -23,6 +23,15 @@ function TicketDrawer({ id }: DrawerProps) {
   const handOver = async (otpOrNone?: string) => {
     setBusy(true);
     try { await handover(id, otpOrNone); } finally { setBusy(false); }
+  };
+  const cancelTicket = useApp((s) => s.cancelTicket);
+  const [why, setWhy] = useState("");
+  const [cancelling, setCancelling] = useState(false);
+  const [cancelBusy, setCancelBusy] = useState(false);
+  const withdraw = async () => {
+    setCancelBusy(true);
+    // No reset on success: the store action closes the drawer, so this component is gone.
+    try { await cancelTicket(id, why.trim()); } finally { setCancelBusy(false); }
   };
 
   const t = tkt.find((x) => x.id === id);
@@ -60,7 +69,10 @@ function TicketDrawer({ id }: DrawerProps) {
               {busy ? "Handing over…" : "Hand over on OTP"}
             </Btn>
           ) : (
-            <span className="mini">{t.st === "Collected" ? "Waiting on the receiving counter" : "Closed"}</span>
+            <span className="mini">
+              {t.st === "Collected" ? "Waiting on the receiving counter"
+                : t.st === "Cancelled" ? "Withdrawn — nothing was collected against it" : "Closed"}
+            </span>
           )}
         </>
       }
@@ -80,7 +92,7 @@ function TicketDrawer({ id }: DrawerProps) {
         <Otp value={t.otp} />
       </div>
 
-      {t.st === "Issued" && (
+      {canHandOver(t.st) && (
         <div className="mtop">
           <Field
             label="OTP quoted by the collector"
@@ -140,23 +152,55 @@ function TicketDrawer({ id }: DrawerProps) {
         />
       </div>
 
-      <div className="mtop">
-        <div className="mini" style={{ marginBottom: 8 }}>Movement</div>
-        <Feed
-          items={STEPS.map((sName, i) => ({
-            key: sName,
-            title: (
-              <>
-                {sName}{" "}
-                {i < step ? <Pill tone="ok">Done</Pill> : i === step ? <Pill tone="ac">Now</Pill> : <Pill tone="mu">Pending</Pill>}
-              </>
-            ),
-            body: body[sName],
-            when: i <= step ? (when(sName) ?? "today") : undefined,
-            color: i < step ? "var(--good)" : i === step ? "var(--accent)" : "var(--line-strong)",
-          }))}
-        />
-      </div>
+      {canCancelTicket(t.st) && (
+        <Section title="Cancel this ticket" sub="Nobody collected against it, and the stock should go back">
+          {cancelling ? (
+            <>
+              <Field label="Reason" hint="Written to the ticket's history — it is the only record of the cancellation.">
+                <input
+                  placeholder="Counter closed, wrong outlet…"
+                  aria-label={`Why ${t.id} is being cancelled`}
+                  value={why}
+                  onChange={(e) => setWhy(e.target.value)}
+                />
+              </Field>
+              <Btn size="xs" variant="dg" disabled={!why.trim() || cancelBusy} onClick={withdraw}>
+                {cancelBusy ? "Cancelling…" : "Confirm cancellation"}
+              </Btn>{" "}
+              <Btn size="xs" variant="gh" onClick={() => setCancelling(false)}>Keep the ticket</Btn>
+            </>
+          ) : (
+            <Btn size="xs" variant="gh" onClick={() => setCancelling(true)}>Cancel ticket</Btn>
+          )}
+        </Section>
+      )}
+
+      {t.st === "Cancelled" ? (
+        <div className="mtop">
+          <Alert tone="w" label="CANCELLED">
+            This ticket was withdrawn before it was collected — the stock never left {LOC[t.from].n}
+            and the hold against it has been released.
+          </Alert>
+        </div>
+      ) : (
+        <div className="mtop">
+          <div className="mini" style={{ marginBottom: 8 }}>Movement</div>
+          <Feed
+            items={STEPS.map((sName, i) => ({
+              key: sName,
+              title: (
+                <>
+                  {sName}{" "}
+                  {i < step ? <Pill tone="ok">Done</Pill> : i === step ? <Pill tone="ac">Now</Pill> : <Pill tone="mu">Pending</Pill>}
+                </>
+              ),
+              body: body[sName],
+              when: i <= step ? (when(sName) ?? "today") : undefined,
+              color: i < step ? "var(--good)" : i === step ? "var(--accent)" : "var(--line-strong)",
+            }))}
+          />
+        </div>
+      )}
 
       {r && r.mgrNote && (
         <div className="mini mtop">Manager note: {r.mgrNote}</div>
