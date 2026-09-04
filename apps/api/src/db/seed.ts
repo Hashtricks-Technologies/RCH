@@ -76,6 +76,10 @@ async function seedMaster(tx: Tx, passwordHash: string, mustChange: boolean) {
   await tx.insert(s.vendors).values(FX.seedVendors.map((v) => ({
     id: v.id, name: v.n, gstin: v.gstin, contact: v.contact, phone: v.ph, terms: v.terms, leadDays: v.lead, groups: v.groups, active: v.active,
   })));
+  // The three rosters a non-cash bill may be posted to. They already carry `{kind, id, name}`
+  // in the fixtures, so the table is the same three lists in one place — which is what lets the
+  // till's payer be checked against something rather than taken on trust.
+  await tx.insert(s.payers).values([...FX.PATIENTS, ...FX.STAFF, ...FX.DEPTS].map((p) => ({ kind: p.kind, id: p.id, name: p.name })));
 }
 
 async function seedOpeningStock(tx: Tx) {

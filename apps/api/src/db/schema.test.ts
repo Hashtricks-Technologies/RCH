@@ -11,7 +11,7 @@ describe("schema", () => {
   it("migrates every table into the test schema", async () => {
     const r = await t.db.execute(sql`select table_name from information_schema.tables where table_schema = ${t.schemaName} order by 1`);
     const names = r.rows.map((x) => (x as { table_name: string }).table_name);
-    for (const n of ["stock_moves", "stock_balances", "reservations", "stock_requests", "tickets", "bills", "purchase_orders", "grns", "sequences", "refresh_tokens", "idempotency_keys", "document_history"])
+    for (const n of ["stock_moves", "stock_balances", "reservations", "stock_requests", "tickets", "bills", "payers", "purchase_orders", "grns", "sequences", "refresh_tokens", "idempotency_keys", "document_history"])
       expect(names).toContain(n);
   });
   it("refuses a second item with the same name in a different case", async () => {

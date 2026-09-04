@@ -19,15 +19,19 @@ import { posRepo } from "./repo.js";
 
 export type PayBody = z.infer<typeof PayBodySchema>;
 
+/** What the operator calls each kind of payer. One list, so the sentence that asks for a payer
+ *  and the sentence that says the roster has never heard of one use the same word. */
+const PAYER_LABEL: Record<PayerKind, string> = { patient: "patient", staff: "staff member", dept: "department" };
+
 /** A tender that is not money changing hands has to name whose account it lands on: the word
  *  the operator reads, and the kind of payer that word means. One table for both, because a
  *  tender that accepts the wrong kind of payer is a bill nothing later counts — a staff credit
  *  posted to a patient is invisible to the ceiling below. Keyed by the closed set of tenders,
  *  so a new one added to `TenderSchema` has to be considered here. */
 const NEEDS_PAYER: Partial<Record<Tender, { label: string; kind: PayerKind }>> = {
-  "Patient bill": { label: "patient", kind: "patient" },
-  "Staff credit": { label: "staff member", kind: "staff" },
-  Dept: { label: "department", kind: "dept" },
+  "Patient bill": { label: PAYER_LABEL.patient, kind: "patient" },
+  "Staff credit": { label: PAYER_LABEL.staff, kind: "staff" },
+  Dept: { label: PAYER_LABEL.dept, kind: "dept" },
 };
 
 /** Money is stored and read at two decimals; `planBill` totals at full precision so the tax
@@ -69,6 +73,14 @@ export function createPosService(db: Db) {
         assertRule(!need || body.payer?.kind === need.kind,
           `Choose a ${need?.label} for a ${body.tender.toLowerCase()} — ${body.payer?.name} is not one`);
 
+        // And the payer has to be somebody the hospital already knows. The till sends a name
+        // along with the id, but the name written on the bill is the roster's: a mistyped id is
+        // a second account with its own untouched credit ceiling, and a name the counter typed
+        // is a balance nobody can settle because nobody can find whose it is.
+        const roster = body.payer ? await posRepo.payer(tx, body.payer.kind, body.payer.id) : undefined;
+        if (body.payer) assertRule(roster, `There is no ${PAYER_LABEL[body.payer.kind]} ${body.payer.id} on the roster`);
+        const payer = body.payer && roster ? { kind: body.payer.kind, id: body.payer.id, name: roster.name } : undefined;
+
         const master = await loadMaster(tx);
         const locName = master.locations[loc]?.n ?? loc;
         // One connection carries the transaction, so these queue behind each other anyway.
@@ -94,18 +106,22 @@ export function createPosService(db: Db) {
         // is the person's, over the calendar month the hospital settles on, and it is checked
         // here rather than only on the counter's screen — a second tab or a stale page would
         // otherwise walk straight past a disabled button.
-        if (body.tender === "Staff credit" && body.payer) {
-          const taken = await posRepo.staffCreditTaken(tx, body.payer.id, monthStartIST(at));
+        if (body.tender === "Staff credit" && payer) {
+          // Read the total under a lock on the person, not merely read it: two tills selling to
+          // one staff member in the same instant would otherwise both see the room that existed
+          // before either wrote, and both fit under a ceiling only one of them fits under.
+          await posRepo.lockStaffCredit(tx, payer.id);
+          const taken = await posRepo.staffCreditTaken(tx, payer.id, monthStartIST(at));
           assertRule(
             !breachesCredit(taken, plan.tot),
-            creditBreachMessage(taken, plan.tot, body.payer.name),
+            creditBreachMessage(taken, plan.tot, payer.name),
             { taken, room: creditRoom(taken) },
           );
         }
         const no = await allocateId(tx, "bill", at);
         const head = await posRepo.insertBill(tx, {
           no, loc, operatorId: claims.sub, total: money(plan.tot), tax: money(plan.tax), at, tender: body.tender,
-          payerKind: body.payer?.kind ?? null, payerId: body.payer?.id ?? null, payerName: body.payer?.name ?? null,
+          payerKind: payer?.kind ?? null, payerId: payer?.id ?? null, payerName: payer?.name ?? null,
         });
         const lines = await posRepo.insertBillLines(tx, no, plan.lines);
         await postMoves(tx, plan.moves.map((m) => ({ ...m, kind: "sale" as const, refType: "bill", refId: no, by: claims.sub, at })));
@@ -137,8 +153,8 @@ export function createPosService(db: Db) {
         const operator = await posRepo.operator(tx, claims.sub);
         const result = toWireBill(head, lines, { name: operator?.name ?? claims.sub, colour: operator?.colour ?? "#64748B" });
         const total = money(plan.tot).toFixed(2);
-        const message = body.payer
-          ? `Bill ${no} · ₹${total} posted to ${body.payer.name}`
+        const message = payer
+          ? `Bill ${no} · ₹${total} posted to ${payer.name}`
           : `Bill ${no} · ₹${total} ${body.tender === "Cash" ? "collected" : "settled by " + body.tender.toLowerCase()} at ${locName}`;
         // One array for the answer and the announcement, so the till that made the sale and
         // the tills watching it can never be told to refetch different slices.

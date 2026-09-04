@@ -90,12 +90,12 @@ describe("POST /bills — the counter sale", () => {
     expect(b.message).toBe(`Bill ${b.result.no} · ₹60.00 settled by card at Coffee Shop`);
   });
 
-  it("names the payer on a credit tender", async () => {
+  it("names the payer on a credit tender — with the name the roster carries", async () => {
     const r = await pay("u1", { loc: "coffee", tender: "Patient bill", payer: { kind: "patient", id: "IP-4471", name: "Anitha, Room 312" }, lines: [{ it: "juice", qty: 1 }] });
     expect(r.statusCode, r.body).toBe(200);
     const b = r.json();
-    expect(b.result.payer).toEqual({ kind: "patient", id: "IP-4471", name: "Anitha, Room 312" });
-    expect(b.message).toBe(`Bill ${b.result.no} · ₹20.00 posted to Anitha, Room 312`);
+    expect(b.result.payer).toEqual({ kind: "patient", id: "IP-4471", name: "Anand Kumar · Ward 3B" });
+    expect(b.message).toBe(`Bill ${b.result.no} · ₹20.00 posted to Anand Kumar · Ward 3B`);
   });
 });
 
@@ -416,6 +416,101 @@ describe("a sale cannot take stock another document is holding", () => {
     expect((await app.db.select().from(s.bills)).length).toBe(billsBefore);
     // Nothing to rebuild a balance from: a refused sale leaves the ledger exactly as it found it.
     expect((await app.db.select().from(s.stockMoves)).length).toBe(movesBefore);
+  });
+
+  it("still leaves the balance cache equal to the moves that made it", async () => {
+    const before = Object.fromEntries((await app.db.select().from(s.stockBalances)).map((r) => [`${r.loc}:${r.itemKey}`, r.onHand]));
+    await rebuildBalances(app.db);
+    expect(Object.fromEntries((await app.db.select().from(s.stockBalances)).map((r) => [`${r.loc}:${r.itemKey}`, r.onHand]))).toEqual(before);
+  });
+});
+
+describe("the payer is somebody on the roster, not a word the till typed", () => {
+  // The cases above have been drawing this shelf down; put enough water back that a ₹20 bill is
+  // never refused for the wrong reason, and enough of it free that the holds the race above
+  // left behind do not swallow the lot.
+  beforeAll(async () => {
+    await app.db.transaction((tx) => postMoves(tx, [{ loc: "coffee", it: "water", qty: 400, kind: "adjustment", refType: "test", refId: "roster-topup" }]));
+  });
+  const oneWater = (payer: { kind: "patient" | "staff" | "dept"; id: string; name: string }, tender: string) =>
+    ({ loc: "coffee", tender, payer, lines: [{ it: "water", qty: 1 }] });
+
+  it("refuses an id nobody is on, and writes nothing", async () => {
+    const before = (await app.db.select().from(s.bills)).length;
+    const r = await pay("u1", oneWater({ kind: "staff", id: "RC-1902-b", name: "Vinoth Prakash · Kitchen" }, "Staff credit"));
+    expect(r.statusCode, r.body).toBe(422);
+    expect(r.json().error).toMatchObject({ code: "rule", message: "There is no staff member RC-1902-b on the roster" });
+    expect((await app.db.select().from(s.bills)).length).toBe(before);
+  });
+
+  it("calls each kind what the tender's own refusal calls it", async () => {
+    const p = await pay("u1", oneWater({ kind: "patient", id: "IP-0000", name: "Nobody At All" }, "Patient bill"));
+    expect(p.statusCode).toBe(422);
+    expect(p.json().error.message).toBe("There is no patient IP-0000 on the roster");
+    const d = await pay("u1", oneWater({ kind: "dept", id: "CC-XX", name: "Nobody At All" }, "Dept"));
+    expect(d.statusCode).toBe(422);
+    expect(d.json().error.message).toBe("There is no department CC-XX on the roster");
+  });
+
+  it("writes the roster's name on the bill, not the one the till sent", async () => {
+    const r = await pay("u1", oneWater({ kind: "patient", id: "IP-4488", name: "Whoever The Till Typed" }, "Patient bill"));
+    expect(r.statusCode, r.body).toBe(200);
+    const b = r.json();
+    expect(b.result.payer).toEqual({ kind: "patient", id: "IP-4488", name: "Meera Devi · Ward 2A" });
+    expect(b.message).toBe(`Bill ${b.result.no} · ₹20.00 posted to Meera Devi · Ward 2A`);
+    // And in the table, because that is the name the ward is billed against months later.
+    const [head] = await app.db.select().from(s.bills).where(eq(s.bills.no, b.result.no));
+    expect(head.payerName).toBe("Meera Devi · Ward 2A");
+  });
+
+  it("cannot be given a fresh ceiling by suffixing the id", async () => {
+    // Vinoth is already at ₹2,990 of his ₹3,000 (the ceiling cases above), so his own id is
+    // refused. Before the roster check, "RC-1902-b" was simply a payer nobody had billed yet —
+    // a whole second ceiling for the same person, one keystroke away.
+    const real = await pay("u1", oneWater({ kind: "staff", id: "RC-1902", name: "Vinoth Prakash · Kitchen" }, "Staff credit"));
+    expect(real.statusCode).toBe(422);
+    expect(real.json().error.message).toContain("staff credit limit");
+    const suffixed = await pay("u1", oneWater({ kind: "staff", id: "RC-1902-b", name: "Vinoth Prakash · Kitchen" }, "Staff credit"));
+    expect(suffixed.statusCode).toBe(422);
+    expect(suffixed.json().error.message).toBe("There is no staff member RC-1902-b on the roster");
+  });
+
+  it("refuses a payer the roster has retired", async () => {
+    await app.db.insert(s.payers).values({ kind: "staff", id: "RC-7788", name: "Left The Hospital", active: false });
+    const r = await pay("u1", oneWater({ kind: "staff", id: "RC-7788", name: "Left The Hospital" }, "Staff credit"));
+    expect(r.statusCode).toBe(422);
+    expect(r.json().error.message).toBe("There is no staff member RC-7788 on the roster");
+  });
+});
+
+describe("two tills cannot both fit under one ceiling", () => {
+  // Enough water for both ₹1,600 carts, so the pair races on the ceiling and not on the shelf.
+  beforeAll(async () => {
+    await app.db.transaction((tx) => postMoves(tx, [{ loc: "coffee", it: "water", qty: 400, kind: "adjustment", refType: "test", refId: "credit-race-topup" }]));
+  });
+
+  it("serialises the credit read per payer: one bill lands, the other is refused", async () => {
+    // ₹1,600 each against a ₹3,000 ceiling: either alone fits and both together do not. The
+    // ceiling is a sum over bills that are already committed, so without `lockStaffCredit` both
+    // tills read ₹0 taken before either has written, both pass, and the hospital carries ₹3,200
+    // of credit it never agreed to. Proven by commenting the advisory lock out: both answer 200.
+    await app.db.insert(s.payers).values({ kind: "staff", id: "RC-9001", name: "Priya Anand · Housekeeping" });
+    const payer = { kind: "staff" as const, id: "RC-9001", name: "Priya Anand · Housekeeping" };
+    await warmPool(app.testDb!, 2);
+    const body: PayBody = { loc: "coffee", tender: "Staff credit", payer, lines: [{ it: "water", qty: 80 }] };   // 80 × ₹20 = ₹1,600
+    const billsBefore = (await app.db.select().from(s.bills)).length;
+
+    const [a, b] = await Promise.all([pay("u1", body), pay("u1", body)]);
+
+    expect([a.statusCode, b.statusCode].sort(), `${a.body} | ${b.body}`).toEqual([200, 422]);
+    const loser = a.statusCode === 422 ? a : b;
+    expect(loser.json().error).toMatchObject({
+      code: "rule",
+      message: "₹3,200.00 breaches the ₹3,000 staff credit limit for Priya Anand · Housekeeping. Take another tender or split the bill.",
+      details: { taken: 1600, room: 1400 },
+    });
+    // One bill, one bill's worth of credit — the refused one left nothing behind.
+    expect((await app.db.select().from(s.bills)).length).toBe(billsBefore + 1);
   });
 
   it("still leaves the balance cache equal to the moves that made it", async () => {

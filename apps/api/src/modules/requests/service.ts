@@ -102,6 +102,12 @@ export function createRequestsService(db: Db) {
         const r = await requestsRepo.head(tx, id);
         if (!r) throw new NotFoundError(`There is no request ${id}.`);
         const lines = await requestsRepo.lines(tx, id);
+        // One decision per line, positionally. `planApproval` reads `appr[i]` beside `lines[i]`,
+        // so a short array silently approves nothing on the lines it does not reach and a long
+        // one carries a decision about a line that is not there — either way the manager sees a
+        // request they did not decide. A stale screen is exactly how that arrives, so it is
+        // refused here rather than reconciled afterwards.
+        assertRule(body.appr.length === lines.length, `Give a quantity for each of the ${lines.length} lines`);
         const keys = lines.map((l) => l.it);
         // What the store may still promise: on hand, less open reservations, less what other
         // approvals have already committed (C6). Read before any write, and never trusted at

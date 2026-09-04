@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { TenderSchema } from "@rch/contract";
+import { BILL_DAYS, TenderSchema } from "@rch/contract";
 import { breachesCredit } from "@rch/domain";
 import { DEPTS, IT, LOC, PATIENTS, STAFF, STAFF_CREDIT_LIMIT } from "../../data/master";
 import { useApp } from "../../store";
@@ -57,7 +57,12 @@ export default function Pos() {
     const t = pq.trim().toLowerCase();
     return !t || p.name.toLowerCase().includes(t) || p.id.toLowerCase().includes(t);
   }) ?? [];
-  const taken = payer ? sum(s.bills.filter((b) => b.payer?.id === payer.id), (b) => b.tot) : 0;
+  // Credit, and only credit: the ceiling measures what the "Staff credit" tender creates, so a
+  // bill this person paid cash for must not be counted against their room. This is a preview of
+  // the server's own sum (`posRepo.staffCreditTaken`) over the bills the till happens to be
+  // holding — the last BILL_DAYS days, not the calendar month the ceiling is settled on — so it
+  // can read low. The server has the whole month and the last word; the label says so.
+  const taken = payer ? sum(s.bills.filter((b) => b.pay === "Staff credit" && b.payer?.id === payer.id), (b) => b.tot) : 0;
   const overLimit = tender === "Staff credit" && !!payer && breachesCredit(taken, total, STAFF_CREDIT_LIMIT);
 
   const pickTender = (t: Tender) => { setTender(t); setPayer(null); setPq(""); };
@@ -207,9 +212,10 @@ export default function Pos() {
 
           {tender === "Staff credit" && payer && (
             <p className="mini" style={{ margin: "0 0 11px" }}>
-              Credit taken by {payer.name} this month <b className="mono">{money(taken)}</b> of{" "}
+              Credit taken by {payer.name} in the last {BILL_DAYS} days <b className="mono">{money(taken)}</b> of{" "}
               <b className="mono">{money0(STAFF_CREDIT_LIMIT)}</b> — this bill would take it to{" "}
               <b className="mono" style={overLimit ? { color: "var(--crit)" } : undefined}>{money(taken + total)}</b>.
+              The store settles the ceiling over the calendar month, so the figure it refuses on may be higher.
             </p>
           )}
           {overLimit && (

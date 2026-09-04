@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
+import { lockBalances } from "../../lib/ledger.js";
 import { buildTestApp } from "../../test/app.js";
 import { seedTestDb } from "../../test/seed.js";
 import { authHeaders } from "../../test/auth.js";
@@ -170,6 +171,28 @@ describe("POST /tickets/:id/receive", () => {
     const both = await Promise.all([post("u1", "/tickets/TKT-0440/receive"), post("u1", "/tickets/TKT-0440/receive")]);
     expect(both.filter((r) => r.statusCode === 200)).toHaveLength(1);
     expect(await onHand("coffee", "cup")).toBe(180 + 500);
+  });
+
+  it("queues behind a writer holding the request, instead of deadlocking with it", async () => {
+    // Documents locked before balances, server-wide (lib/ledger.ts's header). A receipt that
+    // took the shelf first and reached for its request afterwards would sit holding one lock
+    // and waiting for the other while this transaction does the opposite — Postgres breaks that
+    // by killing one of them, and the shelf that scanned in a delivery gets a 500. Taken in the
+    // house order the receipt simply waits its turn. Fails with `linkedRequest` moved back
+    // below `postMoves`: the pair deadlock and the receipt answers 500.
+    await post("u3", "/tickets/TKT-0440/handover", { otp: "418327" });
+    await warmPool(app.testDb!, 2);
+    const rival = app.testDb!.db.transaction(async (tx) => {
+      await tx.execute(sql`select 1 from stock_requests where id = 'REQ-2026-0909' for update`);
+      await new Promise((r) => setTimeout(r, 500));                    // the receipt gets its shelf lock in here
+      await lockBalances(tx, [{ loc: "coffee", it: "cup" }]);
+    });
+    await new Promise((r) => setTimeout(r, 50));
+    const [received] = await Promise.all([post("u1", "/tickets/TKT-0440/receive"), rival]);
+
+    expect(received.statusCode, received.body).toBe(200);
+    expect(await onHand("coffee", "cup")).toBe(180 + 500);
+    expect((await requestById("REQ-2026-0909")).st).toBe("Closed");
   });
 });
 

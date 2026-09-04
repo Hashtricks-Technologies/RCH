@@ -34,6 +34,14 @@ function IssueDetail({ id }: DrawerProps) {
 
   const [otp, setOtp] = useState("");
   const [override, setOverride] = useState(false);
+  // A handover is a server call now, and the stock only leaves once. A second tap inside one
+  // round trip would post a second `ticket_out` — refused, but as an error the window reads as
+  // its own mistake. One tap, one handover.
+  const [busy, setBusy] = useState(false);
+  const handOver = async (tktId: string, otpOrNone?: string) => {
+    setBusy(true);
+    try { await handover(tktId, otpOrNone); } finally { setBusy(false); }
+  };
 
   const byTicket = s.tkt.find((t) => t.id === id);
   const r = s.req.find((x) => x.id === (byTicket ? byTicket.req : id));
@@ -80,8 +88,8 @@ function IssueDetail({ id }: DrawerProps) {
               Generate ticket
             </Btn>
           ) : ticket && canHandOver(ticket.st) ? (
-            <Btn variant="ok" disabled={otp.trim().length !== 6} onClick={() => handover(ticket.id, otp)}>
-              Hand over on OTP
+            <Btn variant="ok" disabled={otp.trim().length !== 6 || busy} onClick={() => handOver(ticket.id, otp)}>
+              {busy ? "Handing over…" : "Hand over on OTP"}
             </Btn>
           ) : (
             <span className="mini">
@@ -211,7 +219,9 @@ function IssueDetail({ id }: DrawerProps) {
                   <>
                     Supervisor override hands the stock over without an OTP. It is recorded against your name.
                     {" "}
-                    <Btn size="xs" variant="dg" onClick={() => handover(ticket.id)}>Confirm override handover</Btn>
+                    <Btn size="xs" variant="dg" disabled={busy} onClick={() => handOver(ticket.id)}>
+                      {busy ? "Handing over…" : "Confirm override handover"}
+                    </Btn>
                     {" "}
                     <Btn size="xs" variant="gh" onClick={() => setOverride(false)}>Cancel override</Btn>
                   </>

@@ -4,6 +4,7 @@ import { z } from "zod";
 import { API_PREFIX, CollectionSchema, EVENTS_PATH } from "@rch/contract";
 import type { Config } from "../config.js";
 import { pgSsl } from "../db/client.js";
+import { RateLimitedError } from "../lib/errors.js";
 import { EVENTS_CHANNEL_PREFIX, type ChangeNotice } from "../lib/events.js";
 
 declare module "fastify" {
@@ -28,6 +29,17 @@ const quoteIdent = (s: string) => `"${s.replace(/"/g, '""')}"`;
 const frame = (id: number, event: string, data: string) => `id: ${id}\nevent: ${event}\ndata: ${data}\n\n`;
 const BACKOFF_MS = [250, 500, 1000, 2000, 5000, 10_000];
 
+/**
+ * How many streams one signed-in person may hold open at once.
+ *
+ * A stream is a socket and a slot in every broadcast for as long as it lives, and the global
+ * rate limiter cannot see it — spec §6 turns the limiter off for this route, because a request
+ * that lasts an hour is the wrong shape for a per-minute budget. Eight is far above a real
+ * counter (a till, a spare tab, a phone) and far below what a reconnect loop with a bug in it
+ * would open in a minute, which is the failure this bounds.
+ */
+const MAX_STREAMS_PER_USER = 8;
+
 /** A NOTIFY channel is open to every session on the database, so what arrives on it is parsed
  *  rather than trusted: an unreadable payload is dropped instead of waking every browser with
  *  a collection name no client knows what to do with. */
@@ -38,6 +50,9 @@ const tryJson = (s: string): unknown => { try { return JSON.parse(s); } catch { 
 
 export default fp<{ config: Config; searchPath?: string }>(async (app, { config, searchPath }) => {
   const streams = new Set<Stream>();
+  /** Open streams per signed-in person, so the cap above is enforced on the one thing that
+   *  identifies a browser across reconnects. A person with none is absent, not zero. */
+  const perUser = new Map<string, number>();
   let seq = 0;
   const nextId = () => ++seq;
 
@@ -70,7 +85,8 @@ export default fp<{ config: Config; searchPath?: string }>(async (app, { config,
     if (stopped || connecting) return;
     connecting = true;
     /** The connection this attempt opened, until it takes. Whatever is still here at the end
-     *  never became the listener, so it is this function's to clean up. */
+     *  never became the listener, and `scheduleReconnect` below is the one path that gives it
+     *  back — ending it here as well would call `end()` twice on the same client. */
     let opened: Client | null = null;
     let failed = false;
     try {
@@ -118,10 +134,7 @@ export default fp<{ config: Config; searchPath?: string }>(async (app, { config,
       // every future reconnect, and the pod would stay deaf until someone restarted it.
       connecting = false;
     }
-    if (failed) {
-      if (opened) retire(opened);
-      scheduleReconnect(opened);
-    }
+    if (failed) scheduleReconnect(opened);
   }
 
   function scheduleReconnect(dead: Client | null): void {
@@ -159,6 +172,13 @@ export default fp<{ config: Config; searchPath?: string }>(async (app, { config,
     config: { rateLimit: false },
     preHandler: [app.authenticate],
   }, async (req, reply) => {
+    const who = req.user.sub;
+    // Before the hijack, and only before it: once the response is hijacked there is no reply
+    // left to serialise an envelope onto, and the browser would be handed a dead stream instead
+    // of a sentence it can show.
+    if ((perUser.get(who) ?? 0) >= MAX_STREAMS_PER_USER) {
+      throw new RateLimitedError(`You already have ${MAX_STREAMS_PER_USER} screens listening for updates. Close one and try again.`);
+    }
     reply.hijack();
     const res = reply.raw;
     // Fastify's connectionTimeout is Node's per-socket inactivity timer; at 10 s it would kill
@@ -180,13 +200,19 @@ export default fp<{ config: Config; searchPath?: string }>(async (app, { config,
       end: () => { try { res.end(); } catch { /* already gone */ } },
     };
     streams.add(stream);
+    perUser.set(who, (perUser.get(who) ?? 0) + 1);
     app.metrics.sseClients.set(streams.size);
     // The hijack takes this response out of `onResponse`, so plugins/logging.ts will never
     // write its access line and plugins/metrics.ts will never time it — right for a request
     // that lasts an hour, but the operator should still see a stream open and close.
     req.log.info({ route: EVENTS_PATH, method: req.method, user: req.user.sub }, "stream open");
     const drop = () => {
+      // The guard is `streams.delete`, not the log line: both 'close' and 'error' fire on a
+      // socket that goes away, and a second decrement would give this person back a slot they
+      // never used.
       if (!streams.delete(stream)) return;
+      const left = (perUser.get(who) ?? 1) - 1;
+      if (left > 0) perUser.set(who, left); else perUser.delete(who);
       app.metrics.sseClients.set(streams.size);
       req.log.info({ route: EVENTS_PATH, method: req.method, user: req.user.sub }, "stream closed");
     };
@@ -211,6 +237,7 @@ export default fp<{ config: Config; searchPath?: string }>(async (app, { config,
     if (retryTimer) clearTimeout(retryTimer);
     for (const s of streams) { s.write(`retry: ${config.sseRetryMs}\n\n`); s.end(); }
     streams.clear();
+    perUser.clear();
     app.metrics.sseClients.set(0);
     app.metrics.sseListenerUp.set(0);
     // Every connection, not just the current one: a pod that goes down mid-reconnect must not

@@ -1,9 +1,10 @@
 // Pos: SQL only. No rules, no transaction of its own — service.ts passes `tx` in.
 import { and, asc, eq, gte, inArray, isNull, sql } from "drizzle-orm";
+import type { PayerKind } from "@rch/contract";
 import type { OvrMap, Prices, RsvMap, StockMap } from "@rch/domain";
 import type { Tx } from "../../lib/db.js";
 import type { BillLineRow, BillRow } from "../../lib/wire.js";
-import { availabilityOverrides, billLines, bills, locationItems, priceListItems, reservations, stockBalances, users } from "../../db/schema/index.js";
+import { availabilityOverrides, billLines, bills, locationItems, payers, priceListItems, reservations, stockBalances, users } from "../../db/schema/index.js";
 
 export type NewBill = typeof bills.$inferInsert;
 
@@ -44,6 +45,31 @@ export const posRepo = {
   async menuAt(tx: Tx, loc: string): Promise<Set<string>> {
     const rows = await tx.select({ itemKey: locationItems.itemKey }).from(locationItems).where(eq(locationItems.loc, loc));
     return new Set(rows.map((r) => r.itemKey));
+  },
+
+  /**
+   * The roster row a bill may be posted to. Only an active one answers: a discharged patient
+   * or a staff member who has left is not somebody a new balance may be run up against, and
+   * the row stays for the bills already posted to it rather than being deleted.
+   */
+  async payer(tx: Tx, kind: PayerKind, id: string): Promise<{ name: string } | undefined> {
+    const [p] = await tx.select({ name: payers.name }).from(payers)
+      .where(and(eq(payers.kind, kind), eq(payers.id, id), eq(payers.active, true)));
+    return p;
+  },
+
+  /**
+   * Queue every staff-credit sale for one person behind the one before it.
+   *
+   * `staffCreditTaken` below sums bills that are already committed, so two tills reading in the
+   * same instant both see the room that existed before either of them wrote — and both fit
+   * under a ceiling only one of them fits under. There is no row to lock instead: the read is a
+   * sum over bills that do not exist yet. A transaction-scoped advisory lock on the payer is
+   * the narrowest thing that serialises exactly that pair, and Postgres releases it when the
+   * transaction ends, whichever way it ends.
+   */
+  async lockStaffCredit(tx: Tx, payerId: string): Promise<void> {
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${"staff-credit:" + payerId}))`);
   },
 
   async operator(tx: Tx, id: string): Promise<{ name: string; colour: string } | undefined> {

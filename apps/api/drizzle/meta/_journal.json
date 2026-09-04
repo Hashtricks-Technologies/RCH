@@ -29,6 +29,13 @@
       "when": 1788488787741,
       "tag": "0003_bills_staff_credit_idx",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1788493190345,
+      "tag": "0004_payers",
+      "breakpoints": true
     }
   ]
 }

@@ -6,7 +6,7 @@ import { seedTestDb } from "../../test/seed.js";
 import { authHeaders } from "../../test/auth.js";
 import { given } from "../../test/builders.js";
 import { truncateAll, warmPool } from "../../test/db.js";
-import { reservations, stockBalances, stockMoves } from "../../db/schema/index.js";
+import { reservations, stockBalances, stockMoves, stockRequestLines, stockRequests } from "../../db/schema/index.js";
 import { rebuildBalances } from "../../lib/ledger.js";
 import type { InjectOptions } from "fastify";
 import type { App } from "../../app.js";
@@ -186,6 +186,26 @@ describe("POST /requests/:id/approve", () => {
     expect(r.json().result.trimmed).toBe(false);
     expect(r.json().result.request.lines.every((l: { short: number }) => l.short === 0)).toBe(true);
     expect(r.json().message).toBe(`${id} manager approved and forwarded to the store keeper`);
+  });
+
+  it("refuses a decision that does not carry a quantity for every line", async () => {
+    // `planApproval` reads `appr[i]` beside `lines[i]`, so a short array quietly approves
+    // nothing on the lines it never reaches, and a long one carries a decision about a line
+    // that is not there. A screen opened before the counter added a line is exactly how one
+    // arrives, and the manager would never see what they had just refused.
+    const id = await given.request(app.testDb!.db, { from: "kiosk", lines: [{ it: "sugar", qty: 5 }, { it: "milk", qty: 2 }] });
+    // An empty array never gets here — `ApproveRequestBodySchema` asks for at least one, so it
+    // is a 400 at the door. One too few and one too many are the shapes a real screen sends.
+    for (const appr of [[12], [12, 2, 1]]) {
+      const r = await post("u2", `/requests/${id}/approve`, { appr, note: "" });
+      expect(r.statusCode, r.body).toBe(422);
+      expect(r.json().error).toMatchObject({ code: "rule", message: "Give a quantity for each of the 2 lines" });
+    }
+    const [after] = await app.testDb!.db.select().from(stockRequests).where(eq(stockRequests.id, id));
+    expect(after.status).toBe("Request sent");
+    expect(after.approvedBy).toBeNull();
+    const lines = await app.testDb!.db.select().from(stockRequestLines).where(eq(stockRequestLines.requestId, id));
+    expect(lines.every((l) => l.approvedQty === 0)).toBe(true);
   });
 
   it("refuses a second decision on a request already decided", async () => {

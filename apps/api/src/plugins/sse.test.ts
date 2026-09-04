@@ -172,6 +172,39 @@ describe("GET /events", () => {
     s.close();
   });
 
+  it("caps one person's open streams, and refuses the ninth with a sentence and not a stream", async () => {
+    // The route turns the global rate limiter off (a request that lasts an hour is the wrong
+    // shape for a per-minute budget), so this cap is the only thing standing between a browser
+    // stuck in a reconnect loop and a socket per attempt. Eight is far above a real counter.
+    await settle();                                        // sockets aborted by earlier cases close asynchronously
+    const held = [];
+    for (let i = 0; i < 8; i++) {
+      const s = await open("u5");
+      await s.until((x) => x.includes("retry:"));
+      held.push(s);
+    }
+
+    const ninth = await fetch(base + API_PREFIX + EVENTS_PATH, { headers: { ...(await authHeaders(app, "u5")), accept: "text/event-stream" } });
+    expect(ninth.status).toBe(429);
+    expect(ninth.headers.get("content-type")).toContain("application/json");
+    expect(await ninth.json()).toEqual({
+      error: { code: "rate_limited", message: "You already have 8 screens listening for updates. Close one and try again." },
+    });
+    // The cap is one person's, not the pod's: somebody else still gets their stream.
+    const other = await open("u3");
+    await other.until((x) => x.includes("retry:"));
+    other.close();
+
+    // And a slot comes back when a stream closes.
+    held.pop()!.close();
+    await settle();
+    const again = await open("u5");
+    await again.until((x) => x.includes("retry:"));
+    again.close();
+    for (const s of held) s.close();
+    await settle();
+  });
+
   it("counts open streams in /metrics", async () => {
     await settle();      // sockets aborted by earlier cases close asynchronously
     const a = await open("u1");
