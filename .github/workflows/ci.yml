@@ -39,9 +39,11 @@ jobs:
         # attempt to four, and a slow registry held the whole job for a quarter of an hour.
         run: |
           for attempt in 1 2 3; do
-            if out=$(timeout 120 pnpm audit --audit-level=high 2>&1); then echo "$out"; exit 0; fi
-            if [ -z "$out" ] || echo "$out" | grep -qE 'ERR_SOCKET_TIMEOUT|FetchError|ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN'; then
-              echo "audit endpoint unreachable (attempt $attempt)"; sleep 10; continue
+            set +e; out=$(timeout 120 pnpm audit --audit-level=high 2>&1); rc=$?; set -e
+            if [ "$rc" -eq 0 ]; then echo "$out"; exit 0; fi
+            # 124 is timeout(1)'s own exit: the attempt was killed, not answered.
+            if [ "$rc" -eq 124 ] || [ -z "$out" ] || echo "$out" | grep -qE 'ERR_SOCKET_TIMEOUT|FetchError|ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN'; then
+              echo "audit endpoint unreachable (attempt $attempt, rc=$rc)"; sleep 10; continue
             fi
             echo "$out"; echo "::error::pnpm audit reports high or critical advisories"; exit 1
           done
