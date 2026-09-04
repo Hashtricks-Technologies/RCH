@@ -96,9 +96,10 @@ export interface AppState extends ProcurementSlice, OpsSlice {
   removeProduct: (loc: LocKey, it: string) => Promise<void>;
   addProduct: (loc: LocKey, it: string) => Promise<void>;
   /** The central store's ledger over a window, from the server's own sum of `stock_moves`.
-   *  Answers `[]` and toasts when the read fails: a report that cannot load says so and leaves
-   *  the screen usable, rather than throwing inside a render. */
-  readStockLedger: (loc: StockLoc, days: number) => Promise<StockLedgerRow[]>;
+   *  Answers `null` and toasts when the read fails — never `[]`, which is a real answer meaning
+   *  the location carries no line — so the report can say which of the two happened rather than
+   *  reporting an outage as an empty store. It leaves the screen usable either way. */
+  readStockLedger: (loc: StockLoc, days: number) => Promise<StockLedgerRow[] | null>;
   /** What one payer has put on credit this calendar month, hospital-wide — the number the
    *  server will refuse on. `null` when the read fails, so the till can say "checking…" rather
    *  than print a zero, which would read as "no credit taken". */
@@ -464,7 +465,7 @@ export const useApp = create<AppState>((set, get) => ({
    */
   readStockLedger: async (loc, days) => {
     try { return (await call(routes.stockLedger, { query: { loc, days } })).rows; }
-    catch (e) { get().notify(e instanceof ApiError ? e.message : "Could not read the stock ledger."); return []; }
+    catch (e) { get().notify(e instanceof ApiError ? e.message : "Could not read the stock ledger."); return null; }
   },
   readCredit: async (payer) => {
     // Silent on failure on purpose: this runs on every payer selection at a busy till, and a
@@ -481,7 +482,7 @@ export const useApp = create<AppState>((set, get) => ({
   },
   cycleTheme: () => get().setTheme(nextTheme(get().theme)),
 
-  ...createProcurementSlice(set as (p: Partial<AppState>) => void, get),
+  ...createProcurementSlice(get),
   // The ops slice writes nothing directly any more — every action of it posts and refetches —
   // so it takes only the reader.
   ...createOpsSlice(get),

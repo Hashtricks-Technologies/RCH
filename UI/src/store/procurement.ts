@@ -4,7 +4,6 @@ import { refetch } from "../api/refetch";
 import type { ReceiptDoc, ReceiptLine, Vendor } from "../types";
 import type { AppState } from "./index";
 
-type Set_ = (p: Partial<AppState>) => void;
 type Get = () => AppState;
 
 export interface ProcurementSlice {
@@ -39,9 +38,9 @@ const fail = (get: Get, e: unknown, what: string): false => {
   return false;
 };
 
-/** `_set` is unused: nothing in this slice owns state any more, and `store/index.ts` spreads
- *  every slice factory with the same `(set, get)` pair. */
-export const createProcurementSlice = (_set: Set_, get: Get): ProcurementSlice => ({
+/** Buying writes nothing into the store directly — every action posts and refetches — so this
+ *  factory needs only the reader, the same shape `createOpsSlice` takes. */
+export const createProcurementSlice = (get: Get): ProcurementSlice => ({
   addVendor: async (v) => {
     try {
       const r = await call(routes.addVendor, {

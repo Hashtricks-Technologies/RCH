@@ -981,12 +981,16 @@ describe("a refusal keeps what the operator typed", () => {
    * Drain the queue until `ok()` holds, rather than for exactly one turn. A write's read-back
    * sits two awaits behind the click — the POST, then the GETs `refetch` fans out — so a single
    * `setTimeout(0)` was one turn short whenever the machine was loaded, which is what made the
-   * make-tile cases flake. Twenty turns is a ceiling, not a wait: it exits the moment it can.
+   * make-tile and requisition cases flake. The ceiling is a ceiling, not a wait: it exits the
+   * moment it can, and 200 turns of an empty macrotask queue costs nothing when it does. Past
+   * it, it gives up **loudly** — a silent fall-through leaves the assertion below to fail with
+   * a message about the wrong thing, which is how a flake gets read as a regression.
    */
-  const settleUntil = async (ok: () => boolean) => {
-    for (let i = 0; i < 20 && !ok(); i += 1) {
+  const settleUntil = async (ok: () => boolean, tries = 200) => {
+    for (let i = 0; i < tries && !ok(); i += 1) {
       await act(async () => { await new Promise((r) => { setTimeout(r, 0); }); });
     }
+    if (!ok()) throw new Error(`the action never settled: the condition was still false after ${tries} turns`);
   };
 
   it("leaves the raise card open, with its note, when the server refuses", async () => {
@@ -1470,8 +1474,10 @@ describe("what the browser no longer knows on its own", () => {
     serve({ "GET /api/v1/reports/stock-ledger": () => json({ loc: "store", from: "2026-08-05T00:00:00.000Z", to: "2026-09-04T00:00:00.000Z", rows }) });
     expect(await S().readStockLedger("store", 30)).toEqual(rows);
 
+    // `null`, never `[]`: an empty ledger is a real answer and the report says something
+    // different about it than it says about a read that did not land.
     fetchMock.mockRejectedValue(new TypeError("Failed to fetch"));
-    expect(await S().readStockLedger("store", 30)).toEqual([]);
+    expect(await S().readStockLedger("store", 30)).toBeNull();
     expect(S().toast).toBe("Could not read the stock ledger.");
   });
 });

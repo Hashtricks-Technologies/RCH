@@ -1,4 +1,5 @@
 import type { z } from "zod";
+import { StockLocSchema } from "@rch/contract";
 import type { SnapshotSchema, StockResponseSchema } from "@rch/contract";
 import { hydrateItems, hydrateMaster, hydrateRoster } from "../data/master";
 import { fromWireBestBefore, fromWireDate, fromWireTime } from "../lib/fmt";
@@ -13,8 +14,10 @@ const hist = (h: { s: string; who: string; t: string }[]) => h.map((x) => ({ ...
 const billed = (b: Bill[]) => b.map((x) => ({ ...x, t: t(x.t) }));
 
 /** Quarantine is here and nowhere else that an operator acts: stock is *reported* for the
- *  rejected-goods shelf, so the store keeper can see what was turned away at a goods receipt. */
-const ALL_LOC: StockLoc[] = ["store", "kitchen", "rest", "coffee", "kiosk", "quarantine"];
+ *  rejected-goods shelf, so the store keeper can see what was turned away at a goods receipt.
+ *  Read off the schema rather than hand-listed, so a sixth reported location cannot be added to
+ *  the contract and quietly missed here — `store/index.ts`'s `EMPTY_STOCK` reads the same list. */
+const ALL_LOC: StockLoc[] = [...StockLocSchema.options];
 /**
  * A counter operator's snapshot is scoped to its own location, so the server
  * omits the rest. The store's map is exhaustive — an absent location is empty,

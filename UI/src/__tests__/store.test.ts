@@ -4,7 +4,7 @@ import {
   availOf, canCancelTicket, canDispatch, canHandOver, canIssueTicket, canMoveOrder,
   canReceiveTicket, hasLeft, isReqOpen, isTicketOpen, priceOf,
 } from "../lib/selectors";
-import { REPORTS } from "../roles/store/Reports";
+import { REPORTS, type LedgerState } from "../roles/store/Reports";
 import type { TktStatus } from "../types";
 import { resetStore, S, as } from "./fixture";
 
@@ -132,7 +132,7 @@ describe("what a button may offer is what the server accepts", () => {
  * of these numbers.
  */
 describe("the store's reports read a withdrawn ticket as withdrawn", () => {
-  const report = (k: string) => REPORTS.find((r) => r.k === k)!.build(S(), null);
+  const report = (k: string) => REPORTS.find((r) => r.k === k)!.build(S(), { st: "loading" });
   const cell = (k: string, row: string, col: string) => {
     const rep = report(k);
     return rep.rows.find((r) => r[0] === row)![rep.cols.findIndex((c) => c.h === col)];
@@ -146,10 +146,11 @@ describe("the store's reports read a withdrawn ticket as withdrawn", () => {
   // where it closes" and by the `at < from` boundary case beside it; the store call that reads
   // it is `readStockLedger` in writes.test.ts. What is left here is that the report shows what
   // the server answered with and nothing else.
+  const ledgerRep = (ledger: LedgerState) => REPORTS.find((r) => r.k === "ledger")!.build(S(), ledger);
+  const ONE_ROW: LedgerState = { st: "rows", rows: [{ it: "cup", opening: 2400, recd: 0, issued: 0, closing: 2400 }] };
+
   it("prints the server's ledger and adds no arithmetic of its own", () => {
-    const rep = REPORTS.find((r) => r.k === "ledger")!.build(S(), [
-      { it: "cup", opening: 2400, recd: 0, issued: 0, closing: 2400 },
-    ]);
+    const rep = ledgerRep(ONE_ROW);
     const at = (h: string) => rep.cols.findIndex((c) => c.h === h);
     expect(rep.rows).toHaveLength(1);
     expect(rep.rows[0][at("Opening")]).toBe("2400");
@@ -157,16 +158,20 @@ describe("the store's reports read a withdrawn ticket as withdrawn", () => {
     expect(rep.rows[0][at("Closing")]).toBe("2400");
     // A ticket the browser happens to be holding cannot move any of those numbers now.
     setTicketStatus("Collected");
-    const again = REPORTS.find((r) => r.k === "ledger")!.build(S(), [
-      { it: "cup", opening: 2400, recd: 0, issued: 0, closing: 2400 },
-    ]);
-    expect(again.rows).toEqual(rep.rows);
+    expect(ledgerRep(ONE_ROW).rows).toEqual(rep.rows);
   });
 
   it("says it is reading rather than printing an empty ledger while the read is in flight", () => {
-    const rep = REPORTS.find((r) => r.k === "ledger")!.build(S(), null);
+    const rep = ledgerRep({ st: "loading" });
     expect(rep.rows).toHaveLength(0);
     expect(rep.empty.title).toBe("Reading the ledger");
+  });
+
+  it("tells an outage apart from a store that carries nothing", () => {
+    // Both draw an empty table; only one of them means the shelves are bare, and saying the
+    // wrong one sends a store keeper looking for stock that is on the shelf.
+    expect(ledgerRep({ st: "failed" }).empty.title).toBe("The ledger could not be read");
+    expect(ledgerRep({ st: "rows", rows: [] }).empty.title).toBe("The central store carries no lines");
   });
 
   it("keeps a withdrawn ticket out of what the velocity report calls issued", () => {

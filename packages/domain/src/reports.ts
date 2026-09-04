@@ -19,11 +19,3 @@ export const ledgerRow = (it: string, before: number, inWindow: readonly number[
   const opening = round3(before);
   return { it, opening, recd, issued, closing: round3(opening + recd - issued) };
 };
-
-/** The column totals a report foot prints. */
-export const ledgerTotals = (rows: readonly LedgerRow[]): Omit<LedgerRow, "it"> => ({
-  opening: round3(rows.reduce((t, r) => t + r.opening, 0)),
-  recd: round3(rows.reduce((t, r) => t + r.recd, 0)),
-  issued: round3(rows.reduce((t, r) => t + r.issued, 0)),
-  closing: round3(rows.reduce((t, r) => t + r.closing, 0)),
-});

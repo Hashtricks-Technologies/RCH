@@ -129,9 +129,8 @@ export default function Tickets() {
         <TableFoot count={rows.length}
           extra={<>{L.n} · {L.c} · {toCollect} to collect · {inTransit} in transit</>} />
       </Card>
-      {sent.length > 0 && (
-        <div className="mtop">
-          <Card
+      <div className="mtop">
+        <Card
             title="Sent from this counter"
             sub={`Stock ${L.n} granted to another shop · the six digits are on their screen, not yours`}
             flush
@@ -164,12 +163,14 @@ export default function Tickets() {
                   ],
                 };
               })}
-              empty={{ title: "Nothing sent from this counter", sub: "" }}
-            />
-            <TableFoot count={sent.length} extra={<>{uncollected} still at this counter&apos;s window</>} />
-          </Card>
-        </div>
-      )}
+            empty={{
+              title: "Nothing sent from this counter",
+              sub: `Grant another shop's ask on Stock Requests and the ticket they collect against appears here — ${L.n} can withdraw it until they do.`,
+            }}
+          />
+          <TableFoot count={sent.length} extra={<>{uncollected} still at this counter&apos;s window</>} />
+        </Card>
+      </div>
 
       <p className="mini mtop">
         <b>Issued</b> means the store keeper has generated the ticket and reserved the stock. <b>Collected</b> means it

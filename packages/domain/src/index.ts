@@ -17,4 +17,4 @@ export { foldClaims, releaseClaim, shortfallClaims, type ClaimSrc } from "./clai
 export { checkReceiptLine, receiptStatus, type ReceiptCheckInput, type ReceiptCheckLine } from "./receipt.js";
 export { contractInWindow, etaFrom, needsApproval, poValue, rateFor } from "./purchasing.js";
 export { SUPPORT_TRANSITIONS, mayUserSet, statusAfterReply, mayRate, mayReply } from "./support.js";
-export { ledgerRow, ledgerTotals, type LedgerRow } from "./reports.js";
+export { ledgerRow, type LedgerRow } from "./reports.js";
