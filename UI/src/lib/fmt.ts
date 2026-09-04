@@ -1,5 +1,7 @@
-import { bestBeforeText } from "@rch/domain";
+import { bestBeforeText, dmy, money as inr, money0 as inr0, unitTotal as byUnit } from "@rch/domain";
 import { IT } from "../data/master";
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 export const U = (it: string) => IT[it]?.u ?? "nos";
 export const fq = (v: number, it: string) => {
@@ -9,9 +11,8 @@ export const fq = (v: number, it: string) => {
   if (U(it) === "nos") return Number.isInteger(n) ? String(n) : n.toFixed(3);
   return n.toFixed(3);
 };
-export const money = (v: number) =>
-  "₹" + (v || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-export const money0 = (v: number) => "₹" + Math.round(v || 0).toLocaleString("en-IN");
+export const money = inr;
+export const money0 = inr0;
 export const lakh = (v: number) => (v >= 100000 ? "₹" + (v / 100000).toFixed(2) + "L" : money0(v));
 export const now = () =>
   new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: false });
@@ -25,13 +26,22 @@ export const fromWireTime = (isoStr: string): string =>
     ? isoStr
     : new Date(isoStr).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: TZ });
 
-/** "2026-08-31" -> "31-Aug-2026"; anything else passes through. */
-export const fromWireDate = (d: string): string => {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(d);
-  if (!m) return d;
-  const dt = new Date(`${d}T00:00:00+05:30`);
-  return `${m[3]}-${dt.toLocaleDateString("en-IN", { month: "short", timeZone: TZ })}-${m[1]}`;
+/** "2026-08-31" -> "31-Aug-2026". The wording lives in `@rch/domain` because a purchase order's
+ *  expected date is printed in the server's toast as well as in this table. */
+export const fromWireDate = dmy;
+
+/** "31-Aug-2026" -> "2026-08-31", for an <input type="date">, which speaks nothing else.
+ *  Anything already in wire form, or unparseable, comes back unchanged so a blank field
+ *  stays blank rather than becoming "NaN-NaN-NaN". */
+export const toInputDate = (display: string): string => {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(display)) return display;
+  const m = /^(\d{2})-([A-Za-z]{3})-(\d{4})$/.exec(display.trim());
+  if (!m) return "";
+  const i = MONTHS.findIndex((x) => x.toLowerCase() === m[2].toLowerCase());
+  return i < 0 ? "" : `${m[3]}-${String(i + 1).padStart(2, "0")}-${m[1]}`;
 };
+/** The way back, for the value a date input hands to a store action. */
+export const fromInputDate = (iso: string): string => fromWireDate(iso);
 
 /**
  * A best-before the server has already worked out, in the kitchen's own words (H9). The day
@@ -42,13 +52,7 @@ export const fromWireDate = (d: string): string => {
 export const fromWireBestBefore = (isoStr: string): string => bestBeforeText(new Date(isoStr));
 
 /**
- * Quantities in different units cannot be added. Group by unit and show each,
- * so a request never reads "510 units" for 10 L of milk and 500 cups (M4).
+ * Quantities in different units cannot be added (M4). The rule is shared; only the item
+ * master's unit lookup is the browser's.
  */
-export function unitTotal(lines: { it: string; qty: number }[]): string {
-  const byUnit = new Map<string, number>();
-  lines.forEach((l) => byUnit.set(U(l.it), (byUnit.get(U(l.it)) ?? 0) + l.qty));
-  return [...byUnit.entries()]
-    .map(([u, v]) => `${u === "nos" ? String(Math.round(v)) : v.toFixed(3)} ${u}`)
-    .join(" · ");
-}
+export const unitTotal = (lines: { it: string; qty: number }[]): string => byUnit(lines, U);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { PROD_ORDER_TRANSITIONS, REQUEST_TRANSITIONS, SHOP_ASK_TRANSITIONS, TICKET_TRANSITIONS, canTransition } from "./transitions";
+import { PO_TRANSITIONS, PROD_ORDER_TRANSITIONS, REQUEST_TRANSITIONS, REQUISITION_TRANSITIONS, SHOP_ASK_TRANSITIONS, TICKET_TRANSITIONS, canTransition } from "./transitions";
 
 describe("request transitions", () => {
   it("walks the chain the outlet actually walks", () => {
@@ -86,5 +86,44 @@ describe("a ticket that was never collected", () => {
     expect(canTransition(REQUEST_TRANSITIONS, "Ticket issued", "Manager approved")).toBe(false);
     expect(canTransition(REQUEST_TRANSITIONS, "Ticket issued", "Collected")).toBe(true);
     expect(REQUEST_TRANSITIONS["Ticket issued"]).toEqual(["Collected"]);
+  });
+});
+
+describe("a requisition is decided once", () => {
+  it("goes from Sent to any of the three decisions", () => {
+    expect(canTransition(REQUISITION_TRANSITIONS, "Sent", "Approved")).toBe(true);
+    expect(canTransition(REQUISITION_TRANSITIONS, "Sent", "Partially approved")).toBe(true);
+    expect(canTransition(REQUISITION_TRANSITIONS, "Sent", "Declined")).toBe(true);
+  });
+  it("is finished the moment it is decided — what happens next happens on the orders", () => {
+    for (const st of ["Approved", "Partially approved", "Declined"] as const) {
+      expect(REQUISITION_TRANSITIONS[st]).toEqual([]);
+    }
+  });
+});
+
+describe("a purchase order's life", () => {
+  it("goes out or is dropped while it is a draft", () => {
+    expect(PO_TRANSITIONS.Draft).toEqual(["Ordered", "Cancelled"]);
+  });
+  it("takes goods once it is ordered, in one delivery or several", () => {
+    expect(canTransition(PO_TRANSITIONS, "Ordered", "Received")).toBe(true);
+    expect(canTransition(PO_TRANSITIONS, "Ordered", "Partially received")).toBe(true);
+  });
+  it("re-enters Partially received on a second instalment that still does not finish it", () => {
+    expect(canTransition(PO_TRANSITIONS, "Partially received", "Partially received")).toBe(true);
+  });
+  it("cannot be cancelled once anything has arrived", () => {
+    expect(canTransition(PO_TRANSITIONS, "Partially received", "Cancelled")).toBe(false);
+    expect(canTransition(PO_TRANSITIONS, "Received", "Cancelled")).toBe(false);
+  });
+  it("is finished when it is received or cancelled", () => {
+    expect(PO_TRANSITIONS.Received).toEqual([]);
+    expect(PO_TRANSITIONS.Cancelled).toEqual([]);
+  });
+  it("never goes back to a draft", () => {
+    for (const st of ["Ordered", "Partially received", "Received", "Cancelled"] as const) {
+      expect(canTransition(PO_TRANSITIONS, st, "Draft")).toBe(false);
+    }
   });
 });

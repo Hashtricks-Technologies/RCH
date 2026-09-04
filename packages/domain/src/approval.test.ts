@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { approvedStatus, planApproval } from "./approval";
+import { approvedStatus, planApproval, planPrqApproval } from "./approval";
 
 const free = (n: number) => () => n;
 
@@ -58,5 +58,31 @@ describe("approvedStatus", () => {
   it("is what planApproval itself decides, so a cancelled ticket puts a request back where it was", () => {
     const plan = planApproval([{ it: "milk", qty: 20 }], [20], () => 12);
     expect(plan.st).toBe(approvedStatus(plan.lines));
+  });
+});
+
+describe("planPrqApproval", () => {
+  const lines = [{ it: "milk", qty: 60 }, { it: "butter", qty: 6 }];
+  it("never approves more than the store keeper asked for", () => {
+    const p = planPrqApproval(lines, [999, 6]);
+    expect(p.lines.map((l) => l.appr)).toEqual([60, 6]);
+    expect(p.st).toBe("Approved");
+  });
+  it("records the shortfall on a trimmed line", () => {
+    const p = planPrqApproval(lines, [40, 6]);
+    expect(p.lines[0]).toEqual({ it: "milk", qty: 60, appr: 40, short: 20 });
+    expect(p.st).toBe("Partially approved");
+  });
+  it("is a decline when nothing is approved, and every line's shortfall is the whole ask", () => {
+    const p = planPrqApproval(lines, [0, 0]);
+    expect(p.st).toBe("Declined");
+    expect(p.lines.map((l) => l.short)).toEqual([60, 6]);
+  });
+  it("reads a missing or negative entry as nothing approved", () => {
+    expect(planPrqApproval(lines, [Number.NaN, -5]).st).toBe("Declined");
+  });
+  it("does not consult free-to-promise — the store's shelf has nothing to do with what a vendor can supply", () => {
+    // planApproval takes a freeFor callback; this one deliberately does not have one.
+    expect(planPrqApproval.length).toBe(2);
   });
 });

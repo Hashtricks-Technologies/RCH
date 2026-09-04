@@ -1,4 +1,4 @@
-import type { PordStatus, ReqStatus, ShopAskStatus, TktStatus } from "@rch/contract";
+import type { PoStatus, PordStatus, PrqStatus, ReqStatus, ShopAskStatus, TktStatus } from "@rch/contract";
 
 /**
  * Spec §5.1: "Status transitions are data, shared by both sides." One table, two consumers —
@@ -58,6 +58,35 @@ export const SHOP_ASK_TRANSITIONS: TransitionTable<ShopAskStatus> = {
   Asked: ["Sent", "Declined"],
   Sent: [],
   Declined: [],
+};
+
+/** A requisition is decided once, and everything after the decision happens on the purchase
+ *  orders that claim against it — `ordered_qty` moves, the status does not. */
+export const REQUISITION_TRANSITIONS: TransitionTable<PrqStatus> = {
+  Sent: ["Approved", "Partially approved", "Declined"],
+  Approved: [],
+  "Partially approved": [],
+  Declined: [],
+};
+
+/**
+ * A purchase order's life. Two rows read oddly and are deliberate:
+ *
+ * `Partially received -> Partially received` is a real edge — a second instalment that still
+ * does not complete the order re-enters the status it was already in, and the status is computed
+ * from the totals rather than from where it started.
+ *
+ * `Ordered -> Cancelled` is listed, but an order with anything received is refused before the
+ * table is ever consulted, with its own sentence telling the buyer to close it short instead.
+ * `Partially received` has no `Cancelled` at all: the claim on goods that arrived cannot be
+ * given back. An edge reachable through one door is guarded at that door.
+ */
+export const PO_TRANSITIONS: TransitionTable<PoStatus> = {
+  Draft: ["Ordered", "Cancelled"],
+  Ordered: ["Partially received", "Received", "Cancelled"],
+  "Partially received": ["Partially received", "Received"],
+  Received: [],
+  Cancelled: [],
 };
 
 export const canTransition = <S extends string>(table: TransitionTable<S>, from: S, to: S): boolean =>
