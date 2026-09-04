@@ -1,4 +1,5 @@
 import { asc, desc, eq, gte, inArray, sql } from "drizzle-orm";
+import { OUTLETS } from "@rch/contract";
 import type { Batch, Bill, Grn, HistEntry, LocKey, ProdOrder, ProductRequest, PurchaseOrder, RateContract, Requisition, ShopAsk, StockRequest, SupportTicket, Ticket, Vendor } from "@rch/contract";
 import type { Db } from "../../../db/client.js";
 import * as s from "../../../db/schema/index.js";
@@ -40,7 +41,7 @@ export async function readRequests(db: Db, pre?: UserNames): Promise<StockReques
 export async function readTickets(db: Db): Promise<Ticket[]> {
   const [heads, lines] = await Promise.all([db.select().from(s.tickets).orderBy(asc(s.tickets.issuedAt), asc(s.tickets.id)), db.select().from(s.ticketLines).orderBy(asc(s.ticketLines.lineNo))]);
   const byTkt = groupBy(lines, (l) => l.ticketId);
-  return heads.map((t) => ({ id: t.id, req: t.refId, from: t.fromLoc as LocKey, to: t.toLoc as LocKey, lines: (byTkt.get(t.id) ?? []).map((l) => ({ it: l.itemKey, qty: l.qty })), st: t.status, otp: t.otp }));
+  return heads.map((t) => ({ id: t.id, req: t.refId, from: t.fromLoc as LocKey, to: t.toLoc as LocKey, lines: (byTkt.get(t.id) ?? []).map((l) => ({ it: l.itemKey, qty: l.qty })), st: t.status, otp: t.otp, hist: [] })); // Task 4 fills this from document_history
 }
 
 export async function readRequisitions(db: Db, pre?: UserNames): Promise<Requisition[]> {
@@ -140,7 +141,6 @@ export async function readShopAsks(db: Db, pre?: UserNames): Promise<ShopAsk[]> 
   return rows.map((a) => strip({ id: a.id, from: a.fromLoc as LocKey, to: a.toLoc as LocKey, it: a.itemKey, qty: a.qty, st: a.status, by: names.get(a.byUser)?.name ?? a.byUser, at: iso(a.at), note: a.note, grant: a.grantedQty ?? undefined, ticket: a.ticketId ?? undefined, reason: a.reason ?? undefined }));
 }
 
-const OUTLET_COLS = ["rest", "coffee", "kiosk"] as const;
 /** Day rows (oldest first, today last) × outlet columns, in the hospital's calendar. */
 export async function readSales(db: Db, days: number): Promise<{ sales: number[][]; dayLabels: string[] }> {
   const rows = await db.select({
@@ -148,6 +148,6 @@ export async function readSales(db: Db, days: number): Promise<{ sales: number[]
   }).from(s.bills).where(gte(s.bills.at, new Date(Date.now() - days * 86400_000))).groupBy(sql`1`, s.bills.loc);
   const fmt = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit" });
   const dayKeys = Array.from({ length: days }, (_, i) => fmt.format(new Date(Date.now() - (days - 1 - i) * 86400_000)));
-  const sales = dayKeys.map((d) => OUTLET_COLS.map((loc) => Number(rows.find((r) => r.day === d && r.loc === loc)?.total ?? 0)));
+  const sales = dayKeys.map((d) => OUTLETS.map((loc) => Number(rows.find((r) => r.day === d && r.loc === loc)?.total ?? 0)));
   return { sales, dayLabels: dayKeys.map((d) => d.slice(8)) };
 }

@@ -100,4 +100,26 @@ describe("given", () => {
     const [row] = await t.db.select().from(s.productRequests).where(eq(s.productRequests.id, id));
     expect(row).toMatchObject({ name: "Turmeric latte mix", byUser: "u2", forLoc: "coffee", status: "Requested" });
   });
+
+  it("makes a support ticket with a first message, above the fixtures' band", async () => {
+    const id = await given.supportTicket(t.db, { by: "u1", subject: "Cash reads zero", messages: [{ from: "user", body: "Since 09:00." }] });
+    expect(id).toMatch(/^SUP-00\d+$/);
+    // The fixtures stop at SUP-0043 and the sequence starts at 44; `nextId` pads to four, so the
+    // builder's band is SUP-000101+ — above both, and a builder-made ticket can collide with
+    // neither a seeded one nor an allocated one.
+    expect(Number(id.slice(-3))).toBeGreaterThan(100);
+
+    const rows = await t.db.select().from(s.supportTickets).where(eq(s.supportTickets.id, id));
+    expect(rows[0]?.status).toBe("Open");
+    expect(rows[0]?.byUser).toBe("u1");
+    const msgs = await t.db.select().from(s.supportMessages).where(eq(s.supportMessages.ticketId, id));
+    expect(msgs).toHaveLength(1);
+    expect(msgs[0]?.from).toBe("user");
+  });
+
+  it("draws a second ticket without colliding with the first", async () => {
+    const a = await given.supportTicket(t.db, { by: "u1", subject: "One" });
+    const b = await given.supportTicket(t.db, { by: "u1", subject: "Two" });
+    expect(a).not.toBe(b);
+  });
 });

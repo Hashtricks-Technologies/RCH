@@ -1,8 +1,6 @@
+import { OUTLETS } from "@rch/contract";
 import type { Batch, Bill, LocKey, ProdOrder, ProductRequest, Role, ShopAsk, StockRequest, Ticket } from "@rch/contract";
 import type { Snapshot } from "./service.js";
-
-/** The columns of `sales`, in order — mirrors OUTLET_COLS in readers/documents.ts. */
-const OUTLET_COLS: readonly string[] = ["rest", "coffee", "kiosk"];
 
 /** Who is asking. The snapshot and the two standalone reads all cut by the same two fields. */
 export type Who = { role: Role; loc: LocKey };
@@ -56,7 +54,7 @@ export function scope(s: Snapshot, who: Who & { sub: string }): Snapshot {
   // `sales` is one column per outlet, so handing it over whole tells a counter operator the
   // whole hospital's takings. Keep the shape (a row per day, matching dayLabels, which stay)
   // and keep only their own column — none at all if they are not on an outlet.
-  const col = OUTLET_COLS.indexOf(L);
+  const col = OUTLETS.indexOf(L);
   return {
     ...s,
     ...scopeStock(s, who),

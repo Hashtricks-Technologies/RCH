@@ -2,7 +2,7 @@
 // document instead of asking for one here is rejected in review — the defaults belong in one
 // place, so a case says only what it is about.
 import { eq } from "drizzle-orm";
-import type { LocKey, PordStatus, PoStatus, PrqStatus, ProductReqStatus, ReqStatus, ShopAskStatus, TktStatus } from "@rch/contract";
+import type { LocKey, PordStatus, PoStatus, PrqStatus, ProductReqStatus, ReqStatus, Role, ShopAskStatus, TicketPriority, TicketStatus, TicketTopic, TktStatus } from "@rch/contract";
 import { makeOtp, round3 } from "@rch/domain";
 import type { Db } from "../db/client.js";
 import * as s from "../db/schema/index.js";
@@ -15,7 +15,7 @@ import type { TicketRefType } from "../lib/tickets.js";
  *  collided often enough to matter. Each test file is its own module instance and its own
  *  schema, so the counters need not be unique across files. Bands sit above the fixtures and
  *  above each sequence's start; padStart keeps the printed width when a band runs past 999. */
-const counters = { req: 0, tkt: 0, ask: 0, bill: 0, pord: 0, prq: 0, po: 0, vendor: 0, contract: 0, npr: 0 };
+const counters = { req: 0, tkt: 0, ask: 0, bill: 0, pord: 0, prq: 0, po: 0, vendor: 0, contract: 0, npr: 0, sup: 0 };
 const nextId = (prefix: string, base: number, family: keyof typeof counters): string =>
   `${prefix}${String(base + ++counters[family]).padStart(4, "0")}`;
 
@@ -185,6 +185,38 @@ export const given = {
     await db.insert(s.productRequests).values({
       id, name: p.name, why: p.why ?? "", forLoc: p.forLoc ?? "coffee",
       byUser: p.by ?? "u2", status: p.st ?? "Requested",
+    });
+    return id;
+  },
+
+  /** A support ticket, with as many messages as the case needs. `nextId` pads to four, so the
+   *  ids are `SUP-000101`+ — above the fixtures' `SUP-0043` and above the sequence's start at 44
+   *  (`formatId("support", n)` is `SUP-00${n}`, unpadded), so a builder-made ticket collides with
+   *  neither. `by` is a user id, not a name: that is what the list is scoped on. */
+  async supportTicket(db: Db, p: {
+    id?: string; by?: string; topic?: TicketTopic; subject?: string; priority?: TicketPriority;
+    st?: TicketStatus; loc?: LocKey; role?: Role; screen?: string; rating?: 1 | 2 | 3 | 4 | 5;
+    messages?: { from: "user" | "support"; who?: string; body: string }[];
+  }): Promise<string> {
+    const id = p.id ?? nextId("SUP-00", 100, "sup");
+    const by = p.by ?? "u1";
+    await db.transaction(async (tx) => {
+      const [author] = await tx.select({ name: s.users.name, role: s.users.role, loc: s.users.loc }).from(s.users).where(eq(s.users.id, by));
+      await tx.insert(s.supportTickets).values({
+        id, topic: p.topic ?? "Something else", subject: p.subject ?? "Something is not right",
+        priority: p.priority ?? "Normal", status: p.st ?? "Open", byUser: by,
+        role: p.role ?? author?.role ?? "counter", loc: p.loc ?? author?.loc ?? "coffee",
+        screen: p.screen ?? "Dashboard", rating: p.rating ?? null,
+      });
+      const msgs = p.messages ?? [];
+      if (msgs.length) {
+        await tx.insert(s.supportMessages).values(msgs.map((m, i) => ({
+          // Ticket-qualified, exactly as the seed writes them: fixture message ids repeat across
+          // tickets and the reader strips the prefix back off.
+          id: `${id}/m${i + 1}`, ticketId: id, from: m.from,
+          who: m.who ?? (m.from === "support" ? "Portal Support" : author?.name ?? by), body: m.body,
+        })));
+      }
     });
     return id;
   },

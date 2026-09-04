@@ -54,7 +54,7 @@ export async function writeTicket(tx: Tx, draft: TicketDraft, no: TicketNumber):
   });
   await tx.insert(ticketLines).values(lines.map((l, lineNo) => ({ ticketId: id, lineNo, itemKey: l.it, qty: l.qty })));
   await reserve(tx, lines.map((l) => ({ loc: draft.from, it: l.it, qty: l.qty, ticketId: id })));
-  return { id, req: draft.refId, from: draft.from as LocKey, to: draft.to as LocKey, lines, st: "Issued", otp };
+  return { id, req: draft.refId, from: draft.from as LocKey, to: draft.to as LocKey, lines, st: "Issued", otp, hist: [] }; // Task 4 fills this from document_history
 }
 
 /**
@@ -86,5 +86,6 @@ export async function readTicket(tx: Tx, id: string): Promise<Ticket | undefined
   return {
     id: head.id, req: head.refId, from: head.fromLoc as LocKey, to: head.toLoc as LocKey,
     lines: lines.map((l) => ({ it: l.itemKey, qty: l.qty })), st: head.status as TktStatus, otp: head.otp,
+    hist: [], // Task 4 fills this from document_history
   };
 }

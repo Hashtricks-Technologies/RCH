@@ -133,7 +133,7 @@ describe("the document reads the movement chain refetches", () => {
   it("GET /tickets gives a counter the tickets that touch their counter, either end", async () => {
     const mine = await app.inject({ method: "GET", url: "/api/v1/tickets", headers: await authHeaders(app, "u1") });
     expect(mine.statusCode).toBe(200);
-    expect(mine.json()).toEqual([{ id: "TKT-0440", req: "REQ-2026-0909", from: "store", to: "coffee", lines: [{ it: "cup", qty: 500 }], st: "Issued", otp: "418327" }]);
+    expect(mine.json()).toEqual([{ id: "TKT-0440", req: "REQ-2026-0909", from: "store", to: "coffee", lines: [{ it: "cup", qty: 500 }], st: "Issued", otp: "418327", hist: [] }]);
 
     const other = await app.inject({ method: "GET", url: "/api/v1/tickets", headers: await authHeaders(app, "u6") });
     expect(other.json()).toEqual([]);      // u6 is at kiosk; TKT-0440 goes to coffee
