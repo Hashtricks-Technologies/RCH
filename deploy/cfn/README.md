@@ -65,6 +65,8 @@ aws cloudformation describe-change-set \
 aws cloudformation execute-change-set \
   --stack-name rch-dev --change-set-name rch-dev-import --region ap-south-1
 
+# An IMPORT change set may not create anything: every resource the template declares must be in
+# the import list (the CAA record included), so create any that do not exist yet by hand first.
 # Confirm drift-free: run the same create-change-set again (any change-set-type) with the
 # same template and parameters. An empty change set (or one containing only the DB instance's
 # `env` tag, see below) is the pass condition — anything else means a property in the template

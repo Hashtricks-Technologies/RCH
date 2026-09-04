@@ -2,46 +2,73 @@
   {
     "ResourceType": "AWS::RDS::DBSubnetGroup",
     "LogicalResourceId": "DbSubnetGroup",
-    "ResourceIdentifier": { "DBSubnetGroupName": "rch" }
+    "ResourceIdentifier": {
+      "DBSubnetGroupName": "rch"
+    }
   },
   {
     "ResourceType": "AWS::EC2::SecurityGroup",
     "LogicalResourceId": "DbSecurityGroup",
-    "ResourceIdentifier": { "Id": "sg-0aa98e30e6193804c" }
+    "ResourceIdentifier": {
+      "Id": "sg-0aa98e30e6193804c"
+    }
   },
   {
     "ResourceType": "AWS::RDS::DBInstance",
     "LogicalResourceId": "Database",
-    "ResourceIdentifier": { "DBInstanceIdentifier": "rch-dev" }
+    "ResourceIdentifier": {
+      "DBInstanceIdentifier": "rch-dev"
+    }
   },
   {
     "ResourceType": "AWS::ECR::Repository",
     "LogicalResourceId": "EcrApi",
-    "ResourceIdentifier": { "RepositoryName": "rch-api" }
+    "ResourceIdentifier": {
+      "RepositoryName": "rch-api"
+    }
   },
   {
     "ResourceType": "AWS::ECR::Repository",
     "LogicalResourceId": "EcrUi",
-    "ResourceIdentifier": { "RepositoryName": "rch-ui" }
+    "ResourceIdentifier": {
+      "RepositoryName": "rch-ui"
+    }
   },
   {
     "ResourceType": "AWS::IAM::OIDCProvider",
     "LogicalResourceId": "GithubOidcProvider",
-    "ResourceIdentifier": { "Arn": "arn:aws:iam::830283280199:oidc-provider/token.actions.githubusercontent.com" }
+    "ResourceIdentifier": {
+      "Arn": "arn:aws:iam::830283280199:oidc-provider/token.actions.githubusercontent.com"
+    }
   },
   {
     "ResourceType": "AWS::IAM::Role",
     "LogicalResourceId": "GithubDeployRole",
-    "ResourceIdentifier": { "RoleName": "rch-github-deploy" }
+    "ResourceIdentifier": {
+      "RoleName": "rch-github-deploy"
+    }
   },
   {
     "ResourceType": "AWS::SecretsManager::Secret",
     "LogicalResourceId": "AppSecret",
-    "ResourceIdentifier": { "Id": "arn:aws:secretsmanager:ap-south-1:830283280199:secret:rch/dev-2e0jKs" }
+    "ResourceIdentifier": {
+      "Id": "arn:aws:secretsmanager:ap-south-1:830283280199:secret:rch/dev-2e0jKs"
+    }
   },
   {
     "ResourceType": "AWS::CertificateManager::Certificate",
     "LogicalResourceId": "Certificate",
-    "ResourceIdentifier": { "CertificateArn": "arn:aws:acm:ap-south-1:830283280199:certificate/68a3b4db-2bfe-449a-8b79-8201a30bde0c" }
+    "ResourceIdentifier": {
+      "CertificateArn": "arn:aws:acm:ap-south-1:830283280199:certificate/68a3b4db-2bfe-449a-8b79-8201a30bde0c"
+    }
+  },
+  {
+    "ResourceType": "AWS::Route53::RecordSet",
+    "LogicalResourceId": "CaaRecord",
+    "ResourceIdentifier": {
+      "HostedZoneId": "Z066296313TA69I4LDOOI",
+      "Name": "rch.hashtrickstechnologies.com.",
+      "Type": "CAA"
+    }
   }
 ]
