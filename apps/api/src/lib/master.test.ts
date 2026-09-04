@@ -17,8 +17,8 @@ describe("loadMaster", () => {
   });
   it("returns every location, quarantine included — the rules ignore it, they do not need it hidden", async () => {
     const m = await loadMaster(t.db);
-    expect(m.locations).toMatchObject(FX.LOC);
-    expect(Object.keys(m.locations).sort()).toEqual([...Object.keys(FX.LOC), "quarantine"].sort());
+    expect(m.locations).toEqual(FX.LOC);
+    expect(m.locations.quarantine).toMatchObject({ n: "Quarantine", type: "Store" });
   });
   it("returns the recipes with their lines in the order they were written", async () => {
     expect((await loadMaster(t.db)).recipes).toEqual(FX.RCP);

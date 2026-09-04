@@ -3,8 +3,8 @@ import type { Role } from "./types.js";
 import { OkResponseSchema } from "./schemas/common.js";
 import { AuthResponseSchema, ChangePasswordBodySchema, LoginBodySchema, MeResponseSchema, PatchMeBodySchema } from "./schemas/auth.js";
 import { BatchesResponseSchema, BILL_DAYS, BillsResponseSchema, ItemsResponseSchema, LocationsResponseSchema, MenusResponseSchema, PricesResponseSchema, ProdOrdersResponseSchema, RecipesResponseSchema, RequestsResponseSchema, ShopAsksResponseSchema, SnapshotSchema, StockResponseSchema, TicketsResponseSchema } from "./schemas/snapshot.js";
-import { BatchSchema, BillSchema, ProdOrderSchema, ShopAskSchema, StockRequestSchema, TicketSchema } from "./schemas/documents.js";
-import { AnswerShopAskBodySchema, ApproveRequestBodySchema, ApprovalResultSchema, CancelTicketBodySchema, CreateRequestBodySchema, DeclineShopAskBodySchema, DispatchResultSchema, DistributeBodySchema, DocIdParamsSchema, HandoverBodySchema, IssueResultSchema, MakeBatchBodySchema, MenuItemBodySchema, MenuItemParamsSchema, MenuLocParamsSchema, MenuResultSchema, PayBodySchema, PriceResultSchema, RejectRequestBodySchema, SavePriceBodySchema, SavePriceParamsSchema, SetOrderStatusBodySchema, ShopAskBodySchema, ShopAskSentResultSchema, ToggleAvailBodySchema, ToggleResultSchema, TransferBodySchema, writeResponse } from "./schemas/writes.js";
+import { BatchSchema, BillSchema, ProdOrderSchema, ProductRequestSchema, PurchaseOrderSchema, RateContractSchema, RequisitionSchema, ShopAskSchema, StockRequestSchema, TicketSchema, VendorSchema } from "./schemas/documents.js";
+import { AnswerProductRequestBodySchema, AnswerShopAskBodySchema, ApproveRequestBodySchema, ApproveRequisitionBodySchema, ApprovalResultSchema, CancelPoBodySchema, CancelTicketBodySchema, CloseShortBodySchema, ContractBodySchema, CreateItemBodySchema, CreatePoBodySchema, CreateProductRequestBodySchema, CreateRequestBodySchema, CreateRequisitionBodySchema, DeclineRequisitionBodySchema, DeclineShopAskBodySchema, DispatchResultSchema, DistributeBodySchema, DocIdParamsSchema, HandoverBodySchema, IssueResultSchema, MakeBatchBodySchema, MenuItemBodySchema, MenuItemParamsSchema, MenuLocParamsSchema, MenuResultSchema, NewItemResultSchema, PatchContractBodySchema, PatchPoBodySchema, PatchVendorBodySchema, PayBodySchema, PoLineParamsSchema, PriceResultSchema, ReceiptResultSchema, ReceivePoBodySchema, RejectRequestBodySchema, SavePriceBodySchema, SavePriceParamsSchema, SetOrderStatusBodySchema, ShopAskBodySchema, ShopAskSentResultSchema, ToggleAvailBodySchema, ToggleResultSchema, TransferBodySchema, UpdatePoLineBodySchema, VendorBodySchema, writeResponse } from "./schemas/writes.js";
 
 export type Method = "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
 /** "public" needs no token; "any" needs a token of any role; a list names the roles whose sidebar has the module. */
@@ -64,6 +64,31 @@ export const routes = {
   // ticket's `from` is what draws that line, which also puts a shop transfer's own ticket out
   // of reach of both (its `from` is an outlet). Phase 6 gives the counter that door.
   cancelTicket:   defineRoute({ method: "POST", path: "/tickets/:id/cancel",     access: ["store", "prod"],  params: DocIdParamsSchema, body: CancelTicketBodySchema,   response: writeResponse(TicketSchema) }),
+  // ---- Buying (spec §9.2, Phase 5). The store keeper asks, the buyer decides and orders, and
+  // either of them books the goods in. Reads are declared beside their handlers, further down.
+  createRequisition:    defineRoute({ method: "POST",   path: "/requisitions",                  access: ["store"],            body: CreateRequisitionBodySchema,  response: writeResponse(RequisitionSchema) }),
+  approveRequisition:   defineRoute({ method: "POST",   path: "/requisitions/:id/approve",      access: ["buyer"],            params: DocIdParamsSchema, body: ApproveRequisitionBodySchema, response: writeResponse(RequisitionSchema) }),
+  declineRequisition:   defineRoute({ method: "POST",   path: "/requisitions/:id/decline",      access: ["buyer"],            params: DocIdParamsSchema, body: DeclineRequisitionBodySchema, response: writeResponse(RequisitionSchema) }),
+  createPo:             defineRoute({ method: "POST",   path: "/purchase-orders",               access: ["buyer"],            body: CreatePoBodySchema,           response: writeResponse(PurchaseOrderSchema) }),
+  updatePoLine:         defineRoute({ method: "PATCH",  path: "/purchase-orders/:id/lines/:n",  access: ["buyer"],            params: PoLineParamsSchema, body: UpdatePoLineBodySchema, response: writeResponse(PurchaseOrderSchema) }),
+  removePoLine:         defineRoute({ method: "DELETE", path: "/purchase-orders/:id/lines/:n",  access: ["buyer"],            params: PoLineParamsSchema,         response: writeResponse(PurchaseOrderSchema) }),
+  patchPo:              defineRoute({ method: "PATCH",  path: "/purchase-orders/:id",           access: ["buyer"],            params: DocIdParamsSchema, body: PatchPoBodySchema, response: writeResponse(PurchaseOrderSchema) }),
+  sendPo:               defineRoute({ method: "POST",   path: "/purchase-orders/:id/send",      access: ["buyer"],            params: DocIdParamsSchema,          response: writeResponse(PurchaseOrderSchema) }),
+  cancelPo:             defineRoute({ method: "POST",   path: "/purchase-orders/:id/cancel",    access: ["buyer"],            params: DocIdParamsSchema, body: CancelPoBodySchema, response: writeResponse(PurchaseOrderSchema) }),
+  // The buyer receives against the order they raised; the store keeper receives at the door.
+  receivePo:            defineRoute({ method: "POST",   path: "/purchase-orders/:id/receive",   access: ["buyer", "store"],   params: DocIdParamsSchema, body: ReceivePoBodySchema, response: writeResponse(ReceiptResultSchema) }),
+  closePoShort:         defineRoute({ method: "POST",   path: "/purchase-orders/:id/close-short", access: ["buyer"],          params: DocIdParamsSchema, body: CloseShortBodySchema, response: writeResponse(PurchaseOrderSchema) }),
+  addVendor:            defineRoute({ method: "POST",   path: "/vendors",                       access: ["buyer"],            body: VendorBodySchema,             response: writeResponse(VendorSchema) }),
+  // One PATCH for both the edit and the on/off switch: `setVendorActive` is a patch of one field.
+  updateVendor:         defineRoute({ method: "PATCH",  path: "/vendors/:id",                   access: ["buyer"],            params: DocIdParamsSchema, body: PatchVendorBodySchema, response: writeResponse(VendorSchema) }),
+  addContract:          defineRoute({ method: "POST",   path: "/contracts",                     access: ["store"],            body: ContractBodySchema,           response: writeResponse(RateContractSchema) }),
+  updateContract:       defineRoute({ method: "PATCH",  path: "/contracts/:id",                 access: ["store"],            params: DocIdParamsSchema, body: PatchContractBodySchema, response: writeResponse(RateContractSchema) }),
+  removeContract:       defineRoute({ method: "DELETE", path: "/contracts/:id",                 access: ["store"],            params: DocIdParamsSchema,          response: writeResponse(RateContractSchema) }),
+  // Three screens add a product: the kitchen's own (FG and RAW, at the kitchen), the store's,
+  // and the buyer's answer to a shop's request. §8.3 named only the store keeper; §16 records it.
+  createItem:           defineRoute({ method: "POST",   path: "/items",                         access: ["store", "prod", "buyer"], body: CreateItemBodySchema,   response: writeResponse(NewItemResultSchema) }),
+  createProductRequest: defineRoute({ method: "POST",   path: "/product-requests",              access: ["counter", "manager"], body: CreateProductRequestBodySchema, response: writeResponse(ProductRequestSchema) }),
+  answerProductRequest: defineRoute({ method: "POST",   path: "/product-requests/:id/answer",   access: ["store", "buyer"],   params: DocIdParamsSchema, body: AnswerProductRequestBodySchema, response: writeResponse(ProductRequestSchema) }),
   // The five movement collections, each on its own, so a write that names "req", "tkt",
   // "shopAsks", "pord" or "batch" in `changed` refetches that slice and not the whole snapshot.
   // `ticketsList` rather than `tickets`, because `tickets` is the support-ticket collection and

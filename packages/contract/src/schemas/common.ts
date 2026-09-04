@@ -23,3 +23,17 @@ export const IsoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 /** The ceiling one staff member may run up on credit inside one calendar month, in rupees.
  *  The rule that reads it is `breachesCredit` in @rch/domain; this is only the number. */
 export const STAFF_CREDIT_LIMIT = 3000;
+
+/** The rejected-goods shelf: a Store-type location that never sells and never issues, holding
+ *  what quality control turned away at a goods receipt (spec §7.2). */
+export const QUARANTINE = "quarantine";
+/**
+ * Where stock is *reported*. `LocKeySchema` above — the five places an operator works — stays
+ * exactly as it is: no write body, no user's home location and neither end of a ticket may ever
+ * name quarantine, so widening `LocKey` would have opened six doors to a location nobody can
+ * reach and needed a refusal sentence at each. Stock has to be shown there; nothing else does.
+ */
+export const StockLocSchema = z.enum([...LocKeySchema.options, QUARANTINE]);
+/** The order value above which a purchase order needs finance approval, in rupees. The rule
+ *  that reads it is `needsApproval` in @rch/domain; this is only the number. */
+export const PO_APPROVAL_LIMIT = 25000;

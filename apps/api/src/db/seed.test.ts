@@ -16,7 +16,7 @@ const count = async (tbl: PgTable) => Number(((await t.db.execute(sql`select cou
 
 describe("seed", () => {
   it("loads every master table", async () => {
-    expect(await count(locations)).toBe(Object.keys(FX.LOC).length + 1); // + quarantine
+    expect(await count(locations)).toBe(Object.keys(FX.LOC).length); // quarantine is one of them
     expect(await count(items)).toBe(Object.keys(FX.IT).length);
     expect(await count(users)).toBe(FX.USERS.length);
     // The three rosters a non-cash bill may be posted to, in one table. A patient the counter

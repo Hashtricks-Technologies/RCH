@@ -12,6 +12,11 @@ afterAll(async () => { await app.close(); });
 const getAs = async (userId: string, url: string) => { const r = await app.inject({ method: "GET", url, headers: await authHeaders(app, userId) }); expect(r.statusCode, r.body).toBe(200); return r.json(); };
 const get = (userId: string) => getAs(userId, "/api/v1/snapshot");
 
+/** What the readers that feed the UI still serve: the five locations an operator works at.
+ *  `FX.LOC` gained `quarantine` with Phase 5's `StockLoc`, and `readers/master.ts` keeps
+ *  filtering it out until the store's stock screen can show it. */
+const WORKING_LOCS = Object.fromEntries(FX.ALL_LOCS.map((l) => [l, FX.LOC[l]]));
+
 describe("GET /snapshot", () => {
   it("validates against the contract and carries the caller", async () => {
     const s = await get("u2");
@@ -21,7 +26,7 @@ describe("GET /snapshot", () => {
   it("master data equals the fixtures", async () => {
     const s = await get("u2");
     expect(s.items).toEqual(FX.IT);
-    expect(s.locations).toEqual(FX.LOC);
+    expect(s.locations).toEqual(WORKING_LOCS);
     expect(s.recipes).toEqual(FX.RCP);
     expect(s.prices).toEqual(FX.PL);
     expect(s.menu).toEqual(FX.MENU);
