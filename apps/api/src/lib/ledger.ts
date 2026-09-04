@@ -5,6 +5,15 @@
 // Two writes that need both therefore take those locks in the same sequence, so neither can sit
 // holding one while it waits for the other. `modules/pos/service.ts` is written that way; every
 // write added after it must be too.
+//
+// Document rows come before both, and from Phase 5 they have an order of their own: **the
+// purchase-order row is locked before any requisition row, and requisition rows are locked in
+// ascending requisition_id order** (`foldClaims` in @rch/domain sorts them for you). A purchase
+// order and the requisitions it claims against are locked together whenever a claim moves —
+// creating, shrinking, removing, cancelling or closing short — and `createPo` is the single
+// exception that proves the rule: it locks requisition rows while holding no purchase-order
+// lock, which is safe only because it is creating the order and can never afterwards reach for
+// an existing one. No cycle exists as long as nothing else does that.
 import { sql } from "drizzle-orm";
 import { round3 } from "@rch/domain";
 import type { Db } from "../db/client.js";

@@ -10,6 +10,12 @@ import requests from "./requests/routes.js";
 import tickets from "./tickets/routes.js";
 import shopasks from "./shopasks/routes.js";
 import production from "./production/routes.js";
+import requisitions from "./requisitions/routes.js";
+import purchaseorders from "./purchaseorders/routes.js";
+import grn from "./grn/routes.js";
+import vendors from "./vendors/routes.js";
+import contracts from "./contracts/routes.js";
+import productreqs from "./productreqs/routes.js";
 
 /** Every module, registered in one place. Adding a module = one import + one line here. */
 export async function registerModules(app: App): Promise<void> {
@@ -24,4 +30,10 @@ export async function registerModules(app: App): Promise<void> {
   await app.register(tickets);
   await app.register(shopasks);
   await app.register(production);
+  await app.register(requisitions);
+  await app.register(purchaseorders);
+  await app.register(grn);
+  await app.register(vendors);
+  await app.register(contracts);
+  await app.register(productreqs);
 }

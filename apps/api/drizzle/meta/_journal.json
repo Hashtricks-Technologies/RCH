@@ -43,6 +43,13 @@
       "when": 1788495704770,
       "tag": "0005_ticket_status_cancelled",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1788503183181,
+      "tag": "0006_rate_contracts_live_uq",
+      "breakpoints": true
     }
   ]
 }
