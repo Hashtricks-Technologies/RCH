@@ -1,6 +1,6 @@
 [
   { "ParameterKey": "Env", "ParameterValue": "dev" },
-  { "ParameterKey": "HostName", "ParameterValue": "rch-dev.hashtrickstechnologies.com" },
+  { "ParameterKey": "HostName", "ParameterValue": "rch.hashtrickstechnologies.com" },
   { "ParameterKey": "HostedZoneId", "ParameterValue": "Z066296313TA69I4LDOOI" },
   { "ParameterKey": "VpcId", "ParameterValue": "vpc-01ca67a181cb36d34" },
   { "ParameterKey": "VpcCidr", "ParameterValue": "172.31.0.0/16" },

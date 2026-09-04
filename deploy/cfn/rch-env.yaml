@@ -27,7 +27,7 @@ Parameters:
 
   HostName:
     Type: String
-    Description: Public hostname this environment answers on, e.g. rch-dev.hashtrickstechnologies.com.
+    Description: Public hostname this environment answers on, e.g. rch.hashtrickstechnologies.com.
 
   HostedZoneId:
     Type: AWS::Route53::HostedZone::Id

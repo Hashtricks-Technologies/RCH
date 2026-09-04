@@ -39,7 +39,7 @@ including the RDS instance's rename from `rch-staging` to `rch-dev` and a freshl
 still-empty `rch/dev` Secrets Manager secret. Bringing them under this stack is a CloudFormation
 **IMPORT** change set, not a plain create.
 
-**Before running this**, fetch the ACM certificate ARN for `rch-dev.hashtrickstechnologies.com`
+**Before running this**, fetch the ACM certificate ARN for `rch.hashtrickstechnologies.com`
 (it was being (re-)requested at the time this template was written — `aws acm list-
 certificates --region ap-south-1` and `aws acm describe-certificate` will show it once issued)
 and replace the placeholder `"FILL-CERT-ARN"` in `deploy/cfn/dev.import.json` with the real
@@ -59,7 +59,7 @@ aws cloudformation create-change-set \
 aws cloudformation describe-change-set \
   --stack-name rch-dev --change-set-name rch-dev-import --region ap-south-1
 # Read every change before executing. Nine resources import; the CAA record for
-# rch-dev.hashtrickstechnologies.com does not exist yet (see below) and shows as a plain CREATE
+# rch.hashtrickstechnologies.com does not exist yet (see below) and shows as a plain CREATE
 # in the same change set — that is expected, not a mistake in the import file.
 
 aws cloudformation execute-change-set \
@@ -98,7 +98,7 @@ carry the actual password, not a placeholder — treat any params file with a re
 as a secret and do not commit it.
 
 **The CAA record is not imported, only created.** No CAA record exists yet for
-`rch-dev.hashtrickstechnologies.com` (the hostname is new), so `dev.import.json` does not list
+`rch.hashtrickstechnologies.com` (the hostname is new), so `dev.import.json` does not list
 it — an `IMPORT` change set can still create resources that aren't in `ResourcesToImport`
 alongside the ones that are, as long as at least one resource actually imports, so the CAA
 record is simply created fresh in the same operation.

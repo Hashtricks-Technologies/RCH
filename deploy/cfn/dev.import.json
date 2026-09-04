@@ -42,6 +42,6 @@
   {
     "ResourceType": "AWS::CertificateManager::Certificate",
     "LogicalResourceId": "Certificate",
-    "ResourceIdentifier": { "CertificateArn": "FILL-CERT-ARN" }
+    "ResourceIdentifier": { "CertificateArn": "arn:aws:acm:ap-south-1:830283280199:certificate/68a3b4db-2bfe-449a-8b79-8201a30bde0c" }
   }
 ]
