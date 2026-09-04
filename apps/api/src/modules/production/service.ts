@@ -1,24 +1,28 @@
-// Production: the two ways the kitchen puts stock on a ticket. Both reserve and neither moves
-// — approval authorises, the scan moves (CLAUDE.md), and `handover` is still what empties the
-// shelf. Batches, `makeProduct` and the board's own statuses stay in memory for Phase 4: they
-// create no ticket, so they cross no seam.
+// Production: everything the Central Kitchen does. The two ways it puts stock on a ticket both
+// reserve and neither moves — approval authorises, the scan moves (CLAUDE.md), and `handover`
+// is still what empties the shelf. The board's statuses move no stock at all. The batch is the
+// exception and the reason this module touches the ledger: it is the one write in the system
+// that creates stock, so it consumes the recipe and books the yield in a single postMoves call.
 import type { z } from "zod";
-import type { DistributeBodySchema, ProdOrder, Ticket, WriteResponse } from "@rch/contract";
-import { canTransition, fq, PROD_ORDER_TRANSITIONS, round3 } from "@rch/domain";
+import type { Batch, DistributeBodySchema, MakeBatchBodySchema, PordStatus, ProdOrder, Ticket, WriteResponse } from "@rch/contract";
+import { bestBeforeAt, bestBeforeText, canTransition, fq, PROD_ORDER_TRANSITIONS, round3 } from "@rch/domain";
 import type { Db } from "../../db/client.js";
 import { withTransaction } from "../../lib/db.js";
 import { NotFoundError } from "../../lib/errors.js";
 import { emitChanged } from "../../lib/events.js";
 import { appendHistory } from "../../lib/history.js";
-import { lockBalances } from "../../lib/ledger.js";
+import { allocateNumber } from "../../lib/ids.js";
+import { lockBalances, postMoves, type Move } from "../../lib/ledger.js";
 import { loadMaster } from "../../lib/master.js";
 import { reservedAt } from "../../lib/reservations.js";
 import { assertRule } from "../../lib/rules.js";
 import { allocateTicket, writeTicket } from "../../lib/tickets.js";
+import { iso } from "../../lib/time.js";
 import type { AccessClaims } from "../../plugins/auth.js";
 import { productionRepo } from "./repo.js";
 
 export type DistributeBody = z.infer<typeof DistributeBodySchema>;
+export type MakeBatchBody = z.infer<typeof MakeBatchBodySchema>;
 export type DispatchResult = { order: ProdOrder; ticket: Ticket };
 
 /** Both paths leave from the kitchen: the `prod` role has exactly one, and neither endpoint
@@ -83,6 +87,151 @@ export function createProductionService(db: Db) {
           result: { order: await productionRepo.wire(tx, id), ticket },
           changed: [...changed],
           message: `${ticket.id} issued — all ${lines.length} item${lines.length === 1 ? "" : "s"} of ${id} reserved for ${toName}`,
+        };
+      });
+    },
+
+    /**
+     * One press on the kitchen's board. The order row is read `for update` first, so two
+     * screens pressing Accept together cannot both find it New and both sign for it.
+     *
+     * The table decides and the sentence only explains: PROD_ORDER_TRANSITIONS is the same
+     * data the board draws its buttons from (spec §5.1). The sentence is this endpoint's own
+     * rather than `assertTransition`'s "is already <status>", which would answer a New order
+     * asked to jump to Ready with "is already new" — true of the wrong half of the sentence.
+     */
+    async setStatus(claims: AccessClaims, id: string, st: PordStatus): Promise<WriteResponse<ProdOrder>> {
+      return withTransaction(db, async (tx) => {
+        const o = await productionRepo.head(tx, id);
+        if (!o) throw new NotFoundError(`There is no production order ${id}.`);
+        // Dispatch is a movement, not a word: it mints the ticket the outlet collects against
+        // and reserves the stock behind it, so it has its own endpoint (spec §9.2).
+        assertRule(st !== "Dispatched", `${id} goes out on a pick ticket — dispatch it from the order instead`);
+        // And the way back is a movement too. The table has Dispatched -> Ready so a cancelled
+        // ticket can put the order back on the board; taking that edge here would leave the
+        // ticket live and holding stock for an order the board says is still cooking.
+        assertRule(o.status !== "Dispatched", `${id} has already gone out — cancel its ticket to bring it back onto the board`);
+        assertRule(
+          canTransition(PROD_ORDER_TRANSITIONS, o.status, st),
+          `${id} is ${o.status.toLowerCase()} — it cannot go straight to ${st.toLowerCase()}`,
+        );
+
+        const at = new Date();
+        await productionRepo.setStatus(tx, id, st);
+        const who = await productionRepo.userName(tx, claims.sub);
+        await appendHistory(tx, "prod_order", id, st, who, at);
+
+        const changed = ["pord"] as const;
+        await emitChanged(tx, changed);
+        return { result: await productionRepo.wire(tx, id), changed: [...changed], message: `${id} — ${st.toLowerCase()}` };
+      });
+    },
+
+    /**
+     * A batch: the one write in this system that creates stock, and therefore the one that must
+     * not be able to create it out of nothing. The recipe comes out of the kitchen's raw
+     * materials and the finished units go onto its rack in the same `postMoves` call, so there
+     * is no instant at which the hospital's books show one without the other (C1).
+     *
+     * Ingredients go against what was **started**; only the units that came good reach the rack
+     * (UA-14). A tray dropped is stock consumed and nothing produced, and the batch row is what
+     * records the difference.
+     *
+     * Lock order, as everywhere: ids before balances (`lib/ledger.ts`'s header). One call takes
+     * every cell this write will move — the ingredients, and the finished item when there is a
+     * yield to book — so the `postMoves` below re-takes only locks this transaction already
+     * holds. A make that locked the ingredients alone would reach for a fifth row while holding
+     * four; one that locked the finished item with nothing to yield would create a balance row
+     * it never moves, and a zero row reads as "this location carries the line" (M12, spec §16).
+     */
+    async makeBatch(claims: AccessClaims, body: MakeBatchBody): Promise<WriteResponse<Batch>> {
+      return withTransaction(db, async (tx) => {
+        const started = round3(body.started);
+        assertRule(started > 0, "Enter a quantity to make");
+        const made = round3(body.made ?? started);
+        assertRule(made >= 0 && made <= started, `Yield cannot exceed the ${started} started`);
+
+        const master = await loadMaster(tx);
+        const item = master.items[body.it];
+        if (!item) throw new NotFoundError(`There is no item ${body.it}.`);
+        // The kitchen's own switch, in the kitchen's own words. Read before the recipe so the
+        // sentences arrive in the order the screen has always produced them.
+        const off = await productionRepo.overrideAt(tx, KITCHEN, body.it);
+        assertRule(!off, `${item.n} is switched off in the kitchen`);
+        const recipe = master.recipes[body.it];
+        assertRule(recipe, `${item.n} has no recipe — it cannot be produced`);
+
+        const need = recipe.l.map(([g, per]) => ({ it: g, qty: round3(per * started) }));
+        const at = new Date();
+        const no = await allocateNumber(tx, "batch", at);
+        // Every cell this write will move, and no others: the finished item joins only when
+        // there is a yield to book, because `lockBalances` creates the row it locks.
+        const cells = [
+          ...need.map((n) => ({ loc: KITCHEN, it: n.it })),
+          ...(made > 0 ? [{ loc: KITCHEN, it: body.it }] : []),
+        ];
+        await lockBalances(tx, cells);
+        const keys = cells.map((c) => c.it);
+        const onHand = await productionRepo.balancesAt(tx, KITCHEN, keys);
+        const held = await reservedAt(tx, KITCHEN, keys);
+        // What another ticket is holding is not the kitchen's to bake with, so the measure is
+        // free to promise and not what is on the shelf.
+        const free = (g: string) => round3((onHand[g] ?? 0) - (held[`${KITCHEN}:${g}`] ?? 0));
+        /** The kitchen's own sentence for an ingredient that will not stretch. */
+        const shortOf = (g: string): string => {
+          const ing = master.items[g];
+          const unit = ing?.u ?? "nos";
+          return `Kitchen is short of ${ing?.n ?? g} — ${fq(free(g), unit)} ${unit} left`;
+        };
+        // The first in recipe order, which is the one the kitchen's own screen names. Written as
+        // an `if` rather than `assertRule(!short, short ? … : "")`: a refusal sentence computed
+        // on the success path is a blank toast waiting for someone to drop the ternary.
+        const short = need.find((n) => free(n.it) < n.qty);
+        if (short) assertRule(false, shortOf(short.it));
+
+        const moves: Move[] = need.map((n) => ({
+          loc: KITCHEN, it: n.it, qty: -n.qty, kind: "production_consume", refType: "batch", refId: no.id, by: claims.sub, at,
+        }));
+        // A yield of nothing is not a movement. The batch row records the lost tray, and the
+        // kitchen's shelf list is left exactly as it was — no row is created for a line the
+        // kitchen has never carried.
+        if (made > 0) {
+          moves.push({ loc: KITCHEN, it: body.it, qty: made, kind: "production_yield", refType: "batch", refId: no.id, by: claims.sub, at });
+        }
+        await postMoves(tx, moves);
+
+        // The cover check above already ran under these locks, so this cannot fire today. It is
+        // the invariant §12 asks for on every negative-going move, and it is what catches the
+        // next caller that reads a balance before locking it.
+        const after = await productionRepo.balancesAt(tx, KITCHEN, need.map((n) => n.it));
+        const heldAfter = await reservedAt(tx, KITCHEN, need.map((n) => n.it));
+        for (const n of need) {
+          const left = round3((after[n.it] ?? 0) - (heldAfter[`${KITCHEN}:${n.it}`] ?? 0));
+          const ing = master.items[n.it];
+          const unit = ing?.u ?? "nos";
+          assertRule(left >= 0, `Kitchen is short of ${ing?.n ?? n.it} — ${fq(Math.max(0, round3(left + n.qty)), unit)} ${unit} left`);
+        }
+
+        const bb = bestBeforeAt(at, item.sl);
+        const row = await productionRepo.insertBatch(tx, {
+          id: no.id, itemKey: body.it, startedQty: started, madeQty: made, at, bestBefore: bb,
+          note: body.note ?? null, byUser: claims.sub,
+        });
+        // The shape readers/documents.ts's readBatches produces, for the one batch just written.
+        const result: Batch = {
+          id: row.id, it: row.itemKey, qty: row.startedQty, made: row.madeQty,
+          at: iso(row.at), bb: iso(row.bestBefore), ...(row.note ? { note: row.note } : {}),
+        };
+
+        const text = bestBeforeText(bb, at);
+        const changed = ["batch", "stock"] as const;
+        await emitChanged(tx, changed);
+        return {
+          result,
+          changed: [...changed],
+          message: made === started
+            ? `${no.id} — ${started} ${item.n} made, best before ${text}`
+            : `${no.id} — ${made} of ${started} ${item.n} yielded (${(((made - started) / started) * 100).toFixed(1)}%), best before ${text}`,
         };
       });
     },
