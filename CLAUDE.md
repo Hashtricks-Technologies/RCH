@@ -47,7 +47,7 @@ pnpm install
 pnpm dev          # turbo run dev --parallel: apps/api on :3000, UI on :5173 (Vite proxying /api)
 pnpm build        # turbo run build, every package
 pnpm typecheck    # turbo run typecheck, every package
-pnpm lint         # turbo run lint (oxlint per package) + knip (repo-wide unused-export check)
+pnpm lint         # turbo run lint (oxlint) + knip (unused exports) + check-boundaries.sh (module/reuse rules)
 pnpm test         # turbo run test, every package (Postgres must be reachable for apps/api)
 ```
 

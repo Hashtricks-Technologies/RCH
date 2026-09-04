@@ -67,25 +67,24 @@ first sign-in through a change-password step before anything else.
 
 ```
 src/
-  types.ts              every domain entity
-  nav.ts                per-role sidebar and route guard
-  store.ts              Zustand — all state and actions
-  drawers.ts            drawer registry (roles self-register)
-  App.tsx               router + role guard
-  data/
-    master.ts           items, locations, recipes, price lists, users
-    seed.ts             opening balances and in-flight documents
-  lib/
-    fmt.ts              money, quantity, initials, time
-    selectors.ts        qty · resv · avail · priceOf · availOf · daysCover
-  ui/
-    kit.tsx             25 typed components
-    Shell.tsx           sidebar, topbar, badges
-    Drawer.tsx          drawer host + DrawerFrame
-  pages/
-    Login.tsx  Settings.tsx
-  roles/
-    counter/ manager/ store/ prod/ buyer/
+  types.ts, nav.ts, drawers.ts, App.tsx   entities · sidebar & route guard · drawer registry · router
+  api/                                    client.ts (the one generic client — routes, idempotency, 401-refresh
+                                           retry), session.ts (in-memory token), events.ts (SSE change stream),
+                                           refetch.ts (pulls back what a write changed), wire.ts (mappers)
+  store/{index,procurement,ops}.ts        Zustand — index.ts holds the server-backed actions (billing,
+                                           availability, prices/menus, the request→ticket chain, production);
+                                           procurement.ts and ops.ts's tickets/contracts/new-products/createItem
+                                           are still local (see Not built yet)
+  data/                                   master.ts (replaced in place by hydrateMaster()), seed.ts, ops.ts,
+                                           vendors.ts — opening balances and seeds for the still-local slices
+  lib/                                    fmt.ts (money, quantity, time), selectors.ts (qty · resv · avail ·
+                                           freeToPromise · availOf · priceOf · procurementList …), theme.ts
+  ui/                                     kit.tsx (~30 typed components), Shell.tsx, Drawer.tsx,
+                                           ErrorBoundary.tsx, prefs.ts
+  pages/                                  Login.tsx, ChangePassword.tsx, Settings.tsx, Support.tsx
+  roles/<role>/                           counter/ manager/ store/ prod/ buyer/
+  __tests__/                              store, procurement, fixes, screens/app, api, session, events,
+                                           writes, theme
 ```
 
 Each role folder exports `screens: Record<string, ComponentType>`; `App.tsx` resolves the
@@ -112,9 +111,13 @@ a manual override on top.
 
 ## Recent capabilities
 
-**Issues, for every role.** Anyone can raise an operational issue — a jammed grinder, stock
-that never arrived, a screen behaving oddly — from `/issues`, which sits on every sidebar.
-Kind, priority, and an Open → Acknowledged → Resolved → Closed lifecycle with history.
+**Support, for every role.** `/issues` — labelled Support in every sidebar — is customer
+care for the portal itself: sign-in trouble, a screen that will not load, a number that looks
+wrong, printing, slow or frozen, training, or a feature request; a stock or kitchen problem
+goes to the screen that owns it instead. Raising one names a topic, priority and the screen it
+concerns, and opens a message thread that moves Open → With support → Waiting on you →
+Resolved → Closed; the raiser rates the fix 1–5 once it is marked resolved. Still local to
+`store/ops.ts`.
 
 **OTP instead of a scanned code.** A pick ticket carries six digits. The collector reads them
 to the store keeper, who types them at handover; a wrong OTP is refused. A supervisor override
@@ -138,11 +141,13 @@ destination. The outlet manager sees it happen rather than standing in the middl
 
 ## Not built yet
 
-The rest of production (`setOrderStatus`, `makeProduct`) and all of procurement (vendors,
-rate contracts, requisitions, purchase orders, goods receipt) are still in-memory — Phase 1
-delivered persistence and real authentication for reads, Phase 2 cut billing, availability and
-prices/menus over to the server, and Phase 3 cut over the request chain, tickets, transfers,
-shop asks and the kitchen's two ticket-raising writes, adding live updates over SSE (spec §14
-has the phase-by-phase cutover). Barcode scanning, patient-bill posting and GST output
-registers remain out of scope. The backend design is
+Still local to the store until their phase lands (spec §14, and the phase table in the root
+`README.md`): the rest of production — order status and batches (`setOrderStatus`,
+`makeProduct`); all of `store/procurement.ts` — vendors, requisitions, the PO lifecycle, goods
+receipt; and the ops slice's support tickets, rate contracts, new-product requests and
+`createItem`. Phase 1 delivered persistence and real authentication for reads, Phase 2 cut
+billing, availability and prices/menus over to the server, and Phase 3 cut over the request
+chain, tickets, shop-to-shop transfers, shop asks and the kitchen's two ticket-raising writes,
+adding live updates over SSE. Barcode scanning, patient-bill posting and GST output registers
+remain out of scope. The backend design is
 `../docs/superpowers/specs/2026-09-03-backend-design.md`.
