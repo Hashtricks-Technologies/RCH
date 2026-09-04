@@ -60,8 +60,22 @@ jobs:
               --set-string "secrets.values.JWT_PUBLIC_KEY=$JWT_PUBLIC_KEY"
             )
           fi
+          # --atomic rolls the release back to its previous state if this upgrade fails, instead
+          # of leaving it stuck in `pending-upgrade` (the state --wait alone can leave behind).
+          # On a first install --atomic instead DELETES the release on failure, which is the
+          # wanted behaviour there too — nothing half-applied survives a failed first deploy.
+          # --timeout is 15m, not --wait's old 10m: the migrate initContainer runs before the api
+          # container becomes Ready, and a large migration is not a fast one.
           helm upgrade --install rch deploy/chart/rch -n "$NS" --create-namespace -f "deploy/chart/rch/$VALUES" \
-            --set image.registry="${{ secrets.ECR_REGISTRY }}" --set image.tag="${{ github.sha }}" "${EXTRA[@]}" --wait --timeout 10m
+            --set image.registry="${{ secrets.ECR_REGISTRY }}" --set image.tag="${{ github.sha }}" "${EXTRA[@]}" --wait --atomic --timeout 15m
+      - name: Prove it came up
+        run: |
+          kubectl -n "$NS" rollout status deploy/rch-api --timeout=5m
+          kubectl -n "$NS" rollout status deploy/rch-ui --timeout=5m
+          # /readyz checks the database and that the applied migration count matches the journal,
+          # so a green here is a stronger statement than "the pod started".
+          kubectl -n "$NS" run rch-smoke-$RANDOM --rm -i --restart=Never --image=curlimages/curl:8.11.1 -- \
+            curl -fsS --retry 10 --retry-connrefused http://rch-api:3000/readyz
       - name: Tag production
         if: github.ref_name == 'production' && success()
         run: |

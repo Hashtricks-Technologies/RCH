@@ -5,6 +5,7 @@ import type { Bill, PayBodySchema, PayerKind, Tender, WriteResponse } from "@rch
 import { avail, availOf, breachesCredit, creditBreachMessage, creditRoom, fq, planBill, round3, type Master } from "@rch/domain";
 import type { Db } from "../../db/client.js";
 import { withTransaction } from "../../lib/db.js";
+import { creditTakenThisMonth } from "../../lib/credit.js";
 import { NotFoundError } from "../../lib/errors.js";
 import { emitChanged } from "../../lib/events.js";
 import { allocateId } from "../../lib/ids.js";
@@ -12,7 +13,6 @@ import { postMoves } from "../../lib/ledger.js";
 import { loadMaster } from "../../lib/master.js";
 import { reservedAt } from "../../lib/reservations.js";
 import { assertRule } from "../../lib/rules.js";
-import { monthStartIST } from "../../lib/time.js";
 import { toWireBill } from "../../lib/wire.js";
 import type { AccessClaims } from "../../plugins/auth.js";
 import { posRepo } from "./repo.js";
@@ -111,7 +111,11 @@ export function createPosService(db: Db) {
           // one staff member in the same instant would otherwise both see the room that existed
           // before either wrote, and both fit under a ceiling only one of them fits under.
           await posRepo.lockStaffCredit(tx, payer.id);
-          const taken = await posRepo.staffCreditTaken(tx, payer.id, monthStartIST(at));
+          // One query, two callers: this refusal and `GET /reports/credit/:kind/:id`
+          // (apps/api/src/lib/credit.ts). The sale still stamps the window from its own `at`,
+          // the same instant the bill is written with, so a sale at 00:00:00 on the first is
+          // measured against the month it lands in.
+          const { taken } = await creditTakenThisMonth(tx, "staff", payer.id, at);
           assertRule(
             !breachesCredit(taken, plan.tot),
             creditBreachMessage(taken, plan.tot, payer.name),
