@@ -2,9 +2,9 @@ import { z } from "zod";
 import type { Role } from "./types.js";
 import { OkResponseSchema } from "./schemas/common.js";
 import { AuthResponseSchema, ChangePasswordBodySchema, LoginBodySchema, MeResponseSchema, PatchMeBodySchema } from "./schemas/auth.js";
-import { BatchesResponseSchema, BILL_DAYS, BillsResponseSchema, ContractsResponseSchema, GrnsResponseSchema, ItemsResponseSchema, LocationsResponseSchema, MenusResponseSchema, PricesResponseSchema, ProdOrdersResponseSchema, ProductRequestsResponseSchema, PurchaseOrdersResponseSchema, RecipesResponseSchema, RequestsResponseSchema, RequisitionsResponseSchema, ShopAsksResponseSchema, SnapshotSchema, StockResponseSchema, TicketsResponseSchema, VendorsResponseSchema } from "./schemas/snapshot.js";
-import { BatchSchema, BillSchema, ProdOrderSchema, ProductRequestSchema, PurchaseOrderSchema, RateContractSchema, RequisitionSchema, ShopAskSchema, StockRequestSchema, TicketSchema, VendorSchema } from "./schemas/documents.js";
-import { AnswerProductRequestBodySchema, AnswerShopAskBodySchema, ApproveRequestBodySchema, ApproveRequisitionBodySchema, ApprovalResultSchema, CancelPoBodySchema, CancelTicketBodySchema, CloseShortBodySchema, ContractBodySchema, CreateItemBodySchema, CreatePoBodySchema, CreateProductRequestBodySchema, CreateRequestBodySchema, CreateRequisitionBodySchema, DeclineRequisitionBodySchema, DeclineShopAskBodySchema, DispatchResultSchema, DistributeBodySchema, DocIdParamsSchema, HandoverBodySchema, IssueResultSchema, MakeBatchBodySchema, MenuItemBodySchema, MenuItemParamsSchema, MenuLocParamsSchema, MenuResultSchema, NewItemResultSchema, PatchContractBodySchema, PatchPoBodySchema, PatchVendorBodySchema, PayBodySchema, PoLineParamsSchema, PriceResultSchema, ReceiptResultSchema, ReceivePoBodySchema, RejectRequestBodySchema, SavePriceBodySchema, SavePriceParamsSchema, SetOrderStatusBodySchema, ShopAskBodySchema, ShopAskSentResultSchema, ToggleAvailBodySchema, ToggleResultSchema, TransferBodySchema, UpdatePoLineBodySchema, VendorBodySchema, writeResponse } from "./schemas/writes.js";
+import { BatchesResponseSchema, BILL_DAYS, BillsResponseSchema, ContractsResponseSchema, GrnsResponseSchema, ItemsResponseSchema, LocationsResponseSchema, MenusResponseSchema, PricesResponseSchema, ProdOrdersResponseSchema, ProductRequestsResponseSchema, PurchaseOrdersResponseSchema, RecipesResponseSchema, RequestsResponseSchema, RequisitionsResponseSchema, ShopAsksResponseSchema, SnapshotSchema, StockResponseSchema, SupportTicketsResponseSchema, TicketsResponseSchema, VendorsResponseSchema } from "./schemas/snapshot.js";
+import { BatchSchema, BillSchema, ProdOrderSchema, ProductRequestSchema, PurchaseOrderSchema, RateContractSchema, RequisitionSchema, ShopAskSchema, StockRequestSchema, SupportTicketSchema, TicketSchema, VendorSchema } from "./schemas/documents.js";
+import { AnswerProductRequestBodySchema, AnswerShopAskBodySchema, ApproveRequestBodySchema, ApproveRequisitionBodySchema, ApprovalResultSchema, CancelPoBodySchema, CancelTicketBodySchema, CloseShortBodySchema, ContractBodySchema, CreateItemBodySchema, CreatePoBodySchema, CreateProductRequestBodySchema, CreateRequestBodySchema, CreateRequisitionBodySchema, DeclineRequisitionBodySchema, DeclineShopAskBodySchema, DispatchResultSchema, DistributeBodySchema, DocIdParamsSchema, HandoverBodySchema, IssueResultSchema, MakeBatchBodySchema, MenuItemBodySchema, MenuItemParamsSchema, MenuLocParamsSchema, MenuResultSchema, NewItemResultSchema, PatchContractBodySchema, PatchPoBodySchema, PatchVendorBodySchema, PayBodySchema, PoLineParamsSchema, PriceResultSchema, RaiseTicketBodySchema, RateTicketBodySchema, ReceiptResultSchema, ReceivePoBodySchema, RejectRequestBodySchema, ReplyToTicketBodySchema, SavePriceBodySchema, SavePriceParamsSchema, SetOrderStatusBodySchema, SetTicketStatusBodySchema, ShopAskBodySchema, ShopAskSentResultSchema, ToggleAvailBodySchema, ToggleResultSchema, TransferBodySchema, UpdatePoLineBodySchema, VendorBodySchema, writeResponse } from "./schemas/writes.js";
 
 export type Method = "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
 /** "public" needs no token; "any" needs a token of any role; a list names the roles whose sidebar has the module. */
@@ -60,10 +60,11 @@ export const routes = {
   distribute:        defineRoute({ method: "POST", path: "/distributions",            access: ["prod"], body: DistributeBodySchema,  response: writeResponse(TicketSchema) }),
   setOrderStatus: defineRoute({ method: "POST", path: "/prod-orders/:id/status", access: ["prod"],           params: DocIdParamsSchema, body: SetOrderStatusBodySchema, response: writeResponse(ProdOrderSchema) }),
   makeBatch:      defineRoute({ method: "POST", path: "/batches",                access: ["prod"],           body: MakeBatchBodySchema,                                 response: writeResponse(BatchSchema) }),
-  // The store cancels the store's tickets and the kitchen the kitchen's; `requireLocOf` on the
-  // ticket's `from` is what draws that line, which also puts a shop transfer's own ticket out
-  // of reach of both (its `from` is an outlet). Phase 6 gives the counter that door.
-  cancelTicket:   defineRoute({ method: "POST", path: "/tickets/:id/cancel",     access: ["store", "prod"],  params: DocIdParamsSchema, body: CancelTicketBodySchema,   response: writeResponse(TicketSchema) }),
+  // The store cancels the store's tickets, the kitchen the kitchen's, and — from Phase 6 — an
+  // outlet its own: a shop transfer and a granted shop ask both leave from an outlet, and until
+  // now `requireLocOf` on the ticket's `from` put them out of everyone's reach rather than into
+  // the counter's. The scoping is unchanged; only the door is wider.
+  cancelTicket:   defineRoute({ method: "POST", path: "/tickets/:id/cancel",     access: ["store", "prod", "counter"],  params: DocIdParamsSchema, body: CancelTicketBodySchema,   response: writeResponse(TicketSchema) }),
   // ---- Buying (spec §9.2, Phase 5). The store keeper asks, the buyer decides and orders, and
   // either of them books the goods in. Reads are declared beside their handlers, further down.
   createRequisition:    defineRoute({ method: "POST",   path: "/requisitions",                  access: ["store"],            body: CreateRequisitionBodySchema,  response: writeResponse(RequisitionSchema) }),
@@ -107,6 +108,16 @@ export const routes = {
   vendors:         defineRoute({ method: "GET", path: "/vendors",          access: "any", response: VendorsResponseSchema }),
   contracts:       defineRoute({ method: "GET", path: "/contracts",        access: "any", response: ContractsResponseSchema }),
   productRequests: defineRoute({ method: "GET", path: "/product-requests", access: "any", response: ProductRequestsResponseSchema }),
+  // ---- The support desk (spec §9.2, Phase 6). Every role, own tickets only: `access: "any"`
+  // opens the module to all five, and the service scopes each row on `by_user = claims.sub`.
+  // A ticket somebody else raised is a 404, not a 403 — the same shape as a role's missing module.
+  raiseTicket:     defineRoute({ method: "POST", path: "/support/tickets",              access: "any", body: RaiseTicketBodySchema,     response: writeResponse(SupportTicketSchema) }),
+  replyToTicket:   defineRoute({ method: "POST", path: "/support/tickets/:id/messages", access: "any", params: DocIdParamsSchema, body: ReplyToTicketBodySchema,   response: writeResponse(SupportTicketSchema) }),
+  setTicketStatus: defineRoute({ method: "POST", path: "/support/tickets/:id/status",   access: "any", params: DocIdParamsSchema, body: SetTicketStatusBodySchema, response: writeResponse(SupportTicketSchema) }),
+  rateTicket:      defineRoute({ method: "POST", path: "/support/tickets/:id/rating",   access: "any", params: DocIdParamsSchema, body: RateTicketBodySchema,      response: writeResponse(SupportTicketSchema) }),
+  // `tickets`, not `supportTickets`: the name was reserved for this route when `ticketsList`
+  // was named, so the manifest key matches the `changed` collection the writes above name.
+  tickets:         defineRoute({ method: "GET",  path: "/support/tickets",              access: "any", response: SupportTicketsResponseSchema }),
 } as const;
 export type RouteName = keyof typeof routes;
 export const API_PREFIX = "/api/v1";

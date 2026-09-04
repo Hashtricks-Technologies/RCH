@@ -38,6 +38,7 @@ export type PurchaseOrder = z.infer<typeof D.PurchaseOrderSchema>;
 export type ProdOrder = z.infer<typeof D.ProdOrderSchema>;
 export type Batch = z.infer<typeof D.BatchSchema>;
 export type Payer = z.infer<typeof D.PayerSchema>;
+export type PayerRoster = z.infer<typeof D.PayerRosterSchema>;
 export type ReceiptLine = z.infer<typeof D.ReceiptLineSchema>;
 export type ReceiptDoc = z.infer<typeof D.ReceiptDocSchema>;
 export type Grn = z.infer<typeof D.GrnSchema>;

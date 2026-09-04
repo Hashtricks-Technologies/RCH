@@ -14,6 +14,7 @@ export const SnapshotSchema = z.object({
   locations: z.record(z.string(), D.LocationSchema),
   recipes: z.record(z.string(), D.RecipeSchema),
   users: z.array(D.UserMinSchema),   // the directory, not a contact list — `user` above is the caller's own, whole
+  roster: D.PayerRosterSchema,       // the other directory of people: who a bill may be charged to
   stock: byStockLoc(z.record(z.string(), Qty)),
   rsv: z.record(z.string(), Qty),          // "loc:item" -> reserved
   ovr: z.record(z.string(), z.string()),   // "loc:item" -> reason
@@ -60,3 +61,6 @@ export const GrnsResponseSchema = z.array(D.GrnSchema);
 export const VendorsResponseSchema = z.array(D.VendorSchema);
 export const ContractsResponseSchema = z.array(D.RateContractSchema);
 export const ProductRequestsResponseSchema = z.array(D.ProductRequestSchema);
+/** The caller's own support tickets. Every role sees only what it raised — there is no support
+ *  role among the five, so a list of other people's tickets would be rows nobody can act on. */
+export const SupportTicketsResponseSchema = z.array(D.SupportTicketSchema);
