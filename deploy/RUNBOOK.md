@@ -83,8 +83,8 @@ creates for parallel test runs. Review the generated SQL in `apps/api/drizzle/`,
 — migrations are forward-only (§3) and reviewed like any other change.
 
 `pnpm --filter @rch/api db:migrate` applies pending migrations; it is what the `migrate`
-initContainer on every api pod also runs (`dist/cli/migrate.mjs`) — see §2. Six migrations
-exist as of Phase 4 (`apps/api/drizzle/0000`–`0005`): `0000` is the initial schema, `0001` adds
+initContainer on every api pod also runs (`dist/cli/migrate.mjs`) — see §2. Seven migrations
+exist as of Phase 6 (`apps/api/drizzle/0000`–`0006`): `0000` is the initial schema, `0001` adds
 the unique index on `refresh_tokens.token_hash`, `0002` installs the append-only trigger on
 `stock_moves` (§7), `0003` adds `bills_staff_credit_idx` — a partial btree index on
 `bills (payer_kind, payer_id, at) where payer_kind = 'staff'`, so the staff-credit ceiling's
@@ -95,9 +95,11 @@ matched rows, so do not "optimise" the predicate by adding `tender` to the index
 to change anything; `payer_kind = 'staff'` already narrows to the rows that matter; `tender`
 is a plain row filter on top and adding it to the index buys nothing this table's size makes
 worth the extra write cost. `0004` adds the `payers` table (`kind`, `id`, `name`, `active`) the
-`pay` payer rule validates against, and `0005` is `ALTER TYPE ticket_status ADD VALUE
-'Cancelled'` for Phase 4's `POST /tickets/:id/cancel`. A fresh `db:migrate` against an empty
-database reports all six applied.
+`pay` payer rule validates against, `0005` is `ALTER TYPE ticket_status ADD VALUE
+'Cancelled'` for Phase 4's `POST /tickets/:id/cancel`, and `0006` is
+`rate_contracts_live_uq`, Phase 5's partial unique index keeping one live rate contract per
+item. Phase 6 wrote no migration. A fresh `db:migrate` against an empty database reports all
+seven applied; against an already-current one it reports `migrations applied: 7 / 7`.
 
 ## 2. Deploy
 
@@ -318,6 +320,16 @@ run before go-live and quarterly:
    ```
 4. Record the date of the drill (and the diff result) wherever the team tracks operational
    records — an empty diff, and a successful `rebuild-balances` run, is the pass condition.
+
+**Rehearsed: 2026-09-04, PASS.** The local block above was run end to end against the dev
+database on `localhost:5439`, carrying that day's exit-walk documents rather than a bare seed —
+`pg_dump -Fc` 101 KB in 0.33 s, `createdb rch_restore`, `pg_restore` in 1.03 s,
+`db:rebuild-balances` against the restored copy reporting `stock_balances rebuilt: 54 rows`, and
+an **empty diff** over all 54 balance rows against the source. Whole drill: 2.9 s; the scratch
+database was dropped afterwards. This is the rehearsal, not the drill: it proves the procedure is
+right and that `rebuild-balances` reproduces a restored copy's balances exactly. The RDS half
+(steps 1–4 above) has never been run, because there is no RDS yet — it is §11 step 5, before
+go-live.
 
 ## 7. Rebuild balances
 
@@ -709,31 +721,94 @@ open on one login, not a server problem; ask the operator to close some.
 
 ## 11. Go-live checklist
 
+### The release, prepared and not performed (2026-09-04)
+
+Phase 6 ends here. Everything the first production deploy needs is written down; **nothing in
+this build pushes `staging` or `production`** — promotion is a release decision and the branch
+pushes below are the account owner's to run, not any agent's. The only `git push` anywhere in
+`.github/workflows/**` is `deploy.yml:89`, which tags a *release* after a deploy has already
+happened; no workflow, script or task in this repository pushes either branch.
+
+**Where the branch stands.** `feat/phase-6-ops-go-live` is **36 commits** ahead of `develop`, and
+`origin/staging` is an ancestor of `origin/develop` — so every promotion below is a genuine
+fast-forward, as §11.3 of the design spec requires. Confirm both before starting:
+
+```bash
+git log --oneline develop..feat/phase-6-ops-go-live | wc -l              # 36
+git merge-base --is-ancestor origin/staging origin/develop && echo ok    # ok
+```
+
+**1. The five `FILL` values only the account owner can supply**, each marked `# FILL` in
+`deploy/chart/rch/values-prod.yaml` at the line given:
+
+| Line | Key | What goes in |
+|---|---|---|
+| 5 | `image.registry` | `<account>.dkr.ecr.<region>.amazonaws.com`. `deploy.yml` also passes it as `--set image.registry=${{ secrets.ECR_REGISTRY }}`, so the file's own value only matters to a manual `helm template` / `helm upgrade`. |
+| 22 | `api.env.CORS_ORIGIN` | The real hostname, no trailing slash (currently `https://rch.example.com`). |
+| 39 | `ingress.host` | The real hostname (currently `rch.example.com`). |
+| 40 | `ingress.certificateArn` | The ACM certificate ARN for that host. Empty renders **no** TLS annotation — HTTP on `:80`, correct rather than broken, but not what go-live wants. |
+| 73 | `alerts.runbookUrl` | The real URL of this document, so a paged engineer's alert links somewhere. |
+
+Two more carry a `FILL` comment but are conditional, not blocking: `serviceAccount.annotations`
+(only for IRSA, if the pod reads Secrets Manager itself) and
+`ingress.annotations.'alb.ingress.kubernetes.io/wafv2-acl-arn'`, whose own comment says
+"optional; leave empty to skip".
+
+**A sixth, in the other file.** `deploy/chart/rch/values-staging.yaml` has **no
+`ingress.certificateArn` key at all** — its whole ingress block is `ingress: { host:
+rch-staging.example.com }` — while step 1 below has always said both files need one. Either add
+the key there before staging needs HTTPS on its own hostname, or decide staging runs on `:80`
+and say so out loud. Phase 6 deliberately left the chart alone rather than change behaviour in a
+verification task; this is the note that keeps it from being discovered by an outage.
+
+Render the production chart before pushing anything, supplying the values on the command line:
+
+```bash
+helm template rch deploy/chart/rch -f deploy/chart/rch/values-prod.yaml \
+  --set image.registry=<account>.dkr.ecr.<region>.amazonaws.com,image.tag=<sha> \
+  --set ingress.certificateArn=<acm-arn> --set-string secrets.values.DATABASE_URL=x
+```
+
+**2. The secrets and the variable the account owner creates.** None of these exist yet; the
+deploy workflow is inert without them.
+
+| Where | Name | Notes |
+|---|---|---|
+| Repository **variable** | `DEPLOY_ENABLED=true` | `deploy.yml:21` gates every deploy job on it; `:93` is the "Deploy skipped" job that runs instead. Until it is `true`, a push to `staging` or `production` deploys nothing. |
+| Repository secret | `AWS_ROLE_ARN` | The OIDC role the workflow assumes. |
+| Repository secret | `AWS_REGION` | |
+| Repository secret | `ECR_REGISTRY` | Passed as `--set image.registry`. |
+| Repository secret | `EKS_CLUSTER_STAGING` | |
+| Repository secret | `EKS_CLUSTER_PROD` | |
+| `staging` environment | `DATABASE_URL`, `JWT_PRIVATE_KEY`, `JWT_PUBLIC_KEY` | Staging reads its secrets from the GitHub environment; production reads `rch/prod` out of AWS Secrets Manager through the `ClusterSecretStore`. |
+| AWS Secrets Manager `rch/prod` | `DATABASE_URL`, `JWT_PRIVATE_KEY`, `JWT_PUBLIC_KEY`, `JWT_PREVIOUS_PUBLIC_KEY` | The last may start empty. Mint the pair with `pnpm --filter @rch/api keys:generate`, which prints two `JWT_*=` lines and never writes them anywhere. |
+
+**3. The promotion, in order, run by a person.**
+
+```bash
+git checkout develop    && git merge --ff-only feat/phase-6-ops-go-live && git push
+git checkout staging    && git merge --ff-only develop && git push        # deploys rch-staging
+# verify staging: /readyz, a sign-in, one real sale, rebuild-balances reconciling (step 8 below)
+# re-measure the load check against staging and record it against §12's targets (§12 above)
+git checkout production && git merge --ff-only staging && git push        # waits for approval
+```
+
+Production's deploy waits on the `production` GitHub environment's approval before the job runs.
+Work the numbered checklist below alongside these three commands — in particular step 4, which
+deactivates the six seeded accounts, and step 5, the real restore drill. **Then, and only then,
+is this build in a hospital.**
+
+### The checklist
+
 An ordered list. Each item is a command or a decision, and each decision names who makes it —
 the account owner, not the executor of this phase's tasks. Nothing on this list has been run
 against a real AWS account; Phase 6 prepared the chart, the workflow and this checklist and
 stopped there (spec §16, Phase 6) — running it is a release decision.
 
-1. **Fill in the AWS facts `values-prod.yaml` is still missing.** Five markers, each commented
-   `# FILL` in the file itself:
-   - `image.registry` — `<account>.dkr.ecr.<region>.amazonaws.com`. In practice `deploy.yml`'s
-     `--set image.registry=${{ secrets.ECR_REGISTRY }}` supplies this at deploy time; the file's
-     own placeholder is only what a manual `helm template`/`helm upgrade` needs.
-   - `api.env.CORS_ORIGIN` — the real hostname, no trailing slash.
-   - `ingress.host` — the real hostname.
-   - `ingress.certificateArn` — the ACM certificate ARN for that host. Left empty, the ingress
-     template correctly renders no TLS annotation (HTTP-only on `:80`) rather than a broken one
-     — but go-live needs the real ARN. **`values-staging.yaml` has no `certificateArn` key at
-     all** (confirmed: `grep certificateArn deploy/chart/rch/values-staging.yaml` finds nothing),
-     though this section has always said both files need one — add the same key there before
-     staging needs HTTPS on its own hostname, or accept staging on `:80` deliberately and say so.
-   - `alerts.runbookUrl` — the real URL of this document, `https://github.com/<org>/<repo>/blob/production/deploy/RUNBOOK.md`
-     filled in for real, so a paged engineer's alert links somewhere.
-
-   One more is marked FILL but is conditional, not blocking: `serviceAccount.annotations`
-   (only if the pod itself reads AWS Secrets Manager directly, i.e. IRSA).
-   `ingress.annotations.'alb.ingress.kubernetes.io/wafv2-acl-arn'` is not a FILL at all — the
-   file's own comment marks it "optional; leave empty to skip".
+1. **Fill in the AWS facts `values-prod.yaml` is still missing** — the five `# FILL` markers,
+   the two conditional ones, and `values-staging.yaml`'s absent `certificateArn`, all tabulated
+   with their line numbers under "The release, prepared and not performed" above. Render the
+   chart with the values supplied on the command line before pushing anything.
 2. **Provision the RDS instance to spec §11.2's own settings**, before anything points at it:
    Multi-AZ, `db.t4g.medium` to start with storage autoscaling, automated backups retained 14
    days, point-in-time recovery, encryption at rest, deletion protection, in private subnets
@@ -765,19 +840,14 @@ stopped there (spec §16, Phase 6) — running it is a release decision.
 5. **Run the restore drill once against the real RDS instance** (§6, the RDS procedure below the
    local rehearsal) — not the rehearsal, the real one, before the first bill is ever posted for
    real.
-6. **Set `DEPLOY_ENABLED=true`** (a GitHub repository variable) and confirm the five repository
-   secrets exist: `AWS_ROLE_ARN`, `AWS_REGION`, `ECR_REGISTRY`, `EKS_CLUSTER_STAGING`,
-   `EKS_CLUSTER_PROD` (§2 names what each populates). Confirm the `staging` GitHub environment's
-   secrets too (`DATABASE_URL`, `JWT_PRIVATE_KEY`, `JWT_PUBLIC_KEY`) if staging has not already
-   been deployed for real.
-7. **Promote:**
-   ```bash
-   git checkout staging && git merge --ff-only develop && git push
-   # verify staging: /readyz, a sign-in, one sale, db:rebuild-balances reconciling — step 8
-   git checkout production && git merge --ff-only staging && git push
-   ```
-   Production's deploy waits for the GitHub environment approval (`production`) before the job
-   runs.
+6. **Create the repository variable and every secret** — `DEPLOY_ENABLED=true`, the five
+   repository secrets, the `staging` environment's three, and AWS Secrets Manager's `rch/prod`:
+   the table under "The release, prepared and not performed" above lists each one and what it
+   populates, and §2 says where the workflow reads it.
+7. **Promote** — the three fast-forward merges under "The release, prepared and not performed"
+   above, in that order, run by a person. `develop` first, then `staging`, then `production`;
+   verify staging between the second and the third (step 8), and production's deploy waits for
+   the `production` GitHub environment's approval before the job runs.
 8. **First post-deploy checks, on each environment, in order:**
    ```bash
    kubectl -n <namespace> port-forward svc/rch-api 3000:3000 &
@@ -835,6 +905,27 @@ wrong before they were understood:
   average beside every number this script prints; a number with no load average beside it is not
   evidence of anything.
 
+**Recorded: 2026-09-04, the first measurement anyone can attribute.** MacBook Air (Mac14,2,
+Apple silicon, 8 cores, 16 GB, macOS 26.6.2), node v24.20.0, **Postgres 17 in Docker on the same
+machine** — which production's will not be. The API was the only thing running, started with
+`RATE_LIMIT_PER_MINUTE=100000`, against a fresh seed with `coffee`'s `water` topped up to 200,012
+by a `stock_moves` adjustment and a rebuild, exactly as the three bullets above prescribe.
+
+| Concurrency | Load average at the start | `GET /snapshot` | `POST /bills` |
+|---|---|---|---|
+| 10 | 2.72 | **PASS** p50 76.8 ms · **p95 104.5 ms** · p99 122.8 ms · n=2662 | **PASS** p50 47.5 ms · **p95 141.6 ms** · p99 217.8 ms · n=3331 |
+| 30 | 2.56 | **FAIL** p50 2665.7 ms · **p95 2860.3 ms** · n=245 | **FAIL** p50 152.2 ms · **p95 262.2 ms** · n=3725 |
+| 30, `--no-writes` | 3.34 | **FAIL** p50 4074.3 ms · **p95 4429.7 ms** · n=172 | — |
+
+The c=30 failure was measured, not guessed at. During the snapshot-only run `pg_pool_idle` sat at
+**0** the whole time and `pg_pool_waiting` peaked at **771** — against a pool of `max: 10`.
+`GET /snapshot` runs its readers in one `Promise.all` of 24, about **13 committed transactions per
+request** (measured as a `pg_stat_database.xact_commit` delta over five requests), so thirty
+concurrent requests queue hundreds of connection acquisitions behind ten connections. That is the
+second of the three things below, and it is the one to act on first when this is re-measured
+against staging — where §12 states the targets, and where the numbers that count will be taken.
+Throughput bears it out: 133 snapshots a second at c=10, 12 a second at c=30.
+
 When a target is missed on a genuinely idle machine, the first three things to look at, in
 order: **the snapshot's query count** (does one request make one round trip per collection
 instead of one `Promise.all`?), **the pool size** (`apps/api/src/db/client.ts`'s `max: 10` — is
@@ -858,6 +949,13 @@ on the first one strands every account after it on a password nothing else knows
 rate limits raised (`LOGIN_RATE_LIMIT_PER_MINUTE=200`, `LOGIN_RATE_LIMIT_PER_EMP_PER_MINUTE=100`
 — the run signs in roughly sixteen times through one dev-proxy IP, which the defaults of 10/min
 and 5/min-per-employee both refuse partway through).
+
+**Run twice on 2026-09-04, green both times:** 12 passed in **40.2 s**, then a
+`SEED_FORCE_PASSWORD_CHANGE=false pnpm --filter @rch/api db:seed --force` and 12 passed again in
+**38.5 s**, against `pnpm dev`'s stack with both login limits raised as below. The second run
+proves the suite does not depend on the first's leftovers — it reads its ids out of the toasts,
+and `sequences` survives a reseed. `kind` is not installed on the machine that ran them, so the
+cluster path below was **not** exercised locally; it is proved by CI.
 
 **In CI:** `E2E=1` is set on exactly one step, "helm install into kind"
 (`.github/workflows/ci.yml:127-129`), which runs `deploy/chart/rch/ci/install-test.sh` — that
