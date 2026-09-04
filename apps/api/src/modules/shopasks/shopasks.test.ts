@@ -5,8 +5,8 @@ import { buildTestApp } from "../../test/app.js";
 import { seedTestDb } from "../../test/seed.js";
 import { authHeaders } from "../../test/auth.js";
 import { given } from "../../test/builders.js";
-import { truncateAll } from "../../test/db.js";
-import { reservations, stockMoves } from "../../db/schema/index.js";
+import { truncateAll, warmPool } from "../../test/db.js";
+import { reservations, stockMoves, tickets } from "../../db/schema/index.js";
 import type { App } from "../../app.js";
 
 let app: App;
@@ -92,6 +92,29 @@ describe("POST /shop-asks/:id/answer", () => {
     const r = await post("u1", "/shop-asks/ASK-9999/answer", { grant: 1 });
     expect(r.statusCode).toBe(404);
     expect(r.json().error.message).toBe("There is no shop ask ASK-9999.");
+  });
+
+  it("serialises two answers to the same ask through the row lock, so only one can grant it", async () => {
+    // Two clients first, or the pool hands the second the first's connection back once it is
+    // idle and they run one after the other — proving the transition table, not the lock
+    // (apps/api/src/lib/reservations.test.ts, and the plan's warm-pool rule).
+    await warmPool(app.testDb!, 2);
+    // Coffee holds 9 chips — enough to cover both grants at once, so the balance lock's cover
+    // check cannot be what refuses the second answer; only the row lock on the ask can be.
+    const race = await given.shopAsk(app.testDb!.db, { from: "kiosk", to: "coffee", it: "chips", qty: 4, by: "u6" });
+    const [a, b] = await Promise.all([
+      post("u1", `/shop-asks/${race}/answer`, { grant: 4 }),
+      post("u1", `/shop-asks/${race}/answer`, { grant: 4 }),
+    ]);
+    const codes = [a.statusCode, b.statusCode].sort();
+    expect(codes, `${a.body} | ${b.body}`).toEqual([200, 422]);
+    const loser = a.statusCode === 422 ? a : b;
+    expect(loser.json().error.message).toBe(`${race} is already sent`);
+
+    const tkts = await app.testDb!.db.select().from(tickets).where(eq(tickets.refId, race));
+    expect(tkts).toHaveLength(1);
+    const rsv = await app.testDb!.db.select().from(reservations).where(eq(reservations.ticketId, tkts[0]!.id));
+    expect(rsv).toHaveLength(1);
   });
 });
 
