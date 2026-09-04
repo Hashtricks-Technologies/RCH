@@ -32,12 +32,11 @@ describe("document readers", () => {
     }
   });
   it("tickets, requisitions, purchase orders, GRNs, production, batches", async () => {
-    // `readTickets` reads `document_history` now, like every other reader here. `hist` is still
-    // stripped from both sides — the same way prq/pord are — because the seeder replays the
-    // fixtures' trails for requests, requisitions, purchase orders and production orders but
-    // not yet for tickets, so `seedTkt`'s one row has nothing on the database side to match.
-    // A ticket the server itself writes carries its trail; `tickets.test.ts` asserts that.
-    expect(noTimes((await D.readTickets(t.db)).map((o) => strip(o, ["hist"])))).toEqual(noTimes(FX.seedTkt.map((o) => strip(o, ["hist"]))));
+    // `readTickets` reads `document_history` like every other reader here, and the seeder replays
+    // the fixture's trail for tickets alongside the four it always replayed — so `hist` is
+    // compared whole rather than stripped, and this is the one document type below that needs
+    // no exception at all.
+    expect(noTimes(await D.readTickets(t.db))).toEqual(noTimes(FX.seedTkt));
     const prq = await D.readRequisitions(t.db); expect(noTimes(byId(prq).map((p) => strip(p, ["hist"])))).toEqual(noTimes(byId(FX.seedPrq).map((p) => strip(p, ["hist"]))));
     const po = await D.readPurchaseOrders(t.db);
     for (const o of po) { const fx = FX.seedPo.find((x) => x.id === o.id)!; expect(noTimes(strip(o, ["hist", "eta"]))).toEqual(noTimes(strip(fx, ["hist", "eta"]))); expect(o.eta).toMatch(/^\d{4}-\d{2}-\d{2}$|^$/); }

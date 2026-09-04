@@ -70,7 +70,14 @@ export async function writeTicket(tx: Tx, draft: TicketDraft, no: TicketNumber):
   // withdrawal below to be read against.
   const who = await nameOf(tx, draft.by);
   await appendHistory(tx, "ticket", id, "Issued", who, at);
-  return { id, req: draft.refId, from: draft.from as LocKey, to: draft.to as LocKey, lines, st: "Issued", otp, hist: [{ s: "Issued", who, t: iso(at) }] };
+  // The OTP is not on the way out. Every caller of this function stands at the ticket's `from`
+  // — the store issuing against an approved request, the shop granting an ask, the kitchen
+  // dispatching or distributing — and `from` is exactly who must not read the six digits: the
+  // issue desk printing the number beside the box that checks it is not a check. The wire shape
+  // requires the field, so it goes back blank, the same as it does through `GET /snapshot`.
+  // Nothing needs the value here: `handover` compares what is typed against `ticketsRepo.head`'s
+  // own read of the row, never against a response.
+  return { id, req: draft.refId, from: draft.from as LocKey, to: draft.to as LocKey, lines, st: "Issued", otp: "", hist: [{ s: "Issued", who, t: iso(at) }] };
 }
 
 /**
@@ -101,7 +108,14 @@ export async function readTicket(tx: Tx, id: string): Promise<Ticket | undefined
   const lines = await tx.select().from(ticketLines).where(eq(ticketLines.ticketId, id)).orderBy(asc(ticketLines.lineNo));
   return {
     id: head.id, req: head.refId, from: head.fromLoc as LocKey, to: head.toLoc as LocKey,
-    lines: lines.map((l) => ({ it: l.itemKey, qty: l.qty })), st: head.status as TktStatus, otp: head.otp,
+    lines: lines.map((l) => ({ it: l.itemKey, qty: l.qty })), st: head.status as TktStatus,
+    // A ticket that is no longer `Issued` has nothing left to quote, so it goes back blank —
+    // which today is every call, because the only caller is `reread` in `modules/tickets`,
+    // reached after a handover, a receipt or a cancellation. The status test is here so the
+    // field stays right rather than accidentally right if something ever rereads a live ticket;
+    // a caller that does will owe the location check `redactOtps` makes, because this function
+    // is handed an id and no `who`.
+    otp: head.status === "Issued" ? head.otp : "",
     // The trail as it stands, so a write's own `result` carries the row it has just appended
     // and the drawer that reads the response needs no second round trip to show it.
     hist: await readHistory(tx, "ticket", id),

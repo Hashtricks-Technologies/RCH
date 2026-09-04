@@ -91,8 +91,11 @@ describe("POST /tickets/:id/handover", () => {
     const r = await post("u3", "/tickets/TKT-0440/handover", {});
     expect(r.statusCode).toBe(200);
     expect(r.json().message).toBe("TKT-0440 handed over on a supervisor override — stock is in transit to Coffee Shop");
-    const audit = await app.testDb!.db.select().from(documentHistory)
+    // The trail also carries the seeded "Issued" row, so the case narrows to the handover it is
+    // about: one row for the act, with the override named on it rather than beside it.
+    const rows = await app.testDb!.db.select().from(documentHistory)
       .where(and(eq(documentHistory.docType, "ticket"), eq(documentHistory.docId, "TKT-0440")));
+    const audit = rows.filter((h) => h.status.startsWith("Handed over"));
     expect(audit).toHaveLength(1);
     expect(audit[0]).toMatchObject({ status: "Handed over — supervisor override", who: "Suresh Muthu" });
   });

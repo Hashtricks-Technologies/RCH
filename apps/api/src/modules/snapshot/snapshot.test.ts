@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import * as FX from "@rch/contract/fixtures";
 import { BillsResponseSchema, SnapshotSchema, StockResponseSchema, UserMinSchema } from "@rch/contract";
@@ -7,15 +8,16 @@ import { buildTestApp } from "../../test/app.js";
 import { seedTestDb } from "../../test/seed.js";
 import { authHeaders } from "../../test/auth.js";
 import { given } from "../../test/builders.js";
-import { truncateAll } from "../../test/db.js";
+import { resetDocuments, truncateAll } from "../../test/db.js";
 import type { App } from "../../app.js";
 
 let app: App;
-beforeAll(async () => { app = await buildTestApp({ schema: "snapshot" }); await app.ready(); });
+beforeAll(async () => { app = await buildTestApp({ schema: "snapshot" }); await seedTestDb(app.testDb!.db); await app.ready(); });
 afterAll(async () => { await app.close(); });
-// The cases below switch a payer off and raise documents of their own, so the seed is put back
-// between them rather than once for the file.
-beforeEach(async () => { await truncateAll(app.testDb!.db); await seedTestDb(app.testDb!.db); });
+// The cases below raise documents of their own, so the document half is put back between them.
+// The master half is seeded once, above — with the one exception noted on the roster case, which
+// is the only case here that writes a master table.
+beforeEach(async () => { await resetDocuments(app.testDb!.db); });
 const getAs = async (userId: string, url: string) => { const r = await app.inject({ method: "GET", url, headers: await authHeaders(app, userId) }); expect(r.statusCode, r.body).toBe(200); return r.json(); };
 const get = (userId: string) => getAs(userId, "/api/v1/snapshot");
 
@@ -140,7 +142,12 @@ describe("the document reads the movement chain refetches", () => {
   it("GET /tickets gives a counter the tickets that touch their counter, either end", async () => {
     const mine = await app.inject({ method: "GET", url: "/api/v1/tickets", headers: await authHeaders(app, "u1") });
     expect(mine.statusCode).toBe(200);
-    expect(mine.json()).toEqual([{ id: "TKT-0440", req: "REQ-2026-0909", from: "store", to: "coffee", lines: [{ it: "cup", qty: 500 }], st: "Issued", otp: "418327", hist: [] }]);
+    // u1 is at coffee, which is where this ticket is going, and it is still Issued — the one
+    // caller who reads the six digits. The trail is the seeded one, replayed from the fixture.
+    expect(mine.json()).toEqual([{
+      id: "TKT-0440", req: "REQ-2026-0909", from: "store", to: "coffee", lines: [{ it: "cup", qty: 500 }],
+      st: "Issued", otp: "418327", hist: [{ s: "Issued", who: "Suresh Muthu", t: expect.any(String) }],
+    }]);
 
     const other = await app.inject({ method: "GET", url: "/api/v1/tickets", headers: await authHeaders(app, "u6") });
     expect(other.json()).toEqual([]);      // u6 is at kiosk; TKT-0440 goes to coffee
@@ -274,6 +281,23 @@ describe("what a ticket carries, and to whom", () => {
     expect(ticketIn(await get("u1"), id).otp).toBe("");
   });
 
+  it("keeps them out of the answer the issuing desk gets back, and only there", async () => {
+    // Every path that mints a ticket answers the location it leaves from — the store issuing
+    // against an approved request, the shop granting an ask, the kitchen dispatching — so the
+    // write response is the one place the digits could still have travelled to `from`.
+    const req = await given.request(app.testDb!.db, { from: "coffee", lines: [{ it: "milk", qty: 4, appr: 4 }], st: "Manager approved" });
+    const issued = await app.inject({
+      method: "POST", url: `/api/v1/requests/${req}/issue-ticket`,
+      headers: { ...(await authHeaders(app, "u3")), "idempotency-key": randomUUID() },
+    });
+    expect(issued.statusCode, issued.body).toBe(200);
+    const tkt = issued.json().result.ticket;
+    expect(tkt.st).toBe("Issued");
+    expect(tkt.otp).toBe("");
+    // And the shop that will collect reads them, off its own snapshot, where they belong.
+    expect(ticketIn(await get("u1"), tkt.id).otp).toMatch(/^\d{6}$/);
+  });
+
   it("withholds them from GET /tickets too, so a refetch does not put them back", async () => {
     const id = await given.ticket(app.testDb!.db, { from: "store", to: "coffee", lines: [{ it: "milk", qty: 4 }] });
     const list = async (u: string) => (await getAs(u, "/api/v1/tickets")) as WireTicket[];
@@ -282,6 +306,10 @@ describe("what a ticket carries, and to whom", () => {
   });
 
   it("hands a counter the roster it bills against, from the payers table", async () => {
+    // The only case in this file that writes a master table, so it puts the whole seed back
+    // first: `resetDocuments` restores the document half and leaves `payers` where it found it.
+    await truncateAll(app.testDb!.db);
+    await seedTestDb(app.testDb!.db);
     const snap = await get("u1");
     expect(snap.roster.patients.length).toBeGreaterThan(0);
     expect(snap.roster.staff.length).toBeGreaterThan(0);

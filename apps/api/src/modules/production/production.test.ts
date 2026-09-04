@@ -52,7 +52,9 @@ describe("POST /prod-orders/:id/dispatch", () => {
     const b = r.json();
     expect(b.result.ticket).toMatchObject({ req: order.id, from: "kitchen", to: order.from, st: "Issued" });
     expect(b.result.ticket.lines).toHaveLength(order.lines.length);
-    expect(b.result.ticket.otp).toMatch(/^\d{6}$/);
+    // The kitchen dispatching stands at the ticket's `from`, so the six digits are not in the
+    // answer — the outlet collecting reads them off its own snapshot.
+    expect(b.result.ticket.otp).toBe("");
     expect(b.result.order.st).toBe("Dispatched");
     expect(b.result.order.hist.at(-1)).toMatchObject({ s: "Dispatched", who: "Vinoth Prakash" });
     expect(b.changed).toEqual(["pord", "tkt", "rsv"]);
