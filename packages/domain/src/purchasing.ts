@@ -24,3 +24,11 @@ export const rateFor = (contract: { rate: number } | undefined, itemCost: number
 /** The expected date a vendor's lead time implies, counted in the hospital's calendar. */
 export const etaFrom = (at: Date, leadDays: number): string =>
   istDate(new Date(Date.parse(`${istDate(at)}T00:00:00+05:30`) + Math.max(0, Math.round(leadDays)) * 86_400_000));
+
+/** Is this contract's validity window open on `today`? All three dates are ISO `YYYY-MM-DD`,
+ *  which sorts the same as it compares, so a plain string comparison is exact — the same test
+ *  `purchaseOrdersRepo.activeContractRates` runs in SQL (`validFrom <= today <= validTo`) to
+ *  price an order, so a preview never offers a rate the order will not get. A contract whose
+ *  window has closed does not price an order, however active its flag says it is (spec §9.2). */
+export const contractInWindow = (c: { from: string; to: string }, today: string): boolean =>
+  c.from <= today && today <= c.to;

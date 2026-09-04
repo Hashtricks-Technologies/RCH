@@ -1,7 +1,7 @@
 // Rate contracts: SQL only. No rules, no transaction of its own — service.ts passes `tx` in.
 import { and, eq, ne } from "drizzle-orm";
 import type { RateContract } from "@rch/contract";
-import type { Tx } from "../../lib/db.js";
+import { isUniqueViolation, type Tx } from "../../lib/db.js";
 import { rateContracts, vendors } from "../../db/schema/index.js";
 
 export type RateContractRow = typeof rateContracts.$inferSelect;
@@ -45,8 +45,24 @@ export const contractsRepo = {
     return rows.length > 0;
   },
 
-  async update(tx: Tx, id: string, patch: RateContractPatch): Promise<void> {
-    await tx.update(rateContracts).set({ ...patch, updatedAt: new Date() }).where(eq(rateContracts.id, id));
+  /** `undefined` means the same thing here it means for `insertIfNew`: reactivating this
+   *  contract would collide with a live one for the same (vendor, item) another writer just
+   *  won. `liveFor`'s pre-check locks only rows that are already `active = true`, so two
+   *  reactivations of two *closed* contracts for the same pair both find nothing to lock and
+   *  both reach this UPDATE — `rate_contracts_live_uq` is the backstop, caught here rather than
+   *  left to surface as a raw 500, and the loser reads the same "already has a live contract"
+   *  sentence the pre-check gives the ordinary case. A patch that never sets `active: true`
+   *  cannot hit this index (it only constrains active rows), so `remove`'s `active: false` and
+   *  every other field-only patch always returns a row. */
+  async update(tx: Tx, id: string, patch: RateContractPatch): Promise<RateContractRow | undefined> {
+    try {
+      const [row] = await tx.update(rateContracts).set({ ...patch, updatedAt: new Date() }).where(eq(rateContracts.id, id)).returning();
+      if (!row) throw new Error(`rate contract ${id} vanished inside its own transaction`);
+      return row;
+    } catch (err) {
+      if (isUniqueViolation(err, "rate_contracts_live_uq")) return undefined;
+      throw err;
+    }
   },
 
   /** The wire shape of one contract, re-read joined to its vendor's name — `RateContract.vendor`

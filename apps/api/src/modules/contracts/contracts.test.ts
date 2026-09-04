@@ -22,7 +22,9 @@ const patch = async (user: string, url: string, payload?: Record<string, unknown
   return app.inject(opts);
 };
 const del = async (user: string, url: string) => app.inject({ method: "DELETE", url: `/api/v1${url}`, headers: await hdr(user) });
-// GET /contracts is Task 4's and does not exist in this worktree — read the snapshot's own slice.
+// GET /contracts exists now (mounted alongside the rest of buying's reads in
+// modules/snapshot/routes.ts), but the snapshot's own slice is the same rows and this file
+// predates that route — read it off `GET /snapshot` rather than adding a second reader.
 const contractsList = async () => (await app.inject({ method: "GET", url: "/api/v1/snapshot", headers: await authHeaders(app, "u3") })).json().contracts;
 // GET /items is a Phase 1 route, so it is safe here — the item names in this file's assertions
 // come from the master, not from a number typed into the test.
@@ -94,6 +96,29 @@ describe("PATCH and DELETE /contracts/:id", () => {
     const r = await patch("u3", `/contracts/${id}`, { active: true });
     expect(r.statusCode).toBe(422);
     expect(r.json().error.message).toBe(`${(await getItems()).milk.n} already has a live contract with Aavin Dairy Depot`);
+  });
+
+  it("gives the live slot to exactly one screen when two closed contracts race to reopen it", async () => {
+    // Both start closed, so `liveFor`'s pre-check — which locks only rows already `active =
+    // true` — finds nothing to lock for either request and both pass it; `rate_contracts_live_uq`
+    // is the only thing left standing between them, and `contractsRepo.update`'s catch is what
+    // turns the loser's 23505 into this sentence instead of a raw 500.
+    const a = await given.contract(app.testDb!.db, { vendorId: "VN-001", it: "bread", rate: 36, active: false });
+    const b = await given.contract(app.testDb!.db, { vendorId: "VN-001", it: "bread", rate: 40, active: false });
+    await warmPool(app.testDb!, 2);
+    const both = await Promise.all([
+      patch("u3", `/contracts/${a}`, { active: true }),
+      patch("u3", `/contracts/${b}`, { active: true }),
+    ]);
+    const ok = both.filter((r) => r.statusCode === 200);
+    const refused = both.filter((r) => r.statusCode === 422);
+    expect(ok).toHaveLength(1);
+    expect(refused).toHaveLength(1);
+    expect(refused[0]!.json().error.message).toBe(`${(await getItems()).bread.n} already has a live contract with Aavin Dairy Depot`);
+    const live = (await contractsList()).filter(
+      (c: { it: string; vendor: string; active: boolean }) => c.it === "bread" && c.vendor === "Aavin Dairy Depot" && c.active,
+    );
+    expect(live).toHaveLength(1);
   });
 
   it("refuses a window that ends before it starts on a patch too, and 404s an unknown id", async () => {

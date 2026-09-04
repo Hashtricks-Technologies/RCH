@@ -62,15 +62,20 @@ export function createContractsService(db: Db) {
 
         // Reactivating one is refused when another live contract already covers this vendor
         // and item — the index is the arbiter for the race two such reactivations can run;
-        // this pre-check is what turns the ordinary case into the store's own sentence.
+        // this pre-check is what turns the ordinary case into the store's own sentence. The
+        // display names are read once, here, rather than again after a failed update: a unique
+        // violation aborts the whole Postgres transaction, so a second query issued against
+        // `tx` after catching one — even a plain read — would itself fail with "current
+        // transaction is aborted", turning the intended 422 into a 500.
         const willBeActive = body.active ?? existing.active;
-        if (willBeActive && !existing.active) {
+        const reactivating = willBeActive && !existing.active;
+        let clashMessage: string | undefined;
+        if (reactivating) {
+          const vendor = await contractsRepo.vendorHead(tx, existing.vendorId);
+          const item = (await loadItems(tx))[existing.itemKey];
+          clashMessage = liveClashMessage(item?.n ?? existing.itemKey, vendor?.name ?? existing.vendorId);
           const clash = await contractsRepo.liveFor(tx, existing.vendorId, existing.itemKey, id);
-          if (clash) {
-            const vendor = await contractsRepo.vendorHead(tx, existing.vendorId);
-            const item = (await loadItems(tx))[existing.itemKey];
-            assertRule(false, liveClashMessage(item?.n ?? existing.itemKey, vendor?.name ?? existing.vendorId));
-          }
+          assertRule(!clash, clashMessage);
         }
 
         const patch: RateContractPatch = {};
@@ -79,7 +84,13 @@ export function createContractsService(db: Db) {
         if (body.to !== undefined) patch.validTo = body.to;
         if (body.moq !== undefined) patch.moq = body.moq;
         if (body.active !== undefined) patch.active = body.active;
-        await contractsRepo.update(tx, id, patch);
+        // The pre-check above catches the ordinary case; this is the backstop for the race it
+        // cannot see — two reactivations of two closed contracts for the same pair, neither
+        // holding a lock the other would find. `update` returns `undefined` on exactly that
+        // collision (`rate_contracts_live_uq`), and the loser reads the pre-check's own
+        // sentence, already in hand from before the update ran.
+        const row = await contractsRepo.update(tx, id, patch);
+        if (!row) assertRule(false, clashMessage!);
 
         const changed = ["contracts"] as const;
         await emitChanged(tx, changed);

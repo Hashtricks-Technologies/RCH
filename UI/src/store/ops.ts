@@ -1,4 +1,5 @@
 import { routes } from "@rch/contract";
+import { contractInWindow, istDate } from "@rch/domain";
 import { ApiError, call } from "../api/client";
 import { refetch } from "../api/refetch";
 import { seedContracts, seedProductRequests, seedShopAsks, seedTickets } from "../data/ops";
@@ -6,7 +7,7 @@ import type {
   ItemType, LocKey, ProductRequest, RateContract, ShopAsk,
   SupportTicket, TicketPriority, TicketStatus, TicketTopic,
 } from "../types";
-import { now } from "../lib/fmt";
+import { now, toInputDate } from "../lib/fmt";
 import type { AppState } from "./index";
 
 type Set_ = (p: Partial<AppState>) => void;
@@ -159,8 +160,16 @@ export const createOpsSlice = (set: Set_, get: Get): OpsSlice => ({
       await refetch(r.changed, r.message);
     } catch (e) { fail(get, e, "close the contract"); }
   },
-  contractRate: (vendor, it) =>
-    get().contracts.find((c) => c.active && c.vendor === vendor && c.it === it),
+  // The same window test the server prices an order with (`purchaseOrdersRepo.activeContractRates`):
+  // `from`/`to` here are DD-MMM-YYYY display strings, so they go through `toInputDate` before
+  // `contractInWindow` compares them as ISO dates against today's, in the hospital's calendar —
+  // a lapsed-but-still-`active` contract must not preview a rate the order will not get.
+  contractRate: (vendor, it) => {
+    const today = istDate(new Date());
+    return get().contracts.find((c) =>
+      c.active && c.vendor === vendor && c.it === it &&
+      contractInWindow({ from: toInputDate(c.from), to: toInputDate(c.to) }, today));
+  },
 
   /** The catalogue is a module-level registry every screen reads directly, so nothing is
    *  written here: `changed` names "items" and `refetch`'s reader replaces its contents in

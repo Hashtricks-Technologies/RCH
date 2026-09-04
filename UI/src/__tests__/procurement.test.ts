@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ALL_LOCS, LOC } from "../data/master";
 import { seedPrq } from "../data/seed";
 import { seedVendors, suggestVendor, vendorName } from "../data/vendors";
@@ -7,6 +7,7 @@ import {
 } from "../lib/selectors";
 import { useApp } from "../store";
 import { ordersFor } from "../roles/buyer/ProcurementList";
+import { contractFor } from "../roles/buyer/lib";
 import type { PoolGroup } from "../roles/buyer/ProcurementList";
 import { clone, resetStore, S } from "./fixture";
 
@@ -62,6 +63,41 @@ describe("vendor master", () => {
     const off = seedVendors.map((v) => ({ ...v, active: false }));
     expect(vendorName(off, "VN-001")).toBe("Aavin Dairy Depot");
     expect(vendorName(off, "VN-999")).toBe("Unknown vendor");
+  });
+});
+
+describe("rate contract preview honours the validity window", () => {
+  // Fixed rather than read off the host: `contractRate` compares against today's date in the
+  // hospital's calendar (`istDate`), so a test that let the host's own clock decide "lapsed"
+  // vs. "in window" would pass today and quietly go dark the day this contract's `to` arrives.
+  const today = new Date("2026-09-04T06:00:00+05:30");
+  beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(today); });
+  afterEach(() => { vi.useRealTimers(); });
+
+  it("does not preview a contract that is still marked active but whose window closed yesterday", () => {
+    useApp.setState({
+      contracts: [{ id: "RC-901", vendor: "Aavin Dairy Depot", it: "milk", rate: 52, from: "01-Jan-2026", to: "03-Sep-2026", moq: 40, active: true }],
+    });
+    expect(S().contractRate("Aavin Dairy Depot", "milk")).toBeUndefined();
+    // `contractFor` (`roles/buyer/lib.ts`, what `PoDrawer` and `ProcurementList` actually call)
+    // inherits the same refusal — it is a thin resolver over `contractRate`, not a second copy
+    // of the rule.
+    expect(contractFor(S(), "VN-001", "milk")).toBeUndefined();
+  });
+
+  it("previews a contract whose window covers today", () => {
+    useApp.setState({
+      contracts: [{ id: "RC-902", vendor: "Aavin Dairy Depot", it: "milk", rate: 52, from: "01-Jan-2026", to: "31-Mar-2027", moq: 40, active: true }],
+    });
+    expect(S().contractRate("Aavin Dairy Depot", "milk")?.id).toBe("RC-902");
+    expect(contractFor(S(), "VN-001", "milk")?.id).toBe("RC-902");
+  });
+
+  it("does not preview a contract that has not started yet", () => {
+    useApp.setState({
+      contracts: [{ id: "RC-903", vendor: "Aavin Dairy Depot", it: "milk", rate: 52, from: "05-Sep-2026", to: "31-Mar-2027", moq: 40, active: true }],
+    });
+    expect(S().contractRate("Aavin Dairy Depot", "milk")).toBeUndefined();
   });
 });
 

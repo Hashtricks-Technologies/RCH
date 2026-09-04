@@ -8,7 +8,7 @@
 import type { z } from "zod";
 import { QUARANTINE } from "@rch/contract";
 import type { CloseShortBodySchema, PurchaseOrder, ReceiptResultSchema, ReceivePoBodySchema, WriteResponse } from "@rch/contract";
-import { canTransition, checkReceiptLine, foldClaims, istDate, PO_TRANSITIONS, receiptStatus, round3, shortfallClaims, unitTotal } from "@rch/domain";
+import { checkReceiptLine, foldClaims, istDate, PO_TRANSITIONS, receiptStatus, round3, shortfallClaims, unitTotal } from "@rch/domain";
 import type { Db } from "../../db/client.js";
 import type { grns } from "../../db/schema/index.js";
 import { addOrdered, lockRequisitions } from "../../lib/claims.js";
@@ -136,10 +136,11 @@ export function createGrnService(db: Db) {
         const o = await grnRepo.head(tx, id);
         if (!o) throw new NotFoundError(`There is no purchase order ${id}.`);
         assertRule(body.reason.trim().length > 0, "Give a reason for closing this order short");
-        // Goes through the same table `receive` does, not a hand-rolled equality: the table's
-        // own sentence ("already partially received") is not the operator's, so this keeps the
-        // one they have always read rather than switching to `assertTransition`'s generic one.
-        assertRule(canTransition(PO_TRANSITIONS, o.status, "Received"), `${id} is ${o.status.toLowerCase()} — only a partly received order can be closed short`);
+        // Only a partly received order can be closed short — an order nothing has been
+        // delivered against has no GRN to close out, and `PO_TRANSITIONS.Ordered` allows
+        // "Received" directly (an order can be fully received in one instalment), so
+        // `canTransition` alone would let a buyer close-short an order nothing arrived on.
+        assertRule(o.status === "Partially received", `${id} is ${o.status.toLowerCase()} — only a partly received order can be closed short`);
         const lines = await grnRepo.lines(tx, id);
         const src = await grnRepo.sources(tx, id);
         // The balance never arrived, so give the demand back to the store keeper rather than
