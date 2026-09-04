@@ -10,7 +10,11 @@
  *   node apps/api/scripts/loadcheck.mjs --base http://localhost:3000 --emp RC-4471 --password changeme
  *
  * Flags: --base (default http://localhost:3000), --emp, --password, --concurrency (default 10),
- *        --duration (seconds, default 20), --warmup (seconds, default 3), --no-writes.
+ *        --duration (seconds, default 20), --warmup (seconds, default 3), --no-writes, --help.
+ *
+ * The rate limiter keys an authenticated request on the caller's user id (RATE_LIMIT_PER_MINUTE,
+ * default 300/min) — this script shares one bearer token across every concurrent worker, so raise
+ * that limit, or point at a deployment where it already is, before trusting a FAIL.
  *
  * It sells one unit of one item per write, on the counter's own outlet, with a fresh
  * Idempotency-Key each time — so it moves real stock. Point it at a database you can reseed.
@@ -23,6 +27,25 @@ const arg = (name, fallback) => {
   return i === -1 ? fallback : process.argv[i + 1];
 };
 const flag = (name) => process.argv.includes(`--${name}`);
+
+const HELP = `Measures GET /snapshot and POST /bills against §12's 150ms / 200ms p95 targets.
+
+  node apps/api/scripts/loadcheck.mjs --base http://localhost:3000 --emp RC-4471 --password changeme
+
+Flags: --base (default http://localhost:3000), --emp, --password, --concurrency (default 10),
+       --duration (seconds, default 20), --warmup (seconds, default 3), --no-writes, --help.
+
+The rate limiter keys an authenticated request on the caller's user id (RATE_LIMIT_PER_MINUTE,
+default 300/min) — this script shares one bearer token across every concurrent worker, so raise
+that limit, or point at a deployment where it already is, before trusting a FAIL.
+
+It sells one unit of one item per write, on the counter's own outlet, with a fresh
+Idempotency-Key each time — so it moves real stock. Point it at a database you can reseed.`;
+
+if (flag("help")) {
+  console.log(HELP);
+  process.exit(0);
+}
 
 const BASE = (arg("base", "http://localhost:3000")).replace(/\/$/, "");
 const API = `${BASE}/api/v1`;
@@ -54,7 +77,7 @@ async function pickSellable(token, loc) {
   const listed = snap.menu[loc] ?? [];
   const onHand = snap.stock[loc] ?? {};
   const it = listed.find((k) => (onHand[k] ?? 0) > 5000) ?? listed.find((k) => (onHand[k] ?? 0) > 100);
-  if (!it) throw new Error(`nothing at ${loc} has enough stock to hammer; reseed and try again`);
+  if (!it) throw new Error(`nothing at ${loc} has enough stock to hammer; reseed and top up stock at that outlet (see the runbook), then try again`);
   return it;
 }
 
@@ -62,13 +85,20 @@ async function hammer(label, fire, deadline, samples) {
   const workers = Array.from({ length: CONCURRENCY }, async () => {
     while (performance.now() < deadline) {
       const t0 = performance.now();
-      const res = await fire();
-      const ms = performance.now() - t0;
-      if (res.ok) samples.push(ms);
-      else samples.errors.push(res.status);
-      // Drain the body: an unread body holds the socket and the next request opens a new one,
-      // which measures connection setup rather than the server.
-      await res.arrayBuffer().catch(() => {});
+      try {
+        const res = await fire();
+        const ms = performance.now() - t0;
+        if (res.ok) samples.push(ms);
+        else samples.errors.push(res.status);
+        // Drain the body: an unread body holds the socket and the next request opens a new one,
+        // which measures connection setup rather than the server.
+        await res.arrayBuffer().catch(() => {});
+      } catch (e) {
+        // A connection-level failure (ECONNRESET, refused, aborted) throws before there is a
+        // response to read — count it as an error and keep this worker going rather than losing
+        // every sample the whole hammer collected to one dropped socket.
+        samples.errors.push(e?.code ?? "network");
+      }
     }
   });
   await Promise.all(workers);
@@ -84,7 +114,7 @@ function report(label, samples) {
     `${pass ? "PASS" : "FAIL"}  ${label.padEnd(16)} ` +
     `n=${String(sorted.length).padStart(6)}  ` +
     `p50=${pct(sorted, 50).toFixed(1)}ms  p95=${p95.toFixed(1)}ms  p99=${pct(sorted, 99).toFixed(1)}ms  ` +
-    `max=${sorted.at(-1)?.toFixed(1)}ms  target p95 <= ${target}ms` +
+    `max=${sorted.length ? `${sorted.at(-1).toFixed(1)}ms` : "n/a"}  target p95 <= ${target}ms` +
     (samples.errors.length ? `  (${samples.errors.length} non-2xx: ${[...new Set(samples.errors)].join(",")})` : "")
   );
   return pass;
