@@ -114,7 +114,10 @@ export default function Tickets() {
               <StatusPill status={t.st} />,
               canReceiveTicket(t.st)
                 ? <Btn size="xs" onClick={() => receiveTicket(t.id)}>Receive</Btn>
-                : <span className="dim mini">{t.st === "Issued" ? "not collected" : "on the rack"}</span>,
+                : <span className="dim mini">
+                    {t.st === "Issued" ? "not collected"
+                      : t.st === "Cancelled" ? "withdrawn — nothing was sent" : "on the rack"}
+                  </span>,
             ],
           }))}
           empty={{
@@ -161,7 +164,9 @@ export default function Tickets() {
               <b>{sum(t.lines, (l) => l.qty)}</b>,
               canHandOver(t.st)
                 ? <Otp value={t.otp} />
-                : <span className="dim mini">used at handover</span>,
+                : <span className="dim mini">
+                    {t.st === "Cancelled" ? "withdrawn — the OTP was never used" : "used at handover"}
+                  </span>,
               canHandOver(t.st)
                 ? <>
                     <StatusPill status={t.st} />
@@ -188,7 +193,9 @@ export default function Tickets() {
                 : <>
                     <StatusPill status={t.st} />
                     <div className="mini">
-                      {t.st === "Collected" ? `in transit to ${LOC[t.to].n}` : `on the shelf at ${LOC[t.to].n}`}
+                      {t.st === "Collected" ? `in transit to ${LOC[t.to].n}`
+                        : t.st === "Cancelled" ? "withdrawn — it never left the kitchen"
+                          : `on the shelf at ${LOC[t.to].n}`}
                     </div>
                   </>,
             ],

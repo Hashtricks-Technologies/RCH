@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { useApp } from "../store";
 import {
-  availOf, canDispatch, canHandOver, canIssueTicket, canReceiveTicket, isReqOpen, priceOf,
+  availOf, canCancelTicket, canDispatch, canHandOver, canIssueTicket, canMoveOrder,
+  canReceiveTicket, isReqOpen, isTicketOpen, priceOf,
 } from "../lib/selectors";
 import { resetStore, S, as } from "./fixture";
 
@@ -76,6 +77,42 @@ describe("what a button may offer is what the server accepts", () => {
     expect(canDispatch("Accepted")).toBe(true);
     expect(canDispatch("Dispatched")).toBe(false);
     expect(canDispatch("Declined")).toBe(false);
+  });
+  it("walks the board one stage at a time, and never skips one", () => {
+    expect(canMoveOrder("New", "Accepted")).toBe(true);
+    expect(canMoveOrder("New", "Declined")).toBe(true);
+    expect(canMoveOrder("Accepted", "In kitchen")).toBe(true);
+    expect(canMoveOrder("In kitchen", "Ready")).toBe(true);
+    expect(canMoveOrder("New", "Ready")).toBe(false);
+    expect(canMoveOrder("Ready", "Accepted")).toBe(false);
+    expect(canMoveOrder("Declined", "Accepted")).toBe(false);
+  });
+  it("draws no status button for a dispatched order — the way back is cancelling its ticket", () => {
+    // The one line the table cannot express: PROD_ORDER_TRANSITIONS has Dispatched -> Ready so
+    // a cancellation can put the order back, and `setStatus` refuses that source itself.
+    expect(canMoveOrder("Dispatched", "Ready")).toBe(false);
+    expect(canMoveOrder("Dispatched", "Accepted")).toBe(false);
+    expect(canMoveOrder("Dispatched", "Declined")).toBe(false);
+  });
+  it("never offers Dispatched as a word — a dispatch is a movement with its own endpoint", () => {
+    for (const st of ["New", "Accepted", "In kitchen", "Ready"] as const) {
+      expect(canMoveOrder(st, "Dispatched")).toBe(false);
+      // …and the control that does exist for those stages is the dispatch button's own.
+      expect(canDispatch(st)).toBe(true);
+    }
+  });
+  it("withdraws only a ticket nobody has collected against", () => {
+    expect(canCancelTicket("Issued")).toBe(true);
+    expect(canCancelTicket("Collected")).toBe(false);
+    expect(canCancelTicket("Received")).toBe(false);
+    expect(canCancelTicket("Cancelled")).toBe(false);
+  });
+  it("counts a ticket as still moving only while it is at the window or in transit", () => {
+    expect(isTicketOpen("Issued")).toBe(true);
+    expect(isTicketOpen("Collected")).toBe(true);
+    expect(isTicketOpen("Received")).toBe(false);
+    // The reason this predicate exists: `!== "Received"` called a withdrawn ticket moving.
+    expect(isTicketOpen("Cancelled")).toBe(false);
   });
 });
 

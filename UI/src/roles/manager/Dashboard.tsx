@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { IT, LOC, OUTLETS } from "../../data/master";
 import { useApp } from "../../store";
-import { availOf, menuOf, stockValue } from "../../lib/selectors";
+import { availOf, isTicketOpen, menuOf, stockValue } from "../../lib/selectors";
 import { lakh, money, money0, sum, unitTotal } from "../../lib/fmt";
 import {
   Alert, Btn, Card, DataTable, FilterSelect, PageHead, Pill, TableFoot, Toolbar,
@@ -75,7 +75,7 @@ export default function Dashboard() {
 
   /* Shop to shop: the goods never pass through the manager, so this is oversight only. */
   const transfers = s.tkt.filter((t) => OUTLETS.includes(t.from) && OUTLETS.includes(t.to));
-  const moving = transfers.filter((t) => t.st !== "Received");
+  const moving = transfers.filter((t) => isTicketOpen(t.st));
 
   const waiting = s.req.filter((r) => r.st === "Request sent");
   const urgent = waiting.filter((r) => r.urg).length;

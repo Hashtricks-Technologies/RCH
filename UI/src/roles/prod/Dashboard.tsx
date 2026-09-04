@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
-import { availOf, canHandOver, qty } from "../../lib/selectors";
+import { availOf, canHandOver, isTicketOpen, qty } from "../../lib/selectors";
 import { fq, sum, U } from "../../lib/fmt";
 import {
   Alert, Btn, Card, DataTable, Feed, Grid, Kpis, PageHead, Pill, StatusPill, TableFoot,
@@ -24,7 +24,8 @@ export default function Dashboard() {
   const ready = useMemo(() => pord.filter((o) => o.st === "Ready"), [pord]);
   const dispatches = useMemo(() => tkt.filter((t) => t.from === "kitchen"), [tkt]);
   const toHand = useMemo(() => dispatches.filter((t) => t.st === "Issued"), [dispatches]);
-  const moving = useMemo(() => dispatches.filter((t) => t.st !== "Received"), [dispatches]);
+  // Still on its way: at the pass or in transit. A withdrawn ticket is neither.
+  const moving = useMemo(() => dispatches.filter((t) => isTicketOpen(t.st)), [dispatches]);
   // A product the kitchen cannot make is as unavailable as one switched off by hand.
   const off = useMemo(() => PRODS.map((k) => ({ k, a: availOf(s, "kitchen", k) })).filter((x) => !x.a.ok), [s]);
 

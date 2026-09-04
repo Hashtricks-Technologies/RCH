@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { ALL_LOCS, IT, LOC, RCP } from "../../data/master";
 import { useApp } from "../../store";
-import { avail, canHandOver, menuOf, qty, recipeCost } from "../../lib/selectors";
+import { avail, canHandOver, isTicketOpen, menuOf, qty, recipeCost } from "../../lib/selectors";
 import { fq, money, sum, U } from "../../lib/fmt";
 import {
   Alert, Btn, Card, DataTable, Field, FilterSelect, FormRow, Grid, PageHead, Pill, StatusPill,
@@ -428,7 +428,7 @@ export default function MakeDistribute() {
         <TableFoot
           count={done.length}
           extra={<>Out of the kitchen today <b>{kt.length}</b>{" "}
-            <Pill tone="in">{kt.filter((t) => t.st !== "Received").length} still open</Pill></>}
+            <Pill tone="in">{kt.filter((t) => isTicketOpen(t.st)).length} still open</Pill></>}
         />
       </Card>
     </>

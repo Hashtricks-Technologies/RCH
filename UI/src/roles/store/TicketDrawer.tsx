@@ -92,7 +92,7 @@ function TicketDrawer({ id }: DrawerProps) {
         <Otp value={t.otp} />
       </div>
 
-      {t.st === "Issued" && (
+      {canHandOver(t.st) && (
         <div className="mtop">
           <Field
             label="OTP quoted by the collector"

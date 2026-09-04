@@ -812,6 +812,38 @@ describe("a refusal keeps what the operator typed", () => {
     ui.unmount();
   });
 
+  it("locks the make tile while the batch is in flight, so one tray is not baked twice", async () => {
+    as("prod");
+    let release!: () => void;
+    const inFlight = new Promise<void>((r) => { release = r; });
+    fetchMock.mockImplementation(async (u: string, init: RequestInit) => {
+      const at = `${init.method} ${String(u).split("?")[0]}`;
+      if (at === "POST /api/v1/batches") {
+        await inFlight;
+        return json({ result: BATCH, changed: ["batch", "stock"], message: "BAT-20260904-01 — 58 of 60 Veg puffs yielded (-3.3%), best before 18:40" });
+      }
+      return at === "GET /api/v1/batches" ? json([BATCH]) : json(STOCK);
+    });
+    const ui = mountNode(MakeDistribute);
+    act(() => { type(ui.field("Quantity of Veg puffs to start"), "60"); });
+
+    act(() => { ui.button("Make")!.click(); });
+
+    // The tile has swapped to its in-flight label and is disabled, so the second tap lands on
+    // nothing. (A human's second tap comes after a paint, which is this flush.)
+    const busy = ui.button("Making…");
+    expect(busy).toBeDefined();
+    expect(busy!.disabled).toBe(true);
+    act(() => { busy!.click(); });
+
+    release();
+    await act(async () => { await inFlight; await new Promise((r) => { setTimeout(r, 0); }); });
+    expect(hit("POST /api/v1/batches")).toHaveLength(1);
+    // And once it has landed the boxes are the kitchen's again.
+    expect(ui.field("Quantity of Veg puffs to start").value).toBe("");
+    ui.unmount();
+  });
+
   it("withdraws a ticket nobody collected, and closes the drawer behind it", async () => {
     as("store");
     const tkt = { ...FX.seedTkt[0], st: "Cancelled" };

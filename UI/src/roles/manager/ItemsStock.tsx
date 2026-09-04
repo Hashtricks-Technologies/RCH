@@ -1,13 +1,13 @@
 import { useState } from "react";
 import { ALL_LOCS, IT, LOC, OUTLETS } from "../../data/master";
 import { useApp } from "../../store";
-import { costOf, menuOf, qty, resv, stockValue } from "../../lib/selectors";
+import { costOf, isTicketOpen, menuOf, qty, resv, stockValue } from "../../lib/selectors";
 import { fq, lakh, money, money0, sum } from "../../lib/fmt";
 import {
   Alert, Btn, Card, DataTable, Field, FilterSelect, FormRow, Grid, PageHead,
   StatusPill, TableFoot, Tag, Toolbar,
 } from "../../ui/kit";
-import type { ItemType, LocKey, TicketPriority } from "../../types";
+import type { ItemType, LocKey, TicketPriority, TktStatus } from "../../types";
 import { emptyFor, sortRows, useSort, type SortValue } from "./useSort";
 
 const TYPES: (ItemType | "All")[] = ["All", "RAW", "PACK", "MRP", "FG", "MTO"];
@@ -16,8 +16,10 @@ const TSTATES = ["All", "Reserved", "In transit", "Received"] as const;
 const PRIORITIES: TicketPriority[] = ["Normal", "Urgent", "Low"];
 const tagKind = (t: ItemType) => (t === "MRP" ? "tr" : t === "FG" || t === "MTO" ? "md" : undefined);
 
-/** A shop transfer ticket's stage, in the words the manager needs. */
-const stageOf = (st: string) => (st === "Issued" ? "Reserved" : st === "Collected" ? "In transit" : "Received");
+/** A shop transfer ticket's stage, in the words the manager needs. Typed against the union so
+ *  a status added later has to be answered here rather than falling through to "Received". */
+const stageOf = (st: TktStatus) =>
+  st === "Issued" ? "Reserved" : st === "Collected" ? "In transit" : st === "Cancelled" ? "Cancelled" : "Received";
 
 export default function ItemsStock() {
   const s = useApp();
@@ -209,7 +211,7 @@ export default function ItemsStock() {
         />
         <TableFoot
           count={tRows.length}
-          extra={<>{transfers.filter((t) => t.st !== "Received").length} still moving · read-only</>}
+          extra={<>{transfers.filter((t) => isTicketOpen(t.st)).length} still moving · read-only</>}
         />
       </Card>
 
