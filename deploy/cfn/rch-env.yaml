@@ -17,6 +17,13 @@ Description: >-
   object — see deploy/cfn/README.md.
 
 Parameters:
+  GitHubRepoImmutable:
+    Type: String
+    Default: Hashtricks-Technologies@276870206/RCH@1346139433
+    Description: >-
+      The repository in GitHub's immutable-subject form, <org>@<org id>/<repo>@<repo id>, as the
+      OIDC token's sub carries it when the organisation enforces immutable subjects
+      (gh api repos/<org>/<repo> shows the ids; CloudTrail shows the sub a run presented).
   CreateCaaRecord:
     Type: String
     Default: "false"
@@ -195,12 +202,23 @@ Resources:
               StringLike:
                 token.actions.githubusercontent.com:sub:
                   # develop deploys the dev environment; staging and production keep their paths.
+                  # The organisation enforces GitHub's IMMUTABLE subject, so the token's sub reads
+                  # repo:<org>@<org id>/<repo>@<repo id>:..., never the plain repo:<org>/<repo>:...
+                  # form — both are listed so a change of that setting cannot lock the deploy out.
+                  # CloudTrail's AssumeRoleWithWebIdentity event (userIdentity.userName) shows the
+                  # exact sub a run presented, which is how this was found.
                   - !Sub "repo:${GitHubRepo}:ref:refs/heads/develop"
                   - !Sub "repo:${GitHubRepo}:ref:refs/heads/staging"
                   - !Sub "repo:${GitHubRepo}:ref:refs/heads/production"
                   - !Sub "repo:${GitHubRepo}:environment:dev"
                   - !Sub "repo:${GitHubRepo}:environment:staging"
                   - !Sub "repo:${GitHubRepo}:environment:production"
+                  - !Sub "repo:${GitHubRepoImmutable}:ref:refs/heads/develop"
+                  - !Sub "repo:${GitHubRepoImmutable}:ref:refs/heads/staging"
+                  - !Sub "repo:${GitHubRepoImmutable}:ref:refs/heads/production"
+                  - !Sub "repo:${GitHubRepoImmutable}:environment:dev"
+                  - !Sub "repo:${GitHubRepoImmutable}:environment:staging"
+                  - !Sub "repo:${GitHubRepoImmutable}:environment:production"
       Policies:
         - PolicyName: rch-deploy
           PolicyDocument:
