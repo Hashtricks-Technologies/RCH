@@ -59,7 +59,9 @@ async function parse(res: Response): Promise<unknown> {
 }
 
 let refreshing: Promise<boolean> | null = null;
-async function refresh(): Promise<boolean> {
+/** Exported for the event stream, which authenticates the same way `call()` does but cannot
+ *  go through it — its response never ends. Single-flight: two callers share one request. */
+export async function refreshOnce(): Promise<boolean> {
   refreshing ??= (async () => {
     try {
       const r = await raw(routes.refresh, {}, null);
@@ -79,7 +81,7 @@ export async function call<R extends AnyRoute>(route: R, input: Input = {}): Pro
   const key = idempotencyKeyFor(route);
   let res = await raw(route, input, getAccessToken(), key);
   if (res.status === 401 && !route.path.startsWith("/auth/")) {
-    if (await refresh()) res = await raw(route, input, getAccessToken(), key);
+    if (await refreshOnce()) res = await raw(route, input, getAccessToken(), key);
     else { sessionLost(); }
   }
   return parse(res) as Promise<z.infer<R["response"]>>;

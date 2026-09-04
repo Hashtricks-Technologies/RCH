@@ -2,9 +2,13 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { HashRouter } from "react-router-dom";
 import App from "./App";
+import { startEventStream } from "./api/events";
 import { useApp } from "./store";
 import ErrorBoundary from "./ui/ErrorBoundary";
 import "./styles.css";
+
+// Live updates follow the session; this is the only place that turns the follower on.
+startEventStream();
 
 // A reload keeps the HttpOnly refresh cookie but not the in-memory access token.
 // Start the exchange before the first render, so the gate shows "Loading…" rather
