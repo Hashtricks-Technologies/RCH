@@ -64,7 +64,18 @@ describe("restoring the session at boot", () => {
     expect(useApp.getState().auth).toBe("failed");
     expect(useApp.getState().user?.id).toBe("u1");
 
-    // And the Retry the shell offers is `loadSnapshot` again — nothing else has to be re-done.
+    // The failed page's other way out is Sign out, not just Retry — an operator stuck on a
+    // broken snapshot (or signed in as the wrong person) must be able to reach the sign-in
+    // form again. It is the same `logout()` the shell itself calls, so it lands on
+    // `auth: "signed-out"` with no user, the two things `App.tsx` reads to render Login.
+    fetchMock.mockResolvedValueOnce(ok({}));
+    await useApp.getState().logout();
+    expect(useApp.getState().auth).toBe("signed-out");
+    expect(useApp.getState().user).toBeNull();
+
+    // Back on a failed snapshot, the Retry the shell offers is `loadSnapshot` again —
+    // nothing else has to be re-done.
+    useApp.setState({ user: USER, auth: "failed" });
     fetchMock.mockResolvedValueOnce(ok(SNAPSHOT));
     await useApp.getState().loadSnapshot();
     expect(useApp.getState().auth).toBe("ready");

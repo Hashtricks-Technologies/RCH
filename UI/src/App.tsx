@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { Navigate, Route, Routes, useParams } from "react-router-dom";
+import { Navigate, Route, Routes, useNavigate, useParams } from "react-router-dom";
 import { useApp } from "./store";
 import { HOME, NAV, canSee } from "./nav";
 import Shell from "./ui/Shell";
@@ -60,6 +60,7 @@ export default function App() {
   const user = useApp((s) => s.user);
   const auth = useApp((s) => s.auth);
   const mcp = useApp((s) => s.mustChangePassword);
+  const nav = useNavigate();
   // The snapshot is the whole application's data: show that it is on its way
   // rather than a screen full of the seed nobody asked for.
   if (auth === "loading") {
@@ -72,7 +73,8 @@ export default function App() {
   }
   // Signed in, and the snapshot never arrived. There is no item master, no locations and no
   // menus behind this, so there is no screen to fall back to — every one of them would read an
-  // empty registry and throw. One page, one sentence, one button that asks again.
+  // empty registry and throw. One page, one sentence, a button that asks again, and a way out
+  // for an operator who signed in as the wrong person rather than a bad connection.
   if (auth === "failed") {
     return (
       <div className="lgi" style={{ margin: "20vh auto" }}>
@@ -81,7 +83,14 @@ export default function App() {
           You are signed in, but the server did not send today's item master, stock or documents,
           and nothing can be shown without them.
         </p>
-        <Btn onClick={() => { void useApp.getState().loadSnapshot(); }}>Retry</Btn>
+        <div className="btnrow" style={{ marginTop: 14 }}>
+          <Btn onClick={() => { void useApp.getState().loadSnapshot(); }}>Retry</Btn>
+          {/* Navigate once the token and the cookie are actually gone, or the guard on
+              /login bounces straight back to this same failed page. */}
+          <Btn variant="gh" onClick={() => { void useApp.getState().logout().then(() => nav("/login")); }}>
+            Sign out
+          </Btn>
+        </div>
       </div>
     );
   }
