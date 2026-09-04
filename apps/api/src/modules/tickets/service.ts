@@ -10,7 +10,7 @@ import { NotFoundError } from "../../lib/errors.js";
 import { emitChanged } from "../../lib/events.js";
 import { appendHistory } from "../../lib/history.js";
 import { lockBalances, postMoves } from "../../lib/ledger.js";
-import { loadMaster } from "../../lib/master.js";
+import { loadItems, loadLocations } from "../../lib/master.js";
 import { releaseForTicket, reservedAt } from "../../lib/reservations.js";
 import { assertRule, assertTransition } from "../../lib/rules.js";
 import { allocateTicket, readTicket, writeTicket } from "../../lib/tickets.js";
@@ -41,6 +41,10 @@ export function createTicketsService(db: Db) {
       return withTransaction(db, async (tx) => {
         const t = await ticketsRepo.head(tx, id);
         if (!t) throw new NotFoundError(`There is no ticket ${id}.`);
+        // Documents locked before ids, ids before balances (lib/ledger.ts's header): this
+        // ticket's own row is locked above, and the request behind it — the only other document
+        // this write touches — right here, both ahead of the balance locks `postMoves` takes.
+        const linked = await ticketsRepo.linkedRequest(tx, t.req);
         requireLocOf(claims, t.from, "the location the ticket is issued from");
         assertTransition(TICKET_TRANSITIONS, t.st, "Collected", id);
 
@@ -53,9 +57,10 @@ export function createTicketsService(db: Db) {
         else assertRule(claims.role === "store" || claims.role === "prod", "Only the store or the kitchen may hand over without the OTP");
 
         const at = new Date();
-        const master = await loadMaster(tx);
-        const from = master.locations[t.from];
-        const to = master.locations[t.to];
+        const items = await loadItems(tx);
+        const locations = await loadLocations(tx);
+        const fromName = locations[t.from]?.n ?? t.from;
+        const toName = locations[t.to]?.n ?? t.to;
 
         // The scan moves: the stock leaves `from` here and belongs to nobody until it is received.
         await postMoves(tx, t.lines.map((l) => ({ loc: t.from, it: l.it, qty: -l.qty, kind: "ticket_out" as const, refType: "ticket", refId: id, by: claims.sub, at })));
@@ -63,9 +68,9 @@ export function createTicketsService(db: Db) {
         // was the courtesy, and a sale on the same shelf may have happened since.
         const after = await ticketsRepo.balancesAt(tx, t.from, t.lines.map((l) => l.it));
         for (const l of t.lines) {
-          const item = master.items[l.it];
+          const item = items[l.it];
           const unit = item?.u ?? "nos";
-          assertRule((after[l.it] ?? 0) >= 0, `${to.n} cannot collect ${fq(l.qty, unit)} ${unit} of ${item?.n ?? l.it} — ${from.n} no longer has it`);
+          assertRule((after[l.it] ?? 0) >= 0, `${toName} cannot collect ${fq(l.qty, unit)} ${unit} of ${item?.n ?? l.it} — ${fromName} no longer has it`);
         }
         // The hold has done its work and the moves have taken its place.
         await releaseForTicket(tx, id, at);
@@ -73,7 +78,6 @@ export function createTicketsService(db: Db) {
 
         const who = await ticketsRepo.userName(tx, claims.sub);
         if (override) await appendHistory(tx, "ticket", id, "Handed over — supervisor override", who, at);
-        const linked = await ticketsRepo.linkedRequest(tx, t.req);
         if (linked && canTransition(REQUEST_TRANSITIONS, linked.status, "Collected")) {
           await ticketsRepo.setRequestStatus(tx, linked.id, "Collected");
           await appendHistory(tx, "request", linked.id, "Collected", who, at);
@@ -87,8 +91,8 @@ export function createTicketsService(db: Db) {
           result: await reread(tx, id),
           changed: [...changed],
           message: override
-            ? `${id} handed over on a supervisor override — stock is in transit to ${to.n}`
-            : `${id} handed over — stock is in transit to ${to.n}`,
+            ? `${id} handed over on a supervisor override — stock is in transit to ${toName}`
+            : `${id} handed over — stock is in transit to ${toName}`,
         };
       });
     },
@@ -102,8 +106,8 @@ export function createTicketsService(db: Db) {
         assertTransition(TICKET_TRANSITIONS, t.st, "Received", id);
 
         const at = new Date();
-        const master = await loadMaster(tx);
-        const to = master.locations[t.to];
+        const locations = await loadLocations(tx);
+        const toName = locations[t.to]?.n ?? t.to;
         // Booking stock in cannot drive a balance below zero, so this is the one movement with
         // no post-lock re-read behind it — the only asymmetry between the two ends of a ticket.
         await postMoves(tx, t.lines.map((l) => ({ loc: t.to, it: l.it, qty: l.qty, kind: "ticket_in" as const, refType: "ticket", refId: id, by: claims.sub, at })));
@@ -120,7 +124,7 @@ export function createTicketsService(db: Db) {
 
         const changed = ["tkt", "req", "stock"] as const;
         await emitChanged(tx, changed);
-        return { result: await reread(tx, id), changed: [...changed], message: `Received at ${to.n} — stock is on the shelf` };
+        return { result: await reread(tx, id), changed: [...changed], message: `Received at ${toName} — stock is on the shelf` };
       });
     },
 
@@ -132,11 +136,12 @@ export function createTicketsService(db: Db) {
     async transfer(claims: AccessClaims, body: TransferBody): Promise<WriteResponse<Ticket>> {
       return withTransaction(db, async (tx) => {
         assertRule(body.qty > 0, "Enter a quantity");
-        const master = await loadMaster(tx);
-        const item = master.items[body.it];
+        const items = await loadItems(tx);
+        const item = items[body.it];
         if (!item) throw new NotFoundError(`There is no item ${body.it}.`);
-        const from = master.locations[body.from];
-        const to = master.locations[body.to];
+        const locations = await loadLocations(tx);
+        const from = locations[body.from];
+        const to = locations[body.to];
         // The store and the kitchen supply through a request and a ticket the manager sees;
         // this is the shortcut between two shop floors, and nothing else may use it.
         assertRule(body.from !== body.to && from?.type === "Outlet" && to?.type === "Outlet", "A shop transfer runs between two different outlets");

@@ -54,6 +54,7 @@ describe("POST /tickets/:id/handover", () => {
     expect(await onHand("coffee", "cup")).toBe(180);          // in transit: owned by neither (M8)
 
     const held = await app.testDb!.db.select().from(reservations).where(eq(reservations.ticketId, "TKT-0440"));
+    expect(held).toHaveLength(1);
     expect(held.every((h) => h.releasedAt !== null)).toBe(true);
     const moves = await app.testDb!.db.select().from(stockMoves).where(eq(stockMoves.refId, "TKT-0440"));
     expect(moves).toHaveLength(1);
