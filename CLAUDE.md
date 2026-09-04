@@ -90,6 +90,23 @@ scripts/build-site.sh    assembles index.html + docs/ + UI/dist into dist/
 UI/                      the application (React 19, TS 6 strict, Vite 8, Zustand 5)
 ```
 
+## Nested guides
+
+Claude Code reads a package's own `CLAUDE.md` when it works inside that directory. Four of them
+carry what a fresh agent needs there and would otherwise have to reconstruct; each links back
+here for the repo-wide rules rather than repeating them.
+
+| File | What it adds |
+|---|---|
+| `apps/api/CLAUDE.md` | The module skeleton, the exact order a write is composed in, the documents → ids → balances lock order, the protected tables and the phrases `scripts/check-boundaries.sh` greps for, idempotency-claim semantics, the SSE plugin, the test harness (`buildTestApp`, `given.*` bands, `warmPool`), migrations, CLIs, env knobs and metric names |
+| `packages/contract/CLAUDE.md` | Wire types as Zod schemas and nothing else, `defineRoute` and the manifest driving both sides, closed unions, where positivity is a schema rule and where it is a service rule, `EVENTS_PATH`, fixtures as the one seed source |
+| `packages/domain/CLAUDE.md` | What purity means here, the rule-per-file table, the transition tables and the `PROD_ORDER_TRANSITIONS` trap, knip's "every export has a caller", and the literal-expected-value test style |
+| `UI/CLAUDE.md` | The three-file screen registry, the exact shape of a server-backed store action, `refetch`'s narrow readers, the SSE client and the shell pill, `hydrateMaster` vs the fixtures, and the fetch-stub test pattern |
+
+Every phase's docs task refreshes **the root guide and all four nested guides in the same commit
+as the spec §16 rows** it adds. A phase that moves an action to the server, adds a module, or
+changes a rule leaves at least one of them wrong until it does.
+
 ## Architecture
 
 ### Role-partitioned screens, one registry
