@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { and, eq } from "drizzle-orm";
-import { withTestSchema, truncateAll, type TestDb } from "../test/db.js";
-import { postMoves, rebuildBalances } from "./ledger.js";
+import { withTestSchema, truncateAll, warmPool, type TestDb } from "../test/db.js";
+import { lockBalances, postMoves, rebuildBalances } from "./ledger.js";
 import { withTransaction } from "./db.js";
 import { items, locations, stockBalances, stockMoves } from "../db/schema/index.js";
 
@@ -13,6 +13,7 @@ beforeEach(async () => {
   await t.db.insert(locations).values([
     { key: "store", name: "Central Store", code: "WH-CS", type: "Store", floor: "B", costCentre: "CC" },
     { key: "coffee", name: "Coffee Shop", code: "OT-C3", type: "Outlet", floor: "3", costCentre: "CC", priceList: "B", sellable: true },
+    { key: "kitchen", name: "Central Kitchen", code: "KT-CK", type: "Kitchen", floor: "G", costCentre: "CC" },
   ]);
   await t.db.insert(items).values({ key: "milk", code: "RM-1001", name: "Milk 1L", unit: "L", type: "RAW", grp: "Dairy", hsn: "0401", gst: 0 });
   await t.db.insert(items).values({ key: "sugar", code: "RM-1002", name: "Sugar 1kg", unit: "kg", type: "RAW", grp: "Dry", hsn: "1701", gst: 0 });
@@ -99,5 +100,19 @@ describe("postMoves", () => {
     const dry = await t.db.select().from(stockBalances).where(and(eq(stockBalances.loc, "coffee"), eq(stockBalances.itemKey, "sugar")));
     expect(dry.length).toBe(1);
     expect(dry[0].onHand).toBe(0);
+  });
+});
+
+describe("lockBalances", () => {
+  it("locks a pair the same way whoever asks, and folds a repeat into one lock", async () => {
+    // Two writers taking the same two cells in opposite input order must not deadlock: both
+    // visit (kitchen, milk) before (store, milk) because lockBalances sorts, not its caller.
+    // Two clients first, or the pool runs them one after the other and nothing is raced.
+    await warmPool(t);
+    const both = await Promise.allSettled([
+      t.db.transaction(async (tx) => { await lockBalances(tx, [{ loc: "store", it: "milk" }, { loc: "kitchen", it: "milk" }, { loc: "store", it: "milk" }]); }),
+      t.db.transaction(async (tx) => { await lockBalances(tx, [{ loc: "kitchen", it: "milk" }, { loc: "store", it: "milk" }]); }),
+    ]);
+    expect(both.every((r) => r.status === "fulfilled")).toBe(true);
   });
 });

@@ -10,11 +10,16 @@ export async function ensureSequences(tx: Tx): Promise<void> {
   await tx.insert(sequences).values(rows).onConflictDoNothing();
 }
 
-/** Gapless and serialised: the row lock taken by UPDATE holds until the caller's transaction ends. */
-export async function allocateId(tx: Tx, kind: IdKind, at: Date = new Date()): Promise<string> {
+/** Gapless and serialised: the row lock taken by UPDATE holds until the caller's transaction
+ *  ends. Returns the raw number too, because a ticket's OTP is minted from it (`makeOtp`). */
+export async function allocateNumber(tx: Tx, kind: IdKind, at: Date = new Date()): Promise<{ n: number; id: string }> {
   const r = await tx.execute(sql`update sequences set next = next + 1 where kind = ${kind} returning next - 1 as n`);
   const row = r.rows[0] as { n: number | string } | undefined;
   if (!row) throw new Error(`sequence "${kind}" is not initialised - run ensureSequences()`);
   recordAllocation(kind);
-  return formatId(kind, Number(row.n), at);
+  const n = Number(row.n);
+  return { n, id: formatId(kind, n, at) };
 }
+
+export const allocateId = async (tx: Tx, kind: IdKind, at: Date = new Date()): Promise<string> =>
+  (await allocateNumber(tx, kind, at)).id;

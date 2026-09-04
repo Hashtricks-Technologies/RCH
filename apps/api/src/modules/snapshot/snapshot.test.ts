@@ -117,3 +117,38 @@ describe("GET /bills", () => {
     expect(bills.every((b: { loc: string }) => b.loc === "coffee")).toBe(true);
   });
 });
+
+describe("the document reads the movement chain refetches", () => {
+  it("GET /requests gives a manager every request and a counter only their own outlet's", async () => {
+    const all = await app.inject({ method: "GET", url: "/api/v1/requests", headers: await authHeaders(app, "u2") });
+    expect(all.statusCode).toBe(200);
+    expect(all.json().map((r: { id: string }) => r.id)).toEqual(["REQ-2026-0909", "REQ-2026-0910", "REQ-2026-0911", "REQ-2026-0912"]);
+
+    const mine = await app.inject({ method: "GET", url: "/api/v1/requests", headers: await authHeaders(app, "u1") });
+    expect(mine.json().map((r: { id: string }) => r.id)).toEqual(["REQ-2026-0909", "REQ-2026-0911"]);   // u1 is at coffee
+  });
+
+  it("GET /tickets gives a counter the tickets that touch their counter, either end", async () => {
+    const mine = await app.inject({ method: "GET", url: "/api/v1/tickets", headers: await authHeaders(app, "u1") });
+    expect(mine.statusCode).toBe(200);
+    expect(mine.json()).toEqual([{ id: "TKT-0440", req: "REQ-2026-0909", from: "store", to: "coffee", lines: [{ it: "cup", qty: 500 }], st: "Issued", otp: "418327" }]);
+
+    const other = await app.inject({ method: "GET", url: "/api/v1/tickets", headers: await authHeaders(app, "u6") });
+    expect(other.json()).toEqual([]);      // u6 is at kiosk; TKT-0440 goes to coffee
+  });
+
+  it("GET /shop-asks gives a counter the asks at either end and a manager all of them", async () => {
+    const mgr = await app.inject({ method: "GET", url: "/api/v1/shop-asks", headers: await authHeaders(app, "u2") });
+    expect(mgr.json().map((a: { id: string }) => a.id).sort()).toEqual(["ASK-0059", "ASK-0060"]);
+    const kiosk = await app.inject({ method: "GET", url: "/api/v1/shop-asks", headers: await authHeaders(app, "u6") });
+    expect(kiosk.json().map((a: { id: string }) => a.id).sort()).toEqual(["ASK-0059", "ASK-0060"]);   // kiosk is one end of both
+  });
+
+  it("answers each read with exactly the slice the snapshot carries", async () => {
+    const snap = (await app.inject({ method: "GET", url: "/api/v1/snapshot", headers: await authHeaders(app, "u1") })).json();
+    for (const [url, key] of [["/api/v1/requests", "req"], ["/api/v1/tickets", "tkt"], ["/api/v1/shop-asks", "shopAsks"]] as const) {
+      const r = await app.inject({ method: "GET", url, headers: await authHeaders(app, "u1") });
+      expect(r.json()).toEqual(snap[key]);
+    }
+  });
+});

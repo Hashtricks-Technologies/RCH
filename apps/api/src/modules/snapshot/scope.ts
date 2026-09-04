@@ -1,4 +1,4 @@
-import type { Bill, LocKey, Role } from "@rch/contract";
+import type { Bill, LocKey, Role, ShopAsk, StockRequest, Ticket } from "@rch/contract";
 import type { Snapshot } from "./service.js";
 
 /** The columns of `sales`, in order — mirrors OUTLET_COLS in readers/documents.ts. */
@@ -25,6 +25,16 @@ export function scopeStock(part: StockPart, who: Who): StockPart {
 export const scopeBills = (bills: Bill[], who: Who): Bill[] =>
   who.role !== "counter" ? bills : bills.filter((b) => b.loc === who.loc);
 
+/** A counter's requests are their own outlet's; everyone else sees the desk they work. */
+export const scopeRequests = (req: StockRequest[], who: Who): StockRequest[] =>
+  who.role !== "counter" ? req : req.filter((r) => r.from === who.loc);
+/** Either end of the movement: a counter sees what leaves them and what is coming to them. */
+export const scopeTickets = (tkt: Ticket[], who: Who): Ticket[] =>
+  who.role !== "counter" ? tkt : tkt.filter((t) => t.from === who.loc || t.to === who.loc);
+/** Shop to shop: the asker and the shop being asked, nobody in between. */
+export const scopeShopAsks = (asks: ShopAsk[], who: Who): ShopAsk[] =>
+  who.role !== "counter" ? asks : asks.filter((a) => a.from === who.loc || a.to === who.loc);
+
 /** A counter operator's world is their counter. Master data is never cut down; documents and stock are. */
 export function scope(s: Snapshot, who: Who & { sub: string }): Snapshot {
   if (who.role !== "counter") return s;
@@ -38,10 +48,10 @@ export function scope(s: Snapshot, who: Who & { sub: string }): Snapshot {
     ...s,
     ...scopeStock(s, who),
     menu: { [L]: s.menu[L] ?? [] },
-    req: s.req.filter((r) => r.from === L),
-    tkt: s.tkt.filter((t) => t.from === L || t.to === L),
+    req: scopeRequests(s.req, who),
+    tkt: scopeTickets(s.tkt, who),
     bills: scopeBills(s.bills, who),
-    shopAsks: s.shopAsks.filter((a) => a.from === L || a.to === L),
+    shopAsks: scopeShopAsks(s.shopAsks, who),
     tickets: s.tickets.filter(mine),
     productReqs: s.productReqs.filter((p) => p.forLoc === L),
     pord: s.pord.filter((o) => o.from === L),
