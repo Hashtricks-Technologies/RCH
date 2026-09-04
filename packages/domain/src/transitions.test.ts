@@ -58,8 +58,33 @@ describe("production order transitions", () => {
     expect(canTransition(PROD_ORDER_TRANSITIONS, "New", "Ready")).toBe(false);
     expect(canTransition(PROD_ORDER_TRANSITIONS, "Ready", "Accepted")).toBe(false);
   });
-  it("is finished once it has gone out or been turned down", () => {
-    expect(PROD_ORDER_TRANSITIONS.Dispatched).toEqual([]);
+  it("is finished once it has been turned down", () => {
     expect(PROD_ORDER_TRANSITIONS.Declined).toEqual([]);
+  });
+  it("comes back from Dispatched only for a cancelled ticket", () => {
+    expect(PROD_ORDER_TRANSITIONS.Dispatched).toEqual(["Ready"]);
+  });
+});
+
+describe("a ticket that was never collected", () => {
+  it("may be taken back while it is still at the window", () => {
+    expect(canTransition(TICKET_TRANSITIONS, "Issued", "Cancelled")).toBe(true);
+  });
+  it("may not be taken back once the stock is in transit or on the shelf", () => {
+    expect(canTransition(TICKET_TRANSITIONS, "Collected", "Cancelled")).toBe(false);
+    expect(canTransition(TICKET_TRANSITIONS, "Received", "Cancelled")).toBe(false);
+  });
+  it("is finished once it is cancelled", () => {
+    expect(TICKET_TRANSITIONS.Cancelled).toEqual([]);
+  });
+  it("puts the production order behind it back on the board, and nowhere else", () => {
+    expect(canTransition(PROD_ORDER_TRANSITIONS, "Dispatched", "Ready")).toBe(true);
+    expect(canTransition(PROD_ORDER_TRANSITIONS, "Dispatched", "Accepted")).toBe(false);
+    expect(canTransition(PROD_ORDER_TRANSITIONS, "Dispatched", "Dispatched")).toBe(false);
+  });
+  it("leaves the request table alone — a request comes back through the cancel endpoint's own guard", () => {
+    expect(canTransition(REQUEST_TRANSITIONS, "Ticket issued", "Manager approved")).toBe(false);
+    expect(canTransition(REQUEST_TRANSITIONS, "Ticket issued", "Collected")).toBe(true);
+    expect(REQUEST_TRANSITIONS["Ticket issued"]).toEqual(["Collected"]);
   });
 });

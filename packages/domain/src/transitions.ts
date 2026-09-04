@@ -25,9 +25,13 @@ export const REQUEST_TRANSITIONS: TransitionTable<ReqStatus> = {
 };
 
 export const TICKET_TRANSITIONS: TransitionTable<TktStatus> = {
-  Issued: ["Collected"],
+  // A ticket that was never collected can be withdrawn, which releases the hold it placed.
+  // Once it has been handed over the stock is in transit and the way back is a receipt and
+  // then a movement of its own — not an undo.
+  Issued: ["Collected", "Cancelled"],
   Collected: ["Received"],
   Received: [],
+  Cancelled: [],
 };
 
 /**
@@ -42,7 +46,11 @@ export const PROD_ORDER_TRANSITIONS: TransitionTable<PordStatus> = {
   Accepted: ["In kitchen", "Dispatched"],
   "In kitchen": ["Ready", "Dispatched"],
   Ready: ["Dispatched"],
-  Dispatched: [],
+  // The one way back onto the board, and it is not a button: cancelling the ticket a dispatch
+  // raised leaves the order undelivered, and calling it Dispatched would be a lie. The status
+  // endpoint refuses `Dispatched` as a source and `canMoveOrder` refuses it as a source too,
+  // so nothing but a cancellation can take this edge.
+  Dispatched: ["Ready"],
   Declined: [],
 };
 

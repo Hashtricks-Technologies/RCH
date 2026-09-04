@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { z } from "zod";
-import { EVENTS_PATH, EventNoticeSchema } from "./index";
+import { EVENTS_PATH, EventNoticeSchema, MakeBatchBodySchema, SetOrderStatusBodySchema, TktStatusSchema } from "./index";
 import { routes } from "./routes";
 
 /** One valid body per route that takes one. The coverage case below fails if a new route
@@ -22,6 +22,9 @@ const SAMPLES: Record<string, Record<string, unknown>> = {
   answerShopAsk: { grant: 6 },
   declineShopAsk: { reason: "We are short ourselves" },
   distribute: { it: "SKU-1", qty: 5, to: "kiosk" },
+  setOrderStatus: { st: "Accepted" },
+  makeBatch: { it: "SKU-1", started: 60, made: 58, note: "Oven tray dropped" },
+  cancelTicket: { reason: "The counter closed before the collector came" },
 };
 // `routes` is a const object, so `r.body` is a union of every literal schema type; the cast
 // keeps this loop about the shared `safeParse` and not about zod's generics.
@@ -50,5 +53,17 @@ describe("the event stream", () => {
     expect(EventNoticeSchema.safeParse({ collection: "req", at: "2026-09-04T04:30:00.000Z" }).success).toBe(true);
     expect(EventNoticeSchema.safeParse({ collection: "nonsense", at: "2026-09-04T04:30:00.000Z" }).success).toBe(false);
     expect(EventNoticeSchema.safeParse({ collection: "req", at: "…", extra: 1 }).success).toBe(false);
+  });
+});
+
+describe("the kitchen's writes and a ticket taken back", () => {
+  it("takes a make with no yield and no reason — the blank boxes mean 'all of them, nothing to explain'", () => {
+    expect(MakeBatchBodySchema.safeParse({ it: "puff", started: 10 }).success).toBe(true);
+  });
+  it("refuses a status the board does not have", () => {
+    expect(SetOrderStatusBodySchema.safeParse({ st: "Baked" }).success).toBe(false);
+  });
+  it("knows a ticket can end without ever being collected", () => {
+    expect(TktStatusSchema.safeParse("Cancelled").success).toBe(true);
   });
 });

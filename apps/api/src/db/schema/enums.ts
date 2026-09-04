@@ -12,7 +12,7 @@ export const reqStatusEnum = pgEnum("req_status", [
   "Draft", "Request sent", "Manager approved", "Partially approved", "Ticket issued",
   "Collected", "Received", "Closed", "Rejected", "Cancelled",
 ]);
-export const ticketStatusEnum = pgEnum("ticket_status", ["Issued", "Collected", "Received"]);
+export const ticketStatusEnum = pgEnum("ticket_status", ["Issued", "Collected", "Received", "Cancelled"]);
 export const ticketRefEnum = pgEnum("ticket_ref", ["request", "prod_order", "direct", "shop_transfer", "shop_ask"]);
 export const shopAskStatusEnum = pgEnum("shop_ask_status", ["Asked", "Sent", "Declined"]);
 export const prodOrderStatusEnum = pgEnum("prod_order_status", ["New", "Accepted", "In kitchen", "Ready", "Dispatched", "Declined"]);

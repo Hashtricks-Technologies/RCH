@@ -35,7 +35,9 @@ function TicketDrawer({ id }: DrawerProps) {
   }
 
   const r = req.find((x) => x.id === t.req);
-  const step = STEPS.indexOf(t.st);
+  // A cancelled ticket is not a step on the way to anywhere, so it sits outside this list and
+  // `indexOf` answers -1 for it. The read is widened rather than the list.
+  const step = (STEPS as readonly string[]).indexOf(t.st);
   const value = sum(t.lines, (l) => l.qty * (IT[l.it]?.cost ?? 0));
 
   const when = (s: string) => r?.hist.find((h) => h.s === s)?.t;
