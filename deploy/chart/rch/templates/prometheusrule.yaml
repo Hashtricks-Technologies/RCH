@@ -1,0 +1,78 @@
+{{- if .Values.serviceMonitor.enabled }}
+{{- /*
+  Spec §12, Operability: "Alerts (documented in deploy/RUNBOOK.md): 5xx rate > 1 % over 5 min,
+  p95 latency > 1 s, readiness failing, DB connections > 80 %, RDS free storage < 20 %."
+
+  Three of the five read metrics this API publishes and ship here, beside the code that emits
+  them. The two RDS rules need CloudWatch metrics this cluster does not have — they are wired at
+  the observability-stack level and stay in the runbook, which says so. `sse_listener_up` is a
+  sixth, added because a pod whose LISTEN connection is down serves every request correctly and
+  quietly stops delivering live updates, which no other alert here would notice.
+
+  Gated on serviceMonitor.enabled: without the Prometheus Operator the PrometheusRule CRD does
+  not exist and applying one fails the whole release.
+
+  The `job` selector matches what templates/servicemonitor.yaml actually produces: it sets no
+  spec.jobLabel, so Prometheus Operator's default target-labelling gives every scraped series a
+  `job` label equal to the Service's own name, {{ .Release.Name }}-api — an exact match, not a
+  regex, and the same expression deploy/RUNBOOK.md §9 already documents (`up{job="rch-api"}`).
+*/}}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ .Release.Name }}-api
+  labels: { {{ include "rch.labels" . }}, app.kubernetes.io/component: api }
+spec:
+  groups:
+    - name: {{ .Release.Name }}-api
+      rules:
+        - alert: RchApiHigh5xxRate
+          expr: |
+            sum(rate(http_request_duration_seconds_count{job="{{ .Release.Name }}-api",status=~"5.."}[5m]))
+              / sum(rate(http_request_duration_seconds_count{job="{{ .Release.Name }}-api"}[5m])) > {{ .Values.alerts.errorRate }}
+          for: 5m
+          labels: { severity: critical }
+          annotations:
+            summary: "More than {{ .Values.alerts.errorRate }} of requests are failing"
+            description: "One in {{ divf 1.0 .Values.alerts.errorRate }} requests is a 5xx over the last five minutes."
+            runbook_url: "{{ .Values.alerts.runbookUrl }}#9-alerts"
+        - alert: RchApiHighLatencyP95
+          expr: |
+            histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{job="{{ .Release.Name }}-api"}[5m])) by (le)) > {{ .Values.alerts.p95Seconds }}
+          for: 10m
+          labels: { severity: warning }
+          annotations:
+            summary: "p95 latency is over {{ .Values.alerts.p95Seconds }}s"
+            description: "Spec §12 budgets 150ms for /snapshot and 200ms for a write; this fires an order of magnitude above that."
+            runbook_url: "{{ .Values.alerts.runbookUrl }}#9-alerts"
+        - alert: RchApiDown
+          # Prometheus Operator discovers targets from the Service's Endpoints, which lists only
+          # pods whose readiness probe passes — so a pod stuck failing /readyz leaves the target
+          # set and this is what "readiness failing" looks like from outside.
+          expr: up{job="{{ .Release.Name }}-api"} == 0
+          for: 2m
+          labels: { severity: critical }
+          annotations:
+            summary: "An API pod is not being scraped"
+            runbook_url: "{{ .Values.alerts.runbookUrl }}#3-roll-back"
+        - alert: RchApiPoolSaturated
+          expr: |
+            max(pg_pool_waiting{job="{{ .Release.Name }}-api"}) > 0
+              and max(pg_pool_idle{job="{{ .Release.Name }}-api"}) == 0
+          for: 5m
+          labels: { severity: warning }
+          annotations:
+            summary: "Requests are queueing for a database connection"
+            description: "Ten connections per pod (spec §11.2). Sustained waiting means a slow query or a leaked transaction, not load."
+            runbook_url: "{{ .Values.alerts.runbookUrl }}#9-alerts"
+        - alert: RchSseListenerDown
+          # Not wired into /readyz, deliberately — see RUNBOOK §10. A pod whose listener is down
+          # answers every request correctly; what it has stopped doing is delivering other pods'
+          # writes to its own browsers. Five minutes, because the plugin reconnects itself.
+          expr: min(sse_listener_up{job="{{ .Release.Name }}-api"}) == 0
+          for: 5m
+          labels: { severity: warning }
+          annotations:
+            summary: "A pod's live-update stream has gone deaf"
+            runbook_url: "{{ .Values.alerts.runbookUrl }}#10-server-sent-events-sse"
+{{- end }}
