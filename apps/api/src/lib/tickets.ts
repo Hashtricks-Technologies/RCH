@@ -9,7 +9,7 @@ import type { Tx } from "./db.js";
 import { allocateNumber } from "./ids.js";
 import { reserve } from "./reservations.js";
 
-export type TicketRefType = "request" | "prod_order" | "direct" | "shop_transfer" | "shop_ask";
+export type TicketRefType = NonNullable<(typeof tickets.$inferInsert)["refType"]>;
 export type TicketDraft = {
   refType: TicketRefType; refId: string; from: string; to: string;
   lines: readonly { it: string; qty: number }[]; by: string; at?: Date;
