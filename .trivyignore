@@ -1,0 +1,9 @@
+# Trivy ignore list for the container-image scan in CI (.github/workflows/ci.yml).
+# Every entry needs a reason and an expiry; the scan fails again the day one lapses.
+#
+# CVE-2026-31789 — libssl3 heap buffer overflow when parsing a large X.509 certificate,
+# on 32-bit builds only. Both runtime images are built and deployed as linux/amd64
+# (ci.yml / deploy.yml pin the platform), so the affected code path is not reachable.
+# Fixed in openssl 3.0.19-1~deb12u2; remove this line once
+# gcr.io/distroless/nodejs24-debian12:nonroot ships it (trivy image <ref> shows the version).
+CVE-2026-31789 exp:2026-09-30

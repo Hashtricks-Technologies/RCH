@@ -70,10 +70,10 @@ jobs:
         with: { context: ., file: UI/Dockerfile, push: false, load: true, platforms: linux/amd64, tags: rch-ui:ci, cache-from: type=gha, cache-to: "type=gha,mode=max" }
       - name: Scan api
         uses: aquasecurity/trivy-action@v0.36.0
-        with: { image-ref: rch-api:ci, severity: CRITICAL, exit-code: "1", ignore-unfixed: true }
+        with: { image-ref: rch-api:ci, severity: CRITICAL, exit-code: "1", ignore-unfixed: true, trivyignores: .trivyignore }
       - name: Scan ui
         uses: aquasecurity/trivy-action@v0.36.0
-        with: { image-ref: rch-ui:ci, severity: CRITICAL, exit-code: "1", ignore-unfixed: true }
+        with: { image-ref: rch-ui:ci, severity: CRITICAL, exit-code: "1", ignore-unfixed: true, trivyignores: .trivyignore }
       # From here on: a real `helm install` against a throwaway kind cluster (spec §16,
       # §14 Phase 1 exit amendment). Lives at the end of this job, not a separate one that
       # `needs: images`, because the images above are only in this runner's local Docker
