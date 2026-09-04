@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { LocKeySchema, PriceListSchema, TenderSchema } from "./common.js";
-import { PayerSchema, ProdOrderSchema, ShopAskSchema, StockRequestSchema, TicketSchema } from "./documents.js";
+import { PayerSchema, PordStatusSchema, ProdOrderSchema, ShopAskSchema, StockRequestSchema, TicketSchema } from "./documents.js";
 
 /** Every domain slice a write can touch, so a client can invalidate/refetch precisely instead
  *  of reloading the whole snapshot after each mutation. Extracted so `events.ts` can name one
@@ -62,3 +62,22 @@ export const DistributeBodySchema = z.strictObject({ it: z.string().min(1).max(6
 /** Dispatch changes the order and mints the ticket that carries it, and the kitchen needs both
  *  in one breath: the order moves to Dispatched and the collector is read the OTP. */
 export const DispatchResultSchema = z.strictObject({ order: ProdOrderSchema, ticket: TicketSchema });
+
+// The board's own two words: a status the kitchen presses, and a batch it logs. `Dispatched` is
+// a member of PordStatusSchema and is accepted by the schema on purpose — it is refused in the
+// service with a sentence that says where to go instead, because a stale tab pressing it needs
+// an answer it can read, not a 400 (spec §9.2: "Dispatched via its own endpoint").
+export const SetOrderStatusBodySchema = z.strictObject({ st: PordStatusSchema });
+// `started` is what went into the oven and `made` is what came out of it; the ingredients go
+// against the first and only the second reaches the rack (UA-14). A blank yield box means every
+// unit came good, so `made` is optional rather than defaulted — a default of 0 would read a
+// blank box as a lost tray.
+export const MakeBatchBodySchema = z.strictObject({
+  it: z.string().min(1).max(64),
+  started: QtySchema,
+  made: QtySchema.optional(),
+  note: z.string().max(500).optional(),
+});
+/** A cancellation has to say why: the reason is the only record of it, since a ticket's row
+ *  carries no prose and it ends up in document_history rather than on the ticket. */
+export const CancelTicketBodySchema = z.strictObject({ reason: z.string().max(500) });

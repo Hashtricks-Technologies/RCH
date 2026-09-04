@@ -36,6 +36,13 @@
       "when": 1788493190345,
       "tag": "0004_payers",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1788495704770,
+      "tag": "0005_ticket_status_cancelled",
+      "breakpoints": true
     }
   ]
 }

@@ -2,7 +2,9 @@ import { z } from "zod";
 import { IsoDate, IsoTime, ItemTypeSchema, LocKeySchema, Money, PriceListSchema, Qty, RoleSchema, TenderSchema } from "./common.js";
 
 export const ReqStatusSchema = z.enum(["Draft", "Request sent", "Manager approved", "Partially approved", "Ticket issued", "Collected", "Received", "Closed", "Rejected", "Cancelled"]);
-export const TktStatusSchema = z.enum(["Issued", "Collected", "Received"]);
+// A ticket that was issued and never collected is withdrawn rather than left open: the hold it
+// placed has to be released, and "Cancelled" is what the release is recorded as.
+export const TktStatusSchema = z.enum(["Issued", "Collected", "Received", "Cancelled"]);
 export const PrqStatusSchema = z.enum(["Sent", "Approved", "Partially approved", "Declined"]);
 export const PordStatusSchema = z.enum(["New", "Accepted", "In kitchen", "Ready", "Dispatched", "Declined"]);
 export const PoStatusSchema = z.enum(["Draft", "Ordered", "Partially received", "Received", "Cancelled"]);
