@@ -3,7 +3,7 @@ import { routes, defineRoute } from "@rch/contract";
 import { z } from "zod";
 import { ApiError, call } from "../api/client";
 import { setAccessToken, getAccessToken } from "../api/session";
-import { fromWireBestBefore, fromWireDate, fromWireTime } from "../lib/fmt";
+import { fromInputDate, fromWireBestBefore, fromWireDate, fromWireTime, toInputDate } from "../lib/fmt";
 
 const ok = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
@@ -84,5 +84,18 @@ describe("wire formats", () => {
     vi.setSystemTime(new Date("2026-09-03T19:00:00.000Z"));
     expect(fromWireBestBefore("2026-09-04T02:00:00.000Z")).toBe("07:30");
     vi.useRealTimers();
+  });
+});
+
+describe("date controls", () => {
+  it("round-trips a display date through an <input type=date> and back", () => {
+    expect(toInputDate("31-Aug-2026")).toBe("2026-08-31");
+    expect(fromInputDate("2026-08-31")).toBe("31-Aug-2026");
+    expect(toInputDate(fromInputDate("2026-01-01"))).toBe("2026-01-01");
+  });
+  it("leaves a wire date alone and answers empty for anything it cannot read", () => {
+    expect(toInputDate("2026-08-31")).toBe("2026-08-31");
+    expect(toInputDate("")).toBe("");
+    expect(toInputDate("tomorrow")).toBe("");
   });
 });
