@@ -35,6 +35,11 @@ grep -q 'idle_timeout.timeout_seconds=3600' <<<"$out"
 grep -q 'proxy_buffering off' ../../nginx/default.conf.template
 grep -q 'proxy_read_timeout 3600s' ../../nginx/default.conf.template
 grep -q 'location /api/v1/events' ../../nginx/default.conf.template
+# ...and it must forward the client on, like /api/ does: the API trusts one hop, so a stream
+# without X-Forwarded-For is rate-limited and logged as nginx itself.
+events_block=$(sed -n '/location \/api\/v1\/events/,/^  }/p' ../../nginx/default.conf.template)
+grep -q 'proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for' <<<"$events_block"
+grep -q 'proxy_set_header X-Request-Id \$request_id' <<<"$events_block"
 # I9: the ServiceMonitor's spec.selector matches Service metadata labels, so
 # the api Service itself (not just the ServiceMonitor) must carry
 # app.kubernetes.io/component: api or the monitor selects zero Services.
