@@ -32,9 +32,11 @@ describe("document readers", () => {
     }
   });
   it("tickets, requisitions, purchase orders, GRNs, production, batches", async () => {
-    // `readTickets`'s `hist` is a `[]` placeholder until Task 4 wires the real read from
-    // `document_history` — stripped from both sides here, the same way prq/pord already do,
-    // rather than asserting a trail this reader does not produce yet.
+    // `readTickets` reads `document_history` now, like every other reader here. `hist` is still
+    // stripped from both sides — the same way prq/pord are — because the seeder replays the
+    // fixtures' trails for requests, requisitions, purchase orders and production orders but
+    // not yet for tickets, so `seedTkt`'s one row has nothing on the database side to match.
+    // A ticket the server itself writes carries its trail; `tickets.test.ts` asserts that.
     expect(noTimes((await D.readTickets(t.db)).map((o) => strip(o, ["hist"])))).toEqual(noTimes(FX.seedTkt.map((o) => strip(o, ["hist"]))));
     const prq = await D.readRequisitions(t.db); expect(noTimes(byId(prq).map((p) => strip(p, ["hist"])))).toEqual(noTimes(byId(FX.seedPrq).map((p) => strip(p, ["hist"]))));
     const po = await D.readPurchaseOrders(t.db);

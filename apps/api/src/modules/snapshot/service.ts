@@ -6,7 +6,7 @@ import { NotFoundError } from "../../lib/errors.js";
 import { toWireUser } from "../../lib/wire.js";
 import type { AccessClaims } from "../../plugins/auth.js";
 import { snapshotRepo } from "./repo.js";
-import { scope, scopeBatches, scopeBills, scopeBuying, scopeProdOrders, scopeProductRequests, scopeRequests, scopeShopAsks, scopeStock, scopeTickets } from "./scope.js";
+import { redactOtps, scope, scopeBatches, scopeBills, scopeBuying, scopeProdOrders, scopeProductRequests, scopeRequests, scopeShopAsks, scopeStock, scopeTickets } from "./scope.js";
 import * as M from "./readers/master.js";
 import * as S from "./readers/stock.js";
 import * as D from "./readers/documents.js";
@@ -23,16 +23,14 @@ export function createSnapshotService(db: Db) {
       const [u, names] = await Promise.all([snapshotRepo.userById(db, claims.sub), D.userNames(db)]);
       if (!u) throw new NotFoundError("That account no longer exists.");
       // Independent reads run together; the pool serialises what it must.
-      const [items, locations, recipes, users, prices, menu, stock, rsv, ovr, req, tkt, prq, po, grn, pord, batch, bills, vendors, contracts, tickets, productReqs, shopAsks, salesBlock] = await Promise.all([
-        M.readItems(db), M.readLocations(db), M.readRecipes(db), M.readUsers(db), M.readPrices(db), M.readMenu(db),
+      const [items, locations, recipes, users, prices, menu, roster, stock, rsv, ovr, req, tkt, prq, po, grn, pord, batch, bills, vendors, contracts, tickets, owners, productReqs, shopAsks, salesBlock] = await Promise.all([
+        M.readItems(db), M.readLocations(db), M.readRecipes(db), M.readUsers(db), M.readPrices(db), M.readMenu(db), M.readRoster(db),
         S.readStock(db), S.readRsv(db), S.readOvr(db),
         D.readRequests(db, names), D.readTickets(db), D.readRequisitions(db, names), D.readPurchaseOrders(db), D.readGrns(db, names), D.readProdOrders(db, names), D.readBatches(db),
-        D.readBills(db, BILL_DAYS, names), D.readVendors(db), D.readContracts(db), D.readSupportTickets(db, names), D.readProductRequests(db, names), D.readShopAsks(db, names), D.readSales(db, SALES_DAYS),
+        D.readBills(db, BILL_DAYS, names), D.readVendors(db), D.readContracts(db), D.readSupportTickets(db, names), D.readSupportTicketOwners(db), D.readProductRequests(db, names), D.readShopAsks(db, names), D.readSales(db, SALES_DAYS),
       ]);
-      // Task 4 fills this from the payers table (`readers/master.ts`'s `readRoster`).
-      const roster: Snapshot["roster"] = { patients: [], staff: [], depts: [] };
       const full: Snapshot = { user: toWireUser(u), items, locations, recipes, users, prices, menu, stock, rsv, ovr, req, tkt, prq, po, pord, batch, bills, grn, vendors, contracts, tickets, productReqs, shopAsks, roster, sales: salesBlock.sales, dayLabels: salesBlock.dayLabels };
-      return scope(full, { role: claims.role, loc: claims.loc, sub: claims.sub });
+      return scope(full, { role: claims.role, loc: claims.loc, sub: claims.sub }, owners);
     },
     /** The ledger on its own, for a client that has the master already and only wants the numbers. */
     async stock(claims: AccessClaims): Promise<StockResponse> {
@@ -45,7 +43,10 @@ export function createSnapshotService(db: Db) {
     },
     /** The request desk on its own — what a write naming "req" refetches. */
     async requests(claims: AccessClaims): Promise<StockRequest[]> { return scopeRequests(await D.readRequests(db), claims); },
-    async tickets(claims: AccessClaims): Promise<Ticket[]> { return scopeTickets(await D.readTickets(db), claims); },
+    /** The same two cuts the snapshot makes, in the same order: whose tickets, then whose OTP.
+     *  Without the second, the refetch after a handover puts the digits straight back on a
+     *  screen the snapshot had just withheld them from. */
+    async tickets(claims: AccessClaims): Promise<Ticket[]> { return redactOtps(scopeTickets(await D.readTickets(db), claims), claims); },
     async shopAsks(claims: AccessClaims): Promise<ShopAsk[]> { return scopeShopAsks(await D.readShopAsks(db), claims); },
     /** The kitchen's board on its own — what a status change naming "pord" refetches. */
     async prodOrders(claims: AccessClaims): Promise<ProdOrder[]> { return scopeProdOrders(await D.readProdOrders(db), claims); },

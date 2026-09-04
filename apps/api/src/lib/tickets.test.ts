@@ -21,7 +21,8 @@ describe("allocateTicket + writeTicket", () => {
     expect(tkt.id).toBe("TKT-0441");                  // SEQUENCE_START.tkt is 441
     expect(tkt.otp).toBe(makeOtp(441));
     expect(tkt.otp).toMatch(/^\d{6}$/);
-    expect(tkt).toEqual({ id: "TKT-0441", req: "REQ-2026-0911", from: "store", to: "coffee", lines: [{ it: "milk", qty: 12 }], st: "Issued", otp: makeOtp(441), hist: [] });
+    // The first row of the trail is written here, signed with the issuer's own name.
+    expect(tkt).toEqual({ id: "TKT-0441", req: "REQ-2026-0911", from: "store", to: "coffee", lines: [{ it: "milk", qty: 12 }], st: "Issued", otp: makeOtp(441), hist: [{ s: "Issued", who: "Suresh Muthu", t: expect.any(String) }] });
 
     const held = await t.db.select().from(reservations).where(eq(reservations.ticketId, "TKT-0441"));
     expect(held).toHaveLength(1);

@@ -8,7 +8,7 @@ import { authHeaders } from "../../test/auth.js";
 import { given } from "../../test/builders.js";
 import { truncateAll, warmPool } from "../../test/db.js";
 import { readHistory } from "../../lib/history.js";
-import { documentHistory, reservations, stockMoves, tickets } from "../../db/schema/index.js";
+import { documentHistory, reservations, shopAsks, stockMoves, tickets } from "../../db/schema/index.js";
 import type { App } from "../../app.js";
 
 let app: App;
@@ -30,6 +30,14 @@ const post = async (user: string, url: string, payload?: object) => {
 const onHand = async (loc: string, it: string) => {
   const r = await app.inject({ method: "GET", url: "/api/v1/stock", headers: await authHeaders(app, "u2") });
   return r.json().stock[loc]?.[it] ?? 0;
+};
+/** On hand less what tickets are holding — the number a withdrawal actually gives back. The
+ *  shelf itself never moves when a ticket is cancelled, so asserting `onHand` would prove
+ *  nothing about the release. */
+const freeAt = async (loc: string, it: string) => {
+  const r = await app.inject({ method: "GET", url: "/api/v1/stock", headers: await authHeaders(app, "u2") });
+  const j = r.json();
+  return (j.stock[loc]?.[it] ?? 0) - (j.rsv[`${loc}:${it}`] ?? 0);
 };
 /** The seeded trail is stamped at the fixture's own times (08:05 … 08:34 today) and history
  *  reads back in time order, so a row appended by a test running earlier in the day is not the
@@ -372,8 +380,11 @@ describe("POST /tickets/:id/cancel", () => {
     // The kitchen may not cancel the store's ticket, nor the store the kitchen's.
     expect((await post("u4", `/tickets/${store}/cancel`, { reason: "no" })).statusCode).toBe(403);
     expect((await post("u3", `/tickets/${kitchen}/cancel`, { reason: "no" })).statusCode).toBe(403);
-    // And nobody else has the door at all.
-    for (const u of ["u1", "u2", "u5"]) expect((await post(u, `/tickets/${store}/cancel`, { reason: "no" })).statusCode).toBe(404);
+    // A counter has the door now — for its own outlet's tickets, which the store's is not, so
+    // the role gate lets them knock and the location check refuses them. 403, not 404.
+    expect((await post("u1", `/tickets/${store}/cancel`, { reason: "no" })).statusCode).toBe(403);
+    // And for a manager and a buyer the door is not there at all.
+    for (const u of ["u2", "u5"]) expect((await post(u, `/tickets/${store}/cancel`, { reason: "no" })).statusCode).toBe(404);
   });
 
   it("404s a ticket that is not there", async () => {
@@ -443,5 +454,113 @@ describe("a cancelled ticket is the end of it", () => {
     expect(r.statusCode).toBe(422);
     expect(r.json().error.message).toBe(`${tkt} is already cancelled`);
     expect(await app.testDb!.db.select().from(stockMoves).where(eq(stockMoves.refId, tkt))).toHaveLength(0);
+  });
+});
+
+describe("the counter's cancel door", () => {
+  /** One shop asks, the other grants: the ticket the grant raises is the one under test. */
+  const answerAsk = async (ask: string, grant: number) => {
+    const r = await post("u1", `/shop-asks/${ask}/answer`, { grant });
+    expect(r.statusCode, r.body).toBe(200);
+    return r.json().result.ticket.id as string;
+  };
+
+  it("lets the shop that granted a transfer withdraw it, and releases the hold", async () => {
+    const id = await given.ticket(app.testDb!.db, { refType: "shop_transfer", refId: "Shop transfer", from: "coffee", to: "kiosk", lines: [{ it: "juice", qty: 3 }] });
+    const before = await freeAt("coffee", "juice");
+
+    const res = await post("u1", `/tickets/${id}/cancel`, { reason: "Kiosk found some of their own" });
+    expect(res.statusCode, res.body).toBe(200);
+    expect(res.json().message).toBe(`${id} cancelled — the stock is free again at Coffee Shop`);
+    expect(await freeAt("coffee", "juice")).toBe(before + 3);
+  });
+
+  it("refuses a counter at the other end of it — the shop that is receiving cannot withdraw it", async () => {
+    const id = await given.ticket(app.testDb!.db, { refType: "shop_transfer", refId: "Shop transfer", from: "coffee", to: "kiosk", lines: [{ it: "juice", qty: 3 }] });
+    const res = await post("u6", `/tickets/${id}/cancel`, { reason: "no" });     // Deepa, at the kiosk
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error.message).toBe("You can only do this for the location the ticket is issued from.");
+  });
+
+  it("puts a withdrawn grant's ask back on the desk it came from", async () => {
+    const ask = await given.shopAsk(app.testDb!.db, { from: "kiosk", to: "coffee", it: "juice", qty: 5, st: "Asked" });
+    const tkt = await answerAsk(ask, 4);
+
+    const res = await post("u1", `/tickets/${tkt}/cancel`, { reason: "Sold out before they came" });
+    expect(res.statusCode, res.body).toBe(200);
+    expect(res.json().changed).toContain("shopAsks");
+
+    const [row] = await app.testDb!.db.select().from(shopAsks).where(eq(shopAsks.id, ask));
+    expect(row!.status).toBe("Asked");
+    expect(row!.grantedQty).toBeNull();
+    expect(row!.ticketId).toBeNull();
+  });
+
+  it("lets the holding shop grant the reopened ask a second time", async () => {
+    const ask = await given.shopAsk(app.testDb!.db, { from: "kiosk", to: "coffee", it: "juice", qty: 5, st: "Asked" });
+    const first = await answerAsk(ask, 4);
+    await post("u1", `/tickets/${first}/cancel`, { reason: "Sold out before they came" });
+    // `Sent -> Asked` is the whole point of the reopen: without it `answer` refuses the second
+    // grant on the transition, and the asking shop's request is stuck for good.
+    const second = await answerAsk(ask, 2);
+    expect(second).not.toBe(first);
+  });
+
+  it("still refuses the kitchen a shop's ticket", async () => {
+    const id = await given.ticket(app.testDb!.db, { refType: "shop_transfer", refId: "Shop transfer", from: "coffee", to: "kiosk", lines: [{ it: "juice", qty: 3 }] });
+    const res = await post("u4", `/tickets/${id}/cancel`, { reason: "no" });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it("reopens a withdrawn grant's ask exactly once when two cancellations race", async () => {
+    const ask = await given.shopAsk(app.testDb!.db, { from: "kiosk", to: "coffee", it: "juice", qty: 5, st: "Asked" });
+    const granted = await answerAsk(ask, 4);
+    const freeBefore = await freeAt("coffee", "juice");
+    // `pg` connects lazily: without this the second transaction waits ~5 ms for a socket and
+    // begins after the first has committed, and the case passes with any lock removed.
+    //
+    // Which lock: the ticket's own `for update` in `ticketsRepo.head`, not `linkedShopAsk`'s.
+    // Taken out, this case fails with two 200s and the hold released twice; `linkedShopAsk`'s
+    // own lock can be taken out and this still passes, because one ask can only ever have one
+    // live ticket against it, so the ticket lock has already serialised the pair by the time
+    // the ask is read. That lock stays because a transition reads its own row — what this case
+    // pins is the outcome, not which lock produced it, the same way the transfer race above does.
+    await warmPool(app.testDb!, 2);
+
+    const [a, b] = await Promise.allSettled([
+      post("u1", `/tickets/${granted}/cancel`, { reason: "one" }),
+      post("u1", `/tickets/${granted}/cancel`, { reason: "two" }),
+    ]);
+    const ok = [a, b].filter((r) => r.status === "fulfilled" && r.value.statusCode === 200);
+    expect(ok).toHaveLength(1);
+
+    const [row] = await app.testDb!.db.select().from(shopAsks).where(eq(shopAsks.id, ask));
+    expect(row!.status).toBe("Asked");
+    // And the hold came back once, not twice.
+    expect(await freeAt("coffee", "juice")).toBe(freeBefore + 4);
+  });
+});
+
+describe("the ticket's own trail", () => {
+  it("records issue, handover and receipt, oldest first", async () => {
+    const id = await given.ticket(app.testDb!.db, { from: "store", to: "coffee", lines: [{ it: "milk", qty: 2 }], otp: "123456" });
+    expect((await post("u3", `/tickets/${id}/handover`, { otp: "123456" })).statusCode).toBe(200);
+    const received = await post("u1", `/tickets/${id}/receive`);
+    expect(received.statusCode, received.body).toBe(200);
+    expect(received.json().result.hist.map((h: { s: string }) => h.s)).toEqual(["Issued", "Handed over", "Received"]);
+    expect(received.json().result.hist.map((h: { who: string }) => h.who)).toEqual(["Suresh Muthu", "Suresh Muthu", "Kavitha Raman"]);
+  });
+
+  it("names the supervisor override on the row rather than beside it", async () => {
+    const id = await given.ticket(app.testDb!.db, { from: "store", to: "coffee", lines: [{ it: "milk", qty: 2 }] });
+    const r = await post("u3", `/tickets/${id}/handover`, {});
+    expect(r.statusCode, r.body).toBe(200);
+    expect(r.json().result.hist.map((h: { s: string }) => h.s)).toEqual(["Issued", "Handed over — supervisor override"]);
+  });
+
+  it("ends a withdrawn ticket with the reason it was withdrawn for", async () => {
+    const id = await given.ticket(app.testDb!.db, { from: "store", to: "coffee", lines: [{ it: "milk", qty: 2 }] });
+    const r = await post("u3", `/tickets/${id}/cancel`, { reason: "Counter closed early" });
+    expect(r.json().result.hist.map((h: { s: string }) => h.s)).toEqual(["Issued", "Cancelled — Counter closed early"]);
   });
 });

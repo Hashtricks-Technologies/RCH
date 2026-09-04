@@ -4,11 +4,21 @@
 import { asc, eq } from "drizzle-orm";
 import type { LocKey, Ticket, TktStatus } from "@rch/contract";
 import { makeOtp, round3 } from "@rch/domain";
-import { ticketLines, tickets } from "../db/schema/index.js";
+import { ticketLines, tickets, users } from "../db/schema/index.js";
 import type { Tx } from "./db.js";
-import { appendHistory } from "./history.js";
+import { appendHistory, readHistory } from "./history.js";
 import { allocateNumber } from "./ids.js";
 import { releaseForTicket, reserve } from "./reservations.js";
+import { iso } from "./time.js";
+
+/** History is signed with the name the operator reads on the document, not with an id. Every
+ *  module's repo has its own `userName` for this; `writeTicket` is a lib below all of them and
+ *  is handed `claims.sub` by four different callers, so it looks the name up itself rather
+ *  than making each of them pass a second argument. */
+async function nameOf(tx: Tx, id: string): Promise<string> {
+  const [u] = await tx.select({ name: users.name }).from(users).where(eq(users.id, id));
+  return u?.name ?? id;
+}
 
 export type TicketRefType = NonNullable<(typeof tickets.$inferInsert)["refType"]>;
 export type TicketDraft = {
@@ -54,7 +64,13 @@ export async function writeTicket(tx: Tx, draft: TicketDraft, no: TicketNumber):
   });
   await tx.insert(ticketLines).values(lines.map((l, lineNo) => ({ ticketId: id, lineNo, itemKey: l.it, qty: l.qty })));
   await reserve(tx, lines.map((l) => ({ loc: draft.from, it: l.it, qty: l.qty, ticketId: id })));
-  return { id, req: draft.refId, from: draft.from as LocKey, to: draft.to as LocKey, lines, st: "Issued", otp, hist: [] }; // Task 4 fills this from document_history
+  // The first row of the trail, written here because this is the one place a ticket is created:
+  // an approved request, a shop transfer, a granted ask and a kitchen dispatch all come through
+  // it, and a ticket that shipped an empty history would have nothing for the override and the
+  // withdrawal below to be read against.
+  const who = await nameOf(tx, draft.by);
+  await appendHistory(tx, "ticket", id, "Issued", who, at);
+  return { id, req: draft.refId, from: draft.from as LocKey, to: draft.to as LocKey, lines, st: "Issued", otp, hist: [{ s: "Issued", who, t: iso(at) }] };
 }
 
 /**
@@ -86,6 +102,8 @@ export async function readTicket(tx: Tx, id: string): Promise<Ticket | undefined
   return {
     id: head.id, req: head.refId, from: head.fromLoc as LocKey, to: head.toLoc as LocKey,
     lines: lines.map((l) => ({ it: l.itemKey, qty: l.qty })), st: head.status as TktStatus, otp: head.otp,
-    hist: [], // Task 4 fills this from document_history
+    // The trail as it stands, so a write's own `result` carries the row it has just appended
+    // and the drawer that reads the response needs no second round trip to show it.
+    hist: await readHistory(tx, "ticket", id),
   };
 }

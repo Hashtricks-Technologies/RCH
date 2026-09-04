@@ -1,5 +1,5 @@
 import { OUTLETS } from "@rch/contract";
-import type { Batch, Bill, LocKey, ProdOrder, ProductRequest, Role, ShopAsk, StockRequest, Ticket } from "@rch/contract";
+import type { Batch, Bill, LocKey, ProdOrder, ProductRequest, Role, ShopAsk, StockRequest, SupportTicket, Ticket } from "@rch/contract";
 import type { Snapshot } from "./service.js";
 
 /** Who is asking. The snapshot and the two standalone reads all cut by the same two fields. */
@@ -46,29 +46,52 @@ export const scopeBuying = <T>(rows: T[], who: Who): T[] => (who.role !== "count
 export const scopeProductRequests = (rows: ProductRequest[], who: Who): ProductRequest[] =>
   who.role !== "counter" ? rows : rows.filter((p) => p.forLoc === who.loc);
 
+/**
+ * The six digits belong to whoever is collecting: they read them aloud and the sending location
+ * types them in. Sending them to the sending location made the check theatre — the store's issue
+ * desk printed the number three inches from the box that verifies it — and sending them to
+ * anyone else is a credential in a snapshot for no reason at all.
+ *
+ * So: the OTP travels only while the ticket is still `Issued` and only to a caller standing at
+ * the ticket's `to`. Everyone else reads "". The way past a collector who is not there is the
+ * labelled supervisor override on `handover`, which is refused to a counter and recorded in
+ * `document_history` — now visible on the ticket itself.
+ */
+export const redactOtps = (tkt: Ticket[], who: Who): Ticket[] =>
+  tkt.map((t) => (t.st === "Issued" && t.to === who.loc ? t : { ...t, otp: "" }));
+
+/**
+ * Support is the one module all five roles share (§8.3) and every support write in §9.2 is
+ * scoped "all (own)". The list is scoped the same way, by the user id in the token — `by` on the
+ * wire is a display name and two people can share one.
+ */
+export const scopeSupportTickets = (rows: SupportTicket[], who: { sub: string }, byUser: Map<string, string>): SupportTicket[] =>
+  rows.filter((t) => byUser.get(t.id) === who.sub);
+
 /** A counter operator's world is their counter. Master data is never cut down; documents and stock are. */
-export function scope(s: Snapshot, who: Who & { sub: string }): Snapshot {
-  if (who.role !== "counter") return s;
+export function scope(s: Snapshot, who: Who & { sub: string }, owners: Map<string, string>): Snapshot {
+  // Two cuts apply to every role, not only to a counter: a support ticket is the caller's own,
+  // and a ticket's OTP is the collector's.
+  const base: Snapshot = { ...s, tickets: scopeSupportTickets(s.tickets, who, owners), tkt: redactOtps(s.tkt, who) };
+  if (who.role !== "counter") return base;
   const L = who.loc;
-  const mine = (x: { by: string }) => x.by === s.user.n;
   // `sales` is one column per outlet, so handing it over whole tells a counter operator the
   // whole hospital's takings. Keep the shape (a row per day, matching dayLabels, which stay)
   // and keep only their own column — none at all if they are not on an outlet.
   const col = OUTLETS.indexOf(L);
   return {
-    ...s,
-    ...scopeStock(s, who),
-    menu: { [L]: s.menu[L] ?? [] },
-    req: scopeRequests(s.req, who),
-    tkt: scopeTickets(s.tkt, who),
-    bills: scopeBills(s.bills, who),
-    shopAsks: scopeShopAsks(s.shopAsks, who),
-    tickets: s.tickets.filter(mine),
-    productReqs: scopeProductRequests(s.productReqs, who),
-    pord: scopeProdOrders(s.pord, who),
-    batch: scopeBatches(s.batch, who),
-    sales: s.sales.map((row) => (col === -1 ? [] : [row[col] ?? 0])),
-    prq: scopeBuying(s.prq, who), po: scopeBuying(s.po, who), grn: scopeBuying(s.grn, who),
-    vendors: scopeBuying(s.vendors, who), contracts: scopeBuying(s.contracts, who),
+    ...base,
+    ...scopeStock(base, who),
+    menu: { [L]: base.menu[L] ?? [] },
+    req: scopeRequests(base.req, who),
+    tkt: scopeTickets(base.tkt, who),
+    bills: scopeBills(base.bills, who),
+    shopAsks: scopeShopAsks(base.shopAsks, who),
+    productReqs: scopeProductRequests(base.productReqs, who),
+    pord: scopeProdOrders(base.pord, who),
+    batch: scopeBatches(base.batch, who),
+    sales: base.sales.map((row) => (col === -1 ? [] : [row[col] ?? 0])),
+    prq: scopeBuying(base.prq, who), po: scopeBuying(base.po, who), grn: scopeBuying(base.grn, who),
+    vendors: scopeBuying(base.vendors, who), contracts: scopeBuying(base.contracts, who),
   };
 }
