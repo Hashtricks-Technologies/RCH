@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
-import { canHandOver } from "../../lib/selectors";
+import { canHandOver, canReceiveTicket } from "../../lib/selectors";
 import { fq, sum, unitTotal } from "../../lib/fmt";
 import {
   Alert, Btn, Card, DataTable, FilterSelect, Otp, PageHead, StatusPill, TableFoot, Toolbar,
@@ -102,7 +102,7 @@ export default function Tickets() {
               itemText(t),
               <b>{sum(t.lines, (l) => l.qty)}</b>,
               <StatusPill status={t.st} />,
-              t.st === "Collected"
+              canReceiveTicket(t.st)
                 ? <Btn size="xs" onClick={() => receiveTicket(t.id)}>Receive</Btn>
                 : <span className="dim mini">{t.st === "Issued" ? "not collected" : "on the rack"}</span>,
             ],

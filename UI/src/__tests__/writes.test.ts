@@ -7,6 +7,7 @@ import { refetch } from "../api/refetch";
 import { setAccessToken } from "../api/session";
 import { qty } from "../lib/selectors";
 import Pos from "../roles/counter/Pos";
+import CounterRequests from "../roles/counter/Requests";
 import { resetStore, S, as } from "./fixture";
 
 /**
@@ -376,8 +377,9 @@ describe("the request chain — the twelve writes", () => {
       "GET /api/v1/requests": () => json([REQ]),
     });
 
-    await S().submitRequest("Counter runs dry by 4pm", true);
+    const ok = await S().submitRequest("Counter runs dry by 4pm", true);
 
+    expect(ok).toBe(true);                                    // the screen resets on this, not on the click
     expect(hit("POST /api/v1/requests")[0].body).toEqual({ lines: [{ it: "milk", qty: 20 }, { it: "sugar", qty: 4 }], note: "Counter runs dry by 4pm", urgent: true });
     expect(S().draft).toEqual([]);
     expect(S().toast).toBe("REQ-2026-0913 sent to the outlet manager — 2 lines");
@@ -426,7 +428,8 @@ describe("the request chain — the twelve writes", () => {
     as("manager");
     const before = S().req.find((r) => r.id === "REQ-2026-0912")!.st;
     serve({ "POST /api/v1/requests/REQ-2026-0912/reject": () => refusal("Give a reason — the counter sees it on the request") });
-    await S().rejectRequest("REQ-2026-0912", "   ");
+    const ok = await S().rejectRequest("REQ-2026-0912", "   ");
+    expect(ok).toBe(false);                                   // so the drawer stays open, reason and trims intact
     expect(S().toast).toBe("Give a reason — the counter sees it on the request");
     expect(S().req.find((r) => r.id === "REQ-2026-0912")!.st).toBe(before);
     expect(calls()).toHaveLength(1);
@@ -572,5 +575,138 @@ describe("refetch — the movement slices have narrow readers now", () => {
     serve({ "GET /api/v1/snapshot": () => json(snapshot()) });
     await refetch(["req", "prices"]);
     expect(calls().map((c) => c.at)).toEqual(["GET /api/v1/snapshot"]);
+  });
+});
+
+/**
+ * A write that is refused must leave the operator's typing where it is. The store says so with
+ * its answer — `true` only once the server has taken the write — and the screens reset on that
+ * answer and nothing else.
+ */
+describe("a refusal keeps what the operator typed", () => {
+  /** Set a controlled field the way a person does, through React's own value setter. */
+  const type = (el: HTMLTextAreaElement | HTMLInputElement, v: string) => {
+    const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+    Object.getOwnPropertyDescriptor(proto, "value")!.set!.call(el, v);
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+  };
+  /** Render the counter's request screen the way the app runs it. */
+  function mount() {
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    act(() => { root.render(createElement(MemoryRouter, null, createElement(CounterRequests))); });
+    return {
+      host,
+      button: (starts: string) =>
+        [...host.querySelectorAll("button")].find((b) => (b.textContent ?? "").startsWith(starts)),
+      note: () => host.querySelector("textarea")!,
+      unmount: () => { act(() => { root.unmount(); }); host.remove(); },
+    };
+  }
+  const settle = async (fn: () => void) => {
+    await act(async () => { fn(); await new Promise((r) => { setTimeout(r, 0); }); });
+  };
+
+  it("leaves the raise card open, with its note, when the server refuses", async () => {
+    as("counter");
+    serve({ "POST /api/v1/requests": () => refusal("Refused — Coffee Shop already has REQ-2026-0911 open for Milk 1L") });
+    const ui = mount();
+    act(() => { ui.button("From inventory")!.click(); });
+    act(() => { type(ui.note(), "Milk finished at 09:10"); });
+
+    await settle(() => { ui.button("Submit request")!.click(); });
+
+    expect(S().toast).toBe("Refused — Coffee Shop already has REQ-2026-0911 open for Milk 1L");
+    // The card is still open and still carries the note — nothing to retype.
+    expect(ui.button("Submit request")).toBeDefined();
+    expect(ui.note().value).toBe("Milk finished at 09:10");
+    ui.unmount();
+  });
+
+  it("clears the card only once the server has taken it", async () => {
+    as("counter");
+    serve({
+      "POST /api/v1/requests": () => json({ result: REQ, changed: ["req"], message: "REQ-2026-0913 sent to the outlet manager — 1 line" }),
+      "GET /api/v1/requests": () => json([REQ]),
+    });
+    const ui = mount();
+    act(() => { ui.button("From inventory")!.click(); });
+    act(() => { type(ui.note(), "Milk finished at 09:10"); });
+
+    await settle(() => { ui.button("Submit request")!.click(); });
+
+    expect(S().toast).toBe("REQ-2026-0913 sent to the outlet manager — 1 line");
+    expect(ui.button("Submit request")).toBeUndefined();   // the card closed behind the answer
+    ui.unmount();
+  });
+
+  it("locks the button while the request is in flight", async () => {
+    as("counter");
+    let release!: () => void;
+    const inFlight = new Promise<void>((r) => { release = r; });
+    fetchMock.mockImplementation(async (u: string, init: RequestInit) => {
+      const at = `${init.method} ${String(u).split("?")[0]}`;
+      if (at === "POST /api/v1/requests") {
+        await inFlight;
+        return json({ result: REQ, changed: ["req"], message: "REQ-2026-0913 sent to the outlet manager — 1 line" });
+      }
+      return json([REQ]);
+    });
+    const ui = mount();
+    act(() => { ui.button("From inventory")!.click(); });
+
+    act(() => { ui.button("Submit request")!.click(); });
+
+    const busy = ui.button("Sending…");
+    expect(busy).toBeDefined();
+    expect(busy!.disabled).toBe(true);
+    act(() => { busy!.click(); });                          // a second tap lands on nothing
+
+    release();
+    await act(async () => { await inFlight; await new Promise((r) => { setTimeout(r, 0); }); });
+    expect(hit("POST /api/v1/requests")).toHaveLength(1);
+    ui.unmount();
+  });
+});
+
+/** Every action's own sentence when the server cannot be reached at all. */
+const OFFLINE: [name: string, run: () => Promise<unknown>, sentence: string][] = [
+  ["submitRequest", () => { S().setDraft([{ it: "milk", qty: 20 }]); return S().submitRequest("", false); },
+    "Could not send the request — check the connection and try again."],
+  ["requestFromStore", () => S().requestFromStore("milk", 20),
+    "Could not send the request — check the connection and try again."],
+  ["cancelRequest", () => S().cancelRequest("REQ-2026-0911"),
+    "Could not cancel the request — check the connection and try again."],
+  ["approveRequest", () => S().approveRequest("REQ-2026-0911", [12], "Store is tight"),
+    "Could not save the approval — check the connection and try again."],
+  ["rejectRequest", () => S().rejectRequest("REQ-2026-0911", "Nothing to spare"),
+    "Could not save the rejection — check the connection and try again."],
+  ["issueTicket", () => S().issueTicket("REQ-2026-0911"),
+    "Could not issue the ticket — check the connection and try again."],
+  ["handover", () => S().handover("TKT-0440", "418327"),
+    "Could not hand the ticket over — check the connection and try again."],
+  ["receiveTicket", () => S().receiveTicket("TKT-0440"),
+    "Could not receive the ticket — check the connection and try again."],
+  ["transferToOutlet", () => S().transferToOutlet("coffee", "kiosk", "chips", 6),
+    "Could not send the transfer — check the connection and try again."],
+  ["askShop", () => S().askShop("kiosk", "water", 24, "Ran dry"),
+    "Could not send the ask — check the connection and try again."],
+  ["answerShopAsk", () => S().answerShopAsk("ASK-0060", 6),
+    "Could not answer the ask — check the connection and try again."],
+  ["declineShopAsk", () => S().declineShopAsk("ASK-0060", "We are short ourselves"),
+    "Could not decline the ask — check the connection and try again."],
+  ["dispatchOrder", () => S().dispatchOrder("PRD-2026-029"),
+    "Could not dispatch the order — check the connection and try again."],
+  ["distribute", () => S().distribute("puff", 5, "kiosk"),
+    "Could not send it out — check the connection and try again."],
+];
+
+describe("a dropped connection names the write that did not land", () => {
+  it.each(OFFLINE)("%s says so in its own words", async (_name, run, sentence) => {
+    as("counter");
+    fetchMock.mockRejectedValue(new TypeError("Failed to fetch"));
+    await run();
+    expect(S().toast).toBe(sentence);
   });
 });

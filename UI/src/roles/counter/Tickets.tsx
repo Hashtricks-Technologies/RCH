@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
+import { canReceiveTicket } from "../../lib/selectors";
 import { fq, sum } from "../../lib/fmt";
 import { Alert, Btn, Card, DataTable, FilterBtn, FilterSelect, PageHead, StatusPill, TableFoot, Toolbar } from "../../ui/kit";
 import type { LocKey, TktStatus } from "../../types";
@@ -101,7 +102,7 @@ export default function Tickets() {
                 <>{first}{more > 0 ? ` +${more} more` : ""}</>,
                 t.lines.length === 1 ? fq(t.lines[0].qty, t.lines[0].it) : sum(t.lines, (l) => l.qty),
                 <StatusPill status={t.st} />,
-                t.st === "Collected"
+                canReceiveTicket(t.st)
                   ? <Btn size="xs" onClick={() => s.receiveTicket(t.id)}>Receive</Btn>
                   : <Btn size="xs" variant="gh" onClick={() => s.openDrawer("ctkt", t.id)}>Open</Btn>,
               ],

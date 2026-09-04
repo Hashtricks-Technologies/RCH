@@ -74,12 +74,14 @@ export interface AppState extends ProcurementSlice, OpsSlice {
   toggleAvail: (loc: LocKey, it: string) => Promise<void>;
 
   setDraft: (d: DraftLine[]) => void;
-  submitRequest: (note: string, urgent: boolean) => Promise<void>;
-  requestFromStore: (it: string, qty: number) => Promise<void>;
+  /** The form-carrying writes answer `true` only once the server has taken them, so the screen
+   *  can keep what the operator typed in front of them when it is refused. */
+  submitRequest: (note: string, urgent: boolean) => Promise<boolean>;
+  requestFromStore: (it: string, qty: number) => Promise<boolean>;
   cancelRequest: (id: string) => Promise<void>;
 
-  approveRequest: (id: string, appr: number[], note: string) => Promise<void>;
-  rejectRequest: (id: string, note: string) => Promise<void>;
+  approveRequest: (id: string, appr: number[], note: string) => Promise<boolean>;
+  rejectRequest: (id: string, note: string) => Promise<boolean>;
 
   issueTicket: (reqId: string) => Promise<void>;
   /** `otp` is required from the collecting side; omit it only for a supervisor override. */
@@ -92,7 +94,7 @@ export interface AppState extends ProcurementSlice, OpsSlice {
   setOrderStatus: (id: string, st: PordStatus) => void;
   dispatchOrder: (id: string) => Promise<void>;
   makeProduct: (it: string, started: number, made?: number, note?: string) => void;
-  distribute: (it: string, n: number, to: LocKey) => Promise<void>;
+  distribute: (it: string, n: number, to: LocKey) => Promise<boolean>;
 
   savePrice: (list: "A" | "B", it: string, price: number) => Promise<void>;
   removeProduct: (loc: LocKey, it: string) => Promise<void>;
@@ -260,27 +262,31 @@ export const useApp = create<AppState>((set, get) => ({
   submitRequest: async (note, urgent) => {
     const s = get();
     const lines = s.draft.filter((l) => l.it && l.qty > 0).map((l) => ({ it: l.it, qty: l.qty }));
-    if (!lines.length || !s.user) { get().notify("Add at least one line with a quantity"); return; }
+    if (!lines.length || !s.user) { get().notify("Add at least one line with a quantity"); return false; }
     try {
       const r = await call(routes.createRequest, { body: { lines, note, urgent } });
       set({ draft: [] });                       // the draft is client-only state; clear it once it landed
       get().notify(r.message);
       await refetch(r.changed, r.message);
+      return true;
     } catch (e) {
       get().notify(e instanceof ApiError ? e.message : "Could not send the request — check the connection and try again.");
+      return false;
     }
   },
   requestFromStore: async (it, want) => {
     const s = get();
-    if (!s.user) return;
+    if (!s.user) return false;
     try {
       const r = await call(routes.createRequest, {
         body: { lines: [{ it, qty: want }], note: `Raised from ${LOC[s.user.loc].n} stock screen`, urgent: false },
       });
       get().notify(r.message);
       await refetch(r.changed, r.message);
+      return true;
     } catch (e) {
       get().notify(e instanceof ApiError ? e.message : "Could not send the request — check the connection and try again.");
+      return false;
     }
   },
   cancelRequest: async (id) => {
@@ -298,8 +304,10 @@ export const useApp = create<AppState>((set, get) => ({
       const r = await call(routes.approveRequest, { params: { id }, body: { appr, note } });
       get().notify(r.message);
       await refetch(r.changed, r.message);
+      return true;
     } catch (e) {
       get().notify(e instanceof ApiError ? e.message : "Could not save the approval — check the connection and try again.");
+      return false;
     }
   },
   rejectRequest: async (id, note) => {
@@ -307,8 +315,10 @@ export const useApp = create<AppState>((set, get) => ({
       const r = await call(routes.rejectRequest, { params: { id }, body: { note } });
       get().notify(r.message);
       await refetch(r.changed, r.message);
+      return true;
     } catch (e) {
       get().notify(e instanceof ApiError ? e.message : "Could not save the rejection — check the connection and try again.");
+      return false;
     }
   },
 
@@ -420,8 +430,10 @@ export const useApp = create<AppState>((set, get) => ({
       const r = await call(routes.distribute, { body: { it, qty: n, to } });
       get().notify(r.message);
       await refetch(r.changed, r.message);
+      return true;
     } catch (e) {
       get().notify(e instanceof ApiError ? e.message : "Could not send it out — check the connection and try again.");
+      return false;
     }
   },
 

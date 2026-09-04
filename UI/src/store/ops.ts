@@ -42,15 +42,16 @@ export interface OpsSlice {
   contractRate: (vendor: string, it: string) => RateContract | undefined;
 
   createItem: (input: NewItemInput, loc: LocKey, opening: number) => void;
-  /** Shop to shop, no manager in the middle. */
-  transferToOutlet: (from: LocKey, to: LocKey, it: string, qty: number) => Promise<void>;
+  /** Shop to shop, no manager in the middle. Answers `true` only once the server took it, so
+   *  a screen can hold on to what the operator typed when it is refused. */
+  transferToOutlet: (from: LocKey, to: LocKey, it: string, qty: number) => Promise<boolean>;
 
   shopAsks: ShopAsk[];
   /** Counter at `from` asks the shop at `to` for stock it is holding. */
-  askShop: (to: LocKey, it: string, qty: number, note: string) => Promise<void>;
+  askShop: (to: LocKey, it: string, qty: number, note: string) => Promise<boolean>;
   /** The holding shop grants some or all of it, which issues the transfer ticket. */
-  answerShopAsk: (id: string, grant: number) => Promise<void>;
-  declineShopAsk: (id: string, reason: string) => Promise<void>;
+  answerShopAsk: (id: string, grant: number) => Promise<boolean>;
+  declineShopAsk: (id: string, reason: string) => Promise<boolean>;
 }
 
 const slug = (name: string) =>
@@ -200,8 +201,10 @@ export const createOpsSlice = (set: Set_, get: Get): OpsSlice => ({
       const r = await call(routes.transfer, { body: { from, to, it, qty } });
       get().notify(r.message);
       await refetch(r.changed, r.message);
+      return true;
     } catch (e) {
       get().notify(e instanceof ApiError ? e.message : "Could not send the transfer — check the connection and try again.");
+      return false;
     }
   },
 
@@ -210,8 +213,10 @@ export const createOpsSlice = (set: Set_, get: Get): OpsSlice => ({
       const r = await call(routes.askShop, { body: { to, it, qty, note: note.trim() } });
       get().notify(r.message);
       await refetch(r.changed, r.message);
+      return true;
     } catch (e) {
       get().notify(e instanceof ApiError ? e.message : "Could not send the ask — check the connection and try again.");
+      return false;
     }
   },
 
@@ -222,8 +227,10 @@ export const createOpsSlice = (set: Set_, get: Get): OpsSlice => ({
       const r = await call(routes.answerShopAsk, { params: { id }, body: { grant } });
       get().notify(r.message);
       await refetch(r.changed, r.message);
+      return true;
     } catch (e) {
       get().notify(e instanceof ApiError ? e.message : "Could not answer the ask — check the connection and try again.");
+      return false;
     }
   },
 
@@ -232,8 +239,10 @@ export const createOpsSlice = (set: Set_, get: Get): OpsSlice => ({
       const r = await call(routes.declineShopAsk, { params: { id }, body: { reason: reason.trim() } });
       get().notify(r.message);
       await refetch(r.changed, r.message);
+      return true;
     } catch (e) {
       get().notify(e instanceof ApiError ? e.message : "Could not decline the ask — check the connection and try again.");
+      return false;
     }
   },
 });

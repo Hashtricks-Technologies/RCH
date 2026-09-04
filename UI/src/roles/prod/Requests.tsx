@@ -40,6 +40,7 @@ export default function Requests() {
   const [priority, setPriority] = useState("Normal");
   const [q, setQ] = useState("");
   const [show, setShow] = useState<Show>("All");
+  const [busy, setBusy] = useState(false);
 
   const draft = s.draft;
   const setLine = (i: number, patch: Partial<DraftLine>) =>
@@ -47,8 +48,13 @@ export default function Requests() {
   const addLine = () => s.setDraft([...draft, { it: "", qty: 0 }]);
   const removeLine = (i: number) => s.setDraft(draft.filter((_, j) => j !== i));
 
-  const submit = () => {
-    s.submitRequest(note.trim(), priority === "Urgent");
+  // The draft, the note and the priority survive a refusal — the store clears the draft only
+  // once the server has taken it, and this clears the rest on the same answer.
+  const submit = async () => {
+    setBusy(true);
+    const ok = await s.submitRequest(note.trim(), priority === "Urgent");
+    setBusy(false);
+    if (!ok) return;
     setNote("");
     setPriority("Normal");
   };
@@ -188,7 +194,9 @@ export default function Requests() {
             placeholder="Maida down to 8 kg, tomorrow's puff batch needs 20 kg." />
         </Field>
         <BtnRow>
-          <Btn disabled={usable === 0} onClick={submit}>Submit request</Btn>
+          <Btn disabled={usable === 0 || busy} onClick={submit}>
+            {busy ? "Sending…" : "Submit request"}
+          </Btn>
           <Btn variant="gh" disabled={draft.length === 0 && !note} onClick={clearDraft}>Clear</Btn>
         </BtnRow>
       </Card>
