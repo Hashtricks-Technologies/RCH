@@ -1,3 +1,4 @@
+import { bestBeforeText } from "@rch/domain";
 import { IT } from "../data/master";
 
 export const U = (it: string) => IT[it]?.u ?? "nos";
@@ -17,24 +18,6 @@ export const now = () =>
 export const pct = (v: number, d = 1) => (v * 100).toFixed(d) + "%";
 export const sum = <T,>(a: T[], f: (x: T) => number) => a.reduce((s, x) => s + f(x), 0);
 
-const hhmm = (d: Date) =>
-  d.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: false });
-
-/**
- * A best-before that lands on another day must say so, or an evening batch
- * reads as though it expired this morning (H9).
- */
-export function bestBefore(made: Date, hours: number): string {
-  const due = new Date(made.getTime() + hours * 3600000);
-  const days = Math.round(
-    (new Date(due.getFullYear(), due.getMonth(), due.getDate()).getTime() -
-      new Date(made.getFullYear(), made.getMonth(), made.getDate()).getTime()) / 86400000,
-  );
-  if (days === 0) return hhmm(due);
-  if (days === 1) return `${hhmm(due)} tomorrow`;
-  return `${hhmm(due)} ${due.toLocaleDateString("en-IN", { day: "2-digit", month: "short" })}`;
-}
-
 const TZ = "Asia/Kolkata";
 /** An ISO instant from the API as the "HH:MM" the screens have always shown. */
 export const fromWireTime = (isoStr: string): string =>
@@ -50,32 +33,13 @@ export const fromWireDate = (d: string): string => {
   return `${m[3]}-${dt.toLocaleDateString("en-IN", { month: "short", timeZone: TZ })}-${m[1]}`;
 };
 
-/** "YYYY-MM-DD" for a Date, read in Asia/Kolkata regardless of the host's own zone. */
-const kolkataYmd = (d: Date): string => {
-  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(d);
-  const get = (t: string) => parts.find((p) => p.type === t)!.value;
-  return `${get("year")}-${get("month")}-${get("day")}`;
-};
-
 /**
- * The same three-way wording as `bestBefore`, for a best-before the server has
- * already worked out: an absolute instant instead of a batch time plus hours.
- * The day boundary is Asia/Kolkata's, not the browser's/host's own zone — a host
- * running in UTC must still call an 11pm-IST due date "tonight", not "tomorrow".
+ * A best-before the server has already worked out, in the kitchen's own words (H9). The day
+ * boundary is Asia/Kolkata's, not the host's — a host running in UTC must still call an
+ * 11pm-IST due date "tonight" — which is why the wording lives in `@rch/domain` and both the
+ * server's toast and this table read the one function.
  */
-export const fromWireBestBefore = (isoStr: string): string => {
-  const due = new Date(isoStr);
-  const made = new Date();
-  const days = Math.round(
-    (Date.parse(`${kolkataYmd(due)}T00:00:00Z`) - Date.parse(`${kolkataYmd(made)}T00:00:00Z`)) / 86400000,
-  );
-  // The clock face is the hospital's too: `hhmm` reads the host's zone, which is right for a
-  // batch time typed at the kitchen but wrong for an instant the server sent.
-  const time = fromWireTime(isoStr);
-  if (days === 0) return time;
-  if (days === 1) return `${time} tomorrow`;
-  return `${time} ${due.toLocaleDateString("en-IN", { day: "2-digit", month: "short", timeZone: TZ })}`;
-};
+export const fromWireBestBefore = (isoStr: string): string => bestBeforeText(new Date(isoStr));
 
 /**
  * Quantities in different units cannot be added. Group by unit and show each,

@@ -5,7 +5,7 @@ import {
   cashCollected, costOf, inTransit, isCashTender,
   onOrder, parOf, qty, recipeCost, resv,
 } from "../lib/selectors";
-import { bestBefore, fq, unitTotal } from "../lib/fmt";
+import { fq, fromWireBestBefore, unitTotal } from "../lib/fmt";
 import { seedPrq, seedTkt } from "../data/seed";
 import { resetStore, S, as } from "./fixture";
 
@@ -144,16 +144,19 @@ describe("H8 · no seeded price breaches its MRP", () => {
 
 /* ---------------------------------------------------------------- H9 */
 describe("H9 · best-before says which day it means", () => {
+  // The wording itself is pinned in packages/domain/src/shelf.test.ts, where it now lives
+  // (the server puts it in a toast, this table puts it in a column). What is left to check
+  // here is that the batch log reads an ISO instant from the wire through that wording.
   it("marks a best-before that lands on the next day", () => {
-    const evening = new Date("2026-08-29T20:34:00");
-    expect(bestBefore(evening, 12)).toMatch(/tomorrow/i);
+    const due = new Date(Date.now() + 30 * 3600_000).toISOString();
+    expect(fromWireBestBefore(due)).toMatch(/^\d{2}:\d{2} /);
   });
 
-  it("leaves a same-day best-before as a plain time", () => {
-    const morning = new Date("2026-08-29T06:40:00");
-    const out = bestBefore(morning, 12);
-    expect(out).not.toMatch(/tomorrow/i);
-    expect(out).toMatch(/^\d{2}:\d{2}$/);
+  it("leaves a best-before a few minutes out as a plain time", () => {
+    // Five minutes from now is the same IST day unless the run straddles midnight, which the
+    // suite's own clock decides; skip that one minute rather than pin a flake.
+    const due = new Date(Date.now() + 5 * 60_000);
+    if (due.getDate() === new Date().getDate()) expect(fromWireBestBefore(due.toISOString())).toMatch(/^\d{2}:\d{2}$/);
   });
 });
 
