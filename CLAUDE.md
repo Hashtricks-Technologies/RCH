@@ -8,20 +8,22 @@ Royal Care Hospital's F&B inventory and billing frontend: one item master and on
 ledger behind a central store, a kitchen and three retail outlets, covering purchase
 requisition → purchase order → goods receipt → production → issue → counter sale.
 
-**Phases 1–4 of the backend are implemented** — a Fastify + Drizzle API on PostgreSQL, per the
+**Phases 1–5 of the backend are implemented** — a Fastify + Drizzle API on PostgreSQL, per the
 design in `docs/superpowers/specs/2026-09-03-backend-design.md` (the contract for all backend
 work; see *Backend* below). Sign-in is real (employee id + password), and after signing in the
 frontend reads its state — the item master, locations, prices, menus and every open document
 — from the server (`GET /snapshot`) instead of `UI/src/data/seed.ts`. Counter billing,
 availability toggles, prices and menus, the whole stock-request chain (raise → approve → issue
 ticket → OTP handover/override → receive, and now cancel), shop-to-shop transfers, shop asks,
-and the whole of production — the kitchen's board, its batches and its two ticket-raising
-paths (dispatch, distribute) — all run against the server, refetching just what each write
-changed and picking up another browser's changes live over SSE. What is still local to the
-in-memory Zustand store: `store/procurement.ts` (vendors, requisition approval, PO lifecycle,
-goods receipt, `sendRequisition`) and the rest of `store/ops.ts` — support tickets, rate
-contracts, new-product requests and catalogue additions — which Phases 5 and 6 close. Only the
-theme and a few UI prefs reach `localStorage`.
+the whole of production — the kitchen's board, its batches and its two ticket-raising paths
+(dispatch, distribute) — and now the whole of procurement — requisitions, the buyer's decision,
+the purchase-order lifecycle from draft to received or cancelled, goods receipt with its 2%
+tolerance and quarantine, vendors, rate contracts and every screen that adds a new product —
+all run against the server, refetching just what each write changed and picking up another
+browser's changes live over SSE. The last in-memory paths are the support desk —
+`raiseTicket`, `replyToTicket`, `setTicketStatus`, `rateTicket` in `store/ops.ts` — which Phase
+6 closes along with `UI/src/data/seed.ts`. Only the theme and a few UI prefs reach
+`localStorage`.
 
 ## Branches
 
@@ -134,30 +136,36 @@ Routing is `HashRouter` (`#/pos`) so the static build works from any host with n
 `src/store/index.ts` is the whole state and most actions. Two slices are merged in at the
 bottom of the same `create()` call and share one `AppState`:
 
-- `src/store/procurement.ts` — vendors, requisition approval, PO lifecycle, goods receipt.
-- `src/store/ops.ts` — support tickets, rate contracts, new-product requests, shop-to-shop
-  transfers, catalogue additions.
+- `src/store/procurement.ts` — vendors, requisition approval, the purchase-order lifecycle,
+  goods receipt. All fourteen of its actions are API calls now; the slice holds no rule.
+- `src/store/ops.ts` — support tickets (still local), rate contracts, new-product requests,
+  `createItem`, shop-to-shop transfers. Everything but the four support-ticket actions is an
+  API call.
 
 Slices take `(set, get)` typed against `AppState`, so any action can read the whole store.
 Components subscribe with narrow selectors: `useApp((s) => s.req)`.
 
-Twenty-two actions are no longer local. Phase 2's five (`pay`, `toggleAvail`, `savePrice`,
+Forty-three actions are no longer local. Phase 2's five (`pay`, `toggleAvail`, `savePrice`,
 `addProduct`, `removeProduct`), Phase 3's fourteen movement actions — `submitRequest`,
 `requestFromStore`, `cancelRequest`, `approveRequest`, `rejectRequest`, `issueTicket`,
 `handover`, `receiveTicket`, `dispatchOrder`, `distribute` in `store/index.ts`, and
-`transferToOutlet`, `askShop`, `answerShopAsk`, `declineShopAsk` in `store/ops.ts` — and Phase
-4's three, all kitchen actions in `store/index.ts`: `setOrderStatus`, `makeProduct`,
-`cancelTicket`. All twenty-two call the API (`UI/src/api/client.ts`) instead of mutating `set`
-directly, then `refetch` (`UI/src/api/refetch.ts`) pulls back only the slices the write says it
-changed — `GET /stock` for `stock`/`rsv`/`ovr`, `GET /bills` for `bills`, `GET /requests` for
-`req`, `GET /tickets` for `tkt`, `GET /shop-asks` for `shopAsks`, `GET /prod-orders` for
-`pord`, `GET /batches` for `batch`, a full `loadSnapshot` for anything else. A refusal throws
-and is toasted; the cart or form is left exactly as it was. `Seq` (`store/index.ts`) now holds
-only the procurement counters (`prq`, `po`, `vn`) — every document the server numbers, the
-kitchen's included, is numbered there instead. `UI/src/api/events.ts` keeps every signed-in tab
-current with what other tabs and other browsers do: one `fetch`-based SSE connection per
-session, debounced 250 ms per collection into one `refetch`, so an approval made in one window
-shows up in another without a reload.
+`transferToOutlet`, `askShop`, `answerShopAsk`, `declineShopAsk` in `store/ops.ts` — Phase 4's
+three kitchen actions in `store/index.ts` (`setOrderStatus`, `makeProduct`, `cancelTicket`),
+and now Phase 5's twenty-one: `store/procurement.ts`'s fourteen (`addVendor`, `updateVendor`,
+`setVendorActive`, `approveRequisition`, `declineRequisition`, `createPo`, `updatePoLine`,
+`removePoLine`, `setPoVendor`, `setPoEta`, `sendPo`, `cancelPo`, `receivePo`, `closePoShort`),
+six more in `store/ops.ts` (`requestNewProduct`, `answerProductRequest`, `addContract`,
+`updateContract`, `removeContract`, `createItem`), and `store/index.ts`'s own
+`sendRequisition`. All forty-three call the API (`UI/src/api/client.ts`) instead of mutating
+`set` directly, then `refetch` (`UI/src/api/refetch.ts`) pulls back only the slices the write
+says it changed — `GET /stock` for `stock`/`rsv`/`ovr`, and a narrow reader for every other
+collection except `prices`, `menu` and `tickets` (the manager's price/menu writes and Phase 6's
+support desk), which cost a full `loadSnapshot`. A refusal throws and is toasted; the cart or
+form is left exactly as it was. The `Seq` interface (`store/index.ts`) is gone entirely — every
+document the server numbers, procurement's included, is numbered there instead.
+`UI/src/api/events.ts` keeps every signed-in tab current with what other tabs and other
+browsers do: one `fetch`-based SSE connection per session, debounced 250 ms per collection into
+one `refetch`, so an approval made in one window shows up in another without a reload.
 
 ### Derived state is computed, never stored
 
@@ -175,7 +183,13 @@ fields to the store for anything it already computes:
   ticket is holding cannot be baked with.
 - `availOf` — a traded/finished item is off at zero; a made-to-order item is off when any
   ingredient runs out, and the returned reason names the ingredient that blocked it.
-- `procurementList` — approved requisition lines less `ordered`. There is no stored pool.
+- `procurementList` — approved requisition lines less `ordered`. There is no stored pool: both
+  it and the server's own `GET /requisitions` read a snapshot the server fills, and the one
+  number that is actually stored is `requisition_lines.ordered_qty` — the claim a purchase
+  order puts on a line. Five endpoints move it, each inside one transaction holding the order's
+  row and the requisition rows: `createPo`, `updatePoLine`, `removePoLine`, `cancelPo` and
+  `closePoShort` (`apps/api/src/lib/claims.ts`'s `addOrdered`). Nothing else touches it — a
+  goods receipt moves stock, never a claim.
 - `prqProgress`, `onOrder`, `awaitingApproval` — requisition and purchase-order progress.
   `onOrder` covers approved-but-undelivered; `awaitingApproval` covers not-yet-decided.
   A duplicate-order guard needs **both** (M3); read the comments before touching either.
@@ -201,6 +215,12 @@ The server is where this is enforced now: `apps/api/src/modules/tickets/service.
 `lib/reservations.ts`. `packages/domain/src/transitions.ts` is the one table both the server's
 guards and the UI's buttons read to decide which status may follow which.
 
+Buying's claim arithmetic is the same shape one layer up. A purchase order **claims** against
+a requisition line; the goods receipt **moves** stock onto the shelf. A claim is settled under
+document row locks, the purchase-order row first and requisition rows second, ascending
+(`apps/api/src/lib/claims.ts`) — `createPo` is the one write that takes the second half of that
+order without the first, because it is minting the order the first lock would otherwise be.
+
 ### Drawers
 
 `src/drawers.ts` is a bare registry. A drawer module calls `registerDrawer("key", Component)`
@@ -224,7 +244,11 @@ These are enforced in code and pinned by tests. Breaking one is a bug, not a sty
 - **MRP is a hard ceiling.** Traded items carry a printed MRP. `packages/domain` holds the
   rule; the server enforces it (`PUT /prices/:list/:it` refuses above it, verbatim: `Refused —
   printed MRP of ₹<mrp> is a hard ceiling for <item>`) and `priceOf` in `selectors.ts` still
-  caps client-side previews at the till. No role, list or approval may exceed it.
+  caps client-side previews at the till. No role, list or approval may exceed it. A goods
+  receipt carries the other half: `checkReceiptLine` in `packages/domain/src/receipt.ts`
+  refuses a printed MRP below the item's list-A shelf price, word for word what the store
+  keeper has always read: `` `${name} — printed MRP ${money(mrp)} is below the shelf price;
+  reprice before selling` ``.
 - **The staff-credit ceiling is a hard monthly cap, per person.** `STAFF_CREDIT_LIMIT`
   (`packages/contract/src/schemas/common.ts`, ₹3,000) is enforced server-side inside the
   sale's own transaction by `breachesCredit` in `packages/domain/src/credit.ts`, over every
@@ -244,7 +268,18 @@ These are enforced in code and pinned by tests. Breaking one is a bug, not a sty
   *started*; only the yielded units reach the rack. The balance locks are taken over exactly
   the cells that write moves — the ingredients, and the finished item only when there is a
   yield to book — before anything is read, so a zero-yield make never creates a "carried at
-  zero" row for a shelf it never touched (M12).
+  zero" row for a shelf it never touched (M12). A goods receipt is the one buying write that
+  moves stock (`apps/api/src/modules/grn/service.ts`'s `receive`), and both its moves are
+  **positive**: `grn_accept` at the central store for what passed inspection, `grn_reject` at
+  `quarantine` for what did not. Nothing here is promised against a balance, so there is no
+  `lockBalances` call of its own and no post-lock re-read. A `grn_reject` move is posted only
+  when something was actually rejected, so a delivery with nothing turned away leaves
+  quarantine with no line for the item at all rather than one carried at zero.
+- **A claim comes back the way it went out.** Cutting a purchase-order line, removing it,
+  cancelling the order or closing it short all release the claim it put on a requisition —
+  **last source first** (`releaseClaim` in `packages/domain/src/claims.ts`) — so a shrink and a
+  re-grow land back on the same requisition rather than quietly moving demand between two store
+  keepers.
 - **Selling deducts by recipe for MTO items**, by the unit otherwise — now decided server-side
   in `apps/api/src/modules/pos` (`POST /bills`) against the same rule in `packages/domain`;
   `pay` in `store/index.ts` just calls it and refetches.
@@ -284,10 +319,10 @@ the host does not supply one):
   (C6, M3, M8, H4, UA-14…). Read the surrounding comment before changing behaviour one covers.
 - `screens.test.tsx` / `app.test.tsx` — every role × every nav key renders, bare and in-shell.
 - `theme.test.ts` — theme resolution and persistence.
-- `writes.test.ts` — the nineteen API-backed actions (Phase 2's `pay`, `toggleAvail`,
-  `savePrice`, `addProduct`, `removeProduct` and Phase 3's fourteen movement actions) against a
-  mocked client: success refetches the right slices, a refusal toasts and leaves state
-  untouched.
+- `writes.test.ts` — the server-backed actions (Phase 2's `pay`, `toggleAvail`, `savePrice`,
+  `addProduct`, `removeProduct`; Phase 3's fourteen movement actions; Phase 4's three kitchen
+  actions; and now Phase 5's twenty-one buying actions) against a mocked client: success
+  refetches the right slices, a refusal toasts and leaves state untouched.
 - `events.test.ts` — the SSE client (`UI/src/api/events.ts`): frame parsing, the 250 ms
   per-collection debounce into `refetch`, `resync` forcing a full `loadSnapshot`, and the
   `live` / `reconnecting` / `off` state the shell's status pill reads.
@@ -306,13 +341,16 @@ the lock removed.
 
 ## Backend
 
-Status: **Phases 1–4 (Foundation, Ledger + POS, Movement chain + SSE, Production) implemented;
-phases 5–6 pending — see spec §14.** Read `docs/superpowers/specs/2026-09-03-backend-design.md`
-before touching anything server-side; it records every decision already taken (§2), plus every
-amendment recorded during Phases 1–4 (§16), so they are not reopened in chat.
-`packages/domain/src/shelf.ts` is the one place the best-before and its wording live
-(`DEFAULT_SHELF_LIFE_HOURS`, `bestBeforeAt`, `bestBeforeText`), and `voidTicket` in
-`apps/api/src/lib/tickets.ts` is the one door out of a ticket that was never collected.
+Status: **Phases 1–5 (Foundation, Ledger + POS, Movement chain + SSE, Production, Procurement)
+implemented; phase 6 pending — see spec §14.** Read
+`docs/superpowers/specs/2026-09-03-backend-design.md` before touching anything server-side; it
+records every decision already taken (§2), plus every amendment recorded during Phases 1–5
+(§16), so they are not reopened in chat. `packages/domain/src/shelf.ts` is the one place the
+best-before and its wording live (`DEFAULT_SHELF_LIFE_HOURS`, `bestBeforeAt`, `bestBeforeText`),
+`packages/domain/src/{claims,receipt,purchasing,format}.ts` are the four places buying's shared
+rules live, `voidTicket` in `apps/api/src/lib/tickets.ts` is the one door out of a ticket that
+was never collected, and `quarantine` is a `StockLoc` — somewhere stock is reported — never a
+`LocKey` an operator can act at.
 
 Phase 2 added three modules to `apps/api/src/modules`, each `routes.ts` / `service.ts` /
 `repo.ts` / `<name>.test.ts` like every other: `pos` (`POST /bills`, the ledger sale — pricing,
@@ -349,6 +387,23 @@ back where it stood, through an explicit status guard rather than a `REQUEST_TRA
 (spec §16), so a cancelled ticket cannot re-open `approve` for a request that already has a
 live one. `GET /prod-orders` and `GET /batches` are scoped like every other read.
 
+Phase 5 added six modules — `requisitions`, `purchaseorders`, `grn`, `vendors`, `contracts`,
+`productreqs` — and one write to `catalog` (`POST /items`), nineteen writes and six reads past
+where Phase 4 left the manifest. A purchase order's claim on a requisition line is settled
+under a document lock order narrower than the general one: the purchase-order row first, then
+requisition rows ascending (`apps/api/src/lib/claims.ts`'s `lockRequisitions`), with `createPo`
+the one write that locks requisition rows while holding no order lock, safe only because it is
+minting the order and can never afterwards wait for an existing one. A goods receipt
+(`grn`'s `receive`) is the phase's only ledger write and, because both its moves are positive,
+takes no `lockBalances` of its own and no post-lock re-read — do not add either out of symmetry
+with `pay`, `handover` or `makeBatch`. Three uniqueness rules — a vendor's name, a live rate
+contract on a vendor and item, an item's name — are decided the way `addMenuItem` always was:
+a pre-check gives the operator's sentence, and the insert (or update, against
+`vendors_name_ci_uq`, the partial unique index `rate_contracts_live_uq`, and `items_name_ci_uq`)
+is the arbiter that catches the race. `"prq"`, `"po"`, `"vendor"` and `"contract"` join
+`IdKind`; a GRN does not — `GRN-<last 3 of the PO>-<nn>` has no `sequences` row at all, `nn`
+counting that order's own instalments under its `for update` lock.
+
 What it commits to, in one breath: a standalone TypeScript backend in a pnpm + Turborepo
 monorepo — `packages/contract` (Zod schemas; `types.ts` moves here), `packages/domain` (pure
 rules shared by UI and server), `apps/api` (Fastify 5 + Drizzle on PostgreSQL 17), `UI/`
@@ -381,10 +436,12 @@ billing, availability toggles and the manager's price/menu writes over to the se
 stock-request chain, shop transfers, shop asks and the kitchen's two ticket-raising writes (the
 fourteen actions in *One Zustand store*, above) and adds the live-update stream so every open
 screen sees another browser's write. Phase 4 finishes production — the kitchen's board and its
-batches — and adds ticket cancellation; all of procurement and the ops slice's support tickets,
-rate contracts and new-product requests stay local to the store until phases 5–6 land.
-Operational procedures — deploy, roll back, rotate keys, accounts, restore drill, SSE
-operations — are `deploy/RUNBOOK.md`.
+batches — and adds ticket cancellation. Phase 5 cuts over the whole of procurement —
+requisitions, the buyer's decision, the purchase-order lifecycle, goods receipt with tolerance
+and quarantine, vendors, rate contracts and every screen that adds a product; the support
+desk's four actions are the only thing still local to the store, and Phase 6 closes them along
+with `UI/src/data/seed.ts`. Operational procedures — deploy, roll back, rotate keys, accounts,
+restore drill, SSE operations — are `deploy/RUNBOOK.md`.
 
 ## Docs
 

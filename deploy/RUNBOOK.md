@@ -599,3 +599,80 @@ this failure, not a readiness probe.
 To watch it locally: `curl -N -H "Authorization: Bearer <token>" http://localhost:3000/api/v1/events`
 stays open and prints a `: ping` roughly every 25 s, plus an `event: changed` frame for every
 write another session makes while the curl is open.
+
+**`GET /events` carries no CORS headers.** Registered outside `mount()` and the route manifest
+(`plugins/sse.ts` directly), it never runs through `@fastify/cors`'s hooks the way every
+ordinary route does — `curl -D - -H "Origin: http://example.com" .../events` comes back with no
+`vary: Origin`, no `access-control-allow-credentials`, nothing, where the same request against
+`.../stock` gets both. Every deployed topology today is same-origin (nginx proxies `/api`), so
+nothing breaks — but a split-origin deployment would need CORS wired onto this route
+specifically before anything else works cross-origin. Carried to Phase 6 hygiene.
+
+## 11. Procurement and quarantine
+
+Buying (Phase 5) is `requisitions`, `purchaseorders`, `grn`, `vendors`, `contracts` and
+`productreqs` — vendors, requisitions, the purchase-order lifecycle and goods receipt, all
+server-side. The one thing worth knowing before touching any of it by hand: the procurement
+list is a **query**, not a table, and only one number on a requisition line is ever stored.
+
+**Reading a purchase order's claim:**
+
+```sql
+select l.line_no, l.item_key, l.qty, l.received_qty, s.requisition_id, s.requisition_line_no, s.qty
+from po_lines l left join po_line_sources s on s.po_id = l.po_id and s.line_no = l.line_no
+where l.po_id = 'PO-2026-0143' order by l.line_no, s.seq;
+```
+
+The sources are in the order the buyer picked them, which is the order a release walks
+**backwards**.
+
+**What is still on the procurement list:**
+
+```sql
+select r.id, l.line_no, l.item_key, l.approved_qty - l.ordered_qty as pending
+from requisitions r join requisition_lines l on l.requisition_id = r.id
+where r.status in ('Approved','Partially approved') and l.approved_qty > l.ordered_qty
+order by r.id, l.line_no;
+```
+
+There is no pool table; this query *is* the list.
+
+**A claim that looks wrong:** `ordered_qty` is only ever moved by `createPo`, `updatePoLine`,
+`removePoLine`, `cancelPo` and `closePoShort`, each inside one transaction holding the order's
+row and the requisition rows. If a number is off, read `document_history` for that order first
+(`select * from document_history where doc_type = 'purchase_order' and doc_id = '…' order by
+at;`) — do not correct it with an `UPDATE`.
+
+**Reading a goods receipt's ledger:**
+
+```sql
+select * from stock_moves where ref_type = 'grn' and ref_id = 'GRN-143-01';
+```
+
+One positive row at `store` for what was accepted, one positive row at `quarantine` for what
+was rejected, and no row at all for a quantity of zero.
+
+**GRN numbering:** `GRN-<last 3 of the PO>-<nn>`, where `nn` counts that order's own
+instalments. There is **no `sequences` row for it**; the count is read under the order's `for
+update` lock, which is what stops two receipts drawing the same number. Do not "fix" a gap —
+there cannot be one. Two purchase orders whose ids share the same last three characters (a
+`PO-2026-0143` and a `PO-2027-0143`, both ending `143`) mint the same GRN id for their first
+receipt; the `grns` primary key refuses the second one outright, with an ordinary constraint
+error rather than a store-worded refusal. This is a known limit, not a bug to chase down —
+widening the tail (or including the year) is Phase 6 hygiene.
+
+**Quarantine:** `select * from stock_balances where loc = 'quarantine';` is what the store
+keeper's screen shows. Nothing issues, sells or transfers from there and **there is no
+endpoint that takes stock back out** — a purchase return or a debit note is Phase 6 work at the
+earliest. Until then, a correction is an `adjustment` move written by hand through
+`db:rebuild-balances`-safe SQL (the move, never the balance).
+
+**A refused receipt:** a `POST …/receive` that answered 422 has written nothing — no GRN row,
+no move, no change to `received_qty` — because every line is validated before the first write.
+
+**A 500 on reactivating a rate contract:** `PATCH /contracts/:id {"active":true}` checks for an
+existing live contract on that vendor and item, but the check locks nothing when it finds none,
+so two reactivations of two closed contracts for the same pair race and the partial unique
+index `rate_contracts_live_uq` is the backstop. The loser gets a 500 and **the retry reads the
+ordinary refusal** (`<item> already has a live contract with <vendor>`), because the winner is
+committed by then. No data is at risk; tell the operator to try again.

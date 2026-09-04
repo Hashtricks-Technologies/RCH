@@ -29,7 +29,8 @@ There is no build step: `package.json` exports the TypeScript sources directly �
 src/index.ts            re-exports types + every schema module + routes
 src/types.ts            z.infer aliases only — no type is declared here
 src/routes.ts           defineRoute + the `routes` manifest + API_PREFIX
-src/schemas/common.ts   closed unions, Qty/Money/Iso*, error envelope, STAFF_CREDIT_LIMIT
+src/schemas/common.ts   closed unions, Qty/Money/Iso*, error envelope, STAFF_CREDIT_LIMIT,
+                        StockLocSchema/QUARANTINE, PO_APPROVAL_LIMIT
 src/schemas/documents.ts  every document shape (Item, Ticket, StockRequest, Bill, …)
 src/schemas/auth.ts     login / refresh / change-password / me
 src/schemas/snapshot.ts SnapshotSchema and the narrow read responses; BILL_DAYS
@@ -60,6 +61,22 @@ src/fixtures/*          the demo hospital: master, seed documents, ops, vendors
   a generic 400. `PayBodySchema`'s lines use `.positive()` deliberately — a cart line of zero is
   not a sale to explain, it is a malformed request. Both choices are recorded in spec §16; do not
   "fix" either one.
+- **`LocKeySchema` is where an operator may act; `StockLocSchema` is where stock may be.**
+  `LocKeySchema` (`schemas/common.ts`) stays the five working locations — no write body, no
+  user's home location, neither end of a ticket may ever name `quarantine`. `StockLocSchema` is
+  those five plus `quarantine` (the rejected-goods shelf a goods receipt posts to) and is what
+  keys `SnapshotSchema.stock`, `StockResponseSchema.stock`, the fixtures' `LOC` and `seedStock`,
+  and the UI store's `stock` — everywhere stock is *reported*. A write body that names a
+  location always takes `LocKeySchema`; widening it to admit `quarantine` would open six doors
+  (pay, availability toggle, transfer, shop-ask, distribute, menus) that then each need a guard
+  and a refusal sentence for a place no operator can reach.
+- **A `PATCH` body is a `strictObject` of optional, default-free fields, declared explicitly —
+  never `.partial()` of a defaulted schema.** Zod carries a `.default()` through `.partial()`,
+  so a body schema built by relaxing a create schema silently resets every field the caller did
+  not name to its default the moment any one field is patched. `PatchPoBodySchema`,
+  `PatchVendorBodySchema` and `PatchContractBodySchema` are each declared field by field for
+  this reason, and `routes.test.ts` pins `.parse({})` to `{}` for all three — the check that
+  "Nothing to change" stays reachable.
 
 ## The manifest
 
@@ -78,6 +95,9 @@ to register the route with its schemas, auth, role gate and idempotency preHandl
 - A write's response is `writeResponse(Result)` = `{ result, changed, message }` —
   `ChangedSchema` is an array of `CollectionSchema`, the closed list of slices a client may
   refetch. `message` is the operator's sentence; `changed` is what the UI's `refetch` reads.
+  `CollectionSchema` (`schemas/writes.ts`) gained `"prq"`, `"po"`, `"grn"`, `"vendors"`,
+  `"contracts"`, `"productReqs"` in Phase 5, and `"items"` — `POST /items` is the first write
+  that can change the catalogue itself, not just a balance on it.
 - **Adding an endpoint is one manifest entry plus a handler.** `apps/api/src/contract.test.ts`
   probes every parameterless GET in the manifest and asserts a 200 that parses against its own
   response schema — so a GET declared without its handler fails the API suite. Declare a GET in
@@ -86,6 +106,13 @@ to register the route with its schemas, auth, role gate and idempotency preHandl
   (`POST /batches`) and `cancelTicket` (`POST /tickets/:id/cancel`) — and two reads,
   `prodOrders` (`GET /prod-orders`) and `batches` (`GET /batches`), the same shape as every
   route above: one manifest entry, nothing hand-written.
+- Phase 5 (buying) added nineteen more writes — the requisition desk (`createRequisition`,
+  `approveRequisition`, `declineRequisition`), the purchase-order lifecycle
+  (`createPo`, `updatePoLine`, `removePoLine`, `patchPo`, `sendPo`, `cancelPo`, `receivePo`,
+  `closePoShort`), vendors and rate contracts (`addVendor`, `updateVendor`, `addContract`,
+  `updateContract`, `removeContract`), and the master (`createItem`, `createProductRequest`,
+  `answerProductRequest`) — and six reads (`requisitions`, `purchaseOrders`, `grns`, `vendors`,
+  `contracts`, `productRequests`), the same shape as every route above.
 - `API_PREFIX` is `/api/v1`; manifest paths are relative to it.
 - `EVENTS_PATH` (`/events`) and `EventNoticeSchema` live in `schemas/events.ts` and are
   deliberately **not** a manifest route — a stream has no JSON response to serialise. Both sides
@@ -102,7 +129,11 @@ where a caller already imports from:
   `@rch/domain`'s `credit.ts` (so the rule and its ceiling arrive together).
 - `BILL_DAYS` (7) is in `schemas/snapshot.ts` — the snapshot's bill window and `GET /bills`'s
   default, one number so replacing the store's list wholesale stays correct.
-- `PO_APPROVAL_LIMIT` and `PAR_FACTOR` are fixtures (`fixtures/master.ts`).
+- `PO_APPROVAL_LIMIT` (₹25,000, the slab a purchase order's value is checked against before it
+  needs finance approval) is declared in `schemas/common.ts` and re-exported from
+  `fixtures/master.ts` the same way `STAFF_CREDIT_LIMIT` is — `needsApproval` in `@rch/domain`
+  takes it as a parameter rather than importing it, so the rule and the number stay separable.
+  `PAR_FACTOR` is a fixture only (`fixtures/master.ts`) — it has no server-side rule reading it.
 - Id formats and the first number of each series are **not** here: `formatId`, `SEQUENCE_START`
   and `IdKind` live in `@rch/domain/src/ids.ts`, because they are a rule, not a wire shape.
 

@@ -86,7 +86,7 @@ describe("the kitchen's writes and a ticket taken back", () => {
 });
 
 describe("what buying puts on the wire", () => {
-  it("takes a receipt line with a rejection, and refuses a rejection larger than the schema's own bound", () => {
+  it("takes a receipt line with a rejection, and refuses one whose date is not ISO-shaped", () => {
     const line = { recv: 60, rejected: 12, batch: "AAV-8893", mrp: 20, mfg: "2026-09-01", exp: "2026-09-08" };
     expect(ReceivePoBodySchema.safeParse({ dc: "DC-1", invoice: "", invDate: "", lines: [line] }).success).toBe(true);
     expect(ReceivePoBodySchema.safeParse({ dc: "DC-1", invoice: "", invDate: "", lines: [{ ...line, exp: "08-09-2026" }] }).success).toBe(false);

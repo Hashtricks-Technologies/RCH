@@ -11,6 +11,14 @@ previews with them.** A rule inlined in a Fastify route handler or in a React co
 defect — move it here and call it from both sides. Every export is a plain function over plain
 data, parameterised by a `Master` (`items`, `locations`, `recipes`) the caller supplies.
 
+**A rule two sides enforce lives here; a validation one endpoint runs does not.** Phase 5
+demonstrates the line four times over — the claim walk, the receipt checks, the order value and
+its slab, and the shared formatters all moved here because the server's toast and the browser's
+screen both have to say the same thing. A GSTIN's shape is the other case: `GSTIN_RE` stays in
+`apps/api/src/modules/vendors/service.ts` because it has exactly one consumer and previews
+nothing on the browser's side — moving it here would not remove a second copy, it would just
+relocate the only one.
+
 ## Purity
 
 - **No I/O.** No `fetch`, no `pg`, no Drizzle, no file system, no `process.env`.
@@ -21,8 +29,12 @@ data, parameterised by a `Master` (`items`, `locations`, `recipes`) the caller s
   takes a `Master` argument. That is what lets the server call it inside a transaction with the
   master its own write commits against.
 - `Intl.DateTimeFormat` with `timeZone: "Asia/Kolkata"` is the platform API used in `ids.ts` (a
-  batch made at 00:30 IST is dated today, not yesterday) and in `shelf.ts` (a best-before is
-  read against the hospital's own calendar day, not the host's).
+  batch made at 00:30 IST is dated today, not yesterday) and in `format.ts`'s `istDate`, which
+  `shelf.ts`'s best-before and `purchasing.ts`'s `etaFrom` both read rather than keeping a
+  second copy. `receipt.ts`'s expiry check takes `today` as a plain string argument rather than
+  computing it — the caller (`apps/api/src/modules/grn/service.ts`) passes `istDate(new
+  Date())`, so a delivery is judged against the hospital's own calendar day even when the
+  server's own clock reads UTC.
 
 ## Commands
 
@@ -53,7 +65,11 @@ No build step — `package.json` exports `src/index.ts` directly.
 | `otp.ts` | `makeOtp` — six digits minted from the ticket number; an operational check, not a security token |
 | `ids.ts` | `formatId`, `SEQUENCE_START`, `IdKind` — the document numbers exactly as the floor reads them |
 | `shelf.ts` | `DEFAULT_SHELF_LIFE_HOURS` (8), `bestBeforeAt`, `bestBeforeText` — the only place a batch's best-before or its H9 wording ("21:30", "21:30 tomorrow", "21:30 04 Sep") is computed |
-| `transitions.ts` | the four status tables and `canTransition` |
+| `claims.ts` | `releaseClaim` — give a purchase-order line's sources back **last source first**; `foldClaims` — every delta against one requisition line, folded and sorted into lock order; `shortfallClaims` — what never arrived, per line, released the same way. The whole arithmetic of the procurement list, which is derived and stores nothing but `ordered_qty` |
+| `receipt.ts` | `checkReceiptLine` — the goods-receipt checks in the store keeper's own order (the 2% tolerance, the rejected-qty bound, the batch/date checks, the MRP-vs-shelf-price floor); `receiptStatus` — `Received` or `Partially received` once an instalment is booked; `RECEIPT_TOLERANCE` (1.02) |
+| `purchasing.ts` | `poValue`, `needsApproval` (takes the finance slab as a parameter, never imports it), `rateFor` (a live rate contract, or the item's standard cost), `etaFrom` (a vendor's lead time, counted in the hospital's calendar) |
+| `format.ts` | `money`, `money0`, `istDate`, `dmy` (`"2026-08-31"` → `"31-Aug-2026"`, from a fixed month table, not `toLocaleDateString`), `unitTotal` — the words and numbers both sides print. `credit.ts` and `shelf.ts` now import their formatters from here rather than keeping a private copy each |
+| `transitions.ts` | the six status tables and `canTransition` |
 
 `SEQUENCE_START` is the first number each series issues, continuing the seeded documents
 (`req: 913`, `tkt: 441`, `bill: 1188`, …). `apps/api/src/lib/ids.ts` inserts those rows and hands
@@ -65,9 +81,19 @@ numbers out under a row lock; the test builders deliberately allocate above them
 in `@rch/contract` — so a status added to a schema fails `typecheck` here until its row exists.
 One table, two consumers: the server refuses anything not listed (`assertTransition` in
 `apps/api/src/lib/rules.ts`) and the UI reads the same table to decide which buttons to render
-(`isReqOpen`, `canIssueTicket`, `canHandOver`, `canReceiveTicket`, `canDispatch` in
-`UI/src/lib/selectors.ts`). A transition the UI offers but the server refuses is impossible by
-construction.
+(`isReqOpen`, `canIssueTicket`, `canHandOver`, `canReceiveTicket`, `canDispatch`, and now
+`canSendPo`, `canCancelPo` in `UI/src/lib/selectors.ts`). A transition the UI offers but the
+server refuses is impossible by construction.
+
+Phase 5 joined `REQUISITION_TRANSITIONS` and `PO_TRANSITIONS`. `PO_TRANSITIONS["Partially
+received"]` includes **itself**: a second instalment that still does not complete the order
+re-enters the status it was already in, because `receiptStatus` computes the target from the
+totals rather than from where the order started. `Ordered → Cancelled` is a real edge in the
+table, but `purchaseorders/service.ts`'s `cancel` guards it again at its own door — refusing any
+order with `received > 0` before the table is ever consulted — because the table's own refusal
+("is already partially received") is not what the buyer needs to hear; the endpoint's own
+sentence tells them to close it short instead. `Partially received` has no `Cancelled` edge at
+all: a claim on goods that already arrived cannot be given back.
 
 **The trap:** `PROD_ORDER_TRANSITIONS` allows `Dispatched` from **every** open stage
 (`New`, `Accepted`, `In kitchen`, `Ready`) on purpose — the kitchen sends an order out the moment

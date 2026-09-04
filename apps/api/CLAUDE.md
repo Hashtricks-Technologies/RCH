@@ -7,11 +7,15 @@ contract is `docs/superpowers/specs/2026-09-03-backend-design.md` (§2 decisions
 ## What this is
 
 `@rch/api`: Fastify 5 + Drizzle on PostgreSQL 17, ESM TypeScript, one pool per process. It owns
-the ledger, the document numbers, the reservations and the change stream. Phases 1–4 are live —
+the ledger, the document numbers, the reservations and the change stream. Phases 1–5 are live —
 auth, `/snapshot` and the master GETs, the counter sale, availability, prices and menus, the
 whole request/ticket chain (including cancellation), shop transfers, shop asks, the kitchen's
-board and its batches, and `GET /events`. All of procurement — vendors, requisitions, PO
-lifecycle, goods receipt — is still in the browser store until phase 5.
+board and its batches, `GET /events`, and now the whole of procurement: requisitions and the
+buyer's decision (`requisitions`), the purchase-order lifecycle from draft to received or
+cancelled (`purchaseorders`), goods receipt with its 2% tolerance and quarantine (`grn`),
+vendors and rate contracts (`vendors`, `contracts`), a shop's ask for something not on the
+master (`productreqs`), and every screen that adds a new product (`catalog`'s `POST /items`).
+Only the support desk (Phase 6) is still in the browser store.
 
 ## Commands
 
@@ -39,7 +43,8 @@ src/server.ts   loadConfig -> buildApp -> listen; SIGTERM drains via readiness.s
 src/config.ts   the Zod env schema — the only place an env var is read
 src/routes.ts   mount(): the only way a module registers a route
 src/plugins/*   logging, errors, metrics, health, security, db, auth, rbac, sse, idempotency
-src/lib/*       the ledger, reservations, tickets, ids, history, rules, events, master, wire
+src/lib/*       the ledger, reservations, tickets, ids, history, rules, events, master, wire,
+                claims (a purchase order's hold on a requisition line)
 src/modules/*   one folder per bounded slice; _template is the copy-me skeleton
 src/db/*        schema/, client.ts, migrate.ts, seed.ts   ·   src/cli/*  the six CLIs
 src/test/*      app.ts, db.ts, seed.ts, auth.ts, builders.ts, env.ts
@@ -97,6 +102,42 @@ collected.** It releases the ticket's open holds, sets its status to `Cancelled`
 the reason to `document_history` — and `releaseForTicket` (`lib/reservations.ts`) now has two
 callers, `handover` and `voidTicket`, rather than one.
 
+Four more rules Phase 5's buying modules (`requisitions`, `purchaseorders`, `grn`, `vendors`,
+`contracts`, `productreqs`, and `catalog`'s `POST /items`) add:
+
+(a) **The document lock order is narrower than the general one wherever a claim moves.** A
+purchase order's claim on a requisition line is settled with the purchase-order row locked
+before any requisition row, and requisition rows locked in one ascending sweep
+(`lib/claims.ts`'s `lockRequisitions`). `createPo` is the one write that locks requisition rows
+while holding no purchase-order lock — safe only because it is minting the order and can never
+afterwards wait for an existing one. `lib/ledger.ts`'s header states the rule; `updateLine`,
+`removeLine`, `cancel` (`purchaseorders/service.ts`) and `closeShort` (`grn/service.ts`) all
+keep it.
+
+(b) **A goods receipt takes no `lockBalances` of its own and no post-lock re-read.** `grn`'s
+`receive` is the phase's only ledger write, and both its moves — `grn_accept` at the central
+store, `grn_reject` at quarantine — are positive. Nothing here is promised against a balance,
+so there is nothing for the belt-and-braces check `pay`/`handover`/`makeBatch` need to catch.
+Do not add either one out of symmetry with them.
+
+(c) **A positive move is still only posted for a quantity greater than zero.** `lockBalances`
+creates the row it locks, and a stray zero row reads as "carried" on every stock screen (M12).
+That is why a clean delivery (nothing rejected) posts no `grn_reject` move at all, and why
+`POST /items` posts no `opening` move for a new product with no opening stock.
+
+(d) **The insert is the arbiter for a uniqueness rule, the pre-check only gives the sentence.**
+A vendor's name (`vendors_name_ci_uq`), a live rate contract on a vendor and item (the partial
+unique index `rate_contracts_live_uq`), and an item's name (`items_name_ci_uq`) are all decided
+this way — `addMenuItem`'s pattern from Phase 2. `vendors.create`/`patch` and
+`contracts.create` check first and let the insert or update catch the race; `catalog.createItem`
+adds a `pg_advisory_xact_lock` on the item's slug ahead of its own check, because the slug scan
+itself reads before the insert's own lock.
+
+`"prq"`, `"po"`, `"vendor"` and `"contract"` join the `IdKind`s below. A GRN has none: there is
+no `"grn"` in `IdKind` and no `sequences` row for it — `GRN-<last 3 of the PO>-<nn>` is
+`count(*)` of that order's own GRN rows, read under the order's own `for update` lock, which is
+what serialises two receipts drawing a number rather than a sequence row.
+
 ## The protected tables
 
 `postMoves()` in `src/lib/ledger.ts` is the only thing that writes `stock_moves` or
@@ -116,8 +157,10 @@ in exactly one non-test file, and that every module folder has the four skeleton
 `src/modules/production/repo.ts`, the ordinary way any module writes its own document row. What
 is protected is the ledger a batch posts to (`production_consume`, `production_yield` — two
 more `Move["kind"]` values alongside `sale`, `ticket_out`, `ticket_in`, …) and the `sequences`
-row its number is drawn from: `"batch"` joins `"req"`, `"tkt"`, `"prq"`, `"po"` as an `IdKind`
-(`@rch/domain/src/ids.ts`), and `allocateNumber(tx, "batch", at)` is what a batch id costs.
+row its number is drawn from: `"batch"` joins `"req"`, `"tkt"`, `"prq"`, `"po"`, `"vendor"` and
+`"contract"` as an `IdKind` (`@rch/domain/src/ids.ts`), and `allocateNumber(tx, "batch", at)` is
+what a batch id costs. `"grn"` is deliberately not among them — see *A module, and how a write
+is composed*, above.
 
 `stock_moves` is append-only in the database too: migration `0002` installs a trigger that raises
 `stock_moves is append-only; correct with a reversing move` on any UPDATE or DELETE. Correct a
@@ -167,9 +210,11 @@ server repeats it **word for word** rather than inventing a second wording.
   it two files race over one name. `buildTestApp({ withDb: false })` skips Postgres entirely.
 - `seedTestDb(db)` seeds the fixtures; `authHeaders(app, "u2")` mints a bearer for a seeded user
   without walking the login flow. `truncateAll` empties business tables but **keeps `sequences`**.
-- `given.{request,ticket,shopAsk,bill,prodOrder}` (`src/test/builders.ts`) are the only sanctioned
-  way to make a document. Their id bands sit above both the fixtures and the sequence starts:
-  `REQ-2026-0991+`, `TKT-0801+`, `ASK-0101+`, `CF/9001+`, `PRD-2026-901+`.
+- `given.{request,ticket,shopAsk,bill,prodOrder,vendor,requisition,po,contract,productRequest}`
+  (`src/test/builders.ts`) are the only sanctioned way to make a document. Their id bands sit
+  above both the fixtures and the sequence starts: `REQ-2026-0991+`, `TKT-0801+`, `ASK-0101+`,
+  `CF/9001+`, `PRD-2026-901+`, `VN-901+`, `PRQ-2026-901+`, `PO-2026-0901+`, `RC-901+`,
+  `NPR-0901+`.
 - Because `sequences` survives truncation, **never assert a literal allocated id** — match the
   shape (`/^REQ-\d{4}-0\d+$/`) and assert the *relative* step (`n(second) === n(first) + 1`).
 - A test that opens two concurrent transactions to prove a lock must call `warmPool(t, n)` first
