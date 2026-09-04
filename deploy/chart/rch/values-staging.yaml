@@ -2,5 +2,5 @@ api: { replicas: 2, hpa: { minReplicas: 2, maxReplicas: 3 }, env: { LOG_LEVEL: d
 ui: { replicas: 1 }
 # Staging runs at rch-staging.hashtrickstechnologies.com (Route 53 zone hashtrickstechnologies.com,
 # account 830283280199, ap-south-1); the ACM certificate below is DNS-validated in that zone.
-ingress: { host: rch-staging.hashtrickstechnologies.com, certificateArn: arn:aws:acm:ap-south-1:830283280199:certificate/2731d488-5304-418d-a169-acaa81cfca41 }
+ingress: { host: rch-staging.hashtrickstechnologies.com, certificateArn: arn:aws:acm:ap-south-1:830283280199:certificate/fa1cefa9-03a1-407b-9ba5-4b4d87ae8867 }
 secrets: { create: true }
