@@ -2,10 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { act, createElement, type ComponentType, type ReactElement } from "react";
 import { createRoot } from "react-dom/client";
 import { MemoryRouter } from "react-router-dom";
-import { creditBreachMessage } from "@rch/domain";
 import { useApp } from "../store";
-import { STAFF_CREDIT_LIMIT } from "../data/master";
-import { money, money0 } from "../lib/fmt";
 import { NAV } from "../nav";
 import { DRAWERS } from "../drawers";
 import Settings from "../pages/Settings";
@@ -79,13 +76,11 @@ describe("a role cannot reach another role's screens", () => {
   });
 });
 
-describe("the counter's staff credit warning", () => {
-  it("is the sentence the server refuses with", () => {
-    // Pos.tsx renders the Alert as two sentences in one node; the server sends the same string.
-    const rendered = `${money(3010)} breaches the ${money0(STAFF_CREDIT_LIMIT)} staff credit limit for Vinoth Prakash · Kitchen. Take another tender or split the bill.`;
-    expect(rendered).toBe(creditBreachMessage(2990, 20, "Vinoth Prakash · Kitchen"));
-  });
-});
+// The counter's staff-credit warning used to be pinned here by comparing two literals, which
+// rendered nothing and so could not have caught the screen saying something else. It is a
+// render-level case in `writes.test.ts` now ("puts the server's own ceiling and payer on
+// screen, in the server's own words"), where a stubbed `GET /reports/credit/:kind/:id` can
+// supply the figures the sentence is built from.
 
 describe("drawers render", () => {
   const cases: [string, string, Role][] = [
@@ -106,6 +101,30 @@ describe("drawers render", () => {
       expect(render(createElement(C, { id })).length).toBeGreaterThan(200);
     });
   }
+
+  // Not a row in `cases` above: the kitchen's ticket window opens on a ticket the kitchen
+  // *issued*, and the fixtures seed exactly one ticket, store -> coffee. So the row is set up
+  // here instead. What it pins is the whole reason the drawer exists: before it, every kitchen
+  // handover went through `handover(id)` with no OTP, which the server records as a supervisor
+  // override — the kitchen had a button but nowhere to type what the collector read out.
+  it("ptkt gives the kitchen a box for the collector's OTP, and an override behind its own label", () => {
+    act(() => {
+      as("prod");
+      useApp.setState({ tkt: [{
+        id: "TKT-0905", req: "PRD-2026-029", from: "kitchen", to: "kiosk",
+        lines: [{ it: "puff", qty: 12 }], st: "Issued", otp: "", hist: [{ s: "Issued", who: "Vinoth Prakash", t: "10:12" }],
+      }] });
+    });
+    const html = render(createElement(DRAWERS.ptkt, { id: "TKT-0905" }));
+    expect(html).toContain("otp-in");
+    expect(html).toContain("OTP quoted by the collector");
+    expect(html).toContain("Hand over on OTP");
+    expect(html).toContain("Hand over without the OTP (supervisor override)");
+    // The kitchen is the issuing side, so it is told whose screen the digits are on rather than
+    // shown six blanks it could read out to itself.
+    expect(html).toContain("Ask Snack Kiosk to read out the six digits");
+    expect(html).not.toContain("otp-v");
+  });
 
   // Not a row in `cases` above: PO-2026-0142 (milk, butter — neither has a printed MRP)
   // shares the "bgrn" key with PO-2026-0141 (juice, water — both have one), and the shared

@@ -53,6 +53,23 @@ describe("restoring the session at boot", () => {
     expect(useApp.getState().toast).toBeNull();
   });
 
+  it("stops on a full-page failure when the credentials are good and the snapshot is not", async () => {
+    // The registries start empty and only a snapshot fills them, so "showing what is in memory"
+    // would put `LOC[loc].n` on screen against `{}` and land the whole app in the error
+    // boundary. `auth: "failed"` is the state that says so, and `restore()` must not throw.
+    fetchMock
+      .mockResolvedValueOnce(ok({ accessToken: "new", user: USER, mustChangePassword: false }))
+      .mockResolvedValueOnce(ok({ error: { code: "internal", message: "Something went wrong." } }, 500));
+    await expect(useApp.getState().restore()).resolves.toBeUndefined();
+    expect(useApp.getState().auth).toBe("failed");
+    expect(useApp.getState().user?.id).toBe("u1");
+
+    // And the Retry the shell offers is `loadSnapshot` again — nothing else has to be re-done.
+    fetchMock.mockResolvedValueOnce(ok(SNAPSHOT));
+    await useApp.getState().loadSnapshot();
+    expect(useApp.getState().auth).toBe("ready");
+  });
+
   it("leaves a session that is already signed in alone", async () => {
     setAccessToken("tok");
     useApp.setState({ user: USER, auth: "ready" });

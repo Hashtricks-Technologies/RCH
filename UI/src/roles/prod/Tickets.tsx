@@ -34,7 +34,6 @@ function useTicketFilter() {
 export default function Tickets() {
   const s = useApp();
   const receiveTicket = useApp((x) => x.receiveTicket);
-  const handover = useApp((x) => x.handover);
   const cancelTicket = useApp((x) => x.cancelTicket);
   const [cancelId, setCancelId] = useState<string | null>(null);
   const [why, setWhy] = useState("");
@@ -182,7 +181,10 @@ export default function Tickets() {
                 ? <>
                     <StatusPill status={t.st} />
                     <div style={{ marginTop: 6 }}>
-                      <Btn size="xs" variant="ok" onClick={() => handover(t.id)}>Hand over</Btn>{" "}
+                      {/* Opens the ticket's own window, where the OTP is typed. It used to call
+                          `handover(t.id)` straight out, with no OTP — which the server records
+                          as a supervisor override, so every kitchen handover was one. */}
+                      <Btn size="xs" variant="ok" onClick={() => s.openDrawer("ptkt", t.id)}>Hand over</Btn>{" "}
                       {cancelId === t.id ? (
                         <>
                           <input

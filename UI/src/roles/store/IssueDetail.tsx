@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
-import { canHandOver, canIssueTicket, freeToPromise, ticketDot } from "../../lib/selectors";
+import { canHandOver, canIssueTicket, freeToPromise } from "../../lib/selectors";
 import { U, fq, money, money0, sum } from "../../lib/fmt";
 import {
-  Alert, Btn, DataTable, Feed, Field, Pill, Section, StatusPill, TableFoot,
+  Alert, Btn, DataTable, Feed, Field, Pill, Section, StatusPill, TableFoot, TicketTrail,
 } from "../../ui/kit";
 import { DrawerFrame } from "../../ui/Drawer";
 import { registerDrawer, type DrawerProps } from "../../drawers";
@@ -252,12 +252,9 @@ function IssueDetail({ id }: DrawerProps) {
       {ticket && (
         <Section title="Ticket history" sub={`Every hand ${ticket.id} has passed through`}>
           {/* A ticket's trail says "Handed over" and "Cancelled — …", words the request's own
-              `dotFor` has never heard of, so it is coloured by the ticket rule. */}
-          <Feed
-            items={ticket.hist.map((h, i) => ({
-              key: h.s + i, title: h.s, body: h.who, when: h.t, color: ticketDot(h.s),
-            }))}
-          />
+              `dotFor` has never heard of, so it is coloured by the ticket rule — which is what
+              `TicketTrail` is, rather than a `Feed` each screen colours for itself. */}
+          <TicketTrail hist={ticket.hist} />
         </Section>
       )}
     </DrawerFrame>

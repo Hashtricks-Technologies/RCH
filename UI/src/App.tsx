@@ -7,7 +7,7 @@ import Login from "./pages/Login";
 import ChangePassword from "./pages/ChangePassword";
 import Settings from "./pages/Settings";
 import Support from "./pages/Support";
-import { PageHead, Card } from "./ui/kit";
+import { Btn, PageHead, Card } from "./ui/kit";
 import { screens as counter } from "./roles/counter";
 import { screens as manager } from "./roles/manager";
 import { screens as store } from "./roles/store";
@@ -67,6 +67,21 @@ export default function App() {
       <div className="lgi" style={{ margin: "20vh auto" }}>
         <h2>Loading…</h2>
         <p className="sub">Fetching today's stock, requests and bills.</p>
+      </div>
+    );
+  }
+  // Signed in, and the snapshot never arrived. There is no item master, no locations and no
+  // menus behind this, so there is no screen to fall back to — every one of them would read an
+  // empty registry and throw. One page, one sentence, one button that asks again.
+  if (auth === "failed") {
+    return (
+      <div className="lgi" style={{ margin: "20vh auto" }}>
+        <h2>Could not load the hospital's data — check the connection</h2>
+        <p className="sub">
+          You are signed in, but the server did not send today's item master, stock or documents,
+          and nothing can be shown without them.
+        </p>
+        <Btn onClick={() => { void useApp.getState().loadSnapshot(); }}>Retry</Btn>
       </div>
     );
   }

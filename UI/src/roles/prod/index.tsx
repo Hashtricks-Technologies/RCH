@@ -7,6 +7,7 @@ import Availability from "./Availability";
 import Requests from "./Requests";
 import Tickets from "./Tickets";
 import "./OrderDrawer";
+import "./TicketDrawer";
 
 export const screens: Record<string, ComponentType> = {
   dash: Dashboard,

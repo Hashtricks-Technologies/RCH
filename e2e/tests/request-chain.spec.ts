@@ -1,17 +1,5 @@
-import { expect, test, type Locator, type Page } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { drawer, idFromToast, rowFor, signIn, toast } from "../fixtures/roles.js";
-
-/**
- * The counter's Pick Tickets screen carries two tables: what is coming in, and what this counter
- * granted to another shop ("Sent from this counter"). A bare `tr` lookup would match a row in
- * either, so every row read on this screen is scoped to the inbound card — the one card on the
- * page that is not the outbound one.
- */
-const inboundRow = (page: Page, text: string): Locator =>
-  page.locator(".card")
-    .filter({ hasNot: page.getByRole("heading", { name: "Sent from this counter" }) })
-    .first()
-    .locator("tr", { hasText: text }).first();
 
 test("a request walks from the counter to the shelf, live in both windows", async ({ browser }) => {
   // Three sign-ins, two live windows and six round trips: this is the longest scenario in the
@@ -32,7 +20,7 @@ test("a request walks from the counter to the shelf, live in both windows", asyn
     // 1. The counter asks.
     await counter.getByRole("navigation").getByRole("link", { name: "Stock Requests" }).click();
     await counter.getByRole("button", { name: "From inventory" }).click();
-    await counter.locator(".raisecard").getByLabel("Product").selectOption("milk");
+    await counter.locator(".raisecard").getByLabel("Product", { exact: true }).selectOption("milk");
     await counter.locator(".raisecard").getByLabel("Quantity").fill("6");
     await counter.locator(".raisecard").getByLabel("Notes").fill("Milk finished at 09:10");
     await counter.getByRole("button", { name: "Submit request" }).click();
@@ -62,7 +50,7 @@ test("a request walks from the counter to the shelf, live in both windows", asyn
     // The collector's own screen is where the six digits live, and the ticket drawer is where a
     // counter operator reads them out.
     await counter.getByRole("navigation").getByRole("link", { name: "Pick Tickets" }).click();
-    await inboundRow(counter, tkt).click();
+    await rowFor(counter, tkt).click();
     const otp = (await drawer(counter).locator(".otp-v").innerText()).replace(/\D/g, "");
     expect(otp).toMatch(/^\d{6}$/);
     await counter.keyboard.press("Escape");
@@ -85,10 +73,10 @@ test("a request walks from the counter to the shelf, live in both windows", asyn
     await expect(toast(store)).toContainText(`${tkt} handed over — stock is in transit to Coffee Shop`);
 
     // 5. The counter receives it, and the shelf it lands on is theirs.
-    await expect(inboundRow(counter, tkt)).toContainText("Collected", { timeout: 15_000 });
-    await inboundRow(counter, tkt).getByRole("button", { name: "Receive" }).click();
+    await expect(rowFor(counter, tkt)).toContainText("Collected", { timeout: 15_000 });
+    await rowFor(counter, tkt).getByRole("button", { name: "Receive" }).click();
     await expect(toast(counter)).toContainText("Received at Coffee Shop — stock is on the shelf");
-    await expect(inboundRow(counter, tkt)).toContainText("Received");
+    await expect(rowFor(counter, tkt)).toContainText("Received");
   } finally {
     // Closed whatever happened above: a failed assertion leaves three browser contexts open, and
     // Playwright's own teardown does not know about contexts a test made for itself.

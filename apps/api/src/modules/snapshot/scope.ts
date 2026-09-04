@@ -52,13 +52,22 @@ export const scopeProductRequests = (rows: ProductRequest[], who: Who): ProductR
  * desk printed the number three inches from the box that verifies it — and sending them to
  * anyone else is a credential in a snapshot for no reason at all.
  *
- * So: the OTP travels only while the ticket is still `Issued` and only to a caller standing at
- * the ticket's `to`. Everyone else reads "". The way past a collector who is not there is the
- * labelled supervisor override on `handover`, which is refused to a counter and recorded in
- * `document_history` — now visible on the ticket itself.
+ * So: the OTP travels only while the ticket is still `Issued`, only to a caller standing at the
+ * ticket's `to`, **and** only to a role that actually collects there. Everyone else reads "".
+ * The way past a collector who is not there is the labelled supervisor override on `handover`,
+ * which is refused to a counter and recorded in `document_history` — now visible on the ticket
+ * itself.
+ *
+ * The role test is the second half and is not redundant. Location alone is not identity: the
+ * outlet manager's own home location is an outlet (`rest` in the fixtures), so a location-only
+ * check handed the manager the digits for every Issued Restaurant-bound ticket in the
+ * snapshot — a credential for a handover they will never stand at. `COLLECTS` is the three
+ * roles that are ever the receiving end of a ticket; a buyer and a manager are neither end of
+ * one, and read "" wherever they happen to sit.
  */
+const COLLECTS: ReadonlySet<Who["role"]> = new Set(["counter", "prod", "store"]);
 export const redactOtps = (tkt: Ticket[], who: Who): Ticket[] =>
-  tkt.map((t) => (t.st === "Issued" && t.to === who.loc ? t : { ...t, otp: "" }));
+  tkt.map((t) => (t.st === "Issued" && t.to === who.loc && COLLECTS.has(who.role) ? t : { ...t, otp: "" }));
 
 /**
  * Support is the one module all five roles share (§8.3) and every support write in §9.2 is

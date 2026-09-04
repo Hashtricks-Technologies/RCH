@@ -65,10 +65,16 @@ export default function Pos() {
   // `apps/api/src/lib/credit.ts` does inside the sale's own transaction).
   const readCredit = useApp((x) => x.readCredit);
   const [credit, setCredit] = useState<CreditResponse | null>(null);
+  /** Three states, not two. `credit === null` covers both "not asked yet" and "asked and got
+   *  nothing", and the line below said "Checking…" for either — so a till whose credit read was
+   *  failing sat on that sentence for ever, promising a number that was never coming. */
+  const [creditFailed, setCreditFailed] = useState(false);
   useEffect(() => {
-    if (tender !== "Staff credit" || !payer) { setCredit(null); return; }
+    setCredit(null);
+    setCreditFailed(false);
+    if (tender !== "Staff credit" || !payer) return;
     let live = true;
-    void readCredit(payer).then((r) => { if (live) setCredit(r); });
+    void readCredit(payer).then((r) => { if (!live) return; setCredit(r); setCreditFailed(r === null); });
     return () => { live = false; };
   }, [tender, payer, readCredit]);
   const taken = credit?.taken ?? 0;
@@ -231,7 +237,9 @@ export default function Pos() {
                 </>
                 // Never a zero here: "₹0.00 taken" is the one thing this line must not say while
                 // it does not know, because it reads as "nothing owing" rather than "not asked yet".
-                : <>Checking what {payer.name} has taken this month…</>}
+                : creditFailed
+                  ? <>Could not check this month&apos;s credit — the bill will be refused if the ceiling is reached.</>
+                  : <>Checking what {payer.name} has taken this month…</>}
             </p>
           )}
           {overLimit && credit && (

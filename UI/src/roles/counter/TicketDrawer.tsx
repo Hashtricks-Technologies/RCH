@@ -1,11 +1,11 @@
 import { useState } from "react";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
-import { canCancelTicket, canReceiveTicket, ticketDot } from "../../lib/selectors";
+import { canCancelTicket, canReceiveTicket } from "../../lib/selectors";
 import { fq, U } from "../../lib/fmt";
 import { DrawerFrame } from "../../ui/Drawer";
 import { registerDrawer, type DrawerProps } from "../../drawers";
-import { Alert, Btn, DataTable, Feed, Field, Otp, Section, StatusPill } from "../../ui/kit";
+import { Alert, Btn, DataTable, Feed, Field, Otp, Section, StatusPill, TicketTrail } from "../../ui/kit";
 import type { TktStatus } from "../../types";
 
 const STEPS: { st: TktStatus; title: string; body: string }[] = [
@@ -161,9 +161,7 @@ function TicketDrawer({ id }: DrawerProps) {
       )}
 
       <Section title="History" sub={`Every hand ${tkt.id} has passed through`}>
-        <Feed items={tkt.hist.map((h, i) => ({
-          key: h.s + i, title: h.s, body: h.who, when: h.t, color: ticketDot(h.s),
-        }))} />
+        <TicketTrail hist={tkt.hist} />
       </Section>
 
       <p className="mini mtop">
