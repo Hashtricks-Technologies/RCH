@@ -42,6 +42,15 @@ describe("shop ask transitions", () => {
     expect(canTransition(SHOP_ASK_TRANSITIONS, "Sent", "Declined")).toBe(false);
     expect(canTransition(SHOP_ASK_TRANSITIONS, "Declined", "Sent")).toBe(false);
   });
+
+  it("lets a withdrawn grant put the ask back on the shop's desk", () => {
+    // Phase 6 gives the counter a cancel door. Withdrawing the ticket a grant raised has to leave
+    // the ask somewhere the holding shop can answer it again — Sent with a cancelled ticket behind
+    // it would be a lie on both screens.
+    expect(canTransition(SHOP_ASK_TRANSITIONS, "Sent", "Asked")).toBe(true);
+    expect(canTransition(SHOP_ASK_TRANSITIONS, "Declined", "Asked")).toBe(false);
+    expect(canTransition(SHOP_ASK_TRANSITIONS, "Sent", "Declined")).toBe(false);
+  });
 });
 
 describe("production order transitions", () => {

@@ -56,7 +56,10 @@ export const PROD_ORDER_TRANSITIONS: TransitionTable<PordStatus> = {
 
 export const SHOP_ASK_TRANSITIONS: TransitionTable<ShopAskStatus> = {
   Asked: ["Sent", "Declined"],
-  Sent: [],
+  // Withdrawing the ticket a grant raised is the one way back. The holding shop granted, changed
+  // its mind before anyone collected, and cancelled the ticket; leaving the ask at Sent would
+  // show the asking shop stock that is coming and the holding shop a document it has undone.
+  Sent: ["Asked"],
   Declined: [],
 };
 
