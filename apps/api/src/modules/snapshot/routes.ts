@@ -13,4 +13,11 @@ export default fp(async (app) => {
   mount(app, routes.shopAsks, async (req) => svc.shopAsks(req.user));
   mount(app, routes.prodOrders, async (req) => svc.prodOrders(req.user));
   mount(app, routes.batches, async (req) => svc.batches(req.user));
+  // Buying's six, each answering for one slice a write can name in `changed` (spec §9.1).
+  mount(app, routes.requisitions, async (req) => svc.requisitions(req.user));
+  mount(app, routes.purchaseOrders, async (req) => svc.purchaseOrders(req.user));
+  mount(app, routes.grns, async (req) => svc.grns(req.user));
+  mount(app, routes.vendors, async (req) => svc.vendors(req.user));
+  mount(app, routes.contracts, async (req) => svc.contracts(req.user));
+  mount(app, routes.productRequests, async (req) => svc.productRequests(req.user));
 }, { name: "module:snapshot", dependencies: ["auth", "rbac", "db"] });

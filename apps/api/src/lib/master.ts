@@ -14,7 +14,8 @@ export const loadItems = async (db: Reader): Promise<Master["items"]> =>
   Object.fromEntries((await db.select().from(items).orderBy(asc(items.key))).filter((r) => r.active).map((r) => [r.key, toWireItem(r)]));
 
 /** Every location, quarantine included. The rules ignore it; they do not need it hidden,
- *  and the reader that feeds the UI (readers/master.ts) is the one that cuts it out. */
+ *  and since Phase 5 the reader that feeds the UI (readers/master.ts) carries it too — the
+ *  store's screens are the ones that read it. */
 export const loadLocations = async (db: Reader): Promise<Master["locations"]> =>
   Object.fromEntries((await db.select().from(locations).orderBy(asc(locations.key))).map((r) => [r.key, toWireLocation(r)]));
 
