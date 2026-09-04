@@ -11,6 +11,9 @@ export default fp(async (app) => {
   // Both of these scope on the ticket's own from/to, which only the service has read.
   mount(app, routes.handover, async (req) => svc.handover(req.user, req.params.id, req.body));
   mount(app, routes.receiveTicket, async (req) => svc.receive(req.user, req.params.id));
+  // Scoped by the ticket's own `from`, in the service: the store cancels what the store issued
+  // and the kitchen what the kitchen dispatched.
+  mount(app, routes.cancelTicket, async (req) => svc.cancel(req.user, req.params.id, req.body));
   // A transfer names its own source, so the counter's scope is checkable here; a manager may
   // move stock between any two outlets, as they may switch any outlet's products off.
   mount(app, routes.transfer, async (req) => {

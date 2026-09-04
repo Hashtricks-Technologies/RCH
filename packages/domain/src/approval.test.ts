@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { planApproval } from "./approval";
+import { approvedStatus, planApproval } from "./approval";
 
 const free = (n: number) => () => n;
 
@@ -45,5 +45,18 @@ describe("planApproval", () => {
     const p = planApproval([{ it: "beans", qty: 0.3 }], [0.3], free(0.1 + 0.2));
     expect(p.lines[0].appr).toBe(0.3);
     expect(p.lines[0].short).toBe(0);
+  });
+});
+
+describe("approvedStatus", () => {
+  it("is a full approval when every line got what it asked for", () => {
+    expect(approvedStatus([{ qty: 10, appr: 10 }, { qty: 4, appr: 4 }])).toBe("Manager approved");
+  });
+  it("is a partial approval when any line was trimmed", () => {
+    expect(approvedStatus([{ qty: 10, appr: 10 }, { qty: 4, appr: 1 }])).toBe("Partially approved");
+  });
+  it("is what planApproval itself decides, so a cancelled ticket puts a request back where it was", () => {
+    const plan = planApproval([{ it: "milk", qty: 20 }], [20], () => 12);
+    expect(plan.st).toBe(approvedStatus(plan.lines));
   });
 });
