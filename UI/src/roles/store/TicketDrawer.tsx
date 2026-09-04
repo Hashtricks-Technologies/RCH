@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
+import { canHandOver } from "../../lib/selectors";
 import { U, fq, money, sum } from "../../lib/fmt";
 import { Btn, DataTable, Feed, Field, Otp, Pill, StatusPill } from "../../ui/kit";
 import { DrawerFrame } from "../../ui/Drawer";
@@ -44,7 +45,7 @@ function TicketDrawer({ id }: DrawerProps) {
         <>
           <Btn variant="gh" onClick={close}>Close</Btn>
           <div className="sp" />
-          {t.st === "Issued" ? (
+          {canHandOver(t.st) ? (
             <Btn variant="ok" disabled={otp.trim().length !== 6} onClick={() => handover(t.id, otp)}>
               Hand over on OTP
             </Btn>

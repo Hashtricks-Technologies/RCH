@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
-import { freeToPromise } from "../../lib/selectors";
+import { canHandOver, canIssueTicket, freeToPromise } from "../../lib/selectors";
 import { U, fq, money, money0, sum } from "../../lib/fmt";
 import {
   Alert, Btn, DataTable, Feed, Field, Otp, Pill, Section, StatusPill, TableFoot,
@@ -61,8 +61,7 @@ function IssueDetail({ id }: DrawerProps) {
   const shortLines = r.lines.filter((l) => (l.short ?? Math.max(0, l.qty - l.appr)) > 0);
   const uncovered = r.lines.filter((l) => l.appr > 0 && freeFor(l.it, l.appr) < l.appr);
 
-  const canIssue = (r.st === "Manager approved" || r.st === "Partially approved")
-    && r.ticket === null && appr > 0 && uncovered.length === 0;
+  const canIssue = canIssueTicket(r.st) && r.ticket === null && appr > 0 && uncovered.length === 0;
 
   return (
     <DrawerFrame
@@ -80,7 +79,7 @@ function IssueDetail({ id }: DrawerProps) {
             >
               Generate ticket
             </Btn>
-          ) : ticket && ticket.st === "Issued" ? (
+          ) : ticket && canHandOver(ticket.st) ? (
             <Btn variant="ok" disabled={otp.trim().length !== 6} onClick={() => handover(ticket.id, otp)}>
               Hand over on OTP
             </Btn>

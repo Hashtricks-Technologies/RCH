@@ -1,32 +1,13 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { useApp } from "../store";
-import { avail, availOf, priceOf, qty, resv } from "../lib/selectors";
+import {
+  availOf, canDispatch, canHandOver, canIssueTicket, canReceiveTicket, isReqOpen, priceOf, qty,
+} from "../lib/selectors";
 import { resetStore, S, as } from "./fixture";
 
 beforeEach(resetStore);
 
 describe("counter operator", () => {
-  it("raises a multi-item request", () => {
-    as("counter");
-    S().setDraft([{ it: "milk", qty: 20 }, { it: "sugar", qty: 4 }]);
-    const before = S().req.length;
-    S().submitRequest("Counter runs dry by 4pm", true);
-    expect(S().req).toHaveLength(before + 1);
-    const r = S().req[S().req.length - 1];
-    expect(r.lines).toHaveLength(2);
-    expect(r.st).toBe("Request sent");
-    expect(r.from).toBe("coffee");
-    expect(S().draft).toHaveLength(0);
-  });
-
-  it("cancels only while the request is still open", () => {
-    as("counter");
-    S().cancelRequest("REQ-2026-0911");
-    expect(S().req.find((r) => r.id === "REQ-2026-0911")!.st).toBe("Cancelled");
-    S().cancelRequest("REQ-2026-0909");
-    expect(S().req.find((r) => r.id === "REQ-2026-0909")!.st).toBe("Ticket issued");
-  });
-
   it("builds one cart line per item scanned", () => {
     as("counter");
     S().addToCart("coffee", "capp");
@@ -66,81 +47,49 @@ describe("availability", () => {
   });
 });
 
-describe("the two-stage approval chain", () => {
-  it("manager trims the quantity, store issues a ticket for only what was approved", () => {
-    as("manager");
-    S().approveRequest("REQ-2026-0911", [12], "Store only holds 12 L.");
-    const r = () => S().req.find((x) => x.id === "REQ-2026-0911")!;
-    expect(r().lines[0].appr).toBe(12);
-    expect(r().st).toBe("Partially approved");
-    expect(r().mgrNote).toBe("Store only holds 12 L.");
-    expect(r().ticket).toBeNull();
-
-    as("store");
-    const stockBefore = qty(S(), "store", "milk");
-    S().issueTicket("REQ-2026-0911");
-    const t = S().tkt[S().tkt.length - 1];
-    expect(t.lines[0].qty).toBe(12);
-    expect(r().st).toBe("Ticket issued");
-    expect(qty(S(), "store", "milk")).toBe(stockBefore);
-    expect(avail(S(), "store", "milk")).toBe(stockBefore - 12);
-
-    S().handover(t.id);
-    expect(qty(S(), "store", "milk")).toBe(stockBefore - 12);
-    expect(avail(S(), "store", "milk")).toBe(stockBefore - 12);
-    expect(S().tkt.find((x) => x.id === t.id)!.st).toBe("Collected");
-
-    as("counter");
-    const coffeeBefore = qty(S(), "coffee", "milk");
-    S().receiveTicket(t.id);
-    expect(qty(S(), "coffee", "milk")).toBe(coffeeBefore + 12);
-    expect(r().st).toBe("Closed");
-    expect(availOf(S(), "coffee", "capp").ok).toBe(true);
+/**
+ * The request and ticket chain itself is the server's (requests.test.ts, tickets.test.ts);
+ * what is left on this side is which controls a screen may offer, and those read the same
+ * transition table the server enforces.
+ */
+describe("what a button may offer is what the server accepts", () => {
+  it("cancels only while the request is still open", () => {
+    expect(isReqOpen("Request sent")).toBe(true);
+    expect(isReqOpen("Draft")).toBe(true);
+    expect(isReqOpen("Ticket issued")).toBe(false);
+    expect(isReqOpen("Closed")).toBe(false);
   });
-
-  it("a manager cannot approve more than was asked, nor more than the store can cover", () => {
-    as("manager");
-    S().approveRequest("REQ-2026-0911", [999], "");
-    const line = S().req.find((x) => x.id === "REQ-2026-0911")!.lines[0];
-    expect(line.appr).toBeLessThanOrEqual(line.qty);
-    expect(line.appr).toBe(qty(S(), "store", "milk"));
+  it("offers a ticket only for a decision that has one to give", () => {
+    expect(canIssueTicket("Manager approved")).toBe(true);
+    expect(canIssueTicket("Partially approved")).toBe(true);
+    expect(canIssueTicket("Request sent")).toBe(false);
+    expect(canIssueTicket("Rejected")).toBe(false);
   });
-
-  it("rejecting issues no ticket", () => {
-    as("manager");
-    S().approveRequest("REQ-2026-0912", [0, 0, 0], "Nothing to spare");
-    const r = S().req.find((x) => x.id === "REQ-2026-0912")!;
-    expect(r.st).toBe("Rejected");
-    as("store");
-    const before = S().tkt.length;
-    S().issueTicket("REQ-2026-0912");
-    expect(S().tkt).toHaveLength(before);
+  it("offers handover and receipt in order", () => {
+    expect(canHandOver("Issued")).toBe(true);
+    expect(canHandOver("Collected")).toBe(false);
+    expect(canReceiveTicket("Collected")).toBe(true);
+    expect(canReceiveTicket("Issued")).toBe(false);
+  });
+  it("offers dispatch on any open order, never on one already gone or turned down", () => {
+    expect(canDispatch("Ready")).toBe(true);
+    expect(canDispatch("Accepted")).toBe(true);
+    expect(canDispatch("Dispatched")).toBe(false);
+    expect(canDispatch("Declined")).toBe(false);
   });
 });
 
 describe("production", () => {
-  it("accepts, makes and dispatches, creating a ticket", () => {
+  // Dispatch and handover are the server's from Phase 3 (production.test.ts "puts every item
+  // on one ticket…", tickets.test.ts "moves the stock out on the OTP…"); accepting an order
+  // and making the batch stay in memory until Phase 4.
+  it("accepts an order and makes what it asks for", () => {
     as("prod");
     S().setOrderStatus("PRD-2026-029", "Accepted");
     expect(S().pord.find((o) => o.id === "PRD-2026-029")!.st).toBe("Accepted");
-    const kitchenBefore = qty(S(), "kitchen", "puff");
+    const before = qty(S(), "kitchen", "puff");
     S().makeProduct("puff", 60);
-    expect(qty(S(), "kitchen", "puff")).toBe(kitchenBefore + 60);
+    expect(qty(S(), "kitchen", "puff")).toBe(before + 60);
     expect(S().batch[0].qty).toBe(60);
-    const tktBefore = S().tkt.length;
-    S().dispatchOrder("PRD-2026-029");
-    expect(S().tkt).toHaveLength(tktBefore + 1);
-    // The ticket reserves; the scan at the window is what moves the stock.
-    expect(qty(S(), "kitchen", "puff")).toBe(kitchenBefore + 60);
-    expect(resv(S(), "kitchen", "puff")).toBe(40);
-    S().handover(S().tkt[S().tkt.length - 1].id);
-    expect(qty(S(), "kitchen", "puff")).toBe(kitchenBefore + 60 - 40);
-    expect(S().pord.find((o) => o.id === "PRD-2026-029")!.st).toBe("Dispatched");
-  });
-  it("refuses to distribute more than the kitchen holds", () => {
-    as("prod");
-    const before = S().tkt.length;
-    S().distribute("salad", 9999, "kiosk");
-    expect(S().tkt).toHaveLength(before);
   });
 });

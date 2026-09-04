@@ -1,6 +1,6 @@
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
-import { qty } from "../../lib/selectors";
+import { canDispatch, qty } from "../../lib/selectors";
 import { fq, sum, U } from "../../lib/fmt";
 import {
   Alert, Btn, DataTable, Feed, Pill, Section, StatusPill, TableFoot,
@@ -34,7 +34,7 @@ function OrderDrawer({ id }: DrawerProps) {
       </>}
       {o.st === "Accepted" && <Btn onClick={() => setOrderStatus(o.id, "In kitchen")}>Start making</Btn>}
       {o.st === "In kitchen" && <Btn onClick={() => setOrderStatus(o.id, "Ready")}>Mark ready</Btn>}
-      {o.st === "Ready" && <Btn variant="ok" onClick={() => dispatchOrder(o.id)}>Dispatch to counter</Btn>}
+      {canDispatch(o.st) && <Btn variant="ok" onClick={() => dispatchOrder(o.id)}>Dispatch to counter</Btn>}
     </>
   );
 

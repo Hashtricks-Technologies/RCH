@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
+import { canHandOver } from "../../lib/selectors";
 import { fq, sum, unitTotal } from "../../lib/fmt";
 import {
   Alert, Btn, Card, DataTable, FilterSelect, Otp, PageHead, StatusPill, TableFoot, Toolbar,
@@ -148,10 +149,10 @@ export default function Tickets() {
               <>{LOC[t.to].n}<small>{LOC[t.to].floor}</small></>,
               itemText(t),
               <b>{sum(t.lines, (l) => l.qty)}</b>,
-              t.st === "Issued"
+              canHandOver(t.st)
                 ? <Otp value={t.otp} />
                 : <span className="dim mini">used at handover</span>,
-              t.st === "Issued"
+              canHandOver(t.st)
                 ? <>
                     <StatusPill status={t.st} />
                     <div style={{ marginTop: 6 }}>

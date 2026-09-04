@@ -1,10 +1,13 @@
-import { IT, LOC, OUTLETS } from "../data/master";
+import { routes } from "@rch/contract";
+import { ApiError, call } from "../api/client";
+import { refetch } from "../api/refetch";
+import { IT, LOC } from "../data/master";
 import { seedContracts, seedProductRequests, seedShopAsks, seedTickets } from "../data/ops";
 import type {
   Item, ItemType, LocKey, ProductRequest, RateContract, ShopAsk,
   SupportTicket, TicketPriority, TicketStatus, TicketTopic,
 } from "../types";
-import { fq, makeOtp, now, U } from "../lib/fmt";
+import { fq, now, U } from "../lib/fmt";
 import type { AppState } from "./index";
 
 type Set_ = (p: Partial<AppState>) => void;
@@ -40,14 +43,14 @@ export interface OpsSlice {
 
   createItem: (input: NewItemInput, loc: LocKey, opening: number) => void;
   /** Shop to shop, no manager in the middle. */
-  transferToOutlet: (from: LocKey, to: LocKey, it: string, qty: number) => void;
+  transferToOutlet: (from: LocKey, to: LocKey, it: string, qty: number) => Promise<void>;
 
   shopAsks: ShopAsk[];
   /** Counter at `from` asks the shop at `to` for stock it is holding. */
-  askShop: (to: LocKey, it: string, qty: number, note: string) => void;
+  askShop: (to: LocKey, it: string, qty: number, note: string) => Promise<void>;
   /** The holding shop grants some or all of it, which issues the transfer ticket. */
-  answerShopAsk: (id: string, grant: number) => void;
-  declineShopAsk: (id: string, reason: string) => void;
+  answerShopAsk: (id: string, grant: number) => Promise<void>;
+  declineShopAsk: (id: string, reason: string) => Promise<void>;
 }
 
 const slug = (name: string) =>
@@ -187,73 +190,50 @@ export const createOpsSlice = (set: Set_, get: Get): OpsSlice => ({
     );
   },
 
-  transferToOutlet: (from, to, it, qty) => {
-    const s = get();
-    if (!OUTLETS.includes(from) || !OUTLETS.includes(to) || from === to) {
-      s.notify("A shop transfer runs between two different outlets");
-      return;
+  /**
+   * Shop to shop is the server's from Phase 3. Each of the four posts its body, repeats the
+   * sentence that came back and refetches what the write named — the cover check, the
+   * outlet-to-outlet rule and the ticket's number are all decided there, not here.
+   */
+  transferToOutlet: async (from, to, it, qty) => {
+    try {
+      const r = await call(routes.transfer, { body: { from, to, it, qty } });
+      get().notify(r.message);
+      await refetch(r.changed, r.message);
+    } catch (e) {
+      get().notify(e instanceof ApiError ? e.message : "Could not send the transfer — check the connection and try again.");
     }
-    if (!(qty > 0)) { s.notify("Enter a quantity"); return; }
-    const free = (s.stock[from]?.[it] ?? 0) - (s.rsv[`${from}:${it}`] ?? 0);
-    if (free < qty) {
-      s.notify(`${LOC[from].n} has only ${fq(free, it)} ${U(it)} free to send`);
-      return;
-    }
-    const id = "TKT-0" + (s.seq.tkt + 1);
-    set({
-      rsv: { ...s.rsv, [`${from}:${it}`]: (s.rsv[`${from}:${it}`] ?? 0) + qty },
-      seq: { ...s.seq, tkt: s.seq.tkt + 1 },
-      tkt: [...s.tkt, {
-        id, req: "Shop transfer", from, to,
-        lines: [{ it, qty }], st: "Issued", otp: makeOtp(s.seq.tkt + 1),
-      }],
-    });
-    s.notify(`${id} issued — ${fq(qty, it)} ${U(it)} reserved at ${LOC[from].n} for ${LOC[to].n}`);
   },
 
-  askShop: (to, it, qty, note) => {
-    const s = get();
-    if (!s.user) return;
-    const from = s.user.loc;
-    if (from === to) { s.notify("Pick a different shop"); return; }
-    if (!OUTLETS.includes(to)) { s.notify("Only another shop can be asked directly"); return; }
-    if (!(qty > 0)) { s.notify("Enter a quantity"); return; }
-    const id = "ASK-0" + (s.shopAsks.length + 61);
-    set({
-      shopAsks: [{
-        id, from, to, it, qty, st: "Asked", by: s.user.n, at: now(), note: note.trim(),
-      }, ...s.shopAsks],
-    });
-    s.notify(`${id} sent to ${LOC[to].n} — they decide, not the manager`);
-  },
-
-  answerShopAsk: (id, grant) => {
-    const s = get();
-    const a = s.shopAsks.find((x) => x.id === id);
-    if (!a || a.st !== "Asked") return;
-    const give = Math.max(0, Math.min(grant, a.qty));
-    if (give <= 0) { s.notify("Grant a quantity, or decline the ask"); return; }
-    const free = (s.stock[a.to]?.[a.it] ?? 0) - (s.rsv[`${a.to}:${a.it}`] ?? 0);
-    if (free < give) {
-      s.notify(`${LOC[a.to].n} has only ${fq(free, a.it)} ${U(a.it)} free to send`);
-      return;
+  askShop: async (to, it, qty, note) => {
+    try {
+      const r = await call(routes.askShop, { body: { to, it, qty, note: note.trim() } });
+      get().notify(r.message);
+      await refetch(r.changed, r.message);
+    } catch (e) {
+      get().notify(e instanceof ApiError ? e.message : "Could not send the ask — check the connection and try again.");
     }
-    const ticketId = "TKT-0" + (s.seq.tkt + 1);
-    // reserves at the giving shop and raises the ticket the asker collects against
-    get().transferToOutlet(a.to, a.from, a.it, give);
-    set({
-      shopAsks: get().shopAsks.map((x) =>
-        x.id === id ? { ...x, st: "Sent" as const, grant: give, ticket: ticketId } : x),
-    });
   },
 
-  declineShopAsk: (id, reason) => {
-    const s = get();
-    if (!reason.trim()) { s.notify("Give a reason — the other shop sees it"); return; }
-    set({
-      shopAsks: s.shopAsks.map((x) =>
-        x.id === id ? { ...x, st: "Declined" as const, reason: reason.trim() } : x),
-    });
-    s.notify(`${id} declined`);
+  /** One endpoint grants the ask *and* raises the ticket; calling the transfer too would
+   *  raise a second one for the same stock. */
+  answerShopAsk: async (id, grant) => {
+    try {
+      const r = await call(routes.answerShopAsk, { params: { id }, body: { grant } });
+      get().notify(r.message);
+      await refetch(r.changed, r.message);
+    } catch (e) {
+      get().notify(e instanceof ApiError ? e.message : "Could not answer the ask — check the connection and try again.");
+    }
+  },
+
+  declineShopAsk: async (id, reason) => {
+    try {
+      const r = await call(routes.declineShopAsk, { params: { id }, body: { reason: reason.trim() } });
+      get().notify(r.message);
+      await refetch(r.changed, r.message);
+    } catch (e) {
+      get().notify(e instanceof ApiError ? e.message : "Could not decline the ask — check the connection and try again.");
+    }
   },
 });

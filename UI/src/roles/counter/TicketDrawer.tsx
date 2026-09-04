@@ -1,5 +1,6 @@
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
+import { canReceiveTicket } from "../../lib/selectors";
 import { fq, U } from "../../lib/fmt";
 import { DrawerFrame } from "../../ui/Drawer";
 import { registerDrawer, type DrawerProps } from "../../drawers";
@@ -27,7 +28,7 @@ function TicketDrawer({ id }: DrawerProps) {
   }
 
   const at = ORDER.indexOf(tkt.st);
-  const canReceive = tkt.st === "Collected";
+  const canReceive = canReceiveTicket(tkt.st);
 
   return (
     <DrawerFrame

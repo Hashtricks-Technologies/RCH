@@ -3,8 +3,8 @@ import { apportion, round3 } from "@rch/domain";
 export { apportion, round3 };
 import { IT, LOC, MENU, PAR_FACTOR, PL, RCP } from "../data/master";
 import type {
-  Availability, Bill, LocKey, PoStatus, Price, PurchaseOrder, Requisition, ReqStatus,
-  StockRequest, Ticket, Tone,
+  Availability, Bill, LocKey, PoStatus, PordStatus, Price, PurchaseOrder, Requisition, ReqStatus,
+  StockRequest, Ticket, TktStatus, Tone,
 } from "../types";
 import { U } from "./fmt";
 
@@ -171,4 +171,14 @@ export const toneFor = (st: string): Tone => TONES[st] ?? "mu";
 export const stateTone = (a: number, rl: number): Tone => (a <= 0 ? "cr" : rl > 0 && a < rl ? "wn" : "ok");
 export const stateLabel = (a: number, rl: number) => (a <= 0 ? "Out" : rl > 0 && a < rl ? "Low" : "Healthy");
 export const basePrices = () => ({ A: { ...PL.A }, B: { ...PL.B } });
-export const isReqOpen = (st: ReqStatus) => st === "Draft" || st === "Request sent";
+
+/**
+ * What a button may offer is what the server accepts. Each of these reads the shared
+ * transition table in `packages/domain` rather than repeating the status graph here, so a
+ * control the UI renders is a transition `assertTransition` on the server will let through.
+ */
+export const isReqOpen = (st: ReqStatus) => D.canTransition(D.REQUEST_TRANSITIONS, st, "Cancelled");
+export const canIssueTicket = (st: ReqStatus) => D.canTransition(D.REQUEST_TRANSITIONS, st, "Ticket issued");
+export const canHandOver = (st: TktStatus) => D.canTransition(D.TICKET_TRANSITIONS, st, "Collected");
+export const canReceiveTicket = (st: TktStatus) => D.canTransition(D.TICKET_TRANSITIONS, st, "Received");
+export const canDispatch = (st: PordStatus) => D.canTransition(D.PROD_ORDER_TRANSITIONS, st, "Dispatched");

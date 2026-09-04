@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { TenderSchema } from "@rch/contract";
+import { breachesCredit } from "@rch/domain";
 import { DEPTS, IT, LOC, PATIENTS, STAFF, STAFF_CREDIT_LIMIT } from "../../data/master";
 import { useApp } from "../../store";
 import { availOf, menuOf, priceOf } from "../../lib/selectors";
@@ -57,7 +58,7 @@ export default function Pos() {
     return !t || p.name.toLowerCase().includes(t) || p.id.toLowerCase().includes(t);
   }) ?? [];
   const taken = payer ? sum(s.bills.filter((b) => b.payer?.id === payer.id), (b) => b.tot) : 0;
-  const overLimit = tender === "Staff credit" && !!payer && taken + total > STAFF_CREDIT_LIMIT;
+  const overLimit = tender === "Staff credit" && !!payer && breachesCredit(taken, total, STAFF_CREDIT_LIMIT);
 
   const pickTender = (t: Tender) => { setTender(t); setPayer(null); setPq(""); };
   /** The tile adds one; this sets the line to whatever was typed, as a signed delta. */
@@ -206,7 +207,7 @@ export default function Pos() {
 
           {tender === "Staff credit" && payer && (
             <p className="mini" style={{ margin: "0 0 11px" }}>
-              Credit taken by {payer.name} this session <b className="mono">{money(taken)}</b> of{" "}
+              Credit taken by {payer.name} this month <b className="mono">{money(taken)}</b> of{" "}
               <b className="mono">{money0(STAFF_CREDIT_LIMIT)}</b> — this bill would take it to{" "}
               <b className="mono" style={overLimit ? { color: "var(--crit)" } : undefined}>{money(taken + total)}</b>.
             </p>

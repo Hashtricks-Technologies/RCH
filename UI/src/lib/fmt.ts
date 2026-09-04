@@ -88,5 +88,3 @@ export function unitTotal(lines: { it: string; qty: number }[]): string {
     .map(([u, v]) => `${u === "nos" ? String(Math.round(v)) : v.toFixed(3)} ${u}`)
     .join(" · ");
 }
-
-export { makeOtp } from "@rch/domain";

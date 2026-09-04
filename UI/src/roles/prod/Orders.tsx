@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { IT, LOC, OUTLETS } from "../../data/master";
 import { useApp } from "../../store";
-import { avail, qty } from "../../lib/selectors";
+import { avail, canDispatch, qty } from "../../lib/selectors";
 import { fq, sum, U } from "../../lib/fmt";
 import {
   Alert, Btn, Card, DataTable, FilterSelect, PageHead, Pill, StatusPill, TableFoot, Toolbar,
@@ -52,7 +52,7 @@ export default function Orders() {
     if (o.st === "New") return <Btn size="xs" onClick={() => setOrderStatus(o.id, "Accepted")}>Accept</Btn>;
     if (o.st === "Accepted") return <Btn size="xs" onClick={() => setOrderStatus(o.id, "In kitchen")}>Start making</Btn>;
     if (o.st === "In kitchen") return <Btn size="xs" onClick={() => setOrderStatus(o.id, "Ready")}>Mark ready</Btn>;
-    if (o.st === "Ready") {
+    if (canDispatch(o.st)) {
       const short = o.lines.filter((l) => avail(s, "kitchen", l.it) < l.qty);
       return (
         <Btn size="xs" variant="ok" disabled={short.length > 0}

@@ -57,3 +57,16 @@ export function applyStock(s: StockResponse): void {
 export function applyBills(bills: Bill[]): void {
   useApp.setState({ bills: billed(bills) });
 }
+
+/** GET /requests -> the request desk, times as "HH:MM" and history stamps with them. */
+export function applyRequests(req: Snapshot["req"]): void {
+  useApp.setState({ req: req.map((r) => ({ ...r, at: t(r.at), hist: hist(r.hist) })) });
+}
+
+/** GET /tickets -> the tickets. Nothing on a ticket is a time, so it passes straight through. */
+export function applyTickets(tkt: Snapshot["tkt"]): void { useApp.setState({ tkt }); }
+
+/** GET /shop-asks -> the shop-to-shop asks, times as "HH:MM". */
+export function applyShopAsks(asks: Snapshot["shopAsks"]): void {
+  useApp.setState({ shopAsks: asks.map((a) => ({ ...a, at: t(a.at) })) });
+}
