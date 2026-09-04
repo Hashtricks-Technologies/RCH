@@ -93,10 +93,15 @@ artifact.
 - **Six files, eight scenarios, and no more.** More would be a second test suite maintained by
   hand against a UI that moves.
 
-## Known switch
+## Known switches
 
-`E2E_OTP_REDACTED=1` turns on the one assertion in `request-chain.spec.ts` that this tree
-cannot yet satisfy: that the issue desk prints none of the six digits it is checking. The wire
-withholds `otp` from the sending location and the store's screens stop rendering it as part of
-Phase 6; set the variable in CI in the same commit that lands both halves, and delete the switch
-in the one after.
+Two assertions are gated, because at this tree they would pass whatever the server did — and an
+assertion that cannot fail is worse than none. Each prints a `not asserted` annotation into the
+run while it is off, so neither can go quiet. Set the variable on the `helm install into kind`
+step in `.github/workflows/ci.yml` in the same commit that lands the change, and delete the
+switch in the one after.
+
+| Variable | The assertion it turns on | What has to land first |
+|---|---|---|
+| `E2E_OTP_REDACTED=1` | The issue desk prints none of the six digits it is checking — neither through `<Otp>` nor as the bare `span.mono` column `store/IssueDesk.tsx` and `manager/ItemsStock.tsx` write | The wire withholding `otp` from the sending location, **and** the store's screens no longer rendering it |
+| `E2E_SUPPORT_SERVER=1` | A support ticket raised at one counter is not in another role's list | The support desk moving off `UI/src/store/ops.ts`, which today mints the id in the browser and keeps the conversation in memory |

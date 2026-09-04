@@ -23,14 +23,19 @@ API=http://localhost:3000
 API_PREFIX=/api/v1
 UI=http://localhost:8080
 
-SET_ARGS=(
+BASE_ARGS=(
   --set-string "secrets.values.JWT_PRIVATE_KEY=$JWT_PRIVATE_KEY"
   --set-string "secrets.values.JWT_PUBLIC_KEY=$JWT_PUBLIC_KEY"
 )
+SET_ARGS=("${BASE_ARGS[@]}")
 
 # E2E=1 adds the Playwright smoke at the end (see the block after the UI health check). Three
-# settings have to move for it, and only for it — they are set here rather than in
-# ci/values-ci.yaml so a plain install still proves the chart's own defaults:
+# settings have to move for it. They are set here rather than in ci/values-ci.yaml because they
+# are properties of how the smoke reaches the cluster — one port-forward, so one client address,
+# and six accounts driven back to back — and not of the chart or of this environment. CI sets
+# E2E=1 on every run, so the pipeline never installs without them on the first leg; the
+# `helm upgrade` at the end drops back to BASE_ARGS, so every run still installs the chart's own
+# defaults once and proves they come up.
 #
 #  * SEED_FORCE_PASSWORD_CHANGE=false. The seed below runs inside the api container and inherits
 #    its env; left at the default the six seeded accounts land on "Choose a new password" at
@@ -126,8 +131,12 @@ fi
 
 kill_pf
 
-echo "== helm upgrade (same values: proves the Secret survives and the migrate initContainer no-ops) =="
-helm upgrade --install rch deploy/chart/rch -f deploy/chart/rch/ci/values-ci.yaml "${SET_ARGS[@]}" --wait --timeout 5m
+# BASE_ARGS, not SET_ARGS: the smoke has finished, so this leg drops the three settings it
+# needed and puts the chart's own defaults back — which is both the upgrade this job has always
+# proved (the Secret survives, the migrate initContainer no-ops) and the one install in the run
+# that exercises ci/values-ci.yaml as it actually ships.
+echo "== helm upgrade (chart defaults: proves the Secret survives and the migrate initContainer no-ops) =="
+helm upgrade --install rch deploy/chart/rch -f deploy/chart/rch/ci/values-ci.yaml "${BASE_ARGS[@]}" --wait --timeout 5m
 
 kubectl port-forward svc/rch-api 3000:3000 >/tmp/pf-api.log 2>&1 &
 API_PF_PID=$!

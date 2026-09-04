@@ -22,11 +22,13 @@ test.describe("everyone gets their own portal", () => {
     // Home again, and told why — the guard in App.tsx has raised a toast since before there was
     // a server, and the sidebar never offered the link in the first place.
     await expect(page.getByRole("heading", { level: 1, name: "Point of Sale" })).toBeVisible();
-    // `labelOf` (App.tsx) names the key from the first role that lists it, which for `orders`
-    // is the kitchen's "Orders" rather than the buyer's "Purchase Orders". The sentence is the
-    // one the operator actually reads, so that is what is pinned here.
+    // Anchored on the tail, not the whole sentence: `labelOf` (App.tsx) names a shared route key
+    // after the first role that lists it, so `orders` currently reads "Orders" (the kitchen's
+    // label) where it should read "Purchase Orders". Which of the two the operator is shown is
+    // being fixed elsewhere; that they are told *by name* which role they are and where they
+    // landed is the guarantee UA-01 makes, and that is what is pinned.
     await expect(page.locator(".toast")).toContainText(
-      "Orders is not available to a Counter Operator — you are back on Point of Sale",
+      /is not available to a Counter Operator — you are back on Point of Sale$/,
     );
     await expect(page.getByRole("navigation")).not.toContainText(/purchase orders/i);
   });

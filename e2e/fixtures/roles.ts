@@ -37,15 +37,19 @@ export async function signIn(page: Page, role: RoleName): Promise<void> {
   // change-password step and rotates the password out from under every later sign-in in the
   // run. Rather than guess which password each subsequent role is on, say so plainly: the
   // smoke wants a database seeded with SEED_FORCE_PASSWORD_CHANGE=false (see e2e/README.md).
+  const nav = page.getByRole("navigation");
   const change = page.getByRole("heading", { name: "Choose a new password" });
-  if (await change.isVisible({ timeout: 2000 }).catch(() => false)) {
+  // Wait for whichever lands. `isVisible()` on its own never waits, so on a slow sign-in it
+  // would answer false for both and the failure would name the wrong thing.
+  await expect(nav.or(change)).toBeVisible();
+  if (await change.isVisible()) {
     throw new Error(
       `${ROLES[role].emp} was asked to change its password. Re-seed with `
       + "SEED_FORCE_PASSWORD_CHANGE=false — the smoke signs in as six accounts and cannot "
       + "carry a rotated password between them.",
     );
   }
-  await expect(page.getByRole("navigation")).toBeVisible();
+  await expect(nav).toBeVisible();
 }
 
 /** The toast the store raises, which is the sentence the server sent. */

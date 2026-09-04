@@ -54,19 +54,6 @@ test("a request walks from the counter to the shelf, live in both windows", asyn
   await drawer(store).getByRole("button", { name: "Generate ticket" }).click();
   const tkt = await idFromToast(store, /TKT-0\d+/);
   await expect(toast(store)).toContainText(`${tkt} issued — Coffee Shop can collect against this ticket`);
-  if (OTP_REDACTED) {
-    // The digits are not on the sending side's screen at all. `.otp-v` is the six-digit face
-    // (UI/src/styles.css, alongside `.otp`, `.otp-l` and `.otp-in`); the issue desk must render
-    // none of them. Asserting on a class that does not exist would pass either way, which is
-    // the one thing this assertion — the smoke's whole proof of the redaction — must not do.
-    await expect(store.locator(".otp-v")).toHaveCount(0);
-  } else {
-    // Say so in the report rather than passing quietly over the one thing that is not checked.
-    test.info().annotations.push({
-      type: "not asserted",
-      description: "the issue desk's OTP redaction — set E2E_OTP_REDACTED=1 once it is in the tree",
-    });
-  }
 
   // The collector's own screen is where the six digits live, and the ticket drawer is where a
   // counter operator reads them out.
@@ -76,6 +63,26 @@ test("a request walks from the counter to the shelf, live in both windows", asyn
   expect(otp).toMatch(/^\d{6}$/);
   await counter.keyboard.press("Escape");
   await expect(drawer(counter)).toBeHidden();
+
+  if (OTP_REDACTED) {
+    // The digits are not on the sending side's screen at all. `.otp-v` is the six-digit face
+    // (UI/src/styles.css, alongside `.otp`, `.otp-l` and `.otp-in`); the issue desk must render
+    // none of them. Asserting on a class that does not exist would pass either way, which is
+    // the one thing this assertion — the smoke's whole proof of the redaction — must not do.
+    await expect(store.locator(".otp-v")).toHaveCount(0);
+    // And `<Otp>` is not the only way to print them: `store/IssueDesk.tsx` and
+    // `manager/ItemsStock.tsx` write the same six digits into a bare `span.mono` column. The
+    // number the collector just read must not appear anywhere on the sending side's page, in
+    // either of the two shapes this system writes it — bare, and split into two groups of three.
+    await expect(store.locator("#app")).not.toContainText(otp);
+    await expect(store.locator("#app")).not.toContainText(otp.replace(/(\d{3})(\d{3})/, "$1 $2"));
+  } else {
+    // Say so in the report rather than passing quietly over the one thing that is not checked.
+    test.info().annotations.push({
+      type: "not asserted",
+      description: "the issue desk's OTP redaction — set E2E_OTP_REDACTED=1 once it is in the tree",
+    });
+  }
 
   await store.getByLabel("OTP quoted by the collector").fill(otp);
   await store.getByRole("button", { name: "Hand over on OTP" }).click();
