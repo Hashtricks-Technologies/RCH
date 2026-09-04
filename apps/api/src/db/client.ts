@@ -20,9 +20,22 @@ export function pgSsl(ssl: boolean): ConnectionOptions | undefined {
  * a request takes exactly one connection (`withReadTransaction`, `lib/db.ts`), so a pool at its
  * ceiling means genuinely that many requests in flight, not one request holding forty.
  */
+/**
+ * `DATABASE_SSL` alone decides TLS. A `sslmode=` (or `ssl=`) query parameter on the URL makes the
+ * driver build its own `ssl` setting from the string and ignore the `ssl` object below — so a
+ * URL carrying `?sslmode=require` verified the RDS chain against the system store, not the RDS
+ * bundle, and the migrate initContainer died with SELF_SIGNED_CERT_IN_CHAIN on the first dev
+ * deploy. The parameters are removed here so the bundle is used whenever `ssl` is true.
+ */
+export function withoutSslParams(url: string): string {
+  const u = new URL(url);
+  for (const k of ["sslmode", "ssl", "sslrootcert", "sslcert", "sslkey"]) u.searchParams.delete(k);
+  return u.toString();
+}
+
 export function createDb(url: string, ssl: boolean, opts: { max?: number; searchPath?: string } = {}): { db: Db; pool: Pool } {
   const pool = new Pool({
-    connectionString: url,
+    connectionString: withoutSslParams(url),
     max: opts.max ?? 10,
     ssl: pgSsl(ssl),
     statement_timeout: 15_000,
