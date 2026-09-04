@@ -43,7 +43,10 @@ export async function buildTestApp(opts: BuildTestAppOpts): Promise<App> {
   const config = testConfig(opts.env);
   if (opts.withDb === false) return buildApp(config);
   const testDb: TestDb = await withTestSchema(opts.schema);
-  const app = await buildApp(config, { db: testDb.db, pool: testDb.pool, migrationsSchema: testDb.schemaName });
+  // The db plugin ignores `searchPath` when a `db` is injected, so it is inert there — it is
+  // here for the SSE plugin's own LISTEN connection, which is not a pool member and must land
+  // on the same schema, or it would compute a different channel name than the writes do.
+  const app = await buildApp(config, { db: testDb.db, pool: testDb.pool, searchPath: `${testDb.schemaName},public`, migrationsSchema: testDb.schemaName });
   app.addHook("onClose", async () => { await testDb.close(); });
   return Object.assign(app, { testDb });
 }
