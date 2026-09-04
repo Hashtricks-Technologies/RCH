@@ -4,6 +4,7 @@ import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { round3, type RsvMap } from "@rch/domain";
 import { reservations } from "../db/schema/index.js";
 import type { Tx } from "./db.js";
+import { lockBalances } from "./ledger.js";
 
 export type ReservationRow = { loc: string; it: string; qty: number; ticketId: string };
 
@@ -11,6 +12,11 @@ export type ReservationRow = { loc: string; it: string; qty: number; ticketId: s
  *  smaller than on-hand, and it lives until the collector's scan releases it. */
 export async function reserve(tx: Tx, rows: readonly ReservationRow[]): Promise<void> {
   if (rows.length === 0) return;
+  // The balance rows are locked here as well as by the caller. A caller that read on-hand and
+  // reservations before deciding must already hold them (or its read was not worth having), and
+  // re-taking a lock this transaction holds costs nothing — but a caller that forgot would
+  // otherwise let two holds on the last unit both commit, and no gate can see the omission.
+  await lockBalances(tx, rows.map((r) => ({ loc: r.loc, it: r.it })));
   await tx.insert(reservations).values(rows.map((r) => ({ loc: r.loc, itemKey: r.it, qty: round3(r.qty), ticketId: r.ticketId })));
 }
 
