@@ -277,7 +277,29 @@ sessions are signed out immediately).
 
 ## 6. Restore drill
 
-Before go-live and quarterly:
+Rehearse this against the local database first — the procedure below needs a scratch RDS
+instance, which nobody can run before there is an RDS, and the real drill should not be the
+first time anyone has typed these commands:
+
+```bash
+# Rehearse the drill against the local database, so the real one is not the first time.
+pnpm db:up && pnpm --filter @rch/api db:migrate && pnpm --filter @rch/api db:seed --force
+pg_dump "postgres://rch:rch@localhost:5439/rch" -Fc -f /tmp/rch-drill.dump
+psql "postgres://rch:rch@localhost:5439/postgres" -c 'create database rch_drill'
+pg_restore -d "postgres://rch:rch@localhost:5439/rch_drill" /tmp/rch-drill.dump
+DATABASE_URL="postgres://rch:rch@localhost:5439/rch_drill" pnpm --filter @rch/api db:rebuild-balances
+# The pass condition is an empty diff: the restored balances must equal the source's.
+psql "postgres://rch:rch@localhost:5439/rch"       -c "select loc, item_key, on_hand from stock_balances order by 1,2" > /tmp/src.txt
+psql "postgres://rch:rch@localhost:5439/rch_drill" -c "select loc, item_key, on_hand from stock_balances order by 1,2" > /tmp/dst.txt
+diff /tmp/src.txt /tmp/dst.txt && echo "restore drill: balances reconcile"
+psql "postgres://rch:rch@localhost:5439/postgres" -c 'drop database rch_drill'
+```
+
+`pg_dump`/`pg_restore` stand in for "restore the latest snapshot" — a local database has no
+automated-snapshot mechanism to restore from, so a logical dump is the nearest equivalent that
+proves the same thing: `db:rebuild-balances` run against a restored copy reproduces the
+original's balances exactly. This is the rehearsal; the real thing is against RDS, below, and is
+run before go-live and quarterly:
 
 1. Restore the latest RDS automated snapshot to a scratch RDS instance.
 2. Point a one-off Job at the scratch instance's `DATABASE_URL` and run
@@ -336,6 +358,11 @@ stray "carried at zero" cell that nobody ever asked for would be indistinguishab
 one on every stock screen (M12), so this is an invariant any new write must keep, not an
 implementation detail: lock the cells you touch, nothing wider.
 
+Tracing a `grn_accept` move back to its paperwork (`select * from stock_moves where ref_type =
+'grn' and ref_id = '<id>'`) means reading the id in the shape it was actually written in —
+`GRN-<yy><po number>-<nn>` since Phase 6, `GRN-<last 3 of the PO>-<nn>` for anything booked in
+before it (§8, below, has the full story and the reason for the change).
+
 ## 8. Read a document's history
 
 Every status change on a request, requisition, purchase order or production order is a row in
@@ -365,29 +392,49 @@ Kitchen make refusals leave no history row and no batch row — a `POST /batches
 "Kitchen is short of …" wrote nothing, and the batch number it drew is rolled back with it, so
 the series skips a number the same way a cancelled sale skips a bill number.
 
-A ticket writes history for exactly two things, both added across Phases 3–4 — a supervisor
-override and a cancellation — and carries no prose for its ordinary lifecycle, which stays
-three timestamps on the row (`issued_at`, nullable `collected_at`, nullable `received_at`,
-`apps/api/src/db/schema/movement.ts`), so read those directly:
+**As of Phase 6, a ticket writes a row for its whole trail, not just the override and the
+cancellation** — `Issued` (written by `writeTicket`, `lib/tickets.ts`, the one place any ticket
+is created), `Handed over` or `Handed over — supervisor override`, `Received`, and
+`Cancelled — <reason>`. The three timestamps on the row itself (`issued_at`, nullable
+`collected_at`, nullable `received_at`, `apps/api/src/db/schema/movement.ts`) still exist and
+still agree with the trail; the trail is what has a sentence for each step, not only the two
+that used to get one:
 
 ```sql
 select id, status, issued_at, collected_at, received_at from tickets where id = 'TKT-0441';
+select * from document_history where doc_type = 'ticket' and doc_id = 'TKT-0441' order by at;
+-- a collected ticket reads: Issued, Handed over, Received
+-- an overridden one: Issued, Handed over — supervisor override
+-- a withdrawn one: Issued, Cancelled — <reason>
 ```
 
-A supervisor override — the collector's OTP skipped, allowed to the store and the kitchen
-only (spec §8.3) — is one of the two ticket events that *does* write `document_history`; a
-cancellation (`POST /tickets/:id/cancel`, Phase 4) is the other, and its row carries the
-operator's reason after an em dash, because the ticket's own row has nowhere to put it:
+**Unlike every other document, this trail is on the wire and on screen** — `TicketSchema.hist`
+(`packages/contract`) carries it on `GET /snapshot`, `GET /tickets` and every ticket write's own
+response, and the store's and counter's ticket drawers render it as a `History` section, the
+same way a request's own drawer already rendered its trail. `GET /documents/:type/:id/history`
+— a generic endpoint for every document type — is still **not** built; a field on the one
+document that needed its history readable back is smaller and complete, and the query above is
+still the only way to read a request's, a requisition's, a purchase order's or a production
+order's own history, none of which gained a screen this phase.
 
-```sql
-select * from document_history where doc_type = 'ticket' order by at desc;
--- 'Handed over — supervisor override' for an override; 'Cancelled — <reason>' for a cancellation;
--- empty for a ticket that has only ever moved through its ordinary lifecycle
-```
+**No backfill.** A ticket that existed before this phase shipped has no `Issued` row — its trail
+starts from whichever Phase 6 write next touched it (a handover, a receipt, a cancellation), and
+reads short for the part of its life that predates the trail existing at all. This is expected,
+not a data-quality bug to chase.
 
-No screen or API route surfaces this today — there is no `GET` for `document_history` at all,
-narrow or otherwise — so the query above (or a report built against this table later) is the
-only way to see who used the override, or cancelled a ticket, and when.
+**The OTP is on the wire only while a ticket is `Issued`, and only for a caller standing at that
+ticket's own `to` location** — the desk that issued the ticket reads `""` back, in its own
+write's response and in every later read, and so does anyone standing anywhere else. `handover`
+never reads the wire value anyway: it compares what the collector says against the row it locks
+for itself. The labelled supervisor override (store keeper or kitchen in-charge, OTP field left
+blank) is the one door past a collector who genuinely is not there, and it is what the trail
+records instead of a code nobody typed.
+
+**The counter's cancel door.** `POST /tickets/:id/cancel` now also admits `counter`, scoped to
+the ticket's own `from` — an outlet that raised a shop-to-shop transfer can withdraw it before
+anyone collects, the same door the store keeper and the kitchen already had. Withdrawing a
+ticket that was answering a shop's ask also puts that ask back to `Asked` on the other shop's
+own desk, so nothing is left half-granted.
 
 What a ticket actually moved is the ledger, two lines per handover — a `ticket_out` set posted
 at the source when it is handed over, a `ticket_in` set posted at the destination when it is
@@ -429,6 +476,25 @@ and increasing, not a count of the day's batches, and widens past two digits rat
 wrapping. Do not "fix" a batch id by hand; a gap in the series (a refused make, above) is
 correct, the same as a gap in the bill or ticket series.
 
+**A goods receipt is numbered from the order it books in against:
+`GRN-<yy><po number>-<nn>`, so the second instalment against `PO-2026-0143` is
+`GRN-260143-02`.** It was `GRN-<last three of the PO>-<nn>` until Phase 6, which collided —
+`PO-2026-0143` and `PO-2027-0143` share a three-character tail, and so do `PO-2026-0143` and
+`PO-2026-1143`. Because `grns.id` is a primary key, the collision surfaced as a failed insert in
+the middle of a receipt rather than as a duplicate number a screen could quietly show twice.
+**GRNs written before that change keep their old ids** — nothing was renumbered, and a receipt
+whose id has a three-character tail is simply an older one, not a corruption to fix.
+`packages/domain/src/ids.ts`'s `grnId(poId, n)` is the only place the format lives; see §14,
+below, for tracing a `grn_accept` move back to its own paperwork by that id.
+
+**Support tickets keep no `document_history` row at all.** Their history *is* their
+conversation: `support_messages` (`SUP-0044/m1`, `.../m2`, …) already holds who said what and
+when, and `support_tickets.status` sits beside it as an ordinary column. `GET /support/tickets`
+answers a caller's own tickets only, by `by_user` in the JWT — there is no support-agent role in
+this system, so "own tickets, every role" is the whole scoping rule, and someone else's ticket
+answers `404`, not `403`: it is not that you may not act on it, it is that it is not yours to
+know about.
+
 Connect with `psql` (or any Postgres client) against the target `DATABASE_URL` — locally
 that's `postgres://rch:rch@localhost:5439/rch`.
 
@@ -458,10 +524,11 @@ kitchen baking.
 ### Cancelling a ticket
 
 As of Phase 4 this is an endpoint, not a manual procedure: `POST /tickets/:id/cancel {reason}`
-(store keeper or kitchen in-charge, from the ticket's own location) releases every open hold
-the ticket placed, sets it to `Cancelled`, and puts the document behind it — a request back to
-its approved status, a dispatched production order back to `Ready` — where it stood before the
-ticket was raised. Use it for any ticket still `Issued`:
+(store keeper, kitchen in-charge, or — since Phase 6 — the counter, each scoped to the ticket's
+own `from` location) releases every open hold the ticket placed, sets it to `Cancelled`, and
+puts the document behind it — a request back to its approved status, a dispatched production
+order back to `Ready`, a shop-ask back to `Asked` — where it stood before the ticket was raised.
+Use it for any ticket still `Issued`:
 
 ```bash
 curl -sS -X POST "$API/tickets/TKT-0441/cancel" -H "Authorization: Bearer $TOKEN" \
@@ -485,45 +552,67 @@ Phase 4.
 
 ## 9. Alerts
 
-Five alerts, per spec §12. `/metrics` (Prometheus format, `apps/api/src/plugins/metrics.ts`)
-exposes `http_request_duration_seconds` (histogram, labelled `method`, `route`, `status`) and
-the default Node process metrics; the `ServiceMonitor` template (enabled by default in
-`values-prod.yaml`, off by default elsewhere) has Prometheus Operator scrape it. The two RDS
-rules need the CloudWatch metrics exporter (or Grafana's native CloudWatch datasource) pointed
-at the RDS instance — not part of this chart, wired at the observability-stack level.
+Spec §12 names five; this build ships six. `/metrics` (Prometheus format,
+`apps/api/src/plugins/metrics.ts`) exposes `http_request_duration_seconds` (histogram, labelled
+`method`, `route`, `status`), `pg_pool_waiting`/`pg_pool_idle`, `sse_listener_up` and the default
+Node process metrics. **As of Phase 6, the first four below ship as a `PrometheusRule`**
+(`deploy/chart/rch/templates/prometheusrule.yaml`), gated on the same
+`.Values.serviceMonitor.enabled` flag as the `ServiceMonitor` itself (on by default in
+`values-prod.yaml`, off elsewhere) — so a cluster with the Prometheus Operator installed gets
+these four the moment the chart is installed, with no separate alert-authoring step. **The two
+RDS rules stay runbook-only**, below, because they need the CloudWatch metrics exporter (or
+Grafana's native CloudWatch datasource) pointed at the RDS instance, which is not part of this
+chart and is wired at the observability-stack level. A Grafana dashboard JSON does **not** ship
+with the chart either — a dashboard in a ConfigMap is an unversioned blob nothing renders in CI
+and nothing fails when it drifts, so build one from `/metrics` in Grafana directly rather than
+looking for one here.
 
-1. **5xx rate > 1% over 5 minutes**
+1. **`RchApiHigh5xxRate` — 5xx rate > 1% over 5 minutes, critical**
    ```promql
-   sum(rate(http_request_duration_seconds_count{status=~"5.."}[5m]))
-     / sum(rate(http_request_duration_seconds_count[5m])) > 0.01
+   sum(rate(http_request_duration_seconds_count{job="rch-api",status=~"5.."}[5m]))
+     / sum(rate(http_request_duration_seconds_count{job="rch-api"}[5m])) > 0.01
    ```
-2. **p95 latency > 1s**
+2. **`RchApiHighLatencyP95` — p95 latency > 1s over 10 minutes, warning**
    ```promql
-   histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le)) > 1
+   histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{job="rch-api"}[5m])) by (le)) > 1
    ```
-3. **Readiness failing** — the `up` gauge Prometheus sets per scrape target. Prometheus
-   Operator's `ServiceMonitor` discovers targets from the Service's `Endpoints`, which only
-   lists pods the readiness probe (`GET /readyz`) currently passes, so a pod stuck failing
-   `/readyz` drops out of scrape targets entirely; a whole-deployment outage shows as the
-   target(s) reporting `up == 0`:
+3. **`RchApiDown` — readiness failing, critical.** The `up` gauge Prometheus sets per scrape
+   target. Prometheus Operator's `ServiceMonitor` discovers targets from the Service's
+   `Endpoints`, which only lists pods the readiness probe (`GET /readyz`) currently passes, so a
+   pod stuck failing `/readyz` drops out of scrape targets entirely; a whole-deployment outage
+   shows as the target(s) reporting `up == 0`:
    ```promql
    up{job="rch-api"} == 0
    ```
    sustained for 2 minutes.
-4. **DB connections > 80% of max** — RDS CloudWatch `DatabaseConnections`, exposed as a gauge
-   by the CloudWatch exporter (metric name depends on the exporter's naming, e.g.
-   `aws_rds_database_connections_average`):
+4. **`RchApiPoolSaturated` — the app's own Postgres pool has queuers and nothing idle, warning,
+   sustained 5 minutes:**
+   ```promql
+   max(pg_pool_waiting{job="rch-api"}) > 0 and max(pg_pool_idle{job="rch-api"}) == 0
+   ```
+   This is the pool the app itself opens (`max: 10` per pod, `apps/api/src/db/client.ts`), not
+   RDS's own connection count — see item 5 below for that. The app pool never exceeds 60
+   connections at max scale-out (10 per pod × 6 max pods, per spec §11.2) — plus one dedicated
+   `LISTEN` connection per pod for the SSE plugin (§10), so 66. Still well under any RDS
+   instance's limit; this alert catches the pool running out locally, long before RDS itself is
+   under any real pressure.
+5. **`RchSseListenerDown` — this build's sixth alert, warning, sustained 5 minutes:**
+   ```promql
+   min(sse_listener_up{job="rch-api"}) == 0
+   ```
+   Its rationale — what `sse_listener_up` means, why 5 minutes and not immediately, and why it
+   is deliberately *not* wired into `/readyz` — is §10's, below, not repeated here.
+6. **DB connections > 80% of max — runbook-only, needs CloudWatch.** RDS CloudWatch
+   `DatabaseConnections`, exposed as a gauge by the CloudWatch exporter (metric name depends on
+   the exporter's naming, e.g. `aws_rds_database_connections_average`):
    ```promql
    aws_rds_database_connections_average{dbinstance_identifier="rch-prod"} > 0.8 * <max_connections>
    ```
    `<max_connections>` is fixed for the instance class (`SHOW max_connections;`) — compute it
-   once and hardcode the threshold in the alert rule. The app pool itself never exceeds 60
-   connections (10 per pod × 6 max pods, per spec §11.2) — plus, as of Phase 3, one dedicated
-   `LISTEN` connection per pod for the SSE plugin (`apps/api/src/plugins/sse.ts`, outside the
-   pool — see §10), so 66 at max scale-out. Still well under any RDS instance's limit, so this
-   alert is a safety net for connections opened outside the app (a psql session left open, a
-   burst of migrate initContainers opening a connection each during a large rollout).
-5. **RDS free storage < 20%**
+   once and hardcode the threshold in the alert rule. This is a safety net for connections opened
+   outside the app (a psql session left open, a burst of migrate initContainers opening a
+   connection each during a large rollout) — the app's own pool is item 4, above.
+7. **RDS free storage < 20% — runbook-only, needs CloudWatch.**
    ```promql
    aws_rds_free_storage_space_average{dbinstance_identifier="rch-prod"}
      / <allocated_storage_bytes> < 0.2
@@ -606,9 +695,165 @@ ordinary route does — `curl -D - -H "Origin: http://example.com" .../events` c
 `vary: Origin`, no `access-control-allow-credentials`, nothing, where the same request against
 `.../stock` gets both. Every deployed topology today is same-origin (nginx proxies `/api`), so
 nothing breaks — but a split-origin deployment would need CORS wired onto this route
-specifically before anything else works cross-origin. Carried to Phase 6 hygiene.
+specifically before anything else works cross-origin. Still open at the end of Phase 6, unchanged
+from Phase 5's note; nothing in this phase touched the route.
 
-## 11. Procurement and quarantine
+**`MAX_STREAMS_PER_USER` is 8** (`apps/api/src/plugins/sse.ts`) — a signed-in employee opening a
+ninth simultaneous stream is refused with `You already have 8 screens listening for updates.
+Close one and try again.` (a `429`). This is easier to reach than it sounds: five browser
+contexts open for one employee inside a single Playwright run (`e2e/tests/*.spec.ts`) is normal,
+and the smoke has driven it there without incident — sixteen stream opens and sixteen closes,
+zero 429s, across one CI run. If a real shift ever hits this limit it reads as several tabs left
+open on one login, not a server problem; ask the operator to close some.
+
+## 11. Go-live checklist
+
+An ordered list. Each item is a command or a decision, and each decision names who makes it —
+the account owner, not the executor of this phase's tasks. Nothing on this list has been run
+against a real AWS account; Phase 6 prepared the chart, the workflow and this checklist and
+stopped there (spec §16, Phase 6) — running it is a release decision.
+
+1. **Fill in the AWS facts `values-prod.yaml` is still missing.** Five markers, each commented
+   `# FILL` in the file itself:
+   - `image.registry` — `<account>.dkr.ecr.<region>.amazonaws.com`. In practice `deploy.yml`'s
+     `--set image.registry=${{ secrets.ECR_REGISTRY }}` supplies this at deploy time; the file's
+     own placeholder is only what a manual `helm template`/`helm upgrade` needs.
+   - `api.env.CORS_ORIGIN` — the real hostname, no trailing slash.
+   - `ingress.host` — the real hostname.
+   - `ingress.certificateArn` — the ACM certificate ARN for that host. Left empty, the ingress
+     template correctly renders no TLS annotation (HTTP-only on `:80`) rather than a broken one
+     — but go-live needs the real ARN. **`values-staging.yaml` has no `certificateArn` key at
+     all** (confirmed: `grep certificateArn deploy/chart/rch/values-staging.yaml` finds nothing),
+     though this section has always said both files need one — add the same key there before
+     staging needs HTTPS on its own hostname, or accept staging on `:80` deliberately and say so.
+   - `alerts.runbookUrl` — the real URL of this document, `https://github.com/<org>/<repo>/blob/production/deploy/RUNBOOK.md`
+     filled in for real, so a paged engineer's alert links somewhere.
+
+   Two more are marked FILL but are conditional, not blocking: `serviceAccount.annotations`
+   (only if the pod itself reads AWS Secrets Manager directly, i.e. IRSA) and
+   `ingress.annotations.'alb.ingress.kubernetes.io/wafv2-acl-arn'` (optional — the file's own
+   comment says to leave it empty to skip).
+2. **Generate the production JWT key pair and store it, never in git:**
+   ```bash
+   pnpm --filter @rch/api keys:generate
+   ```
+   Put both lines into the AWS Secrets Manager secret `rch/prod` as `JWT_PRIVATE_KEY` /
+   `JWT_PUBLIC_KEY`, alongside `DATABASE_URL` and an empty `JWT_PREVIOUS_PUBLIC_KEY` (§2's
+   "First-time cluster setup" names the same four keys and the `ClusterSecretStore` they need).
+3. **Create the real staff accounts, and deactivate every seeded one.**
+   ```bash
+   kubectl exec deploy/rch-api -n rch -- /nodejs/bin/node dist/cli/users.mjs create \
+     --emp RC-9001 --name "Real Name" --email real.name@royalcare.in --role counter --loc coffee --password <temporary>
+   ```
+   one per real employee (§5 above has the full flag list), then deactivate the six the seed
+   ships (`RC-4471`, `RC-3120`, `RC-2088`, `RC-1902`, `RC-1550`, `RC-4482`):
+   ```bash
+   kubectl exec deploy/rch-api -n rch -- /nodejs/bin/node dist/cli/users.mjs deactivate --emp RC-4471
+   ```
+   repeated for each of the six. **The seeded accounts must not exist, active, in production** —
+   nothing before this checklist has said that plainly, and it is the one item on this list a
+   missed step could not later be quietly forgiven for: a seeded id with a published dev password
+   is a real door into a real hospital's billing.
+4. **Run the restore drill once against the real RDS instance** (§6, the RDS procedure below the
+   local rehearsal) — not the rehearsal, the real one, before the first bill is ever posted for
+   real.
+5. **Set `DEPLOY_ENABLED=true`** (a GitHub repository variable) and confirm the five repository
+   secrets exist: `AWS_ROLE_ARN`, `AWS_REGION`, `ECR_REGISTRY`, `EKS_CLUSTER_STAGING`,
+   `EKS_CLUSTER_PROD` (§2 names what each populates). Confirm the `staging` GitHub environment's
+   secrets too (`DATABASE_URL`, `JWT_PRIVATE_KEY`, `JWT_PUBLIC_KEY`) if staging has not already
+   been deployed for real.
+6. **Promote:**
+   ```bash
+   git checkout staging && git merge --ff-only develop && git push
+   # verify staging: /readyz, a sign-in, one sale, db:rebuild-balances reconciling — step 7
+   git checkout production && git merge --ff-only staging && git push
+   ```
+   Production's deploy waits for the GitHub environment approval (`production`) before the job
+   runs.
+7. **First post-deploy checks, on each environment, in order:**
+   ```bash
+   curl -fsS https://<host>/api/v1/readyz
+   ```
+   then sign in as a real account through the browser, take one real sale, and finally
+   ```bash
+   kubectl exec deploy/rch-api -n <namespace> -- /nodejs/bin/node dist/cli/rebuild-balances.mjs
+   ```
+   and confirm it reports success with no unexpected drift. A green `/readyz` alone is not
+   enough — it proves the database is reachable and migrated, not that a bill can be posted.
+
+## 12. Load check
+
+`apps/api/scripts/loadcheck.mjs` measures the two latencies spec §12 sets a number for —
+`GET /snapshot` p95 ≤ 150 ms, `POST /bills` p95 ≤ 200 ms — by hand, against a port-forwarded
+staging pod, not in CI. A shared CI runner measures the runner, not the server; this is
+deliberately a by-hand step run once before go-live and recorded, not a gate every push runs.
+
+```bash
+kubectl port-forward -n rch-staging svc/rch-api 3000:3000 &
+node apps/api/scripts/loadcheck.mjs --base http://localhost:3000 --emp RC-4471 --password <staging-seed-password>
+node apps/api/scripts/loadcheck.mjs --base http://localhost:3000 --emp RC-4471 --password <staging-seed-password> --concurrency 30
+```
+
+`--help` prints the full flag list. Before trusting a number, set up the run correctly — three
+things the wave-2 baseline run got wrong before they were understood:
+
+- **Raise `RATE_LIMIT_PER_MINUTE` for the run.** The limiter keys an authenticated request on
+  `req.user.sub`, so every concurrent worker sharing the script's one bearer token draws from a
+  single per-minute budget — at concurrency 10–30 the run measures 429s in the first second or
+  two, not endpoint latency, unless the limit is raised well above what the run will throw at it.
+- **Make sure the item the script sells has stock for the whole run.** `pickSellable` reads the
+  signed-in user's own menu and shelf; a freshly seeded counter's stock is small by design (the
+  seed's own coffee-shop stock is not sized for a load run). Top it up with a direct
+  `stock_moves` insert (`kind: 'adjustment'`, mirroring `db/seed.ts`'s own shape) followed by
+  `pnpm --filter @rch/api db:rebuild-balances` — never a direct edit to `stock_balances` itself.
+  Reseeding and topping up stock is exactly what `loadcheck.mjs`'s own refusal message points at
+  if the run runs dry mid-flight.
+- **Run it alone, on as quiet a machine as you can get.** A wave-2 baseline taken at a host load
+  average of ~19 (six other processes competing for the same CPU) failed §12's targets by 4–15×
+  — a real finding about the *measurement*, not the server. Record the machine's `uptime` load
+  average beside every number this script prints; a number with no load average beside it is not
+  evidence of anything.
+
+When a target is missed on a genuinely idle machine, the first three things to look at, in
+order: **the snapshot's query count** (does one request make one round trip per collection
+instead of one `Promise.all`?), **the pool size** (`apps/api/src/db/client.ts`'s `max: 10` — is
+the run's own concurrency higher than the pool, so requests queue for a connection before they
+even reach the database?), and **the RDS instance class** (`db.t4g.medium` in staging is not
+sized for a load test's concurrency, only for real traffic's).
+
+## 13. The end-to-end smoke
+
+`pnpm test:e2e` (root) runs the Playwright suite in `e2e/` — six spec files, twelve tests, one
+real browser driving a real running stack from sign-in to a settled write. It knows nothing about
+the workspace's internals: no import from `packages/contract` or the UI's own source, only
+employee numbers, URLs and the sentences the server actually sends. `e2e/README.md` is the fuller
+reference — what each spec proves, the local run sequence, and the "Known switches" table for any
+environment-gated assertion still landing.
+
+**Locally:** against `pnpm dev`'s stack (API `:3000`, UI `:5173`), seeded with
+`SEED_FORCE_PASSWORD_CHANGE=false` (six accounts sign in in one run; a forced password rotation
+on the first one strands every account after it on a password nothing else knows) and both login
+rate limits raised (`LOGIN_RATE_LIMIT_PER_MINUTE=200`, `LOGIN_RATE_LIMIT_PER_EMP_PER_MINUTE=100`
+— the run signs in roughly sixteen times through one dev-proxy IP, which the defaults of 10/min
+and 5/min-per-employee both refuse partway through).
+
+**In CI:** `E2E=1` on the `images` job's `helm install`/`helm upgrade` steps
+(`.github/workflows/ci.yml`) makes `deploy/chart/rch/ci/install-test.sh` append the same three
+settings as `--set-string` overrides — `SEED_FORCE_PASSWORD_CHANGE=false`,
+`LOGIN_RATE_LIMIT_PER_MINUTE=200`, `LOGIN_RATE_LIMIT_PER_EMP_PER_MINUTE=100` — on top of the
+chart's own defaults, then runs `pnpm test:e2e` against the kind cluster's UI service once
+`/healthz` answers.
+
+**It writes real bills, real tickets, real support tickets — real documents against whatever
+database it is pointed at.** `pnpm test:e2e` and the CI job both point at a database seeded
+(or reseeded) for the purpose: local `pnpm dev`'s `rch` database, or the kind cluster's
+CI-only Postgres. **The end-to-end smoke must never be pointed at production, or at any database
+whose stock and bills matter.** There is no dry-run flag and no confirmation prompt — a stray
+`E2E_BASE_URL` pointed at a real hospital's till would sell six real juices and hand over a real
+ticket nobody asked for. `apps/api/scripts/loadcheck.mjs` (§12, above) carries the equivalent
+warning for the same reason.
+
+## 14. Procurement and quarantine
 
 Buying (Phase 5) is `requisitions`, `purchaseorders`, `grn`, `vendors`, `contracts` and
 `productreqs` — vendors, requisitions, the purchase-order lifecycle and goods receipt, all
@@ -646,25 +891,32 @@ at;`) — do not correct it with an `UPDATE`.
 **Reading a goods receipt's ledger:**
 
 ```sql
-select * from stock_moves where ref_type = 'grn' and ref_id = 'GRN-143-01';
+select * from stock_moves where ref_type = 'grn' and ref_id = 'GRN-260143-01';
 ```
 
 One positive row at `store` for what was accepted, one positive row at `quarantine` for what
 was rejected, and no row at all for a quantity of zero.
 
-**GRN numbering:** `GRN-<last 3 of the PO>-<nn>`, where `nn` counts that order's own
-instalments. There is **no `sequences` row for it**; the count is read under the order's `for
-update` lock, which is what stops two receipts drawing the same number. Do not "fix" a gap —
-there cannot be one. Two purchase orders whose ids share the same last three characters (a
-`PO-2026-0143` and a `PO-2027-0143`, both ending `143`) mint the same GRN id for their first
-receipt; the `grns` primary key refuses the second one outright, with an ordinary constraint
-error rather than a store-worded refusal. This is a known limit, not a bug to chase down —
-widening the tail (or including the year) is Phase 6 hygiene.
+**GRN numbering, as of Phase 6:** `GRN-<yy><po number>-<nn>` — the second instalment against
+`PO-2026-0143` is `GRN-260143-02` — where `nn` counts that order's own instalments. There is
+**no `sequences` row for it**; the count is read under the order's `for update` lock, which is
+what stops two receipts drawing the same number. Do not "fix" a gap — there cannot be one.
+`packages/domain/src/ids.ts`'s `grnId(poId, n)` is the one place the format lives.
+
+**The format changed because the old one collided.** Before Phase 6 a GRN was
+`GRN-<last 3 of the PO>-<nn>`. Two purchase orders whose ids shared the same last three
+characters — `PO-2026-0143` and `PO-2027-0143`, both ending `143`, or `PO-2026-0143` and
+`PO-2026-1143` — minted the same GRN id for their first receipt; the `grns` primary key refused
+the second one outright, an ordinary constraint error in the middle of a receiving desk's day
+rather than a store-worded refusal. **GRNs written before the change keep their old,
+three-character-tail ids** — nothing was renumbered, and there is no backfill; a receipt whose
+id reads `GRN-143-01` is simply an older one, not something to correct by hand.
 
 **Quarantine:** `select * from stock_balances where loc = 'quarantine';` is what the store
 keeper's screen shows. Nothing issues, sells or transfers from there and **there is no
-endpoint that takes stock back out** — a purchase return or a debit note is Phase 6 work at the
-earliest. Until then, a correction is an `adjustment` move written by hand through
+endpoint that takes stock back out** — a purchase return or a debit note was considered and
+declined (spec §16, Phase 5; `docs/ua-spec.html` §09 records it by name), not deferred to a
+later phase. A correction is, and stays, an `adjustment` move written by hand through
 `db:rebuild-balances`-safe SQL (the move, never the balance).
 
 **A refused receipt:** a `POST …/receive` that answered 422 has written nothing — no GRN row,

@@ -7,15 +7,18 @@ contract is `docs/superpowers/specs/2026-09-03-backend-design.md` (§2 decisions
 ## What this is
 
 `@rch/api`: Fastify 5 + Drizzle on PostgreSQL 17, ESM TypeScript, one pool per process. It owns
-the ledger, the document numbers, the reservations and the change stream. Phases 1–5 are live —
-auth, `/snapshot` and the master GETs, the counter sale, availability, prices and menus, the
-whole request/ticket chain (including cancellation), shop transfers, shop asks, the kitchen's
-board and its batches, `GET /events`, and now the whole of procurement: requisitions and the
-buyer's decision (`requisitions`), the purchase-order lifecycle from draft to received or
-cancelled (`purchaseorders`), goods receipt with its 2% tolerance and quarantine (`grn`),
-vendors and rate contracts (`vendors`, `contracts`), a shop's ask for something not on the
-master (`productreqs`), and every screen that adds a new product (`catalog`'s `POST /items`).
-Only the support desk (Phase 6) is still in the browser store.
+the ledger, the document numbers, the reservations and the change stream. All six phases are
+live — auth, `/snapshot` and the master GETs, the counter sale, availability, prices and menus,
+the whole request/ticket chain (including cancellation), shop transfers, shop asks, the
+kitchen's board and its batches, `GET /events`, the whole of procurement (requisitions and the
+buyer's decision in `requisitions`, the purchase-order lifecycle from draft to received or
+cancelled in `purchaseorders`, goods receipt with its 2% tolerance and quarantine in `grn`,
+vendors and rate contracts in `vendors`/`contracts`, a shop's ask for something not on the
+master in `productreqs`, and every screen that adds a new product via `catalog`'s `POST
+/items`), and now the last two modules: `support` (the customer-care desk — raise, reply, set
+status, rate, all scoped to the caller's own tickets) and `reports` (the two server-side
+queries a snapshot cannot answer: the stock ledger, and a payer's credit for the month). Nothing
+is left in the browser's own store.
 
 ## Commands
 
@@ -44,7 +47,8 @@ src/config.ts   the Zod env schema — the only place an env var is read
 src/routes.ts   mount(): the only way a module registers a route
 src/plugins/*   logging, errors, metrics, health, security, db, auth, rbac, sse, idempotency
 src/lib/*       the ledger, reservations, tickets, ids, history, rules, events, master, wire,
-                claims (a purchase order's hold on a requisition line)
+                claims (a purchase order's hold on a requisition line), credit (a payer's
+                bills-charged-this-month sum, shared by `pos` and `reports`)
 src/modules/*   one folder per bounded slice; _template is the copy-me skeleton
 src/db/*        schema/, client.ts, migrate.ts, seed.ts   ·   src/cli/*  the six CLIs
 src/test/*      app.ts, db.ts, seed.ts, auth.ts, builders.ts, env.ts
@@ -138,6 +142,34 @@ no `"grn"` in `IdKind` and no `sequences` row for it — `GRN-<last 3 of the PO>
 `count(*)` of that order's own GRN rows, read under the order's own `for update` lock, which is
 what serialises two receipts drawing a number rather than a sequence row.
 
+Two more rules Phase 6's `support` and `reports` modules add, and one change to a Phase 3 read:
+
+(a) **A support ticket writes no `document_history` row, on purpose.** Its history *is* its
+conversation: `support_messages` already holds who said what and when, with the status sitting
+beside it as a column, so a second trail in `document_history` would give the drawer two lists
+to render and two to keep in step. `supportRepo.head`'s `.for("update")` is the module's one
+lock, and every write takes only it — no support write ever touches `stock_balances`,
+`stock_moves`, `reservations` or `sequences` beyond the one `allocateId` call `raise` makes.
+`reports` takes no lock at all: both of its reads are queries, not writes, so neither opens a
+transaction.
+
+(b) **`readTickets` (`src/modules/snapshot/readers/documents.ts`) now reads every ticket's
+`document_history` in the same `Promise.all` as its heads and lines** — one query for every
+ticket's trail, not one per ticket — and `scope.ts`'s `redactOtps` withholds the `otp` column
+unless the ticket is `Issued`, the caller's `loc` is that ticket's `to`, **and** the caller's
+role is `counter`, `prod` or `store` — the three roles that ever stand at a receiving location
+and collect against a code. Applied to both `GET /snapshot` and the standalone `GET /tickets`,
+so a refetch after a handover cannot put the digits back on a screen the snapshot had just taken
+them off. A write's own response is deliberately **not** redacted — it is the answer to the
+caller's own write, on a document they were just authorised against. (The role check lands in
+the Phase 6 fix wave — without it, a manager whose `loc` happened to match a ticket's `to` could
+read the code too, which is exactly the leak the location check alone was meant to close.)
+
+(c) **`GET /snapshot` gains `roster`** (`readers/master.ts`'s `readRoster`): every active row of
+`payers`, split into `patients`/`staff`/`depts`. One query, assembled once in `snapshot()` and
+passed through `scope()` untouched — not scoped by role or location, because every counter
+bills every kind of payer and the list is names the operator already reads off a wristband.
+
 ## The protected tables
 
 `postMoves()` in `src/lib/ledger.ts` is the only thing that writes `stock_moves` or
@@ -210,11 +242,17 @@ server repeats it **word for word** rather than inventing a second wording.
   it two files race over one name. `buildTestApp({ withDb: false })` skips Postgres entirely.
 - `seedTestDb(db)` seeds the fixtures; `authHeaders(app, "u2")` mints a bearer for a seeded user
   without walking the login flow. `truncateAll` empties business tables but **keeps `sequences`**.
-- `given.{request,ticket,shopAsk,bill,prodOrder,vendor,requisition,po,contract,productRequest}`
-  (`src/test/builders.ts`) are the only sanctioned way to make a document. Their id bands sit
-  above both the fixtures and the sequence starts: `REQ-2026-0991+`, `TKT-0801+`, `ASK-0101+`,
-  `CF/9001+`, `PRD-2026-901+`, `VN-901+`, `PRQ-2026-901+`, `PO-2026-0901+`, `RC-901+`,
-  `NPR-0901+`.
+- `resetDocuments(db)` (`src/test/db.ts`) is the cheaper alternative to `truncateAll →
+  seedTestDb`: it truncates exactly the 26 document and vendor tables (`db/seed.ts`'s
+  `seedDocuments(tx)` re-populates them in one call) and leaves master data, users and payers
+  seeded once per file in `beforeAll`. A suite that only opens and closes documents — not one
+  that mutates `items`, `locations`, `recipes`, `users` or `payers` — should use it;
+  `purchaseorders.test.ts` is the converted example, roughly twice as fast on a quiet host.
+- `given.{request,ticket,shopAsk,bill,prodOrder,vendor,requisition,po,contract,productRequest,
+  supportTicket}` (`src/test/builders.ts`) are the only sanctioned way to make a document. Their
+  id bands sit above both the fixtures and the sequence starts: `REQ-2026-0991+`, `TKT-0801+`,
+  `ASK-0101+`, `CF/9001+`, `PRD-2026-901+`, `VN-901+`, `PRQ-2026-901+`, `PO-2026-0901+`,
+  `RC-901+`, `NPR-0901+`, `SUP-000101+`.
 - Because `sequences` survives truncation, **never assert a literal allocated id** — match the
   shape (`/^REQ-\d{4}-0\d+$/`) and assert the *relative* step (`n(second) === n(first) + 1`).
 - A test that opens two concurrent transactions to prove a lock must call `warmPool(t, n)` first

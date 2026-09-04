@@ -30,12 +30,13 @@ src/index.ts            re-exports types + every schema module + routes
 src/types.ts            z.infer aliases only — no type is declared here
 src/routes.ts           defineRoute + the `routes` manifest + API_PREFIX
 src/schemas/common.ts   closed unions, Qty/Money/Iso*, error envelope, STAFF_CREDIT_LIMIT,
-                        StockLocSchema/QUARANTINE, PO_APPROVAL_LIMIT
+                        StockLocSchema/QUARANTINE, PO_APPROVAL_LIMIT, ALL_LOCS, OUTLETS
 src/schemas/documents.ts  every document shape (Item, Ticket, StockRequest, Bill, …)
 src/schemas/auth.ts     login / refresh / change-password / me
 src/schemas/snapshot.ts SnapshotSchema and the narrow read responses; BILL_DAYS
 src/schemas/writes.ts   request bodies, result shapes, CollectionSchema, writeResponse()
 src/schemas/events.ts   EVENTS_PATH, EventNoticeSchema
+src/schemas/reports.ts  the stock ledger and credit report's query/response shapes (Phase 6)
 src/fixtures/*          the demo hospital: master, seed documents, ops, vendors
 ```
 
@@ -77,6 +78,24 @@ src/fixtures/*          the demo hospital: master, seed documents, ops, vendors
   `PatchVendorBodySchema` and `PatchContractBodySchema` are each declared field by field for
   this reason, and `routes.test.ts` pins `.parse({})` to `{}` for all three — the check that
   "Nothing to change" stays reachable.
+- **`TicketSchema.hist` is `z.array(HistEntrySchema)`, required, not optional.** A live ticket's
+  trail is never absent — every ticket the server creates writes its own `Issued` row before the
+  wire shape can be built — so making the field optional would have let a caller that forgot to
+  read history back ship a ticket silently missing it instead of failing to compile. A schema
+  change a fixture cannot satisfy fails `typecheck` here first (below): `fixtures/seed.ts`'s
+  `seedTkt` carries one history row for exactly this reason.
+- **`PayerRosterSchema`** (`{ patients, staff, depts }`, each `PayerSchema[]`) is declared in
+  `schemas/documents.ts` right after `PayerSchema` so the reference resolves before use, and
+  `SnapshotSchema` gained `roster: PayerRosterSchema` directly after `users` — the till's payer
+  picker reads it instead of a fixture, so a patient admitted after the last build is billable.
+- **A manifest task lands a route's schema before the module that mounts it exists.** Task 1
+  declared five new routes and one widened `access` list in one commit; Task 3, in a later wave,
+  wrote the placeholder handlers that kept `apps/api` compiling in between. **One `GET` is
+  declared per module, and each of `support`'s four writes is inert — 404, not yet wired — until
+  its own module mounts it.** `apps/api/src/contract.test.ts`'s manifest probe only ever checks a
+  parameterless `GET`, so a declared-but-unmounted write is invisible to it; the module that
+  mounts a write is what actually turns it on, and a route sitting unmounted for more than one
+  wave is a defect, not a pattern to repeat casually.
 
 ## The manifest
 
@@ -113,6 +132,17 @@ to register the route with its schemas, auth, role gate and idempotency preHandl
   `updateContract`, `removeContract`), and the master (`createItem`, `createProductRequest`,
   `answerProductRequest`) — and six reads (`requisitions`, `purchaseOrders`, `grns`, `vendors`,
   `contracts`, `productRequests`), the same shape as every route above.
+- Phase 6 added the last five: four support writes — `raiseTicket` (`POST /support/tickets`),
+  `replyToTicket` (`POST /support/tickets/:id/messages`), `setTicketStatus` (`POST
+  /support/tickets/:id/status`), `rateTicket` (`POST /support/tickets/:id/rating`), all
+  `access: "any"` — and one read, `tickets` (`GET /support/tickets`, `SupportTicketsResponseSchema`
+  — not to be confused with the movement collection's own read, `ticketsList` at `GET /tickets`;
+  the two share no key and both are members of `CollectionSchema`, `"tickets"` and `"tkt"`).
+  `stockLedger` (`GET /reports/stock-ledger`) and `creditReport` (`GET /reports/credit/:kind/:id`)
+  are declared the same wave but belong to `reports`, not `support` — see *Constants*, below, for
+  why exactly these two reports are on the server. `cancelTicket.access` widened from
+  `["store", "prod"]` to `["store", "prod", "counter"]` in the same commit as the four support
+  writes, so a counter can withdraw a shop-to-shop transfer it raised.
 - `API_PREFIX` is `/api/v1`; manifest paths are relative to it.
 - `EVENTS_PATH` (`/events`) and `EventNoticeSchema` live in `schemas/events.ts` and are
   deliberately **not** a manifest route — a stream has no JSON response to serialise. Both sides
@@ -133,9 +163,25 @@ where a caller already imports from:
   needs finance approval) is declared in `schemas/common.ts` and re-exported from
   `fixtures/master.ts` the same way `STAFF_CREDIT_LIMIT` is — `needsApproval` in `@rch/domain`
   takes it as a parameter rather than importing it, so the rule and the number stay separable.
-  `PAR_FACTOR` is a fixture only (`fixtures/master.ts`) — it has no server-side rule reading it.
+- `ALL_LOCS` and `OUTLETS` moved here in Phase 6, from three local declarations in
+  `fixtures/master.ts` (a value-identical move — `ALL_LOCS` is `[...LocKeySchema.options]`,
+  `OUTLETS` the same three strings it always was). Both stay `LocKey[]`, not a narrowed
+  `readonly` tuple — six `.includes(l)` call sites across `UI/src/roles/manager` pass a plain
+  `LocKey` and would fail to typecheck against a literal tuple. `UI/src/data/master.ts` imports
+  all five constants on this line straight from `@rch/contract`, not from `@rch/contract/
+  fixtures` — no production file under `UI/src` reaches the fixtures at all (§5.1). At HEAD
+  `fixtures/master.ts` still carries the three re-export lines for `ALL_LOCS`, `OUTLETS` and
+  `PAR_FACTOR`, but nothing imports through them any more; the Phase 6 fix wave deletes the
+  lines rather than leave a re-export with no reader.
+- `PAR_FACTOR` lives in `packages/domain` (its one consumer is `parOf` in
+  `UI/src/lib/selectors.ts`; no server rule reads it, so it was never a wire shape and does not
+  belong here). It passed through `schemas/common.ts` alongside `ALL_LOCS`/`OUTLETS` for one
+  Phase 6 task before this move landed — do not go looking for it here. (Lands in the Phase 6
+  fix wave.)
 - Id formats and the first number of each series are **not** here: `formatId`, `SEQUENCE_START`
   and `IdKind` live in `@rch/domain/src/ids.ts`, because they are a rule, not a wire shape.
+  `grnId(poId, n)` joined them in Phase 6 — a goods receipt's id, `GRN-<yy><po number>-<nn>`,
+  built once rather than inline in `grn/service.ts`.
 
 ## Fixtures
 

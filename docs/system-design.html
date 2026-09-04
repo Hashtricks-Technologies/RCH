@@ -295,7 +295,7 @@ footer a{color:var(--accent)}
       <table>
         <thead><tr><th style="width:26%">Capability</th><th style="width:12%">In Eateasy</th><th>What the hospital needs on top</th></tr></thead>
         <tbody>
-          <tr><th scope="row">Auth, RBAC, audit log</th><td class="yes">Yes</td><td>Seven more roles: store keeper, procurement, production, outlet manager, dietitian, finance, auditor</td></tr>
+          <tr><th scope="row">Auth, RBAC, audit log</th><td class="yes">Yes</td><td><strong>As built, this did not extend Eateasy's roles &mdash; it replaced them.</strong> The five that shipped (counter, manager, store, prod, buyer; spec &sect;8.3) are their own closed union, authenticated by employee id and password against this system's own <code>users</code> table, not Eateasy's <code>customer_role</code>/<code>kitchen_role</code>/<code>admin_role</code>/<code>super_admin_role</code>. No dietitian, finance or auditor role was built</td></tr>
           <tr><th scope="row">Outlet hierarchy</th><td class="yes">Yes</td><td>A <code>location</code> layer beneath it &mdash; a kitchen is a selling outlet <em>and</em> a stock location, and some locations (central store, quarantine) sell nothing</td></tr>
           <tr><th scope="row">Menu, categories, images</th><td class="yes">Yes</td><td>Link each menu item to a catalog item, so the thing you sell and the thing you stock are the same object</td></tr>
           <tr><th scope="row">Turn an item on / off</th><td class="part">Manual</td><td><code>is_available</code> exists as a hand-flipped boolean. Needs to be driven by stock &mdash; see &sect;06</td></tr>
@@ -452,7 +452,7 @@ footer a{color:var(--accent)}
 
     <div class="prose">
       <p>A single <strong>stock request</strong> handles replenishment from the central store, a production request to the kitchen, a lateral pull from another outlet, and a return or exchange going the other way. What differs is the source and therefore who approves; the lifecycle is identical, which keeps one queue, one audit trail and one report instead of four.</p>
-      <p>The design decision everything else hangs from: <strong>approval and movement are separate events.</strong> Approving a request does not move a single unit. It authorises a quantity and reserves it. Stock leaves the source only when someone scans the ticket at the counter, and arrives only when someone scans it again at the destination. Between those two scans the quantity sits in transit, owned by neither location &mdash; which is precisely how you find out that six litres of milk left the store and four arrived.</p>
+      <p>The design decision everything else hangs from: <strong>approval and movement are separate events.</strong> Approving a request does not move a single unit. It authorises a quantity and reserves it. Stock leaves the source only at handover &mdash; the collector reads a six-digit code aloud and the issuing desk types it in &mdash; and arrives only when the destination confirms receipt. Between handover and receipt the quantity sits in transit, owned by neither location &mdash; which is precisely how you find out that six litres of milk left the store and four arrived. <strong>As built, this is a typed code, not a scan:</strong> the ticket carries no QR and nothing is presented to a reader; the code is on the wire only for a caller standing at the ticket's own destination while it is still open, so the desk that issues a ticket can never read back the number it just minted.</p>
     </div>
 
     <figure>
@@ -500,13 +500,13 @@ footer a{color:var(--accent)}
 
         <rect class="sv-box" x="40" y="190" width="140" height="52" rx="6"/>
         <text class="sv-t" x="110" y="214" text-anchor="middle">Ticket issued</text>
-        <text class="sv-s" x="110" y="230" text-anchor="middle">QR, expires 4 h</text>
+        <text class="sv-s" x="110" y="230" text-anchor="middle">six-digit code, no expiry</text>
 
         <path class="sv-ln" d="M180 216 L199 216" marker-end="url(#a2)"/>
 
         <rect class="sv-box-key" x="205" y="190" width="140" height="52" rx="6"/>
-        <text class="sv-t" x="275" y="214" text-anchor="middle">Picked</text>
-        <text class="sv-s" x="275" y="230" text-anchor="middle">scanned at store</text>
+        <text class="sv-t" x="275" y="214" text-anchor="middle">Handed over</text>
+        <text class="sv-s" x="275" y="230" text-anchor="middle">code typed at store</text>
 
         <path class="sv-ln" d="M345 216 L364 216" marker-end="url(#a2)"/>
 
@@ -518,30 +518,29 @@ footer a{color:var(--accent)}
 
         <rect class="sv-box-key" x="535" y="190" width="140" height="52" rx="6"/>
         <text class="sv-t" x="605" y="214" text-anchor="middle">Received</text>
-        <text class="sv-s" x="605" y="230" text-anchor="middle">scanned at outlet</text>
+        <text class="sv-s" x="605" y="230" text-anchor="middle">confirmed at outlet</text>
 
         <!-- annotation -->
         <path class="sv-ln-k" d="M275 242 L275 268" marker-end="url(#a2k)"/>
         <text class="sv-k" x="288" y="272">stock leaves the store here &mdash; not at approval</text>
       </svg>
-      <figcaption><b>Approval authorises; the scan moves.</b> A partial approval produces a ticket for the approved quantity only, so the gate can never release the twenty that were asked for. Teal marks the three points that touch the stock ledger: the approval reserves, the pick scan debits the source, the receive scan credits the destination. A short-receive at the last step leaves a visible in-transit difference rather than quietly balancing itself.</figcaption>
+      <figcaption><b>Approval authorises; the handover moves.</b> A partial approval produces a ticket for the approved quantity only, so the gate can never release the twenty that were asked for. Teal marks the points that touch the stock ledger: the approval reserves, the handover debits the source, the receipt credits the destination. A short-receive at the last step leaves a visible in-transit difference rather than quietly balancing itself.</figcaption>
     </figure>
 
     <h3>Rules that make it hold</h3>
     <div class="cards">
       <div class="card"><h4>Approve line by line, not all or nothing</h4><p>Asked for 20 litres, 12 available. The approver grants 12, and the remaining 8 stays open as a back-order against the next goods receipt rather than disappearing and being re-requested tomorrow.</p></div>
-      <div class="card"><h4>Approval reserves, with a clock</h4><p>Approved quantity is held at the source so two outlets cannot both be promised the same last carton. Uncollected reservations expire after a set window and the stock returns to available &mdash; otherwise approved-but-forgotten requests slowly freeze the store.</p></div>
-      <div class="card"><h4>The ticket is the authority</h4><p>Number plus QR, naming source, destination, item, approved quantity, batch and collector. Presented at the store, scanned, and only then does anything move. No ticket, no goods, whatever anyone says on the phone.</p></div>
-      <div class="card"><h4>Both ends scan</h4><p>The receiving outlet confirms what actually arrived. Difference between picked and received is a discrepancy with an owner and a reason code, not a rounding error absorbed by the store.</p></div>
-      <div class="card"><h4>Inventory can push, too</h4><p>The same document runs in reverse: the store originates a transfer against par level, or recalls near-expiry stock from a slow outlet to a busy one. The outlet acknowledges rather than requests. One document, a direction flag.</p></div>
-      <div class="card"><h4>Emergency path, still recorded</h4><p>An out-of-hours handover lets the store or the kitchen wave a collector through on a supervisor override instead of the usual code &mdash; the ticket already exists, only the code is skipped. The escape hatch exists because it will be used; making it a logged path is better than pretending it will not happen. It writes one line to the audit trail naming exactly what ran: <code>Handed over &mdash; supervisor override</code>.</p></div>
+      <div class="card"><h4>Approval reserves, with no clock</h4><p>Approved quantity is held at the source so two outlets cannot both be promised the same last carton. <strong>As built, a reservation does not expire</strong> &mdash; an uncollected ticket holds its stock until it is handed over or explicitly withdrawn, not on a timer; a stranded hold is found by querying open reservations, not by waiting one out.</p></div>
+      <div class="card"><h4>The ticket is the authority</h4><p>Number, source, destination, item, approved quantity and a six-digit code known only to the destination while the ticket is open. Handed over on that code, and only then does anything move. No ticket, no goods, whatever anyone says on the phone.</p></div>
+      <div class="card"><h4>Both ends confirm</h4><p>The receiving outlet confirms what actually arrived. A wrong code at handover is refused outright, so the two ends can never disagree about whether the movement happened, only about what physically travelled.</p></div>
+      <div class="card"><h4>Inventory can push, too</h4><p>The same document runs in reverse: the store originates a transfer against par level, or one outlet asks a peer directly and the peer grants it in whole or in part. One document, a direction flag.</p></div>
+      <div class="card"><h4>Emergency path, still recorded</h4><p>An out-of-hours handover lets the store or the kitchen wave a collector through on a supervisor override instead of the usual code &mdash; the ticket already exists, only the code is skipped. The escape hatch exists because it will be used; making it a logged path is better than pretending it will not happen. It writes one line to the ticket's own trail naming exactly what ran: <code>Handed over &mdash; supervisor override</code>, now readable from the ticket drawer that raised it, not only from a query nobody has a screen for.</p></div>
     </div>
 
     <div class="formula">
       <span class="c">// what the approver is actually looking at</span><br>
-      <em>available to promise</em> = on hand &minus; reserved &minus; allocated to production &minus; quarantined<br>
-      <span class="c">// and the number that decides whether to approve at all</span><br>
-      <em>days of cover</em> = available to promise &divide; average daily consumption at that location
+      <em>free to promise</em> = on hand &minus; open ticket reservations &minus; quantities other approvals have already committed<br>
+      <span class="c">// quarantine is a separate location entirely, not a deduction from this one</span>
     </div>
 
     <div class="note"><strong>Every open screen hears it happen</strong>The approver's queue, the store's issue desk and the counter's own request list all watch one persistent connection per browser rather than polling. A write commits, Postgres <code>NOTIFY</code>s every server replica, and each one forwards the notice down every stream it is holding; the browser that receives it re-reads only the slice that changed. A request approved in one window appears in another's queue with no reload and no delay worth noticing.</div>

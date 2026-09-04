@@ -1,7 +1,8 @@
 # Royal Care — F&B Inventory (React + Vite)
 
 Frontend for the hospital's kitchen, restaurant and retail-counter operation. Five roles,
-one shared stock ledger, backed by the `apps/api` Fastify service (Phases 1–5 — spec §14).
+one shared stock ledger, backed by the `apps/api` Fastify service — all six phases of spec §14
+are implemented, and the store is an API client end to end.
 
 ## Stack
 
@@ -37,30 +38,30 @@ pnpm --filter @rch/ui build      # → dist/
 pnpm --filter @rch/ui test
 ```
 
-The dev server proxies `/api` to the Fastify API on `:3000`. Master data, prices, menus and
-every open document are hydrated from `GET /snapshot` on load (`hydrateMaster`). Billing,
-availability, prices and menus (Phase 2), the whole stock-request chain, shop transfers, shop
-asks and the kitchen's two ticket-raising writes (Phase 3), the rest of production — the
-kitchen's board, its batches and ticket cancellation (Phase 4) — and now the whole of buying —
-requisitions, the purchase-order lifecycle, goods receipt, vendors, rate contracts and every
-screen that adds a new product (Phase 5) — all run against the server: forty-three store
-actions in total, listed in `../CLAUDE.md`'s *One Zustand store*. `UI/src/api/events.ts` opens
-one `fetch`-based SSE connection per session and refetches whatever a write elsewhere changed,
-so two open tabs stay in sync without a reload.
+The dev server proxies `/api` to the Fastify API on `:3000`. Master data, prices, menus, the
+payer roster and every open document are hydrated from `GET /snapshot` on load
+(`hydrateMaster`/`hydrateRoster`). Every mutation in the store — forty-seven actions, listed in
+`../CLAUDE.md`'s *One Zustand store* — is a server call: billing, availability, prices and
+menus, the whole stock-request chain, shop transfers and shop asks, the whole of production, the
+whole of buying, and now the support desk and the two server-side reports. There is no
+in-memory fallback for any of it. `UI/src/api/events.ts` opens one `fetch`-based SSE connection
+per session and refetches whatever a write elsewhere changed, so two open tabs stay in sync
+without a reload.
 
 Against a real server today, a person can walk a kitchen order across the board, make a batch
 that draws its recipe out of the kitchen and stamps a best-before, dispatch it, hand it over on
-an OTP and receive it at the counter — with another browser following along live — and cancel a
-ticket nobody came for, which puts the stock and the document behind it back where it stood. And
-now buying, the same way: the store keeper raises a requisition at the central store; the buyer
-approves or trims it, draws a purchase order off the procurement list priced from a live rate
-contract, and sends it to the vendor; the order is received against a delivery note in
+a six-digit code and receive it at the counter — with another browser following along live — and
+cancel a ticket nobody came for, which puts the stock and the document behind it back where it
+stood. Buying, the same way: the store keeper raises a requisition at the central store; the
+buyer approves or trims it, draws a purchase order off the procurement list priced from a live
+rate contract, and sends it to the vendor; the order is received against a delivery note in
 instalments, with a rejection at the door landing in a quarantine shelf that never sells and
 never issues; and closing an order short hands the undelivered balance straight back onto the
-procurement list — a second browser watching every one of those moves happen live too. Only the
-ops slice's support tickets — `raiseTicket`, `replyToTicket`, `setTicketStatus`, `rateTicket` —
-still run against the in-memory Zustand store, and `UI/src/data/seed.ts` goes with them when
-Phase 6 moves them server-side (spec §14).
+procurement list. And now: raise a support ticket from any role's own Support screen, watch it
+move through the desk's states as a reply lands, and rate the fix — every role sees only its own
+tickets — and read the two reports the browser could never assemble on its own, a location's
+stock ledger and a payer's credit for the month. A second browser watches every one of these
+moves happen live, the same as the rest of the system.
 
 ## Sign in
 
@@ -86,14 +87,14 @@ src/
   api/                                    client.ts (the one generic client — routes, idempotency, 401-refresh
                                            retry), session.ts (in-memory token), events.ts (SSE change stream),
                                            refetch.ts (pulls back what a write changed), wire.ts (mappers)
-  store/{index,procurement,ops}.ts        Zustand — index.ts holds most server-backed actions (billing,
+  store/{index,procurement,ops}.ts        Zustand, all server-backed — index.ts holds most actions (billing,
                                            availability, prices/menus, the request→ticket chain, production,
-                                           sendRequisition); procurement.ts (vendors, requisition approval, the
-                                           PO lifecycle, goods receipt) and all but ops.ts's four support-ticket
-                                           actions are server-backed too — support tickets are still local
-                                           (see Not built yet)
-  data/                                   master.ts (replaced in place by hydrateMaster()), seed.ts, ops.ts,
-                                           vendors.ts — the store's initial state, before GET /snapshot lands
+                                           the two report reads); procurement.ts (vendors, requisition approval,
+                                           the PO lifecycle, goods receipt); ops.ts (rate contracts, new-product
+                                           requests, shop-to-shop transfers, and the support desk)
+  data/                                   master.ts (empty registries, replaced in place by hydrateMaster() and
+                                           hydrateRoster()), vendors.ts — no seed.ts, no ops.ts; nothing here
+                                           imports the fixtures
   lib/                                    fmt.ts (money, quantity, time), selectors.ts (qty · resv · avail ·
                                            freeToPromise · availOf · priceOf · procurementList …), theme.ts
   ui/                                     kit.tsx (~30 typed components), Shell.tsx, Drawer.tsx,
@@ -128,19 +129,29 @@ a manual override on top.
 
 ## Recent capabilities
 
-**Support, for every role.** `/issues` — labelled Support in every sidebar — is customer
-care for the portal itself: sign-in trouble, a screen that will not load, a number that looks
-wrong, printing, slow or frozen, training, or a feature request; a stock or kitchen problem
-goes to the screen that owns it instead. Raising one names a topic, priority and the screen it
-concerns, and opens a message thread that moves Open → With support → Waiting on you →
-Resolved → Closed; the raiser rates the fix 1–5 once it is marked resolved. Still local to
-`store/ops.ts`.
+**Support, for every role, server-backed.** `/issues` — labelled Support in every sidebar — is
+customer care for the portal itself: sign-in trouble, a screen that will not load, a number that
+looks wrong, printing, slow or frozen, training, or a feature request; a stock or kitchen
+problem goes to the screen that owns it instead. Raising one names a topic and a screen and
+requires a subject (not a body); it opens a message thread that moves Open → With support →
+Waiting on you → Resolved → Closed, and the raiser rates the fix 1–5 once it is resolved. Every
+role sees only the tickets it raised — there is no support-agent role, so "own tickets" is the
+whole scoping rule, for everyone.
 
-**OTP instead of a scanned code.** A pick ticket carries six digits. The collector reads them
-to the store keeper, who types them at handover; a wrong OTP is refused. A supervisor override
-exists and is labelled as one — restricted to the store and the kitchen, and recorded as
-`Handed over — supervisor override` in `document_history` so it stays traceable to who did it
-and when.
+**A six-digit code instead of a scanned one, and it is withheld from the desk that issues it.**
+A pick ticket carries a code minted when it is created. The collector reads it aloud to the
+store keeper (or the kitchen in-charge), who types it at handover; a wrong code is refused. The
+code reaches the wire only for a caller standing at the ticket's own destination while it is
+still `Issued` — the issuing desk's own screen, and everyone else's, never shows it. A
+supervisor override exists and is labelled as one — restricted to the store and the kitchen —
+and is recorded on the ticket's own trail, now visible in the ticket drawer, as
+`Handed over — supervisor override`.
+
+**The ticket's own history, on screen.** Every ticket now carries its full trail — `Issued`,
+`Handed over` (with the override named when used), `Received`, or `Cancelled — <reason>` — read
+back through the same drawer that shows a request's history. A counter can also withdraw a
+shop-to-shop transfer it raised, from a "Sent from this counter" card, before anyone collects
+it.
 
 **Rate contracts.** Vendor and item, rate, validity window and minimum order quantity, server-
 backed since Phase 5. The store keeper maintains them (`POST`/`PATCH`/`DELETE /contracts` all
@@ -160,17 +171,37 @@ materials and finished goods, the store keeper at the central store.
 moves directly between them: reserved at the source, released against an OTP, received at the
 destination. The outlet manager sees it happen rather than standing in the middle of it.
 
-## Not built yet
+## What is still client-side, and why
 
-Still local to the store: only the ops slice's four support-ticket actions (`raiseTicket`,
-`replyToTicket`, `setTicketStatus`, `rateTicket`), which Phase 6 closes along with
-`data/seed.ts` (spec §14, and the phase table in the root `README.md`). Phase 1 delivered
-persistence and real authentication for reads, Phase 2 cut billing, availability and
-prices/menus over to the server, Phase 3 cut over the request chain, tickets, shop-to-shop
-transfers, shop asks and the kitchen's two ticket-raising writes, adding live updates over SSE,
-Phase 4 finished production — the board's statuses, batches with recipe consumption, and a way
-to cancel a ticket nobody collected — and Phase 5 cut over the whole of buying: vendors,
-requisitions, the purchase-order lifecycle, goods receipt with tolerance and quarantine, rate
-contracts, and every screen that adds a new product. Barcode scanning, patient-bill posting and
-GST output registers remain out of scope. The backend design is
-`../docs/superpowers/specs/2026-09-03-backend-design.md`.
+The store holds no business rule of its own any more — every action is a call to the API, and a
+refusal is the server's sentence, not a client-side check. What stays in the browser is only
+what has nothing on the server to be a client of: `cart`, `draft`, `prqDraft`, `drawer`, `toast`,
+`shopFilter`, `theme`, `catalogVersion` (the signal that repaints a screen pinned to the
+catalogue after a live update) — plus the access token, held in memory and never in
+`localStorage`, and the theme and a couple of UI preferences, which do reach `localStorage`
+because there is nothing for the server to say about which theme a browser prefers.
+
+`@rch/domain`'s functions run client-side too, but as **previews only** — a cart total before
+paying, whether an item shows as available, the Dispatch cover check — computed with the same
+functions the server enforces with, never a second copy of a rule. The refusal, when one
+happens, is always the server's.
+
+## Try it end to end
+
+`pnpm test:e2e` (from the repo root, against a running `pnpm dev` stack) drives six real
+scenarios through a real browser — sign in, sell, raise and approve a request, make a kitchen
+batch, run a requisition through to a goods receipt, and work a support ticket end to end — and
+is the fastest way to see the whole system move. `../e2e/README.md` explains what each spec
+proves and the environment it needs. `apps/api/scripts/loadcheck.mjs`
+(`../deploy/RUNBOOK.md` §12) measures whether `/snapshot` and `/bills` meet spec §12's latency
+targets against a running API.
+
+## Out of scope
+
+Barcode scanning, patient-bill posting and GST output registers remain out of scope, along with
+a handful of features this document's original spec proposed and the team declined — a
+quarantine ledger with a purchase return, a finance approval role, batch-wise MRP with FEFO
+issue, and a shift/day-close/wastage workflow — each recorded with its reason in
+`../docs/ua-spec.html` §09 and `../docs/superpowers/specs/2026-09-03-backend-design.md` §16. The
+backend design is `../docs/superpowers/specs/2026-09-03-backend-design.md`; the phase-by-phase
+status is the table in the root `../README.md`.

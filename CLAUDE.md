@@ -8,22 +8,20 @@ Royal Care Hospital's F&B inventory and billing frontend: one item master and on
 ledger behind a central store, a kitchen and three retail outlets, covering purchase
 requisition → purchase order → goods receipt → production → issue → counter sale.
 
-**Phases 1–5 of the backend are implemented** — a Fastify + Drizzle API on PostgreSQL, per the
-design in `docs/superpowers/specs/2026-09-03-backend-design.md` (the contract for all backend
+**The backend is complete: all six phases of `docs/superpowers/specs/2026-09-03-backend-design.md`
+§14 are implemented.** It is a Fastify + Drizzle API on PostgreSQL (the contract for all backend
 work; see *Backend* below). Sign-in is real (employee id + password), and after signing in the
-frontend reads its state — the item master, locations, prices, menus and every open document
-— from the server (`GET /snapshot`) instead of `UI/src/data/seed.ts`. Counter billing,
-availability toggles, prices and menus, the whole stock-request chain (raise → approve → issue
-ticket → OTP handover/override → receive, and now cancel), shop-to-shop transfers, shop asks,
-the whole of production — the kitchen's board, its batches and its two ticket-raising paths
-(dispatch, distribute) — and now the whole of procurement — requisitions, the buyer's decision,
-the purchase-order lifecycle from draft to received or cancelled, goods receipt with its 2%
-tolerance and quarantine, vendors, rate contracts and every screen that adds a new product —
-all run against the server, refetching just what each write changed and picking up another
-browser's changes live over SSE. The last in-memory paths are the support desk —
-`raiseTicket`, `replyToTicket`, `setTicketStatus`, `rateTicket` in `store/ops.ts` — which Phase
-6 closes along with `UI/src/data/seed.ts`. Only the theme and a few UI prefs reach
-`localStorage`.
+frontend reads its whole state — the item master, locations, prices, menus, the payer roster and
+every open document — from the server (`GET /snapshot`). **Every mutation is a server call.**
+Counter billing, availability toggles, prices and menus, the whole stock-request chain (raise →
+approve → issue ticket → OTP handover/override → receive, and now cancel), shop-to-shop
+transfers, shop asks, the whole of production, the whole of procurement, and now the support
+desk (raise → reply → resolve/close → rate) and the two server-side reports — all run against
+the server, refetching just what each write changed and picking up another browser's changes
+live over SSE. `UI/src/data/seed.ts` is gone, and so is `UI/src/data/ops.ts`; the store is an API
+client end to end. The only state that still lives in the browser is what has nothing on the
+server to be a client of — `cart`, `draft`, `prqDraft`, `drawer`, `toast`, `shopFilter`, `theme`,
+`catalogVersion` — plus the theme and a few UI prefs reaching `localStorage`.
 
 ## Branches
 
@@ -68,6 +66,8 @@ pnpm --filter @rch/api db:rebuild-balances
 pnpm --filter @rch/api users <create|reset-password|deactivate> --emp E1234 ...
 pnpm --filter @rch/api keys:generate                  # prints a new JWT_PRIVATE_KEY= / JWT_PUBLIC_KEY= pair
 pnpm helm:test                                        # deploy/chart/rch/tests/render.test.sh
+pnpm test:e2e                                         # Playwright smoke against a running stack — needs `pnpm dev` up first
+pnpm --filter @rch/api loadcheck                      # apps/api/scripts/loadcheck.mjs — needs the API up and reachable
 ```
 
 `pnpm --filter @rch/ui test` runs just the UI's vitest suite (`npx vitest run
@@ -92,6 +92,7 @@ docs/*.html              UA spec, system design, user flows — the product cont
 docs/superpowers/        plans and specs from prior agent-driven work
 scripts/build-site.sh    assembles index.html + docs/ + UI/dist into dist/
 UI/                      the application (React 19, TS 6 strict, Vite 8, Zustand 5)
+e2e/                     the Playwright smoke — six specs, twelve tests, against a real stack
 ```
 
 ## Nested guides
@@ -138,34 +139,36 @@ bottom of the same `create()` call and share one `AppState`:
 
 - `src/store/procurement.ts` — vendors, requisition approval, the purchase-order lifecycle,
   goods receipt. All fourteen of its actions are API calls now; the slice holds no rule.
-- `src/store/ops.ts` — support tickets (still local), rate contracts, new-product requests,
-  `createItem`, shop-to-shop transfers. Everything but the four support-ticket actions is an
-  API call.
+- `src/store/ops.ts` — support tickets, rate contracts, new-product requests, `createItem`,
+  shop-to-shop transfers. Every action in it is an API call; the slice holds no rule.
 
-Slices take `(set, get)` typed against `AppState`, so any action can read the whole store.
-Components subscribe with narrow selectors: `useApp((s) => s.req)`.
+Slices take `(get)` typed against `AppState`, so any action can read the whole store — neither
+slice writes state directly any more, so neither takes a `set` parameter. Components subscribe
+with narrow selectors: `useApp((s) => s.req)`.
 
-Forty-three actions are no longer local. Phase 2's five (`pay`, `toggleAvail`, `savePrice`,
-`addProduct`, `removeProduct`), Phase 3's fourteen movement actions — `submitRequest`,
-`requestFromStore`, `cancelRequest`, `approveRequest`, `rejectRequest`, `issueTicket`,
-`handover`, `receiveTicket`, `dispatchOrder`, `distribute` in `store/index.ts`, and
-`transferToOutlet`, `askShop`, `answerShopAsk`, `declineShopAsk` in `store/ops.ts` — Phase 4's
-three kitchen actions in `store/index.ts` (`setOrderStatus`, `makeProduct`, `cancelTicket`),
-and now Phase 5's twenty-one: `store/procurement.ts`'s fourteen (`addVendor`, `updateVendor`,
+Forty-seven actions are server calls — the whole store is. Phase 2's five (`pay`, `toggleAvail`,
+`savePrice`, `addProduct`, `removeProduct`), Phase 3's fourteen movement actions —
+`submitRequest`, `requestFromStore`, `cancelRequest`, `approveRequest`, `rejectRequest`,
+`issueTicket`, `handover`, `receiveTicket`, `dispatchOrder`, `distribute` in `store/index.ts`,
+and `transferToOutlet`, `askShop`, `answerShopAsk`, `declineShopAsk` in `store/ops.ts` — Phase
+4's three kitchen actions in `store/index.ts` (`setOrderStatus`, `makeProduct`, `cancelTicket`),
+Phase 5's twenty-one: `store/procurement.ts`'s fourteen (`addVendor`, `updateVendor`,
 `setVendorActive`, `approveRequisition`, `declineRequisition`, `createPo`, `updatePoLine`,
 `removePoLine`, `setPoVendor`, `setPoEta`, `sendPo`, `cancelPo`, `receivePo`, `closePoShort`),
 six more in `store/ops.ts` (`requestNewProduct`, `answerProductRequest`, `addContract`,
 `updateContract`, `removeContract`, `createItem`), and `store/index.ts`'s own
-`sendRequisition`. All forty-three call the API (`UI/src/api/client.ts`) instead of mutating
-`set` directly, then `refetch` (`UI/src/api/refetch.ts`) pulls back only the slices the write
-says it changed — `GET /stock` for `stock`/`rsv`/`ovr`, and a narrow reader for every other
-collection except `prices`, `menu` and `tickets` (the manager's price/menu writes and Phase 6's
-support desk), which cost a full `loadSnapshot`. A refusal throws and is toasted; the cart or
-form is left exactly as it was. The `Seq` interface (`store/index.ts`) is gone entirely — every
-document the server numbers, procurement's included, is numbered there instead.
-`UI/src/api/events.ts` keeps every signed-in tab current with what other tabs and other
-browsers do: one `fetch`-based SSE connection per session, debounced 250 ms per collection into
-one `refetch`, so an approval made in one window shows up in another without a reload.
+`sendRequisition` — and now Phase 6's last four, the support desk in `store/ops.ts`
+(`raiseTicket`, `replyToTicket`, `setTicketStatus`, `rateTicket`). All forty-seven call the API
+(`UI/src/api/client.ts`) instead of mutating `set` directly, then `refetch`
+(`UI/src/api/refetch.ts`) pulls back only the slices the write says it changed — `GET /stock`
+for `stock`/`rsv`/`ovr`, a narrow reader for every collection with one, and a full
+`loadSnapshot` only for `prices` and `menu` (the manager's price/menu writes), the only two
+collections left without one. A refusal throws and is toasted; the cart or form is left exactly
+as it was. The `Seq` interface (`store/index.ts`) is gone entirely — every document the server
+numbers is numbered there instead. `UI/src/api/events.ts` keeps every signed-in tab current with
+what other tabs and other browsers do: one `fetch`-based SSE connection per session, debounced
+250 ms per collection into one `refetch`, so an approval made in one window shows up in another
+without a reload.
 
 ### Derived state is computed, never stored
 
@@ -194,6 +197,17 @@ fields to the store for anything it already computes:
   `onOrder` covers approved-but-undelivered; `awaitingApproval` covers not-yet-decided.
   A duplicate-order guard needs **both** (M3); read the comments before touching either.
 - `priceOf` — applies the MRP cap at read time.
+
+**The exception.** Two figures are **read**, not derived, because the browser holds nothing they
+could be computed from: the central store's stock ledger (`readStockLedger(loc, days)`, `GET
+/reports/stock-ledger`) and a payer's credit for the month (`readCredit(payer)`, `GET
+/reports/credit/:kind/:id`), both in `store/index.ts`, both typed `Promise<… | null>`. Neither
+notifies on success or refetches anything — they are reads, not writes — and both answer `null`
+on a failed read rather than falling back to an empty array, because `null` is the one answer
+never mistaken for a real one: the ledger screen's own three-state `LedgerState` (`loading` /
+`failed` / `rows`) tells an outage apart from a store that genuinely carries nothing, and the
+till's credit panel reads "Checking what {name} has taken this month…" rather than a false zero
+while the request is in flight.
 
 ### The movement rule
 
@@ -289,6 +303,19 @@ These are enforced in code and pinned by tests. Breaking one is a bug, not a sty
   row carries no cost column: its value is derived from `costOf` at read time, not stamped, so
   a later change to an ingredient's price re-prices every past batch's display rather than
   leaving it wrong.
+- **The OTP belongs to the collector.** A ticket's six digits are minted at random when the
+  ticket is created (`crypto.randomInt(100000, 1000000)` in `allocateTicket`, `apps/api/src/
+  lib/tickets.ts`) and reach the wire only while the ticket is `Issued`, for a caller standing at
+  the ticket's `to` location, **and** whose role is `counter`, `prod` or `store` — the three
+  roles that ever collect against a code, so a manager whose home outlet happens to match the
+  ticket's `to` still reads `""`. The issuing desk that printed the ticket never reads the code
+  back either, not in its own write's response and not in `GET /snapshot`. `handover` compares
+  what the collector says against the row it locks itself, never against a response; the
+  labelled supervisor override, open to `store` and `prod` only and recorded in
+  `document_history`, is the one door past a collector who is not there. (Lands in the Phase 6
+  fix wave — `makeOtp`, a pure function of the ticket number, comes out of `@rch/domain`'s
+  public surface once it does, because a formula the browser can run is not a redaction, and the
+  role check joins the location check for the same reason.)
 
 ## Conventions
 
@@ -341,10 +368,10 @@ the lock removed.
 
 ## Backend
 
-Status: **Phases 1–5 (Foundation, Ledger + POS, Movement chain + SSE, Production, Procurement)
-implemented; phase 6 pending — see spec §14.** Read
+Status: **All six phases are implemented — Foundation, Ledger + POS, Movement chain + SSE,
+Production, Procurement, Ops + go-live (spec §14).** Read
 `docs/superpowers/specs/2026-09-03-backend-design.md` before touching anything server-side; it
-records every decision already taken (§2), plus every amendment recorded during Phases 1–5
+records every decision already taken (§2), plus every amendment recorded during Phases 1–6
 (§16), so they are not reopened in chat. `packages/domain/src/shelf.ts` is the one place the
 best-before and its wording live (`DEFAULT_SHELF_LIFE_HOURS`, `bestBeforeAt`, `bestBeforeText`),
 `packages/domain/src/{claims,receipt,purchasing,format}.ts` are the four places buying's shared
@@ -404,6 +431,29 @@ is the arbiter that catches the race. `"prq"`, `"po"`, `"vendor"` and `"contract
 `IdKind`; a GRN does not — `GRN-<last 3 of the PO>-<nn>` has no `sequences` row at all, `nn`
 counting that order's own instalments under its `for update` lock.
 
+Phase 6 added two modules, `support` and `reports`, and closed every remaining in-memory path.
+`support` mounts the desk's four writes (`raiseTicket`, `replyToTicket`, `setTicketStatus`,
+`rateTicket`) and its one read (`GET /support/tickets`), every one of them scoped to the
+caller's own tickets by `by_user` — there is no support-agent role, so "own tickets only" is
+the whole rule, and a ticket somebody else raised answers 404, not 403, the same shape a role's
+missing module has. A support ticket's history *is* its conversation
+(`support_messages`); no module here writes `document_history`. `reports` answers exactly two
+queries the browser cannot assemble from its own snapshot — `GET /reports/stock-ledger` (a
+location's opening/received/issued/closing over a window, `packages/domain/src/reports.ts`'s
+`ledgerRow`) and `GET /reports/credit/:kind/:id` (a payer's credit taken this calendar month,
+`apps/api/src/lib/credit.ts`'s `creditTakenThisMonth`, the same query `pos`'s sale now shares
+rather than keeping its own copy) — and every other report and dashboard stays client-side, as
+the rule asks: a report needing more than the caller's own snapshot slice becomes a server
+query, and exactly two do. `apps/api/src/modules/tickets/service.ts`'s `handover` and `receive`
+also gained a third linked-document branch: a ticket raised to answer a shop's ask now writes
+back to `shop_asks` on cancellation the same way a request or a production order already did,
+through `SHOP_ASK_TRANSITIONS.Sent → Asked` (`packages/domain`), and `cancelTicket` opened to
+`counter` for a ticket the counter's own outlet raised. A ticket's `hist` (`document_history`,
+read back through `TicketSchema.hist`) is on the wire for the first time, and its OTP is
+withheld from everyone except a caller at the ticket's `to` while it is `Issued` — see the
+root guide's OTP invariant, above, for the fix-wave note on where the six digits actually come
+from.
+
 What it commits to, in one breath: a standalone TypeScript backend in a pnpm + Turborepo
 monorepo — `packages/contract` (Zod schemas; `types.ts` moves here), `packages/domain` (pure
 rules shared by UI and server), `apps/api` (Fastify 5 + Drizzle on PostgreSQL 17), `UI/`
@@ -427,21 +477,27 @@ Rules that bind once code exists — spec §5.1 has the enforcement mechanism fo
 - `GET /events` is the one route outside the manifest — `plugins/sse.ts` registers it directly
   because a stream never resolves and has no response schema for `mount()` to serialise.
 
-Build order is spec §14 — six phases, each cutting one role over to the server and deleting
-its in-memory path; nothing dual-runs. "Production ready" is the checklist in spec §12 and
-gates every phase. Phase 1's frontend cutover is real sign-in and `/snapshot` hydration
-(`hydrateMaster`) in place of `data/master.ts`'s static registries. Phase 2 cuts counter
-billing, availability toggles and the manager's price/menu writes over to the server (`pay`,
-`toggleAvail`, `savePrice`, `addProduct`, `removeProduct`, above). Phase 3 cuts over the whole
-stock-request chain, shop transfers, shop asks and the kitchen's two ticket-raising writes (the
-fourteen actions in *One Zustand store*, above) and adds the live-update stream so every open
-screen sees another browser's write. Phase 4 finishes production — the kitchen's board and its
-batches — and adds ticket cancellation. Phase 5 cuts over the whole of procurement —
-requisitions, the buyer's decision, the purchase-order lifecycle, goods receipt with tolerance
-and quarantine, vendors, rate contracts and every screen that adds a product; the support
-desk's four actions are the only thing still local to the store, and Phase 6 closes them along
-with `UI/src/data/seed.ts`. Operational procedures — deploy, roll back, rotate keys, accounts,
-restore drill, SSE operations — are `deploy/RUNBOOK.md`.
+Build order was spec §14 — six phases, each cutting one role's work over to the server and
+deleting its in-memory path; nothing dual-ran. "Production ready" is the checklist in spec §12,
+which gated every phase and now gates go-live itself. Phase 1's frontend cutover was real
+sign-in and `/snapshot` hydration (`hydrateMaster`) in place of `data/master.ts`'s static
+registries. Phase 2 cut counter billing, availability toggles and the manager's price/menu
+writes over to the server (`pay`, `toggleAvail`, `savePrice`, `addProduct`, `removeProduct`,
+above). Phase 3 cut over the whole stock-request chain, shop transfers, shop asks and the
+kitchen's two ticket-raising writes and added the live-update stream so every open screen sees
+another browser's write. Phase 4 finished production — the kitchen's board and its batches —
+and added ticket cancellation. Phase 5 cut over the whole of procurement — requisitions, the
+buyer's decision, the purchase-order lifecycle, goods receipt with tolerance and quarantine,
+vendors, rate contracts and every screen that adds a product. Phase 6 closed the support desk
+and `UI/src/data/seed.ts`, the last two things left in the browser's own store, added the two
+server-side reports, wired up the alerts, the load check and the Playwright smoke, and prepared
+the chart and the workflow for a first production deploy — it does not perform that deploy
+itself (spec §16, Phase 6). **The operational entry points from here are spec §12's checklist**
+— what "production ready" means, line by line — **and `deploy/RUNBOOK.md`'s §11 go-live
+checklist**, which turns that list into the ordered commands and decisions an account owner
+actually runs. Every other operational procedure — deploy, roll back, rotate keys, accounts,
+restore drill (locally rehearsable now, §6), SSE operations, the load check (§12), the
+end-to-end smoke (§13) — is also `deploy/RUNBOOK.md`.
 
 ## Docs
 

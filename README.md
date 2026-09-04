@@ -50,8 +50,13 @@ order off the procurement list priced from a live rate contract, sends it to the
 receives it against a delivery note — a rejection at the door lands in a quarantine shelf that
 never sells and never issues, and closing an order short hands the undelivered balance straight
 back onto the procurement list. A second browser follows every step of it live, the same as the
-rest of the system. Only the support desk still runs in the browser's in-memory store, and it is
-the last thing that does — Phase 6 closes it, along with `UI/src/data/seed.ts`.
+rest of the system. And the last two pieces: raise a support ticket from any role's own
+Support screen, watch it move Open → With support → Waiting on you → Resolved → Closed as a
+reply lands or a status changes, and rate the fix once it is resolved — every role sees only
+its own tickets, because there is no support-agent role in this system, only five that ask.
+Read the two figures the browser could never assemble on its own: a location's stock ledger
+over a window, and a payer's credit taken so far this month. Nothing runs in the browser's own
+store any more — every mutation in the app is a server call, and `UI/src/data/seed.ts` is gone.
 
 **Live updates.** Every signed-in browser holds one connection to the server's change stream, so a
 request raised at the Coffee Shop appears on the manager's approvals screen without a reload — and
@@ -95,18 +100,18 @@ index.html        the project home page, published at /
 working guides for AI coding agents, and a reasonable orientation for a human meeting a package
 for the first time. `UI/README.md` covers the frontend in more detail.
 
-## Quick start
+## Running it
 
-You need **Node 24** (see `.nvmrc`), **pnpm 10.28.2** (`corepack enable`) and **Docker**.
+Six commands, clone to signed-in browser. You need **Node 24** (see `.nvmrc`), **pnpm 10.28.2**
+(`corepack enable`) and **Docker**.
 
 ```bash
 pnpm install
-pnpm db:up                                    # postgres:17 in Docker, host port 5439
-cp .env.example .env
-pnpm --filter @rch/api keys:generate >> .env  # writes JWT_PRIVATE_KEY / JWT_PUBLIC_KEY
+pnpm db:up                                                                  # postgres:17 in Docker, host port 5439
+cp .env.example .env && pnpm --filter @rch/api keys:generate >> .env       # writes JWT_PRIVATE_KEY / JWT_PUBLIC_KEY
 pnpm --filter @rch/api db:migrate
 pnpm --filter @rch/api db:seed
-pnpm dev                                      # API on :3000, UI on :5173
+pnpm dev                                                                    # API on :3000, UI on :5173
 ```
 
 Open `http://localhost:5173` and sign in with a seeded employee id and the seed password
@@ -123,6 +128,16 @@ Open `http://localhost:5173` and sign in with a seeded employee id and the seed 
 
 A staging or production seed sets `must_change_password`, which routes a first sign-in through a
 change-password step. `deploy/RUNBOOK.md` §1 has the full local sequence and what each step does.
+
+Once it's up, `pnpm test:e2e` drives the running stack through a real browser — six specs,
+twelve tests, sign-in to a settled bill — and `e2e/README.md` explains what each one proves and
+the environment variables the stack needs first.
+
+**Going live.** Promotion to production is a release decision, not something this repository
+does on its own — `deploy/RUNBOOK.md` §11 is the ordered go-live checklist: the AWS values still
+marked `FILL`, generating and storing the production JWT keys, creating real staff accounts and
+deactivating the seeded ones (which must not exist in production), the restore drill, and the
+promotion commands themselves.
 
 ## Everyday commands
 
@@ -143,6 +158,8 @@ From the repository root:
 | `pnpm --filter @rch/api users …` | `create`, `reset-password` or `deactivate` an account |
 | `pnpm --filter @rch/api keys:generate` | Print a fresh JWT signing key pair |
 | `pnpm helm:test` | Render the Helm chart and check the output |
+| `pnpm test:e2e` | Playwright smoke against a running stack (`pnpm dev` first) — see `e2e/README.md` |
+| `pnpm --filter @rch/api loadcheck` | Measure `/snapshot` and `/bills` latency against a running API — see `deploy/RUNBOOK.md` §12 |
 | `bash scripts/build-site.sh` | Assemble the published site into `dist/` (home page, docs, built app) |
 
 ## Testing
@@ -186,20 +203,22 @@ third renders the Helm chart on its own. Everything must be green to merge.
 
 ## Status
 
-The backend is rolling out in six phases (spec §14); each moves one role's work onto the server
-and deletes its in-browser path, so nothing runs in two places at once.
+The backend rolled out in six phases (spec §14); every one is **done** — each moved one role's
+work onto the server and deleted its in-browser path, so nothing ever ran in two places at once.
 
-| Phase | State | Scope |
+| Phase | Scope | Exit check it was gated on |
 |---|---|---|
-| 1 · Foundation | **Done** | The monorepo, the contract and domain packages, the API skeleton, the database schema and seed, real sign-in, and `GET /snapshot` — the browser stops inventing its own data |
-| 2 · Ledger + POS | **Done** | The movement ledger and balances; counter billing, availability toggles, price lists and menus decided server-side |
-| 3 · Movement chain | **Done** | The whole request chain, pick tickets with OTP handover, shop transfers and shop asks, the kitchen's two ticket-raising writes, and the live-update stream |
-| 4 · Production | **Done** | The kitchen's board and its statuses, batches that consume a recipe and yield finished stock, and a ticket nobody collected can now be cancelled |
-| 5 · Procurement | **Done** | Vendors, rate contracts, requisitions, the purchase-order lifecycle, goods receipt with tolerance and quarantine, new products |
-| 6 · Ops and go-live | Pending | Support tickets, reports, end-to-end smoke tests, a load check, alerting, and the first production deploy |
+| 1 · Foundation | The monorepo, the contract and domain packages, the API skeleton, the database schema and seed, real sign-in, and `GET /snapshot` — the browser stops inventing its own data | Sign in and see the seeded data, `helm upgrade` runs migrations, `/readyz` green, a real `helm install` against a throwaway kind cluster in CI |
+| 2 · Ledger + POS | The movement ledger and balances; counter billing, availability toggles, price lists and menus decided server-side | Sell against the server, balances move, `db:rebuild-balances` matches, the MRP cap refuses and caps, payer rules enforced |
+| 3 · Movement chain | The whole request chain, pick tickets with OTP handover, shop transfers and shop asks, the kitchen's two ticket-raising writes, and the live-update stream | The full request chain across two browsers with live updates and no reload; free-to-promise trims what a manager over-approves; a handover releases the reservation it authorised |
+| 4 · Production | The kitchen's board and its statuses, batches that consume a recipe and yield finished stock, and a ticket nobody collected can now be cancelled | A make consumes ingredients and yields stock in one transaction; a short dispatch is all-or-nothing; a cancelled ticket returns its stock and its document to where they stood |
+| 5 · Procurement | Vendors, rate contracts, requisitions, the purchase-order lifecycle, goods receipt with tolerance and quarantine, new products | A full requisition → PO → GRN → shelf run; the 2% tolerance and the expiry rules both refuse correctly; a cancelled or short-closed order gives its claim back to the requisition |
+| 6 · Ops and go-live | The support desk, the two server-side reports, the ticket's audit trail and its withheld OTP, the Playwright smoke, the load check, the chart's alerts, and the go-live checklist | §12's checklist verified against a local stack and the kind cluster CI installs — six items marked **when promoted**, because they need a production cluster that does not exist yet (spec §16); the smoke runs against `pnpm dev` locally and the kind cluster in CI, and is never pointed at production |
 
-The support desk is the only thing phase 6 still has to cut over — it works on screen today, but
-is not yet shared between users or durable across a reload.
+Every mutation in the app is a server call now; nothing is left in the browser's own store.
+Phase 6 prepared the chart, the workflow and the go-live checklist for the first production
+deploy — it did not perform that deploy. Promotion to production is a release decision for the
+account owner, made by following `deploy/RUNBOOK.md` §11.
 
 ## Where the documents are
 

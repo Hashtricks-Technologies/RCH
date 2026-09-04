@@ -8,10 +8,10 @@ Repo-wide rules, the movement rule and the domain invariants are in the root `..
 
 React 19 + Vite 8 + TypeScript (strict, `verbatimModuleSyntax`, `erasableSyntaxOnly`) + Zustand 5.
 Routing is `HashRouter` with **one** route, `/:key`, so the static build works from any host with
-no SPA rewrite. Since Phase 5 the store is almost entirely an API client: it signs in for real,
-hydrates from `GET /snapshot`, and posts the writes that have moved server-side — everything but
-the support desk (`raiseTicket`, `replyToTicket`, `setTicketStatus`, `rateTicket`), which is
-Phase 6's. Only the theme and a couple of UI prefs reach `localStorage`.
+no SPA rewrite. The store is an API client end to end: it signs in for real, hydrates from `GET
+/snapshot`, and posts every write. `UI/src/data/seed.ts` and `UI/src/data/ops.ts` are gone — no
+production file under `UI/src` imports `@rch/contract/fixtures` any more, only the tests do.
+Only the theme and a couple of UI prefs reach `localStorage`.
 
 ## Commands
 
@@ -51,25 +51,29 @@ Phase 5 — its button had opened nothing since the procurement rework; `"bnewit
 are merged into the same `create()` and share one `AppState`. Components subscribe narrowly:
 `useApp((s) => s.req)`.
 
-**On the server now** — Phase 2: `pay`, `toggleAvail`, `savePrice`, `addProduct`,
-`removeProduct`. Phase 3: `submitRequest`, `requestFromStore`, `cancelRequest`, `approveRequest`,
-`rejectRequest`, `issueTicket`, `handover`, `receiveTicket`, `dispatchOrder`, `distribute` (in
-`store/index.ts`) and `transferToOutlet`, `askShop`, `answerShopAsk`, `declineShopAsk` (in
-`store/ops.ts`). Phase 4: `setOrderStatus`, `makeProduct`, `cancelTicket` (in `store/index.ts`)
-— production is finished. Phase 5: `sendRequisition` (in `store/index.ts`); all fourteen of
-`store/procurement.ts` (`addVendor`, `updateVendor`, `setVendorActive`, `approveRequisition`,
-`declineRequisition`, `createPo`, `updatePoLine`, `removePoLine`, `setPoVendor`, `setPoEta`,
-`sendPo`, `cancelPo`, `receivePo`, `closePoShort`); and six more of `store/ops.ts`
-(`requestNewProduct`, `answerProductRequest`, `addContract`, `updateContract`, `removeContract`,
-`createItem`) — buying is finished. The kitchen's screens keep only previews now: `ceiling` and
-the Dispatch cover check, computed with the same `@rch/domain` functions the server enforces
-with, not a second copy of the rule. Session actions — `login`, `restore`, `loadSnapshot`,
-`logout`, `changePassword`, `saveProfile` — go through the same client.
+**On the server now, every action in the store** — Phase 2: `pay`, `toggleAvail`, `savePrice`,
+`addProduct`, `removeProduct`. Phase 3: `submitRequest`, `requestFromStore`, `cancelRequest`,
+`approveRequest`, `rejectRequest`, `issueTicket`, `handover`, `receiveTicket`, `dispatchOrder`,
+`distribute` (in `store/index.ts`) and `transferToOutlet`, `askShop`, `answerShopAsk`,
+`declineShopAsk` (in `store/ops.ts`). Phase 4: `setOrderStatus`, `makeProduct`, `cancelTicket`
+(in `store/index.ts`) — production is finished. Phase 5: `sendRequisition` (in
+`store/index.ts`); all fourteen of `store/procurement.ts` (`addVendor`, `updateVendor`,
+`setVendorActive`, `approveRequisition`, `declineRequisition`, `createPo`, `updatePoLine`,
+`removePoLine`, `setPoVendor`, `setPoEta`, `sendPo`, `cancelPo`, `receivePo`, `closePoShort`);
+and six more of `store/ops.ts` (`requestNewProduct`, `answerProductRequest`, `addContract`,
+`updateContract`, `removeContract`, `createItem`) — buying is finished. **Phase 6, the last
+four**: `store/ops.ts`'s support desk (`raiseTicket`, `replyToTicket`, `setTicketStatus`,
+`rateTicket`) — the last in-memory path, closed. Two reads join them, not writes:
+`readStockLedger(loc, days)` and `readCredit(payer)` (both `store/index.ts`), each a plain `GET`
+with no `notify`/`refetch` of its own — `roles/store/Reports.tsx`'s ledger screen and
+`roles/counter/Pos.tsx`'s credit panel are the two screens that call them instead of deriving a
+number the browser no longer holds. The kitchen's screens keep only previews now: `ceiling` and the
+Dispatch cover check, computed with the same `@rch/domain` functions the server enforces with,
+not a second copy of the rule. Session actions — `login`, `restore`, `loadSnapshot`, `logout`,
+`changePassword`, `saveProfile` — go through the same client.
 
-**Still local to the store**, and the only thing left: the ops slice's four support-ticket
-actions (`raiseTicket`, `replyToTicket`, `setTicketStatus`, `rateTicket`), which Phase 6 closes
-along with `data/seed.ts`. `Seq` (`store/index.ts`) is gone entirely — every document the server
-numbers, procurement's included, is numbered there instead.
+`Seq` (`store/index.ts`) is gone entirely — every document the server numbers is numbered there
+instead. There is nothing left to cut over: every mutation in the app is a server call.
 
 One deletion is worth naming: `PoDrawer.tsx`'s effect that used to re-price every line when the
 vendor changed is gone, not awaited — both places that price a line (`createPo` drafting off
@@ -126,21 +130,24 @@ the same write), and on a 401 refreshes once and retries. `ApiError` carries `co
 `src/api/refetch.ts` pulls back exactly what a write said it changed. `stock`, `rsv` and `ovr`
 come from `GET /stock`; `NARROW` maps `bills → GET /bills`, `req → GET /requests`,
 `tkt → GET /tickets`, `shopAsks → GET /shop-asks`, `pord → GET /prod-orders`,
-`batch → GET /batches`, and now buying's six — `prq → GET /requisitions`,
-`po → GET /purchase-orders`, `grn → GET /grns`, `vendors → GET /vendors`,
-`contracts → GET /contracts`, `productReqs → GET /product-requests` — and `items → GET /items`.
-Every collection has a narrow reader now **except** `prices`, `menu` and `tickets` (the
-manager's price/menu writes and Phase 6's support desk), which cost one `loadSnapshot`, and a
-mixed set takes the snapshot alone. If the read-back fails the write's own sentence is kept and
-qualified, never replaced: the operator must not be sent round to do it twice. `src/api/wire.ts`
-holds the server-shape → store-shape mappers (`applySnapshot`, `applyStock`, `applyBills`,
-`applyRequests`, `applyTickets`, `applyShopAsks`, `applyProdOrders`, `applyBatches`,
-`applyRequisitions`, `applyPos`, `applyGrns`, `applyVendors`, `applyContracts`,
-`applyProductRequests`, `applyItems`); ISO times become `"HH:MM"` there and nowhere else.
-`applyItems` also bumps `catalogVersion`, the signal the catalogue's own screens read since it
-is a module-level registry (`data/master.ts`) and not store state — an SSE `resync` or a
-snapshot-fallback refetch replaces the registry through `hydrateMaster` without bumping it,
-which is a known gap for Phase 6, not a Phase 5 regression.
+`batch → GET /batches`, buying's six — `prq → GET /requisitions`, `po → GET /purchase-orders`,
+`grn → GET /grns`, `vendors → GET /vendors`, `contracts → GET /contracts`,
+`productReqs → GET /product-requests` — `items → GET /items`, and now
+`tickets → GET /support/tickets` (`applySupportTickets`) for the support desk's own `changed`.
+`prices` and `menu` (the manager's writes) are the only two collections left without a narrow
+reader, so they still cost one `loadSnapshot`, and a mixed `changed` set takes the snapshot
+alone. If the read-back fails the write's own sentence is kept and qualified, never replaced:
+the operator must not be sent round to do it twice. `src/api/wire.ts` holds the server-shape →
+store-shape mappers (`applySnapshot`, `applyStock`, `applyBills`, `applyRequests`,
+`applyTickets`, `applyShopAsks`, `applyProdOrders`, `applyBatches`, `applyRequisitions`,
+`applyPos`, `applyGrns`, `applyVendors`, `applyContracts`, `applyProductRequests`, `applyItems`,
+`applySupportTickets`, `hydrateRoster`); ISO times become `"HH:MM"` there and nowhere else, and
+every ticket's `hist` passes through the file's shared `hist()` mapper in both `applySnapshot`
+and `applyTickets`, so a raw ISO instant never reaches a ticket drawer's trail whichever path
+refetched it. `applySnapshot` and `applyItems` both bump `catalogVersion`, the signal the
+catalogue's own screens read since it is a module-level registry (`data/master.ts`) and not
+store state — an SSE `resync` no longer leaves a new item invisible until reload, which Phase 5
+left as a known gap and Phase 6 closed.
 
 `src/api/events.ts` keeps every tab current: one `fetch`-based SSE connection (not `EventSource`,
 which cannot send an `Authorization` header), frames parsed by hand, notices debounced
@@ -154,18 +161,31 @@ shows **only** `Reconnecting` — a badge that is always there stops being read.
 `src/api/session.ts` holds the access token in memory (never `localStorage`) and fires
 `onSessionLost` when a refresh fails.
 
+`auth` (`store/index.ts`) gains a fifth state, `"failed"`, in the Phase 6 fix wave: a sign-in
+or a reload whose `GET /snapshot` call fails (not a 401 — `onSessionLost` already handles that)
+renders a full-page retry rather than falling back to `"ready"` with a toast saying data is
+"showing what is in memory" — there is no memory to fall back to any more, so the old wording
+described a state that stopped being true the moment `data/seed.ts` was deleted. (Lands in the
+Phase 6 fix wave.)
+
 ## Master data, derived state, formatting
 
-`src/data/master.ts` exports mutable registries (`IT`, `LOC`, `RCP`, `PL`, `MENU`, `USERS`) seeded
-from `@rch/contract/fixtures` and **replaced in place** by `hydrateMaster()` when the snapshot
-lands — screens import them directly, so assign into them, never reassign them. `data/seed.ts`,
-`data/ops.ts` and `data/vendors.ts` still supply the store's initial state before the real
-snapshot lands, but only `data/ops.ts`'s support tickets are what a still-local slice actually
-starts from now — everything else in those three files (`seedPrq`, `seedPo`, `seedGrn`,
-`seedVendors`, `seedContracts`, `seedProductRequests`, …) is overwritten by `loadSnapshot` the
-moment sign-in completes. `store.signIn(id)` is test-only: the server's directory is
-`UserMin[]` with no email or employee number, so a signed-in person's whole record comes from
-the fixtures.
+`src/data/master.ts` exports mutable registries (`IT`, `LOC`, `RCP`, `PL`, `MENU`, `USERS`) —
+**empty at import, no fixtures import anywhere in the file** — **replaced in place** by
+`hydrateMaster()` when the snapshot lands; screens import them directly, so assign into them,
+never reassign them. `ALL_LOCS`, `OUTLETS`, `PAR_FACTOR`, `STAFF_CREDIT_LIMIT` and
+`PO_APPROVAL_LIMIT` are re-exported from `@rch/contract` here, and `MasterData` is typed from
+`@rch/contract`'s types rather than `typeof FX.*`. The payer roster is the same shape: `PATIENTS`,
+`STAFF`, `DEPTS` start empty and `hydrateRoster(r)` (called from `applySnapshot`) splices the
+server's `roster` into them in place — the counter's payer picker reads these, never a fixture.
+`data/seed.ts` and `data/ops.ts` are **deleted**; `data/vendors.ts` keeps its two helpers but no
+longer re-exports `seedVendors`. `grep -rn '@rch/contract/fixtures' src | grep -v __tests__`
+finds nothing — the fixtures are the shared seed (§5.1), reachable now only from tests. The
+store's own `signIn`/`signOut` are gone too: a test sets the session through
+`__tests__/fixture.ts`'s `as(role)` (calls `hydrateMaster`/`hydrateRoster` from the fixtures and
+`setState`s the session directly, with a comment saying why it must not be "tidied" onto
+`applySnapshot`) and `signedOut()`, never through a store action that used to read the fixtures
+from inside the app.
 
 `src/lib/selectors.ts` is the source of truth for everything derived — `qty`, `resv`, `avail`,
 `freeToPromise`, `availOf`, `priceOf`, `procurementList`, `prqProgress`, `onOrder`,
@@ -211,12 +231,18 @@ wins both ways. No CSS framework.
 `src/__tests__/`, jsdom, `TZ=UTC` and a 20 s `testTimeout` (`vite.config.ts` — screen tests render
 whole role shells), `setupFiles: setup.ts` which installs a working `localStorage` when the host
 does not supply one. Reset through `fixture.ts`: `resetStore()`, `S()` for the state, `as(role)`
-to sign in from the fixtures.
+to set the session from the fixtures (`hydrateMaster` + `hydrateRoster`, then `setState` — the
+store's own `signIn` is gone, so this is the one sanctioned way a test signs somebody in) and
+`signedOut()` for the opposite.
 
 - `store.test.ts`, `fixes.test.ts` (regression pins tagged C6, M3, M8, H4, UA-14 — read the
-  comment before changing what one covers). `procurement.test.ts` no longer tests a still-local
-  slice — every rule it used to pin (the approval arithmetic, the claim walk, the 2% receipt
-  tolerance, the finance slab) is the server's, tested in
+  comment before changing what one covers). `fixes.test.ts`'s three support-desk cases and
+  `store.test.ts`'s ledger-arithmetic case are gone, each with a comment naming the server test
+  that replaces it (`apps/api/src/modules/support/support.test.ts`,
+  `packages/domain/src/support.test.ts`, `apps/api/src/modules/reports/reports.test.ts`) — that
+  is the constraint every deletion in this suite follows, not just these two. `procurement.test.ts`
+  no longer tests a still-local slice — every rule it used to pin (the approval arithmetic, the
+  claim walk, the 2% receipt tolerance, the finance slab) is the server's, tested in
   `apps/api/src/modules/{requisitions,purchaseorders,grn,vendors,contracts,catalog,
   productreqs}/*.test.ts`. What is left is what the browser still derives for itself: the pooled
   `procurementList`, `prqProgress`, and the M3 duplicate-order guard's two halves.
@@ -226,8 +252,9 @@ to sign in from the fixtures.
   Render-level cases drive the real `Pos` and `counter/Requests` components. Buying's own cases
   cover `sendRequisition`, the requisition desk's two decisions, `createPo`, the purchase
   order's other doors (line edits, vendor and eta patches, send, cancel, receive, close-short),
-  and vendors/contracts/new-product. The rules those routes enforce belong to the API's own
-  suites — do not re-assert them here.
+  and vendors/contracts/new-product; Phase 6's own cover the support desk's four writes, the
+  roster hydrating from `applySnapshot`, `readCredit`, and a stock-ledger read. The rules those
+  routes enforce belong to the API's own suites — do not re-assert them here.
 - `events.test.ts` — frame parsing, the 250 ms debounce into `refetch`, `resync` forcing a full
   `loadSnapshot`, and the `live` / `reconnecting` / `off` state the pill reads.
 - `api.test.ts`, `session.test.ts`, `theme.test.ts`, `screens.test.tsx`, `app.test.tsx`.

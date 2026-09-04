@@ -193,10 +193,10 @@ footer p{max-width:74ch;margin:0 0 8px}
 <!-- 01 -->
 <section id="map">
   <div class="sec-head"><span class="sec-num">01</span><h2>The role map</h2></div>
-  <p class="sec-sub">Seven working roles and the documents that pass between them. Read the arrows as responsibility changing hands &mdash; not as data moving.</p>
+  <p class="sec-sub">Five working roles and the documents that pass between them. Read the arrows as responsibility changing hands &mdash; not as data moving.</p>
 
   <figure>
-    <svg viewBox="0 0 900 600" role="img" aria-label="Role map. The store keeper is the hub: they send a requirement to procurement, who raise a purchase order to vendors, whose goods come back as a goods receipt. The store issues raw materials to production, which sends finished goods to the counter. The counter raises stock requests to the store and receives approvals and pick tickets back. The outlet manager supervises the counter with overrides and price control. Both the store and procurement send documents to finance for three-way matching.">
+    <svg viewBox="0 0 900 600" role="img" aria-label="Role map. The store keeper is the hub: they send a requisition to procurement, who raise a purchase order to vendors, whose goods come back as a goods receipt. The store issues raw materials to production, which sends finished goods to the counter. The counter raises stock requests to the store and receives approvals and pick tickets back. The outlet manager supervises the counter with overrides and price control. There is no finance role and no three-way match in this build.">
       <defs>
         <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
           <path d="M0 0 L10 5 L0 10 z" fill="currentColor"/></marker>
@@ -212,7 +212,7 @@ footer p{max-width:74ch;margin:0 0 8px}
 
       <rect class="nb" x="370" y="112" width="160" height="56" rx="8"/>
       <text class="t1" x="450" y="136" text-anchor="middle">Procurement</text>
-      <text class="t2" x="450" y="153" text-anchor="middle">Purchase Officer</text>
+      <text class="t2" x="450" y="153" text-anchor="middle">Procurement Officer</text>
 
       <rect class="nk" x="370" y="222" width="160" height="64" rx="8"/>
       <text class="t1" x="450" y="248" text-anchor="middle">Central Store</text>
@@ -231,12 +231,12 @@ footer p{max-width:74ch;margin:0 0 8px}
       <text class="t1" x="710" y="476" text-anchor="middle">Counter</text>
       <text class="t2" x="710" y="493" text-anchor="middle">Counter Operator</text>
 
-      <rect class="nb" x="370" y="452" width="160" height="56" rx="8"/>
-      <text class="t1" x="450" y="476" text-anchor="middle">Finance</text>
-      <text class="t2" x="450" y="493" text-anchor="middle">Accounts &middot; Administrator</text>
+      <rect class="nb" x="370" y="452" width="160" height="56" rx="8" style="opacity:.4;stroke-dasharray:4 3"/>
+      <text class="t1" x="450" y="476" text-anchor="middle" style="opacity:.55">Finance</text>
+      <text class="t2" x="450" y="493" text-anchor="middle" style="opacity:.55">not built &mdash; no role, no 3-way match</text>
 
       <path class="ln" d="M430 222 L430 174" marker-end="url(#a)"/>
-      <text class="tl" x="424" y="200" text-anchor="end">requirement &rarr; PR</text>
+      <text class="tl" x="424" y="200" text-anchor="end">requisition</text>
 
       <path class="ln" d="M470 112 L470 76" marker-end="url(#a)"/>
       <text class="tl" x="476" y="96">purchase order</text>
@@ -261,21 +261,21 @@ footer p{max-width:74ch;margin:0 0 8px}
       <text class="tl" x="718" y="418">overrides &middot; price</text>
       <text class="tl" x="718" y="431">cancellations</text>
 
-      <path class="ln" d="M450 286 L450 446" marker-end="url(#a)"/>
-      <text class="tl" x="456" y="360">GRN &rarr; 3-way match</text>
+      <path class="ln" d="M450 286 L450 446" marker-end="url(#a)" style="opacity:.4;stroke-dasharray:4 3"/>
+      <text class="tl" x="456" y="360" style="opacity:.55">GRN (never built past here)</text>
 
-      <path class="ln" d="M370 140 L340 140 L340 480 L364 480" marker-end="url(#a)"/>
-      <text class="tl" x="334" y="300" text-anchor="end">PO for approval</text>
+      <path class="ln" d="M370 140 L340 140 L340 480 L364 480" marker-end="url(#a)" style="opacity:.4;stroke-dasharray:4 3"/>
+      <text class="tl" x="334" y="300" text-anchor="end" style="opacity:.55">PO (flagged, not routed)</text>
     </svg>
-    <figcaption><b>The store keeper is the hub, and that is a design choice, not an accident.</b> Every purchase enters through them and every internal movement is authorised by them, so one person can always answer "where is it and who has it". The two teal arrows are the round trip that runs dozens of times a day &mdash; a counter asks, the store answers with an approval and a ticket. Not shown, to keep the picture readable: ward pantries receive consumption issues from the store, the counter sends its day-close tender file to finance, and the auditor reads every document here without writing any of them.</figcaption>
+    <figcaption><b>The store keeper is the hub, and that is a design choice, not an accident.</b> Every purchase enters through them and every internal movement is authorised by them, so one person can always answer "where is it and who has it". The two teal arrows are the round trip that runs dozens of times a day &mdash; a counter asks, the store answers with an approval and a ticket. The Finance box and its two dashed arrows are what this document originally proposed and this build does not have: no finance role exists, a purchase order over the value slab is a flag on the buyer's own list with no second approver behind it, and there is no 3-way match against a vendor invoice.</figcaption>
   </figure>
 
   <div class="prose">
     <p>Three properties of this map are worth stating plainly, because they are the ones that will be argued about.</p>
     <ul class="tight">
-      <li><strong>Nothing enters except through the central store.</strong> No outlet takes a delivery directly from a vendor. It costs a little convenience and buys a single, trustworthy point of entry where batch, expiry, MRP and landed cost are captured once.</li>
-      <li><strong>The counter never talks to procurement.</strong> A shortage at a counter becomes a request to the store; only the store's <em>own</em> shortfall becomes a purchase requisition. That keeps buying decisions in one place and stops five outlets independently ordering milk.</li>
-      <li><strong>Finance approves but never originates.</strong> They see the purchase order for approval and the goods receipt for matching, and they reconcile the day. They cannot raise an indent, a request or a receipt.</li>
+      <li><strong>Nothing enters except through the central store.</strong> No outlet takes a delivery directly from a vendor. It costs a little convenience and buys a single, trustworthy point of entry where batch, expiry and landed cost are captured once.</li>
+      <li><strong>The counter never talks to procurement.</strong> A shortage at a counter becomes a request to the store; only the store's <em>own</em> shortfall becomes a purchase requisition. That keeps buying decisions in one place and stops three outlets independently ordering milk.</li>
+      <li><strong>Nobody approves a purchase order but the buyer who raised it.</strong> <code>PO_APPROVAL_LIMIT</code> stamps a badge on an order over the slab; nothing refuses it and no second role stands behind the number &mdash; see &sect;08, below, and <code>docs/ua-spec.html</code> &sect;04.</li>
     </ul>
   </div>
 </section>
@@ -283,7 +283,7 @@ footer p{max-width:74ch;margin:0 0 8px}
 <!-- 02 -->
 <section id="day">
   <div class="sec-head"><span class="sec-num">02</span><h2>A day in the building</h2></div>
-  <p class="sec-sub">The same seven roles laid against the clock. This is the rhythm the software has to fit into &mdash; not the other way round.</p>
+  <p class="sec-sub">The same five roles laid against the clock, plus the shift, day-close and Finance work this document originally imagined and this build does not have &mdash; kept here as the aspirational rhythm rather than deleted, and named honestly below.</p>
 
   <figure>
     <svg viewBox="0 0 900 380" role="img" aria-label="Timeline of a working day from five in the morning to eleven at night, showing when each role is active: production runs early batches, the store receives deliveries and issues stock, counters sell all day across two shifts, procurement runs the requirement at mid-morning, and finance reconciles at night.">
@@ -352,130 +352,79 @@ footer p{max-width:74ch;margin:0 0 8px}
       <line class="lnd" x1="831" y1="56" x2="831" y2="338"/>
       <text class="tk" x="827" y="356" text-anchor="end">day close begins</text>
     </svg>
-    <figcaption><b>Two moments carry disproportionate risk.</b> The 14:00 shift changeover is when cash, stock and responsibility all transfer at once, and the 21:30 day close is when unsold short-life stock must be written off rather than quietly carried forward. Teal blocks mark the work that changes the ledger; the rest is review and decision. Note that the store's approval queue is worked twice, deliberately &mdash; a single daily window would leave an afternoon shortage unanswered until the next morning.</figcaption>
+    <figcaption><b>Two moments carry disproportionate risk, in the design this timeline still describes.</b> The 14:00 shift changeover and the 21:30 day close are both <strong>not built</strong> &mdash; there is no shift concept, no wastage write-off and no Finance role or 3-way match anywhere in this system (spec &sect;3; &sect;09, above). Teal blocks mark the work that would change the ledger if it existed; the rest is review and decision. What is real: the store's approval queue genuinely is worked continuously through the day, because a request does not wait for a window to open.</figcaption>
   </figure>
 </section>
 
 <!-- 03 -->
 <section id="roles">
-  <div class="sec-head"><span class="sec-num">03</span><h2>The eight roles</h2></div>
-  <p class="sec-sub">For each one: what they see the moment they sign in, the screens they move through, the loop they repeat all day, and &mdash; just as important &mdash; what the system will not let them do.</p>
+  <div class="sec-head"><span class="sec-num">03</span><h2>The five roles</h2></div>
+  <p class="sec-sub">For each one: what they see the moment they sign in, the screens they move through, the loop they repeat all day, and &mdash; just as important &mdash; what the system will not let them do. These are <code>RoleSchema</code>'s own five (<code>packages/contract/src/schemas/common.ts</code>), not a proposal.</p>
 
   <div class="roles">
 
     <div class="role"><div class="role-h"><span class="mk" style="background:var(--b)">CO</span>
-      <div class="rt"><h3>Counter Operator</h3><p>~12 users &middot; coffee shop, restaurant, kiosk</p></div></div>
+      <div class="rt"><h3>Counter Operator</h3><p>2 seeded users &middot; Coffee Shop, Snack Kiosk</p></div></div>
       <div class="role-b">
         <div class="lands">Signs in and lands on <b>Point of Sale</b></div>
-        <div class="chain"><span class="s k">Point of Sale</span><span class="ar">→</span><span class="s">Bills</span><span class="ar">→</span>
-          <span class="s">Stock on Hand</span><span class="ar">→</span><span class="s">Stock Requests</span><span class="ar">→</span><span class="s">Pick Tickets</span></div>
-        <p class="f">Signs in with a four-digit PIN against a terminal already bound to an open shift &mdash; a full password at a queue-facing counter is shared within a week. The shift ties the operator, the terminal and the cash drawer together, so every bill has an owner.</p>
-        <p class="f">Their day is one loop: take an order, tap or scan, tender, print. Everything else is interruption &mdash; an item goes dark, they raise a request, and later they collect a ticket.</p>
+        <div class="chain"><span class="s k">Point of Sale</span><span class="ar">&rarr;</span><span class="s">Bills</span><span class="ar">&rarr;</span>
+          <span class="s">Stock in Hand</span><span class="ar">&rarr;</span><span class="s">Stock Requests</span><span class="ar">&rarr;</span><span class="s">Pick Tickets</span></div>
+        <p class="f">Signs in with an employee number and password, checked against the server &mdash; no shift, no terminal binding, no PIN. Their day is one loop: take an order, tap or scan, tender, print. Everything else is interruption &mdash; an item goes dark, they raise a request, and later they collect a ticket.</p>
+        <p class="f">Two things only Phase 6 gave them: a support ticket of their own, and the door to withdraw a shop-to-shop transfer they raised themselves, from the outbound card on their own Tickets screen.</p>
         <h4>Decisions they own</h4>
-        <ul><li>What goes on the bill and how it is tendered</li><li>Whether to hold a bill or take the next customer</li><li>Confirming a system-drafted stock request</li><li>Declaring cash at shift open and close</li></ul>
-        <p class="stop"><b>Hard stops.</b> Cannot change a price, exceed the discount limit, cancel a bill alone, edit stock, or open any purchasing screen &mdash; the modules are absent from their sidebar, not merely disabled.</p>
+        <ul><li>What goes on the bill and how it is tendered</li><li>Whether to switch an item off at their own counter</li><li>Raising a stock request, and asking a peer shop directly</li><li>Withdrawing a shop-to-shop transfer this outlet raised, before anyone collects it</li></ul>
+        <p class="stop"><b>Hard stops.</b> Cannot change a price, approve a request, issue a ticket, or open any purchasing screen &mdash; the modules are absent from their sidebar, not merely disabled.</p>
       </div></div>
 
     <div class="role"><div class="role-h"><span class="mk" style="background:var(--v)">OM</span>
-      <div class="rt"><h3>Outlet Manager</h3><p>3 users &middot; one per selling outlet</p></div></div>
+      <div class="rt"><h3>Outlet Manager</h3><p>1 seeded user &middot; all three outlets</p></div></div>
       <div class="role-b">
-        <div class="lands">Signs in and lands on <b>Point of Sale</b>, with approvals badged</div>
-        <div class="chain"><span class="s">Point of Sale</span><span class="ar">→</span><span class="s k">Approvals</span><span class="ar">→</span>
-          <span class="s">Price Lists</span><span class="ar">→</span><span class="s">Stock on Hand</span><span class="ar">→</span><span class="s">Bills</span><span class="ar">→</span><span class="s">Reports</span></div>
-        <p class="f">The supervisor on the floor. They can do everything a counter operator can, plus the things an operator is deliberately barred from: authorising a discount above the limit, cancelling a bill, and overriding an item's availability when a machine breaks rather than when stock runs out.</p>
-        <p class="f">Their distinctive power is <strong>approving a lateral request</strong> &mdash; when another outlet asks for stock this outlet is holding, the decision is theirs, not the store's.</p>
+        <div class="lands">Signs in and lands on <b>Approvals</b></div>
+        <div class="chain"><span class="s k">Approvals</span><span class="ar">&rarr;</span>
+          <span class="s">Items &amp; Stock</span><span class="ar">&rarr;</span><span class="s">Price Lists</span><span class="ar">&rarr;</span><span class="s">Product On/Off</span></div>
+        <p class="f">The one role that stands over every counter rather than working one. Their whole day is deciding what other people asked for: approving, trimming or rejecting a stock request &mdash; never past what the central store can still promise once every open ticket and other approval is netted off.</p>
+        <p class="f">Their distinctive power is <strong>price</strong>: both lists, every outlet's menu, and the one thing no role can override &mdash; a traded item's printed MRP.</p>
         <h4>Decisions they own</h4>
-        <ul><li>Giving away their own stock to a peer outlet</li><li>Selling price within the approved band</li><li>Discounts, cancellations and complimentary items</li><li>Signing off the outlet's day close and cash variance</li></ul>
-        <p class="stop"><b>Hard stops.</b> Cannot receive from a vendor, raise a purchase order, or set a price above a batch's printed MRP &mdash; that last one no role can do.</p>
+        <ul><li>Approving, trimming or rejecting a stock request</li><li>Selling price on both lists, at every outlet</li><li>Adding or removing a menu item, at every outlet</li><li>Switching an item on or off at any outlet, not only their own</li></ul>
+        <p class="stop"><b>Hard stops.</b> Cannot receive from a vendor, raise a purchase order, or price a traded item above its printed MRP &mdash; that ceiling has no override, for anyone.</p>
       </div></div>
 
     <div class="role"><div class="role-h"><span class="mk" style="background:var(--a)">SK</span>
-      <div class="rt"><h3>Store Keeper</h3><p>6 users &middot; central and kitchen stores</p></div></div>
+      <div class="rt"><h3>Store Keeper</h3><p>1 seeded user &middot; Central Store</p></div></div>
       <div class="role-b">
-        <div class="lands">Signs in and lands on <b>Approvals</b></div>
-        <div class="chain"><span class="s k">Approvals</span><span class="ar">→</span><span class="s">Pick Tickets</span><span class="ar">→</span>
-          <span class="s">Goods Receipt</span><span class="ar">→</span><span class="s">Batches &amp; Expiry</span><span class="ar">→</span>
-          <span class="s">Requirement</span><span class="ar">→</span><span class="s">Adjustments</span></div>
-        <p class="f">The busiest role and the hub of the map. Deliveries land in the morning and become goods receipts with batch, manufacturing date, expiry, MRP and a quality decision. Requests arrive all day and become approvals, reservations and tickets. Stock leaves on a scan.</p>
-        <p class="f">They land on the approval queue rather than a dashboard because a waiting request is a counter that cannot sell.</p>
+        <div class="lands">Signs in and lands on <b>Issue Desk</b></div>
+        <div class="chain"><span class="s k">Issue Desk</span><span class="ar">&rarr;</span><span class="s">Stock in Hand</span><span class="ar">&rarr;</span>
+          <span class="s">Requisitions</span><span class="ar">&rarr;</span><span class="s">Rate Contracts</span><span class="ar">&rarr;</span><span class="s">Reports</span></div>
+        <p class="f">The busiest role and the hub of the map. Approved requests arrive all day and become tickets; deliveries land against purchase orders and become goods receipts, split between the central store's shelf and quarantine. Stock leaves only at handover, on the collector's own six-digit code.</p>
+        <p class="f">They land on the issue desk rather than a dashboard because a ticket not yet issued is a counter that cannot restock. Two new things Phase 6 gave them: the stock ledger and a payer's credit, read straight off the server rather than guessed at.</p>
         <h4>Decisions they own</h4>
-        <ul><li>How much of a request to grant, line by line</li><li>Accept, partially accept or reject a delivery at quality check</li><li>Which batch is issued when overriding the FEFO proposal</li><li>What the requirement list should actually say before it goes to procurement</li></ul>
-        <p class="stop"><b>Hard stops.</b> Cannot change a purchase rate, approve their own stock adjustment, or sell anything. Receiving into a store they are not assigned to is not offered at all.</p>
+        <ul><li>Issuing a ticket against an approved request, and handing it over &mdash; on the code, or the labelled override</li><li>Raising a requisition to procurement; maintaining rate contracts</li><li>Adding a product directly to the master</li><li>Answering a shop's request for something not on the master</li></ul>
+        <p class="stop"><b>Hard stops.</b> Cannot change a purchase rate, sell anything, or approve their own stock movement. Receiving into a store they are not assigned to is not offered at all &mdash; there is only one central store, and it is theirs.</p>
       </div></div>
 
-    <div class="role"><div class="role-h"><span class="mk" style="background:var(--good)">PI</span>
-      <div class="rt"><h3>Production In-charge</h3><p>4 users &middot; central kitchen</p></div></div>
+    <div class="role"><div class="role-h"><span class="mk" style="background:var(--good)">KI</span>
+      <div class="rt"><h3>Kitchen In-charge</h3><p>1 seeded user &middot; Central Kitchen</p></div></div>
       <div class="role-b">
-        <div class="lands">Signs in and lands on <b>Production</b></div>
-        <div class="chain"><span class="s k">Production</span><span class="ar">→</span><span class="s">Recipes</span><span class="ar">→</span>
-          <span class="s">Stock on Hand</span><span class="ar">→</span><span class="s">Stock Requests</span><span class="ar">→</span><span class="s">Pick Tickets</span></div>
-        <p class="f">Opens the day against a production plan. The screen shows each planned item with its recipe exploded into required quantities and a straight yes or no on whether the kitchen holds enough. Short of something, they raise a request to the store before the ovens are on.</p>
-        <p class="f">Closing a batch is the single most consequential action in the system: raw materials leave stock, finished goods appear with a batch number and a best-before, and a unit cost is computed that every downstream price decision leans on.</p>
+        <div class="lands">Signs in and lands on <b>Kitchen order board</b></div>
+        <div class="chain"><span class="s k">Orders</span><span class="ar">&rarr;</span><span class="s">Make &amp; Distribute</span><span class="ar">&rarr;</span>
+          <span class="s">Kitchen Stock</span><span class="ar">&rarr;</span><span class="s">Stock Requests</span><span class="ar">&rarr;</span><span class="s">Pick Tickets</span></div>
+        <p class="f">Walks the board one press at a time &mdash; New, Accepted, In kitchen, Ready &mdash; and dispatches from any of those stages the moment an order is genuinely ready, whatever the board still shows. Closing a batch is the single most consequential action in the system: raw materials leave stock and finished goods appear, measured against what is free to promise, not merely what is on the shelf.</p>
+        <p class="f">A short cover refuses the whole batch, naming the ingredient; nothing moves.</p>
         <h4>Decisions they own</h4>
-        <ul><li>Batch size, and whether to open at all</li><li>Actual consumption against the recipe, with a reason for any variance</li><li>Recorded yield, rejects and production wastage</li><li>Pushing finished goods out to the outlets</li></ul>
-        <p class="stop"><b>Hard stops.</b> Cannot set the selling price of what they produce, and cannot close a batch with an unexplained consumption variance.</p>
+        <ul><li>Whether the kitchen holds enough to make a batch, and how large</li><li>Dispatching a production order and distributing stock &mdash; both all-or-nothing</li><li>Pushing finished goods out to the outlets</li><li>Handing a ticket over from the kitchen, on the collector's code or the labelled override</li></ul>
+        <p class="stop"><b>Hard stops.</b> Cannot set the selling price of what they produce, and cannot close a batch that would take an ingredient's cover negative.</p>
       </div></div>
 
     <div class="role"><div class="role-h"><span class="mk" style="background:#8A4A0C">PO</span>
-      <div class="rt"><h3>Purchase Officer</h3><p>3 users &middot; procurement</p></div></div>
+      <div class="rt"><h3>Procurement Officer</h3><p>1 seeded user &middot; not tied to one outlet</p></div></div>
       <div class="role-b">
-        <div class="lands">Signs in and lands on <b>Requirement</b></div>
-        <div class="chain"><span class="s k">Requirement</span><span class="ar">→</span><span class="s">Vendors</span><span class="ar">→</span>
-          <span class="s">Purchase Orders</span><span class="ar">→</span><span class="s">Goods Receipt</span><span class="ar">→</span><span class="s">Reports</span></div>
-        <p class="f">Never types a shopping list. The requirement arrives computed &mdash; stock netted against reorder point, unfulfilled requests, the production plan exploded through recipes, and trailing consumption &mdash; grouped by vendor with the arithmetic visible on every line.</p>
-        <p class="f">Their work is sourcing: rate contract lookup, three quotes compared for anything off contract, vendor chosen and the choice justified in writing.</p>
+        <div class="lands">Signs in and lands on <b>Requisitions</b></div>
+        <div class="chain"><span class="s k">Requisitions</span><span class="ar">&rarr;</span><span class="s">Procurement List</span><span class="ar">&rarr;</span>
+          <span class="s">Purchase Orders</span><span class="ar">&rarr;</span><span class="s">Vendors</span><span class="ar">&rarr;</span><span class="s">New Products</span></div>
+        <p class="f">Never types a shopping list from nothing. The procurement list is a live query over every requisition line approved but not yet ordered &mdash; not a table anyone maintains by hand. Their work is sourcing: a rate contract's price when one covers the item, the item's own standard cost when none does.</p>
         <h4>Decisions they own</h4>
-        <ul><li>Which vendor, and why, when a rate contract does not cover it</li><li>Order quantity after pack-size and minimum-order rounding</li><li>Delivery date and terms</li><li>Chasing short supply and short-closing an order</li></ul>
-        <p class="stop"><b>Hard stops.</b> Cannot approve their own purchase order at any value, and cannot post a goods receipt &mdash; ordering and receiving are deliberately different people.</p>
-      </div></div>
-
-    <div class="role"><div class="role-h"><span class="mk" style="background:#155E75">FA</span>
-      <div class="rt"><h3>Finance &amp; Accounts</h3><p>4 users</p></div></div>
-      <div class="role-b">
-        <div class="lands">Signs in and lands on <b>Reports</b></div>
-        <div class="chain"><span class="s k">Reports</span><span class="ar">→</span><span class="s">Purchase Orders</span><span class="ar">→</span>
-          <span class="s">Goods Receipt</span><span class="ar">→</span><span class="s">Vendors</span><span class="ar">→</span><span class="s">Bills</span><span class="ar">→</span><span class="s">Price Lists</span></div>
-        <p class="f">Two jobs. During the day they approve purchase orders that cross the value slab and clear three-way match exceptions where the vendor invoice, the order and the receipt disagree. At night they reconcile: counter tender against system tender, UPI and card settlement against the bank.</p>
-        <p class="f">They also hold the second approval on any selling price that falls below computed cost, which is the control that stops non-MRP pricing drifting quietly into loss.</p>
-        <h4>Decisions they own</h4>
-        <ul><li>Purchase order approval above &#8377;25,000</li><li>Releasing payment, or holding it on a mismatch</li><li>Accepting a below-cost price</li><li>Signing the day's reconciliation</li></ul>
-        <p class="stop"><b>Hard stops.</b> Cannot raise an indent, a request, or a goods receipt. Approves and reconciles; never originates.</p>
-      </div></div>
-
-    <div class="role"><div class="role-h"><span class="mk" style="background:var(--accent)">AD</span>
-      <div class="rt"><h3>Administrator</h3><p>2 users &middot; IT</p></div></div>
-      <div class="role-b">
-        <div class="lands">Signs in and lands on <b>Dashboard</b> &mdash; all twenty modules visible</div>
-        <div class="chain"><span class="s k">Dashboard</span><span class="ar">→</span><span class="s">Items</span><span class="ar">→</span>
-          <span class="s">Locations</span><span class="ar">→</span><span class="s">Users &amp; Roles</span><span class="ar">→</span><span class="s">Settings</span></div>
-        <p class="f">Maintains the master data every other role depends on: items and their type flags, units and conversions, locations and their behaviour, tax codes, document numbering, the approval matrix and the period lock. Signs in with a password plus a one-time code, because these are the screens that can change what everyone else is allowed to do.</p>
-        <h4>Decisions they own</h4>
-        <ul><li>Item master and the type flag that governs every screen</li><li>Who holds which role, and at which location</li><li>Approval thresholds and reservation expiry</li><li>Opening and closing the financial period</li></ul>
-        <p class="stop"><b>Hard stops.</b> Deliberately excluded from transacting &mdash; cannot post a bill or approve a purchase order. Segregation of duties applies to the person who configures the rules more than to anyone else.</p>
-      </div></div>
-
-    <div class="role"><div class="role-h"><span class="mk" style="background:var(--ink-3)">AU</span>
-      <div class="rt"><h3>Auditor</h3><p>read only &middot; management and internal audit</p></div></div>
-      <div class="role-b">
-        <div class="lands">Signs in and lands on <b>Dashboard</b></div>
-        <div class="chain"><span class="s k">Dashboard</span><span class="ar">→</span><span class="s">Reports</span><span class="ar">→</span>
-          <span class="s">Items</span><span class="ar">→</span><span class="s">Stock on Hand</span><span class="ar">→</span><span class="s">Batches &amp; Expiry</span><span class="ar">→</span><span class="s">Bills</span></div>
-        <p class="f">Sees everything and changes nothing. Every dashboard, every report, the full audit trail including reversals and overrides, and export to Excel and PDF.</p>
-        <p class="f">The role exists so that "let me just give them my login" never becomes the answer to an audit request &mdash; which is how transaction rights quietly spread through an organisation.</p>
-        <h4>What they look for</h4>
-        <ul><li>Adjustments clustered around one person or one item</li><li>Overrides of the FEFO proposal without a good reason</li><li>Cash variances that repeat on the same shift</li><li>Wastage rising faster than sales</li></ul>
-        <p class="stop"><b>Hard stops.</b> No transaction rights of any kind, anywhere, at any value.</p>
-      </div></div>
-
-    <div class="role"><div class="role-h"><span class="mk" style="background:#7A5C1F">DT</span>
-      <div class="rt"><h3>Dietitian</h3><p>3 users &middot; if patient diet is in scope &mdash; see UA-01 Q1</p></div></div>
-      <div class="role-b">
-        <div class="lands">Signs in and lands on <b>Ward census</b></div>
-        <div class="chain"><span class="s k">Ward census</span><span class="ar">→</span><span class="s">Diet plans</span><span class="ar">→</span>
-          <span class="s">Meal count</span><span class="ar">→</span><span class="s">Consumption posting</span></div>
-        <p class="f">Confirms meal counts per diet type against the ward census for each meal cycle, which deducts finished goods from the kitchen and posts either a diet charge to the patient's running bill or a cost to the ward cost centre.</p>
-        <p class="f">Shown here in outline because whether this role lives in this module or in the separate HIMS diet module is still an open question.</p>
-        <p class="stop"><b>Hard stops.</b> Handles no cash and no stock directly &mdash; only confirms counts, which the system turns into movements.</p>
+        <ul><li>Approving, trimming or declining a requisition, whole or line by line</li><li>Which vendor, and at what rate, when no contract covers it</li><li>Receiving a delivery &mdash; the 2% tolerance, and quarantine for anything rejected</li><li>Sourcing a new product a shop has asked for</li></ul>
+        <p class="stop"><b>Hard stops.</b> Cannot raise a requisition against their own decision, approve their own purchase order at any value &mdash; there is no second approver to hand it to, only a badge on their own list &mdash; and cannot receive without a delivery to check against.</p>
       </div></div>
 
   </div>
@@ -539,7 +488,7 @@ footer p{max-width:74ch;margin:0 0 8px}
   <p class="sec-sub">The loop that runs dozens of times a day and touches four roles. If only one flow in this document gets tested properly, make it this one.</p>
 
   <figure>
-    <svg viewBox="0 0 900 340" role="img" aria-label="Swimlane flow of counter replenishment across three lanes: system, counter operator and store keeper. The system detects low stock and drafts a request, the counter submits it, the store keeper reviews available-to-promise and approves a partial quantity issuing a ticket, the counter scans to collect and again to receive, and the system switches the menu item back on.">
+    <svg viewBox="0 0 900 340" role="img" aria-label="Swimlane flow of counter replenishment across three lanes: system, counter operator and store keeper. The system detects low stock and drafts a request, the counter submits it, the store keeper reviews free-to-promise and approves a partial quantity issuing a ticket, the counter reads the ticket's six-digit code aloud to collect and confirms receipt, and the system switches the menu item back on.">
       <defs><marker id="b2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
         <path d="M0 0 L10 5 L0 10 z" fill="currentColor"/></marker>
         <marker id="b2k" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
@@ -569,7 +518,7 @@ footer p{max-width:74ch;margin:0 0 8px}
 
       <rect class="nk" x="646" y="124" width="112" height="46" rx="6"/>
       <circle class="num-b" cx="656" cy="134" r="8"/><text class="num-t" x="656" y="137.5" text-anchor="middle">5</text>
-      <text class="t2" x="702" y="150" text-anchor="middle">Scans at store,</text><text class="t2" x="702" y="163" text-anchor="middle">scans at counter</text>
+      <text class="t2" x="702" y="150" text-anchor="middle">Code typed at store,</text><text class="t2" x="702" y="163" text-anchor="middle">confirmed at counter</text>
 
       <rect class="nk" x="772" y="50" width="112" height="46" rx="6"/>
       <circle class="num-b" cx="782" cy="60" r="8"/><text class="num-t" x="782" y="63.5" text-anchor="middle">6</text>
@@ -585,7 +534,7 @@ footer p{max-width:74ch;margin:0 0 8px}
       <text class="tk" x="645" y="286">stock physically moves here &mdash; not at step 4</text>
       <text class="tl" x="450" y="308" text-anchor="middle">the 8 litres not granted stay open, and reawaken when the next delivery is received</text>
     </svg>
-    <figcaption><b>Approval authorises; the scan moves.</b> Step 4 reserves twelve litres so no second counter can be promised them, and issues a ticket for twelve &mdash; never for the twenty that were asked. Between the two scans in step 5 the stock is in transit, owned by neither location, which is how a shortfall on arrival becomes a visible discrepancy instead of a silent loss.</figcaption>
+    <figcaption><b>Approval authorises; the handover moves.</b> Step 4 reserves twelve litres so no second counter can be promised them, and issues a ticket for twelve &mdash; never for the twenty that were asked. Between the handover and the receipt in step 5 the stock is in transit, owned by neither location, which is how a shortfall on arrival becomes a visible discrepancy instead of a silent loss. The collector reads the ticket's six-digit code aloud; the store keeper types it in, and only then does anything move &mdash; the code reaches the collecting counter's own screen while the ticket is open and nobody else's, not even the store keeper who issued it.</figcaption>
   </figure>
 </section>
 
@@ -595,7 +544,7 @@ footer p{max-width:74ch;margin:0 0 8px}
   <p class="sec-sub">Four in the afternoon, the store is shut, and the restaurant two floors down has what the coffee shop needs. This is the movement most likely to happen off the books unless the recorded path is the easy one.</p>
 
   <figure>
-    <svg viewBox="0 0 900 300" role="img" aria-label="Swimlane flow of a lateral transfer across three lanes: requesting counter, giving outlet manager and system. The counter selects a peer outlet as the source, the system routes the request to that outlet's manager rather than the store, the manager approves from their own stock, a ticket is issued, and the two counters scan out and in while the central store is notified.">
+    <svg viewBox="0 0 900 300" role="img" aria-label="Swimlane flow of a shop-to-shop ask across three lanes: requesting counter, giving counter and system. The counter picks a peer outlet and asks it directly, the system routes the ask to that outlet's own counter rather than to a manager or the store, the counter being asked grants what it can spare, a ticket is issued, and handover moves it on the collector's own six-digit code.">
       <defs><marker id="b3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
         <path d="M0 0 L10 5 L0 10 z" fill="currentColor"/></marker></defs>
       <rect class="lane"  x="130" y="40"  width="760" height="66" rx="5"/>
@@ -611,11 +560,11 @@ footer p{max-width:74ch;margin:0 0 8px}
 
       <rect class="nb" x="268" y="198" width="112" height="46" rx="6"/>
       <circle class="num-b" cx="278" cy="208" r="8"/><text class="num-t" x="278" y="211.5" text-anchor="middle">2</text>
-      <text class="t2" x="324" y="224" text-anchor="middle">Routes to that</text><text class="t2" x="324" y="237" text-anchor="middle">outlet's manager</text>
+      <text class="t2" x="324" y="224" text-anchor="middle">Routes to that</text><text class="t2" x="324" y="237" text-anchor="middle">outlet's own counter</text>
 
       <rect class="nk" x="394" y="124" width="112" height="46" rx="6"/>
       <circle class="num-b" cx="404" cy="134" r="8"/><text class="num-t" x="404" y="137.5" text-anchor="middle">3</text>
-      <text class="t2" x="450" y="150" text-anchor="middle">Manager grants</text><text class="t2" x="450" y="163" text-anchor="middle">6 of their 14 L</text>
+      <text class="t2" x="450" y="150" text-anchor="middle">Counter grants</text><text class="t2" x="450" y="163" text-anchor="middle">6 of their 14 L</text>
 
       <rect class="nb" x="520" y="198" width="112" height="46" rx="6"/>
       <circle class="num-b" cx="530" cy="208" r="8"/><text class="num-t" x="530" y="211.5" text-anchor="middle">4</text>
@@ -623,11 +572,11 @@ footer p{max-width:74ch;margin:0 0 8px}
 
       <rect class="nk" x="646" y="124" width="112" height="46" rx="6"/>
       <circle class="num-b" cx="656" cy="134" r="8"/><text class="num-t" x="656" y="137.5" text-anchor="middle">5</text>
-      <text class="t2" x="702" y="150" text-anchor="middle">Scan out</text><text class="t2" x="702" y="163" text-anchor="middle">at Floor 1</text>
+      <text class="t2" x="702" y="150" text-anchor="middle">Code read aloud,</text><text class="t2" x="702" y="163" text-anchor="middle">typed at Floor 1</text>
 
       <rect class="nk" x="772" y="50" width="112" height="46" rx="6"/>
       <circle class="num-b" cx="782" cy="60" r="8"/><text class="num-t" x="782" y="63.5" text-anchor="middle">6</text>
-      <text class="t2" x="828" y="76" text-anchor="middle">Scan in</text><text class="t2" x="828" y="89" text-anchor="middle">at Floor 3</text>
+      <text class="t2" x="828" y="76" text-anchor="middle">Confirmed</text><text class="t2" x="828" y="89" text-anchor="middle">at Floor 3</text>
 
       <path class="ln" d="M254 73 L261 73 L261 221 L262 221" marker-end="url(#b3)"/>
       <path class="ln" d="M380 221 L387 221 L387 147 L388 147" marker-end="url(#b3)"/>
@@ -635,12 +584,12 @@ footer p{max-width:74ch;margin:0 0 8px}
       <path class="ln" d="M632 221 L639 221 L639 147 L640 147" marker-end="url(#b3)"/>
       <path class="ln" d="M758 147 L765 147 L765 73 L766 73" marker-end="url(#b3)"/>
 
-      <text class="tk" x="450" y="278" text-anchor="middle">the store keeper never approves this &mdash; they are only told it happened</text>
+      <text class="tk" x="450" y="278" text-anchor="middle">neither the store keeper nor the outlet manager decides this &mdash; the shop being asked does, and the manager only sees it happen</text>
     </svg>
-    <figcaption><b>The giving outlet holds the consent.</b> Central store approval would be meaningless here because the store no longer owns the stock; the manager being asked to give up six litres is the one with something to lose. The store is notified so the movement still lands in a single ledger rather than becoming a private arrangement between two counters &mdash; which is exactly what happens today with a phone call.</figcaption>
+    <figcaption><b>The giving outlet holds the consent.</b> Central store approval would be meaningless here because the store no longer owns the stock, and the manager who supervises both floors is not the one asked either &mdash; the counter being asked to give up six litres is the one with something to lose, and <code>answerShopAsk</code> is scoped to that counter's own outlet, not to the manager who oversees it. The store is notified so the movement still lands in a single ledger rather than becoming a private arrangement between two counters &mdash; which is exactly what happens today with a phone call.</figcaption>
   </figure>
 
-  <div class="note"><strong>Exchange is the same document, both ways at once</strong>When two outlets swap &mdash; four litres of milk one way, two kilos of beans the other &mdash; both legs post in a single transaction. Two independent transfers would leave a window where one outlet has given stock away and not yet received anything, and if the second half is forgotten the books stay wrong with nobody chasing it.</div>
+  <div class="note"><strong>Not built: a same-transaction exchange</strong>Two outlets swapping stock &mdash; milk one way, beans the other &mdash; as a single two-legged document was proposed and not built. Today that is two separate asks, one each way; nothing enforces that the second half actually happens, which is a real gap this note is naming rather than hiding.</div>
 </section>
 
 <!-- 07 -->
@@ -671,7 +620,7 @@ footer p{max-width:74ch;margin:0 0 8px}
 
       <rect class="nb" x="394" y="124" width="112" height="46" rx="6"/>
       <circle class="num-b" cx="404" cy="134" r="8"/><text class="num-t" x="404" y="137.5" text-anchor="middle">3</text>
-      <text class="t2" x="450" y="150" text-anchor="middle">Issues raw on</text><text class="t2" x="450" y="163" text-anchor="middle">a ticket, FEFO</text>
+      <text class="t2" x="450" y="150" text-anchor="middle">Issues raw on</text><text class="t2" x="450" y="163" text-anchor="middle">a ticket, coded</text>
 
       <rect class="nk" x="520" y="50" width="112" height="46" rx="6"/>
       <circle class="num-b" cx="530" cy="60" r="8"/><text class="num-t" x="530" y="63.5" text-anchor="middle">4</text>
@@ -691,20 +640,22 @@ footer p{max-width:74ch;margin:0 0 8px}
       <path class="lnk" d="M632 73 L639 73 L639 221 L640 221" marker-end="url(#b4k)"/>
       <path class="lnk" d="M758 221 L765 221 L765 73 L766 73" marker-end="url(#b4k)"/>
 
-      <text class="tk" x="450" y="278" text-anchor="middle">yield 116 of 120 planned &mdash; &minus;3.3%, reason code required before the batch will close</text>
+      <text class="tk" x="450" y="278" text-anchor="middle">yield 116 of 120 planned &mdash; the batch row (started 120, made 116) is the only record of the &minus;3.3%; no reason code is asked for</text>
       <text class="tl" x="450" y="300" text-anchor="middle">unit cost &#8377;17.79 &rarr; sells at &#8377;25 on list A, &#8377;30 on list B &rarr; margin 28.8% and 40.7%</text>
     </svg>
-    <figcaption><b>Step 5 is the only place in the system where stock changes species.</b> Maida, oil, filling and butter leave; veg puffs arrive, carrying a batch number, a best-before twelve hours out, and a computed unit cost that every price decision downstream leans on. The variance between what the recipe said and what was actually used is captured here and nowhere else &mdash; skip it, and theoretical-versus-actual can never be measured.</figcaption>
+    <figcaption><b>Step 5 is the only place in the system where stock changes species, and it is one transaction.</b> Maida, oil, filling and butter leave against what was <em>started</em>; veg puffs arrive for what was <em>made</em>, carrying a batch number, a best-before stamped from the recipe's shelf-life hours, and a unit cost computed at read time from the recipe plus overhead &mdash; never stored, so a later change to an ingredient's price re-prices every past batch's display. A short cover refuses the whole batch, naming the ingredient, before step 5 is ever reached.</figcaption>
   </figure>
+
+  <div class="note"><strong>Step 6's own ticket, and its code</strong>Pushing finished goods out to an outlet (or dispatching a whole production order) raises a ticket exactly like step 3's, with its own six-digit code known only to the receiving outlet while it is open, and the same labelled supervisor override for an absent collector, open to the store keeper and the kitchen in-charge. (Landed in the Phase 6 fix wave &mdash; before it, every kitchen handover ran silently as the override, with no code and no choice.)</div>
 </section>
 
 <!-- 08 -->
 <section id="buy">
   <div class="sec-head"><span class="sec-num">08</span><h2>Journey: buying what ran out</h2></div>
-  <p class="sec-sub">Four roles, an external party, and the longest chain in the system. Its distinguishing feature is that it starts with a computation, not with someone's opinion.</p>
+  <p class="sec-sub">Two roles, an external party, and the longest chain in the system. Its distinguishing feature is that it starts with a decision the store keeper makes, not a computation nobody can override.</p>
 
   <figure>
-    <svg viewBox="0 0 900 380" role="img" aria-label="Swimlane flow of procurement across four lanes: store keeper, procurement, finance and vendor. The store reviews a computed requirement and submits a purchase requisition, procurement sources and raises a purchase order, finance approves it by value slab, the vendor delivers, the store posts a goods receipt with batch and expiry which reawakens back-orders, and finance completes the three-way match.">
+    <svg viewBox="0 0 900 380" role="img" aria-label="Swimlane flow of procurement across three lanes: store keeper, procurement and vendor. The store reviews what it needs and sends a requisition, procurement sources and raises a purchase order with nobody else's approval standing behind it, the vendor delivers, and the store posts a goods receipt with batch and expiry that reawakens back-orders on the requisition.">
       <defs><marker id="b5" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
         <path d="M0 0 L10 5 L0 10 z" fill="currentColor"/></marker>
         <marker id="b5k" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
@@ -712,45 +663,40 @@ footer p{max-width:74ch;margin:0 0 8px}
       <rect class="lane"  x="130" y="40"  width="760" height="60" rx="5"/>
       <rect class="lane2" x="130" y="108" width="760" height="60" rx="5"/>
       <rect class="lane"  x="130" y="176" width="760" height="60" rx="5"/>
-      <rect class="lane2" x="130" y="244" width="760" height="60" rx="5"/>
+      <rect class="lane2" x="130" y="244" width="760" height="60" rx="5" style="opacity:.35"/>
       <text class="t1" x="10" y="76">Store</text>
       <text class="t1" x="10" y="144">Procurement</text>
-      <text class="t1" x="10" y="212">Finance</text>
-      <text class="t1" x="10" y="280">Vendor</text>
+      <text class="t1" x="10" y="212">Vendor</text>
+      <text class="t1" x="10" y="280" style="opacity:.5">not built</text>
 
       <rect class="nb" x="142" y="47" width="112" height="46" rx="6"/>
       <circle class="num-b" cx="152" cy="57" r="8"/><text class="num-t" x="152" y="60.5" text-anchor="middle">1</text>
-      <text class="t2" x="198" y="73" text-anchor="middle">Reviews computed</text><text class="t2" x="198" y="86" text-anchor="middle">requirement &rarr; PR</text>
+      <text class="t2" x="198" y="73" text-anchor="middle">Reviews what is</text><text class="t2" x="198" y="86" text-anchor="middle">needed &rarr; requisition</text>
 
       <rect class="nb" x="268" y="115" width="112" height="46" rx="6"/>
       <circle class="num-b" cx="278" cy="125" r="8"/><text class="num-t" x="278" y="128.5" text-anchor="middle">2</text>
-      <text class="t2" x="324" y="141" text-anchor="middle">Sources: contract</text><text class="t2" x="324" y="154" text-anchor="middle">or three quotes</text>
+      <text class="t2" x="324" y="141" text-anchor="middle">Sources: contract</text><text class="t2" x="324" y="154" text-anchor="middle">or standard cost</text>
 
-      <rect class="nb" x="394" y="183" width="112" height="46" rx="6"/>
-      <circle class="num-b" cx="404" cy="193" r="8"/><text class="num-t" x="404" y="196.5" text-anchor="middle">3</text>
-      <text class="t2" x="450" y="209" text-anchor="middle">Approves by slab</text><text class="t2" x="450" y="222" text-anchor="middle">&mdash; not the raiser</text>
+      <rect class="nb" x="394" y="115" width="112" height="46" rx="6"/>
+      <circle class="num-b" cx="404" cy="125" r="8"/><text class="num-t" x="404" y="128.5" text-anchor="middle">3</text>
+      <text class="t2" x="450" y="141" text-anchor="middle">Sends order &mdash;</text><text class="t2" x="450" y="154" text-anchor="middle">flag only, no approver</text>
 
-      <rect class="nb" x="520" y="251" width="112" height="46" rx="6"/>
-      <circle class="num-b" cx="530" cy="261" r="8"/><text class="num-t" x="530" y="264.5" text-anchor="middle">4</text>
-      <text class="t2" x="576" y="277" text-anchor="middle">Delivers against</text><text class="t2" x="576" y="290" text-anchor="middle">the order</text>
+      <rect class="nb" x="520" y="183" width="112" height="46" rx="6"/>
+      <circle class="num-b" cx="530" cy="193" r="8"/><text class="num-t" x="530" y="196.5" text-anchor="middle">4</text>
+      <text class="t2" x="576" y="209" text-anchor="middle">Delivers against</text><text class="t2" x="576" y="222" text-anchor="middle">the order</text>
 
       <rect class="nk" x="646" y="47" width="112" height="46" rx="6"/>
       <circle class="num-b" cx="656" cy="57" r="8"/><text class="num-t" x="656" y="60.5" text-anchor="middle">5</text>
       <text class="t2" x="702" y="73" text-anchor="middle">GRN: batch, expiry,</text><text class="t2" x="702" y="86" text-anchor="middle">MRP, quality check</text>
 
-      <rect class="nk" x="772" y="183" width="112" height="46" rx="6"/>
-      <circle class="num-b" cx="782" cy="193" r="8"/><text class="num-t" x="782" y="196.5" text-anchor="middle">6</text>
-      <text class="t2" x="828" y="209" text-anchor="middle">3-way match,</text><text class="t2" x="828" y="222" text-anchor="middle">payment released</text>
-
       <path class="ln" d="M254 70 L261 70 L261 138 L262 138" marker-end="url(#b5)"/>
-      <path class="ln" d="M380 138 L387 138 L387 206 L388 206" marker-end="url(#b5)"/>
-      <path class="ln" d="M506 206 L513 206 L513 274 L514 274" marker-end="url(#b5)"/>
-      <path class="lnk" d="M632 274 L639 274 L639 70 L640 70" marker-end="url(#b5k)"/>
-      <path class="ln" d="M758 70 L765 70 L765 206 L766 206" marker-end="url(#b5)"/>
+      <path class="ln" d="M380 138 L387 138 L387 138 L388 138" marker-end="url(#b5)"/>
+      <path class="ln" d="M506 138 L513 138 L513 206 L514 206" marker-end="url(#b5)"/>
+      <path class="lnk" d="M632 206 L639 206 L639 70 L640 70" marker-end="url(#b5k)"/>
 
       <path class="lnd" d="M702 93 L702 330 L198 330 L198 100" marker-end="url(#b5)"/>
       <text class="tk" x="450" y="326" text-anchor="middle">back-orders on this item reawaken &mdash; the counter is told its request can now be filled</text>
-      <text class="tl" x="450" y="352" text-anchor="middle">up to &#8377;25,000 Purchase Manager &middot; &#8377;25,000&ndash;1,00,000 Finance &middot; above that the Director</text>
+      <text class="tl" x="450" y="352" text-anchor="middle"><code>PO_APPROVAL_LIMIT</code> (&#8377;25,000) stamps a badge on the buyer's own list &mdash; nothing routes anywhere, and no invoice-matching step exists</text>
     </svg>
     <figcaption><b>The dashed return path is the step most systems miss.</b> A request that could not be filled parks as a back-order linked to the requisition, the requisition to the order, and the order to the receipt. When goods land, the counter that asked three days ago is told automatically. Without that chain, unfulfilled requests die quietly and every shortage gets requested three separate times.</figcaption>
   </figure>
@@ -758,8 +704,8 @@ footer p{max-width:74ch;margin:0 0 8px}
 
 <!-- 09 -->
 <section id="close">
-  <div class="sec-head"><span class="sec-num">09</span><h2>Journey: closing the day</h2></div>
-  <p class="sec-sub">The stage most systems skip, and the one that makes the whole ledger true. At close of business the counter must be emptied on screen the same way it is emptied physically.</p>
+  <div class="sec-head"><span class="sec-num">09</span><h2>Journey: closing the day <em style="font-weight:400;color:var(--ink-3)">&mdash; not built</em></h2></div>
+  <p class="sec-sub">The stage most systems skip, and the one flow chart v1 imagined this way. <strong>None of it exists.</strong> There is no shift, no wastage entry, no cash-variance workflow, no bill cancellation or credit note, and no day lock &mdash; a session is the signed-in person, not a terminal bound to a drawer for a period that closes (spec &sect;3, out of scope; <code>docs/ua-spec.html</code> &sect;09 records the same decision by name). Read the rest of this walk as the shape a future release would take, not a description of the app.</p>
 
   <div class="steps">
     <div class="st"><div class="who">Counter Operator<span>21:30 · POS</span></div>
@@ -787,35 +733,34 @@ footer p{max-width:74ch;margin:0 0 8px}
 <!-- 10 -->
 <section id="matrix">
   <div class="sec-head"><span class="sec-num">10</span><h2>Screen &times; role matrix</h2></div>
-  <p class="sec-sub">Which of the twenty modules each role can reach. This is not cosmetic &mdash; a module a role cannot use is absent from their sidebar entirely, and a direct link to it is refused and logged.</p>
+  <p class="sec-sub">Generated from <code>UI/src/nav.ts</code> &mdash; five roles, not eight, and every row below is a real sidebar entry. A module a role cannot reach is absent from its sidebar entirely, and a direct link to it lands back home with a toast (spec &sect;5.1, UA-01).</p>
   <div class="tbl-wrap"><table>
-    <thead><tr><th style="width:20%">Module</th><th class="c">Counter</th><th class="c">Outlet Mgr</th><th class="c">Store</th>
-      <th class="c">Production</th><th class="c">Purchase</th><th class="c">Finance</th><th class="c">Admin</th><th class="c">Auditor</th></tr></thead>
+    <thead><tr><th style="width:20%">Screen</th><th class="c">Counter</th><th class="c">Outlet Mgr</th><th class="c">Store</th>
+      <th class="c">Kitchen</th><th class="c">Procurement</th></tr></thead>
     <tbody>
-      <tr><th scope="row">Dashboard</th><td class="c"><span class="yes">●</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="ro">◐</span></td></tr>
-      <tr><th scope="row">Point of Sale</th><td class="c"><span class="yes">●</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="no">○</span></td></tr>
-      <tr><th scope="row">Bills</th><td class="c"><span class="yes">●</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="ro">◐</span></td></tr>
-      <tr><th scope="row">Items</th><td class="c"><span class="ro">◐</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="ro">◐</span></td></tr>
-      <tr><th scope="row">Stock on Hand</th><td class="c"><span class="ro">◐</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="ro">◐</span></td></tr>
-      <tr><th scope="row">Batches &amp; Expiry</th><td class="c"><span class="no">○</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="ro">◐</span></td></tr>
-      <tr><th scope="row">Adjustments</th><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="no">○</span></td></tr>
-      <tr><th scope="row">Locations</th><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="no">○</span></td></tr>
-      <tr><th scope="row">Price Lists</th><td class="c"><span class="no">○</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="no">○</span></td></tr>
-      <tr><th scope="row">Stock Requests</th><td class="c"><span class="yes">●</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="no">○</span></td></tr>
-      <tr><th scope="row">Approvals</th><td class="c"><span class="no">○</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="no">○</span></td></tr>
-      <tr><th scope="row">Pick Tickets</th><td class="c"><span class="yes">●</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="no">○</span></td></tr>
-      <tr><th scope="row">Recipes</th><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="no">○</span></td></tr>
-      <tr><th scope="row">Production</th><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="no">○</span></td></tr>
-      <tr><th scope="row">Requirement</th><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="no">○</span></td></tr>
-      <tr><th scope="row">Purchase Orders</th><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="no">○</span></td></tr>
-      <tr><th scope="row">Goods Receipt</th><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="ro">◐</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="no">○</span></td></tr>
-      <tr><th scope="row">Vendors</th><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="no">○</span></td></tr>
-      <tr><th scope="row">Reports</th><td class="c"><span class="no">○</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="yes">●</span></td></tr>
-      <tr><th scope="row">Users &amp; Roles</th><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="no">○</span></td></tr>
-      <tr><th scope="row">Settings</th><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="no">○</span></td></tr>
+      <tr><th scope="row">Dashboard</th><td class="c"><span class="yes">●</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="yes">●</span></td></tr>
+      <tr><th scope="row">Point of Sale</th><td class="c"><span class="yes">●</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td></tr>
+      <tr><th scope="row">Bills</th><td class="c"><span class="yes">●</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td></tr>
+      <tr><th scope="row">Stock in Hand / Items &amp; Stock / Kitchen Stock</th><td class="c"><span class="yes">●</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="no">○</span></td></tr>
+      <tr><th scope="row">Stock Requests</th><td class="c"><span class="yes">●</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="no">○</span></td></tr>
+      <tr><th scope="row">Pick Tickets</th><td class="c"><span class="yes">●</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="no">○</span></td></tr>
+      <tr><th scope="row">Approvals</th><td class="c"><span class="no">○</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td></tr>
+      <tr><th scope="row">Price Lists</th><td class="c"><span class="no">○</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td></tr>
+      <tr><th scope="row">Product On/Off</th><td class="c"><span class="no">○</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="no">○</span></td></tr>
+      <tr><th scope="row">Issue Desk</th><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td></tr>
+      <tr><th scope="row">Requisitions</th><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="yes">●</span></td></tr>
+      <tr><th scope="row">Rate Contracts</th><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td></tr>
+      <tr><th scope="row">Reports</th><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td></tr>
+      <tr><th scope="row">Kitchen Orders / Make &amp; Distribute</th><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="no">○</span></td></tr>
+      <tr><th scope="row">Procurement List</th><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="yes">●</span></td></tr>
+      <tr><th scope="row">Purchase Orders</th><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="yes">●</span></td></tr>
+      <tr><th scope="row">Inventory / New Products</th><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="yes">●</span></td></tr>
+      <tr><th scope="row">Vendors</th><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="no">○</span></td><td class="c"><span class="yes">●</span></td></tr>
+      <tr><th scope="row">Support</th><td class="c"><span class="yes">●</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="yes">●</span></td></tr>
+      <tr><th scope="row">Settings</th><td class="c"><span class="yes">●</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="yes">●</span></td><td class="c"><span class="yes">●</span></td></tr>
     </tbody>
   </table></div>
-  <p class="cap"><span class="yes">●</span> full access &nbsp;·&nbsp; <span class="ro">◐</span> read only &nbsp;·&nbsp; <span class="no">○</span> not in the sidebar at all. The Purchase Officer's read-only access to Goods Receipt lets them see what arrived without being able to post it.</p>
+  <p class="cap"><span class="yes">●</span> in the sidebar &nbsp;·&nbsp; <span class="no">○</span> not in the sidebar at all &mdash; there is no read-only tier in this build; a screen either belongs to a role or answers 404 to it. Support is every role's own ticket list, not a shared queue &mdash; a role sees only what it raised.</p>
 </section>
 
 <!-- 11 -->
@@ -826,30 +771,27 @@ footer p{max-width:74ch;margin:0 0 8px}
   <h3>Stock request</h3>
   <div class="chain"><span class="s">Draft</span><span class="ar">→</span><span class="s">Submitted</span><span class="ar">→</span>
     <span class="s">Under review</span><span class="ar">→</span><span class="s k">Approved / Partial</span><span class="ar">→</span>
-    <span class="s">Ticket issued</span><span class="ar">→</span><span class="s">Picked</span><span class="ar">→</span>
+    <span class="s">Ticket issued</span><span class="ar">→</span><span class="s">Collected</span><span class="ar">→</span>
     <span class="s">In transit</span><span class="ar">→</span><span class="s">Received</span><span class="ar">→</span><span class="s">Closed</span></div>
-  <div class="prose"><p class="f">Branches: <strong>Rejected</strong> at the decision, which issues no ticket at all. <strong>Part closed</strong> when a partial approval is fully collected but a back-order is still open. A reservation that is never collected <strong>expires</strong> and the stock returns to available.</p></div>
+  <div class="prose"><p class="f">Branches: <strong>Rejected</strong> at the decision, which issues no ticket at all. A trimmed approval's undelivered balance stays open rather than being silently dropped. <strong>As built, a reservation does not expire</strong> &mdash; there is no window and no timer; an uncollected ticket holds its stock until it is handed over or explicitly cancelled, which is the one door back.</p></div>
 
   <h3>Pick ticket</h3>
-  <div class="chain"><span class="s">Issued</span><span class="ar">→</span><span class="s k">Picked &mdash; source debited</span><span class="ar">→</span>
+  <div class="chain"><span class="s">Issued</span><span class="ar">→</span><span class="s k">Collected &mdash; source debited</span><span class="ar">→</span>
     <span class="s">In transit</span><span class="ar">→</span><span class="s k">Received &mdash; destination credited</span><span class="ar">→</span><span class="s">Closed</span></div>
-  <div class="prose"><p class="f">Branches: <strong>Short received</strong> when the quantity scanned in is less than the quantity scanned out, which raises a discrepancy with an owner rather than balancing itself. <strong>Expired</strong> if never collected inside the reservation window. <strong>Cancelled</strong> &mdash; a ticket nobody has collected yet can be withdrawn by the store keeper or the kitchen in-charge, at the location it was issued from; the hold it placed is released and the request or production order behind it goes back to exactly where it stood before the ticket was raised. Once a ticket has been picked, cancelling it is no longer offered &mdash; the stock is already moving, and the way to correct that is a receipt and a movement of its own, not an undo.</p></div>
+  <div class="prose"><p class="f">Branches: <strong>Cancelled</strong> &mdash; a ticket nobody has collected yet can be withdrawn by the store keeper, the kitchen in-charge, or (since Phase 6) the counter that raised a shop-to-shop transfer, at the location it was issued from; the hold it placed is released and the request or production order behind it goes back to exactly where it stood before the ticket was raised, and a withdrawn transfer's shop-ask returns to the other shop's desk. Once a ticket has been handed over, cancelling it is no longer offered &mdash; the stock is already moving, and there is no scanned or expired state: it is handed over on the collector's own six-digit code, typed by the issuing desk, or the labelled supervisor override.</p></div>
   <div class="note"><strong>Every screen watching a document updates itself</strong>The request &rarr; approval &rarr; issue &rarr; handover &rarr; receipt chain above runs on the server, and every open screen holds one live connection to it. The outlet manager does not refresh the approval queue to see a request the counter just raised, and the counter does not refresh to see the store keeper's ticket &mdash; the screen already changed by the time either of them looks.</div>
 
   <h3>Production batch</h3>
-  <div class="chain"><span class="s">Planned</span><span class="ar">→</span><span class="s">Open</span><span class="ar">→</span>
-    <span class="s">Consumption recorded</span><span class="ar">→</span><span class="s k">Closed &mdash; goods created</span><span class="ar">→</span><span class="s">Labelled</span></div>
-  <div class="prose"><p class="f">A batch cannot close with an unexplained consumption or yield variance. Once closed it cannot be edited &mdash; a mistake is corrected by an adjustment against the batch, which keeps the variance history honest.</p></div>
+  <div class="chain"><span class="s">Started</span><span class="ar">→</span><span class="s k">Made &mdash; ingredients off, units on, one transaction</span></div>
+  <div class="prose"><p class="f">A batch is refused whole, before anything moves, if the kitchen cannot cover the recipe at the quantity started &mdash; there is no partial make and no unexplained-variance gate; the batch row itself (started vs. made) is the only record of a shortfall, and nothing edits it after the fact.</p></div>
   <div class="note"><strong>The kitchen's board and its batches run on the server</strong>Accepted &rarr; in kitchen &rarr; ready &rarr; dispatched is the server's own walk, one press at a time, and closing a batch is too: the recipe's ingredients and the finished units are booked in one transaction, so the two can never disagree. A batch that cannot cover its recipe is refused whole, naming the ingredient that is short rather than partially consuming it. And the units that reach the rack are the ones that actually came good &mdash; a batch started at 60 and yielding 58 books 58, not 60, and the difference is what the batch record keeps.</div>
 
   <h3>Purchase order</h3>
-  <div class="chain"><span class="s">Draft</span><span class="ar">→</span><span class="s">Pending approval</span><span class="ar">→</span>
-    <span class="s">Approved</span><span class="ar">→</span><span class="s">Sent to vendor</span><span class="ar">→</span>
-    <span class="s">Partially received</span><span class="ar">→</span><span class="s k">Received</span><span class="ar">→</span>
-    <span class="s">Matched</span><span class="ar">→</span><span class="s">Paid</span></div>
-  <div class="prose"><p class="f">Branches: <strong>Returned for revision</strong> with a reason, <strong>Short closed</strong> when the balance will never arrive, and <strong>Held</strong> when the vendor invoice disagrees with the order or the receipt.</p></div>
+  <div class="chain"><span class="s">Draft</span><span class="ar">→</span><span class="s">Ordered</span><span class="ar">→</span>
+    <span class="s">Partially received</span><span class="ar">→</span><span class="s k">Received</span></div>
+  <div class="prose"><p class="f">Branches: <strong>Cancelled</strong>, only from Draft or Ordered with nothing yet received &mdash; a partly received order cannot be cancelled, only closed short. <strong>Received with a short note</strong> when the balance will never arrive and the buyer closes it short instead of waiting. There is no vendor-invoice matching and no payment status in this build &mdash; &ldquo;Received&rdquo; is where the document's own life ends.</p></div>
 
-  <div class="note"><strong>One rule spans all four</strong>Nothing is ever deleted and no posted quantity is ever edited. A correction is a new document that reverses the old one and carries its identifier. That is what makes the day reconciliation in &sect;09 provable rather than merely hoped for.</div>
+  <div class="note"><strong>One rule spans all four</strong>Nothing is ever deleted and no stock move is ever edited &mdash; <code>stock_moves</code> refuses <code>UPDATE</code> and <code>DELETE</code> at the database level; a correction is a new, reversing move. That is what makes <code>db:rebuild-balances</code> reproduce every balance from the moves alone (<code>docs/ua-spec.html</code> UA-24), which is the actual reconciliation gate, not the day close &sect;09 describes as unbuilt.</div>
 
   <div class="note"><strong>The buying chain runs on the server</strong>The store keeper raises a requisition against the central store; it is the <strong>buyer</strong>, not the store keeper, who decides it &mdash; approving it whole, trimming it line by line, or declining it. An approved line is then picked onto a draft purchase order, sent to the vendor, and received in one or more instalments against a delivery note. Every one of those steps is the server's own, and every open screen watching a requisition or an order updates itself the moment another browser moves it, the same as the request chain above. <strong>A claim comes back the way it went out:</strong> cutting a line, dropping it, cancelling the order, or closing it short with a balance still outstanding all hand the undelivered quantity straight back to the requisition it was picked from, so nothing that was asked for is ever quietly lost between the two documents. A delivery that arrives more than 2% over what was ordered is refused whole, not partially booked &mdash; the store keeper holds it for a purchase decision rather than accepting an over-delivery no one approved. Whatever quality check turns away at the door goes to a <strong>quarantine</strong> shelf that never sells and never issues; there is no screen or endpoint that moves stock back out of it.</div>
 </section>
@@ -865,25 +807,22 @@ footer p{max-width:74ch;margin:0 0 8px}
       <tr><th scope="row">Stock handed over without a ticket</th>
         <td>Source shows stock it no longer has, destination sells what the system says it does not hold. Both counters' figures are wrong and neither knows.</td>
         <td>The ticket, not the approval, is what opens the store room. A supervisor override exists for out-of-hours &mdash; at the store or the kitchen only &mdash; but it skips the collector's six-digit code on a ticket that already exists, not the ticket itself, and it writes one line to the audit trail: "Handed over &mdash; supervisor override".</td></tr>
-      <tr><th scope="row">Receiving scan skipped</th>
+      <tr><th scope="row">Receipt never confirmed</th>
         <td>Quantity sits in transit forever. It belongs to nobody, so nobody chases it.</td>
-        <td>In-transit items over a threshold appear on the store keeper's control screen as <em>stuck</em>, with the ticket, the time and the person who picked it.</td></tr>
+        <td>A stranded hold is found by querying open reservations against tickets not yet received (<code>deploy/RUNBOOK.md</code> &sect;8) &mdash; not a dashboard alert today, a query. There is no expiry: it waits until someone looks, receives it, or cancels it.</td></tr>
       <tr><th scope="row">Production entered after the fact</th>
-        <td>Raw material consumption is guessed at the end of the shift, so variance is meaningless and the unit cost behind every price is fiction.</td>
-        <td>Finished goods cannot exist without a closed batch. Nothing can be issued to an outlet that the kitchen never recorded making.</td></tr>
-      <tr><th scope="row">Wastage rolled forward instead of written off</th>
-        <td>Closing stock is permanently overstated, yesterday's sandwiches never expire, and the production plan is never corrected.</td>
-        <td>Shift close will not complete while short-life stock remains on the counter. The entry is required; only its reason is a choice.</td></tr>
-      <tr><th scope="row">FEFO proposal overridden habitually</th>
-        <td>Old batches sit at the back until they expire, and the expiry write-off is blamed on demand rather than on picking.</td>
-        <td>Every override carries a reason and lands on the issue document. A report ranks overrides by person, which makes the pattern visible without anyone having to accuse anyone.</td></tr>
-      <tr><th scope="row">One login shared across a counter</th>
-        <td>The audit trail names a person who was not there. Cash variance cannot be attributed, so it stops being investigated.</td>
-        <td>Counter access is a PIN bound to an open shift, so signing in is cheap enough that sharing has no benefit. The shift ties operator, terminal and drawer together.</td></tr>
+        <td>Raw material consumption is guessed after the fact, so the unit cost behind every price is fiction.</td>
+        <td>Finished goods cannot exist without a batch, and a batch consumes its ingredients and books its yield in the same transaction it is made in. Nothing can be issued to an outlet that the kitchen never recorded making.</td></tr>
+      <tr><th scope="row"><s>Wastage rolled forward instead of written off</s> &mdash; not built</th>
+        <td colspan="2">There is no shift close and no wastage entry to skip. Unsold short-life stock simply stays on the shelf until it is sold, switched off by hand, or corrected with a hand-written adjustment move.</td></tr>
+      <tr><th scope="row"><s>FEFO proposal overridden habitually</s> &mdash; not built</th>
+        <td colspan="2">There is no batch-wise stock and no FEFO proposal to override &mdash; each item is one flat balance per location. Nothing in this build picks a batch, so nothing can pick the wrong one.</td></tr>
+      <tr><th scope="row"><s>One login shared across a counter</s> &mdash; different problem now</th>
+        <td colspan="2">There is no PIN and no shift to share; a session is one signed-in person's employee id and password. The real risk this build carries instead is a password shared between two people, which the audit trail cannot see either &mdash; a reason to rotate a shared credential the moment it is suspected, not a gap the software closes.</td></tr>
     </tbody>
   </table></div>
 
-  <div class="note cb"><strong>The one that matters most</strong>Of the six, the ticket is the load-bearing one. If stock moves between floors without a document, nothing downstream in this design works &mdash; not the availability calculation, not the reconciliation, not the wastage number, not the requirement run. Everything else in these three documents assumes that every physical movement has a scan behind it. That assumption is worth defending in training more than any feature is worth building.</div>
+  <div class="note cb"><strong>The one that matters most</strong>Of the five, the ticket is the load-bearing one. If stock moves between floors without a document, nothing downstream in this design works &mdash; not the availability calculation, not the reconciliation, not the requirement run. Everything else in this document assumes that every physical movement has a ticket and a code behind it, not a phone call. That assumption is worth defending in training more than any feature is worth building.</div>
 </section>
 
 <footer>
