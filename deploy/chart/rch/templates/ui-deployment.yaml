@@ -20,7 +20,12 @@ spec:
         - name: ui
           image: {{ include "rch.image" (dict "registry" .Values.image.registry "name" .Values.image.ui "tag" .Values.image.tag) }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
-          env: [{ name: API_UPSTREAM, value: http://{{ .Release.Name }}-api:3000 }]
+          # The upstream is the API Service's full cluster name, never the short one: nginx's `resolver`
+          # directive asks CoreDNS directly and ignores /etc/resolv.conf's search domains, so a short
+          # `rch-api` never resolves inside a pod and every /api request answers 502. Docker Compose's
+          # embedded DNS resolves short names, which is why the image's own default is short and this
+          # bug was invisible until the smoke drove a browser through the cluster.
+          env: [{ name: API_UPSTREAM, value: http://{{ .Release.Name }}-api.{{ .Release.Namespace }}.svc.cluster.local:3000 }]
           ports: [{ name: http, containerPort: 8080 }]
           readinessProbe: { httpGet: { path: /healthz, port: http }, periodSeconds: 5 }
           livenessProbe: { httpGet: { path: /healthz, port: http }, periodSeconds: 10 }

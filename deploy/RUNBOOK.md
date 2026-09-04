@@ -631,6 +631,13 @@ looking for one here.
      / <allocated_storage_bytes> < 0.2
    ```
 
+**Every `/api` request from the browser answers 502, the API pod logs only probes.** The UI's
+nginx proxies `/api` to `API_UPSTREAM`, and nginx's `resolver` directive ignores `/etc/resolv.conf`'s
+search domains, so the value must be the API Service's full cluster name —
+`http://<release>-api.<namespace>.svc.cluster.local:3000`, which the chart sets. A short name
+(`http://rch-api:3000`, the image's Compose-only default) resolves under Docker's embedded DNS and
+never inside a pod. `kubectl exec deploy/<release>-ui -- printenv API_UPSTREAM` shows what it got.
+
 ## 10. Server-sent events (SSE)
 
 `GET /events` (Phase 3) is how a browser hears about writes made elsewhere — an approval

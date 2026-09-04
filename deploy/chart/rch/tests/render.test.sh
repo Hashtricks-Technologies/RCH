@@ -122,4 +122,10 @@ grep -q 'alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:y' <<<"$out_stag
 # api container reads it — a rendered pod without it is one silently back on the code's default.
 grep -q 'name: DB_POOL_MAX' <<<"$out"
 
+# The UI's nginx proxies /api to the API Service by its FULL cluster name (nginx's resolver
+# ignores search domains; a short name 502s inside the cluster — found by the Phase 6 smoke).
+grep -q 'API_UPSTREAM' <<<"$out" || { echo "ui deployment lost API_UPSTREAM"; exit 1; }
+grep -q 'value: http://rch-api.default.svc.cluster.local:3000' <<<"$out" || { echo "API_UPSTREAM must be the API Service's FQDN (<release>-api.<namespace>.svc.cluster.local)"; exit 1; }
+refute grep -qE 'API_UPSTREAM, value: http://rch-api:3000' <<<"$out"
+
 echo "chart renders"
