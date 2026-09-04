@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { routes } from "@rch/contract";
 import * as FX from "@rch/contract/fixtures";
+import { bestBeforeAt, bestBeforeText } from "@rch/domain";
 import { ApiError, call } from "../api/client";
 import { getAccessToken, onSessionLost, setAccessToken } from "../api/session";
 import { refetch } from "../api/refetch";
@@ -16,7 +17,7 @@ import type {
   Requisition, StockRequest, Tender, Ticket, User, Vendor,
 } from "../types";
 import { basePrices, qty, resv } from "../lib/selectors";
-import { bestBefore, fq, now, U } from "../lib/fmt";
+import { fq, now, U } from "../lib/fmt";
 import { applyTheme, nextTheme, readStoredTheme, storeTheme, type ThemePref } from "../lib/theme";
 import { createProcurementSlice, type ProcurementSlice } from "./procurement";
 import { createOpsSlice, type OpsSlice } from "./ops";
@@ -415,7 +416,8 @@ export const useApp = create<AppState>((set, get) => ({
     });
     stock.kitchen[it] = Math.round(((stock.kitchen[it] ?? 0) + made) * 1000) / 1000;
     const id = "BAT-20260826-" + String(s.seq.bat + 1).padStart(2, "0");
-    const bb = bestBefore(new Date(), IT[it].sl ?? 8);
+    const at = new Date();
+    const bb = bestBeforeText(bestBeforeAt(at, IT[it].sl), at);
     set({
       stock, seq: { ...s.seq, bat: s.seq.bat + 1 },
       batch: [{ id, it, qty: n, made, at: now(), bb, note }, ...s.batch],
