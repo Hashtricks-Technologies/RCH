@@ -1,12 +1,12 @@
 import type { z } from "zod";
 import { BILL_DAYS } from "@rch/contract";
-import type { Bill, ShopAsk, SnapshotSchema, StockRequest, StockResponseSchema, Ticket } from "@rch/contract";
+import type { Batch, Bill, ProdOrder, ShopAsk, SnapshotSchema, StockRequest, StockResponseSchema, Ticket } from "@rch/contract";
 import type { Db } from "../../db/client.js";
 import { NotFoundError } from "../../lib/errors.js";
 import { toWireUser } from "../../lib/wire.js";
 import type { AccessClaims } from "../../plugins/auth.js";
 import { snapshotRepo } from "./repo.js";
-import { scope, scopeBills, scopeRequests, scopeShopAsks, scopeStock, scopeTickets } from "./scope.js";
+import { scope, scopeBatches, scopeBills, scopeProdOrders, scopeRequests, scopeShopAsks, scopeStock, scopeTickets } from "./scope.js";
 import * as M from "./readers/master.js";
 import * as S from "./readers/stock.js";
 import * as D from "./readers/documents.js";
@@ -45,5 +45,9 @@ export function createSnapshotService(db: Db) {
     async requests(claims: AccessClaims): Promise<StockRequest[]> { return scopeRequests(await D.readRequests(db), claims); },
     async tickets(claims: AccessClaims): Promise<Ticket[]> { return scopeTickets(await D.readTickets(db), claims); },
     async shopAsks(claims: AccessClaims): Promise<ShopAsk[]> { return scopeShopAsks(await D.readShopAsks(db), claims); },
+    /** The kitchen's board on its own — what a status change naming "pord" refetches. */
+    async prodOrders(claims: AccessClaims): Promise<ProdOrder[]> { return scopeProdOrders(await D.readProdOrders(db), claims); },
+    /** The batch log on its own — what a make naming "batch" refetches. */
+    async batches(claims: AccessClaims): Promise<Batch[]> { return scopeBatches(await D.readBatches(db), claims); },
   };
 }

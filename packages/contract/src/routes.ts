@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { Role } from "./types.js";
 import { OkResponseSchema } from "./schemas/common.js";
 import { AuthResponseSchema, ChangePasswordBodySchema, LoginBodySchema, MeResponseSchema, PatchMeBodySchema } from "./schemas/auth.js";
-import { BILL_DAYS, BillsResponseSchema, ItemsResponseSchema, LocationsResponseSchema, MenusResponseSchema, PricesResponseSchema, RecipesResponseSchema, RequestsResponseSchema, ShopAsksResponseSchema, SnapshotSchema, StockResponseSchema, TicketsResponseSchema } from "./schemas/snapshot.js";
+import { BatchesResponseSchema, BILL_DAYS, BillsResponseSchema, ItemsResponseSchema, LocationsResponseSchema, MenusResponseSchema, PricesResponseSchema, ProdOrdersResponseSchema, RecipesResponseSchema, RequestsResponseSchema, ShopAsksResponseSchema, SnapshotSchema, StockResponseSchema, TicketsResponseSchema } from "./schemas/snapshot.js";
 import { BatchSchema, BillSchema, ProdOrderSchema, ShopAskSchema, StockRequestSchema, TicketSchema } from "./schemas/documents.js";
 import { AnswerShopAskBodySchema, ApproveRequestBodySchema, ApprovalResultSchema, CancelTicketBodySchema, CreateRequestBodySchema, DeclineShopAskBodySchema, DispatchResultSchema, DistributeBodySchema, DocIdParamsSchema, HandoverBodySchema, IssueResultSchema, MakeBatchBodySchema, MenuItemBodySchema, MenuItemParamsSchema, MenuLocParamsSchema, MenuResultSchema, PayBodySchema, PriceResultSchema, RejectRequestBodySchema, SavePriceBodySchema, SavePriceParamsSchema, SetOrderStatusBodySchema, ShopAskBodySchema, ShopAskSentResultSchema, ToggleAvailBodySchema, ToggleResultSchema, TransferBodySchema, writeResponse } from "./schemas/writes.js";
 
@@ -64,13 +64,17 @@ export const routes = {
   // ticket's `from` is what draws that line, which also puts a shop transfer's own ticket out
   // of reach of both (its `from` is an outlet). Phase 6 gives the counter that door.
   cancelTicket:   defineRoute({ method: "POST", path: "/tickets/:id/cancel",     access: ["store", "prod"],  params: DocIdParamsSchema, body: CancelTicketBodySchema,   response: writeResponse(TicketSchema) }),
-  // The three movement collections, each on its own, so a write that names "req", "tkt" or
-  // "shopAsks" in `changed` refetches that slice and not the whole snapshot. `ticketsList`
-  // rather than `tickets`, because `tickets` is the support-ticket collection and will be the
-  // Phase 6 route name — two manifest keys must not collide.
+  // The five movement collections, each on its own, so a write that names "req", "tkt",
+  // "shopAsks", "pord" or "batch" in `changed` refetches that slice and not the whole snapshot.
+  // `ticketsList` rather than `tickets`, because `tickets` is the support-ticket collection and
+  // will be the Phase 6 route name — two manifest keys must not collide.
   requests:    defineRoute({ method: "GET", path: "/requests",   access: "any", response: RequestsResponseSchema }),
   ticketsList: defineRoute({ method: "GET", path: "/tickets",    access: "any", response: TicketsResponseSchema }),
   shopAsks:    defineRoute({ method: "GET", path: "/shop-asks",  access: "any", response: ShopAsksResponseSchema }),
+  // The kitchen's two collections, likewise: a make names "batch" and "stock", a status change
+  // names "pord", and each refetches its own slice instead of the whole snapshot (spec §9.1).
+  prodOrders:  defineRoute({ method: "GET", path: "/prod-orders", access: "any", response: ProdOrdersResponseSchema }),
+  batches:     defineRoute({ method: "GET", path: "/batches",     access: "any", response: BatchesResponseSchema }),
 } as const;
 export type RouteName = keyof typeof routes;
 export const API_PREFIX = "/api/v1";

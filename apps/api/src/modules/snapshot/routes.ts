@@ -11,4 +11,6 @@ export default fp(async (app) => {
   mount(app, routes.requests, async (req) => svc.requests(req.user));
   mount(app, routes.ticketsList, async (req) => svc.tickets(req.user));
   mount(app, routes.shopAsks, async (req) => svc.shopAsks(req.user));
+  mount(app, routes.prodOrders, async (req) => svc.prodOrders(req.user));
+  mount(app, routes.batches, async (req) => svc.batches(req.user));
 }, { name: "module:snapshot", dependencies: ["auth", "rbac", "db"] });

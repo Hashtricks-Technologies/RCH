@@ -154,3 +154,38 @@ describe("the document reads the movement chain refetches", () => {
     }
   });
 });
+
+describe("GET /prod-orders and GET /batches", () => {
+  it("hand the kitchen its whole board and its whole batch log", async () => {
+    const snap = (await app.inject({ method: "GET", url: "/api/v1/snapshot", headers: await authHeaders(app, "u4") })).json();
+
+    const orders = await app.inject({ method: "GET", url: "/api/v1/prod-orders", headers: await authHeaders(app, "u4") });
+    expect(orders.statusCode, orders.body).toBe(200);
+    expect(orders.json().map((o: { id: string }) => o.id)).toEqual(snap.pord.map((o: { id: string }) => o.id));
+
+    const batches = await app.inject({ method: "GET", url: "/api/v1/batches", headers: await authHeaders(app, "u4") });
+    expect(batches.statusCode, batches.body).toBe(200);
+    expect(batches.json().map((b: { id: string }) => b.id)).toEqual(snap.batch.map((b: { id: string }) => b.id));
+    expect(batches.json()[0]).toMatchObject({ it: expect.any(String), qty: expect.any(Number), made: expect.any(Number) });
+  });
+
+  it("cut a counter down the same way the snapshot does", async () => {
+    // u1 is the Coffee Shop. The seeded orders were raised by the Snack Kiosk, so the coffee
+    // counter sees none of them — and no counter sees the kitchen's batch log at all.
+    const snap = (await app.inject({ method: "GET", url: "/api/v1/snapshot", headers: await authHeaders(app, "u1") })).json();
+    const orders = (await app.inject({ method: "GET", url: "/api/v1/prod-orders", headers: await authHeaders(app, "u1") })).json();
+    const batches = (await app.inject({ method: "GET", url: "/api/v1/batches", headers: await authHeaders(app, "u1") })).json();
+
+    expect(orders.map((o: { id: string }) => o.id)).toEqual(snap.pord.map((o: { id: string }) => o.id));
+    expect(orders.every((o: { from: string }) => o.from === "coffee")).toBe(true);
+    expect(batches).toEqual([]);
+    expect(snap.batch).toEqual([]);
+  });
+
+  it("shows a counter the orders their own outlet raised", async () => {
+    // u6 is the Snack Kiosk, which raised both seeded orders.
+    const orders = (await app.inject({ method: "GET", url: "/api/v1/prod-orders", headers: await authHeaders(app, "u6") })).json();
+    expect(orders.length).toBeGreaterThan(0);
+    expect(orders.every((o: { from: string }) => o.from === "kiosk")).toBe(true);
+  });
+});
