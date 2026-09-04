@@ -11,34 +11,13 @@ import { resetStore, S, as } from "./fixture";
 
 beforeEach(resetStore);
 
-/* ---------------------------------------------------------------- C1 */
-describe("C1 · production consumes its ingredients", () => {
-  it("draws every recipe ingredient down from the kitchen", () => {
-    as("prod");
-    const maida = qty(S(), "kitchen", "maida");
-    const fill = qty(S(), "kitchen", "fill");
-    S().makeProduct("puff", 10);
-    const r = RCP.puff;
-    expect(qty(S(), "kitchen", "puff")).toBe(34);
-    expect(qty(S(), "kitchen", "maida")).toBeCloseTo(maida - r.l.find(([g]) => g === "maida")![1] * 10, 3);
-    expect(qty(S(), "kitchen", "fill")).toBeCloseTo(fill - r.l.find(([g]) => g === "fill")![1] * 10, 3);
-  });
-
-  it("refuses to make more than the ingredients allow", () => {
-    as("prod");
-    const before = qty(S(), "kitchen", "puff");
-    S().makeProduct("puff", 100000);
-    expect(qty(S(), "kitchen", "puff")).toBe(before);
-    expect(S().toast).toMatch(/short of/i);
-  });
-
-  it("stamps the batch with the quantity actually made", () => {
-    as("prod");
-    S().makeProduct("puff", 10);
-    expect(S().batch[0].qty).toBe(10);
-    expect(S().batch[0].it).toBe("puff");
-  });
-});
+/* ---------------------------------------------------------------- C1
+ * C1 · production consumes its ingredients. The server's since Phase 4:
+ * apps/api/src/modules/production/production.test.ts pins all three halves — "consumes the
+ * recipe for what was started and books only what came good (C1, UA-14)" for the depletion,
+ * "names the ingredient that ran out, and moves nothing (C1)" for the refusal, and the batch
+ * row's `qty`/`made` in the same first case. The store call that reaches that route is in
+ * writes.test.ts, "sends what was started and what came good". */
 
 /* ---------------------------------------------------------------- C2
  * C2 · kitchen tickets move like store tickets. Both halves are the server's since Phase 3:
@@ -240,48 +219,11 @@ describe("M4 · quantities are not summed across units", () => {
   });
 });
 
-/* ------------------------------------------------- UA-14 · yield capture */
-describe("UA-14 · a batch records the yield it actually got", () => {
-  it("consumes ingredients for the quantity started, not the quantity yielded", () => {
-    as("prod");
-    const maida = qty(S(), "kitchen", "maida");
-    S().makeProduct("puff", 60, 58, "Oven tray dropped");
-    const per = RCP.puff.l.find(([g]) => g === "maida")![1];
-    expect(qty(S(), "kitchen", "maida")).toBeCloseTo(maida - per * 60, 3);
-  });
-
-  it("posts the actual yield to finished goods", () => {
-    as("prod");
-    const before = qty(S(), "kitchen", "puff");
-    S().makeProduct("puff", 60, 58, "Oven tray dropped");
-    expect(qty(S(), "kitchen", "puff")).toBe(before + 58);
-  });
-
-  it("records the variance and its reason on the batch", () => {
-    as("prod");
-    S().makeProduct("puff", 60, 58, "Oven tray dropped");
-    const b = S().batch[0];
-    expect(b.qty).toBe(60);
-    expect(b.made).toBe(58);
-    expect(b.note).toBe("Oven tray dropped");
-  });
-
-  it("treats an omitted yield as a full one", () => {
-    as("prod");
-    S().makeProduct("puff", 10);
-    const b = S().batch[0];
-    expect(b.qty).toBe(10);
-    expect(b.made).toBe(10);
-  });
-
-  it("refuses a yield greater than the quantity started", () => {
-    as("prod");
-    const before = qty(S(), "kitchen", "puff");
-    S().makeProduct("puff", 10, 25);
-    expect(qty(S(), "kitchen", "puff")).toBe(before);
-    expect(S().toast).toMatch(/yield/i);
-  });
-});
+/* ------------------------------------------------- UA-14 · yield capture
+ * The server's since Phase 4: production.test.ts's "consumes the recipe for what was started
+ * and books only what came good (C1, UA-14)", "treats an omitted yield as a full one", "takes
+ * a whole tray lost: the ingredients go, nothing reaches the rack" and "refuses a yield
+ * greater than the quantity started, and writes nothing at all". */
 
 /* ------------------------------------------- fq · countable but fractional */
 describe("countable units still show a fraction when there is one", () => {

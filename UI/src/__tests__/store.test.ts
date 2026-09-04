@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { useApp } from "../store";
 import {
-  availOf, canDispatch, canHandOver, canIssueTicket, canReceiveTicket, isReqOpen, priceOf, qty,
+  availOf, canDispatch, canHandOver, canIssueTicket, canReceiveTicket, isReqOpen, priceOf,
 } from "../lib/selectors";
 import { resetStore, S, as } from "./fixture";
 
@@ -80,16 +80,9 @@ describe("what a button may offer is what the server accepts", () => {
 });
 
 describe("production", () => {
-  // Dispatch and handover are the server's from Phase 3 (production.test.ts "puts every item
-  // on one ticket…", tickets.test.ts "moves the stock out on the OTP…"); accepting an order
-  // and making the batch stay in memory until Phase 4.
-  it("accepts an order and makes what it asks for", () => {
-    as("prod");
-    S().setOrderStatus("PRD-2026-029", "Accepted");
-    expect(S().pord.find((o) => o.id === "PRD-2026-029")!.st).toBe("Accepted");
-    const before = qty(S(), "kitchen", "puff");
-    S().makeProduct("puff", 60);
-    expect(qty(S(), "kitchen", "puff")).toBe(before + 60);
-    expect(S().batch[0].qty).toBe(60);
-  });
+  // The whole of the kitchen is the server's from Phase 4: production.test.ts covers the
+  // board ("walks the board a stage at a time and signs each step") and the batch ("consumes
+  // the recipe for what was started and books only what came good"); the two store calls that
+  // reach those routes are in writes.test.ts. Dispatch and handover moved in Phase 3.
+  it.todo("nothing left in memory — see apps/api/src/modules/production/production.test.ts");
 });

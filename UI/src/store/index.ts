@@ -1,12 +1,11 @@
 import { create } from "zustand";
 import { routes } from "@rch/contract";
 import * as FX from "@rch/contract/fixtures";
-import { bestBeforeAt, bestBeforeText } from "@rch/domain";
 import { ApiError, call } from "../api/client";
 import { getAccessToken, onSessionLost, setAccessToken } from "../api/session";
 import { refetch } from "../api/refetch";
 import { applySnapshot } from "../api/wire";
-import { IT, LOC, MENU, RCP } from "../data/master";
+import { LOC, MENU } from "../data/master";
 import {
   DAY_LABELS, seedBatch, seedBills, seedGrn, seedPo, seedPord, seedPrq, seedReq, seedRsv, seedSales,
   seedStock, seedTkt,
@@ -16,13 +15,13 @@ import type {
   Batch, Bill, DraftLine, DrawerState, Grn, LocKey, Payer, PordStatus, ProdOrder, PurchaseOrder,
   Requisition, StockRequest, Tender, Ticket, User, Vendor,
 } from "../types";
-import { basePrices, qty, resv } from "../lib/selectors";
-import { fq, now, U } from "../lib/fmt";
+import { basePrices } from "../lib/selectors";
+import { now } from "../lib/fmt";
 import { applyTheme, nextTheme, readStoredTheme, storeTheme, type ThemePref } from "../lib/theme";
 import { createProcurementSlice, type ProcurementSlice } from "./procurement";
 import { createOpsSlice, type OpsSlice } from "./ops";
 
-interface Seq { req: number; prq: number; po: number; pord: number; bat: number; vn: number }
+interface Seq { prq: number; po: number; vn: number }
 
 export interface AppState extends ProcurementSlice, OpsSlice {
   user: User | null;
@@ -89,12 +88,18 @@ export interface AppState extends ProcurementSlice, OpsSlice {
   handover: (tktId: string, otp?: string) => Promise<void>;
   receiveTicket: (tktId: string) => Promise<void>;
 
+  /** Withdraw a ticket nobody collected: the hold goes back and so does the document behind it.
+   *  Answers `true` only once the server has taken it, so the drawer can keep the reason. */
+  cancelTicket: (tktId: string, reason: string) => Promise<boolean>;
+
   setPrqDraft: (d: DraftLine[]) => void;
   sendRequisition: (note: string) => void;
 
-  setOrderStatus: (id: string, st: PordStatus) => void;
+  setOrderStatus: (id: string, st: PordStatus) => Promise<void>;
   dispatchOrder: (id: string) => Promise<void>;
-  makeProduct: (it: string, started: number, made?: number, note?: string) => void;
+  /** Answers `true` only once the batch is on the server, so the tile can keep the kitchen's
+   *  typing in front of them when it is refused. */
+  makeProduct: (it: string, started: number, made?: number, note?: string) => Promise<boolean>;
   distribute: (it: string, n: number, to: LocKey) => Promise<boolean>;
 
   savePrice: (list: "A" | "B", it: string, price: number) => Promise<void>;
@@ -128,7 +133,7 @@ export const useApp = create<AppState>((set, get) => ({
   vendors: clone(seedVendors),
   sales: clone(seedSales),
   dayLabels: DAY_LABELS,
-  seq: { req: 912, prq: 15, po: 142, pord: 30, bat: 1, vn: 5 },
+  seq: { prq: 15, po: 142, vn: 5 },
   cart: {},
   draft: [],
   prqDraft: [],
@@ -353,6 +358,20 @@ export const useApp = create<AppState>((set, get) => ({
       get().notify(e instanceof ApiError ? e.message : "Could not receive the ticket — check the connection and try again.");
     }
   },
+  /** A ticket withdrawn before anyone collected against it (POST /tickets/:id/cancel). The
+   *  hold comes back and so does the document behind it; nothing moves, because nothing had. */
+  cancelTicket: async (tktId, reason) => {
+    try {
+      const r = await call(routes.cancelTicket, { params: { id: tktId }, body: { reason } });
+      set({ drawer: null });
+      get().notify(r.message);
+      await refetch(r.changed, r.message);
+      return true;
+    } catch (e) {
+      get().notify(e instanceof ApiError ? e.message : "Could not cancel the ticket — check the connection and try again.");
+      return false;
+    }
+  },
 
   setPrqDraft: (prqDraft) => set({ prqDraft }),
   sendRequisition: (note) => {
@@ -369,13 +388,16 @@ export const useApp = create<AppState>((set, get) => ({
     get().notify(`${id} sent to procurement`);
   },
 
-  setOrderStatus: (id, st) => {
-    const s = get();
-    set({
-      pord: s.pord.map((o) => o.id === id
-        ? { ...o, st, hist: [...o.hist, hist(s.user?.n ?? "", st)] } : o),
-    });
-    get().notify(`${id} — ${st.toLowerCase()}`);
+  /** One press on the board (POST /prod-orders/:id/status); the transition table is the
+   *  server's to enforce and `canMoveOrder` is what decides which button was drawn. */
+  setOrderStatus: async (id, st) => {
+    try {
+      const r = await call(routes.setOrderStatus, { params: { id }, body: { st } });
+      get().notify(r.message);
+      await refetch(r.changed, r.message);
+    } catch (e) {
+      get().notify(e instanceof ApiError ? e.message : "Could not move the order on — check the connection and try again.");
+    }
   },
   /** One order, one ticket, all or nothing — all of it the server's, on POST /prod-orders/:id/dispatch. */
   dispatchOrder: async (id) => {
@@ -388,43 +410,24 @@ export const useApp = create<AppState>((set, get) => ({
       get().notify(e instanceof ApiError ? e.message : "Could not dispatch the order — check the connection and try again.");
     }
   },
-  makeProduct: (it, n, yielded, note) => {
-    const s = get();
-    if (!(n > 0)) { get().notify("Enter a quantity to make"); return; }
-    // Ingredients go against what was started; only the good units reach the rack (UA-14).
-    const made = yielded == null ? n : yielded;
-    if (!(made >= 0) || made > n) {
-      get().notify(`Yield cannot exceed the ${n} started`);
-      return;
+  /**
+   * A batch (POST /batches). Every rule that used to live here is the server's: the quantity,
+   * the yield, the kitchen's switch, the recipe, and whether the rack can cover it. The
+   * ingredients come off and the finished units go on inside one transaction there (C1), so
+   * there is nothing left to do here but ask and report.
+   */
+  makeProduct: async (it, started, made, note) => {
+    try {
+      const r = await call(routes.makeBatch, {
+        body: { it, started, ...(made == null ? {} : { made }), ...(note ? { note } : {}) },
+      });
+      get().notify(r.message);
+      await refetch(r.changed, r.message);
+      return true;
+    } catch (e) {
+      get().notify(e instanceof ApiError ? e.message : "Could not record the batch — check the connection and try again.");
+      return false;
     }
-    if (s.ovr["kitchen:" + it]) { get().notify(`${IT[it].n} is switched off in the kitchen`); return; }
-    const r = RCP[it];
-    if (!r) { get().notify(`${IT[it].n} has no recipe — it cannot be produced`); return; }
-    // Production is the bridge between the two ledgers: finished goods only go up
-    // because raw materials went down in the same transaction (C1).
-    const short = r.l.find(([g, need]) => qty(s, "kitchen", g) - resv(s, "kitchen", g) < need * n);
-    if (short) {
-      const [g] = short;
-      get().notify(
-        `Kitchen is short of ${IT[g].n} — ${fq(qty(s, "kitchen", g) - resv(s, "kitchen", g), g)} ${U(g)} left`,
-      );
-      return;
-    }
-    const stock = clone(s.stock);
-    r.l.forEach(([g, need]) => {
-      stock.kitchen[g] = Math.round(((stock.kitchen[g] ?? 0) - need * n) * 1000) / 1000;
-    });
-    stock.kitchen[it] = Math.round(((stock.kitchen[it] ?? 0) + made) * 1000) / 1000;
-    const id = "BAT-20260826-" + String(s.seq.bat + 1).padStart(2, "0");
-    const at = new Date();
-    const bb = bestBeforeText(bestBeforeAt(at, IT[it].sl), at);
-    set({
-      stock, seq: { ...s.seq, bat: s.seq.bat + 1 },
-      batch: [{ id, it, qty: n, made, at: now(), bb, note }, ...s.batch],
-    });
-    get().notify(made === n
-      ? `${id} — ${n} ${IT[it].n} made, best before ${bb}`
-      : `${id} — ${made} of ${n} ${IT[it].n} yielded (${(((made - n) / n) * 100).toFixed(1)}%), best before ${bb}`);
   },
   /** A direct issue out of the kitchen: no request behind it, so the body carries the quantity. */
   distribute: async (it, n, to) => {

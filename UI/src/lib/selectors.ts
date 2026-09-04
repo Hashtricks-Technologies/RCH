@@ -182,3 +182,17 @@ export const canIssueTicket = (st: ReqStatus) => D.canTransition(D.REQUEST_TRANS
 export const canHandOver = (st: TktStatus) => D.canTransition(D.TICKET_TRANSITIONS, st, "Collected");
 export const canReceiveTicket = (st: TktStatus) => D.canTransition(D.TICKET_TRANSITIONS, st, "Received");
 export const canDispatch = (st: PordStatus) => D.canTransition(D.PROD_ORDER_TRANSITIONS, st, "Dispatched");
+
+/**
+ * Whether the board may move an order from one word to another — the same table the server
+ * refuses through, so a button the kitchen can see is a press the server will take.
+ *
+ * A dispatched order is excluded as a *source* even though the table has `Dispatched -> Ready`:
+ * that edge exists so cancelling the ticket a dispatch raised can put the order back, and it is
+ * not a button. `modules/production/service.ts` keeps the same guard on its side.
+ */
+export const canMoveOrder = (st: PordStatus, to: PordStatus) =>
+  st !== "Dispatched" && D.canTransition(D.PROD_ORDER_TRANSITIONS, st, to);
+
+/** Whether a ticket can still be withdrawn: only one nobody has collected against. */
+export const canCancelTicket = (st: TktStatus) => D.canTransition(D.TICKET_TRANSITIONS, st, "Cancelled");

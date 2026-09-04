@@ -1,6 +1,6 @@
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
-import { avail, canDispatch, qty } from "../../lib/selectors";
+import { avail, canDispatch, canMoveOrder, qty } from "../../lib/selectors";
 import { fq, sum, U } from "../../lib/fmt";
 import {
   Alert, Btn, DataTable, Feed, Pill, Section, StatusPill, TableFoot,
@@ -30,12 +30,12 @@ function OrderDrawer({ id }: DrawerProps) {
   const foot = (
     <>
       <Btn variant="gh" onClick={close}>Close</Btn>
-      {o.st === "New" && <>
+      {canMoveOrder(o.st, "Accepted") && <>
         <Btn variant="dg" onClick={() => setOrderStatus(o.id, "Declined")}>Decline</Btn>
         <Btn onClick={() => setOrderStatus(o.id, "Accepted")}>Accept order</Btn>
       </>}
-      {o.st === "Accepted" && <Btn onClick={() => setOrderStatus(o.id, "In kitchen")}>Start making</Btn>}
-      {o.st === "In kitchen" && <Btn onClick={() => setOrderStatus(o.id, "Ready")}>Mark ready</Btn>}
+      {canMoveOrder(o.st, "In kitchen") && <Btn onClick={() => setOrderStatus(o.id, "In kitchen")}>Start making</Btn>}
+      {canMoveOrder(o.st, "Ready") && <Btn onClick={() => setOrderStatus(o.id, "Ready")}>Mark ready</Btn>}
       {canDispatch(o.st) && (
         <Btn variant="ok" disabled={short.length > 0}
           title={short.length ? `Short of ${short.map((l) => IT[l.it].n).join(", ")}` : "Issue one pick ticket for the whole order"}

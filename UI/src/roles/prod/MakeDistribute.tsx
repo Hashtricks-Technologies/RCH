@@ -40,6 +40,7 @@ export default function MakeDistribute() {
   const [rq, setRq] = useState("");
   const [rDest, setRDest] = useState<LocKey | null>(null);
   const [sending, setSending] = useState(false);
+  const [making, setMaking] = useState<Record<string, boolean>>({});
 
   /** Destination filter options: "All" plus every place the kitchen can send to. */
   const DEST_NAMES = ["All", ...DESTS.map((l) => LOC[l].n)];
@@ -60,10 +61,14 @@ export default function MakeDistribute() {
   };
   const listedAt = (l: LocKey, it: string) => LOC[l].type !== "Outlet" || menuOf(s, l).includes(it);
 
-  const make = (k: string) => {
+  // The quantity, the yield and the reason stay in the boxes until the batch is on the server.
+  const make = async (k: string) => {
     const started = Number(mk[k]) || 0;
     const got = yld[k] === "" || yld[k] == null ? undefined : Number(yld[k]);
-    makeProduct(k, started, got, why[k]?.trim() || undefined);
+    setMaking((m) => ({ ...m, [k]: true }));
+    const ok = await makeProduct(k, started, got, why[k]?.trim() || undefined);
+    setMaking((m) => ({ ...m, [k]: false }));
+    if (!ok) return;
     setMk((m) => ({ ...m, [k]: "" }));
     setYld((y) => ({ ...y, [k]: "" }));
     setWhy((w) => ({ ...w, [k]: "" }));
@@ -167,9 +172,9 @@ export default function MakeDistribute() {
                     )}
                   </div>
                   <Btn size="sm" wide
-                    disabled={off || max <= 0 || (got != null && got > want)}
+                    disabled={off || max <= 0 || (got != null && got > want) || Boolean(making[k])}
                     onClick={() => make(k)}>
-                    {off ? "Switched off" : max <= 0 ? "No ingredients"
+                    {making[k] ? "Making…" : off ? "Switched off" : max <= 0 ? "No ingredients"
                       : got != null && got > want ? "Yield exceeds started" : "Make"}
                   </Btn>
                 </div>

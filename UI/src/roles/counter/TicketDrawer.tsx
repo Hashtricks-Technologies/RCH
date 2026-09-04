@@ -4,7 +4,7 @@ import { canReceiveTicket } from "../../lib/selectors";
 import { fq, U } from "../../lib/fmt";
 import { DrawerFrame } from "../../ui/Drawer";
 import { registerDrawer, type DrawerProps } from "../../drawers";
-import { Btn, DataTable, Feed, Otp, Section, StatusPill } from "../../ui/kit";
+import { Alert, Btn, DataTable, Feed, Otp, Section, StatusPill } from "../../ui/kit";
 import type { TktStatus } from "../../types";
 
 const STEPS: { st: TktStatus; title: string; body: string }[] = [
@@ -76,14 +76,25 @@ function TicketDrawer({ id }: DrawerProps) {
         empty={{ title: "No item on this ticket" }}
       />
 
-      <Section title="Where it is" sub="Three steps from the store shelf to this counter." />
-      <Feed items={STEPS.map((step, i) => ({
-        key: step.st,
-        title: <>{step.title}{i === at ? " — this is where it is now" : ""}</>,
-        body: step.body,
-        when: i < at ? "done" : i === at ? "current" : "pending",
-        color: i < at ? "var(--good)" : i === at ? "var(--accent)" : "var(--ink-4)",
-      }))} />
+      {tkt.st === "Cancelled" && (
+        <Alert tone="w" label="CANCELLED">
+          This ticket was withdrawn before it was collected — nothing was sent. Raise a new request
+          if the stock is still needed.
+        </Alert>
+      )}
+
+      {tkt.st !== "Cancelled" && (
+        <>
+          <Section title="Where it is" sub="Three steps from the store shelf to this counter." />
+          <Feed items={STEPS.map((step, i) => ({
+            key: step.st,
+            title: <>{step.title}{i === at ? " — this is where it is now" : ""}</>,
+            body: step.body,
+            when: i < at ? "done" : i === at ? "current" : "pending",
+            color: i < at ? "var(--good)" : i === at ? "var(--accent)" : "var(--ink-4)",
+          }))} />
+        </>
+      )}
 
       <p className="mini mtop">
         Issued means the store keeper has generated it. Collected means it has been handed over and is in transit.
@@ -91,7 +102,9 @@ function TicketDrawer({ id }: DrawerProps) {
           ? "Check the quantities physically, then confirm receipt to add them to this counter's stock."
           : tkt.st === "Issued"
             ? "Collect the goods at " + LOC[tkt.from].n + " first — receipt can only be confirmed once handed over."
-            : "This ticket is closed; the stock is already counted at this counter."}
+            : tkt.st === "Cancelled"
+              ? "Nothing was collected against this one, so nothing reached this counter."
+              : "This ticket is closed; the stock is already counted at this counter."}
       </p>
     </DrawerFrame>
   );

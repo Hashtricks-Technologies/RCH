@@ -2,14 +2,14 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
-import { canHandOver, canReceiveTicket } from "../../lib/selectors";
+import { canCancelTicket, canHandOver, canReceiveTicket } from "../../lib/selectors";
 import { fq, sum, unitTotal } from "../../lib/fmt";
 import {
   Alert, Btn, Card, DataTable, FilterSelect, Otp, PageHead, StatusPill, TableFoot, Toolbar,
 } from "../../ui/kit";
 import type { Ticket, TktStatus } from "../../types";
 
-const SHOW = ["All", "Issued", "Collected", "Received"] as const;
+const SHOW = ["All", "Issued", "Collected", "Received", "Cancelled"] as const;
 type Show = (typeof SHOW)[number];
 
 const itemText = (t: Ticket) =>
@@ -35,6 +35,16 @@ export default function Tickets() {
   const s = useApp();
   const receiveTicket = useApp((x) => x.receiveTicket);
   const handover = useApp((x) => x.handover);
+  const cancelTicket = useApp((x) => x.cancelTicket);
+  const [cancelId, setCancelId] = useState<string | null>(null);
+  const [why, setWhy] = useState("");
+  const [busy, setBusy] = useState(false);
+  const withdraw = async (id: string) => {
+    setBusy(true);
+    const ok = await cancelTicket(id, why.trim());
+    setBusy(false);
+    if (ok) { setCancelId(null); setWhy(""); }   // this screen is a table, not the drawer, so it stays mounted
+  };
   const nav = useNavigate();
 
   const inb = useTicketFilter();
@@ -156,7 +166,23 @@ export default function Tickets() {
                 ? <>
                     <StatusPill status={t.st} />
                     <div style={{ marginTop: 6 }}>
-                      <Btn size="xs" variant="ok" onClick={() => handover(t.id)}>Hand over</Btn>
+                      <Btn size="xs" variant="ok" onClick={() => handover(t.id)}>Hand over</Btn>{" "}
+                      {cancelId === t.id ? (
+                        <>
+                          <input
+                            placeholder="Why is it being cancelled?"
+                            aria-label={`Why ${t.id} is being cancelled`}
+                            value={why}
+                            onChange={(e) => setWhy(e.target.value)}
+                          />
+                          <Btn size="xs" variant="dg" disabled={!why.trim() || busy} onClick={() => withdraw(t.id)}>
+                            {busy ? "Cancelling…" : "Confirm"}
+                          </Btn>
+                          <Btn size="xs" variant="gh" onClick={() => { setCancelId(null); setWhy(""); }}>Keep</Btn>
+                        </>
+                      ) : (
+                        canCancelTicket(t.st) && <Btn size="xs" variant="gh" onClick={() => { setCancelId(t.id); setWhy(""); }}>Cancel</Btn>
+                      )}
                     </div>
                   </>
                 : <>
