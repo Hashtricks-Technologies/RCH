@@ -11,6 +11,11 @@ export type ProductRequestInsert = {
 };
 export type ProductRequestPatch = { status: ProductReqStatus; note: string; itemKey?: string };
 
+/** A nullable column reads back as undefined; dropping the key keeps the wire shape every other
+ *  reader produces (snapshot/readers/documents.ts's own `strip`), so a screen cannot tell a
+ *  request answered through this write from one read back off the snapshot. */
+const strip = <T extends object>(o: T): T => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)) as T;
+
 export const productReqsRepo = {
   /** Locking read: `.for("update")` on the request's own row, so one ask cannot be answered
    *  twice — the second caller waits behind this transaction and reads the status the first
@@ -45,9 +50,9 @@ export const productReqsRepo = {
     const [row] = await tx.select().from(productRequests).where(eq(productRequests.id, id));
     if (!row) throw new Error(`product request ${id} vanished inside its own transaction`);
     const by = await productReqsRepo.userName(tx, row.byUser);
-    return {
+    return strip({
       id: row.id, name: row.name, why: row.why, forLoc: row.forLoc as LocKey, by, at: iso(row.at), st: row.status,
       note: row.note ?? undefined, itemKey: row.itemKey ?? undefined,
-    };
+    });
   },
 };

@@ -1,8 +1,8 @@
 // Goods receipt: SQL only. No rules, no transaction of its own — service.ts passes `tx` in.
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import type { Grn, PoStatus, PurchaseOrder } from "@rch/contract";
-import { round3, type ClaimSrc } from "@rch/domain";
-import { grns, poLines, poLineSources, priceListItems, purchaseOrders, requisitionLines, requisitions, users } from "../../db/schema/index.js";
+import type { ClaimSrc } from "@rch/domain";
+import { grns, poLines, poLineSources, priceListItems, purchaseOrders, users } from "../../db/schema/index.js";
 import type { Tx } from "../../lib/db.js";
 import { readHistory } from "../../lib/history.js";
 import { iso } from "../../lib/time.js";
@@ -11,8 +11,10 @@ export type PoRow = typeof purchaseOrders.$inferSelect;
 export type NewGrn = typeof grns.$inferInsert;
 export type GrnRow = typeof grns.$inferSelect;
 /** One purchase-order line as a receipt reads it: what was ordered and what earlier
- *  instalments already booked in. `rate` rides along because the wire shape carries it. */
-export type PoLineRow = { it: string; qty: number; rate: number; recv: number; rejected: number };
+ *  instalments already booked in. `rate` rides along because the wire shape carries it, and
+ *  `lineNo` is `po_lines.line_no` itself — carried through rather than re-derived from the
+ *  array's own position, which happens to agree with it today but is not the same fact. */
+export type PoLineRow = { it: string; qty: number; rate: number; recv: number; rejected: number; lineNo: number };
 
 export const grnRepo = {
   /**
@@ -28,7 +30,7 @@ export const grnRepo = {
   /** The order as it was written, in the buyer's own line order. */
   async lines(tx: Tx, id: string): Promise<PoLineRow[]> {
     const rows = await tx.select().from(poLines).where(eq(poLines.poId, id)).orderBy(asc(poLines.lineNo));
-    return rows.map((l) => ({ it: l.itemKey, qty: l.qty, rate: l.rate, recv: l.receivedQty, rejected: l.rejectedQty }));
+    return rows.map((l) => ({ it: l.itemKey, qty: l.qty, rate: l.rate, recv: l.receivedQty, rejected: l.rejectedQty, lineNo: l.lineNo }));
   },
 
   /** Line number -> the requisition claims that funded it, in the order the buyer added them.
@@ -76,28 +78,6 @@ export const grnRepo = {
     const rows = await tx.select({ itemKey: priceListItems.itemKey, price: priceListItems.price })
       .from(priceListItems).where(and(eq(priceListItems.list, "A"), inArray(priceListItems.itemKey, [...itemKeys])));
     return Object.fromEntries(rows.map((r) => [r.itemKey, r.price]));
-  },
-
-  /** `for update` on the named requisitions, ascending id — the document lock order the header
-   *  of `lib/ledger.ts` states. The order's own row is already held by the caller. One statement
-   *  per id rather than one `in (…)`, so the sequence the locks are taken in is the sequence
-   *  written here and not whatever the planner chose. (The purchaseorders module has its own
-   *  copy of this pair; the arithmetic they both drive is one implementation, in @rch/domain.) */
-  async lockRequisitions(tx: Tx, ids: readonly string[]): Promise<void> {
-    for (const id of [...new Set(ids)].sort()) {
-      await tx.select({ id: requisitions.id }).from(requisitions).where(eq(requisitions.id, id)).for("update");
-    }
-  },
-
-  /** Move the claim on each requisition line: `sign` 1 when an order takes demand off the
-   *  procurement list, −1 when it gives the demand back. Added in SQL, under the head lock the
-   *  caller took, so the read and the write cannot be split by another writer. */
-  async addOrdered(tx: Tx, deltas: readonly ClaimSrc[], sign: 1 | -1): Promise<void> {
-    for (const d of deltas) {
-      await tx.update(requisitionLines)
-        .set({ orderedQty: sql`round(${requisitionLines.orderedQty} + ${round3(sign * d.qty)}::numeric, 3)` })
-        .where(and(eq(requisitionLines.requisitionId, d.prq), eq(requisitionLines.lineNo, d.line)));
-    }
   },
 
   /** Who signed it, for the history row and the receipt's `by`. */

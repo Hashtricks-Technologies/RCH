@@ -3,7 +3,7 @@
 // This module and `grn` split `po_lines` by column: everything here writes `qty`, `rate` and a
 // line's sources and never `received_qty`/`rejected_qty`; the receipt module writes those two
 // and never these. Both write the order's `status`, under the same `head()` lock.
-import { and, asc, eq, gte, inArray, lte, sql } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, lte } from "drizzle-orm";
 import type { PoStatus, PrqStatus, PurchaseOrder } from "@rch/contract";
 import { round3, type ClaimSrc } from "@rch/domain";
 import type { Tx } from "../../lib/db.js";
@@ -60,16 +60,6 @@ export const purchaseOrdersRepo = {
     return v;
   },
 
-  /** `for update` on the named requisitions, ascending id — the document lock order this phase
-   *  wrote into lib/ledger.ts's header. One statement, ordered, so two writers holding two
-   *  requisitions between them cannot each hold the one the other wants. */
-  async lockRequisitions(tx: Tx, ids: readonly string[]): Promise<void> {
-    const unique = [...new Set(ids)].sort();
-    if (unique.length === 0) return;
-    await tx.select({ id: requisitions.id }).from(requisitions)
-      .where(inArray(requisitions.id, unique)).orderBy(asc(requisitions.id)).for("update");
-  },
-
   /** Each named requisition with its status and its lines, for the pending check. */
   async prqLines(tx: Tx, ids: readonly string[]): Promise<Map<string, PrqLines>> {
     const unique = [...new Set(ids)];
@@ -81,17 +71,6 @@ export const purchaseOrdersRepo = {
       status: h.status,
       lines: lines.filter((l) => l.requisitionId === h.id).map((l) => ({ it: l.itemKey, appr: l.approvedQty, ordered: l.orderedQty })),
     }]));
-  },
-
-  /** Move `ordered_qty` on the named requisition lines. This is the only thing that adds to or
-   *  takes from the procurement list, which is derived (approved less ordered) and stored
-   *  nowhere. Call it under `lockRequisitions`, never without. */
-  async addOrdered(tx: Tx, deltas: readonly ClaimSrc[], sign: 1 | -1): Promise<void> {
-    for (const d of deltas) {
-      await tx.update(requisitionLines)
-        .set({ orderedQty: sql`round(${requisitionLines.orderedQty} + ${sign * d.qty}::numeric, 3)` })
-        .where(and(eq(requisitionLines.requisitionId, d.prq), eq(requisitionLines.lineNo, d.line)));
-    }
   },
 
   async insert(tx: Tx, row: NewPo): Promise<void> {

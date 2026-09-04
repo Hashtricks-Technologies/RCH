@@ -22,7 +22,10 @@ export type PatchVendorBody = z.infer<typeof PatchVendorBodySchema>;
 export const GSTIN_RE = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
 
 const GSTIN_MESSAGE = "That is not a GSTIN — 15 characters, like 33AAACA1234F1Z5";
-const assertGstin = (gstin: string): void => assertRule(!gstin || GSTIN_RE.test(gstin.toUpperCase()), GSTIN_MESSAGE);
+/** Checked and stored the same way: upper-cased first, so a lowercase entry that passes the
+ *  check is not the row a later read finds — the format the regex names is what lands. */
+const normaliseGstin = (gstin: string): string => gstin.toUpperCase();
+const assertGstin = (gstin: string): void => assertRule(!gstin || GSTIN_RE.test(gstin), GSTIN_MESSAGE);
 
 const toWire = (row: VendorRow): Vendor => ({
   id: row.id, n: row.name, gstin: row.gstin, contact: row.contact, ph: row.phone,
@@ -35,7 +38,7 @@ export function createVendorsService(db: Db) {
       return withTransaction(db, async (tx) => {
         const name = body.n.trim();
         assertRule(name.length > 0, "Give the vendor a name before saving");
-        const gstin = body.gstin.trim();
+        const gstin = normaliseGstin(body.gstin.trim());
         assertGstin(gstin);
 
         const id = await allocateId(tx, "vendor");
@@ -49,7 +52,7 @@ export function createVendorsService(db: Db) {
 
         const changed = ["vendors"] as const;
         await emitChanged(tx, changed);
-        return { result: toWire(row!), changed: [...changed], message: `${name} added as ${id}` };
+        return { result: toWire(row), changed: [...changed], message: `${name} added as ${id}` };
       });
     },
 
@@ -64,11 +67,12 @@ export function createVendorsService(db: Db) {
         assertRule(keys.length > 0, `Nothing to change on ${id}`);
 
         if (body.n !== undefined) assertRule(body.n.trim().length > 0, "Give the vendor a name before saving");
-        if (body.gstin !== undefined) assertGstin(body.gstin.trim());
+        const gstin = body.gstin === undefined ? undefined : normaliseGstin(body.gstin.trim());
+        if (gstin !== undefined) assertGstin(gstin);
 
         const patch: VendorPatch = {};
         if (body.n !== undefined) patch.name = body.n.trim();
-        if (body.gstin !== undefined) patch.gstin = body.gstin.trim();
+        if (gstin !== undefined) patch.gstin = gstin;
         if (body.contact !== undefined) patch.contact = body.contact.trim();
         if (body.ph !== undefined) patch.phone = body.ph.trim();
         if (body.terms !== undefined) patch.terms = body.terms.trim();

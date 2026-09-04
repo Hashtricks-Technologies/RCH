@@ -8,9 +8,10 @@
 import type { z } from "zod";
 import { QUARANTINE } from "@rch/contract";
 import type { CloseShortBodySchema, PurchaseOrder, ReceiptResultSchema, ReceivePoBodySchema, WriteResponse } from "@rch/contract";
-import { checkReceiptLine, foldClaims, istDate, PO_TRANSITIONS, receiptStatus, round3, shortfallClaims, unitTotal } from "@rch/domain";
+import { canTransition, checkReceiptLine, foldClaims, istDate, PO_TRANSITIONS, receiptStatus, round3, shortfallClaims, unitTotal } from "@rch/domain";
 import type { Db } from "../../db/client.js";
 import type { grns } from "../../db/schema/index.js";
+import { addOrdered, lockRequisitions } from "../../lib/claims.js";
 import { withTransaction } from "../../lib/db.js";
 import { NotFoundError } from "../../lib/errors.js";
 import { emitChanged } from "../../lib/events.js";
@@ -84,16 +85,19 @@ export function createGrnService(db: Db) {
           const good = round3(r.recv - r.rejected);
           const grnId = `GRN-${id.slice(-3)}-${String(++n).padStart(2, "0")}`;
           rows.push({
-            id: grnId, poId: id, poLineNo: i, itemKey: l.it, acceptedQty: good, rejectedQty: round3(r.rejected),
+            id: grnId, poId: id, poLineNo: l.lineNo, itemKey: l.it, acceptedQty: good, rejectedQty: round3(r.rejected),
             batchNo: r.batch.trim(), mrp: r.mrp, mfg: r.mfg, exp: r.exp,
             dcNo: dc, invoiceNo: body.invoice.trim(), invoiceDate: body.invDate || null, at, byUser: claims.sub,
           });
           // Accepted goods go straight onto the central store's shelf; rejected goods go to
           // quarantine, which never sells and never issues. A move of zero is not a movement —
-          // and a lock on a cell nothing moves would create a phantom shelf line (M12).
-          if (good > 0) { accepted.push({ it: l.it, qty: good }); moves.push({ loc: STORE, it: l.it, qty: good, kind: "grn_accept", refType: "grn", refId: grnId, by: claims.sub, at }); }
+          // and a lock on a cell nothing moves would create a phantom shelf line (M12). The
+          // accepted total is pushed whatever `good` came to, a fully rejected line included,
+          // so `unitTotal` prints "0 nos accepted" rather than nothing at all.
+          accepted.push({ it: l.it, qty: good });
+          if (good > 0) moves.push({ loc: STORE, it: l.it, qty: good, kind: "grn_accept", refType: "grn", refId: grnId, by: claims.sub, at });
           if (r.rejected > 0) { rejected.push({ it: l.it, qty: round3(r.rejected) }); moves.push({ loc: QUARANTINE, it: l.it, qty: round3(r.rejected), kind: "grn_reject", refType: "grn", refId: grnId, by: claims.sub, at }); }
-          await grnRepo.setLineReceipt(tx, id, i, { receivedQty: round3(l.recv + r.recv), rejectedQty: round3(l.rejected + r.rejected) });
+          await grnRepo.setLineReceipt(tx, id, l.lineNo, { receivedQty: round3(l.recv + r.recv), rejectedQty: round3(l.rejected + r.rejected) });
         }
         const written = await grnRepo.insertGrns(tx, rows);
         await postMoves(tx, moves);
@@ -131,15 +135,18 @@ export function createGrnService(db: Db) {
       return withTransaction(db, async (tx) => {
         const o = await grnRepo.head(tx, id);
         if (!o) throw new NotFoundError(`There is no purchase order ${id}.`);
-        assertRule(o.status === "Partially received", `${id} is ${o.status.toLowerCase()} — only a partly received order can be closed short`);
         assertRule(body.reason.trim().length > 0, "Give a reason for closing this order short");
+        // Goes through the same table `receive` does, not a hand-rolled equality: the table's
+        // own sentence ("already partially received") is not the operator's, so this keeps the
+        // one they have always read rather than switching to `assertTransition`'s generic one.
+        assertRule(canTransition(PO_TRANSITIONS, o.status, "Received"), `${id} is ${o.status.toLowerCase()} — only a partly received order can be closed short`);
         const lines = await grnRepo.lines(tx, id);
         const src = await grnRepo.sources(tx, id);
         // The balance never arrived, so give the demand back to the store keeper rather than
         // letting it vanish — last source first, the same direction a cut line releases in.
-        const back = foldClaims(shortfallClaims(lines.map((l, i) => ({ qty: l.qty, recv: l.recv, src: src.get(i) ?? [] }))));
-        await grnRepo.lockRequisitions(tx, back.map((x) => x.prq));
-        await grnRepo.addOrdered(tx, back, -1);
+        const back = foldClaims(shortfallClaims(lines.map((l) => ({ qty: l.qty, recv: l.recv, src: src.get(l.lineNo) ?? [] }))));
+        await lockRequisitions(tx, back.map((x) => x.prq));
+        await addOrdered(tx, back, -1);
         await grnRepo.setStatus(tx, id, { status: "Received", shortNote: body.reason });
         const who = await grnRepo.userName(tx, claims.sub);
         // The status is Received because that is the PoStatus it lands in; the trail has to say

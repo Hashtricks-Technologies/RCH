@@ -94,6 +94,20 @@ describe("POST /purchase-orders/:id/receive", () => {
     expect(mine.map((m) => [m.kind, m.loc, m.qty])).toEqual([["grn_accept", "store", 108], ["grn_reject", "quarantine", 12]]);
   });
 
+  it("names the accepted total as zero rather than leaving it blank when a delivery is turned away whole", async () => {
+    const { id } = await ordered([{ it: "water", qty: 120 }]);
+    const q0 = await quarantined("water");
+
+    const b = (await post("u3", `/purchase-orders/${id}/receive`, { ...doc, lines: [good(120, { rejected: 120, mrp: 20 })] })).json();
+    expect(b.result.grns[0]).toMatchObject({ qty: 0, rejected: 120 });
+    expect(b.message).toBe("Booked into Central Store — 0 nos accepted, 120 nos rejected");
+
+    expect(await quarantined("water")).toBeCloseTo(q0 + 120, 3);
+    // No accept move for a line that took in nothing — a zero-qty move is not a movement.
+    const mine = await app.testDb!.db.select().from(stockMoves).where(eq(stockMoves.refId, b.result.grns[0].id));
+    expect(mine.map((m) => [m.kind, m.loc, m.qty])).toEqual([["grn_reject", "quarantine", 120]]);
+  });
+
   it("proves the balance cache against the ledger after a receipt with rejects", async () => {
     const { id } = await ordered([{ it: "water", qty: 120 }]);
     await post("u3", `/purchase-orders/${id}/receive`, { ...doc, lines: [good(120, { rejected: 12, mrp: 20 })] });

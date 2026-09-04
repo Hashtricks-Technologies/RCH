@@ -45,6 +45,12 @@ describe("POST /vendors", () => {
     expect((await post("u5", "/vendors", { n: "No GST Traders" })).statusCode).toBe(200);
   });
 
+  it("stores a GSTIN upper-cased, whatever case it arrived in", async () => {
+    const r = await post("u5", "/vendors", { n: "Lowercase GST Traders", gstin: "33aaaca1234f1z5", contact: "", ph: "", terms: "", lead: 1, groups: [] });
+    expect(r.statusCode, r.body).toBe(200);
+    expect(r.json().result.gstin).toBe("33AAACA1234F1Z5");
+  });
+
   it("adds one vendor, not two, when the same name is submitted twice at once", async () => {
     await warmPool(app.testDb!, 2);
     const both = await Promise.all([
@@ -74,6 +80,12 @@ describe("PATCH /vendors/:id", () => {
     const id = await given.vendor(app.testDb!.db, {});
     expect((await patch("u5", `/vendors/${id}`, {})).json().error.message).toBe(`Nothing to change on ${id}`);
     expect((await patch("u5", "/vendors/VN-777", { lead: 1 })).json().error.message).toBe("There is no vendor VN-777.");
+  });
+
+  it("upper-cases a GSTIN on a patch too", async () => {
+    const id = await given.vendor(app.testDb!.db, { n: "Re-registered Traders" });
+    const b = (await patch("u5", `/vendors/${id}`, { gstin: "29bbbca5678g2z6" })).json();
+    expect(b.result.gstin).toBe("29BBBCA5678G2Z6");
   });
 
   it("changes only the field it names — a patch of one does not reset the rest", async () => {

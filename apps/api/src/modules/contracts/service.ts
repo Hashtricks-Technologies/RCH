@@ -53,6 +53,7 @@ export function createContractsService(db: Db) {
       return withTransaction(db, async (tx) => {
         const existing = await contractsRepo.head(tx, id);
         if (!existing) throw new NotFoundError(`There is no rate contract ${id}.`);
+        assertRule(Object.keys(body).length > 0, `Nothing to change on ${id}`);
 
         const from = body.from ?? existing.validFrom;
         const to = body.to ?? existing.validTo;

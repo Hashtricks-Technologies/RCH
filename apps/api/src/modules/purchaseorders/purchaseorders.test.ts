@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { dmy, etaFrom } from "@rch/domain";
@@ -8,6 +8,7 @@ import { authHeaders } from "../../test/auth.js";
 import { given } from "../../test/builders.js";
 import { truncateAll, warmPool } from "../../test/db.js";
 import { rateContracts } from "../../db/schema/index.js";
+import { purchaseOrdersRepo } from "./repo.js";
 import type { InjectOptions } from "fastify";
 import type { App } from "../../app.js";
 
@@ -250,6 +251,19 @@ describe("PATCH /purchase-orders/:id", () => {
     expect(b.result.eta).toBe(etaFrom(new Date(), 3));       // VN-002's lead time
     expect(b.changed).toEqual(["po"]);
     expect(b.message).toBe(`${id} moved to Sri Balaji Distributors — expected ${dmy(b.result.eta)}`);
+  });
+
+  it("writes the row once, not twice, when the vendor and the date change in the same press", async () => {
+    const prq = await given.requisition(app.testDb!.db, { st: "Approved", lines: [{ it: "juice", qty: 120, appr: 120 }] });
+    const id = (await post("u5", "/purchase-orders", { vendorId: "VN-001", picks: [{ prq, line: 0, qty: 120 }] })).json().result.id;
+    const setStatus = vi.spyOn(purchaseOrdersRepo, "setStatus");
+    const b = (await patch("u5", `/purchase-orders/${id}`, { vendorId: "VN-002", eta: "2026-10-15" })).json();
+    expect(b.result.vendor).toBe("VN-002");
+    expect(b.result.eta).toBe("2026-10-15");
+    expect(b.message).toBe(`${id} moved to Sri Balaji Distributors — expected 15-Oct-2026`);
+    expect(setStatus).toHaveBeenCalledTimes(1);
+    expect(setStatus).toHaveBeenCalledWith(expect.anything(), id, { vendorId: "VN-002", eta: "2026-10-15" });
+    setStatus.mockRestore();
   });
 
   it("leaves a rate the buyer negotiated alone when the vendor moves", async () => {

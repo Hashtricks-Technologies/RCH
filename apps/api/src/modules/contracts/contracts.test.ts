@@ -101,4 +101,10 @@ describe("PATCH and DELETE /contracts/:id", () => {
     expect((await patch("u3", `/contracts/${id}`, { to: "2026-01-01" })).json().error.message).toBe("A contract cannot end before it starts");
     expect((await patch("u3", "/contracts/RC-777", { rate: 1 })).json().error.message).toBe("There is no rate contract RC-777.");
   });
+
+  it("refuses an empty patch, like vendors does", async () => {
+    const vendorId = await given.vendor(app.testDb!.db, { n: "Empty Patch Traders" });
+    const id = await given.contract(app.testDb!.db, { vendorId, it: "leaf", rate: 200 });
+    expect((await patch("u3", `/contracts/${id}`, {})).json().error.message).toBe(`Nothing to change on ${id}`);
+  });
 });

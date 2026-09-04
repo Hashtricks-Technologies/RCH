@@ -19,6 +19,7 @@ import {
   rateFor, releaseClaim, round3, type ClaimSrc,
 } from "@rch/domain";
 import type { Db } from "../../db/client.js";
+import { addOrdered, lockRequisitions } from "../../lib/claims.js";
 import { withTransaction, type Tx } from "../../lib/db.js";
 import { NotFoundError } from "../../lib/errors.js";
 import { emitChanged } from "../../lib/events.js";
@@ -55,8 +56,8 @@ export function createPurchaseOrdersService(db: Db) {
   const returnClaims = async (tx: Tx, released: readonly ClaimSrc[]): Promise<void> => {
     const folded = foldClaims(released);
     if (folded.length === 0) return;
-    await purchaseOrdersRepo.lockRequisitions(tx, folded.map((x) => x.prq));
-    await purchaseOrdersRepo.addOrdered(tx, folded, -1);
+    await lockRequisitions(tx, folded.map((x) => x.prq));
+    await addOrdered(tx, folded, -1);
   };
 
   /** The order, read for update — the first lock every write but `create` takes. */
@@ -84,7 +85,7 @@ export function createPurchaseOrdersService(db: Db) {
         // write that locks requisitions while holding no purchase-order lock, and it is safe
         // only because it is minting the order and never waits for an existing one.
         const picks = body.picks.map((p) => ({ prq: p.prq, line: p.line, qty: round3(p.qty) }));
-        await purchaseOrdersRepo.lockRequisitions(tx, picks.map((p) => p.prq));
+        await lockRequisitions(tx, picks.map((p) => p.prq));
         const prq = await purchaseOrdersRepo.prqLines(tx, picks.map((p) => p.prq));
 
         // Fold before checking. Two picks against the same source line must not each pass on
@@ -120,7 +121,7 @@ export function createPurchaseOrdersService(db: Db) {
           id, vendorId: v.id, at, status: "Draft", eta: etaFrom(at, v.leadDays), needsApproval: false,
         });
         await purchaseOrdersRepo.writeLines(tx, id, merged);
-        await purchaseOrdersRepo.addOrdered(tx, foldClaims(picks), 1);
+        await addOrdered(tx, foldClaims(picks), 1);
         const who = await purchaseOrdersRepo.userName(tx, claims.sub);
         await appendHistory(tx, "purchase_order", id, "Draft", who, at);
 
@@ -217,6 +218,7 @@ export function createPurchaseOrdersService(db: Db) {
         assertRule(body.vendorId || body.eta, `Nothing to change on ${id}`);
         const st = o.status.toLowerCase();
         let eta = body.eta ?? o.eta ?? "";
+        let vendorId: string | undefined;
         let moved: string | undefined;
 
         if (body.vendorId) {
@@ -241,13 +243,16 @@ export function createPurchaseOrdersService(db: Db) {
             return l.rate === standard || l.rate === before[l.it] ? { ...l, rate: to } : l;
           });
           await purchaseOrdersRepo.writeLines(tx, id, next);
-          await purchaseOrdersRepo.setStatus(tx, id, { vendorId: v.id, eta });
+          vendorId = v.id;
           moved = v.name;
         }
         if (body.eta) {
           assertRule(o.status !== "Received" && o.status !== "Cancelled", `${id} is ${st} — nothing more is expected`);
-          await purchaseOrdersRepo.setStatus(tx, id, { eta: body.eta });
         }
+        // One write for whatever changed: a vendor move recomputes `eta` above and an eta-only
+        // patch keeps the one already read off the order, so `eta` is always the whole answer
+        // by the time this runs — two fields sent together must not cost the row two updates.
+        await purchaseOrdersRepo.setStatus(tx, id, { ...(vendorId ? { vendorId } : {}), eta });
 
         const changed = ["po"] as const;
         await emitChanged(tx, changed);
