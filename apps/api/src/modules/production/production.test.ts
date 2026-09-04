@@ -7,8 +7,9 @@ import { authHeaders } from "../../test/auth.js";
 import { given } from "../../test/builders.js";
 import { truncateAll, warmPool } from "../../test/db.js";
 import { postMoves } from "../../lib/ledger.js";
-import { reservations, stockMoves } from "../../db/schema/index.js";
+import { prodOrderLines, prodOrders, reservations, stockMoves } from "../../db/schema/index.js";
 import type { InjectOptions } from "fastify";
+import type { PordStatus } from "@rch/contract";
 import type { App } from "../../app.js";
 
 let app: App;
@@ -32,6 +33,18 @@ const locName = async (key: string) =>
 /** Bake enough of an item that the kitchen can cover a dispatch. */
 const bake = (it: string, n: number) =>
   app.testDb!.db.transaction((tx) => postMoves(tx, [{ loc: "kitchen", it, qty: n, kind: "production_yield", refType: "test", refId: "bake" }]));
+/**
+ * The seed's two orders sit at New and Accepted, so a case about the transition table has to
+ * write its own board. Ids are drawn above both the fixtures (PRD-2026-029/030) and the
+ * sequence's start, and the counter never resets — `beforeEach` truncates, so no id repeats.
+ */
+let boards = 0;
+const givenOrder = async (st: PordStatus, lines: { it: string; qty: number }[] = [{ it: "puff", qty: 5 }]): Promise<string> => {
+  const id = `PRD-2026-9${String(++boards).padStart(2, "0")}`;
+  await app.testDb!.db.insert(prodOrders).values({ id, fromLoc: "kiosk", byUser: "u4", status: st, note: "" });
+  await app.testDb!.db.insert(prodOrderLines).values(lines.map((l, lineNo) => ({ orderId: id, lineNo, itemKey: l.it, qty: l.qty })));
+  return id;
+};
 
 describe("POST /prod-orders/:id/dispatch", () => {
   it("puts every item on one ticket addressed to the ordering outlet, and reserves rather than moves", async () => {
@@ -83,12 +96,21 @@ describe("POST /prod-orders/:id/dispatch", () => {
   });
 
   it("refuses a declined order in its own words", async () => {
-    const declined = (await orders()).find((o: { st: string }) => o.st === "Declined");
-    if (declined) {
-      const r = await post("u4", `/prod-orders/${declined.id}/dispatch`);
-      expect(r.statusCode).toBe(422);
-      expect(r.json().error.message).toBe(`${declined.id} was declined — it cannot be dispatched`);
-    }
+    const id = await givenOrder("Declined");
+    await bake("puff", 20);                                     // the shelf is not what says no
+    const r = await post("u4", `/prod-orders/${id}/dispatch`);
+    expect(r.statusCode).toBe(422);
+    expect(r.json().error.message).toBe(`${id} was declined — it cannot be dispatched`);
+  });
+
+  // The other half of PROD_ORDER_TRANSITIONS: the kitchen sends when it is ready to, whatever
+  // word the board is showing, so every open stage must go out — not just the two the seed has.
+  it.each(["New", "Accepted", "In kitchen", "Ready"] as const)("dispatches an order sitting at %s", async (st) => {
+    const id = await givenOrder(st);
+    await bake("puff", 20);
+    const r = await post("u4", `/prod-orders/${id}/dispatch`);
+    expect(r.statusCode, r.body).toBe(200);
+    expect(r.json().result.order.st).toBe("Dispatched");
   });
 
   it("dispatches exactly once when two screens press together", async () => {

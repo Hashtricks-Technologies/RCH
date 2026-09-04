@@ -4,7 +4,7 @@
 // create no ticket, so they cross no seam.
 import type { z } from "zod";
 import type { DistributeBodySchema, ProdOrder, Ticket, WriteResponse } from "@rch/contract";
-import { fq, round3 } from "@rch/domain";
+import { canTransition, fq, PROD_ORDER_TRANSITIONS, round3 } from "@rch/domain";
 import type { Db } from "../../db/client.js";
 import { withTransaction } from "../../lib/db.js";
 import { NotFoundError } from "../../lib/errors.js";
@@ -41,12 +41,17 @@ export function createProductionService(db: Db) {
         if (!o) throw new NotFoundError(`There is no production order ${id}.`);
         const master = await loadMaster(tx);
         const to = master.locations[o.fromLoc];
-        // One order, one ticket. Dispatching twice would raise a second ticket for stock
-        // already promised, which is how half an order ends up in two places. The refusals say
-        // more than the transition table can — one names where the stock already went — so they
-        // are spelled out here; PROD_ORDER_TRANSITIONS is what the board's buttons read.
-        assertRule(o.status !== "Dispatched", `${id} has already gone out — it is on one ticket to ${to.n}`);
-        assertRule(o.status !== "Declined", `${id} was declined — it cannot be dispatched`);
+        // The table decides; the sentence only explains. PROD_ORDER_TRANSITIONS is the same
+        // data the board's Dispatch button is drawn from (spec §5.1), so a stage the UI offers
+        // and a stage the server accepts cannot drift apart. One order, one ticket: dispatching
+        // twice would raise a second ticket for stock already promised, which is how half an
+        // order ends up in two places — so the refusal names where that stock already went.
+        assertRule(
+          canTransition(PROD_ORDER_TRANSITIONS, o.status, "Dispatched"),
+          o.status === "Declined"
+            ? `${id} was declined — it cannot be dispatched`
+            : `${id} has already gone out — it is on one ticket to ${to.n}`,
+        );
 
         // Fold a repeated item into a single line so the cover check is made against the whole
         // quantity the order asks for, not one line of it at a time.
