@@ -30,6 +30,11 @@ grep -q 'dist/cli/migrate.mjs' <<<"$out"
 grep -q 'key: JWT_PREVIOUS_PUBLIC_KEY, optional: true' <<<"$out"
 grep -q 'path: /readyz' <<<"$out"
 grep -q 'idle_timeout.timeout_seconds=3600' <<<"$out"
+# Phase 3 SSE: the ALB must hold a stream open for an hour, and nginx must neither buffer it
+# nor time it out at the 60s it uses for ordinary /api calls.
+grep -q 'proxy_buffering off' ../../nginx/default.conf.template
+grep -q 'proxy_read_timeout 3600s' ../../nginx/default.conf.template
+grep -q 'location /api/v1/events' ../../nginx/default.conf.template
 # I9: the ServiceMonitor's spec.selector matches Service metadata labels, so
 # the api Service itself (not just the ServiceMonitor) must carry
 # app.kubernetes.io/component: api or the monitor selects zero Services.

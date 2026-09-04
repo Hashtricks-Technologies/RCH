@@ -5,6 +5,7 @@ import type { ToggleAvailBodySchema, ToggleResultSchema, WriteResponse } from "@
 import type { Db } from "../../db/client.js";
 import { withTransaction } from "../../lib/db.js";
 import { NotFoundError } from "../../lib/errors.js";
+import { emitChanged } from "../../lib/events.js";
 import { loadMaster } from "../../lib/master.js";
 import { assertRule } from "../../lib/rules.js";
 import type { AccessClaims } from "../../plugins/auth.js";
@@ -51,19 +52,24 @@ export function createAvailabilityService(db: Db) {
         // level (onConflictDoNothing / a plain delete, both with `.returning()`) so the
         // loser of that race gets a normal idempotent result instead of a raw PK-violation
         // 500 — the caller's intent (switch off / switch on) is satisfied either way.
+        // One array for the answer and the announcement, so the screen that flipped the switch
+        // and every other screen watching are told to refetch the same slice.
+        const changed = ["ovr"] as const;
         const existing = await availabilityRepo.find(tx, body.loc, body.it);
         if (existing) {
           await availabilityRepo.remove(tx, body.loc, body.it);
+          await emitChanged(tx, changed);
           return {
             result: { loc: body.loc, it: body.it, off: false },
-            changed: ["ovr"],
+            changed: [...changed],
             message: `${item.n} switched on at ${loc.n}`,
           };
         }
         await availabilityRepo.insert(tx, body.loc, body.it, REASON, claims.sub);
+        await emitChanged(tx, changed);
         return {
           result: { loc: body.loc, it: body.it, off: true, reason: REASON },
-          changed: ["ovr"],
+          changed: [...changed],
           message: `${item.n} switched off at ${loc.n}`,
         };
       });

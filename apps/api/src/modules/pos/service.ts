@@ -6,6 +6,7 @@ import { avail, availOf, fq, planBill, round3, type Master } from "@rch/domain";
 import type { Db } from "../../db/client.js";
 import { withTransaction } from "../../lib/db.js";
 import { NotFoundError } from "../../lib/errors.js";
+import { emitChanged } from "../../lib/events.js";
 import { allocateId } from "../../lib/ids.js";
 import { postMoves } from "../../lib/ledger.js";
 import { loadMaster } from "../../lib/master.js";
@@ -102,7 +103,11 @@ export function createPosService(db: Db) {
         const message = body.payer
           ? `Bill ${no} · ₹${total} posted to ${body.payer.name}`
           : `Bill ${no} · ₹${total} ${body.tender === "Cash" ? "collected" : "settled by " + body.tender.toLowerCase()} at ${locName}`;
-        return { result, changed: ["stock", "bills"], message };
+        // One array for the answer and the announcement, so the till that made the sale and
+        // the tills watching it can never be told to refetch different slices.
+        const changed = ["stock", "bills"] as const;
+        await emitChanged(tx, changed);
+        return { result, changed: [...changed], message };
       });
     },
   };

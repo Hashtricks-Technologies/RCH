@@ -5,6 +5,7 @@ import type { Db } from "../../db/client.js";
 import { withTransaction } from "../../lib/db.js";
 import { assertRule } from "../../lib/rules.js";
 import { NotFoundError } from "../../lib/errors.js";
+import { emitChanged } from "../../lib/events.js";
 import { loadItems, loadLocations } from "../../lib/master.js";
 import { catalogRepo } from "./repo.js";
 
@@ -20,7 +21,11 @@ export function createCatalogService(db: Db) {
         if (!item) throw new NotFoundError(`There is no item ${it}.`);
         assertRule(!(item.mrp != null && price > item.mrp), `Refused — printed MRP of ₹${item.mrp} is a hard ceiling for ${item.n}`);
         await catalogRepo.upsertPrice(tx, list, it, price);
-        return { result: { list, it, price }, changed: ["prices"], message: `${item.n} priced at ₹${price} on list ${list}` };
+        // One array for the answer and the announcement, so a till showing the old price is
+        // told to refetch exactly what the manager's own screen refetches.
+        const changed = ["prices"] as const;
+        await emitChanged(tx, changed);
+        return { result: { list, it, price }, changed: [...changed], message: `${item.n} priced at ₹${price} on list ${list}` };
       });
     },
 
@@ -40,8 +45,10 @@ export function createCatalogService(db: Db) {
         // and the loser reads the same refusal the check would have given it a moment later.
         const inserted = await catalogRepo.insertMenuItem(tx, loc, it);
         assertRule(inserted.length > 0, `${item.n} is already listed at ${location.n}`);
+        const changed = ["menu"] as const;
+        await emitChanged(tx, changed);
         const items = await catalogRepo.menuItems(tx, loc);
-        return { result: { loc, items }, changed: ["menu"], message: `${item.n} listed at ${location.n}` };
+        return { result: { loc, items }, changed: [...changed], message: `${item.n} listed at ${location.n}` };
       });
     },
 
@@ -54,8 +61,10 @@ export function createCatalogService(db: Db) {
         const listed = await catalogRepo.isListed(tx, loc, it);
         assertRule(listed, `${item.n} is not listed at ${location.n}`);
         await catalogRepo.deleteMenuItem(tx, loc, it);
+        const changed = ["menu"] as const;
+        await emitChanged(tx, changed);
         const items = await catalogRepo.menuItems(tx, loc);
-        return { result: { loc, items }, changed: ["menu"], message: `${item.n} removed from ${location.n}` };
+        return { result: { loc, items }, changed: [...changed], message: `${item.n} removed from ${location.n}` };
       });
     },
   };

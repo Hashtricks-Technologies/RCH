@@ -22,6 +22,8 @@ const Env = z.object({
   RATE_LIMIT_PER_MINUTE: int(10, 100_000).default(300),
   LOGIN_RATE_LIMIT_PER_MINUTE: int(1, 1000).default(10),
   LOGIN_RATE_LIMIT_PER_EMP_PER_MINUTE: int(1, 1000).default(5),
+  SSE_HEARTBEAT_MS: int(10, 300_000).default(25_000),
+  SSE_RETRY_MS: int(100, 60_000).default(1000),
   /** "true"/"false", a hop count ("1", "2", …, translated to an equivalent trust function —
    *  see `parseTrustProxy`), or a raw CIDR/IP (list) handed straight to `proxy-addr`. */
   TRUST_PROXY: z.string().min(1).default("1"),
@@ -46,6 +48,8 @@ export type Config = Readonly<{
   rateLimitPerMinute: number;
   loginRateLimitPerMinute: number;
   loginRateLimitPerEmpPerMinute: number;
+  sseHeartbeatMs: number;
+  sseRetryMs: number;
   /** What Fastify's own `trustProxy` option accepts: `true`/`false`, a CIDR/IP (list) string,
    *  or — for a hop count — a function, per the note on `parseTrustProxy` below. */
   trustProxy: boolean | string | ((address: string, hop: number) => boolean);
@@ -105,6 +109,8 @@ export function loadConfig(env: NodeJS.ProcessEnv): Config {
     rateLimitPerMinute: e.RATE_LIMIT_PER_MINUTE,
     loginRateLimitPerMinute: e.LOGIN_RATE_LIMIT_PER_MINUTE,
     loginRateLimitPerEmpPerMinute: e.LOGIN_RATE_LIMIT_PER_EMP_PER_MINUTE,
+    sseHeartbeatMs: e.SSE_HEARTBEAT_MS,
+    sseRetryMs: e.SSE_RETRY_MS,
     trustProxy: parseTrustProxy(e.TRUST_PROXY),
   });
 }

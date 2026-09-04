@@ -15,6 +15,11 @@ describe("loadConfig", () => {
     expect(c.rateLimitPerMinute).toBe(300);
     expect(c.loginRateLimitPerMinute).toBe(10);
     expect(c.loginRateLimitPerEmpPerMinute).toBe(5);
+    // The heartbeat has to sit under every idle timer on the path (nginx 3600s, the ALB's
+    // 3600s) and comfortably under a browser's own patience; the retry hint is what a
+    // dropped stream waits before coming back.
+    expect(c.sseHeartbeatMs).toBe(25_000);
+    expect(c.sseRetryMs).toBe(1000);
     // Default TRUST_PROXY="1": a one-hop trust function, not a bare number (Fastify 5 no-ops
     // a raw number for security - see parseTrustProxy's comment in config.ts).
     expect(typeof c.trustProxy).toBe("function");
