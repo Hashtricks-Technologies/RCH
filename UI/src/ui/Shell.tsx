@@ -7,7 +7,8 @@ import { NAV, canSee } from "../nav";
 import { useApp, type AppState } from "../store";
 import { availOf, menuOf, procurementList } from "../lib/selectors";
 import type { LocKey, Role } from "../types";
-import { Avatar, Icon, SearchIcon, Tag, ThemeButton } from "./kit";
+import { useStreamState } from "../api/events";
+import { Avatar, Icon, Pill, SearchIcon, Tag, ThemeButton } from "./kit";
 import { applyPrefs, readPrefs, usePhoto } from "./prefs";
 import Drawer from "./Drawer";
 
@@ -26,6 +27,7 @@ export default function Shell({ children }: { children: ReactNode }) {
   const state = useApp();
   const counts = navCounts(state);
   const photo = usePhoto();
+  const live = useStreamState();
   const nav = useNavigate();
 
   // The compact-table preference is stamped on the root, so it outlives Settings.
@@ -85,6 +87,8 @@ export default function Shell({ children }: { children: ReactNode }) {
           <div className="tsp" />
           <button className="org" type="button"><span className="dt" />
             <span className="lbl">Royal Care{homeLabel(user) ? ` · ${homeLabel(user)}` : ""}</span></button>
+          {/* Nothing is shown while the stream is live: a badge that is always there stops being read. */}
+          {live === "reconnecting" && <Pill tone="wn">Reconnecting</Pill>}
           <ThemeButton />
           <Bell counts={counts} />
           <button className="avb" type="button" onClick={() => nav("/settings")}>
