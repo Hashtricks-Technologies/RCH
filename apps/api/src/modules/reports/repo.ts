@@ -2,12 +2,13 @@
 // stock ledger, which needs the ledger's own moves, and a payer's credit for the calendar month,
 // which needs every outlet's bills and not the till's own seven days.
 //
-// repo.ts: SQL only. No rules, no transaction of its own — both reads are reads, so they take
-// the pool's `Db` rather than a `Tx`, and the arithmetic they feed is `ledgerRow` in
+// repo.ts: SQL only. No rules and no transaction of its own — the service opens one read-only
+// transaction and hands each query the same client (`Reader`), so a report is one connection out
+// of the pool rather than one per query. The arithmetic these feed is `ledgerRow` in
 // @rch/domain. Nothing here decides anything.
 import { and, eq, gte, lt, sql } from "drizzle-orm";
 import type { PayerKind } from "@rch/contract";
-import type { Db } from "../../db/client.js";
+import type { Reader } from "../../lib/db.js";
 import * as s from "../../db/schema/index.js";
 
 /**
@@ -22,14 +23,14 @@ import * as s from "../../db/schema/index.js";
  * other exactly once.
  */
 export const reportsRepo = {
-  async openingAt(db: Db, loc: string, from: Date): Promise<Map<string, number>> {
+  async openingAt(db: Reader, loc: string, from: Date): Promise<Map<string, number>> {
     const rows = await db.select({ it: s.stockMoves.itemKey, total: sql<string>`sum(${s.stockMoves.qty})` })
       .from(s.stockMoves).where(and(eq(s.stockMoves.loc, loc), lt(s.stockMoves.at, from))).groupBy(s.stockMoves.itemKey);
     return new Map(rows.map((r) => [r.it, Number(r.total)]));
   },
 
   /** The window's moves split by sign in SQL, so a busy shelf does not travel row by row. */
-  async movedIn(db: Db, loc: string, from: Date, to: Date): Promise<Map<string, { recd: number; issued: number }>> {
+  async movedIn(db: Reader, loc: string, from: Date, to: Date): Promise<Map<string, { recd: number; issued: number }>> {
     const rows = await db.select({
       it: s.stockMoves.itemKey,
       recd: sql<string>`sum(case when ${s.stockMoves.qty} > 0 then ${s.stockMoves.qty} else 0 end)`,
@@ -43,7 +44,7 @@ export const reportsRepo = {
   /** Every item this location is carrying a line for, whether or not the window touched it. A
    *  balance row at zero means "this shelf carries this line" (M12), so it belongs on the report
    *  even when its opening, receipts and issues are all nothing. */
-  async carriedAt(db: Db, loc: string): Promise<string[]> {
+  async carriedAt(db: Reader, loc: string): Promise<string[]> {
     const rows = await db.select({ it: s.stockBalances.itemKey }).from(s.stockBalances).where(eq(s.stockBalances.loc, loc));
     return rows.map((r) => r.it);
   },
@@ -51,7 +52,7 @@ export const reportsRepo = {
   /** The same lookup the till makes before it takes a charge (`posRepo.payer`). Inactive payers
    *  are still resolvable here: a report on somebody who has left the hospital is a report, not a
    *  sale, and refusing it would hide the credit they still owe. */
-  async payer(db: Db, kind: PayerKind, id: string) {
+  async payer(db: Reader, kind: PayerKind, id: string) {
     const [row] = await db.select().from(s.payers).where(and(eq(s.payers.kind, kind), eq(s.payers.id, id)));
     return row ?? null;
   },

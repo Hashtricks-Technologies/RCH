@@ -1,13 +1,8 @@
 import { asc } from "drizzle-orm";
 import type { Master } from "@rch/domain";
-import type { Db } from "../db/client.js";
 import { items, locations, recipeLines, recipes } from "../db/schema/index.js";
-import type { Tx } from "./db.js";
+import type { Reader } from "./db.js";
 import { toWireItem, toWireLocation } from "./wire.js";
-
-/** A service passes its own transaction, so the master it validates against is the one its
- *  write commits with; a read-only caller passes the pool. */
-type Reader = Db | Tx;
 
 /** Withdrawn items are left out: no rule may price something the master no longer sells. */
 export const loadItems = async (db: Reader): Promise<Master["items"]> =>

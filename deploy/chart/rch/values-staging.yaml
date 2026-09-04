@@ -1,4 +1,7 @@
-api: { replicas: 2, hpa: { minReplicas: 2, maxReplicas: 3 }, env: { LOG_LEVEL: debug, CORS_ORIGIN: https://rch-staging.example.com } }
+api: { replicas: 2, hpa: { minReplicas: 2, maxReplicas: 3 }, env: { LOG_LEVEL: debug, CORS_ORIGIN: https://rch-staging.example.com, DB_POOL_MAX: "10" } }
 ui: { replicas: 1 }
-ingress: { host: rch-staging.example.com }
+# `certificateArn` is the same FILL as production's (values-prod.yaml:42): empty renders no TLS
+# annotation at all — HTTP on :80, correct rather than broken — so staging is on :80 until the ACM
+# certificate for this hostname is supplied. Fill it, or decide out loud that staging runs on :80.
+ingress: { host: rch-staging.example.com, certificateArn: "" }   # FILL: the ACM certificate ARN for the host above
 secrets: { create: true }

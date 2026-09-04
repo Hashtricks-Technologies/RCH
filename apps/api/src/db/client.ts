@@ -12,7 +12,14 @@ export function pgSsl(ssl: boolean): ConnectionOptions | undefined {
   return ssl ? { rejectUnauthorized: true, ca: readFileSync(process.env.PG_CA_BUNDLE ?? "/etc/ssl/rds-global-bundle.pem", "utf8") } : undefined;
 }
 
-/** One pool per process. RDS connections verify the AWS CA bundle baked into the image (Task 15). */
+/**
+ * One pool per process. RDS connections verify the AWS CA bundle baked into the image (Task 15).
+ *
+ * `max` is `DB_POOL_MAX` (config.ts), default **10** — one pod's share of the instance's own
+ * `max_connections`. It is deliberately not the first knob to reach for when `/snapshot` is slow:
+ * a request takes exactly one connection (`withReadTransaction`, `lib/db.ts`), so a pool at its
+ * ceiling means genuinely that many requests in flight, not one request holding forty.
+ */
 export function createDb(url: string, ssl: boolean, opts: { max?: number; searchPath?: string } = {}): { db: Db; pool: Pool } {
   const pool = new Pool({
     connectionString: url,

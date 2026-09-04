@@ -83,6 +83,21 @@ A write, in the order it must be written (`modules/requests/service.ts` is the w
 in opposite order deadlock; `lib/ledger.ts`'s header states the rule and every module keeps it.
 Take a ticket number *before* the balance locks, never while holding a shelf.
 
+**A read is composed the same way, minus the locks: one transaction, one connection.** Every
+read that makes more than one query runs inside `withReadTransaction(db, …)` (`lib/db.ts`,
+`begin … read only`) and awaits its queries **in sequence**. `modules/snapshot/service.ts` is the
+worked example: `GET /snapshot` and its thirteen standalone siblings, `reports`' two queries,
+`support`'s list and `master`'s `GET /recipes` (heads and lines, the one outside this module) all
+take exactly **one** connection out of the pool per request, and `snapshot.test.ts`'s "one
+request, one connection" cases pin that by counting the pool's own `acquire` event. The reason is measured, not stylistic: `pg` checks a client out per query, so
+the `Promise.all` fan-out this replaced asked for ~40 connections per snapshot against a pool of
+10 — thirty concurrent readers queued hundreds of acquisitions, `pg_pool_idle` 0,
+`pg_pool_waiting` peaking at 771, p95 2.9 s (RUNBOOK §12). Sequential rather than `Promise.all`
+*inside* the transaction because a transaction is a single pg client and a client runs one query
+at a time: concurrency there buys nothing, `pg` queues it today and will refuse it in pg 9. Every
+reader and read-side repo therefore takes `Reader` (`Db | Tx`, `lib/db.ts`) rather than `Db`, so
+one function serves a standalone GET and a write validating against its own transaction.
+
 Three more rules the write order above encodes, stated here because Phase 4's `production`
 module (`POST /prod-orders/:id/status`, `POST /batches`, beside `dispatch` and `distribute`)
 and `tickets`' fifth write (`POST /tickets/:id/cancel`) are where they show up most sharply:
@@ -154,8 +169,8 @@ lock, and every write takes only it — no support write ever touches `stock_bal
 `reports` takes no lock at all: both of its reads are queries, not writes, so neither opens a
 transaction.
 
-(b) **`readTickets` (`src/modules/snapshot/readers/documents.ts`) now reads every ticket's
-`document_history` in the same `Promise.all` as its heads and lines** — one query for every
+(b) **`readTickets` (`src/modules/snapshot/readers/documents.ts`) reads every ticket's
+`document_history` alongside its heads and lines** — one query for every
 ticket's trail, not one per ticket — and `scope.ts`'s `redactOtps` withholds the `otp` column
 unless the ticket is `Issued`, the caller's `loc` is that ticket's `to`, **and** the caller's
 role is `counter`, `prod` or `store` — the three roles that ever stand at a receiving location
@@ -274,12 +289,22 @@ so a renamed file or a missing entry makes the pod unready. Names are descriptiv
 (`0002_stock_moves_append_only`), not drizzle's generated animals.
 
 `config.ts` is the only reader of `process.env`: `NODE_ENV`, `PORT`, `LOG_LEVEL`, `DATABASE_URL`,
-`TEST_DATABASE_URL`, `DATABASE_SSL`, `CORS_ORIGIN`, `JWT_PRIVATE_KEY`, `JWT_PUBLIC_KEY`,
-`JWT_PREVIOUS_PUBLIC_KEY`, `ACCESS_TOKEN_TTL`, `REFRESH_TOKEN_TTL_DAYS`, `COOKIE_SECURE`,
-`SEED_PASSWORD`, `SEED_FORCE_PASSWORD_CHANGE`, `RATE_LIMIT_PER_MINUTE`,
+`TEST_DATABASE_URL`, `DATABASE_SSL`, `DB_POOL_MAX`, `CORS_ORIGIN`, `JWT_PRIVATE_KEY`,
+`JWT_PUBLIC_KEY`, `JWT_PREVIOUS_PUBLIC_KEY`, `ACCESS_TOKEN_TTL`, `REFRESH_TOKEN_TTL_DAYS`,
+`COOKIE_SECURE`, `SEED_PASSWORD`, `SEED_FORCE_PASSWORD_CHANGE`, `RATE_LIMIT_PER_MINUTE`,
 `LOGIN_RATE_LIMIT_PER_MINUTE`, `LOGIN_RATE_LIMIT_PER_EMP_PER_MINUTE`, `SSE_HEARTBEAT_MS`,
 `SSE_RETRY_MS`, `TRUST_PROXY`. (`PG_CA_BUNDLE` is read directly by `db/client.ts` for the RDS CA.)
+`DB_POOL_MAX` is the pool's `max`, default **10**, set in the chart's `api.env` for both
+environments — one pod's share of the instance's connections, not a latency dial: a request takes
+exactly one connection, so a pool at its ceiling means that many requests in flight.
 
 `/metrics` publishes `http_request_duration_seconds`, `sse_clients`, `sse_listener_up`,
 `sequence_allocations_total{kind}`, `pg_pool_total`, `pg_pool_idle`, `pg_pool_waiting`, plus
-prom-client defaults. `/healthz` is liveness; `/readyz` runs every registered check.
+prom-client defaults. `/healthz` is liveness; `/readyz` runs every registered check — and a
+failing check's own `Error` **message** is appended to the 503's sentence (`Not ready: database
+— schema at 0/7 migrations.`) as well as logged, so a check writes a phrase for an operator and
+never the driver's own message (a `DrizzleQueryError` carries the failing SQL, and spec §12 keeps
+SQL out of responses). `plugins/db.ts` is where that curation happens for the one check that
+exists, and nothing that can throw is left outside a `try` there — `unreachable or unmigrated`,
+`migration journal unreadable` (`expectedMigrationCount` reads `drizzle/meta/_journal.json` off
+disk, and an `ENOENT` names paths inside the image), or `schema at <n>/<m> migrations`.

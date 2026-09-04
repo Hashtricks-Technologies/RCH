@@ -6,7 +6,8 @@ image:
 api:
   replicas: 3
   # Sized against the load check (apps/api/scripts/loadcheck.mjs): one pod holds ten Postgres
-  # connections and the snapshot is the heaviest read in the system.
+  # connections (api.env.DB_POOL_MAX) and the snapshot is the heaviest read in the system —
+  # though one snapshot now takes one of those ten, not forty.
   resources: { requests: { cpu: 500m, memory: 512Mi }, limits: { cpu: "2", memory: 1Gi } }
   hpa: { enabled: true, minReplicas: 3, maxReplicas: 6, cpu: 70 }
   pdb: { minAvailable: 2 }
@@ -24,6 +25,7 @@ api:
     LOGIN_RATE_LIMIT_PER_MINUTE: "10"
     LOGIN_RATE_LIMIT_PER_EMP_PER_MINUTE: "5"
     DATABASE_SSL: "true"
+    DB_POOL_MAX: "10"                             # three replicas × 10 = 30 of the instance's connections
     COOKIE_SECURE: "true"
     ACCESS_TOKEN_TTL: 15m
     REFRESH_TOKEN_TTL_DAYS: "30"

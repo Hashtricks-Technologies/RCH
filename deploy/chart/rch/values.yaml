@@ -19,6 +19,9 @@ api:
     LOGIN_RATE_LIMIT_PER_MINUTE: "10"
     LOGIN_RATE_LIMIT_PER_EMP_PER_MINUTE: "5"
     DATABASE_SSL: "true"
+    # Connections one pod's pool may hold. A request takes exactly one, so this is "how many
+    # requests at once", not "how big is a request" — raise it with the instance, not instead of it.
+    DB_POOL_MAX: "10"
     COOKIE_SECURE: "true"
     ACCESS_TOKEN_TTL: 15m
     REFRESH_TOKEN_TTL_DAYS: "30"

@@ -10,6 +10,10 @@ const Env = z.object({
   DATABASE_URL: z.url().startsWith("postgres"),
   TEST_DATABASE_URL: z.url().startsWith("postgres").optional(),
   DATABASE_SSL: bool.default(false),
+  /** Connections this process's pool may hold. Ten is what one pod is sized for (RDS's own
+   *  `max_connections` divided across the replicas, with room for the SSE listener and a CLI);
+   *  a request takes exactly one of them, so raise it only with a bigger instance behind it. */
+  DB_POOL_MAX: int(1, 200).default(10),
   CORS_ORIGIN: z.string().min(1),
   JWT_PRIVATE_KEY: z.string().min(1),
   JWT_PUBLIC_KEY: z.string().min(1),
@@ -38,6 +42,7 @@ export type Config = Readonly<{
   databaseUrl: string;
   testDatabaseUrl?: string;
   databaseSsl: boolean;
+  dbPoolMax: number;
   corsOrigins: string[];
   jwt: { privateKeyPem: string; publicKeyPem: string; previousPublicKeyPem?: string };
   accessTokenTtl: string;
@@ -95,6 +100,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): Config {
     databaseUrl: e.DATABASE_URL,
     testDatabaseUrl: e.TEST_DATABASE_URL,
     databaseSsl: e.DATABASE_SSL,
+    dbPoolMax: e.DB_POOL_MAX,
     corsOrigins: e.CORS_ORIGIN.split(",").map((s) => s.trim()).filter(Boolean),
     jwt: {
       privateKeyPem: pem(e.JWT_PRIVATE_KEY),
