@@ -161,21 +161,24 @@ shows **only** `Reconnecting` — a badge that is always there stops being read.
 `src/api/session.ts` holds the access token in memory (never `localStorage`) and fires
 `onSessionLost` when a refresh fails.
 
-`auth` (`store/index.ts`) gains a fifth state, `"failed"`, in the Phase 6 fix wave: a sign-in
-or a reload whose `GET /snapshot` call fails (not a 401 — `onSessionLost` already handles that)
-renders a full-page retry rather than falling back to `"ready"` with a toast saying data is
-"showing what is in memory" — there is no memory to fall back to any more, so the old wording
-described a state that stopped being true the moment `data/seed.ts` was deleted. (Lands in the
-Phase 6 fix wave.)
+`auth` (`store/index.ts`) has a fifth state, `"failed"`, landed in the Phase 6 fix wave
+(`19d486a`): a sign-in or a reload whose `GET /snapshot` call fails (not a 401 —
+`onSessionLost` already handles that) renders a full-page retry (`App.tsx`, `auth === "failed"`)
+rather than falling back to `"ready"` with a toast saying data is "showing what is in memory" —
+there is no memory to fall back to any more, so the old wording described a state that stopped
+being true the moment `data/seed.ts` was deleted.
 
 ## Master data, derived state, formatting
 
 `src/data/master.ts` exports mutable registries (`IT`, `LOC`, `RCP`, `PL`, `MENU`, `USERS`) —
 **empty at import, no fixtures import anywhere in the file** — **replaced in place** by
 `hydrateMaster()` when the snapshot lands; screens import them directly, so assign into them,
-never reassign them. `ALL_LOCS`, `OUTLETS`, `PAR_FACTOR`, `STAFF_CREDIT_LIMIT` and
-`PO_APPROVAL_LIMIT` are re-exported from `@rch/contract` here, and `MasterData` is typed from
-`@rch/contract`'s types rather than `typeof FX.*`. The payer roster is the same shape: `PATIENTS`,
+never reassign them. Three constants — `ALL_LOCS`, `OUTLETS`, `PO_APPROVAL_LIMIT` — are
+re-exported from `@rch/contract` here, not five: `PAR_FACTOR` comes from `@rch/domain`
+(`selectors.ts`) since it is a rule's own tuning, not a wire shape, and `STAFF_CREDIT_LIMIT` is
+not re-exported at all — the till reads the ceiling live off `GET /reports/credit/:kind/:id`
+instead of a bundled number. `MasterData` is typed from `@rch/contract`'s types rather than
+`typeof FX.*`. The payer roster is the same shape: `PATIENTS`,
 `STAFF`, `DEPTS` start empty and `hydrateRoster(r)` (called from `applySnapshot`) splices the
 server's `roster` into them in place — the counter's payer picker reads these, never a fixture.
 `data/seed.ts` and `data/ops.ts` are **deleted**; `data/vendors.ts` keeps its two helpers but no

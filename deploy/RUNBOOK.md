@@ -372,11 +372,10 @@ Every status change on a request, requisition, purchase order or production orde
 select * from document_history where doc_type = 'request' and doc_id = 'REQ-2026-0913' order by at;
 ```
 
-`doc_type` is one of `request`, `requisition`, `purchase_order`, `prod_order` (confirmed by
-`grep -rn "appendHistory(" apps/api/src`, which as of Phase 1 turns up exactly these four
-calls, all from `apps/api/src/db/seed.ts` — the modules that write these documents outside the
-seed, in later phases, call the same helper) — plus, as of Phase 3, `ticket`. A production
-order's own board walk reads the same way, one row per press including the dispatch:
+`doc_type` is one of `request`, `requisition`, `purchase_order`, `prod_order` or `ticket` — five
+types, written by the modules that own each document; `grep -rn "appendHistory(" apps/api/src`
+is the authoritative list. A production order's own board walk reads the same way, one row per
+press including the dispatch:
 
 ```sql
 select * from document_history where doc_type = 'prod_order' and doc_id = 'PRD-2026-029' order by at;
@@ -552,14 +551,15 @@ Phase 4.
 
 ## 9. Alerts
 
-Spec §12 names five; this build ships six. `/metrics` (Prometheus format,
+Spec §12 names five; this build ships seven — the five below that the chart's `PrometheusRule`
+renders, plus the two RDS rules that stay runbook-only. `/metrics` (Prometheus format,
 `apps/api/src/plugins/metrics.ts`) exposes `http_request_duration_seconds` (histogram, labelled
 `method`, `route`, `status`), `pg_pool_waiting`/`pg_pool_idle`, `sse_listener_up` and the default
-Node process metrics. **As of Phase 6, the first four below ship as a `PrometheusRule`**
+Node process metrics. **As of Phase 6, the first five below ship as a `PrometheusRule`**
 (`deploy/chart/rch/templates/prometheusrule.yaml`), gated on the same
 `.Values.serviceMonitor.enabled` flag as the `ServiceMonitor` itself (on by default in
 `values-prod.yaml`, off elsewhere) — so a cluster with the Prometheus Operator installed gets
-these four the moment the chart is installed, with no separate alert-authoring step. **The two
+these five the moment the chart is installed, with no separate alert-authoring step. **The two
 RDS rules stay runbook-only**, below, because they need the CloudWatch metrics exporter (or
 Grafana's native CloudWatch datasource) pointed at the RDS instance, which is not part of this
 chart and is wired at the observability-stack level. A Grafana dashboard JSON does **not** ship
@@ -591,12 +591,13 @@ looking for one here.
    max(pg_pool_waiting{job="rch-api"}) > 0 and max(pg_pool_idle{job="rch-api"}) == 0
    ```
    This is the pool the app itself opens (`max: 10` per pod, `apps/api/src/db/client.ts`), not
-   RDS's own connection count — see item 5 below for that. The app pool never exceeds 60
+   RDS's own connection count — see item 6 below for that. The app pool never exceeds 60
    connections at max scale-out (10 per pod × 6 max pods, per spec §11.2) — plus one dedicated
    `LISTEN` connection per pod for the SSE plugin (§10), so 66. Still well under any RDS
    instance's limit; this alert catches the pool running out locally, long before RDS itself is
    under any real pressure.
-5. **`RchSseListenerDown` — this build's sixth alert, warning, sustained 5 minutes:**
+5. **`RchSseListenerDown` — the fifth chart-shipped alert and this build's sixth overall,
+   warning, sustained 5 minutes:**
    ```promql
    min(sse_listener_up{job="rch-api"}) == 0
    ```
@@ -729,18 +730,25 @@ stopped there (spec §16, Phase 6) — running it is a release decision.
    - `alerts.runbookUrl` — the real URL of this document, `https://github.com/<org>/<repo>/blob/production/deploy/RUNBOOK.md`
      filled in for real, so a paged engineer's alert links somewhere.
 
-   Two more are marked FILL but are conditional, not blocking: `serviceAccount.annotations`
-   (only if the pod itself reads AWS Secrets Manager directly, i.e. IRSA) and
-   `ingress.annotations.'alb.ingress.kubernetes.io/wafv2-acl-arn'` (optional — the file's own
-   comment says to leave it empty to skip).
-2. **Generate the production JWT key pair and store it, never in git:**
+   One more is marked FILL but is conditional, not blocking: `serviceAccount.annotations`
+   (only if the pod itself reads AWS Secrets Manager directly, i.e. IRSA).
+   `ingress.annotations.'alb.ingress.kubernetes.io/wafv2-acl-arn'` is not a FILL at all — the
+   file's own comment marks it "optional; leave empty to skip".
+2. **Provision the RDS instance to spec §11.2's own settings**, before anything points at it:
+   Multi-AZ, `db.t4g.medium` to start with storage autoscaling, automated backups retained 14
+   days, point-in-time recovery, encryption at rest, deletion protection, in private subnets
+   with a security group admitting only the EKS node group, and `rds.force_ssl = 1` (the API
+   connects with `sslmode=verify-full` and the RDS CA bundle already baked into the image — no
+   chart change needed once the instance itself enforces it). Staging's own instance is
+   single-AZ, `db.t4g.small`, 7-day backups — smaller on purpose, not a step skipped.
+3. **Generate the production JWT key pair and store it, never in git:**
    ```bash
    pnpm --filter @rch/api keys:generate
    ```
    Put both lines into the AWS Secrets Manager secret `rch/prod` as `JWT_PRIVATE_KEY` /
    `JWT_PUBLIC_KEY`, alongside `DATABASE_URL` and an empty `JWT_PREVIOUS_PUBLIC_KEY` (§2's
    "First-time cluster setup" names the same four keys and the `ClusterSecretStore` they need).
-3. **Create the real staff accounts, and deactivate every seeded one.**
+4. **Create the real staff accounts, and deactivate every seeded one.**
    ```bash
    kubectl exec deploy/rch-api -n rch -- /nodejs/bin/node dist/cli/users.mjs create \
      --emp RC-9001 --name "Real Name" --email real.name@royalcare.in --role counter --loc coffee --password <temporary>
@@ -754,25 +762,28 @@ stopped there (spec §16, Phase 6) — running it is a release decision.
    nothing before this checklist has said that plainly, and it is the one item on this list a
    missed step could not later be quietly forgiven for: a seeded id with a published dev password
    is a real door into a real hospital's billing.
-4. **Run the restore drill once against the real RDS instance** (§6, the RDS procedure below the
+5. **Run the restore drill once against the real RDS instance** (§6, the RDS procedure below the
    local rehearsal) — not the rehearsal, the real one, before the first bill is ever posted for
    real.
-5. **Set `DEPLOY_ENABLED=true`** (a GitHub repository variable) and confirm the five repository
+6. **Set `DEPLOY_ENABLED=true`** (a GitHub repository variable) and confirm the five repository
    secrets exist: `AWS_ROLE_ARN`, `AWS_REGION`, `ECR_REGISTRY`, `EKS_CLUSTER_STAGING`,
    `EKS_CLUSTER_PROD` (§2 names what each populates). Confirm the `staging` GitHub environment's
    secrets too (`DATABASE_URL`, `JWT_PRIVATE_KEY`, `JWT_PUBLIC_KEY`) if staging has not already
    been deployed for real.
-6. **Promote:**
+7. **Promote:**
    ```bash
    git checkout staging && git merge --ff-only develop && git push
-   # verify staging: /readyz, a sign-in, one sale, db:rebuild-balances reconciling — step 7
+   # verify staging: /readyz, a sign-in, one sale, db:rebuild-balances reconciling — step 8
    git checkout production && git merge --ff-only staging && git push
    ```
    Production's deploy waits for the GitHub environment approval (`production`) before the job
    runs.
-7. **First post-deploy checks, on each environment, in order:**
+8. **First post-deploy checks, on each environment, in order:**
    ```bash
-   curl -fsS https://<host>/api/v1/readyz
+   kubectl -n <namespace> port-forward svc/rch-api 3000:3000 &
+   curl -fsS http://localhost:3000/readyz
+   # /readyz and /healthz are served at the root, outside API_PREFIX; only /api/v1/* goes
+   # through the ingress's /api rule, so https://<host>/api/v1/readyz is not a route at all.
    ```
    then sign in as a real account through the browser, take one real sale, and finally
    ```bash
@@ -790,12 +801,22 @@ deliberately a by-hand step run once before go-live and recorded, not a gate eve
 
 ```bash
 kubectl port-forward -n rch-staging svc/rch-api 3000:3000 &
-node apps/api/scripts/loadcheck.mjs --base http://localhost:3000 --emp RC-4471 --password <staging-seed-password>
-node apps/api/scripts/loadcheck.mjs --base http://localhost:3000 --emp RC-4471 --password <staging-seed-password> --concurrency 30
+LOADCHECK_PASSWORD=<staging-seed-password> node apps/api/scripts/loadcheck.mjs --base http://localhost:3000 --emp RC-4471
+LOADCHECK_PASSWORD=<staging-seed-password> node apps/api/scripts/loadcheck.mjs --base http://localhost:3000 --emp RC-4471 --concurrency 30
 ```
 
-`--help` prints the full flag list. Before trusting a number, set up the run correctly — three
-things the wave-2 baseline run got wrong before they were understood:
+The password comes from `LOADCHECK_PASSWORD`, not `--password` — a flag is left in the shell
+history and in `ps` for as long as the run lasts; the script still honours `--password` and
+warns when it is used, but the environment variable is the one to reach for. `--help` prints the
+full flag list.
+
+**Never point this at production.** `POST /bills` is a real sale — it moves real stock and
+posts a real bill against whichever database `--base` resolves to, exactly as `pnpm test:e2e`'s
+smoke does (§13) and for the same reason: there is no dry-run flag, and a stray `--base` pointed
+at the production API would sell real stock at the concurrency the run asks for.
+
+Before trusting a number, set up the run correctly — three things the wave-2 baseline run got
+wrong before they were understood:
 
 - **Raise `RATE_LIMIT_PER_MINUTE` for the run.** The limiter keys an authenticated request on
   `req.user.sub`, so every concurrent worker sharing the script's one bearer token draws from a
@@ -823,8 +844,9 @@ sized for a load test's concurrency, only for real traffic's).
 
 ## 13. The end-to-end smoke
 
-`pnpm test:e2e` (root) runs the Playwright suite in `e2e/` — six spec files, twelve tests, one
-real browser driving a real running stack from sign-in to a settled write. It knows nothing about
+`pnpm test:e2e` (root) runs the Playwright suite in `e2e/` — six files, eight scenarios, twelve
+runtime tests (the sign-in loop is five of them) — one real browser driving a real running stack
+from sign-in to a settled write. It knows nothing about
 the workspace's internals: no import from `packages/contract` or the UI's own source, only
 employee numbers, URLs and the sentences the server actually sends. `e2e/README.md` is the fuller
 reference — what each spec proves, the local run sequence, and the "Known switches" table for any
@@ -837,12 +859,13 @@ rate limits raised (`LOGIN_RATE_LIMIT_PER_MINUTE=200`, `LOGIN_RATE_LIMIT_PER_EMP
 — the run signs in roughly sixteen times through one dev-proxy IP, which the defaults of 10/min
 and 5/min-per-employee both refuse partway through).
 
-**In CI:** `E2E=1` on the `images` job's `helm install`/`helm upgrade` steps
-(`.github/workflows/ci.yml`) makes `deploy/chart/rch/ci/install-test.sh` append the same three
-settings as `--set-string` overrides — `SEED_FORCE_PASSWORD_CHANGE=false`,
-`LOGIN_RATE_LIMIT_PER_MINUTE=200`, `LOGIN_RATE_LIMIT_PER_EMP_PER_MINUTE=100` — on top of the
-chart's own defaults, then runs `pnpm test:e2e` against the kind cluster's UI service once
-`/healthz` answers.
+**In CI:** `E2E=1` is set on exactly one step, "helm install into kind"
+(`.github/workflows/ci.yml:127-129`), which runs `deploy/chart/rch/ci/install-test.sh` — that
+one script does both the `helm install` and the `helm upgrade` internally, and with `E2E=1` in
+its environment it appends the same three settings as `--set-string` overrides to both —
+`SEED_FORCE_PASSWORD_CHANGE=false`, `LOGIN_RATE_LIMIT_PER_MINUTE=200`,
+`LOGIN_RATE_LIMIT_PER_EMP_PER_MINUTE=100` — on top of the chart's own defaults, then runs
+`pnpm test:e2e` against the kind cluster's UI service once `/healthz` answers.
 
 **It writes real bills, real tickets, real support tickets — real documents against whatever
 database it is pointed at.** `pnpm test:e2e` and the CI job both point at a database seeded

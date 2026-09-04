@@ -155,29 +155,31 @@ Numbers that a rule reads live beside the schema that describes their world, and
 where a caller already imports from:
 
 - `STAFF_CREDIT_LIMIT` (₹3,000) is declared in `schemas/common.ts` and re-exported from
-  `fixtures/master.ts` (so the counter's screen keeps one import) and from
-  `@rch/domain`'s `credit.ts` (so the rule and its ceiling arrive together).
+  `@rch/domain`'s `credit.ts` (so the rule and its ceiling arrive together). It is **not**
+  re-exported from `fixtures/master.ts` any more, and no production file under `UI/src` imports
+  it — the till reads the ceiling live off `GET /reports/credit/:kind/:id`'s own `limit`
+  (`roles/counter/Pos.tsx`), the number the server will actually refuse on, rather than a
+  constant compiled into the bundle. Landed in the Phase 6 fix wave, alongside the two
+  constants below.
 - `BILL_DAYS` (7) is in `schemas/snapshot.ts` — the snapshot's bill window and `GET /bills`'s
   default, one number so replacing the store's list wholesale stays correct.
 - `PO_APPROVAL_LIMIT` (₹25,000, the slab a purchase order's value is checked against before it
-  needs finance approval) is declared in `schemas/common.ts` and re-exported from
-  `fixtures/master.ts` the same way `STAFF_CREDIT_LIMIT` is — `needsApproval` in `@rch/domain`
+  needs finance approval) is declared in `schemas/common.ts`; `needsApproval` in `@rch/domain`
   takes it as a parameter rather than importing it, so the rule and the number stay separable.
 - `ALL_LOCS` and `OUTLETS` moved here in Phase 6, from three local declarations in
   `fixtures/master.ts` (a value-identical move — `ALL_LOCS` is `[...LocKeySchema.options]`,
   `OUTLETS` the same three strings it always was). Both stay `LocKey[]`, not a narrowed
   `readonly` tuple — six `.includes(l)` call sites across `UI/src/roles/manager` pass a plain
   `LocKey` and would fail to typecheck against a literal tuple. `UI/src/data/master.ts` imports
-  all five constants on this line straight from `@rch/contract`, not from `@rch/contract/
-  fixtures` — no production file under `UI/src` reaches the fixtures at all (§5.1). At HEAD
-  `fixtures/master.ts` still carries the three re-export lines for `ALL_LOCS`, `OUTLETS` and
-  `PAR_FACTOR`, but nothing imports through them any more; the Phase 6 fix wave deletes the
-  lines rather than leave a re-export with no reader.
-- `PAR_FACTOR` lives in `packages/domain` (its one consumer is `parOf` in
+  these two, plus `PO_APPROVAL_LIMIT`, straight from `@rch/contract` — **three** constants, not
+  five: `PAR_FACTOR` comes from `@rch/domain` instead (below) and `STAFF_CREDIT_LIMIT` is not
+  re-exported to the browser at all any more (above). No production file under `UI/src` reaches
+  `@rch/contract/fixtures` (§5.1). `fixtures/master.ts` no longer re-exports any of the three —
+  the Phase 6 fix wave deleted the lines once nothing imported through them, leaving only a
+  comment explaining where each constant actually lives.
+- `PAR_FACTOR` lives in `packages/domain/src/par.ts` (its one consumer is `parOf` in
   `UI/src/lib/selectors.ts`; no server rule reads it, so it was never a wire shape and does not
-  belong here). It passed through `schemas/common.ts` alongside `ALL_LOCS`/`OUTLETS` for one
-  Phase 6 task before this move landed — do not go looking for it here. (Lands in the Phase 6
-  fix wave.)
+  belong here). Landed in the Phase 6 fix wave.
 - Id formats and the first number of each series are **not** here: `formatId`, `SEQUENCE_START`
   and `IdKind` live in `@rch/domain/src/ids.ts`, because they are a rule, not a wire shape.
   `grnId(poId, n)` joined them in Phase 6 — a goods receipt's id, `GRN-<yy><po number>-<nn>`,

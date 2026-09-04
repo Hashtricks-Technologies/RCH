@@ -260,9 +260,9 @@ footer p{max-width:70ch;margin:0 0 8px}
     <h1>Indent to Counter</h1>
     <p class="dek">Two supply chains meet at one counter. Everything the hospital's kitchen and canteen moves either arrives sealed with a price printed on it, or is made on site with a price the hospital sets. This document works out what that means for every screen, every login and every stock movement in between &mdash; and defines how you will sign it off.</p>
     <dl class="meta">
-      <div><dt>Document</dt><dd>RCH/HIMS/UA-01 &middot; draft 1</dd></div>
+      <div><dt>Document</dt><dd>RCH/HIMS/UA-01 &middot; rev 2</dd></div>
       <div><dt>Prepared</dt><dd>25-Aug-2026</dd></div>
-      <div><dt>Status</dt><dd>For client review</dd></div>
+      <div><dt>Status</dt><dd>As built &mdash; Phase 6, 2026-09-04</dd></div>
       <div><dt>Supersedes</dt><dd>Flow chart v1</dd></div>
     </dl>
   </div>
@@ -354,12 +354,12 @@ footer p{max-width:70ch;margin:0 0 8px}
   <!-- ============ 03 ============ -->
   <section id="roles">
     <div class="sec-head"><span class="sec-num">03</span><h2>Who logs in</h2></div>
-    <p class="sec-sub">Five roles, exactly as built &mdash; <code>RoleSchema</code> in <code>packages/contract/src/schemas/common.ts</code> &mdash; each with the modules spec &sect;8.3 lists for it. There is no sixth role: what earlier drafts split into Indentor / Manager / Purchase Officer / Purchase Manager / Accounts / Administrator / Auditor collapses onto these five, because that is what the module list below actually needs, not a headcount plan.</p>
+    <p class="sec-sub">Five roles, exactly as built &mdash; <code>RoleSchema</code> in <code>packages/contract/src/schemas/common.ts</code> &mdash; each with the modules spec &sect;8.3 lists for it. &sect;09 lists this document's original eleven: System Administrator, Department Indentor, F&amp;B Manager/HOD, Purchase Officer, Purchase Manager/Finance Approver, Store Keeper, Production In-charge, Counter Operator, Dietitian, Accounts/Finance, Auditor/Management. Three keep their shape below (Store Keeper; Production In-charge, renamed Kitchen In-charge; Counter Operator); F&amp;B Manager/HOD becomes Outlet Manager and Purchase Officer becomes Procurement Officer, each with a wider brief than the original split gave it; the remaining six &mdash; Administrator, Indentor, Purchase Manager, Accounts, Auditor, Dietitian &mdash; collapse into no role at all, because nothing in this system needs a screen for what they did.</p>
 
     <div class="roles">
       <div class="role"><h4>Counter Operator</h4><p class="who">Coffee Shop, Restaurant, Snack Kiosk &middot; 2 seeded users</p><ul><li>Point of Sale, all tender types, MTO recipe deduction</li><li>Turns an item on/off at their own counter</li><li>Raises and cancels stock requests; receives a ticket at their own outlet</li><li>Asks a peer shop for stock, and answers a peer's ask, at their own outlet</li><li>Raises a support ticket; withdraws a shop-to-shop transfer they raised</li></ul><p class="no">Cannot approve a request, issue a ticket, price anything, or open any purchasing screen &mdash; those modules are absent from their sidebar.</p></div>
 
-      <div class="role"><h4>Outlet Manager</h4><p class="who">All three outlets &middot; 1 seeded user</p><ul><li>Approves, trims or rejects a stock request &mdash; never past what the store can still promise</li><li>Sets prices on both lists, adds and removes menu items</li><li>Turns an item on/off at any outlet</li><li>Sees a shop-to-shop ask, but does not decide it</li><li>Raises a support ticket</li></ul><p class="no">Cannot receive from a vendor, raise a purchase order, or price above a batch's printed MRP &mdash; that ceiling has no override, for anyone.</p></div>
+      <div class="role"><h4>Outlet Manager</h4><p class="who">All three outlets &middot; 1 seeded user</p><ul><li>Approves, trims or rejects a stock request &mdash; never past what the store can still promise</li><li>Sets prices on both lists, adds and removes menu items</li><li>Turns an item on/off at any outlet</li><li>Sees a shop-to-shop ask, but does not decide it</li><li>Raises a support ticket</li></ul><p class="no">Cannot receive from a vendor, raise a purchase order, or price above the item's printed MRP &mdash; that ceiling has no override, for anyone.</p></div>
 
       <div class="role"><h4>Store Keeper</h4><p class="who">Central Store &middot; 1 seeded user</p><ul><li>Issues a ticket against an approved request; hands it over on the collector's OTP or the labelled override</li><li>Central stock, requisitions to procurement, rate contracts</li><li>Adds a product directly to the master</li><li>Answers a shop's request for something not on the master</li><li>Reads the stock ledger and the credit report; raises a support ticket</li></ul><p class="no">Cannot change a purchase rate, sell anything, or approve their own stock movement.</p></div>
 
@@ -395,8 +395,8 @@ footer p{max-width:70ch;margin:0 0 8px}
           <tr><th scope="row">Stock request</th><td>Counter Operator, Kitchen In-charge</td><td>Outlet Manager</td><td>Approve, trim line by line, or reject with a reason &mdash; never more than asked, than typed, or than the central store can still promise once every open ticket and other approval is netted off</td></tr>
           <tr><th scope="row">Requisition</th><td>Store Keeper</td><td>Procurement Officer</td><td>Approve whole, trim line by line, or decline with a reason. Free-to-promise is not consulted here &mdash; what the central store is holding has nothing to do with what a vendor can supply</td></tr>
           <tr><th scope="row">Purchase order</th><td>Procurement Officer</td><td colspan="2"><strong><code>PO_APPROVAL_LIMIT</code> (&#8377;25,000) is a flag, not a gate.</strong> An order over the slab is stamped <code>needsApproval</code> and shown as a badge on the buyer's own list &mdash; nothing refuses it, and no second role stands behind the number. The buyer who raised it can also send it. This is spec &sect;16's own amendment, not an oversight this document is flagging</td></tr>
-          <tr><th scope="row">Goods receipt</th><td>Procurement Officer</td><td colspan="2">Auto-allowed up to 2% over the ordered quantity; beyond it the whole line is refused, not partially booked. Every line is validated before anything is written</td></tr>
-          <tr><th scope="row">Traded price <span class="chip a">A</span></th><td>Outlet Manager</td><td colspan="2">Never above the batch's printed MRP, for any role, under any condition &mdash; a hard ceiling with no approval path around it</td></tr>
+          <tr><th scope="row">Goods receipt</th><td>Store Keeper or Procurement Officer</td><td colspan="2">Auto-allowed up to 2% over the ordered quantity; beyond it the whole line is refused, not partially booked. Every line is validated before anything is written</td></tr>
+          <tr><th scope="row">Traded price <span class="chip a">A</span></th><td>Outlet Manager</td><td colspan="2">Never above the item's printed MRP, for any role, under any condition &mdash; a hard ceiling with no approval path around it</td></tr>
           <tr><th scope="row">Made-item price <span class="chip b">B</span></th><td>Outlet Manager</td><td colspan="2">No second approver and no floor at cost &mdash; the manager may price a made item below what it costs to make, and the system does not stop them</td></tr>
           <tr><th scope="row">Handover</th><td>Store Keeper, Kitchen In-charge</td><td colspan="2">The collector's six-digit OTP, or the labelled supervisor override (store and kitchen only), recorded on the ticket's own trail as it happens</td></tr>
           <tr><th scope="row">Support ticket status</th><td>Any role, own ticket</td><td colspan="2">The raiser may mark their own ticket Resolved or Closed; every other status word (With support, Waiting on you) is the desk's own, reachable only by a reply</td></tr>
@@ -448,7 +448,7 @@ footer p{max-width:70ch;margin:0 0 8px}
 
     <!-- stage 1 -->
     <div class="stage">
-      <div class="stage-h"><span class="stage-n">01</span><div class="stage-t"><h3>Requisition, purchase order, goods receipt</h3><p>Store Keeper raises &middot; Procurement Officer decides, orders and receives</p></div></div>
+      <div class="stage-h"><span class="stage-n">01</span><div class="stage-t"><h3>Requisition, purchase order, goods receipt</h3><p>Store Keeper raises &middot; Procurement Officer decides and orders &middot; either receives</p></div></div>
       <div class="stage-b"><div class="grid2">
         <div>
           <p class="f">One raiser, one decider, no department-by-department indent. The store keeper reviews what the central store needs and sends a <strong>requisition</strong>; the procurement officer approves it whole, trims it line by line, or declines it with a reason &mdash; free-to-promise is not consulted here, because what the central store is holding has nothing to do with what a vendor can supply.</p>

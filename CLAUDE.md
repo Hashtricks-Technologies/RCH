@@ -92,7 +92,8 @@ docs/*.html              UA spec, system design, user flows — the product cont
 docs/superpowers/        plans and specs from prior agent-driven work
 scripts/build-site.sh    assembles index.html + docs/ + UI/dist into dist/
 UI/                      the application (React 19, TS 6 strict, Vite 8, Zustand 5)
-e2e/                     the Playwright smoke — six specs, twelve tests, against a real stack
+e2e/                     the Playwright smoke — six files, eight scenarios, twelve runtime tests
+                         (the sign-in loop is five of them), against a real stack
 ```
 
 ## Nested guides
@@ -216,8 +217,10 @@ order only writes a reservation into `rsv`. Stock leaves a location on `handover
 on `receiveTicket`; in between it is in transit and owned by neither location (`inTransit`).
 Any new movement must follow this two-step shape.
 
-Ticket handover is gated by a six-digit OTP (`makeOtp`) that the collector reads aloud. A
-wrong OTP is refused; omitting the argument entirely is the labelled supervisor override.
+Ticket handover is gated by a six-digit code minted at random when the ticket is created
+(`allocateTicket`, `apps/api/src/lib/tickets.ts`) that the collector reads aloud. A wrong code
+is refused; omitting the argument entirely is the labelled supervisor override, open to `store`
+and `prod` only.
 
 There is a way back. A ticket nobody collected can be cancelled (`POST /tickets/:id/cancel`),
 which releases its hold and puts the document behind it — the request or the production order
@@ -312,10 +315,10 @@ These are enforced in code and pinned by tests. Breaking one is a bug, not a sty
   back either, not in its own write's response and not in `GET /snapshot`. `handover` compares
   what the collector says against the row it locks itself, never against a response; the
   labelled supervisor override, open to `store` and `prod` only and recorded in
-  `document_history`, is the one door past a collector who is not there. (Lands in the Phase 6
-  fix wave — `makeOtp`, a pure function of the ticket number, comes out of `@rch/domain`'s
-  public surface once it does, because a formula the browser can run is not a redaction, and the
-  role check joins the location check for the same reason.)
+  `document_history`, is the one door past a collector who is not there. (Landed in the Phase 6
+  fix wave, `a8f762b`/`19d486a` — `makeOtp`, a pure function of the ticket number, came out of
+  `@rch/domain`'s public surface, because a formula the browser can run is not a redaction, and
+  the role check joined the location check for the same reason.)
 
 ## Conventions
 
@@ -332,8 +335,10 @@ These are enforced in code and pinned by tests. Breaking one is a bug, not a sty
 - `strict` TypeScript with `noUnusedLocals`, `noUnusedParameters`, `verbatimModuleSyntax` and
   `erasableSyntaxOnly`. Type-only imports need `import type`.
 - Master data (items, locations, recipes, price lists, users, limits) lives in
-  `src/data/master.ts`; opening balances and in-flight documents in `src/data/seed.ts` and
-  `src/data/ops.ts`. Tests reset through `src/__tests__/fixture.ts` (`resetStore`, `S`, `as`).
+  `src/data/master.ts` — empty registries filled in place by `hydrateMaster()`/`hydrateRoster()`
+  from `GET /snapshot`; `src/data/seed.ts` and `src/data/ops.ts` no longer exist, and no
+  production file under `UI/src` imports `@rch/contract/fixtures`. Tests reset through
+  `src/__tests__/fixture.ts` (`resetStore`, `S`, `as`, `signedOut`).
 
 ## Tests
 
@@ -346,10 +351,11 @@ the host does not supply one):
   (C6, M3, M8, H4, UA-14…). Read the surrounding comment before changing behaviour one covers.
 - `screens.test.tsx` / `app.test.tsx` — every role × every nav key renders, bare and in-shell.
 - `theme.test.ts` — theme resolution and persistence.
-- `writes.test.ts` — the server-backed actions (Phase 2's `pay`, `toggleAvail`, `savePrice`,
+- `writes.test.ts` — every server-backed action (Phase 2's `pay`, `toggleAvail`, `savePrice`,
   `addProduct`, `removeProduct`; Phase 3's fourteen movement actions; Phase 4's three kitchen
-  actions; and now Phase 5's twenty-one buying actions) against a mocked client: success
-  refetches the right slices, a refusal toasts and leaves state untouched.
+  actions; Phase 5's twenty-one buying actions; and Phase 6's last four support actions, plus the
+  two report reads) against a mocked client: success refetches the right slices, a refusal
+  toasts and leaves state untouched.
 - `events.test.ts` — the SSE client (`UI/src/api/events.ts`): frame parsing, the 250 ms
   per-collection debounce into `refetch`, `resync` forcing a full `loadSnapshot`, and the
   `live` / `reconnecting` / `off` state the shell's status pill reads.
@@ -359,7 +365,8 @@ keeps parallel runs from colliding), migrated once and dropped on close
 (`apps/api/src/test/db.ts`). Both `apps/api/vitest.config.ts` and `UI/vite.config.ts` pin
 `TZ=UTC` so IST-sensitive assertions (bill numbering across midnight, best-before rendering)
 prove something on every host, not just ones already in UTC. `apps/api/src/test/builders.ts`
-exports `given.{request,ticket,shopAsk,bill,prodOrder}` — one row per family, seeded above the
+exports `given.{request,ticket,shopAsk,bill,prodOrder,vendor,requisition,po,contract,
+productRequest,supportTicket}` — eleven builders, one row per family, seeded above the
 fixture's own ids so a builder-made document can never collide with a seeded one. A test that
 opens two concurrent transactions to prove a lock holds must call `warmPool(t, n)`
 (`apps/api/src/test/db.ts`) first — `pg` connects lazily, so without it two "concurrent"
@@ -428,8 +435,9 @@ contract on a vendor and item, an item's name — are decided the way `addMenuIt
 a pre-check gives the operator's sentence, and the insert (or update, against
 `vendors_name_ci_uq`, the partial unique index `rate_contracts_live_uq`, and `items_name_ci_uq`)
 is the arbiter that catches the race. `"prq"`, `"po"`, `"vendor"` and `"contract"` join
-`IdKind`; a GRN does not — `GRN-<last 3 of the PO>-<nn>` has no `sequences` row at all, `nn`
-counting that order's own instalments under its `for update` lock.
+`IdKind`; a GRN does not — `GRN-<yy><po number>-<nn>` (`grnId(poId, n)` in
+`packages/domain/src/ids.ts`) has no `sequences` row at all, `nn` counting that order's own
+instalments under its `for update` lock.
 
 Phase 6 added two modules, `support` and `reports`, and closed every remaining in-memory path.
 `support` mounts the desk's four writes (`raiseTicket`, `replyToTicket`, `setTicketStatus`,

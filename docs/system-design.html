@@ -229,10 +229,10 @@ footer a{color:var(--accent)}
     <h1>One Store, Many Counters</h1>
     <p class="dek">Eateasy already knows how to take an order and split a bill across outlets. It has no idea what a bottle of milk is. This document works out the inventory half &mdash; one item master behind every counter in the building, stock that requests itself, and a ticket that is the only way anything physically leaves a store.</p>
     <dl class="meta">
-      <div><dt>Document</dt><dd>RCH/HIMS/SYS-01 &middot; draft 1</dd></div>
+      <div><dt>Document</dt><dd>RCH/HIMS/SYS-01 &middot; rev 2</dd></div>
       <div><dt>Base platform</dt><dd>Synergeek/eateasy</dd></div>
       <div><dt>Companion</dt><dd>UA-01 Indent to Counter</dd></div>
-      <div><dt>Status</dt><dd>For client review</dd></div>
+      <div><dt>Status</dt><dd>As built &mdash; Phase 6, 2026-09-04</dd></div>
     </dl>
   </div>
 </header>
@@ -600,6 +600,7 @@ footer a{color:var(--accent)}
       <p class="f">An item going dark is a demand signal, so the system should not merely alert. Crossing the low threshold <strong>drafts a stock request</strong> addressed to the right source &mdash; central store for traded goods, central kitchen for made items, and it offers a nearby outlet holding surplus as a lateral alternative. The outlet person confirms or edits and submits. This is the loop closing: the counter never types a request from scratch, and the inventory desk sees demand appear before anyone has run out.</p>
     </div>
     <div class="note warnbox"><strong>One guard rail</strong>Auto-off must respect an unfulfilled order. If three cappuccinos are already paid for and in the queue, the ingredients behind them are committed at the moment the order is accepted, not at the moment it is served &mdash; otherwise the counter cheerfully sells the last of the milk twice in the same minute.</div>
+    <div class="note"><strong>As built</strong>The computed on/off state shipped &mdash; a traded item is off at zero, a made item is off when any binding ingredient runs short, named in the reason (spec &sect;5.1 <code>availOf</code>) &mdash; and the manual override on top of it. <code>SCHEDULE</code> mode, the auto-draft into a stock request, and the nearby-outlet offer were not built: going dark raises no request by itself, and the operator raises one by hand, same as any other shortage.</div>
   </section>
 
   <!-- 07 -->
@@ -644,7 +645,7 @@ footer a{color:var(--accent)}
     </div>
 
     <div class="prose">
-      <p class="f">The store keeper reviews and edits that list, then submits it as a <strong>purchase requisition</strong> &mdash; the formal handover from inventory to procurement. Procurement takes it from there: rate contract lookup, quotation comparison for off-contract items, vendor selection, PO by the approval slabs in the companion document, and goods receipt back into the central store.</p>
+      <p class="f">The store keeper reviews and edits that list, then submits it as a <strong>purchase requisition</strong> &mdash; the formal handover from inventory to procurement. Procurement takes it from there: rate contract lookup for anything a contract covers, vendor selection, PO by the buyer's own decision &mdash; <code>PO_APPROVAL_LIMIT</code> flags an order over &#8377;25,000 on the buyer's own list and nothing refuses it &mdash; and goods receipt back into the central store.</p>
       <p class="f">The piece that is usually missed: when that receipt posts, <strong>the outlet requests that were waiting on it wake up</strong>. A back-ordered line links to the requisition, the requisition to the PO, the PO to the GRN. The outlet gets told that its request for six tins of oil can now be fulfilled, and the store keeper sees a ready-to-approve queue rather than a fresh round of identical requests. Without that chain, unfulfilled requests die silently and every shortage is requested three times.</p>
     </div>
 
@@ -652,13 +653,13 @@ footer a{color:var(--accent)}
       <table>
         <thead><tr><th style="width:22%">Stage</th><th style="width:22%">Owner</th><th>What it produces</th></tr></thead>
         <tbody>
-          <tr><th scope="row">Requirement run</th><td>System, nightly</td><td>Suggested purchase list by vendor, with the arithmetic visible per line</td></tr>
+          <tr><th scope="row">Requirement run <span style="opacity:.6">&mdash; not built</span></th><td>&mdash;</td><td>The procurement list is a live query over open requisitions, not a nightly scheduled run &mdash; there is no batch job and no "suggested" list waiting each morning</td></tr>
           <tr><th scope="row">Review &amp; edit</th><td>Store keeper</td><td>Adjusted quantities, items deferred or added, with reasons</td></tr>
-          <tr><th scope="row">Purchase requisition</th><td>Store keeper</td><td>The formal ask, approved per the value slab</td></tr>
-          <tr><th scope="row">Sourcing</th><td>Procurement</td><td>Rate contract or three quotes compared, vendor chosen and justified</td></tr>
-          <tr><th scope="row">Purchase order</th><td>Procurement</td><td>Approved PO to vendor. On-order quantity now visible to everyone</td></tr>
-          <tr><th scope="row">Goods receipt</th><td>Store keeper</td><td>Batch, expiry, MRP, landed cost. Back-orders reawakened</td></tr>
-          <tr><th scope="row">Three-way match</th><td>Accounts</td><td>PO, GRN and vendor invoice agree, or the payment is held</td></tr>
+          <tr><th scope="row">Purchase requisition <span style="opacity:.6">&mdash; not built as described</span></th><td>Store keeper</td><td>The formal ask, decided by the buyer alone &mdash; there is no value slab and no second approver on a requisition</td></tr>
+          <tr><th scope="row">Sourcing</th><td>Procurement</td><td>Rate contract when one covers the item, otherwise the item's own standard cost &mdash; quotation comparison was never built</td></tr>
+          <tr><th scope="row">Purchase order</th><td>Procurement</td><td>PO to vendor, no second approver; <code>PO_APPROVAL_LIMIT</code> flags a badge over &#8377;25,000. On-order quantity now visible to everyone</td></tr>
+          <tr><th scope="row">Goods receipt</th><td>Store keeper or Procurement Officer</td><td>Batch, expiry, MRP, landed cost. Back-orders reawakened</td></tr>
+          <tr><th scope="row">Three-way match <span style="opacity:.6">&mdash; not built</span></th><td>&mdash;</td><td>There is no Accounts role and no vendor-invoice matching; a purchase order's own life ends at "Received"</td></tr>
         </tbody>
       </table>
     </div>
@@ -749,17 +750,22 @@ footer a{color:var(--accent)}
 
   <!-- 12 -->
   <section id="questions">
-    <div class="sec-head"><span class="sec-num">12</span><h2>Your decisions</h2></div>
-    <p class="sec-sub">Eight this document turns on, on top of the ten in the UA specification.</p>
-    <div class="qs">
-      <div class="q"><div><h4>Are any outlets leased to third parties?</h4><p>If a coffee brand runs the lobby counter, Eateasy's settlement and payout machinery is exactly right and stays. If the hospital owns every outlet, payouts become internal cost-centre transfers and a chunk of the existing money code changes purpose. <em>This is the biggest single fork in the design.</em></p></div></div>
-      <div class="q"><div><h4>Do the shops actually produce, or only resell?</h4><p>You said coffee, tea and snacks. Brewing on site means each shop holds raw materials, runs mini-recipes and needs recipe-linked availability &mdash; a materially bigger build than pure retail counters.</p></div></div>
-      <div class="q"><div><h4>Does the restaurant cook, or plate what the central kitchen sends?</h4><p>Decides whether production exists in one place or several, and whether the restaurant needs its own raw stock and yield tracking.</p></div></div>
-      <div class="q"><div><h4>Who physically carries stock between floors?</h4><p>Porters, outlet staff, a service lift with time windows? The pick ticket can name a courier and timestamp both ends, but only if there is a person to name. <em>This decides whether in-transit is a real accountable state or a formality.</em></p></div></div>
-      <div class="q"><div><h4>How many price levels, and who funds the difference?</h4><p>Visitor, staff, doctor, patient attender. If staff pay a subsidised rate, the gap has to land in a cost centre someone owns, or the outlet's margin silently absorbs it.</p></div></div>
-      <div class="q"><div><h4>Can an outlet ever refuse a lateral request?</h4><p>Our design says yes &mdash; the giving manager approves. If hospital policy is that the store's word is final and outlets must comply, the routing changes and outlet managers lose a control.</p></div></div>
-      <div class="q"><div><h4>Is Eateasy the codebase we extend, or the reference we rebuild from?</h4><p>Extending is faster and inherits working auth, ordering and payments. Rebuilding gives a clean hospital-shaped schema without mall vocabulary. <em>Our recommendation is to extend &mdash; the ordering and money code is the expensive part and it already works.</em></p></div></div>
-      <div class="q"><div><h4>How far does patient food reach into this?</h4><p>Ward pantries are in the topology above as consuming locations. Whether patient diet planning itself lives here or in the separate HIMS module is still <a href="#">Q1 of the UA document</a> and still open.</p></div></div>
+    <div class="sec-head"><span class="sec-num">12</span><h2>How each fork was resolved</h2></div>
+    <p class="sec-sub">This section asked eight open questions before anything was built. All eight are answered now, by what shipped &mdash; kept here as a record of which way each fork went, not as a live decision list.</p>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th style="width:34%">The question this document asked</th><th>How it was resolved</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">Are any outlets leased to third parties?</th><td>No. Every outlet is hospital-run, and Eateasy's settlement/payout machinery was never carried over &mdash; there is no <code>settlements</code> or <code>payouts</code> table in the built schema at all (spec &sect;7.2).</td></tr>
+          <tr><th scope="row">Do the shops actually produce, or only resell?</th><td>Only resell, or receive already-made goods from the central kitchen. No outlet holds raw materials or runs a recipe; production exists in exactly one place.</td></tr>
+          <tr><th scope="row">Does the restaurant cook, or plate what the central kitchen sends?</th><td>Neither, in the sense asked &mdash; the restaurant is a selling outlet like the other two, supplied by tickets from the kitchen or the central store. It has no production screen of its own.</td></tr>
+          <tr><th scope="row">Who physically carries stock between floors?</th><td>Nobody named in the system. A ticket has no courier field; the collector is whoever reads the six-digit code aloud, and the record is who typed it in at each end, not who walked it over.</td></tr>
+          <tr><th scope="row">How many price levels, and who funds the difference?</th><td>Two price lists (A and B), with no visitor/staff/doctor/patient-attender split and no subsidy-funding mechanism. A bill's payer decides how it is settled (cash, UPI, card, patient bill, staff credit, department), not what price it is charged.</td></tr>
+          <tr><th scope="row">Can an outlet ever refuse a lateral request?</th><td>Yes, and it is the counter being asked that decides, not a manager standing over it &mdash; <code>declineShopAsk</code> refuses with a reason, and the outlet manager only ever sees the ask happen, the same way the store keeper is only told a lateral transfer occurred (&sect;05, &sect;06 below).</td></tr>
+          <tr><th scope="row">Is Eateasy the codebase we extend, or the reference we rebuild from?</th><td>Rebuilt fresh, standalone. This document's own recommendation was to extend; the design that actually shipped decided the opposite (<code>docs/superpowers/specs/2026-09-03-backend-design.md</code> &sect;2, "Fresh, standalone. No Eateasy code or schema inherited") &mdash; a fork this document guessed wrong on, recorded rather than quietly corrected.</td></tr>
+          <tr><th scope="row">How far does patient food reach into this?</th><td>Not at all. No patient diet planning, no ward pantry, no dietitian role; a patient is billed through the <code>Patient bill</code> tender at a counter, the same as any other payer, and nothing else about their care crosses into this system.</td></tr>
+        </tbody>
+      </table>
     </div>
   </section>
 

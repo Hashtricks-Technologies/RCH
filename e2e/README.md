@@ -1,7 +1,8 @@
 # `e2e/` — the Playwright smoke
 
-Eight scenarios that drive a real browser against a real stack: a real sign-in, a real cookie,
-an nginx (or Vite) proxy in front of the API, a live-update stream and a Postgres transaction.
+Six files, eight scenarios, twelve runtime tests (the sign-in loop is five of them) that drive a
+real browser against a real stack: a real sign-in, a real cookie, an nginx (or Vite) proxy in
+front of the API, a live-update stream and a Postgres transaction.
 
 **It imports nothing from this repo, on purpose.** `packages/contract`, `packages/domain`,
 `apps/api` and `UI` each check the contract from the inside; a smoke that shared their types

@@ -63,29 +63,24 @@ No build step — `package.json` exports `src/index.ts` directly.
 | `credit.ts` | `creditRoom`, `breachesCredit`, `creditBreachMessage`, and the re-exported `STAFF_CREDIT_LIMIT` |
 | `apportion.ts` | `apportion` — a receipt fills its source lines in order, deterministically |
 | `support.ts` | `SUPPORT_TRANSITIONS`, `mayUserSet`, `statusAfterReply`, `mayRate`, `mayReply` — the support desk's rules. No support-agent role exists (§8.3's five roles), so every edge but the seeded desk's own replies is one a *user* can take; `mayReply` is not an edge in the table (a reply is refused *before* it is written, so `statusAfterReply` never sees a closed ticket) but the one predicate both the service and the drawer read to decide whether the reply box may be shown at all |
-| `reports.ts` | `ledgerRow` — one item's opening/received/issued/closing over a window, from a `before` sum and a signed `inWindow` array; `ledgerTotals` — the four columns summed across rows, kept for `packages/domain`'s own test but **not** what the store's ledger screen uses for its foot, because the columns are mixed units (kg, nos, L) and summing them would be exactly the "adding litres to cups" defect the root guide's number-formatting rule forbids — the UI totals per unit with `unitTotal` instead |
+| `reports.ts` | `ledgerRow` — one item's opening/received/issued/closing over a window, from a `before` sum and a signed `inWindow` array. There is deliberately **no** `ledgerTotals`: the central store's ledger carries kg, nos and L on one page, and the store's own foot totals per unit with `unitTotal` instead |
 | `ids.ts` | `formatId`, `SEQUENCE_START`, `IdKind`, `grnId(poId, n)` — the document numbers exactly as the floor reads them. `grnId` is Phase 6's: `GRN-<yy><po number>-<nn>`, built once here rather than inline in `grn/service.ts`, because the three-character-tail format it replaced collided (`PO-2026-0143` and `PO-2027-0143` shared it) |
-
-`otp.ts`'s `makeOtp` — six digits derived from the ticket number — comes out of this package in
-the Phase 6 fix wave: a formula the browser can run is not a redaction, so the OTP mints at
-random in `apps/api/src/lib/tickets.ts`'s `allocateTicket` instead (`crypto.randomInt(100000,
-1000000)`) and `otp.ts` is deleted along with it. Do not add a new caller of `makeOtp` while it
-still exists — the code exists to be minted, once, on the server, not previewed or predicted.
 | `shelf.ts` | `DEFAULT_SHELF_LIFE_HOURS` (8), `bestBeforeAt`, `bestBeforeText` — the only place a batch's best-before or its H9 wording ("21:30", "21:30 tomorrow", "21:30 04 Sep") is computed |
 | `claims.ts` | `releaseClaim` — give a purchase-order line's sources back **last source first**; `foldClaims` — every delta against one requisition line, folded and sorted into lock order; `shortfallClaims` — what never arrived, per line, released the same way. The whole arithmetic of the procurement list, which is derived and stores nothing but `ordered_qty` |
 | `receipt.ts` | `checkReceiptLine` — the goods-receipt checks in the store keeper's own order (the 2% tolerance, the rejected-qty bound, the batch/date checks, the MRP-vs-shelf-price floor); `receiptStatus` — `Received` or `Partially received` once an instalment is booked; `RECEIPT_TOLERANCE` (1.02) |
 | `purchasing.ts` | `poValue`, `needsApproval` (takes the finance slab as a parameter, never imports it), `rateFor` (a live rate contract, or the item's standard cost), `contractInWindow` (whether a contract prices an order on a given calendar date — the server's query and the buyer's preview both read it), `etaFrom` (a vendor's lead time, counted in the hospital's calendar) |
 | `format.ts` | `money`, `money0`, `istDate`, `dmy` (`"2026-08-31"` → `"31-Aug-2026"`, from a fixed month table, not `toLocaleDateString`), `unitTotal` — the words and numbers both sides print. `credit.ts` and `shelf.ts` now import their formatters from here rather than keeping a private copy each |
 | `transitions.ts` | the six status tables and `canTransition` |
+| `par.ts` | `PAR_FACTOR` (`Record<LocKey, number>`) — the par multiplier `parOf` in `UI/src/lib/selectors.ts` reads. No server rule reads it; it was never a wire shape, which is why it left `packages/contract` in Phase 6 |
+
+`otp.ts`/`makeOtp` is gone: a six-digit code derived from a ticket number is a formula the
+browser can run, so the OTP is now minted at random in `apps/api/src/lib/tickets.ts`'s
+`allocateTicket` (`crypto.randomInt(100000, 1000000)`) and never leaves the server except to the
+collecting location.
 
 `SEQUENCE_START` is the first number each series issues, continuing the seeded documents
 (`req: 913`, `tkt: 441`, `bill: 1188`, …). `apps/api/src/lib/ids.ts` inserts those rows and hands
 numbers out under a row lock; the test builders deliberately allocate above them.
-
-`PAR_FACTOR` (`Record<LocKey, number>`, read by `parOf` in `UI/src/lib/selectors.ts`) lands here
-in the Phase 6 fix wave too — it has no server-side rule reading it, so it was never a wire
-shape, but it is UI tuning the same way every other constant in this package is a rule's own
-number, not a display string.
 
 ## Transition tables
 

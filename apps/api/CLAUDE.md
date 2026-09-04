@@ -138,9 +138,10 @@ adds a `pg_advisory_xact_lock` on the item's slug ahead of its own check, becaus
 itself reads before the insert's own lock.
 
 `"prq"`, `"po"`, `"vendor"` and `"contract"` join the `IdKind`s below. A GRN has none: there is
-no `"grn"` in `IdKind` and no `sequences` row for it — `GRN-<last 3 of the PO>-<nn>` is
-`count(*)` of that order's own GRN rows, read under the order's own `for update` lock, which is
-what serialises two receipts drawing a number rather than a sequence row.
+no `"grn"` in `IdKind` and no `sequences` row for it — `GRN-<yy><po number>-<nn>` (`grnId(poId,
+n)` in `packages/domain/src/ids.ts`) is `count(*)` of that order's own GRN rows, read under the
+order's own `for update` lock, which is what serialises two receipts drawing a number rather
+than a sequence row.
 
 Two more rules Phase 6's `support` and `reports` modules add, and one change to a Phase 3 read:
 
@@ -160,10 +161,13 @@ unless the ticket is `Issued`, the caller's `loc` is that ticket's `to`, **and**
 role is `counter`, `prod` or `store` — the three roles that ever stand at a receiving location
 and collect against a code. Applied to both `GET /snapshot` and the standalone `GET /tickets`,
 so a refetch after a handover cannot put the digits back on a screen the snapshot had just taken
-them off. A write's own response is deliberately **not** redacted — it is the answer to the
-caller's own write, on a document they were just authorised against. (The role check lands in
-the Phase 6 fix wave — without it, a manager whose `loc` happened to match a ticket's `to` could
-read the code too, which is exactly the leak the location check alone was meant to close.)
+them off. **A write's own response is redacted too, and harder:** `writeTicket` and `readTicket`
+(`apps/api/src/lib/tickets.ts`) return `otp: ""` unconditionally, because both are handed an id
+and no `who` and so have nothing to check a reader's location or role against. The six digits
+are read only from `GET /snapshot` or `GET /tickets`, by the receiving location. (The role check
+on `redactOtps` landed in the Phase 6 fix wave, `19d486a` — without it, a manager whose `loc`
+happened to match a ticket's `to` could read the code too, which is exactly the leak the
+location check alone was meant to close.)
 
 (c) **`GET /snapshot` gains `roster`** (`readers/master.ts`'s `readRoster`): every active row of
 `payers`, split into `patients`/`staff`/`depts`. One query, assembled once in `snapshot()` and
@@ -243,7 +247,7 @@ server repeats it **word for word** rather than inventing a second wording.
 - `seedTestDb(db)` seeds the fixtures; `authHeaders(app, "u2")` mints a bearer for a seeded user
   without walking the login flow. `truncateAll` empties business tables but **keeps `sequences`**.
 - `resetDocuments(db)` (`src/test/db.ts`) is the cheaper alternative to `truncateAll →
-  seedTestDb`: it truncates exactly the 26 document and vendor tables (`db/seed.ts`'s
+  seedTestDb`: it truncates exactly the 27 document and vendor tables (`db/seed.ts`'s
   `seedDocuments(tx)` re-populates them in one call) and leaves master data, users and payers
   seeded once per file in `beforeAll`. A suite that only opens and closes documents — not one
   that mutates `items`, `locations`, `recipes`, `users` or `payers` — should use it;
