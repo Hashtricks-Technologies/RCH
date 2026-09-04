@@ -23,6 +23,7 @@ describe("allocateTicket + writeTicket", () => {
     // caller is blank, because the caller is the location the ticket leaves from.
     const [row] = await t.db.select().from(tickets).where(eq(tickets.id, "TKT-0441"));
     expect(row!.otp).not.toBe("");
+    expect(row!.otp).toMatch(/^\d{6}$/);
     expect(tkt.otp).toBe("");
     // The first row of the trail is written here, signed with the issuer's own name.
     expect(tkt).toEqual({ id: "TKT-0441", req: "REQ-2026-0911", from: "store", to: "coffee", lines: [{ it: "milk", qty: 12 }], st: "Issued", otp: "", hist: [{ s: "Issued", who: "Suresh Muthu", t: expect.any(String) }] });

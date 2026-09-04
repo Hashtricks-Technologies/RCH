@@ -61,10 +61,11 @@ test("a request walks from the counter to the shelf, live in both windows", asyn
     // none of them. Asserting on a class that does not exist would pass either way, which is
     // the one thing this assertion — the smoke's whole proof of the redaction — must not do.
     await expect(store.locator(".otp-v")).toHaveCount(0);
-    // And `<Otp>` is not the only way to print them: `store/IssueDesk.tsx` and
-    // `manager/ItemsStock.tsx` write the same six digits into a bare `span.mono` column. The
-    // number the collector just read must not appear anywhere on the sending side's page, in
-    // either of the two shapes this system writes it — bare, and split into two groups of three.
+    // And `<Otp>` used to not be the only way to print them: `store/IssueDesk.tsx` and
+    // `manager/ItemsStock.tsx` used to write the same six digits into a bare `span.mono` column.
+    // Neither does any more, but the assertion stays so a column cannot come back — the number
+    // the collector just read must not appear anywhere on the sending side's page, in either of
+    // the two shapes this system once wrote it — bare, and split into two groups of three.
     await expect(store.locator("#app")).not.toContainText(otp);
     await expect(store.locator("#app")).not.toContainText(otp.replace(/(\d{3})(\d{3})/, "$1 $2"));
 
