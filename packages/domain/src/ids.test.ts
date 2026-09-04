@@ -34,6 +34,8 @@ describe("a goods receipt's number", () => {
     expect(grnId("PO-2026-0143", 1)).toBe("GRN-260143-01");
     expect(grnId("PO-2026-0143", 2)).toBe("GRN-260143-02");
     // The old format was the last three characters of the PO id, which these three share.
+    expect(grnId("PO-2027-0143", 1)).toBe("GRN-270143-01");
+    expect(grnId("PO-2026-1143", 1)).toBe("GRN-261143-01");
     expect(grnId("PO-2027-0143", 1)).not.toBe(grnId("PO-2026-0143", 1));
     expect(grnId("PO-2026-1143", 1)).not.toBe(grnId("PO-2026-0143", 1));
   });

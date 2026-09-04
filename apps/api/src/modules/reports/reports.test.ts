@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { and, eq, gt } from "drizzle-orm";
 import * as FX from "@rch/contract/fixtures";
 import type { CreditResponse, StockLedgerResponse } from "@rch/contract";
-import { creditRoom, round3, STAFF_CREDIT_LIMIT } from "@rch/domain";
+import { round3, STAFF_CREDIT_LIMIT } from "@rch/domain";
 import type { App } from "../../app.js";
 import { buildTestApp } from "../../test/app.js";
 import { truncateAll } from "../../test/db.js";
@@ -63,6 +63,8 @@ const sellPastTheCeiling = async (payer: { kind: "staff"; id: string; name: stri
     payload: { loc: "coffee", tender: "Staff credit", payer, lines: [{ it: "water", qty: 1 }] },
   });
   expect(res.statusCode, res.body).toBe(422);
+  // The counter's own wording (`creditBreachMessage` in @rch/domain), repeated word for word.
+  expect((res.json() as { error: { message: string } }).error.message).toContain("staff credit limit");
   return res;
 };
 
@@ -80,7 +82,12 @@ describe("GET /reports/stock-ledger", () => {
     // — and that is the whole reason this report is a server query and not browser arithmetic.
     const [bal] = await app.db.select().from(s.stockBalances).where(and(eq(s.stockBalances.loc, "store"), eq(s.stockBalances.itemKey, it)));
     expect(row.closing).toBe(Number(bal.onHand));
-    expect(row.closing).toBe(round3(row.opening + row.recd - row.issued));
+    // The seed's own numbers, not the formula that produced them — `ledgerRow` in @rch/domain
+    // defines `closing` as exactly this sum, so recomputing it here would prove nothing.
+    expect(row.opening).toBe(0);
+    expect(row.recd).toBe(18.4);
+    expect(row.issued).toBe(0);
+    expect(row.closing).toBe(18.4);
     // The window it says it measured is the window it measured.
     expect(new Date(body.to).getTime() - new Date(body.from).getTime()).toBe(30 * 86_400_000);
     expect(body.loc).toBe("store");
@@ -135,13 +142,17 @@ describe("GET /reports/stock-ledger", () => {
   });
 
   it("counts a window, not everything", async () => {
+    // Every seeded move is stamped `now()`, so a 365-day window and a 1-day window sum the same
+    // rows and this case cannot fail on the totals alone — what `days` actually changes is the
+    // window itself: a wider window opens earlier, and each window's own width is `days` long.
     const wide = await ledger("store", 365);
     const narrow = await ledger("store", 1);
-    expect(total(narrow, "recd")).toBeLessThanOrEqual(total(wide, "recd"));
-    // Yesterday's receipts are this window's opening balance, not this window's receipts.
-    expect(total(narrow, "opening")).toBeGreaterThanOrEqual(total(wide, "opening"));
-    // And whatever the window, the close is the same shelf.
-    expect(total(narrow, "closing")).toBe(total(wide, "closing"));
+    expect(new Date(wide.from).getTime()).toBeLessThan(new Date(narrow.from).getTime());
+    expect(new Date(wide.to).getTime() - new Date(wide.from).getTime()).toBe(365 * 86_400_000);
+    expect(new Date(narrow.to).getTime() - new Date(narrow.from).getTime()).toBe(1 * 86_400_000);
+    // Both windows close on the same "now" — the two requests land a few milliseconds apart,
+    // not on different days.
+    expect(Math.abs(new Date(wide.to).getTime() - new Date(narrow.to).getTime())).toBeLessThan(5000);
   });
 
   it("lists a shelf the window never touched — a zero row means the location carries the line", async () => {
@@ -175,7 +186,8 @@ describe("GET /reports/credit/:kind/:id", () => {
     await given.bill(app.db, { loc: "coffee", tender: "Staff credit", payer: STAFF, total: 20, lines: [{ it: "water", qty: 1, rate: 20 }] });
     const body = await credit(STAFF);
     expect(body.taken).toBe(20);
-    expect(body.room).toBe(creditRoom(body.taken));
+    // ₹3,000 limit less ₹20 taken — the seed's own number, not `creditRoom` re-run on it.
+    expect(body.room).toBe(2980);
     expect(body.limit).toBe(STAFF_CREDIT_LIMIT);
     expect(body.name).toBe(STAFF.name);
 
@@ -184,7 +196,8 @@ describe("GET /reports/credit/:kind/:id", () => {
     const refusal = await sellPastTheCeiling(STAFF);
     const after = await credit(STAFF);
     expect((refusal.json() as { error: { details: { taken: number } } }).error.details.taken).toBe(after.taken);
-    expect(after.room).toBe(creditRoom(after.taken));
+    // `sellPastTheCeiling`'s default `room` of 10 — left exactly there by construction.
+    expect(after.room).toBe(10);
   });
 
   it("counts the calendar month across every outlet, not one till's week", async () => {

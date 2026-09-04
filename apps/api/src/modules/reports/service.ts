@@ -26,6 +26,12 @@ export function createReportsService(db: Db) {
     async stockLedger(q: StockLedgerQuery): Promise<StockLedgerResponse> {
       const to = new Date();
       const from = new Date(to.getTime() - q.days * 86_400_000);
+      // Three reads, not one snapshot: no transaction holds `openingAt`, `movedIn` and
+      // `carriedAt` together, so a write can land between them. The worst case is a balance that
+      // is created in that gap — it lands in one of the three and not the others, and the row
+      // this builds for it comes out all zeros (opening, recd, issued and closing alike). That is
+      // a correct answer, not a torn one: this report holds no lock, because it promises nothing
+      // for anyone else to be torn against.
       const [before, inWindow, carried] = await Promise.all([
         reportsRepo.openingAt(db, q.loc, from),
         reportsRepo.movedIn(db, q.loc, from, to),
