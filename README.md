@@ -138,7 +138,8 @@ first.
 does on its own — `deploy/RUNBOOK.md` §11 is the ordered go-live checklist: the AWS values still
 marked `FILL`, generating and storing the production JWT keys, creating real staff accounts and
 deactivating the seeded ones (which must not exist in production), the restore drill, and the
-promotion commands themselves.
+promotion commands themselves. A `dev` environment is already live at
+https://rch.hashtrickstechnologies.com (`deploy/RUNBOOK.md` §15); staging and production are not.
 
 ## Everyday commands
 
@@ -220,6 +221,11 @@ Every mutation in the app is a server call now; nothing is left in the browser's
 Phase 6 prepared the chart, the workflow and the go-live checklist for the first production
 deploy — it did not perform that deploy. Promotion to production is a release decision for the
 account owner, made by following `deploy/RUNBOOK.md` §11.
+
+**`develop` is deployed.** A dev environment on AWS (EKS, RDS, ACM, Route 53) is live at
+**https://rch.hashtrickstechnologies.com**, deploying on every push to `develop` — `deploy/
+RUNBOOK.md` §15 records how it was stood up and what tripped on the way there. Staging and
+production are still exactly the release decision above: prepared, not provisioned.
 
 ## Where the documents are
 

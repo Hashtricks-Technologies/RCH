@@ -103,10 +103,14 @@ seven applied; against an already-current one it reports `migrations applied: 7 
 
 ## 2. Deploy
 
-Pushing to `staging` or `production` triggers `.github/workflows/deploy.yml`, gated by the
-repository variable `DEPLOY_ENABLED=true`. It builds and pushes the `api` and `UI` images to
-ECR, then `helm upgrade --install rch deploy/chart/rch -f values-<env>.yaml --set
-image.tag=<sha> --namespace <namespace> --create-namespace --wait`.
+Pushing to `develop`, `staging` or `production` triggers `.github/workflows/deploy.yml`, gated
+by the repository variable `DEPLOY_ENABLED=true`. It builds and pushes the `api` and `UI` images
+to ECR, then `helm upgrade --install rch deploy/chart/rch -f values-<env>.yaml --set
+image.tag=<sha> --namespace <namespace> --create-namespace --wait`. `develop` is `values-dev.yaml`
+/ `rch-dev` — the only one of the three actually deployed today, at
+`https://rch.hashtrickstechnologies.com`; §15 records how it was stood up on AWS and what
+tripped on the way. `staging`/`production` are `values-staging.yaml`/`values-prod.yaml` and
+`rch-staging`/`rch`, prepared but not yet provisioned (§11).
 
 Migrations are not a separate Helm hook Job — they run as a `migrate` **initContainer** on
 every api pod (`dist/cli/migrate.mjs`, `deploy/chart/rch/templates/api-deployment.yaml`), ahead
@@ -144,11 +148,12 @@ installed: `deploy/chart/rch/ci/install-test.sh` against a cluster that already 
 `JWT_PUBLIC_KEY` exported (the two lines `pnpm --filter @rch/api keys:generate` prints, already
 base64-encoded — export them as-is).
 
-Required repository secrets: `AWS_ROLE_ARN`, `AWS_REGION`, `ECR_REGISTRY`,
-`EKS_CLUSTER_STAGING`, `EKS_CLUSTER_PROD`. Required GitHub **environment** secrets for
-`staging`: `DATABASE_URL`, `JWT_PRIVATE_KEY`, `JWT_PUBLIC_KEY` (these populate
-`secrets.values.*` for the chart's in-cluster `Secret`, since staging runs with
-`secrets.create=true`). Production runs with `secrets.create=false` and
+Required repository secrets: `AWS_ROLE_ARN`, `AWS_REGION`, `ECR_REGISTRY`, `EKS_CLUSTER_DEV`,
+`EKS_CLUSTER_STAGING`, `EKS_CLUSTER_PROD` (all three cluster secrets name the one cluster, `rch`
+— every environment is a namespace on it, not a cluster of its own). Required GitHub
+**environment** secrets for `dev` and, later, `staging`: `DATABASE_URL`, `JWT_PRIVATE_KEY`,
+`JWT_PUBLIC_KEY` (these populate `secrets.values.*` for the chart's in-cluster `Secret`, since
+both run with `secrets.create=true`). Production runs with `secrets.create=false` and
 `secrets.externalSecret.enabled=true`, pulling `DATABASE_URL`, `JWT_PRIVATE_KEY`,
 `JWT_PUBLIC_KEY`, `JWT_PREVIOUS_PUBLIC_KEY` from AWS Secrets Manager (`rch/prod`) via the
 External Secrets Operator — no database or key secrets live in GitHub for prod.
@@ -730,6 +735,14 @@ open on one login, not a server problem; ask the operator to close some.
 
 Environment resources are `deploy/cfn/rch-env.yaml`; the cluster is `deploy/eksctl/cluster.yaml`.
 
+**Scope.** This checklist promotes `staging` and `production`, neither of which has an AWS
+resource behind it yet. `dev` is already live — `develop` deploys to `rch-dev` on the same
+cluster at `https://rch.hashtrickstechnologies.com`, and its resources are already the same
+`deploy/cfn/rch-env.yaml` stack (`rch-dev`) that `staging`/`prod` will import from. §15 records
+how `dev` was stood up and what tripped on the way; read it before repeating any of this for
+staging or production, since two of the four lessons there (the CAA one and the OIDC one) will
+recur verbatim for a new host name and are cheaper to avoid than to rediscover.
+
 ### The release, prepared and not performed (2026-09-04)
 
 Phase 6 ends here. Everything the first production deploy needs is written down; **nothing in
@@ -815,8 +828,20 @@ is this build in a hospital.**
 
 An ordered list. Each item is a command or a decision, and each decision names who makes it —
 the account owner, not the executor of this phase's tasks. Nothing on this list has been run
-against a real AWS account; Phase 6 prepared the chart, the workflow and this checklist and
-stopped there (spec §16, Phase 6) — running it is a release decision.
+against a real AWS account **for staging or production**; Phase 6 prepared the chart, the
+workflow and this checklist and stopped there (spec §16, Phase 6) — running it is a release
+decision. The equivalent steps have been run for `dev` (§15), which is exactly why the account
+owner should not repeat them from the same starting point:
+
+**Before anything else on this list: get off root.** Every AWS CLI call and CloudFormation
+stack behind `dev` was run with the account's **root** credentials, from this laptop — the
+fastest way to build something from nothing, and the wrong thing to keep doing into staging and
+production. Create an IAM user or role for the operator, scoped to what standing up and running
+an environment actually needs (EKS, RDS, ACM, Route 53, Secrets Manager, CloudFormation, and
+read access to IAM to check the rest of this list) rather than the account's own unrestricted
+root, before touching either. This is about the human running the commands in this section —
+`rch-github-deploy`, the role the deploy *workflow* itself assumes, already exists, is already
+scoped to what a deploy needs, and needs no change.
 
 1. **Fill in the AWS facts the two values files are still missing** — `values-prod.yaml`'s five
    `# FILL` markers, its two conditional ones, and `values-staging.yaml`'s own
@@ -1096,3 +1121,176 @@ index `rate_contracts_live_uq` decides. The loser reads the ordinary refusal (`<
 a live contract with <vendor>`), not a 500: `contractsRepo.update` catches the violation on that
 index by constraint name (`isUniqueViolation` in `lib/db.ts`, the same helper `vendors` uses) and
 the service refuses with the sentence it had already composed. Nothing to do; no data is at risk.
+
+## 15. The dev environment on AWS (2026-09-04)
+
+One environment stood up, minimal on purpose: `develop` deploys to namespace `rch-dev` on every
+push, reachable at `https://rch.hashtrickstechnologies.com`. Staging and production stay exactly
+where Phase 6 left them — the chart, the workflow and the go-live checklist (§11) are ready for
+them, but neither has an AWS resource behind it, and `values-staging.yaml`'s
+`ingress.certificateArn` is still `# FILL`. What follows either was built once by hand or is a
+procedure meant to be repeated the next time an environment needs standing up — staging first,
+when that day comes.
+
+### 15.1 Cluster
+
+`eksctl create cluster -f deploy/eksctl/cluster.yaml` built `rch` — EKS **1.31**, `ap-south-1`,
+in the account's **default VPC** `vpc-01ca67a181cb36d34`, on its three public subnets
+(`subnet-05be7e2c146d6ede8`/`04f03f730a553b579`/`08d892f0f99bd8097`, each tagged
+`kubernetes.io/role/elb=1` so the load balancer controller will place an ALB in them) — the
+default VPC rather than a purpose-built one because the RDS instances live in it too, reachable
+with no peering and no NAT. One managed node group, `ng-spot`, spot-only
+(`t3.medium`/`t3a.medium`, min 1, max 2, desired 1): a two-minute spot-reclaim notice is an
+acceptable outage for dev's whole footprint (one API pod, one UI pod, room to spare on a single
+4 GiB node), and spot runs roughly 70% off the same instance type on-demand.
+
+**What tripped: the first cluster came up without CoreDNS.** `eksctl create cluster`'s own run
+was cut short after the control plane finished, before it installed the managed add-ons, and
+nothing scheduled a pod could resolve a name — not the API's own RDS endpoint lookup, not the
+load balancer controller's calls out to AWS — until `vpc-cni`, `coredns` and `kube-proxy` were
+installed by hand as EKS add-ons. `deploy/eksctl/cluster.yaml` now declares all three under
+`addons:` so a fresh `eksctl create cluster` installs them itself; re-running the same command
+against an existing cluster is how to confirm they're present (`eksctl get addons --cluster
+rch --region ap-south-1`) rather than assuming a cluster this age already has them.
+
+The AWS Load Balancer Controller is the `eks/aws-load-balancer-controller` Helm chart, running under its own
+IRSA role (`eksctl create iamserviceaccount`, policy `AWSLoadBalancerControllerIAMPolicy`, one
+attachment). The deploy role, `rch-github-deploy`, holds an EKS **access entry** with
+`AmazonEKSClusterAdminPolicy`, cluster-scoped:
+
+```bash
+aws eks list-associated-access-policies --cluster-name rch --region ap-south-1 \
+  --principal-arn arn:aws:iam::830283280199:role/rch-github-deploy
+```
+
+### 15.2 Database
+
+RDS `rch-dev`: Postgres **17** (17.9 as provisioned), `db.t4g.micro`, single-AZ, 20 GB gp3,
+encrypted at rest, not publicly accessible, 7-day automated backups, subnet group `rch`,
+security group `rch-rds` admitting **5432 from the VPC CIDR (`172.31.0.0/16`) only** — a
+VPC-wide rule, not narrowed to the node group's own security group, so anything else in the VPC
+can also reach it; tighten this before staging or production reuse the pattern. The API connects
+with `sslmode=require` and the RDS CA bundle already baked into the image — no chart change
+needed for that half of what §11 step 2 asks for production. Multi-AZ, point-in-time recovery
+and deletion protection are the production-only pieces this instance deliberately does not
+carry; §11 step 2 has the full production spec.
+
+### 15.3 Secrets, and the GitHub side of the pipeline
+
+AWS Secrets Manager `rch/dev` is the source of truth — RDS master password, `DATABASE_URL`, the
+JWT pair. The GitHub **environment** `dev` carries its own copies of `DATABASE_URL`,
+`JWT_PRIVATE_KEY`, `JWT_PUBLIC_KEY` for the workflow to read (`secrets: { create: true }` in
+`values-dev.yaml` — the same path staging will use; production is the one that reads Secrets
+Manager directly, via External Secrets). Repository secrets `AWS_REGION`, `ECR_REGISTRY`,
+`AWS_ROLE_ARN` and `EKS_CLUSTER_DEV=rch` now exist alongside `EKS_CLUSTER_STAGING=rch` and
+`EKS_CLUSTER_PROD=rch` (all three name the one cluster — every environment is a namespace on it,
+not a cluster of its own), and the repository variable `DEPLOY_ENABLED` is `true`.
+
+**What tripped: two failed deploy runs, both at `configure-aws-credentials`, for two unrelated
+reasons.** The first failed with "Request ARN is invalid" — `AWS_ROLE_ARN` had been set to the
+wrong value; re-setting the secret to the actual role ARN fixed that run. The second failed with
+"Not authorized to perform sts:AssumeRoleWithWebIdentity" — a genuinely different problem, and
+the one worth reading carefully before it recurs on staging or production: GitHub's OIDC token
+presents a **subject** in one of two shapes depending on whether the organisation enforces its
+immutable form — `repo:<org>/<repo>:…` (mutable, breaks if either is ever renamed) or
+`repo:<org>@<org id>/<repo>@<repo id>:…` (immutable, keyed by ids GitHub never reassigns). This
+organisation enforces the immutable form. `rch-github-deploy`'s trust policy was first written
+against the mutable pattern, which the token this org issues can never match — no amount of
+re-checking the mutable string would have found it, because nothing was wrong with it. What
+found it was reading the subject a token actually presented, from CloudTrail rather than from
+guessing at GitHub's docs:
+
+```bash
+aws cloudtrail lookup-events --region ap-south-1 \
+  --lookup-attributes AttributeKey=EventName,AttributeValue=AssumeRoleWithWebIdentity \
+  --query 'Events[].{Time:EventTime,Sub:Username}'
+# Sub: repo:Hashtricks-Technologies@276870206/RCH@1346139433:environment:dev
+```
+
+The repo's numeric ids come from `gh api repos/<org>/<repo> --jq '[.owner.id,.id]'`. The fix
+lives in `deploy/cfn/rch-env.yaml` (parameter `GitHubRepoImmutable`) rather than a manual IAM
+edit — the role is CloudFormation-managed now (§15.5) — and the trust policy, applied through an
+update to the `rch-dev` stack, lists **both** shapes, `ref:refs/heads/{develop,staging,
+production}` and `environment:{dev,staging,production}` each:
+
+```bash
+aws iam get-role --role-name rch-github-deploy --query 'Role.AssumeRolePolicyDocument'
+```
+
+is how to re-check what it currently admits.
+
+### 15.4 Certificate and DNS
+
+The zone is `hashtrickstechnologies.com` in Route 53 (`Z066296313TA69I4LDOOI`) — **Route 53
+holds the zone's LIVE name servers**, even though the domain is registered at Hostinger, so
+every record (the CAA entries below, the app's own A-alias) goes in Route 53 and nothing at
+Hostinger.
+
+**The CAA lesson.** The zone's CAA records admitted only `letsencrypt.org`, `pki.goog` and
+`sectigo.com` — none of Amazon's own issuers — so three ACM certificate requests for
+`rch.hashtrickstechnologies.com` failed `CAA_ERROR` in a row. Adding Amazon's four issuers
+(`amazon.com`, `amazontrust.com`, `awstrust.com`, `amazonaws.com`) as CAA records, both on the
+host name and at the apex, was necessary but **not sufficient** — a name ACM had already looked
+up and cached as refused stayed negative-cached even after the CAA record allowing it existed,
+so the request that finally issued had to be for a name ACM had never seen before. **The rule:
+create the CAA record before the *first* request for a name, not before the request meant to
+succeed.** The dev certificate, issued, is
+`arn:aws:acm:ap-south-1:830283280199:certificate/68a3b4db-2bfe-449a-8b79-8201a30bde0c`:
+
+```bash
+aws acm describe-certificate --region ap-south-1 \
+  --certificate-arn arn:aws:acm:ap-south-1:830283280199:certificate/68a3b4db-2bfe-449a-8b79-8201a30bde0c \
+  --query 'Certificate.Status'   # ISSUED
+```
+
+`rch.hashtrickstechnologies.com` is an **A-alias** to the ALB the ingress creates, which does
+not exist until after the first deploy:
+
+```bash
+kubectl -n rch-dev get ingress rch -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'
+```
+
+then a Route 53 **UPSERT** alias record pointed at that ALB's own DNS name and canonical hosted
+zone id (`aws elbv2 describe-load-balancers` gives both). This is the step to repeat for staging
+and production, once each has an ingress of its own to point at.
+
+### 15.5 Environment resources are CloudFormation now
+
+Everything above that used to be a CLI command typed by hand is now `deploy/cfn/rch-env.yaml`,
+one template, one stack per environment. `rch-dev` was brought under it by an **IMPORT** change
+set, not a plain create, and has since taken a further **update** (the CAA record, then the OIDC
+trust-policy fix above) — `aws cloudformation describe-stacks --stack-name rch-dev` reads
+`UPDATE_COMPLETE` with every resource's identifier published as a stack Output, including the
+five it exports for `staging`/`prod` to import. `deploy/cfn/README.md` has the full procedure
+and every constraint that shaped it: an import change set may add no Outputs, no stack Tags and
+no resources beyond what it lists in `ResourcesToImport`; every resource the template declares
+still needs an explicit `DeletionPolicy`; and the one resource that did not exist yet at import
+time — the CAA record for the brand-new host name — was created by the plain update that
+immediately followed the import, not smuggled into the import itself. `staging` and `prod`
+stacks, when they exist, import `dev`'s shared singletons (the OIDC provider, the DB subnet
+group and security group, both ECR repositories) by `Fn::ImportValue` rather than declaring
+their own, because AWS refuses a second copy of any of the five. Read `deploy/cfn/README.md`
+before touching any of it — it is being maintained separately from this document.
+
+### 15.6 What dev costs
+
+Roughly **$130/month** at AWS list prices, `ap-south-1`: the EKS control plane (~$73), one spot
+`t3.medium` (~$10 — the same instance on-demand runs roughly triple), RDS `db.t4g.micro` (~$17),
+and the ALB (~$22). Karpenter is not worth adding at this scale: one node group with a 1–2 spot
+range already covers the whole footprint, and Karpenter's own value shows up at a scale this
+environment neither has nor is expected to reach — the saving here is entirely the spot discount
+on the managed group, not autoscaling sophistication.
+
+### 15.7 First deploy and seed
+
+The workflow builds and pushes both images, then `helm upgrade --install rch deploy/chart/rch -f
+values-dev.yaml --namespace rch-dev --create-namespace --wait --atomic` — the same shape §2
+describes for staging and production, with `dev`'s own values file and namespace. After the
+first deploy succeeds, seed the database once:
+
+```bash
+kubectl -n rch-dev exec deploy/rch-api -- /nodejs/bin/node dist/cli/seed.mjs
+```
+
+The seed accounts and `SEED_FORCE_PASSWORD_CHANGE` behave exactly as §1 describes for local
+dev — this is the same seed CLI, run in the cluster instead of against `localhost:5439`.
