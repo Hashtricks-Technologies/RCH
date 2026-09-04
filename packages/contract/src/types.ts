@@ -5,6 +5,7 @@ import type * as D from "./schemas/documents.js";
 export type ItemType = z.infer<typeof C.ItemTypeSchema>;
 export type LocKey = z.infer<typeof C.LocKeySchema>;
 export type Role = z.infer<typeof C.RoleSchema>;
+export type Tender = z.infer<typeof C.TenderSchema>;
 export type ReqStatus = z.infer<typeof D.ReqStatusSchema>;
 export type TktStatus = z.infer<typeof D.TktStatusSchema>;
 export type PrqStatus = z.infer<typeof D.PrqStatusSchema>;

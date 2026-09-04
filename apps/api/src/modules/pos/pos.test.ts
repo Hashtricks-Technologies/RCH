@@ -128,6 +128,13 @@ describe("the rules refuse before anything is written", () => {
   it("refuses more of a traded item than the shelf holds", async () => {
     await rejects({ loc: "coffee", tender: "Cash", lines: [{ it: "water", qty: 99 }] }, "Only 9 nos of Mineral water 1L left at Coffee Shop");
   });
+  it("refuses a tender that is not one of the six — 400 at the door, not a rule", async () => {
+    // "staff credit" is not "Staff credit": a tender is a closed set on the wire, so a near
+    // miss is a malformed request, never a bill settled under a name nothing else recognises.
+    const r = await pay("u1", { loc: "coffee", tender: "staff credit", payer: { kind: "staff", id: "E-1", name: "Anitha" }, lines: [{ it: "juice", qty: 1 }] });
+    expect(r.statusCode, r.body).toBe(400);
+    expect(r.json().error.code).toBe("validation");
+  });
 });
 
 describe("a made-to-order sale is a recipe, posted", () => {
@@ -160,6 +167,28 @@ describe("a made-to-order sale is a recipe, posted", () => {
     // The finished drink is never stocked: only the ingredients move.
     expect(moves.some((m) => m.itemKey === "capp")).toBe(false);
     expect(await onHand("coffee", "milk")).toBe(milk - 0.15);
+  });
+});
+
+describe("the printed MRP is the ceiling at the till too", () => {
+  it("charges the MRP when the list has drifted above it", async () => {
+    // `savePrice` refuses a price above the MRP, so the only way a list sits above one is an
+    // MRP lowered after the item was priced. Write it straight into the table to make that
+    // history, then sell one: the bill charges what is printed on the pack, not what the list says.
+    const before = (await app.db.select().from(s.priceListItems).where(and(eq(s.priceListItems.list, "B"), eq(s.priceListItems.itemKey, "juice"))))[0];
+    await app.db.update(s.priceListItems).set({ price: 25 })
+      .where(and(eq(s.priceListItems.list, "B"), eq(s.priceListItems.itemKey, "juice")));
+    try {
+      const r = await pay("u1", { loc: "coffee", tender: "Cash", lines: [{ it: "juice", qty: 1 }] });
+      expect(r.statusCode, r.body).toBe(200);
+      const b = r.json();
+      expect(b.result.lines).toEqual([{ it: "juice", qty: 1, rate: 20 }]);   // MRP 20, list 25
+      expect(b.result.tot).toBe(20);
+      expect(b.message).toBe(`Bill ${b.result.no} · ₹20.00 collected at Coffee Shop`);
+    } finally {
+      await app.db.update(s.priceListItems).set({ price: before.price })
+        .where(and(eq(s.priceListItems.list, "B"), eq(s.priceListItems.itemKey, "juice")));
+    }
   });
 });
 
@@ -251,9 +280,9 @@ describe("the ledger, not the pre-check, is the guarantee", () => {
     const before = Object.fromEntries(cached.map((r) => [`${r.loc}:${r.itemKey}`, r.onHand]));
     await rebuildBalances(app.db);
     const rebuilt = Object.fromEntries((await app.db.select().from(s.stockBalances)).map((r) => [`${r.loc}:${r.itemKey}`, r.onHand]));
-    // rebuild drops the zero-quantity rows the seed creates for a listed-but-empty item, so
-    // compare only what the moves account for.
-    for (const [k, v] of Object.entries(rebuilt)) expect(before[k], k).toBe(v);
+    // Every row, not just the ones the moves account for: the rebuild zeroes and re-adds rather
+    // than deleting, so the seed's listed-but-empty rows are still there afterwards, at zero.
+    expect(rebuilt).toEqual(before);
     expect(Object.values(rebuilt).every((v) => v >= 0)).toBe(true);
   });
 });

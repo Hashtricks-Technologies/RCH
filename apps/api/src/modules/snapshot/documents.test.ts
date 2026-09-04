@@ -1,5 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import * as FX from "@rch/contract/fixtures";
+import { eq } from "drizzle-orm";
+import * as s from "../../db/schema/index.js";
 import { withTestSchema, type TestDb } from "../../test/db.js";
 import { seedTestDb } from "../../test/seed.js";
 import * as D from "./readers/documents.js";
@@ -85,6 +87,28 @@ describe("document readers", () => {
     onlyDoctored("support tickets", sup.map((t2) => t2.by));
     onlyDoctored("product requests", prod.map((p) => p.by));
     onlyDoctored("shop asks", asks.map((a) => a.by));
+  });
+  it("reads only the windowed bills' lines — a bill outside the window brings none of its own", async () => {
+    // bill_lines is the one table that grows with every sale forever. A month-old bill and its
+    // lines must both stay out of a seven-day read, or a busy year of them rides along with a
+    // week on screen.
+    await t.db.insert(s.bills).values({ no: "CF/0001", loc: "coffee", operatorId: "u1", total: 20, tax: 2.14, at: new Date(Date.now() - 30 * 86400_000), tender: "Cash" });
+    await t.db.insert(s.billLines).values({ billNo: "CF/0001", lineNo: 1, itemKey: "juice", qty: 1, rate: 20 });
+    try {
+      const week = await D.readBills(t.db, 7);
+      expect(week.some((b) => b.no === "CF/0001")).toBe(false);
+      expect(week.length).toBeGreaterThan(0);
+      expect(week.every((b) => b.lines.length > 0)).toBe(true);        // the window's own lines are all there
+      const month = await D.readBills(t.db, 90);
+      expect(month.find((b) => b.no === "CF/0001")?.lines).toEqual([{ it: "juice", qty: 1, rate: 20 }]);
+      // Nothing in the window means no line query at all, which is just as well: an empty
+      // `in ()` is not SQL. Every seeded bill is timed today, so a window that only starts
+      // tomorrow holds none of them whatever hour the suite runs at.
+      expect(await D.readBills(t.db, -1)).toEqual([]);
+    } finally {
+      await t.db.delete(s.billLines).where(eq(s.billLines.billNo, "CF/0001"));
+      await t.db.delete(s.bills).where(eq(s.bills.no, "CF/0001"));
+    }
   });
   it("sales are 14 day-rows of 3 outlet columns from bills, with day-of-month labels", async () => {
     const { sales, dayLabels } = await D.readSales(t.db, 14);

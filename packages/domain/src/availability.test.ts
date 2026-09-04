@@ -13,5 +13,8 @@ describe("availOf", () => {
     expect(a).toEqual({ ok: true, mode: "Recipe", left: "93 portions" }); // min(14/0.15, 2/0.012, 3/0.006, 220/1) = 93
     expect(availOf(M, seedStock, { "rest:milk": 14 }, {}, "rest", "capp").ok).toBe(false);
   });
+  it("a made-to-order item with no recipe is off, and says so rather than throwing", () => {
+    expect(availOf({ items: IT, locations: LOC, recipes: {} }, seedStock, {}, {}, "rest", "capp")).toEqual({ ok: false, mode: "Recipe", why: "no recipe recorded" });
+  });
   it("a traded item is off at zero", () => { expect(availOf(M, seedStock, {}, {}, "kiosk", "juice")).toEqual({ ok: true, mode: "Stock", left: "14 nos" }); expect(availOf(M, seedStock, {}, {}, "coffee", "milk").ok).toBe(false); });
 });

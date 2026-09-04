@@ -13,5 +13,15 @@ describe("planBill", () => {
     const b = planBill(M, PL, "rest", { capp: 2 });
     expect(b.moves).toEqual([{ loc: "rest", it: "milk", qty: -0.3 }, { loc: "rest", it: "beans", qty: -0.024 }, { loc: "rest", it: "sugar", qty: -0.012 }, { loc: "rest", it: "cup", qty: -2 }]);
   });
-  it("reports capped items", () => { const b = planBill(M, { A: { ...PL.A, juice: 25 }, B: PL.B }, "rest", { juice: 1 }); expect(b.lines[0].rate).toBe(20); expect(b.capped).toEqual(["juice"]); });
+  it("charges the printed MRP when the list price sits above it — the cap is the rate", () => {
+    const b = planBill(M, { A: { ...PL.A, juice: 25 }, B: PL.B }, "rest", { juice: 1 });
+    expect(b.lines).toEqual([{ it: "juice", qty: 1, rate: 20 }]);  // MRP 20, not the 25 on the list
+    expect(b.tot).toBe(20);
+  });
+  it("moves a made-to-order item with no recipe as the unit itself, the way coverOf reads it", () => {
+    const noRecipe = { items: IT, locations: LOC, recipes: {} };
+    const b = planBill(noRecipe, PL, "rest", { capp: 2 });
+    expect(b.moves).toEqual([{ loc: "rest", it: "capp", qty: -2 }]);
+    expect(b.lines).toEqual([{ it: "capp", qty: 2, rate: 60 }]);
+  });
 });

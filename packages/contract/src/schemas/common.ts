@@ -4,6 +4,10 @@ export const LocKeySchema = z.enum(["store", "kitchen", "rest", "coffee", "kiosk
 export const RoleSchema = z.enum(["counter", "manager", "store", "prod", "buyer"]);
 export const ItemTypeSchema = z.enum(["RAW", "PACK", "MRP", "FG", "MTO"]);
 export const PriceListSchema = z.enum(["A", "B"]);
+/** The six ways a bill is settled — a closed set, not free text. Three of them post to
+ *  somebody's account rather than take money at the till (`NEEDS_PAYER` in the pos service),
+ *  and the counter's own tender buttons are this list read straight off the schema. */
+export const TenderSchema = z.enum(["Cash", "UPI", "Card", "Patient bill", "Staff credit", "Dept"]);
 export const ErrorCodeSchema = z.enum(["validation", "unauthenticated", "forbidden", "not_found", "conflict", "rule", "rate_limited", "not_ready", "internal"]);
 export const ErrorEnvelopeSchema = z.object({
   error: z.object({ code: ErrorCodeSchema, message: z.string(), details: z.unknown().optional() }),

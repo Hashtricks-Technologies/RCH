@@ -114,8 +114,9 @@ GitHub environment approval before the deploy job runs, and a fast-forward guard
 Every push to `develop`/`staging`/`production` and every pull request exercises the chart for
 real, not just `helm lint`/`helm template`: the `images` job in `.github/workflows/ci.yml`
 builds `rch-api:ci` and `rch-ui:ci`, spins up a throwaway [kind](https://kind.sigs.k8s.io/)
-cluster (`helm/kind-action`), loads both images into it, applies a CI-only single-replica
-Postgres (`deploy/chart/rch/ci/postgres.yaml`), then runs `deploy/chart/rch/ci/install-test.sh`:
+cluster (`helm/kind-action`), loads both images into it, then runs
+`deploy/chart/rch/ci/install-test.sh`, which applies the CI-only single-replica Postgres
+(`deploy/chart/rch/ci/postgres.yaml`) itself and waits for it before anything else:
 `helm install` with `deploy/chart/rch/ci/values-ci.yaml` (a freshly generated Ed25519 pair
 passed via `--set-string`, never committed), seed the database, confirm `/readyz` and a login
 as `RC-3120` succeed through a port-forward, confirm the UI's `/healthz` succeeds too, then
@@ -290,6 +291,11 @@ MODE` for the duration of the rebuild. `EXCLUSIVE` conflicts with every lock mod
 until the rebuild commits. Prefer a quiet period (off-hours) for a production run regardless:
 it is a straight `SELECT ... GROUP BY` over `stock_moves` and fast for this dataset's size, but
 in-flight writes will queue for however long it takes.
+
+A rebuild zeroes the rows it finds and adds the moves back on top; it never deletes one. A
+balance row's presence is itself a fact — it means the location carries that line — so a row
+with no moves behind it stays, at zero, and reads as stocked-but-empty afterwards exactly as it
+did before. Only the numbers are recomputed, never the shelf list.
 
 ## 8. Read a document's history
 

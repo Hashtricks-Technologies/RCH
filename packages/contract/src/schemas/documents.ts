@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { IsoDate, IsoTime, ItemTypeSchema, LocKeySchema, Money, PriceListSchema, Qty, RoleSchema } from "./common.js";
+import { IsoDate, IsoTime, ItemTypeSchema, LocKeySchema, Money, PriceListSchema, Qty, RoleSchema, TenderSchema } from "./common.js";
 
 export const ReqStatusSchema = z.enum(["Draft", "Request sent", "Manager approved", "Partially approved", "Ticket issued", "Collected", "Received", "Closed", "Rejected", "Cancelled"]);
 export const TktStatusSchema = z.enum(["Issued", "Collected", "Received"]);
@@ -74,7 +74,7 @@ export const GrnSchema = z.object({
 });
 export const BillLineSchema = z.object({ it: z.string(), qty: Qty, rate: Money });
 export const BillSchema = z.object({
-  no: z.string(), loc: LocKeySchema, opr: z.string(), oprCol: z.string(), tot: Money, tax: Money, t: IsoTime, pay: z.string(),
+  no: z.string(), loc: LocKeySchema, opr: z.string(), oprCol: z.string(), tot: Money, tax: Money, t: IsoTime, pay: TenderSchema,
   lines: z.array(BillLineSchema), payer: PayerSchema.optional(),
 });
 export const DraftLineSchema = z.object({ it: z.string(), qty: Qty });

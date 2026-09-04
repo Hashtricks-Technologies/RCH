@@ -35,7 +35,7 @@ export type BillLineRow = typeof billLines.$inferSelect;
  *  in `line_no` order — the caller owns the query. */
 export const toWireBill = (b: BillRow, lines: BillLineRow[], operator: { name: string; colour: string }): Bill => strip({
   no: b.no, loc: b.loc as Bill["loc"], opr: operator.name, oprCol: operator.colour,
-  tot: b.total, tax: b.tax, t: iso(b.at), pay: b.tender,
+  tot: b.total, tax: b.tax, t: iso(b.at), pay: b.tender as Bill["pay"],
   lines: lines.map((l) => ({ it: l.itemKey, qty: l.qty, rate: l.rate })),
   payer: b.payerKind ? { kind: b.payerKind, id: b.payerId ?? "", name: b.payerName ?? "" } : undefined,
 });

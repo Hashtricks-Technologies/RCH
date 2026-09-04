@@ -23,6 +23,9 @@ export function availOf(m: Master, stock: StockMap, rsv: RsvMap, ovr: OvrMap, l:
   if (o) return { ok: false, mode: "Manual", why: o };
   if (m.items[it]?.t === "MTO") {
     const r = m.recipes[it];
+    // Marked made-to-order but with nothing written down to make it by: the counter cannot
+    // sell what the kitchen has no recipe for, and saying so is kinder than a blank screen.
+    if (!r) return { ok: false, mode: "Recipe", why: "no recipe recorded" };
     for (const [g, need] of r.l) {
       const a = avail(stock, rsv, l, g);
       if (a < need)

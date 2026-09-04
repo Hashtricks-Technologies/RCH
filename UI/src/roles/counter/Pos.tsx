@@ -1,14 +1,17 @@
 import { useState } from "react";
+import { TenderSchema } from "@rch/contract";
 import { DEPTS, IT, LOC, PATIENTS, STAFF, STAFF_CREDIT_LIMIT } from "../../data/master";
 import { useApp } from "../../store";
 import { availOf, menuOf, priceOf } from "../../lib/selectors";
 import { money, money0, sum } from "../../lib/fmt";
 import { Alert, Avatar, Btn, Card, Field, Grid, ImagePlaceholder, PageHead, Tag, TileMenu } from "../../ui/kit";
-import type { ItemType, Payer } from "../../types";
+import type { ItemType, Payer, Tender } from "../../types";
 
-const TENDERS = ["Cash", "UPI", "Card", "Patient bill", "Staff credit", "Dept"];
+/** The buttons are the contract's own list — the server refuses anything else outright, so the
+ *  till must not offer a seventh tender the schema has never heard of. */
+const TENDERS = TenderSchema.options;
 /** The three tenders that post to somebody's account, and the master each picks from (M1). */
-const PAYERS: Record<string, { label: string; list: Payer[] }> = {
+const PAYERS: Partial<Record<Tender, { label: string; list: Payer[] }>> = {
   "Patient bill": { label: "Patient", list: PATIENTS },
   "Staff credit": { label: "Staff member", list: STAFF },
   Dept: { label: "Department", list: DEPTS },
@@ -26,7 +29,7 @@ export default function Pos() {
   const user = useApp((x) => x.user)!;
   const loc = user.loc;
   const L = LOC[loc];
-  const [tender, setTender] = useState(TENDERS[0]);
+  const [tender, setTender] = useState<Tender>(TENDERS[0]);
   const [payer, setPayer] = useState<Payer | null>(null);
   const [pq, setPq] = useState("");
   const [edit, setEdit] = useState<Record<string, string>>({});
@@ -56,7 +59,7 @@ export default function Pos() {
   const taken = payer ? sum(s.bills.filter((b) => b.payer?.id === payer.id), (b) => b.tot) : 0;
   const overLimit = tender === "Staff credit" && !!payer && taken + total > STAFF_CREDIT_LIMIT;
 
-  const pickTender = (t: string) => { setTender(t); setPayer(null); setPq(""); };
+  const pickTender = (t: Tender) => { setTender(t); setPayer(null); setPq(""); };
   /** The tile adds one; this sets the line to whatever was typed, as a signed delta. */
   const setQty = (it: string, v: string) => {
     const n = Math.floor(Number(v));

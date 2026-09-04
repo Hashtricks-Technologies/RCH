@@ -1,7 +1,7 @@
 // Pos: the flow — transaction, rules, moves, id. Composes the helpers in apps/api/src/lib/;
 // the arithmetic of the sale is `planBill` in packages/domain.
 import type { z } from "zod";
-import type { Bill, PayBodySchema, WriteResponse } from "@rch/contract";
+import type { Bill, PayBodySchema, Tender, WriteResponse } from "@rch/contract";
 import { avail, availOf, fq, planBill, round3, type Master } from "@rch/domain";
 import type { Db } from "../../db/client.js";
 import { withTransaction } from "../../lib/db.js";
@@ -16,8 +16,9 @@ import { posRepo } from "./repo.js";
 
 export type PayBody = z.infer<typeof PayBodySchema>;
 
-/** A tender that is not money changing hands has to name whose account it lands on. */
-const NEEDS_PAYER: Record<string, string> = { "Patient bill": "patient", "Staff credit": "staff member", Dept: "department" };
+/** A tender that is not money changing hands has to name whose account it lands on. Keyed by
+ *  the closed set of tenders, so a new one added to `TenderSchema` has to be considered here. */
+const NEEDS_PAYER: Partial<Record<Tender, string>> = { "Patient bill": "patient", "Staff credit": "staff member", Dept: "department" };
 
 /** Money is stored and read at two decimals; `planBill` totals at full precision so the tax
  *  split is derived from the real amounts, not from a rounded one. */

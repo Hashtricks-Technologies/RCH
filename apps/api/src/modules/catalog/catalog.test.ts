@@ -1,5 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
+import { and, eq } from "drizzle-orm";
+import { locationItems } from "../../db/schema/index.js";
 import { buildTestApp } from "../../test/app.js";
 import { seedTestDb } from "../../test/seed.js";
 import { authHeaders } from "../../test/auth.js";
@@ -44,6 +46,14 @@ describe("catalog: prices", () => {
     expect(r.statusCode).toBe(404);
     expect(r.json().error.message).toBe("There is no item doesnotexist.");
   });
+
+  it("refuses a price of nothing — 400 at the door, the same as the screen's own guard", async () => {
+    for (const price of [0, -1]) {
+      const r = await put("/prices/A/juice", await hdr("u2"), { price });
+      expect(r.statusCode, r.body).toBe(400);
+      expect(r.json().error.code).toBe("validation");
+    }
+  });
 });
 
 describe("catalog: menus", () => {
@@ -87,6 +97,27 @@ describe("catalog: menus", () => {
     const r = await post("/menus/store/items", await hdr("u2"), { it: "juice" });
     expect(r.statusCode).toBe(422);
     expect(r.json().error.message).toBe("Central Store is not an outlet");
+  });
+
+  it("lets exactly one of two concurrent adds list the item", async () => {
+    // Both read "not listed" before either inserts. The insert is what arbitrates — `on conflict
+    // do nothing` gives the loser no row and it reads the ordinary refusal, not a 500.
+    const [h1, h2] = await Promise.all([hdr("u2"), hdr("u2")]);
+    const [a, b] = await Promise.all([
+      post("/menus/kiosk/items", h1, { it: "sand" }),
+      post("/menus/kiosk/items", h2, { it: "sand" }),
+    ]);
+    expect([a.statusCode, b.statusCode].sort(), `${a.body} | ${b.body}`).toEqual([200, 422]);
+    const loser = a.statusCode === 422 ? a : b;
+    expect(loser.json().error.code).toBe("rule");
+    expect(loser.json().error.message).toBe("Veg sandwich is already listed at Snack Kiosk");
+
+    const rows = await app.db.select().from(locationItems).where(and(eq(locationItems.loc, "kiosk"), eq(locationItems.itemKey, "sand")));
+    expect(rows.length).toBe(1);
+    // The seq is computed inside the insert, so the winner still lands after everything listed.
+    const kiosk = (await get("/menus")).kiosk;
+    expect(kiosk[kiosk.length - 1]).toBe("sand");
+    await del("/menus/kiosk/items/sand", await hdr("u2"));
   });
 });
 

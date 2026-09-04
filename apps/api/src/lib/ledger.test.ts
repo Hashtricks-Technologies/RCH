@@ -87,4 +87,17 @@ describe("postMoves", () => {
     expect(r.rows).toBe(1);
     expect(await onHand("store", "milk")).toBe(7);
   });
+  it("rebuildBalances keeps a carried-but-dry row instead of dropping the line off the shelf", async () => {
+    // A balance row with no moves behind it is how the seed says "this location stocks sugar,
+    // and today it has none" — the stock screens show a dash for a line with no row at all and
+    // a 0 for a dry one (M12). A rebuild that deleted first would quietly turn one into the
+    // other, so the row has to survive at zero.
+    await t.db.insert(stockBalances).values({ loc: "coffee", itemKey: "sugar", onHand: 0 });
+    await withTransaction(t.db, (tx) => postMoves(tx, [{ loc: "store", it: "milk", qty: 7, kind: "opening", refType: "seed", refId: "o" }]));
+    await rebuildBalances(t.db);
+    expect(await onHand("store", "milk")).toBe(7);
+    const dry = await t.db.select().from(stockBalances).where(and(eq(stockBalances.loc, "coffee"), eq(stockBalances.itemKey, "sugar")));
+    expect(dry.length).toBe(1);
+    expect(dry[0].onHand).toBe(0);
+  });
 });

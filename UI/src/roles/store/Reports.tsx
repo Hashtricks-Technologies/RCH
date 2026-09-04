@@ -272,7 +272,7 @@ const movers = (s: AppState): Rep => {
 
 const resvav = (s: AppState): Rep => {
   const rows = storeKeys(s)
-    .map((k) => ({ k, on: qty(s, "store", k), rv: resv(s, "store", k), cm: committed(s.req, "store", k) }))
+    .map((k) => ({ k, on: qty(s, "store", k), rv: resv(s, "store", k), cm: committed(s.req, k) }))
     .sort((a, b) => b.rv + b.cm - (a.rv + a.cm) || byCode(a.k, b.k))
     .map(({ k, on, rv, cm }) => {
       const free = freeToPromise(s, "store", k);

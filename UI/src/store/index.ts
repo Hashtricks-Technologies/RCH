@@ -13,7 +13,7 @@ import {
 import { seedVendors } from "../data/vendors";
 import type {
   Batch, Bill, DraftLine, DrawerState, Grn, LocKey, Payer, PordStatus, ProdOrder, PurchaseOrder,
-  Requisition, StockRequest, Ticket, TktLine, User, Vendor,
+  Requisition, StockRequest, Tender, Ticket, TktLine, User, Vendor,
 } from "../types";
 import { basePrices, freeToPromise, qty, resv } from "../lib/selectors";
 import { bestBefore, fq, now, U, makeOtp } from "../lib/fmt";
@@ -69,7 +69,7 @@ export interface AppState extends ProcurementSlice, OpsSlice {
 
   addToCart: (loc: LocKey, it: string, d?: number) => void;
   clearCart: (loc: LocKey) => void;
-  pay: (loc: LocKey, tender: string, payer?: Payer) => Promise<void>;
+  pay: (loc: LocKey, tender: Tender, payer?: Payer) => Promise<void>;
 
   toggleAvail: (loc: LocKey, it: string) => Promise<void>;
 

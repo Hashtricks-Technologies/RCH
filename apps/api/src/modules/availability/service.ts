@@ -32,7 +32,10 @@ export function createAvailabilityService(db: Db) {
         const item = master.items[body.it];
         // Before the location-type check and before the listing check, so an unknown key or a
         // since-deactivated item (dropped from loadMaster's active-only items) 404s cleanly
-        // instead of crashing on `item.n` below.
+        // instead of crashing on `item.n` below. Same for the location: LocKeySchema only ever
+        // admits the five seeded keys, so this is unreachable rather than user-facing — but a
+        // missing row would otherwise reach `loc.type` as a 500 instead of a plain answer.
+        if (!loc) throw new NotFoundError(`There is no location ${body.loc}.`);
         if (!item) throw new NotFoundError(`There is no item ${body.it}.`);
         if (claims.role === "manager") assertRule(loc.type === "Outlet", `${loc.n} is not an outlet`);
         if (claims.role === "prod") assertRule(loc.type === "Kitchen", `${loc.n} is not a kitchen`);

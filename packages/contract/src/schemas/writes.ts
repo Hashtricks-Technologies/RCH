@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { LocKeySchema, PriceListSchema } from "./common.js";
+import { LocKeySchema, PriceListSchema, TenderSchema } from "./common.js";
 import { PayerSchema } from "./documents.js";
 
 /** Every domain slice a write can touch, so a client can invalidate/refetch precisely instead
@@ -14,13 +14,17 @@ export type WriteResponse<T> = { result: T; changed: Changed[]; message: string 
 
 export const PayBodySchema = z.strictObject({
   loc: LocKeySchema,
-  tender: z.string().min(1).max(40),
+  tender: TenderSchema,
   payer: PayerSchema.optional(),
-  lines: z.array(z.strictObject({ it: z.string().min(1).max(64), qty: z.number().positive().max(10000) })).min(1).max(100),
+  // Three decimals is the whole precision of a quantity anywhere in this system (`round3`), so
+  // a line that carries more is a client bug, not a sale — refuse it at the door rather than
+  // rounding it silently into the ledger.
+  lines: z.array(z.strictObject({ it: z.string().min(1).max(64), qty: z.number().positive().multipleOf(0.001).max(10000) })).min(1).max(100),
 });
 export const ToggleAvailBodySchema = z.strictObject({ loc: LocKeySchema, it: z.string().min(1).max(64) });
 export const SavePriceParamsSchema = z.strictObject({ list: PriceListSchema, it: z.string().min(1).max(64) });
-export const SavePriceBodySchema = z.strictObject({ price: z.number().nonnegative().max(100000) });
+/** A price of nothing is not a price — the manager's screen already says "Enter a price greater than zero". */
+export const SavePriceBodySchema = z.strictObject({ price: z.number().positive().max(100000) });
 export const MenuLocParamsSchema = z.strictObject({ loc: LocKeySchema });
 export const MenuItemParamsSchema = z.strictObject({ loc: LocKeySchema, it: z.string().min(1).max(64) });
 export const MenuItemBodySchema = z.strictObject({ it: z.string().min(1).max(64) });

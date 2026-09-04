@@ -35,8 +35,11 @@ export function createCatalogService(db: Db) {
         if (!item) throw new NotFoundError(`There is no item ${it}.`);
         const listed = await catalogRepo.isListed(tx, loc, it);
         assertRule(!listed, `${item.n} is already listed at ${location.n}`);
-        const seq = (await catalogRepo.maxSeq(tx, loc)) + 1;
-        await catalogRepo.insertMenuItem(tx, loc, it, seq);
+        // That check read before the insert took its lock, so two managers adding the same item
+        // can both find it unlisted. The insert is the arbiter: it hands the loser no row back,
+        // and the loser reads the same refusal the check would have given it a moment later.
+        const inserted = await catalogRepo.insertMenuItem(tx, loc, it);
+        assertRule(inserted.length > 0, `${item.n} is already listed at ${location.n}`);
         const items = await catalogRepo.menuItems(tx, loc);
         return { result: { loc, items }, changed: ["menu"], message: `${item.n} listed at ${location.n}` };
       });

@@ -1,4 +1,4 @@
-import { asc, desc, eq, gte, sql } from "drizzle-orm";
+import { asc, desc, eq, gte, inArray, sql } from "drizzle-orm";
 import type { Batch, Bill, Grn, HistEntry, LocKey, ProdOrder, ProductRequest, PurchaseOrder, RateContract, Requisition, ShopAsk, StockRequest, SupportTicket, Ticket, Vendor } from "@rch/contract";
 import type { Db } from "../../../db/client.js";
 import * as s from "../../../db/schema/index.js";
@@ -94,9 +94,16 @@ export async function readBatches(db: Db): Promise<Batch[]> {
 
 export async function readBills(db: Db, sinceDays: number, pre?: UserNames): Promise<Bill[]> {
   const since = new Date(Date.now() - sinceDays * 86400_000);
-  const [heads, lines, names] = await Promise.all([
-    db.select().from(s.bills).where(gte(s.bills.at, since)).orderBy(desc(s.bills.at), desc(s.bills.no)), db.select().from(s.billLines).orderBy(asc(s.billLines.lineNo)), pre ? Promise.resolve(pre) : userNames(db),
+  const [heads, names] = await Promise.all([
+    db.select().from(s.bills).where(gte(s.bills.at, since)).orderBy(desc(s.bills.at), desc(s.bills.no)), pre ? Promise.resolve(pre) : userNames(db),
   ]);
+  // Lines for the window's bills only. Every other reader here loads a whole table because the
+  // whole table is what a screen lists; bill lines are the one collection that grows with every
+  // sale forever, so a week on screen must not drag years of them through memory. The primary
+  // key (bill_no, line_no) indexes the leading column, so this is an index read — and with no
+  // heads there is nothing to ask for, which is just as well: an empty `in ()` is not SQL.
+  if (heads.length === 0) return [];
+  const lines = await db.select().from(s.billLines).where(inArray(s.billLines.billNo, heads.map((h) => h.no))).orderBy(asc(s.billLines.lineNo));
   const by = groupBy(lines, (l) => l.billNo);
   // One mapping for a bill however it reaches the wire: POST /bills answers with the same shape.
   return heads.map((b) => toWireBill(b, by.get(b.no) ?? [], { name: names.get(b.operatorId)?.name ?? b.operatorId, colour: names.get(b.operatorId)?.colour ?? "#64748B" }));

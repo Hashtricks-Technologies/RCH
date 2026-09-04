@@ -46,8 +46,9 @@ export const parOf = (l: LocKey, it: string) => {
   return U(it) === "nos" ? Math.round(base * f) : round3(base * f);
 };
 
-/** Quantity already promised by an approval that has not yet become a ticket. */
-export const committed = (reqs: StockRequest[], l: LocKey, it: string) => D.committed(reqs, l, it);
+/** Quantity already promised by an approval that has not yet become a ticket. Every request is
+ *  raised against the central store, so there is no location to net it against. */
+export const committed = (reqs: StockRequest[], it: string) => D.committed(reqs, it);
 
 /**
  * What may still be promised: on hand, less what tickets have reserved, less
