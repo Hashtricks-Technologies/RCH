@@ -10,6 +10,7 @@
     "lint": "turbo run lint && knip && bash scripts/check-boundaries.sh",
     "check:boundaries": "bash scripts/check-boundaries.sh",
     "test": "turbo run test",
+    "test:e2e": "pnpm --filter @rch/e2e test:e2e",
     "helm:test": "deploy/chart/rch/tests/render.test.sh",
     "db:up": "docker compose up -d postgres",
     "db:down": "docker compose down"

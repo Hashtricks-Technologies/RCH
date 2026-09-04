@@ -28,6 +28,26 @@ SET_ARGS=(
   --set-string "secrets.values.JWT_PUBLIC_KEY=$JWT_PUBLIC_KEY"
 )
 
+# E2E=1 adds the Playwright smoke at the end (see the block after the UI health check). Three
+# settings have to move for it, and only for it — they are set here rather than in
+# ci/values-ci.yaml so a plain install still proves the chart's own defaults:
+#
+#  * SEED_FORCE_PASSWORD_CHANGE=false. The seed below runs inside the api container and inherits
+#    its env; left at the default the six seeded accounts land on "Choose a new password" at
+#    first sign-in, and the smoke would have to carry a rotated password between six roles.
+#  * The two login rate limits. Everything the smoke does arrives through one port-forward, so
+#    the API sees one client address for sixteen sign-ins inside a minute and the per-IP budget
+#    of ten refuses the rest. The general RATE_LIMIT_PER_MINUTE is deliberately left at its
+#    default: the smoke stays inside it, so every non-login call is still made under the same
+#    budget production runs.
+if [ "${E2E:-}" = "1" ]; then
+  SET_ARGS+=(
+    --set-string "api.env.SEED_FORCE_PASSWORD_CHANGE=false"
+    --set-string "api.env.LOGIN_RATE_LIMIT_PER_MINUTE=200"
+    --set-string "api.env.LOGIN_RATE_LIMIT_PER_EMP_PER_MINUTE=100"
+  )
+fi
+
 API_PF_PID=""
 UI_PF_PID=""
 kill_pf() {
@@ -96,6 +116,13 @@ UI_PF_PID=$!
 wait_for "$UI/healthz"
 UI_CODE=$(curl -s -o /dev/null -w '%{http_code}' "$UI/healthz")
 [ "$UI_CODE" = 200 ] || fail "ui healthz: expected 200, got $UI_CODE"
+
+if [ "${E2E:-}" = "1" ]; then
+  echo "== playwright smoke against the cluster =="
+  # Both port-forwards are up: the UI on 8080 and the API on 3000. The UI's nginx proxies /api
+  # and /api/v1/events to the API service inside the cluster, so the browser needs only the one.
+  E2E_BASE_URL="$UI" pnpm test:e2e
+fi
 
 kill_pf
 
