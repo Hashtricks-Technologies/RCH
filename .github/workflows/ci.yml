@@ -31,7 +31,19 @@ jobs:
       # boundary failure obvious in the CI log instead of buried at the end of `pnpm lint`.
       - name: Check module and boundary rules (spec §5.1)
         run: pnpm check:boundaries
-      - run: pnpm audit --audit-level=high
+      - name: pnpm audit (high and critical)
+        # The registry's audit endpoint times out now and then. A network failure is a
+        # retry and, at worst, a warning; an advisory is a failure — the two must never be
+        # confused, or a flaky endpoint would either block every merge or hide a real CVE.
+        run: |
+          for attempt in 1 2 3; do
+            if out=$(pnpm audit --audit-level=high 2>&1); then echo "$out"; exit 0; fi
+            if echo "$out" | grep -qE 'ERR_SOCKET_TIMEOUT|FetchError|ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN'; then
+              echo "audit endpoint unreachable (attempt $attempt)"; sleep 20; continue
+            fi
+            echo "$out"; echo "::error::pnpm audit reports high or critical advisories"; exit 1
+          done
+          echo "::warning::pnpm audit skipped: registry unreachable after 3 attempts"
       - name: Build the site
         run: bash scripts/build-site.sh
       - uses: actions/upload-artifact@v7
@@ -57,10 +69,10 @@ jobs:
         uses: docker/build-push-action@v6
         with: { context: ., file: UI/Dockerfile, push: false, load: true, platforms: linux/amd64, tags: rch-ui:ci, cache-from: type=gha, cache-to: "type=gha,mode=max" }
       - name: Scan api
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with: { image-ref: rch-api:ci, severity: CRITICAL, exit-code: "1", ignore-unfixed: true }
       - name: Scan ui
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with: { image-ref: rch-ui:ci, severity: CRITICAL, exit-code: "1", ignore-unfixed: true }
       # From here on: a real `helm install` against a throwaway kind cluster (spec §16,
       # §14 Phase 1 exit amendment). Lives at the end of this job, not a separate one that
