@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "rate_contracts_live_uq" ON "rate_contracts" USING btree ("vendor_id","item_key") WHERE "rate_contracts"."active";

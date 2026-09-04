@@ -2,8 +2,8 @@
 // document instead of asking for one here is rejected in review — the defaults belong in one
 // place, so a case says only what it is about.
 import { eq } from "drizzle-orm";
-import type { LocKey, PordStatus, ReqStatus, ShopAskStatus, TktStatus } from "@rch/contract";
-import { makeOtp } from "@rch/domain";
+import type { LocKey, PordStatus, PoStatus, PrqStatus, ProductReqStatus, ReqStatus, ShopAskStatus, TktStatus } from "@rch/contract";
+import { makeOtp, round3 } from "@rch/domain";
 import type { Db } from "../db/client.js";
 import * as s from "../db/schema/index.js";
 import { appendHistory } from "../lib/history.js";
@@ -15,7 +15,7 @@ import type { TicketRefType } from "../lib/tickets.js";
  *  collided often enough to matter. Each test file is its own module instance and its own
  *  schema, so the counters need not be unique across files. Bands sit above the fixtures and
  *  above each sequence's start; padStart keeps the printed width when a band runs past 999. */
-const counters = { req: 0, tkt: 0, ask: 0, bill: 0, pord: 0 };
+const counters = { req: 0, tkt: 0, ask: 0, bill: 0, pord: 0, prq: 0, po: 0, vendor: 0, contract: 0, npr: 0 };
 const nextId = (prefix: string, base: number, family: keyof typeof counters): string =>
   `${prefix}${String(base + ++counters[family]).padStart(4, "0")}`;
 
@@ -103,6 +103,87 @@ export const given = {
     await db.transaction(async (tx) => {
       await tx.insert(s.prodOrders).values({ id, fromLoc: p.from ?? "kiosk", byUser: p.by ?? "u4", status: p.st ?? "New", note: p.note ?? "" });
       await tx.insert(s.prodOrderLines).values(lines.map((l, lineNo) => ({ orderId: id, lineNo, itemKey: l.it, qty: l.qty })));
+    });
+    return id;
+  },
+
+  /** A vendor, active unless told otherwise. Ids sit at VN-9NN, above the fixtures' 001–005
+   *  and above the sequence's start (6), so a builder-made vendor can collide with neither. */
+  async vendor(db: Db, p: { id?: string; n?: string; gstin?: string; groups?: string[]; lead?: number; active?: boolean } = {}): Promise<string> {
+    const n = ++counters.vendor;
+    const id = p.id ?? `VN-${String(900 + n).padStart(3, "0")}`;
+    await db.insert(s.vendors).values({
+      id, name: p.n ?? `Test Vendor ${900 + n}`, gstin: p.gstin ?? "33AAACA1234F1Z5",
+      contact: "", phone: "", terms: "30 days", leadDays: p.lead ?? 2,
+      groups: p.groups ?? ["Grocery"], active: p.active ?? true,
+    });
+    return id;
+  },
+
+  /** A requisition and its lines. `appr` and `ordered` default to nothing decided and nothing
+   *  claimed, which is what a freshly sent one looks like. Ids sit at PRQ-2026-9NN. */
+  async requisition(db: Db, p: {
+    id?: string; by?: string; st?: PrqStatus; note?: string;
+    lines: { it: string; qty: number; appr?: number; ordered?: number }[];
+  }): Promise<string> {
+    const id = p.id ?? `PRQ-2026-${String(900 + ++counters.prq)}`;
+    const st = p.st ?? "Sent";
+    await db.transaction(async (tx) => {
+      await tx.insert(s.requisitions).values({ id, byUser: p.by ?? "u3", status: st, note: p.note ?? "" });
+      await tx.insert(s.requisitionLines).values(p.lines.map((l, lineNo) => ({
+        requisitionId: id, lineNo, itemKey: l.it, qty: l.qty,
+        approvedQty: l.appr ?? 0, orderedQty: l.ordered ?? 0,
+        shortQty: l.appr === undefined ? null : round3(l.qty - l.appr),
+      })));
+      const [author] = await tx.select({ name: s.users.name }).from(s.users).where(eq(s.users.id, p.by ?? "u3"));
+      await appendHistory(tx, "requisition", id, "Sent", author?.name ?? p.by ?? "u3");
+    });
+    return id;
+  },
+
+  /** A purchase order, its lines and the sources each line claims against. Ids sit at
+   *  PO-2026-09NN, above the fixtures' 0140–0142 and the sequence's start (143). */
+  async po(db: Db, p: {
+    id?: string; vendor?: string; st?: PoStatus; eta?: string; needsApproval?: boolean;
+    lines: { it: string; qty: number; rate?: number; recv?: number; rejected?: number; src?: { prq: string; line: number; qty: number }[] }[];
+  }): Promise<string> {
+    const id = p.id ?? `PO-2026-${String(900 + ++counters.po).padStart(4, "0")}`;
+    const st = p.st ?? "Draft";
+    await db.transaction(async (tx) => {
+      await tx.insert(s.purchaseOrders).values({
+        id, vendorId: p.vendor ?? "VN-001", status: st, eta: p.eta ?? "2026-09-30",
+        needsApproval: p.needsApproval ?? false,
+      });
+      await tx.insert(s.poLines).values(p.lines.map((l, lineNo) => ({
+        poId: id, lineNo, itemKey: l.it, qty: l.qty, rate: l.rate ?? 10,
+        receivedQty: l.recv ?? 0, rejectedQty: l.rejected ?? 0,
+      })));
+      const srcs = p.lines.flatMap((l, lineNo) => (l.src ?? []).map((x, seq) => ({
+        poId: id, lineNo, seq, requisitionId: x.prq, requisitionLineNo: x.line, qty: x.qty,
+      })));
+      if (srcs.length) await tx.insert(s.poLineSources).values(srcs);
+      await appendHistory(tx, "purchase_order", id, st, "Latha Narayanan");
+    });
+    return id;
+  },
+
+  /** A rate contract, live unless told otherwise. Ids sit at RC-9NN. */
+  async contract(db: Db, p: { id?: string; vendorId?: string; it: string; rate: number; from?: string; to?: string; moq?: number; active?: boolean }): Promise<string> {
+    const id = p.id ?? `RC-${900 + ++counters.contract}`;
+    await db.insert(s.rateContracts).values({
+      id, vendorId: p.vendorId ?? "VN-001", itemKey: p.it, rate: p.rate,
+      validFrom: p.from ?? "2026-04-01", validTo: p.to ?? "2027-03-31",
+      moq: p.moq ?? 0, active: p.active ?? true,
+    });
+    return id;
+  },
+
+  /** A shop's ask for something that is not on the master yet. Ids sit at NPR-09NN. */
+  async productRequest(db: Db, p: { id?: string; name: string; why?: string; forLoc?: LocKey; by?: string; st?: ProductReqStatus }): Promise<string> {
+    const id = p.id ?? `NPR-${String(900 + ++counters.npr).padStart(4, "0")}`;
+    await db.insert(s.productRequests).values({
+      id, name: p.name, why: p.why ?? "", forLoc: p.forLoc ?? "coffee",
+      byUser: p.by ?? "u2", status: p.st ?? "Requested",
     });
     return id;
   },

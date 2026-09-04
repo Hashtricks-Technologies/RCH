@@ -103,7 +103,14 @@ export const rateContracts = pgTable("rate_contracts", {
   active: boolean("active").notNull().default(true),
   createdAt: ts("created_at").notNull().defaultNow(),
   updatedAt: ts("updated_at").notNull().defaultNow(),
-});
+}, (t) => [
+  // One live contract per vendor and item. The store's screen checks before it inserts, but a
+  // check reads before the insert takes its lock, so two store keepers adding the same contract
+  // at once would both pass it. The index is the arbiter: `on conflict do nothing … returning`
+  // hands the loser no row, and it reads the same refusal the check would have given it a
+  // moment later — the pattern `addMenuItem` already uses (spec §16, Phase 2).
+  uniqueIndex("rate_contracts_live_uq").on(t.vendorId, t.itemKey).where(sql`${t.active}`),
+]);
 
 /**
  * Who a non-cash bill may be posted to: the patient, payroll and cost-centre rosters the live
