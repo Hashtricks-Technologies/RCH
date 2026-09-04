@@ -66,9 +66,7 @@
     "ResourceType": "AWS::Route53::RecordSet",
     "LogicalResourceId": "CaaRecord",
     "ResourceIdentifier": {
-      "HostedZoneId": "Z066296313TA69I4LDOOI",
-      "Name": "rch.hashtrickstechnologies.com.",
-      "Type": "CAA"
+      "Id": "Z066296313TA69I4LDOOI|rch.hashtrickstechnologies.com.|CAA"
     }
   }
 ]
