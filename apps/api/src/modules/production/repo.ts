@@ -1,7 +1,7 @@
 // Production: SQL only. No rules, no transaction of its own — service.ts passes `tx` in.
 import { and, asc, eq, inArray } from "drizzle-orm";
 import type { LocKey, PordStatus, ProdOrder } from "@rch/contract";
-import { locationItems, prodOrderLines, prodOrders, stockBalances, users } from "../../db/schema/index.js";
+import { availabilityOverrides, batches, locationItems, prodOrderLines, prodOrders, stockBalances, users } from "../../db/schema/index.js";
 import type { Tx } from "../../lib/db.js";
 import { readHistory } from "../../lib/history.js";
 import { iso } from "../../lib/time.js";
@@ -44,6 +44,21 @@ export const productionRepo = {
   async menuAt(tx: Tx, loc: string): Promise<Set<string>> {
     const rows = await tx.select({ itemKey: locationItems.itemKey }).from(locationItems).where(eq(locationItems.loc, loc));
     return new Set(rows.map((r) => r.itemKey));
+  },
+
+  /** Whether the kitchen has switched this product off, and the reason it recorded.
+   *  Read inside the write's transaction, so a switch flipped a moment ago is seen. */
+  async overrideAt(tx: Tx, loc: string, itemKey: string): Promise<string | undefined> {
+    const [o] = await tx.select({ reason: availabilityOverrides.reason }).from(availabilityOverrides)
+      .where(and(eq(availabilityOverrides.loc, loc), eq(availabilityOverrides.itemKey, itemKey)));
+    return o?.reason;
+  },
+
+  /** The batch document. `.returning()` hands back what the database stored — the defaulted
+   *  `at` included — so the wire shape and the ledger's timestamps cannot drift apart. */
+  async insertBatch(tx: Tx, v: typeof batches.$inferInsert): Promise<typeof batches.$inferSelect> {
+    const [row] = await tx.insert(batches).values(v).returning();
+    return row!;
   },
 
   /** Who signed it, for the history row the board prints. */
