@@ -17,6 +17,13 @@ Description: >-
   object — see deploy/cfn/README.md.
 
 Parameters:
+  CreateCaaRecord:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+    Description: >-
+      Whether this stack owns the CAA record on HostName. An IMPORT change set may create nothing,
+      so the first (import) run passes false; the update that follows passes true and creates it.
   Env:
     Type: String
     AllowedValues: [dev, staging, prod]
@@ -92,6 +99,7 @@ Parameters:
       params file itself as a secret and do not commit it with a real password inside.
 
 Conditions:
+  CreateCaa: !Equals [!Ref CreateCaaRecord, "true"]
   # The one Condition this template needs. See the top-of-file note: only the dev stack creates
   # the shared account/VPC-wide resources; every other environment imports them.
   IsDev: !Equals [!Ref Env, "dev"]
@@ -287,6 +295,7 @@ Resources:
 
   CaaRecord:
     Type: AWS::Route53::RecordSet
+    Condition: CreateCaa
     Properties:
       HostedZoneId: !Ref HostedZoneId
       Name: !Sub "${HostName}."

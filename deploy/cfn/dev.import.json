@@ -61,12 +61,5 @@
     "ResourceIdentifier": {
       "CertificateArn": "arn:aws:acm:ap-south-1:830283280199:certificate/68a3b4db-2bfe-449a-8b79-8201a30bde0c"
     }
-  },
-  {
-    "ResourceType": "AWS::Route53::RecordSet",
-    "LogicalResourceId": "CaaRecord",
-    "ResourceIdentifier": {
-      "Id": "Z066296313TA69I4LDOOI|rch.hashtrickstechnologies.com.|CAA"
-    }
   }
 ]
