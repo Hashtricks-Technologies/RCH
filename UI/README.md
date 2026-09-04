@@ -1,7 +1,7 @@
 # Royal Care — F&B Inventory (React + Vite)
 
 Frontend for the hospital's kitchen, restaurant and retail-counter operation. Five roles,
-one shared stock ledger, backed by the `apps/api` Fastify service (Phases 1–3 — spec §14).
+one shared stock ledger, backed by the `apps/api` Fastify service (Phases 1–4 — spec §14).
 
 ## Stack
 
@@ -39,13 +39,18 @@ pnpm --filter @rch/ui test
 
 The dev server proxies `/api` to the Fastify API on `:3000`. Master data, prices, menus and
 every open document are hydrated from `GET /snapshot` on load (`hydrateMaster`). Billing,
-availability, prices and menus (Phase 2), and the whole stock-request chain, shop transfers,
-shop asks and the kitchen's two ticket-raising writes (Phase 3) all run against the server —
-nineteen store actions in total, listed in `../CLAUDE.md`'s *One Zustand store*. `UI/src/api/
+availability, prices and menus (Phase 2), the whole stock-request chain, shop transfers, shop
+asks and the kitchen's two ticket-raising writes (Phase 3), and the rest of production — the
+kitchen's board, its batches and ticket cancellation (Phase 4) — all run against the server —
+twenty-two store actions in total, listed in `../CLAUDE.md`'s *One Zustand store*. `UI/src/api/
 events.ts` opens one `fetch`-based SSE connection per session and refetches whatever a write
-elsewhere changed, so two open tabs stay in sync without a reload. The rest of production
-(`setOrderStatus`, `makeProduct`) and all of procurement still run against the in-memory
-Zustand store until later phases move them server-side (spec §14).
+elsewhere changed, so two open tabs stay in sync without a reload. Against a real server today
+a person can walk a kitchen order across the board, make a batch that draws its recipe out of
+the kitchen and stamps a best-before, dispatch it, hand it over on an OTP and receive it at the
+counter — with another browser following along live — and cancel a ticket nobody came for,
+which puts the stock and the document behind it back where it stood. All of procurement, and
+the ops slice's support tickets, rate contracts and new-product requests, still run against the
+in-memory Zustand store until later phases move them server-side (spec §14).
 
 ## Sign in
 
@@ -142,12 +147,12 @@ destination. The outlet manager sees it happen rather than standing in the middl
 ## Not built yet
 
 Still local to the store until their phase lands (spec §14, and the phase table in the root
-`README.md`): the rest of production — order status and batches (`setOrderStatus`,
-`makeProduct`); all of `store/procurement.ts` — vendors, requisitions, the PO lifecycle, goods
+`README.md`): all of `store/procurement.ts` — vendors, requisitions, the PO lifecycle, goods
 receipt; and the ops slice's support tickets, rate contracts, new-product requests and
 `createItem`. Phase 1 delivered persistence and real authentication for reads, Phase 2 cut
-billing, availability and prices/menus over to the server, and Phase 3 cut over the request
-chain, tickets, shop-to-shop transfers, shop asks and the kitchen's two ticket-raising writes,
-adding live updates over SSE. Barcode scanning, patient-bill posting and GST output registers
-remain out of scope. The backend design is
+billing, availability and prices/menus over to the server, Phase 3 cut over the request chain,
+tickets, shop-to-shop transfers, shop asks and the kitchen's two ticket-raising writes, adding
+live updates over SSE, and Phase 4 finished production — the board's statuses, batches with
+recipe consumption, and a way to cancel a ticket nobody collected. Barcode scanning,
+patient-bill posting and GST output registers remain out of scope. The backend design is
 `../docs/superpowers/specs/2026-09-03-backend-design.md`.

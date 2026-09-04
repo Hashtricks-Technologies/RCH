@@ -51,13 +51,16 @@ are merged into the same `create()` and share one `AppState`. Components subscri
 `removeProduct`. Phase 3: `submitRequest`, `requestFromStore`, `cancelRequest`, `approveRequest`,
 `rejectRequest`, `issueTicket`, `handover`, `receiveTicket`, `dispatchOrder`, `distribute` (in
 `store/index.ts`) and `transferToOutlet`, `askShop`, `answerShopAsk`, `declineShopAsk` (in
-`store/ops.ts`). Session actions — `login`, `restore`, `loadSnapshot`, `logout`,
+`store/ops.ts`). Phase 4: `setOrderStatus`, `makeProduct`, `cancelTicket` (in `store/index.ts`)
+— production is finished. The kitchen's screens keep only previews now: `ceiling` and the
+Dispatch cover check, computed with the same `@rch/domain` functions the server enforces with,
+not a second copy of the rule. Session actions — `login`, `restore`, `loadSnapshot`, `logout`,
 `changePassword`, `saveProfile` — go through the same client.
 
-**Still local to the store** until their phase lands: the rest of production (`setOrderStatus`,
-`makeProduct`), all of `store/procurement.ts` (`sendRequisition`, vendors, PO lifecycle, goods
-receipt), and the ops slice's support tickets, rate contracts, new-product requests and
-`createItem`.
+**Still local to the store** until their phase lands: all of `store/procurement.ts`
+(`sendRequisition`, vendors, PO lifecycle, goods receipt), and the ops slice's support tickets,
+rate contracts, new-product requests and `createItem`. `Seq` (`store/index.ts`) is down to the
+procurement counters (`prq`, `po`, `vn`) it still owns.
 
 Every server-backed action has the same shape, and a new one must too:
 
@@ -82,7 +85,12 @@ try {
 - **Form-carrying actions return `Promise<boolean>`** and the screen `await`s them behind a
   `busy` flag, clearing the form only on `true` — so a refusal leaves what was typed on screen.
   `roles/counter/Pos.tsx` (single `busy`) and `roles/counter/Requests.tsx` (a keyed
-  `busy: string | null`, one per row) are the two patterns; copy one of them.
+  `busy: string | null`, one per row) are the two patterns; copy one of them. `makeProduct` and
+  `cancelTicket` are this pattern's newest members — a batch form and a cancel-reason form each
+  reset only once the server has taken them.
+- **A button with no form is fire-and-forget.** `setOrderStatus`, `handover` and `dispatchOrder`
+  call, notify and refetch without a `busy` lock or a `Promise<boolean>` — there is no form to
+  leave filled in on a refusal, only a toast.
 
 ## Reading back
 
@@ -93,12 +101,14 @@ the same write), and on a 401 refreshes once and retries. `ApiError` carries `co
 
 `src/api/refetch.ts` pulls back exactly what a write said it changed. `stock`, `rsv` and `ovr`
 come from `GET /stock`; `NARROW` maps `bills → GET /bills`, `req → GET /requests`,
-`tkt → GET /tickets`, `shopAsks → GET /shop-asks`. Anything else — prices, menus, the collections
-later phases add — has **no narrow reader**, so it costs one `loadSnapshot`, and a mixed set takes
-the snapshot alone. If the read-back fails the write's own sentence is kept and qualified, never
-replaced: the operator must not be sent round to do it twice. `src/api/wire.ts` holds the
-server-shape → store-shape mappers (`applySnapshot`, `applyStock`, `applyBills`, `applyRequests`,
-`applyTickets`, `applyShopAsks`); ISO times become `"HH:MM"` there and nowhere else.
+`tkt → GET /tickets`, `shopAsks → GET /shop-asks`, and now `pord → GET /prod-orders`,
+`batch → GET /batches`. Anything else — prices, menus, the collections later phases add — has
+**no narrow reader**, so it costs one `loadSnapshot`, and a mixed set takes the snapshot alone.
+If the read-back fails the write's own sentence is kept and qualified, never replaced: the
+operator must not be sent round to do it twice. `src/api/wire.ts` holds the server-shape →
+store-shape mappers (`applySnapshot`, `applyStock`, `applyBills`, `applyRequests`,
+`applyTickets`, `applyShopAsks`, `applyProdOrders`, `applyBatches`); ISO times become `"HH:MM"`
+there and nowhere else.
 
 `src/api/events.ts` keeps every tab current: one `fetch`-based SSE connection (not `EventSource`,
 which cannot send an `Authorization` header), frames parsed by hand, notices debounced
@@ -125,8 +135,13 @@ number, so a signed-in person's whole record comes from the fixtures.
 `freeToPromise`, `availOf`, `priceOf`, `procurementList`, `prqProgress`, `onOrder`,
 `awaitingApproval`, `inTransit`, `parOf`, `costOf`. Most of it delegates to `@rch/domain` with the
 local `MASTER`. **Never mirror a derived value into the store.** The transition predicates
-(`isReqOpen`, `canIssueTicket`, `canHandOver`, `canReceiveTicket`, `canDispatch`) read the domain
-tables, so a button the UI offers is one the server accepts.
+(`isReqOpen`, `canIssueTicket`, `canHandOver`, `canReceiveTicket`, `canDispatch`, and now
+`canMoveOrder`, `canCancelTicket`, `isTicketOpen`) read the domain tables, so a button the UI
+offers is one the server accepts. `canMoveOrder(st, to)` mirrors `setStatus`'s own two guards
+either side of `PROD_ORDER_TRANSITIONS` — `Dispatched` refused as a destination (it has its own
+button, `canDispatch`) and as a source (that edge exists only for a cancellation to take).
+`isTicketOpen` reads `canHandOver || canReceiveTicket` rather than `st !== "Received"`, so a
+cancelled ticket does not count as still moving.
 
 Never hand-format a number: money through `money` / `money0` / `lakh`, quantities through
 `fq(v, it)` with `U(it)`, mixed-unit totals through `unitTotal`, wire values through

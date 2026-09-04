@@ -20,8 +20,9 @@ data, parameterised by a `Master` (`items`, `locations`, `recipes`) the caller s
 - No registry reads and no module-level mutable state: a function that needs the item master
   takes a `Master` argument. That is what lets the server call it inside a transaction with the
   master its own write commits against.
-- `Intl.DateTimeFormat` with `timeZone: "Asia/Kolkata"` is the one platform API used, in
-  `ids.ts` (a batch made at 00:30 IST is dated today, not yesterday).
+- `Intl.DateTimeFormat` with `timeZone: "Asia/Kolkata"` is the platform API used in `ids.ts` (a
+  batch made at 00:30 IST is dated today, not yesterday) and in `shelf.ts` (a best-before is
+  read against the hospital's own calendar day, not the host's).
 
 ## Commands
 
@@ -44,13 +45,14 @@ No build step — `package.json` exports `src/index.ts` directly.
 | `pricing.ts` | `priceOf` — the till price, capped at the printed MRP **at read time**, never stored |
 | `availability.ts` | `availOf` — a manual override wins; an MTO item is off when a binding ingredient runs short and the reason names it; a stocked item is off at zero. `fq` formats a quantity in the shelf's voice |
 | `promise.ts` | `committed` and `freeToPromise` — on hand, less ticket reservations, less what other approvals already committed (C6) |
-| `approval.ts` | `planApproval` — never more than asked, than typed, or than free to promise; `trimmed` means the store cut it, not the manager |
+| `approval.ts` | `planApproval` — never more than asked, than typed, or than free to promise; `trimmed` means the store cut it, not the manager. `approvedStatus` joins it: which approved status (`Manager approved` / `Partially approved`) a set of decided lines amounts to, written once because two callers need the same answer — the approval that first reaches it, and a cancelled ticket putting its request back where the manager left it |
 | `billing.ts` | `planBill` — pricing, GST derived from inclusive prices, and an MTO line exploded into recipe moves |
 | `costing.ts` | `recipeCost` / `costOf` — a made item costs its recipe plus overhead, never zero |
 | `credit.ts` | `creditRoom`, `breachesCredit`, `creditBreachMessage`, and the re-exported `STAFF_CREDIT_LIMIT` |
 | `apportion.ts` | `apportion` — a receipt fills its source lines in order, deterministically |
 | `otp.ts` | `makeOtp` — six digits minted from the ticket number; an operational check, not a security token |
 | `ids.ts` | `formatId`, `SEQUENCE_START`, `IdKind` — the document numbers exactly as the floor reads them |
+| `shelf.ts` | `DEFAULT_SHELF_LIFE_HOURS` (8), `bestBeforeAt`, `bestBeforeText` — the only place a batch's best-before or its H9 wording ("21:30", "21:30 tomorrow", "21:30 04 Sep") is computed |
 | `transitions.ts` | the four status tables and `canTransition` |
 
 `SEQUENCE_START` is the first number each series issues, continuing the seeded documents
@@ -75,6 +77,22 @@ permission to skip the board's own walk: a status endpoint that gates on this ta
 let `New → Ready` through. Read the comment in `transitions.ts` and spec §16 before touching it.
 `REQUEST_TRANSITIONS` keeps `Received → Closed` reachable although no path writes `Received`
 today, so a migrated or hand-corrected row is not stranded.
+
+**An edge reachable through one door only is guarded at that door.** Phase 4 added two edges
+neither table's own consumer treats as a button: `TICKET_TRANSITIONS.Issued` gained
+`Cancelled`, reachable only through `POST /tickets/:id/cancel`; `PROD_ORDER_TRANSITIONS.Dispatched`
+gained `["Ready"]`, reachable only when that same cancellation puts a dispatched order's ticket
+back — which is why `setStatus` (`apps/api/src/modules/production/service.ts`) refuses
+`Dispatched` as a *source* even though the table allows the edge, and `canMoveOrder`
+(`UI/src/lib/selectors.ts`) refuses it too, so the board never draws a button for it. The rule
+this states generally: a table says what status may follow what, never *by which door* — so a
+general edge in it opens every consumer of that table, not just the one that needed it. That is
+also why `REQUEST_TRANSITIONS` is **not** touched for cancellation: a cancelled ticket's
+request goes back to `approvedStatus(lines)` through an explicit `status === "Ticket issued"`
+guard and a direct write in `modules/tickets/service.ts`, rather than a
+`"Ticket issued" → "Manager approved"` table row — a row would also have re-opened `approve`
+(whose only guard is that same table lookup) for a request already holding a live ticket, and
+through it a second ticket for stock already promised once.
 
 ## Conventions
 

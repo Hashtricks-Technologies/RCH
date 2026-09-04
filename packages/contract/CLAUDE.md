@@ -44,7 +44,11 @@ src/fixtures/*          the demo hospital: master, seed documents, ops, vendors
   interface for something that travels; never declare the same shape twice. `LocKey`, `Role`,
   `Tender`, `PayerKind` and every status (`ReqStatus`, `TktStatus`, `PordStatus`, `PoStatus`,
   `PrqStatus`, `ShopAskStatus`) are closed `z.enum`s. **Never widen one with `string`** — let the
-  compiler find the call sites.
+  compiler find the call sites. `TktStatusSchema` gained `Cancelled` in Phase 4 (migration
+  `0005_ticket_status_cancelled` adds it to the pg enum) — this is the one place to say that a
+  status union here and its enum in `apps/api/src/db/schema/enums.ts` are edited together or
+  neither: a value in one but not the other fails at the boundary that notices first, either a
+  Zod parse on the way out or a Postgres write on the way in.
 - **Request bodies are `z.strictObject`.** An unknown key is a client bug (a renamed field, a
   stale build); dropping it silently hides the mistake. `routes.test.ts` proves every body schema
   accepts its own sample and refuses an extra key, and fails if a new route arrives without a
@@ -78,6 +82,10 @@ to register the route with its schemas, auth, role gate and idempotency preHandl
   probes every parameterless GET in the manifest and asserts a 200 that parses against its own
   response schema — so a GET declared without its handler fails the API suite. Declare a GET in
   the same commit as the module that answers it.
+- Phase 4 added three writes — `setOrderStatus` (`POST /prod-orders/:id/status`), `makeBatch`
+  (`POST /batches`) and `cancelTicket` (`POST /tickets/:id/cancel`) — and two reads,
+  `prodOrders` (`GET /prod-orders`) and `batches` (`GET /batches`), the same shape as every
+  route above: one manifest entry, nothing hand-written.
 - `API_PREFIX` is `/api/v1`; manifest paths are relative to it.
 - `EVENTS_PATH` (`/events`) and `EventNoticeSchema` live in `schemas/events.ts` and are
   deliberately **not** a manifest route — a stream has no JSON response to serialise. Both sides

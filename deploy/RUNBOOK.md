@@ -83,10 +83,10 @@ creates for parallel test runs. Review the generated SQL in `apps/api/drizzle/`,
 — migrations are forward-only (§3) and reviewed like any other change.
 
 `pnpm --filter @rch/api db:migrate` applies pending migrations; it is what the `migrate`
-initContainer on every api pod also runs (`dist/cli/migrate.mjs`) — see §2. Four migrations
-exist as of Phase 3 (`apps/api/drizzle/0000`–`0003`): `0000` is the initial schema, `0001` adds
+initContainer on every api pod also runs (`dist/cli/migrate.mjs`) — see §2. Six migrations
+exist as of Phase 4 (`apps/api/drizzle/0000`–`0005`): `0000` is the initial schema, `0001` adds
 the unique index on `refresh_tokens.token_hash`, `0002` installs the append-only trigger on
-`stock_moves` (§7), and `0003` adds `bills_staff_credit_idx` — a partial btree index on
+`stock_moves` (§7), `0003` adds `bills_staff_credit_idx` — a partial btree index on
 `bills (payer_kind, payer_id, at) where payer_kind = 'staff'`, so the staff-credit ceiling's
 per-person, per-month sum (`packages/domain/src/credit.ts`) does not scan the whole table on
 every sale. The index does **not** carry `tender` — the query that reads it
@@ -94,8 +94,10 @@ every sale. The index does **not** carry `tender` — the query that reads it
 matched rows, so do not "optimise" the predicate by adding `tender` to the index expecting it
 to change anything; `payer_kind = 'staff'` already narrows to the rows that matter; `tender`
 is a plain row filter on top and adding it to the index buys nothing this table's size makes
-worth the extra write cost. A fresh `db:migrate` against an empty database reports all four
-applied.
+worth the extra write cost. `0004` adds the `payers` table (`kind`, `id`, `name`, `active`) the
+`pay` payer rule validates against, and `0005` is `ALTER TYPE ticket_status ADD VALUE
+'Cancelled'` for Phase 4's `POST /tickets/:id/cancel`. A fresh `db:migrate` against an empty
+database reports all six applied.
 
 ## 2. Deploy
 
@@ -203,6 +205,22 @@ whatever schema is currently applied; it does not undo a migration. If the rollb
 schema change (a column the old code doesn't expect, say), write a new forward migration that
 makes the schema compatible with the code you are rolling back to — never edit or delete an
 already-applied migration file.
+
+**Migration `0005` (`ALTER TYPE ticket_status ADD VALUE 'Cancelled'`, Phase 4) is one you cannot
+roll back past once it has been used.** Postgres has no `DROP VALUE` for an enum, so the value
+stays in the type forever once added — that part is harmless on its own. What is not harmless:
+a pre-Phase-4 (Phase 3) API image validates every response against `TicketsResponseSchema` /
+`SnapshotSchema`, whose `TktStatusSchema` is a closed union that does not include `Cancelled`.
+The moment any ticket row carries `status = 'Cancelled'`, that old image's `GET /snapshot` and
+`GET /tickets` fail response validation for **every** signed-in user, not just the one who
+touched the cancelled ticket — a 500, not a graceful degrade. So: rolling back the API past the
+Phase 4 image is safe only while no ticket has ever been cancelled on that database. Once one
+has, either roll forward instead of back, or first take every `Cancelled` ticket out of the
+result set the old code will serialise — there is no in-app path for this, and a `Cancelled`
+ticket was always `Issued` (never collected, by construction), so the only status the old
+schema accepts that is not a lie is putting it back to `Issued` by hand, which re-opens a
+ticket the operator was told was withdrawn. That is exactly the kind of manual data surgery a
+rollback should not require, so prefer rolling forward with a fix instead.
 
 ## 4. Rotate JWT keys
 
@@ -330,9 +348,26 @@ select * from document_history where doc_type = 'request' and doc_id = 'REQ-2026
 `doc_type` is one of `request`, `requisition`, `purchase_order`, `prod_order` (confirmed by
 `grep -rn "appendHistory(" apps/api/src`, which as of Phase 1 turns up exactly these four
 calls, all from `apps/api/src/db/seed.ts` — the modules that write these documents outside the
-seed, in later phases, call the same helper) — plus, as of Phase 3, `ticket`, but only ever for
-one status: a ticket's ordinary lifecycle still carries no prose, just three timestamps on the
-row (`issued_at`, nullable `collected_at`, nullable `received_at`,
+seed, in later phases, call the same helper) — plus, as of Phase 3, `ticket`. A production
+order's own board walk reads the same way, one row per press including the dispatch:
+
+```sql
+select * from document_history where doc_type = 'prod_order' and doc_id = 'PRD-2026-029' order by at;
+```
+
+The board's statuses (`PordStatus`, `packages/contract/src/schemas/common.ts`) are `New`,
+`Accepted`, `In kitchen`, `Ready`, `Dispatched`, `Declined` — `POST /prod-orders/:id/status`
+walks the first four in order (a skipped stage is refused, naming the one it is actually on),
+`Dispatched` only ever comes from its own endpoint (`POST /prod-orders/:id/dispatch`), and the
+one way back to `Ready` from `Dispatched` is a ticket cancellation, never a press on the board.
+
+Kitchen make refusals leave no history row and no batch row — a `POST /batches` that comes back
+"Kitchen is short of …" wrote nothing, and the batch number it drew is rolled back with it, so
+the series skips a number the same way a cancelled sale skips a bill number.
+
+A ticket writes history for exactly two things, both added across Phases 3–4 — a supervisor
+override and a cancellation — and carries no prose for its ordinary lifecycle, which stays
+three timestamps on the row (`issued_at`, nullable `collected_at`, nullable `received_at`,
 `apps/api/src/db/schema/movement.ts`), so read those directly:
 
 ```sql
@@ -340,17 +375,19 @@ select id, status, issued_at, collected_at, received_at from tickets where id = 
 ```
 
 A supervisor override — the collector's OTP skipped, allowed to the store and the kitchen
-only (spec §8.3) — is the one ticket event that *does* write `document_history`, so it stays
-auditable:
+only (spec §8.3) — is one of the two ticket events that *does* write `document_history`; a
+cancellation (`POST /tickets/:id/cancel`, Phase 4) is the other, and its row carries the
+operator's reason after an em dash, because the ticket's own row has nowhere to put it:
 
 ```sql
-select * from document_history where doc_type = 'ticket' and doc_id = 'TKT-0441';
--- one row only for an override, status = 'Handed over — supervisor override'; empty otherwise
+select * from document_history where doc_type = 'ticket' order by at desc;
+-- 'Handed over — supervisor override' for an override; 'Cancelled — <reason>' for a cancellation;
+-- empty for a ticket that has only ever moved through its ordinary lifecycle
 ```
 
 No screen or API route surfaces this today — there is no `GET` for `document_history` at all,
 narrow or otherwise — so the query above (or a report built against this table later) is the
-only way to see who used the override and when.
+only way to see who used the override, or cancelled a ticket, and when.
 
 What a ticket actually moved is the ledger, two lines per handover — a `ticket_out` set posted
 at the source when it is handed over, a `ticket_in` set posted at the destination when it is
@@ -360,6 +397,9 @@ received:
 select * from stock_moves where ref_type = 'ticket' and ref_id = 'TKT-0441' order by id;
 ```
 
+A cancelled ticket moves nothing, because nothing had moved — there is no ledger query for a
+cancellation; `reservations.released_at` on its holds is the only trace (below).
+
 A bill (Phase 2, `POST /bills`) writes no `document_history` either — it is a single
 create-and-settle document, not something that moves through statuses — so read what it did
 from the ledger instead, keyed by `ref_type = 'bill'` and `ref_id = <bill number>`:
@@ -367,6 +407,27 @@ from the ledger instead, keyed by `ref_type = 'bill'` and `ref_id = <bill number
 ```sql
 select * from stock_moves where ref_type = 'bill' and ref_id = 'CF/1188';
 ```
+
+A batch (Phase 4, `POST /batches`) writes no `document_history` either — it is created once,
+never transitions — so read it from the ledger too, keyed by `ref_type = 'batch'`:
+
+```sql
+select * from stock_moves where ref_type = 'batch' and ref_id = 'BAT-20260904-01' order by id;
+```
+
+The negative rows are the recipe — one `production_consume` move per ingredient, `qty` = the
+recipe's own quantity times what was *started* — and the positive row, if there is one, is the
+`production_yield` for what was *made*. A batch that yielded nothing (a tray dropped, `made =
+0`) posts no positive row at all: the recipe still came off, but nothing was created to book,
+so there is no move for it and no "carried at zero" row on the finished item either (M12). The
+batch's own row (`select * from batches where id = 'BAT-20260904-01'`) is what records a lost
+tray — `started_qty` and `made_qty` disagree, and `note` usually says why.
+
+`BAT-<yyyymmdd>-<nn>` takes its date from the make and its `<nn>` from the one `sequences` row
+kept for the `"batch"` kind (`SEQUENCE_START.batch`), which never resets — the number is unique
+and increasing, not a count of the day's batches, and widens past two digits rather than
+wrapping. Do not "fix" a batch id by hand; a gap in the series (a refused make, above) is
+correct, the same as a gap in the bill or ticket series.
 
 Connect with `psql` (or any Postgres client) against the target `DATABASE_URL` — locally
 that's `postgres://rch:rch@localhost:5439/rch`.
@@ -387,31 +448,40 @@ order by r.id;
 ```
 
 There is no expiry job on a reservation today — an uncollected ticket holds its stock until
-somebody hands it over (with the OTP, or the supervisor override) or the row is corrected by
-hand; a location screen reading `freeToPromise` this low is the first place the shortage shows.
+somebody hands it over (with the OTP, or the supervisor override) or the ticket is cancelled —
+or, for a `Collected` ticket only, the manual procedure below; a location screen reading
+`freeToPromise` this low is the first place the shortage shows. It matters more from Phase 4 on
+than it did in Phase 3: free-to-promise is what `POST /batches` refuses a make against, so a
+stranded hold at the kitchen does not just under-report an outlet's shelf — it stops the
+kitchen baking.
 
-### Releasing a stranded reservation
+### Cancelling a ticket
 
-Phase 3 has no way to cancel a ticket — there is no `POST /tickets/:id/cancel` and no
-`Cancelled` ticket status (`TktStatusSchema` is `Issued | Collected | Received` only), and
-`scripts/check-boundaries.sh` refuses any write to `reservations` from outside `apps/api/src/
-lib/` at review time, so there is no route that could release one even by accident. A ticket
-raised in error — wrong item, wrong quantity, a request that turns out to be unnecessary — has
-no in-app undo; it just sits `Issued`, holding stock out of `freeToPromise`, until this manual
-procedure:
+As of Phase 4 this is an endpoint, not a manual procedure: `POST /tickets/:id/cancel {reason}`
+(store keeper or kitchen in-charge, from the ticket's own location) releases every open hold
+the ticket placed, sets it to `Cancelled`, and puts the document behind it — a request back to
+its approved status, a dispatched production order back to `Ready` — where it stood before the
+ticket was raised. Use it for any ticket still `Issued`:
+
+```bash
+curl -sS -X POST "$API/tickets/TKT-0441/cancel" -H "Authorization: Bearer $TOKEN" \
+  -H 'content-type: application/json' -H "Idempotency-Key: $(python3 -c 'import uuid;print(uuid.uuid4())')" \
+  -d '{"reason":"Wrong item, request cancelled by phone"}'
+```
+
+The manual SQL from Phases 1–3 still has exactly one live use: a ticket already `Collected`
+(stock in transit, both ends' figures already moved) has no cancel button and no endpoint —
+cancelling a movement that has already happened is a correction, not a withdrawal — so freeing
+a hold stuck behind one is still by hand:
 
 ```sql
 update reservations set released_at = now()
 where ticket_id = 'TKT-0441' and released_at is null;
 ```
 
-That frees the stock. It does **not** change the ticket's own status — it stays `Issued`, and a
-collector who later shows up with the right OTP could still hand it over and post a real move
-against a shelf the release already assumed was free, so tell the store keeper or the kitchen
-out loud that `TKT-0441` is dead and must not be handed over. Leave the linked request's status
-alone too (`Ticket issued`) rather than guessing at a status the state machine does not offer —
-correcting it cleanly needs Phase 4's `voidTicket` and a proper `Cancelled` ticket state,
-which is when this procedure retires.
+That frees the stock only; it does not touch the ticket's own status or the document behind
+it, so tell the store keeper or the kitchen out loud what was done and why, the same as before
+Phase 4.
 
 ## 9. Alerts
 

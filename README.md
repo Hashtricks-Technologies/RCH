@@ -40,6 +40,14 @@ neither location. Approval authorises; the scan moves. The same machinery carrie
 transfer, one shop asking a peer directly for stock it is holding, and the kitchen pushing a
 production order or a tray out the door.
 
+**Against a real server today:** walk a kitchen order across the board (accepted → in kitchen →
+ready), make a batch that draws its recipe out of the kitchen and stamps a best-before, dispatch
+it, hand it over on an OTP and receive it at the counter — with a second browser watching every
+step happen live — and cancel a ticket nobody came for, which puts the stock and the document
+behind it (the request or the production order) back where they stood. Procurement — requisitions,
+purchase orders, goods receipt, vendors, rate contracts — and the support desk still run only in
+the browser's in-memory store.
+
 **Live updates.** Every signed-in browser holds one connection to the server's change stream, so a
 request raised at the Coffee Shop appears on the manager's approvals screen without a reload — and
 two tills can never both sell the last unit.
@@ -181,11 +189,11 @@ and deletes its in-browser path, so nothing runs in two places at once.
 | 1 · Foundation | **Done** | The monorepo, the contract and domain packages, the API skeleton, the database schema and seed, real sign-in, and `GET /snapshot` — the browser stops inventing its own data |
 | 2 · Ledger + POS | **Done** | The movement ledger and balances; counter billing, availability toggles, price lists and menus decided server-side |
 | 3 · Movement chain | **Done** | The whole request chain, pick tickets with OTP handover, shop transfers and shop asks, the kitchen's two ticket-raising writes, and the live-update stream |
-| 4 · Production | Pending | Production orders and their board statuses, batches consuming their recipe, kitchen stock |
+| 4 · Production | **Done** | The kitchen's board and its statuses, batches that consume a recipe and yield finished stock, and a ticket nobody collected can now be cancelled |
 | 5 · Procurement | Pending | Vendors, rate contracts, requisitions, the purchase-order lifecycle, goods receipt with tolerance and quarantine, new products |
 | 6 · Ops and go-live | Pending | Support tickets, reports, end-to-end smoke tests, a load check, alerting, and the first production deploy |
 
-Everything phases 4–6 cover still runs in the browser's in-memory store — it works on screen, but
+Everything phases 5–6 cover still runs in the browser's in-memory store — it works on screen, but
 is not yet shared between users or durable across a reload.
 
 ## Where the documents are
@@ -195,7 +203,7 @@ is not yet shared between users or durable across a reload.
   and data model, and the role map with six end-to-end journeys.
 - **`docs/superpowers/specs/2026-09-03-backend-design.md`** — the backend design and the contract
   for all server work. §2 records the decisions already taken, §14 the build order, and §16 every
-  amendment made while phases 1–3 were executed.
+  amendment made while phases 1–4 were executed.
 - **`docs/superpowers/plans/`** — the executed plan for each phase, kept for the record;
   **`deploy/RUNBOOK.md`** — operations; **`docs/ideation.md`** — notes and open questions.
 

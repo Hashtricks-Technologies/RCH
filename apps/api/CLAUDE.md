@@ -7,11 +7,11 @@ contract is `docs/superpowers/specs/2026-09-03-backend-design.md` (§2 decisions
 ## What this is
 
 `@rch/api`: Fastify 5 + Drizzle on PostgreSQL 17, ESM TypeScript, one pool per process. It owns
-the ledger, the document numbers, the reservations and the change stream. Phases 1–3 are live —
+the ledger, the document numbers, the reservations and the change stream. Phases 1–4 are live —
 auth, `/snapshot` and the master GETs, the counter sale, availability, prices and menus, the
-whole request/ticket chain, shop transfers, shop asks, the kitchen's two ticket-raising writes,
-and `GET /events`. Production batches/status and all of procurement are still in the browser
-store until phases 4–5.
+whole request/ticket chain (including cancellation), shop transfers, shop asks, the kitchen's
+board and its batches, and `GET /events`. All of procurement — vendors, requisitions, PO
+lifecycle, goods receipt — is still in the browser store until phase 5.
 
 ## Commands
 
@@ -74,6 +74,29 @@ A write, in the order it must be written (`modules/requests/service.ts` is the w
 in opposite order deadlock; `lib/ledger.ts`'s header states the rule and every module keeps it.
 Take a ticket number *before* the balance locks, never while holding a shelf.
 
+Three more rules the write order above encodes, stated here because Phase 4's `production`
+module (`POST /prod-orders/:id/status`, `POST /batches`, beside `dispatch` and `distribute`)
+and `tickets`' fifth write (`POST /tickets/:id/cancel`) are where they show up most sharply:
+
+(a) **Every negative-going move takes the post-lock re-read.** `postMoves` holds the balance
+locks; a service that moved stock down re-reads `on_hand − reserved` and refuses if any cell
+went below zero. `sale` and `ticket_out` already did this — `makeBatch`'s
+`production_consume` moves now do too, even though its own cover check already ran under the
+same locks and so this second read can never fire today. Kept anyway: it is the invariant
+spec §12 asks for on every negative-going move, and it is what catches the next caller that
+reads a balance before locking it.
+
+(b) **A write that both reads a balance and promises against it takes `lockBalances` in one
+call before reading, over every cell it will move and no others.** `lockBalances` creates the
+row it locks, so a speculative cell becomes a phantom "carried at zero" shelf line (M12) —
+which is why `makeBatch` locks the finished item's cell only when a yield is coming — while a
+missing one leaves `postMoves` reaching for a lock out of `(loc, item)` order.
+
+(c) **`voidTicket` in `lib/tickets.ts` is the one door out of a ticket that was never
+collected.** It releases the ticket's open holds, sets its status to `Cancelled`, and writes
+the reason to `document_history` — and `releaseForTicket` (`lib/reservations.ts`) now has two
+callers, `handover` and `voidTicket`, rather than one.
+
 ## The protected tables
 
 `postMoves()` in `src/lib/ledger.ts` is the only thing that writes `stock_moves` or
@@ -88,6 +111,13 @@ and the raw-SQL equivalents (`insert into stock_moves`, `update stock_balances`,
 `plugins/idempotency.ts` and `*.test.ts`. Do not write one of those phrases in a comment in a
 module file — the check cannot tell prose from code. It also asserts `insert(stockMoves)` appears
 in exactly one non-test file, and that every module folder has the four skeleton files.
+
+`batches` is not one of the protected tables — it is written directly from
+`src/modules/production/repo.ts`, the ordinary way any module writes its own document row. What
+is protected is the ledger a batch posts to (`production_consume`, `production_yield` — two
+more `Move["kind"]` values alongside `sale`, `ticket_out`, `ticket_in`, …) and the `sequences`
+row its number is drawn from: `"batch"` joins `"req"`, `"tkt"`, `"prq"`, `"po"` as an `IdKind`
+(`@rch/domain/src/ids.ts`), and `allocateNumber(tx, "batch", at)` is what a batch id costs.
 
 `stock_moves` is append-only in the database too: migration `0002` installs a trigger that raises
 `stock_moves is append-only; correct with a reversing move` on any UPDATE or DELETE. Correct a
