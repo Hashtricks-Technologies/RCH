@@ -49,13 +49,32 @@ export async function seedDatabase(db: Db, opts: { password: string; forcePasswo
     }
     await seedMaster(tx, passwordHash, opts.forcePasswordChange);
     await ensureSequences(tx);
-    await seedOpeningStock(tx);
-    await seedRequestsAndTickets(tx);
-    await seedProcurement(tx);
-    await seedProduction(tx);
-    await seedBills(tx);
-    await seedOps(tx);
+    await seedDocuments(tx);
   });
+}
+
+/**
+ * Every document band — requests, tickets, procurement, production, bills, ops — and nothing
+ * above it. The master half (items, locations, recipes, menus, price lists, users, payers) is
+ * invariant across a suite, so a test file can seed it once and reset only this between cases.
+ * `seedDatabase` calls it too, in place of the six calls it used to make in a row, so the full
+ * seed and a per-case reset cannot drift into two different hospitals.
+ *
+ * `seedOpeningStock` is a ledger write, not a document, but it lives here rather than beside
+ * `seedMaster`: `resetDocuments` (`apps/api/src/test/db.ts`) truncates `stock_moves` and
+ * `stock_balances` directly — they are named in its own table list, not merely reachable by
+ * cascade from a document table's foreign key (nothing in `stock_moves`/`stock_balances`
+ * references a document row; both only reference `locations`/`items`) — so a per-case reset
+ * would otherwise leave every shelf at zero after the first case. Nesting the opening balance
+ * inside this function is what lets `resetDocuments`'s single call restore it.
+ */
+export async function seedDocuments(tx: Tx): Promise<void> {
+  await seedOpeningStock(tx);
+  await seedRequestsAndTickets(tx);
+  await seedProcurement(tx);
+  await seedProduction(tx);
+  await seedBills(tx);
+  await seedOps(tx);
 }
 
 async function seedMaster(tx: Tx, passwordHash: string, mustChange: boolean) {
@@ -73,9 +92,6 @@ async function seedMaster(tx: Tx, passwordHash: string, mustChange: boolean) {
   await tx.insert(s.priceListItems).values((["A", "B"] as const).flatMap((list) => Object.entries(FX.PL[list]).map(([itemKey, price]) => ({ list, itemKey, price }))));
   await tx.insert(s.users).values(FX.USERS.map((u) => ({
     id: u.id, name: u.n, email: u.e, role: u.r, roleLabel: u.rl, loc: u.loc, colour: u.col, empNo: u.emp, phone: u.ph, passwordHash, mustChangePassword: mustChange,
-  })));
-  await tx.insert(s.vendors).values(FX.seedVendors.map((v) => ({
-    id: v.id, name: v.n, gstin: v.gstin, contact: v.contact, phone: v.ph, terms: v.terms, leadDays: v.lead, groups: v.groups, active: v.active,
   })));
   // The three rosters a non-cash bill may be posted to. They already carry `{kind, id, name}`
   // in the fixtures, so the table is the same three lists in one place — which is what lets the
@@ -120,6 +136,13 @@ async function seedRequestsAndTickets(tx: Tx) {
 }
 
 async function seedProcurement(tx: Tx) {
+  // Unlike the other master rosters (items, locations, recipes, menus, price lists, users,
+  // payers), vendors sit with the documents: `purchaseorders.test.ts` and its neighbours build
+  // fresh vendors by name inside a case (`given.vendor`) and expect the roster clean again next
+  // case, so a `resetDocuments` reset truncates `vendors` and this is what repopulates it.
+  await tx.insert(s.vendors).values(FX.seedVendors.map((v) => ({
+    id: v.id, name: v.n, gstin: v.gstin, contact: v.contact, phone: v.ph, terms: v.terms, leadDays: v.lead, groups: v.groups, active: v.active,
+  })));
   for (const p of FX.seedPrq) {
     await tx.insert(s.requisitions).values({ id: p.id, byUser: who(p.by), at: parseFixtureTime(p.at), status: p.st, note: p.note, approvedBy: p.apprBy ? who(p.apprBy) : null, approvalNote: p.apprNote ?? null });
     await tx.insert(s.requisitionLines).values(p.lines.map((l, lineNo) => ({ requisitionId: p.id, lineNo, itemKey: l.it, qty: l.qty, approvedQty: l.appr, orderedQty: l.ordered, shortQty: l.short ?? null })));

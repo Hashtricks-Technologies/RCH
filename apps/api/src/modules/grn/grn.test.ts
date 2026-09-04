@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
-import { istDate, round3 } from "@rch/domain";
+import { grnId, istDate, round3 } from "@rch/domain";
 import { buildTestApp } from "../../test/app.js";
 import { seedTestDb } from "../../test/seed.js";
 import { authHeaders } from "../../test/auth.js";
@@ -66,8 +66,8 @@ describe("POST /purchase-orders/:id/receive", () => {
     expect(b.result.po.st).toBe("Received");
     expect(b.result.po.lines.map((l: { recv: number }) => l.recv)).toEqual([80, 6]);
     expect(b.result.grns).toHaveLength(2);
-    expect(b.result.grns[0].id).toBe(`GRN-${id.slice(-3)}-01`);
-    expect(b.result.grns[1].id).toBe(`GRN-${id.slice(-3)}-02`);
+    expect(b.result.grns[0].id).toBe(grnId(id, 1));
+    expect(b.result.grns[1].id).toBe(grnId(id, 2));
     expect(b.result.grns[0]).toMatchObject({ po: id, it: "milk", qty: 80, rejected: 0, batch: "AAV-8893", dc: "DC-88214", by: "Suresh Muthu" });
     expect(b.changed).toEqual(["po", "grn", "stock"]);
     expect(b.message).toBe("Booked into Central Store — 2 batch(es) against DC-88214");
@@ -131,12 +131,24 @@ describe("POST /purchase-orders/:id/receive", () => {
     const { id } = await ordered([{ it: "milk", qty: 80 }]);
     const first = (await post("u3", `/purchase-orders/${id}/receive`, { ...doc, lines: [good(60)] })).json();
     expect(first.result.po.st).toBe("Partially received");
-    expect(first.result.grns[0].id).toBe(`GRN-${id.slice(-3)}-01`);
+    expect(first.result.grns[0].id).toBe(grnId(id, 1));
 
     const second = (await post("u3", `/purchase-orders/${id}/receive`, { ...doc, dc: "DC-88999", lines: [good(20)] })).json();
     expect(second.result.po.st).toBe("Received");
     expect(second.result.po.lines[0].recv).toBe(80);
-    expect(second.result.grns[0].id).toBe(`GRN-${id.slice(-3)}-02`);
+    expect(second.result.grns[0].id).toBe(grnId(id, 2));
+  });
+
+  it("numbers two orders that used to share a tail apart", async () => {
+    // Both end "143" under the old format. Build the second with the builder so no sequence is
+    // consumed and no case depends on which numbers the seed happened to reach.
+    // `given.po` defaults the vendor to VN-001 and a line's rate to 10; only the id, the status
+    // and the line matter here.
+    const a = await given.po(app.testDb!.db, { id: "PO-2026-0143", st: "Ordered", lines: [{ it: "milk", qty: 10 }] });
+    const b = await given.po(app.testDb!.db, { id: "PO-2026-1143", st: "Ordered", lines: [{ it: "milk", qty: 10 }] });
+    const ra = (await post("u3", `/purchase-orders/${a}/receive`, { ...doc, lines: [good(10)] })).json();
+    const rb = (await post("u3", `/purchase-orders/${b}/receive`, { ...doc, lines: [good(10)] })).json();
+    expect(ra.result.grns[0].id).not.toBe(rb.result.grns[0].id);
   });
 
   it("takes an over-delivery inside 2% and refuses one beyond it, writing nothing", async () => {

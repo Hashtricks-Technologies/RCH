@@ -1,7 +1,7 @@
 export { round3 } from "./round.js";
 export { apportion } from "./apportion.js";
 export { makeOtp } from "./otp.js";
-export { formatId, SEQUENCE_START, type IdKind } from "./ids.js";
+export { formatId, grnId, SEQUENCE_START, type IdKind } from "./ids.js";
 export { qty, resv, avail, type Master, type StockMap, type RsvMap, type OvrMap, type Prices } from "./master.js";
 export { priceOf } from "./pricing.js";
 export { availOf, fq } from "./availability.js";
