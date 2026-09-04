@@ -6,6 +6,8 @@ import { seedTestDb } from "../../test/seed.js";
 import { authHeaders } from "../../test/auth.js";
 import { availabilityOverrides } from "../../db/schema/index.js";
 import type { App } from "../../app.js";
+import { withTransaction } from "../../lib/db.js";
+import { availabilityRepo } from "./repo.js";
 
 let app: App;
 beforeAll(async () => { app = await buildTestApp({ schema: "availability" }); await seedTestDb(app.testDb!.db); await app.ready(); });
@@ -112,19 +114,41 @@ describe("POST /availability/toggle", () => {
     expect(stock.json().ovr["coffee:water"]).toBe("switched off manually");
   });
 
-  it("two concurrent first-toggles for the same (loc, item) both succeed, deterministically", async () => {
+  it("two concurrent toggles from a clean state both answer 200 and leave a consistent row", async () => {
+    // Two interleavings are possible over HTTP: both read "no override" before either commits
+    // (both insert; the loser's onConflictDoNothing returns 0 rows; both answer off:true, one
+    // row), or the second reads after the first committed and switches the item back on
+    // (off:true then off:false, no row). Either is correct; what must never happen is a 500.
     const [headersA, headersB] = await Promise.all([hdr("u1"), hdr("u1")]);
     const [a, b] = await Promise.all([
       toggle(headersA, { loc: "coffee", it: "bisc" }),
       toggle(headersB, { loc: "coffee", it: "bisc" }),
     ]);
-    expect(a.statusCode).toBe(200);
-    expect(b.statusCode).toBe(200);
-    expect(a.json().result.off).toBe(true);
-    expect(b.json().result.off).toBe(true);
-
+    expect(a.statusCode, a.body).toBe(200);
+    expect(b.statusCode, b.body).toBe(200);
+    const offs = [a.json().result.off, b.json().result.off].filter(Boolean).length;
     const rows = await app.testDb!.db.select().from(availabilityOverrides)
       .where(and(eq(availabilityOverrides.loc, "coffee"), eq(availabilityOverrides.itemKey, "bisc")));
+    expect(rows).toHaveLength(offs === 2 ? 1 : 0);
+  });
+
+  it("when both toggles read before either commits, the PK race is absorbed: one insert wins, the other is a no-op", async () => {
+    // Forced interleaving — the shape the HTTP race above cannot guarantee: both transactions
+    // read "no override", then both insert. The second insert blocks on the primary key until
+    // the first commits, then onConflictDoNothing hands back zero rows instead of a 23505.
+    const db = app.testDb!.db;
+    let releaseA!: () => void; let releaseB!: () => void;
+    const readA = new Promise<void>((r) => { releaseA = r; });
+    const readB = new Promise<void>((r) => { releaseB = r; });
+    const run = (mine: () => void, other: Promise<void>) => withTransaction(db, async (tx) => {
+      expect(await availabilityRepo.find(tx, "coffee", "chips")).toBeUndefined();
+      mine(); await other;
+      return availabilityRepo.insert(tx, "coffee", "chips", "switched off manually", "u1");
+    });
+    const [ia, ib] = await Promise.all([run(releaseA, readB), run(releaseB, readA)]);
+    expect([ia, ib].sort()).toEqual([false, true]);
+    const rows = await db.select().from(availabilityOverrides)
+      .where(and(eq(availabilityOverrides.loc, "coffee"), eq(availabilityOverrides.itemKey, "chips")));
     expect(rows).toHaveLength(1);
   });
 });
