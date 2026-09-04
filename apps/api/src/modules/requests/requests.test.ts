@@ -262,7 +262,10 @@ describe("POST /requests/:id/issue-ticket", () => {
     const b = r.json();
     expect(b.result.ticket).toMatchObject({ id: "TKT-0441", req: "REQ-2026-0911", from: "store", to: "coffee", st: "Issued" });
     expect(b.result.ticket.lines).toEqual([{ it: "milk", qty: 12 }]);
-    expect(b.result.ticket.otp).toMatch(/^\d{6}$/);
+    // The store keeper raising the ticket stands at the location it leaves from, so the six
+    // digits are not in the answer. They are on the row, and the coffee shop — the location
+    // collecting — is the only one that reads them, through its own snapshot.
+    expect(b.result.ticket.otp).toBe("");
     expect(b.result.request.st).toBe("Ticket issued");
     expect(b.result.request.ticket).toBe("TKT-0441");
     expect(b.changed).toEqual(["req", "tkt", "rsv"]);

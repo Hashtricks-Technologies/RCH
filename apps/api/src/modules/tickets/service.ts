@@ -3,7 +3,7 @@
 // between the two it is in transit and owned by neither.
 import type { z } from "zod";
 import type { CancelTicketBodySchema, Changed, HandoverBodySchema, Ticket, TransferBodySchema, WriteResponse } from "@rch/contract";
-import { approvedStatus, canTransition, fq, PROD_ORDER_TRANSITIONS, REQUEST_TRANSITIONS, round3, TICKET_TRANSITIONS } from "@rch/domain";
+import { approvedStatus, canTransition, fq, PROD_ORDER_TRANSITIONS, REQUEST_TRANSITIONS, round3, SHOP_ASK_TRANSITIONS, TICKET_TRANSITIONS } from "@rch/domain";
 import type { Db } from "../../db/client.js";
 import { withTransaction, type Tx } from "../../lib/db.js";
 import { NotFoundError } from "../../lib/errors.js";
@@ -78,7 +78,9 @@ export function createTicketsService(db: Db) {
         await ticketsRepo.setStatus(tx, id, { status: "Collected", collectedAt: at });
 
         const who = await ticketsRepo.userName(tx, claims.sub);
-        if (override) await appendHistory(tx, "ticket", id, "Handed over — supervisor override", who, at);
+        // One row either way, with the override named on it rather than beside it: the trail is
+        // read as a sequence, and a second row for the same act would read as a second handover.
+        await appendHistory(tx, "ticket", id, override ? "Handed over — supervisor override" : "Handed over", who, at);
         if (linked && canTransition(REQUEST_TRANSITIONS, linked.status, "Collected")) {
           await ticketsRepo.setRequestStatus(tx, linked.id, "Collected");
           await appendHistory(tx, "request", linked.id, "Collected", who, at);
@@ -121,6 +123,7 @@ export function createTicketsService(db: Db) {
         await ticketsRepo.setStatus(tx, id, { status: "Received", receivedAt: at });
 
         const who = await ticketsRepo.userName(tx, claims.sub);
+        await appendHistory(tx, "ticket", id, "Received", who, at);
         // The request closes here, and the word printed on its trail is the ticket's own
         // "Received" — the word the operator reads at the shelf, kept verbatim from the store.
         if (linked && canTransition(REQUEST_TRANSITIONS, linked.status, "Closed")) {
@@ -170,6 +173,7 @@ export function createTicketsService(db: Db) {
         const at = new Date();
         const request = t.refType === "request" ? await ticketsRepo.linkedRequest(tx, t.req) : undefined;
         const order = t.refType === "prod_order" ? await ticketsRepo.linkedProdOrder(tx, t.req) : undefined;
+        const ask = t.refType === "shop_ask" ? await ticketsRepo.linkedShopAsk(tx, t.req) : undefined;
 
         const who = await ticketsRepo.userName(tx, claims.sub);
         await voidTicket(tx, id, reason, who, at);
@@ -199,6 +203,16 @@ export function createTicketsService(db: Db) {
           await appendHistory(tx, "prod_order", order.id, "Ready", who, at);
           changed.push("pord");
           tail = `${order.id} is back on the board, ready to dispatch again`;
+        }
+        if (ask) {
+          // A granted shop ask that is withdrawn goes back on the asking shop's desk. Leaving it
+          // at `Sent` would show the asker stock that is coming and the holder a document it has
+          // just undone — and `answer` would refuse to grant it a second time.
+          // No history row: a shop ask carries no `hist` on the wire, and a row nothing reads
+          // back is not an audit trail. The ticket's own "Cancelled — <reason>" is the record.
+          assertTransition(SHOP_ASK_TRANSITIONS, ask.status, "Asked", ask.id);
+          await ticketsRepo.reopenShopAsk(tx, ask.id);
+          changed.push("shopAsks");
         }
 
         await emitChanged(tx, changed);

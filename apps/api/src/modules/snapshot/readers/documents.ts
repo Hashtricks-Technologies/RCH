@@ -39,9 +39,16 @@ export async function readRequests(db: Db, pre?: UserNames): Promise<StockReques
 }
 
 export async function readTickets(db: Db): Promise<Ticket[]> {
-  const [heads, lines] = await Promise.all([db.select().from(s.tickets).orderBy(asc(s.tickets.issuedAt), asc(s.tickets.id)), db.select().from(s.ticketLines).orderBy(asc(s.ticketLines.lineNo))]);
+  // One query for every ticket's trail rather than one per ticket: `readHistories` is the same
+  // helper the request and requisition readers use, and it is why the ticket drawer can show
+  // "Handed over — supervisor override" at all.
+  const [heads, lines, h] = await Promise.all([
+    db.select().from(s.tickets).orderBy(asc(s.tickets.issuedAt), asc(s.tickets.id)),
+    db.select().from(s.ticketLines).orderBy(asc(s.ticketLines.lineNo)),
+    readHistories(db, "ticket"),
+  ]);
   const byTkt = groupBy(lines, (l) => l.ticketId);
-  return heads.map((t) => ({ id: t.id, req: t.refId, from: t.fromLoc as LocKey, to: t.toLoc as LocKey, lines: (byTkt.get(t.id) ?? []).map((l) => ({ it: l.itemKey, qty: l.qty })), st: t.status, otp: t.otp, hist: [] })); // Task 4 fills this from document_history
+  return heads.map((t) => ({ id: t.id, req: t.refId, from: t.fromLoc as LocKey, to: t.toLoc as LocKey, lines: (byTkt.get(t.id) ?? []).map((l) => ({ it: l.itemKey, qty: l.qty })), st: t.status, otp: t.otp, hist: hist(h, t.id) }));
 }
 
 export async function readRequisitions(db: Db, pre?: UserNames): Promise<Requisition[]> {
@@ -131,6 +138,15 @@ export async function readSupportTickets(db: Db, pre?: UserNames): Promise<Suppo
     messages: (by.get(t.id) ?? []).map((m) => ({ id: m.id.includes("/") ? m.id.slice(m.id.indexOf("/") + 1) : m.id, from: m.from, who: m.who, at: iso(m.at), body: m.body })),
     rating: (t.rating ?? undefined) as SupportTicket["rating"],
   }));
+}
+/**
+ * Ticket id -> the user id that raised it. `SupportTicket.by` on the wire is a display name and
+ * two people can share one, so the scope cannot cut on it; it has to cut on an identity.
+ * @public — consumed by service.ts, which threads it into `scope()`.
+ */
+export async function readSupportTicketOwners(db: Db): Promise<Map<string, string>> {
+  const rows = await db.select({ id: s.supportTickets.id, byUser: s.supportTickets.byUser }).from(s.supportTickets);
+  return new Map(rows.map((r) => [r.id, r.byUser]));
 }
 export async function readProductRequests(db: Db, pre?: UserNames): Promise<ProductRequest[]> {
   const [rows, names] = await Promise.all([db.select().from(s.productRequests).orderBy(desc(s.productRequests.at)), pre ? Promise.resolve(pre) : userNames(db)]);

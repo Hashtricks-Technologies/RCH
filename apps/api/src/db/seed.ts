@@ -126,6 +126,7 @@ async function seedRequestsAndTickets(tx: Tx) {
     });
     await tx.insert(s.ticketLines).values(t.lines.map((l, lineNo) => ({ ticketId: t.id, lineNo, itemKey: l.it, qty: l.qty })));
     if (t.st === "Issued") await tx.insert(s.reservations).values(t.lines.map((l) => ({ loc: t.from, itemKey: l.it, qty: l.qty, ticketId: t.id })));
+    for (const h of t.hist) await appendHistory(tx, "ticket", t.id, h.s, h.who, parseFixtureTime(h.t));
   }
   for (const a of FX.seedShopAsks()) {
     await tx.insert(s.shopAsks).values({

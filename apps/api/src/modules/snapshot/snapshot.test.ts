@@ -1,14 +1,23 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { randomUUID } from "node:crypto";
+import { and, eq } from "drizzle-orm";
 import * as FX from "@rch/contract/fixtures";
 import { BillsResponseSchema, SnapshotSchema, StockResponseSchema, UserMinSchema } from "@rch/contract";
+import * as s from "../../db/schema/index.js";
 import { buildTestApp } from "../../test/app.js";
 import { seedTestDb } from "../../test/seed.js";
 import { authHeaders } from "../../test/auth.js";
+import { given } from "../../test/builders.js";
+import { resetDocuments, truncateAll } from "../../test/db.js";
 import type { App } from "../../app.js";
 
 let app: App;
 beforeAll(async () => { app = await buildTestApp({ schema: "snapshot" }); await seedTestDb(app.testDb!.db); await app.ready(); });
 afterAll(async () => { await app.close(); });
+// The cases below raise documents of their own, so the document half is put back between them.
+// The master half is seeded once, above — with the one exception noted on the roster case, which
+// is the only case here that writes a master table.
+beforeEach(async () => { await resetDocuments(app.testDb!.db); });
 const getAs = async (userId: string, url: string) => { const r = await app.inject({ method: "GET", url, headers: await authHeaders(app, userId) }); expect(r.statusCode, r.body).toBe(200); return r.json(); };
 const get = (userId: string) => getAs(userId, "/api/v1/snapshot");
 
@@ -133,7 +142,12 @@ describe("the document reads the movement chain refetches", () => {
   it("GET /tickets gives a counter the tickets that touch their counter, either end", async () => {
     const mine = await app.inject({ method: "GET", url: "/api/v1/tickets", headers: await authHeaders(app, "u1") });
     expect(mine.statusCode).toBe(200);
-    expect(mine.json()).toEqual([{ id: "TKT-0440", req: "REQ-2026-0909", from: "store", to: "coffee", lines: [{ it: "cup", qty: 500 }], st: "Issued", otp: "418327", hist: [] }]);
+    // u1 is at coffee, which is where this ticket is going, and it is still Issued — the one
+    // caller who reads the six digits. The trail is the seeded one, replayed from the fixture.
+    expect(mine.json()).toEqual([{
+      id: "TKT-0440", req: "REQ-2026-0909", from: "store", to: "coffee", lines: [{ it: "cup", qty: 500 }],
+      st: "Issued", otp: "418327", hist: [{ s: "Issued", who: "Suresh Muthu", t: expect.any(String) }],
+    }]);
 
     const other = await app.inject({ method: "GET", url: "/api/v1/tickets", headers: await authHeaders(app, "u6") });
     expect(other.json()).toEqual([]);      // u6 is at kiosk; TKT-0440 goes to coffee
@@ -235,5 +249,87 @@ describe("quarantine", () => {
     // Locations are master data and are never cut down — the counter sees the name, and has no
     // route that would let them name it.
     expect(snap.locations.quarantine).toBeDefined();
+  });
+});
+
+type WireTicket = { id: string; st: string; otp: string; hist: { s: string; t: string }[] };
+const ticketIn = (snap: { tkt: WireTicket[] }, id: string): WireTicket => snap.tkt.find((x) => x.id === id)!;
+
+describe("what a ticket carries, and to whom", () => {
+  it("gives a ticket its own trail, oldest first", async () => {
+    const id = await given.ticket(app.testDb!.db, { from: "store", to: "coffee", lines: [{ it: "milk", qty: 4 }] });
+    const snap = await get("u3");                                 // the store keeper
+    const t = ticketIn(snap, id);
+    expect(t.hist.length).toBeGreaterThan(0);
+    expect(t.hist.map((h) => h.s)).toContain("Issued");
+    // Times are ISO on the wire, like every other document's history.
+    expect(t.hist[0]!.t).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+  });
+
+  it("shows the six digits to the shop that is collecting and to nobody else", async () => {
+    const id = await given.ticket(app.testDb!.db, { from: "store", to: "coffee", lines: [{ it: "milk", qty: 4 }] });
+
+    const collector = ticketIn(await get("u1"), id);              // counter at coffee, the ticket's `to`
+    expect(collector.otp).toMatch(/^\d{6}$/);
+
+    expect(ticketIn(await get("u3"), id).otp).toBe("");           // the store keeper, who issued it
+    expect(ticketIn(await get("u2"), id).otp).toBe("");           // the manager, who sees everything else
+  });
+
+  it("takes the digits back once the ticket has been collected", async () => {
+    const id = await given.ticket(app.testDb!.db, { from: "store", to: "coffee", lines: [{ it: "milk", qty: 4 }], st: "Collected" });
+    expect(ticketIn(await get("u1"), id).otp).toBe("");
+  });
+
+  it("keeps them out of the answer the issuing desk gets back, and only there", async () => {
+    // Every path that mints a ticket answers the location it leaves from — the store issuing
+    // against an approved request, the shop granting an ask, the kitchen dispatching — so the
+    // write response is the one place the digits could still have travelled to `from`.
+    const req = await given.request(app.testDb!.db, { from: "coffee", lines: [{ it: "milk", qty: 4, appr: 4 }], st: "Manager approved" });
+    const issued = await app.inject({
+      method: "POST", url: `/api/v1/requests/${req}/issue-ticket`,
+      headers: { ...(await authHeaders(app, "u3")), "idempotency-key": randomUUID() },
+    });
+    expect(issued.statusCode, issued.body).toBe(200);
+    const tkt = issued.json().result.ticket;
+    expect(tkt.st).toBe("Issued");
+    expect(tkt.otp).toBe("");
+    // And the shop that will collect reads them, off its own snapshot, where they belong.
+    expect(ticketIn(await get("u1"), tkt.id).otp).toMatch(/^\d{6}$/);
+  });
+
+  it("withholds them from GET /tickets too, so a refetch does not put them back", async () => {
+    const id = await given.ticket(app.testDb!.db, { from: "store", to: "coffee", lines: [{ it: "milk", qty: 4 }] });
+    const list = async (u: string) => (await getAs(u, "/api/v1/tickets")) as WireTicket[];
+    expect((await list("u3")).find((t) => t.id === id)!.otp).toBe("");
+    expect((await list("u1")).find((t) => t.id === id)!.otp).toMatch(/^\d{6}$/);
+  });
+
+  it("hands a counter the roster it bills against, from the payers table", async () => {
+    // The only case in this file that writes a master table, so it puts the whole seed back
+    // first: `resetDocuments` restores the document half and leaves `payers` where it found it.
+    await truncateAll(app.testDb!.db);
+    await seedTestDb(app.testDb!.db);
+    const snap = await get("u1");
+    expect(snap.roster.patients.length).toBeGreaterThan(0);
+    expect(snap.roster.staff.length).toBeGreaterThan(0);
+    expect(snap.roster.depts.length).toBeGreaterThan(0);
+    expect(snap.roster.staff.every((p: { kind: string }) => p.kind === "staff")).toBe(true);
+    // A payer switched off is not offered at the till.
+    await app.testDb!.db.update(s.payers).set({ active: false })
+      .where(and(eq(s.payers.kind, "staff"), eq(s.payers.id, snap.roster.staff[0].id)));
+    expect((await get("u1")).roster.staff.length).toBe(snap.roster.staff.length - 1);
+  });
+
+  it("shows every role its own support tickets and nobody else's", async () => {
+    const mine = await given.supportTicket(app.testDb!.db, { by: "u4", subject: "Kitchen board is blank" });
+    const theirs = await given.supportTicket(app.testDb!.db, { by: "u5", subject: "Vendor list will not load" });
+    const ids = (await get("u4")).tickets.map((t: { id: string }) => t.id);
+    expect(ids).toEqual(expect.arrayContaining([mine]));
+    expect(ids).not.toContain(theirs);
+    // And the other way round, so the case is about ownership rather than about who asked.
+    const others = (await get("u5")).tickets.map((t: { id: string }) => t.id);
+    expect(others).toEqual(expect.arrayContaining([theirs]));
+    expect(others).not.toContain(mine);
   });
 });

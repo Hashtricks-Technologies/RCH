@@ -1,9 +1,9 @@
 // Tickets: SQL only. No rules, no transaction of its own — service.ts passes `tx` in.
 import { and, asc, eq, inArray } from "drizzle-orm";
-import type { PordStatus, ReqStatus, TktStatus } from "@rch/contract";
+import type { PordStatus, ReqStatus, ShopAskStatus, TktStatus } from "@rch/contract";
 import type { Tx } from "../../lib/db.js";
 import type { TicketRefType } from "../../lib/tickets.js";
-import { prodOrders, stockBalances, stockRequestLines, stockRequests, ticketLines, tickets, users } from "../../db/schema/index.js";
+import { prodOrders, shopAsks, stockBalances, stockRequestLines, stockRequests, ticketLines, tickets, users } from "../../db/schema/index.js";
 
 /** What a ticket carries in `ref_id` when there is no document behind it to close. */
 const NO_DOCUMENT: readonly string[] = ["Shop transfer", "Direct issue"];
@@ -84,6 +84,31 @@ export const ticketsRepo = {
 
   async setProdOrderStatus(tx: Tx, id: string, status: PordStatus): Promise<void> {
     await tx.update(prodOrders).set({ status, updatedAt: new Date() }).where(eq(prodOrders.id, id));
+  },
+
+  /**
+   * The ask a shop-ask ticket was raised for, locked like every other document a write moves —
+   * and taken *after* the ticket's own `for update` above, documents in one order, always. Only
+   * called when the ticket's `ref_type` says there is one; `answer` (`modules/shopasks/service.ts`)
+   * writes the ask's own id into `ref_id`.
+   *
+   * The house rule is that a status transition reads its own row `for update`, and the
+   * cancellation does move this ask from `Sent` to `Asked`. What the lock is *not* is the thing
+   * that makes two racing cancellations safe: the ticket's row is locked first and one ask can
+   * only ever have one live ticket against it, so the pair are already serialised before this
+   * row is read. `tickets.test.ts`'s race case pins the outcome and says so.
+   */
+  async linkedShopAsk(tx: Tx, askId: string): Promise<{ id: string; status: ShopAskStatus } | undefined> {
+    const [row] = await tx.select({ id: shopAsks.id, status: shopAsks.status })
+      .from(shopAsks).where(eq(shopAsks.id, askId)).for("update");
+    return row;
+  },
+
+  /** Back to Asked, with the grant and the ticket cleared, so the holding shop can answer again.
+   *  Separate from `setAnswer` in the shopasks repo for the same reason `releaseRequest` is
+   *  separate from `setRequestStatus`: clearing the two columns is what makes it a reopen. */
+  async reopenShopAsk(tx: Tx, askId: string): Promise<void> {
+    await tx.update(shopAsks).set({ status: "Asked", grantedQty: null, ticketId: null, updatedAt: new Date() }).where(eq(shopAsks.id, askId));
   },
 
   /** Read back after `postMoves` has taken the locks — the only number a movement may trust. */

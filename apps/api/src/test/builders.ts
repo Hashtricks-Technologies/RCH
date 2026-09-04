@@ -60,6 +60,11 @@ export const given = {
       await tx.insert(s.ticketLines).values(p.lines.map((l, lineNo) => ({ ticketId: id, lineNo, itemKey: l.it, qty: l.qty })));
       // An Issued ticket holds its stock; a Collected one has already released it.
       if (p.reserve ?? st === "Issued") await reserve(tx, p.lines.map((l) => ({ loc: p.from, it: l.it, qty: l.qty, ticketId: id })));
+      // The trail starts where `writeTicket` starts it, signed by the same `issued_by` the row
+      // carries — a builder-made ticket that shipped an empty history would be the one ticket in
+      // the system without one.
+      const [issuer] = await tx.select({ name: s.users.name }).from(s.users).where(eq(s.users.id, "u3"));
+      await appendHistory(tx, "ticket", id, "Issued", issuer?.name ?? "u3");
     });
     return id;
   },

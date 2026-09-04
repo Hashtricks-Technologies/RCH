@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { makeOtp } from "@rch/domain";
 import { withTestSchema, truncateAll, type TestDb } from "../test/db.js";
 import { seedDatabase } from "../db/seed.js";
-import { reservations } from "../db/schema/index.js";
+import { reservations, tickets } from "../db/schema/index.js";
 import { allocateTicket, readTicket, writeTicket } from "./tickets.js";
 
 let t: TestDb;
@@ -19,9 +19,13 @@ describe("allocateTicket + writeTicket", () => {
       return writeTicket(tx, { refType: "request", refId: "REQ-2026-0911", from: "store", to: "coffee", lines: [{ it: "milk", qty: 12 }], by: "u3" }, no);
     });
     expect(tkt.id).toBe("TKT-0441");                  // SEQUENCE_START.tkt is 441
-    expect(tkt.otp).toBe(makeOtp(441));
-    expect(tkt.otp).toMatch(/^\d{6}$/);
-    expect(tkt).toEqual({ id: "TKT-0441", req: "REQ-2026-0911", from: "store", to: "coffee", lines: [{ it: "milk", qty: 12 }], st: "Issued", otp: makeOtp(441), hist: [] });
+    // The number the OTP is minted from is on the row; what comes back to the caller is blank,
+    // because the caller is the location the ticket leaves from.
+    const [row] = await t.db.select().from(tickets).where(eq(tickets.id, "TKT-0441"));
+    expect(row!.otp).toBe(makeOtp(441));
+    expect(tkt.otp).toBe("");
+    // The first row of the trail is written here, signed with the issuer's own name.
+    expect(tkt).toEqual({ id: "TKT-0441", req: "REQ-2026-0911", from: "store", to: "coffee", lines: [{ it: "milk", qty: 12 }], st: "Issued", otp: "", hist: [{ s: "Issued", who: "Suresh Muthu", t: expect.any(String) }] });
 
     const held = await t.db.select().from(reservations).where(eq(reservations.ticketId, "TKT-0441"));
     expect(held).toHaveLength(1);
@@ -40,7 +44,14 @@ describe("allocateTicket + writeTicket", () => {
   it("reads a ticket back in the wire shape, and nothing for an id that is not there", async () => {
     const made = await t.db.transaction(async (tx) =>
       writeTicket(tx, { refType: "direct", refId: "Direct issue", from: "kitchen", to: "kiosk", lines: [{ it: "puff", qty: 5 }], by: "u4" }, await allocateTicket(tx)));
-    expect(await t.db.transaction((tx) => readTicket(tx, made.id))).toEqual(made);
+    // The two returns agree on everything but the six digits, and they differ there on purpose:
+    // `writeTicket` is answering the location the ticket leaves from, which must never read them,
+    // while `readTicket` is handed an id and no `who` and answers with the row while the ticket
+    // is still Issued. No caller reaches that branch today — `reread` runs only after a handover,
+    // a receipt or a cancellation — and one that did would owe the location check `redactOtps`
+    // makes in the snapshot.
+    const [row] = await t.db.select().from(tickets).where(eq(tickets.id, made.id));
+    expect(await t.db.transaction((tx) => readTicket(tx, made.id))).toEqual({ ...made, otp: row!.otp });
     expect(await t.db.transaction((tx) => readTicket(tx, "TKT-0000"))).toBeUndefined();
   });
 });
