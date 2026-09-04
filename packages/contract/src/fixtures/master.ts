@@ -83,16 +83,7 @@ export const DEPTS: Payer[] = [
   { kind: "dept", id: "CC-ADM", name: "Administration" },
   { kind: "dept", id: "CC-OT", name: "Operating Theatre" },
 ];
-// A limit, not a fixture — declared in ../schemas/common.ts and re-exported here so the
-// counter's screen keeps its single import from data/master.
-export { STAFF_CREDIT_LIMIT } from "../schemas/common.js";
-/** A purchase order above this value needs finance approval (M2) — a rule's constant, not a
- *  fixture, so it is declared in ../schemas/common.ts and re-exported here for the same reason
- *  STAFF_CREDIT_LIMIT is: the buyer's drawer keeps its single import from data/master. */
-export { PO_APPROVAL_LIMIT } from "../schemas/common.js";
-/** Not fixtures either: the shape of the deployment and the tuning of a par level. `ALL_LOCS`
- *  is `LocKeySchema`'s own list, `OUTLETS` the three that sell, and `PAR_FACTOR` the
- *  per-location cover a reorder suggestion is worked out against (M11). Declared in
- *  ../schemas/common.ts and re-exported here so `UI/src/data/master.ts` keeps its single
- *  import and no screen's import line moves. */
-export { ALL_LOCS, OUTLETS, PAR_FACTOR } from "../schemas/common.js";
+// Nothing but fixtures leaves this file. `STAFF_CREDIT_LIMIT`, `PO_APPROVAL_LIMIT`, `ALL_LOCS`
+// and `OUTLETS` are rules' constants and the shape of the deployment, not the demo hospital, so
+// they are read from `@rch/contract` itself; `PAR_FACTOR` is a rule's own tuning and lives in
+// `@rch/domain` beside the arithmetic that reads it.

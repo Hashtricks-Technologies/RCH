@@ -1,13 +1,14 @@
 // One ticket, wherever it came from. Every path that hands stock from one location to another
 // — an approved request, a shop transfer, a granted shop ask, a kitchen dispatch — mints its
 // number here and writes it here, so the series, the OTP and the reservation are one rule.
+import { randomInt } from "node:crypto";
 import { asc, eq } from "drizzle-orm";
 import type { LocKey, Ticket, TktStatus } from "@rch/contract";
-import { makeOtp, round3 } from "@rch/domain";
+import { round3 } from "@rch/domain";
 import { ticketLines, tickets, users } from "../db/schema/index.js";
 import type { Tx } from "./db.js";
 import { appendHistory, readHistory } from "./history.js";
-import { allocateNumber } from "./ids.js";
+import { allocateId } from "./ids.js";
 import { releaseForTicket, reserve } from "./reservations.js";
 import { iso } from "./time.js";
 
@@ -26,18 +27,21 @@ export type TicketDraft = {
   lines: readonly { it: string; qty: number }[]; by: string; at?: Date;
 };
 
-export type TicketNumber = { n: number; id: string; otp: string };
+export type TicketNumber = { id: string; otp: string };
 
 /**
- * Take the ticket's number, and the OTP minted from it so the series the operators know
- * carries on. Call this **before** `lockBalances`: the server's lock order is ids first and
- * balance rows second (`lib/ledger.ts`'s header), so a write that needs both must not hold a
- * shelf while it waits for the sequence. A refusal afterwards rolls the allocation back with
- * everything else and the series skips a number, which is what a counter is for.
+ * Take the ticket's number, and mint the six digits that will be quoted back at handover. The
+ * code is drawn at random — `crypto.randomInt`, not a function of the ticket number — because
+ * a code anyone can work out from the number printed on the box is not a check at all. It is
+ * written to the row here and read back from the row on handover; nothing recomputes it.
+ *
+ * Call this **before** `lockBalances`: the server's lock order is ids first and balance rows
+ * second (`lib/ledger.ts`'s header), so a write that needs both must not hold a shelf while it
+ * waits for the sequence. A refusal afterwards rolls the allocation back with everything else
+ * and the series skips a number, which is what a counter is for.
  */
 export async function allocateTicket(tx: Tx, at: Date = new Date()): Promise<TicketNumber> {
-  const { n, id } = await allocateNumber(tx, "tkt", at);
-  return { n, id, otp: makeOtp(n) };
+  return { id: await allocateId(tx, "tkt", at), otp: String(randomInt(100000, 1000000)) };
 }
 
 /**
@@ -109,13 +113,12 @@ export async function readTicket(tx: Tx, id: string): Promise<Ticket | undefined
   return {
     id: head.id, req: head.refId, from: head.fromLoc as LocKey, to: head.toLoc as LocKey,
     lines: lines.map((l) => ({ it: l.itemKey, qty: l.qty })), st: head.status as TktStatus,
-    // A ticket that is no longer `Issued` has nothing left to quote, so it goes back blank —
-    // which today is every call, because the only caller is `reread` in `modules/tickets`,
-    // reached after a handover, a receipt or a cancellation. The status test is here so the
-    // field stays right rather than accidentally right if something ever rereads a live ticket;
-    // a caller that does will owe the location check `redactOtps` makes, because this function
-    // is handed an id and no `who`.
-    otp: head.status === "Issued" ? head.otp : "",
+    // Never the six digits. This function is handed an id and no `who`, so it has nothing to
+    // check the reader's location against — and the wire shape needs the field, so it goes back
+    // blank, exactly as `writeTicket` and `GET /snapshot` do for anyone but the receiving end.
+    // A caller that one day needs the value reads the row itself, under the check `redactOtps`
+    // makes in the snapshot.
+    otp: "",
     // The trail as it stands, so a write's own `result` carries the row it has just appended
     // and the drawer that reads the response needs no second round trip to show it.
     hist: await readHistory(tx, "ticket", id),

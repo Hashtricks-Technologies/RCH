@@ -1,6 +1,9 @@
 import type { Item, Location, Payer, PayerRoster, Recipe, UserMin } from "../types";
 
-export { ALL_LOCS, OUTLETS, PAR_FACTOR, STAFF_CREDIT_LIMIT, PO_APPROVAL_LIMIT } from "@rch/contract";
+// `STAFF_CREDIT_LIMIT` is deliberately not among these any more: the till reads the ceiling off
+// `GET /reports/credit/:kind/:id` (`credit.limit`), because the number that matters is the one
+// the server will refuse on, not a constant compiled into the bundle.
+export { ALL_LOCS, OUTLETS, PO_APPROVAL_LIMIT } from "@rch/contract";
 
 // Registries. Mutable on purpose: the store can add a product, and hydrateMaster()
 // replaces the contents with what the server returns. Screens import these directly,

@@ -1,7 +1,10 @@
 import * as D from "@rch/domain";
 import { apportion, round3 } from "@rch/domain";
 export { apportion, round3 };
-import { IT, LOC, MENU, PAR_FACTOR, PL, RCP } from "../data/master";
+// A rule's own tuning rather than master data, so it comes from the domain package and not from
+// the registries `hydrateMaster` fills (M11).
+import { PAR_FACTOR } from "@rch/domain";
+import { IT, LOC, MENU, PL, RCP } from "../data/master";
 import type {
   Availability, Bill, LocKey, PoStatus, PordStatus, Price, PurchaseOrder, Requisition, ReqStatus,
   StockLoc, StockRequest, Ticket, TktStatus, Tone,

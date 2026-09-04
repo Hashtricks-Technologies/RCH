@@ -2,8 +2,8 @@ import {
   Children, cloneElement, isValidElement, useEffect, useId, useRef, useState,
   type CSSProperties, type ReactElement, type ReactNode,
 } from "react";
-import type { Tone } from "../types";
-import { toneFor } from "../lib/selectors";
+import type { Ticket, Tone } from "../types";
+import { ticketDot, toneFor } from "../lib/selectors";
 import type { ThemePref } from "../lib/theme";
 import { useApp } from "../store";
 
@@ -349,6 +349,18 @@ export const Feed = ({ items }: { items: FeedItem[] }) => (
       </div>
     ))}
   </div>
+);
+/**
+ * A ticket's own trail — one row per hand it has passed through, coloured by `ticketDot`.
+ *
+ * Four screens drew this exact `Feed` from the same three fields with the same colour rule
+ * (the counter's and the store's ticket drawers, the store's issue detail, and now the
+ * kitchen's), which is four places to change when a trail reads wrong in one of them. It is
+ * coloured by the *ticket* rule and not by any request's, because a ticket's trail says
+ * "Handed over" and "Cancelled — …" — words no request status list has ever held.
+ */
+export const TicketTrail = ({ hist }: { hist: Ticket["hist"] }) => (
+  <Feed items={hist.map((h, i) => ({ key: h.s + i, title: h.s, body: h.who, when: h.t, color: ticketDot(h.s) }))} />
 );
 const LABELABLE = ["input", "select", "textarea"];
 /** The label is tied to the first control it wraps, so every field is named (M13). */

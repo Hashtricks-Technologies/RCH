@@ -20,6 +20,9 @@ jobs:
     needs: guard
     if: ${{ vars.DEPLOY_ENABLED == 'true' }}
     runs-on: ubuntu-latest
+    # Two image builds, a 15m helm timeout and two rollouts. A job that runs past this is stuck,
+    # not slow, and holding the concurrency group open costs the next push its deploy.
+    timeout-minutes: 45
     permissions: { id-token: write, contents: write }
     environment: ${{ github.ref_name == 'production' && 'production' || 'staging' }}
     env:
@@ -72,10 +75,13 @@ jobs:
         run: |
           kubectl -n "$NS" rollout status deploy/rch-api --timeout=5m
           kubectl -n "$NS" rollout status deploy/rch-ui --timeout=5m
-          # /readyz checks the database and that the applied migration count matches the journal,
-          # so a green here is a stronger statement than "the pod started".
-          kubectl -n "$NS" run rch-smoke-$RANDOM --rm -i --restart=Never --image=curlimages/curl:8.11.1 -- \
-            curl -fsS --retry 10 --retry-connrefused http://rch-api:3000/readyz
+          # Availability is the readiness probe's own verdict, read from the cluster: the api's
+          # probe is GET /readyz, which checks the database and that the applied migration count
+          # matches the journal, so an Available deployment is the same statement the old smoke
+          # pod made — without pulling an image from Docker Hub into the cluster to make it, and
+          # without a rate limit or an outage there being able to fail a good deploy.
+          kubectl -n "$NS" wait --for=condition=Available deploy/rch-api --timeout=300s
+          kubectl -n "$NS" wait --for=condition=Available deploy/rch-ui --timeout=300s
       - name: Tag production
         if: github.ref_name == 'production' && success()
         run: |

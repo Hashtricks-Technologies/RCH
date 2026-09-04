@@ -12,7 +12,9 @@ import { emptyFor, sortRows, useSort, type SortValue } from "./useSort";
 
 const TYPES: (ItemType | "All")[] = ["All", "RAW", "PACK", "MRP", "FG", "MTO"];
 const STATES = ["All", "Below reorder in store", "At zero somewhere", "Not held anywhere"] as const;
-const TSTATES = ["All", "Reserved", "In transit", "Received"] as const;
+// "Withdrawn" is here because a counter can now cancel a transfer it granted, and a stage the
+// filter cannot name is a row the manager cannot find.
+const TSTATES = ["All", "Reserved", "In transit", "Received", "Cancelled"] as const;
 const PRIORITIES: TicketPriority[] = ["Normal", "Urgent", "Low"];
 const tagKind = (t: ItemType) => (t === "MRP" ? "tr" : t === "FG" || t === "MTO" ? "md" : undefined);
 
@@ -200,14 +202,20 @@ export default function ItemsStock() {
                   <small className="dim" style={{ display: "block" }}>
                     {stage === "Reserved" ? `Held back at ${LOC[t.from].n}`
                       : stage === "In transit" ? `Off the ${LOC[t.from].n} shelf, not yet on the ${LOC[t.to].n} one`
-                        : `On the shelf at ${LOC[t.to].n}`}
+                        // A withdrawn transfer moved nothing: the stock never left the granting
+                        // shop, so saying it is on the receiving one is simply false.
+                        : stage === "Cancelled" ? "Withdrawn — nothing moved"
+                          : `On the shelf at ${LOC[t.to].n}`}
                   </small>
                 </>,
                 // The six digits belong to the collecting counter alone — the manager reads who
                 // is holding the ticket, which is the question this column was really asking.
-                stage === "Received"
-                  ? <span className="dim">used</span>
-                  : <span>{LOC[t.to].n}</span>,
+                // A withdrawn one is held by nobody: its code was never used and never will be.
+                stage === "Cancelled"
+                  ? <span className="dim">—</span>
+                  : stage === "Received"
+                    ? <span className="dim">used</span>
+                    : <span>{LOC[t.to].n}</span>,
               ],
             };
           })}

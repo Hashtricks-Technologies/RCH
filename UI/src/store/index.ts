@@ -15,8 +15,12 @@ import { createOpsSlice, type OpsSlice } from "./ops";
 
 export interface AppState extends ProcurementSlice, OpsSlice {
   user: User | null;
-  /** Where the session is: no token, asking for one, fetching the snapshot, or usable. */
-  auth: "signed-out" | "signing-in" | "loading" | "ready";
+  /** Where the session is: no token, asking for one, fetching the snapshot, usable — or signed
+   *  in with nothing to show. `"failed"` is the last one: the credentials are good and the
+   *  snapshot is not, so there is no item master, no locations and no menus, and every screen
+   *  would read `LOC[loc].n` off an empty object. It is a state of its own rather than a toast
+   *  over "ready" because the difference is whether the app can be used at all. */
+  auth: "signed-out" | "signing-in" | "loading" | "ready" | "failed";
   mustChangePassword: boolean;
   /** Quarantine is in here: the store keeper sees what a goods receipt turned away. It is a
    *  place stock is *reported*, never one an operator acts at, so no write body admits it. */
@@ -166,8 +170,20 @@ export const useApp = create<AppState>((set, get) => ({
     catch (e) {
       // A 401 here has already signed the user out via onSessionLost; do not
       // pull the app back to "ready" behind that.
-      if (get().user) set({ auth: "ready" });
-      get().notify(e instanceof ApiError ? e.message : "Could not load the latest data — showing what is in memory.");
+      if (!get().user) {
+        get().notify(e instanceof ApiError ? e.message : "Could not reach the server — check the connection and try again.");
+        return;
+      }
+      // Whether there is anything left to show is the whole question. The registries start
+      // **empty** and only a snapshot fills them (`data/master.ts`), so before the first one
+      // lands there is no "what is in memory": the counter's own screen reads `LOC[loc].n` and
+      // would throw straight into the error boundary. Say the app could not start and let the
+      // shell offer the retry, rather than announcing data that does not exist.
+      if (Object.keys(LOC).length === 0) { set({ auth: "failed" }); return; }
+      // The master is already hydrated, so the last snapshot is still on screen and usable —
+      // this was a refresh that did not land, not a start that did not happen.
+      set({ auth: "ready" });
+      get().notify(e instanceof ApiError ? e.message : "Could not refresh — showing the last data loaded.");
     }
   },
   logout: async () => {

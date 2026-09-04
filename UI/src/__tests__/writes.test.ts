@@ -3,6 +3,7 @@ import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { MemoryRouter } from "react-router-dom";
 import * as FX from "@rch/contract/fixtures";
+import { creditBreachMessage } from "@rch/domain";
 import { refetch } from "../api/refetch";
 import { applySnapshot } from "../api/wire";
 import { setAccessToken } from "../api/session";
@@ -14,7 +15,9 @@ import MakeDistribute from "../roles/prod/MakeDistribute";
 import StoreRequisitions from "../roles/store/Requisitions";
 import Drawer from "../ui/Drawer";
 import "../roles/store/TicketDrawer";          // registers "stkt" on the drawer registry
+import "../roles/prod/TicketDrawer";           // registers "ptkt"
 import "../roles/buyer/PoDrawer";                // registers "bpo"
+import { useApp } from "../store";
 import { resetStore, S, as } from "./fixture";
 
 /**
@@ -205,6 +208,48 @@ describe("the till takes one bill per tap", () => {
     await act(async () => { await inFlight; });
 
     expect(hit("POST /api/v1/bills")).toHaveLength(1);
+    ui.unmount();
+  });
+
+  it("puts the server's own ceiling and payer on screen, in the server's own words", async () => {
+    // This used to be a case in screens.test.tsx that compared two literals and rendered
+    // nothing, so it could not have caught the screen printing something else. Render the till,
+    // pick the tender and the person, and read the sentence off the page.
+    as("counter");
+    S().addToCart("coffee", "juice", 1);                        // list B: ₹20
+    serve({
+      "GET /api/v1/reports/credit/staff/RC-1902": () =>
+        json({ kind: "staff", id: "RC-1902", name: "Vinoth Prakash", since: "2026-09-01T00:00:00.000Z", taken: 2990, limit: 3000, room: 10 }),
+    });
+
+    const ui = mount();
+    await act(async () => { ui.button("Staff credit")!.click(); });
+    await act(async () => { ui.button("Vinoth Prakash")!.click(); });
+    await act(async () => { await new Promise((r) => { setTimeout(r, 0); }); });
+
+    // Word for word what `POST /bills` refuses with — the browser previews the refusal, it does
+    // not invent a second wording for it.
+    expect(ui.host.textContent).toContain(creditBreachMessage(2990, 20, "Vinoth Prakash · Kitchen"));
+    // The ceiling and the running total are the server's numbers, not a constant compiled in.
+    expect(ui.host.textContent).toContain("of ₹3,000");
+    expect(ui.button("Pay & print")!.disabled).toBe(true);
+    ui.unmount();
+  });
+
+  it("says so when the credit read does not land, rather than checking for ever", async () => {
+    as("counter");
+    S().addToCart("coffee", "juice", 1);
+    fetchMock.mockRejectedValue(new TypeError("Failed to fetch"));
+
+    const ui = mount();
+    await act(async () => { ui.button("Staff credit")!.click(); });
+    await act(async () => { ui.button("Vinoth Prakash")!.click(); });
+    await act(async () => { await new Promise((r) => { setTimeout(r, 0); }); });
+
+    expect(ui.host.textContent).toContain("Could not check this month's credit");
+    expect(ui.host.textContent).not.toContain("Checking what");
+    // And the sale is not blocked on a number that never arrived: the server still refuses it.
+    expect(ui.button("Pay & print")!.disabled).toBe(false);
     ui.unmount();
   });
 
@@ -986,11 +1031,16 @@ describe("a refusal keeps what the operator typed", () => {
    * it, it gives up **loudly** — a silent fall-through leaves the assertion below to fail with
    * a message about the wrong thing, which is how a flake gets read as a regression.
    */
-  const settleUntil = async (ok: () => boolean, tries = 200) => {
-    for (let i = 0; i < tries && !ok(); i += 1) {
+  const settleUntil = async (ok: () => boolean, tries = 200, ms = 8000) => {
+    // Two budgets, and it waits for whichever is larger. A turn count alone is not a wait: on a
+    // loaded host — four vitest projects running at once — a macrotask can be starved for
+    // milliseconds at a time, and 200 turns then expire before the fetch promise has even been
+    // scheduled. That is the whole of the make-tile flake this file used to carry.
+    const until = Date.now() + ms;
+    for (let i = 0; (i < tries || Date.now() < until) && !ok(); i += 1) {
       await act(async () => { await new Promise((r) => { setTimeout(r, 0); }); });
     }
-    if (!ok()) throw new Error(`the action never settled: the condition was still false after ${tries} turns`);
+    if (!ok()) throw new Error(`the action never settled: still false after ${tries} turns and ${ms}ms`);
   };
 
   it("leaves the raise card open, with its note, when the server refuses", async () => {
@@ -1061,10 +1111,15 @@ describe("a refusal keeps what the operator typed", () => {
     act(() => { type(ui.field("Quantity of Veg puffs to start"), "200"); });
 
     await settle(() => { ui.button("Make")!.click(); });
-    await settleUntil(() => S().toast !== null);
+    // Both, not just the toast: the write has to have gone out before its refusal can be read
+    // back, and asserting on `[0].body` of an empty list is what a half-settled wait looks like.
+    await settleUntil(() => hit("POST /api/v1/batches").length > 0 && S().toast !== null);
+    // Read the sentence the moment it lands: `notify` clears it again after 3.4 s, and the
+    // assertions below must not be racing that timer on a slow host.
+    const said = S().toast;
 
     expect(hit("POST /api/v1/batches")[0].body).toEqual({ it: "puff", started: 200 });
-    expect(S().toast).toBe("Kitchen is short of Veg filling mix — 1.200 kg left");
+    expect(said).toBe("Kitchen is short of Veg filling mix — 1.200 kg left");
     // Nothing to retype: the refusal landed on the kitchen's own typing.
     expect(ui.field("Quantity of Veg puffs to start").value).toBe("200");
     ui.unmount();
@@ -1260,6 +1315,74 @@ describe("a refusal keeps what the operator typed", () => {
     expect(hit(`POST /api/v1/tickets/${tkt.id}/cancel`)[0].body).toEqual({ reason: "The counter closed before the collector came" });
     expect(S().drawer).toBeNull();
     expect(S().toast).toBe(`${tkt.id} cancelled — the stock is free again at Central Store`);
+    ui.unmount();
+  });
+
+  it("lets the counter withdraw a transfer it granted out of its own stock", async () => {
+    // The counter's own door, which the store's case above does not cover: a shop that granted
+    // another shop's ask owns the ticket until somebody collects against it.
+    as("counter");
+    const sent = { id: "TKT-0450", req: "Shop transfer", from: "coffee", to: "kiosk", lines: [{ it: "chips", qty: 6 }], st: "Cancelled", otp: "", hist: [] };
+    serve({
+      "POST /api/v1/tickets/TKT-0450/cancel": () => json({ result: sent, changed: ["tkt", "rsv"], message: "TKT-0450 cancelled — the stock is free again at Floor 3 Coffee Bar" }),
+      "GET /api/v1/tickets": () => json([sent]),
+      "GET /api/v1/stock": () => json(STOCK),
+    });
+
+    expect(await S().cancelTicket("TKT-0450", "Kiosk found some of their own")).toBe(true);
+
+    expect(hit("POST /api/v1/tickets/TKT-0450/cancel")[0].body).toEqual({ reason: "Kiosk found some of their own" });
+    expect(hit("GET /api/v1/tickets")).toHaveLength(1);
+    expect(hit("GET /api/v1/stock")).toHaveLength(1);
+    expect(hit("GET /api/v1/snapshot")).toHaveLength(0);        // `changed` was narrow; the read-back is too
+    expect(S().tkt.find((t) => t.id === "TKT-0450")!.st).toBe("Cancelled");
+    expect(S().toast).toBe("TKT-0450 cancelled — the stock is free again at Floor 3 Coffee Bar");
+  });
+
+  it("gives the kitchen an OTP box, so its handover is not an override by default", async () => {
+    // Every kitchen handover used to be a labelled supervisor override: the board, Make &
+    // Distribute and the pick-ticket list all called `handover(id)` with no OTP at all. The
+    // kitchen never sees the six digits — it is the issuing side — but it has to be able to
+    // type in what the collector reads out, which is what `ptkt` is for.
+    as("prod");
+    const out = { id: "TKT-0460", req: "PRD-2026-029", from: "kitchen", to: "kiosk", lines: [{ it: "puff", qty: 12 }], st: "Issued", otp: "", hist: [{ s: "Issued", who: "Vinoth Prakash", t: "10:12" }] };
+    const done = { ...out, st: "Collected" };
+    serve({
+      "POST /api/v1/tickets/TKT-0460/handover": () => json({ result: done, changed: ["tkt", "rsv", "stock"], message: "TKT-0460 handed over — stock is in transit to Snack Kiosk" }),
+      "GET /api/v1/tickets": () => json([done]),
+      "GET /api/v1/stock": () => json(STOCK),
+    });
+    act(() => { useApp.setState({ tkt: [out] as never }); });
+    S().openDrawer("ptkt", "TKT-0460");
+    const ui = mountNode(Drawer);
+
+    // `<Field>` ties its label by `htmlFor`, not `aria-label`, so `ui.field` cannot find this
+    // one; the six-digit box is `input.otp-in` on both the store's window and the kitchen's.
+    act(() => { type(ui.host.querySelector<HTMLInputElement>("input.otp-in")!, "135791"); });
+    await settle(() => { ui.button("Hand over on OTP")!.click(); });
+
+    expect(hit("POST /api/v1/tickets/TKT-0460/handover")[0].body).toEqual({ otp: "135791" });
+    ui.unmount();
+  });
+
+  it("keeps the kitchen's override, but only behind its own label", async () => {
+    as("prod");
+    const out = { id: "TKT-0461", req: "PRD-2026-029", from: "kitchen", to: "kiosk", lines: [{ it: "puff", qty: 12 }], st: "Issued", otp: "", hist: [] };
+    serve({
+      "POST /api/v1/tickets/TKT-0461/handover": () => json({ result: { ...out, st: "Collected" }, changed: ["tkt"], message: "TKT-0461 handed over on a supervisor override — stock is in transit to Snack Kiosk" }),
+      "GET /api/v1/tickets": () => json([{ ...out, st: "Collected" }]),
+    });
+    act(() => { useApp.setState({ tkt: [out] as never }); });
+    S().openDrawer("ptkt", "TKT-0461");
+    const ui = mountNode(Drawer);
+
+    // Two presses, not one: the override announces itself before it will do anything.
+    act(() => { ui.button("Hand over without the OTP")!.click(); });
+    expect(hit("POST /api/v1/tickets/TKT-0461/handover")).toHaveLength(0);
+    await settle(() => { ui.button("Confirm override handover")!.click(); });
+
+    expect(hit("POST /api/v1/tickets/TKT-0461/handover")[0].body).toEqual({});
+    expect(S().toast).toBe("TKT-0461 handed over on a supervisor override — stock is in transit to Snack Kiosk");
     ui.unmount();
   });
 });

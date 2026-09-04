@@ -91,7 +91,7 @@ const ledger = (_s: AppState, ledger: LedgerState): Rep => {
     empty: ledger.st === "loading"
       ? { title: "Reading the ledger", sub: `The central store's movement for the last ${LEDGER_DAYS} days is on its way.` }
       : ledger.st === "failed"
-        ? { title: "The ledger could not be read", sub: "The server did not answer. Pick the report again to retry — the toast says what went wrong." }
+        ? { title: "The ledger could not be read", sub: "The server did not answer. Try again below — the toast says what went wrong." }
         : { title: "The central store carries no lines", sub: "Receive a purchase order and the ledger opens." },
   };
 };
@@ -388,6 +388,10 @@ export default function Reports() {
   // ticket used to walk by the quantity it never moved.
   const readStockLedger = useApp((x) => x.readStockLedger);
   const [ledgerState, setLedgerState] = useState<LedgerState>({ st: "loading" });
+  /** Bumped by the Try again button on the failed state. The effect is keyed on `sel`, so
+   *  re-picking the report the operator is already on changes nothing and re-runs nothing —
+   *  which is what the old "Pick the report again to retry" was asking them to do. */
+  const [retry, setRetry] = useState(0);
   useEffect(() => {
     if (sel !== "ledger") return;
     let live = true;
@@ -396,7 +400,7 @@ export default function Reports() {
       if (live) setLedgerState(rows === null ? { st: "failed" } : { st: "rows", rows });
     });
     return () => { live = false; };
-  }, [sel, readStockLedger]);
+  }, [sel, retry, readStockLedger]);
 
   const def = REPORTS.find((r) => r.k === sel) ?? REPORTS[0];
   const rep = def.build(s, ledgerState);
@@ -494,7 +498,11 @@ export default function Reports() {
               sub: `${def.n} has ${rep.rows.length} row${rep.rows.length > 1 ? "s" : ""}, but none of them match.`,
               action: <Btn size="sm" variant="gh" onClick={() => { setQ(""); setFi(0); }}>Reset filters</Btn>,
             }
-            : rep.empty}
+            // The one report that can fail is the one that asks the server, and the empty state
+            // is where its retry belongs — the builder is pure and has no setter to offer one.
+            : sel === "ledger" && ledgerState.st === "failed"
+              ? { ...rep.empty, action: <Btn size="sm" onClick={() => setRetry((n) => n + 1)}>Try again</Btn> }
+              : rep.empty}
         />
         <TableFoot count={rows.length} extra={rep.foot} />
       </Card>

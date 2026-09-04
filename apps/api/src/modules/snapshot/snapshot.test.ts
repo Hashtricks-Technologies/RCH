@@ -276,6 +276,19 @@ describe("what a ticket carries, and to whom", () => {
     expect(ticketIn(await get("u2"), id).otp).toBe("");           // the manager, who sees everything else
   });
 
+  it("withholds them from a role that never collects, even standing at the ticket's own `to`", async () => {
+    // The outlet manager's home location is an outlet — `rest` in the fixtures — so a check on
+    // location alone handed them the digits for every Issued Restaurant-bound ticket in their
+    // snapshot. They are not the collecting end of anything; a counter at the same location is.
+    const id = await given.ticket(app.testDb!.db, { from: "store", to: "rest", lines: [{ it: "milk", qty: 4 }] });
+    expect(ticketIn(await get("u2"), id).otp).toBe("");           // the manager, at `rest`
+    // The buyer sits at the central store, so the same test with the other role that never
+    // collects: a store-bound ticket's digits are not theirs either.
+    const inbound = await given.ticket(app.testDb!.db, { from: "kitchen", to: "store", lines: [{ it: "puff", qty: 2 }] });
+    expect(ticketIn(await get("u5"), inbound).otp).toBe("");       // the buyer, at `store`
+    expect(ticketIn(await get("u3"), inbound).otp).toMatch(/^\d{6}$/); // the store keeper, who does collect
+  });
+
   it("takes the digits back once the ticket has been collected", async () => {
     const id = await given.ticket(app.testDb!.db, { from: "store", to: "coffee", lines: [{ it: "milk", qty: 4 }], st: "Collected" });
     expect(ticketIn(await get("u1"), id).otp).toBe("");
@@ -316,9 +329,13 @@ describe("what a ticket carries, and to whom", () => {
     expect(snap.roster.depts.length).toBeGreaterThan(0);
     expect(snap.roster.staff.every((p: { kind: string }) => p.kind === "staff")).toBe(true);
     // A payer switched off is not offered at the till.
-    await app.testDb!.db.update(s.payers).set({ active: false })
-      .where(and(eq(s.payers.kind, "staff"), eq(s.payers.id, snap.roster.staff[0].id)));
+    const off = and(eq(s.payers.kind, "staff"), eq(s.payers.id, snap.roster.staff[0].id));
+    await app.testDb!.db.update(s.payers).set({ active: false }).where(off);
     expect((await get("u1")).roster.staff.length).toBe(snap.roster.staff.length - 1);
+    // Put them back on: `beforeEach` runs `resetDocuments`, which never touches `payers`, so a
+    // case that leaves one deactivated leaves it deactivated for every case after it in the file.
+    await app.testDb!.db.update(s.payers).set({ active: true }).where(off);
+    expect((await get("u1")).roster.staff.length).toBe(snap.roster.staff.length);
   });
 
   it("shows every role its own support tickets and nobody else's", async () => {

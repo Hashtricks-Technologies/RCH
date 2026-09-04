@@ -1,9 +1,9 @@
 import { useState } from "react";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
-import { canCancelTicket, canHandOver, ticketDot } from "../../lib/selectors";
+import { canCancelTicket, canHandOver } from "../../lib/selectors";
 import { U, fq, money, sum } from "../../lib/fmt";
-import { Alert, Btn, DataTable, Feed, Field, Pill, Section, StatusPill } from "../../ui/kit";
+import { Alert, Btn, DataTable, Feed, Field, Pill, Section, StatusPill, TicketTrail } from "../../ui/kit";
 import { DrawerFrame } from "../../ui/Drawer";
 import { registerDrawer, type DrawerProps } from "../../drawers";
 
@@ -207,11 +207,7 @@ function TicketDrawer({ id }: DrawerProps) {
       )}
 
       <Section title="History" sub={`Every hand ${t.id} has passed through`}>
-        <Feed
-          items={t.hist.map((h, i) => ({
-            key: h.s + i, title: h.s, body: h.who, when: h.t, color: ticketDot(h.s),
-          }))}
-        />
+        <TicketTrail hist={t.hist} />
       </Section>
 
       {r && r.mgrNote && (

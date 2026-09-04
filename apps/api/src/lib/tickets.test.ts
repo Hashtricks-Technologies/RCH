@@ -1,6 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
-import { makeOtp } from "@rch/domain";
 import { withTestSchema, truncateAll, type TestDb } from "../test/db.js";
 import { seedDatabase } from "../db/seed.js";
 import { reservations, tickets } from "../db/schema/index.js";
@@ -12,17 +11,18 @@ afterAll(async () => { await t.close(); });
 beforeEach(async () => { await truncateAll(t.db); await seedDatabase(t.db, { password: "changeme", forcePasswordChange: false, force: true }); });
 
 describe("allocateTicket + writeTicket", () => {
-  it("continues the visible series, mints the OTP from the same number, and reserves the lines", async () => {
+  it("continues the visible series, keeps the code on the row alone, and reserves the lines", async () => {
     const tkt = await t.db.transaction(async (tx) => {
       // Ids first, balance rows second — the caller would take the locks between these two.
       const no = await allocateTicket(tx);
       return writeTicket(tx, { refType: "request", refId: "REQ-2026-0911", from: "store", to: "coffee", lines: [{ it: "milk", qty: 12 }], by: "u3" }, no);
     });
     expect(tkt.id).toBe("TKT-0441");                  // SEQUENCE_START.tkt is 441
-    // The number the OTP is minted from is on the row; what comes back to the caller is blank,
-    // because the caller is the location the ticket leaves from.
+    // The code is drawn at random and its only home is the row — nothing derives it from the
+    // ticket number, so the only way to learn it is to be shown it. What comes back to the
+    // caller is blank, because the caller is the location the ticket leaves from.
     const [row] = await t.db.select().from(tickets).where(eq(tickets.id, "TKT-0441"));
-    expect(row!.otp).toBe(makeOtp(441));
+    expect(row!.otp).not.toBe("");
     expect(tkt.otp).toBe("");
     // The first row of the trail is written here, signed with the issuer's own name.
     expect(tkt).toEqual({ id: "TKT-0441", req: "REQ-2026-0911", from: "store", to: "coffee", lines: [{ it: "milk", qty: 12 }], st: "Issued", otp: "", hist: [{ s: "Issued", who: "Suresh Muthu", t: expect.any(String) }] });
@@ -44,14 +44,13 @@ describe("allocateTicket + writeTicket", () => {
   it("reads a ticket back in the wire shape, and nothing for an id that is not there", async () => {
     const made = await t.db.transaction(async (tx) =>
       writeTicket(tx, { refType: "direct", refId: "Direct issue", from: "kitchen", to: "kiosk", lines: [{ it: "puff", qty: 5 }], by: "u4" }, await allocateTicket(tx)));
-    // The two returns agree on everything but the six digits, and they differ there on purpose:
-    // `writeTicket` is answering the location the ticket leaves from, which must never read them,
-    // while `readTicket` is handed an id and no `who` and answers with the row while the ticket
-    // is still Issued. No caller reaches that branch today — `reread` runs only after a handover,
-    // a receipt or a cancellation — and one that did would owe the location check `redactOtps`
-    // makes in the snapshot.
+    // The row is holding a code, and neither return carries it: `writeTicket` is answering the
+    // location the ticket leaves from, and `readTicket` is handed an id and no `who`, so it has
+    // nobody's location to check before quoting six digits. The two returns therefore agree
+    // exactly.
     const [row] = await t.db.select().from(tickets).where(eq(tickets.id, made.id));
-    expect(await t.db.transaction((tx) => readTicket(tx, made.id))).toEqual({ ...made, otp: row!.otp });
+    expect(row!.otp).not.toBe("");
+    expect(await t.db.transaction((tx) => readTicket(tx, made.id))).toEqual(made);
     expect(await t.db.transaction((tx) => readTicket(tx, "TKT-0000"))).toBeUndefined();
   });
 });

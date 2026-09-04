@@ -13,7 +13,7 @@ const PRODS = ["puff", "sand", "salad"];
 export default function Dashboard() {
   const nav = useNavigate();
   const s = useApp();
-  const handover = useApp((x) => x.handover);
+  const openDrawer = useApp((x) => x.openDrawer);
   const { pord, batch, tkt, ovr } = s;
 
   const newOrders = useMemo(() => pord.filter((o) => o.st === "New"), [pord]);
@@ -149,8 +149,12 @@ export default function Dashboard() {
               t.lines.map((l) => `${l.qty} × ${IT[l.it].n}`).join(" · "),
               <b>{sum(t.lines, (l) => l.qty)}</b>,
               <StatusPill status={t.st} />,
+              // Opens the ticket's own window, where the collector's six digits are typed in.
+              // This used to call `handover(t.id)` with no OTP, which the server records as a
+              // supervisor override — so the quickest button on the kitchen's home screen was
+              // the one that skipped the check.
               canHandOver(t.st)
-                ? <Btn size="sm" variant="ok" onClick={() => handover(t.id)}>Scan &amp; hand over</Btn>
+                ? <Btn size="sm" variant="ok" onClick={() => openDrawer("ptkt", t.id)}>Hand over</Btn>
                 : <span className="mini dim">awaiting confirmation at {LOC[t.to].n}</span>,
             ],
           }))}

@@ -3,7 +3,7 @@
 // place, so a case says only what it is about.
 import { eq } from "drizzle-orm";
 import type { LocKey, PordStatus, PoStatus, PrqStatus, ProductReqStatus, ReqStatus, Role, ShopAskStatus, TicketPriority, TicketStatus, TicketTopic, TktStatus } from "@rch/contract";
-import { makeOtp, round3 } from "@rch/domain";
+import { round3 } from "@rch/domain";
 import type { Db } from "../db/client.js";
 import * as s from "../db/schema/index.js";
 import { appendHistory } from "../lib/history.js";
@@ -18,6 +18,11 @@ import type { TicketRefType } from "../lib/tickets.js";
 const counters = { req: 0, tkt: 0, ask: 0, bill: 0, pord: 0, prq: 0, po: 0, vendor: 0, contract: 0, npr: 0, sup: 0 };
 const nextId = (prefix: string, base: number, family: keyof typeof counters): string =>
   `${prefix}${String(base + ++counters[family]).padStart(4, "0")}`;
+
+/** The six digits a builder-made ticket carries when a case does not name its own. Fixed on
+ *  purpose: the real code is `crypto.randomInt` inside `allocateTicket`, and a test row that
+ *  reproduced that arithmetic would be asserting the builder rather than the server. */
+export const BUILDER_OTP = "424242";
 
 /** Defaults live here and nowhere else, so a suite says only what its case is about. */
 export const given = {
@@ -54,7 +59,10 @@ export const given = {
     await db.transaction(async (tx) => {
       await tx.insert(s.tickets).values({
         id, refType: p.refType ?? "direct", refId: p.refId ?? "Direct issue", fromLoc: p.from, toLoc: p.to,
-        status: st, otp: p.otp ?? makeOtp(700), issuedBy: "u3",
+        // A fixed code, not a minted one: the server draws its own at random and a builder that
+        // asked for one would be reaching into the write path it is standing in for. A case that
+        // hands the ticket over passes this same literal, or reads the column.
+        status: st, otp: p.otp ?? BUILDER_OTP, issuedBy: "u3",
         collectedAt: st === "Issued" ? null : new Date(), receivedAt: st === "Received" ? new Date() : null,
       });
       await tx.insert(s.ticketLines).values(p.lines.map((l, lineNo) => ({ ticketId: id, lineNo, itemKey: l.it, qty: l.qty })));
@@ -194,10 +202,17 @@ export const given = {
     return id;
   },
 
-  /** A support ticket, with as many messages as the case needs. `nextId` pads to four, so the
-   *  ids are `SUP-000101`+ — above the fixtures' `SUP-0043` and above the sequence's start at 44
-   *  (`formatId("support", n)` is `SUP-00${n}`, unpadded), so a builder-made ticket collides with
-   *  neither. `by` is a user id, not a name: that is what the list is scoped on. */
+  /** A support ticket, with as many messages as the case needs.
+   *
+   *  The band is `SUP-000101`+ and the four-digit padding is what puts it there. `formatId`
+   *  prints an allocated id **unpadded** — `SUP-00${n}`, so 44 is `SUP-0044` and 101 is
+   *  `SUP-00101` — while `nextId` pads its counter to four, so the builder's first id is
+   *  `SUP-00` + `0101` = `SUP-000101`, a digit longer than anything `formatId` can produce from
+   *  a three-digit `n`. That is deliberate and must stay: dropping the padding to "match"
+   *  `formatId` would put the builder's 101st id on top of the sequence's own 101st. It is also
+   *  above the fixtures, which stop at `SUP-0043`.
+   *
+   *  `by` is a user id, not a name: that is what the list is scoped on. */
   async supportTicket(db: Db, p: {
     id?: string; by?: string; topic?: TicketTopic; subject?: string; priority?: TicketPriority;
     st?: TicketStatus; loc?: LocKey; role?: Role; screen?: string; rating?: 1 | 2 | 3 | 4 | 5;

@@ -22,7 +22,7 @@ export default function MakeDistribute() {
   const s = useApp();
   const makeProduct = useApp((x) => x.makeProduct);
   const distribute = useApp((x) => x.distribute);
-  const handover = useApp((x) => x.handover);
+  const openDrawer = useApp((x) => x.openDrawer);
   const { batch, tkt, ovr } = s;
 
   const [mk, setMk] = useState<Record<string, string>>({ puff: "", sand: "", salad: "" });
@@ -325,7 +325,10 @@ export default function MakeDistribute() {
               t.lines.map((l) => `${l.qty} × ${IT[l.it].n}`).join(" · "),
               <b>{sum(t.lines, (l) => l.qty)}</b>,
               <StatusPill status={t.st} />,
-              <Btn size="sm" variant="ok" onClick={() => handover(t.id)}>Scan &amp; hand over</Btn>,
+              // Opens the ticket's own window, where the collector's six digits are typed in.
+              // It used to hand the stock over on the spot with no OTP at all, which the server
+              // records as a supervisor override.
+              <Btn size="sm" variant="ok" onClick={() => openDrawer("ptkt", t.id)}>Hand over</Btn>,
             ],
           }))}
           empty={{

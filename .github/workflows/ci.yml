@@ -125,9 +125,6 @@ jobs:
       - if: steps.playwright-cache.outputs.cache-hit == 'true'
         run: pnpm --filter @rch/e2e exec playwright install-deps chromium
       - name: helm install into kind
-        # Two of the smoke's assertions are gated on a change that has not landed yet and would
-        # otherwise pass vacuously — add E2E_OTP_REDACTED and E2E_SUPPORT_SERVER here, set to
-        # "1", in the commit that lands each. e2e/README.md's "Known switches" has both.
         env: { E2E: "1" }
         run: deploy/chart/rch/ci/install-test.sh
       - uses: actions/upload-artifact@v7
