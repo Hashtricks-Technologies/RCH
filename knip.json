@@ -17,6 +17,18 @@
       "project": [
         "src/**/*.ts"
       ]
+    },
+    "e2e": {
+      // Playwright discovers specs itself; knip has to be told, or every scenario reads as dead
+      // code and every fixture as an unused export. `playwright.config.ts` is not listed:
+      // knip's own Playwright plugin already treats it as an entry and reports the duplicate
+      // as a redundant pattern.
+      "entry": [
+        "tests/**/*.spec.ts"
+      ],
+      "project": [
+        "**/*.ts"
+      ]
     }
   },
   "ignoreFiles": [

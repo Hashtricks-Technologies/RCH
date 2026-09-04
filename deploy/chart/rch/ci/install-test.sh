@@ -23,10 +23,35 @@ API=http://localhost:3000
 API_PREFIX=/api/v1
 UI=http://localhost:8080
 
-SET_ARGS=(
+BASE_ARGS=(
   --set-string "secrets.values.JWT_PRIVATE_KEY=$JWT_PRIVATE_KEY"
   --set-string "secrets.values.JWT_PUBLIC_KEY=$JWT_PUBLIC_KEY"
 )
+SET_ARGS=("${BASE_ARGS[@]}")
+
+# E2E=1 adds the Playwright smoke at the end (see the block after the UI health check). Three
+# settings have to move for it. They are set here rather than in ci/values-ci.yaml because they
+# are properties of how the smoke reaches the cluster — one port-forward, so one client address,
+# and six accounts driven back to back — and not of the chart or of this environment. CI sets
+# E2E=1 on every run, so the pipeline never installs without them on the first leg; the
+# `helm upgrade` at the end drops back to BASE_ARGS, so every run still installs the chart's own
+# defaults once and proves they come up.
+#
+#  * SEED_FORCE_PASSWORD_CHANGE=false. The seed below runs inside the api container and inherits
+#    its env; left at the default the six seeded accounts land on "Choose a new password" at
+#    first sign-in, and the smoke would have to carry a rotated password between six roles.
+#  * The two login rate limits. Everything the smoke does arrives through one port-forward, so
+#    the API sees one client address for sixteen sign-ins inside a minute and the per-IP budget
+#    of ten refuses the rest. The general RATE_LIMIT_PER_MINUTE is deliberately left at its
+#    default: the smoke stays inside it, so every non-login call is still made under the same
+#    budget production runs.
+if [ "${E2E:-}" = "1" ]; then
+  SET_ARGS+=(
+    --set-string "api.env.SEED_FORCE_PASSWORD_CHANGE=false"
+    --set-string "api.env.LOGIN_RATE_LIMIT_PER_MINUTE=200"
+    --set-string "api.env.LOGIN_RATE_LIMIT_PER_EMP_PER_MINUTE=100"
+  )
+fi
 
 API_PF_PID=""
 UI_PF_PID=""
@@ -97,10 +122,21 @@ wait_for "$UI/healthz"
 UI_CODE=$(curl -s -o /dev/null -w '%{http_code}' "$UI/healthz")
 [ "$UI_CODE" = 200 ] || fail "ui healthz: expected 200, got $UI_CODE"
 
+if [ "${E2E:-}" = "1" ]; then
+  echo "== playwright smoke against the cluster =="
+  # Both port-forwards are up: the UI on 8080 and the API on 3000. The UI's nginx proxies /api
+  # and /api/v1/events to the API service inside the cluster, so the browser needs only the one.
+  E2E_BASE_URL="$UI" pnpm test:e2e
+fi
+
 kill_pf
 
-echo "== helm upgrade (same values: proves the Secret survives and the migrate initContainer no-ops) =="
-helm upgrade --install rch deploy/chart/rch -f deploy/chart/rch/ci/values-ci.yaml "${SET_ARGS[@]}" --wait --timeout 5m
+# BASE_ARGS, not SET_ARGS: the smoke has finished, so this leg drops the three settings it
+# needed and puts the chart's own defaults back — which is both the upgrade this job has always
+# proved (the Secret survives, the migrate initContainer no-ops) and the one install in the run
+# that exercises ci/values-ci.yaml as it actually ships.
+echo "== helm upgrade (chart defaults: proves the Secret survives and the migrate initContainer no-ops) =="
+helm upgrade --install rch deploy/chart/rch -f deploy/chart/rch/ci/values-ci.yaml "${BASE_ARGS[@]}" --wait --timeout 5m
 
 kubectl port-forward svc/rch-api 3000:3000 >/tmp/pf-api.log 2>&1 &
 API_PF_PID=$!
