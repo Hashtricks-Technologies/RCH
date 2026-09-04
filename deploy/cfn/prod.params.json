@@ -1,0 +1,14 @@
+[
+  { "ParameterKey": "Env", "ParameterValue": "prod" },
+  { "ParameterKey": "HostName", "ParameterValue": "rch.hashtrickstechnologies.com" },
+  { "ParameterKey": "HostedZoneId", "ParameterValue": "Z066296313TA69I4LDOOI" },
+  { "ParameterKey": "VpcId", "ParameterValue": "vpc-01ca67a181cb36d34" },
+  { "ParameterKey": "VpcCidr", "ParameterValue": "172.31.0.0/16" },
+  { "ParameterKey": "SubnetIds", "ParameterValue": "subnet-05be7e2c146d6ede8,subnet-04f03f730a553b579,subnet-08d892f0f99bd8097" },
+  { "ParameterKey": "DbInstanceClass", "ParameterValue": "db.t4g.small" },
+  { "ParameterKey": "DbMultiAZ", "ParameterValue": "true" },
+  { "ParameterKey": "DbDeletionProtection", "ParameterValue": "true" },
+  { "ParameterKey": "DbBackupRetentionDays", "ParameterValue": "14" },
+  { "ParameterKey": "GitHubRepo", "ParameterValue": "Hashtricks-Technologies/RCH" },
+  { "ParameterKey": "DbMasterPassword", "ParameterValue": "FILL" }
+]

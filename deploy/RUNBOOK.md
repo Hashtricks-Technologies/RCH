@@ -728,6 +728,8 @@ open on one login, not a server problem; ask the operator to close some.
 
 ## 11. Go-live checklist
 
+Environment resources are `deploy/cfn/rch-env.yaml`; the cluster is `deploy/eksctl/cluster.yaml`.
+
 ### The release, prepared and not performed (2026-09-04)
 
 Phase 6 ends here. Everything the first production deploy needs is written down; **nothing in

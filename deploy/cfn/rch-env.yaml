@@ -1,0 +1,363 @@
+AWSTemplateFormatVersion: "2010-09-09"
+# One template, one stack per environment. The first environment (dev, imported from the
+# CLI-built resources) OWNS the resources that are account- or VPC-wide singletons — the DB
+# subnet group, the DB security group, both ECR repositories, the OIDC provider and the
+# GitHub deploy role — because AWS itself will not let a second stack create a same-named
+# role, repository, subnet group or provider. A later environment's stack (staging, prod)
+# does not recreate them; it imports their identifiers with Fn::ImportValue from the exports
+# this stack (Env=dev) publishes below. Everything else — the DB instance, its Secrets
+# Manager secret, the ACM certificate and the CAA record — is genuinely per-environment and
+# every stack creates its own.
+Description: >-
+  RCH environment resources — everything the account owner created by hand with the AWS CLI
+  before this template existed: the Postgres instance, its subnet group and security group,
+  the two ECR repositories, the GitHub Actions OIDC provider and deploy role, the per-environment
+  Secrets Manager secret, the ACM certificate and its CAA record. NOT here: the EKS cluster
+  (deploy/eksctl/cluster.yaml), the load balancer controller, subnet tags or any Kubernetes
+  object — see deploy/cfn/README.md.
+
+Parameters:
+  Env:
+    Type: String
+    AllowedValues: [dev, staging, prod]
+    Description: >-
+      Which environment this stack is. Exactly one stack may be created with Env=dev — it is
+      the one that owns the shared account/VPC-wide resources (see the top-of-file note).
+      staging and prod stacks import those from dev's exports instead of creating their own.
+
+  HostName:
+    Type: String
+    Description: Public hostname this environment answers on, e.g. rch-dev.hashtrickstechnologies.com.
+
+  HostedZoneId:
+    Type: AWS::Route53::HostedZone::Id
+    Description: Route 53 hosted zone that HostName lives in.
+
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: VPC the database and its security group live in (the eksctl cluster's default VPC).
+
+  VpcCidr:
+    Type: String
+    AllowedPattern: '^(\d{1,3}\.){3}\d{1,3}/\d{1,2}$'
+    Description: CIDR of VpcId, admitted into the DB security group's ingress rule on 5432.
+
+  SubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: Subnets for the DB subnet group (dev only — staging/prod import dev's subnet group).
+
+  DbInstanceClass:
+    Type: String
+    Default: db.t4g.micro
+    Description: RDS instance class. Minimal by default; size up per environment in that environment's params file.
+
+  DbMultiAZ:
+    Type: String
+    AllowedValues: ["true", "false"]
+    Default: "false"
+    Description: >-
+      RDS Multi-AZ. Taken directly from this parameter, not derived from Env — a Condition on
+      Env would bake in an assumption (e.g. "prod is always Multi-AZ") this template does not
+      want to own; each environment's params file states its own choice explicitly.
+
+  DbDeletionProtection:
+    Type: String
+    AllowedValues: ["true", "false"]
+    Default: "false"
+    Description: RDS deletion protection. Same reasoning as DbMultiAZ — from the parameter, not from Env.
+
+  DbBackupRetentionDays:
+    Type: Number
+    Default: 7
+    Description: RDS automated backup retention, in days.
+
+  GitHubRepo:
+    Type: String
+    Default: Hashtricks-Technologies/RCH
+    Description: "owner/repo the GitHub Actions OIDC trust policy admits (both branch-ref and environment claims, for staging and production)."
+
+  DbMasterPassword:
+    Type: String
+    NoEcho: true
+    Description: >-
+      RDS master password. CloudFormation's DBInstance import does not read back
+      MasterUserPassword — the property only needs to be present for the import to proceed, its
+      value is not compared against the live instance and is not applied to it. For the dev
+      IMPORT, dev.params.json passes the literal placeholder "IMPORT" for exactly this reason
+      (see deploy/cfn/README.md). For a fresh create (a future staging or prod stack), this is
+      the real password that gets set, so that params file must carry the true value, never a
+      placeholder — NoEcho keeps it out of the console and CLI output either way, but it is
+      still visible to anyone who can read the parameters file or call
+      cloudformation:GetTemplateSummary/DescribeStacks with appropriate IAM rights, so treat the
+      params file itself as a secret and do not commit it with a real password inside.
+
+Conditions:
+  # The one Condition this template needs. See the top-of-file note: only the dev stack creates
+  # the shared account/VPC-wide resources; every other environment imports them.
+  IsDev: !Equals [!Ref Env, "dev"]
+
+Resources:
+  # ---------------------------------------------------------------------------------------
+  # Shared, VPC-wide — created once, by the dev stack only (Condition: IsDev). A staging or
+  # prod stack references these by Fn::ImportValue instead of declaring its own.
+  # ---------------------------------------------------------------------------------------
+
+  DbSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Condition: IsDev
+    Properties:
+      DBSubnetGroupName: rch
+      DBSubnetGroupDescription: RCH default-VPC subnets
+      SubnetIds: !Ref SubnetIds
+
+  DbSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Condition: IsDev
+    Properties:
+      GroupName: rch-rds
+      GroupDescription: "RCH Postgres: 5432 from the VPC"
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          CidrIp: !Ref VpcCidr
+
+  EcrApi:
+    Type: AWS::ECR::Repository
+    Condition: IsDev
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      RepositoryName: rch-api
+      ImageTagMutability: IMMUTABLE
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      EncryptionConfiguration:
+        EncryptionType: AES256
+
+  EcrUi:
+    Type: AWS::ECR::Repository
+    Condition: IsDev
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      RepositoryName: rch-ui
+      ImageTagMutability: IMMUTABLE
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      EncryptionConfiguration:
+        EncryptionType: AES256
+
+  GithubOidcProvider:
+    Type: AWS::IAM::OIDCProvider
+    Condition: IsDev
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList:
+        - sts.amazonaws.com
+      ThumbprintList:
+        - 6938fd4d98bab03faadb97b34396831e3780aea1
+
+  GithubDeployRole:
+    Type: AWS::IAM::Role
+    Condition: IsDev
+    Properties:
+      RoleName: rch-github-deploy
+      Description: GitHub Actions deploy role for RCH (ECR push, EKS deploy)
+      MaxSessionDuration: 3600
+      # Federated principal is built from account + partition rather than a GetAtt/Ref on
+      # GithubOidcProvider — the ARN is deterministic from the fixed URL, so this resolves the
+      # same way whether or not *this* stack is the one that created the provider.
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:oidc-provider/token.actions.githubusercontent.com"
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+              StringLike:
+                token.actions.githubusercontent.com:sub:
+                  - !Sub "repo:${GitHubRepo}:ref:refs/heads/staging"
+                  - !Sub "repo:${GitHubRepo}:ref:refs/heads/production"
+                  - !Sub "repo:${GitHubRepo}:environment:staging"
+                  - !Sub "repo:${GitHubRepo}:environment:production"
+      Policies:
+        - PolicyName: rch-deploy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: EcrAuth
+                Effect: Allow
+                Action: ecr:GetAuthorizationToken
+                Resource: "*"
+              - Sid: EcrPush
+                Effect: Allow
+                Action:
+                  - ecr:BatchCheckLayerAvailability
+                  - ecr:CompleteLayerUpload
+                  - ecr:InitiateLayerUpload
+                  - ecr:PutImage
+                  - ecr:UploadLayerPart
+                  - ecr:BatchGetImage
+                  - ecr:GetDownloadUrlForLayer
+                  - ecr:DescribeRepositories
+                  - ecr:DescribeImages
+                Resource:
+                  - !Sub "arn:${AWS::Partition}:ecr:${AWS::Region}:${AWS::AccountId}:repository/rch-api"
+                  - !Sub "arn:${AWS::Partition}:ecr:${AWS::Region}:${AWS::AccountId}:repository/rch-ui"
+              - Sid: EksRead
+                Effect: Allow
+                Action:
+                  - eks:DescribeCluster
+                  - eks:ListClusters
+                Resource: "*"
+
+  # ---------------------------------------------------------------------------------------
+  # Per-environment — every stack, dev/staging/prod alike, creates its own.
+  # ---------------------------------------------------------------------------------------
+
+  Database:
+    Type: AWS::RDS::DBInstance
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      DBInstanceIdentifier: !Sub "rch-${Env}"
+      DBInstanceClass: !Ref DbInstanceClass
+      Engine: postgres
+      EngineVersion: "17.9"
+      AllocatedStorage: "20"
+      StorageType: gp3
+      StorageEncrypted: true
+      MasterUsername: rch
+      MasterUserPassword: !Ref DbMasterPassword
+      DBName: rch
+      DBSubnetGroupName: !If [IsDev, !Ref DbSubnetGroup, !ImportValue rch-shared-db-subnet-group-name]
+      VPCSecurityGroups:
+        - !If [IsDev, !GetAtt DbSecurityGroup.GroupId, !ImportValue rch-shared-db-security-group-id]
+      PubliclyAccessible: false
+      MultiAZ: !Ref DbMultiAZ
+      BackupRetentionPeriod: !Ref DbBackupRetentionDays
+      DeletionProtection: !Ref DbDeletionProtection
+      CopyTagsToSnapshot: false
+      Tags:
+        - Key: app
+          Value: rch
+        - Key: env
+          Value: !Ref Env
+
+  AppSecret:
+    Type: AWS::SecretsManager::Secret
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      Name: !Sub "rch/${Env}"
+      Description: !Sub "RCH ${Env}: RDS master password, DATABASE_URL and the JWT key pair"
+      # Deliberately no SecretString / GenerateSecretString: for dev this resource is IMPORTED,
+      # and an import must not try to write a value over what already exists there; for a fresh
+      # staging/prod stack this creates the secret empty, for the account owner to fill in by
+      # hand (see README) rather than starting from a value CloudFormation invented.
+      Tags:
+        - Key: app
+          Value: rch
+        - Key: env
+          Value: !Ref Env
+
+  Certificate:
+    Type: AWS::CertificateManager::Certificate
+    Properties:
+      DomainName: !Ref HostName
+      ValidationMethod: DNS
+      DomainValidationOptions:
+        - DomainName: !Ref HostName
+          HostedZoneId: !Ref HostedZoneId
+      Tags:
+        - Key: app
+          Value: rch
+        - Key: env
+          Value: !Ref Env
+
+  CaaRecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Sub "${HostName}."
+      Type: CAA
+      TTL: "300"
+      ResourceRecords:
+        - '0 issue "amazon.com"'
+        - '0 issue "amazontrust.com"'
+        - '0 issue "awstrust.com"'
+        - '0 issue "amazonaws.com"'
+
+Outputs:
+  DbEndpoint:
+    Description: RDS instance endpoint address.
+    Value: !GetAtt Database.Endpoint.Address
+
+  DbPort:
+    Description: RDS instance endpoint port.
+    Value: !GetAtt Database.Endpoint.Port
+
+  CertificateArn:
+    Description: ACM certificate ARN for HostName — feed to ingress.certificateArn in the Helm chart.
+    Value: !Ref Certificate
+
+  SecretArn:
+    Description: Secrets Manager secret ARN for this environment.
+    Value: !Ref AppSecret
+
+  EcrApiUri:
+    Description: rch-api repository URI.
+    Value: !If [IsDev, !GetAtt EcrApi.RepositoryUri, !ImportValue rch-shared-ecr-api-uri]
+
+  EcrUiUri:
+    Description: rch-ui repository URI.
+    Value: !If [IsDev, !GetAtt EcrUi.RepositoryUri, !ImportValue rch-shared-ecr-ui-uri]
+
+  GitHubDeployRoleArn:
+    Description: IAM role GitHub Actions assumes to deploy — feed to the AWS_ROLE_ARN repository secret.
+    Value: !If [IsDev, !GetAtt GithubDeployRole.Arn, !ImportValue rch-shared-github-deploy-role-arn]
+
+  OidcProviderArn:
+    Description: GitHub Actions OIDC provider ARN (account-global; deterministic from the fixed URL).
+    Value: !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:oidc-provider/token.actions.githubusercontent.com"
+
+  # Exports below exist only on the dev stack (Condition: IsDev) — they are what a later
+  # staging or prod stack's Fn::ImportValue calls above resolve against.
+  DbSubnetGroupNameExport:
+    Condition: IsDev
+    Description: Export for a later environment's DBSubnetGroupName.
+    Value: !Ref DbSubnetGroup
+    Export:
+      Name: rch-shared-db-subnet-group-name
+
+  DbSecurityGroupIdExport:
+    Condition: IsDev
+    Description: Export for a later environment's VPCSecurityGroups.
+    Value: !GetAtt DbSecurityGroup.GroupId
+    Export:
+      Name: rch-shared-db-security-group-id
+
+  EcrApiUriExport:
+    Condition: IsDev
+    Value: !GetAtt EcrApi.RepositoryUri
+    Export:
+      Name: rch-shared-ecr-api-uri
+
+  EcrUiUriExport:
+    Condition: IsDev
+    Value: !GetAtt EcrUi.RepositoryUri
+    Export:
+      Name: rch-shared-ecr-ui-uri
+
+  GithubDeployRoleArnExport:
+    Condition: IsDev
+    Value: !GetAtt GithubDeployRole.Arn
+    Export:
+      Name: rch-shared-github-deploy-role-arn
