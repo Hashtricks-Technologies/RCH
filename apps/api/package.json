@@ -15,7 +15,8 @@
     "db:seed": "tsx --env-file=../../.env src/cli/seed.ts",
     "db:rebuild-balances": "tsx --env-file=../../.env src/cli/rebuild-balances.ts",
     "users": "tsx --env-file=../../.env src/cli/users.ts",
-    "keys:generate": "tsx src/cli/keys.ts"
+    "keys:generate": "tsx src/cli/keys.ts",
+    "loadcheck": "node scripts/loadcheck.mjs"
   },
   "dependencies": {
     "@fastify/cookie": "^11.1.2",
