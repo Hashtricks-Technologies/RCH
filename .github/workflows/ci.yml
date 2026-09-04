@@ -52,10 +52,10 @@ jobs:
         # load: true (both here and for ui below) puts the image into the local Docker
         # daemon so Trivy and `kind load docker-image` can see it — that requires a single
         # platform, hence pinning it rather than leaving it to buildx's default.
-        with: { context: ., file: apps/api/Dockerfile, push: false, load: true, platforms: linux/amd64, tags: rch-api:ci, cache-from: type=gha, cache-to: type=gha,mode=max }
+        with: { context: ., file: apps/api/Dockerfile, push: false, load: true, platforms: linux/amd64, tags: rch-api:ci, cache-from: type=gha, cache-to: "type=gha,mode=max" }
       - name: Build ui
         uses: docker/build-push-action@v6
-        with: { context: ., file: UI/Dockerfile, push: false, load: true, platforms: linux/amd64, tags: rch-ui:ci, cache-from: type=gha, cache-to: type=gha,mode=max }
+        with: { context: ., file: UI/Dockerfile, push: false, load: true, platforms: linux/amd64, tags: rch-ui:ci, cache-from: type=gha, cache-to: "type=gha,mode=max" }
       - name: Scan api
         uses: aquasecurity/trivy-action@0.28.0
         with: { image-ref: rch-api:ci, severity: CRITICAL, exit-code: "1", ignore-unfixed: true }
