@@ -4,9 +4,10 @@ import { createRoot } from "react-dom/client";
 import { MemoryRouter } from "react-router-dom";
 import * as FX from "@rch/contract/fixtures";
 import { refetch } from "../api/refetch";
+import { applySnapshot } from "../api/wire";
 import { setAccessToken } from "../api/session";
 import { qty } from "../lib/selectors";
-import { IT } from "../data/master";
+import { IT, PATIENTS } from "../data/master";
 import Pos from "../roles/counter/Pos";
 import CounterRequests from "../roles/counter/Requests";
 import MakeDistribute from "../roles/prod/MakeDistribute";
@@ -57,7 +58,8 @@ const BILL = {
  *  `hydrateMaster` inside `applySnapshot` restores exactly what was there. */
 const snapshot = (prices: { A: Record<string, number>; B: Record<string, number> } = FX.PL) => ({
   user: FX.USERS.find((u) => u.r === "manager"), items: FX.IT, locations: FX.LOC, recipes: FX.RCP,
-  users: FX.USERS, stock: {}, rsv: {}, ovr: {}, prices, menu: FX.MENU,
+  users: FX.USERS, roster: { patients: FX.PATIENTS, staff: FX.STAFF, depts: FX.DEPTS },
+  stock: {}, rsv: {}, ovr: {}, prices, menu: FX.MENU,
   req: [], tkt: [], prq: [], po: [], pord: [], batch: [], bills: [], grn: [], vendors: [],
   contracts: [], tickets: [], productReqs: [], shopAsks: [], sales: [], dayLabels: [],
 });
@@ -371,7 +373,9 @@ const REQ = {
   id: "REQ-2026-0913", from: "coffee", by: "Kavitha Raman", at: "2026-09-04T04:30:00.000Z",
   lines: [{ it: "milk", qty: 20, appr: 0 }], st: "Request sent", ticket: null, mgrNote: "", hist: [],
 };
-const TKT = { id: "TKT-0441", req: "REQ-2026-0913", from: "store", to: "coffee", lines: [{ it: "milk", qty: 12 }], st: "Issued", otp: "989089" };
+/** A ticket as the wire carries one. `otp` is the collecting location's own — every other
+ *  caller reads "" — and `hist` is the trail the drawers render. */
+const TKT = { id: "TKT-0441", req: "REQ-2026-0913", from: "store", to: "coffee", lines: [{ it: "milk", qty: 12 }], st: "Issued", otp: "989089", hist: [{ s: "Issued", who: "Suresh Muthu", t: "2026-09-04T03:42:00.000Z" }] };
 const ASK = { id: "ASK-063", from: "coffee", to: "kiosk", it: "water", qty: 24, st: "Asked", by: "Kavitha Raman", at: "2026-09-04T04:30:00.000Z", note: "Ran dry" };
 
 describe("the request chain — the twelve writes", () => {
@@ -977,12 +981,16 @@ describe("a refusal keeps what the operator typed", () => {
    * Drain the queue until `ok()` holds, rather than for exactly one turn. A write's read-back
    * sits two awaits behind the click — the POST, then the GETs `refetch` fans out — so a single
    * `setTimeout(0)` was one turn short whenever the machine was loaded, which is what made the
-   * make-tile cases flake. Twenty turns is a ceiling, not a wait: it exits the moment it can.
+   * make-tile and requisition cases flake. The ceiling is a ceiling, not a wait: it exits the
+   * moment it can, and 200 turns of an empty macrotask queue costs nothing when it does. Past
+   * it, it gives up **loudly** — a silent fall-through leaves the assertion below to fail with
+   * a message about the wrong thing, which is how a flake gets read as a regression.
    */
-  const settleUntil = async (ok: () => boolean) => {
-    for (let i = 0; i < 20 && !ok(); i += 1) {
+  const settleUntil = async (ok: () => boolean, tries = 200) => {
+    for (let i = 0; i < tries && !ok(); i += 1) {
       await act(async () => { await new Promise((r) => { setTimeout(r, 0); }); });
     }
+    if (!ok()) throw new Error(`the action never settled: the condition was still false after ${tries} turns`);
   };
 
   it("leaves the raise card open, with its note, when the server refuses", async () => {
@@ -1334,6 +1342,14 @@ const OFFLINE: [name: string, run: () => Promise<unknown>, sentence: string][] =
     "Could not answer the request — check the connection and try again."],
   ["createItem", () => S().createItem({ key: "", name: "Buttermilk 200ml", code: "", unit: "nos", type: "MRP", group: "", hsn: "", gst: 5, reorder: 0, cost: 18, mrp: 25 }, "store", 0),
     "Could not add the product — check the connection and try again."],
+  ["raiseTicket", () => S().raiseTicket({ topic: "Something else", subject: "x", body: "", priority: "Low", screen: "Dashboard" }),
+    "Could not raise the ticket — check the connection and try again."],
+  ["replyToTicket", () => S().replyToTicket("SUP-0044", "Still happening."),
+    "Could not send the reply — check the connection and try again."],
+  ["setTicketStatus", () => S().setTicketStatus("SUP-0044", "Resolved"),
+    "Could not change the ticket — check the connection and try again."],
+  ["rateTicket", () => S().rateTicket("SUP-0044", 5),
+    "Could not record the rating — check the connection and try again."],
 ];
 
 describe("a dropped connection names the write that did not land", () => {
@@ -1342,5 +1358,126 @@ describe("a dropped connection names the write that did not land", () => {
     fetchMock.mockRejectedValue(new TypeError("Failed to fetch"));
     await run();
     expect(S().toast).toBe(sentence);
+  });
+});
+
+/**
+ * The support desk, the payer roster and the two reports — the last things the browser did for
+ * itself. Every rule they used to hold is the server's now (support.test.ts, reports.test.ts);
+ * what these pin is the wire: which route each call reaches, what it puts in the body, and what
+ * it reads back.
+ */
+const SUP = {
+  id: "SUP-0044", topic: "A number looks wrong", subject: "Cash reads zero", priority: "Urgent",
+  st: "Open", by: "Kavitha Raman", role: "counter", loc: "coffee",
+  at: "2026-09-04T03:42:00.000Z", screen: "Dashboard",
+  messages: [{ id: "m1", from: "user", who: "Kavitha Raman", at: "2026-09-04T03:42:00.000Z", body: "Since 09:00." }],
+};
+
+describe("raiseTicket — POST /support/tickets", () => {
+  it("sends what the form holds, pulls the desk back, and shows the server's sentence", async () => {
+    as("counter");
+    serve({
+      "POST /api/v1/support/tickets": () => json({ result: SUP, changed: ["tickets"], message: `${SUP.id} raised — support replies to urgent tickets within the hour` }),
+      "GET /api/v1/support/tickets": () => json([SUP]),
+    });
+
+    expect(await S().raiseTicket({ topic: "A number looks wrong", subject: " Cash reads zero ", body: "Since 09:00.", priority: "Urgent", screen: "Dashboard" })).toBe(true);
+
+    // Trimming is the server's job; the body carries what was typed.
+    expect(hit("POST /api/v1/support/tickets")[0].body).toEqual({
+      topic: "A number looks wrong", subject: " Cash reads zero ", body: "Since 09:00.", priority: "Urgent", screen: "Dashboard",
+    });
+    // "tickets" has a narrow reader, so this is one GET and not a whole snapshot.
+    expect(hit("GET /api/v1/support/tickets")).toHaveLength(1);
+    expect(hit("GET /api/v1/snapshot")).toHaveLength(0);
+    expect(S().tickets[0].id).toBe(SUP.id);
+    // The wire carries ISO; the store holds what the screen prints.
+    expect(S().tickets[0].at).toBe("09:12");
+    expect(S().tickets[0].messages[0].at).toBe("09:12");
+    expect(S().toast).toBe(`${SUP.id} raised — support replies to urgent tickets within the hour`);
+  });
+
+  it("answers false and keeps nothing of its own when the server refuses", async () => {
+    as("counter");
+    const before = S().tickets;
+    serve({ "POST /api/v1/support/tickets": () => refusal("Give the ticket a subject so support knows what it is about") });
+    expect(await S().raiseTicket({ topic: "Something else", subject: "  ", body: "", priority: "Low", screen: "Dashboard" })).toBe(false);
+    // The desk is exactly as it was: the browser writes no ticket of its own any more.
+    expect(S().tickets).toBe(before);
+    expect(calls()).toHaveLength(1);
+    expect(S().toast).toBe("Give the ticket a subject so support knows what it is about");
+  });
+});
+
+describe("replyToTicket / setTicketStatus / rateTicket", () => {
+  it("replies on the ticket and reads the desk back", async () => {
+    as("counter");
+    const replied = { ...SUP, st: "With support", messages: [...SUP.messages, { id: "m2", from: "user", who: "Kavitha Raman", at: "2026-09-04T04:10:00.000Z", body: "Still happening." }] };
+    serve({
+      "POST /api/v1/support/tickets/SUP-0044/messages": () => json({ result: replied, changed: ["tickets"], message: "Reply sent on SUP-0044" }),
+      "GET /api/v1/support/tickets": () => json([replied]),
+    });
+    expect(await S().replyToTicket("SUP-0044", "Still happening.")).toBe(true);
+    expect(hit("POST /api/v1/support/tickets/SUP-0044/messages")[0].body).toEqual({ body: "Still happening." });
+    expect(S().toast).toBe("Reply sent on SUP-0044");
+    expect(S().tickets[0].st).toBe("With support");
+  });
+
+  it("marks it resolved through its own endpoint", async () => {
+    as("counter");
+    serve({
+      "POST /api/v1/support/tickets/SUP-0044/status": () => json({ result: { ...SUP, st: "Resolved" }, changed: ["tickets"], message: "SUP-0044 — resolved" }),
+      "GET /api/v1/support/tickets": () => json([{ ...SUP, st: "Resolved" }]),
+    });
+    await S().setTicketStatus("SUP-0044", "Resolved");
+    expect(hit("POST /api/v1/support/tickets/SUP-0044/status")[0].body).toEqual({ st: "Resolved" });
+    expect(S().toast).toBe("SUP-0044 — resolved");
+  });
+
+  it("rates it, and repeats the refusal when the desk has not finished", async () => {
+    as("counter");
+    serve({ "POST /api/v1/support/tickets/SUP-0044/rating": () => refusal("SUP-0044 is not finished yet — rate it once support has resolved it") });
+    await S().rateTicket("SUP-0044", 5);
+    expect(hit("POST /api/v1/support/tickets/SUP-0044/rating")[0].body).toEqual({ rating: 5 });
+    expect(S().toast).toBe("SUP-0044 is not finished yet — rate it once support has resolved it");
+  });
+});
+
+describe("what the browser no longer knows on its own", () => {
+  it("takes the payer roster from the snapshot, not from a fixture", () => {
+    as("counter");
+    // A patient the fixtures have never heard of, admitted this morning.
+    const roster = { patients: [{ kind: "patient", id: "IP-9999", name: "Admitted This Morning" }], staff: [], depts: [] };
+    applySnapshot({ ...snapshot(), roster } as never);
+    expect(PATIENTS.map((p) => p.id)).toEqual(["IP-9999"]);
+  });
+
+  it("asks the server what a staff member has taken, rather than adding up its own week", async () => {
+    as("counter");
+    serve({ "GET /api/v1/reports/credit/staff/RC-1902": () => json({ kind: "staff", id: "RC-1902", name: "Vinoth Prakash", since: "2026-09-01T00:00:00.000Z", taken: 2480, limit: 3000, room: 520 }) });
+    const r = (await S().readCredit({ kind: "staff", id: "RC-1902", name: "Vinoth Prakash" }))!;
+    expect(r.taken).toBe(2480);
+    expect(r.room).toBe(520);
+  });
+
+  it("says nothing at all when the credit read fails — a toast per keystroke would bury the refusal", async () => {
+    as("counter");
+    fetchMock.mockRejectedValue(new TypeError("Failed to fetch"));
+    expect(await S().readCredit({ kind: "staff", id: "RC-1902", name: "Vinoth Prakash" })).toBeNull();
+    expect(S().toast).toBeNull();
+  });
+
+  it("reads the central store's ledger off the wire, and says so when it cannot", async () => {
+    as("store");
+    const rows = [{ it: "cup", opening: 2400, recd: 0, issued: 500, closing: 1900 }];
+    serve({ "GET /api/v1/reports/stock-ledger": () => json({ loc: "store", from: "2026-08-05T00:00:00.000Z", to: "2026-09-04T00:00:00.000Z", rows }) });
+    expect(await S().readStockLedger("store", 30)).toEqual(rows);
+
+    // `null`, never `[]`: an empty ledger is a real answer and the report says something
+    // different about it than it says about a read that did not land.
+    fetchMock.mockRejectedValue(new TypeError("Failed to fetch"));
+    expect(await S().readStockLedger("store", 30)).toBeNull();
+    expect(S().toast).toBe("Could not read the stock ledger.");
   });
 });

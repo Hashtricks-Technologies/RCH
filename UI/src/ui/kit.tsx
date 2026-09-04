@@ -191,6 +191,13 @@ export interface SortState { key: string; dir: SortDir }
 /** `sort` names the key this column orders by; omit it and the header stays plain text. */
 export interface Col { h: string; r?: boolean; cls?: string; w?: string; sort?: string }
 export interface Row { key: string; cells: ReactNode[]; onClick?: () => void }
+/** A row can be clickable and still carry its own controls — a Receive button, a reason box, a
+ *  status select. A click on one of those is about that control and nothing else, so it must not
+ *  also open the row. Decided once here rather than by every cell remembering to stop the event:
+ *  a screen that forgets is a screen where pressing Cancel also opens the drawer behind it. */
+const CONTROLS = "button, a, input, select, textarea, label, [role=\"button\"]";
+const fromControl = (target: EventTarget) =>
+  target instanceof Element && target.closest(CONTROLS) !== null;
 
 const SortCaret = ({ dir }: { dir: SortDir | null }) => (
   <svg width="9" height="9" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth={1.7}
@@ -242,7 +249,8 @@ export function DataTable({ cols, rows, empty, sort, onSort }: {
               </div>
             </td></tr>
           ) : rows.map((r) => (
-            <tr key={r.key} onClick={r.onClick} style={r.onClick ? { cursor: "pointer" } : undefined}>
+            <tr key={r.key} onClick={r.onClick && ((e) => { if (!fromControl(e.target)) r.onClick!(); })}
+              style={r.onClick ? { cursor: "pointer" } : undefined}>
               {r.cells.map((c, i) => (
                 <td key={i} className={[cols[i]?.cls, cols[i]?.r ? "n" : ""].filter(Boolean).join(" ") || undefined}>{c}</td>
               ))}

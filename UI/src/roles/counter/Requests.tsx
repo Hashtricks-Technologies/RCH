@@ -9,12 +9,12 @@ import {
 import type { LocKey } from "../../types";
 
 /** Anything a shop can be asked for — not raw ingredients, not made-to-order. */
-const SELLABLE = Object.keys(IT)
+const sellable = () => Object.keys(IT)
   .filter((k) => IT[k].t === "MRP" || IT[k].t === "FG")
   .sort((a, b) => IT[a].n.localeCompare(IT[b].n));
 /** Anything the central store can send — everything except made-to-order, which
  *  a counter assembles itself and never holds as stock. */
-const STOCKABLE = Object.keys(IT)
+const stockable = () => Object.keys(IT)
   .filter((k) => IT[k].t !== "MTO")
   .sort((a, b) => IT[a].g.localeCompare(IT[b].g) || IT[a].n.localeCompare(IT[b].n));
 
@@ -35,7 +35,7 @@ function ProductPicker({ items, value, onChange, hint }: {
       <div className="txt">
         <b>{item?.n ?? "Choose a product"}</b>
         <span>{item ? `${item.c} · ${item.g}` : hint}</span>
-        <select value={value} onChange={(e) => onChange(e.target.value)} style={{ marginTop: 6 }}>
+        <select value={value} aria-label="Product" onChange={(e) => onChange(e.target.value)} style={{ marginTop: 6 }}>
           {items.map((k) => <option key={k} value={k}>{IT[k].n}</option>)}
         </select>
       </div>
@@ -48,6 +48,12 @@ export default function Requests() {
   const user = useApp((x) => x.user)!;
   const loc = user.loc;
   const L = LOC[loc];
+  // `IT` is empty until the snapshot lands and is replaced in place after that
+  // (`hydrateMaster` / `hydrateItems`), so this list is built during render and pinned to
+  // `catalogVersion` — the signal that tells React the catalogue moved.
+  void s.catalogVersion;
+  const SELLABLE = sellable();
+  const STOCKABLE = stockable();
 
   const [open, setOpen] = useState<"inventory" | "shop" | null>(null);
 

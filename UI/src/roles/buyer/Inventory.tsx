@@ -11,8 +11,6 @@ import type { ItemType, LocKey } from "../../types";
 
 const TYPES: string[] = ["All", "RAW", "PACK", "MRP", "FG", "MTO"];
 const STATES = ["All", "Out", "Below reorder", "Healthy", "Not stocked"];
-/** Locations come from the master list, never a hardcoded set — the estate changes. */
-const PLACES = ["All", ...ALL_LOCS.map((l) => LOC[l].n)];
 const tagKind = (t: ItemType) => (t === "MRP" ? "tr" : t === "MTO" || t === "FG" ? "md" : undefined);
 
 export default function Inventory() {
@@ -28,6 +26,9 @@ export default function Inventory() {
   // is therefore built during render and pinned to `catalogVersion`, which is what tells React a
   // product was added.
   void s.catalogVersion;
+  /** Locations come from the master list, never a hardcoded set — and, like the item master, it
+   *  is empty until the snapshot lands, so the labels are read during render. */
+  const PLACES = ["All", ...ALL_LOCS.map((l) => LOC[l].n)];
   const KEYS = Object.keys(IT);
   const GROUPS: string[] = ["All", ...[...new Set(KEYS.map((k) => IT[k].g))].sort()];
 

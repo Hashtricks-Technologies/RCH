@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ledgerRow, ledgerTotals } from "./index.js";
+import { ledgerRow } from "./index.js";
 
 describe("one line of the central store's stock ledger", () => {
   it("splits the window's signed moves into received and issued, and derives the close", () => {
@@ -18,8 +18,7 @@ describe("one line of the central store's stock ledger", () => {
     expect(ledgerRow("bread", 0, [])).toEqual({ it: "bread", opening: 0, recd: 0, issued: 0, closing: 0 });
   });
 
-  it("totals the columns for the foot", () => {
-    const rows = [ledgerRow("a", 1, [2, -1]), ledgerRow("b", 10, [-4])];
-    expect(ledgerTotals(rows)).toEqual({ opening: 11, recd: 2, issued: 5, closing: 8 });
-  });
+  // There is no `ledgerTotals` beside this: the central store's ledger spans litres, kilos and
+  // countable things, so its foot totals each column per unit (`unitTotal`) rather than adding
+  // them into one number, and a rule with no caller is deleted rather than kept "for later".
 });

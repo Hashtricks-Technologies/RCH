@@ -1,32 +1,51 @@
-import { useApp } from "../store";
-import { basePrices } from "../lib/selectors";
 import * as FX from "@rch/contract/fixtures";
-import { MENU } from "../data/master";
-import { seedVendors } from "../data/vendors";
-import { seedContracts, seedProductRequests, seedShopAsks, seedTickets } from "../data/ops";
-import {
-  DAY_LABELS, seedBatch, seedBills, seedGrn, seedPo, seedPord, seedPrq, seedReq, seedRsv, seedSales,
-  seedStock, seedTkt,
-} from "../data/seed";
+import { useApp } from "../store";
+import { setAccessToken } from "../api/session";
+import { hydrateMaster, hydrateRoster } from "../data/master";
+import { basePrices } from "../lib/selectors";
+import type { Role } from "../types";
 
 export const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v));
 export const S = () => useApp.getState();
-/** The screens' registry is the server's `UserMin[]`; a signed-in person needs their whole
- *  record, so the role -> user lookup goes to the fixtures the store's `signIn` reads. */
-export const as = (role: string) =>
-  useApp.getState().signIn(FX.USERS.find((u) => u.r === role)!.id);
 
+/**
+ * Sign in, the way `login()` leaves the store: a token in memory, the caller's own whole record,
+ * and `auth: "ready"`. The store's own `signIn` hook is gone — it read the fixtures from inside
+ * production code, which is exactly what this phase deleted — so the fixtures are imported here,
+ * in a test file, where §5.1 says they belong.
+ */
+export const as = (role: Role) => {
+  setAccessToken("test-token");
+  useApp.setState({ user: FX.USERS.find((u) => u.r === role)!, auth: "ready", mustChangePassword: false, drawer: null });
+};
+
+/** What `logout()` leaves behind. */
+export const signedOut = () => {
+  setAccessToken(null);
+  useApp.setState({ user: null, auth: "signed-out", drawer: null, mustChangePassword: false });
+};
+
+/**
+ * The demo hospital, in the store. Master data goes through the same two hydrators the snapshot
+ * uses, so a test sees exactly the registries a signed-in browser sees.
+ *
+ * It stays `setState` and deliberately does **not** go through `applySnapshot`. The fixtures'
+ * times are already display strings (`"09:12"`, `"Yesterday"`, `"27-Aug"`) and `applySnapshot`
+ * runs `fromWireTime` over everything it is handed; feeding it fixtures would turn every stamp
+ * into garbage. Building the state directly is what `resetStore` has always done and it is still
+ * right — what changed is only where the fixtures are imported from.
+ */
 export function resetStore() {
+  hydrateMaster({ items: FX.IT, locations: FX.LOC, recipes: FX.RCP, prices: FX.PL, menu: FX.MENU, users: FX.USERS });
+  hydrateRoster({ patients: FX.PATIENTS, staff: FX.STAFF, depts: FX.DEPTS });
   useApp.setState({
-    user: null, stock: clone(seedStock), rsv: clone(seedRsv()), ovr: {}, prices: basePrices(),
-    menu: clone(MENU), req: clone(seedReq), tkt: clone(seedTkt), prq: clone(seedPrq),
-    po: clone(seedPo), pord: clone(seedPord), batch: clone(seedBatch), bills: clone(seedBills),
-    vendors: clone(seedVendors), sales: clone(seedSales), dayLabels: DAY_LABELS,
-    cart: {}, draft: [], prqDraft: [], drawer: null, toast: null, shopFilter: null, grn: clone(seedGrn),
-    // The ops slice's four collections reset like every other one. `tickets` never did — a
-    // pre-existing gap, and fixes.test.ts now asserts against the support desk, which must not
-    // read what a previous case left behind.
-    shopAsks: seedShopAsks(), contracts: clone(seedContracts()),
-    productReqs: clone(seedProductRequests()), tickets: seedTickets(),
+    user: null, auth: "signed-out",
+    stock: clone(FX.seedStock), rsv: clone(FX.seedRsv()), ovr: {}, prices: basePrices(),
+    menu: clone(FX.MENU), req: clone(FX.seedReq), tkt: clone(FX.seedTkt), prq: clone(FX.seedPrq),
+    po: clone(FX.seedPo), pord: clone(FX.seedPord), batch: clone(FX.seedBatch), bills: clone(FX.seedBills),
+    grn: clone(FX.seedGrn), vendors: clone(FX.seedVendors), sales: clone(FX.seedSales), dayLabels: FX.DAY_LABELS,
+    contracts: FX.seedContracts(), productReqs: FX.seedProductRequests(), shopAsks: FX.seedShopAsks(),
+    tickets: FX.seedTickets(),
+    cart: {}, draft: [], prqDraft: [], drawer: null, toast: null, shopFilter: null,
   });
 }

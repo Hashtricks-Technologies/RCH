@@ -1,10 +1,11 @@
+import { useState } from "react";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
-import { canReceiveTicket } from "../../lib/selectors";
+import { canCancelTicket, canReceiveTicket, ticketDot } from "../../lib/selectors";
 import { fq, U } from "../../lib/fmt";
 import { DrawerFrame } from "../../ui/Drawer";
 import { registerDrawer, type DrawerProps } from "../../drawers";
-import { Alert, Btn, DataTable, Feed, Otp, Section, StatusPill } from "../../ui/kit";
+import { Alert, Btn, DataTable, Feed, Field, Otp, Section, StatusPill } from "../../ui/kit";
 import type { TktStatus } from "../../types";
 
 const STEPS: { st: TktStatus; title: string; body: string }[] = [
@@ -16,8 +17,18 @@ const ORDER: TktStatus[] = ["Issued", "Collected", "Received"];
 
 function TicketDrawer({ id }: DrawerProps) {
   const tkt = useApp((s) => s.tkt.find((t) => t.id === id));
+  const user = useApp((s) => s.user)!;
   const close = useApp((s) => s.closeDrawer);
   const receiveTicket = useApp((s) => s.receiveTicket);
+  const cancelTicket = useApp((s) => s.cancelTicket);
+  const [why, setWhy] = useState("");
+  const [cancelling, setCancelling] = useState(false);
+  const [cancelBusy, setCancelBusy] = useState(false);
+  const withdraw = async () => {
+    setCancelBusy(true);
+    // No reset on success: the store action closes the drawer, so this component is gone.
+    try { await cancelTicket(id, why.trim()); } finally { setCancelBusy(false); }
+  };
 
   if (!tkt) {
     return (
@@ -28,7 +39,17 @@ function TicketDrawer({ id }: DrawerProps) {
   }
 
   const at = ORDER.indexOf(tkt.st);
-  const canReceive = canReceiveTicket(tkt.st);
+  // Which way this ticket runs decides almost everything on this screen. A ticket *to* here is
+  // one to collect and confirm; a ticket *from* here is stock this counter granted away, and the
+  // server refuses a receipt on it (`requireLocOf(claims, t.to)`) — so the button is not drawn.
+  const sentFromHere = tkt.from === user.loc;
+  const canReceive = tkt.to === user.loc && canReceiveTicket(tkt.st);
+  // A transfer this counter granted out of its own stock is its own to withdraw while nobody
+  // has collected it. A ticket bound *for* here is the store's or the kitchen's to withdraw.
+  const canWithdraw = sentFromHere && canCancelTicket(tkt.st);
+  // The server sends the six digits to the collecting location and to nobody else, so an empty
+  // string is not a missing OTP — it is one that was never this screen's to show.
+  const holdsOtp = tkt.otp !== "";
 
   return (
     <DrawerFrame
@@ -37,11 +58,15 @@ function TicketDrawer({ id }: DrawerProps) {
       foot={<>
         <Btn variant="gh" onClick={close}>Close</Btn>
         <div className="sp" />
-        <Btn disabled={!canReceive} onClick={() => receiveTicket(tkt.id)}>Confirm receipt</Btn>
+        {/* Not merely disabled: a receipt on a ticket this counter *sent* is refused outright by
+            the server, so the control is absent rather than dangled. */}
+        {sentFromHere
+          ? <span className="mini">{LOC[tkt.to].n} confirms this one at their end</span>
+          : <Btn disabled={!canReceive} onClick={() => receiveTicket(tkt.id)}>Confirm receipt</Btn>}
       </>}
     >
       <div className="tktbox">
-        <Otp value={tkt.otp} />
+        {holdsOtp && <Otp value={tkt.otp} />}
         <div style={{ flex: 1, minWidth: 0 }}>
           <div className="mono" style={{ fontSize: 21, fontWeight: 700, letterSpacing: ".02em" }}>{tkt.id}</div>
           <div className="mini" style={{ marginTop: 4 }}>
@@ -51,9 +76,20 @@ function TicketDrawer({ id }: DrawerProps) {
           <div style={{ marginTop: 8 }}><StatusPill status={tkt.st} /></div>
         </div>
       </div>
+      {/* Three different facts, and the old single test on an empty OTP told the wrong one twice:
+          a ticket this counter sent has digits it will never see, and a collected or withdrawn
+          one has digits that are spent. Direction first, then status. */}
       <p className="mini mtop">
-        Nothing is scanned: whoever collects reads these six digits aloud to the store keeper at {LOC[tkt.from].n},
-        who types them in to release the goods.
+        {sentFromHere
+          ? <>The six digits sit on {LOC[tkt.to].n}&apos;s own screen — this ticket was raised here, so the
+            collector reads them out to you at the window.</>
+          : tkt.st === "Cancelled"
+            ? <>This ticket was withdrawn before anyone collected against it, so its six digits were never used.</>
+            : holdsOtp
+              ? <>Nothing is scanned: whoever collects reads these six digits aloud to the store keeper at {LOC[tkt.from].n},
+                who types them in to release the goods.</>
+              : <>The six digits were used at handover — {LOC[tkt.from].n} released the goods against them and
+                there is nothing left to quote.</>}
       </p>
 
       <Section title="Approved items" sub="Exactly what may be collected against this ticket." />
@@ -76,6 +112,29 @@ function TicketDrawer({ id }: DrawerProps) {
         empty={{ title: "No item on this ticket" }}
       />
 
+      {canWithdraw && (
+        <Section title="Withdraw this ticket" sub={`Nobody collected against it, and the stock should go back to ${LOC[tkt.from].n}`}>
+          {cancelling ? (
+            <>
+              <Field label="Reason" hint="Kept with the ticket's history.">
+                <input
+                  placeholder="Asked for it back, wrong outlet…"
+                  aria-label={`Why ${tkt.id} is being cancelled`}
+                  value={why}
+                  onChange={(e) => setWhy(e.target.value)}
+                />
+              </Field>
+              <Btn size="xs" variant="dg" disabled={!why.trim() || cancelBusy} onClick={withdraw}>
+                {cancelBusy ? "Cancelling…" : "Confirm cancellation"}
+              </Btn>{" "}
+              <Btn size="xs" variant="gh" onClick={() => setCancelling(false)}>Keep the ticket</Btn>
+            </>
+          ) : (
+            <Btn size="xs" variant="gh" onClick={() => setCancelling(true)}>Cancel ticket</Btn>
+          )}
+        </Section>
+      )}
+
       {tkt.st === "Cancelled" && (
         <Alert tone="w" label="CANCELLED">
           This ticket was withdrawn before it was collected — nothing was sent. Raise a new request
@@ -85,7 +144,12 @@ function TicketDrawer({ id }: DrawerProps) {
 
       {tkt.st !== "Cancelled" && (
         <>
-          <Section title="Where it is" sub="Three steps from the store shelf to this counter." />
+          <Section
+            title="Where it is"
+            sub={sentFromHere
+              ? `Three steps from this counter's shelf to ${LOC[tkt.to].n}.`
+              : `Three steps from the ${LOC[tkt.from].n} shelf to this counter.`}
+          />
           <Feed items={STEPS.map((step, i) => ({
             key: step.st,
             title: <>{step.title}{i === at ? " — this is where it is now" : ""}</>,
@@ -96,15 +160,25 @@ function TicketDrawer({ id }: DrawerProps) {
         </>
       )}
 
+      <Section title="History" sub={`Every hand ${tkt.id} has passed through`}>
+        <Feed items={tkt.hist.map((h, i) => ({
+          key: h.s + i, title: h.s, body: h.who, when: h.t, color: ticketDot(h.s),
+        }))} />
+      </Section>
+
       <p className="mini mtop">
         Issued means the store keeper has generated it. Collected means it has been handed over and is in transit.
-        Received means confirmed at the counter. {canReceive
-          ? "Check the quantities physically, then confirm receipt to add them to this counter's stock."
-          : tkt.st === "Issued"
-            ? "Collect the goods at " + LOC[tkt.from].n + " first — receipt can only be confirmed once handed over."
-            : tkt.st === "Cancelled"
-              ? "Nothing was collected against this one, so nothing reached this counter."
-              : "This ticket is closed; the stock is already counted at this counter."}
+        Received means confirmed at the counter. {sentFromHere
+          ? tkt.st === "Cancelled"
+            ? "This one was withdrawn, so the stock never left this counter."
+            : LOC[tkt.to].n + " confirms receipt at their end — this counter's part ended at the handover."
+          : canReceive
+            ? "Check the quantities physically, then confirm receipt to add them to this counter's stock."
+            : tkt.st === "Issued"
+              ? "Collect the goods at " + LOC[tkt.from].n + " first — receipt can only be confirmed once handed over."
+              : tkt.st === "Cancelled"
+                ? "Nothing was collected against this one, so nothing reached this counter."
+                : "This ticket is closed; the stock is already counted at this counter."}
       </p>
     </DrawerFrame>
   );

@@ -173,6 +173,16 @@ const TONES: Record<string, Tone> = {
   "Awaiting approval": "wn", "Awaiting order": "wn", "Partly ordered": "wn", "Partly received": "wn",
 };
 export const toneFor = (st: string): Tone => TONES[st] ?? "mu";
+/**
+ * The dot beside one entry on a **ticket's** trail. Written once because three drawers render
+ * that trail and a fourth copy of the same three-way rule is how they drift apart. It is a
+ * separate rule from the `dotFor` helpers that colour a *request*'s or a *requisition*'s trail:
+ * those read a different vocabulary ("Manager approved", "Ticket issued"), and one name over two
+ * vocabularies would invite merging them.
+ */
+export const ticketDot = (state: string): string =>
+  state.startsWith("Cancelled") ? "var(--crit)"
+    : state === "Received" ? "var(--good)" : "var(--accent)";
 export const stateTone = (a: number, rl: number): Tone => (a <= 0 ? "cr" : rl > 0 && a < rl ? "wn" : "ok");
 export const stateLabel = (a: number, rl: number) => (a <= 0 ? "Out" : rl > 0 && a < rl ? "Low" : "Healthy");
 export const basePrices = () => ({ A: { ...PL.A }, B: { ...PL.B } });

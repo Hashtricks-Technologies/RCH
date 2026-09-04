@@ -95,11 +95,12 @@ export default function Tickets() {
         />
         <DataTable
           cols={[
-            { h: "Ticket ID", cls: "nm", w: "15%" },
-            { h: "Against request", w: "16%" },
-            { h: "From", w: "15%" },
+            { h: "Ticket ID", cls: "nm", w: "14%" },
+            { h: "Against request", w: "14%" },
+            { h: "From", w: "13%" },
             { h: "Items" },
-            { h: "Quantity", r: true, w: "11%" },
+            { h: "Quantity", r: true, w: "10%" },
+            { h: "Collection OTP", w: "16%" },
             { h: "Status", w: "11%" },
             { h: "", w: "10%" },
           ]}
@@ -111,6 +112,14 @@ export default function Tickets() {
               <>{LOC[t.from].n}<small>{LOC[t.from].floor}</small></>,
               itemText(t),
               <b>{sum(t.lines, (l) => l.qty)}</b>,
+              // Inbound is where the six digits actually land: the server sends them to the
+              // ticket's destination and nowhere else, so this is the one kitchen screen that
+              // can show them — and the COLLECT alert above tells the kitchen to quote them.
+              t.otp !== ""
+                ? <Otp value={t.otp} />
+                : <span className="dim mini">
+                    {t.st === "Cancelled" ? "withdrawn — the OTP was never used" : "used at handover"}
+                  </span>,
               <StatusPill status={t.st} />,
               canReceiveTicket(t.st)
                 ? <Btn size="xs" onClick={() => receiveTicket(t.id)}>Receive</Btn>
@@ -134,7 +143,7 @@ export default function Tickets() {
           extra={<>{toCollect.length} to collect · {arriving.length} in transit</>} />
       </Card>
 
-      <Card title="Issued out of the kitchen" sub="Read the OTP out to the collector — the store side will not release without it" flush className="mtop">
+      <Card title="Issued out of the kitchen" sub="Take the OTP from the collector — it is on their screen, not this one" flush className="mtop">
         <Toolbar
           placeholder="Search ticket, order, destination, item…"
           value={out.q}
@@ -162,8 +171,10 @@ export default function Tickets() {
               <>{LOC[t.to].n}<small>{LOC[t.to].floor}</small></>,
               itemText(t),
               <b>{sum(t.lines, (l) => l.qty)}</b>,
+              // Outbound: the kitchen is the *issuing* side, so the server sends it no digits at
+              // all. This column can only ever say who is holding them.
               canHandOver(t.st)
-                ? <Otp value={t.otp} />
+                ? <span className="mini">Held by {LOC[t.to].n}</span>
                 : <span className="dim mini">
                     {t.st === "Cancelled" ? "withdrawn — the OTP was never used" : "used at handover"}
                   </span>,

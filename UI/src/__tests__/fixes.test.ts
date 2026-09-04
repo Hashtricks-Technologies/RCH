@@ -6,8 +6,8 @@ import {
   onOrder, parOf, qty, recipeCost, resv,
 } from "../lib/selectors";
 import { fq, fromWireBestBefore, unitTotal } from "../lib/fmt";
-import { seedPrq, seedTkt } from "../data/seed";
-import { resetStore, S, as } from "./fixture";
+import { seedPrq, seedTkt } from "@rch/contract/fixtures";
+import { resetStore, S } from "./fixture";
 
 beforeEach(resetStore);
 
@@ -260,42 +260,13 @@ describe("countable units still show a fraction when there is one", () => {
  * the shop that holds it, and raises the ticket the asker collects" and "needs a reason the
  * other shop can read"; tickets.test.ts "refuses a wrong OTP and moves nothing". */
 
-describe("support is customer care for the portal", () => {
-  it("raises a ticket carrying the screen it is about, and threads the reply", () => {
-    as("counter");
-    S().raiseTicket({
-      topic: "A number looks wrong", subject: "Cash collected stuck at zero",
-      body: "Sales is climbing but cash is not.", priority: "Urgent", screen: "Dashboard",
-    });
-    const t = S().tickets[0];
-    expect(t.st).toBe("Open");
-    expect(t.screen).toBe("Dashboard");
-    expect(t.by).toBe("Kavitha Raman");
-    expect(t.messages).toHaveLength(1);
-
-    S().replyToTicket(t.id, "Still happening after a refresh.");
-    expect(S().tickets[0].messages).toHaveLength(2);
-
-    S().setTicketStatus(t.id, "Resolved");
-    S().rateTicket(t.id, 5);
-    expect(S().tickets[0].st).toBe("Resolved");
-    expect(S().tickets[0].rating).toBe(5);
-  });
-
-  it("a reply on a ticket waiting on the user hands it back to support", () => {
-    as("counter");
-    const waiting = S().tickets.find((t) => t.st === "Waiting on you")!;
-    S().replyToTicket(waiting.id, "Yes, that covers it — thank you.");
-    expect(S().tickets.find((t) => t.id === waiting.id)!.st).toBe("With support");
-  });
-
-  it("refuses a ticket with no subject", () => {
-    as("counter");
-    const before = S().tickets.length;
-    S().raiseTicket({ topic: "Something else", subject: "  ", body: "x", priority: "Low", screen: "Dashboard" });
-    expect(S().tickets).toHaveLength(before);
-  });
-});
+/* Support is customer care for the portal, and the whole desk is the server's from Phase 6:
+ * apps/api/src/modules/support/support.test.ts pins every rule this block used to — "takes the
+ * ticket, stamps the screen it was raised from, and threads the first message" for the raise,
+ * "puts a ticket waiting on the reporter back with support" for the reply's status walk, and
+ * "needs a subject support can read" for the refusal. The four store calls that reach those
+ * routes are in writes.test.ts, and which buttons the drawer may draw is
+ * packages/domain/src/support.test.ts. */
 
 describe("a new product a shop wants goes to procurement, not to support", () => {
   // The chain itself is the server's: productreqs.test.ts walks requested -> created with the

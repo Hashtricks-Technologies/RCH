@@ -17,8 +17,14 @@ import type { Role } from "./types";
 
 const REGISTRY: Record<Role, Record<string, React.ComponentType>> = { counter, manager, store, prod, buyer };
 
-const labelOf = (k: string) =>
-  Object.values(NAV).flat().flatMap((g) => g.items).find((i) => i.k === k)?.label ?? k;
+/** The sidebar name for a route key. Several keys are shared and named differently by the roles
+ *  that hold them — `orders` is *Orders* to the kitchen and *Purchase Orders* to the buyer — so
+ *  the signed-in role's own sidebar is asked first, and any role's only when the key is not on
+ *  it. Without that, which name a person is told depended on the order `NAV`'s keys happen to
+ *  be declared in, and a kitchen sent back to its board could be told it was on Purchase Orders. */
+const labelIn = (role: Role, k: string) => NAV[role].flatMap((g) => g.items).find((i) => i.k === k)?.label;
+const labelOf = (role: Role, k: string) =>
+  labelIn(role, k) ?? Object.values(NAV).flat().flatMap((g) => g.items).find((i) => i.k === k)?.label ?? k;
 
 /** UA-01: a refused screen says so on the way out instead of bouncing in silence. */
 function Denied({ k }: { k: string }) {
@@ -26,7 +32,7 @@ function Denied({ k }: { k: string }) {
   const notify = useApp((s) => s.notify);
   useEffect(() => {
     const a = /^[AEIOU]/.test(user.rl) ? "an" : "a";
-    notify(`${labelOf(k)} is not available to ${a} ${user.rl} — you are back on ${labelOf(HOME[user.r])}`);
+    notify(`${labelOf(user.r, k)} is not available to ${a} ${user.rl} — you are back on ${labelOf(user.r, HOME[user.r])}`);
   }, [k, user, notify]);
   return <Navigate to={"/" + HOME[user.r]} replace />;
 }

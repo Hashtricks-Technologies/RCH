@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { useApp } from "../store";
 import { THEME_KEY, applyTheme, nextTheme, readStoredTheme, storeTheme } from "../lib/theme";
+import { signedOut } from "./fixture";
 
 /** A Storage that refuses every operation — a private window, or site data blocked. */
 const hostileStorage = (): Storage =>
@@ -104,7 +105,7 @@ describe("theme in the app store", () => {
 
   it("survives signing out", () => {
     useApp.getState().setTheme("dark");
-    useApp.getState().signOut();
+    signedOut();
     expect(useApp.getState().theme).toBe("dark");
   });
 });

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { IT, LOC } from "../../data/master";
 import { useApp, type AppState } from "../../store";
 import { committed, costOf, freeToPromise, hasLeft, isTicketOpen, onOrder, parOf, qty, resv } from "../../lib/selectors";
@@ -7,6 +7,7 @@ import {
   Btn, Card, DataTable, FilterSelect, Icon, PageHead, Pill, StatusPill, TableFoot, Toolbar,
 } from "../../ui/kit";
 import type { Col } from "../../ui/kit";
+import type { StockLedgerRow } from "../../types";
 
 /** Every report is plain strings: the table renders them and the CSV export ships them (P1, P2). */
 interface Rep {
@@ -19,9 +20,21 @@ interface Rep {
   foot?: string;
   empty: { title: string; sub: string };
 }
-interface ReportDef { k: string; n: string; d: string; icon: string; build: (s: AppState) => Rep }
+/** Where the one server-read report has got to. Three states, not two: an empty ledger and a
+ *  ledger that could not be read are different facts, and printing "the store carries no lines"
+ *  for an outage is the one thing this screen must not say. */
+export type LedgerState = { st: "loading" } | { st: "failed" } | { st: "rows"; rows: StockLedgerRow[] };
+
+/** Nine of the ten reports are arithmetic over collections the snapshot already holds whole, so
+ *  they read only `s`. The ledger is the exception — its opening balance is a sum of stock moves
+ *  the browser has never held — so every build is handed what the server answered with, and the
+ *  other nine ignore it. */
+interface ReportDef { k: string; n: string; d: string; icon: string; build: (s: AppState, ledger: LedgerState) => Rep }
 
 const DASH = "—";
+/** The ledger's window, in days — the server's own default, said once here so the report's foot
+ *  and the query it makes cannot drift apart. */
+const LEDGER_DAYS = 30;
 const mins = (t: string) => {
   const [h, m] = t.split(":").map(Number);
   return Number.isFinite(h) && Number.isFinite(m) ? h * 60 + m : null;
@@ -42,22 +55,24 @@ const fromStore = (s: AppState) => s.tkt.filter((t) => t.from === "store");
 const stamp = (s: AppState, req: string, st: string) =>
   s.req.find((x) => x.id === req)?.hist.find((h) => h.s === st)?.t;
 
-const ledger = (s: AppState): Rep => {
-  const rows = storeKeys(s).sort(byCode).map((k) => {
-    const grn = s.grn.filter((g) => g.it === k);
-    const recd = sum(grn, (g) => g.qty);
-    // Only what has actually gone out of the window. A withdrawn ticket moved nothing, so
-    // counting it against issues also walked the opening balance up by the same quantity —
-    // opening is worked back from closing here, and the two errors do not cancel.
-    const out = sum(fromStore(s).filter((t) => hasLeft(t.st)),
-      (t) => sum(t.lines.filter((l) => l.it === k), (l) => l.qty));
-    const close = qty(s, "store", k);
-    return [
-      IT[k].n, IT[k].c, U(k),
-      fq(close - recd + out, k), fq(recd, k), fq(out, k), fq(close, k),
-      money0(close * costOf(k)),
-    ];
-  });
+/**
+ * The one report the browser cannot build for itself. Opening, received and issued are the
+ * server's own sums over `stock_moves` (`GET /reports/stock-ledger`), read once when the report
+ * is selected; `Value at cost` stays a client calculation, because a cost is master data the
+ * snapshot already carries and pricing a closing balance is not a question about movement.
+ */
+const ledger = (_s: AppState, ledger: LedgerState): Rep => {
+  const known = (ledger.st === "rows" ? ledger.rows : []).filter((r) => IT[r.it]);
+  const rows = [...known].sort((a, b) => byCode(a.it, b.it)).map((r) => [
+    IT[r.it].n, IT[r.it].c, U(r.it),
+    fq(r.opening, r.it), fq(r.recd, r.it), fq(r.issued, r.it), fq(r.closing, r.it),
+    money0(r.closing * costOf(r.it)),
+  ]);
+  // Totalled per unit, not as one number: the central store carries litres, kilos and countable
+  // things on the same ledger, and `ledgerTotals`' four scalars would add them together — which
+  // is the "510 units" defect the house rule about `unitTotal` exists to prevent.
+  const col = (pick: (r: StockLedgerRow) => number) =>
+    unitTotal(known.map((r) => ({ it: r.it, qty: pick(r) })));
   return {
     cols: [
       { h: "Item", cls: "nm", w: "18%" }, { h: "Code" }, { h: "Unit" },
@@ -66,8 +81,18 @@ const ledger = (s: AppState): Rep => {
     ],
     rows,
     facet: 2,
-    foot: `Closing value ${money0(sum(storeKeys(s), (k) => qty(s, "store", k) * costOf(k)))} · receipts from goods receipt notes, issues from collected tickets`,
-    empty: { title: "The central store carries no lines", sub: "Receive a purchase order and the ledger opens." },
+    foot: ledger.st === "loading"
+      ? `Reading the last ${LEDGER_DAYS} days of movement from the central store's ledger…`
+      : ledger.st === "failed"
+        ? "The ledger could not be read — every other report on this screen still works."
+        : `Opening ${col((r) => r.opening)} · received ${col((r) => r.recd)} · issued ${col((r) => r.issued)}`
+          + ` · closing ${col((r) => r.closing)} worth ${money0(sum(known, (r) => r.closing * costOf(r.it)))}`
+          + ` · the last ${LEDGER_DAYS} days, summed from the ledger itself`,
+    empty: ledger.st === "loading"
+      ? { title: "Reading the ledger", sub: `The central store's movement for the last ${LEDGER_DAYS} days is on its way.` }
+      : ledger.st === "failed"
+        ? { title: "The ledger could not be read", sub: "The server did not answer. Pick the report again to retry — the toast says what went wrong." }
+        : { title: "The central store carries no lines", sub: "Receive a purchase order and the ledger opens." },
   };
 };
 
@@ -357,8 +382,24 @@ export default function Reports() {
   const [q, setQ] = useState("");
   const [fi, setFi] = useState(0);
 
+  // The nine other reports are arithmetic over collections this snapshot already holds whole.
+  // This one is not: the ledger's opening balance is a sum of stock moves, which the browser has
+  // never held, and reconstructing it backwards from receipts and issues is what a withdrawn
+  // ticket used to walk by the quantity it never moved.
+  const readStockLedger = useApp((x) => x.readStockLedger);
+  const [ledgerState, setLedgerState] = useState<LedgerState>({ st: "loading" });
+  useEffect(() => {
+    if (sel !== "ledger") return;
+    let live = true;
+    setLedgerState({ st: "loading" });
+    void readStockLedger("store", LEDGER_DAYS).then((rows) => {
+      if (live) setLedgerState(rows === null ? { st: "failed" } : { st: "rows", rows });
+    });
+    return () => { live = false; };
+  }, [sel, readStockLedger]);
+
   const def = REPORTS.find((r) => r.k === sel) ?? REPORTS[0];
-  const rep = def.build(s);
+  const rep = def.build(s, ledgerState);
 
   // Each report names the column worth filtering on; its distinct values are
   // the filter, so the button always narrows something that is really there.

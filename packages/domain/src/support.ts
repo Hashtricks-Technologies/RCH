@@ -32,3 +32,9 @@ export const statusAfterReply = (st: TicketStatus): TicketStatus =>
 /** Spec §9.2, `rateTicket`: "1-5; ticket Resolved or Closed". Rating an open ticket rates a
  *  guess at how it will go. */
 export const mayRate = (st: TicketStatus): boolean => st === "Resolved" || st === "Closed";
+
+/** Whether a reply may still be added. Not an edge in the table above: a reply is refused
+ *  *before* a message is written, so `statusAfterReply` is never asked about a closed ticket
+ *  and the table never sees the case. One rule, two consumers — the service refuses on it and
+ *  the drawer hides its reply box on it, so a box the server would refuse is never drawn. */
+export const mayReply = (st: TicketStatus): boolean => st !== "Closed";

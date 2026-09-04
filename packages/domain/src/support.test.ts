@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { TicketStatus } from "@rch/contract";
-import { canTransition, mayRate, mayUserSet, statusAfterReply, SUPPORT_TRANSITIONS } from "./index.js";
+import { canTransition, mayRate, mayReply, mayUserSet, statusAfterReply, SUPPORT_TRANSITIONS } from "./index.js";
 
 const ALL: TicketStatus[] = ["Open", "With support", "Waiting on you", "Resolved", "Closed"];
 
@@ -21,6 +21,13 @@ describe("what a person at a screen may do to their own ticket", () => {
 
   it("takes a rating only once the desk says it is done", () => {
     expect(ALL.filter(mayRate)).toEqual(["Resolved", "Closed"]);
+  });
+
+  it("takes a reply on anything but a closed ticket", () => {
+    expect(ALL.filter(mayReply)).toEqual(["Open", "With support", "Waiting on you", "Resolved"]);
+    // Replying to a resolved ticket is how it is reopened, so it must stay allowed.
+    expect(mayReply("Resolved")).toBe(true);
+    expect(mayReply("Closed")).toBe(false);
   });
 });
 

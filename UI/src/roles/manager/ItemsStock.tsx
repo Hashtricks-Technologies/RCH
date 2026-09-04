@@ -183,7 +183,7 @@ export default function ItemsStock() {
             { h: "Product", sort: "item" },
             { h: "Quantity", r: true, sort: "qty" },
             { h: "Stage", sort: "stage" },
-            { h: "Handover OTP", r: true, w: "13%" },
+            { h: "Collected by", r: true, w: "13%" },
           ]}
           rows={tSorted.map((t) => {
             const stage = stageOf(t.st);
@@ -203,9 +203,11 @@ export default function ItemsStock() {
                         : `On the shelf at ${LOC[t.to].n}`}
                   </small>
                 </>,
+                // The six digits belong to the collecting counter alone — the manager reads who
+                // is holding the ticket, which is the question this column was really asking.
                 stage === "Received"
                   ? <span className="dim">used</span>
-                  : <span className="mono">{t.otp.replace(/(\d{3})(\d{3})/, "$1 $2")}</span>,
+                  : <span>{LOC[t.to].n}</span>,
               ],
             };
           })}

@@ -1,9 +1,9 @@
 import { useState } from "react";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
-import { canCancelTicket, canHandOver } from "../../lib/selectors";
+import { canCancelTicket, canHandOver, ticketDot } from "../../lib/selectors";
 import { U, fq, money, sum } from "../../lib/fmt";
-import { Alert, Btn, DataTable, Feed, Field, Otp, Pill, Section, StatusPill } from "../../ui/kit";
+import { Alert, Btn, DataTable, Feed, Field, Pill, Section, StatusPill } from "../../ui/kit";
 import { DrawerFrame } from "../../ui/Drawer";
 import { registerDrawer, type DrawerProps } from "../../drawers";
 
@@ -89,7 +89,11 @@ function TicketDrawer({ id }: DrawerProps) {
             From <b>{LOC[t.from].n}</b> ({LOC[t.from].c}) → To <b>{LOC[t.to].n}</b> ({LOC[t.to].c}, {LOC[t.to].floor})
           </div>
         </div>
-        <Otp value={t.otp} />
+        {/* Withheld here on purpose: the OTP reaches the collecting location's own screen and
+            nowhere else, so the window has to be told to ask for it rather than shown blanks. */}
+        <p className="mini" style={{ maxWidth: 210 }}>
+          Ask {LOC[t.to].n} to read out the six digits on their ticket.
+        </p>
       </div>
 
       {canHandOver(t.st) && (
@@ -201,6 +205,14 @@ function TicketDrawer({ id }: DrawerProps) {
           />
         </div>
       )}
+
+      <Section title="History" sub={`Every hand ${t.id} has passed through`}>
+        <Feed
+          items={t.hist.map((h, i) => ({
+            key: h.s + i, title: h.s, body: h.who, when: h.t, color: ticketDot(h.s),
+          }))}
+        />
+      </Section>
 
       {r && r.mgrNote && (
         <div className="mini mtop">Manager note: {r.mgrNote}</div>
