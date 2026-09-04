@@ -112,6 +112,7 @@ Resources:
 
   DbSubnetGroup:
     Type: AWS::RDS::DBSubnetGroup
+    DeletionPolicy: Retain
     Condition: IsDev
     Properties:
       DBSubnetGroupName: rch
@@ -120,6 +121,7 @@ Resources:
 
   DbSecurityGroup:
     Type: AWS::EC2::SecurityGroup
+    DeletionPolicy: Retain
     Condition: IsDev
     Properties:
       GroupName: rch-rds
@@ -171,6 +173,7 @@ Resources:
 
   GithubDeployRole:
     Type: AWS::IAM::Role
+    DeletionPolicy: Retain
     Condition: IsDev
     Properties:
       RoleName: rch-github-deploy
@@ -281,6 +284,7 @@ Resources:
 
   Certificate:
     Type: AWS::CertificateManager::Certificate
+    DeletionPolicy: Retain
     Properties:
       DomainName: !Ref HostName
       ValidationMethod: DNS
