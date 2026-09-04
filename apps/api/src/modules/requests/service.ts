@@ -47,6 +47,12 @@ export function createRequestsService(db: Db) {
         // A zero reaches the operator as the store's own sentence, not a schema's 400 — which
         // is why `QtySchema` in packages/contract leaves positivity to this line.
         assertRule(body.lines.every((l) => l.qty > 0), "Add at least one line with a quantity");
+        // One item, one line. Two lines of the same item would be decided twice against the
+        // same free-to-promise and shown as two shortfalls the counter cannot act on, and the
+        // ticket would carry one folded line the request no longer matches. Refuse it where
+        // the operator can still fix it — the draft screen — rather than reconcile it later.
+        const repeated = body.lines.find((l, i) => body.lines.findIndex((x) => x.it === l.it) !== i);
+        if (repeated) assertRule(false, `Combine the ${master.items[repeated.it]!.n} lines into one`);
 
         const at = new Date();
         const id = await allocateId(tx, "req", at);
@@ -159,8 +165,17 @@ export function createRequestsService(db: Db) {
         assertTransition(REQUEST_TRANSITIONS, r.status, "Ticket issued", id);
 
         const master = await loadMaster(tx);
-        const lines = (await requestsRepo.lines(tx, id)).filter((l) => l.appr > 0).map((l) => ({ it: l.it, qty: l.appr }));
-        assertRule(lines.length > 0, "Nothing approved on this request");
+        const approved = (await requestsRepo.lines(tx, id)).filter((l) => l.appr > 0);
+        assertRule(approved.length > 0, "Nothing approved on this request");
+        // Fold before the cover check, not after it (CLAUDE.md, "Dispatch is all-or-nothing":
+        // a repeated item is folded into one line before the cover check). `POST /requests`
+        // refuses a repeat outright, so only a row written before that rule — seeded, migrated,
+        // hand-corrected — can arrive with one, and for it the check has to see the total:
+        // `writeTicket` folds and reserves the sum, so two lines of 8 checked separately
+        // against 12 on hand would hold 16. Same number checked, held and printed.
+        const folded = new Map<string, number>();
+        for (const l of approved) folded.set(l.it, round3((folded.get(l.it) ?? 0) + l.appr));
+        const lines = [...folded].map(([it, qty]) => ({ it, qty }));
 
         // Ids before balance rows (lib/ledger.ts's header): take the ticket's number while
         // holding no shelf, so a sale that already holds the sequences row cannot deadlock us.

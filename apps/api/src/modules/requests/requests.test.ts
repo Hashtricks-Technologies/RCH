@@ -67,6 +67,14 @@ describe("POST /requests", () => {
     expect(r.json().error.message).toBe("Add at least one line with a quantity");
   });
 
+  it("refuses two lines of the same item, where the counter can still fix it", async () => {
+    // One item, one line. Decided twice against the same free-to-promise it would promise the
+    // shelf twice over, and the ticket folds the two into one line the request no longer matches.
+    const r = await post("u1", "/requests", { lines: [{ it: "milk", qty: 8 }, { it: "sugar", qty: 2 }, { it: "milk", qty: 8 }] });
+    expect(r.statusCode).toBe(422);
+    expect(r.json().error.message).toBe("Combine the Milk 1L (toned) lines into one");
+  });
+
   it("404s an item the master does not have", async () => {
     const r = await post("u1", "/requests", { lines: [{ it: "totally-fake", qty: 1 }] });
     expect(r.statusCode).toBe(404);
@@ -159,6 +167,16 @@ describe("POST /requests/:id/approve", () => {
     expect(r.json().result.request.st).toBe("Rejected");
     expect(r.json().result.trimmed).toBe(false);
     expect(r.json().message).toBe(`${id} rejected — no ticket will be issued`);
+  });
+
+  it("nets the stock a live ticket is already holding (C6)", async () => {
+    // TKT-0440 is Issued and holds 500 of the store's 2400 cups, so only 1900 are free to
+    // promise. Drop the open-reservation term and the manager would promise all 2000.
+    const id = await given.request(app.testDb!.db, { from: "coffee", lines: [{ it: "cup", qty: 2000 }] });
+    const r = await post("u2", `/requests/${id}/approve`, { appr: [2000], note: "" });
+    expect(r.json().result.request.lines[0]).toEqual({ it: "cup", qty: 2000, appr: 1900, short: 100 });
+    expect(r.json().result.request.st).toBe("Partially approved");
+    expect(r.json().result.trimmed).toBe(true);
   });
 
   it("approves in full and forwards it, with no shortfall", async () => {
@@ -256,6 +274,31 @@ describe("POST /requests/:id/issue-ticket", () => {
     const r = await post("u3", "/requests/REQ-2026-0911/issue-ticket");
     expect(r.statusCode).toBe(422);
     expect(r.json().error.message).toBe("Not enough Milk 1L (toned) available to promise");
+  });
+
+  it("folds a repeated item into one cover check before promising it", async () => {
+    // `POST /requests` refuses a repeat, so this is a row written before that rule. Checked
+    // line by line, 8 and 8 each clear the store's 12 L and `writeTicket` would then reserve
+    // 16 — free-to-promise four litres in the red. The check has to see the folded 16.
+    const id = await given.request(app.testDb!.db, {
+      from: "coffee", st: "Manager approved", lines: [{ it: "milk", qty: 8, appr: 8 }, { it: "milk", qty: 8, appr: 8 }],
+    });
+    const r = await post("u3", `/requests/${id}/issue-ticket`);
+    expect(r.statusCode).toBe(422);
+    expect(r.json().error.message).toBe("Not enough Milk 1L (toned) available to promise");
+    expect(await app.testDb!.db.select().from(reservations).where(eq(reservations.itemKey, "milk"))).toHaveLength(0);
+  });
+
+  it("issues one line and one hold for a repeated item that does fit", async () => {
+    const id = await given.request(app.testDb!.db, {
+      from: "coffee", st: "Manager approved", lines: [{ it: "milk", qty: 5, appr: 5 }, { it: "milk", qty: 4, appr: 4 }],
+    });
+    const r = await post("u3", `/requests/${id}/issue-ticket`);
+    expect(r.statusCode).toBe(200);
+    expect(r.json().result.ticket.lines).toEqual([{ it: "milk", qty: 9 }]);
+    const held = await app.testDb!.db.select().from(reservations).where(eq(reservations.ticketId, r.json().result.ticket.id));
+    expect(held).toHaveLength(1);
+    expect(held[0]).toMatchObject({ loc: "store", itemKey: "milk", qty: 9, releasedAt: null });
   });
 
   it("refuses a request that already has a ticket", async () => {
