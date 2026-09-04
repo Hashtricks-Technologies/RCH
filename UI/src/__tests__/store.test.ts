@@ -155,6 +155,16 @@ describe("the store's reports read a withdrawn ticket as withdrawn", () => {
     expect(cell("ledger", "Paper cup 150ml", "Opening")).toBe("2400");
   });
 
+  it("keeps a withdrawn ticket out of what the velocity report calls issued", () => {
+    // "Issued from store" is the same measure under another heading, so it moves with the
+    // ledger — and a withdrawn ticket must not leave an item ranked as though it were fast.
+    expect(cell("movers", "Paper cup 150ml", "Issued from store")).toBe("0");
+    setTicketStatus("Collected");
+    expect(cell("movers", "Paper cup 150ml", "Issued from store")).toBe("500");
+    setTicketStatus("Cancelled");
+    expect(cell("movers", "Paper cup 150ml", "Issued from store")).toBe("0");
+  });
+
   it("drops a withdrawn ticket out of the issue register so the row adds up (I4)", () => {
     // At the window: one ticket, one line, 500 cups, and the "At the window" column agrees.
     expect(cell("issreg", "Coffee Shop", "Tickets")).toBe("1");

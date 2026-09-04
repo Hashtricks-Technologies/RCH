@@ -242,7 +242,9 @@ const ageing = (s: AppState): Rep => {
 };
 
 const movers = (s: AppState): Rep => {
-  const out = fromStore(s);
+  // "Issued from store" is stock that left the window, so it is measured the way the ledger
+  // measures it — a withdrawn ticket moved nothing and must not make an item look fast.
+  const out = fromStore(s).filter((t) => hasLeft(t.st));
   const rows = storeKeys(s)
     .map((k) => ({
       k,
