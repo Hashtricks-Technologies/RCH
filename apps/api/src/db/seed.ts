@@ -59,10 +59,11 @@ export async function seedDatabase(db: Db, opts: { password: string; forcePasswo
 }
 
 async function seedMaster(tx: Tx, passwordHash: string, mustChange: boolean) {
-  await tx.insert(s.locations).values([
-    ...Object.entries(FX.LOC).map(([key, l]) => ({ key, name: l.n, code: l.c, type: l.type, floor: l.floor, costCentre: l.cc, priceList: l.list ?? null, sellable: l.type === "Outlet" })),
-    { key: "quarantine", name: "Quarantine", code: "WH-QR", type: "Store" as const, floor: "Basement", costCentre: "CC-STO", priceList: null, sellable: false },
-  ]);
+  // Quarantine is one of `FX.LOC`'s own rows from Phase 5 (it is a `StockLoc`, not a `LocKey`),
+  // so it arrives with the other five rather than being written out a second time here.
+  await tx.insert(s.locations).values(
+    Object.entries(FX.LOC).map(([key, l]) => ({ key, name: l.n, code: l.c, type: l.type, floor: l.floor, costCentre: l.cc, priceList: l.list ?? null, sellable: l.type === "Outlet" })),
+  );
   await tx.insert(s.items).values(Object.entries(FX.IT).map(([key, i]) => ({
     key, code: i.c, name: i.n, unit: i.u, type: i.t, grp: i.g, hsn: i.hsn, gst: i.gst, reorderLevel: i.rl, cost: i.cost, mrp: i.mrp ?? null, shelfLifeHours: i.sl ?? null,
   })));

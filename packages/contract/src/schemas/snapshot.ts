@@ -1,18 +1,20 @@
 import { z } from "zod";
-import { LocKeySchema, Qty } from "./common.js";
+import { LocKeySchema, Qty, StockLocSchema } from "./common.js";
 import * as D from "./documents.js";
 
 // Not every caller sees every location - a counter operator's snapshot is scoped down to their
-// own (Task 11's `scope()`), so this can't require all five keys the way an exhaustive
-// z.record(enum, ...) would.
+// own (`scope()`), so this can't require all keys the way an exhaustive z.record(enum, ...) would.
 const byLoc = <T extends z.ZodTypeAny>(v: T) => z.partialRecord(LocKeySchema, v);
+/** Stock is reported for quarantine too — the store keeper has to see what was rejected — while
+ *  `menu` and every write body stay on the five an operator may act on. */
+const byStockLoc = <T extends z.ZodTypeAny>(v: T) => z.partialRecord(StockLocSchema, v);
 export const SnapshotSchema = z.object({
   user: D.UserSchema,
   items: z.record(z.string(), D.ItemSchema),
   locations: z.record(z.string(), D.LocationSchema),
   recipes: z.record(z.string(), D.RecipeSchema),
   users: z.array(D.UserMinSchema),   // the directory, not a contact list — `user` above is the caller's own, whole
-  stock: byLoc(z.record(z.string(), Qty)),
+  stock: byStockLoc(z.record(z.string(), Qty)),
   rsv: z.record(z.string(), Qty),          // "loc:item" -> reserved
   ovr: z.record(z.string(), z.string()),   // "loc:item" -> reason
   prices: z.object({ A: z.record(z.string(), z.number()), B: z.record(z.string(), z.number()) }),

@@ -1,11 +1,15 @@
-import type { Item, Location, LocKey, Recipe, User, Payer } from "../types.js";
+import type { Item, Location, LocKey, Recipe, StockLoc, User, Payer } from "../types.js";
 
-export const LOC: Record<LocKey, Location> = {
+export const LOC: Record<StockLoc, Location> = {
   store:   { n: "Central Store",   c: "WH-CS", type: "Store",   floor: "Basement", cc: "CC-STO" },
   kitchen: { n: "Central Kitchen", c: "KT-CK", type: "Kitchen", floor: "Ground",   cc: "CC-KIT" },
   rest:    { n: "Restaurant",      c: "OT-R1", type: "Outlet",  floor: "Floor 1",  cc: "CC-RST", list: "A" },
   coffee:  { n: "Coffee Shop",     c: "OT-C3", type: "Outlet",  floor: "Floor 3",  cc: "CC-CF3", list: "B" },
   kiosk:   { n: "Snack Kiosk",     c: "OT-GK", type: "Outlet",  floor: "Ground",   cc: "CC-KSK", list: "A" },
+  // The rejected-goods shelf. Not in OUTLETS and not in ALL_LOCS: nothing is sold, issued,
+  // transferred or distributed from here, so no screen that iterates the working locations
+  // should grow a sixth column. The store's own stock screen reads it by name.
+  quarantine: { n: "Quarantine", c: "WH-QR", type: "Store", floor: "Basement", cc: "CC-STO" },
 };
 export const OUTLETS: LocKey[] = ["rest", "coffee", "kiosk"];
 export const ALL_LOCS: LocKey[] = ["store", "kitchen", "rest", "coffee", "kiosk"];
@@ -90,5 +94,7 @@ export const DEPTS: Payer[] = [
 // A limit, not a fixture — declared in ../schemas/common.ts and re-exported here so the
 // counter's screen keeps its single import from data/master.
 export { STAFF_CREDIT_LIMIT } from "../schemas/common.js";
-/** A purchase order above this value needs finance approval (M2). */
-export const PO_APPROVAL_LIMIT = 25000;
+/** A purchase order above this value needs finance approval (M2) — a rule's constant, not a
+ *  fixture, so it is declared in ../schemas/common.ts and re-exported here for the same reason
+ *  STAFF_CREDIT_LIMIT is: the buyer's drawer keeps its single import from data/master. */
+export { PO_APPROVAL_LIMIT } from "../schemas/common.js";

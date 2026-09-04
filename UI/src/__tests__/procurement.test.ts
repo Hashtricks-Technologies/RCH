@@ -12,9 +12,14 @@ import { as, resetStore, S } from "./fixture";
 beforeEach(resetStore);
 
 describe("stock locations", () => {
-  it("carries exactly the five real locations — there is no transit room", () => {
+  it("carries the five working locations and the rejected-goods shelf, and no transit room", () => {
+    // `ALL_LOCS` is deliberately still five: quarantine is somewhere stock can *be*, never
+    // somewhere an operator works, so no screen that iterates the working locations grows a
+    // sixth column. It has a name and a shelf, and that is all.
     expect(ALL_LOCS).toEqual(["store", "kitchen", "rest", "coffee", "kiosk"]);
-    expect(Object.keys(LOC).sort()).toEqual([...ALL_LOCS].sort());
+    expect(Object.keys(LOC).sort()).toEqual([...ALL_LOCS, "quarantine"].sort());
+    expect(ALL_LOCS).toHaveLength(5);
+    expect(ALL_LOCS).not.toContain("quarantine");
   });
 });
 
