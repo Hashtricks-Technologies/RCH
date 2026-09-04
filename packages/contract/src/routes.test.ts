@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { z } from "zod";
+import { EVENTS_PATH, EventNoticeSchema } from "./index";
 import { routes } from "./routes";
 
 /** One valid body per route that takes one. The coverage case below fails if a new route
@@ -12,6 +13,14 @@ const SAMPLES: Record<string, Record<string, unknown>> = {
   toggleAvail: { loc: "kitchen", it: "SKU-1" },
   savePrice: { price: 100 },
   addMenuItem: { it: "SKU-1" },
+  createRequest: { lines: [{ it: "SKU-1", qty: 20 }], note: "Counter runs dry by 4pm", urgent: true },
+  approveRequest: { appr: [12], note: "Store only holds 12 L." },
+  rejectRequest: { note: "Kiosk is overstocked already" },
+  handover: { otp: "418327" },
+  transfer: { from: "coffee", to: "kiosk", it: "SKU-1", qty: 6 },
+  askShop: { to: "kiosk", it: "SKU-1", qty: 6, note: "Lunch rush cleared us out" },
+  answerShopAsk: { grant: 6 },
+  declineShopAsk: { reason: "We are short ourselves" },
 };
 // `routes` is a const object, so `r.body` is a union of every literal schema type; the cast
 // keeps this loop about the shared `safeParse` and not about zod's generics.
@@ -30,4 +39,15 @@ describe("request bodies", () => {
       expect(bad.success, `${name} silently dropped an unknown key`).toBe(false);
     });
   }
+});
+
+describe("the event stream", () => {
+  it("is not a manifest route — it is a stream, not a JSON endpoint", () => {
+    expect(Object.values(routes).some((r) => r.path === EVENTS_PATH)).toBe(false);
+  });
+  it("names one collection at a time, from the same enum `changed` draws on", () => {
+    expect(EventNoticeSchema.safeParse({ collection: "req", at: "2026-09-04T04:30:00.000Z" }).success).toBe(true);
+    expect(EventNoticeSchema.safeParse({ collection: "nonsense", at: "2026-09-04T04:30:00.000Z" }).success).toBe(false);
+    expect(EventNoticeSchema.safeParse({ collection: "req", at: "…", extra: 1 }).success).toBe(false);
+  });
 });

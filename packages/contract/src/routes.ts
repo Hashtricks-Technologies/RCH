@@ -3,8 +3,8 @@ import type { Role } from "./types.js";
 import { OkResponseSchema } from "./schemas/common.js";
 import { AuthResponseSchema, ChangePasswordBodySchema, LoginBodySchema, MeResponseSchema, PatchMeBodySchema } from "./schemas/auth.js";
 import { BILL_DAYS, BillsResponseSchema, ItemsResponseSchema, LocationsResponseSchema, MenusResponseSchema, PricesResponseSchema, RecipesResponseSchema, SnapshotSchema, StockResponseSchema } from "./schemas/snapshot.js";
-import { BillSchema } from "./schemas/documents.js";
-import { MenuItemBodySchema, MenuItemParamsSchema, MenuLocParamsSchema, MenuResultSchema, PayBodySchema, PriceResultSchema, SavePriceBodySchema, SavePriceParamsSchema, ToggleAvailBodySchema, ToggleResultSchema, writeResponse } from "./schemas/writes.js";
+import { BillSchema, ShopAskSchema, StockRequestSchema, TicketSchema } from "./schemas/documents.js";
+import { AnswerShopAskBodySchema, ApproveRequestBodySchema, ApprovalResultSchema, CreateRequestBodySchema, DeclineShopAskBodySchema, DocIdParamsSchema, HandoverBodySchema, IssueResultSchema, MenuItemBodySchema, MenuItemParamsSchema, MenuLocParamsSchema, MenuResultSchema, PayBodySchema, PriceResultSchema, RejectRequestBodySchema, SavePriceBodySchema, SavePriceParamsSchema, ShopAskBodySchema, ShopAskSentResultSchema, ToggleAvailBodySchema, ToggleResultSchema, TransferBodySchema, writeResponse } from "./schemas/writes.js";
 
 export type Method = "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
 /** "public" needs no token; "any" needs a token of any role; a list names the roles whose sidebar has the module. */
@@ -43,6 +43,19 @@ export const routes = {
   removeMenuItem: defineRoute({ method: "DELETE", path: "/menus/:loc/items/:it",       access: ["manager"],            params: MenuItemParamsSchema, response: writeResponse(MenuResultSchema) }),
   stock:          defineRoute({ method: "GET",    path: "/stock",                      access: "any",                  response: StockResponseSchema }),
   bills:          defineRoute({ method: "GET",    path: "/bills",                      access: "any",                  query: z.strictObject({ days: z.coerce.number().int().min(1).max(90).default(BILL_DAYS) }), response: BillsResponseSchema }),
+  createRequest:  defineRoute({ method: "POST", path: "/requests",                  access: ["counter", "prod"],            body: CreateRequestBodySchema,   response: writeResponse(StockRequestSchema) }),
+  cancelRequest:  defineRoute({ method: "POST", path: "/requests/:id/cancel",       access: ["counter", "prod"],            params: DocIdParamsSchema,       response: writeResponse(StockRequestSchema) }),
+  approveRequest: defineRoute({ method: "POST", path: "/requests/:id/approve",      access: ["manager"],                    params: DocIdParamsSchema, body: ApproveRequestBodySchema, response: writeResponse(ApprovalResultSchema) }),
+  rejectRequest:  defineRoute({ method: "POST", path: "/requests/:id/reject",       access: ["manager"],                    params: DocIdParamsSchema, body: RejectRequestBodySchema,  response: writeResponse(StockRequestSchema) }),
+  issueTicket:    defineRoute({ method: "POST", path: "/requests/:id/issue-ticket", access: ["store"],                      params: DocIdParamsSchema,       response: writeResponse(IssueResultSchema) }),
+  // `counter` is here for a shop transfer's own ticket (spec §9.2): the outlet that granted it
+  // hands it over. No counter screen calls it yet; the route exists so Phase 6 adds a button, not a route.
+  handover:       defineRoute({ method: "POST", path: "/tickets/:id/handover",      access: ["store", "prod", "counter"],   params: DocIdParamsSchema, body: HandoverBodySchema,       response: writeResponse(TicketSchema) }),
+  receiveTicket:  defineRoute({ method: "POST", path: "/tickets/:id/receive",       access: ["counter", "store", "prod"],   params: DocIdParamsSchema,       response: writeResponse(TicketSchema) }),
+  transfer:       defineRoute({ method: "POST", path: "/transfers",                 access: ["counter", "manager"],         body: TransferBodySchema,        response: writeResponse(TicketSchema) }),
+  askShop:        defineRoute({ method: "POST", path: "/shop-asks",                 access: ["counter"],                    body: ShopAskBodySchema,         response: writeResponse(ShopAskSchema) }),
+  answerShopAsk:  defineRoute({ method: "POST", path: "/shop-asks/:id/answer",      access: ["counter"],                    params: DocIdParamsSchema, body: AnswerShopAskBodySchema,  response: writeResponse(ShopAskSentResultSchema) }),
+  declineShopAsk: defineRoute({ method: "POST", path: "/shop-asks/:id/decline",     access: ["counter"],                    params: DocIdParamsSchema, body: DeclineShopAskBodySchema, response: writeResponse(ShopAskSchema) }),
 } as const;
 export type RouteName = keyof typeof routes;
 export const API_PREFIX = "/api/v1";
