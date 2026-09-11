@@ -1,21 +1,21 @@
 import { useState } from "react";
-import { RECEIPT_TOLERANCE } from "@rch/domain";
+import { istDate, RECEIPT_TOLERANCE } from "@rch/domain";
 import { IT } from "../../data/master";
 import { vendorName } from "../../data/vendors";
 import { useApp } from "../../store";
 import { U, fq, money, unitTotal } from "../../lib/fmt";
 import { canCloseShort, netReceived, round3 } from "../../lib/selectors";
-import { Alert, Btn, BtnRow, DataTable, Field, FormRow, Section, TableFoot } from "../../ui/kit";
+import {
+  Alert, Btn, BtnRow, DataTable, DraftLineInput, Field, FormRow, Section, TableFoot,
+} from "../../ui/kit";
 import type { Row } from "../../ui/kit";
 import { DrawerFrame } from "../../ui/Drawer";
 import { registerDrawer, type DrawerProps } from "../../drawers";
 import type { ReceiptDoc, ReceiptLine } from "../../types";
 
-const num = (v: string) => {
-  const n = Number(v);
-  return Number.isFinite(n) && n > 0 ? n : 0;
-};
-const today = () => new Date().toISOString().slice(0, 10);
+/** The hospital's own calendar date, not the host's: a batch that expires tomorrow morning IST
+ *  is not expired because the browser is running somewhere still on yesterday. */
+const today = istDate(new Date());
 const warn = { color: "var(--warn)" };
 
 function PoReceiptDrawer({ id }: DrawerProps) {
@@ -125,6 +125,20 @@ function PoReceiptDrawer({ id }: DrawerProps) {
     qty: Math.max(0, round3(l.qty - already[i] - good[i])),
   }));
 
+  /**
+   * What the screen already says in red, said once more where it can stop the write.
+   *
+   * The button was `disabled={busy}` alone, though the delivery-note field beside it has always
+   * read "Required — nothing books in without it" and three lines carry their own warning. Each
+   * of those refusals is the server's too, so pressing anyway cost a round trip and an error
+   * toast for something the drawer could see: no delivery note, nothing actually received, a
+   * line rejecting more than arrived, or an expiry on or before its own manufacture date.
+   */
+  const blocked = busy
+    || !doc.dc.trim()
+    || lines.every((l) => l.recv <= 0)
+    || lines.some((l) => l.rejected > l.recv || Boolean(l.exp && l.mfg && l.exp <= l.mfg));
+
   const qtyRows: Row[] = po.lines.map((l, i) => {
     const r = lines[i];
     return {
@@ -134,9 +148,11 @@ function PoReceiptDrawer({ id }: DrawerProps) {
         <>{fq(l.qty, l.it)} <span className="dim">{U(l.it)}</span></>,
         <>{fq(already[i], l.it)}</>,
         <>
-          <input type="number" className="mono" min={0} step={U(l.it) === "nos" ? 1 : 0.001}
-            value={r.recv} aria-label={`Quantity received for ${IT[l.it]?.n ?? l.it}`}
-            onChange={(e) => at(i, { recv: num(e.target.value) })} />
+          <DraftLineInput
+            value={r.recv} min={0} step={U(l.it) === "nos" ? 1 : 0.001}
+            ariaLabel={`Quantity received for ${IT[l.it]?.n ?? l.it}`}
+            onCommit={(n) => at(i, { recv: Math.max(0, n) })}
+          />
           {/* The same sum `checkReceiptLine` runs server-side: what earlier instalments accepted
               plus what is at the door now, against the ordered quantity and its tolerance. */}
           {round3(already[i] + r.recv) > round3(l.qty * RECEIPT_TOLERANCE) && (
@@ -144,9 +160,11 @@ function PoReceiptDrawer({ id }: DrawerProps) {
           )}
         </>,
         <>
-          <input type="number" className="mono" min={0} step={U(l.it) === "nos" ? 1 : 0.001}
-            value={r.rejected} aria-label={`Quantity rejected for ${IT[l.it]?.n ?? l.it}`}
-            onChange={(e) => at(i, { rejected: num(e.target.value) })} />
+          <DraftLineInput
+            value={r.rejected} min={0} step={U(l.it) === "nos" ? 1 : 0.001}
+            ariaLabel={`Quantity rejected for ${IT[l.it]?.n ?? l.it}`}
+            onCommit={(n) => at(i, { rejected: Math.max(0, n) })}
+          />
           {r.rejected > r.recv && (
             <div className="mini" style={warn}>more than arrived on this line</div>
           )}
@@ -168,9 +186,11 @@ function PoReceiptDrawer({ id }: DrawerProps) {
           aria-label={`Batch number for ${IT[l.it]?.n ?? l.it}`}
           onChange={(e) => at(i, { batch: e.target.value })} />,
         priced
-          ? <input type="number" className="mono" min={0} step="0.01" value={r.mrp}
-            aria-label={`Printed MRP for ${IT[l.it]?.n ?? l.it}`}
-            onChange={(e) => at(i, { mrp: num(e.target.value) })} />
+          ? <DraftLineInput
+            value={r.mrp} min={0} step={0.01}
+            ariaLabel={`Printed MRP for ${IT[l.it]?.n ?? l.it}`}
+            onCommit={(n) => at(i, { mrp: Math.max(0, n) })}
+          />
           : <span className="dim mini">Not printed</span>,
         <input type="date" value={r.mfg} aria-label={`Manufactured on for ${IT[l.it]?.n ?? l.it}`}
           onChange={(e) => at(i, { mfg: e.target.value })} />,
@@ -180,7 +200,7 @@ function PoReceiptDrawer({ id }: DrawerProps) {
           {r.exp && r.mfg && r.exp <= r.mfg && (
             <div className="mini" style={warn}>expiry falls on or before manufacture</div>
           )}
-          {r.exp && r.exp < today() && (
+          {r.exp && r.exp < today && (
             <div className="mini" style={warn}>this batch has already expired</div>
           )}
         </>,
@@ -199,7 +219,8 @@ function PoReceiptDrawer({ id }: DrawerProps) {
           )}
           <div className="sp" />
           <Btn variant="gh" onClick={close}>Close</Btn>
-          <Btn variant="ok" disabled={busy} onClick={book}>
+          <Btn variant="ok" disabled={blocked} onClick={book}
+            title={blocked && !busy ? "Check the delivery note and the lines marked above" : undefined}>
             {busy ? "Booking in…" : "Book into the central store"}
           </Btn>
         </>

@@ -1,14 +1,20 @@
-import { useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { IT, LOC } from "../../data/master";
 import { suggestVendor, vendorName } from "../../data/vendors";
 import { useApp } from "../../store";
 import { avail, awaitingApproval, onOrder, prqProgress, qty } from "../../lib/selectors";
-import { U, fq, money, money0, sum } from "../../lib/fmt";
+import { U, fq, money, money0, sum, unitTotal } from "../../lib/fmt";
 import {
-  Alert, Btn, BtnRow, Card, DataTable, Field, FilterBtn, FilterSelect, Grid, PageHead, StatusPill, TableFoot, Toolbar,
+  Alert, Btn, BtnRow, Card, DataTable, DraftLineInput, Field, FilterBtn, FilterSelect, Grid,
+  PageHead, StatusPill, TableFoot, Toolbar,
 } from "../../ui/kit";
+import type { PrqProgressLine } from "../../lib/selectors";
 import type { DraftLine } from "../../types";
 import "./RequisitionDetail";
+
+/** One of `prqProgress`'s per-line quantities, in the shape `unitTotal` reads. */
+const qtyBy = (lines: PrqProgressLine[], pick: "appr" | "ordered" | "received") =>
+  lines.map((l) => ({ it: l.it, qty: l[pick] }));
 
 /** The progress labels prqProgress() can return, plus "All" — a real filter
  *  over what procurement has done, not over the raw requisition status. */
@@ -20,6 +26,7 @@ const STAGES = [
 export default function Requisitions() {
   const s = useApp();
   const prq = useApp((x) => x.prq);
+  const po = useApp((x) => x.po);
   const prqDraft = useApp((x) => x.prqDraft);
   const setPrqDraft = useApp((x) => x.setPrqDraft);
   const sendRequisition = useApp((x) => x.sendRequisition);
@@ -45,11 +52,27 @@ export default function Requisitions() {
 
   const stage = STAGES[si];
 
+  /**
+   * A key per draft line that survives what is typed into it.
+   *
+   * `key={l.it + ":" + i}` remounted the row the moment the item picker moved, so the quantity
+   * box lost focus and whatever was half-typed in it mid-keystroke; and a plain `key={i}` shifts
+   * every row up when one is removed, handing row 2's state to row 1. A counter in a ref is
+   * neither: an id belongs to the line it was minted for until that line is taken out.
+   */
+  const nextKey = useRef(0);
+  const lineKeys = useRef<number[]>([]);
+  while (lineKeys.current.length < prqDraft.length) lineKeys.current.push(nextKey.current++);
+  if (lineKeys.current.length > prqDraft.length) lineKeys.current.length = prqDraft.length;
+
   const setLine = (i: number, patch: Partial<DraftLine>) => {
     const next = prqDraft.map((l, n) => (n === i ? { ...l, ...patch } : l));
     setPrqDraft(next);
   };
-  const removeLine = (i: number) => setPrqDraft(prqDraft.filter((_, n) => n !== i));
+  const removeLine = (i: number) => {
+    lineKeys.current.splice(i, 1);
+    setPrqDraft(prqDraft.filter((_, n) => n !== i));
+  };
 
   /** Ordering something procurement is already sourcing doubles the cover
    *  (M3). onOrder() alone only reflects an approved commitment — a
@@ -95,17 +118,26 @@ export default function Requisitions() {
   };
 
   const draftValue = sum(prqDraft, (l) => (IT[l.it]?.cost ?? 0) * l.qty);
-  const draftQty = sum(prqDraft, (l) => l.qty);
+  const draftQty = unitTotal(prqDraft);
   const alreadyOpen = prqDraft.filter((l) => openQty(l.it) > 0);
 
   const term = q.trim().toLowerCase();
   /** Every purchase order this requisition ended up on — the buyer's paperwork
    *  is exactly what the client wants to search a previous requisition by. */
   const posFor = (id: string) =>
-    s.po.filter((o) => o.st !== "Cancelled" && o.lines.some((l) => l.src.some((x) => x.prq === id)));
+    po.filter((o) => o.st !== "Cancelled" && o.lines.some((l) => l.src.some((x) => x.prq === id)));
+
+  /** Reconciled once per requisition, then read from the map: `prqProgress` walks every
+   *  purchase order, the filter and the row both want the answer, and memoising it on the
+   *  two slices it reads — rather than on `s`, a new object after any write anywhere —
+   *  is what stops the whole of it re-running because a toast appeared. */
+  const progress = useMemo(
+    () => new Map(prq.map((p) => [p.id, prqProgress({ prq, po }, p.id)] as const)),
+    [prq, po],
+  );
 
   const history = prq.filter((p) => {
-    const label = prqProgress(s, p.id).label;
+    const label = progress.get(p.id)!.label;
     if (stage !== "All" && label !== stage) return false;
     if (openOnly && (label === "Received" || label === "Declined")) return false;
     if (!term) return true;
@@ -152,7 +184,7 @@ export default function Requisitions() {
       <Grid>
         <Card
           title="New requisition"
-          sub={`${prqDraft.length} item${prqDraft.length === 1 ? "" : "s"} · ${draftQty} units · ${money0(draftValue)} estimated`}
+          sub={`${prqDraft.length} item${prqDraft.length === 1 ? "" : "s"}${draftQty ? " · " + draftQty : ""} · ${money0(draftValue)} estimated`}
           right={<Btn size="sm" variant="gh" onClick={fillFromLow}>Fill from below-reorder items</Btn>}
         >
           <div className="tw">
@@ -188,7 +220,7 @@ export default function Requisitions() {
                     const it = IT[l.it];
                     const open = openQty(l.it);
                     return (
-                      <tr key={l.it + ":" + i}>
+                      <tr key={lineKeys.current[i]}>
                         <td>
                           <select value={l.it} aria-label={`Item on line ${i + 1}`}
                             onChange={(e) => pickLine(i, e.target.value)}>
@@ -202,13 +234,16 @@ export default function Requisitions() {
                           </select>
                         </td>
                         <td className="n">
-                          <input
-                            type="number"
+                          {/* Typed in freely and committed on the way out: reading
+                              `Number(e.target.value)` on every keystroke meant 12.5 litres of
+                              milk went into the draft as 1, then 12, then 12.5 — and emptying
+                              the box to retype set the line to nothing. */}
+                          <DraftLineInput
+                            value={l.qty}
                             min={0}
                             step={it && it.u === "nos" ? 1 : 0.5}
-                            value={l.qty}
-                            aria-label={it ? `Quantity of ${it.n}` : `Quantity on item ${i + 1}`}
-                            onChange={(e) => setLine(i, { qty: Number(e.target.value) })}
+                            ariaLabel={it ? `Quantity of ${it.n}` : `Quantity on item ${i + 1}`}
+                            onCommit={(n) => setLine(i, { qty: Math.max(0, n) })}
                           />
                         </td>
                         <td className="dim">{U(l.it)}</td>
@@ -304,7 +339,7 @@ export default function Requisitions() {
               { h: "Stage", w: "13%" },
             ]}
             rows={history.map((p) => {
-              const g = prqProgress(s, p.id);
+              const g = progress.get(p.id)!;
               const pos = posFor(p.id);
               return {
                 key: p.id,
@@ -317,7 +352,7 @@ export default function Requisitions() {
                   <span className="mono">{p.at}</span>,
                   <>{p.by}</>,
                   <>{p.lines.length}</>,
-                  <b>{sum(p.lines, (l) => l.qty)}</b>,
+                  <b>{unitTotal(p.lines)}</b>,
                   <>{money0(sum(p.lines, (l) => (IT[l.it]?.cost ?? 0) * l.qty))}</>,
                   pos.length ? (
                     <>
@@ -330,12 +365,19 @@ export default function Requisitions() {
                   ) : (
                     <span className="dim">No purchase order yet</span>
                   ),
+                  // `fq(x, "")` printed every one of these as though it were countable, so a
+                  // requisition for 12 L of milk and 500 cups read "512". Each is totalled per
+                  // unit instead, from the per-line breakdown prqProgress now carries (M4).
                   <>
-                    {fq(g.received, "")} <span className="dim">of {fq(g.ordered, "")}</span>
+                    {unitTotal(qtyBy(g.lines, "received")) || fq(0, "")}{" "}
+                    <span className="dim">of {unitTotal(qtyBy(g.lines, "ordered")) || fq(0, "")}</span>
                   </>,
                   <>
                     <StatusPill status={g.label} />
-                    <div className="mini">{fq(g.ordered, "")} of {fq(g.appr, "")} approved ordered</div>
+                    <div className="mini">
+                      {unitTotal(qtyBy(g.lines, "ordered")) || "nothing"} of{" "}
+                      {unitTotal(qtyBy(g.lines, "appr")) || "nothing"} approved ordered
+                    </div>
                   </>,
                 ],
               };

@@ -4,8 +4,8 @@ import { useApp } from "../../store";
 import { costOf } from "../../lib/selectors";
 import { U, money, money0, pct, sum, toInputDate } from "../../lib/fmt";
 import {
-  Alert, Btn, BtnRow, Card, DataTable, Field, FilterBtn, FilterSelect, FormRow, Kpis, PageHead, Pill,
-  TableFoot, Toolbar,
+  Alert, Btn, BtnRow, Card, DataTable, DraftLineInput, Field, FilterBtn, FilterSelect, FormRow,
+  Kpis, PageHead, Pill, TableFoot, Toolbar,
 } from "../../ui/kit";
 import type { RateContract } from "../../types";
 
@@ -271,9 +271,14 @@ export default function Contracts() {
                       <small>{IT[c.it]?.c ?? ""} · {U(c.it)}</small>
                     </>,
                     editing ? (
-                      <input type="number" min={0} step={0.01} value={edit.rate}
-                        aria-label={`Contract rate for ${IT[c.it]?.n ?? c.it}`}
-                        onChange={(e) => setEdit({ ...edit, rate: Number(e.target.value) })} />
+                      // The box holds what is typed until it is left: `Number(e.target.value)`
+                      // on every keystroke turned a rate of 12.50 into 1, 12, 12.5 on the way
+                      // past, and cleared the field to 0 the moment it was emptied to retype.
+                      <DraftLineInput
+                        value={edit.rate} min={0} step={0.01}
+                        ariaLabel={`Contract rate for ${IT[c.it]?.n ?? c.it}`}
+                        onCommit={(n) => setEdit((e) => ({ ...e, rate: Math.max(0, n) }))}
+                      />
                     ) : (
                       <b>{money(c.rate)}</b>
                     ),
@@ -300,9 +305,11 @@ export default function Contracts() {
                       <span className="mono">{c.to}</span>
                     ),
                     editing ? (
-                      <input type="number" min={0} step={1} value={edit.moq}
-                        aria-label={`Minimum order quantity for ${c.id}`}
-                        onChange={(e) => setEdit({ ...edit, moq: Number(e.target.value) })} />
+                      <DraftLineInput
+                        value={edit.moq} min={0} step={U(c.it) === "nos" ? 1 : 0.001}
+                        ariaLabel={`Minimum order quantity for ${c.id}`}
+                        onCommit={(n) => setEdit((e) => ({ ...e, moq: Math.max(0, n) }))}
+                      />
                     ) : (
                       <>{c.moq} <span className="dim">{U(c.it)}</span></>
                     ),
