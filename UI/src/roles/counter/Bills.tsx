@@ -26,9 +26,11 @@ export default function Bills() {
   // bills, so without this filter Monday's screen carried last Tuesday's takings under that
   // word, and the footer's cash figure with them. Newest first, by the instant rather than the
   // printed "HH:MM" — which sorted yesterday's 22:00 above this morning's 09:00.
+  // `?? ""` rather than a bare compare: a row that somehow reaches the store without an instant
+  // should sort to the bottom, not throw the whole screen into the error boundary.
   const mine = s.bills
     .filter((b) => b.loc === loc && isToday(b.iso))
-    .sort((a, b) => b.iso.localeCompare(a.iso));
+    .sort((a, b) => (b.iso ?? "").localeCompare(a.iso ?? ""));
   const tenders = Array.from(new Set(mine.map((b) => b.pay))).sort();
   const rows = mine.filter((b) => {
     if (tender && b.pay !== tender) return false;

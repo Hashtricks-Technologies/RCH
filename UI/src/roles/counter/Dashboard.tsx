@@ -23,7 +23,9 @@ export default function Dashboard() {
   // showing the previous week's takings. `isToday` reads the instant the store kept beside the
   // printed time, and the day it compares against is the hospital's, not the terminal's.
   const mine = s.bills.filter((b) => b.loc === loc && isToday(b.iso));
-  const latest = mine.slice().sort((a, b) => b.iso.localeCompare(a.iso));
+  // `?? ""` rather than a bare compare: a row that reaches the store without an instant should
+  // sort to the bottom, not throw the whole dashboard into the error boundary.
+  const latest = mine.slice().sort((a, b) => (b.iso ?? "").localeCompare(a.iso ?? ""));
   const billed = sum(mine, (b) => b.tot);
   const itemsSold = sum(mine, (b) => sum(b.lines, (l) => l.qty));
   const avgBill = mine.length ? billed / mine.length : 0;
@@ -57,7 +59,9 @@ export default function Dashboard() {
   const shortLines = myReq.flatMap((r) =>
     r.lines.filter((l) => (l.short ?? 0) > 0).map((l) => ({ it: l.it, qty: l.short ?? 0 })));
   const shortReqs = myReq.filter((r) => r.lines.some((l) => (l.short ?? 0) > 0)).length;
-  const recentReq = myReq.slice().sort((a, b) => b.iso.localeCompare(a.iso)).slice(0, 5);
+  // `myReq` is unfiltered — a request from any day is still this counter's to chase — so this
+  // is the one sort here that can meet an older document. Undated sorts last rather than throwing.
+  const recentReq = myReq.slice().sort((a, b) => (b.iso ?? "").localeCompare(a.iso ?? "")).slice(0, 5);
 
   const rev: Record<string, { qty: number; amt: number }> = {};
   mine.forEach((b) => b.lines.forEach((l) => {

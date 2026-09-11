@@ -17,9 +17,22 @@ const t = fromWireTime;
  * `"09:00"` whichever day each belonged to. `at`/`t` still read the way they always did;
  * `iso` is the raw stamp beside them, for `isToday` and for every sort.
  */
-const stamped = <T extends { at: string }>(x: T) => ({ ...x, at: t(x.at), iso: x.at });
-const hist = (h: HistEntry[]): Dated<HistEntry>[] => h.map((x) => ({ ...x, t: t(x.t), iso: x.t }));
-const billed = (b: Bill[]): Dated<Bill>[] => b.map((x) => ({ ...x, t: t(x.t), iso: x.t }));
+/**
+ * The instant to keep, given the value on the way in and whatever instant is already there.
+ *
+ * `fromWireTime` passes an `"HH:MM"` through unchanged, so it is safe to run twice; this has to
+ * be too. A document that has already been through here carries a clock face where the wire
+ * carried an instant, and stamping *that* as `iso` would replace a real instant with a string
+ * no filter or sort can read. So when the value is already a display time, the instant it came
+ * with stands.
+ */
+const SHOWN = /^\d{2}:\d{2}$/;
+const instant = (raw: string, had: string | undefined) => (SHOWN.test(raw) ? had ?? "" : raw);
+const stamped = <T extends { at: string; iso?: string }>(x: T) => ({ ...x, at: t(x.at), iso: instant(x.at, x.iso) });
+const hist = (h: HistEntry[]): Dated<HistEntry>[] =>
+  h.map((x) => ({ ...x, t: t(x.t), iso: instant(x.t, (x as Partial<Dated<HistEntry>>).iso) }));
+const billed = (b: Bill[]): Dated<Bill>[] =>
+  b.map((x) => ({ ...x, t: t(x.t), iso: instant(x.t, (x as Partial<Dated<Bill>>).iso) }));
 
 /** Quarantine is here and nowhere else that an operator acts: stock is *reported* for the
  *  rejected-goods shelf, so the store keeper can see what was turned away at a goods receipt.

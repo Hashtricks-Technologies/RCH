@@ -5,7 +5,7 @@ import { MemoryRouter } from "react-router-dom";
 import { screens as counter } from "../roles/counter";
 import Approvals from "../roles/manager/Approvals";
 import { isToday, now } from "../lib/fmt";
-import { applySnapshot } from "../api/wire";
+import { applyRequests, applySnapshot } from "../api/wire";
 import { useApp } from "../store";
 import { as, resetStore, S } from "./fixture";
 import * as FX from "@rch/contract/fixtures";
@@ -144,21 +144,36 @@ describe("a list ordered newest-first is ordered by the instant", () => {
 });
 
 describe("the wire keeps the instant beside the time it prints", () => {
-  it("carries iso on every document and on every history entry", () => {
-    const snap = {
-      user: FX.USERS.find((u) => u.r === "manager"), items: FX.IT, locations: FX.LOC, recipes: FX.RCP,
-      users: FX.USERS, roster: { patients: FX.PATIENTS, staff: FX.STAFF, depts: FX.DEPTS },
-      stock: {}, rsv: {}, ovr: {}, prices: FX.PL, menu: FX.MENU,
-      req: [{ id: "REQ-2026-0810", from: "coffee", by: "Kavitha Raman", at: TODAY_EARLY, lines: [{ it: "juice", qty: 4, appr: 0 }], st: "Request sent", ticket: null, mgrNote: "", hist: [{ s: "Request sent", who: "Kavitha Raman", t: TODAY_EARLY }] }],
-      tkt: [], prq: [], po: [], pord: [], batch: [], bills: [], grn: [], vendors: [],
-      contracts: [], tickets: [], productReqs: [], shopAsks: [], sales: [], dayLabels: [],
-    };
+  const snap = () => ({
+    user: FX.USERS.find((u) => u.r === "manager"), items: FX.IT, locations: FX.LOC, recipes: FX.RCP,
+    users: FX.USERS, roster: { patients: FX.PATIENTS, staff: FX.STAFF, depts: FX.DEPTS },
+    stock: {}, rsv: {}, ovr: {}, prices: FX.PL, menu: FX.MENU,
+    req: [{ id: "REQ-2026-0810", from: "coffee", by: "Kavitha Raman", at: TODAY_EARLY, lines: [{ it: "juice", qty: 4, appr: 0 }], st: "Request sent", ticket: null, mgrNote: "", hist: [{ s: "Request sent", who: "Kavitha Raman", t: TODAY_EARLY }] }],
+    tkt: [], prq: [], po: [], pord: [], batch: [], bills: [], grn: [], vendors: [],
+    contracts: [], tickets: [], productReqs: [], shopAsks: [], sales: [], dayLabels: [],
+  });
 
-    act(() => { applySnapshot(snap as unknown as Parameters<typeof applySnapshot>[0]); });
+  it("carries iso on every document and on every history entry", () => {
+    act(() => { applySnapshot(snap() as unknown as Parameters<typeof applySnapshot>[0]); });
 
     const r = S().req[0];
     expect(r.at).toBe("01:30");            // what the table prints, in the hospital's zone
     expect(r.iso).toBe(TODAY_EARLY);       // what every filter and sort reads
     expect(r.hist[0]).toMatchObject({ t: "01:30", iso: TODAY_EARLY });
+  });
+
+  it("keeps the instant when a document that has already been through is mapped again", () => {
+    // `fromWireTime` passes an "HH:MM" through unchanged so it is safe to run twice; the
+    // stamping must be too. Feeding the store's own row back in (which is what a re-applied
+    // document looks like) must not put a clock face where the instant was.
+    act(() => { applySnapshot(snap() as unknown as Parameters<typeof applySnapshot>[0]); });
+    const once = S().req[0];
+
+    act(() => { applyRequests([once] as unknown as Parameters<typeof applyRequests>[0]); });
+
+    const twice = S().req[0];
+    expect(twice.at).toBe("01:30");
+    expect(twice.iso).toBe(TODAY_EARLY);
+    expect(twice.hist[0]).toMatchObject({ t: "01:30", iso: TODAY_EARLY });
   });
 });
