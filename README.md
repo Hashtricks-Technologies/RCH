@@ -24,11 +24,15 @@ absent from its sidebar and refused on a direct link, with a message saying why.
 
 | Role | Signs in as | Lands on | Owns |
 |---|---|---|---|
-| Counter Operator | Kavitha Raman | Point of Sale | Billing, counter stock, product on/off, raising requests, collecting tickets |
-| Outlet Manager | Ramesh Kumar | Approvals | Approving and trimming counter requests, prices across all shops, the on/off master |
-| Store Keeper | Suresh Muthu | Issue Desk | Issuing approved stock against a ticket, central-store stock, requisitions to procurement |
+| Counter Operator | Kavitha Raman | Point of Sale | Billing and printing, counter stock, product on/off, raising requests, asking the kitchen for a tray, collecting tickets |
+| Outlet Manager | Ramesh Kumar | Approvals | Approving and trimming counter requests, prices across all shops, the on/off master, every outlet's bills and the same-day void, the payer register, and an item's commercial figures |
+| Store Keeper | Suresh Muthu | Issue Desk | Issuing approved stock against a ticket, central-store stock, write-offs and stock counts at any shelf, requisitions to procurement |
 | Kitchen In-charge | Vinoth Prakash | Orders | Accepting orders, making products, distributing to the store and counters |
 | Procurement Officer | Latha Narayanan | Requisitions | Acting on requisitions, raising purchase orders, receiving goods |
+
+The store keeper, the buyer and the kitchen share the operational half of the item master — a
+product's name, group, HSN code and reorder level — while the manager owns its commercial half.
+No role may clear a printed MRP, and a product is retired rather than deleted.
 
 **The request chain.** A counter operator raises a stock request against the central store; the
 outlet manager approves, trims or rejects it — never promising more than the store can still
@@ -57,6 +61,19 @@ its own tickets, because there is no support-agent role in this system, only fiv
 Read the two figures the browser could never assemble on its own: a location's stock ledger
 over a window, and a payer's credit taken so far this month. Nothing runs in the browser's own
 store any more — every mutation in the app is a server call, and `UI/src/data/seed.ts` is gone.
+
+**And the five doors the audit wave added on 11 September 2026** — the only new capability since
+the six phases closed. Write off nine puffs that did not sell, or book in the four extra tins a
+count found, as a numbered document with a reason and a signature (a write-off may not take stock
+a pick ticket is holding, and the store keeper is the only one who can correct the quarantine
+shelf). Void a mis-keyed bill on the day it was billed: every line goes back on the shelf, a staff
+member's monthly credit room comes back, and the bill stays on the list badged rather than
+vanishing from the day. Correct a mis-typed MRP or retire a product nobody carries — each desk
+sees the fields it owns and the rest greyed out, and a line with stock on it or a menu still
+listing it cannot be retired until that is dealt with. Add a patient, a department or a new
+starter to the payer register from a screen, or load a whole ward list from a CSV. And let a
+counter ask the kitchen to bake something, with a needed-by date, instead of waiting for an order
+nobody could raise.
 
 **Live updates.** Every signed-in browser holds one connection to the server's change stream, so a
 request raised at the Coffee Shop appears on the manager's approvals screen without a reload — and
@@ -227,6 +244,16 @@ Every mutation in the app is a server call now; nothing is left in the browser's
 Phase 6 prepared the chart, the workflow and the go-live checklist for the first production
 deploy — it did not perform that deploy. Promotion to production is a release decision for the
 account owner, made by following `deploy/RUNBOOK.md` §11.
+
+**The audit fix wave (11 September 2026)** is a whole-tree review of the finished build rather
+than a seventh phase. Most of it hardens what was already there — goods receipt decided on what
+the shelf accepted rather than on what the lorry carried, an approved request that can be
+withdrawn, a wrong pick-ticket code counted with five of them locking the ticket, patient names
+withheld from the three roles that never bill anybody, and the ledger's own promises written into
+the database as constraints. Its last block is the exception: five capabilities the review found
+*missing* rather than broken — the write-off, the same-day bill void, the editable item master,
+the payer register and the kitchen order an outlet can raise, all described above. Every decision
+either block took is a row in spec §16, which is where to read before reopening one.
 
 **`develop` is deployed.** A dev environment on AWS (EKS, RDS, ACM, Route 53) is live at
 **https://rch.hashtrickstechnologies.com**, deploying on every push to `develop` — `deploy/

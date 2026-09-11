@@ -96,20 +96,24 @@ src/
                                            refetch.ts (pulls back what a write changed), wire.ts (mappers)
   store/{index,procurement,ops}.ts        Zustand, all server-backed — index.ts holds most actions (billing,
                                            availability, prices/menus, the request→ticket chain, production,
-                                           the two report reads); procurement.ts (vendors, requisition approval,
-                                           the PO lifecycle, goods receipt); ops.ts (rate contracts, new-product
-                                           requests, shop-to-shop transfers, and the support desk)
+                                           the two report reads, the bill void, the kitchen order);
+                                           procurement.ts (vendors, requisition approval, the PO lifecycle,
+                                           goods receipt); ops.ts (rate contracts, new-product requests,
+                                           shop-to-shop transfers, the support desk, the item patch, the
+                                           payer register, adjustments)
   data/                                   master.ts (empty registries, replaced in place by hydrateMaster() and
                                            hydrateRoster()), vendors.ts — no seed.ts, no ops.ts; nothing here
                                            imports the fixtures
   lib/                                    fmt.ts (money, quantity, time), selectors.ts (qty · resv · avail ·
                                            freeToPromise · availOf · priceOf · procurementList …), theme.ts
-  ui/                                     kit.tsx (~30 typed components), Shell.tsx, Drawer.tsx,
-                                           ErrorBoundary.tsx, prefs.ts
+  ui/                                     kit.tsx (~30 typed components incl. DraftLineInput and EtaInput),
+                                           Shell.tsx, Drawer.tsx, ErrorBoundary.tsx, prefs.ts, and four
+                                           shared non-kit pieces two roles each need: TicketSlip.tsx,
+                                           NewProductForm.tsx, AdjustmentForm.tsx, KitchenOrderForm.tsx
   pages/                                  Login.tsx, ChangePassword.tsx, Settings.tsx, Support.tsx
   roles/<role>/                           counter/ manager/ store/ prod/ buyer/
-  __tests__/                              store, procurement, fixes, screens/app, api, session, events,
-                                           writes, theme
+  __tests__/                              store, procurement, fixes, screens/app, audit-screens, time,
+                                           api, session, events, writes, refusals, theme
 ```
 
 Each role folder exports `screens: Record<string, ComponentType>`; `App.tsx` resolves the
@@ -124,8 +128,10 @@ receives. Approval reserves stock; the handover scan is what actually moves it. 
 chain is server-side (`apps/api/src/modules/{requests,tickets}`); a trim beyond what the
 central store can still promise is the server's own decision, not the browser's.
 
-**MRP is a hard ceiling.** Traded goods carry a printed MRP. No price list, floor or role may
-sell above it — `savePrice` refuses and says so.
+**MRP is a hard ceiling, and there is no door that removes one.** Traded goods carry a printed
+MRP. No price list, floor or role may sell above it — `savePrice` refuses and says so — and no
+role may clear it either: an item that carries a printed MRP keeps one, and an emptied box on the
+edit form means "leave it as it is", not "take the ceiling away".
 
 **Recipe depletion.** Selling a made-to-order drink deducts its ingredients from that
 counter, not a finished unit. Finished goods made in the kitchen deduct by the unit.
@@ -135,6 +141,54 @@ items switch off when any ingredient runs out, naming the one that blocked it. T
 a manual override on top.
 
 ## Recent capabilities
+
+**Correcting a shelf is a document.** A write-off or a stock count is raised from the shelf it
+corrects — the store keeper's Adjustments screen for any location including quarantine, an
+Adjust stock drawer on the manager's outlet rows and on the kitchen's stock screen. It carries a
+reason (wastage, breakage, expired, stock count, returned to vendor, other), a note, a signature
+and any number of signed lines: negative writes off, positive counts up, and a positive line is
+how a location that has never carried an item comes to carry one without a delivery. A write-off
+may not take stock a pick ticket is holding, and the register on the same screen is where a
+month of it reads back by reason.
+
+**A bill can be taken back on the day it was billed.** The outlet manager gets a Bills screen —
+every outlet's, over the seven days the server answers for — and a Void button on any bill still
+dated today. It needs a typed reason, puts every line back on the shelf (a made-to-order drink
+goes back as the ingredients the sale actually took), returns a staff member's credit room for
+the month, and leaves the bill on every list badged VOIDED rather than disappearing from the day.
+Every figure that counts money or quantity sold skips it; the activity feed and the search still
+show it. After that day, the answer is an adjustment, and the refusal says so.
+
+**The item master is editable, and editable by desk.** One Edit drawer, reachable from every
+master and stock screen, showing each role only the fields their desk owns: the manager the
+printed MRP, the standard cost and the GST rate; the store keeper, buyer and kitchen the name,
+the group, the HSN code and the reorder level. The other half is greyed out with a sentence
+saying whose it is. A product is **retired, never deleted** — refused while any location holds
+stock of it or any outlet still lists it, naming them — and a retired line keeps its name on
+every document that already carries it while dropping off the pickers that could sell, order or
+promise it again.
+
+**The payer register is kept, not seeded.** The manager's Payers screen adds, renames,
+deactivates and reopens a patient, a staff member or a department, closed accounts included; a
+ward list of any size loads from a `kind,id,name` CSV
+(`pnpm --filter @rch/api payers import --csv`). A payer is deactivated rather than deleted, so
+switching one off takes it off every till's picker and leaves every bill already charged to it
+exactly as it was.
+
+**An outlet can ask the kitchen to make something.** The counter's Stock Requests screen gained
+an "Ask the kitchen" card — which is also the first window a counter has ever had on the orders
+raised for it — and the manager's dashboard an equivalent button for any outlet. Finished goods
+only, from that outlet's own menu, with an optional needed-by date the kitchen's board and drawer
+both print. Raising one reserves nothing: dispatching it is still what places the hold.
+
+**Pay & print actually prints.** The till opens the new bill's drawer on a successful sale, and
+the drawer prints a real slip — bill number, outlet, terminal, the hospital's own date, the
+operator, every line as qty × rate × amount, taxable value, tax, total, tender and the payer
+where there is one. Reprint calls the browser's print dialog instead of announcing that something
+was "sent again to the OT-C3 printer", which never happened. Pick tickets print the same way, and
+a ticket slip carries the six-digit code only when the reader is entitled to it. The counter's
+dashboard lost its invented shift, its hours and its ₹2,000 opening float at the same time —
+there are no shifts in this build, so every one of those figures was made up at render time.
 
 **Support, for every role, server-backed.** `/issues` — labelled Support in every sidebar — is
 customer care for the portal itself: sign-in trouble, a screen that will not load, a number that
@@ -195,7 +249,7 @@ happens, is always the server's.
 
 ## Try it end to end
 
-`pnpm test:e2e` (from the repo root, against a running `pnpm dev` stack) drives six files, eight
+`pnpm test:e2e` (from the repo root, against a running `pnpm dev` stack) drives six files, nine
 scenarios, thirteen runtime tests (the sign-in loop is five of them) through a real browser — sign
 in, sell, raise and approve a request, make a kitchen batch, run a requisition through to a
 goods receipt, and work a support ticket end to end — and is the fastest way to see the whole
@@ -208,8 +262,12 @@ targets against a running API.
 
 Barcode scanning, patient-bill posting and GST output registers remain out of scope, along with
 a handful of features this document's original spec proposed and the team declined — a
-quarantine ledger with a purchase return, a finance approval role, batch-wise MRP with FEFO
-issue, and a shift/day-close/wastage workflow — each recorded with its reason in
+purchase-return or debit-note document out of quarantine (the shelf itself can be corrected with
+an adjustment; recovering the money from the vendor cannot), a finance approval role, batch-wise
+MRP with FEFO issue, a credit note after the day is out (a bill is voided on the day it was
+billed, or not at all), and the shift/day-close workflow: there are no shifts, no cash
+declaration, no tender variance and no day lock, and nothing writes stock off on a schedule —
+each recorded with its reason in
 `../docs/ua-spec.html` §09 and `../docs/superpowers/specs/2026-09-03-backend-design.md` §16. The
 backend design is `../docs/superpowers/specs/2026-09-03-backend-design.md`; the phase-by-phase
 status is the table in the root `../README.md`.
