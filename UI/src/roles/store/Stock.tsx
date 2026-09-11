@@ -1,10 +1,10 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
 import {
   // ---- item patch ----
-  activeItems, avail, awaitingApproval, daysCover, inTransit, isRetired, onOrder, qty, resv,
+  activeItems, avail, awaitingApproval, daysCover, inTransitIndex, isRetired, onOrder, onOrderIndex, qty, resv,
   stateLabel, stateTone, stockValue,
 } from "../../lib/selectors";
 import { U, fq, money, money0, sum } from "../../lib/fmt";
@@ -38,6 +38,13 @@ export default function Stock() {
   );
   const group = GROUPS[Math.min(gi, GROUPS.length - 1)];
 
+  // On order and in transit are read off a map built in one pass, not worked out per row: the
+  // per-item functions each walk every purchase order or every ticket, so a catalogue of a few
+  // hundred lines was re-walking the whole of both on every keystroke in the search box.
+  // Memoised on the slices each reads — `[s]` would be a new object after any write at all.
+  const onOrderOf = useMemo(() => onOrderIndex({ prq: s.prq, po: s.po }), [s.prq, s.po]);
+  const inTransitOf = useMemo(() => inTransitIndex({ tkt: s.tkt }), [s.tkt]);
+
   // A product the central store has never carried still belongs on its stock
   // list at zero — otherwise a newly added item is invisible until it is bought.
   // ---- item patch ----
@@ -53,8 +60,8 @@ export default function Stock() {
       const rv = resv(s, "store", it);
       const av = avail(s, "store", it);
       const rl = IT[it].rl;
-      const oo = onOrder(s, it);
-      const tr = inTransit(s, it);
+      const oo = onOrderOf.get(it) ?? 0;
+      const tr = inTransitOf.get(it) ?? 0;
       // A retired line is never "low": nothing is going to be bought to fill it, so counting it
       // in the low-stock KPI would put a number on the screen with no action behind it.
       const low = !isRetired(it) && rl > 0 && av < rl;

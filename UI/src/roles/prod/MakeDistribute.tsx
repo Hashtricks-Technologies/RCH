@@ -1,7 +1,9 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { ALL_LOCS, IT, LOC, RCP } from "../../data/master";
 import { useApp } from "../../store";
-import { avail, canHandOver, hasLeft, isTicketOpen, menuOf, qty, recipeCost } from "../../lib/selectors";
+import {
+  avail, canHandOver, hasLeft, isTicketOpen, madeItems, menuOf, qty, recipeCost,
+} from "../../lib/selectors";
 import { fq, money, sum, U } from "../../lib/fmt";
 import {
   Alert, Btn, Card, DataTable, Field, FilterSelect, FormRow, Grid, PageHead, Pill, StatusPill,
@@ -9,7 +11,6 @@ import {
 } from "../../ui/kit";
 import type { LocKey, Ticket } from "../../types";
 
-const PRODS = ["puff", "sand", "salad"];
 export const DESTS: LocKey[] = ALL_LOCS.filter((l) => l !== "kitchen");
 
 /** A best-before that names another day reads better with the day on its own line (H9). */
@@ -25,10 +26,16 @@ export default function MakeDistribute() {
   const openDrawer = useApp((x) => x.openDrawer);
   const { batch, tkt, ovr } = s;
 
-  const [mk, setMk] = useState<Record<string, string>>({ puff: "", sand: "", salad: "" });
+  // What the kitchen can make is read off the master, not written down here: a fourth finished
+  // good with a recipe used to be invisible on this screen until somebody edited a literal in
+  // three files. `IT` is replaced in place by `hydrateItems`, so the list is pinned to
+  // `catalogVersion` — the signal that tells React the catalogue moved.
+  const PRODS = useMemo(() => { void s.catalogVersion; return madeItems(); }, [s.catalogVersion]);
+
+  const [mk, setMk] = useState<Record<string, string>>({});
   const [yld, setYld] = useState<Record<string, string>>({});
   const [why, setWhy] = useState<Record<string, string>>({});
-  const [dItem, setDItem] = useState("puff");
+  const [dItem, setDItem] = useState("");
   const [dQty, setDQty] = useState("");
   const [dTo, setDTo] = useState<LocKey>(DESTS.find((l) => LOC[l].type === "Outlet") ?? "store");
   const [bq, setBq] = useState("");
@@ -52,6 +59,11 @@ export default function MakeDistribute() {
       onChange={(name) => set(name === "All" ? null : DESTS.find((l) => LOC[l].n === name) ?? null)}
     />
   );
+
+  /** The product the Distribute form is on. The kitchen's list is empty until the snapshot
+   *  lands and an item can leave the master, so the picker follows the catalogue rather than
+   *  holding a key nothing answers to. */
+  const dSel = PRODS.includes(dItem) ? dItem : PRODS[0] ?? "";
 
   /** How many units the ingredients on the kitchen rack still allow. */
   const ceiling = (k: string) => {
@@ -80,7 +92,7 @@ export default function MakeDistribute() {
   // The quantity stays in the box until the kitchen's issue has actually landed.
   const send = async () => {
     setSending(true);
-    const ok = await distribute(dItem, Number(dQty) || 0, dTo);
+    const ok = await distribute(dSel, Number(dQty) || 0, dTo);
     setSending(false);
     if (ok) setDQty("");
   };
@@ -90,9 +102,9 @@ export default function MakeDistribute() {
   const batches = allBatches
     .filter((b) => !bProd || b.it === bProd)
     .filter((b) => !bq.trim()
-      || (b.id + " " + IT[b.it].n + " " + IT[b.it].c + " " + (b.note ?? ""))
+      || (b.id + " " + (IT[b.it]?.n ?? b.it) + " " + (IT[b.it]?.c ?? "") + " " + (b.note ?? ""))
         .toLowerCase().includes(bq.trim().toLowerCase()));
-  const PROD_NAMES = ["All", ...PRODS.map((k) => IT[k].n)];
+  const PROD_NAMES = ["All", ...PRODS.map((k) => IT[k]?.n ?? k)];
 
   const match = (term: string, dest: LocKey | null) => (t: Ticket) => {
     if (dest && t.to !== dest) return false;
@@ -115,7 +127,7 @@ export default function MakeDistribute() {
   const cFiltering = Boolean(cq.trim() || cDest);
   const rFiltering = Boolean(rq.trim() || rDest);
 
-  const dFree = avail(s, "kitchen", dItem);
+  const dFree = avail(s, "kitchen", dSel);
   const dWant = Number(dQty) || 0;
 
   return (
@@ -131,55 +143,67 @@ export default function MakeDistribute() {
         <Card title="Make products" sub="Pick a product, enter how many, mark it made">
           <div className="tilegrid">
             {PRODS.map((k) => {
+              const item = IT[k];
+              const recipe = RCP[k];
+              // Both are guaranteed by `madeItems()` — it reads the master itself — but the
+              // master is replaced in place under a render, so a tile that cannot describe
+              // itself is left out rather than taking the screen down.
+              if (!item || !recipe) return null;
               const off = Boolean(ovr["kitchen:" + k]);
               const max = ceiling(k);
               const want = Number(mk[k]) || 0;
               const got = yld[k] === "" || yld[k] == null ? null : Number(yld[k]);
+              // A variance is a fraction of what was started, so it means nothing until
+              // something has been: 0 started used to print "NaN% variance — give a reason".
+              const short = want > 0 && got != null && got < want;
               return (
                 <div className="tile" key={k}>
-                  <b style={{ fontSize: 12.5 }}>{IT[k].n}</b>
-                  <span className="mini">{U(k)} · shelf life {IT[k].sl ?? 0} h · {money(recipeCost(k))} a unit</span>
+                  <b style={{ fontSize: 12.5 }}>{item.n}</b>
+                  <span className="mini">{U(k)} · shelf life {item.sl ?? 0} h · {money(recipeCost(k))} a unit</span>
                   <span className="mini">In kitchen <b>{fq(qty(s, "kitchen", k), k)}</b> · ingredients allow <b>{max}</b></span>
                   <span className="hint">
-                    One unit takes {RCP[k].l.map(([g, n]) => `${fq(n, g)} ${U(g)} ${IT[g].n}`).join(" · ")}
+                    One unit takes {recipe.l.map(([g, n]) => `${fq(n, g)} ${U(g)} ${IT[g]?.n ?? g}`).join(" · ")}
                   </span>
                   <div style={{ marginTop: 4 }}>
                     <Field label="Started" hint={want > max ? <>Only {max} possible with what is on the rack</> : undefined}>
                       <input
                         type="number" min={0} step={1} inputMode="numeric" placeholder="0"
-                        aria-label={`Quantity of ${IT[k].n} to start`}
+                        aria-label={`Quantity of ${item.n} to start`}
                         value={mk[k] ?? ""}
                         onChange={(e) => setMk((m) => ({ ...m, [k]: e.target.value }))}
                       />
                     </Field>
                     <Field label="Actual yield" hint={
-                      got != null && got < want
-                        ? <span style={{ color: "var(--warn)" }}>{(((got - want) / want) * 100).toFixed(1)}% variance — give a reason</span>
+                      short
+                        ? <span style={{ color: "var(--warn)" }}>{((((got ?? 0) - want) / want) * 100).toFixed(1)}% variance — give a reason</span>
                         : <>Leave blank if every unit came good</>
                     }>
                       <input
                         type="number" min={0} step={1} inputMode="numeric" placeholder={want ? String(want) : "0"}
-                        aria-label={`Units of ${IT[k].n} that came good`}
+                        aria-label={`Units of ${item.n} that came good`}
                         value={yld[k] ?? ""}
                         onChange={(e) => setYld((y) => ({ ...y, [k]: e.target.value }))}
                       />
                     </Field>
-                    {got != null && got < want && (
+                    {short && (
                       <Field label="Reason">
                         <input
                           placeholder="Tray dropped, over-baked…"
-                          aria-label={`Why ${IT[k].n} yielded short`}
+                          aria-label={`Why ${item.n} yielded short`}
                           value={why[k] ?? ""}
                           onChange={(e) => setWhy((w) => ({ ...w, [k]: e.target.value }))}
                         />
                       </Field>
                     )}
                   </div>
+                  {/* A make with nothing started posts `started: 0` and books a batch of
+                      nothing, which the kitchen then has to explain. The button says so. */}
                   <Btn size="sm" wide
-                    disabled={off || max <= 0 || (got != null && got > want) || Boolean(making[k])}
+                    disabled={off || max <= 0 || want <= 0 || (got != null && got > want) || Boolean(making[k])}
                     onClick={() => make(k)}>
                     {making[k] ? "Making…" : off ? "Switched off" : max <= 0 ? "No ingredients"
-                      : got != null && got > want ? "Yield exceeds started" : "Make"}
+                      : want <= 0 ? "Enter a quantity"
+                        : got != null && got > want ? "Yield exceeds started" : "Make"}
                   </Btn>
                 </div>
               );
@@ -197,23 +221,23 @@ export default function MakeDistribute() {
         <Card title="Distribute" sub="Send finished stock to a counter or the central store">
           <FormRow>
             <Field label="Product">
-              <select value={dItem} onChange={(e) => pickItem(e.target.value)}>
-                {PRODS.map((k) => <option key={k} value={k}>{IT[k].n}</option>)}
+              <select value={dSel} onChange={(e) => pickItem(e.target.value)}>
+                {PRODS.map((k) => <option key={k} value={k}>{IT[k]?.n ?? k}</option>)}
               </select>
             </Field>
           </FormRow>
           <FormRow cols="f2">
-            <Field label="Quantity" hint={<>Kitchen holds {fq(qty(s, "kitchen", dItem), dItem)} {U(dItem)}, {fq(dFree, dItem)} free to promise</>}>
+            <Field label="Quantity" hint={<>Kitchen holds {fq(qty(s, "kitchen", dSel), dSel)} {U(dSel)}, {fq(dFree, dSel)} free to promise</>}>
               <input
                 type="number" min={0} step={1} inputMode="numeric" placeholder="0"
                 value={dQty} onChange={(e) => setDQty(e.target.value)}
               />
             </Field>
-            <Field label="Destination" hint={<>Only outlets that list {IT[dItem].n} can receive it</>}>
+            <Field label="Destination" hint={<>Only outlets that list {IT[dSel]?.n ?? dSel} can receive it</>}>
               <select value={dTo} onChange={(e) => setDTo(e.target.value as LocKey)}>
                 {DESTS.map((l) => (
-                  <option key={l} value={l} disabled={!listedAt(l, dItem)}>
-                    {LOC[l].n} — {LOC[l].floor}{listedAt(l, dItem) ? "" : " · not on this menu"}
+                  <option key={l} value={l} disabled={!listedAt(l, dSel)}>
+                    {LOC[l].n} — {LOC[l].floor}{listedAt(l, dSel) ? "" : " · not on this menu"}
                   </option>
                 ))}
               </select>
@@ -221,12 +245,14 @@ export default function MakeDistribute() {
           </FormRow>
           {dWant > dFree && (
             <Alert tone="w" label="SHORT">
-              Only {fq(dFree, dItem)} {U(dItem)} free to promise — the rest is already on an open ticket. Make
+              Only {fq(dFree, dSel)} {U(dSel)} free to promise — the rest is already on an open ticket. Make
               the balance first.
             </Alert>
           )}
-          <Btn wide disabled={!listedAt(dTo, dItem) || sending} onClick={send}>
-            {sending ? "Sending…" : `Send to ${LOC[dTo].n}`}
+          {/* Nothing is not a quantity to send: the button used to post a distribution of zero
+              and raise a pick ticket with an empty line on it. */}
+          <Btn wide disabled={!dSel || !listedAt(dTo, dSel) || dWant <= 0 || sending} onClick={send}>
+            {sending ? "Sending…" : dWant <= 0 ? "Enter a quantity" : `Send to ${LOC[dTo].n}`}
           </Btn>
           <p className="mini" style={{ marginTop: 10 }}>
             A direct issue reserves the stock and raises a pick ticket. It leaves the rack when you scan it out
@@ -242,9 +268,9 @@ export default function MakeDistribute() {
           onSearch={setBq}
           filters={<FilterSelect
             label="Product"
-            value={bProd ? IT[bProd].n : "All"}
+            value={bProd ? IT[bProd]?.n ?? bProd : "All"}
             options={PROD_NAMES}
-            onChange={(name) => setBProd(name === "All" ? null : PRODS.find((k) => IT[k].n === name) ?? null)}
+            onChange={(name) => setBProd(name === "All" ? null : PRODS.find((k) => (IT[k]?.n ?? k) === name) ?? null)}
           />}
           right={bFiltering
             ? <Btn size="sm" variant="gh" onClick={() => { setBq(""); setBProd(null); }}>Clear filters</Btn>
@@ -263,8 +289,8 @@ export default function MakeDistribute() {
           rows={batches.map((b) => ({
             key: b.id,
             cells: [
-              <>{b.id}<small>{IT[b.it].c}</small></>,
-              IT[b.it].n,
+              <>{b.id}<small>{IT[b.it]?.c ?? ""}</small></>,
+              IT[b.it]?.n ?? b.it,
               <b>{fq(b.qty, b.it)}</b>,
               <>
                 <b>{fq(b.made, b.it)}</b>
@@ -322,7 +348,7 @@ export default function MakeDistribute() {
             cells: [
               <>{t.id}<small>{t.req}</small></>,
               <>{LOC[t.to].n}<br /><span className="mini">{LOC[t.to].floor}</span></>,
-              t.lines.map((l) => `${l.qty} × ${IT[l.it].n}`).join(" · "),
+              t.lines.map((l) => `${l.qty} × ${IT[l.it]?.n ?? l.it}`).join(" · "),
               <b>{sum(t.lines, (l) => l.qty)}</b>,
               <StatusPill status={t.st} />,
               // Opens the ticket's own window, where the collector's six digits are typed in.
@@ -370,7 +396,7 @@ export default function MakeDistribute() {
             cells: [
               <>{t.id}<small>{t.req}</small></>,
               <>{LOC[t.to].n}<br /><span className="mini">{LOC[t.to].floor}</span></>,
-              t.lines.map((l) => `${l.qty} × ${IT[l.it].n}`).join(" · "),
+              t.lines.map((l) => `${l.qty} × ${IT[l.it]?.n ?? l.it}`).join(" · "),
               <b>{sum(t.lines, (l) => l.qty)}</b>,
               <>
                 <StatusPill status={t.st} />
@@ -417,7 +443,7 @@ export default function MakeDistribute() {
             cells: [
               <>{t.id}<small>{t.req}</small></>,
               <>{LOC[t.to].n}<br /><span className="mini">{LOC[t.to].floor}</span></>,
-              t.lines.map((l) => `${l.qty} × ${IT[l.it].n}`).join(" · "),
+              t.lines.map((l) => `${l.qty} × ${IT[l.it]?.n ?? l.it}`).join(" · "),
               <b>{sum(t.lines, (l) => l.qty)}</b>,
               <StatusPill status={t.st} />,
             ],

@@ -1,23 +1,27 @@
+import { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
 import { avail, daysCover, prqProgress, qty, resv, stateLabel, stateTone, stockValue } from "../../lib/selectors";
-import { U, fq, lakh, money0, sum } from "../../lib/fmt";
+import { U, fq, lakh, money0, sum, unitTotal } from "../../lib/fmt";
 import { Alert, Btn, Card, DataTable, Grid, Kpis, PageHead, Pill, TableFoot } from "../../ui/kit";
 
 export default function Dashboard() {
   const s = useApp();
   const nav = useNavigate();
+  const { prq, po } = s;
 
-  const keys = Object.keys(s.stock.store);
-  const rows = keys
+  // Filtered before the map, not after it. A stock key the catalogue has never heard of — a
+  // ledger row for a product this browser's snapshot did not carry — reached `IT[it].rl` here
+  // and took the whole dashboard down with it; the guard was one line too late.
+  const rows = Object.keys(s.stock.store)
+    .filter((it) => IT[it])
     .map((it) => {
       const on = qty(s, "store", it);
       const rv = resv(s, "store", it);
       const av = avail(s, "store", it);
       return { it, on, rv, av, rl: IT[it].rl, dc: daysCover(av, it), val: on * IT[it].cost };
-    })
-    .filter((r) => IT[r.it]);
+    });
 
   const low = rows.filter((r) => r.rl > 0 && r.av < r.rl);
   const reserved = rows.filter((r) => r.rv > 0);
@@ -26,17 +30,25 @@ export default function Dashboard() {
   );
   const issued = s.tkt.filter((t) => t.from === "store" && t.st === "Issued");
   const transit = s.tkt.filter((t) => t.from === "store" && t.st === "Collected");
-  // Raw status alone under-counts: an approved requisition still sits with
-  // procurement until its purchase order is fully received, not just while
-  // it is "Sent". Derive the same open/closed distinction prqProgress uses
-  // rather than repeating the old two-status union here.
-  const withProc = s.prq.filter((p) => {
-    const label = prqProgress(s, p.id).label;
-    return label !== "Received" && label !== "Declined";
-  });
+  // Raw status alone under-counts: an approved requisition still sits with procurement until
+  // its purchase order is fully received, not just while it is "Sent". Derive the same
+  // open/closed distinction prqProgress uses rather than repeating the old two-status union.
+  //
+  // Memoised on the two slices prqProgress actually reads — not on `s`, which is a new object
+  // on every write anywhere in the app and would memoise nothing. It walks every purchase order
+  // once per requisition, and this card re-ran the whole of it when a toast appeared.
+  const withProc = useMemo(
+    () => prq.filter((p) => {
+      const label = prqProgress({ prq, po }, p.id).label;
+      return label !== "Received" && label !== "Declined";
+    }),
+    [prq, po],
+  );
   const value = stockValue(s, "store");
 
-  const queuedQty = sum(queued, (r) => sum(r.lines, (l) => l.appr));
+  // Approved quantities across items measured in litres, kilos and countable things: totalled
+  // per unit, never added together into a number of "units" that means nothing (M4).
+  const queuedQty = unitTotal(queued.flatMap((r) => r.lines.map((l) => ({ it: l.it, qty: l.appr }))));
   const reservedValue = sum(reserved, (r) => r.rv * IT[r.it].cost);
 
   const cover = [...rows].sort((a, b) => a.dc - b.dc).slice(0, 8);
@@ -61,7 +73,7 @@ export default function Dashboard() {
           {
             l: "Approved, awaiting issue",
             v: String(queued.length),
-            d: <>{queuedQty} approved units across {sum(queued, (r) => r.lines.length)} items</>,
+            d: <>{queuedQty || "nothing"} approved across {sum(queued, (r) => r.lines.length)} items</>,
           },
           {
             l: "Tickets open",

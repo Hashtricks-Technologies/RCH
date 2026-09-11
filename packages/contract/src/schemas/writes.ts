@@ -231,3 +231,11 @@ export const PayerBodySchema = z.strictObject({ kind: PayerKindSchema, id: z.str
  *  is the service's own sentence, not a 400 — the same split every other write here makes. */
 export const PatchPayerBodySchema = z.strictObject({ name: z.string().max(120).optional(), active: z.boolean().optional() });
 export const PayerParamsSchema = z.strictObject({ kind: PayerKindSchema, id: z.string().min(1).max(40) });
+// ---- bill void. A mis-keyed bill, taken back on the day it was taken and no later.
+/** A bill number carries a slash (`CF/1188`), so this one param reaches the server
+ *  percent-encoded — `UI/src/api/client.ts` encodes every path param and nginx forwards the
+ *  encoded form unchanged. The cap is a document id's, like `DocIdParamsSchema`. */
+export const BillNoParamsSchema = z.strictObject({ no: z.string().min(1).max(40) });
+/** Non-empty is a service rule, not a schema one: an empty box must reach the manager as the
+ *  desk's own "Give a reason for voiding this bill", not a 400 with a Zod path in it. */
+export const VoidBillBodySchema = z.strictObject({ reason: z.string().max(500) });

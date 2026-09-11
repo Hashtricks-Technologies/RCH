@@ -3,108 +3,20 @@ import { IT, PO_APPROVAL_LIMIT } from "../../data/master";
 import { vendorName } from "../../data/vendors";
 import { useApp } from "../../store";
 import { canCancelPo, canSendPo, netReceived, poValue } from "../../lib/selectors";
-import { U, fq, money, money0, pct, toInputDate } from "../../lib/fmt";
-import { Alert, Btn, BtnRow, DataTable, Feed, Field, FormRow, Pill, Section, TableFoot } from "../../ui/kit";
+import { U, fq, money, money0, pct } from "../../lib/fmt";
+// The two typed-in boxes this drawer pioneered live in the kit now: six other tables on three
+// other screens need the same "absorb the typing, commit once" behaviour, and a second copy is
+// how "12.5" starts posting as 12 again on one of them.
+import {
+  Alert, Btn, BtnRow, DataTable, DraftLineInput, EtaInput, Feed, Field, FormRow, Pill, Section,
+  TableFoot,
+} from "../../ui/kit";
 import type { Row } from "../../ui/kit";
 import { DrawerFrame } from "../../ui/Drawer";
 import { registerDrawer, type DrawerProps } from "../../drawers";
 import { contractFor } from "./lib";
 
 const warn = { color: "var(--warn)" };
-
-/**
- * Quantity and rate cells on a draft line are edited freely as the operator
- * types, so they cannot write to the store on every keystroke — an
- * in-progress edit (clearing the field to retype, or typing a multi-digit
- * increase one character at a time) would otherwise be sent to the store a
- * character at a time. Local state absorbs the typing; the value only
- * reaches the store on blur or Enter. If the store's own value changes
- * underneath (or a commit was rejected/no-op'd and the store didn't move),
- * the field snaps back to whatever the store actually holds.
- */
-function DraftLineInput({
-  value, min, step, ariaLabel, positiveOnly, onCommit,
-}: {
-  value: number; min: number; step: number; ariaLabel: string;
-  positiveOnly?: boolean; onCommit: (n: number) => void;
-}) {
-  const [local, setLocal] = useState(String(value));
-  const [synced, setSynced] = useState(value);
-  // Reset the field whenever the store's own value moves out from under it —
-  // adjusted during render (React's own pattern for this), not in an effect,
-  // so the field never has a chance to paint a stale value first.
-  if (value !== synced) {
-    setSynced(value);
-    setLocal(String(value));
-  }
-
-  const commit = () => {
-    const n = Number(local);
-    // A blur is not an edit. Tabbing across a draft line touches every cell on the way past,
-    // and each one would otherwise post a PATCH and toast a sentence about a value nobody
-    // changed — so only a number that actually moved reaches the server.
-    if (Number.isFinite(n) && n !== value && (!positiveOnly || n > 0)) onCommit(n);
-    // Whether or not the store accepted the value, resync the field to
-    // whatever it currently holds rather than leaving a stale or blank input:
-    // if the commit changed it, the render-time check above catches the new
-    // value on the next render; if it didn't (rejected, no-op or invalid),
-    // this line is what puts the field back to the true value.
-    setSynced(value);
-    setLocal(String(value));
-  };
-
-  return (
-    <input
-      type="number" className="mono" min={min} step={step}
-      value={local} aria-label={ariaLabel}
-      onChange={(e) => setLocal(e.target.value)}
-      onBlur={commit}
-      onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
-    />
-  );
-}
-
-/**
- * The expected delivery date, in the only form an `<input type="date">` speaks.
- *
- * Same shape as `DraftLineInput` above, for the same reason and one more: a date box fires
- * `change` on every intermediate *valid* date, so a year typed digit by digit is four writes —
- * and each write's refetch snaps the box back under the operator's fingers. Local state absorbs
- * the typing and the value reaches the server on blur, once, and only when it actually moved.
- * The store holds a display date ("11-Sep-2026"), so `toInputDate` converts on the way in and
- * the input's own ISO value goes straight out, which is what `PatchPoBodySchema.eta` wants.
- */
-function EtaInput({ value, busy, onCommit }: {
-  value: string; busy: boolean; onCommit: (iso: string) => void;
-}) {
-  const iso = toInputDate(value);
-  const [local, setLocal] = useState(iso);
-  const [synced, setSynced] = useState(iso);
-  if (iso !== synced) {
-    setSynced(iso);
-    setLocal(iso);
-  }
-
-  const commit = () => {
-    // A cleared box is not a date and an unchanged one is not a change. Neither is worth a
-    // write, and an empty string would reach the buyer as a generic 400 rather than a sentence.
-    if (local && local !== iso) onCommit(local);
-    // Then resync to whatever the store actually holds, exactly as `DraftLineInput` does: if the
-    // write landed, the render-time check above picks the new date up a moment later; if it was
-    // refused, this is what stops a second tab-out sending the same refused date again.
-    setSynced(iso);
-    setLocal(iso);
-  };
-
-  return (
-    <input
-      type="date" value={local} aria-label="Expected delivery date" disabled={busy}
-      onChange={(e) => setLocal(e.target.value)}
-      onBlur={commit}
-      onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
-    />
-  );
-}
 
 const dotFor = (state: string) =>
   state === "Cancelled" ? "var(--crit)"

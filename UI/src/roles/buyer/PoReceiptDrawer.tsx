@@ -1,21 +1,18 @@
 import { useState } from "react";
-import { RECEIPT_TOLERANCE } from "@rch/domain";
+import { istDate, RECEIPT_TOLERANCE } from "@rch/domain";
 import { IT } from "../../data/master";
 import { vendorName } from "../../data/vendors";
 import { useApp } from "../../store";
 import { U, fq, money, unitTotal } from "../../lib/fmt";
 import { canCloseShort, netReceived, round3 } from "../../lib/selectors";
-import { Alert, Btn, BtnRow, DataTable, Field, FormRow, Section, TableFoot } from "../../ui/kit";
+import {
+  Alert, Btn, BtnRow, DataTable, DraftLineInput, Field, FormRow, Section, TableFoot,
+} from "../../ui/kit";
 import type { Row } from "../../ui/kit";
 import { DrawerFrame } from "../../ui/Drawer";
 import { registerDrawer, type DrawerProps } from "../../drawers";
 import type { ReceiptDoc, ReceiptLine } from "../../types";
 
-const num = (v: string) => {
-  const n = Number(v);
-  return Number.isFinite(n) && n > 0 ? n : 0;
-};
-const today = () => new Date().toISOString().slice(0, 10);
 const warn = { color: "var(--warn)" };
 
 function PoReceiptDrawer({ id }: DrawerProps) {
@@ -23,7 +20,12 @@ function PoReceiptDrawer({ id }: DrawerProps) {
   const receive = useApp((x) => x.receivePo);
   const closeShort = useApp((x) => x.closePoShort);
   const close = useApp((x) => x.closeDrawer);
+  const notify = useApp((x) => x.notify);
   const po = s.po.find((x) => x.id === id);
+  /** The hospital's own calendar date, not the host's: a batch that expires tomorrow morning IST
+   *  is not expired because the browser is running somewhere still on yesterday. Read per render
+   *  rather than at module load, so a window left open overnight does not keep yesterday's. */
+  const today = istDate(new Date());
 
   const [doc, setDoc] = useState<ReceiptDoc>({ dc: "", invoice: "", invDate: "" });
   // recv defaults to the outstanding balance — this is one instalment, not the full order.
@@ -93,15 +95,54 @@ function PoReceiptDrawer({ id }: DrawerProps) {
   const at = (i: number, patch: Partial<ReceiptLine>) =>
     setLines((r) => r.map((x, j) => (j === i ? { ...x, ...patch } : x)));
 
+  /**
+   * What the screen already says in red, said once more where it can stop the write.
+   *
+   * Answers the sentence the store keeper should read, or `null` when there is nothing to say.
+   * Every one of these is the server's refusal too — pressing anyway cost a round trip and an
+   * error toast for something the drawer could already see.
+   */
+  const refusal = (): string | null => {
+    if (!doc.dc.trim()) return "Nothing books in without the delivery note — record its number first.";
+    if (lines.every((l) => l.recv <= 0)) {
+      return "Nothing was received on any line. Enter what actually arrived, or close the order short.";
+    }
+    const named = (i: number) => IT[po.lines[i].it]?.n ?? po.lines[i].it;
+    const over = lines.findIndex((l) => l.rejected > l.recv);
+    if (over >= 0) return `${named(over)} — more was rejected than arrived on that line.`;
+    const dated = lines.findIndex((l) => Boolean(l.exp && l.mfg && l.exp <= l.mfg));
+    if (dated >= 0) return `${named(dated)} — the expiry falls on or before the manufacture date.`;
+    return null;
+  };
+
   /** Both doors carry a form — a delivery note and every batch on one, a reason on the other —
    *  so each waits for the server and closes only when it has taken it. A refused receipt
    *  leaves every batch number and date exactly where the store keeper typed it. */
   const book = async () => {
     if (busy) return;
+    // Refused here rather than by greying the button out. These four read boxes that commit on
+    // blur, and a disabled button never receives the press that would blur one — so a line the
+    // store keeper had just corrected could not re-enable the button its old value disabled.
+    // A refusal in this app is a sentence saying what was refused and why, not a dead control.
+    const no = refusal();
+    if (no) { notify(no); return; }
     setBusy(true);
     const ok = await receive(po.id, doc, lines);
     setBusy(false);
     if (ok) close();
+  };
+
+  /**
+   * Take whatever is being typed before the press is read.
+   *
+   * `mousedown` runs before `click` and before focus moves, so blurring here commits the box the
+   * store keeper is still standing in — otherwise typing a quantity and going straight for the
+   * button books the value the line held before they touched it. The refusals above are the net
+   * underneath this, not a substitute for it.
+   */
+  const commitTyping = () => {
+    const el = document.activeElement;
+    if (el instanceof HTMLInputElement) el.blur();
   };
   const confirmShort = async () => {
     if (busy) return;
@@ -134,9 +175,11 @@ function PoReceiptDrawer({ id }: DrawerProps) {
         <>{fq(l.qty, l.it)} <span className="dim">{U(l.it)}</span></>,
         <>{fq(already[i], l.it)}</>,
         <>
-          <input type="number" className="mono" min={0} step={U(l.it) === "nos" ? 1 : 0.001}
-            value={r.recv} aria-label={`Quantity received for ${IT[l.it]?.n ?? l.it}`}
-            onChange={(e) => at(i, { recv: num(e.target.value) })} />
+          <DraftLineInput
+            value={r.recv} min={0} step={U(l.it) === "nos" ? 1 : 0.001}
+            ariaLabel={`Quantity received for ${IT[l.it]?.n ?? l.it}`}
+            onCommit={(n) => at(i, { recv: Math.max(0, n) })}
+          />
           {/* The same sum `checkReceiptLine` runs server-side: what earlier instalments accepted
               plus what is at the door now, against the ordered quantity and its tolerance. */}
           {round3(already[i] + r.recv) > round3(l.qty * RECEIPT_TOLERANCE) && (
@@ -144,9 +187,11 @@ function PoReceiptDrawer({ id }: DrawerProps) {
           )}
         </>,
         <>
-          <input type="number" className="mono" min={0} step={U(l.it) === "nos" ? 1 : 0.001}
-            value={r.rejected} aria-label={`Quantity rejected for ${IT[l.it]?.n ?? l.it}`}
-            onChange={(e) => at(i, { rejected: num(e.target.value) })} />
+          <DraftLineInput
+            value={r.rejected} min={0} step={U(l.it) === "nos" ? 1 : 0.001}
+            ariaLabel={`Quantity rejected for ${IT[l.it]?.n ?? l.it}`}
+            onCommit={(n) => at(i, { rejected: Math.max(0, n) })}
+          />
           {r.rejected > r.recv && (
             <div className="mini" style={warn}>more than arrived on this line</div>
           )}
@@ -168,9 +213,11 @@ function PoReceiptDrawer({ id }: DrawerProps) {
           aria-label={`Batch number for ${IT[l.it]?.n ?? l.it}`}
           onChange={(e) => at(i, { batch: e.target.value })} />,
         priced
-          ? <input type="number" className="mono" min={0} step="0.01" value={r.mrp}
-            aria-label={`Printed MRP for ${IT[l.it]?.n ?? l.it}`}
-            onChange={(e) => at(i, { mrp: num(e.target.value) })} />
+          ? <DraftLineInput
+            value={r.mrp} min={0} step={0.01}
+            ariaLabel={`Printed MRP for ${IT[l.it]?.n ?? l.it}`}
+            onCommit={(n) => at(i, { mrp: Math.max(0, n) })}
+          />
           : <span className="dim mini">Not printed</span>,
         <input type="date" value={r.mfg} aria-label={`Manufactured on for ${IT[l.it]?.n ?? l.it}`}
           onChange={(e) => at(i, { mfg: e.target.value })} />,
@@ -180,7 +227,7 @@ function PoReceiptDrawer({ id }: DrawerProps) {
           {r.exp && r.mfg && r.exp <= r.mfg && (
             <div className="mini" style={warn}>expiry falls on or before manufacture</div>
           )}
-          {r.exp && r.exp < today() && (
+          {r.exp && r.exp < today && (
             <div className="mini" style={warn}>this batch has already expired</div>
           )}
         </>,
@@ -199,9 +246,12 @@ function PoReceiptDrawer({ id }: DrawerProps) {
           )}
           <div className="sp" />
           <Btn variant="gh" onClick={close}>Close</Btn>
-          <Btn variant="ok" disabled={busy} onClick={book}>
-            {busy ? "Booking in…" : "Book into the central store"}
-          </Btn>
+          {/* The press commits whatever is still being typed before `book` reads the lines. */}
+          <span onMouseDown={commitTyping}>
+            <Btn variant="ok" disabled={busy} onClick={book}>
+              {busy ? "Booking in…" : "Book into the central store"}
+            </Btn>
+          </span>
         </>
       }
     >

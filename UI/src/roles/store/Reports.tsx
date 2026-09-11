@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { istDate } from "@rch/domain";
 import { IT, LOC } from "../../data/master";
 import { useApp, type AppState } from "../../store";
 import { committed, costOf, freeToPromise, hasLeft, isTicketOpen, onOrder, parOf, qty, resv } from "../../lib/selectors";
@@ -39,6 +40,41 @@ const mins = (t: string) => {
   const [h, m] = t.split(":").map(Number);
   return Number.isFinite(h) && Number.isFinite(m) ? h * 60 + m : null;
 };
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+/**
+ * "12 Sep" against today's IST calendar, as whole days ahead.
+ *
+ * `bestBeforeText` prints the day and the month and no year, so the year is the one that puts
+ * the date on or after today — a best-before is never written in the past, and that is what
+ * carries a batch made on New Year's Eve over into January. An unreadable suffix still means
+ * "some other day", so it counts as one.
+ */
+const daysAhead = (dayMonth: string, todayIso: string): number => {
+  const m = /^(\d{1,2})\s+([A-Za-z]{3})/.exec(dayMonth);
+  const mon = m ? MONTHS.findIndex((x) => x.toLowerCase() === m[2].toLowerCase()) : -1;
+  if (!m || mon < 0) return 1;
+  const on = (y: number) => `${y}-${String(mon + 1).padStart(2, "0")}-${m[1].padStart(2, "0")}`;
+  const thisYear = on(Number(todayIso.slice(0, 4)));
+  const due = thisYear >= todayIso ? thisYear : on(Number(todayIso.slice(0, 4)) + 1);
+  return Math.round((Date.parse(`${due}T00:00:00+05:30`) - Date.parse(`${todayIso}T00:00:00+05:30`)) / 86400000);
+};
+/**
+ * A best-before as minutes past this morning's midnight.
+ *
+ * `bestBeforeText` says "18:30" for today, "06:30 tomorrow" for the small hours and
+ * "06:30 12 Sep" for anything further out (H9) — so the clock is only ever the first word, and
+ * `mins("06:30 tomorrow")` read `Number("30 tomorrow")`, answered NaN and fell back to 0, which
+ * made every overnight batch on this report read "Past best before" from the moment it was
+ * made. The day the text names is added back on in whole days rather than dropped.
+ */
+const bbMins = (bb: string, todayIso: string) => {
+  const [clock, ...day] = bb.trim().split(" ");
+  const at = mins(clock);
+  if (at === null) return null;
+  if (day.length === 0) return at;
+  const rest = day.join(" ");
+  return at + 1440 * (rest === "tomorrow" ? 1 : daysAhead(rest, todayIso));
+};
 /** Times are clock-only, so a negative gap has rolled past midnight. */
 const gap = (a: string | undefined, b: string | undefined) => {
   const x = a ? mins(a) : null;
@@ -48,7 +84,17 @@ const gap = (a: string | undefined, b: string | undefined) => {
 };
 const dur = (m: number | null) =>
   m === null ? DASH : m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${m % 60} min`;
-const days = (iso: string) => Math.round((new Date(iso).getTime() - Date.now()) / 86400000);
+/**
+ * Whole days from today to a wire date, counted on the hospital's calendar.
+ *
+ * `new Date("2026-09-30").getTime() - Date.now()` measures from midnight **UTC**, so a browser
+ * anywhere east of it is five and a half hours into the next IST day and every expiry and every
+ * age on this report was off by one for that window. Both ends go through `istDate` instead, so
+ * the answer is a count of IST days whatever clock the host keeps.
+ */
+const days = (iso: string) => Math.round(
+  (Date.parse(`${iso}T00:00:00+05:30`) - Date.parse(`${istDate(new Date())}T00:00:00+05:30`)) / 86400000,
+);
 const storeKeys = (s: AppState) => Object.keys(s.stock.store).filter((k) => IT[k]);
 const byCode = (a: string, b: string) => IT[a].c.localeCompare(IT[b].c);
 const fromStore = (s: AppState) => s.tkt.filter((t) => t.from === "store");
@@ -235,6 +281,7 @@ const prqst = (s: AppState): Rep => {
 
 const ageing = (s: AppState): Rep => {
   const clock = mins(now()) ?? 0;
+  const todayIso = istDate(new Date());
   const rows = [
     ...s.grn.map((g) => {
       const left = days(g.exp);
@@ -245,11 +292,15 @@ const ageing = (s: AppState): Rep => {
       ];
     }),
     ...s.batch.map((b) => {
-      const bb = mins(b.bb) ?? 0;
+      // A batch made this evening is good until the small hours, and the kitchen's own word for
+      // that is "06:30 tomorrow" — which is a time this report has to read, not discard.
+      const bb = bbMins(b.bb, todayIso);
+      const left = bb === null ? null : bb - clock;
       return [
         b.id, IT[b.it]?.n ?? b.it, LOC.kitchen.n, `${fq(b.qty, b.it)} ${U(b.it)}`,
-        `today ${b.at}`, `today ${b.bb}`, dur(gap(b.at, now())),
-        clock > bb ? "Past best before" : `${bb - clock} min left`, money0(b.qty * costOf(b.it)),
+        `today ${b.at}`, b.bb.includes(" ") ? b.bb : `today ${b.bb}`, dur(gap(b.at, now())),
+        left === null ? DASH : left <= 0 ? "Past best before" : dur(left) + " left",
+        money0(b.qty * costOf(b.it)),
       ];
     }),
   ];
@@ -274,7 +325,10 @@ const movers = (s: AppState): Rep => {
     .map((k) => ({
       k,
       iss: sum(out, (t) => sum(t.lines.filter((l) => l.it === k), (l) => l.qty)),
-      sold: sum(s.bills.flatMap((b) => b.lines).filter((l) => l.it === k), (l) => l.qty),
+      // ---- bill void: measured the way "Issued from store" above is — a voided bill put its
+      // lines back on the shelf, so counting them would make an item look fast on stock that
+      // never left.
+      sold: sum(s.bills.filter((b) => !b.voided).flatMap((b) => b.lines).filter((l) => l.it === k), (l) => l.qty),
       ask: sum(s.req, (r) => sum(r.lines.filter((l) => l.it === k), (l) => l.qty)),
     }))
     .sort((a, b) => b.iss + b.sold - (a.iss + a.sold) || b.ask - a.ask)
@@ -337,21 +391,25 @@ const disc = (s: AppState): Rep => {
       return [
         t.id, t.req, LOC[t.to].n, IT[l.it]?.n ?? l.it, fq(appr, l.it), fq(l.qty, l.it),
         done ? fq(l.qty, l.it) : t.st === "Cancelled" ? "Cancelled — never sent" : "Not yet confirmed",
-        fq(Math.round((l.qty - appr) * 1000) / 1000, l.it), done ? fq(0, l.it) : DASH, t.st,
+        fq(Math.round((l.qty - appr) * 1000) / 1000, l.it), t.st,
       ];
     });
   });
   const open = fromStore(s).filter((t) => isTicketOpen(t.st)).length;
   return {
+    // "Confirmed less issued" is gone. An outlet confirms a ticket whole — there is no
+    // endpoint anywhere that takes a different quantity from the one on it — so the column
+    // was zero on every confirmed row and a dash on every other one, and a column that can
+    // only say one thing is a column the store keeper learns to read past.
     cols: [
       { h: "Ticket", cls: "nm", w: "13%" }, { h: "Request", w: "14%" }, { h: "Outlet" },
       { h: "Item", w: "15%" }, { h: "Approved", r: true }, { h: "Issued on ticket", r: true },
       { h: "Confirmed by outlet", r: true }, { h: "Ticket less approved", r: true },
-      { h: "Confirmed less issued", r: true }, { h: "Status", w: "10%" },
+      { h: "Status", w: "10%" },
     ],
     rows,
-    pill: 9,
-    facet: 9,
+    pill: 8,
+    facet: 8,
     foot: `${open} ticket${open === 1 ? " is" : "s are"} still open, so their confirmed quantity is not known yet`,
     empty: { title: "No ticket has left the store", sub: "Discrepancies are measured once a ticket is raised and the outlet confirms it." },
   };
@@ -387,20 +445,31 @@ export default function Reports() {
   // never held, and reconstructing it backwards from receipts and issues is what a withdrawn
   // ticket used to walk by the quantity it never moved.
   const readStockLedger = useApp((x) => x.readStockLedger);
-  const [ledgerState, setLedgerState] = useState<LedgerState>({ st: "loading" });
-  /** Bumped by the Try again button on the failed state. The effect is keyed on `sel`, so
-   *  re-picking the report the operator is already on changes nothing and re-runs nothing —
-   *  which is what the old "Pick the report again to retry" was asking them to do. */
-  const [retry, setRetry] = useState(0);
+  /**
+   * Which attempt at reading the ledger is the current one. Bumped when the operator picks a
+   * different report and by the Try again button on the failed state — both events, not
+   * renders — so re-picking the report they are already on changes nothing and re-runs nothing.
+   */
+  const [attempt, setAttempt] = useState(0);
+  /** The answer, tagged with the attempt that produced it. */
+  const [answer, setAnswer] = useState<{ at: number; rows: StockLedgerRow[] | null } | null>(null);
+  /**
+   * "Loading" is derived, not written. The effect used to open with
+   * `setLedgerState({ st: "loading" })`, which starts a second render for a fact the first one
+   * already knew: an answer that is not this attempt's is an answer that has not arrived.
+   */
+  const ledgerState: LedgerState =
+    sel !== "ledger" || answer === null || answer.at !== attempt
+      ? { st: "loading" }
+      : answer.rows === null ? { st: "failed" } : { st: "rows", rows: answer.rows };
   useEffect(() => {
     if (sel !== "ledger") return;
     let live = true;
-    setLedgerState({ st: "loading" });
     void readStockLedger("store", LEDGER_DAYS).then((rows) => {
-      if (live) setLedgerState(rows === null ? { st: "failed" } : { st: "rows", rows });
+      if (live) setAnswer({ at: attempt, rows });
     });
     return () => { live = false; };
-  }, [sel, retry, readStockLedger]);
+  }, [sel, attempt, readStockLedger]);
 
   const def = REPORTS.find((r) => r.k === sel) ?? REPORTS[0];
   const rep = def.build(s, ledgerState);
@@ -420,7 +489,13 @@ export default function Reports() {
     return !term || r.some((c) => c.toLowerCase().includes(term));
   });
   const narrowed = rep.rows.length > 0 && rows.length === 0;
-  const pick = (k: string) => { setSel(k); setQ(""); setFi(0); };
+  const pick = (k: string) => {
+    // Only a real change of report is a new attempt at the ledger.
+    if (k !== sel) setAttempt((n) => n + 1);
+    setSel(k);
+    setQ("");
+    setFi(0);
+  };
 
   const exportCsv = () => {
     if (!rows.length) { notify(`${def.n} has no rows to export`); return; }
@@ -490,7 +565,7 @@ export default function Reports() {
           cols={rep.cols}
           rows={rows.map((cells, i) => ({
             key: sel + ":" + i,
-            cells: cells.map((v, j) => (j === rep.pill ? <StatusPill status={v} /> : v)),
+            cells: cells.map((v, j) => (j === rep.pill ? <StatusPill key={j} status={v} /> : v)),
           }))}
           empty={narrowed
             ? {
@@ -501,7 +576,7 @@ export default function Reports() {
             // The one report that can fail is the one that asks the server, and the empty state
             // is where its retry belongs — the builder is pure and has no setter to offer one.
             : sel === "ledger" && ledgerState.st === "failed"
-              ? { ...rep.empty, action: <Btn size="sm" onClick={() => setRetry((n) => n + 1)}>Try again</Btn> }
+              ? { ...rep.empty, action: <Btn size="sm" onClick={() => setAttempt((n) => n + 1)}>Try again</Btn> }
               : rep.empty}
         />
         <TableFoot count={rows.length} extra={rep.foot} />

@@ -1807,3 +1807,55 @@ describe("addPayer / updatePayer — the payer roster", () => {
     expect(S().toast).toBe("RC-4471 is already on the staff member roster");
   });
 });
+
+// ---- bill void ----
+describe("voidBill — POST /bills/:no/void", () => {
+  const VOIDED = { ...BILL, voided: true, voidReason: "Wrong tender — customer paid cash" };
+
+  it("percent-encodes the bill number, reads stock and bills back, and says what the server said", async () => {
+    as("manager");
+    serve({
+      "POST /api/v1/bills/CF%2F1188/void": () => json({
+        result: VOIDED, changed: ["stock", "bills"],
+        message: "CF/1188 voided — 2 nos back on the shelf at Coffee Shop",
+      }),
+      "GET /api/v1/stock": () => json(STOCK),
+      "GET /api/v1/bills": () => json([VOIDED]),
+    });
+
+    expect(await S().voidBill("CF/1188", "Wrong tender — customer paid cash")).toBe(true);
+
+    // The slash is the whole point: a bare one would split the path and match no route.
+    expect(hit("POST /api/v1/bills/CF%2F1188/void")[0].body).toEqual({ reason: "Wrong tender — customer paid cash" });
+    expect(hit("POST /api/v1/bills/CF/1188/void")).toHaveLength(0);
+    // Two narrow reads, not a snapshot.
+    expect(hit("GET /api/v1/stock")).toHaveLength(1);
+    expect(hit("GET /api/v1/bills")).toHaveLength(1);
+    expect(hit("GET /api/v1/snapshot")).toHaveLength(0);
+    expect(S().bills[0]).toMatchObject({ no: "CF/1188", voided: true, voidReason: "Wrong tender — customer paid cash" });
+    expect(S().toast).toBe("CF/1188 voided — 2 nos back on the shelf at Coffee Shop");
+  });
+
+  it("answers false, repeats the refusal and leaves the list alone", async () => {
+    as("manager");
+    const before = S().bills;
+    serve({
+      "POST /api/v1/bills/CF%2F1188/void": () =>
+        refusal("CF/1188 was taken on 10-Sep-2026 — a bill can only be voided on the day it was billed; write the stock back on with an adjustment instead"),
+    });
+
+    expect(await S().voidBill("CF/1188", "Spotted it at the day-end count")).toBe(false);
+
+    expect(S().bills).toBe(before);
+    expect(calls()).toHaveLength(1);          // nothing refetched behind a refusal
+    expect(S().toast).toBe("CF/1188 was taken on 10-Sep-2026 — a bill can only be voided on the day it was billed; write the stock back on with an adjustment instead");
+  });
+
+  it("keeps the instant beside the HH:MM, so a seven-day list can tell which day a bill is", async () => {
+    as("manager");
+    serve({ "GET /api/v1/bills": () => json([BILL]) });
+    await refetch(["bills"]);
+    expect(S().bills[0].t).toMatch(/^\d{2}:\d{2}$/);
+    expect(S().bills[0].iso).toBe(BILL.t);
+  });
+});

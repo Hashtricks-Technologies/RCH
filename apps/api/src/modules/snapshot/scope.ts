@@ -49,7 +49,7 @@ export const scopePayers = (bills: Bill[], who: Who): Bill[] =>
  * the whole register to three roles that never open the payer picker was the larger half of the
  * same leak.
  */
-const scopeRoster = (roster: PayerRoster, who: Who): PayerRoster =>
+export const scopeRoster = (roster: PayerRoster, who: Who): PayerRoster =>
   READS_PAYERS.has(who.role) ? roster : { patients: [], staff: [], depts: [] };
 
 /** A counter's requests are their own outlet's; everyone else sees the desk they work. */

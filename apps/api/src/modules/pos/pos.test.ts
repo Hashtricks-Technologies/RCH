@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { and, asc, eq, sql } from "drizzle-orm";
 import { BillSchema, StockResponseSchema } from "@rch/contract";
+import { dmy, istDate } from "@rch/domain";
 import * as s from "../../db/schema/index.js";
 import { lockBalances, postMoves, rebuildBalances } from "../../lib/ledger.js";
 import { reserve } from "../../lib/reservations.js";
@@ -540,6 +541,330 @@ describe("the payer is somebody on the roster, not a word the till typed", () =>
     const r = await pay("u1", oneWater({ kind: "staff", id: "RC-7788", name: "Left The Hospital" }, "Staff credit"));
     expect(r.statusCode).toBe(422);
     expect(r.json().error.message).toBe("There is no staff member RC-7788 on the roster");
+  });
+});
+
+// ---- bill void ----
+/**
+ * POST /bills/:no/void — the same-day door out of a mis-keyed bill.
+ *
+ * What the cases below are about is the shape of the undo, not the arithmetic of the sale: one
+ * positive reversal per move the sale posted, each naming the row it cancels, the bill left on
+ * the table with a stamp on it, and the two sums that count money — the staff-credit ceiling and
+ * the dashboard's columns — learning to skip it.
+ */
+describe("POST /bills/:no/void — the manager takes a bill back", () => {
+  const voidBill = async (userId: string, no: string, reason: string, key: string = randomUUID()) =>
+    app.inject({
+      method: "POST", url: `/api/v1/bills/${encodeURIComponent(no)}/void`,
+      headers: { ...(await authHeaders(app, userId)), "idempotency-key": key }, payload: { reason },
+    });
+  const movesOf = async (no: string, kind: "sale" | "reversal") =>
+    app.db.select().from(s.stockMoves)
+      .where(and(eq(s.stockMoves.refType, "bill"), eq(s.stockMoves.refId, no), eq(s.stockMoves.kind, kind)))
+      .orderBy(asc(s.stockMoves.id));
+
+  // Every case here sells something first, and the shelves above have been drawn down all file.
+  // Milk is seeded at zero in the Coffee Shop, so the cappuccino case needs some put on too.
+  beforeAll(async () => {
+    await app.db.transaction((tx) => postMoves(tx, [
+      { loc: "coffee", it: "water", qty: 400, kind: "adjustment", refType: "test", refId: "void-topup" },
+      { loc: "coffee", it: "juice", qty: 200, kind: "adjustment", refType: "test", refId: "void-topup" },
+      { loc: "coffee", it: "milk", qty: 20, kind: "adjustment", refType: "test", refId: "void-topup" },
+    ]));
+  });
+
+  it("puts every line back on the shelf and marks the bill voided", async () => {
+    const before = await stockOf("u1");
+    const sale = await pay("u1", { loc: "coffee", tender: "Cash", lines: [{ it: "water", qty: 3 }, { it: "juice", qty: 2 }] });
+    expect(sale.statusCode, sale.body).toBe(200);
+    const no = sale.json().result.no as string;
+    expect(await onHand("coffee", "water")).toBe(before.stock.coffee.water - 3);
+
+    const r = await voidBill("u2", no, "Wrong tender — customer paid cash");
+    expect(r.statusCode, r.body).toBe(200);
+    const b = r.json();
+    expect(BillSchema.safeParse(b.result).success, JSON.stringify(b.result)).toBe(true);
+    expect(b.result.no).toBe(no);
+    expect(b.result.voided).toBe(true);
+    expect(b.result.voidReason).toBe("Wrong tender — customer paid cash");
+    // Nothing about the bill itself is rewritten: it is still the bill that was printed.
+    expect(b.result.tot).toBe(100);
+    expect(b.result.lines).toEqual([{ it: "water", qty: 3, rate: 20 }, { it: "juice", qty: 2, rate: 20 }]);
+    expect(b.message).toBe(`${no} voided — 5 nos back on the shelf at Coffee Shop`);
+
+    expect(await onHand("coffee", "water")).toBe(before.stock.coffee.water);
+    expect(await onHand("coffee", "juice")).toBe(before.stock.coffee.juice);
+    const [head] = await app.db.select().from(s.bills).where(eq(s.bills.no, no));
+    expect(head.voidedAt).toBeInstanceOf(Date);
+    expect(head.voidedBy).toBe("u2");
+    expect(head.voidReason).toBe("Wrong tender — customer paid cash");
+  });
+
+  it("posts one positive reversal per sale move, each pointing at the move it reverses", async () => {
+    const sale = await pay("u1", { loc: "coffee", tender: "Cash", lines: [{ it: "water", qty: 2 }, { it: "juice", qty: 1 }] });
+    const no = sale.json().result.no as string;
+    const sold = await movesOf(no, "sale");
+
+    expect((await voidBill("u2", no, "Rang up twice")).statusCode).toBe(200);
+
+    const back = await movesOf(no, "reversal");
+    expect(back).toHaveLength(sold.length);
+    expect(back.every((m) => m.qty > 0)).toBe(true);
+    expect(back.map((m) => [m.itemKey, m.qty])).toEqual(sold.map((m) => [m.itemKey, -m.qty]));
+    expect(back.map((m) => m.reversesId)).toEqual(sold.map((m) => m.id));
+    expect(back.every((m) => m.loc === "coffee" && m.byUser === "u2")).toBe(true);
+    // And the sale's own rows are untouched: the ledger is append-only, an undo is another move.
+    expect(sold.every((m) => m.reversesId === null)).toBe(true);
+  });
+
+  it("explodes an MTO bill back into the ingredients the sale actually took", async () => {
+    const milk = await onHand("coffee", "milk");
+    const cups = await onHand("coffee", "cup");
+    const sale = await pay("u1", { loc: "coffee", tender: "Cash", lines: [{ it: "capp", qty: 4 }] });
+    expect(sale.statusCode, sale.body).toBe(200);
+    const no = sale.json().result.no as string;
+    expect(await onHand("coffee", "milk")).toBe(milk - 0.6);         // 4 × 0.15 L
+
+    const r = await voidBill("u2", no, "Customer changed their mind before it was poured");
+    expect(r.statusCode, r.body).toBe(200);
+
+    const back = await movesOf(no, "reversal");
+    // The recipe's four ingredients, not the dish: no shelf ever carried a cappuccino.
+    expect(back.map((m) => m.itemKey).sort()).toEqual(["beans", "cup", "milk", "sugar"]);
+    expect(back.some((m) => m.itemKey === "capp")).toBe(false);
+    expect(await onHand("coffee", "milk")).toBe(milk);
+    expect(await onHand("coffee", "cup")).toBe(cups);
+    // The bill on the wire still reads as the dish that was sold.
+    expect(r.json().result.lines).toEqual([{ it: "capp", qty: 4, rate: 75 }]);
+  });
+
+  it("needs the bill number percent-encoded, and 404s the bare slash form", async () => {
+    const sale = await pay("u1", { loc: "coffee", tender: "Cash", lines: [{ it: "water", qty: 1 }] });
+    const no = sale.json().result.no as string;
+    expect(no).toContain("/");
+
+    // The bare form splits into two path segments and matches no route at all.
+    const bare = await app.inject({
+      method: "POST", url: `/api/v1/bills/${no}/void`,
+      headers: { ...(await authHeaders(app, "u2")), "idempotency-key": randomUUID() }, payload: { reason: "Bare slash" },
+    });
+    expect(bare.statusCode).toBe(404);
+    const [untouched] = await app.db.select().from(s.bills).where(eq(s.bills.no, no));
+    expect(untouched.voidedAt).toBeNull();
+
+    const encoded = await voidBill("u2", no, "Percent-encoded");
+    expect(encoded.statusCode, encoded.body).toBe(200);
+    expect(encoded.json().result.no).toBe(no);
+  });
+
+  it("404s a bill number that is not there", async () => {
+    const r = await voidBill("u2", "CF/404404", "Never existed");
+    expect(r.statusCode).toBe(404);
+    expect(r.json().error).toMatchObject({ code: "not_found", message: "There is no bill CF/404404." });
+  });
+
+  it("requires a reason", async () => {
+    const sale = await pay("u1", { loc: "coffee", tender: "Cash", lines: [{ it: "water", qty: 1 }] });
+    const no = sale.json().result.no as string;
+    const r = await voidBill("u2", no, "   ");
+    expect(r.statusCode).toBe(422);
+    expect(r.json().error).toMatchObject({ code: "rule", message: "Give a reason for voiding this bill" });
+    const [head] = await app.db.select().from(s.bills).where(eq(s.bills.no, no));
+    expect(head.voidedAt).toBeNull();
+    expect(await movesOf(no, "reversal")).toEqual([]);
+  });
+
+  it("refuses a bill that was voided already", async () => {
+    const sale = await pay("u1", { loc: "coffee", tender: "Cash", lines: [{ it: "water", qty: 1 }] });
+    const no = sale.json().result.no as string;
+    expect((await voidBill("u2", no, "Keyed the wrong outlet")).statusCode).toBe(200);
+
+    const again = await voidBill("u2", no, "Keyed the wrong outlet");
+    expect(again.statusCode).toBe(422);
+    expect(again.json().error).toMatchObject({ code: "rule", message: `${no} has already been voided` });
+    // And the stock went back exactly once.
+    expect(await movesOf(no, "reversal")).toHaveLength(1);
+  });
+
+  /**
+   * The day boundary, on a fixed clock.
+   *
+   * "Same day" is the hospital's, not the host's, and the two only disagree in the six and a
+   * half hours between 18:30 UTC and midnight UTC. A test that read the wall clock would prove
+   * that on some hosts at some hours and nothing at all the rest of the time, so both cases
+   * below pin an instant and pick values where **UTC-day equality and IST-day equality point
+   * opposite ways** — an implementation that compared UTC dates fails each of them on every host
+   * at every hour. Only `Date` is faked: the pool, the server and pg still run on real timers.
+   */
+  const atClock = async <T>(iso: string, run: () => Promise<T>): Promise<T> => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(iso));
+    try { return await run(); } finally { vi.useRealTimers(); }
+  };
+
+  it("voids a bill taken at 23:59 IST while it is still that IST day", async () => {
+    // 23:59:30 IST on 11-Sep — a minute and a half of the hospital's day left.
+    await atClock("2026-09-11T18:29:30.000Z", async () => {
+      // The last bill of the day is the one most likely to be wrong, and the till that took it
+      // is still standing there. 23:59 IST, the same UTC day as now.
+      const late = await given.bill(app.db, { loc: "coffee", total: 40, tender: "Cash", at: new Date("2026-09-11T18:29:00.000Z") });
+      const r = await voidBill("u2", late, "Last bill of the shift, wrong item");
+      expect(r.statusCode, r.body).toBe(200);
+      expect(r.json().message).toBe(`${late} voided`);    // given.bill posts no moves, nothing came back
+
+      // And the morning's bill from the *same hospital day*, which fell on the UTC day before:
+      // 00:30 IST on 11-Sep is 19:00 UTC on the 10th. A UTC-day comparison refuses this one.
+      const morning = await given.bill(app.db, { loc: "coffee", total: 40, tender: "Cash", at: new Date("2026-09-10T19:00:00.000Z") });
+      const m = await voidBill("u2", morning, "Wrong item, spotted at the end of the shift");
+      expect(m.statusCode, m.body).toBe(200);
+    });
+  });
+
+  it("refuses a bill from yesterday, naming the day it belongs to", async () => {
+    // 00:05 IST on 12-Sep — five minutes into the new hospital day, still 11-Sep in UTC.
+    await atClock("2026-09-11T18:35:00.000Z", async () => {
+      // 23:55 IST on 11-Sep: the same UTC day as now, and the hospital day before it. A
+      // UTC-day comparison would let this through — which is the whole point of the hour.
+      const yday = new Date("2026-09-11T18:25:00.000Z");
+      const no = await given.bill(app.db, { loc: "coffee", total: 40, tender: "Cash", at: yday });
+      const r = await voidBill("u2", no, "Spotted it at the day-end count");
+      expect(r.statusCode).toBe(422);
+      expect(dmy(istDate(yday))).toBe("11-Sep-2026");
+      expect(r.json().error).toMatchObject({
+        code: "rule",
+        message: `${no} was taken on 11-Sep-2026 — a bill can only be voided on the day it was billed; write the stock back on with an adjustment instead`,
+      });
+      const [head] = await app.db.select().from(s.bills).where(eq(s.bills.no, no));
+      expect(head.voidedAt).toBeNull();
+    });
+  });
+
+  it("is absent for every role but the manager", async () => {
+    const no = await given.bill(app.db, { loc: "coffee", total: 40, tender: "Cash" });
+    // The till that took the bill is exactly the party that must not be able to unsell it.
+    for (const who of ["u1", "u3", "u4", "u5"]) {
+      const r = await voidBill(who, no, "Not mine to take back");
+      expect(r.statusCode, `${who} reached the void`).toBe(404);
+    }
+    const [head] = await app.db.select().from(s.bills).where(eq(s.bills.no, no));
+    expect(head.voidedAt).toBeNull();
+  });
+
+  it("frees a staff member's credit for the month — a sale that would have breached now lands", async () => {
+    await app.db.insert(s.payers).values({ kind: "staff", id: "RC-9102", name: "Deepa Raman · Radiology" });
+    const payer = { kind: "staff" as const, id: "RC-9102", name: "Deepa Raman · Radiology" };
+    const mistake = await given.bill(app.db, { loc: "coffee", total: 2990, payer });
+    const cart: PayBody = { loc: "coffee", tender: "Staff credit", payer, lines: [{ it: "water", qty: 1 }] };
+
+    const breached = await pay("u1", cart);
+    expect(breached.statusCode).toBe(422);
+    expect(breached.json().error.message).toContain("staff credit limit");
+
+    const v = await voidBill("u2", mistake, "Charged to the wrong staff member");
+    expect(v.statusCode, v.body).toBe(200);
+    expect(v.json().message).toBe(`${mistake} voided — ₹2,990.00 is back on Deepa Raman · Radiology's credit for the month`);
+
+    const now = await pay("u1", cart);
+    expect(now.statusCode, now.body).toBe(200);
+  });
+
+  it("leaves a voided bill out of the dashboard's sales columns", async () => {
+    const takings = async () => {
+      const r = await app.inject({ method: "GET", url: "/api/v1/snapshot", headers: await authHeaders(app, "u2") });
+      expect(r.statusCode, r.body).toBe(200);
+      return (r.json().sales as number[][]).flat().reduce((a, b) => a + b, 0);
+    };
+    const before = await takings();
+    const sale = await pay("u1", { loc: "coffee", tender: "Cash", lines: [{ it: "water", qty: 5 }] });
+    const no = sale.json().result.no as string;
+    expect(await takings()).toBeCloseTo(before + 100, 2);
+
+    expect((await voidBill("u2", no, "Rang up on the wrong terminal")).statusCode).toBe(200);
+    expect(await takings()).toBeCloseTo(before, 2);
+  });
+
+  it("GET /bills and the snapshot carry the voided flag and the reason", async () => {
+    const sale = await pay("u1", { loc: "coffee", tender: "Cash", lines: [{ it: "water", qty: 1 }] });
+    const no = sale.json().result.no as string;
+    expect((await voidBill("u2", no, "Customer walked out")).statusCode).toBe(200);
+
+    const list = await app.inject({ method: "GET", url: "/api/v1/bills", headers: await authHeaders(app, "u2") });
+    expect(list.statusCode, list.body).toBe(200);
+    const listed = list.json() as { no: string; voided?: boolean; voidReason?: string }[];
+    expect(listed.find((b) => b.no === no)).toMatchObject({ voided: true, voidReason: "Customer walked out" });
+    // And a bill nobody voided carries neither key at all, so a screen asks `if (b.voided)`.
+    const clean = listed.find((b) => b.no !== no && b.voided === undefined)!;
+    expect(clean).toBeTruthy();
+    expect(Object.keys(clean)).not.toContain("voidReason");
+
+    const snap = await app.inject({ method: "GET", url: "/api/v1/snapshot", headers: await authHeaders(app, "u2") });
+    const fromSnapshot = (snap.json().bills as { no: string; voided?: boolean; voidReason?: string }[]).find((b) => b.no === no);
+    expect(fromSnapshot).toMatchObject({ voided: true, voidReason: "Customer walked out" });
+  });
+
+  it("writes one document_history row and puts no hist on the wire", async () => {
+    const sale = await pay("u1", { loc: "coffee", tender: "Cash", lines: [{ it: "water", qty: 1 }] });
+    const no = sale.json().result.no as string;
+    expect(await app.db.select().from(s.documentHistory).where(eq(s.documentHistory.docId, no))).toEqual([]);
+
+    const r = await voidBill("u2", no, "Double scan");
+    expect(r.statusCode, r.body).toBe(200);
+
+    const hist = await app.db.select().from(s.documentHistory).where(eq(s.documentHistory.docId, no));
+    expect(hist).toHaveLength(1);
+    expect(hist[0].docType).toBe("bill");
+    expect(hist[0].status).toBe("Voided — Double scan");
+    expect(hist[0].who).toBe("Ramesh Kumar");
+    // `BillSchema` has no `hist`: the badge and the reason are the whole story a bill can tell.
+    expect(r.json().result).not.toHaveProperty("hist");
+  });
+
+  it("announces stock and bills, and the response carries the same array", async () => {
+    const sale = await pay("u1", { loc: "coffee", tender: "Cash", lines: [{ it: "water", qty: 1 }] });
+    const no = sale.json().result.no as string;
+    const r = await voidBill("u2", no, "Wrong counter");
+    expect(r.json().changed).toEqual(["stock", "bills"]);
+  });
+
+  it("two managers voiding the same bill: one lands, the other reads 'already voided'", async () => {
+    const sale = await pay("u1", { loc: "coffee", tender: "Cash", lines: [{ it: "water", qty: 4 }] });
+    const no = sale.json().result.no as string;
+    const before = await onHand("coffee", "water");
+    await warmPool(app.testDb!, 2);
+
+    const [a, b] = await Promise.all([voidBill("u2", no, "Wrong tender"), voidBill("u2", no, "Wrong tender")]);
+
+    expect([a.statusCode, b.statusCode].sort(), `${a.body} | ${b.body}`).toEqual([200, 422]);
+    const loser = a.statusCode === 422 ? a : b;
+    expect(loser.json().error).toMatchObject({ code: "rule", message: `${no} has already been voided` });
+    // Four units of water, back exactly once: without the row lock both would post reversals.
+    expect(await onHand("coffee", "water")).toBe(before + 4);
+    expect(await movesOf(no, "reversal")).toHaveLength(1);
+  });
+
+  it("takes no lockBalances of its own — every reversal is positive", async () => {
+    const sale = await pay("u1", { loc: "coffee", tender: "Cash", lines: [{ it: "water", qty: 2 }] });
+    const no = sale.json().result.no as string;
+    // Put every free unit of the shelf on hold. A write that promised against this balance would
+    // refuse here, the way a sale does; a reversal promises nothing, so it lands.
+    const held = (await stockOf("u1")).rsv["coffee:water"] ?? 0;
+    const have = await onHand("coffee", "water");
+    await given.ticket(app.db, { refType: "shop_transfer", refId: "Shop transfer", from: "coffee", to: "kiosk", lines: [{ it: "water", qty: have - held }] });
+    const cells = (await app.db.select().from(s.stockBalances)).length;
+
+    const r = await voidBill("u2", no, "Held shelf, still a mis-key");
+    expect(r.statusCode, r.body).toBe(200);
+    expect((await movesOf(no, "reversal")).every((m) => m.qty > 0)).toBe(true);
+    expect(await onHand("coffee", "water")).toBe(have + 2);
+    // And it locked exactly the cells its own moves touch: no speculative row was created (M12).
+    expect((await app.db.select().from(s.stockBalances)).length).toBe(cells);
+  });
+
+  it("still leaves the balance cache equal to the moves that made it", async () => {
+    const before = Object.fromEntries((await app.db.select().from(s.stockBalances)).map((r) => [`${r.loc}:${r.itemKey}`, r.onHand]));
+    await rebuildBalances(app.db);
+    expect(Object.fromEntries((await app.db.select().from(s.stockBalances)).map((r) => [`${r.loc}:${r.itemKey}`, r.onHand]))).toEqual(before);
   });
 });
 

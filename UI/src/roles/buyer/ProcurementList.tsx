@@ -6,7 +6,8 @@ import { useApp } from "../../store";
 import { costOf, procurementList, qty, round3 } from "../../lib/selectors";
 import { fq, money, money0, sum, U } from "../../lib/fmt";
 import {
-  Alert, Btn, Card, DataTable, FilterSelect, Grid, PageHead, Tag, TableFoot, Toolbar,
+  Alert, Btn, Card, DataTable, DraftLineInput, FilterSelect, Grid, PageHead, Tag, TableFoot,
+  Toolbar,
 } from "../../ui/kit";
 import type { Row } from "../../ui/kit";
 import type { PoolLine } from "../../lib/selectors";
@@ -179,10 +180,13 @@ export default function ProcurementList() {
         <>{it?.n ?? g.it}<small>{it?.c ?? ""}</small></>,
         <>{U(g.it)}</>,
         <>{fq(g.pending, g.it)}</>,
-        <input
-          type="number" className="mono" min={0} max={g.pending} step={U(g.it) === "nos" ? 1 : 0.5}
-          value={qtyFor(g)} aria-label={`Quantity of ${it?.n ?? g.it} to pick`}
-          onChange={(e) => setQtyForItem(g, Number(e.target.value))}
+        // Typed in freely, committed on the way out, and still clamped to what the line has
+        // left by `setQtyForItem`: reading the box on every keystroke turned 12.5 into 1, 12,
+        // 12.5 and emptied the row to zero the moment the buyer cleared it to retype.
+        <DraftLineInput
+          value={qtyFor(g)} min={0} step={U(g.it) === "nos" ? 1 : 0.5}
+          ariaLabel={`Quantity of ${it?.n ?? g.it} to pick`}
+          onCommit={(n) => setQtyForItem(g, n)}
         />,
         <>{fq(qty(s, "store", g.it), g.it)}</>,
         <select

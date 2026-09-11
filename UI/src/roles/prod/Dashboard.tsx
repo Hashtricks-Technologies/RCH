@@ -2,19 +2,20 @@ import { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
-import { availOf, canHandOver, hasLeft, isTicketOpen, qty } from "../../lib/selectors";
+import { availOf, canHandOver, hasLeft, isTicketOpen, madeItems, qty } from "../../lib/selectors";
 import { fq, sum, U } from "../../lib/fmt";
 import {
   Alert, Btn, Card, DataTable, Feed, Grid, Kpis, PageHead, Pill, StatusPill, TableFoot,
 } from "../../ui/kit";
-
-const PRODS = ["puff", "sand", "salad"];
 
 export default function Dashboard() {
   const nav = useNavigate();
   const s = useApp();
   const openDrawer = useApp((x) => x.openDrawer);
   const { pord, batch, tkt, ovr } = s;
+
+  // The kitchen's own products, off the master rather than a literal — see `madeItems()`.
+  const PRODS = useMemo(() => { void s.catalogVersion; return madeItems(); }, [s.catalogVersion]);
 
   const newOrders = useMemo(() => pord.filter((o) => o.st === "New"), [pord]);
   const working = useMemo(
@@ -31,11 +32,16 @@ export default function Dashboard() {
   // Still on its way: at the pass or in transit. A withdrawn ticket is neither.
   const moving = useMemo(() => dispatches.filter((t) => isTicketOpen(t.st)), [dispatches]);
   // A product the kitchen cannot make is as unavailable as one switched off by hand.
-  const off = useMemo(() => PRODS.map((k) => ({ k, a: availOf(s, "kitchen", k) })).filter((x) => !x.a.ok), [s]);
+  // Memoised on the three slices `availOf` actually reads — `[s]` was a new object on every
+  // write anywhere in the app, so it memoised nothing at all.
+  const off = useMemo(
+    () => PRODS.map((k) => ({ k, a: availOf(s, "kitchen", k) })).filter((x) => !x.a.ok),
+    [PRODS, s.stock, s.rsv, s.ovr],
+  );
 
   const madeToday = sum(batch, (b) => b.qty);
   const perProduct = PRODS.map((k) => ({
-    n: IT[k].n,
+    n: IT[k]?.n ?? k,
     v: sum(batch.filter((b) => b.it === k), (b) => b.qty),
     made: sum(batch.filter((b) => b.it === k), (b) => b.made),
   }));
@@ -44,7 +50,7 @@ export default function Dashboard() {
     const items = [
       ...batch.map((b) => ({
         key: "b-" + b.id,
-        title: `${b.qty} ${IT[b.it].n} made`,
+        title: `${b.qty} ${IT[b.it]?.n ?? b.it} made`,
         body: `${b.id} · best before ${b.bb}`,
         when: b.at,
         color: "var(--c2)",
@@ -118,8 +124,8 @@ export default function Dashboard() {
             const have = qty(s, "kitchen", k);
             return (
               <div className="tile" key={k}>
-                <b style={{ fontSize: 12.5 }}>{IT[k].n}</b>
-                <span className="mini">{IT[k].c} · {IT[k].sl ?? 0} h shelf life</span>
+                <b style={{ fontSize: 12.5 }}>{IT[k]?.n ?? k}</b>
+                <span className="mini">{IT[k]?.c ?? ""} · {IT[k]?.sl ?? 0} h shelf life</span>
                 <div style={{ fontSize: 22, fontWeight: 600, letterSpacing: "-.03em" }}>
                   {fq(have, k)} <span className="mini">{U(k)}</span>
                 </div>
@@ -146,7 +152,7 @@ export default function Dashboard() {
             cells: [
               <>{t.id}<small>{t.req}</small></>,
               <>{LOC[t.to].n}<div className="mini">{LOC[t.to].floor}</div></>,
-              t.lines.map((l) => `${l.qty} × ${IT[l.it].n}`).join(" · "),
+              t.lines.map((l) => `${l.qty} × ${IT[l.it]?.n ?? l.it}`).join(" · "),
               <b>{sum(t.lines, (l) => l.qty)}</b>,
               <StatusPill status={t.st} />,
               // Opens the ticket's own window, where the collector's six digits are typed in.

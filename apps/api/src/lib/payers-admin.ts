@@ -38,7 +38,7 @@ export const sayCsvError = (e: PayerCsvError): string => `row ${e.row}, column "
  * reports every bad row in the file at once, and by the import, which refuses the whole file if
  * one is handed to it anyway — a caller that skipped the parse must not get half a load.
  */
-export function checkPayerRow(row: { kind: string; id: string; name: string }): { column: string; message: string } | null {
+function checkPayerRow(row: { kind: string; id: string; name: string }): { column: string; message: string } | null {
   if (!PayerKindSchema.safeParse(row.kind).success) return { column: "kind", message: badKind(row.kind) };
   if (row.id.trim().length === 0) return { column: "id", message: "an id is required — it is the hospital's own number, not one this tool invents" };
   if (row.name.trim().length === 0) return { column: "name", message: "a name is required" };

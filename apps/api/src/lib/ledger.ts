@@ -28,7 +28,11 @@ import { stockBalances, stockMoves } from "../db/schema/index.js";
 import type { Tx } from "./db.js";
 
 export type MoveKind = (typeof stockMoves.$inferInsert)["kind"];
-export type Move = { loc: string; it: string; qty: number; kind: MoveKind; refType: string; refId: string; by?: string; at?: Date };
+/** `reverses` is the id of the move this one undoes — a same-day bill void posts one reversal
+ *  per line of the sale it takes back, each pointing at the row it cancels out. The ledger is
+ *  append-only (migration 0002 says so in the database), so an undo is another move, and this
+ *  is the column that says which one it answers. Every other kind of move leaves it unset. */
+export type Move = { loc: string; it: string; qty: number; kind: MoveKind; refType: string; refId: string; by?: string; at?: Date; reverses?: number };
 
 /**
  * Take the balance row locks for these (loc, item) pairs, creating a zero row where none
@@ -82,6 +86,7 @@ export async function postMoves(tx: Tx, moves: Move[]): Promise<void> {
   await lockBalances(tx, ordered);
   await tx.insert(stockMoves).values(real.map((m) => ({
     loc: m.loc, itemKey: m.it, qty: round3(m.qty), kind: m.kind, refType: m.refType, refId: m.refId, byUser: m.by, at: m.at,
+    reversesId: m.reverses,
   })));
   for (const { loc, it, delta } of ordered) {
     await tx.execute(sql`update stock_balances set on_hand = round(on_hand + ${delta}::numeric, 3), updated_at = now() where loc = ${loc} and item_key = ${it}`);
