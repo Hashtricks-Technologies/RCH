@@ -60,6 +60,16 @@ export function createGrnService(db: Db) {
         assertRule(body.lines.some((r) => r.recv > 0), "Enter what arrived on at least one line");
 
         const master = await loadMaster(tx);
+        // A line with nothing received and something rejected is not a delivery a rejection can
+        // be taken out of — there is no arrival for it to be part of. Both loops below skip such
+        // a line on `recv > 0` and would otherwise book nothing and say nothing about it. Refuse
+        // it here, by name, before either loop runs.
+        for (const [i, l] of lines.entries()) {
+          const r = body.lines[i]!;
+          if (!(r.recv > 0) && r.rejected > 0) {
+            assertRule(false, `${master.items[l.it]?.n ?? l.it} — a rejected quantity needs an arrival to be rejected from`);
+          }
+        }
         const listA = await grnRepo.listAPrices(tx, lines.map((l) => l.it));
         const today = istDate(new Date());
         for (const [i, l] of lines.entries()) {
