@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
 import {
-  avail, awaitingApproval, daysCover, inTransit, onOrder, qty, resv, stateLabel, stateTone, stockValue,
+  avail, awaitingApproval, daysCover, inTransitIndex, onOrder, onOrderIndex, qty, resv,
+  stateLabel, stateTone, stockValue,
 } from "../../lib/selectors";
 import { U, fq, money, money0, sum } from "../../lib/fmt";
 import {
@@ -36,6 +37,13 @@ export default function Stock() {
   );
   const group = GROUPS[Math.min(gi, GROUPS.length - 1)];
 
+  // On order and in transit are read off a map built in one pass, not worked out per row: the
+  // per-item functions each walk every purchase order or every ticket, so a catalogue of a few
+  // hundred lines was re-walking the whole of both on every keystroke in the search box.
+  // Memoised on the slices each reads — `[s]` would be a new object after any write at all.
+  const onOrderOf = useMemo(() => onOrderIndex({ prq: s.prq, po: s.po }), [s.prq, s.po]);
+  const inTransitOf = useMemo(() => inTransitIndex({ tkt: s.tkt }), [s.tkt]);
+
   // A product the central store has never carried still belongs on its stock
   // list at zero — otherwise a newly added item is invisible until it is bought.
   const catalogue = [...new Set([...Object.keys(s.stock.store), ...Object.keys(IT)])];
@@ -46,8 +54,8 @@ export default function Stock() {
       const rv = resv(s, "store", it);
       const av = avail(s, "store", it);
       const rl = IT[it].rl;
-      const oo = onOrder(s, it);
-      const tr = inTransit(s, it);
+      const oo = onOrderOf.get(it) ?? 0;
+      const tr = inTransitOf.get(it) ?? 0;
       return { it, on, rv, av, rl, oo, tr, low: rl > 0 && av < rl, dc: daysCover(av, it), val: on * IT[it].cost };
     })
     .sort((a, b) => IT[a.it].c.localeCompare(IT[b.it].c));

@@ -1,20 +1,22 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
-import { round3 } from "../../lib/selectors";
-import { money0, sum } from "../../lib/fmt";
+import { money0, sum, unitTotal } from "../../lib/fmt";
 import {
   Btn, Card, DataTable, FilterSelect, Grid, PageHead, Pill, StatusPill, TableFoot, Toolbar,
 } from "../../ui/kit";
 import type { Row } from "../../ui/kit";
 import type { PrqLine, Requisition } from "../../types";
-import { recap, reconcile } from "./lib";
+import { recap, reconcile, type PrqLineRecon } from "./lib";
 import "./RequisitionDrawer";
 
 const lineValue = (lines: PrqLine[]) => sum(lines, (l) => l.qty * (IT[l.it]?.cost ?? 0));
 const apprValue = (lines: PrqLine[]) => sum(lines, (l) => l.appr * (IT[l.it]?.cost ?? 0));
-const qtyOf = (r: Requisition) => Math.round(sum(r.lines, (l) => l.qty) * 1000) / 1000;
-const apprQtyOf = (r: Requisition) => Math.round(sum(r.lines, (l) => l.appr) * 1000) / 1000;
+// Per unit, never one number: a requisition for 12 L of milk and 500 cups is not "512" (M4).
+const qtyOf = (r: Requisition) => unitTotal(r.lines);
+const apprQtyOf = (r: Requisition) => unitTotal(r.lines.map((l) => ({ it: l.it, qty: l.appr })));
+const reconTotal = (rows: PrqLineRecon[], pick: "ordered" | "received") =>
+  rows.map((r) => ({ it: r.it, qty: r[pick] }));
 const hits = (r: Requisition, q: string) => {
   const t = q.trim().toLowerCase();
   if (!t) return true;
@@ -32,6 +34,7 @@ const PROGRESS = ["All", "Not ordered", "Ordered", "Partially received", "Receiv
 export default function Requisitions() {
   const s = useApp();
   const openDrawer = useApp((x) => x.openDrawer);
+  const { prq, po, vendors } = s;
 
   const [qw, setQw] = useState("");
   const [raisedBy, setRaisedBy] = useState("All");
@@ -47,11 +50,20 @@ export default function Requisitions() {
     ...[...new Set(s.prq.filter((p) => p.st === "Declined").map((p) => p.apprBy ?? "—"))].sort(),
   ];
 
-  // Reconciled once per requisition, then read from the map — the filter, the
-  // rows and the footer all need the same numbers.
-  const recaps = new Map(s.prq.map((p) =>
-    [p.id, recap(reconcile(s, p), p.st === "Approved" || p.st === "Partially approved")] as const));
-  const summaryOf = (p: Requisition) => recaps.get(p.id)!;
+  // Reconciled once per requisition, then read from the map — the filter, the rows and the
+  // footer all need the same numbers. Memoised on the two slices `reconcile` reads (and the
+  // vendor names it puts on each claim), not on `s`, which is a new object after any write
+  // anywhere in the app and so memoised nothing: this rebuilt every requisition's walk over
+  // every purchase order because a toast appeared.
+  const recaps = useMemo(
+    () => new Map(prq.map((p) => {
+      const rows = reconcile({ po, vendors }, p);
+      return [p.id, { rows, sum: recap(rows, p.st === "Approved" || p.st === "Partially approved") }] as const;
+    })),
+    [prq, po, vendors],
+  );
+  const reconOf = (p: Requisition) => recaps.get(p.id)!.rows;
+  const summaryOf = (p: Requisition) => recaps.get(p.id)!.sum;
 
   const waiting = s.prq.filter((p) =>
     p.st === "Sent" && hits(p, qw) && (raisedBy === "All" || p.by === raisedBy));
@@ -113,8 +125,8 @@ export default function Requisitions() {
   }));
 
   const waitValue = sum(waiting, (p) => lineValue(p.lines));
-  const shownOrdered = round3(sum(approved, (p) => summaryOf(p).ordered));
-  const shownReceived = round3(sum(approved, (p) => summaryOf(p).received));
+  const shownOrdered = unitTotal(approved.flatMap((p) => reconTotal(reconOf(p), "ordered")));
+  const shownReceived = unitTotal(approved.flatMap((p) => reconTotal(reconOf(p), "received")));
 
   return (
     <>
@@ -194,7 +206,7 @@ export default function Requisitions() {
           extra={
             <>
               {money0(sum(approved, (p) => apprValue(p.lines)))} approved ·{" "}
-              {shownOrdered} ordered · {shownReceived} received
+              {shownOrdered || "nothing"} ordered · {shownReceived || "nothing"} received
             </>
           }
         />
