@@ -1,11 +1,12 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { eq, sql } from "drizzle-orm";
 import type { PgTable } from "drizzle-orm/pg-core";
 import * as FX from "@rch/contract/fixtures";
 import { withTestSchema, type TestDb } from "../test/db.js";
 import { seedTestDb } from "../test/seed.js";
-import { seedDatabase, grnPoLineNo } from "./seed.js";
+import { seedDatabase, grnPoLineNo, pastFixtureTime } from "./seed.js";
 import { rebuildBalances } from "../lib/ledger.js";
+import { dateAt } from "../lib/time.js";
 import { bills, grns, items, locations, payers, purchaseOrders, rateContracts, reservations, sequences, shopAsks, stockBalances, stockRequests, supportTickets, tickets, users } from "./schema/index.js";
 
 let t: TestDb;
@@ -54,6 +55,20 @@ describe("seed", () => {
   });
   it("refuses to run twice without --force", async () => {
     await expect(seedDatabase(t.db, { password: "changeme", forcePasswordChange: false })).rejects.toThrow(/already/);
+  });
+});
+
+describe("pastFixtureTime", () => {
+  afterEach(() => { vi.useRealTimers(); });
+  it("rolls back to yesterday's IST day when a seed run before the fixture time would otherwise land in the future", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-14T00:30:00+05:30")); // 00:30 IST
+    expect(pastFixtureTime("07:10")).toEqual(dateAt("2026-09-13", "07:10"));
+  });
+  it("uses today's IST day once the fixture time has already passed", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-14T12:00:00+05:30")); // 12:00 IST
+    expect(pastFixtureTime("07:10")).toEqual(dateAt("2026-09-14", "07:10"));
   });
 });
 

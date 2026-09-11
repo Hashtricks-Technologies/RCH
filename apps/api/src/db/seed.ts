@@ -15,6 +15,22 @@ const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "
 const etaDate = (v: string) => { const [d, m, y] = v.split("-"); return `${y}-${String(MONTHS.indexOf(m) + 1).padStart(2, "0")}-${d}`; };
 /** Fixture times are "HH:MM" today; anything else falls back to a fixed morning slot. */
 const parseFixtureTime = (v: string | undefined) => (v && /^\d{2}:\d{2}$/.test(v) ? todayAt(v) : todayAt("09:00"));
+
+/**
+ * A document's `document_history` trail must never read later than "now": a write appended
+ * after the seed runs (a dispatch, an approval, …) always stamps its own entry with the real
+ * clock, and a seed run between IST midnight and the latest fixture time (~07:10) would
+ * otherwise leave a seeded entry reading later than that live one — so `hist.at(-1)` would
+ * pick the seeded row instead of the one just appended. Rolling the seeded entry back to
+ * yesterday's IST day fixes the ordering without moving the document's own `at` (or
+ * `issuedAt`/`receivedAt`/…), which other reads — the sales report's "every bill is timed
+ * today" chief among them — depend on staying on today's calendar day.
+ * @internal exported for seed.test.ts
+ */
+export function pastFixtureTime(v: string | undefined): Date {
+  const at = parseFixtureTime(v);
+  return at > new Date() ? new Date(at.getTime() - 24 * 3600_000) : at; // IST has no DST, so a fixed 24h offset is exact
+}
 const userIdByName = new Map(FX.USERS.map((u) => [u.n, u.id]));
 const who = (name: string) => userIdByName.get(name) ?? FX.USERS[0].id;
 /** RateContract.vendor carries the vendor's display name, unlike PurchaseOrder.vendor which is already the id. */
@@ -116,7 +132,7 @@ async function seedRequestsAndTickets(tx: Tx) {
       managerNote: r.mgrNote, urgent: !!r.urg, approvedBy: r.apprBy ? who(r.apprBy) : null,
     });
     await tx.insert(s.stockRequestLines).values(r.lines.map((l, lineNo) => ({ requestId: r.id, lineNo, itemKey: l.it, qty: l.qty, approvedQty: l.appr, shortQty: l.short ?? null })));
-    for (const h of r.hist) await appendHistory(tx, "request", r.id, h.s, h.who, parseFixtureTime(h.t));
+    for (const h of r.hist) await appendHistory(tx, "request", r.id, h.s, h.who, pastFixtureTime(h.t));
   }
   for (const t of FX.seedTkt) {
     const refType = t.req.startsWith("REQ-") ? "request" : t.req.startsWith("PRD-") ? "prod_order" : t.req === "Shop transfer" ? "shop_transfer" : "direct";
@@ -126,7 +142,7 @@ async function seedRequestsAndTickets(tx: Tx) {
     });
     await tx.insert(s.ticketLines).values(t.lines.map((l, lineNo) => ({ ticketId: t.id, lineNo, itemKey: l.it, qty: l.qty })));
     if (t.st === "Issued") await tx.insert(s.reservations).values(t.lines.map((l) => ({ loc: t.from, itemKey: l.it, qty: l.qty, ticketId: t.id })));
-    for (const h of t.hist) await appendHistory(tx, "ticket", t.id, h.s, h.who, parseFixtureTime(h.t));
+    for (const h of t.hist) await appendHistory(tx, "ticket", t.id, h.s, h.who, pastFixtureTime(h.t));
   }
   for (const a of FX.seedShopAsks()) {
     await tx.insert(s.shopAsks).values({
@@ -147,7 +163,7 @@ async function seedProcurement(tx: Tx) {
   for (const p of FX.seedPrq) {
     await tx.insert(s.requisitions).values({ id: p.id, byUser: who(p.by), at: parseFixtureTime(p.at), status: p.st, note: p.note, approvedBy: p.apprBy ? who(p.apprBy) : null, approvalNote: p.apprNote ?? null });
     await tx.insert(s.requisitionLines).values(p.lines.map((l, lineNo) => ({ requisitionId: p.id, lineNo, itemKey: l.it, qty: l.qty, approvedQty: l.appr, orderedQty: l.ordered, shortQty: l.short ?? null })));
-    for (const h of p.hist) await appendHistory(tx, "requisition", p.id, h.s, h.who, parseFixtureTime(h.t));
+    for (const h of p.hist) await appendHistory(tx, "requisition", p.id, h.s, h.who, pastFixtureTime(h.t));
   }
   for (const o of FX.seedPo) {
     await tx.insert(s.purchaseOrders).values({
@@ -157,7 +173,7 @@ async function seedProcurement(tx: Tx) {
     await tx.insert(s.poLines).values(o.lines.map((l, lineNo) => ({ poId: o.id, lineNo, itemKey: l.it, qty: l.qty, rate: l.rate, receivedQty: l.recv, rejectedQty: l.rejected })));
     const srcs = o.lines.flatMap((l, lineNo) => l.src.map((x, seq) => ({ poId: o.id, lineNo, seq, requisitionId: x.prq, requisitionLineNo: x.line, qty: x.qty })));
     if (srcs.length) await tx.insert(s.poLineSources).values(srcs);
-    for (const h of o.hist) await appendHistory(tx, "purchase_order", o.id, h.s, h.who, parseFixtureTime(h.t));
+    for (const h of o.hist) await appendHistory(tx, "purchase_order", o.id, h.s, h.who, pastFixtureTime(h.t));
   }
   for (const g of FX.seedGrn) {
     const po = FX.seedPo.find((o) => o.id === g.po);
@@ -176,7 +192,7 @@ async function seedProduction(tx: Tx) {
   for (const o of FX.seedPord) {
     await tx.insert(s.prodOrders).values({ id: o.id, fromLoc: o.from, byUser: who(o.by), at: parseFixtureTime(o.at), status: o.st, note: o.note });
     await tx.insert(s.prodOrderLines).values(o.lines.map((l, lineNo) => ({ orderId: o.id, lineNo, itemKey: l.it, qty: l.qty })));
-    for (const h of o.hist) await appendHistory(tx, "prod_order", o.id, h.s, h.who, parseFixtureTime(h.t));
+    for (const h of o.hist) await appendHistory(tx, "prod_order", o.id, h.s, h.who, pastFixtureTime(h.t));
   }
   for (const b of FX.seedBatch) {
     const made = parseFixtureTime(b.at);
