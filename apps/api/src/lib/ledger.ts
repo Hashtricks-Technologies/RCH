@@ -3,8 +3,15 @@
 // A write allocates its document id first (`allocateId`, which locks the `sequences` row) and
 // posts its moves second (`postMoves`, which locks balance rows) — never the other way round.
 // Two writes that need both therefore take those locks in the same sequence, so neither can sit
-// holding one while it waits for the other. `modules/pos/service.ts` is written that way; every
-// write added after it must be too.
+// holding one while it waits for the other. `modules/tickets/service.ts`'s `transfer` is written
+// that way; every write added after it must be too.
+//
+// The counter sale is the one deliberate exception, and it is safe for a reason no other write
+// can borrow: `allocateId(tx, "bill"` has exactly one caller, so nobody else ever takes the
+// `bill` sequence row at all, and a deadlock needs two writers taking the same two locks in
+// opposite orders. `modules/pos/service.ts` takes its number last, after the shelves are locked
+// and the cover check has passed, so a sale queued behind a shelf is not also sitting on the row
+// every till in the hospital draws its bill number from. Read the comment there before copying it.
 //
 // Document rows come before both, and from Phase 5 they have an order of their own: **the
 // purchase-order row is locked before any requisition row, and requisition rows are locked in

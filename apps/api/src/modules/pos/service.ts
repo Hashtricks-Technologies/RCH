@@ -9,7 +9,7 @@ import { creditTakenThisMonth } from "../../lib/credit.js";
 import { NotFoundError } from "../../lib/errors.js";
 import { emitChanged } from "../../lib/events.js";
 import { allocateId } from "../../lib/ids.js";
-import { postMoves } from "../../lib/ledger.js";
+import { lockBalances, postMoves } from "../../lib/ledger.js";
 import { loadMaster } from "../../lib/master.js";
 import { reservedAt } from "../../lib/reservations.js";
 import { assertRule } from "../../lib/rules.js";
@@ -49,11 +49,14 @@ function coverOf(m: Master, stock: Record<string, Record<string, number>>, rsv: 
 export function createPosService(db: Db) {
   return {
     /**
-     * One counter sale, in one transaction: price it, refuse it if the shelf cannot cover it,
-     * number it, write it, and post the moves. The friendly refusals read the balances before
-     * the locks — so they can name the item and the number left — and `postMoves` then locks
-     * every touched row; the re-read afterwards is the guarantee, because between the two a
-     * second till may have sold the same last unit. A refusal there rolls the whole bill back.
+     * One counter sale, in one transaction: price it, lock the shelves it will move, refuse it
+     * if they cannot cover it, number it, write it, and post the moves. The friendly refusals
+     * read the balances before the locks — so they can name the item and the number left — and
+     * the read under the locks is the guarantee, because between the two a second till may have
+     * sold the same last unit. A refusal rolls the whole bill back.
+     *
+     * The number is taken last, after the balance locks rather than before them; the comment on
+     * `allocateId` below says why that inversion is safe here and what it buys.
      */
     async pay(claims: AccessClaims, body: PayBody): Promise<WriteResponse<Bill>> {
       return withTransaction(db, async (tx) => {
@@ -62,8 +65,9 @@ export function createPosService(db: Db) {
         // cover check has to see the total, not each half.
         const cart: Record<string, number> = {};
         for (const l of body.lines) cart[l.it] = round3((cart[l.it] ?? 0) + l.qty);
+        // `PayBodySchema.lines` is `.min(1)` with a positive `qty`, so a cart that folded to
+        // nothing cannot reach here: there is no empty-cart rule to state a second time.
         const keys = Object.keys(cart);
-        assertRule(keys.length > 0, "Add at least one item to the bill");
 
         const need = NEEDS_PAYER[body.tender];
         assertRule(!(need && !body.payer), `Choose a ${need?.label} before taking a ${body.tender.toLowerCase()}`);
@@ -122,6 +126,40 @@ export function createPosService(db: Db) {
             { taken, room: creditRoom(taken) },
           );
         }
+        // What the sale will take off each shelf, folded the way postMoves folds it. The
+        // pre-check above spoke for the dish in portions; this one, keyed by what moves, names
+        // the shelf item that goes short — for a made-to-order dish that is the ingredient.
+        // Same refusal, two voices: the first is friendlier, this one is the guarantee.
+        //
+        // Phase 3 puts holds on outlet shelves too — a shop transfer or a granted shop ask keeps
+        // stock at a counter without moving it — so "short" means on hand less what is held, not
+        // merely negative. Both numbers are read again here rather than reused from the
+        // pre-check, and read *after* `lockBalances`: every path that holds stock takes those
+        // same locks first (see apps/api/src/lib/ledger.ts), so while this transaction holds
+        // them nothing new can be sold or held on these shelves and this read is the last word.
+        const took = new Map<string, number>();
+        for (const m of plan.moves) took.set(m.it, round3((took.get(m.it) ?? 0) + -m.qty));
+        const moved = [...took.keys()];
+        await lockBalances(tx, moved.map((it) => ({ loc, it })));
+        const onHand = await posRepo.onHandAt(tx, loc, moved);
+        const heldNow = await reservedAt(tx, loc, moved);
+        for (const [it, sold] of took) {
+          const item = master.items[it];
+          const unit = item?.u ?? "nos";
+          const free = round3((onHand[it] ?? 0) - (heldNow[`${loc}:${it}`] ?? 0));
+          assertRule(free >= sold, `Only ${fq(Math.max(0, free), unit)} ${unit} of ${item?.n ?? it} left at ${locName}`);
+        }
+
+        // The number, last — deliberately after the balance locks rather than before them, which
+        // is the one place in this server where an id is not taken ahead of a shelf.
+        //
+        // `allocateId(tx, "bill"` has exactly one caller, this line, so no second writer can ever
+        // take the `bill` sequence row before a balance row and meet this one head on: the cycle
+        // a lock order exists to prevent needs two writers taking the same two locks in opposite
+        // orders, and there is no other writer of this row at all. What taking it earlier did
+        // cost was real — a till queued behind a shelf sat on the one row every till in the
+        // hospital draws its bill number from, so one slow sale at one counter froze the rest.
+        // Keep this line where it is, and keep it the last thing before the bill is written.
         const no = await allocateId(tx, "bill", at);
         const head = await posRepo.insertBill(tx, {
           no, loc, operatorId: claims.sub, total: money(plan.tot), tax: money(plan.tax), at, tender: body.tender,
@@ -130,28 +168,18 @@ export function createPosService(db: Db) {
         const lines = await posRepo.insertBillLines(tx, no, plan.lines);
         await postMoves(tx, plan.moves.map((m) => ({ ...m, kind: "sale" as const, refType: "bill", refId: no, by: claims.sub, at })));
 
-        // What the sale actually took off each shelf, folded the way postMoves folded it. The
-        // pre-check above spoke for the dish in portions; this one, keyed by what moved, names the
-        // shelf item that went short — for a made-to-order dish that is the ingredient. Same
-        // refusal, two voices: the first is friendlier, the second is the guarantee.
-        //
-        // Phase 3 puts holds on outlet shelves too — a shop transfer or a granted shop ask keeps
-        // stock at a counter without moving it — so "short" now means on hand less what is held,
-        // not merely negative. The hold is re-read here rather than reused from the pre-check
-        // because every path that holds stock takes `lockBalances` first (see
-        // apps/api/src/lib/ledger.ts): while this transaction holds those locks nothing new can
-        // be held, so this read is the last word.
-        const took = new Map<string, number>();
-        for (const m of plan.moves) took.set(m.it, round3((took.get(m.it) ?? 0) + -m.qty));
-        const moved = [...took.keys()];
-        const onHand = await posRepo.onHandAt(tx, loc, moved);
-        const heldNow = await reservedAt(tx, loc, moved);
+        // And once more with the moves actually posted. It can never fire today — the cover
+        // check above ran under these same locks and nothing can have written behind it — and it
+        // is kept for the reason `makeBatch` keeps its own: spec §12 asks every negative-going
+        // move to re-read what it moved, and this is what would catch the next caller that reads
+        // a balance before it locks it.
+        const settled = await posRepo.onHandAt(tx, loc, moved);
+        const stillHeld = await reservedAt(tx, loc, moved);
         for (const [it, sold] of took) {
           const item = master.items[it];
           const unit = item?.u ?? "nos";
-          const free = round3((onHand[it] ?? 0) - (heldNow[`${loc}:${it}`] ?? 0));
-          const left = Math.max(0, round3(free + sold));
-          assertRule(free >= 0, `Only ${fq(left, unit)} ${unit} of ${item?.n ?? it} left at ${locName}`);
+          const free = round3((settled[it] ?? 0) - (stillHeld[`${loc}:${it}`] ?? 0));
+          assertRule(free >= 0, `Only ${fq(Math.max(0, round3(free + sold)), unit)} ${unit} of ${item?.n ?? it} left at ${locName}`);
         }
 
         const operator = await posRepo.operator(tx, claims.sub);
