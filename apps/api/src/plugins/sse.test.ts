@@ -97,6 +97,19 @@ describe("GET /events", () => {
     expect(((await r.json()) as { error: { code: string } }).error.code).toBe("unauthenticated");
   });
 
+  it("refuses a stream to someone who still has to change their password", async () => {
+    // This route is registered by hand rather than through `mount()`, so it carries its own
+    // role gate — without one it was the single authenticated route a must-change token could
+    // reach, and it carries what every write in the system changed.
+    const token = await app.signAccess({ id: "u1", role: "counter", loc: "coffee", mcp: true });
+    const r = await fetch(base + API_PREFIX + EVENTS_PATH, { headers: { authorization: `Bearer ${token}` } });
+    expect(r.status).toBe(403);
+    expect(r.headers.get("content-type")).toContain("application/json");
+    const body = (await r.json()) as { error: { code: string; message: string } };
+    expect(body.error.code).toBe("forbidden");
+    expect(body.error.message).toMatch(/password/i);
+  });
+
   it("opens with the streaming headers and a retry hint", async () => {
     const s = await open("u1");
     expect(s.res.headers.get("content-type")).toContain("text/event-stream");

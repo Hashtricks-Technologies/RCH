@@ -170,7 +170,12 @@ export default fp<{ config: Config; searchPath?: string }>(async (app, { config,
     // The global limiter runs on preHandler and would count every reconnect; a stream that is
     // one request for an hour is the wrong shape for a per-minute budget.
     config: { rateLimit: false },
-    preHandler: [app.authenticate],
+    // `mount()` attaches the role gate to every other route; this one is registered by hand
+    // (a stream has no response schema), so it has to attach its own. "any" because every
+    // signed-in role watches for changes, `false` because a must-change-password token must
+    // not: the stream carries what every other write changed, which is more than the one
+    // screen that token is allowed to reach.
+    preHandler: [app.authenticate, app.roleGate("any", false)],
   }, async (req, reply) => {
     const who = req.user.sub;
     // Before the hijack, and only before it: once the response is hijacked there is no reply
@@ -258,4 +263,4 @@ export default fp<{ config: Config; searchPath?: string }>(async (app, { config,
   // An app that never finished booting never registered the handler above, so `preClose` never
   // runs; this is the belt to its braces, and `stopped` makes the second call a no-op.
   app.addHook("onClose", shutdown);
-}, { name: "sse", dependencies: ["auth", "metrics"] });
+}, { name: "sse", dependencies: ["auth", "rbac", "metrics"] });
