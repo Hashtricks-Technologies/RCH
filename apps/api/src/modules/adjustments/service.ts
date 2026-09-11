@@ -4,17 +4,21 @@
 // **No document lock.** This write mints its own document and decides nothing about an existing
 // one, so there is no row to take `for update` — the same shape `createPo` has, and the only
 // reason that is safe there and here is that neither can afterwards wait on a document another
-// writer is holding. What it does promise against is a balance, so the lock order it keeps is
-// the second half of the general one: ids (`allocateId`, which locks the `sequences` row), then
-// balances (`lockBalances`), never the other way round.
+// writer is holding.
+//
+// **The id is taken last, after the balance locks rather than before them** — the second place
+// in this server to invert the general documents → ids → balances order, after
+// `modules/pos/service.ts`, and for that module's exact reason. See the comment on `allocateId`
+// below before moving it: the short version is that `"adj"` has one allocator, so the cycle a
+// lock order exists to prevent has no second party.
 //
 // **`stock_moves.reverses_id` stays null for every adjustment, `count` included.** A reversing
 // move undoes one named move; a count corrects a *sum*, and the sum it corrects is every move
 // ever posted to that shelf. There is no single move to point at, and pointing at the most
 // recent one would read as "this undid that", which is not what a physical count found.
 import type { z } from "zod";
-import type { AdjustReason, Adjustment, CreateAdjustmentBodySchema, WriteResponse } from "@rch/contract";
-import { fq, round3, unitTotal } from "@rch/domain";
+import type { Adjustment, CreateAdjustmentBodySchema, WriteResponse } from "@rch/contract";
+import { fq, REASON_LABEL, round3, unitTotal } from "@rch/domain";
 import type { Db } from "../../db/client.js";
 import { withTransaction } from "../../lib/db.js";
 import { NotFoundError } from "../../lib/errors.js";
@@ -31,16 +35,9 @@ import { adjustmentsRepo } from "./repo.js";
 
 export type CreateAdjustmentBody = z.infer<typeof CreateAdjustmentBodySchema>;
 
-/** The word the trail is signed with. The wire carries the enum — one answer per reason, so a
- *  month-end query can group by it — and this is how it is read back to a person. */
-export const REASON_LABEL: Record<AdjustReason, string> = {
-  wastage: "Wastage",
-  breakage: "Breakage",
-  expired: "Expired",
-  count: "Stock count",
-  returned_to_vendor: "Returned to vendor",
-  other: "Other",
-};
+// The word the trail is signed with is `REASON_LABEL` in @rch/domain, not a table here: the
+// browser's picker and register print the same words, and a rule — or a wording — written twice
+// is two things to keep in step.
 
 export function createAdjustmentsService(db: Db) {
   return {
@@ -57,7 +54,6 @@ export function createAdjustmentsService(db: Db) {
     async create(claims: AccessClaims, body: CreateAdjustmentBody): Promise<WriteResponse<Adjustment>> {
       return withTransaction(db, async (tx) => {
         const at = new Date();
-        const id = await allocateId(tx, "adj", at);
 
         // One line per item before anything is checked: two lines naming the same item are two
         // halves of one correction, and checking them one at a time would let a −5 pass on a
@@ -99,6 +95,24 @@ export function createAdjustmentsService(db: Db) {
         // refusal sentence is never computed on the success path.
         const short = down.find((l) => freeOf(l.it) < l.qty);
         if (short) assertRule(false, shortOf(short.it, short.qty, freeOf(short.it)));
+
+        // The number, last — after the balance locks and after the cover check, rather than at
+        // the head of the transaction. This is the inversion `modules/pos/service.ts` documents
+        // and the exception `lib/ids.ts` describes: allocating locks the `sequences` row until
+        // this transaction ends, so "a write that can still be refused, or that can still block
+        // on something else, takes its number as late as it can".
+        //
+        // Safe here for pos's own reason, and only that one: `allocateId(tx, "adj"` has exactly
+        // one caller — this line — so no second writer ever takes the `adj` sequence row before
+        // a balance row and meets this one head on, and a deadlock needs two writers taking the
+        // same two locks in opposite orders. `postMoves` below re-locks only cells this
+        // transaction already holds, so it cannot wait on anything while holding this row.
+        //
+        // What taking it first cost was real and twofold: every adjustment in the hospital
+        // queued on one row for the whole of somebody else's balance-lock wait, and the race
+        // case below could not fail, because the second writer blocked on the sequence row
+        // instead of on the shelf.
+        const id = await allocateId(tx, "adj", at);
 
         const moves: Move[] = lines.map((l) => ({
           loc, it: l.it, qty: l.qty, kind: "adjustment", refType: "adjustment", refId: id, by: claims.sub, at,

@@ -106,6 +106,16 @@ describe("POST /adjustments", () => {
     expect(await app.testDb!.db.select().from(adjustments)).toHaveLength(0);
   });
 
+  it("refuses a line naming an item the master does not have", async () => {
+    // A stale tab holding a key that was withdrawn, or a client that made one up. It is a 404
+    // with the key in it, not a 500 halfway through the write — and nothing is written.
+    const r = await post("u3", { loc: "store", reason: "wastage", lines: [{ it: "milk", qty: -1 }, { it: "unicorn", qty: -1 }] });
+    expect(r.statusCode).toBe(404);
+    expect(r.json().error.message).toBe("There is no item unicorn.");
+    expect(await app.testDb!.db.select().from(adjustments)).toHaveLength(0);
+    expect(await app.testDb!.db.select().from(stockMoves).where(eq(stockMoves.refType, "adjustment"))).toHaveLength(0);
+  });
+
   it("refuses a write-off of more than is free — stock a ticket is holding is not the store's to write off", async () => {
     // 4 kg of butter on the shelf, 3 of them held for a ticket the kitchen has not collected.
     // The books say four; only one is the store's to destroy.
@@ -238,9 +248,19 @@ describe("POST /adjustments", () => {
 
   it("two write-offs of the last unit: one lands, the other is refused", async () => {
     await warmPool(app.testDb!, 2);
-    // 1.2 kg of butter in the kitchen. Two write-offs of 1 kg, in flight together: the balance
-    // lock is what makes the second read the shelf the first already emptied, rather than the
-    // shelf both of them saw before either wrote.
+    // 1.2 kg of butter in the kitchen. Two write-offs of 1 kg, in flight together.
+    //
+    // What this pins is the pair of balance guards together — `lockBalances` before the cover
+    // check, and the post-lock re-read after `postMoves` — not either one alone. Measured, not
+    // assumed: deleting the `lockBalances` call on its own leaves the case green, because
+    // `postMoves` takes the same row locks itself and the re-read then refuses the second
+    // writer with the very same sentence. Disarm **both** and the case goes red with
+    // `[200, 200]` and a kitchen shelf at −0.8 kg, which is the failure it exists to catch.
+    //
+    // It only has that much teeth because `allocateId` is taken late. While the id was the
+    // first statement of the transaction, the second POST blocked on the `adj` sequence row
+    // before it ever read a balance — and this case passed with both balance guards deleted,
+    // which is a race test proving nothing at all.
     const both = await Promise.all([
       post("u4", { loc: "kitchen", reason: "wastage", lines: [{ it: "butter", qty: -1 }] }),
       post("u4", { loc: "kitchen", reason: "wastage", lines: [{ it: "butter", qty: -1 }] }),
