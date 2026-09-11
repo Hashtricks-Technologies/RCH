@@ -67,8 +67,9 @@ moves happen live, the same as the rest of the system.
 
 Real authentication — employee id and password, checked against the API. Each account lands
 somewhere different and sees a different sidebar. The seed password is `SEED_PASSWORD` from
-`.env` (dev default `changeme`); a staging/prod seed sets `must_change_password`, which routes
-first sign-in through a change-password step before anything else.
+`.env` — required, at least twelve characters, with no default, so whoever sets a host up chooses
+it; a staging/prod seed sets `must_change_password`, which routes first sign-in through a
+change-password step before anything else.
 
 A refused sign-in — an unknown id, a wrong password, a deactivated account — says so on the form
 itself, in the server's own one sentence for all three, and the sentence stays there until the
