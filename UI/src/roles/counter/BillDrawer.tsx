@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
-import { fromWireDate, money } from "../../lib/fmt";
+import { fromWireDay, money } from "../../lib/fmt";
 import { DrawerFrame } from "../../ui/Drawer";
 import { registerDrawer, type DrawerProps } from "../../drawers";
 import { Alert, Avatar, Btn, DataTable, Field, Pill, Section } from "../../ui/kit";
@@ -27,7 +27,9 @@ function BillSlip({ bill }: { bill: Dated<Bill> }) {
     <div className="print-slip" aria-hidden>
       <h2>{bill.no}</h2>
       <div>Royal Care Hospital · {L?.n ?? bill.loc} · {L?.c ?? ""}</div>
-      <div>{fromWireDate(bill.iso)} {bill.t} · {bill.opr}</div>
+      {/* The hospital's calendar day, not the host's and not the raw instant:
+          `fromWireDate` is `dmy`, which only parses "YYYY-MM-DD". */}
+      <div>{fromWireDay(bill.iso)} {bill.t} · {bill.opr}</div>
       {/* A voided bill can still be reprinted — the paper has to say it is not a receipt. */}
       {bill.voided && <div><b>VOIDED — {bill.voidReason || "no reason recorded"}</b></div>}
       <table>

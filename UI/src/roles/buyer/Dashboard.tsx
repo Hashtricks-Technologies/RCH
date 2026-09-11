@@ -158,7 +158,11 @@ export default function Dashboard() {
       title: <>{o.id} · {o.st === "Received" ? "goods received" : "raised on " + vendorName(s.vendors, o.vendor)}</>,
       body: <>{money0(poValue(o))} · expected {o.eta}</>,
       when: o.recv ?? o.at,
-      iso: o.iso,
+      // A received order prints the receipt date and must sort on it: `o.iso` is when the order
+      // was *raised*, so an order placed a fortnight ago and delivered this morning sank to the
+      // bottom of a feed that was showing its delivery. The trail's last entry is the last
+      // thing that happened to it — the same key manager/Dashboard gives a shop transfer.
+      iso: o.hist.at(-1)?.iso ?? o.iso,
       color: o.st === "Received" ? "var(--good)" : "var(--c2)",
     })),
   ].sort((a, b) => (b.iso ?? "").localeCompare(a.iso ?? "")).slice(0, 7);

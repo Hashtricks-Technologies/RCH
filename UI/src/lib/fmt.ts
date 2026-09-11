@@ -52,6 +52,25 @@ export const isToday = (iso: string): boolean => {
  *  expected date is printed in the server's toast as well as in this table. */
 export const fromWireDate = dmy;
 
+/**
+ * An **instant** as the hospital's calendar day — "2026-09-11T18:00:00.000Z" -> "11-Sep-2026",
+ * which in Asia/Kolkata is already the 11th at half past eleven at night.
+ *
+ * `fromWireDate` is `dmy`, and `dmy` only parses `YYYY-MM-DD`: hand it a full ISO instant and it
+ * hands the instant straight back, so a printed receipt read "2026-09-11T03:42:00.000Z" where a
+ * date belonged. Converting with the host's own day would be the other half of the same bug —
+ * a bill taken after 18:30 UTC is already tomorrow at the hospital, and would print yesterday's
+ * date beside this morning's time. `istDate` is the same day boundary `isToday` uses.
+ *
+ * Anything already in display or wire-date form passes through `dmy` unchanged, as it always did.
+ */
+export const fromWireDay = (isoStr: string): string => {
+  const d = new Date(isoStr);
+  return /^\d{4}-\d{2}-\d{2}T/.test(isoStr) && !Number.isNaN(d.getTime())
+    ? dmy(istDate(d))
+    : dmy(isoStr);
+};
+
 /** "31-Aug-2026" -> "2026-08-31", for an <input type="date">, which speaks nothing else.
  *  Anything already in wire form, or unparseable, comes back unchanged so a blank field
  *  stays blank rather than becoming "NaN-NaN-NaN". */

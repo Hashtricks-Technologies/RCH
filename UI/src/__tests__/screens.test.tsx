@@ -17,8 +17,9 @@ import { groupPool, picksFor, type PoolGroup } from "../roles/buyer/ProcurementL
 import { REPORTS } from "../roles/store/Reports";
 import { IT as FXIT, USERS, seedVendors } from "@rch/contract/fixtures";
 // ---- item patch ----
-import { IT, OUTLETS } from "../data/master";
+import { IT, LOC, OUTLETS } from "../data/master";
 import { activeItems } from "../lib/selectors";
+import { Alert } from "../ui/kit";
 import type { PoolLine } from "../lib/selectors";
 import type { Bill, Dated, DatedDoc, Role, StockRequest, Ticket, Trailed } from "../types";
 import { as, resetStore } from "./fixture";
@@ -781,9 +782,14 @@ describe("a form whose write the server refused", () => {
  * page is hidden while it prints.
  * ---------------------------------------------------------------------- */
 describe("what actually reaches the printer", () => {
+  // 11 Sep 2026, 23:30 at the hospital — and still the 11th in UTC only by five and a half
+  // hours' grace: 18:00Z is 23:30 IST, so a slip that converted with the host's day would print
+  // the 11th here and the 10th for anything a minute later. `vite.config.ts` pins TZ=UTC, so a
+  // date read straight off the instant's UTC day gets the evening shift wrong every night.
+  const LATE_IST = "2026-09-11T18:30:00.000Z";      // 12 Sep 00:00 IST — the far side of midnight
   const BILL: Dated<Bill> = {
     no: "CF/1188", loc: "coffee", opr: "Kavitha Raman", oprCol: "#B45309", tot: 40, tax: 4.29,
-    t: "09:12", iso: "2026-09-11T03:42:00.000Z", pay: "Cash",
+    t: "00:00", iso: LATE_IST, pay: "Cash",
     lines: [{ it: "juice", qty: 2, rate: 20 }],
   };
 
@@ -797,7 +803,13 @@ describe("what actually reaches the printer", () => {
     const paper = slip.textContent ?? "";
     expect(paper).toContain("CF/1188");            // bill number
     expect(paper).toContain("Coffee Shop");        // outlet
-    expect(paper).toContain("09:12");              // date and time
+    expect(paper).toContain("00:00");              // the time
+    // The hospital's day, spelled as every other date on screen is. `fromWireDate` is `dmy`,
+    // which only parses "YYYY-MM-DD" and hands a full instant straight back, so this read
+    // "2026-09-11T18:30:00.000Z"; and 18:30Z is already the 12th in Asia/Kolkata, so a slip
+    // built off the host's UTC day would print the 11th under a midnight bill.
+    expect(paper).toContain("12-Sep-2026");
+    expect(paper).not.toContain("2026-09-11T");
     expect(paper).toContain("Real Juice 200ml");   // the line
     expect(paper).toContain("₹20.00");             // its rate
     expect(paper).toContain("₹40.00");             // the total
@@ -995,5 +1007,70 @@ describe("the counter's stock requests", () => {
     act(() => { useApp.setState({ submitRequest: async () => false }); });
     await settle(() => { ui.button("Submit request").click(); });
     expect(useApp.getState().draft[0]?.it).toBe(picked());
+  });
+});
+
+/* ------------------------------------------------------------------------
+ * Fix round 1: four smaller things the review found.
+ * ---------------------------------------------------------------------- */
+describe("a refusal is shown where it was raised and nowhere else", () => {
+  it("does not carry an earlier sign-in's refusal onto the settings password card", () => {
+    // `authError` is one field shared by the two forms that write it, and it is cleared only on
+    // the *next* attempt — so a failed sign-in earlier in the shift was still sitting in the
+    // store when Settings opened, and the card accused the operator of a refusal it had never
+    // asked for. It speaks once this form has been used, and not before.
+    act(() => { as("counter"); useApp.setState({ authError: "That is not your current password." }); });
+    const ui = mount(Settings);
+    expect(ui.text()).not.toContain("That is not your current password.");
+    expect(ui.text()).not.toContain("REFUSED");
+  });
+
+  it("reads a refusal out loud, and a notice only when it is asked for", () => {
+    // A critical alert is a refusal or a block, and a screen reader has to interrupt for it;
+    // every other tone is a notice that can wait its turn. Neither carried a role at all.
+    // JSX rather than `createElement` here alone: `Alert` declares `children` as a required
+    // prop, which the three-argument form does not satisfy and the props-object form trips
+    // `react(no-children-prop)` on.
+    const ui = mount(() => (
+      <div>
+        <Alert tone="c" label="REFUSED">No.</Alert>
+        <Alert tone="i" label="LISTS">Two lists.</Alert>
+      </div>
+    ));
+    expect(ui.host.querySelector(".al.c")!.getAttribute("role")).toBe("alert");
+    expect(ui.host.querySelector(".al.i")!.getAttribute("role")).toBe("status");
+  });
+});
+
+describe("the price-list prose counts what is actually deployed", () => {
+  it("says counter, not counters, when there is one of them", () => {
+    const saved = [...OUTLETS];
+    OUTLETS.splice(0, OUTLETS.length, "coffee");
+    try {
+      act(() => { as("manager"); useApp.setState({ shopFilter: null }); });
+      const ui = mount(manager.prices);
+      expect(ui.text()).toContain("1 counter.");
+      expect(ui.text()).not.toContain("1 counters");
+      expect(ui.text()).not.toContain("1 lists");
+    } finally {
+      OUTLETS.splice(0, OUTLETS.length, ...saved);
+    }
+  });
+
+  it("says nothing about lists before the locations have landed", () => {
+    // What the screen sees between sign-in and the snapshot: `OUTLETS` is a deployment constant
+    // and is already there, `LOC` is a registry filled in place and is not. `LOC[l].list` threw
+    // outright, and the header read "0 lists cover the 0 counters".
+    const saved = OUTLETS.map((l) => LOC[l]);
+    for (const l of OUTLETS) delete LOC[l];
+    try {
+      act(() => { as("manager"); useApp.setState({ shopFilter: null }); });
+      const ui = mount(manager.prices);
+      expect(ui.text()).toContain("No outlet is configured");
+      expect(ui.text()).not.toContain("0 lists");
+      expect(ui.text()).not.toContain("0 counters");
+    } finally {
+      OUTLETS.forEach((l, i) => { LOC[l] = saved[i]; });
+    }
   });
 });

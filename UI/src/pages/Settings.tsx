@@ -40,16 +40,24 @@ export default function Settings() {
   /* ---- sign-in & security: the same change the temporary-password page makes, from a screen
      you are already signed in on. The two checks below are this form's own, before anything is
      sent; the server's refusal comes back on `authError`, which is where `changePassword` puts
-     it, and both are shown in the same place. The three boxes empty only once it has landed. */
+     it, and both are shown in the same place. The three boxes empty only once it has landed.
+
+     `authError` is one field, written by `login` as well as by `changePassword`, and cleared
+     only on the *next* attempt at either — so a sign-in that was refused earlier in the shift is
+     still sitting in the store when this screen opens. `tried` is what keeps this card silent
+     until it has actually asked for something: it is local, so leaving the screen and coming
+     back puts the card back to saying nothing, and neither store action had to change. */
   const changePassword = useApp((s) => s.changePassword);
   const refused = useApp((s) => s.authError);
   const [cur, setCur] = useState("");
   const [next, setNext] = useState("");
   const [again, setAgain] = useState("");
   const [own, setOwn] = useState<string | null>(null);
+  const [tried, setTried] = useState(false);
   const [pwBusy, setPwBusy] = useState(false);
   const updatePassword = async () => {
     setOwn(null);
+    setTried(true);
     if (next !== again) { setOwn("The two new passwords do not match."); return; }
     if (next.length < 10) { setOwn("Choose at least ten characters."); return; }
     setPwBusy(true);
@@ -57,7 +65,7 @@ export default function Settings() {
     setPwBusy(false);
     if (ok) { setCur(""); setNext(""); setAgain(""); }
   };
-  const pwProblem = own ?? refused;
+  const pwProblem = own ?? (tried ? refused : null);
 
   const toggle = (k: keyof Prefs) => {
     const next = { ...prefs, [k]: !prefs[k] };

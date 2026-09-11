@@ -17,10 +17,18 @@ const marginOf = (p: number, cost: number) => (p > 0 ? ((p - cost) / p) * 100 : 
 /** Which outlets a list actually covers, read off the deployment rather than written into the
  *  prose. Naming the Restaurant and the Snack Kiosk in a sentence was right for three counters
  *  on two lists and wrong the day a fourth opened — and a manager reading "saving a price here
- *  changes it at both counters" over three is being told something false about their own money. */
-const sharers = (list: string) => OUTLETS.filter((l) => (LOC[l].list ?? "A") === list);
+ *  changes it at both counters" over three is being told something false about their own money.
+ *
+ *  `LOC` is a registry filled in place when the snapshot lands, while `OUTLETS` is a deployment
+ *  constant that is there from the first render — so between sign-in and the snapshot every
+ *  `LOC[l]` here is `undefined`. `known()` is what stops that being a crash. */
+const known = () => OUTLETS.filter((l) => LOC[l] !== undefined);
+const listFor = (l: LocKey) => LOC[l]?.list ?? "A";
+const sharers = (list: string) => known().filter((l) => listFor(l) === list);
 const listOf = (names: string[]) =>
   names.length <= 1 ? names[0] ?? "" : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+/** "3 counters" / "1 counter" — a count and its noun, agreeing. */
+const count = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`;
 
 export default function Prices() {
   const s = useApp();
@@ -57,8 +65,9 @@ export default function Prices() {
     return sum(items, (it) => marginOf(priceOf(s, loc, it).p, costOf(it))) / items.length;
   };
 
-  /** The lists actually in use, in the order the outlets declare them. */
-  const lists = [...new Set(OUTLETS.map((l) => LOC[l].list ?? "A"))].sort();
+  /** The outlets this browser actually knows about, and the lists they are on. */
+  const outlets = known();
+  const lists = [...new Set(outlets.map(listFor))].sort();
 
   if (!shop || !OUTLETS.includes(shop)) {
     return (
@@ -66,19 +75,25 @@ export default function Prices() {
         <PageHead
           crumbs={["Royal Care", "Outlets", "Price Lists"]}
           title="Shop price lists"
-          sub={`${lists.length} list${lists.length === 1 ? "" : "s"} cover${lists.length === 1 ? "s" : ""} the ${OUTLETS.length} counters. Pick a shop to see every product it sells and what it charges.`}
+          sub={outlets.length === 0
+            ? "No outlet is configured yet."
+            : `${count(lists.length, "list")} ${lists.length === 1 ? "covers" : "cover"} ${count(outlets.length, "counter")}. Pick a shop to see every product it sells and what it charges.`}
         />
-        <Alert tone="i" label="LISTS">
-          {lists.map((l, i) => (
-            <span key={l}>
-              {i > 0 ? "; " : ""}list <b>{l}</b>{" "}
-              {sharers(l).length > 1 ? "is shared by" : "covers"} {listOf(sharers(l).map((o) => LOC[o].n))}
-            </span>
-          ))}
-          . Editing a price on a list changes it at every counter on that list.
-        </Alert>
+        {/* Nothing at all before the snapshot lands, rather than "0 lists cover the 0 counters" —
+            which was both ungrammatical and a claim about a deployment nobody had read yet. */}
+        {lists.length > 0 && (
+          <Alert tone="i" label="LISTS">
+            {lists.map((l, i) => (
+              <span key={l}>
+                {i > 0 ? "; " : ""}list <b>{l}</b>{" "}
+                {sharers(l).length > 1 ? "is shared by" : "covers"} {listOf(sharers(l).map((o) => LOC[o].n))}
+              </span>
+            ))}
+            . Editing a price on a list changes it at every counter on that list.
+          </Alert>
+        )}
         <Grid cols="g3">
-          {OUTLETS.map((loc) => {
+          {outlets.map((loc) => {
             const items = priced(loc);
             return (
               <Card

@@ -331,7 +331,11 @@ export function Alert({ tone = "i", label, children, action }: {
   tone?: "w" | "c" | "g" | "i"; label: string; children: ReactNode; action?: ReactNode;
 }) {
   return (
-    <div className={`al ${tone}`}>
+    /* A critical alert is a refusal or a block — a sale that cannot be taken, a credit ceiling
+       reached, a password the server would not change — and a screen reader has to interrupt
+       for it rather than wait for a pause. Every other tone is a notice and can wait, which is
+       what `status` means. Neither carried a role at all, so both were silent. */
+    <div className={`al ${tone}`} role={tone === "c" ? "alert" : "status"}>
       <span className="k">{label}</span>
       <span>{children}</span>
       {action}
