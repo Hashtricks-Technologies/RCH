@@ -150,14 +150,59 @@ jobs:
               --set-string "secrets.values.SEED_PASSWORD=$SEED_PASSWORD"
             )
           fi
-          # --atomic rolls the release back to its previous state if this upgrade fails, instead
-          # of leaving it stuck in `pending-upgrade` (the state --wait alone can leave behind).
-          # On a first install --atomic instead DELETES the release on failure, which is the
-          # wanted behaviour there too — nothing half-applied survives a failed first deploy.
+          # dev and staging keep --atomic: they are rebuildable, nobody is mid-shift on them,
+          # and an automatic undo is worth more there than the wreckage of the failed attempt.
+          #
+          # production takes --wait alone, deliberately. --atomic deletes the failed release's
+          # pods the instant it gives up, which takes with it the only two things RUNBOOK §5
+          # tells the operator to read — the pod events and the migrate initContainer's log —
+          # and leaves "the rollout failed" with no way to learn why. Worse, a migration that
+          # already committed is not undone by rolling the Deployment back: --atomic would put
+          # the previous image in front of a schema it was never written for, which is a
+          # second, quieter outage on top of the first. So on production a failure stops, keeps
+          # the evidence (the step below prints it), and waits for a person to decide whether
+          # the right move is forward or back.
+          #
           # --timeout is 15m, not --wait's old 10m: the migrate initContainer runs before the api
           # container becomes Ready, and a large migration is not a fast one.
+          ATOMIC=(--atomic)
+          if [ "$REF_NAME" = production ]; then ATOMIC=(); fi
           helm upgrade --install "$RELEASE" deploy/chart/rch -n "$NS" --create-namespace -f "deploy/chart/rch/$VALUES" \
-            --set image.registry="${{ secrets.ECR_REGISTRY }}" --set image.tag="$SHA" "${EXTRA[@]}" --wait --atomic --timeout 15m
+            --set image.registry="${{ secrets.ECR_REGISTRY }}" --set image.tag="$SHA" "${EXTRA[@]}" --wait "${ATOMIC[@]}" --timeout 15m
+      # Runs on every branch, before any rollback, so the evidence is in the job log whatever
+      # happens next. `|| true` throughout: a first install that never created a pod has no
+      # events and no logs, and this step must not turn that into a second failure.
+      - name: What the cluster saw
+        if: failure()
+        run: |
+          kubectl -n "$NS" get pods,events --sort-by=.lastTimestamp | tail -80 || true
+          kubectl -n "$NS" logs -l app.kubernetes.io/component=api -c migrate --tail=200 || true
+      # Only dev and staging, and only when the release is genuinely stuck. --atomic has
+      # normally already rolled these back by now, and `helm rollback` with no revision goes
+      # back exactly one — running it after a successful atomic undo would re-apply the failed
+      # revision. So: act only on a pending-* or failed status, which is what is left when
+      # --atomic itself could not finish (the job timed out mid-upgrade, or the rollback hit
+      # the same wall the upgrade did).
+      - name: Unstick the release
+        if: failure() && github.event.workflow_run.head_branch != 'production'
+        run: |
+          # A release helm cannot find prints nothing at all, and jq turns nothing into
+          # nothing rather than into an error — hence the two defaults below rather than a
+          # `|| echo`, which would never fire.
+          status="$(helm status "$RELEASE" -n "$NS" -o json 2>/dev/null | jq -r '.info.status' 2>/dev/null)"
+          revisions="$(helm history "$RELEASE" -n "$NS" -o json 2>/dev/null | jq 'length' 2>/dev/null)"
+          [ -n "$status" ] || status=none
+          case "$revisions" in ''|*[!0-9]*) revisions=0 ;; esac
+          echo "release $RELEASE in $NS is '$status' across $revisions revision(s)"
+          case "$status" in
+            pending-upgrade|pending-install|pending-rollback|failed)
+              if [ "$revisions" -ge 2 ]; then
+                helm rollback "$RELEASE" -n "$NS" --wait --timeout 10m
+              else
+                echo "no earlier revision to roll back to; leaving it for a person"
+              fi ;;
+            *) echo "nothing to roll back" ;;
+          esac
       - name: Prove it came up
         run: |
           kubectl -n "$NS" rollout status deploy/rch-api --timeout=5m
