@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, createElement, type ComponentType, type ReactElement } from "react";
 import { createRoot } from "react-dom/client";
 import { MemoryRouter } from "react-router-dom";
@@ -649,5 +649,126 @@ describe("the counter can ask the kitchen, and only for what the kitchen makes",
     const html = render(createElement(prod.orders));
     expect(html).toContain("needed by 11-Sep-2026");
     expect(html.match(/needed by/g)).toHaveLength(1);
+  });
+});
+
+/* ------------------------------------------------------------------------
+ * The three forms whose screens had not caught up with an action that
+ * answers whether the server took the write: the settings password card,
+ * which called nothing at all, and the two that cleared what was typed
+ * whatever came back.
+ * ---------------------------------------------------------------------- */
+
+/** Hosts that stay mounted for the length of a case, so a form can be typed into and pressed. */
+const mounted: { unmount: () => void }[] = [];
+afterEach(() => { while (mounted.length) mounted.pop()!.unmount(); });
+
+function mount(C: ComponentType) {
+  const host = document.createElement("div");
+  document.body.appendChild(host);
+  const root = createRoot(host);
+  act(() => { root.render(createElement(MemoryRouter, null, createElement(C))); });
+  const ui = {
+    host,
+    text: () => host.textContent ?? "",
+    button: (label: string) =>
+      [...host.querySelectorAll("button")].find((b) => (b.textContent ?? "").includes(label))!,
+    /** `Field` ties its label to the control it wraps by id, which is how an operator finds one. */
+    field: (label: string) => {
+      const l = [...host.querySelectorAll("label")].find((x) => (x.textContent ?? "").trim() === label)!;
+      return host.querySelector<HTMLInputElement>(`#${l.htmlFor}`)!;
+    },
+    labelled: (aria: string) => host.querySelector<HTMLInputElement>(`input[aria-label="${aria}"]`)!,
+    unmount: () => { act(() => { root.unmount(); }); host.remove(); },
+  };
+  mounted.push(ui);
+  return ui;
+}
+/** Typing, the way React hears it. */
+const typeIn = (el: HTMLInputElement, v: string) => {
+  Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(el, v);
+  el.dispatchEvent(new Event("input", { bubbles: true }));
+};
+const settle = async (fn: () => void) => {
+  await act(async () => { fn(); await new Promise((r) => { setTimeout(r, 0); }); });
+};
+
+describe("the settings sign-in card", () => {
+  it("calls changePassword with the typed values", async () => {
+    const changePassword = vi.fn(async () => true);
+    act(() => { as("counter"); useApp.setState({ changePassword }); });
+    const ui = mount(Settings);
+
+    typeIn(ui.field("Current password"), "old-one-please");
+    typeIn(ui.field("New password"), "a-brand-new-password");
+    typeIn(ui.field("Confirm new password"), "a-brand-new-password");
+    await settle(() => { ui.button("Update password").click(); });
+
+    expect(changePassword).toHaveBeenCalledWith("old-one-please", "a-brand-new-password");
+    // Taken by the server, so the three boxes are empty again.
+    expect(ui.field("Current password").value).toBe("");
+    expect(ui.field("New password").value).toBe("");
+  });
+
+  it("invents no counter PIN and lets nobody retype their own employee id", () => {
+    act(() => { as("counter"); });
+    const ui = mount(Settings);
+    expect(ui.text()).not.toContain("Counter PIN");
+    expect(ui.field("Employee ID").readOnly).toBe(true);
+  });
+
+  it("keeps the typing when the change is refused", async () => {
+    const changePassword = vi.fn(async () => false);
+    act(() => {
+      as("counter");
+      useApp.setState({ changePassword, authError: "That is not your current password." });
+    });
+    const ui = mount(Settings);
+
+    typeIn(ui.field("Current password"), "wrong-one-here");
+    typeIn(ui.field("New password"), "a-brand-new-password");
+    typeIn(ui.field("Confirm new password"), "a-brand-new-password");
+    await settle(() => { ui.button("Update password").click(); });
+
+    expect(ui.field("Current password").value).toBe("wrong-one-here");
+    expect(ui.text()).toContain("That is not your current password.");
+  });
+});
+
+describe("a form whose write the server refused", () => {
+  it("a refused pay keeps the payer", async () => {
+    const pay = vi.fn(async () => false);
+    act(() => {
+      as("counter");                                   // Kavitha, Coffee Shop
+      useApp.setState({ pay, readCredit: async () => null, cart: { coffee: { juice: 1 } } });
+    });
+    const ui = mount(counter.pos);
+
+    // A staff-credit bill cannot be raised without somebody to post it to.
+    await settle(() => { ui.button("Staff credit").click(); });
+    const picked = ui.button("RC-4471");
+    const name = picked.querySelector("b")!.textContent ?? "";
+    await settle(() => { picked.click(); });
+    expect(ui.text()).toContain(`posted to ${name}`);
+
+    await settle(() => { ui.button("Pay").click(); });
+
+    expect(pay).toHaveBeenCalled();
+    // Refused: the operator must not have to find the same staff member again.
+    expect(ui.text()).toContain(`posted to ${name}`);
+  });
+
+  it("a refused price save keeps the typed value", async () => {
+    const savePrice = vi.fn(async () => false);
+    act(() => { as("manager"); useApp.setState({ savePrice, shopFilter: "coffee" }); });
+    const ui = mount(manager.prices);
+
+    const box = ui.labelled("New price for Real Juice 200ml");
+    typeIn(box, "37");
+    const save = [...box.closest("tr")!.querySelectorAll("button")].find((b) => b.textContent === "Save")!;
+    await settle(() => { save.click(); });
+
+    expect(savePrice).toHaveBeenCalledWith("B", "juice", 37);
+    expect(ui.labelled("New price for Real Juice 200ml").value).toBe("37");
   });
 });

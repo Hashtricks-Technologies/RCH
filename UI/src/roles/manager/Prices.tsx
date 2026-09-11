@@ -14,6 +14,14 @@ const PSTATE = ["All", "Priced", "Not priced", "Capped at MRP", "Margin under 40
 const tagKind = (t: ItemType) => (t === "MRP" ? "tr" : t === "FG" || t === "MTO" ? "md" : undefined);
 const marginOf = (p: number, cost: number) => (p > 0 ? ((p - cost) / p) * 100 : 0);
 
+/** Which outlets a list actually covers, read off the deployment rather than written into the
+ *  prose. Naming the Restaurant and the Snack Kiosk in a sentence was right for three counters
+ *  on two lists and wrong the day a fourth opened — and a manager reading "saving a price here
+ *  changes it at both counters" over three is being told something false about their own money. */
+const sharers = (list: string) => OUTLETS.filter((l) => (LOC[l].list ?? "A") === list);
+const listOf = (names: string[]) =>
+  names.length <= 1 ? names[0] ?? "" : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+
 export default function Prices() {
   const s = useApp();
   const setShopFilter = useApp((x) => x.setShopFilter);
@@ -30,6 +38,12 @@ export default function Prices() {
   const [drop, setDrop] = useState<string | null>(null);
   const [add, setAdd] = useState("");
   const psort = useSort("name");
+  /** Which rows have a write in flight, one key per row. Every one of the four buttons on this
+   *  screen posts, and every one of them can be refused — an MRP ceiling, a product another
+   *  manager has just dropped — so none of them may clear what was typed or picked until the
+   *  server has actually taken it, and none may be pressed twice while it decides. */
+  const [busy, setBusy] = useState<Record<string, boolean>>({});
+  const lock = (k: string, on: boolean) => setBusy((b) => ({ ...b, [k]: on }));
 
   const go = (loc: LocKey | null) => {
     setQ(""); setType(0); setPstate(0); setDrop(null); setAdd(""); setShopFilter(loc);
@@ -43,17 +57,25 @@ export default function Prices() {
     return sum(items, (it) => marginOf(priceOf(s, loc, it).p, costOf(it))) / items.length;
   };
 
+  /** The lists actually in use, in the order the outlets declare them. */
+  const lists = [...new Set(OUTLETS.map((l) => LOC[l].list ?? "A"))].sort();
+
   if (!shop || !OUTLETS.includes(shop)) {
     return (
       <>
         <PageHead
           crumbs={["Royal Care", "Outlets", "Price Lists"]}
           title="Shop price lists"
-          sub="Two lists cover the three counters. Pick a shop to see every product it sells and what it charges."
+          sub={`${lists.length} list${lists.length === 1 ? "" : "s"} cover${lists.length === 1 ? "s" : ""} the ${OUTLETS.length} counters. Pick a shop to see every product it sells and what it charges.`}
         />
         <Alert tone="i" label="LISTS">
-          List <b>A</b> is shared by the Restaurant and the Snack Kiosk; the Coffee Shop runs on list <b>B</b>.
-          Editing a price on list A changes it at both of those counters.
+          {lists.map((l, i) => (
+            <span key={l}>
+              {i > 0 ? "; " : ""}list <b>{l}</b>{" "}
+              {sharers(l).length > 1 ? "is shared by" : "covers"} {listOf(sharers(l).map((o) => LOC[o].n))}
+            </span>
+          ))}
+          . Editing a price on a list changes it at every counter on that list.
         </Alert>
         <Grid cols="g3">
           {OUTLETS.map((loc) => {
@@ -82,6 +104,8 @@ export default function Prices() {
   }
 
   const list = LOC[shop].list ?? "A";
+  const shared = sharers(list);
+  const others = OUTLETS.filter((l) => !shared.includes(l));
   const term = q.trim().toLowerCase();
   const listed = menuOf(s, shop);
   const wantType = TYPES[type];
@@ -112,12 +136,28 @@ export default function Prices() {
   });
   const missing = Object.keys(s.prices[list]).filter((it) => !listed.includes(it));
 
-  const save = (it: string) => {
+  const save = async (it: string) => {
     const raw = edit[it];
     const v = Number(raw ?? priceOf(s, shop, it).listed);
     if (!Number.isFinite(v) || v <= 0) { notify("Enter a price greater than zero"); return; }
-    savePrice(list, it, v);
-    setEdit((e) => { const n = { ...e }; delete n[it]; return n; });
+    lock(`save:${it}`, true);
+    const ok = await savePrice(list, it, v);
+    lock(`save:${it}`, false);
+    // Refused — an MRP ceiling, most often. The number the manager typed stays in the box so
+    // it can be corrected, rather than snapping back to the price that is still in force.
+    if (ok) setEdit((e) => { const n = { ...e }; delete n[it]; return n; });
+  };
+  const drops = async (it: string) => {
+    lock(`drop:${it}`, true);
+    const ok = await removeProduct(shop, it);
+    lock(`drop:${it}`, false);
+    if (ok) setDrop(null);
+  };
+  const adds = async () => {
+    lock("add", true);
+    const ok = await addProduct(shop, add);
+    lock("add", false);
+    if (ok) setAdd("");
   };
 
   return (
@@ -130,9 +170,9 @@ export default function Prices() {
       />
 
       <Alert tone="i" label="LIST">
-        {list === "A"
-          ? <>List <b>A</b> is shared by the <b>Restaurant</b> and the <b>Snack Kiosk</b> — saving a price here changes it at both counters.</>
-          : <>The Coffee Shop is the only outlet on list <b>B</b>. The Restaurant and the Snack Kiosk share list A, which is untouched by these edits.</>}
+        {shared.length > 1
+          ? <>List <b>{list}</b> is shared by <b>{listOf(shared.map((o) => LOC[o].n))}</b> — saving a price here changes it at {shared.length === 2 ? "both" : "all " + shared.length} counters.</>
+          : <>{LOC[shop].n} is the only outlet on list <b>{list}</b>{others.length > 0 && <>, so {listOf(others.map((o) => LOC[o].n))} {others.length === 1 ? "is" : "are"} untouched by these edits</>}.</>}
       </Alert>
 
       <Card title="Add a product" sub={`Priced on list ${list} but not listed at this counter`}>
@@ -148,8 +188,8 @@ export default function Prices() {
                 </select>
               </Field>
             </FormRow>
-            <Btn wide disabled={!add} onClick={() => { addProduct(shop, add); setAdd(""); }}>
-              Add to {LOC[shop].n}
+            <Btn wide disabled={!add || busy.add} onClick={() => void adds()}>
+              {busy.add ? "Adding…" : `Add to ${LOC[shop].n}`}
             </Btn>
           </>
         ) : (
@@ -214,11 +254,13 @@ export default function Prices() {
                         onChange={(e) => setEdit({ ...edit, [it]: e.target.value })}
                         aria-label={`New price for ${IT[it]?.n ?? it}`}
                       />
-                      <Btn size="xs" onClick={() => save(it)}>Save</Btn>
+                      <Btn size="xs" disabled={busy[`save:${it}`]} onClick={() => void save(it)}>
+                        {busy[`save:${it}`] ? "Saving…" : "Save"}
+                      </Btn>
                       {drop === it ? (
                         <>
-                          <Btn size="xs" variant="dg" onClick={() => { removeProduct(shop, it); setDrop(null); }}>
-                            Confirm removal
+                          <Btn size="xs" variant="dg" disabled={busy[`drop:${it}`]} onClick={() => void drops(it)}>
+                            {busy[`drop:${it}`] ? "Removing…" : "Confirm removal"}
                           </Btn>
                           <Btn size="xs" variant="gh" onClick={() => setDrop(null)}>Cancel</Btn>
                         </>

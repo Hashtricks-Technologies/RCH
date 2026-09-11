@@ -97,7 +97,9 @@ export function Tag({ children, kind }: { children: ReactNode; kind?: "tr" | "md
 }
 type BtnProps = {
   children: ReactNode; onClick?: () => void; variant?: "solid" | "gh" | "sub" | "dg" | "ok";
-  size?: "md" | "sm" | "xs"; disabled?: boolean; wide?: boolean; title?: string;
+  /** `touch` is the only size that is not a shrink: a 40 px square, for a control a counter
+   *  operator hits with a finger on a tablet rather than a mouse on a desk. */
+  size?: "md" | "sm" | "xs" | "touch"; disabled?: boolean; wide?: boolean; title?: string;
 };
 export function Btn({ children, onClick, variant = "solid", size = "md", disabled, wide, title }: BtnProps) {
   const cls = ["btn", variant !== "solid" ? variant : "", size !== "md" ? size : "", wide ? "wide" : ""]

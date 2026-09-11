@@ -28,11 +28,9 @@ export default function Login() {
         <div className="lgh">
           <h1>Every item, every counter, one ledger.</h1>
           <p>Purchasing, stock, production and billing for the kitchen, the restaurant and every floor shop — running on a single source of truth.</p>
-          <div className="lgs">
-            <div><b>5</b><span>Locations</span></div>
-            <div><b>20</b><span>Items</span></div>
-            <div><b>5</b><span>Roles</span></div>
-          </div>
+          {/* The counts that stood here were hard-coded, and nothing before sign-in could tell
+              the truth about them: the item master and the locations arrive with the snapshot,
+              which arrives after. A wrong number is worse than none. */}
         </div>
       </div>
       <div className="lgf"><form className="lgi" onSubmit={submit}>
@@ -46,7 +44,7 @@ export default function Login() {
             stays until the next attempt, rather than in a toast that is gone in seconds. */}
         {refused && <Alert tone="c" label="REFUSED">{refused}</Alert>}
         <button className="btn wide" disabled={busy || !emp.trim() || !pw} type="submit">{busy ? "Signing in…" : "Sign in"}</button>
-        <p className="lgn">Forgotten your password? Ask the store keeper to reset it — you will be asked to choose a new one when you next sign in.</p>
+        <p className="lgn">Forgotten your password? Ask an administrator to reset it (they run the users CLI) — you will be asked to choose a new one when you next sign in.</p>
       </form></div>
     </div>
   );
