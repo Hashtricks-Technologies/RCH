@@ -1,3 +1,4 @@
+import { netReceived } from "./receipt.js";
 import { round3 } from "./round.js";
 
 /**
@@ -46,7 +47,10 @@ export function foldClaims(src: readonly ClaimSrc[]): ClaimSrc[] {
   return [...by.values()].sort((a, b) => a.prq.localeCompare(b.prq) || a.line - b.line);
 }
 
-/** What never arrived, per line, released last source first — a close-short's whole answer. */
-export function shortfallClaims(lines: readonly { qty: number; recv: number; src: readonly ClaimSrc[] }[]): ClaimSrc[] {
-  return lines.flatMap((l) => releaseClaim(l.src, round3(Math.max(0, l.qty - l.recv))).released);
+/** What never arrived, per line, released last source first — a close-short's whole answer.
+ *  Measured against what was **accepted** (`netReceived`): a rejected quantity went to
+ *  quarantine rather than onto the shelf, so it is still part of the balance the store keeper
+ *  asked for and it goes back on the procurement list with the rest of the shortfall. */
+export function shortfallClaims(lines: readonly { qty: number; recv: number; rejected: number; src: readonly ClaimSrc[] }[]): ClaimSrc[] {
+  return lines.flatMap((l) => releaseClaim(l.src, round3(Math.max(0, l.qty - netReceived(l)))).released);
 }

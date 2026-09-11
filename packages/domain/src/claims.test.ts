@@ -54,12 +54,24 @@ describe("foldClaims", () => {
 
 describe("shortfallClaims", () => {
   it("gives back only what never arrived, last source first", () => {
-    expect(shortfallClaims([{ qty: 105, recv: 60, src }])).toEqual([
+    expect(shortfallClaims([{ qty: 105, recv: 60, rejected: 0, src }])).toEqual([
       { prq: "PRQ-2026-012", line: 0, qty: 45 },
     ]);
   });
   it("gives nothing back on a line that was delivered in full or over", () => {
-    expect(shortfallClaims([{ qty: 80, recv: 80, src: [src[1]] }])).toEqual([]);
-    expect(shortfallClaims([{ qty: 80, recv: 81, src: [src[1]] }])).toEqual([]);
+    expect(shortfallClaims([{ qty: 80, recv: 80, rejected: 0, src: [src[1]] }])).toEqual([]);
+    expect(shortfallClaims([{ qty: 80, recv: 81, rejected: 0, src: [src[1]] }])).toEqual([]);
+  });
+  it("gives back what quality control turned away as well, because it never entered stock", () => {
+    // 105 arrived against the 105 ordered and 45 of them were turned away into quarantine: the
+    // store keeper is still owed those 45, so closing short has to put them back on the list.
+    expect(shortfallClaims([{ qty: 105, recv: 105, rejected: 45, src }])).toEqual([
+      { prq: "PRQ-2026-012", line: 0, qty: 45 },
+    ]);
+    // Nothing at all was taken in — the whole claim goes back, newest source first.
+    expect(shortfallClaims([{ qty: 105, recv: 105, rejected: 105, src }])).toEqual([
+      { prq: "PRQ-2026-012", line: 0, qty: 80 },
+      { prq: "PRQ-2026-011", line: 0, qty: 25 },
+    ]);
   });
 });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { RECEIPT_TOLERANCE, checkReceiptLine, receiptStatus } from "./receipt.js";
+import { RECEIPT_TOLERANCE, checkReceiptLine, netReceived, receiptStatus } from "./receipt.js";
 
 const line = { name: "Real Juice 200ml", unit: "nos", ordered: 120, received: 0, mrp: 20, listA: 18 };
 const ok = { recv: 120, rejected: 0, batch: "SBD-771", mrp: 20, mfg: "2026-09-01", exp: "2026-12-01" };
@@ -61,8 +61,27 @@ describe("checkReceiptLine", () => {
 
 describe("receiptStatus", () => {
   it("is Received only when every line is covered", () => {
-    expect(receiptStatus([{ qty: 80, recv: 80 }, { qty: 6, recv: 6 }])).toBe("Received");
-    expect(receiptStatus([{ qty: 80, recv: 60 }, { qty: 6, recv: 6 }])).toBe("Partially received");
-    expect(receiptStatus([{ qty: 80, recv: 81 }])).toBe("Received");
+    expect(receiptStatus([{ qty: 80, recv: 80, rejected: 0 }, { qty: 6, recv: 6, rejected: 0 }])).toBe("Received");
+    expect(receiptStatus([{ qty: 80, recv: 60, rejected: 0 }, { qty: 6, recv: 6, rejected: 0 }])).toBe("Partially received");
+    expect(receiptStatus([{ qty: 80, recv: 81, rejected: 0 }])).toBe("Received");
+  });
+
+  it("does not count rejected quantity towards covering a line", () => {
+    // A delivery turned away whole never entered the hospital, so the vendor still owes every
+    // unit of it. `Received` is terminal — an order that reached it can be neither closed short
+    // nor cancelled — so a gross reading would strand the requisition's claim for good.
+    expect(receiptStatus([{ qty: 100, recv: 100, rejected: 100 }])).toBe("Partially received");
+    expect(receiptStatus([{ qty: 120, recv: 120, rejected: 12 }])).toBe("Partially received");
+    // The replacement instalment settles it: 132 arrived in all, 12 of them went back.
+    expect(receiptStatus([{ qty: 120, recv: 132, rejected: 12 }])).toBe("Received");
+    expect(receiptStatus([{ qty: 80, recv: 80, rejected: 0 }, { qty: 6, recv: 6, rejected: 6 }])).toBe("Partially received");
+  });
+});
+
+describe("netReceived", () => {
+  it("is what arrived less what quality control turned away", () => {
+    expect(netReceived({ recv: 120, rejected: 12 })).toBe(108);
+    expect(netReceived({ recv: 100, rejected: 100 })).toBe(0);
+    expect(netReceived({ recv: 0.3, rejected: 0.1 })).toBe(0.2);
   });
 });

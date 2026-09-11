@@ -14,7 +14,12 @@ export const RECEIPT_TOLERANCE = 1.02;
 
 export type ReceiptCheckLine = {
   name: string; unit: string;
-  /** What the order asked for, and what earlier instalments already booked in. */
+  /**
+   * What the order asked for, and what earlier instalments **accepted** — arrival less whatever
+   * quality control turned away, `netReceived` below. A rejected quantity went to quarantine
+   * rather than onto the shelf, so the vendor still owes it: counting it here would refuse the
+   * replacement delivery that settles the line, which is the one delivery that has to get in.
+   */
   ordered: number; received: number;
   /** The item's own printed MRP, or null when it does not carry one, and its list-A shelf price. */
   mrp: number | null; listA: number;
@@ -44,6 +49,24 @@ export function checkReceiptLine(l: ReceiptCheckLine, r: ReceiptCheckInput, toda
   return null;
 }
 
-/** Where the order stands once an instalment is booked: covered on every line, or not yet. */
-export const receiptStatus = (lines: readonly { qty: number; recv: number }[]): "Received" | "Partially received" =>
-  lines.every((l) => l.recv >= l.qty) ? "Received" : "Partially received";
+/**
+ * What a purchase-order line has actually taken in: what arrived, less what quality control
+ * turned away.
+ *
+ * `po_lines.received_qty` stays the arrival record — it is what the delivery notes add up to —
+ * and `rejected_qty` the running total sent to quarantine. Every question about whether the
+ * vendor has *delivered* is asked of the difference, through here, so a rejection is owed again
+ * rather than quietly written off the order.
+ */
+export const netReceived = (l: { recv: number; rejected: number }): number => round3(l.recv - l.rejected);
+
+/**
+ * Where the order stands once an instalment is booked: covered on every line, or not yet.
+ *
+ * Covered means **accepted**, not arrived. Stock turned away at the door never entered the
+ * hospital, so an order cannot reach `Received` — which is terminal, and closes both the
+ * close-short and the cancel door behind it — on the strength of a consignment that was sent
+ * straight back.
+ */
+export const receiptStatus = (lines: readonly { qty: number; recv: number; rejected: number }[]): "Received" | "Partially received" =>
+  lines.every((l) => netReceived(l) >= l.qty) ? "Received" : "Partially received";
