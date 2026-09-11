@@ -152,6 +152,31 @@ refute grep -q 'access_logs.s3' <<<"$out"
 refute grep -Eq 'load-balancer-attributes: .*, ' <<<"$out"
 grep -q 'deletion_protection.enabled=true' <<<"$out"
 grep -q 'name: DB_POOL_MAX' <<<"$out"
+# B6: the ConfigMap had no reader at all — rch.envList inlines every one of these values into
+# each container's own env list — so the pod annotation that claimed to checksum it was hashing
+# a template nothing consumed. Hash what the pods actually read, and drop the ConfigMap.
+refute grep -q 'kind: ConfigMap' <<<"$out"
+grep -q 'checksum/config:' <<<"$out"
+# OTEL_EXPORTER_OTLP_ENDPOINT is read by no code in this repo.
+refute grep -q 'OTEL_EXPORTER_OTLP_ENDPOINT' <<<"$out"
+# V8 sizes its old space from the machine's memory, not the cgroup's, so without a ceiling the
+# kernel OOM-kills the pod before Node ever decides a collection is due. 70% of the limit.
+grep -q 'max-old-space-size=716' <<<"$out"
+# Nothing in any of these three pods reads the Kubernetes API, so none of them needs a token
+# mounted into it: api Deployment, ui Deployment, purge CronJob.
+[ "$(grep -c 'automountServiceAccountToken: false' <<<"$out")" = 3 ]
+# The nightly purge: bounded history, a deadline on a run that was missed (past 100 missed
+# schedules the controller stops firing the CronJob for good), a bounded retry, a hard stop, and
+# the same pod securityContext the api pod runs under.
+grep -q 'successfulJobsHistoryLimit: 3' <<<"$out"
+grep -q 'failedJobsHistoryLimit: 3' <<<"$out"
+grep -q 'startingDeadlineSeconds: 600' <<<"$out"
+grep -q 'backoffLimit: 2' <<<"$out"
+grep -q 'activeDeadlineSeconds: 1800' <<<"$out"
+cronjob=$(sed -n '/# Source: rch\/templates\/purge-cronjob.yaml/,/^---$/p' <<<"$out")
+[ -n "$cronjob" ]
+grep -q 'seccompProfile' <<<"$cronjob"
+grep -q 'fsGroup: 65532' <<<"$cronjob"
 # Three replicas that land on one node make the PodDisruptionBudget decorative.
 grep -q 'topologySpreadConstraints' <<<"$out"
 # B3: both Deployments get a PodDisruptionBudget, and both say maxUnavailable rather than
@@ -214,5 +239,9 @@ out_dev=$(helm template rch . -f values-dev.yaml "${dev_args[@]}")
 # pod may never be evicted, so the node under it may never be drained — which on a one-node spot
 # cluster is every node.
 refute grep -q 'kind: PodDisruptionBudget' <<<"$out_dev"
+# B6: the heap ceiling is per values file, against that file's own memory limit — dev inherits
+# values.yaml's 512Mi, so 358.
+grep -q 'max-old-space-size=358' <<<"$out_dev"
+refute grep -q 'kind: ConfigMap' <<<"$out_dev"
 
 echo "chart renders"

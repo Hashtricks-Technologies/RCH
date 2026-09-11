@@ -27,7 +27,15 @@ api:
     COOKIE_SECURE: "true"
     ACCESS_TOKEN_TTL: 15m
     REFRESH_TOKEN_TTL_DAYS: "30"
-    OTEL_EXPORTER_OTLP_ENDPOINT: ""
+    # V8 sizes its old space from the machine's memory, not the cgroup's, so without a ceiling
+    # the kernel OOM-kills the pod before Node ever decides a collection is due. 70% of
+    # api.resources.limits.memory above (512Mi → 358), leaving the rest for the heap's own
+    # overhead, buffers and the runtime. Move it whenever that limit moves.
+    #
+    # The migrate initContainer and the purge CronJob read this same list against their own
+    # smaller limits. Both are short-lived processes nowhere near any ceiling, so the number is
+    # derived from the api container's limit — the one that actually serves under memory.
+    NODE_OPTIONS: "--max-old-space-size=358"
 ui:
   replicas: 2
   resources: { requests: { cpu: 50m, memory: 64Mi }, limits: { cpu: 200m, memory: 128Mi } }

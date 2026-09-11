@@ -7,6 +7,8 @@ spec:
   template:
     metadata: { labels: { {{- include "rch.labels" . | nindent 8 }}, app.kubernetes.io/component: ui } }
     spec:
+      # nginx has no business with the Kubernetes API.
+      automountServiceAccountToken: false
       # fsGroup: 101 matches nginxinc/nginx-unprivileged's built-in nginx
       # user/group (uid 101, gid 101) so kubelet chowns the emptyDir
       # volumes below to a group the container can write — plain emptyDir
