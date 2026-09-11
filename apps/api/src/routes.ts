@@ -60,10 +60,20 @@ export function mount<R extends AnyRoute>(app: App, route: R, handler: Handler<R
     }
     return value;
   };
+  // Fastify warns (FSTWRN001) when a schema key is present but `undefined` — it cannot tell
+  // "no validation for this slot" from "the caller forgot one" — so a slot the manifest leaves
+  // unset is left off the object entirely rather than set to `undefined`. No validation ran for
+  // it either way; only the warning changes.
+  const schema = {
+    ...(route.params ? { params: route.params } : {}),
+    ...(route.query ? { querystring: route.query } : {}),
+    ...(route.body ? { body: route.body } : {}),
+    response: { 200: route.response },
+  };
   app.route({
     method: route.method,
     url: API_PREFIX + route.path,
-    schema: { params: route.params, querystring: route.query, body: route.body, response: { 200: route.response } },
+    schema,
     preHandler: pre,
     config: { write: isWrite, ...extra.config },
     handler: (isWrite && route.access !== "public" ? wrapped : handler) as never,

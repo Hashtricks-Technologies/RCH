@@ -1,4 +1,4 @@
-import Fastify, { type FastifyInstance } from "fastify";
+import Fastify, { LogController, type FastifyInstance } from "fastify";
 import type { Pool } from "pg";
 import { serializerCompiler, validatorCompiler, type ZodTypeProvider } from "fastify-type-provider-zod";
 import type { Config } from "./config.js";
@@ -29,7 +29,9 @@ export async function buildApp(config: Config, deps: AppDeps = {}): Promise<App>
     trustProxy: config.trustProxy,
     bodyLimit: 1024 * 1024,
     forceCloseConnections: "idle",
-    disableRequestLogging: true, // the logging plugin writes one structured line per request instead
+    // the logging plugin writes one structured line per request instead; the top-level
+    // `disableRequestLogging` option is deprecated in Fastify 5 (FSTDEP023) in favour of this.
+    logController: new LogController({ disableRequestLogging: true }),
     // Requests must finish inside the idempotency stale window (CLAIM_STALE_MS,
     // plugins/idempotency.ts): otherwise a client's retry could take over a claim while the
     // original, merely-slow request is still running, and both would execute the write.
