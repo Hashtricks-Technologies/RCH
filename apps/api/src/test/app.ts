@@ -14,6 +14,10 @@ const BASE_ENV: NodeJS.ProcessEnv = {
   DATABASE_URL: process.env.TEST_DATABASE_URL ?? "postgres://rch:rch@localhost:5439/rch_test",
   CORS_ORIGIN: "http://localhost:5173",
   COOKIE_SECURE: "false", SEED_FORCE_PASSWORD_CHANGE: "false",
+  // SEED_PASSWORD has no default any more (config.ts), so every built app has to name one.
+  // Nothing under test seeds through the app — `seedTestDb` carries its own — so this is only
+  // here to satisfy the schema.
+  SEED_PASSWORD: "test-seed-password-1",
 };
 
 /** Generates a fresh Ed25519 key pair on every call unless `overrides` supplies one, so two

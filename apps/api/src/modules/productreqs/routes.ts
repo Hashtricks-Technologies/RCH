@@ -2,10 +2,17 @@
 import fp from "fastify-plugin";
 import { routes } from "@rch/contract";
 import { mount } from "../../routes.js";
+import { requireLoc } from "../../plugins/rbac.js";
 import { createProductReqsService } from "./service.js";
 
 export default fp(async (app) => {
   const svc = createProductReqsService(app.db);
-  mount(app, routes.createProductRequest, async (req) => svc.create(req.user, req.body));
-  mount(app, routes.answerProductRequest, async (req) => svc.answer(req.params.id, req.body));
+  mount(app, routes.createProductRequest, async (req) => {
+    // A till asks for its own outlet and no other: the token decides, not the body, the same
+    // way `pos` decides which counter a bill belongs to. A manager reaches every outlet, so
+    // there the body decides and the service checks it names an outlet at all.
+    if (req.user.role === "counter") requireLoc(req, req.body.forLoc, "your own counter");
+    return svc.create(req.user, req.body);
+  });
+  mount(app, routes.answerProductRequest, async (req) => svc.answer(req.user, req.params.id, req.body));
 }, { name: "module:productreqs", dependencies: ["auth", "rbac", "idempotency", "db"] });

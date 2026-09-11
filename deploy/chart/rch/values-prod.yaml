@@ -63,7 +63,7 @@ secrets:
     enabled: true
     storeName: aws-secrets-manager
     storeKind: ClusterSecretStore
-    remoteKey: rch/prod                           # a JSON secret with the four keys
+    remoteKey: rch/prod                           # a JSON secret with the five keys (SEED_PASSWORD included)
 serviceAccount:
   create: true
   annotations: {}                                 # FILL if the pod itself reads Secrets Manager (IRSA)

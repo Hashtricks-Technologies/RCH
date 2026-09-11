@@ -68,6 +68,18 @@ api_secrets=$(sed -n '/name: api$/,/readinessProbe:/p' <<<"$out" | grep 'secretK
 [ -n "$init_secrets" ]
 [ "$init_secrets" = "$api_secrets" ]
 
+# D1: SEED_PASSWORD is a Secret key, not an api.env entry. apps/api/src/config.ts has no default
+# for it, so a rendered pod that does not carry it cannot start at all — and it must arrive the
+# same way every other secret does, never as a plaintext `value:`.
+seed_ref() { sed -n "$1" <<<"$out" | grep -c 'key: SEED_PASSWORD' || true; }
+[ "$(seed_ref '/name: migrate$/,/name: api$/p')" = 1 ] || { echo "migrate initContainer has no SEED_PASSWORD secretKeyRef"; exit 1; }
+[ "$(seed_ref '/name: api$/,/readinessProbe:/p')" = 1 ] || { echo "api container has no SEED_PASSWORD secretKeyRef"; exit 1; }
+refute bash -c 'grep -A2 "name: SEED_PASSWORD" <<<"$1" | grep -q "value:"' _ "$out"
+# ...and it is NOT optional. `if eq $k "a" "b"` is true for either name (Go's eq is variadic),
+# so one careless second argument in _helpers.tpl makes this key optional and lets a pod come up
+# with no seed password at all — which is the whole thing this key exists to prevent.
+refute grep -q 'key: SEED_PASSWORD, optional' <<<"$out"
+
 # Phase 6: the five §12 alerts plus the SSE listener ship with the chart, so the alert text lives
 # beside the metric it reads instead of only in the runbook.
 grep -q 'kind: PrometheusRule' <<<"$out"
@@ -112,6 +124,12 @@ grep -q 'dist/cli/migrate.mjs' <<<"$out"
 refute bash -c 'grep -A2 "name: JWT_PRIVATE_KEY" <<<"$1" | grep -q "value:"' _ "$out"
 refute bash -c 'grep -A2 "name: DATABASE_URL" <<<"$1" | grep -q "value:"' _ "$out"
 grep -q 'secretKeyRef' <<<"$out"
+# D1 again, on the staging path: the Secret is built from values here rather than synced, but
+# both containers still read the seed password out of it and never as a plaintext value.
+[ "$(seed_ref '/name: migrate$/,/name: api$/p')" = 1 ] || { echo "staging migrate initContainer has no SEED_PASSWORD secretKeyRef"; exit 1; }
+[ "$(seed_ref '/name: api$/,/readinessProbe:/p')" = 1 ] || { echo "staging api container has no SEED_PASSWORD secretKeyRef"; exit 1; }
+refute bash -c 'grep -A2 "name: SEED_PASSWORD" <<<"$1" | grep -q "value:"' _ "$out"
+refute grep -q 'key: SEED_PASSWORD, optional' <<<"$out"
 # Staging carries the same `certificateArn` FILL as production, and must behave the same way with
 # it empty: no annotation at all rather than `certificate-arn: ""`, which the ALB controller
 # rejects. Staging had no such key until the Phase 6 fix wave, which is why it needs its own line.

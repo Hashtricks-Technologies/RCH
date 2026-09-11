@@ -38,8 +38,15 @@ export function createAvailabilityService(db: Db) {
         // missing row would otherwise reach `loc.type` as a 500 instead of a plain answer.
         if (!loc) throw new NotFoundError(`There is no location ${body.loc}.`);
         if (!item) throw new NotFoundError(`There is no item ${body.it}.`);
+        // A manager reaches every outlet, so the request's location has to be checked here —
+        // it is the one role whose own `loc` does not decide. A counter and the kitchen were
+        // already held to their own location by `requireLoc` in routes.ts, which 403s before
+        // this service is called, so there is no second check for them to fail. The kitchen's
+        // own `${loc.n} is not a kitchen` branch used to sit here and could never run for that
+        // reason; what it was really guarding — that a Kitchen In-charge is only ever posted to
+        // the kitchen in the first place — is now `WORKS_AT` in `lib/users-admin.ts`, enforced
+        // where the account is created rather than on every toggle it makes afterwards.
         if (claims.role === "manager") assertRule(loc.type === "Outlet", `${loc.n} is not an outlet`);
-        if (claims.role === "prod") assertRule(loc.type === "Kitchen", `${loc.n} is not a kitchen`);
         // A kitchen has no menu — what it can switch off is what it can make, so "listed"
         // there means the item has a recipe. Everywhere else it is the location's menu.
         const listed = loc.type === "Kitchen"

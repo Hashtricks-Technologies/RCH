@@ -29,3 +29,17 @@ describe("withoutSslParams", () => {
     }
   });
 });
+
+describe("createDb", () => {
+  it("puts the request-sized statement timeout on an ordinary pool", () => {
+    const { pool } = createDb("postgres://u:p@h:5432/d", false, { max: 1 });
+    expect(pool.options.statement_timeout).toBe(15_000);
+  });
+
+  it("lets a CLI ask for no statement timeout at all, so a long migration is not cancelled", () => {
+    // 0 is Postgres's own "no timeout". The four CLIs pass it because a migration, a balance
+    // rebuild, a seed and a purge are each allowed to take longer than a request ever may.
+    const { pool } = createDb("postgres://u:p@h:5432/d", false, { max: 1, statementTimeoutMs: 0 });
+    expect(pool.options.statement_timeout).toBe(0);
+  });
+});

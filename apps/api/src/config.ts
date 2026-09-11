@@ -9,7 +9,9 @@ const Env = z.object({
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"]).default("info"),
   DATABASE_URL: z.url().startsWith("postgres"),
   TEST_DATABASE_URL: z.url().startsWith("postgres").optional(),
-  DATABASE_SSL: bool.default(false),
+  /** Left unset, production verifies the RDS chain and a laptop does not — see `databaseSsl`
+   *  below. Set it either way to overrule that. */
+  DATABASE_SSL: bool.optional(),
   /** Connections this process's pool may hold. Ten is what one pod is sized for (RDS's own
    *  `max_connections` divided across the replicas, with room for the SSE listener and a CLI);
    *  a request takes exactly one of them, so raise it only with a bigger instance behind it. */
@@ -21,7 +23,10 @@ const Env = z.object({
   ACCESS_TOKEN_TTL: z.string().regex(/^\d+[smhd]$/).default("15m"),
   REFRESH_TOKEN_TTL_DAYS: int(1, 365).default(30),
   COOKIE_SECURE: bool.default(true),
-  SEED_PASSWORD: z.string().min(8).default("changeme"),
+  /** No default, on purpose. A published default is the same password on every host that ever
+   *  ran the seed, and a seeded account's must-change token still reaches `changePassword`, so
+   *  a takeover through one is permanent. Whoever seeds a host chooses the password. */
+  SEED_PASSWORD: z.string().min(12),
   SEED_FORCE_PASSWORD_CHANGE: bool.default(true),
   RATE_LIMIT_PER_MINUTE: int(10, 100_000).default(300),
   LOGIN_RATE_LIMIT_PER_MINUTE: int(1, 1000).default(10),
@@ -99,7 +104,11 @@ export function loadConfig(env: NodeJS.ProcessEnv): Config {
     logLevel: e.LOG_LEVEL,
     databaseUrl: e.DATABASE_URL,
     testDatabaseUrl: e.TEST_DATABASE_URL,
-    databaseSsl: e.DATABASE_SSL,
+    // Unset means "whatever this environment ought to be": production talks to RDS and verifies
+    // the bundled CA, a laptop talks to a container on 5439 and does not. An explicit
+    // DATABASE_SSL still wins in both directions — a staging pod pointed at a local proxy can
+    // turn it off, and a developer pointed at a real instance can turn it on.
+    databaseSsl: e.DATABASE_SSL ?? e.NODE_ENV === "production",
     dbPoolMax: e.DB_POOL_MAX,
     corsOrigins: e.CORS_ORIGIN.split(",").map((s) => s.trim()).filter(Boolean),
     jwt: {

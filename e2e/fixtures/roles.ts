@@ -5,8 +5,9 @@ import { expect, type Locator, type Page } from "@playwright/test";
  *
  * These are the ids `pnpm --filter @rch/api db:seed` writes, straight out of
  * `packages/contract/src/fixtures/master.ts`, and `deploy/RUNBOOK.md` §1 lists them.
- * The password is SEED_PASSWORD's dev default. If a seeded id changes, this file is the one
- * place to change it — every spec asks for a role, never for a number.
+ * The password is whatever `SEED_PASSWORD` was when the seed ran — see `PASSWORD` below. If a
+ * seeded id changes, this file is the one place to change it — every spec asks for a role,
+ * never for a number.
  *
  * The two that are easy to get wrong: the outlet manager is RC-3120 and the kitchen in-charge
  * is RC-1902, not the other way round; the second counter operator (at the kiosk) is RC-4482.
@@ -24,7 +25,14 @@ export const ROLES = {
   buyer: { emp: "RC-1550", nav: "Requisitions", home: "Requisitions" },
 } as const;
 export type RoleName = keyof typeof ROLES;
-export const PASSWORD = process.env.E2E_PASSWORD ?? "changeme";
+/**
+ * The password the seed wrote. `SEED_PASSWORD` is what the API itself was configured with (CI
+ * exports the same value it seeded the cluster with — deploy/chart/rch/ci/install-test.sh), and
+ * `E2E_PASSWORD` still overrides it for a run against a stack seeded with something else. The
+ * literal fallback is only for a local `pnpm dev` whose `.env` predates SEED_PASSWORD being
+ * required, and the sign-in error below says what to do when it is wrong.
+ */
+export const PASSWORD = process.env.E2E_PASSWORD ?? process.env.SEED_PASSWORD ?? "changeme";
 
 /** Sign in and wait for the snapshot to land — `auth: "ready"` is what puts the shell on screen. */
 export async function signIn(page: Page, role: RoleName): Promise<void> {

@@ -59,6 +59,7 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           JWT_PRIVATE_KEY: ${{ secrets.JWT_PRIVATE_KEY }}
           JWT_PUBLIC_KEY: ${{ secrets.JWT_PUBLIC_KEY }}
+          SEED_PASSWORD: ${{ secrets.SEED_PASSWORD }}
         run: |
           # Secrets are passed through env: and read from quoted shell
           # variables, never interpolated into the command text — GitHub
@@ -70,12 +71,20 @@ jobs:
           # a string, so no further word-splitting or re-quoting happens.
           EXTRA=()
           # dev and staging read their secrets from the GitHub environment; production from
-          # AWS Secrets Manager through the External Secrets Operator (values-prod.yaml).
+          # AWS Secrets Manager through the External Secrets Operator (values-prod.yaml), whose
+          # remote JSON must carry SEED_PASSWORD too.
+          #
+          # SEED_PASSWORD has no default in apps/api/src/config.ts, so the api container will not
+          # start without one: an unset SEED_PASSWORD secret here is a rollout that fails config
+          # validation and is rolled back by --atomic. It is the password the six seeded accounts
+          # start on and is only read by the seed CLI, but every container carries it because
+          # rch.envList builds one env list for all of them.
           if [ "${{ github.ref_name }}" != production ]; then
             EXTRA=(
               --set-string "secrets.values.DATABASE_URL=$DATABASE_URL"
               --set-string "secrets.values.JWT_PRIVATE_KEY=$JWT_PRIVATE_KEY"
               --set-string "secrets.values.JWT_PUBLIC_KEY=$JWT_PUBLIC_KEY"
+              --set-string "secrets.values.SEED_PASSWORD=$SEED_PASSWORD"
             )
           fi
           # --atomic rolls the release back to its previous state if this upgrade fails, instead

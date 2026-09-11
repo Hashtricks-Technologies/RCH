@@ -7,13 +7,15 @@
  * job: on a shared runner it would measure the runner, and a number nobody can attribute to a
  * machine is not evidence. Run it where you can say what the machine was, and write that down.
  *
- *   LOADCHECK_PASSWORD=changeme node apps/api/scripts/loadcheck.mjs --base http://localhost:3000 --emp RC-4471
+ *   LOADCHECK_PASSWORD="$SEED_PASSWORD" node apps/api/scripts/loadcheck.mjs --base http://localhost:3000 --emp RC-4471
  *
  * Flags: --base (default http://localhost:3000), --emp, --concurrency (default 10),
  *        --duration (seconds, default 20), --warmup (seconds, default 3), --no-writes, --help.
  *
- * The password comes from LOADCHECK_PASSWORD. `--password` still works and is still honoured
- * last, but it warns: a flag lands in the shell's history and in every `ps` on the box.
+ * The password comes from LOADCHECK_PASSWORD, or SEED_PASSWORD if the API's own environment is
+ * already loaded. There is no default — a guess would be wrong everywhere and would read as a
+ * broken deployment. `--password` still works and is still honoured before SEED_PASSWORD, but it
+ * warns: a flag lands in the shell's history and in every `ps` on the box.
  *
  * The rate limiter keys an authenticated request on the caller's user id (RATE_LIMIT_PER_MINUTE,
  * default 300/min) — this script shares one bearer token across every concurrent worker, so raise
@@ -27,12 +29,13 @@ import { randomUUID } from "node:crypto";
 
 const HELP = `Measures GET /snapshot and POST /bills against §12's 150ms / 200ms p95 targets.
 
-  LOADCHECK_PASSWORD=changeme node apps/api/scripts/loadcheck.mjs --base http://localhost:3000 --emp RC-4471
+  LOADCHECK_PASSWORD="$SEED_PASSWORD" node apps/api/scripts/loadcheck.mjs --base http://localhost:3000 --emp RC-4471
 
 Flags: --base (default http://localhost:3000), --emp, --concurrency (default 10),
        --duration (seconds, default 20), --warmup (seconds, default 3), --no-writes, --help.
 
-The password comes from LOADCHECK_PASSWORD. --password still works and is honoured after it, but
+The password comes from LOADCHECK_PASSWORD, or from SEED_PASSWORD if the API's own environment is
+already loaded. There is no default. --password still works and is honoured between the two, but
 it warns: a flag lands in the shell's history and in every \`ps\` on the box.
 
 The rate limiter keys an authenticated request on the caller's user id (RATE_LIMIT_PER_MINUTE,
@@ -77,7 +80,12 @@ const PASSWORD_FLAG = arg("password", undefined);
 if (PASSWORD_FLAG !== undefined) {
   console.warn("# --password is in your shell history and in `ps` for as long as this runs. Set LOADCHECK_PASSWORD instead.");
 }
-const PASSWORD = process.env.LOADCHECK_PASSWORD ?? PASSWORD_FLAG ?? "changeme";
+// No default. SEED_PASSWORD has none either (apps/api/src/config.ts), so there is no password
+// this script could guess that would be right anywhere — and one that was wrong everywhere would
+// just look like a broken deployment. SEED_PASSWORD is read last so that running this from a
+// shell that already has the API's own environment loaded needs no extra argument at all.
+const PASSWORD = process.env.LOADCHECK_PASSWORD ?? PASSWORD_FLAG ?? process.env.SEED_PASSWORD;
+if (!PASSWORD) usage("no password: set LOADCHECK_PASSWORD (or SEED_PASSWORD, or pass --password)");
 const CONCURRENCY = num("concurrency", "10");
 const DURATION_MS = num("duration", "20") * 1000;
 // Zero is a legitimate warm-up — "I have already hammered this process" — so this one floors at 0.

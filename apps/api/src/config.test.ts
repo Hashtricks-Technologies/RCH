@@ -4,6 +4,7 @@ import { ConfigError, loadConfig } from "./config.js";
 const good = {
   NODE_ENV: "test", PORT: "3000", DATABASE_URL: "postgres://u:p@h:5432/d",
   JWT_PRIVATE_KEY: "eA==", JWT_PUBLIC_KEY: "eA==", CORS_ORIGIN: "http://localhost:5173",
+  SEED_PASSWORD: "changeme-local-1",
 };
 
 describe("loadConfig", () => {
@@ -56,6 +57,25 @@ describe("loadConfig", () => {
     expect(loadConfig({ ...good, DB_POOL_MAX: "25" }).dbPoolMax).toBe(25);
     expect(() => loadConfig({ ...good, DB_POOL_MAX: "0" })).toThrow(ConfigError);
     expect(() => loadConfig({ ...good, DB_POOL_MAX: "lots" })).toThrow(ConfigError);
+  });
+  it("refuses to start without a seed password, and names the variable", () => {
+    // There is no default any more: a published one is the same password on every host that
+    // ever ran the seed, and `changePassword` is reachable with a must-change token, so a
+    // takeover through a seeded account is permanent.
+    const { SEED_PASSWORD: _omitted, ...without } = good;
+    expect(() => loadConfig(without)).toThrow(ConfigError);
+    try { loadConfig(without); } catch (e) { expect(String((e as Error).message)).toContain("SEED_PASSWORD"); }
+  });
+  it("refuses a seed password short enough to be guessed", () => {
+    expect(() => loadConfig({ ...good, SEED_PASSWORD: "changeme" })).toThrow(ConfigError);
+    expect(() => loadConfig({ ...good, SEED_PASSWORD: "elevenchars" })).toThrow(ConfigError);
+    expect(loadConfig({ ...good, SEED_PASSWORD: "twelve-chars" }).seedPassword).toBe("twelve-chars");
+  });
+  it("turns TLS on by itself in production, and leaves the choice alone everywhere else", () => {
+    expect(loadConfig({ ...good, NODE_ENV: "production" }).databaseSsl).toBe(true);
+    expect(loadConfig({ ...good, NODE_ENV: "production", DATABASE_SSL: "false" }).databaseSsl).toBe(false);
+    expect(loadConfig({ ...good, NODE_ENV: "development" }).databaseSsl).toBe(false);
+    expect(loadConfig({ ...good, NODE_ENV: "development", DATABASE_SSL: "true" }).databaseSsl).toBe(true);
   });
   it("splits a comma-separated CORS list", () => {
     expect(loadConfig({ ...good, CORS_ORIGIN: "https://a.example, https://b.example" }).corsOrigins)

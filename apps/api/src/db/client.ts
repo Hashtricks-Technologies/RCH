@@ -33,12 +33,20 @@ export function withoutSslParams(url: string): string {
   return u.toString();
 }
 
-export function createDb(url: string, ssl: boolean, opts: { max?: number; searchPath?: string } = {}): { db: Db; pool: Pool } {
+/**
+ * `statementTimeoutMs` is the ceiling on a single statement, 15 s by default because that is
+ * longer than any request the API serves and short enough that a runaway query is cancelled
+ * rather than held. Pass **0** — Postgres's own "no timeout" — from a CLI: a migration, a
+ * balance rebuild, a seed and a purge are each allowed to take longer than a request may, and a
+ * replica blocked on `pg_advisory_lock` during a rollout waits inside a statement, so the
+ * default would cancel it and leave the initContainer in CrashLoopBackOff.
+ */
+export function createDb(url: string, ssl: boolean, opts: { max?: number; searchPath?: string; statementTimeoutMs?: number } = {}): { db: Db; pool: Pool } {
   const pool = new Pool({
     connectionString: withoutSslParams(url),
     max: opts.max ?? 10,
     ssl: pgSsl(ssl),
-    statement_timeout: 15_000,
+    statement_timeout: opts.statementTimeoutMs ?? 15_000,
     idle_in_transaction_session_timeout: 30_000,
     options: opts.searchPath ? `-c search_path=${opts.searchPath}` : undefined,
   });
