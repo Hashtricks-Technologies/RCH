@@ -131,7 +131,22 @@ grep -q 'sse_listener_up' <<<"$out_mon"
 # and the real value rendered once one is supplied.
 refute grep -q 'certificate-arn: *$' <<<"$out"
 out_tls=$(helm template rch . -f values-prod.yaml --set image.registry=r,image.tag=t,ingress.certificateArn=arn:aws:acm:x)
-grep -q 'alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:x' <<<"$out_tls"
+grep -qE 'alb.ingress.kubernetes.io/certificate-arn: "?arn:aws:acm:x"?' <<<"$out_tls"
+# B5: the rule above is now the general one — every annotation is ranged and an empty value is
+# skipped, certificateArn included. NOTHING under the Ingress may render with an empty value:
+# the ALB controller reads `wafv2-acl-arn: ""` as a WAF ARN it cannot resolve rather than as
+# "no WAF", and leaves the ingress in a failed state, where an absent annotation falls back.
+ing_ann=$(sed -n '/# Source: rch\/templates\/ingress.yaml/,/^spec:/p' <<<"$out" | sed -n '/^  annotations:/,/^spec:/p' | grep -E '^    [^ ]')
+[ -n "$ing_ann" ]
+refute grep -Eq ':[[:space:]]*("")?[[:space:]]*$' <<<"$ing_ann"
+refute grep -q 'wafv2-acl-arn' <<<"$out"
+# The access-log bucket is not created by anything yet (deploy/cfn's AlbLogsBucketName will), and
+# an ALB told to write to a bucket that is not there fails to provision at all.
+refute grep -q 'access_logs.s3' <<<"$out"
+# A folded `>-` block joins its lines with a space, so the controller parsed the second attribute
+# onwards as a name beginning with a space. One line.
+refute grep -Eq 'load-balancer-attributes: .*, ' <<<"$out"
+grep -q 'deletion_protection.enabled=true' <<<"$out"
 grep -q 'name: DB_POOL_MAX' <<<"$out"
 # Three replicas that land on one node make the PodDisruptionBudget decorative.
 grep -q 'topologySpreadConstraints' <<<"$out"
@@ -173,7 +188,7 @@ refute grep -q 'key: SEED_PASSWORD, optional' <<<"$out"
 # rejects. Staging had no such key until the Phase 6 fix wave, which is why it needs its own line.
 refute grep -q 'certificate-arn: *$' <<<"$out"
 out_staging_tls=$(helm template rch . -f values-staging.yaml --set image.registry=r,image.tag=t,secrets.values.DATABASE_URL=x,secrets.values.JWT_PRIVATE_KEY=x,secrets.values.JWT_PUBLIC_KEY=x,ingress.certificateArn=arn:aws:acm:y)
-grep -q 'alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:y' <<<"$out_staging_tls"
+grep -qE 'alb.ingress.kubernetes.io/certificate-arn: "?arn:aws:acm:y"?' <<<"$out_staging_tls"
 # The pool size is an env knob now, not a literal in db/client.ts. Both files set it, and the
 # api container reads it — a rendered pod without it is one silently back on the code's default.
 grep -q 'name: DB_POOL_MAX' <<<"$out"

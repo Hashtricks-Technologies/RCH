@@ -49,12 +49,17 @@ ingress:
     alb.ingress.kubernetes.io/ssl-policy: ELBSecurityPolicy-TLS13-1-2-2021-06
     # An hour, because a live-update stream is one request that never ends (RUNBOOK §10). Every
     # timeout on the path — this, nginx's proxy_read_timeout, the heartbeat — moves together.
-    alb.ingress.kubernetes.io/load-balancer-attributes: >-
-      idle_timeout.timeout_seconds=3600,
-      deletion_protection.enabled=true,
-      access_logs.s3.enabled=true,
-      access_logs.s3.bucket=rch-alb-logs,
-      access_logs.s3.prefix=rch
+    #
+    # One line, not a folded `>-` block: folding joins the lines with a space, so the controller
+    # read every attribute after the first as a name beginning with a space and rejected it.
+    #
+    # Access logging is deliberately absent rather than empty. `rch-alb-logs` is created by
+    # nothing — deploy/cfn's AlbLogsBucketName parameter is what will create it — and an ALB told
+    # to write to a bucket that does not exist, or one without the log-delivery bucket policy,
+    # fails to provision at all. Once that parameter is filled in, append
+    # `,access_logs.s3.enabled=true,access_logs.s3.bucket=<AlbLogsBucketName>,access_logs.s3.prefix=rch`
+    # to the line below — with no spaces.
+    alb.ingress.kubernetes.io/load-balancer-attributes: idle_timeout.timeout_seconds=3600,deletion_protection.enabled=true
     # 30 seconds for requests already in flight towards a deregistering pod to finish. It sits
     # inside the pod's 60s terminationGracePeriodSeconds; apps/api/src/server.ts has the sums.
     alb.ingress.kubernetes.io/target-group-attributes: deregistration_delay.timeout_seconds=30
