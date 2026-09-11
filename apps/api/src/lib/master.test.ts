@@ -11,9 +11,15 @@ let t: TestDb;
 beforeAll(async () => { t = await withTestSchema("master_loader"); await seedTestDb(t.db); });
 afterAll(async () => { await t.close(); });
 
+// ---- item patch ----
+/** The fixtures as the wire now carries them. `active` joined `ItemSchema` when the master
+ *  became editable, and `toWireItem` carries it on every line rather than only on a retired one
+ *  — every seeded product is live, so it reads `true` throughout. */
+const LIVE = Object.fromEntries(Object.entries(FX.IT).map(([k, i]) => [k, { ...i, active: true }]));
+
 describe("loadMaster", () => {
   it("returns the seeded item master, unchanged", async () => {
-    expect((await loadMaster(t.db)).items).toEqual(FX.IT);
+    expect((await loadMaster(t.db)).items).toEqual(LIVE);
   });
   it("returns every location, quarantine included — the rules ignore it, they do not need it hidden", async () => {
     const m = await loadMaster(t.db);
@@ -30,7 +36,7 @@ describe("loadMaster", () => {
     } finally {
       await t.db.update(items).set({ active: true }).where(eq(items.key, "chips"));
     }
-    expect((await loadMaster(t.db)).items.chips).toEqual(FX.IT.chips);
+    expect((await loadMaster(t.db)).items.chips).toEqual(LIVE.chips);
   });
   it("reads through a caller's transaction, so a service sees its own writes", async () => {
     const m = await withTransaction(t.db, (tx) => loadMaster(tx));

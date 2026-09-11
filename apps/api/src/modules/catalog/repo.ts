@@ -1,12 +1,17 @@
 // Catalog: SQL only. No rules, no transaction of its own — service.ts passes `tx` in.
-import { and, asc, eq, like, sql } from "drizzle-orm";
+import { and, asc, eq, like, ne, sql } from "drizzle-orm";
 import type { LocKey } from "@rch/contract";
-import type { Tx } from "../../lib/db.js";
-import { items, locationItems, priceListItems } from "../../db/schema/index.js";
+import { isUniqueViolation, type Tx } from "../../lib/db.js";
+import { items, locationItems, priceListItems, stockBalances } from "../../db/schema/index.js";
 
 type PriceList = "A" | "B";
 export type ItemRow = typeof items.$inferSelect;
 export type NewItemRow = typeof items.$inferInsert;
+// ---- item patch ----
+export type ItemPatch = Partial<{
+  name: string; grp: string; hsn: string; gst: number;
+  reorderLevel: number; cost: number; mrp: number | null; active: boolean;
+}>;
 
 export const catalogRepo = {
   /** Serialise the suffix scan for one slug, so two different names that slug alike cannot both
@@ -63,4 +68,67 @@ export const catalogRepo = {
 
   menuItems: async (tx: Tx, loc: LocKey): Promise<string[]> =>
     (await tx.select({ itemKey: locationItems.itemKey }).from(locationItems).where(eq(locationItems.loc, loc)).orderBy(asc(locationItems.seq))).map((r) => r.itemKey),
+
+  // ---- item patch ----
+  /**
+   * Locking read on one item's own row, so two patches of the same line cannot both read the
+   * row that is about to change under them.
+   *
+   * **It deliberately does not filter `active`.** `loadItems` does — no rule may price something
+   * the master no longer sells — but a retired line has to stay reachable through this door or
+   * it could never be brought back, and "restore" would be the one edit retiring an item made
+   * impossible.
+   */
+  async head(tx: Tx, key: string): Promise<ItemRow | undefined> {
+    const [row] = await tx.select().from(items).where(eq(items.key, key)).for("update");
+    return row;
+  },
+
+  /** Whether another line already holds this name, case-insensitively. The pre-check that gives
+   *  the operator their sentence; `items_name_ci_uq` on the UPDATE is what actually arbitrates. */
+  async nameTaken(tx: Tx, name: string, exceptKey: string): Promise<boolean> {
+    const rows = await tx.select({ key: items.key }).from(items)
+      .where(and(sql`lower(${items.name}) = lower(${name})`, ne(items.key, exceptKey)));
+    return rows.length > 0;
+  },
+
+  /** Every price list this item sits on. The MRP floor is checked against the highest of them:
+   *  a ceiling that clears list A but not list B is still one counter that cannot sell. */
+  async pricesOf(tx: Tx, key: string): Promise<{ list: PriceList; price: number }[]> {
+    return tx.select({ list: priceListItems.list, price: priceListItems.price })
+      .from(priceListItems).where(eq(priceListItems.itemKey, key));
+  },
+
+  /** The outlets still listing this item on their till — what a retirement has to be clear of. */
+  async menusOf(tx: Tx, key: string): Promise<string[]> {
+    const rows = await tx.select({ loc: locationItems.loc }).from(locationItems)
+      .where(eq(locationItems.itemKey, key)).orderBy(asc(locationItems.loc));
+    return rows.map((r) => r.loc);
+  },
+
+  /** The locations still carrying stock of it. A row at zero is "carried, empty" (M12) and is
+   *  not a reason to refuse a retirement — only a non-zero balance is stock to write off. */
+  async balancesOf(tx: Tx, key: string): Promise<string[]> {
+    const rows = await tx.select({ loc: stockBalances.loc }).from(stockBalances)
+      .where(and(eq(stockBalances.itemKey, key), ne(stockBalances.onHand, 0)))
+      .orderBy(asc(stockBalances.loc));
+    return rows.map((r) => r.loc);
+  },
+
+  /** `undefined` means what it means for `insertItem`: the row this would have produced already
+   *  exists under another key. A rename into a name another item holds hits `items_name_ci_uq`
+   *  on the UPDATE itself, caught here rather than surfacing as a raw 500 — the caller reads the
+   *  same "already in the catalogue" sentence the insert's arbiter gives a new product
+   *  (`vendorsRepo.update`'s shape). Renaming an item to a case-only variant of its own current
+   *  name is not a violation — the index only ever sees one row with that value — and succeeds. */
+  async update(tx: Tx, key: string, patch: ItemPatch): Promise<ItemRow | undefined> {
+    try {
+      const [row] = await tx.update(items).set({ ...patch, updatedAt: new Date() }).where(eq(items.key, key)).returning();
+      if (!row) throw new Error(`item ${key} vanished inside its own transaction`);
+      return row;
+    } catch (err) {
+      if (isUniqueViolation(err, "items_name_ci_uq")) return undefined;
+      throw err;
+    }
+  },
 };

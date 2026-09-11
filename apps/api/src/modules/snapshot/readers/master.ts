@@ -1,13 +1,26 @@
 import { asc, eq } from "drizzle-orm";
-import type { PayerKind, PayerRoster, UserMin } from "@rch/contract";
-import { locationItems, payers, priceListItems, users } from "../../../db/schema/index.js";
+import type { Item, PayerKind, PayerRoster, UserMin } from "@rch/contract";
+import { items, locationItems, payers, priceListItems, users } from "../../../db/schema/index.js";
 import type { Reader } from "../../../lib/db.js";
-import { loadItems, loadLocations, loadRecipes } from "../../../lib/master.js";
-import { toWireUserMin } from "../../../lib/wire.js";
+import { loadLocations, loadRecipes } from "../../../lib/master.js";
+import { toWireItem, toWireUserMin } from "../../../lib/wire.js";
 
-/** The item master and the recipes are the same thing the rules read, so they are loaded the same way. */
-export const readItems = loadItems;
+/** The recipes are the same thing the rules read, so they are loaded the same way. */
 export const readRecipes = loadRecipes;
+
+// ---- item patch ----
+/**
+ * The **whole** item master, retired lines included, each carrying its own `active`.
+ *
+ * This is the one place the wire and the rules deliberately part company. `loadItems`
+ * (`lib/master.ts`) leaves a retired item out, because no rule may price, promise or bill
+ * something the master no longer sells. A *screen* has the opposite need: a bill, a ticket or a
+ * purchase order raised months ago still names the item, and a reader that dropped it would
+ * leave the operator reading a raw key where a product name belongs. So the registry carries
+ * everything and the pickers filter — `activeItems()` in `UI/src/lib/selectors.ts`.
+ */
+export const readItems = async (db: Reader): Promise<Record<string, Item>> =>
+  Object.fromEntries((await db.select().from(items).orderBy(asc(items.key))).map((r) => [r.key, toWireItem(r)]));
 
 /** Every location the hospital has, quarantine included: the store's screens name it, and
  *  `LocationSchema` is keyed by a plain string, so nothing about the wire shape changes. */

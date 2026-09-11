@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
-import { locationItems, stockBalances, stockMoves } from "../../db/schema/index.js";
+import { documentHistory, locationItems, stockBalances, stockMoves } from "../../db/schema/index.js";
 import { buildTestApp } from "../../test/app.js";
 import { seedTestDb } from "../../test/seed.js";
 import { authHeaders } from "../../test/auth.js";
@@ -17,6 +17,8 @@ const hdr = async (id: string): Promise<Hdrs> => ({ ...(await authHeaders(app, i
 const put = (url: string, headers: Hdrs, payload: Record<string, unknown>) => app.inject({ method: "PUT", url: `/api/v1${url}`, headers, payload });
 const post = (url: string, headers: Hdrs, payload: Record<string, unknown>) => app.inject({ method: "POST", url: `/api/v1${url}`, headers, payload });
 const del = (url: string, headers: Hdrs) => app.inject({ method: "DELETE", url: `/api/v1${url}`, headers });
+// ---- item patch ----
+const patch = (url: string, headers: Hdrs, payload: Record<string, unknown>) => app.inject({ method: "PATCH", url: `/api/v1${url}`, headers, payload });
 const get = async (url: string) => { const r = await app.inject({ method: "GET", url: `/api/v1${url}`, headers: await authHeaders(app, "u2") }); expect(r.statusCode).toBe(200); return r.json(); };
 
 describe("catalog: prices", () => {
@@ -199,5 +201,176 @@ describe("catalog: a new product on the master", () => {
     const both = await Promise.all([post("/items", await hdr("u3"), body), post("/items", await hdr("u3"), body)]);
     expect(both.filter((r) => r.statusCode === 200)).toHaveLength(1);
     expect(both.filter((r) => r.statusCode === 422)).toHaveLength(1);
+  });
+});
+
+// ---- item patch ----
+describe("PATCH /items/:it", () => {
+  const base = { unit: "nos", type: "MRP" as const, cost: 10, loc: "store" as const, opening: 0 };
+  /** A fresh line on the master for each case — this file seeds once and never resets, so a
+   *  case that reused a name would be testing the previous case's leftovers. */
+  const make = async (name: string, over: Record<string, unknown> = {}): Promise<string> => {
+    const r = await post("/items", await hdr("u3"), { ...base, name, ...over });
+    expect(r.statusCode, r.body).toBe(200);
+    return r.json().result.key as string;
+  };
+
+  it("lets the manager change mrp, cost and gst", async () => {
+    const k = await make("Patch commercial", { mrp: 20 });
+    const r = await patch(`/items/${k}`, await hdr("u2"), { mrp: 24, cost: 12.5, gst: 12 });
+    expect(r.statusCode, r.body).toBe(200);
+    const b = r.json();
+    expect(b.result).toMatchObject({ key: k, item: { mrp: 24, cost: 12.5, gst: 12 } });
+    expect(b.changed).toEqual(["items"]);
+    expect(b.message).toBe("Patch commercial updated");
+  });
+
+  it("lets the store, the buyer and the kitchen change the name, group, HSN and reorder level", async () => {
+    for (const [u, who] of [["u3", "store"], ["u5", "buyer"], ["u4", "kitchen"]]) {
+      const k = await make(`Patch operational ${who}`);
+      const r = await patch(`/items/${k}`, await hdr(u), { n: `Patch operational ${who} renamed`, grp: "Grocery", hsn: "2202", rl: 12.5 });
+      expect(r.statusCode, r.body).toBe(200);
+      expect(r.json().result.item).toMatchObject({ n: `Patch operational ${who} renamed`, g: "Grocery", hsn: "2202", rl: 12.5 });
+      expect(r.json().message).toBe(`Patch operational ${who} renamed updated`);
+    }
+  });
+
+  it("refuses the manager an operational field and the store a commercial one, each in its own words", async () => {
+    const k = await make("Patch wrong desk");
+    const m = await patch(`/items/${k}`, await hdr("u2"), { rl: 5 });
+    expect(m.statusCode).toBe(422);
+    expect(m.json().error.message).toBe("The store, the buyer and the kitchen keep an item's name, group, HSN and reorder level — ask one of them");
+    const s = await patch(`/items/${k}`, await hdr("u3"), { cost: 99 });
+    expect(s.statusCode).toBe(422);
+    expect(s.json().error.message).toBe("Only the outlet manager changes an item's price, cost or GST — ask them to make that change");
+    expect((await get("/items"))[k]).toMatchObject({ rl: 0, cost: 10 });
+  });
+
+  it("is absent for a counter operator", async () => {
+    // A till sells the master; it does not edit it. 404, like every module a role cannot see.
+    expect((await patch("/items/juice", await hdr("u1"), { rl: 5 })).statusCode).toBe(404);
+    expect((await patch("/items/juice", await hdr("u6"), { active: false })).statusCode).toBe(404);
+  });
+
+  it("refuses an empty patch", async () => {
+    const k = await make("Patch nothing");
+    const r = await patch(`/items/${k}`, await hdr("u3"), {});
+    expect(r.statusCode).toBe(422);
+    expect(r.json().error.message).toBe("Nothing to change on Patch nothing");
+  });
+
+  it("404s an item that is not on the master", async () => {
+    const r = await patch("/items/doesnotexist", await hdr("u3"), { rl: 5 });
+    expect(r.statusCode).toBe(404);
+    expect(r.json().error.message).toBe("There is no item doesnotexist.");
+  });
+
+  it("refuses an MRP below a list price, in the goods receipt's own sentence", async () => {
+    const k = await make("Patch mrp floor", { mrp: 30 });
+    await put(`/prices/A/${k}`, await hdr("u2"), { price: 22 });
+    await put(`/prices/B/${k}`, await hdr("u2"), { price: 26 });
+    // The highest list, not list A: a ceiling that clears one counter and not the other is
+    // still a counter that cannot sell.
+    const r = await patch(`/items/${k}`, await hdr("u2"), { mrp: 24 });
+    expect(r.statusCode).toBe(422);
+    expect(r.json().error.message).toBe("Patch mrp floor — printed MRP ₹24.00 is below the shelf price; reprice before selling");
+    expect((await get("/items"))[k].mrp).toBe(30);
+  });
+
+  it("allows an MRP above every list price", async () => {
+    const k = await make("Patch mrp headroom", { mrp: 30 });
+    await put(`/prices/A/${k}`, await hdr("u2"), { price: 22 });
+    const r = await patch(`/items/${k}`, await hdr("u2"), { mrp: 40 });
+    expect(r.statusCode, r.body).toBe(200);
+    expect(r.json().result.item.mrp).toBe(40);
+  });
+
+  it("refuses a rename onto another item's name and leaves the row unchanged", async () => {
+    const k = await make("Patch rename source");
+    await make("Patch rename target");
+    const r = await patch(`/items/${k}`, await hdr("u3"), { n: "patch RENAME target", grp: "Moved" });
+    expect(r.statusCode).toBe(422);
+    expect(r.json().error.message).toBe("patch RENAME target is already in the catalogue");
+    // The whole patch is refused, not just the half that clashed.
+    expect((await get("/items"))[k]).toMatchObject({ n: "Patch rename source", g: "Other" });
+  });
+
+  it("allows a case-only rename of an item's own name", async () => {
+    const k = await make("Patch case rename");
+    const r = await patch(`/items/${k}`, await hdr("u3"), { n: "PATCH CASE RENAME" });
+    expect(r.statusCode, r.body).toBe(200);
+    expect(r.json().result.item.n).toBe("PATCH CASE RENAME");
+  });
+
+  it("changes only the field it names — a patch of one does not reset the rest", async () => {
+    const k = await make("Patch one field", { unit: "kg", cost: 18, mrp: 25, grp: "Dairy", hsn: "0401", gst: 12, reorder: 7 });
+    const before = (await get("/items"))[k];
+    const r = await patch(`/items/${k}`, await hdr("u3"), { rl: 9 });
+    expect(r.statusCode, r.body).toBe(200);
+    expect(r.json().result.item).toEqual({ ...before, rl: 9 });
+  });
+
+  it("retires an item with nothing on the shelf and no menu listing", async () => {
+    const k = await make("Patch retire clean");
+    const r = await patch(`/items/${k}`, await hdr("u3"), { active: false });
+    expect(r.statusCode, r.body).toBe(200);
+    expect(r.json().result.item.active).toBe(false);
+    expect(r.json().message).toBe("Patch retire clean retired — it stays on past documents and cannot be sold or ordered again");
+    // Still on the wire: a bill or a ticket raised before today still names it, and the screen
+    // showing that document needs the name rather than the raw key.
+    expect((await get("/items"))[k]).toMatchObject({ n: "Patch retire clean", active: false });
+  });
+
+  it("refuses to retire an item that still has stock, naming where", async () => {
+    const k = await make("Patch retire stocked", { opening: 4 });
+    const r = await patch(`/items/${k}`, await hdr("u3"), { active: false });
+    expect(r.statusCode).toBe(422);
+    expect(r.json().error.message).toBe("Patch retire stocked still has stock at Central Store — write it off before retiring it");
+  });
+
+  it("refuses to retire an item still listed at an outlet, naming the outlets", async () => {
+    const k = await make("Patch retire listed");
+    await post("/menus/coffee/items", await hdr("u2"), { it: k });
+    await post("/menus/kiosk/items", await hdr("u2"), { it: k });
+    const r = await patch(`/items/${k}`, await hdr("u3"), { active: false });
+    expect(r.statusCode).toBe(422);
+    expect(r.json().error.message).toBe("Patch retire listed is still listed at Coffee Shop, Snack Kiosk — take it off those menus before retiring it");
+  });
+
+  it("brings a retired item back, and GET /items carries it again", async () => {
+    const k = await make("Patch restore");
+    expect((await patch(`/items/${k}`, await hdr("u3"), { active: false })).statusCode).toBe(200);
+    const r = await patch(`/items/${k}`, await hdr("u2"), { active: true });
+    expect(r.statusCode, r.body).toBe(200);
+    expect(r.json().message).toBe("Patch restore is back in the catalogue");
+    expect((await get("/items"))[k].active).toBe(true);
+  });
+
+  it("writes a document_history row and announces items", async () => {
+    const k = await make("Patch history");
+    const r = await patch(`/items/${k}`, await hdr("u3"), { hsn: "2202" });
+    expect(r.statusCode, r.body).toBe(200);
+    expect(r.json().changed).toEqual(["items"]);
+    const rows = await app.testDb!.db.select().from(documentHistory)
+      .where(and(eq(documentHistory.docType, "item"), eq(documentHistory.docId, k)));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ status: "Updated", who: "u3" });
+  });
+
+  it("one of two concurrent renames onto the same name lands", async () => {
+    // Each patch locks its own row, so the two never wait on each other's document lock: the
+    // arbiter is `items_name_ci_uq` on the UPDATE itself, and the loser reads the pre-check's
+    // own sentence. Without `warmPool` the two run back to back on one connection and this
+    // would pass with the index removed.
+    await warmPool(app.testDb!, 2);
+    const a = await make("Patch race A");
+    const b = await make("Patch race B");
+    const both = await Promise.all([
+      patch(`/items/${a}`, await hdr("u3"), { n: "Patch race winner" }),
+      patch(`/items/${b}`, await hdr("u3"), { n: "Patch race winner" }),
+    ]);
+    expect(both.filter((r) => r.statusCode === 200)).toHaveLength(1);
+    expect(both.filter((r) => r.statusCode === 422)).toHaveLength(1);
+    expect(both.find((r) => r.statusCode === 422)!.json().error.message).toBe("Patch race winner is already in the catalogue");
   });
 });
