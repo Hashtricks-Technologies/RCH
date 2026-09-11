@@ -1,3 +1,5 @@
+// ---- prod-order raise ----
+import { dmy } from "@rch/domain";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
 import { avail, canDispatch, canMoveOrder, qty } from "../../lib/selectors";
@@ -52,6 +54,8 @@ function OrderDrawer({ id }: DrawerProps) {
         <dt>Status</dt><dd><StatusPill status={o.st} /></dd>
         <dt>Ordered by</dt><dd>{o.by}</dd>
         <dt>Destination</dt><dd>{LOC[o.from].n} <span className="mini">{LOC[o.from].c} · {LOC[o.from].cc}</span></dd>
+        {/* ---- prod-order raise ---- */}
+        <dt>Needed by</dt><dd>{o.need ? dmy(o.need) : <span className="dim">No deadline given</span>}</dd>
         <dt>Total quantity</dt><dd className="mono">{sum(o.lines, (l) => l.qty)} nos</dd>
       </dl>
 

@@ -161,7 +161,12 @@ export default function Dashboard() {
         crumbs={["Royal Care", "Outlets", "Dashboard"]}
         title="What needs you today"
         sub="Every selling counter — the decisions waiting on you, and where the stock is."
-        actions={<Btn variant="gh" onClick={() => nav("/approvals")}>Open approvals</Btn>}
+        actions={<>
+          {/* ---- prod-order raise ---- the manager booking a tray for one of the three shops,
+              rather than ringing the counter and asking them to raise it themselves. */}
+          <Btn variant="gh" onClick={() => openDrawer("korder", "new")}>Order from the kitchen</Btn>
+          <Btn variant="gh" onClick={() => nav("/approvals")}>Open approvals</Btn>
+        </>}
       />
 
       {waiting.length > 0 ? (

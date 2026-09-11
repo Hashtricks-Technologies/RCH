@@ -16,6 +16,8 @@ import "../counter/BillDrawer";
 // ---- adjustments: the "adjstock" drawer is shared with the kitchen, so it is registered
 // beside the form both of them open rather than twice, once in each screen.
 import "../../ui/AdjustmentForm";
+// ---- prod-order raise ----
+import "./KitchenOrderDrawer";
 
 export const screens: Record<string, ComponentType> = {
   dash: Dashboard, approvals: Approvals, stock: ItemsStock, prices: Prices, avail: Availability,

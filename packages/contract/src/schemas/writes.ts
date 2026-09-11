@@ -258,3 +258,16 @@ export const CreateAdjustmentBodySchema = z.strictObject({
   note: z.string().max(500).default(""),
   lines: z.array(z.strictObject({ it: z.string().min(1).max(64), qty: SignedQtySchema })).min(1).max(100),
 });
+// ---- prod-order raise ----
+/** An outlet (or the manager, on its behalf) asking the Central Kitchen to make something.
+ *  `from` is the outlet the tray is for: a counter never sends it — the route pins it to the
+ *  token — and the manager must, because one manager supervises every outlet and the server
+ *  cannot guess which one is short. Positivity is a service rule, not a schema rule, the way
+ *  `ReqLineInputSchema` has always had it: a zero reaches the operator as "Enter a quantity on
+ *  every line", not as a 400 with a Zod path in it. */
+export const CreateProdOrderBodySchema = z.strictObject({
+  from: LocKeySchema.optional(),
+  lines: z.array(ReqLineInputSchema).min(1).max(50),
+  need: IsoDate.optional(),
+  note: z.string().max(500).default(""),
+});

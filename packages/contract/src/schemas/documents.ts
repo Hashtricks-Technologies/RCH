@@ -72,6 +72,11 @@ export const PurchaseOrderSchema = z.object({
 });
 export const ProdOrderSchema = z.object({
   id: z.string(), from: LocKeySchema, by: z.string(), at: IsoTime, lines: z.array(TktLineSchema), st: PordStatusSchema, note: z.string(), hist: z.array(HistEntrySchema),
+  // ---- prod-order raise ---- when the outlet said it needs the tray by. Optional because the
+  // column is nullable and an order with no date is the ordinary case — the reader leaves the
+  // key off entirely rather than sending a blank one, the same `strip()` treatment `shortNote`
+  // gets, so "no date" is one shape on the wire rather than two.
+  need: IsoDate.optional(),
 });
 export const BatchSchema = z.object({ id: z.string(), it: z.string(), qty: Qty, made: Qty, at: IsoTime, bb: IsoTime, note: z.string().optional() });
 export const PayerSchema = z.strictObject({ kind: PayerKindSchema, id: z.string(), name: z.string() });

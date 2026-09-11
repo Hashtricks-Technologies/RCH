@@ -1,4 +1,6 @@
 import { useState } from "react";
+// ---- prod-order raise ----
+import { dmy } from "@rch/domain";
 import { IT, LOC, OUTLETS } from "../../data/master";
 import { useApp } from "../../store";
 import { avail, canDispatch, canMoveOrder, qty } from "../../lib/selectors";
@@ -98,6 +100,9 @@ export default function Orders() {
           <b>{LOC[o.from].n}</b>
           <span>{LOC[o.from].c} · {LOC[o.from].floor}</span>
           <span>raised by {o.by}</span>
+          {/* ---- prod-order raise ---- only when the outlet actually gave one: a card that
+              always printed a date would read as a deadline on every order. */}
+          {o.need && <span>needed by {dmy(o.need)}</span>}
         </div>
         <ul className="kan-items">
           {o.lines.map((l) => {

@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
-import { and, eq, isNull, sum } from "drizzle-orm";
+import { and, asc, eq, isNull, sum } from "drizzle-orm";
 import { bestBeforeText } from "@rch/domain";
 import { buildTestApp } from "../../test/app.js";
 import { seedTestDb } from "../../test/seed.js";
@@ -502,5 +502,172 @@ describe("POST /batches", () => {
   it("404s an unknown item, and is absent for every other role", async () => {
     expect((await post("u4", "/batches", { it: "totally-fake", started: 1 })).json().error.message).toBe("There is no item totally-fake.");
     for (const u of ["u1", "u2", "u3", "u5"]) expect((await post(u, "/batches", { it: "puff", started: 1 })).statusCode).toBe(404);
+  });
+});
+
+// ---- prod-order raise ----
+/**
+ * The other end of the board. Everything above acts on an order somebody already put there; the
+ * seed and the builders were the only two things that ever could. `u6` is the Snack Kiosk's
+ * counter (puff is on its menu, sand is not) and `u2` the outlet manager, who supervises all
+ * three shops and so has to name the one an order is for.
+ */
+describe("POST /prod-orders", () => {
+  /** Every order on the board, whoever raised it — the kitchen's own view, not the raiser's. */
+  const board = async () => (await app.inject({ method: "GET", url: "/api/v1/prod-orders", headers: await authHeaders(app, "u4") })).json();
+  /** What the raiser sees, which for a counter is their own outlet's orders and nothing else. */
+  const mine = async (u: string) => (await app.inject({ method: "GET", url: "/api/v1/prod-orders", headers: await authHeaders(app, u) })).json();
+
+  it("a counter raises an order for its own outlet, numbered PRD-yyyy-0nnn and New", async () => {
+    const r = await post("u6", "/prod-orders", { lines: [{ it: "puff", qty: 40 }], note: "Lunch rush" });
+    expect(r.statusCode, r.body).toBe(200);
+    const b = r.json();
+    expect(b.result.id).toMatch(/^PRD-\d{4}-0\d+$/);
+    expect(b.result).toMatchObject({ from: "kiosk", st: "New", by: "Deepa Selvam", note: "Lunch rush" });
+    expect(b.result.lines).toEqual([{ it: "puff", qty: 40 }]);
+    expect(b.changed).toEqual(["pord"]);
+    expect(b.message).toBe(`${b.result.id} raised for Snack Kiosk — 1 item`);
+  });
+
+  it("takes the outlet from the token — a counter cannot raise for another shop", async () => {
+    const r = await post("u6", "/prod-orders", { from: "rest", lines: [{ it: "puff", qty: 5 }] });
+    expect(r.statusCode).toBe(403);
+    expect(r.json().error.message).toBe("You can only do this for your own counter.");
+    // Naming its own outlet is fine, and so is naming none — either way the token decides.
+    expect((await post("u6", "/prod-orders", { from: "kiosk", lines: [{ it: "puff", qty: 5 }] })).json().result.from).toBe("kiosk");
+    expect((await post("u6", "/prod-orders", { lines: [{ it: "puff", qty: 5 }] })).json().result.from).toBe("kiosk");
+  });
+
+  it("a manager names the outlet, and is refused the kitchen and the central store", async () => {
+    const none = await post("u2", "/prod-orders", { lines: [{ it: "puff", qty: 10 }] });
+    expect(none.statusCode).toBe(422);
+    expect(none.json().error.message).toBe("Choose which outlet this order is for");
+
+    const kitchen = await post("u2", "/prod-orders", { from: "kitchen", lines: [{ it: "puff", qty: 10 }] });
+    expect(kitchen.statusCode).toBe(422);
+    expect(kitchen.json().error.message).toBe("Central Kitchen is not an outlet — a production order is raised for a counter");
+
+    const store = await post("u2", "/prod-orders", { from: "store", lines: [{ it: "puff", qty: 10 }] });
+    expect(store.statusCode).toBe(422);
+    expect(store.json().error.message).toBe("Central Store is not an outlet — a production order is raised for a counter");
+
+    // And an outlet that is not the manager's own home location is still theirs to raise for.
+    const ok = await post("u2", "/prod-orders", { from: "kiosk", lines: [{ it: "puff", qty: 10 }] });
+    expect(ok.statusCode, ok.body).toBe(200);
+    expect(ok.json().result).toMatchObject({ from: "kiosk", by: "Ramesh Kumar" });
+  });
+
+  it("refuses an item the kitchen does not make, and points at a stock request", async () => {
+    // Mineral water is on the kiosk's menu and sells all day — it is bought in, not cooked.
+    const r = await post("u6", "/prod-orders", { lines: [{ it: "water", qty: 12 }] });
+    expect(r.statusCode).toBe(422);
+    expect(r.json().error.message).toBe("Mineral water 1L is not made in the kitchen — raise a stock request for it instead");
+    expect(await board()).toHaveLength(2);      // the two seeded orders, and nothing else
+  });
+
+  it("refuses a made-to-order item — the counter makes it, the kitchen does not send it", async () => {
+    // `capp` has a recipe and is on the Restaurant's menu, so it reads as orderable — and
+    // nothing downstream could fill it: `POST /batches` refuses to stock one (C2), `POST
+    // /distributions` refuses to send one, so a dispatch would have nothing to cover the line
+    // with. The order is refused at the door rather than left on the board to be declined.
+    const r = await post("u2", "/prod-orders", { from: "rest", lines: [{ it: "capp", qty: 20 }] });
+    expect(r.statusCode).toBe(422);
+    expect(r.json().error.message).toBe("Cappuccino is made to order at the counter — it is not ordered from the kitchen");
+    expect(await board()).toHaveLength(2);
+  });
+
+  it("refuses an item that is not on that outlet's menu, in distribute's own words", async () => {
+    const r = await post("u6", "/prod-orders", { lines: [{ it: "sand", qty: 6 }] });
+    expect(r.statusCode).toBe(422);
+    expect(r.json().error.message).toBe("Veg sandwich is not listed at Snack Kiosk — add it to that menu first");
+  });
+
+  it("folds a repeated item into one line", async () => {
+    const r = await post("u6", "/prod-orders", { lines: [{ it: "puff", qty: 12 }, { it: "puff", qty: 8 }] });
+    expect(r.statusCode, r.body).toBe(200);
+    const b = r.json();
+    expect(b.result.lines).toEqual([{ it: "puff", qty: 20 }]);
+    expect(b.message).toBe(`${b.result.id} raised for Snack Kiosk — 1 item`);
+  });
+
+  it("refuses an order with nothing on it and a line with no quantity", async () => {
+    // An empty array is the schema's own 400; a line that adds up to nothing is the service's
+    // sentence, because the operator typed something and deserves to be told what was wrong.
+    expect((await post("u6", "/prod-orders", { lines: [] })).statusCode).toBe(400);
+    const zero = await post("u6", "/prod-orders", { lines: [{ it: "puff", qty: 0 }] });
+    expect(zero.statusCode).toBe(422);
+    expect(zero.json().error.message).toBe("Enter a quantity on every line");
+    const cancelling = await post("u6", "/prod-orders", { lines: [{ it: "puff", qty: 5 }, { it: "puff", qty: -5 }] });
+    expect(cancelling.statusCode).toBe(422);
+    expect(cancelling.json().error.message).toBe("Enter a quantity on every line");
+  });
+
+  it("records the needed-by date, and leaves the key off when none was given", async () => {
+    const dated = await post("u6", "/prod-orders", { lines: [{ it: "puff", qty: 40 }], need: "2026-09-11" });
+    expect(dated.statusCode, dated.body).toBe(200);
+    const d = dated.json();
+    expect(d.result.need).toBe("2026-09-11");
+    expect(d.message).toBe(`${d.result.id} raised for Snack Kiosk — 1 item, needed by 11-Sep-2026`);
+    expect((await mine("u6")).find((o: { id: string }) => o.id === d.result.id).need).toBe("2026-09-11");
+
+    const undated = (await post("u6", "/prod-orders", { lines: [{ it: "puff", qty: 40 }] })).json();
+    expect(undated.result).not.toHaveProperty("need");
+    expect((await mine("u6")).find((o: { id: string }) => o.id === undated.result.id)).not.toHaveProperty("need");
+  });
+
+  it("writes a Raised history row signed by whoever raised it", async () => {
+    const b = (await post("u6", "/prod-orders", { lines: [{ it: "puff", qty: 40 }] })).json();
+    expect(b.result.hist).toHaveLength(1);
+    expect(b.result.hist[0]).toMatchObject({ s: "Raised", who: "Deepa Selvam" });
+    // And the word the seed uses for the same event is the same word, so one trail reads one way.
+    const seeded = (await board()).find((o: { id: string }) => o.id === "PRD-2026-029");
+    expect(seeded.hist[0].s).toBe("Raised");
+  });
+
+  it("announces pord, and the raiser's own GET /prod-orders shows it", async () => {
+    const b = (await post("u6", "/prod-orders", { lines: [{ it: "puff", qty: 40 }] })).json();
+    expect(b.changed).toEqual(["pord"]);
+    expect((await mine("u6")).map((o: { id: string }) => o.id)).toContain(b.result.id);
+    // The kitchen sees it too — that is the whole point of raising one.
+    expect((await board()).map((o: { id: string }) => o.id)).toContain(b.result.id);
+    // But the Coffee Shop's own counter sees only its own outlet's orders.
+    expect((await mine("u1")).map((o: { id: string }) => o.id)).not.toContain(b.result.id);
+  });
+
+  it("is absent for the store, the buyer and the kitchen", async () => {
+    for (const u of ["u3", "u5", "u4"]) {
+      const r = await post(u, "/prod-orders", { lines: [{ it: "puff", qty: 5 }] });
+      expect(r.statusCode, `${u} got ${r.body}`).toBe(404);
+    }
+  });
+
+  it("steps the series by one across two orders", async () => {
+    const n = (id: string) => Number(id.split("-")[2]);
+    const first = (await post("u6", "/prod-orders", { lines: [{ it: "puff", qty: 5 }] })).json().result.id;
+    const second = (await post("u6", "/prod-orders", { lines: [{ it: "puff", qty: 5 }] })).json().result.id;
+    expect(n(second)).toBe(n(first) + 1);
+  });
+
+  it("reserves nothing — the kitchen's shelves are untouched until dispatch", async () => {
+    const before = await onHand("kitchen", "puff");
+    const moves = await moveCount();
+    const held = await app.testDb!.db.select().from(reservations).where(isNull(reservations.releasedAt));
+    // Ordered explicitly: Postgres promises no row order without one, so an unordered `toEqual`
+    // of two reads is a case that can fail on a vacuum rather than on the behaviour it names.
+    const balances = () => app.testDb!.db.select().from(stockBalances)
+      .orderBy(asc(stockBalances.loc), asc(stockBalances.itemKey));
+    const cells = await balances();
+
+    // Far more than the kitchen holds, and still taken: an order promises nothing.
+    const r = await post("u6", "/prod-orders", { lines: [{ it: "puff", qty: 500 }] });
+    expect(r.statusCode, r.body).toBe(200);
+
+    expect(await onHand("kitchen", "puff")).toBe(before);
+    expect(await moveCount()).toBe(moves);
+    expect(await app.testDb!.db.select().from(reservations).where(isNull(reservations.releasedAt))).toHaveLength(held.length);
+    // And not one balance row was created or touched, because `lockBalances` was never called:
+    // a lock creates the row it takes, and a row carried at zero reads as a shelf that stocks
+    // the line (M12). An order promises nothing, so it has no cell to lock.
+    expect(await balances()).toEqual(cells);
   });
 });
