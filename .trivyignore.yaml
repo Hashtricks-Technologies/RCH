@@ -1,0 +1,18 @@
+# Trivy ignore list for the container-image scans in CI (.github/workflows/ci.yml) and for the
+# images about to be deployed (.github/workflows/deploy.yml). Every entry needs a reason and an
+# expiry; the scan fails again the day one lapses.
+#
+# YAML, not the one-line-per-id .trivyignore this replaced: that file's `CVE-… exp:2026-09-30`
+# was invented syntax. Trivy's plain-text format has no expiry field at all — it parses the id
+# and ignores the rest of the line — so the expiry that was supposed to bring the exception
+# back for review was never going to fire. `expired_at` below is real, and Trivy starts
+# reporting the CVE again on that date.
+vulnerabilities:
+  # libssl3 heap buffer overflow when parsing a large X.509 certificate, on 32-bit builds
+  # only. Both runtime images are built and deployed as linux/amd64 (ci.yml / deploy.yml pin
+  # the platform), so the affected code path is not reachable. Fixed in openssl
+  # 3.0.19-1~deb12u2; drop this entry once gcr.io/distroless/nodejs24-debian12:nonroot ships
+  # it (`trivy image <ref>` shows the version).
+  - id: CVE-2026-31789
+    statement: 32-bit only; both images are linux/amd64. Awaiting the distroless base bump.
+    expired_at: 2026-09-30

@@ -32,7 +32,7 @@ export type RoleName = keyof typeof ROLES;
  * literal fallback is only for a local `pnpm dev` whose `.env` predates SEED_PASSWORD being
  * required, and the sign-in error below says what to do when it is wrong.
  */
-export const PASSWORD = process.env.E2E_PASSWORD ?? process.env.SEED_PASSWORD ?? "changeme";
+const PASSWORD = process.env.E2E_PASSWORD ?? process.env.SEED_PASSWORD ?? "changeme";
 
 /** Sign in and wait for the snapshot to land — `auth: "ready"` is what puts the shell on screen. */
 export async function signIn(page: Page, role: RoleName): Promise<void> {
@@ -67,7 +67,7 @@ export const toast = (page: Page): Locator => page.locator(".toast").first();
 export const drawer = (page: Page): Locator => page.getByRole("dialog");
 
 /** Read the toast now on screen — the id a scenario carries forward is always in it. */
-export async function toastText(page: Page): Promise<string> {
+async function toastText(page: Page): Promise<string> {
   await expect(toast(page)).toBeVisible();
   return (await toast(page).innerText()).trim();
 }

@@ -36,5 +36,11 @@
     // is not registered in modules/index.ts. See apps/api/src/modules/_template/routes.ts.
     "apps/api/src/modules/_template/**"
   ],
-  "ignoreExportsUsedInFile": true
+  // Narrowed from a blanket `true`, which told knip to accept any export whose only consumer
+  // was its own file — so a function or a const that nothing outside ever imported read as
+  // used, and "every export has a caller" (packages/domain/CLAUDE.md) stopped being checked
+  // for exactly the values it matters most for. Types and interfaces keep the exemption:
+  // `export type` on a locally-used type is how a schema's inferred shape is published for
+  // packages/contract's consumers, and knip cannot see a structural use through a .d.ts.
+  "ignoreExportsUsedInFile": { "interface": true, "type": true }
 }

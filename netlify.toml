@@ -1,7 +1,14 @@
 # Royal Care Hospital — F&B inventory and billing
 #
-# The repository publishes three things from one site: the project home, the
-# specifications, and the application. scripts/build-site.sh assembles them.
+# This site publishes two things: the project home and the specifications.
+# scripts/build-site.sh assembles them.
+#
+# It used to publish a third, a copy of the React application at /app — which had no API to
+# talk to. Netlify serves static files; there is no /api here to proxy to, so the copy signed
+# nobody in and every screen behind sign-in was unreachable. A visitor following "Open the
+# application" from the home page got a login form that could only fail. /app now redirects to
+# the real deployment instead, and BUILD_APP (unset here, set in CI) keeps the build from
+# assembling the copy at all.
 
 [build]
   command = "bash scripts/build-site.sh"
@@ -11,7 +18,9 @@
   # Vite 8 requires ^22.22.2 || ^24.15.0 || >=26.
   NODE_VERSION = "24"
 
-# Vite fingerprints every asset filename, so they can be cached indefinitely.
+# Vite fingerprints every asset filename, so they can be cached indefinitely. Dormant while the
+# redirect below is in force and nothing under /app is served from here; kept so that setting
+# BUILD_APP on this site restores the whole arrangement rather than half of it.
 [[headers]]
   for = "/app/assets/*"
   [headers.values]
@@ -25,9 +34,20 @@
     X-Content-Type-Options = "nosniff"
     Referrer-Policy = "strict-origin-when-cross-origin"
 
-# The application routes on the hash (#/pos), so a deep link never reaches the
-# server as a path and no SPA rewrite is needed. This only tidies /app.
+# /app and everything under it goes to the deployment that has an API behind it. `force = true`
+# because the rule has to win even when a stale `dist/app` is still on the CDN from a build
+# before this one — a redirect Netlify only applies for a missing file would keep serving the
+# broken copy. 302, not 301: the host below is the dev environment today, and a permanent
+# redirect is cached in browsers long after it stops being true.
+[[redirects]]
+  from = "/app/*"
+  to = "https://rch.hashtrickstechnologies.com/:splat"
+  status = 302
+  force = true
+
+# The bare /app, which the pattern above does not cover.
 [[redirects]]
   from = "/app"
-  to = "/app/"
-  status = 301
+  to = "https://rch.hashtrickstechnologies.com/"
+  status = 302
+  force = true

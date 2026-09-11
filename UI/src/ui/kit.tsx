@@ -172,7 +172,7 @@ export function Kpis({ items }: { items: Kpi[] }) {
     </div>
   );
 }
-export function Sparkline({ values, color }: { values: number[]; color: string }) {
+function Sparkline({ values, color }: { values: number[]; color: string }) {
   if (!values || values.length < 2) return null;
   const W = 104, H = 26, mn = Math.min(...values), mx = Math.max(...values);
   const pts = values.map((v, i) =>
@@ -422,7 +422,7 @@ export function ImagePlaceholder({ size = "sm" }: { size?: "sm" | "thumb" | "car
 }
 
 /** The "⋮" trigger for a card's Configure menu. */
-export function KebabIcon({ size = 15 }: { size?: number }) {
+function KebabIcon({ size = 15 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 16 16" fill="currentColor" aria-hidden>
       <circle cx="8" cy="3.4" r="1.35" />

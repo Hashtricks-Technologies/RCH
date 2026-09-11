@@ -49,7 +49,7 @@ export const scopePayers = (bills: Bill[], who: Who): Bill[] =>
  * the whole register to three roles that never open the payer picker was the larger half of the
  * same leak.
  */
-export const scopeRoster = (roster: PayerRoster, who: Who): PayerRoster =>
+const scopeRoster = (roster: PayerRoster, who: Who): PayerRoster =>
   READS_PAYERS.has(who.role) ? roster : { patients: [], staff: [], depts: [] };
 
 /** A counter's requests are their own outlet's; everyone else sees the desk they work. */
@@ -103,7 +103,7 @@ export const redactOtps = (tkt: Ticket[], who: Who): Ticket[] =>
  * scoped "all (own)". The list is scoped the same way, by the user id in the token — `by` on the
  * wire is a display name and two people can share one.
  */
-export const scopeSupportTickets = (rows: SupportTicket[], who: { sub: string }, byUser: Map<string, string>): SupportTicket[] =>
+const scopeSupportTickets = (rows: SupportTicket[], who: { sub: string }, byUser: Map<string, string>): SupportTicket[] =>
   rows.filter((t) => byUser.get(t.id) === who.sub);
 
 /** A counter operator's world is their counter. Master data is never cut down; documents and stock are. */

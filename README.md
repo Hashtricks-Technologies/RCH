@@ -236,7 +236,7 @@ production are still exactly the release decision above: prepared, not provision
   for all server work. §2 records the decisions already taken, §14 the build order, and §16 every
   amendment made while phases 1–5 were executed.
 - **`docs/superpowers/plans/`** — the executed plan for each phase, kept for the record;
-  **`deploy/RUNBOOK.md`** — operations; **`docs/ideation.md`** — notes and open questions.
+  **`deploy/RUNBOOK.md`** — operations.
 
 ---
 
