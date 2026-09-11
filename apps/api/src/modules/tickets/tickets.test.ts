@@ -103,7 +103,7 @@ describe("POST /tickets/:id/handover", () => {
     // Shut now, and shut to the right code as well — the digits are what has been guessed at.
     const locked = await post("u3", "/tickets/TKT-0440/handover", { otp: "418327" });
     expect(locked.statusCode).toBe(422);
-    expect(locked.json().error.message).toBe("TKT-0440 is locked after five wrong codes — a supervisor override is the only way to hand it over now");
+    expect(locked.json().error.message).toBe("TKT-0440 is locked after five wrong codes — the store or the kitchen can hand it over with a supervisor override, or cancel it and issue a new one");
     expect(await attempts()).toBe(5);                                   // a refused guess past the limit is not a sixth guess
     expect(await app.testDb!.db.select().from(stockMoves).where(eq(stockMoves.refId, "TKT-0440"))).toHaveLength(0);
 

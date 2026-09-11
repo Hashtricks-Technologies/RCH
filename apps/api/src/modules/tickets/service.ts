@@ -41,9 +41,11 @@ async function reread(tx: Tx, id: string): Promise<Ticket> {
 const OTP_ATTEMPTS = 5;
 
 /** What is read to the collector when the guessing has to stop. The way past it is the labelled
- *  supervisor override, which is refused to a counter and recorded in `document_history`. */
+ *  supervisor override, recorded in `document_history` — and it is refused to a counter, so the
+ *  sentence names the other door too rather than sending a till operator to look for one that
+ *  was never open to them: withdraw the ticket and issue a new one, with new digits. */
 const lockedMessage = (id: string) =>
-  `${id} is locked after five wrong codes — a supervisor override is the only way to hand it over now`;
+  `${id} is locked after five wrong codes — the store or the kitchen can hand it over with a supervisor override, or cancel it and issue a new one`;
 
 /**
  * The typed code against the row's own, in constant time. `===` on a secret leaks how much of it
