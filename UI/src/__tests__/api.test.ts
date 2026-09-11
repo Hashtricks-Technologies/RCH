@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { routes, defineRoute } from "@rch/contract";
 import { z } from "zod";
 import { ApiError, call } from "../api/client";
-import { setAccessToken, getAccessToken } from "../api/session";
+import { setAccessToken, getAccessToken, sessionLost } from "../api/session";
 import { fromInputDate, fromWireBestBefore, fromWireDate, fromWireTime, toInputDate } from "../lib/fmt";
 
 const ok = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
@@ -62,12 +62,212 @@ describe("api client", () => {
   it("surfaces the server's message as an ApiError", async () => {
     setAccessToken("tok");
     fetchMock.mockResolvedValueOnce(ok({ error: { code: "rule", message: "Not enough Milk 1L free to promise." } }, 422));
-    await expect(call(routes.me)).rejects.toMatchObject(new ApiError("rule", "Not enough Milk 1L free to promise.", 422));
+    await expect(call(routes.me)).rejects.toMatchObject({ code: "rule", message: "Not enough Milk 1L free to promise.", status: 422 });
   });
   it("turns a non-JSON error page into a readable ApiError", async () => {
     setAccessToken("tok");
     fetchMock.mockResolvedValueOnce(new Response("<html>502 Bad Gateway</html>", { status: 502, headers: { "content-type": "text/html" } }));
-    await expect(call(routes.me)).rejects.toMatchObject(new ApiError("internal", "The server returned an unexpected response (502).", 502));
+    await expect(call(routes.me)).rejects.toMatchObject({ code: "internal", message: "The server returned an unexpected response (502).", status: 502 });
+  });
+
+  it("stamps every call with an x-request-id", async () => {
+    setAccessToken("tok");
+    fetchMock.mockResolvedValueOnce(ok({ user: { id: "u1" }, mustChangePassword: false }));
+    await call(routes.me);
+    expect(fetchMock.mock.calls[0][1].headers["x-request-id"]).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
+  it("carries the request id the server echoed back on the error", async () => {
+    setAccessToken("tok");
+    // One id names the same request in the operator's sentence ("Reference <id>"), in the
+    // API's own log line, and on whatever the support desk is handed afterwards.
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ error: { code: "internal", message: "Something went wrong. Reference 9f1c." } }), {
+      status: 500, headers: { "content-type": "application/json", "x-request-id": "9f1c" },
+    }));
+    await expect(call(routes.me)).rejects.toMatchObject({ requestId: "9f1c" });
+  });
+
+  it("falls back to the id it minted when the server echoes nothing", async () => {
+    setAccessToken("tok");
+    fetchMock.mockResolvedValueOnce(ok({ error: { code: "internal", message: "boom" } }, 500));
+    const err = (await call(routes.me).catch((e: unknown) => e)) as ApiError;
+    expect(err.requestId).toBe(fetchMock.mock.calls[0][1].headers["x-request-id"]);
+  });
+});
+
+/**
+ * Two tabs of one operator share one refresh cookie, and the server revokes the whole family
+ * when a rotated token is presented twice. Without a cross-tab lock the second tab's refresh
+ * loses the race and signs both of them out mid-shift.
+ */
+describe("api client — one refresh across tabs", () => {
+  const fetchMock = vi.fn();
+  let seen: string[] = [];
+
+  class FakeChannel {
+    static live: FakeChannel[] = [];
+    name: string;
+    onmessage: ((e: { data: unknown }) => void) | null = null;
+    constructor(name: string) { this.name = name; FakeChannel.live.push(this); }
+    postMessage(data: unknown) { for (const c of FakeChannel.live) if (c !== this && c.name === this.name) c.onmessage?.({ data }); }
+    close() { FakeChannel.live = FakeChannel.live.filter((c) => c !== this); }
+  }
+
+  /** A `navigator.locks` that actually serialises, so two waiters cannot both be inside. */
+  let chain: Promise<unknown> = Promise.resolve();
+  const locks = {
+    request: vi.fn((_name: string, fn: () => Promise<unknown>) => {
+      const run = chain.then(() => fn());
+      chain = run.catch(() => undefined);
+      return run;
+    }),
+  };
+
+  beforeEach(() => {
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("BroadcastChannel", FakeChannel);
+    // `live` is deliberately not cleared: the client opens its channel once and caches it, so
+    // emptying the register between cases would leave that tab unreachable by a broadcast.
+    chain = Promise.resolve();
+    locks.request.mockReset();
+    locks.request.mockImplementation((_name: string, fn: () => Promise<unknown>) => {
+      const run = chain.then(() => fn());
+      chain = run.catch(() => undefined);
+      return run;
+    });
+    Object.defineProperty(navigator, "locks", { value: locks, configurable: true });
+    fetchMock.mockReset();
+    seen = [];
+    setAccessToken(null);
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    Reflect.deleteProperty(navigator, "locks");
+    setAccessToken(null);
+  });
+
+  const serve = (refreshTo: string | null) => fetchMock.mockImplementation((u: string, init: RequestInit) => {
+    seen.push(`${init.method} ${String(u)}`);
+    if (String(u).endsWith("/auth/refresh")) {
+      return Promise.resolve(refreshTo
+        ? ok({ accessToken: refreshTo, user: { id: "u1" }, mustChangePassword: false })
+        : ok({ error: { code: "unauthenticated", message: "no" } }, 401));
+    }
+    const headers = init.headers as Record<string, string>;
+    return Promise.resolve(headers.authorization === "Bearer new" || headers.authorization === "Bearer from-tab-2"
+      ? ok({ user: { id: "u1" }, mustChangePassword: false })
+      : ok({ error: { code: "unauthenticated", message: "expired" } }, 401));
+  });
+
+  it("refreshes once when two calls 401 at the same time", async () => {
+    setAccessToken("old");
+    serve("new");
+
+    await Promise.all([call(routes.me), call(routes.me)]);
+
+    expect(seen.filter((x) => x.includes("/auth/refresh"))).toHaveLength(1);
+    expect(locks.request).toHaveBeenCalledWith("rch-refresh", expect.any(Function));
+  });
+
+  it("adopts an access token another tab broadcast", async () => {
+    setAccessToken("old");
+    fetchMock.mockResolvedValueOnce(ok({ user: { id: "u1" }, mustChangePassword: false }));
+    await call(routes.me);                      // the tab's channel opens with its first call
+
+    new FakeChannel("rch-session").postMessage({ accessToken: "from-tab-2" });
+
+    expect(getAccessToken()).toBe("from-tab-2");
+  });
+
+  it("skips the refresh when another tab replaced the token while this one waited", async () => {
+    setAccessToken("old");
+    // The lock is where the wait happens: by the time this tab is let in, tab 2 has refreshed
+    // and broadcast. Refreshing again would present a rotated token twice and revoke the family.
+    locks.request.mockImplementationOnce((_name: string, fn: () => Promise<unknown>) => {
+      setAccessToken("from-tab-2");
+      return fn();
+    });
+    serve("new");
+
+    const r = await call(routes.me);
+
+    expect(r.user.id).toBe("u1");
+    expect(seen.filter((x) => x.includes("/auth/refresh"))).toHaveLength(0);
+  });
+
+  it("does not refresh again for a request that 401s after the first refresh landed (C2)", async () => {
+    setAccessToken("old");
+    fetchMock.mockImplementation((u: string, init: RequestInit) => {
+      seen.push(`${init.method} ${String(u)}`);
+      if (String(u).endsWith("/auth/refresh")) return Promise.resolve(ok({ accessToken: "new", user: { id: "u1" }, mustChangePassword: false }));
+      const headers = init.headers as Record<string, string>;
+      if (headers.authorization === "Bearer old") {
+        // Another request's refresh lands while this one is still on the wire, so its own 401
+        // is already stale by the time it arrives. Single-flight does not cover this gap —
+        // `refreshing` is back to null — and refreshing again presents a rotated token twice.
+        setAccessToken("new");
+        return Promise.resolve(ok({ error: { code: "unauthenticated", message: "expired" } }, 401));
+      }
+      return Promise.resolve(ok({ user: { id: "u1" }, mustChangePassword: false }));
+    });
+
+    const r = await call(routes.me);
+
+    expect(r.user.id).toBe("u1");                // retried on the token that was already there
+    expect(seen.filter((x) => x.includes("/auth/refresh"))).toHaveLength(0);
+  });
+
+  it("tells the other tabs about the token it just minted", async () => {
+    setAccessToken("old");
+    const heard: unknown[] = [];
+    const other = new FakeChannel("rch-session");
+    other.onmessage = (e) => heard.push(e.data);
+    serve("new");
+
+    await call(routes.me);
+
+    expect(heard).toEqual([{ accessToken: "new" }]);
+  });
+
+  // A broadcast is a *replacement* for a token this tab already holds, never a way to be handed
+  // one. On a shared terminal the sign-in screen would otherwise pick up whoever is signed in
+  // in the next tab and let the next person walk straight into their session.
+  it("a signed-out tab ignores a token broadcast by another tab", async () => {
+    setAccessToken(null);
+    // A tab sitting on the sign-in screen still opens the channel — its own sign-in POST is a
+    // `call()` like any other. /auth/ routes never refresh, so this is just the channel opening.
+    fetchMock.mockResolvedValue(ok({ error: { code: "unauthenticated", message: "no" } }, 401));
+    await call(routes.login, { body: { emp: "RC-4471", password: "wrong" } }).catch(() => undefined);
+
+    new FakeChannel("rch-session").postMessage({ accessToken: "from-tab-2" });
+
+    expect(getAccessToken()).toBeNull();
+  });
+
+  it("a tab whose session was lost does not adopt a broadcast token", async () => {
+    setAccessToken("old");
+    fetchMock.mockResolvedValueOnce(ok({ user: { id: "u1" }, mustChangePassword: false }));
+    await call(routes.me);                      // the tab's channel opens with its first call
+
+    sessionLost();                              // the family was revoked; this tab is done
+
+    new FakeChannel("rch-session").postMessage({ accessToken: "from-tab-2" });
+
+    expect(getAccessToken()).toBeNull();
+  });
+
+  it("refreshes without the lock when the browser will not grant one", async () => {
+    setAccessToken("old");
+    // `locks.request` rejects outright on a document that is not fully active
+    // (InvalidStateError) or where the API is unavailable. The documented fallback is today's
+    // behaviour — refresh anyway — not an unhandled rejection out of `call()`.
+    locks.request.mockImplementation(() => Promise.reject(new Error("InvalidStateError")));
+    serve("new");
+
+    const r = await call(routes.me);
+
+    expect(r.user.id).toBe("u1");
+    expect(seen.filter((x) => x.includes("/auth/refresh"))).toHaveLength(1);
   });
 });
 

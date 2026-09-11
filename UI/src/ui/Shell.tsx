@@ -7,11 +7,19 @@ import { NAV, canSee } from "../nav";
 import { useApp, type AppState } from "../store";
 import { availOf, isTicketOpen, menuOf, procurementList } from "../lib/selectors";
 import type { LocKey, Role } from "../types";
-import { useStreamState } from "../api/events";
+import { useStreamState, type StreamState } from "../api/events";
 import { Avatar, Icon, Pill, SearchIcon, Tag, ThemeButton } from "./kit";
 import { applyPrefs, readPrefs, usePhoto } from "./prefs";
 import Drawer from "./Drawer";
 import ErrorBoundary from "./ErrorBoundary";
+
+/** What the header's dot says, per stream state. The colour is inline rather than a class
+ *  because `.org .dt` paints one colour for all three, and this is the only place it varies. */
+const STREAM: Record<StreamState, { dot: string; why: string }> = {
+  live: { dot: "var(--good)", why: "Live — this screen is following changes made elsewhere" },
+  reconnecting: { dot: "var(--warn)", why: "Reconnecting — changes made elsewhere may not be on this screen yet" },
+  off: { dot: "var(--ink-4)", why: "Not connected for live updates — reload to see changes made elsewhere" },
+};
 
 export default function Shell({ children }: { children: ReactNode }) {
   // `open` is the mobile drawer; `collapsed` hides the rail on a wide screen.
@@ -86,8 +94,14 @@ export default function Shell({ children }: { children: ReactNode }) {
           </button>
           <Search />
           <div className="tsp" />
-          <button className="org" type="button"><span className="dt" />
-            <span className="lbl">Royal Care{homeLabel(user) ? ` · ${homeLabel(user)}` : ""}</span></button>
+          {/* The header dot is the status light the Support FAQ tells an operator to look at,
+              so it has to mean something: it follows the live-update stream. It was a <button>
+              with no onClick and a green dot painted on, which read as "all well" with the
+              stream down. Not interactive, so not a button. */}
+          <div className="org" title={STREAM[live].why}>
+            <span className="dt" role="img" aria-label={STREAM[live].why} style={{ background: STREAM[live].dot }} />
+            <span className="lbl">Royal Care{homeLabel(user) ? ` · ${homeLabel(user)}` : ""}</span>
+          </div>
           {/* Nothing is shown while the stream is live: a badge that is always there stops being read. */}
           {live === "reconnecting" && <Pill tone="wn">Reconnecting</Pill>}
           <ThemeButton />

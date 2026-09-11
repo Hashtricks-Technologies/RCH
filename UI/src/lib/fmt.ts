@@ -1,7 +1,9 @@
-import { bestBeforeText, dmy, money as inr, money0 as inr0, unitTotal as byUnit } from "@rch/domain";
+import { bestBeforeText, dmy, istDate, money as inr, money0 as inr0, unitTotal as byUnit } from "@rch/domain";
 import { IT } from "../data/master";
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+/** Every clock in this file is the hospital's, whatever zone the host happens to run in. */
+const TZ = "Asia/Kolkata";
 
 export const U = (it: string) => IT[it]?.u ?? "nos";
 export const fq = (v: number, it: string) => {
@@ -14,17 +16,37 @@ export const fq = (v: number, it: string) => {
 export const money = inr;
 export const money0 = inr0;
 export const lakh = (v: number) => (v >= 100000 ? "₹" + (v / 100000).toFixed(2) + "L" : money0(v));
+/** The clock on the wall at the hospital, not the host's. Without `timeZone` every "raised at"
+ *  and every ageing figure a screen stamps itself ran five and a half hours behind on a server
+ *  or a CI box in UTC, while the times beside them — which do go through `fromWireTime` — did
+ *  not: the same table showed two different clocks. */
 export const now = () =>
-  new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: false });
+  new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: TZ });
 export const pct = (v: number, d = 1) => (v * 100).toFixed(d) + "%";
 export const sum = <T,>(a: T[], f: (x: T) => number) => a.reduce((s, x) => s + f(x), 0);
 
-const TZ = "Asia/Kolkata";
 /** An ISO instant from the API as the "HH:MM" the screens have always shown. */
 export const fromWireTime = (isoStr: string): string =>
   /^\d{2}:\d{2}$/.test(isoStr)
     ? isoStr
     : new Date(isoStr).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: TZ });
+
+/**
+ * Did this happen today, the hospital's today?
+ *
+ * Every "today" figure at a counter — billed, cash taken, items sold, the top five sellers —
+ * is a sum over `s.bills`, and `GET /bills` answers with seven days of them. Nothing filtered,
+ * so a Monday-morning shift opened showing the previous week's takings under the word "today".
+ * The day boundary is Asia/Kolkata's midnight (`istDate`), not the host's, so a counter and a
+ * server in UTC agree on which day a 23:30 bill belongs to.
+ *
+ * `iso` is what the server sent; anything unparseable answers `false`, which is the safe way
+ * round — a figure labelled "today" must never quietly include a row nobody can date.
+ */
+export const isToday = (iso: string): boolean => {
+  const d = new Date(iso);
+  return !Number.isNaN(d.getTime()) && istDate(d) === istDate(new Date());
+};
 
 /** "2026-08-31" -> "31-Aug-2026". The wording lives in `@rch/domain` because a purchase order's
  *  expected date is printed in the server's toast as well as in this table. */

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { LOC } from "../../data/master";
 import { useApp } from "../../store";
-import { money, money0, sum } from "../../lib/fmt";
+import { isToday, money, money0, sum } from "../../lib/fmt";
 import { Avatar, Btn, Card, DataTable, FilterBtn, FilterSelect, PageHead, Pill, TableFoot, Toolbar } from "../../ui/kit";
 import { billStatus, settlementOf, type Settlement } from "./status";
 
@@ -22,7 +22,15 @@ export default function Bills() {
   const [tender, setTender] = useState<string | null>(null);
   const [settle, setSettle] = useState<Settlement | null>(null);
 
-  const mine = s.bills.filter((b) => b.loc === loc);
+  // The page says "today" and the counter reads it as today: the server sends seven days of
+  // bills, so without this filter Monday's screen carried last Tuesday's takings under that
+  // word, and the footer's cash figure with them. Newest first, by the instant rather than the
+  // printed "HH:MM" — which sorted yesterday's 22:00 above this morning's 09:00.
+  // `?? ""` rather than a bare compare: a row that somehow reaches the store without an instant
+  // should sort to the bottom, not throw the whole screen into the error boundary.
+  const mine = s.bills
+    .filter((b) => b.loc === loc && isToday(b.iso))
+    .sort((a, b) => (b.iso ?? "").localeCompare(a.iso ?? ""));
   const tenders = Array.from(new Set(mine.map((b) => b.pay))).sort();
   const rows = mine.filter((b) => {
     if (tender && b.pay !== tender) return false;
@@ -106,8 +114,8 @@ export default function Bills() {
               action: <Btn size="sm" onClick={clearAll}>Clear filters</Btn>,
             }
             : {
-              title: "No bill raised at this counter yet",
-              sub: "Open the till and print the first bill of the shift.",
+              title: "No bill raised at this counter today",
+              sub: "Open the till and print the first bill of the day.",
               action: <Btn size="sm" onClick={() => nav("/pos")}>Open till</Btn>,
             }}
         />

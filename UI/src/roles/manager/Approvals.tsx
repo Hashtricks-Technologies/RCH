@@ -6,7 +6,7 @@ import {
   Alert, Btn, Card, DataTable, FilterSelect, PageHead, Pill, StatusPill, TableFoot, Toolbar,
 } from "../../ui/kit";
 import { emptyFor, sortRows, useSort, type SortValue } from "./useSort";
-import type { ReqLine, ReqStatus, StockRequest } from "../../types";
+import type { DatedDoc, ReqLine, ReqStatus, StockRequest } from "../../types";
 
 const PRIORITY = ["All", "Urgent", "Normal"] as const;
 const OUTCOME = ["All", "Approved", "Partially approved", "Rejected", "Closed"] as const;
@@ -76,7 +76,10 @@ export default function Approvals() {
     .filter((r) => matches(r, aTerm));
   const aFiltered = aTerm !== "" || aOutlet > 0 || aOutcome > 0;
 
-  const val = (r: StockRequest, k: string): SortValue =>
+  // The "Time" column sorts on `iso`, the instant, not on the "HH:MM" it prints. Comparing the
+  // printed string put yesterday's 22:00 above this morning's 09:00 on a desk whose whole job
+  // is "oldest ask first" — and the default sort here is by time.
+  const val = (r: DatedDoc<StockRequest>, k: string): SortValue =>
     k === "id" ? r.id
       : k === "outlet" ? LOC[r.from].n
         : k === "by" ? r.by
@@ -87,7 +90,7 @@ export default function Approvals() {
                   : k === "prio" ? (r.urg ? 0 : 1)
                     : k === "st" ? r.st
                       : k === "who" ? decidedBy(r)
-                        : r.at;
+                        : r.iso;
 
   return (
     <>
