@@ -5,6 +5,8 @@ import Stock from "./Stock";
 import Requisitions from "./Requisitions";
 import Contracts from "./Contracts";
 import Reports from "./Reports";
+// ---- adjustments
+import Adjustments from "./Adjustments";
 import "./TicketDrawer";
 import "./IssueDetail";
 import "./RequisitionDetail";
@@ -18,4 +20,6 @@ import "../manager/ItemDrawer";
 export const screens: Record<string, ComponentType> = {
   dash: Dashboard, issue: IssueDesk, stock: Stock,
   procure: Requisitions, contracts: Contracts, reports: Reports,
+  // ---- adjustments
+  adjust: Adjustments,
 };

@@ -20,3 +20,5 @@ export { SUPPORT_TRANSITIONS, mayUserSet, statusAfterReply, mayRate, mayReply } 
 export { ledgerRow, type LedgerRow } from "./reports.js";
 // ---- item patch ----
 export { ITEM_FIELD_ROLES, mayEditItemField, unauthorisedItemFields, type ItemField } from "./items.js";
+// ---- adjustments: the words a write-off's reason is printed in, on both sides.
+export { REASON_LABEL } from "./adjustments.js";

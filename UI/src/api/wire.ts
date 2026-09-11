@@ -75,6 +75,8 @@ export function applySnapshot(s: Snapshot): void {
     productReqs: s.productReqs.map(stamped),
     shopAsks: s.shopAsks.map(stamped),
     sales: s.sales, dayLabels: s.dayLabels,
+    // ---- adjustments
+    adjustments: s.adjustments.map(stamped),
   }));
 }
 
@@ -186,3 +188,12 @@ export function applyRoster(r: Snapshot["roster"]): void {
  *  unlike the roster above: nothing outside the manager's Roster screen reads it, so there is no
  *  module-level registry to keep the identity of and `catalogVersion` is not involved. */
 export function applyPayers(payers: PayerRecord[]): void { useApp.setState({ payers }); }
+
+// ---- adjustments
+/** GET /adjustments -> the register of write-offs and count-ups, times as "HH:MM" and the
+ *  instant beside them, the way every other document here is stamped. Every adjustment names
+ *  "adjustments" and "stock" in `changed`, so this and `applyStock` are what a write-off costs
+ *  — the document and the shelf it corrected, not a whole snapshot. */
+export function applyAdjustments(rows: Snapshot["adjustments"]): void {
+  useApp.setState({ adjustments: rows.map(stamped) });
+}

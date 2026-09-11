@@ -1,13 +1,13 @@
 import { z } from "zod";
-import { IsoDate, ItemTypeSchema, LocKeySchema, PriceListSchema, TenderSchema } from "./common.js";
-import { GrnSchema, ItemSchema, PayerKindSchema, PayerSchema, PordStatusSchema, ProdOrderSchema, PurchaseOrderSchema, ShopAskSchema, StockRequestSchema, TicketPrioritySchema, TicketSchema, TicketStatusSchema, TicketTopicSchema } from "./documents.js";
+import { IsoDate, ItemTypeSchema, LocKeySchema, PriceListSchema, StockLocSchema, TenderSchema } from "./common.js";
+import { AdjustReasonSchema, GrnSchema, ItemSchema, PayerKindSchema, PayerSchema, PordStatusSchema, ProdOrderSchema, PurchaseOrderSchema, ShopAskSchema, StockRequestSchema, TicketPrioritySchema, TicketSchema, TicketStatusSchema, TicketTopicSchema } from "./documents.js";
 
 /** Every domain slice a write can touch, so a client can invalidate/refetch precisely instead
  *  of reloading the whole snapshot after each mutation. Extracted so `events.ts` can name one
  *  collection at a time from the same enum. `"items"` is here because `POST /items` changes the
  *  item master, which every screen reads out of one registry — without it the only honest
  *  `changed` a new product could name would be the whole snapshot. */
-export const CollectionSchema = z.enum(["stock", "rsv", "ovr", "prices", "menu", "bills", "req", "tkt", "prq", "po", "pord", "batch", "grn", "vendors", "contracts", "tickets", "productReqs", "shopAsks", "items", "roster", "payers"]);
+export const CollectionSchema = z.enum(["stock", "rsv", "ovr", "prices", "menu", "bills", "req", "tkt", "prq", "po", "pord", "batch", "grn", "vendors", "contracts", "tickets", "productReqs", "shopAsks", "items", "roster", "payers", "adjustments"]);
 export const ChangedSchema = z.array(CollectionSchema);
 export type Changed = z.infer<typeof CollectionSchema>;
 
@@ -239,3 +239,22 @@ export const BillNoParamsSchema = z.strictObject({ no: z.string().min(1).max(40)
 /** Non-empty is a service rule, not a schema one: an empty box must reach the manager as the
  *  desk's own "Give a reason for voiding this bill", not a 400 with a Zod path in it. */
 export const VoidBillBodySchema = z.strictObject({ reason: z.string().max(500) });
+// ---- adjustments (write-off / count-up as a document)
+/** A signed quantity. Negative writes stock off — wastage, breakage, an expiry disposal, a
+ *  consignment sent back to the vendor — and positive counts it up, which is what a physical
+ *  count that found more than the books say comes to. Zero is deliberately left to the service:
+ *  a repeated item is folded first and a line that folds to nothing is dropped, so an
+ *  adjustment with nothing on it reads as the store's own sentence rather than as a 400 with a
+ *  Zod path in it. Three decimals and the same ceiling `QtySchema` carries, in both directions. */
+export const SignedQtySchema = z.number().finite().multipleOf(0.001).min(-100000).max(100000);
+/** `loc` is `StockLocSchema` and not `LocKeySchema` — the one exception to the rule that a write
+ *  body names one of the five places an operator works. Every other body names two ends of a
+ *  movement, and quarantine is neither end of anything. An adjustment is not a movement: it is a
+ *  correction to one shelf, and quarantine is a shelf. What a goods receipt turned away has to
+ *  be disposable or sent back, or the rejected-goods pile only ever grows. */
+export const CreateAdjustmentBodySchema = z.strictObject({
+  loc: StockLocSchema,
+  reason: AdjustReasonSchema,
+  note: z.string().max(500).default(""),
+  lines: z.array(z.strictObject({ it: z.string().min(1).max(64), qty: SignedQtySchema })).min(1).max(100),
+});

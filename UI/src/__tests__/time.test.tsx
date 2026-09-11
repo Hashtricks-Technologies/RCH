@@ -88,6 +88,8 @@ describe("every 'today' figure at the till is today's", () => {
     stock: FX.seedStock, rsv: {}, ovr: {}, prices: FX.PL, menu: FX.MENU,
     req: [], tkt: [], prq: [], po: [], pord: [], batch: [], grn: [], vendors: [],
     contracts: [], tickets: [], productReqs: [], shopAsks: [], sales: [], dayLabels: [],
+    // ---- adjustments
+    adjustments: [],
     bills: [
       { no: "CF/1190", loc: "coffee", opr: "Kavitha Raman", oprCol: "#0EA5E9", tot: 40, tax: 1.9, t: TODAY_EARLY, pay: "Cash", lines: [{ it: "juice", qty: 2, rate: 20 }] },
       { no: "CF/1189", loc: "coffee", opr: "Kavitha Raman", oprCol: "#0EA5E9", tot: 900, tax: 42, t: YESTERDAY_LATE, pay: "Cash", lines: [{ it: "juice", qty: 45, rate: 20 }] },
@@ -151,6 +153,8 @@ describe("the wire keeps the instant beside the time it prints", () => {
     req: [{ id: "REQ-2026-0810", from: "coffee", by: "Kavitha Raman", at: TODAY_EARLY, lines: [{ it: "juice", qty: 4, appr: 0 }], st: "Request sent", ticket: null, mgrNote: "", hist: [{ s: "Request sent", who: "Kavitha Raman", t: TODAY_EARLY }] }],
     tkt: [], prq: [], po: [], pord: [], batch: [], bills: [], grn: [], vendors: [],
     contracts: [], tickets: [], productReqs: [], shopAsks: [], sales: [], dayLabels: [],
+    // ---- adjustments
+    adjustments: [],
   });
 
   it("carries iso on every document and on every history entry", () => {

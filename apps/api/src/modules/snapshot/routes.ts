@@ -22,4 +22,6 @@ export default fp(async (app) => {
   mount(app, routes.productRequests, async (req) => svc.productRequests(req.user));
   // ---- payers ----
   mount(app, routes.roster, async (req) => svc.roster(req.user));
+  // ---- adjustments: the register, scoped the same way the ledger it corrects is.
+  mount(app, routes.adjustments, async (req) => svc.adjustments(req.user));
 }, { name: "module:snapshot", dependencies: ["auth", "rbac", "db"] });

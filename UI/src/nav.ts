@@ -28,7 +28,10 @@ export const NAV: Record<Role, NavGroup[]> = {
   store: [
     { group: "Overview", items: [{ k: "dash", label: "Dashboard", icon: "dash" }] },
     { group: "Issue", items: [{ k: "issue", label: "Issue Desk", icon: "tkt" }] },
-    { group: "Inventory", items: [{ k: "stock", label: "Stock in Hand", icon: "stock" }] },
+    // ---- adjustments: the register sits beside the shelf it corrects.
+    { group: "Inventory", items: [
+      { k: "stock", label: "Stock in Hand", icon: "stock" },
+      { k: "adjust", label: "Adjustments", icon: "item" }] },
     { group: "Purchasing", items: [
       { k: "procure", label: "Requisitions", icon: "need" },
       { k: "contracts", label: "Rate Contracts", icon: "price" }] },

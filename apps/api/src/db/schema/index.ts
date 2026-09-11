@@ -7,3 +7,5 @@ export * from "./buying.js";
 export * from "./sales.js";
 export * from "./ops.js";
 export * from "./infra.js";
+// ---- adjustments
+export * from "./adjustments.js";

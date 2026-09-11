@@ -4,8 +4,8 @@ import { ApiError, call } from "../api/client";
 import { refetch } from "../api/refetch";
 import { applyPayers } from "../api/wire";
 import type {
-  Dated, ItemType, LocKey, PayerKind, PayerRecord, ProductRequest, RateContract, ShopAsk,
-  SupportTicket, TicketPriority, TicketStatus, TicketTopic,
+  AdjustReason, Dated, ItemType, LocKey, PayerKind, PayerRecord, ProductRequest, RateContract,
+  ShopAsk, StockLoc, SupportTicket, TicketPriority, TicketStatus, TicketTopic,
 } from "../types";
 import { toInputDate } from "../lib/fmt";
 import type { AppState } from "./index";
@@ -94,6 +94,12 @@ export interface OpsSlice {
    *  leaves what was typed on screen. */
   addPayer: (body: { kind: PayerKind; id: string; name: string }) => Promise<boolean>;
   updatePayer: (kind: PayerKind, id: string, patch: { name?: string; active?: boolean }) => Promise<boolean>;
+  // ---- adjustments
+  /** A write-off or a count-up, as a document: some lines down, some up, one reason over the
+   *  lot. Answers `true` only once the server has taken it, so a refusal leaves the form with
+   *  what the operator typed still on it. Every rule — what folds, what is free to write off,
+   *  which shelves this role may touch — is the server's; nothing is decided here. */
+  createAdjustment: (body: { loc: StockLoc; reason: AdjustReason; note: string; lines: { it: string; qty: number }[] }) => Promise<boolean>;
 }
 
 /** Every action in this slice is the server's now: post the body, repeat the sentence that came
@@ -322,5 +328,14 @@ export const createOpsSlice = (get: Get): OpsSlice => ({
       await refetch(r.changed, r.message);
       return true;
     } catch (e) { return fail(get, e, "save the payer"); }
+  },
+  // ---- adjustments
+  createAdjustment: async ({ loc, reason, note, lines }) => {
+    try {
+      const r = await call(routes.createAdjustment, { body: { loc, reason, note: note.trim(), lines } });
+      get().notify(r.message);
+      await refetch(r.changed, r.message);
+      return true;
+    } catch (e) { return fail(get, e, "record the adjustment"); }
   },
 });

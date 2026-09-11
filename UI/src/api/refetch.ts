@@ -1,9 +1,10 @@
 import { routes, type Changed } from "@rch/contract";
 import { call } from "./client";
 import {
-  applyBatches, applyBills, applyContracts, applyGrns, applyItems, applyMenus, applyPayers,
-  applyPos, applyPrices, applyProdOrders, applyProductRequests, applyRequests, applyRequisitions,
-  applyRoster, applyShopAsks, applyStock, applySupportTickets, applyTickets, applyVendors,
+  applyAdjustments, applyBatches, applyBills, applyContracts, applyGrns, applyItems, applyMenus,
+  applyPayers, applyPos, applyPrices, applyProdOrders, applyProductRequests, applyRequests,
+  applyRequisitions, applyRoster, applyShopAsks, applyStock, applySupportTickets, applyTickets,
+  applyVendors,
 } from "./wire";
 import { useApp } from "../store";
 
@@ -31,6 +32,8 @@ const NARROW: Partial<Record<Changed, () => Promise<void>>> = {
   // ---- payers ----
   roster: () => call(routes.roster).then(applyRoster),
   payers: () => call(routes.payers).then(applyPayers),
+  // ---- adjustments
+  adjustments: () => call(routes.adjustments).then(applyAdjustments),
 };
 
 /**
@@ -40,8 +43,9 @@ const NARROW: Partial<Record<Changed, () => Promise<void>>> = {
  * from its own GET — `bills`, `req`, `tkt`, `shopAsks`, `pord`, `batch`, `prq`, `po`, `grn`,
  * `vendors`, `contracts`, `productReqs`, `items`, `tickets` (the support desk,
  * `GET /support/tickets`), `prices` and `menu` (the manager's two), `roster` (the till's live
- * payer list, `GET /roster`) and `payers` (the manager's whole register, closed accounts
- * included, `GET /payers`) — each fetched at most once however many times the write named it,
+ * payer list, `GET /roster`), `payers` (the manager's whole register, closed accounts
+ * included, `GET /payers`) and `adjustments` (the write-off register, `GET /adjustments`) —
+ * each fetched at most once however many times the write named it,
  * which is what lets a payer write name both of its collections and still cost two reads.
  * Nothing costs a snapshot any more: taking one pulled the whole hospital back down and, until
  * this wave, put every screen behind the loading splash to do it. The fallback below stays for

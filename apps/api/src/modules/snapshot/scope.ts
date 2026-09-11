@@ -1,5 +1,5 @@
 import { OUTLETS } from "@rch/contract";
-import type { Batch, Bill, LocKey, PayerRoster, ProdOrder, ProductRequest, Role, ShopAsk, StockRequest, SupportTicket, Ticket } from "@rch/contract";
+import type { Adjustment, Batch, Bill, LocKey, PayerRoster, ProdOrder, ProductRequest, Role, ShopAsk, StockRequest, SupportTicket, Ticket } from "@rch/contract";
 import type { Snapshot } from "./service.js";
 
 /** Who is asking. The snapshot and the two standalone reads all cut by the same two fields. */
@@ -106,6 +106,16 @@ export const redactOtps = (tkt: Ticket[], who: Who): Ticket[] =>
 const scopeSupportTickets = (rows: SupportTicket[], who: { sub: string }, byUser: Map<string, string>): SupportTicket[] =>
   rows.filter((t) => byUser.get(t.id) === who.sub);
 
+// ---- adjustments
+/** The same cut `scopeStock` makes, on the document rather than on the balance: an adjustment is
+ *  a correction to one shelf, so a counter operator sees the corrections to their own shelf and
+ *  nobody else's. Everyone else sees the register whole — the store keeper writes off at the
+ *  central store and at the rejected-goods shelf, the kitchen at the kitchen, the manager across
+ *  the outlets, and each of them has to be able to read what the others did to a line they share.
+ *  A counter raises none of these (the route is not theirs); they read what was done to them. */
+export const scopeAdjustments = (rows: Adjustment[], who: Who): Adjustment[] =>
+  who.role !== "counter" ? rows : rows.filter((a) => a.loc === who.loc);
+
 /** A counter operator's world is their counter. Master data is never cut down; documents and stock are. */
 export function scope(s: Snapshot, who: Who & { sub: string }, owners: Map<string, string>): Snapshot {
   // Four cuts apply to every role, not only to a counter: a support ticket is the caller's own,
@@ -135,5 +145,7 @@ export function scope(s: Snapshot, who: Who & { sub: string }, owners: Map<strin
     sales: base.sales.map((row) => (col === -1 ? [] : [row[col] ?? 0])),
     prq: scopeBuying(base.prq, who), po: scopeBuying(base.po, who), grn: scopeBuying(base.grn, who),
     vendors: scopeBuying(base.vendors, who), contracts: scopeBuying(base.contracts, who),
+    // ---- adjustments
+    adjustments: scopeAdjustments(base.adjustments, who),
   };
 }

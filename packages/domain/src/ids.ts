@@ -1,6 +1,8 @@
 export type IdKind =
   | "req" | "tkt" | "bill" | "prq" | "po" | "prd" | "batch"
-  | "vendor" | "contract" | "support" | "product_req" | "shop_ask";
+  | "vendor" | "contract" | "support" | "product_req" | "shop_ask"
+  // ---- adjustments: a write-off or a count-up is a numbered document like any other.
+  | "adj";
 
 const pad = (n: number, w: number) => String(n).padStart(w, "0");
 const ymd = (d: Date) => {
@@ -26,6 +28,10 @@ export function formatId(kind: IdKind, n: number, at: Date = new Date()): string
     case "support":     return `SUP-00${n}`;
     case "product_req": return `NPR-00${n}`;
     case "shop_ask":    return `ASK-0${n}`;
+    // ---- adjustments. Padded to four rather than prefixed with a literal zero like `req`/`prq`:
+    // the series starts at 1 and a bare `ADJ-2026-1` beside `ADJ-2026-10` sorts wrongly on every
+    // screen that sorts a document list as text.
+    case "adj":         return `ADJ-${year(at)}-${pad(n, 4)}`;
   }
 }
 
@@ -55,4 +61,7 @@ export function grnId(poId: string, instalment: number): string {
 export const SEQUENCE_START: Record<IdKind, number> = {
   req: 913, tkt: 441, bill: 1188, prq: 16, po: 143, prd: 31, batch: 1,
   vendor: 6, contract: 109, support: 44, product_req: 13, shop_ask: 63,
+  // ---- adjustments: nothing was ever written off through a document before, so the series
+  // starts at one rather than continuing a seeded run.
+  adj: 1,
 };

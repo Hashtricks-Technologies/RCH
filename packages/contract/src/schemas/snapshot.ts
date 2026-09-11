@@ -35,6 +35,8 @@ export const SnapshotSchema = z.object({
   shopAsks: z.array(D.ShopAskSchema),
   sales: z.array(z.array(z.number())),
   dayLabels: z.array(z.string()),
+  // ---- adjustments: the write-offs and count-ups behind the `adjustment` moves on the ledger.
+  adjustments: z.array(D.AdjustmentSchema),
 });
 export const ItemsResponseSchema = z.record(z.string(), D.ItemSchema);
 export const LocationsResponseSchema = z.record(z.string(), D.LocationSchema);
@@ -76,3 +78,8 @@ export const RosterResponseSchema = D.PayerRosterSchema;
  *  nothing to open. Two reads rather than an `active` flag on the roster, because the till's
  *  list stopping at "active" is the whole point of it. */
 export const PayersResponseSchema = z.array(D.PayerRecordSchema);
+
+// ---- adjustments
+/** The adjustment register on its own, so a write naming "adjustments" refetches that slice
+ *  rather than the whole snapshot (spec §9.1). Scoped like `stock`: a counter sees its own. */
+export const AdjustmentsResponseSchema = z.array(D.AdjustmentSchema);

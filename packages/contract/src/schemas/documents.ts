@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { IsoDate, IsoTime, ItemTypeSchema, LocKeySchema, Money, PriceListSchema, Qty, RoleSchema, TenderSchema } from "./common.js";
+import { IsoDate, IsoTime, ItemTypeSchema, LocKeySchema, Money, PriceListSchema, Qty, RoleSchema, StockLocSchema, TenderSchema } from "./common.js";
 
 export const ReqStatusSchema = z.enum(["Draft", "Request sent", "Manager approved", "Partially approved", "Ticket issued", "Collected", "Received", "Closed", "Rejected", "Cancelled"]);
 // A ticket that was issued and never collected is withdrawn rather than left open: the hold it
@@ -128,4 +128,22 @@ export const RateContractSchema = z.object({
 export const ShopAskSchema = z.object({
   id: z.string(), from: LocKeySchema, to: LocKeySchema, it: z.string(), qty: Qty, st: ShopAskStatusSchema, by: z.string(), at: IsoTime, note: z.string(),
   grant: Qty.optional(), ticket: z.string().optional(), reason: z.string().optional(),
+});
+
+// ---- adjustments (write-off / count-up as a document)
+/** Why a shelf was corrected. Six words, not free text: the reason is what a month-end query
+ *  groups by, and "spoilt", "spoiled" and "Spoilt" would be three answers to one question.
+ *  `count` is the physical count — a correction to a sum, not a loss. */
+export const AdjustReasonSchema = z.enum(["wastage", "breakage", "expired", "count", "returned_to_vendor", "other"]);
+/** Signed: negative wrote stock off, positive counted it up. One line per item, folded by the
+ *  service before anything is checked, so what is stored is what actually moved. */
+export const AdjustmentLineSchema = z.object({ it: z.string(), qty: Qty });
+/** The document behind an `adjustment` move — who corrected which shelf, why, and when. Before
+ *  this there was no document at all: the runbook's answer was hand-written SQL, which leaves
+ *  the books balanced and the reason nowhere. `loc` is a `StockLoc` because quarantine is a
+ *  shelf that has to be correctable — a consignment turned away and later destroyed or sent
+ *  back to the vendor leaves quarantine, and nothing else can take it off. */
+export const AdjustmentSchema = z.object({
+  id: z.string(), loc: StockLocSchema, reason: AdjustReasonSchema, note: z.string(),
+  by: z.string(), at: IsoTime, lines: z.array(AdjustmentLineSchema),
 });

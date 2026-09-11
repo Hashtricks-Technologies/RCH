@@ -71,6 +71,9 @@ export function resetStore() {
     grn: clone(FX.seedGrn).map(dated), vendors: clone(FX.seedVendors), sales: clone(FX.seedSales), dayLabels: FX.DAY_LABELS,
     contracts: FX.seedContracts(), productReqs: FX.seedProductRequests().map(dated), shopAsks: FX.seedShopAsks().map(dated),
     tickets: FX.seedTickets().map(dated),
+    // ---- adjustments: nothing has ever been written off in the demo hospital, so the register
+    // starts empty — the same shape the fixtures give quarantine's shelf.
+    adjustments: [],
     cart: {}, draft: [], prqDraft: [], drawer: null, toast: null, shopFilter: null,
     // ---- payers ----
     // Empty, not seeded: the manager's register has no fixture, because nothing on the snapshot

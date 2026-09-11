@@ -74,6 +74,8 @@ export async function resetDocuments(db: Db): Promise<void> {
     "vendors", "rate_contracts",
     "stock_moves", "stock_balances", "reservations", "availability_overrides",
     "document_history", "idempotency_keys",
+    // ---- adjustments
+    "adjustments", "adjustment_lines",
   ];
   await db.execute(sql.raw(`truncate table ${names.map((n) => `"${n}"`).join(", ")} restart identity cascade`));
   await withTransaction(db, async (tx) => { await seedDocuments(tx); });

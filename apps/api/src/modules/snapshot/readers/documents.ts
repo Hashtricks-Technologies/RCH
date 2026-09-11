@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, gte, inArray, isNull, sql } from "drizzle-orm";
 import { OUTLETS } from "@rch/contract";
-import type { Batch, Bill, Grn, HistEntry, LocKey, ProdOrder, ProductRequest, PurchaseOrder, RateContract, Requisition, ShopAsk, StockRequest, SupportTicket, Ticket, Vendor } from "@rch/contract";
+import type { Adjustment, Batch, Bill, Grn, HistEntry, LocKey, ProdOrder, ProductRequest, PurchaseOrder, RateContract, Requisition, ShopAsk, StockLoc, StockRequest, SupportTicket, Ticket, Vendor } from "@rch/contract";
 import * as s from "../../../db/schema/index.js";
 import type { Reader } from "../../../lib/db.js";
 import { readHistories } from "../../../lib/history.js";
@@ -179,4 +179,21 @@ export async function readSales(db: Reader, days: number): Promise<{ sales: numb
   const dayKeys = Array.from({ length: days }, (_, i) => fmt.format(new Date(Date.now() - (days - 1 - i) * 86400_000)));
   const sales = dayKeys.map((d) => OUTLETS.map((loc) => Number(rows.find((r) => r.day === d && r.loc === loc)?.total ?? 0)));
   return { sales, dayLabels: dayKeys.map((d) => d.slice(8)) };
+}
+
+// ---- adjustments
+/** The register of write-offs and count-ups, newest first — heads and every line in two
+ *  queries, the shape every other document reader here uses. `loc` is a `StockLoc` rather than
+ *  a `LocKey`: the rejected-goods shelf is a shelf that gets corrected, and it is the one
+ *  location an adjustment can name that no operator works at. */
+export async function readAdjustments(db: Reader, pre?: UserNames): Promise<Adjustment[]> {
+  const heads = await db.select().from(s.adjustments).orderBy(desc(s.adjustments.at), desc(s.adjustments.id));
+  const lines = await db.select().from(s.adjustmentLines).orderBy(asc(s.adjustmentLines.lineNo));
+  const names = pre ?? await userNames(db);
+  const byAdj = groupBy(lines, (l) => l.adjustmentId);
+  return heads.map((a) => ({
+    id: a.id, loc: a.loc as StockLoc, reason: a.reason, note: a.note,
+    by: a.byUser ? names.get(a.byUser)?.name ?? a.byUser : "", at: iso(a.at),
+    lines: (byAdj.get(a.id) ?? []).map((l) => ({ it: l.itemKey, qty: l.qty })),
+  }));
 }
