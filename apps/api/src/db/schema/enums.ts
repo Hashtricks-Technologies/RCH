@@ -27,3 +27,7 @@ export const supportPriorityEnum = pgEnum("support_priority", ["Low", "Normal", 
 export const supportStatusEnum = pgEnum("support_status", ["Open", "With support", "Waiting on you", "Resolved", "Closed"]);
 export const messageFromEnum = pgEnum("message_from", ["user", "support"]);
 export const productReqStatusEnum = pgEnum("product_req_status", ["Requested", "Created", "Declined"]);
+// ---- adjustments. Why a shelf was corrected, as a closed set: the reason is what a month-end
+// query groups by, and free text would make three answers out of one question. `count` is the
+// physical count — a correction to a sum, not a loss.
+export const adjustReasonEnum = pgEnum("adjust_reason", ["wastage", "breakage", "expired", "count", "returned_to_vendor", "other"]);

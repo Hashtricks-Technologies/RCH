@@ -2,20 +2,22 @@
 // document instead of asking for one here is rejected in review — the defaults belong in one
 // place, so a case says only what it is about.
 import { eq } from "drizzle-orm";
-import type { LocKey, PordStatus, PoStatus, PrqStatus, ProductReqStatus, ReqStatus, Role, ShopAskStatus, TicketPriority, TicketStatus, TicketTopic, TktStatus } from "@rch/contract";
+import type { AdjustReason, LocKey, PordStatus, PoStatus, PrqStatus, ProductReqStatus, ReqStatus, Role, ShopAskStatus, StockLoc, TicketPriority, TicketStatus, TicketTopic, TktStatus } from "@rch/contract";
 import { round3 } from "@rch/domain";
 import type { Db } from "../db/client.js";
 import * as s from "../db/schema/index.js";
 import { appendHistory } from "../lib/history.js";
 import { reserve } from "../lib/reservations.js";
 import type { TicketRefType } from "../lib/tickets.js";
+// ---- adjustments: the label the trail is signed with lives with the service that writes it.
+import { REASON_LABEL } from "../modules/adjustments/service.js";
 
 /** One monotonic suffix per document family, so two builder calls in one file cannot draw the
  *  same id and nine calls of any kind cannot exhaust another family's band — a random draw
  *  collided often enough to matter. Each test file is its own module instance and its own
  *  schema, so the counters need not be unique across files. Bands sit above the fixtures and
  *  above each sequence's start; padStart keeps the printed width when a band runs past 999. */
-const counters = { req: 0, tkt: 0, ask: 0, bill: 0, pord: 0, prq: 0, po: 0, vendor: 0, contract: 0, npr: 0, sup: 0 };
+const counters = { req: 0, tkt: 0, ask: 0, bill: 0, pord: 0, prq: 0, po: 0, vendor: 0, contract: 0, npr: 0, sup: 0, adj: 0 };
 const nextId = (prefix: string, base: number, family: keyof typeof counters): string =>
   `${prefix}${String(base + ++counters[family]).padStart(4, "0")}`;
 
@@ -237,6 +239,35 @@ export const given = {
           who: m.who ?? (m.from === "support" ? "Portal Support" : author?.name ?? by), body: m.body,
         })));
       }
+    });
+    return id;
+  },
+
+  // ---- adjustments
+  /** A write-off or a count-up that already happened, for a case about reading the register
+   *  rather than about writing to it.
+   *
+   *  The band is `ADJ-2026-9001`+, above both the fixtures (which seed none) and the sequence's
+   *  own start of 1, so a builder-made document can never collide with an allocated one. It
+   *  writes the document **only**: no ledger move goes with it, because `postMoves` is the one
+   *  door to the ledger and a builder that reached through it would be standing in for the
+   *  write under test. A case that needs the shelf to have moved as well posts a real one. */
+  async adjustment(db: Db, p: {
+    id?: string; loc?: StockLoc; reason?: AdjustReason; note?: string; by?: string;
+    lines: { it: string; qty: number }[]; at?: Date;
+  }): Promise<string> {
+    const id = p.id ?? nextId("ADJ-2026-", 9000, "adj");
+    const by = p.by ?? "u3";
+    await db.transaction(async (tx) => {
+      await tx.insert(s.adjustments).values({
+        id, loc: p.loc ?? "store", reason: p.reason ?? "wastage", note: p.note ?? "",
+        byUser: by, ...(p.at ? { at: p.at } : {}),
+      });
+      await tx.insert(s.adjustmentLines).values(p.lines.map((l, lineNo) => ({
+        adjustmentId: id, lineNo, itemKey: l.it, qty: round3(l.qty),
+      })));
+      const [author] = await tx.select({ name: s.users.name }).from(s.users).where(eq(s.users.id, by));
+      await appendHistory(tx, "adjustment", id, REASON_LABEL[p.reason ?? "wastage"], author?.name ?? by, p.at);
     });
     return id;
   },

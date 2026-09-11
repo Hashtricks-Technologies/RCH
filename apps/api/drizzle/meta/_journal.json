@@ -64,6 +64,13 @@
       "when": 1789120000000,
       "tag": "0008_integrity",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1789140000000,
+      "tag": "0010_adjustments",
+      "breakpoints": true
     }
   ]
 }

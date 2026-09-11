@@ -1,6 +1,6 @@
 import type { z } from "zod";
 import { BILL_DAYS } from "@rch/contract";
-import type { Batch, Bill, Grn, ProdOrder, ProductRequest, PurchaseOrder, RateContract, Requisition, ShopAsk, SnapshotSchema, StockRequest, StockResponseSchema, Ticket, Vendor } from "@rch/contract";
+import type { Adjustment, Batch, Bill, Grn, ProdOrder, ProductRequest, PurchaseOrder, RateContract, Requisition, ShopAsk, SnapshotSchema, StockRequest, StockResponseSchema, Ticket, Vendor } from "@rch/contract";
 import type { Db } from "../../db/client.js";
 import type { Tx } from "../../lib/db.js";
 import { withReadTransaction } from "../../lib/db.js";
@@ -8,7 +8,7 @@ import { NotFoundError } from "../../lib/errors.js";
 import { toWireUser } from "../../lib/wire.js";
 import type { AccessClaims } from "../../plugins/auth.js";
 import { snapshotRepo } from "./repo.js";
-import { redactOtps, scope, scopeBatches, scopeBills, scopeBuying, scopePayers, scopeProdOrders, scopeProductRequests, scopeRequests, scopeShopAsks, scopeStock, scopeTickets } from "./scope.js";
+import { redactOtps, scope, scopeAdjustments, scopeBatches, scopeBills, scopeBuying, scopePayers, scopeProdOrders, scopeProductRequests, scopeRequests, scopeShopAsks, scopeStock, scopeTickets } from "./scope.js";
 import * as M from "./readers/master.js";
 import * as S from "./readers/stock.js";
 import * as D from "./readers/documents.js";
@@ -75,9 +75,11 @@ export function createSnapshotService(db: Db) {
         const productReqs = await D.readProductRequests(tx, names);
         const shopAsks = await D.readShopAsks(tx, names);
         const salesBlock = await D.readSales(tx, SALES_DAYS);
+        // ---- adjustments
+        const adjustments = await D.readAdjustments(tx, names);
         // The desk and its owners come off one read: `scope()` cuts the list on `owners`, so a
         // ticket in one and not the other is a ticket its own author cannot see.
-        const full: Snapshot = { user: toWireUser(u), items, locations, recipes, users, prices, menu, stock, rsv, ovr, req, tkt, prq, po, pord, batch, bills, grn, vendors, contracts, tickets: support.tickets, productReqs, shopAsks, roster, sales: salesBlock.sales, dayLabels: salesBlock.dayLabels };
+        const full: Snapshot = { user: toWireUser(u), items, locations, recipes, users, prices, menu, stock, rsv, ovr, req, tkt, prq, po, pord, batch, bills, grn, vendors, contracts, tickets: support.tickets, productReqs, shopAsks, roster, sales: salesBlock.sales, dayLabels: salesBlock.dayLabels, adjustments };
         return scope(full, { role: claims.role, loc: claims.loc, sub: claims.sub }, support.owners);
       });
     },
@@ -116,5 +118,7 @@ export function createSnapshotService(db: Db) {
     async contracts(claims: AccessClaims): Promise<RateContract[]> { return read(async (tx) => scopeBuying(await D.readContracts(tx), claims)); },
     /** A shop sees the new-product asks it raised itself; everyone else sees the queue. */
     async productRequests(claims: AccessClaims): Promise<ProductRequest[]> { return read(async (tx) => scopeProductRequests(await D.readProductRequests(tx), claims)); },
+    // ---- adjustments: the register on its own — what a write naming "adjustments" refetches.
+    async adjustments(claims: AccessClaims): Promise<Adjustment[]> { return read(async (tx) => scopeAdjustments(await D.readAdjustments(tx), claims)); },
   };
 }
