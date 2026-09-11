@@ -3,12 +3,13 @@ import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { MemoryRouter } from "react-router-dom";
 import * as FX from "@rch/contract/fixtures";
+import type { Changed } from "@rch/contract";
 import { creditBreachMessage } from "@rch/domain";
 import { refetch } from "../api/refetch";
 import { applySnapshot } from "../api/wire";
 import { setAccessToken } from "../api/session";
 import { qty } from "../lib/selectors";
-import { IT, PATIENTS } from "../data/master";
+import { DEPTS, IT, PATIENTS, STAFF, hydrateMaster } from "../data/master";
 import Pos from "../roles/counter/Pos";
 import CounterRequests from "../roles/counter/Requests";
 import MakeDistribute from "../roles/prod/MakeDistribute";
@@ -85,7 +86,7 @@ describe("pay — POST /bills", () => {
       "GET /api/v1/bills": () => json([BILL]),
     });
 
-    await S().pay("coffee", "Cash");
+    expect(await S().pay("coffee", "Cash")).toBe(true);
 
     expect(hit("POST /api/v1/bills")[0].body).toEqual({ loc: "coffee", tender: "Cash", lines: [{ it: "juice", qty: 2 }] });
     expect(S().cart.coffee).toEqual({});
@@ -121,7 +122,9 @@ describe("pay — POST /bills", () => {
     S().addToCart("coffee", "juice", 3);
     serve({ "POST /api/v1/bills": () => refusal("Only 2 nos of Fresh Juice 200ml left at Floor 3 Coffee Bar") });
 
-    await S().pay("coffee", "Cash");
+    // `false`, not a silent nothing: the till reads the answer to decide whether the payer and
+    // the tender it is holding may be cleared, and a refusal must leave both alone.
+    expect(await S().pay("coffee", "Cash")).toBe(false);
 
     expect(S().toast).toBe("Only 2 nos of Fresh Juice 200ml left at Floor 3 Coffee Bar");
     expect(S().cart.coffee).toEqual({ juice: 3 });   // the scan survives, so it can be retried
@@ -133,7 +136,7 @@ describe("pay — POST /bills", () => {
     S().addToCart("coffee", "juice", 1);
     fetchMock.mockRejectedValue(new TypeError("Failed to fetch"));
 
-    await S().pay("coffee", "Cash");
+    expect(await S().pay("coffee", "Cash")).toBe(false);
 
     expect(S().toast).toBe("Could not take the bill — check the connection and try again.");
     expect(S().cart.coffee).toEqual({ juice: 1 });
@@ -141,7 +144,7 @@ describe("pay — POST /bills", () => {
 
   it("sends nothing at all for an empty cart", async () => {
     as("counter");
-    await S().pay("coffee", "Cash");
+    expect(await S().pay("coffee", "Cash")).toBe(false);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -293,19 +296,21 @@ describe("toggleAvail — POST /availability/toggle", () => {
 });
 
 describe("savePrice — PUT /prices/:list/:it", () => {
-  it("puts the price on the named list and takes a fresh snapshot", async () => {
+  it("puts the price on the named list and reads the price list back on its own", async () => {
     as("manager");
     serve({
       "PUT /api/v1/prices/B/juice": () => json({ result: { list: "B", it: "juice", price: 18 }, changed: ["prices"], message: "Fresh Juice 200ml priced at ₹18 on list B" }),
-      "GET /api/v1/snapshot": () => json(snapshot({ A: FX.PL.A, B: { ...FX.PL.B, juice: 18 } })),
+      "GET /api/v1/prices": () => json({ A: FX.PL.A, B: { ...FX.PL.B, juice: 18 } }),
     });
 
-    await S().savePrice("B", "juice", 18);
+    expect(await S().savePrice("B", "juice", 18)).toBe(true);
 
     expect(hit("PUT /api/v1/prices/B/juice")[0].body).toEqual({ price: 18 });
     expect(S().toast).toBe("Fresh Juice 200ml priced at ₹18 on list B");
-    // "prices" has no narrow reader yet, so it costs one snapshot.
-    expect(hit("GET /api/v1/snapshot")).toHaveLength(1);
+    // A price change is a price change, not a new day: GET /prices, never the whole snapshot,
+    // which would put the app back behind the loading splash for every row the manager edits.
+    expect(hit("GET /api/v1/prices")).toHaveLength(1);
+    expect(hit("GET /api/v1/snapshot")).toHaveLength(0);
     expect(hit("GET /api/v1/stock")).toHaveLength(0);
     expect(S().prices.B.juice).toBe(18);
   });
@@ -315,7 +320,9 @@ describe("savePrice — PUT /prices/:list/:it", () => {
     const before = S().prices.B.juice;
     serve({ "PUT /api/v1/prices/B/juice": () => refusal("Refused — printed MRP of ₹20 is a hard ceiling for Fresh Juice 200ml") });
 
-    await S().savePrice("B", "juice", 99);
+    // The price screen keeps what was typed on a `false`, so the manager can read the ceiling
+    // and correct the figure rather than hunt for the row again.
+    expect(await S().savePrice("B", "juice", 99)).toBe(false);
 
     expect(S().toast).toBe("Refused — printed MRP of ₹20 is a hard ceiling for Fresh Juice 200ml");
     expect(S().prices.B.juice).toBe(before);
@@ -328,35 +335,39 @@ describe("addProduct / removeProduct — the menu routes", () => {
     as("manager");
     serve({
       "POST /api/v1/menus/coffee/items": () => json({ result: { loc: "coffee", items: ["juice"] }, changed: ["menu"], message: "Fresh Juice 200ml listed at Floor 3 Coffee Bar" }),
-      "GET /api/v1/snapshot": () => json(snapshot()),
+      "GET /api/v1/menus": () => json({ ...FX.MENU, coffee: [...FX.MENU.coffee, "juice"] }),
     });
 
-    await S().addProduct("coffee", "juice");
+    expect(await S().addProduct("coffee", "juice")).toBe(true);
 
     expect(hit("POST /api/v1/menus/coffee/items")[0].body).toEqual({ it: "juice" });
     expect(S().toast).toBe("Fresh Juice 200ml listed at Floor 3 Coffee Bar");
-    expect(hit("GET /api/v1/snapshot")).toHaveLength(1);
+    expect(hit("GET /api/v1/menus")).toHaveLength(1);
+    expect(hit("GET /api/v1/snapshot")).toHaveLength(0);
+    expect(S().menu.coffee).toContain("juice");
   });
 
   it("deletes a listing at /menus/:loc/items/:it, with no body", async () => {
     as("manager");
     serve({
       "DELETE /api/v1/menus/coffee/items/chips": () => json({ result: { loc: "coffee", items: [] }, changed: ["menu"], message: "Potato Chips 30g removed from Floor 3 Coffee Bar" }),
-      "GET /api/v1/snapshot": () => json(snapshot()),
+      "GET /api/v1/menus": () => json({ ...FX.MENU, coffee: FX.MENU.coffee.filter((x) => x !== "chips") }),
     });
 
-    await S().removeProduct("coffee", "chips");
+    expect(await S().removeProduct("coffee", "chips")).toBe(true);
 
     expect(hit("DELETE /api/v1/menus/coffee/items/chips")[0].body).toBeUndefined();
     expect(S().toast).toBe("Potato Chips 30g removed from Floor 3 Coffee Bar");
-    expect(hit("GET /api/v1/snapshot")).toHaveLength(1);
+    expect(hit("GET /api/v1/menus")).toHaveLength(1);
+    expect(hit("GET /api/v1/snapshot")).toHaveLength(0);
+    expect(S().menu.coffee).not.toContain("chips");
   });
 
   it("repeats the refusal for an item already on the menu", async () => {
     as("manager");
     serve({ "POST /api/v1/menus/coffee/items": () => refusal("Fresh Juice 200ml is already listed at Floor 3 Coffee Bar") });
 
-    await S().addProduct("coffee", "juice");
+    expect(await S().addProduct("coffee", "juice")).toBe(false);
 
     expect(S().toast).toBe("Fresh Juice 200ml is already listed at Floor 3 Coffee Bar");
     expect(calls()).toHaveLength(1);
@@ -378,15 +389,24 @@ describe("refetch — what a write says it changed is what gets read", () => {
     expect(calls().map((c) => c.at).sort()).toEqual(["GET /api/v1/bills", "GET /api/v1/stock"]);
   });
 
+  it("reads the balances and the price list side by side, without a snapshot", async () => {
+    serve({ "GET /api/v1/stock": () => json(STOCK), "GET /api/v1/prices": () => json(FX.PL) });
+    await refetch(["stock", "prices"]);
+    expect(calls().map((c) => c.at).sort()).toEqual(["GET /api/v1/prices", "GET /api/v1/stock"]);
+  });
+
   it("falls back to the whole snapshot for a slice with no narrow reader", async () => {
+    // Every collection the contract names has a reader of its own now, so the fallback is
+    // reached only by a collection added to the enum and not to NARROW. That is the case worth
+    // pinning: the next one must still refresh the screen rather than silently read nothing.
     serve({ "GET /api/v1/snapshot": () => json(snapshot()) });
-    await refetch(["menu"]);
+    await refetch(["a-collection-with-no-reader" as Changed]);
     expect(calls().map((c) => c.at)).toEqual(["GET /api/v1/snapshot"]);
   });
 
   it("takes the snapshot alone when a write touched both kinds", async () => {
     serve({ "GET /api/v1/snapshot": () => json(snapshot()) });
-    await refetch(["stock", "prices"]);
+    await refetch(["stock", "a-collection-with-no-reader" as Changed]);
     expect(calls().map((c) => c.at)).toEqual(["GET /api/v1/snapshot"]);
   });
 
@@ -405,6 +425,44 @@ describe("refetch — what a write says it changed is what gets read", () => {
     serve({ "GET /api/v1/stock": () => json({ error: { code: "internal", message: "boom" } }, 500) });
     await refetch(["stock"], "Veg puffs switched off at Central Kitchen");
     expect(S().toast).toBe("Veg puffs switched off at Central Kitchen — the screen could not be refreshed; reload to see the latest.");
+  });
+});
+
+/**
+ * The splash is a *first boot*, not a refresh. Anything that takes a whole snapshot again —
+ * an SSE `resync`, the fallback read-back — used to blank every screen in the hospital to
+ * "Loading…" and throw away whatever the operator was halfway through reading.
+ */
+describe("loadSnapshot — the splash is for the first boot only", () => {
+  const authStates = async (run: () => Promise<void>) => {
+    const seen: string[] = [];
+    const off = useApp.subscribe((s) => seen.push(s.auth));
+    await run();
+    off();
+    return seen;
+  };
+
+  it("does not blank a hydrated app to the splash while it refreshes", async () => {
+    as("manager");
+    serve({ "GET /api/v1/snapshot": () => json(snapshot()) });
+
+    const seen = await authStates(() => S().loadSnapshot());
+
+    expect(seen).not.toContain("loading");
+    expect(S().auth).toBe("ready");
+  });
+
+  it("still shows the splash on the first boot, when there is nothing on screen to keep", async () => {
+    as("manager");
+    // No item master, no locations: every screen would read an empty registry and throw, so
+    // there is genuinely nothing to hold on to while the snapshot is on its way.
+    hydrateMaster({ items: {}, locations: {}, recipes: {}, prices: { A: {}, B: {} }, menu: {}, users: [] });
+    serve({ "GET /api/v1/snapshot": () => json(snapshot()) });
+
+    const seen = await authStates(() => S().loadSnapshot());
+
+    expect(seen).toContain("loading");
+    expect(S().auth).toBe("ready");
   });
 });
 
@@ -739,7 +797,8 @@ describe("refetch — the movement slices have narrow readers now", () => {
 
   it("still takes one snapshot when a write touched a slice with no reader", async () => {
     serve({ "GET /api/v1/snapshot": () => json(snapshot()) });
-    await refetch(["req", "prices"]);
+    // `prices` has a reader of its own now, so the mixed case needs a collection that has none.
+    await refetch(["req", "a-collection-with-no-reader" as Changed]);
     expect(calls().map((c) => c.at)).toEqual(["GET /api/v1/snapshot"]);
   });
 });
@@ -1473,6 +1532,13 @@ const OFFLINE: [name: string, run: () => Promise<unknown>, sentence: string][] =
     "Could not change the ticket — check the connection and try again."],
   ["rateTicket", () => S().rateTicket("SUP-0044", 5),
     "Could not record the rating — check the connection and try again."],
+  // ---- payers ----
+  ["addPayer", () => S().addPayer({ kind: "staff", id: "E2291", name: "Kavitha Raman" }),
+    "Could not save the payer — check the connection and try again."],
+  ["updatePayer", () => S().updatePayer("staff", "RC-4471", { active: false }),
+    "Could not save the payer — check the connection and try again."],
+  ["loadPayers", () => S().loadPayers(),
+    "Could not read the payer register — check the connection and try again."],
 ];
 
 describe("a dropped connection names the write that did not land", () => {
@@ -1602,5 +1668,88 @@ describe("what the browser no longer knows on its own", () => {
     fetchMock.mockRejectedValue(new TypeError("Failed to fetch"));
     expect(await S().readStockLedger("store", 30)).toBeNull();
     expect(S().toast).toBe("Could not read the stock ledger.");
+  });
+});
+
+// ---- payers ----
+/**
+ * The roster's own two writes. The register is not store state — it is the `PATIENTS`/`STAFF`/
+ * `DEPTS` registries in `data/master.ts` — so what these pin is the wire and the read-back:
+ * which route each action reaches, what it puts in the body, and that `changed: ["roster"]`
+ * costs one `GET /roster` rather than a whole snapshot. The rules are the server's
+ * (`apps/api/src/modules/payers/payers.test.ts`) and nothing here re-asserts them.
+ */
+describe("addPayer / updatePayer — the payer roster", () => {
+  const P = { kind: "staff", id: "E2291", name: "Kavitha Raman", active: true };
+
+  it("posts the new payer and reads both registers back, not the whole snapshot", async () => {
+    as("manager");
+    serve({
+      "POST /api/v1/payers": () => json({ result: P, changed: ["roster", "payers"], message: "Kavitha Raman added to the staff member roster as E2291" }),
+      "GET /api/v1/roster": () => json({ patients: [], staff: [{ kind: "staff", id: "E2291", name: "Kavitha Raman" }], depts: [] }),
+      "GET /api/v1/payers": () => json([P]),
+    });
+
+    expect(await S().addPayer({ kind: "staff", id: "E2291", name: "Kavitha Raman" })).toBe(true);
+    expect(hit("POST /api/v1/payers")[0].body).toEqual({ kind: "staff", id: "E2291", name: "Kavitha Raman" });
+    // Both collections have a narrow reader, so this is two GETs and not a whole snapshot.
+    expect(hit("GET /api/v1/roster")).toHaveLength(1);
+    expect(hit("GET /api/v1/payers")).toHaveLength(1);
+    expect(hit("GET /api/v1/snapshot")).toHaveLength(0);
+    // The registries the counter's payer picker reads are replaced whole by the read-back.
+    expect(STAFF.map((x) => x.id)).toEqual(["E2291"]);
+    expect(PATIENTS).toEqual([]);
+    expect(DEPTS).toEqual([]);
+    // And the manager's own register is store state, carrying `active` the roster never does.
+    expect(S().payers).toEqual([P]);
+    expect(S().toast).toBe("Kavitha Raman added to the staff member roster as E2291");
+  });
+
+  it("patches only the field the screen touched; a deactivated payer leaves the picker and stays on the register", async () => {
+    as("manager");
+    const closed = { kind: "staff", id: "RC-4471", name: "Kavitha Raman · F&B", active: false };
+    serve({
+      "PATCH /api/v1/payers/staff/RC-4471": () => json({
+        result: closed, changed: ["roster", "payers"],
+        message: "Kavitha Raman · F&B deactivated — bills already posted to them stay, new ones cannot",
+      }),
+      // The two reads differ, and that difference is the point: the till's roster carries live
+      // rows only, so the switched-off payer is simply not in it — while the manager's register
+      // still has it, `active: false`, which is what leaves a way to switch it back on.
+      "GET /api/v1/roster": () => json({ patients: [], staff: [], depts: [] }),
+      "GET /api/v1/payers": () => json([closed]),
+    });
+
+    expect(await S().updatePayer("staff", "RC-4471", { active: false })).toBe(true);
+    expect(hit("PATCH /api/v1/payers/staff/RC-4471")[0].body).toEqual({ active: false });
+    expect(hit("GET /api/v1/payers")).toHaveLength(1);
+    expect(STAFF).toEqual([]);
+    expect(S().payers).toEqual([closed]);
+    expect(S().toast).toBe("Kavitha Raman · F&B deactivated — bills already posted to them stay, new ones cannot");
+  });
+
+  it("loads the whole register, closed accounts included, for the screen that reopens them", async () => {
+    as("manager");
+    const rows = [
+      { kind: "staff", id: "RC-4471", name: "Kavitha Raman · F&B", active: true },
+      { kind: "staff", id: "RC-9000", name: "Left Last Week", active: false },
+    ];
+    serve({ "GET /api/v1/payers": () => json(rows) });
+    await S().loadPayers();
+    expect(S().payers).toEqual(rows);
+    // A read, not a write: no toast of its own and nothing refetched behind it.
+    expect(calls()).toHaveLength(1);
+    expect(S().toast).toBeNull();
+  });
+
+  it("repeats the server's refusal and leaves both registers exactly as they were", async () => {
+    as("manager");
+    const before = STAFF.map((x) => x.id);
+    serve({ "POST /api/v1/payers": () => refusal("RC-4471 is already on the staff member roster") });
+    expect(await S().addPayer({ kind: "staff", id: "RC-4471", name: "Someone Else" })).toBe(false);
+    expect(calls()).toHaveLength(1);            // nothing was read back
+    expect(STAFF.map((x) => x.id)).toEqual(before);
+    expect(S().payers).toEqual([]);
+    expect(S().toast).toBe("RC-4471 is already on the staff member roster");
   });
 });

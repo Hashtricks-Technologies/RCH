@@ -1,4 +1,4 @@
-import type { Bill, Item, Location, User, UserMin } from "@rch/contract";
+import type { Bill, Item, Location, PayerKind, User, UserMin } from "@rch/contract";
 import type { billLines, bills, items, locations, users } from "../db/schema/index.js";
 import { iso } from "./time.js";
 
@@ -39,3 +39,9 @@ export const toWireBill = (b: BillRow, lines: BillLineRow[], operator: { name: s
   lines: lines.map((l) => ({ it: l.itemKey, qty: l.qty, rate: l.rate })),
   payer: b.payerKind ? { kind: b.payerKind, id: b.payerId ?? "", name: b.payerName ?? "" } : undefined,
 });
+
+/** What the operator calls each kind of payer. One list, so the sentence the till says when the
+ *  roster has never heard of a payer and the sentence the roster itself says when the manager
+ *  patches one that is not there use the same word. Two modules read it — `pos` at the till and
+ *  `payers` at the register — which is why it sits here rather than in either of them. */
+export const PAYER_LABEL: Record<PayerKind, string> = { patient: "patient", staff: "staff member", dept: "department" };

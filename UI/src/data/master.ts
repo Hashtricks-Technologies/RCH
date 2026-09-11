@@ -54,14 +54,23 @@ const replaceKeys = <T extends object>(target: T, next: T) => {
  *  and `catalogVersion` in the store is what tells React the lists changed. */
 export function hydrateItems(items: MasterData["items"]): void { replaceKeys(IT, items); }
 
+/** Just the two price lists, for a write that moved one (`PUT /prices/:list/:it` names "prices").
+ *  Both lists are replaced together because the server answers with both. */
+export function hydratePrices(prices: MasterData["prices"]): void {
+  replaceKeys(PL.A, prices.A);
+  replaceKeys(PL.B, prices.B);
+}
+
+/** Just the menus, for a write that listed or delisted a product (`changed: ["menu"]`). */
+export function hydrateMenus(menu: MasterData["menu"]): void { replaceKeys(MENU, menu); }
+
 /** Replace every registry's contents with the server's master data (`applySnapshot` calls this). */
 export function hydrateMaster(m: MasterData): void {
   replaceKeys(IT, m.items);
   replaceKeys(LOC, m.locations);
   replaceKeys(RCP, m.recipes);
-  replaceKeys(PL.A, m.prices.A);
-  replaceKeys(PL.B, m.prices.B);
-  replaceKeys(MENU, m.menu);
+  hydratePrices(m.prices);
+  hydrateMenus(m.menu);
   USERS.splice(0, USERS.length, ...m.users);
 }
 

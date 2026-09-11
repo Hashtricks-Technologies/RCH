@@ -1,13 +1,14 @@
 import { create } from "zustand";
 import { routes, StockLocSchema } from "@rch/contract";
-import { ApiError, call } from "../api/client";
+import { ApiError, call, closeSessionChannel } from "../api/client";
 import { getAccessToken, onSessionLost, setAccessToken } from "../api/session";
 import { refetch } from "../api/refetch";
 import { applySnapshot } from "../api/wire";
 import { LOC } from "../data/master";
 import type {
-  Batch, Bill, CreditResponse, DraftLine, DrawerState, Grn, LocKey, Payer, PordStatus, ProdOrder,
-  PurchaseOrder, Requisition, StockLedgerRow, StockLoc, StockRequest, Tender, Ticket, User, Vendor,
+  Batch, Bill, CreditResponse, Dated, DatedDoc, DraftLine, DrawerState, Grn, LocKey, Payer,
+  PordStatus, ProdOrder, PurchaseOrder, Requisition, StockLedgerRow, StockLoc, StockRequest,
+  Tender, Ticket, Trailed, User, Vendor,
 } from "../types";
 import { applyTheme, nextTheme, readStoredTheme, storeTheme, type ThemePref } from "../lib/theme";
 import { createProcurementSlice, type ProcurementSlice } from "./procurement";
@@ -29,14 +30,16 @@ export interface AppState extends ProcurementSlice, OpsSlice {
   ovr: Record<string, string>;
   prices: Record<"A" | "B", Record<string, number>>;
   menu: Record<string, string[]>;
-  req: StockRequest[];
-  tkt: Ticket[];
-  prq: Requisition[];
-  po: PurchaseOrder[];
-  pord: ProdOrder[];
+  /** Every document keeps the instant it happened at (`iso`) beside the "HH:MM" it is printed
+   *  as — see `Dated` in `types.ts`. A ticket has no `at` of its own; only its trail is dated. */
+  req: DatedDoc<StockRequest>[];
+  tkt: Trailed<Ticket>[];
+  prq: DatedDoc<Requisition>[];
+  po: DatedDoc<PurchaseOrder>[];
+  pord: DatedDoc<ProdOrder>[];
   batch: Batch[];
-  bills: Bill[];
-  grn: Grn[];
+  bills: Dated<Bill>[];
+  grn: Dated<Grn>[];
   vendors: Vendor[];
   sales: number[][];
   dayLabels: string[];
@@ -66,7 +69,10 @@ export interface AppState extends ProcurementSlice, OpsSlice {
 
   addToCart: (loc: LocKey, it: string, d?: number) => void;
   clearCart: (loc: LocKey) => void;
-  pay: (loc: LocKey, tender: Tender, payer?: Payer) => Promise<void>;
+  /** `true` only once the bill is on the server. A credit-cap refusal must leave the payer and
+   *  the tender exactly where the operator put them — the cart is still full, and clearing the
+   *  form behind a refusal is how the same bill gets rung up twice. */
+  pay: (loc: LocKey, tender: Tender, payer?: Payer) => Promise<boolean>;
 
   toggleAvail: (loc: LocKey, it: string) => Promise<void>;
 
@@ -101,9 +107,12 @@ export interface AppState extends ProcurementSlice, OpsSlice {
   makeProduct: (it: string, started: number, made?: number, note?: string) => Promise<boolean>;
   distribute: (it: string, n: number, to: LocKey) => Promise<boolean>;
 
-  savePrice: (list: "A" | "B", it: string, price: number) => Promise<void>;
-  removeProduct: (loc: LocKey, it: string) => Promise<void>;
-  addProduct: (loc: LocKey, it: string) => Promise<void>;
+  /** The three catalogue writes answer `true` only once the server has taken them, for the same
+   *  reason every other form-carrying action does: an MRP refusal must leave the price the
+   *  manager typed in the box, not drop it and show the old one back. */
+  savePrice: (list: "A" | "B", it: string, price: number) => Promise<boolean>;
+  removeProduct: (loc: LocKey, it: string) => Promise<boolean>;
+  addProduct: (loc: LocKey, it: string) => Promise<boolean>;
   /** The central store's ledger over a window, from the server's own sum of `stock_moves`.
    *  Answers `null` and toasts when the read fails — never `[]`, which is a real answer meaning
    *  the location carries no line — so the report can say which of the two happened rather than
@@ -182,7 +191,12 @@ export const useApp = create<AppState>((set, get) => ({
     }
   },
   loadSnapshot: async () => {
-    set({ auth: "loading" });
+    // The splash is the *first* boot and nothing else. A snapshot taken again — an SSE
+    // `resync`, a read-back with no narrow reader — has the last one still on screen behind
+    // it, and blanking the hospital to "Loading…" threw away whatever was being read, closed
+    // every open drawer and lost the operator their place. `LOC` empty is the one state where
+    // there is genuinely nothing to keep: no item master, no locations, no screen that renders.
+    if (Object.keys(LOC).length === 0) set({ auth: "loading" });
     try { applySnapshot(await call(routes.snapshot)); set({ auth: "ready" }); }
     catch (e) {
       // A 401 here has already signed the user out via onSessionLost; do not
@@ -206,6 +220,9 @@ export const useApp = create<AppState>((set, get) => ({
   logout: async () => {
     try { await call(routes.logout); } catch { /* the cookie is gone either way */ }
     setAccessToken(null);
+    // Stop listening for the other tabs' tokens. A terminal is shared: the next person at this
+    // keyboard must not be handed a session by a window somebody forgot to close.
+    closeSessionChannel();
     set({ user: null, auth: "signed-out", drawer: null, mustChangePassword: false });
   },
   changePassword: async (current, next) => {
@@ -259,14 +276,16 @@ export const useApp = create<AppState>((set, get) => ({
     const s = get();
     const cart = s.cart[loc] ?? {};
     const lines = Object.entries(cart).map(([it, qty]) => ({ it, qty }));
-    if (!lines.length || !s.user) return;
+    if (!lines.length || !s.user) return false;
     try {
       const r = await call(routes.pay, { body: { loc, tender, payer, lines } });
       set((x) => ({ cart: { ...x.cart, [loc]: {} } }));
       get().notify(r.message);
       await refetch(r.changed, r.message);
+      return true;
     } catch (e) {
       get().notify(e instanceof ApiError ? e.message : "Could not take the bill — check the connection and try again.");
+      return false;
     }
   },
 
@@ -474,8 +493,10 @@ export const useApp = create<AppState>((set, get) => ({
       const r = await call(routes.savePrice, { params: { list, it }, body: { price } });
       get().notify(r.message);
       await refetch(r.changed, r.message);
+      return true;
     } catch (e) {
       get().notify(e instanceof ApiError ? e.message : "Could not save the price — check the connection and try again.");
+      return false;
     }
   },
   removeProduct: async (loc, it) => {
@@ -483,8 +504,10 @@ export const useApp = create<AppState>((set, get) => ({
       const r = await call(routes.removeMenuItem, { params: { loc, it } });
       get().notify(r.message);
       await refetch(r.changed, r.message);
+      return true;
     } catch (e) {
       get().notify(e instanceof ApiError ? e.message : "Could not take the product off the menu — check the connection and try again.");
+      return false;
     }
   },
   addProduct: async (loc, it) => {
@@ -492,8 +515,10 @@ export const useApp = create<AppState>((set, get) => ({
       const r = await call(routes.addMenuItem, { params: { loc }, body: { it } });
       get().notify(r.message);
       await refetch(r.changed, r.message);
+      return true;
     } catch (e) {
       get().notify(e instanceof ApiError ? e.message : "Could not add the product to the menu — check the connection and try again.");
+      return false;
     }
   },
   /**

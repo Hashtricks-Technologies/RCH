@@ -125,4 +125,12 @@ export const payers = pgTable("payers", {
   id: text("id").notNull(),
   name: text("name").notNull(),
   active: boolean("active").notNull().default(true),
+  // ---- payers ----
+  // The roster is written by people now, not only by the seed, so it carries the same two
+  // stamps every other master table does: when the account was opened, and when it was last
+  // renamed or switched off. Neither reaches the wire — `PayerRecordSchema` is the four fields
+  // the register shows — but an administrator asking "when was this closed?" has to have
+  // somewhere to look, and a CSV import that ran twice has to be tellable from one that did not.
+  createdAt: ts("created_at").notNull().defaultNow(),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
 }, (t) => [primaryKey({ columns: [t.kind, t.id] })]);

@@ -16,7 +16,7 @@ import { screens as buyer } from "../roles/buyer";
 import { groupPool, picksFor, type PoolGroup } from "../roles/buyer/ProcurementList";
 import { USERS, seedVendors } from "@rch/contract/fixtures";
 import type { PoolLine } from "../lib/selectors";
-import type { Role, Ticket } from "../types";
+import type { Role, Ticket, Trailed } from "../types";
 import { as, resetStore } from "./fixture";
 
 // Nothing in production code carries data any more: the registries are empty until a snapshot
@@ -112,7 +112,8 @@ describe("drawers render", () => {
       as("prod");
       useApp.setState({ tkt: [{
         id: "TKT-0905", req: "PRD-2026-029", from: "kitchen", to: "kiosk",
-        lines: [{ it: "puff", qty: 12 }], st: "Issued", otp: "", hist: [{ s: "Issued", who: "Vinoth Prakash", t: "10:12" }],
+        lines: [{ it: "puff", qty: 12 }], st: "Issued", otp: "",
+        hist: [{ s: "Issued", who: "Vinoth Prakash", t: "10:12", iso: "2026-09-04T04:42:00.000Z" }],
       }] });
     });
     const html = render(createElement(DRAWERS.ptkt, { id: "TKT-0905" }));
@@ -269,9 +270,9 @@ describe("the kitchen order board", () => {
     act(() => {
       as("prod");
       useApp.setState({
-        pord: [{ id: "PRD-2026-029", from: "kiosk", by: "Ramesh Kumar", at: "07:10",
+        pord: [{ id: "PRD-2026-029", from: "kiosk", by: "Ramesh Kumar", at: "07:10", iso: "2026-09-04T01:40:00.000Z",
           lines: [{ it: "puff", qty: 40 }], st: "Dispatched", note: "",
-          hist: [{ s: "New", who: "Ramesh Kumar", t: "07:10" }] }],
+          hist: [{ s: "New", who: "Ramesh Kumar", t: "07:10", iso: "2026-09-04T01:40:00.000Z" }] }],
         tkt: [
           { id: "TKT-0801", req: "PRD-2026-029", from: "kitchen", to: "kiosk", lines: [{ it: "puff", qty: 40 }], st: "Cancelled", otp: "", hist: [] },
           { id: "TKT-0802", req: "PRD-2026-029", from: "kitchen", to: "kiosk", lines: [{ it: "puff", qty: 40 }], st: "Issued", otp: "", hist: [] },
@@ -291,7 +292,7 @@ describe("the kitchen order board", () => {
  * screens used to get wrong in opposite directions.
  */
 describe("the collection OTP reaches the collector's screen and no other", () => {
-  const tkt = (over: Partial<Ticket>): Ticket => ({
+  const tkt = (over: Partial<Trailed<Ticket>>): Trailed<Ticket> => ({
     id: "TKT-0900", req: "PRD-2026-029", from: "store", to: "kitchen",
     lines: [{ it: "milk", qty: 6 }], st: "Issued", otp: "246810", hist: [], ...over,
   });
@@ -345,15 +346,15 @@ describe("the collection OTP reaches the collector's screen and no other", () =>
 /** The counter's own ticket drawer opens on both directions, and almost every sentence on it
  *  turns on which one — including whether a receipt may be confirmed at all. */
 describe("the counter's ticket drawer reads its own direction", () => {
-  const open = (t: Ticket) => {
+  const open = (t: Trailed<Ticket>) => {
     act(() => { as("counter"); useApp.setState({ tkt: [t] }); });
     return render(createElement(DRAWERS.ctkt, { id: t.id }));
   };
-  const inbound = (over: Partial<Ticket> = {}): Ticket => ({
+  const inbound = (over: Partial<Trailed<Ticket>> = {}): Trailed<Ticket> => ({
     id: "TKT-0910", req: "REQ-2026-0909", from: "store", to: "coffee",
     lines: [{ it: "milk", qty: 6 }], st: "Issued", otp: "135791", hist: [], ...over,
   });
-  const sent = (over: Partial<Ticket> = {}): Ticket =>
+  const sent = (over: Partial<Trailed<Ticket>> = {}): Trailed<Ticket> =>
     inbound({ id: "TKT-0911", from: "coffee", to: "kiosk", req: "Shop transfer", otp: "", ...over });
 
   it("tells the collector to read the digits out, on a ticket it is waiting to collect", () => {

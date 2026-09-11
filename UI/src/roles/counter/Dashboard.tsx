@@ -2,7 +2,7 @@ import { useNavigate } from "react-router-dom";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
 import { availOf, menuOf } from "../../lib/selectors";
-import { money, money0, sum, unitTotal } from "../../lib/fmt";
+import { isToday, money, money0, sum, unitTotal } from "../../lib/fmt";
 import {
   Alert, Avatar, Btn, Card, DataTable, Feed, Grid, Kpis, PageHead, StatusPill,
 } from "../../ui/kit";
@@ -10,9 +10,6 @@ import { settlementOf } from "./status";
 import type { ReqStatus } from "../../types";
 
 const SETTLED: ReqStatus[] = ["Closed", "Cancelled", "Rejected", "Received"];
-/** The float handed to the operator at the start of Shift 2, before a single bill is
- *  raised. It is the only figure on this card that is not derived from a bill. */
-const OPENING_FLOAT = 2000;
 
 export default function Dashboard() {
   const s = useApp();
@@ -21,7 +18,14 @@ export default function Dashboard() {
   const loc = user.loc;
   const L = LOC[loc];
 
-  const mine = s.bills.filter((b) => b.loc === loc);
+  // Every figure on this page is labelled "today", and `GET /bills` answers with seven days of
+  // them. Until this filter existed the word was simply untrue: a Monday-morning shift opened
+  // showing the previous week's takings. `isToday` reads the instant the store kept beside the
+  // printed time, and the day it compares against is the hospital's, not the terminal's.
+  const mine = s.bills.filter((b) => b.loc === loc && isToday(b.iso));
+  // `?? ""` rather than a bare compare: a row that reaches the store without an instant should
+  // sort to the bottom, not throw the whole dashboard into the error boundary.
+  const latest = mine.slice().sort((a, b) => (b.iso ?? "").localeCompare(a.iso ?? ""));
   const billed = sum(mine, (b) => b.tot);
   const itemsSold = sum(mine, (b) => sum(b.lines, (l) => l.qty));
   const avgBill = mine.length ? billed / mine.length : 0;
@@ -34,13 +38,14 @@ export default function Dashboard() {
   const cashTaken = sum(cashBills, (b) => b.tot);
   const banked = sum(bankBills, (b) => b.tot);
   const charged = sum(acctBills, (b) => b.tot);
-  const drawer = OPENING_FLOAT + cashTaken;
 
   const menu = menuOf(s, loc);
   const off = menu
     .map((it) => ({ it, a: availOf(s, loc, it) }))
     .filter((r) => !r.a.ok);
 
+  // Requests are not a "today" figure — an ask raised on Friday is still open on Monday — so
+  // the whole list stands. Only the order is by instant, newest first.
   const myReq = s.req.filter((r) => r.from === loc);
   const openReq = myReq.filter((r) => !SETTLED.includes(r.st));
   const rejected = myReq.filter((r) => r.st === "Rejected");
@@ -54,7 +59,9 @@ export default function Dashboard() {
   const shortLines = myReq.flatMap((r) =>
     r.lines.filter((l) => (l.short ?? 0) > 0).map((l) => ({ it: l.it, qty: l.short ?? 0 })));
   const shortReqs = myReq.filter((r) => r.lines.some((l) => (l.short ?? 0) > 0)).length;
-  const recentReq = myReq.slice().reverse().slice(0, 5);
+  // `myReq` is unfiltered — a request from any day is still this counter's to chase — so this
+  // is the one sort here that can meet an older document. Undated sorts last rather than throwing.
+  const recentReq = myReq.slice().sort((a, b) => (b.iso ?? "").localeCompare(a.iso ?? "")).slice(0, 5);
 
   const rev: Record<string, { qty: number; amt: number }> = {};
   mine.forEach((b) => b.lines.forEach((l) => {
@@ -63,7 +70,7 @@ export default function Dashboard() {
   }));
   const top = Object.entries(rev).sort((a, b) => b[1].amt - a[1].amt).slice(0, 5);
 
-  const feed = mine.slice(0, 5).map((b) => ({
+  const feed = latest.slice(0, 5).map((b) => ({
     key: b.no,
     title: <>{b.no} · {money(b.tot)}</>,
     body: <>{sum(b.lines, (l) => l.qty)} items · {b.pay}</>,
@@ -76,7 +83,7 @@ export default function Dashboard() {
       <PageHead
         crumbs={["Royal Care", L.n, "Dashboard"]}
         title={`${L.n} counter`}
-        sub={`${L.c} · ${L.floor} · price list ${L.list ?? "—"} · figures are for today's shift at this counter only`}
+        sub={`${L.c} · ${L.floor} · price list ${L.list ?? "—"} · figures are for today at this counter only`}
         actions={<>
           <Btn variant="gh" onClick={() => nav("/requests")}>Raise a request</Btn>
           <Btn onClick={() => nav("/pos")}>Open till</Btn>
@@ -85,8 +92,8 @@ export default function Dashboard() {
 
       <Kpis items={[
         { l: "Billed today", v: money0(billed), d: <>{L.n} · every tender</> },
-        { l: "Cash in drawer", v: money0(drawer), d: <>float {money0(OPENING_FLOAT)} + {money0(cashTaken)} cash</> },
-        { l: "Bills raised", v: String(mine.length), d: <>last bill {mine[0]?.t ?? "—"}</> },
+        { l: "Cash taken today", v: money0(cashTaken), d: <>{cashBills.length} of {mine.length} bill{mine.length === 1 ? "" : "s"}</> },
+        { l: "Bills raised", v: String(mine.length), d: <>last bill {latest[0]?.t ?? "—"}</> },
         { l: "Items sold", v: String(itemsSold), d: <>across {menu.length} listed products</> },
         { l: "Average bill", v: money0(avgBill), d: <>{mine.length ? money(avgBill) : "no bills yet"}</> },
         { l: "Products switched off", v: String(off.length), d: <>of {menu.length} on this menu</> },
@@ -119,11 +126,13 @@ export default function Dashboard() {
       <div className="mtop" />
       <Card
         title="Stock requests from this counter"
-        sub={`Everything ${L.n} has asked the central store for today`}
+        sub={`Everything ${L.n} has asked the central store for`}
         right={<Btn variant="gh" size="sm" onClick={() => nav("/requests")}>All requests</Btn>}
       >
         <Kpis items={[
-          { l: "Raised today", v: String(myReq.length), d: <>{openReq.length} still open</> },
+          // Not "today": a request raised on Friday is still open on Monday and is still this
+          // counter's to chase, so the whole list is counted rather than one day of it.
+          { l: "Requests raised", v: String(myReq.length), d: <>{openReq.length} still open</> },
           { l: "With the outlet manager", v: String(withManager.length), d: <>awaiting approval</> },
           { l: "Approved, no ticket yet", v: String(awaitingTicket.length), d: <>waiting on the store keeper</> },
           { l: "Tickets to collect", v: String(waiting.length), d: <>stock reserved at the store</> },
@@ -191,7 +200,7 @@ export default function Dashboard() {
               }))}
               empty={{
                 title: "Nothing billed at this counter yet",
-                sub: "Open the till — the first bill of the shift starts this table.",
+                sub: "Open the till — the first bill of the day starts this table.",
                 action: <Btn size="sm" onClick={() => nav("/pos")}>Open till</Btn>,
               }}
             />
@@ -199,12 +208,17 @@ export default function Dashboard() {
           <div className="mtop" />
           <Card title="Last five bills" sub="this counter" right={<Btn variant="gh" size="sm" onClick={() => nav("/bills")}>All bills</Btn>}>
             {feed.length ? <Feed items={feed} /> : (
-              <p className="mini">Nothing billed yet. The first bill of the shift will appear here.</p>
+              <p className="mini">Nothing billed today. The first bill will appear here.</p>
             )}
           </Card>
         </div>
 
-        <Card title="Your shift" sub={`Shift 2 · ${L.floor}`}>
+        {/* This was "Your shift", and it printed a Shift 2, its hours and a ₹2,000 opening
+            float — none of which the system knows: shifts and float declarations were declined
+            for this release, so every one of those figures was invented at render time and the
+            drawer total built on top of them was wrong by whatever the real float was. What is
+            left is what the bills actually say. */}
+        <Card title="Today at this counter" sub={L.floor}>
           <div style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 14 }}>
             <Avatar name={user.n} color={user.col} size={44} />
             <div>
@@ -214,15 +228,12 @@ export default function Dashboard() {
           </div>
           <dl className="dl">
             <dt>Outlet</dt><dd>{L.n} <span className="mini">({L.c})</span></dd>
-            <dt>Shift</dt><dd>Shift 2 · 14:00 – 22:00</dd>
             <dt>Terminal</dt><dd className="mono">{L.c}</dd>
             <dt>Cost centre</dt><dd className="mono">{L.cc}</dd>
-            <dt>Opening float</dt><dd className="mono">{money(OPENING_FLOAT)}</dd>
             <dt>Cash bills</dt>
             <dd className="mono">
               {money(cashTaken)} <span className="mini">({cashBills.length} of {mine.length})</span>
             </dd>
-            <dt>Cash in drawer</dt><dd className="mono"><b>{money(drawer)}</b></dd>
             <dt>Card &amp; UPI</dt>
             <dd className="mono">
               {money(banked)} <span className="mini">({bankBills.length} bill{bankBills.length === 1 ? "" : "s"})</span>
@@ -234,11 +245,10 @@ export default function Dashboard() {
             <dt>Total billed</dt><dd className="mono"><b>{money(billed)}</b></dd>
           </dl>
           <p className="mini mtop">
-            The <b>opening float</b> is the {money0(OPENING_FLOAT)} handed to you at the start of Shift 2, so cash in
-            drawer = {money0(OPENING_FLOAT)} float + {money(cashTaken)} taken in cash = <b>{money(drawer)}</b> to count
-            out at the end. Card and UPI are taken at the till but settle to the hospital account; patient, staff and
-            department bills collect nothing at all. Neither belongs in the drawer, which is why{" "}
-            <b>total billed {money(billed)}</b> and the drawer figure differ.
+            <b>Cash taken {money(cashTaken)}</b> is what the till has collected in notes today — add whatever float you
+            were handed to get what should be counted out. Card and UPI are taken here but settle to the hospital
+            account; patient, staff and department bills collect nothing at the counter at all. Neither is cash, which
+            is why <b>total billed {money(billed)}</b> is the larger figure.
           </p>
         </Card>
       </Grid>

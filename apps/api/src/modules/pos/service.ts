@@ -13,15 +13,11 @@ import { lockBalances, postMoves } from "../../lib/ledger.js";
 import { loadMaster } from "../../lib/master.js";
 import { reservedAt } from "../../lib/reservations.js";
 import { assertRule } from "../../lib/rules.js";
-import { toWireBill } from "../../lib/wire.js";
+import { PAYER_LABEL, toWireBill } from "../../lib/wire.js";
 import type { AccessClaims } from "../../plugins/auth.js";
 import { posRepo } from "./repo.js";
 
 export type PayBody = z.infer<typeof PayBodySchema>;
-
-/** What the operator calls each kind of payer. One list, so the sentence that asks for a payer
- *  and the sentence that says the roster has never heard of one use the same word. */
-const PAYER_LABEL: Record<PayerKind, string> = { patient: "patient", staff: "staff member", dept: "department" };
 
 /** A tender that is not money changing hands has to name whose account it lands on: the word
  *  the operator reads, and the kind of payer that word means. One table for both, because a
