@@ -16,6 +16,12 @@ spec:
       # group/world mode on /etc/nginx/conf.d fails envsubst with "not
       # writable" and nginx ends up with no server block).
       securityContext: { runAsNonRoot: true, runAsUser: 101, fsGroup: 101, seccompProfile: { type: RuntimeDefault } }
+      {{- with .Values.ui.nodeSelector }}
+      # values-prod.yaml pins production to the on-demand ng-prod node group
+      # (deploy/eksctl/cluster.yaml). Unset everywhere else, which is how dev and staging
+      # keep landing on the one spot node.
+      nodeSelector: {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         - name: ui
           image: {{ include "rch.image" (dict "registry" .Values.image.registry "name" .Values.image.ui "tag" .Values.image.tag) }}

@@ -105,6 +105,10 @@ grep -q 'alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:x' <<<"$out_tls"
 grep -q 'name: DB_POOL_MAX' <<<"$out"
 # Three replicas that land on one node make the PodDisruptionBudget decorative.
 grep -q 'topologySpreadConstraints' <<<"$out"
+# ...and so is the spread itself unless production's pods can only land on ng-prod, the
+# on-demand node group (deploy/eksctl/cluster.yaml). Both Deployments must carry the selector;
+# the group is deliberately untainted, so the label is the whole mechanism.
+[ "$(grep -c 'rch.io/tier: prod' <<<"$out")" = 2 ]
 # Production resources must be its own, not staging's inherited defaults. `-A6` never reaches
 # `resources:` (the api container is `- name: api` and resources is nine lines below it), which
 # is why the file's existing tests use a sed range — copy that shape, not a fixed window.
@@ -139,6 +143,10 @@ grep -q 'alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:y' <<<"$out_stag
 # The pool size is an env knob now, not a literal in db/client.ts. Both files set it, and the
 # api container reads it — a rendered pod without it is one silently back on the code's default.
 grep -q 'name: DB_POOL_MAX' <<<"$out"
+
+# ng-prod is production's alone: staging sets no nodeSelector, so its pods keep landing on the
+# spot node they share with dev, and `with` must render nothing rather than an empty map.
+refute grep -q 'nodeSelector' <<<"$out"
 
 # The UI's nginx proxies /api to the API Service by its FULL cluster name (nginx's resolver
 # ignores search domains; a short name 502s inside the cluster — found by the Phase 6 smoke).

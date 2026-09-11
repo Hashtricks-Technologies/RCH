@@ -1,14 +1,33 @@
-# The RCH cluster, as eksctl builds it. One cluster serves both environments as namespaces
-# (`rch-staging`, `rch` — see the branch table in CLAUDE.md). It lives in the account's default
-# VPC on its three public subnets (tagged kubernetes.io/role/elb=1 for the load balancer
-# controller), so the RDS instances in the same VPC are reachable without peering or a NAT.
+# The RCH cluster, as eksctl builds it.
+#
+# WHAT THIS FILE IS THE SOURCE OF TRUTH FOR — and nothing else is:
+#   * the EKS cluster itself (name, region, version, the VPC and subnets it runs in, OIDC)
+#   * every managed node group: instance types, capacity type, sizes, labels, taints, volumes
+#   * every EKS add-on
+# The cluster was created with `eksctl create cluster -f` (RUNBOOK §15.1) and is still managed
+# that way. CloudFormation did not replace it.
+#
+# WHAT MOVED TO CLOUDFORMATION (deploy/cfn/rch-env.yaml, one stack per environment) — do not
+# add any of it here:
+#   * RDS: the instance, its parameter group, subnet group and security group
+#   * both ECR repositories and their lifecycle policies
+#   * the GitHub Actions OIDC provider and the rch-github-deploy role
+#   * Secrets Manager, ACM, Route 53 records, the uptime health check, SNS, the ALB log bucket
+# RUNBOOK §15.5 says "environment resources are CloudFormation now" and means exactly that list.
+# The cluster is not an environment resource: one cluster serves every environment as a
+# namespace (`rch-dev`, `rch-staging`, `rch` — see the branch table in CLAUDE.md).
+#
+# WHAT IS MANAGED BY NEITHER, and is a Helm install of its own (RUNBOOK §15.1): the AWS Load
+# Balancer Controller and its IRSA service account.
+#
+# It lives in the account's default VPC on its three public subnets (tagged
+# kubernetes.io/role/elb=1 for the load balancer controller), so the RDS instances in the same
+# VPC are reachable without peering or a NAT.
 #
 #   eksctl create cluster -f deploy/eksctl/cluster.yaml      # first time
 #   eksctl create nodegroup -f deploy/eksctl/cluster.yaml    # nodegroup changes
+#   eksctl create addon -f deploy/eksctl/cluster.yaml        # add-on changes
 #   eksctl utils associate-iam-oidc-provider -f deploy/eksctl/cluster.yaml --approve
-#
-# Everything else the environment needs (RDS, ECR, the deploy role, secrets, the certificate and
-# DNS) is deploy/cfn/rch-env.yaml, one CloudFormation stack per environment.
 apiVersion: eksctl.io/v1alpha5
 kind: ClusterConfig
 metadata:
@@ -32,10 +51,26 @@ addons:
   - name: vpc-cni
   - name: coredns
   - name: kube-proxy
+  # metrics-server is not optional here even though nothing says so out loud: values-prod.yaml
+  # turns on a HorizontalPodAutoscaler (api.hpa, 3→6 replicas on 70% CPU), and an HPA with no
+  # metrics API to read reports `<unknown>/70%` and never scales at all. `kubectl top` is the
+  # other half of the same gap — RUNBOOK's first post-deploy checks cannot see a pod's CPU
+  # without it.
+  - name: metrics-server
+  # Container Insights: node, pod and container metrics plus container logs into CloudWatch.
+  # The PrometheusRule the chart ships alerts on what the API says about itself; this is the
+  # layer underneath — a node running out of memory, a pod being OOMKilled, the logs of a pod
+  # that has already been replaced. The agent needs to write to CloudWatch, hence the policy.
+  - name: amazon-cloudwatch-observability
+    attachPolicyARNs:
+      - arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy
 managedNodeGroups:
   # Dev runs on ONE spot node: a t3.medium (4 GiB) holds the controller, CoreDNS, one API pod and
   # one UI pod with room to spare, and spot is ~70% off on-demand. A spot reclaim (two minutes'
-  # notice) means a short outage in dev, which is the trade. Production gets an on-demand group.
+  # notice) means a short outage in dev, which is the trade. dev and staging share this group;
+  # neither values-dev.yaml nor values-staging.yaml sets a nodeSelector, so their pods land
+  # wherever there is room — including on ng-prod once it exists, which is fine, because it is
+  # the production pods that must not land HERE, not the other way round.
   - name: ng-spot
     instanceTypes: [t3.medium, t3a.medium]
     spot: true
@@ -45,3 +80,36 @@ managedNodeGroups:
     volumeSize: 40
     volumeType: gp3
     tags: { app: rch, env: dev }
+
+  # CREATE THIS BEFORE THE FIRST PRODUCTION DEPLOY. It does not exist yet:
+  #
+  #   eksctl create nodegroup -f deploy/eksctl/cluster.yaml --include=ng-prod
+  #
+  # values-prod.yaml asks for three API replicas and three UI replicas, a PodDisruptionBudget of
+  # minAvailable 2, and a topology spread across zones. Every one of those promises is
+  # decorative on a single spot node: a reclaim takes the whole service, a drain cannot honour
+  # the budget because there is nowhere to move to, and three replicas in one zone are three
+  # replicas in one zone. Hence on-demand (a two-minute reclaim notice is not a thing to run a
+  # hospital's billing on), three nodes, and one per availability zone so the spread constraint
+  # has somewhere to spread to.
+  #
+  # No taint. The label is what keeps production's pods here — values-prod.yaml sets
+  # `api.nodeSelector` and `ui.nodeSelector` to rch.io/tier: prod — and a taint would additionally
+  # keep everything ELSE off, including the DaemonSets (vpc-cni, kube-proxy, the CloudWatch
+  # agent) that have to run on every node. A selector pins production in; a taint would have to
+  # be tolerated by things that know nothing about this application.
+  #
+  # maxSize 6 is what the HPA's maxReplicas would need room for. Nothing autoscales the node
+  # group itself — there is no Cluster Autoscaler or Karpenter on this cluster (RUNBOOK §15.6
+  # says why not at dev's scale) — so growing past 3 nodes is `eksctl scale nodegroup` by hand.
+  - name: ng-prod
+    instanceTypes: [t3.medium]
+    spot: false
+    desiredCapacity: 3
+    minSize: 3
+    maxSize: 6
+    availabilityZones: [ap-south-1a, ap-south-1b, ap-south-1c]
+    labels: { rch.io/tier: prod }
+    volumeSize: 40
+    volumeType: gp3
+    tags: { app: rch, env: prod }
