@@ -75,6 +75,20 @@ not a second copy of the rule. Session actions — `login`, `restore`, `loadSnap
 `Seq` (`store/index.ts`) is gone entirely — every document the server numbers is numbered there
 instead. There is nothing left to cut over: every mutation in the app is a server call.
 
+**Every buyer and store screen that shows what a vendor has delivered reads `netReceived(l)`, not
+`l.recv`** — `lib/selectors.ts` (`prqProgress`, `onOrder`), `roles/buyer/lib.ts`'s `reconcile`,
+`PoReceiptDrawer`, `PoDrawer`, `PurchaseOrders`, `buyer/Dashboard` and
+`store/RequisitionDetail`. `recv` stays the gross arrival record on the wire; the figure a buyer
+reasons about is what the shelf accepted, so Accepted + Balance = Ordered holds on every one of
+them. Two headers changed with the number under them, and no test or e2e selector pinned either:
+`PoDrawer`'s items column is **"Accepted"** and `PoReceiptDrawer`'s is **"Already accepted"** — a
+`0` under "Received" after a 120-unit delivery that was turned away reads as a bug, not a
+rejection. `PoDrawer`'s GRN table keeps its own "Received" header: it lists what each individual
+GRN row booked, which is a different figure. The one deliberate exception is `anyReceived`, which
+stays **gross**, mirroring the server's `cancel` guard — a delivery that arrived and was sent back
+still left GRN documents, a quarantine balance and a paper trail, so that order is closed short
+with a reason, never cancelled.
+
 One deletion is worth naming: `PoDrawer.tsx`'s effect that used to re-price every line when the
 vendor changed is gone, not awaited — both places that price a line (`createPo` drafting off
 the procurement list, and `PATCH /purchase-orders/:id` re-pricing when the vendor moves) are
@@ -100,7 +114,11 @@ try {
   server; an `ApiError`'s `message` is the refusal. The fallback string is only for a network
   failure, when there is no envelope to read.
 - **No rule is previewed as a decision.** `freeToPromise`, `availOf` and `priceOf` in
-  `lib/selectors.ts` are previews while the operator types; the refusal is the server's.
+  `lib/selectors.ts` are previews while the operator types; the refusal is the server's. Preview
+  with the server's own function where one exists rather than a lookalike: `lib/selectors.ts`
+  re-exports `netReceived` and `RECEIPT_TOLERANCE` beside `apportion`/`round3` for exactly that
+  reason, and `roles/buyer/PoReceiptDrawer.tsx`'s over-delivery warning now runs the same sum
+  `checkReceiptLine` does instead of its own `1.02` literal.
 - **Form-carrying actions return `Promise<boolean>`** and the screen `await`s them behind a
   `busy` flag, clearing the form only on `true` — so a refusal leaves what was typed on screen.
   `roles/counter/Pos.tsx` (single `busy`) and `roles/counter/Requests.tsx` (a keyed
@@ -110,6 +128,11 @@ try {
   `sendRequisition`, `approveRequisition`, `declineRequisition`, `updatePoLine`, `setPoEta`,
   `sendPo`, `cancelPo`, `receivePo`, `closePoShort`, `addVendor`, `updateVendor`,
   `requestNewProduct`, `answerProductRequest`, `addContract`, `updateContract`.
+  `cancelRequest` joined them in the audit fix wave — it returns `Promise<boolean>` now, not
+  `Promise<void>`, because `manager/ApprovalDrawer.tsx`'s **Withdraw approval** button needs the
+  same busy lock and close-on-success its `doApprove`/`doReject` siblings have, and must not close
+  the drawer over a refusal. Its two other screens (`counter/RequestDrawer.tsx`,
+  `prod/Requests.tsx`) ignore the return value, as they always did.
 - **Where the screen needs the id the server chose, the action answers `Promise<string | null>`
   instead** — `null` on a refusal, the same as `false`. `createPo` (the drawer needs the new
   draft's id to navigate to it) and `createItem` (the new-product drawers need the catalogue key
@@ -273,7 +296,11 @@ store's own `signIn` is gone, so this is the one sanctioned way a test signs som
   order's other doors (line edits, vendor and eta patches, send, cancel, receive, close-short),
   and vendors/contracts/new-product; Phase 6's own cover the support desk's four writes, the
   roster hydrating from `applySnapshot`, `readCredit`, and a stock-ledger read. The rules those
-  routes enforce belong to the API's own suites — do not re-assert them here.
+  routes enforce belong to the API's own suites — do not re-assert them here. **135 cases**, and
+  one of them is a known flake on a loaded host: `leaves the requisition card and its note alone
+  when procurement refuses it` polls (`settleUntil(() => S().toast !== null)`) and has gone red
+  once in a full-suite run sharing a machine with the API suite, passing in isolation every time.
+  A red on that name alone is timing, not a regression — re-run the file on its own first.
 - `events.test.ts` — frame parsing, the 250 ms debounce into `refetch`, `resync` forcing a full
   `loadSnapshot`, and the `live` / `reconnecting` / `off` state the pill reads.
 - `refusals.test.tsx` — where a refusal is shown: a refused sign-in and password change inline on

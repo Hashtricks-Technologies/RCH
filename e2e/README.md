@@ -67,7 +67,11 @@ another port, serve the built app (`pnpm --filter @rch/ui exec vite build`) behi
 your own — the browser has to reach the API **same-origin**, because the session is a cookie
 and `GET /api/v1/events` carries no CORS headers.
 
-`E2E_PASSWORD` overrides the seeded password (`changeme`).
+`E2E_PASSWORD` overrides the seeded password. `e2e/fixtures/roles.ts` reads `E2E_PASSWORD`, then
+`SEED_PASSWORD`, then falls back to the literal `changeme` — so a stack seeded with a real
+`SEED_PASSWORD` (which has been required, with no default, since the audit fix wave) needs one of
+the two variables set in the shell running the smoke. CI exports `SEED_PASSWORD` and lets the
+chart and the smoke read the one value.
 
 ## Running it in CI
 

@@ -9,11 +9,19 @@ this implements; this document is the "how to actually do it" companion.
 ```bash
 pnpm db:up                                    # postgres:17 in Docker, host port 5439 -> container 5432
 cp .env.example .env
+# then edit .env: SEED_PASSWORD= needs a value of your own, at least 12 characters
 pnpm --filter @rch/api keys:generate >> .env   # appends JWT_PRIVATE_KEY= / JWT_PUBLIC_KEY=
 pnpm --filter @rch/api db:migrate
 pnpm --filter @rch/api db:seed
 pnpm dev                                       # turbo run dev --parallel: api on :3000, UI on :5173
 ```
+
+**`SEED_PASSWORD` has no default any more** and `apps/api/src/config.ts` requires at least twelve
+characters, so a copied `.env.example` will not start the API, `pnpm test`, or any CLI until one
+is chosen — the failure is `Invalid environment:` naming the variable. That is deliberate: a
+published default password on a host anyone can reach is a real door, and a seed rewrites every
+seeded account's password. A database already seeded keeps whatever password it was seeded with;
+only a new seed uses the new value.
 
 Local Postgres listens on host port **5439**, not 5432 — a native PostgreSQL install commonly
 already owns 5432 on a dev machine. `docker-compose.yml` maps `5439:5432`; `.env.example`'s
@@ -29,10 +37,24 @@ Re-seeding an already-seeded database needs `--force`:
 pnpm --filter @rch/api db:seed --force
 ```
 
+Two more guards sit on the seed, and both key on `NODE_ENV`:
+
+```bash
+pnpm --filter @rch/api db:seed --allow-production               # required wherever NODE_ENV=production
+pnpm --filter @rch/api db:seed --force --allow-production --yes-destroy rch   # and --force there
+```
+
+`--yes-destroy <name>` must equal `select current_database()`; naming the wrong one (or nothing)
+exits 2 saying which was expected and which was given. **This is not only about a real hospital:
+the chart renders `NODE_ENV=production` into every pod**, so any in-cluster seed — dev, CI's kind
+cluster, staging — is the `--allow-production` form (§15.7, and `deploy/chart/rch/ci/
+install-test.sh`). Development and test are unchanged.
+
 ### Test users
 
-Seed password is `SEED_PASSWORD` from `.env` (dev default `changeme`). In staging/prod seeds,
-`SEED_FORCE_PASSWORD_CHANGE=true` forces a password change at first sign-in.
+Seed password is `SEED_PASSWORD` from `.env` — **required, at least twelve characters, no default**
+(see above). In staging/prod seeds, `SEED_FORCE_PASSWORD_CHANGE=true` forces a password change at
+first sign-in.
 
 | Employee id | Name | Role | Home location |
 |---|---|---|---|
@@ -54,6 +76,24 @@ in the cluster):
   the caller's IP.
 - `LOGIN_RATE_LIMIT_PER_EMP_PER_MINUTE` (default `5`) — `/auth/login` attempts per minute,
   keyed by the employee id being signed in as, independently of the per-IP limit above.
+
+  **Both budgets are per pod, not cluster-wide** — and neither line above said so until the audit
+  fix wave. `@fastify/rate-limit` keeps its window in the process's own memory, and so does the
+  per-employee gate, so the number an attacker actually gets is the configured one **times the
+  replica count**. `apps/api/src/modules/auth/service.ts` used to claim the per-IP limit was
+  effectively cluster-wide because the load balancer fronted it; that was wrong, and its comment
+  now says what is true. A shared store (Redis) is the fix if either ever has to be exact; none is
+  deployed and none is planned. Size the numbers against the replica count, not against one pod.
+
+  **The per-employee budget counts failures only, and is spent the moment an attempt starts.**
+  Five correct sign-ins in a minute lock nobody out — the slot is given back when the password
+  proves right. A wrong one keeps its slot for the window. The attempt is charged *before* the
+  password is verified, because Argon2 takes 50–100 ms and a budget charged afterwards let a
+  hundred simultaneous guesses at one id all reach the verifier. The consequence to know before
+  somebody reports it as a bug: a **sixth simultaneous** sign-in at one employee id is refused
+  whether the password is right or wrong, since the server cannot know which until it has
+  verified. Six tills signing in on the same id within the same second is the only way to see it,
+  and the answer is to wait a minute.
 - `TRUST_PROXY` (default `"1"`) — how many hops of `X-Forwarded-*` to trust when deriving the
   caller's IP (which both limits above key on). `"1"` trusts exactly the nearest hop — the ALB
   in the cluster, the Vite dev proxy locally — which is correct for both topologies as shipped.
@@ -65,6 +105,13 @@ in the cluster):
   rotates on every refresh regardless of this setting.
 - `COOKIE_SECURE` (default `true`; `.env.example` sets it `false` for local http) — whether the
   `rch_refresh` cookie requires HTTPS.
+- `SEED_PASSWORD` — **required**, minimum twelve characters, no default (above). In the cluster it
+  is a `secretKeyRef` like the JWT keys, never a plaintext `value:`.
+- `DATABASE_SSL` — **left unset it follows `NODE_ENV`**: TLS on in production, off everywhere
+  else. Setting it still wins in both directions (a staging pod pointed at a local proxy can turn
+  it off), and `.env.example` ships it commented out for exactly that reason. `db/client.ts`
+  strips any `sslmode`/`ssl*` parameter off `DATABASE_URL` first, so a connection string can never
+  quietly choose a different trust store than the RDS bundle.
 
 ### A sign-in that is refused
 
@@ -106,9 +153,29 @@ breaks the per-test-file schemas (`t_<file>`, via `search_path`) that `apps/api/
 creates for parallel test runs. Review the generated SQL in `apps/api/drizzle/`, then commit it
 — migrations are forward-only (§3) and reviewed like any other change.
 
+**Before the next `db:generate`, reconcile the snapshots.** `0007` and `0008` were written by
+hand, so `drizzle/meta/` still holds snapshots `0000`–`0006` only and the next generate will diff
+from `0006_snapshot.json` and try to re-emit everything those two already did. Once:
+
+```bash
+pnpm --filter @rch/api db:generate --name reconcile
+```
+
+then read the emitted `.sql`. It must be empty, or merely re-state what `0007`/`0008` already do —
+anything else means the schema files and the hand-written SQL have genuinely drifted, and that is
+the thing to fix first. When it is clean, **delete the emitted `.sql` and its `_journal.json`
+entry** and keep only the new snapshot, renamed to the latest idx. Nothing is applied to any
+database by this; it is bookkeeping so the *following* schema change generates a correct diff.
+
 `pnpm --filter @rch/api db:migrate` applies pending migrations; it is what the `migrate`
-initContainer on every api pod also runs (`dist/cli/migrate.mjs`) — see §2. Seven migrations
-exist as of Phase 6 (`apps/api/drizzle/0000`–`0006`): `0000` is the initial schema, `0001` adds
+initContainer on every api pod also runs (`dist/cli/migrate.mjs`) — see §2. It runs with **no
+statement timeout and no lock timeout** (`statementTimeoutMs: 0`, then `set lock_timeout = 0`
+before `pg_advisory_lock(727272)`), as do `db:seed`, `db:rebuild-balances` and the purge: waiting
+on that advisory lock behind another replica is the whole point of the initContainer, and the
+API's ordinary 15 s statement timeout was cancelling the wait mid-rollout, which presents as
+`Init:CrashLoopBackOff`.
+
+**Nine migrations exist** (`apps/api/drizzle/0000`–`0008`): `0000` is the initial schema, `0001` adds
 the unique index on `refresh_tokens.token_hash`, `0002` installs the append-only trigger on
 `stock_moves` (§7), `0003` adds `bills_staff_credit_idx` — a partial btree index on
 `bills (payer_kind, payer_id, at) where payer_kind = 'staff'`, so the staff-credit ceiling's
@@ -122,8 +189,55 @@ worth the extra write cost. `0004` adds the `payers` table (`kind`, `id`, `name`
 `pay` payer rule validates against, `0005` is `ALTER TYPE ticket_status ADD VALUE
 'Cancelled'` for Phase 4's `POST /tickets/:id/cancel`, and `0006` is
 `rate_contracts_live_uq`, Phase 5's partial unique index keeping one live rate contract per
-item. Phase 6 wrote no migration. A fresh `db:migrate` against an empty database reports all
-seven applied; against an already-current one it reports `migrations applied: 7 / 7`.
+item. Phase 6 wrote no migration. The audit fix wave wrote two: `0007_idempotency_committed_at`
+adds one nullable column, `idempotency_keys.committed_at`, which is what lets a claim say its
+write actually committed; `0008_integrity` adds the index and foreign key on `reservations`, the
+`tickets.otp_attempts` column and the `otp` type change with its digits check, eight more named
+CHECK constraints, and an append-only trigger on `document_history` (§7 below has the list). A fresh
+`db:migrate` against an empty database reports all nine applied; against an already-current one
+it reports `migrations applied: 9 / 9`, which is also what `/readyz` compares against.
+
+**`0008` validates existing rows, so on any database with data in it, probe before you migrate.**
+The five constraints that can be refused by rows already there, and what to do about each:
+
+```sql
+select * from stock_moves where qty = 0;                                          -- stock_moves_qty_ck
+select r.* from reservations r left join tickets t on t.id = r.ticket_id
+  where t.id is null;                                                             -- reservations_ticket_fk
+select * from tickets where from_loc = to_loc;                                    -- tickets_from_to_ck
+select * from po_lines where rejected_qty > received_qty or received_qty < 0;     -- po_lines_receipt_ck
+select * from batches where made_qty > started_qty or made_qty < 0;               -- batches_made_ck
+```
+
+Each should return nothing; every one of them describes a state no endpoint can produce. If one
+does return rows, the fix is a decision, not a delete. A zero-quantity `stock_moves` row is inert
+and can be deleted — but `stock_moves` is trigger-protected against DELETE (`0002`), so drop the
+trigger, delete, and re-create it from `0002`'s own SQL in one transaction. A `reservations` row
+pointing at a ticket that does not exist is a hold nothing can ever release: close it
+(`update reservations set released_at = now() where id = …`) and tell the location, because their
+free-to-promise is about to rise. A ticket from a location to itself, a `po_lines` row with more
+rejected than received, or a batch that yielded more than it started are each data that was never
+possible through the API — read `document_history` for the document first and correct it by hand
+with somebody watching. Run the probes on a restored copy if the production window is tight; they
+are plain reads and cost nothing.
+
+One more thing worth a look on the same pass, and it is not a `0008` constraint. Before the audit
+fix wave a purchase order reached `Received` on what **arrived**, so an order whose delivery was
+rejected in part or whole could be sitting at `Received` — which is terminal, closing both the
+close-short and the cancel doors — with the balance still genuinely owed:
+
+```sql
+select p.id, l.line_no, l.qty, l.received_qty, l.rejected_qty
+from purchase_orders p join po_lines l on l.po_id = p.id
+where p.status = 'Received' and l.rejected_qty > 0
+  and round(l.received_qty - l.rejected_qty, 3) < l.qty;
+```
+
+There is **no backfill migration** for this, on purpose: only a dev database could hold one, and
+dev is reseeded. If a real order ever does turn up, the correction is one statement —
+`update purchase_orders set status = 'Partially received' where id = '…';` — after which the
+buyer's own close-short door works again and hands the shortfall back to the requisition. Do it
+with the buyer watching, and write down why.
 
 ## 2. Deploy
 
@@ -365,7 +479,25 @@ go-live.
 `stock_balances` is a cache derived from the append-only `stock_moves` ledger. "Append-only" is
 enforced in the database, not just by convention: migration `0002` installs a trigger that
 refuses any `UPDATE` or `DELETE` on `stock_moves` (`TRUNCATE` is still allowed — the test
-harness and `db:seed --force` use it to reset between runs). There is no in-place correction of
+harness and `db:seed --force` use it to reset between runs). **`document_history` is protected the
+same way from migration `0008`** — `document_history_no_update_delete`, raising `document_history
+is append-only; append a correcting entry` — so the trail behind a document is as uneditable as
+the ledger behind a balance. Correct either by appending, never by an `UPDATE`; if a procedure
+somewhere in this document tells you to edit a history row, it is out of date and the database
+will say so.
+
+`0008` also writes eight CHECK constraints the services already enforced (`stock_moves_qty_ck`
+`qty <> 0`, `reservations_qty_ck` `> 0`, `batches_made_ck` `0 ≤ made ≤ started`,
+`po_lines_receipt_ck` `0 ≤ rejected ≤ received`, `requisition_lines_ordered_ck`
+`0 ≤ ordered ≤ approved`, `support_tickets_rating_ck`, `tickets_from_to_ck`,
+`sequences_next_ck`) plus `tickets_otp_digits_ck`. **`stock_balances.on_hand >= 0` is deliberately
+not one of them:** the friendly refusal an operator reads ("Only 2 nos of Mineral water 1L left at
+Coffee Shop") is produced by a re-read that runs *after* `postMoves` has already driven the
+balance down under the locks it holds, so a CHECK would fire first and turn every one of those
+sentences into a 500 with no words in it. The negative never survives — the same transaction rolls
+it back — and that is the guarantee, not the constraint.
+
+There is no in-place correction of
 a move; the schema already carries a `reverses_id` column and a `reversal` move kind
 (`apps/api/src/db/schema/ledger.ts`, `enums.ts`) for the day a correction posts a new move
 pointing back at the one it undoes, the same way a wrong ledger entry is corrected in
@@ -575,6 +707,31 @@ curl -sS -X POST "$API/tickets/TKT-0441/cancel" -H "Authorization: Bearer $TOKEN
   -H 'content-type: application/json' -H "Idempotency-Key: $(python3 -c 'import uuid;print(uuid.uuid4())')" \
   -d '{"reason":"Wrong item, request cancelled by phone"}'
 ```
+
+**"The collector has typed the code five times and now it will not take the right one."** That is
+working as intended, not a fault. A wrong OTP is counted on the ticket (`tickets.otp_attempts`,
+migration `0008`) and the sixth attempt is refused whatever is typed — the digits are what has
+been guessed at, so the correct one is refused too:
+
+```sql
+select id, status, otp_attempts from tickets where id = 'TKT-0441';
+```
+
+The refusal names both ways out, because the one a caller has depends on their role: the store
+keeper or the kitchen in-charge can hand it over with the **labelled supervisor override** (the
+OTP field left blank — recorded on the ticket's trail), and anyone who may cancel the ticket can
+**withdraw it and issue a new one**, which mints new digits. A counter operator has only the
+second. The count is never reset — not by a correct code, not by a cancellation — so a ticket
+that took four wrong codes carries them for its whole life; if that is the situation, reissue
+rather than spending the last attempt.
+
+**A request that should never have been approved** has its own door now, and it is not this one.
+An approved request the store has not yet ticketed can be withdrawn — by the counter or kitchen
+that raised it, or by the manager who approved it — with `POST /requests/:id/cancel`, no different
+from withdrawing one the manager had not yet seen. Nothing is reserved until a ticket is issued,
+so nothing moves and nothing is released; the trail reads `Cancelled — never issued`. Once a
+ticket exists the request itself is closed to it (`… already has ticket TKT-0441 — cancel the
+ticket instead`) and the ticket is what you withdraw, above.
 
 The manual SQL from Phases 1–3 still has exactly one live use: a ticket already `Collected`
 (stock in transit, both ends' figures already moved) has no cancel button and no endpoint —
@@ -845,8 +1002,9 @@ deploy workflow is inert without them.
 | Repository secret | `ECR_REGISTRY` | Passed as `--set image.registry`. |
 | Repository secret | `EKS_CLUSTER_STAGING` | |
 | Repository secret | `EKS_CLUSTER_PROD` | |
+| Repository secret | `SEED_PASSWORD` | **New, and blocking.** `deploy.yml` passes it as `--set-string secrets.values.SEED_PASSWORD`; `apps/api/src/config.ts` has no default for it, so an unset secret renders `SEED_PASSWORD: ""`, the api container refuses to start, and `--atomic` rolls the whole release back. At least twelve characters. Needed for **dev and staging** — both read repository/environment secrets — before the next push to either. |
 | `staging` environment | `DATABASE_URL`, `JWT_PRIVATE_KEY`, `JWT_PUBLIC_KEY` | Staging reads its secrets from the GitHub environment; production reads `rch/prod` out of AWS Secrets Manager through the `ClusterSecretStore`. |
-| AWS Secrets Manager `rch/prod` | `DATABASE_URL`, `JWT_PRIVATE_KEY`, `JWT_PUBLIC_KEY`, `JWT_PREVIOUS_PUBLIC_KEY` | The last may start empty. Mint the pair with `pnpm --filter @rch/api keys:generate`, which prints two `JWT_*=` lines and never writes them anywhere. |
+| AWS Secrets Manager `rch/prod` | `DATABASE_URL`, `JWT_PRIVATE_KEY`, `JWT_PUBLIC_KEY`, `JWT_PREVIOUS_PUBLIC_KEY`, **`SEED_PASSWORD`** | **Five keys now, not four.** `JWT_PREVIOUS_PUBLIC_KEY` may start empty; `SEED_PASSWORD` may not. The `ExternalSecret` uses `dataFrom: [{ extract: … }]`, which copies every key of the remote JSON — so there is no template entry to add, but a remote secret missing `SEED_PASSWORD` produces a pod that will not start. Mint the JWT pair with `pnpm --filter @rch/api keys:generate`, which prints two `JWT_*=` lines and never writes them anywhere. |
 
 **3. The promotion, in order, run by a person.**
 
@@ -887,6 +1045,17 @@ scoped to what a deploy needs, and needs no change.
    `ingress.certificateArn`, all tabulated with their line numbers under "The release, prepared
    and not performed" above. Render the chart with the values supplied on the command line
    before pushing anything.
+
+   **And, on the same pass, a pre-flight that is not about AWS at all: probe any database that
+   already holds data, before its first `db:migrate` on this build.** Migration `0008` adds
+   constraints that validate existing rows, so a database with history in it can *refuse* the
+   migration — and a refused migration is an initContainer that never completes, which reads as a
+   deploy that hangs rather than as bad data. §1's *Migration workflow* carries the five probe
+   queries (`stock_moves` with `qty = 0`; a `reservations` row whose `ticket_id` has no `tickets`
+   row; a ticket with `from_loc = to_loc`; `po_lines` with `rejected_qty > received_qty`;
+   `batches` with `made_qty > started_qty`) and what to do about each. They are plain reads — run
+   them against a restored copy if the window is tight. This applies to **dev too**, which has
+   real documents on it; a fresh staging or production database has nothing to reject.
 2. **Provision the RDS instance to spec §11.2's own settings**, before anything points at it:
    Multi-AZ, `db.t4g.medium` to start with storage autoscaling, automated backups retained 14
    days, point-in-time recovery, encryption at rest, deletion protection, in private subnets
@@ -899,8 +1068,10 @@ scoped to what a deploy needs, and needs no change.
    pnpm --filter @rch/api keys:generate
    ```
    Put both lines into the AWS Secrets Manager secret `rch/prod` as `JWT_PRIVATE_KEY` /
-   `JWT_PUBLIC_KEY`, alongside `DATABASE_URL` and an empty `JWT_PREVIOUS_PUBLIC_KEY` (§2's
-   "First-time cluster setup" names the same four keys and the `ClusterSecretStore` they need).
+   `JWT_PUBLIC_KEY`, alongside `DATABASE_URL`, an empty `JWT_PREVIOUS_PUBLIC_KEY`, and
+   **`SEED_PASSWORD`** — five keys (§2's "First-time cluster setup" and the secrets table above).
+   Choose the seed password here and never reuse it between environments: it is the password the
+   six seeded accounts start on, and step 4 deactivates all six anyway.
 4. **Create the real staff accounts, and deactivate every seeded one.**
    ```bash
    kubectl exec deploy/rch-api -n rch -- /nodejs/bin/node dist/cli/users.mjs create \
@@ -915,13 +1086,30 @@ scoped to what a deploy needs, and needs no change.
    nothing before this checklist has said that plainly, and it is the one item on this list a
    missed step could not later be quietly forgiven for: a seeded id with a published dev password
    is a real door into a real hospital's billing.
+
+   Two notes on running the seed in a cluster at all. It needs **`--allow-production`** (§15.7):
+   the chart renders `NODE_ENV=production` into every pod, dev included, and `cli/seed.ts` refuses
+   without being told plainly. And **the seeded accounts on the `dev` host need their passwords
+   reset now, as a separate job from this checklist** — they were seeded with the published
+   `changeme` before `SEED_PASSWORD` became a required value, and every one of them that has not
+   since been through a change-password step (§1 records that `RC-4471` has) is still open on it:
+   ```bash
+   kubectl -n rch-dev exec deploy/rch-api -- /nodejs/bin/node dist/cli/users.mjs \
+     reset-password --emp RC-4471 --password <new>
+   ```
+   for each of the six, or a re-seed with a real `SEED_PASSWORD`. `changePassword` is `allowMcp`,
+   so a takeover through one of those accounts is permanent; making the variable required stops it
+   happening again, it does not undo what is already there.
 5. **Run the restore drill once against the real RDS instance** (§6, the RDS procedure below the
    local rehearsal) — not the rehearsal, the real one, before the first bill is ever posted for
    real.
-6. **Create the repository variable and every secret** — `DEPLOY_ENABLED=true`, the five
-   repository secrets, the `staging` environment's three, and AWS Secrets Manager's `rch/prod`:
-   the table under "The release, prepared and not performed" above lists each one and what it
-   populates, and §2 says where the workflow reads it.
+6. **Create the repository variable and every secret** — `DEPLOY_ENABLED=true`, the six
+   repository secrets (**`SEED_PASSWORD` is the new one, and blocking**), the `staging`
+   environment's three, and AWS Secrets Manager's `rch/prod` with its **five** keys: the table
+   under "The release, prepared and not performed" above lists each one and what it populates, and
+   §2 says where the workflow reads it. Do this **before the next push to any environment**,
+   including `dev`: the api container will not start without a seed password, and `--atomic` rolls
+   the release back when it doesn't.
 7. **Promote** — the three fast-forward merges under "The release, prepared and not performed"
    above, in that order, run by a person. `develop` first, then `staging`, then `production`;
    verify staging between the second and the third (step 8), and production's deploy waits for
@@ -1128,6 +1316,40 @@ select * from stock_moves where ref_type = 'grn' and ref_id = 'GRN-260143-01';
 One positive row at `store` for what was accepted, one positive row at `quarantine` for what
 was rejected, and no row at all for a quantity of zero.
 
+**An order is decided on what the shelf accepted, not on what the lorry carried.** `received_qty`
+on a `po_lines` row is the **gross** arrival record — what the delivery notes add up to — and
+`rejected_qty` the running total sent to quarantine. Every question about whether the vendor has
+*delivered* is asked of the difference (`netReceived` in `packages/domain/src/receipt.ts`), so
+when reading a line by hand, read `received_qty - rejected_qty`:
+
+```sql
+select line_no, item_key, qty, received_qty, rejected_qty,
+       round(received_qty - rejected_qty, 3) as accepted
+from po_lines where po_id = 'PO-2026-0143' order by line_no;
+```
+
+Three consequences an operator meets:
+
+- **A delivery rejected whole leaves the order `Partially received`**, not `Received`. Nothing
+  reached the shelf, so nothing was delivered; the order stays open and the buyer can still close
+  it short or wait for the replacement. (An order that *did* reach `Received` cannot be reopened
+  through the API — §1's migration notes carry the one-statement correction for a pre-audit order
+  stranded there.)
+- **Closing short gives back the rejected quantity too.** `shortfallClaims` releases
+  `qty − accepted`, last source first, so what quality control turned away goes back onto the
+  procurement list with the rest of the balance rather than being written off the requisition.
+- **The 2% tolerance measures net-prior plus this arrival's gross**, which is what lets a
+  replacement delivery in at all: an order for 120 whose first consignment of 120 was rejected
+  whole can take a second consignment of up to 122.4, so 242.4 units may pass through the door in
+  total against a 120-unit order. That is right — the vendor is replacing goods it took back — but
+  it means **gross arrival against an order is not bounded by 102% of what was ordered**, and a
+  report that reads `received_qty` as "quantity delivered" will say so. Read `accepted`.
+
+The refusal sentence the store keeper reads on an over-delivery quotes that **net-prior +
+gross-arrival** total, not the running gross — so the number in "… exceeds the ordered 120 by more
+than 2%" will not match `sum(received_qty)` on an order that has had anything rejected. That is
+the arithmetic above, not a miscount.
+
 **GRN numbering, as of Phase 6:** `GRN-<yy><po number>-<nn>` — the second instalment against
 `PO-2026-0143` is `GRN-260143-02` — where `nn` counts that order's own instalments. There is
 **no `sequences` row for it**; the count is read under the order's `for update` lock, which is
@@ -1224,6 +1446,16 @@ Manager directly, via External Secrets). Repository secrets `AWS_REGION`, `ECR_R
 `AWS_ROLE_ARN` and `EKS_CLUSTER_DEV=rch` now exist alongside `EKS_CLUSTER_STAGING=rch` and
 `EKS_CLUSTER_PROD=rch` (all three name the one cluster — every environment is a namespace on it,
 not a cluster of its own), and the repository variable `DEPLOY_ENABLED` is `true`.
+
+**A `SEED_PASSWORD` repository secret must be added before the next deploy of any environment.**
+`deploy.yml` reads it into the `--set-string` list beside the three JWT/database values, and
+`apps/api/src/config.ts` now requires it with no default — an unset secret renders
+`SEED_PASSWORD: ""`, the api container fails config validation on start, and `--atomic` rolls the
+release back. Production's `rch/prod` secret in Secrets Manager needs the same key as its fifth
+(§11's secrets table); `_helpers.tpl` wires it as a `secretKeyRef` in every container and
+`render.test.sh` asserts it is never a plaintext `value:` and never `optional: true` — Go's `eq`
+is variadic, so a second name in that template's `if eq` would silently make the key optional,
+which is exactly what "required" is trying to prevent.
 
 **What tripped: two failed deploy runs, both at `configure-aws-credentials`, for two unrelated
 reasons.** The first failed with "Request ARN is invalid" — `AWS_ROLE_ARN` had been set to the
@@ -1328,8 +1560,20 @@ describes for staging and production, with `dev`'s own values file and namespace
 first deploy succeeds, seed the database once:
 
 ```bash
-kubectl -n rch-dev exec deploy/rch-api -- /nodejs/bin/node dist/cli/seed.mjs
+kubectl -n rch-dev exec deploy/rch-api -- /nodejs/bin/node dist/cli/seed.mjs --allow-production
 ```
 
+**`--allow-production` is not optional here, and dev is not an exception.** `rch.envList` renders
+`NODE_ENV=production` into every pod in every namespace, and `cli/seed.ts` refuses to seed there
+without being told plainly, because a seed rewrites every seeded account's password. Without the
+flag the command exits 2 with that sentence and nothing is written. A re-seed additionally needs
+`--force --yes-destroy rch` (the database name, matched against `select current_database()`); CI's
+kind install runs the same `--allow-production` form for the same reason
+(`deploy/chart/rch/ci/install-test.sh`).
+
 The seed accounts and `SEED_FORCE_PASSWORD_CHANGE` behave exactly as §1 describes for local
-dev — this is the same seed CLI, run in the cluster instead of against `localhost:5439`.
+dev — this is the same seed CLI, run in the cluster instead of against `localhost:5439` — with one
+difference that matters: the password those accounts get is now `SEED_PASSWORD` from the pod's own
+environment, which has to exist as a secret before the deploy that precedes this command (§15.3).
+**The six accounts seeded on `dev` before that change still carry the published `changeme`** and
+need resetting (§11 step 4) — a required variable stops it recurring, it does not undo it.

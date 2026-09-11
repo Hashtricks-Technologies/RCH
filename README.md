@@ -114,8 +114,10 @@ pnpm --filter @rch/api db:seed
 pnpm dev                                                                    # API on :3000, UI on :5173
 ```
 
-Open `http://localhost:5173` and sign in with a seeded employee id and the seed password
-(`SEED_PASSWORD` in `.env`, `changeme` by default):
+Open `http://localhost:5173` and sign in with a seeded employee id and the seed password —
+`SEED_PASSWORD` in `.env`, which is **required, at least twelve characters, and has no default**:
+copying `.env.example` leaves it empty, and the API will say so by name rather than start on a
+password everybody knows.
 
 | Employee id | Account | Role |
 |---|---|---|

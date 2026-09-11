@@ -67,7 +67,12 @@ A write, in the order it must be written (`modules/requests/service.ts` is the w
 1. `mount(app, routes.<name>, handler)` — auth, the role gate and (for a write) the idempotency
    preHandler are attached there, so a handler cannot forget them.
 2. `requireLoc(req, body.loc, …)` in `routes.ts` when the request names its location;
-   `requireLocOf(claims, row.loc, …)` in the service when only the document knows it.
+   `requireLocOf(claims, row.loc, …)` in the service when only the document knows it. **A body
+   that names the caller's own location is checked against the token, always** — `pos/routes.ts`
+   and, since the audit wave, `productreqs/routes.ts` (`forLoc`, for a `counter`); a `manager`
+   there reaches any outlet but no further, and asks for somewhere that is not one reads
+   `<Location> is not an outlet`. A role that works one desk (`store`, `buyer`, `prod`) is
+   scoped by `requireLoc` all the same; only `manager` is hospital-wide (root guide).
 3. `withTransaction(db, async (tx) => …)` — `lib/db.ts`. Every write, no exceptions.
 4. Lock the document row(s) being decided (`for update`, in the repo).
 5. `allocateId(tx, kind)` / `allocateTicket(tx)` — locks the `sequences` row, gapless.
@@ -78,10 +83,26 @@ A write, in the order it must be written (`modules/requests/service.ts` is the w
 9. `appendHistory(tx, docType, docId, status, who, at)`.
 10. `emitChanged(tx, changed)` — last, with the same array the response carries.
 11. Return `{ result, changed: [...], message }` — `writeResponse(...)` in the contract.
+12. There is no step 12 you write. `withTransaction` writes the idempotency record itself, from
+    the value you returned, as the **last statement before COMMIT** — see *Idempotency*, below.
+    What that asks of you is only this: **return the write's answer from inside the transaction.**
+    A service that closes its transaction and then re-reads the row to build its response has put
+    the answer outside the COMMIT that protects it (`modules/me/service.ts`'s `patch` was the one
+    that did, and no longer does).
 
 **Lock order is documents → ids → balances, server-wide.** Two writers taking the same two locks
 in opposite order deadlock; `lib/ledger.ts`'s header states the rule and every module keeps it.
 Take a ticket number *before* the balance locks, never while holding a shelf.
+
+**One write inverts it, on purpose, and you may not copy it.** `modules/pos/service.ts` takes its
+bill number *after* `lockBalances` and after the cover check has passed. That is safe for a reason
+no other write can borrow: `allocateId(tx, "bill"` has exactly **one** caller in the tree, so
+nobody else ever takes the `bill` sequence row, and the cycle a lock order exists to prevent needs
+two writers taking the same two locks in opposite orders. What the old ordering cost was a lock
+convoy, not a deadlock — a sale queued behind a shelf held the one row every till in the hospital
+draws its number from. Note what it did *not* cost: an allocation is an UPDATE inside the write's
+own transaction, so a rollback gives the number back and the series is gapless through a refusal
+(`lib/ids.ts` and `lib/tickets.ts` both say so; neither "burns" a number).
 
 **A read is composed the same way, minus the locks: one transaction, one connection.** Every
 read that makes more than one query runs inside `withReadTransaction(db, …)` (`lib/db.ts`,
@@ -185,9 +206,25 @@ happened to match a ticket's `to` could read the code too, which is exactly the 
 location check alone was meant to close.)
 
 (c) **`GET /snapshot` gains `roster`** (`readers/master.ts`'s `readRoster`): every active row of
-`payers`, split into `patients`/`staff`/`depts`. One query, assembled once in `snapshot()` and
-passed through `scope()` untouched — not scoped by role or location, because every counter
-bills every kind of payer and the list is names the operator already reads off a wristband.
+`payers`, split into `patients`/`staff`/`depts`. One query, assembled once in `snapshot()` — and
+**scoped**, by role, along with the payer on every bill.
+
+**Patient data is a role cut, not a location cut, and it is the fourth cut `scope()`'s `base`
+makes for every role.** `READS_PAYERS` (`modules/snapshot/scope.ts`) is `{counter, manager}` —
+the same two roles `creditReport` is gated to in `packages/contract/src/routes.ts`, so the two
+now agree. For `store`, `prod` and `buyer`: `scopePayers` hands the bills over **whole minus the
+name** (`{...b, payer: undefined}`) and `scopeRoster` hands back `{patients: [], staff: [],
+depts: []}`. Who a bill was charged to is the one field on it that names a person, and for a
+patient bill that is a name, a ward and an in-patient number — hospital data before it is F&B
+data. The counter reads it back off its own till roll and the manager settles credit accounts
+across the outlets; the kitchen, the store and the buyer do neither.
+
+Two details that are decisions, not accidents. It is a **redaction, not a filter**: the store's
+stock reports count bills as well as read their `lines`, so a filtered list would quietly stop
+their totals matching the till's, which is worse than not seeing whose account a sale went to.
+And it is applied in `scope()`'s `base` **and** in the standalone `bills()` reader, so a refetch
+cannot put back what the snapshot just took off. `BillSchema.payer` was already `.optional()`, so
+nothing in the contract changed.
 
 ## The protected tables
 
@@ -217,7 +254,21 @@ is composed*, above.
 `stock_moves is append-only; correct with a reversing move` on any UPDATE or DELETE. Correct a
 mistake with a reversing move, then `db:rebuild-balances` if the cache needs proving —
 `rebuildBalances` zeroes rows and re-adds the moves, it never deletes rows, because a zero row
-means "this location carries the line" (M12).
+means "this location carries the line" (M12). **`document_history` is protected the same way from
+migration `0008`**: `document_history_no_update_delete` (BEFORE UPDATE OR DELETE, the 0002
+pattern) raises `document_history is append-only; append a correcting entry`. A trail that can be
+edited afterwards is not a trail — correct one by appending, never by an `UPDATE`, and that now
+holds against a bug and an ad-hoc `psql` session alike, not just against convention.
+
+**`postMoves` drops a move whose quantity rounds away to nothing at three decimals**, before
+anything is locked or inserted, **row by row** rather than by folded cell. A move of zero is not a
+movement — `stock_moves_qty_ck` (0008) refuses one — and a recipe measured in millilitres against
+a single cup is how one turns up; without the drop an ordinary sale answers 500 with no words in
+it. Row-wise because the folded-cell version leaves two holes: a crumb riding along with a real
+move on the same cell would still hit the constraint, and a genuine `+1`/`−1` pair on one cell
+would lose both real ledger rows. The fold then runs over what survives, so a cell no surviving
+move touches is never locked — and `lockBalances` creates the row it locks, which is how a
+"carried at zero" phantom shelf line would otherwise appear (M12).
 
 ## Idempotency
 
@@ -225,10 +276,62 @@ Every non-public write needs an `Idempotency-Key` UUID header. The key is **clai
 handler runs (`plugins/idempotency.ts` + the pure decision in `idempotency-claim.ts`): insert
 wins → run; row already carries a response → replay it verbatim with `idempotency-replayed: true`;
 fresh claim held by someone else → 409 "still being processed"; claim older than `CLAIM_STALE_MS`
-(120 s, comfortably above app.ts's 30 s `requestTimeout`) → take it over and run; different
-request hash for the same key → 409. A lookup that finds nothing is never a green light — it
-retries the insert. `onSend` fills the row in, and deletes it for a 5xx or a 429 so a throttled
-write is not permanently replayed as "too many requests".
+(120 s, comfortably above app.ts's 30 s `requestTimeout`) **and not committed** → take it over and
+run; different request hash for the same key → 409. A lookup that finds nothing is never a green
+light — it retries the insert.
+
+**The outcome is recorded inside the write's own transaction, as the last statement before
+COMMIT.** `lib/db.ts`'s `withTransaction` reads the request's claim out of `idemStore` (an
+`AsyncLocalStorage` that `mount()` fills for every non-public write) and calls
+`recordIdempotent(tx, ctx, value)` (`lib/idempotency-record.ts`) on the value the transaction
+returned: it `safeParse`s that value against the route's own response schema, stores the **parsed**
+value so a replay serialises byte for byte, and stamps `committed_at` (column added by migration
+`0007`) with a 24 h `expires_at`. The placement is the whole point — the row is committed by the
+same COMMIT that commits the bill, so there is no instant at which the write has happened and the
+key does not know it. Everything that used to sit between the two (the pod staying alive, the pool
+handing out a second connection, the response surviving its own serializer) is out of the picture,
+and the retry that used to become a second bill replays instead.
+
+Five consequences, each load-bearing:
+
+(a) **A committed claim is never deleted and never taken over.** `tryTakeover` and both `onSend`
+branches carry `committed_at is null`; `recordIdempotent`'s own UPDATE carries it too, so a
+straggler whose claim was taken over mid-write cannot overwrite the winner's answer — zero rows
+updated is exactly that race, and it takes the straggler down rather than the record.
+
+(b) **The record's UPDATE is deliberately not wrapped in a try/catch.** If writing the claim row
+throws, the business write rolls back with it. That is the opposite of the `onSend` hook, which
+warns and lets the response through, and it is the right way round: a write that commits without
+its record is the duplicate-charge hole this closes. Atomicity over availability, on purpose.
+
+(c) **In development and test a response that fails its own schema rolls the write back and
+throws; in production it stands.** `strict` is `config.env !== "production"` (set by `mount()`).
+Strict turns "this transaction's answer cannot be recorded" into a red bench rather than an
+un-replayable sale; production carries the reason out on `ctx.why`, logs it at `warn` with the
+route and key, and falls back to `onSend`. `NOT_RECORDED` is `mount()`'s own narrower cause — a
+write that opened no transaction at all — and both paths carry a sentence a `grep` finds.
+
+(d) **`withTransaction(db, fn, { response: "optional" })` is for a write that must commit
+something and then refuse** — a counter, an audit row, something that has to survive the refusal
+that follows it. Under it, a returned value the schema refuses records nothing, leaves
+`ctx.idem.recorded` false and throws nothing, and `onSend` stores the 4xx as it always has
+(`committed_at` stays null, because a refusal is not an outcome to protect). A value that *does*
+match is still recorded, so the success path is untouched — and if a success value ever stops
+matching its schema under `"optional"`, the write commits and then 500s through `mount()`'s own
+assertion in dev/test; it is not silent. **`modules/tickets/service.ts`'s `handover` is the one
+caller** (a wrong OTP is counted, the count commits, the sentence is thrown outside), and what it
+costs is a pod dying between that commit and `onSend`: the retry waits out `CLAIM_STALE_MS` and
+then counts a second guess. Acceptable for a counter; exactly what `"required"` refuses to accept
+for a bill. Do not reach for it to quieten a response that simply does not match its schema.
+
+(e) **`onSend` is now the fallback, not the mechanism.** `idemHooks.recordAfterSend` returns
+untouched when the transaction already recorded a 2xx; deletes an *uncommitted* claim on a 5xx or
+a 429 (so a throttled write is not permanently replayed as "too many requests"); and otherwise —
+a 4xx, or a 2xx nothing recorded — writes the row the way it always did.
+
+`POST /auth/change-password` is the one non-public write the whole mechanism does not cover: it is
+declared `write: false` in the manifest (it carries no `Idempotency-Key`) and so gets no claim row
+at all. Pre-existing, and named here so the next reader does not conclude the coverage is total.
 
 ## The event stream
 
@@ -239,7 +342,11 @@ database. `plugins/sse.ts` holds one `LISTEN` client per pod (backoff on reconne
 frame after a drop), fans notices out to every open stream, heartbeats every `SSE_HEARTBEAT_MS`,
 and tears down on `preClose` — not `onClose`, or Fastify's own close would hang on a socket a
 stream is holding. `GET /events` is **the one route outside the manifest and `mount()`**: a stream
-has no JSON response schema and would hang `contract.test.ts`'s probe.
+has no JSON response schema and would hang `contract.test.ts`'s probe. Being outside `mount()`
+means its gates are attached by hand, and they are: `preHandler: [app.authenticate,
+app.roleGate("any", false)]`, with `rbac` declared as a plugin dependency. The `false` is
+`allowMcp` — the stream was the one authenticated route a must-change-password token could still
+reach, and it now answers a 403 JSON envelope rather than opening.
 
 ## Errors and sentences
 
@@ -291,7 +398,13 @@ error itself, and its sentence ends with the request id.
 - A test that opens two concurrent transactions to prove a lock must call `warmPool(t, n)` first
   (`pg` connects lazily, so without it the two run back to back and pass with the lock removed),
   and must be shown to fail once the lock is taken out. A race test that cannot fail is worse
-  than none.
+  than none. **`n` must not exceed the test pool's `max`, which is 4** (`src/test/db.ts`):
+  `warmPool` awaits a `Promise.all` of `pool.connect()` calls and releases nothing until they all
+  resolve, so asking for five hangs for ever holding four connections and every later test in the
+  file times out at 30 s. Every call site in the tree is 2, 3 or 4. A test that wants more
+  concurrency than the pool has connections usually does not need it — `auth.test.ts`'s gate
+  cases hold to the budget before their first `await`, whether or not each request got a
+  connection.
 
 ## Migrations, config, metrics
 
@@ -302,6 +415,34 @@ hand-maintained alongside it and its length is what `/readyz` compares the appli
 so a renamed file or a missing entry makes the pod unready. Names are descriptive
 (`0002_stock_moves_append_only`), not drizzle's generated animals.
 
+**The journal is at nine entries, `0000`–`0008`**, so `/readyz` reads `9 / 9` on a current
+database. `0007_idempotency_committed_at` adds one nullable column; `0008_integrity` writes the
+promises this file already made into the database — `reservations_ticket_idx` (partial, on
+`released_at is null`) and `reservations_ticket_fk` → `tickets(id)`; `tickets.otp_attempts integer
+not null default 0`, `otp` from `char(6)` to `varchar(6)` with `tickets_otp_digits_ck`
+(`~ '^[0-9]{6}$'`) and `tickets_from_to_ck` (`from_loc <> to_loc`); the CHECKs
+`stock_moves_qty_ck` (`qty <> 0`), `reservations_qty_ck` (`> 0`), `batches_made_ck`
+(`0 ≤ made ≤ started`), `po_lines_receipt_ck` (`0 ≤ rejected ≤ received`),
+`requisition_lines_ordered_ck` (`0 ≤ ordered ≤ approved`), `support_tickets_rating_ck` (null or
+1–5) and `sequences_next_ck` (`> 0`); and the `document_history` append-only trigger. Everything
+but the FK and the column-type change is mirrored in `src/db/schema/*.ts` with Drizzle's
+`check()`; the FK is SQL-only because importing `tickets` (`schema/movement.ts`) into
+`schema/ledger.ts` closes a TypeScript import cycle, and the reason is a comment on
+`reservations.ticketId`.
+
+**`stock_balances.on_hand >= 0` is deliberately absent**, and the reason is written at the top of
+`0008`: the friendly refusal an operator reads ("Only 2 nos of Mineral water 1L left at Coffee
+Shop") comes from the re-read that runs *after* `postMoves` has already driven the balance down
+under the locks it holds, so a CHECK would fire first and turn every one of those sentences into a
+500 with no words in it. The negative never survives — the same transaction rolls it back.
+
+**Both hand-written migrations skipped `drizzle-kit generate`, so `drizzle/meta/` still holds
+snapshots `0000`–`0006` only.** Reconcile before the next real `db:generate`, or it will diff from
+`0006_snapshot.json` and try to re-emit everything 0007 and 0008 already did: run `db:generate
+--name reconcile`, confirm the emitted SQL is empty or merely re-states 0007/0008 (if it says
+anything else, the schema files and the SQL have genuinely drifted — fix that first), delete the
+emitted `.sql` and its journal entry, and keep the snapshot renamed to the latest idx.
+
 `config.ts` is the only reader of `process.env`: `NODE_ENV`, `PORT`, `LOG_LEVEL`, `DATABASE_URL`,
 `TEST_DATABASE_URL`, `DATABASE_SSL`, `DB_POOL_MAX`, `CORS_ORIGIN`, `JWT_PRIVATE_KEY`,
 `JWT_PUBLIC_KEY`, `JWT_PREVIOUS_PUBLIC_KEY`, `ACCESS_TOKEN_TTL`, `REFRESH_TOKEN_TTL_DAYS`,
@@ -311,6 +452,38 @@ so a renamed file or a missing entry makes the pod unready. Names are descriptiv
 `DB_POOL_MAX` is the pool's `max`, default **10**, set in the chart's `api.env` for both
 environments — one pod's share of the instance's connections, not a latency dial: a request takes
 exactly one connection, so a pool at its ceiling means that many requests in flight.
+
+Three of those knobs changed in the audit fix wave and bite on first run:
+
+- **`SEED_PASSWORD` is `z.string().min(12)`, required, with no default.** The API, the test
+  harness and every CLI refuse to start without one — `Invalid environment: SEED_PASSWORD: Too
+  small …`. `src/test/app.ts`'s `BASE_ENV` supplies its own; a developer's `.env` has to.
+- **`DATABASE_SSL` is optional and defaults to `NODE_ENV === "production"`** (`databaseSsl` in
+  `config.ts`). Setting it still wins in both directions — a staging pod pointed at a local proxy
+  can turn it off — and `db/client.ts` strips any `sslmode`/`ssl*` parameter off `DATABASE_URL`
+  first, so the URL can never quietly pick a different trust store.
+- **`createDb(url, ssl, { statementTimeoutMs })` defaults to 15 s and every CLI passes `0`.**
+  `cli/{migrate,seed,rebuild-balances,purge}.ts` are allowed to run longer than a request is;
+  `cli/migrate.ts` also runs `set lock_timeout = 0` before `pg_advisory_lock(727272)`, because
+  waiting for that lock is the whole point of the initContainer and the 15 s statement timeout
+  was cancelling the wait mid-rollout (`Init:CrashLoopBackOff`).
+
+`cli/seed.ts` carries two guards of its own: it refuses where `NODE_ENV === "production"` unless
+passed `--allow-production` (exit 2, with the reason), and `--force` there additionally needs
+`--yes-destroy <name>` where `<name>` equals `select current_database()`. The chart renders
+`NODE_ENV=production` into every pod, so an in-cluster seed — dev, CI's kind cluster, anywhere —
+is always the `--allow-production` form. `lib/users-admin.ts` enforces `MIN_PASSWORD_LENGTH`
+(10, declared once in `packages/contract/src/schemas/auth.ts` and read by
+`ChangePasswordBodySchema` too) on `createUser` and `resetPassword`, and `WORKS_AT` refuses a role
+at a location that role never works at — `Kitchen In-charge works at kitchen, not at coffee`.
+
+`modules/auth/service.ts`'s per-employee sign-in budget (`LOGIN_RATE_LIMIT_PER_EMP_PER_MINUTE`,
+default 5) is spent by `begin()` when an attempt **starts** and given back by `release()` only
+when the password turns out to be correct, so it holds under concurrency: Argon2 takes 50–100 ms,
+and a budget read before the verifier and charged after it let N simultaneous guesses all reach
+the verifier. It counts **failures** — five correct sign-ins in a minute lock nobody out — and,
+like `@fastify/rate-limit`'s own window, it is **per pod**: the effective number is the configured
+one times the replica count, and a shared store is the fix if it ever has to be exact.
 
 `/metrics` publishes `http_request_duration_seconds`, `sse_clients`, `sse_listener_up`,
 `sequence_allocations_total{kind}`, `pg_pool_total`, `pg_pool_idle`, `pg_pool_waiting`, plus
