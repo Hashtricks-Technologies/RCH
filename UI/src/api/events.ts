@@ -83,10 +83,13 @@ function open(ac: AbortController, token: string | null): Promise<Response> {
 }
 
 async function run(ac: AbortController): Promise<void> {
-  let res = await open(ac, getAccessToken());
+  // The token this attempt was made with, handed to `refreshOnce` so a stream that 401s while
+  // another tab was already refreshing retries on that tab's token instead of minting a second.
+  const had = getAccessToken();
+  let res = await open(ac, had);
   if (res.status === 401) {
     // The same one-refresh-then-retry the typed client does; a second 401 is a dead session.
-    if (!(await refreshOnce())) { sessionLost(); stop(); return; }
+    if (!(await refreshOnce(had))) { sessionLost(); stop(); return; }
     res = await open(ac, getAccessToken());
     if (res.status === 401) { sessionLost(); stop(); return; }
   }
