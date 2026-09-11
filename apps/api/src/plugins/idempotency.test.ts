@@ -450,6 +450,10 @@ describe("Idempotency-Key", () => {
     // Its transaction therefore returns a marker the route's schema refuses — `withTransaction`
     // is told `response: "optional"` so that marker records nothing and throws nothing, instead
     // of taking the committed count down with it and answering 500.
+    // Read first, not assumed at 0: a case inserted ahead of this one that also guesses wrong
+    // against TKT-0440 would otherwise falsify an absolute `1` here without ever touching the
+    // behaviour this test exists to pin.
+    const before = await otpAttempts("TKT-0440");
     const key = randomUUID();
     const headers = { ...(await authHeaders(app, "u3")), "idempotency-key": key };
     const send = () => app.inject({ method: "POST", url: "/api/v1/tickets/TKT-0440/handover", headers, payload: { otp: "000000" } });
@@ -457,7 +461,7 @@ describe("Idempotency-Key", () => {
     const first = await send();
     expect(first.statusCode, first.body).toBe(422);
     expect(first.json().error.message).toBe("That OTP does not match TKT-0440. Ask the collector to read it again.");
-    expect(await otpAttempts("TKT-0440")).toBe(1);
+    expect(await otpAttempts("TKT-0440")).toBe(before + 1);
     // A refusal is `onSend`'s to record, exactly as it always was — nothing committed that a
     // retry could duplicate, so the row carries no commit stamp.
     const row = await claimRow(key);
@@ -469,7 +473,7 @@ describe("Idempotency-Key", () => {
     expect(again.headers["idempotency-replayed"]).toBe("true");
     expect(again.body).toBe(first.body);
     // The replay ran nothing, so the guess it repeats is not a second guess.
-    expect(await otpAttempts("TKT-0440")).toBe(1);
+    expect(await otpAttempts("TKT-0440")).toBe(before + 1);
   });
 
   it("a correct handover after a wrong code is recorded inside its own transaction", async () => {
