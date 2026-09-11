@@ -43,12 +43,14 @@ ingress:
     alb.ingress.kubernetes.io/healthcheck-path: /healthz
 secrets:
   create: false           # true: build the Secret from the values below (staging, dev)
-  values: { DATABASE_URL: "", JWT_PRIVATE_KEY: "", JWT_PUBLIC_KEY: "", JWT_PREVIOUS_PUBLIC_KEY: "" }
+  # SEED_PASSWORD is the password the six seeded accounts start on; apps/api/src/config.ts has no
+  # default for it, so the api container will not start until it is set.
+  values: { DATABASE_URL: "", JWT_PRIVATE_KEY: "", JWT_PUBLIC_KEY: "", JWT_PREVIOUS_PUBLIC_KEY: "", SEED_PASSWORD: "" }
   externalSecret:
     enabled: false        # true: sync from AWS Secrets Manager via External Secrets Operator (prod)
     storeName: aws-secrets-manager
     storeKind: ClusterSecretStore
-    remoteKey: rch/prod   # JSON secret with the four keys above
+    remoteKey: rch/prod   # JSON secret with the five keys above
 serviceAccount:
   create: true
   annotations: {}         # eks.amazonaws.com/role-arn for IRSA when the pod itself reads AWS

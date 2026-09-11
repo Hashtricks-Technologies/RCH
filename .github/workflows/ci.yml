@@ -125,7 +125,12 @@ jobs:
       - if: steps.playwright-cache.outputs.cache-hit == 'true'
         run: pnpm --filter @rch/e2e exec playwright install-deps chromium
       - name: helm install into kind
-        env: { E2E: "1" }
+        # SEED_PASSWORD is the password the seed writes onto the six accounts AND the one the
+        # Playwright smoke signs in with: install-test.sh passes it to the chart and exports it
+        # for `pnpm test:e2e` (e2e/fixtures/roles.ts), so the two can never drift apart. It is
+        # not a secret — the cluster is deleted at the end of the job — but config.ts has no
+        # default for it any more, so it has to be named somewhere.
+        env: { E2E: "1", SEED_PASSWORD: ci-seed-password-1 }
         run: deploy/chart/rch/ci/install-test.sh
       - uses: actions/upload-artifact@v7
         if: failure()

@@ -16,6 +16,13 @@ cd "$(dirname "$0")/../../../.."
 : "${JWT_PRIVATE_KEY:?set JWT_PRIVATE_KEY (base64 PKCS8 Ed25519 private key) before running install-test.sh}"
 : "${JWT_PUBLIC_KEY:?set JWT_PUBLIC_KEY (base64 SPKI Ed25519 public key) before running install-test.sh}"
 
+# SEED_PASSWORD has no default in apps/api/src/config.ts any more, so the api container will not
+# start without it and the seed below would have nothing to hash. It is threaded through the
+# chart the same way the keys are, defaulted here so the script still runs by hand, and exported
+# so the Playwright smoke signs in with the password the seed actually wrote (e2e/fixtures/roles.ts).
+SEED_PASSWORD="${SEED_PASSWORD:-ci-seed-password-1}"
+export SEED_PASSWORD
+
 # Every mounted route lives under API_PREFIX (packages/contract/src/routes.ts) — only
 # /healthz, /readyz, /metrics on the api, and the UI's own nginx-served /healthz, are not
 # prefixed. Keep this in one place so a script edit can't silently drift from the contract.
@@ -26,6 +33,7 @@ UI=http://localhost:8080
 BASE_ARGS=(
   --set-string "secrets.values.JWT_PRIVATE_KEY=$JWT_PRIVATE_KEY"
   --set-string "secrets.values.JWT_PUBLIC_KEY=$JWT_PUBLIC_KEY"
+  --set-string "secrets.values.SEED_PASSWORD=$SEED_PASSWORD"
 )
 SET_ARGS=("${BASE_ARGS[@]}")
 
@@ -101,8 +109,12 @@ kubectl rollout status deploy/postgres --timeout=120s
 echo "== helm install =="
 helm install rch deploy/chart/rch -f deploy/chart/rch/ci/values-ci.yaml "${SET_ARGS[@]}" --wait --timeout 5m
 
-echo "== seed (RC-3120 / changeme) =="
-kubectl exec deploy/rch-api -c api -- /nodejs/bin/node dist/cli/seed.mjs
+# --allow-production because rch.envList sets NODE_ENV=production in every rendered pod, and
+# cli/seed.ts refuses to seed there without being told plainly — this is a kind cluster that is
+# deleted at the end of the job, which is exactly the "yes, I mean it" the flag is for. No
+# --force: the database underneath is a fresh container, so there is nothing to empty.
+echo "== seed (RC-3120 / \$SEED_PASSWORD) =="
+kubectl exec deploy/rch-api -c api -- /nodejs/bin/node dist/cli/seed.mjs --allow-production
 
 echo "== api: /readyz and login =="
 kubectl port-forward svc/rch-api 3000:3000 >/tmp/pf-api.log 2>&1 &
@@ -111,7 +123,7 @@ wait_for "$API/readyz"
 curl -fsS "$API/readyz"
 
 LOGIN_CODE=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' \
-  -d '{"emp":"RC-3120","password":"changeme"}' "$API$API_PREFIX/auth/login")
+  -d "{\"emp\":\"RC-3120\",\"password\":\"$SEED_PASSWORD\"}" "$API$API_PREFIX/auth/login")
 [ "$LOGIN_CODE" = 200 ] || fail "login: expected 200, got $LOGIN_CODE"
 
 echo "== ui: /healthz =="

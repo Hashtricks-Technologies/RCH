@@ -17,8 +17,8 @@ and api container (and, for consistency, the purge CronJob) never drift: all
 three build their env from the same values instead of an envFrom/ConfigMap+
 Secret reference for the non-secret settings.
 
-The four secret keys (DATABASE_URL, JWT_PRIVATE_KEY, JWT_PUBLIC_KEY,
-JWT_PREVIOUS_PUBLIC_KEY) are ALWAYS wired via valueFrom.secretKeyRef against
+The five secret keys (DATABASE_URL, JWT_PRIVATE_KEY, JWT_PUBLIC_KEY,
+JWT_PREVIOUS_PUBLIC_KEY, SEED_PASSWORD) are ALWAYS wired via valueFrom.secretKeyRef against
 the rendered Secret named by rch.secretName — never inlined as plaintext
 `value:` entries. .Values.secrets.create only decides whether secret.yaml
 renders that Secret from values (staging/dev); .Values.secrets.externalSecret.enabled
@@ -32,6 +32,14 @@ externalsecret.yaml are plain release resources (no helm.sh/hook annotations)
 JWT_PREVIOUS_PUBLIC_KEY is marked optional: true because it is only populated
 during a key-rotation window; outside of that window the key legitimately
 does not exist in the Secret.
+
+SEED_PASSWORD has no default in apps/api/src/config.ts, so the api container
+will not start without it — it is a secret key rather than an api.env entry
+because it is the password the six seeded accounts start on, and a published
+default would be the same password on every host that ever ran the seed. The
+seed itself is a CLI run by hand inside the container (RUNBOOK §11), never
+part of a rollout; what the env entry buys is that the password is in the
+Secret rather than in a shell history.
 */ -}}
 {{- define "rch.envList" -}}
 - name: NODE_ENV
@@ -42,9 +50,9 @@ does not exist in the Secret.
 - name: {{ $k }}
   value: {{ $v | quote }}
 {{- end }}
-{{- range $k := list "DATABASE_URL" "JWT_PRIVATE_KEY" "JWT_PUBLIC_KEY" "JWT_PREVIOUS_PUBLIC_KEY" }}
+{{- range $k := list "DATABASE_URL" "JWT_PRIVATE_KEY" "JWT_PUBLIC_KEY" "JWT_PREVIOUS_PUBLIC_KEY" "SEED_PASSWORD" }}
 - name: {{ $k }}
   valueFrom:
-    secretKeyRef: { name: {{ include "rch.secretName" $ }}, key: {{ $k }}{{ if eq $k "JWT_PREVIOUS_PUBLIC_KEY" }}, optional: true{{ end }} }
+    secretKeyRef: { name: {{ include "rch.secretName" $ }}, key: {{ $k }}{{ if eq $k "JWT_PREVIOUS_PUBLIC_KEY" "SEED_PASSWORD" }}, optional: true{{ end }} }
 {{- end }}
 {{- end -}}
