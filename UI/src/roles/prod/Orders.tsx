@@ -20,6 +20,13 @@ const BOARD: { st: PordStatus; sub: string }[] = [
 const itemText = (o: ProdOrder) => o.lines.map((l) => `${l.qty} × ${IT[l.it]?.n ?? l.it}`).join(" ");
 const totalQty = (o: ProdOrder) => sum(o.lines, (l) => l.qty);
 
+/** The order number on a card is a button, not a heading — it opens the order. Styled here
+ *  rather than in `styles.css` so it keeps `.kan-top b`'s own type and needs no new class. */
+const OPEN_BTN = {
+  background: "none", border: 0, padding: 0, margin: 0, font: "inherit", color: "inherit",
+  cursor: "pointer", textAlign: "left" as const,
+};
+
 export default function Orders() {
   const s = useApp();
   const setOrderStatus = useApp((x) => x.setOrderStatus);
@@ -74,11 +81,17 @@ export default function Orders() {
   const card = (o: ProdOrder) => {
     const t = ticketFor(o);
     return (
-      <div className="kan-card" key={o.id} onClick={() => openDrawer("pord", o.id)}
-        role="button" tabIndex={0}
-        onKeyDown={(e) => { if (e.key === "Enter") openDrawer("pord", o.id); }}>
+      // The card itself carries the mouse shortcut, and the order number is the real control.
+      // It was a `role="button"` div with an Enter handler, which is half a button: a real one
+      // answers Space as well, announces itself, and is reachable in the tab order for the same
+      // reason — and the card cannot *be* one, because it has Accept, Decline and Dispatch
+      // inside it and a button may not contain a button.
+      <div className="kan-card" key={o.id} onClick={() => openDrawer("pord", o.id)}>
         <div className="kan-top">
-          <b className="mono">{o.id}</b>
+          <button type="button" style={OPEN_BTN}
+            onClick={(e) => { e.stopPropagation(); openDrawer("pord", o.id); }}>
+            <b className="mono">{o.id}</b>
+          </button>
           <span className="mono kan-t">{o.at}</span>
         </div>
         <div className="kan-who">

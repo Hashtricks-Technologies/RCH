@@ -4,6 +4,7 @@ import { useApp } from "../../store";
 import { canCancelTicket, canHandOver } from "../../lib/selectors";
 import { U, fq, money, sum } from "../../lib/fmt";
 import { Alert, Btn, DataTable, Feed, Field, Pill, Section, StatusPill, TicketTrail } from "../../ui/kit";
+import { PrintSlipBtn, TicketSlip } from "../../ui/TicketSlip";
 import { DrawerFrame } from "../../ui/Drawer";
 import { registerDrawer, type DrawerProps } from "../../drawers";
 
@@ -49,7 +50,21 @@ function TicketDrawer({ id }: DrawerProps) {
   const step = (STEPS as readonly string[]).indexOf(t.st);
   const value = sum(t.lines, (l) => l.qty * (IT[l.it]?.cost ?? 0));
 
-  const when = (s: string) => r?.hist.find((h) => h.s === s)?.t;
+  /**
+   * When each of the three movement steps happened, read off the **ticket's** own trail.
+   *
+   * It read the request's, where the words are different: a request says "Ticket issued", so
+   * `when("Issued")` never matched and the first step on this panel has shown no time since the
+   * panel existed. A ticket's trail says "Issued", "Handed over" (or "Handed over — supervisor
+   * override") and "Received" — `document_history`, on the wire since Phase 6 — so the step's
+   * name is matched against the ticket's word for it rather than against itself.
+   */
+  const STEP_WORD: Record<(typeof STEPS)[number], (h: string) => boolean> = {
+    Issued: (h) => h === "Issued",
+    Collected: (h) => h.startsWith("Handed over"),
+    Received: (h) => h === "Received",
+  };
+  const when = (step: (typeof STEPS)[number]) => t.hist.find((h) => STEP_WORD[step](h.s))?.t;
   const body: Record<string, string> = {
     Issued: `Stock reserved in ${LOC[t.from].n} and the ticket printed at the window.`,
     Collected: `OTP verified at the store window — quantities left ${LOC[t.from].n}.`,
@@ -84,6 +99,10 @@ function TicketDrawer({ id }: DrawerProps) {
           <div className="mtop" style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             <StatusPill status={t.st} />
             <span className="mini">{t.lines.length} item{t.lines.length > 1 ? "s" : ""} · {sum(t.lines, (l) => l.qty)} units · {money(value)}</span>
+            {/* The store keeper wants the ticket in his hand at the window, not on the screen
+                behind him. The slip carries the six digits only where this browser has them,
+                which the issuing desk never does. */}
+            <PrintSlipBtn />
           </div>
           <div className="mini mtop">
             From <b>{LOC[t.from].n}</b> ({LOC[t.from].c}) → To <b>{LOC[t.to].n}</b> ({LOC[t.to].c}, {LOC[t.to].floor})
@@ -213,6 +232,8 @@ function TicketDrawer({ id }: DrawerProps) {
       {r && r.mgrNote && (
         <div className="mini mtop">Manager note: {r.mgrNote}</div>
       )}
+
+      <TicketSlip t={t} />
     </DrawerFrame>
   );
 }
