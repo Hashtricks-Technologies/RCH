@@ -467,10 +467,10 @@ against.** All six hand-written migrations skipped `drizzle-kit generate`, so `m
 The reconcile ran once, and the procedure is written down here because the next hand-written
 migration will need it again:
 
-1. `cd apps/api && npx drizzle-kit generate --name reconcile`, then `node
-   scripts/strip-public-schema.mjs`. **Not `pnpm db:generate --name reconcile`** — pnpm appends
-   arguments to the end of the whole compound script, so `--name` lands on the strip script and
-   drizzle-kit names the migration one of its animals instead.
+1. `pnpm --filter @rch/api db:generate --name reconcile` — `db:generate` is
+   `scripts/db-generate.mjs`, a wrapper that forwards its argv to `drizzle-kit generate` before
+   running the strip step, so `--name` reaches drizzle-kit rather than landing on the strip
+   script the way it did when `db:generate` was a bare `&&` chain of the two.
 2. Read the emitted `.sql`. It must be **empty, or restate only what the hand-written migrations
    already did** — that is the proof the applied SQL and `src/db/schema/*.ts` agree. Anything else
    is real drift, and the fix goes in the schema file, never in SQL a database has run.
