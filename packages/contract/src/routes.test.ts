@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { z } from "zod";
-import { CreatePoBodySchema, CreditParamsSchema, CreditResponseSchema, EVENTS_PATH, EventNoticeSchema, LocKeySchema, MakeBatchBodySchema, PatchContractBodySchema, PatchPoBodySchema, PatchVendorBodySchema, PO_APPROVAL_LIMIT, RaiseTicketBodySchema, RateTicketBodySchema, ReceivePoBodySchema, SetOrderStatusBodySchema, SetTicketStatusBodySchema, StockLedgerQuerySchema, StockLocSchema, TktStatusSchema, TransferBodySchema } from "./index";
+import { CreatePoBodySchema, CreditParamsSchema, CreditResponseSchema, EVENTS_PATH, EventNoticeSchema, LocKeySchema, MakeBatchBodySchema, PatchContractBodySchema, PatchPayerBodySchema, PatchPoBodySchema, PatchVendorBodySchema, PO_APPROVAL_LIMIT, RaiseTicketBodySchema, RateTicketBodySchema, ReceivePoBodySchema, SetOrderStatusBodySchema, SetTicketStatusBodySchema, StockLedgerQuerySchema, StockLocSchema, TktStatusSchema, TransferBodySchema } from "./index";
 import { routes } from "./routes";
 
 /** One valid body per route that takes one. The coverage case below fails if a new route
@@ -48,6 +48,9 @@ const SAMPLES: Record<string, Record<string, unknown>> = {
   replyToTicket:   { body: "Refreshed and it reads correctly now — thank you." },
   setTicketStatus: { st: "Resolved" },
   rateTicket:      { rating: 5 },
+  // ---- payers ----
+  addPayer:        { kind: "staff", id: "E2291", name: "Kavitha Raman" },
+  updatePayer:     { active: false },
 };
 // `routes` is a const object, so `r.body` is a union of every literal schema type; the cast
 // keeps this loop about the shared `safeParse` and not about zod's generics.
@@ -108,6 +111,7 @@ describe("what buying puts on the wire", () => {
     // is unreachable and a patch of one field silently resets every other one.
     expect(PatchVendorBodySchema.parse({})).toEqual({});
     expect(PatchContractBodySchema.parse({})).toEqual({});
+    expect(PatchPayerBodySchema.parse({})).toEqual({});
     expect(PatchVendorBodySchema.parse({ terms: "45 days" })).toEqual({ terms: "45 days" });
   });
   it("knows quarantine is somewhere stock can be, and nowhere an operator can act", () => {

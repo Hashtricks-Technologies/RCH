@@ -15,6 +15,7 @@
     "db:seed": "tsx --env-file=../../.env src/cli/seed.ts",
     "db:rebuild-balances": "tsx --env-file=../../.env src/cli/rebuild-balances.ts",
     "users": "tsx --env-file=../../.env src/cli/users.ts",
+    "payers": "tsx --env-file=../../.env src/cli/payers.ts",
     "keys:generate": "tsx src/cli/keys.ts",
     "loadcheck": "node scripts/loadcheck.mjs"
   },

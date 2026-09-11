@@ -5,7 +5,7 @@ import { hydrateItems, hydrateMaster, hydrateMenus, hydratePrices, hydrateRoster
 import { fromWireBestBefore, fromWireDate, fromWireTime } from "../lib/fmt";
 import { useApp } from "../store";
 import { basePrices } from "../lib/selectors";
-import type { Bill, Dated, HistEntry, StockLoc } from "../types";
+import type { Bill, Dated, HistEntry, PayerRecord, StockLoc } from "../types";
 
 export type Snapshot = z.infer<typeof SnapshotSchema>;
 export type StockResponse = z.infer<typeof StockResponseSchema>;
@@ -170,3 +170,19 @@ export function applyMenus(menu: Snapshot["menu"]): void {
   hydrateMenus(menu);
   useApp.setState((s) => ({ menu, catalogVersion: s.catalogVersion + 1 }));
 }
+
+// ---- payers ----
+/** GET /roster -> the register the counter's payer picker reads. `PATIENTS`, `STAFF` and
+ *  `DEPTS` are module-level registries like `IT` and `LOC`, not store state, so `catalogVersion`
+ *  is what tells React the lists moved — the same signal `applyItems` bumps for the catalogue.
+ *  The server only ever sends active rows, so a payer the manager switched off simply stops
+ *  being offered at the till rather than needing a second filter here. */
+export function applyRoster(r: Snapshot["roster"]): void {
+  hydrateRoster(r);
+  useApp.setState((s) => ({ catalogVersion: s.catalogVersion + 1 }));
+}
+
+/** GET /payers -> the manager's own register, closed accounts included. Ordinary store state,
+ *  unlike the roster above: nothing outside the manager's Roster screen reads it, so there is no
+ *  module-level registry to keep the identity of and `catalogVersion` is not involved. */
+export function applyPayers(payers: PayerRecord[]): void { useApp.setState({ payers }); }

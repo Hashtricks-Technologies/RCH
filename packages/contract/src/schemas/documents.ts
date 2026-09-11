@@ -69,6 +69,12 @@ export const ProdOrderSchema = z.object({
 });
 export const BatchSchema = z.object({ id: z.string(), it: z.string(), qty: Qty, made: Qty, at: IsoTime, bb: IsoTime, note: z.string().optional() });
 export const PayerSchema = z.strictObject({ kind: PayerKindSchema, id: z.string(), name: z.string() });
+// ---- payers ----
+/** A payer as the **roster** holds it, `active` and all — the register the outlet manager
+ *  maintains. `PayerSchema` above stays exactly the three fields a bill embeds: a bill taken
+ *  last month must not start reading "inactive" because the account was closed since, and a
+ *  bill is a record of what happened, not a live join onto the roster. */
+export const PayerRecordSchema = z.strictObject({ kind: PayerKindSchema, id: z.string(), name: z.string(), active: z.boolean() });
 /** Who a bill may be charged to. Served from the `payers` table, not from a fixture: the till
  *  has validated its payer against that table since Phase 3 and the two lists must be one. */
 export const PayerRosterSchema = z.strictObject({

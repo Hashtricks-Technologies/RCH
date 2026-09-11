@@ -63,3 +63,7 @@ export type StockLedgerRow = z.infer<typeof R.StockLedgerRowSchema>;
 export type StockLedgerResponse = z.infer<typeof R.StockLedgerResponseSchema>;
 export type CreditParams = z.infer<typeof R.CreditParamsSchema>;
 export type CreditResponse = z.infer<typeof R.CreditResponseSchema>;
+
+// ---- payers ----
+/** What `GET /roster` and the two payer writes carry: a roster row, `active` included. */
+export type PayerRecord = z.infer<typeof D.PayerRecordSchema>;

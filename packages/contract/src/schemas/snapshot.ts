@@ -64,3 +64,15 @@ export const ProductRequestsResponseSchema = z.array(D.ProductRequestSchema);
 /** The caller's own support tickets. Every role sees only what it raised — there is no support
  *  role among the five, so a list of other people's tickets would be rows nobody can act on. */
 export const SupportTicketsResponseSchema = z.array(D.SupportTicketSchema);
+
+// ---- payers ----
+/** The roster on its own, so a payer write that names "roster" refetches that register alone
+ *  instead of the whole snapshot. Scoped exactly as the snapshot's own copy is: the kitchen,
+ *  the store and the buyer never open a payer picker and read an empty one (`scopeRoster`). */
+export const RosterResponseSchema = D.PayerRosterSchema;
+/** The **whole** register, active rows and closed ones together, for the one role that keeps it.
+ *  `roster` above is what a till reads and carries live payers only — a closed account must
+ *  never reach a payer picker — so a manager who wants to reopen one closed last week has
+ *  nothing to open. Two reads rather than an `active` flag on the roster, because the till's
+ *  list stopping at "active" is the whole point of it. */
+export const PayersResponseSchema = z.array(D.PayerRecordSchema);
