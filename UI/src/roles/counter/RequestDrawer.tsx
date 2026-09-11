@@ -116,8 +116,8 @@ function RequestDrawer({ id }: DrawerProps) {
 
       <p className="mini mtop">
         {open
-          ? "This request can still be cancelled — the outlet manager has not acted on it yet."
-          : "Cancelling is only possible while a request reads “Request sent”."}
+          ? "This request can still be cancelled — the store keeper has not issued a ticket against it yet."
+          : "Cancelling is only possible before the store keeper issues a ticket against this request."}
       </p>
     </DrawerFrame>
   );

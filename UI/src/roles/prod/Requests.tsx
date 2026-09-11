@@ -255,7 +255,7 @@ export default function Requests() {
           }}
         />
         <TableFoot count={rows.length}
-          extra={<>{L.n} · {L.c} · {openCount} awaiting the outlet manager{backOrder.length ? ` · ${unitTotal(backOrder)} back-ordered` : ""}</>} />
+          extra={<>{L.n} · {L.c} · {openCount} still open{backOrder.length ? ` · ${unitTotal(backOrder)} back-ordered` : ""}</>} />
       </Card>
 
       <p className="mini mtop">

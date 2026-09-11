@@ -33,6 +33,7 @@ function ApprovalDrawer({ id }: DrawerProps) {
   const close = useApp((x) => x.closeDrawer);
   const approveRequest = useApp((x) => x.approveRequest);
   const rejectRequest = useApp((x) => x.rejectRequest);
+  const cancelRequest = useApp((x) => x.cancelRequest);
 
   const req = s.req.find((r) => r.id === id);
 
@@ -55,6 +56,10 @@ function ApprovalDrawer({ id }: DrawerProps) {
   }
 
   const open = req.st === "Request sent";
+  // A decision this manager made themselves, before the store keeper turns it into a ticket —
+  // the one thing left to undo once "Approve & forward" has already gone through. A manager
+  // is hospital-wide, so this is not scoped to the outlet that raised it.
+  const canWithdraw = (req.st === "Manager approved" || req.st === "Partially approved") && !req.ticket;
   const set = (i: number, raw: string) => {
     const max = req.lines[i].qty;
     const n = Number(raw);
@@ -138,7 +143,15 @@ function ApprovalDrawer({ id }: DrawerProps) {
             </Btn>
           </>
         ) : (
-          <Btn variant="gh" onClick={close}>Close</Btn>
+          <>
+            <Btn variant="gh" onClick={close}>Close</Btn>
+            {canWithdraw && (
+              <>
+                <div className="sp" />
+                <Btn variant="dg" onClick={() => cancelRequest(req.id)}>Withdraw approval</Btn>
+              </>
+            )}
+          </>
         )
       }
     >
@@ -151,6 +164,7 @@ function ApprovalDrawer({ id }: DrawerProps) {
       {!open && req.st !== "Rejected" && decided && (
         <Alert tone="i" label="DECIDED">
           {decided.what} by <b>{decided.who}</b> at <b className="mono">{decided.at}</b>.
+          {canWithdraw && " The store keeper has not issued a ticket yet — this approval can still be withdrawn."}
         </Alert>
       )}
 

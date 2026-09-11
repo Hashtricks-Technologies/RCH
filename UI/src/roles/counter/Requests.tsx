@@ -319,7 +319,8 @@ export default function Requests() {
       </Card>
       <p className="mini mtop">
         {openCount} request{openCount === 1 ? "" : "s"} from {L.n} {openCount === 1 ? "is" : "are"} still open. A
-        request to the central store can be cancelled from its detail while it reads “Request sent”.
+        request to the central store can be cancelled from its detail any time before the store keeper issues a
+        ticket against it — including after the outlet manager has approved it.
       </p>
     </>
   );
