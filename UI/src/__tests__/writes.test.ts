@@ -86,7 +86,7 @@ describe("pay — POST /bills", () => {
       "GET /api/v1/bills": () => json([BILL]),
     });
 
-    await S().pay("coffee", "Cash");
+    expect(await S().pay("coffee", "Cash")).toBe(true);
 
     expect(hit("POST /api/v1/bills")[0].body).toEqual({ loc: "coffee", tender: "Cash", lines: [{ it: "juice", qty: 2 }] });
     expect(S().cart.coffee).toEqual({});
@@ -122,7 +122,9 @@ describe("pay — POST /bills", () => {
     S().addToCart("coffee", "juice", 3);
     serve({ "POST /api/v1/bills": () => refusal("Only 2 nos of Fresh Juice 200ml left at Floor 3 Coffee Bar") });
 
-    await S().pay("coffee", "Cash");
+    // `false`, not a silent nothing: the till reads the answer to decide whether the payer and
+    // the tender it is holding may be cleared, and a refusal must leave both alone.
+    expect(await S().pay("coffee", "Cash")).toBe(false);
 
     expect(S().toast).toBe("Only 2 nos of Fresh Juice 200ml left at Floor 3 Coffee Bar");
     expect(S().cart.coffee).toEqual({ juice: 3 });   // the scan survives, so it can be retried
@@ -134,7 +136,7 @@ describe("pay — POST /bills", () => {
     S().addToCart("coffee", "juice", 1);
     fetchMock.mockRejectedValue(new TypeError("Failed to fetch"));
 
-    await S().pay("coffee", "Cash");
+    expect(await S().pay("coffee", "Cash")).toBe(false);
 
     expect(S().toast).toBe("Could not take the bill — check the connection and try again.");
     expect(S().cart.coffee).toEqual({ juice: 1 });
@@ -142,7 +144,7 @@ describe("pay — POST /bills", () => {
 
   it("sends nothing at all for an empty cart", async () => {
     as("counter");
-    await S().pay("coffee", "Cash");
+    expect(await S().pay("coffee", "Cash")).toBe(false);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -301,7 +303,7 @@ describe("savePrice — PUT /prices/:list/:it", () => {
       "GET /api/v1/prices": () => json({ A: FX.PL.A, B: { ...FX.PL.B, juice: 18 } }),
     });
 
-    await S().savePrice("B", "juice", 18);
+    expect(await S().savePrice("B", "juice", 18)).toBe(true);
 
     expect(hit("PUT /api/v1/prices/B/juice")[0].body).toEqual({ price: 18 });
     expect(S().toast).toBe("Fresh Juice 200ml priced at ₹18 on list B");
@@ -318,7 +320,9 @@ describe("savePrice — PUT /prices/:list/:it", () => {
     const before = S().prices.B.juice;
     serve({ "PUT /api/v1/prices/B/juice": () => refusal("Refused — printed MRP of ₹20 is a hard ceiling for Fresh Juice 200ml") });
 
-    await S().savePrice("B", "juice", 99);
+    // The price screen keeps what was typed on a `false`, so the manager can read the ceiling
+    // and correct the figure rather than hunt for the row again.
+    expect(await S().savePrice("B", "juice", 99)).toBe(false);
 
     expect(S().toast).toBe("Refused — printed MRP of ₹20 is a hard ceiling for Fresh Juice 200ml");
     expect(S().prices.B.juice).toBe(before);
@@ -334,7 +338,7 @@ describe("addProduct / removeProduct — the menu routes", () => {
       "GET /api/v1/menus": () => json({ ...FX.MENU, coffee: [...FX.MENU.coffee, "juice"] }),
     });
 
-    await S().addProduct("coffee", "juice");
+    expect(await S().addProduct("coffee", "juice")).toBe(true);
 
     expect(hit("POST /api/v1/menus/coffee/items")[0].body).toEqual({ it: "juice" });
     expect(S().toast).toBe("Fresh Juice 200ml listed at Floor 3 Coffee Bar");
@@ -350,7 +354,7 @@ describe("addProduct / removeProduct — the menu routes", () => {
       "GET /api/v1/menus": () => json({ ...FX.MENU, coffee: FX.MENU.coffee.filter((x) => x !== "chips") }),
     });
 
-    await S().removeProduct("coffee", "chips");
+    expect(await S().removeProduct("coffee", "chips")).toBe(true);
 
     expect(hit("DELETE /api/v1/menus/coffee/items/chips")[0].body).toBeUndefined();
     expect(S().toast).toBe("Potato Chips 30g removed from Floor 3 Coffee Bar");
@@ -363,7 +367,7 @@ describe("addProduct / removeProduct — the menu routes", () => {
     as("manager");
     serve({ "POST /api/v1/menus/coffee/items": () => refusal("Fresh Juice 200ml is already listed at Floor 3 Coffee Bar") });
 
-    await S().addProduct("coffee", "juice");
+    expect(await S().addProduct("coffee", "juice")).toBe(false);
 
     expect(S().toast).toBe("Fresh Juice 200ml is already listed at Floor 3 Coffee Bar");
     expect(calls()).toHaveLength(1);

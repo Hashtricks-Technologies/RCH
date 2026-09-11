@@ -66,7 +66,10 @@ export interface AppState extends ProcurementSlice, OpsSlice {
 
   addToCart: (loc: LocKey, it: string, d?: number) => void;
   clearCart: (loc: LocKey) => void;
-  pay: (loc: LocKey, tender: Tender, payer?: Payer) => Promise<void>;
+  /** `true` only once the bill is on the server. A credit-cap refusal must leave the payer and
+   *  the tender exactly where the operator put them — the cart is still full, and clearing the
+   *  form behind a refusal is how the same bill gets rung up twice. */
+  pay: (loc: LocKey, tender: Tender, payer?: Payer) => Promise<boolean>;
 
   toggleAvail: (loc: LocKey, it: string) => Promise<void>;
 
@@ -101,9 +104,12 @@ export interface AppState extends ProcurementSlice, OpsSlice {
   makeProduct: (it: string, started: number, made?: number, note?: string) => Promise<boolean>;
   distribute: (it: string, n: number, to: LocKey) => Promise<boolean>;
 
-  savePrice: (list: "A" | "B", it: string, price: number) => Promise<void>;
-  removeProduct: (loc: LocKey, it: string) => Promise<void>;
-  addProduct: (loc: LocKey, it: string) => Promise<void>;
+  /** The three catalogue writes answer `true` only once the server has taken them, for the same
+   *  reason every other form-carrying action does: an MRP refusal must leave the price the
+   *  manager typed in the box, not drop it and show the old one back. */
+  savePrice: (list: "A" | "B", it: string, price: number) => Promise<boolean>;
+  removeProduct: (loc: LocKey, it: string) => Promise<boolean>;
+  addProduct: (loc: LocKey, it: string) => Promise<boolean>;
   /** The central store's ledger over a window, from the server's own sum of `stock_moves`.
    *  Answers `null` and toasts when the read fails — never `[]`, which is a real answer meaning
    *  the location carries no line — so the report can say which of the two happened rather than
@@ -264,14 +270,16 @@ export const useApp = create<AppState>((set, get) => ({
     const s = get();
     const cart = s.cart[loc] ?? {};
     const lines = Object.entries(cart).map(([it, qty]) => ({ it, qty }));
-    if (!lines.length || !s.user) return;
+    if (!lines.length || !s.user) return false;
     try {
       const r = await call(routes.pay, { body: { loc, tender, payer, lines } });
       set((x) => ({ cart: { ...x.cart, [loc]: {} } }));
       get().notify(r.message);
       await refetch(r.changed, r.message);
+      return true;
     } catch (e) {
       get().notify(e instanceof ApiError ? e.message : "Could not take the bill — check the connection and try again.");
+      return false;
     }
   },
 
@@ -479,8 +487,10 @@ export const useApp = create<AppState>((set, get) => ({
       const r = await call(routes.savePrice, { params: { list, it }, body: { price } });
       get().notify(r.message);
       await refetch(r.changed, r.message);
+      return true;
     } catch (e) {
       get().notify(e instanceof ApiError ? e.message : "Could not save the price — check the connection and try again.");
+      return false;
     }
   },
   removeProduct: async (loc, it) => {
@@ -488,8 +498,10 @@ export const useApp = create<AppState>((set, get) => ({
       const r = await call(routes.removeMenuItem, { params: { loc, it } });
       get().notify(r.message);
       await refetch(r.changed, r.message);
+      return true;
     } catch (e) {
       get().notify(e instanceof ApiError ? e.message : "Could not take the product off the menu — check the connection and try again.");
+      return false;
     }
   },
   addProduct: async (loc, it) => {
@@ -497,8 +509,10 @@ export const useApp = create<AppState>((set, get) => ({
       const r = await call(routes.addMenuItem, { params: { loc }, body: { it } });
       get().notify(r.message);
       await refetch(r.changed, r.message);
+      return true;
     } catch (e) {
       get().notify(e instanceof ApiError ? e.message : "Could not add the product to the menu — check the connection and try again.");
+      return false;
     }
   },
   /**
