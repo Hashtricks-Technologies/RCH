@@ -68,6 +68,18 @@ export const productionRepo = {
     return u?.name ?? id;
   },
 
+  // ---- prod-order raise ----
+  /** The order head. No `.returning()` and no lock: the row is being minted, so there is nothing
+   *  for another writer to be holding, and `wire` reads it back the way every other write does. */
+  async insertOrder(tx: Tx, v: typeof prodOrders.$inferInsert): Promise<void> {
+    await tx.insert(prodOrders).values(v);
+  },
+
+  /** Its lines, in the order the outlet typed them — `lineNo` is what `lines()` reads back by. */
+  async insertLines(tx: Tx, id: string, lines: readonly { it: string; qty: number }[]): Promise<void> {
+    await tx.insert(prodOrderLines).values(lines.map((l, lineNo) => ({ orderId: id, lineNo, itemKey: l.it, qty: l.qty })));
+  },
+
   /** The wire shape `readProdOrders` produces, for the one order a write has just changed. */
   async wire(tx: Tx, id: string): Promise<ProdOrder> {
     const [head] = await tx.select().from(prodOrders).where(eq(prodOrders.id, id));
@@ -75,6 +87,11 @@ export const productionRepo = {
     const lines = await productionRepo.lines(tx, id);
     const by = await productionRepo.userName(tx, head.byUser);
     const hist = await readHistory(tx, "prod_order", id);
-    return { id: head.id, from: head.fromLoc as LocKey, by, at: iso(head.at), lines, st: head.status, note: head.note, hist };
+    // `need` is left off entirely when the column is null, the treatment `readProdOrders` gives
+    // it — so a write's own answer and the read-back after it are the same shape.
+    return {
+      id: head.id, from: head.fromLoc as LocKey, by, at: iso(head.at), lines, st: head.status, note: head.note,
+      ...(head.needBy !== null ? { need: head.needBy } : {}), hist,
+    };
   },
 };

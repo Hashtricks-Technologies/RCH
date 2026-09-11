@@ -4,14 +4,15 @@
 // exception and the reason this module touches the ledger: it is the one write in the system
 // that creates stock, so it consumes the recipe and books the yield in a single postMoves call.
 import type { z } from "zod";
-import type { Batch, DistributeBodySchema, MakeBatchBodySchema, PordStatus, ProdOrder, Ticket, WriteResponse } from "@rch/contract";
-import { bestBeforeAt, bestBeforeText, canTransition, fq, PROD_ORDER_TRANSITIONS, round3 } from "@rch/domain";
+import { OUTLETS } from "@rch/contract";
+import type { Batch, CreateProdOrderBodySchema, DistributeBodySchema, MakeBatchBodySchema, PordStatus, ProdOrder, Ticket, WriteResponse } from "@rch/contract";
+import { bestBeforeAt, bestBeforeText, canTransition, dmy, fq, PROD_ORDER_TRANSITIONS, round3 } from "@rch/domain";
 import type { Db } from "../../db/client.js";
 import { withTransaction } from "../../lib/db.js";
 import { NotFoundError } from "../../lib/errors.js";
 import { emitChanged } from "../../lib/events.js";
 import { appendHistory } from "../../lib/history.js";
-import { allocateNumber } from "../../lib/ids.js";
+import { allocateId, allocateNumber } from "../../lib/ids.js";
 import { lockBalances, postMoves, type Move } from "../../lib/ledger.js";
 import { loadMaster } from "../../lib/master.js";
 import { reservedAt } from "../../lib/reservations.js";
@@ -21,6 +22,7 @@ import { iso } from "../../lib/time.js";
 import type { AccessClaims } from "../../plugins/auth.js";
 import { productionRepo } from "./repo.js";
 
+export type CreateProdOrderBody = z.infer<typeof CreateProdOrderBodySchema>;
 export type DistributeBody = z.infer<typeof DistributeBodySchema>;
 export type MakeBatchBody = z.infer<typeof MakeBatchBodySchema>;
 export type DispatchResult = { order: ProdOrder; ticket: Ticket };
@@ -31,6 +33,76 @@ const KITCHEN = "kitchen";
 
 export function createProductionService(db: Db) {
   return {
+    // ---- prod-order raise ----
+    /**
+     * An outlet asking the kitchen to make something — the other end of the board, and the only
+     * way an order gets onto it now that the seed is not.
+     *
+     * No document lock: this mints its own row, so there is nothing yet for a second writer to
+     * be deciding. And **no `lockBalances`** — an order promises nothing off the kitchen's
+     * shelves. It is `dispatch` that reserves, and `handover` that moves. The reasoning is the
+     * goods-receipt rule read the other way round (`grn`'s `receive` takes no balance lock
+     * because both its moves are positive): a write that neither reads a balance nor promises
+     * against one has no cell to lock, and locking one would create a phantom "carried at zero"
+     * row for a shelf this order never touches (M12).
+     *
+     * So the whole of it is: rules, then the id, then the document, then the trail.
+     */
+    async raise(claims: AccessClaims, body: CreateProdOrderBody): Promise<WriteResponse<ProdOrder>> {
+      return withTransaction(db, async (tx) => {
+        const master = await loadMaster(tx);
+        // A counter's `from` was pinned to its token in routes.ts; the manager's is the body's,
+        // and a manager supervises all three shops, so there is nothing for the server to guess.
+        const from = body.from;
+        assertRule(from, "Choose which outlet this order is for");
+        const fromName = master.locations[from]?.n ?? from;
+        // The kitchen cannot order from itself and the central store carries, it does not sell.
+        // Only an outlet has a menu for the tray to land on (M9), which is the next rule down.
+        assertRule(OUTLETS.includes(from), `${fromName} is not an outlet — a production order is raised for a counter`);
+
+        // Fold a repeated item into one line before anything is checked, the way `dispatch`
+        // does: two lines of one product would be made twice, dispatched twice and covered
+        // twice, and the quantity the kitchen must read is the total.
+        const folded = new Map<string, number>();
+        for (const l of body.lines) folded.set(l.it, round3((folded.get(l.it) ?? 0) + l.qty));
+        const lines = [...folded].map(([it, qty]) => ({ it, qty }));
+        assertRule(lines.every((l) => l.qty > 0), "Enter a quantity on every line");
+        assertRule(lines.length > 0, "Add at least one item to the order");
+
+        // One read for the whole order, not one per line: the menu cannot change under a
+        // transaction that has already begun, and a fifty-line order would otherwise be fifty
+        // round trips on a single pg client (`lib/master.ts`'s note).
+        const menu = await productionRepo.menuAt(tx, from);
+        for (const l of lines) {
+          const item = master.items[l.it];
+          if (!item) throw new NotFoundError(`There is no item ${l.it}.`);
+          // Everything else on an outlet's menu is bought in and comes off the central store's
+          // shelf — a request, not an order, and the sentence says which door to use.
+          assertRule(item.t === "FG" || item.t === "MTO", `${item.n} is not made in the kitchen — raise a stock request for it instead`);
+          // Stock that lands where it cannot be sold is stock lost (M9). `distribute`'s own
+          // words, because it is the same refusal one step later in the same journey.
+          assertRule(menu.has(l.it), `${item.n} is not listed at ${fromName} — add it to that menu first`);
+        }
+
+        const at = new Date();
+        const id = await allocateId(tx, "prd", at);
+        await productionRepo.insertOrder(tx, { id, fromLoc: from, byUser: claims.sub, at, status: "New", needBy: body.need ?? null, note: body.note });
+        await productionRepo.insertLines(tx, id, lines);
+        const who = await productionRepo.userName(tx, claims.sub);
+        // "Raised" rather than "New": the trail records what somebody did, and the status column
+        // beside it already says where the order stands. The seed writes the same word.
+        await appendHistory(tx, "prod_order", id, "Raised", who, at);
+
+        const changed = ["pord"] as const;
+        await emitChanged(tx, changed);
+        return {
+          result: await productionRepo.wire(tx, id),
+          changed: [...changed],
+          message: `${id} raised for ${fromName} — ${lines.length} item${lines.length === 1 ? "" : "s"}${body.need ? `, needed by ${dmy(body.need)}` : ""}`,
+        };
+      });
+    },
+
     /**
      * One production order onto one ticket, addressed to the outlet that asked for it.
      *

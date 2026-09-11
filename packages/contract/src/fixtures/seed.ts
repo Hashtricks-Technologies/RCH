@@ -110,10 +110,13 @@ export const seedGrn: Grn[] = [
     at: "09:15", by: "Latha Narayanan" },
 ];
 export const seedPord: ProdOrder[] = [
+  // ---- prod-order raise ---- the first history row says "Raised", not "New": it records what
+  // somebody did, and the status column beside it already says where the order stands. `POST
+  // /prod-orders` writes the same word, so one trail reads one way whoever put the order there.
   { id: "PRD-2026-029", from: "kiosk", by: "Ramesh Kumar", at: "07:10", lines: [{ it: "puff", qty: 40 }],
-    st: "New", note: "Lunch rush.", hist: [{ s: "New", who: "Ramesh Kumar", t: "07:10" }] },
+    st: "New", note: "Lunch rush.", hist: [{ s: "Raised", who: "Ramesh Kumar", t: "07:10" }] },
   { id: "PRD-2026-030", from: "kiosk", by: "Ramesh Kumar", at: "07:35", lines: [{ it: "sand", qty: 20 }, { it: "salad", qty: 10 }],
-    st: "Accepted", note: "", hist: [{ s: "New", who: "Ramesh Kumar", t: "07:35" }, { s: "Accepted", who: "Vinoth Prakash", t: "07:41" }] },
+    st: "Accepted", note: "", hist: [{ s: "Raised", who: "Ramesh Kumar", t: "07:35" }, { s: "Accepted", who: "Vinoth Prakash", t: "07:41" }] },
 ];
 export const seedBatch: Batch[] = [
   { id: "BAT-20260826-01", it: "puff", qty: 120, made: 116, at: "06:40", bb: "21:30" },

@@ -97,7 +97,9 @@ export async function readProdOrders(db: Reader, pre?: UserNames): Promise<ProdO
   const h = await readHistories(db, "prod_order");
   const names = pre ?? await userNames(db);
   const by = groupBy(lines, (l) => l.orderId);
-  return heads.map((o) => ({ id: o.id, from: o.fromLoc as LocKey, by: names.get(o.byUser)?.name ?? o.byUser, at: iso(o.at), lines: (by.get(o.id) ?? []).map((l) => ({ it: l.itemKey, qty: l.qty })), st: o.status, note: o.note, hist: hist(h, o.id) }));
+  // ---- prod-order raise ---- `strip` for the same reason `readPurchaseOrders` uses it: a
+  // needed-by date the outlet never gave is a key that is not there, not a blank string.
+  return heads.map((o) => strip({ id: o.id, from: o.fromLoc as LocKey, by: names.get(o.byUser)?.name ?? o.byUser, at: iso(o.at), lines: (by.get(o.id) ?? []).map((l) => ({ it: l.itemKey, qty: l.qty })), st: o.status, note: o.note, need: o.needBy ?? undefined, hist: hist(h, o.id) }));
 }
 
 export async function readBatches(db: Reader): Promise<Batch[]> {
