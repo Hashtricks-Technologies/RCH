@@ -40,10 +40,11 @@ pnpm --filter @rch/ui test
 
 The dev server proxies `/api` to the Fastify API on `:3000`. Master data, prices, menus, the
 payer roster and every open document are hydrated from `GET /snapshot` on load
-(`hydrateMaster`/`hydrateRoster`). Every mutation in the store — forty-seven actions, listed in
+(`hydrateMaster`/`hydrateRoster`). Every mutation in the store — fifty-three actions, listed in
 `../CLAUDE.md`'s *One Zustand store* — is a server call: billing, availability, prices and
 menus, the whole stock-request chain, shop transfers and shop asks, the whole of production, the
-whole of buying, and now the support desk and the two server-side reports. There is no
+whole of buying, the support desk and the two server-side reports, and the audit wave's own six:
+the bill void, the kitchen order, the item patch, the two payer writes and the adjustment. There is no
 in-memory fallback for any of it. `UI/src/api/events.ts` opens one `fetch`-based SSE connection
 per session and refetches whatever a write elsewhere changed, so two open tabs stay in sync
 without a reload.
