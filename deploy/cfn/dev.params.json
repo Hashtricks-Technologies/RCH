@@ -16,8 +16,12 @@
     "ParameterValue": "vpc-01ca67a181cb36d34"
   },
   {
-    "ParameterKey": "VpcCidr",
+    "ParameterKey": "DbIngressCidr",
     "ParameterValue": "172.31.0.0/16"
+  },
+  {
+    "ParameterKey": "NodeSecurityGroupId",
+    "ParameterValue": ""
   },
   {
     "ParameterKey": "SubnetIds",
@@ -38,6 +42,30 @@
   {
     "ParameterKey": "DbBackupRetentionDays",
     "ParameterValue": "7"
+  },
+  {
+    "ParameterKey": "DbMaxAllocatedStorage",
+    "ParameterValue": "0"
+  },
+  {
+    "ParameterKey": "MonitoringIntervalSeconds",
+    "ParameterValue": "60"
+  },
+  {
+    "ParameterKey": "EnablePerformanceInsights",
+    "ParameterValue": "false"
+  },
+  {
+    "ParameterKey": "AlbLogsBucketName",
+    "ParameterValue": ""
+  },
+  {
+    "ParameterKey": "ElbLogDeliveryAccountId",
+    "ParameterValue": "718504428378"
+  },
+  {
+    "ParameterKey": "AlertEmail",
+    "ParameterValue": ""
   },
   {
     "ParameterKey": "GitHubRepo",
