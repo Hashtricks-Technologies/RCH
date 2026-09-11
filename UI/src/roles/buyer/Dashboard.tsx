@@ -3,7 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { IT, LOC } from "../../data/master";
 import { vendorName } from "../../data/vendors";
 import { useApp } from "../../store";
-import { avail, daysCover, netReceived, poValue, procurementList, stateTone, stockValue } from "../../lib/selectors";
+// ---- item patch ----
+import { activeItems, avail, daysCover, netReceived, poValue, procurementList, stateTone, stockValue } from "../../lib/selectors";
 import { U, fq, lakh, money0, sum } from "../../lib/fmt";
 import {
   Alert, Btn, Card, DataTable, Feed, FilterSelect, Grid, Kpis, PageHead, Pill, TableFoot, Toolbar,
@@ -35,7 +36,11 @@ export default function Dashboard() {
   void s.catalogVersion;
   /** Procurement only ever buys what the central store carries: raw, packing and MRP goods.
    *  Finished goods and made-to-order drinks are produced in-house, never purchased. */
-  const BOUGHT: string[] = Object.keys(IT).filter(
+  // ---- item patch ----
+  // `activeItems()`, not `Object.keys(IT)`: the registry carries retired lines so past orders
+  // still name them, and a retired product reading "at zero — reorder" would send the buyer
+  // out to buy something the hospital has deliberately stopped carrying.
+  const BOUGHT: string[] = activeItems().filter(
     (k) => IT[k].t === "RAW" || IT[k].t === "PACK" || IT[k].t === "MRP",
   );
 

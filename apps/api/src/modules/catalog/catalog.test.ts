@@ -285,6 +285,44 @@ describe("PATCH /items/:it", () => {
     expect(r.json().result.item.mrp).toBe(40);
   });
 
+  it("refuses to clear an MRP — the ceiling has no clearing door", async () => {
+    // Zero is what an emptied number box sends, and it would take away both the till's hard
+    // ceiling and the floor a goods receipt judges a delivery against, with nothing on the
+    // record to say it happened. The drawer never sends one; this is what happens if anything
+    // does. An item that carries a printed MRP keeps one.
+    const k = await make("Patch mrp clearing", { mrp: 30 });
+    const r = await patch(`/items/${k}`, await hdr("u2"), { mrp: 0 });
+    expect(r.statusCode).toBe(422);
+    expect(r.json().error.message).toBe("Give the printed MRP a value — an item that carries one keeps it");
+    expect((await get("/items"))[k].mrp).toBe(30);
+  });
+
+  it("refuses a negative reorder level, and fills a blank HSN or group with the store's defaults", async () => {
+    const k = await make("Patch levels and blanks", { hsn: "0401", grp: "Dairy" });
+    const bad = await patch(`/items/${k}`, await hdr("u3"), { rl: -1 });
+    expect(bad.statusCode).toBe(422);
+    expect(bad.json().error.message).toBe("Reorder level cannot be negative");
+    // A blank box falls back to what `createItem` applies, rather than leaving an item with no
+    // HSN code to put on a bill or no group for a picker to sort it under.
+    const r = await patch(`/items/${k}`, await hdr("u3"), { hsn: "  ", grp: "" });
+    expect(r.statusCode, r.body).toBe(200);
+    expect(r.json().result.item).toMatchObject({ hsn: "2106", g: "Other" });
+  });
+
+  it("does not say a line was retired or restored when it never crossed", async () => {
+    // `active: true` on a line that was already live has restored nothing. A history row saying
+    // it did — and a toast reading "back in the catalogue" for a product that never left — is a
+    // record of an event that did not happen. The other fields still land, so it reads Updated.
+    const k = await make("Patch no crossing");
+    const r = await patch(`/items/${k}`, await hdr("u3"), { active: true, hsn: "2202" });
+    expect(r.statusCode, r.body).toBe(200);
+    expect(r.json().message).toBe("Patch no crossing updated");
+    expect(r.json().result.item).toMatchObject({ hsn: "2202", active: true });
+    const rows = await app.testDb!.db.select().from(documentHistory)
+      .where(and(eq(documentHistory.docType, "item"), eq(documentHistory.docId, k)));
+    expect(rows.map((x) => x.status)).toEqual(["Updated"]);
+  });
+
   it("refuses a rename onto another item's name and leaves the row unchanged", async () => {
     const k = await make("Patch rename source");
     await make("Patch rename target");

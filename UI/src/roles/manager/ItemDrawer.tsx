@@ -52,7 +52,11 @@ function ItemDrawer({ id }: { id: string }) {
   const retired = item.active === false;
   const trimmed = n.trim();
   const costN = Number(cost);
-  const mrpN = mrp.trim() === "" ? 0 : Number(mrp);
+  // A blank or non-positive box means "leave the printed MRP as it is", never "clear it": the
+  // number is the one hard ceiling in the system and there is no door that removes it. The
+  // server refuses `mrp: 0` outright; this is what keeps the drawer from ever sending one.
+  const mrpN = Number(mrp);
+  const mrpGiven = mrp.trim() !== "" && Number.isFinite(mrpN) && mrpN > 0;
 
   const nameErr = may("n") && !trimmed ? "Give the product a name" : "";
   const costErr = may("cost") && !(costN > 0) ? "Cost must be more than zero" : "";
@@ -69,7 +73,7 @@ function ItemDrawer({ id }: { id: string }) {
     if (may("rl") && Number(rl) !== item.rl) p.rl = Number(rl) || 0;
     if (may("cost") && costN !== item.cost) p.cost = costN;
     if (may("gst") && Number(gst) !== item.gst) p.gst = Number(gst) || 0;
-    if (may("mrp") && mrpN !== (item.mrp ?? 0)) p.mrp = mrpN;
+    if (may("mrp") && mrpGiven && mrpN !== item.mrp) p.mrp = mrpN;
     return p;
   };
   const patch = changes();
@@ -162,7 +166,9 @@ function ItemDrawer({ id }: { id: string }) {
             style={costErr ? { borderColor: "var(--crit)" } : undefined} />
         </Field>
         <Field label="Printed MRP (₹)" hint={may("mrp")
-          ? "Leave blank for a product that carries none. It can never go below a shelf price already set."
+          ? (item.mrp == null
+            ? "This product carries none. Type the number printed on the pack to give it one — it becomes a hard ceiling at every till."
+            : "Leave the box as it is to keep the current ceiling; emptying it changes nothing. It can never go below a shelf price already set.")
           : "The outlet manager changes this."}>
           <input type="number" min={0} step="any" value={mrp} disabled={!may("mrp")}
             onChange={(e) => setMrp(e.target.value)} placeholder="none" />

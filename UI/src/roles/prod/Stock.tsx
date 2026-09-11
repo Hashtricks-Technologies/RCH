@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
-import { isReqOpen, parOf, qty, stateLabel, stateTone, stockValue } from "../../lib/selectors";
+// ---- item patch ----
+import { isReqOpen, isRetired, parOf, qty, stateLabel, stateTone, stockValue } from "../../lib/selectors";
 import { fq, money, money0, sum } from "../../lib/fmt";
 import {
   Alert, Btn, BtnRow, Card, DataTable, Field, FilterSelect, FormRow, PageHead, Pill, Section,
@@ -230,7 +231,14 @@ export default function Stock() {
   const baseCells = (k: string) => {
     const have = qty(s, "kitchen", k);
     return [
-      <>{IT[k].n}<small>{IT[k].c} · {IT[k].g}</small></>,
+      // ---- item patch ----
+      // A retired line the kitchen is still holding reads greyed and says so: that stock has to
+      // be used up or written off, and nothing is coming to replace it.
+      <>
+        {isRetired(k) ? <span className="dim">{IT[k].n}</span> : IT[k].n}
+        {isRetired(k) && <> <Tag>Retired</Tag></>}
+        <small>{IT[k].c} · {IT[k].g}</small>
+      </>,
       <Tag kind={IT[k].t === "FG" ? "md" : undefined}>{IT[k].t}</Tag>,
       <b>{fq(have, k)}</b>,
       IT[k].u,
@@ -240,7 +248,9 @@ export default function Stock() {
       // ---- item patch ----
       // The kitchen keeps an item's name, group, HSN and reorder level, the same as the store
       // and the buyer; the drawer greys out the manager's cost, GST and printed MRP.
-      <Btn size="xs" variant="gh" onClick={() => openDrawer("item", k)}>Edit</Btn>,
+      <Btn size="xs" variant="gh" onClick={() => openDrawer("item", k)}>
+        {isRetired(k) ? "Restore" : "Edit"}
+      </Btn>,
     ];
   };
 

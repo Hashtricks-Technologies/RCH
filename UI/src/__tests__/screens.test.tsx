@@ -438,4 +438,53 @@ describe("the item drawer is the same table the server refuses with", () => {
   it("says so rather than throwing when the item has left the master under it", () => {
     expect(open("store", "nosuchitem")).toContain("Item not found");
   });
+
+  it("will not offer to clear a printed MRP — the box says leaving it alone changes nothing", () => {
+    // There is no clearing door: the server refuses `mrp: 0` outright, so the drawer must not
+    // read an emptied box as a request to remove the ceiling.
+    const html = open("manager");
+    expect(html).toContain("Leave the box as it is to keep the current ceiling; emptying it changes nothing");
+  });
+});
+
+// ---- item patch ----
+/** A retired line stays in `IT` so past documents still name it. Every screen that reads the
+ *  registry as "what we buy / hold / reorder" has to filter it out, or the product the hospital
+ *  deliberately stopped carrying goes on generating work. */
+describe("a retired product stops generating work", () => {
+  const retire = (k: string) => act(() => { IT[k] = { ...IT[k], active: false }; });
+
+  it("drops out of the buyer's below-reorder count", () => {
+    // Milk is the seeded line that is below its reorder level at the central store: 12 L on
+    // hand against a level of 40.
+    act(() => { as("buyer"); });
+    const counts = (html: string) => html.match(/(\d+) of (\d+) below reorder/)!.slice(1).map(Number);
+    const [belowBefore, boughtBefore] = counts(render(createElement(buyer.dash)));
+    expect(belowBefore).toBeGreaterThan(0);
+
+    retire("milk");
+    const [belowAfter, boughtAfter] = counts(render(createElement(buyer.dash)));
+    expect(belowAfter).toBe(belowBefore - 1);
+    expect(boughtAfter).toBe(boughtBefore - 1);
+  });
+
+  it("is never offered to a requisition, and reads greyed on the shelf it is still standing on", () => {
+    act(() => { as("store"); });
+    // The row for milk, on its own: `DataTable` gives every row the item key as its React key,
+    // which reaches the DOM as nothing, so the row is found by the item's own code instead.
+    const rowOf = (html: string, code: string) =>
+      html.split("<tr").find((chunk) => chunk.includes(code)) ?? "";
+
+    const before = rowOf(render(createElement(store.stock)), "RM-1001");
+    expect(before).toContain("Add to requisition");
+    expect(before).not.toContain("Retired");
+
+    retire("milk");
+    const after = rowOf(render(createElement(store.stock)), "RM-1001");
+    // Still listed — twelve litres are on the shelf and somebody has to write them off — but
+    // nothing on the row asks for more of it.
+    expect(after).toContain("Retired");
+    expect(after).not.toContain("Add to requisition");
+    expect(after).toContain("Restore");
+  });
 });

@@ -8,9 +8,12 @@ type PriceList = "A" | "B";
 export type ItemRow = typeof items.$inferSelect;
 export type NewItemRow = typeof items.$inferInsert;
 // ---- item patch ----
+/** `mrp` is a `number`, never `null`: an item that carries a printed MRP keeps one, so there is
+ *  no value this patch can take that removes a ceiling. The column stays nullable — an item may
+ *  never have had one — but no write on this side sets it back to nothing. */
 export type ItemPatch = Partial<{
   name: string; grp: string; hsn: string; gst: number;
-  reorderLevel: number; cost: number; mrp: number | null; active: boolean;
+  reorderLevel: number; cost: number; mrp: number; active: boolean;
 }>;
 
 export const catalogRepo = {

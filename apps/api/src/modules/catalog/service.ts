@@ -141,22 +141,35 @@ export function createCatalogService(db: Db) {
           patch.cost = body.cost;
         }
         if (body.mrp !== undefined) {
-          // A ceiling of nothing is not a ceiling: zero clears the printed MRP, the same reading
-          // `createItem` gives a blank box, and a cleared MRP has no floor left to breach.
-          if (body.mrp > 0) {
-            const prices = await catalogRepo.pricesOf(tx, it);
-            const shelf = prices.reduce((hi, p) => Math.max(hi, p.price), 0);
-            const refusal = mrpBelowShelfPrice(name, body.mrp, shelf);
-            assertRule(!refusal, refusal ?? "");
-          }
-          patch.mrp = body.mrp > 0 ? body.mrp : null;
+          // **There is no clearing door.** An item that carries a printed MRP keeps one: the
+          // number is the system's one hard ceiling (`priceOf`, `PUT /prices/:list/:it`) and the
+          // floor a goods receipt judges a delivery against, and a blanked box would take both
+          // away with nothing on the record to say it happened. A zero is what an empty input
+          // sends, which is exactly why it cannot be the way through — the drawer omits `mrp`
+          // altogether rather than sending one.
+          assertRule(body.mrp > 0, "Give the printed MRP a value — an item that carries one keeps it");
+          const prices = await catalogRepo.pricesOf(tx, it);
+          const shelf = prices.reduce((hi, p) => Math.max(hi, p.price), 0);
+          const refusal = mrpBelowShelfPrice(name, body.mrp, shelf);
+          assertRule(!refusal, refusal ?? "");
+          patch.mrp = body.mrp;
         }
         if (body.gst !== undefined) patch.gst = body.gst;
-        if (body.hsn !== undefined) patch.hsn = body.hsn.trim();
-        if (body.grp !== undefined) patch.grp = body.grp.trim();
-        if (body.rl !== undefined) patch.reorderLevel = round3(body.rl);
+        // `QtySchema` carries no minimum — a zero has to reach the operator as a sentence, not a
+        // 400 — so the one figure here that cannot go below zero says so itself.
+        if (body.rl !== undefined) {
+          assertRule(body.rl >= 0, "Reorder level cannot be negative");
+          patch.reorderLevel = round3(body.rl);
+        }
+        // A blank box falls back to the same defaults `createItem` applies, rather than leaving
+        // an item with no HSN code to put on a bill or no group for a picker to sort it under.
+        if (body.hsn !== undefined) patch.hsn = body.hsn.trim() || "2106";
+        if (body.grp !== undefined) patch.grp = body.grp.trim() || "Other";
 
-        if (body.active === false) {
+        // Only a line actually **crossing** off the catalogue has to be clear of stock and
+        // menus; asking it again of one already retired would refuse a no-op over stock that
+        // arrived after it left, which is a question for whoever booked that stock in.
+        if (body.active === false && row.active) {
           const locations = await loadLocations(tx);
           const nameOf = (l: string) => locations[l]?.n ?? l;
           const held = await catalogRepo.balancesOf(tx, it);
@@ -170,7 +183,14 @@ export function createCatalogService(db: Db) {
         assertRule(updated, `${name} is already in the catalogue`);
 
         const at = new Date();
-        const word = body.active === false ? "Retired" : body.active === true ? "Restored" : "Updated";
+        // "Retired" and "Restored" describe a line **crossing** — compared against the row this
+        // write locked, not against what the patch asked for. A patch that sets `active: true`
+        // on a line that was already live has restored nothing, and a trail saying it did, or a
+        // toast reading "back in the catalogue" for a product that never left, is a false record
+        // of an event that did not happen. Either way the other fields still landed, so it reads
+        // as the ordinary "Updated" rather than as nothing at all.
+        const crossed = body.active !== undefined && body.active !== row.active;
+        const word = !crossed ? "Updated" : body.active === false ? "Retired" : "Restored";
         await appendHistory(tx, "item", it, word, claims.sub, at);
         const changed = ["items"] as const;
         await emitChanged(tx, changed);
