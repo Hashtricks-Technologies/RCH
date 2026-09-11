@@ -30,14 +30,20 @@ merge, so what reaches production is byte-identical to what passed on staging.
 
 | Branch | Role | Deploys to |
 |---|---|---|
-| `develop` | **Default.** All work lands here (feature branches by PR, or direct commits while the team is one person). | `rch-dev` namespace, on push — the dev environment at https://rch.hashtrickstechnologies.com, one spot node, `values-dev.yaml` |
-| `staging` | Release candidate | `rch-staging` namespace, on push |
-| `production` | What the hospital runs | `rch` namespace, on push, behind a GitHub environment approval |
+| `develop` | **Default.** All work lands here (feature branches by PR, or direct commits while the team is one person). | `rch-dev` namespace, once CI is green on that push — the dev environment at https://rch.hashtrickstechnologies.com, one spot node, `values-dev.yaml` |
+| `staging` | Release candidate | `rch-staging` namespace, once CI is green on that push |
+| `production` | What the hospital runs | `rch` namespace, once CI is green on that push, behind a GitHub environment approval |
 
 Promote with `git checkout staging && git merge --ff-only develop && git push`, then the same
 from `staging` into `production`. Never merge the other way except a hotfix: branch from
 `production`, PR into `production`, then merge `production` back into `staging` and `develop`.
 `main` no longer exists; it was renamed to `develop` on 2026-09-03.
+
+**One thing the fast-forward model does not cover: the workflow file itself.** `deploy.yml` is
+triggered by `workflow_run`, and GitHub always executes a `workflow_run` handler as it exists on
+the **default branch** (`develop`) — never the copy on `staging` or `production`. So an edit to
+`deploy.yml` governs a production deploy the moment it lands on `develop`, not when `production`
+is promoted. `deploy/RUNBOOK.md` §2 says what to do about it.
 
 ## Commands
 
@@ -82,15 +88,33 @@ not only on a real hospital: the chart renders `NODE_ENV=production` into every 
 in-cluster seed is always the `--allow-production` form (`deploy/RUNBOOK.md` §15.7).
 
 From the repo root, `bash scripts/build-site.sh` assembles the published site into `dist/`
-(`/` = `index.html`, `/docs/` = the HTML specs, `/app/` = the built React app, from
-`UI/dist`). Netlify and CI both run this exact script, so a broken assembly fails locally the
-same way.
+(`/` = `index.html`, `/docs/` = the HTML specs). Netlify and CI both run this exact script, so a
+broken assembly fails locally the same way. `/app/` — the built React app, from `UI/dist` — is
+assembled **only when `BUILD_APP=1`**, which CI sets and Netlify deliberately does not: a static
+copy of the app with no `/api` behind it could sign nobody in, so `netlify.toml` redirects
+`/app` and `/app/*` (302, `force = true`) to the deployment that has an API. The script still
+runs `pnpm --filter @rch/ui build` either way — a site build that stopped compiling the app
+would otherwise stop noticing when the app stopped compiling — and prints which of the two it
+did.
 
 CI (`.github/workflows/ci.yml`) runs `pnpm install --frozen-lockfile` → `pnpm turbo typecheck
-test` → `pnpm lint` (oxlint per package plus knip, which turbo never runs) →
-`bash scripts/build-site.sh` on Node 24. Every change must pass all of it.
-`deploy.yml` builds and deploys the API and UI containers on push to `staging`/`production` —
-see `deploy/RUNBOOK.md` §2.
+test` → `pnpm lint` (oxlint per package plus knip, which turbo never runs) → `pnpm
+check:boundaries` → `pnpm audit` → `bash scripts/build-site.sh` on Node 24, then builds both
+images, scans them with Trivy at `CRITICAL,HIGH` and does a real `helm install` against a
+throwaway kind cluster. Every change must pass all of it. Two details worth knowing before you
+debug a red run: `test` is `"cache": false` in `turbo.json` (turbo hashes source files, not the
+database the API suite runs against, so a cache hit would replay a green from before a
+migration), and `pnpm audit` now **fails** the job when the registry is unreachable on all three
+attempts rather than warning — "we did not look" is not "no advisories". An accepted CVE goes in
+`.trivyignore.yaml` (YAML, with a `statement` and a real `expired_at`; the plain-text
+`.trivyignore` it replaced had no expiry field at all, so its dates were decorative).
+
+**`deploy.yml` no longer runs `on: push`.** It is `workflow_run` on CI's completion, gated on
+`conclusion == 'success'` **and** `event == 'push'`, and every value it uses comes from
+`github.event.workflow_run.head_sha` / `head_branch` — `github.sha` and `github.ref_name` point
+at the default branch's tip under this event and are unusable. It re-scans the exact ECR tags
+helm is about to deploy before upgrading, and production upgrades with `--wait` but deliberately
+**without** `--atomic`. See `deploy/RUNBOOK.md` §2 and §3.
 
 ## Repository layout
 
@@ -98,7 +122,8 @@ see `deploy/RUNBOOK.md` §2.
 index.html               project home page (published at /)
 docs/*.html              UA spec, system design, user flows — the product contract
 docs/superpowers/        plans and specs from prior agent-driven work
-scripts/build-site.sh    assembles index.html + docs/ + UI/dist into dist/
+scripts/build-site.sh    assembles index.html + docs/ into dist/ (+ UI/dist when BUILD_APP=1)
+netlify.toml             the published site's build, headers and the /app → EKS redirect
 UI/                      the application (React 19, TS 6 strict, Vite 8, Zustand 5)
 e2e/                     the Playwright smoke — six files, nine scenarios, thirteen runtime tests
                          (the sign-in loop is five of them), against a real stack

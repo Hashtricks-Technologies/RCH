@@ -241,14 +241,95 @@ with the buyer watching, and write down why.
 
 ## 2. Deploy
 
-Pushing to `develop`, `staging` or `production` triggers `.github/workflows/deploy.yml`, gated
-by the repository variable `DEPLOY_ENABLED=true`. It builds and pushes the `api` and `UI` images
-to ECR, then `helm upgrade --install rch deploy/chart/rch -f values-<env>.yaml --set
-image.tag=<sha> --namespace <namespace> --create-namespace --wait`. `develop` is `values-dev.yaml`
-/ `rch-dev` — the only one of the three actually deployed today, at
+**A deploy is triggered by CI passing, not by the push.** `.github/workflows/deploy.yml` is
+`on: workflow_run: { workflows: ["CI"], types: [completed], branches: [develop, staging,
+production] }`, and every job carries `github.event.workflow_run.conclusion == 'success'`. The
+old `on: push` fired deploy.yml *alongside* ci.yml, so a red typecheck, a failed test or a
+CRITICAL in an image could reach a cluster while CI was still running — the two were racing, not
+ordered. The `guard` job additionally requires `github.event.workflow_run.event == 'push'`:
+`branches:` matches the CI run's head branch, so a pull request raised **from** `staging`
+**into** `production` — the documented hotfix flow — would otherwise satisfy it and deploy an
+unmerged PR head.
+
+Everything the workflow uses is pinned to `github.event.workflow_run.head_sha` /
+`head_branch`. **`github.sha` and `github.ref_name` are not usable under this event** — they
+point at the default branch's tip, not at what CI just passed — so if you add a step, take the
+branch and the commit from `head_branch`/`head_sha` like every other step does.
+
+It is still gated by the repository variable `DEPLOY_ENABLED=true` (the `skipped` job runs
+instead). It builds and pushes the `api` and `UI` images to ECR, **scans the two tags it is
+about to deploy** (see below), then `helm upgrade --install rch deploy/chart/rch -f
+values-<env>.yaml --set image.tag=<sha> --namespace <namespace> --create-namespace --wait
+--timeout 15m`, with `--atomic` on dev and staging only. `develop` is `values-dev.yaml` /
+`rch-dev` — the only one of the three actually deployed today, at
 `https://rch.hashtrickstechnologies.com`; §15 records how it was stood up on AWS and what
 tripped on the way. `staging`/`production` are `values-staging.yaml`/`values-prod.yaml` and
 `rch-staging`/`rch`, prepared but not yet provisioned (§11).
+
+### Two consequences of `workflow_run` worth knowing before you need them
+
+1. **GitHub always runs the DEFAULT branch's copy of `deploy.yml`.** A `workflow_run` handler is
+   executed as it exists on `develop`, never as it exists on `staging` or `production`. Under the
+   fast-forward promotion model that is usually benign — `develop` is always ahead — but it means
+   an edit to `deploy.yml` governs a **production** deploy the moment it lands on `develop`, not
+   when `production` is promoted. "Byte-identical to what passed on staging" is true of the
+   application; it is not true of the workflow that ships it. Treat a change to `deploy.yml` as
+   a production change and review it as one.
+2. **A failed production upgrade now leaves the release stuck, on purpose.** Production takes
+   `--wait` without `--atomic` (why, below), so a failure leaves helm in `pending-upgrade` —
+   and the *next* deploy fails with "another operation (install/upgrade/rollback) is in
+   progress" until a person clears it. §3 has the two commands: `helm rollback rch -n rch` after
+   a failed **upgrade**, `helm uninstall rch -n rch` after a failed **first install** (which
+   leaves `pending-install`, with no earlier revision to roll back to).
+
+### What the workflow checks before it touches a cluster
+
+- **Trivy, on the exact tags helm is about to deploy.** `ci.yml` scans `rch-api:ci` / `rch-ui:ci`
+  — images it built itself, which are not the bytes that reach a cluster. Two steps in
+  `deploy.yml`, between the push and `helm upgrade`, scan
+  `<ECR_REGISTRY>/rch-{api,ui}:<head_sha>` pulled back out of ECR, at
+  `severity: CRITICAL,HIGH`, `exit-code: 1`, `ignore-unfixed: true`,
+  `trivyignores: .trivyignore.yaml` — the same action version and the same ignore file as
+  ci.yml, so the two scans cannot drift apart. They run whether the builds ran or were skipped
+  as already-pushed (the repositories refuse to overwrite a tag, so a re-run of a commit whose
+  images are already in ECR skips the build rather than failing on the push).
+- **Every secret the chart needs is present.** A named step before `helm upgrade` refuses, by
+  name, when any of `DATABASE_URL`, `JWT_PRIVATE_KEY`, `JWT_PUBLIC_KEY`, `SEED_PASSWORD` is
+  empty — `--set-string` would otherwise write the empty string into the Secret and the api
+  container would fail config validation minutes later, with nothing in the log about where the
+  blank came from. It collects all four before exiting, so one run names every missing one. It
+  is **scoped to non-production** (`head_branch != 'production'`): production reads the same four
+  from AWS Secrets Manager through the External Secrets Operator, so those GitHub secrets are
+  empty there on purpose and an unconditional guard would refuse every production deploy.
+
+### `--atomic` on dev and staging, `--wait` alone on production
+
+dev and staging keep `--atomic`: they are rebuildable, nobody is mid-shift on them, and an
+automatic undo is worth more there than the wreckage of the failed attempt. Production takes
+`--wait` alone, for two reasons:
+
+- `--atomic` deletes the failed release's pods the instant it gives up, and takes with it the
+  only two things §5's recovery actually reads — the pod events and the `migrate`
+  initContainer's log. "The rollout failed" with no way to learn why is worse than a stuck
+  release.
+- **A migration that already committed is not undone by rolling the Deployment back.**
+  `--atomic` would put the previous image in front of a schema it was never written for, which
+  is a second, quieter outage on top of the first (§3, *Migrations are forward-only*).
+
+So on production a failure stops, keeps the evidence, and waits for a person to decide whether
+the right move is forward or back. Two steps make that workable:
+
+- **`What the cluster saw`** (`if: failure()`, every branch, before any rollback) prints
+  `kubectl -n $NS get pods,events --sort-by=.lastTimestamp | tail -80` and `kubectl -n $NS logs
+  -l app.kubernetes.io/component=api -c migrate --tail=200` into the job log. Both `|| true`: a
+  first install that never made a pod must not turn a missing log into a second failure.
+- **`Unstick the release`** (`if: failure()`, **not** production) reads `helm status -o json`
+  first and rolls back only from `pending-upgrade`, `pending-install`, `pending-rollback` or
+  `failed`, and only when `helm history` shows at least two revisions. A bare `helm rollback`
+  run unconditionally would be harmful: `--atomic`'s own rollback creates revision N+1 carrying
+  the old content, and `helm rollback` with no revision goes back exactly one — to N, the
+  revision that just failed. This step exists for the case `--atomic` could not handle itself
+  (the job timed out mid-upgrade, or the automatic rollback hit the same wall the upgrade did).
 
 Migrations are not a separate Helm hook Job — they run as a `migrate` **initContainer** on
 every api pod (`dist/cli/migrate.mjs`, `deploy/chart/rch/templates/api-deployment.yaml`), ahead
@@ -310,14 +391,53 @@ Production deploys wait for the GitHub environment approval before rolling out.
 ```bash
 kubectl create namespace rch-staging
 kubectl create namespace rch
+# ONE-TIME PER NAMESPACE, before the first upgrade of the release in it:
+kubectl label namespace rch-staging elbv2.k8s.aws/pod-readiness-gate-inject=enabled
+kubectl label namespace rch         elbv2.k8s.aws/pod-readiness-gate-inject=enabled
 ```
 
+- **The pod readiness gate is not optional on this chart, and nothing enforces it.** The ingress
+  uses `target-type: ip`, so the ALB registers each pod directly. Without the label a new pod
+  counts as Ready the moment its own probe passes, while the load balancer is still registering
+  it — and the api Deployment's `maxUnavailable: 0` then retires an old pod that was still
+  serving in favour of a new one that is not yet receiving anything, which is a gap in the middle
+  of a rollout. With the gate, Ready means "registered and healthy in the target group". The
+  chart's `NOTES.txt` prints the command after every install, but a Helm NOTES block is easy to
+  scroll past, which is why it is also here and in §11's checklist. It is a namespace label, so
+  it survives every release; check it with `kubectl get ns <ns> --show-labels`.
+- **Cluster add-ons the chart assumes but does not install.** All four are declared in
+  `deploy/eksctl/cluster.yaml` except the first, which is a Helm chart of its own:
+  - **kube-prometheus-stack** (or any Prometheus Operator). `templates/servicemonitor.yaml` and
+    `templates/prometheusrule.yaml` are gated on `.Capabilities.APIVersions.Has
+    "monitoring.coreos.com/v1"`, so without it they simply do not render — no alerts, no error,
+    and a `helm upgrade --atomic` that would otherwise have failed on an unknown kind goes
+    through. Both carry `release: {{ serviceMonitor.releaseLabel }}` (default
+    `kube-prometheus-stack`), which is the label that operator's Prometheus selects rules by:
+    install it under a different Helm release name and set `serviceMonitor.releaseLabel` to
+    match, or the rules load and are never evaluated. §9 lists what ships.
+  - **metrics-server.** `values-prod.yaml` turns on an HPA; without a metrics API it reports
+    `<unknown>/70%` and never scales.
+  - **amazon-cloudwatch-observability**, with `CloudWatchAgentServerPolicy`.
+  - **Network policy in the `vpc-cni` add-on.** `templates/networkpolicy.yaml` renders a
+    default-deny plus three named doors by default (`networkPolicy.enabled: true`), but a
+    NetworkPolicy is enforced by the CNI: until the vpc-cni add-on has `enableNetworkPolicy`
+    turned on, the objects are applied and **inert**. On a live cluster that is `eksctl update
+    addon -f deploy/eksctl/cluster.yaml` (or the console) after the setting is in the file —
+    creating the cluster from the file is not enough for a cluster that already exists. Turn it
+    on deliberately and watch the first rollout: this is the change in the chart with the most
+    blast radius and the least local verification. `networkPolicy.enabled=false` stops rendering
+    them. (kind, in CI, uses kindnetd, which does not implement NetworkPolicy at all — that, and
+    not the `albSourceCidr` rules, is why `ci/install-test.sh` passes.)
 - **ExternalSecret store (prod only):** the `ClusterSecretStore` named `aws-secrets-manager`
   (referenced by `deploy/chart/rch/templates/externalsecret.yaml`) must already exist in the
   cluster — it is provisioned once by the External Secrets Operator install, not by this chart.
   Create the AWS Secrets Manager secret `rch/prod` as one JSON object with the keys
   `DATABASE_URL`, `JWT_PRIVATE_KEY`, `JWT_PUBLIC_KEY`, `JWT_PREVIOUS_PUBLIC_KEY` (the last may be
   empty until the first key rotation), and grant the ESO IRSA role read access to it.
+  `templates/externalsecret.yaml` is deliberately **not** capability-gated the way the two
+  monitoring templates are: skipping it on a cluster without the operator would leave pods with
+  no `DATABASE_URL` and a confusing crash, where failing the install names the missing operator.
+  A missing ESO is meant to be loud.
 - **ACM certificate ARN:** set `ingress.certificateArn` in `deploy/chart/rch/values-staging.yaml`
   and `values-prod.yaml` to the ACM certificate for `rch-staging.<host>` / `rch.<host>` before
   the first deploy — the ingress template only adds the ALB annotation when it is non-empty.
@@ -328,8 +448,14 @@ A `CronJob` (`deploy/chart/rch/templates/purge-cronjob.yaml`, `purge.enabled` in
 runs `dist/cli/purge.mjs` nightly at `15 2 * * *` (02:15). It deletes expired
 `idempotency_keys` rows, and `refresh_tokens` rows that can no longer authorise anything —
 expired ones, and revoked ones more than seven days old, so a recent "why was I signed out?"
-is still answerable from the table. It prints a count for each and needs no manual attention;
-if it's ever suspicious, run it by hand:
+is still answerable from the table. Both sweeps delete in **batches of 10 000** (`ctid in (select
+… limit …)`, looping until a batch comes back short) rather than one unbounded `DELETE`, whose
+lock and WAL burst would be proportional to however many months of backlog it met; each run takes
+one cutoff timestamp and reuses it across its batches. The job is bounded too:
+`startingDeadlineSeconds: 600` so a run missed during a node rotation is skipped rather than
+counted toward the controller's hundred-missed-schedules wedge, `backoffLimit: 2`,
+`activeDeadlineSeconds: 1800`, and three kept runs of each outcome. It prints a count for each and
+needs no manual attention; if it's ever suspicious, run it by hand:
 
 ```bash
 kubectl create job --from=cronjob/rch-purge rch-purge-manual -n rch
@@ -342,8 +468,29 @@ helm history rch -n rch              # or -n rch-staging
 helm rollback rch <revision> -n rch
 ```
 
-Or revert the merge commit on `production` and push — CI redeploys the reverted commit the
-normal way.
+Or revert the merge commit on `production` and push — CI runs, and the deploy that follows it
+redeploys the reverted commit the normal way.
+
+### Unsticking production after a failed deploy
+
+Production upgrades without `--atomic` (§2 says why), so **a failed production deploy leaves the
+release stuck and the next one refuses to start** with `another operation (install/upgrade/
+rollback) is in progress`. Read `helm status rch -n rch` first — the status word tells you which
+of the two you have, and they are not the same escape:
+
+| `helm status` says | What happened | What clears it |
+|---|---|---|
+| `pending-upgrade` | An upgrade over an existing release failed or timed out | `helm rollback rch -n rch` — with no revision it goes back exactly one, to the last revision that actually deployed |
+| `pending-install` | The **first** install of the release failed | `helm uninstall rch -n rch`, then re-run the deploy. There is no earlier revision to roll back to, so `helm rollback` has nothing to do; `helm history` shows a single revision |
+| `failed` | helm finished and gave up cleanly | `helm rollback rch -n rch`, or fix forward |
+
+Read the evidence before clearing it. The failed job's log already carries it: the
+`What the cluster saw` step prints the namespace's pods and events, newest last, and the
+`migrate` initContainer's last 200 lines. That is the whole reason production does not run
+`--atomic` — clearing the release throws the pods away.
+
+Decide *forward or back* before running either command, because rolling back does not undo a
+migration that has already applied (below).
 
 **Migrations are forward-only.** `helm rollback` puts the old application code back in front of
 whatever schema is currently applied; it does not undo a migration. If the rollback needs a
@@ -749,21 +896,42 @@ Phase 4.
 
 ## 9. Alerts
 
-Spec §12 names five; this build ships seven — the five below that the chart's `PrometheusRule`
-renders, plus the two RDS rules that stay runbook-only. `/metrics` (Prometheus format,
-`apps/api/src/plugins/metrics.ts`) exposes `http_request_duration_seconds` (histogram, labelled
-`method`, `route`, `status`), `pg_pool_waiting`/`pg_pool_idle`, `sse_listener_up` and the default
-Node process metrics. **As of Phase 6, the first five below ship as a `PrometheusRule`**
-(`deploy/chart/rch/templates/prometheusrule.yaml`), gated on the same
-`.Values.serviceMonitor.enabled` flag as the `ServiceMonitor` itself (on by default in
-`values-prod.yaml`, off elsewhere) — so a cluster with the Prometheus Operator installed gets
-these five the moment the chart is installed, with no separate alert-authoring step. **The two
-RDS rules stay runbook-only**, below, because they need the CloudWatch metrics exporter (or
-Grafana's native CloudWatch datasource) pointed at the RDS instance, which is not part of this
-chart and is wired at the observability-stack level. A Grafana dashboard JSON does **not** ship
-with the chart either — a dashboard in a ConfigMap is an unversioned blob nothing renders in CI
-and nothing fails when it drifts, so build one from `/metrics` in Grafana directly rather than
-looking for one here.
+Spec §12 names five; this build ships eight — the **six** below that the chart's
+`PrometheusRule` renders, plus the two RDS rules that stay runbook-only. `/metrics` (Prometheus
+format, `apps/api/src/plugins/metrics.ts`) exposes `http_request_duration_seconds` (histogram,
+labelled `method`, `route`, `status`), `pg_pool_waiting`/`pg_pool_idle`, `sse_listener_up` and
+the default Node process metrics. The first six below ship as a `PrometheusRule`
+(`deploy/chart/rch/templates/prometheusrule.yaml`). **The two RDS rules stay runbook-only**,
+below, because they need the CloudWatch metrics exporter (or Grafana's native CloudWatch
+datasource) pointed at the RDS instance, which is not part of this chart and is wired at the
+observability-stack level. A Grafana dashboard JSON does **not** ship with the chart either — a
+dashboard in a ConfigMap is an unversioned blob nothing renders in CI and nothing fails when it
+drifts, so build one from `/metrics` in Grafana directly rather than looking for one here.
+
+**Three things have to be true before any of the six fires**, and none of them is the chart's to
+guarantee (§2, *First-time cluster setup*, has the setup):
+
+1. `serviceMonitor.enabled` — on in `values-prod.yaml`, off elsewhere.
+2. **The cluster actually serves `monitoring.coreos.com/v1`.** Both templates are gated on
+   `.Capabilities.APIVersions.Has`, because nothing in this repo installs the Prometheus
+   Operator and a `helm upgrade --atomic` that meets an unknown kind fails and rolls the whole
+   release back. On a cluster without the operator the two files simply do not render — no
+   alerts, and no error saying so. `helm template --api-versions monitoring.coreos.com/v1` is how
+   `render.test.sh` proves they still render when it is there.
+3. **The `release:` label matches the operator's own Helm release name.** Both templates carry
+   `release: {{ .Values.serviceMonitor.releaseLabel }}` (default `kube-prometheus-stack`), which
+   is the label kube-prometheus-stack's Prometheus selects `ServiceMonitor`s and
+   `PrometheusRule`s by. Install the operator under another release name and set this to match,
+   or the rule object exists, looks right in `kubectl get prometheusrules`, and is never
+   evaluated.
+
+Each rule's `runbook_url` annotation is `alerts.runbookUrl` plus an anchor into this document
+(`#3-roll-back`, `#9-alerts`, `#10-server-sent-events-sse`). `alerts.runbookUrl` is set in both
+`values.yaml` and `values-prod.yaml` — it is no longer a `# FILL`.
+
+**Still open: nothing routes these anywhere.** Alertmanager has no receiver configured for this
+cluster, so a rule that fires today fires into Prometheus's own UI and pages nobody. Who is
+paged, and by what, is a §11 go-live decision, not a chart value.
 
 1. **`RchApiHigh5xxRate` — 5xx rate > 1% over 5 minutes, critical**
    ```promql
@@ -789,19 +957,34 @@ looking for one here.
    max(pg_pool_waiting{job="rch-api"}) > 0 and max(pg_pool_idle{job="rch-api"}) == 0
    ```
    This is the pool the app itself opens (`max: 10` per pod, `apps/api/src/db/client.ts`), not
-   RDS's own connection count — see item 6 below for that. The app pool never exceeds 60
+   RDS's own connection count — see item 7 below for that. The app pool never exceeds 60
    connections at max scale-out (10 per pod × 6 max pods, per spec §11.2) — plus one dedicated
    `LISTEN` connection per pod for the SSE plugin (§10), so 66. Still well under any RDS
    instance's limit; this alert catches the pool running out locally, long before RDS itself is
    under any real pressure.
-5. **`RchSseListenerDown` — the fifth chart-shipped alert and this build's sixth overall,
+5. **`RchApiCrashLooping` — more than one restart in fifteen minutes, critical, sustained 5
+   minutes:**
+   ```promql
+   increase(kube_pod_container_status_restarts_total{namespace="rch",container="api"}[15m]) > 1
+   ```
+   The one rule here that does **not** read a metric this API publishes, and it cannot: a pod
+   that is restarting is a pod that is not scraping, so every other alert in this list goes quiet
+   exactly when this failure is happening. `kube_pod_container_status_restarts_total` comes from
+   kube-state-metrics, which ships with the same kube-prometheus-stack whose CRDs gate the whole
+   file — if the rule is loaded, the metric is there. The threshold is *more than one* restart
+   because a single restart is what an ordinary node eviction leaves behind; two in a quarter of
+   an hour is a pod that came up, failed and came up again — a bad migration, a missing secret,
+   an OOM kill. **`kubectl logs --previous` on the pod says why, before the next restart wipes
+   it.** The `namespace` label is the release's own namespace, so the rendered rule in
+   `rch-staging` watches `rch-staging`.
+6. **`RchSseListenerDown` — the sixth chart-shipped alert and this build's eighth overall,
    warning, sustained 5 minutes:**
    ```promql
    min(sse_listener_up{job="rch-api"}) == 0
    ```
    Its rationale — what `sse_listener_up` means, why 5 minutes and not immediately, and why it
    is deliberately *not* wired into `/readyz` — is §10's, below, not repeated here.
-6. **DB connections > 80% of max — runbook-only, needs CloudWatch.** RDS CloudWatch
+7. **DB connections > 80% of max — runbook-only, needs CloudWatch.** RDS CloudWatch
    `DatabaseConnections`, exposed as a gauge by the CloudWatch exporter (metric name depends on
    the exporter's naming, e.g. `aws_rds_database_connections_average`):
    ```promql
@@ -811,7 +994,7 @@ looking for one here.
    once and hardcode the threshold in the alert rule. This is a safety net for connections opened
    outside the app (a psql session left open, a burst of migrate initContainers opening a
    connection each during a large rollout) — the app's own pool is item 4, above.
-7. **RDS free storage < 20% — runbook-only, needs CloudWatch.**
+8. **RDS free storage < 20% — runbook-only, needs CloudWatch.**
    ```promql
    aws_rds_free_storage_space_average{dbinstance_identifier="rch-prod"}
      / <allocated_storage_bytes> < 0.2
@@ -832,7 +1015,10 @@ jsonpath='{.status.loadBalancer.ingress[0].hostname}'`, then the UPSERT alias wi
 the ALB's canonical hosted zone id (`aws elbv2 describe-load-balancers`). The durable fix is
 external-dns (IRSA + the `external-dns` chart watching the ingress host) — not installed yet.
 
-**Every `/api` request from the browser answers 502, the API pod logs only probes.** The UI's
+**Every `/api` request from the browser answers 502, the API pod logs only probes** — *wherever
+nginx is the proxy*, which means CI's kind cluster (`ingress.enabled: false`) and Docker
+Compose, not a deployed environment: with the ingress on, the ALB routes `/api` to the api
+Service directly and the UI pod serves only the static bundle (§10). The UI's
 nginx proxies `/api` to `API_UPSTREAM`, and nginx's `resolver` directive ignores `/etc/resolv.conf`'s
 search domains, so the value must be the API Service's full cluster name —
 `http://<release>-api.<namespace>.svc.cluster.local:3000`, which the chart sets. A short name
@@ -875,16 +1061,52 @@ Service's endpoints at once (they all lost the same connection at the same momen
 full outage traded for a live-update delay. The 5-minute alert above is the right response to
 this failure, not a readiness probe.
 
+**First, which hops are actually on the path.** In a cluster, **nginx is not on the `/api`
+path at all.** `templates/ingress.yaml` gives the ALB two rules — `/api` → the `<release>-api`
+Service on 3000, `/` → the `<release>-ui` Service on 8080 — so a browser's stream goes
+browser → ALB → api pod, and the UI pod serves only the static bundle. nginx's own
+`/api/v1/events` block (`deploy/nginx/default.conf.template`) is on the path for **Docker
+Compose and local runs**, where the UI container is the only thing listening. Keep both correct:
+the Compose path is what most people develop against, and a deployed regression that only shows
+up in Compose is the worst kind. But when a stream dies in staging or production, the hop to
+look at is the ALB, not nginx.
+
 **Infrastructure that must not change without checking this first:**
 
 - The ALB idle timeout is 3600 s (`alb.ingress.kubernetes.io/load-balancer-attributes` in
-  `deploy/chart/rch/values.yaml`'s `ingress.annotations`), and nginx's
-  `/api/v1/events` location (`deploy/nginx/default.conf.template`) sets `proxy_buffering off`
-  and `proxy_read_timeout 3600s` separately from the plain `/api/` location's 60 s. Either
-  timeout dropping back toward the default silently caps every stream's lifetime at that
-  many seconds — live updates would appear to work in testing (well under the timeout) and
+  `deploy/chart/rch/values.yaml` and `values-prod.yaml`), and it is the only read timeout on the
+  deployed path. nginx's `/api/v1/events` location sets `proxy_buffering off` and
+  `proxy_read_timeout 3600s` separately from the plain `/api/` location's 60 s, for the Compose
+  path. Either timeout dropping back toward the default silently caps every stream's lifetime at
+  that many seconds — live updates would appear to work in testing (well under the timeout) and
   then degrade in a way that only shows up as a slow climb in reconnect attempts hours into a
   shift.
+- **The five numbers a rolling deploy is timed against**, none of which is in this section's own
+  files, all of which end a stream when they are wrong:
+
+  | Number | Where | Value |
+  |---|---|---|
+  | ALB idle timeout | `ingress.annotations` → `load-balancer-attributes` | 3600 s |
+  | Target deregistration delay | `ingress.annotations` → `target-group-attributes` | 30 s |
+  | API pre-drain wait (production only) | `apps/api/src/server.ts` | 30 s |
+  | API drain timer | `apps/api/src/server.ts` | 25 s |
+  | Pod termination grace | `templates/api-deployment.yaml` | 60 s |
+
+  The rule binding them: **deregistration delay ≤ pre-drain wait**, and pre-drain + drain < grace
+  (30 + 25 = 55 < 60). A pod that stops accepting while the target group is still draining
+  connections into it cuts exactly the requests the delay exists to let finish; a pod whose
+  pre-drain plus drain exceeds the grace is SIGKILLed mid-request. Move one of the five and check
+  the other four — `apps/api/src/server.ts`'s comment carries the arithmetic beside the code.
+- **The ALB health check is `/readyz`, every 15 s** (`healthcheck-path` /
+  `healthcheck-interval-seconds`), not `/healthz` — `/healthz` answers 200 for as long as the
+  process exists, draining included, so a pod that had already stopped accepting still looked
+  healthy to the load balancer. `healthcheck-path` is an **Ingress-level** annotation, so the
+  controller applies it to *every* target group the ingress creates — the ui's as well as the
+  api's. That is why `deploy/nginx/default.conf.template` serves **both** `location = /healthz`
+  and `location = /readyz`: with only `/healthz`, the ui's check fell through to the SPA
+  catch-all and passed on `index.html`, a 200 that says nothing about nginx. nginx has no
+  draining state of its own, so both return the same `ok`. If you ever move the health-check
+  path, move it in the nginx template too.
 - A rolling deploy ends every open stream — the pod serving it goes away — with a
   `retry: 1000` frame sent first, so `EventSource`-style reconnect semantics bring every
   browser back about a second later, staggered by each client's own backoff
@@ -897,8 +1119,9 @@ this failure, not a readiness probe.
   the time the stream opens, so it never applies here regardless.
 
 - `SSE_HEARTBEAT_MS` (default 25 s) and `SSE_RETRY_MS` (default 1000 ms), nginx's
-  `/api/v1/events` `proxy_read_timeout` (3600 s) and `proxy_buffering off`, and the ALB idle
-  timeout (3600 s) all belong to the same chain and move together. The heartbeat must stay
+  `/api/v1/events` `proxy_read_timeout` (3600 s) and `proxy_buffering off` (the Compose path),
+  and the ALB idle timeout (3600 s, the deployed path) all belong to the same chain and move
+  together. The heartbeat must stay
   comfortably under every read timeout on the path (an ALB or nginx timeout shorter than the
   heartbeat kills the stream on schedule, not on failure); `proxy_buffering off` must stay off
   or nginx will hold frames waiting for a buffer that never fills; and `SSE_RETRY_MS` is a

@@ -262,8 +262,13 @@ the way out — `fromInputDate` has no production caller today.
 
 `src/ui/kit.tsx` holds the typed components — `Card`, `DataTable`, `PageHead`, `Btn`, `BtnRow`,
 `Pill`, `StatusPill`, `Tag`, `Switch`, `Alert`, `Section`, `Field`, `FormRow`, `Toolbar`,
-`FilterBtn`, `FilterSelect`, `TableFoot`, `Kpis`, `Sparkline`, `Grid`, `Feed`, `Avatar`, `Otp`,
-`TileMenu`, … — use them instead of bespoke markup. Styling is plain CSS in `src/styles.css`: one
+`FilterBtn`, `FilterSelect`, `TableFoot`, `Kpis`, `Grid`, `Feed`, `Avatar`, `Otp`,
+`TileMenu`, … — use them instead of bespoke markup. `Sparkline` and `KebabIcon` are in the same
+file but are **not** exported — `Sparkline` is drawn by `Kpis`, `KebabIcon` by `TileMenu`, and
+neither has a caller outside `kit.tsx`. knip's
+`ignoreExportsUsedInFile: { interface, type }` (`knip.json`) means an exported value whose only
+consumer is its own file is now reported. Export one only when a second file needs it — and then
+put it in this list. Styling is plain CSS in `src/styles.css`: one
 token set on `:root`, redefined under `@media (prefers-color-scheme: dark)` guarded by
 `:root:not([data-theme="light"])`, and again under `[data-theme="dark"]` so an explicit choice
 wins both ways. No CSS framework.
