@@ -92,10 +92,13 @@ src/__tests__/procurement.test.ts` etc. still works from inside `UI/` for a sing
 `SEED_PASSWORD` is **required** and at least twelve characters (`apps/api/src/config.ts`) — there
 is no default any more, so a fresh `.env` will not start the API, the tests or any CLI until one
 is chosen. `db:seed` refuses outright where `NODE_ENV` is `production` unless it is passed
-`--allow-production`, and `--force` there additionally needs `--yes-destroy <database name>`
-matching `select current_database()` (`apps/api/src/cli/seed.ts`). That matters in the cluster,
-not only on a real hospital: the chart renders `NODE_ENV=production` into every pod, so an
-in-cluster seed is always the `--allow-production` form (`deploy/RUNBOOK.md` §15.7).
+`--yes-seed <database name>` matching `select current_database()`, and `--force` there
+additionally needs `--yes-destroy <database name>` (`apps/api/src/cli/seed.ts`, whose rules are
+the pure `seedGuard` in `apps/api/src/lib/seed-guard.ts`). That matters in the cluster, not only
+on a real hospital: the chart renders `NODE_ENV=production` into every pod, so an in-cluster seed
+is always the `--yes-seed` form (`deploy/RUNBOOK.md` §15.7). The older `--allow-production` is
+kept only so a copied command fails loudly — on its own it is refused, naming `--yes-seed`,
+because a flag every in-cluster seed carries is one nobody reads.
 
 From the repo root, `bash scripts/build-site.sh` assembles the published site into `dist/`
 (`/` = `index.html`, `/docs/` = the HTML specs). Netlify and CI both run this exact script, so a

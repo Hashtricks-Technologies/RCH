@@ -117,12 +117,13 @@ kubectl rollout status deploy/postgres --timeout=120s
 echo "== helm install =="
 helm install rch deploy/chart/rch -f deploy/chart/rch/ci/values-ci.yaml "${SET_ARGS[@]}" --wait --timeout 5m
 
-# --allow-production because rch.envList sets NODE_ENV=production in every rendered pod, and
-# cli/seed.ts refuses to seed there without being told plainly — this is a kind cluster that is
-# deleted at the end of the job, which is exactly the "yes, I mean it" the flag is for. No
-# --force: the database underneath is a fresh container, so there is nothing to empty.
+# --yes-seed rch because rch.envList sets NODE_ENV=production in every rendered pod, and
+# cli/seed.ts refuses to seed there unless the database is named back — `rch` is what
+# ci/postgres.yaml's POSTGRES_DB creates and what values-ci.yaml's DATABASE_URL points at. This
+# is a kind cluster deleted at the end of the job, which is exactly the "yes, I mean it" the
+# flag is for. No --force: the database underneath is a fresh container, nothing to empty.
 echo "== seed (RC-3120 / \$SEED_PASSWORD) =="
-kubectl exec deploy/rch-api -c api -- /nodejs/bin/node dist/cli/seed.mjs --allow-production
+kubectl exec deploy/rch-api -c api -- /nodejs/bin/node dist/cli/seed.mjs --yes-seed rch
 
 echo "== api: /readyz and login =="
 kubectl port-forward svc/rch-api 3000:3000 >/tmp/pf-api.log 2>&1 &

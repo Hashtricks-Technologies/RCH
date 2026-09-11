@@ -630,11 +630,18 @@ Three of those knobs changed in the audit fix wave and bite on first run:
   waiting for that lock is the whole point of the initContainer and the 15 s statement timeout
   was cancelling the wait mid-rollout (`Init:CrashLoopBackOff`).
 
-`cli/seed.ts` carries two guards of its own: it refuses where `NODE_ENV === "production"` unless
-passed `--allow-production` (exit 2, with the reason), and `--force` there additionally needs
-`--yes-destroy <name>` where `<name>` equals `select current_database()`. The chart renders
-`NODE_ENV=production` into every pod, so an in-cluster seed — dev, CI's kind cluster, anywhere —
-is always the `--allow-production` form. `lib/users-admin.ts` enforces `MIN_PASSWORD_LENGTH`
+`cli/seed.ts` carries two guards of its own, and **both make the operator name the database back**
+(exit 2, with the reason): where `NODE_ENV === "production"` a plain seed needs `--yes-seed <name>`
+and `--force` additionally needs `--yes-destroy <name>`, `<name>` in each case equal to `select
+current_database()`. The chart renders `NODE_ENV=production` into every pod, so an in-cluster seed
+— dev, CI's kind cluster, anywhere — is always the `--yes-seed` form. That is the whole reason the
+older `--allow-production` was replaced: a flag typed on *every* in-cluster seed carries no
+decision, so it was routine rather than a stop, and `--yes-seed rch_dev` cannot be muscle memory
+for `rch`. It is still recognised and, on its own, **refused** with a sentence naming `--yes-seed`,
+so a copied runbook line fails loudly. The CLI itself is argv in / sentence out: the decisions are
+a pure `seedGuard({ env, argv, dbName })` in `lib/seed-guard.ts`, tested without a database, and
+the CLI only opens the connection (`select current_database()`), prints and exits.
+`lib/users-admin.ts` enforces `MIN_PASSWORD_LENGTH`
 (10, declared once in `packages/contract/src/schemas/auth.ts` and read by
 `ChangePasswordBodySchema` too) on `createUser` and `resetPassword`, and `WORKS_AT` refuses a role
 at a location that role never works at — `Kitchen In-charge works at kitchen, not at coffee`.

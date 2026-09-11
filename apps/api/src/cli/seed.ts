@@ -2,37 +2,25 @@ import { sql } from "drizzle-orm";
 import { loadConfig } from "../config.js";
 import { createDb } from "../db/client.js";
 import { seedDatabase } from "../db/seed.js";
+import { seedGuard } from "../lib/seed-guard.js";
 
 const config = loadConfig(process.env);
-const force = process.argv.includes("--force");
-const allowProduction = process.argv.includes("--allow-production");
-// Read the name only when the flag is actually there: `indexOf` answers -1 otherwise, and
-// argv[0] is the node binary, which would be reported back as the name the operator typed.
-const yesDestroyAt = process.argv.indexOf("--yes-destroy");
-const yesDestroy = yesDestroyAt < 0 ? undefined : process.argv[yesDestroyAt + 1];
-const production = config.env === "production";
-
-// Seeding a production database is almost always a mistake: it rewrites the password of every
-// seeded account, and with --force it empties every table first. Locally it is the ordinary way
-// to get a database, so the guard only bites when NODE_ENV says production.
-if (production && !allowProduction) {
-  console.error("Refusing to seed: NODE_ENV is production, and seeding rewrites every seeded account's password. Pass --allow-production if that is really what you mean.");
-  process.exit(2);
-}
+const argv = process.argv.slice(2);
+const force = argv.includes("--force");
 
 // statementTimeoutMs: 0 — hashing a password and writing the whole fixture set is allowed to
 // take longer than the fifteen seconds a request may.
 const { db, pool } = createDb(config.databaseUrl, config.databaseSsl, { max: 2, statementTimeoutMs: 0 });
 try {
-  // --force truncates every table. In production that is a destruction, so it is spelled out:
-  // name the database you mean to empty, and the connection has to agree.
-  if (production && force) {
-    const [{ name }] = (await db.execute(sql`select current_database() as name`)).rows as [{ name: string }];
-    if (yesDestroy !== name) {
-      console.error(`Refusing to empty ${name}: --force in production needs --yes-destroy ${name}, and you named ${yesDestroy ? `"${yesDestroy}"` : "nothing"}.`);
-      await pool.end();
-      process.exit(2);
-    }
+  // Both production guards ask for the database's own name back, so the connection has to be
+  // open before either can be decided — which is why this sits inside the try rather than above
+  // it. The rules themselves are in `lib/seed-guard.ts`; this is argv in, a sentence out.
+  const [{ name }] = (await db.execute(sql`select current_database() as name`)).rows as [{ name: string }];
+  const decision = seedGuard({ env: config.env, argv, dbName: name });
+  if ("exit" in decision) {
+    console.error(decision.message);
+    await pool.end();
+    process.exit(decision.exit);
   }
   await seedDatabase(db, { password: config.seedPassword, forcePasswordChange: config.seedForcePasswordChange, force });
   console.log("seeded");

@@ -40,15 +40,21 @@ pnpm --filter @rch/api db:seed --force
 Two more guards sit on the seed, and both key on `NODE_ENV`:
 
 ```bash
-pnpm --filter @rch/api db:seed --allow-production               # required wherever NODE_ENV=production
-pnpm --filter @rch/api db:seed --force --allow-production --yes-destroy rch   # and --force there
+pnpm --filter @rch/api db:seed --yes-seed rch                          # required wherever NODE_ENV=production
+pnpm --filter @rch/api db:seed --force --yes-seed rch --yes-destroy rch   # and --force there
 ```
 
-`--yes-destroy <name>` must equal `select current_database()`; naming the wrong one (or nothing)
-exits 2 saying which was expected and which was given. **This is not only about a real hospital:
-the chart renders `NODE_ENV=production` into every pod**, so any in-cluster seed — dev, CI's kind
-cluster, staging — is the `--allow-production` form (§15.7, and `deploy/chart/rch/ci/
-install-test.sh`). Development and test are unchanged.
+**Both flags name the database, and both must equal `select current_database()`**; naming the
+wrong one (or nothing) exits 2 saying which was expected and which was given. `--yes-seed` guards
+the passwords a plain seed rewrites, `--yes-destroy` the tables `--force` empties first. **This is
+not only about a real hospital: the chart renders `NODE_ENV=production` into every pod**, so any
+in-cluster seed — dev, CI's kind cluster, staging — is the `--yes-seed <name>` form (§15.7, and
+`deploy/chart/rch/ci/install-test.sh`). Naming the database is the point: a flag typed on every
+in-cluster seed is a flag nobody reads, and `--yes-seed rch_dev` cannot be muscle memory for
+`rch`. `--allow-production` is still recognised, and on its own is now **refused** with a sentence
+naming `--yes-seed`, so an old runbook line fails loudly instead of quietly doing the wrong thing.
+Development and test are unchanged. The rules themselves are one pure function,
+`apps/api/src/lib/seed-guard.ts`.
 
 ### Test users
 
@@ -1445,9 +1451,10 @@ scoped to what a deploy needs, and needs no change.
    missed step could not later be quietly forgiven for: a seeded id with a published dev password
    is a real door into a real hospital's billing.
 
-   Two notes on running the seed in a cluster at all. It needs **`--allow-production`** (§15.7):
-   the chart renders `NODE_ENV=production` into every pod, dev included, and `cli/seed.ts` refuses
-   without being told plainly. And **the seeded accounts on the `dev` host need their passwords
+   Two notes on running the seed in a cluster at all. It needs **`--yes-seed <database name>`**
+   (§15.7): the chart renders `NODE_ENV=production` into every pod, dev included, and
+   `cli/seed.ts` refuses until the database names itself back. And **the seeded accounts on the
+   `dev` host need their passwords
    reset now, as a separate job from this checklist** — they were seeded with the published
    `changeme` before `SEED_PASSWORD` became a required value, and every one of them that has not
    since been through a change-password step (§1 records that `RC-4471` has) is still open on it:
@@ -2080,16 +2087,18 @@ describes for staging and production, with `dev`'s own values file and namespace
 first deploy succeeds, seed the database once:
 
 ```bash
-kubectl -n rch-dev exec deploy/rch-api -- /nodejs/bin/node dist/cli/seed.mjs --allow-production
+kubectl -n rch-dev exec deploy/rch-api -- /nodejs/bin/node dist/cli/seed.mjs --yes-seed rch
 ```
 
-**`--allow-production` is not optional here, and dev is not an exception.** `rch.envList` renders
-`NODE_ENV=production` into every pod in every namespace, and `cli/seed.ts` refuses to seed there
-without being told plainly, because a seed rewrites every seeded account's password. Without the
-flag the command exits 2 with that sentence and nothing is written. A re-seed additionally needs
-`--force --yes-destroy rch` (the database name, matched against `select current_database()`); CI's
-kind install runs the same `--allow-production` form for the same reason
-(`deploy/chart/rch/ci/install-test.sh`).
+**`--yes-seed <database name>` is not optional here, and dev is not an exception.** `rch.envList`
+renders `NODE_ENV=production` into every pod in every namespace, and `cli/seed.ts` refuses to seed
+there until the database is named back, because a seed rewrites every seeded account's password.
+`rch` is the name in every environment — `DBName` on the RDS instance is `rch` in `dev`, `staging`
+and `prod` alike, the instance being what differs — so check `select current_database()` if you are
+anywhere else. Without the flag the command exits 2 with that sentence and nothing is written; with
+the old `--allow-production` alone it exits 2 naming `--yes-seed`. A re-seed additionally needs
+`--force --yes-destroy rch`; CI's kind install runs the same `--yes-seed rch` form for the same
+reason (`deploy/chart/rch/ci/install-test.sh`).
 
 The seed accounts and `SEED_FORCE_PASSWORD_CHANGE` behave exactly as §1 describes for local
 dev — this is the same seed CLI, run in the cluster instead of against `localhost:5439` — with one
