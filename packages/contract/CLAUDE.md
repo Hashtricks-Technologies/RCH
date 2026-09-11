@@ -88,6 +88,13 @@ src/fixtures/*          the demo hospital: master, seed documents, ops, vendors
   `schemas/documents.ts` right after `PayerSchema` so the reference resolves before use, and
   `SnapshotSchema` gained `roster: PayerRosterSchema` directly after `users` — the till's payer
   picker reads it instead of a fixture, so a patient admitted after the last build is billable.
+  **It is scoped by role, and so is `BillSchema.payer`.** The roster arrives populated only for
+  `counter` and `manager` — the two roles that bill people — and empty (`{patients: [], staff:
+  [], depts: []}`) for `store`, `prod` and `buyer`, who also read every bill with its `payer`
+  stripped (`apps/api/src/modules/snapshot/scope.ts`, `READS_PAYERS`). The schema needed no change
+  for either: `payer` was already `.optional()` and the three lists were always allowed to be
+  empty, which is exactly why a reader must not treat "the roster is there" as "the roster is
+  everyone's". `creditReport`'s `access` in the manifest is the same two roles, deliberately.
 - **A manifest task lands a route's schema before the module that mounts it exists.** Task 1
   declared five new routes and one widened `access` list in one commit; Task 3, in a later wave,
   wrote the placeholder handlers that kept `apps/api` compiling in between. **One `GET` is
@@ -143,6 +150,16 @@ to register the route with its schemas, auth, role gate and idempotency preHandl
   why exactly these two reports are on the server. `cancelTicket.access` widened from
   `["store", "prod"]` to `["store", "prod", "counter"]` in the same commit as the four support
   writes, so a counter can withdraw a shop-to-shop transfer it raised.
+- The audit fix wave (2026-09-11) widened one more `access` list and tightened three schemas, with
+  no new route: **`cancelRequest.access` is `["counter", "prod", "manager"]`** — the manager is
+  the one who withdraws an approval, and the service, not the manifest, is where that stays
+  *unscoped* (a manager is hospital-wide; `counter`/`prod` still scope to the raiser's own
+  outlet). `cancelRequest` carries no body, so `routes.test.ts`'s `SAMPLES` needed nothing. In
+  `schemas/auth.ts`: **`MIN_PASSWORD_LENGTH`** (10) is declared once and read by both
+  `ChangePasswordBodySchema` and `apps/api/src/lib/users-admin.ts`, so the CLI cannot mint an
+  account weaker than the password its owner could have chosen afterwards; and
+  `PatchMeBodySchema` gained ceilings (`n` ≤ 120, `e` a `z.email()` ≤ 254, `ph` ≤ 40) — an
+  unbounded string on `/me` is one that reaches every snapshot carrying the name badge.
 - `API_PREFIX` is `/api/v1`; manifest paths are relative to it.
 - `EVENTS_PATH` (`/events`) and `EventNoticeSchema` live in `schemas/events.ts` and are
   deliberately **not** a manifest route — a stream has no JSON response to serialise. Both sides

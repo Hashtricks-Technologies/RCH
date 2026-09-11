@@ -66,8 +66,8 @@ No build step — `package.json` exports `src/index.ts` directly.
 | `reports.ts` | `ledgerRow` — one item's opening/received/issued/closing over a window, from a `before` sum and a signed `inWindow` array. There is deliberately **no** `ledgerTotals`: the central store's ledger carries kg, nos and L on one page, and the store's own foot totals per unit with `unitTotal` instead |
 | `ids.ts` | `formatId`, `SEQUENCE_START`, `IdKind`, `grnId(poId, n)` — the document numbers exactly as the floor reads them. `grnId` is Phase 6's: `GRN-<yy><po number>-<nn>`, built once here rather than inline in `grn/service.ts`, because the three-character-tail format it replaced collided (`PO-2026-0143` and `PO-2027-0143` shared it) |
 | `shelf.ts` | `DEFAULT_SHELF_LIFE_HOURS` (8), `bestBeforeAt`, `bestBeforeText` — the only place a batch's best-before or its H9 wording ("21:30", "21:30 tomorrow", "21:30 04 Sep") is computed |
-| `claims.ts` | `releaseClaim` — give a purchase-order line's sources back **last source first**; `foldClaims` — every delta against one requisition line, folded and sorted into lock order; `shortfallClaims` — what never arrived, per line, released the same way. The whole arithmetic of the procurement list, which is derived and stores nothing but `ordered_qty` |
-| `receipt.ts` | `checkReceiptLine` — the goods-receipt checks in the store keeper's own order (the 2% tolerance, the rejected-qty bound, the batch/date checks, the MRP-vs-shelf-price floor); `receiptStatus` — `Received` or `Partially received` once an instalment is booked; `RECEIPT_TOLERANCE` (1.02) |
+| `claims.ts` | `releaseClaim` — give a purchase-order line's sources back **last source first**; `foldClaims` — every delta against one requisition line, folded and sorted into lock order; `shortfallClaims` — what never arrived, per line, released the same way, and measured against `netReceived` so a rejected quantity goes back on the procurement list rather than being written off the order. The whole arithmetic of the procurement list, which is derived and stores nothing but `ordered_qty` |
+| `receipt.ts` | `netReceived({recv, rejected})` — arrival less what quality control turned away, the **one** place that difference is taken; `receiptStatus` — `Received` or `Partially received`, covering a line at `netReceived >= qty`, so a wholly rejected consignment cannot push an order into the terminal `Received`; `checkReceiptLine` — the goods-receipt checks in the store keeper's own order (the 2% tolerance, the rejected-qty bound, the batch/date checks, the MRP-vs-shelf-price floor), whose `ReceiptCheckLine.received` is **net accepted so far** while the arrival being judged is gross, on purpose: counting a rejection against the vendor would refuse the replacement delivery that settles the line; `RECEIPT_TOLERANCE` (1.02), on the public surface so the buyer's receipt drawer stops carrying its own literal |
 | `purchasing.ts` | `poValue`, `needsApproval` (takes the finance slab as a parameter, never imports it), `rateFor` (a live rate contract, or the item's standard cost), `contractInWindow` (whether a contract prices an order on a given calendar date — the server's query and the buyer's preview both read it), `etaFrom` (a vendor's lead time, counted in the hospital's calendar) |
 | `format.ts` | `money`, `money0`, `istDate`, `dmy` (`"2026-08-31"` → `"31-Aug-2026"`, from a fixed month table, not `toLocaleDateString`), `unitTotal` — the words and numbers both sides print. `credit.ts` and `shelf.ts` now import their formatters from here rather than keeping a private copy each |
 | `transitions.ts` | the six status tables and `canTransition` |
@@ -111,6 +111,18 @@ let `New → Ready` through. Read the comment in `transitions.ts` and spec §16 
 `REQUEST_TRANSITIONS` keeps `Received → Closed` reachable although no path writes `Received`
 today, so a migrated or hand-corrected row is not stranded.
 
+**`REQUEST_TRANSITIONS` reaches `Cancelled` from `Manager approved` and `Partially approved`** as
+well as from `Draft` and `Request sent` — the audit fix wave's withdrawal door. An approved
+request that the store has not yet ticketed had no way out at all before it: the counter that
+raised it could not take it back and the manager could not undo their own decision, and the only
+exit was to issue a ticket and then cancel the ticket. Nothing is reserved at an approved status
+(the hold is written at issue-ticket), so nothing is un-promised by taking this edge. The door is
+shut by `requests/service.ts`'s own guard rather than by the table: `cancel` refuses a request at
+`Ticket issued` — `<id> already has ticket <tkt> — cancel the ticket instead` — and lets every
+other refused status fall through to `assertTransition`'s `is already <status>`, because
+`ticketId` is never cleared once a ticket exists and telling a `Collected` or `Closed` request to
+cancel its ticket is advice nobody can act on.
+
 **An edge reachable through one door only is guarded at that door.** Phase 4 added two edges
 neither table's own consumer treats as a button: `TICKET_TRANSITIONS.Issued` gained
 `Cancelled`, reachable only through `POST /tickets/:id/cancel`; `PROD_ORDER_TRANSITIONS.Dispatched`
@@ -120,12 +132,14 @@ back — which is why `setStatus` (`apps/api/src/modules/production/service.ts`)
 (`UI/src/lib/selectors.ts`) refuses it too, so the board never draws a button for it. The rule
 this states generally: a table says what status may follow what, never *by which door* — so a
 general edge in it opens every consumer of that table, not just the one that needed it. That is
-also why `REQUEST_TRANSITIONS` is **not** touched for cancellation: a cancelled ticket's
-request goes back to `approvedStatus(lines)` through an explicit `status === "Ticket issued"`
-guard and a direct write in `modules/tickets/service.ts`, rather than a
-`"Ticket issued" → "Manager approved"` table row — a row would also have re-opened `approve`
-(whose only guard is that same table lookup) for a request already holding a live ticket, and
-through it a second ticket for stock already promised once.
+why `REQUEST_TRANSITIONS` still carries **no** `"Ticket issued" → "Manager approved"` row: a
+cancelled ticket's request goes back to `approvedStatus(lines)` through an explicit
+`status === "Ticket issued"` guard and a direct write in `modules/tickets/service.ts` instead,
+because the row would also have re-opened `approve` (whose only guard is that same table lookup)
+for a request already holding a live ticket, and through it a second ticket for stock already
+promised once. The withdrawal edges added above are the other half of the same lesson read
+forwards: the table is widened where a status genuinely may follow another, and the door that
+must stay shut — a request that already has a live ticket — is shut at the door, in `cancel`.
 
 Phase 6 added a third: `SHOP_ASK_TRANSITIONS.Sent` gained `["Asked"]`, reachable only through
 `POST /tickets/:id/cancel` withdrawing the ticket a grant raised — the ask is reopened rather

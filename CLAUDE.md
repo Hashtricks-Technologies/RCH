@@ -73,6 +73,14 @@ pnpm --filter @rch/api loadcheck                      # apps/api/scripts/loadche
 `pnpm --filter @rch/ui test` runs just the UI's vitest suite (`npx vitest run
 src/__tests__/procurement.test.ts` etc. still works from inside `UI/` for a single file).
 
+`SEED_PASSWORD` is **required** and at least twelve characters (`apps/api/src/config.ts`) — there
+is no default any more, so a fresh `.env` will not start the API, the tests or any CLI until one
+is chosen. `db:seed` refuses outright where `NODE_ENV` is `production` unless it is passed
+`--allow-production`, and `--force` there additionally needs `--yes-destroy <database name>`
+matching `select current_database()` (`apps/api/src/cli/seed.ts`). That matters in the cluster,
+not only on a real hospital: the chart renders `NODE_ENV=production` into every pod, so an
+in-cluster seed is always the `--allow-production` form (`deploy/RUNBOOK.md` §15.7).
+
 From the repo root, `bash scripts/build-site.sh` assembles the published site into `dist/`
 (`/` = `index.html`, `/docs/` = the HTML specs, `/app/` = the built React app, from
 `UI/dist`). Netlify and CI both run this exact script, so a broken assembly fails locally the
@@ -118,6 +126,14 @@ changes a rule leaves at least one of them wrong until it does.
 ### Role-partitioned screens, one registry
 
 Five roles: `counter` · `manager` · `store` · `prod` · `buyer` (see `UI/src/types.ts`).
+
+**`manager` is hospital-wide.** One outlet manager supervises every outlet, so a manager's writes
+take **no** location: approve, reject, the price lists and the menus all decide for any outlet and
+call no `requireLoc`. The one manager write that touches a location at all is `cancelRequest`, and
+it scopes for `counter`/`prod` — the raiser's own outlet — and deliberately not for the manager
+(`apps/api/src/modules/requests/service.ts`'s `cancel`, and the comment above `approve` beside it).
+`counter` and `prod` are the location-scoped roles; `store` and `buyer` work one desk each.
+
 Three files must agree for a screen to exist:
 
 1. `src/nav.ts` — `NAV[role]` lists the sidebar groups and route keys; `HOME[role]` is the
@@ -219,12 +235,23 @@ Any new movement must follow this two-step shape.
 
 Ticket handover is gated by a six-digit code minted at random when the ticket is created
 (`allocateTicket`, `apps/api/src/lib/tickets.ts`) that the collector reads aloud. A wrong code
-is refused; omitting the argument entirely is the labelled supervisor override, open to `store`
-and `prod` only.
+is refused **and counted**: `tickets.otp_attempts` (migration `0008`) holds the guesses, and the
+sixth attempt reads `<id> is locked after five wrong codes — the store or the kitchen can hand it
+over with a supervisor override, or cancel it and issue a new one`. Omitting the argument entirely
+is that labelled supervisor override, open to `store` and `prod` only.
 
-There is a way back. A ticket nobody collected can be cancelled (`POST /tickets/:id/cancel`),
-which releases its hold and puts the document behind it — the request or the production order
-— back where it stood before the ticket was raised. Nothing moves, because nothing had moved.
+There is a way back, at two stages. A ticket nobody collected can be cancelled
+(`POST /tickets/:id/cancel`), which releases its hold and puts the document behind it — the
+request, the production order or the shop ask — back where it stood before the ticket was raised.
+Nothing moves, because nothing had moved. And **an approved request can be withdrawn before a
+ticket exists at all**: `REQUEST_TRANSITIONS` reaches `Cancelled` from `Manager approved` and
+`Partially approved` as well as from `Draft` and `Request sent`, and `cancelRequest` is open to
+`manager` alongside `counter` and `prod` — the manager withdrawing their own approval. The door is
+shut the moment the store issues a ticket: `cancel` refuses a request at `Ticket issued` with
+`<id> already has ticket <tkt> — cancel the ticket instead`, and every later status falls through
+to `assertTransition`'s own `is already <status>` rather than naming a ticket nobody can withdraw.
+A withdrawal after an approval writes `Cancelled — never issued` to the trail, so the paperwork
+says which of the two it was.
 
 The server is where this is enforced now: `apps/api/src/modules/tickets/service.ts`'s
 `handover` and `receive` are the only places stock actually moves (`postMoves`), and
@@ -277,7 +304,16 @@ These are enforced in code and pinned by tests. Breaking one is a bug, not a sty
   second (`allocateId`/`allocateTicket`, which locks the `sequences` row), and only then takes
   the balance locks (`lockBalances` in `apps/api/src/lib/ledger.ts`). Two writers taking the
   same two locks in opposite order deadlock; every module under `apps/api/src/modules` keeps
-  this order and a new one must too.
+  this order and a new one must too. **There is exactly one documented exception, and it cannot
+  be copied:** the counter sale takes its bill number *after* the balance locks and the cover
+  check (`allocateId(tx, "bill", at)` in `apps/api/src/modules/pos/service.ts`), because that
+  call site is the only caller of the `bill` sequence row in the tree — no second writer ever
+  takes it, so the two-writers-opposite-orders cycle a lock order exists to prevent cannot form.
+  What taking it earlier cost was real: a till queued behind a shelf sat on the one row every
+  till in the hospital draws its bill number from, so one slow sale froze the rest. Numbers stay
+  **gapless through a refusal** either way — `allocateId` is an UPDATE inside the write's own
+  transaction, so a rollback hands the next writer the number the refused one was standing on
+  (`apps/api/src/lib/ids.ts`, and `allocateTicket` beside it).
 - **Nothing is created or destroyed without a document.** Enforced server-side now, in
   `apps/api/src/modules/production/service.ts`'s `makeBatch`: one `postMoves` call carries the
   `production_consume` moves and the `production_yield` in the same transaction, so there is no
@@ -291,15 +327,43 @@ These are enforced in code and pinned by tests. Breaking one is a bug, not a sty
   `quarantine` for what did not. Nothing here is promised against a balance, so there is no
   `lockBalances` call of its own and no post-lock re-read. A `grn_reject` move is posted only
   when something was actually rejected, so a delivery with nothing turned away leaves
-  quarantine with no line for the item at all rather than one carried at zero.
+  quarantine with no line for the item at all rather than one carried at zero. The same rule
+  runs one level down, in `postMoves` itself (`apps/api/src/lib/ledger.ts`): **a move whose
+  quantity rounds away to nothing at three decimals is dropped before anything is locked or
+  inserted**, row by row rather than by cell, so a crumb cannot take the real move beside it
+  down. A move of zero is not a movement — `stock_moves_qty_ck` (migration `0008`) says so — and
+  a recipe measured in millilitres against a single cup is how one turns up; dropping it is what
+  keeps that sale from reading as a 500 with no words in it, and what stops `lockBalances`
+  minting a "carried at zero" shelf line for a cell nothing touched (M12).
 - **A claim comes back the way it went out.** Cutting a purchase-order line, removing it,
   cancelling the order or closing it short all release the claim it put on a requisition —
   **last source first** (`releaseClaim` in `packages/domain/src/claims.ts`) — so a shrink and a
   re-grow land back on the same requisition rather than quietly moving demand between two store
   keepers.
+- **A delivery counts for what the shelf accepted, not for what the lorry carried.**
+  `netReceived({ recv, rejected })` (`packages/domain/src/receipt.ts`) is the one place that
+  difference is taken, and every question about whether the vendor has *delivered* is asked of
+  it: `receiptStatus` covers a line at `netReceived >= qty`, so a wholly rejected consignment
+  leaves the order `Partially received` rather than stranding it at the terminal `Received` with
+  nothing on the shelf; `shortfallClaims` releases `qty − netReceived`, so a rejected quantity
+  goes back on the procurement list with the rest of the balance; and the 2% tolerance measures
+  **net prior plus this arrival's gross**, which is what lets a replacement delivery for goods
+  already turned away get in at all. `po_lines.received_qty` stays the **gross** arrival record
+  and `rejected_qty` the running total quarantined — the paper trail of what came through the
+  door — and `po_lines_receipt_ck` (migration `0008`) holds `0 ≤ rejected ≤ received`. One
+  consequence worth knowing before reading a report: because the tolerance nets the prior
+  instalments but not this one, gross arrival against an order is no longer bounded by 102% of
+  what was ordered.
 - **Selling deducts by recipe for MTO items**, by the unit otherwise — now decided server-side
   in `apps/api/src/modules/pos` (`POST /bills`) against the same rule in `packages/domain`;
   `pay` in `store/index.ts` just calls it and refetches.
+- **A made-to-order item is never batched and never distributed.** It is assembled at the
+  counter when it is sold, and it carries no stock line of its own — so a batch of one would
+  book yield onto a shelf nothing ever reads, and distributing one would move units that do not
+  exist. `makeBatch` and `distribute` (`apps/api/src/modules/production/service.ts`) each refuse
+  it outright — `<item> is made to order at the counter — it is not batched` / `… it is not
+  distributed` — the batch guard sitting between the kitchen-override check and the recipe
+  check, so an MTO item with a perfectly good recipe is still refused.
 - **Dispatch is all-or-nothing.** A short production order names every missing item and moves
   nothing; a repeated item is folded into one line before the cover check.
 - **Costing.** `costOf` prices a made item from its recipe plus overhead — never zero. A batch
@@ -313,10 +377,20 @@ These are enforced in code and pinned by tests. Breaking one is a bug, not a sty
   roles that ever collect against a code, so a manager whose home outlet happens to match the
   ticket's `to` still reads `""`. The issuing desk that printed the ticket never reads the code
   back either, not in its own write's response and not in `GET /snapshot`. `handover` compares
-  what the collector says against the row it locks itself, never against a response; the
-  labelled supervisor override, open to `store` and `prod` only and recorded in
-  `document_history`, is the one door past a collector who is not there. (Landed in the Phase 6
-  fix wave, `a8f762b`/`19d486a` — `makeOtp`, a pure function of the ticket number, came out of
+  what the collector says against the row it locks itself, never against a response, and in
+  **constant time** (`timingSafeEqual`, on equal-length buffers). **Five wrong codes and the
+  ticket is shut for good**: `tickets.otp_attempts` counts them, the sixth attempt reads the
+  locked sentence even when the code offered is right — the digits are what has been guessed at
+  — and the count is never reset, not by a correct code and not by a cancellation. The counting
+  is why `handover` is the one write in the server that does not simply `return
+  withTransaction(...)`: the increment has to survive the refusal that caused it, so the
+  transaction commits the count and hands back a `{ refuse }` marker, and the sentence is raised
+  outside it (`{ response: "optional" }` — see `apps/api/CLAUDE.md`). Both doors past a locked
+  ticket are named in the sentence itself: the labelled supervisor override, open to `store` and
+  `prod` only and recorded in `document_history`, or cancelling the ticket and issuing a new one
+  with new digits — which is the door a counter, who may not override, actually has.
+  (Landed in the Phase 6 fix wave,
+  `a8f762b`/`19d486a` — `makeOtp`, a pure function of the ticket number, came out of
   `@rch/domain`'s public surface, because a formula the browser can run is not a redaction, and
   the role check joined the location check for the same reason.)
 
@@ -360,12 +434,21 @@ the host does not supply one):
 - `fixes.test.ts` — regression pins for previously-found defects, referenced by their tags
   (C6, M3, M8, H4, UA-14…). Read the surrounding comment before changing behaviour one covers.
 - `screens.test.tsx` / `app.test.tsx` — every role × every nav key renders, bare and in-shell.
+  `screens.test.tsx` is **91** cases, two of them the manager's Withdraw-approval door against the
+  seeded fixtures (REQ-2026-0910, approved with no ticket; REQ-2026-0909, already ticketed).
 - `theme.test.ts` — theme resolution and persistence.
-- `writes.test.ts` — every server-backed action (Phase 2's `pay`, `toggleAvail`, `savePrice`,
-  `addProduct`, `removeProduct`; Phase 3's fourteen movement actions; Phase 4's three kitchen
-  actions; Phase 5's twenty-one buying actions; and Phase 6's last four support actions, plus the
-  two report reads) against a mocked client: success refetches the right slices, a refusal
-  toasts and leaves state untouched.
+- `writes.test.ts` — **135** cases: every server-backed action (Phase 2's `pay`, `toggleAvail`,
+  `savePrice`, `addProduct`, `removeProduct`; Phase 3's fourteen movement actions; Phase 4's three
+  kitchen actions; Phase 5's twenty-one buying actions; and Phase 6's last four support actions,
+  plus the two report reads) against a mocked client: success refetches the right slices, a
+  refusal toasts and leaves state untouched. One case in it, `leaves the requisition card and its
+  note alone when procurement refuses it`, polls (`settleUntil(() => S().toast !== null)`) and so
+  is timing-sensitive on a loaded host — it has flaked once in a full-suite run sharing a machine
+  with the API suite and passes in isolation. A red on that name alone is the flake, not a
+  regression; re-run it on its own before chasing it.
+- `refusals.test.tsx` — where a refusal is shown: inline on the sign-in and change-password forms
+  (and not as a toast), the toast drawn once in `App.tsx`, and a screen that throws caught inside
+  the shell.
 - `events.test.ts` — the SSE client (`UI/src/api/events.ts`): frame parsing, the 250 ms
   per-collection debounce into `refetch`, `resync` forcing a full `loadSnapshot`, and the
   `live` / `reconnecting` / `off` state the shell's status pill reads.
@@ -381,7 +464,9 @@ fixture's own ids so a builder-made document can never collide with a seeded one
 opens two concurrent transactions to prove a lock holds must call `warmPool(t, n)`
 (`apps/api/src/test/db.ts`) first — `pg` connects lazily, so without it two "concurrent"
 transactions run back to back against a single warm connection and the test passes even with
-the lock removed.
+the lock removed. `n` must never exceed the test pool's own `max` of **4**: asking for more
+hangs `warmPool`'s `Promise.all` for ever without releasing the connections it did get, and
+every later test in that file times out at 30 s.
 
 ## Backend
 
@@ -471,6 +556,16 @@ read back through `TicketSchema.hist`) is on the wire for the first time, and it
 withheld from everyone except a caller at the ticket's `to` while it is `Issued` — see the
 root guide's OTP invariant, above, for the fix-wave note on where the six digits actually come
 from.
+
+**The audit fix wave (2026-09-11)** is not a seventh phase — it adds no module and no screen. It
+hardens what the six phases built, and it changes rules this guide states: goods receipt is decided
+on what was **accepted**, an approved request can be **withdrawn**, an MTO item is never batched or
+distributed, a wrong OTP is **counted** and five of them lock the ticket, a bill's payer and the
+payer roster are withheld from the three roles that never bill anybody, the idempotency record is
+written **inside** the write's own transaction, and migration `0008` puts the ledger's own
+promises into the database as constraints and a trigger. Every one of them is a row in the spec's
+§16 table *Amendments recorded during the audit fix wave (2026-09-11)*; read it before reopening
+any of them.
 
 What it commits to, in one breath: a standalone TypeScript backend in a pnpm + Turborepo
 monorepo — `packages/contract` (Zod schemas; `types.ts` moves here), `packages/domain` (pure
