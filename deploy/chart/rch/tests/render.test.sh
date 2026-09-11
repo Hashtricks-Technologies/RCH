@@ -114,8 +114,8 @@ refute bash -c 'grep -A2 "name: SEED_PASSWORD" <<<"$1" | grep -q "value:"' _ "$o
 # with no seed password at all — which is the whole thing this key exists to prevent.
 refute grep -q 'key: SEED_PASSWORD, optional' <<<"$out"
 
-# Phase 6: the five §12 alerts plus the SSE listener ship with the chart, so the alert text lives
-# beside the metric it reads instead of only in the runbook.
+# Phase 6: the five §12 alerts, the SSE listener and (B6) the crash loop ship with the chart, so
+# the alert text lives beside the metric it reads instead of only in the runbook.
 grep -q 'kind: PrometheusRule' <<<"$out_mon"
 for a in RchApiHigh5xxRate RchApiHighLatencyP95 RchApiDown RchApiPoolSaturated RchSseListenerDown RchApiCrashLooping; do
   grep -q "alert: $a" <<<"$out_mon" || { echo "missing alert: $a"; exit 1; }
@@ -132,10 +132,10 @@ grep -q 'kube_pod_container_status_restarts_total' <<<"$out_mon"
 [ "$(grep -c 'runbook_url:' <<<"$out_mon")" -ge 5 ]
 
 # TLS must be wired, and must never render as an EMPTY annotation — the ALB controller reads
-# `certificate-arn: ""` and fails, where an absent annotation falls back cleanly.
-# `templates/ingress.yaml:7-9` already guards it on a non-empty `certificateArn`, so the
-# assertion has to hold in BOTH states: nothing rendered with the FILL placeholder in place,
-# and the real value rendered once one is supplied.
+# `certificate-arn: ""` and fails, where an absent annotation falls back cleanly. B5 merged the
+# certificate into the annotations map so the general empty-value rule covers it, and the
+# assertion still has to hold in BOTH states: nothing rendered with the FILL placeholder in
+# place, and the real value rendered once one is supplied.
 refute grep -q 'certificate-arn: *$' <<<"$out"
 out_tls=$(helm template rch . -f values-prod.yaml --set image.registry=r,image.tag=t,ingress.certificateArn=arn:aws:acm:x)
 grep -qE 'alb.ingress.kubernetes.io/certificate-arn: "?arn:aws:acm:x"?' <<<"$out_tls"
