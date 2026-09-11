@@ -57,6 +57,10 @@ jobs:
           echo "::error::pnpm audit could not be run: the registry was unreachable on all 3 attempts"
           exit 1
       - name: Build the site
+        # BUILD_APP=1 here and nowhere else: CI wants the app assembled into dist/app so the
+        # artifact below is the whole site, while Netlify deliberately leaves it unset and
+        # redirects /app to the deployment that has an API behind it (netlify.toml).
+        env: { BUILD_APP: "1" }
         run: bash scripts/build-site.sh
       - uses: actions/upload-artifact@v7
         with: { name: site, path: dist, retention-days: 7 }
