@@ -1279,13 +1279,65 @@ scoped to what a deploy needs, and needs no change.
    `batches` with `made_qty > started_qty`) and what to do about each. They are plain reads — run
    them against a restored copy if the window is tight. This applies to **dev too**, which has
    real documents on it; a fresh staging or production database has nothing to reject.
-2. **Provision the RDS instance to spec §11.2's own settings**, before anything points at it:
-   Multi-AZ, `db.t4g.medium` to start with storage autoscaling, automated backups retained 14
-   days, point-in-time recovery, encryption at rest, deletion protection, in private subnets
-   with a security group admitting only the EKS node group, and `rds.force_ssl = 1` (the API
-   connects with `sslmode=verify-full` and the RDS CA bundle already baked into the image — no
-   chart change needed once the instance itself enforces it). Staging's own instance is
-   single-AZ, `db.t4g.small`, 7-day backups — smaller on purpose, not a step skipped.
+2. **Create the environment's CloudFormation stack** — `deploy/cfn/rch-env.yaml` with
+   `deploy/cfn/prod.params.json` (or `staging.params.json`). The template, not this list, is now
+   where spec §11.2's RDS settings live, so read **[`deploy/cfn/README.md`](cfn/README.md)**
+   before running anything: it carries the procedure, the `FILL` table, what an IMPORT change set
+   will and will not accept, and why `staging`/`prod` must be a plain `create-stack` rather than
+   the import `dev` went through. What the template delivers per environment, without a command
+   of your own: a **per-environment DB parameter group** (`rds.force_ssl=1`,
+   `log_min_duration_statement=1000`, `idle_in_transaction_session_timeout=60000`), a
+   **per-environment DB security group** admitting 5432 from `NodeSecurityGroupId` only (dev
+   keeps its wide `DbIngressCidr`, deliberately), `MaxAllocatedStorage` (prod 100, staging 40,
+   dev 0), `AutoMinorVersionUpgrade: false` against the pinned `EngineVersion`, CloudWatch
+   `postgresql` log export, Performance Insights at the free 7-day retention everywhere, Enhanced
+   Monitoring, and backup/maintenance windows that do not overlap and are both off-hours IST
+   (`20:30-21:30` UTC = 02:00–03:00 IST; `sun:22:00-sun:23:00` UTC = Monday 03:30–04:30 IST). It
+   also carries the ECR lifecycle policies, an optional ALB access-log bucket, a Route 53 uptime
+   health check and an SNS topic. Instance classes are prod `db.t4g.medium` / staging
+   `db.t4g.small`; prod is Multi-AZ with 14-day backups and deletion protection, staging
+   single-AZ with 7 days — smaller on purpose, not a step skipped.
+
+   **Three things this step does NOT give you, and each one bites differently:**
+   - **The database is in public subnets — every environment's, production's included.** The
+     stack puts all three in the shared `rch` DB subnet group, which is the default VPC's three
+     *public* subnets. Closing it is not a parameter: it needs new subnets, a NAT route, a
+     per-environment `DBSubnetGroup` replacing the shared import, and an outage to move an
+     existing instance between subnet groups. What limits the exposure meanwhile is
+     `PubliclyAccessible: false` plus the node-group-only security group above. **Do not read
+     "matches spec §11.2" as including this** — put it on the follow-up list below and decide it
+     deliberately.
+   - **`rds.force_ssl` is a STATIC parameter.** Attaching the parameter group leaves it
+     `pending-reboot`; a stack update alone does not start enforcing TLS. Reboot the instance
+     (off-hours) and re-check. Related: the API decides TLS from **`DATABASE_SSL` alone** —
+     `db/client.ts` strips any `sslmode`/`ssl*` parameter off `DATABASE_URL` first, precisely so
+     a connection string cannot quietly pick a different trust store — so keep `sslmode` out of
+     the URL and leave `DATABASE_SSL=true`, which the chart already sets.
+   - **The uptime alarm is not in this stack and cannot be.** Route 53 publishes
+     `AWS/Route53 HealthCheckStatus` into `us-east-1` only, whatever region created the health
+     check, so an alarm on it in `ap-south-1` sits in `INSUFFICIENT_DATA` for ever. The template
+     creates the health check and an in-region `rch-<env>-alerts` topic; the alarm, and the
+     `us-east-1` topic it publishes to, are one `put-metric-alarm` run by hand against the
+     `UptimeHealthCheckId` output. `deploy/cfn/README.md` has the command.
+
+   **When you do fill in `AlbLogsBucketName`, turning the logs on is a chart edit — and the
+   prefix is a trap.** `values-prod.yaml` has no `access_logs.s3.*` today, deliberately: an ALB
+   told to write to a bucket that does not exist, or to one without the log-delivery policy,
+   reports nothing wrong and simply writes nothing. Once the bucket exists, append
+   `,access_logs.s3.enabled=true,access_logs.s3.bucket=<AlbLogsBucketName>` to the
+   `load-balancer-attributes` annotation, on one line, with no spaces — **and leave
+   `access_logs.s3.prefix` unset.** The bucket policy is scoped to `AWSLogs/<account>/*`, AWS's
+   documented path; a prefix relocates every object to `<prefix>/AWSLogs/…`, the policy refuses
+   it, and the ALB writes nothing, silently. (The comment beside that annotation in
+   `values-prod.yaml` still shows a `prefix=rch` in its example string — it predates the bucket
+   policy and is wrong; `deploy/cfn/README.md`'s *ALB access logs* section is the authority, and
+   says to add the prefix to both `Resource` lines at the same time if you really want one.)
+
+   One more thing to decide before creating a **prod** stack, not after: `prod.params.json`'s
+   `HostName` is `rch.hashtrickstechnologies.com`, **which is the host dev is live on today**.
+   Creating the stack unchanged mints a second ACM certificate and a second health check against
+   the running dev application, and the go-live A-alias becomes a fight between two environments
+   for one name. Either move dev to `rch-dev.…` and let prod take the name, or give prod its own.
 3. **Generate the production JWT key pair and store it, never in git:**
    ```bash
    pnpm --filter @rch/api keys:generate
@@ -1326,13 +1378,44 @@ scoped to what a deploy needs, and needs no change.
 5. **Run the restore drill once against the real RDS instance** (§6, the RDS procedure below the
    local rehearsal) — not the rehearsal, the real one, before the first bill is ever posted for
    real.
-6. **Create the repository variable and every secret** — `DEPLOY_ENABLED=true`, the six
-   repository secrets (**`SEED_PASSWORD` is the new one, and blocking**), the `staging`
-   environment's three, and AWS Secrets Manager's `rch/prod` with its **five** keys: the table
-   under "The release, prepared and not performed" above lists each one and what it populates, and
-   §2 says where the workflow reads it. Do this **before the next push to any environment**,
-   including `dev`: the api container will not start without a seed password, and `--atomic` rolls
-   the release back when it doesn't.
+6. **Create the repository variable, every secret, and the `production` GitHub environment** —
+   `DEPLOY_ENABLED=true`, the six repository secrets (**`SEED_PASSWORD` is the new one, and
+   blocking**), the `staging` environment's three, and AWS Secrets Manager's `rch/prod` with its
+   **five** keys: the table under "The release, prepared and not performed" above lists each one
+   and what it populates, and §2 says where the workflow reads it. Do this **before the next push
+   to any environment**, including `dev`: the api container will not start without a seed
+   password, and `--atomic` rolls the release back when it doesn't. A missing one is caught
+   early now — `deploy.yml` has a named `Every secret the chart needs is present` step before
+   `helm upgrade` that refuses by name, on dev and staging (production reads the same four
+   through External Secrets, so the GitHub secrets are empty there on purpose).
+
+   **The `production` environment itself is the approval gate, and it is a GitHub setting, not a
+   line in the workflow.** `deploy.yml` names `environment: production` for a production
+   deploy; what makes that *wait* is the environment's own protection rules. Create it with
+   **required reviewers** and a **deployment-branch restriction** naming only `production`, so
+   the environment (and the AWS role trust that is scoped to `environment:production`, §15.3)
+   cannot be claimed from another branch. Verify, do not assume:
+
+   ```bash
+   gh api repos/:owner/:repo/environments/production
+   # protection_rules: a "required_reviewers" entry; deployment_branch_policy: custom, with
+   # a branch policy naming `production` and nothing else
+   ```
+
+   **And, once, before staging: prove Trivy honours the YAML ignore file.** `.trivyignore.yaml`
+   replaced a plain-text `.trivyignore` whose expiry syntax was invented. The replacement is
+   correct against the documented schema but has never been run against a live registry from
+   here. Push a throwaway branch, let `ci.yml` run its two image scans once, and confirm they
+   pass. The failure mode is fail-safe — all four scans (ci.yml's two, deploy.yml's two) go red
+   rather than quietly letting something through — but finding that out on the staging promotion
+   costs the promotion. If a *fixed* HIGH does turn up in a distroless base, the remedy is an
+   entry in `.trivyignore.yaml` with a reason and an `expired_at`, **not** lowering the severity
+   back to CRITICAL.
+
+   **And label the namespaces for the pod readiness gate** (§2, *First-time cluster setup*) —
+   `kubectl label namespace rch elbv2.k8s.aws/pod-readiness-gate-inject=enabled`, and the same
+   for `rch-staging`, once, before the first upgrade of the release in each. Nothing fails
+   without it; what you get instead is a gap in the middle of every rollout.
 7. **Promote** — the three fast-forward merges under "The release, prepared and not performed"
    above, in that order, run by a person. `develop` first, then `staging`, then `production`;
    verify staging between the second and the third (step 8), and production's deploy waits for
@@ -1350,6 +1433,28 @@ scoped to what a deploy needs, and needs no change.
    ```
    and confirm it reports success with no unexpected drift. A green `/readyz` alone is not
    enough — it proves the database is reachable and migrated, not that a bill can be posted.
+
+### The follow-up list
+
+Four things the audit wave named that go-live does **not** close, each a decision rather than a
+command. None of them blocks a first deploy; all of them should be decided out loud rather than
+discovered later.
+
+1. **Every environment's database sits in public subnets** — production's included (step 2
+   above). The exposure is limited by `PubliclyAccessible: false` and a node-group-only security
+   group, not by the network. Moving them needs private subnets, a NAT route, a per-environment
+   `DBSubnetGroup` and an outage per instance.
+2. **Nothing routes an alert to a person.** The chart renders six `PrometheusRule` alerts (§9)
+   and Alertmanager has no receiver configured for this cluster, so a rule that fires pages
+   nobody. Who is on call, and by what channel, is the decision; the rules and their
+   `runbook_url` anchors are already there.
+3. **NetworkPolicy is applied and inert** until network policy is enabled in the `vpc-cni`
+   add-on on the live cluster (§2, *First-time cluster setup*). Turning it on is a deliberate
+   change with real blast radius — do it on staging first, and watch a rollout.
+4. **`/metrics` shares port 3000 with the API.** A NetworkPolicy decides on ports, not paths, so
+   the `monitoring`-namespace rule in the api policy is a record of the intended scraper rather
+   than a control, and `networkPolicy.albSourceCidr` cannot be narrowed below what the serving
+   port needs. Moving `/metrics` to its own listener port is what would make both real.
 
 ## 12. Load check
 
@@ -1623,19 +1728,43 @@ in the account's **default VPC** `vpc-01ca67a181cb36d34`, on its three public su
 (`subnet-05be7e2c146d6ede8`/`04f03f730a553b579`/`08d892f0f99bd8097`, each tagged
 `kubernetes.io/role/elb=1` so the load balancer controller will place an ALB in them) — the
 default VPC rather than a purpose-built one because the RDS instances live in it too, reachable
-with no peering and no NAT. One managed node group, `ng-spot`, spot-only
-(`t3.medium`/`t3a.medium`, min 1, max 2, desired 1): a two-minute spot-reclaim notice is an
-acceptable outage for dev's whole footprint (one API pod, one UI pod, room to spare on a single
-4 GiB node), and spot runs roughly 70% off the same instance type on-demand.
+with no peering and no NAT. Two managed node groups are declared:
+
+- **`ng-spot`** — spot-only (`t3.medium`/`t3a.medium`, min 1, max 2, desired 1), what dev and
+  staging run on. A two-minute spot-reclaim notice is an acceptable outage for dev's whole
+  footprint (one API pod, one UI pod, room to spare on a single 4 GiB node), and spot runs
+  roughly 70% off the same instance type on-demand. This is the only group that exists today.
+- **`ng-prod`** — on-demand `t3.medium`, min/desired 3, max 6, one node per AZ
+  (`ap-south-1a`/`b`/`c`), labelled `rch.io/tier: prod`, 40 GB gp3. **It is declared and not yet
+  created**: run `eksctl create nodegroup -f deploy/eksctl/cluster.yaml` before the first
+  production deploy. `values-prod.yaml` pins both Deployments to it with
+  `nodeSelector: { rch.io/tier: prod }`, which is what keeps production off the spot node — the
+  group carries **no taint**, deliberately, because the DaemonSets (vpc-cni, kube-proxy, the
+  CloudWatch agent) have to run on every node and know nothing about this application. Three
+  nodes across three AZs is also what makes production's PodDisruptionBudget and topology spread
+  mean anything; on one node both are decorative. `maxSize: 6` is a ceiling, not autoscaling —
+  the cluster has neither Cluster Autoscaler nor Karpenter.
+
+`deploy/eksctl/cluster.yaml` is the source of truth for the cluster, its node groups and its
+add-ons, and its header says so in three lists — including what moved to CloudFormation (RDS,
+ECR, the OIDC provider and deploy role, Secrets Manager, ACM, Route 53, the health check, SNS,
+the ALB log bucket) and what is managed by neither (the AWS Load Balancer Controller's own Helm
+install).
 
 **What tripped: the first cluster came up without CoreDNS.** `eksctl create cluster`'s own run
 was cut short after the control plane finished, before it installed the managed add-ons, and
 nothing scheduled a pod could resolve a name — not the API's own RDS endpoint lookup, not the
 load balancer controller's calls out to AWS — until `vpc-cni`, `coredns` and `kube-proxy` were
-installed by hand as EKS add-ons. `deploy/eksctl/cluster.yaml` now declares all three under
-`addons:` so a fresh `eksctl create cluster` installs them itself; re-running the same command
-against an existing cluster is how to confirm they're present (`eksctl get addons --cluster
-rch --region ap-south-1`) rather than assuming a cluster this age already has them.
+installed by hand as EKS add-ons. `deploy/eksctl/cluster.yaml` now declares five under
+`addons:` — `vpc-cni`, `coredns`, `kube-proxy`, **`metrics-server`** (without a metrics API the
+production HPA reports `<unknown>/70%` and never scales, and `kubectl top` cannot see a pod's
+CPU either) and **`amazon-cloudwatch-observability`** (Container Insights: node, pod and
+container metrics plus container logs, with `CloudWatchAgentServerPolicy`) — so a fresh `eksctl
+create cluster` installs them itself. **A cluster that already exists does not pick up a new
+add-on or a changed add-on setting from a re-run of `create cluster`**: that is `eksctl create
+addon` / `eksctl update addon -f deploy/eksctl/cluster.yaml`. Confirm what is actually there
+with `eksctl get addons --cluster rch --region ap-south-1` rather than assuming a cluster this
+age matches the file.
 
 The AWS Load Balancer Controller is the `eks/aws-load-balancer-controller` Helm chart, running under its own
 IRSA role (`eksctl create iamserviceaccount`, policy `AWSLoadBalancerControllerIAMPolicy`, one
@@ -1653,11 +1782,23 @@ RDS `rch-dev`: Postgres **17** (17.9 as provisioned), `db.t4g.micro`, single-AZ,
 encrypted at rest, not publicly accessible, 7-day automated backups, subnet group `rch`,
 security group `rch-rds` admitting **5432 from the VPC CIDR (`172.31.0.0/16`) only** — a
 VPC-wide rule, not narrowed to the node group's own security group, so anything else in the VPC
-can also reach it; tighten this before staging or production reuse the pattern. The API connects
-with `sslmode=require` and the RDS CA bundle already baked into the image — no chart change
-needed for that half of what §11 step 2 asks for production. Multi-AZ, point-in-time recovery
-and deletion protection are the production-only pieces this instance deliberately does not
-carry; §11 step 2 has the full production spec.
+can also reach it.
+
+**That has now been acted on for staging and production, and dev keeps the wide rule on
+purpose.** `deploy/cfn/rch-env.yaml` creates a **per-environment** security group
+(`rch-rds-<env>`, `Condition: IsNotDev`) admitting 5432 from `NodeSecurityGroupId` and nothing
+else; the shared `Fn::ImportValue` that fed every environment one group is gone, and so is the
+export behind it. dev's wide rule survives as an explicit `DbIngressCidr` parameter whose own
+description says out loud that it is wide and why dev gets it. What has **not** changed for any
+environment is the subnet group: all three are in the default VPC's public subnets (§11 step 2's
+follow-up).
+
+The API decides TLS from **`DATABASE_SSL=true` alone**, with the RDS CA bundle baked into the
+image — `db/client.ts` strips `sslmode`/`ssl*` off the URL first. The instance's own half,
+`rds.force_ssl=1`, arrives with the per-environment parameter group the same template creates,
+and is a **static** parameter: it stays `pending-reboot` until the instance is rebooted. Multi-AZ,
+point-in-time recovery and deletion protection are the production-only pieces this instance
+deliberately does not carry; §11 step 2 and `deploy/cfn/README.md` have the full production spec.
 
 ### 15.3 Secrets, and the GitHub side of the pipeline
 
@@ -1703,9 +1844,14 @@ aws cloudtrail lookup-events --region ap-south-1 \
 
 The repo's numeric ids come from `gh api repos/<org>/<repo> --jq '[.owner.id,.id]'`. The fix
 lives in `deploy/cfn/rch-env.yaml` (parameter `GitHubRepoImmutable`) rather than a manual IAM
-edit — the role is CloudFormation-managed now (§15.5) — and the trust policy, applied through an
-update to the `rch-dev` stack, lists **both** shapes, `ref:refs/heads/{develop,staging,
-production}` and `environment:{dev,staging,production}` each:
+edit — the role is CloudFormation-managed now (§15.5). The trust policy applied by that first
+update listed **both** shapes, `ref:refs/heads/{develop,staging,production}` and
+`environment:{dev,staging,production}`, in both the named and the numeric-id form. **The audit
+wave removed the six `ref:` subjects**; only the `environment:` ones remain. `deploy.yml` sets
+an `environment:` on every deploy job, so nothing real loses access — what the `ref:` subjects
+admitted was a workflow on `refs/heads/production` declaring *no* environment, which is the
+production approval gate going missing. This has not yet been applied: it lands on the next
+`rch-dev` stack update, and it takes effect on the dev deploy at that moment (§15.5).
 
 ```bash
 aws iam get-role --role-name rch-github-deploy --query 'Role.AssumeRolePolicyDocument'
@@ -1766,6 +1912,32 @@ group and security group, both ECR repositories) by `Fn::ImportValue` rather tha
 their own, because AWS refuses a second copy of any of the five. Read `deploy/cfn/README.md`
 before touching any of it — it is being maintained separately from this document.
 
+**Two changes since that import that matter before the next `rch-dev` stack update.**
+
+- **The next update is not a no-op, and it is an outage window.** The template now creates a
+  parameter group, an Enhanced Monitoring role and ECR lifecycle policies, removes six OIDC
+  trust-policy subjects, and modifies `Database` (parameter group, `AutoMinorVersionUpgrade`,
+  log exports, Performance Insights, Enhanced Monitoring, both windows). None of those replaces
+  the instance, but attaching a parameter group containing a **static** parameter is *Some
+  interruptions* in the CloudFormation reference, not *No interruption* — CloudFormation may
+  satisfy it by rebooting `rch-dev` mid-deploy, at a moment nobody chose. Run it off-hours.
+  `deploy/cfn/README.md`'s *"Run this stack update off-hours: it may reboot the database"*
+  tabulates which properties can bounce the instance and which cannot.
+- **The OIDC trust is narrowed to `environment:*` subjects.** The six
+  `ref:refs/heads/{develop,staging,production}` subjects are gone. `deploy.yml` sets an
+  `environment:` on every deploy job, so nothing real loses access — but applying this stops any
+  workflow that assumes `rch-github-deploy` **without** declaring a GitHub environment, and it
+  takes effect on the *dev* deploy the moment the stack is updated. What the removed subjects
+  actually admitted was a workflow on `refs/heads/production` declaring no environment at all,
+  i.e. the production approval gate going missing.
+
+- **An IMPORT change set can no longer stand up a new environment under this template.** An
+  import may create nothing, and every declared resource must be in the import list — which now
+  includes a parameter group, a security group, a monitoring role, a health check, and
+  conditionally a topic and a bucket. Use `create-stack` for `staging` and `prod`; the import
+  path exists only because `rch-dev` predated the template. `deploy/cfn/README.md` says so and
+  carries the procedure.
+
 ### 15.6 What dev costs
 
 Roughly **$130/month** at AWS list prices, `ap-south-1`: the EKS control plane (~$73), one spot
@@ -1774,6 +1946,14 @@ and the ALB (~$22). Karpenter is not worth adding at this scale: one node group 
 range already covers the whole footprint, and Karpenter's own value shows up at a scale this
 environment neither has nor is expected to reach — the saving here is entirely the spot discount
 on the managed group, not autoscaling sophistication.
+
+**That figure is dev only, and `ng-prod` is not in it.** Creating the production node group adds
+three on-demand `t3.medium` — roughly **+$90/month** before production's own ALB (~$22) and its
+`db.t4g.medium` Multi-AZ instance. The EKS control plane is shared, so it is not paid twice.
+Two smaller line items the template adds everywhere and nothing has been paying yet: an SNS
+topic and a Route 53 health check (cents, and the health check is gated on `AlertEmail` being
+set, so dev creates neither), and Performance Insights at the free 7-day retention, which costs
+nothing on any of the three instance classes in use.
 
 ### 15.7 First deploy and seed
 

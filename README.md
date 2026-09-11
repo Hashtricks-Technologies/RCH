@@ -186,13 +186,14 @@ so what reaches production is byte-identical to what passed on staging.
 
 | Branch | Role | Deploys to |
 |---|---|---|
-| `develop` | Default; all work lands here | nothing — CI only |
-| `staging` | Release candidate | the `rch-staging` namespace, on push |
-| `production` | What the hospital runs | the `rch` namespace, on push, behind an environment approval |
+| `develop` | Default; all work lands here | the `rch-dev` namespace, once CI is green |
+| `staging` | Release candidate | the `rch-staging` namespace, once CI is green |
+| `production` | What the hospital runs | the `rch` namespace, once CI is green, behind an environment approval |
 
 Promote with `git checkout staging && git merge --ff-only develop && git push`, then the same from
-`staging` into `production`. The deploy workflow only runs when the repository variable
-`DEPLOY_ENABLED` is `true` and the AWS secrets are present; otherwise it reports itself skipped.
+`staging` into `production`. The deploy workflow is triggered by CI **completing successfully** on
+that push, not by the push itself, and only runs when the repository variable `DEPLOY_ENABLED` is
+`true` and the AWS secrets are present; otherwise it reports itself skipped.
 Deploy, rollback, key rotation, accounts, the restore drill and the event stream's health are all
 in **[`deploy/RUNBOOK.md`](deploy/RUNBOOK.md)**.
 
@@ -200,10 +201,13 @@ in **[`deploy/RUNBOOK.md`](deploy/RUNBOOK.md)**.
 
 `.github/workflows/ci.yml` runs on every push to a long-lived branch and every pull request:
 `pnpm install --frozen-lockfile`, typecheck and test against a `postgres:17` service container,
-`pnpm lint`, the module and boundary checks, `pnpm audit` at high severity, and
-`scripts/build-site.sh`. A second job builds the API and UI images, scans both with Trivy for
-critical vulnerabilities, and does a real `helm install` against a throwaway kind cluster. A
-third renders the Helm chart on its own. Everything must be green to merge.
+`pnpm lint`, the module and boundary checks, `pnpm audit` at high severity (three unreachable
+attempts fail the job — "we did not look" is not "no advisories"), and `scripts/build-site.sh`. A
+second job builds the API and UI images, scans both with Trivy at **critical and high** severity
+against `.trivyignore.yaml`, and does a real `helm install` plus the Playwright smoke against a
+throwaway kind cluster. A third renders the Helm chart on its own. Everything must be green to
+merge — and, since the deploy workflow is triggered by this one finishing green, everything must
+be green before anything reaches a cluster.
 
 ## Status
 
