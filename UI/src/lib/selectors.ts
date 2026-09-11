@@ -43,6 +43,17 @@ export function recipeCost(it: string): number {
 /** What a unit of this item actually costs — from its recipe if it has one. */
 export const costOf = (it: string) => D.costOf(MASTER, it);
 
+/**
+ * What the kitchen can actually make: every item with a recipe that is held as stock.
+ *
+ * Written once because three kitchen screens read it and all three used to carry the same
+ * three-key literal, so a fourth finished good with a recipe on the master was invisible to
+ * the kitchen until somebody remembered to edit all of them. A made-to-order item has a recipe
+ * too — it is assembled at the counter, never batched onto the rack — so the type is the test,
+ * not the presence of a recipe.
+ */
+export const madeItems = (): string[] => Object.keys(RCP).filter((k) => IT[k]?.t === "FG");
+
 /** Reorder level for this item at this location (M11). */
 export const parOf = (l: LocKey, it: string) => {
   const base = IT[it]?.rl ?? 0;
@@ -72,11 +83,15 @@ export const freeToPromise = (
  *  do not merge this with those. */
 const CLAIMED: PoStatus[] = ["Draft", "Ordered", "Partially received"];
 
+/** One requisition line's own three quantities. Carried alongside the four scalars so a screen
+ *  can total them per unit instead of adding litres to countable things (M4). */
+export interface PrqProgressLine { it: string; appr: number; ordered: number; received: number }
+
 export function prqProgress(
   s: { prq: Requisition[]; po: PurchaseOrder[] }, prqId: string,
-) {
+): { appr: number; ordered: number; received: number; lines: PrqProgressLine[]; label: string } {
   const p = s.prq.find((x) => x.id === prqId);
-  if (!p) return { appr: 0, ordered: 0, received: 0, label: "Unknown" };
+  if (!p) return { appr: 0, ordered: 0, received: 0, lines: [], label: "Unknown" };
 
   const appr = round3(p.lines.reduce((t, l) => t + l.appr, 0));
   const ordered = round3(p.lines.reduce((t, l) => t + l.ordered, 0));
@@ -88,6 +103,21 @@ export function prqProgress(
       const got = apportion(netReceived(l), l.src);
       return n + l.src.reduce((m, x, i) => m + (x.prq === prqId ? got[i] : 0), 0);
     }, 0), 0));
+  // The same walk again, this time kept back to the line that funded each claim — the identical
+  // `apportion(netReceived(l), l.src)` split `reconcile()` uses, so the two never disagree.
+  // Deliberately a second pass rather than a reshaped first one: `received` above is the number
+  // every label and every existing test reads, and it stays the sum it has always been.
+  const perLine = p.lines.map(() => 0);
+  for (const o of s.po) {
+    if (o.st === "Cancelled") continue;
+    for (const l of o.lines) {
+      const got = apportion(netReceived(l), l.src);
+      l.src.forEach((x, i) => {
+        if (x.prq !== prqId || perLine[x.line] === undefined) return;
+        perLine[x.line] += got[i];
+      });
+    }
+  }
 
   // >= rather than === throughout: intentional float-safety, not a typo —
   // received/ordered can round to a hair over appr and must still count as done.
@@ -99,7 +129,10 @@ export function prqProgress(
             : appr > 0 && ordered >= appr ? "Ordered"
               : ordered > 0 ? "Partly ordered"
                 : "Awaiting order";
-  return { appr, ordered, received, label };
+  return {
+    appr, ordered, received, label,
+    lines: p.lines.map((l, i) => ({ it: l.it, appr: l.appr, ordered: l.ordered, received: round3(perLine[i]) })),
+  };
 }
 
 /** Approved but not yet on the shelf: what is still pending on the procurement
@@ -114,6 +147,37 @@ export const onOrder = (
       .filter((l) => l.it === it)
       .reduce((n, l) => n + Math.max(0, l.qty - netReceived(l)), 0), 0),
 );
+
+/**
+ * The same figure for every item at once, in one pass.
+ *
+ * `onOrder(s, it)` walks the whole procurement list and every purchase order, so a stock table
+ * calling it per row is O(items × orders) on every keystroke in its search box. This builds the
+ * answer for the whole catalogue once and a screen reads it off the map; `onOrder` stays for the
+ * single-item callers — a duplicate-order guard asking about one line, one row of a report.
+ *
+ * The two halves are accumulated separately, per order, and added only at the end, in the same
+ * order and with the same rounding `onOrder` uses: float addition is not associative, and the
+ * index has to equal the function exactly rather than merely to three decimals.
+ */
+export function onOrderIndex(s: { prq: Requisition[]; po: PurchaseOrder[] }): Map<string, number> {
+  const pending = new Map<string, number>();
+  for (const l of procurementList(s)) pending.set(l.it, (pending.get(l.it) ?? 0) + l.pending);
+
+  const undelivered = new Map<string, number>();
+  for (const o of s.po) {
+    if (!CLAIMED.includes(o.st)) continue;
+    const per = new Map<string, number>();
+    for (const l of o.lines) per.set(l.it, (per.get(l.it) ?? 0) + Math.max(0, l.qty - netReceived(l)));
+    for (const [it, v] of per) undelivered.set(it, (undelivered.get(it) ?? 0) + v);
+  }
+
+  const out = new Map<string, number>();
+  for (const it of new Set([...pending.keys(), ...undelivered.keys()])) {
+    out.set(it, round3((pending.get(it) ?? 0) + (undelivered.get(it) ?? 0)));
+  }
+  return out;
+}
 
 /** The other half of the M3 duplicate-order guard: quantity asked on a
  *  requisition still awaiting a procurement decision (status "Sent").
@@ -159,6 +223,20 @@ export const inTransit = (s: { tkt: Ticket[] }, it: string) =>
   s.tkt
     .filter((t) => t.st === "Collected")
     .reduce((n, t) => n + t.lines.filter((l) => l.it === it).reduce((q, l) => q + l.qty, 0), 0);
+
+/** The same figure for every item at once — see `onOrderIndex` above for why a table wants the
+ *  map and a single guard still wants the function. Summed per ticket first, then into the
+ *  running total, so the two answers are identical and not merely close. */
+export function inTransitIndex(s: { tkt: Ticket[] }): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const t of s.tkt) {
+    if (t.st !== "Collected") continue;
+    const per = new Map<string, number>();
+    for (const l of t.lines) per.set(l.it, (per.get(l.it) ?? 0) + l.qty);
+    for (const [it, v] of per) out.set(it, (out.get(it) ?? 0) + v);
+  }
+  return out;
+}
 
 /** Only cash reaches the drawer; everything else settles elsewhere (H4). */
 export const isCashTender = (pay: string) => pay === "Cash";

@@ -553,3 +553,29 @@ td.n b{font-weight:600;color:var(--ink)}
 .askcard-spacer{flex:1}
 .askcard-decline{display:flex;align-items:flex-end;gap:9px;flex-wrap:wrap;width:100%}
 .askcard-decline .fld{flex:1;min-width:190px}
+
+/* ---- printing ---------------------------------------------------------
+   One rule for the whole app: printing a page prints the slip on it and
+   nothing else. A ticket slip is `.print-slip` — the only thing the paper
+   carries — `.no-print` is screen-only furniture, and `.print-only` is the
+   reverse: the lines that belong on paper and would only clutter a screen.
+   The shell's own chrome is named here rather than at each call site so a
+   new slip does not have to remember to hide the sidebar. */
+.print-only { display: none }
+@media print {
+  .side, .top, .drf, .toast, .no-print { display: none !important; }
+  .print-only { display: block !important; }
+  /* Everything is hidden and the slip is put back, rather than the slip being
+     lifted out of the page: it keeps its own markup, and nothing downstream of
+     it has to be re-shown one class at a time. */
+  body * { visibility: hidden; }
+  .print-slip, .print-slip * { visibility: visible; }
+  .print-slip { position: absolute; inset: 0 auto auto 0; width: 100%; padding: 0;
+    background: #fff; color: #000; font-size: 12px; }
+  .print-slip h2 { margin: 0 0 2mm; font-size: 16px; }
+  .print-slip table { width: 100%; border-collapse: collapse; margin-top: 3mm }
+  .print-slip th, .print-slip td { border-bottom: 1px solid #000; padding: 1.5mm 2mm;
+    text-align: left; font-size: 11px }
+  .print-slip td.r, .print-slip th.r { text-align: right }
+  @page { margin: 12mm }
+}

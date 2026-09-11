@@ -4,6 +4,7 @@ import {
 } from "react";
 import type { Ticket, Tone } from "../types";
 import { ticketDot, toneFor } from "../lib/selectors";
+import { toInputDate } from "../lib/fmt";
 import type { ThemePref } from "../lib/theme";
 import { useApp } from "../store";
 
@@ -362,6 +363,96 @@ export const Feed = ({ items }: { items: FeedItem[] }) => (
 export const TicketTrail = ({ hist }: { hist: Ticket["hist"] }) => (
   <Feed items={hist.map((h, i) => ({ key: h.s + i, title: h.s, body: h.who, when: h.t, color: ticketDot(h.s) }))} />
 );
+/**
+ * A number box the operator may type freely in, whose value only leaves it on blur or Enter.
+ *
+ * A controlled `<input type="number">` wired straight to `Number(e.target.value)` cannot be
+ * typed in: clearing the field to retype reads as 0, and "12.5" passes through 12, 12.5 — every
+ * intermediate value landing wherever the box writes to. Local state absorbs the typing; the
+ * value is committed once, and only when it actually moved. If whatever holds the true value
+ * changes underneath (or a commit was refused and it did not move), the field snaps back to it —
+ * adjusted during render, React's own pattern for this, so a stale value is never painted first.
+ *
+ * `positiveOnly` refuses to commit a zero or a negative, for the boxes where nothing is a
+ * quantity below one; everywhere else a zero is a real answer and goes through.
+ *
+ * Lives here rather than beside its first caller because six tables on three screens need the
+ * same box, and a second copy of this is how "12.5" starts posting as 12 again on one of them.
+ */
+export function DraftLineInput({
+  value, min, step, ariaLabel, positiveOnly, onCommit,
+}: {
+  value: number; min: number; step: number; ariaLabel: string;
+  positiveOnly?: boolean; onCommit: (n: number) => void;
+}) {
+  const [local, setLocal] = useState(String(value));
+  const [synced, setSynced] = useState(value);
+  if (value !== synced) {
+    setSynced(value);
+    setLocal(String(value));
+  }
+
+  const commit = () => {
+    const n = Number(local);
+    // A blur is not an edit. Tabbing across a line touches every cell on the way past, and each
+    // one would otherwise write — and where the write is a server call, toast a sentence about a
+    // value nobody changed. So only a number that actually moved is committed.
+    if (Number.isFinite(n) && n !== value && (!positiveOnly || n > 0)) onCommit(n);
+    // Whether or not the value was taken, resync the field to whatever is now true rather than
+    // leaving a stale or blank input: if the commit changed it, the render-time check above
+    // catches the new value on the next render; if it did not (refused, no-op or invalid), this
+    // line is what puts the field back.
+    setSynced(value);
+    setLocal(String(value));
+  };
+
+  return (
+    <input
+      type="number" className="mono" min={min} step={step}
+      value={local} aria-label={ariaLabel}
+      onChange={(e) => setLocal(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+    />
+  );
+}
+
+/**
+ * A date box with the same shape as `DraftLineInput`, for the same reason and one more: a date
+ * input fires `change` on every intermediate *valid* date, so a year typed digit by digit is
+ * four writes — and each write's read-back snaps the box back under the operator's fingers.
+ *
+ * `value` is the display date the store keeps ("11-Sep-2026"); `toInputDate` converts it to the
+ * only form an `<input type="date">` speaks, and the input's own ISO value goes straight out.
+ * A cleared box is not a date and an unchanged one is not a change: neither is committed.
+ */
+export function EtaInput({ value, busy, onCommit }: {
+  value: string; busy: boolean; onCommit: (iso: string) => void;
+}) {
+  const iso = toInputDate(value);
+  const [local, setLocal] = useState(iso);
+  const [synced, setSynced] = useState(iso);
+  if (iso !== synced) {
+    setSynced(iso);
+    setLocal(iso);
+  }
+
+  const commit = () => {
+    if (local && local !== iso) onCommit(local);
+    setSynced(iso);
+    setLocal(iso);
+  };
+
+  return (
+    <input
+      type="date" value={local} aria-label="Expected delivery date" disabled={busy}
+      onChange={(e) => setLocal(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+    />
+  );
+}
+
 const LABELABLE = ["input", "select", "textarea"];
 /** The label is tied to the first control it wraps, so every field is named (M13). */
 export function Field({ label, hint, children }: { label: string; hint?: ReactNode; children: ReactNode }) {
