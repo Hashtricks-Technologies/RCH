@@ -87,6 +87,39 @@ describe("POST /tickets/:id/handover", () => {
     expect(await app.testDb!.db.select().from(stockMoves).where(eq(stockMoves.refId, "TKT-0440"))).toHaveLength(0);
   });
 
+  it("counts a wrong code and locks the ticket after five, leaving the supervisor override open", async () => {
+    const attempts = async () => (await app.testDb!.db.select().from(tickets).where(eq(tickets.id, "TKT-0440")))[0]!.otpAttempts;
+    const wrong = () => post("u3", "/tickets/TKT-0440/handover", { otp: "000000" });
+
+    for (let n = 1; n <= 5; n++) {
+      const r = await wrong();
+      expect(r.statusCode).toBe(422);
+      expect(r.json().error.message).toBe("That OTP does not match TKT-0440. Ask the collector to read it again.");
+      // The count is the whole point: the refusal rolls its own transaction back, so a count
+      // kept inside it would be rolled back too and a caller could guess for ever.
+      expect(await attempts()).toBe(n);
+    }
+
+    // Shut now, and shut to the right code as well — the digits are what has been guessed at.
+    const locked = await post("u3", "/tickets/TKT-0440/handover", { otp: "418327" });
+    expect(locked.statusCode).toBe(422);
+    expect(locked.json().error.message).toBe("TKT-0440 is locked after five wrong codes — a supervisor override is the only way to hand it over now");
+    expect(await attempts()).toBe(5);                                   // a refused guess past the limit is not a sixth guess
+    expect(await app.testDb!.db.select().from(stockMoves).where(eq(stockMoves.refId, "TKT-0440"))).toHaveLength(0);
+
+    // And the way out is still open: the store's labelled override, on the trail as always.
+    const override = await post("u3", "/tickets/TKT-0440/handover", {});
+    expect(override.statusCode, override.body).toBe(200);
+    expect(override.json().message).toBe("TKT-0440 handed over on a supervisor override — stock is in transit to Coffee Shop");
+  });
+
+  it("a correct code after two wrong ones still hands over", async () => {
+    for (const _ of [1, 2]) expect((await post("u3", "/tickets/TKT-0440/handover", { otp: "000000" })).statusCode).toBe(422);
+    const r = await post("u3", "/tickets/TKT-0440/handover", { otp: "418327" });
+    expect(r.statusCode, r.body).toBe(200);
+    expect(r.json().result.st).toBe("Collected");
+  });
+
   it("lets the store hand over without an OTP, and says so, and records the override", async () => {
     const r = await post("u3", "/tickets/TKT-0440/handover", {});
     expect(r.statusCode).toBe(200);

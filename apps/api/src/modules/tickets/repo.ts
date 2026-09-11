@@ -1,5 +1,5 @@
 // Tickets: SQL only. No rules, no transaction of its own — service.ts passes `tx` in.
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import type { PordStatus, ReqStatus, ShopAskStatus, TktStatus } from "@rch/contract";
 import type { Tx } from "../../lib/db.js";
 import type { TicketRefType } from "../../lib/tickets.js";
@@ -11,6 +11,7 @@ const NO_DOCUMENT: readonly string[] = ["Shop transfer", "Direct issue"];
 /** The head row under its lock, with the lines every caller needs in the same breath. */
 type LockedTicket = {
   id: string; req: string; refType: TicketRefType; from: string; to: string; st: TktStatus; otp: string;
+  otpAttempts: number;
   lines: { it: string; qty: number }[];
 };
 
@@ -32,6 +33,7 @@ export const ticketsRepo = {
   async head(tx: Tx, id: string): Promise<LockedTicket | undefined> {
     const [t] = await tx.select({
       id: tickets.id, req: tickets.refId, refType: tickets.refType, from: tickets.fromLoc, to: tickets.toLoc, st: tickets.status, otp: tickets.otp,
+      otpAttempts: tickets.otpAttempts,
     }).from(tickets).where(eq(tickets.id, id)).for("update");
     if (!t) return undefined;
     const lines = await tx.select().from(ticketLines).where(eq(ticketLines.ticketId, id)).orderBy(asc(ticketLines.lineNo));
@@ -41,6 +43,16 @@ export const ticketsRepo = {
   /** The lifecycle is three timestamps on the row (spec §16), so the status never travels alone. */
   async setStatus(tx: Tx, id: string, patch: { status: TktStatus; collectedAt?: Date; receivedAt?: Date }): Promise<void> {
     await tx.update(tickets).set(patch).where(eq(tickets.id, id));
+  },
+
+  /**
+   * One more wrong code against this ticket. Written as `otp_attempts + 1` rather than from the
+   * number the caller read, because the two are the same only while the row's own `for update`
+   * is held — and this is the one write on a handover that has to survive the refusal that
+   * follows it, so it must not depend on that being true a second time.
+   */
+  async countWrongOtp(tx: Tx, id: string): Promise<void> {
+    await tx.update(tickets).set({ otpAttempts: sql`${tickets.otpAttempts} + 1` }).where(eq(tickets.id, id));
   },
 
   /**

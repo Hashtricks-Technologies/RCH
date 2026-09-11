@@ -278,10 +278,70 @@ describe("the ledger, not the pre-check, is the guarantee", () => {
     expect((await app.db.select().from(s.bills)).length).toBe(billsBefore);
   });
 
+  it("a sale the post-lock re-read refuses does not burn a bill number", async () => {
+    // Same shape as the case above, but about the counter rather than the shelf. A bill used to
+    // take its number before the locks were taken, so the refusal below rolled back a number the
+    // series had already moved past — every one of them a gap in the till roll somebody has to
+    // explain to an auditor. The number is taken last now, so the next real sale gets it.
+    await app.db.transaction((tx) => postMoves(tx, [{ loc: "coffee", it: "bisc", qty: 4, kind: "adjustment", refType: "test", refId: "no-burn-topup" }]));
+    await warmPool(app.testDb!, 2);
+    const have = await onHand("coffee", "bisc");
+    expect(have).toBeGreaterThan(0);
+    const [seq] = await app.db.select().from(s.sequences).where(eq(s.sequences.kind, "bill"));
+    const waiting = seq!.next;
+
+    const drained = app.db.transaction(async (tx) => {
+      await tx.execute(sql`select 1 from stock_balances where loc = 'coffee' and item_key = 'bisc' for update`);
+      await sleep(1000);
+      await postMoves(tx, [{ loc: "coffee", it: "bisc", qty: -have, kind: "adjustment", refType: "test", refId: "no-burn-drain" }]);
+    });
+    await sleep(50);
+    const refused = pay("u1", { loc: "coffee", tender: "Cash", lines: [{ it: "bisc", qty: have }] });
+    const [r] = await Promise.all([refused, drained]);
+    expect(r.statusCode, r.body).toBe(422);
+
+    // The next sale to actually go through takes the number the refused one was standing on.
+    await app.db.transaction((tx) => postMoves(tx, [{ loc: "coffee", it: "bisc", qty: 1, kind: "adjustment", refType: "test", refId: "no-burn-refill" }]));
+    const sold = await pay("u1", { loc: "coffee", tender: "Cash", lines: [{ it: "bisc", qty: 1 }] });
+    expect(sold.statusCode, sold.body).toBe(200);
+    expect(sold.json().result.no).toBe(`CF/${waiting}`);
+  });
+
+  it("does not hold the hospital's bill counter while it waits for a shelf", async () => {
+    // The half of the reorder above that can actually be observed. A sale queued behind a shelf
+    // used to be sitting on the one `sequences` row every till in the hospital draws its bill
+    // number from, so one slow counter froze the others. The kiosk's sale below is behind
+    // nothing at all and must therefore be numbered *before* the coffee shop's, not after it.
+    await app.db.transaction((tx) => postMoves(tx, [
+      { loc: "coffee", it: "water", qty: 5, kind: "adjustment", refType: "test", refId: "convoy-coffee" },
+      { loc: "kiosk", it: "water", qty: 5, kind: "adjustment", refType: "test", refId: "convoy-kiosk" },
+    ]));
+    await warmPool(app.testDb!, 3);
+
+    const holder = app.db.transaction(async (tx) => {
+      await lockBalances(tx, [{ loc: "coffee", it: "water" }]);   // the coffee shop's shelf, held
+      await sleep(1000);
+    });
+    await sleep(50);
+    const queued = pay("u1", { loc: "coffee", tender: "Cash", lines: [{ it: "water", qty: 1 }] });
+    await sleep(250);                                              // long enough that it is on the shelf lock
+    const free = await pay("u6", { loc: "kiosk", tender: "Cash", lines: [{ it: "water", qty: 1 }] });
+    const [slow] = await Promise.all([queued, holder]);
+
+    expect(free.statusCode, free.body).toBe(200);
+    expect(slow.statusCode, slow.body).toBe(200);
+    const n = (r: { json(): { result: { no: string } } }) => Number(r.json().result.no.split("/")[1]);
+    expect(n(free)).toBeLessThan(n(slow));
+  });
+
   it("lets exactly one of two tills sell the last units", async () => {
     await app.db.transaction(async (tx) => {
       await postMoves(tx, [{ loc: "coffee", it: "bisc", qty: 6, kind: "opening", refType: "test", refId: "bisc-delivery" }]);
     });
+    // Without this the second sale waits for a socket instead of for the balance lock, and
+    // begins after the first has committed: the race never happens and the case passes with the
+    // lock taken out.
+    await warmPool(app.testDb!, 2);
     const body: PayBody = { loc: "coffee", tender: "Cash", lines: [{ it: "bisc", qty: 6 }] };
     const [a, b] = await Promise.all([pay("u1", body), pay("u1", body)]);
     const codes = [a.statusCode, b.statusCode].sort();

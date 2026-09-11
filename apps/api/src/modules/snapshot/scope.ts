@@ -1,5 +1,5 @@
 import { OUTLETS } from "@rch/contract";
-import type { Batch, Bill, LocKey, ProdOrder, ProductRequest, Role, ShopAsk, StockRequest, SupportTicket, Ticket } from "@rch/contract";
+import type { Batch, Bill, LocKey, PayerRoster, ProdOrder, ProductRequest, Role, ShopAsk, StockRequest, SupportTicket, Ticket } from "@rch/contract";
 import type { Snapshot } from "./service.js";
 
 /** Who is asking. The snapshot and the two standalone reads all cut by the same two fields. */
@@ -22,6 +22,35 @@ export function scopeStock(part: StockPart, who: Who): StockPart {
 /** Takings are not master data: a counter operator gets their own till roll, not the hospital's. */
 export const scopeBills = (bills: Bill[], who: Who): Bill[] =>
   who.role !== "counter" ? bills : bills.filter((b) => b.loc === who.loc);
+
+/**
+ * Who a bill was charged to is the one field on it that names a person, and for a patient bill
+ * that person is a patient: a name, a ward and an in-patient number, which is hospital data
+ * before it is F&B data.
+ *
+ * Two roles need it. The counter reads it back off its own till roll — it is what a customer
+ * asks about when a bill is queried an hour later — and the manager reads it across the outlets,
+ * because settling a credit account is their job. The kitchen, the central store and the buyer
+ * do none of that. What they have always used bills for is the ledger behind them: `lines`,
+ * which is untouched here, so every stock report still reads exactly what it did.
+ *
+ * So the bills travel whole minus the name. Not a filtered list — the store's reports count
+ * bills as well as lines, and a store keeper whose totals quietly stopped matching the till's
+ * would be worse off than one who simply cannot see whose account a sale went to.
+ */
+const READS_PAYERS: ReadonlySet<Who["role"]> = new Set(["counter", "manager"]);
+export const scopePayers = (bills: Bill[], who: Who): Bill[] =>
+  READS_PAYERS.has(who.role) ? bills : bills.map((b) => (b.payer ? { ...b, payer: undefined } : b));
+
+/**
+ * And the roster is the register those names come out of — every patient on a ward, every
+ * member of staff, every department, in one list. It is on the snapshot so that a till can offer
+ * it while a bill is being taken; nobody who cannot take a bill has any use for it, and handing
+ * the whole register to three roles that never open the payer picker was the larger half of the
+ * same leak.
+ */
+export const scopeRoster = (roster: PayerRoster, who: Who): PayerRoster =>
+  READS_PAYERS.has(who.role) ? roster : { patients: [], staff: [], depts: [] };
 
 /** A counter's requests are their own outlet's; everyone else sees the desk they work. */
 export const scopeRequests = (req: StockRequest[], who: Who): StockRequest[] =>
@@ -79,9 +108,13 @@ export const scopeSupportTickets = (rows: SupportTicket[], who: { sub: string },
 
 /** A counter operator's world is their counter. Master data is never cut down; documents and stock are. */
 export function scope(s: Snapshot, who: Who & { sub: string }, owners: Map<string, string>): Snapshot {
-  // Two cuts apply to every role, not only to a counter: a support ticket is the caller's own,
-  // and a ticket's OTP is the collector's.
-  const base: Snapshot = { ...s, tickets: scopeSupportTickets(s.tickets, who, owners), tkt: redactOtps(s.tkt, who) };
+  // Four cuts apply to every role, not only to a counter: a support ticket is the caller's own,
+  // a ticket's OTP is the collector's, and who a bill was charged to — with the register those
+  // names come out of — belongs to the two roles that bill people.
+  const base: Snapshot = {
+    ...s, tickets: scopeSupportTickets(s.tickets, who, owners), tkt: redactOtps(s.tkt, who),
+    bills: scopePayers(s.bills, who), roster: scopeRoster(s.roster, who),
+  };
   if (who.role !== "counter") return base;
   const L = who.loc;
   // `sales` is one column per outlet, so handing it over whole tells a counter operator the

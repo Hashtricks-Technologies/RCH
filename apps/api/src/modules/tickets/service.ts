@@ -1,6 +1,7 @@
 // Tickets: the movement rule in code. Approval authorises and the scan moves — so a handover
 // is the one place stock leaves a location on this path, a receipt the one place it lands, and
 // between the two it is in transit and owned by neither.
+import { timingSafeEqual } from "node:crypto";
 import type { z } from "zod";
 import type { CancelTicketBodySchema, Changed, HandoverBodySchema, Ticket, TransferBodySchema, WriteResponse } from "@rch/contract";
 import { approvedStatus, canTransition, fq, PROD_ORDER_TRANSITIONS, REQUEST_TRANSITIONS, round3, SHOP_ASK_TRANSITIONS, TICKET_TRANSITIONS } from "@rch/domain";
@@ -30,6 +31,35 @@ async function reread(tx: Tx, id: string): Promise<Ticket> {
   return t;
 }
 
+/**
+ * How many wrong codes a ticket will take before the window stops listening. Six digits is a
+ * million guesses on paper and about a dozen an hour in practice at a hatch — but nothing stops
+ * a script, and a ticket that can be guessed at for ever is a shelf that can be emptied by
+ * anyone who can reach the endpoint. Five is what a collector who has genuinely misread the slip
+ * needs, and far less than a search needs.
+ */
+const OTP_ATTEMPTS = 5;
+
+/** What is read to the collector when the guessing has to stop. The way past it is the labelled
+ *  supervisor override, which is refused to a counter and recorded in `document_history`. */
+const lockedMessage = (id: string) =>
+  `${id} is locked after five wrong codes — a supervisor override is the only way to hand it over now`;
+
+/**
+ * The typed code against the row's own, in constant time. `===` on a secret leaks how much of it
+ * is right through how long the comparison took, which over enough tries is the code — and the
+ * attempt limit above is exactly what makes "enough tries" the thing to worry about.
+ *
+ * `timingSafeEqual` throws on buffers of unequal length, so the lengths are checked first:
+ * `HandoverBodySchema` already holds the typed code to six digits and the column holds six, so
+ * anything else is simply a wrong code and there is nothing to leak about it.
+ */
+function otpMatches(typed: string, real: string): boolean {
+  const a = Buffer.from(typed, "utf8");
+  const b = Buffer.from(real, "utf8");
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
 export function createTicketsService(db: Db) {
   return {
     /**
@@ -37,9 +67,17 @@ export function createTicketsService(db: Db) {
      * `ticket_out` moves at the sending location, the release of the hold those moves replace,
      * and the request behind the ticket moved on. A refusal anywhere rolls all of it back, so
      * a wrong OTP moves nothing.
+     *
+     * One thing has to survive that rollback, which is why this is the only write in the server
+     * that does not simply `return withTransaction(...)`: a wrong code is **counted**, and a
+     * count thrown away with the refusal that caused it would let a caller guess for ever. So
+     * the transaction commits the increment and hands back the sentence, and the refusal is
+     * raised out here, after the commit. Nothing else has been written by then — the OTP is
+     * checked before the first move — so the committed transaction carries the count and only
+     * the count.
      */
     async handover(claims: AccessClaims, id: string, body: HandoverBody): Promise<WriteResponse<Ticket>> {
-      return withTransaction(db, async (tx) => {
+      const done = await withTransaction<WriteResponse<Ticket> | { refuse: string }>(db, async (tx) => {
         const t = await ticketsRepo.head(tx, id);
         if (!t) throw new NotFoundError(`There is no ticket ${id}.`);
         // Documents locked before ids, ids before balances (lib/ledger.ts's header): this
@@ -54,8 +92,18 @@ export function createTicketsService(db: Db) {
         // and written to document_history, because the ticket's own row carries no prose and
         // an override that left no trace could not be audited afterwards.
         const override = body.otp === undefined;
-        if (body.otp !== undefined) assertRule(body.otp.trim() === t.otp, `That OTP does not match ${id}. Ask the collector to read it again.`);
-        else assertRule(claims.role === "store" || claims.role === "prod", "Only the store or the kitchen may hand over without the OTP");
+        if (body.otp !== undefined) {
+          // Five wrong codes and this door is shut for good: a ticket that took guesses for ever
+          // is a shelf anyone who can reach the endpoint can empty. The override below is
+          // deliberately *not* shut with it — a collector who has genuinely lost the slip still
+          // has a supervisor, and that way out is named, role-gated and written to the trail.
+          assertRule(t.otpAttempts < OTP_ATTEMPTS, lockedMessage(id));
+          if (!otpMatches(body.otp.trim(), t.otp)) {
+            // The one write this transaction is allowed to commit on the way to a refusal.
+            await ticketsRepo.countWrongOtp(tx, id);
+            return { refuse: `That OTP does not match ${id}. Ask the collector to read it again.` };
+          }
+        } else assertRule(claims.role === "store" || claims.role === "prod", "Only the store or the kitchen may hand over without the OTP");
 
         const at = new Date();
         const items = await loadItems(tx);
@@ -98,6 +146,9 @@ export function createTicketsService(db: Db) {
             : `${id} handed over — stock is in transit to ${toName}`,
         };
       });
+      // The wrong code is on the row now, committed; this is the sentence that goes with it.
+      if ("refuse" in done) assertRule(false, done.refuse);
+      return done;
     },
 
     /** The scan on the shelf: the mirror of handover, and the end of the request behind it. */

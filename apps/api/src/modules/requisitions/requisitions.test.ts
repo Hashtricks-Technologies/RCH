@@ -80,7 +80,12 @@ describe("POST /requisitions/:id/approve", () => {
   it("leaves a claim a live order already holds exactly where it is", async () => {
     // A requisition can be re-decided only once, so this is about the write, not a second pass:
     // approving must not touch ordered_qty, or a claimed quantity would reappear on the list.
-    const id = await given.requisition(app.testDb!.db, { lines: [{ it: "milk", qty: 60, ordered: 25 }] });
+    //
+    // The line carries an approval as well as the claim, because a claim is only ever drawn
+    // against an approved quantity (`procurementList` is approved less ordered) and
+    // `requisition_lines_ordered_ck` now says so at the database: a row claimed for 25 against
+    // an approval of nothing is a state no buyer could have produced.
+    const id = await given.requisition(app.testDb!.db, { lines: [{ it: "milk", qty: 60, appr: 60, ordered: 25 }] });
     const b = (await post("u5", `/requisitions/${id}/approve`, { appr: [60], note: "" })).json();
     expect(b.result.lines[0]).toMatchObject({ appr: 60, ordered: 25 });
   });
