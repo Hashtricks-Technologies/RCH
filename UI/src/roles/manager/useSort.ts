@@ -1,7 +1,12 @@
 import { useState } from "react";
 import type { SortState } from "../../ui/kit";
 
-/** What a row can be ordered on. Strings compare with locale rules, numbers numerically. */
+/** What a row can be ordered on. Strings compare with locale rules, numbers numerically.
+ *
+ *  A column showing a time or a date sorts on the document's `iso` — the instant the store keeps
+ *  beside the string it prints (`Dated` in `types.ts`) — and never on the printed string itself:
+ *  `"22:00"` is above `"09:00"` whichever day each of them belongs to. ISO-8601 is ordered
+ *  lexically, so it needs no special case here. */
 export type SortValue = string | number;
 
 /**

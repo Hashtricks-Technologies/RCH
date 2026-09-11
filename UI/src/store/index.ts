@@ -6,8 +6,9 @@ import { refetch } from "../api/refetch";
 import { applySnapshot } from "../api/wire";
 import { LOC } from "../data/master";
 import type {
-  Batch, Bill, CreditResponse, DraftLine, DrawerState, Grn, LocKey, Payer, PordStatus, ProdOrder,
-  PurchaseOrder, Requisition, StockLedgerRow, StockLoc, StockRequest, Tender, Ticket, User, Vendor,
+  Batch, Bill, CreditResponse, Dated, DatedDoc, DraftLine, DrawerState, Grn, LocKey, Payer,
+  PordStatus, ProdOrder, PurchaseOrder, Requisition, StockLedgerRow, StockLoc, StockRequest,
+  Tender, Ticket, Trailed, User, Vendor,
 } from "../types";
 import { applyTheme, nextTheme, readStoredTheme, storeTheme, type ThemePref } from "../lib/theme";
 import { createProcurementSlice, type ProcurementSlice } from "./procurement";
@@ -29,14 +30,16 @@ export interface AppState extends ProcurementSlice, OpsSlice {
   ovr: Record<string, string>;
   prices: Record<"A" | "B", Record<string, number>>;
   menu: Record<string, string[]>;
-  req: StockRequest[];
-  tkt: Ticket[];
-  prq: Requisition[];
-  po: PurchaseOrder[];
-  pord: ProdOrder[];
+  /** Every document keeps the instant it happened at (`iso`) beside the "HH:MM" it is printed
+   *  as — see `Dated` in `types.ts`. A ticket has no `at` of its own; only its trail is dated. */
+  req: DatedDoc<StockRequest>[];
+  tkt: Trailed<Ticket>[];
+  prq: DatedDoc<Requisition>[];
+  po: DatedDoc<PurchaseOrder>[];
+  pord: DatedDoc<ProdOrder>[];
   batch: Batch[];
-  bills: Bill[];
-  grn: Grn[];
+  bills: Dated<Bill>[];
+  grn: Dated<Grn>[];
   vendors: Vendor[];
   sales: number[][];
   dayLabels: string[];

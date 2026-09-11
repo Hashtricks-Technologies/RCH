@@ -3,7 +3,7 @@ import { contractInWindow, istDate } from "@rch/domain";
 import { ApiError, call } from "../api/client";
 import { refetch } from "../api/refetch";
 import type {
-  ItemType, LocKey, ProductRequest, RateContract, ShopAsk,
+  Dated, ItemType, LocKey, ProductRequest, RateContract, ShopAsk,
   SupportTicket, TicketPriority, TicketStatus, TicketTopic,
 } from "../types";
 import { toInputDate } from "../lib/fmt";
@@ -18,8 +18,10 @@ export interface NewItemInput {
 }
 
 export interface OpsSlice {
-  tickets: SupportTicket[];
-  productReqs: ProductRequest[];
+  /** Dated like every other document the store holds: the "HH:MM" on screen, plus the instant
+   *  it was made from, so "today" and "newest first" are answerable (`Dated` in `types.ts`). */
+  tickets: Dated<SupportTicket>[];
+  productReqs: Dated<ProductRequest>[];
   contracts: RateContract[];
   /** Bumped whenever the catalogue gains an item, so lists re-read it. */
   catalogVersion: number;
@@ -50,7 +52,7 @@ export interface OpsSlice {
    *  a screen can hold on to what the operator typed when it is refused. */
   transferToOutlet: (from: LocKey, to: LocKey, it: string, qty: number) => Promise<boolean>;
 
-  shopAsks: ShopAsk[];
+  shopAsks: Dated<ShopAsk>[];
   /** Counter at `from` asks the shop at `to` for stock it is holding. */
   askShop: (to: LocKey, it: string, qty: number, note: string) => Promise<boolean>;
   /** The holding shop grants some or all of it, which issues the transfer ticket. */
