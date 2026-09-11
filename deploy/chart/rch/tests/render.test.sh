@@ -13,6 +13,23 @@ helm lint . -f values-staging.yaml --set image.registry=r,image.tag=t,secrets.va
 helm lint . -f values-prod.yaml --set image.registry=r,image.tag=t
 
 out=$(helm template rch . -f values-prod.yaml --set image.registry=r,image.tag=t)
+# B1: nothing in this repo installs the Prometheus Operator, so its CRDs may simply not exist in
+# the target cluster — and `helm upgrade --atomic` that meets an unknown kind fails and, being
+# atomic, rolls the whole release back to nothing. Both monitoring templates are therefore gated
+# on the API group actually being present as well as on serviceMonitor.enabled. `helm template`
+# without --api-versions is the cluster that has no operator; with it, the cluster that has one.
+out_mon=$(helm template rch . -f values-prod.yaml --set image.registry=r,image.tag=t --api-versions monitoring.coreos.com/v1)
+refute grep -q 'kind: ServiceMonitor' <<<"$out"
+refute grep -q 'kind: PrometheusRule' <<<"$out"
+grep -q 'kind: ServiceMonitor' <<<"$out_mon"
+grep -q 'kind: PrometheusRule' <<<"$out_mon"
+# B2: kube-prometheus-stack's Prometheus picks up ServiceMonitors AND PrometheusRules by a
+# `release` label. The ServiceMonitor has always carried it; a PrometheusRule without it is
+# applied happily and then loaded by nothing, which looks exactly like an alert that never fires.
+[ "$(grep -c 'release: kube-prometheus-stack' <<<"$out_mon")" -ge 2 ]
+# ...and every runbook link must be a URL somebody woken at three in the morning can open, not
+# the chart's own <org>/<repo> placeholder.
+refute grep -Eq 'runbook_url: .*<' <<<"$out_mon"
 grep -q 'kind: ExternalSecret' <<<"$out"
 refute grep -q 'kind: Secret$' <<<"$out"
 grep -q 'readOnlyRootFilesystem: true' <<<"$out"
@@ -52,7 +69,7 @@ grep -q 'proxy_set_header X-Request-Id \$request_id' <<<"$events_block"
 # the api Service itself (not just the ServiceMonitor) must carry
 # app.kubernetes.io/component: api or the monitor selects zero Services.
 grep -A4 '# Source: rch/templates/api-service.yaml' <<<"$out" | grep -q 'component: api'
-grep -A3 'kind: ServiceMonitor' <<<"$out" | grep -q 'component: api'
+grep -A3 'kind: ServiceMonitor' <<<"$out_mon" | grep -q 'component: api'
 # C1: secret values must never be inlined as plaintext env `value:` entries —
 # always sourced via secretKeyRef, on both the prod (ExternalSecret) and
 # staging (Secret) paths.
@@ -82,17 +99,17 @@ refute grep -q 'key: SEED_PASSWORD, optional' <<<"$out"
 
 # Phase 6: the five §12 alerts plus the SSE listener ship with the chart, so the alert text lives
 # beside the metric it reads instead of only in the runbook.
-grep -q 'kind: PrometheusRule' <<<"$out"
+grep -q 'kind: PrometheusRule' <<<"$out_mon"
 for a in RchApiHigh5xxRate RchApiHighLatencyP95 RchApiDown RchApiPoolSaturated RchSseListenerDown; do
-  grep -q "alert: $a" <<<"$out" || { echo "missing alert: $a"; exit 1; }
+  grep -q "alert: $a" <<<"$out_mon" || { echo "missing alert: $a"; exit 1; }
 done
 # Every rule must name a metric the API actually publishes. `sse_listener_up` and
 # `http_request_duration_seconds` are decorated in apps/api/src/plugins/metrics.ts; an alert on a
 # metric that does not exist is an alert that never fires, which is worse than no alert.
-grep -q 'http_request_duration_seconds_count' <<<"$out"
-grep -q 'sse_listener_up' <<<"$out"
+grep -q 'http_request_duration_seconds_count' <<<"$out_mon"
+grep -q 'sse_listener_up' <<<"$out_mon"
 # Every alert carries a runbook link, so whoever is woken has somewhere to go.
-[ "$(grep -c 'runbook_url:' <<<"$out")" -ge 5 ]
+[ "$(grep -c 'runbook_url:' <<<"$out_mon")" -ge 5 ]
 
 # TLS must be wired, and must never render as an EMPTY annotation — the ALB controller reads
 # `certificate-arn: ""` and fails, where an absent annotation falls back cleanly.

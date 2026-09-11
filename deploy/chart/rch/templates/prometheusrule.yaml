@@ -1,4 +1,4 @@
-{{- if .Values.serviceMonitor.enabled }}
+{{- if and .Values.serviceMonitor.enabled (.Capabilities.APIVersions.Has "monitoring.coreos.com/v1") }}
 {{- /*
   Spec §12, Operability: "Alerts (documented in deploy/RUNBOOK.md): 5xx rate > 1 % over 5 min,
   p95 latency > 1 s, readiness failing, DB connections > 80 %, RDS free storage < 20 %."
@@ -9,8 +9,15 @@
   sixth, added because a pod whose LISTEN connection is down serves every request correctly and
   quietly stops delivering live updates, which no other alert here would notice.
 
-  Gated on serviceMonitor.enabled: without the Prometheus Operator the PrometheusRule CRD does
-  not exist and applying one fails the whole release.
+  Gated on serviceMonitor.enabled AND on the cluster actually serving monitoring.coreos.com/v1:
+  nothing in this repo installs the Prometheus Operator, so the CRD may simply not be there, and
+  a `helm upgrade --atomic` that meets an unknown kind fails and rolls the whole release back.
+  The flag says "we want alerts"; the capability check says "this cluster can hold them".
+
+  The `release` label is what kube-prometheus-stack's Prometheus selects rules by (its own
+  `ruleSelector`), exactly as templates/servicemonitor.yaml is selected: without it this rule is
+  applied to the cluster and then loaded by nothing, which looks identical to an alert that
+  never fires.
 
   The `job` selector matches what templates/servicemonitor.yaml actually produces: it sets no
   spec.jobLabel, so Prometheus Operator's default target-labelling gives every scraped series a
@@ -21,7 +28,7 @@ apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
   name: {{ .Release.Name }}-api
-  labels: { {{ include "rch.labels" . }}, app.kubernetes.io/component: api }
+  labels: { {{ include "rch.labels" . }}, app.kubernetes.io/component: api, release: {{ .Values.serviceMonitor.releaseLabel | default "kube-prometheus-stack" }} }
 spec:
   groups:
     - name: {{ .Release.Name }}-api

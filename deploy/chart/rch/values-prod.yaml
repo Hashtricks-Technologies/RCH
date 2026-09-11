@@ -72,4 +72,4 @@ purge: { enabled: true, schedule: "15 2 * * *" }
 alerts:
   errorRate: 0.01
   p95Seconds: 1
-  runbookUrl: https://github.com/<org>/<repo>/blob/production/deploy/RUNBOOK.md   # FILL
+  runbookUrl: https://github.com/Hashtricks-Technologies/RCH/blob/production/deploy/RUNBOOK.md
