@@ -246,10 +246,12 @@ with the buyer watching, and write down why.
 production] }`, and every job carries `github.event.workflow_run.conclusion == 'success'`. The
 old `on: push` fired deploy.yml *alongside* ci.yml, so a red typecheck, a failed test or a
 CRITICAL in an image could reach a cluster while CI was still running — the two were racing, not
-ordered. The `guard` job additionally requires `github.event.workflow_run.event == 'push'`:
+ordered. **All three jobs** additionally require `github.event.workflow_run.event == 'push'`:
 `branches:` matches the CI run's head branch, so a pull request raised **from** `staging`
 **into** `production` — the documented hotfix flow — would otherwise satisfy it and deploy an
-unmerged PR head.
+unmerged PR head. The clause is repeated on `deploy` and `skipped` rather than left to `guard`
+alone because `needs: guard` skips a dependent only when guard's *result* is failure or
+cancelled — a job skipped by its own `if:` is not a failure, and a dependent still runs.
 
 Everything the workflow uses is pinned to `github.event.workflow_run.head_sha` /
 `head_branch`. **`github.sha` and `github.ref_name` are not usable under this event** — they
@@ -420,14 +422,22 @@ kubectl label namespace rch         elbv2.k8s.aws/pod-readiness-gate-inject=enab
   - **amazon-cloudwatch-observability**, with `CloudWatchAgentServerPolicy`.
   - **Network policy in the `vpc-cni` add-on.** `templates/networkpolicy.yaml` renders a
     default-deny plus three named doors by default (`networkPolicy.enabled: true`), but a
-    NetworkPolicy is enforced by the CNI: until the vpc-cni add-on has `enableNetworkPolicy`
-    turned on, the objects are applied and **inert**. On a live cluster that is `eksctl update
-    addon -f deploy/eksctl/cluster.yaml` (or the console) after the setting is in the file —
-    creating the cluster from the file is not enough for a cluster that already exists. Turn it
-    on deliberately and watch the first rollout: this is the change in the chart with the most
-    blast radius and the least local verification. `networkPolicy.enabled=false` stops rendering
-    them. (kind, in CI, uses kindnetd, which does not implement NetworkPolicy at all — that, and
-    not the `albSourceCidr` rules, is why `ci/install-test.sh` passes.)
+    NetworkPolicy is enforced by the CNI, and the VPC CNI's policy agent is off unless the
+    add-on is configured for it. `deploy/eksctl/cluster.yaml` now sets it —
+    `configurationValues: '{"enableNetworkPolicy": "true"}'` on `vpc-cni` — **but a config file
+    only reaches a cluster that is asked to read it.** For `rch`, which already exists:
+
+    ```bash
+    eksctl update addon -f deploy/eksctl/cluster.yaml --name vpc-cni
+    aws eks describe-addon --cluster-name rch --addon-name vpc-cni --region ap-south-1 \
+      --query 'addon.configurationValues'     # must show enableNetworkPolicy true
+    ```
+
+    Until then the objects are applied and **inert**. Turn it on deliberately, on staging first,
+    and watch a rollout: this is the change in the chart with the most blast radius and the
+    least local verification. `networkPolicy.enabled=false` stops rendering them. (kind, in CI,
+    uses kindnetd, which does not implement NetworkPolicy at all — that, and not the
+    `albSourceCidr` rules, is why `ci/install-test.sh` passes.)
 - **ExternalSecret store (prod only):** the `ClusterSecretStore` named `aws-secrets-manager`
   (referenced by `deploy/chart/rch/templates/externalsecret.yaml`) must already exist in the
   cluster — it is provisioned once by the External Secrets Operator install, not by this chart.
@@ -1448,9 +1458,11 @@ discovered later.
    and Alertmanager has no receiver configured for this cluster, so a rule that fires pages
    nobody. Who is on call, and by what channel, is the decision; the rules and their
    `runbook_url` anchors are already there.
-3. **NetworkPolicy is applied and inert** until network policy is enabled in the `vpc-cni`
-   add-on on the live cluster (§2, *First-time cluster setup*). Turning it on is a deliberate
-   change with real blast radius — do it on staging first, and watch a rollout.
+3. **NetworkPolicy is applied and inert** until the live cluster's `vpc-cni` add-on is updated
+   from `deploy/eksctl/cluster.yaml`, which now asks for `enableNetworkPolicy` (§2,
+   *First-time cluster setup*, has the `eksctl update addon` command and the check). The file
+   being right does not make the running cluster right. Turning it on is a deliberate change
+   with real blast radius — do it on staging first, and watch a rollout.
 4. **`/metrics` shares port 3000 with the API.** A NetworkPolicy decides on ports, not paths, so
    the `monitoring`-namespace rule in the api policy is a record of the intended scraper rather
    than a control, and `networkPolicy.albSourceCidr` cannot be narrowed below what the serving
