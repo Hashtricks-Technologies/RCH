@@ -50,6 +50,13 @@
       "when": 1788503183181,
       "tag": "0006_rate_contracts_live_uq",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1789110000000,
+      "tag": "0007_idempotency_committed_at",
+      "breakpoints": true
     }
   ]
 }

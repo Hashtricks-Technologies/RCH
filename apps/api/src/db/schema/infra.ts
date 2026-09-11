@@ -24,6 +24,11 @@ export const idempotencyKeys = pgTable("idempotency_keys", {
   response: jsonb("response").notNull(),
   createdAt: ts("created_at").notNull().defaultNow(),
   expiresAt: ts("expires_at").notNull(),
+  /** Stamped by the write's own transaction (`lib/idempotency-record.ts`), so it is set if and
+   *  only if the write committed. A row carrying it is never deleted and never taken over —
+   *  whatever the response hooks afterwards do or fail to do, the outcome is already the
+   *  key's permanent answer. */
+  committedAt: ts("committed_at"),
 }, (t) => [primaryKey({ columns: [t.key, t.userId] }), index("idempotency_expires_idx").on(t.expiresAt)]);
 
 export const refreshTokens = pgTable("refresh_tokens", {

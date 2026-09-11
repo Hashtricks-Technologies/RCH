@@ -1,0 +1,1 @@
+ALTER TABLE "idempotency_keys" ADD COLUMN "committed_at" timestamp with time zone;
