@@ -286,7 +286,9 @@ function searchHits(s: AppState, q: string): Hit[] {
     .filter((b) => (!mine || b.loc === mine) && has(b.no, b.pay, b.opr, b.payer?.name))
     .map((b) => ({
       id: "b:" + b.no, to: "bills", t: b.no, kind: "Bill",
-      s: `${b.pay} · ₹${b.tot.toFixed(2)} · ${b.t}`,
+      // ---- bill void: the palette finds a voided bill — it is exactly the one somebody goes
+      // looking for — and says so, rather than quoting an amount the hospital never kept.
+      s: `${b.pay} · ₹${b.tot.toFixed(2)} · ${b.t}${b.voided ? " · VOIDED" : ""}`,
     }));
 
   return [navs, reqs, tkts, bills, items].flatMap((x) => x.slice(0, 5)).slice(0, 14);

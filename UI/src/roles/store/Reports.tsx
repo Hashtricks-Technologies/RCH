@@ -274,7 +274,10 @@ const movers = (s: AppState): Rep => {
     .map((k) => ({
       k,
       iss: sum(out, (t) => sum(t.lines.filter((l) => l.it === k), (l) => l.qty)),
-      sold: sum(s.bills.flatMap((b) => b.lines).filter((l) => l.it === k), (l) => l.qty),
+      // ---- bill void: measured the way "Issued from store" above is — a voided bill put its
+      // lines back on the shelf, so counting them would make an item look fast on stock that
+      // never left.
+      sold: sum(s.bills.filter((b) => !b.voided).flatMap((b) => b.lines).filter((l) => l.it === k), (l) => l.qty),
       ask: sum(s.req, (r) => sum(r.lines.filter((l) => l.it === k), (l) => l.qty)),
     }))
     .sort((a, b) => b.iss + b.sold - (a.iss + a.sold) || b.ask - a.ask)

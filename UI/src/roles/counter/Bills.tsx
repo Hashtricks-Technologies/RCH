@@ -120,9 +120,10 @@ export default function Bills() {
           extra={<>{L.n} · {L.c} · billed {money(billed)} · cash in drawer {money(cash)}</>} />
       </Card>
       <p className="mini mtop">
-        <b>Billed</b> is every tender raised at this counter. <b>Cash in drawer</b> is what is actually in the till —
-        card and UPI are taken at the till but settle to the hospital account, and patient, staff and department
-        bills collect nothing at the counter at all.
+        <b>Billed</b> is every tender raised at this counter, less anything voided — a voided bill went back on
+        the shelf and the money was never kept, so it stays on this list, badged, and out of both figures.
+        <b>Cash in drawer</b> is what is actually in the till — card and UPI are taken at the till but settle to
+        the hospital account, and patient, staff and department bills collect nothing at the counter at all.
       </p>
     </>
   );

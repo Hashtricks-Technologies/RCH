@@ -1,10 +1,9 @@
 import { randomUUID } from "node:crypto";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { and, asc, eq, sql } from "drizzle-orm";
 import { BillSchema, StockResponseSchema } from "@rch/contract";
 import { dmy, istDate } from "@rch/domain";
 import * as s from "../../db/schema/index.js";
-import { dateAt } from "../../lib/time.js";
 import { lockBalances, postMoves, rebuildBalances } from "../../lib/ledger.js";
 import { reserve } from "../../lib/reservations.js";
 import { buildTestApp } from "../../test/app.js";
@@ -688,27 +687,57 @@ describe("POST /bills/:no/void — the manager takes a bill back", () => {
     expect(await movesOf(no, "reversal")).toHaveLength(1);
   });
 
+  /**
+   * The day boundary, on a fixed clock.
+   *
+   * "Same day" is the hospital's, not the host's, and the two only disagree in the six and a
+   * half hours between 18:30 UTC and midnight UTC. A test that read the wall clock would prove
+   * that on some hosts at some hours and nothing at all the rest of the time, so both cases
+   * below pin an instant and pick values where **UTC-day equality and IST-day equality point
+   * opposite ways** — an implementation that compared UTC dates fails each of them on every host
+   * at every hour. Only `Date` is faked: the pool, the server and pg still run on real timers.
+   */
+  const atClock = async <T>(iso: string, run: () => Promise<T>): Promise<T> => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(iso));
+    try { return await run(); } finally { vi.useRealTimers(); }
+  };
+
   it("voids a bill taken at 23:59 IST while it is still that IST day", async () => {
-    // The last bill of the day is the one most likely to be wrong, and the till that took it is
-    // still standing there. `dateAt` pins the instant in the hospital's zone, so this is the same
-    // IST date on a host in UTC as on one in Chennai.
-    const no = await given.bill(app.db, { loc: "coffee", total: 40, tender: "Cash", at: dateAt(istDate(new Date()), "23:59") });
-    const r = await voidBill("u2", no, "Last bill of the shift, wrong item");
-    expect(r.statusCode, r.body).toBe(200);
-    expect(r.json().message).toBe(`${no} voided`);       // given.bill posts no moves, so nothing came back
+    // 23:59:30 IST on 11-Sep — a minute and a half of the hospital's day left.
+    await atClock("2026-09-11T18:29:30.000Z", async () => {
+      // The last bill of the day is the one most likely to be wrong, and the till that took it
+      // is still standing there. 23:59 IST, the same UTC day as now.
+      const late = await given.bill(app.db, { loc: "coffee", total: 40, tender: "Cash", at: new Date("2026-09-11T18:29:00.000Z") });
+      const r = await voidBill("u2", late, "Last bill of the shift, wrong item");
+      expect(r.statusCode, r.body).toBe(200);
+      expect(r.json().message).toBe(`${late} voided`);    // given.bill posts no moves, nothing came back
+
+      // And the morning's bill from the *same hospital day*, which fell on the UTC day before:
+      // 00:30 IST on 11-Sep is 19:00 UTC on the 10th. A UTC-day comparison refuses this one.
+      const morning = await given.bill(app.db, { loc: "coffee", total: 40, tender: "Cash", at: new Date("2026-09-10T19:00:00.000Z") });
+      const m = await voidBill("u2", morning, "Wrong item, spotted at the end of the shift");
+      expect(m.statusCode, m.body).toBe(200);
+    });
   });
 
   it("refuses a bill from yesterday, naming the day it belongs to", async () => {
-    const yday = new Date(Date.now() - 24 * 60 * 60 * 1000);
-    const no = await given.bill(app.db, { loc: "coffee", total: 40, tender: "Cash", at: yday });
-    const r = await voidBill("u2", no, "Spotted it at the day-end count");
-    expect(r.statusCode).toBe(422);
-    expect(r.json().error).toMatchObject({
-      code: "rule",
-      message: `${no} was taken on ${dmy(istDate(yday))} — a bill can only be voided on the day it was billed; write the stock back on with an adjustment instead`,
+    // 00:05 IST on 12-Sep — five minutes into the new hospital day, still 11-Sep in UTC.
+    await atClock("2026-09-11T18:35:00.000Z", async () => {
+      // 23:55 IST on 11-Sep: the same UTC day as now, and the hospital day before it. A
+      // UTC-day comparison would let this through — which is the whole point of the hour.
+      const yday = new Date("2026-09-11T18:25:00.000Z");
+      const no = await given.bill(app.db, { loc: "coffee", total: 40, tender: "Cash", at: yday });
+      const r = await voidBill("u2", no, "Spotted it at the day-end count");
+      expect(r.statusCode).toBe(422);
+      expect(dmy(istDate(yday))).toBe("11-Sep-2026");
+      expect(r.json().error).toMatchObject({
+        code: "rule",
+        message: `${no} was taken on 11-Sep-2026 — a bill can only be voided on the day it was billed; write the stock back on with an adjustment instead`,
+      });
+      const [head] = await app.db.select().from(s.bills).where(eq(s.bills.no, no));
+      expect(head.voidedAt).toBeNull();
     });
-    const [head] = await app.db.select().from(s.bills).where(eq(s.bills.no, no));
-    expect(head.voidedAt).toBeNull();
   });
 
   it("is absent for every role but the manager", async () => {

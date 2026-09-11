@@ -47,7 +47,7 @@ function BillDrawer({ id }: DrawerProps) {
       foot={<>
         <Btn variant="gh" onClick={close}>Close</Btn>
         <div className="sp" />
-        {canVoid && <Btn variant="gh" disabled={busy || !reason.trim()} onClick={doVoid}>Void bill</Btn>}
+        {canVoid && <Btn variant="dg" disabled={busy || !reason.trim()} onClick={doVoid}>Void bill</Btn>}
         <Btn onClick={() => notify(`${bill.no} sent again to the ${L.c} printer`)}>Reprint</Btn>
       </>}
     >

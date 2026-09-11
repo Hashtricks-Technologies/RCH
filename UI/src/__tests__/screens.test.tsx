@@ -14,7 +14,8 @@ import { screens as store } from "../roles/store";
 import { screens as prod } from "../roles/prod";
 import { screens as buyer } from "../roles/buyer";
 import { groupPool, picksFor, type PoolGroup } from "../roles/buyer/ProcurementList";
-import { USERS, seedVendors } from "@rch/contract/fixtures";
+import { REPORTS } from "../roles/store/Reports";
+import { IT as FXIT, USERS, seedVendors } from "@rch/contract/fixtures";
 import type { PoolLine } from "../lib/selectors";
 import type { BillRow, Role, Ticket } from "../types";
 import { as, resetStore } from "./fixture";
@@ -234,6 +235,41 @@ describe("the manager's bills, and the void door", () => {
     expect(drawer("manager", bill({ iso: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString() }))).not.toContain("Void bill");
     // A row with no instant cannot be told to be today's, so it offers nothing rather than guess.
     expect(drawer("manager", bill({ iso: undefined }))).not.toContain("Void bill");
+  });
+
+  it("leaves a voided bill out of the manager dashboard's outlet takings, and marks it on the feed", () => {
+    act(() => {
+      as("manager");
+      useApp.setState({ bills: [
+        bill({ no: "CF/2001", loc: "coffee", tot: 1234 }),
+        bill({ no: "CF/2002", loc: "coffee", tot: 5000, voided: true, voidReason: "Rang up twice" }),
+      ] });
+    });
+    const html = render(createElement(manager.dash));
+    // ₹1,234 of takings at the Coffee Shop, not ₹6,234: the ₹5,000 was taken back.
+    expect(html).toContain("₹1,234");
+    expect(html).not.toContain("₹6,234");
+    // The feed is what happened, so the voided bill is still on it — saying so, because the
+    // amount beside it would otherwise read as money the hospital kept.
+    expect(html).toContain("CF/2002");
+    expect(html).toContain("VOIDED");
+  });
+
+  it("leaves a voided bill out of the movers report's sold quantity", () => {
+    act(() => {
+      as("store");
+      useApp.setState({ bills: [
+        bill({ no: "CF/2003", loc: "coffee", lines: [{ it: "juice", qty: 2, rate: 20 }] }),
+        bill({ no: "CF/2004", loc: "coffee", lines: [{ it: "juice", qty: 100, rate: 20 }], voided: true, voidReason: "Wrong item" }),
+      ] });
+    });
+    // Built rather than rendered: "Sold at outlets" is one cell of one row, and the arithmetic
+    // is the whole point. `movers` measures issues by what actually left the store, and a
+    // voided bill's lines never left the counter either.
+    const rep = REPORTS.find((r) => r.k === "movers")!.build(useApp.getState(), { st: "loading" });
+    const row = rep.rows.find((c) => c[1] === FXIT.juice.c)!;
+    expect(row).toBeTruthy();
+    expect(row[4]).toBe("2");
   });
 
   it("says what happened on a bill already voided, instead of offering the door again", () => {

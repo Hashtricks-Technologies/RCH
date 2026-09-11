@@ -51,7 +51,10 @@ export default function Dashboard() {
   };
 
   const outlets = OUTLETS.map((loc) => {
-    const bills = s.bills.filter((b) => b.loc === loc);
+    // ---- bill void: a voided bill was taken back — the money was never kept and the stock went
+    // back on the shelf — so it counts towards neither the outlet's bill count nor its takings.
+    // The server leaves it out of the `sales` columns below for the same reason (`readSales`).
+    const bills = s.bills.filter((b) => b.loc === loc && !b.voided);
     const sales = sum(bills, (b) => b.tot);
     return {
       loc,
@@ -108,7 +111,9 @@ export default function Dashboard() {
       key: "b" + b.no,
       kind: "Bills" as const,
       t: b.t,
-      what: `Bill ${b.no} · ${money(b.tot)} · ${b.pay}`,
+      // ---- bill void: the feed is what happened, so a voided bill stays on it — and says so,
+      // because "Bill CF/1188 · ₹110.00 · Cash" on its own reads as money the hospital kept.
+      what: `Bill ${b.no} · ${money(b.tot)} · ${b.pay}${b.voided ? " · VOIDED" : ""}`,
       where: LOC[b.loc].n,
       who: b.opr,
     })),
