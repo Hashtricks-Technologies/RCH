@@ -203,14 +203,38 @@ six more in `store/ops.ts` (`requestNewProduct`, `answerProductRequest`, `addCon
 (`raiseTicket`, `replyToTicket`, `setTicketStatus`, `rateTicket`). All forty-seven call the API
 (`UI/src/api/client.ts`) instead of mutating `set` directly, then `refetch`
 (`UI/src/api/refetch.ts`) pulls back only the slices the write says it changed — `GET /stock`
-for `stock`/`rsv`/`ovr`, a narrow reader for every collection with one, and a full
-`loadSnapshot` only for `prices` and `menu` (the manager's price/menu writes), the only two
-collections left without one. A refusal throws and is toasted; the cart or form is left exactly
-as it was. The `Seq` interface (`store/index.ts`) is gone entirely — every document the server
+for `stock`/`rsv`/`ovr`, and a **narrow reader for every other collection**, `prices` and `menu`
+(the manager's writes) included since the audit fix wave. No write costs a `loadSnapshot` any
+more: taking one pulled the whole hospital back down, and put every screen behind the loading
+splash while it did, so a one-field price edit blanked the till. The snapshot fallback stays in
+`refetch` as the guard for the next collection added to `CollectionSchema` and not to `NARROW`,
+which is now the only thing that can reach it. A refusal throws and is toasted; the cart or form is left exactly
+as it was, and **every one of the forty-seven answers whether the server took the write** —
+`pay`, `savePrice`, `addProduct` and `removeProduct` became `Promise<boolean>` in the audit fix
+wave, so none of them is `Promise<void>` where a caller might need to know. The `Seq` interface
+(`store/index.ts`) is gone entirely — every document the server
 numbers is numbered there instead. `UI/src/api/events.ts` keeps every signed-in tab current with
 what other tabs and other browsers do: one `fetch`-based SSE connection per session, debounced
 250 ms per collection into one `refetch`, so an approval made in one window shows up in another
-without a reload.
+without a reload; the shell's header dot reads `live` / `reconnecting` / `off` off that same
+state, and `App.tsx` puts a banner over everything when `navigator.onLine` is false.
+
+**A document in the store carries the instant, not only the printed time.** `UI/src/types.ts`'s
+`Dated<T>` / `Trailed<T>` / `DatedDoc<T>` put `iso` — the server's own stamp, verbatim — beside
+the `"HH:MM"` `api/wire.ts` formats, on every document and every history entry, in the snapshot
+and in each narrow reader. Sort a time column on `iso`, never on the printed string, and filter
+anything labelled "today" with `isToday(iso)` (`UI/src/lib/fmt.ts`), whose day boundary is
+Asia/Kolkata's midnight rather than the host's. Before it, "is this today?" was really "is this
+in the last seven days?" (`GET /bills` returns seven and nothing filtered them) and "which is
+latest?" compared `"22:00"` against `"09:00"` across different days.
+
+**Two tabs of one operator no longer sign each other out.** Refresh tokens rotate, so a
+simultaneous 401 in two tabs presented the same rotated token and the server's reuse detection
+revoked the whole family. `UI/src/api/client.ts` now refreshes inside
+`navigator.locks.request("rch-refresh", …)`, broadcasts the new token on
+`BroadcastChannel("rch-session")` — which only ever *replaces* a token a tab already holds,
+never hands one to a signed-out tab on a shared terminal — and checks the token generation
+inside the lock, so a tab that waited answers "retry", not "refresh again".
 
 ### Derived state is computed, never stored
 

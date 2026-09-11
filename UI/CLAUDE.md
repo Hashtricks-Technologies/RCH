@@ -72,6 +72,14 @@ Dispatch cover check, computed with the same `@rch/domain` functions the server 
 not a second copy of the rule. Session actions — `login`, `restore`, `loadSnapshot`, `logout`,
 `changePassword`, `saveProfile` — go through the same client.
 
+**`loadSnapshot` sets `auth: "loading"` only when there is genuinely nothing on screen** —
+`Object.keys(LOC).length === 0`, the one state with no item master, no locations and no screen
+that could render. Every other call to it is a *background* refresh (an SSE `resync`, a
+read-back), and blanking the hospital to "Loading…" for one threw away whatever was being read,
+closed every open drawer and lost the operator their place. The empty-registry test is also what
+distinguishes a failed **first** snapshot (`auth: "failed"`, the shell offers a retry) from a
+failed refresh, which keeps the last good screen and only toasts.
+
 `Seq` (`store/index.ts`) is gone entirely — every document the server numbers is numbered there
 instead. There is nothing left to cut over: every mutation in the app is a server call.
 
@@ -133,6 +141,13 @@ try {
   same busy lock and close-on-success its `doApprove`/`doReject` siblings have, and must not close
   the drawer over a refusal. Its two other screens (`counter/RequestDrawer.tsx`,
   `prod/Requests.tsx`) ignore the return value, as they always did.
+  **`pay`, `savePrice`, `addProduct` and `removeProduct` joined them in the same wave** — every
+  one of the forty-seven now answers whether the server took the write, so no action in the store
+  is `Promise<void>` where a caller might want to know. Two of their screens have not caught up
+  yet and it is deliberate, not an oversight to copy: `counter/Pos.tsx` still clears the payer and
+  the tender after `await s.pay(…)` whatever it answered, and `manager/Prices.tsx` still drops the
+  edit after `savePrice(…)`. The return value is there for them to read; reading it is the screen
+  change, and it has not landed.
 - **Where the screen needs the id the server chose, the action answers `Promise<string | null>`
   instead** — `null` on a refusal, the same as `false`. `createPo` (the drawer needs the new
   draft's id to navigate to it) and `createItem` (the new-product drawers need the catalogue key
@@ -146,31 +161,88 @@ try {
 ## Reading back
 
 `src/api/client.ts` is the one generic client: `call(route, input)` builds the URL from the
-manifest, mints an `Idempotency-Key` for a write (**once per call**, so the post-refresh retry is
-the same write), and on a 401 refreshes once and retries. `ApiError` carries `code`, `status`,
-`message`, `details`. There are no hand-written fetch wrappers — add a manifest entry instead.
+manifest, mints an `Idempotency-Key` for a write and an `x-request-id` for **every** request
+(both **once per call**, so the post-refresh retry is the same request), and on a 401 refreshes
+once and retries. `ApiError` carries `code`, `status`, `message`, `details` and `requestId` —
+read off the response's own `x-request-id` where the server echoes one, else the id that was
+sent, so the reference the operator can quote is always the one in the server's log line. (The
+server forwards what it was handed rather than minting over it; nginx's `map $http_x_request_id
+$req_id` does the same on the Compose path.) There are no hand-written fetch wrappers — add a
+manifest entry instead.
+
+**The 401 refresh is cross-tab, and getting that wrong signs everybody out.** Refresh tokens
+rotate, so two tabs of one operator that 401 in the same instant both present the same rotated
+token — which the server's reuse detection reads as a stolen token and answers by revoking the
+whole family, signing both out mid-shift. Three pieces, all in `client.ts`:
+
+- The refresh runs inside `navigator.locks.request("rch-refresh", …)` where the browser has a
+  lock manager, and falls back to plain single-flight where it does not.
+- A successful refresh broadcasts `{ accessToken }` on `BroadcastChannel("rch-session")`; every
+  tab opens that channel on its first `call()`. A broadcast **replaces** a token a tab already
+  holds and never hands one out — a tab sitting on the sign-in screen must not be walked into
+  somebody else's session on a shared terminal.
+- **The generation check.** `call()` captures the token its request was built with and passes it
+  to `refreshOnce(had)`. Inside the lock, if the current token is no longer `had`, another tab
+  has already refreshed, so the answer is *retry*, not *refresh again* — a second refresh is
+  exactly what reuse detection reads as theft. `events.ts`'s stream passes the token it opened
+  with, for the same reason.
 
 `src/api/refetch.ts` pulls back exactly what a write said it changed. `stock`, `rsv` and `ovr`
 come from `GET /stock`; `NARROW` maps `bills → GET /bills`, `req → GET /requests`,
 `tkt → GET /tickets`, `shopAsks → GET /shop-asks`, `pord → GET /prod-orders`,
 `batch → GET /batches`, buying's six — `prq → GET /requisitions`, `po → GET /purchase-orders`,
 `grn → GET /grns`, `vendors → GET /vendors`, `contracts → GET /contracts`,
-`productReqs → GET /product-requests` — `items → GET /items`, and now
-`tickets → GET /support/tickets` (`applySupportTickets`) for the support desk's own `changed`.
-`prices` and `menu` (the manager's writes) are the only two collections left without a narrow
-reader, so they still cost one `loadSnapshot`, and a mixed `changed` set takes the snapshot
-alone. If the read-back fails the write's own sentence is kept and qualified, never replaced:
+`productReqs → GET /product-requests` — `items → GET /items`,
+`tickets → GET /support/tickets` (`applySupportTickets`) for the support desk's own `changed`,
+and — since the audit fix wave — `prices → GET /prices` (`applyPrices`) and
+`menu → GET /menus` (`applyMenus`), the manager's two.
+
+**Every collection in `CollectionSchema` now has a narrow reader, so a valid `changed` set never
+costs a snapshot.** That is the point of the pair: `loadSnapshot` pulls the whole hospital back
+down, and until this wave it also put every screen behind the loading splash to do it, so a
+one-field price edit blanked the till. The `if (… !NARROW[c] …) loadSnapshot()` fallback stays in
+the file as the guard for the **next** collection added to the enum and not to `NARROW` — that is
+what it is now for, and the two tests that cover it drive it with a cast
+(`"a-collection-with-no-reader" as Changed`) because no real member reaches it. A mixed set still
+takes the snapshot alone. If the read-back fails the write's own sentence is kept and qualified, never replaced:
 the operator must not be sent round to do it twice. `src/api/wire.ts` holds the server-shape →
 store-shape mappers (`applySnapshot`, `applyStock`, `applyBills`, `applyRequests`,
 `applyTickets`, `applyShopAsks`, `applyProdOrders`, `applyBatches`, `applyRequisitions`,
 `applyPos`, `applyGrns`, `applyVendors`, `applyContracts`, `applyProductRequests`, `applyItems`,
-`applySupportTickets`, `hydrateRoster`); ISO times become `"HH:MM"` there and nowhere else, and
+`applySupportTickets`, `hydrateRoster`); ISO times become `"HH:MM"` there and nowhere else — **and
+the instant is kept beside the string**, see *`iso`* below — and
 every ticket's `hist` passes through the file's shared `hist()` mapper in both `applySnapshot`
 and `applyTickets`, so a raw ISO instant never reaches a ticket drawer's trail whichever path
-refetched it. `applySnapshot` and `applyItems` both bump `catalogVersion`, the signal the
-catalogue's own screens read since it is a module-level registry (`data/master.ts`) and not
-store state — an SSE `resync` no longer leaves a new item invisible until reload, which Phase 5
-left as a known gap and Phase 6 closed.
+refetched it. `applySnapshot`, `applyItems`, `applyPrices` and `applyMenus` all bump
+`catalogVersion`, the signal the catalogue's own screens read since it is a module-level registry
+(`data/master.ts`) and not store state — an SSE `resync` no longer leaves a new item invisible
+until reload, which Phase 5 left as a known gap and Phase 6 closed. The last two are built on
+`hydratePrices` / `hydrateMenus` in `data/master.ts`, which `hydrateMaster` now reuses rather
+than filling those two registries a second way.
+
+### `iso`: the instant beside the printed time
+
+`wire.ts`'s shared `stamped()` helper puts **`iso`** — the raw wire stamp, verbatim — beside the
+`"HH:MM"` it formats, on every document (`bills` from `t`; `req`, `prq`, `po`, `pord`, `grn`,
+support `tickets`, `productReqs`, `shopAsks` from `at`) and on every history entry, in
+`applySnapshot` **and** in each narrow reader. The store types say so: `Dated<T>`, `Trailed<T>`
+and `DatedDoc<T>` in `src/types.ts` — `req`/`prq`/`po`/`pord` are `DatedDoc<…>[]`, `tkt` is
+`Trailed<Ticket>[]` (a movement ticket has no `at` of its own, only a trail), `bills`/`grn` are
+`Dated<…>[]`, and `store/ops.ts` declares `tickets`/`productReqs`/`shopAsks` the same way.
+
+Without it the browser could answer neither question it asks on every screen. **"Is this today?"**
+— `GET /bills` returns seven days and nothing filtered them, so a Monday shift opened showing the
+previous week's takings under the word "today". **"Which is latest?"** — `"22:00"` sorts above
+`"09:00"` whatever day each belongs to, putting yesterday's last bill above this morning's first.
+
+So: **a time column sorts on `iso`, never on the printed string** (ISO-8601 is lexically ordered,
+so `useSort`'s `sortRows` needed no change — only the key did), and **anything labelled "today"
+filters on `isToday(iso)`** (`lib/fmt.ts`), which compares `istDate` of the two instants so the
+day boundary is Asia/Kolkata's midnight and not the host's. Unparseable answers `false`: a figure
+labelled "today" must never quietly include a row nobody can date. `now()` in the same file gained
+the `timeZone: TZ` it was missing, without which it ran 5 h 30 m behind the converted times in the
+next column. `__tests__/time.test.tsx` pins all of it with instants deliberately on the far side
+of an IST midnight from their UTC date, so a host-day comparison gets every case wrong.
 
 `src/api/events.ts` keeps every tab current: one `fetch`-based SSE connection (not `EventSource`,
 which cannot send an `Authorization` header), frames parsed by hand, notices debounced
@@ -178,8 +250,22 @@ which cannot send an `Authorization` header), frames parsed by hand, notices deb
 the lot with a full `loadSnapshot`, a 1 s → 30 s backoff ladder that honours the server's `retry:`
 hint first, and the same refresh-once-then-sign-out path as `call`. It follows `state.auth` rather
 than hooking `login()`, so `restore()` and `changePassword()` are covered too. `main.tsx` calls
-`startEventStream()` once, before `restore()`. `useStreamState()` feeds the shell's pill, which
-shows **only** `Reconnecting` — a badge that is always there stops being read.
+`startEventStream()` once, before `restore()`.
+
+`useStreamState()` feeds **two** things in `ui/Shell.tsx`, and they say different amounts on
+purpose. The `Reconnecting` **pill** appears only in that one state — a badge that is always
+there stops being read. The header **dot** (`.org .dt`) is always there and now tells the truth
+about all three: `live` → `--good`, `reconnecting` → `--warn`, `off` → `--ink-4`, with the same
+sentence on `title` and on the dot's `aria-label`, so colour is never the only way to read it
+(`STREAM` at the top of `Shell.tsx`). It used to be a `<button>` with no `onClick` and a
+hard-coded green background, which meant the light the Support FAQ points an operator at read
+"all well" with the stream down; it is a `<div>`, because it was never interactive. **The colour
+is an inline style, not a class**, because `.org .dt` in `styles.css` paints one colour for all
+three states. Separately, `App.tsx` renders an `OfflineBanner` above the routes when
+`navigator.onLine === false` (following the `online`/`offline` events, `role="status"`,
+`pointer-events: none` so the header underneath stays clickable) — the stream state answers "is
+this screen current?", `navigator.onLine` answers "is there a network at all?", and an operator
+needs both.
 
 `src/api/session.ts` holds the access token in memory (never `localStorage`) and fires
 `onSessionLost` when a refresh fails.
