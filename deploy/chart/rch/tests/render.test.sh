@@ -117,7 +117,7 @@ refute grep -q 'key: SEED_PASSWORD, optional' <<<"$out"
 # Phase 6: the five §12 alerts plus the SSE listener ship with the chart, so the alert text lives
 # beside the metric it reads instead of only in the runbook.
 grep -q 'kind: PrometheusRule' <<<"$out_mon"
-for a in RchApiHigh5xxRate RchApiHighLatencyP95 RchApiDown RchApiPoolSaturated RchSseListenerDown; do
+for a in RchApiHigh5xxRate RchApiHighLatencyP95 RchApiDown RchApiPoolSaturated RchSseListenerDown RchApiCrashLooping; do
   grep -q "alert: $a" <<<"$out_mon" || { echo "missing alert: $a"; exit 1; }
 done
 # Every rule must name a metric the API actually publishes. `sse_listener_up` and
@@ -125,6 +125,9 @@ done
 # metric that does not exist is an alert that never fires, which is worse than no alert.
 grep -q 'http_request_duration_seconds_count' <<<"$out_mon"
 grep -q 'sse_listener_up' <<<"$out_mon"
+# ...with one deliberate exception, named as such: a pod that is restarting cannot report on
+# itself, so the crash-loop alert reads kube-state-metrics instead of this API's own registry.
+grep -q 'kube_pod_container_status_restarts_total' <<<"$out_mon"
 # Every alert carries a runbook link, so whoever is woken has somewhere to go.
 [ "$(grep -c 'runbook_url:' <<<"$out_mon")" -ge 5 ]
 
