@@ -180,6 +180,21 @@ cronjob=$(sed -n '/# Source: rch\/templates\/purge-cronjob.yaml/,/^---$/p' <<<"$
 [ -n "$cronjob" ]
 grep -q 'seccompProfile' <<<"$cronjob"
 grep -q 'fsGroup: 65532' <<<"$cronjob"
+# B6: default-deny ingress over everything this release runs, plus the two doors the chart needs.
+[ "$(grep -c 'kind: NetworkPolicy' <<<"$out")" = 3 ]
+np=$(sed -n '/# Source: rch\/templates\/networkpolicy.yaml/,/# Source: rch\/templates\/[^n]/p' <<<"$out")
+[ -n "$np" ]
+# The ALB reaches pod IPs directly (target-type: ip) and the kubelet probes from the node, so the
+# serving port of each component is open to a CIDR rather than to a selector — and to NOTHING
+# else. Closing the ui's 8080 closes the site.
+grep -q 'cidr: 0.0.0.0/0' <<<"$np"
+grep -q 'port: 3000' <<<"$np"
+grep -q 'port: 8080' <<<"$np"
+grep -q 'kubernetes.io/metadata.name: monitoring' <<<"$np"
+# Egress is left open on purpose: RDS is outside the cluster at an address this chart never sees.
+grep -q 'egress: \[{}\]' <<<"$np"
+out_nonp=$(helm template rch . -f values-prod.yaml --set image.registry=r,image.tag=t,networkPolicy.enabled=false)
+refute grep -q 'kind: NetworkPolicy' <<<"$out_nonp"
 # Three replicas that land on one node make the PodDisruptionBudget decorative.
 grep -q 'topologySpreadConstraints' <<<"$out"
 # B3: both Deployments get a PodDisruptionBudget, and both say maxUnavailable rather than

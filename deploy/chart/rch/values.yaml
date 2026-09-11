@@ -83,3 +83,16 @@ alerts:
   p95Seconds: 1            # §12's ceiling; the SLO underneath it is 150ms/200ms, measured by the load check
   runbookUrl: https://github.com/Hashtricks-Technologies/RCH/blob/production/deploy/RUNBOOK.md
 purge: { enabled: true, schedule: "15 2 * * *" }
+# Default-deny ingress for everything this release runs, with the three doors the chart actually
+# needs opened by name (templates/networkpolicy.yaml — read its header before narrowing anything).
+# Egress stays wide open: RDS is outside the cluster at an address this chart does not know.
+networkPolicy:
+  enabled: true
+  # The ingress uses target-type: ip, so the load balancer reaches pod IPs directly from the VPC
+  # and its ENI addresses are not a Kubernetes object any selector can name; the kubelet's probes
+  # arrive from the node for the same reason. Narrow this to the VPC CIDR wherever that is known —
+  # 0.0.0.0/0 is what the policy can honestly say without it.
+  albSourceCidr: 0.0.0.0/0
+  # Every namespace carries kubernetes.io/metadata.name automatically, so the observability
+  # stack's namespace needs no hand-applied label for Prometheus to be allowed to scrape.
+  monitoringNamespace: monitoring

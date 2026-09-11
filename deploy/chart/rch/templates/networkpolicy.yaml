@@ -1,0 +1,71 @@
+{{- if .Values.networkPolicy.enabled }}
+{{- /*
+Three policies, because NetworkPolicies are additive: the first closes everything this release
+runs, the other two open exactly the doors the chart needs. A pod selected by no policy at all is
+wide open, so the deny has to select the release itself rather than name each component.
+
+Egress is deliberately left wide open. RDS sits outside the cluster at an address this chart does
+not know, CoreDNS is in another namespace, and ECR, Secrets Manager and the ALB controller's
+webhook are all reached from these pods. A policy that has to be edited every time the database
+host changes is a policy that gets disabled instead of maintained.
+
+What the ingress side can honestly promise is narrower than it looks. The ingress uses
+target-type: ip, so the load balancer reaches pod IPs directly from the VPC — its ENI addresses
+are not a Kubernetes object any selector can name, and the kubelet's own probes arrive from the
+node. So the serving port of each component is open to networkPolicy.albSourceCidr, which
+defaults to 0.0.0.0/0 and should be narrowed to the VPC CIDR wherever that is known. What is
+bought by all this is real but modest: every OTHER port on these pods is shut, a pod of this
+release that is not the api or the ui is reachable by nothing, and the two rules that name a
+source — the ui talking to the api, and the monitoring namespace scraping it — are the record of
+who is supposed to be talking, so the day the ALB is given a security-group source (or /metrics
+is moved off port 3000 onto its own) the narrowing is one line.
+
+/metrics is served by the same Fastify instance on the same port as every other route
+(apps/api/src/plugins/metrics.ts), and a NetworkPolicy decides on ports, not paths — so the
+monitoring rule below cannot be the thing that keeps /metrics private while port 3000 is open to
+the load balancer. It is here so that the intended scraper is written down and stays allowed if
+the port ever stops being open to everything.
+*/}}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: {{ .Release.Name }}-default-deny, labels: { {{- include "rch.labels" . | nindent 4 }} } }
+spec:
+  podSelector: { matchLabels: { app.kubernetes.io/instance: {{ .Release.Name }} } }
+  policyTypes: [Ingress, Egress]
+  ingress: []
+  egress: [{}]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: {{ .Release.Name }}-api, labels: { {{- include "rch.labels" . | nindent 4 }}, app.kubernetes.io/component: api } }
+spec:
+  podSelector: { matchLabels: { app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: api } }
+  policyTypes: [Ingress]
+  ingress:
+    # The UI's nginx proxying /api and /api/v1/events to the API Service, in this namespace.
+    - from:
+        - podSelector: { matchLabels: { app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: ui } }
+      ports: [{ port: 3000, protocol: TCP }]
+    # The load balancer, reaching this pod's own IP, and the kubelet running its probes.
+    - from:
+        - ipBlock: { cidr: {{ .Values.networkPolicy.albSourceCidr | default "0.0.0.0/0" }} }
+      ports: [{ port: 3000, protocol: TCP }]
+    # Prometheus scraping /metrics. Every namespace carries kubernetes.io/metadata.name
+    # automatically, so the observability stack's namespace needs no hand-applied label.
+    - from:
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: {{ .Values.networkPolicy.monitoringNamespace | default "monitoring" }} } }
+      ports: [{ port: 3000, protocol: TCP }]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: {{ .Release.Name }}-ui, labels: { {{- include "rch.labels" . | nindent 4 }}, app.kubernetes.io/component: ui } }
+spec:
+  podSelector: { matchLabels: { app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: ui } }
+  policyTypes: [Ingress]
+  ingress:
+    # The same load balancer, on the other path: `/` goes to the ui Service, so the ALB registers
+    # these pod IPs too and reaches 8080 on them directly. Closing this closes the site.
+    - from:
+        - ipBlock: { cidr: {{ .Values.networkPolicy.albSourceCidr | default "0.0.0.0/0" }} }
+      ports: [{ port: 8080, protocol: TCP }]
+{{- end }}
