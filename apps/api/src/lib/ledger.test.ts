@@ -40,6 +40,31 @@ describe("postMoves", () => {
     ]));
     expect(await onHand("store", "milk")).toBe(0.3);
   });
+  it("drops a move whose quantity rounds away to nothing, and never opens a shelf line for it", async () => {
+    // A sale of one cup deducts millilitres of an ingredient, and a recipe quantity can round
+    // to zero at three decimals. `stock_moves_qty_ck` (migration 0008) says a move of zero is
+    // not a movement, so a row like this is what turns a perfectly ordinary bill into a 500 at
+    // the till. It is dropped here instead — and its cell is never locked, because
+    // `lockBalances` creates the row it locks and a shelf that never moved anything would read
+    // as "carried at zero" for ever after (M12).
+    await withTransaction(t.db, (tx) => postMoves(tx, [
+      { loc: "coffee", it: "sugar", qty: 0.0004, kind: "sale", refType: "bill", refId: "CF/1188" },
+    ]));
+    expect((await t.db.select().from(stockMoves)).length).toBe(0);
+    const cell = await t.db.select().from(stockBalances).where(and(eq(stockBalances.loc, "coffee"), eq(stockBalances.itemKey, "sugar")));
+    expect(cell.length).toBe(0);
+  });
+  it("keeps the real move when a rounding-away one shares its cell", async () => {
+    // The same bill's other line moved something. Dropping by cell rather than by row would
+    // take this one down with the crumb beside it, so the drop is row by row and the fold that
+    // follows is over what is left.
+    await withTransaction(t.db, (tx) => postMoves(tx, [
+      { loc: "store", it: "milk", qty: 5, kind: "opening", refType: "seed", refId: "o" },
+      { loc: "store", it: "milk", qty: 0.0004, kind: "opening", refType: "seed", refId: "o" },
+    ]));
+    expect((await t.db.select().from(stockMoves)).length).toBe(1);
+    expect(await onHand("store", "milk")).toBe(5);
+  });
   it("is atomic: a failing move leaves nothing behind", async () => {
     await expect(withTransaction(t.db, (tx) => postMoves(tx, [
       { loc: "store", it: "milk", qty: 1, kind: "opening", refType: "seed", refId: "o" },
