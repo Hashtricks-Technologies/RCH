@@ -15,10 +15,17 @@ buyer's decision in `requisitions`, the purchase-order lifecycle from draft to r
 cancelled in `purchaseorders`, goods receipt with its 2% tolerance and quarantine in `grn`,
 vendors and rate contracts in `vendors`/`contracts`, a shop's ask for something not on the
 master in `productreqs`, and every screen that adds a new product via `catalog`'s `POST
-/items`), and now the last two modules: `support` (the customer-care desk — raise, reply, set
+/items`), and Phase 6's last two modules: `support` (the customer-care desk — raise, reply, set
 status, rate, all scoped to the caller's own tickets) and `reports` (the two server-side
 queries a snapshot cannot answer: the stock ledger, and a payer's credit for the month). Nothing
 is left in the browser's own store.
+
+The audit fix wave added two more, taking `registerModules` to **twenty-one**: `payers` (the
+register a non-cash tender is charged to — two writes and the manager's whole-register read) and
+`adjustments` (a write-off or a stock count as a numbered document, and the register of them).
+Three existing modules each gained a write in the same wave: `catalog` mounts a fifth
+(`PATCH /items/:it`, the item master's second door), `pos` its second (`POST /bills/:no/void`) and
+`production` its fifth (`POST /prod-orders` — orders are **raised** now, not only worked).
 
 ## Commands
 
@@ -32,6 +39,7 @@ pnpm --filter @rch/api db:migrate           # cli/migrate.ts, behind pg_advisory
 pnpm --filter @rch/api db:seed [--force]    # cli/seed.ts; refuses a non-empty users table without --force
 pnpm --filter @rch/api db:rebuild-balances  # recompute stock_balances from stock_moves
 pnpm --filter @rch/api users <create|reset-password|deactivate> --emp E1234 ...
+pnpm --filter @rch/api payers import --csv <file> [--replace-names]   # kind,id,name — one transaction
 pnpm --filter @rch/api keys:generate        # a fresh Ed25519 JWT_PRIVATE_KEY= / JWT_PUBLIC_KEY= pair
 ```
 
@@ -47,11 +55,13 @@ src/server.ts   loadConfig -> buildApp -> listen; SIGTERM drains via readiness.s
 src/config.ts   the Zod env schema — the only place an env var is read
 src/routes.ts   mount(): the only way a module registers a route
 src/plugins/*   logging, errors, metrics, health, security, db, auth, rbac, sse, idempotency
-src/lib/*       the ledger, reservations, tickets, ids, history, rules, events, master, wire,
-                claims (a purchase order's hold on a requisition line), credit (a payer's
-                bills-charged-this-month sum, shared by `pos` and `reports`)
+src/lib/*       the ledger, reservations, tickets, ids, history, rules, events, master, wire
+                (which also holds PAYER_LABEL, read by `pos` and `payers` so the till's refusal
+                and the register's 404 carry one wording), claims (a purchase order's hold on a
+                requisition line), credit (a payer's bills-charged-this-month sum, shared by
+                `pos` and `reports`), payers-admin (the CSV import's parsing and its rules)
 src/modules/*   one folder per bounded slice; _template is the copy-me skeleton
-src/db/*        schema/, client.ts, migrate.ts, seed.ts   ·   src/cli/*  the six CLIs
+src/db/*        schema/, client.ts, migrate.ts, seed.ts   ·   src/cli/*  the seven CLIs
 src/test/*      app.ts, db.ts, seed.ts, auth.ts, builders.ts, env.ts
 drizzle/*.sql   hand-reviewed migrations + meta/_journal.json
 ```
@@ -95,13 +105,25 @@ A write, in the order it must be written (`modules/requests/service.ts` is the w
 in opposite order deadlock; `lib/ledger.ts`'s header states the rule and every module keeps it.
 Take a ticket number *before* the balance locks, never while holding a shelf.
 
-**One write inverts it, on purpose, and you may not copy it.** `modules/pos/service.ts` takes its
-bill number *after* `lockBalances` and after the cover check has passed. That is safe for a reason
-no other write can borrow: `allocateId(tx, "bill"` has exactly **one** caller in the tree, so
-nobody else ever takes the `bill` sequence row, and the cycle a lock order exists to prevent needs
-two writers taking the same two locks in opposite orders. What the old ordering cost was a lock
+**Two writes invert it, on purpose, and you may not copy either without the argument behind it.**
+`modules/pos/service.ts` takes its
+bill number *after* `lockBalances` and after the cover check has passed, and
+`modules/adjustments/service.ts` takes its `ADJ-` number in the same place — immediately after the
+cover check and immediately before `postMoves`, which is the latest reachable spot because
+`postMoves` needs the `refId` to write its moves at all. Both are safe for a reason
+no other write can borrow: `allocateId(tx, "bill"` and `allocateId(tx, "adj"` each have exactly
+**one** caller in the tree, so
+nobody else ever takes those `sequences` rows, and the cycle a lock order exists to prevent needs
+two writers taking the same two locks in opposite orders. What the old ordering cost the sale was
+a lock
 convoy, not a deadlock — a sale queued behind a shelf held the one row every till in the hospital
-draws its number from. Note what it did *not* cost: an allocation is an UPDATE inside the write's
+draws its number from. What it cost the adjustment was worse and only a review caught it: with the
+id taken at the head of the transaction, the module's own "two write-offs of the last unit" race
+case **passed with `lockBalances` and the post-lock re-read both deleted**, because the second
+writer blocked on the `adj` sequence row before it read any balance. A statement that serialises
+first masks every guard behind it, and a race test that cannot fail is worse than none — measured,
+not argued, by deleting each guard in turn and re-running. Note what neither inversion
+cost: an allocation is an UPDATE inside the write's
 own transaction, so a rollback gives the number back and the series is gapless through a refusal
 (`lib/ids.ts` and `lib/tickets.ts` both say so; neither "burns" a number).
 
@@ -159,22 +181,41 @@ keep it.
 `receive` is the phase's only ledger write, and both its moves — `grn_accept` at the central
 store, `grn_reject` at quarantine — are positive. Nothing here is promised against a balance,
 so there is nothing for the belt-and-braces check `pay`/`handover`/`makeBatch` need to catch.
-Do not add either one out of symmetry with them.
+Do not add either one out of symmetry with them. **The rule has three more members since the
+audit wave, and they split two ways.** `pos`'s `voidBill` is the second write whose moves are all
+positive — a `reversal` is a sale's negative move negated — so it takes neither, for `receive`'s
+exact reason. `catalog`'s `patchItem` and `production`'s `raise` take neither for the neighbouring
+reason: they move **nothing at all**, and `lockBalances` creates the row it locks, so a write with
+no cell to move must not lock one or it mints a "carried at zero" shelf line (M12). The one write
+in the wave that does take both is `adjustments`' `create` — its moves can be negative.
 
 (c) **A positive move is still only posted for a quantity greater than zero.** `lockBalances`
 creates the row it locks, and a stray zero row reads as "carried" on every stock screen (M12).
 That is why a clean delivery (nothing rejected) posts no `grn_reject` move at all, and why
 `POST /items` posts no `opening` move for a new product with no opening stock.
 
-(d) **The insert is the arbiter for a uniqueness rule, the pre-check only gives the sentence.**
+(d) **The insert — or the update — is the arbiter for a uniqueness rule, the pre-check only gives
+the sentence.**
 A vendor's name (`vendors_name_ci_uq`), a live rate contract on a vendor and item (the partial
 unique index `rate_contracts_live_uq`), and an item's name (`items_name_ci_uq`) are all decided
 this way — `addMenuItem`'s pattern from Phase 2. `vendors.create`/`patch` and
 `contracts.create` check first and let the insert or update catch the race; `catalog.createItem`
 adds a `pg_advisory_xact_lock` on the item's slug ahead of its own check, because the slug scan
-itself reads before the insert's own lock.
+itself reads before the insert's own lock. **`catalog.patchItem` is the family's first *update*
+arbiter** — `catalogRepo.update` catches `items_name_ci_uq` on a rename exactly as
+`vendorsRepo.update` does, and the two patches in a rename race lock **different** document rows,
+so the index really is what decides. **And `payers.create` is its first primary-key arbiter**:
+`(kind, id)` is the composite PK, `insertIfNew` is `onConflictDoNothing().returning()`, and the
+pre-check's `<id> is already on the <label> roster` is repeated verbatim when the insert returns
+nothing.
 
-`"prq"`, `"po"`, `"vendor"` and `"contract"` join the `IdKind`s below. A GRN has none: there is
+`"prq"`, `"po"`, `"vendor"` and `"contract"` join the `IdKind`s below, and `"adj"` joined them in
+the audit wave — `ADJ-<year>-<nnnn>`, padded to four rather than carrying the literal-zero prefix
+`req`/`prq`/`po` use, because the series starts at **1** and a bare `ADJ-2026-1` beside
+`ADJ-2026-10` sorts wrongly on every screen that sorts a document list as text. `"prd"` has been
+in `IdKind` since Phase 1 and had no writer until `production`'s `raise`; it does now. A payer has
+none at all — the id is the hospital's own number, so there is no `sequences` row for it, the same
+shape the GRN note below describes. A GRN has none: there is
 no `"grn"` in `IdKind` and no `sequences` row for it — `GRN-<yy><po number>-<nn>` (`grnId(poId,
 n)` in `packages/domain/src/ids.ts`) is `count(*)` of that order's own GRN rows, read under the
 order's own `for update` lock, which is what serialises two receipts drawing a number rather
@@ -227,6 +268,49 @@ And it is applied in `scope()`'s `base` **and** in the standalone `bills()` read
 cannot put back what the snapshot just took off. `BillSchema.payer` was already `.optional()`, so
 nothing in the contract changed.
 
+Four more rules the audit wave's `payers`, `adjustments`, `patchItem`, `voidBill` and `raise` add:
+
+(a) **`readItems` and `loadItems` deliberately part company.** `lib/master.ts`'s `loadItems` is
+what every *rule* reads, and it still filters `active`: nothing may price, promise or bill a line
+the master no longer sells, so a document naming a retired item answers `There is no item <key>.`
+`modules/snapshot/readers/master.ts`'s `readItems` is what the *wire* reads, and it carries the
+whole master, every line with `active` on it (`toWireItem` emits the field unconditionally),
+because a bill, a ticket or a purchase order raised months ago still names a retired product and a
+reader that dropped it would leave a raw key where a name belongs. The browser filters instead,
+with `activeItems()`. The consequence to know before adding a screen: anything client-side that
+iterates the item master as "what we sell" now needs that filter, and the failure mode of
+forgetting it is a server refusal the screen could have prevented, not corruption.
+
+(b) **The roster is two reads over one table, and the split is not an `active` flag on one read.**
+`GET /roster` (mounted in `snapshot`, `access: "any"`) is the till's: live rows only, split into
+`patients`/`staff`/`depts`, and cut by `scopeRoster` so `store`/`prod`/`buyer` read three empty
+lists. `GET /payers` (mounted in `payers`, `access: ["manager"]`) is the register: every row
+regardless of `active`, ordered by kind then name. Without the second, a payer deactivated in an
+earlier session is one nobody can reopen — the browser never learns the account exists. Both payer
+writes name **both** collections in `changed`, and `CHANGED = ["roster", "payers"]` is the single
+array they emit and return.
+
+(c) **A write whose scope depends on the role decides it in `routes.ts`, not in the service.**
+`adjustments`' handler is the worked example: `store` reaches any `StockLoc` with no check at all,
+`manager` is held to `OUTLETS` membership (`You can only adjust stock at an outlet — the central
+store writes off its own shelves`), and `prod` goes through the ordinary
+`requireLoc(req, body.loc, "the Central Kitchen")`. `production`'s `raise` is the same shape read
+the other way: a `counter` with a `from` in the body is checked against the token
+(`requireLoc(req, body.from, "your own counter")` — a 403 naming another shop, never a silent
+rewrite) and then has `from` pinned to its own location, while a manager's body goes straight
+through because one manager supervises every outlet. `voidBill` calls **no** `requireLoc`: a
+manager is hospital-wide, and the counter that took the bill is exactly the party that must not be
+able to unsell its own takings.
+
+(d) **`document_history` now has eight doc types, and three of them are the wave's.** The
+authoritative list is still `grep -rn 'appendHistory(' apps/api/src`: `request`, `requisition`,
+`purchase_order`, `prod_order`, `ticket`, and now `item` (`Updated` / `Retired` / `Restored`, the
+last two written only when the flag actually crosses), `adjustment` (signed with the reason's own
+word from `@rch/domain`'s `REASON_LABEL`) and `bill` (exactly one row per bill, ever:
+`Voided — <reason>`). None of the three is on the wire — `ItemSchema`, `AdjustmentSchema` and
+`BillSchema` carry no `hist` — so the rows are for `deploy/RUNBOOK.md` §8 and for whoever is
+asking what happened, not for a drawer.
+
 ## The protected tables
 
 `postMoves()` in `src/lib/ledger.ts` is the only thing that writes `stock_moves` or
@@ -257,6 +341,15 @@ from code, and the widened pattern now catches ordinary English like "update res
 the checks are **line-oriented**, so a write split across lines by a formatter (`db\n  .insert(
 stockMoves)`) is still invisible to them. It also asserts `insert(stockMoves)` appears in exactly
 one non-test file, and that every module folder has the four skeleton files.
+
+**A *read* of a protected table from a module repo is allowed, and one exists.** The greps match
+`insert`/`update`/`delete` shapes only; a `select` is not a write, and `posRepo.saleMoves` — which
+reads back the `kind = 'sale'` moves a bill posted, ordered by id, so `voidBill` can negate each
+one — is the first module repo to do it. Do not "fix" it into `lib/ledger.ts`: the moves it reads
+belong to `pos`'s own document, and the door that writes them is still the one `postMoves` call.
+That read is also what gives `Move.reverses` its first writer — `reverses?: number`, mapped to
+`stock_moves.reverses_id`, a column that has existed since `0000` with nothing setting it. A
+reversal is the one move kind that carries it, and it carries the id of the exact move it undoes.
 
 `batches` is not one of the protected tables — it is written directly from
 `src/modules/production/repo.ts`, the ordinary way any module writes its own document row. What
@@ -400,16 +493,21 @@ error itself, and its sentence ends with the request id.
 - `seedTestDb(db)` seeds the fixtures; `authHeaders(app, "u2")` mints a bearer for a seeded user
   without walking the login flow. `truncateAll` empties business tables but **keeps `sequences`**.
 - `resetDocuments(db)` (`src/test/db.ts`) is the cheaper alternative to `truncateAll →
-  seedTestDb`: it truncates exactly the 27 document and vendor tables (`db/seed.ts`'s
+  seedTestDb`: it truncates exactly the 29 document and vendor tables (`db/seed.ts`'s
   `seedDocuments(tx)` re-populates them in one call) and leaves master data, users and payers
   seeded once per file in `beforeAll`. A suite that only opens and closes documents — not one
   that mutates `items`, `locations`, `recipes`, `users` or `payers` — should use it;
   `purchaseorders.test.ts` is the converted example, roughly twice as fast on a quiet host.
 - `given.{request,ticket,shopAsk,bill,prodOrder,vendor,requisition,po,contract,productRequest,
-  supportTicket}` (`src/test/builders.ts`) are the only sanctioned way to make a document. Their
+  supportTicket,adjustment}` (`src/test/builders.ts`) are the only sanctioned way to make a
+  document — **twelve** of them since the audit wave. Their
   id bands sit above both the fixtures and the sequence starts: `REQ-2026-0991+`, `TKT-0801+`,
   `ASK-0101+`, `CF/9001+`, `PRD-2026-901+`, `VN-901+`, `PRQ-2026-901+`, `PO-2026-0901+`,
-  `RC-901+`, `NPR-0901+`, `SUP-000101+`.
+  `RC-901+`, `NPR-0901+`, `SUP-000101+`, `ADJ-2026-9001+`. `given.adjustment` writes the document
+  and its history row and **no ledger move**: `postMoves` is the one door, and a builder reaching
+  through it would be standing in for the write under test. There is deliberately **no**
+  `given.payer` — `payers` is master data, seeded once per file and not in `resetDocuments`'s
+  list, so `POST /payers` is how a test makes one.
 - Because `sequences` survives truncation, **never assert a literal allocated id** — match the
   shape (`/^REQ-\d{4}-0\d+$/`) and assert the *relative* step (`n(second) === n(first) + 1`).
 - A test that opens two concurrent transactions to prove a lock must call `warmPool(t, n)` first

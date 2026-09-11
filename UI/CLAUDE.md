@@ -45,6 +45,23 @@ opens it, and `ui/Drawer.tsx` + `DrawerFrame` supply the chrome. `"sitem"`
 Phase 5 — its button had opened nothing since the procurement rework; `"bnewitem"`
 (`roles/buyer/NewProductDrawer.tsx`) is the buyer's, answering a shop's product request.
 
+**The audit wave added three sidebar keys and four drawers**, and two of the drawers break the
+one-role-owns-one-drawer habit on purpose. Keys: `manager/bills` (every outlet's bills, seven
+days, with the Void button on one still dated today), `manager/roster` (the payer register,
+closed accounts included) and `store/adjust` (the write-off register and its form). Drawers:
+`"item"` (`roles/manager/ItemDrawer.tsx`) is the first drawer **four** role indexes import — the
+manager's, the store's, the buyer's and the kitchen's — and it disables its own boxes off
+`@rch/domain`'s `mayEditItemField` rather than off a second list, sending only the fields the
+caller owns *and* actually moved so "Nothing to change" stays reachable; `"adjstock"` is
+registered in `ui/AdjustmentForm.tsx` rather than in a role screen, because the manager and the
+kitchen both open it and registering it twice would be two copies of one key; `"cbill"`
+(`roles/counter/BillDrawer.tsx`) is now imported by two role indexes, the counter's and the
+manager's, since the manager voids from the same drawer the counter reads; and `"korder"` /
+`"cpord"` are the manager's kitchen-order drawer and the counter's read-only view of an order it
+raised — deliberately **not** the kitchen's own `"pord"`, which is built around Accept / Start /
+Dispatch and reads kitchen shelves a counter is not sent. The counter's way in is a card on the
+existing `requests` screen, not a key, so nothing in `nav.ts` moved for it.
+
 ## The store is an API client
 
 `src/store/index.ts` holds the state and most actions; `store/procurement.ts` and `store/ops.ts`
@@ -63,11 +80,18 @@ are merged into the same `create()` and share one `AppState`. Components subscri
 and six more of `store/ops.ts` (`requestNewProduct`, `answerProductRequest`, `addContract`,
 `updateContract`, `removeContract`, `createItem`) — buying is finished. **Phase 6, the last
 four**: `store/ops.ts`'s support desk (`raiseTicket`, `replyToTicket`, `setTicketStatus`,
-`rateTicket`) — the last in-memory path, closed. Two reads join them, not writes:
+`rateTicket`) — the last in-memory path, closed. **The audit fix wave added six more, and they
+are the only writes since Phase 6**: `voidBill` and `raiseProdOrder` (in `store/index.ts`), and
+`updateItem`, `addPayer`, `updatePayer` and `createAdjustment` (in `store/ops.ts`) — fifty-three
+actions in all, every one of them a call. Three reads join them, not writes:
 `readStockLedger(loc, days)` and `readCredit(payer)` (both `store/index.ts`), each a plain `GET`
 with no `notify`/`refetch` of its own — `roles/store/Reports.tsx`'s ledger screen and
 `roles/counter/Pos.tsx`'s credit panel are the two screens that call them instead of deriving a
-number the browser no longer holds. The kitchen's screens keep only previews now: `ceiling` and the
+number the browser no longer holds — and `loadPayers` (`store/ops.ts`), which the manager's
+Payers screen calls on mount because nothing on the snapshot carries a closed account. It calls
+`applyPayers` **directly** rather than going through `refetch`, whose failure sentence ("Saved —
+but the screen could not be refreshed") is about a write that already landed; its own is
+`Could not read the payer register — check the connection and try again.` The kitchen's screens keep only previews now: `ceiling` and the
 Dispatch cover check, computed with the same `@rch/domain` functions the server enforces with,
 not a second copy of the rule. Session actions — `login`, `restore`, `loadSnapshot`, `logout`,
 `changePassword`, `saveProfile` — go through the same client.
@@ -142,12 +166,16 @@ try {
   the drawer over a refusal. Its two other screens (`counter/RequestDrawer.tsx`,
   `prod/Requests.tsx`) ignore the return value, as they always did.
   **`pay`, `savePrice`, `addProduct` and `removeProduct` joined them in the same wave** — every
-  one of the forty-seven now answers whether the server took the write, so no action in the store
-  is `Promise<void>` where a caller might want to know. Two of their screens have not caught up
-  yet and it is deliberate, not an oversight to copy: `counter/Pos.tsx` still clears the payer and
-  the tender after `await s.pay(…)` whatever it answered, and `manager/Prices.tsx` still drops the
-  edit after `savePrice(…)`. The return value is there for them to read; reading it is the screen
-  change, and it has not landed.
+  one of the fifty-three now answers whether the server took the write, so no action in the store
+  is `Promise<void>` where a caller might want to know — **and their screens have caught up**:
+  `counter/Pos.tsx` clears the payer, the tender and the price edits only on `true`, and
+  `manager/Prices.tsx` keeps a per-row `busy` map (`save:<it>`, `drop:<it>`, `add`) and drops the
+  edit only when the save answered `ok`. `manager/ItemsStock.tsx`'s "list an existing product"
+  picker is the same shape. A refused write now leaves what was typed on screen everywhere, which
+  is the rule this bullet has always stated.
+  All six of the audit wave's own writes are this pattern too — `voidBill` (the reason survives a
+  refusal and the drawer closes only on success), `raiseProdOrder`, `updateItem`,
+  `createAdjustment`, `addPayer` and `updatePayer`.
 - **Where the screen needs the id the server chose, the action answers `Promise<string | null>`
   instead** — `null` on a refusal, the same as `false`. `createPo` (the drawer needs the new
   draft's id to navigate to it) and `createItem` (the new-product drawers need the catalogue key
@@ -195,7 +223,14 @@ come from `GET /stock`; `NARROW` maps `bills → GET /bills`, `req → GET /requ
 `productReqs → GET /product-requests` — `items → GET /items`,
 `tickets → GET /support/tickets` (`applySupportTickets`) for the support desk's own `changed`,
 and — since the audit fix wave — `prices → GET /prices` (`applyPrices`) and
-`menu → GET /menus` (`applyMenus`), the manager's two.
+`menu → GET /menus` (`applyMenus`), the manager's two, plus the wave's own three:
+`roster → GET /roster` (`applyRoster`, which is `hydrateRoster` and a `catalogVersion` bump, for
+the same reason `applyItems` bumps it — the roster is a module-level registry, not store state),
+`payers → GET /payers` (`applyPayers`, ordinary store state under `store/ops.ts`'s `payers`
+field, because only one screen reads it) and `adjustments → GET /adjustments`
+(`applyAdjustments`). A payer write names **both** `roster` and `payers`, which is why the reader
+map is keyed per collection and each entry fetched at most once: two collections, two GETs, never
+a snapshot.
 
 **Every collection in `CollectionSchema` now has a narrow reader, so a valid `changed` set never
 costs a snapshot.** That is the point of the pair: `loadSnapshot` pulls the whole hospital back
@@ -209,7 +244,8 @@ the operator must not be sent round to do it twice. `src/api/wire.ts` holds the 
 store-shape mappers (`applySnapshot`, `applyStock`, `applyBills`, `applyRequests`,
 `applyTickets`, `applyShopAsks`, `applyProdOrders`, `applyBatches`, `applyRequisitions`,
 `applyPos`, `applyGrns`, `applyVendors`, `applyContracts`, `applyProductRequests`, `applyItems`,
-`applySupportTickets`, `hydrateRoster`); ISO times become `"HH:MM"` there and nowhere else — **and
+`applySupportTickets`, `hydrateRoster`, and the audit wave's `applyRoster`, `applyPayers` and
+`applyAdjustments`); ISO times become `"HH:MM"` there and nowhere else — **and
 the instant is kept beside the string**, see *`iso`* below — and
 every ticket's `hist` passes through the file's shared `hist()` mapper in both `applySnapshot`
 and `applyTickets`, so a raw ISO instant never reaches a ticket drawer's trail whichever path
@@ -278,7 +314,12 @@ tab). A refusal on the two forms does not toast at all: `login` and `changePassw
 `authError` on the way in and write the server's sentence (or the unreachable fallback) to it on
 the way out, and `pages/Login.tsx` / `pages/ChangePassword.tsx` render it inline (`Alert
 tone="c"`), where it stays until the next attempt. `ChangePassword`'s own two checks are local
-state shown in the same place. `restore()` stays silent on a 401 — a first-time visitor has no
+state shown in the same place. **`pages/Settings.tsx`'s password card is the third form on that
+field**, and it keeps a local `tried` flag: `authError` is one store field written by `login` as
+well as by `changePassword`, and cleared only on the *next* attempt at either, so without the flag
+a sign-in refused earlier in the shift was still sitting there when Settings opened and accused
+the operator of a refusal they had not made. The card stays silent until it has been submitted
+once; leaving the screen resets it. Neither `login` nor `changePassword` was changed for it. `restore()` stays silent on a 401 — a first-time visitor has no
 cookie — and toasts anything else, since the server being down is not "no cookie". `notify`'s
 toast stays up for as long as its sentence takes to read (`toastMs`: 3.4 s plus 30 ms a character
 past forty, capped at nine seconds) and `dismissToast` puts it away on a click. `Shell.tsx` wraps
@@ -298,7 +339,24 @@ being true the moment `data/seed.ts` was deleted.
 `src/data/master.ts` exports mutable registries (`IT`, `LOC`, `RCP`, `PL`, `MENU`, `USERS`) —
 **empty at import, no fixtures import anywhere in the file** — **replaced in place** by
 `hydrateMaster()` when the snapshot lands; screens import them directly, so assign into them,
-never reassign them. Three constants — `ALL_LOCS`, `OUTLETS`, `PO_APPROVAL_LIMIT` — are
+never reassign them. **`IT` now holds the whole master, retired lines included** — `readItems` on
+the server stopped filtering `active` so that a bill or a purchase order raised months ago still
+has a product name to print — so a picker reads `activeItems()`, never `Object.keys(IT)`. The
+screens swept for it are the manager's menu picker, the counter's and kitchen's request pickers,
+the store's requisition and contract pickers, and the buyer's dashboard (whose below-reorder KPI
+was otherwise sending a buyer out to order something the hospital had stopped carrying). Two were
+deliberately left: `ui/Shell.tsx`'s global search (finding a retired item by name is arguably
+right) and `roles/manager/Availability.tsx` (already constrained to menu listings, which a
+retired item cannot be on). `roles/store/Stock.tsx` is the third case and the interesting one —
+it keeps a retired line **when the shelf still holds it**, greyed, with a `Retired` tag and no
+"Add to requisition", because that stock is exactly the work the retirement is waiting on and
+hiding it would hide the work. `madeItems()` is the same shape one rule up: the kitchen's
+makeable list is `Object.keys(RCP).filter((k) => IT[k]?.t === "FG")`, read through a `useMemo`
+keyed on `catalogVersion`, in place of the three hard-coded item keys it used to be.
+`onOrderIndex(s)` / `inTransitIndex(s)` are the whole-store versions of `onOrder` / `inTransit`,
+for a screen that would otherwise call the per-item function once per row; they accumulate in the
+same order and with the same rounding, so the index equals the function exactly rather than to
+three decimals. Three constants — `ALL_LOCS`, `OUTLETS`, `PO_APPROVAL_LIMIT` — are
 re-exported from `@rch/contract` here, not five: `PAR_FACTOR` comes from `@rch/domain`
 (`selectors.ts`) since it is a rule's own tuning, not a wire shape, and `STAFF_CREDIT_LIMIT` is
 not re-exported at all — the till reads the ceiling live off `GET /reports/credit/:kind/:id`
@@ -317,7 +375,8 @@ from inside the app.
 
 `src/lib/selectors.ts` is the source of truth for everything derived — `qty`, `resv`, `avail`,
 `freeToPromise`, `availOf`, `priceOf`, `procurementList`, `prqProgress`, `onOrder`,
-`awaitingApproval`, `inTransit`, `parOf`, `costOf`, `poValue` (a one-line delegate to
+`awaitingApproval`, `inTransit`, `parOf`, `costOf`, `madeItems`, `activeItems`, `isRetired`,
+`onOrderIndex`, `inTransitIndex`, `poValue` (a one-line delegate to
 `@rch/domain`'s `poValue`, kept because three screens and `procurement.test.ts` already import
 it from here). Most of it delegates to `@rch/domain` with the local `MASTER`. **Never mirror a
 derived value into the store.** The transition predicates (`isReqOpen`, `canIssueTicket`,
@@ -346,10 +405,37 @@ keeps every date as the display string `dmy` produces (`"DD-MMM-YYYY"`); `toInpu
 convert in through `toInputDate` only, sending the input's own ISO value straight through on
 the way out — `fromInputDate` has no production caller today.
 
+**One field breaks that rule on purpose, and it is the second shape a date can take here.** A
+production order's `need` stays in **wire** form (`"2026-09-11"`) all the way into the store,
+while `po.eta` is converted to `dmy`'s display string at the `api/wire.ts` boundary. Both render
+through `dmy` at the point of use, so the two read identically on screen — but they are not
+stored alike. The reason `need` was left alone: its only editor is an `<input type="date">`,
+which speaks ISO in both directions, so converting on the way in would mean converting straight
+back out through `toInputDate` for every edit — the round trip `PoDrawer`'s `EtaInput` exists to
+manage. If the two are ever normalised, the cheaper direction is to stop converting `eta`, which
+no longer has a reason to differ.
+
+`fromWireDay(iso)` (`lib/fmt.ts`) is the third of the `fromWire*` family and the one to reach for
+when an **instant** must print as a day. `fromWireDate` is `dmy`, which only matches
+`^\d{4}-\d{2}-\d{2}$` — a full ISO instant falls straight through its `?:` unchanged, which is
+how the one piece of paper a customer takes away came to read `2026-09-11T03:42:00.000Z`. Reading
+the host's day instead would have been the other half of the same defect: 18:30 UTC is already
+tomorrow in Asia/Kolkata, so every bill on the evening shift would have printed yesterday's date
+beside this morning's time. `fromWireDay` is `dmy(istDate(new Date(iso)))` for an instant and
+`dmy(s)` for anything already in date or display form, so it is as re-entrant as its two
+siblings, and the slip's day and the till's "today" cannot disagree.
+
 `src/ui/kit.tsx` holds the typed components — `Card`, `DataTable`, `PageHead`, `Btn`, `BtnRow`,
 `Pill`, `StatusPill`, `Tag`, `Switch`, `Alert`, `Section`, `Field`, `FormRow`, `Toolbar`,
 `FilterBtn`, `FilterSelect`, `TableFoot`, `Kpis`, `Grid`, `Feed`, `Avatar`, `Otp`,
-`TileMenu`, … — use them instead of bespoke markup. `Sparkline` and `KebabIcon` are in the same
+`TileMenu`, `DraftLineInput`, `EtaInput`, … — use them instead of bespoke markup.
+The last two moved up from `roles/buyer/PoDrawer.tsx` in the audit wave, props unchanged:
+`DraftLineInput` is the commit-on-blur number box every editable quantity now uses (a controlled
+`Number(e.target.value)` reads a half-typed `12.` as `0` and forces a `"0"` back into the field
+mid-number, which is how a decimal quantity used to be impossible to type), and `EtaInput` is its
+date sibling. Anything that takes a typed quantity reaches for `DraftLineInput` rather than
+rolling a third buffer. `Alert` carries an ARIA role now — `role="alert"` for `tone="c"`, because
+a refusal has to interrupt, and `role="status"` for every other tone. `Sparkline` and `KebabIcon` are in the same
 file but are **not** exported — `Sparkline` is drawn by `Kpis`, `KebabIcon` by `TileMenu`, and
 neither has a caller outside `kit.tsx`. knip's
 `ignoreExportsUsedInFile: { interface, type }` (`knip.json`) means an exported value whose only
@@ -359,11 +445,38 @@ token set on `:root`, redefined under `@media (prefers-color-scheme: dark)` guar
 `:root:not([data-theme="light"])`, and again under `[data-theme="dark"]` so an explicit choice
 wins both ways. No CSS framework.
 
+**Four components under `src/ui/` are not kit components**, and each is there because two or more
+role folders need it and this repo has no cross-role component import: `TicketSlip.tsx`
+(`TicketSlip` + `PrintSlipBtn`, used by the store's and the kitchen's ticket drawers and the
+store's issue detail — it prints the OTP only when `t.otp` is non-empty and says whose code it is
+otherwise, and says so in words when a ticket carries no line at all, because paper with an empty
+table on it reads as a printing fault), `NewProductForm.tsx` (one form with a `scope` prop —
+`store` / `buyer` / `kitchen` — carrying the field set, the unit list, the offered types and the
+location an opening balance books at, so the three Add Product drawers are ~30-line wrappers over
+one validator), `AdjustmentForm.tsx` (the write-off form plus the `"adjstock"` drawer, and the
+one file in the app that imports `avail` from `@rch/domain` **directly** rather than through
+`lib/selectors` — the selector narrows its location to `LocKey`, which excludes the
+rejected-goods shelf, and that shelf is precisely the one this form exists to correct; it takes
+`REASON_LABEL` from `@rch/domain` for the same one-wording reason) and `KitchenOrderForm.tsx`
+(the outlet's ask of the kitchen, shared by the counter's card and the manager's drawer, offering
+`t === "FG"` only).
+
+**Printing is three class names and one `@media print` block** at the end of `styles.css`:
+`.print-slip` is the only thing visible on paper (and is hidden on screen by a rule *outside* the
+media block, since "hidden on screen" is not expressible inside it), `.no-print` is hidden on
+paper, and `.print-only` is the converse of `.print-slip`. The block also neutralises `.drawer`'s
+`position: fixed` and `.drb`'s `overflow` — a slip lives inside a fixed 720px scrolling panel, so
+without that the paper carries only whatever happened to be scrolled into view. `Reprint` and
+`Pay` both end at `window.print()` now; the POS button reads `Pay · ₹<total>`, because printing
+moved into the bill drawer the sale opens on success and "& print" on the button was a sentence
+about something that never happened.
+
 ## Tests
 
 `src/__tests__/`, jsdom, `TZ=UTC` and a 20 s `testTimeout` (`vite.config.ts` — screen tests render
 whole role shells), `setupFiles: setup.ts` which installs a working `localStorage` when the host
-does not supply one. Reset through `fixture.ts`: `resetStore()`, `S()` for the state, `as(role)`
+does not supply one. Reset through `fixture.ts`: `resetStore()` (which resets `payers: []` too — the register is ordinary store
+state and leaked between cases before it did), `S()` for the state, `as(role)`
 to set the session from the fixtures (`hydrateMaster` + `hydrateRoster`, then `setState` — the
 store's own `signIn` is gone, so this is the one sanctioned way a test signs somebody in) and
 `signedOut()` for the opposite.
@@ -387,7 +500,11 @@ store's own `signIn` is gone, so this is the one sanctioned way a test signs som
   order's other doors (line edits, vendor and eta patches, send, cancel, receive, close-short),
   and vendors/contracts/new-product; Phase 6's own cover the support desk's four writes, the
   roster hydrating from `applySnapshot`, `readCredit`, and a stock-ledger read. The rules those
-  routes enforce belong to the API's own suites — do not re-assert them here. **135 cases**, and
+  routes enforce belong to the API's own suites — do not re-assert them here. The audit wave's own
+  six writes are covered the same way — `voidBill` (including the percent-encoded `CF%2F1188` and
+  the `iso` kept beside the `"HH:MM"`), `raiseProdOrder`, `updateItem`, `addPayer`, `updatePayer`
+  (whose case stubs the roster and the register **differently**, so the difference between the two
+  reads is what the test proves), `createAdjustment` — plus `loadPayers`. **159 cases**, and
   one of them is a known flake on a loaded host: `leaves the requisition card and its note alone
   when procurement refuses it` polls (`settleUntil(() => S().toast !== null)`) and has gone red
   once in a full-suite run sharing a machine with the API suite, passing in isolation every time.
@@ -398,4 +515,16 @@ store's own `signIn` is gone, so this is the one sanctioned way a test signs som
   the form (and not as a toast), the toast drawn on the sign-in screen and once inside the shell,
   its `role="status"`, its length-scaled stay and click-to-dismiss, `restore()` speaking up when
   the server cannot be reached, and a screen that throws caught inside the shell.
-- `api.test.ts`, `session.test.ts`, `theme.test.ts`, `screens.test.tsx`, `app.test.tsx`.
+- `screens.test.tsx` — **130 cases**: the `NAV × USERS` loop, a row per drawer key, and the
+  render-level cases the audit wave added (a refused pay keeping the payer, a refused price save
+  keeping the typed value, what actually reaches the printer, the approval drawer's decimal
+  quantity and its single Approve/Reject pair, a voided bill badged and out of every figure that
+  counts money, a retired product no longer generating work for the buyer or the store).
+- `audit-screens.test.tsx` — the store, kitchen and buyer screens the audit wave rebuilt, each
+  case watched red against the screen it replaced first.
+- `time.test.tsx` — everywhere a date or an instant is read: the two dashboards sorting on `iso`,
+  a fortnight-old purchase order received this morning sorting on its trail's last entry, and the
+  bill slip printing the hospital's own day across an IST midnight (the suite runs at `TZ=UTC`, so
+  a host-day implementation goes red).
+- `api.test.ts`, `session.test.ts`, `theme.test.ts`, `app.test.tsx`. Thirteen files, **506
+  passing and one todo** at the time of writing.

@@ -61,7 +61,11 @@ src/fixtures/*          the demo hospital: master, seed documents, ops, vendors
   reach the operator as the store's own sentence** ("Add at least one line with a quantity"), not
   a generic 400. `PayBodySchema`'s lines use `.positive()` deliberately — a cart line of zero is
   not a sale to explain, it is a malformed request. Both choices are recorded in spec §16; do not
-  "fix" either one.
+  "fix" either one. The audit wave added two more on the service-rule side:
+  `CreateProdOrderBodySchema.lines` reuses `ReqLineInputSchema`, so a zero reaches the kitchen
+  order form as `Enter a quantity on every line`; and `SignedQtySchema` — the adjustment's
+  quantity — carries the same three decimals and the same ceiling in **both** directions and no
+  minimum of its own, because a line that folds to nothing is a sentence, not a 400.
 - **`LocKeySchema` is where an operator may act; `StockLocSchema` is where stock may be.**
   `LocKeySchema` (`schemas/common.ts`) stays the five working locations — no write body, no
   user's home location, neither end of a ticket may ever name `quarantine`. `StockLocSchema` is
@@ -71,13 +75,24 @@ src/fixtures/*          the demo hospital: master, seed documents, ops, vendors
   location always takes `LocKeySchema`; widening it to admit `quarantine` would open six doors
   (pay, availability toggle, transfer, shop-ask, distribute, menus) that then each need a guard
   and a refusal sentence for a place no operator can reach.
+  **There is exactly one exception, and it is deliberate: `CreateAdjustmentBodySchema.loc` is
+  `StockLocSchema`.** Every other body that names a location names one *end of a movement*, and
+  quarantine is neither end of anything. An adjustment is not a movement — it is a correction to
+  one shelf, and quarantine is a shelf. What a goods receipt turned away has to be disposable or
+  returnable, or the rejected-goods pile only ever grows; the reason `returned_to_vendor` exists
+  in `AdjustReasonSchema` for exactly that. Which of the six a caller may actually name is
+  decided per role in `adjustments`' own `routes.ts`, not by the schema.
 - **A `PATCH` body is a `strictObject` of optional, default-free fields, declared explicitly —
   never `.partial()` of a defaulted schema.** Zod carries a `.default()` through `.partial()`,
   so a body schema built by relaxing a create schema silently resets every field the caller did
   not name to its default the moment any one field is patched. `PatchPoBodySchema`,
-  `PatchVendorBodySchema` and `PatchContractBodySchema` are each declared field by field for
-  this reason, and `routes.test.ts` pins `.parse({})` to `{}` for all three — the check that
-  "Nothing to change" stays reachable.
+  `PatchVendorBodySchema`, `PatchContractBodySchema`, and — since the audit wave —
+  `PatchPayerBodySchema` and `PatchItemBodySchema` are each declared field by field for
+  this reason, and `routes.test.ts` pins `.parse({})` to `{}` for all **five** — the check that
+  "Nothing to change" stays reachable. The two newest make the cost concrete:
+  `PatchItemBodySchema` carries eight optional fields and a default on any one of them would
+  reset the other seven the moment a store keeper corrected an HSN code, and a defaulted `name`
+  on `PatchPayerBodySchema` would quietly reactivate a closed account on a rename.
 - **`TicketSchema.hist` is `z.array(HistEntrySchema)`, required, not optional.** A live ticket's
   trail is never absent — every ticket the server creates writes its own `Issued` row before the
   wire shape can be built — so making the field optional would have let a caller that forgot to
@@ -95,6 +110,14 @@ src/fixtures/*          the demo hospital: master, seed documents, ops, vendors
   for either: `payer` was already `.optional()` and the three lists were always allowed to be
   empty, which is exactly why a reader must not treat "the roster is there" as "the roster is
   everyone's". `creditReport`'s `access` in the manifest is the same two roles, deliberately.
+  **`PayerRecordSchema` is the roster's other shape**, declared immediately after `PayerSchema`
+  and carrying `active` — the row a manager's register lists. `PayerSchema` deliberately does
+  **not** carry it: that is what a bill *embeds*, and a bill taken last month must not start
+  reading "inactive" because the account was closed since. `RosterResponseSchema` is
+  `PayerRosterSchema` (live rows, the till's read); `PayersResponseSchema` is
+  `z.array(PayerRecordSchema)` (every row, the manager's). A payer has **no** `IdKind` and no
+  `sequences` row — the id is the hospital's own number, the same shape as the "a GRN has none"
+  note under *Constants*.
 - **A manifest task lands a route's schema before the module that mounts it exists.** Task 1
   declared five new routes and one widened `access` list in one commit; Task 3, in a later wave,
   wrote the placeholder handlers that kept `apps/api` compiling in between. **One `GET` is
@@ -123,7 +146,11 @@ to register the route with its schemas, auth, role gate and idempotency preHandl
   refetch. `message` is the operator's sentence; `changed` is what the UI's `refetch` reads.
   `CollectionSchema` (`schemas/writes.ts`) gained `"prq"`, `"po"`, `"grn"`, `"vendors"`,
   `"contracts"`, `"productReqs"` in Phase 5, and `"items"` — `POST /items` is the first write
-  that can change the catalogue itself, not just a balance on it.
+  that can change the catalogue itself, not just a balance on it. The audit wave added three
+  more, taking the enum to **twenty-two**: `"roster"` and `"payers"` (both payer writes name
+  both, because the till's live list and the manager's whole register are two reads over one
+  table) and `"adjustments"` (whose write names `["stock", "adjustments"]`, since a correction
+  moves a balance as well as writing a document).
 - **Adding an endpoint is one manifest entry plus a handler.** `apps/api/src/contract.test.ts`
   probes every parameterless GET in the manifest and asserts a 200 that parses against its own
   response schema — so a GET declared without its handler fails the API suite. Declare a GET in
@@ -160,6 +187,35 @@ to register the route with its schemas, auth, role gate and idempotency preHandl
   account weaker than the password its owner could have chosen afterwards; and
   `PatchMeBodySchema` gained ceilings (`n` ≤ 120, `e` a `z.email()` ≤ 254, `ph` ≤ 40) — an
   unbounded string on `/me` is one that reaches every snapshot carrying the name badge.
+- **The audit wave's fourth block added seven routes** — the first new surface since Phase 6:
+  `addPayer` (`POST /payers`), `updatePayer` (`PATCH /payers/:kind/:id`) and `payers`
+  (`GET /payers`), all `access: ["manager"]`, beside the `roster` read (`GET /roster`,
+  `access: "any"`) that the snapshot module mounts; `patchItem` (`PATCH /items/:it`, access
+  `manager`/`store`/`buyer`/`prod` — the counter is absent for the same reason it is absent from
+  `POST /items`); `voidBill` (`POST /bills/:no/void`, `access: ["manager"]`); `createAdjustment`
+  (`POST /adjustments`, `access: ["store", "manager", "prod"]`) with its read `adjustments`
+  (`GET /adjustments`, `access: "any"`); and `createProdOrder` (`POST /prod-orders`,
+  `access: ["counter", "manager"]`). Three schema notes travel with them. `NewItemResultSchema`
+  is now **`ItemResultSchema`**, shared by `createItem` and `patchItem`, because a create and a
+  patch answer with the same thing. `SignedQtySchema`
+  (`.min(-100000).max(100000)`, three decimals) is the wire's only signed quantity — negative
+  writes stock off, positive counts it up, and **zero is deliberately left to the service**, which
+  folds repeated items first and drops a line that folds to nothing, so an empty adjustment reads
+  as the store's own sentence rather than as a 400 with a Zod path in it.
+  And `voidBill` is the one route whose path param is **percent-encoded**: a bill number carries a
+  slash (`CF/1188` → `CF%2F1188`), `UI/src/api/client.ts` already `encodeURIComponent`s every path
+  param, and nginx's `proxy_pass` has no URI part so the encoded form is forwarded unchanged. Both
+  halves are pinned — the API test proves the encoded form matches and the bare slash 404s, the UI
+  test proves the client encodes it. `IdKind` is unchanged by the void on purpose: it mints no
+  document, only a stamp on the one that exists.
+- Three document schemas gained an optional field in the same wave, each optional for its own
+  reason and each stripped by its reader when absent. `ItemSchema.active` — **absent reads as
+  true**, because the fixtures are typed `Item` and declare no flag, and a document raised before
+  retiring was possible is still a valid item. `BillSchema.voided` / `voidReason` — a bill is
+  voided almost never, so the mapper omits both keys rather than shipping `voided: false` on every
+  bill in a seven-day list. `ProdOrderSchema.need` — most kitchen orders carry no deadline, and a
+  defaulted date would print one on every order nobody set; `readProdOrders` strips it the way
+  `readPurchaseOrders` strips `shortNote`.
 - `API_PREFIX` is `/api/v1`; manifest paths are relative to it.
 - `EVENTS_PATH` (`/events`) and `EventNoticeSchema` live in `schemas/events.ts` and are
   deliberately **not** a manifest route — a stream has no JSON response to serialise. Both sides
