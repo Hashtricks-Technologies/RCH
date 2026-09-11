@@ -158,6 +158,10 @@ export function createProductionService(db: Db) {
         // sentences arrive in the order the screen has always produced them.
         const off = await productionRepo.overrideAt(tx, KITCHEN, body.it);
         assertRule(!off, `${item.n} is switched off in the kitchen`);
+        // A made-to-order item is made at the till when it is sold, not stocked ahead of a sale
+        // (C2) — `capp`/`chai` carry a recipe and a menu listing, so the recipe check alone
+        // would let the kitchen batch a phantom shelf of them.
+        assertRule(item.t !== "MTO", `${item.n} is made to order at the counter — it is not batched`);
         const recipe = master.recipes[body.it];
         assertRule(recipe, `${item.n} has no recipe — it cannot be produced`);
 
@@ -251,6 +255,9 @@ export function createProductionService(db: Db) {
         const master = await loadMaster(tx);
         const item = master.items[body.it];
         if (!item) throw new NotFoundError(`There is no item ${body.it}.`);
+        // A made-to-order item has nothing sitting on a kitchen shelf to send anywhere — it is
+        // made at the till the moment it is sold (C2).
+        assertRule(item.t !== "MTO", `${item.n} is made to order at the counter — it is not distributed`);
         // The destination is the caller's word, so it is looked up rather than assumed — a key
         // the schema accepts but the master no longer carries is a 404 the kitchen can read,
         // not a crash halfway through the write.
