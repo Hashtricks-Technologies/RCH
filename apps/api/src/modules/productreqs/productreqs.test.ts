@@ -33,6 +33,25 @@ describe("POST /product-requests", () => {
       expect((await post(u, "/product-requests", { name: "Something", forLoc: "coffee" })).statusCode).toBe(404);
     }
   });
+
+  it("takes a counter's outlet from its token, not from whatever the body says", async () => {
+    // u1 is the till at the Coffee Shop. Naming another outlet is a 403 — the same answer the
+    // same operator gets for billing at somebody else's counter.
+    const before = (await app.testDb!.db.query.productRequests.findMany()).length;
+    const r = await post("u1", "/product-requests", { name: "Something", forLoc: "kiosk" });
+    expect(r.statusCode).toBe(403);
+    expect(r.json().error.message).toBe("You can only do this for your own counter.");
+    expect((await app.testDb!.db.query.productRequests.findMany()).length).toBe(before);
+  });
+
+  it("refuses a manager asking for somewhere that is not a shop", async () => {
+    // u2 manages the Restaurant but reaches every outlet; the central store and the kitchen are
+    // not outlets and have no menu for a new product to land on.
+    const r = await post("u2", "/product-requests", { name: "Something", forLoc: "kitchen" });
+    expect(r.statusCode).toBe(422);
+    expect(r.json().error.message).toBe("Central Kitchen is not an outlet");
+    expect((await post("u2", "/product-requests", { name: "Something", forLoc: "kiosk" })).statusCode).toBe(200);
+  });
 });
 
 describe("POST /product-requests/:id/answer", () => {
