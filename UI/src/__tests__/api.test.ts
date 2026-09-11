@@ -195,6 +195,28 @@ describe("api client — one refresh across tabs", () => {
     expect(seen.filter((x) => x.includes("/auth/refresh"))).toHaveLength(0);
   });
 
+  it("does not refresh again for a request that 401s after the first refresh landed (C2)", async () => {
+    setAccessToken("old");
+    fetchMock.mockImplementation((u: string, init: RequestInit) => {
+      seen.push(`${init.method} ${String(u)}`);
+      if (String(u).endsWith("/auth/refresh")) return Promise.resolve(ok({ accessToken: "new", user: { id: "u1" }, mustChangePassword: false }));
+      const headers = init.headers as Record<string, string>;
+      if (headers.authorization === "Bearer old") {
+        // Another request's refresh lands while this one is still on the wire, so its own 401
+        // is already stale by the time it arrives. Single-flight does not cover this gap —
+        // `refreshing` is back to null — and refreshing again presents a rotated token twice.
+        setAccessToken("new");
+        return Promise.resolve(ok({ error: { code: "unauthenticated", message: "expired" } }, 401));
+      }
+      return Promise.resolve(ok({ user: { id: "u1" }, mustChangePassword: false }));
+    });
+
+    const r = await call(routes.me);
+
+    expect(r.user.id).toBe("u1");                // retried on the token that was already there
+    expect(seen.filter((x) => x.includes("/auth/refresh"))).toHaveLength(0);
+  });
+
   it("tells the other tabs about the token it just minted", async () => {
     setAccessToken("old");
     const heard: unknown[] = [];
