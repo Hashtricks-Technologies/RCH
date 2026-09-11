@@ -7,7 +7,7 @@
 import type { z } from "zod";
 import type { PatchPayerBodySchema, PayerBodySchema, PayerKind, PayerRecord, WriteResponse } from "@rch/contract";
 import type { Db } from "../../db/client.js";
-import { withTransaction } from "../../lib/db.js";
+import { withReadTransaction, withTransaction } from "../../lib/db.js";
 import { NotFoundError } from "../../lib/errors.js";
 import { emitChanged } from "../../lib/events.js";
 import { assertRule } from "../../lib/rules.js";
@@ -19,6 +19,14 @@ export type PayerBody = z.infer<typeof PayerBodySchema>;
 export type PatchPayerBody = z.infer<typeof PatchPayerBodySchema>;
 
 const toWire = (row: PayerRow): PayerRecord => ({ kind: row.kind, id: row.id, name: row.name, active: row.active });
+
+/**
+ * Both writes name **both** collections. `roster` is the till's live list and `payers` the
+ * manager's whole register, and every write here moves both of them — a rename shows on the
+ * payer picker, a deactivation takes the row off that picker while leaving it on the register
+ * greyed. Naming only one would leave whichever screen is open reading yesterday's answer.
+ */
+const CHANGED = ["roster", "payers"] as const;
 
 export function createPayersService(db: Db) {
   return {
@@ -38,9 +46,8 @@ export function createPayersService(db: Db) {
         const row = await payersRepo.insertIfNew(tx, { kind: body.kind, id, name, active: true });
         assertRule(row, `${id} is already on the ${label} roster`);
 
-        const changed = ["roster"] as const;
-        await emitChanged(tx, changed);
-        return { result: toWire(row), changed: [...changed], message: `${name} added to the ${label} roster as ${id}` };
+        await emitChanged(tx, CHANGED);
+        return { result: toWire(row), changed: [...CHANGED], message: `${name} added to the ${label} roster as ${id}` };
       });
     },
 
@@ -67,16 +74,22 @@ export function createPayersService(db: Db) {
 
         const row = await payersRepo.update(tx, kind, id, patch);
 
-        const changed = ["roster"] as const;
-        await emitChanged(tx, changed);
+        await emitChanged(tx, CHANGED);
         const onlyActive = keys.length === 1 && keys[0] === "active";
         const message = onlyActive
           ? (body.active
             ? `${row.name} is active again and can be billed to`
             : `${row.name} deactivated — bills already posted to them stay, new ones cannot`)
           : `${row.name} updated`;
-        return { result: toWire(row), changed: [...changed], message };
+        return { result: toWire(row), changed: [...CHANGED], message };
       });
+    },
+
+    /** The register whole, for the manager's own screen. A read, so no locks and no transaction
+     *  of its own beyond the read-only one every multi-query read takes — one query, one
+     *  connection, the same shape as `snapshot`'s standalone siblings. */
+    async list(_claims: AccessClaims): Promise<PayerRecord[]> {
+      return withReadTransaction(db, async (tx) => (await payersRepo.all(tx)).map(toWire));
     },
   };
 }

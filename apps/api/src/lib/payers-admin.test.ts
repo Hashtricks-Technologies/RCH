@@ -13,6 +13,8 @@ const nameOf = async (kind: "patient" | "staff" | "dept", id: string): Promise<s
   const [row] = await t.db.select().from(payers).where(and(eq(payers.kind, kind), eq(payers.id, id)));
   return row?.name;
 };
+const close = (kind: "patient" | "staff" | "dept", id: string) =>
+  t.db.update(payers).set({ active: false }).where(and(eq(payers.kind, kind), eq(payers.id, id)));
 
 describe("parsePayerCsv", () => {
   it("parses a CSV, names the row and the column on a bad kind", () => {
@@ -38,6 +40,28 @@ describe("parsePayerCsv", () => {
       { row: 7, column: "id", message: "an id is required — it is the hospital's own number, not one this tool invents" },
     ]);
   });
+
+  it("reads a file Excel saved as CSV UTF-8, byte-order mark and all", () => {
+    // Excel's "CSV UTF-8" writes a BOM. Without stripping it the first cell reads "\ufeffkind",
+    // so the header is not recognised and the file's first real payer is reported as a bad kind
+    // — naming a character the administrator cannot see in their editor.
+    const { rows, errors } = parsePayerCsv("\ufeffkind,id,name\r\nstaff,E8301,Excel Export\r\n");
+    expect(errors).toEqual([]);
+    expect(rows).toEqual([{ kind: "staff", id: "E8301", name: "Excel Export" }]);
+  });
+
+  it("still finds the header under a comment or a blank line at the top of the file", () => {
+    // The header is the first line that carries anything, not literally line one — a file that
+    // opens with a note about where the export came from must not lose it.
+    const { rows, errors } = parsePayerCsv([
+      "# exported from payroll, 11-Sep-2026",
+      "",
+      "kind,id,name",
+      "staff,E8302,Under A Comment",
+    ].join("\n"));
+    expect(errors).toEqual([]);
+    expect(rows).toEqual([{ kind: "staff", id: "E8302", name: "Under A Comment" }]);
+  });
 });
 
 describe("importPayers", () => {
@@ -48,28 +72,45 @@ describe("importPayers", () => {
       { kind: "staff", id: "RC-4471", name: "Kavitha R (payroll export)" },
       { kind: "staff", id: "E8100", name: "Brand New" },
     ], { replaceNames: false });
-    expect(first).toEqual({ added: 1, skipped: 1, renamed: 0 });
+    expect(first).toEqual({ added: 1, skipped: 1, renamed: 0, renamedInactive: 0 });
     expect(await nameOf("staff", "RC-4471")).toBe("Kavitha Raman · F&B");
     expect(await nameOf("staff", "E8100")).toBe("Brand New");
 
     // Run the very same file again: nothing new, nothing touched.
     expect(await importPayers(t.db, [{ kind: "staff", id: "E8100", name: "Brand New" }], {}))
-      .toEqual({ added: 0, skipped: 1, renamed: 0 });
+      .toEqual({ added: 0, skipped: 1, renamed: 0, renamedInactive: 0 });
   });
 
   it("renames only with --replace-names", async () => {
     await importPayers(t.db, [{ kind: "patient", id: "IP-8200", name: "Ward 1" }], {});
     expect(await importPayers(t.db, [{ kind: "patient", id: "IP-8200", name: "Ward 2" }], {}))
-      .toEqual({ added: 0, skipped: 1, renamed: 0 });
+      .toEqual({ added: 0, skipped: 1, renamed: 0, renamedInactive: 0 });
     expect(await nameOf("patient", "IP-8200")).toBe("Ward 1");
 
     expect(await importPayers(t.db, [{ kind: "patient", id: "IP-8200", name: "Ward 2" }], { replaceNames: true }))
-      .toEqual({ added: 0, skipped: 0, renamed: 1 });
+      .toEqual({ added: 0, skipped: 0, renamed: 1, renamedInactive: 0 });
     expect(await nameOf("patient", "IP-8200")).toBe("Ward 2");
 
     // "renamed" means renamed, not "touched": a row whose name already matches is a skip.
     expect(await importPayers(t.db, [{ kind: "patient", id: "IP-8200", name: "Ward 2" }], { replaceNames: true }))
-      .toEqual({ added: 0, skipped: 1, renamed: 0 });
+      .toEqual({ added: 0, skipped: 1, renamed: 0, renamedInactive: 0 });
+  });
+
+  it("renames a deactivated payer without reopening it, and counts it apart", async () => {
+    // `active` is the manager's switch, not the file's: an export that spells a closed payer
+    // differently corrects the spelling and leaves the account closed. Counted apart so the
+    // CLI's summary does not read as though the till could now bill to them.
+    await importPayers(t.db, [{ kind: "dept", id: "CC-CLOSED", name: "Old Name" }], {});
+    await close("dept", "CC-CLOSED");
+
+    const r = await importPayers(t.db, [
+      { kind: "dept", id: "CC-CLOSED", name: "New Name" },
+      { kind: "dept", id: "CC-OPEN", name: "Brand New" },
+    ], { replaceNames: true });
+    expect(r).toEqual({ added: 1, skipped: 0, renamed: 1, renamedInactive: 1 });
+    expect(await nameOf("dept", "CC-CLOSED")).toBe("New Name");
+    const [row] = await t.db.select().from(payers).where(and(eq(payers.kind, "dept"), eq(payers.id, "CC-CLOSED")));
+    expect(row.active, "a rename is not a reopening").toBe(false);
   });
 
   it("aborts the whole file on one bad row", async () => {

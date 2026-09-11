@@ -1,10 +1,9 @@
-import { useState } from "react";
-import { DEPTS, PATIENTS, STAFF } from "../../data/master";
+import { useEffect, useState } from "react";
 import { useApp } from "../../store";
 import {
   Alert, Btn, Card, DataTable, Field, FilterBtn, FormRow, PageHead, Pill, TableFoot, Toolbar,
 } from "../../ui/kit";
-import type { Payer, PayerKind } from "../../types";
+import type { PayerKind, PayerRecord } from "../../types";
 
 /** The three rosters, in the order the sidebar's own label reads them. `one` is what the
  *  operator calls a member of each — the same three words the server's `PAYER_LABEL` uses, so
@@ -16,7 +15,14 @@ const TABS: { kind: PayerKind; label: string; one: string; idHint: string }[] = 
 ];
 
 export default function Roster() {
-  const s = useApp();
+  /**
+   * The register comes off `GET /payers`, not off the `PATIENTS`/`STAFF`/`DEPTS` registries the
+   * counter's payer picker reads. Those carry live payers only — a closed account must never
+   * reach a picker — and this is the one screen that has to draw a switched-off row, because it
+   * is the only place that can switch it back on.
+   */
+  const payers = useApp((x) => x.payers);
+  const loadPayers = useApp((x) => x.loadPayers);
   const addPayer = useApp((x) => x.addPayer);
   const updatePayer = useApp((x) => x.updatePayer);
   const notify = useApp((x) => x.notify);
@@ -27,29 +33,20 @@ export default function Roster() {
   const [name, setName] = useState("");
   const [edit, setEdit] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<string | null>(null);
-  /**
-   * The rows this session switched off. `GET /roster` carries only live payers — the till's
-   * picker must never be offered a closed account — so a deactivated row would otherwise vanish
-   * from under the manager's hand the instant they pressed the button, with no way back. It
-   * stays here instead, greyed, until they leave the screen: long enough to undo a mistake,
-   * and not so long that the register starts carrying history it is not the record of.
-   */
-  const [closed, setClosed] = useState<Payer[]>([]);
+
+  // Nothing on the snapshot carries the register, so the screen asks for it once on the way in.
+  // Every write after that names "payers" in `changed` and the refetch keeps it current.
+  useEffect(() => { void loadPayers(); }, [loadPayers]);
 
   const active = TABS[tab];
-  // The three registries are module-level and replaced **in place** by `hydrateRoster`, so the
-  // lists below are built during render and pinned to `catalogVersion` — the signal `applyRoster`
-  // bumps, which is what tells React the register moved.
-  void s.catalogVersion;
-  const LIVE: Record<PayerKind, Payer[]> = { patient: PATIENTS, staff: STAFF, dept: DEPTS };
-
   const key = (p: { kind: PayerKind; id: string }) => `${p.kind}:${p.id}`;
-  const isClosed = (p: Payer) => closed.some((c) => key(c) === key(p));
   const term = q.trim().toLowerCase();
-  const rows = [...LIVE[active.kind], ...closed.filter((c) => c.kind === active.kind)]
+  const rows = payers
+    .filter((p) => p.kind === active.kind)
     .filter((p) => !term || p.name.toLowerCase().includes(term) || p.id.toLowerCase().includes(term))
     .sort((a, b) => a.name.localeCompare(b.name));
-  const live = rows.filter((p) => !isClosed(p)).length;
+  const live = rows.filter((p) => p.active).length;
+  const closed = rows.length - live;
 
   const add = async () => {
     if (!id.trim() || !name.trim()) { notify(`Give the ${active.one} an id and a name before saving`); return; }
@@ -61,7 +58,7 @@ export default function Roster() {
     } finally { setBusy(null); }
   };
 
-  const rename = async (p: Payer) => {
+  const rename = async (p: PayerRecord) => {
     const next = (edit[key(p)] ?? p.name).trim();
     if (!next) { notify(`Give the ${active.one} a name before saving`); return; }
     if (next === p.name) { notify(`${p.name} is already what ${p.id} is called`); return; }
@@ -69,17 +66,13 @@ export default function Roster() {
     try {
       if (await updatePayer(p.kind, p.id, { name: next })) {
         setEdit((e) => { const n = { ...e }; delete n[key(p)]; return n; });
-        setClosed((c) => c.map((x) => (key(x) === key(p) ? { ...x, name: next } : x)));
       }
     } finally { setBusy(null); }
   };
 
-  const setActive = async (p: Payer, on: boolean) => {
+  const setActive = async (p: PayerRecord, on: boolean) => {
     setBusy(key(p));
-    try {
-      if (!(await updatePayer(p.kind, p.id, { active: on }))) return;
-      setClosed((c) => (on ? c.filter((x) => key(x) !== key(p)) : [...c, p]));
-    } finally { setBusy(null); }
+    try { await updatePayer(p.kind, p.id, { active: on }); } finally { setBusy(null); }
   };
 
   return (
@@ -94,7 +87,8 @@ export default function Roster() {
         A bill on <b>Patient bill</b>, <b>Staff credit</b> or <b>Dept</b> has to name someone this
         register already knows — the id is the hospital's own number, and a mistyped one is a
         second account with its own untouched credit ceiling. A payer is never deleted, only
-        deactivated: the bills already posted to them stay exactly as they were.
+        deactivated: the bills already posted to them stay exactly as they were, and this screen
+        is where one is switched back on.
       </Alert>
 
       <Card title={`Add a ${active.one}`} sub={`Goes straight onto the ${active.label.toLowerCase()} roster, live at every till`}>
@@ -135,12 +129,12 @@ export default function Roster() {
             ]}
             rows={rows.map((p) => {
               const k = key(p);
-              const off = isClosed(p);
+              const off = !p.active;
               return {
                 key: k,
                 cells: [
-                  // A row this session switched off is greyed rather than hidden — the manager
-                  // has to be able to see what they just did, and undo it.
+                  // A closed account is greyed rather than hidden — it is still somebody the
+                  // hospital billed last month, and this is the only screen that can reopen it.
                   <span className={off ? "mono dim" : "mono"}>{p.id}</span>,
                   <span className={off ? "dim" : undefined}>{p.name}</span>,
                   off ? <Pill tone="mu">Deactivated</Pill> : <Pill tone="ok">Active</Pill>,
@@ -170,7 +164,7 @@ export default function Roster() {
               : { title: `No ${active.one} on the roster yet`, sub: "Add the first one above — a bill cannot be posted to somebody the register has never heard of." }}
           />
         </div>
-        <TableFoot count={rows.length} extra={<>{live} active{closed.length > 0 && <> · {closed.length} deactivated this session</>}</>} />
+        <TableFoot count={rows.length} extra={<>{live} active{closed > 0 && <> · {closed} deactivated</>}</>} />
       </Card>
     </>
   );

@@ -70,3 +70,9 @@ export const SupportTicketsResponseSchema = z.array(D.SupportTicketSchema);
  *  instead of the whole snapshot. Scoped exactly as the snapshot's own copy is: the kitchen,
  *  the store and the buyer never open a payer picker and read an empty one (`scopeRoster`). */
 export const RosterResponseSchema = D.PayerRosterSchema;
+/** The **whole** register, active rows and closed ones together, for the one role that keeps it.
+ *  `roster` above is what a till reads and carries live payers only — a closed account must
+ *  never reach a payer picker — so a manager who wants to reopen one closed last week has
+ *  nothing to open. Two reads rather than an `active` flag on the roster, because the till's
+ *  list stopping at "active" is the whole point of it. */
+export const PayersResponseSchema = z.array(D.PayerRecordSchema);

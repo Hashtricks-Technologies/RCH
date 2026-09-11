@@ -35,10 +35,14 @@ const patch = async (user: string, url: string, payload?: Record<string, unknown
   const opts: InjectOptions = { method: "PATCH", url: `/api/v1${url}`, headers: await hdr(user), ...(payload === undefined ? {} : { payload }) };
   return app.inject(opts);
 };
-/** The register as the caller reads it back. `u2` is the outlet manager, the one role that
- *  keeps it — and one of the two `scopeRoster` lets read it at all. */
+/** The till's read: live payers only, split into the three lists a payer picker offers. `u2` is
+ *  the outlet manager, the one role that keeps the register — and one of the two `scopeRoster`
+ *  lets read it at all. */
 const roster = async (user = "u2") =>
   (await app.inject({ method: "GET", url: "/api/v1/roster", headers: await authHeaders(app, user) })).json();
+/** The manager's read: the register whole, closed accounts included. */
+const register = async (user = "u2") =>
+  app.inject({ method: "GET", url: "/api/v1/payers", headers: await authHeaders(app, user) });
 /** NOTIFY is delivered asynchronously; give the listener socket a turn. */
 const settle = () => new Promise((r) => setTimeout(r, 150));
 
@@ -47,6 +51,7 @@ describe("POST /payers", () => {
     const p = await post("u2", "/payers", { kind: "patient", id: "IP-7001", name: "Latha Devi · Ward 4A" });
     expect(p.statusCode, p.body).toBe(200);
     expect(p.json().result).toEqual({ kind: "patient", id: "IP-7001", name: "Latha Devi · Ward 4A", active: true });
+    expect(p.json().changed).toEqual(["roster", "payers"]);
     expect(p.json().message).toBe("Latha Devi · Ward 4A added to the patient roster as IP-7001");
 
     const s = await post("u2", "/payers", { kind: "staff", id: "E2291", name: "Kavitha Raman" });
@@ -112,6 +117,12 @@ describe("PATCH /payers/:kind/:id", () => {
     expect(on.json().message).toBe("Moved Ward 2 is active again and can be billed to");
     // The row survives a deactivation: the bills already posted to it have to stay readable.
     expect((await roster()).patients.map((x: { id: string }) => x.id)).toContain("IP-7010");
+
+    // And it is still on the manager's own read while it is switched off, which is the whole
+    // reason that read exists — a payer nobody can see is a payer nobody can reopen.
+    await patch("u2", "/payers/patient/IP-7010", { active: false });
+    expect((await roster()).patients.map((x: { id: string }) => x.id)).not.toContain("IP-7010");
+    expect((await register()).json()).toContainEqual({ kind: "patient", id: "IP-7010", name: "Moved Ward 2", active: false });
   });
 
   it("refuses an empty patch, and 404s a payer that is not there, in the till's own words", async () => {
@@ -139,13 +150,44 @@ describe("PATCH /payers/:kind/:id", () => {
     expect(r.json().result).toEqual({ kind: "dept", id: "CC-KEEP", name: "Untouched, renamed", active: false });
   });
 
+});
+
+describe("GET /payers and GET /roster", () => {
+  it("lists every payer for the manager, inactive included, and is absent for every other role", async () => {
+    await post("u2", "/payers", { kind: "staff", id: "E7040", name: "Still Here" });
+    await post("u2", "/payers", { kind: "staff", id: "E7041", name: "Gone Last Week" });
+    await patch("u2", "/payers/staff/E7041", { active: false });
+
+    const r = await register();
+    expect(r.statusCode, r.body).toBe(200);
+    const all = r.json() as { kind: string; id: string; name: string; active: boolean }[];
+    expect(all).toContainEqual({ kind: "staff", id: "E7040", name: "Still Here", active: true });
+    expect(all).toContainEqual({ kind: "staff", id: "E7041", name: "Gone Last Week", active: false });
+    // The till's read stops at the live rows; this one does not, which is the difference.
+    expect((await roster()).staff.map((x: { id: string }) => x.id)).not.toContain("E7041");
+    // Ordered kind then name, which is the order the manager's three tabs read it in.
+    const staff = all.filter((x) => x.kind === "staff").map((x) => x.name);
+    expect(staff).toEqual([...staff].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)));
+
+    // The whole register is the manager's alone — a closed account is not a counter's business,
+    // and the three roles that never open a payer picker have no use for either read.
+    for (const u of ["u1", "u3", "u4", "u5"]) expect((await register(u)).statusCode).toBe(404);
+  });
+
   it("is absent for every role but the manager", async () => {
+    // Made here rather than leaned on from the case before, so this one says what it needs and
+    // cannot start passing (or failing) because a neighbour was reordered.
+    await post("u2", "/payers", { kind: "staff", id: "E7050", name: "Role Gate" });
     for (const u of ["u1", "u3", "u4", "u5"]) {
       expect((await post(u, "/payers", { kind: "staff", id: "E8000", name: "Nope" })).statusCode).toBe(404);
-      expect((await patch(u, "/payers/staff/E7020", { name: "Nope" })).statusCode).toBe(404);
+      expect((await patch(u, "/payers/staff/E7050", { name: "Nope" })).statusCode).toBe(404);
     }
-    // And the register itself is "any", but cut: the kitchen, the store and the buyer never open
-    // a payer picker, so `GET /roster` hands them an empty one (`scopeRoster`, Wave 1).
+    // The row is untouched by four refused patches — a 404 is the door not existing, not a
+    // write that half happened.
+    expect((await register()).json()).toContainEqual({ kind: "staff", id: "E7050", name: "Role Gate", active: true });
+
+    // `GET /roster` itself is "any", but cut: the kitchen, the store and the buyer never open a
+    // payer picker, so it hands them an empty one (`scopeRoster`, Wave 1).
     expect(await roster("u3")).toEqual({ patients: [], staff: [], depts: [] });
     expect(await roster("u4")).toEqual({ patients: [], staff: [], depts: [] });
     expect(await roster("u5")).toEqual({ patients: [], staff: [], depts: [] });
@@ -166,20 +208,24 @@ describe("PATCH /payers/:kind/:id", () => {
     expect(refused.statusCode).toBe(422);
     expect(refused.json().error.message).toBe("There is no staff member E7030 on the roster");
   });
+});
 
+describe("what a payer write announces", () => {
   it("announces roster, and the same array is on the response", async () => {
     // Drain first: NOTIFY is delivered asynchronously, so a notice from the case before this
     // one can still be on the socket when the list is cleared.
     await settle();
     heard = [];
+    // Both collections, every time: `roster` is the till's live list and `payers` the manager's
+    // whole register, and a rename or a switch moves what each of them answers.
     const added = await post("u2", "/payers", { kind: "dept", id: "CC-ANN", name: "Announcements" });
-    expect(added.json().changed).toEqual(["roster"]);
+    expect(added.json().changed).toEqual(["roster", "payers"]);
     const changed = await patch("u2", "/payers/dept/CC-ANN", { active: false });
-    expect(changed.json().changed).toEqual(["roster"]);
+    expect(changed.json().changed).toEqual(["roster", "payers"]);
 
     await settle();
     const said = heard.map((h) => (JSON.parse(h) as { collections: string[] }).collections);
-    expect(said).toEqual([["roster"], ["roster"]]);
+    expect(said).toEqual([["roster", "payers"], ["roster", "payers"]]);
 
     // A refusal announces nothing: `emitChanged` runs inside the write's own transaction.
     heard = [];

@@ -37,7 +37,11 @@ try {
         process.exit(2);
       }
       const r = await importPayers(db, rows, { replaceNames: values["replace-names"] === true });
-      console.log(`${file}: ${r.added} added, ${r.renamed} renamed, ${r.skipped} already on the roster (${rows.length} rows read)`);
+      // A rename never reopens a closed account, so say how many of them the till still cannot
+      // bill to rather than let "renamed 3" read as three people back on the payer picker.
+      const renamed = r.renamedInactive > 0 ? `${r.renamed} renamed (${r.renamedInactive} still inactive)` : `${r.renamed} renamed`;
+      console.log(`${file}: ${r.added} added, ${renamed}, ${r.skipped} already on the roster (${rows.length} rows read)`);
+      if (r.renamedInactive > 0) console.log("  a deactivated payer keeps its name and its switch — reopen it from the manager's Payers screen");
       if (r.skipped > 0 && values["replace-names"] !== true) console.log("  re-run with --replace-names to update the names of the rows that were skipped");
       break;
     }

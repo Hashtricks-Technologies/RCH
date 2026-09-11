@@ -2,7 +2,7 @@ import { routes, type Changed } from "@rch/contract";
 import { call } from "./client";
 import {
   applyBatches, applyBills, applyContracts, applyGrns, applyItems, applyPos, applyProdOrders,
-  applyProductRequests, applyRequests, applyRequisitions, applyRoster, applyShopAsks, applyStock,
+  applyPayers, applyProductRequests, applyRequests, applyRequisitions, applyRoster, applyShopAsks, applyStock,
   applySupportTickets, applyTickets, applyVendors,
 } from "./wire";
 import { useApp } from "../store";
@@ -28,17 +28,20 @@ const NARROW: Partial<Record<Changed, () => Promise<void>>> = {
   tickets: () => call(routes.tickets).then(applySupportTickets),
   // ---- payers ----
   roster: () => call(routes.roster).then(applyRoster),
+  payers: () => call(routes.payers).then(applyPayers),
 };
 
 /**
  * Pull back exactly what a write said it changed.
  *
  * `stock`/`rsv`/`ovr` come from `GET /stock`, and `bills`, `req`, `tkt`, `shopAsks`, `pord`,
- * `batch`, `prq`, `po`, `grn`, `vendors`, `contracts`, `productReqs`, `items` and `tickets` (the
- * support desk, `GET /support/tickets`) each from their own GET, every one of them fetched at
- * most once however many times the write named it. Only `prices` and `menu` have no narrow
- * reader — the manager's price and menu writes — so those cost one snapshot, and a mixed set
- * takes that alone.
+ * `batch`, `prq`, `po`, `grn`, `vendors`, `contracts`, `productReqs`, `items`, `tickets` (the
+ * support desk, `GET /support/tickets`), `roster` (the till's live payer list, `GET /roster`)
+ * and `payers` (the manager's whole register, closed accounts included, `GET /payers`) each
+ * from their own GET, every one of them fetched at most once however many times the write named
+ * it — which is what lets a payer write name both of its two collections and still cost two
+ * reads. Only `prices` and `menu` have no narrow reader — the manager's price and menu writes —
+ * so those cost one snapshot, and a mixed set takes that alone.
  *
  * `after` is the sentence the write already succeeded with. When the read-back fails it is
  * kept and qualified rather than replaced, so the operator still learns their bill was taken.

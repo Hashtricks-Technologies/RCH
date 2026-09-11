@@ -47,5 +47,9 @@ export function resetStore() {
     contracts: FX.seedContracts(), productReqs: FX.seedProductRequests(), shopAsks: FX.seedShopAsks(),
     tickets: FX.seedTickets(),
     cart: {}, draft: [], prqDraft: [], drawer: null, toast: null, shopFilter: null,
+    // ---- payers ----
+    // Empty, not seeded: the manager's register has no fixture, because nothing on the snapshot
+    // carries it — the screen asks `GET /payers` for it on the way in.
+    payers: [],
   });
 }

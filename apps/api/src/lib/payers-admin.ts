@@ -16,7 +16,11 @@ import { withTransaction } from "./db.js";
 export type PayerCsvRow = { kind: PayerKind; id: string; name: string };
 /** Where the file is wrong, by the line number an editor shows and the column heading. */
 export type PayerCsvError = { row: number; column: string; message: string };
-export type ImportResult = { added: number; skipped: number; renamed: number };
+/** `renamedInactive` counts the subset of `renamed` whose account is switched off. A renamed
+ *  row the till still cannot bill to is not a failure and not a plain success either — the
+ *  administrator has just corrected the spelling of somebody nobody can charge — so it is
+ *  reported beside the rename rather than folded into it. */
+export type ImportResult = { added: number; skipped: number; renamed: number; renamedInactive: number };
 
 /** The three columns, in the order the file must carry them. A header row naming them is
  *  optional — a payroll export usually has one, a hand-made list usually does not. */
@@ -68,19 +72,29 @@ const isHeader = (cells: string[]): boolean =>
  * Read `kind,id,name` out of a file. Answers with **both** halves: the rows that are good and
  * every row that is not, each named by its line number in the file and the column that is wrong,
  * so one run of the tool tells the administrator everything to fix rather than one thing at a
- * time. Blank lines are skipped and a `#` line is a comment; a leading `kind,id,name` header is
- * recognised and skipped rather than reported as a bad kind.
+ * time. Blank lines are skipped and a `#` line is a comment; a `kind,id,name` header is
+ * recognised and skipped rather than reported as a bad kind — on the **first line that carries
+ * anything**, not literally line one, so a file that opens with a comment or a blank line keeps
+ * its header.
+ *
+ * The leading byte-order mark is stripped first. Excel's "CSV UTF-8" writes one, and without
+ * this the first cell reads `\ufeffkind` — so the header is not recognised, and the file's first
+ * real payer is reported as a bad kind with a character the administrator cannot see in the
+ * sentence naming it.
  */
 export function parsePayerCsv(text: string): { rows: PayerCsvRow[]; errors: PayerCsvError[] } {
   const rows: PayerCsvRow[] = [];
   const errors: PayerCsvError[] = [];
-  const lines = text.split(/\r?\n/);
+  const lines = text.replace(/^\ufeff/, "").split(/\r?\n/);
+  let first = true;                                       // still looking for the header row
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const row = i + 1;                                    // the line number an editor shows
     if (line.trim().length === 0 || line.trimStart().startsWith("#")) continue;
     const cells = splitCsvLine(line);
-    if (i === 0 && isHeader(cells)) continue;
+    const wasFirst = first;
+    first = false;
+    if (wasFirst && isHeader(cells)) continue;
     if (cells.length !== 3) {
       errors.push({ row, column: "row", message: `expected 3 columns (${PAYER_CSV_COLUMNS.join(", ")}), found ${cells.length}` });
       continue;
@@ -107,7 +121,7 @@ export function parsePayerCsv(text: string): { rows: PayerCsvRow[]; errors: Paye
  */
 export async function importPayers(db: Db, rows: PayerCsvRow[], opts: { replaceNames?: boolean } = {}): Promise<ImportResult> {
   return withTransaction(db, async (tx) => {
-    const result: ImportResult = { added: 0, skipped: 0, renamed: 0 };
+    const result: ImportResult = { added: 0, skipped: 0, renamed: 0, renamedInactive: 0 };
     for (const [i, row] of rows.entries()) {
       const bad = checkPayerRow(row);
       if (bad) throw new Error(sayCsvError({ row: i + 1, ...bad }));
@@ -126,6 +140,11 @@ export async function importPayers(db: Db, rows: PayerCsvRow[], opts: { replaceN
       if (!opts.replaceNames || existing.name === row.name) { result.skipped += 1; continue; }
       await tx.update(payers).set({ name: row.name, updatedAt: new Date() }).where(where);
       result.renamed += 1;
+      // A rename does not reopen an account — `active` is the manager's switch, not the file's,
+      // so an export that spells a closed payer differently corrects the spelling and nothing
+      // else. Counted apart, because otherwise the summary reads as though the till could now
+      // bill to them.
+      if (!existing.active) result.renamedInactive += 1;
     }
     return result;
   });

@@ -1,7 +1,7 @@
 // Payers: SQL only. No rules, no transaction of its own — service.ts passes `tx` in.
-import { and, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import type { PayerKind } from "@rch/contract";
-import type { Tx } from "../../lib/db.js";
+import type { Reader, Tx } from "../../lib/db.js";
 import { payers } from "../../db/schema/index.js";
 
 export type PayerRow = typeof payers.$inferSelect;
@@ -11,6 +11,16 @@ export type PayerPatch = Partial<{ name: string; active: boolean }>;
 const at = (kind: PayerKind, id: string) => and(eq(payers.kind, kind), eq(payers.id, id));
 
 export const payersRepo = {
+  /** The register whole — closed accounts included — for `GET /payers`. `readRoster`
+   *  (`snapshot/readers/master.ts`) is the other read of this table and filters `active`,
+   *  because it answers the till's payer picker; this one answers the manager's screen, which
+   *  cannot reopen an account it is never shown. Ordered kind then name, which is the order the
+   *  screen's three tabs read it in. Takes `Reader`, so the standalone GET and a write
+   *  validating against its own transaction share it. */
+  async all(db: Reader): Promise<PayerRow[]> {
+    return db.select().from(payers).orderBy(asc(payers.kind), asc(payers.name));
+  },
+
   /** Locking read: `.for("update")` on the payer's own row, so two patches of one account
    *  cannot both read the row that is about to change under them. */
   async head(tx: Tx, kind: PayerKind, id: string): Promise<PayerRow | undefined> {

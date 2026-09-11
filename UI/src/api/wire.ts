@@ -5,7 +5,7 @@ import { hydrateItems, hydrateMaster, hydrateRoster } from "../data/master";
 import { fromWireBestBefore, fromWireDate, fromWireTime } from "../lib/fmt";
 import { useApp } from "../store";
 import { basePrices } from "../lib/selectors";
-import type { Bill, StockLoc } from "../types";
+import type { Bill, PayerRecord, StockLoc } from "../types";
 
 export type Snapshot = z.infer<typeof SnapshotSchema>;
 export type StockResponse = z.infer<typeof StockResponseSchema>;
@@ -146,3 +146,8 @@ export function applyRoster(r: Snapshot["roster"]): void {
   hydrateRoster(r);
   useApp.setState((s) => ({ catalogVersion: s.catalogVersion + 1 }));
 }
+
+/** GET /payers -> the manager's own register, closed accounts included. Ordinary store state,
+ *  unlike the roster above: nothing outside the manager's Roster screen reads it, so there is no
+ *  module-level registry to keep the identity of and `catalogVersion` is not involved. */
+export function applyPayers(payers: PayerRecord[]): void { useApp.setState({ payers }); }
