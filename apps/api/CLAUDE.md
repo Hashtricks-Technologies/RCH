@@ -432,8 +432,9 @@ hand-maintained alongside it and its length is what `/readyz` compares the appli
 so a renamed file or a missing entry makes the pod unready. Names are descriptive
 (`0002_stock_moves_append_only`), not drizzle's generated animals.
 
-**The journal is at nine entries, `0000`–`0008`**, so `/readyz` reads `9 / 9` on a current
-database. `0007_idempotency_committed_at` adds one nullable column; `0008_integrity` writes the
+**The journal is at thirteen entries, `0000`–`0012`**, so `/readyz` reads `13 / 13` on a current
+database; the audit fix wave wrote the last six of them by hand.
+`0007_idempotency_committed_at` adds one nullable column; `0008_integrity` writes the
 promises this file already made into the database — `reservations_ticket_idx` (partial, on
 `released_at is null`) and `reservations_ticket_fk` → `tickets(id)`; `tickets.otp_attempts integer
 not null default 0`, `otp` from `char(6)` to `varchar(6)` with `tickets_otp_digits_ck`
@@ -447,18 +448,58 @@ but the FK and the column-type change is mirrored in `src/db/schema/*.ts` with D
 `schema/ledger.ts` closes a TypeScript import cycle, and the reason is a comment on
 `reservations.ticketId`.
 
+`0009`–`0012` are the wave's four smaller ones: `0009_payers_audit` gives `payers` the
+`created_at`/`updated_at` every other master table already carried, `0010_adjustments` adds the
+`adjust_reason` enum and the `adjustments`/`adjustment_lines` document pair (and the `sequences`
+row their ids are drawn from), `0011_prod_orders_need_by` one nullable `date`, and
+`0012_bills_void` the three nullable columns and the `voided_by` foreign key behind a same-day
+void.
+
 **`stock_balances.on_hand >= 0` is deliberately absent**, and the reason is written at the top of
 `0008`: the friendly refusal an operator reads ("Only 2 nos of Mineral water 1L left at Coffee
 Shop") comes from the re-read that runs *after* `postMoves` has already driven the balance down
 under the locks it holds, so a CHECK would fire first and turn every one of those sentences into a
 500 with no words in it. The negative never survives — the same transaction rolls it back.
 
-**Both hand-written migrations skipped `drizzle-kit generate`, so `drizzle/meta/` still holds
-snapshots `0000`–`0006` only.** Reconcile before the next real `db:generate`, or it will diff from
-`0006_snapshot.json` and try to re-emit everything 0007 and 0008 already did: run `db:generate
---name reconcile`, confirm the emitted SQL is empty or merely re-states 0007/0008 (if it says
-anything else, the schema files and the SQL have genuinely drifted — fix that first), delete the
-emitted `.sql` and its journal entry, and keep the snapshot renamed to the latest idx.
+**The snapshots are reconciled: `meta/0012_snapshot.json` is what the next `db:generate` diffs
+against.** All six hand-written migrations skipped `drizzle-kit generate`, so `meta/` sat at
+`0000`–`0006` and the next generate would have re-emitted everything `0007`–`0012` already did.
+The reconcile ran once, and the procedure is written down here because the next hand-written
+migration will need it again:
+
+1. `cd apps/api && npx drizzle-kit generate --name reconcile`, then `node
+   scripts/strip-public-schema.mjs`. **Not `pnpm db:generate --name reconcile`** — pnpm appends
+   arguments to the end of the whole compound script, so `--name` lands on the strip script and
+   drizzle-kit names the migration one of its animals instead.
+2. Read the emitted `.sql`. It must be **empty, or restate only what the hand-written migrations
+   already did** — that is the proof the applied SQL and `src/db/schema/*.ts` agree. Anything else
+   is real drift, and the fix goes in the schema file, never in SQL a database has run.
+3. Delete the emitted `.sql` and its `_journal.json` entry, and rename the emitted
+   `meta/00NN_snapshot.json` to the journal's latest idx. Nothing is applied to any database by
+   this; it is bookkeeping so the *following* schema change generates a correct diff.
+4. Prove it: a second generate must print `No schema changes, nothing to migrate` and leave no
+   file behind.
+
+Four things about drizzle-kit the procedure rests on, none of them obvious from the outside:
+
+- **The snapshot it diffs against is the lexically last file in `meta/`**, not the journal's last
+  entry — `prepareOutFolder` reads the directory, sorts it, and takes the end. `0012_snapshot.json`
+  sorts after `0006_snapshot.json`, which is the whole reason the rename works.
+- **The chain is by UUID, not by filename**: each snapshot's `prevId` is the previous one's `id`,
+  so renaming the file leaves it intact. But drizzle-kit *aborts* where two snapshots share a
+  `prevId`, so never keep both the emitted name and the renamed copy.
+- **Three things in the applied SQL are invisible to drizzle-kit in both directions.** They are
+  not drift and must not be "fixed": `reservations_ticket_fk` (SQL-only, because the import would
+  close a cycle — above), the `document_history` trigger and its function (drizzle-kit models no
+  triggers, and `0002`'s `stock_moves` trigger is in the same position), and `0010`'s `insert into
+  sequences`, which is data. Generate will never emit them and never drop them.
+- **A hand-written `when` must be in the past.** `drizzle-orm`'s migrator (`pg-core/dialect.ts`)
+  applies a file only where its `when` is **greater** than the highest `created_at` already in
+  `__drizzle_migrations`, so a later migration carrying a smaller `when` is **silently skipped** —
+  no error anywhere, and `/readyz` reading `n/m` is what eventually says so. `0007`–`0012`'s are
+  strictly increasing, which is what matters, but `0012`'s (`1789160000000`, 2026-09-11T20:53 UTC)
+  was written a couple of hours ahead of the clock: a generate before that instant would have
+  emitted a smaller one. Put a real `Date.now()` in an entry you write by hand.
 
 `config.ts` is the only reader of `process.env`: `NODE_ENV`, `PORT`, `LOG_LEVEL`, `DATABASE_URL`,
 `TEST_DATABASE_URL`, `DATABASE_SSL`, `DB_POOL_MAX`, `CORS_ORIGIN`, `JWT_PRIVATE_KEY`,
