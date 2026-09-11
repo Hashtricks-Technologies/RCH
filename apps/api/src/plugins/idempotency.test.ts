@@ -8,6 +8,7 @@ import { seedTestDb } from "../test/seed.js";
 import { warmPool } from "../test/db.js";
 import { authHeaders } from "../test/auth.js";
 import { buildApp, type App } from "../app.js";
+import type { LogStream } from "./logging.js";
 import { mount } from "../routes.js";
 import { idemHooks, purgeIdempotencyKeys } from "./idempotency.js";
 import { withTransaction } from "../lib/db.js";
@@ -32,11 +33,18 @@ const otpAttempts = async (id: string) => (await app.db.select().from(tickets).w
 /** An app of its own carrying a test-only write, mounted through the real `mount()` so the
  *  route picks up the same authenticate → roleGate → idempotency chain a module's write does,
  *  and sharing this file's already-migrated schema so it seeds nothing. */
-async function appWith(register: (a: App) => void, env: Partial<NodeJS.ProcessEnv> = {}): Promise<App> {
-  const a = await buildApp(testConfig(env), { db: app.db, migrationsSchema: app.testDb!.schemaName });
+async function appWith(register: (a: App) => void, env: Partial<NodeJS.ProcessEnv> = {}, logStream?: LogStream): Promise<App> {
+  const a = await buildApp(testConfig(env), { db: app.db, migrationsSchema: app.testDb!.schemaName, logStream });
   register(a);
   await a.ready();
   return a;
+}
+
+/** A pino stream the test can read back: one parsed line per record — the same shape
+ *  plugins/errors.test.ts's own `capture()` uses. */
+function capture(): { lines: Array<Record<string, unknown>>; write: (s: string) => void } {
+  const lines: Array<Record<string, unknown>> = [];
+  return { lines, write: (s: string) => { for (const l of s.split("\n")) if (l) lines.push(JSON.parse(l) as Record<string, unknown>); } };
 }
 
 /** A write that commits a real change and then answers with a body its own schema refuses —
@@ -47,6 +55,16 @@ const badShapeHandler = (phone: string) => async () => withTransaction(app.db, a
   await meRepo.update(tx, "u2", { phone });
   return { ok: "yes" } as never; // OkResponseSchema wants the literal `true`
 });
+
+/** The same bad shape, but told `{ response: "optional" }` — so, unlike `badShapeHandler` above,
+ *  nothing here is a `{ refuse }` marker and nothing throws afterward: this is a write's
+ *  genuine success value simply not matching its own schema, the case `lib/db.ts`'s comment
+ *  calls "the caller asked for that to be tolerated". */
+const optionalBadShapeRoute = defineRoute({ method: "POST", path: "/__test/optional-bad-shape", access: "any", response: OkResponseSchema });
+const optionalBadShapeHandler = (phone: string) => async () => withTransaction(app.db, async (tx) => {
+  await meRepo.update(tx, "u2", { phone });
+  return { ok: "yes" } as never; // OkResponseSchema wants the literal `true`
+}, { response: "optional" });
 
 /** Promise.withResolvers, which the ES2023 lib this package targets does not declare yet. */
 function deferred(): { promise: Promise<void>; resolve: () => void } {
@@ -370,6 +388,32 @@ describe("Idempotency-Key", () => {
       const retry = await a.inject({ method: "POST", url: "/api/v1/__test/bad-shape", headers });
       expect(retry.statusCode).toBe(500);
       expect(retry.headers["idempotency-replayed"]).toBeUndefined();
+    } finally {
+      await a.close();
+    }
+  });
+
+  it("in production, an optional write's success value failing its own schema warns with the specific reason, not the generic one", async () => {
+    // `withTransaction`'s `{ response: "optional" }` branch sets `ctx.why` itself now, so
+    // `mount()`'s warn line names exactly what happened — a write's response failing its own
+    // schema under an explicit "optional" — rather than falling back to `NOT_RECORDED`, which
+    // is what a write that opened no transaction at all leaves behind.
+    const log = capture();
+    const a = await appWith(
+      (x) => mount(x, optionalBadShapeRoute, optionalBadShapeHandler("17171 71717")),
+      { NODE_ENV: "production", LOG_LEVEL: "info" },
+      log,
+    );
+    try {
+      const key = randomUUID();
+      const headers = { ...(await authHeaders(a, "u2")), "idempotency-key": key };
+      const r = await a.inject({ method: "POST", url: "/api/v1/__test/optional-bad-shape", headers });
+      // The serializer still refuses the malformed body on the way out — unchanged by any of
+      // this — but the write behind it commits, same as the "required" case in production.
+      expect(r.statusCode).toBe(500);
+      expect(await phoneOf("u2")).toBe("17171 71717");
+      const line = log.lines.find((l) => l.msg === "a write's response failed its own schema and its caller asked for that to be tolerated");
+      expect(line).toMatchObject({ route: "/__test/optional-bad-shape", key });
     } finally {
       await a.close();
     }
