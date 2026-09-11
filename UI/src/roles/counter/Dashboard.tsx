@@ -22,7 +22,10 @@ export default function Dashboard() {
   // them. Until this filter existed the word was simply untrue: a Monday-morning shift opened
   // showing the previous week's takings. `isToday` reads the instant the store kept beside the
   // printed time, and the day it compares against is the hospital's, not the terminal's.
-  const mine = s.bills.filter((b) => b.loc === loc && isToday(b.iso));
+  //
+  // ---- bill void: a bill somebody took back is not takings and the items on it were not sold.
+  // It stays on the bill list, badged; every figure on this dashboard is drawn from `mine`.
+  const mine = s.bills.filter((b) => b.loc === loc && isToday(b.iso) && !b.voided);
   // `?? ""` rather than a bare compare: a row that reaches the store without an instant should
   // sort to the bottom, not throw the whole dashboard into the error boundary.
   const latest = mine.slice().sort((a, b) => (b.iso ?? "").localeCompare(a.iso ?? ""));

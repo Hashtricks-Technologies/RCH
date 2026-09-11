@@ -1,4 +1,4 @@
-import { asc, desc, eq, gte, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNull, sql } from "drizzle-orm";
 import { OUTLETS } from "@rch/contract";
 import type { Batch, Bill, Grn, HistEntry, LocKey, ProdOrder, ProductRequest, PurchaseOrder, RateContract, Requisition, ShopAsk, StockRequest, SupportTicket, Ticket, Vendor } from "@rch/contract";
 import * as s from "../../../db/schema/index.js";
@@ -171,7 +171,10 @@ export async function readShopAsks(db: Reader, pre?: UserNames): Promise<ShopAsk
 export async function readSales(db: Reader, days: number): Promise<{ sales: number[][]; dayLabels: string[] }> {
   const rows = await db.select({
     day: sql<string>`to_char(${s.bills.at} at time zone 'Asia/Kolkata', 'YYYY-MM-DD')`, loc: s.bills.loc, total: sql<string>`sum(${s.bills.total})`,
-  }).from(s.bills).where(gte(s.bills.at, new Date(Date.now() - days * 86400_000))).groupBy(sql`1`, s.bills.loc);
+    // ---- bill void. A voided bill is not takings: the money was never kept and the stock went
+    // back on the shelf, so the day's column must not carry it. The bill itself stays in
+    // `readBills` above, badged, because the manager has to be able to see what was taken back.
+  }).from(s.bills).where(and(gte(s.bills.at, new Date(Date.now() - days * 86400_000)), isNull(s.bills.voidedAt))).groupBy(sql`1`, s.bills.loc);
   const fmt = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit" });
   const dayKeys = Array.from({ length: days }, (_, i) => fmt.format(new Date(Date.now() - (days - 1 - i) * 86400_000)));
   const sales = dayKeys.map((d) => OUTLETS.map((loc) => Number(rows.find((r) => r.day === d && r.loc === loc)?.total ?? 0)));

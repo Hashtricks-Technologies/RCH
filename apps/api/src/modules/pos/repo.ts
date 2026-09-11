@@ -4,7 +4,7 @@ import type { PayerKind } from "@rch/contract";
 import type { OvrMap, Prices, RsvMap, StockMap } from "@rch/domain";
 import type { Tx } from "../../lib/db.js";
 import type { BillLineRow, BillRow } from "../../lib/wire.js";
-import { availabilityOverrides, billLines, bills, locationItems, payers, priceListItems, reservations, stockBalances, users } from "../../db/schema/index.js";
+import { availabilityOverrides, billLines, bills, locationItems, payers, priceListItems, reservations, stockBalances, stockMoves, users } from "../../db/schema/index.js";
 
 export type NewBill = typeof bills.$inferInsert;
 
@@ -96,6 +96,45 @@ export const posRepo = {
     const rows = await tx.select().from(stockBalances)
       .where(and(eq(stockBalances.loc, loc), inArray(stockBalances.itemKey, itemKeys))).orderBy(asc(stockBalances.itemKey));
     return Object.fromEntries(rows.map((r) => [r.itemKey, r.onHand]));
+  },
+
+  // ---- bill void ----
+  /** The bill being decided, locked first — the document, ahead of every other lock this write
+   *  takes (the order every module keeps). Two managers pressing Void on the same bill queue
+   *  here, and the second reads the `voided_at` the first wrote. */
+  async headForUpdate(tx: Tx, no: string): Promise<BillRow | undefined> {
+    const [b] = await tx.select().from(bills).where(eq(bills.no, no)).for("update");
+    return b;
+  },
+
+  /**
+   * The sale's own moves, the rows the void will reverse one for one.
+   *
+   * A read of `stock_moves` from a repo, which is allowed — what `lib/ledger.ts` owns is writing
+   * it. Reading is how a reversal knows where the stock came off: the move carries its own `loc`
+   * and item, so a made-to-order bill explodes back into exactly the ingredients the sale took
+   * rather than into a portion of a dish no shelf ever held. Ordered by id so the reversals are
+   * written in the order the sale was.
+   */
+  async saleMoves(tx: Tx, no: string): Promise<{ id: number; loc: string; itemKey: string; qty: number }[]> {
+    return tx.select({ id: stockMoves.id, loc: stockMoves.loc, itemKey: stockMoves.itemKey, qty: stockMoves.qty })
+      .from(stockMoves)
+      .where(and(eq(stockMoves.refType, "bill"), eq(stockMoves.refId, no), eq(stockMoves.kind, "sale")))
+      .orderBy(asc(stockMoves.id));
+  },
+
+  /** A bill's lines, in the order the counter scanned them — what `toWireBill` prints. Read
+   *  back rather than kept, because a void answers with the whole bill, badged. */
+  async billLines(tx: Tx, no: string): Promise<BillLineRow[]> {
+    return tx.select().from(billLines).where(eq(billLines.billNo, no)).orderBy(asc(billLines.lineNo));
+  },
+
+  /** Stamp the void on the bill. Nothing else about the row changes: the lines, the total and
+   *  the payer are what was printed, and a void does not rewrite history. */
+  async setVoided(tx: Tx, no: string, v: { at: Date; by: string; reason: string }): Promise<BillRow> {
+    const [b] = await tx.update(bills).set({ voidedAt: v.at, voidedBy: v.by, voidReason: v.reason })
+      .where(eq(bills.no, no)).returning();
+    return b;
   },
 
   // What this staff member has already put on credit is `creditTakenThisMonth` in

@@ -33,6 +33,15 @@ describe("api client", () => {
     expect(init.headers["idempotency-key"]).toMatch(/^[0-9a-f-]{36}$/);
     expect(init.body).toBe(JSON.stringify({ n: 2 }));
   });
+  // ---- bill void ----
+  it("percent-encodes a path param that carries a slash", async () => {
+    setAccessToken("tok");
+    fetchMock.mockResolvedValueOnce(ok({ result: {}, changed: [], message: "CF/1188 voided" }));
+    await call(routes.voidBill, { params: { no: "CF/1188" }, body: { reason: "Wrong tender" } });
+    // A bare slash would split into two path segments and match no route at all — the server's
+    // own suite pins the 404 from the other side. nginx forwards the encoded form unchanged.
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/v1/bills/CF%2F1188/void");
+  });
   it("refreshes once on 401 and retries with the new token", async () => {
     setAccessToken("old");
     fetchMock

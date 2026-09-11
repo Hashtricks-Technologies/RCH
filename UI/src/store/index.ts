@@ -73,6 +73,10 @@ export interface AppState extends ProcurementSlice, OpsSlice {
    *  the tender exactly where the operator put them — the cart is still full, and clearing the
    *  form behind a refusal is how the same bill gets rung up twice. */
   pay: (loc: LocKey, tender: Tender, payer?: Payer) => Promise<boolean>;
+  // ---- bill void: the manager's door out of a mis-keyed bill, on the day it was billed.
+  // Answers `true` only once the server has taken it, so a refusal leaves the typed reason
+  // in front of them (the form-carrying pattern).
+  voidBill: (no: string, reason: string) => Promise<boolean>;
 
   toggleAvail: (loc: LocKey, it: string) => Promise<void>;
 
@@ -285,6 +289,19 @@ export const useApp = create<AppState>((set, get) => ({
       return true;
     } catch (e) {
       get().notify(e instanceof ApiError ? e.message : "Could not take the bill — check the connection and try again.");
+      return false;
+    }
+  },
+
+  // ---- bill void ----
+  voidBill: async (no, reason) => {
+    try {
+      const r = await call(routes.voidBill, { params: { no }, body: { reason } });
+      get().notify(r.message);
+      await refetch(r.changed, r.message);
+      return true;
+    } catch (e) {
+      get().notify(e instanceof ApiError ? e.message : "Could not void the bill — check the connection and try again.");
       return false;
     }
   },

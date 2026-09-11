@@ -48,8 +48,11 @@ export default function Bills() {
   const filtered = Boolean(q || tender || settle);
   const clearAll = () => { setQ(""); setTender(null); setSettle(null); };
 
-  const billed = sum(rows, (b) => b.tot);
-  const cash = sum(rows.filter((b) => settlementOf(b.pay) === "drawer"), (b) => b.tot);
+  // ---- bill void: a voided bill was taken back — the money was never kept and the stock went
+  // back on the shelf — so it stays on the list, badged, and out of both of these figures.
+  const live = rows.filter((b) => !b.voided);
+  const billed = sum(live, (b) => b.tot);
+  const cash = sum(live.filter((b) => settlementOf(b.pay) === "drawer"), (b) => b.tot);
   const settleLabel = settle ? SETTLEMENTS.find((x) => x.k === settle)!.label : "All";
 
   return (
@@ -103,7 +106,9 @@ export default function Bills() {
                 sum(b.lines, (l) => l.qty),
                 <>{b.pay}{b.payer && <span className="mini" style={{ display: "block" }}>{b.payer.name}</span>}</>,
                 money(b.tot),
-                <Pill tone={st.tone}>{st.label}</Pill>,
+                // ---- bill void: the badge replaces the tender's own status word, because a
+                // bill that was taken back is not "Paid" whatever it was settled with.
+                b.voided ? <Pill tone="cr">VOIDED</Pill> : <Pill tone={st.tone}>{st.label}</Pill>,
               ],
             };
           })}
@@ -123,9 +128,10 @@ export default function Bills() {
           extra={<>{L.n} · {L.c} · billed {money(billed)} · cash in drawer {money(cash)}</>} />
       </Card>
       <p className="mini mtop">
-        <b>Billed</b> is every tender raised at this counter. <b>Cash in drawer</b> is what is actually in the till —
-        card and UPI are taken at the till but settle to the hospital account, and patient, staff and department
-        bills collect nothing at the counter at all.
+        <b>Billed</b> is every tender raised at this counter, less anything voided — a voided bill went back on
+        the shelf and the money was never kept, so it stays on this list, badged, and out of both figures.
+        <b>Cash in drawer</b> is what is actually in the till — card and UPI are taken at the till but settle to
+        the hospital account, and patient, staff and department bills collect nothing at the counter at all.
       </p>
     </>
   );

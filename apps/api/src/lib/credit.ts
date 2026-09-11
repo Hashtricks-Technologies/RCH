@@ -1,4 +1,4 @@
-import { and, eq, gte, sql } from "drizzle-orm";
+import { and, eq, gte, isNull, sql } from "drizzle-orm";
 import type { PayerKind } from "@rch/contract";
 import * as s from "../db/schema/index.js";
 import type { Db } from "../db/client.js";
@@ -22,12 +22,17 @@ import { monthStartIST } from "./time.js";
  * `since` comes back with the number so a caller prints the window it actually settled over
  * rather than working it out a second time and getting a different answer either side of
  * midnight on the first.
+ *
+ * A voided bill is not credit either. It is left on the table with its lines intact — the void
+ * reverses the stock, it does not erase the sale — so the filter has to say so: without
+ * `voided_at is null` a mis-keyed ₹3,000 bill would go on eating that person's room for the rest
+ * of the month even though the hospital has taken it back.
  */
 export async function creditTakenThisMonth(
   db: Db | Tx, kind: PayerKind, payerId: string, at: Date = new Date(),
 ): Promise<{ taken: number; since: Date }> {
   const since = monthStartIST(at);
   const [row] = await db.select({ total: sql<string>`coalesce(sum(${s.bills.total}), 0)` }).from(s.bills)
-    .where(and(eq(s.bills.tender, "Staff credit"), eq(s.bills.payerKind, kind), eq(s.bills.payerId, payerId), gte(s.bills.at, since)));
+    .where(and(eq(s.bills.tender, "Staff credit"), eq(s.bills.payerKind, kind), eq(s.bills.payerId, payerId), gte(s.bills.at, since), isNull(s.bills.voidedAt)));
   return { taken: Math.round(Number(row?.total ?? 0) * 100) / 100, since };
 }

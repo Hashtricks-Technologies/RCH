@@ -43,6 +43,10 @@ export const toWireBill = (b: BillRow, lines: BillLineRow[], operator: { name: s
   tot: b.total, tax: b.tax, t: iso(b.at), pay: b.tender as Bill["pay"],
   lines: lines.map((l) => ({ it: l.itemKey, qty: l.qty, rate: l.rate })),
   payer: b.payerKind ? { kind: b.payerKind, id: b.payerId ?? "", name: b.payerName ?? "" } : undefined,
+  // ---- bill void. Both keys are dropped by `strip` on a bill nobody voided, which is nearly
+  // every bill: a screen asks `if (b.voided)` and a fixture stays equal to what it was.
+  voided: b.voidedAt ? true : undefined,
+  voidReason: b.voidedAt ? b.voidReason ?? "" : undefined,
 });
 
 /** What the operator calls each kind of payer. One list, so the sentence the till says when the
