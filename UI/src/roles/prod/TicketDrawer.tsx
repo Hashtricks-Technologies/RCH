@@ -4,6 +4,7 @@ import { useApp } from "../../store";
 import { canHandOver } from "../../lib/selectors";
 import { U, fq, sum } from "../../lib/fmt";
 import { Alert, Btn, DataTable, Field, Section, StatusPill, TicketTrail } from "../../ui/kit";
+import { PrintSlipBtn, TicketSlip } from "../../ui/TicketSlip";
 import { DrawerFrame } from "../../ui/Drawer";
 import { registerDrawer, type DrawerProps } from "../../drawers";
 
@@ -72,6 +73,9 @@ function TicketDrawer({ id }: DrawerProps) {
             <span className="mini">
               {t.lines.length} item{t.lines.length === 1 ? "" : "s"} · {sum(t.lines, (l) => l.qty)} units
             </span>
+            {/* The pass wants the ticket on paper. The kitchen is the issuing side, so the slip
+                it prints names whose code it is rather than showing digits it never had. */}
+            <PrintSlipBtn />
           </div>
         </div>
         {/* The kitchen is the issuing side, so the server sends it no digits at all — it has to
@@ -150,6 +154,8 @@ function TicketDrawer({ id }: DrawerProps) {
       <Section title="History" sub={`Every hand ${t.id} has passed through`}>
         <TicketTrail hist={t.hist} />
       </Section>
+
+      <TicketSlip t={t} />
     </DrawerFrame>
   );
 }

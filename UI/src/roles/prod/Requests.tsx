@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
 // ---- item patch ----
@@ -50,10 +50,26 @@ export default function Requests() {
   const [busy, setBusy] = useState(false);
 
   const draft = s.draft;
+  /**
+   * A key per draft row that belongs to the row rather than to its position.
+   *
+   * `key={i}` on a list with a Remove button on every line hands row 2's mounted state — what
+   * is half-typed in its quantity box, where the cursor is — to row 1 the moment row 1 is taken
+   * out. A counter in a ref keeps an id with the line it was minted for; the loop below covers
+   * a draft that changed anywhere else (staged from another screen, or cleared).
+   */
+  const nextKey = useRef(0);
+  const lineKeys = useRef<number[]>([]);
+  while (lineKeys.current.length < draft.length) lineKeys.current.push(nextKey.current++);
+  if (lineKeys.current.length > draft.length) lineKeys.current.length = draft.length;
+
   const setLine = (i: number, patch: Partial<DraftLine>) =>
     s.setDraft(draft.map((l, j) => (j === i ? { ...l, ...patch } : l)));
   const addLine = () => s.setDraft([...draft, { it: "", qty: 0 }]);
-  const removeLine = (i: number) => s.setDraft(draft.filter((_, j) => j !== i));
+  const removeLine = (i: number) => {
+    lineKeys.current.splice(i, 1);
+    s.setDraft(draft.filter((_, j) => j !== i));
+  };
 
   // The draft, the note and the priority survive a refusal — the store clears the draft only
   // once the server has taken it, and this clears the rest on the same answer.
@@ -142,7 +158,7 @@ export default function Requests() {
               {draft.map((l, i) => {
                 const err = lineErr(l);
                 return (
-                  <tr key={i}>
+                  <tr key={lineKeys.current[i]}>
                     <td>
                       <div className="fld">
                         <select value={l.it} style={l.it ? undefined : BAD}

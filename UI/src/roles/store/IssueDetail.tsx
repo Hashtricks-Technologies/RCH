@@ -6,6 +6,7 @@ import { U, fq, money, money0, sum } from "../../lib/fmt";
 import {
   Alert, Btn, DataTable, Feed, Field, Pill, Section, StatusPill, TableFoot, TicketTrail,
 } from "../../ui/kit";
+import { PrintSlipBtn, TicketSlip } from "../../ui/TicketSlip";
 import { DrawerFrame } from "../../ui/Drawer";
 import { registerDrawer, type DrawerProps } from "../../drawers";
 import type { StockRequest } from "../../types";
@@ -194,6 +195,9 @@ function IssueDetail({ id }: DrawerProps) {
                   {ticket.lines.length} item{ticket.lines.length > 1 ? "s" : ""} · {sum(ticket.lines, (l) => l.qty)} units
                 </span>
                 <Btn size="xs" variant="gh" onClick={() => openDrawer("stkt", ticket.id)}>Open ticket</Btn>
+                {/* The issue desk prints the same slip the ticket window does — and the same
+                    way, without the six digits it was never sent. */}
+                <PrintSlipBtn />
               </div>
             </div>
             {/* The digits are the collector's, not the issuing desk's: the server sends "" to
@@ -257,6 +261,8 @@ function IssueDetail({ id }: DrawerProps) {
           <TicketTrail hist={ticket.hist} />
         </Section>
       )}
+
+      {ticket && <TicketSlip t={ticket} />}
     </DrawerFrame>
   );
 }

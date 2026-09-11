@@ -1,13 +1,12 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { IT, LOC, OUTLETS } from "../../data/master";
 import { useApp } from "../../store";
-import { availOf, menuOf, qty } from "../../lib/selectors";
-import { fq, U } from "../../lib/fmt";
+import { availOf, madeItems, menuOf, qty } from "../../lib/selectors";
+import { fq, unitTotal } from "../../lib/fmt";
 import {
   Alert, Btn, Card, DataTable, FilterSelect, PageHead, Pill, Switch, TableFoot, Tag, Toolbar,
 } from "../../ui/kit";
 
-const PRODS = ["puff", "sand", "salad"];
 const SWITCH = ["All", "Switched on", "Switched off"] as const;
 type SwitchF = (typeof SWITCH)[number];
 
@@ -17,12 +16,20 @@ export default function Availability() {
   const [q, setQ] = useState("");
   const [sw, setSw] = useState<SwitchF>("All");
 
-  const all = [
-    ...PRODS,
-    ...Object.keys(s.stock.kitchen).filter((k) => IT[k]?.t === "FG" && !PRODS.includes(k)),
-  ];
+  // What the kitchen makes, plus any other finished good it happens to be holding. The first
+  // half came off the master rather than a three-key literal — see `madeItems()`.
+  const all = useMemo(() => {
+    void s.catalogVersion;
+    const made = madeItems();
+    return [
+      ...made,
+      ...Object.keys(s.stock.kitchen).filter((k) => IT[k]?.t === "FG" && !made.includes(k)),
+    ];
+  }, [s.catalogVersion, s.stock.kitchen]);
   const keys = all
-    .filter((k) => !q.trim() || (IT[k].n + " " + IT[k].c + " " + IT[k].g).toLowerCase().includes(q.trim().toLowerCase()))
+    .filter((k) => !q.trim()
+      || ((IT[k]?.n ?? k) + " " + (IT[k]?.c ?? "") + " " + (IT[k]?.g ?? ""))
+        .toLowerCase().includes(q.trim().toLowerCase()))
     .filter((k) => sw === "All" || (sw === "Switched off") === Boolean(s.ovr["kitchen:" + k]));
 
   const filtering = Boolean(q.trim() || sw !== "All");
@@ -73,8 +80,8 @@ export default function Availability() {
             return {
               key: k,
               cells: [
-                <>{IT[k].n}<small>{IT[k].c} · shelf life {IT[k].sl ?? 0} h</small></>,
-                <Tag kind="md">{IT[k].t}</Tag>,
+                <>{IT[k]?.n ?? k}<small>{IT[k]?.c ?? ""} · shelf life {IT[k]?.sl ?? 0} h</small></>,
+                <Tag kind="md">{IT[k]?.t ?? "—"}</Tag>,
                 <b>{fq(qty(s, "kitchen", k), k)}</b>,
                 a.ok
                   ? <Pill tone="ok">On · {a.left}</Pill>
@@ -90,7 +97,7 @@ export default function Availability() {
                         ))}
                       </div>
                     : <span className="dim mini">On at {carries.map((l) => LOC[l].n).join(", ")}</span>,
-                <Switch on={on} onChange={() => toggleAvail("kitchen", k)} label={`${IT[k].n} in the kitchen`} />,
+                <Switch on={on} onChange={() => toggleAvail("kitchen", k)} label={`${IT[k]?.n ?? k} in the kitchen`} />,
               ],
             };
           })}
@@ -102,11 +109,12 @@ export default function Availability() {
             action: filtering ? <Btn size="sm" onClick={clearFilters}>Clear filters</Btn> : undefined,
           }}
         />
+        {/* Per unit, not one number with a unit borrowed from whichever product happened to be
+            first: the kitchen can hold countable things and weighed ones on the same rack (M4). */}
         <TableFoot
           count={keys.length}
-          extra={<>Units on the rack{" "}
-            <b>{keys.reduce((t, k) => t + qty(s, "kitchen", k), 0)}</b>{" "}
-            {U("puff")}</>}
+          extra={<>On the rack{" "}
+            <b>{unitTotal(keys.map((k) => ({ it: k, qty: qty(s, "kitchen", k) }))) || "nothing"}</b></>}
         />
       </Card>
     </>

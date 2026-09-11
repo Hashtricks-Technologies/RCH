@@ -22,14 +22,17 @@ export default function NewProducts() {
   const [q, setQ] = useState("");
   const [stage, setStage] = useState<ProductReqStatus | "All">("Requested");
   const [reason, setReason] = useState<Record<string, string>>({});
-  // One lock per row: declining NPR-0012 must not grey out the button on NPR-0013.
-  const [busy, setBusy] = useState<string | null>(null);
+  // One lock per row, and it has to be a set rather than "which row is busy": declining
+  // NPR-0012 must not grey out — or quietly swallow — the button on NPR-0013. Each decline is
+  // its own write against its own request, so two of them at once is two writes, not a race.
+  const [busy, setBusy] = useState<Record<string, boolean>>({});
+  const isBusy = (id: string) => Boolean(busy[id]);
 
   const decline = async (id: string) => {
-    if (busy) return;
-    setBusy(id);
+    if (isBusy(id)) return;
+    setBusy((m) => ({ ...m, [id]: true }));
     const ok = await answer(id, "Declined", reason[id] ?? "Not stocking this line");
-    setBusy(null);
+    setBusy((m) => ({ ...m, [id]: false }));
     // The reason box is cleared only once the server has taken it.
     if (ok) setReason((m) => ({ ...m, [id]: "" }));
   };
@@ -97,9 +100,11 @@ export default function NewProducts() {
                     value={reason[r.id] ?? ""}
                     onChange={(e) => setReason({ ...reason, [r.id]: e.target.value })}
                   />
-                  <Btn size="xs" disabled={busy !== null} onClick={() => openDrawer("bnewitem", r.id)}>Create</Btn>
-                  <Btn size="xs" variant="dg" disabled={busy !== null} onClick={() => { void decline(r.id); }}>
-                    {busy === r.id ? "Declining…" : "Decline"}
+                  {/* `busy !== null` greyed out every other row too, which is what the comment
+                      on `busy` says it must not do. */}
+                  <Btn size="xs" disabled={isBusy(r.id)} onClick={() => openDrawer("bnewitem", r.id)}>Create</Btn>
+                  <Btn size="xs" variant="dg" disabled={isBusy(r.id)} onClick={() => { void decline(r.id); }}>
+                    {isBusy(r.id) ? "Declining…" : "Decline"}
                   </Btn>
                 </div>
               ) : <span className="dim">—</span>,
