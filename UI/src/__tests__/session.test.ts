@@ -19,6 +19,8 @@ const SNAPSHOT = {
   req: [], tkt: [], prq: [], po: [], pord: [], batch: [], bills: [], grn: [],
   vendors: [], contracts: [], tickets: [], productReqs: [], shopAsks: [],
   sales: [], dayLabels: [],
+  // ---- adjustments
+  adjustments: [],
 };
 
 describe("restoring the session at boot", () => {

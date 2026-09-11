@@ -246,6 +246,9 @@ export default function Stock() {
         sub={`${LOC.kitchen.n} · ${LOC.kitchen.c} · ${LOC.kitchen.cc} — this location only.`}
         actions={<>
           <span className="mini">Stock value {money0(total)}</span>
+          {/* ---- adjustments: a tray that went over or a bag that split leaves the kitchen
+              without going anywhere, and the books have to follow it with a reason on them. */}
+          <Btn variant="gh" onClick={() => openDrawer("adjstock", "kitchen")}>Write off</Btn>
           <Btn onClick={() => openDrawer("pnew", "new")}>New product</Btn>
         </>}
       />

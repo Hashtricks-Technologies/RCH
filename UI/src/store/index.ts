@@ -6,8 +6,9 @@ import { refetch } from "../api/refetch";
 import { applySnapshot } from "../api/wire";
 import { LOC } from "../data/master";
 import type {
-  Batch, Bill, CreditResponse, DraftLine, DrawerState, Grn, LocKey, Payer, PordStatus, ProdOrder,
-  PurchaseOrder, Requisition, StockLedgerRow, StockLoc, StockRequest, Tender, Ticket, User, Vendor,
+  Adjustment, Batch, Bill, CreditResponse, DraftLine, DrawerState, Grn, LocKey, Payer, PordStatus,
+  ProdOrder, PurchaseOrder, Requisition, StockLedgerRow, StockLoc, StockRequest, Tender, Ticket,
+  User, Vendor,
 } from "../types";
 import { applyTheme, nextTheme, readStoredTheme, storeTheme, type ThemePref } from "../lib/theme";
 import { createProcurementSlice, type ProcurementSlice } from "./procurement";
@@ -40,6 +41,10 @@ export interface AppState extends ProcurementSlice, OpsSlice {
   vendors: Vendor[];
   sales: number[][];
   dayLabels: string[];
+  /** ---- adjustments. The register of write-offs and count-ups behind the `adjustment` moves
+   *  on the ledger — a correction to a shelf, with a reason and a signature. Read-only here:
+   *  the write that adds to it lives in the ops slice, beside the other documents. */
+  adjustments: Adjustment[];
   cart: Record<string, Record<string, number>>;
   draft: DraftLine[];
   prqDraft: DraftLine[];
@@ -138,6 +143,8 @@ export const useApp = create<AppState>((set, get) => ({
   stock: EMPTY_STOCK, rsv: {}, ovr: {}, prices: { A: {}, B: {} }, menu: {},
   req: [], tkt: [], prq: [], po: [], pord: [], batch: [], bills: [], grn: [], vendors: [],
   sales: [], dayLabels: [],
+  // ---- adjustments
+  adjustments: [],
   cart: {},
   draft: [],
   prqDraft: [],

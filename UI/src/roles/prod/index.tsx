@@ -8,6 +8,8 @@ import Requests from "./Requests";
 import Tickets from "./Tickets";
 import "./OrderDrawer";
 import "./TicketDrawer";
+// ---- adjustments: the "adjstock" drawer, pinned to the kitchen by the button that opens it.
+import "../../ui/AdjustmentForm";
 
 export const screens: Record<string, ComponentType> = {
   dash: Dashboard,

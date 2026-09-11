@@ -3,8 +3,8 @@ import { contractInWindow, istDate } from "@rch/domain";
 import { ApiError, call } from "../api/client";
 import { refetch } from "../api/refetch";
 import type {
-  ItemType, LocKey, ProductRequest, RateContract, ShopAsk,
-  SupportTicket, TicketPriority, TicketStatus, TicketTopic,
+  AdjustReason, ItemType, LocKey, ProductRequest, RateContract, ShopAsk,
+  StockLoc, SupportTicket, TicketPriority, TicketStatus, TicketTopic,
 } from "../types";
 import { toInputDate } from "../lib/fmt";
 import type { AppState } from "./index";
@@ -56,6 +56,13 @@ export interface OpsSlice {
   /** The holding shop grants some or all of it, which issues the transfer ticket. */
   answerShopAsk: (id: string, grant: number) => Promise<boolean>;
   declineShopAsk: (id: string, reason: string) => Promise<boolean>;
+
+  // ---- adjustments
+  /** A write-off or a count-up, as a document: some lines down, some up, one reason over the
+   *  lot. Answers `true` only once the server has taken it, so a refusal leaves the form with
+   *  what the operator typed still on it. Every rule — what folds, what is free to write off,
+   *  which shelves this role may touch — is the server's; nothing is decided here. */
+  createAdjustment: (body: { loc: StockLoc; reason: AdjustReason; note: string; lines: { it: string; qty: number }[] }) => Promise<boolean>;
 }
 
 /** Every action in this slice is the server's now: post the body, repeat the sentence that came
@@ -241,5 +248,15 @@ export const createOpsSlice = (get: Get): OpsSlice => ({
       get().notify(e instanceof ApiError ? e.message : "Could not decline the ask — check the connection and try again.");
       return false;
     }
+  },
+
+  // ---- adjustments
+  createAdjustment: async ({ loc, reason, note, lines }) => {
+    try {
+      const r = await call(routes.createAdjustment, { body: { loc, reason, note: note.trim(), lines } });
+      get().notify(r.message);
+      await refetch(r.changed, r.message);
+      return true;
+    } catch (e) { return fail(get, e, "record the adjustment"); }
   },
 });

@@ -65,6 +65,8 @@ const snapshot = (prices: { A: Record<string, number>; B: Record<string, number>
   stock: {}, rsv: {}, ovr: {}, prices, menu: FX.MENU,
   req: [], tkt: [], prq: [], po: [], pord: [], batch: [], bills: [], grn: [], vendors: [],
   contracts: [], tickets: [], productReqs: [], shopAsks: [], sales: [], dayLabels: [],
+  // ---- adjustments
+  adjustments: [],
 });
 
 beforeEach(() => {
@@ -1602,5 +1604,60 @@ describe("what the browser no longer knows on its own", () => {
     fetchMock.mockRejectedValue(new TypeError("Failed to fetch"));
     expect(await S().readStockLedger("store", 30)).toBeNull();
     expect(S().toast).toBe("Could not read the stock ledger.");
+  });
+});
+
+// ---- adjustments
+describe("createAdjustment — POST /adjustments", () => {
+  const ADJ = {
+    id: "ADJ-2026-0001", loc: "store", reason: "wastage", note: "Chiller failed overnight",
+    by: "Suresh Muthu", at: "2026-09-04T04:30:00.000Z", lines: [{ it: "milk", qty: -2.5 }],
+  };
+
+  it("sends the signed lines and reads the shelf and the register back", async () => {
+    as("store");
+    serve({
+      "POST /api/v1/adjustments": () => json({ result: ADJ, changed: ["stock", "adjustments"], message: "ADJ-2026-0001 — 2.500 L written off at Central Store (wastage)" }),
+      "GET /api/v1/stock": () => json(STOCK),
+      "GET /api/v1/adjustments": () => json([ADJ]),
+    });
+
+    expect(await S().createAdjustment({
+      loc: "store", reason: "wastage", note: "  Chiller failed overnight  ", lines: [{ it: "milk", qty: -2.5 }],
+    })).toBe(true);
+
+    expect(hit("POST /api/v1/adjustments")[0].body).toEqual({
+      loc: "store", reason: "wastage", note: "Chiller failed overnight", lines: [{ it: "milk", qty: -2.5 }],
+    });
+    expect(S().toast).toBe("ADJ-2026-0001 — 2.500 L written off at Central Store (wastage)");
+    // Two narrow reads, not a snapshot: the document and the shelf it corrected.
+    expect(hit("GET /api/v1/stock")).toHaveLength(1);
+    expect(hit("GET /api/v1/adjustments")).toHaveLength(1);
+    expect(hit("GET /api/v1/snapshot")).toHaveLength(0);
+    expect(S().adjustments[0].id).toBe("ADJ-2026-0001");
+    expect(S().adjustments[0].at).toMatch(/^\d{2}:\d{2}$/);   // ISO -> HH:MM on the way in
+  });
+
+  it("carries a count-up on the rejected-goods shelf, which no other write body may name", async () => {
+    as("store");
+    const up = { ...ADJ, loc: "quarantine", reason: "count", lines: [{ it: "butter", qty: 1.5 }] };
+    serve({
+      "POST /api/v1/adjustments": () => json({ result: up, changed: ["stock", "adjustments"], message: "ADJ-2026-0002 — 1.500 kg counted up at Quarantine" }),
+      "GET /api/v1/stock": () => json(STOCK),
+      "GET /api/v1/adjustments": () => json([up]),
+    });
+    expect(await S().createAdjustment({ loc: "quarantine", reason: "count", note: "", lines: [{ it: "butter", qty: 1.5 }] })).toBe(true);
+    expect(hit("POST /api/v1/adjustments")[0].body).toMatchObject({ loc: "quarantine" });
+  });
+
+  it("repeats the server's refusal and leaves the register untouched", async () => {
+    as("store");
+    const before = S().adjustments;
+    serve({ "POST /api/v1/adjustments": () => refusal("Cannot write off 2.000 kg of Butter, salted — Central Store has only 1.000 kg free") });
+
+    expect(await S().createAdjustment({ loc: "store", reason: "expired", note: "", lines: [{ it: "butter", qty: -2 }] })).toBe(false);
+    expect(S().toast).toBe("Cannot write off 2.000 kg of Butter, salted — Central Store has only 1.000 kg free");
+    expect(S().adjustments).toBe(before);
+    expect(hit("GET /api/v1/adjustments")).toHaveLength(0);
   });
 });

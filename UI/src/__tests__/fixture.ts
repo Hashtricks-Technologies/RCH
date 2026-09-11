@@ -46,6 +46,9 @@ export function resetStore() {
     grn: clone(FX.seedGrn), vendors: clone(FX.seedVendors), sales: clone(FX.seedSales), dayLabels: FX.DAY_LABELS,
     contracts: FX.seedContracts(), productReqs: FX.seedProductRequests(), shopAsks: FX.seedShopAsks(),
     tickets: FX.seedTickets(),
+    // ---- adjustments: nothing has ever been written off in the demo hospital, so the register
+    // starts empty — the same shape the fixtures give quarantine's shelf.
+    adjustments: [],
     cart: {}, draft: [], prqDraft: [], drawer: null, toast: null, shopFilter: null,
   });
 }

@@ -54,6 +54,8 @@ export function applySnapshot(s: Snapshot): void {
     productReqs: s.productReqs.map((p) => ({ ...p, at: t(p.at) })),
     shopAsks: s.shopAsks.map((a) => ({ ...a, at: t(a.at) })),
     sales: s.sales, dayLabels: s.dayLabels,
+    // ---- adjustments
+    adjustments: s.adjustments.map((a) => ({ ...a, at: t(a.at) })),
   }));
 }
 
@@ -134,4 +136,12 @@ export function applyProductRequests(rows: Snapshot["productReqs"]): void {
 export function applyItems(items: Snapshot["items"]): void {
   hydrateItems(items);
   useApp.setState((s) => ({ catalogVersion: s.catalogVersion + 1 }));
+}
+
+// ---- adjustments
+/** GET /adjustments -> the register of write-offs and count-ups, times as "HH:MM". Every
+ *  adjustment names "adjustments" and "stock" in `changed`, so this and `applyStock` are what a
+ *  write-off costs — the document and the shelf it corrected, not a whole snapshot. */
+export function applyAdjustments(rows: Snapshot["adjustments"]): void {
+  useApp.setState({ adjustments: rows.map((a) => ({ ...a, at: t(a.at) })) });
 }

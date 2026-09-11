@@ -28,6 +28,8 @@ export default function ItemsStock() {
   const addProduct = useApp((x) => x.addProduct);
   const requestNewProduct = useApp((x) => x.requestNewProduct);
   const notify = useApp((x) => x.notify);
+  // ---- adjustments: the "Adjust stock" drawer, opened over one outlet at a time.
+  const openDrawer = useApp((x) => x.openDrawer);
 
   const [q, setQ] = useState("");
   const [type, setType] = useState(0);
@@ -305,6 +307,8 @@ export default function ItemsStock() {
             { h: "Items held", r: true },
             { h: "At zero", r: true },
             { h: "Stock value", r: true },
+            // ---- adjustments
+            { h: "", r: true, w: "12%" },
           ]}
           rows={ALL_LOCS.map((l) => {
             const held = Object.keys(s.stock[l] ?? {});
@@ -316,6 +320,12 @@ export default function ItemsStock() {
                 held.length,
                 held.filter((k) => qty(s, l, k) <= 0).length,
                 lakh(stockValue(s, l)),
+                // Wastage, breakage and a count that came out short are the shops' own, and so
+                // is correcting them. The central store and the kitchen write off their own
+                // shelves from their own screens, which is why there is no button on those rows.
+                OUTLETS.includes(l)
+                  ? <Btn size="xs" variant="gh" onClick={() => openDrawer("adjstock", l)}>Adjust stock</Btn>
+                  : <span className="dim mini">Writes off its own</span>,
               ],
             };
           })}
