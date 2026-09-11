@@ -141,12 +141,16 @@ export default function Dashboard() {
       ],
     }));
 
+  // Newest first on the *instant*, not on the printed stamp beside it: `when` is a display
+  // string ("09:40", "27-Aug"), and comparing two of those puts last week's receipt above
+  // this morning's requisition. `iso` is the server's own stamp and sorts lexically.
   const feed: FeedItem[] = [
     ...s.prq.map((p) => ({
       key: "p" + p.id,
       title: <>{p.id} · {p.st === "Sent" ? "requisition received" : p.st.toLowerCase()}</>,
       body: <>{p.by} · {p.lines.length} item{p.lines.length > 1 ? "s" : ""} · {money0(lineValue(p.lines))}</>,
       when: p.at,
+      iso: p.iso,
       color: p.st === "Sent" ? "var(--warn)" : p.st === "Declined" ? "var(--crit)" : "var(--c1)",
     })),
     ...s.po.map((o) => ({
@@ -154,9 +158,10 @@ export default function Dashboard() {
       title: <>{o.id} · {o.st === "Received" ? "goods received" : "raised on " + vendorName(s.vendors, o.vendor)}</>,
       body: <>{money0(poValue(o))} · expected {o.eta}</>,
       when: o.recv ?? o.at,
+      iso: o.iso,
       color: o.st === "Received" ? "var(--good)" : "var(--c2)",
     })),
-  ].sort((a, b) => (b.when ?? "").localeCompare(a.when ?? "")).slice(0, 7);
+  ].sort((a, b) => (b.iso ?? "").localeCompare(a.iso ?? "")).slice(0, 7);
 
   return (
     <>

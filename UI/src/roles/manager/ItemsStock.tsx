@@ -254,40 +254,40 @@ export default function ItemsStock() {
               No outlet is configured, so there is no till to list a product on.
             </p>
           ) : (
-          <>
-          <FormRow cols="f2">
-            <Field label="Shop">
-              <select value={shop} onChange={(e) => { setShop(e.target.value as LocKey); setPick(""); }}>
-                {OUTLETS.map((l) => <option key={l} value={l}>{LOC[l].n} — list {LOC[l].list}</option>)}
-              </select>
-            </Field>
-            <Field label="Product" hint={`${listable.length} catalogue product${listable.length === 1 ? "" : "s"} not yet on this till.`}>
-              <select value={pick} onChange={(e) => setPick(e.target.value)}>
-                <option value="">Pick a product…</option>
-                {listable.map((k) => (
-                  <option key={k} value={k}>{IT[k].n} — {IT[k].t}</option>
-                ))}
-              </select>
-            </Field>
-          </FormRow>
-          {pick !== "" && pickPrice == null && (
-            <Alert tone="w" label="NO PRICE">
-              {IT[pick].n} has no price on list {list}. Add it here, then set a price on the Price Lists screen —
-              until then the counter cannot bill it.
-            </Alert>
-          )}
-          <div className="totrow"><span>Currently listed at {LOC[shop].n}</span><span>{listed.length}</span></div>
-          <div className="totrow">
-            <span>Price on list {list}</span>
-            <span>{pick === "" ? "—" : pickPrice == null ? "not priced" : money(pickPrice)}</span>
-          </div>
-          <div className="mtop">
-            <Btn wide disabled={!pick || listing} title={pick ? undefined : "Pick a product first"}
-              onClick={() => void listAtShop()}>
-              {listing ? "Listing…" : `List at ${LOC[shop].n}`}
-            </Btn>
-          </div>
-          </>
+            <>
+            <FormRow cols="f2">
+              <Field label="Shop">
+                <select value={shop} onChange={(e) => { setShop(e.target.value as LocKey); setPick(""); }}>
+                  {OUTLETS.map((l) => <option key={l} value={l}>{LOC[l].n} — list {LOC[l].list}</option>)}
+                </select>
+              </Field>
+              <Field label="Product" hint={`${listable.length} catalogue product${listable.length === 1 ? "" : "s"} not yet on this till.`}>
+                <select value={pick} onChange={(e) => setPick(e.target.value)}>
+                  <option value="">Pick a product…</option>
+                  {listable.map((k) => (
+                    <option key={k} value={k}>{IT[k].n} — {IT[k].t}</option>
+                  ))}
+                </select>
+              </Field>
+            </FormRow>
+            {pick !== "" && pickPrice == null && (
+              <Alert tone="w" label="NO PRICE">
+                {IT[pick].n} has no price on list {list}. Add it here, then set a price on the Price Lists screen —
+                until then the counter cannot bill it.
+              </Alert>
+            )}
+            <div className="totrow"><span>Currently listed at {LOC[shop].n}</span><span>{listed.length}</span></div>
+            <div className="totrow">
+              <span>Price on list {list}</span>
+              <span>{pick === "" ? "—" : pickPrice == null ? "not priced" : money(pickPrice)}</span>
+            </div>
+            <div className="mtop">
+              <Btn wide disabled={!pick || listing} title={pick ? undefined : "Pick a product first"}
+                onClick={() => void listAtShop()}>
+                {listing ? "Listing…" : `List at ${LOC[shop].n}`}
+              </Btn>
+            </div>
+            </>
           )}
         </Card>
 

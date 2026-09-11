@@ -106,7 +106,10 @@ export default function Support() {
         { l: "Your open tickets", v: String(tickets.filter((t) => t.st !== "Closed" && t.st !== "Resolved").length), d: "raised by you" },
         { l: "Waiting on your reply", v: String(waiting), d: waiting ? "support has asked you something" : "nothing pending" },
         { l: "Resolved and closed", v: String(done), d: "your history" },
-        { l: "Typical first reply", v: "22 min", d: "urgent tickets, working hours" },
+        // There was a "Typical first reply · 22 min" tile here. Nothing measures it — no
+        // response time is recorded anywhere in the system — so it was a service level the
+        // portal invented and then held itself to in front of the person waiting on it.
+        { l: "Tickets you have raised", v: String(tickets.length), d: "all time" },
       ]} />
 
       {waiting > 0 && (
@@ -153,9 +156,14 @@ export default function Support() {
             <Btn variant="gh" onClick={() => { setSubject(""); setBody(""); }}>Clear</Btn>
           </BtnRow>
           <div className="mtop" />
-          <Alert tone="i" label="HOURS">
-            Support desk 7 am to 10 pm, seven days. Out of hours, the night manager holds the
-            escalation number. Urgent tickets page the on-call engineer.
+          {/* What stood here promised a 7 am to 10 pm desk, a night manager holding an
+              escalation number and an on-call engineer paged by urgent tickets. None of the
+              three exists: the desk is whoever reads this list. Saying so is better than
+              leaving somebody at 11 pm waiting for a page that is never sent. */}
+          <Alert tone="i" label="WHAT HAPPENS NEXT">
+            A ticket goes on this list the moment you send it, and you will see the reply here
+            and on any other screen you have open. There is no separate helpdesk number — if it
+            is stopping you serving customers, mark it urgent and tell your manager as well.
           </Alert>
         </Card>
 

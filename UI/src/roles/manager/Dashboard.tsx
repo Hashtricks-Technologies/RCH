@@ -8,7 +8,7 @@ import {
   Alert, Btn, Card, DataTable, FilterSelect, PageHead, Pill, TableFoot, Toolbar,
 } from "../../ui/kit";
 import { emptyFor, sortRows, useSort, type SortValue } from "./useSort";
-import type { LocKey, StockRequest } from "../../types";
+import type { DatedDoc, LocKey, StockRequest } from "../../types";
 
 interface Off { n: number; manual: number; stock: number; recipe: number }
 
@@ -22,7 +22,10 @@ const why = (o: Off) =>
 const PRIORITY = ["All", "Urgent", "Normal"] as const;
 const ACTIVITY = ["All", "Bills", "Requests", "Shop transfers"] as const;
 
-interface Act { key: string; kind: (typeof ACTIVITY)[number]; t: string; what: string; where: string; who: string }
+/** `t` is the clock face; `iso` is the instant it sorts on. `"22:00"` sorts above `"09:00"`
+ *  whichever day each belongs to, which put yesterday evening's last bill above this
+ *  morning's first on the one table the manager reads to find out what just happened. */
+interface Act { key: string; kind: (typeof ACTIVITY)[number]; t: string; iso: string; what: string; where: string; who: string }
 
 export default function Dashboard() {
   const s = useApp();
@@ -95,13 +98,15 @@ export default function Dashboard() {
       || r.by.toLowerCase().includes(rTerm)
       || LOC[r.from].n.toLowerCase().includes(rTerm)
       || lineNames(r).toLowerCase().includes(rTerm));
-  const queueVal = (r: StockRequest, k: string): SortValue =>
+  const queueVal = (r: DatedDoc<StockRequest>, k: string): SortValue =>
     k === "id" ? r.id
       : k === "outlet" ? LOC[r.from].n
         : k === "by" ? r.by
           : k === "items" ? r.lines.length
             : k === "prio" ? (r.urg ? 0 : 1)
-              : r.at;
+              // The instant, not the printed time: the queue is sorted newest-first by
+              // default, and "09:40" from yesterday outranked "09:12" from this morning.
+              : r.iso;
   const queueSorted = sortRows(queueRows, queue.sort, queueVal);
   const queueFiltered = rTerm !== "" || outlet > 0 || prio > 0;
 
@@ -111,6 +116,7 @@ export default function Dashboard() {
       key: "b" + b.no,
       kind: "Bills" as const,
       t: b.t,
+      iso: b.iso,
       // ---- bill void: the feed is what happened, so a voided bill stays on it — and says so,
       // because "Bill CF/1188 · ₹110.00 · Cash" on its own reads as money the hospital kept.
       what: `Bill ${b.no} · ${money(b.tot)} · ${b.pay}${b.voided ? " · VOIDED" : ""}`,
@@ -122,6 +128,7 @@ export default function Dashboard() {
         key: "r" + r.id + i,
         kind: "Requests" as const,
         t: h.t,
+        iso: h.iso,
         what: `${r.id} — ${h.s} · ${unitTotal(r.lines)}`,
         where: LOC[r.from].n,
         who: h.who,
@@ -129,7 +136,10 @@ export default function Dashboard() {
     ...transfers.map((t) => ({
       key: "t" + t.id,
       kind: "Shop transfers" as const,
+      // A movement ticket has no `at` of its own, only a trail — so the last thing that
+      // happened to it is when it happened, and the column has always said so with a dash.
       t: "—",
+      iso: t.hist[t.hist.length - 1]?.iso ?? "",
       what: `${t.id} — ${t.st.toLowerCase()} · ${unitTotal(t.lines)}`,
       where: `${LOC[t.from].n} to ${LOC[t.to].n}`,
       who: "Shop to shop",
@@ -143,7 +153,7 @@ export default function Dashboard() {
       || a.where.toLowerCase().includes(aTerm)
       || a.who.toLowerCase().includes(aTerm));
   const actSorted = sortRows(actRows, actSort.sort, (a, k) =>
-    k === "what" ? a.what : k === "where" ? a.where : k === "who" ? a.who : k === "kind" ? a.kind : a.t)
+    k === "what" ? a.what : k === "where" ? a.where : k === "who" ? a.who : k === "kind" ? a.kind : a.iso)
     .slice(0, 24);
   const actFiltered = aTerm !== "" || akind > 0;
 
