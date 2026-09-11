@@ -1,4 +1,6 @@
 import type { Db } from "../db/client.js";
+import { idemStore } from "../plugins/idempotency.js";
+import { NOT_RECORDED, recordIdempotent } from "./idempotency-record.js";
 
 export type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
@@ -7,8 +9,35 @@ export type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
  *  standalone GET and a write validating against the master it is about to commit with. */
 export type Reader = Db | Tx;
 
-/** All writes go through here so a service cannot forget the transaction. */
-export const withTransaction = <T>(db: Db, fn: (tx: Tx) => Promise<T>): Promise<T> => db.transaction(fn);
+/**
+ * All writes go through here so a service cannot forget the transaction — and so the
+ * idempotency record cannot be forgotten either.
+ *
+ * When this transaction is running inside a write request (`mount()` put the request's claim
+ * into `idemStore`), the response the transaction produced is written into the claim row as the
+ * **last statement before COMMIT**. It therefore commits with the write or not at all: a pod
+ * that dies, a pool that times out, or a response that fails its own schema on the way out can
+ * no longer leave the hospital with a bill nobody's Idempotency-Key knows about, which is what
+ * turned the client's retry into a second bill.
+ *
+ * A write may open more than one transaction, and only one of them returns the response, so a
+ * value the route's schema refuses is not an error here — it means "not this one", and the next
+ * transaction is asked in turn. In development and test that leniency is switched off
+ * (`ctx.strict`): the first transaction to produce an unrecordable response takes the write down
+ * with it, so a write whose answer is not recorded shows up as a failure on the bench rather
+ * than as an un-replayable sale in the hospital. Production leaves the write standing and falls
+ * back to `onSend`.
+ */
+export const withTransaction = <T>(db: Db, fn: (tx: Tx) => Promise<T>): Promise<T> =>
+  db.transaction(async (tx) => {
+    const value = await fn(tx);
+    const ctx = idemStore.getStore();
+    if (ctx && !ctx.idem.recorded) {
+      ctx.idem.recorded = await recordIdempotent(tx, ctx, value);
+      if (!ctx.idem.recorded && ctx.strict) throw new Error(NOT_RECORDED);
+    }
+    return value;
+  });
 
 /**
  * Every read that makes more than one query goes through here, so **one request takes one

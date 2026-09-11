@@ -1,19 +1,39 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { randomUUID } from "node:crypto";
 import { eq, sql } from "drizzle-orm";
+import type { PgTable } from "drizzle-orm/pg-core";
 import { defineRoute, OkResponseSchema } from "@rch/contract";
 import { buildTestApp, testConfig } from "../test/app.js";
 import { seedTestDb } from "../test/seed.js";
 import { authHeaders } from "../test/auth.js";
 import { buildApp, type App } from "../app.js";
 import { mount } from "../routes.js";
-import { purgeIdempotencyKeys } from "./idempotency.js";
-import { idempotencyKeys } from "../db/schema/index.js";
+import { idemHooks, purgeIdempotencyKeys } from "./idempotency.js";
+import { withTransaction } from "../lib/db.js";
+import { RuleError } from "../lib/errors.js";
+import { bills, idempotencyKeys, stockMoves, users } from "../db/schema/index.js";
 import { meRepo } from "../modules/me/repo.js";
 
 let app: App;
 beforeAll(async () => { app = await buildTestApp({ schema: "idem" }); await seedTestDb(app.testDb!.db); await app.ready(); });
 afterAll(async () => { await app.close(); });
+
+const countRows = async (table: PgTable): Promise<number> => {
+  const r = await app.db.execute(sql`select count(*)::int as n from ${table}`);
+  return Number((r.rows[0] as { n: number }).n);
+};
+const claimRow = async (key: string) => (await app.db.select().from(idempotencyKeys).where(eq(idempotencyKeys.key, key)))[0];
+const phoneOf = async (id: string) => (await app.db.select().from(users).where(eq(users.id, id)))[0].phone;
+
+/** An app of its own carrying a test-only write, mounted through the real `mount()` so the
+ *  route picks up the same authenticate → roleGate → idempotency chain a module's write does,
+ *  and sharing this file's already-migrated schema so it seeds nothing. */
+async function appWith(register: (a: App) => void, env: Partial<NodeJS.ProcessEnv> = {}): Promise<App> {
+  const a = await buildApp(testConfig(env), { db: app.db, migrationsSchema: app.testDb!.schemaName });
+  register(a);
+  await a.ready();
+  return a;
+}
 
 /** Promise.withResolvers, which the ES2023 lib this package targets does not declare yet. */
 function deferred(): { promise: Promise<void>; resolve: () => void } {
@@ -92,9 +112,11 @@ describe("Idempotency-Key", () => {
     const key = randomUUID(); const h = { ...(await authHeaders(app, "u1")), "idempotency-key": key };
     const payload = { ph: "70000 00007" };
     expect((await app.inject({ method: "PATCH", url: "/api/v1/me", headers: h, payload })).statusCode).toBe(200);
-    // Rewind the row to what a request that died between COMMIT and onSend leaves behind:
-    // a claim with no response. Fresh, it blocks; a minute old, it is fair game.
-    const claim = { statusCode: 0, response: sql`'null'::jsonb` };
+    // Rewind the row to what a request that died *before* its transaction committed leaves
+    // behind: a claim with no response and no `committed_at`. Fresh, it blocks; a minute old,
+    // it is fair game. A row that does carry `committed_at` never is, however old — the write
+    // behind it happened, and that is the case two tests further down.
+    const claim = { statusCode: 0, response: sql`'null'::jsonb`, committedAt: null };
     const where = eq(idempotencyKeys.key, key);
     await app.db.update(idempotencyKeys).set({ ...claim, createdAt: new Date() }).where(where);
     expect((await app.inject({ method: "PATCH", url: "/api/v1/me", headers: h, payload })).statusCode).toBe(409);
@@ -153,6 +175,185 @@ describe("Idempotency-Key", () => {
       await boomApp.close();
     }
   });
+  it("records the response as the last statement before COMMIT, with committed_at set", async () => {
+    const key = randomUUID(); const h = { ...(await authHeaders(app, "u1")), "idempotency-key": key };
+    const r = await app.inject({ method: "PATCH", url: "/api/v1/me", headers: h, payload: { ph: "90000 00009" } });
+    expect(r.statusCode, r.body).toBe(200);
+    const row = await claimRow(key);
+    // Written by the write's own transaction, not by a hook afterwards: the stamp says so, and
+    // the body stored is the parsed response, so a replay serialises the same bytes.
+    expect(row.statusCode).toBe(200);
+    expect(row.committedAt).toBeInstanceOf(Date);
+    expect(row.response).toEqual(r.json());
+  });
+
+  it("a crash after commit still replays the stored body and writes nothing", async () => {
+    // The pod dies between COMMIT and the response hooks: the transaction's own record is all
+    // that is left, and it has to be enough.
+    const key = randomUUID();
+    const headers = { ...(await authHeaders(app, "u1")), "idempotency-key": key };
+    const payload = { loc: "coffee", tender: "Cash", lines: [{ it: "juice", qty: 1 }] };
+    const spy = vi.spyOn(idemHooks, "recordAfterSend").mockResolvedValue(undefined);
+    const first = await app.inject({ method: "POST", url: "/api/v1/bills", headers, payload });
+    spy.mockRestore();
+    expect(first.statusCode, first.body).toBe(200);
+    expect((await claimRow(key)).committedAt).toBeInstanceOf(Date);
+
+    const billsBefore = await countRows(bills); const movesBefore = await countRows(stockMoves);
+    const again = await app.inject({ method: "POST", url: "/api/v1/bills", headers, payload });
+    expect(again.statusCode, again.body).toBe(200);
+    expect(again.headers["idempotency-replayed"]).toBe("true");
+    expect(again.body).toBe(first.body);
+    expect(await countRows(bills)).toBe(billsBefore);       // no second bill
+    expect(await countRows(stockMoves)).toBe(movesBefore);  // and no second deduction
+  });
+
+  it("never deletes a claim whose transaction already committed", async () => {
+    // The write commits, then the request falls over on the way out. The old hook deleted the
+    // claim on any 5xx, so the client's retry ran the write again; now the commit stamp is what
+    // the delete is guarded on.
+    const route = defineRoute({ method: "POST", path: "/__test/late-boom", access: "any", response: OkResponseSchema });
+    const a = await appWith((x) => mount(x, route, async () => {
+      await withTransaction(app.db, async (tx) => { await meRepo.update(tx, "u1", { phone: "12121 21212" }); return { ok: true } as const; });
+      const err = new Error("died on the way out"); (err as { statusCode?: number }).statusCode = 503; throw err;
+    }));
+    try {
+      const key = randomUUID();
+      const headers = { ...(await authHeaders(a, "u1")), "idempotency-key": key };
+      const r = await a.inject({ method: "POST", url: "/api/v1/__test/late-boom", headers });
+      expect(r.statusCode).toBe(503);
+      expect(await phoneOf("u1")).toBe("12121 21212"); // the transaction did commit
+      const row = await claimRow(key);
+      expect(row.committedAt).toBeInstanceOf(Date);
+      expect(row.statusCode).toBe(200);
+      const retry = await a.inject({ method: "POST", url: "/api/v1/__test/late-boom", headers });
+      expect(retry.statusCode).toBe(200);
+      expect(retry.headers["idempotency-replayed"]).toBe("true");
+      expect(retry.json()).toEqual({ ok: true });
+    } finally {
+      await a.close();
+    }
+  });
+
+  it("still deletes an uncommitted claim on a 429 and on a 503", async () => {
+    // The other half of the same guard: nothing committed, so nothing worth replaying.
+    const route = defineRoute({ method: "POST", path: "/__test/early-boom", access: "any", response: OkResponseSchema });
+    const a = await appWith((x) => mount(x, route, async () => {
+      const err = new Error("simulated overload"); (err as { statusCode?: number }).statusCode = 503; throw err;
+    }), { RATE_LIMIT_PER_MINUTE: "10" });
+    try {
+      const h = await authHeaders(a, "u2");
+      const boomKey = randomUUID();
+      expect((await a.inject({ method: "POST", url: "/api/v1/__test/early-boom", headers: { ...h, "idempotency-key": boomKey } })).statusCode).toBe(503);
+      expect(await claimRow(boomKey)).toBeUndefined();
+      // Burn what is left of the budget on reads (no Idempotency-Key, so no claims), then the
+      // next write is throttled before it ever runs.
+      for (let i = 0; i < 10; i++) await a.inject({ method: "GET", url: "/api/v1/me", headers: h });
+      const throttledKey = randomUUID();
+      const r = await a.inject({ method: "PATCH", url: "/api/v1/me", headers: { ...h, "idempotency-key": throttledKey }, payload: { ph: "13131 31313" } });
+      expect(r.statusCode).toBe(429);
+      expect(await claimRow(throttledKey)).toBeUndefined();
+    } finally {
+      await a.close();
+    }
+  });
+
+  it("refuses to take over a claim that carries committed_at, however old it is", async () => {
+    const key = randomUUID(); const h = { ...(await authHeaders(app, "u1")), "idempotency-key": key };
+    const payload = { ph: "14141 41414" };
+    expect((await app.inject({ method: "PATCH", url: "/api/v1/me", headers: h, payload })).statusCode).toBe(200);
+    const spy = vi.spyOn(meRepo, "update");
+    // Age it far past CLAIM_STALE_MS. A committed row still answers with its stored response.
+    await app.db.update(idempotencyKeys).set({ createdAt: new Date(Date.now() - 130_000) }).where(eq(idempotencyKeys.key, key));
+    const replay = await app.inject({ method: "PATCH", url: "/api/v1/me", headers: h, payload });
+    expect(replay.statusCode).toBe(200);
+    expect(replay.headers["idempotency-replayed"]).toBe("true");
+    // And torn down to a bare claim — the shape a takeover is for — the stamp still refuses it,
+    // because a committed write is not a write to run again.
+    await app.db.update(idempotencyKeys)
+      .set({ statusCode: 0, response: sql`'null'::jsonb`, createdAt: new Date(Date.now() - 130_000) })
+      .where(eq(idempotencyKeys.key, key));
+    const refused = await app.inject({ method: "PATCH", url: "/api/v1/me", headers: h, payload });
+    expect(refused.statusCode).toBe(409);
+    expect(refused.json().error.message).toMatch(/still being processed/);
+    expect(spy).not.toHaveBeenCalled(); // neither attempt reached the write
+    spy.mockRestore();
+  });
+
+  it("rolls the write back when its own response does not match its schema", async () => {
+    // A response the route's own schema refuses can never reach the client and can never be
+    // replayed, so on the bench (`config.env !== "production"`) it takes the write down with it
+    // rather than leaving a change nobody's key knows about.
+    const route = defineRoute({ method: "POST", path: "/__test/bad-shape", access: "any", response: OkResponseSchema });
+    const before = await phoneOf("u2");
+    const a = await appWith((x) => mount(x, route, async () => withTransaction(app.db, async (tx) => {
+      await meRepo.update(tx, "u2", { phone: "15151 51515" });
+      return { ok: "yes" } as never; // OkResponseSchema wants the literal `true`
+    })));
+    try {
+      const key = randomUUID();
+      const headers = { ...(await authHeaders(a, "u2")), "idempotency-key": key };
+      const r = await a.inject({ method: "POST", url: "/api/v1/__test/bad-shape", headers });
+      expect(r.statusCode).toBe(500);
+      expect(await phoneOf("u2")).toBe(before);     // rolled back
+      expect(await claimRow(key)).toBeUndefined();  // and the uncommitted claim is gone
+    } finally {
+      await a.close();
+    }
+  });
+
+  it("records a refusal in onSend, so a re-sent 422 replays the same sentence", async () => {
+    // A refusal rolls its transaction back, so there is nothing for the record inside it to do
+    // — the hook is still what stores a 4xx, and the sentence the operator read is what comes
+    // back if the same key is re-sent.
+    const sentence = "Refused — the Coffee Shop is closed for stock-take until 4 pm";
+    const route = defineRoute({ method: "POST", path: "/__test/refusal", access: "any", response: OkResponseSchema });
+    const a = await appWith((x) => mount(x, route, async () => { throw new RuleError(sentence); }));
+    try {
+      const key = randomUUID();
+      const headers = { ...(await authHeaders(a, "u1")), "idempotency-key": key };
+      const first = await a.inject({ method: "POST", url: "/api/v1/__test/refusal", headers });
+      expect(first.statusCode).toBe(422);
+      expect(first.json().error.message).toBe(sentence);
+      const row = await claimRow(key);
+      expect(row.statusCode).toBe(422);
+      expect(row.committedAt).toBeNull(); // nothing committed — a refusal is not an outcome to protect
+      const again = await a.inject({ method: "POST", url: "/api/v1/__test/refusal", headers });
+      expect(again.statusCode).toBe(422);
+      expect(again.headers["idempotency-replayed"]).toBe("true");
+      expect(again.json().error.message).toBe(sentence);
+    } finally {
+      await a.close();
+    }
+  });
+
+  it("every write this suite drives leaves recorded = true", async () => {
+    const keys = { pay: randomUUID(), patchMe: randomUUID(), addVendor: randomUUID() };
+    const pay = await app.inject({
+      method: "POST", url: "/api/v1/bills",
+      headers: { ...(await authHeaders(app, "u1")), "idempotency-key": keys.pay },
+      payload: { loc: "coffee", tender: "Cash", lines: [{ it: "juice", qty: 1 }] },
+    });
+    expect(pay.statusCode, pay.body).toBe(200);
+    const patchMe = await app.inject({
+      method: "PATCH", url: "/api/v1/me",
+      headers: { ...(await authHeaders(app, "u1")), "idempotency-key": keys.patchMe },
+      payload: { ph: "16161 61616" },
+    });
+    expect(patchMe.statusCode, patchMe.body).toBe(200);
+    const addVendor = await app.inject({
+      method: "POST", url: "/api/v1/vendors",
+      headers: { ...(await authHeaders(app, "u5")), "idempotency-key": keys.addVendor },
+      payload: { n: `Sakthi Provisions ${randomUUID().slice(0, 8)}` },
+    });
+    expect(addVendor.statusCode, addVendor.body).toBe(200);
+    for (const [name, key] of Object.entries(keys)) {
+      const row = await claimRow(key);
+      expect(row.committedAt, name).toBeInstanceOf(Date);
+      expect(row.statusCode, name).toBe(200);
+    }
+  });
+
   it("purge removes expired rows only", async () => {
     await app.db.update(idempotencyKeys).set({ expiresAt: new Date(Date.now() - 1000) });
     const n = await purgeIdempotencyKeys(app.db);
