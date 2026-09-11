@@ -1,7 +1,7 @@
 import { IT, LOC } from "../../data/master";
 import { vendorName } from "../../data/vendors";
 import { useApp } from "../../store";
-import { apportion, prqProgress, round3 } from "../../lib/selectors";
+import { apportion, netReceived, prqProgress, round3 } from "../../lib/selectors";
 import { U, fq, money, money0, sum } from "../../lib/fmt";
 import {
   Alert, DataTable, Feed, Pill, Section, StatusPill, TableFoot,
@@ -55,7 +55,9 @@ function RequisitionDetail({ id }: DrawerProps) {
       for (const pl of o.lines) {
         const at = pl.src.findIndex((x) => x.prq === p.id && x.line === i);
         if (at < 0) continue;
-        hits.push({ o, qty: pl.src[at].qty, rate: pl.rate, got: apportion(pl.recv, pl.src)[at] });
+        // Net of rejections, the same split `prqProgress` makes: what went to quarantine never
+        // reached this store keeper, so their line is still owed it.
+        hits.push({ o, qty: pl.src[at].qty, rate: pl.rate, got: apportion(netReceived(pl), pl.src)[at] });
       }
     }
     if (!hits.length) {

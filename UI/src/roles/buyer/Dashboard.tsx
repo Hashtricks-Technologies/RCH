@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { IT, LOC } from "../../data/master";
 import { vendorName } from "../../data/vendors";
 import { useApp } from "../../store";
-import { avail, daysCover, poValue, procurementList, stateTone, stockValue } from "../../lib/selectors";
+import { avail, daysCover, netReceived, poValue, procurementList, stateTone, stockValue } from "../../lib/selectors";
 import { U, fq, lakh, money0, sum } from "../../lib/fmt";
 import {
   Alert, Btn, Card, DataTable, Feed, FilterSelect, Grid, Kpis, PageHead, Pill, TableFoot, Toolbar,
@@ -53,7 +53,9 @@ export default function Dashboard() {
   // a live purchase order from one that is merely approved and pooled,
   // waiting for a buyer to raise an order against it.
   const poolItems = new Set(pool.map((l) => l.it));
-  const onLivePo = (k: string) => live.some((o) => o.lines.some((l) => l.it === k && l.qty - l.recv > 0));
+  // Net of rejections: a consignment sent to quarantine leaves the order still owing that
+  // quantity, so the item is very much still on a live purchase order.
+  const onLivePo = (k: string) => live.some((o) => o.lines.some((l) => l.it === k && l.qty - netReceived(l) > 0));
   const commitmentOf = (k: string) =>
     onLivePo(k) ? "On order" : poolItems.has(k) ? "On the list" : "Nothing committed";
 
@@ -118,7 +120,7 @@ export default function Dashboard() {
   const byItem = new Map<string, { qty: number; value: number }>();
   live.forEach((o) => o.lines.forEach((l) => {
     const at = byItem.get(l.it) ?? { qty: 0, value: 0 };
-    at.qty += Math.max(0, l.qty - l.recv);
+    at.qty += Math.max(0, l.qty - netReceived(l));
     at.value += l.qty * l.rate;
     byItem.set(l.it, at);
   }));

@@ -1,6 +1,6 @@
 import * as D from "@rch/domain";
-import { apportion, round3 } from "@rch/domain";
-export { apportion, round3 };
+import { apportion, netReceived, round3 } from "@rch/domain";
+export { apportion, netReceived, round3 };
 // A rule's own tuning rather than master data, so it comes from the domain package and not from
 // the registries `hydrateMaster` fills (M11).
 import { PAR_FACTOR } from "@rch/domain";
@@ -80,10 +80,12 @@ export function prqProgress(
 
   const appr = round3(p.lines.reduce((t, l) => t + l.appr, 0));
   const ordered = round3(p.lines.reduce((t, l) => t + l.ordered, 0));
+  // What landed, not what turned up: a quantity quality control sent to quarantine never
+  // reached the store keeper's shelf, so it is still owed on this requisition line.
   const received = round3(s.po
     .filter((o) => o.st !== "Cancelled")
     .reduce((t, o) => t + o.lines.reduce((n, l) => {
-      const got = apportion(l.recv, l.src);
+      const got = apportion(netReceived(l), l.src);
       return n + l.src.reduce((m, x, i) => m + (x.prq === prqId ? got[i] : 0), 0);
     }, 0), 0));
 
@@ -101,7 +103,8 @@ export function prqProgress(
 }
 
 /** Approved but not yet on the shelf: what is still pending on the procurement
- *  list, plus the undelivered balance of every live purchase order (M3). */
+ *  list, plus the undelivered balance of every live purchase order (M3). A rejected
+ *  quantity is part of that balance — it is in quarantine, and the vendor owes it again. */
 export const onOrder = (
   s: { prq: Requisition[]; po: PurchaseOrder[] }, it: string,
 ) => round3(
@@ -109,7 +112,7 @@ export const onOrder = (
   + s.po.filter((o) => CLAIMED.includes(o.st))
     .reduce((t, o) => t + o.lines
       .filter((l) => l.it === it)
-      .reduce((n, l) => n + Math.max(0, l.qty - l.recv), 0), 0),
+      .reduce((n, l) => n + Math.max(0, l.qty - netReceived(l)), 0), 0),
 );
 
 /** The other half of the M3 duplicate-order guard: quantity asked on a

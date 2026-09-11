@@ -2,7 +2,7 @@ import { useState } from "react";
 import { IT, PO_APPROVAL_LIMIT } from "../../data/master";
 import { vendorName } from "../../data/vendors";
 import { useApp } from "../../store";
-import { poValue, round3 } from "../../lib/selectors";
+import { netReceived, poValue, round3 } from "../../lib/selectors";
 import { money0, sum, unitTotal } from "../../lib/fmt";
 import {
   Btn, Card, DataTable, FilterSelect, Kpis, PageHead, Pill, StatusPill, TableFoot, Toolbar,
@@ -21,11 +21,13 @@ const hits = (o: PurchaseOrder, vendors: Vendor[], q: string) => {
       || (IT[l.it]?.c ?? "").toLowerCase().includes(t));
 };
 
-/** Items still short of what was ordered — the only ones worth listing as a balance (M2). */
+/** Items still short of what was ordered — the only ones worth listing as a balance (M2).
+ *  Short means short of what was **accepted**: goods turned away at the door are in quarantine,
+ *  not on the shelf, so the vendor still owes them. */
 const balanceOf = (o: PurchaseOrder) =>
   o.lines
-    .filter((l) => l.qty - l.recv > 0)
-    .map((l) => ({ it: l.it, qty: round3(l.qty - l.recv) }));
+    .filter((l) => l.qty - netReceived(l) > 0)
+    .map((l) => ({ it: l.it, qty: round3(l.qty - netReceived(l)) }));
 
 const APPROVAL = ["All", "Needs finance approval", "Within the limit"];
 const CLOSED_STATES = ["All", "Received", "Cancelled"];
@@ -81,7 +83,7 @@ export default function PurchaseOrders() {
   // also changing the count in its own caption.
   const openOrders = s.po.filter((o) => o.st === "Ordered" || o.st === "Partially received");
   const orderedValue = sum(openOrders, poValue);
-  const linesAwaiting = sum(openOrders, (o) => o.lines.filter((l) => l.qty - l.recv > 0).length);
+  const linesAwaiting = sum(openOrders, (o) => o.lines.filter((l) => l.qty - netReceived(l) > 0).length);
   // Only orders still open count toward "needs a decision" — once an order is
   // fully received or cancelled, a finance-slab flag stamped when it was
   // raised is history, not a live queue, and must stop being counted here.

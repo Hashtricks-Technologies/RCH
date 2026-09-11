@@ -165,6 +165,19 @@ describe("requisition progress", () => {
     expect(prqProgress(S(), "PRQ-2026-015").label).toBe("Ordered");
   });
 
+  it("does not count a quantity quality control turned away as received", () => {
+    // PO-2026-0142 took 60 of the 80 litres of milk PRQ-2026-012 asked for, and 6 of 6 butter.
+    // Ten of those litres go to quarantine rather than onto the shelf: the store keeper is
+    // still owed them, so the requisition has had 56, not 66.
+    useApp.setState({
+      po: S().po.map((o) => (o.id !== "PO-2026-0142" ? o : {
+        ...o, lines: o.lines.map((l) => (l.it !== "milk" ? l : { ...l, rejected: 10 })),
+      })),
+    });
+    expect(prqProgress(S(), "PRQ-2026-012").received).toBe(56);
+    expect(prqProgress(S(), "PRQ-2026-012").label).toBe("Partly received");
+  });
+
   it("reports declined", () => {
     useApp.setState({
       prq: S().prq.map((p) => (p.id !== "PRQ-2026-013" ? p : {
@@ -195,6 +208,17 @@ describe("onOrder", () => {
     expect(onOrder(S(), "milk")).toBe(45);
     // juice: 120 ordered, none received
     expect(onOrder(S(), "juice")).toBe(120);
+  });
+
+  it("counts a rejected quantity as still on order, because the vendor owes it again", () => {
+    useApp.setState({
+      po: S().po.map((o) => (o.id !== "PO-2026-0142" ? o : {
+        ...o, lines: o.lines.map((l) => (l.it !== "milk" ? l : { ...l, rejected: 10 })),
+      })),
+    });
+    // 25 still pending on the pool, plus a 30-unit balance now that ten of the sixty litres
+    // went to quarantine instead of the shelf → 55.
+    expect(onOrder(S(), "milk")).toBe(55);
   });
 
   it("ignores cancelled and fully received orders", () => {

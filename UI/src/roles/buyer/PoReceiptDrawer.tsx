@@ -1,9 +1,10 @@
 import { useState } from "react";
+import { RECEIPT_TOLERANCE } from "@rch/domain";
 import { IT } from "../../data/master";
 import { vendorName } from "../../data/vendors";
 import { useApp } from "../../store";
 import { U, fq, money, unitTotal } from "../../lib/fmt";
-import { canCloseShort } from "../../lib/selectors";
+import { canCloseShort, netReceived, round3 } from "../../lib/selectors";
 import { Alert, Btn, BtnRow, DataTable, Field, FormRow, Section, TableFoot } from "../../ui/kit";
 import type { Row } from "../../ui/kit";
 import { DrawerFrame } from "../../ui/Drawer";
@@ -30,7 +31,7 @@ function PoReceiptDrawer({ id }: DrawerProps) {
   // number the store keeper types here, not a placeholder.
   const [lines, setLines] = useState<ReceiptLine[]>(() =>
     (po?.lines ?? []).map((l) => ({
-      recv: Math.round(Math.max(0, l.qty - l.recv) * 1000) / 1000,
+      recv: Math.max(0, round3(l.qty - netReceived(l))),
       rejected: 0,
       batch: "",
       mrp: IT[l.it]?.mrp ?? 0,
@@ -113,12 +114,15 @@ function PoReceiptDrawer({ id }: DrawerProps) {
   /** What reaches the central store's shelf: what arrived, less what quality control turned
    *  away. The rejected balance is booked to quarantine instead, by the same receipt. */
   const good = po.lines.map((_l, i) => Math.max(
-    0, Math.round(((lines[i]?.recv ?? 0) - (lines[i]?.rejected ?? 0)) * 1000) / 1000,
+    0, netReceived({ recv: lines[i]?.recv ?? 0, rejected: lines[i]?.rejected ?? 0 }),
   ));
   const value = po.lines.reduce((t, l, i) => t + good[i] * l.rate, 0);
+  /** What earlier instalments actually took in. A quantity sent to quarantine is still owed, so
+   *  it is not counted here — which is also how the server reads the line (`netReceived`). */
+  const already = po.lines.map((l) => netReceived(l));
   const balance = po.lines.map((l, i) => ({
     it: l.it,
-    qty: Math.max(0, Math.round((l.qty - l.recv - (lines[i]?.recv ?? 0)) * 1000) / 1000),
+    qty: Math.max(0, round3(l.qty - already[i] - good[i])),
   }));
 
   const qtyRows: Row[] = po.lines.map((l, i) => {
@@ -128,12 +132,14 @@ function PoReceiptDrawer({ id }: DrawerProps) {
       cells: [
         <>{IT[l.it]?.n ?? l.it}<small>{IT[l.it]?.c ?? ""}</small></>,
         <>{fq(l.qty, l.it)} <span className="dim">{U(l.it)}</span></>,
-        <>{fq(l.recv, l.it)}</>,
+        <>{fq(already[i], l.it)}</>,
         <>
           <input type="number" className="mono" min={0} step={U(l.it) === "nos" ? 1 : 0.001}
             value={r.recv} aria-label={`Quantity received for ${IT[l.it]?.n ?? l.it}`}
             onChange={(e) => at(i, { recv: num(e.target.value) })} />
-          {l.recv + r.recv > l.qty * 1.02 && (
+          {/* The same sum `checkReceiptLine` runs server-side: what earlier instalments accepted
+              plus what is at the door now, against the ordered quantity and its tolerance. */}
+          {round3(already[i] + r.recv) > round3(l.qty * RECEIPT_TOLERANCE) && (
             <div className="mini" style={warn}>over the ordered {fq(l.qty, l.it)} by more than 2%</div>
           )}
         </>,
@@ -226,7 +232,7 @@ function PoReceiptDrawer({ id }: DrawerProps) {
             cols={[
               { h: "Item", cls: "nm", w: "20%" },
               { h: "Ordered", r: true },
-              { h: "Already received", r: true, w: "14%" },
+              { h: "Already accepted", r: true, w: "14%" },
               { h: "Receiving now", r: true, w: "14%" },
               { h: "Rejected", r: true, w: "12%" },
               { h: "Into stock", r: true },

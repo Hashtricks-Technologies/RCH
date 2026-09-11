@@ -2,7 +2,7 @@ import { useState } from "react";
 import { IT, PO_APPROVAL_LIMIT } from "../../data/master";
 import { vendorName } from "../../data/vendors";
 import { useApp } from "../../store";
-import { canCancelPo, canSendPo, poValue } from "../../lib/selectors";
+import { canCancelPo, canSendPo, netReceived, poValue } from "../../lib/selectors";
 import { U, fq, money, money0, pct, toInputDate } from "../../lib/fmt";
 import { Alert, Btn, BtnRow, DataTable, Feed, Field, FormRow, Pill, Section, TableFoot } from "../../ui/kit";
 import type { Row } from "../../ui/kit";
@@ -146,6 +146,9 @@ function PoDrawer({ id }: DrawerProps) {
   }
 
   const value = poValue(po);
+  // Gross on purpose, mirroring `cancel`'s own guard server-side: a delivery that arrived and
+  // was turned away still left GRN documents and a quarantine balance behind it, so the order
+  // is closed short with a reason rather than cancelled as though nothing had come.
   const anyReceived = po.lines.some((l) => l.recv > 0);
   const grns = s.grn.filter((g) => g.po === po.id);
   const vendorLabel = vendorName(s.vendors, po.vendor);
@@ -375,8 +378,10 @@ function PoDrawer({ id }: DrawerProps) {
                   <>{IT[l.it]?.n ?? l.it}<small>{IT[l.it]?.c ?? ""}</small></>,
                   <>{fq(l.qty, l.it)}</>,
                   <>{U(l.it)}</>,
-                  <>{fq(l.recv, l.it)}</>,
-                  <>{fq(Math.max(0, l.qty - l.recv), l.it)}</>,
+                  // Received here is what was taken in, not what turned up: received plus balance
+                  // comes to the ordered quantity, with quarantine on neither side of it.
+                  <>{fq(netReceived(l), l.it)}</>,
+                  <>{fq(Math.max(0, l.qty - netReceived(l)), l.it)}</>,
                   <>{money(l.rate)}</>,
                   c ? (
                     <>

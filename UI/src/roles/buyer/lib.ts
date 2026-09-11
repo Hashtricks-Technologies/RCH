@@ -1,5 +1,5 @@
 import { vendorName } from "../../data/vendors";
-import { apportion, round3 } from "../../lib/selectors";
+import { apportion, netReceived, round3 } from "../../lib/selectors";
 import type { AppState } from "../../store";
 import type { PoStatus, PurchaseOrder, RateContract, Requisition, Vendor } from "../../types";
 
@@ -67,7 +67,9 @@ export function reconcile(
     for (const o of s.po) {
       if (o.st === "Cancelled") continue;
       for (const pl of o.lines) {
-        const got = apportion(pl.recv, pl.src);
+        // Net of rejections, the same figure `prqProgress` splits back: what went to
+        // quarantine never settled any part of the requisition that funded the line.
+        const got = apportion(netReceived(pl), pl.src);
         pl.src.forEach((x, si) => {
           if (x.prq !== p.id || x.line !== i) return;
           ordered = round3(ordered + x.qty);
