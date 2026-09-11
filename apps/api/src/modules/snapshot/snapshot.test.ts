@@ -318,6 +318,47 @@ describe("what a ticket carries, and to whom", () => {
     expect((await list("u1")).find((t) => t.id === id)!.otp).toMatch(/^\d{6}$/);
   });
 
+  it("gives the kitchen, the store and the buyer bills without the payer, and no roster", async () => {
+    // A patient bill names a patient — ward, in-patient number and all — and the register those
+    // names come out of was on every role's snapshot. What the kitchen, the store and the buyer
+    // actually read a bill for is the ledger behind it, so the bills stay and only the name goes.
+    const named = await given.bill(app.testDb!.db, {
+      loc: "coffee", total: 120, tender: "Patient bill",
+      payer: { kind: "patient", id: "IP-4471", name: "Anand Kumar · Ward 3B" },
+      lines: [{ it: "water", qty: 2, rate: 60 }],
+    });
+    for (const u of ["u3", "u4", "u5"]) {
+      const snap = await get(u);
+      expect(SnapshotSchema.safeParse(snap).success, u).toBe(true);
+      const bill = snap.bills.find((b: { no: string }) => b.no === named);
+      expect(bill, u).toBeTruthy();
+      expect(bill.payer, u).toBeUndefined();
+      expect(snap.bills.every((b: { payer?: unknown }) => b.payer === undefined), u).toBe(true);
+      // The ledger behind the bill is untouched: every stock report reads exactly what it did.
+      expect(bill.lines, u).toEqual([{ it: "water", qty: 2, rate: 60 }]);
+      expect(bill.tot, u).toBe(120);
+      expect(snap.roster, u).toEqual({ patients: [], staff: [], depts: [] });
+      // And a refetch must not put back what the snapshot has just taken off.
+      const listed = (await getAs(u, "/api/v1/bills")).find((b: { no: string }) => b.no === named);
+      expect(listed.payer, u).toBeUndefined();
+      expect(listed.lines, u).toEqual([{ it: "water", qty: 2, rate: 60 }]);
+    }
+  });
+
+  it("the manager and the counter still read the payer", async () => {
+    const named = await given.bill(app.testDb!.db, {
+      loc: "coffee", total: 120, tender: "Patient bill",
+      payer: { kind: "patient", id: "IP-4471", name: "Anand Kumar · Ward 3B" },
+    });
+    const payer = { kind: "patient", id: "IP-4471", name: "Anand Kumar · Ward 3B" };
+    for (const u of ["u1", "u2"]) {
+      const snap = await get(u);
+      expect(snap.bills.find((b: { no: string }) => b.no === named).payer, u).toEqual(payer);
+      expect(snap.roster.patients.length, u).toBeGreaterThan(0);
+      expect((await getAs(u, "/api/v1/bills")).find((b: { no: string }) => b.no === named).payer, u).toEqual(payer);
+    }
+  });
+
   it("hands a counter the roster it bills against, from the payers table", async () => {
     // The only case in this file that writes a master table, so it puts the whole seed back
     // first: `resetDocuments` restores the document half and leaves `payers` where it found it.

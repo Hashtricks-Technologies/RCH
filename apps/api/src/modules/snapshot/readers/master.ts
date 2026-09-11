@@ -22,8 +22,11 @@ export async function readUsers(db: Reader): Promise<UserMin[]> {
  * to the database was invisible at the counter and a fixture removed from the browser was still
  * accepted by the server. One table, one list.
  *
- * Not scoped: every counter bills every kind of payer, and the list is names the operator
- * already reads off a wristband.
+ * The reader answers whole, like every other reader here; the cut is `scopeRoster` in `scope.ts`,
+ * where every other cut is made. It is not "not scoped" any more: a counter bills every kind of
+ * payer and a manager settles the accounts, so those two read the register — but it is a list of
+ * every patient on a ward by name and number, and the kitchen, the store and the buyer never
+ * open the payer picker at all. They get an empty one.
  */
 export async function readRoster(db: Reader): Promise<PayerRoster> {
   const rows = await db.select().from(payers).where(eq(payers.active, true)).orderBy(asc(payers.name));

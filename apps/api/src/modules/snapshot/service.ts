@@ -8,7 +8,7 @@ import { NotFoundError } from "../../lib/errors.js";
 import { toWireUser } from "../../lib/wire.js";
 import type { AccessClaims } from "../../plugins/auth.js";
 import { snapshotRepo } from "./repo.js";
-import { redactOtps, scope, scopeBatches, scopeBills, scopeBuying, scopeProdOrders, scopeProductRequests, scopeRequests, scopeShopAsks, scopeStock, scopeTickets } from "./scope.js";
+import { redactOtps, scope, scopeBatches, scopeBills, scopeBuying, scopePayers, scopeProdOrders, scopeProductRequests, scopeRequests, scopeShopAsks, scopeStock, scopeTickets } from "./scope.js";
 import * as M from "./readers/master.js";
 import * as S from "./readers/stock.js";
 import * as D from "./readers/documents.js";
@@ -90,9 +90,12 @@ export function createSnapshotService(db: Db) {
         return scopeStock({ stock, rsv, ovr }, claims);
       });
     },
-    /** The till roll for a window the caller chooses; the snapshot carries the last week of it. */
+    /** The till roll for a window the caller chooses; the snapshot carries the last week of it.
+     *  The same two cuts the snapshot makes, in the same order: whose bills, then whose names —
+     *  without the second, a refetch after a sale hands the store and the kitchen the payer the
+     *  snapshot had just withheld. */
     async bills(claims: AccessClaims, days: number): Promise<Bill[]> {
-      return read(async (tx) => scopeBills(await D.readBills(tx, days), claims));
+      return read(async (tx) => scopePayers(scopeBills(await D.readBills(tx, days), claims), claims));
     },
     /** The request desk on its own — what a write naming "req" refetches. */
     async requests(claims: AccessClaims): Promise<StockRequest[]> { return read(async (tx) => scopeRequests(await D.readRequests(tx), claims)); },
