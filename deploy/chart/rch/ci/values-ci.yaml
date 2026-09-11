@@ -21,6 +21,7 @@ api:
   env:
     DATABASE_SSL: "false"
     COOKIE_SECURE: "false"
+    NODE_OPTIONS: "--max-old-space-size=179"   # 70% of the 256Mi limit above; see values.yaml
 ui:
   replicas: 1
 ingress:

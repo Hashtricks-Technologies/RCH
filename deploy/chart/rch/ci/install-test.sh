@@ -102,6 +102,14 @@ wait_for() {
   return 1
 }
 
+# The chart's NetworkPolicies (templates/networkpolicy.yaml) install here with everything else and
+# need no CI override. kind's default CNI may not enforce them at all, and where it does they are
+# already open enough for this script: each component's serving port is allowed from
+# networkPolicy.albSourceCidr, which defaults to 0.0.0.0/0 — that covers both `kubectl
+# port-forward` (traffic arrives from the node, not from a pod any selector could name) and the
+# kubelet's probes — and the ui pod reaching the api is allowed by name on top of that. The
+# throwaway Postgres below carries none of the release's labels, so the default-deny does not
+# select it.
 echo "== throwaway postgres =="
 kubectl apply -f deploy/chart/rch/ci/postgres.yaml
 kubectl rollout status deploy/postgres --timeout=120s

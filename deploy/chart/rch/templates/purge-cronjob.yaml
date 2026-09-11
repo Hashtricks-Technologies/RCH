@@ -5,13 +5,35 @@ metadata: { name: {{ .Release.Name }}-purge }
 spec:
   schedule: {{ .Values.purge.schedule | quote }}
   concurrencyPolicy: Forbid
+  # Three of each, so `kubectl get jobs` shows the last few nights rather than every night since
+  # install, and a failure is still on the cluster in the morning to read the logs off.
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  # A node rotation, a paused controller or a cluster upgrade can leave a scheduled run unstarted.
+  # Ten minutes late is still worth running; later than that, skip it — tomorrow's sweep deletes
+  # the same rows. Without a deadline the controller counts missed schedules and, past a hundred
+  # of them, refuses to fire the CronJob ever again.
+  startingDeadlineSeconds: 600
   jobTemplate:
     spec:
+      # Two retries and then leave it failed and visible. A purge that cannot reach the database
+      # will not start reaching it on the sixth attempt, and the default backoffLimit of 6 buries
+      # the first, informative failure under five more.
+      backoffLimit: 2
+      # Half an hour is far longer than a night's sweep takes even after a long gap — the deletes
+      # are batched, so the job makes progress in bounded chunks rather than one enormous
+      # statement. Past that something is wrong, and a job holding a connection open against the
+      # production database until somebody notices is the thing to avoid.
+      activeDeadlineSeconds: 1800
       template:
         spec:
           restartPolicy: Never
           serviceAccountName: {{ include "rch.sa" . }}
-          securityContext: { runAsNonRoot: true, runAsUser: 65532 }
+          # Nothing here reads the Kubernetes API.
+          automountServiceAccountToken: false
+          # The same pod securityContext the api pod runs under: this is the same image running a
+          # different entry point, so the seccomp profile and the fsGroup belong here too.
+          securityContext: { runAsNonRoot: true, runAsUser: 65532, fsGroup: 65532, seccompProfile: { type: RuntimeDefault } }
           containers:
             - name: purge
               image: {{ include "rch.image" (dict "registry" .Values.image.registry "name" .Values.image.api "tag" .Values.image.tag) }}

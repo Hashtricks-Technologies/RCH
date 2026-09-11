@@ -1,7 +1,7 @@
 import fp from "fastify-plugin";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash } from "node:crypto";
-import { and, eq, isNull, lt } from "drizzle-orm";
+import { and, eq, isNull, lt, sql } from "drizzle-orm";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import type { z } from "zod";
 import type { Db } from "../db/client.js";
@@ -180,7 +180,38 @@ export const idemHooks = {
   },
 };
 
-export async function purgeIdempotencyKeys(db: Db): Promise<number> {
-  const r = await db.delete(idempotencyKeys).where(lt(idempotencyKeys.expiresAt, new Date()));
-  return r.rowCount ?? 0;
+/** How many rows one DELETE of the nightly sweep takes. Ten thousand is small enough that each
+ *  statement is short and commits as it goes, and large enough that a normal night is one or two
+ *  of them. */
+const PURGE_BATCH = 10_000;
+
+/**
+ * The nightly sweep (cli/purge.ts), a bounded batch at a time. One skipped run is a day of keys,
+ * so this can meet a very large backlog, and a single unbounded DELETE would hold one transaction
+ * and one set of row locks over the whole of it — blocking the writes that are inserting claims
+ * behind it, and building a rollback record that gets longer the further it gets. A loop commits
+ * each batch, so a job killed halfway has already done half the work and tomorrow's run finishes
+ * it.
+ *
+ * `ctid in (select ctid … limit n)` is how to say "any n of the matching rows": ctid is the
+ * physical address of a tuple, so the subquery walks the index on expires_at and the delete goes
+ * straight at those tuples. The loop stops on a batch that comes back short — the one signal that
+ * the previous statement emptied the set.
+ *
+ * `batch` is a parameter so a test can make it smaller than the work and prove the loop; nothing
+ * in production passes it.
+ */
+export async function purgeIdempotencyKeys(db: Db, batch: number = PURGE_BATCH): Promise<number> {
+  // One cutoff for the whole sweep: `new Date()` inside the loop would walk forward between
+  // batches and make "what this run deleted" a moving target.
+  const cutoff = new Date();
+  let total = 0;
+  for (;;) {
+    const r = await db.delete(idempotencyKeys).where(
+      sql`ctid in (select ctid from ${idempotencyKeys} where ${lt(idempotencyKeys.expiresAt, cutoff)} limit ${batch})`,
+    );
+    const n = r.rowCount ?? 0;
+    total += n;
+    if (n < batch) return total;
+  }
 }

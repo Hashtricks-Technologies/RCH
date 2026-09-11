@@ -15,9 +15,9 @@ api:
   # though one snapshot now takes one of those ten, not forty.
   resources: { requests: { cpu: 500m, memory: 512Mi }, limits: { cpu: "2", memory: 1Gi } }
   hpa: { enabled: true, minReplicas: 3, maxReplicas: 6, cpu: 70 }
-  pdb: { minAvailable: 2 }
+  pdb: { maxUnavailable: 1 }
   # Three replicas on one node make the PodDisruptionBudget decorative: draining that node takes
-  # the whole service with it whatever minAvailable says.
+  # the whole service with it whatever the budget says.
   topologySpread:
     enabled: true
     maxSkew: 1
@@ -36,11 +36,13 @@ api:
     REFRESH_TOKEN_TTL_DAYS: "30"
     TRUST_PROXY: "1"                              # one hop: the ALB. More hops and the client IP is wrong.
     SSE_HEARTBEAT_MS: "25000"
+    NODE_OPTIONS: "--max-old-space-size=716"      # 70% of the 1Gi limit above; see values.yaml
     SSE_RETRY_MS: "1000"
 ui:
   replicas: 3
   nodeSelector: { rch.io/tier: prod }
   resources: { requests: { cpu: 100m, memory: 128Mi }, limits: { cpu: 500m, memory: 256Mi } }
+  pdb: { maxUnavailable: 1 }
 ingress:
   enabled: true
   className: alb
@@ -54,13 +56,23 @@ ingress:
     alb.ingress.kubernetes.io/ssl-policy: ELBSecurityPolicy-TLS13-1-2-2021-06
     # An hour, because a live-update stream is one request that never ends (RUNBOOK §10). Every
     # timeout on the path — this, nginx's proxy_read_timeout, the heartbeat — moves together.
-    alb.ingress.kubernetes.io/load-balancer-attributes: >-
-      idle_timeout.timeout_seconds=3600,
-      deletion_protection.enabled=true,
-      access_logs.s3.enabled=true,
-      access_logs.s3.bucket=rch-alb-logs,
-      access_logs.s3.prefix=rch
-    alb.ingress.kubernetes.io/healthcheck-path: /healthz
+    #
+    # One line, not a folded `>-` block: folding joins the lines with a space, so the controller
+    # read every attribute after the first as a name beginning with a space and rejected it.
+    #
+    # Access logging is deliberately absent rather than empty. `rch-alb-logs` is created by
+    # nothing — deploy/cfn's AlbLogsBucketName parameter is what will create it — and an ALB told
+    # to write to a bucket that does not exist, or one without the log-delivery bucket policy,
+    # fails to provision at all. Once that parameter is filled in, append
+    # `,access_logs.s3.enabled=true,access_logs.s3.bucket=<AlbLogsBucketName>,access_logs.s3.prefix=rch`
+    # to the line below — with no spaces.
+    alb.ingress.kubernetes.io/load-balancer-attributes: idle_timeout.timeout_seconds=3600,deletion_protection.enabled=true
+    # 30 seconds for requests already in flight towards a deregistering pod to finish. It sits
+    # inside the pod's 60s terminationGracePeriodSeconds; apps/api/src/server.ts has the sums.
+    alb.ingress.kubernetes.io/target-group-attributes: deregistration_delay.timeout_seconds=30
+    # /readyz, not /healthz: /healthz answers 200 for as long as the process exists, draining
+    # included, so a pod that has stopped accepting still looks healthy to the load balancer.
+    alb.ingress.kubernetes.io/healthcheck-path: /readyz
     alb.ingress.kubernetes.io/healthcheck-interval-seconds: "15"
     alb.ingress.kubernetes.io/wafv2-acl-arn: ""   # optional; leave empty to skip
 secrets:
@@ -78,4 +90,4 @@ purge: { enabled: true, schedule: "15 2 * * *" }
 alerts:
   errorRate: 0.01
   p95Seconds: 1
-  runbookUrl: https://github.com/<org>/<repo>/blob/production/deploy/RUNBOOK.md   # FILL
+  runbookUrl: https://github.com/Hashtricks-Technologies/RCH/blob/production/deploy/RUNBOOK.md
