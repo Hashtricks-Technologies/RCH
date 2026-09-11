@@ -7,7 +7,7 @@ import type { Db } from "./client.js";
 
 // src/db/ is two levels below apps/api (apps/api/src/db); dist/ is one level below
 // (apps/api/dist). Walk up from this file until a drizzle/meta/_journal.json shows up.
-export function migrationsFolder(): string {
+function migrationsFolder(): string {
   let dir = dirname(fileURLToPath(import.meta.url));
   for (let i = 0; i < 4; i++) {
     try { readFileSync(join(dir, "drizzle", "meta", "_journal.json")); return join(dir, "drizzle"); } catch { dir = dirname(dir); }

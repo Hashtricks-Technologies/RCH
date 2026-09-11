@@ -2,7 +2,7 @@ import { useSyncExternalStore } from "react";
 
 export interface Prefs { low: boolean; appr: boolean; daily: boolean; compact: boolean }
 
-export const PREF_KEY = "rch-prefs";
+const PREF_KEY = "rch-prefs";
 
 const DEFAULTS: Prefs = { low: true, appr: true, daily: false, compact: false };
 const KEYS = Object.keys(DEFAULTS) as (keyof Prefs)[];

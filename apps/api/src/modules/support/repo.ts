@@ -6,7 +6,7 @@ import type { Tx } from "../../lib/db.js";
 import * as s from "../../db/schema/index.js";
 
 /** Rows -> the wire shape, shared by the list and (Task 5) by every write's `result`. */
-export function toWire(head: typeof s.supportTickets.$inferSelect, msgs: (typeof s.supportMessages.$inferSelect)[], byName: string): SupportTicket {
+function toWire(head: typeof s.supportTickets.$inferSelect, msgs: (typeof s.supportMessages.$inferSelect)[], byName: string): SupportTicket {
   return {
     id: head.id, topic: head.topic, subject: head.subject, priority: head.priority, st: head.status,
     by: byName, role: head.role, loc: head.loc as SupportTicket["loc"],
