@@ -69,9 +69,19 @@ export default function Pos() {
    *  nothing", and the line below said "Checking…" for either — so a till whose credit read was
    *  failing sat on that sentence for ever, promising a number that was never coming. */
   const [creditFailed, setCreditFailed] = useState(false);
-  useEffect(() => {
+  /** Who the two figures above belong to — empty when no credit is being taken. Clearing them
+   *  inside the effect was a setState the effect ran on every commit: the number a previous
+   *  staff member had taken was painted under the new name for one frame, and a second render
+   *  went by to rub it out. Adjusting during render is React's own answer and leaves no such
+   *  frame; the effect below is left doing the one thing an effect is for — the request. */
+  const creditFor = tender === "Staff credit" && payer ? `${payer.kind}:${payer.id}` : "";
+  const [creditShown, setCreditShown] = useState(creditFor);
+  if (creditShown !== creditFor) {
+    setCreditShown(creditFor);
     setCredit(null);
     setCreditFailed(false);
+  }
+  useEffect(() => {
     if (tender !== "Staff credit" || !payer) return;
     let live = true;
     void readCredit(payer).then((r) => { if (!live) return; setCredit(r); setCreditFailed(r === null); });
@@ -81,6 +91,31 @@ export default function Pos() {
   // Blocked only on a figure that actually arrived: refusing a legitimate sale because a read
   // has not landed would be worse than letting the server say no, which it still will.
   const overLimit = tender === "Staff credit" && !!payer && !!credit && breachesCredit(taken, total, credit.limit);
+
+  /**
+   * One tap, one bill — and the payer survives a refusal.
+   *
+   * `pay` answers whether the server took it. Only a bill the server actually numbered clears
+   * the payer, the search and the per-line edits; a refusal (a credit ceiling, a cover check,
+   * a dropped connection) leaves the whole till exactly as the operator set it up, so the fix
+   * is one press away rather than a staff member to find again.
+   *
+   * Then the slip. The bill number is the server's, so it is read back off the refetched list
+   * rather than guessed: the newest bill at this outlet by `iso`, opened in the drawer that
+   * knows how to print one.
+   */
+  const takeBill = async () => {
+    setBusy(true);
+    let ok = false;
+    try { ok = await s.pay(loc, tender, payer ?? undefined); } finally { setBusy(false); }
+    if (!ok) return;
+    setPayer(null); setPq(""); setEdit({});
+    const fresh = useApp.getState();
+    const mine = fresh.bills.filter((b) => b.loc === loc);
+    const latest = mine.reduce<(typeof mine)[number] | null>(
+      (best, b) => (best === null || b.iso.localeCompare(best.iso) > 0 ? b : best), null);
+    if (latest) fresh.openDrawer("cbill", latest.no);
+  };
 
   const pickTender = (t: Tender) => { setTender(t); setPayer(null); setPq(""); };
   /** The tile adds one; this sets the line to whatever was typed, as a signed delta. */
@@ -174,13 +209,16 @@ export default function Pos() {
                   <span className="mini" style={{ display: "block" }}>{IT[l.it].c} · {money(l.p)} each</span>
                 </span>
                 <span style={{ display: "flex", gap: 3, alignItems: "center", flex: "none" }}>
-                  <Btn variant="gh" size="xs" onClick={() => s.addToCart(loc, l.it, -1)} title="One less">−</Btn>
+                  {/* A finger, not a mouse: these two are pressed all day on a tablet at the
+                      counter, and `xs` gave them a 20 px target sitting either side of the box
+                      they are meant to step. */}
+                  <Btn variant="gh" size="touch" onClick={() => s.addToCart(loc, l.it, -1)} title="One less">−</Btn>
                   <input className="mono" inputMode="numeric" aria-label={`${IT[l.it].n} quantity`}
                     value={edit[l.it] ?? String(l.n)}
                     onChange={(e) => setQty(l.it, e.target.value)}
                     onBlur={() => setEdit({})}
-                    style={{ width: 44, textAlign: "center", padding: "4px 2px", fontSize: 12.5, fontWeight: 600, border: "1px solid var(--line-strong)", borderRadius: 5, background: "var(--surface)" }} />
-                  <Btn variant="gh" size="xs" onClick={() => s.addToCart(loc, l.it, 1)} title="One more">+</Btn>
+                    style={{ width: 48, height: 40, textAlign: "center", padding: "4px 2px", fontSize: 13, fontWeight: 600, border: "1px solid var(--line-strong)", borderRadius: 5, background: "var(--surface)" }} />
+                  <Btn variant="gh" size="touch" onClick={() => s.addToCart(loc, l.it, 1)} title="One more">+</Btn>
                 </span>
                 <span className="mono" style={{ fontWeight: 600, width: 74, textAlign: "right", flex: "none" }}>{money(l.amt)}</span>
               </div>
@@ -250,12 +288,8 @@ export default function Pos() {
           )}
 
           <Btn wide disabled={!lines.length || (!!need && !payer) || overLimit || busy}
-            onClick={async () => {
-              setBusy(true);
-              try { await s.pay(loc, tender, payer ?? undefined); } finally { setBusy(false); }
-              setPayer(null); setPq(""); setEdit({});
-            }}>
-            {busy ? "Taking the bill…" : <>Pay &amp; print · {money(total)}</>}
+            onClick={() => void takeBill()}>
+            {busy ? "Taking the bill…" : <>Pay · {money(total)}</>}
           </Btn>
           <p className="mini mtop">
             Tender <b>{tender}</b>{payer ? <> · posted to <b>{payer.name}</b></> : need ? <> · pick a {need.label.toLowerCase()} to settle it</> : null}.

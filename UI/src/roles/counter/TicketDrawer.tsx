@@ -6,6 +6,7 @@ import { fq, U } from "../../lib/fmt";
 import { DrawerFrame } from "../../ui/Drawer";
 import { registerDrawer, type DrawerProps } from "../../drawers";
 import { Alert, Btn, DataTable, Feed, Field, Otp, Section, StatusPill, TicketTrail } from "../../ui/kit";
+import { PrintSlipBtn, TicketSlip } from "../../ui/TicketSlip";
 import type { TktStatus } from "../../types";
 
 const STEPS: { st: TktStatus; title: string; body: string }[] = [
@@ -73,7 +74,13 @@ function TicketDrawer({ id }: DrawerProps) {
             {LOC[tkt.from].c} {LOC[tkt.from].n} → {LOC[tkt.to].c} {LOC[tkt.to].n}
           </div>
           <div className="mini">Against {tkt.req} · {tkt.lines.length} item{tkt.lines.length === 1 ? "" : "s"}</div>
-          <div style={{ marginTop: 8 }}><StatusPill status={tkt.st} /></div>
+          <div style={{ marginTop: 8, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <StatusPill status={tkt.st} />
+            {/* The collector walks to the other counter with this in hand, not with the tablet.
+                The slip carries the six digits only where this browser actually has them —
+                a ticket this counter raised reads `""`, and the paper says whose code it is. */}
+            <PrintSlipBtn />
+          </div>
         </div>
       </div>
       {/* Three different facts, and the old single test on an empty OTP told the wrong one twice:
@@ -178,6 +185,8 @@ function TicketDrawer({ id }: DrawerProps) {
                 ? "Nothing was collected against this one, so nothing reached this counter."
                 : "This ticket is closed; the stock is already counted at this counter."}
       </p>
+
+      <TicketSlip t={tkt} />
     </DrawerFrame>
   );
 }

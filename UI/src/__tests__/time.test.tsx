@@ -4,11 +4,14 @@ import { createRoot } from "react-dom/client";
 import { MemoryRouter } from "react-router-dom";
 import { screens as counter } from "../roles/counter";
 import Approvals from "../roles/manager/Approvals";
+import ManagerDashboard from "../roles/manager/Dashboard";
+import BuyerDashboard from "../roles/buyer/Dashboard";
 import { isToday, now } from "../lib/fmt";
 import { applyRequests, applySnapshot } from "../api/wire";
 import { useApp } from "../store";
 import { as, resetStore, S } from "./fixture";
 import * as FX from "@rch/contract/fixtures";
+import type { Bill, Dated, DatedDoc, PurchaseOrder, Requisition } from "../types";
 
 /**
  * A1 — real instants on the wire.
@@ -179,5 +182,72 @@ describe("the wire keeps the instant beside the time it prints", () => {
     expect(twice.at).toBe("01:30");
     expect(twice.iso).toBe(TODAY_EARLY);
     expect(twice.hist[0]).toMatchObject({ t: "01:30", iso: TODAY_EARLY });
+  });
+});
+
+describe("the two dashboards read latest off the instant too", () => {
+  const bill = (no: string, t: string, iso: string): Dated<Bill> => ({
+    no, loc: "coffee", opr: "Kavitha Raman", oprCol: "#0EA5E9", tot: 40, tax: 1.9, t, iso,
+    pay: "Cash", lines: [{ it: "juice", qty: 2, rate: 20 }],
+  });
+
+  it("puts this morning's bill above last night's on the manager's activity feed", () => {
+    act(() => {
+      as("manager");
+      useApp.setState({
+        bills: [bill("CF/1189", "23:30", YESTERDAY_LATE), bill("CF/1190", "01:30", TODAY_EARLY)],
+        req: [], tkt: [],
+      });
+    });
+
+    const html = render(createElement(ManagerDashboard));
+
+    // "Recent activity" is sorted newest-first. On the printed clock face 23:30 led, so the
+    // manager's answer to "what just happened" opened with last night.
+    expect(html.indexOf("CF/1190")).toBeLessThan(html.indexOf("CF/1189"));
+  });
+
+  it("puts this morning's requisition above last night's on the buyer's feed", () => {
+    const prq = (id: string, at: string, iso: string): DatedDoc<Requisition> => ({
+      id, by: "Murugan S", at, iso, st: "Approved",
+      lines: [{ it: "juice", qty: 10, appr: 10, ordered: 10 }], hist: [], note: "",
+    });
+    act(() => {
+      as("buyer");
+      // Neither is "Sent", so nothing is drawn above the feed in requisition order — what is
+      // being read here is the feed's own sort and nothing else.
+      useApp.setState({ prq: [prq("PRQ-2026-0071", "23:30", YESTERDAY_LATE), prq("PRQ-2026-0072", "01:30", TODAY_EARLY)], po: [] });
+    });
+
+    const html = render(createElement(BuyerDashboard));
+
+    expect(html.indexOf("PRQ-2026-0072")).toBeLessThan(html.indexOf("PRQ-2026-0071"));
+  });
+});
+
+describe("a document sorts on the thing the row beside it prints", () => {
+  it("puts a fortnight-old order received this morning above a requisition raised last night", () => {
+    const po: DatedDoc<PurchaseOrder> = {
+      id: "PO-2026-0150", vendor: "VN-001",
+      // Raised a fortnight ago, delivered this morning. The row prints `recv`, so it has to
+      // sort on it: on `iso` — when the order was *raised* — the delivery the buyer is being
+      // shown sank below every requisition of the last two weeks.
+      at: "09:15", iso: "2026-08-28T03:45:00.000Z", eta: "11-Sep-2026", recv: "11-Sep-2026",
+      st: "Received", lines: [{ it: "juice", qty: 10, rate: 14, recv: 10, rejected: 0,
+        src: [{ prq: "PRQ-2026-0070", line: 0, qty: 10 }] }],
+      hist: [
+        { s: "Ordered", who: "Latha Narayanan", t: "09:15", iso: "2026-08-28T03:45:00.000Z" },
+        { s: "Received", who: "Murugan S", t: "07:30", iso: "2026-09-11T02:00:00.000Z" },
+      ],
+    };
+    const prq: DatedDoc<Requisition> = {
+      id: "PRQ-2026-0071", by: "Murugan S", at: "23:30", iso: YESTERDAY_LATE, st: "Approved",
+      lines: [{ it: "juice", qty: 10, appr: 10, ordered: 10 }], hist: [], note: "",
+    };
+    act(() => { as("buyer"); useApp.setState({ po: [po], prq: [prq] }); });
+
+    const html = render(createElement(BuyerDashboard));
+
+    expect(html.indexOf("PO-2026-0150")).toBeLessThan(html.indexOf("PRQ-2026-0071"));
   });
 });

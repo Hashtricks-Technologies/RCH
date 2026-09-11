@@ -8,7 +8,7 @@ import {
   Alert, Btn, Card, DataTable, Field, FilterSelect, FormRow, Grid, PageHead,
   StatusPill, TableFoot, Tag, Toolbar,
 } from "../../ui/kit";
-import type { ItemType, LocKey, TicketPriority, TktStatus } from "../../types";
+import type { ItemType, LocKey, TktStatus } from "../../types";
 import { emptyFor, sortRows, useSort, type SortValue } from "./useSort";
 
 const TYPES: (ItemType | "All")[] = ["All", "RAW", "PACK", "MRP", "FG", "MTO"];
@@ -16,7 +16,6 @@ const STATES = ["All", "Below reorder in store", "At zero somewhere", "Not held 
 // "Withdrawn" is here because a counter can now cancel a transfer it granted, and a stage the
 // filter cannot name is a row the manager cannot find.
 const TSTATES = ["All", "Reserved", "In transit", "Received", "Cancelled"] as const;
-const PRIORITIES: TicketPriority[] = ["Normal", "Urgent", "Low"];
 const tagKind = (t: ItemType) => (t === "MRP" ? "tr" : t === "FG" || t === "MTO" ? "md" : undefined);
 
 /** A shop transfer ticket's stage, in the words the manager needs. Typed against the union so
@@ -43,15 +42,20 @@ export default function ItemsStock() {
   const [tfrom, setTfrom] = useState(0);
   const [tto, setTto] = useState(0);
 
-  const home = s.user && OUTLETS.includes(s.user.loc) ? s.user.loc : OUTLETS[0];
-  const [shop, setShop] = useState<LocKey>(home);
+  // A deployment with no outlets at all is not a hypothetical: `OUTLETS` is empty until the
+  // snapshot lands, and `OUTLETS[0]` is `undefined` there — which `LOC[shop]` then dereferences
+  // and takes the whole screen down with. `null` says "no shop to work on" and renders as such.
+  const home = s.user && OUTLETS.includes(s.user.loc) ? s.user.loc : OUTLETS[0] ?? null;
+  const [shop, setShop] = useState<LocKey | null>(home);
   const [pick, setPick] = useState("");
 
   const [nName, setNName] = useState("");
   const [nDetail, setNDetail] = useState("");
   const [nQty, setNQty] = useState("");
-  const [nPrio, setNPrio] = useState(0);
   const [busy, setBusy] = useState(false);
+  // ---- item patch ---- listing a product is a server call too, and it can be refused (another
+  // manager listing the same product a second before). The picker empties only on a "yes".
+  const [listing, setListing] = useState(false);
 
   const items = useSort("name");
   const tsort = useSort("id", "desc");
@@ -88,12 +92,19 @@ export default function ItemsStock() {
   const tFiltered = tTerm !== "" || tstate > 0 || tfrom > 0 || tto > 0;
 
   /* ---------------- list an existing product at a shop ---------------- */
-  const listed = menuOf(s, shop);
+  const listed = shop ? menuOf(s, shop) : [];
   // ---- item patch ----
   // A retired line stays in `IT` so past bills still name it; it must not be offerable on a till.
   const listable = activeItems().filter((k) => !listed.includes(k) && IT[k].t !== "RAW" && IT[k].t !== "PACK");
-  const list = LOC[shop].list ?? "A";
+  const list = (shop && LOC[shop]?.list) ?? "A";
   const pickPrice = pick ? s.prices[list]?.[pick] : undefined;
+  const listAtShop = async () => {
+    if (!shop || !pick) return;
+    setListing(true);
+    const ok = await addProduct(shop, pick);
+    setListing(false);
+    if (ok) setPick("");
+  };
 
   /* ---------------- item master ---------------- */
   const locNames = ["All", ...ALL_LOCS.map((l) => LOC[l].n)];
@@ -131,7 +142,7 @@ export default function ItemsStock() {
   const shownValue = sum(rows, (r) => r.value);
 
   const raiseNew = async () => {
-    if (busy) return;
+    if (busy || !shop) return;
     const name = nName.trim();
     if (!name) { notify("Name the product you want the central store to stock"); return; }
     const opening = nQty.trim();
@@ -238,38 +249,46 @@ export default function ItemsStock() {
 
       <Grid cols="g2">
         <Card title="List an existing product at a shop" sub="Puts a catalogue product on that counter's till">
-          <FormRow cols="f2">
-            <Field label="Shop">
-              <select value={shop} onChange={(e) => { setShop(e.target.value as LocKey); setPick(""); }}>
-                {OUTLETS.map((l) => <option key={l} value={l}>{LOC[l].n} — list {LOC[l].list}</option>)}
-              </select>
-            </Field>
-            <Field label="Product" hint={`${listable.length} catalogue product${listable.length === 1 ? "" : "s"} not yet on this till.`}>
-              <select value={pick} onChange={(e) => setPick(e.target.value)}>
-                <option value="">Pick a product…</option>
-                {listable.map((k) => (
-                  <option key={k} value={k}>{IT[k].n} — {IT[k].t}</option>
-                ))}
-              </select>
-            </Field>
-          </FormRow>
-          {pick !== "" && pickPrice == null && (
-            <Alert tone="w" label="NO PRICE">
-              {IT[pick].n} has no price on list {list}. Add it here, then set a price on the Price Lists screen —
-              until then the counter cannot bill it.
-            </Alert>
+          {shop === null ? (
+            <p className="mini">
+              No outlet is configured, so there is no till to list a product on.
+            </p>
+          ) : (
+            <>
+            <FormRow cols="f2">
+              <Field label="Shop">
+                <select value={shop} onChange={(e) => { setShop(e.target.value as LocKey); setPick(""); }}>
+                  {OUTLETS.map((l) => <option key={l} value={l}>{LOC[l].n} — list {LOC[l].list}</option>)}
+                </select>
+              </Field>
+              <Field label="Product" hint={`${listable.length} catalogue product${listable.length === 1 ? "" : "s"} not yet on this till.`}>
+                <select value={pick} onChange={(e) => setPick(e.target.value)}>
+                  <option value="">Pick a product…</option>
+                  {listable.map((k) => (
+                    <option key={k} value={k}>{IT[k].n} — {IT[k].t}</option>
+                  ))}
+                </select>
+              </Field>
+            </FormRow>
+            {pick !== "" && pickPrice == null && (
+              <Alert tone="w" label="NO PRICE">
+                {IT[pick].n} has no price on list {list}. Add it here, then set a price on the Price Lists screen —
+                until then the counter cannot bill it.
+              </Alert>
+            )}
+            <div className="totrow"><span>Currently listed at {LOC[shop].n}</span><span>{listed.length}</span></div>
+            <div className="totrow">
+              <span>Price on list {list}</span>
+              <span>{pick === "" ? "—" : pickPrice == null ? "not priced" : money(pickPrice)}</span>
+            </div>
+            <div className="mtop">
+              <Btn wide disabled={!pick || listing} title={pick ? undefined : "Pick a product first"}
+                onClick={() => void listAtShop()}>
+                {listing ? "Listing…" : `List at ${LOC[shop].n}`}
+              </Btn>
+            </div>
+            </>
           )}
-          <div className="totrow"><span>Currently listed at {LOC[shop].n}</span><span>{listed.length}</span></div>
-          <div className="totrow">
-            <span>Price on list {list}</span>
-            <span>{pick === "" ? "—" : pickPrice == null ? "not priced" : money(pickPrice)}</span>
-          </div>
-          <div className="mtop">
-            <Btn wide disabled={!pick} title={pick ? undefined : "Pick a product first"}
-              onClick={() => { addProduct(shop, pick); setPick(""); }}>
-              List at {LOC[shop].n}
-            </Btn>
-          </div>
         </Card>
 
         <Card title="Request a new product from inventory" sub="For something the item master does not carry yet">
@@ -285,18 +304,17 @@ export default function ItemsStock() {
               <input value={nQty} onChange={(e) => setNQty(e.target.value)} placeholder="e.g. 48 nos" />
             </Field>
           </FormRow>
-          <Field label="Why it is needed" hint={`Raised for ${LOC[shop].n}. Change the shop on the left to switch it.`}>
+          <Field label="Why it is needed"
+            hint={shop ? `Raised for ${LOC[shop].n}. Change the shop on the left to switch it.` : "Raised against the central store."}>
             <textarea rows={3} value={nDetail} onChange={(e) => setNDetail(e.target.value)}
               placeholder="Customers keep asking for it, the kiosk has run the trial, and so on…" />
           </Field>
-          <FormRow>
-            <Field label="Priority">
-              <select value={nPrio} onChange={(e) => setNPrio(Number(e.target.value))}>
-                {PRIORITIES.map((p, i) => <option key={p} value={i}>{p}</option>)}
-              </select>
-            </Field>
-          </FormRow>
-          <Btn wide disabled={busy || !nName.trim()} title={nName.trim() ? undefined : "Name the product first"}
+          {/* There was a Priority picker here. `POST /product-requests` has no priority field —
+              `CreateProductRequestBodySchema` never carried one — so every choice made on it was
+              dropped on the way out, and a manager who marked something urgent had been told a
+              thing that was not true. Say it in the reason instead, where it reaches the buyer. */}
+          <Btn wide disabled={busy || !shop || !nName.trim()}
+            title={shop ? (nName.trim() ? undefined : "Name the product first") : "No outlet to raise it for"}
             onClick={raiseNew}>
             {busy ? "Sending…" : "Raise new-product request"}
           </Btn>

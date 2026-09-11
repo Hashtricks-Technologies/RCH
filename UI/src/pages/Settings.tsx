@@ -2,11 +2,11 @@ import { useRef, useState } from "react";
 import { homeLabel } from "../data/master";
 import { useApp } from "../store";
 import type { ThemePref } from "../lib/theme";
-import { Avatar, Btn, BtnRow, Card, Field, FormRow, Grid, PageHead, Switch, Tag } from "../ui/kit";
+import { Alert, Avatar, Btn, BtnRow, Card, Field, FormRow, Grid, PageHead, Switch, Tag } from "../ui/kit";
 import { applyPrefs, readPrefs, setPhoto, storePrefs, usePhoto, type Prefs } from "../ui/prefs";
 
 /* Only "compact" can act on its own. The other three are recorded honestly as a
-   stated preference — there is no server in this build to send anything from. */
+   stated preference — nothing on the server reads them yet, so nothing is sent. */
 const PREFS: { k: keyof Prefs; t: string; d: string; live?: boolean }[] = [
   { k: "low", t: "Low stock alerts", d: "Items at your location that drop below par" },
   { k: "appr", t: "Approval notifications", d: "Documents that are waiting on your decision" },
@@ -28,12 +28,44 @@ export default function Settings() {
   const setTheme = useApp((s) => s.setTheme);
   const saveProfile = useApp((s) => s.saveProfile);
   const notify = useApp((s) => s.notify);
-  const [form, setForm] = useState({ n: user.n, emp: user.emp, e: user.e, ph: user.ph });
+  // An employee id is who the server thinks you are — it is the sign-in name, and `PATCH /me`
+  // does not take one — so it is shown and never offered as a box to retype.
+  const [form, setForm] = useState({ n: user.n, e: user.e, ph: user.ph });
   const [prefs, setPrefs] = useState<Prefs>(readPrefs);
   const photo = usePhoto();
   const file = useRef<HTMLInputElement>(null);
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setForm({ ...form, [k]: e.target.value });
+
+  /* ---- sign-in & security: the same change the temporary-password page makes, from a screen
+     you are already signed in on. The two checks below are this form's own, before anything is
+     sent; the server's refusal comes back on `authError`, which is where `changePassword` puts
+     it, and both are shown in the same place. The three boxes empty only once it has landed.
+
+     `authError` is one field, written by `login` as well as by `changePassword`, and cleared
+     only on the *next* attempt at either — so a sign-in that was refused earlier in the shift is
+     still sitting in the store when this screen opens. `tried` is what keeps this card silent
+     until it has actually asked for something: it is local, so leaving the screen and coming
+     back puts the card back to saying nothing, and neither store action had to change. */
+  const changePassword = useApp((s) => s.changePassword);
+  const refused = useApp((s) => s.authError);
+  const [cur, setCur] = useState("");
+  const [next, setNext] = useState("");
+  const [again, setAgain] = useState("");
+  const [own, setOwn] = useState<string | null>(null);
+  const [tried, setTried] = useState(false);
+  const [pwBusy, setPwBusy] = useState(false);
+  const updatePassword = async () => {
+    setOwn(null);
+    setTried(true);
+    if (next !== again) { setOwn("The two new passwords do not match."); return; }
+    if (next.length < 10) { setOwn("Choose at least ten characters."); return; }
+    setPwBusy(true);
+    const ok = await changePassword(cur, next);
+    setPwBusy(false);
+    if (ok) { setCur(""); setNext(""); setAgain(""); }
+  };
+  const pwProblem = own ?? (tried ? refused : null);
 
   const toggle = (k: keyof Prefs) => {
     const next = { ...prefs, [k]: !prefs[k] };
@@ -79,7 +111,9 @@ export default function Settings() {
           </div>
           <FormRow cols="f2">
             <Field label="Full name"><input value={form.n} onChange={set("n")} /></Field>
-            <Field label="Employee ID"><input value={form.emp} onChange={set("emp")} /></Field>
+            <Field label="Employee ID" hint="Your sign-in name. Only an administrator can change it.">
+              <input value={user.emp} readOnly />
+            </Field>
           </FormRow>
           <FormRow cols="f2">
             <Field label="Email address"><input value={form.e} onChange={set("e")} /></Field>
@@ -96,26 +130,39 @@ export default function Settings() {
           </FormRow>
           <BtnRow>
             <Btn onClick={() => void saveProfile(form)}>Save changes</Btn>
-            <Btn variant="gh" onClick={() => setForm({ n: user.n, emp: user.emp, e: user.e, ph: user.ph })}>Discard</Btn>
+            <Btn variant="gh" onClick={() => setForm({ n: user.n, e: user.e, ph: user.ph })}>Discard</Btn>
           </BtnRow>
         </Card>
         <div>
-          <Card title="Sign-in & security">
-            <Field label="Current password"><input type="password" placeholder="Enter current password" /></Field>
+          <Card title="Sign-in & security" sub="Changed on the server, for every terminal">
+            <Field label="Current password">
+              <input type="password" autoComplete="current-password" placeholder="Enter current password"
+                value={cur} onChange={(e) => setCur(e.target.value)} />
+            </Field>
             <div style={{ height: 12 }} />
-            <Field label="New password"><input type="password" placeholder="At least 8 characters" /></Field>
+            <Field label="New password">
+              <input type="password" autoComplete="new-password" placeholder="At least ten characters"
+                value={next} onChange={(e) => setNext(e.target.value)} />
+            </Field>
             <div style={{ height: 12 }} />
-            <Field label="Confirm new password"><input type="password" /></Field>
-            {user.r === "counter" && (
+            <Field label="Confirm new password">
+              <input type="password" autoComplete="new-password"
+                value={again} onChange={(e) => setAgain(e.target.value)} />
+            </Field>
+            {pwProblem && (
               <>
                 <div style={{ height: 12 }} />
-                <Field label="Counter PIN" hint="Four digits, used to unlock the till at the start of a shift.">
-                  <input className="mono" defaultValue="4471" maxLength={4} />
-                </Field>
+                <Alert tone="c" label="REFUSED">{pwProblem}</Alert>
               </>
             )}
             <div style={{ height: 14 }} />
-            <Btn wide onClick={() => notify("Password updated")}>Update password</Btn>
+            <Btn wide disabled={pwBusy || !cur || !next || !again} onClick={() => void updatePassword()}>
+              {pwBusy ? "Changing…" : "Update password"}
+            </Btn>
+            <p className="hint" style={{ marginTop: 10 }}>
+              Every terminal you are signed in on is signed out of the old password the moment this
+              goes through. Forgotten the current one? Ask an administrator to reset it.
+            </p>
           </Card>
           <div className="mtop" />
           <Card title="Appearance" sub="Saved on this device">
@@ -145,8 +192,10 @@ export default function Settings() {
                 </div>
               ))}
               <div className="hint" style={{ padding: "11px 15px 4px" }}>
-                This build runs with no server behind it. Compact tables takes effect the moment you switch
-                it on; the other three record what you want and send nothing — no mail leaves this device.
+                Compact tables takes effect the moment you switch it on. The other three are kept on this
+                device and nothing sends from them yet — no alert or mail leaves the portal. Until they are
+                wired up, the screen that owns a figure is where you will see it change; raise it on the
+                support desk if something needs chasing.
               </div>
             </div>
           </Card>

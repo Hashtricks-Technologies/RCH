@@ -3,10 +3,10 @@ import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
 import { costOf, freeToPromise, qty } from "../../lib/selectors";
 import { fq, money, sum, U, unitTotal } from "../../lib/fmt";
-import { Alert, Btn, DataTable, Feed, Pill, Section, StatusPill, Tag } from "../../ui/kit";
+import { Alert, Btn, DataTable, DraftLineInput, Feed, Pill, Section, StatusPill, Tag } from "../../ui/kit";
 import { DrawerFrame } from "../../ui/Drawer";
 import { registerDrawer, type DrawerProps } from "../../drawers";
-import type { StockRequest } from "../../types";
+import type { DatedDoc, StockRequest } from "../../types";
 
 const dotFor = (state: string) =>
   state === "Rejected" || state === "Cancelled" ? "var(--crit)"
@@ -28,25 +28,20 @@ const decidedBy = (r: StockRequest) => {
   return h ? { who: h.who, at: h.t, what: h.s } : null;
 };
 
+/**
+ * C16. Everything below is derived **once**, from the request this drawer opened over —
+ * what the store can promise per line, which lines have been struck out, the reason boxes and
+ * the manager's note. A `useState` initialiser runs on mount and never again, and this drawer
+ * is one long-lived component instance that `openDrawer("mreq", other)` re-points at a second
+ * request without unmounting the first: the trims typed against one request were then sitting
+ * in the boxes of another, over lines that may not even have the same items.
+ *
+ * The key is the fix. `req.id` covers being pointed elsewhere; `req.iso` covers the same
+ * request coming back changed underneath — an SSE refetch after somebody else decided it —
+ * and either one forces a fresh instance with freshly derived state.
+ */
 function ApprovalDrawer({ id }: DrawerProps) {
-  const s = useApp();
-  const close = useApp((x) => x.closeDrawer);
-  const approveRequest = useApp((x) => x.approveRequest);
-  const rejectRequest = useApp((x) => x.rejectRequest);
-  const cancelRequest = useApp((x) => x.cancelRequest);
-
-  const req = s.req.find((r) => r.id === id);
-
-  const [appr, setAppr] = useState<number[]>(() =>
-    (req?.lines ?? []).map((l) =>
-      Math.max(0, Math.min(l.qty, req && req.st === "Request sent" ? freeToPromise(s, "store", l.it) : l.appr))
-    )
-  );
-  const [killed, setKilled] = useState<boolean[]>(() => (req?.lines ?? []).map(() => false));
-  const [lineWhy, setLineWhy] = useState<string[]>(() => (req?.lines ?? []).map(() => ""));
-  const [note, setNote] = useState(req?.st === "Request sent" ? "" : req?.mgrNote ?? "");
-  const [busy, setBusy] = useState<"approve" | "reject" | "withdraw" | null>(null);
-
+  const req = useApp((x) => x.req.find((r) => r.id === id));
   if (!req) {
     return (
       <DrawerFrame title="Request not found" sub={id}>
@@ -54,15 +49,36 @@ function ApprovalDrawer({ id }: DrawerProps) {
       </DrawerFrame>
     );
   }
+  return <ApprovalBody key={`${req.id}:${req.iso}`} req={req} />;
+}
+
+function ApprovalBody({ req }: { req: DatedDoc<StockRequest> }) {
+  const s = useApp();
+  const close = useApp((x) => x.closeDrawer);
+  const approveRequest = useApp((x) => x.approveRequest);
+  const rejectRequest = useApp((x) => x.rejectRequest);
+  const cancelRequest = useApp((x) => x.cancelRequest);
+
+  const [appr, setAppr] = useState<number[]>(() =>
+    req.lines.map((l) =>
+      Math.max(0, Math.min(l.qty, req.st === "Request sent" ? freeToPromise(s, "store", l.it) : l.appr))
+    )
+  );
+  const [killed, setKilled] = useState<boolean[]>(() => req.lines.map(() => false));
+  const [lineWhy, setLineWhy] = useState<string[]>(() => req.lines.map(() => ""));
+  const [note, setNote] = useState(req.st === "Request sent" ? "" : req.mgrNote ?? "");
+  const [busy, setBusy] = useState<"approve" | "reject" | "withdraw" | null>(null);
 
   const open = req.st === "Request sent";
   // A decision this manager made themselves, before the store keeper turns it into a ticket —
   // the one thing left to undo once "Approve & forward" has already gone through. A manager
   // is hospital-wide, so this is not scoped to the outlet that raised it.
   const canWithdraw = (req.st === "Manager approved" || req.st === "Partially approved") && !req.ticket;
-  const set = (i: number, raw: string) => {
+  /** Clamped to what the counter asked for. The box itself is a `DraftLineInput`, so this is
+   *  reached once per edit rather than once per keystroke — reading a half-typed "12." as a
+   *  number is what turned a half-litre into 12 and then into 125 clamped back to the line. */
+  const set = (i: number, n: number) => {
     const max = req.lines[i].qty;
-    const n = Number(raw);
     const v = Number.isFinite(n) ? Math.max(0, Math.min(max, n)) : 0;
     setAppr(appr.map((x, j) => (j === i ? v : x)));
   };
@@ -218,39 +234,40 @@ function ApprovalDrawer({ id }: DrawerProps) {
               return {
                 key: l.it + i,
                 cells: [
-                  <>{IT[l.it]?.n ?? l.it}<small>{IT[l.it]?.c}</small></>,
-                  <Tag kind={IT[l.it]?.t === "MRP" ? "tr" : IT[l.it]?.t === "RAW" ? undefined : "md"}>
+                  <span key="nm">{IT[l.it]?.n ?? l.it}<small>{IT[l.it]?.c}</small></span>,
+                  <Tag key="ty" kind={IT[l.it]?.t === "MRP" ? "tr" : IT[l.it]?.t === "RAW" ? undefined : "md"}>
                     {IT[l.it]?.t}
                   </Tag>,
-                  <>{fq(l.qty, l.it)} <small className="dim">{U(l.it)}</small></>,
-                  <>{fq(have, l.it)}</>,
+                  <span key="ask">{fq(l.qty, l.it)} <small className="dim">{U(l.it)}</small></span>,
+                  <span key="have">{fq(have, l.it)}</span>,
                   over
-                    ? <span style={{ color: "var(--warn)" }} title="Already promised elsewhere">{fq(free, l.it)}</span>
-                    : <>{fq(free, l.it)}</>,
+                    ? <span key="free" style={{ color: "var(--warn)" }} title="Already promised elsewhere">{fq(free, l.it)}</span>
+                    : <span key="free">{fq(free, l.it)}</span>,
                   open ? (
                     dead
-                      ? <span style={{ color: "var(--crit)" }}>rejected</span>
-                      : <input
-                        type="number"
-                        min={0}
-                        max={l.qty}
-                        step={U(l.it) === "nos" ? 1 : 0.5}
+                      ? <span key="appr" style={{ color: "var(--crit)" }}>rejected</span>
+                      // A half-litre is a real approval. The box absorbs the typing and commits
+                      // once, on the way out, so "12.5" is not read as 1, then 12, then 125.
+                      : <DraftLineInput
+                        key="appr"
                         value={appr[i] ?? 0}
-                        onChange={(e) => set(i, e.target.value)}
-                        aria-label={`Approved quantity for ${IT[l.it]?.n ?? l.it}`}
+                        min={0}
+                        step={U(l.it) === "nos" ? 1 : 0.5}
+                        ariaLabel={`Approved quantity for ${IT[l.it]?.n ?? l.it}`}
+                        onCommit={(n) => set(i, n)}
                       />
                   ) : (
-                    <>
+                    <span key="appr">
                       <b>{fq(l.appr, l.it)}</b>
                       {shortOf(l) > 0 && (
                         <small style={{ display: "block", color: "var(--warn)" }}>
                           {fq(shortOf(l), l.it)} short
                         </small>
                       )}
-                    </>
+                    </span>
                   ),
                   ...(open ? [
-                    <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                    <div key="act" style={{ display: "flex", flexDirection: "column", gap: 5 }}>
                       <Btn size="xs" variant={dead ? "gh" : "dg"} onClick={() => toggleKill(i)}>
                         {dead ? "Put this item back" : "Reject this item"}
                       </Btn>
@@ -340,14 +357,11 @@ function ApprovalDrawer({ id }: DrawerProps) {
                 : "No reason, no reject — the counter must be told why. Approving without one is allowed."}
             </div>
           </div>
-          <div className="btnrow mtop">
-            <Btn variant="dg" wide disabled={!reason} onClick={doReject}>
-              Reject the whole request
-            </Btn>
-            <Btn wide disabled={!canApprove} onClick={doApprove}>
-              Approve {killedIdx.length > 0 ? "the remaining items" : "and forward to store"}
-            </Btn>
-          </div>
+          {/* The footer's own Reject / Approve pair is the canonical one — it is on screen
+              wherever the drawer is scrolled to, it carries the busy labels, and it is the
+              pair the tests press. A second copy here was a second door onto the same two
+              calls, unlocked by a different set of conditions and with no busy state at all:
+              pressing it while the footer's was in flight posted the decision twice. */}
         </Section>
       )}
 

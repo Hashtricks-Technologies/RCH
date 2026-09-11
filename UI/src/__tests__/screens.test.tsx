@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, createElement, type ComponentType, type ReactElement } from "react";
 import { createRoot } from "react-dom/client";
 import { MemoryRouter } from "react-router-dom";
@@ -17,9 +17,11 @@ import { groupPool, picksFor, type PoolGroup } from "../roles/buyer/ProcurementL
 import { REPORTS } from "../roles/store/Reports";
 import { IT as FXIT, USERS, seedVendors } from "@rch/contract/fixtures";
 // ---- item patch ----
-import { IT } from "../data/master";
+import { IT, LOC, OUTLETS } from "../data/master";
+import { activeItems } from "../lib/selectors";
+import { Alert } from "../ui/kit";
 import type { PoolLine } from "../lib/selectors";
-import type { Bill, Dated, Role, Ticket, Trailed } from "../types";
+import type { Bill, Dated, DatedDoc, Role, StockRequest, Ticket, Trailed } from "../types";
 import { as, resetStore } from "./fixture";
 
 // Nothing in production code carries data any more: the registries are empty until a snapshot
@@ -649,5 +651,426 @@ describe("the counter can ask the kitchen, and only for what the kitchen makes",
     const html = render(createElement(prod.orders));
     expect(html).toContain("needed by 11-Sep-2026");
     expect(html.match(/needed by/g)).toHaveLength(1);
+  });
+});
+
+/* ------------------------------------------------------------------------
+ * The three forms whose screens had not caught up with an action that
+ * answers whether the server took the write: the settings password card,
+ * which called nothing at all, and the two that cleared what was typed
+ * whatever came back.
+ * ---------------------------------------------------------------------- */
+
+/** Hosts that stay mounted for the length of a case, so a form can be typed into and pressed. */
+const mounted: { unmount: () => void }[] = [];
+afterEach(() => { while (mounted.length) mounted.pop()!.unmount(); });
+
+function mount(C: ComponentType) {
+  const host = document.createElement("div");
+  document.body.appendChild(host);
+  const root = createRoot(host);
+  act(() => { root.render(createElement(MemoryRouter, null, createElement(C))); });
+  const ui = {
+    host,
+    text: () => host.textContent ?? "",
+    button: (label: string) =>
+      [...host.querySelectorAll("button")].find((b) => (b.textContent ?? "").includes(label))!,
+    /** `Field` ties its label to the control it wraps by id, which is how an operator finds one. */
+    field: (label: string) => {
+      const l = [...host.querySelectorAll("label")].find((x) => (x.textContent ?? "").trim() === label)!;
+      return host.querySelector<HTMLInputElement>(`#${l.htmlFor}`)!;
+    },
+    labelled: (aria: string) => host.querySelector<HTMLInputElement>(`input[aria-label="${aria}"]`)!,
+    unmount: () => { act(() => { root.unmount(); }); host.remove(); },
+  };
+  mounted.push(ui);
+  return ui;
+}
+/** Typing, the way React hears it. */
+const typeIn = (el: HTMLInputElement, v: string) => {
+  Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(el, v);
+  el.dispatchEvent(new Event("input", { bubbles: true }));
+};
+const settle = async (fn: () => void) => {
+  await act(async () => { fn(); await new Promise((r) => { setTimeout(r, 0); }); });
+};
+
+describe("the settings sign-in card", () => {
+  it("calls changePassword with the typed values", async () => {
+    const changePassword = vi.fn(async () => true);
+    act(() => { as("counter"); useApp.setState({ changePassword }); });
+    const ui = mount(Settings);
+
+    typeIn(ui.field("Current password"), "old-one-please");
+    typeIn(ui.field("New password"), "a-brand-new-password");
+    typeIn(ui.field("Confirm new password"), "a-brand-new-password");
+    await settle(() => { ui.button("Update password").click(); });
+
+    expect(changePassword).toHaveBeenCalledWith("old-one-please", "a-brand-new-password");
+    // Taken by the server, so the three boxes are empty again.
+    expect(ui.field("Current password").value).toBe("");
+    expect(ui.field("New password").value).toBe("");
+  });
+
+  it("invents no counter PIN and lets nobody retype their own employee id", () => {
+    act(() => { as("counter"); });
+    const ui = mount(Settings);
+    expect(ui.text()).not.toContain("Counter PIN");
+    expect(ui.field("Employee ID").readOnly).toBe(true);
+  });
+
+  it("keeps the typing when the change is refused", async () => {
+    const changePassword = vi.fn(async () => false);
+    act(() => {
+      as("counter");
+      useApp.setState({ changePassword, authError: "That is not your current password." });
+    });
+    const ui = mount(Settings);
+
+    typeIn(ui.field("Current password"), "wrong-one-here");
+    typeIn(ui.field("New password"), "a-brand-new-password");
+    typeIn(ui.field("Confirm new password"), "a-brand-new-password");
+    await settle(() => { ui.button("Update password").click(); });
+
+    expect(ui.field("Current password").value).toBe("wrong-one-here");
+    expect(ui.text()).toContain("That is not your current password.");
+  });
+});
+
+describe("a form whose write the server refused", () => {
+  it("a refused pay keeps the payer", async () => {
+    const pay = vi.fn(async () => false);
+    act(() => {
+      as("counter");                                   // Kavitha, Coffee Shop
+      useApp.setState({ pay, readCredit: async () => null, cart: { coffee: { juice: 1 } } });
+    });
+    const ui = mount(counter.pos);
+
+    // A staff-credit bill cannot be raised without somebody to post it to.
+    await settle(() => { ui.button("Staff credit").click(); });
+    const picked = ui.button("RC-4471");
+    const name = picked.querySelector("b")!.textContent ?? "";
+    await settle(() => { picked.click(); });
+    expect(ui.text()).toContain(`posted to ${name}`);
+
+    await settle(() => { ui.button("Pay").click(); });
+
+    expect(pay).toHaveBeenCalled();
+    // Refused: the operator must not have to find the same staff member again.
+    expect(ui.text()).toContain(`posted to ${name}`);
+  });
+
+  it("a refused price save keeps the typed value", async () => {
+    const savePrice = vi.fn(async () => false);
+    act(() => { as("manager"); useApp.setState({ savePrice, shopFilter: "coffee" }); });
+    const ui = mount(manager.prices);
+
+    const box = ui.labelled("New price for Real Juice 200ml");
+    typeIn(box, "37");
+    const save = [...box.closest("tr")!.querySelectorAll("button")].find((b) => b.textContent === "Save")!;
+    await settle(() => { save.click(); });
+
+    expect(savePrice).toHaveBeenCalledWith("B", "juice", 37);
+    expect(ui.labelled("New price for Real Juice 200ml").value).toBe("37");
+  });
+});
+
+/* ------------------------------------------------------------------------
+ * "Pay & print" and "Reprint" printed nothing: there was no `window.print()`
+ * anywhere in the app, and no paper for one to put on a printer. The slip is
+ * the `.print-slip` block at the end of `styles.css` — everything else on the
+ * page is hidden while it prints.
+ * ---------------------------------------------------------------------- */
+describe("what actually reaches the printer", () => {
+  // 11 Sep 2026, 23:30 at the hospital — and still the 11th in UTC only by five and a half
+  // hours' grace: 18:00Z is 23:30 IST, so a slip that converted with the host's day would print
+  // the 11th here and the 10th for anything a minute later. `vite.config.ts` pins TZ=UTC, so a
+  // date read straight off the instant's UTC day gets the evening shift wrong every night.
+  const LATE_IST = "2026-09-11T18:30:00.000Z";      // 12 Sep 00:00 IST — the far side of midnight
+  const BILL: Dated<Bill> = {
+    no: "CF/1188", loc: "coffee", opr: "Kavitha Raman", oprCol: "#B45309", tot: 40, tax: 4.29,
+    t: "00:00", iso: LATE_IST, pay: "Cash",
+    lines: [{ it: "juice", qty: 2, rate: 20 }],
+  };
+
+  it("puts the bill on paper and sends it to the printer on Reprint", () => {
+    const print = vi.spyOn(window, "print").mockImplementation(() => undefined);
+    act(() => { as("counter"); useApp.setState({ bills: [BILL] }); });
+    const ui = mount(() => createElement(DRAWERS.cbill, { id: "CF/1188" }));
+
+    const slip = ui.host.querySelector(".print-slip")!;
+    expect(slip).toBeTruthy();
+    const paper = slip.textContent ?? "";
+    expect(paper).toContain("CF/1188");            // bill number
+    expect(paper).toContain("Coffee Shop");        // outlet
+    expect(paper).toContain("00:00");              // the time
+    // The hospital's day, spelled as every other date on screen is. `fromWireDate` is `dmy`,
+    // which only parses "YYYY-MM-DD" and hands a full instant straight back, so this read
+    // "2026-09-11T18:30:00.000Z"; and 18:30Z is already the 12th in Asia/Kolkata, so a slip
+    // built off the host's UTC day would print the 11th under a midnight bill.
+    expect(paper).toContain("12-Sep-2026");
+    expect(paper).not.toContain("2026-09-11T");
+    expect(paper).toContain("Real Juice 200ml");   // the line
+    expect(paper).toContain("₹20.00");             // its rate
+    expect(paper).toContain("₹40.00");             // the total
+    expect(paper).toContain("₹4.29");              // the tax
+    expect(paper).toContain("Cash");               // the tender
+
+    act(() => { ui.button("Reprint").click(); });
+    expect(print).toHaveBeenCalled();
+    print.mockRestore();
+  });
+
+  it("names the payer on paper when the bill was posted to somebody", () => {
+    act(() => {
+      as("counter");
+      useApp.setState({ bills: [{ ...BILL, pay: "Staff credit", payer: { kind: "staff", id: "RC-3120", name: "Ramesh Kumar · F&B" } }] });
+    });
+    const ui = mount(() => createElement(DRAWERS.cbill, { id: "CF/1188" }));
+    expect(ui.host.querySelector(".print-slip")!.textContent).toContain("Ramesh Kumar · F&B");
+  });
+
+  it("opens the new bill's drawer once the server has numbered it", async () => {
+    act(() => {
+      as("counter");
+      useApp.setState({
+        cart: { coffee: { juice: 1 } },
+        bills: [{ ...BILL, no: "CF/1100", iso: "2026-09-11T02:00:00.000Z" }],
+        // A bill the server took: `pay` answers true, and the refetched list is what the
+        // screen reads the number off — it never guesses one.
+        pay: async () => {
+          useApp.setState({ bills: [{ ...BILL, no: "CF/1189", iso: "2026-09-11T04:00:00.000Z" }, { ...BILL, no: "CF/1100", iso: "2026-09-11T02:00:00.000Z" }] });
+          return true;
+        },
+      });
+    });
+    const ui = mount(counter.pos);
+    await settle(() => { ui.button("Pay").click(); });
+    // The newest by `iso`, not the first in the array and not a number made up locally.
+    expect(useApp.getState().drawer).toEqual({ t: "cbill", id: "CF/1189" });
+  });
+
+  it("prints a counter's ticket, with the six digits only where this browser holds them", () => {
+    const t = (otp: string): Trailed<Ticket> => ({
+      id: "TKT-2026-0442", req: "REQ-2026-0910", from: "store", to: "coffee", st: "Issued", otp,
+      lines: [{ it: "juice", qty: 24 }],
+      hist: [{ s: "Issued", who: "Murugan S", t: "09:40", iso: "2026-09-11T04:10:00.000Z" }],
+    });
+
+    act(() => { as("counter"); useApp.setState({ tkt: [t("481203")] }); });
+    const held = mount(() => createElement(DRAWERS.ctkt, { id: "TKT-2026-0442" }));
+    const paper = held.host.querySelector(".print-slip")!.textContent ?? "";
+    expect(paper).toContain("TKT-2026-0442");
+    expect(paper).toContain("Central Store");
+    expect(paper).toContain("Coffee Shop");
+    expect(paper).toContain("Real Juice 200ml");
+    expect(paper).toContain("481203");
+    expect(held.button("Print slip")).toBeDefined();
+
+    // The server redacts the code for everyone but the collector, so a blank one is not a
+    // fault — and the paper must not carry an empty box that reads like one.
+    act(() => { useApp.setState({ tkt: [t("")] }); });
+    const blind = mount(() => createElement(DRAWERS.ctkt, { id: "TKT-2026-0442" }));
+    const blank = blind.host.querySelector(".print-slip")!.textContent ?? "";
+    expect(blank).toContain("TKT-2026-0442");
+    expect(blank).not.toContain("481203");
+    expect(blank).toContain("the collector reads the code out");
+  });
+});
+
+/* ------------------------------------------------------------------------
+ * The manager's approval drawer: a box a half-litre could not be typed into,
+ * and derived state that stayed on the request it was first opened over.
+ * ---------------------------------------------------------------------- */
+describe("the approval drawer", () => {
+  const req = (over: Partial<DatedDoc<StockRequest>>): DatedDoc<StockRequest> => ({
+    id: "REQ-2026-0951", from: "coffee", by: "Kavitha Raman", at: "09:40",
+    iso: "2026-09-11T04:10:00.000Z", st: "Request sent", urg: false, mgrNote: "", ticket: null,
+    lines: [{ it: "milk", qty: 20, appr: 0 }],
+    hist: [{ s: "Request sent", who: "Kavitha Raman", t: "09:40", iso: "2026-09-11T04:10:00.000Z" }],
+    ...over,
+  });
+  const box = (ui: ReturnType<typeof mount>) => ui.labelled("Approved quantity for Milk 1L (toned)");
+
+  it("takes a decimal quantity without eating the point", () => {
+    act(() => { as("manager"); useApp.setState({ req: [req({})] }); });
+    const ui = mount(() => createElement(DRAWERS.mreq, { id: "REQ-2026-0951" }));
+
+    // Reading the box on every keystroke turned "12.5" into 1, then 12, then 125 clamped
+    // back to the line's own 20 — the trailing point was never a number, so it was dropped.
+    act(() => { typeIn(box(ui), "12.5"); });
+    expect(box(ui).value).toBe("12.5");
+    act(() => { box(ui).dispatchEvent(new FocusEvent("focusout", { bubbles: true })); });
+    expect(box(ui).value).toBe("12.5");
+    // `unitTotal`'s own three decimals — the point survived, which is the whole case.
+    expect(ui.text()).toContain("12.500 L");
+  });
+
+  it("re-derives what it is approving when the drawer is pointed at another request", () => {
+    act(() => {
+      as("manager");
+      useApp.setState({
+        req: [req({}), req({ id: "REQ-2026-0952", lines: [{ it: "milk", qty: 3, appr: 0 }] })],
+      });
+    });
+    // The same component instance, pointed at a second request — which is exactly what
+    // `openDrawer("mreq", other)` does while one is already open.
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    const show = (id: string) => {
+      act(() => { root.render(createElement(MemoryRouter, null, createElement(DRAWERS.mreq, { id }))); });
+    };
+    show("REQ-2026-0951");
+    const read = () => host.querySelector<HTMLInputElement>('input[aria-label="Approved quantity for Milk 1L (toned)"]')!.value;
+    const first = read();
+    show("REQ-2026-0952");
+    // Whatever the store can promise, the second request only asked for 3 — the box must not
+    // still be offering the first request's quantity against the second request's line.
+    expect(Number(read())).toBeLessThanOrEqual(3);
+    expect(read()).not.toBe(first);
+    act(() => { root.unmount(); });
+    host.remove();
+  });
+
+  it("offers one Approve and one Reject, not two of each", () => {
+    act(() => { as("manager"); useApp.setState({ req: [req({})] }); });
+    const ui = mount(() => createElement(DRAWERS.mreq, { id: "REQ-2026-0951" }));
+    const labels = [...ui.host.querySelectorAll("button")].map((b) => b.textContent ?? "");
+    expect(labels.filter((l) => l.startsWith("Approve"))).toHaveLength(1);
+    expect(labels.filter((l) => l.startsWith("Reject the"))).toHaveLength(1);
+  });
+});
+
+/* ------------------------------------------------------------------------
+ * The counter's own request screen: what it will let an operator send, and
+ * what it does on a deployment or a catalogue it was not written against.
+ * ---------------------------------------------------------------------- */
+describe("the counter's stock requests", () => {
+  it("will not send more of a shop's ask than this counter is holding free", () => {
+    act(() => {
+      as("counter");                                   // Kavitha, Coffee Shop
+      useApp.setState({
+        // The kiosk wants 40; the Coffee Shop has eight on the shelf.
+        shopAsks: [{
+          id: "ASK-2026-0021", from: "kiosk", to: "coffee", it: "juice", qty: 40,
+          st: "Asked", at: "09:20", iso: "2026-09-11T03:50:00.000Z", by: "Deepa Selvam", note: "",
+        }],
+      });
+    });
+    const ui = mount(counter.requests);
+    const qty = ui.host.querySelector<HTMLInputElement>("#g-ASK-2026-0021")!;
+    const send = () => [...ui.host.querySelectorAll("button")].find((b) => (b.textContent ?? "").startsWith("Send"))!;
+
+    expect(send().disabled).toBe(false);
+    act(() => { typeIn(qty, "40"); });
+    // Forty is more than the shelf holds, so the server would refuse it — the button does not
+    // offer to go and find that out. The cap used to be only `g > 0`.
+    expect(send().disabled).toBe(true);
+  });
+
+  it("says there is nobody to ask on a one-outlet deployment", () => {
+    act(() => { as("counter"); });
+    // One counter and no peer: `peers[0]` was `undefined`, and `LOC[undefined].n` took the
+    // whole screen down before it could draw a single row.
+    const saved = [...OUTLETS];
+    OUTLETS.splice(0, OUTLETS.length, "coffee");
+    try {
+      const ui = mount(counter.requests);
+      expect(ui.text()).toContain("No other outlet to ask");
+      expect(ui.text()).toContain("Stock requests");     // and the rest of the screen is there
+    } finally {
+      OUTLETS.splice(0, OUTLETS.length, ...saved);
+    }
+  });
+
+  it("moves off a product the catalogue has stopped carrying", async () => {
+    act(() => { as("counter"); });
+    const ui = mount(counter.requests);
+    act(() => { ui.button("From inventory").click(); });
+    const picked = () => ui.host.querySelector<HTMLSelectElement>('select[aria-label="Product"]')!.value;
+    const first = picked();
+    expect(first).toBeTruthy();
+
+    // What an SSE resync after somebody retires an item looks like: the key the picker opened
+    // on is no longer in the catalogue, and `useState(LIST[0])` was frozen on it for ever —
+    // so Submit posted a line for a product the server no longer sells.
+    act(() => {
+      IT[first] = { ...IT[first], active: false };
+      useApp.setState({ catalogVersion: useApp.getState().catalogVersion + 1 });
+    });
+    expect(picked()).not.toBe(first);
+    expect(activeItems()).toContain(picked());
+
+    // And the *state* moved, not only what the browser falls back to painting for a `value`
+    // no option carries: what Submit posts is read off `invItem`, not off the select.
+    act(() => { useApp.setState({ submitRequest: async () => false }); });
+    await settle(() => { ui.button("Submit request").click(); });
+    expect(useApp.getState().draft[0]?.it).toBe(picked());
+  });
+});
+
+/* ------------------------------------------------------------------------
+ * Fix round 1: four smaller things the review found.
+ * ---------------------------------------------------------------------- */
+describe("a refusal is shown where it was raised and nowhere else", () => {
+  it("does not carry an earlier sign-in's refusal onto the settings password card", () => {
+    // `authError` is one field shared by the two forms that write it, and it is cleared only on
+    // the *next* attempt — so a failed sign-in earlier in the shift was still sitting in the
+    // store when Settings opened, and the card accused the operator of a refusal it had never
+    // asked for. It speaks once this form has been used, and not before.
+    act(() => { as("counter"); useApp.setState({ authError: "That is not your current password." }); });
+    const ui = mount(Settings);
+    expect(ui.text()).not.toContain("That is not your current password.");
+    expect(ui.text()).not.toContain("REFUSED");
+  });
+
+  it("reads a refusal out loud, and a notice only when it is asked for", () => {
+    // A critical alert is a refusal or a block, and a screen reader has to interrupt for it;
+    // every other tone is a notice that can wait its turn. Neither carried a role at all.
+    // JSX rather than `createElement` here alone: `Alert` declares `children` as a required
+    // prop, which the three-argument form does not satisfy and the props-object form trips
+    // `react(no-children-prop)` on.
+    const ui = mount(() => (
+      <div>
+        <Alert tone="c" label="REFUSED">No.</Alert>
+        <Alert tone="i" label="LISTS">Two lists.</Alert>
+      </div>
+    ));
+    expect(ui.host.querySelector(".al.c")!.getAttribute("role")).toBe("alert");
+    expect(ui.host.querySelector(".al.i")!.getAttribute("role")).toBe("status");
+  });
+});
+
+describe("the price-list prose counts what is actually deployed", () => {
+  it("says counter, not counters, when there is one of them", () => {
+    const saved = [...OUTLETS];
+    OUTLETS.splice(0, OUTLETS.length, "coffee");
+    try {
+      act(() => { as("manager"); useApp.setState({ shopFilter: null }); });
+      const ui = mount(manager.prices);
+      expect(ui.text()).toContain("1 counter.");
+      expect(ui.text()).not.toContain("1 counters");
+      expect(ui.text()).not.toContain("1 lists");
+    } finally {
+      OUTLETS.splice(0, OUTLETS.length, ...saved);
+    }
+  });
+
+  it("says nothing about lists before the locations have landed", () => {
+    // What the screen sees between sign-in and the snapshot: `OUTLETS` is a deployment constant
+    // and is already there, `LOC` is a registry filled in place and is not. `LOC[l].list` threw
+    // outright, and the header read "0 lists cover the 0 counters".
+    const saved = OUTLETS.map((l) => LOC[l]);
+    for (const l of OUTLETS) delete LOC[l];
+    try {
+      act(() => { as("manager"); useApp.setState({ shopFilter: null }); });
+      const ui = mount(manager.prices);
+      expect(ui.text()).toContain("No outlet is configured");
+      expect(ui.text()).not.toContain("0 lists");
+      expect(ui.text()).not.toContain("0 counters");
+    } finally {
+      OUTLETS.forEach((l, i) => { LOC[l] = saved[i]; });
+    }
   });
 });

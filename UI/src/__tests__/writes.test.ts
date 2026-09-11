@@ -199,9 +199,9 @@ describe("the till takes one bill per tap", () => {
     });
 
     const ui = mount();
-    expect(ui.button("Pay & print")).toBeDefined();
+    expect(ui.button("Pay")).toBeDefined();
 
-    act(() => { ui.button("Pay & print")!.click(); });
+    act(() => { ui.button("Pay")!.click(); });
 
     // The button has swapped to its in-flight label and is disabled, so the second tap
     // lands on nothing. (A human's second tap comes after a paint, which is this flush.)
@@ -238,7 +238,7 @@ describe("the till takes one bill per tap", () => {
     expect(ui.host.textContent).toContain(creditBreachMessage(2990, 20, "Vinoth Prakash · Kitchen"));
     // The ceiling and the running total are the server's numbers, not a constant compiled in.
     expect(ui.host.textContent).toContain("of ₹3,000");
-    expect(ui.button("Pay & print")!.disabled).toBe(true);
+    expect(ui.button("Pay")!.disabled).toBe(true);
     ui.unmount();
   });
 
@@ -255,7 +255,7 @@ describe("the till takes one bill per tap", () => {
     expect(ui.host.textContent).toContain("Could not check this month's credit");
     expect(ui.host.textContent).not.toContain("Checking what");
     // And the sale is not blocked on a number that never arrived: the server still refuses it.
-    expect(ui.button("Pay & print")!.disabled).toBe(false);
+    expect(ui.button("Pay")!.disabled).toBe(false);
     ui.unmount();
   });
 
