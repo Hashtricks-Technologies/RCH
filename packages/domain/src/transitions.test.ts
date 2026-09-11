@@ -14,10 +14,11 @@ describe("request transitions", () => {
     expect(canTransition(REQUEST_TRANSITIONS, "Rejected", "Manager approved")).toBe(false);
     expect(canTransition(REQUEST_TRANSITIONS, "Ticket issued", "Cancelled")).toBe(false);
   });
-  it("cancels only while the request is still open", () => {
+  it("cancels while the request is open, and withdraws an approval that never got a ticket", () => {
     expect(canTransition(REQUEST_TRANSITIONS, "Draft", "Cancelled")).toBe(true);
     expect(canTransition(REQUEST_TRANSITIONS, "Request sent", "Cancelled")).toBe(true);
-    expect(canTransition(REQUEST_TRANSITIONS, "Manager approved", "Cancelled")).toBe(false);
+    expect(canTransition(REQUEST_TRANSITIONS, "Manager approved", "Cancelled")).toBe(true);
+    expect(canTransition(REQUEST_TRANSITIONS, "Partially approved", "Cancelled")).toBe(true);
     expect(canTransition(REQUEST_TRANSITIONS, "Closed", "Cancelled")).toBe(false);
   });
   it("leaves Closed, Rejected and Cancelled terminal", () => {

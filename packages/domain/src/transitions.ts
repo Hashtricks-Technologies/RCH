@@ -11,8 +11,8 @@ export type TransitionTable<S extends string> = Readonly<Record<S, readonly S[]>
 export const REQUEST_TRANSITIONS: TransitionTable<ReqStatus> = {
   Draft: ["Request sent", "Cancelled"],
   "Request sent": ["Manager approved", "Partially approved", "Rejected", "Cancelled"],
-  "Manager approved": ["Ticket issued"],
-  "Partially approved": ["Ticket issued"],
+  "Manager approved": ["Ticket issued", "Cancelled"],
+  "Partially approved": ["Ticket issued", "Cancelled"],
   "Ticket issued": ["Collected"],
   Collected: ["Closed"],
   // No path puts a request in Received today — the ticket carries that word, the request goes
