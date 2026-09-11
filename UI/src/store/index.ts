@@ -262,7 +262,12 @@ export const useApp = create<AppState>((set, get) => ({
       // replacements, so take them before anything else calls the server.
       const r = await call(routes.changePassword, { body: { current, next } });
       setAccessToken(r.accessToken);
-      set({ user: r.user, mustChangePassword: r.mustChangePassword, auth: "loading" });
+      // No `auth: "loading"` of its own. `loadSnapshot` already decides that, and decides it on
+      // the one question that matters: is there anything on screen to keep? Forcing the splash
+      // here was right for the first sign-in (an empty master, nothing to blank) and wrong for
+      // Settings, where changing a password threw the operator's whole screen away and put
+      // "Loading…" over the hospital for the length of a snapshot.
+      set({ user: r.user, mustChangePassword: r.mustChangePassword });
       await get().loadSnapshot();
       get().notify("Password changed — you are signed in.");
       return true;
@@ -289,7 +294,9 @@ export const useApp = create<AppState>((set, get) => ({
 
   addToCart: (loc, it, d = 1) =>
     set((s) => {
-      const c = { ...(s.cart[loc] ?? {}) };
+      // No `?? {}`: spreading `undefined` into an object literal adds nothing, which is exactly
+      // what an empty fallback was there to do.
+      const c = { ...s.cart[loc] };
       c[it] = (c[it] ?? 0) + d;
       if (c[it] <= 0) delete c[it];
       return { cart: { ...s.cart, [loc]: c } };
