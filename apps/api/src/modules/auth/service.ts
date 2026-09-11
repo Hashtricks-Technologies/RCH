@@ -17,16 +17,25 @@ const BAD_LOGIN = "That employee id and password do not match.";
 /** Any valid Argon2id string, produced once by `hashPassword("x")` — verified against on an
  *  unknown employee id so "no such user" takes about as long as "wrong password". */
 const DUMMY_HASH = "$argon2id$v=19$m=65536,t=3,p=1$LOmzJu8PWUsCPtFBwcH39w$RNwG8DhqDVFkCZWhCIv2DvxlqKkAP91CtOmSexvaOVk";
-/** How many `hit()` calls between sweeps of keys whose window has gone quiet. */
+/** How many `begin()` calls between sweeps of keys whose window has gone quiet. */
 const SWEEP_EVERY = 1000;
 
 /**
- * Per-employee sliding window of **failed** sign-ins, in memory, and therefore per pod — as is
- * the per-IP limit beside it, which `@fastify/rate-limit` also keeps in this process's own
- * memory. Neither is cluster-wide: the load balancer spreads requests across replicas, so the
- * effective budget is the configured number multiplied by however many pods are running. That is
- * accepted rather than solved. If it ever has to be exact, the fix is a shared store (the rate
- * limiter takes a Redis-backed one), not a bigger number here.
+ * Per-employee sliding window of sign-in attempts, in memory, and therefore per pod — as is the
+ * per-IP limit beside it, which `@fastify/rate-limit` also keeps in this process's own memory.
+ * Neither is cluster-wide: the load balancer spreads requests across replicas, so the effective
+ * budget is the configured number multiplied by however many pods are running. That is accepted
+ * rather than solved. If it ever has to be exact, the fix is a shared store (the rate limiter
+ * takes a Redis-backed one), not a bigger number here.
+ *
+ * **Within a pod the budget holds under concurrency**, which is the whole reason an attempt is
+ * recorded by `begin` before it is verified rather than after it fails. Argon2 takes 50–100 ms,
+ * so a counter that only ever saw *settled* failures would let any number of simultaneous
+ * guesses past a gate reading zero — and burn a core per guess doing it. An attempt costs its
+ * slot from the instant it starts; `release` gives that one slot back if the password turns out
+ * to be correct, so a correct password never contributes to the budget and a wrong one counts
+ * immediately. `isLocked` and `begin` are both synchronous and are called back to back, so no
+ * two requests can interleave between reading the budget and spending it.
  *
  * The key is an employee id off the wire, so the map is an attack surface of its own: without
  * a bound, a script posting a fresh `emp` every request grows it until the pod dies. Two
@@ -40,31 +49,42 @@ export class Attempts {
   private max: number;
   private windowMs: number;
   private cap: number;
-  private hits = 0;
+  private starts = 0;
   constructor(max: number, windowMs = 60_000, cap = 10_000) {
     this.max = max;
     this.windowMs = windowMs;
     this.cap = cap;
   }
-  /** Has this employee id already spent its budget of failures for the window? A pure read —
-   *  nothing is recorded here, so naming an id costs the person who owns it nothing. */
+  /** Has this employee id already spent its budget for the window? A pure read — nothing is
+   *  recorded here, so merely naming an id costs the person who owns it nothing. */
   isLocked(key: string): boolean {
     const now = Date.now();
     return (this.m.get(key) ?? []).filter((t) => now - t < this.windowMs).length >= this.max;
   }
-  /** Records one **failed** sign-in against the employee id. */
-  hit(key: string): void {
+  /** Records an attempt that is about to be verified, and answers the stamp `release` takes
+   *  back. Spending the slot now rather than on failure is what makes the budget hold while
+   *  several attempts on one id are in flight at once. */
+  begin(key: string): number {
     const now = Date.now();
-    if (++this.hits % SWEEP_EVERY === 0) this.sweep();
+    if (++this.starts % SWEEP_EVERY === 0) this.sweep();
     const a = (this.m.get(key) ?? []).filter((t) => now - t < this.windowMs);
     a.push(now);
     // Re-insert so the key moves to the back of the eviction order.
     this.m.delete(key);
     while (this.m.size >= this.cap) this.m.delete(this.m.keys().next().value as string);
     this.m.set(key, a);
+    return now;
   }
-  clear(key: string) {
-    this.m.delete(key);
+  /** Gives back the one attempt `begin` recorded, for a sign-in that turned out to be correct.
+   *  Exactly one entry, never the key: a wrong attempt in flight beside it keeps its own slot,
+   *  so a success cannot launder somebody else's guesses. Two attempts inside the same
+   *  millisecond carry the same stamp, and removing either of them is the same thing. */
+  release(key: string, at: number): void {
+    const a = this.m.get(key);
+    if (!a) return;
+    const i = a.indexOf(at);
+    if (i >= 0) a.splice(i, 1);
+    if (a.length === 0) this.m.delete(key);
   }
   /** Drops every key whose window has emptied. Called on a sweep, not on the hot path. */
   sweep(): void {
@@ -95,15 +115,17 @@ export function createAuthService(db: Db, config: Config) {
 
   return {
     async login(emp: string, password: string, meta: Meta): Promise<Session> {
-      // Read the budget, spend it only on a failure. Counting the attempt before the password
-      // was checked charged a correct sign-in the same as a wrong one — so six tills coming on
-      // shift at once, every one of them typing the right password, put the sixth over the
-      // budget and 429'd it.
+      // Read the budget, then spend a slot on this attempt — before the ~50–100 ms of Argon2
+      // below, so simultaneous guesses at one employee id cannot all pass a gate that has not
+      // seen any of them fail yet. The slot comes back only if the password was right, which is
+      // what keeps a shift change from locking a till out: a correct sign-in leaves the budget
+      // exactly where it found it.
       if (attempts.isLocked(emp)) throw new RateLimitedError("Too many attempts for that employee id - wait a minute and try again.");
+      const attempt = attempts.begin(emp);
       const u = await authRepo.userByEmp(db, emp);
       const ok = u ? await verifyPassword(u.passwordHash, password) : (await verifyPassword(DUMMY_HASH, password), false);
-      if (!u || !ok || !u.active) { attempts.hit(emp); throw new UnauthenticatedError(BAD_LOGIN); }
-      attempts.clear(emp);
+      if (!u || !ok || !u.active) throw new UnauthenticatedError(BAD_LOGIN);
+      attempts.release(emp, attempt);
       return withTransaction(db, (tx) => issue(tx, u, randomUUID(), meta));
     },
     async refresh(raw: string | undefined, meta: Meta): Promise<Session> {

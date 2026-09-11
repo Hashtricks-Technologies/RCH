@@ -70,16 +70,36 @@ describe("login rate limit per employee id", () => {
     expect(r.statusCode).toBe(429);
   });
   it("counts only failed sign-ins against the employee id, so five correct ones in a minute do not lock anybody out", async () => {
-    // The budget used to be spent before the password was even looked at, and only handed back
-    // once the sign-in had finished. Six tills coming on shift together — every one of them
-    // typing the right password — therefore all reached the counter before any of them cleared
-    // it, and the sixth was refused. Only a failure costs anything now.
-    // App `a`, whose per-IP budget is raised to 100: six sign-ins from one address in a minute
-    // is under it, so what is being measured here is the per-employee counter and nothing else.
-    // RC-4471 rather than one of the ids the refresh suite below counts rows for — six sign-ins
-    // mint six refresh families, and "reuse revokes the family" asserts over all of a user's.
-    const rs = await Promise.all(Array.from({ length: 6 }, () => login(a, "RC-4471")));
-    expect(rs.map((r) => r.statusCode)).toEqual([200, 200, 200, 200, 200, 200]);
+    // The budget used to be spent before the password was even looked at, and handed back only
+    // once the sign-in had finished. Five tills coming on shift together — every one of them
+    // typing the right password — therefore all reached the counter before any of them gave a
+    // slot back, and the last was refused. A correct sign-in gives its own slot back now, so a
+    // whole budget's worth of them at once still all get in.
+    // App `a`, whose per-IP budget is raised to 100, so what is measured here is the
+    // per-employee counter (still the default five) and nothing else. RC-3120 rather than one
+    // of the ids the refresh suite below counts rows for — five sign-ins mint five refresh
+    // families, and "reuse revokes the family" asserts over all of one user's.
+    // Four is the test pool's own `max` (test/db.ts): asking warmPool for more than the pool can
+    // ever hold never resolves, and the held connections are never given back.
+    await warmPool(a.testDb!, 4);
+    const rs = await Promise.all(Array.from({ length: 5 }, () => login(a, "RC-3120")));
+    expect(rs.map((r) => r.statusCode)).toEqual([200, 200, 200, 200, 200]);
+  });
+  it("spends the budget when an attempt starts, so simultaneous guesses cannot all get past the gate", async () => {
+    // Argon2 takes 50–100 ms. A counter that only saw settled failures would let every one of
+    // these six through — they all arrive before any of them has finished failing — which is
+    // both an unlimited guessing window and six cores burned on demand. The slot is taken by
+    // `begin` before the verify, so exactly five reach the verifier and the sixth is refused
+    // without one. RC-9999 is not a seeded employee: the id is left locked for the rest of the
+    // minute, and nothing else in this file signs in as it.
+    // Four, the test pool's `max` — see the note above. The gate itself is reached before any
+    // query anyway (`isLocked` and `begin` run before the first await), so the six requests are
+    // held to the budget whether or not they get a connection each.
+    await warmPool(a.testDb!, 4);
+    const rs = await Promise.all(Array.from({ length: 6 }, () => login(a, "RC-9999", "guess")));
+    expect(rs.map((r) => r.statusCode).sort()).toEqual([401, 401, 401, 401, 401, 429]);
+    expect(rs.find((r) => r.statusCode === 429)!.json().error.message)
+      .toBe("Too many attempts for that employee id - wait a minute and try again.");
   });
 });
 
@@ -242,18 +262,27 @@ describe("must-change password", () => {
 describe("per-employee attempt map", () => {
   it("evicts the oldest key once it is full, so an unbounded stream of employee ids cannot grow it", () => {
     const at = new Attempts(5, 60_000, 3);
-    for (const k of ["a", "b", "c", "d", "e"]) at.hit(k);
+    for (const k of ["a", "b", "c", "d", "e"]) at.begin(k);
     expect(at.size).toBe(3);
-    // "a" and "b" were pushed out; the survivors keep their windows. (`hit` records a failure
-    // and answers nothing now — whether a key is over budget is `isLocked`'s question, which
-    // login asks before it verifies rather than after.)
-    at.hit("c");
+    // "a" and "b" were pushed out; the survivors keep their windows. (`begin` records an attempt
+    // about to be verified and answers the stamp that gives it back — whether a key is over
+    // budget is `isLocked`'s question, which login asks before it spends a slot.)
+    at.begin("c");
     expect(at.isLocked("c")).toBe(false);
     expect(at.size).toBe(3);
   });
+  it("gives back the attempt that turned out to be correct, and only that one", () => {
+    const at = new Attempts(2);
+    at.begin("RC-1"); // a wrong password, still being verified
+    const right = at.begin("RC-1"); // a correct one, in flight beside it
+    expect(at.isLocked("RC-1")).toBe(true); // two attempts, a budget of two
+    at.release("RC-1", right);
+    expect(at.isLocked("RC-1")).toBe(false); // the correct one gave its slot back
+    expect(at.size).toBe(1); // the wrong one kept its own
+  });
   it("drops keys whose window has gone quiet", () => {
     const at = new Attempts(5, 10);
-    at.hit("gone");
+    at.begin("gone");
     expect(at.size).toBe(1);
     vi.useFakeTimers();
     try {
