@@ -5,6 +5,7 @@ export default defineConfig({
     "cli/migrate": "src/cli/migrate.ts",
     "cli/seed": "src/cli/seed.ts",
     "cli/users": "src/cli/users.ts",
+    "cli/payers": "src/cli/payers.ts",
     "cli/rebuild-balances": "src/cli/rebuild-balances.ts",
     "cli/purge": "src/cli/purge.ts",
     "cli/keys": "src/cli/keys.ts",
