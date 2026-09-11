@@ -1748,8 +1748,9 @@ with no peering and no NAT. Two managed node groups are declared:
   roughly 70% off the same instance type on-demand. This is the only group that exists today.
 - **`ng-prod`** — on-demand `t3.medium`, min/desired 3, max 6, one node per AZ
   (`ap-south-1a`/`b`/`c`), labelled `rch.io/tier: prod`, 40 GB gp3. **It is declared and not yet
-  created**: run `eksctl create nodegroup -f deploy/eksctl/cluster.yaml` before the first
-  production deploy. `values-prod.yaml` pins both Deployments to it with
+  created**: run `eksctl create nodegroup -f deploy/eksctl/cluster.yaml --include=ng-prod`
+  (the `--include` matters — without it eksctl works on every group in the file) before the
+  first production deploy. `values-prod.yaml` pins both Deployments to it with
   `nodeSelector: { rch.io/tier: prod }`, which is what keeps production off the spot node — the
   group carries **no taint**, deliberately, because the DaemonSets (vpc-cni, kube-proxy, the
   CloudWatch agent) have to run on every node and know nothing about this application. Three
