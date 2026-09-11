@@ -161,6 +161,22 @@ shows **only** `Reconnecting` — a badge that is always there stops being read.
 `src/api/session.ts` holds the access token in memory (never `localStorage`) and fires
 `onSessionLost` when a refresh fails.
 
+`toast` is drawn once, by `src/ui/Toast.tsx`, which `App.tsx` renders above the routes — **not by
+`Shell.tsx`**. Sign-in, change-password, the loading gate and the failed page all render outside
+the shell, and a sentence raised on any of them used to be set in the store and never shown (the
+operator saw the button flip back to "Sign in" and nothing else; the 401 was only in the network
+tab). A refusal on the two forms does not toast at all: `login` and `changePassword` clear
+`authError` on the way in and write the server's sentence (or the unreachable fallback) to it on
+the way out, and `pages/Login.tsx` / `pages/ChangePassword.tsx` render it inline (`Alert
+tone="c"`), where it stays until the next attempt. `ChangePassword`'s own two checks are local
+state shown in the same place. `restore()` stays silent on a 401 — a first-time visitor has no
+cookie — and toasts anything else, since the server being down is not "no cookie". `notify`'s
+toast stays up for as long as its sentence takes to read (`toastMs`: 3.4 s plus 30 ms a character
+past forty, capped at nine seconds) and `dismissToast` puts it away on a click. `Shell.tsx` wraps
+the screen in its own `ErrorBoundary`, keyed on the path, so a screen that throws leaves the
+sidebar, the search and sign-out usable and resets when the operator leaves it; `main.tsx`'s outer
+boundary is the last resort behind the shell itself.
+
 `auth` (`store/index.ts`) has a fifth state, `"failed"`, landed in the Phase 6 fix wave
 (`19d486a`): a sign-in or a reload whose `GET /snapshot` call fails (not a 401 —
 `onSessionLost` already handles that) renders a full-page retry (`App.tsx`, `auth === "failed"`)
@@ -260,4 +276,8 @@ store's own `signIn` is gone, so this is the one sanctioned way a test signs som
   routes enforce belong to the API's own suites — do not re-assert them here.
 - `events.test.ts` — frame parsing, the 250 ms debounce into `refetch`, `resync` forcing a full
   `loadSnapshot`, and the `live` / `reconnecting` / `off` state the pill reads.
+- `refusals.test.tsx` — where a refusal is shown: a refused sign-in and password change inline on
+  the form (and not as a toast), the toast drawn on the sign-in screen and once inside the shell,
+  its `role="status"`, its length-scaled stay and click-to-dismiss, `restore()` speaking up when
+  the server cannot be reached, and a screen that throws caught inside the shell.
 - `api.test.ts`, `session.test.ts`, `theme.test.ts`, `screens.test.tsx`, `app.test.tsx`.

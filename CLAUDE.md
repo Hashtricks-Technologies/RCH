@@ -20,8 +20,8 @@ desk (raise → reply → resolve/close → rate) and the two server-side report
 the server, refetching just what each write changed and picking up another browser's changes
 live over SSE. `UI/src/data/seed.ts` is gone, and so is `UI/src/data/ops.ts`; the store is an API
 client end to end. The only state that still lives in the browser is what has nothing on the
-server to be a client of — `cart`, `draft`, `prqDraft`, `drawer`, `toast`, `shopFilter`, `theme`,
-`catalogVersion` — plus the theme and a few UI prefs reaching `localStorage`.
+server to be a client of — `cart`, `draft`, `prqDraft`, `drawer`, `toast`, `authError`,
+`shopFilter`, `theme`, `catalogVersion` — plus the theme and a few UI prefs reaching `localStorage`.
 
 ## Branches
 
@@ -92,7 +92,7 @@ docs/*.html              UA spec, system design, user flows — the product cont
 docs/superpowers/        plans and specs from prior agent-driven work
 scripts/build-site.sh    assembles index.html + docs/ + UI/dist into dist/
 UI/                      the application (React 19, TS 6 strict, Vite 8, Zustand 5)
-e2e/                     the Playwright smoke — six files, eight scenarios, twelve runtime tests
+e2e/                     the Playwright smoke — six files, nine scenarios, thirteen runtime tests
                          (the sign-in loop is five of them), against a real stack
 ```
 
@@ -331,7 +331,17 @@ These are enforced in code and pinned by tests. Breaking one is a bug, not a sty
   (adding litres to cups is how a request reads "510 units").
 - Toast copy is a full sentence in the operator's voice — `"PO-2026-0143 raised on Aavin Dairy
   Depot — expected 31-Aug-2026"`, not a bare status word. A refusal says what was refused and
-  why, and the action does not happen.
+  why, and the action does not happen. The toast is drawn once, by `UI/src/ui/Toast.tsx` in
+  `App.tsx` above the routes — on every page, the sign-in screen included — never by the shell.
+  The two forms outside the shell (sign-in, change-password) do not toast a refusal at all:
+  `login` and `changePassword` write `authError`, and the form shows it inline, where it stays
+  until the next attempt. A toast stays up for as long as its sentence takes to read, and a click
+  puts it away.
+- A refused request's log line says why. Every 4xx lands on the API's per-request log line as
+  `refusal: { code, message, cause? }` (`apps/api/src/plugins/errors.ts` →
+  `plugins/logging.ts`); `cause` is `AppError`'s internal reason — the login's `no such
+  employee` / `wrong password for RC-4471` / `RC-4471 is deactivated` behind its one sentence —
+  and is never serialised into a response.
 - `strict` TypeScript with `noUnusedLocals`, `noUnusedParameters`, `verbatimModuleSyntax` and
   `erasableSyntaxOnly`. Type-only imports need `import type`.
 - Master data (items, locations, recipes, price lists, users, limits) lives in

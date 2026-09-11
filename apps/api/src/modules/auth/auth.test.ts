@@ -56,6 +56,31 @@ describe("login", () => {
     expect(y.statusCode).toBe(401);
     expect(x.json().error.message).toBe(y.json().error.message);
   });
+  it("logs why it refused — no such employee, wrong password, deactivated — without the sentence changing, and never logs an unknown id", async () => {
+    // Its own app so the stream is this test's alone. The login route's per-IP limit is
+    // raised the same way `a`'s is.
+    const lines: Array<Record<string, unknown>> = [];
+    const c = await buildTestApp({ schema: "auth_log", env: { LOGIN_RATE_LIMIT_PER_MINUTE: "100", LOG_LEVEL: "info" },
+      logStream: { write: (s: string) => { for (const l of s.split("\n")) if (l) lines.push(JSON.parse(l) as Record<string, unknown>); } } });
+    await seedTestDb(c.testDb!.db);
+    await c.ready();
+    try {
+      await c.db.update(users).set({ active: false }).where(eq(users.id, "u6"));
+      const wrong = await login(c, "RC-4471", "nope");
+      const unknown = await login(c, "RC-0000", "changeme");
+      const gone = await login(c, "RC-4482", "changeme");
+      for (const r of [wrong, unknown, gone]) expect(r.json().error.message).toBe("That employee id and password do not match.");
+
+      const causes = lines.filter((l) => l.msg === "request" && l.route === "/api/v1/auth/login").map((l) => (l.refusal as { cause?: string } | undefined)?.cause);
+      expect(causes).toEqual(["wrong password for RC-4471", "no such employee", "RC-4482 is deactivated"]);
+      // What was typed into the id field is never written down when it matched nobody: an
+      // operator who types their password into the wrong box must not find it in the log.
+      expect(JSON.stringify(lines)).not.toContain("RC-0000");
+    } finally {
+      await c.db.update(users).set({ active: true }).where(eq(users.id, "u6"));
+      await c.close();
+    }
+  });
   it("refuses a deactivated user", async () => {
     await a.db.update(users).set({ active: false }).where(eq(users.id, "u6"));
     expect((await login(a, "RC-4482")).statusCode).toBe(401);

@@ -130,7 +130,7 @@ A staging or production seed sets `must_change_password`, which routes a first s
 change-password step. `deploy/RUNBOOK.md` §1 has the full local sequence and what each step does.
 
 Once it's up, `pnpm test:e2e` drives the running stack through a real browser — six files, eight
-scenarios, twelve runtime tests (the sign-in loop is five of them), sign-in to a settled bill —
+scenarios, thirteen runtime tests (the sign-in loop is five of them), sign-in to a settled bill —
 and `e2e/README.md` explains what each one proves and the environment variables the stack needs
 first.
 

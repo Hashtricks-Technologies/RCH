@@ -1,6 +1,6 @@
 # `e2e/` — the Playwright smoke
 
-Six files, eight scenarios, twelve runtime tests (the sign-in loop is five of them) that drive a
+Six files, nine scenarios, thirteen runtime tests (the sign-in loop is five of them) that drive a
 real browser against a real stack: a real sign-in, a real cookie, an nginx (or Vite) proxy in
 front of the API, a live-update stream and a Postgres transaction.
 
@@ -18,7 +18,7 @@ the script it looks for does not exist here.
 
 | File | What it proves that nothing else does |
 |---|---|
-| `tests/signin.spec.ts` | Every role signs in against a real cookie and lands on its own home screen; a role's own URL is refused to another role **with a sentence** (UA-01), and the sidebar never offered the link |
+| `tests/signin.spec.ts` | Every role signs in against a real cookie and lands on its own home screen; a role's own URL is refused to another role **with a sentence** (UA-01), and the sidebar never offered the link; a wrong password is refused **on the form**, in the server's sentence, and the sentence stays |
 | `tests/sell.spec.ts` | A cash sale takes the money and moves the shelf — the ledger, through the browser, in one transaction |
 | `tests/request-chain.spec.ts` | Counter raises → manager approves **in a second window** → the counter's list turns "Manager approved" with no reload → store issues → OTP read off the collector's screen → handover → receive. The live-update path and the whole movement rule |
 | `tests/kitchen.spec.ts` | A batch consumes its recipe and books its yield; a short one is refused and the tile keeps what the kitchen typed |
@@ -38,7 +38,7 @@ pnpm dev &                                                # api :3000, UI :5173
 pnpm test:e2e
 ```
 
-Expected: **12 tests, all passing, in about 35 seconds** (the table above counts the sign-in
+Expected: **13 tests, all passing, in about 40 seconds** (the table above counts the sign-in
 loop as one scenario; Playwright counts it as five tests plus the guard).
 
 Three settings in the root `.env` matter, and the seed and the API must both be started with
@@ -91,7 +91,7 @@ artifact.
 - **One worker, no retries locally.** The smoke sells, issues and receives against one real
   database; two workers would fight over the same shelf and a retry would re-run a scenario
   whose first attempt already moved stock.
-- **Six files, eight scenarios, and no more.** More would be a second test suite maintained by
+- **Six files, nine scenarios, and no more.** More would be a second test suite maintained by
   hand against a UI that moves.
 
 ## Known switches

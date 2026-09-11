@@ -66,6 +66,30 @@ in the cluster):
 - `COOKIE_SECURE` (default `true`; `.env.example` sets it `false` for local http) — whether the
   `rch_refresh` cookie requires HTTPS.
 
+### A sign-in that is refused
+
+The browser shows the refusal on the sign-in form itself — "That employee id and password do
+not match." — and that one sentence covers three cases on purpose: no such employee id, a wrong
+password, and a deactivated account. The API tells them apart on the request's own log line,
+never in the response:
+
+```bash
+kubectl logs deploy/rch-api -n <namespace> | grep '"route":"/api/v1/auth/login"' | grep '"status":401'
+```
+
+Each such line carries `"refusal":{"code":"unauthenticated","message":"…","cause":"…"}`, and
+`cause` is one of `no such employee`, `wrong password for RC-4471` or `RC-4471 is deactivated`.
+An id that matched nobody is deliberately not written into the log — what was typed into that
+box may well have been the password. Every other 4xx carries the same `refusal` field (its
+`code` and the sentence the caller read); a 5xx is logged in full under `"msg":"unhandled"`,
+and the sentence the caller read ends with the request id to look it up by.
+
+A forgotten password is reset with `users reset-password` (§5); the account then carries
+`must_change_password` and is asked to choose a new one at its next sign-in. A seeded account's
+password stops being the seed password the moment somebody signs in as it and goes through that
+step — `RC-4471` on `dev` did, on 2026-09-07 — so "the seed password does not work" for one
+seeded id and not the others is that, not an outage.
+
 ### Migration workflow
 
 Never hand-edit a migration. To change the schema:

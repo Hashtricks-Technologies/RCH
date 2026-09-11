@@ -2,12 +2,14 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { HOME } from "../nav";
 import { useApp } from "../store";
+import { Alert } from "../ui/kit";
 
 export default function Login() {
   const [emp, setEmp] = useState("");
   const [pw, setPw] = useState("");
   const login = useApp((s) => s.login);
   const auth = useApp((s) => s.auth);
+  const refused = useApp((s) => s.authError);
   const nav = useNavigate();
   const busy = auth === "signing-in" || auth === "loading";
   const submit = async (e: React.FormEvent) => {
@@ -40,6 +42,9 @@ export default function Login() {
           <input className="inp mono" id="emp" autoComplete="username" autoFocus value={emp} onChange={(e) => setEmp(e.target.value)} placeholder="RC-0000" /></div>
         <div className="fg"><label htmlFor="pw">Password</label>
           <input className="inp mono" id="pw" type="password" autoComplete="current-password" value={pw} onChange={(e) => setPw(e.target.value)} /></div>
+        {/* The server's own sentence, or that it could not be reached — on the form, where it
+            stays until the next attempt, rather than in a toast that is gone in seconds. */}
+        {refused && <Alert tone="c" label="REFUSED">{refused}</Alert>}
         <button className="btn wide" disabled={busy || !emp.trim() || !pw} type="submit">{busy ? "Signing in…" : "Sign in"}</button>
         <p className="lgn">Forgotten your password? Ask the store keeper to reset it — you will be asked to choose a new one when you next sign in.</p>
       </form></div>

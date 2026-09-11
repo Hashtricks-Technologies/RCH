@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildTestApp } from "../test/app.js";
-import { RateLimitedError } from "../lib/errors.js";
+import { RateLimitedError, RuleError, UnauthenticatedError } from "../lib/errors.js";
 
 describe("rate limiting", () => {
   it("answers the 11th request in a 10/minute window with the rate_limited envelope", async () => {
@@ -101,6 +101,58 @@ describe("error envelope mapping", () => {
       expect(body.error).not.toHaveProperty("stack");
       expect(body.error).not.toHaveProperty("statusCode");
     }
+
+    await app.close();
+  });
+});
+
+describe("what a refused request leaves in the log", () => {
+  /** A pino stream the test can read back: one parsed line per record. */
+  const capture = () => {
+    const lines: Array<Record<string, unknown>> = [];
+    return { lines, write: (s: string) => { for (const l of s.split("\n")) if (l) lines.push(JSON.parse(l) as Record<string, unknown>); } };
+  };
+
+  it("carries the error code, the sentence, and the internal cause on the request's own line — and the cause never reaches the wire", async () => {
+    const log = capture();
+    const app = await buildTestApp({ withDb: false, env: { LOG_LEVEL: "info" }, logStream: log });
+    app.get("/__test/refuses", { config: { rateLimit: false } }, async () => {
+      throw new UnauthenticatedError("That employee id and password do not match.", "wrong password for RC-4471");
+    });
+    await app.ready();
+
+    const r = await app.inject({ method: "GET", url: "/__test/refuses" });
+    expect(r.statusCode).toBe(401);
+    // The operator's sentence and nothing else: the cause is for the log, never the browser.
+    expect(r.json()).toEqual({ error: { code: "unauthenticated", message: "That employee id and password do not match." } });
+
+    // One line per request, and a refused one says why — an operator asking "why can't RC-4471
+    // sign in" reads it here rather than guessing between no such account, a wrong password and
+    // a deactivated one.
+    const line = log.lines.find((l) => l.msg === "request" && l.route === "/__test/refuses");
+    expect(line).toMatchObject({
+      status: 401,
+      refusal: { code: "unauthenticated", message: "That employee id and password do not match.", cause: "wrong password for RC-4471" },
+    });
+
+    await app.close();
+  });
+
+  it("names the code and the sentence for a rule refusal with no cause, and nothing for a request that succeeded", async () => {
+    const log = capture();
+    const app = await buildTestApp({ withDb: false, env: { LOG_LEVEL: "info" }, logStream: log });
+    app.get("/__test/rule", { config: { rateLimit: false } }, async () => { throw new RuleError("Only 3 cups on the shelf."); });
+    app.get("/__test/fine", { config: { rateLimit: false } }, async () => ({ ok: true }));
+    await app.ready();
+
+    await app.inject({ method: "GET", url: "/__test/rule" });
+    await app.inject({ method: "GET", url: "/__test/fine" });
+    const rule = log.lines.find((l) => l.msg === "request" && l.route === "/__test/rule");
+    expect(rule).toMatchObject({ status: 422, refusal: { code: "rule", message: "Only 3 cups on the shelf." } });
+    expect((rule!.refusal as Record<string, unknown>).cause).toBeUndefined();
+    const fine = log.lines.find((l) => l.msg === "request" && l.route === "/__test/fine");
+    expect(fine).toMatchObject({ status: 200 });
+    expect(fine).not.toHaveProperty("refusal");
 
     await app.close();
   });

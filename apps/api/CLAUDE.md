@@ -251,6 +251,17 @@ decides whether a route exists for you (**404**, like the sidebar); location dec
 where the browser store already said something (`creditBreachMessage`, the MRP refusal) the
 server repeats it **word for word** rather than inventing a second wording.
 
+A 4xx also lands on the request's own log line as `refusal: { code, message, cause? }`:
+`plugins/errors.ts` sets `req.refusal` on every branch that answers 4xx (the not-found handler
+too) and `plugins/logging.ts`'s `onResponse` writes it beside `route`, `status` and `ms`. `cause`
+is `AppError`'s optional fifth argument — `UnauthenticatedError(message, cause)` is the one
+subclass that takes it so far — and is the internal reason for the operator reading the log,
+**never serialised**: `toEnvelope()` does not know it exists. The login is the worked example:
+one sentence on the wire for all three cases, and `no such employee` / `wrong password for
+RC-4471` / `RC-4471 is deactivated` in the log — with the id left out of the first, because what
+was typed into that box may have been the password. A 5xx is logged as `unhandled` with the
+error itself, and its sentence ends with the request id.
+
 ## Tests
 
 `vitest.config.ts`: node env, `TZ=UTC`, `testTimeout` 30 s / `hookTimeout` 60 s, setup
@@ -259,6 +270,9 @@ server repeats it **word for word** rather than inventing a second wording.
 - `buildTestApp({ schema: "<name>" })` creates schema `t_<name>_<pid>`, migrates into it, binds
   the app and drops it on `close()`. `schema` is mandatory whenever a database is used — without
   it two files race over one name. `buildTestApp({ withDb: false })` skips Postgres entirely.
+  `logStream: { write }` (with `env: { LOG_LEVEL: "info" }`, since the harness default is
+  `silent`) hands the app a pino destination so a test can read its own log lines back —
+  `errors.test.ts`'s refusal-line cases and `auth.test.ts`'s login causes are the two that do.
 - `seedTestDb(db)` seeds the fixtures; `authHeaders(app, "u2")` mints a bearer for a seeded user
   without walking the login flow. `truncateAll` empties business tables but **keeps `sequences`**.
 - `resetDocuments(db)` (`src/test/db.ts`) is the cheaper alternative to `truncateAll →

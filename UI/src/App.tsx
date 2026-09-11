@@ -3,6 +3,7 @@ import { Navigate, Route, Routes, useNavigate, useParams } from "react-router-do
 import { useApp } from "./store";
 import { HOME, NAV, canSee } from "./nav";
 import Shell from "./ui/Shell";
+import Toast from "./ui/Toast";
 import Login from "./pages/Login";
 import ChangePassword from "./pages/ChangePassword";
 import Settings from "./pages/Settings";
@@ -57,6 +58,18 @@ function Screen() {
 }
 
 export default function App() {
+  // The toast is drawn here, once, above every page — not by the shell. Sign-in,
+  // change-password, the loading gate and the failed page all render outside the shell, and a
+  // sentence raised on any of them used to be set in the store and never shown.
+  return (
+    <>
+      <Page />
+      <Toast />
+    </>
+  );
+}
+
+function Page() {
   const user = useApp((s) => s.user);
   const auth = useApp((s) => s.auth);
   const mcp = useApp((s) => s.mustChangePassword);

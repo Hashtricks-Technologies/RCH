@@ -1,5 +1,6 @@
 import { generateKeyPairSync } from "node:crypto";
 import { buildApp, type App } from "../app.js";
+import type { LogStream } from "../plugins/logging.js";
 import { loadConfig, type Config } from "../config.js";
 import { withTestSchema, type TestDb } from "./db.js";
 
@@ -33,20 +34,22 @@ export function testConfig(overrides: Partial<NodeJS.ProcessEnv> = {}): Config {
 /** `schema` is mandatory whenever a database is used: without a caller-chosen name, two
  *  DB-backed test files would default to the same `t_app` schema and race to drop/recreate
  *  it out from under each other when run in parallel. */
+/** `logStream` collects the app's log lines for a test that asserts on them; pair it with
+ *  `env: { LOG_LEVEL: "info" }`, since the harness default is `silent`. */
 type BuildTestAppOpts =
-  | { withDb: false; env?: Partial<NodeJS.ProcessEnv> }
-  | { withDb?: true; schema: string; env?: Partial<NodeJS.ProcessEnv> };
+  | { withDb: false; env?: Partial<NodeJS.ProcessEnv>; logStream?: LogStream }
+  | { withDb?: true; schema: string; env?: Partial<NodeJS.ProcessEnv>; logStream?: LogStream };
 
 /** `withDb: false` builds the app without a database (Task 4 tests). Otherwise a fresh
  *  per-file schema is created and migrated, and the app is bound to it. */
 export async function buildTestApp(opts: BuildTestAppOpts): Promise<App> {
   const config = testConfig(opts.env);
-  if (opts.withDb === false) return buildApp(config);
+  if (opts.withDb === false) return buildApp(config, { logStream: opts.logStream });
   const testDb: TestDb = await withTestSchema(opts.schema);
   // The db plugin ignores `searchPath` when a `db` is injected, so it is inert there — it is
   // here for the SSE plugin's own LISTEN connection, which is not a pool member and must land
   // on the same schema, or it would compute a different channel name than the writes do.
-  const app = await buildApp(config, { db: testDb.db, pool: testDb.pool, searchPath: `${testDb.schemaName},public`, migrationsSchema: testDb.schemaName });
+  const app = await buildApp(config, { db: testDb.db, pool: testDb.pool, searchPath: `${testDb.schemaName},public`, migrationsSchema: testDb.schemaName, logStream: opts.logStream });
   app.addHook("onClose", async () => { await testDb.close(); });
   return Object.assign(app, { testDb });
 }

@@ -88,7 +88,12 @@ export function createAuthService(db: Db, config: Config) {
       if (attempts.hit(emp)) throw new RateLimitedError("Too many attempts for that employee id - wait a minute and try again.");
       const u = await authRepo.userByEmp(db, emp);
       const ok = u ? await verifyPassword(u.passwordHash, password) : (await verifyPassword(DUMMY_HASH, password), false);
-      if (!u || !ok || !u.active) throw new UnauthenticatedError(BAD_LOGIN);
+      // One sentence for all three, so the wire gives nothing away; the cause is for the log
+      // alone. An id that matched nobody is not written down — what was typed into that box
+      // may well have been the password.
+      if (!u) throw new UnauthenticatedError(BAD_LOGIN, "no such employee");
+      if (!ok) throw new UnauthenticatedError(BAD_LOGIN, `wrong password for ${u.empNo}`);
+      if (!u.active) throw new UnauthenticatedError(BAD_LOGIN, `${u.empNo} is deactivated`);
       attempts.clear(emp);
       return withTransaction(db, (tx) => issue(tx, u, randomUUID(), meta));
     },

@@ -1,7 +1,7 @@
 import {
   useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode, type RefObject,
 } from "react";
-import { NavLink, useNavigate } from "react-router-dom";
+import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { IT, LOC, OUTLETS, homeLabel } from "../data/master";
 import { NAV, canSee } from "../nav";
 import { useApp, type AppState } from "../store";
@@ -11,6 +11,7 @@ import { useStreamState } from "../api/events";
 import { Avatar, Icon, Pill, SearchIcon, Tag, ThemeButton } from "./kit";
 import { applyPrefs, readPrefs, usePhoto } from "./prefs";
 import Drawer from "./Drawer";
+import ErrorBoundary from "./ErrorBoundary";
 
 export default function Shell({ children }: { children: ReactNode }) {
   // `open` is the mobile drawer; `collapsed` hides the rail on a wide screen.
@@ -20,7 +21,6 @@ export default function Shell({ children }: { children: ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
   const user = useApp((s) => s.user)!;
   const logout = useApp((s) => s.logout);
-  const toast = useApp((s) => s.toast);
   // NOTE: navCounts builds a fresh object, so it must never be passed to useApp()
   // as a selector — zustand v5 feeds the selector result to useSyncExternalStore and a
   // new identity on every call re-renders forever. Read the whole (stable) state instead.
@@ -29,6 +29,7 @@ export default function Shell({ children }: { children: ReactNode }) {
   const photo = usePhoto();
   const live = useStreamState();
   const nav = useNavigate();
+  const { pathname } = useLocation();
 
   // The compact-table preference is stamped on the root, so it outlives Settings.
   useEffect(() => { applyPrefs(readPrefs()); }, []);
@@ -96,10 +97,11 @@ export default function Shell({ children }: { children: ReactNode }) {
             <span className="nmx"><b>{user.n.split(" ")[0]}</b><span>{user.rl}</span></span>
           </button>
         </header>
-        <div className="pg">{children}</div>
+        {/* A screen that throws is caught here, inside the shell, so the sidebar, the search
+            and the way out stay usable. Keyed on the path so leaving the broken screen resets it. */}
+        <div className="pg"><ErrorBoundary key={pathname}>{children}</ErrorBoundary></div>
       </div>
       <Drawer />
-      {toast && <div className="toast"><span className="ti" /><span>{toast}</span></div>}
     </div>
   );
 }
