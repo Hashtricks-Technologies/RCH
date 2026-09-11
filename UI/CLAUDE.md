@@ -17,12 +17,42 @@ Only the theme and a couple of UI prefs reach `localStorage`.
 
 ```bash
 pnpm --filter @rch/ui dev         # vite on :5173, proxying /api -> http://localhost:3000
-pnpm --filter @rch/ui test        # vitest run (jsdom)
+pnpm --filter @rch/ui test        # vitest run --coverage (jsdom); the floors below are part of it
 pnpm --filter @rch/ui typecheck   # tsc --noEmit -p tsconfig.app.json
+pnpm --filter @rch/ui lint        # oxlint --max-warnings 0
 pnpm --filter @rch/ui build       # tsc -b && vite build -> UI/dist
 ```
 
-`npx vitest run src/__tests__/writes.test.ts` from inside `UI/` runs one file.
+`npx vitest run src/__tests__/writes.test.ts` from inside `UI/` runs one file — **without** the
+coverage gate, deliberately: `--coverage` is on the `test` script rather than `enabled` in
+`vite.config.ts`, so a whole suite's threshold is never measured against one file.
+
+**Lint is a zero-warning gate, in this package and in every other.** Each one's `lint` script is
+`oxlint --max-warnings 0`, so a warning fails the build the same way an error does — there is no
+"warnings are fine" tier to accumulate in. `UI/.oxlintrc.json` names its plugins explicitly
+(`react`, `typescript`, `unicorn`, `oxc`) so a version bump cannot quietly add or drop one under
+that gate, and it makes exactly four decisions:
+
+- **`react/rules-of-hooks`: error.** A conditional hook is a component that will misbehave, not a
+  style.
+- **`react/exhaustive-deps`: error.** A dependency array that lies is a screen that stops
+  updating. The honest exceptions are fixed by narrowing the *value* passed in — the kitchen
+  dashboard's memo, the Shell's palette — never by shortening the array.
+- **`react/jsx-key`: off for `src/**`,** with the argument written out in the file: all 252
+  findings were `DataTable`'s `cells: ReactNode[]`, a positional fixed-length row the table keys
+  itself, and keeping the rule on would bury its one real finding under 252 meaningless ones.
+- **`react/only-export-components`: off,** because twenty-one of its findings are drawer modules,
+  which export nothing and reach the app through `registerDrawer` and a side-effect import — the
+  architecture — and the other six export one constant or one pure function *for the suite*.
+
+**Coverage floors are enforced by `vitest run`, per package**, set a point or two under what each
+suite measures today so that deleting a test or shipping an untested screen fails rather than
+drifting: UI **lines 73 / branches 51**, `apps/api` **94 / 79**, `packages/domain` **99 / 92**,
+`packages/contract` **lines 96** (no branch floor — the package holds two branch points and
+neither is exercised, so any figure there is unmeetable or meaningless). Raise one when the real
+figure rises; never lower one to make a red run green. `turbo.json` marks `test` **uncached** —
+turbo hashes source files, not the database the API suite runs against, so a cache hit would
+replay a green from before a migration.
 
 ## Three files must agree for a screen to exist
 
@@ -44,6 +74,37 @@ opens it, and `ui/Drawer.tsx` + `DrawerFrame` supply the chrome. `"sitem"`
 (`roles/store/NewProductDrawer.tsx`) is the store keeper's own Add Product drawer, registered in
 Phase 5 — its button had opened nothing since the procurement rework; `"bnewitem"`
 (`roles/buyer/NewProductDrawer.tsx`) is the buyer's, answering a shop's product request.
+
+**`ui/Drawer.tsx` makes `role="dialog" aria-modal="true"` true rather than merely declared**, and
+there are four pieces to it — the keyboard goes in on open (to the drawer's own title, which is
+`tabIndex={-1}` so Tab still lands on the first real control), **Tab and Shift+Tab wrap** at both
+ends of the panel, focus is **restored** to whatever opened the drawer on close (only if that
+element is still on the page), and two guards keep the keyboard inside while it is open. The
+guards are different mechanisms because the two ways out are different events: a `focusin`
+listener on `document` catches the keyboard being **moved** out, and a `MutationObserver` on the
+panel catches it being **dropped** — a focused control that unmounts (`store/TicketDrawer.tsx`'s
+supervisor override replacing itself) or that merely becomes `disabled` (every busy button in the
+app, and the one the operator just pressed is by definition the one holding the keyboard). Both
+drop focus to `<body>` firing **no** focus event at all, which is why a listener alone cannot see
+them; the observer therefore watches `childList` **and** `attributes` filtered to `disabled`.
+
+**One behaviour change follows from the `focusin` guard and is worth knowing:** ⌘K / Ctrl-K, the
+Shell's search shortcut, focuses the palette's input — and while a drawer is open the guard pulls
+the keyboard straight back into the panel. The shortcut is not disabled and the palette does
+open; the caret just does not stay in it. That is what `aria-modal="true"` promises, so it is
+correct, but it is a change from before the trap existed: close the drawer first.
+
+**A drawer whose derived state must re-derive keys on the trail, never on the document's own
+`at`/`iso`.** `manager/ApprovalDrawer.tsx` is the worked example and the only one so far: one
+long-lived component instance is re-pointed at a second request by `openDrawer("mreq", other)`
+without unmounting, so everything it derives in a `useState` initialiser — the per-line
+quantities, the struck-out lines, the reason boxes — would otherwise be the *previous* request's.
+The key is `` `${req.id}:${req.hist.at(-1)?.iso ?? req.iso}` `` (`bodyKey`, exported for the
+suite). `req.id` covers being pointed elsewhere; the **trail's last entry** covers the same
+request coming back changed underneath, from an SSE refetch after somebody else decided it.
+`req.iso` alone will not do and was the bug: it is the instant the counter *raised* the request,
+which never changes for as long as the document exists, so keying on it was keying on `req.id`
+twice. It stays only as the fallback for a document whose trail has not been read.
 
 **The audit wave added three sidebar keys and four drawers**, and two of the drawers break the
 one-role-owns-one-drawer habit on purpose. Keys: `manager/bills` (every outlet's bills, seven
@@ -237,7 +298,7 @@ costs a snapshot.** That is the point of the pair: `loadSnapshot` pulls the whol
 down, and until this wave it also put every screen behind the loading splash to do it, so a
 one-field price edit blanked the till. The `if (… !NARROW[c] …) loadSnapshot()` fallback stays in
 the file as the guard for the **next** collection added to the enum and not to `NARROW` — that is
-what it is now for, and the two tests that cover it drive it with a cast
+what it is now for, and the three tests that cover it drive it with a cast
 (`"a-collection-with-no-reader" as Changed`) because no real member reaches it. A mixed set still
 takes the snapshot alone. If the read-back fails the write's own sentence is kept and qualified, never replaced:
 the operator must not be sent round to do it twice. `src/api/wire.ts` holds the server-shape →
@@ -428,16 +489,32 @@ siblings, and the slip's day and the till's "today" cannot disagree.
 `src/ui/kit.tsx` holds the typed components — `Card`, `DataTable`, `PageHead`, `Btn`, `BtnRow`,
 `Pill`, `StatusPill`, `Tag`, `Switch`, `Alert`, `Section`, `Field`, `FormRow`, `Toolbar`,
 `FilterBtn`, `FilterSelect`, `TableFoot`, `Kpis`, `Grid`, `Feed`, `Avatar`, `Otp`,
-`TileMenu`, `DraftLineInput`, `EtaInput`, … — use them instead of bespoke markup.
-The last two moved up from `roles/buyer/PoDrawer.tsx` in the audit wave, props unchanged:
+`TileMenu`, `DraftLineInput`, `EtaInput`, `useLineKeys`, … — use them instead of bespoke markup.
+`DraftLineInput` and `EtaInput` moved up from `roles/buyer/PoDrawer.tsx` in the audit wave:
 `DraftLineInput` is the commit-on-blur number box every editable quantity now uses (a controlled
 `Number(e.target.value)` reads a half-typed `12.` as `0` and forces a `"0"` back into the field
 mid-number, which is how a decimal quantity used to be impossible to type), and `EtaInput` is its
 date sibling. Anything that takes a typed quantity reaches for `DraftLineInput` rather than
-rolling a third buffer. `Alert` carries an ARIA role now — `role="alert"` for `tone="c"`, because
-a refusal has to interrupt, and `role="status"` for every other tone. `Sparkline` and `KebabIcon` are in the same
-file but are **not** exported — `Sparkline` is drawn by `Kpis`, `KebabIcon` by `TileMenu`, and
-neither has a caller outside `kit.tsx`. knip's
+rolling a third buffer; the final audit pass swept the last six raw boxes onto it and gave it
+optional `id`, `max` and `invalid` passthroughs so nothing was lost in the move. **`ariaLabel` is
+required on it even where a `<label>` sits beside it**, and the reason is `Field`'s one limit:
+`Field` wires `htmlFor` only to a **direct DOM child** it recognises (`LABELABLE`), so a
+component child — `DraftLineInput` among them — leaves the visible label decorative and the box
+with no accessible name at all unless it carries its own. `useLineKeys(n)` is the third of that
+family: one stable key per line for the three screens that draw an editable line table
+(`store/Requisitions.tsx`, `prod/Requests.tsx`, `ui/KitchenOrderForm.tsx`), each of which kept
+its own ref ledger and its own `react/refs` suppression until it existed. Call its `drop(i)`
+beside the state update that removes a line — the hook only trims from the end, so without it a
+Remove on row 0 is the `key={i}` defect it exists to prevent, arrived at the long way round.
+`Alert` carries an ARIA role now — `role="alert"` for `tone="c"`, because
+a refusal has to interrupt, and `role="status"` for every other tone. **`Sparkline` is gone**, and
+so are `Kpi.spark` and `Kpi.color`: the sparkline was drawn by nothing — not one `Kpi` in the app
+ever set the field — and an optional field no caller fills is a shape future callers copy without
+meaning to. `Kpi` is `{ l, v, d? }` and nothing else. `TableFoot` no longer renders a pager
+either: it prints `Showing <n> of <n>` and an optional `extra`, because there is no pagination in
+this app and a control that paged nothing was a promise the screens could not keep. `KebabIcon`
+is in the file and **not** exported — it is drawn by `TileMenu` and has no caller outside
+`kit.tsx`. knip's
 `ignoreExportsUsedInFile: { interface, type }` (`knip.json`) means an exported value whose only
 consumer is its own file is now reported. Export one only when a second file needs it — and then
 put it in this list. Styling is plain CSS in `src/styles.css`: one
@@ -504,27 +581,43 @@ store's own `signIn` is gone, so this is the one sanctioned way a test signs som
   six writes are covered the same way — `voidBill` (including the percent-encoded `CF%2F1188` and
   the `iso` kept beside the `"HH:MM"`), `raiseProdOrder`, `updateItem`, `addPayer`, `updatePayer`
   (whose case stubs the roster and the register **differently**, so the difference between the two
-  reads is what the test proves), `createAdjustment` — plus `loadPayers`. **159 cases**, and
-  one of them is a known flake on a loaded host: `leaves the requisition card and its note alone
-  when procurement refuses it` polls (`settleUntil(() => S().toast !== null)`) and has gone red
-  once in a full-suite run sharing a machine with the API suite, passing in isolation every time.
-  A red on that name alone is timing, not a regression — re-run the file on its own first.
+  reads is what the test proves), `createAdjustment` — plus `loadPayers`. **159 cases.**
+  There is no known flake in this file any more, and the one there used to be is worth knowing
+  about because of what caused it. `leaves the requisition card and its note alone when
+  procurement refuses it` polls on `S().toast !== null`; `notify` used to leave the *previous*
+  toast's timer running and have it clear by comparing the **message**, so where two cases refuse
+  in the same words — as two in this file do — the first toast's stale timer matched the second
+  toast's sentence and took it down partway through, and on a loaded host the poll then ran out.
+  `notify` cancels the timer it replaces now (`store/index.ts`), and `refusals.test.tsx`'s
+  `gives a repeated sentence its own full stay, not the remains of the last one` pins it. That is
+  a real defect fixed, not a test slowed down: the operator saw the same thing, a sentence that
+  vanished early because the one before it took it away. Do not re-add a "known flake" note here
+  without a reproduction.
 - `events.test.ts` — frame parsing, the 250 ms debounce into `refetch`, `resync` forcing a full
   `loadSnapshot`, and the `live` / `reconnecting` / `off` state the pill reads.
 - `refusals.test.tsx` — where a refusal is shown: a refused sign-in and password change inline on
   the form (and not as a toast), the toast drawn on the sign-in screen and once inside the shell,
   its `role="status"`, its length-scaled stay and click-to-dismiss, `restore()` speaking up when
   the server cannot be reached, and a screen that throws caught inside the shell.
-- `screens.test.tsx` — **130 cases**: the `NAV × USERS` loop, a row per drawer key, and the
-  render-level cases the audit wave added (a refused pay keeping the payer, a refused price save
-  keeping the typed value, what actually reaches the printer, the approval drawer's decimal
-  quantity and its single Approve/Reject pair, a voided bill badged and out of every figure that
-  counts money, a retired product no longer generating work for the buyer or the store).
+- `screens.test.tsx` — **143 cases**: the `NAV × USERS` loop, a row per **registered** drawer key,
+  and the render-level cases the audit wave added (a refused pay keeping the payer, a refused
+  price save keeping the typed value, what actually reaches the printer, the approval drawer's
+  decimal quantity and its single Approve/Reject pair, a voided bill badged and out of every
+  figure that counts money, a retired product no longer generating work for the buyer or the
+  store). The drawer loop iterates `Object.keys(DRAWERS)` against an `OPEN_OVER` map of
+  `key → [id, role]`, so a drawer registered with no row there fails the suite by name — the
+  hand-written list it replaced had drifted eight keys behind the registry.
+- `drawer.test.tsx` — **11 cases**, the whole of `aria-modal="true"` being true: a name on the
+  dialog, the keyboard going in on open, Tab and Shift+Tab wrapping at both ends, the `focusin`
+  guard catching the keyboard being *moved* out, the `MutationObserver` catching it being
+  *dropped* — a focused control that unmounts, and one that merely becomes `disabled` — and the
+  keyboard going back to whatever opened the drawer on close.
 - `audit-screens.test.tsx` — the store, kitchen and buyer screens the audit wave rebuilt, each
   case watched red against the screen it replaced first.
 - `time.test.tsx` — everywhere a date or an instant is read: the two dashboards sorting on `iso`,
-  a fortnight-old purchase order received this morning sorting on its trail's last entry, and the
-  bill slip printing the hospital's own day across an IST midnight (the suite runs at `TZ=UTC`, so
-  a host-day implementation goes red).
-- `api.test.ts`, `session.test.ts`, `theme.test.ts`, `app.test.tsx`. Thirteen files, **506
+  a fortnight-old purchase order received this morning sorting on its trail's last entry, the
+  bill slip printing the hospital's own day across an IST midnight, and the kitchen's "made
+  today" figures cutting the batch log to the hospital's day (the suite runs at `TZ=UTC`, so a
+  host-day implementation goes red on every one of them).
+- `api.test.ts`, `session.test.ts`, `theme.test.ts`, `app.test.tsx`. **Fourteen files, 536
   passing and one todo** at the time of writing.

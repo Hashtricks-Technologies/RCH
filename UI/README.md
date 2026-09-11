@@ -114,7 +114,7 @@ src/
   pages/                                  Login.tsx, ChangePassword.tsx, Settings.tsx, Support.tsx
   roles/<role>/                           counter/ manager/ store/ prod/ buyer/
   __tests__/                              store, procurement, fixes, screens/app, audit-screens, time,
-                                           api, session, events, writes, refusals, theme
+                                           drawer, api, session, events, writes, refusals, theme
 ```
 
 Each role folder exports `screens: Record<string, ComponentType>`; `App.tsx` resolves the

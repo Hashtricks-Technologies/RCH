@@ -114,13 +114,30 @@ CI (`.github/workflows/ci.yml`) runs `pnpm install --frozen-lockfile` → `pnpm 
 test` → `pnpm lint` (oxlint per package plus knip, which turbo never runs) → `pnpm
 check:boundaries` → `pnpm audit` → `bash scripts/build-site.sh` on Node 24, then builds both
 images, scans them with Trivy at `CRITICAL,HIGH` and does a real `helm install` against a
-throwaway kind cluster. Every change must pass all of it. Two details worth knowing before you
-debug a red run: `test` is `"cache": false` in `turbo.json` (turbo hashes source files, not the
-database the API suite runs against, so a cache hit would replay a green from before a
-migration), and `pnpm audit` now **fails** the job when the registry is unreachable on all three
-attempts rather than warning — "we did not look" is not "no advisories". An accepted CVE goes in
-`.trivyignore.yaml` (YAML, with a `statement` and a real `expired_at`; the plain-text
-`.trivyignore` it replaced had no expiry field at all, so its dates were decorative).
+throwaway kind cluster. Every change must pass all of it. Four details worth knowing before you
+debug a red run:
+
+- **`test` is `"cache": false` in `turbo.json`** — turbo hashes source files, not the database the
+  API suite runs against, so a cache hit would replay a green from before a migration.
+- **Lint is a zero-warning gate.** Every package's `lint` script is `oxlint --max-warnings 0`, so
+  a warning fails the job exactly as an error does; there is no tier for warnings to pile up in.
+  `react/rules-of-hooks` and `react/exhaustive-deps` are at **error**, and `react/jsx-key` and
+  `react/only-export-components` are **off for `UI/src/**` with the argument written out** in
+  `UI/.oxlintrc.json` — the first because all 252 findings were `DataTable`'s positional cell
+  arrays, the second because the drawer registry is an architecture of side-effect modules that
+  export nothing.
+- **Coverage floors are part of `vitest run`, per package** — UI lines 73 / branches 51,
+  `apps/api` 94 / 79, `packages/domain` 99 / 92, `packages/contract` lines 96 (no branch floor;
+  the package has two branch points and neither is exercised). Each sits a point or two under
+  what that suite measures today. Raise one when the real figure rises; never lower one to make a
+  red run green. `--coverage` is on the `test` script rather than `enabled` in the config, so a
+  single-file run is not judged against the whole package's figure.
+- **`pnpm audit` now fails** the job when the registry is unreachable on all three attempts
+  rather than warning — "we did not look" is not "no advisories". An accepted CVE goes in
+  `.trivyignore.yaml` (YAML, with a `statement` and a real `expired_at`; the plain-text
+  `.trivyignore` it replaced had no expiry field at all, so its dates were decorative). **An
+  expiry that lapses fails all four scans closed** — CI's two and `deploy.yml`'s two — so check
+  them before a promotion (`deploy/RUNBOOK.md` §11 step 7) rather than on the day.
 
 **`deploy.yml` no longer runs `on: push`.** It is `workflow_run` on CI's completion, gated on
 `conclusion == 'success'` **and** `event == 'push'`, and every value it uses comes from
@@ -635,8 +652,10 @@ the host does not supply one):
 - `fixes.test.ts` — regression pins for previously-found defects, referenced by their tags
   (C6, M3, M8, H4, UA-14…). Read the surrounding comment before changing behaviour one covers.
 - `screens.test.tsx` / `app.test.tsx` — every role × every nav key renders, bare and in-shell.
-  `screens.test.tsx` is **130** cases, two of them the manager's Withdraw-approval door against the
-  seeded fixtures (REQ-2026-0910, approved with no ticket; REQ-2026-0909, already ticketed).
+  `screens.test.tsx` is **143** cases, two of them the manager's Withdraw-approval door against the
+  seeded fixtures (REQ-2026-0910, approved with no ticket; REQ-2026-0909, already ticketed). Its
+  drawer loop iterates `Object.keys(DRAWERS)` against a `key → [id, role]` map, so a drawer
+  registered with no row there fails the suite by name — the same coupling `NAV` × screens has.
 - `audit-screens.test.tsx` — the store, kitchen and buyer screens the audit wave rebuilt: the
   kitchen's makeable list read off the master rather than three literals, decimal quantities
   committed on blur, the goods receipt refusing in a sentence rather than by greying its button.
@@ -650,13 +669,20 @@ the host does not supply one):
   two report reads, and the audit wave's own six — `voidBill`, `raiseProdOrder`, `updateItem`,
   `addPayer`, `updatePayer`, `createAdjustment` — plus `loadPayers`) against a mocked client:
   success refetches the right slices, a
-  refusal toasts and leaves state untouched. One case in it, `leaves the requisition card and its
-  note alone when procurement refuses it`, polls (`settleUntil(() => S().toast !== null)`) and so
-  is timing-sensitive on a loaded host — it has flaked once in a full-suite run sharing a machine
-  with the API suite and passes in isolation. A red on that name alone is the flake, not a
-  regression; re-run it on its own before chasing it.
+  refusal toasts and leaves state untouched. **The "known flake" this file used to carry is gone,
+  and it was a real defect.** `leaves the requisition card and its note alone when procurement
+  refuses it` polls on `S().toast !== null`; `notify` used to leave the *previous* toast's timer
+  running and have it clear by comparing the message, so where two cases refuse in the same words
+  the first toast's stale timer took the second toast down partway through — which an operator
+  saw as a sentence that vanished early because the one before it took it away. `notify` cancels
+  the timer it replaces now, and `refusals.test.tsx` pins it.
+- `drawer.test.tsx` — **11** cases, the whole of `aria-modal="true"` being true: the keyboard
+  goes in on open, Tab wraps both ways, a `focusin` guard catches it being moved out, a
+  `MutationObserver` catches it being dropped (a focused control that unmounts, and one that
+  merely becomes `disabled`), and it goes back where it came from on close.
 - `refusals.test.tsx` — where a refusal is shown: inline on the sign-in and change-password forms
-  (and not as a toast), the toast drawn once in `App.tsx`, and a screen that throws caught inside
+  (and not as a toast), the toast drawn once in `App.tsx`, a repeated sentence getting its own
+  full stay rather than the remains of the last one, and a screen that throws caught inside
   the shell.
 - `events.test.ts` — the SSE client (`UI/src/api/events.ts`): frame parsing, the 250 ms
   per-collection debounce into `refetch`, `resync` forcing a full `loadSnapshot`, and the
@@ -666,13 +692,17 @@ the host does not supply one):
 keeps parallel runs from colliding), migrated once and dropped on close
 (`apps/api/src/test/db.ts`). Both `apps/api/vitest.config.ts` and `UI/vite.config.ts` pin
 `TZ=UTC` so IST-sensitive assertions (bill numbering across midnight, best-before rendering)
-prove something on every host, not just ones already in UTC. A seeded document's own
-`document_history` rows are stamped through `pastFixtureTime` (`apps/api/src/db/seed.ts`), which
-rolls a fixture's `HH:MM` back an IST day when resolving it on today's calendar would put it in
-the **future** — the document's own `at`/`issuedAt`/`receivedAt` are deliberately left alone, so
-the sales report's "every seeded bill is timed today" still holds. Without it the whole `apps/api`
-suite went red between IST midnight and about 07:10, because a live-appended trail entry sorted
-*below* the seeded rows it came after. `apps/api/src/test/builders.ts`
+prove something on every host, not just ones already in UTC. A seed run takes **one** decision
+about its `document_history` stamps and applies it to every one of them: `historyShiftMs`
+(`apps/api/src/db/seed.ts`) rolls the lot back an IST day when the *latest* fixture time (09:26)
+would resolve into the future on today's calendar, and leaves them alone otherwise — the
+documents' own `at`/`issuedAt`/`receivedAt` are untouched either way, so the sales report's
+"every seeded bill is timed today" still holds. Without any shift the whole `apps/api` suite went
+red between IST midnight and the last fixture time, because a live-appended trail entry sorted
+*below* the seeded rows it came after; with a shift decided **per row** — which is what
+`pastFixtureTime` did — a document's own trail inverted between two of its own stamps, and
+`documents.test.ts` was red every morning from about 08:05 to 08:44.
+`apps/api/src/test/builders.ts`
 exports `given.{request,ticket,shopAsk,bill,prodOrder,vendor,requisition,po,contract,
 productRequest,supportTicket,adjustment}` — **twelve** builders, one row per family, seeded above the
 fixture's own ids so a builder-made document can never collide with a seeded one

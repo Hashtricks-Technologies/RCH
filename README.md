@@ -169,11 +169,11 @@ From the repository root:
 | `pnpm dev` | API on :3000 and the UI on :5173, in parallel (Vite proxies `/api`) |
 | `pnpm build` | Build every package |
 | `pnpm typecheck` | `tsc --noEmit` across the workspace |
-| `pnpm lint` | oxlint per package, then knip (unused exports) and the module/boundary checks |
-| `pnpm test` | Every package's test suite (Postgres must be reachable for `apps/api`) |
+| `pnpm lint` | oxlint per package at `--max-warnings 0`, then knip (unused exports) and the module/boundary checks |
+| `pnpm test` | Every package's test suite, coverage floors included (Postgres must be reachable for `apps/api`) |
 | `pnpm db:up` / `pnpm db:down` | Start or stop the local `postgres:17` container |
 | `pnpm --filter @rch/api db:migrate` | Apply migrations |
-| `pnpm --filter @rch/api db:seed [--force]` | Load the demo hospital; `--force` re-seeds a non-empty database |
+| `pnpm --filter @rch/api db:seed [--force]` | Load the demo hospital; `--force` re-seeds a non-empty database. Where `NODE_ENV=production` both paths need the database named back — `--yes-seed <name>`, and `--yes-destroy <name>` as well for `--force` |
 | `pnpm --filter @rch/api db:generate` | Generate a migration from the Drizzle schema — review and commit the SQL |
 | `pnpm --filter @rch/api db:rebuild-balances` | Recompute cached balances from the movement ledger |
 | `pnpm --filter @rch/api users …` | `create`, `reset-password` or `deactivate` an account |
@@ -195,6 +195,14 @@ actions against a stubbed `fetch`, and the live-update client.
 Run one package with `pnpm --filter @rch/ui test` (or `@rch/api`, `@rch/domain`, `@rch/contract`);
 the API suite needs Postgres reachable, so `pnpm db:up` first. The API and UI suites both pin
 `TZ=UTC`, so timezone-sensitive assertions prove the same thing on every machine.
+
+Each package's `test` script carries a **coverage floor** — UI lines 73 / branches 51, `apps/api`
+94 / 79, `packages/domain` 99 / 92, `packages/contract` lines 96 — set a point or two under what
+that suite measures today, so deleting a test or shipping an untested screen fails rather than
+drifting. Running one file (`npx vitest run src/__tests__/writes.test.ts` from inside the package)
+is deliberately not judged against it. **Lint is a zero-warning gate** in the same spirit: every
+package runs `oxlint --max-warnings 0`, and the handful of rules turned off carry their argument
+in the config file rather than in a commit message.
 
 ## Branches and environments
 
