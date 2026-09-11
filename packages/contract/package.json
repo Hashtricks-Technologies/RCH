@@ -7,7 +7,16 @@
     ".": "./src/index.ts",
     "./fixtures": "./src/fixtures/index.ts"
   },
-  "scripts": { "typecheck": "tsc --noEmit", "lint": "oxlint --max-warnings 0", "test": "vitest run" },
-  "dependencies": { "zod": "^4.5.4" },
-  "devDependencies": { "vitest": "^4.1.11" }
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "oxlint --max-warnings 0",
+    "test": "vitest run --coverage"
+  },
+  "dependencies": {
+    "zod": "^4.5.4"
+  },
+  "devDependencies": {
+    "@vitest/coverage-v8": "^4.1.11",
+    "vitest": "^4.1.11"
+  }
 }

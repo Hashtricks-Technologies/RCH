@@ -9,7 +9,7 @@
     "start": "node dist/server.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint --max-warnings 0",
-    "test": "vitest run",
+    "test": "vitest run --coverage",
     "db:generate": "node scripts/db-generate.mjs",
     "db:migrate": "tsx --env-file=../../.env src/cli/migrate.ts",
     "db:seed": "tsx --env-file=../../.env src/cli/seed.ts",
@@ -42,6 +42,7 @@
   "devDependencies": {
     "@types/node": "^24.13.3",
     "@types/pg": "^8.23.1",
+    "@vitest/coverage-v8": "^4.1.11",
     "drizzle-kit": "^0.31.10",
     "tsup": "^8.5.1",
     "tsx": "^4.23.13",
