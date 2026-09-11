@@ -356,14 +356,14 @@ function PoDrawer({ id }: DrawerProps) {
         <Alert tone="c" label={po.st === "Cancelled" ? "CANCELLED" : "SHORT"}>{po.shortNote}</Alert>
       )}
 
-      <Section title="Items" sub="Ordered, received and the balance still outstanding.">
+      <Section title="Items" sub="Ordered, accepted and the balance still outstanding.">
         <div className="lgrid">
           <DataTable
             cols={[
               { h: "Item", cls: "nm", w: "18%" },
               { h: "Ordered", r: true },
               { h: "Unit" },
-              { h: "Received", r: true },
+              { h: "Accepted", r: true },
               { h: "Balance", r: true },
               { h: "Rate", r: true },
               { h: "Rate contract", w: "18%" },
@@ -378,8 +378,9 @@ function PoDrawer({ id }: DrawerProps) {
                   <>{IT[l.it]?.n ?? l.it}<small>{IT[l.it]?.c ?? ""}</small></>,
                   <>{fq(l.qty, l.it)}</>,
                   <>{U(l.it)}</>,
-                  // Received here is what was taken in, not what turned up: received plus balance
-                  // comes to the ordered quantity, with quarantine on neither side of it.
+                  // What was taken in, not what turned up — which is why the column says
+                  // "Accepted": accepted plus balance comes to the ordered quantity, with
+                  // quarantine on neither side of it.
                   <>{fq(netReceived(l), l.it)}</>,
                   <>{fq(Math.max(0, l.qty - netReceived(l)), l.it)}</>,
                   <>{money(l.rate)}</>,
