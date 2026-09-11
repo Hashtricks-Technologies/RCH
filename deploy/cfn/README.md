@@ -54,9 +54,34 @@ instance did not have:
 | `log_min_duration_statement` | `1000` ms | The snapshot read is the heaviest query in the system and comes in well under a second, so this logs regressions, not traffic. Dynamic. |
 | `idle_in_transaction_session_timeout` | `60000` ms | A transaction left open holds the row locks the whole write path queues behind. A minute is far longer than any write here takes. Dynamic. |
 
-`rds.force_ssl` is a **static** parameter: attaching the group in a stack update leaves it
-`pending-reboot`, and TLS is not actually enforced until the instance reboots. A stack update
-alone does not finish the job:
+### Run this stack update off-hours: it may reboot the database
+
+**Attaching a parameter group that contains a static parameter is "Some interruptions" in the
+CloudFormation reference, not "No interruption".** `rds.force_ssl` is static, and
+`DBParameterGroupName` is therefore an update CloudFormation may satisfy by **rebooting the
+instance for you**, during the update, whenever it feels like it — not at a time you chose.
+Schedule the first `aws cloudformation deploy` after this change for the small hours, the same
+way a maintenance window is scheduled, and do not run it during a service.
+
+Of everything this template newly sets on `Database`:
+
+| Property | Update behaviour | What that means here |
+|---|---|---|
+| `DBParameterGroupName` | **Some interruptions** | Attaching a group with a static parameter in it can reboot the instance as part of the update. |
+| `AutoMinorVersionUpgrade` | **Some interruptions** | Documented as such; in practice benign, but it is on the same update. |
+| `PreferredMaintenanceWindow` | **Some interruptions** | Changing the window can trigger a reboot if there is pending maintenance to apply. |
+| `MaxAllocatedStorage` | No interruption | |
+| `EnableCloudwatchLogsExports` | No interruption | |
+| `EnablePerformanceInsights` / `PerformanceInsightsRetentionPeriod` | No interruption | |
+| `MonitoringInterval` / `MonitoringRoleArn` | No interruption | |
+| `PreferredBackupWindow` | No interruption | |
+
+None of them **replaces** the instance — nothing here is destructive — but three of them can
+bounce it, so treat the whole update as an outage window.
+
+**And a reboot may still be needed afterwards.** A static parameter attached by an update that
+did *not* reboot sits `pending-reboot`, and TLS is not actually enforced until it does. Check,
+and finish the job by hand if the update did not:
 
 ```bash
 aws rds describe-db-parameters --region ap-south-1 \
@@ -67,19 +92,34 @@ aws rds describe-db-instances --region ap-south-1 --db-instance-identifier rch-d
 aws rds reboot-db-instance --region ap-south-1 --db-instance-identifier rch-dev
 ```
 
-Reboot in the maintenance window, not during a service. The instance also now carries
+Reboot in the maintenance window, not during a service.
+
+### The rest of what the instance now carries
+
 `AutoMinorVersionUpgrade: false` (the template pins `17.9`, so letting AWS move it reads as drift
 on the next change set), `EnableCloudwatchLogsExports: [postgresql]`, Enhanced Monitoring at
 `MonitoringIntervalSeconds` with a role this stack creates, and backup/maintenance windows in the
 small hours IST (`20:30-21:30` UTC = 02:00-03:00 IST; `sun:22:00-sun:23:00` UTC = Monday
 03:30-04:30 IST).
 
-Two are off by default and on only where they work. `EnablePerformanceInsights` stays `false` for
-`dev` and `staging` because AWS does not offer Performance Insights on the smallest burstable
-classes (`db.t4g.micro`, `db.t4g.small`); `prod`'s `db.t4g.medium` turns it on with the free
-7-day retention. `DbMaxAllocatedStorage` is `0` for `dev` — `0` omits the property entirely,
-which is what an instance that never had storage autoscaling already looks like, so the imported
-stack's verify change set stays empty — and `40` / `100` for staging and prod.
+**Performance Insights is on in every environment**, at the free 7-day retention. An earlier
+draft of this file said dev and staging left it off because AWS does not offer it on the smallest
+burstable classes. That was simply wrong, and checking took one command:
+
+```bash
+aws rds describe-orderable-db-instance-options --engine postgres --engine-version 17.9 \
+  --region ap-south-1 \
+  --query "OrderableDBInstanceOptions[?contains(DBInstanceClass,'t4g')].[DBInstanceClass,SupportsPerformanceInsights]"
+# db.t4g.micro true, db.t4g.small true, db.t4g.medium true — all of them
+```
+
+`db.t4g.micro`, `db.t4g.small` and `db.t4g.medium` all support it, and the 7-day tier is free on
+all three, so there was neither a technical nor a cost reason to leave dev and staging blind. The
+`EnablePerformanceInsights` parameter stays so an environment can be turned off deliberately.
+
+`DbMaxAllocatedStorage` is `0` for `dev` — `0` omits the property entirely, which is what an
+instance that never had storage autoscaling already looks like, so the imported stack's verify
+change set stays empty — and `40` / `100` for staging and prod.
 
 ## ECR does not keep every image any more
 
@@ -102,16 +142,29 @@ wrong and simply writes nothing — the ingress is healthy, the controller is ha
 are not there. That is why the annotation was taken back out of the chart until this parameter is
 filled in.
 
-`ElbLogDeliveryAccountId` defaults to `718504428378`, which is **ap-south-1's**. Every region has
-its own, and regions opened after August 2022 use the service principal
-`logdelivery.elasticloadbalancing.amazonaws.com` instead of an account at all — if this stack
-ever moves region, change the principal in the bucket policy, not just the parameter.
+**Two principals, and why both.** AWS's current documented policy grants the service principal
+`logdelivery.elasticloadbalancing.amazonaws.com` with an `aws:SourceAccount` condition; the older
+shape, still documented and still supported for regions that existed before August 2022 —
+`ap-south-1` is one — grants the per-region ELB account, `718504428378` here, via
+`ElbLogDeliveryAccountId`. The policy grants **both**. If only one were kept it should be the
+service principal, which is where AWS is going; both are there because the failure mode is silent
+— an ALB that cannot write its access logs reports nothing wrong and simply writes none — and
+because both are AWS-owned identities delivering the same objects to the same place. If this
+stack ever moves region, change the account id as well as the region.
+
+**Both statements are scoped to `AWSLogs/<this account>/*`**, AWS's documented resource path, not
+to the whole bucket. That means **the ingress must not set `access_logs.s3.prefix`**: a prefix
+moves every object to `<prefix>/AWSLogs/...`, which this policy does not permit, and the ALB would
+then write nothing — silently, again. Either leave the prefix unset, or add it to both `Resource`
+lines at the same time.
 
 ## The uptime check pages from us-east-1, wherever the stack is
 
 `UptimeHealthCheck` is a Route 53 health check on `https://<HostName>/healthz` — served at the
 root by the UI's nginx, outside the ingress's `/api` rule, so one request exercises DNS, the ALB,
-the certificate and a UI pod. It is created by every stack, in every region.
+the certificate and a UI pod. It is created whenever `AlertEmail` is set, in any region, and not
+at all when it is empty: a health check nobody is paged by is a monthly charge for nothing, and
+an empty parameter creating nothing is how the rest of this template behaves.
 
 The **alarm** is the part that cannot be. Route 53 publishes `AWS/Route53 HealthCheckStatus` into
 `us-east-1` and nowhere else, whatever region created the check, so an alarm on it in
@@ -194,17 +247,22 @@ this writing. The template declares `env=dev`. The verify change set will show a
 update on `Database`; that's a Tags-are-mutable-in-place, non-disruptive change, not drift in
 anything that matters. Executing it corrects the tag; leaving it is also harmless.
 
-**The next change set on `rch-dev` is deliberately not empty.** The import is done; the audit
-then changed the template underneath it, so the first `aws cloudformation deploy` after this
-commit is a real update and should read as one. Expect: `DbParameterGroup`, `RdsMonitoringRole`
-and `UptimeHealthCheck` created; lifecycle policies added to both ECR repositories; six subjects
-removed from `GithubDeployRole`'s trust policy; and a modify on `Database` for the parameter
-group, `AutoMinorVersionUpgrade`, the CloudWatch logs export, Enhanced Monitoring and the two
-windows. **Read every line before executing it**, as the import instructions above already say.
-Nothing in that list replaces the instance — none of those properties triggers one — but
-`rds.force_ssl` stays `pending-reboot` until someone reboots it (see "The database settings"
-below), and the trust-policy change means a GitHub workflow that deploys without declaring an
-`environment:` stops being able to assume the role, which is the point of it.
+**The next change set on `rch-dev` is deliberately not empty, and it is an outage window.** The
+import is done; the audit then changed the template underneath it, so the first
+`aws cloudformation deploy` after this commit is a real update and should read as one. Expect:
+`DbParameterGroup` and `RdsMonitoringRole` created; lifecycle policies added to both ECR
+repositories; six subjects removed from `GithubDeployRole`'s trust policy; and a modify on
+`Database` for the parameter group, `AutoMinorVersionUpgrade`, the CloudWatch logs export,
+Performance Insights, Enhanced Monitoring and the two windows. (No health check and no SNS topic:
+`dev.params.json` leaves `AlertEmail` empty, which creates neither.) **Read every line before
+executing it**, as the import instructions above already say.
+
+Nothing in that list **replaces** the instance. Three items in it can **reboot** it, though —
+attaching a parameter group containing a static parameter is "Some interruptions", not "No
+interruption" — so run it off-hours, and read "Run this stack update off-hours" below before
+scheduling it. The trust-policy change is the other one to be deliberate about: a GitHub workflow
+that deploys without declaring an `environment:` stops being able to assume the role, which is
+the point of it.
 
 **`DbMasterPassword` on the import.** `dev.params.json` passes the literal string `"IMPORT"`
 for this parameter. CloudFormation's `AWS::RDS::DBInstance` import does not read
@@ -237,16 +295,35 @@ aws cloudformation create-stack \
   --region ap-south-1
 ```
 
-`prod.params.json` pre-fills the suggested host (`rch.hashtrickstechnologies.com`), instance
-class (`db.t4g.medium`), Multi-AZ (`true`), deletion protection (`true`), backup retention
-(`14` days), storage autoscaling to 100 GiB and Performance Insights — which is now genuinely
-what the go-live checklist asks for (`deploy/RUNBOOK.md` §11 step 2 says `db.t4g.medium`; this
-file said `db.t4g.small` and claimed to match it). It reuses `dev`'s VPC and subnets since the
-cluster serves every environment as a namespace in one VPC (`deploy/eksctl/cluster.yaml`);
-change those two if production ever gets a dedicated VPC. `staging.params.json` is the same
-shape one tier down — `db.t4g.small`, single-AZ, 7-day backups, 40 GiB ceiling — for a staging
-tier that does not exist yet; nothing in it has been read from AWS, and `FILL`s stay `FILL`
-until someone actually provisions staging.
+`prod.params.json` pre-fills the suggested host, instance class (`db.t4g.medium`), Multi-AZ
+(`true`), deletion protection (`true`), backup retention (`14` days), storage autoscaling to
+100 GiB, Performance Insights, and a security group admitting only the EKS node group — **eight
+of the nine things `deploy/RUNBOOK.md` §11 step 2 asks for.** It reuses `dev`'s VPC and subnets
+since the cluster serves every environment as a namespace in one VPC
+(`deploy/eksctl/cluster.yaml`). `staging.params.json` is the same shape one tier down —
+`db.t4g.small`, single-AZ, 7-day backups, 40 GiB ceiling — for a staging tier that does not exist
+yet; nothing in it has been read from AWS, and `FILL`s stay `FILL` until someone actually
+provisions staging.
+
+**The ninth is private subnets, and this template does not deliver them.** §11 step 2 says "in
+private subnets". Every environment's database, production's included, sits in the imported
+`rch` DB subnet group, which is the account's default VPC's three **public** subnets — the same
+ones the cluster's nodes and the ALB use (`deploy/cfn/dev.import.json`, `prod.params.json`'s
+`SubnetIds`). Closing that gap is not a parameter: it needs private subnets created in the VPC, a
+route table with a NAT gateway, and a per-environment `DBSubnetGroup` replacing the shared import
+— and moving an existing instance between subnet groups is a modify with an outage, not a
+property flip. What limits the exposure today is that `PubliclyAccessible: false` means the
+instance has no public IP and no internet gateway route to it, and that staging and prod now
+admit 5432 only from the EKS node group's security group. **Put it on the §11 follow-up list;
+do not read "matches the checklist" as including it.**
+
+**Check `HostName` before creating a prod stack.** `prod.params.json` carries
+`rch.hashtrickstechnologies.com` — which is the host **dev is live on right now**
+(`deploy/RUNBOOK.md` §15). Creating a prod stack with it unchanged mints a second ACM certificate
+and a second Route 53 health check against the running dev application, and the go-live A-alias
+would then be a straight fight between the two environments for one name. Decide the production
+hostname first: either move dev to `rch-dev.hashtrickstechnologies.com` and let prod take this
+one, or give prod its own.
 
 **Four `FILL`s, and what each one is.** A `FILL` left in place fails the `create-stack` call
 rather than creating something half-configured — `NodeSecurityGroupId` and `AlbLogsBucketName`
@@ -256,7 +333,7 @@ fail on their `AllowedPattern`, `AlertEmail` fails when SNS rejects the endpoint
 | Key | What goes in |
 |---|---|
 | `NodeSecurityGroupId` | The EKS node group's security group — the only source admitted to 5432. `aws eks describe-cluster --name rch --region ap-south-1 --query cluster.resourcesVpcConfig.clusterSecurityGroupId` |
-| `AlertEmail` | Where `rch-<env>-alerts` pages. The subscription must then be confirmed from the inbox. |
+| `AlertEmail` | Subscribes an address to `rch-<env>-alerts` in **this** region, and creates the Route 53 health check. The subscription must then be confirmed from the inbox. Note that `rch-<env>-alerts` is **not** the topic the uptime alarm pages — that alarm and its topic have to live in `us-east-1` (see "The uptime check pages from us-east-1" above); this one exists for anything else in-region that wants somewhere to publish. |
 | `AlbLogsBucketName` | A globally-unique bucket name, e.g. `rch-alb-logs-<account>`. Empty is a valid answer — it means no ALB access logs, and the chart must then leave `access_logs.s3.*` off. |
 | `DbMasterPassword` | The real password, because a `create-stack` actually sets it. Treat the params file as a secret and do not commit it with the value in. |
 

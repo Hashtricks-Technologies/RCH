@@ -12,7 +12,7 @@
   { "ParameterKey": "DbBackupRetentionDays", "ParameterValue": "7" },
   { "ParameterKey": "DbMaxAllocatedStorage", "ParameterValue": "40" },
   { "ParameterKey": "MonitoringIntervalSeconds", "ParameterValue": "60" },
-  { "ParameterKey": "EnablePerformanceInsights", "ParameterValue": "false" },
+  { "ParameterKey": "EnablePerformanceInsights", "ParameterValue": "true" },
   { "ParameterKey": "AlbLogsBucketName", "ParameterValue": "" },
   { "ParameterKey": "ElbLogDeliveryAccountId", "ParameterValue": "718504428378" },
   { "ParameterKey": "AlertEmail", "ParameterValue": "FILL" },

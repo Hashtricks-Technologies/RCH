@@ -133,12 +133,15 @@ Parameters:
   EnablePerformanceInsights:
     Type: String
     AllowedValues: ["true", "false"]
-    Default: "false"
+    Default: "true"
     Description: >-
-      RDS Performance Insights, with the free 7-day retention. Off by default because AWS does not
-      offer it on the smallest burstable classes — an instance on db.t4g.micro or db.t4g.small
-      (dev and staging here) is refused outright, so only prod's db.t4g.medium turns it on. Raise
-      the instance class first if a smaller environment ever needs it.
+      RDS Performance Insights at the free 7-day retention, which every environment turns on.
+      An earlier draft of this template claimed AWS refuses Performance Insights on the smallest
+      burstable classes and left dev and staging off because of it. That is not true here:
+      `aws rds describe-orderable-db-instance-options --engine postgres --engine-version 17.9
+      --region ap-south-1` reports SupportsPerformanceInsights=true for db.t4g.micro, .small and
+      .medium alike, and the 7-day tier is free on all of them. The parameter stays so an
+      environment can be turned off deliberately, not because one has to be.
 
   AlbLogsBucketName:
     Type: String
@@ -149,7 +152,10 @@ Parameters:
       access logs. A name creates the bucket, its 90-day lifecycle rule and the policy the load
       balancer's log delivery needs, and publishes the name as an Output — which is the point at
       which deploy/chart/rch/values-prod.yaml may carry the access_logs.s3.* attributes again.
-      S3 bucket names are global, so this needs a real, unused name (e.g. rch-alb-logs-<account>).
+      The policy grants exactly AWSLogs/<this account>/*, AWS's documented shape, so the ingress
+      must NOT set access_logs.s3.prefix — a prefix moves every object to <prefix>/AWSLogs/... and
+      the policy would have to name it too. S3 bucket names are global, so this needs a real,
+      unused name (e.g. rch-alb-logs-<account>).
 
   ElbLogDeliveryAccountId:
     Type: String
@@ -157,10 +163,14 @@ Parameters:
     AllowedPattern: '^\d{12}$'
     Description: >-
       The AWS-owned account that writes Elastic Load Balancing access logs in THIS region;
-      718504428378 is ap-south-1's. Every region has its own id, and regions opened after August
-      2022 use the service principal logdelivery.elasticloadbalancing.amazonaws.com instead of an
-      account at all — see "Enable access logs for your Application Load Balancer" in the ELB
-      guide and change the bucket policy's Principal with it if this stack ever moves region.
+      718504428378 is ap-south-1's, and every region has its own. This is the LEGACY half of the
+      bucket policy: AWS's current guidance is the service principal
+      logdelivery.elasticloadbalancing.amazonaws.com, which the policy also grants, while the
+      per-region account remains documented and supported for regions that existed before August
+      2022 — ap-south-1 among them. Both are granted because the failure mode is silent (an ALB
+      that cannot write its logs reports nothing wrong and simply writes none), both are AWS-owned
+      identities delivering the same objects, and both are scoped to the same AWSLogs prefix under
+      this account. Change this id, not just the region, if the stack ever moves.
 
   AlertEmail:
     Type: String
@@ -627,15 +637,29 @@ Resources:
       PolicyDocument:
         Version: "2012-10-17"
         Statement:
-          # ap-south-1 predates the service-principal form, so log delivery arrives as the
-          # regional ELB account rather than logdelivery.elasticloadbalancing.amazonaws.com —
-          # see ElbLogDeliveryAccountId's own description before moving this stack's region.
-          - Sid: ElbLogDelivery
+          # AWS's current documented policy: log delivery writes as a service principal, with the
+          # account it is delivering for named in the condition. This is the one to keep if only
+          # one is ever kept.
+          - Sid: ElbLogDeliveryServicePrincipal
+            Effect: Allow
+            Principal:
+              Service: logdelivery.elasticloadbalancing.amazonaws.com
+            Action: s3:PutObject
+            Resource: !Sub "arn:${AWS::Partition}:s3:::${AlbLogsBucketName}/AWSLogs/${AWS::AccountId}/*"
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref "AWS::AccountId"
+          # The legacy per-region ELB account, still documented and still supported for regions
+          # that existed before August 2022 — ap-south-1 is one. Granted alongside rather than
+          # instead of, because an ALB that cannot write its access logs reports nothing wrong and
+          # writes none: a silent failure is not the thing to be minimal about. Both principals
+          # are AWS-owned and both are scoped to the same prefix.
+          - Sid: ElbLogDeliveryLegacyAccount
             Effect: Allow
             Principal:
               AWS: !Sub "arn:${AWS::Partition}:iam::${ElbLogDeliveryAccountId}:root"
             Action: s3:PutObject
-            Resource: !Sub "arn:${AWS::Partition}:s3:::${AlbLogsBucketName}/*"
+            Resource: !Sub "arn:${AWS::Partition}:s3:::${AlbLogsBucketName}/AWSLogs/${AWS::AccountId}/*"
           - Sid: DenyInsecureTransport
             Effect: Deny
             Principal: "*"
@@ -656,8 +680,11 @@ Resources:
   # /healthz is served at the root by the UI's nginx (deploy/nginx/default.conf.template), not
   # behind the ingress's /api rule, so this check exercises DNS, the ALB, the certificate and a
   # UI pod in one request — everything between a phone on the ward and the app.
+  # Gated on HasAlertEmail like the topic below it: a health check nobody is paged by is 50 cents
+  # a month of nothing, and this file's style is that an empty parameter creates nothing.
   UptimeHealthCheck:
     Type: AWS::Route53::HealthCheck
+    Condition: HasAlertEmail
     Properties:
       HealthCheckConfig:
         Type: HTTPS
@@ -766,6 +793,7 @@ Outputs:
     Value: !Ref DbParameterGroup
 
   UptimeHealthCheckId:
+    Condition: HasAlertEmail
     Description: >-
       Route 53 health check id for HostName — the value the us-east-1 put-metric-alarm in
       deploy/cfn/README.md needs, since AWS/Route53 metrics are published only there.

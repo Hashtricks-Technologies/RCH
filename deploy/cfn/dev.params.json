@@ -53,7 +53,7 @@
   },
   {
     "ParameterKey": "EnablePerformanceInsights",
-    "ParameterValue": "false"
+    "ParameterValue": "true"
   },
   {
     "ParameterKey": "AlbLogsBucketName",
