@@ -70,6 +70,12 @@ somewhere different and sees a different sidebar. The seed password is `SEED_PAS
 `.env` (dev default `changeme`); a staging/prod seed sets `must_change_password`, which routes
 first sign-in through a change-password step before anything else.
 
+A refused sign-in — an unknown id, a wrong password, a deactivated account — says so on the form
+itself, in the server's own one sentence for all three, and the sentence stays there until the
+next attempt. A browser that cannot reach the server at all says that instead. Neither is a
+toast: the sign-in screen is outside the shell, and a sentence that vanishes in seconds is never
+read by someone still looking at the keyboard.
+
 | Employee id | Account | Role | Lands on |
 |---|---|---|---|
 | `RC-4471` | Kavitha Raman | Counter Operator · Coffee Shop | Point of Sale |
@@ -189,7 +195,7 @@ happens, is always the server's.
 ## Try it end to end
 
 `pnpm test:e2e` (from the repo root, against a running `pnpm dev` stack) drives six files, eight
-scenarios, twelve runtime tests (the sign-in loop is five of them) through a real browser — sign
+scenarios, thirteen runtime tests (the sign-in loop is five of them) through a real browser — sign
 in, sell, raise and approve a request, make a kitchen batch, run a requisition through to a
 goods receipt, and work a support ticket end to end — and is the fastest way to see the whole
 system move. `../e2e/README.md` explains what each spec proves and the environment it needs.

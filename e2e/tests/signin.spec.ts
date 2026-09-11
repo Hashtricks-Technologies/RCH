@@ -34,3 +34,24 @@ test.describe("everyone gets their own portal", () => {
     await expect(page.getByRole("navigation")).not.toContainText(/purchase orders/i);
   });
 });
+
+test.describe("a refused sign-in", () => {
+  test("says why, on the form, and the sentence stays there", async ({ page }) => {
+    await page.goto("/#/");
+    await page.getByLabel("Employee id").fill(ROLES.counter.emp);
+    await page.getByLabel("Password", { exact: true }).fill("not-the-password");
+    await page.getByRole("button", { name: "Sign in" }).click();
+    // The server's own sentence, inline on the form — not a toast that is gone in seconds
+    // while the operator is still looking at the keyboard. Before this, the refusal set the
+    // store's toast and nothing outside the shell drew it: the button flipped back to "Sign
+    // in" and the 401 was visible only in the browser's network tab.
+    const refusal = page.locator("form .al");
+    await expect(refusal).toContainText("That employee id and password do not match.");
+    await expect(page.locator(".toast")).toHaveCount(0);
+    // Still there well past a toast's life, with the id still typed and the form still live.
+    await page.waitForTimeout(4000);
+    await expect(refusal).toBeVisible();
+    await expect(page.getByLabel("Employee id")).toHaveValue(ROLES.counter.emp);
+    await expect(page.getByRole("button", { name: "Sign in" })).toBeEnabled();
+  });
+});

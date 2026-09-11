@@ -9,12 +9,18 @@ export class AppError extends Error {
    *  reads `err.statusCode`, not `err.status` — keep both in sync. */
   readonly statusCode: number;
   readonly details?: unknown;
-  constructor(code: ErrorCode, status: number, message: string, details?: unknown) {
+  /** Why, for the operator reading the log — never for the caller. A login is refused with one
+   *  sentence whether the id is unknown, the password wrong or the account deactivated, and
+   *  this is where the difference goes: onto the request's own log line (`plugins/logging.ts`),
+   *  and nowhere in `toEnvelope()`. */
+  override readonly cause?: string;
+  constructor(code: ErrorCode, status: number, message: string, details?: unknown, cause?: string) {
     super(message);
     this.code = code;
     this.status = status;
     this.statusCode = status;
     this.details = details;
+    this.cause = cause;
     this.name = new.target.name;
   }
   toEnvelope() {
@@ -22,7 +28,7 @@ export class AppError extends Error {
   }
 }
 export class ValidationError extends AppError { constructor(message: string, details?: unknown) { super("validation", 400, message, details); } }
-export class UnauthenticatedError extends AppError { constructor(message = "Sign in to continue.") { super("unauthenticated", 401, message); } }
+export class UnauthenticatedError extends AppError { constructor(message = "Sign in to continue.", cause?: string) { super("unauthenticated", 401, message, undefined, cause); } }
 export class ForbiddenError extends AppError { constructor(message: string) { super("forbidden", 403, message); } }
 export class NotFoundError extends AppError { constructor(message: string) { super("not_found", 404, message); } }
 export class ConflictError extends AppError { constructor(message: string, details?: unknown) { super("conflict", 409, message, details); } }

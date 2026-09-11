@@ -3,7 +3,7 @@ import type { Pool } from "pg";
 import { serializerCompiler, validatorCompiler, type ZodTypeProvider } from "fastify-type-provider-zod";
 import type { Config } from "./config.js";
 import type { Db } from "./db/client.js";
-import logging, { genReqId, loggerOptions } from "./plugins/logging.js";
+import logging, { genReqId, loggerOptions, type LogStream } from "./plugins/logging.js";
 import security from "./plugins/security.js";
 import errors from "./plugins/errors.js";
 import metrics from "./plugins/metrics.js";
@@ -18,12 +18,13 @@ import { registerModules } from "./modules/index.js";
 declare module "fastify" { interface FastifyInstance { config: Config } }
 
 export type App = FastifyInstance;
-/** A caller that brings its own database brings the pool behind it too, so /metrics can still report its depth. */
-export type AppDeps = { db?: Db; pool?: Pool; searchPath?: string; migrationsSchema?: string };
+/** A caller that brings its own database brings the pool behind it too, so /metrics can still report its depth.
+ *  `logStream` is where the log goes when it is not stdout — a test reading its own lines back. */
+export type AppDeps = { db?: Db; pool?: Pool; searchPath?: string; migrationsSchema?: string; logStream?: LogStream };
 
 export async function buildApp(config: Config, deps: AppDeps = {}): Promise<App> {
   const app = Fastify({
-    logger: loggerOptions(config.logLevel),
+    logger: loggerOptions(config.logLevel, deps.logStream),
     genReqId,
     trustProxy: config.trustProxy,
     bodyLimit: 1024 * 1024,

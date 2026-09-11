@@ -45,6 +45,10 @@ export interface AppState extends ProcurementSlice, OpsSlice {
   prqDraft: DraftLine[];
   drawer: DrawerState | null;
   toast: string | null;
+  /** The sentence a sign-in or a password change was refused with, for the form that asked.
+   *  The two screens outside the shell show it inline and keep it there until the next attempt
+   *  — a toast is gone in seconds, and an operator looking at the keyboard never sees it. */
+  authError: string | null;
   shopFilter: LocKey | null;
   theme: ThemePref;
 
@@ -55,6 +59,7 @@ export interface AppState extends ProcurementSlice, OpsSlice {
   loadSnapshot: () => Promise<void>;
   changePassword: (current: string, next: string) => Promise<boolean>;
   notify: (m: string) => void;
+  dismissToast: () => void;
   openDrawer: (t: string, id: string) => void;
   closeDrawer: () => void;
   saveProfile: (p: Partial<User>) => Promise<void>;
@@ -117,6 +122,13 @@ export interface AppState extends ProcurementSlice, OpsSlice {
 /** Every collection starts empty and is filled by `applySnapshot`. Nothing here is data: the
  *  screens do not render until `auth` reaches "ready", which only a snapshot can do. `stock` is
  *  exhaustive because every `stock[loc][it]` read would otherwise throw on a missing location. */
+/** The fallback for a failure with no envelope to read — a dropped connection, a gateway page. */
+const UNREACHABLE = "Could not reach the server — check the connection and try again.";
+/** A toast stays up for as long as its sentence takes to read: the first forty characters get
+ *  the old 3.4 s, and every character past that buys 30 ms more, up to nine seconds. A refusal
+ *  naming an item, a price and a list is twice the length of "Bill taken." and was gone before
+ *  it could be read. */
+const toastMs = (m: string) => Math.min(9000, 3400 + Math.max(0, m.length - 40) * 30);
 const EMPTY_STOCK = Object.fromEntries(StockLocSchema.options.map((l) => [l, {}])) as Record<StockLoc, Record<string, number>>;
 
 export const useApp = create<AppState>((set, get) => ({
@@ -131,11 +143,12 @@ export const useApp = create<AppState>((set, get) => ({
   prqDraft: [],
   drawer: null,
   toast: null,
+  authError: null,
   shopFilter: null,
   theme: readStoredTheme(),
 
   login: async (emp, password) => {
-    set({ auth: "signing-in" });
+    set({ auth: "signing-in", authError: null });
     try {
       const r = await call(routes.login, { body: { emp, password } });
       setAccessToken(r.accessToken);
@@ -143,8 +156,9 @@ export const useApp = create<AppState>((set, get) => ({
       if (!r.mustChangePassword) await get().loadSnapshot();
       return true;
     } catch (e) {
-      set({ auth: "signed-out", user: null });
-      get().notify(e instanceof ApiError ? e.message : "Could not reach the server — check the connection and try again.");
+      // On the form, not in a toast: the sign-in screen is outside the shell, and the sentence
+      // has to still be there when the operator looks up from the keyboard.
+      set({ auth: "signed-out", user: null, authError: e instanceof ApiError ? e.message : UNREACHABLE });
       return false;
     }
   },
@@ -158,10 +172,13 @@ export const useApp = create<AppState>((set, get) => ({
       set({ user: r.user, mustChangePassword: r.mustChangePassword });
       if (r.mustChangePassword) set({ auth: "ready" });
       else await get().loadSnapshot();
-    } catch {
+    } catch (e) {
       // A first-time visitor has no cookie. That is not a session ending, so it
       // says nothing and simply shows the sign-in form.
       set({ auth: "signed-out", user: null });
+      // Anything else — the server down, a gateway page, a 500 — is not "no cookie", and an
+      // operator who was signed in a minute ago must not be asked for a password in silence.
+      if (!(e instanceof ApiError && e.status === 401)) get().notify(e instanceof ApiError ? e.message : UNREACHABLE);
     }
   },
   loadSnapshot: async () => {
@@ -192,6 +209,7 @@ export const useApp = create<AppState>((set, get) => ({
     set({ user: null, auth: "signed-out", drawer: null, mustChangePassword: false });
   },
   changePassword: async (current, next) => {
+    set({ authError: null });
     try {
       // The change revokes every token the tab is holding — the access token (still stamped
       // "must change password") and the refresh cookie behind it. The reply carries their
@@ -202,13 +220,17 @@ export const useApp = create<AppState>((set, get) => ({
       await get().loadSnapshot();
       get().notify("Password changed — you are signed in.");
       return true;
-    } catch (e) { get().notify(e instanceof ApiError ? e.message : "Could not change the password."); return false; }
+    } catch (e) {
+      set({ authError: e instanceof ApiError ? e.message : UNREACHABLE });
+      return false;
+    }
   },
 
   notify: (m) => {
     set({ toast: m });
-    setTimeout(() => { if (get().toast === m) set({ toast: null }); }, 3400);
+    setTimeout(() => { if (get().toast === m) set({ toast: null }); }, toastMs(m));
   },
+  dismissToast: () => set({ toast: null }),
   openDrawer: (t, id) => set({ drawer: { t, id } }),
   closeDrawer: () => set({ drawer: null }),
   saveProfile: async (p) => {
