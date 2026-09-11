@@ -66,13 +66,26 @@ export default function Requests() {
   const [invPriority, setInvPriority] = useState<"Normal" | "Urgent">("Normal");
   const [invNote, setInvNote] = useState("");
 
-  // Shop-ask card
+  // Shop-ask card. `peers` is empty on a one-outlet deployment, and was read as `peers[0]` —
+  // `undefined`, which `LOC[shopTo].n` then dereferenced and took the whole screen down with.
   const peers = OUTLETS.filter((o) => o !== loc);
-  const [shopTo, setShopTo] = useState<LocKey>(peers[0]);
+  const [shopTo, setShopTo] = useState<LocKey | null>(peers[0] ?? null);
   const [shopItem, setShopItem] = useState(SELLABLE[0]);
   const [shopQty, setShopQty] = useState(1);
   const [shopPriority, setShopPriority] = useState<"Normal" | "Urgent">("Normal");
   const [shopNote, setShopNote] = useState("");
+
+  /**
+   * Both pickers opened on `LIST[0]` at mount and stayed there for ever. `IT` is a module
+   * registry replaced in place, so an item retired in another browser — or a catalogue that
+   * had not landed when this screen first rendered — left the box pointing at a key the
+   * server no longer sells, and Submit posted a line for it. Adjusted during render, keyed
+   * on the same `catalogVersion` the two lists are built from, so the correction lands in
+   * the render that saw the change rather than a frame later.
+   */
+  if (STOCKABLE.length > 0 && !STOCKABLE.includes(invItem)) setInvItem(STOCKABLE[0]);
+  if (SELLABLE.length > 0 && !SELLABLE.includes(shopItem)) setShopItem(SELLABLE[0]);
+  if (peers.length > 0 && (shopTo === null || !peers.includes(shopTo))) setShopTo(peers[0]);
 
   const [grant, setGrant] = useState<Record<string, number>>({});
   const [reason, setReason] = useState<Record<string, string>>({});
@@ -91,6 +104,7 @@ export default function Requests() {
     setInvQty(1); setInvPriority("Normal"); setInvNote(""); setOpen(null);
   };
   const submitShopAsk = async () => {
+    if (!shopTo) return;
     const note = shopPriority === "Urgent" ? `[Urgent] ${shopNote.trim()}`.trim() : shopNote.trim();
     setBusy("shop");
     const ok = await s.askShop(shopTo, shopItem, shopQty, note);
@@ -204,7 +218,11 @@ export default function Requests() {
                       <input id={`g-${a.id}`} type="number" min={0} max={Math.min(a.qty, free)} value={g}
                         onChange={(e) => setGrant({ ...grant, [a.id]: Number(e.target.value) })} />
                     </div>
-                    <Btn size="sm" disabled={free <= 0 || g <= 0 || busy !== null}
+                    {/* The box is capped at `min(asked, free)`, but a number typed straight in
+                        walked past it — the button only checked that it was above zero, so a
+                        counter could offer to send forty of something it holds eight of and
+                        find out from the server. It is capped at the same figure now. */}
+                    <Btn size="sm" disabled={free <= 0 || g <= 0 || g > Math.min(a.qty, free) || busy !== null}
                       onClick={async () => {
                         setBusy(`answer:${a.id}`);
                         try { await s.answerShopAsk(a.id, g); } finally { setBusy(null); }
@@ -223,17 +241,26 @@ export default function Requests() {
 
       <div className="mtop" />
       <div className="reqactions">
-        <button type="button" className={`reqaction${open === "shop" ? " on" : ""}`} onClick={() => toggle("shop")}>
-          <span className="reqaction-ic"><Icon name="swap" size={18} /></span>
-          <span className="reqaction-tx"><b>From other shops</b><span>Ask a peer counter directly</span></span>
-        </button>
+        {/* One outlet and no peer is a real deployment, not a hypothetical — and offering to
+            ask a shop that does not exist is worse than saying there is none. */}
+        {shopTo ? (
+          <button type="button" className={`reqaction${open === "shop" ? " on" : ""}`} onClick={() => toggle("shop")}>
+            <span className="reqaction-ic"><Icon name="swap" size={18} /></span>
+            <span className="reqaction-tx"><b>From other shops</b><span>Ask a peer counter directly</span></span>
+          </button>
+        ) : (
+          <div className="reqaction" aria-disabled>
+            <span className="reqaction-ic"><Icon name="swap" size={18} /></span>
+            <span className="reqaction-tx"><b>No other outlet to ask</b><span>This is the only counter</span></span>
+          </div>
+        )}
         <button type="button" className={`reqaction${open === "inventory" ? " on" : ""}`} onClick={() => toggle("inventory")}>
           <span className="reqaction-ic"><Icon name="warehouse" size={18} /></span>
           <span className="reqaction-tx"><b>From inventory</b><span>Ask the central store</span></span>
         </button>
       </div>
 
-      {open === "shop" && (
+      {open === "shop" && shopTo && (
         <div className="raisecard">
           <div className="raisecard-h"><b>Ask another shop</b><span className="mini">to {LOC[shopTo].n}</span></div>
           <Field label="Shop">

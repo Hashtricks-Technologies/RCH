@@ -17,9 +17,10 @@ import { groupPool, picksFor, type PoolGroup } from "../roles/buyer/ProcurementL
 import { REPORTS } from "../roles/store/Reports";
 import { IT as FXIT, USERS, seedVendors } from "@rch/contract/fixtures";
 // ---- item patch ----
-import { IT } from "../data/master";
+import { IT, OUTLETS } from "../data/master";
+import { activeItems } from "../lib/selectors";
 import type { PoolLine } from "../lib/selectors";
-import type { Bill, Dated, Role, Ticket, Trailed } from "../types";
+import type { Bill, Dated, DatedDoc, Role, StockRequest, Ticket, Trailed } from "../types";
 import { as, resetStore } from "./fixture";
 
 // Nothing in production code carries data any more: the registries are empty until a snapshot
@@ -862,5 +863,137 @@ describe("what actually reaches the printer", () => {
     expect(blank).toContain("TKT-2026-0442");
     expect(blank).not.toContain("481203");
     expect(blank).toContain("the collector reads the code out");
+  });
+});
+
+/* ------------------------------------------------------------------------
+ * The manager's approval drawer: a box a half-litre could not be typed into,
+ * and derived state that stayed on the request it was first opened over.
+ * ---------------------------------------------------------------------- */
+describe("the approval drawer", () => {
+  const req = (over: Partial<DatedDoc<StockRequest>>): DatedDoc<StockRequest> => ({
+    id: "REQ-2026-0951", from: "coffee", by: "Kavitha Raman", at: "09:40",
+    iso: "2026-09-11T04:10:00.000Z", st: "Request sent", urg: false, mgrNote: "", ticket: null,
+    lines: [{ it: "milk", qty: 20, appr: 0 }],
+    hist: [{ s: "Request sent", who: "Kavitha Raman", t: "09:40", iso: "2026-09-11T04:10:00.000Z" }],
+    ...over,
+  });
+  const box = (ui: ReturnType<typeof mount>) => ui.labelled("Approved quantity for Milk 1L (toned)");
+
+  it("takes a decimal quantity without eating the point", () => {
+    act(() => { as("manager"); useApp.setState({ req: [req({})] }); });
+    const ui = mount(() => createElement(DRAWERS.mreq, { id: "REQ-2026-0951" }));
+
+    // Reading the box on every keystroke turned "12.5" into 1, then 12, then 125 clamped
+    // back to the line's own 20 — the trailing point was never a number, so it was dropped.
+    act(() => { typeIn(box(ui), "12.5"); });
+    expect(box(ui).value).toBe("12.5");
+    act(() => { box(ui).dispatchEvent(new FocusEvent("focusout", { bubbles: true })); });
+    expect(box(ui).value).toBe("12.5");
+    // `unitTotal`'s own three decimals — the point survived, which is the whole case.
+    expect(ui.text()).toContain("12.500 L");
+  });
+
+  it("re-derives what it is approving when the drawer is pointed at another request", () => {
+    act(() => {
+      as("manager");
+      useApp.setState({
+        req: [req({}), req({ id: "REQ-2026-0952", lines: [{ it: "milk", qty: 3, appr: 0 }] })],
+      });
+    });
+    // The same component instance, pointed at a second request — which is exactly what
+    // `openDrawer("mreq", other)` does while one is already open.
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    const show = (id: string) => {
+      act(() => { root.render(createElement(MemoryRouter, null, createElement(DRAWERS.mreq, { id }))); });
+    };
+    show("REQ-2026-0951");
+    const read = () => host.querySelector<HTMLInputElement>('input[aria-label="Approved quantity for Milk 1L (toned)"]')!.value;
+    const first = read();
+    show("REQ-2026-0952");
+    // Whatever the store can promise, the second request only asked for 3 — the box must not
+    // still be offering the first request's quantity against the second request's line.
+    expect(Number(read())).toBeLessThanOrEqual(3);
+    expect(read()).not.toBe(first);
+    act(() => { root.unmount(); });
+    host.remove();
+  });
+
+  it("offers one Approve and one Reject, not two of each", () => {
+    act(() => { as("manager"); useApp.setState({ req: [req({})] }); });
+    const ui = mount(() => createElement(DRAWERS.mreq, { id: "REQ-2026-0951" }));
+    const labels = [...ui.host.querySelectorAll("button")].map((b) => b.textContent ?? "");
+    expect(labels.filter((l) => l.startsWith("Approve"))).toHaveLength(1);
+    expect(labels.filter((l) => l.startsWith("Reject the"))).toHaveLength(1);
+  });
+});
+
+/* ------------------------------------------------------------------------
+ * The counter's own request screen: what it will let an operator send, and
+ * what it does on a deployment or a catalogue it was not written against.
+ * ---------------------------------------------------------------------- */
+describe("the counter's stock requests", () => {
+  it("will not send more of a shop's ask than this counter is holding free", () => {
+    act(() => {
+      as("counter");                                   // Kavitha, Coffee Shop
+      useApp.setState({
+        // The kiosk wants 40; the Coffee Shop has eight on the shelf.
+        shopAsks: [{
+          id: "ASK-2026-0021", from: "kiosk", to: "coffee", it: "juice", qty: 40,
+          st: "Asked", at: "09:20", iso: "2026-09-11T03:50:00.000Z", by: "Deepa Selvam", note: "",
+        }],
+      });
+    });
+    const ui = mount(counter.requests);
+    const qty = ui.host.querySelector<HTMLInputElement>("#g-ASK-2026-0021")!;
+    const send = () => [...ui.host.querySelectorAll("button")].find((b) => (b.textContent ?? "").startsWith("Send"))!;
+
+    expect(send().disabled).toBe(false);
+    act(() => { typeIn(qty, "40"); });
+    // Forty is more than the shelf holds, so the server would refuse it — the button does not
+    // offer to go and find that out. The cap used to be only `g > 0`.
+    expect(send().disabled).toBe(true);
+  });
+
+  it("says there is nobody to ask on a one-outlet deployment", () => {
+    act(() => { as("counter"); });
+    // One counter and no peer: `peers[0]` was `undefined`, and `LOC[undefined].n` took the
+    // whole screen down before it could draw a single row.
+    const saved = [...OUTLETS];
+    OUTLETS.splice(0, OUTLETS.length, "coffee");
+    try {
+      const ui = mount(counter.requests);
+      expect(ui.text()).toContain("No other outlet to ask");
+      expect(ui.text()).toContain("Stock requests");     // and the rest of the screen is there
+    } finally {
+      OUTLETS.splice(0, OUTLETS.length, ...saved);
+    }
+  });
+
+  it("moves off a product the catalogue has stopped carrying", async () => {
+    act(() => { as("counter"); });
+    const ui = mount(counter.requests);
+    act(() => { ui.button("From inventory").click(); });
+    const picked = () => ui.host.querySelector<HTMLSelectElement>('select[aria-label="Product"]')!.value;
+    const first = picked();
+    expect(first).toBeTruthy();
+
+    // What an SSE resync after somebody retires an item looks like: the key the picker opened
+    // on is no longer in the catalogue, and `useState(LIST[0])` was frozen on it for ever —
+    // so Submit posted a line for a product the server no longer sells.
+    act(() => {
+      IT[first] = { ...IT[first], active: false };
+      useApp.setState({ catalogVersion: useApp.getState().catalogVersion + 1 });
+    });
+    expect(picked()).not.toBe(first);
+    expect(activeItems()).toContain(picked());
+
+    // And the *state* moved, not only what the browser falls back to painting for a `value`
+    // no option carries: what Submit posts is read off `invItem`, not off the select.
+    act(() => { useApp.setState({ submitRequest: async () => false }); });
+    await settle(() => { ui.button("Submit request").click(); });
+    expect(useApp.getState().draft[0]?.it).toBe(picked());
   });
 });
