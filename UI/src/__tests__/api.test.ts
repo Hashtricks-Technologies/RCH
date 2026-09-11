@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { routes, defineRoute } from "@rch/contract";
 import { z } from "zod";
 import { ApiError, call } from "../api/client";
-import { setAccessToken, getAccessToken } from "../api/session";
+import { setAccessToken, getAccessToken, sessionLost } from "../api/session";
 import { fromInputDate, fromWireBestBefore, fromWireDate, fromWireTime, toInputDate } from "../lib/fmt";
 
 const ok = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
@@ -227,6 +227,47 @@ describe("api client — one refresh across tabs", () => {
     await call(routes.me);
 
     expect(heard).toEqual([{ accessToken: "new" }]);
+  });
+
+  // A broadcast is a *replacement* for a token this tab already holds, never a way to be handed
+  // one. On a shared terminal the sign-in screen would otherwise pick up whoever is signed in
+  // in the next tab and let the next person walk straight into their session.
+  it("a signed-out tab ignores a token broadcast by another tab", async () => {
+    setAccessToken(null);
+    // A tab sitting on the sign-in screen still opens the channel — its own sign-in POST is a
+    // `call()` like any other. /auth/ routes never refresh, so this is just the channel opening.
+    fetchMock.mockResolvedValue(ok({ error: { code: "unauthenticated", message: "no" } }, 401));
+    await call(routes.login, { body: { emp: "RC-4471", password: "wrong" } }).catch(() => undefined);
+
+    new FakeChannel("rch-session").postMessage({ accessToken: "from-tab-2" });
+
+    expect(getAccessToken()).toBeNull();
+  });
+
+  it("a tab whose session was lost does not adopt a broadcast token", async () => {
+    setAccessToken("old");
+    fetchMock.mockResolvedValueOnce(ok({ user: { id: "u1" }, mustChangePassword: false }));
+    await call(routes.me);                      // the tab's channel opens with its first call
+
+    sessionLost();                              // the family was revoked; this tab is done
+
+    new FakeChannel("rch-session").postMessage({ accessToken: "from-tab-2" });
+
+    expect(getAccessToken()).toBeNull();
+  });
+
+  it("refreshes without the lock when the browser will not grant one", async () => {
+    setAccessToken("old");
+    // `locks.request` rejects outright on a document that is not fully active
+    // (InvalidStateError) or where the API is unavailable. The documented fallback is today's
+    // behaviour — refresh anyway — not an unhandled rejection out of `call()`.
+    locks.request.mockImplementation(() => Promise.reject(new Error("InvalidStateError")));
+    serve("new");
+
+    const r = await call(routes.me);
+
+    expect(r.user.id).toBe("u1");
+    expect(seen.filter((x) => x.includes("/auth/refresh"))).toHaveLength(1);
   });
 });
 

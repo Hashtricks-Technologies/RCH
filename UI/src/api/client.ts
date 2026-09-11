@@ -1,6 +1,6 @@
 import type { z } from "zod";
 import { API_PREFIX, routes, type AnyRoute } from "@rch/contract";
-import { getAccessToken, sessionLost, setAccessToken } from "./session";
+import { getAccessToken, onSessionLost, sessionLost, setAccessToken } from "./session";
 
 /**
  * The server's error envelope, thrown. `message` is written for the person at
@@ -90,9 +90,29 @@ function sessionChannel(): BroadcastChannel | null {
   channelCtor = Ctor;
   channel.onmessage = (e: MessageEvent) => {
     const t = (e.data as { accessToken?: unknown } | null)?.accessToken;
-    if (typeof t === "string" && t) setAccessToken(t);
+    // A broadcast **replaces** a token this tab already holds; it never hands one out. A tab on
+    // the sign-in screen, or one whose family was revoked, holds nothing — and on a shared
+    // terminal adopting here would let the next person at the keyboard walk into the session
+    // of whoever is signed in in the tab beside it.
+    if (typeof t === "string" && t && getAccessToken() !== null) setAccessToken(t);
   };
   return channel;
+}
+
+/** Sign-out and session-loss close it; the next `call()` opens a fresh one, by which time this
+ *  tab is signing in again and has its own token to protect. */
+export function closeSessionChannel(): void {
+  channel?.close();
+  channel = null;
+  channelCtor = null;
+}
+// A refresh that failed is the end of the session — stop listening for other tabs' tokens
+// before this tab can be handed one it has no business holding.
+onSessionLost(closeSessionChannel);
+
+/** Say so, without letting a closed or refused channel turn a successful refresh into a failure. */
+function announce(accessToken: string): void {
+  try { sessionChannel()?.postMessage({ accessToken }); } catch { /* the token is set either way */ }
 }
 
 let refreshing: Promise<boolean> | null = null;
@@ -108,7 +128,7 @@ async function refreshInLock(had: string | null): Promise<boolean> {
     if (!r.ok) return false;
     const b = (await r.json()) as { accessToken: string };
     setAccessToken(b.accessToken);
-    sessionChannel()?.postMessage({ accessToken: b.accessToken });
+    announce(b.accessToken);
     return true;
   } catch { return false; }
 }
@@ -121,7 +141,13 @@ export async function refreshOnce(had: string | null = null): Promise<boolean> {
   refreshing ??= (async () => {
     try {
       const locks = lockManager();
-      return locks ? await locks.request(REFRESH_LOCK, () => refreshInLock(had)) : await refreshInLock(had);
+      if (!locks) return await refreshInLock(had);
+      // `request` itself rejects on a document that is not fully active, and throws where the
+      // API is present but unusable. `refreshInLock` never rejects, so a rejection here means
+      // it was never reached: fall back to the lock-less path rather than escaping `call()` as
+      // something no caller is typed to catch.
+      try { return await locks.request(REFRESH_LOCK, () => refreshInLock(had)); }
+      catch { return await refreshInLock(had); }
     } finally { refreshing = null; }
   })();
   return refreshing;

@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { routes, StockLocSchema } from "@rch/contract";
-import { ApiError, call } from "../api/client";
+import { ApiError, call, closeSessionChannel } from "../api/client";
 import { getAccessToken, onSessionLost, setAccessToken } from "../api/session";
 import { refetch } from "../api/refetch";
 import { applySnapshot } from "../api/wire";
@@ -220,6 +220,9 @@ export const useApp = create<AppState>((set, get) => ({
   logout: async () => {
     try { await call(routes.logout); } catch { /* the cookie is gone either way */ }
     setAccessToken(null);
+    // Stop listening for the other tabs' tokens. A terminal is shared: the next person at this
+    // keyboard must not be handed a session by a window somebody forgot to close.
+    closeSessionChannel();
     set({ user: null, auth: "signed-out", drawer: null, mustChangePassword: false });
   },
   changePassword: async (current, next) => {
