@@ -772,3 +772,95 @@ describe("a form whose write the server refused", () => {
     expect(ui.labelled("New price for Real Juice 200ml").value).toBe("37");
   });
 });
+
+/* ------------------------------------------------------------------------
+ * "Pay & print" and "Reprint" printed nothing: there was no `window.print()`
+ * anywhere in the app, and no paper for one to put on a printer. The slip is
+ * the `.print-slip` block at the end of `styles.css` — everything else on the
+ * page is hidden while it prints.
+ * ---------------------------------------------------------------------- */
+describe("what actually reaches the printer", () => {
+  const BILL: Dated<Bill> = {
+    no: "CF/1188", loc: "coffee", opr: "Kavitha Raman", oprCol: "#B45309", tot: 40, tax: 4.29,
+    t: "09:12", iso: "2026-09-11T03:42:00.000Z", pay: "Cash",
+    lines: [{ it: "juice", qty: 2, rate: 20 }],
+  };
+
+  it("puts the bill on paper and sends it to the printer on Reprint", () => {
+    const print = vi.spyOn(window, "print").mockImplementation(() => undefined);
+    act(() => { as("counter"); useApp.setState({ bills: [BILL] }); });
+    const ui = mount(() => createElement(DRAWERS.cbill, { id: "CF/1188" }));
+
+    const slip = ui.host.querySelector(".print-slip")!;
+    expect(slip).toBeTruthy();
+    const paper = slip.textContent ?? "";
+    expect(paper).toContain("CF/1188");            // bill number
+    expect(paper).toContain("Coffee Shop");        // outlet
+    expect(paper).toContain("09:12");              // date and time
+    expect(paper).toContain("Real Juice 200ml");   // the line
+    expect(paper).toContain("₹20.00");             // its rate
+    expect(paper).toContain("₹40.00");             // the total
+    expect(paper).toContain("₹4.29");              // the tax
+    expect(paper).toContain("Cash");               // the tender
+
+    act(() => { ui.button("Reprint").click(); });
+    expect(print).toHaveBeenCalled();
+    print.mockRestore();
+  });
+
+  it("names the payer on paper when the bill was posted to somebody", () => {
+    act(() => {
+      as("counter");
+      useApp.setState({ bills: [{ ...BILL, pay: "Staff credit", payer: { kind: "staff", id: "RC-3120", name: "Ramesh Kumar · F&B" } }] });
+    });
+    const ui = mount(() => createElement(DRAWERS.cbill, { id: "CF/1188" }));
+    expect(ui.host.querySelector(".print-slip")!.textContent).toContain("Ramesh Kumar · F&B");
+  });
+
+  it("opens the new bill's drawer once the server has numbered it", async () => {
+    act(() => {
+      as("counter");
+      useApp.setState({
+        cart: { coffee: { juice: 1 } },
+        bills: [{ ...BILL, no: "CF/1100", iso: "2026-09-11T02:00:00.000Z" }],
+        // A bill the server took: `pay` answers true, and the refetched list is what the
+        // screen reads the number off — it never guesses one.
+        pay: async () => {
+          useApp.setState({ bills: [{ ...BILL, no: "CF/1189", iso: "2026-09-11T04:00:00.000Z" }, { ...BILL, no: "CF/1100", iso: "2026-09-11T02:00:00.000Z" }] });
+          return true;
+        },
+      });
+    });
+    const ui = mount(counter.pos);
+    await settle(() => { ui.button("Pay").click(); });
+    // The newest by `iso`, not the first in the array and not a number made up locally.
+    expect(useApp.getState().drawer).toEqual({ t: "cbill", id: "CF/1189" });
+  });
+
+  it("prints a counter's ticket, with the six digits only where this browser holds them", () => {
+    const t = (otp: string): Trailed<Ticket> => ({
+      id: "TKT-2026-0442", req: "REQ-2026-0910", from: "store", to: "coffee", st: "Issued", otp,
+      lines: [{ it: "juice", qty: 24 }],
+      hist: [{ s: "Issued", who: "Murugan S", t: "09:40", iso: "2026-09-11T04:10:00.000Z" }],
+    });
+
+    act(() => { as("counter"); useApp.setState({ tkt: [t("481203")] }); });
+    const held = mount(() => createElement(DRAWERS.ctkt, { id: "TKT-2026-0442" }));
+    const paper = held.host.querySelector(".print-slip")!.textContent ?? "";
+    expect(paper).toContain("TKT-2026-0442");
+    expect(paper).toContain("Central Store");
+    expect(paper).toContain("Coffee Shop");
+    expect(paper).toContain("Real Juice 200ml");
+    expect(paper).toContain("481203");
+    expect(held.button("Print slip")).toBeDefined();
+
+    // The server redacts the code for everyone but the collector, so a blank one is not a
+    // fault — and the paper must not carry an empty box that reads like one.
+    act(() => { useApp.setState({ tkt: [t("")] }); });
+    const blind = mount(() => createElement(DRAWERS.ctkt, { id: "TKT-2026-0442" }));
+    const blank = blind.host.querySelector(".print-slip")!.textContent ?? "";
+    expect(blank).toContain("TKT-2026-0442");
+    expect(blank).not.toContain("481203");
+    expect(blank).toContain("the collector reads the code out");
+  });
+});

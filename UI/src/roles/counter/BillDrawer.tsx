@@ -1,16 +1,66 @@
 import { useState } from "react";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
-import { money } from "../../lib/fmt";
+import { fromWireDate, money } from "../../lib/fmt";
 import { DrawerFrame } from "../../ui/Drawer";
 import { registerDrawer, type DrawerProps } from "../../drawers";
 import { Alert, Avatar, Btn, DataTable, Field, Pill, Section } from "../../ui/kit";
 import { billStatus, voidableToday } from "./status";
+import type { Bill, Dated } from "../../types";
+
+/**
+ * The paper a bill is handed over on.
+ *
+ * "Pay & print" and "Reprint" both printed nothing — there was no `window.print()` in the app
+ * and no paper for one to put on a printer, so a counter that had taken money had no receipt
+ * to give. `.print-slip` (the one `@media print` block at the end of `styles.css`) is the only
+ * thing that reaches the page; the drawer, the shell and every button on them are hidden.
+ *
+ * Not a second rendering of the same numbers for its own sake: a screen is laid out for a
+ * 720 px panel with its own scrollbar, and what a customer needs on 80 mm of till roll is the
+ * number, the counter, the time, the lines and what was paid — in that order and nothing else.
+ */
+function BillSlip({ bill }: { bill: Dated<Bill> }) {
+  const L = LOC[bill.loc];
+  const taxable = bill.tot - bill.tax;
+  return (
+    <div className="print-slip" aria-hidden>
+      <h2>{bill.no}</h2>
+      <div>Royal Care Hospital · {L?.n ?? bill.loc} · {L?.c ?? ""}</div>
+      <div>{fromWireDate(bill.iso)} {bill.t} · {bill.opr}</div>
+      {/* A voided bill can still be reprinted — the paper has to say it is not a receipt. */}
+      {bill.voided && <div><b>VOIDED — {bill.voidReason || "no reason recorded"}</b></div>}
+      <table>
+        <thead>
+          <tr><th>Item</th><th className="r">Qty</th><th className="r">Rate</th><th className="r">Amount</th></tr>
+        </thead>
+        <tbody>
+          {bill.lines.length === 0 ? (
+            <tr><td colSpan={4}>No item on this bill.</td></tr>
+          ) : bill.lines.map((l, i) => (
+            <tr key={l.it + i}>
+              <td>{IT[l.it]?.n ?? l.it}</td>
+              <td className="r">{l.qty}</td>
+              <td className="r">{money(l.rate)}</td>
+              <td className="r">{money(l.rate * l.qty)}</td>
+            </tr>
+          ))}
+          <tr><td colSpan={3}>Taxable value</td><td className="r">{money(taxable)}</td></tr>
+          <tr><td colSpan={3}>CGST + SGST</td><td className="r">{money(bill.tax)}</td></tr>
+          <tr><td colSpan={3}><b>Total</b></td><td className="r"><b>{money(bill.tot)}</b></td></tr>
+        </tbody>
+      </table>
+      <div>Paid by {bill.pay}{bill.payer ? ` · posted to ${bill.payer.name} (${bill.payer.id})` : ""}</div>
+      <div className="print-only">
+        GSTIN 33AACCR1234F1ZP · computer generated from terminal {L?.c ?? bill.loc} · prices are GST inclusive
+      </div>
+    </div>
+  );
+}
 
 function BillDrawer({ id }: DrawerProps) {
   const bills = useApp((s) => s.bills);
   const close = useApp((s) => s.closeDrawer);
-  const notify = useApp((s) => s.notify);
   // ---- bill void: the manager's own door, and nobody else's. The counter reads this drawer too.
   const user = useApp((s) => s.user);
   const voidBill = useApp((s) => s.voidBill);
@@ -48,7 +98,9 @@ function BillDrawer({ id }: DrawerProps) {
         <Btn variant="gh" onClick={close}>Close</Btn>
         <div className="sp" />
         {canVoid && <Btn variant="dg" disabled={busy || !reason.trim()} onClick={doVoid}>Void bill</Btn>}
-        <Btn onClick={() => notify(`${bill.no} sent again to the ${L.c} printer`)}>Reprint</Btn>
+        {/* It prints. It used to toast that it had been "sent again to the OT-C3 printer",
+            which was a sentence about something that never happened. */}
+        <Btn onClick={() => window.print()}>Reprint</Btn>
       </>}
     >
       <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 14 }}>
@@ -121,6 +173,8 @@ function BillDrawer({ id }: DrawerProps) {
       <p className="mini mtop">
         Royal Care Hospital · GSTIN 33AACCR1234F1ZP · this is a computer generated bill from terminal {L.c}.
       </p>
+
+      <BillSlip bill={bill} />
     </DrawerFrame>
   );
 }
