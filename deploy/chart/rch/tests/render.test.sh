@@ -75,6 +75,10 @@ seed_ref() { sed -n "$1" <<<"$out" | grep -c 'key: SEED_PASSWORD' || true; }
 [ "$(seed_ref '/name: migrate$/,/name: api$/p')" = 1 ] || { echo "migrate initContainer has no SEED_PASSWORD secretKeyRef"; exit 1; }
 [ "$(seed_ref '/name: api$/,/readinessProbe:/p')" = 1 ] || { echo "api container has no SEED_PASSWORD secretKeyRef"; exit 1; }
 refute bash -c 'grep -A2 "name: SEED_PASSWORD" <<<"$1" | grep -q "value:"' _ "$out"
+# ...and it is NOT optional. `if eq $k "a" "b"` is true for either name (Go's eq is variadic),
+# so one careless second argument in _helpers.tpl makes this key optional and lets a pod come up
+# with no seed password at all — which is the whole thing this key exists to prevent.
+refute grep -q 'key: SEED_PASSWORD, optional' <<<"$out"
 
 # Phase 6: the five §12 alerts plus the SSE listener ship with the chart, so the alert text lives
 # beside the metric it reads instead of only in the runbook.
@@ -125,6 +129,7 @@ grep -q 'secretKeyRef' <<<"$out"
 [ "$(seed_ref '/name: migrate$/,/name: api$/p')" = 1 ] || { echo "staging migrate initContainer has no SEED_PASSWORD secretKeyRef"; exit 1; }
 [ "$(seed_ref '/name: api$/,/readinessProbe:/p')" = 1 ] || { echo "staging api container has no SEED_PASSWORD secretKeyRef"; exit 1; }
 refute bash -c 'grep -A2 "name: SEED_PASSWORD" <<<"$1" | grep -q "value:"' _ "$out"
+refute grep -q 'key: SEED_PASSWORD, optional' <<<"$out"
 # Staging carries the same `certificateArn` FILL as production, and must behave the same way with
 # it empty: no annotation at all rather than `certificate-arn: ""`, which the ALB controller
 # rejects. Staging had no such key until the Phase 6 fix wave, which is why it needs its own line.

@@ -29,9 +29,14 @@ which template produced the Secret is invisible to them. Both secret.yaml and
 externalsecret.yaml are plain release resources (no helm.sh/hook annotations)
 — see those templates for why turning them into hooks was tried and reverted.
 
-JWT_PREVIOUS_PUBLIC_KEY is marked optional: true because it is only populated
-during a key-rotation window; outside of that window the key legitimately
-does not exist in the Secret.
+JWT_PREVIOUS_PUBLIC_KEY is the ONE optional: true key, because it is only
+populated during a key-rotation window; outside of that window the key
+legitimately does not exist in the Secret. Every other key in the list is
+required, and a pod that cannot find one must fail to start rather than come
+up half-configured — so the `if eq` below names exactly one key. Go's `eq` is
+variadic (`eq $k "a" "b"` is true for either), so adding a second name there
+silently makes that key optional too; render.test.sh asserts SEED_PASSWORD
+never renders `optional`.
 
 SEED_PASSWORD has no default in apps/api/src/config.ts, so the api container
 will not start without it — it is a secret key rather than an api.env entry
@@ -53,6 +58,6 @@ Secret rather than in a shell history.
 {{- range $k := list "DATABASE_URL" "JWT_PRIVATE_KEY" "JWT_PUBLIC_KEY" "JWT_PREVIOUS_PUBLIC_KEY" "SEED_PASSWORD" }}
 - name: {{ $k }}
   valueFrom:
-    secretKeyRef: { name: {{ include "rch.secretName" $ }}, key: {{ $k }}{{ if eq $k "JWT_PREVIOUS_PUBLIC_KEY" "SEED_PASSWORD" }}, optional: true{{ end }} }
+    secretKeyRef: { name: {{ include "rch.secretName" $ }}, key: {{ $k }}{{ if eq $k "JWT_PREVIOUS_PUBLIC_KEY" }}, optional: true{{ end }} }
 {{- end }}
 {{- end -}}
