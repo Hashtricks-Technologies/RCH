@@ -227,8 +227,10 @@ prod_selector=$(sed -n 's/^ *\(rch\.io\/tier: [a-z0-9.-]*\) *$/\1/p' <<<"$out" |
 # `grep -c .`, not `wc -l`: BSD wc pads its answer with spaces, so `[ "$(wc -l …)" = 1 ]` is
 # false on macOS for a one-line answer and this whole check would fail on every developer's box.
 [ "$(grep -c . <<<"$prod_selector")" = 1 ] || { echo "values-prod.yaml renders more than one node selector: $prod_selector"; exit 1; }
-grep -qF "$prod_selector" ../../eksctl/cluster.yaml \
-  || { echo "no node group in deploy/eksctl/cluster.yaml carries $prod_selector — production's pods would stay Pending"; exit 1; }
+# The `labels:` anchor matters: cluster.yaml's prose also quotes the label, and a comment is not
+# a node group. Only a `labels:` line carrying the selector proves the pods have somewhere to go.
+grep -qE "^[[:space:]]*labels:.*${prod_selector}" ../../eksctl/cluster.yaml \
+  || { echo "no node group's labels: line in deploy/eksctl/cluster.yaml carries $prod_selector — production's pods would stay Pending"; exit 1; }
 
 # B3: both Deployments get a PodDisruptionBudget, and both say maxUnavailable rather than
 # minAvailable — `minAvailable: N` at N replicas is a budget a drain can never satisfy, so
