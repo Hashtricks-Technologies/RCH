@@ -3,7 +3,7 @@ import { useState } from "react";
 // places an operator works — and this form has to reach the sixth, the rejected-goods shelf,
 // because that is the one shelf nothing else in the system can ever take stock off again. So
 // the same domain function the selector delegates to is called here directly, unnarrowed.
-import { avail as freeAt } from "@rch/domain";
+import { avail as freeAt, REASON_LABEL } from "@rch/domain";
 import { IT, LOC } from "../data/master";
 import { useApp } from "../store";
 import { fq, U } from "../lib/fmt";
@@ -12,19 +12,18 @@ import { DrawerFrame } from "./Drawer";
 import { registerDrawer, type DrawerProps } from "../drawers";
 import type { AdjustReason, StockLoc } from "../types";
 
-/** How each reason reads on screen. The server writes the same words into the document's trail
- *  (`REASON_LABEL`, `apps/api/src/modules/adjustments/service.ts`); this is the picker and the
- *  register's own column, which is display and not a rule. */
-export const REASONS: { r: AdjustReason; label: string; hint: string }[] = [
-  { r: "wastage", label: "Wastage", hint: "Spoiled, went over, or was thrown away" },
-  { r: "breakage", label: "Breakage", hint: "Dropped, spilt or damaged in handling" },
-  { r: "expired", label: "Expired", hint: "Past its best-before and taken off the shelf" },
-  { r: "count", label: "Stock count", hint: "A physical count found something else — correct the books to it" },
-  { r: "returned_to_vendor", label: "Returned to vendor", hint: "Sent back against a goods receipt that was turned away" },
-  { r: "other", label: "Other", hint: "Anything else — say what happened in the note" },
+/** The picker's order, and the one line of help under each choice. The **words** come from
+ *  `REASON_LABEL` in `@rch/domain` — the same table the server signs an adjustment's trail with,
+ *  so the register and the document's history cannot end up describing it differently. Only the
+ *  hints are the browser's, because a trail has nothing to explain. */
+export const REASONS: { r: AdjustReason; hint: string }[] = [
+  { r: "wastage", hint: "Spoiled, went over, or was thrown away" },
+  { r: "breakage", hint: "Dropped, spilt or damaged in handling" },
+  { r: "expired", hint: "Past its best-before and taken off the shelf" },
+  { r: "count", hint: "A physical count found something else — correct the books to it" },
+  { r: "returned_to_vendor", hint: "Sent back against a goods receipt that was turned away" },
+  { r: "other", hint: "Anything else — say what happened in the note" },
 ];
-export const REASON_LABEL: Record<AdjustReason, string> =
-  Object.fromEntries(REASONS.map((r) => [r.r, r.label])) as Record<AdjustReason, string>;
 
 /** A line as the form holds it: the item, the direction the operator chose, and the magnitude
  *  they typed. The sign is put back on at the last moment, so flipping the toggle never has to
@@ -42,11 +41,14 @@ const blankLine = (it: string): Line => ({ it, dir: "down", qty: "" });
  * check, the fold of a repeated item and the scope of the caller's role are all the server's,
  * and a refusal leaves everything typed exactly where it was.
  */
-export default function AdjustmentForm({ locs, fixedLoc }: { locs: StockLoc[]; fixedLoc?: StockLoc }) {
+export default function AdjustmentForm({ locs, fixedLoc }: { locs: [StockLoc, ...StockLoc[]]; fixedLoc?: StockLoc }) {
   const s = useApp();
   const createAdjustment = useApp((x) => x.createAdjustment);
   const catalogVersion = useApp((x) => x.catalogVersion);
 
+  // `locs` is a non-empty tuple, so `locs[0]` is a `StockLoc` and not `StockLoc | undefined`:
+  // a picker with nothing in it is not a state this form has to render, and saying so in the
+  // type is cheaper than a fallback nobody could ever reach.
   const [loc, setLoc] = useState<StockLoc>(fixedLoc ?? locs[0]);
   const [reason, setReason] = useState<AdjustReason>("wastage");
   const [note, setNote] = useState("");
@@ -107,7 +109,7 @@ export default function AdjustmentForm({ locs, fixedLoc }: { locs: StockLoc[]; f
         )}
         <Field label="Reason" hint={REASONS.find((r) => r.r === reason)?.hint}>
           <select value={reason} onChange={(e) => setReason(e.target.value as AdjustReason)}>
-            {REASONS.map((r) => <option key={r.r} value={r.r}>{r.label}</option>)}
+            {REASONS.map((r) => <option key={r.r} value={r.r}>{REASON_LABEL[r.r]}</option>)}
           </select>
         </Field>
         <Field label="Note" hint="What happened, in your own words. Optional, and worth writing.">

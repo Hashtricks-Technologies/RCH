@@ -18,3 +18,5 @@ export { checkReceiptLine, netReceived, receiptStatus, RECEIPT_TOLERANCE, type R
 export { contractInWindow, etaFrom, needsApproval, poValue, rateFor } from "./purchasing.js";
 export { SUPPORT_TRANSITIONS, mayUserSet, statusAfterReply, mayRate, mayReply } from "./support.js";
 export { ledgerRow, type LedgerRow } from "./reports.js";
+// ---- adjustments: the words a write-off's reason is printed in, on both sides.
+export { REASON_LABEL } from "./adjustments.js";

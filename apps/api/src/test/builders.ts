@@ -3,14 +3,12 @@
 // place, so a case says only what it is about.
 import { eq } from "drizzle-orm";
 import type { AdjustReason, LocKey, PordStatus, PoStatus, PrqStatus, ProductReqStatus, ReqStatus, Role, ShopAskStatus, StockLoc, TicketPriority, TicketStatus, TicketTopic, TktStatus } from "@rch/contract";
-import { round3 } from "@rch/domain";
+import { REASON_LABEL, round3 } from "@rch/domain";
 import type { Db } from "../db/client.js";
 import * as s from "../db/schema/index.js";
 import { appendHistory } from "../lib/history.js";
 import { reserve } from "../lib/reservations.js";
 import type { TicketRefType } from "../lib/tickets.js";
-// ---- adjustments: the label the trail is signed with lives with the service that writes it.
-import { REASON_LABEL } from "../modules/adjustments/service.js";
 
 /** One monotonic suffix per document family, so two builder calls in one file cannot draw the
  *  same id and nine calls of any kind cannot exhaust another family's band — a random draw

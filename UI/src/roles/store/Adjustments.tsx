@@ -1,19 +1,24 @@
 import { useState } from "react";
 import { StockLocSchema } from "@rch/contract";
+import { REASON_LABEL } from "@rch/domain";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
 import { fq, money0, sum, U } from "../../lib/fmt";
 import { Card, DataTable, FilterSelect, PageHead, Pill, TableFoot, Toolbar } from "../../ui/kit";
-import AdjustmentForm, { REASON_LABEL, REASONS } from "../../ui/AdjustmentForm";
+import AdjustmentForm, { REASONS } from "../../ui/AdjustmentForm";
 import type { StockLoc } from "../../types";
 
 /** Every shelf the store keeper answers for, which is all of them — the rejected-goods shelf
  *  included, and it is the reason this list is read off `StockLocSchema` rather than `ALL_LOCS`.
  *  What a goods receipt turned away sits there until somebody destroys it or sends it back, and
- *  nothing else in the system can take it off again. */
-const SHELVES: StockLoc[] = [...StockLocSchema.options];
+ *  nothing else in the system can take it off again.
+ *
+ *  Destructured rather than spread so the tuple survives: `AdjustmentForm` takes a non-empty
+ *  list, and `[...options]` would widen to a plain array that cannot satisfy it. */
+const [FIRST_SHELF, ...OTHER_SHELVES] = StockLocSchema.options;
+const SHELVES: [StockLoc, ...StockLoc[]] = [FIRST_SHELF, ...OTHER_SHELVES];
 
-const FILTERS = ["All", ...REASONS.map((r) => r.label)] as const;
+const FILTERS = ["All", ...REASONS.map((r) => REASON_LABEL[r.r])] as const;
 
 /** A write-off reads red, a count-up green, a correction that went both ways neither. */
 const toneOf = (down: number, up: number) => (down > 0 && up > 0 ? "in" : down > 0 ? "cr" : "ok");

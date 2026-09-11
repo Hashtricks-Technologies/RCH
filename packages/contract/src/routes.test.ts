@@ -201,4 +201,9 @@ describe("what an adjustment puts on the wire", () => {
     expect(AdjustReasonSchema.safeParse("expired").success).toBe(true);
     expect(AdjustReasonSchema.safeParse("spoilt").success).toBe(false);
   });
+  it("caps the note at what a note is, the way every other free-text field is capped", () => {
+    const withNote = (note: string) => ({ loc: "store", reason: "other", note, lines: [{ it: "milk", qty: -1 }] });
+    expect(CreateAdjustmentBodySchema.safeParse(withNote("x".repeat(500))).success).toBe(true);
+    expect(CreateAdjustmentBodySchema.safeParse(withNote("x".repeat(501))).success).toBe(false);
+  });
 });
