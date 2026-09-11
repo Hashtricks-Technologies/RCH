@@ -153,19 +153,20 @@ breaks the per-test-file schemas (`t_<file>`, via `search_path`) that `apps/api/
 creates for parallel test runs. Review the generated SQL in `apps/api/drizzle/`, then commit it
 — migrations are forward-only (§3) and reviewed like any other change.
 
-**Before the next `db:generate`, reconcile the snapshots.** `0007` and `0008` were written by
-hand, so `drizzle/meta/` still holds snapshots `0000`–`0006` only and the next generate will diff
-from `0006_snapshot.json` and try to re-emit everything those two already did. Once:
+**The snapshots are reconciled — `meta/0012_snapshot.json` is what the next `db:generate`
+diffs against.** All six of `0007`–`0012` were written by hand, so `drizzle/meta/` sat at
+`0000`–`0006` and the next generate would have tried to re-emit everything those six already did.
+That reconcile was run once, on 12 September 2026: the emitted SQL restated `0007`–`0012` and
+nothing else, which is the proof that `src/db/schema/*.ts` and the applied SQL agree, and **no
+schema file needed changing**. The emitted `.sql` and its journal entry were deleted and the
+snapshot renamed; nothing was applied to any database by it.
 
-```bash
-pnpm --filter @rch/api db:generate --name reconcile
-```
-
-then read the emitted `.sql`. It must be empty, or merely re-state what `0007`/`0008` already do —
-anything else means the schema files and the hand-written SQL have genuinely drifted, and that is
-the thing to fix first. When it is clean, **delete the emitted `.sql` and its `_journal.json`
-entry** and keep only the new snapshot, renamed to the latest idx. Nothing is applied to any
-database by this; it is bookkeeping so the *following* schema change generates a correct diff.
+The next hand-written migration will need the same pass, and the procedure is written up in
+`apps/api/CLAUDE.md`'s *Migrations* section — including the four drizzle-kit behaviours it rests
+on, one of which will bite whoever ignores it: **a hand-written `when` must be in the past**,
+because the migrator applies a file only where its `when` is greater than the highest
+`created_at` already recorded, and a later migration carrying a smaller one is **silently
+skipped** with no error anywhere.
 
 `pnpm --filter @rch/api db:migrate` applies pending migrations; it is what the `migrate`
 initContainer on every api pod also runs (`dist/cli/migrate.mjs`) — see §2. It runs with **no
@@ -175,7 +176,7 @@ on that advisory lock behind another replica is the whole point of the initConta
 API's ordinary 15 s statement timeout was cancelling the wait mid-rollout, which presents as
 `Init:CrashLoopBackOff`.
 
-**Nine migrations exist** (`apps/api/drizzle/0000`–`0008`): `0000` is the initial schema, `0001` adds
+**Thirteen migrations exist** (`apps/api/drizzle/0000`–`0012`): `0000` is the initial schema, `0001` adds
 the unique index on `refresh_tokens.token_hash`, `0002` installs the append-only trigger on
 `stock_moves` (§7), `0003` adds `bills_staff_credit_idx` — a partial btree index on
 `bills (payer_kind, payer_id, at) where payer_kind = 'staff'`, so the staff-credit ceiling's
@@ -193,9 +194,22 @@ item. Phase 6 wrote no migration. The audit fix wave wrote two: `0007_idempotenc
 adds one nullable column, `idempotency_keys.committed_at`, which is what lets a claim say its
 write actually committed; `0008_integrity` adds the index and foreign key on `reservations`, the
 `tickets.otp_attempts` column and the `otp` type change with its digits check, eight more named
-CHECK constraints, and an append-only trigger on `document_history` (§7 below has the list). A fresh
-`db:migrate` against an empty database reports all nine applied; against an already-current one
-it reports `migrations applied: 9 / 9`, which is also what `/readyz` compares against.
+CHECK constraints, and an append-only trigger on `document_history` (§7 below has the list).
+
+The wave's fourth block wrote four more, one per capability, and all four are small.
+`0009_payers_audit` gives `payers` the `created_at`/`updated_at` every other master table already
+carried. `0010_adjustments` adds the `adjust_reason` enum, the `adjustments` and
+`adjustment_lines` tables, their four foreign keys, an index on `(loc, at)`, and the
+`sequences` row `ADJ-` numbers are drawn from — the one migration in the set that inserts data as
+well as schema. `0011_prod_orders_need_by` adds one nullable `date`. `0012_bills_void` adds
+`bills.voided_at`, `voided_by` and `void_reason` plus the `voided_by` foreign key to `users`.
+None of the four validates an existing row, so none of them can refuse the way `0008` can.
+
+A fresh `db:migrate` against an empty database reports all thirteen applied; against an
+already-current one it reports `migrations applied: 13 / 13`, which is also what `/readyz`
+compares against. Both numbers were proved on a scratch database created and dropped for the
+purpose — a first migrate from empty, then a second run on the same database to prove the
+migrate is idempotent.
 
 **`0008` validates existing rows, so on any database with data in it, probe before you migrate.**
 The five likeliest, and what to do about each — `apps/api/scripts/preflight-0008.sql` probes all ten:
@@ -577,6 +591,42 @@ sessions are signed out immediately).
 `--role` is one of `counter|manager|store|prod|buyer`; `--loc` is one of
 `store|kitchen|rest|coffee|kiosk`.
 
+### The payer roster
+
+Unlike user accounts, the roster **is** a screen — the outlet manager's **Payers** — and adding,
+renaming, deactivating and reopening a patient, a staff member or a department is an everyday
+task done there. The CLI exists for exactly one job the screen is wrong for: loading a ward list
+of a few hundred rows at go-live, or after a hospital-side change that produced a file.
+
+```bash
+pnpm --filter @rch/api payers import --csv ./wards.csv
+pnpm --filter @rch/api payers import --csv ./wards.csv --replace-names
+```
+
+The file is three columns, `kind,id,name`, one payer a line. A header row naming those columns is
+optional; blank lines and lines starting `#` are skipped; a field may be quoted so a name can
+carry a comma; a leading byte-order mark is stripped, so a file Excel saved as "CSV UTF-8" is
+read as-is. `kind` is one of `patient|staff|dept`. The `id` is the hospital's own number — there
+is no sequence behind a payer — and `(kind, id)` is what makes a row unique.
+
+Three behaviours to know before running it against a live database:
+
+- **One bad row aborts the whole file.** Every error is printed with its own line number and the
+  column that caused it, and *nothing* is written. A half-loaded ward list is one nobody can
+  reconcile against the list it came from, so the file is fixed and re-run rather than patched up
+  afterwards. It is one transaction, with no statement timeout, like every other CLI here.
+- **An id already on the roster is skipped, not overwritten** — the run says how many, and says
+  to re-run with `--replace-names` if updating them is what was meant. Only that flag ever
+  touches an existing name.
+- **A rename never reopens a closed account.** `--replace-names` on a deactivated payer updates
+  the name and leaves the switch alone; the summary counts those apart (`renamed 3 (1 still
+  inactive)`) so "renamed 3" cannot be read as three people back on the till's picker. Reopening
+  one is the manager's Payers screen.
+
+The import does not announce over SSE, so an open browser will not see the new rows until it is
+reloaded — the same as `users` and `db:seed`, and fine for a job that runs before anybody is
+signed in.
+
 ## 6. Restore drill
 
 Rehearse this against the local database first — the procedure below needs a scratch RDS
@@ -628,7 +678,7 @@ database on `localhost:5439`, carrying that day's exit-walk documents rather tha
 an **empty diff** over all 54 balance rows against the source. Whole drill: 2.9 s; the scratch
 database was dropped afterwards. This is the rehearsal, not the drill: it proves the procedure is
 right and that `rebuild-balances` reproduces a restored copy's balances exactly. The RDS half
-(steps 1–4 above) has never been run, because there is no RDS yet — it is §11 step 5, before
+(steps 1–4 above) has never been run, because there is no RDS yet — it is §11 step 6, before
 go-live.
 
 ## 7. Rebuild balances
@@ -702,9 +752,24 @@ Every status change on a request, requisition, purchase order or production orde
 select * from document_history where doc_type = 'request' and doc_id = 'REQ-2026-0913' order by at;
 ```
 
-`doc_type` is one of `request`, `requisition`, `purchase_order`, `prod_order` or `ticket` — five
-types, written by the modules that own each document; `grep -rn "appendHistory(" apps/api/src`
-is the authoritative list. A production order's own board walk reads the same way, one row per
+`doc_type` is one of `request`, `requisition`, `purchase_order`, `prod_order`, `ticket`, and —
+since the audit wave — `item`, `adjustment` and `bill`: **eight** types, written by the modules
+that own each document; `grep -rn "appendHistory(" apps/api/src` is the authoritative list.
+
+The three newest are each worth one line, because none of them is on the wire — no screen reads
+them back, so this query is the only way to see them. `item` carries `Updated`, `Retired` or
+`Restored` against an item key, and the last two are written **only when the flag actually
+crossed**: a patch that sets a live line live again reads `Updated`, because a trail saying
+something happened that did not is worse than no trail. `adjustment` carries the write-off's own
+reason as its word (`Wastage`, `Breakage`, `Expired`, `Stock count`, `Returned to vendor`,
+`Other`), one row per adjustment, and the document itself is never edited afterwards — a mistake
+in one is corrected by raising another. `bill` carries exactly one row, ever, and only for a bill
+somebody voided: `Voided — <reason>`, signed by the manager who did it. So:
+
+```sql
+select * from document_history where doc_type = 'bill' order by at desc;      -- every void, ever
+select * from document_history where doc_type = 'item' and doc_id = 'milk';   -- who changed what
+``` A production order's own board walk reads the same way, one row per
 press including the dispatch:
 
 ```sql
@@ -1244,14 +1309,14 @@ deploy workflow is inert without them.
 ```bash
 git checkout develop    && git merge --ff-only feat/phase-6-ops-go-live && git push
 git checkout staging    && git merge --ff-only develop && git push        # deploys rch-staging
-# verify staging: /readyz, a sign-in, one real sale, rebuild-balances reconciling (step 8 below)
+# verify staging: /readyz, a sign-in, one real sale, rebuild-balances reconciling (step 9 below)
 # re-measure the load check against staging and record it against §12's targets (§12 above)
 git checkout production && git merge --ff-only staging && git push        # waits for approval
 ```
 
 Production's deploy waits on the `production` GitHub environment's approval before the job runs.
 Work the numbered checklist below alongside these three commands — in particular step 4, which
-deactivates the six seeded accounts, and step 5, the real restore drill. **Then, and only then,
+deactivates the six seeded accounts, step 5, the payer roster, and step 6, the real restore drill. **Then, and only then,
 is this build in a hospital.**
 
 ### The checklist
@@ -1286,9 +1351,17 @@ scoped to what a deploy needs, and needs no change.
    deploy that hangs rather than as bad data. §1's *Migration workflow* carries the five probe
    queries (`stock_moves` with `qty = 0`; a `reservations` row whose `ticket_id` has no `tickets`
    row; a ticket with `from_loc = to_loc`; `po_lines` with `rejected_qty > received_qty`;
-   `batches` with `made_qty > started_qty`) and what to do about each. They are plain reads — run
+   `batches` with `made_qty > started_qty`) and what to do about each, and
+   `apps/api/scripts/preflight-0008.sql` runs all ten as one read-only script that prints `clear`
+   or `BLOCKS 0008` per constraint. They are plain reads — run
    them against a restored copy if the window is tight. This applies to **dev too**, which has
    real documents on it; a fresh staging or production database has nothing to reject.
+
+   **`0008` is still the only migration that can refuse.** `0009`–`0012` — the payer audit
+   columns, the adjustment tables, the production order's needed-by date and the bill's three
+   void columns — add tables and nullable columns and validate no existing row, so a database
+   this script calls clear is one the whole set of thirteen will apply to. Expect
+   `migrations applied: 13 / 13`.
 2. **Create the environment's CloudFormation stack** — `deploy/cfn/rch-env.yaml` with
    `deploy/cfn/prod.params.json` (or `staging.params.json`). The template, not this list, is now
    where spec §11.2's RDS settings live, so read **[`deploy/cfn/README.md`](cfn/README.md)**
@@ -1385,10 +1458,24 @@ scoped to what a deploy needs, and needs no change.
    for each of the six, or a re-seed with a real `SEED_PASSWORD`. `changePassword` is `allowMcp`,
    so a takeover through one of those accounts is permanent; making the variable required stops it
    happening again, it does not undo what is already there.
-5. **Run the restore drill once against the real RDS instance** (§6, the RDS procedure below the
+5. **Load the payer roster, and decide who keeps it.** The six seeded payers are demo data on
+   the same footing as the seeded accounts, and a till cannot take a non-cash tender against
+   somebody who is not on the register. Get the ward, staff and department lists as a
+   `kind,id,name` CSV and load them in one go (§5's *The payer roster* has the file rules and the
+   three behaviours to know):
+   ```bash
+   kubectl exec deploy/rch-api -n rch -- /nodejs/bin/node dist/cli/payers.mjs import --csv /tmp/payers.csv
+   ```
+   `kubectl cp` the file in first, or run the CLI from a laptop against the same
+   `DATABASE_URL`. One bad row aborts the whole file and names every one it found, which is the
+   behaviour you want on go-live morning rather than half a roster. Afterwards the **outlet
+   manager's Payers screen** is where a new patient or a new starter is added, one at a time,
+   with no CLI and no deploy — decide who that is and say so in the handover, because the ability
+   to add a payer is the ability to open a credit account.
+6. **Run the restore drill once against the real RDS instance** (§6, the RDS procedure below the
    local rehearsal) — not the rehearsal, the real one, before the first bill is ever posted for
    real.
-6. **Create the repository variable, every secret, and the `production` GitHub environment** —
+7. **Create the repository variable, every secret, and the `production` GitHub environment** —
    `DEPLOY_ENABLED=true`, the six repository secrets (**`SEED_PASSWORD` is the new one, and
    blocking**), the `staging` environment's three, and AWS Secrets Manager's `rch/prod` with its
    **five** keys: the table under "The release, prepared and not performed" above lists each one
@@ -1426,11 +1513,11 @@ scoped to what a deploy needs, and needs no change.
    `kubectl label namespace rch elbv2.k8s.aws/pod-readiness-gate-inject=enabled`, and the same
    for `rch-staging`, once, before the first upgrade of the release in each. Nothing fails
    without it; what you get instead is a gap in the middle of every rollout.
-7. **Promote** — the three fast-forward merges under "The release, prepared and not performed"
+8. **Promote** — the three fast-forward merges under "The release, prepared and not performed"
    above, in that order, run by a person. `develop` first, then `staging`, then `production`;
-   verify staging between the second and the third (step 8), and production's deploy waits for
+   verify staging between the second and the third (step 9), and production's deploy waits for
    the `production` GitHub environment's approval before the job runs.
-8. **First post-deploy checks, on each environment, in order:**
+9. **First post-deploy checks, on each environment, in order:**
    ```bash
    kubectl -n <namespace> port-forward svc/rch-api 3000:3000 &
    curl -fsS http://localhost:3000/readyz
@@ -1706,11 +1793,28 @@ three-character-tail ids** — nothing was renumbered, and there is no backfill;
 id reads `GRN-143-01` is simply an older one, not something to correct by hand.
 
 **Quarantine:** `select * from stock_balances where loc = 'quarantine';` is what the store
-keeper's screen shows. Nothing issues, sells or transfers from there and **there is no
-endpoint that takes stock back out** — a purchase return or a debit note was considered and
-declined (spec §16, Phase 5; `docs/ua-spec.html` §09 records it by name), not deferred to a
-later phase. A correction is, and stays, an `adjustment` move written by hand through
-`db:rebuild-balances`-safe SQL (the move, never the balance).
+keeper's screen shows. Nothing issues, sells or transfers from there, and no purchase-return or
+debit-note document exists — that was considered and declined (spec §16, Phase 5;
+`docs/ua-spec.html` §09 records it by name), and it stays declined: recovering the money from a
+vendor is a conversation, not a screen.
+
+**The shelf itself does have an exit now, and it is not SQL.** Since the audit wave (spec §16,
+wave 4) the **store keeper** — and only the store keeper, of the five roles — can raise an
+adjustment against `quarantine`, typically reason `returned_to_vendor` for a consignment going
+back, or `expired` / `breakage` for one that is not going anywhere. It is the one write body in
+the whole API that may name `quarantine` at all; a manager there reads *You can only adjust stock
+at an outlet — the central store writes off its own shelves*. So the answer to "how do I clear
+quarantine" is the store keeper's **Adjustments** screen, with a reason and a note against their
+own name, and no hand-written move at all. Anything this section used to say about correcting a
+shelf with SQL is now the wrong advice: use the endpoint, which leaves a document behind.
+
+```sql
+-- what is sitting there, and what took it off, per item
+select * from stock_balances where loc = 'quarantine' and on_hand <> 0;
+select m.at, m.kind, m.item_key, m.qty, m.ref_id, u.name
+from stock_moves m left join users u on u.id = m.by_user
+where m.loc = 'quarantine' order by m.at desc limit 50;
+```
 
 **A refused receipt:** a `POST …/receive` that answered 422 has written nothing — no GRN row,
 no move, no change to `received_qty` — because every line is validated before the first write.
