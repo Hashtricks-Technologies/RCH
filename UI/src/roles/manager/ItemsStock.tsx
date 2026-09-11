@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { ALL_LOCS, IT, LOC, OUTLETS } from "../../data/master";
 import { useApp } from "../../store";
-import { costOf, isTicketOpen, menuOf, qty, resv, stockValue } from "../../lib/selectors";
+// ---- item patch ----
+import { activeItems, costOf, isRetired, isTicketOpen, menuOf, qty, resv, stockValue } from "../../lib/selectors";
 import { fq, lakh, money, money0, sum } from "../../lib/fmt";
 import {
   Alert, Btn, Card, DataTable, Field, FilterSelect, FormRow, Grid, PageHead,
@@ -28,6 +29,8 @@ export default function ItemsStock() {
   const addProduct = useApp((x) => x.addProduct);
   const requestNewProduct = useApp((x) => x.requestNewProduct);
   const notify = useApp((x) => x.notify);
+  // ---- item patch ----
+  const openDrawer = useApp((x) => x.openDrawer);
 
   const [q, setQ] = useState("");
   const [type, setType] = useState(0);
@@ -85,7 +88,9 @@ export default function ItemsStock() {
 
   /* ---------------- list an existing product at a shop ---------------- */
   const listed = menuOf(s, shop);
-  const listable = keys.filter((k) => !listed.includes(k) && IT[k].t !== "RAW" && IT[k].t !== "PACK");
+  // ---- item patch ----
+  // A retired line stays in `IT` so past bills still name it; it must not be offerable on a till.
+  const listable = activeItems().filter((k) => !listed.includes(k) && IT[k].t !== "RAW" && IT[k].t !== "PACK");
   const list = LOC[shop].list ?? "A";
   const pickPrice = pick ? s.prices[list]?.[pick] : undefined;
 
@@ -354,11 +359,20 @@ export default function ItemsStock() {
             ...ALL_LOCS.map((l) => ({ h: LOC[l].n, r: true, sort: "loc:" + l })),
             { h: "Total", r: true, sort: "total" },
             { h: "Total value", r: true, sort: "value" },
+            // ---- item patch ----
+            { h: "", r: true, w: "9%" },
           ]}
           rows={sorted.map((r) => ({
             key: r.k,
             cells: [
-              <>{IT[r.k].n}<small>{IT[r.k].c} · HSN {IT[r.k].hsn}</small></>,
+              // ---- item patch ----
+              // A retired line is kept on the master so past documents still name it; it reads
+              // greyed here and is offered "Restore" rather than hidden.
+              <>
+                {isRetired(r.k) ? <span className="dim">{IT[r.k].n}</span> : IT[r.k].n}
+                {isRetired(r.k) && <> <Tag>Retired</Tag></>}
+                <small>{IT[r.k].c} · HSN {IT[r.k].hsn}</small>
+              </>,
               <Tag kind={tagKind(IT[r.k].t)}>{IT[r.k].t}</Tag>,
               IT[r.k].u,
               money(costOf(r.k)),
@@ -377,6 +391,11 @@ export default function ItemsStock() {
               }),
               r.held ? <b>{fq(r.tot, r.k)}</b> : <span className="dim">–</span>,
               r.held ? money0(r.value) : <span className="dim">–</span>,
+              // ---- item patch ----
+              // The manager owns the three commercial figures; the drawer greys out the rest.
+              <Btn size="xs" variant="gh" onClick={() => openDrawer("item", r.k)}>
+                {isRetired(r.k) ? "Restore" : "Edit"}
+              </Btn>,
             ],
           }))}
           empty={emptyFor(filtered, {

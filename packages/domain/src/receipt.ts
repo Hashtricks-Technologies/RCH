@@ -27,6 +27,20 @@ export type ReceiptCheckLine = {
 export type ReceiptCheckInput = { recv: number; rejected: number; batch: string; mrp: number; mfg: string; exp: string };
 
 /**
+ * The MRP floor, on its own: a printed MRP under the shelf price is stock that cannot be sold
+ * at the price it is listed at, and the store keeper has to hear so before it goes on the rack.
+ *
+ * Extracted from `checkReceiptLine` because a second door now asks the same question — the item
+ * master's own `PATCH /items/:it`, where the manager may move an item's MRP down past a price
+ * list instead of a delivery arriving with a lower number printed on it. Both refusals are the
+ * same fact about the same item, so they are the same sentence, produced once. `listPrice` is
+ * the highest list the item is on: a ceiling that clears list A but not list B is still a
+ * ceiling one counter cannot sell under.
+ */
+export const mrpBelowShelfPrice = (name: string, mrp: number, listPrice: number): string | null =>
+  mrp < listPrice ? `${name} — printed MRP ${money(mrp)} is below the shelf price; reprice before selling` : null;
+
+/**
  * The refusal this line earns, or null. `today` is an `IsoDate` in the hospital's calendar
  * (`istDate`), and both date comparisons are string comparisons on `YYYY-MM-DD` — which is
  * exactly right for a date with no time in it, and avoids the trap the browser had to work
@@ -43,9 +57,7 @@ export function checkReceiptLine(l: ReceiptCheckLine, r: ReceiptCheckInput, toda
   if (!r.mfg || !r.exp) return `${l.name} needs a manufacturing and an expiry date`;
   if (r.exp <= r.mfg) return `${l.name} — expiry cannot fall on or before the manufacturing date`;
   if (r.exp < today) return `${l.name} — batch ${r.batch.trim()} has already expired; do not book it in`;
-  if (l.mrp != null && r.mrp > 0 && r.mrp < l.listA) {
-    return `${l.name} — printed MRP ${money(r.mrp)} is below the shelf price; reprice before selling`;
-  }
+  if (l.mrp != null && r.mrp > 0) return mrpBelowShelfPrice(l.name, r.mrp, l.listA);
   return null;
 }
 

@@ -250,3 +250,18 @@ export const isTicketOpen = (st: TktStatus) => canHandOver(st) || canReceiveTick
  * overstated both the opening balance and what went out.
  */
 export const hasLeft = (st: TktStatus) => st !== "Cancelled" && !canHandOver(st);
+
+// ---- item patch ----
+/**
+ * The catalogue a picker may offer — every line on the master that has not been retired.
+ *
+ * `IT` deliberately carries retired lines too: a bill, a ticket or a purchase order raised
+ * before an item was retired still names it, and the screen showing that document needs the
+ * product's name rather than its raw key. So the registry stays complete and every *picker*
+ * filters here instead, in one place. `active` absent means active — a line that predates
+ * retiring being possible at all.
+ */
+export const activeItems = (): string[] => Object.keys(IT).filter((k) => IT[k].active !== false);
+/** Whether this line has been retired — what the master list greys a row on, and the one
+ *  condition under which it offers "Restore" instead of "Retire". */
+export const isRetired = (it: string): boolean => IT[it]?.active === false;

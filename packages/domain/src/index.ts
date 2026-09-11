@@ -14,7 +14,9 @@ export { planApproval, approvedStatus, planPrqApproval, prqStatus, type Approval
 export { STAFF_CREDIT_LIMIT, creditRoom, breachesCredit, creditBreachMessage } from "./credit.js";
 export { money, money0, dmy, istDate, unitTotal } from "./format.js";
 export { foldClaims, releaseClaim, shortfallClaims, type ClaimSrc } from "./claims.js";
-export { checkReceiptLine, netReceived, receiptStatus, RECEIPT_TOLERANCE, type ReceiptCheckInput, type ReceiptCheckLine } from "./receipt.js";
+export { checkReceiptLine, mrpBelowShelfPrice, netReceived, receiptStatus, RECEIPT_TOLERANCE, type ReceiptCheckInput, type ReceiptCheckLine } from "./receipt.js";
 export { contractInWindow, etaFrom, needsApproval, poValue, rateFor } from "./purchasing.js";
 export { SUPPORT_TRANSITIONS, mayUserSet, statusAfterReply, mayRate, mayReply } from "./support.js";
 export { ledgerRow, type LedgerRow } from "./reports.js";
+// ---- item patch ----
+export { ITEM_FIELD_ROLES, mayEditItemField, unauthorisedItemFields, type ItemField } from "./items.js";

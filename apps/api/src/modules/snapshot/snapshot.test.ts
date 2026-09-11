@@ -29,7 +29,11 @@ describe("GET /snapshot", () => {
   });
   it("master data equals the fixtures", async () => {
     const s = await get("u2");
-    expect(s.items).toEqual(FX.IT);
+    // ---- item patch ----
+    // `active` joined `ItemSchema` when the master became editable, and every line carries it:
+    // the snapshot is the whole catalogue now, retired lines included, so the reader that fills
+    // it cannot leave the one field that says which is which off the wire.
+    expect(s.items).toEqual(Object.fromEntries(Object.entries(FX.IT).map(([k, i]) => [k, { ...i, active: true }])));
     expect(s.locations).toEqual(FX.LOC);
     expect(s.recipes).toEqual(FX.RCP);
     expect(s.prices).toEqual(FX.PL);

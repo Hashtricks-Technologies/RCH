@@ -7,6 +7,8 @@ import Availability from "./Availability";
 // ---- payers ----
 import Roster from "./Roster";
 import "./ApprovalDrawer";
+// ---- item patch ----
+import "./ItemDrawer";
 
 export const screens: Record<string, ComponentType> = {
   dash: Dashboard, approvals: Approvals, stock: ItemsStock, prices: Prices, avail: Availability,

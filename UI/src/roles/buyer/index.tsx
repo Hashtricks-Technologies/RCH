@@ -11,6 +11,8 @@ import "./PoDrawer";
 import "./PoReceiptDrawer";
 import "./VendorDrawer";
 import "./NewProductDrawer";
+// ---- item patch ----
+import "../manager/ItemDrawer";
 
 export const screens: Record<string, ComponentType> = {
   dash: Dashboard, requisitions: Requisitions, pool: ProcurementList,

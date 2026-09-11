@@ -3,11 +3,13 @@ import { useNavigate } from "react-router-dom";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
 import {
-  avail, awaitingApproval, daysCover, inTransit, onOrder, qty, resv, stateLabel, stateTone, stockValue,
+  // ---- item patch ----
+  activeItems, avail, awaitingApproval, daysCover, inTransit, isRetired, onOrder, qty, resv,
+  stateLabel, stateTone, stockValue,
 } from "../../lib/selectors";
 import { U, fq, money, money0, sum } from "../../lib/fmt";
 import {
-  Btn, Card, DataTable, FilterBtn, FilterSelect, PageHead, Pill, TableFoot, Tag, Toolbar,
+  Btn, BtnRow, Card, DataTable, FilterBtn, FilterSelect, PageHead, Pill, TableFoot, Tag, Toolbar,
 } from "../../ui/kit";
 
 const TYPES = ["All", "RAW", "PACK", "MRP", "FG", "MTO"] as const;
@@ -38,7 +40,12 @@ export default function Stock() {
 
   // A product the central store has never carried still belongs on its stock
   // list at zero — otherwise a newly added item is invisible until it is bought.
-  const catalogue = [...new Set([...Object.keys(s.stock.store), ...Object.keys(IT)])];
+  // ---- item patch ----
+  // `activeItems()` rather than the whole registry, so a retired line drops off the list — but
+  // the union with what the shelf is holding keeps one that still has stock on it, because that
+  // is exactly the stock somebody has to write off before the retirement can finish. It reads
+  // greyed, and it is never offered to a requisition.
+  const catalogue = [...new Set([...Object.keys(s.stock.store), ...activeItems()])];
   const all = catalogue
     .filter((it) => IT[it])
     .map((it) => {
@@ -48,7 +55,10 @@ export default function Stock() {
       const rl = IT[it].rl;
       const oo = onOrder(s, it);
       const tr = inTransit(s, it);
-      return { it, on, rv, av, rl, oo, tr, low: rl > 0 && av < rl, dc: daysCover(av, it), val: on * IT[it].cost };
+      // A retired line is never "low": nothing is going to be bought to fill it, so counting it
+      // in the low-stock KPI would put a number on the screen with no action behind it.
+      const low = !isRetired(it) && rl > 0 && av < rl;
+      return { it, on, rv, av, rl, oo, tr, low, dc: daysCover(av, it), val: on * IT[it].cost };
     })
     .sort((a, b) => IT[a.it].c.localeCompare(IT[b.it].c));
 
@@ -151,8 +161,12 @@ export default function Stock() {
             return {
               key: r.it,
               cells: [
+                // ---- item patch ----
+                // A retired line still on the shelf reads greyed and says so — the keeper is
+                // looking at stock they have to write off, not at something to reorder.
                 <>
-                  {i.n}
+                  {isRetired(r.it) ? <span className="dim">{i.n}</span> : i.n}
+                  {isRetired(r.it) && <> <Tag>Retired</Tag></>}
                   <small>{i.c}</small>
                 </>,
                 <Tag kind={i.t === "MRP" ? "tr" : undefined}>{i.t}</Tag>,
@@ -167,13 +181,19 @@ export default function Stock() {
                 <>{money(i.cost)}</>,
                 <>{money0(r.val)}</>,
                 <Pill tone={stateTone(r.av, r.rl)}>{stateLabel(r.av, r.rl)}</Pill>,
-                r.low ? (
-                  <Btn size="xs" variant="gh" onClick={() => addToRequisition(r.it, r.rl, r.on)}>
-                    Add to requisition
+                // ---- item patch ----
+                // The store keeper owns the name, the group, the HSN and the reorder level; the
+                // drawer greys out the manager's three commercial figures beside them.
+                <BtnRow>
+                  {r.low && !isRetired(r.it) && (
+                    <Btn size="xs" variant="gh" onClick={() => addToRequisition(r.it, r.rl, r.on)}>
+                      Add to requisition
+                    </Btn>
+                  )}
+                  <Btn size="xs" variant="gh" onClick={() => openDrawer("item", r.it)}>
+                    {isRetired(r.it) ? "Restore" : "Edit"}
                   </Btn>
-                ) : (
-                  <span className="dim mini">—</span>
-                ),
+                </BtnRow>,
               ],
             };
           })}

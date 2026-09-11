@@ -1,22 +1,35 @@
 // Catalog: the flow — transaction, rules, id. Compose the helpers in apps/api/src/lib/;
 // domain rules belong in packages/domain. See modules/_template/service.ts.
 import type { z } from "zod";
-import type { Changed, CreateItemBodySchema, Item, LocKey } from "@rch/contract";
-import { fq, round3 } from "@rch/domain";
+import type { Changed, CreateItemBodySchema, Item, LocKey, PatchItemBodySchema } from "@rch/contract";
+import { fq, mrpBelowShelfPrice, round3, unauthorisedItemFields, type ItemField } from "@rch/domain";
 import type { Db } from "../../db/client.js";
 import { withTransaction } from "../../lib/db.js";
 import { assertRule } from "../../lib/rules.js";
 import { NotFoundError } from "../../lib/errors.js";
 import { emitChanged } from "../../lib/events.js";
+import { appendHistory } from "../../lib/history.js";
 import { postMoves } from "../../lib/ledger.js";
 import { loadItems, loadLocations } from "../../lib/master.js";
 import { toWireItem } from "../../lib/wire.js";
 import type { AccessClaims } from "../../plugins/auth.js";
-import { catalogRepo } from "./repo.js";
+import { catalogRepo, type ItemPatch } from "./repo.js";
 
 export type CreateItemBody = z.infer<typeof CreateItemBodySchema>;
+export type PatchItemBody = z.infer<typeof PatchItemBodySchema>;
 
 type Write<T> = { result: T; changed: Changed[]; message: string };
+
+// ---- item patch ----
+/** The two halves of the master, in the words of the desk that owns each (`ITEM_FIELD_ROLES`,
+ *  `@rch/domain`). An operator who reached for the wrong box is told **whose** box it is, which
+ *  is what they actually need — a per-field list would only repeat what the greyed-out input on
+ *  their own screen already showed them. */
+const COMMERCIAL_REFUSAL = "Only the outlet manager changes an item's price, cost or GST — ask them to make that change";
+const OPERATIONAL_REFUSAL = "The store, the buyer and the kitchen keep an item's name, group, HSN and reorder level — ask one of them";
+/** `active` is the one field every desk but the counter owns, so it never lands in a refusal;
+ *  everything else is the manager's or the three desks', and nothing is in neither. */
+const COMMERCIAL: readonly ItemField[] = ["mrp", "cost", "gst"];
 
 export function createCatalogService(db: Db) {
   return {
@@ -72,6 +85,123 @@ export function createCatalogService(db: Db) {
           message: opening > 0
             ? `${name} added to the catalogue with ${fq(opening, item.u)} ${item.u} at ${locations[body.loc]?.n ?? body.loc}`
             : `${name} added to the catalogue`,
+        };
+      });
+    },
+
+    // ---- item patch ----
+    /**
+     * An existing line on the item master, edited or retired.
+     *
+     * `POST /items` used to be the only write the master had: a mis-typed MRP, a wrong HSN or a
+     * product the hospital stopped carrying stayed on every screen forever. This is the way
+     * back, and it is one endpoint with two permissions — `ITEM_FIELD_ROLES` (`@rch/domain`) is
+     * the whole of that split, and the drawer disables the same boxes this refuses.
+     *
+     * The order below is the order the operator would check it in themselves, and the order the
+     * tests pin: whose item, is there anything to change, is it yours to change, is each new
+     * value a legal one, and only then — for a retirement — is the line actually finished with.
+     * **Stock is asked about before menus**: an item with stock on a shelf *and* a menu line has
+     * to hear about the stock, because writing it off is the thing that takes longest.
+     *
+     * No balance lock is taken and none is needed: nothing here moves, promises or reads against
+     * a balance. `balancesOf` is a plain read, and a retirement that races a sale is the same
+     * race a price change has always had — the sale's own cover check under its own locks is
+     * what decides it.
+     */
+    async patchItem(claims: AccessClaims, it: string, body: PatchItemBody): Promise<Write<{ key: string; item: Item }>> {
+      return withTransaction(db, async (tx) => {
+        const row = await catalogRepo.head(tx, it);
+        // The same sentence `savePrice` gives, word for word: one missing item, one wording.
+        if (!row) throw new NotFoundError(`There is no item ${it}.`);
+
+        const keys = Object.keys(body) as ItemField[];
+        assertRule(keys.length > 0, `Nothing to change on ${row.name}`);
+
+        const notYours = unauthorisedItemFields(claims.role, keys);
+        assertRule(
+          notYours.length === 0,
+          notYours.some((f) => COMMERCIAL.includes(f)) ? COMMERCIAL_REFUSAL : OPERATIONAL_REFUSAL,
+        );
+
+        const patch: ItemPatch = {};
+        // The name the operator will read in every sentence below — the new one when they are
+        // renaming, so a refusal is about the product as they have just written it.
+        let name = row.name;
+        if (body.n !== undefined) {
+          name = body.n.trim();
+          assertRule(name.length > 0, "Give the product a name");
+          // The pre-check gives the sentence; `items_name_ci_uq` on the UPDATE is the arbiter
+          // (`addMenuItem`'s pattern). A case-only rename of the item's own name is not a clash.
+          assertRule(!(await catalogRepo.nameTaken(tx, name, it)), `${name} is already in the catalogue`);
+          patch.name = name;
+        }
+        if (body.cost !== undefined) {
+          assertRule(body.cost > 0, "Cost must be more than zero");
+          patch.cost = body.cost;
+        }
+        if (body.mrp !== undefined) {
+          // **There is no clearing door.** An item that carries a printed MRP keeps one: the
+          // number is the system's one hard ceiling (`priceOf`, `PUT /prices/:list/:it`) and the
+          // floor a goods receipt judges a delivery against, and a blanked box would take both
+          // away with nothing on the record to say it happened. A zero is what an empty input
+          // sends, which is exactly why it cannot be the way through — the drawer omits `mrp`
+          // altogether rather than sending one.
+          assertRule(body.mrp > 0, "Give the printed MRP a value — an item that carries one keeps it");
+          const prices = await catalogRepo.pricesOf(tx, it);
+          const shelf = prices.reduce((hi, p) => Math.max(hi, p.price), 0);
+          const refusal = mrpBelowShelfPrice(name, body.mrp, shelf);
+          assertRule(!refusal, refusal ?? "");
+          patch.mrp = body.mrp;
+        }
+        if (body.gst !== undefined) patch.gst = body.gst;
+        // `QtySchema` carries no minimum — a zero has to reach the operator as a sentence, not a
+        // 400 — so the one figure here that cannot go below zero says so itself.
+        if (body.rl !== undefined) {
+          assertRule(body.rl >= 0, "Reorder level cannot be negative");
+          patch.reorderLevel = round3(body.rl);
+        }
+        // A blank box falls back to the same defaults `createItem` applies, rather than leaving
+        // an item with no HSN code to put on a bill or no group for a picker to sort it under.
+        if (body.hsn !== undefined) patch.hsn = body.hsn.trim() || "2106";
+        if (body.grp !== undefined) patch.grp = body.grp.trim() || "Other";
+
+        // Only a line actually **crossing** off the catalogue has to be clear of stock and
+        // menus; asking it again of one already retired would refuse a no-op over stock that
+        // arrived after it left, which is a question for whoever booked that stock in.
+        if (body.active === false && row.active) {
+          const locations = await loadLocations(tx);
+          const nameOf = (l: string) => locations[l]?.n ?? l;
+          const held = await catalogRepo.balancesOf(tx, it);
+          assertRule(held.length === 0, `${name} still has stock at ${held.map(nameOf).join(", ")} — write it off before retiring it`);
+          const listed = await catalogRepo.menusOf(tx, it);
+          assertRule(listed.length === 0, `${name} is still listed at ${listed.map(nameOf).join(", ")} — take it off those menus before retiring it`);
+        }
+        if (body.active !== undefined) patch.active = body.active;
+
+        const updated = await catalogRepo.update(tx, it, patch);
+        assertRule(updated, `${name} is already in the catalogue`);
+
+        const at = new Date();
+        // "Retired" and "Restored" describe a line **crossing** — compared against the row this
+        // write locked, not against what the patch asked for. A patch that sets `active: true`
+        // on a line that was already live has restored nothing, and a trail saying it did, or a
+        // toast reading "back in the catalogue" for a product that never left, is a false record
+        // of an event that did not happen. Either way the other fields still landed, so it reads
+        // as the ordinary "Updated" rather than as nothing at all.
+        const crossed = body.active !== undefined && body.active !== row.active;
+        const word = !crossed ? "Updated" : body.active === false ? "Retired" : "Restored";
+        await appendHistory(tx, "item", it, word, claims.sub, at);
+        const changed = ["items"] as const;
+        await emitChanged(tx, changed);
+        return {
+          result: { key: it, item: toWireItem(updated) },
+          changed: [...changed],
+          message: word === "Retired"
+            ? `${updated.name} retired — it stays on past documents and cannot be sold or ordered again`
+            : word === "Restored"
+              ? `${updated.name} is back in the catalogue`
+              : `${updated.name} updated`,
         };
       });
     },

@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
-import { isReqOpen, qty } from "../../lib/selectors";
+// ---- item patch ----
+import { activeItems, isReqOpen, qty } from "../../lib/selectors";
 import { fq, sum, U, unitTotal } from "../../lib/fmt";
 import {
   Alert, Btn, BtnRow, Card, DataTable, Field, FilterSelect, FormRow, PageHead, Section,
@@ -11,7 +12,7 @@ import type { DraftLine, ReqLine } from "../../types";
 
 /* The kitchen asks the central store for what it consumes — raw materials and
    packaging. Finished goods it makes itself, and MRP goods never pass through it. */
-const requestable = () => Object.keys(IT)
+const requestable = () => activeItems()
   .filter((k) => IT[k].t === "RAW" || IT[k].t === "PACK")
   .sort((a, b) => IT[a].g.localeCompare(IT[b].g) || IT[a].n.localeCompare(IT[b].n));
 const groupsOf = (keys: string[]) => keys.reduce<[string, string[]][]>((g, k) => {

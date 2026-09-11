@@ -8,6 +8,8 @@ import Requests from "./Requests";
 import Tickets from "./Tickets";
 import "./OrderDrawer";
 import "./TicketDrawer";
+// ---- item patch ----
+import "../manager/ItemDrawer";
 
 export const screens: Record<string, ComponentType> = {
   dash: Dashboard,

@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { ALL_LOCS, IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
-import { avail, inTransit, qty, stateTone, stockValue } from "../../lib/selectors";
+// ---- item patch ----
+import { avail, inTransit, isRetired, qty, stateTone, stockValue } from "../../lib/selectors";
 import { fq, lakh, money, money0, sum } from "../../lib/fmt";
 import {
   Btn, Card, DataTable, FilterSelect, Kpis, PageHead, Pill, Tag, TableFoot, Toolbar,
@@ -15,6 +16,8 @@ const tagKind = (t: ItemType) => (t === "MRP" ? "tr" : t === "MTO" || t === "FG"
 
 export default function Inventory() {
   const s = useApp();
+  // ---- item patch ----
+  const openDrawer = useApp((x) => x.openDrawer);
   const [q, setQ] = useState("");
   const [type, setType] = useState("All");
   const [group, setGroup] = useState("All");
@@ -74,6 +77,8 @@ export default function Inventory() {
     { h: "Value", r: true },
     { h: "Reorder", r: true },
     { h: "State" },
+    // ---- item patch ----
+    { h: "", r: true, w: "7%" },
   ];
 
   const rows: Row[] = keys.map((k) => {
@@ -103,6 +108,12 @@ export default function Inventory() {
           : <Pill tone={stateTone(a, it.rl)}>
             {a <= 0 ? "Out" : it.rl > 0 && a < it.rl ? "Below reorder" : "Healthy"}
           </Pill>,
+        // ---- item patch ----
+        // Read-only about stock, not about the master: the buyer keeps an item's name, group,
+        // HSN and reorder level, and the drawer greys out the manager's commercial figures.
+        <Btn size="xs" variant="gh" onClick={() => openDrawer("item", k)}>
+          {isRetired(k) ? "Restore" : "Edit"}
+        </Btn>,
       ],
     };
   });
