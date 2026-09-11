@@ -15,6 +15,8 @@ import { screens as prod } from "../roles/prod";
 import { screens as buyer } from "../roles/buyer";
 import { groupPool, picksFor, type PoolGroup } from "../roles/buyer/ProcurementList";
 import { USERS, seedVendors } from "@rch/contract/fixtures";
+// ---- item patch ----
+import { IT } from "../data/master";
 import type { PoolLine } from "../lib/selectors";
 import type { Role, Ticket, Trailed } from "../types";
 import { as, resetStore } from "./fixture";
@@ -398,5 +400,92 @@ describe("the counter's ticket drawer reads its own direction", () => {
     expect(open(sent())).toContain("Withdraw this ticket");
     expect(open(sent({ st: "Collected" }))).not.toContain("Withdraw this ticket");
     expect(open(inbound())).not.toContain("Withdraw this ticket");
+  });
+});
+
+// ---- item patch ----
+/**
+ * One drawer, four desks. `ITEM_FIELD_ROLES` (`@rch/domain`) is the same table the server
+ * refuses a patch with, so a box this greys out is exactly one the server would turn away —
+ * which is the whole point of driving the form off the rule rather than off a second list.
+ */
+describe("the item drawer is the same table the server refuses with", () => {
+  const open = (role: Role, id = "juice") => {
+    act(() => { as(role); });
+    return render(createElement(DRAWERS.item, { id }));
+  };
+
+  it("tells the manager the operational fields are somebody else's", () => {
+    const html = open("manager");
+    expect(html).toContain("Edit Real Juice 200ml");
+    expect(html).toContain("The name, the group, the HSN code and the reorder level belong to the store, the buyer and the kitchen");
+  });
+
+  it("tells the store, the buyer and the kitchen the commercial figures are the manager's", () => {
+    for (const role of ["store", "buyer", "prod"] as Role[]) {
+      expect(open(role)).toContain("The printed MRP, the standard cost and the GST rate belong to the outlet manager");
+    }
+  });
+
+  it("offers Retire on a live line and Restore on a retired one", () => {
+    expect(open("store")).toContain("Retire this product");
+    act(() => { IT.chips = { ...IT.chips, active: false }; });
+    const retired = render(createElement(DRAWERS.item, { id: "chips" }));
+    expect(retired).toContain("Restore to the catalogue");
+    expect(retired).toContain("is off the catalogue");
+    expect(retired).not.toContain("Retire this product");
+  });
+
+  it("says so rather than throwing when the item has left the master under it", () => {
+    expect(open("store", "nosuchitem")).toContain("Item not found");
+  });
+
+  it("will not offer to clear a printed MRP — the box says leaving it alone changes nothing", () => {
+    // There is no clearing door: the server refuses `mrp: 0` outright, so the drawer must not
+    // read an emptied box as a request to remove the ceiling.
+    const html = open("manager");
+    expect(html).toContain("Leave the box as it is to keep the current ceiling; emptying it changes nothing");
+  });
+});
+
+// ---- item patch ----
+/** A retired line stays in `IT` so past documents still name it. Every screen that reads the
+ *  registry as "what we buy / hold / reorder" has to filter it out, or the product the hospital
+ *  deliberately stopped carrying goes on generating work. */
+describe("a retired product stops generating work", () => {
+  const retire = (k: string) => act(() => { IT[k] = { ...IT[k], active: false }; });
+
+  it("drops out of the buyer's below-reorder count", () => {
+    // Milk is the seeded line that is below its reorder level at the central store: 12 L on
+    // hand against a level of 40.
+    act(() => { as("buyer"); });
+    const counts = (html: string) => html.match(/(\d+) of (\d+) below reorder/)!.slice(1).map(Number);
+    const [belowBefore, boughtBefore] = counts(render(createElement(buyer.dash)));
+    expect(belowBefore).toBeGreaterThan(0);
+
+    retire("milk");
+    const [belowAfter, boughtAfter] = counts(render(createElement(buyer.dash)));
+    expect(belowAfter).toBe(belowBefore - 1);
+    expect(boughtAfter).toBe(boughtBefore - 1);
+  });
+
+  it("is never offered to a requisition, and reads greyed on the shelf it is still standing on", () => {
+    act(() => { as("store"); });
+    // The row for milk, on its own: `DataTable` gives every row the item key as its React key,
+    // which reaches the DOM as nothing, so the row is found by the item's own code instead.
+    const rowOf = (html: string, code: string) =>
+      html.split("<tr").find((chunk) => chunk.includes(code)) ?? "";
+
+    const before = rowOf(render(createElement(store.stock)), "RM-1001");
+    expect(before).toContain("Add to requisition");
+    expect(before).not.toContain("Retired");
+
+    retire("milk");
+    const after = rowOf(render(createElement(store.stock)), "RM-1001");
+    // Still listed — twelve litres are on the shelf and somebody has to write them off — but
+    // nothing on the row asks for more of it.
+    expect(after).toContain("Retired");
+    expect(after).not.toContain("Add to requisition");
+    expect(after).toContain("Restore");
   });
 });

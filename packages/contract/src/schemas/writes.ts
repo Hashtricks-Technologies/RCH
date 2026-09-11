@@ -181,7 +181,28 @@ export const AnswerProductRequestBodySchema = z.strictObject({
 // procurement list repaints from that refetch, so returning the requisitions too would be a
 // second channel for a fact one read already carries.
 export const ReceiptResultSchema = z.strictObject({ po: PurchaseOrderSchema, grns: z.array(GrnSchema) });
-export const NewItemResultSchema = z.strictObject({ key: z.string(), item: ItemSchema });
+/** One line of the item master, with the key the server chose. `createItem` and `patchItem`
+ *  answer with the same shape: a create needs the key because the caller cannot work it out,
+ *  and a patch answers with it too rather than inventing a second envelope for the same row. */
+export const ItemResultSchema = z.strictObject({ key: z.string(), item: ItemSchema });
+
+// ---- item patch ----
+/** The item master is editable (`PATCH /items/:it`). Which of these eight fields a role may
+ *  actually move is `ITEM_FIELD_ROLES` in `@rch/domain` — a sentence, not a 400 — so the schema
+ *  takes all eight from anyone and the service refuses in the operator's own words. No
+ *  `.default()` anywhere: `parse({})` must stay empty, or "Nothing to change" is unreachable
+ *  and a patch of one field silently resets the other seven. */
+export const ItemKeyParamsSchema = z.strictObject({ it: z.string().min(1).max(64) });
+export const PatchItemBodySchema = z.strictObject({
+  n: z.string().max(120).optional(),
+  mrp: RateSchema.optional(),
+  cost: RateSchema.optional(),
+  gst: z.number().min(0).max(100).optional(),
+  hsn: z.string().max(12).optional(),
+  rl: QtySchema.optional(),
+  grp: z.string().max(40).optional(),
+  active: z.boolean().optional(),
+});
 
 // ---- The support desk (spec §9.2). Customer care for the portal itself: every role raises,
 // replies to, resolves and rates its own tickets, and nothing here moves stock.

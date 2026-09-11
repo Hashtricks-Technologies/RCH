@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { z } from "zod";
-import { CreatePoBodySchema, CreditParamsSchema, CreditResponseSchema, EVENTS_PATH, EventNoticeSchema, LocKeySchema, MakeBatchBodySchema, PatchContractBodySchema, PatchPayerBodySchema, PatchPoBodySchema, PatchVendorBodySchema, PO_APPROVAL_LIMIT, RaiseTicketBodySchema, RateTicketBodySchema, ReceivePoBodySchema, SetOrderStatusBodySchema, SetTicketStatusBodySchema, StockLedgerQuerySchema, StockLocSchema, TktStatusSchema, TransferBodySchema } from "./index";
+import { CreatePoBodySchema, CreditParamsSchema, CreditResponseSchema, EVENTS_PATH, EventNoticeSchema, LocKeySchema, MakeBatchBodySchema, PatchContractBodySchema, PatchPayerBodySchema, PatchPoBodySchema, PatchVendorBodySchema, PO_APPROVAL_LIMIT, RaiseTicketBodySchema, RateTicketBodySchema, ReceivePoBodySchema, SetOrderStatusBodySchema, SetTicketStatusBodySchema, StockLedgerQuerySchema, StockLocSchema, TktStatusSchema, TransferBodySchema, ItemSchema, PatchItemBodySchema } from "./index";
 import { routes } from "./routes";
 
 /** One valid body per route that takes one. The coverage case below fails if a new route
@@ -51,6 +51,8 @@ const SAMPLES: Record<string, Record<string, unknown>> = {
   // ---- payers ----
   addPayer:        { kind: "staff", id: "E2291", name: "Kavitha Raman" },
   updatePayer:     { active: false },
+  // ---- item patch ----
+  patchItem:       { rl: 12 },
 };
 // `routes` is a const object, so `r.body` is a union of every literal schema type; the cast
 // keeps this loop about the shared `safeParse` and not about zod's generics.
@@ -112,6 +114,8 @@ describe("what buying puts on the wire", () => {
     expect(PatchVendorBodySchema.parse({})).toEqual({});
     expect(PatchContractBodySchema.parse({})).toEqual({});
     expect(PatchPayerBodySchema.parse({})).toEqual({});
+    // ---- item patch ----
+    expect(PatchItemBodySchema.parse({})).toEqual({});
     expect(PatchVendorBodySchema.parse({ terms: "45 days" })).toEqual({ terms: "45 days" });
   });
   it("knows quarantine is somewhere stock can be, and nowhere an operator can act", () => {
@@ -177,5 +181,32 @@ describe("what the support desk puts on the wire", () => {
     expect(RateTicketBodySchema.safeParse({ rating: 0 }).success).toBe(false);
     expect(RateTicketBodySchema.safeParse({ rating: 6 }).success).toBe(false);
     expect(RateTicketBodySchema.safeParse({ rating: 4.5 }).success).toBe(false);
+  });
+});
+
+// ---- item patch ----
+describe("what the item master puts on the wire once it can be edited", () => {
+  it("takes a patch of one field and leaves the other seven alone", () => {
+    expect(PatchItemBodySchema.parse({ rl: 12 })).toEqual({ rl: 12 });
+    expect(PatchItemBodySchema.safeParse({ active: false }).success).toBe(true);
+    expect(PatchItemBodySchema.safeParse({ n: "Real Juice 200ml", mrp: 22, gst: 12 }).success).toBe(true);
+    expect(PatchItemBodySchema.safeParse({ surprise: 1 }).success).toBe(false);
+  });
+
+  it("leaves an empty name and a zero cost to the service, so the operator reads a sentence", () => {
+    // "Give the product a name" and "Cost must be more than zero" are `createItem`'s own
+    // sentences; a patch that reached them as a 400 would answer with a Zod path instead.
+    expect(PatchItemBodySchema.safeParse({ n: "" }).success).toBe(true);
+    expect(PatchItemBodySchema.safeParse({ cost: 0 }).success).toBe(true);
+    // What the schema does refuse is a figure no rate anywhere in the system can be.
+    expect(PatchItemBodySchema.safeParse({ cost: -1 }).success).toBe(false);
+    expect(PatchItemBodySchema.safeParse({ gst: 101 }).success).toBe(false);
+  });
+
+  it("carries a retired line on the wire, and an old one with no flag at all", () => {
+    const item = { c: "MR-3001", n: "Real Juice 200ml", u: "nos", t: "MRP", g: "Beverage", hsn: "2009", gst: 12, rl: 60, cost: 14.2 };
+    expect(ItemSchema.safeParse({ ...item, active: false }).success).toBe(true);
+    // Absent means active: every fixture and every document raised before retiring existed.
+    expect(ItemSchema.parse(item).active).toBeUndefined();
   });
 });

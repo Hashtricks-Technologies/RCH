@@ -250,6 +250,21 @@ describe("POST /purchase-orders/:id/receive", () => {
       .toBe(`${draft} is draft — nothing can be booked against it`);
   });
 
+  it("refuses a rejection with nothing delivered against it, and books nothing", async () => {
+    // A line with recv: 0 and rejected > 0 has no arrival for the rejection to be part of.
+    // Before this rule, both loops below skipped such a line on `recv > 0` — the second line
+    // here — and it booked nothing and said nothing, silently dropping what the store keeper
+    // typed. The first line still arrives normally so the "enter what arrived" guard passes and
+    // this rule is what actually catches it.
+    const { id } = await ordered([{ it: "milk", qty: 80 }, { it: "butter", qty: 6 }]);
+    const count = await moveCount();
+    const r = await post("u3", `/purchase-orders/${id}/receive`, { ...doc, lines: [good(10), good(0, { rejected: 5 })] });
+    expect(r.statusCode).toBe(422);
+    expect(r.json().error.message).toBe("Butter, salted — a rejected quantity needs an arrival to be rejected from");
+    expect(await moveCount()).toBe(count);
+    expect(await app.testDb!.db.select().from(grns).where(eq(grns.poId, id))).toHaveLength(0);
+  });
+
   it("is open to the buyer as well as the store keeper, and to nobody else", async () => {
     const { id } = await ordered([{ it: "milk", qty: 80 }]);
     expect((await post("u5", `/purchase-orders/${id}/receive`, { ...doc, lines: [good(10)] })).statusCode).toBe(200);

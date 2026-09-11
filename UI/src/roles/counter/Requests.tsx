@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { IT, LOC, OUTLETS } from "../../data/master";
 import { useApp } from "../../store";
-import { avail, isReqOpen } from "../../lib/selectors";
+// ---- item patch ----
+import { activeItems, avail, isReqOpen } from "../../lib/selectors";
 import { fq, U } from "../../lib/fmt";
 import {
   Alert, Btn, BtnRow, Card, DataTable, Field, ImagePlaceholder, Icon, PageHead, Pill, StatusPill,
@@ -9,12 +10,12 @@ import {
 import type { LocKey } from "../../types";
 
 /** Anything a shop can be asked for — not raw ingredients, not made-to-order. */
-const sellable = () => Object.keys(IT)
+const sellable = () => activeItems()
   .filter((k) => IT[k].t === "MRP" || IT[k].t === "FG")
   .sort((a, b) => IT[a].n.localeCompare(IT[b].n));
 /** Anything the central store can send — everything except made-to-order, which
  *  a counter assembles itself and never holds as stock. */
-const stockable = () => Object.keys(IT)
+const stockable = () => activeItems()
   .filter((k) => IT[k].t !== "MTO")
   .sort((a, b) => IT[a].g.localeCompare(IT[b].g) || IT[a].n.localeCompare(IT[b].n));
 

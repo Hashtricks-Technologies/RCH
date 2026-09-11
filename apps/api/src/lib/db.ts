@@ -60,7 +60,10 @@ export const withTransaction = <T>(db: Db, fn: (tx: Tx) => Promise<T>, opts: { r
       // Checked here rather than inside `recordIdempotent` so that its *other* `ok: false` (a
       // claim taken over by a retry mid-write) still takes the straggler down, whatever this
       // caller asked for.
-      if (opts.response === "optional" && !ctx.response.safeParse(value).success) return value;
+      if (opts.response === "optional" && !ctx.response.safeParse(value).success) {
+        ctx.why = "a write's response failed its own schema and its caller asked for that to be tolerated";
+        return value;
+      }
       const outcome = await recordIdempotent(tx, ctx, value);
       ctx.idem.recorded = outcome.ok;
       if (!outcome.ok) {

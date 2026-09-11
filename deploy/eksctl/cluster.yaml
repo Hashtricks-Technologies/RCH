@@ -48,7 +48,12 @@ iam:
 # coredns (eksctl's run was cut short after the control plane), and every pod's DNS — the API's
 # RDS lookup, the load balancer controller's AWS calls — failed until it was installed by hand.
 addons:
+  # enableNetworkPolicy turns on the VPC CNI's network-policy agent, the enforcement the
+  # chart's NetworkPolicies (deploy/chart/rch/templates/networkpolicy.yaml) need to be
+  # anything but inert — the exact key AWS documents for this add-on's configurationValues:
+  # https://docs.aws.amazon.com/eks/latest/userguide/cni-network-policy.html
   - name: vpc-cni
+    configurationValues: '{"enableNetworkPolicy": "true"}'
   - name: coredns
   - name: kube-proxy
   # metrics-server is not optional here even though nothing says so out loud: values-prod.yaml

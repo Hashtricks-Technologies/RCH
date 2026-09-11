@@ -37,7 +37,12 @@ jobs:
   deploy:
     name: Deploy ${{ github.event.workflow_run.head_branch }}
     needs: guard
-    if: ${{ github.event.workflow_run.conclusion == 'success' && vars.DEPLOY_ENABLED == 'true' }}
+    # Repeats guard's own `event == 'push'` clause: `needs: guard` only skips this job when
+    # guard's *result* is failure/cancelled, not when guard is itself skipped by its `if:` —
+    # a workflow_run event guard's `if:` refuses is a skip, and a skipped dependency still lets
+    # a dependent job run. Without this clause here too, a PR-triggered CI run (staging into
+    # production, the hotfix flow) would reach this job and deploy an unmerged PR head.
+    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && vars.DEPLOY_ENABLED == 'true' }}
     runs-on: ubuntu-latest
     # Two image builds, a 15m helm timeout and two rollouts. A job that runs past this is stuck,
     # not slow, and holding the concurrency group open costs the next push its deploy.
@@ -84,7 +89,7 @@ jobs:
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: "${{ secrets.ECR_REGISTRY }}/rch-api:${{ github.event.workflow_run.head_sha }}"
-          severity: CRITICAL,HIGH
+          severity: "CRITICAL,HIGH"
           exit-code: "1"
           ignore-unfixed: true
           trivyignores: .trivyignore.yaml
@@ -92,7 +97,7 @@ jobs:
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: "${{ secrets.ECR_REGISTRY }}/rch-ui:${{ github.event.workflow_run.head_sha }}"
-          severity: CRITICAL,HIGH
+          severity: "CRITICAL,HIGH"
           exit-code: "1"
           ignore-unfixed: true
           trivyignores: .trivyignore.yaml
@@ -222,7 +227,8 @@ jobs:
   skipped:
     name: Deploy skipped (DEPLOY_ENABLED is not true)
     needs: guard
-    if: ${{ github.event.workflow_run.conclusion == 'success' && vars.DEPLOY_ENABLED != 'true' }}
+    # Same `event == 'push'` repeat as the deploy job above, and for the same reason.
+    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && vars.DEPLOY_ENABLED != 'true' }}
     runs-on: ubuntu-latest
     steps:
       - run: echo "Set repository variable DEPLOY_ENABLED=true and the AWS secrets to enable deploys. See deploy/RUNBOOK.md."

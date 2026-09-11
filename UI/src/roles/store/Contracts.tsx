@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { IT } from "../../data/master";
 import { useApp } from "../../store";
-import { costOf } from "../../lib/selectors";
+// ---- item patch ----
+import { activeItems, costOf } from "../../lib/selectors";
 import { U, money, money0, pct, sum, toInputDate } from "../../lib/fmt";
 import {
   Alert, Btn, BtnRow, Card, DataTable, Field, FilterBtn, FilterSelect, FormRow, Kpis, PageHead, Pill,
@@ -55,7 +56,9 @@ export default function Contracts() {
   // is therefore built during render and pinned to `catalogVersion`, which is what tells React a
   // product was added.
   void catalogVersion;
-  const CONTRACTABLE = Object.keys(IT)
+  // ---- item patch ----
+  // A rate contract prices a future order, so a retired line has nothing left to price.
+  const CONTRACTABLE = activeItems()
     .filter((k) => IT[k].t === "RAW" || IT[k].t === "PACK" || IT[k].t === "MRP")
     .sort((a, b) => IT[a].g.localeCompare(IT[b].g) || IT[a].n.localeCompare(IT[b].n));
   /** A blank draft has no item chosen yet, so the picker falls back to the first buyable one. */

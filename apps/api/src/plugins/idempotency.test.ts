@@ -8,6 +8,7 @@ import { seedTestDb } from "../test/seed.js";
 import { warmPool } from "../test/db.js";
 import { authHeaders } from "../test/auth.js";
 import { buildApp, type App } from "../app.js";
+import type { LogStream } from "./logging.js";
 import { mount } from "../routes.js";
 import { idemHooks, purgeIdempotencyKeys } from "./idempotency.js";
 import { withTransaction } from "../lib/db.js";
@@ -32,11 +33,18 @@ const otpAttempts = async (id: string) => (await app.db.select().from(tickets).w
 /** An app of its own carrying a test-only write, mounted through the real `mount()` so the
  *  route picks up the same authenticate → roleGate → idempotency chain a module's write does,
  *  and sharing this file's already-migrated schema so it seeds nothing. */
-async function appWith(register: (a: App) => void, env: Partial<NodeJS.ProcessEnv> = {}): Promise<App> {
-  const a = await buildApp(testConfig(env), { db: app.db, migrationsSchema: app.testDb!.schemaName });
+async function appWith(register: (a: App) => void, env: Partial<NodeJS.ProcessEnv> = {}, logStream?: LogStream): Promise<App> {
+  const a = await buildApp(testConfig(env), { db: app.db, migrationsSchema: app.testDb!.schemaName, logStream });
   register(a);
   await a.ready();
   return a;
+}
+
+/** A pino stream the test can read back: one parsed line per record — the same shape
+ *  plugins/errors.test.ts's own `capture()` uses. */
+function capture(): { lines: Array<Record<string, unknown>>; write: (s: string) => void } {
+  const lines: Array<Record<string, unknown>> = [];
+  return { lines, write: (s: string) => { for (const l of s.split("\n")) if (l) lines.push(JSON.parse(l) as Record<string, unknown>); } };
 }
 
 /** A write that commits a real change and then answers with a body its own schema refuses —
@@ -47,6 +55,16 @@ const badShapeHandler = (phone: string) => async () => withTransaction(app.db, a
   await meRepo.update(tx, "u2", { phone });
   return { ok: "yes" } as never; // OkResponseSchema wants the literal `true`
 });
+
+/** The same bad shape, but told `{ response: "optional" }` — so, unlike `badShapeHandler` above,
+ *  nothing here is a `{ refuse }` marker and nothing throws afterward: this is a write's
+ *  genuine success value simply not matching its own schema, the case `lib/db.ts`'s comment
+ *  calls "the caller asked for that to be tolerated". */
+const optionalBadShapeRoute = defineRoute({ method: "POST", path: "/__test/optional-bad-shape", access: "any", response: OkResponseSchema });
+const optionalBadShapeHandler = (phone: string) => async () => withTransaction(app.db, async (tx) => {
+  await meRepo.update(tx, "u2", { phone });
+  return { ok: "yes" } as never; // OkResponseSchema wants the literal `true`
+}, { response: "optional" });
 
 /** Promise.withResolvers, which the ES2023 lib this package targets does not declare yet. */
 function deferred(): { promise: Promise<void>; resolve: () => void } {
@@ -375,6 +393,32 @@ describe("Idempotency-Key", () => {
     }
   });
 
+  it("in production, an optional write's success value failing its own schema warns with the specific reason, not the generic one", async () => {
+    // `withTransaction`'s `{ response: "optional" }` branch sets `ctx.why` itself now, so
+    // `mount()`'s warn line names exactly what happened — a write's response failing its own
+    // schema under an explicit "optional" — rather than falling back to `NOT_RECORDED`, which
+    // is what a write that opened no transaction at all leaves behind.
+    const log = capture();
+    const a = await appWith(
+      (x) => mount(x, optionalBadShapeRoute, optionalBadShapeHandler("17171 71717")),
+      { NODE_ENV: "production", LOG_LEVEL: "info" },
+      log,
+    );
+    try {
+      const key = randomUUID();
+      const headers = { ...(await authHeaders(a, "u2")), "idempotency-key": key };
+      const r = await a.inject({ method: "POST", url: "/api/v1/__test/optional-bad-shape", headers });
+      // The serializer still refuses the malformed body on the way out — unchanged by any of
+      // this — but the write behind it commits, same as the "required" case in production.
+      expect(r.statusCode).toBe(500);
+      expect(await phoneOf("u2")).toBe("17171 71717");
+      const line = log.lines.find((l) => l.msg === "a write's response failed its own schema and its caller asked for that to be tolerated");
+      expect(line).toMatchObject({ route: "/__test/optional-bad-shape", key });
+    } finally {
+      await a.close();
+    }
+  });
+
   it("records a refusal in onSend, so a re-sent 422 replays the same sentence", async () => {
     // A refusal rolls its transaction back, so there is nothing for the record inside it to do
     // — the hook is still what stores a 4xx, and the sentence the operator read is what comes
@@ -406,6 +450,10 @@ describe("Idempotency-Key", () => {
     // Its transaction therefore returns a marker the route's schema refuses — `withTransaction`
     // is told `response: "optional"` so that marker records nothing and throws nothing, instead
     // of taking the committed count down with it and answering 500.
+    // Read first, not assumed at 0: a case inserted ahead of this one that also guesses wrong
+    // against TKT-0440 would otherwise falsify an absolute `1` here without ever touching the
+    // behaviour this test exists to pin.
+    const before = await otpAttempts("TKT-0440");
     const key = randomUUID();
     const headers = { ...(await authHeaders(app, "u3")), "idempotency-key": key };
     const send = () => app.inject({ method: "POST", url: "/api/v1/tickets/TKT-0440/handover", headers, payload: { otp: "000000" } });
@@ -413,7 +461,7 @@ describe("Idempotency-Key", () => {
     const first = await send();
     expect(first.statusCode, first.body).toBe(422);
     expect(first.json().error.message).toBe("That OTP does not match TKT-0440. Ask the collector to read it again.");
-    expect(await otpAttempts("TKT-0440")).toBe(1);
+    expect(await otpAttempts("TKT-0440")).toBe(before + 1);
     // A refusal is `onSend`'s to record, exactly as it always was — nothing committed that a
     // retry could duplicate, so the row carries no commit stamp.
     const row = await claimRow(key);
@@ -425,7 +473,7 @@ describe("Idempotency-Key", () => {
     expect(again.headers["idempotency-replayed"]).toBe("true");
     expect(again.body).toBe(first.body);
     // The replay ran nothing, so the guess it repeats is not a second guess.
-    expect(await otpAttempts("TKT-0440")).toBe(1);
+    expect(await otpAttempts("TKT-0440")).toBe(before + 1);
   });
 
   it("a correct handover after a wrong code is recorded inside its own transaction", async () => {

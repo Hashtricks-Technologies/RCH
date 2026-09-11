@@ -21,6 +21,12 @@ export const ShopAskStatusSchema = z.enum(["Asked", "Sent", "Declined"]);
 export const ItemSchema = z.object({
   c: z.string(), n: z.string(), u: z.string(), t: ItemTypeSchema, g: z.string(),
   hsn: z.string(), gst: z.number(), rl: Qty, cost: Money, mrp: Money.optional(), sl: z.number().optional(),
+  // ---- item patch ----
+  // A retired line stays on the wire: a bill, a ticket or a purchase order raised months ago
+  // still names its item, and the screen showing that document needs the name. Optional, and
+  // absent reads as **true** — the pickers filter on `active === false`, the registry does not,
+  // and a fixture that predates retiring an item is still a valid item.
+  active: z.boolean().optional(),
 });
 export const LocationSchema = z.object({
   n: z.string(), c: z.string(), type: z.enum(["Store", "Kitchen", "Outlet"]),

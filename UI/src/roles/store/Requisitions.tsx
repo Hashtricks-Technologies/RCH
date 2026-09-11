@@ -2,7 +2,8 @@ import { useState } from "react";
 import { IT, LOC } from "../../data/master";
 import { suggestVendor, vendorName } from "../../data/vendors";
 import { useApp } from "../../store";
-import { avail, awaitingApproval, onOrder, prqProgress, qty } from "../../lib/selectors";
+// ---- item patch ----
+import { activeItems, avail, awaitingApproval, onOrder, prqProgress, qty } from "../../lib/selectors";
 import { U, fq, money, money0, sum } from "../../lib/fmt";
 import {
   Alert, Btn, BtnRow, Card, DataTable, Field, FilterBtn, FilterSelect, Grid, PageHead, StatusPill, TableFoot, Toolbar,
@@ -38,7 +39,10 @@ export default function Requisitions() {
   // is therefore built during render and pinned to `catalogVersion`, which is what tells React a
   // product was added.
   void s.catalogVersion;
-  const BUYABLE = Object.keys(IT)
+  // ---- item patch ----
+  // `activeItems()`, not `Object.keys(IT)`: a retired line stays in the registry so past
+  // documents still name it, and must not be orderable again.
+  const BUYABLE = activeItems()
     .filter((k) => IT[k].t === "RAW" || IT[k].t === "PACK" || IT[k].t === "MRP")
     .sort((a, b) => IT[a].g.localeCompare(IT[b].g) || IT[a].n.localeCompare(IT[b].n));
   const BUY_GROUPS = [...new Set(BUYABLE.map((k) => IT[k].g))];

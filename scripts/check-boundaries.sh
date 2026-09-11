@@ -5,6 +5,12 @@
 # statement writes to) or on directory contents (a module's file skeleton), not on
 # import statements. Runs from the repo root; see package.json's "check:boundaries".
 #
+# These checks are line-oriented: every pattern below is matched with `grep -E` against one
+# line at a time, so a call spread across lines — `db\n  .insert(stockMoves)` — is not caught.
+# And they cannot tell code from prose: a module comment that names a protected table alongside
+# the words "update" or "delete" trips the same grep a real write would, on purpose — the fix
+# there is to reword the comment, not to weaken the pattern.
+#
 set -uo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
