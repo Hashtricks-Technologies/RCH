@@ -6,7 +6,7 @@
   "exports": { ".": "./src/index.ts" },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "lint": "oxlint",
+    "lint": "oxlint --max-warnings 0",
     "test": "vitest run"
   },
   "dependencies": { "@rch/contract": "workspace:*" },

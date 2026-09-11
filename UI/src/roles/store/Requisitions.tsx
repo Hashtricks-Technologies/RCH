@@ -63,11 +63,22 @@ export default function Requisitions() {
    * box lost focus and whatever was half-typed in it mid-keystroke; and a plain `key={i}` shifts
    * every row up when one is removed, handing row 2's state to row 1. A counter in a ref is
    * neither: an id belongs to the line it was minted for until that line is taken out.
+   *
+   * `react/refs` is off for exactly these three lines, and nowhere else in the file. The rule is
+   * right about what it is describing — a ref read during render can leave a component showing a
+   * value nothing will re-render it for — and wrong about this, which renders none of it: the
+   * ledger of keys is never *shown*, only handed to React as identity. There is nowhere else to
+   * keep it. The draft lives in the store and is shared with other screens, so a key column on
+   * the line would have to travel with it; `useState` would mean writing during render; and
+   * anything derived from the line's own contents is what the two spellings above already were.
    */
   const nextKey = useRef(0);
   const lineKeys = useRef<number[]>([]);
+  /* oxlint-disable react/refs -- a key ledger, never rendered; see the note above */
   while (lineKeys.current.length < prqDraft.length) lineKeys.current.push(nextKey.current++);
   if (lineKeys.current.length > prqDraft.length) lineKeys.current.length = prqDraft.length;
+  const rowKeys = lineKeys.current;
+  /* oxlint-enable react/refs */
 
   const setLine = (i: number, patch: Partial<DraftLine>) => {
     const next = prqDraft.map((l, n) => (n === i ? { ...l, ...patch } : l));
@@ -220,11 +231,12 @@ export default function Requisitions() {
                     </td>
                   </tr>
                 ) : (
+                  // oxlint-disable-next-line react/refs -- `rowKeys` is the key ledger above
                   prqDraft.map((l, i) => {
                     const it = IT[l.it];
                     const open = openQty(l.it);
                     return (
-                      <tr key={lineKeys.current[i]}>
+                      <tr key={rowKeys[i]}>
                         <td>
                           <select value={l.it} aria-label={`Item on line ${i + 1}`}
                             onChange={(e) => pickLine(i, e.target.value)}>

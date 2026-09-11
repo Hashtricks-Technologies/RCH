@@ -8,7 +8,7 @@
     "build": "tsup",
     "start": "node dist/server.mjs",
     "typecheck": "tsc --noEmit",
-    "lint": "oxlint",
+    "lint": "oxlint --max-warnings 0",
     "test": "vitest run",
     "db:generate": "node scripts/db-generate.mjs",
     "db:migrate": "tsx --env-file=../../.env src/cli/migrate.ts",

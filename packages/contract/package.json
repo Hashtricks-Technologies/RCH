@@ -7,7 +7,7 @@
     ".": "./src/index.ts",
     "./fixtures": "./src/fixtures/index.ts"
   },
-  "scripts": { "typecheck": "tsc --noEmit", "lint": "oxlint", "test": "vitest run" },
+  "scripts": { "typecheck": "tsc --noEmit", "lint": "oxlint --max-warnings 0", "test": "vitest run" },
   "dependencies": { "zod": "^4.5.4" },
   "devDependencies": { "vitest": "^4.1.11" }
 }

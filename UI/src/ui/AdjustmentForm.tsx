@@ -76,7 +76,9 @@ export default function AdjustmentForm({ locs, fixedLoc }: { locs: [StockLoc, ..
    *  touched. A blank box is a zero, which the server answers with its own sentence. */
   const signed = (l: Line) => (l.dir === "down" ? -1 : 1) * (Number(l.qty) || 0);
   const wouldOverdraw = lines.filter((l) => l.dir === "down" && Number(l.qty) > free(l.it));
-  const nothing = lines.length === 0 || lines.every((l) => signed(l) === 0);
+  // No length check in front: `every` is already `true` for an empty register, which is the
+  // same answer — there is nothing here to save.
+  const nothing = lines.every((l) => signed(l) === 0);
 
   const save = async () => {
     if (busy || nothing) return;

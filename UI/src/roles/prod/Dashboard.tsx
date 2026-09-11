@@ -12,7 +12,7 @@ export default function Dashboard() {
   const nav = useNavigate();
   const s = useApp();
   const openDrawer = useApp((x) => x.openDrawer);
-  const { pord, batch, tkt, ovr } = s;
+  const { pord, batch, tkt, stock, rsv, ovr } = s;
 
   // The kitchen's own products, off the master rather than a literal — see `madeItems()`.
   const PRODS = useMemo(() => { void s.catalogVersion; return madeItems(); }, [s.catalogVersion]);
@@ -33,10 +33,12 @@ export default function Dashboard() {
   const moving = useMemo(() => dispatches.filter((t) => isTicketOpen(t.st)), [dispatches]);
   // A product the kitchen cannot make is as unavailable as one switched off by hand.
   // Memoised on the three slices `availOf` actually reads — `[s]` was a new object on every
-  // write anywhere in the app, so it memoised nothing at all.
+  // write anywhere in the app, so it memoised nothing at all. The three are destructured off `s`
+  // at the top rather than trimmed off the dependency array, so the array names every value the
+  // memo uses and `react-hooks/exhaustive-deps` can check it instead of being argued with.
   const off = useMemo(
-    () => PRODS.map((k) => ({ k, a: availOf(s, "kitchen", k) })).filter((x) => !x.a.ok),
-    [PRODS, s.stock, s.rsv, s.ovr],
+    () => PRODS.map((k) => ({ k, a: availOf({ stock, rsv, ovr }, "kitchen", k) })).filter((x) => !x.a.ok),
+    [PRODS, stock, rsv, ovr],
   );
 
   const madeToday = sum(batch, (b) => b.qty);
