@@ -109,7 +109,7 @@ export function createTicketsService(db: Db) {
           // deliberately *not* shut with it — a collector who has genuinely lost the slip still
           // has a supervisor, and that way out is named, role-gated and written to the trail.
           assertRule(t.otpAttempts < OTP_ATTEMPTS, lockedMessage(id));
-          if (!otpMatches(body.otp.trim(), t.otp)) {
+          if (!otpMatches(body.otp, t.otp)) {
             // The one write this transaction is allowed to commit on the way to a refusal.
             await ticketsRepo.countWrongOtp(tx, id);
             return { refuse: `That OTP does not match ${id}. Ask the collector to read it again.` };
