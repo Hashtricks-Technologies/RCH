@@ -1,15 +1,16 @@
 // Pos: the flow — transaction, rules, moves, id. Composes the helpers in apps/api/src/lib/;
 // the arithmetic of the sale is `planBill` in packages/domain.
 import type { z } from "zod";
-import type { Bill, PayBodySchema, PayerKind, Tender, WriteResponse } from "@rch/contract";
-import { avail, availOf, breachesCredit, creditBreachMessage, creditRoom, fq, planBill, round3, type Master } from "@rch/domain";
+import type { Bill, PayBodySchema, PayerKind, Tender, VoidBillBodySchema, WriteResponse } from "@rch/contract";
+import { avail, availOf, breachesCredit, creditBreachMessage, creditRoom, dmy, fq, istDate, money as inr, planBill, round3, unitTotal, type Master } from "@rch/domain";
 import type { Db } from "../../db/client.js";
 import { withTransaction } from "../../lib/db.js";
 import { creditTakenThisMonth } from "../../lib/credit.js";
 import { NotFoundError } from "../../lib/errors.js";
 import { emitChanged } from "../../lib/events.js";
+import { appendHistory } from "../../lib/history.js";
 import { allocateId } from "../../lib/ids.js";
-import { lockBalances, postMoves } from "../../lib/ledger.js";
+import { lockBalances, postMoves, type Move } from "../../lib/ledger.js";
 import { loadMaster } from "../../lib/master.js";
 import { reservedAt } from "../../lib/reservations.js";
 import { assertRule } from "../../lib/rules.js";
@@ -18,6 +19,7 @@ import type { AccessClaims } from "../../plugins/auth.js";
 import { posRepo } from "./repo.js";
 
 export type PayBody = z.infer<typeof PayBodySchema>;
+export type VoidBillBody = z.infer<typeof VoidBillBodySchema>;
 
 /** What the operator calls each kind of payer. One list, so the sentence that asks for a payer
  *  and the sentence that says the roster has never heard of one use the same word. */
@@ -190,6 +192,84 @@ export function createPosService(db: Db) {
           : `Bill ${no} · ₹${total} ${body.tender === "Cash" ? "collected" : "settled by " + body.tender.toLowerCase()} at ${locName}`;
         // One array for the answer and the announcement, so the till that made the sale and
         // the tills watching it can never be told to refetch different slices.
+        const changed = ["stock", "bills"] as const;
+        await emitChanged(tx, changed);
+        return { result, changed: [...changed], message };
+      });
+    },
+
+    /**
+     * Take a mis-keyed bill back, on the day it was taken and no later.
+     *
+     * The honest minimum, and deliberately no more: the bill stays on the table exactly as it
+     * was printed, one positive reversal per line of the sale puts the stock back where it came
+     * off, and the two sums that count money — the staff-credit ceiling and the dashboard's
+     * sales columns — learn to skip it. A credit note for a bill from yesterday is a different
+     * document with different paperwork, and it stays refused until somebody asks for it; the
+     * refusal says so, and names the adjustment as the door that is open.
+     */
+    async voidBill(claims: AccessClaims, no: string, body: VoidBillBody): Promise<WriteResponse<Bill>> {
+      return withTransaction(db, async (tx) => {
+        // The document first, locked — the order every write in this server keeps. Two managers
+        // pressing Void on the same bill queue here, and the second reads what the first wrote.
+        const bill = await posRepo.headForUpdate(tx, no);
+        if (!bill) throw new NotFoundError(`There is no bill ${no}.`);
+
+        const reason = body.reason.trim();
+        assertRule(reason.length > 0, "Give a reason for voiding this bill");
+        assertRule(!bill.voidedAt, `${no} has already been voided`);
+
+        // Same hospital day, in the hospital's own zone — a till that closed at 23:50 must still
+        // be able to fix its last bill, and a manager arriving at 09:00 must not be able to
+        // unpick yesterday's takings after the day was reconciled.
+        const at = new Date();
+        assertRule(istDate(bill.at) === istDate(at),
+          `${no} was taken on ${dmy(istDate(bill.at))} — a bill can only be voided on the day it was billed; write the stock back on with an adjustment instead`);
+
+        // No `requireLocOf` here, on purpose: a manager is hospital-wide (their `loc` is a desk,
+        // not a scope), and the route is already closed to every other role. The counter that
+        // took the bill is exactly the party that must not be able to unsell its own takings.
+        //
+        // And no `allocateId`: a void mints no document. It is a stamp on the bill that exists
+        // and a reversal of the moves that exist, so there is no number for it to draw.
+        const moves = await posRepo.saleMoves(tx, no);
+        const master = await loadMaster(tx);
+        const locName = master.locations[bill.loc]?.n ?? bill.loc;
+        // Each reversal uses its original move's own `loc` and item rather than the bill's lines,
+        // which is what makes a made-to-order bill explode back into the ingredients the sale
+        // actually took instead of a portion of a dish no shelf ever carried. A bill whose lines
+        // all rounded away moved nothing, posts nothing, and still voids.
+        const reversals: Move[] = moves.map((m) => ({
+          loc: m.loc, it: m.itemKey, qty: -m.qty, kind: "reversal" as const,
+          refType: "bill", refId: no, by: claims.sub, at, reverses: m.id,
+        }));
+        await postMoves(tx, reversals);
+        // No `lockBalances` of its own and no post-lock re-read: every reversal is positive —
+        // it is a sale's negative move, negated — so there is nothing promised against a balance
+        // for the belt-and-braces check to catch. Same reasoning as a goods receipt's two
+        // positive moves (`modules/grn/service.ts`); do not add either out of symmetry with the
+        // sale above.
+
+        const head = await posRepo.setVoided(tx, no, { at, by: claims.sub, reason });
+        const lines = await posRepo.billLines(tx, no);
+        const voider = await posRepo.operator(tx, claims.sub);
+        // The first row of history a bill has ever carried. It is not on the wire — `BillSchema`
+        // has no `hist` — because there is exactly one thing that can be said about a bill after
+        // it is printed, and the badge and the reason already say it.
+        await appendHistory(tx, "bill", no, `Voided — ${reason}`, voider?.name ?? claims.sub, at);
+
+        const operator = await posRepo.operator(tx, head.operatorId);
+        const result = toWireBill(head, lines, { name: operator?.name ?? head.operatorId, colour: operator?.colour ?? "#64748B" });
+        const back = reversals.map((r) => ({ it: r.it, qty: r.qty }));
+        const unitOf = (it: string) => master.items[it]?.u ?? "nos";
+        // What the manager most needs told is what the void gave back. For a staff credit that is
+        // the person's room for the month, which is the thing a mis-keyed bill actually costs
+        // them; otherwise it is the stock that went back on the shelf.
+        const message = head.payerKind === "staff" && head.tender === "Staff credit"
+          ? `${no} voided — ${inr(head.total)} is back on ${head.payerName ?? head.payerId}'s credit for the month`
+          : back.length > 0
+            ? `${no} voided — ${unitTotal(back, unitOf)} back on the shelf at ${locName}`
+            : `${no} voided`;
         const changed = ["stock", "bills"] as const;
         await emitChanged(tx, changed);
         return { result, changed: [...changed], message };

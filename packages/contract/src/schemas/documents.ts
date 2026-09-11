@@ -86,6 +86,11 @@ export const BillLineSchema = z.object({ it: z.string(), qty: Qty, rate: Money }
 export const BillSchema = z.object({
   no: z.string(), loc: LocKeySchema, opr: z.string(), oprCol: z.string(), tot: Money, tax: Money, t: IsoTime, pay: TenderSchema,
   lines: z.array(BillLineSchema), payer: PayerSchema.optional(),
+  // ---- bill void. Optional because a bill is voided almost never: the mapper omits both keys
+  // on the overwhelming majority of bills, which keeps a wire bill equal to the fixture it came
+  // from. A voided bill still carries its lines and its total — nothing is erased, the moves are
+  // reversed — so every screen that already prints it goes on printing it, with a badge.
+  voided: z.boolean().optional(), voidReason: z.string().optional(),
 });
 export const DraftLineSchema = z.object({ it: z.string(), qty: Qty });
 export const AvailabilitySchema = z.object({ ok: z.boolean(), mode: z.enum(["Manual", "Recipe", "Stock"]), why: z.string().optional(), left: z.string().optional() });

@@ -14,6 +14,13 @@ export const bills = pgTable("bills", {
   payerKind: payerKindEnum("payer_kind"),
   payerId: text("payer_id"),
   payerName: text("payer_name"),
+  // ---- bill void. Three nullable columns rather than a status word, because a voided bill is
+  // still a bill: its lines, its total and its tax stay exactly as they were printed, and what
+  // changes is that reversing moves put the stock back and every sum that counts money skips it.
+  // `voided_at` is the flag every one of those filters reads (`voided_at is null`).
+  voidedAt: ts("voided_at"),
+  voidedBy: text("voided_by").references(() => users.id),
+  voidReason: text("void_reason"),
 }, (t) => [
   index("bills_loc_at_idx").on(t.loc, t.at),
   // The staff-credit ceiling sums one payer's bills for the month on every credit sale; without
