@@ -1,4 +1,5 @@
-import { bigint, index, integer, jsonb, pgTable, primaryKey, text, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { bigint, check, index, integer, jsonb, pgTable, primaryKey, text, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { ts, users } from "./master.js";
 
 export const documentHistory = pgTable("document_history", {
@@ -10,11 +11,17 @@ export const documentHistory = pgTable("document_history", {
   at: ts("at").notNull().defaultNow(),
 }, (t) => [index("document_history_doc_idx").on(t.docType, t.docId, t.at)]);
 
-/** Gapless, serialised numbering. Allocated with UPDATE … RETURNING inside the write's transaction. */
+/** Serialised numbering, gapless through a rollback — the counter is a row, and a refused write
+ *  undoes its increment with everything else. Allocated with UPDATE … RETURNING inside the
+ *  write's transaction, which holds the row lock to the end of it: every other writer in the
+ *  series queues there, so a number is taken as late as the write can take it (`lib/ids.ts`). */
 export const sequences = pgTable("sequences", {
   kind: text("kind").primaryKey(),
   next: bigint("next", { mode: "number" }).notNull(),
-});
+}, (t) => [
+  // A series that had run back to zero would re-issue a number already printed on paper.
+  check("sequences_next_ck", sql`${t.next} > 0`),
+]);
 
 export const idempotencyKeys = pgTable("idempotency_keys", {
   key: text("key").notNull(),

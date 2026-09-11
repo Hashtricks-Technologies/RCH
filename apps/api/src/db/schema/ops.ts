@@ -1,4 +1,5 @@
-import { pgTable, smallint, text } from "drizzle-orm/pg-core";
+import { check, pgTable, smallint, text } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { messageFromEnum, productReqStatusEnum, roleEnum, supportPriorityEnum, supportStatusEnum, supportTopicEnum } from "./enums.js";
 import { items, locations, ts, users } from "./master.js";
 
@@ -15,7 +16,10 @@ export const supportTickets = pgTable("support_tickets", {
   screen: text("screen").notNull().default(""),
   rating: smallint("rating"),
   updatedAt: ts("updated_at").notNull().defaultNow(),
-});
+}, (t) => [
+  // Five stars or none; the drawer renders nothing in between.
+  check("support_tickets_rating_ck", sql`${t.rating} is null or ${t.rating} between 1 and 5`),
+]);
 export const supportMessages = pgTable("support_messages", {
   id: text("id").primaryKey(),
   ticketId: text("ticket_id").notNull().references(() => supportTickets.id),

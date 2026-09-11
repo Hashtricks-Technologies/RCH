@@ -1,4 +1,5 @@
-import { integer, pgTable, primaryKey, text } from "drizzle-orm/pg-core";
+import { check, integer, pgTable, primaryKey, text } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { prodOrderStatusEnum } from "./enums.js";
 import { items, locations, qty, ts, users } from "./master.js";
 
@@ -26,4 +27,8 @@ export const batches = pgTable("batches", {
   bestBefore: ts("best_before").notNull(),
   note: text("note"),
   byUser: text("by_user").references(() => users.id),
-});
+}, (t) => [
+  // A batch yields some of what it started and never more: the ingredients went against what
+  // was started, so a yield above it would be stock nothing was ever consumed for.
+  check("batches_made_ck", sql`${t.madeQty} >= 0 and ${t.madeQty} <= ${t.startedQty}`),
+]);

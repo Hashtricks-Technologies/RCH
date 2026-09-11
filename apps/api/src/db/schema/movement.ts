@@ -1,4 +1,5 @@
-import { boolean, char, index, integer, pgTable, primaryKey, text } from "drizzle-orm/pg-core";
+import { boolean, check, index, integer, pgTable, primaryKey, text, varchar } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { reqStatusEnum, shopAskStatusEnum, ticketRefEnum, ticketStatusEnum } from "./enums.js";
 import { items, locations, qty, ts, users } from "./master.js";
 
@@ -31,12 +32,22 @@ export const tickets = pgTable("tickets", {
   fromLoc: text("from_loc").notNull().references(() => locations.key),
   toLoc: text("to_loc").notNull().references(() => locations.key),
   status: ticketStatusEnum("status").notNull(),
-  otp: char("otp", { length: 6 }).notNull(),
+  // varchar, not char: char(6) is blank-padded and compares blank-padded, which is the wrong
+  // shape for six digits that are compared byte for byte. The CHECK is what keeps them digits.
+  otp: varchar("otp", { length: 6 }).notNull(),
+  // How many wrong codes have been quoted at this ticket. Five and the window stops taking
+  // guesses; the labelled supervisor override is what is left (modules/tickets/service.ts).
+  otpAttempts: integer("otp_attempts").notNull().default(0),
   issuedBy: text("issued_by").references(() => users.id),
   issuedAt: ts("issued_at").notNull().defaultNow(),
   collectedAt: ts("collected_at"),
   receivedAt: ts("received_at"),
-}, (t) => [index("tickets_status_idx").on(t.status), index("tickets_to_idx").on(t.toLoc)]);
+}, (t) => [
+  index("tickets_status_idx").on(t.status), index("tickets_to_idx").on(t.toLoc),
+  check("tickets_otp_digits_ck", sql`${t.otp} ~ '^[0-9]{6}$'`),
+  // A ticket from a location to itself moves nothing and could never be received.
+  check("tickets_from_to_ck", sql`${t.fromLoc} <> ${t.toLoc}`),
+]);
 
 export const ticketLines = pgTable("ticket_lines", {
   ticketId: text("ticket_id").notNull().references(() => tickets.id),

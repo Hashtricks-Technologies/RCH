@@ -1,4 +1,5 @@
-import { boolean, date, index, integer, pgTable, primaryKey, text } from "drizzle-orm/pg-core";
+import { boolean, check, date, index, integer, pgTable, primaryKey, text } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { poStatusEnum, prqStatusEnum } from "./enums.js";
 import { items, money, qty, ts, users, vendors } from "./master.js";
 
@@ -20,7 +21,12 @@ export const requisitionLines = pgTable("requisition_lines", {
   approvedQty: qty("approved_qty").notNull().default(0),
   orderedQty: qty("ordered_qty").notNull().default(0),
   shortQty: qty("short_qty"),
-}, (t) => [primaryKey({ columns: [t.requisitionId, t.lineNo] })]);
+}, (t) => [
+  primaryKey({ columns: [t.requisitionId, t.lineNo] }),
+  // The claim a purchase order puts on this line can never exceed what the buyer approved —
+  // lib/claims.ts is what keeps it there, and this is what proves it stayed there.
+  check("requisition_lines_ordered_ck", sql`${t.orderedQty} >= 0 and ${t.orderedQty} <= ${t.approvedQty}`),
+]);
 
 export const purchaseOrders = pgTable("purchase_orders", {
   id: text("id").primaryKey(),
@@ -41,7 +47,12 @@ export const poLines = pgTable("po_lines", {
   rate: money("rate").notNull(),
   receivedQty: qty("received_qty").notNull().default(0),
   rejectedQty: qty("rejected_qty").notNull().default(0),
-}, (t) => [primaryKey({ columns: [t.poId, t.lineNo] })]);
+}, (t) => [
+  primaryKey({ columns: [t.poId, t.lineNo] }),
+  // `received_qty` is the gross that arrived and `rejected_qty` the part of it turned away,
+  // so the second can never be the larger of the two.
+  check("po_lines_receipt_ck", sql`${t.rejectedQty} >= 0 and ${t.rejectedQty} <= ${t.receivedQty} and ${t.receivedQty} >= 0`),
+]);
 export const poLineSources = pgTable("po_line_sources", {
   poId: text("po_id").notNull().references(() => purchaseOrders.id),
   lineNo: integer("line_no").notNull(),
