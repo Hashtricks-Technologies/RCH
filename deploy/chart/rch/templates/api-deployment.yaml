@@ -11,7 +11,12 @@ spec:
       annotations: { checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }} }
     spec:
       serviceAccountName: {{ include "rch.sa" . }}
-      terminationGracePeriodSeconds: 30
+      # 60, because the shutdown this grants is 45 seconds long: apps/api/src/server.ts waits 20s
+      # after flipping /readyz to 503 (so the ALB's 15s health check can deregister this pod and
+      # the requests already in flight can land) and then gives itself a 25s drain timer. At the
+      # old 30 the kubelet's SIGKILL arrived at the exact moment that timer fired, so a slow
+      # request was cut rather than finished. Move any of the three numbers and move the others.
+      terminationGracePeriodSeconds: 60
       securityContext: { runAsNonRoot: true, runAsUser: 65532, fsGroup: 65532, seccompProfile: { type: RuntimeDefault } }
       {{- if .Values.api.topologySpread.enabled }}
       # Three replicas that land on one node make the PodDisruptionBudget decorative: draining

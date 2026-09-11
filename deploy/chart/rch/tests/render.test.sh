@@ -54,6 +54,19 @@ grep -q 'dist/cli/migrate.mjs' <<<"$out"
 # secretKeyRef must be optional.
 grep -q 'key: JWT_PREVIOUS_PUBLIC_KEY, optional: true' <<<"$out"
 grep -q 'path: /readyz' <<<"$out"
+# B4: the ALB's own health check must read /readyz too, not /healthz. /healthz answers 200 for as
+# long as the process exists — including the whole of a drain — so a pod that has already stopped
+# accepting still looks healthy to the load balancer and keeps being sent requests.
+grep -qE 'healthcheck-path: "?/readyz"?' <<<"$out"
+refute grep -q 'healthcheck-path: "*/healthz' <<<"$out"
+# ...and the target group must drain rather than cut: 30s for connections already in flight to
+# this pod to finish after it is deregistered.
+grep -q 'deregistration_delay.timeout_seconds=30' <<<"$out"
+# The grace period has to be longer than the shutdown it is granting. apps/api/src/server.ts waits
+# 20s for the load balancer to notice and then gives itself 25s to drain — 45s — and the kubelet
+# SIGKILLs whatever is left when this elapses. 30s (the old value) killed the pod exactly as its
+# own drain timer fired.
+grep -q 'terminationGracePeriodSeconds: 60' <<<"$out"
 grep -q 'idle_timeout.timeout_seconds=3600' <<<"$out"
 # Phase 3 SSE: the ALB must hold a stream open for an hour, and nginx must neither buffer it
 # nor time it out at the 60s it uses for ordinary /api calls.

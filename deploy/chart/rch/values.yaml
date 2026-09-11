@@ -43,7 +43,13 @@ ingress:
     alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443},{"HTTP":80}]'
     alb.ingress.kubernetes.io/ssl-redirect: "443"
     alb.ingress.kubernetes.io/load-balancer-attributes: idle_timeout.timeout_seconds=3600
-    alb.ingress.kubernetes.io/healthcheck-path: /healthz
+    # 30 seconds for requests already in flight towards a deregistering pod to finish, instead of
+    # the connection being cut the moment the pod leaves the target group. It sits inside the
+    # pod's own 60s terminationGracePeriodSeconds; see apps/api/src/server.ts for the arithmetic.
+    alb.ingress.kubernetes.io/target-group-attributes: deregistration_delay.timeout_seconds=30
+    # /readyz, not /healthz: /healthz answers 200 for as long as the process exists, draining
+    # included, so a pod that has stopped accepting still looks healthy to the load balancer.
+    alb.ingress.kubernetes.io/healthcheck-path: /readyz
 secrets:
   create: false           # true: build the Secret from the values below (staging, dev)
   # SEED_PASSWORD is the password the six seeded accounts start on; apps/api/src/config.ts has no

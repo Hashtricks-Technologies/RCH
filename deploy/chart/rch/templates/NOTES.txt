@@ -1,3 +1,16 @@
 RCH is available at https://{{ .Values.ingress.host }}
 To create a user: kubectl exec deploy/{{ .Release.Name }}-api -- /nodejs/bin/node dist/cli/users.mjs create --email <email> --role <role>
 To roll back this release: helm rollback {{ .Release.Name }}
+{{- if .Values.ingress.enabled }}
+
+ONE-TIME, before the first upgrade of this release: label the namespace so the AWS Load
+Balancer Controller injects a pod readiness gate.
+
+  kubectl label namespace {{ .Release.Namespace }} elbv2.k8s.aws/pod-readiness-gate-inject=enabled
+
+The ingress uses target-type: ip, so the ALB registers each pod directly. Without the gate a new
+pod counts as Ready the moment its own probe passes, while the load balancer is still registering
+it — and the Deployment's maxUnavailable: 0 then retires an old pod that was still serving in
+favour of a new one that is not yet receiving anything. With the gate, Ready means "registered
+and healthy in the target group", which is what a rollout should be waiting for.
+{{- end }}

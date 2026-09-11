@@ -55,7 +55,12 @@ ingress:
       access_logs.s3.enabled=true,
       access_logs.s3.bucket=rch-alb-logs,
       access_logs.s3.prefix=rch
-    alb.ingress.kubernetes.io/healthcheck-path: /healthz
+    # 30 seconds for requests already in flight towards a deregistering pod to finish. It sits
+    # inside the pod's 60s terminationGracePeriodSeconds; apps/api/src/server.ts has the sums.
+    alb.ingress.kubernetes.io/target-group-attributes: deregistration_delay.timeout_seconds=30
+    # /readyz, not /healthz: /healthz answers 200 for as long as the process exists, draining
+    # included, so a pod that has stopped accepting still looks healthy to the load balancer.
+    alb.ingress.kubernetes.io/healthcheck-path: /readyz
     alb.ingress.kubernetes.io/healthcheck-interval-seconds: "15"
     alb.ingress.kubernetes.io/wafv2-acl-arn: ""   # optional; leave empty to skip
 secrets:
