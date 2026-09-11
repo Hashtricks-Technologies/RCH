@@ -8,7 +8,9 @@ api:
   replicas: 2
   resources: { requests: { cpu: 200m, memory: 256Mi }, limits: { cpu: "1", memory: 512Mi } }
   hpa: { enabled: true, minReplicas: 2, maxReplicas: 6, cpu: 70 }
-  pdb: { minAvailable: 1 }
+  # maxUnavailable, and only above one replica — see templates/api-pdb.yaml for why a
+  # minAvailable budget is one a node drain can never satisfy.
+  pdb: { maxUnavailable: 1 }
   # Off everywhere but production: a laptop or a kind cluster has one node, so spreading across
   # topology.kubernetes.io/zone would only ever find one candidate.
   topologySpread: { enabled: false, maxSkew: 1, topologyKey: topology.kubernetes.io/zone, whenUnsatisfiable: ScheduleAnyway }
@@ -29,6 +31,7 @@ api:
 ui:
   replicas: 2
   resources: { requests: { cpu: 50m, memory: 64Mi }, limits: { cpu: 200m, memory: 128Mi } }
+  pdb: { maxUnavailable: 1 }
 ingress:
   enabled: true
   className: alb

@@ -15,7 +15,7 @@ spec:
       securityContext: { runAsNonRoot: true, runAsUser: 65532, fsGroup: 65532, seccompProfile: { type: RuntimeDefault } }
       {{- if .Values.api.topologySpread.enabled }}
       # Three replicas that land on one node make the PodDisruptionBudget decorative: draining
-      # that node takes the whole service with it whatever pdb.minAvailable says.
+      # that node takes the whole service with it whatever the PodDisruptionBudget says.
       topologySpreadConstraints:
         - maxSkew: {{ .Values.api.topologySpread.maxSkew }}
           topologyKey: {{ .Values.api.topologySpread.topologyKey }}

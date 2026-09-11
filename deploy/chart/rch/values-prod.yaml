@@ -10,9 +10,9 @@ api:
   # though one snapshot now takes one of those ten, not forty.
   resources: { requests: { cpu: 500m, memory: 512Mi }, limits: { cpu: "2", memory: 1Gi } }
   hpa: { enabled: true, minReplicas: 3, maxReplicas: 6, cpu: 70 }
-  pdb: { minAvailable: 2 }
+  pdb: { maxUnavailable: 1 }
   # Three replicas on one node make the PodDisruptionBudget decorative: draining that node takes
-  # the whole service with it whatever minAvailable says.
+  # the whole service with it whatever the budget says.
   topologySpread:
     enabled: true
     maxSkew: 1
@@ -35,6 +35,7 @@ api:
 ui:
   replicas: 3
   resources: { requests: { cpu: 100m, memory: 128Mi }, limits: { cpu: 500m, memory: 256Mi } }
+  pdb: { maxUnavailable: 1 }
 ingress:
   enabled: true
   className: alb

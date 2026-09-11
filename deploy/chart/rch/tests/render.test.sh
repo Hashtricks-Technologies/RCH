@@ -122,6 +122,14 @@ grep -q 'alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:x' <<<"$out_tls"
 grep -q 'name: DB_POOL_MAX' <<<"$out"
 # Three replicas that land on one node make the PodDisruptionBudget decorative.
 grep -q 'topologySpreadConstraints' <<<"$out"
+# B3: both Deployments get a PodDisruptionBudget, and both say maxUnavailable rather than
+# minAvailable — `minAvailable: N` at N replicas is a budget a drain can never satisfy, so
+# `kubectl drain` waits on it for good, where `maxUnavailable: 1` stays satisfiable at every
+# replica count above one.
+[ "$(grep -c 'kind: PodDisruptionBudget' <<<"$out")" = 2 ]
+grep -A4 '# Source: rch/templates/api-pdb.yaml' <<<"$out" | grep -q 'maxUnavailable: 1'
+grep -A4 '# Source: rch/templates/ui-pdb.yaml' <<<"$out" | grep -q 'maxUnavailable: 1'
+refute grep -q 'minAvailable' <<<"$out"
 # Production resources must be its own, not staging's inherited defaults. `-A6` never reaches
 # `resources:` (the api container is `- name: api` and resources is nine lines below it), which
 # is why the file's existing tests use a sed range — copy that shape, not a fixed window.
@@ -162,5 +170,17 @@ grep -q 'name: DB_POOL_MAX' <<<"$out"
 grep -q 'API_UPSTREAM' <<<"$out" || { echo "ui deployment lost API_UPSTREAM"; exit 1; }
 grep -q 'value: http://rch-api.default.svc.cluster.local:3000' <<<"$out" || { echo "API_UPSTREAM must be the API Service's FQDN (<release>-api.<namespace>.svc.cluster.local)"; exit 1; }
 refute grep -qE 'API_UPSTREAM, value: http://rch-api:3000' <<<"$out"
+
+# B6: values-dev.yaml is the one environment that actually runs, and until now nothing linted or
+# rendered it. Everything below is the dev leg.
+dev_args=(--set image.registry=r --set image.tag=t
+  --set-string secrets.values.DATABASE_URL=x --set-string secrets.values.JWT_PRIVATE_KEY=x
+  --set-string secrets.values.JWT_PUBLIC_KEY=x --set-string secrets.values.SEED_PASSWORD=x)
+helm lint . -f values-dev.yaml "${dev_args[@]}"
+out_dev=$(helm template rch . -f values-dev.yaml "${dev_args[@]}")
+# B3: one api pod and one ui pod. A PodDisruptionBudget of any shape over a single pod means that
+# pod may never be evicted, so the node under it may never be drained — which on a one-node spot
+# cluster is every node.
+refute grep -q 'kind: PodDisruptionBudget' <<<"$out_dev"
 
 echo "chart renders"
