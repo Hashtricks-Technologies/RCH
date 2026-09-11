@@ -89,8 +89,12 @@ export function createRequestsService(db: Db) {
         if (claims.role !== "manager") requireLocOf(claims, r.fromLoc, "your own counter");
         // The guard is at the door: widening REQUEST_TRANSITIONS to reach "Cancelled" from an
         // approved status must not re-open cancel for a request already holding a live ticket —
-        // a ticket already reserved stock a cancellation here would silently un-promise.
-        assertRule(r.ticketId == null, `${id} already has ticket ${r.ticketId} — cancel the ticket instead`);
+        // a ticket already reserved stock a cancellation here would silently un-promise. Scoped
+        // to "Ticket issued" and not merely "ticketId is set", because the column is never
+        // cleared once a ticket exists — a Collected or Closed request still carries it, and
+        // "cancel the ticket instead" is not advice either of those can act on. Every other
+        // refused status falls straight through to assertTransition's own "is already <status>".
+        assertRule(r.status !== "Ticket issued", `${id} already has ticket ${r.ticketId} — cancel the ticket instead`);
         assertTransition(REQUEST_TRANSITIONS, r.status, "Cancelled", id);
         const wasApproved = r.status === "Manager approved" || r.status === "Partially approved";
         await requestsRepo.setStatus(tx, id, { status: "Cancelled" });

@@ -131,12 +131,33 @@ describe("POST /requests/:id/cancel", () => {
   });
 
   it("refuses to cancel a request that already has a ticket, and names the ticket", async () => {
-    // REQ-2026-0909 is already Ticket issued, against TKT-0440 — the ticket-id guard fires
-    // before the transition table is ever consulted, so cancelling here reads as "go cancel
-    // the ticket" rather than the generic "already ticket issued" refusal.
+    // REQ-2026-0909 is already Ticket issued, against TKT-0440 — the ticket-naming sentence
+    // fires before the transition table is ever consulted, so cancelling here reads as "go
+    // cancel the ticket" rather than the generic "already ticket issued" refusal.
     const r = await post("u1", "/requests/REQ-2026-0909/cancel");
     expect(r.statusCode).toBe(422);
     expect(r.json().error.message).toBe("REQ-2026-0909 already has ticket TKT-0440 — cancel the ticket instead");
+  });
+
+  it("refuses to cancel a collected request in its own words, not the ticket's", async () => {
+    // `ticketId` is never cleared once a request has one, so a Collected row still carries it —
+    // the ticket-naming sentence has to stay scoped to "Ticket issued" or this would answer
+    // "cancel the ticket instead" about a ticket the collector already walked off with.
+    const id = await given.request(app.testDb!.db, {
+      from: "coffee", st: "Collected", ticket: "TKT-0440", lines: [{ it: "milk", qty: 5, appr: 5 }],
+    });
+    const r = await post("u1", `/requests/${id}/cancel`);
+    expect(r.statusCode).toBe(422);
+    expect(r.json().error.message).toBe(`${id} is already collected`);
+  });
+
+  it("refuses to cancel a closed request in its own words, not the ticket's", async () => {
+    const id = await given.request(app.testDb!.db, {
+      from: "coffee", st: "Closed", ticket: "TKT-0440", lines: [{ it: "milk", qty: 5, appr: 5 }],
+    });
+    const r = await post("u1", `/requests/${id}/cancel`);
+    expect(r.statusCode).toBe(422);
+    expect(r.json().error.message).toBe(`${id} is already closed`);
   });
 
   it("withdraws a request the manager approved but the store never issued, and frees its promise", async () => {
