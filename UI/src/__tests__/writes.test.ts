@@ -1604,3 +1604,85 @@ describe("what the browser no longer knows on its own", () => {
     expect(S().toast).toBe("Could not read the stock ledger.");
   });
 });
+
+// ---- prod-order raise ----
+describe("raiseProdOrder — POST /prod-orders", () => {
+  const RAISED = {
+    id: "PRD-2026-031", from: "kiosk", by: "Deepa Selvam", at: "2026-09-11T04:10:00.000Z",
+    lines: [{ it: "puff", qty: 40 }], st: "New", note: "Lunch rush", need: "2026-09-11",
+    hist: [{ s: "Raised", who: "Deepa Selvam", t: "2026-09-11T04:10:00.000Z" }],
+  };
+
+  it("sends the outlet, the lines and the date, and reads the board back", async () => {
+    as("counter");
+    serve({
+      "POST /api/v1/prod-orders": () => json({ result: RAISED, changed: ["pord"], message: "PRD-2026-031 raised for Snack Kiosk — 1 item, needed by 11-Sep-2026" }),
+      "GET /api/v1/prod-orders": () => json([RAISED]),
+    });
+
+    expect(await S().raiseProdOrder({ from: "kiosk", lines: [{ it: "puff", qty: 40 }], need: "2026-09-11", note: "Lunch rush" })).toBe(true);
+
+    expect(hit("POST /api/v1/prod-orders")[0].body).toEqual({
+      from: "kiosk", lines: [{ it: "puff", qty: 40 }], need: "2026-09-11", note: "Lunch rush",
+    });
+    // `pord` has a narrow reader, so a raise costs one GET and not a whole snapshot.
+    expect(hit("GET /api/v1/prod-orders")).toHaveLength(1);
+    expect(hit("GET /api/v1/snapshot")).toHaveLength(0);
+    expect(S().pord.map((o) => o.id)).toContain("PRD-2026-031");
+    expect(S().pord[0].need).toBe("2026-09-11");
+    expect(S().toast).toBe("PRD-2026-031 raised for Snack Kiosk — 1 item, needed by 11-Sep-2026");
+  });
+
+  it("leaves the date off the body when none was given", async () => {
+    as("counter");
+    const { need: _need, ...undated } = RAISED;
+    serve({
+      "POST /api/v1/prod-orders": () => json({ result: undated, changed: ["pord"], message: "PRD-2026-031 raised for Snack Kiosk — 1 item" }),
+      "GET /api/v1/prod-orders": () => json([undated]),
+    });
+
+    await S().raiseProdOrder({ from: "kiosk", lines: [{ it: "puff", qty: 40 }], note: "" });
+
+    expect(hit("POST /api/v1/prod-orders")[0].body).toEqual({ from: "kiosk", lines: [{ it: "puff", qty: 40 }], note: "" });
+    expect(S().pord[0]).not.toHaveProperty("need");
+  });
+
+  it("answers false on a refusal, so the card keeps what was typed", async () => {
+    as("counter");
+    const before = S().pord.length;
+    serve({ "POST /api/v1/prod-orders": () => refusal("Veg sandwich is not listed at Snack Kiosk — add it to that menu first") });
+
+    expect(await S().raiseProdOrder({ from: "kiosk", lines: [{ it: "sand", qty: 6 }], note: "" })).toBe(false);
+
+    expect(S().toast).toBe("Veg sandwich is not listed at Snack Kiosk — add it to that menu first");
+    expect(S().pord).toHaveLength(before);
+    expect(hit("GET /api/v1/prod-orders")).toHaveLength(0);
+  });
+
+  it("the counter's card sends what the operator typed and clears itself", async () => {
+    as("counter");
+    serve({
+      "POST /api/v1/prod-orders": () => json({ result: RAISED, changed: ["pord"], message: "PRD-2026-031 raised for Coffee Shop — 1 item" }),
+      "GET /api/v1/prod-orders": () => json([RAISED]),
+    });
+
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    await act(async () => { root.render(createElement(MemoryRouter, null, createElement(CounterRequests))); });
+
+    // The card opens on its own action tile, and the form only exists once it is open.
+    const openIt = [...host.querySelectorAll("button")].find((b) => b.textContent?.includes("From the kitchen"))!;
+    await act(async () => { openIt.click(); });
+    const send = [...host.querySelectorAll("button")].find((b) => b.textContent === "Send to the kitchen")!;
+    await act(async () => { send.click(); });
+
+    const body = hit("POST /api/v1/prod-orders")[0].body as { from: string; lines: { it: string }[] };
+    // The signed-in counter is the Coffee Shop, and `capp` is the first made item on its menu.
+    expect(body.from).toBe("coffee");
+    expect(body.lines).toHaveLength(1);
+    expect(["capp", "chai"]).toContain(body.lines[0].it);
+    await act(async () => { root.unmount(); });
+    host.remove();
+  });
+});

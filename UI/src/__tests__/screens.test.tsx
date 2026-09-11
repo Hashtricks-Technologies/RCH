@@ -92,6 +92,10 @@ describe("drawers render", () => {
     ["bgrn", "PO-2026-0141", "buyer"],
     ["bven", "VN-001", "buyer"],
     ["cconfig", "juice", "counter"],
+    // ---- prod-order raise ---- the raiser's side of a production order, and the manager's
+    // way of booking one. `korder` opens on nothing in particular, so its id is a placeholder.
+    ["cpord", "PRD-2026-029", "counter"],
+    ["korder", "new", "manager"],
   ];
   for (const [key, id, role] of cases) {
     it(key, () => {
@@ -397,5 +401,47 @@ describe("the counter's ticket drawer reads its own direction", () => {
     expect(open(sent())).toContain("Withdraw this ticket");
     expect(open(sent({ st: "Collected" }))).not.toContain("Withdraw this ticket");
     expect(open(inbound())).not.toContain("Withdraw this ticket");
+  });
+});
+
+// ---- prod-order raise ----
+describe("the counter can ask the kitchen, and only for what the kitchen makes", () => {
+  it("offers the made items on this outlet's menu and nothing bought in", () => {
+    act(() => { as("counter"); });                       // Kavitha, Coffee Shop
+    // The form only exists once the card's own action tile is pressed, so this renders into a
+    // host it keeps mounted rather than going through `render` above, which unmounts to return.
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    act(() => { root.render(createElement(MemoryRouter, null, createElement(counter.requests))); });
+    expect(host.innerHTML).toContain("Ask the kitchen");
+
+    const tile = [...host.querySelectorAll("button")].find((b) => b.textContent?.includes("From the kitchen"))!;
+    act(() => { tile.click(); });
+    const options = [...host.querySelectorAll("select[aria-label='Product 1'] option")].map((o) => o.textContent);
+    // The Coffee Shop's menu is capp, chai, juice, water, bisc, chips. Only the first two are
+    // made in the kitchen; a stock request is the door for the other four, and the picker must
+    // not offer them here or the counter reads the server's refusal instead of a tray.
+    expect(options).toEqual(["Cappuccino", "Masala tea"]);
+
+    act(() => { root.unmount(); });
+    host.remove();
+  });
+
+  it("prints a needed-by date on the kitchen's board only when the outlet gave one", () => {
+    act(() => {
+      as("prod");
+      useApp.setState({
+        pord: [
+          { id: "PRD-2026-031", from: "kiosk", by: "Deepa Selvam", at: "07:10", lines: [{ it: "puff", qty: 40 }],
+            st: "New", note: "", need: "2026-09-11", hist: [{ s: "Raised", who: "Deepa Selvam", t: "07:10" }] },
+          { id: "PRD-2026-032", from: "kiosk", by: "Deepa Selvam", at: "07:20", lines: [{ it: "puff", qty: 10 }],
+            st: "New", note: "", hist: [{ s: "Raised", who: "Deepa Selvam", t: "07:20" }] },
+        ],
+      });
+    });
+    const html = render(createElement(prod.orders));
+    expect(html).toContain("needed by 11-Sep-2026");
+    expect(html.match(/needed by/g)).toHaveLength(1);
   });
 });

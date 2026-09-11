@@ -5,6 +5,8 @@ import ItemsStock from "./ItemsStock";
 import Prices from "./Prices";
 import Availability from "./Availability";
 import "./ApprovalDrawer";
+// ---- prod-order raise ----
+import "./KitchenOrderDrawer";
 
 export const screens: Record<string, ComponentType> = {
   dash: Dashboard, approvals: Approvals, stock: ItemsStock, prices: Prices, avail: Availability,

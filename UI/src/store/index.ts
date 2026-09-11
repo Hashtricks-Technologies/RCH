@@ -117,7 +117,24 @@ export interface AppState extends ProcurementSlice, OpsSlice {
   setShopFilter: (l: LocKey | null) => void;
   setTheme: (t: ThemePref) => void;
   cycleTheme: () => void;
+
+  // ---- prod-order raise ----
+  /** An outlet asking the Central Kitchen to make something (POST /prod-orders). A counter
+   *  leaves `from` off — the server pins it to the token — and the manager names the outlet.
+   *  Answers `true` only once the server has taken it, so a refused card keeps what was typed. */
+  raiseProdOrder: (body: ProdOrderInput) => Promise<boolean>;
 }
+
+// ---- prod-order raise ----
+/** What the two cards that raise one hand over. `note` is optional because the schema defaults
+ *  it, and `need` is a wire date (`yyyy-mm-dd`) or nothing at all — a blank date box is an
+ *  order with no deadline, not an order due on the epoch. */
+export type ProdOrderInput = {
+  from?: LocKey;
+  lines: { it: string; qty: number }[];
+  need?: string;
+  note?: string;
+};
 
 /** Every collection starts empty and is filled by `applySnapshot`. Nothing here is data: the
  *  screens do not render until `auth` reaches "ready", which only a snapshot can do. `stock` is
@@ -521,6 +538,22 @@ export const useApp = create<AppState>((set, get) => ({
     set({ theme });
   },
   cycleTheme: () => get().setTheme(nextTheme(get().theme)),
+
+  // ---- prod-order raise ----
+  /** The outlet's ask of the kitchen (POST /prod-orders). Nothing is reserved by raising one —
+   *  the kitchen's shelves are untouched until it dispatches — so there is no cover check to
+   *  preview here, only the ask and what the server says about it. */
+  raiseProdOrder: async (body) => {
+    try {
+      const r = await call(routes.createProdOrder, { body });
+      get().notify(r.message);
+      await refetch(r.changed, r.message);
+      return true;
+    } catch (e) {
+      get().notify(e instanceof ApiError ? e.message : "Could not send the order to the kitchen — check the connection and try again.");
+      return false;
+    }
+  },
 
   ...createProcurementSlice(get),
   // The ops slice writes nothing directly any more — every action of it posts and refetches —

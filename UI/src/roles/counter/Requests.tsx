@@ -7,6 +7,8 @@ import {
   Alert, Btn, BtnRow, Card, DataTable, Field, ImagePlaceholder, Icon, PageHead, Pill, StatusPill,
 } from "../../ui/kit";
 import type { LocKey } from "../../types";
+// ---- prod-order raise ----
+import KitchenOrderCard from "./KitchenOrderCard";
 
 /** Anything a shop can be asked for — not raw ingredients, not made-to-order. */
 const sellable = () => Object.keys(IT)
@@ -289,6 +291,11 @@ export default function Requests() {
           </BtnRow>
         </div>
       )}
+
+      {/* ---- prod-order raise ---- the third source of stock, beside the store and a peer shop:
+          the Central Kitchen making it. Its own card because it comes with its own list — the
+          orders this counter has raised, which nothing here showed before. */}
+      <KitchenOrderCard loc={loc} />
 
       <Card title="All requests" sub={`${rows.length} from or to ${L.n}`} flush className="mtop">
         <DataTable
