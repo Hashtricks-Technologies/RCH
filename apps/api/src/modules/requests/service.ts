@@ -76,16 +76,30 @@ export function createRequestsService(db: Db) {
       });
     },
 
-    /** The counter's own withdrawal, while the manager has not decided yet. */
+    /**
+     * The counter's own withdrawal while the manager has not decided yet, or the manager
+     * withdrawing their own approval before the store ever issues a ticket. A manager is
+     * hospital-wide — one manager supervises every outlet — so only counter/prod scope to
+     * the raiser's own location; the manager does not.
+     */
     async cancel(claims: AccessClaims, id: string): Promise<WriteResponse<StockRequest>> {
       return withTransaction(db, async (tx) => {
         const r = await requestsRepo.head(tx, id);
         if (!r) throw new NotFoundError(`There is no request ${id}.`);
-        requireLocOf(claims, r.fromLoc, "your own counter");
+        if (claims.role !== "manager") requireLocOf(claims, r.fromLoc, "your own counter");
+        // The guard is at the door: widening REQUEST_TRANSITIONS to reach "Cancelled" from an
+        // approved status must not re-open cancel for a request already holding a live ticket —
+        // a ticket already reserved stock a cancellation here would silently un-promise. Scoped
+        // to "Ticket issued" and not merely "ticketId is set", because the column is never
+        // cleared once a ticket exists — a Collected or Closed request still carries it, and
+        // "cancel the ticket instead" is not advice either of those can act on. Every other
+        // refused status falls straight through to assertTransition's own "is already <status>".
+        assertRule(r.status !== "Ticket issued", `${id} already has ticket ${r.ticketId} — cancel the ticket instead`);
         assertTransition(REQUEST_TRANSITIONS, r.status, "Cancelled", id);
+        const wasApproved = r.status === "Manager approved" || r.status === "Partially approved";
         await requestsRepo.setStatus(tx, id, { status: "Cancelled" });
         const who = await requestsRepo.userName(tx, claims.sub);
-        await appendHistory(tx, "request", id, "Cancelled", who);
+        await appendHistory(tx, "request", id, wasApproved ? "Cancelled — never issued" : "Cancelled", who);
 
         const changed = ["req"] as const;
         await emitChanged(tx, changed);
@@ -96,6 +110,8 @@ export function createRequestsService(db: Db) {
     /**
      * The manager's decision. Never more than the counter asked for, never more than the
      * manager typed, and never more than the central store can still promise (C6).
+     * A manager is hospital-wide — one manager supervises every outlet — so this takes no
+     * location, deliberately; `reject`, below, is the same.
      */
     async approve(claims: AccessClaims, id: string, body: ApproveRequestBody): Promise<WriteResponse<ApprovalResult>> {
       return withTransaction(db, async (tx) => {

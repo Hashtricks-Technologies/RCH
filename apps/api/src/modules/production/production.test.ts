@@ -8,7 +8,7 @@ import { authHeaders } from "../../test/auth.js";
 import { given } from "../../test/builders.js";
 import { truncateAll, warmPool } from "../../test/db.js";
 import { postMoves } from "../../lib/ledger.js";
-import { batches as batchesTable, reservations, stockBalances, stockMoves, tickets } from "../../db/schema/index.js";
+import { batches as batchesTable, items, recipeLines, recipes, reservations, stockBalances, stockMoves, tickets } from "../../db/schema/index.js";
 import type { InjectOptions } from "fastify";
 import type { App } from "../../app.js";
 
@@ -35,6 +35,19 @@ const getBatches = async () => (await app.inject({ method: "GET", url: "/api/v1/
 /** Bake enough of an item that the kitchen can cover a dispatch. */
 const bake = (it: string, n: number) =>
   app.testDb!.db.transaction((tx) => postMoves(tx, [{ loc: "kitchen", it, qty: n, kind: "production_yield", refType: "test", refId: "bake" }]));
+/**
+ * A non-MTO item with a recipe and no shelf-life value. `capp`/`chai` used to be the fixtures'
+ * only items shaped that way — a recipe, no `sl` — but C2 refuses a batch of either outright
+ * now that both are MTO, so the two cases below that exercise `shelf.ts`'s no-shelf-life
+ * fallback and the M12 phantom-row guard need an item of their own to still prove anything.
+ */
+const seedNoShelfLifeItem = async (key: string) => {
+  await app.testDb!.db.insert(items).values({
+    key, code: `TST-${key}`, name: "Test scone", unit: "nos", type: "FG", grp: "Bakery", hsn: "1905", gst: 5, cost: 10,
+  });
+  await app.testDb!.db.insert(recipes).values({ itemKey: key, overheadPct: 10 });
+  await app.testDb!.db.insert(recipeLines).values({ itemKey: key, ingredientKey: "leaf", qty: 0.008, seq: 0 });
+};
 /**
  * The seed's two orders sit at New and Accepted, so a case about the transition table has to
  * write its own board. Ids are drawn above both the fixtures (PRD-2026-029/030) and the
@@ -188,6 +201,19 @@ describe("POST /distributions", () => {
     expect((await post("u4", "/distributions", { it: "totally-fake", qty: 1, to: "kiosk" })).json().error.message).toBe("There is no item totally-fake.");
     expect((await post("u1", "/distributions", { it: "puff", qty: 1, to: "kiosk" })).statusCode).toBe(404);
   });
+
+  it("refuses to distribute a made-to-order item", async () => {
+    // A made-to-order item has nothing sitting on a kitchen shelf to send anywhere — it is made
+    // at the till the moment it is sold, so distributing it would mint a ticket for stock that
+    // does not exist.
+    const before = await app.testDb!.db.select().from(tickets);
+    const movesBefore = (await app.testDb!.db.select().from(stockMoves)).length;
+    const r = await post("u4", "/distributions", { it: "capp", qty: 5, to: "kiosk" });
+    expect(r.statusCode, r.body).toBe(422);
+    expect(r.json().error.message).toBe("Cappuccino is made to order at the counter — it is not distributed");
+    expect(await app.testDb!.db.select().from(tickets)).toHaveLength(before.length);
+    expect((await app.testDb!.db.select().from(stockMoves)).length).toBe(movesBefore);
+  });
 });
 
 /** Every batch row the database holds, newest first, for a suite that wants to count them. */
@@ -330,10 +356,11 @@ describe("POST /batches", () => {
   });
 
   it("keeps a product with no shelf life recorded for the working day", async () => {
-    // The kitchen carries no tea leaf — it is the store that stocks it — so a make of masala
-    // tea has to be given its ingredient before the shelf life is what the case is about.
+    // The kitchen carries no tea leaf — it is the store that stocks it — so a make of this test
+    // item has to be given its ingredient before the shelf life is what the case is about.
+    await seedNoShelfLifeItem("tstscone");
     await bake("leaf", 1);
-    const r = await post("u4", "/batches", { it: "chai", started: 4 });
+    const r = await post("u4", "/batches", { it: "tstscone", started: 4 });
     expect(r.statusCode, r.body).toBe(200);
     const row = (await allBatches()).find((x) => x.id === r.json().result.id)!;
     expect(new Date(row.bestBefore).getTime() - new Date(row.at).getTime()).toBe(8 * 3600_000);
@@ -361,19 +388,20 @@ describe("POST /batches", () => {
   });
 
   it("leaves no phantom shelf line when a total loss is of something the kitchen never carried", async () => {
-    // The kitchen carries no `chai` — it has a recipe but has never been made here. A batch
+    // The kitchen carries no `tstscone` — it has a recipe but has never been made here. A batch
     // that yields nothing must not lock, and so must not create, its balance row: a zero row
     // reads as "this location carries the line" on every stock screen (M12, spec §16).
+    await seedNoShelfLifeItem("tstscone");
     await bake("leaf", 1);
     expect((await app.testDb!.db.select().from(stockBalances)
-      .where(and(eq(stockBalances.loc, "kitchen"), eq(stockBalances.itemKey, "chai")))))
+      .where(and(eq(stockBalances.loc, "kitchen"), eq(stockBalances.itemKey, "tstscone")))))
       .toHaveLength(0);
 
-    const r = await post("u4", "/batches", { it: "chai", started: 4, made: 0, note: "Urn boiled dry" });
+    const r = await post("u4", "/batches", { it: "tstscone", started: 4, made: 0, note: "Urn boiled dry" });
     expect(r.statusCode, r.body).toBe(200);
 
     expect((await app.testDb!.db.select().from(stockBalances)
-      .where(and(eq(stockBalances.loc, "kitchen"), eq(stockBalances.itemKey, "chai")))))
+      .where(and(eq(stockBalances.loc, "kitchen"), eq(stockBalances.itemKey, "tstscone")))))
       .toHaveLength(0);
   });
 
@@ -403,6 +431,17 @@ describe("POST /batches", () => {
     const r = await post("u4", "/batches", { it: "water", started: 10 });
     expect(r.statusCode).toBe(422);
     expect(r.json().error.message).toBe("Mineral water 1L has no recipe — it cannot be produced");
+  });
+
+  it("refuses to batch a made-to-order item — a cappuccino is made at the till, not stocked", async () => {
+    // `capp` carries both a recipe and a menu listing (t: "MTO"), so the recipe check alone
+    // would let the kitchen batch a phantom shelf of a drink that only ever exists at the till.
+    const count = await moveCount();
+    const r = await post("u4", "/batches", { it: "capp", started: 10 });
+    expect(r.statusCode).toBe(422);
+    expect(r.json().error.message).toBe("Cappuccino is made to order at the counter — it is not batched");
+    expect(await moveCount()).toBe(count);
+    expect(await allBatches()).toHaveLength(1);   // the seeded one, and no more
   });
 
   it("names the ingredient that ran out, and moves nothing (C1)", async () => {

@@ -163,6 +163,31 @@ describe("drawers render", () => {
     expect(notSellable).not.toContain("Available at");
     expect(sellable).toContain("Available at");
   });
+
+  // C1: an approved request the store never issued a ticket against is no longer a dead end.
+  // REQ-2026-0910 is Manager approved with no ticket, REQ-2026-0909 is already Ticket issued —
+  // both fixture rows, not injected, since the raiser's own drawer draws its button straight
+  // off REQUEST_TRANSITIONS and needed nothing else changed to pick up the widened table.
+  it("creq offers Cancel request live for an approval still awaiting a ticket, disabled once one is issued", () => {
+    act(() => { as("counter"); });
+    const cancelBtn = (html: string) => html.match(/<button[^>]*>Cancel request<\/button>/)?.[0];
+    const awaitingTicket = render(createElement(DRAWERS.creq, { id: "REQ-2026-0910" }));
+    const ticketed = render(createElement(DRAWERS.creq, { id: "REQ-2026-0909" }));
+    expect(cancelBtn(awaitingTicket)).toBeDefined();
+    expect(cancelBtn(awaitingTicket)).not.toContain("disabled");
+    expect(cancelBtn(ticketed)).toBeDefined();
+    expect(cancelBtn(ticketed)).toContain("disabled");
+  });
+
+  // C1's other new door: the manager who made the approval can withdraw it themselves, right
+  // up until the store turns it into a ticket.
+  it("mreq offers Withdraw approval for a decision still awaiting a ticket, and not once one is issued", () => {
+    act(() => { as("manager"); });
+    const awaitingTicket = render(createElement(DRAWERS.mreq, { id: "REQ-2026-0910" }));
+    const ticketed = render(createElement(DRAWERS.mreq, { id: "REQ-2026-0909" }));
+    expect(awaitingTicket).toContain("Withdraw approval");
+    expect(ticketed).not.toContain("Withdraw approval");
+  });
 });
 
 describe("sign-in", () => {

@@ -108,10 +108,6 @@ describe("POST /requests/:id/cancel", () => {
     // stamped at fixed times of day (09:14 for this one), so whether a row written *now* lands
     // at the end depends on the wall clock the suite happens to run at.
     expect(open.json().result.hist).toContainEqual({ s: "Cancelled", who: "Kavitha Raman", t: expect.any(String) });
-
-    const gone = await post("u1", "/requests/REQ-2026-0909/cancel");     // already Ticket issued
-    expect(gone.statusCode).toBe(422);
-    expect(gone.json().error.message).toBe("REQ-2026-0909 is already ticket issued");
   });
 
   it("refuses to cancel another outlet's request", async () => {
@@ -120,10 +116,71 @@ describe("POST /requests/:id/cancel", () => {
     expect(r.json().error.message).toBe("You can only do this for your own counter.");
   });
 
+  it("still refuses a counter cancelling another outlet's request", async () => {
+    // REQ-2026-0910 is kiosk's own, Manager approved and carrying no ticket — now cancellable in
+    // principle, but only by kiosk itself or the manager, not a coffee-shop operator.
+    const r = await post("u1", "/requests/REQ-2026-0910/cancel");
+    expect(r.statusCode).toBe(403);
+    expect(r.json().error.message).toBe("You can only do this for your own counter.");
+  });
+
   it("404s an id that is not there", async () => {
     const r = await post("u1", "/requests/REQ-2026-9999/cancel");
     expect(r.json().error.message).toBe("There is no request REQ-2026-9999.");
     expect(r.statusCode).toBe(404);
+  });
+
+  it("refuses to cancel a request that already has a ticket, and names the ticket", async () => {
+    // REQ-2026-0909 is already Ticket issued, against TKT-0440 — the ticket-naming sentence
+    // fires before the transition table is ever consulted, so cancelling here reads as "go
+    // cancel the ticket" rather than the generic "already ticket issued" refusal.
+    const r = await post("u1", "/requests/REQ-2026-0909/cancel");
+    expect(r.statusCode).toBe(422);
+    expect(r.json().error.message).toBe("REQ-2026-0909 already has ticket TKT-0440 — cancel the ticket instead");
+  });
+
+  it("refuses to cancel a collected request in its own words, not the ticket's", async () => {
+    // `ticketId` is never cleared once a request has one, so a Collected row still carries it —
+    // the ticket-naming sentence has to stay scoped to "Ticket issued" or this would answer
+    // "cancel the ticket instead" about a ticket the collector already walked off with.
+    const id = await given.request(app.testDb!.db, {
+      from: "coffee", st: "Collected", ticket: "TKT-0440", lines: [{ it: "milk", qty: 5, appr: 5 }],
+    });
+    const r = await post("u1", `/requests/${id}/cancel`);
+    expect(r.statusCode).toBe(422);
+    expect(r.json().error.message).toBe(`${id} is already collected`);
+  });
+
+  it("refuses to cancel a closed request in its own words, not the ticket's", async () => {
+    const id = await given.request(app.testDb!.db, {
+      from: "coffee", st: "Closed", ticket: "TKT-0440", lines: [{ it: "milk", qty: 5, appr: 5 }],
+    });
+    const r = await post("u1", `/requests/${id}/cancel`);
+    expect(r.statusCode).toBe(422);
+    expect(r.json().error.message).toBe(`${id} is already closed`);
+  });
+
+  it("withdraws a request the manager approved but the store never issued, and frees its promise", async () => {
+    // REQ-2026-0910 (kiosk, Manager approved, no ticket) already commits 1 of the store's 4
+    // butter — a second request for the whole 4 would be trimmed to 3 until this is withdrawn.
+    const r = await post("u2", "/requests/REQ-2026-0910/cancel");
+    expect(r.statusCode).toBe(200);
+    expect(r.json().result.st).toBe("Cancelled");
+    expect(r.json().message).toBe("REQ-2026-0910 cancelled");
+    expect(r.json().result.hist).toContainEqual({ s: "Cancelled — never issued", who: "Ramesh Kumar", t: expect.any(String) });
+
+    const id = await given.request(app.testDb!.db, { from: "kiosk", lines: [{ it: "butter", qty: 4 }] });
+    const approve = await post("u2", `/requests/${id}/approve`, { appr: [4], note: "" });
+    expect(approve.statusCode).toBe(200);
+    expect(approve.json().result.request.lines).toEqual([{ it: "butter", qty: 4, appr: 4, short: 0 }]);
+    expect(approve.json().result.trimmed).toBe(false);
+  });
+
+  it("lets the manager withdraw their own approval, from any outlet", async () => {
+    // u2's own home location is "rest" — nowhere near kiosk — and a manager takes no requireLocOf.
+    const r = await post("u2", "/requests/REQ-2026-0910/cancel");
+    expect(r.statusCode).toBe(200);
+    expect(r.json().result.st).toBe("Cancelled");
   });
 });
 
