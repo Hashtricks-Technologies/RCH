@@ -3,12 +3,13 @@ import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { MemoryRouter } from "react-router-dom";
 import * as FX from "@rch/contract/fixtures";
+import type { Changed } from "@rch/contract";
 import { creditBreachMessage } from "@rch/domain";
 import { refetch } from "../api/refetch";
 import { applySnapshot } from "../api/wire";
 import { setAccessToken } from "../api/session";
 import { qty } from "../lib/selectors";
-import { IT, PATIENTS } from "../data/master";
+import { IT, PATIENTS, hydrateMaster } from "../data/master";
 import Pos from "../roles/counter/Pos";
 import CounterRequests from "../roles/counter/Requests";
 import MakeDistribute from "../roles/prod/MakeDistribute";
@@ -293,19 +294,21 @@ describe("toggleAvail — POST /availability/toggle", () => {
 });
 
 describe("savePrice — PUT /prices/:list/:it", () => {
-  it("puts the price on the named list and takes a fresh snapshot", async () => {
+  it("puts the price on the named list and reads the price list back on its own", async () => {
     as("manager");
     serve({
       "PUT /api/v1/prices/B/juice": () => json({ result: { list: "B", it: "juice", price: 18 }, changed: ["prices"], message: "Fresh Juice 200ml priced at ₹18 on list B" }),
-      "GET /api/v1/snapshot": () => json(snapshot({ A: FX.PL.A, B: { ...FX.PL.B, juice: 18 } })),
+      "GET /api/v1/prices": () => json({ A: FX.PL.A, B: { ...FX.PL.B, juice: 18 } }),
     });
 
     await S().savePrice("B", "juice", 18);
 
     expect(hit("PUT /api/v1/prices/B/juice")[0].body).toEqual({ price: 18 });
     expect(S().toast).toBe("Fresh Juice 200ml priced at ₹18 on list B");
-    // "prices" has no narrow reader yet, so it costs one snapshot.
-    expect(hit("GET /api/v1/snapshot")).toHaveLength(1);
+    // A price change is a price change, not a new day: GET /prices, never the whole snapshot,
+    // which would put the app back behind the loading splash for every row the manager edits.
+    expect(hit("GET /api/v1/prices")).toHaveLength(1);
+    expect(hit("GET /api/v1/snapshot")).toHaveLength(0);
     expect(hit("GET /api/v1/stock")).toHaveLength(0);
     expect(S().prices.B.juice).toBe(18);
   });
@@ -328,28 +331,32 @@ describe("addProduct / removeProduct — the menu routes", () => {
     as("manager");
     serve({
       "POST /api/v1/menus/coffee/items": () => json({ result: { loc: "coffee", items: ["juice"] }, changed: ["menu"], message: "Fresh Juice 200ml listed at Floor 3 Coffee Bar" }),
-      "GET /api/v1/snapshot": () => json(snapshot()),
+      "GET /api/v1/menus": () => json({ ...FX.MENU, coffee: [...FX.MENU.coffee, "juice"] }),
     });
 
     await S().addProduct("coffee", "juice");
 
     expect(hit("POST /api/v1/menus/coffee/items")[0].body).toEqual({ it: "juice" });
     expect(S().toast).toBe("Fresh Juice 200ml listed at Floor 3 Coffee Bar");
-    expect(hit("GET /api/v1/snapshot")).toHaveLength(1);
+    expect(hit("GET /api/v1/menus")).toHaveLength(1);
+    expect(hit("GET /api/v1/snapshot")).toHaveLength(0);
+    expect(S().menu.coffee).toContain("juice");
   });
 
   it("deletes a listing at /menus/:loc/items/:it, with no body", async () => {
     as("manager");
     serve({
       "DELETE /api/v1/menus/coffee/items/chips": () => json({ result: { loc: "coffee", items: [] }, changed: ["menu"], message: "Potato Chips 30g removed from Floor 3 Coffee Bar" }),
-      "GET /api/v1/snapshot": () => json(snapshot()),
+      "GET /api/v1/menus": () => json({ ...FX.MENU, coffee: FX.MENU.coffee.filter((x) => x !== "chips") }),
     });
 
     await S().removeProduct("coffee", "chips");
 
     expect(hit("DELETE /api/v1/menus/coffee/items/chips")[0].body).toBeUndefined();
     expect(S().toast).toBe("Potato Chips 30g removed from Floor 3 Coffee Bar");
-    expect(hit("GET /api/v1/snapshot")).toHaveLength(1);
+    expect(hit("GET /api/v1/menus")).toHaveLength(1);
+    expect(hit("GET /api/v1/snapshot")).toHaveLength(0);
+    expect(S().menu.coffee).not.toContain("chips");
   });
 
   it("repeats the refusal for an item already on the menu", async () => {
@@ -378,15 +385,24 @@ describe("refetch — what a write says it changed is what gets read", () => {
     expect(calls().map((c) => c.at).sort()).toEqual(["GET /api/v1/bills", "GET /api/v1/stock"]);
   });
 
+  it("reads the balances and the price list side by side, without a snapshot", async () => {
+    serve({ "GET /api/v1/stock": () => json(STOCK), "GET /api/v1/prices": () => json(FX.PL) });
+    await refetch(["stock", "prices"]);
+    expect(calls().map((c) => c.at).sort()).toEqual(["GET /api/v1/prices", "GET /api/v1/stock"]);
+  });
+
   it("falls back to the whole snapshot for a slice with no narrow reader", async () => {
+    // Every collection the contract names has a reader of its own now, so the fallback is
+    // reached only by a collection added to the enum and not to NARROW. That is the case worth
+    // pinning: the next one must still refresh the screen rather than silently read nothing.
     serve({ "GET /api/v1/snapshot": () => json(snapshot()) });
-    await refetch(["menu"]);
+    await refetch(["a-collection-with-no-reader" as Changed]);
     expect(calls().map((c) => c.at)).toEqual(["GET /api/v1/snapshot"]);
   });
 
   it("takes the snapshot alone when a write touched both kinds", async () => {
     serve({ "GET /api/v1/snapshot": () => json(snapshot()) });
-    await refetch(["stock", "prices"]);
+    await refetch(["stock", "a-collection-with-no-reader" as Changed]);
     expect(calls().map((c) => c.at)).toEqual(["GET /api/v1/snapshot"]);
   });
 
@@ -405,6 +421,44 @@ describe("refetch — what a write says it changed is what gets read", () => {
     serve({ "GET /api/v1/stock": () => json({ error: { code: "internal", message: "boom" } }, 500) });
     await refetch(["stock"], "Veg puffs switched off at Central Kitchen");
     expect(S().toast).toBe("Veg puffs switched off at Central Kitchen — the screen could not be refreshed; reload to see the latest.");
+  });
+});
+
+/**
+ * The splash is a *first boot*, not a refresh. Anything that takes a whole snapshot again —
+ * an SSE `resync`, the fallback read-back — used to blank every screen in the hospital to
+ * "Loading…" and throw away whatever the operator was halfway through reading.
+ */
+describe("loadSnapshot — the splash is for the first boot only", () => {
+  const authStates = async (run: () => Promise<void>) => {
+    const seen: string[] = [];
+    const off = useApp.subscribe((s) => seen.push(s.auth));
+    await run();
+    off();
+    return seen;
+  };
+
+  it("does not blank a hydrated app to the splash while it refreshes", async () => {
+    as("manager");
+    serve({ "GET /api/v1/snapshot": () => json(snapshot()) });
+
+    const seen = await authStates(() => S().loadSnapshot());
+
+    expect(seen).not.toContain("loading");
+    expect(S().auth).toBe("ready");
+  });
+
+  it("still shows the splash on the first boot, when there is nothing on screen to keep", async () => {
+    as("manager");
+    // No item master, no locations: every screen would read an empty registry and throw, so
+    // there is genuinely nothing to hold on to while the snapshot is on its way.
+    hydrateMaster({ items: {}, locations: {}, recipes: {}, prices: { A: {}, B: {} }, menu: {}, users: [] });
+    serve({ "GET /api/v1/snapshot": () => json(snapshot()) });
+
+    const seen = await authStates(() => S().loadSnapshot());
+
+    expect(seen).toContain("loading");
+    expect(S().auth).toBe("ready");
   });
 });
 
@@ -739,7 +793,8 @@ describe("refetch — the movement slices have narrow readers now", () => {
 
   it("still takes one snapshot when a write touched a slice with no reader", async () => {
     serve({ "GET /api/v1/snapshot": () => json(snapshot()) });
-    await refetch(["req", "prices"]);
+    // `prices` has a reader of its own now, so the mixed case needs a collection that has none.
+    await refetch(["req", "a-collection-with-no-reader" as Changed]);
     expect(calls().map((c) => c.at)).toEqual(["GET /api/v1/snapshot"]);
   });
 });

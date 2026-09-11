@@ -182,7 +182,12 @@ export const useApp = create<AppState>((set, get) => ({
     }
   },
   loadSnapshot: async () => {
-    set({ auth: "loading" });
+    // The splash is the *first* boot and nothing else. A snapshot taken again — an SSE
+    // `resync`, a read-back with no narrow reader — has the last one still on screen behind
+    // it, and blanking the hospital to "Loading…" threw away whatever was being read, closed
+    // every open drawer and lost the operator their place. `LOC` empty is the one state where
+    // there is genuinely nothing to keep: no item master, no locations, no screen that renders.
+    if (Object.keys(LOC).length === 0) set({ auth: "loading" });
     try { applySnapshot(await call(routes.snapshot)); set({ auth: "ready" }); }
     catch (e) {
       // A 401 here has already signed the user out via onSessionLost; do not

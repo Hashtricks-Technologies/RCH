@@ -1,7 +1,7 @@
 import type { z } from "zod";
 import { StockLocSchema } from "@rch/contract";
 import type { SnapshotSchema, StockResponseSchema } from "@rch/contract";
-import { hydrateItems, hydrateMaster, hydrateRoster } from "../data/master";
+import { hydrateItems, hydrateMaster, hydrateMenus, hydratePrices, hydrateRoster } from "../data/master";
 import { fromWireBestBefore, fromWireDate, fromWireTime } from "../lib/fmt";
 import { useApp } from "../store";
 import { basePrices } from "../lib/selectors";
@@ -134,4 +134,18 @@ export function applyProductRequests(rows: Snapshot["productReqs"]): void {
 export function applyItems(items: Snapshot["items"]): void {
   hydrateItems(items);
   useApp.setState((s) => ({ catalogVersion: s.catalogVersion + 1 }));
+}
+
+/** GET /prices -> both shelf lists. The registry and the store's copy are the same two lists —
+ *  `basePrices()` is what every screen reads — so the registry is filled first and copied out. */
+export function applyPrices(prices: Snapshot["prices"]): void {
+  hydratePrices(prices);
+  useApp.setState((s) => ({ prices: basePrices(), catalogVersion: s.catalogVersion + 1 }));
+}
+
+/** GET /menus -> what each outlet lists. Like the catalogue, the registry is a module-level one
+ *  (`MENU`), so `catalogVersion` is what tells a screen reading it directly that it moved. */
+export function applyMenus(menu: Snapshot["menu"]): void {
+  hydrateMenus(menu);
+  useApp.setState((s) => ({ menu, catalogVersion: s.catalogVersion + 1 }));
 }
