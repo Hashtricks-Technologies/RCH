@@ -70,7 +70,7 @@ export interface AppState extends ProcurementSlice, OpsSlice {
    *  can keep what the operator typed in front of them when it is refused. */
   submitRequest: (note: string, urgent: boolean) => Promise<boolean>;
   requestFromStore: (it: string, qty: number) => Promise<boolean>;
-  cancelRequest: (id: string) => Promise<void>;
+  cancelRequest: (id: string) => Promise<boolean>;
 
   approveRequest: (id: string, appr: number[], note: string) => Promise<boolean>;
   rejectRequest: (id: string, note: string) => Promise<boolean>;
@@ -299,8 +299,10 @@ export const useApp = create<AppState>((set, get) => ({
       const r = await call(routes.cancelRequest, { params: { id } });
       get().notify(r.message);
       await refetch(r.changed, r.message);
+      return true;
     } catch (e) {
       get().notify(e instanceof ApiError ? e.message : "Could not cancel the request — check the connection and try again.");
+      return false;
     }
   },
 

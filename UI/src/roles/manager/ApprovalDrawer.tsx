@@ -45,7 +45,7 @@ function ApprovalDrawer({ id }: DrawerProps) {
   const [killed, setKilled] = useState<boolean[]>(() => (req?.lines ?? []).map(() => false));
   const [lineWhy, setLineWhy] = useState<string[]>(() => (req?.lines ?? []).map(() => ""));
   const [note, setNote] = useState(req?.st === "Request sent" ? "" : req?.mgrNote ?? "");
-  const [busy, setBusy] = useState<"approve" | "reject" | null>(null);
+  const [busy, setBusy] = useState<"approve" | "reject" | "withdraw" | null>(null);
 
   if (!req) {
     return (
@@ -112,6 +112,13 @@ function ApprovalDrawer({ id }: DrawerProps) {
     setBusy(null);
     if (ok) close();
   };
+  const doWithdraw = async () => {
+    if (!canWithdraw || busy) return;
+    setBusy("withdraw");
+    const ok = await cancelRequest(req.id);
+    setBusy(null);
+    if (ok) close();
+  };
 
   return (
     <DrawerFrame
@@ -148,7 +155,9 @@ function ApprovalDrawer({ id }: DrawerProps) {
             {canWithdraw && (
               <>
                 <div className="sp" />
-                <Btn variant="dg" onClick={() => cancelRequest(req.id)}>Withdraw approval</Btn>
+                <Btn variant="dg" disabled={busy !== null} onClick={doWithdraw}>
+                  {busy === "withdraw" ? "Withdrawing…" : "Withdraw approval"}
+                </Btn>
               </>
             )}
           </>
