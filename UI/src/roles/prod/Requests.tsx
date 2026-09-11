@@ -102,8 +102,9 @@ export default function Requests() {
 
       {openCount > 0 && (
         <Alert tone="i" label="OPEN">
-          {openCount} request{openCount === 1 ? "" : "s"} from {L.n} {openCount === 1 ? "is" : "are"} still with the
-          outlet manager. A request stays cancellable until the manager acts on it.
+          {openCount} request{openCount === 1 ? "" : "s"} from {L.n} {openCount === 1 ? "is" : "are"} still open. A
+          request can be withdrawn any time before the store keeper issues a ticket against it —
+          including after the outlet manager has approved it.
         </Alert>
       )}
       {backOrder.length > 0 && (
@@ -259,8 +260,9 @@ export default function Requests() {
       </Card>
 
       <p className="mini mtop">
-        Quantities are shown in each item's own unit. A request stays cancellable only while it reads
-        “Request sent”; once the store keeper issues a ticket it belongs on the Pick Tickets screen.
+        Quantities are shown in each item's own unit. A request can be withdrawn any time before the
+        store keeper issues a ticket against it, decided or not; once a ticket is issued it belongs on
+        the Pick Tickets screen.
       </p>
     </>
   );
