@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getAccessToken, setAccessToken } from "../api/session";
 import { useApp } from "../store";
-import type { User } from "../types";
+import { hydrateMaster } from "../data/master";
+import type { MasterData } from "../data/master";
+import type { Location, User } from "../types";
 
 const ok = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
@@ -21,6 +23,14 @@ const SNAPSHOT = {
   sales: [], dayLabels: [],
   // ---- adjustments
   adjustments: [],
+};
+
+/** An empty item master — the state a browser is in before its first snapshot lands. */
+const EMPTY_MASTER: MasterData = {
+  items: {}, locations: {}, recipes: {}, prices: { A: {}, B: {} }, menu: {}, users: [USER],
+};
+const COFFEE: Location = {
+  n: "Floor 3 Coffee Bar", c: "Coffee Bar", type: "Outlet", floor: "3", cc: "CC-31", list: "A",
 };
 
 describe("restoring the session at boot", () => {
@@ -113,5 +123,41 @@ describe("changing the password", () => {
     expect(fetchMock.mock.calls[1][1].headers.authorization).toBe("Bearer after-change");
     expect(useApp.getState().mustChangePassword).toBe(false);
     expect(useApp.getState().auth).toBe("ready");
+  });
+
+  /**
+   * Which of the two screens the change is made from decides whether the splash is right, and
+   * `loadSnapshot` already asks that question — "is the master empty?" — for every other caller.
+   * `changePassword` used to answer it for itself with a flat `auth: "loading"`, which is right
+   * on a first sign-in and wrong from Settings, where it threw the operator's whole screen away
+   * and painted "Loading…" over a working hospital for the length of a snapshot.
+   */
+  it("does not blank a hospital that is already on screen", async () => {
+    hydrateMaster({ ...EMPTY_MASTER, locations: { coffee: COFFEE } });
+    const seen: string[] = [];
+    const stop = useApp.subscribe((s) => { seen.push(s.auth); });
+    fetchMock
+      .mockResolvedValueOnce(ok({ accessToken: "after-change", user: USER, mustChangePassword: false }))
+      .mockResolvedValueOnce(ok({ ...SNAPSHOT, locations: { coffee: COFFEE } }));
+
+    expect(await useApp.getState().changePassword("changeme", "a-much-longer-secret")).toBe(true);
+    stop();
+
+    expect(seen).not.toContain("loading");
+    expect(useApp.getState().auth).toBe("ready");
+  });
+
+  it("still paints the splash on a first sign-in, where there is no screen to keep", async () => {
+    hydrateMaster(EMPTY_MASTER);
+    const seen: string[] = [];
+    const stop = useApp.subscribe((s) => { seen.push(s.auth); });
+    fetchMock
+      .mockResolvedValueOnce(ok({ accessToken: "after-change", user: USER, mustChangePassword: false }))
+      .mockResolvedValueOnce(ok(SNAPSHOT));
+
+    await useApp.getState().changePassword("changeme", "a-much-longer-secret");
+    stop();
+
+    expect(seen).toContain("loading");
   });
 });

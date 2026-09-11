@@ -23,7 +23,7 @@ const stockable = () => activeItems()
 
 const tone = (st: string) => (st === "Asked" ? "wn" : st === "Sent" ? "ok" : "cr");
 type Row = {
-  key: string; kind: "inventory" | "shop"; it: string; qty: number; at: string;
+  key: string; kind: "inventory" | "shop"; it: string; qty: number; at: string; iso: string;
   direction: string; status: string; extra?: string;
 };
 
@@ -120,17 +120,19 @@ export default function Requests() {
   const rows: Row[] = [
     ...s.req.filter((r) => r.from === loc).map((r): Row => ({
       key: r.id, kind: "inventory", it: r.lines[0]?.it ?? "", qty: r.lines.reduce((t, l) => t + l.qty, 0),
-      at: r.at, direction: `${r.lines.length > 1 ? `${r.lines.length} items` : IT[r.lines[0]?.it]?.n ?? "—"} · Central Store`,
+      at: r.at, iso: r.iso, direction: `${r.lines.length > 1 ? `${r.lines.length} items` : IT[r.lines[0]?.it]?.n ?? "—"} · Central Store`,
       status: r.st,
       extra: r.ticket ?? undefined,
     })),
     ...s.shopAsks.filter((a) => a.from === loc || a.to === loc).map((a): Row => ({
-      key: a.id, kind: "shop", it: a.it, qty: a.qty, at: a.at,
+      key: a.id, kind: "shop", it: a.it, qty: a.qty, at: a.at, iso: a.iso,
       direction: a.from === loc ? `To ${LOC[a.to].n}` : `From ${LOC[a.from].n}`,
       status: a.st === "Sent" ? "Ticket issued" : a.st === "Asked" ? "Request sent" : "Rejected",
       extra: a.ticket ?? a.reason ?? undefined,
     })),
-  ].sort((x, y) => y.at.localeCompare(x.at));
+    // Newest first on the **instant**, never on the printed time: "22:00" sorts above "09:00"
+    // whatever day each belongs to, which put yesterday's last ask above this morning's first.
+  ].sort((x, y) => (y.iso ?? "").localeCompare(x.iso ?? ""));
 
   const openCount = s.req.filter((r) => r.from === loc && isReqOpen(r.st)).length
     + s.shopAsks.filter((a) => a.from === loc && a.st === "Asked").length;

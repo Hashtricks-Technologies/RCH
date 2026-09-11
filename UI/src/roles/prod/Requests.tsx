@@ -57,11 +57,20 @@ export default function Requests() {
    * is half-typed in its quantity box, where the cursor is — to row 1 the moment row 1 is taken
    * out. A counter in a ref keeps an id with the line it was minted for; the loop below covers
    * a draft that changed anywhere else (staged from another screen, or cleared).
+   *
+   * `react/refs` is off for exactly these three lines. The rule is right about what it warns of
+   * — a ref read during render can leave a component showing a value nothing re-renders it for —
+   * and it does not reach this, which renders none of it: the ledger of keys is never *shown*,
+   * only handed to React as identity. The same note, and the same three lines, are in
+   * `roles/store/Requisitions.tsx`.
    */
   const nextKey = useRef(0);
   const lineKeys = useRef<number[]>([]);
+  /* oxlint-disable react/refs -- a key ledger, never rendered; see the note above */
   while (lineKeys.current.length < draft.length) lineKeys.current.push(nextKey.current++);
   if (lineKeys.current.length > draft.length) lineKeys.current.length = draft.length;
+  const rowKeys = lineKeys.current;
+  /* oxlint-enable react/refs */
 
   const setLine = (i: number, patch: Partial<DraftLine>) =>
     s.setDraft(draft.map((l, j) => (j === i ? { ...l, ...patch } : l)));
@@ -155,10 +164,11 @@ export default function Requests() {
                   </div>
                 </td></tr>
               )}
+              {/* oxlint-disable-next-line react/refs -- `rowKeys` is the key ledger above */}
               {draft.map((l, i) => {
                 const err = lineErr(l);
                 return (
-                  <tr key={lineKeys.current[i]}>
+                  <tr key={rowKeys[i]}>
                     <td>
                       <div className="fld">
                         <select value={l.it} style={l.it ? undefined : BAD}

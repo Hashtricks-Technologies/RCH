@@ -32,7 +32,10 @@ export function priceOf(s: StockShape, l: LocKey, it: string): Price {
   return D.priceOf(MASTER, s.prices, l, it);
 }
 
-export function availOf(s: StockShape, l: LocKey, it: string): Availability {
+/** The three slices `availOf` actually reads. Named so a memo can depend on exactly those and
+ *  not on the whole store object, which is new on every write anywhere in the app. */
+type StockOnly = Pick<StockShape, "stock" | "rsv" | "ovr">;
+export function availOf(s: StockOnly, l: LocKey, it: string): Availability {
   return D.availOf(MASTER, s.stock, s.rsv, s.ovr, l, it);
 }
 

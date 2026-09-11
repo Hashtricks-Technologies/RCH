@@ -16,5 +16,24 @@ export default defineConfig({
     // Screen tests render whole role shells; on a busy machine (parallel API suites on the
     // same box) the default 5 s has timed out on a test that passes alone in a second.
     testTimeout: 20_000,
+    // The thresholds are set a point or two **under what the whole suite measures today**
+    // (statements 71.07, branches 52.74, functions 62.37, lines 74.42) — the point is not to
+    // chase a number, it is that deleting a test or shipping an untested screen cannot pass CI
+    // quietly. Raise them when the real figure rises; never lower one to make a red run green.
+    //
+    // `enabled` is deliberately **not** set here: `package.json`'s `test` script passes
+    // `--coverage`, so `pnpm test` and CI's `turbo test` are gated, while `npx vitest run
+    // src/__tests__/<one>.test.ts` — the single-file loop this package's guide documents — is
+    // not. A whole suite's threshold measured against one file is a failure about nothing.
+    coverage: {
+      provider: "v8",
+      // Named explicitly, so a file with no test at all still counts against the total. Left to
+      // itself, v8 reports only what the run happened to load, and an untested screen then
+      // improves the percentage by not being there.
+      include: ["src/**"],
+      exclude: ["src/__tests__/**", "src/main.tsx", "src/vite-env.d.ts"],
+      reporter: ["text-summary"],
+      thresholds: { lines: 73, branches: 51 },
+    },
   },
 });

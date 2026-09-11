@@ -162,6 +162,28 @@ describe("the toast", () => {
     } finally { vi.useRealTimers(); }
   });
 
+  /**
+   * The same refusal twice — the operator hits it, corrects something, hits it again — used to
+   * put itself away early: `notify` left the first timer running and had it compare the *message*
+   * before clearing, so the first toast's timer matched the second toast's sentence and took it
+   * down partway through. It is why one case in `writes.test.ts` flaked on a loaded host: two
+   * cases there refuse with the same words, and under load the first timer was still alive when
+   * the second raised them.
+   */
+  it("gives a repeated sentence its own full stay, not the remains of the last one", () => {
+    vi.useFakeTimers();
+    try {
+      const same = "Combine the Milk 1L (toned) lines into one";
+      useApp.getState().notify(same);
+      vi.advanceTimersByTime(3000);          // the first toast's timer is still to fire
+      useApp.getState().notify(same);        // and the second must not inherit its 400 ms
+      vi.advanceTimersByTime(1000);
+      expect(useApp.getState().toast).toBe(same);
+      vi.advanceTimersByTime(3000);
+      expect(useApp.getState().toast).toBeNull();
+    } finally { vi.useRealTimers(); }
+  });
+
   it("can be put away with a click", () => {
     act(() => { signedOut(); });
     const m = app("/login");

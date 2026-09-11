@@ -165,6 +165,10 @@ const UNREACHABLE = "Could not reach the server — check the connection and try
  *  naming an item, a price and a list is twice the length of "Bill taken." and was gone before
  *  it could be read. */
 const toastMs = (m: string) => Math.min(9000, 3400 + Math.max(0, m.length - 40) * 30);
+/** The timer that will put the current toast away, so `notify` can cancel it rather than leave
+ *  it running behind the next sentence. One toast is drawn at a time, so one timer is all there
+ *  is to keep — and a toast that is already down cannot be put down twice. */
+let toastTimer: ReturnType<typeof setTimeout> | null = null;
 const EMPTY_STOCK = Object.fromEntries(StockLocSchema.options.map((l) => [l, {}])) as Record<StockLoc, Record<string, number>>;
 
 export const useApp = create<AppState>((set, get) => ({
@@ -262,7 +266,12 @@ export const useApp = create<AppState>((set, get) => ({
       // replacements, so take them before anything else calls the server.
       const r = await call(routes.changePassword, { body: { current, next } });
       setAccessToken(r.accessToken);
-      set({ user: r.user, mustChangePassword: r.mustChangePassword, auth: "loading" });
+      // No `auth: "loading"` of its own. `loadSnapshot` already decides that, and decides it on
+      // the one question that matters: is there anything on screen to keep? Forcing the splash
+      // here was right for the first sign-in (an empty master, nothing to blank) and wrong for
+      // Settings, where changing a password threw the operator's whole screen away and put
+      // "Loading…" over the hospital for the length of a snapshot.
+      set({ user: r.user, mustChangePassword: r.mustChangePassword });
       await get().loadSnapshot();
       get().notify("Password changed — you are signed in.");
       return true;
@@ -272,11 +281,29 @@ export const useApp = create<AppState>((set, get) => ({
     }
   },
 
+  /**
+   * Raise the operator's sentence, and take it down again when it has been up long enough to
+   * read.
+   *
+   * The timer is **cancelled and replaced**, not left running and told to compare messages. The
+   * comparison it used to make was `get().toast === m`, which is the wrong question twice over:
+   * the same sentence said twice in a shift — a refusal an operator hits, corrects and hits
+   * again — left the first timer alive to put the *second* toast away early, and a sentence that
+   * differs by a comma left a timer with nothing to do but still to fire. One toast is drawn at a
+   * time; one timer belongs to it.
+   */
   notify: (m) => {
+    if (toastTimer !== null) clearTimeout(toastTimer);
     set({ toast: m });
-    setTimeout(() => { if (get().toast === m) set({ toast: null }); }, toastMs(m));
+    toastTimer = setTimeout(() => { toastTimer = null; set({ toast: null }); }, toastMs(m));
   },
-  dismissToast: () => set({ toast: null }),
+  /** Put it away on a click — and take its timer with it, so nothing is left running to fire at
+   *  a toast that is already down, or at the next one if `notify` has not replaced it yet. */
+  dismissToast: () => {
+    if (toastTimer !== null) clearTimeout(toastTimer);
+    toastTimer = null;
+    set({ toast: null });
+  },
   openDrawer: (t, id) => set({ drawer: { t, id } }),
   closeDrawer: () => set({ drawer: null }),
   saveProfile: async (p) => {
@@ -289,7 +316,9 @@ export const useApp = create<AppState>((set, get) => ({
 
   addToCart: (loc, it, d = 1) =>
     set((s) => {
-      const c = { ...(s.cart[loc] ?? {}) };
+      // No `?? {}`: spreading `undefined` into an object literal adds nothing, which is exactly
+      // what an empty fallback was there to do.
+      const c = { ...s.cart[loc] };
       c[it] = (c[it] ?? 0) + d;
       if (c[it] <= 0) delete c[it];
       return { cart: { ...s.cart, [loc]: c } };

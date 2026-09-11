@@ -20,6 +20,7 @@ import "../roles/store/TicketDrawer";          // registers "stkt" on the drawer
 import "../roles/prod/TicketDrawer";           // registers "ptkt"
 import "../roles/buyer/PoDrawer";                // registers "bpo"
 import { useApp } from "../store";
+import type { AppState } from "../store";
 import { resetStore, S, as } from "./fixture";
 
 /**
@@ -1105,6 +1106,54 @@ describe("a refusal keeps what the operator typed", () => {
     if (!ok()) throw new Error(`the action never settled: still false after ${tries} turns and ${ms}ms`);
   };
 
+  /**
+   * Press a button whose screen drops the promise it starts, and wait for that promise.
+   *
+   * `onClick={send}` hands the store action's answer to nobody, so a render-level case had
+   * nothing to await and polled for the toast on a wall clock instead. Under `turbo test` —
+   * four packages sharing one machine — that budget is a coin toss, not a wait: the make-tile
+   * case has taken 9.2 s against an 8 s ceiling and gone red on a green tree.
+   *
+   * `capture(key)` swaps the action for one that keeps its own promise, and `press(fire)` runs
+   * the click **and** the wait inside a single `act`. Both halves matter. Awaiting the promise
+   * is what makes the case deterministic: when it resolves the write has been refused, notified
+   * and read back, with no clock anywhere in it. Doing it in one `act` is what keeps it honest —
+   * split across two, the screen's own `await` resumes after act has closed, React warns that an
+   * update escaped it, and on a loaded host the assertions run against a half-settled screen.
+   *
+   * `restore()` puts the real action back, because the store is a module singleton and
+   * `resetStore` replaces only its data: an action left swapped follows this file into every
+   * case after it. Call it in a `finally` — a failed assertion must not leave the swap behind
+   * for the rest of the file to trip over.
+   */
+  const capture = (key: "makeProduct" | "sendRequisition") => {
+    const real = S()[key];
+    const idle: Promise<boolean> = Promise.resolve(false);
+    let pending = idle;
+    const held = (...a: Parameters<AppState[typeof key]>) =>
+      (pending = (real as (...x: unknown[]) => Promise<boolean>)(...a));
+    useApp.setState({ [key]: held } as Partial<AppState>);
+    return {
+      press: async (fire: () => void) => {
+        // `pending` is read after `fire()` has run, so it is the promise this press started and
+        // never the standing `idle` above.
+        await act(async () => {
+          fire();
+          // Said out loud, because the alternative is a case that passes by waiting for nothing.
+          // If the screen ever stops calling the action synchronously from its handler — an
+          // `await` before it, a guard that returns early, a disabled button — `pending` is still
+          // `idle`, `await` resolves at once and every assertion below runs against a screen the
+          // write never touched. That is a green nobody earned, so it fails here instead.
+          if (pending === idle) throw new Error(`${key} was not called by this press — the screen did not reach the store action, so there is nothing to await`);
+          await pending;
+        });
+      },
+      // In `act` because the screen subscribes to this action: putting the real one back is a
+      // store change, and a store change the mounted component re-renders for.
+      restore: () => { act(() => { useApp.setState({ [key]: real } as Partial<AppState>); }); },
+    };
+  };
+
   it("leaves the raise card open, with its note, when the server refuses", async () => {
     as("counter");
     serve({ "POST /api/v1/requests": () => refusal("Refused — Coffee Shop already has REQ-2026-0911 open for Milk 1L") });
@@ -1169,21 +1218,20 @@ describe("a refusal keeps what the operator typed", () => {
   it("leaves the quantity on the make tile when the kitchen is short", async () => {
     as("prod");
     serve({ "POST /api/v1/batches": () => refusal("Kitchen is short of Veg filling mix — 1.200 kg left") });
+    const make = capture("makeProduct");
     const ui = mountNode(MakeDistribute);
     act(() => { type(ui.field("Quantity of Veg puffs to start"), "200"); });
 
-    await settle(() => { ui.button("Make")!.click(); });
-    // Both, not just the toast: the write has to have gone out before its refusal can be read
-    // back, and asserting on `[0].body` of an empty list is what a half-settled wait looks like.
-    await settleUntil(() => hit("POST /api/v1/batches").length > 0 && S().toast !== null);
-    // Read the sentence the moment it lands: `notify` clears it again after 3.4 s, and the
-    // assertions below must not be racing that timer on a slow host.
-    const said = S().toast;
+    try {
+      // The action's own promise, not a budget: when it resolves the write has gone out, been
+      // refused and been read back, so there is nothing left to wait for and nothing to race.
+      await make.press(() => { ui.button("Make")!.click(); });
 
-    expect(hit("POST /api/v1/batches")[0].body).toEqual({ it: "puff", started: 200 });
-    expect(said).toBe("Kitchen is short of Veg filling mix — 1.200 kg left");
-    // Nothing to retype: the refusal landed on the kitchen's own typing.
-    expect(ui.field("Quantity of Veg puffs to start").value).toBe("200");
+      expect(hit("POST /api/v1/batches")[0].body).toEqual({ it: "puff", started: 200 });
+      expect(S().toast).toBe("Kitchen is short of Veg filling mix — 1.200 kg left");
+      // Nothing to retype: the refusal landed on the kitchen's own typing.
+      expect(ui.field("Quantity of Veg puffs to start").value).toBe("200");
+    } finally { make.restore(); }
     ui.unmount();
   });
 
@@ -1224,16 +1272,18 @@ describe("a refusal keeps what the operator typed", () => {
     as("store");
     S().setPrqDraft([{ it: "milk", qty: 60 }]);
     serve({ "POST /api/v1/requisitions": () => refusal("Combine the Milk 1L (toned) lines into one") });
+    const send = capture("sendRequisition");
     const ui = mountNode(StoreRequisitions);
     act(() => { type(ui.host.querySelector("textarea")!, "Coffee shop is dry"); });
 
-    await settle(() => { ui.button("Send to procurement")!.click(); });
-    await settleUntil(() => S().toast !== null);
+    try {
+      await send.press(() => { ui.button("Send to procurement")!.click(); });
 
-    expect(S().toast).toBe("Combine the Milk 1L (toned) lines into one");
-    // Nothing to rebuild: the draft and the note are exactly where they were.
-    expect(S().prqDraft).toHaveLength(1);
-    expect(ui.host.querySelector("textarea")!.value).toBe("Coffee shop is dry");
+      expect(S().toast).toBe("Combine the Milk 1L (toned) lines into one");
+      // Nothing to rebuild: the draft and the note are exactly where they were.
+      expect(S().prqDraft).toHaveLength(1);
+      expect(ui.host.querySelector("textarea")!.value).toBe("Coffee shop is dry");
+    } finally { send.restore(); }
     ui.unmount();
   });
 
