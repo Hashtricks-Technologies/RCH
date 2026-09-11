@@ -101,11 +101,55 @@ describe("POST /purchase-orders/:id/receive", () => {
     const b = (await post("u3", `/purchase-orders/${id}/receive`, { ...doc, lines: [good(120, { rejected: 120, mrp: 20 })] })).json();
     expect(b.result.grns[0]).toMatchObject({ qty: 0, rejected: 120 });
     expect(b.message).toBe("Booked into Central Store — 0 nos accepted, 120 nos rejected");
+    // Nothing was taken in, so the order is not filled — the vendor still owes all 120.
+    expect(b.result.po.st).toBe("Partially received");
 
     expect(await quarantined("water")).toBeCloseTo(q0 + 120, 3);
     // No accept move for a line that took in nothing — a zero-qty move is not a movement.
     const mine = await app.testDb!.db.select().from(stockMoves).where(eq(stockMoves.refId, b.result.grns[0].id));
     expect(mine.map((m) => [m.kind, m.loc, m.qty])).toEqual([["grn_reject", "quarantine", 120]]);
+  });
+
+  it("leaves a wholly rejected delivery partly received, so the balance can still be closed short", async () => {
+    const { prq, id } = await ordered([{ it: "water", qty: 120 }]);
+    const q0 = await quarantined("water");
+    const store0 = await onHand("store", "water");
+
+    const b = (await post("u3", `/purchase-orders/${id}/receive`, { ...doc, lines: [good(120, { rejected: 120, mrp: 20 })] })).json();
+    expect(b.result.po.st).toBe("Partially received");
+    // The arrival is still on the line — the paperwork records what turned up at the door — but
+    // none of it reached the shelf, so none of it counts towards covering the order.
+    expect(b.result.po.lines[0]).toMatchObject({ recv: 120, rejected: 120 });
+    const mine = await app.testDb!.db.select().from(stockMoves).where(eq(stockMoves.refId, b.result.grns[0].id));
+    expect(mine.map((m) => [m.kind, m.loc, m.qty])).toEqual([["grn_reject", "quarantine", 120]]);
+    expect(await onHand("store", "water")).toBeCloseTo(store0, 3);
+    expect(await quarantined("water")).toBeCloseTo(q0 + 120, 3);
+
+    // And because the order is not terminal, the buyer still has a way out of it.
+    const cs = await post("u5", `/purchase-orders/${id}/close-short`, { reason: "Whole consignment turned away" });
+    expect(cs.statusCode, cs.body).toBe(200);
+    expect(cs.json().result.st).toBe("Received");
+    const [row] = await app.testDb!.db.select().from(requisitionLines)
+      .where(and(eq(requisitionLines.requisitionId, prq), eq(requisitionLines.lineNo, 0)));
+    expect(row?.orderedQty).toBe(0);
+    expect(await pending(prq, 0)).toBe(120);
+  });
+
+  it("a partial rejection leaves the rejected quantity still owed, and a replacement delivery is accepted within tolerance", async () => {
+    const { id } = await ordered([{ it: "water", qty: 120 }]);
+    const store0 = await onHand("store", "water");
+
+    const first = (await post("u3", `/purchase-orders/${id}/receive`, { ...doc, lines: [good(120, { rejected: 12, mrp: 20 })] })).json();
+    expect(first.result.po.st).toBe("Partially received");
+    expect(first.result.po.lines[0]).toMatchObject({ recv: 120, rejected: 12 });
+
+    // 132 will have arrived in all — gross, that is past the 2% tolerance; net of the twelve
+    // sent back it is exactly the 120 ordered, which is what the vendor is replacing.
+    const second = (await post("u3", `/purchase-orders/${id}/receive`, { ...doc, dc: "DC-89001", lines: [good(12, { mrp: 20 })] }));
+    expect(second.statusCode, second.body).toBe(200);
+    expect(second.json().result.po.st).toBe("Received");
+    expect(second.json().result.po.lines[0]).toMatchObject({ recv: 132, rejected: 12 });
+    expect(await onHand("store", "water")).toBeCloseTo(store0 + 120, 3);
   });
 
   it("proves the balance cache against the ledger after a receipt with rejects", async () => {

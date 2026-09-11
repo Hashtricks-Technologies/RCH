@@ -301,6 +301,12 @@ export function createPurchaseOrdersService(db: Db) {
         // Before the transition guard, on purpose: a partly-received order would otherwise fail
         // the status check with "is already partially received" — true, and useless. This
         // sentence tells the buyer what to do instead.
+        //
+        // `recv` here is deliberately the **gross** arrival, not the accepted figure the order's
+        // status is computed from: a delivery that turned up and was turned away still produced
+        // GRN documents, a quarantine balance and a paper trail with the vendor. An order with
+        // that behind it is closed short, with its reason recorded — never cancelled as though
+        // the lorry had never come.
         assertRule(lines.every((l) => l.recv === 0), `${id} already received against — close it short instead of cancelling`);
         assertTransition(PO_TRANSITIONS, o.status, "Cancelled", id);
         assertRule(body.reason.trim(), "Give a reason for cancelling this order");

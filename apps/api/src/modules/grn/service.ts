@@ -8,7 +8,7 @@
 import type { z } from "zod";
 import { QUARANTINE } from "@rch/contract";
 import type { CloseShortBodySchema, PurchaseOrder, ReceiptResultSchema, ReceivePoBodySchema, WriteResponse } from "@rch/contract";
-import { checkReceiptLine, foldClaims, grnId, istDate, PO_TRANSITIONS, receiptStatus, round3, shortfallClaims, unitTotal } from "@rch/domain";
+import { checkReceiptLine, foldClaims, grnId, istDate, netReceived, PO_TRANSITIONS, receiptStatus, round3, shortfallClaims, unitTotal } from "@rch/domain";
 import type { Db } from "../../db/client.js";
 import type { grns } from "../../db/schema/index.js";
 import { addOrdered, lockRequisitions } from "../../lib/claims.js";
@@ -66,8 +66,11 @@ export function createGrnService(db: Db) {
           const r = body.lines[i]!;
           if (!(r.recv > 0)) continue;
           const item = master.items[l.it];
+          // What earlier instalments accepted, not what they saw at the door: a consignment that
+          // went to quarantine is one the vendor still owes, so the replacement for it has to
+          // fit inside the tolerance rather than be read as a second delivery of the same goods.
           const bad = checkReceiptLine({
-            name: item?.n ?? l.it, unit: item?.u ?? "nos", ordered: l.qty, received: l.recv,
+            name: item?.n ?? l.it, unit: item?.u ?? "nos", ordered: l.qty, received: netReceived(l),
             mrp: item?.mrp ?? null, listA: listA[l.it] ?? 0,
           }, r, today);
           if (bad) assertRule(false, bad);
@@ -97,12 +100,26 @@ export function createGrnService(db: Db) {
           accepted.push({ it: l.it, qty: good });
           if (good > 0) moves.push({ loc: STORE, it: l.it, qty: good, kind: "grn_accept", refType: "grn", refId: receiptId, by: claims.sub, at });
           if (r.rejected > 0) { rejected.push({ it: l.it, qty: round3(r.rejected) }); moves.push({ loc: QUARANTINE, it: l.it, qty: round3(r.rejected), kind: "grn_reject", refType: "grn", refId: receiptId, by: claims.sub, at }); }
+          // `received_qty` is the arrival record — every unit the vendor's notes add up to —
+          // and `rejected_qty` the running total that went to quarantine. Whether the order is
+          // *filled* is asked of the difference, below, never of this figure.
           await grnRepo.setLineReceipt(tx, id, l.lineNo, { receivedQty: round3(l.recv + r.recv), rejectedQty: round3(l.rejected + r.rejected) });
         }
         const written = await grnRepo.insertGrns(tx, rows);
         await postMoves(tx, moves);
 
-        const after = lines.map((l, i) => ({ qty: l.qty, recv: round3(l.recv + (body.lines[i]!.recv > 0 ? body.lines[i]!.recv : 0)) }));
+        // Where every line stands once this instalment is on it, gross and rejected both carried
+        // forward — `receiptStatus` covers a line by what was accepted, so a consignment turned
+        // away whole leaves the order open and its requisition claim still releasable.
+        const after = lines.map((l, i) => {
+          const r = body.lines[i]!;
+          const took = r.recv > 0;
+          return {
+            qty: l.qty,
+            recv: round3(l.recv + (took ? r.recv : 0)),
+            rejected: round3(l.rejected + (took ? r.rejected : 0)),
+          };
+        });
         const st = receiptStatus(after);
         assertTransition(PO_TRANSITIONS, o.status, st, id);
         await grnRepo.setStatus(tx, id, { status: st, receivedAt: at });
@@ -145,7 +162,9 @@ export function createGrnService(db: Db) {
         const src = await grnRepo.sources(tx, id);
         // The balance never arrived, so give the demand back to the store keeper rather than
         // letting it vanish — last source first, the same direction a cut line releases in.
-        const back = foldClaims(shortfallClaims(lines.map((l) => ({ qty: l.qty, recv: l.recv, src: src.get(l.lineNo) ?? [] }))));
+        // Rejected quantity counts as never arrived: it sits in quarantine, not on the shelf,
+        // so the store keeper is still owed it and it goes back on the list with the rest.
+        const back = foldClaims(shortfallClaims(lines.map((l) => ({ qty: l.qty, recv: l.recv, rejected: l.rejected, src: src.get(l.lineNo) ?? [] }))));
         await lockRequisitions(tx, back.map((x) => x.prq));
         await addOrdered(tx, back, -1);
         await grnRepo.setStatus(tx, id, { status: "Received", shortNote: body.reason });
