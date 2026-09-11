@@ -3,7 +3,7 @@ import type { z } from "zod";
 import { API_PREFIX, type AnyRoute, type Route } from "@rch/contract";
 import type { App } from "./app.js";
 import { NOT_RECORDED } from "./lib/idempotency-record.js";
-import { idemStore } from "./plugins/idempotency.js";
+import { idemStore, type IdemContext } from "./plugins/idempotency.js";
 
 /** So a handler (or a rate-limit override, etc.) can read whether its own route is a write. */
 declare module "fastify" { interface FastifyContextConfig { write?: boolean } }
@@ -42,10 +42,15 @@ export function mount<R extends AnyRoute>(app: App, route: R, handler: Handler<R
   const wrapped: Handler<R> = async (req, reply) => {
     const idem = req.idem;
     if (!idem) return handler(req, reply);
-    const value = await idemStore.run({ idem, response: route.response, strict }, () => handler(req, reply));
+    const ctx: IdemContext = { idem, response: route.response, strict };
+    const value = await idemStore.run(ctx, () => handler(req, reply));
+    // `ctx.why` is the transaction's own account of why it could not record (a response its
+    // schema refused, a claim taken over mid-write); without one, the write ran no transaction
+    // at all. In production this is the only line that says so, so it carries both.
     if (idem.recorded === false) {
-      if (!strict) req.log.warn({ route: route.path }, NOT_RECORDED);
-      else throw new Error(`${NOT_RECORDED} (${route.method} ${route.path})`);
+      const why = ctx.why ?? NOT_RECORDED;
+      if (!strict) req.log.warn({ route: route.path, key: idem.key }, why);
+      else throw new Error(`${why} (${route.method} ${route.path})`);
     }
     return value;
   };

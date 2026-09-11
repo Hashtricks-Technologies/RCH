@@ -5,13 +5,14 @@ import type { PgTable } from "drizzle-orm/pg-core";
 import { defineRoute, OkResponseSchema } from "@rch/contract";
 import { buildTestApp, testConfig } from "../test/app.js";
 import { seedTestDb } from "../test/seed.js";
+import { warmPool } from "../test/db.js";
 import { authHeaders } from "../test/auth.js";
 import { buildApp, type App } from "../app.js";
 import { mount } from "../routes.js";
 import { idemHooks, purgeIdempotencyKeys } from "./idempotency.js";
 import { withTransaction } from "../lib/db.js";
 import { RuleError } from "../lib/errors.js";
-import { bills, idempotencyKeys, stockMoves, users } from "../db/schema/index.js";
+import { bills, documentHistory, idempotencyKeys, stockMoves, users } from "../db/schema/index.js";
 import { meRepo } from "../modules/me/repo.js";
 
 let app: App;
@@ -34,6 +35,15 @@ async function appWith(register: (a: App) => void, env: Partial<NodeJS.ProcessEn
   await a.ready();
   return a;
 }
+
+/** A write that commits a real change and then answers with a body its own schema refuses —
+ *  driven twice below, once on the bench and once with `NODE_ENV=production`, because the two
+ *  answer it differently on purpose. */
+const badShapeRoute = defineRoute({ method: "POST", path: "/__test/bad-shape", access: "any", response: OkResponseSchema });
+const badShapeHandler = (phone: string) => async () => withTransaction(app.db, async (tx) => {
+  await meRepo.update(tx, "u2", { phone });
+  return { ok: "yes" } as never; // OkResponseSchema wants the literal `true`
+});
 
 /** Promise.withResolvers, which the ES2023 lib this package targets does not declare yet. */
 function deferred(): { promise: Promise<void>; resolve: () => void } {
@@ -280,16 +290,52 @@ describe("Idempotency-Key", () => {
     spy.mockRestore();
   });
 
+  it("refuses to overwrite a takeover winner's record, and rolls the straggler back", async () => {
+    // The race the `committed_at is null` guard on the record's own UPDATE exists for: a request
+    // slow enough to be declared abandoned has its claim taken over and the write re-run, and
+    // then finishes. Its answer must not land on top of the winner's, and its write must not
+    // stand beside the winner's either.
+    await warmPool(app.testDb!, 2); // or the two "concurrent" transactions run back to back
+    const marker = `IDEM-${randomUUID().slice(0, 8)}`;
+    const route = defineRoute({ method: "POST", path: "/__test/slow-write", access: "any", response: OkResponseSchema });
+    const entered = deferred(); const release = deferred();
+    let gate: { promise: Promise<void>; resolve: () => void } | null = release;
+    const a = await appWith((x) => mount(x, route, async () => withTransaction(app.db, async (tx) => {
+      await tx.insert(documentHistory).values({ docType: marker, docId: marker, status: "written", who: "u1" });
+      const mine = gate; gate = null; // only the first attempt parks; the takeover runs straight through
+      if (mine) { entered.resolve(); await mine.promise; }
+      return { ok: true } as const;
+    })));
+    try {
+      const key = randomUUID();
+      const headers = { ...(await authHeaders(a, "u1")), "idempotency-key": key };
+      const send = () => a.inject({ method: "POST", url: "/api/v1/__test/slow-write", headers });
+      const straggler = send();
+      await entered.promise;
+      // Age the claim past CLAIM_STALE_MS while its owner is still inside the write — the shape
+      // a dead pod leaves, and the only thing a takeover is allowed to act on.
+      await app.db.update(idempotencyKeys).set({ createdAt: new Date(Date.now() - 130_000) }).where(eq(idempotencyKeys.key, key));
+      const winner = await send();
+      expect(winner.statusCode, winner.body).toBe(200);
+      release.resolve();
+      const late = await straggler;
+      expect(late.statusCode).toBe(500);                  // the straggler's own record found the row taken
+      const row = await claimRow(key);
+      expect(row.committedAt).toBeInstanceOf(Date);       // the winner's record survives the straggler's 5xx
+      expect(row.response).toEqual(winner.json());
+      const written = await app.db.select().from(documentHistory).where(eq(documentHistory.docType, marker));
+      expect(written.length).toBe(1);                     // one write stands, not two
+    } finally {
+      await a.close();
+    }
+  });
+
   it("rolls the write back when its own response does not match its schema", async () => {
     // A response the route's own schema refuses can never reach the client and can never be
     // replayed, so on the bench (`config.env !== "production"`) it takes the write down with it
     // rather than leaving a change nobody's key knows about.
-    const route = defineRoute({ method: "POST", path: "/__test/bad-shape", access: "any", response: OkResponseSchema });
     const before = await phoneOf("u2");
-    const a = await appWith((x) => mount(x, route, async () => withTransaction(app.db, async (tx) => {
-      await meRepo.update(tx, "u2", { phone: "15151 51515" });
-      return { ok: "yes" } as never; // OkResponseSchema wants the literal `true`
-    })));
+    const a = await appWith((x) => mount(x, badShapeRoute, badShapeHandler("15151 51515")));
     try {
       const key = randomUUID();
       const headers = { ...(await authHeaders(a, "u2")), "idempotency-key": key };
@@ -297,6 +343,30 @@ describe("Idempotency-Key", () => {
       expect(r.statusCode).toBe(500);
       expect(await phoneOf("u2")).toBe(before);     // rolled back
       expect(await claimRow(key)).toBeUndefined();  // and the uncommitted claim is gone
+    } finally {
+      await a.close();
+    }
+  });
+
+  it("in production a response that fails its schema leaves the write standing and falls back to onSend", async () => {
+    // The branch that actually ships: the chart sets NODE_ENV=production in every namespace, so
+    // `strict` is off there and a response-shape bug must degrade to the behaviour this plugin
+    // has always had rather than start refusing the hospital's writes.
+    const a = await appWith((x) => mount(x, badShapeRoute, badShapeHandler("18181 81818")), { NODE_ENV: "production" });
+    try {
+      const key = randomUUID();
+      const headers = { ...(await authHeaders(a, "u2")), "idempotency-key": key };
+      const r = await a.inject({ method: "POST", url: "/api/v1/__test/bad-shape", headers });
+      // The serializer refuses the body exactly as it did before any of this, and nothing the
+      // record does turns that into a different failure.
+      expect(r.statusCode).toBe(500);
+      expect(r.json().error.code).toBe("internal");
+      expect(await phoneOf("u2")).toBe("18181 81818");  // the write stands
+      expect(await claimRow(key)).toBeUndefined();      // nothing was committed, so onSend drops the claim
+      // …which leaves the retry a clean first attempt rather than a stuck replay.
+      const retry = await a.inject({ method: "POST", url: "/api/v1/__test/bad-shape", headers });
+      expect(retry.statusCode).toBe(500);
+      expect(retry.headers["idempotency-replayed"]).toBeUndefined();
     } finally {
       await a.close();
     }

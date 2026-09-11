@@ -1,12 +1,13 @@
 import fp from "fastify-plugin";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash } from "node:crypto";
-import { and, eq, isNull, lt, sql } from "drizzle-orm";
+import { and, eq, isNull, lt } from "drizzle-orm";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import type { z } from "zod";
 import type { Db } from "../db/client.js";
 import { idempotencyKeys } from "../db/schema/index.js";
 import { ConflictError, ValidationError } from "../lib/errors.js";
+import { JSON_NULL, TTL_MS } from "../lib/idempotency-record.js";
 import { resolveClaim } from "./idempotency-claim.js";
 
 declare module "fastify" {
@@ -25,9 +26,13 @@ declare module "fastify" {
  * whose answer can never reach the client — and can never be replayed — must not stand. In
  * production the write is left alone and `onSend` records what actually went out, so a
  * response-shape bug degrades to the pre-existing behaviour instead of refusing the hospital's
- * sales.
+ * sales — which is the path that actually ships, since the chart sets `NODE_ENV=production` in
+ * every namespace.
+ *
+ * `why` is how the production path stays diagnosable: `withTransaction` leaves the reason the
+ * record did not happen here, and `mount()` logs it beside the route and the key.
  */
-export type IdemContext = { idem: NonNullable<FastifyRequest["idem"]>; response: z.ZodTypeAny; strict: boolean };
+export type IdemContext = { idem: NonNullable<FastifyRequest["idem"]>; response: z.ZodTypeAny; strict: boolean; why?: string };
 
 /** Set by `mount()` around every write handler, read by `withTransaction` (`lib/db.ts`). An
  *  async-local rather than an argument, so the record lands inside the transaction without
@@ -35,7 +40,6 @@ export type IdemContext = { idem: NonNullable<FastifyRequest["idem"]>; response:
 export const idemStore = new AsyncLocalStorage<IdemContext>();
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const TTL_MS = 24 * 3600_000;
 /** A claim older than this with no response is assumed abandoned (the pod died mid-write).
  *  Kept comfortably above app.ts's `requestTimeout` (30s) so a takeover can only happen once
  *  Fastify has already killed any legitimately slow request that held the claim. */
@@ -44,9 +48,6 @@ const CLAIM_STALE_MS = 120_000;
 const CLAIMED = 0;
 const IN_FLIGHT = "That request is still being processed — try again in a moment.";
 const hashOf = (req: FastifyRequest) => createHash("sha256").update(`${req.method} ${req.url}\n${JSON.stringify(req.body ?? null)}`).digest("hex");
-/** `response` is `jsonb not null`, so an empty body has to be stored as the JSON literal
- *  `null` — handing drizzle a JS `null` would write an SQL NULL and break the constraint. */
-const JSON_NULL = sql`'null'::jsonb`;
 
 /**
  * The key is claimed *before* the handler runs, and filled in *inside the write's own

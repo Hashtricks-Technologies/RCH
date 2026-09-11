@@ -1,6 +1,6 @@
 import type { Db } from "../db/client.js";
 import { idemStore } from "../plugins/idempotency.js";
-import { NOT_RECORDED, recordIdempotent } from "./idempotency-record.js";
+import { recordIdempotent } from "./idempotency-record.js";
 
 export type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
@@ -25,16 +25,26 @@ export type Reader = Db | Tx;
  * transaction is asked in turn. In development and test that leniency is switched off
  * (`ctx.strict`): the first transaction to produce an unrecordable response takes the write down
  * with it, so a write whose answer is not recorded shows up as a failure on the bench rather
- * than as an un-replayable sale in the hospital. Production leaves the write standing and falls
- * back to `onSend`.
+ * than as an un-replayable sale in the hospital. Production leaves the write standing, carries
+ * the reason out on `ctx.why` for `mount()` to log, and falls back to `onSend`.
+ *
+ * The record's own UPDATE is deliberately **not** wrapped in a try/catch: if writing the claim
+ * row throws, the business write rolls back with it. That is the opposite of the `onSend` hook
+ * below it, which warns and lets the response through — and it is the right way round here,
+ * because a write that commits without its record is exactly the duplicate-charge hole this
+ * whole arrangement closes. Atomicity over availability, on purpose.
  */
 export const withTransaction = <T>(db: Db, fn: (tx: Tx) => Promise<T>): Promise<T> =>
   db.transaction(async (tx) => {
     const value = await fn(tx);
     const ctx = idemStore.getStore();
     if (ctx && !ctx.idem.recorded) {
-      ctx.idem.recorded = await recordIdempotent(tx, ctx, value);
-      if (!ctx.idem.recorded && ctx.strict) throw new Error(NOT_RECORDED);
+      const outcome = await recordIdempotent(tx, ctx, value);
+      ctx.idem.recorded = outcome.ok;
+      if (!outcome.ok) {
+        ctx.why = outcome.why;
+        if (ctx.strict) throw new Error(outcome.why);
+      }
     }
     return value;
   });
