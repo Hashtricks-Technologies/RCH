@@ -6,7 +6,10 @@ import { seedDatabase } from "../db/seed.js";
 const config = loadConfig(process.env);
 const force = process.argv.includes("--force");
 const allowProduction = process.argv.includes("--allow-production");
-const yesDestroy = process.argv[process.argv.indexOf("--yes-destroy") + 1];
+// Read the name only when the flag is actually there: `indexOf` answers -1 otherwise, and
+// argv[0] is the node binary, which would be reported back as the name the operator typed.
+const yesDestroyAt = process.argv.indexOf("--yes-destroy");
+const yesDestroy = yesDestroyAt < 0 ? undefined : process.argv[yesDestroyAt + 1];
 const production = config.env === "production";
 
 // Seeding a production database is almost always a mistake: it rewrites the password of every
