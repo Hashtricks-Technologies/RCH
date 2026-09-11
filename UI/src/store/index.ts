@@ -297,7 +297,13 @@ export const useApp = create<AppState>((set, get) => ({
     set({ toast: m });
     toastTimer = setTimeout(() => { toastTimer = null; set({ toast: null }); }, toastMs(m));
   },
-  dismissToast: () => set({ toast: null }),
+  /** Put it away on a click — and take its timer with it, so nothing is left running to fire at
+   *  a toast that is already down, or at the next one if `notify` has not replaced it yet. */
+  dismissToast: () => {
+    if (toastTimer !== null) clearTimeout(toastTimer);
+    toastTimer = null;
+    set({ toast: null });
+  },
   openDrawer: (t, id) => set({ drawer: { t, id } }),
   closeDrawer: () => set({ drawer: null }),
   saveProfile: async (p) => {

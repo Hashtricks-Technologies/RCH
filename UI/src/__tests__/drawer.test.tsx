@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { act, createElement } from "react";
+import { act, createElement, useState } from "react";
 import { createRoot } from "react-dom/client";
 import Drawer, { DrawerFrame } from "../ui/Drawer";
 import { registerDrawer } from "../drawers";
@@ -23,6 +23,31 @@ function TestDrawer({ id }: { id: string }) {
   );
 }
 registerDrawer("a11ytest", TestDrawer);
+
+/**
+ * A drawer with a control that **replaces itself**, which is the shape
+ * `roles/store/TicketDrawer.tsx` uses for its supervisor override: pressing "Supervisor override"
+ * swaps that button for a confirm block, so the element holding the keyboard stops existing. A
+ * browser answers that by dropping focus to `<body>` and firing no focus event at all, so
+ * nothing bubbles for a `focusin` guard to catch.
+ */
+function VanishingDrawer() {
+  const [override, setOverride] = useState(false);
+  return (
+    <DrawerFrame title="Ticket TKT-2026-0451" foot={<button type="button">Close</button>}>
+      {override ? (
+        // A block, not another bare button: React reconciles by position, so two buttons in the
+        // same slot would be the *same* DOM node re-labelled and nothing would unmount. The real
+        // screen swaps a sentence-plus-button for two buttons, which does unmount; this is the
+        // smallest shape with the same effect.
+        <div><button type="button">Confirm override handover</button></div>
+      ) : (
+        <button type="button" onClick={() => setOverride(true)}>Supervisor override</button>
+      )}
+    </DrawerFrame>
+  );
+}
+registerDrawer("a11yvanish", VanishingDrawer);
 
 const stops = (host: HTMLElement) => ({
   close: host.querySelector<HTMLButtonElement>("button.ib")!,
@@ -112,6 +137,39 @@ describe("the drawer is a real dialog", () => {
 
     // Untouched: the browser's own Tab moves on from here, and jsdom's does not move at all.
     expect(document.activeElement).toBe(code);
+  });
+
+  /**
+   * The case a `focusin` guard alone cannot see. Pressing "Supervisor override" replaces the
+   * pressed button with a confirm block, so the element holding the keyboard stops existing and
+   * focus falls to `<body>` — outside the dialog, with no focus event fired. Left there, the next
+   * Tab starts at the top of the document and walks the page behind the scrim, which is precisely
+   * what `aria-modal="true"` promises cannot happen.
+   */
+  it("pulls focus back into the panel when the focused control unmounts", async () => {
+    act(() => { S().openDrawer("a11yvanish", "TKT-2026-0451"); });
+    const override = [...host.querySelectorAll("button")].find((b) => b.textContent === "Supervisor override")!;
+    act(() => { override.focus(); });
+    expect(document.activeElement).toBe(override);
+
+    // `await`, because the DOM watcher answers on a microtask — one turn in which focus sits on
+    // `<body>`, and no input can happen. A browser gets the same turn.
+    await act(async () => { override.click(); });
+
+    expect(override.isConnected).toBe(false);           // it really did replace itself
+    const aside = host.querySelector<HTMLElement>("aside.drawer")!;
+    expect(document.activeElement).not.toBe(document.body);
+    expect(aside.contains(document.activeElement)).toBe(true);
+  });
+
+  it("pulls focus back when something outside the drawer takes it", () => {
+    open();
+    const aside = host.querySelector<HTMLElement>("aside.drawer")!;
+
+    act(() => { opener.focus(); });                     // a control on the page behind the scrim
+
+    expect(document.activeElement).toBe(stops(host).close);
+    expect(aside.contains(document.activeElement)).toBe(true);
   });
 
   it("gives the keyboard back to whatever opened the drawer", () => {

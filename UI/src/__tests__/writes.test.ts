@@ -1123,19 +1123,30 @@ describe("a refusal keeps what the operator typed", () => {
    *
    * `restore()` puts the real action back, because the store is a module singleton and
    * `resetStore` replaces only its data: an action left swapped follows this file into every
-   * case after it.
+   * case after it. Call it in a `finally` — a failed assertion must not leave the swap behind
+   * for the rest of the file to trip over.
    */
   const capture = (key: "makeProduct" | "sendRequisition") => {
     const real = S()[key];
-    let pending: Promise<boolean> = Promise.resolve(false);
+    const idle: Promise<boolean> = Promise.resolve(false);
+    let pending = idle;
     const held = (...a: Parameters<AppState[typeof key]>) =>
       (pending = (real as (...x: unknown[]) => Promise<boolean>)(...a));
     useApp.setState({ [key]: held } as Partial<AppState>);
     return {
       press: async (fire: () => void) => {
         // `pending` is read after `fire()` has run, so it is the promise this press started and
-        // never the standing `Promise.resolve(false)` above.
-        await act(async () => { fire(); await pending; });
+        // never the standing `idle` above.
+        await act(async () => {
+          fire();
+          // Said out loud, because the alternative is a case that passes by waiting for nothing.
+          // If the screen ever stops calling the action synchronously from its handler — an
+          // `await` before it, a guard that returns early, a disabled button — `pending` is still
+          // `idle`, `await` resolves at once and every assertion below runs against a screen the
+          // write never touched. That is a green nobody earned, so it fails here instead.
+          if (pending === idle) throw new Error(`${key} was not called by this press — the screen did not reach the store action, so there is nothing to await`);
+          await pending;
+        });
       },
       // In `act` because the screen subscribes to this action: putting the real one back is a
       // store change, and a store change the mounted component re-renders for.
@@ -1211,15 +1222,16 @@ describe("a refusal keeps what the operator typed", () => {
     const ui = mountNode(MakeDistribute);
     act(() => { type(ui.field("Quantity of Veg puffs to start"), "200"); });
 
-    // The action's own promise, not a budget: when it resolves the write has gone out, been
-    // refused and been read back, so there is nothing left to wait for and nothing to race.
-    await make.press(() => { ui.button("Make")!.click(); });
-    make.restore();
+    try {
+      // The action's own promise, not a budget: when it resolves the write has gone out, been
+      // refused and been read back, so there is nothing left to wait for and nothing to race.
+      await make.press(() => { ui.button("Make")!.click(); });
 
-    expect(hit("POST /api/v1/batches")[0].body).toEqual({ it: "puff", started: 200 });
-    expect(S().toast).toBe("Kitchen is short of Veg filling mix — 1.200 kg left");
-    // Nothing to retype: the refusal landed on the kitchen's own typing.
-    expect(ui.field("Quantity of Veg puffs to start").value).toBe("200");
+      expect(hit("POST /api/v1/batches")[0].body).toEqual({ it: "puff", started: 200 });
+      expect(S().toast).toBe("Kitchen is short of Veg filling mix — 1.200 kg left");
+      // Nothing to retype: the refusal landed on the kitchen's own typing.
+      expect(ui.field("Quantity of Veg puffs to start").value).toBe("200");
+    } finally { make.restore(); }
     ui.unmount();
   });
 
@@ -1264,13 +1276,14 @@ describe("a refusal keeps what the operator typed", () => {
     const ui = mountNode(StoreRequisitions);
     act(() => { type(ui.host.querySelector("textarea")!, "Coffee shop is dry"); });
 
-    await send.press(() => { ui.button("Send to procurement")!.click(); });
-    send.restore();
+    try {
+      await send.press(() => { ui.button("Send to procurement")!.click(); });
 
-    expect(S().toast).toBe("Combine the Milk 1L (toned) lines into one");
-    // Nothing to rebuild: the draft and the note are exactly where they were.
-    expect(S().prqDraft).toHaveLength(1);
-    expect(ui.host.querySelector("textarea")!.value).toBe("Coffee shop is dry");
+      expect(S().toast).toBe("Combine the Milk 1L (toned) lines into one");
+      // Nothing to rebuild: the draft and the note are exactly where they were.
+      expect(S().prqDraft).toHaveLength(1);
+      expect(ui.host.querySelector("textarea")!.value).toBe("Coffee shop is dry");
+    } finally { send.restore(); }
     ui.unmount();
   });
 

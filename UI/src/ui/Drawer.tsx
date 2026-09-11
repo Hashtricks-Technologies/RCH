@@ -32,6 +32,19 @@ const FOCUSABLE = [
   "[tabindex]:not([tabindex=\"-1\"])",
 ].join(",");
 
+/**
+ * Put the keyboard back inside the panel, at the first control it can actually use — the title
+ * only if there is no control at all, and the panel itself only if there is no title either.
+ *
+ * A no-op when focus is already inside, which is what makes it safe to call from anything that
+ * merely *might* have let it out.
+ */
+const pullInto = (el: HTMLElement | null) => {
+  if (!el || el.contains(document.activeElement)) return;
+  const title = el.querySelector<HTMLElement>(`#${DRAWER_TITLE_ID}`);
+  (el.querySelector<HTMLElement>(FOCUSABLE) ?? title ?? el).focus();
+};
+
 export default function Drawer() {
   const drawer = useApp((s) => s.drawer);
   const close = useApp((s) => s.closeDrawer);
@@ -69,12 +82,44 @@ export default function Drawer() {
 function Panel({ at, onClose, children }: { at: string; onClose: () => void; children: ReactNode }) {
   const aside = useRef<HTMLElement>(null);
 
-  // Where the keyboard was standing before the drawer took it. Restored on close, and only if
-  // that element is still on the page — a row that has since been re-rendered away cannot be
-  // handed focus, and forcing it would send the caret to the top of the document instead.
+  // Where the keyboard was standing before the drawer took it, and the two guards that keep it
+  // from wandering off while the drawer is open. All three live in one effect so the cleanup can
+  // order them: the guards come **off first**, because restoring focus below is itself a focus
+  // change and a guard still listening would catch its own restore and drag the keyboard back
+  // into a panel that is going away.
+  //
+  // Focus is restored only if that element is still on the page — a row that has since been
+  // re-rendered away cannot be handed focus, and forcing it would send the caret to the top of
+  // the document instead.
   useEffect(() => {
     const before = document.activeElement as HTMLElement | null;
-    return () => { if (before?.isConnected) before.focus(); };
+
+    // `focusin` bubbles to the document, which is what catches the keyboard being *moved* out:
+    // a click on the page behind, or a shortcut that focuses something in the shell.
+    const guard = (e: FocusEvent) => {
+      const el = aside.current;
+      if (el && !el.contains(e.target as Node)) pullInto(el);
+    };
+    document.addEventListener("focusin", guard);
+
+    // The other way the keyboard gets out, and the one `focusin` cannot see: the control holding
+    // it is **unmounted**. `roles/store/TicketDrawer.tsx`'s "Supervisor override" replaces itself
+    // with a confirm block, and a browser that loses the focused element drops focus to `<body>`
+    // firing no focus event at all — so nothing bubbles and no listener hears it. The next Tab
+    // would then start at the top of the document and walk the page behind the scrim, which is
+    // exactly what `aria-modal="true"` promises cannot happen.
+    //
+    // A render-time check cannot cover it either: the state that swaps that button lives in the
+    // drawer's own body, so `Panel` never re-renders and no effect of `Panel`'s would run. The
+    // DOM is the only thing that reliably knows, so the DOM is what is watched.
+    const watcher = new MutationObserver(() => { pullInto(aside.current); });
+    if (aside.current) watcher.observe(aside.current, { childList: true, subtree: true });
+
+    return () => {
+      watcher.disconnect();
+      document.removeEventListener("focusin", guard);
+      if (before?.isConnected) before.focus();
+    };
   }, []);
 
   // On open, and again whenever the same panel is pointed at a different document, the keyboard
