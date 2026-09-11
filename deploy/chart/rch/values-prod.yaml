@@ -5,6 +5,11 @@ image:
   registry: ""                      # FILL: <account>.dkr.ecr.<region>.amazonaws.com — deploy.yml passes it
 api:
   replicas: 3
+  # Production runs on ng-prod, the on-demand node group (deploy/eksctl/cluster.yaml), never on
+  # the single spot node dev and staging share. A spot reclaim gives two minutes' notice, and the
+  # PodDisruptionBudget and topology spread below are both decorative on one node anyway.
+  # ng-prod carries no taint, so this label is what keeps production's pods on it.
+  nodeSelector: { rch.io/tier: prod }
   # Sized against the load check (apps/api/scripts/loadcheck.mjs): one pod holds ten Postgres
   # connections (api.env.DB_POOL_MAX) and the snapshot is the heaviest read in the system —
   # though one snapshot now takes one of those ten, not forty.
@@ -34,6 +39,7 @@ api:
     SSE_RETRY_MS: "1000"
 ui:
   replicas: 3
+  nodeSelector: { rch.io/tier: prod }
   resources: { requests: { cpu: 100m, memory: 128Mi }, limits: { cpu: 500m, memory: 256Mi } }
 ingress:
   enabled: true

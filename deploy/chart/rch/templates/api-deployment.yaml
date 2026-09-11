@@ -13,6 +13,12 @@ spec:
       serviceAccountName: {{ include "rch.sa" . }}
       terminationGracePeriodSeconds: 30
       securityContext: { runAsNonRoot: true, runAsUser: 65532, fsGroup: 65532, seccompProfile: { type: RuntimeDefault } }
+      {{- with .Values.api.nodeSelector }}
+      # values-prod.yaml pins production to the on-demand ng-prod node group
+      # (deploy/eksctl/cluster.yaml). Unset everywhere else, which is how dev and staging
+      # keep landing on the one spot node.
+      nodeSelector: {{- toYaml . | nindent 8 }}
+      {{- end }}
       {{- if .Values.api.topologySpread.enabled }}
       # Three replicas that land on one node make the PodDisruptionBudget decorative: draining
       # that node takes the whole service with it whatever pdb.minAvailable says.
