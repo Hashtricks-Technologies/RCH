@@ -1,36 +1,59 @@
 name: Deploy
+# Deploys run only after CI has gone green on the very commit being deployed. The old
+# `on: push` fired this workflow alongside ci.yml, so a red typecheck, a failed test or a
+# CRITICAL in an image could reach a cluster while CI was still running — the two were
+# racing, not ordered. `workflow_run` inverts that: GitHub starts this only when the named
+# workflow finishes, and `head_sha`/`head_branch` below name the commit and branch it
+# finished on. Everything here is pinned to those two values; `github.sha` and
+# `github.ref_name` are NOT usable in a workflow_run event (they point at the default
+# branch's tip, not at what CI just passed).
 on:
-  push: { branches: [develop, staging, production] }
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [develop, staging, production]
 permissions: { id-token: write, contents: read }
-concurrency: { group: "deploy-${{ github.ref }}", cancel-in-progress: false }
+concurrency: { group: "deploy-${{ github.event.workflow_run.head_branch }}", cancel-in-progress: false }
 jobs:
   guard:
     name: Fast-forward guard
+    # `event == 'push'` as well as the green conclusion: the branches filter above matches the
+    # CI run's HEAD branch, so a pull request raised FROM staging INTO production (the hotfix
+    # flow in CLAUDE.md) would otherwise satisfy it and deploy an unmerged PR head.
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
     runs-on: ubuntu-latest
+    env:
+      REF_NAME: ${{ github.event.workflow_run.head_branch }}
     steps:
       - uses: actions/checkout@v7
-        with: { fetch-depth: 0 }
+        # fetch-depth: 0 for the merge-base below — it needs origin/develop and origin/staging,
+        # which a shallow checkout of one commit does not have.
+        with: { ref: "${{ github.event.workflow_run.head_sha }}", fetch-depth: 0 }
       - name: staging must be an ancestor of develop; production of staging
         run: |
           set -e
-          if [ "${GITHUB_REF_NAME}" = staging ]; then git merge-base --is-ancestor HEAD origin/develop; fi
-          if [ "${GITHUB_REF_NAME}" = production ]; then git merge-base --is-ancestor HEAD origin/staging; fi
+          if [ "$REF_NAME" = staging ]; then git merge-base --is-ancestor HEAD origin/develop; fi
+          if [ "$REF_NAME" = production ]; then git merge-base --is-ancestor HEAD origin/staging; fi
   deploy:
-    name: Deploy ${{ github.ref_name }}
+    name: Deploy ${{ github.event.workflow_run.head_branch }}
     needs: guard
-    if: ${{ vars.DEPLOY_ENABLED == 'true' }}
+    if: ${{ github.event.workflow_run.conclusion == 'success' && vars.DEPLOY_ENABLED == 'true' }}
     runs-on: ubuntu-latest
     # Two image builds, a 15m helm timeout and two rollouts. A job that runs past this is stuck,
     # not slow, and holding the concurrency group open costs the next push its deploy.
     timeout-minutes: 45
     permissions: { id-token: write, contents: write }
-    environment: ${{ github.ref_name == 'production' && 'production' || github.ref_name == 'staging' && 'staging' || 'dev' }}
+    environment: ${{ github.event.workflow_run.head_branch == 'production' && 'production' || github.event.workflow_run.head_branch == 'staging' && 'staging' || 'dev' }}
     env:
-      NS: ${{ github.ref_name == 'production' && 'rch' || github.ref_name == 'staging' && 'rch-staging' || 'rch-dev' }}
-      VALUES: ${{ github.ref_name == 'production' && 'values-prod.yaml' || github.ref_name == 'staging' && 'values-staging.yaml' || 'values-dev.yaml' }}
-      CLUSTER: ${{ github.ref_name == 'production' && secrets.EKS_CLUSTER_PROD || github.ref_name == 'staging' && secrets.EKS_CLUSTER_STAGING || secrets.EKS_CLUSTER_DEV }}
+      REF_NAME: ${{ github.event.workflow_run.head_branch }}
+      SHA: ${{ github.event.workflow_run.head_sha }}
+      RELEASE: rch
+      NS: ${{ github.event.workflow_run.head_branch == 'production' && 'rch' || github.event.workflow_run.head_branch == 'staging' && 'rch-staging' || 'rch-dev' }}
+      VALUES: ${{ github.event.workflow_run.head_branch == 'production' && 'values-prod.yaml' || github.event.workflow_run.head_branch == 'staging' && 'values-staging.yaml' || 'values-dev.yaml' }}
+      CLUSTER: ${{ github.event.workflow_run.head_branch == 'production' && secrets.EKS_CLUSTER_PROD || github.event.workflow_run.head_branch == 'staging' && secrets.EKS_CLUSTER_STAGING || secrets.EKS_CLUSTER_DEV }}
     steps:
       - uses: actions/checkout@v7
+        with: { ref: "${{ github.event.workflow_run.head_sha }}" }
       - uses: aws-actions/configure-aws-credentials@v4
         with: { role-to-assume: "${{ secrets.AWS_ROLE_ARN }}", aws-region: "${{ secrets.AWS_REGION }}" }
       - uses: aws-actions/amazon-ecr-login@v2
@@ -41,19 +64,60 @@ jobs:
         run: |
           have=true
           for repo in rch-api rch-ui; do
-            aws ecr describe-images --repository-name "$repo" --image-ids imageTag="${{ github.sha }}" > /dev/null 2>&1 || have=false
+            aws ecr describe-images --repository-name "$repo" --image-ids imageTag="$SHA" > /dev/null 2>&1 || have=false
           done
           echo "exists=$have" >> "$GITHUB_OUTPUT"
-          echo "images for ${{ github.sha }} already in ECR: $have"
+          echo "images for $SHA already in ECR: $have"
       - uses: docker/setup-buildx-action@v3
       - uses: docker/build-push-action@v6
         if: steps.images.outputs.exists != 'true'
-        with: { context: ., file: apps/api/Dockerfile, push: true, platforms: linux/amd64, tags: "${{ secrets.ECR_REGISTRY }}/rch-api:${{ github.sha }}", cache-from: type=gha, cache-to: "type=gha,mode=max" }
+        with: { context: ., file: apps/api/Dockerfile, push: true, platforms: linux/amd64, tags: "${{ secrets.ECR_REGISTRY }}/rch-api:${{ github.event.workflow_run.head_sha }}", cache-from: type=gha, cache-to: "type=gha,mode=max" }
       - uses: docker/build-push-action@v6
         if: steps.images.outputs.exists != 'true'
-        with: { context: ., file: UI/Dockerfile, push: true, platforms: linux/amd64, tags: "${{ secrets.ECR_REGISTRY }}/rch-ui:${{ github.sha }}", cache-from: type=gha, cache-to: "type=gha,mode=max" }
+        with: { context: ., file: UI/Dockerfile, push: true, platforms: linux/amd64, tags: "${{ secrets.ECR_REGISTRY }}/rch-ui:${{ github.event.workflow_run.head_sha }}", cache-from: type=gha, cache-to: "type=gha,mode=max" }
+      # ci.yml scans rch-api:ci / rch-ui:ci — the images it built itself, which are not the
+      # bytes that reach a cluster. These two steps scan the exact tags helm is about to
+      # deploy, pulled back out of ECR (the ecr-login above left the credentials trivy needs),
+      # and they run whether the builds above ran or were skipped as already-pushed. Same
+      # action version and ignore file as ci.yml, so the two scans cannot drift apart.
+      - name: Scan the api image that is about to be deployed
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: "${{ secrets.ECR_REGISTRY }}/rch-api:${{ github.event.workflow_run.head_sha }}"
+          severity: CRITICAL,HIGH
+          exit-code: "1"
+          ignore-unfixed: true
+          trivyignores: .trivyignore.yaml
+      - name: Scan the ui image that is about to be deployed
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: "${{ secrets.ECR_REGISTRY }}/rch-ui:${{ github.event.workflow_run.head_sha }}"
+          severity: CRITICAL,HIGH
+          exit-code: "1"
+          ignore-unfixed: true
+          trivyignores: .trivyignore.yaml
       - uses: azure/setup-helm@v4
       - run: aws eks update-kubeconfig --name "$CLUSTER" --region "${{ secrets.AWS_REGION }}"
+      # dev and staging pass their four secrets to helm from the GitHub environment. An unset
+      # one is not an error helm reports: --set-string writes the empty string into the
+      # Secret, the api container fails config validation minutes later, and the log says
+      # nothing about where the blank came from. Refuse here, by name, before anything moves.
+      # production is exempt: it reads the same four from AWS Secrets Manager through the
+      # External Secrets Operator (values-prod.yaml), so these GitHub secrets are empty there
+      # on purpose.
+      - name: Every secret the chart needs is present
+        if: github.event.workflow_run.head_branch != 'production'
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          JWT_PRIVATE_KEY: ${{ secrets.JWT_PRIVATE_KEY }}
+          JWT_PUBLIC_KEY: ${{ secrets.JWT_PUBLIC_KEY }}
+          SEED_PASSWORD: ${{ secrets.SEED_PASSWORD }}
+        run: |
+          missing=0
+          for v in DATABASE_URL JWT_PRIVATE_KEY JWT_PUBLIC_KEY SEED_PASSWORD; do
+            [ -n "${!v}" ] || { echo "::error::$v is empty"; missing=1; }
+          done
+          [ "$missing" = 0 ] || { echo "set the missing secrets on the $REF_NAME environment — see deploy/RUNBOOK.md"; exit 1; }
       - name: helm upgrade
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
@@ -75,11 +139,10 @@ jobs:
           # remote JSON must carry SEED_PASSWORD too.
           #
           # SEED_PASSWORD has no default in apps/api/src/config.ts, so the api container will not
-          # start without one: an unset SEED_PASSWORD secret here is a rollout that fails config
-          # validation and is rolled back by --atomic. It is the password the six seeded accounts
-          # start on and is only read by the seed CLI, but every container carries it because
-          # rch.envList builds one env list for all of them.
-          if [ "${{ github.ref_name }}" != production ]; then
+          # start without one. It is the password the six seeded accounts start on and is only
+          # read by the seed CLI, but every container carries it because rch.envList builds one
+          # env list for all of them. The step above refuses an empty one before we get here.
+          if [ "$REF_NAME" != production ]; then
             EXTRA=(
               --set-string "secrets.values.DATABASE_URL=$DATABASE_URL"
               --set-string "secrets.values.JWT_PRIVATE_KEY=$JWT_PRIVATE_KEY"
@@ -93,8 +156,8 @@ jobs:
           # wanted behaviour there too — nothing half-applied survives a failed first deploy.
           # --timeout is 15m, not --wait's old 10m: the migrate initContainer runs before the api
           # container becomes Ready, and a large migration is not a fast one.
-          helm upgrade --install rch deploy/chart/rch -n "$NS" --create-namespace -f "deploy/chart/rch/$VALUES" \
-            --set image.registry="${{ secrets.ECR_REGISTRY }}" --set image.tag="${{ github.sha }}" "${EXTRA[@]}" --wait --atomic --timeout 15m
+          helm upgrade --install "$RELEASE" deploy/chart/rch -n "$NS" --create-namespace -f "deploy/chart/rch/$VALUES" \
+            --set image.registry="${{ secrets.ECR_REGISTRY }}" --set image.tag="$SHA" "${EXTRA[@]}" --wait --atomic --timeout 15m
       - name: Prove it came up
         run: |
           kubectl -n "$NS" rollout status deploy/rch-api --timeout=5m
@@ -107,14 +170,14 @@ jobs:
           kubectl -n "$NS" wait --for=condition=Available deploy/rch-api --timeout=300s
           kubectl -n "$NS" wait --for=condition=Available deploy/rch-ui --timeout=300s
       - name: Tag production
-        if: github.ref_name == 'production' && success()
+        if: github.event.workflow_run.head_branch == 'production' && success()
         run: |
           git config user.name ci && git config user.email ci@users.noreply.github.com
           TAG="v$(date -u +%Y.%m.%d)-${GITHUB_RUN_NUMBER}"; git tag "$TAG" && git push origin "$TAG"
   skipped:
     name: Deploy skipped (DEPLOY_ENABLED is not true)
     needs: guard
-    if: ${{ vars.DEPLOY_ENABLED != 'true' }}
+    if: ${{ github.event.workflow_run.conclusion == 'success' && vars.DEPLOY_ENABLED != 'true' }}
     runs-on: ubuntu-latest
     steps:
       - run: echo "Set repository variable DEPLOY_ENABLED=true and the AWS secrets to enable deploys. See deploy/RUNBOOK.md."
