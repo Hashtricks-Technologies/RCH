@@ -17,7 +17,8 @@ export default defineConfig({
     // same box) the default 5 s has timed out on a test that passes alone in a second.
     testTimeout: 20_000,
     // The thresholds are set a point or two **under what the whole suite measures today**
-    // (statements 71.07, branches 52.74, functions 62.37, lines 74.42) — the point is not to
+    // (statements 74.21, branches 56.26, functions 65.78, lines 77.52 at the close of the audit
+    // fix wave, 2026-09-12; 71.07 / 52.74 / 62.37 / 74.42 before it) — the point is not to
     // chase a number, it is that deleting a test or shipping an untested screen cannot pass CI
     // quietly. Raise them when the real figure rises; never lower one to make a red run green.
     //
