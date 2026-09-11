@@ -43,6 +43,7 @@ From the root, `pnpm lint` also runs `scripts/check-boundaries.sh` (below) and r
 ```
 src/app.ts      buildApp(config, deps): plugins in order, then registerModules
 src/server.ts   loadConfig -> buildApp -> listen; SIGTERM drains via readiness.setDraining()
+                then waits 30s (production only) before app.close(), 25s drain timer — see below
 src/config.ts   the Zod env schema — the only place an env var is read
 src/routes.ts   mount(): the only way a module registers a route
 src/plugins/*   logging, errors, metrics, health, security, db, auth, rbac, sse, idempotency
@@ -232,14 +233,30 @@ nothing in the contract changed.
 `stock_balances`; `src/lib/reservations.ts` is the only thing that writes `reservations`
 (`reserve`, `releaseForTicket`, `reservedAt`). `sequences`, `document_history` and
 `idempotency_keys` are protected the same way. `scripts/check-boundaries.sh` (run by `pnpm lint`
-and as its own CI step) enforces it by **grep**, so the literal strings matter: it greps for
-`insert(stockMoves)`, `insert|update|delete(stockBalances)`, `insert|update(sequences)`,
-`insert(documentHistory)`, `insert|update(idempotencyKeys)`, `insert|update|delete(reservations)`
-and the raw-SQL equivalents (`insert into stock_moves`, `update stock_balances`,
-`delete from reservations`, …) anywhere outside `src/lib/`, `src/db/`,
-`plugins/idempotency.ts` and `*.test.ts`. Do not write one of those phrases in a comment in a
-module file — the check cannot tell prose from code. It also asserts `insert(stockMoves)` appears
-in exactly one non-test file, and that every module folder has the four skeleton files.
+and as its own CI step) enforces it by **grep**, anywhere outside `src/lib/`, `src/db/`,
+`plugins/idempotency.ts` and `*.test.ts`.
+
+The greps used to be a literal list — `insert\(stockMoves\)` and five friends — matching exactly
+the spelling `lib/ledger.ts` happens to use, so `insert(schema.stockMoves)`, `insert( stockMoves
+)`, `insert into "stock_moves"` and `merge into stock_moves` all walked straight past the check
+whose whole job was to stop them. They are **shapes** now, and all six tables take all three
+verbs:
+
+- Drizzle: `(insert|update|delete)` `(` any qualifier chain `)` one of `stockMoves`,
+  `stockBalances`, `sequences`, `documentHistory`, `idempotencyKeys`, `reservations` `)`, with
+  any spacing inside the parentheses.
+- Raw SQL: `insert into` / `merge into` / `update` / `delete from` followed by the snake_case
+  name, optionally quoted (`"stock_moves"`, backticks) and optionally schema-prefixed
+  (`public.stock_balances`).
+
+`stock_moves` and `document_history` take `update`/`delete` too — the first is append-only even
+inside `lib/`, and a trail somebody can edit is not a trail. POSIX character classes rather than
+`\s`/`\b`, because this runs on macOS as well as on CI's GNU grep. Two consequences: **do not
+write one of those phrases in a comment in a module file** — the check still cannot tell prose
+from code, and the widened pattern now catches ordinary English like "update reservations" — and
+the checks are **line-oriented**, so a write split across lines by a formatter (`db\n  .insert(
+stockMoves)`) is still invisible to them. It also asserts `insert(stockMoves)` appears in exactly
+one non-test file, and that every module folder has the four skeleton files.
 
 `batches` is not one of the protected tables — it is written directly from
 `src/modules/production/repo.ts`, the ordinary way any module writes its own document row. What
@@ -495,3 +512,41 @@ SQL out of responses). `plugins/db.ts` is where that curation happens for the on
 exists, and nothing that can throw is left outside a `try` there — `unreachable or unmigrated`,
 `migration journal unreadable` (`expectedMigrationCount` reads `drizzle/meta/_journal.json` off
 disk, and an `ENOENT` names paths inside the image), or `schema at <n>/<m> migrations`.
+
+## Shutting down, and the nightly sweep
+
+**`server.ts`'s SIGTERM handler is four numbers that have to agree with the chart.** It sets
+`readiness.setDraining()` (so `/readyz` answers 503 at once), then in production *waits 30 s
+doing nothing* before calling `app.close()` behind a 25 s drain timer. What the wait buys is not
+the ALB's health check: it is this pod leaving the Service's `Endpoints` (readiness probe every
+5 s × `failureThreshold: 3` = 15 s) **and** the AWS Load Balancer Controller reconciling that
+removal into the target group. The ALB's own 15 s check is the backstop behind those two, not
+the driver.
+
+The constraint, written as one: **deregistration delay ≤ pre-drain wait**. The target group's
+`deregistration_delay.timeout_seconds` is 30 (`alb.ingress.kubernetes.io/target-group-attributes`
+in `values.yaml` and `values-prod.yaml`), and a pod that stops accepting while the target group
+is still draining connections into it cuts exactly the requests that delay exists to let finish.
+30 + 25 = 55, inside `terminationGracePeriodSeconds: 60` on `templates/api-deployment.yaml`,
+after which the kubelet sends SIGKILL. Move one of the four and move the others. Outside
+production the wait is `0`, so a local Ctrl-C still exits immediately — but note the chart
+renders `NODE_ENV=production` into **every** pod, CI's kind cluster included, so the 30 s is felt
+there too.
+
+**The nightly purge deletes in batches, not in one statement.** `purgeIdempotencyKeys`
+(`plugins/idempotency.ts`) and `purgeRefreshTokens` (`modules/auth/repo.ts`) each loop
+`delete … where ctid in (select ctid from <t> where <predicate> limit <batch>)` until a batch
+comes back short of `PURGE_BATCH` (10 000, declared in both files). One unbounded `DELETE` over a
+table that has grown for months takes a lock and a WAL burst proportional to the whole backlog;
+a bounded loop takes neither. Both take an optional `batch` argument purely so a test can make it
+smaller than the work — nothing in production passes one, and the two tests count `db.delete`
+**statements** rather than rows, because an unbatched implementation returns the same row total.
+The cutoff `Date` is taken **once per sweep** and reused across batches, so "what this run
+deleted" is not a moving target; the revoked-token half of `purgeRefreshTokens` deliberately
+leaves `now()` inside the statement, since against a seven-day grace no sweep runs long enough to
+carry a row across that line. Neither query has an index on its predicate (`schema/infra.ts`
+indexes `token_hash`, `family` and `user_id`, and nothing on `expires_at`/`revoked_at`), so each
+batch is a LIMIT-bounded sequential scan — fine for a job that runs once a night and stops as
+soon as it has its ten thousand. The CronJob that runs them
+(`deploy/chart/rch/templates/purge-cronjob.yaml`) is bounded too: `startingDeadlineSeconds: 600`,
+`backoffLimit: 2`, `activeDeadlineSeconds: 1800`, three kept runs of each outcome.

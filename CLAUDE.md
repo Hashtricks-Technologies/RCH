@@ -30,14 +30,20 @@ merge, so what reaches production is byte-identical to what passed on staging.
 
 | Branch | Role | Deploys to |
 |---|---|---|
-| `develop` | **Default.** All work lands here (feature branches by PR, or direct commits while the team is one person). | `rch-dev` namespace, on push — the dev environment at https://rch.hashtrickstechnologies.com, one spot node, `values-dev.yaml` |
-| `staging` | Release candidate | `rch-staging` namespace, on push |
-| `production` | What the hospital runs | `rch` namespace, on push, behind a GitHub environment approval |
+| `develop` | **Default.** All work lands here (feature branches by PR, or direct commits while the team is one person). | `rch-dev` namespace, once CI is green on that push — the dev environment at https://rch.hashtrickstechnologies.com, one spot node, `values-dev.yaml` |
+| `staging` | Release candidate | `rch-staging` namespace, once CI is green on that push |
+| `production` | What the hospital runs | `rch` namespace, once CI is green on that push, behind a GitHub environment approval |
 
 Promote with `git checkout staging && git merge --ff-only develop && git push`, then the same
 from `staging` into `production`. Never merge the other way except a hotfix: branch from
 `production`, PR into `production`, then merge `production` back into `staging` and `develop`.
 `main` no longer exists; it was renamed to `develop` on 2026-09-03.
+
+**One thing the fast-forward model does not cover: the workflow file itself.** `deploy.yml` is
+triggered by `workflow_run`, and GitHub always executes a `workflow_run` handler as it exists on
+the **default branch** (`develop`) — never the copy on `staging` or `production`. So an edit to
+`deploy.yml` governs a production deploy the moment it lands on `develop`, not when `production`
+is promoted. `deploy/RUNBOOK.md` §2 says what to do about it.
 
 ## Commands
 
@@ -82,15 +88,33 @@ not only on a real hospital: the chart renders `NODE_ENV=production` into every 
 in-cluster seed is always the `--allow-production` form (`deploy/RUNBOOK.md` §15.7).
 
 From the repo root, `bash scripts/build-site.sh` assembles the published site into `dist/`
-(`/` = `index.html`, `/docs/` = the HTML specs, `/app/` = the built React app, from
-`UI/dist`). Netlify and CI both run this exact script, so a broken assembly fails locally the
-same way.
+(`/` = `index.html`, `/docs/` = the HTML specs). Netlify and CI both run this exact script, so a
+broken assembly fails locally the same way. `/app/` — the built React app, from `UI/dist` — is
+assembled **only when `BUILD_APP=1`**, which CI sets and Netlify deliberately does not: a static
+copy of the app with no `/api` behind it could sign nobody in, so `netlify.toml` redirects
+`/app` and `/app/*` (302, `force = true`) to the deployment that has an API. The script still
+runs `pnpm --filter @rch/ui build` either way — a site build that stopped compiling the app
+would otherwise stop noticing when the app stopped compiling — and prints which of the two it
+did.
 
 CI (`.github/workflows/ci.yml`) runs `pnpm install --frozen-lockfile` → `pnpm turbo typecheck
-test` → `pnpm lint` (oxlint per package plus knip, which turbo never runs) →
-`bash scripts/build-site.sh` on Node 24. Every change must pass all of it.
-`deploy.yml` builds and deploys the API and UI containers on push to `staging`/`production` —
-see `deploy/RUNBOOK.md` §2.
+test` → `pnpm lint` (oxlint per package plus knip, which turbo never runs) → `pnpm
+check:boundaries` → `pnpm audit` → `bash scripts/build-site.sh` on Node 24, then builds both
+images, scans them with Trivy at `CRITICAL,HIGH` and does a real `helm install` against a
+throwaway kind cluster. Every change must pass all of it. Two details worth knowing before you
+debug a red run: `test` is `"cache": false` in `turbo.json` (turbo hashes source files, not the
+database the API suite runs against, so a cache hit would replay a green from before a
+migration), and `pnpm audit` now **fails** the job when the registry is unreachable on all three
+attempts rather than warning — "we did not look" is not "no advisories". An accepted CVE goes in
+`.trivyignore.yaml` (YAML, with a `statement` and a real `expired_at`; the plain-text
+`.trivyignore` it replaced had no expiry field at all, so its dates were decorative).
+
+**`deploy.yml` no longer runs `on: push`.** It is `workflow_run` on CI's completion, gated on
+`conclusion == 'success'` **and** `event == 'push'`, and every value it uses comes from
+`github.event.workflow_run.head_sha` / `head_branch` — `github.sha` and `github.ref_name` point
+at the default branch's tip under this event and are unusable. It re-scans the exact ECR tags
+helm is about to deploy before upgrading, and production upgrades with `--wait` but deliberately
+**without** `--atomic`. See `deploy/RUNBOOK.md` §2 and §3.
 
 ## Repository layout
 
@@ -98,7 +122,8 @@ see `deploy/RUNBOOK.md` §2.
 index.html               project home page (published at /)
 docs/*.html              UA spec, system design, user flows — the product contract
 docs/superpowers/        plans and specs from prior agent-driven work
-scripts/build-site.sh    assembles index.html + docs/ + UI/dist into dist/
+scripts/build-site.sh    assembles index.html + docs/ into dist/ (+ UI/dist when BUILD_APP=1)
+netlify.toml             the published site's build, headers and the /app → EKS redirect
 UI/                      the application (React 19, TS 6 strict, Vite 8, Zustand 5)
 e2e/                     the Playwright smoke — six files, nine scenarios, thirteen runtime tests
                          (the sign-in loop is five of them), against a real stack
@@ -178,14 +203,38 @@ six more in `store/ops.ts` (`requestNewProduct`, `answerProductRequest`, `addCon
 (`raiseTicket`, `replyToTicket`, `setTicketStatus`, `rateTicket`). All forty-seven call the API
 (`UI/src/api/client.ts`) instead of mutating `set` directly, then `refetch`
 (`UI/src/api/refetch.ts`) pulls back only the slices the write says it changed — `GET /stock`
-for `stock`/`rsv`/`ovr`, a narrow reader for every collection with one, and a full
-`loadSnapshot` only for `prices` and `menu` (the manager's price/menu writes), the only two
-collections left without one. A refusal throws and is toasted; the cart or form is left exactly
-as it was. The `Seq` interface (`store/index.ts`) is gone entirely — every document the server
+for `stock`/`rsv`/`ovr`, and a **narrow reader for every other collection**, `prices` and `menu`
+(the manager's writes) included since the audit fix wave. No write costs a `loadSnapshot` any
+more: taking one pulled the whole hospital back down, and put every screen behind the loading
+splash while it did, so a one-field price edit blanked the till. The snapshot fallback stays in
+`refetch` as the guard for the next collection added to `CollectionSchema` and not to `NARROW`,
+which is now the only thing that can reach it. A refusal throws and is toasted; the cart or form is left exactly
+as it was, and **every one of the forty-seven answers whether the server took the write** —
+`pay`, `savePrice`, `addProduct` and `removeProduct` became `Promise<boolean>` in the audit fix
+wave, so none of them is `Promise<void>` where a caller might need to know. The `Seq` interface
+(`store/index.ts`) is gone entirely — every document the server
 numbers is numbered there instead. `UI/src/api/events.ts` keeps every signed-in tab current with
 what other tabs and other browsers do: one `fetch`-based SSE connection per session, debounced
 250 ms per collection into one `refetch`, so an approval made in one window shows up in another
-without a reload.
+without a reload; the shell's header dot reads `live` / `reconnecting` / `off` off that same
+state, and `App.tsx` puts a banner over everything when `navigator.onLine` is false.
+
+**A document in the store carries the instant, not only the printed time.** `UI/src/types.ts`'s
+`Dated<T>` / `Trailed<T>` / `DatedDoc<T>` put `iso` — the server's own stamp, verbatim — beside
+the `"HH:MM"` `api/wire.ts` formats, on every document and every history entry, in the snapshot
+and in each narrow reader. Sort a time column on `iso`, never on the printed string, and filter
+anything labelled "today" with `isToday(iso)` (`UI/src/lib/fmt.ts`), whose day boundary is
+Asia/Kolkata's midnight rather than the host's. Before it, "is this today?" was really "is this
+in the last seven days?" (`GET /bills` returns seven and nothing filtered them) and "which is
+latest?" compared `"22:00"` against `"09:00"` across different days.
+
+**Two tabs of one operator no longer sign each other out.** Refresh tokens rotate, so a
+simultaneous 401 in two tabs presented the same rotated token and the server's reuse detection
+revoked the whole family. `UI/src/api/client.ts` now refreshes inside
+`navigator.locks.request("rch-refresh", …)`, broadcasts the new token on
+`BroadcastChannel("rch-session")` — which only ever *replaces* a token a tab already holds,
+never hands one to a signed-out tab on a shared terminal — and checks the token generation
+inside the lock, so a tab that waited answers "retry", not "refresh again".
 
 ### Derived state is computed, never stored
 
