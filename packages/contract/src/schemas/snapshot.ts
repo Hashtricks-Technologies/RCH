@@ -64,3 +64,9 @@ export const ProductRequestsResponseSchema = z.array(D.ProductRequestSchema);
 /** The caller's own support tickets. Every role sees only what it raised — there is no support
  *  role among the five, so a list of other people's tickets would be rows nobody can act on. */
 export const SupportTicketsResponseSchema = z.array(D.SupportTicketSchema);
+
+// ---- payers ----
+/** The roster on its own, so a payer write that names "roster" refetches that register alone
+ *  instead of the whole snapshot. Scoped exactly as the snapshot's own copy is: the kitchen,
+ *  the store and the buyer never open a payer picker and read an empty one (`scopeRoster`). */
+export const RosterResponseSchema = D.PayerRosterSchema;
