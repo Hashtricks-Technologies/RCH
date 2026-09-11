@@ -58,6 +58,9 @@ ingress:
     # /readyz, not /healthz: /healthz answers 200 for as long as the process exists, draining
     # included, so a pod that has stopped accepting still looks healthy to the load balancer.
     alb.ingress.kubernetes.io/healthcheck-path: /readyz
+    # Pinned rather than left to the ALB's own default, because apps/api/src/server.ts's pre-drain
+    # wait is reasoned against this number — and dev is the environment that actually runs.
+    alb.ingress.kubernetes.io/healthcheck-interval-seconds: "15"
 secrets:
   create: false           # true: build the Secret from the values below (staging, dev)
   # SEED_PASSWORD is the password the six seeded accounts start on; apps/api/src/config.ts has no
@@ -86,6 +89,15 @@ purge: { enabled: true, schedule: "15 2 * * *" }
 # Default-deny ingress for everything this release runs, with the three doors the chart actually
 # needs opened by name (templates/networkpolicy.yaml — read its header before narrowing anything).
 # Egress stays wide open: RDS is outside the cluster at an address this chart does not know.
+#
+# READ THIS BEFORE RELYING ON IT. A NetworkPolicy is enforced by the CNI, and neither cluster
+# this chart is installed into enforces one today:
+#   * EKS — the vpc-cni add-on (deploy/eksctl/cluster.yaml) does not set `enableNetworkPolicy`,
+#     so the VPC CNI's policy agent is off. These objects are applied and are inert. The add-on
+#     setting has to be turned on before the deny is real.
+#   * kind (CI) — kindnetd does not implement NetworkPolicy at all. That, and not the
+#     albSourceCidr rules below, is why deploy/chart/rch/ci/install-test.sh still passes.
+# So this is a policy that is correct and waiting, not a control that is currently holding.
 networkPolicy:
   enabled: true
   # The ingress uses target-type: ip, so the load balancer reaches pod IPs directly from the VPC

@@ -19,11 +19,14 @@ spec:
       # Nothing in this pod reads the Kubernetes API; the ServiceAccount exists for IRSA, and
       # a token that is never used is only a credential sitting in a filesystem.
       automountServiceAccountToken: false
-      # 60, because the shutdown this grants is 45 seconds long: apps/api/src/server.ts waits 20s
-      # after flipping /readyz to 503 (so the ALB's 15s health check can deregister this pod and
-      # the requests already in flight can land) and then gives itself a 25s drain timer. At the
-      # old 30 the kubelet's SIGKILL arrived at the exact moment that timer fired, so a slow
-      # request was cut rather than finished. Move any of the three numbers and move the others.
+      # 60, because the shutdown this grants is 55 seconds long: apps/api/src/server.ts waits 30s
+      # after flipping /readyz to 503 — long enough for this pod to leave the Service's Endpoints
+      # (readiness probe every 5s, failureThreshold 3) and for the load-balancer controller to
+      # reconcile that into the target group, and never shorter than the target group's own 30s
+      # deregistration delay, which may not outlast the wait — and then gives itself a 25s drain
+      # timer. At the old 30 the kubelet's SIGKILL arrived at the exact moment that timer fired,
+      # so a slow request was cut rather than finished. Move any of these numbers and move the
+      # others.
       terminationGracePeriodSeconds: 60
       securityContext: { runAsNonRoot: true, runAsUser: 65532, fsGroup: 65532, seccompProfile: { type: RuntimeDefault } }
       {{- if .Values.api.topologySpread.enabled }}

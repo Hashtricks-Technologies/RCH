@@ -63,9 +63,11 @@ refute grep -q 'healthcheck-path: "*/healthz' <<<"$out"
 # this pod to finish after it is deregistered.
 grep -q 'deregistration_delay.timeout_seconds=30' <<<"$out"
 # The grace period has to be longer than the shutdown it is granting. apps/api/src/server.ts waits
-# 20s for the load balancer to notice and then gives itself 25s to drain — 45s — and the kubelet
-# SIGKILLs whatever is left when this elapses. 30s (the old value) killed the pod exactly as its
-# own drain timer fired.
+# 30s for this pod to leave the Endpoints and the target group, then gives itself 25s to drain —
+# 55s — and the kubelet SIGKILLs whatever is left when this elapses. 30s (the old value) killed
+# the pod exactly as its own drain timer fired. The wait is 30 and not less because the
+# deregistration delay above may never outlast it: a pod that stops accepting while the target
+# group is still draining into it cuts the very requests that delay exists to let finish.
 grep -q 'terminationGracePeriodSeconds: 60' <<<"$out"
 grep -q 'idle_timeout.timeout_seconds=3600' <<<"$out"
 # Phase 3 SSE: the ALB must hold a stream open for an hour, and nginx must neither buffer it
@@ -73,6 +75,12 @@ grep -q 'idle_timeout.timeout_seconds=3600' <<<"$out"
 grep -q 'proxy_buffering off' ../../nginx/default.conf.template
 grep -q 'proxy_read_timeout 3600s' ../../nginx/default.conf.template
 grep -q 'location /api/v1/events' ../../nginx/default.conf.template
+# The ALB's healthcheck-path is an INGRESS-level annotation, so the controller applies it to every
+# target group the ingress makes — the ui's as well as the api's. nginx must therefore serve
+# /readyz itself: without it the check fell through to the SPA catch-all and passed on index.html,
+# a 200 that says nothing about nginx.
+grep -q 'location = /readyz' ../../nginx/default.conf.template
+grep -q 'location = /healthz' ../../nginx/default.conf.template
 # ...and it must forward the client on, like /api/ does: the API trusts one hop, so a stream
 # without X-Forwarded-For is rate-limited and logged as nginx itself.
 events_block=$(sed -n '/location \/api\/v1\/events/,/^  }/p' ../../nginx/default.conf.template)
@@ -184,13 +192,22 @@ grep -q 'fsGroup: 65532' <<<"$cronjob"
 [ "$(grep -c 'kind: NetworkPolicy' <<<"$out")" = 3 ]
 np=$(sed -n '/# Source: rch\/templates\/networkpolicy.yaml/,/# Source: rch\/templates\/[^n]/p' <<<"$out")
 [ -n "$np" ]
+# The deny is a deny: policyTypes names Ingress and the rule list is empty, which is how "nothing
+# reaches these pods" is spelled. Without the empty list the policy selects the release and allows
+# everything, which reads the same in a diff and is the opposite.
+grep -q 'ingress: \[\]' <<<"$np"
 # The ALB reaches pod IPs directly (target-type: ip) and the kubelet probes from the node, so the
 # serving port of each component is open to a CIDR rather than to a selector — and to NOTHING
-# else. Closing the ui's 8080 closes the site.
-grep -q 'cidr: 0.0.0.0/0' <<<"$np"
+# else. Closing the ui's 8080 closes the site. The CIDR itself is NOT pinned here: narrowing
+# networkPolicy.albSourceCidr to a VPC range is the intended change and must not fail this test.
+grep -qE 'cidr: [0-9]' <<<"$np"
 grep -q 'port: 3000' <<<"$np"
 grep -q 'port: 8080' <<<"$np"
 grep -q 'kubernetes.io/metadata.name: monitoring' <<<"$np"
+# The ui->api hop is allowed by selector, not only by the CIDR that happens to cover it today —
+# so the day albSourceCidr stops covering the pod network, nginx can still reach the API. The
+# leading `- ` is what distinguishes this `from:` entry from the ui policy's own target selector.
+grep -qE '^ +- podSelector: \{ matchLabels: \{ app\.kubernetes\.io/instance: rch, app\.kubernetes\.io/component: ui \} \}' <<<"$np"
 # Egress is left open on purpose: RDS is outside the cluster at an address this chart never sees.
 grep -q 'egress: \[{}\]' <<<"$np"
 out_nonp=$(helm template rch . -f values-prod.yaml --set image.registry=r,image.tag=t,networkPolicy.enabled=false)

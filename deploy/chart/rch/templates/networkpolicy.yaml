@@ -1,5 +1,12 @@
 {{- if .Values.networkPolicy.enabled }}
 {{- /*
+FIRST, THE PART THAT MATTERS MOST: a NetworkPolicy is enforced by the CNI, and neither cluster
+this chart installs into enforces one today. On EKS the vpc-cni add-on (deploy/eksctl/cluster.yaml)
+does not set `enableNetworkPolicy`, so the VPC CNI's policy agent is off and everything below is
+applied and inert; that setting must be turned on before the deny is real. In CI, kind's kindnetd
+does not implement NetworkPolicy at all — which, rather than the permissive albSourceCidr rules,
+is why ci/install-test.sh still passes. Read the rest as a policy that is correct and waiting.
+
 Three policies, because NetworkPolicies are additive: the first closes everything this release
 runs, the other two open exactly the doors the chart needs. A pod selected by no policy at all is
 wide open, so the deny has to select the release itself rather than name each component.

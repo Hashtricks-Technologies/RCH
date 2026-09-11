@@ -40,15 +40,23 @@ const PURGE_BATCH = 10_000;
  * The loop is what keeps that first run from being a single DELETE holding one transaction and
  * one set of row locks over every session ever opened, against a table every sign-in and every
  * refresh is writing to. `ctid in (select ctid … limit n)` is "any n of the matching rows": ctid
- * is a tuple's physical address, so the subquery reads the index and the delete goes straight at
- * those rows. A batch that comes back short is the signal the set is empty.
+ * is a tuple's physical address, so the delete goes straight at the rows the subquery picked with
+ * no second lookup. Note what the subquery is NOT doing — there is no index on `expires_at` or
+ * `revoked_at` (schema/infra.ts indexes token_hash, family and user_id), so it is a sequential
+ * scan, bounded by the LIMIT. That is fine for a job that runs once a night and stops as soon as
+ * it has its ten thousand; if it ever shows up in an EXPLAIN worth caring about, the fix is a
+ * partial index on the two dead-row predicates, not a bigger batch.
  *
  * `batch` is a parameter so a test can make it smaller than the work; nothing in production
  * passes it.
  */
 export async function purgeRefreshTokens(db: Db, batch: number = PURGE_BATCH): Promise<number> {
-  // One cutoff for the whole sweep rather than a fresh `new Date()` per batch, which would walk
-  // forward between statements.
+  // The expiry half takes one cutoff for the whole sweep rather than a fresh `new Date()` per
+  // batch, which would walk forward between statements. The revoked half is `now()` *inside* the
+  // statement, so Postgres does re-evaluate it per batch — deliberately left that way: against a
+  // seven-day grace a row has to be a week old to qualify, and no sweep runs long enough to move
+  // one across that line, so pinning it would only swap the database's clock for the app
+  // server's for no gain.
   const dead = or(lt(refreshTokens.expiresAt, new Date()), lt(refreshTokens.revokedAt, sql`now() - interval '7 days'`));
   let total = 0;
   for (;;) {

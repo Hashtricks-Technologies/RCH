@@ -14,3 +14,11 @@ it — and the Deployment's maxUnavailable: 0 then retires an old pod that was s
 favour of a new one that is not yet receiving anything. With the gate, Ready means "registered
 and healthy in the target group", which is what a rollout should be waiting for.
 {{- end }}
+{{- if .Values.networkPolicy.enabled }}
+
+This release ships NetworkPolicies (default-deny ingress, with the ui->api hop, the load balancer
+and the monitoring namespace opened by name). They are enforced only if the CNI enforces them:
+on EKS that means the vpc-cni add-on must have `enableNetworkPolicy: true`, and it does not yet
+(deploy/eksctl/cluster.yaml). Until it is turned on, these objects are applied and inert — a deny
+that is not denying. Set `networkPolicy.enabled=false` to stop rendering them entirely.
+{{- end }}

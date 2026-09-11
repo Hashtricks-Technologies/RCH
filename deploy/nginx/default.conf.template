@@ -29,7 +29,13 @@ server {
   add_header Referrer-Policy strict-origin-when-cross-origin always;
   add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; frame-ancestors 'self'" always;
 
+  # Two health endpoints, because the ALB's healthcheck-path is an INGRESS-level annotation: the
+  # controller applies it to every target group the ingress creates, the ui's as well as the
+  # api's. With only /healthz here, a check on /readyz fell through to the SPA catch-all at the
+  # bottom of this file and passed on index.html — a 200 that says nothing about nginx. nginx has
+  # no draining state of its own to report, so both answer the same thing.
   location = /healthz { return 200 'ok'; add_header Content-Type text/plain; }
+  location = /readyz { return 200 'ok'; add_header Content-Type text/plain; }
 
   location /api/ {
     set $api_upstream ${API_UPSTREAM};
