@@ -44,6 +44,12 @@ export function mount<R extends AnyRoute>(app: App, route: R, handler: Handler<R
     if (!idem) return handler(req, reply);
     const ctx: IdemContext = { idem, response: route.response, strict };
     const value = await idemStore.run(ctx, () => handler(req, reply));
+    // Only a handler that *returned* reaches the assertion below. A handler that threw — the
+    // refusal a `response: "optional"` write raises after its own commit, or any other 4xx —
+    // rejects this await and leaves with the error, so the assertion never sees a write whose
+    // answer was deliberately not recorded. That is the one shape `recorded === false` is
+    // allowed to take, and the `await` is what keeps it out of here.
+    //
     // `ctx.why` is the transaction's own account of why it could not record (a response its
     // schema refused, a claim taken over mid-write); without one, the write ran no transaction
     // at all. In production this is the only line that says so, so it carries both.

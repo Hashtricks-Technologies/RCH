@@ -12,7 +12,7 @@ import { mount } from "../routes.js";
 import { idemHooks, purgeIdempotencyKeys } from "./idempotency.js";
 import { withTransaction } from "../lib/db.js";
 import { RuleError } from "../lib/errors.js";
-import { bills, documentHistory, idempotencyKeys, stockMoves, users } from "../db/schema/index.js";
+import { bills, documentHistory, idempotencyKeys, stockMoves, tickets, users } from "../db/schema/index.js";
 import { meRepo } from "../modules/me/repo.js";
 
 let app: App;
@@ -25,6 +25,9 @@ const countRows = async (table: PgTable): Promise<number> => {
 };
 const claimRow = async (key: string) => (await app.db.select().from(idempotencyKeys).where(eq(idempotencyKeys.key, key)))[0];
 const phoneOf = async (id: string) => (await app.db.select().from(users).where(eq(users.id, id)))[0].phone;
+/** How many wrong codes the seeded ticket has taken — the one figure a refused handover is
+ *  allowed to commit, and therefore the one thing a replay must not add to. */
+const otpAttempts = async (id: string) => (await app.db.select().from(tickets).where(eq(tickets.id, id)))[0].otpAttempts;
 
 /** An app of its own carrying a test-only write, mounted through the real `mount()` so the
  *  route picks up the same authenticate → roleGate → idempotency chain a module's write does,
@@ -395,6 +398,57 @@ describe("Idempotency-Key", () => {
     } finally {
       await a.close();
     }
+  });
+
+  it("a write that commits a refusal counter and then refuses replays the refusal, and the counter stands", async () => {
+    // The one write in the server that must commit something and then refuse: a wrong OTP is
+    // counted (or a caller could guess for ever) and the sentence is thrown after the commit.
+    // Its transaction therefore returns a marker the route's schema refuses — `withTransaction`
+    // is told `response: "optional"` so that marker records nothing and throws nothing, instead
+    // of taking the committed count down with it and answering 500.
+    const key = randomUUID();
+    const headers = { ...(await authHeaders(app, "u3")), "idempotency-key": key };
+    const send = () => app.inject({ method: "POST", url: "/api/v1/tickets/TKT-0440/handover", headers, payload: { otp: "000000" } });
+
+    const first = await send();
+    expect(first.statusCode, first.body).toBe(422);
+    expect(first.json().error.message).toBe("That OTP does not match TKT-0440. Ask the collector to read it again.");
+    expect(await otpAttempts("TKT-0440")).toBe(1);
+    // A refusal is `onSend`'s to record, exactly as it always was — nothing committed that a
+    // retry could duplicate, so the row carries no commit stamp.
+    const row = await claimRow(key);
+    expect(row.statusCode).toBe(422);
+    expect(row.committedAt).toBeNull();
+
+    const again = await send();
+    expect(again.statusCode).toBe(422);
+    expect(again.headers["idempotency-replayed"]).toBe("true");
+    expect(again.body).toBe(first.body);
+    // The replay ran nothing, so the guess it repeats is not a second guess.
+    expect(await otpAttempts("TKT-0440")).toBe(1);
+  });
+
+  it("a correct handover after a wrong code is recorded inside its own transaction", async () => {
+    // The other half of `response: "optional"`: a value that does match the route's schema is
+    // still recorded by the write's own transaction, so the success path is untouched.
+    const guesses = await otpAttempts("TKT-0440");   // the case above left its own behind
+    const wrong = await app.inject({
+      method: "POST", url: "/api/v1/tickets/TKT-0440/handover",
+      headers: { ...(await authHeaders(app, "u3")), "idempotency-key": randomUUID() }, payload: { otp: "000000" },
+    });
+    expect(wrong.statusCode).toBe(422);
+    expect(await otpAttempts("TKT-0440")).toBe(guesses + 1);
+
+    const key = randomUUID();
+    const r = await app.inject({
+      method: "POST", url: "/api/v1/tickets/TKT-0440/handover",
+      headers: { ...(await authHeaders(app, "u3")), "idempotency-key": key }, payload: { otp: "418327" },
+    });
+    expect(r.statusCode, r.body).toBe(200);
+    const row = await claimRow(key);
+    expect(row.committedAt).toBeInstanceOf(Date);
+    expect(row.statusCode).toBe(200);
+    expect(row.response).toEqual(r.json());
   });
 
   it("every write this suite drives leaves recorded = true", async () => {

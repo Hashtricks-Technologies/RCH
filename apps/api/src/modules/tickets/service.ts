@@ -41,9 +41,11 @@ async function reread(tx: Tx, id: string): Promise<Ticket> {
 const OTP_ATTEMPTS = 5;
 
 /** What is read to the collector when the guessing has to stop. The way past it is the labelled
- *  supervisor override, which is refused to a counter and recorded in `document_history`. */
+ *  supervisor override, recorded in `document_history` — and it is refused to a counter, so the
+ *  sentence names the other door too rather than sending a till operator to look for one that
+ *  was never open to them: withdraw the ticket and issue a new one, with new digits. */
 const lockedMessage = (id: string) =>
-  `${id} is locked after five wrong codes — a supervisor override is the only way to hand it over now`;
+  `${id} is locked after five wrong codes — the store or the kitchen can hand it over with a supervisor override, or cancel it and issue a new one`;
 
 /**
  * The typed code against the row's own, in constant time. `===` on a secret leaks how much of it
@@ -75,6 +77,15 @@ export function createTicketsService(db: Db) {
      * raised out here, after the commit. Nothing else has been written by then — the OTP is
      * checked before the first move — so the committed transaction carries the count and only
      * the count.
+     *
+     * `{ response: "optional" }` is what lets that stand. The idempotency record is written
+     * inside this transaction as its last statement (`lib/db.ts`), and the `{ refuse }` marker
+     * is not a shape the route's response schema will take — so without it the marker would be
+     * read as a broken response and roll the count back, answering 500 where the collector
+     * should have read a refusal. `"optional"` says what is true here: this transaction is not
+     * producing the write's answer, the caller is about to throw it, and `onSend` records the
+     * 4xx the way it does for every other refusal. The success path below returns the real
+     * response and is recorded exactly as before.
      */
     async handover(claims: AccessClaims, id: string, body: HandoverBody): Promise<WriteResponse<Ticket>> {
       const done = await withTransaction<WriteResponse<Ticket> | { refuse: string }>(db, async (tx) => {
@@ -145,7 +156,7 @@ export function createTicketsService(db: Db) {
             ? `${id} handed over on a supervisor override — stock is in transit to ${toName}`
             : `${id} handed over — stock is in transit to ${toName}`,
         };
-      });
+      }, { response: "optional" });
       // The wrong code is on the row now, committed; this is the sentence that goes with it.
       if ("refuse" in done) assertRule(false, done.refuse);
       return done;

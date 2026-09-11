@@ -33,12 +33,34 @@ export type Reader = Db | Tx;
  * below it, which warns and lets the response through — and it is the right way round here,
  * because a write that commits without its record is exactly the duplicate-charge hole this
  * whole arrangement closes. Atomicity over availability, on purpose.
+ *
+ * `opts.response` is `"required"` by default: whatever this transaction returns is the write's
+ * answer, and an answer that cannot be recorded is a bug the bench must not let past.
+ *
+ * `"optional"` is for the one shape that has to **commit something and then refuse**: a counter,
+ * an audit row — something that must survive the refusal that follows it. Such a write returns a
+ * marker its route's schema refuses, commits, and raises the refusal itself once the transaction
+ * is closed. Under `"optional"` a value the schema refuses records nothing, leaves
+ * `ctx.idem.recorded` false and throws nothing, and `onSend` then stores the 4xx exactly as it
+ * always has (`committed_at` stays null, because a refusal is not an outcome to protect). A
+ * value that *does* match is still recorded, so the successful path through such a write is
+ * untouched. `modules/tickets/service.ts`'s `handover` is the only caller: a wrong OTP is
+ * counted, the count commits, and the sentence is thrown outside. What it costs is a pod that
+ * dies between that commit and `onSend` leaving a bare claim, so the retry waits out
+ * `CLAIM_STALE_MS` and then counts a second guess — acceptable for a counter, and exactly what
+ * `"required"` refuses to accept for a bill. Do not reach for `"optional"` to quieten a response
+ * that simply does not match its schema; that is the bug `"required"` is there to catch.
  */
-export const withTransaction = <T>(db: Db, fn: (tx: Tx) => Promise<T>): Promise<T> =>
+export const withTransaction = <T>(db: Db, fn: (tx: Tx) => Promise<T>, opts: { response?: "required" | "optional" } = {}): Promise<T> =>
   db.transaction(async (tx) => {
     const value = await fn(tx);
     const ctx = idemStore.getStore();
     if (ctx && !ctx.idem.recorded) {
+      // "not this transaction's answer, and the caller knows it" — see `opts.response` above.
+      // Checked here rather than inside `recordIdempotent` so that its *other* `ok: false` (a
+      // claim taken over by a retry mid-write) still takes the straggler down, whatever this
+      // caller asked for.
+      if (opts.response === "optional" && !ctx.response.safeParse(value).success) return value;
       const outcome = await recordIdempotent(tx, ctx, value);
       ctx.idem.recorded = outcome.ok;
       if (!outcome.ok) {

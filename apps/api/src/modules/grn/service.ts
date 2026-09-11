@@ -85,7 +85,7 @@ export function createGrnService(db: Db) {
         for (const [i, l] of lines.entries()) {
           const r = body.lines[i]!;
           if (!(r.recv > 0)) continue;
-          const good = round3(r.recv - r.rejected);
+          const good = netReceived(r);
           const receiptId = grnId(id, ++n);
           rows.push({
             id: receiptId, poId: id, poLineNo: l.lineNo, itemKey: l.it, acceptedQty: good, rejectedQty: round3(r.rejected),

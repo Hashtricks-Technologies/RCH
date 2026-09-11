@@ -54,14 +54,24 @@ export async function lockBalances(tx: Tx, cells: readonly { loc: string; it: st
 /**
  * The one door to the ledger. Locks every (loc, item) balance the batch touches, in a fixed
  * order so two writers cannot deadlock, appends the moves, then adds the deltas to the cache.
+ *
+ * A move whose quantity rounds away to nothing at three decimals is dropped before any of that.
+ * A move of zero is not a movement — `stock_moves_qty_ck` (migration 0008) says so — and a
+ * recipe measured in millilitres against a single cup is how one turns up: the sale is real, the
+ * deduction rounds to 0.000, and without this the till would read a 500 with no words in it.
+ * Dropped row by row rather than by cell, so a crumb never takes the real move beside it down;
+ * the fold below then runs over what is left, and a cell no surviving move touches is never
+ * locked, because `lockBalances` creates the row it locks and a shelf that moved nothing would
+ * read as "carried at zero" on every stock screen from then on (M12).
  */
 export async function postMoves(tx: Tx, moves: Move[]): Promise<void> {
-  if (moves.length === 0) return;
+  const real = moves.filter((m) => round3(m.qty) !== 0);
+  if (real.length === 0) return;
   // Location -> item -> delta, nested rather than keyed by a joined string: an item key is
   // whatever the central store typed, so any separator could also appear inside a key and fold
   // two different pairs into one. A nested map has nothing to collide.
   const byLoc = new Map<string, Map<string, number>>();
-  for (const m of moves) {
+  for (const m of real) {
     const items = byLoc.get(m.loc) ?? new Map<string, number>();
     items.set(m.it, round3((items.get(m.it) ?? 0) + m.qty));
     byLoc.set(m.loc, items);
@@ -70,7 +80,7 @@ export async function postMoves(tx: Tx, moves: Move[]): Promise<void> {
   const ordered = [...byLoc.keys()].sort().flatMap((loc) =>
     [...byLoc.get(loc)!.keys()].sort().map((it) => ({ loc, it, delta: byLoc.get(loc)!.get(it)! })));
   await lockBalances(tx, ordered);
-  await tx.insert(stockMoves).values(moves.map((m) => ({
+  await tx.insert(stockMoves).values(real.map((m) => ({
     loc: m.loc, itemKey: m.it, qty: round3(m.qty), kind: m.kind, refType: m.refType, refId: m.refId, byUser: m.by, at: m.at,
   })));
   for (const { loc, it, delta } of ordered) {
