@@ -37,8 +37,9 @@ export type TicketNumber = { id: string; otp: string };
  *
  * Call this **before** `lockBalances`: the server's lock order is ids first and balance rows
  * second (`lib/ledger.ts`'s header), so a write that needs both must not hold a shelf while it
- * waits for the sequence. A refusal afterwards rolls the allocation back with everything else
- * and the series skips a number, which is what a counter is for.
+ * waits for the sequence. A refusal afterwards rolls the allocation back with everything else,
+ * and the series is gapless through that rollback (`lib/ids.ts`): the next writer is handed the
+ * number the refused one was standing on, not the one after it.
  */
 export async function allocateTicket(tx: Tx, at: Date = new Date()): Promise<TicketNumber> {
   return { id: await allocateId(tx, "tkt", at), otp: String(randomInt(100000, 1000000)) };
