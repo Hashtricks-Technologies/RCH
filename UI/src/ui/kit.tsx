@@ -157,7 +157,10 @@ export const Grid = ({ cols, children }: { cols?: "g2" | "g3" | "g21" | "g12"; c
 );
 
 /* ---------- kpi ---------- */
-export interface Kpi { l: string; v: ReactNode; d?: ReactNode; spark?: number[]; color?: string }
+/** A headline figure with a label and, optionally, a line of context under it. No `spark`: the
+ *  sparkline this used to carry was drawn by nothing — not one `Kpi` in the app ever set it —
+ *  and an optional field no caller fills is a shape future callers copy without meaning to. */
+export interface Kpi { l: string; v: ReactNode; d?: ReactNode }
 export function Kpis({ items }: { items: Kpi[] }) {
   return (
     <div className="kpis">
@@ -167,23 +170,10 @@ export function Kpis({ items }: { items: Kpi[] }) {
           <div className="kv">{k.v}</div>
           <div className="kf">
             <div className="kd">{k.d}</div>
-            {k.spark && <div style={{ width: 104, flex: "none" }}>
-              <Sparkline values={k.spark} color={k.color ?? "var(--c1)"} /></div>}
           </div>
         </div>
       ))}
     </div>
-  );
-}
-function Sparkline({ values, color }: { values: number[]; color: string }) {
-  if (!values || values.length < 2) return null;
-  const W = 104, H = 26, mn = Math.min(...values), mx = Math.max(...values);
-  const pts = values.map((v, i) =>
-    `${((i * W) / (values.length - 1)).toFixed(1)},${(H - 2 - ((v - mn) / (mx - mn || 1)) * (H - 5)).toFixed(1)}`).join(" ");
-  return (
-    <svg className="spark" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" aria-hidden>
-      <polyline points={pts} fill="none" stroke={color} strokeWidth={1.8} strokeLinejoin="round" strokeLinecap="round" />
-    </svg>
   );
 }
 
@@ -264,15 +254,21 @@ export function DataTable({ cols, rows, empty, sort, onSort }: {
     </div>
   );
 }
+/**
+ * The line under a table: how many rows it is showing, and whatever the screen wants to say
+ * beside that.
+ *
+ * It used to end in a Prev / 1 / Next pager, disabled on every one of the sixty-two tables that
+ * draw it, because no table in this app pages — `DataTable` renders every row it is handed.
+ * Three dead controls on every screen is not a hint of a feature to come; it is a promise the
+ * app does not keep, and an operator who presses Next on a long list and sees nothing happen has
+ * been told the wrong thing about what they are looking at.
+ */
 export function TableFoot({ count, extra }: { count: number; extra?: ReactNode }) {
   return (
     <div className="tfoot">
       <span>Showing <b className="mono">{count}</b> of <b className="mono">{count}</b></span>
       {extra && <span className="mini">{extra}</span>}
-      <div className="sp" />
-      <button className="pgbt" disabled>Prev</button>
-      <button className="pgbt on">1</button>
-      <button className="pgbt" disabled>Next</button>
     </div>
   );
 }
@@ -460,7 +456,18 @@ export function EtaInput({ value, busy, onCommit }: {
 }
 
 const LABELABLE = ["input", "select", "textarea"];
-/** The label is tied to the first control it wraps, so every field is named (M13). */
+/**
+ * The label is tied to the first control it wraps, so every field is named (M13).
+ *
+ * **The limit, deliberately left in place.** Only the *direct* children are searched, and only
+ * for a host element — `<input>`, `<select>`, `<textarea>`. A child that is a component renders
+ * its own control later, out of reach of anything this can clone into, and a child that wraps
+ * one in a `<div>` is usually a group rather than a single control. Both cases exist here and
+ * both are already named without this: `EtaInput` and `DraftLineInput` carry their own
+ * `aria-label`, and Settings' theme picker is a `role="group"` with one. Descending would be
+ * guessing at which of several controls the label belongs to; when a new caller needs it, give
+ * the control its own `aria-label` the way those three do.
+ */
 export function Field({ label, hint, children }: { label: string; hint?: ReactNode; children: ReactNode }) {
   const auto = useId();
   const kids = Children.toArray(children);
