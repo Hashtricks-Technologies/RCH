@@ -3,7 +3,7 @@ import { contractInWindow, istDate } from "@rch/domain";
 import { ApiError, call } from "../api/client";
 import { refetch } from "../api/refetch";
 import type {
-  ItemType, LocKey, ProductRequest, RateContract, ShopAsk,
+  ItemType, LocKey, PayerKind, ProductRequest, RateContract, ShopAsk,
   SupportTicket, TicketPriority, TicketStatus, TicketTopic,
 } from "../types";
 import { toInputDate } from "../lib/fmt";
@@ -56,6 +56,14 @@ export interface OpsSlice {
   /** The holding shop grants some or all of it, which issues the transfer ticket. */
   answerShopAsk: (id: string, grant: number) => Promise<boolean>;
   declineShopAsk: (id: string, reason: string) => Promise<boolean>;
+
+  // ---- payers ----
+  /** The register behind the non-cash tenders. The outlet manager keeps it; both carry a form,
+   *  so both answer `true` only once the server has taken it and a refusal leaves what was
+   *  typed on screen. The roster itself is not store state — it is the `PATIENTS`/`STAFF`/`DEPTS`
+   *  registries, replaced whole by `applyRoster` when `changed: ["roster"]` is refetched. */
+  addPayer: (body: { kind: PayerKind; id: string; name: string }) => Promise<boolean>;
+  updatePayer: (kind: PayerKind, id: string, patch: { name?: string; active?: boolean }) => Promise<boolean>;
 }
 
 /** Every action in this slice is the server's now: post the body, repeat the sentence that came
@@ -241,5 +249,26 @@ export const createOpsSlice = (get: Get): OpsSlice => ({
       get().notify(e instanceof ApiError ? e.message : "Could not decline the ask — check the connection and try again.");
       return false;
     }
+  },
+
+  // ---- payers ----
+  // Both post the body as typed — trimming, the "already on the roster" rule and the sentence
+  // that comes back are the server's — and refetch the one slice they name. "roster" has its
+  // own narrow reader, so a rename costs one GET rather than a whole snapshot.
+  addPayer: async (body) => {
+    try {
+      const r = await call(routes.addPayer, { body });
+      get().notify(r.message);
+      await refetch(r.changed, r.message);
+      return true;
+    } catch (e) { return fail(get, e, "save the payer"); }
+  },
+  updatePayer: async (kind, id, patch) => {
+    try {
+      const r = await call(routes.updatePayer, { params: { kind, id }, body: { name: patch.name, active: patch.active } });
+      get().notify(r.message);
+      await refetch(r.changed, r.message);
+      return true;
+    } catch (e) { return fail(get, e, "save the payer"); }
   },
 });

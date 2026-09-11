@@ -135,3 +135,14 @@ export function applyItems(items: Snapshot["items"]): void {
   hydrateItems(items);
   useApp.setState((s) => ({ catalogVersion: s.catalogVersion + 1 }));
 }
+
+// ---- payers ----
+/** GET /roster -> the register the counter's payer picker reads. `PATIENTS`, `STAFF` and
+ *  `DEPTS` are module-level registries like `IT` and `LOC`, not store state, so `catalogVersion`
+ *  is what tells React the lists moved — the same signal `applyItems` bumps for the catalogue.
+ *  The server only ever sends active rows, so a payer the manager switched off simply stops
+ *  being offered at the till rather than needing a second filter here. */
+export function applyRoster(r: Snapshot["roster"]): void {
+  hydrateRoster(r);
+  useApp.setState((s) => ({ catalogVersion: s.catalogVersion + 1 }));
+}

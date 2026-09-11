@@ -8,7 +8,7 @@ import { refetch } from "../api/refetch";
 import { applySnapshot } from "../api/wire";
 import { setAccessToken } from "../api/session";
 import { qty } from "../lib/selectors";
-import { IT, PATIENTS } from "../data/master";
+import { DEPTS, IT, PATIENTS, STAFF } from "../data/master";
 import Pos from "../roles/counter/Pos";
 import CounterRequests from "../roles/counter/Requests";
 import MakeDistribute from "../roles/prod/MakeDistribute";
@@ -1473,6 +1473,11 @@ const OFFLINE: [name: string, run: () => Promise<unknown>, sentence: string][] =
     "Could not change the ticket — check the connection and try again."],
   ["rateTicket", () => S().rateTicket("SUP-0044", 5),
     "Could not record the rating — check the connection and try again."],
+  // ---- payers ----
+  ["addPayer", () => S().addPayer({ kind: "staff", id: "E2291", name: "Kavitha Raman" }),
+    "Could not save the payer — check the connection and try again."],
+  ["updatePayer", () => S().updatePayer("staff", "RC-4471", { active: false }),
+    "Could not save the payer — check the connection and try again."],
 ];
 
 describe("a dropped connection names the write that did not land", () => {
@@ -1602,5 +1607,66 @@ describe("what the browser no longer knows on its own", () => {
     fetchMock.mockRejectedValue(new TypeError("Failed to fetch"));
     expect(await S().readStockLedger("store", 30)).toBeNull();
     expect(S().toast).toBe("Could not read the stock ledger.");
+  });
+});
+
+// ---- payers ----
+/**
+ * The roster's own two writes. The register is not store state — it is the `PATIENTS`/`STAFF`/
+ * `DEPTS` registries in `data/master.ts` — so what these pin is the wire and the read-back:
+ * which route each action reaches, what it puts in the body, and that `changed: ["roster"]`
+ * costs one `GET /roster` rather than a whole snapshot. The rules are the server's
+ * (`apps/api/src/modules/payers/payers.test.ts`) and nothing here re-asserts them.
+ */
+describe("addPayer / updatePayer — the payer roster", () => {
+  const P = { kind: "staff", id: "E2291", name: "Kavitha Raman", active: true };
+
+  it("posts the new payer and reads the register back, not the whole snapshot", async () => {
+    as("manager");
+    serve({
+      "POST /api/v1/payers": () => json({ result: P, changed: ["roster"], message: "Kavitha Raman added to the staff member roster as E2291" }),
+      "GET /api/v1/roster": () => json({ patients: [], staff: [{ kind: "staff", id: "E2291", name: "Kavitha Raman" }], depts: [] }),
+    });
+
+    expect(await S().addPayer({ kind: "staff", id: "E2291", name: "Kavitha Raman" })).toBe(true);
+    expect(hit("POST /api/v1/payers")[0].body).toEqual({ kind: "staff", id: "E2291", name: "Kavitha Raman" });
+    // "roster" has a narrow reader, so this is one GET and not a whole snapshot.
+    expect(hit("GET /api/v1/roster")).toHaveLength(1);
+    expect(hit("GET /api/v1/snapshot")).toHaveLength(0);
+    // The registries the counter's payer picker reads are replaced whole by the read-back.
+    expect(STAFF.map((x) => x.id)).toEqual(["E2291"]);
+    expect(PATIENTS).toEqual([]);
+    expect(DEPTS).toEqual([]);
+    expect(S().toast).toBe("Kavitha Raman added to the staff member roster as E2291");
+  });
+
+  it("patches only the field the screen touched, and a deactivated payer leaves the picker", async () => {
+    as("manager");
+    const before = STAFF.map((x) => x.id);
+    expect(before.length).toBeGreaterThan(0);
+    serve({
+      "PATCH /api/v1/payers/staff/RC-4471": () => json({
+        result: { ...P, id: "RC-4471", name: "Kavitha Raman · F&B", active: false },
+        changed: ["roster"], message: "Kavitha Raman · F&B deactivated — bills already posted to them stay, new ones cannot",
+      }),
+      // The server's roster read carries only active rows, so the switched-off payer is simply
+      // not in the read-back — which is what takes it off every till's picker.
+      "GET /api/v1/roster": () => json({ patients: [], staff: [], depts: [] }),
+    });
+
+    expect(await S().updatePayer("staff", "RC-4471", { active: false })).toBe(true);
+    expect(hit("PATCH /api/v1/payers/staff/RC-4471")[0].body).toEqual({ active: false });
+    expect(STAFF).toEqual([]);
+    expect(S().toast).toBe("Kavitha Raman · F&B deactivated — bills already posted to them stay, new ones cannot");
+  });
+
+  it("repeats the server's refusal and leaves the register exactly as it was", async () => {
+    as("manager");
+    const before = STAFF.map((x) => x.id);
+    serve({ "POST /api/v1/payers": () => refusal("RC-4471 is already on the staff member roster") });
+    expect(await S().addPayer({ kind: "staff", id: "RC-4471", name: "Someone Else" })).toBe(false);
+    expect(calls()).toHaveLength(1);            // nothing was read back
+    expect(STAFF.map((x) => x.id)).toEqual(before);
+    expect(S().toast).toBe("RC-4471 is already on the staff member roster");
   });
 });

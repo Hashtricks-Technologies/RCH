@@ -2,7 +2,7 @@ import { routes, type Changed } from "@rch/contract";
 import { call } from "./client";
 import {
   applyBatches, applyBills, applyContracts, applyGrns, applyItems, applyPos, applyProdOrders,
-  applyProductRequests, applyRequests, applyRequisitions, applyShopAsks, applyStock,
+  applyProductRequests, applyRequests, applyRequisitions, applyRoster, applyShopAsks, applyStock,
   applySupportTickets, applyTickets, applyVendors,
 } from "./wire";
 import { useApp } from "../store";
@@ -26,6 +26,8 @@ const NARROW: Partial<Record<Changed, () => Promise<void>>> = {
   productReqs: () => call(routes.productRequests).then(applyProductRequests),
   items: () => call(routes.items).then(applyItems),
   tickets: () => call(routes.tickets).then(applySupportTickets),
+  // ---- payers ----
+  roster: () => call(routes.roster).then(applyRoster),
 };
 
 /**
