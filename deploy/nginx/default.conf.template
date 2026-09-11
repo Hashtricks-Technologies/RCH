@@ -1,3 +1,13 @@
+# The browser mints its own X-Request-Id and reads the same id back off the response
+# (UI/src/api/client.ts), so what nginx forwards has to be the id it was handed — `$request_id`
+# on its own overwrites it, and the id in the access log then matches nothing anybody can quote.
+# `map` runs per request in http context: keep the client's id, and mint one only when the
+# request arrived without one (the empty-string branch).
+map $http_x_request_id $req_id {
+  default $http_x_request_id;
+  ""      $request_id;
+}
+
 server {
   listen 8080;
   server_name _;
@@ -28,7 +38,7 @@ server {
     proxy_set_header Host $host;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto $scheme;
-    proxy_set_header X-Request-Id $request_id;
+    proxy_set_header X-Request-Id $req_id;
     proxy_read_timeout 60s;
   }
   # Server-sent events (Phase 3): no buffering, long read timeout.
@@ -43,7 +53,7 @@ server {
     # request id the browser was handed never reaches the log line that opened the stream.
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto $scheme;
-    proxy_set_header X-Request-Id $request_id;
+    proxy_set_header X-Request-Id $req_id;
     proxy_buffering off;
     proxy_cache off;
     proxy_read_timeout 3600s;

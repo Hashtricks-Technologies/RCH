@@ -77,7 +77,11 @@ grep -q 'location /api/v1/events' ../../nginx/default.conf.template
 # without X-Forwarded-For is rate-limited and logged as nginx itself.
 events_block=$(sed -n '/location \/api\/v1\/events/,/^  }/p' ../../nginx/default.conf.template)
 grep -q 'proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for' <<<"$events_block"
-grep -q 'proxy_set_header X-Request-Id \$request_id' <<<"$events_block"
+grep -q 'proxy_set_header X-Request-Id \$req_id' <<<"$events_block"
+# B7: ...and the id it forwards is the browser's own, not one nginx minted over the top of it.
+# The map keeps what arrived and mints only for a request that carried nothing.
+grep -q 'map \$http_x_request_id \$req_id' ../../nginx/default.conf.template
+refute grep -q 'proxy_set_header X-Request-Id \$request_id' ../../nginx/default.conf.template
 # I9: the ServiceMonitor's spec.selector matches Service metadata labels, so
 # the api Service itself (not just the ServiceMonitor) must carry
 # app.kubernetes.io/component: api or the monitor selects zero Services.
