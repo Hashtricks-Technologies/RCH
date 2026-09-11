@@ -30,14 +30,34 @@ echo "== protected tables: writes stay behind lib/, db/, idempotency.ts =="
 
 allowed_path_re='src/lib/|src/db/|plugins/idempotency\.ts|\.test\.ts'
 
-orm_pattern='insert\(stockMoves\)|insert\(stockBalances\)|update\(stockBalances\)|delete\(stockBalances\)|insert\(sequences\)|update\(sequences\)|insert\(documentHistory\)|insert\(idempotencyKeys\)|update\(idempotencyKeys\)|insert\(reservations\)|update\(reservations\)|delete\(reservations\)'
+# The two patterns below used to be literal lists — `insert\(stockMoves\)` and friends — which
+# matched exactly the spelling lib/ledger.ts happens to use and nothing else. Every other way of
+# writing the same statement walked straight past the check whose whole job is to stop it:
+# `insert(schema.stockMoves)`, `insert( stockMoves )`, `insert into "stock_moves"`,
+# `merge into stock_moves`. They are now written as a shape — any qualifier chain, any spacing,
+# a quoted identifier, an optional schema prefix — and all six tables take all three verbs,
+# because "written only from lib/" is what the rule says and stock_moves is append-only even
+# there. document_history joins update and delete for the same reason: a trail somebody can
+# edit is not a trail.
+protected_orm='stockMoves|stockBalances|sequences|documentHistory|idempotencyKeys|reservations'
+protected_sql='stock_moves|stock_balances|sequences|document_history|idempotency_keys|reservations'
+# POSIX classes, not \s and \b: this runs on the maintainers' macOS as well as on CI's GNU grep.
+qualifier='([A-Za-z_$][A-Za-z0-9_$]*[[:space:]]*\.[[:space:]]*)*'
+
+orm_pattern='(insert|update|delete)[[:space:]]*\([[:space:]]*'"$qualifier"'('"$protected_orm"')[[:space:]]*\)'
 orm_hits="$(grep -rn -E "$orm_pattern" apps/api/src --include="*.ts" | grep -v -E "$allowed_path_re" || true)"
 if [ -n "$orm_hits" ]; then
   fail_with "a protected table is written (via Drizzle) outside apps/api/src/lib, apps/api/src/db, plugins/idempotency.ts, or a test file:"
   echo "$orm_hits" >&2
 fi
 
-raw_sql_pattern='insert +into +(stock_moves|stock_balances|sequences|document_history|idempotency_keys|reservations)|update +(stock_balances|sequences|idempotency_keys|reservations)|delete +from +(stock_balances|reservations)'
+# `merge into` alongside `insert into`: Postgres 15 gained MERGE, and a merge that upserts a
+# balance is every bit the write an insert is. The optional `"`/backtick and schema prefix cover
+# `insert into "stock_moves"` and `update public.stock_balances`.
+sql_verb='((insert|merge)[[:space:]]+into|update|delete[[:space:]]+from)'
+# shellcheck disable=SC2016  # the trailing `$` is grep's end-of-line anchor, not a shell expansion
+sql_table='["`]?([A-Za-z_][A-Za-z0-9_]*["`]?[[:space:]]*\.[[:space:]]*["`]?)?('"$protected_sql"')([^A-Za-z0-9_]|$)'
+raw_sql_pattern="$sql_verb"'[[:space:]]+'"$sql_table"
 raw_sql_hits="$(grep -rn -i -E "$raw_sql_pattern" apps/api/src --include="*.ts" | grep -v -E "$allowed_path_re" || true)"
 if [ -n "$raw_sql_hits" ]; then
   fail_with "a protected table is written (via raw sql\`...\`) outside apps/api/src/lib, apps/api/src/db, plugins/idempotency.ts, or a test file:"
@@ -51,10 +71,16 @@ fi
 # ---------------------------------------------------------------------------
 echo "== the ledger has exactly one door =="
 
-ledger_files="$(grep -rl -E 'insert\(stockMoves\)' apps/api/src --include="*.ts" | grep -v -E '\.test\.ts' || true)"
+# Same shape as check 1's, narrowed to the one table and the one verb, plus the raw-SQL spelling
+# — a `sql` template that writes stock_moves from inside lib/ is exempt from check 1 by path and
+# would otherwise be a second door this check could not see.
+ledger_orm='insert[[:space:]]*\([[:space:]]*'"$qualifier"'stockMoves[[:space:]]*\)'
+# shellcheck disable=SC2016  # as above: `$` anchors, it does not expand
+ledger_sql='(insert|merge)[[:space:]]+into[[:space:]]+["`]?([A-Za-z_][A-Za-z0-9_]*["`]?[[:space:]]*\.[[:space:]]*["`]?)?stock_moves([^A-Za-z0-9_]|$)'
+ledger_files="$(grep -rl -i -E "$ledger_orm|$ledger_sql" apps/api/src --include="*.ts" | grep -v -E '\.test\.ts' || true)"
 ledger_count="$(printf '%s\n' "$ledger_files" | grep -c . || true)"
 if [ "$ledger_count" != "1" ] || [ "$ledger_files" != "apps/api/src/lib/ledger.ts" ]; then
-  fail_with "insert(stockMoves) must appear in exactly one non-test file, apps/api/src/lib/ledger.ts. Found in:"
+  fail_with "an insert into stock_moves must appear in exactly one non-test file, apps/api/src/lib/ledger.ts. Found in:"
   echo "${ledger_files:-<nowhere>}" >&2
 fi
 
