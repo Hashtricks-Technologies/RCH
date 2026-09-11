@@ -80,6 +80,47 @@ function badge(route: string, key: string): number {
   return n;
 }
 
+describe("the header status dot and the offline banner", () => {
+  /** The dot's own colour, read off the element the header draws. */
+  const dot = (route: string) => {
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    act(() => { root.render(createElement(MemoryRouter, { initialEntries: [route] }, createElement(App))); });
+    const el = host.querySelector(".org .dt") as HTMLElement | null;
+    const read = { colour: el?.style.background ?? "", label: el?.getAttribute("aria-label") ?? "" };
+    act(() => { root.unmount(); });
+    host.remove();
+    return read;
+  };
+
+  it("does not paint the dot green when the live stream is not running", () => {
+    // The Support FAQ points the operator at this dot. It was a <button> with no onClick and
+    // `background: var(--good)` in the stylesheet, so it read "all well" with the stream down.
+    act(() => { as("counter"); });
+    const { colour, label } = dot("/pos");
+    expect(colour).toBe("var(--ink-4)");          // "off" — no stream is running in a test
+    expect(label).toContain("live updates");
+  });
+
+  it("says so on every screen while the terminal is offline", () => {
+    act(() => { as("counter"); });
+    const online = Object.getOwnPropertyDescriptor(Navigator.prototype, "onLine");
+    Object.defineProperty(navigator, "onLine", { value: false, configurable: true });
+    try {
+      expect(mountApp("/pos")).toContain("No network — this terminal is offline");
+    } finally {
+      Reflect.deleteProperty(navigator, "onLine");
+      if (online) Object.defineProperty(Navigator.prototype, "onLine", online);
+    }
+  });
+
+  it("says nothing when the terminal is on the network", () => {
+    act(() => { as("counter"); });
+    expect(mountApp("/pos")).not.toContain("No network — this terminal is offline");
+  });
+});
+
 describe("the sidebar badge counts what is still coming", () => {
   it("stops counting a ticket once it has been withdrawn (I2)", () => {
     // TKT-0440 is the Coffee Shop's only ticket: 500 cups, still at the store's window.

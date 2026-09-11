@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Navigate, Route, Routes, useNavigate, useParams } from "react-router-dom";
 import { useApp } from "./store";
 import { HOME, NAV, canSee } from "./nav";
@@ -57,12 +57,45 @@ function Screen() {
   return <C />;
 }
 
+/**
+ * The one thing no toast can say, because there is nobody to say it: the terminal has lost the
+ * network. Every write in this app is a server call, so a counter that cannot reach the server
+ * cannot bill, and "Could not reach the server" once per attempt does not tell the operator it
+ * is the cable rather than the hospital's server. This stays up for as long as it is true.
+ */
+function OfflineBanner() {
+  const [offline, setOffline] = useState(() => typeof navigator !== "undefined" && navigator.onLine === false);
+  useEffect(() => {
+    const back = () => setOffline(false);
+    const gone = () => setOffline(true);
+    window.addEventListener("online", back);
+    window.addEventListener("offline", gone);
+    return () => { window.removeEventListener("online", back); window.removeEventListener("offline", gone); };
+  }, []);
+  if (!offline) return null;
+  // Inline rather than a class: it is one element, and `styles.css` should not gain a rule that
+  // is only ever used here.
+  return (
+    <div
+      role="status"
+      style={{
+        position: "fixed", insetInline: 0, top: 0, zIndex: 400, textAlign: "center",
+        padding: "7px 16px", fontSize: 12, fontWeight: 600,
+        background: "var(--crit)", color: "var(--ground)",
+      }}
+    >
+      No network — this terminal is offline
+    </div>
+  );
+}
+
 export default function App() {
   // The toast is drawn here, once, above every page — not by the shell. Sign-in,
   // change-password, the loading gate and the failed page all render outside the shell, and a
   // sentence raised on any of them used to be set in the store and never shown.
   return (
     <>
+      <OfflineBanner />
       <Page />
       <Toast />
     </>
