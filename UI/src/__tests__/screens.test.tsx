@@ -15,6 +15,8 @@ import { screens as prod } from "../roles/prod";
 import { screens as buyer } from "../roles/buyer";
 import { groupPool, picksFor, type PoolGroup } from "../roles/buyer/ProcurementList";
 import { USERS, seedVendors } from "@rch/contract/fixtures";
+// ---- item patch ----
+import { IT } from "../data/master";
 import type { PoolLine } from "../lib/selectors";
 import type { Role, Ticket } from "../types";
 import { as, resetStore } from "./fixture";
@@ -397,5 +399,43 @@ describe("the counter's ticket drawer reads its own direction", () => {
     expect(open(sent())).toContain("Withdraw this ticket");
     expect(open(sent({ st: "Collected" }))).not.toContain("Withdraw this ticket");
     expect(open(inbound())).not.toContain("Withdraw this ticket");
+  });
+});
+
+// ---- item patch ----
+/**
+ * One drawer, four desks. `ITEM_FIELD_ROLES` (`@rch/domain`) is the same table the server
+ * refuses a patch with, so a box this greys out is exactly one the server would turn away —
+ * which is the whole point of driving the form off the rule rather than off a second list.
+ */
+describe("the item drawer is the same table the server refuses with", () => {
+  const open = (role: Role, id = "juice") => {
+    act(() => { as(role); });
+    return render(createElement(DRAWERS.item, { id }));
+  };
+
+  it("tells the manager the operational fields are somebody else's", () => {
+    const html = open("manager");
+    expect(html).toContain("Edit Real Juice 200ml");
+    expect(html).toContain("The name, the group, the HSN code and the reorder level belong to the store, the buyer and the kitchen");
+  });
+
+  it("tells the store, the buyer and the kitchen the commercial figures are the manager's", () => {
+    for (const role of ["store", "buyer", "prod"] as Role[]) {
+      expect(open(role)).toContain("The printed MRP, the standard cost and the GST rate belong to the outlet manager");
+    }
+  });
+
+  it("offers Retire on a live line and Restore on a retired one", () => {
+    expect(open("store")).toContain("Retire this product");
+    act(() => { IT.chips = { ...IT.chips, active: false }; });
+    const retired = render(createElement(DRAWERS.item, { id: "chips" }));
+    expect(retired).toContain("Restore to the catalogue");
+    expect(retired).toContain("is off the catalogue");
+    expect(retired).not.toContain("Retire this product");
+  });
+
+  it("says so rather than throwing when the item has left the master under it", () => {
+    expect(open("store", "nosuchitem")).toContain("Item not found");
   });
 });

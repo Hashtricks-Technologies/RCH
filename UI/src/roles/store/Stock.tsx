@@ -7,7 +7,7 @@ import {
 } from "../../lib/selectors";
 import { U, fq, money, money0, sum } from "../../lib/fmt";
 import {
-  Btn, Card, DataTable, FilterBtn, FilterSelect, PageHead, Pill, TableFoot, Tag, Toolbar,
+  Btn, BtnRow, Card, DataTable, FilterBtn, FilterSelect, PageHead, Pill, TableFoot, Tag, Toolbar,
 } from "../../ui/kit";
 
 const TYPES = ["All", "RAW", "PACK", "MRP", "FG", "MTO"] as const;
@@ -167,13 +167,17 @@ export default function Stock() {
                 <>{money(i.cost)}</>,
                 <>{money0(r.val)}</>,
                 <Pill tone={stateTone(r.av, r.rl)}>{stateLabel(r.av, r.rl)}</Pill>,
-                r.low ? (
-                  <Btn size="xs" variant="gh" onClick={() => addToRequisition(r.it, r.rl, r.on)}>
-                    Add to requisition
-                  </Btn>
-                ) : (
-                  <span className="dim mini">—</span>
-                ),
+                // ---- item patch ----
+                // The store keeper owns the name, the group, the HSN and the reorder level; the
+                // drawer greys out the manager's three commercial figures beside them.
+                <BtnRow>
+                  {r.low && (
+                    <Btn size="xs" variant="gh" onClick={() => addToRequisition(r.it, r.rl, r.on)}>
+                      Add to requisition
+                    </Btn>
+                  )}
+                  <Btn size="xs" variant="gh" onClick={() => openDrawer("item", r.it)}>Edit</Btn>
+                </BtnRow>,
               ],
             };
           })}

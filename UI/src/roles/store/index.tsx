@@ -9,6 +9,11 @@ import "./TicketDrawer";
 import "./IssueDetail";
 import "./RequisitionDetail";
 import "./NewProductDrawer";
+// ---- item patch ----
+// One drawer for all four desks that edit the master; which boxes it greys out is the caller's
+// own role, read from `ITEM_FIELD_ROLES`. It lives under `manager/` because that is where the
+// item master's own screen is.
+import "../manager/ItemDrawer";
 
 export const screens: Record<string, ComponentType> = {
   dash: Dashboard, issue: IssueDesk, stock: Stock,

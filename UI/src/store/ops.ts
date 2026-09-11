@@ -17,6 +17,15 @@ export interface NewItemInput {
   mrp?: number; shelfLife?: number;
 }
 
+// ---- item patch ----
+/** Exactly what `PatchItemBodySchema` takes: every field optional, nothing defaulted. A field
+ *  left out is a field left alone — sending it as `undefined` would be the same thing, but the
+ *  drawer only ever puts in what the operator actually moved. */
+export interface ItemFieldPatch {
+  n?: string; mrp?: number; cost?: number; gst?: number;
+  hsn?: string; rl?: number; grp?: string; active?: boolean;
+}
+
 export interface OpsSlice {
   tickets: SupportTicket[];
   productReqs: ProductRequest[];
@@ -46,6 +55,12 @@ export interface OpsSlice {
 
   /** The key the server chose, or null — the drawers need it to link a product request. */
   createItem: (input: NewItemInput, loc: LocKey, opening: number) => Promise<string | null>;
+  // ---- item patch ----
+  /** An existing line on the master, edited or retired. Which of the eight fields the caller's
+   *  own role may move is `ITEM_FIELD_ROLES` (`@rch/domain`) — the drawer disables the boxes it
+   *  answers `false` for and the server refuses them in the operator's own words, so the same
+   *  table drives the form and the refusal. */
+  updateItem: (it: string, patch: ItemFieldPatch) => Promise<boolean>;
   /** Shop to shop, no manager in the middle. Answers `true` only once the server took it, so
    *  a screen can hold on to what the operator typed when it is refused. */
   transferToOutlet: (from: LocKey, to: LocKey, it: string, qty: number) => Promise<boolean>;
@@ -186,6 +201,20 @@ export const createOpsSlice = (get: Get): OpsSlice => ({
       await refetch(r.changed, r.message);
       return r.result.key;
     } catch (e) { fail(get, e, "add the product"); return null; }
+  },
+
+  // ---- item patch ----
+  /** The same registry, the other way round: `changed` names "items", `refetch`'s narrow reader
+   *  replaces its contents in place and bumps `catalogVersion`, and the drawer keeps whatever
+   *  was typed when the server refuses. Nothing is decided here — which fields this role owns,
+   *  the MRP floor and whether a line is clear enough to retire are all the server's. */
+  updateItem: async (it, patch) => {
+    try {
+      const r = await call(routes.patchItem, { params: { it }, body: patch });
+      get().notify(r.message);
+      await refetch(r.changed, r.message);
+      return true;
+    } catch (e) { return fail(get, e, "save the product"); }
   },
 
   /**

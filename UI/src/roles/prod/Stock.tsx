@@ -223,6 +223,8 @@ export default function Stock() {
     { h: "Cost", r: true, w: "11%" },
     { h: "Value", r: true, w: "12%" },
     { h: "State", w: "12%" },
+    // ---- item patch ----
+    { h: "", r: true, w: "8%" },
   ];
 
   const baseCells = (k: string) => {
@@ -235,6 +237,10 @@ export default function Stock() {
       money(IT[k].cost),
       money0(valueOf(k)),
       <Pill tone={stateTone(have, par(k))}>{stateLabel(have, par(k))}</Pill>,
+      // ---- item patch ----
+      // The kitchen keeps an item's name, group, HSN and reorder level, the same as the store
+      // and the buyer; the drawer greys out the manager's cost, GST and printed MRP.
+      <Btn size="xs" variant="gh" onClick={() => openDrawer("item", k)}>Edit</Btn>,
     ];
   };
 

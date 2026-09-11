@@ -7,7 +7,8 @@ import { creditBreachMessage } from "@rch/domain";
 import { refetch } from "../api/refetch";
 import { applySnapshot } from "../api/wire";
 import { setAccessToken } from "../api/session";
-import { qty } from "../lib/selectors";
+// ---- item patch ----
+import { activeItems, qty } from "../lib/selectors";
 import { IT, PATIENTS } from "../data/master";
 import Pos from "../roles/counter/Pos";
 import CounterRequests from "../roles/counter/Requests";
@@ -1602,5 +1603,58 @@ describe("what the browser no longer knows on its own", () => {
     fetchMock.mockRejectedValue(new TypeError("Failed to fetch"));
     expect(await S().readStockLedger("store", 30)).toBeNull();
     expect(S().toast).toBe("Could not read the stock ledger.");
+  });
+});
+
+// ---- item patch ----
+describe("editing and retiring a line on the item master", () => {
+  it("sends only the fields that moved, and refetches the catalogue", async () => {
+    as("store");
+    const renamed = { ...FX.IT.bisc, n: "Marie biscuit 150g", rl: 45, active: true };
+    serve({
+      "PATCH /api/v1/items/bisc": () => json({ result: { key: "bisc", item: renamed }, changed: ["items"], message: "Marie biscuit 150g updated" }),
+      "GET /api/v1/items": () => json({ ...FX.IT, bisc: renamed }),
+    });
+    expect(await S().updateItem("bisc", { n: "Marie biscuit 150g", rl: 45 })).toBe(true);
+    expect(hit("PATCH /api/v1/items/bisc")[0].body).toEqual({ n: "Marie biscuit 150g", rl: 45 });
+    expect(S().toast).toBe("Marie biscuit 150g updated");
+    // "items" has a narrow reader, so an edit costs one GET rather than a whole snapshot.
+    expect(hit("GET /api/v1/items")).toHaveLength(1);
+    expect(hit("GET /api/v1/snapshot")).toHaveLength(0);
+    expect(IT.bisc.n).toBe("Marie biscuit 150g");
+    expect(S().catalogVersion).toBeGreaterThan(0);
+  });
+
+  it("retires a line, keeps it on the master, and takes it out of every picker", async () => {
+    as("manager");
+    const retired = { ...FX.IT.chips, active: false };
+    serve({
+      "PATCH /api/v1/items/chips": () => json({
+        result: { key: "chips", item: retired }, changed: ["items"],
+        message: "Salted chips 52g retired — it stays on past documents and cannot be sold or ordered again",
+      }),
+      "GET /api/v1/items": () => json({ ...FX.IT, chips: retired }),
+    });
+    expect(await S().updateItem("chips", { active: false })).toBe(true);
+    expect(hit("PATCH /api/v1/items/chips")[0].body).toEqual({ active: false });
+    // On the master, so a bill raised this morning still reads as a product…
+    expect(IT.chips.n).toBe("Salted chips 52g");
+    // …and out of the list every picker is built from.
+    expect(activeItems()).not.toContain("chips");
+    expect(activeItems()).toContain("juice");
+  });
+
+  it("toasts the server's refusal and leaves the catalogue exactly as it was", async () => {
+    as("store");
+    const before = IT.water.n;
+    serve({
+      "PATCH /api/v1/items/water": () => refusal("Mineral water 1L still has stock at Central Store — write it off before retiring it"),
+    });
+    expect(await S().updateItem("water", { active: false })).toBe(false);
+    expect(S().toast).toBe("Mineral water 1L still has stock at Central Store — write it off before retiring it");
+    expect(IT.water.n).toBe(before);
+    expect(activeItems()).toContain("water");
+    // A refusal reads nothing back: the write did not land, so there is nothing to re-read.
+    expect(hit("GET /api/v1/items")).toHaveLength(0);
   });
 });
