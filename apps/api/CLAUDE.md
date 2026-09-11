@@ -501,6 +501,12 @@ Four things about drizzle-kit the procedure rests on, none of them obvious from 
   was written a couple of hours ahead of the clock: a generate before that instant would have
   emitted a smaller one. Put a real `Date.now()` in an entry you write by hand.
 
+`scripts/preflight-0008.sql` is the read-only companion to all of this — ten SELECTs, one per
+row-validating constraint `0008` adds, printing `clear` or `BLOCKS 0008` for each. Run it before
+`db:migrate` against any database that already holds documents (`RUNBOOK.md` §1 and §11.1 say what
+to do about each): `0008` validates existing rows, and a refused migration is an initContainer
+that never completes, which presents as a deploy that hangs rather than as bad data.
+
 `config.ts` is the only reader of `process.env`: `NODE_ENV`, `PORT`, `LOG_LEVEL`, `DATABASE_URL`,
 `TEST_DATABASE_URL`, `DATABASE_SSL`, `DB_POOL_MAX`, `CORS_ORIGIN`, `JWT_PRIVATE_KEY`,
 `JWT_PUBLIC_KEY`, `JWT_PREVIOUS_PUBLIC_KEY`, `ACCESS_TOKEN_TTL`, `REFRESH_TOKEN_TTL_DAYS`,

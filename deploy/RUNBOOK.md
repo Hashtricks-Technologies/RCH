@@ -198,7 +198,7 @@ CHECK constraints, and an append-only trigger on `document_history` (§7 below h
 it reports `migrations applied: 9 / 9`, which is also what `/readyz` compares against.
 
 **`0008` validates existing rows, so on any database with data in it, probe before you migrate.**
-The five constraints that can be refused by rows already there, and what to do about each:
+The five likeliest, and what to do about each — `apps/api/scripts/preflight-0008.sql` probes all ten:
 
 ```sql
 select * from stock_moves where qty = 0;                                          -- stock_moves_qty_ck
