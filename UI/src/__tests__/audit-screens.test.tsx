@@ -11,6 +11,8 @@ import {
 import StoreDashboard from "../roles/store/Dashboard";
 import StoreRequisitions from "../roles/store/Requisitions";
 import MakeDistribute from "../roles/prod/MakeDistribute";
+import Drawer from "../ui/Drawer";
+import "../roles/buyer/PoReceiptDrawer";        // registers "bgrn" on the drawer registry
 import { useApp } from "../store";
 import { as, resetStore, S } from "./fixture";
 
@@ -164,6 +166,51 @@ describe("a decimal quantity on a requisition line", () => {
     expect(hit("POST /api/v1/requisitions")[0].body).toEqual({
       lines: [{ it: "milk", qty: 12.5 }], note: "",
     });
+    ui.unmount();
+  });
+});
+
+describe("the goods receipt refuses rather than greys out", () => {
+  /** The seeded order the store keeper is receiving against, and the only line on it. */
+  const openPo = () => FX.seedPo.find((o) => o.st === "Ordered" || o.st === "Partially received")!;
+
+  it("a line rejecting more than arrived is refused, and books again once it is corrected", async () => {
+    as("buyer");
+    const po = openPo();
+    const line = po.lines[0];
+    serve({
+      [`POST /api/v1/purchase-orders/${po.id}/receive`]: () => json({
+        result: { po: { ...po, st: "Received" }, grns: [] },
+        changed: ["po", "grn", "stock"],
+        message: "Booked into Central Store",
+      }),
+      "GET /api/v1/purchase-orders": () => json(FX.seedPo),
+      "GET /api/v1/grns": () => json(FX.seedGrn),
+      "GET /api/v1/stock": () => json({ stock: {}, rsv: {}, ovr: {} }),
+    });
+    useApp.setState({ drawer: { t: "bgrn", id: po.id } });
+    const ui = mountNode(Drawer);
+
+    const named = IT[line.it]?.n ?? line.it;
+    act(() => { type(ui.field("Delivery note number"), "DC-77001"); });
+    // More turned away than ever arrived. Committed, so the screen has really taken it.
+    const rejected = ui.field(`Quantity rejected for ${named}`);
+    act(() => { type(rejected, "9999"); });
+    act(() => { leave(rejected); });
+
+    // The button is still live — a disabled one never receives the press that would commit the
+    // correction below, so it could never be re-enabled. It refuses with a sentence instead.
+    const book = ui.button("Book into the central store")!;
+    expect(book.disabled).toBe(false);
+    await settle(() => { book.click(); });
+    expect(S().toast).toBe(`${named} — more was rejected than arrived on that line.`);
+    expect(hit(`POST /api/v1/purchase-orders/${po.id}/receive`)).toHaveLength(0);
+
+    // Corrected and committed, the same button books.
+    act(() => { type(rejected, "0"); });
+    act(() => { leave(rejected); });
+    await settle(() => { ui.button("Book into the central store")!.click(); });
+    await settleUntil(() => hit(`POST /api/v1/purchase-orders/${po.id}/receive`).length > 0);
     ui.unmount();
   });
 });

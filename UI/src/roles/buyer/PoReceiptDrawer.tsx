@@ -13,9 +13,6 @@ import { DrawerFrame } from "../../ui/Drawer";
 import { registerDrawer, type DrawerProps } from "../../drawers";
 import type { ReceiptDoc, ReceiptLine } from "../../types";
 
-/** The hospital's own calendar date, not the host's: a batch that expires tomorrow morning IST
- *  is not expired because the browser is running somewhere still on yesterday. */
-const today = istDate(new Date());
 const warn = { color: "var(--warn)" };
 
 function PoReceiptDrawer({ id }: DrawerProps) {
@@ -23,7 +20,12 @@ function PoReceiptDrawer({ id }: DrawerProps) {
   const receive = useApp((x) => x.receivePo);
   const closeShort = useApp((x) => x.closePoShort);
   const close = useApp((x) => x.closeDrawer);
+  const notify = useApp((x) => x.notify);
   const po = s.po.find((x) => x.id === id);
+  /** The hospital's own calendar date, not the host's: a batch that expires tomorrow morning IST
+   *  is not expired because the browser is running somewhere still on yesterday. Read per render
+   *  rather than at module load, so a window left open overnight does not keep yesterday's. */
+  const today = istDate(new Date());
 
   const [doc, setDoc] = useState<ReceiptDoc>({ dc: "", invoice: "", invDate: "" });
   // recv defaults to the outstanding balance — this is one instalment, not the full order.
@@ -93,15 +95,54 @@ function PoReceiptDrawer({ id }: DrawerProps) {
   const at = (i: number, patch: Partial<ReceiptLine>) =>
     setLines((r) => r.map((x, j) => (j === i ? { ...x, ...patch } : x)));
 
+  /**
+   * What the screen already says in red, said once more where it can stop the write.
+   *
+   * Answers the sentence the store keeper should read, or `null` when there is nothing to say.
+   * Every one of these is the server's refusal too — pressing anyway cost a round trip and an
+   * error toast for something the drawer could already see.
+   */
+  const refusal = (): string | null => {
+    if (!doc.dc.trim()) return "Nothing books in without the delivery note — record its number first.";
+    if (lines.every((l) => l.recv <= 0)) {
+      return "Nothing was received on any line. Enter what actually arrived, or close the order short.";
+    }
+    const named = (i: number) => IT[po.lines[i].it]?.n ?? po.lines[i].it;
+    const over = lines.findIndex((l) => l.rejected > l.recv);
+    if (over >= 0) return `${named(over)} — more was rejected than arrived on that line.`;
+    const dated = lines.findIndex((l) => Boolean(l.exp && l.mfg && l.exp <= l.mfg));
+    if (dated >= 0) return `${named(dated)} — the expiry falls on or before the manufacture date.`;
+    return null;
+  };
+
   /** Both doors carry a form — a delivery note and every batch on one, a reason on the other —
    *  so each waits for the server and closes only when it has taken it. A refused receipt
    *  leaves every batch number and date exactly where the store keeper typed it. */
   const book = async () => {
     if (busy) return;
+    // Refused here rather than by greying the button out. These four read boxes that commit on
+    // blur, and a disabled button never receives the press that would blur one — so a line the
+    // store keeper had just corrected could not re-enable the button its old value disabled.
+    // A refusal in this app is a sentence saying what was refused and why, not a dead control.
+    const no = refusal();
+    if (no) { notify(no); return; }
     setBusy(true);
     const ok = await receive(po.id, doc, lines);
     setBusy(false);
     if (ok) close();
+  };
+
+  /**
+   * Take whatever is being typed before the press is read.
+   *
+   * `mousedown` runs before `click` and before focus moves, so blurring here commits the box the
+   * store keeper is still standing in — otherwise typing a quantity and going straight for the
+   * button books the value the line held before they touched it. The refusals above are the net
+   * underneath this, not a substitute for it.
+   */
+  const commitTyping = () => {
+    const el = document.activeElement;
+    if (el instanceof HTMLInputElement) el.blur();
   };
   const confirmShort = async () => {
     if (busy) return;
@@ -124,20 +165,6 @@ function PoReceiptDrawer({ id }: DrawerProps) {
     it: l.it,
     qty: Math.max(0, round3(l.qty - already[i] - good[i])),
   }));
-
-  /**
-   * What the screen already says in red, said once more where it can stop the write.
-   *
-   * The button was `disabled={busy}` alone, though the delivery-note field beside it has always
-   * read "Required — nothing books in without it" and three lines carry their own warning. Each
-   * of those refusals is the server's too, so pressing anyway cost a round trip and an error
-   * toast for something the drawer could see: no delivery note, nothing actually received, a
-   * line rejecting more than arrived, or an expiry on or before its own manufacture date.
-   */
-  const blocked = busy
-    || !doc.dc.trim()
-    || lines.every((l) => l.recv <= 0)
-    || lines.some((l) => l.rejected > l.recv || Boolean(l.exp && l.mfg && l.exp <= l.mfg));
 
   const qtyRows: Row[] = po.lines.map((l, i) => {
     const r = lines[i];
@@ -219,10 +246,12 @@ function PoReceiptDrawer({ id }: DrawerProps) {
           )}
           <div className="sp" />
           <Btn variant="gh" onClick={close}>Close</Btn>
-          <Btn variant="ok" disabled={blocked} onClick={book}
-            title={blocked && !busy ? "Check the delivery note and the lines marked above" : undefined}>
-            {busy ? "Booking in…" : "Book into the central store"}
-          </Btn>
+          {/* The press commits whatever is still being typed before `book` reads the lines. */}
+          <span onMouseDown={commitTyping}>
+            <Btn variant="ok" disabled={busy} onClick={book}>
+              {busy ? "Booking in…" : "Book into the central store"}
+            </Btn>
+          </span>
         </>
       }
     >

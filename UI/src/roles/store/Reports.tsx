@@ -40,6 +40,24 @@ const mins = (t: string) => {
   const [h, m] = t.split(":").map(Number);
   return Number.isFinite(h) && Number.isFinite(m) ? h * 60 + m : null;
 };
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+/**
+ * "12 Sep" against today's IST calendar, as whole days ahead.
+ *
+ * `bestBeforeText` prints the day and the month and no year, so the year is the one that puts
+ * the date on or after today — a best-before is never written in the past, and that is what
+ * carries a batch made on New Year's Eve over into January. An unreadable suffix still means
+ * "some other day", so it counts as one.
+ */
+const daysAhead = (dayMonth: string, todayIso: string): number => {
+  const m = /^(\d{1,2})\s+([A-Za-z]{3})/.exec(dayMonth);
+  const mon = m ? MONTHS.findIndex((x) => x.toLowerCase() === m[2].toLowerCase()) : -1;
+  if (!m || mon < 0) return 1;
+  const on = (y: number) => `${y}-${String(mon + 1).padStart(2, "0")}-${m[1].padStart(2, "0")}`;
+  const thisYear = on(Number(todayIso.slice(0, 4)));
+  const due = thisYear >= todayIso ? thisYear : on(Number(todayIso.slice(0, 4)) + 1);
+  return Math.round((Date.parse(`${due}T00:00:00+05:30`) - Date.parse(`${todayIso}T00:00:00+05:30`)) / 86400000);
+};
 /**
  * A best-before as minutes past this morning's midnight.
  *
@@ -47,12 +65,15 @@ const mins = (t: string) => {
  * "06:30 12 Sep" for anything further out (H9) — so the clock is only ever the first word, and
  * `mins("06:30 tomorrow")` read `Number("30 tomorrow")`, answered NaN and fell back to 0, which
  * made every overnight batch on this report read "Past best before" from the moment it was
- * made. The day the text names is added back on as whole days rather than dropped.
+ * made. The day the text names is added back on in whole days rather than dropped.
  */
-const bbMins = (bb: string) => {
+const bbMins = (bb: string, todayIso: string) => {
   const [clock, ...day] = bb.trim().split(" ");
   const at = mins(clock);
-  return at === null ? null : at + (day.length > 0 ? 1440 : 0);
+  if (at === null) return null;
+  if (day.length === 0) return at;
+  const rest = day.join(" ");
+  return at + 1440 * (rest === "tomorrow" ? 1 : daysAhead(rest, todayIso));
 };
 /** Times are clock-only, so a negative gap has rolled past midnight. */
 const gap = (a: string | undefined, b: string | undefined) => {
@@ -260,6 +281,7 @@ const prqst = (s: AppState): Rep => {
 
 const ageing = (s: AppState): Rep => {
   const clock = mins(now()) ?? 0;
+  const todayIso = istDate(new Date());
   const rows = [
     ...s.grn.map((g) => {
       const left = days(g.exp);
@@ -272,7 +294,7 @@ const ageing = (s: AppState): Rep => {
     ...s.batch.map((b) => {
       // A batch made this evening is good until the small hours, and the kitchen's own word for
       // that is "06:30 tomorrow" — which is a time this report has to read, not discard.
-      const bb = bbMins(b.bb);
+      const bb = bbMins(b.bb, todayIso);
       const left = bb === null ? null : bb - clock;
       return [
         b.id, IT[b.it]?.n ?? b.it, LOC.kitchen.n, `${fq(b.qty, b.it)} ${U(b.it)}`,

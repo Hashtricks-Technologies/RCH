@@ -32,7 +32,12 @@ export function TicketSlip({ t }: { t: Ticket }) {
           <tr><th>Item</th><th>Code</th><th className="r">Quantity</th><th>Unit</th></tr>
         </thead>
         <tbody>
-          {t.lines.map((l, i) => (
+          {/* Paper with an empty table on it reads as a printing fault. A ticket with no line
+              is not one the store keeper should hand anything over against, and the slip has
+              to say so rather than leave the collector to work it out. */}
+          {t.lines.length === 0 ? (
+            <tr><td colSpan={4}>No item on this ticket — nothing is to be collected against it.</td></tr>
+          ) : t.lines.map((l, i) => (
             <tr key={l.it + i}>
               <td>{IT[l.it]?.n ?? l.it}</td>
               <td>{IT[l.it]?.c ?? ""}</td>

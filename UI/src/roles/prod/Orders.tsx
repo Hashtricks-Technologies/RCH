@@ -88,7 +88,7 @@ export default function Orders() {
       // inside it and a button may not contain a button.
       <div className="kan-card" key={o.id} onClick={() => openDrawer("pord", o.id)}>
         <div className="kan-top">
-          <button type="button" style={OPEN_BTN}
+          <button type="button" style={OPEN_BTN} aria-label={`Open ${o.id}`}
             onClick={(e) => { e.stopPropagation(); openDrawer("pord", o.id); }}>
             <b className="mono">{o.id}</b>
           </button>
