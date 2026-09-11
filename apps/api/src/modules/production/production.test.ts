@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
-import { and, eq, isNull, sum } from "drizzle-orm";
+import { and, asc, eq, isNull, sum } from "drizzle-orm";
 import { bestBeforeText } from "@rch/domain";
 import { buildTestApp } from "../../test/app.js";
 import { seedTestDb } from "../../test/seed.js";
@@ -565,6 +565,17 @@ describe("POST /prod-orders", () => {
     expect(await board()).toHaveLength(2);      // the two seeded orders, and nothing else
   });
 
+  it("refuses a made-to-order item — the counter makes it, the kitchen does not send it", async () => {
+    // `capp` has a recipe and is on the Restaurant's menu, so it reads as orderable — and
+    // nothing downstream could fill it: `POST /batches` refuses to stock one (C2), `POST
+    // /distributions` refuses to send one, so a dispatch would have nothing to cover the line
+    // with. The order is refused at the door rather than left on the board to be declined.
+    const r = await post("u2", "/prod-orders", { from: "rest", lines: [{ it: "capp", qty: 20 }] });
+    expect(r.statusCode).toBe(422);
+    expect(r.json().error.message).toBe("Cappuccino is made to order at the counter — it is not ordered from the kitchen");
+    expect(await board()).toHaveLength(2);
+  });
+
   it("refuses an item that is not on that outlet's menu, in distribute's own words", async () => {
     const r = await post("u6", "/prod-orders", { lines: [{ it: "sand", qty: 6 }] });
     expect(r.statusCode).toBe(422);
@@ -641,7 +652,11 @@ describe("POST /prod-orders", () => {
     const before = await onHand("kitchen", "puff");
     const moves = await moveCount();
     const held = await app.testDb!.db.select().from(reservations).where(isNull(reservations.releasedAt));
-    const cells = await app.testDb!.db.select().from(stockBalances);
+    // Ordered explicitly: Postgres promises no row order without one, so an unordered `toEqual`
+    // of two reads is a case that can fail on a vacuum rather than on the behaviour it names.
+    const balances = () => app.testDb!.db.select().from(stockBalances)
+      .orderBy(asc(stockBalances.loc), asc(stockBalances.itemKey));
+    const cells = await balances();
 
     // Far more than the kitchen holds, and still taken: an order promises nothing.
     const r = await post("u6", "/prod-orders", { lines: [{ it: "puff", qty: 500 }] });
@@ -653,6 +668,6 @@ describe("POST /prod-orders", () => {
     // And not one balance row was created or touched, because `lockBalances` was never called:
     // a lock creates the row it takes, and a row carried at zero reads as a shelf that stocks
     // the line (M12). An order promises nothing, so it has no cell to lock.
-    expect(await app.testDb!.db.select().from(stockBalances)).toEqual(cells);
+    expect(await balances()).toEqual(cells);
   });
 });

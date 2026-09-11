@@ -16,15 +16,67 @@ import type { LocKey } from "../types";
  * two screens one code path instead of two.
  */
 
-/** What the kitchen can be asked for at one outlet: a made item that is on that outlet's menu.
- *  Everything else on the menu is bought in and comes off the central store's shelf — the
- *  server says so too, and in those words. */
+/**
+ * What the kitchen can be asked for at one outlet: a **finished good** that is on that outlet's
+ * menu. Finished goods only, and made-to-order is the case worth naming — `capp` and `chai`
+ * carry a recipe and a menu listing, so they read as orderable, but nothing downstream could
+ * fill the order: `makeBatch` refuses to stock a phantom shelf of an MTO item (C2), `distribute`
+ * refuses to send one, and a dispatch would therefore have nothing to cover the line with. The
+ * server refuses both cases with its own sentences; the picker is what keeps the operator from
+ * reading either one.
+ */
 const kitchenItemsAt = (s: StockShape, loc: LocKey): string[] =>
   menuOf(s, loc)
-    .filter((k) => IT[k]?.t === "FG" || IT[k]?.t === "MTO")
+    .filter((k) => IT[k]?.t === "FG")
     .sort((a, b) => (IT[a]?.n ?? a).localeCompare(IT[b]?.n ?? b));
 
 type Line = { it: string; qty: number };
+
+/**
+ * A quantity box that lets the operator type. A controlled `Number(e.target.value)` turns an
+ * emptied box into 0 and eats the "." of "12." on the way past, so the local string absorbs the
+ * typing and only a finite number reaches the line, on blur or Enter. The pattern is
+ * `PoDrawer.tsx`'s `DraftLineInput`; it is replicated here rather than imported because that one
+ * is mid-move into `ui/kit.tsx` on another branch.
+ */
+function QtyInput({ value, ariaLabel, onCommit }: {
+  value: number; ariaLabel: string; onCommit: (n: number) => void;
+}) {
+  const [local, setLocal] = useState(String(value));
+  const [synced, setSynced] = useState(value);
+  // Reset whenever the line's own value moves out from under the box — adjusted during render
+  // (React's own pattern for this), so the field never paints a stale number first.
+  if (value !== synced) {
+    setSynced(value);
+    setLocal(String(value));
+  }
+
+  const commit = () => {
+    const n = Number(local);
+    // A blank box is not a quantity of nothing — it is a box the operator is part-way through,
+    // or one they cleared and tabbed out of. `Number("")` is 0, which would silently write a
+    // zero line and grey out Send, so an empty string never commits and the resync below puts
+    // the last good number back. (An `input type="number"` also reports "" for a half-typed
+    // "12.", because the control sanitises anything that is not yet a valid number — which is
+    // exactly why the value has to live in this buffer and not be read back off the DOM.)
+    if (local.trim() !== "" && Number.isFinite(n) && n !== value) onCommit(n);
+    // Then resync to what the line actually holds: if the commit moved it, the check above
+    // catches the new value next render; if it did not (an emptied box, a stray "-"), this is
+    // what puts a readable number back rather than leaving the operator staring at blank.
+    setSynced(value);
+    setLocal(String(value));
+  };
+
+  return (
+    <input
+      type="number" min={0} step="0.001" className="mono"
+      value={local} aria-label={ariaLabel}
+      onChange={(e) => setLocal(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+    />
+  );
+}
 
 export default function KitchenOrderForm({ loc, onDone }: { loc: LocKey; onDone?: () => void }) {
   const s = useApp();
@@ -33,25 +85,36 @@ export default function KitchenOrderForm({ loc, onDone }: { loc: LocKey; onDone?
   // during render and pinned to `catalogVersion` — the signal that the catalogue moved.
   void s.catalogVersion;
   const makeable = kitchenItemsAt(s, loc);
+  const first = makeable[0] ?? "";
 
-  const [lines, setLines] = useState<Line[]>([{ it: makeable[0] ?? "", qty: 1 }]);
+  const [lines, setLines] = useState<Line[]>([{ it: first, qty: 1 }]);
   const [need, setNeed] = useState("");
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
-  // The manager switches outlets inside one open drawer, and the menu moves under the picker
-  // with them. Adjusted during render (React's own pattern) rather than in an effect, so the
-  // form never paints a product the newly chosen shop does not sell.
+  // Two things move the list out from under the form, both adjusted during render rather than
+  // in an effect so it never paints a product the outlet cannot be sent. The manager switches
+  // outlets inside one open drawer; and the catalogue itself arrives late (empty at import,
+  // filled by the snapshot) or changes under an SSE resync, which is what leaves a line holding
+  // the "" it was initialised with while the picker below has real options to offer.
   const [forLoc, setForLoc] = useState(loc);
+  const [firstOf, setFirstOf] = useState(first);
   if (forLoc !== loc) {
     setForLoc(loc);
-    setLines([{ it: makeable[0] ?? "", qty: 1 }]);
+    setFirstOf(first);
+    setLines([{ it: first, qty: 1 }]);
+  } else if (firstOf !== first) {
+    setFirstOf(first);
+    // Only the lines whose product is no longer on offer — a half-typed order keeps the rest.
+    setLines(lines.map((l) => (makeable.includes(l.it) ? l : { ...l, it: first })));
   }
 
   if (makeable.length === 0) {
     return (
       <Alert tone="w" label="NOTHING TO ASK FOR">
-        Nothing the kitchen makes is on {LOC[loc]?.n ?? loc}'s menu yet. The outlet manager adds a
-        product to a menu before it can be ordered.
+        Nothing on this menu is made in the kitchen. {LOC[loc]?.n ?? loc} sells only bought-in
+        lines and drinks made at the counter — ask the central store for the first, and the
+        second are made as they are sold. The outlet manager adds a kitchen product to the menu
+        before one can be ordered.
       </Alert>
     );
   }
@@ -71,7 +134,7 @@ export default function KitchenOrderForm({ loc, onDone }: { loc: LocKey; onDone?
     // A refusal leaves the form exactly as it was typed — the sentence is already on screen and
     // the operator's next move is to fix one number, not to key the whole order again.
     if (!ok) return;
-    setLines([{ it: makeable[0] ?? "", qty: 1 }]);
+    setLines([{ it: first, qty: 1 }]);
     setNeed("");
     setNote("");
     onDone?.();
@@ -91,11 +154,7 @@ export default function KitchenOrderForm({ loc, onDone }: { loc: LocKey; onDone?
               <select value={l.it} aria-label={`Product ${i + 1}`} onChange={(e) => setLine(i, { it: e.target.value })}>
                 {makeable.map((k) => <option key={k} value={k}>{IT[k].n}</option>)}
               </select>
-              <input
-                type="number" min={0} step="0.001" className="mono"
-                aria-label={`Quantity ${i + 1}`} value={l.qty}
-                onChange={(e) => setLine(i, { qty: Number(e.target.value) })}
-              />
+              <QtyInput value={l.qty} ariaLabel={`Quantity ${i + 1}`} onCommit={(qty) => setLine(i, { qty })} />
               {lines.length > 1
                 ? <Btn size="xs" variant="gh" onClick={() => setLines(lines.filter((_, n) => n !== i))}>Remove</Btn>
                 : <span className="mini dim">{U(l.it)}</span>}
@@ -106,7 +165,7 @@ export default function KitchenOrderForm({ loc, onDone }: { loc: LocKey; onDone?
 
       <BtnRow>
         <Btn size="sm" variant="gh" disabled={lines.length >= 50}
-          onClick={() => setLines([...lines, { it: makeable[0] ?? "", qty: 1 }])}>
+          onClick={() => setLines([...lines, { it: first, qty: 1 }])}>
           Add another item
         </Btn>
       </BtnRow>

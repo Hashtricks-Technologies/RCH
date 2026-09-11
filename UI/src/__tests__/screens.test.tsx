@@ -275,7 +275,7 @@ describe("the kitchen order board", () => {
       useApp.setState({
         pord: [{ id: "PRD-2026-029", from: "kiosk", by: "Ramesh Kumar", at: "07:10",
           lines: [{ it: "puff", qty: 40 }], st: "Dispatched", note: "",
-          hist: [{ s: "New", who: "Ramesh Kumar", t: "07:10" }] }],
+          hist: [{ s: "Raised", who: "Ramesh Kumar", t: "07:10" }] }],
         tkt: [
           { id: "TKT-0801", req: "PRD-2026-029", from: "kitchen", to: "kiosk", lines: [{ it: "puff", qty: 40 }], st: "Cancelled", otp: "", hist: [] },
           { id: "TKT-0802", req: "PRD-2026-029", from: "kitchen", to: "kiosk", lines: [{ it: "puff", qty: 40 }], st: "Issued", otp: "", hist: [] },
@@ -406,7 +406,28 @@ describe("the counter's ticket drawer reads its own direction", () => {
 
 // ---- prod-order raise ----
 describe("the counter can ask the kitchen, and only for what the kitchen makes", () => {
-  it("offers the made items on this outlet's menu and nothing bought in", () => {
+  it("offers the finished goods on that outlet's menu and nothing else", () => {
+    // Through the manager's drawer, whose outlet picker opens on OUTLETS[0] — the Restaurant,
+    // the one shop with finished goods on its menu and the only way to reach one from a test
+    // (the fixtures' two counters are the Coffee Shop and the Snack Kiosk).
+    act(() => { as("manager"); });
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    act(() => { root.render(createElement(MemoryRouter, null, createElement(DRAWERS.korder, { id: "new" }))); });
+
+    const options = [...host.querySelectorAll("select[aria-label='Product 1'] option")].map((o) => o.textContent);
+    // The Restaurant's menu is capp, chai, puff, sand, salad, juice, water, chips. Only the
+    // three finished goods may be ordered: the four bought-in lines come off the central
+    // store's shelf, and `capp`/`chai` are made at the till the moment they are sold — nothing
+    // downstream could fill an order for one, so the picker must not offer them.
+    expect(options).toEqual(["Garden salad", "Veg puffs", "Veg sandwich"]);
+
+    act(() => { root.unmount(); });
+    host.remove();
+  });
+
+  it("says so honestly when a menu has nothing the kitchen makes, and offers no Send", () => {
     act(() => { as("counter"); });                       // Kavitha, Coffee Shop
     // The form only exists once the card's own action tile is pressed, so this renders into a
     // host it keeps mounted rather than going through `render` above, which unmounts to return.
@@ -418,11 +439,12 @@ describe("the counter can ask the kitchen, and only for what the kitchen makes",
 
     const tile = [...host.querySelectorAll("button")].find((b) => b.textContent?.includes("From the kitchen"))!;
     act(() => { tile.click(); });
-    const options = [...host.querySelectorAll("select[aria-label='Product 1'] option")].map((o) => o.textContent);
-    // The Coffee Shop's menu is capp, chai, juice, water, bisc, chips. Only the first two are
-    // made in the kitchen; a stock request is the door for the other four, and the picker must
-    // not offer them here or the counter reads the server's refusal instead of a tray.
-    expect(options).toEqual(["Cappuccino", "Masala tea"]);
+    // The Coffee Shop sells capp, chai, juice, water, bisc, chips — two made at the till and
+    // four bought in, and not one finished good. There is nothing to order, so the card says
+    // that rather than offering an empty picker and a button the server would refuse.
+    expect(host.innerHTML).toContain("Nothing on this menu is made in the kitchen");
+    expect(host.querySelector("select[aria-label='Product 1']")).toBeNull();
+    expect([...host.querySelectorAll("button")].map((b) => b.textContent)).not.toContain("Send to the kitchen");
 
     act(() => { root.unmount(); });
     host.remove();

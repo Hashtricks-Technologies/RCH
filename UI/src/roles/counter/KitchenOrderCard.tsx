@@ -30,13 +30,17 @@ export default function KitchenOrderCard({ loc }: { loc: LocKey }) {
   // The snapshot already cuts `pord` to this counter's own outlet, but the filter stays: a
   // manager's browser and a counter's read the same store shape, and a screen that trusted the
   // scope would show the wrong shop's orders the moment one of them opened this card.
-  const mine = pord.filter((o) => o.from === loc).slice().sort((a, b) => b.at.localeCompare(a.at));
+  //
+  // Newest first by **id**, not by `at`: the store keeps `at` as "HH:MM" (`api/wire.ts`), so
+  // sorting on it puts yesterday's 23:40 order above this morning's 07:10 one. The series is
+  // gapless and monotonic, which is the only ordering on this list that stays true overnight.
+  const mine = pord.filter((o) => o.from === loc).slice().sort((a, b) => b.id.localeCompare(a.id));
   const waiting = mine.filter((o) => isOpen(o.st)).length;
 
   return (
     <Card
       title="Ask the kitchen"
-      sub="Made items only — the Central Kitchen cooks these to order"
+      sub="Finished goods only — a drink made at the till is not ordered from the kitchen"
       right={waiting > 0 ? <Pill tone="wn">{waiting} on the board</Pill> : undefined}
       className="mtop"
     >

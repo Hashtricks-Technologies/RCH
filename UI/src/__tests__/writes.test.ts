@@ -1661,6 +1661,10 @@ describe("raiseProdOrder — POST /prod-orders", () => {
 
   it("the counter's card sends what the operator typed and clears itself", async () => {
     as("counter");
+    // The Coffee Shop's own menu carries no finished good — two drinks made at the till and
+    // four bought-in lines — so the card would honestly offer nothing to order. Put a puff on
+    // its menu, which is what the outlet manager would do before the counter could ask for one.
+    useApp.setState({ menu: { ...S().menu, coffee: [...S().menu.coffee, "puff"] } });
     serve({
       "POST /api/v1/prod-orders": () => json({ result: RAISED, changed: ["pord"], message: "PRD-2026-031 raised for Coffee Shop — 1 item" }),
       "GET /api/v1/prod-orders": () => json([RAISED]),
@@ -1677,11 +1681,60 @@ describe("raiseProdOrder — POST /prod-orders", () => {
     const send = [...host.querySelectorAll("button")].find((b) => b.textContent === "Send to the kitchen")!;
     await act(async () => { send.click(); });
 
-    const body = hit("POST /api/v1/prod-orders")[0].body as { from: string; lines: { it: string }[] };
-    // The signed-in counter is the Coffee Shop, and `capp` is the first made item on its menu.
+    const body = hit("POST /api/v1/prod-orders")[0].body as { from: string; lines: { it: string; qty: number }[] };
+    // The outlet comes off the token, and the one finished good on that menu is what the
+    // picker opened on — never `capp` or `chai`, which are made at the till.
     expect(body.from).toBe("coffee");
-    expect(body.lines).toHaveLength(1);
-    expect(["capp", "chai"]).toContain(body.lines[0].it);
+    expect(body.lines).toEqual([{ it: "puff", qty: 1 }]);
+    await act(async () => { root.unmount(); });
+    host.remove();
+  });
+
+  it("takes a part-typed quantity on blur rather than reading it a digit at a time", async () => {
+    /** A keystroke, through React's own value setter so its onChange sees it. */
+    const type = (el: HTMLInputElement, v: string) => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(el, v);
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+    };
+    /** Tabbing on. React maps `onBlur` onto the bubbling `focusout`. */
+    const leave = (el: HTMLInputElement) => { el.dispatchEvent(new FocusEvent("focusout", { bubbles: true })); };
+
+    as("counter");
+    useApp.setState({ menu: { ...S().menu, coffee: [...S().menu.coffee, "puff"] } });
+    serve({
+      "POST /api/v1/prod-orders": () => json({ result: RAISED, changed: ["pord"], message: "PRD-2026-031 raised for Coffee Shop — 1 item" }),
+      "GET /api/v1/prod-orders": () => json([RAISED]),
+    });
+
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    await act(async () => { root.render(createElement(MemoryRouter, null, createElement(CounterRequests))); });
+    const openIt = [...host.querySelectorAll("button")].find((b) => b.textContent?.includes("From the kitchen"))!;
+    await act(async () => { openIt.click(); });
+
+    const qty = () => host.querySelector<HTMLInputElement>("input[aria-label='Quantity 1']")!;
+    const send = () => [...host.querySelectorAll("button")].find((b) => b.textContent === "Send to the kitchen") as HTMLButtonElement;
+
+    // Clearing the box is a real keystroke on the way to a new number. A controlled
+    // `Number(e.target.value)` would have read it as 0 and forced a "0" back into the field
+    // under the operator's fingers — and greyed out Send while they were still typing.
+    await act(async () => { type(qty(), ""); });
+    expect(qty().value).toBe("");
+    expect(send().disabled).toBe(false);
+
+    // And tabbing out of an empty box writes nothing: the line keeps the last good number
+    // rather than becoming a zero line nobody typed.
+    await act(async () => { leave(qty()); });
+    expect(qty().value).toBe("1");
+
+    await act(async () => { type(qty(), "12.5"); });
+    await act(async () => { leave(qty()); });
+    expect(qty().value).toBe("12.5");
+
+    await act(async () => { send().click(); });
+    expect((hit("POST /api/v1/prod-orders")[0].body as { lines: { qty: number }[] }).lines[0].qty).toBe(12.5);
+
     await act(async () => { root.unmount(); });
     host.remove();
   });

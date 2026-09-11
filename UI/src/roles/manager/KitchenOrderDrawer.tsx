@@ -31,7 +31,7 @@ function KitchenOrderDrawer() {
         </select>
       </Field>
 
-      <Section title="What to make" sub="Only what the kitchen makes and that outlet sells">
+      <Section title="What to make" sub="Finished goods the kitchen bakes and that outlet sells">
         <KitchenOrderForm loc={loc} onDone={close} />
       </Section>
 

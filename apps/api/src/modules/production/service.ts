@@ -76,9 +76,16 @@ export function createProductionService(db: Db) {
         for (const l of lines) {
           const item = master.items[l.it];
           if (!item) throw new NotFoundError(`There is no item ${l.it}.`);
+          // Finished goods only. A made-to-order item carries a recipe and a menu listing, so it
+          // looks orderable — but nothing downstream can fill it: `makeBatch` refuses to stock a
+          // phantom shelf of it (C2), `distribute` refuses to send one, and `dispatch` therefore
+          // has nothing to cover the line with. An order for one would sit on the board until
+          // somebody declined it, so it is refused here, at the door, in the words the kitchen's
+          // own two refusals already use.
+          assertRule(item.t !== "MTO", `${item.n} is made to order at the counter — it is not ordered from the kitchen`);
           // Everything else on an outlet's menu is bought in and comes off the central store's
           // shelf — a request, not an order, and the sentence says which door to use.
-          assertRule(item.t === "FG" || item.t === "MTO", `${item.n} is not made in the kitchen — raise a stock request for it instead`);
+          assertRule(item.t === "FG", `${item.n} is not made in the kitchen — raise a stock request for it instead`);
           // Stock that lands where it cannot be sold is stock lost (M9). `distribute`'s own
           // words, because it is the same refusal one step later in the same journey.
           assertRule(menu.has(l.it), `${item.n} is not listed at ${fromName} — add it to that menu first`);
