@@ -44,3 +44,20 @@ describe("a goods receipt's number", () => {
     expect(grnId("PO-2026-0143", 12)).toBe("GRN-260143-12");
   });
 });
+
+// ---- adjustments
+describe("an adjustment's number", () => {
+  it("carries the year and four digits, so a list of them sorts as text", () => {
+    expect(formatId("adj", 1, at)).toBe("ADJ-2026-0001");
+    expect(formatId("adj", 12, at)).toBe("ADJ-2026-0012");
+    expect(formatId("adj", 1043, at)).toBe("ADJ-2026-1043");
+  });
+  it("takes the hospital's own calendar date, not the host's", () => {
+    // 00:30 on the 1st of January in Chennai is still the 31st of December in UTC. The series
+    // is per year, so the wrong answer here would restart the numbering a day early.
+    expect(formatId("adj", 1, new Date("2027-01-01T00:30:00+05:30"))).toBe("ADJ-2027-0001");
+  });
+  it("starts at one — nothing was ever written off through a document before", () => {
+    expect(SEQUENCE_START.adj).toBe(1);
+  });
+});

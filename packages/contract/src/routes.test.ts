@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { z } from "zod";
-import { CreatePoBodySchema, CreditParamsSchema, CreditResponseSchema, EVENTS_PATH, EventNoticeSchema, LocKeySchema, MakeBatchBodySchema, PatchContractBodySchema, PatchPoBodySchema, PatchVendorBodySchema, PO_APPROVAL_LIMIT, RaiseTicketBodySchema, RateTicketBodySchema, ReceivePoBodySchema, SetOrderStatusBodySchema, SetTicketStatusBodySchema, StockLedgerQuerySchema, StockLocSchema, TktStatusSchema, TransferBodySchema } from "./index";
+import { AdjustReasonSchema, CreateAdjustmentBodySchema, CreatePoBodySchema, CreditParamsSchema, CreditResponseSchema, EVENTS_PATH, EventNoticeSchema, LocKeySchema, MakeBatchBodySchema, PatchContractBodySchema, PatchPoBodySchema, PatchVendorBodySchema, PO_APPROVAL_LIMIT, RaiseTicketBodySchema, RateTicketBodySchema, ReceivePoBodySchema, SetOrderStatusBodySchema, SetTicketStatusBodySchema, StockLedgerQuerySchema, StockLocSchema, TktStatusSchema, TransferBodySchema } from "./index";
 import { routes } from "./routes";
 
 /** One valid body per route that takes one. The coverage case below fails if a new route
@@ -48,6 +48,8 @@ const SAMPLES: Record<string, Record<string, unknown>> = {
   replyToTicket:   { body: "Refreshed and it reads correctly now — thank you." },
   setTicketStatus: { st: "Resolved" },
   rateTicket:      { rating: 5 },
+  // ---- adjustments
+  createAdjustment: { loc: "store", reason: "wastage", note: "Dropped tray", lines: [{ it: "milk", qty: -2 }] },
 };
 // `routes` is a const object, so `r.body` is a union of every literal schema type; the cast
 // keeps this loop about the shared `safeParse` and not about zod's generics.
@@ -173,5 +175,30 @@ describe("what the support desk puts on the wire", () => {
     expect(RateTicketBodySchema.safeParse({ rating: 0 }).success).toBe(false);
     expect(RateTicketBodySchema.safeParse({ rating: 6 }).success).toBe(false);
     expect(RateTicketBodySchema.safeParse({ rating: 4.5 }).success).toBe(false);
+  });
+});
+
+// ---- adjustments
+describe("what an adjustment puts on the wire", () => {
+  it("takes a negative quantity, which is the whole point of a write-off", () => {
+    const body = { loc: "store", reason: "breakage", lines: [{ it: "milk", qty: -2.5 }] };
+    expect(CreateAdjustmentBodySchema.safeParse(body).success).toBe(true);
+    expect(CreateAdjustmentBodySchema.parse(body).note).toBe("");
+  });
+  it("names a StockLoc, because the rejected-goods shelf has to be correctable too", () => {
+    // The one write body in the manifest that is not `LocKeySchema`. A consignment turned away
+    // at the door sits on that shelf until somebody destroys it or sends it back, and nothing
+    // else in the system can take it off again.
+    expect(CreateAdjustmentBodySchema.safeParse({ loc: "quarantine", reason: "returned_to_vendor", lines: [{ it: "milk", qty: -2 }] }).success).toBe(true);
+    expect(CreateAdjustmentBodySchema.safeParse({ loc: "canteen", reason: "other", lines: [{ it: "milk", qty: -2 }] }).success).toBe(false);
+  });
+  it("leaves a zero line to the service, so the operator reads a sentence and not a 400", () => {
+    expect(CreateAdjustmentBodySchema.safeParse({ loc: "store", reason: "count", lines: [{ it: "milk", qty: 0 }] }).success).toBe(true);
+    // Three decimals is the whole precision of a quantity, in both directions.
+    expect(CreateAdjustmentBodySchema.safeParse({ loc: "store", reason: "count", lines: [{ it: "milk", qty: -2.0001 }] }).success).toBe(false);
+  });
+  it("takes only the six reasons a month-end query can group by", () => {
+    expect(AdjustReasonSchema.safeParse("expired").success).toBe(true);
+    expect(AdjustReasonSchema.safeParse("spoilt").success).toBe(false);
   });
 });

@@ -35,6 +35,8 @@ export const SnapshotSchema = z.object({
   shopAsks: z.array(D.ShopAskSchema),
   sales: z.array(z.array(z.number())),
   dayLabels: z.array(z.string()),
+  // ---- adjustments: the write-offs and count-ups behind the `adjustment` moves on the ledger.
+  adjustments: z.array(D.AdjustmentSchema),
 });
 export const ItemsResponseSchema = z.record(z.string(), D.ItemSchema);
 export const LocationsResponseSchema = z.record(z.string(), D.LocationSchema);
@@ -64,3 +66,8 @@ export const ProductRequestsResponseSchema = z.array(D.ProductRequestSchema);
 /** The caller's own support tickets. Every role sees only what it raised — there is no support
  *  role among the five, so a list of other people's tickets would be rows nobody can act on. */
 export const SupportTicketsResponseSchema = z.array(D.SupportTicketSchema);
+
+// ---- adjustments
+/** The adjustment register on its own, so a write naming "adjustments" refetches that slice
+ *  rather than the whole snapshot (spec §9.1). Scoped like `stock`: a counter sees its own. */
+export const AdjustmentsResponseSchema = z.array(D.AdjustmentSchema);

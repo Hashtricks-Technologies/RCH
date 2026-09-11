@@ -63,3 +63,8 @@ export type StockLedgerRow = z.infer<typeof R.StockLedgerRowSchema>;
 export type StockLedgerResponse = z.infer<typeof R.StockLedgerResponseSchema>;
 export type CreditParams = z.infer<typeof R.CreditParamsSchema>;
 export type CreditResponse = z.infer<typeof R.CreditResponseSchema>;
+
+// ---- adjustments: a write-off or a count-up as a document.
+export type AdjustReason = z.infer<typeof D.AdjustReasonSchema>;
+export type AdjustmentLine = z.infer<typeof D.AdjustmentLineSchema>;
+export type Adjustment = z.infer<typeof D.AdjustmentSchema>;
