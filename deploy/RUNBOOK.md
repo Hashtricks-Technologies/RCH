@@ -331,7 +331,7 @@ automatic undo is worth more there than the wreckage of the failed attempt. Prod
 `--wait` alone, for two reasons:
 
 - `--atomic` deletes the failed release's pods the instant it gives up, and takes with it the
-  only two things §5's recovery actually reads — the pod events and the `migrate`
+  only two things §3's recovery actually reads — the pod events and the `migrate`
   initContainer's log. "The rollout failed" with no way to learn why is worse than a stuck
   release.
 - **A migration that already committed is not undone by rolling the Deployment back.**
@@ -392,12 +392,22 @@ base64-encoded — export them as-is).
 Required repository secrets: `AWS_ROLE_ARN`, `AWS_REGION`, `ECR_REGISTRY`, `EKS_CLUSTER_DEV`,
 `EKS_CLUSTER_STAGING`, `EKS_CLUSTER_PROD` (all three cluster secrets name the one cluster, `rch`
 — every environment is a namespace on it, not a cluster of its own). Required GitHub
-**environment** secrets for `dev` and, later, `staging`: `DATABASE_URL`, `JWT_PRIVATE_KEY`,
-`JWT_PUBLIC_KEY` (these populate `secrets.values.*` for the chart's in-cluster `Secret`, since
-both run with `secrets.create=true`). Production runs with `secrets.create=false` and
-`secrets.externalSecret.enabled=true`, pulling `DATABASE_URL`, `JWT_PRIVATE_KEY`,
-`JWT_PUBLIC_KEY`, `JWT_PREVIOUS_PUBLIC_KEY` from AWS Secrets Manager (`rch/prod`) via the
-External Secrets Operator — no database or key secrets live in GitHub for prod.
+**environment** secrets for `dev` and, later, `staging`: **four** — `DATABASE_URL`,
+`JWT_PRIVATE_KEY`, `JWT_PUBLIC_KEY` and **`SEED_PASSWORD`** (these populate `secrets.values.*`
+for the chart's in-cluster `Secret`, since both run with `secrets.create=true`). Production runs
+with `secrets.create=false` and `secrets.externalSecret.enabled=true`, pulling **five** —
+`DATABASE_URL`, `JWT_PRIVATE_KEY`, `JWT_PUBLIC_KEY`, `JWT_PREVIOUS_PUBLIC_KEY` (may be empty) and
+`SEED_PASSWORD` — from AWS Secrets Manager (`rch/prod`) via the External Secrets Operator; no
+database or key secrets live in GitHub for prod.
+
+**`SEED_PASSWORD` is blocking, not optional.** It has been a required variable with no default
+since the audit fix wave (`apps/api/src/config.ts`), and `config.ts` is what the **migrate
+initContainer** loads before it opens a connection — so a secret without it produces an
+initContainer that exits on `Invalid environment: SEED_PASSWORD: Too small …` and a pod that
+never starts. On dev and staging `--atomic` rolls that back; **production deliberately upgrades
+without `--atomic`** (§3), so the release is left sitting in `pending-install`/`pending-upgrade`
+and has to be cleaned up by hand before the next attempt. The `Every secret the chart needs is
+present` step in `deploy.yml` checks for it ahead of the upgrade for exactly this reason.
 
 ### Promote
 
@@ -418,6 +428,19 @@ kubectl label namespace rch-staging elbv2.k8s.aws/pod-readiness-gate-inject=enab
 kubectl label namespace rch         elbv2.k8s.aws/pod-readiness-gate-inject=enabled
 ```
 
+- **`ng-prod` does not exist, and production's pods can land nowhere else.** The cluster was
+  created with one node group, `ng-spot`, and `values-prod.yaml` pins both Deployments to
+  `rch.io/tier: prod` — a label nothing carries. Create it **before the first production deploy**
+  (§11 step 8 is where it sits in the order):
+  ```bash
+  eksctl create nodegroup -f deploy/eksctl/cluster.yaml --include=ng-prod
+  kubectl get nodes -l rch.io/tier=prod        # expect 3, one per availability zone
+  ```
+  Three on-demand nodes across `ap-south-1a/b/c`, deliberately untainted: the label is what pins
+  production in, and a taint would additionally keep the DaemonSets off. Skip it and both
+  Deployments sit `Pending` for ever with no error anywhere — and production upgrades without
+  `--atomic` (§3), so nothing rolls that back. `deploy/chart/rch/tests/render.test.sh` asserts
+  that the label the prod render asks for is one `deploy/eksctl/cluster.yaml` actually applies.
 - **The pod readiness gate is not optional on this chart, and nothing enforces it.** The ingress
   uses `target-type: ip`, so the ALB registers each pod directly. Without the label a new pod
   counts as Ready the moment its own probe passes, while the load balancer is still registering
@@ -461,9 +484,14 @@ kubectl label namespace rch         elbv2.k8s.aws/pod-readiness-gate-inject=enab
 - **ExternalSecret store (prod only):** the `ClusterSecretStore` named `aws-secrets-manager`
   (referenced by `deploy/chart/rch/templates/externalsecret.yaml`) must already exist in the
   cluster — it is provisioned once by the External Secrets Operator install, not by this chart.
-  Create the AWS Secrets Manager secret `rch/prod` as one JSON object with the keys
-  `DATABASE_URL`, `JWT_PRIVATE_KEY`, `JWT_PUBLIC_KEY`, `JWT_PREVIOUS_PUBLIC_KEY` (the last may be
-  empty until the first key rotation), and grant the ESO IRSA role read access to it.
+  Create the AWS Secrets Manager secret `rch/prod` as one JSON object with **five** keys —
+  `DATABASE_URL`, `JWT_PRIVATE_KEY`, `JWT_PUBLIC_KEY`, `JWT_PREVIOUS_PUBLIC_KEY` (may be empty
+  until the first key rotation) and **`SEED_PASSWORD`** (may not) — and grant the ESO IRSA role
+  read access to it. The `ExternalSecret` uses `dataFrom: [{ extract: … }]`, which copies every
+  key of the remote JSON, so there is no template entry to add and no error if one is missing:
+  the pod simply never starts, because `SEED_PASSWORD` is required by `config.ts` and the migrate
+  initContainer loads it first. Production upgrades **without `--atomic`** (§3), so a remote
+  secret short of a key leaves the release in `pending-install` rather than rolling back.
   `templates/externalsecret.yaml` is deliberately **not** capability-gated the way the two
   monitoring templates are: skipping it on a cluster without the operator would leave pods with
   no `DATABASE_URL` and a confusing crash, where failing the install names the missing operator.
@@ -1248,8 +1276,9 @@ recur verbatim for a new host name and are cheaper to avoid than to rediscover.
 Phase 6 ends here. Everything the first production deploy needs is written down; **nothing in
 this build pushes `staging` or `production`** — promotion is a release decision and the branch
 pushes below are the account owner's to run, not any agent's. The only `git push` anywhere in
-`.github/workflows/**` is `deploy.yml:89`, which tags a *release* after a deploy has already
-happened; no workflow, script or task in this repository pushes either branch.
+`.github/workflows/**` is the `Tag production` step in `deploy.yml`, which tags a *release* after
+a deploy has already happened; no workflow, script or task in this repository pushes either
+branch.
 
 **Where the branch stands.** `feat/phase-6-ops-go-live` is **36 commits** ahead of `develop`, and
 `origin/staging` is an ancestor of `origin/develop` — so every promotion below is a genuine
@@ -1260,22 +1289,27 @@ git log --oneline develop..feat/phase-6-ops-go-live | wc -l              # 36
 git merge-base --is-ancestor origin/staging origin/develop && echo ok    # ok
 ```
 
-**1. The five `FILL` values only the account owner can supply**, each marked `# FILL` in
-`deploy/chart/rch/values-prod.yaml` at the line given:
+**1. The four blocking `FILL` values only the account owner can supply.** They are marked
+`# FILL` in `deploy/chart/rch/values-prod.yaml`; find them with
+`grep -n '# FILL' deploy/chart/rch/values-*.yaml` rather than by line number, which is what this
+table used to give and what drifted the first time a comment was added above one of them:
 
-| Line | Key | What goes in |
-|---|---|---|
-| 5 | `image.registry` | `<account>.dkr.ecr.<region>.amazonaws.com`. `deploy.yml` also passes it as `--set image.registry=${{ secrets.ECR_REGISTRY }}`, so the file's own value only matters to a manual `helm template` / `helm upgrade`. |
-| 23 | `api.env.CORS_ORIGIN` | The real hostname, no trailing slash (currently `https://rch.example.com`). |
-| 41 | `ingress.host` | The real hostname (currently `rch.example.com`). |
-| 42 | `ingress.certificateArn` | The ACM certificate ARN for that host. Empty renders **no** TLS annotation — HTTP on `:80`, correct rather than broken, but not what go-live wants. |
-| 75 | `alerts.runbookUrl` | The real URL of this document, so a paged engineer's alert links somewhere. |
+| Key path | What goes in |
+|---|---|
+| `image.registry` | `<account>.dkr.ecr.<region>.amazonaws.com`. `deploy.yml` also passes it as `--set image.registry=${{ secrets.ECR_REGISTRY }}`, so the file's own value only matters to a manual `helm template` / `helm upgrade`. |
+| `api.env.CORS_ORIGIN` | The real hostname, no trailing slash (currently `https://rch.example.com`). |
+| `ingress.host` | The real hostname (currently `rch.example.com`). |
+| `ingress.certificateArn` | The ACM certificate ARN for that host. Empty renders **no** TLS annotation — HTTP on `:80`, correct rather than broken, but not what go-live wants. |
+
+`alerts.runbookUrl` was a fifth row here and is **not a FILL any more**: both `values.yaml` and
+`values-prod.yaml` carry the real URL of this document, and `render.test.sh` refuses a rendered
+`runbook_url` still containing the chart's `<org>/<repo>` placeholder.
 
 **And one in the other file**, the same shape and the same decision:
 
-| File | Line | Key | What goes in |
-|---|---|---|---|
-| `deploy/chart/rch/values-staging.yaml` | 6 | `ingress.certificateArn` | The ACM certificate ARN for `rch-staging.example.com`. Empty renders no TLS annotation — staging on HTTP `:80`, correct rather than broken. Fill it, or decide out loud that staging runs on `:80`. |
+| File | Key path | What goes in |
+|---|---|---|
+| `deploy/chart/rch/values-staging.yaml` | `ingress.certificateArn` | The ACM certificate ARN for `rch-staging.example.com`. Empty renders no TLS annotation — staging on HTTP `:80`, correct rather than broken. Fill it, or decide out loud that staging runs on `:80`. |
 
 The key was absent from that file entirely until the Phase 6 fix wave, while step 1 below had
 always said both files need one; it is now present and empty, with production's own `# FILL`
@@ -1300,7 +1334,7 @@ deploy workflow is inert without them.
 
 | Where | Name | Notes |
 |---|---|---|
-| Repository **variable** | `DEPLOY_ENABLED=true` | `deploy.yml:21` gates every deploy job on it; `:93` is the "Deploy skipped" job that runs instead. Until it is `true`, a push to `staging` or `production` deploys nothing. |
+| Repository **variable** | `DEPLOY_ENABLED=true` | `deploy.yml`'s `deploy` job is gated on `vars.DEPLOY_ENABLED == 'true'`, and its `skipped` job — named `Deploy skipped (DEPLOY_ENABLED is not true)` — runs instead when it is not. Until it is `true`, a push to `staging` or `production` deploys nothing. |
 | Repository secret | `AWS_ROLE_ARN` | The OIDC role the workflow assumes. |
 | Repository secret | `AWS_REGION` | |
 | Repository secret | `ECR_REGISTRY` | Passed as `--set image.registry`. |
@@ -1516,27 +1550,49 @@ scoped to what a deploy needs, and needs no change.
    entry in `.trivyignore.yaml` with a reason and an `expired_at`, **not** lowering the severity
    back to CRITICAL.
 
+   **On the same throwaway branch: check `.trivyignore.yaml`'s expiries before promoting.**
+   `grep expired_at .trivyignore.yaml` and compare each date with today. An entry whose
+   `expired_at` has passed stops being honoured, and all four scans go red at once — CI's two and
+   the deploy workflow's two — which on the day of a promotion looks like the promotion having
+   broken something. Do **not** push the date out to get past it: either the advisory has a fixed
+   version in the base image now, in which case rebuild and the entry goes away, or it still does
+   not, in which case renewing it is a decision somebody makes with the reason written down.
+
    **And label the namespaces for the pod readiness gate** (§2, *First-time cluster setup*) —
    `kubectl label namespace rch elbv2.k8s.aws/pod-readiness-gate-inject=enabled`, and the same
    for `rch-staging`, once, before the first upgrade of the release in each. Nothing fails
    without it; what you get instead is a gap in the middle of every rollout.
-8. **Promote** — the three fast-forward merges under "The release, prepared and not performed"
+8. **Create `ng-prod`, the on-demand node group production's pods are pinned to.** It does not
+   exist: the cluster has one spot node group, `ng-spot`, and `values-prod.yaml` sets
+   `api.nodeSelector` and `ui.nodeSelector` to `rch.io/tier: prod` — a label nothing in the
+   cluster carries. Promote without this and both Deployments sit `Pending` for ever with no
+   error anywhere; production upgrades **without `--atomic`** (§3), so nothing rolls it back.
+   ```bash
+   eksctl create nodegroup -f deploy/eksctl/cluster.yaml --include=ng-prod
+   kubectl get nodes -l rch.io/tier=prod        # expect 3, one per availability zone
+   ```
+   Three on-demand nodes across `ap-south-1a/b/c`, untainted on purpose — the label pins
+   production's pods in, and a taint would additionally keep the DaemonSets (vpc-cni,
+   kube-proxy, the CloudWatch agent) off. `deploy/eksctl/cluster.yaml` carries the whole argument
+   for the shape; `render.test.sh` asserts that whatever label the prod render asks for is a label
+   some node group in that file actually applies, so the two cannot drift apart silently.
+9. **Promote** — the three fast-forward merges under "The release, prepared and not performed"
    above, in that order, run by a person. `develop` first, then `staging`, then `production`;
-   verify staging between the second and the third (step 9), and production's deploy waits for
+   verify staging between the second and the third (step 10), and production's deploy waits for
    the `production` GitHub environment's approval before the job runs.
-9. **First post-deploy checks, on each environment, in order:**
-   ```bash
-   kubectl -n <namespace> port-forward svc/rch-api 3000:3000 &
-   curl -fsS http://localhost:3000/readyz
-   # /readyz and /healthz are served at the root, outside API_PREFIX; only /api/v1/* goes
-   # through the ingress's /api rule, so https://<host>/api/v1/readyz is not a route at all.
-   ```
-   then sign in as a real account through the browser, take one real sale, and finally
-   ```bash
-   kubectl exec deploy/rch-api -n <namespace> -- /nodejs/bin/node dist/cli/rebuild-balances.mjs
-   ```
-   and confirm it reports success with no unexpected drift. A green `/readyz` alone is not
-   enough — it proves the database is reachable and migrated, not that a bill can be posted.
+10. **First post-deploy checks, on each environment, in order:**
+    ```bash
+    kubectl -n <namespace> port-forward svc/rch-api 3000:3000 &
+    curl -fsS http://localhost:3000/readyz
+    # /readyz and /healthz are served at the root, outside API_PREFIX; only /api/v1/* goes
+    # through the ingress's /api rule, so https://<host>/api/v1/readyz is not a route at all.
+    ```
+    then sign in as a real account through the browser, take one real sale, and finally
+    ```bash
+    kubectl exec deploy/rch-api -n <namespace> -- /nodejs/bin/node dist/cli/rebuild-balances.mjs
+    ```
+    and confirm it reports success with no unexpected drift. A green `/readyz` alone is not
+    enough — it proves the database is reachable and migrated, not that a bill can be posted.
 
 ### The follow-up list
 

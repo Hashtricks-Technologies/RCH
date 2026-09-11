@@ -56,7 +56,7 @@ is promoted. `deploy/RUNBOOK.md` §2 says what to do about it.
 
 ## Commands
 
-This is a pnpm + Turborepo monorepo (`pnpm-workspace.yaml`: `apps/*`, `packages/*`, `UI`).
+This is a pnpm + Turborepo monorepo (`pnpm-workspace.yaml`: `packages/*`, `apps/*`, `UI`, `e2e`).
 Run everything from the repo root:
 
 ```bash
@@ -377,8 +377,8 @@ header/body/footer chrome.
 ### UI
 
 `src/ui/kit.tsx` holds ~25 typed components (`Card`, `DataTable`, `PageHead`, `Btn`, `Pill`,
-`Alert`, `Section`, `Field`, `FormRow`, `Toolbar`, `TableFoot`, `Kpis`, `Grid`, `LineChart`,
-`Otp`, …). Use them instead of bespoke markup. Styling is plain CSS in `src/styles.css` —
+`Alert`, `Section`, `Field`, `FormRow`, `Toolbar`, `TableFoot`, `Kpis`, `Grid`, `Otp`,
+`DraftLineInput`, `EtaInput`, `useLineKeys`, …). Use them instead of bespoke markup. Styling is plain CSS in `src/styles.css` —
 one token set on `:root`, redefined under `@media (prefers-color-scheme: dark)` guarded by
 `:root:not([data-theme="light"])`, and again under `[data-theme="dark"]` so an explicit
 choice wins in both directions. No CSS framework.

@@ -9,7 +9,7 @@ cd "$(dirname "$0")/.."
 # it runs its argument list as a command and exits 1 itself if that command succeeds (a match).
 refute() { if "$@"; then echo "FAIL: unexpected match — $*" >&2; exit 1; fi; }
 
-helm lint . -f values-staging.yaml --set image.registry=r,image.tag=t,secrets.values.DATABASE_URL=x,secrets.values.JWT_PRIVATE_KEY=x,secrets.values.JWT_PUBLIC_KEY=x
+helm lint . -f values-staging.yaml --set image.registry=r,image.tag=t,secrets.values.DATABASE_URL=x,secrets.values.JWT_PRIVATE_KEY=x,secrets.values.JWT_PUBLIC_KEY=x,secrets.values.SEED_PASSWORD=x
 helm lint . -f values-prod.yaml --set image.registry=r,image.tag=t
 
 out=$(helm template rch . -f values-prod.yaml --set image.registry=r,image.tag=t)
@@ -218,6 +218,17 @@ grep -q 'topologySpreadConstraints' <<<"$out"
 # on-demand node group (deploy/eksctl/cluster.yaml). Both Deployments must carry the selector;
 # the group is deliberately untainted, so the label is the whole mechanism.
 [ "$(grep -c 'rch.io/tier: prod' <<<"$out")" = 2 ]
+# ...and the label the render asks for has to exist on a node group somebody can actually create.
+# Nothing in this chart creates one: `eksctl create nodegroup -f deploy/eksctl/cluster.yaml
+# --include=ng-prod` does, and RUNBOOK §11 has it as a numbered step before the promotion. The
+# failure this closes is silent on both sides — a label renamed here or there leaves three
+# replicas Pending for ever, and production upgrades without `--atomic`, so nothing rolls back.
+prod_selector=$(sed -n 's/^ *\(rch\.io\/tier: [a-z0-9.-]*\) *$/\1/p' <<<"$out" | sort -u)
+# `grep -c .`, not `wc -l`: BSD wc pads its answer with spaces, so `[ "$(wc -l …)" = 1 ]` is
+# false on macOS for a one-line answer and this whole check would fail on every developer's box.
+[ "$(grep -c . <<<"$prod_selector")" = 1 ] || { echo "values-prod.yaml renders more than one node selector: $prod_selector"; exit 1; }
+grep -qF "$prod_selector" ../../eksctl/cluster.yaml \
+  || { echo "no node group in deploy/eksctl/cluster.yaml carries $prod_selector — production's pods would stay Pending"; exit 1; }
 
 # B3: both Deployments get a PodDisruptionBudget, and both say maxUnavailable rather than
 # minAvailable — `minAvailable: N` at N replicas is a budget a drain can never satisfy, so
@@ -234,10 +245,10 @@ sed -n '/name: api$/,/readinessProbe:/p' <<<"$out" | grep -q 'memory: 1Gi'
 
 # The alerts are off wherever the ServiceMonitor is off: a PrometheusRule with no Prometheus
 # Operator installed is a CRD apply that fails the whole release.
-out_staging_norule=$(helm template rch . -f values-staging.yaml --set image.registry=r,image.tag=t,secrets.values.DATABASE_URL=x,secrets.values.JWT_PRIVATE_KEY=x,secrets.values.JWT_PUBLIC_KEY=x)
+out_staging_norule=$(helm template rch . -f values-staging.yaml --set image.registry=r,image.tag=t,secrets.values.DATABASE_URL=x,secrets.values.JWT_PRIVATE_KEY=x,secrets.values.JWT_PUBLIC_KEY=x,secrets.values.SEED_PASSWORD=x)
 refute grep -q 'kind: PrometheusRule' <<<"$out_staging_norule"
 
-out=$(helm template rch . -f values-staging.yaml --set image.registry=r,image.tag=t,secrets.values.DATABASE_URL=x,secrets.values.JWT_PRIVATE_KEY=x,secrets.values.JWT_PUBLIC_KEY=x)
+out=$(helm template rch . -f values-staging.yaml --set image.registry=r,image.tag=t,secrets.values.DATABASE_URL=x,secrets.values.JWT_PRIVATE_KEY=x,secrets.values.JWT_PUBLIC_KEY=x,secrets.values.SEED_PASSWORD=x)
 grep -q 'kind: Secret' <<<"$out"
 refute grep -q 'helm.sh/hook:' <<<"$out"
 refute grep -q 'kind: Job' <<<"$out"
@@ -256,11 +267,27 @@ refute grep -q 'key: SEED_PASSWORD, optional' <<<"$out"
 # it empty: no annotation at all rather than `certificate-arn: ""`, which the ALB controller
 # rejects. Staging had no such key until the Phase 6 fix wave, which is why it needs its own line.
 refute grep -q 'certificate-arn: *$' <<<"$out"
-out_staging_tls=$(helm template rch . -f values-staging.yaml --set image.registry=r,image.tag=t,secrets.values.DATABASE_URL=x,secrets.values.JWT_PRIVATE_KEY=x,secrets.values.JWT_PUBLIC_KEY=x,ingress.certificateArn=arn:aws:acm:y)
+out_staging_tls=$(helm template rch . -f values-staging.yaml --set image.registry=r,image.tag=t,secrets.values.DATABASE_URL=x,secrets.values.JWT_PRIVATE_KEY=x,secrets.values.JWT_PUBLIC_KEY=x,secrets.values.SEED_PASSWORD=x,ingress.certificateArn=arn:aws:acm:y)
 grep -qE 'alb.ingress.kubernetes.io/certificate-arn: "?arn:aws:acm:y"?' <<<"$out_staging_tls"
 # The pool size is an env knob now, not a literal in db/client.ts. Both files set it, and the
 # api container reads it — a rendered pod without it is one silently back on the code's default.
 grep -q 'name: DB_POOL_MAX' <<<"$out"
+
+# D-min: on the `secrets.create=true` path a missing key must fail the render, not produce a
+# Secret carrying "". values.yaml declares all five as "" so the shape is documented, and an
+# empty string is not a missing key — the pod starts, config.ts refuses it and the migrate
+# initContainer crash-loops. Production upgrades without `--atomic` (RUNBOOK §3), so that leaves
+# the release in `pending-install`. Four of the five are required; JWT_PREVIOUS_PUBLIC_KEY is
+# empty until the first rotation and must still render.
+for key in DATABASE_URL JWT_PRIVATE_KEY JWT_PUBLIC_KEY SEED_PASSWORD; do
+  args="image.registry=r,image.tag=t,secrets.values.DATABASE_URL=x,secrets.values.JWT_PRIVATE_KEY=x,secrets.values.JWT_PUBLIC_KEY=x,secrets.values.SEED_PASSWORD=x"
+  missing=$(helm template rch . -f values-staging.yaml --set "${args//secrets.values.$key=x/secrets.values.$key=}" 2>&1) && {
+    echo "FAIL: the chart rendered a Secret with an empty $key"; exit 1; }
+  grep -q "secrets.values.$key is empty" <<<"$missing" \
+    || { echo "FAIL: an empty $key must be refused by name; got: $missing"; exit 1; }
+done
+# ...and the one that may be empty still renders.
+helm template rch . -f values-staging.yaml --set image.registry=r,image.tag=t,secrets.values.DATABASE_URL=x,secrets.values.JWT_PRIVATE_KEY=x,secrets.values.JWT_PUBLIC_KEY=x,secrets.values.SEED_PASSWORD=x,secrets.values.JWT_PREVIOUS_PUBLIC_KEY= >/dev/null
 
 # ng-prod is production's alone: staging sets no nodeSelector, so its pods keep landing on the
 # spot node they share with dev, and `with` must render nothing rather than an empty map.

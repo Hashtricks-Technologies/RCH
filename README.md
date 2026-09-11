@@ -256,7 +256,7 @@ the payer register and the kitchen order an outlet can raise, all described abov
 either block took is a row in spec §16, which is where to read before reopening one.
 
 **`develop` is deployed.** A dev environment on AWS (EKS, RDS, ACM, Route 53) is live at
-**https://rch.hashtrickstechnologies.com**, deploying on every push to `develop` — `deploy/
+**https://rch.hashtrickstechnologies.com**, deploying once CI is green on a push to `develop` — `deploy/
 RUNBOOK.md` §15 records how it was stood up and what tripped on the way there. Staging and
 production are still exactly the release decision above: prepared, not provisioned.
 
@@ -267,7 +267,7 @@ production are still exactly the release decision above: prepared, not provision
   and data model, and the role map with six end-to-end journeys.
 - **`docs/superpowers/specs/2026-09-03-backend-design.md`** — the backend design and the contract
   for all server work. §2 records the decisions already taken, §14 the build order, and §16 every
-  amendment made while phases 1–5 were executed.
+  amendment made while phases 1–6, the Phase 6 fix wave and the audit fix wave were executed.
 - **`docs/superpowers/plans/`** — the executed plan for each phase, kept for the record;
   **`deploy/RUNBOOK.md`** — operations.
 

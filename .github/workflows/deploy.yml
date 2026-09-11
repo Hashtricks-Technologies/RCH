@@ -159,7 +159,7 @@ jobs:
           # and an automatic undo is worth more there than the wreckage of the failed attempt.
           #
           # production takes --wait alone, deliberately. --atomic deletes the failed release's
-          # pods the instant it gives up, which takes with it the only two things RUNBOOK §5
+          # pods the instant it gives up, which takes with it the only two things RUNBOOK §3
           # tells the operator to read — the pod events and the migrate initContainer's log —
           # and leaves "the rollout failed" with no way to learn why. Worse, a migration that
           # already committed is not undone by rolling the Deployment back: --atomic would put
@@ -180,7 +180,13 @@ jobs:
       - name: What the cluster saw
         if: failure()
         run: |
-          kubectl -n "$NS" get pods,events --sort-by=.lastTimestamp | tail -80 || true
+          # Two commands, not one. `get pods,events --sort-by=.lastTimestamp` sorts BOTH kinds by
+          # a field only Events have, so every Pod row sorts as if its timestamp were empty — and
+          # then `| tail -80` cut the pod list off the top of the output, which is the half that
+          # says *why* (ImagePullBackOff, Init:CrashLoopBackOff, Pending with no node). The pods
+          # are listed whole and wide; only the events are tailed.
+          kubectl -n "$NS" get pods -o wide || true
+          kubectl -n "$NS" get events --sort-by=.lastTimestamp | tail -80 || true
           kubectl -n "$NS" logs -l app.kubernetes.io/component=api -c migrate --tail=200 || true
       # Only dev and staging, and only when the release is genuinely stuck. --atomic has
       # normally already rolled these back by now, and `helm rollback` with no revision goes

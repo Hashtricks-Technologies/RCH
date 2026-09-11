@@ -13,6 +13,15 @@ vulnerabilities:
   # the platform), so the affected code path is not reachable. Fixed in openssl
   # 3.0.19-1~deb12u2; drop this entry once gcr.io/distroless/nodejs24-debian12:nonroot ships
   # it (`trivy image <ref>` shows the version).
+  #
+  # EXPIRES 2026-09-30. On that date Trivy starts reporting this CVE again and **all four scans
+  # fail closed at once** — ci.yml's two image scans and deploy.yml's two re-scans of the exact
+  # ECR tags helm is about to deploy — so a deploy attempted after it lapses is blocked, not
+  # warned about. That is the intended behaviour and the date is not to be pushed out to get
+  # past a red run: either the distroless base has shipped openssl 3.0.19-1~deb12u2 by then, in
+  # which case rebuild and delete this entry, or it has not, in which case renewing it is a
+  # decision with a fresh reason written here. RUNBOOK §11 step 7 checks these expiries on the
+  # throwaway branch before a promotion, which is the one place a lapse is cheap to find.
   - id: CVE-2026-31789
     statement: 32-bit only; both images are linux/amd64. Awaiting the distroless base bump.
     expired_at: 2026-09-30

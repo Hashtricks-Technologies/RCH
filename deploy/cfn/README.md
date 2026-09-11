@@ -56,6 +56,21 @@ instance did not have:
 
 ### Run this stack update off-hours: it may reboot the database
 
+**Before updating the dev stack, confirm the instance is still on the version the template
+pins.** `rch-env.yaml` sets `EngineVersion: "17.9"` alongside `AutoMinorVersionUpgrade: false`,
+and CloudFormation reads a pinned version as an instruction: if RDS has since moved the instance
+to a later minor, the update asks for a **downgrade**, which RDS refuses and which fails the
+whole stack update.
+
+```bash
+aws rds describe-db-instances --db-instance-identifier rch-dev --region ap-south-1 \
+  --query 'DBInstances[0].EngineVersion'
+```
+
+If it answers anything but `17.9`, update `EngineVersion` in the template to what is actually
+running before deploying — the pin exists to stop AWS choosing the version, not to hold the
+instance at a number it has already left.
+
 **Attaching a parameter group that contains a static parameter is "Some interruptions" in the
 CloudFormation reference, not "No interruption".** `rds.force_ssl` is static, and
 `DBParameterGroupName` is therefore an update CloudFormation may satisfy by **rebooting the
@@ -273,12 +288,6 @@ CloudFormation; nothing here changes it. This is different from a **create** (a 
 or `prod` stack): there, `MasterUserPassword` is a real write, so that stack's params file must
 carry the actual password, not a placeholder — treat any params file with a real password in it
 as a secret and do not commit it.
-
-**The CAA record is not imported, only created.** No CAA record exists yet for
-`rch.hashtrickstechnologies.com` (the hostname is new), so `dev.import.json` does not list
-it — an `IMPORT` change set can still create resources that aren't in `ResourcesToImport`
-alongside the ones that are, as long as at least one resource actually imports, so the CAA
-record is simply created fresh in the same operation.
 
 ## Creating `staging` or `prod`
 

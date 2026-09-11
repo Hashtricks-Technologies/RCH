@@ -91,7 +91,7 @@ managedNodeGroups:
   #   eksctl create nodegroup -f deploy/eksctl/cluster.yaml --include=ng-prod
   #
   # values-prod.yaml asks for three API replicas and three UI replicas, a PodDisruptionBudget of
-  # minAvailable 2, and a topology spread across zones. Every one of those promises is
+  # `maxUnavailable: 1`, and a topology spread across zones. Every one of those promises is
   # decorative on a single spot node: a reclaim takes the whole service, a drain cannot honour
   # the budget because there is nowhere to move to, and three replicas in one zone are three
   # replicas in one zone. Hence on-demand (a two-minute reclaim notice is not a thing to run a

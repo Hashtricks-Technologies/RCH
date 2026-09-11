@@ -328,7 +328,7 @@ footer p{max-width:70ch;margin:0 0 8px}
           <tr><th scope="row">When it does not sell</th><td>Near-expiry &rarr; vendor return or approved markdown</td><td>Unsold at day close &rarr; <strong>wastage</strong>. No vendor to send it back to</td></tr>
           <tr><th scope="row">Reordering</th><td>Reorder level and lead time on the item itself</td><td>Reorder level lives on the <em>raw materials</em>. Finished goods are driven by a production plan against a par level</td></tr>
           <tr><th scope="row">Tax</th><td>The item's own HSN and slab. MRP is tax-inclusive, so output tax is back-calculated</td><td>Slab of the prepared item; GST is derived from the inclusive price the counter reads, the one treatment this build carries</td></tr>
-          <tr><th scope="row">Barcode</th><td>Vendor EAN, scanned as printed</td><td>Label the system prints: item, batch, best-before, price</td></tr>
+          <tr><th scope="row">Barcode</th><td colspan="2"><strong>Out of scope in this build</strong> (<span class="num">UI/README.md</span>, <em>Out of scope</em>). Nothing scans a vendor EAN and nothing prints a label: an MRP line is picked off the menu by name and a batch is identified by the number the system gives it. The row is kept because the <em>distinction</em> it draws is real and would decide the design the day barcodes are in scope &mdash; a bought-in line carries the vendor's printed EAN, a made line needs a label this system prints with its own batch, best-before and price.</td></tr>
         </tbody>
       </table>
     </div>
