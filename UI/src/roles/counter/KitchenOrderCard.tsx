@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
+import { madeItems } from "../../lib/selectors";
 import { fq } from "../../lib/fmt";
 import { Btn, Card, DataTable, Icon, Pill, StatusPill } from "../../ui/kit";
 import KitchenOrderForm from "../../ui/KitchenOrderForm";
@@ -19,22 +20,38 @@ import type { LocKey, ProdOrder } from "../../types";
 
 const itemText = (o: ProdOrder) =>
   o.lines.map((l) => `${fq(l.qty, l.it)} × ${IT[l.it]?.n ?? l.it}`).join(" · ");
+/** "puffs, sandwiches or salads" — the last separator is a word, not another comma. */
+const orList = (names: string[]) =>
+  names.length < 2 ? names[0] ?? "" : `${names.slice(0, -1).join(", ")} or ${names[names.length - 1]}`;
 /** What is still coming: everything the kitchen has neither sent out nor turned down. */
 const isOpen = (st: ProdOrder["st"]) => st !== "Dispatched" && st !== "Declined";
 
 export default function KitchenOrderCard({ loc }: { loc: LocKey }) {
   const pord = useApp((x) => x.pord);
   const openDrawer = useApp((x) => x.openDrawer);
+  const catalogVersion = useApp((x) => x.catalogVersion);
   const [open, setOpen] = useState(false);
+
+  // "puffs, sandwiches or salads" was three product names written into the copy, and they went
+  // stale the first time the master changed — a counter reading about a salad the hospital no
+  // longer carries. Three real ones off `madeItems()` instead, pinned to `catalogVersion`
+  // because `IT` and `RCP` are registries replaced in place rather than store state.
+  const examples = useMemo(() => {
+    void catalogVersion;
+    return orList(madeItems().slice(0, 3).map((k) => IT[k]?.n ?? k));
+  }, [catalogVersion]);
 
   // The snapshot already cuts `pord` to this counter's own outlet, but the filter stays: a
   // manager's browser and a counter's read the same store shape, and a screen that trusted the
   // scope would show the wrong shop's orders the moment one of them opened this card.
   //
-  // Newest first by **id**, not by `at`: the store keeps `at` as "HH:MM" (`api/wire.ts`), so
-  // sorting on it puts yesterday's 23:40 order above this morning's 07:10 one. The series is
-  // gapless and monotonic, which is the only ordering on this list that stays true overnight.
-  const mine = pord.filter((o) => o.from === loc).slice().sort((a, b) => b.id.localeCompare(a.id));
+  // Newest first by **`iso`**, the server's own instant, which every document has carried since
+  // the audit wave. Not `at`: that is the "HH:MM" the row prints (`api/wire.ts`), so sorting on
+  // it puts yesterday's 23:40 order above this morning's 07:10 one. And not the id either, which
+  // this used to fall back to — `PRD-2026-099` sorts above `PRD-2026-100` as text, so the series
+  // stops being monotonic at every power of ten. ISO-8601 is lexically ordered, so the same
+  // string compare answers correctly.
+  const mine = pord.filter((o) => o.from === loc).slice().sort((a, b) => b.iso.localeCompare(a.iso));
   const waiting = mine.filter((o) => isOpen(o.st)).length;
 
   return (
@@ -49,7 +66,7 @@ export default function KitchenOrderCard({ loc }: { loc: LocKey }) {
           <span className="reqaction-ic"><Icon name="make" size={18} /></span>
           <span className="reqaction-tx">
             <b>From the kitchen</b>
-            <span>Order puffs, sandwiches or salads for {LOC[loc]?.n ?? loc}</span>
+            <span>Order {examples || "what the kitchen makes"} for {LOC[loc]?.n ?? loc}</span>
           </span>
         </button>
       </div>

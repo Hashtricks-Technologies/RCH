@@ -90,7 +90,7 @@ describe("pay — POST /bills", () => {
       "GET /api/v1/bills": () => json([BILL]),
     });
 
-    expect(await S().pay("coffee", "Cash")).toBe(true);
+    expect(await S().pay("coffee", "Cash")).toBe("CF/1188");
 
     expect(hit("POST /api/v1/bills")[0].body).toEqual({ loc: "coffee", tender: "Cash", lines: [{ it: "juice", qty: 2 }] });
     expect(S().cart.coffee).toEqual({});
@@ -126,9 +126,10 @@ describe("pay — POST /bills", () => {
     S().addToCart("coffee", "juice", 3);
     serve({ "POST /api/v1/bills": () => refusal("Only 2 nos of Fresh Juice 200ml left at Floor 3 Coffee Bar") });
 
-    // `false`, not a silent nothing: the till reads the answer to decide whether the payer and
-    // the tender it is holding may be cleared, and a refusal must leave both alone.
-    expect(await S().pay("coffee", "Cash")).toBe(false);
+    // `null`, not a silent nothing: the till reads the answer to decide whether the payer and
+    // the tender it is holding may be cleared, and a refusal must leave both alone. The success
+    // answer is the bill number itself, because the till has a slip to open for exactly it.
+    expect(await S().pay("coffee", "Cash")).toBeNull();
 
     expect(S().toast).toBe("Only 2 nos of Fresh Juice 200ml left at Floor 3 Coffee Bar");
     expect(S().cart.coffee).toEqual({ juice: 3 });   // the scan survives, so it can be retried
@@ -140,7 +141,7 @@ describe("pay — POST /bills", () => {
     S().addToCart("coffee", "juice", 1);
     fetchMock.mockRejectedValue(new TypeError("Failed to fetch"));
 
-    expect(await S().pay("coffee", "Cash")).toBe(false);
+    expect(await S().pay("coffee", "Cash")).toBeNull();
 
     expect(S().toast).toBe("Could not take the bill — check the connection and try again.");
     expect(S().cart.coffee).toEqual({ juice: 1 });
@@ -148,7 +149,7 @@ describe("pay — POST /bills", () => {
 
   it("sends nothing at all for an empty cart", async () => {
     as("counter");
-    expect(await S().pay("coffee", "Cash")).toBe(false);
+    expect(await S().pay("coffee", "Cash")).toBeNull();
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -161,7 +162,9 @@ describe("pay — POST /bills", () => {
       "GET /api/v1/bills": () => json([BILL]),
     });
 
-    await S().pay("coffee", "Cash");
+    // The number still comes back, because it came out of the write's own answer and not out of
+    // the list that failed to refresh — which is what lets the till open the right slip anyway.
+    expect(await S().pay("coffee", "Cash")).toBe("CF/1188");
 
     // The bill was taken. Telling the operator it failed would send them round to take it twice.
     expect(S().toast).toBe("Bill CF/1188 · ₹20.00 collected at Floor 3 Coffee Bar — the screen could not be refreshed; reload to see the latest.");

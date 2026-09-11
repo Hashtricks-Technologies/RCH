@@ -54,8 +54,15 @@ export const costOf = (it: string) => D.costOf(MASTER, it);
  * the kitchen until somebody remembered to edit all of them. A made-to-order item has a recipe
  * too — it is assembled at the counter, never batched onto the rack — so the type is the test,
  * not the presence of a recipe.
+ *
+ * A **retired** line is out too, and for the same reason every other picker reads
+ * `activeItems()`: `IT` carries the whole master now, retired lines included, so that a document
+ * raised months ago still has a name to print. A tile for something the hospital has stopped
+ * carrying is work the kitchen cannot be asked to do — `POST /batches` reads `loadItems`, which
+ * still filters `active`, and would answer `There is no item <key>.`
  */
-export const madeItems = (): string[] => Object.keys(RCP).filter((k) => IT[k]?.t === "FG");
+export const madeItems = (): string[] =>
+  Object.keys(RCP).filter((k) => IT[k]?.t === "FG" && !isRetired(k));
 
 /** Reorder level for this item at this location (M11). */
 export const parOf = (l: LocKey, it: string) => {

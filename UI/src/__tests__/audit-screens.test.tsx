@@ -10,6 +10,7 @@ import {
 } from "../lib/selectors";
 import StoreDashboard from "../roles/store/Dashboard";
 import StoreRequisitions from "../roles/store/Requisitions";
+import Contracts from "../roles/store/Contracts";
 import MakeDistribute from "../roles/prod/MakeDistribute";
 import Drawer from "../ui/Drawer";
 import "../roles/buyer/PoReceiptDrawer";        // registers "bgrn" on the drawer registry
@@ -68,6 +69,11 @@ const type = (el: HTMLInputElement, v: string) => {
 };
 /** Leaving a field — React maps `onBlur` onto the bubbling `focusout`. */
 const leave = (el: HTMLInputElement) => { el.dispatchEvent(new FocusEvent("focusout", { bubbles: true })); };
+/** Choosing from a `<select>`, the way React hears it. */
+const pick = (el: HTMLSelectElement, v: string) => {
+  Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")!.set!.call(el, v);
+  el.dispatchEvent(new Event("change", { bubbles: true }));
+};
 const settle = async (fn: () => void) => {
   await act(async () => { fn(); await new Promise((r) => { setTimeout(r, 0); }); });
 };
@@ -165,6 +171,38 @@ describe("a decimal quantity on a requisition line", () => {
     await settleUntil(() => hit("POST /api/v1/requisitions").length > 0);
     expect(hit("POST /api/v1/requisitions")[0].body).toEqual({
       lines: [{ it: "milk", qty: 12.5 }], note: "",
+    });
+    ui.unmount();
+  });
+
+  // The same defect one screen over, and the one place it costs paise rather than half-litres:
+  // the add-contract rate is stepped 0.01, and `Number(e.target.value)` on every keystroke read
+  // "12." as 12 and "12.0" as 12, so a rate typed digit by digit was agreed at the rupee.
+  it("typing \"12.05\" into the add-contract rate posts 12.05", async () => {
+    as("store");
+    const vendor = FX.seedVendors.find((v) => v.active)!;
+    serve({
+      "POST /api/v1/contracts": () => json({
+        result: FX.seedContracts()[0], changed: ["contracts"],
+        message: `Rate contract agreed with ${vendor.n}`,
+      }),
+      "GET /api/v1/contracts": () => json(FX.seedContracts()),
+    });
+    const ui = mountNode(Contracts);
+    act(() => { ui.button("Add contract")!.click(); });      // the header's toggle; it now reads "Close the add form"
+
+    act(() => { pick(ui.host.querySelectorAll("select")[0], vendor.id); });
+    act(() => { type(ui.host.querySelector<HTMLInputElement>('input[aria-label="Valid from"]')!, "2026-10-01"); });
+    act(() => { type(ui.host.querySelector<HTMLInputElement>('input[aria-label="Valid to"]')!, "2027-03-31"); });
+
+    const box = ui.field("Contract rate (₹)");
+    for (const keyed of ["1", "12", "12.", "12.0", "12.05"]) act(() => { type(box, keyed); });
+    act(() => { leave(box); });
+
+    await settle(() => { ui.button("Add contract")!.click(); });  // the form's own submit
+    await settleUntil(() => hit("POST /api/v1/contracts").length > 0);
+    expect(hit("POST /api/v1/contracts")[0].body).toMatchObject({
+      vendorId: vendor.id, rate: 12.05, from: "2026-10-01", to: "2027-03-31", moq: 0,
     });
     ui.unmount();
   });

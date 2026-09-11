@@ -15,10 +15,11 @@ import { screens as prod } from "../roles/prod";
 import { screens as buyer } from "../roles/buyer";
 import { groupPool, picksFor, type PoolGroup } from "../roles/buyer/ProcurementList";
 import { REPORTS } from "../roles/store/Reports";
+import { bodyKey } from "../roles/manager/ApprovalDrawer";
 import { IT as FXIT, USERS, seedVendors } from "@rch/contract/fixtures";
 // ---- item patch ----
 import { IT, LOC, OUTLETS } from "../data/master";
-import { activeItems } from "../lib/selectors";
+import { activeItems, madeItems } from "../lib/selectors";
 import { Alert } from "../ui/kit";
 import type { PoolLine } from "../lib/selectors";
 import type { Bill, Dated, DatedDoc, Role, StockRequest, Ticket, Trailed } from "../types";
@@ -88,28 +89,58 @@ describe("a role cannot reach another role's screens", () => {
 // supply the figures the sentence is built from.
 
 describe("drawers render", () => {
-  const cases: [string, string, Role][] = [
-    ["cbill", "CF/1187", "counter"], ["creq", "REQ-2026-0911", "counter"], ["ctkt", "TKT-0440", "counter"],
-    ["mreq", "REQ-2026-0911", "manager"], ["stkt", "TKT-0440", "store"],
-    ["pord", "PRD-2026-029", "prod"], ["bprq", "PRQ-2026-013", "buyer"],
-    ["bpo", "PO-2026-0140", "buyer"],
-    ["bpo", "PO-2026-0141", "buyer"],
-    ["bgrn", "PO-2026-0141", "buyer"],
-    ["bven", "VN-001", "buyer"],
-    ["cconfig", "juice", "counter"],
-    // ---- prod-order raise ---- the raiser's side of a production order, and the manager's
-    // way of booking one. `korder` opens on nothing in particular, so its id is a placeholder.
-    ["cpord", "PRD-2026-029", "counter"],
-    ["korder", "new", "manager"],
-  ];
-  for (const [key, id, role] of cases) {
+  /**
+   * What to open each registered drawer over: the id it reads, and the role whose session makes
+   * that id reachable. The loop below iterates `DRAWERS` itself rather than this map, so a drawer
+   * registered without a row here fails the suite by name — the same coupling `NAV × screens` has,
+   * and the reason the hand-written list this replaced had drifted eight keys behind the registry
+   * (`adjstock`, `bnewitem`, `item`, `pnew`, `sissue`, `sitem`, `sprq`, `sup` were all unrendered).
+   *
+   * `"new"` is the empty-form id three of them take; a location key is the id `adjstock` takes,
+   * because a write-off names its shelf rather than a document.
+   */
+  const OPEN_OVER: Record<string, [id: string, role: Role]> = {
+    adjstock: ["coffee", "manager"],
+    bgrn: ["PO-2026-0141", "buyer"],
+    bnewitem: ["new", "buyer"],
+    bpo: ["PO-2026-0140", "buyer"],
+    bprq: ["PRQ-2026-013", "buyer"],
+    bven: ["VN-001", "buyer"],
+    cbill: ["CF/1187", "counter"],
+    cconfig: ["juice", "counter"],
+    // ---- prod-order raise ---- the raiser's side of a production order, and the manager's way
+    // of booking one. `korder` opens on nothing in particular, so its id is a placeholder.
+    cpord: ["PRD-2026-029", "counter"],
+    creq: ["REQ-2026-0911", "counter"],
+    ctkt: ["TKT-0440", "counter"],
+    item: ["chips", "manager"],
+    korder: ["new", "manager"],
+    mreq: ["REQ-2026-0911", "manager"],
+    pnew: ["new", "prod"],
+    pord: ["PRD-2026-029", "prod"],
+    ptkt: ["TKT-0440", "prod"],
+    sissue: ["REQ-2026-0910", "store"],
+    sitem: ["new", "store"],
+    sprq: ["PRQ-2026-013", "store"],
+    stkt: ["TKT-0440", "store"],
+    sup: ["SUP-0043", "counter"],
+  };
+  for (const key of Object.keys(DRAWERS)) {
     it(key, () => {
+      const over = OPEN_OVER[key];
+      expect(over, `no id/role in OPEN_OVER for the registered drawer "${key}"`).toBeTruthy();
+      const [id, role] = over;
       act(() => { as(role); });
-      const C = DRAWERS[key];
-      expect(C, `drawer "${key}" is not registered`).toBeTruthy();
-      expect(render(createElement(C, { id })).length).toBeGreaterThan(200);
+      expect(render(createElement(DRAWERS[key], { id })).length).toBeGreaterThan(200);
     });
   }
+
+  // A second purchase order through the same key: PO-2026-0141 is part-received where
+  // PO-2026-0140 is still a draft, and the drawer draws a different half of itself for each.
+  it("bpo over a part-received order", () => {
+    act(() => { as("buyer"); });
+    expect(render(createElement(DRAWERS.bpo, { id: "PO-2026-0141" })).length).toBeGreaterThan(200);
+  });
 
   // Not a row in `cases` above: the kitchen's ticket window opens on a ticket the kitchen
   // *issued*, and the fixtures seed exactly one ticket, store -> coffee. So the row is set up
@@ -586,6 +617,44 @@ describe("a retired product stops generating work", () => {
     expect(after).not.toContain("Add to requisition");
     expect(after).toContain("Restore");
   });
+
+  it("comes off the kitchen's makeable list", () => {
+    // `madeItems()` is "every FG with a recipe", read by all three kitchen screens. A retired
+    // one still has both, so it kept its Make tile — and `POST /batches` reads `loadItems`,
+    // which does filter `active`, so the tile could only ever answer "There is no item puff."
+    expect(madeItems()).toContain("puff");
+    retire("puff");
+    expect(madeItems()).not.toContain("puff");
+
+    act(() => { as("prod"); });
+    expect(render(createElement(prod.make))).not.toContain("Quantity of Veg puffs to start");
+  });
+
+  it("is not offered as a fresh line on the write-off form, though a shelf still holding it is", () => {
+    act(() => { as("store"); });
+    /** The item picker on a fresh write-off line at the central store, which is the shelf the
+     *  form opens on. It is drawn per line, so a line has to be added before there is one. */
+    const offered = () => {
+      const ui = mount(store.adjust);
+      act(() => { ui.button("Add line").click(); });
+      const keys = [...ui.host.querySelector<HTMLSelectElement>('select[aria-label="Item on line 1"]')!.options]
+        .map((o) => o.value);
+      ui.unmount();
+      return keys;
+    };
+
+    // Two halves of one rule, and the fixtures give one of each at the central store: `puff` is
+    // not on that shelf, `chips` is (88 packets).
+    expect(offered()).toContain("puff");
+    retire("puff");
+    retire("chips");
+    const after = offered();
+    // Correcting a shelf for a product the hospital stopped carrying, and that this location
+    // never held, is work nobody can do.
+    expect(after).not.toContain("puff");
+    // But the packets on the shelf are real, and writing them off is how the retirement finishes.
+    expect(after).toContain("chips");
+  });
 });
 
 // ---- prod-order raise ----
@@ -739,7 +808,7 @@ describe("the settings sign-in card", () => {
 
 describe("a form whose write the server refused", () => {
   it("a refused pay keeps the payer", async () => {
-    const pay = vi.fn(async () => false);
+    const pay = vi.fn(async () => null);
     act(() => {
       as("counter");                                   // Kavitha, Coffee Shop
       useApp.setState({ pay, readCredit: async () => null, cart: { coffee: { juice: 1 } } });
@@ -836,17 +905,33 @@ describe("what actually reaches the printer", () => {
       useApp.setState({
         cart: { coffee: { juice: 1 } },
         bills: [{ ...BILL, no: "CF/1100", iso: "2026-09-11T02:00:00.000Z" }],
-        // A bill the server took: `pay` answers true, and the refetched list is what the
-        // screen reads the number off — it never guesses one.
+        // A bill the server took, with the read-back behind it landing too.
         pay: async () => {
           useApp.setState({ bills: [{ ...BILL, no: "CF/1189", iso: "2026-09-11T04:00:00.000Z" }, { ...BILL, no: "CF/1100", iso: "2026-09-11T02:00:00.000Z" }] });
-          return true;
+          return "CF/1189";
         },
       });
     });
     const ui = mount(counter.pos);
     await settle(() => { ui.button("Pay").click(); });
-    // The newest by `iso`, not the first in the array and not a number made up locally.
+    expect(useApp.getState().drawer).toEqual({ t: "cbill", id: "CF/1189" });
+  });
+
+  // The number is the write's own answer, not a guess off the refetched list. The guess was
+  // "the newest bill at this outlet by `iso`", which is the *previous* customer's slip whenever
+  // the read-back behind the sale fails — the sale is on the server, the list is not, and the
+  // till prints somebody else's bill.
+  it("opens the bill the server numbered even when the read-back behind it failed", async () => {
+    act(() => {
+      as("counter");
+      useApp.setState({
+        cart: { coffee: { juice: 1 } },
+        bills: [{ ...BILL, no: "CF/1100", iso: "2026-09-11T02:00:00.000Z" }],
+        pay: async () => "CF/1189",     // taken and numbered; the list never moved
+      });
+    });
+    const ui = mount(counter.pos);
+    await settle(() => { ui.button("Pay").click(); });
     expect(useApp.getState().drawer).toEqual({ t: "cbill", id: "CF/1189" });
   });
 
@@ -933,6 +1018,42 @@ describe("the approval drawer", () => {
     host.remove();
   });
 
+  // Everything the drawer derives — the per-line quantities, the struck-out lines, the reason
+  // boxes — is a `useState` initialiser, so the key on `ApprovalBody` is the only thing that can
+  // make any of it re-derive. What that key has to track is therefore the whole of this rule.
+  it("keys its derived state on the trail, which moves, and not on the raise instant, which never does", async () => {
+    const raised = req({});
+    const decided = req({
+      st: "Partially approved",
+      mgrNote: "Send 4 only — the rest is promised to the Kiosk",
+      lines: [{ it: "milk", qty: 20, appr: 4 }],
+      hist: [
+        ...raised.hist,
+        { s: "Partially approved", who: "Ramesh Kumar", t: "09:52", iso: "2026-09-11T04:22:00.000Z" },
+      ],
+    });
+
+    // The two are the same document either side of somebody else's decision, and their `iso`
+    // is identical — it is when the *counter raised it*, which nothing ever changes. Keying on
+    // that was keying on `req.id` twice, so an SSE refetch re-derived nothing.
+    expect(decided.iso).toBe(raised.iso);
+    expect(bodyKey(decided)).not.toBe(bodyKey(raised));
+    // And it must not churn on a refetch that brought the same document back unchanged, or the
+    // trim the manager is halfway through typing is thrown away every 250 ms.
+    expect(bodyKey(req({}))).toBe(bodyKey(raised));
+
+    // The rendered half: a refetch that changed nothing leaves the box, and what is typed in it,
+    // exactly where they were.
+    act(() => { as("manager"); useApp.setState({ req: [raised] }); });
+    const ui = mount(() => createElement(DRAWERS.mreq, { id: "REQ-2026-0951" }));
+    const before = box(ui);
+    act(() => { typeIn(before, "9"); });
+    act(() => { before.dispatchEvent(new FocusEvent("focusout", { bubbles: true })); });
+    await act(async () => { useApp.setState({ req: [req({})] }); });
+    expect(box(ui)).toBe(before);
+    expect(box(ui).value).toBe("9");
+  });
+
   it("offers one Approve and one Reject, not two of each", () => {
     act(() => { as("manager"); useApp.setState({ req: [req({})] }); });
     const ui = mount(() => createElement(DRAWERS.mreq, { id: "REQ-2026-0951" }));
@@ -963,7 +1084,10 @@ describe("the counter's stock requests", () => {
     const send = () => [...ui.host.querySelectorAll("button")].find((b) => (b.textContent ?? "").startsWith("Send"))!;
 
     expect(send().disabled).toBe(false);
+    // The box is a `DraftLineInput`, so what is typed reaches the grant on the way out of the
+    // field, not on every keystroke — which is what lets 1.5 L be offered as 1.5 rather than 1.
     act(() => { typeIn(qty, "40"); });
+    act(() => { qty.dispatchEvent(new FocusEvent("focusout", { bubbles: true })); });
     // Forty is more than the shelf holds, so the server would refuse it — the button does not
     // offer to go and find that out. The cap used to be only `g > 0`.
     expect(send().disabled).toBe(true);

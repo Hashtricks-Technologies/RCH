@@ -12,7 +12,9 @@ test("a cash sale takes money and moves the shelf", async ({ page }) => {
 
   await tile.getByRole("button", { name: "Add Real Juice 200ml" }).click();
   await page.getByRole("button", { name: "Cash", exact: true }).click();
-  await page.getByRole("button", { name: /^Pay & print/ }).click();
+  // The till's own button carries the running total — `Pay · ₹120.00` — not the slip's
+  // "Pay & print", which is the bill drawer's reprint. Match the prefix, since the amount moves.
+  await page.getByRole("button", { name: /^Pay ·/ }).click();
 
   // The toast is the server's own sentence, bill number and all.
   await expect(toast(page)).toContainText(/^Bill CF\/\d+ · ₹[\d.,]+ collected at Coffee Shop$/);

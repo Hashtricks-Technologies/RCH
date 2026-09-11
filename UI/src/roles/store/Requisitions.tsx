@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { IT, LOC } from "../../data/master";
 import { suggestVendor, vendorName } from "../../data/vendors";
 import { useApp } from "../../store";
@@ -7,7 +7,7 @@ import { activeItems, avail, awaitingApproval, onOrder, prqProgress, qty } from 
 import { U, fq, money, money0, sum, unitTotal } from "../../lib/fmt";
 import {
   Alert, Btn, BtnRow, Card, DataTable, DraftLineInput, Field, FilterBtn, FilterSelect, Grid,
-  PageHead, StatusPill, TableFoot, Toolbar,
+  PageHead, StatusPill, TableFoot, Toolbar, useLineKeys,
 } from "../../ui/kit";
 import type { PrqProgressLine } from "../../lib/selectors";
 import type { DraftLine } from "../../types";
@@ -56,36 +56,16 @@ export default function Requisitions() {
 
   const stage = STAGES[si];
 
-  /**
-   * A key per draft line that survives what is typed into it.
-   *
-   * `key={l.it + ":" + i}` remounted the row the moment the item picker moved, so the quantity
-   * box lost focus and whatever was half-typed in it mid-keystroke; and a plain `key={i}` shifts
-   * every row up when one is removed, handing row 2's state to row 1. A counter in a ref is
-   * neither: an id belongs to the line it was minted for until that line is taken out.
-   *
-   * `react/refs` is off for exactly these three lines, and nowhere else in the file. The rule is
-   * right about what it is describing — a ref read during render can leave a component showing a
-   * value nothing will re-render it for — and wrong about this, which renders none of it: the
-   * ledger of keys is never *shown*, only handed to React as identity. There is nowhere else to
-   * keep it. The draft lives in the store and is shared with other screens, so a key column on
-   * the line would have to travel with it; `useState` would mean writing during render; and
-   * anything derived from the line's own contents is what the two spellings above already were.
-   */
-  const nextKey = useRef(0);
-  const lineKeys = useRef<number[]>([]);
-  /* oxlint-disable react/refs -- a key ledger, never rendered; see the note above */
-  while (lineKeys.current.length < prqDraft.length) lineKeys.current.push(nextKey.current++);
-  if (lineKeys.current.length > prqDraft.length) lineKeys.current.length = prqDraft.length;
-  const rowKeys = lineKeys.current;
-  /* oxlint-enable react/refs */
+  /** A key per draft line that survives what is typed into it — `useLineKeys` (`ui/kit.tsx`)
+   *  says why neither the index nor the line's own contents will do. */
+  const [rowKeys, dropKey] = useLineKeys(prqDraft.length);
 
   const setLine = (i: number, patch: Partial<DraftLine>) => {
     const next = prqDraft.map((l, n) => (n === i ? { ...l, ...patch } : l));
     setPrqDraft(next);
   };
   const removeLine = (i: number) => {
-    lineKeys.current.splice(i, 1);
+    dropKey(i);
     setPrqDraft(prqDraft.filter((_, n) => n !== i));
   };
 
@@ -231,7 +211,6 @@ export default function Requisitions() {
                     </td>
                   </tr>
                 ) : (
-                  // oxlint-disable-next-line react/refs -- `rowKeys` is the key ledger above
                   prqDraft.map((l, i) => {
                     const it = IT[l.it];
                     const open = openQty(l.it);

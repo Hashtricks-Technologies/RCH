@@ -49,8 +49,19 @@ test.describe("a refused sign-in", () => {
     await expect(refusal).toContainText("That employee id and password do not match.");
     await expect(page.locator(".toast")).toHaveCount(0);
     // Still there well past a toast's life, with the id still typed and the form still live.
-    await page.waitForTimeout(4000);
-    await expect(refusal).toBeVisible();
+    // Polled rather than slept through (e2e/README.md: never `waitForTimeout`), and the poll
+    // watches the pair — the sentence has to *stay* and no toast may draw it on the way. A
+    // plain `expect.poll(...).toEqual(...)` would pass on its first tick and prove nothing about
+    // staying, so the sentinel is only returned once four seconds of clean ticks have gone by,
+    // and the first violation latches so a toast that came and went cannot be polled past.
+    const OK = "still on the form, with no toast";
+    const since = Date.now();
+    let broke = "";
+    await expect.poll(async () => {
+      if (!broke && !(await refusal.isVisible())) broke = "the refusal disappeared";
+      if (!broke && (await page.locator(".toast").count()) > 0) broke = "a toast drew the refusal";
+      return broke || (Date.now() - since >= 4_000 ? OK : "watching");
+    }, { timeout: 10_000, intervals: [250] }).toBe(OK);
     await expect(page.getByLabel("Employee id")).toHaveValue(ROLES.counter.emp);
     await expect(page.getByRole("button", { name: "Sign in" })).toBeEnabled();
   });

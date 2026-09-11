@@ -3,7 +3,7 @@ import { IT, LOC } from "../data/master";
 import { useApp } from "../store";
 import { menuOf, type StockShape } from "../lib/selectors";
 import { U } from "../lib/fmt";
-import { Alert, Btn, BtnRow, Field, ImagePlaceholder } from "./kit";
+import { Alert, Btn, BtnRow, Field, ImagePlaceholder, useLineKeys } from "./kit";
 import type { LocKey } from "../types";
 
 /**
@@ -108,6 +108,11 @@ export default function KitchenOrderForm({ loc, onDone }: { loc: LocKey; onDone?
     setLines(lines.map((l) => (makeable.includes(l.it) ? l : { ...l, it: first })));
   }
 
+  /** `key={i}` handed row 2's half-typed quantity to row 1 the moment row 1 was removed — see
+   *  `useLineKeys` (`ui/kit.tsx`), which the requisition and kitchen-request tables share. It is
+   *  called **above** the early return below: a hook after one runs conditionally. */
+  const [rowKeys, dropKey] = useLineKeys(lines.length);
+
   if (makeable.length === 0) {
     return (
       <Alert tone="w" label="NOTHING TO ASK FOR">
@@ -126,7 +131,11 @@ export default function KitchenOrderForm({ loc, onDone }: { loc: LocKey; onDone?
     setBusy(true);
     const ok = await raiseProdOrder({
       from: loc,
-      lines: lines.filter((l) => l.it).map((l) => ({ it: l.it, qty: l.qty })),
+      // A line with no product, or with nothing asked for, is a row the operator added and did
+      // not fill in — the Send button is already greyed while *every* line is like that, but one
+      // blank among three used to travel and be refused by the server's own "Enter a quantity on
+      // every line", taking the two good lines down with it.
+      lines: lines.filter((l) => l.it && l.qty > 0).map((l) => ({ it: l.it, qty: l.qty })),
       ...(need ? { need } : {}),
       note: note.trim(),
     });
@@ -145,7 +154,7 @@ export default function KitchenOrderForm({ loc, onDone }: { loc: LocKey; onDone?
   return (
     <>
       {lines.map((l, i) => (
-        <div key={i} className="raisecard-product">
+        <div key={rowKeys[i]} className="raisecard-product">
           <ImagePlaceholder />
           <div className="txt">
             <b>{IT[l.it]?.n ?? "Choose a product"}</b>
@@ -156,7 +165,7 @@ export default function KitchenOrderForm({ loc, onDone }: { loc: LocKey; onDone?
               </select>
               <QtyInput value={l.qty} ariaLabel={`Quantity ${i + 1}`} onCommit={(qty) => setLine(i, { qty })} />
               {lines.length > 1
-                ? <Btn size="xs" variant="gh" onClick={() => setLines(lines.filter((_, n) => n !== i))}>Remove</Btn>
+                ? <Btn size="xs" variant="gh" onClick={() => { dropKey(i); setLines(lines.filter((_, n) => n !== i)); }}>Remove</Btn>
                 : <span className="mini dim">{U(l.it)}</span>}
             </div>
           </div>

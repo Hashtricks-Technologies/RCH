@@ -36,10 +36,21 @@ const decidedBy = (r: StockRequest) => {
  * request without unmounting the first: the trims typed against one request were then sitting
  * in the boxes of another, over lines that may not even have the same items.
  *
- * The key is the fix. `req.id` covers being pointed elsewhere; `req.iso` covers the same
- * request coming back changed underneath — an SSE refetch after somebody else decided it —
- * and either one forces a fresh instance with freshly derived state.
+ * The key is the fix. `req.id` covers being pointed elsewhere; the **last trail entry's**
+ * instant covers the same request coming back changed underneath — an SSE refetch after somebody
+ * else decided it — and either one forces a fresh instance with freshly derived state.
+ *
+ * It has to be `hist.at(-1)?.iso` and not `req.iso`: `req.iso` is the instant the counter
+ * *raised* the request, which never changes for as long as the document exists, so keying on it
+ * was keying on `req.id` twice. Every decision a second browser makes appends to the trail, and
+ * that is the only field on the request that moves when one does. `req.iso` is the fallback for
+ * a document whose trail has not been read yet, which is the one case where nothing has moved.
+ *
+ * `bodyKey` is exported so the key can be tested for what it promises — moving when the document
+ * does and standing still when it has not — without a screen that happens to render it.
  */
+export const bodyKey = (r: DatedDoc<StockRequest>) => `${r.id}:${r.hist.at(-1)?.iso ?? r.iso}`;
+
 function ApprovalDrawer({ id }: DrawerProps) {
   const req = useApp((x) => x.req.find((r) => r.id === id));
   if (!req) {
@@ -49,7 +60,7 @@ function ApprovalDrawer({ id }: DrawerProps) {
       </DrawerFrame>
     );
   }
-  return <ApprovalBody key={`${req.id}:${req.iso}`} req={req} />;
+  return <ApprovalBody key={bodyKey(req)} req={req} />;
 }
 
 function ApprovalBody({ req }: { req: DatedDoc<StockRequest> }) {

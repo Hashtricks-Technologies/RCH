@@ -1,12 +1,12 @@
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
 // ---- item patch ----
 import { activeItems, isReqOpen, qty } from "../../lib/selectors";
 import { fq, sum, U, unitTotal } from "../../lib/fmt";
 import {
-  Alert, Btn, BtnRow, Card, DataTable, Field, FilterSelect, FormRow, PageHead, Section,
-  StatusPill, TableFoot, Toolbar,
+  Alert, Btn, BtnRow, Card, DataTable, DraftLineInput, Field, FilterSelect, FormRow, PageHead,
+  Section, StatusPill, TableFoot, Toolbar, useLineKeys,
 } from "../../ui/kit";
 import type { DraftLine, ReqLine } from "../../types";
 
@@ -50,33 +50,15 @@ export default function Requests() {
   const [busy, setBusy] = useState(false);
 
   const draft = s.draft;
-  /**
-   * A key per draft row that belongs to the row rather than to its position.
-   *
-   * `key={i}` on a list with a Remove button on every line hands row 2's mounted state — what
-   * is half-typed in its quantity box, where the cursor is — to row 1 the moment row 1 is taken
-   * out. A counter in a ref keeps an id with the line it was minted for; the loop below covers
-   * a draft that changed anywhere else (staged from another screen, or cleared).
-   *
-   * `react/refs` is off for exactly these three lines. The rule is right about what it warns of
-   * — a ref read during render can leave a component showing a value nothing re-renders it for —
-   * and it does not reach this, which renders none of it: the ledger of keys is never *shown*,
-   * only handed to React as identity. The same note, and the same three lines, are in
-   * `roles/store/Requisitions.tsx`.
-   */
-  const nextKey = useRef(0);
-  const lineKeys = useRef<number[]>([]);
-  /* oxlint-disable react/refs -- a key ledger, never rendered; see the note above */
-  while (lineKeys.current.length < draft.length) lineKeys.current.push(nextKey.current++);
-  if (lineKeys.current.length > draft.length) lineKeys.current.length = draft.length;
-  const rowKeys = lineKeys.current;
-  /* oxlint-enable react/refs */
+  /** A key per draft row that belongs to the row rather than to its position — `useLineKeys`
+   *  (`ui/kit.tsx`) says why, for all three screens that draw an editable line table. */
+  const [rowKeys, dropKey] = useLineKeys(draft.length);
 
   const setLine = (i: number, patch: Partial<DraftLine>) =>
     s.setDraft(draft.map((l, j) => (j === i ? { ...l, ...patch } : l)));
   const addLine = () => s.setDraft([...draft, { it: "", qty: 0 }]);
   const removeLine = (i: number) => {
-    lineKeys.current.splice(i, 1);
+    dropKey(i);
     s.setDraft(draft.filter((_, j) => j !== i));
   };
 
@@ -164,7 +146,6 @@ export default function Requests() {
                   </div>
                 </td></tr>
               )}
-              {/* oxlint-disable-next-line react/refs -- `rowKeys` is the key ledger above */}
               {draft.map((l, i) => {
                 const err = lineErr(l);
                 return (
@@ -186,10 +167,15 @@ export default function Requests() {
                     </td>
                     <td>
                       <div className="fld">
-                        <input type="number" min={0} step="any" value={l.qty === 0 ? "" : l.qty}
-                          placeholder="0" style={l.it && !(l.qty > 0) ? BAD : undefined}
-                          aria-label={l.it ? `Quantity of ${IT[l.it].n}` : `Quantity on row ${i + 1}`}
-                          onChange={(e) => setLine(i, { qty: Number(e.target.value) || 0 })} />
+                        {/* Typed in freely and committed on the way out, the same box the store
+                            keeper's requisitions use: `Number(e.target.value)` on every keystroke
+                            put 12.5 litres of milk into the draft as 1, then 12, then 12.5, and
+                            emptying the box to retype set the line to nothing. */}
+                        <DraftLineInput
+                          value={l.qty} min={0} step={l.it && U(l.it) === "nos" ? 1 : 0.5}
+                          invalid={!!l.it && !(l.qty > 0)}
+                          ariaLabel={l.it ? `Quantity of ${IT[l.it].n}` : `Quantity on row ${i + 1}`}
+                          onCommit={(n) => setLine(i, { qty: Math.max(0, n) })} />
                       </div>
                     </td>
                     <td className="mini">{l.it ? U(l.it) : "—"}</td>

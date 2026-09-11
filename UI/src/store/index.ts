@@ -37,7 +37,7 @@ export interface AppState extends ProcurementSlice, OpsSlice {
   prq: DatedDoc<Requisition>[];
   po: DatedDoc<PurchaseOrder>[];
   pord: DatedDoc<ProdOrder>[];
-  batch: Batch[];
+  batch: Dated<Batch>[];
   bills: Dated<Bill>[];
   grn: Dated<Grn>[];
   vendors: Vendor[];
@@ -75,10 +75,13 @@ export interface AppState extends ProcurementSlice, OpsSlice {
 
   addToCart: (loc: LocKey, it: string, d?: number) => void;
   clearCart: (loc: LocKey) => void;
-  /** `true` only once the bill is on the server. A credit-cap refusal must leave the payer and
-   *  the tender exactly where the operator put them — the cart is still full, and clearing the
-   *  form behind a refusal is how the same bill gets rung up twice. */
-  pay: (loc: LocKey, tender: Tender, payer?: Payer) => Promise<boolean>;
+  /** The bill number the server chose, or `null` when it refused — the `Promise<string | null>`
+   *  variant `createPo` and `createItem` already use, because the till has to open the slip for
+   *  the bill it just took and guessing it back off the refetched list picks the wrong one the
+   *  moment that read-back fails. A credit-cap refusal must leave the payer and the tender
+   *  exactly where the operator put them — the cart is still full, and clearing the form behind
+   *  a refusal is how the same bill gets rung up twice. */
+  pay: (loc: LocKey, tender: Tender, payer?: Payer) => Promise<string | null>;
   // ---- bill void: the manager's door out of a mis-keyed bill, on the day it was billed.
   // Answers `true` only once the server has taken it, so a refusal leaves the typed reason
   // in front of them (the form-carrying pattern).
@@ -334,16 +337,21 @@ export const useApp = create<AppState>((set, get) => ({
     const s = get();
     const cart = s.cart[loc] ?? {};
     const lines = Object.entries(cart).map(([it, qty]) => ({ it, qty }));
-    if (!lines.length || !s.user) return false;
+    if (!lines.length || !s.user) return null;
     try {
       const r = await call(routes.pay, { body: { loc, tender, payer, lines } });
       set((x) => ({ cart: { ...x.cart, [loc]: {} } }));
       get().notify(r.message);
       await refetch(r.changed, r.message);
-      return true;
+      // The number the server chose, off the write's own answer. The till used to guess it back
+      // out of the refetched list — the newest bill at this outlet by `iso` — which is the wrong
+      // bill whenever the read-back fails (the list is then whatever it was before the sale) or
+      // whenever the till beside this one billed in the same instant. `r.result.no` is the bill
+      // this press created and nothing else can be.
+      return r.result.no;
     } catch (e) {
       get().notify(e instanceof ApiError ? e.message : "Could not take the bill — check the connection and try again.");
-      return false;
+      return null;
     }
   },
 

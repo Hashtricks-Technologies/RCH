@@ -137,7 +137,6 @@ function useDismiss(on: boolean, close: () => void, box: RefObject<HTMLDivElemen
 
 /* ---------- global search (P3) ---------- */
 function Search() {
-  const s = useApp();
   const nav = useNavigate();
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
@@ -145,7 +144,20 @@ function Search() {
   const box = useRef<HTMLDivElement>(null);
   const inp = useRef<HTMLInputElement>(null);
   const lid = useId();
-  const hits = useMemo(() => searchHits(s, q), [s, q]);
+  // The four slices `searchHits` actually reads, subscribed one at a time rather than through
+  // `useApp()`. `[s, q]` was a dependency on the whole store, which is a new object after every
+  // write anywhere in the app, so the palette re-ran its whole walk — every request, ticket,
+  // bill and item — on a toast appearing. `catalogVersion` stands in for `IT`, which is a
+  // module registry replaced in place and so cannot be a dependency of its own.
+  const user = useApp((x) => x.user);
+  const req = useApp((x) => x.req);
+  const tkt = useApp((x) => x.tkt);
+  const bills = useApp((x) => x.bills);
+  const catalogVersion = useApp((x) => x.catalogVersion);
+  const hits = useMemo(() => {
+    void catalogVersion;
+    return searchHits({ user, req, tkt, bills }, q);
+  }, [user, req, tkt, bills, catalogVersion, q]);
   const close = useCallback(() => setOpen(false), []);
   useDismiss(open, close, box);
 
@@ -266,7 +278,10 @@ interface Hit { id: string; to: string; t: string; s: string; kind: string }
 /** The first of these destinations the role may actually open. */
 const dest = (r: Role, ...keys: string[]) => keys.find((k) => canSee(r, k));
 
-function searchHits(s: AppState, q: string): Hit[] {
+/** Exactly what the palette reads, so `Search` can subscribe to those four and nothing else. */
+type SearchState = Pick<AppState, "user" | "req" | "tkt" | "bills">;
+
+function searchHits(s: SearchState, q: string): Hit[] {
   const u = s.user;
   const n = q.trim().toLowerCase();
   if (!u || !n) return [];

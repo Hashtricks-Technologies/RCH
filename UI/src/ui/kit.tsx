@@ -378,14 +378,55 @@ export const TicketTrail = ({ hist }: { hist: Ticket["hist"] }) => (
  * `positiveOnly` refuses to commit a zero or a negative, for the boxes where nothing is a
  * quantity below one; everywhere else a zero is a real answer and goes through.
  *
+ * `id` and `max` are pure passthroughs, so a box that already had a `<label htmlFor>` beside it
+ * or a browser-level ceiling keeps both on the way over, and `invalid` draws the same red border
+ * a raw input got from a local `BAD` style — a line the operator still has to finish. `ariaLabel`
+ * is required even where a real `<label>` is wired up, because `Field` only sets `htmlFor` on a
+ * **direct DOM child**: a component child leaves the visible label decorative and the box unnamed.
+ *
  * Lives here rather than beside its first caller because six tables on three screens need the
  * same box, and a second copy of this is how "12.5" starts posting as 12 again on one of them.
  */
+/**
+ * A stable React key per line of an editable list, one per row, in order.
+ *
+ * Three screens draw a table of draft lines with a Remove button on every row, and every one of
+ * them needs the same thing: an identity that belongs to the *line*, not to its position and not
+ * to its contents. `key={i}` hands row 2's mounted state — what is half-typed in its quantity
+ * box, where the cursor is — to row 1 the moment row 1 is taken out. `key={line.it + ":" + i}`
+ * remounts the row as soon as the item picker moves, so the box beside it loses focus and
+ * whatever was being typed mid-keystroke. A counter is neither: an id belongs to the line it was
+ * minted for until that line is taken out.
+ *
+ * It lives in a ref rather than in state because it is written *during* render — `useState`
+ * would mean setting state while rendering — and it cannot live on the line itself, because the
+ * draft is store state shared with other screens and a key column would have to travel with it.
+ * `react/refs` is suppressed here, once, rather than in each of the three callers: the rule is
+ * right about what it warns of (a ref read during render can leave a component showing a value
+ * nothing will re-render it for) and does not reach this, which renders none of it — the ledger
+ * is never *shown*, only handed to React as identity.
+ *
+ * `drop(i)` is the other half and is not optional: the length check below only ever trims from
+ * the **end**, so a Remove on row 0 without it leaves row 0's key on what used to be row 1 —
+ * which is the `key={i}` defect this hook exists to prevent, arrived at the long way round. Call
+ * it beside the state update that takes the line out.
+ */
+export function useLineKeys(n: number): readonly [number[], (i: number) => void] {
+  const next = useRef(0);
+  const keys = useRef<number[]>([]);
+  /* oxlint-disable react/refs -- a key ledger, never rendered; see the note above */
+  while (keys.current.length < n) keys.current.push(next.current++);
+  if (keys.current.length > n) keys.current.length = n;
+  const drop = (i: number) => { keys.current.splice(i, 1); };
+  return [keys.current, drop];
+  /* oxlint-enable react/refs */
+}
+
 export function DraftLineInput({
-  value, min, step, ariaLabel, positiveOnly, onCommit,
+  value, min, max, step, id, ariaLabel, positiveOnly, invalid, onCommit,
 }: {
-  value: number; min: number; step: number; ariaLabel: string;
-  positiveOnly?: boolean; onCommit: (n: number) => void;
+  value: number; min: number; max?: number; step: number; id?: string; ariaLabel: string;
+  positiveOnly?: boolean; invalid?: boolean; onCommit: (n: number) => void;
 }) {
   const [local, setLocal] = useState(String(value));
   const [synced, setSynced] = useState(value);
@@ -410,7 +451,8 @@ export function DraftLineInput({
 
   return (
     <input
-      type="number" className="mono" min={min} step={step}
+      type="number" className="mono" min={min} max={max} step={step} id={id}
+      style={invalid ? { borderColor: "var(--crit)" } : undefined}
       value={local} aria-label={ariaLabel}
       onChange={(e) => setLocal(e.target.value)}
       onBlur={commit}

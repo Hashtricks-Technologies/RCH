@@ -201,8 +201,13 @@ export default function Contracts() {
                 ? `${draft.rate > costOf(item) ? "Above" : draft.rate < costOf(item) ? "Below" : "Level with"} the moving average by ${money(Math.abs(draft.rate - costOf(item)))}`
                 : "Per unit, exclusive of GST."}
             >
-              <input type="number" min={0} step={0.01} value={draft.rate || ""}
-                onChange={(e) => setDraft({ ...draft, rate: Number(e.target.value) })} />
+              {/* `Number(e.target.value)` on every keystroke read "12." as 12 and "12.0" as 12,
+                  so a rate typed digit by digit lost its paise the moment the next one arrived.
+                  `DraftLineInput` keeps the string the operator is typing and commits on blur.
+                  It needs `ariaLabel` of its own: `Field` only wires `htmlFor` to a direct DOM
+                  child, so a component child leaves the visible label decorative. */}
+              <DraftLineInput value={draft.rate} min={0} step={0.01} ariaLabel="Contract rate (₹)"
+                onCommit={(n) => setDraft({ ...draft, rate: n })} />
             </Field>
           </FormRow>
           <FormRow cols="f3">
@@ -215,8 +220,8 @@ export default function Contracts() {
                 onChange={(e) => setDraft({ ...draft, to: e.target.value })} />
             </Field>
             <Field label="Minimum order quantity" hint={`In ${U(item)}.`}>
-              <input type="number" min={0} step={1} value={draft.moq || ""}
-                onChange={(e) => setDraft({ ...draft, moq: Number(e.target.value) })} />
+              <DraftLineInput value={draft.moq} min={0} step={1} ariaLabel="Minimum order quantity"
+                onCommit={(n) => setDraft({ ...draft, moq: n })} />
             </Field>
           </FormRow>
           <BtnRow end>

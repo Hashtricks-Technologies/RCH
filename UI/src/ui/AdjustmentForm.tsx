@@ -6,6 +6,7 @@ import { useState } from "react";
 import { avail as freeAt, REASON_LABEL } from "@rch/domain";
 import { IT, LOC } from "../data/master";
 import { useApp } from "../store";
+import { activeItems } from "../lib/selectors";
 import { fq, U } from "../lib/fmt";
 import { Alert, Btn, BtnRow, Field, FormRow, Section } from "./kit";
 import { DrawerFrame } from "./Drawer";
@@ -59,8 +60,13 @@ export default function AdjustmentForm({ locs, fixedLoc }: { locs: [StockLoc, ..
   // `IT` is a registry replaced in place by a refetch, so the list is built during render and
   // pinned to `catalogVersion` — the signal that says a product was added.
   void catalogVersion;
+  // `held` keeps a retired line the shelf still carries — that stock is exactly the work the
+  // retirement is waiting on, and writing it off is how the retirement finishes (`store/Stock.tsx`
+  // makes the same call). `rest` is the picker of everything *else*, so it reads `activeItems()`:
+  // offering to correct a shelf for a product the hospital stopped carrying, and that this
+  // location has never held, is offering work the server would refuse.
   const held = Object.keys(s.stock[at] ?? {}).filter((k) => IT[k]).sort((a, b) => IT[a].n.localeCompare(IT[b].n));
-  const rest = Object.keys(IT).filter((k) => !(k in (s.stock[at] ?? {}))).sort((a, b) => IT[a].n.localeCompare(IT[b].n));
+  const rest = activeItems().filter((k) => !(k in (s.stock[at] ?? {}))).sort((a, b) => IT[a].n.localeCompare(IT[b].n));
   const free = (it: string) => freeAt(s.stock, s.rsv, at, it);
 
   const setLine = (i: number, patch: Partial<Line>) =>

@@ -18,7 +18,22 @@ import type { LocKey } from "../../types";
  */
 function KitchenOrderDrawer() {
   const close = useApp((x) => x.closeDrawer);
-  const [loc, setLoc] = useState<LocKey>(OUTLETS[0]);
+  // `OUTLETS` is re-exported from `@rch/contract` and is never empty in this hospital — but the
+  // index says `LocKey` whatever the array holds, so `OUTLETS[0]` on an empty one is `undefined`
+  // typed as a real outlet, and every read of `LOC[loc]` below it is then reading `LOC[undefined]`.
+  // `null` is a state this drawer can render a sentence for; a lie about the type is not.
+  const [loc, setLoc] = useState<LocKey | null>(OUTLETS[0] ?? null);
+
+  if (!loc) {
+    return (
+      <DrawerFrame title="Order from the kitchen" sub="No outlet to order for">
+        <Alert tone="w" label="NO OUTLET">
+          There is no shop on this deployment for the kitchen to make anything for. A production
+          order is raised for an outlet, so one has to exist before this drawer has anything to ask.
+        </Alert>
+      </DrawerFrame>
+    );
+  }
 
   return (
     <DrawerFrame

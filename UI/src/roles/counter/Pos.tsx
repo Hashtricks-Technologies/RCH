@@ -95,26 +95,23 @@ export default function Pos() {
   /**
    * One tap, one bill — and the payer survives a refusal.
    *
-   * `pay` answers whether the server took it. Only a bill the server actually numbered clears
-   * the payer, the search and the per-line edits; a refusal (a credit ceiling, a cover check,
-   * a dropped connection) leaves the whole till exactly as the operator set it up, so the fix
-   * is one press away rather than a staff member to find again.
+   * `pay` answers with the number the server chose, or `null`. Only a bill the server actually
+   * numbered clears the payer, the search and the per-line edits; a refusal (a credit ceiling, a
+   * cover check, a dropped connection) leaves the whole till exactly as the operator set it up,
+   * so the fix is one press away rather than a staff member to find again.
    *
-   * Then the slip. The bill number is the server's, so it is read back off the refetched list
-   * rather than guessed: the newest bill at this outlet by `iso`, opened in the drawer that
-   * knows how to print one.
+   * Then the slip, for **that** number. It used to be guessed back out of the refetched list —
+   * the newest bill at this outlet by `iso` — which printed the wrong customer's slip in two
+   * ordinary cases: a read-back that failed (the list is then the one from before the sale, so
+   * the previous bill opens) and the till next door billing in the same instant.
    */
   const takeBill = async () => {
     setBusy(true);
-    let ok = false;
-    try { ok = await s.pay(loc, tender, payer ?? undefined); } finally { setBusy(false); }
-    if (!ok) return;
+    let no: string | null = null;
+    try { no = await s.pay(loc, tender, payer ?? undefined); } finally { setBusy(false); }
+    if (!no) return;
     setPayer(null); setPq(""); setEdit({});
-    const fresh = useApp.getState();
-    const mine = fresh.bills.filter((b) => b.loc === loc);
-    const latest = mine.reduce<(typeof mine)[number] | null>(
-      (best, b) => (best === null || b.iso.localeCompare(best.iso) > 0 ? b : best), null);
-    if (latest) fresh.openDrawer("cbill", latest.no);
+    useApp.getState().openDrawer("cbill", no);
   };
 
   const pickTender = (t: Tender) => { setTender(t); setPayer(null); setPq(""); };

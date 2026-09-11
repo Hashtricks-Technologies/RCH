@@ -66,7 +66,7 @@ export function resetStore() {
     stock: clone(FX.seedStock), rsv: clone(FX.seedRsv()), ovr: {}, prices: basePrices(),
     menu: clone(FX.MENU),
     req: clone(FX.seedReq).map(doc), tkt: clone(FX.seedTkt).map(trailed), prq: clone(FX.seedPrq).map(doc),
-    po: clone(FX.seedPo).map(doc), pord: clone(FX.seedPord).map(doc), batch: clone(FX.seedBatch),
+    po: clone(FX.seedPo).map(doc), pord: clone(FX.seedPord).map(doc), batch: clone(FX.seedBatch).map(dated),
     bills: clone(FX.seedBills).map((b) => ({ ...b, iso: isoOf(now, b.t) })),
     grn: clone(FX.seedGrn).map(dated), vendors: clone(FX.seedVendors), sales: clone(FX.seedSales), dayLabels: FX.DAY_LABELS,
     contracts: FX.seedContracts(), productReqs: FX.seedProductRequests().map(dated), shopAsks: FX.seedShopAsks().map(dated),

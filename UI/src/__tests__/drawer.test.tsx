@@ -49,6 +49,28 @@ function VanishingDrawer() {
 }
 registerDrawer("a11yvanish", VanishingDrawer);
 
+/**
+ * A drawer with a control that **disables itself**, which is the shape every busy button in the
+ * app uses — `roles/buyer/PoReceiptDrawer.tsx`'s Book button, `roles/store/TicketDrawer.tsx`'s
+ * hand-over button. The button holding the keyboard is by definition the one just pressed, and a
+ * browser that disables a focused control drops focus to `<body>` with no focus event fired, the
+ * same silence an unmount leaves — but nothing in the DOM *moved*, so a `childList` watcher never
+ * hears it either.
+ *
+ * The label is deliberately held constant, unlike the real buttons, which swap to "Booking in…"
+ * as they disable. A changed label is a `childList` mutation inside the button and would wake the
+ * watcher on its own — so the case would pass with `attributeFilter` removed and prove nothing.
+ */
+function BusyDrawer() {
+  const [busy, setBusy] = useState(false);
+  return (
+    <DrawerFrame title="Goods receipt" foot={<button type="button">Close</button>}>
+      <button type="button" disabled={busy} onClick={() => setBusy(true)}>Book into the central store</button>
+    </DrawerFrame>
+  );
+}
+registerDrawer("a11ybusy", BusyDrawer);
+
 const stops = (host: HTMLElement) => ({
   close: host.querySelector<HTMLButtonElement>("button.ib")!,
   code: host.querySelector<HTMLInputElement>("input[aria-label=\"Collector code\"]")!,
@@ -157,6 +179,25 @@ describe("the drawer is a real dialog", () => {
     await act(async () => { override.click(); });
 
     expect(override.isConnected).toBe(false);           // it really did replace itself
+    const aside = host.querySelector<HTMLElement>("aside.drawer")!;
+    expect(document.activeElement).not.toBe(document.body);
+    expect(aside.contains(document.activeElement)).toBe(true);
+  });
+
+  it("pulls focus back when the focused control becomes disabled", async () => {
+    act(() => { S().openDrawer("a11ybusy", "PO-2026-0143"); });
+    const book = [...host.querySelectorAll("button")].find((b) => b.textContent === "Book into the central store")!;
+    act(() => { book.focus(); });
+    expect(document.activeElement).toBe(book);
+
+    await act(async () => {
+      book.click();                                    // React commits `disabled` on this press
+      book.blur();                                     // what a browser does the instant it lands;
+      //                                                  jsdom does not, so the test does it here
+    });
+
+    expect(book.disabled).toBe(true);                  // it really did disable itself
+    expect(book.isConnected).toBe(true);               // and nothing unmounted, so `childList` is silent
     const aside = host.querySelector<HTMLElement>("aside.drawer")!;
     expect(document.activeElement).not.toBe(document.body);
     expect(aside.contains(document.activeElement)).toBe(true);

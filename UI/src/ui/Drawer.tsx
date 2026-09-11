@@ -103,17 +103,26 @@ function Panel({ at, onClose, children }: { at: string; onClose: () => void; chi
     document.addEventListener("focusin", guard);
 
     // The other way the keyboard gets out, and the one `focusin` cannot see: the control holding
-    // it is **unmounted**. `roles/store/TicketDrawer.tsx`'s "Supervisor override" replaces itself
-    // with a confirm block, and a browser that loses the focused element drops focus to `<body>`
-    // firing no focus event at all — so nothing bubbles and no listener hears it. The next Tab
-    // would then start at the top of the document and walk the page behind the scrim, which is
+    // it stops being focusable. There are **two** ways that happens and both drop focus to
+    // `<body>` firing no focus event at all, so nothing bubbles and no listener hears it — after
+    // which the next Tab starts at the top of the document and walks the page behind the scrim,
     // exactly what `aria-modal="true"` promises cannot happen.
     //
-    // A render-time check cannot cover it either: the state that swaps that button lives in the
-    // drawer's own body, so `Panel` never re-renders and no effect of `Panel`'s would run. The
-    // DOM is the only thing that reliably knows, so the DOM is what is watched.
+    //  - It is **unmounted**: `roles/store/TicketDrawer.tsx`'s "Supervisor override" replaces
+    //    itself with a confirm block.
+    //  - It is **disabled** while it stands there: every busy button in the app does this, and
+    //    the one the operator has just pressed is by definition the one holding the keyboard —
+    //    `roles/buyer/PoReceiptDrawer.tsx`'s Book button and `roles/store/TicketDrawer.tsx`'s
+    //    hand-over button among them. `childList` alone never sees it, because nothing moved.
+    //
+    // A render-time check cannot cover either: the state that swaps or disables those controls
+    // lives in the drawer's own body, so `Panel` never re-renders and no effect of `Panel`'s
+    // would run. The DOM is the only thing that reliably knows, so the DOM is what is watched —
+    // `attributeFilter` keeps it to the one attribute that can take a control out of `FOCUSABLE`.
     const watcher = new MutationObserver(() => { pullInto(aside.current); });
-    if (aside.current) watcher.observe(aside.current, { childList: true, subtree: true });
+    if (aside.current) {
+      watcher.observe(aside.current, { childList: true, subtree: true, attributes: true, attributeFilter: ["disabled"] });
+    }
 
     return () => {
       watcher.disconnect();

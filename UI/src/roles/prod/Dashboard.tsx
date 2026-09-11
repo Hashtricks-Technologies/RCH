@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
 import { availOf, canHandOver, hasLeft, isTicketOpen, madeItems, qty } from "../../lib/selectors";
-import { fq, sum, U } from "../../lib/fmt";
+import { fq, isToday, sum, U } from "../../lib/fmt";
 import {
   Alert, Btn, Card, DataTable, Feed, Grid, Kpis, PageHead, Pill, StatusPill, TableFoot,
 } from "../../ui/kit";
@@ -41,11 +41,15 @@ export default function Dashboard() {
     [PRODS, stock, rsv, ovr],
   );
 
-  const madeToday = sum(batch, (b) => b.qty);
+  // "Today" is the hospital's own IST day, not everything `GET /batches` returned: the batch log
+  // carries more than one day of baking, and counting the lot under that word overstated the
+  // shift from the first minute of it.
+  const today = useMemo(() => batch.filter((b) => isToday(b.iso)), [batch]);
+  const madeToday = sum(today, (b) => b.qty);
   const perProduct = PRODS.map((k) => ({
     n: IT[k]?.n ?? k,
-    v: sum(batch.filter((b) => b.it === k), (b) => b.qty),
-    made: sum(batch.filter((b) => b.it === k), (b) => b.made),
+    v: sum(today.filter((b) => b.it === k), (b) => b.qty),
+    made: sum(today.filter((b) => b.it === k), (b) => b.made),
   }));
 
   const feed = useMemo(() => {
@@ -90,7 +94,7 @@ export default function Dashboard() {
         { l: "New orders waiting", v: newOrders.length, d: <>needing accept or decline</> },
         { l: "Orders in progress", v: working.length, d: <><b>{openQty}</b> units promised</> },
         { l: "Ready to dispatch", v: ready.length, d: <>waiting on the pass</> },
-        { l: "Units made today", v: madeToday, d: <>across <b>{batch.length}</b> batch{batch.length === 1 ? "" : "es"}</> },
+        { l: "Units made today", v: madeToday, d: <>across <b>{today.length}</b> batch{today.length === 1 ? "" : "es"}</> },
         { l: "Products not available", v: off.length, d: <>switched off or nothing to give</> },
         { l: "Dispatches out today", v: dispatches.length, d: <><b>{toHand.length}</b> waiting at the pass</> },
       ]} />

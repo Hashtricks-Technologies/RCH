@@ -65,7 +65,7 @@ export function applySnapshot(s: Snapshot): void {
     prq: s.prq.map((p) => ({ ...stamped(p), hist: hist(p.hist) })),
     po: s.po.map((o) => ({ ...stamped(o), eta: fromWireDate(o.eta), recv: o.recv ? t(o.recv) : undefined, hist: hist(o.hist) })),
     pord: s.pord.map((o) => ({ ...stamped(o), hist: hist(o.hist) })),
-    batch: s.batch.map((b) => ({ ...b, at: t(b.at), bb: fromWireBestBefore(b.bb) })),
+    batch: s.batch.map((b) => ({ ...stamped(b), bb: fromWireBestBefore(b.bb) })),
     bills: billed(s.bills),
     // `mfg`, `exp` and `invDate` are the vendor's printed dates and are shown raw.
     grn: s.grn.map(stamped),
@@ -122,7 +122,7 @@ export function applyProdOrders(pord: Snapshot["pord"]): void {
 
 /** GET /batches -> the batch log. `bb` is an instant on the wire and a best-before on screen. */
 export function applyBatches(batch: Snapshot["batch"]): void {
-  useApp.setState({ batch: batch.map((b) => ({ ...b, at: t(b.at), bb: fromWireBestBefore(b.bb) })) });
+  useApp.setState({ batch: batch.map((b) => ({ ...stamped(b), bb: fromWireBestBefore(b.bb) })) });
 }
 
 /** GET /requisitions -> the buyer's desk, times as "HH:MM" and history stamps with them. */

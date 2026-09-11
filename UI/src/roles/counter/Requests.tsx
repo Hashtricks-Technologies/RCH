@@ -5,7 +5,8 @@ import { useApp } from "../../store";
 import { activeItems, avail, isReqOpen } from "../../lib/selectors";
 import { fq, U } from "../../lib/fmt";
 import {
-  Alert, Btn, BtnRow, Card, DataTable, Field, ImagePlaceholder, Icon, PageHead, Pill, StatusPill,
+  Alert, Btn, BtnRow, Card, DataTable, DraftLineInput, Field, ImagePlaceholder, Icon, PageHead,
+  Pill, StatusPill,
 } from "../../ui/kit";
 import type { LocKey } from "../../types";
 // ---- prod-order raise ----
@@ -217,8 +218,12 @@ export default function Requests() {
                   <div className="askcard-act">
                     <div className="askcard-qty">
                       <label htmlFor={`g-${a.id}`}>Send</label>
-                      <input id={`g-${a.id}`} type="number" min={0} max={Math.min(a.qty, free)} value={g}
-                        onChange={(e) => setGrant({ ...grant, [a.id]: Number(e.target.value) })} />
+                      {/* Committed on the way out rather than on every keystroke: reading
+                          `Number(e.target.value)` as it was typed sent 1.5 L back as 1, then 1.5,
+                          and clearing the box to retype offered nothing. */}
+                      <DraftLineInput id={`g-${a.id}`} value={g} min={0} max={Math.min(a.qty, free)}
+                        step={U(a.it) === "nos" ? 1 : 0.5} ariaLabel="Send"
+                        onCommit={(n) => setGrant({ ...grant, [a.id]: n })} />
                     </div>
                     {/* The box is capped at `min(asked, free)`, but a number typed straight in
                         walked past it — the button only checked that it was above zero, so a
@@ -274,7 +279,11 @@ export default function Requests() {
           <ProductPicker items={SELLABLE} value={shopItem} onChange={setShopItem} />
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
             <Field label="Quantity">
-              <input type="number" min={1} value={shopQty} onChange={(e) => setShopQty(Number(e.target.value))} />
+              {/* `DraftLineInput` rather than a raw box, so 1.5 L is asked for as 1.5 rather than
+                  going in as 1 on the way to it. It carries its own `ariaLabel` because `Field`
+                  wires `htmlFor` only to a direct DOM child, never to a component. */}
+              <DraftLineInput value={shopQty} min={1} step={U(shopItem) === "nos" ? 1 : 0.5}
+                ariaLabel="Quantity" onCommit={setShopQty} />
             </Field>
             <Field label="Priority">
               <select value={shopPriority} onChange={(e) => setShopPriority(e.target.value as "Normal" | "Urgent")}>
@@ -301,7 +310,8 @@ export default function Requests() {
           <ProductPicker items={STOCKABLE} value={invItem} onChange={setInvItem} />
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
             <Field label="Quantity">
-              <input type="number" min={1} value={invQty} onChange={(e) => setInvQty(Number(e.target.value))} />
+              <DraftLineInput value={invQty} min={1} step={U(invItem) === "nos" ? 1 : 0.5}
+                ariaLabel="Quantity" onCommit={setInvQty} />
             </Field>
             <Field label="Priority" hint="Urgent is flagged at the top of the manager's queue.">
               <select value={invPriority} onChange={(e) => setInvPriority(e.target.value as "Normal" | "Urgent")}>

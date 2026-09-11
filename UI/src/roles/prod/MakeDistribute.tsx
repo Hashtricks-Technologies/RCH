@@ -4,7 +4,7 @@ import { useApp } from "../../store";
 import {
   avail, canHandOver, hasLeft, isTicketOpen, madeItems, menuOf, qty, recipeCost,
 } from "../../lib/selectors";
-import { fq, money, sum, U } from "../../lib/fmt";
+import { fq, isToday, money, sum, U } from "../../lib/fmt";
 import {
   Alert, Btn, Card, DataTable, Field, FilterSelect, FormRow, Grid, PageHead, Pill, StatusPill,
   TableFoot, Toolbar,
@@ -97,7 +97,9 @@ export default function MakeDistribute() {
     if (ok) setDQty("");
   };
 
-  const allBatches = batch;
+  // Every figure and every word on this card says "today", so the log is cut to the hospital's
+  // own IST day before anything counts it — `GET /batches` returns more than one day's baking.
+  const allBatches = useMemo(() => batch.filter((b) => isToday(b.iso)), [batch]);
   const bFiltering = Boolean(bq.trim() || bProd);
   const batches = allBatches
     .filter((b) => !bProd || b.it === bProd)
@@ -136,7 +138,7 @@ export default function MakeDistribute() {
         crumbs={["Royal Care", "Central Kitchen", "Make & Distribute"]}
         title="Make and distribute"
         sub="Choose a product, make a quantity, then send it out to the counters or back to the store."
-        actions={<span className="mini">{sum(batch, (b) => b.qty)} units made today</span>}
+        actions={<span className="mini">{sum(allBatches, (b) => b.qty)} units made today</span>}
       />
 
       <Grid cols="g21">

@@ -3,7 +3,7 @@ import { istDate } from "@rch/domain";
 import { IT, LOC } from "../../data/master";
 import { useApp, type AppState } from "../../store";
 import { committed, costOf, freeToPromise, hasLeft, isTicketOpen, onOrder, parOf, qty, resv } from "../../lib/selectors";
-import { U, fq, money0, now, pct, sum, unitTotal } from "../../lib/fmt";
+import { U, fq, fromWireDay, money0, now, pct, sum, unitTotal } from "../../lib/fmt";
 import {
   Btn, Card, DataTable, FilterSelect, Icon, PageHead, Pill, StatusPill, TableFoot, Toolbar,
 } from "../../ui/kit";
@@ -84,6 +84,13 @@ const gap = (a: string | undefined, b: string | undefined) => {
 };
 const dur = (m: number | null) =>
   m === null ? DASH : m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${m % 60} min`;
+/** How old a document is, measured from its **instant**. `gap` above compares two clock faces
+ *  and wraps at midnight, which is right for two stamps on one day and wrong for a lot that has
+ *  been on the rack since Tuesday — this is the one every batch row now uses. */
+const ageMins = (isoStr: string): number | null => {
+  const at = Date.parse(isoStr);
+  return Number.isNaN(at) ? null : Math.max(0, Math.round((Date.now() - at) / 60000));
+};
 /**
  * Whole days from today to a wire date, counted on the hospital's calendar.
  *
@@ -298,7 +305,10 @@ const ageing = (s: AppState): Rep => {
       const left = bb === null ? null : bb - clock;
       return [
         b.id, IT[b.it]?.n ?? b.it, LOC.kitchen.n, `${fq(b.qty, b.it)} ${U(b.it)}`,
-        `today ${b.at}`, b.bb.includes(" ") ? b.bb : `today ${b.bb}`, dur(gap(b.at, now())),
+        // The batch's own day, off its instant. Printing "today" beside every batch on file, and
+        // ageing each of them by the clock face alone (`gap` wraps at 1440), meant yesterday's
+        // lot read as an hour old — the column this report exists for.
+        `${fromWireDay(b.iso)} ${b.at}`, b.bb.includes(" ") ? b.bb : `today ${b.bb}`, dur(ageMins(b.iso)),
         left === null ? DASH : left <= 0 ? "Past best before" : dur(left) + " left",
         money0(b.qty * costOf(b.it)),
       ];

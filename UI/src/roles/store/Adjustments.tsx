@@ -3,7 +3,7 @@ import { StockLocSchema } from "@rch/contract";
 import { REASON_LABEL } from "@rch/domain";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
-import { fq, money0, sum, U } from "../../lib/fmt";
+import { fq, fromWireDay, money0, sum, U } from "../../lib/fmt";
 import { Card, DataTable, FilterSelect, PageHead, Pill, TableFoot, Toolbar } from "../../ui/kit";
 import AdjustmentForm, { REASONS } from "../../ui/AdjustmentForm";
 import type { StockLoc } from "../../types";
@@ -84,7 +84,10 @@ export default function Adjustments() {
             return {
               key: a.id,
               cells: [
-                <>{a.id}<small>{a.at}{a.note ? ` · ${a.note}` : ""}</small></>,
+                // The day as well as the clock face. This register is a permanent record, not a
+                // "today" list — `GET /adjustments` returns the lot — so a bare "14:20" said
+                // nothing about which day a write-off was on, and every row looked like today's.
+                <>{a.id}<small>{fromWireDay(a.iso)} {a.at}{a.note ? ` · ${a.note}` : ""}</small></>,
                 LOC[a.loc]?.n ?? a.loc,
                 <Pill tone={toneOf(down, up)}>{REASON_LABEL[a.reason]}</Pill>,
                 // Litres of milk and kilos of butter do not add up, so each line is quoted in

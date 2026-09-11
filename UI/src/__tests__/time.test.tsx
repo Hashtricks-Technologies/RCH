@@ -3,6 +3,7 @@ import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { MemoryRouter } from "react-router-dom";
 import { screens as counter } from "../roles/counter";
+import { screens as prod } from "../roles/prod";
 import Approvals from "../roles/manager/Approvals";
 import ManagerDashboard from "../roles/manager/Dashboard";
 import BuyerDashboard from "../roles/buyer/Dashboard";
@@ -11,7 +12,7 @@ import { applyRequests, applySnapshot } from "../api/wire";
 import { useApp } from "../store";
 import { as, resetStore, S } from "./fixture";
 import * as FX from "@rch/contract/fixtures";
-import type { Bill, Dated, DatedDoc, PurchaseOrder, Requisition } from "../types";
+import type { Batch, Bill, Dated, DatedDoc, PurchaseOrder, Requisition } from "../types";
 
 /**
  * A1 — real instants on the wire.
@@ -249,5 +250,35 @@ describe("a document sorts on the thing the row beside it prints", () => {
     const html = render(createElement(BuyerDashboard));
 
     expect(html.indexOf("PO-2026-0150")).toBeLessThan(html.indexOf("PRQ-2026-0071"));
+  });
+});
+
+describe("what the kitchen made today", () => {
+  /** Two batches of one product: one baked at 01:30 IST this morning, one at 23:30 IST last
+   *  night. Both carry the same UTC date, so a host-day filter counts them together — and a
+   *  batch was the one document with no `iso` at all, so nothing could filter them apart. */
+  const twoNights = (): Dated<Batch>[] => [
+    { id: "BAT-20260911-01", it: "puff", qty: 30, made: 30, at: "01:30", iso: TODAY_EARLY, bb: "09:30" },
+    { id: "BAT-20260910-09", it: "puff", qty: 200, made: 200, at: "23:30", iso: YESTERDAY_LATE, bb: "07:30" },
+  ];
+
+  it("leaves last night's batch out of 'Units made today' on the kitchen dashboard", () => {
+    act(() => { as("prod"); useApp.setState({ batch: twoNights() }); });
+
+    const html = render(createElement(prod.dash));
+
+    // 230 was what this tile read: the whole batch log, under the word "today".
+    expect(kpi(html, "Units made today")).toBe("30");
+    expect(html).toContain("across <b>1</b> batch");
+  });
+
+  it("leaves it off Make & Distribute's batch log, which says today in its own title", () => {
+    act(() => { as("prod"); useApp.setState({ batch: twoNights() }); });
+
+    const html = render(createElement(prod.make));
+
+    expect(html).toContain("BAT-20260911-01");
+    expect(html).not.toContain("BAT-20260910-09");
+    expect(html).toContain("30 units made today");
   });
 });
