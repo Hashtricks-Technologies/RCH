@@ -4,6 +4,7 @@ import { and, eq } from "drizzle-orm";
 import { buildTestApp } from "../../test/app.js";
 import { seedTestDb } from "../../test/seed.js";
 import { authHeaders } from "../../test/auth.js";
+import { warmPool } from "../../test/db.js";
 import { availabilityOverrides } from "../../db/schema/index.js";
 import type { App } from "../../app.js";
 import { withTransaction } from "../../lib/db.js";
@@ -120,6 +121,10 @@ describe("POST /availability/toggle", () => {
     // row), or the second reads after the first committed and switches the item back on
     // (off:true then off:false, no row). Either is correct; what must never happen is a 500.
     const [headersA, headersB] = await Promise.all([hdr("u1"), hdr("u1")]);
+    // `pg` connects lazily: without two warm connections the two "concurrent" toggles below run
+    // back to back on one, only the second interleaving is ever reached, and the PK race this
+    // case exists to survive never happens at all.
+    await warmPool(app.testDb!, 2);
     const [a, b] = await Promise.all([
       toggle(headersA, { loc: "coffee", it: "bisc" }),
       toggle(headersB, { loc: "coffee", it: "bisc" }),
