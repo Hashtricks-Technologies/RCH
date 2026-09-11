@@ -10,6 +10,7 @@ import type { Tx } from "./db.js";
 import { appendHistory, readHistory } from "./history.js";
 import { allocateId } from "./ids.js";
 import { releaseForTicket, reserve } from "./reservations.js";
+import { assertRule } from "./rules.js";
 import { iso } from "./time.js";
 
 /** History is signed with the name the operator reads on the document, not with an id. Every
@@ -60,7 +61,15 @@ export async function writeTicket(tx: Tx, draft: TicketDraft, no: TicketNumber):
   // check — the store's own rule for a dispatch (CLAUDE.md, "Dispatch is all-or-nothing").
   const folded = new Map<string, number>();
   for (const l of draft.lines) folded.set(l.it, round3((folded.get(l.it) ?? 0) + l.qty));
-  const lines = [...folded].map(([it, qty]) => ({ it, qty }));
+  // A line that rounds away to nothing is dropped, the way `postMoves` drops a move that does
+  // (`lib/ledger.ts`): a hold of zero is not a hold, and `reservations_qty_ck` (migration 0008)
+  // refuses one — so a document carrying a zero line, seeded or migrated in from before that
+  // constraint existed, would otherwise answer 500 with no words in it rather than a sentence.
+  // The callers' own cover checks all read `< l.qty`, so a zero never fails one of those.
+  const lines = [...folded].filter(([, qty]) => qty !== 0).map(([it, qty]) => ({ it, qty }));
+  // And if nothing survives there is no ticket to raise: an empty one could never be handed
+  // over, so the desk is told rather than handed a number for a box with nothing in it.
+  assertRule(lines.length > 0, `Nothing to send — every line on ${draft.refId} is for zero`);
 
   const { id, otp } = no;
   await tx.insert(tickets).values({

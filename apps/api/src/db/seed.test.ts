@@ -2,11 +2,11 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest
 import { eq, sql } from "drizzle-orm";
 import type { PgTable } from "drizzle-orm/pg-core";
 import * as FX from "@rch/contract/fixtures";
-import { withTestSchema, type TestDb } from "../test/db.js";
+import { resetDocuments, withTestSchema, type TestDb } from "../test/db.js";
 import { seedTestDb } from "../test/seed.js";
-import { seedDatabase, grnPoLineNo, pastFixtureTime } from "./seed.js";
+import { seedDatabase, grnPoLineNo, historyShiftMs } from "./seed.js";
+import { readHistory } from "../lib/history.js";
 import { rebuildBalances } from "../lib/ledger.js";
-import { dateAt } from "../lib/time.js";
 import { bills, grns, items, locations, payers, purchaseOrders, rateContracts, reservations, sequences, shopAsks, stockBalances, stockRequests, supportTickets, tickets, users } from "./schema/index.js";
 
 let t: TestDb;
@@ -58,17 +58,46 @@ describe("seed", () => {
   });
 });
 
-describe("pastFixtureTime", () => {
+// The shift is ONE decision per seed run, not one per row. Deciding row by row rolled an 08:34
+// entry back to yesterday while leaving the 08:05 entry that came before it on today, so a
+// request's own trail read approved-before-sent and `documents.test.ts` went red between about
+// 08:05 and 08:44 IST every morning.
+describe("historyShiftMs", () => {
   afterEach(() => { vi.useRealTimers(); });
-  it("rolls back to yesterday's IST day when a seed run before the fixture time would otherwise land in the future", () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-09-14T00:30:00+05:30")); // 00:30 IST
-    expect(pastFixtureTime("07:10")).toEqual(dateAt("2026-09-13", "07:10"));
+  const clockAt = (ist: string) => { vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(new Date(ist)); };
+
+  it("rolls every stamp back an IST day when the last fixture time has not come round yet", () => {
+    clockAt("2026-09-14T08:20:00+05:30"); // past the first fixture entry (08:05), short of the last (09:26)
+    expect(historyShiftMs()).toBe(-24 * 3600_000);
   });
-  it("uses today's IST day once the fixture time has already passed", () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-09-14T12:00:00+05:30")); // 12:00 IST
-    expect(pastFixtureTime("07:10")).toEqual(dateAt("2026-09-14", "07:10"));
+  it("leaves every stamp on today once the last fixture time has passed", () => {
+    clockAt("2026-09-14T12:00:00+05:30");
+    expect(historyShiftMs()).toBe(0);
+  });
+});
+
+describe("seeded history trails", () => {
+  const istDay = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit" });
+  // Put the clock back and re-seed for real afterwards, so neither case leaves yesterday's
+  // stamps behind for anything else reading this file's schema.
+  afterEach(async () => { vi.useRealTimers(); await resetDocuments(t.db); });
+  const seedAt = async (ist: string) => {
+    vi.useFakeTimers({ toFake: ["Date"] }); // Date only — pg's own timers have to keep running
+    vi.setSystemTime(new Date(ist));
+    await resetDocuments(t.db);
+    return readHistory(t.db, "request", "REQ-2026-0909");
+  };
+
+  it("reads in fixture order and on a single day when seeded at 08:20 IST", async () => {
+    const trail = await seedAt("2026-09-14T08:20:00+05:30");
+    expect(trail.map((h) => h.s)).toEqual(["Request sent", "Manager approved", "Ticket issued"]);
+    const stamps = trail.map((h) => new Date(h.t).getTime());
+    expect(stamps).toEqual([...stamps].sort((a, b) => a - b));
+    expect([...new Set(trail.map((h) => istDay.format(new Date(h.t))))]).toEqual(["2026-09-13"]);
+  });
+  it("stays on today's IST day when seeded at 12:00 IST, past every fixture time", async () => {
+    const trail = await seedAt("2026-09-14T12:00:00+05:30");
+    expect([...new Set(trail.map((h) => istDay.format(new Date(h.t))))]).toEqual(["2026-09-14"]);
   });
 });
 

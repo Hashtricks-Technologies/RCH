@@ -141,6 +141,27 @@ describe("POST /prod-orders/:id/dispatch", () => {
     expect((await post("u4", "/prod-orders/PRD-2026-999/dispatch")).json().error.message).toBe("There is no production order PRD-2026-999.");
     for (const u of ["u1", "u2", "u3", "u5"]) expect((await post(u, "/prod-orders/PRD-2026-029/dispatch")).statusCode).toBe(404);
   });
+
+  // `POST /prod-orders` refuses a zero line at the door, but a row seeded or migrated in from
+  // before that door existed still reaches `writeTicket` — and a hold of zero is refused by
+  // `reservations_qty_ck`, which would answer 500 with nothing in it for the kitchen to read.
+  it("drops a zero line rather than trying to hold nothing", async () => {
+    const id = await given.prodOrder(app.testDb!.db, { st: "Ready", lines: [{ it: "puff", qty: 4 }, { it: "sand", qty: 0 }] });
+    await bake("puff", 20);
+    const r = await post("u4", `/prod-orders/${id}/dispatch`);
+    expect(r.statusCode, r.body).toBe(200);
+    expect(r.json().result.ticket.lines).toEqual([{ it: "puff", qty: 4 }]);
+    const held = await app.testDb!.db.select().from(reservations).where(eq(reservations.ticketId, r.json().result.ticket.id));
+    expect(held.map((h) => [h.itemKey, h.qty])).toEqual([["puff", 4]]);
+  });
+
+  it("refuses in a sentence when every line on the order is for zero", async () => {
+    const id = await given.prodOrder(app.testDb!.db, { st: "Ready", lines: [{ it: "puff", qty: 0 }] });
+    const r = await post("u4", `/prod-orders/${id}/dispatch`);
+    expect(r.statusCode).toBe(422);
+    expect(r.json().error.message).toBe(`Nothing to send — every line on ${id} is for zero`);
+    expect(await app.testDb!.db.select().from(tickets).where(eq(tickets.refId, id))).toEqual([]);
+  });
 });
 
 describe("POST /distributions", () => {

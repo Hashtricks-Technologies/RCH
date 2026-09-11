@@ -16,4 +16,7 @@ const generate = spawnSync(drizzleKit, ["generate", ...process.argv.slice(2)], {
 if (generate.status !== 0) process.exit(generate.status ?? 1);
 
 const strip = spawnSync(process.execPath, [join(here, "strip-public-schema.mjs")], { stdio: "inherit" });
-process.exit(strip.status ?? 0);
+// `?? 1`, not `?? 0`: a null status means the strip step was killed by a signal rather than
+// exiting, and reporting that as success would leave `"public".`-prefixed SQL in a migration
+// nobody was told about — the one failure this wrapper exists to make visible.
+process.exit(strip.status ?? 1);
