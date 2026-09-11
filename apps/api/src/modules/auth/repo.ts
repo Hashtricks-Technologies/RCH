@@ -27,15 +27,36 @@ export const authRepo = {
   setPassword: (tx: Tx, userId: string, passwordHash: string) => tx.update(users).set({ passwordHash, mustChangePassword: false, updatedAt: new Date() }).where(eq(users.id, userId)),
 };
 
+/** How many rows one DELETE of the nightly sweep takes — see purgeRefreshTokens. */
+const PURGE_BATCH = 10_000;
+
 /**
- * Nightly housekeeping (cli/purge.ts). Nothing else ever deletes from this table, so without
- * it every sign-in the hospital ever performs stays on disk for good. Rows that can no longer
- * authorise anything go: expired ones, and revoked ones past a week's grace — long enough that
- * "why was I signed out on Tuesday?" can still be answered from the row.
+ * Nightly housekeeping (cli/purge.ts), a bounded batch at a time. Nothing else ever deletes from
+ * this table, so without it every sign-in the hospital ever performs stays on disk for good —
+ * and the first run after this ships meets all of them at once. Rows that can no longer authorise
+ * anything go: expired ones, and revoked ones past a week's grace, long enough that "why was I
+ * signed out on Tuesday?" can still be answered from the row.
+ *
+ * The loop is what keeps that first run from being a single DELETE holding one transaction and
+ * one set of row locks over every session ever opened, against a table every sign-in and every
+ * refresh is writing to. `ctid in (select ctid … limit n)` is "any n of the matching rows": ctid
+ * is a tuple's physical address, so the subquery reads the index and the delete goes straight at
+ * those rows. A batch that comes back short is the signal the set is empty.
+ *
+ * `batch` is a parameter so a test can make it smaller than the work; nothing in production
+ * passes it.
  */
-export async function purgeRefreshTokens(db: Db): Promise<number> {
-  const r = await db.delete(refreshTokens).where(
-    or(lt(refreshTokens.expiresAt, new Date()), lt(refreshTokens.revokedAt, sql`now() - interval '7 days'`)),
-  );
-  return r.rowCount ?? 0;
+export async function purgeRefreshTokens(db: Db, batch: number = PURGE_BATCH): Promise<number> {
+  // One cutoff for the whole sweep rather than a fresh `new Date()` per batch, which would walk
+  // forward between statements.
+  const dead = or(lt(refreshTokens.expiresAt, new Date()), lt(refreshTokens.revokedAt, sql`now() - interval '7 days'`));
+  let total = 0;
+  for (;;) {
+    const r = await db.delete(refreshTokens).where(
+      sql`ctid in (select ctid from ${refreshTokens} where ${dead} limit ${batch})`,
+    );
+    const n = r.rowCount ?? 0;
+    total += n;
+    if (n < batch) return total;
+  }
 }

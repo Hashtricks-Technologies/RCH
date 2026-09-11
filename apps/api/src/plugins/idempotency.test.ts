@@ -430,4 +430,28 @@ describe("Idempotency-Key", () => {
     expect(n).toBeGreaterThan(0);
     expect((await app.db.select().from(idempotencyKeys)).length).toBe(0);
   });
+
+  it("purge deletes in batches until there is nothing expired left", async () => {
+    // One skipped nightly run is a day of keys, so the sweep can meet a very large backlog, and a
+    // single unbounded DELETE holds one transaction and one set of row locks over the whole of
+    // it. It deletes a bounded batch at a time instead, looping until a batch comes back short.
+    // Prove the loop by making the batch smaller than the work: five expired rows, two at a time.
+    const expired = Array.from({ length: 5 }, (_, i) => ({
+      key: `purge-batch-${i}`, userId: "u1", requestHash: "h", statusCode: 200,
+      response: { ok: true }, expiresAt: new Date(Date.now() - 1000),
+    }));
+    await app.db.insert(idempotencyKeys).values(expired);
+    await app.db.insert(idempotencyKeys).values({
+      key: "purge-batch-live", userId: "u1", requestHash: "h", statusCode: 200,
+      response: { ok: true }, expiresAt: new Date(Date.now() + 60_000),
+    });
+    const spy = vi.spyOn(app.db, "delete");
+    try {
+      expect(await purgeIdempotencyKeys(app.db, 2)).toBe(5);
+      // 2 + 2 + 1. The short third batch is the only signal the set is empty, so the loop needs
+      // that last statement — counting the calls is what tells a loop from one big DELETE.
+      expect(spy.mock.calls.length).toBe(3);
+    } finally { spy.mockRestore(); }
+    expect((await app.db.select().from(idempotencyKeys)).map((r) => r.key)).toEqual(["purge-batch-live"]);
+  });
 });

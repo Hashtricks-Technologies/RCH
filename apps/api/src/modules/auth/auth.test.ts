@@ -332,4 +332,23 @@ describe("purging refresh tokens", () => {
     const left = (await b.db.select().from(refreshTokens)).map((t) => t.tokenHash).sort();
     expect(left).toEqual(["just-revoked", "live"]);
   });
+
+  it("deletes in batches until there is nothing left to delete", async () => {
+    // Same reason as the idempotency sweep: a table nothing else ever deletes from carries every
+    // sign-in the hospital has performed, so the first run after this ships is the big one. It
+    // goes a bounded batch at a time. Five dead rows, two at a time, proves the loop.
+    const dead = Array.from({ length: 5 }, () => ({
+      id: randomUUID(), userId: "u1", family: randomUUID(),
+      tokenHash: randomUUID(), expiresAt: new Date(Date.now() - 86400_000),
+    }));
+    await b.db.insert(refreshTokens).values(dead);
+    const spy = vi.spyOn(b.db, "delete");
+    try {
+      expect(await purgeRefreshTokens(b.db, 2)).toBe(5);
+      // 2 + 2 + 1 — the short last batch is what ends the loop.
+      expect(spy.mock.calls.length).toBe(3);
+    } finally { spy.mockRestore(); }
+    const left = (await b.db.select().from(refreshTokens)).map((t) => t.tokenHash);
+    expect(dead.filter((r) => left.includes(r.tokenHash))).toEqual([]);
+  });
 });
