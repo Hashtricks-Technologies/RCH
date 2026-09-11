@@ -21,8 +21,12 @@ const DUMMY_HASH = "$argon2id$v=19$m=65536,t=3,p=1$LOmzJu8PWUsCPtFBwcH39w$RNwG8D
 const SWEEP_EVERY = 1000;
 
 /**
- * Per-employee sliding window, in memory. Per pod, which is fine: the per-IP limit is
- * cluster-wide via the LB.
+ * Per-employee sliding window of **failed** sign-ins, in memory, and therefore per pod — as is
+ * the per-IP limit beside it, which `@fastify/rate-limit` also keeps in this process's own
+ * memory. Neither is cluster-wide: the load balancer spreads requests across replicas, so the
+ * effective budget is the configured number multiplied by however many pods are running. That is
+ * accepted rather than solved. If it ever has to be exact, the fix is a shared store (the rate
+ * limiter takes a Redis-backed one), not a bigger number here.
  *
  * The key is an employee id off the wire, so the map is an attack surface of its own: without
  * a bound, a script posting a fresh `emp` every request grows it until the pod dies. Two
@@ -42,7 +46,14 @@ export class Attempts {
     this.windowMs = windowMs;
     this.cap = cap;
   }
-  hit(key: string): boolean {
+  /** Has this employee id already spent its budget of failures for the window? A pure read —
+   *  nothing is recorded here, so naming an id costs the person who owns it nothing. */
+  isLocked(key: string): boolean {
+    const now = Date.now();
+    return (this.m.get(key) ?? []).filter((t) => now - t < this.windowMs).length >= this.max;
+  }
+  /** Records one **failed** sign-in against the employee id. */
+  hit(key: string): void {
     const now = Date.now();
     if (++this.hits % SWEEP_EVERY === 0) this.sweep();
     const a = (this.m.get(key) ?? []).filter((t) => now - t < this.windowMs);
@@ -51,7 +62,6 @@ export class Attempts {
     this.m.delete(key);
     while (this.m.size >= this.cap) this.m.delete(this.m.keys().next().value as string);
     this.m.set(key, a);
-    return a.length > this.max;
   }
   clear(key: string) {
     this.m.delete(key);
@@ -85,10 +95,14 @@ export function createAuthService(db: Db, config: Config) {
 
   return {
     async login(emp: string, password: string, meta: Meta): Promise<Session> {
-      if (attempts.hit(emp)) throw new RateLimitedError("Too many attempts for that employee id - wait a minute and try again.");
+      // Read the budget, spend it only on a failure. Counting the attempt before the password
+      // was checked charged a correct sign-in the same as a wrong one — so six tills coming on
+      // shift at once, every one of them typing the right password, put the sixth over the
+      // budget and 429'd it.
+      if (attempts.isLocked(emp)) throw new RateLimitedError("Too many attempts for that employee id - wait a minute and try again.");
       const u = await authRepo.userByEmp(db, emp);
       const ok = u ? await verifyPassword(u.passwordHash, password) : (await verifyPassword(DUMMY_HASH, password), false);
-      if (!u || !ok || !u.active) throw new UnauthenticatedError(BAD_LOGIN);
+      if (!u || !ok || !u.active) { attempts.hit(emp); throw new UnauthenticatedError(BAD_LOGIN); }
       attempts.clear(emp);
       return withTransaction(db, (tx) => issue(tx, u, randomUUID(), meta));
     },

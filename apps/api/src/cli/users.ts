@@ -2,7 +2,7 @@ import { parseArgs } from "node:util";
 import { loadConfig } from "../config.js";
 import { createDb } from "../db/client.js";
 import { createUser, deactivateUser, resetPassword } from "../lib/users-admin.js";
-import { LocKeySchema, RoleSchema, type LocKey, type Role } from "@rch/contract";
+import { LocKeySchema, MIN_PASSWORD_LENGTH, RoleSchema, type LocKey, type Role } from "@rch/contract";
 
 const { positionals, values } = parseArgs({
   allowPositionals: true,
@@ -21,6 +21,9 @@ const needLoc = (): LocKey => {
   if (!parsed.success) { console.error(`--loc must be one of ${LocKeySchema.options.join("|")} (got "${v}")`); process.exit(2); }
   return parsed.data;
 };
+/** What `createUser` will accept, said once here so the operator reads it before the refusal
+ *  rather than after: `lib/users-admin.ts`'s WORKS_AT is the rule, this is its help text. */
+const PAIRINGS = "prod works at kitchen; store and buyer at store; counter and manager at one of rest|coffee|kiosk";
 const config = loadConfig(process.env);
 const { db, pool } = createDb(config.databaseUrl, config.databaseSsl, { max: 1 });
 try {
@@ -31,6 +34,10 @@ try {
     }
     case "reset-password": await resetPassword(db, need("emp"), need("password")); console.log(`password reset for ${values.emp}; sessions revoked`); break;
     case "deactivate": await deactivateUser(db, need("emp")); console.log(`${values.emp} deactivated; sessions revoked`); break;
-    default: console.error("usage: users <create|reset-password|deactivate> --emp ... [--name --email --role --loc --phone --password]"); process.exit(2);
+    default:
+      console.error("usage: users <create|reset-password|deactivate> --emp ... [--name --email --role --loc --phone --password]");
+      console.error(`  --password  at least ${MIN_PASSWORD_LENGTH} characters (the same floor the change-password screen puts on it)`);
+      console.error(`  --role/--loc  ${PAIRINGS}`);
+      process.exit(2);
   }
 } finally { await pool.end(); }

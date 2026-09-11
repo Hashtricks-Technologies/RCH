@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { randomUUID } from "node:crypto";
 import { eq, sql } from "drizzle-orm";
 import { buildTestApp } from "../../test/app.js";
+import { warmPool } from "../../test/db.js";
 import { seedTestDb } from "../../test/seed.js";
 import type { App } from "../../app.js";
 import { refreshTokens, users } from "../../db/schema/index.js";
@@ -68,6 +69,18 @@ describe("login rate limit per employee id", () => {
     const r = await login(b, "RC-3120", "changeme");
     expect(r.statusCode).toBe(429);
   });
+  it("counts only failed sign-ins against the employee id, so five correct ones in a minute do not lock anybody out", async () => {
+    // The budget used to be spent before the password was even looked at, and only handed back
+    // once the sign-in had finished. Six tills coming on shift together — every one of them
+    // typing the right password — therefore all reached the counter before any of them cleared
+    // it, and the sixth was refused. Only a failure costs anything now.
+    // App `a`, whose per-IP budget is raised to 100: six sign-ins from one address in a minute
+    // is under it, so what is being measured here is the per-employee counter and nothing else.
+    // RC-4471 rather than one of the ids the refresh suite below counts rows for — six sign-ins
+    // mint six refresh families, and "reuse revokes the family" asserts over all of a user's.
+    const rs = await Promise.all(Array.from({ length: 6 }, () => login(a, "RC-4471")));
+    expect(rs.map((r) => r.statusCode)).toEqual([200, 200, 200, 200, 200, 200]);
+  });
 });
 
 describe("refresh", () => {
@@ -93,6 +106,9 @@ describe("refresh", () => {
   it("under concurrent reuse of the same cookie, exactly one refresh wins and the family dies with it", async () => {
     const first = await login(a, "RC-2088");
     const c1 = cookieOf(first).value;
+    // `pg` connects lazily: without two warm connections the two "concurrent" refreshes below
+    // run back to back on one, and the test passes even with `markUsed`'s atomic claim removed.
+    await warmPool(a.testDb!, 2);
     const [r1, r2] = await Promise.all([
       a.inject({ method: "POST", url: "/api/v1/auth/refresh", cookies: { rch_refresh: c1 } }),
       a.inject({ method: "POST", url: "/api/v1/auth/refresh", cookies: { rch_refresh: c1 } }),
@@ -228,8 +244,11 @@ describe("per-employee attempt map", () => {
     const at = new Attempts(5, 60_000, 3);
     for (const k of ["a", "b", "c", "d", "e"]) at.hit(k);
     expect(at.size).toBe(3);
-    // "a" and "b" were pushed out; the survivors keep their windows.
-    expect(at.hit("c")).toBe(false);
+    // "a" and "b" were pushed out; the survivors keep their windows. (`hit` records a failure
+    // and answers nothing now — whether a key is over budget is `isLocked`'s question, which
+    // login asks before it verifies rather than after.)
+    at.hit("c");
+    expect(at.isLocked("c")).toBe(false);
     expect(at.size).toBe(3);
   });
   it("drops keys whose window has gone quiet", () => {

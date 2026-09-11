@@ -21,6 +21,25 @@ describe("users-admin", () => {
     await expect(createUser(t.db, { emp: "RC-4471", name: "X", email: "x@x", role: "counter", loc: "rest", password: "temporary-pass-1" })).rejects.toThrow(/RC-4471/);
     await expect(createUser(t.db, { emp: "RC-9002", name: "X", email: "x@x", role: "counter", loc: "attic" as never, password: "temporary-pass-1" })).rejects.toThrow(/location/);
   });
+  it("refuses a password weaker than the one the user could have chosen themselves", async () => {
+    // MIN_PASSWORD_LENGTH (@rch/contract) is the same number ChangePasswordBodySchema enforces:
+    // an administrator's temporary password must not be the weaker of the two doors in.
+    await expect(createUser(t.db, { emp: "RC-9003", name: "X", email: "x@x", role: "counter", loc: "rest", password: "short-1" })).rejects.toThrow(/at least 10 characters/);
+    await expect(resetPassword(t.db, "RC-4471", "short-1")).rejects.toThrow(/at least 10 characters/);
+    // and nothing was written on the way to the refusal
+    expect(await t.db.select().from(users).where(eq(users.empNo, "RC-9003"))).toHaveLength(0);
+  });
+  it("refuses a role at a location that role never works at", async () => {
+    // Nothing downstream checks the pairing, so a Kitchen In-charge created at an outlet is an
+    // account that can act where its role was never meant to reach.
+    await expect(createUser(t.db, { emp: "RC-9004", name: "X", email: "x@x", role: "prod", loc: "coffee", password: "temporary-pass-1" })).rejects.toThrow("Kitchen In-charge works at kitchen, not at coffee");
+    await expect(createUser(t.db, { emp: "RC-9005", name: "X", email: "x@x", role: "buyer", loc: "kiosk", password: "temporary-pass-1" })).rejects.toThrow("Procurement Officer works at store, not at kiosk");
+    await expect(createUser(t.db, { emp: "RC-9006", name: "X", email: "x@x", role: "manager", loc: "store", password: "temporary-pass-1" })).rejects.toThrow("Outlet Manager works at rest or coffee or kiosk, not at store");
+    // The pairings that are right are still accepted.
+    const { id } = await createUser(t.db, { emp: "RC-9007", name: "Mani S", email: "mani.s@royalcare.in", role: "prod", loc: "kitchen", password: "temporary-pass-1" });
+    const [u] = await t.db.select().from(users).where(eq(users.id, id));
+    expect(u.loc).toBe("kitchen"); expect(u.roleLabel).toBe("Kitchen In-charge");
+  });
   it("reset-password sets a temporary password and revokes sessions", async () => {
     await t.db.insert(refreshTokens).values({ userId: "u1", family: "00000000-0000-4000-8000-000000000001", tokenHash: "h", expiresAt: new Date(Date.now() + 1000) });
     await resetPassword(t.db, "RC-4471", "another-temp-pass");
