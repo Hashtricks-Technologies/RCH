@@ -82,6 +82,9 @@ function OfflineBanner() {
         position: "fixed", insetInline: 0, top: 0, zIndex: 400, textAlign: "center",
         padding: "7px 16px", fontSize: 12, fontWeight: 600,
         background: "var(--crit)", color: "var(--ground)",
+        // It sits over the top of the header while it is up; nothing on it is clickable, so
+        // the burger and the search underneath stay reachable.
+        pointerEvents: "none",
       }}
     >
       No network — this terminal is offline
