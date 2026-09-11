@@ -5,13 +5,16 @@ import { hydrateItems, hydrateMaster, hydrateRoster } from "../data/master";
 import { fromWireBestBefore, fromWireDate, fromWireTime } from "../lib/fmt";
 import { useApp } from "../store";
 import { basePrices } from "../lib/selectors";
-import type { Bill, StockLoc } from "../types";
+import type { Bill, BillRow, StockLoc } from "../types";
 
 export type Snapshot = z.infer<typeof SnapshotSchema>;
 export type StockResponse = z.infer<typeof StockResponseSchema>;
 const t = fromWireTime;
 const hist = (h: { s: string; who: string; t: string }[]) => h.map((x) => ({ ...x, t: t(x.t) }));
-const billed = (b: Bill[]) => b.map((x) => ({ ...x, t: t(x.t) }));
+// ---- bill void: `iso` keeps the instant the wire sent beside the "HH:MM" the screens show.
+// A seven-day list cannot tell which day "09:12" belongs to, and the manager's void button has
+// to know whether the bill is still today's before it offers itself.
+const billed = (b: Bill[]): BillRow[] => b.map((x) => ({ ...x, iso: x.t, t: t(x.t) }));
 
 /** Quarantine is here and nowhere else that an operator acts: stock is *reported* for the
  *  rejected-goods shelf, so the store keeper can see what was turned away at a goods receipt.

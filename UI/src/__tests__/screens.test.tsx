@@ -16,7 +16,7 @@ import { screens as buyer } from "../roles/buyer";
 import { groupPool, picksFor, type PoolGroup } from "../roles/buyer/ProcurementList";
 import { USERS, seedVendors } from "@rch/contract/fixtures";
 import type { PoolLine } from "../lib/selectors";
-import type { Role, Ticket } from "../types";
+import type { BillRow, Role, Ticket } from "../types";
 import { as, resetStore } from "./fixture";
 
 // Nothing in production code carries data any more: the registries are empty until a snapshot
@@ -187,6 +187,62 @@ describe("drawers render", () => {
     const ticketed = render(createElement(DRAWERS.mreq, { id: "REQ-2026-0909" }));
     expect(awaitingTicket).toContain("Withdraw approval");
     expect(ticketed).not.toContain("Withdraw approval");
+  });
+});
+
+// ---- bill void ----
+/**
+ * The manager's own bill list, and the one button on it. What the server decides is voidable is
+ * re-decided in `pos.test.ts`; what these pin is that the screen offers the door to the one role
+ * that has it, on the one day it is open, and badges a bill somebody has already taken back.
+ */
+describe("the manager's bills, and the void door", () => {
+  const bill = (over: Partial<BillRow>): BillRow => ({
+    no: "CF/1188", loc: "coffee", opr: "Kavitha Raman", oprCol: "#B45309", tot: 40, tax: 1.9,
+    t: "09:12", iso: new Date().toISOString(), pay: "Cash", lines: [{ it: "juice", qty: 2, rate: 20 }], ...over,
+  });
+  const list = (bills: BillRow[]) => {
+    act(() => { as("manager"); useApp.setState({ bills }); });
+    return render(createElement(manager.bills));
+  };
+  const drawer = (role: Role, b: BillRow) => {
+    act(() => { as(role); useApp.setState({ bills: [b] }); });
+    return render(createElement(DRAWERS.cbill, { id: b.no }));
+  };
+
+  it("lists every outlet's bills, badges the voided one and leaves it out of billed", () => {
+    const html = list([
+      bill({ no: "CF/1188", loc: "coffee", tot: 40 }),
+      bill({ no: "KI/0301", loc: "kiosk", tot: 60, voided: true, voidReason: "Rang up twice" }),
+    ]);
+    expect(html).toContain("CF/1188");
+    expect(html).toContain("KI/0301");            // a voided bill stays on the list
+    expect(html).toContain("VOIDED");
+    expect(html).toContain("Rang up twice");
+    expect(html).toContain("Snack Kiosk");        // the column a counter never needs
+    // ₹40 billed, not ₹100: the ₹60 was taken back.
+    expect(html).toContain("Billed ₹40");
+    expect(html).toContain("1 voided, ₹60 taken back");
+    expect(html).not.toContain("Billed ₹100");
+  });
+
+  it("offers Void bill to the manager, on a bill from today that nobody has voided", () => {
+    expect(drawer("manager", bill({}))).toContain("Void bill");
+    // The counter took the bill; it is exactly the party that must not unsell its own takings.
+    expect(drawer("counter", bill({}))).not.toContain("Void bill");
+    // Yesterday's bill is an adjustment's job, and the button is not there to press.
+    expect(drawer("manager", bill({ iso: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString() }))).not.toContain("Void bill");
+    // A row with no instant cannot be told to be today's, so it offers nothing rather than guess.
+    expect(drawer("manager", bill({ iso: undefined }))).not.toContain("Void bill");
+  });
+
+  it("says what happened on a bill already voided, instead of offering the door again", () => {
+    const html = drawer("manager", bill({ voided: true, voidReason: "Wrong tender — customer paid cash" }));
+    expect(html).toContain("This bill was voided");
+    expect(html).toContain("Wrong tender — customer paid cash");
+    expect(html).not.toContain("Void bill");
+    // And the tender's own status word is gone: a bill that was taken back is not "Paid".
+    expect(html).not.toContain(">Paid<");
   });
 });
 

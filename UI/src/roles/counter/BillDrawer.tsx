@@ -1,15 +1,21 @@
+import { useState } from "react";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
 import { money } from "../../lib/fmt";
 import { DrawerFrame } from "../../ui/Drawer";
 import { registerDrawer, type DrawerProps } from "../../drawers";
-import { Avatar, Btn, DataTable, Pill, Section } from "../../ui/kit";
-import { billStatus } from "./status";
+import { Alert, Avatar, Btn, DataTable, Field, Pill, Section } from "../../ui/kit";
+import { billStatus, voidableToday } from "./status";
 
 function BillDrawer({ id }: DrawerProps) {
   const bills = useApp((s) => s.bills);
   const close = useApp((s) => s.closeDrawer);
   const notify = useApp((s) => s.notify);
+  // ---- bill void: the manager's own door, and nobody else's. The counter reads this drawer too.
+  const user = useApp((s) => s.user);
+  const voidBill = useApp((s) => s.voidBill);
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
   const bill = bills.find((b) => b.no === id);
 
   if (!bill) {
@@ -23,6 +29,16 @@ function BillDrawer({ id }: DrawerProps) {
   const L = LOC[bill.loc];
   const st = billStatus(bill.pay);
   const taxable = bill.tot - bill.tax;
+  // ---- bill void: same hospital day, not already taken back, and the manager alone. The
+  // server refuses all three again on its own read — this only decides whether to offer.
+  const canVoid = user?.r === "manager" && voidableToday(bill);
+  const doVoid = async () => {
+    setBusy(true);
+    const ok = await voidBill(bill.no, reason);
+    setBusy(false);
+    // A refusal leaves the reason where it was typed; only a void that landed clears it.
+    if (ok) { setReason(""); close(); }
+  };
 
   return (
     <DrawerFrame
@@ -31,6 +47,7 @@ function BillDrawer({ id }: DrawerProps) {
       foot={<>
         <Btn variant="gh" onClick={close}>Close</Btn>
         <div className="sp" />
+        {canVoid && <Btn variant="gh" disabled={busy || !reason.trim()} onClick={doVoid}>Void bill</Btn>}
         <Btn onClick={() => notify(`${bill.no} sent again to the ${L.c} printer`)}>Reprint</Btn>
       </>}
     >
@@ -41,8 +58,26 @@ function BillDrawer({ id }: DrawerProps) {
           <div className="mini">Counter Operator · raised this bill at {bill.t}</div>
         </div>
         <div className="sp" />
-        <Pill tone={st.tone}>{st.label}</Pill>
+        {bill.voided ? <Pill tone="cr">VOIDED</Pill> : <Pill tone={st.tone}>{st.label}</Pill>}
       </div>
+
+      {/* ---- bill void ---- */}
+      {bill.voided && (
+        <Alert tone="w" label="This bill was voided">
+          {bill.voidReason || "No reason was recorded."} The stock went back on the shelf it came off,
+          and the amount is out of the day's takings.
+        </Alert>
+      )}
+      {canVoid && (
+        <Field label="Void this bill" hint="Same-day only. The lines go back on the shelf and the amount leaves the day's takings; the bill stays on the list, badged.">
+          <input
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder="Why is this bill being voided?"
+            maxLength={500}
+          />
+        </Field>
+      )}
 
       <dl className="dl">
         <dt>Outlet</dt><dd>{L.n} <span className="mini">({L.c})</span></dd>

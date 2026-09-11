@@ -21,7 +21,9 @@ export default function Dashboard() {
   const loc = user.loc;
   const L = LOC[loc];
 
-  const mine = s.bills.filter((b) => b.loc === loc);
+  // ---- bill void: a bill somebody took back is not takings and the items on it were not sold.
+  // It stays on the bill list, badged; every figure on this dashboard is drawn from `mine`.
+  const mine = s.bills.filter((b) => b.loc === loc && !b.voided);
   const billed = sum(mine, (b) => b.tot);
   const itemsSold = sum(mine, (b) => sum(b.lines, (l) => l.qty));
   const avgBill = mine.length ? billed / mine.length : 0;

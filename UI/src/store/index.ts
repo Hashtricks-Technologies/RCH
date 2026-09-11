@@ -6,7 +6,7 @@ import { refetch } from "../api/refetch";
 import { applySnapshot } from "../api/wire";
 import { LOC } from "../data/master";
 import type {
-  Batch, Bill, CreditResponse, DraftLine, DrawerState, Grn, LocKey, Payer, PordStatus, ProdOrder,
+  Batch, BillRow, CreditResponse, DraftLine, DrawerState, Grn, LocKey, Payer, PordStatus, ProdOrder,
   PurchaseOrder, Requisition, StockLedgerRow, StockLoc, StockRequest, Tender, Ticket, User, Vendor,
 } from "../types";
 import { applyTheme, nextTheme, readStoredTheme, storeTheme, type ThemePref } from "../lib/theme";
@@ -35,7 +35,9 @@ export interface AppState extends ProcurementSlice, OpsSlice {
   po: PurchaseOrder[];
   pord: ProdOrder[];
   batch: Batch[];
-  bills: Bill[];
+  // ---- bill void: `BillRow` is a wire bill plus the ISO instant `applyBills` keeps beside the
+  // "HH:MM" it renders, so a seven-day list and the void button can tell which day a bill is.
+  bills: BillRow[];
   grn: Grn[];
   vendors: Vendor[];
   sales: number[][];
@@ -67,6 +69,10 @@ export interface AppState extends ProcurementSlice, OpsSlice {
   addToCart: (loc: LocKey, it: string, d?: number) => void;
   clearCart: (loc: LocKey) => void;
   pay: (loc: LocKey, tender: Tender, payer?: Payer) => Promise<void>;
+  // ---- bill void: the manager's door out of a mis-keyed bill, on the day it was billed.
+  // Answers `true` only once the server has taken it, so a refusal leaves the typed reason
+  // in front of them (the form-carrying pattern).
+  voidBill: (no: string, reason: string) => Promise<boolean>;
 
   toggleAvail: (loc: LocKey, it: string) => Promise<void>;
 
@@ -267,6 +273,19 @@ export const useApp = create<AppState>((set, get) => ({
       await refetch(r.changed, r.message);
     } catch (e) {
       get().notify(e instanceof ApiError ? e.message : "Could not take the bill — check the connection and try again.");
+    }
+  },
+
+  // ---- bill void ----
+  voidBill: async (no, reason) => {
+    try {
+      const r = await call(routes.voidBill, { params: { no }, body: { reason } });
+      get().notify(r.message);
+      await refetch(r.changed, r.message);
+      return true;
+    } catch (e) {
+      get().notify(e instanceof ApiError ? e.message : "Could not void the bill — check the connection and try again.");
+      return false;
     }
   },
 
