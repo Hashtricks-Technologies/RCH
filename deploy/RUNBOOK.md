@@ -407,7 +407,13 @@ initContainer that exits on `Invalid environment: SEED_PASSWORD: Too small …` 
 never starts. On dev and staging `--atomic` rolls that back; **production deliberately upgrades
 without `--atomic`** (§3), so the release is left sitting in `pending-install`/`pending-upgrade`
 and has to be cleaned up by hand before the next attempt. The `Every secret the chart needs is
-present` step in `deploy.yml` checks for it ahead of the upgrade for exactly this reason.
+present` step in `deploy.yml` checks the GitHub secrets ahead of a **dev or staging** upgrade —
+and **only** those two: it is `if: head_branch != 'production'`, because production's secrets
+live in AWS Secrets Manager rather than GitHub, and `values-prod.yaml`'s `secrets.create: false`
+means the chart's own `required` guard never sees them either. So the one environment that cannot
+roll itself back is also the one with **no automated pre-flight**. Production's check is the
+manual one-liner in §11's ExternalSecret bullet; run it before every promotion, not only the
+first.
 
 ### Promote
 
@@ -487,7 +493,19 @@ kubectl label namespace rch         elbv2.k8s.aws/pod-readiness-gate-inject=enab
   Create the AWS Secrets Manager secret `rch/prod` as one JSON object with **five** keys —
   `DATABASE_URL`, `JWT_PRIVATE_KEY`, `JWT_PUBLIC_KEY`, `JWT_PREVIOUS_PUBLIC_KEY` (may be empty
   until the first key rotation) and **`SEED_PASSWORD`** (may not) — and grant the ESO IRSA role
-  read access to it. The `ExternalSecret` uses `dataFrom: [{ extract: … }]`, which copies every
+  read access to it. Then prove the five keys are there, because nothing in `deploy.yml` will
+  (its secret pre-flight step is skipped for `production` — §2):
+
+  ```bash
+  aws secretsmanager get-secret-value --secret-id rch/prod --query SecretString --output text \
+    | jq -e '(.DATABASE_URL|length) > 0 and (.JWT_PRIVATE_KEY|length) > 0
+             and (.JWT_PUBLIC_KEY|length) > 0 and has("JWT_PREVIOUS_PUBLIC_KEY")
+             and (.SEED_PASSWORD|length) >= 12' >/dev/null && echo "rch/prod: all five keys present"
+  ```
+
+  `jq -e` exits non-zero on a missing or empty key (or a seed password under twelve characters,
+  which `config.ts` refuses too), and prints nothing but the verdict — the values never reach the
+  terminal. The `ExternalSecret` uses `dataFrom: [{ extract: … }]`, which copies every
   key of the remote JSON, so there is no template entry to add and no error if one is missing:
   the pod simply never starts, because `SEED_PASSWORD` is required by `config.ts` and the migrate
   initContainer loads it first. Production upgrades **without `--atomic`** (§3), so a remote
@@ -1520,7 +1538,9 @@ scoped to what a deploy needs, and needs no change.
    `DEPLOY_ENABLED=true`, the six repository secrets (**`SEED_PASSWORD` is the new one, and
    blocking**), the `staging` environment's three, and AWS Secrets Manager's `rch/prod` with its
    **five** keys: the table under "The release, prepared and not performed" above lists each one
-   and what it populates, and §2 says where the workflow reads it. Do this **before the next push
+   and what it populates, and §2 says where the workflow reads it — and run the `jq -e` check in
+   the ExternalSecret bullet above, since production's secrets get no pre-flight from the
+   workflow. Do this **before the next push
    to any environment**, including `dev`: the api container will not start without a seed
    password, and `--atomic` rolls the release back when it doesn't. A missing one is caught
    early now — `deploy.yml` has a named `Every secret the chart needs is present` step before

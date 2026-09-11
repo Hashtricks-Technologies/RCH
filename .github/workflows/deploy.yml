@@ -107,9 +107,10 @@ jobs:
       # one is not an error helm reports: --set-string writes the empty string into the
       # Secret, the api container fails config validation minutes later, and the log says
       # nothing about where the blank came from. Refuse here, by name, before anything moves.
-      # production is exempt: it reads the same four from AWS Secrets Manager through the
-      # External Secrets Operator (values-prod.yaml), so these GitHub secrets are empty there
-      # on purpose.
+      # production is exempt: it reads these four plus JWT_PREVIOUS_PUBLIC_KEY from AWS
+      # Secrets Manager through the External Secrets Operator (values-prod.yaml), so these
+      # GitHub secrets are empty there on purpose — and production therefore gets NO pre-flight
+      # here. RUNBOOK §11's ExternalSecret bullet carries the manual `jq -e` check instead.
       - name: Every secret the chart needs is present
         if: github.event.workflow_run.head_branch != 'production'
         env:
