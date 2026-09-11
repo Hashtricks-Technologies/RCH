@@ -1,4 +1,4 @@
-import { check, integer, pgTable, primaryKey, text } from "drizzle-orm/pg-core";
+import { check, date, integer, pgTable, primaryKey, text } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { prodOrderStatusEnum } from "./enums.js";
 import { items, locations, qty, ts, users } from "./master.js";
@@ -9,6 +9,9 @@ export const prodOrders = pgTable("prod_orders", {
   byUser: text("by_user").notNull().references(() => users.id),
   at: ts("at").notNull().defaultNow(),
   status: prodOrderStatusEnum("status").notNull(),
+  // ---- prod-order raise ---- when the outlet needs it by. Nullable, because most orders carry
+  // no date at all and a defaulted one would read as a deadline nobody set.
+  needBy: date("need_by"),
   note: text("note").notNull().default(""),
   updatedAt: ts("updated_at").notNull().defaultNow(),
 });
