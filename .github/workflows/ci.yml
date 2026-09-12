@@ -78,13 +78,13 @@ jobs:
       - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v3
       - name: Build api
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         # load: true (both here and for ui below) puts the image into the local Docker
         # daemon so Trivy and `kind load docker-image` can see it — that requires a single
         # platform, hence pinning it rather than leaving it to buildx's default.
         with: { context: ., file: apps/api/Dockerfile, push: false, load: true, platforms: linux/amd64, tags: rch-api:ci, cache-from: type=gha, cache-to: "type=gha,mode=max" }
       - name: Build ui
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with: { context: ., file: UI/Dockerfile, push: false, load: true, platforms: linux/amd64, tags: rch-ui:ci, cache-from: type=gha, cache-to: "type=gha,mode=max" }
       # HIGH as well as CRITICAL: a hospital till and its store ledger are not a place to wait
       # for a HIGH to be re-rated before acting on it, and ignore-unfixed already keeps the gate
