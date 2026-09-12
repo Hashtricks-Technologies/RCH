@@ -97,8 +97,10 @@ Browser (React 19, Vite) ──HTTPS──▶ API (Fastify 5, Node 24) ──▶
   `Idempotency-Key`, so a retry cannot produce a second bill.
 - **`UI`** — React 19 + Zustand. Signs in for real, hydrates from `GET /snapshot`, posts writes
   back, and refetches only the slices a write says it changed.
-- **Deployment** — Helm on EKS, PostgreSQL on Amazon RDS in staging and production; locally and
-  in CI, a `postgres:17` Docker container.
+- **Deployment** — a single EC2 instance under Docker Compose today (`deploy/RUNBOOK.md` §16);
+  Helm on EKS with PostgreSQL on Amazon RDS is prepared for staging and production
+  (`deploy/RUNBOOK.md` §15, §11) but not provisioned. Locally and in CI, a `postgres:17` Docker
+  container either way.
 
 ## Repository layout
 
@@ -157,8 +159,11 @@ first.
 does on its own — `deploy/RUNBOOK.md` §11 is the ordered go-live checklist: the AWS values still
 marked `FILL`, generating and storing the production JWT keys, creating real staff accounts and
 deactivating the seeded ones (which must not exist in production), the restore drill, and the
-promotion commands themselves. A `dev` environment is already live at
-https://rch.hashtrickstechnologies.com (`deploy/RUNBOOK.md` §15); staging and production are not.
+promotion commands themselves. A `dev` environment is live at
+https://rch.hashtrickstechnologies.com, on a single EC2 instance under Docker Compose
+(`deploy/RUNBOOK.md` §16 — the EKS environment §15 describes was torn down on 2026-09-12 for its
+cost against an idle cluster, and is stood back up from the same chart and CloudFormation the day
+that trade-off changes); staging and production are not provisioned either way.
 
 ## Everyday commands
 
@@ -263,9 +268,11 @@ the database as constraints. Its last block is the exception: five capabilities 
 the payer register and the kitchen order an outlet can raise, all described above. Every decision
 either block took is a row in spec §16, which is where to read before reopening one.
 
-**`develop` is deployed.** A dev environment on AWS (EKS, RDS, ACM, Route 53) is live at
-**https://rch.hashtrickstechnologies.com**, deploying once CI is green on a push to `develop` — `deploy/
-RUNBOOK.md` §15 records how it was stood up and what tripped on the way there. Staging and
+**`develop` is deployed.** A dev environment is live at **https://rch.hashtrickstechnologies.com**,
+on a single EC2 instance under Docker Compose (`deploy/RUNBOOK.md` §16) — `develop`'s own EKS/RDS
+environment (§15) was torn down on 2026-09-12 for its cost against an idle cluster, and this is
+the cheaper stand-in, deployed by hand rather than by a push to `develop` (`DEPLOY_ENABLED` is
+`false` for exactly that reason: nothing pushes to a cluster that no longer exists). Staging and
 production are still exactly the release decision above: prepared, not provisioned.
 
 ## Where the documents are

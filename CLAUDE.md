@@ -39,7 +39,7 @@ merge, so what reaches production is byte-identical to what passed on staging.
 
 | Branch | Role | Deploys to |
 |---|---|---|
-| `develop` | **Default.** All work lands here (feature branches by PR, or direct commits while the team is one person). | `rch-dev` namespace, once CI is green on that push — the dev environment at https://rch.hashtrickstechnologies.com, one spot node, `values-dev.yaml` |
+| `develop` | **Default.** All work lands here (feature branches by PR, or direct commits while the team is one person). | Nothing automatic today — the dev environment at https://rch.hashtrickstechnologies.com is one EC2 instance under Docker Compose (`deploy/RUNBOOK.md` §16), deployed by hand with `git pull && deploy/compose/deploy.sh`. The EKS path (`rch-dev` namespace, `values-dev.yaml`, one spot node) is prepared and `DEPLOY_ENABLED` is `false` so a push cannot try it against a cluster that no longer exists (§15) |
 | `staging` | Release candidate | `rch-staging` namespace, once CI is green on that push |
 | `production` | What the hospital runs | `rch` namespace, once CI is green on that push, behind a GitHub environment approval |
 

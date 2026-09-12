@@ -2182,3 +2182,125 @@ difference that matters: the password those accounts get is now `SEED_PASSWORD` 
 environment, which has to exist as a secret before the deploy that precedes this command (§15.3).
 **The six accounts seeded on `dev` before that change still carry the published `changeme`** and
 need resetting (§11 step 4) — a required variable stops it recurring, it does not undo it.
+
+## 16. Single-instance deploy (EC2 + Compose)
+
+**Why this exists.** On 2026-09-12, with the EKS environment §15 describes costing roughly
+$438/month and idle outside active development, the account owner tore it down completely (RDS
+instance, the `rch-dev` CloudFormation stack, the cluster and its node group, the load
+balancer, the DNS records, the certificate, the two ECR repositories and the deploy role — one
+RDS snapshot, `rch-dev-final-20260912`, was kept before the delete). `DEPLOY_ENABLED` is set
+`false` so a push to `develop` no longer tries to deploy to a cluster that is gone. In its
+place: one EC2 instance running the application under Docker Compose, at roughly a tenth of the
+cost, with an ordinary daily EBS snapshot standing in for RDS's automated backups. §15's
+cluster, chart and CloudFormation stay exactly as written — reachable again with
+`eksctl create cluster` and an `aws cloudformation deploy` the day a second environment (or the
+availability a managed control plane buys) is worth the cost again — this section does not
+retire them, it is the cheaper thing running meanwhile.
+
+`deploy/compose/` is the whole of it: `compose.yml`, `Caddyfile`, `.env.example`, `deploy.sh`,
+`backup.sh`, `compose.test.sh` (`pnpm compose:test`, the compose analogue of `helm:test`) and
+its own `README.md` with the day-to-day commands. This section is what provisioned the box
+around it and the reasoning behind each piece; `deploy/compose/README.md` is what an operator
+runs.
+
+### 16.1 What runs, and why it is shaped this way
+
+Four containers, one instance, one Docker network: `postgres`, a one-shot `migrate` (the same
+`dist/cli/migrate.mjs` the EKS `migrate` initContainer runs, ordered ahead of `api` by
+compose's own `depends_on: condition: service_completed_successfully`), `api` and `ui` (built
+from the identical `apps/api/Dockerfile` / `UI/Dockerfile` the EKS path builds — one image
+definition per service, two places to run it), and `caddy` in front for automatic HTTPS.
+
+**Caddy reaches `api` and `ui` directly, with no second reverse-proxy hop.** The EKS path is
+ALB → (path routing) → `ui`'s nginx (which itself proxies `/api/` onward) or `api`; on one box,
+Caddy's own path routing (`handle /api/*` vs `handle`) reaches each container directly, so
+`TRUST_PROXY=1` (one hop) is correct unchanged — `ui`'s nginx still carries its `/api/` block
+(it is the same image), it is simply never asked to use it here. `flush_interval -1` on the API
+route is what keeps `/api/v1/events` (server-sent events) streaming rather than buffered.
+
+**The API's distroless runtime image has no shell**, so it carries no `HEALTHCHECK` a container
+orchestrator could run; `restart: unless-stopped` recovers a crash, and `deploy.sh`'s own final
+step — polling `https://<domain>/healthz` through Caddy — is the health check that matters,
+since it proves the whole chain rather than one container in isolation.
+
+**`DATABASE_SSL=false` is set explicitly.** The API image always sets `NODE_ENV=production`, and
+`config.ts`'s `databaseSsl` defaults to `true` whenever it is unset in production — right for
+RDS, wrong for a container Postgres on the same Docker network with no TLS listener at all.
+
+**Seeding still needs `--yes-seed rch`,** for the same reason §15.7 gives for the cluster: the
+image runs `NODE_ENV=production` here too, and the guard does not treat "just launched on a new
+box" as a reason to skip it. `deploy.sh` passes it automatically, and only the first time the
+`users` table is empty — a later `deploy.sh` run against a stack that already has data is a
+no-op on this step.
+
+### 16.2 What was provisioned, once, by hand
+
+Region `ap-south-1`, account `830283280199`, the same default VPC (`vpc-01ca67a181cb36d34`)
+§15's cluster used:
+
+- **Instance** `i-0b581bbf5e55e7a7f`, `t4g.medium` (2 vCPU, 4 GiB, Arm — Graviton is why the
+  Compose deploy costs roughly half what the same shape costs on `t3`), Ubuntu 24.04 LTS arm64
+  (`ami-004fef5ef59c0175f`, read from the `/aws/service/canonical/...` SSM parameter rather than
+  pinned, so a rebuild picks up whatever is current), 30 GB gp3 root volume, encrypted,
+  `IMDSv2` required (`HttpTokens=required`). User data installs Docker CE, the compose plugin,
+  a 2 GB swap file (a t4g.medium's 4 GiB is comfortably enough for four containers, and swap is
+  the difference between a slow moment under `docker compose build` and an OOM-killed one),
+  and the AWS CLI — the box needs the last one for its own nightly backup upload.
+- **Key pair** `rch-box` (Ed25519), private half at `~/.ssh/rch-box.pem` on the operator's own
+  machine — it is not in git and has no other copy.
+- **Security group** `sg-0592a55147df5d0a3` (`rch-box`): 22/tcp from the operator's own IP only,
+  80/tcp and 443/tcp from anywhere (Caddy needs 80 for the ACME HTTP-01 challenge as well as the
+  plain-HTTP → HTTPS redirect). Widen or narrow the SSH rule with
+  `aws ec2 authorize-security-group-ingress` / `revoke-security-group-ingress` as the operating
+  IP changes; there is no bastion and no SSM Session Manager wired up for this box.
+- **Elastic IP** `65.2.95.154`, associated with the instance so a stop/start (unlike a
+  terminate/relaunch) never changes the address DNS points at.
+- **IAM role + instance profile** `rch-box`, trusted by `ec2.amazonaws.com`, carrying exactly
+  one inline policy (`rch-backups-write`): `s3:PutObject` and `s3:ListBucket` on the backup
+  bucket below and nothing else — the box cannot reach any other AWS resource, including the
+  torn-down EKS account's own leftovers, with this role.
+- **S3 bucket** `rch-backups-830283280199`, public access blocked, a 30-day expiration
+  lifecycle rule on every object (so the nightly dumps do not accumulate forever) — `backup.sh`
+  writes to it under `db/`.
+- **DLM lifecycle policy** (`policy-0d0f10f7fc51be10e`): a daily EBS snapshot of every volume
+  tagged `project=rch` (the instance's root volume is), at 21:30 UTC, 7 kept. This is the
+  whole-box safety net beside `backup.sh`'s logical dump — a bad `apt upgrade` or a full-disk
+  Docker mess is a volume restore, not a rebuild from `eksctl create cluster` all over again.
+- **Route 53** `rch.hashtrickstechnologies.com` A record (zone `Z066296313TA69I4LDOOI`,
+  TTL 60s — short, so a future re-point of the IP propagates quickly), pointed at the Elastic IP
+  above rather than at anything ALB-shaped.
+
+None of the above is in Terraform, CloudFormation or a script committed to this repository —
+it was five `aws ec2` / `aws iam` / `aws s3api` / `aws dlm` / `aws route53` calls run once by
+hand, listed here so the next person (or the next agent) can read what exists without
+reconstructing it from the console. A `deploy/cfn/` template for this shape would be reasonable
+future work if the box is ever rebuilt from scratch more than once.
+
+### 16.3 First deploy and later ones
+
+```bash
+ssh -i ~/.ssh/rch-box.pem ubuntu@rch.hashtrickstechnologies.com
+git clone https://github.com/Hashtricks-Technologies/RCH.git rch && cd rch
+cp deploy/compose/.env.example deploy/compose/.env
+# fill in DOMAIN, POSTGRES_PASSWORD, JWT_PRIVATE_KEY / JWT_PUBLIC_KEY
+# (pnpm --filter @rch/api keys:generate, run anywhere with Node — the box itself needs none),
+# SEED_PASSWORD (12+ characters), BACKUP_BUCKET
+deploy/compose/deploy.sh
+```
+
+A later deploy is `git pull && deploy/compose/deploy.sh` — it rebuilds only what changed, brings
+the stack up in the same dependency order, and never reseeds a database that already has rows
+in `users`. Add the cron line from `deploy/compose/README.md` once, for the nightly backup.
+
+### 16.4 What this trades away against the EKS path
+
+One instance, so no rolling deploy — `deploy.sh` restarts `api` and `ui` in place, a handful of
+seconds of connection refused rather than the EKS path's zero-downtime rollout. No horizontal
+scaling — this shape suits the load a single hospital's F&B operation puts on it (§12's load
+check), not a multi-tenant deployment. The database's durability is a nightly logical dump plus
+a daily disk snapshot, not RDS's continuous point-in-time recovery — restoring means replaying
+today's dump against a fresh `postgres:17`, losing whatever changed since the last one ran,
+which for this box is at most last night's business. If either trade-off stops being
+acceptable, §15's cluster and chart are still the answer; nothing here prevents standing them
+back up.

@@ -1,0 +1,24 @@
+{
+	# No admin API listening on this box — nothing here needs to reconfigure Caddy live, and an
+	# open admin socket is one more thing to firewall for no benefit.
+	admin off
+}
+
+{$DOMAIN} {
+	encode gzip
+
+	# The API first, matched on path, so it never falls through to the UI container's own
+	# `/api/` proxy block — that block exists only for the image's other deploy target (the K8s
+	# ingress routes the same way, API path first). `flush_interval -1` streams every response
+	# immediately rather than buffering it, which is what `/api/v1/events` (server-sent events)
+	# needs to stay live; it costs nothing on the ordinary JSON responses beside it.
+	handle /api/* {
+		reverse_proxy api:3000 {
+			flush_interval -1
+		}
+	}
+
+	handle {
+		reverse_proxy ui:8080
+	}
+}
