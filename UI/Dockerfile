@@ -9,7 +9,7 @@ COPY UI ./UI
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile --filter @rch/ui... \
  && pnpm --filter @rch/ui build
 
-FROM nginxinc/nginx-unprivileged:1.27-alpine AS runtime
+FROM nginxinc/nginx-unprivileged:1.30-alpine-slim AS runtime
 ENV API_UPSTREAM=http://rch-api:3000
 # Populates $NGINX_LOCAL_RESOLVERS from /etc/resolv.conf before envsubst runs,
 # so the nginx template's `resolver` directive works under Docker and Kubernetes
