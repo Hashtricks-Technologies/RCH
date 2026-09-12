@@ -130,7 +130,7 @@ jobs:
       - name: Cache the browser the smoke drives
         # The store path Playwright downloads into, keyed by the lockfile that pins the
         # resolved version — a browser is ~150 MB and never changes between runs of one.
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         id: playwright-cache
         with:
           path: ~/.cache/ms-playwright
