@@ -25,3 +25,30 @@ vulnerabilities:
   - id: CVE-2026-31789
     statement: 32-bit only; both images are linux/amd64. Awaiting the distroless base bump.
     expired_at: 2026-09-30
+
+  # Five libssl3 findings in the same base image, all fixed in Debian (3.0.19-1~deb12u2 and
+  # 3.0.20-1~deb12u2) and not yet in gcr.io/distroless/nodejs24-debian12:nonroot, which still
+  # carries 3.0.18-1~deb12u2 (read from /var/lib/dpkg/status.d/libssl3 on 2026-09-12). The
+  # api process never loads that library: the Node binary in the image is the official build
+  # with OpenSSL linked in statically (OpenSSL 3.5.5 in the binary's own version string, and
+  # no `libssl.so.3` or `libcrypto.so.3` among its dynamic dependencies — checked on the
+  # image's `/nodejs/bin/node` on 2026-09-12), so TLS to RDS, the JWT signatures and every use
+  # of crypto run on Node's own copy. Debian's libssl3 is in the image only as a dependency the
+  # distroless build lists, and a distroless image runs no second process that could load it.
+  # Same expiry as the entry above, on purpose: one date, one review, and the fix for all six
+  # is the same rebuild once the base ships the newer package.
+  - id: CVE-2026-28387
+    statement: Debian libssl3 is not loaded by the api; Node links its own OpenSSL. Awaiting the distroless base bump.
+    expired_at: 2026-09-30
+  - id: CVE-2026-28388
+    statement: Debian libssl3 is not loaded by the api; Node links its own OpenSSL. Awaiting the distroless base bump.
+    expired_at: 2026-09-30
+  - id: CVE-2026-28389
+    statement: Debian libssl3 is not loaded by the api; Node links its own OpenSSL. Awaiting the distroless base bump.
+    expired_at: 2026-09-30
+  - id: CVE-2026-28390
+    statement: Debian libssl3 is not loaded by the api; Node links its own OpenSSL. Awaiting the distroless base bump.
+    expired_at: 2026-09-30
+  - id: CVE-2026-45447
+    statement: Debian libssl3 is not loaded by the api; Node links its own OpenSSL. Awaiting the distroless base bump.
+    expired_at: 2026-09-30
