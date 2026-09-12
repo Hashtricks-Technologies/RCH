@@ -101,7 +101,7 @@ jobs:
           exit-code: "1"
           ignore-unfixed: true
           trivyignores: .trivyignore.yaml
-      - uses: azure/setup-helm@v4
+      - uses: azure/setup-helm@v5
       - run: aws eks update-kubeconfig --name "$CLUSTER" --region "${{ secrets.AWS_REGION }}"
       # dev and staging pass their four secrets to helm from the GitHub environment. An unset
       # one is not an error helm reports: --set-string writes the empty string into the

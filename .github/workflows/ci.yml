@@ -100,7 +100,7 @@ jobs:
       # §14 Phase 1 exit amendment). Lives at the end of this job, not a separate one that
       # `needs: images`, because the images above are only in this runner's local Docker
       # daemon (load: true) — a second job would have to rebuild or re-push/pull them.
-      - uses: azure/setup-helm@v4
+      - uses: azure/setup-helm@v5
       - name: Create kind cluster
         uses: helm/kind-action@v1
         with: { cluster_name: rch }
@@ -158,5 +158,5 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
-      - uses: azure/setup-helm@v4
+      - uses: azure/setup-helm@v5
       - run: deploy/chart/rch/tests/render.test.sh
