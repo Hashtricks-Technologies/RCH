@@ -544,3 +544,13 @@ td.n b{font-weight:600;color:var(--ink)}
   .print-slip .print-only { margin-top: 8mm; font-size: 11px }
   @page { margin: 12mm }
 }
+
+/* ---------- admin dashboard: no Shell, its own chrome ---------- */
+#admin-dash{min-height:100%;background:var(--ground)}
+.adm-top{position:sticky;top:0;z-index:60;background:var(--surface);border-bottom:1px solid var(--line);
+  padding:0 18px;display:flex;align-items:center;gap:14px;height:53px}
+.adm-brand{display:flex;align-items:center;gap:9px;font-weight:700;font-size:14px}
+.adm-brand i{width:26px;height:26px;border-radius:7px;background:var(--accent-soft);color:var(--accent);
+  display:grid;place-items:center;font-style:normal;font-size:11px;font-family:"IBM Plex Mono",monospace;font-weight:700}
+.adm-who{flex:1;color:var(--ink-3);font-size:12.5px}
+.adm-body{max-width:1180px;margin:0 auto;padding:20px 18px 46px}

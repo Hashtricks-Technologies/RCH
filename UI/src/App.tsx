@@ -8,7 +8,7 @@ import Login from "./pages/Login";
 import ChangePassword from "./pages/ChangePassword";
 import Settings from "./pages/Settings";
 import Support from "./pages/Support";
-import AdminUsers from "./pages/AdminUsers";
+import AdminDashboard from "./pages/AdminDashboard";
 import { Btn, PageHead, Card } from "./ui/kit";
 import { screens as counter } from "./roles/counter";
 import { screens as manager } from "./roles/manager";
@@ -40,15 +40,24 @@ function Denied({ k }: { k: string }) {
   return <Navigate to={"/" + HOME[user.r]} replace />;
 }
 
+/** The admin-only equivalent of `<Denied>`: an admin-flagged account has no operational role to
+ *  describe it by (a capability, not a role — root CLAUDE.md), so `labelOf` — which reads a
+ *  role's own `NAV` — has nothing to answer with here. Says so in its own words instead, and
+ *  sends the account back to the one place it has. */
+function BackToAdmin() {
+  const notify = useApp((s) => s.notify);
+  useEffect(() => { notify("That screen is not part of this account — you are back on account management."); }, [notify]);
+  return <Navigate to="/admin" replace />;
+}
+
 function Screen() {
   const { key = "" } = useParams();
   const user = useApp((s) => s.user);
   if (!user) return <Navigate to="/login" replace />;
-  // A capability, not a role (root CLAUDE.md): `admin` is on no role's `NAV`, so it has to be
-  // checked ahead of `canSee` rather than looked up in it — the same door `settings`/`issues`
-  // are handled through, one step earlier because those two keys sit on every role's own sidebar
-  // and this one sits on nobody's.
-  if (key === "admin") return user.admin ? <AdminUsers /> : <Denied k={key} />;
+  // A capability, not a role (root CLAUDE.md): an admin-flagged account has no `NAV` entry, no
+  // sidebar and no operational home — `/admin` is the only key it can ever reach, checked here,
+  // ahead of `canSee`, which only ever knows about the five operational roles.
+  if (user.admin) return key === "admin" ? <AdminDashboard /> : <BackToAdmin />;
   if (!canSee(user.r, key)) return <Denied k={key} />;
   if (key === "settings") return <Settings />;
   if (key === "issues") return <Support />;
@@ -150,12 +159,21 @@ function Page() {
       </div>
     );
   }
+  // Where a signed-in account lands: `/admin` for the capability, never `HOME[user.r]` — an
+  // admin-flagged account's nominal role is bookkeeping the schema needs, not an identity this
+  // app shows it (root CLAUDE.md).
+  const home = user ? (user.admin ? "admin" : HOME[user.r]) : "login";
   return (
     <Routes>
-      <Route path="/login" element={user ? <Navigate to={mcp ? "/change-password" : "/" + HOME[user.r]} replace /> : <Login />} />
+      <Route path="/login" element={user ? <Navigate to={mcp ? "/change-password" : "/" + home} replace /> : <Login />} />
       <Route path="/change-password" element={user ? <ChangePassword /> : <Navigate to="/login" replace />} />
-      <Route path="/:key" element={user ? (mcp ? <Navigate to="/change-password" replace /> : <Shell><Screen /></Shell>) : <Navigate to="/login" replace />} />
-      <Route path="*" element={<Navigate to={user ? "/" + HOME[user.r] : "/login"} replace />} />
+      <Route
+        path="/:key"
+        element={user
+          ? (mcp ? <Navigate to="/change-password" replace /> : (user.admin ? <Screen /> : <Shell><Screen /></Shell>))
+          : <Navigate to="/login" replace />}
+      />
+      <Route path="*" element={<Navigate to={"/" + home} replace />} />
     </Routes>
   );
 }

@@ -16,9 +16,9 @@ test.describe("everyone gets their own portal", () => {
     // UA-01: a counter operator following a direct link to the buyer's purchase orders, whose
     // route key is `orders` (UI/src/nav.ts) — a key that exists for two other roles and for
     // neither of the counter's, which is what makes this a guard test and not a 404 test.
-    // `/#/po` is not a key for anybody, so it would redirect on an unknown route and prove
+    // `/po` is not a key for anybody, so it would redirect on an unknown route and prove
     // nothing about `canSee`.
-    await page.goto("/#/orders");
+    await page.goto("/orders");
     // Home again, and told why — the guard in App.tsx has raised a toast since before there was
     // a server, and the sidebar never offered the link in the first place.
     await expect(page.getByRole("heading", { level: 1, name: "Point of Sale" })).toBeVisible();
@@ -37,7 +37,7 @@ test.describe("everyone gets their own portal", () => {
 
 test.describe("a refused sign-in", () => {
   test("says why, on the form, and the sentence stays there", async ({ page }) => {
-    await page.goto("/#/");
+    await page.goto("/");
     await page.getByLabel("Employee id").fill(ROLES.counter.emp);
     await page.getByLabel("Password", { exact: true }).fill("not-the-password");
     await page.getByRole("button", { name: "Sign in" }).click();

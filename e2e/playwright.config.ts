@@ -17,8 +17,9 @@ export default defineConfig({
   timeout: 30_000,
   expect: { timeout: 10_000 },
   reporter: process.env.CI ? [["list"], ["html", { open: "never" }]] : [["list"]],
-  // The app is a HashRouter served from any host with no SPA rewrite, so every URL the smoke
-  // navigates to is "/#/<key>" — never "/<key>", which the static server answers with a 404.
+  // The app is a BrowserRouter; every deployment that serves it (Vite's dev proxy, Caddy on the
+  // single-EC2 box, the EKS ingress) already falls back an unmatched path to index.html, so a
+  // plain "/<key>" is what the smoke navigates to — never "/#/<key>".
   use: {
     baseURL: process.env.E2E_BASE_URL ?? "http://localhost:5173",
     trace: "retain-on-failure",

@@ -155,7 +155,7 @@ docs/superpowers/        plans and specs from prior agent-driven work
 scripts/build-site.sh    assembles index.html + docs/ into dist/ (+ UI/dist when BUILD_APP=1)
 netlify.toml             the published site's build, headers and the /app → EKS redirect
 UI/                      the application (React 19, TS 6 strict, Vite 8, Zustand 5)
-e2e/                     the Playwright smoke — six files, nine scenarios, thirteen runtime tests
+e2e/                     the Playwright smoke — seven files, twelve scenarios, seventeen runtime tests
                          (the sign-in loop is five of them), against a real stack
 ```
 
@@ -184,11 +184,14 @@ Five roles: `counter` · `manager` · `store` · `prod` · `buyer` (see `UI/src/
 five. Account management (create a colleague's account, reset a password, deactivate one, move
 somebody to a different role or location) is `admin`, a boolean on `users`, orthogonal to `role`
 and checked as its own `Access` value (`"admin"`, `apps/api/src/plugins/rbac.ts`) — not a sixth
-role, no sidebar entry, no `roles/admin/` folder. The one screen it unlocks
-(`UI/src/pages/AdminUsers.tsx`) is reached at its own key, gated on the flag directly rather than
-looked up in any role's `NAV`, and the flag itself is granted or revoked only by `pnpm --filter
-@rch/api users set-admin` — there is no route for it, so a compromised admin session can create
-or reset ordinary accounts but never mint a second admin.
+role, no sidebar entry, no `roles/admin/` folder. An admin-flagged account gets no operational
+Shell at all: `App.tsx` sends it to `/admin` — a standalone page with its own header, not one of
+the five roles' screens — whatever key it asks for, so its nominal `role`/`loc` (required by the
+schema, meaningless otherwise) is never shown. There is exactly one such account, seeded rather
+than granted after the fact (`RC-0001`, `packages/contract/src/fixtures/master.ts`), so every
+environment that runs `db:seed` starts with one ready to sign in; the flag itself is granted or
+revoked only by `pnpm --filter @rch/api users set-admin` — there is no route for it, so a
+compromised admin session can create or reset ordinary accounts but never mint a second admin.
 
 **`manager` is hospital-wide.** One outlet manager supervises every outlet, so a manager's writes
 take **no** location: approve, reject, the price lists and the menus all decide for any outlet and
@@ -223,7 +226,10 @@ Three files must agree for a screen to exist:
 advertised key renders. Adding a nav entry without a component fails the suite; that coupling
 is deliberate.
 
-Routing is `HashRouter` (`#/pos`) so the static build works from any host with no SPA rewrite.
+Routing is `BrowserRouter` — plain paths (`/pos`, `/admin`), not `#/pos`. Every place this app
+is actually served already falls an unmatched path back to `index.html` (Vite's dev proxy, the
+`try_files $uri /index.html` both the single-EC2 box's and the EKS ingress's nginx carry), so the
+SPA-rewrite problem `HashRouter` used to dodge does not arise for a host this app runs on.
 
 ### One Zustand store, three slices
 

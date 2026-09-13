@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
+import * as FX from "@rch/contract/fixtures";
 import { withTestSchema, type TestDb } from "../test/db.js";
 import { seedTestDb } from "../test/seed.js";
 import { createUser, deactivateUser, reactivateUser, resetPassword, setAdmin, updateUserRoleLoc } from "./users-admin.js";
@@ -14,7 +15,9 @@ afterAll(async () => { await t.close(); });
 describe("users-admin", () => {
   it("creates a user who must change their password, with the next id in the series", async () => {
     const { id } = await createUser(t.db, { emp: "RC-9001", name: "Anitha R", email: "anitha.r@royalcare.in", role: "counter", loc: "rest", password: "temporary-pass-1" });
-    expect(id).toBe("u7");
+    // The seed now runs to u7 (the dedicated admin account, root CLAUDE.md), so the next id
+    // this series hands out is u8 — matching the fixture's own length, not a literal.
+    expect(id).toBe(`u${FX.USERS.length + 1}`);
     const [u] = await t.db.select().from(users).where(eq(users.id, id));
     expect(u.mustChangePassword).toBe(true); expect(u.roleLabel).toBe("Counter Operator"); expect(await verifyPassword(u.passwordHash, "temporary-pass-1")).toBe(true);
   });

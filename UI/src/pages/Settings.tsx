@@ -1,5 +1,4 @@
 import { useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { homeLabel } from "../data/master";
 import { useApp } from "../store";
 import type { ThemePref } from "../lib/theme";
@@ -25,7 +24,6 @@ const THEMES: { k: ThemePref; t: string; d: string }[] = [
 
 export default function Settings() {
   const user = useApp((s) => s.user)!;
-  const nav = useNavigate();
   const theme = useApp((s) => s.theme);
   const setTheme = useApp((s) => s.setTheme);
   const saveProfile = useApp((s) => s.saveProfile);
@@ -166,19 +164,10 @@ export default function Settings() {
               goes through. Forgotten the current one? Ask an administrator to reset it.
             </p>
           </Card>
-          {/* A capability, not a role (root CLAUDE.md) — visible only to the one account it was
-              granted to, and nowhere in the sidebar, since nobody else's copy of this screen
-              changes at all. */}
-          {user.admin && (
-            <>
-              <div className="mtop" />
-              <Card title="Account management" sub="Create, reset or reassign a colleague's sign-in">
-                <p className="hint">This account can create staff accounts, reset a forgotten password, deactivate one, or move somebody to a different role or location.</p>
-                <div style={{ height: 10 }} />
-                <Btn wide variant="gh" onClick={() => nav("/admin")}>Manage staff accounts</Btn>
-              </Card>
-            </>
-          )}
+          {/* No admin link here any more: an admin-flagged account never reaches Settings at
+              all now (App.tsx sends it to /admin regardless of the key it asked for) — a
+              capability, not a role (root CLAUDE.md), with its own standalone dashboard rather
+              than a bonus tucked into an operational account's own screen. */}
           <div className="mtop" />
           <Card title="Appearance" sub="Saved on this device">
             <Field label="Theme" hint="The sun icon in the top bar cycles through the same three settings.">

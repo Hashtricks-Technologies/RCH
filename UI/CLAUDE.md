@@ -7,8 +7,10 @@ Repo-wide rules, the movement rule and the domain invariants are in the root `..
 ## What this is
 
 React 19 + Vite 8 + TypeScript (strict, `verbatimModuleSyntax`, `erasableSyntaxOnly`) + Zustand 5.
-Routing is `HashRouter` with **one** route, `/:key`, so the static build works from any host with
-no SPA rewrite. The store is an API client end to end: it signs in for real, hydrates from `GET
+Routing is `BrowserRouter` with **one** route, `/:key` — plain paths, not `#/key`; every host this
+app actually runs behind already falls an unmatched path back to `index.html` (Vite's dev proxy,
+Caddy on the single-EC2 box, the EKS ingress), so the SPA-rewrite problem a hash router dodges
+does not arise here. The store is an API client end to end: it signs in for real, hydrates from `GET
 /snapshot`, and posts every write. `UI/src/data/seed.ts` and `UI/src/data/ops.ts` are gone — no
 production file under `UI/src` imports `@rch/contract/fixtures` any more, only the tests do.
 Only the theme and a couple of UI prefs reach `localStorage`.
@@ -62,11 +64,16 @@ replay a green from before a migration.
    same route key, and imports its drawer modules for their side effects.
 3. `src/App.tsx` — `REGISTRY[user.r][key]`. A key the role cannot see renders `<Denied>`, which
    **toasts why** and redirects home (UA-01); an unknown key renders a "Coming up" placeholder.
-   `settings` and `issues` are handled ahead of the registry — and, ahead of even those two,
-   `admin`, gated on `user.admin` rather than looked up in `canSee`/`NAV` at all: a capability,
-   not a role (root CLAUDE.md), so it is on no role's sidebar and `NAV` never widens for it.
-   Reached from one conditional link on `Settings`, visible only to the one account carrying the
-   flag.
+   `settings` and `issues` are handled ahead of the registry — and, ahead of even those, an
+   admin-flagged account (`user.admin`, a capability, not a role — root CLAUDE.md) is diverted
+   entirely: `Page()`'s own top-level route skips `<Shell>` for it, `Screen()` renders
+   `AdminDashboard` for the `admin` key and bounces every other key straight back to it with a
+   toast (`BackToAdmin`, not `<Denied>` — there is no operational role to describe such an
+   account by, so it says so in its own words and never reads `HOME[user.r]`). `home` in `Page()`
+   is `"admin"` for such an account, never `HOME[user.r]`. `AdminDashboard.tsx` supplies its own
+   full-page chrome (a two-line header, sign-out) rather than being hosted inside `Shell` — there
+   is no sidebar to hide, and `Settings` carries no link to it any more (an admin-flagged account
+   never reaches `Settings` in the first place).
 
 `src/__tests__/screens.test.tsx` and `app.test.tsx` iterate `NAV` × `USERS` and assert every
 advertised key renders, bare and in-shell. A nav entry without a component fails the suite; that
@@ -614,10 +621,10 @@ store's own `signIn` is gone, so this is the one sanctioned way a test signs som
   store). The drawer loop iterates `Object.keys(DRAWERS)` against an `OPEN_OVER` map of
   `key → [id, role]`, so a drawer registered with no row there fails the suite by name — the
   hand-written list it replaced had drifted eight keys behind the registry. Its own last four:
-  the Settings link present only for `user.admin` and absent otherwise, and the account-management
-  page rendering its table and form for a flagged account and handing back a one-time password
-  once. `app.test.tsx` covers the other half — `/admin` refused by name (UA-01) for an ordinary
-  account and reached only by the one flagged.
+  the account-management page itself, rendering its table and form for a flagged account and
+  handing back a one-time password once. `app.test.tsx` covers the routing half — `/admin`
+  refused by name for an ordinary account, and an admin-flagged account seeing no Shell at all
+  and bounced back to `/admin` from any other key.
 - `drawer.test.tsx` — **11 cases**, the whole of `aria-modal="true"` being true: a name on the
   dialog, the keyboard going in on open, Tab and Shift+Tab wrapping at both ends, the `focusin`
   guard catching the keyboard being *moved* out, the `MutationObserver` catching it being

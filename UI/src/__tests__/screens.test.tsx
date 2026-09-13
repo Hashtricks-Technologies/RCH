@@ -46,7 +46,9 @@ function render(el: ReactElement): string {
 }
 
 describe("every screen renders for its role", () => {
-  for (const u of USERS) {
+  // Not the admin-flagged fixture account — it has no operational nav (root CLAUDE.md), so
+  // there is no `NAV[u.r]` screen of its own for this loop to render.
+  for (const u of USERS.filter((u) => !u.admin)) {
     for (const k of NAV[u.r].flatMap((g) => g.items.map((i) => i.k))) {
       it(`${u.r}/${k}`, () => {
         act(() => { as(u.r); });
@@ -59,7 +61,7 @@ describe("every screen renders for its role", () => {
 });
 
 describe("the sidebar matches the screen registry", () => {
-  for (const u of USERS) {
+  for (const u of USERS.filter((u) => !u.admin)) {
     it(`${u.r}`, () => {
       const navKeys = NAV[u.r].flatMap((g) => g.items.map((i) => i.k)).filter((k) => k !== "settings" && k !== "issues");
       expect(navKeys.sort()).toEqual(Object.keys(REGISTRY[u.r]).sort());
@@ -1197,19 +1199,6 @@ describe("the price-list prose counts what is actually deployed", () => {
     } finally {
       OUTLETS.forEach((l, i) => { LOC[l] = saved[i]; });
     }
-  });
-});
-
-describe("the admin-account-management link on Settings", () => {
-  it("is absent for an ordinary account", () => {
-    act(() => { as("counter"); });
-    const ui = mount(Settings);
-    expect(ui.text()).not.toContain("Manage staff accounts");
-  });
-  it("appears only for the one account carrying the flag", () => {
-    act(() => { as("manager"); useApp.setState({ user: { ...useApp.getState().user!, admin: true } }); });
-    const ui = mount(Settings);
-    expect(ui.text()).toContain("Manage staff accounts");
   });
 });
 

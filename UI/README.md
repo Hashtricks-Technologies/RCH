@@ -251,7 +251,7 @@ happens, is always the server's.
 ## Try it end to end
 
 `pnpm test:e2e` (from the repo root, against a running `pnpm dev` stack) drives six files, nine
-scenarios, thirteen runtime tests (the sign-in loop is five of them) through a real browser — sign
+scenarios, seventeen runtime tests (the sign-in loop is five of them) through a real browser — sign
 in, sell, raise and approve a request, make a kitchen batch, run a requisition through to a
 goods receipt, and work a support ticket end to end — and is the fastest way to see the whole
 system move. `../e2e/README.md` explains what each spec proves and the environment it needs.

@@ -128,6 +128,7 @@ async function seedMaster(tx: Tx, passwordHash: string, mustChange: boolean) {
   await tx.insert(s.priceListItems).values((["A", "B"] as const).flatMap((list) => Object.entries(FX.PL[list]).map(([itemKey, price]) => ({ list, itemKey, price }))));
   await tx.insert(s.users).values(FX.USERS.map((u) => ({
     id: u.id, name: u.n, email: u.e, role: u.r, roleLabel: u.rl, loc: u.loc, colour: u.col, empNo: u.emp, phone: u.ph, passwordHash, mustChangePassword: mustChange,
+    admin: u.admin,
   })));
   // The three rosters a non-cash bill may be posted to. They already carry `{kind, id, name}`
   // in the fixtures, so the table is the same three lists in one place — which is what lets the

@@ -34,8 +34,11 @@ export default class ErrorBoundary extends Component<Props, State> {
             </p>
             <div className="btnrow" style={{ marginTop: 14 }}>
               <button className="btn" type="button" onClick={() => window.location.reload()}>Reload</button>
+              {/* This boundary sits outside `BrowserRouter` (main.tsx), so there is no
+                  `useNavigate` to reach for here — a full navigation, the same as the Reload
+                  button beside it, is what "back to home" actually means from this far out. */}
               <button className="btn gh" type="button"
-                onClick={() => { this.setState({ error: null }); window.location.hash = "#/"; }}>
+                onClick={() => { window.location.href = "/"; }}>
                 Back to home
               </button>
             </div>

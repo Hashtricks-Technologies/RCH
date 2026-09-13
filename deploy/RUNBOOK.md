@@ -70,21 +70,29 @@ first sign-in.
 | `RC-1902` | Vinoth Prakash | Kitchen In-charge | kitchen |
 | `RC-1550` | Latha Narayanan | Procurement Officer | store |
 | `RC-4482` | Deepa Selvam | Counter Operator | kiosk |
+| `RC-0001` | System Administrator | Admin (a flag, not a role — see below) | — |
 
 Sign in at `http://localhost:5173` with an employee id and the seed password.
 
-None of the six carries the admin flag — account management (create/reset/deactivate/reassign a
-colleague from a page instead of this CLI) is a capability, not a role, and the only door onto it
-is:
+`RC-0001` is the one seeded account carrying the admin flag — account management
+(create/reset/deactivate/reassign a colleague from its own standalone dashboard at `/admin`
+instead of this CLI) is a capability, not a role: signing in as it shows no operational sidebar
+at all, only that page. Its nominal role and location (`buyer`/`store` in the fixture) are the
+schema's own bookkeeping and are never shown — pick a role/location pairing for it the same way
+you would for any other account if you ever recreate it by hand.
+
+Granting or revoking the flag on **any** account — including moving it off `RC-0001` onto a real
+person's own account once one exists — is the one thing this page cannot do:
 
 ```bash
 pnpm --filter @rch/api users set-admin --emp RC-4471 --on   # --off takes it away again
 ```
 
-Flip it on whichever seeded account is convenient for local testing; in a real environment, flag
-a real account the same way. There is no route or button anywhere in the app that can grant or
-revoke this flag — only this command, run with a shell on the box or a `kubectl exec` into the
-pod, which is what keeps a compromised or misused admin session from ever minting a second one.
+There is no route or button anywhere in the app that can grant or revoke this flag — only this
+command, run with a shell on the box or a `kubectl exec` into the pod, which is what keeps a
+compromised or misused admin session from ever minting a second one. Before a real go-live,
+deactivate `RC-0001` the same way every other seeded account is deactivated (§11 step 4) and
+create a real, named account with the flag instead.
 
 ### Auth and rate-limit settings
 

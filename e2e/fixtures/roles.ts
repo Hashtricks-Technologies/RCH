@@ -36,7 +36,7 @@ const PASSWORD = process.env.E2E_PASSWORD ?? process.env.SEED_PASSWORD ?? "chang
 
 /** Sign in and wait for the snapshot to land — `auth: "ready"` is what puts the shell on screen. */
 export async function signIn(page: Page, role: RoleName): Promise<void> {
-  await page.goto("/#/");
+  await page.goto("/");
   await page.getByLabel("Employee id").fill(ROLES[role].emp);
   await page.getByLabel("Password", { exact: true }).fill(PASSWORD);
   await page.getByRole("button", { name: "Sign in" }).click();
@@ -58,6 +58,23 @@ export async function signIn(page: Page, role: RoleName): Promise<void> {
     );
   }
   await expect(nav).toBeVisible();
+}
+
+/** The one seeded account carrying the admin flag — a capability, not a role (root CLAUDE.md),
+ *  so it has no `nav`/`home` pair the way `ROLES` above does: signing in lands it on `/admin`
+ *  directly, with no sidebar to wait for. */
+const ADMIN = { emp: "RC-0001" };
+
+/** `signIn`'s admin-only sibling: waits for the standalone dashboard's own heading rather than
+ *  `ROLES`' nav-or-change-password pair, since this account has no operational nav to land on
+ *  and no `HOME[role]` to redirect to if it were asked to change its password (it never is —
+ *  `db:seed` writes it with the same `must_change_password` every other seeded account gets). */
+export async function signInAdmin(page: Page): Promise<void> {
+  await page.goto("/");
+  await page.getByLabel("Employee id").fill(ADMIN.emp);
+  await page.getByLabel("Password", { exact: true }).fill(PASSWORD);
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(page.getByRole("heading", { name: "Manage staff accounts" })).toBeVisible();
 }
 
 /** The toast the store raises, which is the sentence the server sent. */

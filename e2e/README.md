@@ -1,6 +1,6 @@
 # `e2e/` — the Playwright smoke
 
-Six files, nine scenarios, thirteen runtime tests (the sign-in loop is five of them) that drive a
+Seven files, twelve scenarios, seventeen runtime tests (the sign-in loop is five of them) that drive a
 real browser against a real stack: a real sign-in, a real cookie, an nginx (or Vite) proxy in
 front of the API, a live-update stream and a Postgres transaction.
 
@@ -24,6 +24,7 @@ the script it looks for does not exist here.
 | `tests/kitchen.spec.ts` | A batch consumes its recipe and books its yield; a short one is refused and the tile keeps what the kitchen typed |
 | `tests/buying.spec.ts` | Requisition → approve → purchase order → send → goods receipt with a rejection → the rejected quantity is on the quarantine shelf |
 | `tests/support.spec.ts` | A support ticket is raised, answered, resolved and rated — and another role's list does not hold it |
+| `tests/admin.spec.ts` | The one seeded account carrying the admin flag creates a staff account through the browser and the new account signs in with the password shown once; that account also deactivates, reactivates, resets a password and moves someone to a different role and outlet; an ordinary account cannot reach `/admin` at all |
 
 ## Running it locally
 
@@ -38,7 +39,7 @@ pnpm dev &                                                # api :3000, UI :5173
 pnpm test:e2e
 ```
 
-Expected: **13 tests, all passing, in about 40 seconds** (the table above counts the sign-in
+Expected: **17 tests, all passing, in about 45 seconds** (the table above counts the sign-in
 loop as one scenario; Playwright counts it as five tests plus the guard).
 
 Three settings in the root `.env` matter, and the seed and the API must both be started with
@@ -95,7 +96,7 @@ artifact.
 - **One worker, no retries locally.** The smoke sells, issues and receives against one real
   database; two workers would fight over the same shelf and a retry would re-run a scenario
   whose first attempt already moved stock.
-- **Six files, nine scenarios, and no more.** More would be a second test suite maintained by
+- **Seven files, twelve scenarios, and no more.** More would be a second test suite maintained by
   hand against a UI that moves.
 
 ## Known switches

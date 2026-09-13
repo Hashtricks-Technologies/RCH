@@ -31,7 +31,10 @@ function mountApp(route: string) {
 }
 
 describe("the whole app mounts for every role on every route", () => {
-  for (const u of USERS) {
+  // Not the admin-flagged fixture account: it has no operational nav at all (a capability, not
+  // a role — root CLAUDE.md), so this loop would otherwise generate a duplicate `buyer/...`
+  // case for it under a role it never actually renders. Its own routing is covered below.
+  for (const u of USERS.filter((u) => !u.admin)) {
     for (const k of NAV[u.r].flatMap((g) => g.items.map((i) => i.k))) {
       it(`${u.r} at /${k}`, () => {
         act(() => { as(u.r); });
@@ -59,7 +62,7 @@ describe("routing", () => {
     expect(html).toContain("Royal Care");
   });
   it("each role lands on its own home screen", () => {
-    for (const u of USERS) {
+    for (const u of USERS.filter((u) => !u.admin)) {
       act(() => { as(u.r); });
       expect(mountApp("/" + HOME[u.r]).length).toBeGreaterThan(1500);
     }
@@ -74,11 +77,20 @@ describe("routing", () => {
     // UA-01: told why, by name, not bounced in silence.
     expect(html).toContain("Manage staff accounts is not available to an Outlet Manager");
   });
-  it("/admin renders for the one account carrying the flag — a capability, not a role", () => {
+
+  it("an admin-flagged account sees no operational shell at all — a capability, not a role", () => {
     act(() => { as("manager"); useApp.setState({ user: { ...useApp.getState().user!, admin: true } }); });
     const html = mountApp("/admin");
-    expect(html).toContain("Manage staff accounts");
     expect(html).toContain("Create an account");
+    // No sidebar, no "Hide the sidebar" toggle — this account has no operational nav to hide.
+    expect(html).not.toContain('aria-label="Hide the sidebar"');
+    expect(html).not.toContain("Approvals");
+  });
+  it("an admin-flagged account is bounced off any other key, back to the one place it has", () => {
+    act(() => { as("manager"); useApp.setState({ user: { ...useApp.getState().user!, admin: true } }); });
+    const html = mountApp("/pos");
+    expect(html).toContain("Create an account");
+    expect(html).not.toContain("Point of Sale");
   });
 });
 

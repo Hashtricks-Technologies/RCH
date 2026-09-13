@@ -85,7 +85,7 @@ export default function AdminUsers() {
   return (
     <>
       <PageHead
-        crumbs={["Royal Care", "Admin"]}
+        crumbs={["Admin"]}
         title="Manage staff accounts"
         sub="Create an account, reset a password, deactivate one, or move somebody to a different role or location."
       />
