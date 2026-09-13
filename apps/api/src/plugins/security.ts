@@ -10,7 +10,13 @@ import { RateLimitedError } from "../lib/errors.js";
 export default fp<{ config: Config }>(async (app, { config }) => {
   await app.register(sensible);
   await app.register(helmet, { contentSecurityPolicy: false }); // the API serves JSON; CSP belongs to the UI's nginx
-  await app.register(cors, { origin: config.corsOrigins, credentials: true, exposedHeaders: ["x-request-id"] });
+  // `@fastify/cors`'s own default `methods` is `"GET,HEAD,POST"` — every deployment this API
+  // actually runs behind (Vite's dev proxy, Caddy on the single-EC2 box, the EKS ingress) puts
+  // the UI and the API on one origin, so a browser there never sends a cross-origin preflight
+  // and the gap is invisible; the moment anything does put them on two origins, every PATCH,
+  // PUT and DELETE route in the manifest fails at the network layer with no server-side trace
+  // at all — the preflight itself answers 204, just without the method the real request needs.
+  await app.register(cors, { origin: config.corsOrigins, credentials: true, exposedHeaders: ["x-request-id"], methods: ["GET", "HEAD", "POST", "PATCH", "PUT", "DELETE"] });
   await app.register(rateLimit, {
     global: true,
     max: config.rateLimitPerMinute,
