@@ -73,6 +73,19 @@ first sign-in.
 
 Sign in at `http://localhost:5173` with an employee id and the seed password.
 
+None of the six carries the admin flag — account management (create/reset/deactivate/reassign a
+colleague from a page instead of this CLI) is a capability, not a role, and the only door onto it
+is:
+
+```bash
+pnpm --filter @rch/api users set-admin --emp RC-4471 --on   # --off takes it away again
+```
+
+Flip it on whichever seeded account is convenient for local testing; in a real environment, flag
+a real account the same way. There is no route or button anywhere in the app that can grant or
+revoke this flag — only this command, run with a shell on the box or a `kubectl exec` into the
+pod, which is what keeps a compromised or misused admin session from ever minting a second one.
+
 ### Auth and rate-limit settings
 
 From `.env` / `apps/api/src/config.ts` (mirrored in `deploy/chart/rch/values.yaml`'s `api.env`

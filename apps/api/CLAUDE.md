@@ -468,6 +468,17 @@ decides whether a route exists for you (**404**, like the sidebar); location dec
 where the browser store already said something (`creditBreachMessage`, the MRP refusal) the
 server repeats it **word for word** rather than inventing a second wording.
 
+`Access` (`packages/contract/src/routes.ts`) gains a third special value alongside `"public"` and
+`"any"`: `"admin"`, checked in `roleGate` (`plugins/rbac.ts`) against the JWT's own `admin` claim
+rather than `role` — a capability, not a role (root CLAUDE.md), so `AccessClaims` and
+`signAccess` both carry it beside `mcp`. A caller without the flag gets the same 404 a role
+without a module gets, never a 403 that would confirm the route exists. `modules/admin/` is the
+one module gated this way today — account management (create/reset/deactivate/reassign), built
+entirely on `lib/users-admin.ts`'s `*Tx` cores composed inside its own single `withTransaction`
+alongside the `admin_actions` row that records the write, rather than restating any of that
+module's rules. Granting or revoking the flag itself has no route at all — `pnpm --filter
+@rch/api users set-admin` is the only door, deliberately outside the HTTP surface it protects.
+
 A 4xx also lands on the request's own log line as `refusal: { code, message, cause? }`:
 `plugins/errors.ts` sets `req.refusal` on every branch that answers 4xx (the not-found handler
 too) and `plugins/logging.ts`'s `onResponse` writes it beside `route`, `status` and `ms`. `cause`

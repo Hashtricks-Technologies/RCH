@@ -2,8 +2,9 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { withTestSchema, type TestDb } from "../test/db.js";
 import { seedTestDb } from "../test/seed.js";
-import { createUser, deactivateUser, resetPassword } from "./users-admin.js";
+import { createUser, deactivateUser, reactivateUser, resetPassword, setAdmin, updateUserRoleLoc } from "./users-admin.js";
 import { verifyPassword } from "./password.js";
+import { ConflictError, ValidationError } from "./errors.js";
 import { refreshTokens, users } from "../db/schema/index.js";
 
 let t: TestDb;
@@ -57,5 +58,46 @@ describe("users-admin", () => {
   });
   it("deactivate refuses an unknown employee number", async () => {
     await expect(deactivateUser(t.db, "RC-0000")).rejects.toThrow(/RC-0000/);
+  });
+
+  it("every refusal is a proper AppError, not a bare Error — the right status for an HTTP caller", async () => {
+    await expect(createUser(t.db, { emp: "RC-4471", name: "X", email: "x@x", role: "counter", loc: "rest", password: "temporary-pass-1" })).rejects.toThrow(ConflictError);
+    await expect(createUser(t.db, { emp: "RC-9010", name: "X", email: "x@x", role: "counter", loc: "attic" as never, password: "temporary-pass-1" })).rejects.toThrow(ValidationError);
+    await expect(createUser(t.db, { emp: "RC-9011", name: "X", email: "x@x", role: "prod", loc: "coffee", password: "temporary-pass-1" })).rejects.toThrow(ValidationError);
+    await expect(createUser(t.db, { emp: "RC-9012", name: "X", email: "x@x", role: "counter", loc: "rest", password: "short-1" })).rejects.toThrow(ValidationError);
+  });
+
+  it("reactivate reverses a deactivate", async () => {
+    await deactivateUser(t.db, "RC-1550");
+    await reactivateUser(t.db, "RC-1550");
+    const [u] = await t.db.select().from(users).where(eq(users.empNo, "RC-1550"));
+    expect(u.active).toBe(true);
+  });
+  it("reactivate refuses an unknown employee number", async () => {
+    await expect(reactivateUser(t.db, "RC-0000")).rejects.toThrow(ValidationError);
+  });
+
+  it("updateUserRoleLoc changes both together, validates the pairing, and revokes sessions", async () => {
+    await t.db.insert(refreshTokens).values({ userId: "u2", family: "00000000-0000-4000-8000-000000000002", tokenHash: "h2", expiresAt: new Date(Date.now() + 1000) });
+    await updateUserRoleLoc(t.db, "RC-3120", { role: "counter", loc: "kiosk" });
+    const [u] = await t.db.select().from(users).where(eq(users.id, "u2"));
+    expect(u.role).toBe("counter"); expect(u.loc).toBe("kiosk"); expect(u.roleLabel).toBe("Counter Operator");
+    expect((await t.db.select().from(refreshTokens).where(eq(refreshTokens.userId, "u2"))).every((r: { revokedAt: Date | null }) => r.revokedAt)).toBe(true);
+  });
+  it("updateUserRoleLoc refuses a pairing that role never works at", async () => {
+    await expect(updateUserRoleLoc(t.db, "RC-3120", { role: "prod", loc: "coffee" })).rejects.toThrow(/Kitchen In-charge works at kitchen/);
+  });
+  it("updateUserRoleLoc refuses an unknown employee number", async () => {
+    await expect(updateUserRoleLoc(t.db, "RC-0000", { role: "counter", loc: "rest" })).rejects.toThrow(ValidationError);
+  });
+});
+
+describe("setAdmin", () => {
+  it("flips the flag on and off, and refuses an unknown employee number", async () => {
+    await setAdmin(t.db, "RC-1902", true);
+    expect((await t.db.select().from(users).where(eq(users.empNo, "RC-1902")))[0].admin).toBe(true);
+    await setAdmin(t.db, "RC-1902", false);
+    expect((await t.db.select().from(users).where(eq(users.empNo, "RC-1902")))[0].admin).toBe(false);
+    await expect(setAdmin(t.db, "RC-0000", true)).rejects.toThrow(ValidationError);
   });
 });

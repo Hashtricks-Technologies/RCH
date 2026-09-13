@@ -35,6 +35,11 @@ export const LocationSchema = z.object({
 export const UserSchema = z.object({
   id: z.string(), n: z.string(), e: z.string(), r: RoleSchema, rl: z.string(),
   loc: LocKeySchema, col: z.string(), emp: z.string(), ph: z.string(),
+  // Whether this account can reach the account-management page — a capability, not a role
+  // (root CLAUDE.md). `UserSchema` describes only the signed-in caller's own record (login,
+  // refresh, change-password, snapshot.user); a colleague is always `UserMinSchema`, which does
+  // not carry this, so nobody sees whether anyone but themselves has it.
+  admin: z.boolean(),
 });
 /** What one colleague sees of another. Email, employee number and phone belong to the person
  *  they describe: the caller's own record travels whole, in `snapshot.user`, and nobody else's does. */

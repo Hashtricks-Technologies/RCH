@@ -6,4 +6,5 @@ export * from "./schemas/snapshot.js";
 export * from "./schemas/writes.js";
 export * from "./schemas/events.js";
 export * from "./schemas/reports.js";
+export * from "./schemas/admin.js";
 export * from "./routes.js";

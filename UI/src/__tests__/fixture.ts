@@ -79,5 +79,10 @@ export function resetStore() {
     // Empty, not seeded: the manager's register has no fixture, because nothing on the snapshot
     // carries it — the screen asks `GET /payers` for it on the way in.
     payers: [],
+    // ---- admin: account management ----
+    // Same reason as `payers` above: nothing on the snapshot carries the account list or its
+    // action log, and leaving either out of this reset would let one test's rows leak into the
+    // next one's (`setState` merges, it does not replace).
+    accounts: [], adminActions: [],
   });
 }

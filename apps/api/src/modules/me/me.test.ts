@@ -13,7 +13,7 @@ describe("/me", () => {
   it("returns the caller in wire shape", async () => {
     const r = await app.inject({ method: "GET", url: "/api/v1/me", headers: await authHeaders(app, "u3") });
     expect(r.statusCode).toBe(200);
-    expect(r.json()).toEqual({ user: { id: "u3", n: "Suresh Muthu", e: "suresh.m@royalcare.in", r: "store", rl: "Store Keeper", loc: "store", col: "#0F766E", emp: "RC-2088", ph: "94430 51194" }, mustChangePassword: false });
+    expect(r.json()).toEqual({ user: { id: "u3", n: "Suresh Muthu", e: "suresh.m@royalcare.in", r: "store", rl: "Store Keeper", loc: "store", col: "#0F766E", emp: "RC-2088", ph: "94430 51194", admin: false }, mustChangePassword: false });
   });
   it("PATCH updates display fields only and refuses unknown keys", async () => {
     const h = { ...(await authHeaders(app, "u3")), "idempotency-key": randomUUID() };

@@ -10,6 +10,7 @@ const strip = <T extends object>(o: T): T => Object.fromEntries(Object.entries(o
 export type UserRow = typeof users.$inferSelect;
 export const toWireUser = (u: UserRow): User => ({
   id: u.id, n: u.name, e: u.email, r: u.role, rl: u.roleLabel, loc: u.loc as User["loc"], col: u.colour, emp: u.empNo, ph: u.phone,
+  admin: u.admin,
 });
 /** What one colleague sees of another: a name badge. Contact details are the caller's own,
  *  and travel only in their own record (`snapshot.user`). */

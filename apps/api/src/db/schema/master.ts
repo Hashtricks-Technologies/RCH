@@ -1,4 +1,4 @@
-import { boolean, date, integer, numeric, pgTable, primaryKey, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { boolean, date, integer, jsonb, numeric, pgTable, primaryKey, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { itemTypeEnum, locationTypeEnum, payerKindEnum, priceListEnum, roleEnum } from "./enums.js";
 
@@ -32,9 +32,26 @@ export const users = pgTable("users", {
   passwordHash: text("password_hash").notNull(),
   mustChangePassword: boolean("must_change_password").notNull().default(true),
   active: boolean("active").notNull().default(true),
+  // A capability, not a role: an ordinary account, with an ordinary role and location, that can
+  // additionally reach the account-management page. Never granted or revoked over the wire —
+  // only `pnpm --filter @rch/api users set-admin` flips it, so a compromised admin session can
+  // never mint a second one. Default false: nobody has it unless a CLI explicitly said so.
+  admin: boolean("admin").notNull().default(false),
   createdAt: ts("created_at").notNull().defaultNow(),
   updatedAt: ts("updated_at").notNull().defaultNow(),
 }, (t) => [uniqueIndex("users_emp_no_uq").on(t.empNo)]);
+
+// Insert-only: nothing in this module ever updates or deletes a row here. One line per admin
+// write — create, reset-password, deactivate, reactivate, update_role_loc — written in the same
+// transaction as the change it records, so a refused write leaves no row behind either.
+export const adminActions = pgTable("admin_actions", {
+  id: text("id").primaryKey(),
+  at: ts("at").notNull().defaultNow(),
+  actorId: text("actor_id").notNull().references(() => users.id),
+  action: text("action").notNull(),
+  targetId: text("target_id").notNull().references(() => users.id),
+  details: jsonb("details").notNull().default({}),
+});
 
 export const items = pgTable("items", {
   key: text("key").primaryKey(),

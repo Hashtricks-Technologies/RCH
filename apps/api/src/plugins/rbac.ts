@@ -12,6 +12,10 @@ export default fp(async (app) => {
   app.decorate("roleGate", (access: Access, allowMcp: boolean) => async (req: FastifyRequest) => {
     if (access === "public") return;
     if (Array.isArray(access) && !access.includes(req.user.role)) throw new NotFoundError(`There is nothing at ${req.method} ${req.url}.`);
+    // Same shape as the role check above, on a different claim: an ordinary account without the
+    // flag gets the same "nothing here" a role lacking the module gets, never a 403 that would
+    // confirm the route exists.
+    if (access === "admin" && !req.user.admin) throw new NotFoundError(`There is nothing at ${req.method} ${req.url}.`);
     if (req.user.mcp && !allowMcp) throw new ForbiddenError("Change your password before you carry on.");
   });
 }, { name: "rbac", dependencies: ["auth"] });

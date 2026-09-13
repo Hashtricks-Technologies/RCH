@@ -64,6 +64,22 @@ describe("routing", () => {
       expect(mountApp("/" + HOME[u.r]).length).toBeGreaterThan(1500);
     }
   });
+
+  it("/admin is on no role's sidebar, and refuses an ordinary account by name (UA-01)", () => {
+    act(() => { as("manager"); });
+    const html = mountApp("/admin");
+    // Redirected home (Approvals), not the account-management page itself.
+    expect(html).not.toContain("Create an account");
+    expect(html).toContain("Stock request approvals");
+    // UA-01: told why, by name, not bounced in silence.
+    expect(html).toContain("Manage staff accounts is not available to an Outlet Manager");
+  });
+  it("/admin renders for the one account carrying the flag — a capability, not a role", () => {
+    act(() => { as("manager"); useApp.setState({ user: { ...useApp.getState().user!, admin: true } }); });
+    const html = mountApp("/admin");
+    expect(html).toContain("Manage staff accounts");
+    expect(html).toContain("Create an account");
+  });
 });
 
 /** The number beside a sidebar entry, or 0 when the shell draws none. */

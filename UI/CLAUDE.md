@@ -62,7 +62,11 @@ replay a green from before a migration.
    same route key, and imports its drawer modules for their side effects.
 3. `src/App.tsx` — `REGISTRY[user.r][key]`. A key the role cannot see renders `<Denied>`, which
    **toasts why** and redirects home (UA-01); an unknown key renders a "Coming up" placeholder.
-   `settings` and `issues` are handled ahead of the registry.
+   `settings` and `issues` are handled ahead of the registry — and, ahead of even those two,
+   `admin`, gated on `user.admin` rather than looked up in `canSee`/`NAV` at all: a capability,
+   not a role (root CLAUDE.md), so it is on no role's sidebar and `NAV` never widens for it.
+   Reached from one conditional link on `Settings`, visible only to the one account carrying the
+   flag.
 
 `src/__tests__/screens.test.tsx` and `app.test.tsx` iterate `NAV` × `USERS` and assert every
 advertised key renders, bare and in-shell. A nav entry without a component fails the suite; that
@@ -581,7 +585,10 @@ store's own `signIn` is gone, so this is the one sanctioned way a test signs som
   six writes are covered the same way — `voidBill` (including the percent-encoded `CF%2F1188` and
   the `iso` kept beside the `"HH:MM"`), `raiseProdOrder`, `updateItem`, `addPayer`, `updatePayer`
   (whose case stubs the roster and the register **differently**, so the difference between the two
-  reads is what the test proves), `createAdjustment` — plus `loadPayers`. **159 cases.**
+  reads is what the test proves), `createAdjustment` — plus `loadPayers`. Account management's six
+  — `loadAccounts`, `loadAdminActions`, `createAccount`, `resetAccountPassword`,
+  `setAccountActive` (one action, both directions), `updateAccountRoleLoc` — cover the same shape,
+  plus the one-time password each of the first two hands back and never stores. **167 cases.**
   There is no known flake in this file any more, and the one there used to be is worth knowing
   about because of what caused it. `leaves the requisition card and its note alone when
   procurement refuses it` polls on `S().toast !== null`; `notify` used to leave the *previous*
@@ -599,14 +606,18 @@ store's own `signIn` is gone, so this is the one sanctioned way a test signs som
   the form (and not as a toast), the toast drawn on the sign-in screen and once inside the shell,
   its `role="status"`, its length-scaled stay and click-to-dismiss, `restore()` speaking up when
   the server cannot be reached, and a screen that throws caught inside the shell.
-- `screens.test.tsx` — **143 cases**: the `NAV × USERS` loop, a row per **registered** drawer key,
+- `screens.test.tsx` — **147 cases**: the `NAV × USERS` loop, a row per **registered** drawer key,
   and the render-level cases the audit wave added (a refused pay keeping the payer, a refused
   price save keeping the typed value, what actually reaches the printer, the approval drawer's
   decimal quantity and its single Approve/Reject pair, a voided bill badged and out of every
   figure that counts money, a retired product no longer generating work for the buyer or the
   store). The drawer loop iterates `Object.keys(DRAWERS)` against an `OPEN_OVER` map of
   `key → [id, role]`, so a drawer registered with no row there fails the suite by name — the
-  hand-written list it replaced had drifted eight keys behind the registry.
+  hand-written list it replaced had drifted eight keys behind the registry. Its own last four:
+  the Settings link present only for `user.admin` and absent otherwise, and the account-management
+  page rendering its table and form for a flagged account and handing back a one-time password
+  once. `app.test.tsx` covers the other half — `/admin` refused by name (UA-01) for an ordinary
+  account and reached only by the one flagged.
 - `drawer.test.tsx` — **11 cases**, the whole of `aria-modal="true"` being true: a name on the
   dialog, the keyboard going in on open, Tab and Shift+Tab wrapping at both ends, the `focusin`
   guard catching the keyboard being *moved* out, the `MutationObserver` catching it being

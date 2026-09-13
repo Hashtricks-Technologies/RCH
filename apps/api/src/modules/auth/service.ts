@@ -9,7 +9,7 @@ import { toWireUser } from "../../lib/wire.js";
 import { authRepo } from "./repo.js";
 
 export type Meta = { userAgent?: string; ip?: string };
-export type Session = { user: User; mustChangePassword: boolean; refreshToken: string; expiresAt: Date; claims: { id: string; role: User["r"]; loc: User["loc"]; mcp: boolean } };
+export type Session = { user: User; mustChangePassword: boolean; refreshToken: string; expiresAt: Date; claims: { id: string; role: User["r"]; loc: User["loc"]; mcp: boolean; admin: boolean } };
 
 const sha256 = (v: string) => createHash("sha256").update(v).digest("hex");
 const newRaw = () => randomBytes(32).toString("base64url");
@@ -110,7 +110,7 @@ export function createAuthService(db: Db, config: Config) {
     const familyCap = new Date(familyStartedAt.getTime() + config.refreshTokenTtlDays * 86400_000);
     const expiresAt = new Date(Math.min(expiry().getTime(), familyCap.getTime()));
     await authRepo.insertRefresh(tx, { userId: u.id, family, tokenHash: sha256(raw), expiresAt, userAgent: meta.userAgent, ip: meta.ip });
-    return { user: toWireUser(u), mustChangePassword: u.mustChangePassword, refreshToken: raw, expiresAt, claims: { id: u.id, role: u.role, loc: u.loc as User["loc"], mcp: u.mustChangePassword } };
+    return { user: toWireUser(u), mustChangePassword: u.mustChangePassword, refreshToken: raw, expiresAt, claims: { id: u.id, role: u.role, loc: u.loc as User["loc"], mcp: u.mustChangePassword, admin: u.admin } };
   }
 
   return {

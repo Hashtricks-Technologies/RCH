@@ -6,6 +6,6 @@ import { users } from "../db/schema/index.js";
 export async function authHeaders(app: App, userId: string): Promise<{ authorization: string }> {
   const [u] = await app.db.select().from(users).where(eq(users.id, userId));
   if (!u) throw new Error(`no user ${userId} - did you seed?`);
-  const token = await app.signAccess({ id: u.id, role: u.role, loc: u.loc as never, mcp: u.mustChangePassword });
+  const token = await app.signAccess({ id: u.id, role: u.role, loc: u.loc as never, mcp: u.mustChangePassword, admin: u.admin });
   return { authorization: `Bearer ${token}` };
 }

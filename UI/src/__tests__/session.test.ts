@@ -10,7 +10,7 @@ const ok = (body: unknown, status = 200) =>
 
 const USER: User = {
   id: "u1", n: "Kavitha Raman", e: "kavitha.r@royalcare.in", r: "counter",
-  rl: "Counter Operator", loc: "coffee", col: "#B45309", emp: "RC-4471", ph: "98430 22118",
+  rl: "Counter Operator", loc: "coffee", col: "#B45309", emp: "RC-4471", ph: "98430 22118", admin: false,
 };
 
 /** The smallest body `applySnapshot` will accept — this suite is about the session, not the data. */

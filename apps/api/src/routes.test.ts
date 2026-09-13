@@ -41,7 +41,7 @@ describe("mount", () => {
   });
   it("rejects a token signed with a different key", async () => {
     const other = await buildTestApp({ withDb: false });
-    const token = await other.signAccess({ id: "u1", role: "counter", loc: "coffee", mcp: false });
+    const token = await other.signAccess({ id: "u1", role: "counter", loc: "coffee", mcp: false, admin: false });
     await other.close();
     const r = await app.inject({ method: "GET", url: "/api/v1/_test/any", headers: { authorization: `Bearer ${token}` } });
     expect(r.statusCode).toBe(401);

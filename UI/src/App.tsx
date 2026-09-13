@@ -8,6 +8,7 @@ import Login from "./pages/Login";
 import ChangePassword from "./pages/ChangePassword";
 import Settings from "./pages/Settings";
 import Support from "./pages/Support";
+import AdminUsers from "./pages/AdminUsers";
 import { Btn, PageHead, Card } from "./ui/kit";
 import { screens as counter } from "./roles/counter";
 import { screens as manager } from "./roles/manager";
@@ -25,7 +26,8 @@ const REGISTRY: Record<Role, Record<string, React.ComponentType>> = { counter, m
  *  be declared in, and a kitchen sent back to its board could be told it was on Purchase Orders. */
 const labelIn = (role: Role, k: string) => NAV[role].flatMap((g) => g.items).find((i) => i.k === k)?.label;
 const labelOf = (role: Role, k: string) =>
-  labelIn(role, k) ?? Object.values(NAV).flat().flatMap((g) => g.items).find((i) => i.k === k)?.label ?? k;
+  labelIn(role, k) ?? Object.values(NAV).flat().flatMap((g) => g.items).find((i) => i.k === k)?.label
+  ?? (k === "admin" ? "Manage staff accounts" : k);
 
 /** UA-01: a refused screen says so on the way out instead of bouncing in silence. */
 function Denied({ k }: { k: string }) {
@@ -42,6 +44,11 @@ function Screen() {
   const { key = "" } = useParams();
   const user = useApp((s) => s.user);
   if (!user) return <Navigate to="/login" replace />;
+  // A capability, not a role (root CLAUDE.md): `admin` is on no role's `NAV`, so it has to be
+  // checked ahead of `canSee` rather than looked up in it — the same door `settings`/`issues`
+  // are handled through, one step earlier because those two keys sit on every role's own sidebar
+  // and this one sits on nobody's.
+  if (key === "admin") return user.admin ? <AdminUsers /> : <Denied k={key} />;
   if (!canSee(user.r, key)) return <Denied k={key} />;
   if (key === "settings") return <Settings />;
   if (key === "issues") return <Support />;

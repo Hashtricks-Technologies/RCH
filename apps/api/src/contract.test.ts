@@ -12,7 +12,14 @@ afterAll(async () => { await app.close(); });
 describe("every GET in the manifest answers with a body its own schema accepts", () => {
   // No params, and either no query or a query schema that's happy with none supplied (e.g.
   // `bills`'s `days` has a default) — those routes can all be probed with a bare URL.
-  const gets = Object.entries(routes).filter(([, r]) => r.method === "GET" && !r.params && (!r.query || r.query.safeParse({}).success));
+  //
+  // Every restricted GET already in the manifest lists "manager" among its allowed roles — that
+  // is what lets one caller, u2, probe all of them — except the two `access: "admin"` routes
+  // (`adminUsers`, `adminActions`): that gate checks the `admin` claim, not `role`, and nothing
+  // in the shared seed carries it (nothing should, by design — root CLAUDE.md). Those two get
+  // the same "response matches its own schema" proof from `modules/admin/admin.test.ts` instead,
+  // against a caller its own test flags for exactly that case.
+  const gets = Object.entries(routes).filter(([, r]) => r.method === "GET" && r.access !== "admin" && !r.params && (!r.query || r.query.safeParse({}).success));
   // A plain loop rather than it.each, so each route is its own named case in the report. Every
   // manifest GET is implemented as of Phase 2, so there is no skip left: a route that regresses
   // to a 404 — dropped from a module, or renamed out from under the manifest — fails here.

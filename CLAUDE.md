@@ -180,7 +180,15 @@ changes a rule leaves at least one of them wrong until it does.
 
 ### Role-partitioned screens, one registry
 
-Five roles: `counter` · `manager` · `store` · `prod` · `buyer` (see `UI/src/types.ts`).
+Five roles: `counter` · `manager` · `store` · `prod` · `buyer` (see `UI/src/types.ts`) — still
+five. Account management (create a colleague's account, reset a password, deactivate one, move
+somebody to a different role or location) is `admin`, a boolean on `users`, orthogonal to `role`
+and checked as its own `Access` value (`"admin"`, `apps/api/src/plugins/rbac.ts`) — not a sixth
+role, no sidebar entry, no `roles/admin/` folder. The one screen it unlocks
+(`UI/src/pages/AdminUsers.tsx`) is reached at its own key, gated on the flag directly rather than
+looked up in any role's `NAV`, and the flag itself is granted or revoked only by `pnpm --filter
+@rch/api users set-admin` — there is no route for it, so a compromised admin session can create
+or reset ordinary accounts but never mint a second admin.
 
 **`manager` is hospital-wide.** One outlet manager supervises every outlet, so a manager's writes
 take **no** location: approve, reject, the price lists and the menus all decide for any outlet and

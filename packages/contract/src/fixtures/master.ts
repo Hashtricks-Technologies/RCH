@@ -53,15 +53,15 @@ export const MENU: Record<string, string[]> = {
   kiosk:  ["juice", "water", "bisc", "chips", "puff"],
 };
 export const USERS: User[] = [
-  { id: "u1", n: "Kavitha Raman",   e: "kavitha.r@royalcare.in", r: "counter", rl: "Counter Operator",     loc: "coffee",  col: "#B45309", emp: "RC-4471", ph: "98430 22118" },
-  { id: "u2", n: "Ramesh Kumar",    e: "ramesh.k@royalcare.in",  r: "manager", rl: "Outlet Manager",       loc: "rest",    col: "#7C3AED", emp: "RC-3120", ph: "98410 77210" },
-  { id: "u3", n: "Suresh Muthu",    e: "suresh.m@royalcare.in",  r: "store",   rl: "Store Keeper",         loc: "store",   col: "#0F766E", emp: "RC-2088", ph: "94430 51194" },
-  { id: "u4", n: "Vinoth Prakash",  e: "vinoth.p@royalcare.in",  r: "prod",    rl: "Kitchen In-charge",     loc: "kitchen", col: "#15803D", emp: "RC-1902", ph: "90031 66402" },
-  { id: "u5", n: "Latha Narayanan", e: "latha.n@royalcare.in",   r: "buyer",   rl: "Procurement Officer",  loc: "store",   col: "#BE123C", emp: "RC-1550", ph: "98940 30117" },
+  { id: "u1", n: "Kavitha Raman",   e: "kavitha.r@royalcare.in", r: "counter", rl: "Counter Operator",     loc: "coffee",  col: "#B45309", emp: "RC-4471", ph: "98430 22118", admin: false },
+  { id: "u2", n: "Ramesh Kumar",    e: "ramesh.k@royalcare.in",  r: "manager", rl: "Outlet Manager",       loc: "rest",    col: "#7C3AED", emp: "RC-3120", ph: "98410 77210", admin: false },
+  { id: "u3", n: "Suresh Muthu",    e: "suresh.m@royalcare.in",  r: "store",   rl: "Store Keeper",         loc: "store",   col: "#0F766E", emp: "RC-2088", ph: "94430 51194", admin: false },
+  { id: "u4", n: "Vinoth Prakash",  e: "vinoth.p@royalcare.in",  r: "prod",    rl: "Kitchen In-charge",     loc: "kitchen", col: "#15803D", emp: "RC-1902", ph: "90031 66402", admin: false },
+  { id: "u5", n: "Latha Narayanan", e: "latha.n@royalcare.in",   r: "buyer",   rl: "Procurement Officer",  loc: "store",   col: "#BE123C", emp: "RC-1550", ph: "98940 30117", admin: false },
   // A second counter, so a shop-to-shop ask can be seen from both ends: the
   // Coffee Shop asks, the Snack Kiosk answers. She already appears throughout
   // the seeded bills and requests — this gives her the login to match.
-  { id: "u6", n: "Deepa Selvam",    e: "deepa.s@royalcare.in",   r: "counter", rl: "Counter Operator",     loc: "kiosk",   col: "#475569", emp: "RC-4482", ph: "97890 41205" },
+  { id: "u6", n: "Deepa Selvam",    e: "deepa.s@royalcare.in",   r: "counter", rl: "Counter Operator",     loc: "kiosk",   col: "#475569", emp: "RC-4482", ph: "97890 41205", admin: false },
 ];
 
 /* Payers for the non-cash tenders (M1). No backend, so these stand in for the

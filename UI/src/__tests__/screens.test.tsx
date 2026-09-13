@@ -6,6 +6,7 @@ import { useApp } from "../store";
 import { NAV } from "../nav";
 import { DRAWERS } from "../drawers";
 import Settings from "../pages/Settings";
+import AdminUsers from "../pages/AdminUsers";
 import Issues from "../pages/Support";
 import Login from "../pages/Login";
 import { screens as counter } from "../roles/counter";
@@ -1196,5 +1197,58 @@ describe("the price-list prose counts what is actually deployed", () => {
     } finally {
       OUTLETS.forEach((l, i) => { LOC[l] = saved[i]; });
     }
+  });
+});
+
+describe("the admin-account-management link on Settings", () => {
+  it("is absent for an ordinary account", () => {
+    act(() => { as("counter"); });
+    const ui = mount(Settings);
+    expect(ui.text()).not.toContain("Manage staff accounts");
+  });
+  it("appears only for the one account carrying the flag", () => {
+    act(() => { as("manager"); useApp.setState({ user: { ...useApp.getState().user!, admin: true } }); });
+    const ui = mount(Settings);
+    expect(ui.text()).toContain("Manage staff accounts");
+  });
+});
+
+describe("the account-management page", () => {
+  it("renders the create-account form and the account table for a flagged account", () => {
+    act(() => {
+      as("manager");
+      useApp.setState({
+        user: { ...useApp.getState().user!, admin: true },
+        accounts: [{
+          id: "u1", emp: "RC-4471", n: "Kavitha Raman", e: "kavitha.r@royalcare.in", ph: "98430 22118",
+          r: "counter", rl: "Counter Operator", loc: "coffee", col: "#B45309",
+          active: true, mustChangePassword: false, admin: false,
+        }],
+      });
+    });
+    const ui = mount(AdminUsers);
+    expect(ui.text()).toContain("Manage staff accounts");
+    expect(ui.text()).toContain("Create an account");
+    expect(ui.text()).toContain("RC-4471");
+    expect(ui.text()).toContain("Kavitha Raman");
+    ui.unmount();
+  });
+
+  it("shows a created account's one-time password once, and the create form again empty", async () => {
+    act(() => {
+      as("manager");
+      useApp.setState({
+        user: { ...useApp.getState().user!, admin: true },
+        createAccount: async () => "a-one-time-password",
+      });
+    });
+    const ui = mount(AdminUsers);
+    typeIn(ui.field("Employee id"), "RC-9101");
+    typeIn(ui.field("Name"), "Anitha R");
+    typeIn(ui.field("Email"), "anitha.r@royalcare.in");
+    await settle(() => { ui.button("Create account").click(); });
+    expect(ui.text()).toContain("a-one-time-password");
+    expect(ui.field("Employee id").value).toBe("");
+    ui.unmount();
   });
 });

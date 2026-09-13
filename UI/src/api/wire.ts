@@ -5,7 +5,7 @@ import { hydrateItems, hydrateMaster, hydrateMenus, hydratePrices, hydrateRoster
 import { fromWireBestBefore, fromWireDate, fromWireTime } from "../lib/fmt";
 import { useApp } from "../store";
 import { basePrices } from "../lib/selectors";
-import type { Bill, Dated, HistEntry, PayerRecord, StockLoc } from "../types";
+import type { AdminAction, AdminUser, Bill, Dated, HistEntry, PayerRecord, StockLoc } from "../types";
 
 export type Snapshot = z.infer<typeof SnapshotSchema>;
 export type StockResponse = z.infer<typeof StockResponseSchema>;
@@ -188,6 +188,16 @@ export function applyRoster(r: Snapshot["roster"]): void {
  *  unlike the roster above: nothing outside the manager's Roster screen reads it, so there is no
  *  module-level registry to keep the identity of and `catalogVersion` is not involved. */
 export function applyPayers(payers: PayerRecord[]): void { useApp.setState({ payers }); }
+
+// ---- admin: account management (a capability, not a role — root CLAUDE.md)
+/** GET /admin/users -> every account, ordinary store state: nothing outside the admin page
+ *  reads it, the same shape `payers` already is for the same reason. */
+export function applyAccounts(accounts: AdminUser[]): void { useApp.setState({ accounts }); }
+/** GET /admin/actions -> the last fifty, times as "HH:MM" and the instant beside them like every
+ *  other document here is stamped. */
+export function applyAdminActions(rows: AdminAction[]): void {
+  useApp.setState({ adminActions: rows.map(stamped) });
+}
 
 // ---- adjustments
 /** GET /adjustments -> the register of write-offs and count-ups, times as "HH:MM" and the

@@ -2,6 +2,7 @@ import type { z } from "zod";
 import type * as C from "./schemas/common.js";
 import type * as D from "./schemas/documents.js";
 import type * as R from "./schemas/reports.js";
+import type * as A from "./schemas/admin.js";
 
 export type ItemType = z.infer<typeof C.ItemTypeSchema>;
 export type LocKey = z.infer<typeof C.LocKeySchema>;
@@ -72,3 +73,10 @@ export type PayerRecord = z.infer<typeof D.PayerRecordSchema>;
 export type AdjustReason = z.infer<typeof D.AdjustReasonSchema>;
 export type AdjustmentLine = z.infer<typeof D.AdjustmentLineSchema>;
 export type Adjustment = z.infer<typeof D.AdjustmentSchema>;
+
+// ---- admin: account management (a capability, not a role — root CLAUDE.md).
+export type AdminUser = z.infer<typeof A.AdminUserSchema>;
+export type AdminUserWithTempPassword = z.infer<typeof A.AdminUserWithTempPasswordSchema>;
+export type CreateAdminUserBody = z.infer<typeof A.CreateAdminUserBodySchema>;
+export type UpdateAdminUserBody = z.infer<typeof A.UpdateAdminUserBodySchema>;
+export type AdminAction = z.infer<typeof A.AdminActionSchema>;

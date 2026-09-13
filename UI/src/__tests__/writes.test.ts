@@ -2104,3 +2104,96 @@ describe("raiseProdOrder — POST /prod-orders", () => {
     host.remove();
   });
 });
+
+describe("admin: account management", () => {
+  const ROW = {
+    id: "u7", emp: "RC-9101", n: "Anitha R", e: "anitha.r@royalcare.in", ph: "",
+    r: "counter", rl: "Counter Operator", loc: "rest", col: "#B45309",
+    active: true, mustChangePassword: true, admin: false,
+  };
+
+  beforeEach(() => {
+    as("manager");
+    // A capability, not a role (root CLAUDE.md): flip the flag on the fixture's own manager
+    // rather than reaching for a role this account does not have.
+    useApp.setState({ user: { ...S().user!, admin: true } });
+  });
+
+  it("loads every account, closed ones included, without a toast of its own", async () => {
+    serve({ "GET /api/v1/admin/users": () => json([ROW]) });
+    await S().loadAccounts();
+    expect(S().accounts).toEqual([ROW]);
+    expect(calls()).toHaveLength(1);
+    expect(S().toast).toBeNull();
+  });
+
+  it("loads the recent-actions feed", async () => {
+    const row = { at: "2026-09-13T10:00:00.000Z", actor: "Ramesh Kumar", action: "create", target: "Anitha R", details: {} };
+    serve({ "GET /api/v1/admin/actions": () => json([row]) });
+    await S().loadAdminActions();
+    // 10:00 UTC is 15:30 in Asia/Kolkata, which is what every stamped time in this app prints in.
+    expect(S().adminActions).toEqual([{ ...row, at: "15:30", iso: "2026-09-13T10:00:00.000Z" }]);
+  });
+
+  it("creates an account, hands back the one-time password, and refetches the list", async () => {
+    serve({
+      "POST /api/v1/admin/users": () => json({
+        result: { ...ROW, tempPassword: "one-time-pass-1" }, changed: ["accounts"],
+        message: "Anitha R (RC-9101) created — the temporary password shown above is not stored anywhere and will not be shown again",
+      }),
+      "GET /api/v1/admin/users": () => json([ROW]),
+    });
+    const pw = await S().createAccount({ emp: "RC-9101", name: "Anitha R", email: "anitha.r@royalcare.in", role: "counter", loc: "rest" });
+    expect(pw).toBe("one-time-pass-1");
+    expect(hit("GET /api/v1/admin/users")).toHaveLength(1);
+    expect(S().accounts).toEqual([ROW]);
+    expect(S().toast).toContain("Anitha R (RC-9101) created");
+  });
+
+  it("returns null and repeats the refusal on a duplicate employee number", async () => {
+    serve({ "POST /api/v1/admin/users": () => refusal("employee RC-4471 already exists", 409) });
+    const pw = await S().createAccount({ emp: "RC-4471", name: "X", email: "x@x", role: "counter", loc: "rest" });
+    expect(pw).toBeNull();
+    expect(hit("GET /api/v1/admin/users")).toHaveLength(0); // nothing to read back on a refusal
+    expect(S().toast).toBe("employee RC-4471 already exists");
+  });
+
+  it("resets a password and hands back the new one-time value", async () => {
+    serve({
+      "POST /api/v1/admin/users/u1/reset-password": () => json({
+        result: { ...ROW, id: "u1", tempPassword: "fresh-temp-1" }, changed: ["accounts"],
+        message: "Password reset for Kavitha Raman (RC-4471) — shown above once, and their sessions are ended",
+      }),
+      "GET /api/v1/admin/users": () => json([]),
+    });
+    expect(await S().resetAccountPassword("u1")).toBe("fresh-temp-1");
+  });
+
+  it("deactivates and reactivates through the one action, in either direction", async () => {
+    serve({
+      "POST /api/v1/admin/users/u1/deactivate": () => json({ result: { ...ROW, id: "u1", active: false }, changed: ["accounts"], message: "Kavitha Raman (RC-4471) deactivated" }),
+      "GET /api/v1/admin/users": () => json([]),
+    });
+    expect(await S().setAccountActive("u1", false)).toBe(true);
+    expect(S().toast).toBe("Kavitha Raman (RC-4471) deactivated");
+
+    serve({
+      "POST /api/v1/admin/users/u1/reactivate": () => json({ result: { ...ROW, id: "u1", active: true }, changed: ["accounts"], message: "Kavitha Raman (RC-4471) reactivated" }),
+      "GET /api/v1/admin/users": () => json([]),
+    });
+    expect(await S().setAccountActive("u1", true)).toBe(true);
+    expect(S().toast).toBe("Kavitha Raman (RC-4471) reactivated");
+  });
+
+  it("moves an account to a new role and location, leaving the caller with the refusal when the pairing is wrong", async () => {
+    serve({ "PATCH /api/v1/admin/users/u1": () => refusal("Kitchen In-charge works at kitchen, not at coffee", 400) });
+    expect(await S().updateAccountRoleLoc("u1", { role: "prod", loc: "coffee" })).toBe(false);
+    expect(S().toast).toBe("Kitchen In-charge works at kitchen, not at coffee");
+
+    serve({
+      "PATCH /api/v1/admin/users/u1": () => json({ result: { ...ROW, id: "u1", r: "counter", loc: "kiosk" }, changed: ["accounts"], message: "Kavitha Raman (RC-4471) moved to Counter Operator at kiosk" }),
+      "GET /api/v1/admin/users": () => json([]),
+    });
+    expect(await S().updateAccountRoleLoc("u1", { role: "counter", loc: "kiosk" })).toBe(true);
+  });
+});
