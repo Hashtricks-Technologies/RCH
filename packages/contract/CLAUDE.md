@@ -75,7 +75,7 @@ manifest drives both sides: `mount()` in `apps/api/src/routes.ts` and `call()` i
   shelf has to be correctable.
 - **Payer data is scoped by role, and the schemas allow for it.** `BillSchema.payer` is optional and the
   roster lists may be empty, because the server strips payer data for `store`, `prod` and `buyer`.
-  `PayerSchema` (what a bill embeds) has no `active` field; `PayerRecordSchema` (the manager's register) does.
+  `PayerSchema` (what a bill embeds) has no `active` field: the till only ever reads live payers.
 - **`TicketSchema.hist` is required.** Every ticket writes its first trail row when it is created.
 
 ## Constants

@@ -18,8 +18,6 @@ import contracts from "./contracts/routes.js";
 import productreqs from "./productreqs/routes.js";
 import support from "./support/routes.js";
 import reports from "./reports/routes.js";
-// ---- payers ----
-import payers from "./payers/routes.js";
 // ---- adjustments
 import adjustments from "./adjustments/routes.js";
 // ---- admin account management
@@ -48,8 +46,6 @@ export async function registerModules(app: App): Promise<void> {
   await app.register(productreqs);
   await app.register(support);
   await app.register(reports);
-  // ---- payers ----
-  await app.register(payers);
   // ---- adjustments
   await app.register(adjustments);
   // ---- admin account management

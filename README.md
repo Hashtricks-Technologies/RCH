@@ -25,7 +25,7 @@ absent from its sidebar and refused on a direct link, with a message saying why.
 | Role | Signs in as | Lands on | Owns |
 |---|---|---|---|
 | Counter Operator | Kavitha Raman | Point of Sale | Billing and printing, counter stock, product on/off, raising requests, asking the kitchen for a tray, collecting tickets |
-| Outlet Manager | Ramesh Kumar | Approvals | Approving and trimming counter requests, prices across all shops, the on/off master, every outlet's bills and the same-day void, the payer register, and an item's commercial figures |
+| Outlet Manager | Ramesh Kumar | Approvals | Approving and trimming counter requests, prices across all shops, the on/off master, every outlet's bills and the same-day void, and an item's commercial figures |
 | Store Keeper | Suresh Muthu | Issue Desk | Issuing approved stock against a ticket, central-store stock, write-offs and stock counts at any shelf, requisitions to procurement |
 | Kitchen In-charge | Vinoth Prakash | Orders | Accepting orders, making products, distributing to the store and counters |
 | Procurement Officer | Latha Narayanan | Requisitions | Acting on requisitions, raising purchase orders, receiving goods |
@@ -63,7 +63,7 @@ Read the two figures the browser could never assemble on its own: a location's s
 over a window, and a payer's credit taken so far this month. Nothing runs in the browser's own
 store any more - every mutation in the app is a server call, and `UI/src/data/seed.ts` is gone.
 
-**And the five doors the audit wave added on 11 September 2026** - the only new capability since
+**And the four doors the audit wave added on 11 September 2026** - the only new capability since
 the six phases closed. Write off nine puffs that did not sell, or book in the four extra tins a
 count found, as a numbered document with a reason and a signature (a write-off may not take stock
 a pick ticket is holding, and the store keeper is the only one who can correct the quarantine
@@ -71,8 +71,7 @@ shelf). Void a mis-keyed bill on the day it was billed: every line goes back on 
 member's monthly credit room comes back, and the bill stays on the list badged rather than
 vanishing from the day. Correct a mis-typed MRP or retire a product nobody carries - each desk
 sees the fields it owns and the rest greyed out, and a line with stock on it or a menu still
-listing it cannot be retired until that is dealt with. Add a patient, a department or a new
-starter to the payer register from a screen, or load a whole ward list from a CSV. And let a
+listing it cannot be retired until that is dealt with. And let a
 counter ask the kitchen to bake something, with a needed-by date, instead of waiting for an order
 nobody could raise.
 
@@ -260,9 +259,9 @@ than a seventh phase. Most of it hardens what was already there - goods receipt 
 the shelf accepted rather than on what the lorry carried, an approved request that can be
 withdrawn, a wrong pick-ticket code counted with five of them locking the ticket, patient names
 withheld from the three roles that never bill anybody, and the ledger's own promises written into
-the database as constraints. Its last block is the exception: five capabilities the review found
-*missing* rather than broken - the write-off, the same-day bill void, the editable item master,
-the payer register and the kitchen order an outlet can raise, all described above.
+the database as constraints. Its last block is the exception: four capabilities the review found
+*missing* rather than broken - the write-off, the same-day bill void, the editable item master
+and the kitchen order an outlet can raise, all described above.
 
 **`develop` is deployed.** A dev environment is live at **https://rch.hashtrickstechnologies.com**,
 on a single EC2 instance under Docker Compose (`deploy/RUNBOOK.md` §16) - `develop`'s own EKS/RDS

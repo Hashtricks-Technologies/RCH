@@ -2,12 +2,12 @@ import { z } from "zod";
 import type { Role } from "./types.js";
 import { OkResponseSchema } from "./schemas/common.js";
 import { AuthResponseSchema, ChangePasswordBodySchema, LoginBodySchema, MeResponseSchema, PatchMeBodySchema, SignInDirectorySchema } from "./schemas/auth.js";
-import { AdjustmentsResponseSchema, BatchesResponseSchema, BILL_DAYS, BillsResponseSchema, ContractsResponseSchema, GrnsResponseSchema, ItemsResponseSchema, LocationsResponseSchema, MenusResponseSchema, PricesResponseSchema, ProdOrdersResponseSchema, ProductRequestsResponseSchema, PurchaseOrdersResponseSchema, RecipesResponseSchema, RequestsResponseSchema, PayersResponseSchema, RequisitionsResponseSchema, RosterResponseSchema, ShopAsksResponseSchema, SnapshotSchema, StockResponseSchema, SupportTicketsResponseSchema, TicketsResponseSchema, VendorsResponseSchema } from "./schemas/snapshot.js";
+import { AdjustmentsResponseSchema, BatchesResponseSchema, BILL_DAYS, BillsResponseSchema, ContractsResponseSchema, GrnsResponseSchema, ItemsResponseSchema, LocationsResponseSchema, MenusResponseSchema, PricesResponseSchema, ProdOrdersResponseSchema, ProductRequestsResponseSchema, PurchaseOrdersResponseSchema, RecipesResponseSchema, RequestsResponseSchema, RequisitionsResponseSchema, RosterResponseSchema, ShopAsksResponseSchema, SnapshotSchema, StockResponseSchema, SupportTicketsResponseSchema, TicketsResponseSchema, VendorsResponseSchema } from "./schemas/snapshot.js";
 import { CreditParamsSchema, CreditResponseSchema, StockLedgerQuerySchema, StockLedgerResponseSchema } from "./schemas/reports.js";
 import { AdminActionSchema, AdminDeletedUserSchema, AdminUserIdParamsSchema, AdminUserSchema, AdminUserWithTempPasswordSchema, CreateAdminUserBodySchema, UpdateAdminUserBodySchema } from "./schemas/admin.js";
 import { RecipeResultSchema, SaveRecipeBodySchema } from "./schemas/recipes.js";
-import { AdjustmentSchema, BatchSchema, BillSchema, PayerRecordSchema, ProdOrderSchema, ProductRequestSchema, PurchaseOrderSchema, RateContractSchema, RequisitionSchema, ShopAskSchema, StockRequestSchema, SupportTicketSchema, TicketSchema, VendorSchema } from "./schemas/documents.js";
-import { AddToProcurementListBodySchema, AnswerProductRequestBodySchema, AnswerShopAskBodySchema, ApproveRequestBodySchema, ApproveRequisitionBodySchema, ApprovalResultSchema, CancelPoBodySchema, CancelTicketBodySchema, CloseShortBodySchema, ContractBodySchema, CreateAdjustmentBodySchema, CreateItemBodySchema, CreatePoBodySchema, CreateProductRequestBodySchema, CreateRequestBodySchema, CreateRequisitionBodySchema, DeclineRequisitionBodySchema, DeclineShopAskBodySchema, DispatchResultSchema, DistributeBodySchema, DocIdParamsSchema, HandoverBodySchema, IssueResultSchema, MakeBatchBodySchema, MenuItemBodySchema, MenuItemParamsSchema, MenuLocParamsSchema, MenuResultSchema, PatchContractBodySchema, PatchPoBodySchema, PatchVendorBodySchema, PatchPayerBodySchema, PayBodySchema, PayerBodySchema, PayerParamsSchema, PoLineParamsSchema, PriceResultSchema, RaiseTicketBodySchema, RateTicketBodySchema, DeskReplyBodySchema, ReceiptResultSchema, ReceivePoBodySchema, RejectRequestBodySchema, ReplyToTicketBodySchema, SavePriceBodySchema, SavePriceParamsSchema, SetOrderStatusBodySchema, SetTicketStatusBodySchema, ShopAskBodySchema, ShopAskSentResultSchema, ToggleAvailBodySchema, ToggleResultSchema, TransferBodySchema, UpdatePoLineBodySchema, VendorBodySchema, writeResponse, ItemKeyParamsSchema, ItemResultSchema, PatchItemBodySchema, BillNoParamsSchema, VoidBillBodySchema, CreateProdOrderBodySchema } from "./schemas/writes.js";
+import { AdjustmentSchema, BatchSchema, BillSchema, ProdOrderSchema, ProductRequestSchema, PurchaseOrderSchema, RateContractSchema, RequisitionSchema, ShopAskSchema, StockRequestSchema, SupportTicketSchema, TicketSchema, VendorSchema } from "./schemas/documents.js";
+import { AddToProcurementListBodySchema, AnswerProductRequestBodySchema, AnswerShopAskBodySchema, ApproveRequestBodySchema, ApproveRequisitionBodySchema, ApprovalResultSchema, CancelPoBodySchema, CancelTicketBodySchema, CloseShortBodySchema, ContractBodySchema, CreateAdjustmentBodySchema, CreateItemBodySchema, CreatePoBodySchema, CreateProductRequestBodySchema, CreateRequestBodySchema, CreateRequisitionBodySchema, DeclineRequisitionBodySchema, DeclineShopAskBodySchema, DispatchResultSchema, DistributeBodySchema, DocIdParamsSchema, HandoverBodySchema, IssueResultSchema, MakeBatchBodySchema, MenuItemBodySchema, MenuItemParamsSchema, MenuLocParamsSchema, MenuResultSchema, PatchContractBodySchema, PatchPoBodySchema, PatchVendorBodySchema, PayBodySchema, PoLineParamsSchema, PriceResultSchema, RaiseTicketBodySchema, RateTicketBodySchema, DeskReplyBodySchema, ReceiptResultSchema, ReceivePoBodySchema, RejectRequestBodySchema, ReplyToTicketBodySchema, SavePriceBodySchema, SavePriceParamsSchema, SetOrderStatusBodySchema, SetTicketStatusBodySchema, ShopAskBodySchema, ShopAskSentResultSchema, ToggleAvailBodySchema, ToggleResultSchema, TransferBodySchema, UpdatePoLineBodySchema, VendorBodySchema, writeResponse, ItemKeyParamsSchema, ItemResultSchema, PatchItemBodySchema, BillNoParamsSchema, VoidBillBodySchema, CreateProdOrderBodySchema } from "./schemas/writes.js";
 
 export type Method = "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
 /** "public" needs no token; "any" needs a token of any role; "admin" needs the `admin` claim
@@ -134,18 +134,11 @@ export const routes = {
   // and every dashboard reads a slice the snapshot already carries whole and stays in the browser.
   stockLedger:  defineRoute({ method: "GET", path: "/reports/stock-ledger",     access: ["store", "manager", "buyer", "prod"], query: StockLedgerQuerySchema, response: StockLedgerResponseSchema }),
   creditReport: defineRoute({ method: "GET", path: "/reports/credit/:kind/:id", access: ["counter", "manager"],                params: CreditParamsSchema,   response: CreditResponseSchema }),
-  // ---- payers (the roster behind every non-cash tender). The outlet manager keeps the
-  // register: `POST /payers` puts a patient, a staff member or a department on it, and the one
-  // PATCH covers both the rename and the on/off switch - a payer is never deleted, because the
-  // bills already posted to them have to stay readable. `GET /roster` is "any" and scoped like
-  // the snapshot's own copy: a caller who never opens a payer picker reads an empty register.
-  addPayer:    defineRoute({ method: "POST",  path: "/payers",            access: ["manager"], body: PayerBodySchema,   response: writeResponse(PayerRecordSchema) }),
-  updatePayer: defineRoute({ method: "PATCH", path: "/payers/:kind/:id",  access: ["manager"], params: PayerParamsSchema, body: PatchPayerBodySchema, response: writeResponse(PayerRecordSchema) }),
-  roster:      defineRoute({ method: "GET",   path: "/roster",            access: "any",       response: RosterResponseSchema }),
-  // The register whole, closed accounts included, for the role that keeps it - `/roster` is the
-  // till's read and stops at the live rows, so without this a payer switched off last week is
-  // one nobody can reopen. Both payer writes name **both** collections in `changed`.
-  payers:      defineRoute({ method: "GET",   path: "/payers",            access: ["manager"], response: PayersResponseSchema }),
+  // ---- payers (the roster behind every non-cash tender). No screen keeps it: the register is
+  // loaded from a CSV with the `payers import` CLI. `GET /roster` is the till's read, live payers
+  // only, "any" and scoped like the snapshot's own copy: a caller who never opens a payer picker
+  // reads an empty register.
+  roster: defineRoute({ method: "GET", path: "/roster", access: "any", response: RosterResponseSchema }),
   // ---- item patch ----
   // The item master stopped being write-once. All four desks that handle goods reach this door;
   // which of the eight fields each of them may actually move is `ITEM_FIELD_ROLES`

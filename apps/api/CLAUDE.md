@@ -139,8 +139,8 @@ Two reads split deliberately:
 
 - **Items.** `loadItems` (`lib/master.ts`) is what rules read, and filters out retired items. `readItems` is
   what the wire carries: the whole master, because old documents still name retired items.
-- **Payers.** `GET /roster` returns live payers for the till. `GET /payers` returns every payer for the
-  manager's register.
+- **Payers.** `GET /roster` returns live payers for the till. No route writes the `payers` table; the
+  `payers import` CLI is the only way onto it.
 
 The snapshot redacts by role:
 
@@ -226,7 +226,7 @@ The config pins `TZ=UTC`, a 30 s test timeout, and runs files in parallel.
     don't touch master data.
 - **`given.*` in `src/test/builders.ts` is the only sanctioned way to make a document.** It allocates ids in
   bands above both the fixtures and the sequence starts. `given.adjustment` writes the document only, never a
-  ledger move. There is no `given.payer`: use `POST /payers`.
+  ledger move. There is no `given.payer`: insert into `payers` directly.
 - **`sequences` survives truncation**, so never assert a literal allocated id. Match the shape and assert the
   relative step instead.
 - **A test that proves a lock holds must call `warmPool(t, n)` first**, with **n ≤ 4** (the test pool's

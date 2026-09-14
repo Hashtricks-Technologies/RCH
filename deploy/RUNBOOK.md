@@ -697,10 +697,9 @@ sessions are signed out immediately).
 
 ### The payer roster
 
-Unlike user accounts, the roster **is** a screen - the outlet manager's **Payers** - and adding,
-renaming, deactivating and reopening a patient, a staff member or a department is an everyday
-task done there. The CLI exists for exactly one job the screen is wrong for: loading a ward list
-of a few hundred rows at go-live, or after a hospital-side change that produced a file.
+No screen keeps the roster. Patients, staff members and departments reach it through this CLI,
+from a file: a ward list of a few hundred rows at go-live, or whatever a hospital-side change
+produced since.
 
 ```bash
 pnpm --filter @rch/api payers import --csv ./wards.csv
@@ -724,8 +723,8 @@ Three behaviours to know before running it against a live database:
   touches an existing name.
 - **A rename never reopens a closed account.** `--replace-names` on a deactivated payer updates
   the name and leaves the switch alone; the summary counts those apart (`renamed 3 (1 still
-  inactive)`) so "renamed 3" cannot be read as three people back on the till's picker. Reopening
-  one is the manager's Payers screen.
+  inactive)`) so "renamed 3" cannot be read as three people back on the till's picker. Nothing in
+  the application reopens one.
 
 The import does not announce over SSE, so an open browser will not see the new rows until it is
 reloaded - the same as `users` and `db:seed`, and fine for a job that runs before anybody is
@@ -1580,10 +1579,9 @@ scoped to what a deploy needs, and needs no change.
    ```
    `kubectl cp` the file in first, or run the CLI from a laptop against the same
    `DATABASE_URL`. One bad row aborts the whole file and names every one it found, which is the
-   behaviour you want on go-live morning rather than half a roster. Afterwards the **outlet
-   manager's Payers screen** is where a new patient or a new starter is added, one at a time,
-   with no CLI and no deploy - decide who that is and say so in the handover, because the ability
-   to add a payer is the ability to open a credit account.
+   behaviour you want on go-live morning rather than half a roster. Afterwards a new patient or a
+   new starter goes in the same way, one CSV at a time - decide who runs it and say so in the
+   handover, because the ability to add a payer is the ability to open a credit account.
 6. **Run the restore drill once against the real RDS instance** (§6, the RDS procedure below the
    local rehearsal) - not the rehearsal, the real one, before the first bill is ever posted for
    real.
@@ -2315,8 +2313,8 @@ in the same dependency order, and never reseeds a database that already has rows
 the cron line from `deploy/compose/README.md` once, for the nightly backup.
 
 A first run seeds `--bare` (§1): sign in as `RC-0001` with `SEED_PASSWORD`, choose a new
-password, create the real staff at `/admin`, and enter items, recipes, prices, menus and the payer
-roster from the screens - §1's last paragraph has the order.
+password, create the real staff at `/admin`, enter items, recipes, prices and menus from the screens,
+and load the payer roster from a CSV (§5) - §1's last paragraph has the order.
 
 ### 16.4 What this trades away against the EKS path
 

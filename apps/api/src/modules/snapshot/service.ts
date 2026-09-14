@@ -119,10 +119,10 @@ export function createSnapshotService(db: Db) {
     /** A shop sees the new-product asks it raised itself; everyone else sees the queue. */
     async productRequests(claims: AccessClaims): Promise<ProductRequest[]> { return read(async (tx) => scopeProductRequests(await D.readProductRequests(tx), claims)); },
     // ---- payers ----
-    /** The register on its own - what a payer write naming "roster" refetches. The same cut the
+    /** The register on its own - what a notice naming "roster" refetches. The same cut the
      *  snapshot makes (`scopeRoster`): the kitchen, the store and the buyer never open a payer
-     *  picker, so without it a refetch after a rename would hand them the register the snapshot
-     *  had just withheld. */
+     *  picker, so without it a refetch would hand them the register the snapshot had just
+     *  withheld. */
     async roster(claims: AccessClaims): Promise<PayerRoster> { return read(async (tx) => scopeRoster(await M.readRoster(tx), claims)); },
     // ---- adjustments: the register on its own - what a write naming "adjustments" refetches.
     async adjustments(claims: AccessClaims): Promise<Adjustment[]> { return read(async (tx) => scopeAdjustments(await D.readAdjustments(tx), claims)); },

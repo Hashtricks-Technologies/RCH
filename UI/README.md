@@ -40,11 +40,11 @@ pnpm --filter @rch/ui test
 
 The dev server proxies `/api` to the Fastify API on `:3000`. Master data, prices, menus, the
 payer roster and every open document are hydrated from `GET /snapshot` on load
-(`hydrateMaster`/`hydrateRoster`). Every mutation in the store - fifty-three actions, listed in
+(`hydrateMaster`/`hydrateRoster`). Every mutation in the store - fifty-one actions, listed in
 `../CLAUDE.md`'s *One Zustand store* - is a server call: billing, availability, prices and
 menus, the whole stock-request chain, shop transfers and shop asks, the whole of production, the
-whole of buying, the support desk and the two server-side reports, and the audit wave's own six:
-the bill void, the kitchen order, the item patch, the two payer writes and the adjustment. There is no
+whole of buying, the support desk and the two server-side reports, and the audit wave's own four:
+the bill void, the kitchen order, the item patch and the adjustment. There is no
 in-memory fallback for any of it. `UI/src/api/events.ts` opens one `fetch`-based SSE connection
 per session and refetches whatever a write elsewhere changed, so two open tabs stay in sync
 without a reload.
@@ -116,8 +116,8 @@ src/
                                            the two report reads, the bill void, the kitchen order);
                                            procurement.ts (vendors, requisition approval, the PO lifecycle,
                                            goods receipt); ops.ts (rate contracts, new-product requests,
-                                           shop-to-shop transfers, the support desk, the item patch, the
-                                           payer register, adjustments)
+                                           shop-to-shop transfers, the support desk, the item patch,
+                                           adjustments)
   data/                                   master.ts (empty registries, replaced in place by hydrateMaster() and
                                            hydrateRoster()), vendors.ts - no seed.ts, no ops.ts; nothing here
                                            imports the fixtures
@@ -186,11 +186,10 @@ stock of it or any outlet still lists it, naming them - and a retired line keeps
 every document that already carries it while dropping off the pickers that could sell, order or
 promise it again.
 
-**The payer register is kept, not seeded.** The manager's Payers screen adds, renames,
-deactivates and reopens a patient, a staff member or a department, closed accounts included; a
-ward list of any size loads from a `kind,id,name` CSV
-(`pnpm --filter @rch/api payers import --csv`). A payer is deactivated rather than deleted, so
-switching one off takes it off every till's picker and leaves every bill already charged to it
+**The payer register is loaded, not kept on a screen.** Patients, staff members and departments
+reach the till's payer picker from a `kind,id,name` CSV
+(`pnpm --filter @rch/api payers import --csv`). A payer is deactivated rather than deleted, so a
+switched-off account leaves every till's picker and every bill already charged to it stays
 exactly as it was.
 
 **An outlet can ask the kitchen to make something.** The counter's Stock Requests screen gained

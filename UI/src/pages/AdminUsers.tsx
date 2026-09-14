@@ -41,8 +41,7 @@ export default function AdminUsers() {
   const notify = useApp((s) => s.notify);
 
   // Nothing on the snapshot carries the account list or its action log - this is the one screen
-  // that reads either, so it asks for both on the way in, the same shape `Roster` already uses
-  // for the payer register.
+  // that reads either, so it asks for both on the way in.
   useEffect(() => { void loadAccounts(); void loadAdminActions(); }, [loadAccounts, loadAdminActions]);
 
   const [form, setForm] = useState(emptyForm);

@@ -43,7 +43,7 @@ function bareHospital() {
   useApp.setState({
     stock: EMPTY_STOCK, rsv: {}, ovr: {}, prices: { A: {}, B: {} }, menu: {},
     req: [], tkt: [], prq: [], po: [], pord: [], batch: [], bills: [], grn: [], vendors: [],
-    contracts: [], productReqs: [], shopAsks: [], tickets: [], adjustments: [], payers: [],
+    contracts: [], productReqs: [], shopAsks: [], tickets: [], adjustments: [],
     sales: Array.from({ length: DAYS }, () => [0, 0, 0]),
     dayLabels: Array.from({ length: DAYS }, (_, i) => String(i + 1).padStart(2, "0")),
   });

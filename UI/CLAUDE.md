@@ -76,7 +76,7 @@ try {
   `counter/Requests.tsx` (keyed per row) are the two patterns to copy.
 - **Actions whose screen needs the new id return `Promise<string | null>`**: `createPo` and `createItem`.
 - **Single-press buttons with no form are fire-and-forget**: `handover`, `setOrderStatus`, `dispatchOrder`.
-- **Some reads have no notify and no refetch**: `readStockLedger`, `readCredit`, `loadPayers` and
+- **Some reads have no notify and no refetch**: `readStockLedger`, `readCredit` and
   `loadSignInDirectory` (the sign-in picker's staff list). They return `null` on failure, never an empty list,
   so a screen can tell an outage from genuinely nothing. `Login.tsx` falls back to a typed id on `null`.
 - **Account writes (`store/admin.ts`)**: `createAccount` sends no employee number (the server assigns it) and

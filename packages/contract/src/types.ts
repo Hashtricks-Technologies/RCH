@@ -66,10 +66,6 @@ export type StockLedgerResponse = z.infer<typeof R.StockLedgerResponseSchema>;
 export type CreditParams = z.infer<typeof R.CreditParamsSchema>;
 export type CreditResponse = z.infer<typeof R.CreditResponseSchema>;
 
-// ---- payers ----
-/** What `GET /roster` and the two payer writes carry: a roster row, `active` included. */
-export type PayerRecord = z.infer<typeof D.PayerRecordSchema>;
-
 // ---- adjustments: a write-off or a count-up as a document.
 export type AdjustReason = z.infer<typeof D.AdjustReasonSchema>;
 export type AdjustmentLine = z.infer<typeof D.AdjustmentLineSchema>;

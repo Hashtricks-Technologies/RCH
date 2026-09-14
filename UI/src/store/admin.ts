@@ -13,9 +13,8 @@ type Get = () => AppState;
 export interface AdminSlice {
   accounts: AdminUser[];
   adminActions: Dated<AdminAction>[];
-  /** A read, not a write - no toast of its own, nothing refetched behind it, the same shape
-   *  `loadPayers` already has for the same reason: this is a first load, not a write's own
-   *  read-back. */
+  /** A read, not a write - no toast of its own, nothing refetched behind it: this is a first
+   *  load, not a write's own read-back. */
   loadAccounts: () => Promise<void>;
   loadAdminActions: () => Promise<void>;
   /** Both hand back what the server minted, or `null` on a refusal - the same shape

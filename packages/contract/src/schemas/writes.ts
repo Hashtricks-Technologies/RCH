@@ -1,13 +1,13 @@
 import { z } from "zod";
 import { IsoDate, ItemTypeSchema, LocKeySchema, PriceListSchema, StockLocSchema, TenderSchema } from "./common.js";
-import { AdjustReasonSchema, GrnSchema, ItemSchema, PayerKindSchema, PayerSchema, PordStatusSchema, ProdOrderSchema, PurchaseOrderSchema, ShopAskSchema, StockRequestSchema, TicketPrioritySchema, TicketSchema, TicketStatusSchema, TicketTopicSchema } from "./documents.js";
+import { AdjustReasonSchema, GrnSchema, ItemSchema, PayerSchema, PordStatusSchema, ProdOrderSchema, PurchaseOrderSchema, ShopAskSchema, StockRequestSchema, TicketPrioritySchema, TicketSchema, TicketStatusSchema, TicketTopicSchema } from "./documents.js";
 
 /** Every domain slice a write can touch, so a client can invalidate/refetch precisely instead
  *  of reloading the whole snapshot after each mutation. Extracted so `events.ts` can name one
  *  collection at a time from the same enum. `"items"` is here because `POST /items` changes the
  *  item master, which every screen reads out of one registry - without it the only honest
  *  `changed` a new product could name would be the whole snapshot. */
-export const CollectionSchema = z.enum(["stock", "rsv", "ovr", "prices", "menu", "bills", "req", "tkt", "prq", "po", "pord", "batch", "grn", "vendors", "contracts", "tickets", "productReqs", "shopAsks", "items", "roster", "payers", "adjustments", "accounts", "recipes"]);
+export const CollectionSchema = z.enum(["stock", "rsv", "ovr", "prices", "menu", "bills", "req", "tkt", "prq", "po", "pord", "batch", "grn", "vendors", "contracts", "tickets", "productReqs", "shopAsks", "items", "roster", "adjustments", "accounts", "recipes"]);
 export const ChangedSchema = z.array(CollectionSchema);
 export type Changed = z.infer<typeof CollectionSchema>;
 
@@ -237,16 +237,6 @@ export const DeskReplyBodySchema = z.strictObject({
   st: z.enum(["Waiting on you", "Resolved"]).optional(),
 });
 
-// ---- payers ----
-// Who a bill may be charged to. The three rosters are numbered independently by the hospital -
-// an in-patient number, an employee number, a cost centre - so the id travels as the hospital's
-// own and is never allocated here; `kind` and `id` together are the key.
-export const PayerBodySchema = z.strictObject({ kind: PayerKindSchema, id: z.string().min(1).max(40), name: z.string().max(120) });
-/** Declared field by field, and with no defaults: `.parse({})` must stay empty, or "Nothing to
- *  change" is unreachable and a rename would quietly reactivate a closed account. An empty name
- *  is the service's own sentence, not a 400 - the same split every other write here makes. */
-export const PatchPayerBodySchema = z.strictObject({ name: z.string().max(120).optional(), active: z.boolean().optional() });
-export const PayerParamsSchema = z.strictObject({ kind: PayerKindSchema, id: z.string().min(1).max(40) });
 // ---- bill void. A mis-keyed bill, taken back on the day it was taken and no later.
 /** A bill number carries a slash (`CF/1188`), so this one param reaches the server
  *  percent-encoded - `UI/src/api/client.ts` encodes every path param and nginx forwards the

@@ -5,7 +5,7 @@ import { hydrateItems, hydrateMaster, hydrateMenus, hydratePrices, hydrateRecipe
 import { fromWireBestBefore, fromWireDate, fromWireTime } from "../lib/fmt";
 import { useApp } from "../store";
 import { basePrices } from "../lib/selectors";
-import type { AdminAction, AdminUser, Bill, Dated, HistEntry, PayerRecord, StockLoc } from "../types";
+import type { AdminAction, AdminUser, Bill, Dated, HistEntry, StockLoc } from "../types";
 
 export type Snapshot = z.infer<typeof SnapshotSchema>;
 export type StockResponse = z.infer<typeof StockResponseSchema>;
@@ -194,21 +194,16 @@ export function applyRecipes(recipes: Snapshot["recipes"]): void {
 /** GET /roster -> the register the counter's payer picker reads. `PATIENTS`, `STAFF` and
  *  `DEPTS` are module-level registries like `IT` and `LOC`, not store state, so `catalogVersion`
  *  is what tells React the lists moved - the same signal `applyItems` bumps for the catalogue.
- *  The server only ever sends active rows, so a payer the manager switched off simply stops
- *  being offered at the till rather than needing a second filter here. */
+ *  The server only ever sends active rows, so a deactivated payer simply stops being offered at
+ *  the till rather than needing a second filter here. */
 export function applyRoster(r: Snapshot["roster"]): void {
   hydrateRoster(r);
   useApp.setState((s) => ({ catalogVersion: s.catalogVersion + 1 }));
 }
 
-/** GET /payers -> the manager's own register, closed accounts included. Ordinary store state,
- *  unlike the roster above: nothing outside the manager's Roster screen reads it, so there is no
- *  module-level registry to keep the identity of and `catalogVersion` is not involved. */
-export function applyPayers(payers: PayerRecord[]): void { useApp.setState({ payers }); }
-
 // ---- admin: account management (a capability, not a role - root CLAUDE.md)
 /** GET /admin/users -> every account, ordinary store state: nothing outside the admin page
- *  reads it, the same shape `payers` already is for the same reason. */
+ *  reads it, so there is no module-level registry to keep the identity of. */
 export function applyAccounts(accounts: AdminUser[]): void { useApp.setState({ accounts }); }
 /** GET /admin/actions -> the last fifty, times as "HH:MM" and the instant beside them like every
  *  other document here is stamped. */

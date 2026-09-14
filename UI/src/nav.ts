@@ -21,10 +21,9 @@ export const NAV: Record<Role, NavGroup[]> = {
       // ---- bill void: the manager had no way to see a bill at all, and voiding one is the
       // manager's own door. Every outlet's bills, which is the difference from the counter's.
       { k: "bills", label: "Bills", icon: "bill" }] },
-    // ---- payers ----
     // ---- recipes: the manager owns an item's cost and every price priced against it, and a made
     // item's cost *is* its recipe.
-    { group: "Masters", items: [{ k: "roster", label: "Payers", icon: "item" }, { k: "recipes", label: "Recipes", icon: "make" }] },
+    { group: "Masters", items: [{ k: "recipes", label: "Recipes", icon: "make" }] },
     { group: "Account", items: [{ k: "issues", label: "Support", icon: "req" }, { k: "settings", label: "Settings", icon: "set" }] },
   ],
   store: [

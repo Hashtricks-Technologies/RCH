@@ -4,8 +4,6 @@ import Approvals from "./Approvals";
 import ItemsStock from "./ItemsStock";
 import Prices from "./Prices";
 import Availability from "./Availability";
-// ---- payers ----
-import Roster from "./Roster";
 import "./ApprovalDrawer";
 // ---- item patch ----
 import "./ItemDrawer";
@@ -23,8 +21,6 @@ import RecipeBook from "../../ui/RecipeBook";
 
 export const screens: Record<string, ComponentType> = {
   dash: Dashboard, approvals: Approvals, stock: ItemsStock, prices: Prices, avail: Availability,
-  // ---- payers ----
-  roster: Roster,
   bills: Bills,
   recipes: RecipeBook,
 };

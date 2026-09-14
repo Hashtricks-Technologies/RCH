@@ -231,7 +231,7 @@ describe("a super admin has no role in practice", () => {
     // u2's placeholder role is manager: without the admin restriction every one of these answers.
     const h = await admin();
     expect((await app.inject({ method: "GET", url: "/api/v1/snapshot", headers: h })).statusCode).toBe(404);
-    expect((await app.inject({ method: "GET", url: "/api/v1/payers", headers: h })).statusCode).toBe(404);
+    expect((await app.inject({ method: "GET", url: "/api/v1/reports/credit/staff/RC-4471", headers: h })).statusCode).toBe(404);
     const write = await app.inject({ method: "POST", url: "/api/v1/availability/toggle", headers: { ...h, "idempotency-key": randomUUID() }, payload: { loc: "rest", it: "juice" } });
     expect(write.statusCode).toBe(404);
     expect(write.json().error.message).toBe("There is nothing at POST /api/v1/availability/toggle.");

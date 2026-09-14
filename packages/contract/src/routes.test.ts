@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { z } from "zod";
-import { AdjustReasonSchema, CreateAdjustmentBodySchema, DeskReplyBodySchema, CreatePoBodySchema, CreditParamsSchema, CreditResponseSchema, EVENTS_PATH, EventNoticeSchema, LocKeySchema, MakeBatchBodySchema, PatchContractBodySchema, PatchPayerBodySchema, PatchPoBodySchema, PatchVendorBodySchema, PO_APPROVAL_LIMIT, RaiseTicketBodySchema, RateTicketBodySchema, ReceivePoBodySchema, SetOrderStatusBodySchema, SetTicketStatusBodySchema, StockLedgerQuerySchema, StockLocSchema, TktStatusSchema, TransferBodySchema, ItemSchema, PatchItemBodySchema } from "./index";
+import { AdjustReasonSchema, CreateAdjustmentBodySchema, DeskReplyBodySchema, CreatePoBodySchema, CreditParamsSchema, CreditResponseSchema, EVENTS_PATH, EventNoticeSchema, LocKeySchema, MakeBatchBodySchema, PatchContractBodySchema, PatchPoBodySchema, PatchVendorBodySchema, PO_APPROVAL_LIMIT, RaiseTicketBodySchema, RateTicketBodySchema, ReceivePoBodySchema, SetOrderStatusBodySchema, SetTicketStatusBodySchema, StockLedgerQuerySchema, StockLocSchema, TktStatusSchema, TransferBodySchema, ItemSchema, PatchItemBodySchema } from "./index";
 import { routes } from "./routes";
 
 /** One valid body per route that takes one. The coverage case below fails if a new route
@@ -52,9 +52,6 @@ const SAMPLES: Record<string, Record<string, unknown>> = {
   // ---- the admin's support desk
   replyAsDesk:         { body: "Fixed on our side - reload the dashboard and it should read right.", st: "Resolved" },
   setDeskTicketStatus: { st: "Waiting on you" },
-  // ---- payers ----
-  addPayer:        { kind: "staff", id: "E2291", name: "Kavitha Raman" },
-  updatePayer:     { active: false },
   // ---- item patch ----
   patchItem:       { rl: 12 },
   // ---- bill void
@@ -128,7 +125,6 @@ describe("what buying puts on the wire", () => {
     // is unreachable and a patch of one field silently resets every other one.
     expect(PatchVendorBodySchema.parse({})).toEqual({});
     expect(PatchContractBodySchema.parse({})).toEqual({});
-    expect(PatchPayerBodySchema.parse({})).toEqual({});
     // ---- item patch ----
     expect(PatchItemBodySchema.parse({})).toEqual({});
     expect(PatchVendorBodySchema.parse({ terms: "45 days" })).toEqual({ terms: "45 days" });
