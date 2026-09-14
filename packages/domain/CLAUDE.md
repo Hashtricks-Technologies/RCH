@@ -1,178 +1,72 @@
 # packages/domain — CLAUDE.md
 
-Repo-wide rules and the domain invariants themselves are in the root `../../CLAUDE.md`; the
-design contract is `docs/superpowers/specs/2026-09-03-backend-design.md` (§5.1 has the
-enforcement mechanism for each rule below). This is what is specific to `@rch/domain`.
+Repo-wide rules are in the root `CLAUDE.md`. This file covers what is specific to `@rch/domain`.
 
 ## What this is
 
-The business rules, written once, as pure functions. **The server enforces them; the UI only
-previews with them.** A rule inlined in a Fastify route handler or in a React component is a
-defect — move it here and call it from both sides. Every export is a plain function over plain
-data, parameterised by a `Master` (`items`, `locations`, `recipes`) the caller supplies.
+This package holds the business rules, each written once as a pure function. **The server enforces them; the
+UI only previews with them.** A rule written inline in a route handler or a React component is a defect: move it
+here and call it from both sides.
 
-**A rule two sides enforce lives here; a validation one endpoint runs does not.** Phase 5
-demonstrates the line four times over — the claim walk, the receipt checks, the order value and
-its slab, and the shared formatters all moved here because the server's toast and the browser's
-screen both have to say the same thing. A GSTIN's shape is the other case: `GSTIN_RE` stays in
-`apps/api/src/modules/vendors/service.ts` because it has exactly one consumer and previews
-nothing on the browser's side — moving it here would not remove a second copy, it would just
-relocate the only one.
+The line: a rule that **both sides** need lives here. So does wording both sides print (`REASON_LABEL`,
+`creditBreachMessage`), because a sentence written twice drifts. A validation that only one endpoint runs, with
+nothing to preview in the browser, stays in that module. `GSTIN_RE` in the vendors service is the example.
 
-The audit wave drew the same line twice more. `items.ts`'s `ITEM_FIELD_ROLES` is here because the
-server refuses a patch with it and the drawer greys the same boxes with it — two enforcers, one
-table. `adjustments.ts`'s `REASON_LABEL` is here for the weaker but identical reason: it is
-display text rather than a rule, but it is display text **both** sides print — the server signs a
-`document_history` row with it and the browser's picker and register column read it — and a
-wording written twice is how a trail and a screen end up disagreeing about what happened to the
-same document. Its first implementation had a copy on each side; the review moved it here.
+There is no build step; `package.json` exports `src/index.ts` directly.
+
+```bash
+pnpm --filter @rch/domain test        # vitest run --coverage (floor: lines 99 / branches 92)
+pnpm --filter @rch/domain typecheck
+pnpm --filter @rch/domain lint
+```
 
 ## Purity
 
-- **No I/O.** No `fetch`, no `pg`, no Drizzle, no file system, no `process.env`.
-- **No framework.** No Fastify, no React, no Zustand. Nothing imports from `apps/api` or `UI`.
-- The only dependency is `@rch/contract`, and only for its types and `STAFF_CREDIT_LIMIT`. The
-  arrow is contract → domain → api / UI; it never points back.
-- No registry reads and no module-level mutable state: a function that needs the item master
-  takes a `Master` argument. That is what lets the server call it inside a transaction with the
-  master its own write commits against.
-- `Intl.DateTimeFormat` with `timeZone: "Asia/Kolkata"` is the platform API used in `ids.ts` (a
-  batch made at 00:30 IST is dated today, not yesterday) and in `format.ts`'s `istDate`, which
-  `shelf.ts`'s best-before and `purchasing.ts`'s `etaFrom` both read rather than keeping a
-  second copy. `receipt.ts`'s expiry check takes `today` as a plain string argument rather than
-  computing it — the caller (`apps/api/src/modules/grn/service.ts`) passes `istDate(new
-  Date())`, so a delivery is judged against the hospital's own calendar day even when the
-  server's own clock reads UTC.
+- **No I/O and no framework.** No `fetch`, `pg`, Drizzle, file system, `process.env`, Fastify, React or
+  Zustand. Nothing here imports from `apps/api` or `UI`.
+- **The only dependency is `@rch/contract`**, for its types and a few constants.
+- **No module-level mutable state.** A function that needs the item master takes a `Master` argument (`items`,
+  `locations`, `recipes`). That lets the server call it inside a transaction, against the master that
+  transaction commits.
+- **Dates use the hospital's calendar**, through `Intl.DateTimeFormat` with `timeZone: "Asia/Kolkata"`
+  (`format.ts`'s `istDate`). A rule that needs "today" takes it as an argument instead of reading the clock.
 
-## Commands
+## Layout
 
-```bash
-pnpm --filter @rch/domain test        # vitest run
-pnpm --filter @rch/domain typecheck
-pnpm --filter @rch/domain lint        # oxlint
-```
+`src/index.ts` is the public surface. Each file holds one rule, with its `<name>.test.ts` beside it. Two files
+need more context than their names give:
 
-No build step — `package.json` exports `src/index.ts` directly.
-
-## What lives here
-
-`src/index.ts` is the public surface; a file is one rule, with its `<name>.test.ts` beside it.
-
-| File | Rule |
-|---|---|
-| `round.ts` | `round3` — three decimals, the tolerance every quantity is kept at |
-| `master.ts` | `Master`, `StockMap`, `RsvMap`, `OvrMap`, `Prices`, and `qty` / `resv` / `avail` |
-| `pricing.ts` | `priceOf` — the till price, capped at the printed MRP **at read time**, never stored |
-| `availability.ts` | `availOf` — a manual override wins; an MTO item is off when a binding ingredient runs short and the reason names it; a stocked item is off at zero. `fq` formats a quantity in the shelf's voice |
-| `promise.ts` | `committed` and `freeToPromise` — on hand, less ticket reservations, less what other approvals already committed (C6) |
-| `approval.ts` | `planApproval` — never more than asked, than typed, or than free to promise; `trimmed` means the store cut it, not the manager. `approvedStatus` joins it: which approved status (`Manager approved` / `Partially approved`) a set of decided lines amounts to, written once because two callers need the same answer — the approval that first reaches it, and a cancelled ticket putting its request back where the manager left it |
-| `billing.ts` | `planBill` — pricing, GST derived from inclusive prices, and an MTO line exploded into recipe moves |
-| `costing.ts` | `recipeCost` / `costOf` — a made item costs its recipe plus overhead, never zero |
-| `credit.ts` | `creditRoom`, `breachesCredit`, `creditBreachMessage`, and the re-exported `STAFF_CREDIT_LIMIT` |
-| `apportion.ts` | `apportion` — a receipt fills its source lines in order, deterministically |
-| `support.ts` | `SUPPORT_TRANSITIONS`, `mayUserSet`, `statusAfterReply`, `mayRate`, `mayReply` — the support desk's rules. No support-agent role exists (§8.3's five roles), so every edge but the seeded desk's own replies is one a *user* can take; `mayReply` is not an edge in the table (a reply is refused *before* it is written, so `statusAfterReply` never sees a closed ticket) but the one predicate both the service and the drawer read to decide whether the reply box may be shown at all |
-| `reports.ts` | `ledgerRow` — one item's opening/received/issued/closing over a window, from a `before` sum and a signed `inWindow` array. There is deliberately **no** `ledgerTotals`: the central store's ledger carries kg, nos and L on one page, and the store's own foot totals per unit with `unitTotal` instead |
-| `ids.ts` | `formatId`, `SEQUENCE_START`, `IdKind`, `grnId(poId, n)` — the document numbers exactly as the floor reads them. `grnId` is Phase 6's: `GRN-<yy><po number>-<nn>`, built once here rather than inline in `grn/service.ts`, because the three-character-tail format it replaced collided (`PO-2026-0143` and `PO-2027-0143` shared it). `IdKind` gained `"adj"` in the audit wave — `ADJ-<year>-<nnnn>`, `SEQUENCE_START.adj = 1` because nothing was ever written off through a document before, and padded to four rather than carrying the literal-zero prefix `req`/`prq`/`po` use, since the series starts at one and a bare `ADJ-2026-1` beside `ADJ-2026-10` sorts wrongly wherever a document list is sorted as text |
-| `shelf.ts` | `DEFAULT_SHELF_LIFE_HOURS` (8), `bestBeforeAt`, `bestBeforeText` — the only place a batch's best-before or its H9 wording ("21:30", "21:30 tomorrow", "21:30 04 Sep") is computed |
-| `claims.ts` | `releaseClaim` — give a purchase-order line's sources back **last source first**; `foldClaims` — every delta against one requisition line, folded and sorted into lock order; `shortfallClaims` — what never arrived, per line, released the same way, and measured against `netReceived` so a rejected quantity goes back on the procurement list rather than being written off the order. The whole arithmetic of the procurement list, which is derived and stores nothing but `ordered_qty` |
-| `receipt.ts` | `netReceived({recv, rejected})` — arrival less what quality control turned away, the **one** place that difference is taken; `receiptStatus` — `Received` or `Partially received`, covering a line at `netReceived >= qty`, so a wholly rejected consignment cannot push an order into the terminal `Received`; `checkReceiptLine` — the goods-receipt checks in the store keeper's own order (the 2% tolerance, the rejected-qty bound, the batch/date checks, the MRP-vs-shelf-price floor), whose `ReceiptCheckLine.received` is **net accepted so far** while the arrival being judged is gross, on purpose: counting a rejection against the vendor would refuse the replacement delivery that settles the line; `RECEIPT_TOLERANCE` (1.02), on the public surface so the buyer's receipt drawer stops carrying its own literal; `mrpBelowShelfPrice(name, mrp, listPrice)` — the MRP floor lifted out of `checkReceiptLine` (output byte-identical) once a second door asked the same question, and it now has **two** callers: the goods receipt, judging a delivery against the item's list-A price, and `PATCH /items/:it`, judging an edited MRP against the **highest** list the item sits on |
-| `purchasing.ts` | `poValue`, `needsApproval` (takes the finance slab as a parameter, never imports it), `rateFor` (a live rate contract, or the item's standard cost), `contractInWindow` (whether a contract prices an order on a given calendar date — the server's query and the buyer's preview both read it), `etaFrom` (a vendor's lead time, counted in the hospital's calendar) |
-| `format.ts` | `money`, `money0`, `istDate`, `dmy` (`"2026-08-31"` → `"31-Aug-2026"`, from a fixed month table, not `toLocaleDateString`), `unitTotal` — the words and numbers both sides print. `credit.ts` and `shelf.ts` now import their formatters from here rather than keeping a private copy each |
-| `transitions.ts` | the six status tables and `canTransition` |
-| `items.ts` | `ItemField`, `ITEM_FIELD_ROLES`, `mayEditItemField`, `unauthorisedItemFields` — who may change what on the item master. The manager owns the commercial three (`mrp`, `cost`, `gst`), the store keeper, buyer and kitchen own the operational four (`n`, `hsn`, `rl`, `grp`), all four own `active`, the counter owns none. One table, two enforcers: `PATCH /items/:it` refuses with it and `roles/manager/ItemDrawer.tsx` disables the same boxes with it — which is exactly the §5.1 test for a rule belonging here rather than in a route handler |
-| `adjustments.ts` | `REASON_LABEL` — the one place a write-off's reason becomes words (`wastage` → `Wastage`, `count` → `Stock count`, …). The wire carries the enum so a month-end query can group by it; both sides read this to print it, the server signing an adjustment's `document_history` row and the browser filling its picker and its register column. Its test pins that `Object.keys(REASON_LABEL)` equals `AdjustReasonSchema.options`, so a seventh reason added to the wire fails here rather than reaching a trail as `undefined` |
-| `par.ts` | `PAR_FACTOR` (`Record<LocKey, number>`) — the par multiplier `parOf` in `UI/src/lib/selectors.ts` reads. No server rule reads it; it was never a wire shape, which is why it left `packages/contract` in Phase 6 |
-| `recipes.ts` | `carriesRecipe` (a finished good or a made-to-order item), `canBeIngredient` (anything but MTO — an ingredient has to be something a shelf holds), and `recipeRefusal(items, it, draft)` — the first thing wrong with a recipe as written, top down (the item, the overhead's 0–100%, then each line: itself, missing or retired, made to order, repeated, not above zero), or `null`. Asked against the **live** master, so a retired line reads as one the master does not have. `PUT /recipes/:it` refuses with it and `UI/src/ui/RecipeBook.tsx` greys its Save button with it — two enforcers, one rule (2026-09-14) |
-
-`otp.ts`/`makeOtp` is gone: a six-digit code derived from a ticket number is a formula the
-browser can run, so the OTP is now minted at random in `apps/api/src/lib/tickets.ts`'s
-`allocateTicket` (`crypto.randomInt(100000, 1000000)`) and never leaves the server except to the
-collecting location.
-
-`SEQUENCE_START` is the first number each series issues, continuing the seeded documents
-(`req: 913`, `tkt: 441`, `bill: 1188`, …). `apps/api/src/lib/ids.ts` inserts those rows and hands
-numbers out under a row lock; the test builders deliberately allocate above them.
+- `transitions.ts` holds the status tables, which the server enforces and the UI's buttons read (see below).
+- `claims.ts`, `receipt.ts` and `purchasing.ts` hold buying's arithmetic. Only `ordered_qty` is stored; the
+  procurement list itself is derived.
 
 ## Transition tables
 
-`TransitionTable<S> = Readonly<Record<S, readonly S[]>>`, typed against the closed status unions
-in `@rch/contract` — so a status added to a schema fails `typecheck` here until its row exists.
-One table, two consumers: the server refuses anything not listed (`assertTransition` in
-`apps/api/src/lib/rules.ts`) and the UI reads the same table to decide which buttons to render
-(`isReqOpen`, `canIssueTicket`, `canHandOver`, `canReceiveTicket`, `canDispatch`, and now
-`canSendPo`, `canCancelPo` in `UI/src/lib/selectors.ts`). A transition the UI offers but the
-server refuses is impossible by construction.
+`TransitionTable<S>` is typed against the closed status enums in `@rch/contract`. Adding a status therefore
+fails `typecheck` here until its row exists. The server refuses any edge the table doesn't list
+(`assertTransition`), and the UI reads the same table to decide which buttons to draw.
 
-Phase 5 joined `REQUISITION_TRANSITIONS` and `PO_TRANSITIONS`. `PO_TRANSITIONS["Partially
-received"]` includes **itself**: a second instalment that still does not complete the order
-re-enters the status it was already in, because `receiptStatus` computes the target from the
-totals rather than from where the order started. `Ordered → Cancelled` is a real edge in the
-table, but `purchaseorders/service.ts`'s `cancel` guards it again at its own door — refusing any
-order with `received > 0` before the table is ever consulted — because the table's own refusal
-("is already partially received") is not what the buyer needs to hear; the endpoint's own
-sentence tells them to close it short instead. `Partially received` has no `Cancelled` edge at
-all: a claim on goods that already arrived cannot be given back.
+**A table says which status may follow which, never through which door.** Adding a general edge opens it to
+every consumer of that table. So an edge that only one endpoint should take is guarded again at that endpoint:
 
-**The trap:** `PROD_ORDER_TRANSITIONS` allows `Dispatched` from **every** open stage
-(`New`, `Accepted`, `In kitchen`, `Ready`) on purpose — the kitchen sends an order out the moment
-it is ready, whatever word the board is showing, and the guard only refuses one already
-`Dispatched` or `Declined`. Phase 4's `POST /prod-orders/:id/status` must not read that as
-permission to skip the board's own walk: a status endpoint that gates on this table alone would
-let `New → Ready` through. Read the comment in `transitions.ts` and spec §16 before touching it.
-`REQUEST_TRANSITIONS` keeps `Received → Closed` reachable although no path writes `Received`
-today, so a migrated or hand-corrected row is not stranded.
-
-**`REQUEST_TRANSITIONS` reaches `Cancelled` from `Manager approved` and `Partially approved`** as
-well as from `Draft` and `Request sent` — the audit fix wave's withdrawal door. An approved
-request that the store has not yet ticketed had no way out at all before it: the counter that
-raised it could not take it back and the manager could not undo their own decision, and the only
-exit was to issue a ticket and then cancel the ticket. Nothing is reserved at an approved status
-(the hold is written at issue-ticket), so nothing is un-promised by taking this edge. The door is
-shut by `requests/service.ts`'s own guard rather than by the table: `cancel` refuses a request at
-`Ticket issued` — `<id> already has ticket <tkt> — cancel the ticket instead` — and lets every
-other refused status fall through to `assertTransition`'s `is already <status>`, because
-`ticketId` is never cleared once a ticket exists and telling a `Collected` or `Closed` request to
-cancel its ticket is advice nobody can act on.
-
-**An edge reachable through one door only is guarded at that door.** Phase 4 added two edges
-neither table's own consumer treats as a button: `TICKET_TRANSITIONS.Issued` gained
-`Cancelled`, reachable only through `POST /tickets/:id/cancel`; `PROD_ORDER_TRANSITIONS.Dispatched`
-gained `["Ready"]`, reachable only when that same cancellation puts a dispatched order's ticket
-back — which is why `setStatus` (`apps/api/src/modules/production/service.ts`) refuses
-`Dispatched` as a *source* even though the table allows the edge, and `canMoveOrder`
-(`UI/src/lib/selectors.ts`) refuses it too, so the board never draws a button for it. The rule
-this states generally: a table says what status may follow what, never *by which door* — so a
-general edge in it opens every consumer of that table, not just the one that needed it. That is
-why `REQUEST_TRANSITIONS` still carries **no** `"Ticket issued" → "Manager approved"` row: a
-cancelled ticket's request goes back to `approvedStatus(lines)` through an explicit
-`status === "Ticket issued"` guard and a direct write in `modules/tickets/service.ts` instead,
-because the row would also have re-opened `approve` (whose only guard is that same table lookup)
-for a request already holding a live ticket, and through it a second ticket for stock already
-promised once. The withdrawal edges added above are the other half of the same lesson read
-forwards: the table is widened where a status genuinely may follow another, and the door that
-must stay shut — a request that already has a live ticket — is shut at the door, in `cancel`.
-
-Phase 6 added a third: `SHOP_ASK_TRANSITIONS.Sent` gained `["Asked"]`, reachable only through
-`POST /tickets/:id/cancel` withdrawing the ticket a grant raised — the ask is reopened rather
-than left `Sent` showing the asking shop stock that is coming and the holding shop a document
-it has already undone. `shopasks/service.ts`'s own two writes (`answer`, `decline`) never target
-`Asked`, so the general edge opens no door of theirs; only `tickets/service.ts`'s `cancel`
-reads it, under the ticket's own row lock. The rule from Phase 4 still holds: a table says what
-may follow what, never *by which door*, so a future `answerShopAsk`-shaped write that ever gates
-on this table alone would let a granted ask reopen without a cancelled ticket behind it — guard
-it at that door too, the way `cancel` is guarded at its own.
+- `PROD_ORDER_TRANSITIONS` allows `Dispatched` from every open stage, on purpose. Dispatch happens whenever
+  the kitchen is ready. `POST /prod-orders/:id/status` must still walk New → Accepted → In kitchen → Ready one
+  step at a time, and refuses `Dispatched` as both source and destination.
+- `TICKET_TRANSITIONS.Issued → Cancelled`, `PROD_ORDER_TRANSITIONS.Dispatched → Ready` and
+  `SHOP_ASK_TRANSITIONS.Sent → Asked` are taken only by `POST /tickets/:id/cancel`.
+- `REQUEST_TRANSITIONS` has **no** `Ticket issued → Manager approved` edge. A cancelled ticket puts its request
+  back through an explicit guard in the tickets service. The edge would also reopen `approve` for a request
+  that already holds a live ticket.
+- A request can be `Cancelled` from `Manager approved` or `Partially approved` (the withdrawal door), but
+  `requests/service.ts` shuts that door once a ticket exists.
+- `PO_TRANSITIONS["Partially received"]` includes itself, because a second partial delivery re-enters it.
+  `Ordered → Cancelled` is guarded again at `cancel` once anything has been received.
 
 ## Conventions
 
-- Every export must be reachable from `src/index.ts` **and** actually used by `apps/api`, `UI`,
-  or a test — repo-wide `knip` (run by `pnpm lint` from the root) fails on an export nothing
-  imports. A rule with no caller is deleted, not kept "for later".
-- Round with `round3`; compare money with the two-decimal helper in `credit.ts`. Never hand-roll
-  either.
-- A message a rule produces is the sentence the operator reads, and it is produced **once**:
-  `creditBreachMessage` is word for word what the counter's screen has said since before there
-  was a server, so the server's 422 repeats it rather than inventing a second wording.
-- Tests assert **literal expected values**, never the implementation re-run:
-  `expect(round3(0.1 + 0.2)).toBe(0.3)`, `expect(apportion(7, [{qty:5},{qty:5}])).toEqual([5,2])`.
-  A test that recomputes the formula it is testing proves nothing. Table tests enumerate the
-  transitions the floor actually walks and the ones it must refuse.
+- **Every export must be reachable from `src/index.ts` and actually imported** by `apps/api`, `UI` or a test.
+  knip (`pnpm lint`) fails on an export nothing uses. A rule with no caller is deleted, not kept "for later".
+- **A sentence a rule produces is produced once, here.** The server's refusal repeats it word for word.
+- **Tests assert literal expected values**, never the formula re-run, for example
+  `expect(apportion(7, [{qty:5},{qty:5}])).toEqual([5,2])`. Table tests list the transitions the floor actually
+  walks and the ones it must refuse.
