@@ -54,6 +54,10 @@ const replaceKeys = <T extends object>(target: T, next: T) => {
  *  and `catalogVersion` in the store is what tells React the lists changed. */
 export function hydrateItems(items: MasterData["items"]): void { replaceKeys(IT, items); }
 
+/** Just the location master, for a write that opened, edited, closed or reopened an outlet
+ *  (`changed: ["locations"]`). Screens hold `LOC` by reference, so it is replaced in place. */
+export function hydrateLocations(locations: MasterData["locations"]): void { replaceKeys(LOC, locations); }
+
 /** Just the two price lists, for a write that moved one (`PUT /prices/:list/:it` names "prices").
  *  Both lists are replaced together because the server answers with both. */
 export function hydratePrices(prices: MasterData["prices"]): void {

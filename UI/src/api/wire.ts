@@ -1,6 +1,6 @@
 import type { z } from "zod";
 import type { SnapshotSchema, StockResponseSchema } from "@rch/contract";
-import { hydrateItems, hydrateMaster, hydrateMenus, hydratePrices, hydrateRecipes, hydrateRoster, LOC } from "../data/master";
+import { hydrateItems, hydrateLocations, hydrateMaster, hydrateMenus, hydratePrices, hydrateRecipes, hydrateRoster, LOC } from "../data/master";
 import { fromWireBestBefore, fromWireDate, fromWireTime } from "../lib/fmt";
 import { useApp } from "../store";
 import { basePrices } from "../lib/selectors";
@@ -162,6 +162,13 @@ export function applyProductRequests(rows: Snapshot["productReqs"]): void {
 export function applyItems(items: Snapshot["items"]): void {
   hydrateItems(items);
   useApp.setState((s) => ({ catalogVersion: s.catalogVersion + 1 }));
+}
+
+/** GET /locations -> the location master, in place, and a map for any location the stock does not
+ *  carry yet. `catalogVersion` is what tells React the registry changed underneath it. */
+export function applyLocations(locations: Snapshot["locations"]): void {
+  hydrateLocations(locations);
+  useApp.setState((prev) => ({ catalogVersion: prev.catalogVersion + 1, stock: stockOf(prev.stock) }));
 }
 
 /** GET /prices -> both shelf lists. The registry and the store's copy are the same two lists -

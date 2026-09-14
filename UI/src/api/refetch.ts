@@ -1,7 +1,7 @@
 import { routes, type Changed } from "@rch/contract";
 import { call } from "./client";
 import {
-  applyAccounts, applyAdjustments, applyBatches, applyBills, applyContracts, applyDeskTickets, applyGrns, applyItems, applyMenus,
+  applyAccounts, applyAdjustments, applyBatches, applyBills, applyContracts, applyDeskTickets, applyGrns, applyItems, applyLocations, applyMenus,
   applyPayers, applyPos, applyPrices, applyProdOrders, applyProductRequests, applyRecipes, applyRequests,
   applyRequisitions, applyRoster, applyShopAsks, applyStock, applySupportTickets, applyTickets,
   applyVendors,
@@ -40,6 +40,9 @@ const NARROW: Partial<Record<Changed, () => Promise<void>>> = {
   adjustments: () => call(routes.adjustments).then(applyAdjustments),
   // ---- admin: account management
   accounts: () => call(routes.adminUsers).then(applyAccounts),
+  // ---- locations. An operational session pulls back the location master every screen lists
+  // outlets from; the super admin's session, whose token reaches no location read, reads nothing.
+  locations: () => useApp.getState().user?.admin ? Promise.resolve() : call(routes.locations).then(applyLocations),
   // ---- recipes
   recipes: () => call(routes.recipes).then(applyRecipes),
 };
@@ -52,9 +55,10 @@ const NARROW: Partial<Record<Changed, () => Promise<void>>> = {
  * `vendors`, `contracts`, `productReqs`, `items`, `tickets` (the support desk,
  * `GET /support/tickets`), `prices` and `menu` (the manager's two), `roster` (the till's live
  * payer list, `GET /roster`), `payers` (the manager's whole register, closed accounts
- * included, `GET /payers`) and `adjustments` (the write-off register, `GET /adjustments`) -
- * each fetched at most once however many times the write named it,
- * which is what lets a payer write name both of its collections and still cost two reads.
+ * included, `GET /payers`), `adjustments` (the write-off register, `GET /adjustments`) and
+ * `locations` (the location master, `GET /locations`) - each fetched at most once however many
+ * times the write named it, which is what lets a payer write name both of its collections and
+ * still cost two reads.
  * Nothing costs a snapshot any more: taking one pulled the whole hospital back down and, until
  * this wave, put every screen behind the loading splash to do it. The fallback below stays for
  * the next collection added to the enum and not to `NARROW`; a mixed set takes the snapshot
