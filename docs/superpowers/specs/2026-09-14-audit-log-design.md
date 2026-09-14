@@ -1,6 +1,6 @@
 # Audit log service - design
 
-Date: 2026-09-14 · Base: `origin/develop` 57256a9 · Branch: `feature/audit-log`
+Date: 2026-09-14 (amended 2026-09-15) · Base: `origin/develop` 609befb · Branch: `feature/audit-log`
 
 ## Goal
 
@@ -68,16 +68,18 @@ are; the audit log is additive.
   - `GET /admin/audit`: query `from`, `to` (IST days `YYYY-MM-DD`, default today), `actor` (user id),
     `role` (label), `loc`, `group`, `action`, `outcome`, `q`, `before` (id cursor), `limit` (1–500, default
     100). Response `{ rows: AuditRow[]; next: number | null; counts: { events; people; refused; failedSignIns } }`.
-    `AuditRow` is `id`, `at`, `actor`, `action`, `target`, `targetLoc`, `outcome`, `status`, `message`.
-  - `GET /admin/audit/:id`: one `AuditEntry` = `AuditRow` + `method`, `path`, `requestId`, `cause`, `request`,
-    `before`, `result`, `changed`, `ip`, `userAgent`.
+    `AuditRow` is `id`, `at`, `actor`, `action`, `target`, `targetLoc`, `outcome`, `status`, `message`, `ip`,
+    `requestId` (the last two feed the CSV). `loc` matches the actor's location or the target's location.
+  - `GET /admin/audit/:id`: one `AuditEntry` = `AuditRow` + `method`, `path`, `cause`, `request`, `before`,
+    `result`, `changed`, `userAgent`.
 - **`Changed` / `CollectionSchema` gains `audit`.** It never appears in a write response's `changed`.
 
 ## 2. API side (`apps/api`): capture into the outbox
 
 ### 2.1 Outbox table
 
-A new API migration (next free journal number at implementation time; 0015 at the base commit):
+A new API migration (next free journal number at implementation time; `0016_audit_outbox` after develop's
+`0015_drop_recipes`):
 
 ```sql
 create table audit_outbox (
@@ -87,11 +89,16 @@ create table audit_outbox (
 );
 ```
 
-The API inserts only. `audit_outbox` joins the protected tables in `scripts/check-boundaries.sh`: only
-`apps/api/src/lib/audit.ts` may insert into it, and nothing in `apps/api` may read, update or delete it.
+A trigger on `audit_outbox` refuses every `UPDATE` ("audit_outbox is insert-only"). The drainer needs a column
+`update (at)` grant only so that `for update skip locked` can lock rows (§4); the trigger means no role can
+change one.
 
-Each insert is followed by `pg_notify('rch_audit_outbox', '')` in the same transaction or connection, to wake
-the drainer.
+The API inserts only. `audit_outbox` joins the protected tables in `scripts/check-boundaries.sh`: only
+`apps/api/src/lib/audit.ts` may insert into it, and nothing in `apps/api` may read, update or delete it (test
+files excepted).
+
+Each insert is followed by `pg_notify('rch_audit_outbox', <outbox schema name>)` in the same transaction or
+connection, to wake the drainer; a drainer kicks a pass only for its own schema's notices (or an empty payload).
 
 ### 2.2 Writes that succeed
 
@@ -114,8 +121,13 @@ gets exactly one event, from the transaction that recorded the idempotency outco
 `req.audited = true` once that transaction commits.
 
 **`targetOf`**: `params.id` ?? `params.no` ?? `params.it` ?? `result.id` ?? `result.no` ?? `result.key` ?? `""`,
-with composite targets where one field is ambiguous: `savePrice` → `list:it`, menu routes → `loc:it`,
-`updatePayer` → `kind:id`, PO lines → `id#n`. `targetLoc`: `params.loc` ?? `body.loc` ?? `result.loc` ?? `""`.
+with composite targets where one field is ambiguous: `savePrice` → `list:it`, menu routes → `loc:it`, PO lines →
+`id#n`. `targetLoc`: `params.loc` ?? `body.loc` ?? `body.from` ?? `result.loc` ?? `result.from` ?? `""` (requests,
+tickets and transfers carry `from`, not `loc`).
+
+Every event sets `request`, `before` and `result` (null when absent), because a missing key does not survive
+jsonb and the drainer would dead-letter the event. A response without a `result` key (`patchMe`) is stored whole
+as `result`.
 
 ### 2.3 Refusals, errors and the production fallback
 
@@ -129,8 +141,11 @@ with composite targets where one field is ambiguous: `savePrice` → `list:it`, 
 | ≥ 500 | `error`, the 5xx sentence (which carries the request id) |
 
 Not recorded: a **401** (an expired token; the client refreshes and retries, and the retry is the event) and a
-reply carrying `idempotency-replayed: true` (the original is already logged). A refusal before authentication
-resolved has `actor.id` null.
+reply carrying `idempotency-replayed: true` (the original is already logged). A refusal is recorded only when a
+valid token identified the caller: a request that fails validation before the auth preHandler ran has its token
+checked quietly so a signed-in caller is still named, and a refusal nobody can be named for is not recorded - it
+would let an unauthenticated client write rows, and failed sign-ins are recorded by the auth module (§2.6).
+Tests that read a refusal's event wait for `app.auditSettled()`, because the hook runs after the reply.
 
 A failed insert here is logged at `error` with the request id and does not change the reply. This covers
 role-gate 404s, wrong-location 403s, validation 400s, idempotency 409s, rule 422s, 429s, and
@@ -140,25 +155,27 @@ recorded response, so no `done` event is written and the refusal follows).
 ### 2.4 Before values
 
 `lib/audit.ts` exports `auditBefore(value: Record<string, unknown>)`, which stores the value on the current
-`idemStore` context (last call wins). A service calls it after locking the row it is about to change and before
-changing it, passing the wire-shaped fields the edit can alter.
+`idemStore` context (last call wins). A service calls it right after reading the row it is about to change (after
+its lock, where the service locks) and before changing it, passing the wire-shaped fields the edit can alter.
 
-**Rule: every write that updates or removes an existing master row or account calls `auditBefore`.** At the
-base commit that is `savePrice`, `patchItem`, `addMenuItem` / `removeMenuItem` (the listing), `toggleAvail`,
-`updateVendor`, `updateContract`, `removeContract`, `updatePayer`, `saveRecipe`, `patchMe`, `patchPo`,
-`updatePoLine`, `removePoLine`, `updateAdminUser`, `deactivateAdminUser`, `reactivateAdminUser`. The list
-follows the code at implementation time: a route removed in the meantime (a parallel session is removing the
-payer and recipe writes) is dropped, and any route that edits an existing row is added.
+**Rule: every write that updates or removes an existing master row or account calls `auditBefore`.** On develop
+609befb that is `savePrice`, `patchItem`, `addMenuItem` / `removeMenuItem` (the listing), `toggleAvail`,
+`updateVendor`, `updateContract`, `removeContract`, `patchMe`, `patchPo`, `updatePoLine`, `removePoLine`,
+`updateAdminUser`, `deactivateAdminUser`, `reactivateAdminUser`, `resetAdminUserPassword` and `deleteAdminUser`
+(payer writes and recipes no longer exist). The list follows the code at implementation time: a route removed
+in the meantime is dropped, and any route that edits an existing row is added.
 
 Document state changes (approve, dispatch, handover, void, …) do not call it; the result's trail carries their
 before.
 
 ### 2.5 Masking
 
-`maskSecrets(value)` walks any JSON value and replaces the value of every key matching
-`/pass(word)?|otp|token|secret/i` with `"••••"` (covers `password`, `newPassword`, `currentPassword`,
-`tempPassword`, `otp`, `refreshToken`). Applied to `request`, `result` and `before` before the insert. A
-handover's OTP is never stored; its outcome is.
+`maskSecrets(value)` walks any JSON value and replaces the value of every key whose name is exactly one of
+`SECRET_KEYS` - `password`, `newPassword`, `currentPassword`, `tempPassword`, `otp`, `token`, `accessToken`,
+`refreshToken`, `secret` - with `"••••"`. Exact names, not a pattern: a pattern would also hide
+`mustChangePassword`, which a before → after row legitimately shows. Applied to `request`, `result` and `before`
+before the insert. The change-password body (`{ current, next }`) is recorded as `request: {}`. A handover's OTP is
+never stored; its outcome is.
 
 ### 2.6 Sign-in events
 
@@ -169,7 +186,7 @@ The auth routes are `access: "public"` or `write: false`, so `modules/auth` reco
 |---|---|---|---|
 | Correct sign-in | `login` | `done` | the account |
 | Wrong password, inactive account | `login` | `refused`, with `cause` | the account |
-| Unknown employee id | `login` | `refused`, with `cause` | `id` null, `emp` = typed id (≤ 64 chars), `name` `""` |
+| Unknown employee id | `login` | `refused`, with `cause` | `id` null, `emp` = the typed id when it matches `/^RC-\d+$/i`, else `""` (a mistyped password in the id box must not be stored), `name` `""` |
 | Locked out (per-employee budget or per-IP 429) | `login` | `refused` | as above |
 | Sign-out | `logout` | `done` | the session's account |
 | Password change | `changePassword` | `done` / `refused` | the account |
@@ -208,8 +225,9 @@ because `CollectionSchema` does.
 ### 3.2 Storage
 
 Migrations in `apps/audit/drizzle`, bookkeeping in schema **`<AUDIT_SCHEMA>_drizzle`** (`audit_drizzle` in
-production, so the API's `/readyz` migration count is untouched), advisory lock **727273** (the API's is
-727272). The migration SQL is unqualified, like the API's: the migrate CLI creates `AUDIT_SCHEMA` if missing and
+production, so the API's `/readyz` migration count is untouched), advisory lock **727273** for its own
+migrations; its role and grant step also holds the API's **727272**, because both migrate steps grant on
+`audit_outbox` and must not interleave. The migration SQL is unqualified, like the API's: the migrate CLI creates `AUDIT_SCHEMA` if missing and
 runs with `search_path = <AUDIT_SCHEMA>`, and the service's pool uses the same `search_path`. The outbox is
 always named through `OUTBOX_SCHEMA` as a quoted identifier. Below, `audit.` stands for `AUDIT_SCHEMA`.
 
@@ -238,11 +256,14 @@ Indexes on `audit.events`: `(at desc, id desc)`, `(actor_id, id desc)`, `(target
 `(outcome, id desc)`. A trigger on both tables refuses `UPDATE`, `DELETE` and `TRUNCATE`. `actor_id` has no
 foreign key: the audit schema does not reference the API's tables, and account deletion is unaffected.
 
-### 3.3 Drainer (`plugins/drainer.ts`)
+### 3.3 Drainer (`plugins/drainer.ts` schedules, `lib/drain.ts` moves)
 
 - One dedicated `pg.Client` `LISTEN`s on `rch_audit_outbox`, reconnecting with the API's SSE backoff; a
-  notification or a `DRAIN_POLL_MS` tick triggers a pass. Passes never overlap within a process.
-- **A pass** is one transaction on the pool:
+  notification whose payload is this service's `OUTBOX_SCHEMA` (or empty), or a `DRAIN_POLL_MS` tick, triggers a
+  pass. Passes never overlap within a process.
+- An event that passes `AuditEventSchema` but that Postgres still refuses (a value out of a column's range) makes
+  the pass retry row by row and set that row aside in `dead_letters`, so one bad row can never stall the queue.
+- **A pass** (`drainOnce`) is one transaction on the pool:
   1. `delete from <outbox> where id in (select id from <outbox> order by id limit $batch for update skip locked) returning id, at, event`
   2. each event is parsed with `AuditEventSchema`; a valid one is inserted into `audit.events` with its
      `outbox_id`; an invalid one into `audit.dead_letters` with the first issue, logged at `error`;
@@ -273,7 +294,7 @@ foreign key: the audit schema does not reference the API's tables, and account d
 |---|---|---|
 | `rch` (superuser, existing) | Postgres image | Runs both migrate steps and the operator CLIs. No long-running service uses it. |
 | `rch_app` (API) | API migrate | `usage` on `public`; `select, insert, update, delete` on all API tables and `usage, select` on their sequences (re-granted every run, plus `alter default privileges for role rch in schema public`); `select` on `drizzle.__drizzle_migrations`; on `audit_outbox` **`insert` only** (and `usage` on its identity sequence). No `truncate`. No privilege on schemas `audit` or `audit_drizzle`. |
-| `rch_audit` (audit service) | audit migrate | `usage` on `audit`, `audit_drizzle` and `public`; `select, insert` on `audit.events` and `audit.dead_letters`; `select` on `audit_drizzle` bookkeeping; `select, delete` on `public.audit_outbox`. No privilege on any other API table. |
+| `rch_audit` (audit service) | audit migrate | `usage` on `audit`, `audit_drizzle` and `public`; `select, insert` on `audit.events` and `audit.dead_letters`; `select` on `audit_drizzle` bookkeeping; `select, delete, update (at)` on `public.audit_outbox` (`update (at)` only because `for update skip locked` requires it; the outbox trigger refuses every UPDATE). No privilege on any other API table. |
 
 Also: `revoke all on schema audit, audit_drizzle from public`. Append-only triggers still refuse update and
 delete on `stock_moves`, `document_history` and `audit.*` for every role.
@@ -311,7 +332,8 @@ nothing.
   deleted person is reached through search or a row's "Everything by this person"), Role, Location, Area
   (`AUDIT_GROUPS`), Outcome (All / Done / Refused), search, **Export CSV**.
 - **Counts** (`Kpis`): events · people · refused · failed sign-ins, over the whole filter.
-- **Pill**: "N new events - show" when `fresh > 0`; pressing it reloads. The list never moves by itself.
+- **Pill**: "New events - show" when `fresh > 0` (no number: one notice can carry several events); pressing it
+  reloads. The list never moves by itself.
 - **Table** (`DataTable`): When (IST date and `HH:MM:SS`, newest first), Who (emp · name · role, location
   beneath), What (label, target beneath), Outcome (`Pill`: Done / Refused / Error), Sentence. "Load more" while
   `next` is set.
@@ -416,7 +438,8 @@ the API, the audit service and the UI.
 - `scripts/check-boundaries.sh`:
   - in `apps/api/src`, only `lib/audit.ts` inserts into `audit_outbox`, and nothing selects, updates or deletes
     from it;
-  - in `apps/audit/src`, only `plugins/drainer.ts` deletes from `audit_outbox` or inserts into `audit.*`;
+  - in `apps/audit/src`, only `lib/drain.ts` deletes from `audit_outbox` or inserts into `audit.*` (test files
+    exempt in both apps);
   - nothing anywhere updates `audit.*`;
   - `apps/audit/src/modules/*/` must have the four-file skeleton.
 - Coverage floor for `apps/audit`: set in its `vitest.config.ts` at the lines/branches figures first measured
