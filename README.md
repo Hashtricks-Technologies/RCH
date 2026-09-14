@@ -111,8 +111,7 @@ packages/contract/  Zod wire schemas, the route manifest, and the demo fixtures
 packages/domain/    pure business rules shared by the API and the UI
 deploy/           Helm chart, nginx config, and RUNBOOK.md (deploy, rollback, keys, restore)
 docs/             the product contract (HTML specs) and the design specs and plans
-scripts/          build-site.sh, check-boundaries.sh, pg-init.sql
-index.html        the project home page, published at /
+scripts/          check-boundaries.sh, pg-init.sql
 ```
 
 `CLAUDE.md` at the root and in `apps/api`, `packages/contract`, `packages/domain` and `UI` are
@@ -186,7 +185,6 @@ From the repository root:
 | `pnpm helm:test` | Render the Helm chart and check the output |
 | `pnpm test:e2e` | Playwright smoke against a running stack (`pnpm dev` first) — see `e2e/README.md` |
 | `pnpm --filter @rch/api loadcheck` | Measure `/snapshot` and `/bills` latency against a running API — see `deploy/RUNBOOK.md` §12 |
-| `bash scripts/build-site.sh` | Assemble the published site into `dist/` (home page, docs, built app) |
 
 ## Testing
 
@@ -232,7 +230,7 @@ in **[`deploy/RUNBOOK.md`](deploy/RUNBOOK.md)**.
 `.github/workflows/ci.yml` runs on every push to a long-lived branch and every pull request:
 `pnpm install --frozen-lockfile`, typecheck and test against a `postgres:17` service container,
 `pnpm lint`, the module and boundary checks, `pnpm audit` at high severity (three unreachable
-attempts fail the job — "we did not look" is not "no advisories"), and `scripts/build-site.sh`. A
+attempts fail the job — "we did not look" is not "no advisories"), and a production build of the UI. A
 second job builds the API and UI images, scans both with Trivy at **critical and high** severity
 against `.trivyignore.yaml`, and does a real `helm install` plus the Playwright smoke against a
 throwaway kind cluster. A third renders the Helm chart on its own. Everything must be green to

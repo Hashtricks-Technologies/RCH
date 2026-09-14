@@ -113,19 +113,13 @@ is always the `--yes-seed` form (`deploy/RUNBOOK.md` §15.7). The older `--allow
 kept only so a copied command fails loudly — on its own it is refused, naming `--yes-seed`,
 because a flag every in-cluster seed carries is one nobody reads.
 
-From the repo root, `bash scripts/build-site.sh` assembles the published site into `dist/`
-(`/` = `index.html`, `/docs/` = the HTML specs). Netlify and CI both run this exact script, so a
-broken assembly fails locally the same way. `/app/` — the built React app, from `UI/dist` — is
-assembled **only when `BUILD_APP=1`**, which CI sets and Netlify deliberately does not: a static
-copy of the app with no `/api` behind it could sign nobody in, so `netlify.toml` redirects
-`/app` and `/app/*` (302, `force = true`) to the deployment that has an API. The script still
-runs `pnpm --filter @rch/ui build` either way — a site build that stopped compiling the app
-would otherwise stop noticing when the app stopped compiling — and prints which of the two it
-did.
+There is no published docs site any more: the root `index.html`, `netlify.toml` and
+`scripts/build-site.sh` were removed on 2026-09-14 (spec §16). `docs/*.html` is read in the
+repository.
 
 CI (`.github/workflows/ci.yml`) runs `pnpm install --frozen-lockfile` → `pnpm turbo typecheck
 test` → `pnpm lint` (oxlint per package plus knip, which turbo never runs) → `pnpm
-check:boundaries` → `pnpm audit` → `bash scripts/build-site.sh` on Node 24, then builds both
+check:boundaries` → `pnpm audit` → `pnpm --filter @rch/ui build` on Node 24, then builds both
 images, scans them with Trivy at `CRITICAL,HIGH` and does a real `helm install` against a
 throwaway kind cluster. Every change must pass all of it. Four details worth knowing before you
 debug a red run:
@@ -162,11 +156,8 @@ helm is about to deploy before upgrading, and production upgrades with `--wait` 
 ## Repository layout
 
 ```
-index.html               project home page (published at /)
 docs/*.html              UA spec, system design, user flows — the product contract
 docs/superpowers/        plans and specs from prior agent-driven work
-scripts/build-site.sh    assembles index.html + docs/ into dist/ (+ UI/dist when BUILD_APP=1)
-netlify.toml             the published site's build, headers and the /app → EKS redirect
 UI/                      the application (React 19, TS 6 strict, Vite 8, Zustand 5)
 e2e/                     the Playwright smoke — seven files, twelve scenarios, seventeen runtime tests
                          (the sign-in loop is five of them), against a real stack
