@@ -40,7 +40,7 @@ function OrderDrawer({ id }: DrawerProps) {
       {canMoveOrder(o.st, "Ready") && <Btn onClick={() => setOrderStatus(o.id, "Ready")}>Mark ready</Btn>}
       {canDispatch(o.st) && (
         <Btn variant="ok" disabled={short.length > 0}
-          title={short.length ? `Short of ${short.map((l) => IT[l.it].n).join(", ")}` : "Issue one pick ticket for the whole order"}
+          tip={short.length ? `Short of ${short.map((l) => IT[l.it].n).join(", ")}` : "Issue one pick ticket for the whole order"}
           onClick={() => dispatchOrder(o.id)}>
           {short.length ? "Short - cannot dispatch" : "Dispatch to counter"}
         </Btn>
@@ -68,7 +68,7 @@ function OrderDrawer({ id }: DrawerProps) {
         </div>
       )}
 
-      <Section title="Items" sub="Quantity ordered against what the kitchen is holding right now">
+      <Section title="Items" tip="Quantity ordered against what the kitchen is holding right now">
         <DataTable
           cols={[
             { h: "Product", cls: "nm", w: "32%" },
@@ -97,13 +97,13 @@ function OrderDrawer({ id }: DrawerProps) {
         <TableFoot count={o.lines.length} extra={<>{o.lines.length} item{o.lines.length === 1 ? "" : "s"} · total <b>{sum(o.lines, (l) => l.qty)}</b> units</>} />
       </Section>
 
-      <Section title="Note from the outlet" sub="Sent along with the order">
+      <Section title="Note from the outlet" tip="Sent along with the order">
         <p style={{ margin: 0, fontSize: 12.5 }}>
           {o.note ? o.note : <span className="dim">No note was added.</span>}
         </p>
       </Section>
 
-      <Section title="History" sub="Every hand this order has passed through">
+      <Section title="History" tip="Every hand this order has passed through">
         <Feed items={o.hist.map((h, i) => ({
           key: `${o.id}-${i}`,
           title: h.s,

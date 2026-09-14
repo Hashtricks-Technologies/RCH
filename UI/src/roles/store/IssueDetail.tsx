@@ -83,7 +83,7 @@ function IssueDetail({ id }: DrawerProps) {
           {r.ticket === null && appr > 0 ? (
             <Btn
               disabled={!canIssue}
-              title={uncovered.length ? `${IT[uncovered[0].it]?.n ?? uncovered[0].it} is committed elsewhere` : undefined}
+              tip={uncovered.length ? `${IT[uncovered[0].it]?.n ?? uncovered[0].it} is committed elsewhere` : undefined}
               onClick={() => issueTicket(r.id)}
             >
               Generate ticket
@@ -131,7 +131,7 @@ function IssueDetail({ id }: DrawerProps) {
         )}
       </Section>
 
-      <Section title="Items" sub="Asked against approved, and what the central store can actually cover right now">
+      <Section title="Items" tip="Asked against approved, and what the central store can actually cover right now">
         <DataTable
           cols={[
             { h: "Item", cls: "nm", w: "26%" },
@@ -211,7 +211,7 @@ function IssueDetail({ id }: DrawerProps) {
             <div className="mtop">
               <Field
                 label="OTP quoted by the collector"
-                hint="Six digits, read out at the window. The store refuses a handover on the wrong OTP."
+                tip="Six digits, read out at the window. The store refuses a handover on the wrong OTP."
               >
                 <input
                   className="otp-in"
@@ -245,7 +245,7 @@ function IssueDetail({ id }: DrawerProps) {
         </Section>
       )}
 
-      <Section title="History" sub="Every hand this request has passed through">
+      <Section title="History" tip="Every hand this request has passed through">
         <Feed
           items={r.hist.map((h, i) => ({
             key: h.s + i, title: h.s, body: h.who, when: h.t, color: dotFor(h.s),
@@ -254,7 +254,7 @@ function IssueDetail({ id }: DrawerProps) {
       </Section>
 
       {ticket && (
-        <Section title="Ticket history" sub={`Every hand ${ticket.id} has passed through`}>
+        <Section title="Ticket history" tip={`Every hand ${ticket.id} has passed through`}>
           {/* A ticket's trail says "Handed over" and "Cancelled - …", words the request's own
               `dotFor` has never heard of, so it is coloured by the ticket rule - which is what
               `TicketTrail` is, rather than a `Feed` each screen colours for itself. */}

@@ -76,7 +76,12 @@ export default function Stock() {
       <PageHead
         crumbs={["Royal Care", L.n, "Stock in Hand"]}
         title="Stock in hand"
-        sub="Stock held at this counter."
+        tip={<>
+          Stock held at this counter.{" "}
+          This screen shows <b>{L.n} ({L.c})</b> and nothing else. Stock at the central store, the kitchen and the
+          other outlets is not visible from a counter terminal. <b>Par here</b> is this outlet's own reorder level - a
+          counter holds a day of stock, so it is far below the central store's par and only what falls under it reads low.
+        </>}
         actions={<Btn variant="gh" onClick={() => nav("/requests")}>Stock requests</Btn>}
       />
       <Card flush>
@@ -188,11 +193,6 @@ export default function Stock() {
           <span className="mini">{L.n} · {L.c} · {L.floor} · stock at cost {money0(value)}</span>
         </div>
       </Card>
-      <p className="mini mtop">
-        This screen shows <b>{L.n} ({L.c})</b> and nothing else. Stock at the central store, the kitchen and the
-        other outlets is not visible from a counter terminal. <b>Par here</b> is this outlet's own reorder level - a
-        counter holds a day of stock, so it is far below the central store's par and only what falls under it reads low.
-      </p>
     </>
   );
 }

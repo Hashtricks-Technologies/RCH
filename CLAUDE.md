@@ -238,6 +238,9 @@ The code enforces these and tests pin them. Breaking one is a bug.
   - The API and UI test suites pin `TZ=UTC`, so a host-day shortcut goes red.
 - **Toast copy is a full sentence in the operator's voice.** A refusal says what was refused and why. Where a
   rule already has a sentence (for example `creditBreachMessage`), both sides print it word for word.
+- **Screen explanations are tooltips.** A sentence that explains a page, a card, a field or a figure goes
+  in the kit's `tip` prop (`Tip` in `UI/src/ui/Tip.tsx`), shown on hover, focus or tap. Counts, errors,
+  warnings and `Alert`s stay visible. `UI/CLAUDE.md` has the details.
 - TypeScript is `strict` with `verbatimModuleSyntax` and `erasableSyntaxOnly`, so type-only imports need
   `import type`.
 

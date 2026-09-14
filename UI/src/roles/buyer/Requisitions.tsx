@@ -132,7 +132,7 @@ export default function Requisitions() {
       <PageHead
         crumbs={["Royal Care", "Procurement", "Requisitions"]}
         title="Requisitions"
-        sub="Purchase requests from the central store."
+        tip="Purchase requests from the central store."
         actions={<Pill tone={waiting.length ? "wn" : "ok"}>{waiting.length} waiting on you</Pill>}
       />
 
@@ -156,7 +156,7 @@ export default function Requisitions() {
 
       <Card
         title="Approved - and what was ordered"
-        sub="Approved quantity against what purchase orders actually claim, and what has landed so far"
+        tip="Approved quantity against what purchase orders actually claim, and what has landed so far"
         flush
       >
         <Toolbar
@@ -197,7 +197,7 @@ export default function Requisitions() {
         />
       </Card>
 
-      <Card title="Declined" sub="Nothing was approved - the store keeper sees your reason" flush>
+      <Card title="Declined" tip="Nothing was approved - the store keeper sees your reason" flush>
         <Toolbar
           placeholder="Search requisition, reason or item…"
           value={qd}

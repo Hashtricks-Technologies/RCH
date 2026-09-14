@@ -4,7 +4,7 @@ import {
   avail, availOf, daysCover, menuOf, parOf, qty, stateLabel, stateTone,
 } from "../../lib/selectors";
 import { fq, money, U } from "../../lib/fmt";
-import { Alert, Btn, ImagePlaceholder, Pill, Switch } from "../../ui/kit";
+import { Alert, Btn, ImagePlaceholder, Pill, Switch, Tip } from "../../ui/kit";
 import { DrawerFrame } from "../../ui/Drawer";
 import { registerDrawer, type DrawerProps } from "../../drawers";
 import { TypeTag } from "./Pos";
@@ -65,9 +65,9 @@ function ConfigureDrawer({ id: it }: DrawerProps) {
         <>
           <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 0", borderTop: "1px solid var(--line)", borderBottom: "1px solid var(--line)" }}>
             <Switch on={!manualOff} label={`${item.n} at ${LOC[loc].n}`} onChange={() => toggleAvail(loc, it)} />
-            <div>
+            <div className="tipped">
               <b style={{ fontSize: 12.5 }}>Available at {LOC[loc].n}</b>
-              <div className="mini">Turn this off when the machine is down or the product is spoiled.</div>
+              <Tip text="Turn this off when the machine is down or the product is spoiled." label={`Available at ${LOC[loc].n}`} />
             </div>
           </div>
           <div className="mtop">

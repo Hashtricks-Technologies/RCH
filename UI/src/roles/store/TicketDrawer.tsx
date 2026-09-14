@@ -119,7 +119,7 @@ function TicketDrawer({ id }: DrawerProps) {
         <div className="mtop">
           <Field
             label="OTP quoted by the collector"
-            hint="Six digits, read out at the window. The store refuses a handover on the wrong OTP."
+            tip="Six digits, read out at the window. The store refuses a handover on the wrong OTP."
           >
             <input
               className="otp-in"
@@ -176,10 +176,10 @@ function TicketDrawer({ id }: DrawerProps) {
       </div>
 
       {canCancelTicket(t.st) && (
-        <Section title="Cancel this ticket" sub="Nobody collected against it, and the stock should go back">
+        <Section title="Cancel this ticket" tip="Nobody collected against it, and the stock should go back">
           {cancelling ? (
             <>
-              <Field label="Reason" hint="Kept with the ticket's history.">
+              <Field label="Reason" tip="Kept with the ticket's history.">
                 <input
                   placeholder="Counter closed, wrong outlet…"
                   aria-label={`Why ${t.id} is being cancelled`}
@@ -225,7 +225,7 @@ function TicketDrawer({ id }: DrawerProps) {
         </div>
       )}
 
-      <Section title="History" sub={`Every hand ${t.id} has passed through`}>
+      <Section title="History" tip={`Every hand ${t.id} has passed through`}>
         <TicketTrail hist={t.hist} />
       </Section>
 

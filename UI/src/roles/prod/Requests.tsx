@@ -104,7 +104,7 @@ export default function Requests() {
       <PageHead
         crumbs={["Royal Care", "Central Kitchen", "Stock Requests"]}
         title="Stock requests to the central store"
-        sub="Ask the central store for raw materials and packaging."
+        tip="Ask the central store for raw materials and packaging."
         actions={<Btn variant="gh" onClick={addLine}>Add item</Btn>}
       />
 
@@ -192,24 +192,23 @@ export default function Requests() {
           </table>
         </div>
 
-        <Section title="Details" sub="The manager sees the priority and the note alongside every item." />
+        <Section title="Details" tip="The manager sees the priority and the note alongside every item." />
         <FormRow cols="f2">
-          <Field label="Priority" hint="Urgent requests are flagged at the top of the manager's queue.">
+          <Field label="Priority" tip="Urgent requests are flagged at the top of the manager's queue.">
             <select value={priority} onChange={(e) => setPriority(e.target.value)}>
               <option>Normal</option>
               <option>Urgent</option>
             </select>
           </Field>
           <Field label="Items ready"
-            hint={skipped > 0
-              ? <span style={{ color: "var(--crit)" }}>
-                {skipped} row{skipped === 1 ? "" : "s"} will be dropped - fix the row{skipped === 1 ? "" : "s"} marked in red above.
-              </span>
-              : "Only rows with an item and a quantity above zero are sent."}>
+            tip="Only rows with an item and a quantity above zero are sent."
+            hint={skipped > 0 && <span style={{ color: "var(--crit)" }}>
+              {skipped} row{skipped === 1 ? "" : "s"} will be dropped - fix the row{skipped === 1 ? "" : "s"} marked in red above.
+            </span>}>
             <input readOnly value={`${usable} of ${draft.length}`} style={skipped > 0 ? BAD : undefined} />
           </Field>
         </FormRow>
-        <Field label="Note to the outlet manager" hint="Say what the kitchen cannot make without it - the manager may trim quantities.">
+        <Field label="Note to the outlet manager" tip="Say what the kitchen cannot make without it - the manager may trim quantities.">
           <textarea rows={3} value={note} onChange={(e) => setNote(e.target.value)}
             placeholder="Maida down to 8 kg, tomorrow's puff batch needs 20 kg." />
         </Field>
@@ -237,9 +236,12 @@ export default function Requests() {
             { h: "Request ID", cls: "nm", w: "18%" },
             { h: "Raised", r: true, w: "8%" },
             { h: "Items", w: "26%" },
-            { h: "Asked", r: true, w: "10%" },
+            { h: "Asked", r: true, w: "10%", tip: "Quantities are shown in each item's own unit." },
             { h: "Approved", r: true, w: "10%" },
-            { h: "Status", w: "14%" },
+            { h: "Status", w: "14%", tip: <>
+              A request can be withdrawn any time before the store keeper issues a ticket against it,
+              decided or not; once a ticket is issued it belongs on the Pick Tickets screen.
+            </> },
             { h: "Ticket ID", w: "10%" },
             { h: "", w: "6%" },
           ]}
@@ -271,12 +273,6 @@ export default function Requests() {
         <TableFoot count={rows.length}
           extra={<>{L.n} · {L.c} · {openCount} still open{backOrder.length ? ` · ${unitTotal(backOrder)} back-ordered` : ""}</>} />
       </Card>
-
-      <p className="mini mtop">
-        Quantities are shown in each item's own unit. A request can be withdrawn any time before the
-        store keeper issues a ticket against it, decided or not; once a ticket is issued it belongs on
-        the Pick Tickets screen.
-      </p>
     </>
   );
 }

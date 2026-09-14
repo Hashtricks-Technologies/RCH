@@ -6,7 +6,7 @@ import { activeItems, avail, isReqOpen } from "../../lib/selectors";
 import { fq, U } from "../../lib/fmt";
 import {
   Alert, Btn, BtnRow, Card, DataTable, DraftLineInput, Field, ImagePlaceholder, Icon, PageHead,
-  Pill, StatusPill,
+  Pill, StatusPill, Tip,
 } from "../../ui/kit";
 import type { LocKey } from "../../types";
 // ---- prod-order raise ----
@@ -143,13 +143,13 @@ export default function Requests() {
       <PageHead
         crumbs={["Royal Care", L.n, "Stock Requests"]}
         title="Stock requests"
-        sub="Ask for stock from the store or another shop."
+        tip="Ask for stock from the store or another shop."
       />
 
       {inbound.length > 0 && (
         <Card
           title="Another shop is asking you"
-          sub="You decide these, not the outlet manager"
+          tip="You decide these, not the outlet manager"
           right={<Pill tone="wn">{inbound.length} waiting</Pill>}
           className="mtop"
         >
@@ -198,7 +198,7 @@ export default function Requests() {
 
                 {declining ? (
                   <div className="askcard-act askcard-decline">
-                    <Field label="Why are you declining" hint="The other counter sees this.">
+                    <Field label="Why are you declining" tip="The other counter sees this.">
                       <input autoFocus placeholder="We need it for the evening rush"
                         value={reason[a.id] ?? ""}
                         onChange={(e) => setReason({ ...reason, [a.id]: e.target.value })} />
@@ -306,14 +306,19 @@ export default function Requests() {
 
       {open === "inventory" && (
         <div className="raisecard">
-          <div className="raisecard-h"><b>Ask the central store</b><span className="mini">goes to the outlet manager first</span></div>
+          <div className="raisecard-h">
+            <span className="tipped">
+              <b>Ask the central store</b>
+              <Tip text="goes to the outlet manager first" label="Ask the central store" />
+            </span>
+          </div>
           <ProductPicker items={STOCKABLE} value={invItem} onChange={setInvItem} />
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
             <Field label="Quantity">
               <DraftLineInput value={invQty} min={1} step={U(invItem) === "nos" ? 1 : 0.5}
                 ariaLabel="Quantity" onCommit={setInvQty} />
             </Field>
-            <Field label="Priority" hint="Urgent is flagged at the top of the manager's queue.">
+            <Field label="Priority" tip="Urgent is flagged at the top of the manager's queue.">
               <select value={invPriority} onChange={(e) => setInvPriority(e.target.value as "Normal" | "Urgent")}>
                 <option>Normal</option><option>Urgent</option>
               </select>
@@ -337,7 +342,8 @@ export default function Requests() {
           orders this counter has raised, which nothing here showed before. */}
       <KitchenOrderCard loc={loc} />
 
-      <Card title="All requests" sub={`${rows.length} from or to ${L.n}`} flush className="mtop">
+      <Card title="All requests" sub={`${rows.length} from or to ${L.n}`} flush className="mtop"
+        tip="A request to the central store can be cancelled from its detail any time before the store keeper issues a ticket against it - including after the outlet manager has approved it.">
         <DataTable
           cols={[
             { h: "Product", cls: "nm" }, { h: "Route" }, { h: "Qty", r: true },
@@ -365,9 +371,7 @@ export default function Requests() {
         />
       </Card>
       <p className="mini mtop">
-        {openCount} request{openCount === 1 ? "" : "s"} from {L.n} {openCount === 1 ? "is" : "are"} still open. A
-        request to the central store can be cancelled from its detail any time before the store keeper issues a
-        ticket against it - including after the outlet manager has approved it.
+        {openCount} request{openCount === 1 ? "" : "s"} from {L.n} {openCount === 1 ? "is" : "are"} still open.
       </p>
     </>
   );

@@ -6,17 +6,17 @@ import { useApp } from "../../store";
 import { avail, canDispatch, canMoveOrder, qty } from "../../lib/selectors";
 import { fq, sum, U } from "../../lib/fmt";
 import {
-  Alert, Btn, Card, DataTable, FilterSelect, PageHead, Pill, StatusPill, TableFoot, Toolbar,
+  Alert, Btn, Card, DataTable, FilterSelect, PageHead, Pill, StatusPill, TableFoot, Tip, Toolbar,
 } from "../../ui/kit";
 import type { LocKey, PordStatus, ProdOrder } from "../../types";
 
 /** The board reads left to right: an order only ever moves one column right. */
-const BOARD: { st: PordStatus; sub: string }[] = [
-  { st: "New", sub: "Accept or decline" },
-  { st: "Accepted", sub: "Taken, not started" },
-  { st: "In kitchen", sub: "On the range now" },
-  { st: "Ready", sub: "Plated, waiting to go" },
-  { st: "Dispatched", sub: "On a pick ticket" },
+const BOARD: { st: PordStatus; tip: string }[] = [
+  { st: "New", tip: "Accept or decline" },
+  { st: "Accepted", tip: "Taken, not started" },
+  { st: "In kitchen", tip: "On the range now" },
+  { st: "Ready", tip: "Plated, waiting to go" },
+  { st: "Dispatched", tip: "On a pick ticket" },
 ];
 
 const itemText = (o: ProdOrder) => o.lines.map((l) => `${l.qty} × ${IT[l.it]?.n ?? l.it}`).join(" ");
@@ -71,7 +71,7 @@ export default function Orders() {
       const short = o.lines.filter((l) => avail(s, "kitchen", l.it) < l.qty);
       return (
         <Btn size="xs" variant="ok" disabled={short.length > 0}
-          title={short.length ? `Short of ${short.map((l) => IT[l.it].n).join(", ")}` : "Issue one pick ticket for the whole order"}
+          tip={short.length ? `Short of ${short.map((l) => IT[l.it].n).join(", ")}` : "Issue one pick ticket for the whole order"}
           onClick={() => dispatchOrder(o.id)}>
           {short.length ? "Short - cannot dispatch" : "Dispatch all items"}
         </Btn>
@@ -136,7 +136,7 @@ export default function Orders() {
       <PageHead
         crumbs={["Royal Care", "Central Kitchen", "Orders"]}
         title="Kitchen order board"
-        sub="Outlet orders, one column per stage."
+        tip="Outlet orders, one column per stage."
         actions={<span className="mini">
           {onBoard.length} on the board{filtering ? ` of ${pord.filter((o) => o.st !== "Declined").length}` : ""}
         </span>}
@@ -175,16 +175,16 @@ export default function Orders() {
       )}
 
       <div className="kan mtop">
-        {BOARD.map(({ st, sub }) => {
+        {BOARD.map(({ st, tip }) => {
           const cards = inColumn(st);
           return (
             <section className="kan-col" key={st} aria-label={`${st} - ${cards.length} orders`}>
               <div className="kan-h">
                 <StatusPill status={st} />
+                <Tip text={tip} label={st} />
                 <div className="sp" />
                 <span className="kan-n">{cards.length}</span>
               </div>
-              <p className="kan-sub">{sub}</p>
               {cards.length === 0
                 ? <div className="kan-empty">
                     <b>{filtering ? "Nothing matches those filters" : "Nothing here"}</b>
@@ -201,7 +201,7 @@ export default function Orders() {
         })}
       </div>
 
-      <Card title="Declined" sub="Sent back to the outlet - nothing will be made against these" flush className="mtop">
+      <Card title="Declined" tip="Sent back to the outlet - nothing will be made against these" flush className="mtop">
         <DataTable
           cols={[
             { h: "Order ID", cls: "nm", w: "18%" },

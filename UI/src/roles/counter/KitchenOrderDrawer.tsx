@@ -42,7 +42,7 @@ function KitchenOrderDrawer({ id }: DrawerProps) {
         <dt>Total quantity</dt><dd className="mono">{sum(o.lines, (l) => l.qty)} nos</dd>
       </dl>
 
-      <Section title="Items" sub="What the kitchen was asked to make">
+      <Section title="Items" tip="What the kitchen was asked to make">
         <DataTable
           cols={[{ h: "Product", cls: "nm" }, { h: "Code", w: "18%" }, { h: "Quantity", r: true, w: "18%" }]}
           rows={o.lines.map((l) => ({
@@ -64,7 +64,7 @@ function KitchenOrderDrawer({ id }: DrawerProps) {
         </p>
       </Section>
 
-      <Section title="History" sub="Every hand this order has passed through">
+      <Section title="History" tip="Every hand this order has passed through">
         <Feed items={o.hist.map((h, i) => ({
           key: `${o.id}-${i}`,
           title: h.s,

@@ -7,6 +7,9 @@ import { ticketDot, toneFor } from "../lib/selectors";
 import { toInputDate } from "../lib/fmt";
 import type { ThemePref } from "../lib/theme";
 import { useApp } from "../store";
+import { Tip, TipWrap } from "./Tip";
+
+export { Tip };
 
 /* ---------- icons ---------- */
 const P: Record<string, string> = {
@@ -99,16 +102,22 @@ type BtnProps = {
   children: ReactNode; onClick?: () => void; variant?: "solid" | "gh" | "sub" | "dg" | "ok";
   /** `touch` is the only size that is not a shrink: a 40 px square, for a control a counter
    *  operator hits with a finger on a tablet rather than a mouse on a desk. */
-  size?: "md" | "sm" | "xs" | "touch"; disabled?: boolean; wide?: boolean; title?: string;
+  size?: "md" | "sm" | "xs" | "touch"; disabled?: boolean; wide?: boolean;
+  /** A name for a button whose face is only a symbol ("−", "+"). Not for an explanation. */
+  title?: string;
+  /** Why the button does what it does, or why it is disabled, shown as a tooltip on hover or tap. */
+  tip?: ReactNode;
 };
-export function Btn({ children, onClick, variant = "solid", size = "md", disabled, wide, title }: BtnProps) {
+export function Btn({ children, onClick, variant = "solid", size = "md", disabled, wide, title, tip }: BtnProps) {
   const cls = ["btn", variant !== "solid" ? variant : "", size !== "md" ? size : "", wide ? "wide" : ""]
     .filter(Boolean).join(" ");
-  return (
-    <button className={cls} onClick={(e) => { e.stopPropagation(); onClick?.(); }} disabled={disabled} title={title} type="button">
+  const button = (describedBy?: string) => (
+    <button className={cls} onClick={(e) => { e.stopPropagation(); onClick?.(); }} disabled={disabled} title={title}
+      aria-describedby={describedBy} type="button">
       {children}
     </button>
   );
+  return tip ? <TipWrap text={tip} wide={wide}>{button}</TipWrap> : button();
 }
 export const BtnRow = ({ children, end }: { children: ReactNode; end?: boolean }) => (
   <div className="btnrow" style={end ? { justifyContent: "flex-end" } : undefined}>{children}</div>
@@ -121,8 +130,17 @@ export function Switch({ on, onChange, label }: { on: boolean; onChange: () => v
 }
 
 /* ---------- page ---------- */
-export function PageHead({ crumbs, title, sub, actions }: {
-  crumbs: string[]; title: ReactNode; sub?: ReactNode; actions?: ReactNode;
+/** The accessible name of a tip's "i" button, when the thing it sits beside is plain text. */
+const about = (t: ReactNode) => (typeof t === "string" ? t : undefined);
+
+/**
+ * `sub` is a visible line under the title; `tip` is an explanation behind an "i" beside it.
+ * The same split runs through `Card`, `Section`, `Kpi`, `Col` and `Field`: what the operator
+ * needs to read every time (a count, a location, a warning) stays visible, and what explains the
+ * screen or the field goes into `tip`.
+ */
+export function PageHead({ crumbs, title, sub, tip, actions }: {
+  crumbs: string[]; title: ReactNode; sub?: ReactNode; tip?: ReactNode; actions?: ReactNode;
 }) {
   return (
     <>
@@ -130,20 +148,24 @@ export function PageHead({ crumbs, title, sub, actions }: {
         <span key={c + i}>{i > 0 && <span style={{ margin: "0 6px" }}>/</span>}{c}</span>
       ))}</div>
       <div className="pgh">
-        <div className="pt"><h1>{title}</h1>{sub && <p>{sub}</p>}</div>
+        <div className="pt">
+          <div className="tipped"><h1>{title}</h1>{tip && <Tip text={tip} label={about(title)} />}</div>
+          {sub && <p>{sub}</p>}
+        </div>
         {actions && <div className="acts">{actions}</div>}
       </div>
     </>
   );
 }
-export function Card({ title, sub, right, children, flush, className }: {
-  title?: ReactNode; sub?: ReactNode; right?: ReactNode; children: ReactNode; flush?: boolean; className?: string;
+export function Card({ title, sub, tip, right, children, flush, className }: {
+  title?: ReactNode; sub?: ReactNode; tip?: ReactNode; right?: ReactNode; children: ReactNode; flush?: boolean;
+  className?: string;
 }) {
   return (
     <div className={`card${className ? " " + className : ""}`}>
       {(title || right) && (
         <div className="card-h">
-          {title && <h3>{title}</h3>}
+          {title && <div className="card-t tipped"><h3>{title}</h3>{tip && <Tip text={tip} label={about(title)} />}</div>}
           {sub && <span className="sh">{sub}</span>}
           {right}
         </div>
@@ -160,13 +182,21 @@ export const Grid = ({ cols, children }: { cols?: "g2" | "g3" | "g21" | "g12"; c
 /** A headline figure with a label and, optionally, a line of context under it. No `spark`: the
  *  sparkline this used to carry was drawn by nothing - not one `Kpi` in the app ever set it -
  *  and an optional field no caller fills is a shape future callers copy without meaning to. */
-export interface Kpi { l: string; v: ReactNode; d?: ReactNode }
+export interface Kpi {
+  l: string; v: ReactNode;
+  /** A visible line of figures under the value ("3 still open"). */
+  d?: ReactNode;
+  /** What the figure counts, behind an "i" beside the label. */
+  tip?: ReactNode;
+}
 export function Kpis({ items }: { items: Kpi[] }) {
   return (
     <div className="kpis">
       {items.map((k) => (
         <div className="kpi" key={k.l}>
-          <div className="kl">{k.l}</div>
+          {k.tip
+            ? <div className="kl-row tipped"><div className="kl">{k.l}</div><Tip text={k.tip} label={k.l} /></div>
+            : <div className="kl">{k.l}</div>}
           <div className="kv">{k.v}</div>
           <div className="kf">
             <div className="kd">{k.d}</div>
@@ -182,13 +212,19 @@ export type SortDir = "asc" | "desc";
 /** Which column a table is ordered by, and which way. */
 export interface SortState { key: string; dir: SortDir }
 /** `sort` names the key this column orders by; omit it and the header stays plain text. */
-export interface Col { h: string; r?: boolean; cls?: string; w?: string; sort?: string }
+export interface Col {
+  h: string; r?: boolean; cls?: string; w?: string; sort?: string;
+  /** What the column means, behind an "i" beside the header. */
+  tip?: ReactNode;
+}
 export interface Row { key: string; cells: ReactNode[]; onClick?: () => void }
 /** A row can be clickable and still carry its own controls - a Receive button, a reason box, a
  *  status select. A click on one of those is about that control and nothing else, so it must not
  *  also open the row. Decided once here rather than by every cell remembering to stop the event:
- *  a screen that forgets is a screen where pressing Cancel also opens the drawer behind it. */
-const CONTROLS = "button, a, input, select, textarea, label, [role=\"button\"]";
+ *  a screen that forgets is a screen where pressing Cancel also opens the drawer behind it.
+ *  `.tip` and `.tipw` count as controls too: a press on a tooltip's bubble, or on the wrapper that
+ *  takes the pointer for a disabled button, is about that tooltip. */
+const CONTROLS = "button, a, input, select, textarea, label, [role=\"button\"], .tip, .tipw";
 const fromControl = (target: EventTarget) =>
   target instanceof Element && target.closest(CONTROLS) !== null;
 
@@ -229,6 +265,7 @@ export function DataTable({ cols, rows, empty, sort, onSort }: {
                   {c.h}<SortCaret dir={dir} />
                 </button>
               ) : c.h}
+              {c.tip && <Tip text={c.tip} label={c.h} />}
             </th>
           );
         })}</tr></thead>
@@ -513,14 +550,23 @@ const LABELABLE = ["input", "select", "textarea"];
  * guessing at which of several controls the label belongs to; when a new caller needs it, give
  * the control its own `aria-label` the way those three do.
  */
-export function Field({ label, hint, children }: { label: string; hint?: ReactNode; children: ReactNode }) {
+/**
+ * `tip` explains the field and sits behind an "i" beside the label. `hint` stays visible under the
+ * control, for what the operator must see without asking: a validation error, a live figure
+ * ("Kitchen holds 4 kg"), a warning.
+ */
+export function Field({ label, hint, tip, children }: {
+  label: string; hint?: ReactNode; tip?: ReactNode; children: ReactNode;
+}) {
   const auto = useId();
   const kids = Children.toArray(children);
   const at = kids.findIndex((c) => isValidElement(c) && typeof c.type === "string" && LABELABLE.includes(c.type));
   const own = at < 0 ? undefined : (kids[at] as ReactElement<{ id?: string }>).props.id;
   return (
     <div className="fld">
-      <label htmlFor={at < 0 ? undefined : own ?? auto}>{label}</label>
+      {tip
+        ? <div className="fld-l tipped"><label htmlFor={at < 0 ? undefined : own ?? auto}>{label}</label><Tip text={tip} label={label} /></div>
+        : <label htmlFor={at < 0 ? undefined : own ?? auto}>{label}</label>}
       {at < 0 || own ? children
         : kids.map((c, i) => (i === at ? cloneElement(c as ReactElement<{ id?: string }>, { id: auto }) : c))}
       {hint && <div className="hint">{hint}</div>}
@@ -530,8 +576,14 @@ export function Field({ label, hint, children }: { label: string; hint?: ReactNo
 export const FormRow = ({ cols, children }: { cols?: "f2" | "f3" | "f4"; children: ReactNode }) => (
   <div className={`frow${cols ? " " + cols : ""}`}>{children}</div>
 );
-export const Section = ({ title, sub, children }: { title: string; sub?: string; children?: ReactNode }) => (
-  <div className="fsec"><h4>{title}</h4>{sub && <p>{sub}</p>}{children}</div>
+export const Section = ({ title, sub, tip, children }: {
+  title: string; sub?: ReactNode; tip?: ReactNode; children?: ReactNode;
+}) => (
+  <div className={`fsec${sub ? "" : " nosub"}`}>
+    <div className="tipped"><h4>{title}</h4>{tip && <Tip text={tip} label={title} />}</div>
+    {sub && <p>{sub}</p>}
+    {children}
+  </div>
 );
 export function Avatar({ name, color, size = 34, src }: {
   name: string; color: string; size?: number; src?: string | null;

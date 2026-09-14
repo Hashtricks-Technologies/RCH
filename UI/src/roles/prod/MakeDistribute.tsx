@@ -131,12 +131,12 @@ export default function MakeDistribute() {
       <PageHead
         crumbs={["Royal Care", "Central Kitchen", "Make & Distribute"]}
         title="Make and distribute"
-        sub="Make products and send them out."
+        tip="Make products and send them out."
         actions={<span className="mini">{sum(allBatches, (b) => b.qty)} units made today</span>}
       />
 
       <Grid cols="g21">
-        <Card title="Make products" sub="Pick a product, enter how many, mark it made">
+        <Card title="Make products" tip="Pick a product, enter how many, mark it made">
           <div className="tilegrid">
             {PRODS.map((k) => {
               const item = IT[k];
@@ -164,10 +164,8 @@ export default function MakeDistribute() {
                         onChange={(e) => setMk((m) => ({ ...m, [k]: e.target.value }))}
                       />
                     </Field>
-                    <Field label="Actual yield" hint={
-                      short
-                        ? <span style={{ color: "var(--warn)" }}>{((((got ?? 0) - want) / want) * 100).toFixed(1)}% variance - give a reason</span>
-                        : <>Leave blank if every unit came good</>
+                    <Field label="Actual yield" tip="Leave blank if every unit came good" hint={
+                      short && <span style={{ color: "var(--warn)" }}>{((((got ?? 0) - want) / want) * 100).toFixed(1)}% variance - give a reason</span>
                     }>
                       <input
                         type="number" min={0} step={1} inputMode="numeric" placeholder={want ? String(want) : "0"}
@@ -207,7 +205,7 @@ export default function MakeDistribute() {
           </div>
         </Card>
 
-        <Card title="Distribute" sub="Send finished stock to a counter or the central store">
+        <Card title="Distribute" tip="Send finished stock to a counter or the central store">
           <FormRow>
             <Field label="Product">
               <select value={dSel} onChange={(e) => pickItem(e.target.value)}>
@@ -222,7 +220,7 @@ export default function MakeDistribute() {
                 value={dQty} onChange={(e) => setDQty(e.target.value)}
               />
             </Field>
-            <Field label="Destination" hint={<>Only outlets that list {IT[dSel]?.n ?? dSel} can receive it</>}>
+            <Field label="Destination" tip={<>Only outlets that list {IT[dSel]?.n ?? dSel} can receive it</>}>
               <select value={dTo} onChange={(e) => setDTo(e.target.value as LocKey)}>
                 {DESTS.map((l) => (
                   <option key={l} value={l} disabled={!listedAt(l, dSel)}>
@@ -240,17 +238,17 @@ export default function MakeDistribute() {
           )}
           {/* Nothing is not a quantity to send: the button used to post a distribution of zero
               and raise a pick ticket with an empty line on it. */}
-          <Btn wide disabled={!dSel || !listedAt(dTo, dSel) || dWant <= 0 || sending} onClick={send}>
+          <Btn wide disabled={!dSel || !listedAt(dTo, dSel) || dWant <= 0 || sending} onClick={send}
+            tip={<>
+              A direct issue reserves the stock and raises a pick ticket. It leaves the rack when you scan it out
+              below, and {LOC[dTo].n} confirms receipt at their end.
+            </>}>
             {sending ? "Sending…" : dWant <= 0 ? "Enter a quantity" : `Send to ${LOC[dTo].n}`}
           </Btn>
-          <p className="mini" style={{ marginTop: 10 }}>
-            A direct issue reserves the stock and raises a pick ticket. It leaves the rack when you scan it out
-            below, and {LOC[dTo].n} confirms receipt at their end.
-          </p>
         </Card>
       </Grid>
 
-      <Card title="Made today" sub="Batch log from the Central Kitchen" flush className="mtop">
+      <Card title="Made today" tip="Batch log from the Central Kitchen" flush className="mtop">
         <Toolbar
           placeholder="Search batch, product or reason…"
           value={bq}
@@ -308,7 +306,7 @@ export default function MakeDistribute() {
         />
       </Card>
 
-      <Card title="Dispatched" sub="Issued out of the kitchen - scan when the counter arrives" flush className="mtop">
+      <Card title="Dispatched" tip="Issued out of the kitchen - scan when the counter arrives" flush className="mtop">
         <Toolbar
           placeholder="Search ticket, order or product…"
           value={tq}
@@ -357,7 +355,7 @@ export default function MakeDistribute() {
         />
       </Card>
 
-      <Card title="In transit" sub="Handed over - the receiving counter must now confirm" flush className="mtop">
+      <Card title="In transit" tip="Handed over - the receiving counter must now confirm" flush className="mtop">
         <Toolbar
           placeholder="Search ticket, order or product…"
           value={cq}
@@ -404,7 +402,7 @@ export default function MakeDistribute() {
         />
       </Card>
 
-      <Card title="Delivered today" sub="Confirmed by the counter and on their shelf" flush className="mtop">
+      <Card title="Delivered today" tip="Confirmed by the counter and on their shelf" flush className="mtop">
         <Toolbar
           placeholder="Search ticket, order or product…"
           value={rq}

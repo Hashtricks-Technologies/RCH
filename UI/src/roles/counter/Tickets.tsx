@@ -51,7 +51,7 @@ export default function Tickets() {
       <PageHead
         crumbs={["Royal Care", L.n, "Pick Tickets"]}
         title="Pick tickets"
-        sub="Stock this counter can collect."
+        tip="Stock this counter can collect."
         actions={<Btn variant="gh" onClick={() => nav("/requests")}>Stock requests</Btn>}
       />
 
@@ -92,7 +92,11 @@ export default function Tickets() {
             { h: "From", w: "16%" },
             { h: "Items", w: "22%" },
             { h: "Approved qty", r: true, w: "12%" },
-            { h: "Status", w: "11%" },
+            { h: "Status", w: "11%", tip: <>
+              <b>Issued</b> means the store keeper has generated the ticket and reserved the stock. <b>Collected</b> means it
+              has been handed over and is in transit. <b>Received</b> means it has been confirmed at this counter and is on
+              the shelf.
+            </> },
             { h: "", w: "7%" },
           ]}
           rows={rows.map((t) => {
@@ -132,7 +136,7 @@ export default function Tickets() {
       <div className="mtop">
         <Card
             title="Sent from this counter"
-            sub={`Stock ${L.n} granted to another shop · the six digits are on their screen, not yours`}
+            tip={`Stock ${L.n} granted to another shop · the six digits are on their screen, not yours`}
             flush
             right={<span className="mini">{uncollected} not collected yet</span>}
           >
@@ -171,12 +175,6 @@ export default function Tickets() {
           <TableFoot count={sent.length} extra={<>{uncollected} still at this counter&apos;s window</>} />
         </Card>
       </div>
-
-      <p className="mini mtop">
-        <b>Issued</b> means the store keeper has generated the ticket and reserved the stock. <b>Collected</b> means it
-        has been handed over and is in transit. <b>Received</b> means it has been confirmed at this counter and is on
-        the shelf.
-      </p>
     </>
   );
 }

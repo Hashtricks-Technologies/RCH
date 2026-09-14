@@ -124,6 +124,8 @@ src/
   lib/                                    fmt.ts (money, quantity, time), selectors.ts (qty · resv · avail ·
                                            freeToPromise · availOf · priceOf · procurementList …), theme.ts
   ui/                                     kit.tsx (~30 typed components incl. DraftLineInput and EtaInput),
+                                           Tip.tsx (the one tooltip: every explanation on a page, card,
+                                           field, figure or button opens on hover, focus or tap),
                                            Shell.tsx, Drawer.tsx, ErrorBoundary.tsx, prefs.ts, and four
                                            shared non-kit pieces two roles each need: TicketSlip.tsx,
                                            NewProductForm.tsx, AdjustmentForm.tsx, KitchenOrderForm.tsx

@@ -123,7 +123,7 @@ function BillDrawer({ id }: DrawerProps) {
         </Alert>
       )}
       {canVoid && (
-        <Field label="Void this bill" hint="Same-day only. The lines go back on the shelf and the amount leaves the day's takings; the bill stays on the list, badged.">
+        <Field label="Void this bill" tip="Same-day only. The lines go back on the shelf and the amount leaves the day's takings; the bill stays on the list, badged.">
           <input
             value={reason}
             onChange={(e) => setReason(e.target.value)}

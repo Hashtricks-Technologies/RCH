@@ -4,7 +4,7 @@ import { useApp } from "../../store";
 import { costOf, menuOf, priceOf } from "../../lib/selectors";
 import { money, sum } from "../../lib/fmt";
 import {
-  Alert, Btn, Card, DataTable, Field, FilterSelect, FormRow, Grid, ImagePlaceholder, PageHead, Pill, TableFoot, Tag, Toolbar,
+  Alert, Btn, Card, DataTable, Field, FilterSelect, FormRow, Grid, ImagePlaceholder, PageHead, Pill, TableFoot, Tag, Tip, Toolbar,
 } from "../../ui/kit";
 import { emptyFor, sortRows, useSort, type SortValue } from "./useSort";
 import type { ItemType, LocKey } from "../../types";
@@ -73,9 +73,8 @@ export default function Prices() {
         <PageHead
           crumbs={["Royal Care", "Outlets", "Price Lists"]}
           title="Shop price lists"
-          sub={outlets.length === 0
-            ? "No outlet is configured yet."
-            : "What each shop charges."}
+          sub={outlets.length === 0 ? "No outlet is configured yet." : undefined}
+          tip="What each shop charges."
         />
         {/* Nothing at all before the snapshot lands, rather than "0 lists cover the 0 counters" -
             which was both ungrammatical and a claim about a deployment nobody had read yet. */}
@@ -178,7 +177,7 @@ export default function Prices() {
       <PageHead
         crumbs={["Royal Care", "Outlets", "Price Lists", LOC[shop].n]}
         title={`${LOC[shop].n} prices`}
-        sub="What this shop sells and charges."
+        tip="What this shop sells and charges."
         actions={<Btn variant="gh" onClick={() => go(null)}>Back to all shops</Btn>}
       />
 
@@ -188,11 +187,11 @@ export default function Prices() {
           : <>{LOC[shop].n} is the only outlet on list <b>{list}</b>{others.length > 0 && <>, so {listOf(others.map((o) => LOC[o].n))} {others.length === 1 ? "is" : "are"} untouched by these edits</>}.</>}
       </Alert>
 
-      <Card title="Add a product" sub={`Priced on list ${list} but not listed at this counter`}>
+      <Card title="Add a product" tip={`Priced on list ${list} but not listed at this counter`}>
         {missing.length > 0 ? (
           <>
             <FormRow>
-              <Field label="Product" hint={`Only a product priced on list ${list} can be sold at this counter.`}>
+              <Field label="Product" tip={`Only a product priced on list ${list} can be sold at this counter.`}>
                 <select value={add} onChange={(e) => setAdd(e.target.value)}>
                   <option value="">Pick a product…</option>
                   {missing.map((it) => (
@@ -267,6 +266,9 @@ export default function Prices() {
                         onChange={(e) => setEdit({ ...edit, [it]: e.target.value })}
                         aria-label={`New price for ${IT[it]?.n ?? it}`}
                       />
+                      <Tip label={`New price for ${IT[it]?.n ?? it}`} text={mrp != null
+                        ? <>Printed MRP ₹{mrp} is a hard ceiling - a higher price is refused.</>
+                        : <>No printed MRP on this item; price it against a cost of {money(cost)}.</>} />
                       <Btn size="xs" disabled={busy[`save:${it}`]} onClick={() => void save(it)}>
                         {busy[`save:${it}`] ? "Saving…" : "Save"}
                       </Btn>
@@ -281,13 +283,11 @@ export default function Prices() {
                         <Btn size="xs" variant="dg" onClick={() => setDrop(it)}>Remove</Btn>
                       )}
                     </div>
-                    <div className="hint" style={drop === it ? { color: "var(--warn)" } : undefined}>
-                      {drop === it
-                        ? <>Takes it off the {LOC[shop].n} till at once. Add a product puts it back.</>
-                        : mrp != null
-                          ? <>Printed MRP ₹{mrp} is a hard ceiling - a higher price is refused.</>
-                          : <>No printed MRP on this item; price it against a cost of {money(cost)}.</>}
-                    </div>
+                    {drop === it && (
+                      <div className="hint" style={{ color: "var(--warn)" }}>
+                        Takes it off the {LOC[shop].n} till at once. Add a product puts it back.
+                      </div>
+                    )}
                   </>,
                 ],
               };

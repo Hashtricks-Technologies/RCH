@@ -2,7 +2,7 @@ import { useState } from "react";
 import { LOC } from "../../data/master";
 import { useApp } from "../../store";
 import { fromWireDate, money, money0, sum } from "../../lib/fmt";
-import { Avatar, Btn, Card, DataTable, FilterBtn, FilterSelect, PageHead, Pill, TableFoot, Toolbar } from "../../ui/kit";
+import { Avatar, Btn, Card, DataTable, FilterBtn, FilterSelect, PageHead, Pill, TableFoot, Tip, Toolbar } from "../../ui/kit";
 import { billDay, billStatus } from "../counter/status";
 import type { LocKey } from "../../types";
 
@@ -57,7 +57,7 @@ export default function Bills() {
       <PageHead
         crumbs={["Royal Care", "Outlets", "Bills"]}
         title="Bills"
-        sub="Bills from every outlet in the last seven days."
+        tip="Bills from every outlet in the last seven days."
       />
       <Card flush>
         <Toolbar
@@ -77,7 +77,14 @@ export default function Bills() {
             )}
             {filtered && <FilterBtn label="Clear filters" onClick={clearAll} />}
           </>}
-          right={<span className="mini">Billed {money0(billed)}{voided.length > 0 && <> · {voided.length} voided, {money0(takenBack)} taken back</>}</span>}
+          right={<span className="mini">
+            Billed {money0(billed)}{voided.length > 0 && <> · {voided.length} voided, {money0(takenBack)} taken back</>}
+            {" "}<Tip label="Billed" text={<>
+              <b>Billed</b> leaves out anything voided - the stock went back on the shelf and the money was
+              never kept, so a voided bill is not takings. A bill can only be voided on the day it was billed;
+              after that, write the stock back on with an adjustment instead.
+            </>} />
+          </span>}
         />
         <DataTable
           cols={[
@@ -123,11 +130,6 @@ export default function Bills() {
         />
         <TableFoot count={rows.length} extra={<>billed {money(billed)} · {voided.length} voided</>} />
       </Card>
-      <p className="mini mtop">
-        <b>Billed</b> leaves out anything voided - the stock went back on the shelf and the money was
-        never kept, so a voided bill is not takings. A bill can only be voided on the day it was billed;
-        after that, write the stock back on with an adjustment instead.
-      </p>
     </>
   );
 }

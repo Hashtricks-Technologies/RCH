@@ -74,7 +74,7 @@ export default function Inventory() {
     ...ALL_LOCS.map((l) => ({ h: LOC[l].n, r: true })),
     { h: "All locations", r: true },
     { h: "In transit", r: true },
-    { h: "Value", r: true },
+    { h: "Value", r: true, tip: "Valued at standard cost" },
     { h: "Reorder", r: true },
     { h: "State" },
     // ---- item patch ----
@@ -123,7 +123,7 @@ export default function Inventory() {
       <PageHead
         crumbs={["Royal Care", "Procurement", "Inventory"]}
         title="Inventory"
-        sub="Stock at every location, view only."
+        tip="Stock at every location, view only."
       />
       <Kpis items={[
         {
@@ -133,9 +133,9 @@ export default function Inventory() {
         { l: "Items on the master", v: String(KEYS.length), d: <>{GROUPS.length - 1} groups</> },
         {
           l: `Below reorder · ${LOC.store.n}`, v: String(below.length),
-          d: <>reorder levels breached</>,
+          tip: <>reorder levels breached</>,
         },
-        { l: `At zero · ${LOC.store.n}`, v: String(zero.length), d: <>stocked items with nothing on hand</> },
+        { l: `At zero · ${LOC.store.n}`, v: String(zero.length), tip: <>stocked items with nothing on hand</> },
       ]} />
       <div className="mtop" />
 
@@ -152,7 +152,6 @@ export default function Inventory() {
               <FilterSelect label="Stocked at" value={place} options={PLACES} onChange={setPlace} />
             </>
           }
-          right={<span className="mini">Valued at standard cost</span>}
         />
         <DataTable
           cols={cols}

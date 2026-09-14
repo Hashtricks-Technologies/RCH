@@ -111,7 +111,7 @@ function ItemDrawer({ id }: { id: string }) {
       sub={<>{item.c} · {item.t} · {item.u}{retired ? " · retired" : ""}</>}
       foot={<>
         <Btn variant="gh" onClick={close}>Cancel</Btn>
-        <Btn disabled={!ok || !dirty || busy} title={dirty ? undefined : "Nothing has changed yet"}
+        <Btn disabled={!ok || !dirty || busy} tip={dirty ? undefined : "Nothing has changed yet"}
           onClick={save}>{busy ? "Saving…" : "Save changes"}</Btn>
       </>}
     >
@@ -123,48 +123,48 @@ function ItemDrawer({ id }: { id: string }) {
       )}
       <Alert tone="i" label="WHO CHANGES WHAT">{whose}</Alert>
 
-      <Section title="Identity" sub="The name is what every screen and every document shows." />
+      <Section title="Identity" tip="The name is what every screen and every document shows." />
       <FormRow cols="f2">
-        <Field label="Product name" hint={nameErr
-          ? <span style={{ color: "var(--crit)" }}>{nameErr}</span>
-          : may("n") ? "Say what it is, the way the store says it." : "The store, the buyer or the kitchen changes this."}>
+        <Field label="Product name"
+          hint={nameErr ? <span style={{ color: "var(--crit)" }}>{nameErr}</span> : undefined}
+          tip={may("n") ? "Say what it is, the way the store says it." : "The store, the buyer or the kitchen changes this."}>
           <input value={n} disabled={!may("n")} onChange={(e) => setN(e.target.value)}
             style={nameErr ? { borderColor: "var(--crit)" } : undefined} />
         </Field>
-        <Field label="Group" hint="Groups the picker and the stock tables by.">
+        <Field label="Group" tip="Groups the picker and the stock tables by.">
           <input value={grp} disabled={!may("grp")} onChange={(e) => setGrp(e.target.value)} />
         </Field>
       </FormRow>
       <FormRow cols="f3">
-        <Field label="Item code" hint="Fixed at creation - it is what the store keeper reads off the shelf.">
+        <Field label="Item code" tip="Fixed at creation - it is what the store keeper reads off the shelf.">
           <input value={item.c} disabled readOnly />
         </Field>
         <Field label="Type"><div className="mtop"><Tag>{item.t}</Tag></div></Field>
-        <Field label="Unit" hint="Everything downstream is quoted in it.">
+        <Field label="Unit" tip="Everything downstream is quoted in it.">
           <input value={item.u} disabled readOnly />
         </Field>
       </FormRow>
 
-      <Section title="Tax and levels" sub="The store, the buyer and the kitchen keep the HSN code, the reorder level and the shelf life." />
+      <Section title="Tax and levels" tip="The store, the buyer and the kitchen keep the HSN code, the reorder level and the shelf life." />
       <FormRow cols="f4">
         <Field label="HSN">
           <input value={hsn} disabled={!may("hsn")} onChange={(e) => setHsn(e.target.value)} />
         </Field>
-        <Field label="GST %" hint={may("gst") ? "What the bill's tax line is derived from." : "The outlet manager changes this."}>
+        <Field label="GST %" tip={may("gst") ? "What the bill's tax line is derived from." : "The outlet manager changes this."}>
           <input type="number" min={0} step="any" value={gst} disabled={!may("gst")}
             onChange={(e) => setGst(e.target.value)} />
         </Field>
-        <Field label="Reorder level" hint="0 if it is never reordered. Every outlet par is derived from it.">
+        <Field label="Reorder level" tip="0 if it is never reordered. Every outlet par is derived from it.">
           <input type="number" min={0} step="any" value={rl} disabled={!may("rl")}
             onChange={(e) => setRl(e.target.value)} />
         </Field>
-        <Field label="Shelf life (hours)" hint={may("sl") ? "Blank or 0 if it does not carry a best-before." : "The store, the buyer or the kitchen sets the shelf life."}>
+        <Field label="Shelf life (hours)" tip={may("sl") ? "Blank or 0 if it does not carry a best-before." : "The store, the buyer or the kitchen sets the shelf life."}>
           <input type="number" min={0} step={1} value={sl} disabled={!may("sl")}
             onChange={(e) => setSl(e.target.value)} placeholder="none" />
         </Field>
       </FormRow>
 
-      <Section title="Cost and printed price" sub="Stock value is read off the cost; the MRP is a hard ceiling on every till." />
+      <Section title="Cost and printed price" tip="Stock value is read off the cost; the MRP is a hard ceiling on every till." />
       <FormRow cols="f2">
         <Field label={`Cost a unit (₹)`} hint={costErr
           ? <span style={{ color: "var(--crit)" }}>{costErr}</span>
@@ -173,7 +173,7 @@ function ItemDrawer({ id }: { id: string }) {
             onChange={(e) => setCost(e.target.value)}
             style={costErr ? { borderColor: "var(--crit)" } : undefined} />
         </Field>
-        <Field label="Printed MRP (₹)" hint={may("mrp")
+        <Field label="Printed MRP (₹)" tip={may("mrp")
           ? (item.mrp == null
             ? "This product carries none. Type the number printed on the pack to give it one - it becomes a hard ceiling at every till."
             : "Leave the box as it is to keep the current ceiling; emptying it changes nothing. It can never go below a shelf price already set.")
@@ -184,7 +184,7 @@ function ItemDrawer({ id }: { id: string }) {
       </FormRow>
 
       <Section title={retired ? "Bring it back" : "Retire it"}
-        sub={retired
+        tip={retired
           ? "It returns to every picker, priced and stocked exactly as it was left."
           : "Only once nothing is on a shelf and no till still lists it. Past documents keep it either way."} />
       <BtnRow>

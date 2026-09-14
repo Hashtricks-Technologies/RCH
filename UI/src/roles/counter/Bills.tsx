@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { LOC } from "../../data/master";
 import { useApp } from "../../store";
 import { isToday, money, money0, sum } from "../../lib/fmt";
-import { Avatar, Btn, Card, DataTable, FilterBtn, FilterSelect, PageHead, Pill, TableFoot, Toolbar } from "../../ui/kit";
+import { Avatar, Btn, Card, DataTable, FilterBtn, FilterSelect, PageHead, Pill, TableFoot, Tip, Toolbar } from "../../ui/kit";
 import { billStatus, settlementOf, type Settlement } from "./status";
 
 const SETTLEMENTS: { k: Settlement; label: string }[] = [
@@ -60,7 +60,7 @@ export default function Bills() {
       <PageHead
         crumbs={["Royal Care", L.n, "Bills"]}
         title="Bills"
-        sub="Bills raised at this counter today."
+        tip="Bills raised at this counter today."
         actions={<Btn onClick={() => nav("/pos")}>New bill</Btn>}
       />
       <Card flush>
@@ -79,7 +79,15 @@ export default function Bills() {
               onChange={(v) => setSettle(v === "All" ? null : SETTLEMENTS.find((x) => x.label === v)!.k)} />
             {filtered && <FilterBtn label="Clear filters" onClick={clearAll} />}
           </>}
-          right={<span className="mini">Billed {money0(billed)} · cash in drawer {money0(cash)}</span>}
+          right={<>
+            <span className="mini">Billed {money0(billed)} · cash in drawer {money0(cash)}</span>
+            <Tip label="Billed and cash in drawer" text={<>
+              <b>Billed</b> is every tender raised at this counter, less anything voided - a voided bill went back on
+              the shelf and the money was never kept, so it stays on this list, badged, and out of both figures.{" "}
+              <b>Cash in drawer</b> is what is actually in the till - card and UPI are taken at the till but settle to
+              the hospital account, and patient, staff and department bills collect nothing at the counter at all.
+            </>} />
+          </>}
         />
         <DataTable
           cols={[
@@ -127,12 +135,6 @@ export default function Bills() {
         <TableFoot count={rows.length}
           extra={<>{L.n} · {L.c} · billed {money(billed)} · cash in drawer {money(cash)}</>} />
       </Card>
-      <p className="mini mtop">
-        <b>Billed</b> is every tender raised at this counter, less anything voided - a voided bill went back on
-        the shelf and the money was never kept, so it stays on this list, badged, and out of both figures.
-        <b>Cash in drawer</b> is what is actually in the till - card and UPI are taken at the till but settle to
-        the hospital account, and patient, staff and department bills collect nothing at the counter at all.
-      </p>
     </>
   );
 }

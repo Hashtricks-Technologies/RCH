@@ -3,7 +3,7 @@ import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
 import { canHandOver } from "../../lib/selectors";
 import { U, fq, sum } from "../../lib/fmt";
-import { Alert, Btn, DataTable, Field, Section, StatusPill, TicketTrail } from "../../ui/kit";
+import { Alert, Btn, DataTable, Field, Section, StatusPill, TicketTrail, Tip } from "../../ui/kit";
 import { PrintSlipBtn, TicketSlip } from "../../ui/TicketSlip";
 import { DrawerFrame } from "../../ui/Drawer";
 import { registerDrawer, type DrawerProps } from "../../drawers";
@@ -66,7 +66,12 @@ function TicketDrawer({ id }: DrawerProps) {
     >
       <div className="tktbox">
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div className="mini">Collection authority</div>
+          {/* The kitchen is the issuing side, so the server sends it no digits at all - it has to
+              ask for them rather than be shown blanks it could read out to itself. */}
+          <div className="mini tipped">
+            <span>Collection authority</span>
+            <Tip text={`Ask ${LOC[t.to].n} to read out the six digits on their own ticket.`} label="Collection authority" />
+          </div>
           <div className="mono-id" style={{ fontSize: 26, letterSpacing: "0.04em" }}>{t.id}</div>
           <div className="mtop" style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             <StatusPill status={t.st} />
@@ -78,18 +83,13 @@ function TicketDrawer({ id }: DrawerProps) {
             <PrintSlipBtn />
           </div>
         </div>
-        {/* The kitchen is the issuing side, so the server sends it no digits at all - it has to
-            ask for them rather than be shown blanks it could read out to itself. */}
-        <p className="mini" style={{ maxWidth: 210 }}>
-          Ask {LOC[t.to].n} to read out the six digits on their own ticket.
-        </p>
       </div>
 
       {open && (
         <div className="mtop">
           <Field
             label="OTP quoted by the collector"
-            hint="Six digits, read out at the pass. The server refuses a handover on the wrong OTP."
+            tip="Six digits, read out at the pass. The server refuses a handover on the wrong OTP."
           >
             <input
               className="otp-in"
@@ -122,7 +122,7 @@ function TicketDrawer({ id }: DrawerProps) {
         </div>
       )}
 
-      <Section title="On this ticket" sub={`Exactly what ${LOC[t.to].n} may collect against it.`} />
+      <Section title="On this ticket" tip={`Exactly what ${LOC[t.to].n} may collect against it.`} />
       <DataTable
         cols={[
           { h: "Item", cls: "nm", w: "44%" },
@@ -151,7 +151,7 @@ function TicketDrawer({ id }: DrawerProps) {
         </div>
       )}
 
-      <Section title="History" sub={`Every hand ${t.id} has passed through`}>
+      <Section title="History" tip={`Every hand ${t.id} has passed through`}>
         <TicketTrail hist={t.hist} />
       </Section>
 

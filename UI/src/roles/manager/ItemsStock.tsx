@@ -6,7 +6,7 @@ import { activeItems, costOf, isRetired, isTicketOpen, menuOf, qty, resv, stockV
 import { fq, lakh, money, money0, sum } from "../../lib/fmt";
 import {
   Alert, Btn, Card, DataTable, Field, FilterSelect, FormRow, Grid, PageHead,
-  StatusPill, TableFoot, Tag, Toolbar,
+  StatusPill, TableFoot, Tag, Tip, Toolbar,
 } from "../../ui/kit";
 import type { ItemType, LocKey, TktStatus } from "../../types";
 import { emptyFor, sortRows, useSort, type SortValue } from "./useSort";
@@ -163,7 +163,7 @@ export default function ItemsStock() {
       <PageHead
         crumbs={["Royal Care", "Outlets", "Items & Stock"]}
         title="Items and stock in hand"
-        sub="Every item and where its stock is."
+        tip="Every item and where its stock is."
       />
 
       <Alert tone="i" label="SHOP TO SHOP">
@@ -248,7 +248,7 @@ export default function ItemsStock() {
       </Card>
 
       <Grid cols="g2">
-        <Card title="List an existing product at a shop" sub="Puts a catalogue product on that counter's till">
+        <Card title="List an existing product at a shop" tip="Puts a catalogue product on that counter's till">
           {shop === null ? (
             <p className="mini">
               No outlet is configured, so there is no till to list a product on.
@@ -282,7 +282,7 @@ export default function ItemsStock() {
               <span>{pick === "" ? "-" : pickPrice == null ? "not priced" : money(pickPrice)}</span>
             </div>
             <div className="mtop">
-              <Btn wide disabled={!pick || listing} title={pick ? undefined : "Pick a product first"}
+              <Btn wide disabled={!pick || listing} tip={pick ? undefined : "Pick a product first"}
                 onClick={() => void listAtShop()}>
                 {listing ? "Listing…" : `List at ${LOC[shop].n}`}
               </Btn>
@@ -291,21 +291,22 @@ export default function ItemsStock() {
           )}
         </Card>
 
-        <Card title="Request a new product from inventory" sub="For something the item master does not carry yet">
-          <p className="mini" style={{ margin: "0 0 12px" }}>
-            You cannot create a catalogue item - the central store does. This raises a stock issue against them,
-            tracked on the Issues screen until they answer.
-          </p>
+        <Card title="Request a new product from inventory" tip={<>
+          For something the item master does not carry yet<br />
+          You cannot create a catalogue item - the central store does. This raises a stock issue against them,
+          tracked on the Issues screen until they answer.
+        </>}>
           <FormRow cols="f2">
-            <Field label="Product wanted" hint="Brand and pack size, as you would order it.">
+            <Field label="Product wanted" tip="Brand and pack size, as you would order it.">
               <input value={nName} onChange={(e) => setNName(e.target.value)} placeholder="e.g. Buttermilk 200ml" />
             </Field>
-            <Field label="Opening quantity" hint="What you would want to start with.">
+            <Field label="Opening quantity" tip="What you would want to start with.">
               <input value={nQty} onChange={(e) => setNQty(e.target.value)} placeholder="e.g. 48 nos" />
             </Field>
           </FormRow>
           <Field label="Why it is needed"
-            hint={shop ? `Raised for ${LOC[shop].n}. Change the shop on the left to switch it.` : "Raised against the central store."}>
+            hint={shop ? `Raised for ${LOC[shop].n}.` : "Raised against the central store."}
+            tip={shop ? "Change the shop on the left to switch it." : undefined}>
             <textarea rows={3} value={nDetail} onChange={(e) => setNDetail(e.target.value)}
               placeholder="Customers keep asking for it, the kiosk has run the trial, and so on…" />
           </Field>
@@ -314,14 +315,14 @@ export default function ItemsStock() {
               dropped on the way out, and a manager who marked something urgent had been told a
               thing that was not true. Say it in the reason instead, where it reaches the buyer. */}
           <Btn wide disabled={busy || !shop || !nName.trim()}
-            title={shop ? (nName.trim() ? undefined : "Name the product first") : "No outlet to raise it for"}
+            tip={shop ? (nName.trim() ? undefined : "Name the product first") : "No outlet to raise it for"}
             onClick={raiseNew}>
             {busy ? "Sending…" : "Raise new-product request"}
           </Btn>
         </Card>
       </Grid>
 
-      <Card title="Inventory at a glance" sub="Stock at cost, by location" flush className="mtop">
+      <Card title="Inventory at a glance" tip="Stock at cost, by location" flush className="mtop">
         <DataTable
           cols={[
             { h: "Location", cls: "nm", w: "26%" },
@@ -406,14 +407,14 @@ export default function ItemsStock() {
               ...ALL_LOCS.map((l, i) => {
                 const v = r.per[i];
                 if (!carries(l, r.k))
-                  return <span className="dim" title={`${LOC[l].n} does not carry this item`}>–</span>;
+                  return <Tip text={`${LOC[l].n} does not carry this item`}><span className="dim">–</span></Tip>;
                 const held = resv(s, l, r.k);
                 if (v <= 0)
-                  return <span style={{ color: "var(--crit)" }} title={`${LOC[l].n} is out of stock`}>{fq(0, r.k)}</span>;
+                  return <Tip text={`${LOC[l].n} is out of stock`}><span style={{ color: "var(--crit)" }}>{fq(0, r.k)}</span></Tip>;
                 if (l === "store" && IT[r.k].rl > 0 && v <= IT[r.k].rl)
-                  return <span style={{ color: "var(--warn)" }} title={`Reorder level ${IT[r.k].rl}`}>{fq(v, r.k)}</span>;
+                  return <Tip text={`Reorder level ${IT[r.k].rl}`}><span style={{ color: "var(--warn)" }}>{fq(v, r.k)}</span></Tip>;
                 return held > 0
-                  ? <span title={`${fq(held, r.k)} reserved against a ticket`}>{fq(v, r.k)} <small className="dim">−{fq(held, r.k)}</small></span>
+                  ? <Tip text={`${fq(held, r.k)} reserved against a ticket`}><span>{fq(v, r.k)} <small className="dim">−{fq(held, r.k)}</small></span></Tip>
                   : <>{fq(v, r.k)}</>;
               }),
               r.held ? <b>{fq(r.tot, r.k)}</b> : <span className="dim">–</span>,

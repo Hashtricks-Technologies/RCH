@@ -106,7 +106,7 @@ export default function AdminUsers() {
       <PageHead
         crumbs={["Admin"]}
         title="Manage staff accounts"
-        sub="Staff accounts, their roles and locations."
+        tip="Staff accounts, their roles and locations."
       />
 
       <Alert tone="i" label="ACCOUNTS">
@@ -121,9 +121,9 @@ export default function AdminUsers() {
         </Alert>
       )}
 
-      <Card title="Create an account" sub="A real, ordinary account - the same as any other, with a temporary password to hand over">
+      <Card title="Create an account" tip="A real, ordinary account - the same as any other, with a temporary password to hand over">
         <FormRow cols="f3">
-          <Field label="Employee id" hint="Assigned when you save - the next number after the last account">
+          <Field label="Employee id" tip="Assigned when you save - the next number after the last account">
             <input className="mono" value={nextEmp} readOnly aria-readonly="true" />
           </Field>
           <Field label="Name"><input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
@@ -212,7 +212,7 @@ export default function AdminUsers() {
         <TableFoot count={accounts.length} />
       </Card>
 
-      <Card title="Recent actions" sub="The last fifty - who did what, to whom" className="mtop">
+      <Card title="Recent actions" tip="The last fifty - who did what, to whom" className="mtop">
         {adminActions.length === 0 ? <p className="mini">Nothing has happened here yet.</p> : (
           <ul className="feed">
             {adminActions.map((a, i) => (

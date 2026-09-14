@@ -83,7 +83,7 @@ export default function Dashboard() {
       <PageHead
         crumbs={["Royal Care", "Central Kitchen"]}
         title="Kitchen dashboard"
-        sub="Today's orders, batches and kitchen stock."
+        tip="Today's orders, batches and kitchen stock."
         actions={<>
           <Btn variant="gh" onClick={() => nav("/orders")}>Orders</Btn>
           <Btn onClick={() => nav("/make")}>Make &amp; distribute</Btn>
@@ -91,11 +91,11 @@ export default function Dashboard() {
       />
 
       <Kpis items={[
-        { l: "New orders waiting", v: newOrders.length, d: <>needing accept or decline</> },
+        { l: "New orders waiting", v: newOrders.length, tip: <>needing accept or decline</> },
         { l: "Orders in progress", v: working.length, d: <><b>{openQty}</b> units promised</> },
-        { l: "Ready to dispatch", v: ready.length, d: <>waiting on the pass</> },
+        { l: "Ready to dispatch", v: ready.length, tip: <>waiting on the pass</> },
         { l: "Units made today", v: madeToday, d: <>across <b>{today.length}</b> batch{today.length === 1 ? "" : "es"}</> },
-        { l: "Products not available", v: off.length, d: <>switched off or nothing to give</> },
+        { l: "Products not available", v: off.length, tip: <>switched off or nothing to give</> },
         { l: "Dispatches out today", v: dispatches.length, d: <><b>{toHand.length}</b> waiting at the pass</> },
       ]} />
 
@@ -123,7 +123,7 @@ export default function Dashboard() {
         </Alert>
       )}
 
-      <Card title="What the kitchen is holding" sub="On the rack right now" className="mtop">
+      <Card title="What the kitchen is holding" tip="On the rack right now" className="mtop">
         <div className="tilegrid">
           {PRODS.map((k) => {
             const on = !ovr["kitchen:" + k];
@@ -143,7 +143,7 @@ export default function Dashboard() {
         </div>
       </Card>
 
-      <Card title="Tickets out of the kitchen" sub="Issued and waiting at the pass, or handed over and in transit" flush className="mtop">
+      <Card title="Tickets out of the kitchen" tip="Issued and waiting at the pass, or handed over and in transit" flush className="mtop">
         <DataTable
           cols={[
             { h: "Ticket ID", cls: "nm", w: "18%" },
@@ -183,7 +183,7 @@ export default function Dashboard() {
       </Card>
 
       <Grid cols="g21">
-        <Card title="Units made today" sub="By product, from the batch log" flush>
+        <Card title="Units made today" tip="By product, from the batch log" flush>
           <DataTable
             cols={[
               { h: "Product", cls: "nm" },
@@ -198,7 +198,7 @@ export default function Dashboard() {
           />
           <TableFoot count={perProduct.length} extra={<>Total made <b>{sum(batch, (b) => b.made)}</b></>} />
         </Card>
-        <Card title="Today in the kitchen" sub="Batches and order movement">
+        <Card title="Today in the kitchen" tip="Batches and order movement">
           <Feed items={feed.map((f) => ({ key: f.key, title: f.title, body: f.body, when: f.when, color: f.color }))} />
         </Card>
       </Grid>

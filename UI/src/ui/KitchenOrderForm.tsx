@@ -180,7 +180,7 @@ export default function KitchenOrderForm({ loc, onDone }: { loc: LocKey; onDone?
       </BtnRow>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, margin: "12px 0" }}>
-        <Field label="Needed by" hint="Leave blank if there is no deadline.">
+        <Field label="Needed by" tip="Leave blank if there is no deadline.">
           <input type="date" value={need} aria-label="Needed by" onChange={(e) => setNeed(e.target.value)} />
         </Field>
         <Field label="For">

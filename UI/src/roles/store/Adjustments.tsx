@@ -52,11 +52,11 @@ export default function Adjustments() {
       <PageHead
         crumbs={["Royal Care", "Central Store", "Adjustments"]}
         title="Write-offs and stock counts"
-        sub="Stock written off or corrected after a count."
+        tip="Stock written off or corrected after a count."
         actions={<span className="mini">Written off to date {money0(lost)}</span>}
       />
 
-      <Card title="New adjustment" sub="Correct one shelf; the books follow, and the reason stays on the record.">
+      <Card title="New adjustment" tip="Correct one shelf; the books follow, and the reason stays on the record.">
         <AdjustmentForm locs={SHELVES} />
       </Card>
 

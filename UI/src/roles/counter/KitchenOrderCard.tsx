@@ -3,7 +3,7 @@ import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
 import { madeItems } from "../../lib/selectors";
 import { fq } from "../../lib/fmt";
-import { Btn, Card, DataTable, Icon, Pill, StatusPill } from "../../ui/kit";
+import { Btn, Card, DataTable, Icon, Pill, StatusPill, Tip } from "../../ui/kit";
 import KitchenOrderForm from "../../ui/KitchenOrderForm";
 import { dmy } from "@rch/domain";
 import type { LocKey, ProdOrder } from "../../types";
@@ -57,7 +57,7 @@ export default function KitchenOrderCard({ loc }: { loc: LocKey }) {
   return (
     <Card
       title="Ask the kitchen"
-      sub="Finished goods only - a drink made at the till is not ordered from the kitchen"
+      tip="Finished goods only - a drink made at the till is not ordered from the kitchen"
       right={waiting > 0 ? <Pill tone="wn">{waiting} on the board</Pill> : undefined}
       className="mtop"
     >
@@ -74,8 +74,10 @@ export default function KitchenOrderCard({ loc }: { loc: LocKey }) {
       {open && (
         <div className="raisecard">
           <div className="raisecard-h">
-            <b>Order from the Central Kitchen</b>
-            <span className="mini">nothing is held until the kitchen dispatches it</span>
+            <span className="tipped">
+              <b>Order from the Central Kitchen</b>
+              <Tip text="nothing is held until the kitchen dispatches it" label="Order from the Central Kitchen" />
+            </span>
           </div>
           <KitchenOrderForm loc={loc} onDone={() => setOpen(false)} />
         </div>

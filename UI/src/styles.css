@@ -298,6 +298,31 @@ td.n b{font-weight:600;color:var(--ink)}
  font-size:12.5px;font-weight:600;box-shadow:var(--sh3);max-width:360px;display:flex;gap:9px;align-items:flex-start}
 .toast .ti{width:6px;height:6px;border-radius:50%;background:var(--c1);flex:none;margin-top:5px}
 .mini{font-size:10.5px;color:var(--ink-3);font-family:"IBM Plex Mono",monospace}
+/* tooltips (ui/Tip.tsx) */
+.tipped{display:flex;align-items:center;gap:5px;min-width:0}
+.tip{display:inline-flex;align-items:center;vertical-align:middle}
+.tip-i{display:inline-grid;place-items:center;width:18px;height:18px;margin:-2px 0;border-radius:50%;color:var(--ink-4);flex:none;cursor:help}
+.tip-i:hover,.tip-i[aria-expanded=true]{color:var(--accent);background:var(--accent-soft)}
+.tip-i:focus-visible,.tip-t:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.tip-t{font:inherit;color:inherit;letter-spacing:inherit;text-transform:inherit;padding:0;background:none;border:0;cursor:help;
+ text-decoration:underline dotted;text-decoration-color:var(--ink-4);text-underline-offset:3px}
+.tip-b{position:fixed;z-index:400;width:max-content;max-width:min(280px,calc(100vw - 16px));padding:7px 10px;border-radius:7px;
+ background:var(--ink);color:var(--ground);box-shadow:var(--sh3);font:500 11.5px/1.45 Inter,"Helvetica Neue",Arial,sans-serif;
+ letter-spacing:normal;text-transform:none;text-align:left;white-space:normal;pointer-events:auto}
+.tip-b[hidden]{display:none}
+.tipw{display:inline-flex;position:relative}
+.tipw.wide{display:flex;width:100%}
+.tipw .btn:disabled{pointer-events:none}
+.card-h .card-t{flex:1;min-width:110px}
+.card-h .card-t h3{flex:none;min-width:0}
+.fld .fld-l{margin-bottom:5px}
+.fld .fld-l label{margin-bottom:0}
+.fsec>.tipped{margin:0 0 3px}
+.fsec>.tipped h4{margin:0}
+.fsec.nosub>.tipped{margin-bottom:13px}
+.kpi .kl-row{gap:4px;margin-bottom:9px}
+.kpi .kl-row .kl{margin-bottom:0}
+thead th .tip{margin-left:4px}
 .dim{color:var(--ink-4)}.rt{text-align:right}.mtop{margin-top:14px}.hide{display:none!important}
 
 /* react additions */
@@ -367,7 +392,6 @@ td.n b{font-weight:600;color:var(--ink)}
 .kan-n{flex:none;font-family:"IBM Plex Mono",monospace;font-size:11px;font-weight:600;
  min-width:22px;text-align:center;padding:1px 7px;border-radius:9px;
  background:var(--surface-3);color:var(--ink-2);border:1px solid var(--line)}
-.kan-sub{margin:-2px 0 2px;font-size:10.5px;color:var(--ink-3)}
 .kan-card{background:var(--surface);border:1px solid var(--line);border-radius:9px;padding:10px;
  display:flex;flex-direction:column;gap:7px;cursor:pointer;box-shadow:var(--sh1);
  transition:border-color .12s,transform .08s}

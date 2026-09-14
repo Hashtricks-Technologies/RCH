@@ -41,7 +41,12 @@ function RequestDrawer({ id }: DrawerProps) {
       title={<span className="mono">{req.id}</span>}
       sub={`${L.n} · raised by ${req.by} at ${req.at}${req.urg ? " · urgent" : ""}`}
       foot={<>
-        <Btn variant="dg" disabled={!open} onClick={() => cancelRequest(req.id)}>Cancel request</Btn>
+        <Btn variant="dg" disabled={!open} onClick={() => cancelRequest(req.id)}
+          tip={open
+            ? "This request can still be cancelled - the store keeper has not issued a ticket against it yet."
+            : "Cancelling is only possible before the store keeper issues a ticket against this request."}>
+          Cancel request
+        </Btn>
         <div className="sp" />
         <Btn variant="gh" onClick={close}>Close</Btn>
       </>}
@@ -72,7 +77,7 @@ function RequestDrawer({ id }: DrawerProps) {
         </Alert>
       )}
 
-      <Section title="Items" sub="What the counter asked for, what the manager approved, and what is still outstanding." />
+      <Section title="Items" tip="What the counter asked for, what the manager approved, and what is still outstanding." />
       <DataTable
         cols={[
           { h: "Item", cls: "nm", w: "32%" },
@@ -105,7 +110,7 @@ function RequestDrawer({ id }: DrawerProps) {
         {req.mgrNote || <span className="dim">No note was left with this request.</span>}
       </p>
 
-      <Section title="History" sub="Every hand-off on this request, in order." />
+      <Section title="History" tip="Every hand-off on this request, in order." />
       <Feed items={req.hist.map((h, i) => ({
         key: h.s + i,
         title: h.s,
@@ -113,12 +118,6 @@ function RequestDrawer({ id }: DrawerProps) {
         when: h.t,
         color: DOT[h.s] ?? "var(--c1)",
       }))} />
-
-      <p className="mini mtop">
-        {open
-          ? "This request can still be cancelled - the store keeper has not issued a ticket against it yet."
-          : "Cancelling is only possible before the store keeper issues a ticket against this request."}
-      </p>
     </DrawerFrame>
   );
 }

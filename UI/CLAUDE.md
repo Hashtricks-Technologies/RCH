@@ -146,6 +146,19 @@ a background refresh and must not blank the screen.
 
 - **Use `src/ui/kit.tsx`'s typed components instead of bespoke markup.** These include `Card`, `DataTable`,
   `PageHead`, `Btn`, `Pill`, `Alert`, `Field`, `FormRow`, `Toolbar`, `Kpis` and `Otp`.
+- **Explanations live in tooltips; what the operator must see stays on the page.** `Tip` (`ui/Tip.tsx`,
+  re-exported by the kit) is the one tooltip. It opens on mouse hover, on keyboard focus, and on a press or tap,
+  which pins it. Escape, a press elsewhere, or focus leaving closes it, and Escape never reaches the drawer
+  behind it.
+  - `PageHead`, `Card`, `Section`, `Field`, a `Kpi` and a `Col` each take a `tip`, drawn as an "i" beside
+    the heading or label. A sentence that explains a page, a card, a field or a figure goes there.
+  - `sub`, `hint` and a `Kpi`'s `d` stay visible, and only for things read every time: counts, names,
+    validation errors, live figures and warnings. An `Alert` is never a tooltip.
+  - `<Tip text="…">{value}</Tip>` explains a value in place, and `Btn`'s `tip` explains a button, even a
+    disabled one. `title` only names a symbol-only button. It never explains.
+  - The bubble is always in the DOM (`hidden` while closed), so tests still find a moved sentence by its text.
+    Never put a `Tip` inside a `<label>`, a heading or a `<button>`, where that hidden text would join
+    theirs.
 - **`DraftLineInput`** is the commit-on-blur number box. Every typed quantity uses it, because a controlled
   number input can't take a half-typed `12.`. Its `ariaLabel` is required even beside a `<label>`, because
   `Field` only wires `htmlFor` to a direct DOM child.

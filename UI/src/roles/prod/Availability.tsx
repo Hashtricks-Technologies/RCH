@@ -40,7 +40,7 @@ export default function Availability() {
       <PageHead
         crumbs={["Royal Care", "Central Kitchen", "Product On / Off"]}
         title="Product turn-on and turn-off"
-        sub="Turn kitchen products on or off for the day."
+        tip="Turn kitchen products on or off for the day."
         actions={<span className="mini">
           {all.filter((k) => !s.ovr["kitchen:" + k]).length} on · {all.filter((k) => s.ovr["kitchen:" + k]).length} off
         </span>}
@@ -52,7 +52,7 @@ export default function Availability() {
         counter still has its own on/off switch.
       </Alert>
 
-      <Card title="Made products" sub="Computed state is what the kitchen can actually give out" flush className="mtop">
+      <Card title="Made products" tip="Computed state is what the kitchen can actually give out" flush className="mtop">
         <Toolbar
           placeholder="Search product, code or group…"
           value={q}

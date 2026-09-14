@@ -89,7 +89,7 @@ export default function Availability() {
       <PageHead
         crumbs={["Royal Care", "Outlets", "Product On / Off"]}
         title="Product availability master"
-        sub="Which products each counter can sell."
+        tip="Which products each counter can sell."
       />
 
       <Alert tone="i" label="LIVE">
@@ -103,7 +103,7 @@ export default function Availability() {
         </Alert>
       )}
 
-      <Card title="Sellable by counter" sub="What each outlet lists, and why anything is off" flush>
+      <Card title="Sellable by counter" tip="What each outlet lists, and why anything is off" flush>
         <DataTable
           cols={[
             { h: "Counter", cls: "nm", w: "26%" },

@@ -97,7 +97,7 @@ export default function Approvals() {
       <PageHead
         crumbs={["Royal Care", "Movement", "Approvals"]}
         title="Stock request approvals"
-        sub="Stock requests waiting for your decision."
+        tip="Stock requests waiting for your decision."
       />
 
       {allWaiting.length > 0 ? (
@@ -169,6 +169,7 @@ export default function Approvals() {
       <Card
         title="Already actioned"
         sub={`${actioned.length} of ${allActioned.length}`}
+        tip="Click any row to reopen the decision trail"
         flush
         className="mtop"
       >
@@ -234,7 +235,7 @@ export default function Approvals() {
             sub: "Once you approve or reject a counter request it is listed here with its full history.",
           })}
         />
-        <TableFoot count={actioned.length} extra={<>Click any row to reopen the decision trail</>} />
+        <TableFoot count={actioned.length} />
       </Card>
     </>
   );

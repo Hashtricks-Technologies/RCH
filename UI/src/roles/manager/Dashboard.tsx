@@ -167,7 +167,7 @@ export default function Dashboard() {
       <PageHead
         crumbs={["Royal Care", "Outlets", "Dashboard"]}
         title="What needs you today"
-        sub="Decisions waiting on you across the outlets."
+        tip="Decisions waiting on you across the outlets."
         actions={<>
           {/* ---- prod-order raise ---- the manager booking a tray for one of the three shops,
               rather than ringing the counter and asking them to raise it themselves. */}
@@ -204,7 +204,7 @@ export default function Dashboard() {
         </Alert>
       )}
 
-      <Card title="Outlet summary" sub="Today's trade against the stock each counter is holding" flush>
+      <Card title="Outlet summary" tip="Today's trade against the stock each counter is holding" flush>
         <DataTable
           sort={outletSort.sort}
           onSort={outletSort.onSort}
@@ -289,7 +289,7 @@ export default function Dashboard() {
         <TableFoot count={queueRows.length} extra={<>{urgent} urgent in the full queue</>} />
       </Card>
 
-      <Card title="Recent activity" sub="Bills, request decisions and shop transfers" flush className="mtop">
+      <Card title="Recent activity" tip="Bills, request decisions and shop transfers" flush className="mtop">
         <Toolbar
           placeholder="Search activity, outlet or person…"
           value={aq}

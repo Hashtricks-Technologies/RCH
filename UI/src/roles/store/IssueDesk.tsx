@@ -109,13 +109,13 @@ export default function IssueDesk() {
       <PageHead
         crumbs={["Royal Care", "Central Store", "Issue"]}
         title="Issue desk"
-        sub="Hand over stock that has been approved."
+        tip="Hand over stock that has been approved."
       />
 
       <Grid>
       <Card
         title="Approved - awaiting ticket"
-        sub="Manager approved and partially approved requests · open a row for the detail"
+        tip="Manager approved and partially approved requests · open a row for the detail"
         right={shortCount > 0 ? <Pill tone="wn">{shortCount} short on stock</Pill> : <Pill tone="ok">All covered</Pill>}
         flush
       >
@@ -177,7 +177,7 @@ export default function IssueDesk() {
                 <Btn
                   size="sm"
                   disabled={w === null || w.ratio < 1}
-                  title={w !== null && w.ratio < 1 ? `${IT[w.l.it].n} is committed elsewhere` : undefined}
+                  tip={w !== null && w.ratio < 1 ? `${IT[w.l.it].n} is committed elsewhere` : undefined}
                   onClick={() => issueTicket(r.id)}
                 >
                   Generate ticket
@@ -204,7 +204,7 @@ export default function IssueDesk() {
 
       <Card
         title="Tickets to hand over"
-        sub="Issued against the central store - open the ticket and take the OTP from the collector"
+        tip="Issued against the central store - open the ticket and take the OTP from the collector"
         flush
       >
         <Toolbar
@@ -259,7 +259,7 @@ export default function IssueDesk() {
 
       <Card
         title="In transit"
-        sub="Handed over - the receiving counter must now confirm"
+        tip="Handed over - the receiving counter must now confirm"
         flush
       >
         <Toolbar
