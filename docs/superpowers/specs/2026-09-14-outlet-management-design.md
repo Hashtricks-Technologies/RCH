@@ -37,14 +37,19 @@ rather than the three built into the code.
 
 ### 1.1 Contract
 
-- `LocKeySchema` becomes a checked key: `z.string().regex(/^[a-z][a-z0-9-]{0,23}$/)`, refined to refuse
-  `quarantine` (still a 400, as today). `StockLocSchema` is the same regex without the refinement. `LocKey` and
-  `StockLoc` are both `string` in TypeScript.
+- `LocKeySchema` becomes a checked key: `z.string().regex(/^(?!quarantine$)[a-z][a-z0-9-]{0,23}$/)`. A
+  negative lookahead rather than a `.refine`, so the key schema stays a plain string schema usable as a record
+  key, and quarantine is still a 400, as today. `StockLocSchema` is the same regex without the lookahead.
+  `LocKey` and `StockLoc` are both `string` in TypeScript. Both flip in the first task, while `ALL_LOCS`,
+  `OUTLETS` and `PAR_FACTOR` stay as literal constants until every reader has moved off them (the last code
+  task), so every package stays green between tasks.
 - `STORE = "store"` and `KITCHEN = "kitchen"` are exported beside `QUARANTINE`. Code that means the central store
   or kitchen names these constants instead of a literal.
 - `ALL_LOCS` and `OUTLETS` are removed from the contract. Nothing may list outlets from a constant again.
 - `byLoc` / `byStockLoc` in `schemas/snapshot.ts` become `z.record(LocKeySchema | StockLocSchema, v)`.
-- `LocationSchema` gains `active: boolean` and `par: number`. It stays keyed by location in `locations`.
+- `LocationSchema` gains `active` and `par`. They are optional while readers are migrated, where absent reads
+  as open and as a factor of 1 (the way `Item.active` reads), and required once every reader sends them. It
+  stays keyed by location in `locations`.
 - `sales` becomes `z.array(z.record(LocKeySchema, Money))`: one record per day, keyed by outlet.
 - `CollectionSchema` gains `"locations"` and `"outlets"`.
 - The root `CLAUDE.md` rule becomes: *`Role` and every status are closed unions; never widen one with `string`.
@@ -55,10 +60,15 @@ rather than the three built into the code.
 
 - `par.ts`: `PAR_FACTOR` is removed. `parFactor(m, loc)` reads `m.locations[loc]?.par ?? 1`.
 - New `locations.ts`, pure functions over `Master.locations`:
-  - `outletKeys(m, { open })` - Outlet-type keys, open ones only when asked, ordered by name.
-  - `operationalKeys(m)` - `STORE`, `KITCHEN`, then open outlets (replaces `ALL_LOCS`).
-  - `worksAt(role, location)` - the one pairing rule: `prod` at the kitchen; `store` and `buyer` at the store;
-    `counter` and `manager` at an **open** outlet. Replaces both copies of `WORKS_AT`.
+  - `outletKeys(locations, { open })` - Outlet-type keys, open ones only when asked, ordered by name and then
+    key.
+  - `operationalKeys(locations)` - `STORE`, `KITCHEN`, then open outlets (replaces `ALL_LOCS`).
+  - `worksAt(role, key, location)` - the one pairing rule: `prod` at the kitchen; `store` and `buyer` at the
+    store; `counter` and `manager` at an **open** outlet. Replaces both copies of `WORKS_AT`. `placesFor(role,
+    locations)` is the picker's list for the same rule.
+  - `HOLDS_OUTLET` - for each document an outlet can be party to, a `Record<Status, boolean>` of the statuses
+    that still commit the outlet. It is exhaustive over each closed union, so a new status fails typecheck until
+    it is classified. `closeRefusal(name, blockers)` builds the close refusal sentence (§2.3).
   - `outletKeyFor(name, takenKeys)` - lower-cases, turns runs of anything outside `[a-z0-9]` into `-`, trims to
     24, and appends `-2`, `-3`, … when the result is empty-after-trim, reserved (`store`, `kitchen`,
     `quarantine`) or taken.
@@ -85,15 +95,17 @@ seed inserts them as today.
 
 New `apps/api/src/lib/locations.ts`:
 
-- `lockLocation(tx, key, { types, open })` - `SELECT … FOR SHARE` on the `locations` row. It refuses an unknown
-  key as `not_found` (`No location "<key>"`), a wrong type as `rule`, and, when `open` is set, a closed outlet
-  as `rule`: `Refused - <name> is closed`.
-- `openOutletKeys(tx)` - replaces every server read of `OUTLETS`.
+- `lockLocation(tx, key)` - `SELECT … FOR SHARE` on the `locations` row. It refuses an unknown key as
+  `not_found` (`There is no location <key>.`, the sentence the services already use). Each caller keeps its own
+  type check against the row.
+- `assertOpen(row, then?)` - refuses a closed location as `rule`: `Refused - <name> is closed`, optionally
+  followed by `; <then>`.
 
 The location row is master data. It is locked in the **documents** tier, before ids and balances, so the
 server-wide lock order is unchanged.
 
-Every write that names a location resolves it through `lockLocation` with `open: true` for an outlet. That is:
+Every write that names a location resolves it through `lockLocation`, and calls `assertOpen` on it when it is an
+outlet. That is:
 
 - counter sale (`pos`)
 - shop transfer (`tickets`)
@@ -134,8 +146,12 @@ Validation:
 - `floor` and `cc` must each be 1-40 characters.
 - `list` is `A | B`.
 
-A duplicate name or code is a `conflict`: `Refused - an outlet named <name> already exists` or `Refused - code
-<code> is already in use`. PATCH and close/reopen on a key that is not an Outlet-type row are `not_found`, so
+A duplicate name or code is a `conflict`, caught from the unique index so that a race is covered too: `Refused -
+a location named <name> already exists` or `Refused - code <code> is already in use`. "Location" rather than
+"outlet", because the store and the kitchen hold names and codes as well. Creates serialise on a `SHARE ROW
+EXCLUSIVE` lock on `locations`, which does not block the `FOR SHARE` row locks that sales take, so two outlets
+cannot be given the same key. An edit that changes nothing is refused: `Nothing to save - <name> already reads
+that way`. PATCH and close/reopen on a key that is not an Outlet-type row are `not_found`, so
 store and kitchen cannot be edited or closed through these routes.
 
 **Close** takes the row `FOR UPDATE`, then refuses while anything still depends on the outlet, naming every
@@ -144,15 +160,19 @@ drawn from:
 
 - `stock on hand (N items)`
 - `N open tickets`
-- `N held reservations`
-- `N open requisitions`
+- `N open stock requests`
 - `N open kitchen orders`
 - `N open shop asks`
 - `N open product requests`
 - `N active staff (<emp numbers>)`
 
-"Open" is read from `packages/domain/src/transitions.ts`'s terminal states, never a hand-written status list.
-Once none remain, it sets `active = false`.
+Counts are singular for one ("1 open ticket", "1 item"), and the last two entries are joined with "and".
+
+"Open" is `HOLDS_OUTLET` (§1.2). The transition tables can't answer it, because a dispatched kitchen order and a
+sent shop ask each keep an undo edge, yet the ticket they raised is what still holds the outlet. Reservations are
+not listed separately, since one exists only under an open ticket. Once none remain, the close sets `active =
+false`. Closing an outlet that is already closed, or reopening one that is already open, is refused: `<name> is
+already closed` / `<name> is already open`.
 
 A closed outlet:
 
@@ -160,8 +180,9 @@ A closed outlet:
 - can't take a sale, transfer, ask, kitchen order, adjustment, menu add or bill void (§2.1);
 - can't have staff created at it, moved to it or reactivated at it (`worksAt`).
 
-Each write runs in one `withTransaction`, writes one `admin_actions` row, and calls `emitChanged("locations")`
-so every open operational browser refetches. Its response names `changed: ["outlets", "locations"]`.
+Each write runs in one `withTransaction`, writes one `admin_actions` row, and calls
+`emitChanged(tx, ["outlets", "locations"])`, the same array its response names. Every open operational browser
+refetches `locations`, and every open admin tab refetches `outlets`.
 
 ### 2.4 Audit rows
 
@@ -240,7 +261,7 @@ Tests are written first, per package.
   - a new outlet sells end to end: menu add → price → sale → snapshot `sales` keyed by it → counter scope;
   - staff pairing to a new outlet, and refused to a closed one;
   - `admin_actions` rows and `kind` filter;
-  - `emitChanged("locations")` on each write;
+  - `emitChanged` with `["outlets", "locations"]` on each write;
   - a non-admin token gets 404 on every new route;
   - the migration backfill keeps today's par factors.
 - **UI:**
