@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { isPurchased } from "@rch/domain";
 import { IT, LOC } from "../../data/master";
 import { vendorName } from "../../data/vendors";
 import { useApp } from "../../store";
@@ -40,9 +41,7 @@ export default function Dashboard() {
   // `activeItems()`, not `Object.keys(IT)`: the registry carries retired lines so past orders
   // still name them, and a retired product reading "at zero — reorder" would send the buyer
   // out to buy something the hospital has deliberately stopped carrying.
-  const BOUGHT: string[] = activeItems().filter(
-    (k) => IT[k].t === "RAW" || IT[k].t === "PACK" || IT[k].t === "MRP",
-  );
+  const BOUGHT: string[] = activeItems().filter((k) => isPurchased(IT[k].t));
 
   const waiting = s.prq.filter((p) => p.st === "Sent");
   const pool = procurementList(s);

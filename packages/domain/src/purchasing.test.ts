@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { contractInWindow, etaFrom, needsApproval, poValue, rateFor } from "./purchasing.js";
+import { contractInWindow, etaFrom, isPurchased, needsApproval, poValue, rateFor } from "./purchasing.js";
+
+describe("isPurchased", () => {
+  it("buys raw, packing and MRP goods, and never what the hospital makes itself", () => {
+    expect((["RAW", "PACK", "MRP"] as const).map(isPurchased)).toEqual([true, true, true]);
+    expect((["FG", "MTO"] as const).map(isPurchased)).toEqual([false, false]);
+  });
+});
 
 describe("poValue and needsApproval", () => {
   it("values an order at quantity times rate", () => {

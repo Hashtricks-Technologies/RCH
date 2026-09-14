@@ -1,3 +1,4 @@
+import type { ItemType } from "@rch/contract";
 import { istDate } from "./format.js";
 
 /**
@@ -7,6 +8,12 @@ import { istDate } from "./format.js";
  * rule and the number stay separable — the number is the contract's (`PO_APPROVAL_LIMIT`), and
  * the caller that enforces the rule passes it in.
  */
+
+/** Procurement buys what the central store shelves: raw, packing and MRP goods. A finished good
+ *  is made in the kitchen and a made-to-order item is assembled at the counter, so neither is
+ *  ever put on the procurement list — the buyer's direct add refuses one, and its picker offers
+ *  only what this answers `true` for. */
+export const isPurchased = (t: ItemType): boolean => t === "RAW" || t === "PACK" || t === "MRP";
 
 /** What an order is worth, before tax and before anything is delivered. */
 export const poValue = (lines: readonly { qty: number; rate: number }[]): number =>

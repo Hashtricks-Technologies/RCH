@@ -54,7 +54,8 @@ that draws its recipe out of the kitchen and stamps a best-before, dispatch it, 
 a six-digit code and receive it at the counter — with another browser following along live — and
 cancel a ticket nobody came for, which puts the stock and the document behind it back where it
 stood. Buying, the same way: the store keeper raises a requisition at the central store; the
-buyer approves or trims it, draws a purchase order off the procurement list priced from a live
+buyer approves or trims it (or adds items to the procurement list directly, with a reason, from
+its "Add items" drawer), draws a purchase order off the procurement list priced from a live
 rate contract, and sends it to the vendor; the order is received against a delivery note in
 instalments, with a rejection at the door landing in a quarantine shelf that never sells and
 never issues; and closing an order short hands the undelivered balance straight back onto the
@@ -220,6 +221,13 @@ backed since Phase 5. The store keeper maintains them (`POST`/`PATCH`/`DELETE /c
 admit `store`); procurement prices an order from them (`createPo` picks a live contract's rate
 over the item's standard cost) and is warned on screen when a rate deviates or a quantity falls
 under the minimum. Only one live contract may exist for a given vendor and item at a time.
+
+**Adding to the procurement list directly.** The buyer does not have to wait for the store
+keeper to ask. "Add items" on the Procurement List opens a drawer of raw, packing and MRP lines
+(what the kitchen makes or the counter assembles is never offered) and a required reason, and
+`POST /requisitions/direct` records it as a requisition raised and approved by the buyer in one
+step. Its lines join the list beside every other approved line, a purchase order claims against
+them the same way, and both requisition screens mark it as added by procurement.
 
 **New products.** An outlet manager asks for something not on the master; procurement is the
 one who sources it, so procurement is the one who adds it — a short form (name, type, unit,

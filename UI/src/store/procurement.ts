@@ -12,6 +12,8 @@ export interface ProcurementSlice {
   setVendorActive: (id: string, active: boolean) => Promise<void>;
   approveRequisition: (prqId: string, appr: number[], note: string) => Promise<boolean>;
   declineRequisition: (prqId: string, note: string) => Promise<boolean>;
+  /** The buyer's own addition to the procurement list — a requisition approved as it is raised. */
+  addToProcurementList: (lines: { it: string; qty: number }[], note: string) => Promise<boolean>;
   /** The new draft's id, or null when the server refused — the list needs it to navigate. */
   createPo: (vendorId: string, picks: { prq: string; line: number; qty: number }[]) => Promise<string | null>;
   updatePoLine: (poId: string, lineIdx: number, patch: { qty?: number; rate?: number }) => Promise<boolean>;
@@ -94,6 +96,18 @@ export const createProcurementSlice = (get: Get): ProcurementSlice => ({
       await refetch(r.changed, r.message);
       return true;
     } catch (e) { return fail(get, e, "save the decision"); }
+  },
+
+  addToProcurementList: async (lines, note) => {
+    // A line left at zero is the drawer's noise, not something to send and have refused — the
+    // same drop `sendRequisition` makes. The drawer keeps what was typed until this answers true.
+    const body = { lines: lines.filter((l) => l.it && l.qty > 0).map((l) => ({ it: l.it, qty: l.qty })), note };
+    try {
+      const r = await call(routes.addToProcurementList, { body });
+      get().notify(r.message);
+      await refetch(r.changed, r.message);
+      return true;
+    } catch (e) { return fail(get, e, "add to the procurement list"); }
   },
 
   createPo: async (vendorId, picks) => {

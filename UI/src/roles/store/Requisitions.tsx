@@ -1,9 +1,10 @@
 import { useMemo, useState } from "react";
+import { isPurchased } from "@rch/domain";
 import { IT, LOC } from "../../data/master";
 import { suggestVendor, vendorName } from "../../data/vendors";
 import { useApp } from "../../store";
 // ---- item patch ----
-import { activeItems, avail, awaitingApproval, onOrder, prqProgress, qty } from "../../lib/selectors";
+import { activeItems, addedByProcurement, avail, awaitingApproval, onOrder, prqProgress, qty } from "../../lib/selectors";
 import { U, fq, money, money0, sum, unitTotal } from "../../lib/fmt";
 import {
   Alert, Btn, BtnRow, Card, DataTable, DraftLineInput, Field, FilterBtn, FilterSelect, Grid,
@@ -50,7 +51,7 @@ export default function Requisitions() {
   // `activeItems()`, not `Object.keys(IT)`: a retired line stays in the registry so past
   // documents still name it, and must not be orderable again.
   const BUYABLE = activeItems()
-    .filter((k) => IT[k].t === "RAW" || IT[k].t === "PACK" || IT[k].t === "MRP")
+    .filter((k) => isPurchased(IT[k].t))
     .sort((a, b) => IT[a].g.localeCompare(IT[b].g) || IT[a].n.localeCompare(IT[b].n));
   const BUY_GROUPS = [...new Set(BUYABLE.map((k) => IT[k].g))];
 
@@ -345,7 +346,7 @@ export default function Requisitions() {
                     <small>{p.lines.map((l) => IT[l.it]?.n ?? l.it).join(", ")}</small>
                   </>,
                   <span className="mono">{p.at}</span>,
-                  <>{p.by}</>,
+                  <>{p.by}{addedByProcurement(p) && <small>added by procurement</small>}</>,
                   <>{p.lines.length}</>,
                   <b>{unitTotal(p.lines)}</b>,
                   <>{money0(sum(p.lines, (l) => (IT[l.it]?.cost ?? 0) * l.qty))}</>,

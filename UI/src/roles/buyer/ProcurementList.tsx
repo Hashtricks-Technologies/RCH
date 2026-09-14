@@ -91,6 +91,7 @@ export function ordersFor(
 export default function ProcurementList() {
   const s = useApp();
   const createPo = useApp((x) => x.createPo);
+  const openDrawer = useApp((x) => x.openDrawer);
   const notify = useApp((x) => x.notify);
   const nav = useNavigate();
 
@@ -233,6 +234,7 @@ export default function ProcurementList() {
         crumbs={["Royal Care", "Procurement", "Procurement List"]}
         title="Procurement list"
         sub="Every approved requisition item not yet claimed by an order, pooled by item — pick what to buy here and raise a purchase order."
+        actions={<Btn onClick={() => openDrawer("baddpool", "new")}>Add items</Btn>}
       />
 
       <Grid cols="g21">
@@ -270,7 +272,8 @@ export default function ProcurementList() {
             }
             : {
               title: "Nothing on the procurement list",
-              sub: "Approve a requisition and its items collect here.",
+              sub: "Approve a requisition and its items collect here — or add items yourself.",
+              action: <Btn size="sm" onClick={() => openDrawer("baddpool", "new")}>Add items</Btn>,
             }}
         />
         <TableFoot

@@ -95,6 +95,13 @@ export const CreateRequisitionBodySchema = z.strictObject({
 });
 export const ApproveRequisitionBodySchema = z.strictObject({ appr: z.array(QtySchema).min(1).max(50), note: z.string().max(500).default("") });
 export const DeclineRequisitionBodySchema = z.strictObject({ note: z.string().max(500) });
+/** The buyer putting items on the procurement list without a store keeper's ask. No default on
+ *  `note`: it is the reason, the service refuses a blank one with its own sentence, and a body
+ *  that left the key out is a client that forgot to ask for it. */
+export const AddToProcurementListBodySchema = z.strictObject({
+  lines: z.array(ReqLineInputSchema).min(1).max(50),
+  note: z.string().max(500),
+});
 
 // ---- purchase orders
 /** One pick off the procurement list: a requisition, one of its lines by index, a quantity.

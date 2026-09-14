@@ -104,6 +104,7 @@ describe("drawers render", () => {
    */
   const OPEN_OVER: Record<string, [id: string, role: Role]> = {
     adjstock: ["coffee", "manager"],
+    baddpool: ["new", "buyer"],
     bgrn: ["PO-2026-0141", "buyer"],
     bnewitem: ["new", "buyer"],
     bpo: ["PO-2026-0140", "buyer"],

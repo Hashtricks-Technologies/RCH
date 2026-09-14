@@ -205,6 +205,11 @@ export const awaitingApproval = (
     .reduce((t, p) => t + p.lines.filter((l) => l.it === it).reduce((n, l) => n + l.qty, 0), 0),
 );
 
+/** A requisition the buyer raised straight onto the procurement list (`POST /requisitions/direct`):
+ *  its trail opens on the decision, because nobody ever sent it. Every store keeper's ask opens
+ *  on "Sent". */
+export const addedByProcurement = (p: Requisition) => p.hist[0]?.s === "Approved";
+
 export interface PoolLine {
   prq: string; line: number; it: string;
   asked: number; pending: number; by: string; at: string;

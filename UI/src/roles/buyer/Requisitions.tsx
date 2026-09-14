@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
+import { addedByProcurement } from "../../lib/selectors";
 import { money0, sum, unitTotal } from "../../lib/fmt";
 import {
   Btn, Card, DataTable, FilterSelect, Grid, PageHead, Pill, StatusPill, TableFoot, Toolbar,
@@ -102,7 +103,7 @@ export default function Requisitions() {
       key: p.id,
       onClick: () => openDrawer("bprq", p.id),
       cells: [
-        <>{p.id}<small>{p.apprBy ?? p.by}</small></>,
+        <>{p.id}<small>{p.apprBy ?? p.by}{addedByProcurement(p) ? " · added directly" : ""}</small></>,
         <>{apprQtyOf(p)} <small className="dim">of {qtyOf(p)}</small></>,
         p.st === "Approved"
           ? <Pill tone="ok">In full</Pill>

@@ -28,6 +28,7 @@ const SAMPLES: Record<string, Record<string, unknown>> = {
   createRequisition:    { lines: [{ it: "milk", qty: 60 }], note: "Milk at zero in the coffee shop" },
   approveRequisition:   { appr: [60, 6], note: "Approved in full." },
   declineRequisition:   { note: "Last lot is still moving." },
+  addToProcurementList: { lines: [{ it: "cup", qty: 500 }], note: "Festival week — the store keeper is on leave" },
   createPo:             { vendorId: "VN-001", picks: [{ prq: "PRQ-2026-013", line: 0, qty: 60 }] },
   updatePoLine:         { qty: 40 },
   patchPo:              { eta: "2026-09-11" },

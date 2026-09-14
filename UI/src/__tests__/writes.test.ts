@@ -19,6 +19,7 @@ import Drawer from "../ui/Drawer";
 import "../roles/store/TicketDrawer";          // registers "stkt" on the drawer registry
 import "../roles/prod/TicketDrawer";           // registers "ptkt"
 import "../roles/buyer/PoDrawer";                // registers "bpo"
+import "../roles/buyer/AddToListDrawer";         // registers "baddpool"
 import { useApp } from "../store";
 import type { AppState } from "../store";
 import { resetStore, S, as } from "./fixture";
@@ -849,6 +850,34 @@ describe("sendRequisition — POST /requisitions", () => {
   });
 });
 
+describe("addToProcurementList — POST /requisitions/direct", () => {
+  it("sends only the lines with a quantity and the reason, and pulls the requisitions back", async () => {
+    as("buyer");
+    serve({
+      "POST /api/v1/requisitions/direct": () => json({ result: PRQ, changed: ["prq"], message: `${PRQ.id} added to the procurement list — 1 line(s)` }),
+      "GET /api/v1/requisitions": () => json([PRQ]),
+    });
+
+    expect(await S().addToProcurementList([{ it: "cup", qty: 500 }, { it: "box", qty: 0 }], "Festival week")).toBe(true);
+
+    expect(hit("POST /api/v1/requisitions/direct")[0].body).toEqual({ lines: [{ it: "cup", qty: 500 }], note: "Festival week" });
+    expect(hit("GET /api/v1/requisitions")).toHaveLength(1);
+    expect(hit("GET /api/v1/snapshot")).toHaveLength(0);
+    expect(S().toast).toBe(`${PRQ.id} added to the procurement list — 1 line(s)`);
+  });
+
+  it("answers false with the server's sentence on a refusal, and its own on a dead line", async () => {
+    as("buyer");
+    serve({ "POST /api/v1/requisitions/direct": () => refusal("Veg puffs is made in-house — only raw, packing and MRP goods are bought") });
+    expect(await S().addToProcurementList([{ it: "puff", qty: 5 }], "Why not")).toBe(false);
+    expect(S().toast).toBe("Veg puffs is made in-house — only raw, packing and MRP goods are bought");
+
+    fetchMock.mockRejectedValue(new TypeError("Failed to fetch"));
+    expect(await S().addToProcurementList([{ it: "cup", qty: 5 }], "Why not")).toBe(false);
+    expect(S().toast).toBe("Could not add to the procurement list — check the connection and try again.");
+  });
+});
+
 describe("the requisition desk's two decisions", () => {
   it("posts the trimmed quantities and the note, and pulls the desk back", async () => {
     as("buyer");
@@ -1316,6 +1345,50 @@ describe("a refusal keeps what the operator typed", () => {
     await act(async () => { await inFlight; });
     await settleUntil(() => S().prqDraft.length === 0);
     expect(hit("POST /api/v1/requisitions")).toHaveLength(1);
+    ui.unmount();
+  });
+
+  it("keeps the buyer's lines and reason when the direct add is refused, and closes once it lands", async () => {
+    as("buyer");
+    let refuse = true;
+    serve({
+      "POST /api/v1/requisitions/direct": () => (refuse
+        ? refusal("Give a reason — it is kept on the requisition for the store keeper")
+        : json({ result: PRQ, changed: ["prq"], message: `${PRQ.id} added to the procurement list — 1 line(s)` })),
+      "GET /api/v1/requisitions": () => json([PRQ]),
+    });
+    S().openDrawer("baddpool", "new");
+    const ui = mountNode(Drawer);
+    const add = () => ui.button("Add to procurement list")!;
+
+    // Nothing to send yet: no line, no reason.
+    expect(add().disabled).toBe(true);
+    act(() => { ui.button("Add item")!.click(); });
+    const picked = ui.host.querySelector<HTMLSelectElement>('select[aria-label="Item on line 1"]')!.value;
+    expect(IT[picked].t).toMatch(/^(RAW|PACK|MRP)$/);
+    // Only what procurement buys is offered — nothing the kitchen makes or the counter assembles.
+    const offered = [...ui.host.querySelectorAll<HTMLOptionElement>('select[aria-label="Item on line 1"] option')].map((o) => IT[o.value].t);
+    expect(offered.every((t) => t === "RAW" || t === "PACK" || t === "MRP")).toBe(true);
+
+    const box = ui.field(`Quantity of ${IT[picked].n}`);
+    act(() => { type(box, "40"); });
+    await settle(() => { leave(box); });
+    expect(add().disabled).toBe(true);                    // still no reason
+    act(() => { type(ui.host.querySelector("textarea")!, "Festival week"); });
+    expect(add().disabled).toBe(false);
+
+    await settle(() => { add().click(); });
+    await settleUntil(() => S().toast === "Give a reason — it is kept on the requisition for the store keeper");
+    expect(hit("POST /api/v1/requisitions/direct")[0].body).toEqual({ lines: [{ it: picked, qty: 40 }], note: "Festival week" });
+    // The drawer is still open over exactly what was typed.
+    expect(S().drawer).toEqual({ t: "baddpool", id: "new" });
+    expect(ui.field(`Quantity of ${IT[picked].n}`).value).toBe("40");
+    expect(ui.host.querySelector("textarea")!.value).toBe("Festival week");
+
+    refuse = false;
+    await settle(() => { add().click(); });
+    await settleUntil(() => S().drawer === null);
+    expect(hit("POST /api/v1/requisitions/direct")).toHaveLength(2);
     ui.unmount();
   });
 

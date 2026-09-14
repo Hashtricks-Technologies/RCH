@@ -201,6 +201,9 @@ The code enforces these and tests pin them. Breaking one is a bug.
 - **Dispatch is all-or-nothing.** An order that is short names every missing line and moves nothing.
 - **A delivery counts what the shelf accepted** (`netReceived`), not what arrived. A rejected quantity goes
   back on the procurement list.
+- **Everything on the procurement list is an approved requisition line.** The list is derived, never stored.
+  The buyer's direct add (`POST /requisitions/direct`) is a requisition raised and approved in one step,
+  with a required reason, and only for raw, packing and MRP goods (`isPurchased`).
 
 ## Conventions
 

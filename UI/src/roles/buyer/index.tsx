@@ -7,6 +7,7 @@ import Inventory from "./Inventory";
 import Vendors from "./Vendors";
 import NewProducts from "./NewProducts";
 import "./RequisitionDrawer";
+import "./AddToListDrawer";
 import "./PoDrawer";
 import "./PoReceiptDrawer";
 import "./VendorDrawer";

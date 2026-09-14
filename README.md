@@ -49,8 +49,8 @@ ready), make a batch that draws its recipe out of the kitchen and stamps a best-
 it, hand it over on an OTP and receive it at the counter — with a second browser watching every
 step happen live — and cancel a ticket nobody came for, which puts the stock and the document
 behind it (the request or the production order) back where they stood. And now the whole of
-buying: the store keeper raises a requisition, the buyer approves or trims it, draws a purchase
-order off the procurement list priced from a live rate contract, sends it to the vendor, and
+buying: the store keeper raises a requisition, the buyer approves or trims it (or, with a reason,
+adds items to the procurement list directly), draws a purchase order off the procurement list priced from a live rate contract, sends it to the vendor, and
 receives it against a delivery note — a rejection at the door lands in a quarantine shelf that
 never sells and never issues, and closing an order short hands the undelivered balance straight
 back onto the procurement list. A second browser follows every step of it live, the same as the

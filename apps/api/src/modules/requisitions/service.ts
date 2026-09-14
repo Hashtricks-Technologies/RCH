@@ -6,10 +6,10 @@
 // are the purchase-order and goods-receipt modules' business.
 import type { z } from "zod";
 import type {
-  ApproveRequisitionBodySchema, CreateRequisitionBodySchema, DeclineRequisitionBodySchema,
+  AddToProcurementListBodySchema, ApproveRequisitionBodySchema, CreateRequisitionBodySchema, DeclineRequisitionBodySchema,
   Requisition, WriteResponse,
 } from "@rch/contract";
-import { planPrqApproval, REQUISITION_TRANSITIONS, round3 } from "@rch/domain";
+import { isPurchased, planPrqApproval, REQUISITION_TRANSITIONS, round3 } from "@rch/domain";
 import type { Db } from "../../db/client.js";
 import { withTransaction } from "../../lib/db.js";
 import { NotFoundError } from "../../lib/errors.js";
@@ -24,6 +24,7 @@ import { requisitionsRepo } from "./repo.js";
 export type CreateRequisitionBody = z.infer<typeof CreateRequisitionBodySchema>;
 export type ApproveRequisitionBody = z.infer<typeof ApproveRequisitionBodySchema>;
 export type DeclineRequisitionBody = z.infer<typeof DeclineRequisitionBodySchema>;
+export type AddToProcurementListBody = z.infer<typeof AddToProcurementListBodySchema>;
 
 const REASON = "Give a reason — the store keeper sees it on the requisition";
 
@@ -51,6 +52,49 @@ export function createRequisitionsService(db: Db) {
         const changed = ["prq"] as const;
         await emitChanged(tx, changed);
         return { result: await requisitionsRepo.wire(tx, id), changed: [...changed], message: `${id} sent to procurement` };
+      });
+    },
+
+    /**
+     * The buyer putting items on the procurement list directly — a festival week, a new vendor's
+     * trial lot, a shortage the store keeper has not raised yet.
+     *
+     * It is a requisition, raised and approved by the buyer in the one transaction, and not a
+     * second kind of list line: every purchase order claims against `requisition_lines`, every
+     * receipt and every close-short hands quantity back to one, and a separate table would need
+     * all of that twice. So the lines go in approved in full with nothing short, the status is
+     * written as Approved without ever passing through Sent (nobody was asked, so nobody sent
+     * it), and the history carries the one row that says who decided it. The reason is required
+     * because there is no store keeper's ask behind it to explain why the hospital is buying.
+     */
+    async addDirect(claims: AccessClaims, body: AddToProcurementListBody): Promise<WriteResponse<Requisition>> {
+      return withTransaction(db, async (tx) => {
+        const master = await loadMaster(tx);
+        for (const l of body.lines) if (!master.items[l.it]) throw new NotFoundError(`There is no item ${l.it}.`);
+        assertRule(body.lines.every((l) => l.qty > 0), "Enter a quantity on every line");
+        const repeated = body.lines.find((l, i) => body.lines.findIndex((x) => x.it === l.it) !== i);
+        if (repeated) assertRule(false, `Combine the ${master.items[repeated.it]!.n} lines into one`);
+        const made = body.lines.find((l) => !isPurchased(master.items[l.it]!.t));
+        if (made) assertRule(false, `${master.items[made.it]!.n} is made in-house — only raw, packing and MRP goods are bought`);
+        assertRule(body.note.trim().length > 0, "Give a reason — it is kept on the requisition for the store keeper");
+
+        const at = new Date();
+        const id = await allocateId(tx, "prq", at);
+        await requisitionsRepo.insert(tx, {
+          id, byUser: claims.sub, at, status: "Approved", note: body.note, approvedBy: claims.sub, approvalNote: body.note,
+        });
+        const lines = body.lines.map((l) => ({ it: l.it, qty: round3(l.qty) }));
+        await requisitionsRepo.insertLines(tx, id, lines);
+        await requisitionsRepo.setLineApprovals(tx, id, lines.map((l) => ({ appr: l.qty, short: 0 })));
+        const who = await requisitionsRepo.userName(tx, claims.sub);
+        await appendHistory(tx, "requisition", id, "Approved", who, at);
+
+        const changed = ["prq"] as const;
+        await emitChanged(tx, changed);
+        return {
+          result: await requisitionsRepo.wire(tx, id), changed: [...changed],
+          message: `${id} added to the procurement list — ${lines.length} line(s)`,
+        };
       });
     },
 

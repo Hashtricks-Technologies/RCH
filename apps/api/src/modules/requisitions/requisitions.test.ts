@@ -56,6 +56,66 @@ describe("POST /requisitions", () => {
   });
 });
 
+describe("POST /requisitions/direct", () => {
+  const REASON = "Festival week — the store keeper is on leave";
+
+  it("puts the buyer's own items straight on the procurement list, approved in full and signed", async () => {
+    const r = await post("u5", "/requisitions/direct", { lines: [{ it: "cup", qty: 500 }, { it: "juice", qty: 48.0004 }], note: REASON });
+    expect(r.statusCode, r.body).toBe(400);   // a fourth decimal is the schema's to refuse, as everywhere
+
+    const b = (await post("u5", "/requisitions/direct", { lines: [{ it: "cup", qty: 500 }, { it: "juice", qty: 48 }], note: REASON })).json();
+    expect(b.result).toMatchObject({ st: "Approved", by: "Latha Narayanan", apprBy: "Latha Narayanan", note: REASON, apprNote: REASON });
+    expect(b.result.id).toMatch(/^PRQ-\d{4}-\d+$/);
+    expect(b.result.lines).toEqual([
+      { it: "cup", qty: 500, appr: 500, ordered: 0, short: 0 },
+      { it: "juice", qty: 48, appr: 48, ordered: 0, short: 0 },
+    ]);
+    // Nobody sent it, so the trail is the one decision and not a Sent row the buyer never made.
+    expect(b.result.hist.map((h: { s: string; who: string }) => [h.s, h.who])).toEqual([["Approved", "Latha Narayanan"]]);
+    expect(b.changed).toEqual(["prq"]);
+    expect(b.message).toBe(`${b.result.id} added to the procurement list — 2 line(s)`);
+    expect((await one(b.result.id)).st).toBe("Approved");
+  });
+
+  it("is a requisition a purchase order can claim against like any other", async () => {
+    const prq = (await post("u5", "/requisitions/direct", { lines: [{ it: "box", qty: 200 }], note: REASON })).json().result.id;
+    const po = await post("u5", "/purchase-orders", { vendorId: "VN-002", picks: [{ prq, line: 0, qty: 150 }] });
+    expect(po.statusCode, po.body).toBe(200);
+    expect((await one(prq)).lines[0]).toMatchObject({ appr: 200, ordered: 150 });
+  });
+
+  it("wants a reason, a quantity on every line and one line per item", async () => {
+    const refused = async (payload: Record<string, unknown>) => {
+      const r = await post("u5", "/requisitions/direct", payload);
+      expect(r.statusCode, r.body).toBe(422);
+      return r.json().error.message;
+    };
+    expect(await refused({ lines: [{ it: "cup", qty: 10 }], note: "   " }))
+      .toBe("Give a reason — it is kept on the requisition for the store keeper");
+    expect(await refused({ lines: [{ it: "cup", qty: 10 }, { it: "box", qty: 0 }], note: REASON }))
+      .toBe("Enter a quantity on every line");
+    expect(await refused({ lines: [{ it: "milk", qty: 10 }, { it: "milk", qty: 5 }], note: REASON }))
+      .toBe("Combine the Milk 1L (toned) lines into one");
+    expect((await post("u5", "/requisitions/direct", { lines: [{ it: "cup", qty: 10 }] })).statusCode).toBe(400);
+  });
+
+  it("never buys what the kitchen makes or the counter assembles", async () => {
+    for (const [it, n] of [["puff", "Veg puffs"], ["capp", "Cappuccino"]]) {
+      const r = await post("u5", "/requisitions/direct", { lines: [{ it: "cup", qty: 10 }, { it, qty: 10 }], note: REASON });
+      expect(r.statusCode).toBe(422);
+      expect(r.json().error.message).toBe(`${n} is made in-house — only raw, packing and MRP goods are bought`);
+    }
+  });
+
+  it("404s an unknown item, and is absent for every other role", async () => {
+    expect((await post("u5", "/requisitions/direct", { lines: [{ it: "totally-fake", qty: 1 }], note: REASON })).json().error.message)
+      .toBe("There is no item totally-fake.");
+    for (const u of ["u1", "u2", "u3", "u4"]) {
+      expect((await post(u, "/requisitions/direct", { lines: [{ it: "cup", qty: 1 }], note: REASON })).statusCode).toBe(404);
+    }
+  });
+});
+
 describe("POST /requisitions/:id/approve", () => {
   it("approves every line in full and puts them on the procurement list", async () => {
     const id = await given.requisition(app.testDb!.db, { lines: [{ it: "milk", qty: 60 }, { it: "butter", qty: 6 }] });
