@@ -139,7 +139,7 @@ describe("a requisition the buyer added directly", () => {
   it("is told apart by a trail that opens on the decision, and joins the list like any other", () => {
     expect(seedPrq.some(addedByProcurement)).toBe(false);
     const direct = {
-      ...clone(seedPrq[3]), id: "PRQ-2026-900", st: "Approved" as const, by: "Latha Narayanan",
+      ...clone(seedPrq[3]), id: "PRQ-2026-900", st: "Approved" as const, by: "Latha Narayanan", iso: "2026-09-14T04:32:00.000Z",
       lines: [{ it: "cup", qty: 500, appr: 500, ordered: 0 }],
       hist: [{ s: "Approved", who: "Latha Narayanan", t: "10:02", iso: "2026-09-14T04:32:00.000Z" }],
     };
