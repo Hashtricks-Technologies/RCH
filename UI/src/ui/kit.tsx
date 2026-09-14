@@ -383,6 +383,8 @@ export const TicketTrail = ({ hist }: { hist: Ticket["hist"] }) => (
  * a raw input got from a local `BAD` style — a line the operator still has to finish. `ariaLabel`
  * is required even where a real `<label>` is wired up, because `Field` only sets `htmlFor` on a
  * **direct DOM child**: a component child leaves the visible label decorative and the box unnamed.
+ * `blankZero` draws a zero as an empty box, for a line whose quantity nobody has entered yet —
+ * a "0" sitting in it reads as a figure somebody chose.
  *
  * Lives here rather than beside its first caller because six tables on three screens need the
  * same box, and a second copy of this is how "12.5" starts posting as 12 again on one of them.
@@ -423,16 +425,17 @@ export function useLineKeys(n: number): readonly [number[], (i: number) => void]
 }
 
 export function DraftLineInput({
-  value, min, max, step, id, ariaLabel, positiveOnly, invalid, onCommit,
+  value, min, max, step, id, ariaLabel, positiveOnly, invalid, blankZero, onCommit,
 }: {
   value: number; min: number; max?: number; step: number; id?: string; ariaLabel: string;
-  positiveOnly?: boolean; invalid?: boolean; onCommit: (n: number) => void;
+  positiveOnly?: boolean; invalid?: boolean; blankZero?: boolean; onCommit: (n: number) => void;
 }) {
-  const [local, setLocal] = useState(String(value));
+  const shown = (v: number) => (blankZero && v === 0 ? "" : String(v));
+  const [local, setLocal] = useState(shown(value));
   const [synced, setSynced] = useState(value);
   if (value !== synced) {
     setSynced(value);
-    setLocal(String(value));
+    setLocal(shown(value));
   }
 
   const commit = () => {
@@ -446,7 +449,7 @@ export function DraftLineInput({
     // catches the new value on the next render; if it did not (refused, no-op or invalid), this
     // line is what puts the field back.
     setSynced(value);
-    setLocal(String(value));
+    setLocal(shown(value));
   };
 
   return (

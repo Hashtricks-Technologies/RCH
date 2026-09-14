@@ -37,15 +37,12 @@ export default function Requisitions() {
   const openDrawer = useApp((x) => x.openDrawer);
   const { prq, po, vendors } = s;
 
-  const [qw, setQw] = useState("");
-  const [raisedBy, setRaisedBy] = useState("All");
   const [qa, setQa] = useState("");
   const [outcome, setOutcome] = useState("All");
   const [progress, setProgress] = useState("All");
   const [qd, setQd] = useState("");
   const [declinedBy, setDeclinedBy] = useState("All");
 
-  const RAISERS = ["All", ...[...new Set(s.prq.filter((p) => p.st === "Sent").map((p) => p.by))].sort()];
   const DECLINERS = [
     "All",
     ...[...new Set(s.prq.filter((p) => p.st === "Declined").map((p) => p.apprBy ?? "—"))].sort(),
@@ -66,8 +63,8 @@ export default function Requisitions() {
   const reconOf = (p: Requisition) => recaps.get(p.id)!.rows;
   const summaryOf = (p: Requisition) => recaps.get(p.id)!.sum;
 
-  const waiting = s.prq.filter((p) =>
-    p.st === "Sent" && hits(p, qw) && (raisedBy === "All" || p.by === raisedBy));
+  // The queue is short and every row on it needs a decision, so it carries no search or filter.
+  const waiting = s.prq.filter((p) => p.st === "Sent");
   const approved = s.prq.filter((p) => {
     if (p.st !== "Approved" && p.st !== "Partially approved") return false;
     if (!hits(p, qa)) return false;
@@ -78,11 +75,9 @@ export default function Requisitions() {
   const declined = s.prq.filter((p) =>
     p.st === "Declined" && hits(p, qd) && (declinedBy === "All" || (p.apprBy ?? "—") === declinedBy));
 
-  const waitNarrowed = qw.trim() !== "" || raisedBy !== "All";
   const apprNarrowed = qa.trim() !== "" || outcome !== "All" || progress !== "All";
   const declNarrowed = qd.trim() !== "" || declinedBy !== "All";
 
-  const clearWait = () => { setQw(""); setRaisedBy("All"); };
   const clearAppr = () => { setQa(""); setOutcome("All"); setProgress("All"); };
   const clearDecl = () => { setQd(""); setDeclinedBy("All"); };
 
@@ -140,14 +135,6 @@ export default function Requisitions() {
 
       <Grid cols="g3">
       <Card title="Waiting on you" sub={`${waiting.length} requisition(s) · ${money0(waitValue)} estimated`} flush>
-        <Toolbar
-          placeholder="Search requisition, store keeper, note or item…"
-          value={qw}
-          onSearch={setQw}
-          filters={
-            <FilterSelect label="Raised by" value={raisedBy} options={RAISERS} onChange={setRaisedBy} />
-          }
-        />
         <DataTable
           cols={[
             { h: "Requisition", cls: "nm", w: "40%" },
@@ -156,16 +143,10 @@ export default function Requisitions() {
             { h: "" },
           ]}
           rows={waitRows}
-          empty={waitNarrowed
-            ? {
-              title: "Nothing matches those filters",
-              sub: "Clear the search box or set Raised by back to All.",
-              action: <Btn size="sm" variant="gh" onClick={clearWait}>Clear filters</Btn>,
-            }
-            : {
-              title: "Nothing waiting on you",
-              sub: `The ${LOC.store.n} has not raised a new requirement.`,
-            }}
+          empty={{
+            title: "Nothing waiting on you",
+            sub: `The ${LOC.store.n} has not raised a new requirement.`,
+          }}
         />
         <TableFoot count={waitRows.length} extra={<>Estimated value <b className="mono">{money0(waitValue)}</b></>} />
       </Card>

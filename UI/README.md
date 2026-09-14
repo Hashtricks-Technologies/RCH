@@ -217,9 +217,10 @@ shop-to-shop transfer it raised, from a "Sent from this counter" card, before an
 it.
 
 **The purchase orders board.** The buyer's Purchase Orders screen is a board, not a stack of
-tables: one column per status — Draft, Ordered, Partially received, Received, Cancelled — side
-by side, sharing the page's width and scrolling sideways on a narrow screen. Every order is a
-card in the column for its status, newest raised on top (sorted on the order's `iso` instant),
+tables: Draft, Ordered, Received and Cancelled columns side by side, sharing the page's width and
+scrolling sideways on a narrow screen. Partially and fully received orders share the Received
+column; each card there carries its own status, and the column's Show filter narrows it to either.
+Every order is a card in its column, newest raised on top (sorted on the order's `iso` instant),
 with one search box and Vendor and Approval filters over the whole board. Clicking a card opens
 the order's details in the drawer that slides in from the right; a card's own Receive button
 opens the goods receipt instead.

@@ -12,14 +12,17 @@ import { useApp } from "../store";
 import { as, clone, resetStore, S } from "./fixture";
 
 /**
- * The buyer's purchase orders as a board: every status its own column, side by side, a card per
- * order, and the order's details in the drawer that slides in from the right. The newest order
- * raised sits on top of its column, whatever order the server handed the list over in.
+ * The buyer's purchase orders as a board: a column per stage, side by side, a card per order, and
+ * the order's details in the drawer that slides in from the right. Partially and fully received
+ * orders share the Received column, which filters to either. The newest order raised sits on top
+ * of its column, whatever order the server handed the list over in.
  */
 
 beforeEach(resetStore);
 
-const COLUMNS: PoStatus[] = ["Draft", "Ordered", "Partially received", "Received", "Cancelled"];
+const COLUMNS: PoStatus[] = ["Draft", "Ordered", "Received", "Cancelled"];
+/** The column an order of this status is drawn in. */
+const columnOf = (st: PoStatus): PoStatus => (st === "Partially received" ? "Received" : st);
 
 function mount(node: Parameters<typeof createElement>[0]) {
   const host = document.createElement("div");
@@ -43,7 +46,7 @@ const orderAs = (base: PurchaseOrder, id: string, st: PoStatus, iso: string) =>
   ({ ...clone(base), id, st, iso, at: iso.slice(11, 16), hist: [] });
 
 describe("the purchase orders board", () => {
-  it("draws every status as its own column, in the order an order travels", () => {
+  it("draws a column per stage, in the order an order travels", () => {
     as("buyer");
     const ui = mount(PurchaseOrders);
     const labels = [...ui.host.querySelectorAll("section.kan-col")].map((c) => c.getAttribute("aria-label")!.split(" — ")[0]);
@@ -66,10 +69,40 @@ describe("the purchase orders board", () => {
       });
     });
     const ui = mount(PurchaseOrders);
-    for (const o of S().po) expect(ui.ids(o.st), `${o.id} belongs under ${o.st}`).toContain(o.id);
+    for (const o of S().po) expect(ui.ids(columnOf(o.st)), `${o.id} belongs under ${columnOf(o.st)}`).toContain(o.id);
     for (const st of COLUMNS) {
-      expect(ui.ids(st)).toHaveLength(S().po.filter((o) => o.st === st).length);
+      expect(ui.ids(st)).toHaveLength(S().po.filter((o) => columnOf(o.st) === st).length);
     }
+    ui.unmount();
+  });
+
+  it("keeps partially and fully received orders in one column, and Show narrows it to either", () => {
+    as("buyer");
+    const base = S().po[0];
+    const partial = orderAs(base, "PO-2026-0130", "Partially received", "2026-09-10T05:00:00.000Z");
+    const full = orderAs(base, "PO-2026-0131", "Received", "2026-09-10T06:00:00.000Z");
+    act(() => { useApp.setState({ po: [partial, full] }); });
+    const ui = mount(PurchaseOrders);
+    expect(ui.ids("Received")).toEqual([full.id, partial.id]);
+    // Each card says which of the two it is.
+    const pills = [...ui.column("Received")!.querySelectorAll(".kan-foot .pill")]
+      .map((p) => p.textContent)
+      .filter((t) => t !== "Needs finance approval");
+    expect(pills).toEqual(["Received", "Partially received"]);
+
+    const show = ui.column("Received")!.querySelector<HTMLSelectElement>("select[aria-label='Show']")!;
+    const pick = (v: string) => act(() => {
+      show.value = v;
+      show.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    pick("Partially received");
+    expect(ui.ids("Received")).toEqual([partial.id]);
+    pick("Fully received");
+    expect(ui.ids("Received")).toEqual([full.id]);
+    // The other columns are not touched by it.
+    expect(ui.column("Draft")!.textContent).not.toContain("Nothing matches those filters");
+    pick("All");
+    expect(ui.ids("Received")).toEqual([full.id, partial.id]);
     ui.unmount();
   });
 

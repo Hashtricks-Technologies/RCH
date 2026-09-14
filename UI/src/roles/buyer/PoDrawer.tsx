@@ -17,6 +17,11 @@ import { registerDrawer, type DrawerProps } from "../../drawers";
 import { contractFor } from "./lib";
 
 const warn = { color: "var(--warn)" };
+/** Under a number box the warning sits in a `td.n`, which never wraps — left alone, one long
+ *  sentence widened Quantity until the table squeezed the Rate box too narrow to read. */
+const warnWrap = { ...warn, whiteSpace: "normal" as const };
+/** Wide enough for a five-digit quantity or a rate with paise beside the spinner. */
+const editBox = { minWidth: 110 };
 
 const dotFor = (state: string) =>
   state === "Cancelled" ? "var(--crit)"
@@ -108,24 +113,26 @@ function PoDrawer({ id }: DrawerProps) {
         key: l.it + i,
         cells: [
           <>{IT[l.it]?.n ?? l.it}<small>{IT[l.it]?.c ?? ""}</small></>,
-          <>
+          <div style={editBox}>
             <DraftLineInput
               value={l.qty} min={0} step={U(l.it) === "nos" ? 1 : 0.5} positiveOnly
               ariaLabel={`Quantity of ${IT[l.it]?.n ?? l.it}`}
               onCommit={(n) => { void updatePoLine(po.id, i, { qty: n }); }}
             />
             {short && (
-              <div className="mini" style={warn}>
+              <div className="mini" style={warnWrap}>
                 below the {fq(c!.moq, l.it)} {U(l.it)} minimum on {c!.id}
               </div>
             )}
-          </>,
+          </div>,
           <>{U(l.it)}</>,
-          <DraftLineInput
-            value={l.rate} min={0} step={0.01}
-            ariaLabel={`Rate for ${IT[l.it]?.n ?? l.it}`}
-            onCommit={(n) => { void updatePoLine(po.id, i, { rate: n }); }}
-          />,
+          <div style={editBox}>
+            <DraftLineInput
+              value={l.rate} min={0} step={0.01}
+              ariaLabel={`Rate for ${IT[l.it]?.n ?? l.it}`}
+              onCommit={(n) => { void updatePoLine(po.id, i, { rate: n }); }}
+            />
+          </div>,
           c ? (
             <>
               <Pill tone="ok">On contract</Pill>
@@ -172,9 +179,9 @@ function PoDrawer({ id }: DrawerProps) {
             <DataTable
               cols={[
                 { h: "Item", cls: "nm", w: "16%" },
-                { h: "Quantity", r: true, w: "13%" },
+                { h: "Quantity", r: true, w: "15%" },
                 { h: "Unit" },
-                { h: "Rate", r: true, w: "11%" },
+                { h: "Rate", r: true, w: "15%" },
                 { h: "Rate contract", w: "22%" },
                 { h: "Value", r: true },
                 { h: "Source requisition", w: "15%" },

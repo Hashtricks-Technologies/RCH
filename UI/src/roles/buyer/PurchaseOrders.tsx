@@ -30,18 +30,25 @@ const balanceOf = (o: PurchaseOrder) =>
 
 const APPROVAL = ["All", "Needs finance approval", "Within the limit"];
 
-/** The board reads left to right, the way an order travels: every status has its own column,
- *  the two closed outcomes included, so nothing an order can be is off the screen. */
-const BOARD: { st: PoStatus; sub: string; empty: string }[] = [
-  { st: "Draft", sub: "Not yet sent to a vendor",
+/** The Received column's own filter: both receipt states share the column, and this narrows it
+ *  to one of them. */
+const RECEIPT = ["All", "Partially received", "Fully received"] as const;
+type Receipt = (typeof RECEIPT)[number];
+const RECEIPT_ST: Record<Exclude<Receipt, "All">, PoStatus> = {
+  "Partially received": "Partially received", "Fully received": "Received",
+};
+
+/** The board reads left to right, the way an order travels, the two closed outcomes included, so
+ *  nothing an order can be is off the screen. Partially and fully received share one column —
+ *  each card there carries its own status, and the column's Show filter picks either. */
+const BOARD: { title: PoStatus; sts: PoStatus[]; sub: string; empty: string }[] = [
+  { title: "Draft", sts: ["Draft"], sub: "Not yet sent to a vendor",
     empty: "A new draft appears here the moment an item is picked from the procurement list." },
-  { st: "Ordered", sub: "Placed with a vendor, nothing received yet",
+  { title: "Ordered", sts: ["Ordered"], sub: "Placed with a vendor, nothing received yet",
     empty: "Send a draft to a vendor to see it here." },
-  { st: "Partially received", sub: "Goods still outstanding",
-    empty: "Orders land here once some — but not all — of their items are receipted." },
-  { st: "Received", sub: "Every item booked in",
-    empty: "Fully received orders are kept here for the record." },
-  { st: "Cancelled", sub: "Called off — kept for the record",
+  { title: "Received", sts: ["Partially received", "Received"], sub: "Goods booked in, in part or in full",
+    empty: "Orders land here once any of their items are receipted." },
+  { title: "Cancelled", sts: ["Cancelled"], sub: "Called off — kept for the record",
     empty: "Cancelled orders are kept here for the record." },
 ];
 
@@ -65,16 +72,20 @@ export default function PurchaseOrders() {
   const [q, setQ] = useState("");
   const [vendor, setVendor] = useState("All");
   const [approval, setApproval] = useState("All");
+  const [receipt, setReceipt] = useState<Receipt>("All");
 
   const VENDOR_NAMES = ["All", ...[...new Set(s.po.map((o) => vendorName(s.vendors, o.vendor)))].sort()];
   const filtering = q.trim() !== "" || vendor !== "All" || approval !== "All";
-  const clearFilters = () => { setQ(""); setVendor("All"); setApproval("All"); };
+  const clearFilters = () => { setQ(""); setVendor("All"); setApproval("All"); setReceipt("All"); };
 
   const shown = s.po.filter((o) => hits(o, s.vendors, q)
     && (vendor === "All" || vendorName(s.vendors, o.vendor) === vendor)
     && (approval === "All"
       || (approval === "Needs finance approval" ? !!o.needsApproval : !o.needsApproval)));
-  const inColumn = (st: PoStatus) => newestFirst(shown.filter((o) => o.st === st));
+  const inColumn = (sts: PoStatus[]) => {
+    const pick = sts.length > 1 && receipt !== "All" ? [RECEIPT_ST[receipt]] : sts;
+    return newestFirst(shown.filter((o) => pick.includes(o.st)));
+  };
 
   const draftCount = s.po.filter((o) => o.st === "Draft").length;
   // Matches buyer/Dashboard.tsx's "Value on order" KPI — computed from the
@@ -114,8 +125,10 @@ export default function PurchaseOrders() {
             <span>{grns} goods receipt{grns === 1 ? "" : "s"}</span>
           )}
         </div>
-        {(o.needsApproval || o.st === "Draft" || o.st === "Ordered" || o.st === "Partially received") && (
+        {(o.needsApproval || o.st !== "Cancelled") && (
           <div className="kan-foot">
+            {/* The Received column holds both receipt states, so its cards say which they are. */}
+            {(o.st === "Partially received" || o.st === "Received") && <StatusPill status={o.st} />}
             {o.needsApproval && <Pill tone="wn">Needs finance approval</Pill>}
             <div className="sp" />
             {o.st === "Draft" && (
@@ -157,27 +170,38 @@ export default function PurchaseOrders() {
               <FilterSelect label="Approval" value={approval} options={APPROVAL} onChange={setApproval} />
             </>
           }
-          right={filtering
+          right={filtering || receipt !== "All"
             ? <Btn size="sm" variant="gh" onClick={clearFilters}>Clear filters</Btn>
             : <span className="mini">{s.po.length} order{s.po.length === 1 ? "" : "s"} on the board</span>}
         />
       </Card>
 
       <div className="kan fill mtop">
-        {BOARD.map(({ st, sub, empty }) => {
-          const cards = inColumn(st);
+        {BOARD.map(({ title, sts, sub, empty }) => {
+          const cards = inColumn(sts);
+          const showing = sts.length > 1 && receipt !== "All";
           return (
-            <section className="kan-col" key={st} aria-label={`${st} — ${cards.length} orders`}>
+            <section className="kan-col" key={title} aria-label={`${title} — ${cards.length} orders`}>
               <div className="kan-h">
-                <StatusPill status={st} />
+                <StatusPill status={title} />
                 <div className="sp" />
                 <span className="kan-n">{cards.length}</span>
               </div>
               <p className="kan-sub">{sub}</p>
+              {sts.length > 1 && (
+                <div>
+                  <FilterSelect label="Show" value={receipt} options={RECEIPT}
+                    onChange={(v) => setReceipt(v as Receipt)} />
+                </div>
+              )}
               {cards.length === 0
                 ? <div className="kan-empty">
-                    <b>{filtering ? "Nothing matches those filters" : "Nothing here"}</b>
-                    <span>{filtering ? "Clear the search, Vendor or Approval filter to see this column." : empty}</span>
+                    <b>{filtering || showing ? "Nothing matches those filters" : "Nothing here"}</b>
+                    <span>
+                      {filtering ? "Clear the search, Vendor or Approval filter to see this column."
+                        : showing ? "Set Show back to All to see every received order."
+                        : empty}
+                    </span>
                   </div>
                 : cards.map(card)}
             </section>

@@ -94,22 +94,16 @@ export default function Stock() {
     .filter((it) => IT[it] && (s.stock.quarantine[it] ?? 0) > 0)
     .sort((a, b) => IT[a].n.localeCompare(IT[b].n));
 
-  const addToRequisition = (it: string, rl: number, on: number) => {
-    const want = Math.max(1, Math.ceil(rl * 1.6 - on));
+  /** Stages the item with no quantity: the store keeper types what they want on the requisition
+   *  itself. A line already on the draft keeps whatever quantity it has. */
+  const addToRequisition = (it: string) => {
     // Same M3 duplicate-order guard as Requisitions.tsx: onOrder() alone
     // misses a requisition still awaiting a decision, the highest-risk
     // window for a duplicate ask, so awaitingApproval() is added in.
     const open = onOrder(s, it) + awaitingApproval(s, it);
     if (open > 0) notify(`${IT[it].n} already has ${fq(open, it)} ${U(it)} on an open requisition`);
-    const at = prqDraft.findIndex((l) => l.it === it);
-    if (at >= 0) {
-      const next = prqDraft.slice();
-      next[at] = { it, qty: want };
-      setPrqDraft(next);
-    } else {
-      setPrqDraft([...prqDraft, { it, qty: want }]);
-    }
-    notify(`${IT[it].n} staged for requisition — ${want} ${U(it)} suggested`);
+    if (!prqDraft.some((l) => l.it === it)) setPrqDraft([...prqDraft, { it, qty: 0 }]);
+    notify(`${IT[it].n} staged for requisition — enter the quantity you need`);
     nav("/procure");
   };
 
@@ -193,7 +187,7 @@ export default function Stock() {
                 // drawer greys out the manager's three commercial figures beside them.
                 <BtnRow>
                   {r.low && !isRetired(r.it) && (
-                    <Btn size="xs" variant="gh" onClick={() => addToRequisition(r.it, r.rl, r.on)}>
+                    <Btn size="xs" variant="gh" onClick={() => addToRequisition(r.it)}>
                       Add to requisition
                     </Btn>
                   )}

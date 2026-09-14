@@ -237,6 +237,7 @@ export default function Requisitions() {
                           <DraftLineInput
                             value={l.qty}
                             min={0}
+                            blankZero
                             step={it && it.u === "nos" ? 1 : 0.5}
                             ariaLabel={it ? `Quantity of ${it.n}` : `Quantity on item ${i + 1}`}
                             onCommit={(n) => setLine(i, { qty: Math.max(0, n) })}
