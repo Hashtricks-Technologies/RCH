@@ -5,10 +5,9 @@ import { useApp } from "../../store";
 import { netReceived, poValue, round3 } from "../../lib/selectors";
 import { money0, sum, unitTotal } from "../../lib/fmt";
 import {
-  Btn, Card, DataTable, FilterSelect, Kpis, PageHead, Pill, StatusPill, TableFoot, Toolbar,
+  Btn, Card, FilterSelect, Kpis, PageHead, Pill, StatusPill, Toolbar,
 } from "../../ui/kit";
-import type { Row } from "../../ui/kit";
-import type { PurchaseOrder, Vendor } from "../../types";
+import type { PoStatus, PurchaseOrder, Vendor } from "../../types";
 import "./PoDrawer";
 
 const hits = (o: PurchaseOrder, vendors: Vendor[], q: string) => {
@@ -30,57 +29,57 @@ const balanceOf = (o: PurchaseOrder) =>
     .map((l) => ({ it: l.it, qty: round3(l.qty - netReceived(l)) }));
 
 const APPROVAL = ["All", "Needs finance approval", "Within the limit"];
-const CLOSED_STATES = ["All", "Received", "Cancelled"];
+
+/** The board reads left to right, the way an order travels: every status has its own column,
+ *  the two closed outcomes included, so nothing an order can be is off the screen. */
+const BOARD: { st: PoStatus; sub: string; empty: string }[] = [
+  { st: "Draft", sub: "Not yet sent to a vendor",
+    empty: "A new draft appears here the moment an item is picked from the procurement list." },
+  { st: "Ordered", sub: "Placed with a vendor, nothing received yet",
+    empty: "Send a draft to a vendor to see it here." },
+  { st: "Partially received", sub: "Goods still outstanding",
+    empty: "Orders land here once some — but not all — of their items are receipted." },
+  { st: "Received", sub: "Every item booked in",
+    empty: "Fully received orders are kept here for the record." },
+  { st: "Cancelled", sub: "Called off — kept for the record",
+    empty: "Cancelled orders are kept here for the record." },
+];
+
+/** Newest raised first, on the server's own instant. Not `at`: that is the "HH:MM" a card
+ *  prints, so yesterday's 23:40 order would sit above this morning's 07:10 one. And not the id,
+ *  which stops sorting as a number at every power of ten. ISO-8601 is lexically ordered. */
+export const newestFirst = <T extends { iso: string }>(os: T[]): T[] =>
+  os.slice().sort((a, b) => b.iso.localeCompare(a.iso));
+
+/** The order number on a card is a button, not a heading — it opens the order. The same inline
+ *  style the kitchen board uses, so it keeps `.kan-top b`'s own type. */
+const OPEN_BTN = {
+  background: "none", border: 0, padding: 0, margin: 0, font: "inherit", color: "inherit",
+  cursor: "pointer", textAlign: "left" as const,
+};
 
 export default function PurchaseOrders() {
   const s = useApp();
   const openDrawer = useApp((x) => x.openDrawer);
 
-  const [qd, setQd] = useState("");
-  const [vd, setVd] = useState("All");
-  const [qo, setQo] = useState("");
-  const [vo, setVo] = useState("All");
+  const [q, setQ] = useState("");
+  const [vendor, setVendor] = useState("All");
   const [approval, setApproval] = useState("All");
-  const [qp, setQp] = useState("");
-  const [vp, setVp] = useState("All");
-  const [qc, setQc] = useState("");
-  const [vc, setVc] = useState("All");
-  const [closedState, setClosedState] = useState("All");
 
-  /** Only vendors that actually carry an order in this bucket are offered. */
-  const vendorsFor = (os: PurchaseOrder[]) =>
-    ["All", ...[...new Set(os.map((o) => vendorName(s.vendors, o.vendor)))].sort()];
-  const byVendor = (o: PurchaseOrder, pick: string) =>
-    pick === "All" || vendorName(s.vendors, o.vendor) === pick;
+  const VENDOR_NAMES = ["All", ...[...new Set(s.po.map((o) => vendorName(s.vendors, o.vendor)))].sort()];
+  const filtering = q.trim() !== "" || vendor !== "All" || approval !== "All";
+  const clearFilters = () => { setQ(""); setVendor("All"); setApproval("All"); };
 
-  // Four buckets, not four controls: every comparison below sorts orders into the tables the
-  // buyer reads them in. What an order may still *have done to it* is asked with the domain's
-  // transition table — `canSendPo`, `canCancelPo` and `canCloseShort` in lib/selectors.ts —
-  // and every one of those buttons lives in PoDrawer or PoReceiptDrawer, which is where the
-  // order is acted on. A row here only opens one of those two.
-  const allDrafts = s.po.filter((o) => o.st === "Draft");
-  const allOrdered = s.po.filter((o) => o.st === "Ordered");
-  const allPartial = s.po.filter((o) => o.st === "Partially received");
-  const allClosed = s.po.filter((o) => o.st === "Received" || o.st === "Cancelled");
-
-  const drafts = allDrafts.filter((o) => hits(o, s.vendors, qd) && byVendor(o, vd));
-  const ordered = allOrdered.filter((o) => hits(o, s.vendors, qo) && byVendor(o, vo)
+  const shown = s.po.filter((o) => hits(o, s.vendors, q)
+    && (vendor === "All" || vendorName(s.vendors, o.vendor) === vendor)
     && (approval === "All"
       || (approval === "Needs finance approval" ? !!o.needsApproval : !o.needsApproval)));
-  const partial = allPartial.filter((o) => hits(o, s.vendors, qp) && byVendor(o, vp));
-  const closed = allClosed.filter((o) => hits(o, s.vendors, qc) && byVendor(o, vc)
-    && (closedState === "All" || o.st === closedState));
+  const inColumn = (st: PoStatus) => newestFirst(shown.filter((o) => o.st === st));
 
-  const draftNarrowed = qd.trim() !== "" || vd !== "All";
-  const orderNarrowed = qo.trim() !== "" || vo !== "All" || approval !== "All";
-  const partNarrowed = qp.trim() !== "" || vp !== "All";
-  const closedNarrowed = qc.trim() !== "" || vc !== "All" || closedState !== "All";
-
-  const draftCount = allDrafts.length;
+  const draftCount = s.po.filter((o) => o.st === "Draft").length;
   // Matches buyer/Dashboard.tsx's "Value on order" KPI — computed from the
   // same, unfiltered set so the two screens never disagree, and so typing in
-  // one of the tables' search boxes below cannot change this number without
-  // also changing the count in its own caption.
+  // the board's search box cannot change this number.
   const openOrders = s.po.filter((o) => o.st === "Ordered" || o.st === "Partially received");
   const orderedValue = sum(openOrders, poValue);
   const linesAwaiting = sum(openOrders, (o) => o.lines.filter((l) => l.qty - netReceived(l) > 0).length);
@@ -89,70 +88,47 @@ export default function PurchaseOrders() {
   // raised is history, not a live queue, and must stop being counted here.
   const overSlab = openOrders.filter((o) => o.needsApproval).length;
 
-  const draftRows: Row[] = drafts.map((o) => ({
-    key: o.id,
-    onClick: () => openDrawer("bpo", o.id),
-    cells: [
-      <>{o.id}<small>raised {o.at}</small></>,
-      <>{vendorName(s.vendors, o.vendor)}</>,
-      <>{o.lines.length}</>,
-      <>{money0(poValue(o))}</>,
-      <>{o.eta}</>,
-      <Btn size="xs" onClick={() => openDrawer("bpo", o.id)}>Edit &amp; send</Btn>,
-    ],
-  }));
-
-  const orderedRows: Row[] = ordered.map((o) => ({
-    key: o.id,
-    onClick: () => openDrawer("bpo", o.id),
-    cells: [
-      <>{o.id}<small>raised {o.at}</small></>,
-      <>{vendorName(s.vendors, o.vendor)}</>,
-      <>{o.lines.length}</>,
-      <>{money0(poValue(o))}</>,
-      <>{o.eta}</>,
-      o.needsApproval
-        ? <Pill tone="wn">Needs finance approval</Pill>
-        : <span className="dim">—</span>,
-      <Btn size="xs" variant="ok" onClick={() => openDrawer("bgrn", o.id)}>Receive</Btn>,
-    ],
-  }));
-
-  const partialRows: Row[] = partial.map((o) => {
-    const bal = balanceOf(o);
-    return {
-      key: o.id,
-      onClick: () => openDrawer("bpo", o.id),
-      cells: [
-        <>{o.id}<small>raised {o.at}</small></>,
-        <>{vendorName(s.vendors, o.vendor)}</>,
-        <>{o.lines.length}</>,
-        <>{bal.length ? unitTotal(bal) : <span className="dim">—</span>}</>,
-        <>{money0(poValue(o))}</>,
-        <Btn size="xs" variant="ok" onClick={() => openDrawer("bgrn", o.id)}>Receive</Btn>,
-      ],
-    };
-  });
-
-  const closedRows: Row[] = closed.map((o) => ({
-    key: o.id,
-    onClick: () => openDrawer("bpo", o.id),
-    cells: [
-      <>{o.id}<small>raised {o.at}</small></>,
-      <>{vendorName(s.vendors, o.vendor)}</>,
-      <StatusPill status={o.st} />,
-      <>{o.lines.length}</>,
-      <>{money0(poValue(o))}</>,
-      <>{s.grn.filter((g) => g.po === o.id).length}</>,
-      <Btn size="xs" variant="gh" onClick={() => openDrawer("bpo", o.id)}>View</Btn>,
-    ],
-  }));
-
-  const noMatch = (what: string, clear: () => void) => ({
-    title: "Nothing matches those filters",
-    sub: `Clear the search box, or cycle the ${what} filter back to All.`,
-    action: <Btn size="sm" variant="gh" onClick={clear}>Clear filters</Btn>,
-  });
+  const card = (o: (typeof s.po)[number]) => {
+    const bal = o.st === "Partially received" ? balanceOf(o) : [];
+    const grns = s.grn.filter((g) => g.po === o.id).length;
+    return (
+      // The card carries the mouse shortcut and the order number is the real control — the card
+      // cannot itself be a button, because Receive and Edit & send sit inside it. `Btn` stops its
+      // own click from bubbling, so Receive opens the receipt and not the order behind it.
+      <div className="kan-card" key={o.id} onClick={() => openDrawer("bpo", o.id)}>
+        <div className="kan-top">
+          <button type="button" style={OPEN_BTN} aria-label={`Open ${o.id}`}
+            onClick={(e) => { e.stopPropagation(); openDrawer("bpo", o.id); }}>
+            <b className="mono">{o.id}</b>
+          </button>
+          <span className="mono kan-t">raised {o.at}</span>
+        </div>
+        <div className="kan-who">
+          <b>{vendorName(s.vendors, o.vendor)}</b>
+          <span>{o.lines.length} item{o.lines.length === 1 ? "" : "s"} · {money0(poValue(o))}</span>
+          {(o.st === "Draft" || o.st === "Ordered" || o.st === "Partially received") && (
+            <span>{o.st === "Draft" ? "ETA" : "expected"} {o.eta}</span>
+          )}
+          {bal.length > 0 && <span>balance {unitTotal(bal)}</span>}
+          {(o.st === "Received" || o.st === "Cancelled") && (
+            <span>{grns} goods receipt{grns === 1 ? "" : "s"}</span>
+          )}
+        </div>
+        {(o.needsApproval || o.st === "Draft" || o.st === "Ordered" || o.st === "Partially received") && (
+          <div className="kan-foot">
+            {o.needsApproval && <Pill tone="wn">Needs finance approval</Pill>}
+            <div className="sp" />
+            {o.st === "Draft" && (
+              <Btn size="xs" onClick={() => openDrawer("bpo", o.id)}>Edit &amp; send</Btn>
+            )}
+            {(o.st === "Ordered" || o.st === "Partially received") && (
+              <Btn size="xs" variant="ok" onClick={() => openDrawer("bgrn", o.id)}>Receive</Btn>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <>
@@ -168,125 +144,46 @@ export default function PurchaseOrders() {
         { l: "Items awaiting delivery", v: String(linesAwaiting), d: "not yet fully received against an open order" },
         { l: "Over the finance slab", v: String(overSlab), d: `above the ${money0(PO_APPROVAL_LIMIT)} approval limit` },
       ]} />
-      <div className="mtop" />
-
-      <Card title="Drafts" sub={`${drafts.length} order(s) not yet sent to a vendor`} flush>
-        <Toolbar
-          placeholder="Search order, vendor or item…"
-          value={qd}
-          onSearch={setQd}
-          filters={
-            <FilterSelect label="Vendor" value={vd} options={vendorsFor(allDrafts)} onChange={setVd} />
-          }
-        />
-        <DataTable
-          cols={[
-            { h: "Purchase order", cls: "nm", w: "18%" },
-            { h: "Vendor", w: "20%" },
-            { h: "Items", r: true },
-            { h: "Value", r: true },
-            { h: "ETA" },
-            { h: "" },
-          ]}
-          rows={draftRows}
-          empty={draftNarrowed
-            ? noMatch("Vendor", () => { setQd(""); setVd("All"); })
-            : {
-              title: "No drafts waiting",
-              sub: "A new draft appears here the moment an item is picked from the procurement list.",
-            }}
-        />
-        <TableFoot count={draftRows.length} />
-      </Card>
 
       <div className="mtop" />
-      <Card title="On order" sub={`${ordered.length} order(s) placed with a vendor, nothing received yet`} flush>
+      <Card flush>
         <Toolbar
           placeholder="Search order, vendor or item…"
-          value={qo}
-          onSearch={setQo}
+          value={q}
+          onSearch={setQ}
           filters={
             <>
-              <FilterSelect label="Vendor" value={vo} options={vendorsFor(allOrdered)} onChange={setVo} />
+              <FilterSelect label="Vendor" value={vendor} options={VENDOR_NAMES} onChange={setVendor} />
               <FilterSelect label="Approval" value={approval} options={APPROVAL} onChange={setApproval} />
             </>
           }
+          right={filtering
+            ? <Btn size="sm" variant="gh" onClick={clearFilters}>Clear filters</Btn>
+            : <span className="mini">{s.po.length} order{s.po.length === 1 ? "" : "s"} on the board</span>}
         />
-        <DataTable
-          cols={[
-            { h: "Purchase order", cls: "nm", w: "16%" },
-            { h: "Vendor", w: "18%" },
-            { h: "Items", r: true },
-            { h: "Value", r: true },
-            { h: "Expected" },
-            { h: "Approval", w: "18%" },
-            { h: "" },
-          ]}
-          rows={orderedRows}
-          empty={orderNarrowed
-            ? noMatch("Vendor and Approval", () => { setQo(""); setVo("All"); setApproval("All"); })
-            : { title: "Nothing on order", sub: "Send a draft to a vendor to see it here." }}
-        />
-        <TableFoot count={orderedRows.length} extra={<>{money0(sum(ordered, poValue))} placed with vendors</>} />
       </Card>
 
-      <div className="mtop" />
-      <Card title="Partially received" sub={`${partial.length} order(s) with goods still outstanding`} flush>
-        <Toolbar
-          placeholder="Search order, vendor or item…"
-          value={qp}
-          onSearch={setQp}
-          filters={
-            <FilterSelect label="Vendor" value={vp} options={vendorsFor(allPartial)} onChange={setVp} />
-          }
-        />
-        <DataTable
-          cols={[
-            { h: "Purchase order", cls: "nm", w: "18%" },
-            { h: "Vendor", w: "20%" },
-            { h: "Items", r: true },
-            { h: "Balance", r: true },
-            { h: "Value", r: true },
-            { h: "" },
-          ]}
-          rows={partialRows}
-          empty={partNarrowed
-            ? noMatch("Vendor", () => { setQp(""); setVp("All"); })
-            : { title: "Nothing partially received", sub: "Orders land here once some — but not all — of their items are receipted." }}
-        />
-        <TableFoot count={partialRows.length} />
-      </Card>
-
-      <div className="mtop" />
-      <Card title="Closed" sub="Fully received or cancelled — kept for the record" flush>
-        <Toolbar
-          placeholder="Search order, vendor or item…"
-          value={qc}
-          onSearch={setQc}
-          filters={
-            <>
-              <FilterSelect label="Vendor" value={vc} options={vendorsFor(allClosed)} onChange={setVc} />
-              <FilterSelect label="Outcome" value={closedState} options={CLOSED_STATES} onChange={setClosedState} />
-            </>
-          }
-        />
-        <DataTable
-          cols={[
-            { h: "Purchase order", cls: "nm", w: "16%" },
-            { h: "Vendor", w: "18%" },
-            { h: "Status", w: "14%" },
-            { h: "Items", r: true },
-            { h: "Value", r: true },
-            { h: "GRNs", r: true },
-            { h: "" },
-          ]}
-          rows={closedRows}
-          empty={closedNarrowed
-            ? noMatch("Vendor and Outcome", () => { setQc(""); setVc("All"); setClosedState("All"); })
-            : { title: "No closed orders yet", sub: "Received and cancelled orders are kept here for the record." }}
-        />
-        <TableFoot count={closedRows.length} />
-      </Card>
+      <div className="kan fill mtop">
+        {BOARD.map(({ st, sub, empty }) => {
+          const cards = inColumn(st);
+          return (
+            <section className="kan-col" key={st} aria-label={`${st} — ${cards.length} orders`}>
+              <div className="kan-h">
+                <StatusPill status={st} />
+                <div className="sp" />
+                <span className="kan-n">{cards.length}</span>
+              </div>
+              <p className="kan-sub">{sub}</p>
+              {cards.length === 0
+                ? <div className="kan-empty">
+                    <b>{filtering ? "Nothing matches those filters" : "Nothing here"}</b>
+                    <span>{filtering ? "Clear the search, Vendor or Approval filter to see this column." : empty}</span>
+                  </div>
+                : cards.map(card)}
+            </section>
+          );
+        })}
+      </div>
     </>
   );
 }

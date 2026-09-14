@@ -115,7 +115,7 @@ src/
   pages/                                  Login.tsx, ChangePassword.tsx, Settings.tsx, Support.tsx
   roles/<role>/                           counter/ manager/ store/ prod/ buyer/
   __tests__/                              store, procurement, fixes, screens/app, audit-screens, time,
-                                           drawer, api, session, events, writes, refusals, theme
+                                           drawer, api, session, events, writes, refusals, theme, po-board
 ```
 
 Each role folder exports `screens: Record<string, ComponentType>`; `App.tsx` resolves the
@@ -215,6 +215,14 @@ and is recorded on the ticket's own trail, now visible in the ticket drawer, as
 back through the same drawer that shows a request's history. A counter can also withdraw a
 shop-to-shop transfer it raised, from a "Sent from this counter" card, before anyone collects
 it.
+
+**The purchase orders board.** The buyer's Purchase Orders screen is a board, not a stack of
+tables: one column per status — Draft, Ordered, Partially received, Received, Cancelled — side
+by side, sharing the page's width and scrolling sideways on a narrow screen. Every order is a
+card in the column for its status, newest raised on top (sorted on the order's `iso` instant),
+with one search box and Vendor and Approval filters over the whole board. Clicking a card opens
+the order's details in the drawer that slides in from the right; a card's own Receive button
+opens the goods receipt instead.
 
 **Rate contracts.** Vendor and item, rate, validity window and minimum order quantity, server-
 backed since Phase 5. The store keeper maintains them (`POST`/`PATCH`/`DELETE /contracts` all
