@@ -2,10 +2,11 @@ import {
   useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode, type RefObject,
 } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
+import { bestBeforeAt } from "@rch/domain";
 import { IT, LOC, OUTLETS, homeLabel } from "../data/master";
 import { NAV, canSee } from "../nav";
 import { useApp, type AppState } from "../store";
-import { availOf, isTicketOpen, menuOf, procurementList } from "../lib/selectors";
+import { activeItems, availOf, isTicketOpen, menuOf, procurementList, qty } from "../lib/selectors";
 import type { LocKey, Role } from "../types";
 import { useStreamState, type StreamState } from "../api/events";
 import { Avatar, Icon, Pill, SearchIcon, Tag, ThemeButton } from "./kit";
@@ -33,6 +34,15 @@ export default function Shell({ children }: { children: ReactNode }) {
   // as a selector — zustand v5 feeds the selector result to useSyncExternalStore and a
   // new identity on every call re-renders forever. Read the whole (stable) state instead.
   const state = useApp();
+  // Every other badge only has to change when a write changes it — this is the one exception.
+  // A batch quietly crosses into "due soon" with no write happening at all, so nothing here
+  // would otherwise notice until some unrelated write forced a re-render. This tick is the one
+  // thing on the page whose only job is to make the clock's own passage visible.
+  const [, tick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => tick((n) => n + 1), 60_000);
+    return () => clearInterval(id);
+  }, []);
   const counts = navCounts(state);
   const photo = usePhoto();
   const live = useStreamState();
@@ -270,6 +280,9 @@ const NOTE: Record<string, [string, string]> = {
   pool: ["Lines on the procurement list", "Approved and not yet claimed by a purchase order"],
   orders: ["New kitchen orders", "Received and not yet accepted"],
   avail: ["Products that cannot be sold", "Switched off, out of stock, or short an ingredient"],
+  inventory: ["Items below reorder", "Under the central store's reorder level"],
+  stock: ["Items below reorder", "Under the central store's reorder level"],
+  dash: ["Batches nearing best-before", "Made recently, due within the next 2 hours"],
 };
 
 /* ---------- search index ---------- */
@@ -327,6 +340,25 @@ function searchHits(s: SearchState, q: string): Hit[] {
 /** Listed but unsellable — a manual switch, an empty shelf or a missing ingredient. */
 const offCount = (s: AppState, l: LocKey) => menuOf(s, l).filter((it) => !availOf(s, l, it).ok).length;
 
+/** How many active items the central store carries under their own reorder level — the same
+ *  test the buyer's Inventory screen and the store keeper's Stock screen already filter by. */
+const belowReorderCount = (s: AppState) =>
+  activeItems().filter((k) => IT[k].rl > 0 && qty(s, "store", k) < IT[k].rl).length;
+
+const APPROACHING_MS = 2 * 3_600_000;
+/** A batch is not tracked once its stock joins the shelf — the ledger only knows an item's
+ *  total, not which batch it came from — so "approaching" has to work off the batch record
+ *  itself. Its best-before instant is recomputed here with the same rule the server used to
+ *  produce it (`bestBeforeAt`, off the batch's own made time and the item's shelf life),
+ *  because only the printed "best before HH:MM" string survives onto the wire, not the
+ *  instant. Counts a batch whose best-before is under two hours away and has not passed yet;
+ *  the interval below (`useBadgeTick`) is what makes this true even when nothing else changes. */
+const approachingBestBeforeCount = (s: AppState) =>
+  s.batch.filter((b) => {
+    const left = bestBeforeAt(new Date(b.iso), IT[b.it]?.sl).getTime() - Date.now();
+    return left > 0 && left <= APPROACHING_MS;
+  }).length;
+
 function navCounts(s: AppState): Record<string, number> {
   const u = s.user;
   if (!u) return {};
@@ -346,15 +378,18 @@ function navCounts(s: AppState): Record<string, number> {
     c.issue = s.req.filter((r) => (r.st === "Manager approved" || r.st === "Partially approved") && !r.ticket).length
       + s.tkt.filter((t) => t.from === "store" && t.st === "Issued").length;
     c.procure = s.prq.filter((p) => p.st === "Sent").length;
+    c.stock = belowReorderCount(s);
   }
   if (u.r === "prod") {
     c.orders = s.pord.filter((o) => o.st === "New").length;
     c.avail = Object.keys(s.stock.kitchen)
       .filter((k) => IT[k]?.t === "FG" && !availOf(s, "kitchen", k).ok).length;
+    c.dash = approachingBestBeforeCount(s);
   }
   if (u.r === "buyer") {
     c.requisitions = s.prq.filter((p) => p.st === "Sent").length;
     c.pool = procurementList(s).length;
+    c.inventory = belowReorderCount(s);
   }
   return c;
 }

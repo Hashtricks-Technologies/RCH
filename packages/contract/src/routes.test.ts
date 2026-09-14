@@ -195,11 +195,18 @@ describe("what the support desk puts on the wire", () => {
 
 // ---- item patch ----
 describe("what the item master puts on the wire once it can be edited", () => {
-  it("takes a patch of one field and leaves the other seven alone", () => {
+  it("takes a patch of one field and leaves the other eight alone", () => {
     expect(PatchItemBodySchema.parse({ rl: 12 })).toEqual({ rl: 12 });
     expect(PatchItemBodySchema.safeParse({ active: false }).success).toBe(true);
     expect(PatchItemBodySchema.safeParse({ n: "Real Juice 200ml", mrp: 22, gst: 12 }).success).toBe(true);
     expect(PatchItemBodySchema.safeParse({ surprise: 1 }).success).toBe(false);
+  });
+
+  it("carries a shelf life the same way create-item does — an optional whole number of hours", () => {
+    expect(PatchItemBodySchema.parse({ sl: 6 })).toEqual({ sl: 6 });
+    expect(PatchItemBodySchema.safeParse({ sl: 0 }).success).toBe(true);
+    expect(PatchItemBodySchema.safeParse({ sl: 1.5 }).success).toBe(false);
+    expect(PatchItemBodySchema.safeParse({ sl: -1 }).success).toBe(false);
   });
 
   it("leaves an empty name and a zero cost to the service, so the operator reads a sentence", () => {

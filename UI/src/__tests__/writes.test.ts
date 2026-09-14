@@ -1746,6 +1746,18 @@ describe("editing and retiring a line on the item master", () => {
     expect(S().catalogVersion).toBeGreaterThan(0);
   });
 
+  it("sends a shelf-life change the same way as any other operational field", async () => {
+    as("prod");
+    const relabelled = { ...FX.IT.bisc, sl: 6 };
+    serve({
+      "PATCH /api/v1/items/bisc": () => json({ result: { key: "bisc", item: relabelled }, changed: ["items"], message: "Marie biscuit updated" }),
+      "GET /api/v1/items": () => json({ ...FX.IT, bisc: relabelled }),
+    });
+    expect(await S().updateItem("bisc", { sl: 6 })).toBe(true);
+    expect(hit("PATCH /api/v1/items/bisc")[0].body).toEqual({ sl: 6 });
+    expect(IT.bisc.sl).toBe(6);
+  });
+
   it("retires a line, keeps it on the master, and takes it out of every picker", async () => {
     as("manager");
     const retired = { ...FX.IT.chips, active: false };

@@ -13,15 +13,16 @@ import type { Role } from "@rch/contract";
  * Those three are what a price, a stock value and a tax line are computed from, and the manager
  * is the role that already owns the price lists and the MRP ceiling above them.
  *
- * **Operational** — the name, the group, the HSN code and the reorder level — belongs to the
- * three desks that actually handle the goods: the store keeper who shelves it, the buyer who
- * orders it and the kitchen that consumes it. They are the ones who know what the pack says.
+ * **Operational** — the name, the group, the HSN code, the reorder level and the shelf life —
+ * belongs to the three desks that actually handle the goods: the store keeper who shelves it,
+ * the buyer who orders it and the kitchen that consumes it. They are the ones who know what the
+ * pack says, and the kitchen is the one who actually knows how long what it makes keeps.
  *
  * **`active`** is everybody's: any of the four can retire a line nobody carries any more, and
  * bring it back. The counter is in neither list and so is in none of them — a till sells the
  * master, it does not edit it.
  */
-export type ItemField = "n" | "mrp" | "cost" | "gst" | "hsn" | "rl" | "grp" | "active";
+export type ItemField = "n" | "mrp" | "cost" | "gst" | "hsn" | "rl" | "grp" | "sl" | "active";
 
 export const ITEM_FIELD_ROLES: Readonly<Record<ItemField, readonly Role[]>> = {
   mrp: ["manager"],
@@ -31,6 +32,7 @@ export const ITEM_FIELD_ROLES: Readonly<Record<ItemField, readonly Role[]>> = {
   hsn: ["store", "buyer", "prod"],
   rl: ["store", "buyer", "prod"],
   grp: ["store", "buyer", "prod"],
+  sl: ["store", "buyer", "prod"],
   active: ["manager", "store", "buyer", "prod"],
 };
 

@@ -225,21 +225,29 @@ describe("PATCH /items/:it", () => {
     expect(b.message).toBe("Patch commercial updated");
   });
 
-  it("lets the store, the buyer and the kitchen change the name, group, HSN and reorder level", async () => {
+  it("lets the store, the buyer and the kitchen change the name, group, HSN, reorder level and shelf life", async () => {
     for (const [u, who] of [["u3", "store"], ["u5", "buyer"], ["u4", "kitchen"]]) {
       const k = await make(`Patch operational ${who}`);
-      const r = await patch(`/items/${k}`, await hdr(u), { n: `Patch operational ${who} renamed`, grp: "Grocery", hsn: "2202", rl: 12.5 });
+      const r = await patch(`/items/${k}`, await hdr(u), { n: `Patch operational ${who} renamed`, grp: "Grocery", hsn: "2202", rl: 12.5, sl: 6 });
       expect(r.statusCode, r.body).toBe(200);
-      expect(r.json().result.item).toMatchObject({ n: `Patch operational ${who} renamed`, g: "Grocery", hsn: "2202", rl: 12.5 });
+      expect(r.json().result.item).toMatchObject({ n: `Patch operational ${who} renamed`, g: "Grocery", hsn: "2202", rl: 12.5, sl: 6 });
       expect(r.json().message).toBe(`Patch operational ${who} renamed updated`);
     }
+  });
+
+  it("lets a patched shelf life fall back to none, the same way create-item treats a blank box", async () => {
+    const k = await make("Patch shelf life", { sl: 4 });
+    expect((await get("/items"))[k]).toMatchObject({ sl: 4 });
+    const r = await patch(`/items/${k}`, await hdr("u4"), { sl: 0 });
+    expect(r.statusCode, r.body).toBe(200);
+    expect(r.json().result.item.sl).toBeUndefined();
   });
 
   it("refuses the manager an operational field and the store a commercial one, each in its own words", async () => {
     const k = await make("Patch wrong desk");
     const m = await patch(`/items/${k}`, await hdr("u2"), { rl: 5 });
     expect(m.statusCode).toBe(422);
-    expect(m.json().error.message).toBe("The store, the buyer and the kitchen keep an item's name, group, HSN and reorder level — ask one of them");
+    expect(m.json().error.message).toBe("The store, the buyer and the kitchen keep an item's name, group, HSN, reorder level and shelf life — ask one of them");
     const s = await patch(`/items/${k}`, await hdr("u3"), { cost: 99 });
     expect(s.statusCode).toBe(422);
     expect(s.json().error.message).toBe("Only the outlet manager changes an item's price, cost or GST — ask them to make that change");

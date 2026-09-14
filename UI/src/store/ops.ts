@@ -24,7 +24,7 @@ export interface NewItemInput {
  *  drawer only ever puts in what the operator actually moved. */
 export interface ItemFieldPatch {
   n?: string; mrp?: number; cost?: number; gst?: number;
-  hsn?: string; rl?: number; grp?: string; active?: boolean;
+  hsn?: string; rl?: number; grp?: string; sl?: number; active?: boolean;
 }
 
 export interface OpsSlice {

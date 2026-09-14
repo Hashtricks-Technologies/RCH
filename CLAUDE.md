@@ -525,9 +525,12 @@ These are enforced in code and pinned by tests. Breaking one is a bug, not a sty
 - **The item master is editable, and editable by desk.** `PATCH /items/:it` is the second door
   the master has, and `ITEM_FIELD_ROLES` (`packages/domain/src/items.ts`) is the whole of the
   permission: the manager owns `mrp`/`cost`/`gst`, the store keeper, buyer and kitchen own
-  `n`/`hsn`/`rl`/`grp`, all four own `active`, the counter owns none — a till sells the master, it
-  does not edit it. One table, two enforcers: the server refuses with it and the drawer disables
-  the same boxes with it, which is exactly the §5.1 test for a rule belonging in `@rch/domain`.
+  `n`/`hsn`/`rl`/`grp`/`sl`, all four own `active`, the counter owns none — a till sells the
+  master, it does not edit it. One table, two enforcers: the server refuses with it and the
+  drawer disables the same boxes with it, which is exactly the §5.1 test for a rule belonging in
+  `@rch/domain`. `sl` (shelf life, in hours) is the one operational field that can be cleared
+  back to nothing — `sl: 0` means the same "no best-before" a blank box on create-item has always
+  meant, unlike `mrp`, which keeps whatever ceiling it already carries once one is set.
   **A line is retired, never deleted**, and the retirement is refused while stock sits anywhere
   (named) or any outlet still lists it (named), stock asked about first. `Retired`/`Restored`
   are written to the trail only when the flag actually **crosses** — setting `active: true` on a

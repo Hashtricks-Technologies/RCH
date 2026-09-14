@@ -10,10 +10,12 @@ export type NewItemRow = typeof items.$inferInsert;
 // ---- item patch ----
 /** `mrp` is a `number`, never `null`: an item that carries a printed MRP keeps one, so there is
  *  no value this patch can take that removes a ceiling. The column stays nullable — an item may
- *  never have had one — but no write on this side sets it back to nothing. */
+ *  never have had one — but no write on this side sets it back to nothing. `shelfLifeHours` is
+ *  the opposite: clearing it back to "no best-before" is exactly what a blank box has always
+ *  meant on the create-item form, so this side does allow `null`. */
 export type ItemPatch = Partial<{
   name: string; grp: string; hsn: string; gst: number;
-  reorderLevel: number; cost: number; mrp: number; active: boolean;
+  reorderLevel: number; cost: number; mrp: number; shelfLifeHours: number | null; active: boolean;
 }>;
 
 export const catalogRepo = {

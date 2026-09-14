@@ -550,12 +550,19 @@ describe("the item drawer is the same table the server refuses with", () => {
   it("tells the manager the operational fields are somebody else's", () => {
     const html = open("manager");
     expect(html).toContain("Edit Real Juice 200ml");
-    expect(html).toContain("The name, the group, the HSN code and the reorder level belong to the store, the buyer and the kitchen");
+    expect(html).toContain("The name, the group, the HSN code, the reorder level and the shelf life belong to the store, the buyer and the kitchen");
   });
 
   it("tells the store, the buyer and the kitchen the commercial figures are the manager's", () => {
     for (const role of ["store", "buyer", "prod"] as Role[]) {
       expect(open(role)).toContain("The printed MRP, the standard cost and the GST rate belong to the outlet manager");
+    }
+  });
+
+  it("greys the shelf-life box for the manager and opens it for the store, the buyer and the kitchen", () => {
+    expect(open("manager")).toContain("The store, the buyer or the kitchen sets the shelf life.");
+    for (const role of ["store", "buyer", "prod"] as Role[]) {
+      expect(open(role)).toContain("Blank or 0 if it does not carry a best-before.");
     }
   });
 

@@ -187,11 +187,11 @@ export const ReceiptResultSchema = z.strictObject({ po: PurchaseOrderSchema, grn
 export const ItemResultSchema = z.strictObject({ key: z.string(), item: ItemSchema });
 
 // ---- item patch ----
-/** The item master is editable (`PATCH /items/:it`). Which of these eight fields a role may
+/** The item master is editable (`PATCH /items/:it`). Which of these nine fields a role may
  *  actually move is `ITEM_FIELD_ROLES` in `@rch/domain` — a sentence, not a 400 — so the schema
- *  takes all eight from anyone and the service refuses in the operator's own words. No
+ *  takes all nine from anyone and the service refuses in the operator's own words. No
  *  `.default()` anywhere: `parse({})` must stay empty, or "Nothing to change" is unreachable
- *  and a patch of one field silently resets the other seven. */
+ *  and a patch of one field silently resets the other eight. */
 export const ItemKeyParamsSchema = z.strictObject({ it: z.string().min(1).max(64) });
 export const PatchItemBodySchema = z.strictObject({
   n: z.string().max(120).optional(),
@@ -201,6 +201,7 @@ export const PatchItemBodySchema = z.strictObject({
   hsn: z.string().max(12).optional(),
   rl: QtySchema.optional(),
   grp: z.string().max(40).optional(),
+  sl: z.number().int().min(0).max(100000).optional(),
   active: z.boolean().optional(),
 });
 

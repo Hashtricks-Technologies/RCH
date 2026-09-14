@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { MemoryRouter } from "react-router-dom";
@@ -6,6 +6,7 @@ import App from "../App";
 import { useApp } from "../store";
 import { USERS } from "@rch/contract/fixtures";
 import { NAV, HOME } from "../nav";
+import { IT } from "../data/master";
 import { as, resetStore, signedOut } from "./fixture";
 
 // The store starts empty now and the registries with it, so the roles this suite iterates come
@@ -161,5 +162,82 @@ describe("the sidebar badge counts what is still coming", () => {
     expect(badge("/pos", "tickets")).toBe(0);
     act(() => { useApp.setState({ tkt: useApp.getState().tkt.map((t) => ({ ...t, st: "Cancelled" as const })) }); });
     expect(badge("/pos", "tickets")).toBe(0);
+  });
+
+  /** Every item that is ever reordered, carried well above its own reorder level — a clean
+   *  zero baseline neither role's badge has to share with whatever the fixture happens to hold. */
+  function clearReorder() {
+    const store: Record<string, number> = {};
+    for (const k of Object.keys(IT)) if (IT[k].rl > 0) store[k] = IT[k].rl * 10;
+    useApp.setState((s) => ({ stock: { ...s.stock, store } }));
+  }
+  const setStoreQty = (it: string, q: number) =>
+    useApp.setState((s) => ({ stock: { ...s.stock, store: { ...s.stock.store, [it]: q } } }));
+
+  it("counts central-store items below their reorder level, for the buyer and the store keeper", () => {
+    act(() => { as("buyer"); clearReorder(); });
+    expect(badge("/requisitions", "inventory")).toBe(0);
+    act(() => { setStoreQty("juice", 10); }); // rl 60
+    expect(badge("/requisitions", "inventory")).toBe(1);
+    act(() => { setStoreQty("juice", 100); });
+    expect(badge("/requisitions", "inventory")).toBe(0);
+
+    act(() => { as("store"); clearReorder(); });
+    expect(badge("/issue", "stock")).toBe(0);
+    act(() => { setStoreQty("juice", 10); });
+    expect(badge("/issue", "stock")).toBe(1);
+  });
+
+  it("does not count a low-stock badge for any other role", () => {
+    act(() => { as("counter"); clearReorder(); setStoreQty("juice", 10); });
+    expect(badge("/pos", "inventory")).toBe(0);
+    act(() => { as("manager"); clearReorder(); setStoreQty("juice", 10); });
+    expect(badge("/approvals", "stock")).toBe(0);
+  });
+});
+
+describe("the kitchen's approaching-best-before badge", () => {
+  // Fixed rather than read off the host, the same reason fixes.test.ts's H9 block fixes its
+  // own clock: this badge's whole job is to react to the clock, so the clock cannot also be
+  // the thing quietly making the case pass or fail.
+  const t0 = new Date("2026-08-29T10:00:00+05:30");
+  beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(t0); });
+  afterEach(() => { vi.useRealTimers(); });
+
+  /** `puff`'s own shelf life is 12 hours (packages/contract/src/fixtures/master.ts) — a batch
+   *  made `hoursAgo` before `t0` is due `12 - hoursAgo` hours from `t0`. */
+  const puffBatch = (id: string, hoursAgo: number) => ({
+    id, it: "puff", qty: 10, made: 10, at: "10:00", bb: "note",
+    iso: new Date(t0.getTime() - hoursAgo * 3_600_000).toISOString(),
+  });
+
+  it("counts a batch due within 2 hours, not one due later or one already past", () => {
+    act(() => { as("prod"); });
+    act(() => {
+      useApp.setState({
+        batch: [
+          puffBatch("B1", 0),     // due in 12h — not yet approaching
+          puffBatch("B2", 10.5),  // due in 1h30m — approaching
+          puffBatch("B3", 13),    // due 1h ago — already past
+        ],
+      });
+    });
+    expect(badge("/orders", "dash")).toBe(1);
+  });
+
+  it("updates on its own as the clock moves toward a batch's best-before", () => {
+    act(() => { as("prod"); });
+    act(() => { useApp.setState({ batch: [puffBatch("B4", 9)] }); }); // due in 3h
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    const read = () => Number(host.querySelector('a[href="/dash"] .ct')?.textContent ?? 0);
+    act(() => { root.render(createElement(MemoryRouter, { initialEntries: ["/orders"] }, createElement(App))); });
+    expect(read()).toBe(0);
+    // An hour and a bit passes with nothing else happening: the batch is now due in under 2h.
+    act(() => { vi.advanceTimersByTime(65 * 60_000); });
+    expect(read()).toBe(1);
+    act(() => { root.unmount(); });
+    host.remove();
   });
 });

@@ -35,6 +35,7 @@ function ItemDrawer({ id }: { id: string }) {
   const [cost, setCost] = useState(String(item?.cost ?? 0));
   const [gst, setGst] = useState(String(item?.gst ?? 0));
   const [mrp, setMrp] = useState(item?.mrp == null ? "" : String(item.mrp));
+  const [sl, setSl] = useState(item?.sl == null ? "" : String(item.sl));
   const [busy, setBusy] = useState(false);
 
   if (!user || !item) {
@@ -74,6 +75,9 @@ function ItemDrawer({ id }: { id: string }) {
     if (may("cost") && costN !== item.cost) p.cost = costN;
     if (may("gst") && Number(gst) !== item.gst) p.gst = Number(gst) || 0;
     if (may("mrp") && mrpGiven && mrpN !== item.mrp) p.mrp = mrpN;
+    // A blank box means "no best-before", the same as 0 — not "leave it as it is". Unlike the
+    // MRP, there is no hazard in clearing it: the domain default (8 hours) is a safe fallback.
+    if (may("sl") && (Number(sl) || 0) !== (item.sl ?? 0)) p.sl = Number(sl) || 0;
     return p;
   };
   const patch = changes();
@@ -98,7 +102,7 @@ function ItemDrawer({ id }: { id: string }) {
 
   const commercial = may("mrp");
   const whose = commercial
-    ? "The name, the group, the HSN code and the reorder level belong to the store, the buyer and the kitchen — they are shown here, greyed, so you can see what the pack says."
+    ? "The name, the group, the HSN code, the reorder level and the shelf life belong to the store, the buyer and the kitchen — they are shown here, greyed, so you can see what the pack says."
     : "The printed MRP, the standard cost and the GST rate belong to the outlet manager — they are shown here, greyed, so you can see what a unit is worth.";
 
   return (
@@ -141,8 +145,8 @@ function ItemDrawer({ id }: { id: string }) {
         </Field>
       </FormRow>
 
-      <Section title="Tax and levels" sub="The store, the buyer and the kitchen keep the HSN code and the reorder level." />
-      <FormRow cols="f3">
+      <Section title="Tax and levels" sub="The store, the buyer and the kitchen keep the HSN code, the reorder level and the shelf life." />
+      <FormRow cols="f4">
         <Field label="HSN">
           <input value={hsn} disabled={!may("hsn")} onChange={(e) => setHsn(e.target.value)} />
         </Field>
@@ -153,6 +157,10 @@ function ItemDrawer({ id }: { id: string }) {
         <Field label="Reorder level" hint="0 if it is never reordered. Every outlet par is derived from it.">
           <input type="number" min={0} step="any" value={rl} disabled={!may("rl")}
             onChange={(e) => setRl(e.target.value)} />
+        </Field>
+        <Field label="Shelf life (hours)" hint={may("sl") ? "Blank or 0 if it does not carry a best-before." : "The store, the buyer or the kitchen sets the shelf life."}>
+          <input type="number" min={0} step={1} value={sl} disabled={!may("sl")}
+            onChange={(e) => setSl(e.target.value)} placeholder="none" />
         </Field>
       </FormRow>
 
