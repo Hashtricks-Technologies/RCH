@@ -37,6 +37,7 @@ src/schemas/snapshot.ts SnapshotSchema and the narrow read responses; BILL_DAYS
 src/schemas/writes.ts   request bodies, result shapes, CollectionSchema, writeResponse()
 src/schemas/events.ts   EVENTS_PATH, EventNoticeSchema
 src/schemas/reports.ts  the stock ledger and credit report's query/response shapes (Phase 6)
+src/schemas/recipes.ts  the recipe editor's body and result (2026-09-14)
 src/fixtures/*          the demo hospital: master, seed documents, ops, vendors
 ```
 
@@ -150,7 +151,12 @@ to register the route with its schemas, auth, role gate and idempotency preHandl
   more, taking the enum to **twenty-two**: `"roster"` and `"payers"` (both payer writes name
   both, because the till's live list and the manager's whole register are two reads over one
   table) and `"adjustments"` (whose write names `["stock", "adjustments"]`, since a correction
-  moves a balance as well as writing a document).
+  moves a balance as well as writing a document). Account management added `"accounts"`, and the
+  recipe editor (2026-09-14) `"recipes"`, taking it to **twenty-four**. The recipe editor's one
+  route is `saveRecipe` (`PUT /recipes/:it`, `access: ["prod", "manager"]`), with its body and
+  result in `schemas/recipes.ts` (`SaveRecipeBodySchema`, `RecipeResultSchema`): the body is the
+  whole recipe, and the overhead's 0–100% and a line's positivity are service rules
+  (`recipeRefusal`, `@rch/domain`), so the schema only keeps them finite and bounded.
 - **Adding an endpoint is one manifest entry plus a handler.** `apps/api/src/contract.test.ts`
   probes every parameterless GET in the manifest and asserts a 200 that parses against its own
   response schema — so a GET declared without its handler fails the API suite. Declare a GET in

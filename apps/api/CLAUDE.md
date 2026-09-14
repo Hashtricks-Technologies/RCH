@@ -27,6 +27,19 @@ Three existing modules each gained a write in the same wave: `catalog` mounts a 
 (`PATCH /items/:it`, the item master's second door), `pos` its second (`POST /bills/:no/void`) and
 `production` its fifth (`POST /prod-orders` — orders are **raised** now, not only worked).
 
+**`recipes` came after `admin` (2026-09-14)**: `PUT /recipes/:it`, `access: ["prod", "manager"]`,
+replacing an item's whole recipe. Its lock order is the general rule's first term only — the item
+row, `for update`; nothing is numbered and nothing moves, so there is no `lockBalances` (M12, the
+`patchItem` reason). The rule is `recipeRefusal` in `@rch/domain`, asked against `loadItems` so a
+retired ingredient reads as one the master does not have; a retired *target* is refused before it
+(`<item> is retired — restore it before changing its recipe`). It signs `document_history` doc type
+`item` with `Recipe added` / `Recipe changed`, beside `patchItem`'s `Updated`/`Retired`/`Restored`,
+and names `["recipes"]` in `changed`. `GET /recipes` stays in `master`. The same change gave
+`db/seed.ts` its **bare** form (`seedDatabase(..., { bare: true })`, `cli/seed.ts --bare`): the six
+locations, `ensureSequences` and the admin-flagged fixture account, nothing else — and
+`db/seed-bare.test.ts` proves `--bare --force` over the demo hospital leaves rows only in
+`locations`, `users` (one) and `sequences`, iterating every table in the schema.
+
 ## Commands
 
 ```bash
@@ -36,7 +49,7 @@ pnpm --filter @rch/api typecheck            # tsc --noEmit
 pnpm --filter @rch/api build                # tsup -> dist/server.mjs
 pnpm --filter @rch/api db:generate          # drizzle-kit generate + scripts/strip-public-schema.mjs
 pnpm --filter @rch/api db:migrate           # cli/migrate.ts, behind pg_advisory_lock(727272)
-pnpm --filter @rch/api db:seed [--force]    # cli/seed.ts; refuses a non-empty users table without --force
+pnpm --filter @rch/api db:seed [--force] [--bare]   # cli/seed.ts; refuses a non-empty users table without --force; --bare = locations + RC-0001 only
 pnpm --filter @rch/api db:rebuild-balances  # recompute stock_balances from stock_moves
 pnpm --filter @rch/api users <create|reset-password|deactivate> --emp E1234 ...
 pnpm --filter @rch/api payers import --csv <file> [--replace-names]   # kind,id,name — one transaction

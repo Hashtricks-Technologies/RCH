@@ -32,6 +32,19 @@ a document** (`POST /adjustments`), a **bill can be taken back on the day it was
 something** (`POST /prod-orders`) rather than only working orders that arrived from nowhere. Each
 is a row in the spec's §16 wave-4 table.
 
+**One more door since (2026-09-14): a recipe has an editor.** `PUT /recipes/:it` (`prod`/`manager`,
+module `apps/api/src/modules/recipes`) replaces an item's whole recipe — overhead and every line —
+refusing with `recipeRefusal` (`packages/domain/src/recipes.ts`) and signing the item's own trail
+`Recipe added` / `Recipe changed`; the kitchen's and the manager's **Recipes** screen
+(`UI/src/ui/RecipeBook.tsx`, one screen under both roles' `recipes` key) previews with the same
+rule. Until it existed a recipe could only arrive with the seed, so a hospital started clean could
+list a made-to-order item and never sell it. **And the seed has a bare form:** `db:seed --bare`
+writes the six locations, the document numbering and the `RC-0001` admin account and nothing of
+the demo hospital; `deploy/compose/deploy.sh` uses it on a first run, and `--bare --force` is how a
+demo-seeded host is put back to a clean start (`deploy/RUNBOOK.md` §1, §16.5).
+`UI/src/__tests__/bare.test.tsx` renders every screen against exactly what a bare database serves.
+Both are rows in the spec's §16 table *Amendments recorded after the audit fix wave*.
+
 ## Branches
 
 Three long-lived branches, one environment each. Code moves forward only, by fast-forward
@@ -76,7 +89,7 @@ pnpm db:up                                            # postgres:17 in Docker, h
 pnpm db:down
 pnpm --filter @rch/api db:generate                    # drizzle-kit generate; review + commit the SQL
 pnpm --filter @rch/api db:migrate
-pnpm --filter @rch/api db:seed [--force]
+pnpm --filter @rch/api db:seed [--force] [--bare]              # --bare: locations + RC-0001 only, what a real deployment starts from
 pnpm --filter @rch/api db:rebuild-balances
 pnpm --filter @rch/api users <create|reset-password|deactivate> --emp E1234 ...
 pnpm --filter @rch/api payers import --csv <file> [--replace-names]   # a ward list, kind,id,name

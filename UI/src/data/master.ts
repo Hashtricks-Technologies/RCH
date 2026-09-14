@@ -64,6 +64,9 @@ export function hydratePrices(prices: MasterData["prices"]): void {
 /** Just the menus, for a write that listed or delisted a product (`changed: ["menu"]`). */
 export function hydrateMenus(menu: MasterData["menu"]): void { replaceKeys(MENU, menu); }
 
+/** Just the recipes, for a write that saved one (`PUT /recipes/:it` names "recipes"). */
+export function hydrateRecipes(recipes: MasterData["recipes"]): void { replaceKeys(RCP, recipes); }
+
 /** Replace every registry's contents with the server's master data (`applySnapshot` calls this). */
 export function hydrateMaster(m: MasterData): void {
   replaceKeys(IT, m.items);

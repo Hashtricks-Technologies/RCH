@@ -14,8 +14,9 @@ import { applyTheme, nextTheme, readStoredTheme, storeTheme, type ThemePref } fr
 import { createProcurementSlice, type ProcurementSlice } from "./procurement";
 import { createOpsSlice, type OpsSlice } from "./ops";
 import { createAdminSlice, type AdminSlice } from "./admin";
+import { createRecipesSlice, type RecipesSlice } from "./recipes";
 
-export interface AppState extends ProcurementSlice, OpsSlice, AdminSlice {
+export interface AppState extends ProcurementSlice, OpsSlice, AdminSlice, RecipesSlice {
   user: User | null;
   /** Where the session is: no token, asking for one, fetching the snapshot, usable — or signed
    *  in with nothing to show. `"failed"` is the last one: the credentials are good and the
@@ -648,6 +649,7 @@ export const useApp = create<AppState>((set, get) => ({
   // so it takes only the reader.
   ...createOpsSlice(get),
   ...createAdminSlice(get),
+  ...createRecipesSlice(get),
 }));
 
 // A refresh that fails is the end of the session: drop the user rather than

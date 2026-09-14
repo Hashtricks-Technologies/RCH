@@ -22,7 +22,9 @@ export const NAV: Record<Role, NavGroup[]> = {
       // manager's own door. Every outlet's bills, which is the difference from the counter's.
       { k: "bills", label: "Bills", icon: "bill" }] },
     // ---- payers ----
-    { group: "Masters", items: [{ k: "roster", label: "Payers", icon: "item" }] },
+    // ---- recipes: the manager owns an item's cost and every price priced against it, and a made
+    // item's cost *is* its recipe.
+    { group: "Masters", items: [{ k: "roster", label: "Payers", icon: "item" }, { k: "recipes", label: "Recipes", icon: "make" }] },
     { group: "Account", items: [{ k: "issues", label: "Support", icon: "req" }, { k: "settings", label: "Settings", icon: "set" }] },
   ],
   store: [
@@ -40,7 +42,11 @@ export const NAV: Record<Role, NavGroup[]> = {
   ],
   prod: [
     { group: "Overview", items: [{ k: "dash", label: "Dashboard", icon: "dash" }] },
-    { group: "Kitchen", items: [{ k: "orders", label: "Orders", icon: "order" }, { k: "make", label: "Make & Distribute", icon: "make" }] },
+    // ---- recipes: what every batch is made from, kept by the kitchen that makes it.
+    { group: "Kitchen", items: [
+      { k: "orders", label: "Orders", icon: "order" },
+      { k: "make", label: "Make & Distribute", icon: "make" },
+      { k: "recipes", label: "Recipes", icon: "item" }] },
     { group: "Stock", items: [{ k: "stock", label: "Kitchen Stock", icon: "stock" }, { k: "avail", label: "Product On / Off", icon: "power" }] },
     { group: "Movement", items: [{ k: "requests", label: "Stock Requests", icon: "req" }, { k: "tickets", label: "Pick Tickets", icon: "tkt" }] },
     { group: "Account", items: [{ k: "issues", label: "Support", icon: "req" }, { k: "settings", label: "Settings", icon: "set" }] },

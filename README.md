@@ -178,7 +178,7 @@ From the repository root:
 | `pnpm test` | Every package's test suite, coverage floors included (Postgres must be reachable for `apps/api`) |
 | `pnpm db:up` / `pnpm db:down` | Start or stop the local `postgres:17` container |
 | `pnpm --filter @rch/api db:migrate` | Apply migrations |
-| `pnpm --filter @rch/api db:seed [--force]` | Load the demo hospital; `--force` re-seeds a non-empty database. Where `NODE_ENV=production` both paths need the database named back — `--yes-seed <name>`, and `--yes-destroy <name>` as well for `--force` |
+| `pnpm --filter @rch/api db:seed [--force] [--bare]` | Load the demo hospital — or, with `--bare`, only the six locations and the `RC-0001` admin account, which is what a real deployment starts from (`deploy/compose/deploy.sh` uses it); `--force` re-seeds a non-empty database. Where `NODE_ENV=production` both paths need the database named back — `--yes-seed <name>`, and `--yes-destroy <name>` as well for `--force` |
 | `pnpm --filter @rch/api db:generate` | Generate a migration from the Drizzle schema — review and commit the SQL |
 | `pnpm --filter @rch/api db:rebuild-balances` | Recompute cached balances from the movement ledger |
 | `pnpm --filter @rch/api users …` | `create`, `reset-password` or `deactivate` an account |

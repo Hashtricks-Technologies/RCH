@@ -134,6 +134,17 @@ raised — deliberately **not** the kitchen's own `"pord"`, which is built aroun
 Dispatch and reads kitchen shelves a counter is not sent. The counter's way in is a card on the
 existing `requests` screen, not a key, so nothing in `nav.ts` moved for it.
 
+**The recipe editor (2026-09-14) added one key to two roles, and no drawer.** `prod/recipes` and
+`manager/recipes` both resolve to `ui/RecipeBook.tsx` — one screen, so it lives under `ui/` beside
+the other shared forms — listing every live FG/MTO item with its ingredient count and cost (a
+`No recipe` pill where there is none) beside an editor: overhead and lines in `DraftLineInput`s, an
+ingredient picker offering `canBeIngredient` items only, the unit cost previewed with
+`@rch/domain`'s `recipeCost`, and Save greyed with `recipeRefusal`'s own sentence under it.
+`saveRecipe` (`store/recipes.ts`, a fourth slice merged like the other three) is form-carrying and
+answers `Promise<boolean>`; `changed: ["recipes"]` refetches `GET /recipes` through `applyRecipes`
+(`api/wire.ts`), which is `hydrateRecipes` plus a `catalogVersion` bump — `RCP` is a module-level
+registry like `IT`.
+
 ## The store is an API client
 
 `src/store/index.ts` holds the state and most actions; `store/procurement.ts` and `store/ops.ts`
@@ -637,5 +648,11 @@ store's own `signIn` is gone, so this is the one sanctioned way a test signs som
   bill slip printing the hospital's own day across an IST midnight, and the kitchen's "made
   today" figures cutting the batch log to the hospital's day (the suite runs at `TZ=UTC`, so a
   host-day implementation goes red on every one of them).
+- `recipes.test.tsx` — `saveRecipe`'s wire (the `PUT`, the `GET /recipes` read-back, a refusal, a
+  dropped connection) and the recipe book greying Save with the rule's own sentence.
+  `bare.test.tsx` — every `NAV` screen for every role, and the five drawers a first morning opens,
+  rendered against exactly what a `--bare` database serves (six locations, and no item, menu,
+  price, stock line or document), because `screens.test.tsx`'s demo hospital always has something
+  to point at and a real deployment's first morning does not.
 - `api.test.ts`, `session.test.ts`, `theme.test.ts`, `app.test.tsx`. **Fourteen files, 536
   passing and one todo** at the time of writing.

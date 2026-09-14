@@ -71,7 +71,19 @@ export function grnPoLineNo(po: { lines: { it: string }[] } | undefined, g: { id
   return poLineNo;
 }
 
-export async function seedDatabase(db: Db, opts: { password: string; forcePasswordChange: boolean; force?: boolean }): Promise<void> {
+/**
+ * `bare` is the hospital with nothing in it — the shape a real deployment starts from (`deploy.sh`
+ * passes `--bare`). It writes the six locations, the document numbering and the one admin account,
+ * and none of the demo hospital: no items, recipes, prices, menus, stock, payers, vendors,
+ * documents or demo staff. The locations are not demo data — `LocKey` is a closed union the whole
+ * codebase is written against, so the store, the kitchen, the three outlets and quarantine exist
+ * in every deployment — and the admin account is what lets somebody sign in and create the real
+ * staff from `/admin`. Everything else is entered from the screens.
+ *
+ * With `force` over a database that already holds the demo hospital, the same truncate below
+ * empties it first, which is how a host seeded with demo data is put back to a clean start.
+ */
+export async function seedDatabase(db: Db, opts: { password: string; forcePasswordChange: boolean; force?: boolean; bare?: boolean }): Promise<void> {
   const existing = Number(((await db.execute(sql`select count(*)::int as n from users`)).rows[0] as { n: number }).n);
   if (existing > 0 && !opts.force) throw new Error(`database already has ${existing} users - pass --force to reseed`);
   const passwordHash = await hashPassword(opts.password);
@@ -80,10 +92,38 @@ export async function seedDatabase(db: Db, opts: { password: string; forcePasswo
       const names = allTableNames().map((n) => `"${n}"`).join(", ");
       await tx.execute(sql.raw(`truncate table ${names} restart identity cascade`));
     }
+    if (opts.bare) {
+      await seedLocations(tx);
+      await tx.insert(s.users).values(userRow(adminAccount(), passwordHash, opts.forcePasswordChange));
+      await ensureSequences(tx);
+      return;
+    }
     await seedMaster(tx, passwordHash, opts.forcePasswordChange);
     await ensureSequences(tx);
     await seedDocuments(tx);
   });
+}
+
+/** The one account a bare hospital starts with: the admin-flagged fixture (`RC-0001`), the same
+ *  row the demo seed writes, so both starts sign in the same way. It never reaches an operational
+ *  screen — `App.tsx` sends it to `/admin`, where the real staff accounts are created. */
+export function adminAccount(): (typeof FX.USERS)[number] {
+  const admin = FX.USERS.find((u) => u.admin);
+  if (!admin) throw new Error("the fixtures carry no admin-flagged account to start a bare hospital with");
+  return admin;
+}
+
+const userRow = (u: (typeof FX.USERS)[number], passwordHash: string, mustChange: boolean) => ({
+  id: u.id, name: u.n, email: u.e, role: u.r, roleLabel: u.rl, loc: u.loc, colour: u.col, empNo: u.emp, phone: u.ph, passwordHash, mustChangePassword: mustChange,
+  admin: u.admin,
+});
+
+// Quarantine is one of `FX.LOC`'s own rows from Phase 5 (it is a `StockLoc`, not a `LocKey`),
+// so it arrives with the other five rather than being written out a second time here.
+async function seedLocations(tx: Tx) {
+  await tx.insert(s.locations).values(
+    Object.entries(FX.LOC).map(([key, l]) => ({ key, name: l.n, code: l.c, type: l.type, floor: l.floor, costCentre: l.cc, priceList: l.list ?? null, sellable: l.type === "Outlet" })),
+  );
 }
 
 /**
@@ -114,11 +154,7 @@ export async function seedDocuments(tx: Tx): Promise<void> {
 }
 
 async function seedMaster(tx: Tx, passwordHash: string, mustChange: boolean) {
-  // Quarantine is one of `FX.LOC`'s own rows from Phase 5 (it is a `StockLoc`, not a `LocKey`),
-  // so it arrives with the other five rather than being written out a second time here.
-  await tx.insert(s.locations).values(
-    Object.entries(FX.LOC).map(([key, l]) => ({ key, name: l.n, code: l.c, type: l.type, floor: l.floor, costCentre: l.cc, priceList: l.list ?? null, sellable: l.type === "Outlet" })),
-  );
+  await seedLocations(tx);
   await tx.insert(s.items).values(Object.entries(FX.IT).map(([key, i]) => ({
     key, code: i.c, name: i.n, unit: i.u, type: i.t, grp: i.g, hsn: i.hsn, gst: i.gst, reorderLevel: i.rl, cost: i.cost, mrp: i.mrp ?? null, shelfLifeHours: i.sl ?? null,
   })));
@@ -126,10 +162,7 @@ async function seedMaster(tx: Tx, passwordHash: string, mustChange: boolean) {
   await tx.insert(s.recipeLines).values(Object.entries(FX.RCP).flatMap(([itemKey, r]) => r.l.map(([ingredientKey, qty], seq) => ({ itemKey, ingredientKey, qty, seq }))));
   await tx.insert(s.locationItems).values(Object.entries(FX.MENU).flatMap(([loc, keys]) => keys.map((itemKey, seq) => ({ loc, itemKey, seq }))));
   await tx.insert(s.priceListItems).values((["A", "B"] as const).flatMap((list) => Object.entries(FX.PL[list]).map(([itemKey, price]) => ({ list, itemKey, price }))));
-  await tx.insert(s.users).values(FX.USERS.map((u) => ({
-    id: u.id, name: u.n, email: u.e, role: u.r, roleLabel: u.rl, loc: u.loc, colour: u.col, empNo: u.emp, phone: u.ph, passwordHash, mustChangePassword: mustChange,
-    admin: u.admin,
-  })));
+  await tx.insert(s.users).values(FX.USERS.map((u) => userRow(u, passwordHash, mustChange)));
   // The three rosters a non-cash bill may be posted to. They already carry `{kind, id, name}`
   // in the fixtures, so the table is the same three lists in one place — which is what lets the
   // till's payer be checked against something rather than taken on trust.

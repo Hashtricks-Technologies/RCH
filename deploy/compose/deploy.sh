@@ -35,8 +35,10 @@ echo "== seeding, if this is a first run =="
 # or not this is a first deploy.
 users=$(compose exec -T postgres psql -U rch -d rch -tAc "select count(*) from users" 2>/dev/null || echo "")
 if [ "$users" = "0" ]; then
-  echo "   database is empty — seeding the six accounts"
-  compose run --rm --no-deps api dist/cli/seed.mjs --yes-seed rch
+  # `--bare`: the locations, the document numbering and the RC-0001 admin account — never the
+  # demo hospital. This box is a real deployment; the demo data is for local dev and CI only.
+  echo "   database is empty — seeding the locations and the admin account (no demo data)"
+  compose run --rm --no-deps api dist/cli/seed.mjs --bare --yes-seed rch
 else
   echo "   database already has ${users:-some} user(s) — not reseeding"
 fi

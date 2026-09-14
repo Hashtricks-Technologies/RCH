@@ -22,3 +22,5 @@ export { ledgerRow, type LedgerRow } from "./reports.js";
 export { ITEM_FIELD_ROLES, mayEditItemField, unauthorisedItemFields, type ItemField } from "./items.js";
 // ---- adjustments: the words a write-off's reason is printed in, on both sides.
 export { REASON_LABEL } from "./adjustments.js";
+// ---- recipes: which items carry one, what may go into one, and whether one may be saved.
+export { canBeIngredient, carriesRecipe, recipeRefusal, type RecipeDraft } from "./recipes.js";

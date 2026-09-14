@@ -2,7 +2,7 @@ import { routes, type Changed } from "@rch/contract";
 import { call } from "./client";
 import {
   applyAccounts, applyAdjustments, applyBatches, applyBills, applyContracts, applyGrns, applyItems, applyMenus,
-  applyPayers, applyPos, applyPrices, applyProdOrders, applyProductRequests, applyRequests,
+  applyPayers, applyPos, applyPrices, applyProdOrders, applyProductRequests, applyRecipes, applyRequests,
   applyRequisitions, applyRoster, applyShopAsks, applyStock, applySupportTickets, applyTickets,
   applyVendors,
 } from "./wire";
@@ -36,6 +36,8 @@ const NARROW: Partial<Record<Changed, () => Promise<void>>> = {
   adjustments: () => call(routes.adjustments).then(applyAdjustments),
   // ---- admin: account management
   accounts: () => call(routes.adminUsers).then(applyAccounts),
+  // ---- recipes
+  recipes: () => call(routes.recipes).then(applyRecipes),
 };
 
 /**

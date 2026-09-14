@@ -56,6 +56,27 @@ naming `--yes-seed`, so an old runbook line fails loudly instead of quietly doin
 Development and test are unchanged. The rules themselves are one pure function,
 `apps/api/src/lib/seed-guard.ts`.
 
+**`--bare` is the seed a real deployment starts from.** It writes the six locations, the document
+numbering and the one admin account (`RC-0001`, on `SEED_PASSWORD`), and nothing of the demo
+hospital — no items, recipes, prices, menus, stock, payers, vendors, documents or demo staff.
+`deploy/compose/deploy.sh` passes it on a first run; local development, the test suites and CI's
+e2e smoke keep the demo seed, because they are written against it. Both production guards apply
+to it exactly as to the demo seed, and `--bare --force` over a database that already holds the
+demo hospital empties it first — which is how a host seeded with demo data is put back to a
+clean start (§16.5):
+
+```bash
+pnpm --filter @rch/api db:seed --bare                                      # locally
+dist/cli/seed.mjs --bare --force --yes-seed rch --yes-destroy rch          # in the api container, over a demo-seeded rch
+```
+
+What a bare hospital needs before it can sell anything, in the order the screens need it: the
+real staff accounts (`RC-0001` at `/admin`), the item master (the store's, buyer's or kitchen's
+**Add Product**), a recipe for every finished good and made-to-order item (the kitchen's and the
+manager's **Recipes** screen — until it existed a recipe could only arrive with the seed), shelf
+prices and menus (the manager's **Price Lists** and **Items & Stock**), the payer roster (§5), and
+stock (a goods receipt, or an adjustment count-up for an opening balance).
+
 ### Test users
 
 Seed password is `SEED_PASSWORD` from `.env` — **required, at least twelve characters, no default**
@@ -1522,7 +1543,9 @@ scoped to what a deploy needs, and needs no change.
    repeated for each of the six. **The seeded accounts must not exist, active, in production** —
    nothing before this checklist has said that plainly, and it is the one item on this list a
    missed step could not later be quietly forgiven for: a seeded id with a published dev password
-   is a real door into a real hospital's billing.
+   is a real door into a real hospital's billing. A database seeded `--bare` (§1) never had the
+   six — only `RC-0001` — so on a bare start this step is creating the real accounts from `/admin`
+   and then moving the admin flag onto a named person's own account (§1's *Test users*).
 
    Two notes on running the seed in a cluster at all. It needs **`--yes-seed <database name>`**
    (§15.7): the chart renders `NODE_ENV=production` into every pod, dev included, and
@@ -2249,11 +2272,14 @@ since it proves the whole chain rather than one container in isolation.
 `config.ts`'s `databaseSsl` defaults to `true` whenever it is unset in production — right for
 RDS, wrong for a container Postgres on the same Docker network with no TLS listener at all.
 
-**Seeding still needs `--yes-seed rch`,** for the same reason §15.7 gives for the cluster: the
-image runs `NODE_ENV=production` here too, and the guard does not treat "just launched on a new
-box" as a reason to skip it. `deploy.sh` passes it automatically, and only the first time the
-`users` table is empty — a later `deploy.sh` run against a stack that already has data is a
-no-op on this step.
+**Seeding is `--bare`, and still needs `--yes-seed rch`,** for the same reason §15.7 gives for
+the cluster: the image runs `NODE_ENV=production` here too, and the guard does not treat "just
+launched on a new box" as a reason to skip it. `deploy.sh` passes both automatically, and only
+the first time the `users` table is empty — a later `deploy.sh` run against a stack that already
+has data is a no-op on this step. `--bare` because this box is a real deployment: it starts with
+the six locations and `RC-0001`, never the demo hospital (§1). (It was seeded with the demo
+hospital on 2026-09-12, before `--bare` existed, and put back to a clean start on 2026-09-14 —
+§16.5.)
 
 ### 16.2 What was provisioned, once, by hand
 
@@ -2314,6 +2340,10 @@ A later deploy is `git pull && deploy/compose/deploy.sh` — it rebuilds only wh
 the stack up in the same dependency order, and never reseeds a database that already has rows
 in `users`. Add the cron line from `deploy/compose/README.md` once, for the nightly backup.
 
+A first run seeds `--bare` (§1): sign in as `RC-0001` with `SEED_PASSWORD`, choose a new
+password, create the real staff at `/admin`, and enter items, recipes, prices, menus and the payer
+roster from the screens — §1's last paragraph has the order.
+
 ### 16.4 What this trades away against the EKS path
 
 One instance, so no rolling deploy — `deploy.sh` restarts `api` and `ui` in place, a handful of
@@ -2325,3 +2355,28 @@ today's dump against a fresh `postgres:17`, losing whatever changed since the la
 which for this box is at most last night's business. If either trade-off stops being
 acceptable, §15's cluster and chart are still the answer; nothing here prevents standing them
 back up.
+
+### 16.5 Putting the box back to a clean start
+
+The box was first seeded with the demo hospital (2026-09-12, before `--bare` existed) and put back
+to a bare start on 2026-09-14: every demo item, recipe, price, menu, stock line, payer, vendor and
+document, and the six demo staff accounts, removed; the six locations and `RC-0001` kept. The
+procedure, if it is ever needed again — it empties **every** table, so it is only for a box
+nobody has started using for real:
+
+```bash
+ssh -i ~/.ssh/rch-box.pem ubuntu@rch.hashtrickstechnologies.com
+cd /opt/rch/app && git pull && deploy/compose/deploy.sh      # the running image must know --bare
+cd deploy/compose
+./backup.sh                                                   # a dump to S3 first — the way back
+docker compose --env-file .env -f compose.yml run --rm --no-deps api \
+  dist/cli/seed.mjs --bare --force --yes-seed rch --yes-destroy rch
+docker compose --env-file .env -f compose.yml run --rm --no-deps api \
+  dist/cli/users.mjs reset-password --emp RC-0001 --password '<a temporary one>'
+```
+
+The reset is optional — `RC-0001` already starts on `SEED_PASSWORD`, forced to change it at first
+sign-in — but it hands the operator a password that was never written into `.env`. Sign in as
+`RC-0001` and follow §16.3's last paragraph. The way back from a mistake is the dump: pipe
+`gunzip -c rch-<stamp>.sql.gz` into `docker compose … exec -T postgres psql -U rch -d rch` against
+a freshly emptied database (§6 has the restore itself).
