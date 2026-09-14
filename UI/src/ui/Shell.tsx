@@ -13,6 +13,7 @@ import { Avatar, Icon, Pill, SearchIcon, Tag, ThemeButton } from "./kit";
 import { applyPrefs, readPrefs, usePhoto } from "./prefs";
 import Drawer from "./Drawer";
 import ErrorBoundary from "./ErrorBoundary";
+import mark from "../assets/eateszy-mark.png";
 
 /** What the header's dot says, per stream state. The colour is inline rather than a class
  *  because `.org .dt` paints one colour for all three, and this is the only place it varies. */
@@ -56,7 +57,7 @@ export default function Shell({ children }: { children: ReactNode }) {
     <div id="app" className={`on${collapsed ? " sc" : ""}`}>
       <aside className={`side${open ? " open" : ""}`}>
         <div className="sh">
-          <span className="lm">RC</span>
+          <span className="lm"><img src={mark} alt="eaTesZy" /></span>
           <div><b>Royal Care</b><span>Inventory</span></div>
           <button
             className="ib sx" type="button" aria-label="Hide the sidebar"

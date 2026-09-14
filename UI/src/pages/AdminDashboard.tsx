@@ -2,6 +2,7 @@ import { useNavigate } from "react-router-dom";
 import { useApp } from "../store";
 import { Btn } from "../ui/kit";
 import AdminUsers from "./AdminUsers";
+import mark from "../assets/eateszy-mark.png";
 
 /**
  * The whole of an admin-flagged account's experience — a capability, not a role (root
@@ -17,7 +18,7 @@ export default function AdminDashboard() {
   return (
     <div id="admin-dash">
       <header className="adm-top">
-        <span className="adm-brand"><i>RC</i> Royal Care · Admin</span>
+        <span className="adm-brand"><i><img src={mark} alt="eaTesZy" /></i> Royal Care · Admin</span>
         <span className="adm-who">{user.n}</span>
         <Btn variant="gh" size="sm" onClick={() => { void logout().then(() => nav("/login")); }}>Sign out</Btn>
       </header>

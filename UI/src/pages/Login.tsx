@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { HOME } from "../nav";
 import { useApp } from "../store";
 import { Alert } from "../ui/kit";
+import mark from "../assets/eateszy-mark.png";
 
 export default function Login() {
   const [emp, setEmp] = useState("");
@@ -24,7 +25,7 @@ export default function Login() {
   return (
     <div id="login" style={{ display: "grid" }}>
       <div className="lgb">
-        <div className="lgw"><i>RC</i> Royal Care Hospital</div>
+        <div className="lgw"><i><img src={mark} alt="eaTesZy" /></i> Royal Care Hospital</div>
         <div className="lgh">
           <h1>Every item, every counter, one ledger.</h1>
           <p>Purchasing, stock, production and billing for the kitchen, the restaurant and every floor shop — running on a single source of truth.</p>
@@ -34,6 +35,7 @@ export default function Login() {
         </div>
       </div>
       <div className="lgf"><form className="lgi" onSubmit={submit}>
+        <div className="lgl"><img src={mark} alt="" /><span className="lgwm" role="img" aria-label="eaTesZy" /></div>
         <h2>Sign in</h2>
         <p className="sub">Use your employee id and the password you were given. Each role has its own workspace, screens and permissions.</p>
         <div className="fg"><label htmlFor="emp">Employee id</label>
