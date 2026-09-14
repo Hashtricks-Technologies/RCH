@@ -262,8 +262,9 @@ destination. The outlet manager sees it happen rather than standing in the middl
 
 The store holds no business rule of its own any more — every action is a call to the API, and a
 refusal is the server's sentence, not a client-side check. What stays in the browser is only
-what has nothing on the server to be a client of: `cart`, `draft`, `prqDraft`, `drawer`, `toast`,
-`shopFilter`, `theme`, `catalogVersion` (the signal that repaints a screen pinned to the
+what has nothing on the server to be a client of: `cart`, `draft`, `prqDraft`, `poolVendor` (the
+vendor the buyer picked on each procurement-list row, kept until that item is ordered in full),
+`drawer`, `toast`, `shopFilter`, `theme`, `catalogVersion` (the signal that repaints a screen pinned to the
 catalogue after a live update) — plus the access token, held in memory and never in
 `localStorage`, and the theme and a couple of UI preferences, which do reach `localStorage`
 because there is nothing for the server to say about which theme a browser prefers.

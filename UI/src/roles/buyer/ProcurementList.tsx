@@ -93,6 +93,14 @@ export default function ProcurementList() {
   const createPo = useApp((x) => x.createPo);
   const openDrawer = useApp((x) => x.openDrawer);
   const notify = useApp((x) => x.notify);
+  // Vendor is chosen PER LINE, not once for the whole order — the same item can
+  // legitimately come from several suppliers, and the buyer picks which one on
+  // the row itself. The pick lives in the store (`poolVendor`), not here: vendors
+  // are usually set well before the order is raised, and the requisition approved
+  // in between unmounts this screen.
+  const vendorFor = useApp((x) => x.poolVendor);
+  const setPoolVendor = useApp((x) => x.setPoolVendor);
+  const prunePoolVendors = useApp((x) => x.prunePoolVendors);
   const nav = useNavigate();
 
   const [q, setQ] = useState("");
@@ -101,10 +109,6 @@ export default function ProcurementList() {
   const [stockFilter, setStockFilter] = useState("All");
   const [sel, setSel] = useState<Record<string, boolean>>({});
   const [qtyOverride, setQtyOverride] = useState<Record<string, number>>({});
-  // Vendor is chosen PER LINE, not once for the whole order — the same item can
-  // legitimately come from several suppliers, and the buyer picks which one on
-  // the row itself. An unset entry means "still following the suggestion".
-  const [vendorFor, setVendorFor] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
 
   const groups = groupPool(procurementList(s), s.vendors);
@@ -163,6 +167,10 @@ export default function ProcurementList() {
     }
     setBusy(false);
     if (made.length === 0) return;      // every refusal already said why; stay where we are
+    // Read back off the refetched list, not this render's: an item ordered in full has left it,
+    // and its pick goes with it. What is still pending — a partial pick, a refused order — keeps
+    // the vendor it had.
+    prunePoolVendors(procurementList(useApp.getState()).map((l) => l.it));
     // Each createPo toasts, and only the last would survive — so when the
     // selection fanned out across vendors, say so plainly instead.
     if (made.length > 1) notify(`${made.length} draft purchase orders raised across ${made.length} vendors`);
@@ -192,7 +200,7 @@ export default function ProcurementList() {
         <>{fq(qty(s, "store", g.it), g.it)}</>,
         <select
           value={vendorOf(g)} aria-label={`Vendor for ${it?.n ?? g.it}`}
-          onChange={(e) => setVendorFor((m) => ({ ...m, [g.it]: e.target.value }))}
+          onChange={(e) => setPoolVendor(g.it, e.target.value)}
         >
           <option value="">Choose a vendor…</option>
           {s.vendors.filter((v) => v.active).map((v) => (

@@ -54,6 +54,11 @@ export interface AppState extends ProcurementSlice, OpsSlice, AdminSlice, Recipe
   cart: Record<string, Record<string, number>>;
   draft: DraftLine[];
   prqDraft: DraftLine[];
+  /** The vendor the buyer picked on a procurement-list row, by item code. Held here rather than
+   *  in the screen so it survives what happens between picking and raising: approving the next
+   *  requisition on another screen, an "Add items" drawer, a live refetch. An item with no entry
+   *  follows the suggested vendor; `""` is a pick of none. */
+  poolVendor: Record<string, string>;
   drawer: DrawerState | null;
   toast: string | null;
   /** The sentence a sign-in or a password change was refused with, for the form that asked.
@@ -111,6 +116,10 @@ export interface AppState extends ProcurementSlice, OpsSlice, AdminSlice, Recipe
   cancelTicket: (tktId: string, reason: string) => Promise<boolean>;
 
   setPrqDraft: (d: DraftLine[]) => void;
+  setPoolVendor: (it: string, vendorId: string) => void;
+  /** Forget every pick whose item is no longer on the procurement list, so an item ordered in
+   *  full and asked for again later starts from its suggestion rather than a stale choice. */
+  prunePoolVendors: (onList: string[]) => void;
   /** The central store's ask (POST /requisitions). Answers `true` only once the server has
    *  taken it, so the draft and its note survive a refusal. */
   sendRequisition: (note: string) => Promise<boolean>;
@@ -188,6 +197,7 @@ export const useApp = create<AppState>((set, get) => ({
   cart: {},
   draft: [],
   prqDraft: [],
+  poolVendor: {},
   drawer: null,
   toast: null,
   authError: null,
@@ -497,6 +507,13 @@ export const useApp = create<AppState>((set, get) => ({
   },
 
   setPrqDraft: (prqDraft) => set({ prqDraft }),
+  setPoolVendor: (it, vendorId) => set((s) => ({ poolVendor: { ...s.poolVendor, [it]: vendorId } })),
+  prunePoolVendors: (onList) => set((s) => {
+    const keep = new Set(onList);
+    const poolVendor = Object.fromEntries(Object.entries(s.poolVendor).filter(([it]) => keep.has(it)));
+    // Same object when nothing went, so a no-op prune repaints nothing.
+    return Object.keys(poolVendor).length === Object.keys(s.poolVendor).length ? s : { poolVendor };
+  }),
   /** Buying starts here (POST /requisitions). A line with no quantity on it is client-side
    *  noise rather than something to send and have refused, so it is dropped before the post;
    *  the draft itself is cleared only once the server has taken it. */

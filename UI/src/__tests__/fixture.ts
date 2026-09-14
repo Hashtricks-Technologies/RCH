@@ -74,7 +74,7 @@ export function resetStore() {
     // ---- adjustments: nothing has ever been written off in the demo hospital, so the register
     // starts empty — the same shape the fixtures give quarantine's shelf.
     adjustments: [],
-    cart: {}, draft: [], prqDraft: [], drawer: null, toast: null, shopFilter: null,
+    cart: {}, draft: [], prqDraft: [], poolVendor: {}, drawer: null, toast: null, shopFilter: null,
     // ---- payers ----
     // Empty, not seeded: the manager's register has no fixture, because nothing on the snapshot
     // carries it — the screen asks `GET /payers` for it on the way in.
