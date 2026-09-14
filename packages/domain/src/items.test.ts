@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { ITEM_FIELD_ROLES, mayEditItemField, unauthorisedItemFields, type ItemField } from "./items.js";
+import {
+  ITEM_FIELD_ROLES, mayEditItemField, unauthorisedItemFields, type ItemField,
+  // ---- item photos ----
+  mayEditItemImage, sniffImageType, checkPhoto, imageRetiredMessage, imageOffMenuMessage, imageNoneMessage,
+  IMAGE_MAX_BYTES, IMAGE_NOT_PHOTO,
+} from "./items.js";
 
 const ALL_FIELDS: ItemField[] = ["n", "mrp", "cost", "gst", "hsn", "rl", "grp", "sl", "active"];
 
@@ -49,5 +54,50 @@ describe("who owns which field on the item master", () => {
     expect(commercial).toEqual(["mrp", "cost", "gst", "active"]);
     expect(operational).toEqual(["n", "hsn", "rl", "grp", "sl", "active"]);
     expect(commercial.filter((f) => operational.includes(f))).toEqual(["active"]);
+  });
+});
+
+describe("item photos", () => {
+  const bytes = (...b: number[]) => new Uint8Array(b);
+  const JPEG = bytes(0xff, 0xd8, 0xff, 0xe0, 0, 0x10);
+  const PNG = bytes(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0);
+  const WEBP = bytes(0x52, 0x49, 0x46, 0x46, 1, 2, 3, 4, 0x57, 0x45, 0x42, 0x50, 0x56, 0x50);
+
+  it("lets the manager and the counter set a photo, and nobody else", () => {
+    expect(mayEditItemImage("manager")).toBe(true);
+    expect(mayEditItemImage("counter")).toBe(true);
+    for (const role of ["store", "buyer", "prod"] as const) expect(mayEditItemImage(role)).toBe(false);
+  });
+
+  it("knows a JPEG, a PNG and a WebP by their first bytes", () => {
+    expect(sniffImageType(JPEG)).toBe("image/jpeg");
+    expect(sniffImageType(PNG)).toBe("image/png");
+    expect(sniffImageType(WEBP)).toBe("image/webp");
+  });
+
+  it("refuses everything else, including a truncated header", () => {
+    // SVG header
+    expect(sniffImageType(bytes(0x3c, 0x73, 0x76, 0x67))).toBeNull(); // "<svg"
+    // GIF header
+    expect(sniffImageType(bytes(0x47, 0x49, 0x46, 0x38, 0x39, 0x61))).toBeNull(); // "GIF89a"
+    expect(sniffImageType(bytes())).toBeNull();
+    expect(sniffImageType(bytes(0xff, 0xd8))).toBeNull();
+    expect(sniffImageType(bytes(0x52, 0x49, 0x46, 0x46, 1, 2, 3, 4, 0x41, 0x56, 0x49, 0x20))).toBeNull(); // RIFF AVI
+  });
+
+  it("checks size before type and answers in the operator's words", () => {
+    expect(checkPhoto(JPEG)).toEqual({ ok: true, type: "image/jpeg" });
+    expect(checkPhoto(bytes(1, 2, 3))).toEqual({ ok: false, refusal: "That file is not a JPEG, PNG or WebP photo" });
+    expect(IMAGE_NOT_PHOTO).toBe("That file is not a JPEG, PNG or WebP photo");
+    const big = new Uint8Array(IMAGE_MAX_BYTES + 1); big.set(JPEG);
+    expect(checkPhoto(big)).toEqual({ ok: false, refusal: "The photo is 701 KB - the limit is 700 KB" });
+    const edge = new Uint8Array(IMAGE_MAX_BYTES); edge.set(JPEG);
+    expect(checkPhoto(edge).ok).toBe(true);
+  });
+
+  it("names the item in each refusal", () => {
+    expect(imageRetiredMessage("Veg sandwich")).toBe("Veg sandwich is retired, so it takes no photo");
+    expect(imageOffMenuMessage("Veg sandwich", "Coffee Shop")).toBe("Veg sandwich is not on the Coffee Shop menu - its photo is the manager's to set");
+    expect(imageNoneMessage("Veg sandwich")).toBe("Veg sandwich has no photo to remove");
   });
 });
