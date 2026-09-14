@@ -1,23 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useApp } from "../store";
-import { IT, LOC, PL, RCP, USERS, homeLabel } from "../data/master";
+import { IT, LOC, PL, USERS, homeLabel } from "../data/master";
 import {
   cashCollected, costOf, inTransit, isCashTender,
-  onOrder, parOf, qty, recipeCost, resv,
+  onOrder, parOf, qty, resv,
 } from "../lib/selectors";
 import { fq, fromWireBestBefore, unitTotal } from "../lib/fmt";
 import { seedPrq, seedTkt } from "@rch/contract/fixtures";
 import { resetStore, S } from "./fixture";
 
 beforeEach(resetStore);
-
-/* ---------------------------------------------------------------- C1
- * C1 · production consumes its ingredients. The server's since Phase 4:
- * apps/api/src/modules/production/production.test.ts pins all three halves - "consumes the
- * recipe for what was started and books only what came good (C1, UA-14)" for the depletion,
- * "names the ingredient that ran out, and moves nothing (C1)" for the refusal, and the batch
- * row's `qty`/`made` in the same first case. The store call that reaches that route is in
- * writes.test.ts, "sends what was started and what came good". */
 
 /* ---------------------------------------------------------------- C2
  * C2 · kitchen tickets move like store tickets. Both halves are the server's since Phase 3:
@@ -62,17 +54,11 @@ describe("C5 · open tickets from seed reserve their stock", () => {
  * still one shared `freeToPromise` in packages/domain. */
 
 /* ---------------------------------------------------------------- H1 */
-describe("H1 · made items cost what their recipe costs", () => {
-  it("computes cappuccino from its ingredients plus overhead", () => {
-    const r = RCP.capp;
-    const raw = r.l.reduce((t, [g, q]) => t + q * IT[g].cost, 0);
-    expect(recipeCost("capp")).toBeCloseTo(raw * (1 + r.ov / 100), 2);
-    expect(recipeCost("capp")).toBeGreaterThan(0);
-  });
-
-  it("uses the recipe cost for a made item and the item cost otherwise", () => {
-    expect(costOf("capp")).toBeCloseTo(recipeCost("capp"), 4);
-    expect(costOf("juice")).toBe(IT.juice.cost);
+describe("H1 · a made item carries a real cost, never zero", () => {
+  it("reads every item's standard cost off the master, made or bought", () => {
+    expect(costOf("capp")).toBe(18.3);
+    expect(costOf("juice")).toBe(14.2);
+    expect(costOf("ghost")).toBe(0);
   });
 });
 
@@ -225,10 +211,9 @@ describe("M4 · quantities are not summed across units", () => {
 });
 
 /* ------------------------------------------------- UA-14 · yield capture
- * The server's since Phase 4: production.test.ts's "consumes the recipe for what was started
- * and books only what came good (C1, UA-14)", "treats an omitted yield as a full one", "takes
- * a whole tray lost: the ingredients go, nothing reaches the rack" and "refuses a yield
- * greater than the quantity started, and writes nothing at all". */
+ * The server's since Phase 4: production.test.ts pins the batch that books only what came good,
+ * the omitted yield read as a full one, the whole tray lost, and the yield greater than the
+ * quantity started that writes nothing at all. */
 
 /* ------------------------------------------- fq · countable but fractional */
 describe("countable units still show a fraction when there is one", () => {
@@ -238,7 +223,7 @@ describe("countable units still show a fraction when there is one", () => {
   });
 
   it("does not round a fractional count away to zero", () => {
-    // A sandwich takes a tenth of a loaf; "0 nos Bread loaf" is not a recipe.
+    // A tenth of a loaf must not print as "0 nos Bread loaf".
     expect(fq(0.1, "bread")).toBe("0.100");
     expect(fq(0.035, "maida")).toBe("0.035");
   });

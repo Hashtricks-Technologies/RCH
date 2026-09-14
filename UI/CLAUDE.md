@@ -46,12 +46,12 @@ the suite, on purpose.
   document's id **and the last entry of its trail**. `manager/ApprovalDrawer.tsx`'s `bodyKey` is the example.
 
 Components shared by two or more roles live in `src/ui/`, because role folders don't import each other. That
-includes `TicketSlip`, `NewProductForm`, `AdjustmentForm`, `KitchenOrderForm` and `RecipeBook`.
+includes `TicketSlip`, `NewProductForm`, `AdjustmentForm` and `KitchenOrderForm`.
 
 ## The store is an API client
 
 `src/store/index.ts` holds the state and most actions. The other slices (`procurement.ts`, `ops.ts`,
-`recipes.ts`, `admin.ts`) are merged into the same `create()` and share one `AppState`. Components subscribe
+`admin.ts`) are merged into the same `create()` and share one `AppState`. Components subscribe
 narrowly, for example `useApp((s) => s.req)`.
 
 Every write action has this shape:
@@ -125,7 +125,7 @@ a background refresh and must not blank the screen.
 ## Master data and derived state
 
 - **Master data lives in shared registries.** `src/data/master.ts` exports mutable registries (`IT`, `LOC`,
-  `RCP`, `PL`, `MENU`, `USERS`, and the payer lists). They are empty at import, and `hydrateMaster()` /
+  `PL`, `MENU`, `USERS`, and the payer lists). They are empty at import, and `hydrateMaster()` /
   `hydrateRoster()` **fill them in place**, so assign into them and never reassign them. Anything that changes
   them bumps `catalogVersion`, which screens use as a memo key.
 - **`IT` includes retired items**, because old documents still name them. Pickers must read `activeItems()`,

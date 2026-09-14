@@ -22,8 +22,6 @@ import reports from "./reports/routes.js";
 import adjustments from "./adjustments/routes.js";
 // ---- admin account management
 import admin from "./admin/routes.js";
-// ---- recipes
-import recipes from "./recipes/routes.js";
 
 /** Every module, registered in one place. Adding a module = one import + one line here. */
 export async function registerModules(app: App): Promise<void> {
@@ -50,6 +48,4 @@ export async function registerModules(app: App): Promise<void> {
   await app.register(adjustments);
   // ---- admin account management
   await app.register(admin);
-  // ---- recipes
-  await app.register(recipes);
 }

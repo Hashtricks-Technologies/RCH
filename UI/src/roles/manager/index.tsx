@@ -16,11 +16,8 @@ import "../counter/BillDrawer";
 import "../../ui/AdjustmentForm";
 // ---- prod-order raise ----
 import "./KitchenOrderDrawer";
-// ---- recipes: the kitchen's screen too, so it lives in ui/ rather than under either role.
-import RecipeBook from "../../ui/RecipeBook";
 
 export const screens: Record<string, ComponentType> = {
   dash: Dashboard, approvals: Approvals, stock: ItemsStock, prices: Prices, avail: Availability,
   bills: Bills,
-  recipes: RecipeBook,
 };

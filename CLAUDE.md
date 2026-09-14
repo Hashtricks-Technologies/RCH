@@ -201,13 +201,14 @@ The code enforces these and tests pin them. Breaking one is a bug.
 - **Staff credit is capped at ₹3,000 per person per calendar month**, counted hospital-wide in Asia/Kolkata
   time and enforced inside the sale's own transaction.
 - **Nothing is created or destroyed without a document.**
-  - A batch consumes its recipe's ingredients and books the yield in one `postMoves` call.
+  - A batch books what the kitchen made onto its rack. It draws nothing down; kitchen raw stock is cleared
+    with an `ADJ-` document.
   - A write-off or a stock count is an `ADJ-` document with a reason, and it may not take stock a ticket is
     holding.
   - A goods receipt posts accepted goods to the central store and rejected goods to `quarantine`.
     `quarantine` is a location where stock is recorded; no operator can act there.
-- **Made-to-order (MTO) items are assembled at the counter.** Selling one deducts its recipe from stock. MTO
-  items are never batched, distributed, or ordered from the kitchen.
+- **Made-to-order (MTO) items are made at the counter and hold no stock.** Selling one moves no stock, and
+  only the manual switch turns one off. MTO items are never batched, distributed, or ordered from the kitchen.
 - **A bill is voided only on the IST day it was billed, and only by the manager.** The void posts reversal
   moves, frees the credit room it used, and badges the bill rather than erasing it.
 - **Items are retired, never deleted**, and not while any stock or menu listing remains. **Payers are

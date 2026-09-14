@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react";
-import { ALL_LOCS, IT, LOC, RCP } from "../../data/master";
+import { ALL_LOCS, IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
 import {
-  avail, canHandOver, hasLeft, isTicketOpen, madeItems, menuOf, qty, recipeCost,
+  avail, canHandOver, costOf, hasLeft, isTicketOpen, madeItems, menuOf, qty,
 } from "../../lib/selectors";
 import { fq, isToday, money, sum, U } from "../../lib/fmt";
 import {
@@ -27,7 +27,7 @@ export default function MakeDistribute() {
   const { batch, tkt, ovr } = s;
 
   // What the kitchen can make is read off the master, not written down here: a fourth finished
-  // good with a recipe used to be invisible on this screen until somebody edited a literal in
+  // good used to be invisible on this screen until somebody edited a literal in
   // three files. `IT` is replaced in place by `hydrateItems`, so the list is pinned to
   // `catalogVersion` - the signal that tells React the catalogue moved.
   const PRODS = useMemo(() => { void s.catalogVersion; return madeItems(); }, [s.catalogVersion]);
@@ -65,12 +65,6 @@ export default function MakeDistribute() {
    *  holding a key nothing answers to. */
   const dSel = PRODS.includes(dItem) ? dItem : PRODS[0] ?? "";
 
-  /** How many units the ingredients on the kitchen rack still allow. */
-  const ceiling = (k: string) => {
-    const r = RCP[k];
-    if (!r) return 0;
-    return Math.floor(Math.min(...r.l.map(([g, need]) => avail(s, "kitchen", g) / need)));
-  };
   const listedAt = (l: LocKey, it: string) => LOC[l].type !== "Outlet" || menuOf(s, l).includes(it);
 
   // The quantity, the yield and the reason stay in the boxes until the batch is on the server.
@@ -146,13 +140,11 @@ export default function MakeDistribute() {
           <div className="tilegrid">
             {PRODS.map((k) => {
               const item = IT[k];
-              const recipe = RCP[k];
-              // Both are guaranteed by `madeItems()` - it reads the master itself - but the
-              // master is replaced in place under a render, so a tile that cannot describe
-              // itself is left out rather than taking the screen down.
-              if (!item || !recipe) return null;
+              // Guaranteed by `madeItems()` - it reads the master itself - but the master is
+              // replaced in place under a render, so a tile that cannot describe itself is left
+              // out rather than taking the screen down.
+              if (!item) return null;
               const off = Boolean(ovr["kitchen:" + k]);
-              const max = ceiling(k);
               const want = Number(mk[k]) || 0;
               const got = yld[k] === "" || yld[k] == null ? null : Number(yld[k]);
               // A variance is a fraction of what was started, so it means nothing until
@@ -161,13 +153,10 @@ export default function MakeDistribute() {
               return (
                 <div className="tile" key={k}>
                   <b style={{ fontSize: 12.5 }}>{item.n}</b>
-                  <span className="mini">{U(k)} · shelf life {item.sl ?? 0} h · {money(recipeCost(k))} a unit</span>
-                  <span className="mini">In kitchen <b>{fq(qty(s, "kitchen", k), k)}</b> · ingredients allow <b>{max}</b></span>
-                  <span className="hint">
-                    One unit takes {recipe.l.map(([g, n]) => `${fq(n, g)} ${U(g)} ${IT[g]?.n ?? g}`).join(" · ")}
-                  </span>
+                  <span className="mini">{U(k)} · shelf life {item.sl ?? 0} h · {money(costOf(k))} a unit</span>
+                  <span className="mini">In kitchen <b>{fq(qty(s, "kitchen", k), k)}</b></span>
                   <div style={{ marginTop: 4 }}>
-                    <Field label="Started" hint={want > max ? <>Only {max} possible with what is on the rack</> : undefined}>
+                    <Field label="Started">
                       <input
                         type="number" min={0} step={1} inputMode="numeric" placeholder="0"
                         aria-label={`Quantity of ${item.n} to start`}
@@ -201,9 +190,9 @@ export default function MakeDistribute() {
                   {/* A make with nothing started posts `started: 0` and books a batch of
                       nothing, which the kitchen then has to explain. The button says so. */}
                   <Btn size="sm" wide
-                    disabled={off || max <= 0 || want <= 0 || (got != null && got > want) || Boolean(making[k])}
+                    disabled={off || want <= 0 || (got != null && got > want) || Boolean(making[k])}
                     onClick={() => make(k)}>
-                    {making[k] ? "Making…" : off ? "Switched off" : max <= 0 ? "No ingredients"
+                    {making[k] ? "Making…" : off ? "Switched off"
                       : want <= 0 ? "Enter a quantity"
                         : got != null && got > want ? "Yield exceeds started" : "Make"}
                   </Btn>
@@ -213,9 +202,7 @@ export default function MakeDistribute() {
           </div>
           <div className="mtop">
             <Alert tone="i" label="BATCH">
-              Every make draws its recipe out of the kitchen's own raw materials and books the finished units
-              onto the rack with a best-before stamped from the shelf life. A make is refused when an
-              ingredient is short.
+              Every make books the finished units onto the rack with a best-before stamped from the shelf life.
             </Alert>
           </div>
         </Card>

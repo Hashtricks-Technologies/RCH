@@ -1,7 +1,7 @@
-import type { Item, Location, Recipe } from "@rch/contract";
+import type { Item, Location } from "@rch/contract";
 
 /** The master data every rule in this file is parameterised by - no registry reads. */
-export type Master = { items: Record<string, Item>; locations: Record<string, Location>; recipes: Record<string, Recipe> };
+export type Master = { items: Record<string, Item>; locations: Record<string, Location> };
 /** Stock on hand: location -> item -> quantity. */
 export type StockMap = Record<string, Record<string, number>>;
 /** Reserved quantity, keyed "loc:item". */

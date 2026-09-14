@@ -46,7 +46,6 @@ export const UserSchema = z.object({
 export const UserMinSchema = z.strictObject({
   id: z.string(), n: z.string(), r: RoleSchema, rl: z.string(), loc: LocKeySchema, col: z.string(),
 });
-export const RecipeSchema = z.object({ ov: z.number(), l: z.array(z.tuple([z.string(), Qty])) });
 export const ReqLineSchema = z.object({ it: z.string(), qty: Qty, appr: Qty, short: Qty.optional() });
 export const HistEntrySchema = z.object({ s: z.string(), who: z.string(), t: IsoTime });
 export const StockRequestSchema = z.object({
@@ -109,7 +108,7 @@ export const BillSchema = z.object({
   voided: z.boolean().optional(), voidReason: z.string().optional(),
 });
 export const DraftLineSchema = z.object({ it: z.string(), qty: Qty });
-export const AvailabilitySchema = z.object({ ok: z.boolean(), mode: z.enum(["Manual", "Recipe", "Stock"]), why: z.string().optional(), left: z.string().optional() });
+export const AvailabilitySchema = z.object({ ok: z.boolean(), mode: z.enum(["Manual", "Stock"]), why: z.string().optional(), left: z.string().optional() });
 export const PriceSchema = z.object({ p: Money, listed: Money, capped: z.boolean() });
 export const DrawerStateSchema = z.object({ t: z.string(), id: z.string() });
 export const VendorSchema = z.object({

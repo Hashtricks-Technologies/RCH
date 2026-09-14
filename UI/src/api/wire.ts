@@ -1,7 +1,7 @@
 import type { z } from "zod";
 import { StockLocSchema } from "@rch/contract";
 import type { SnapshotSchema, StockResponseSchema } from "@rch/contract";
-import { hydrateItems, hydrateMaster, hydrateMenus, hydratePrices, hydrateRecipes, hydrateRoster } from "../data/master";
+import { hydrateItems, hydrateMaster, hydrateMenus, hydratePrices, hydrateRoster } from "../data/master";
 import { fromWireBestBefore, fromWireDate, fromWireTime } from "../lib/fmt";
 import { useApp } from "../store";
 import { basePrices } from "../lib/selectors";
@@ -49,7 +49,7 @@ const stockOf = (s: Snapshot["stock"]): Record<StockLoc, Record<string, number>>
 
 /** Server shape -> the store's shape. Times become "HH:MM", dates "DD-MMM-YYYY"; nothing else changes. */
 export function applySnapshot(s: Snapshot): void {
-  hydrateMaster({ items: s.items, locations: s.locations, recipes: s.recipes, prices: s.prices, menu: s.menu, users: s.users });
+  hydrateMaster({ items: s.items, locations: s.locations, prices: s.prices, menu: s.menu, users: s.users });
   // Who a bill may be charged to comes off the `payers` table the till has been checked
   // against since Phase 3, so a patient admitted this morning is billable without a release.
   hydrateRoster(s.roster);
@@ -180,14 +180,6 @@ export function applyPrices(prices: Snapshot["prices"]): void {
 export function applyMenus(menu: Snapshot["menu"]): void {
   hydrateMenus(menu);
   useApp.setState((s) => ({ menu, catalogVersion: s.catalogVersion + 1 }));
-}
-
-/** GET /recipes -> the recipe book. `RCP` is a module-level registry like the catalogue, so a
- *  saved recipe reaches the kitchen's makeable list, the till's availability and every cost
- *  column through the same `catalogVersion` bump. */
-export function applyRecipes(recipes: Snapshot["recipes"]): void {
-  hydrateRecipes(recipes);
-  useApp.setState((s) => ({ catalogVersion: s.catalogVersion + 1 }));
 }
 
 // ---- payers ----

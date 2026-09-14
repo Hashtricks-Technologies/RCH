@@ -1,4 +1,4 @@
-import type { Item, Location, Recipe, StockLoc, User, Payer } from "../types.js";
+import type { Item, Location, StockLoc, User, Payer } from "../types.js";
 
 export const LOC: Record<StockLoc, Location> = {
   store:   { n: "Central Store",   c: "WH-CS", type: "Store",   floor: "Basement", cc: "CC-STO" },
@@ -33,15 +33,8 @@ export const IT: Record<string, Item> = {
   puff:   { c: "FG-4001", n: "Veg puffs",             u: "nos", t: "FG",     g: "Bakery",    hsn: "2106", gst: 5,  rl: 0,   cost: 17.8, sl: 12 },
   sand:   { c: "FG-4002", n: "Veg sandwich",          u: "nos", t: "FG",     g: "Bakery",    hsn: "2106", gst: 5,  rl: 0,   cost: 28.4, sl: 8 },
   salad:  { c: "FG-4003", n: "Garden salad",          u: "nos", t: "FG",     g: "Prepared",  hsn: "2106", gst: 5,  rl: 0,   cost: 32.5, sl: 6 },
-  capp:   { c: "MT-5001", n: "Cappuccino",            u: "nos", t: "MTO",    g: "Beverage",  hsn: "2106", gst: 5,  rl: 0,   cost: 0 },
-  chai:   { c: "MT-5002", n: "Masala tea",            u: "nos", t: "MTO",    g: "Beverage",  hsn: "2106", gst: 5,  rl: 0,   cost: 0 },
-};
-export const RCP: Record<string, Recipe> = {
-  capp: { ov: 12, l: [["milk", 0.15], ["beans", 0.012], ["sugar", 0.006], ["cup", 1]] },
-  chai: { ov: 12, l: [["milk", 0.10], ["leaf", 0.008], ["sugar", 0.008], ["cup", 1]] },
-  puff: { ov: 15, l: [["maida", 0.035], ["fill", 0.030], ["oil", 0.008], ["box", 1]] },
-  sand: { ov: 15, l: [["bread", 0.10], ["butter", 0.008], ["fill", 0.040], ["box", 1]] },
-  salad: { ov: 15, l: [["fill", 0.060], ["oil", 0.005], ["box", 1]] },
+  capp:   { c: "MT-5001", n: "Cappuccino",            u: "nos", t: "MTO",    g: "Beverage",  hsn: "2106", gst: 5,  rl: 0,   cost: 18.3 },
+  chai:   { c: "MT-5002", n: "Masala tea",            u: "nos", t: "MTO",    g: "Beverage",  hsn: "2106", gst: 5,  rl: 0,   cost: 10.7 },
 };
 export const PL: Record<"A" | "B", Record<string, number>> = {
   A: { capp: 60, chai: 20, puff: 25, sand: 45, salad: 55, juice: 18, water: 18, bisc: 28, chips: 18 },

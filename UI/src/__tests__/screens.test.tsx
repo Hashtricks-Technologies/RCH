@@ -199,10 +199,10 @@ describe("drawers render", () => {
     expect(html).not.toContain("Reactivate");
   });
 
-  // Not a row in `cases` above: id "milk" opens Configure for an ingredient that is
+  // Not a row in `cases` above: id "milk" opens Configure for a raw material that is
   // not on the Coffee Shop's own menu, which shares the "cconfig" key with "juice"
   // (a sellable product) and would collide on the shared loop's test title.
-  it("cconfig shows a note instead of a switch for a non-sellable ingredient", () => {
+  it("cconfig shows a note instead of a switch for a raw material it does not sell", () => {
     act(() => { as("counter"); });
     const notSellable = render(createElement(DRAWERS.cconfig, { id: "milk" }));
     const sellable = render(createElement(DRAWERS.cconfig, { id: "juice" }));
@@ -632,8 +632,8 @@ describe("a retired product stops generating work", () => {
   });
 
   it("comes off the kitchen's makeable list", () => {
-    // `madeItems()` is "every FG with a recipe", read by all three kitchen screens. A retired
-    // one still has both, so it kept its Make tile - and `POST /batches` reads `loadItems`,
+    // `madeItems()` is "every FG on the master", read by all three kitchen screens. A retired
+    // one is still on it, so it kept its Make tile - and `POST /batches` reads `loadItems`,
     // which does filter `active`, so the tile could only ever answer "There is no item puff."
     expect(madeItems()).toContain("puff");
     retire("puff");

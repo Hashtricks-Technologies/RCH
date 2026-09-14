@@ -1,4 +1,4 @@
-import type { Item, Location, Payer, PayerRoster, Recipe, UserMin } from "../types";
+import type { Item, Location, Payer, PayerRoster, UserMin } from "../types";
 
 // `STAFF_CREDIT_LIMIT` is deliberately not among these any more: the till reads the ceiling off
 // `GET /reports/credit/:kind/:id` (`credit.limit`), because the number that matters is the one
@@ -14,7 +14,6 @@ export { ALL_LOCS, OUTLETS, PO_APPROVAL_LIMIT } from "@rch/contract";
 // The demo hospital lives in `@rch/contract/fixtures` and is imported by tests alone.
 export const LOC: Record<string, Location> = {};
 export const IT: Record<string, Item> = {};
-export const RCP: Record<string, Recipe> = {};
 export const PL: { A: Record<string, number>; B: Record<string, number> } = { A: {}, B: {} };
 export const MENU: Record<string, string[]> = {};
 /** The directory the server sends: a name badge each. Nobody's contact details but your own
@@ -38,7 +37,6 @@ export function hydrateRoster(r: PayerRoster): void {
 export type MasterData = {
   items: Record<string, Item>;
   locations: Record<string, Location>;
-  recipes: Record<string, Recipe>;
   prices: { A: Record<string, number>; B: Record<string, number> };
   menu: Record<string, string[]>;
   users: UserMin[];
@@ -64,14 +62,10 @@ export function hydratePrices(prices: MasterData["prices"]): void {
 /** Just the menus, for a write that listed or delisted a product (`changed: ["menu"]`). */
 export function hydrateMenus(menu: MasterData["menu"]): void { replaceKeys(MENU, menu); }
 
-/** Just the recipes, for a write that saved one (`PUT /recipes/:it` names "recipes"). */
-export function hydrateRecipes(recipes: MasterData["recipes"]): void { replaceKeys(RCP, recipes); }
-
 /** Replace every registry's contents with the server's master data (`applySnapshot` calls this). */
 export function hydrateMaster(m: MasterData): void {
   replaceKeys(IT, m.items);
   replaceKeys(LOC, m.locations);
-  replaceKeys(RCP, m.recipes);
   hydratePrices(m.prices);
   hydrateMenus(m.menu);
   USERS.splice(0, USERS.length, ...m.users);

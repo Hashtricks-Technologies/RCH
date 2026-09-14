@@ -16,8 +16,8 @@ Coffee Shop, Snack Kiosk). Two kinds of product move through them:
 | **Made in-house** | Puffs, sandwiches, salad, cappuccino, tea | The hospital sets the price; a costed, approved price list supplies the discipline |
 
 Stock is held per location, and every quantity in the system is the sum of an append-only ledger
-of stock movements - nothing is created or destroyed without a document. A sale deducts from that
-counter: a traded item by the unit, a made-to-order drink by its recipe.
+of stock movements - nothing is created or destroyed without a document. A sale deducts a stocked
+item from that counter by the unit; a made-to-order drink is made at the counter and moves no stock.
 
 Five roles each get their own dashboard, screens and permissions. A module a role cannot use is
 absent from its sidebar and refused on a direct link, with a message saying why.
@@ -45,7 +45,7 @@ transfer, one shop asking a peer directly for stock it is holding, and the kitch
 production order or a tray out the door.
 
 **Against a real server today:** walk a kitchen order across the board (accepted → in kitchen →
-ready), make a batch that draws its recipe out of the kitchen and stamps a best-before, dispatch
+ready), make a batch that books the finished units onto the kitchen's rack with a best-before, dispatch
 it, hand it over on an OTP and receive it at the counter - with a second browser watching every
 step happen live - and cancel a ticket nobody came for, which puts the stock and the document
 behind it (the request or the production order) back where they stood. And now the whole of
@@ -90,7 +90,7 @@ Browser (React 19, Vite) ──HTTPS──▶ API (Fastify 5, Node 24) ──▶
   manifest. The manifest drives both the server's route registration and the browser's single
   generic API client, so the two cannot drift.
 - **`packages/domain`** - the business rules as pure functions (the MRP cap, free-to-promise,
-  availability, bill planning, costing, the status transition tables). Written once: the server
+  availability, bill planning, the status transition tables). Written once: the server
   enforces them, the browser only previews with them while the operator types.
 - **`apps/api`** - Fastify 5 + Drizzle. Owns the ledger, the document numbers, the reservations
   and the change stream. Writes are transactional and idempotent: each carries an
@@ -245,7 +245,7 @@ work onto the server and deleted its in-browser path, so nothing ever ran in two
 | 1 · Foundation | The monorepo, the contract and domain packages, the API skeleton, the database schema and seed, real sign-in, and `GET /snapshot` - the browser stops inventing its own data | Sign in and see the seeded data, `helm upgrade` runs migrations, `/readyz` green, a real `helm install` against a throwaway kind cluster in CI |
 | 2 · Ledger + POS | The movement ledger and balances; counter billing, availability toggles, price lists and menus decided server-side | Sell against the server, balances move, `db:rebuild-balances` matches, the MRP cap refuses and caps, payer rules enforced |
 | 3 · Movement chain | The whole request chain, pick tickets with OTP handover, shop transfers and shop asks, the kitchen's two ticket-raising writes, and the live-update stream | The full request chain across two browsers with live updates and no reload; free-to-promise trims what a manager over-approves; a handover releases the reservation it authorised |
-| 4 · Production | The kitchen's board and its statuses, batches that consume a recipe and yield finished stock, and a ticket nobody collected can now be cancelled | A make consumes ingredients and yields stock in one transaction; a short dispatch is all-or-nothing; a cancelled ticket returns its stock and its document to where they stood |
+| 4 · Production | The kitchen's board and its statuses, batches that yield finished stock, and a ticket nobody collected can now be cancelled | A make yields stock in one transaction; a short dispatch is all-or-nothing; a cancelled ticket returns its stock and its document to where they stood |
 | 5 · Procurement | Vendors, rate contracts, requisitions, the purchase-order lifecycle, goods receipt with tolerance and quarantine, new products | A full requisition → PO → GRN → shelf run; the 2% tolerance and the expiry rules both refuse correctly; a cancelled or short-closed order gives its claim back to the requisition |
 | 6 · Ops and go-live | The support desk, the two server-side reports, the ticket's audit trail and its withheld OTP, the load check, the chart's alerts, and the go-live checklist | The production-readiness checklist verified against a local stack and the kind cluster CI installs - six items marked **when promoted**, because they need a production cluster that does not exist yet |
 

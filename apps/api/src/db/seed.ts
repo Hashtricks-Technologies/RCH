@@ -74,7 +74,7 @@ export function grnPoLineNo(po: { lines: { it: string }[] } | undefined, g: { id
 /**
  * `bare` is the hospital with nothing in it - the shape a real deployment starts from (`deploy.sh`
  * passes `--bare`). It writes the six locations, the document numbering and the one admin account,
- * and none of the demo hospital: no items, recipes, prices, menus, stock, payers, vendors,
+ * and none of the demo hospital: no items, prices, menus, stock, payers, vendors,
  * documents or demo staff. The locations are not demo data - `LocKey` is a closed union the whole
  * codebase is written against, so the store, the kitchen, the three outlets and quarantine exist
  * in every deployment - and the admin account is what lets somebody sign in and create the real
@@ -128,7 +128,7 @@ async function seedLocations(tx: Tx) {
 
 /**
  * Every document band - requests, tickets, procurement, production, bills, ops - and nothing
- * above it. The master half (items, locations, recipes, menus, price lists, users, payers) is
+ * above it. The master half (items, locations, menus, price lists, users, payers) is
  * invariant across a suite, so a test file can seed it once and reset only this between cases.
  * `seedDatabase` calls it too, in place of the six calls it used to make in a row, so the full
  * seed and a per-case reset cannot drift into two different hospitals.
@@ -158,8 +158,6 @@ async function seedMaster(tx: Tx, passwordHash: string, mustChange: boolean) {
   await tx.insert(s.items).values(Object.entries(FX.IT).map(([key, i]) => ({
     key, code: i.c, name: i.n, unit: i.u, type: i.t, grp: i.g, hsn: i.hsn, gst: i.gst, reorderLevel: i.rl, cost: i.cost, mrp: i.mrp ?? null, shelfLifeHours: i.sl ?? null,
   })));
-  await tx.insert(s.recipes).values(Object.entries(FX.RCP).map(([itemKey, r]) => ({ itemKey, overheadPct: r.ov })));
-  await tx.insert(s.recipeLines).values(Object.entries(FX.RCP).flatMap(([itemKey, r]) => r.l.map(([ingredientKey, qty], seq) => ({ itemKey, ingredientKey, qty, seq }))));
   await tx.insert(s.locationItems).values(Object.entries(FX.MENU).flatMap(([loc, keys]) => keys.map((itemKey, seq) => ({ loc, itemKey, seq }))));
   await tx.insert(s.priceListItems).values((["A", "B"] as const).flatMap((list) => Object.entries(FX.PL[list]).map(([itemKey, price]) => ({ list, itemKey, price }))));
   await tx.insert(s.users).values(FX.USERS.map((u) => userRow(u, passwordHash, mustChange)));
@@ -207,7 +205,7 @@ async function seedRequestsAndTickets(tx: Tx, shiftMs: number) {
 }
 
 async function seedProcurement(tx: Tx, shiftMs: number) {
-  // Unlike the other master rosters (items, locations, recipes, menus, price lists, users,
+  // Unlike the other master rosters (items, locations, menus, price lists, users,
   // payers), vendors sit with the documents: `purchaseorders.test.ts` and its neighbours build
   // fresh vendors by name inside a case (`given.vendor`) and expect the roster clean again next
   // case, so a `resetDocuments` reset truncates `vendors` and this is what repopulates it.

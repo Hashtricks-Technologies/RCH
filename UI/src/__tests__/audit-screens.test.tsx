@@ -4,7 +4,7 @@ import { createRoot } from "react-dom/client";
 import { MemoryRouter } from "react-router-dom";
 import * as FX from "@rch/contract/fixtures";
 import { setAccessToken } from "../api/session";
-import { hydrateMaster, IT, RCP } from "../data/master";
+import { hydrateMaster, IT } from "../data/master";
 import {
   inTransit, inTransitIndex, madeItems, onOrder, onOrderIndex,
 } from "../lib/selectors";
@@ -110,14 +110,13 @@ describe("a catalogue key nothing answers to", () => {
 });
 
 describe("what the kitchen can make", () => {
-  it("a fourth FG with a recipe appears on the Make tiles", () => {
+  it("a fourth FG appears on the Make tiles", () => {
     as("prod");
     // A finished good the kitchen batches onto its own rack, added to the master the way
     // `applyItems` adds one - in place, with the catalogue signal bumped.
     hydrateMaster({
       items: { ...FX.IT, bun: { c: "FG-4004", n: "Masala bun", u: "nos", t: "FG", g: "Bakery", hsn: "2106", gst: 5, rl: 0, cost: 14, sl: 10 } },
       locations: FX.LOC,
-      recipes: { ...FX.RCP, bun: { ov: 10, l: [["maida", 0.04], ["box", 1]] } },
       prices: FX.PL, menu: FX.MENU, users: FX.USERS,
     });
     useApp.setState((s) => ({ catalogVersion: s.catalogVersion + 1 }));
@@ -128,11 +127,10 @@ describe("what the kitchen can make", () => {
     ui.unmount();
   });
 
-  it("an MTO item with a recipe (capp) does NOT", () => {
+  it("an MTO item (capp) does NOT", () => {
     as("prod");
-    // Cappuccino has a recipe and is never batched: it is assembled at the counter, cup by cup,
-    // and the kitchen holds no stock of it at all.
-    expect(RCP.capp).toBeTruthy();
+    // Cappuccino is never batched: it is made at the counter, cup by cup, and the kitchen holds
+    // no stock of it at all.
     expect(IT.capp.t).toBe("MTO");
     expect(madeItems()).not.toContain("capp");
 
@@ -266,7 +264,7 @@ describe("procurement adds a product with the store keeper's field set", () => {
     as("buyer");
     useApp.setState({ drawer: { t: "bnewitem", id: "new" } });
     const ui = mountNode(Drawer);
-    // FG is the kitchen's and MTO is assembled at the counter off a recipe; neither is bought.
+    // FG is the kitchen's and MTO is made at the counter; neither is bought.
     const types = [...byLabel<HTMLSelectElement>(ui.host, "Type").options].map((o) => o.value);
     expect(types).toEqual(["RAW", "PACK", "MRP"]);
     // The group box suggests the groups already on the master, so one is not typed two ways.

@@ -63,8 +63,6 @@ const SAMPLES: Record<string, Record<string, unknown>> = {
   // ---- admin: account management (a capability, not a role - root CLAUDE.md)
   createAdminUser: { name: "Anitha R", email: "anitha.r@royalcare.in", role: "counter", loc: "rest" },
   updateAdminUser: { role: "counter", loc: "kiosk" },
-  // ---- recipes
-  saveRecipe: { ov: 12, lines: [{ it: "milk", qty: 0.15 }, { it: "cup", qty: 1 }] },
 };
 // `routes` is a const object, so `r.body` is a union of every literal schema type; the cast
 // keeps this loop about the shared `safeParse` and not about zod's generics.

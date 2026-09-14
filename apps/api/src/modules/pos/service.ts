@@ -36,12 +36,12 @@ const NEEDS_PAYER: Partial<Record<Tender, { label: string; kind: PayerKind }>> =
  *  split is derived from the real amounts, not from a rounded one. */
 const money = (n: number): number => Math.round(n * 100) / 100;
 
-/** How many of `it` the location could sell right now: units for a traded item, whole
- *  portions for a made-to-order one, whichever ingredient runs out first. */
+/** How many of `it` the location could sell right now: the free units of a stocked item. A
+ *  made-to-order item holds no stock and moves none (`planBill`), so nothing caps it here -
+ *  only its switch, which `availOf` reads. */
 function coverOf(m: Master, stock: Record<string, Record<string, number>>, rsv: Record<string, number>, loc: string, it: string): number {
-  const recipe = m.items[it]?.t === "MTO" ? m.recipes[it] : undefined;
-  if (!recipe) return avail(stock, rsv, loc, it);
-  return Math.min(...recipe.l.map(([g, need]) => Math.floor(avail(stock, rsv, loc, g) / need)));
+  if (m.items[it]?.t === "MTO") return Number.POSITIVE_INFINITY;
+  return avail(stock, rsv, loc, it);
 }
 
 export function createPosService(db: Db) {
@@ -124,10 +124,9 @@ export function createPosService(db: Db) {
             { taken, room: creditRoom(taken) },
           );
         }
-        // What the sale will take off each shelf, folded the way postMoves folds it. The
-        // pre-check above spoke for the dish in portions; this one, keyed by what moves, names
-        // the shelf item that goes short - for a made-to-order dish that is the ingredient.
-        // Same refusal, two voices: the first is friendlier, this one is the guarantee.
+        // What the sale will take off each shelf, folded the way postMoves folds it. A
+        // made-to-order line moves nothing, so a bill of nothing else locks and reads no shelf.
+        // Same refusal as the pre-check above: that one is friendlier, this one is the guarantee.
         //
         // Phase 3 puts holds on outlet shelves too - a shop transfer or a granted shop ask keeps
         // stock at a counter without moving it - so "short" means on hand less what is held, not
@@ -168,9 +167,8 @@ export function createPosService(db: Db) {
 
         // And once more with the moves actually posted. It can never fire today - the cover
         // check above ran under these same locks and nothing can have written behind it - and it
-        // is kept for the reason `makeBatch` keeps its own: every negative-going
-        // move re-reads what it moved, and this is what would catch the next caller that reads
-        // a balance before it locks it.
+        // is kept because every negative-going move re-reads what it moved, and this is what
+        // would catch the next caller that reads a balance before it locks it.
         const settled = await posRepo.onHandAt(tx, loc, moved);
         const stillHeld = await reservedAt(tx, loc, moved);
         for (const [it, sold] of took) {
@@ -232,9 +230,9 @@ export function createPosService(db: Db) {
         const master = await loadMaster(tx);
         const locName = master.locations[bill.loc]?.n ?? bill.loc;
         // Each reversal uses its original move's own `loc` and item rather than the bill's lines,
-        // which is what makes a made-to-order bill explode back into the ingredients the sale
-        // actually took instead of a portion of a dish no shelf ever carried. A bill whose lines
-        // all rounded away moved nothing, posts nothing, and still voids.
+        // so what goes back is exactly what the sale took. A made-to-order line took nothing, and
+        // a bill with nothing else on it - or whose lines all rounded away - posts nothing and
+        // still voids.
         const reversals: Move[] = moves.map((m) => ({
           loc: m.loc, it: m.itemKey, qty: -m.qty, kind: "reversal" as const,
           refType: "bill", refId: no, by: claims.sub, at, reverses: m.id,

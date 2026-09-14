@@ -14,9 +14,8 @@ import { applyTheme, nextTheme, readStoredTheme, storeTheme, type ThemePref } fr
 import { createProcurementSlice, type ProcurementSlice } from "./procurement";
 import { createOpsSlice, type OpsSlice } from "./ops";
 import { createAdminSlice, type AdminSlice } from "./admin";
-import { createRecipesSlice, type RecipesSlice } from "./recipes";
 
-export interface AppState extends ProcurementSlice, OpsSlice, AdminSlice, RecipesSlice {
+export interface AppState extends ProcurementSlice, OpsSlice, AdminSlice {
   user: User | null;
   /** Where the session is: no token, asking for one, fetching the snapshot, usable - or signed
    *  in with nothing to show. `"failed"` is the last one: the credentials are good and the
@@ -355,7 +354,7 @@ export const useApp = create<AppState>((set, get) => ({
   clearCart: (loc) => set((s) => ({ cart: { ...s.cart, [loc]: {} } })),
 
   /**
-   * One counter sale. Pricing, the payer rule, the cover check and the recipe explosion all
+   * One counter sale. Pricing, the payer rule, the cover check and the stock moves all
    * live on the server now (POST /bills); the cart is cleared only once it has answered, so
    * a refusal leaves the operator's scan exactly as it was.
    */
@@ -569,9 +568,8 @@ export const useApp = create<AppState>((set, get) => ({
   },
   /**
    * A batch (POST /batches). Every rule that used to live here is the server's: the quantity,
-   * the yield, the kitchen's switch, the recipe, and whether the rack can cover it. The
-   * ingredients come off and the finished units go on inside one transaction there (C1), so
-   * there is nothing left to do here but ask and report.
+   * the yield and the kitchen's switch. The finished units go onto the rack inside one
+   * transaction there, so there is nothing left to do here but ask and report.
    */
   makeProduct: async (it, started, made, note) => {
     try {
@@ -680,7 +678,6 @@ export const useApp = create<AppState>((set, get) => ({
   // so it takes only the reader.
   ...createOpsSlice(get),
   ...createAdminSlice(get),
-  ...createRecipesSlice(get),
 }));
 
 // A refresh that fails is the end of the session: drop the user rather than

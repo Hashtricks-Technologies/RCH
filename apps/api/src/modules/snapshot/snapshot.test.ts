@@ -35,7 +35,7 @@ describe("GET /snapshot", () => {
     // it cannot leave the one field that says which is which off the wire.
     expect(s.items).toEqual(Object.fromEntries(Object.entries(FX.IT).map(([k, i]) => [k, { ...i, active: true }])));
     expect(s.locations).toEqual(FX.LOC);
-    expect(s.recipes).toEqual(FX.RCP);
+    expect(s).not.toHaveProperty("recipes");
     expect(s.prices).toEqual(FX.PL);
     expect(s.menu).toEqual(FX.MENU);
     expect(s.users.map((u: { id: string }) => u.id).sort()).toEqual(FX.USERS.map((u) => u.id).sort());
@@ -424,15 +424,11 @@ describe("one request, one connection", () => {
 
   it("does the same for every standalone read that fans out", async () => {
     // Each of these used to be its own `Promise.all`: /stock is three readers, /tickets three
-    // queries, /bills two plus a follow-up, /requisitions four. `/recipes` belongs to the
-    // `master` module rather than this one and reads heads and lines separately - it is the last
-    // multi-query read in the API that was still taking two connections, so it is pinned here
-    // beside the rest rather than left as the exception to the guide's own sentence.
+    // queries, /bills two plus a follow-up, /requisitions four.
     expect(await acquiresDuring("/api/v1/stock", "u3")).toBe(1);
     expect(await acquiresDuring("/api/v1/tickets", "u3")).toBe(1);
     expect(await acquiresDuring("/api/v1/bills?days=7", "u2")).toBe(1);
     expect(await acquiresDuring("/api/v1/requisitions", "u5")).toBe(1);
-    expect(await acquiresDuring("/api/v1/recipes", "u2")).toBe(1);
   });
 
   it("still asks for one connection each when three snapshots run at once", async () => {

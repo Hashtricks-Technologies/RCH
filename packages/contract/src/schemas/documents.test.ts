@@ -8,7 +8,7 @@ const all = <T>(schema: { safeParse(v: unknown): { success: boolean; error?: unk
 describe("fixtures satisfy the document schemas", () => {
   it("master", () => {
     all(D.ItemSchema, Object.values(FX.IT), "item"); all(D.LocationSchema, Object.values(FX.LOC), "location");
-    all(D.UserSchema, FX.USERS, "user"); all(D.RecipeSchema, Object.values(FX.RCP), "recipe"); all(D.VendorSchema, FX.seedVendors, "vendor");
+    all(D.UserSchema, FX.USERS, "user"); all(D.VendorSchema, FX.seedVendors, "vendor");
   });
   it("documents", () => {
     all(D.StockRequestSchema, FX.seedReq, "req"); all(D.TicketSchema, FX.seedTkt, "tkt"); all(D.RequisitionSchema, FX.seedPrq, "prq");

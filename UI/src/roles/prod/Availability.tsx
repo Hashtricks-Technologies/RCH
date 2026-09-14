@@ -84,7 +84,7 @@ export default function Availability() {
                 <Tag kind="md">{IT[k]?.t ?? "-"}</Tag>,
                 <b>{fq(qty(s, "kitchen", k), k)}</b>,
                 a.ok
-                  ? <Pill tone="ok">On · {a.left}</Pill>
+                  ? <Pill tone="ok">On{a.left ? ` · ${a.left}` : ""}</Pill>
                   : <Pill tone={a.mode === "Manual" ? "cr" : "wn"}>Off · {a.why}</Pill>,
                 !carries.length
                   ? <span className="dim mini">Not listed at any outlet</span>

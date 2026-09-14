@@ -64,7 +64,7 @@ const BILL = {
 /** A whole snapshot, built from the same fixtures the registries already hold, so the
  *  `hydrateMaster` inside `applySnapshot` restores exactly what was there. */
 const snapshot = (prices: { A: Record<string, number>; B: Record<string, number> } = FX.PL) => ({
-  user: FX.USERS.find((u) => u.r === "manager"), items: FX.IT, locations: FX.LOC, recipes: FX.RCP,
+  user: FX.USERS.find((u) => u.r === "manager"), items: FX.IT, locations: FX.LOC,
   users: FX.USERS, roster: { patients: FX.PATIENTS, staff: FX.STAFF, depts: FX.DEPTS },
   stock: {}, rsv: {}, ovr: {}, prices, menu: FX.MENU,
   req: [], tkt: [], prq: [], po: [], pord: [], batch: [], bills: [], grn: [], vendors: [],
@@ -473,7 +473,7 @@ describe("loadSnapshot - the splash is for the first boot only", () => {
     as("manager");
     // No item master, no locations: every screen would read an empty registry and throw, so
     // there is genuinely nothing to hold on to while the snapshot is on its way.
-    hydrateMaster({ items: {}, locations: {}, recipes: {}, prices: { A: {}, B: {} }, menu: {}, users: [] });
+    hydrateMaster({ items: {}, locations: {}, prices: { A: {}, B: {} }, menu: {}, users: [] });
     serve({ "GET /api/v1/snapshot": () => json(snapshot()) });
 
     const seen = await authStates(() => S().loadSnapshot());

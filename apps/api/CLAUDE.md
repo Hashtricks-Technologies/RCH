@@ -89,10 +89,9 @@ holding a shelf.
 
 - **Lock only the cells you will move.** `lockBalances` creates the row it locks, and a stray row shows up as
   a phantom "carried at zero" shelf line (tag M12).
-- **Writes that move nothing** (`patchItem`, `production.raise`, the recipe editor) take no `lockBalances` at
-  all.
-- **Writes whose moves are all positive** (`grn.receive`, `pos.voidBill`) take neither `lockBalances` nor a
-  re-read. Nothing is promised against a balance there. Don't add them for symmetry.
+- **Writes that move nothing** (`patchItem`, `production.raise`) take no `lockBalances` at all.
+- **Writes whose moves are all positive** (`grn.receive`, `pos.voidBill`, `production.makeBatch`) take neither
+  `lockBalances` nor a re-read. Nothing is promised against a balance there. Don't add them for symmetry.
 - **Every write that moves stock down re-reads `on_hand − reserved` after `postMoves`**, and refuses if any
   cell went negative. There is deliberately no `on_hand >= 0` CHECK in the database: it would fire before the
   re-read and turn the operator's sentence into a bare 500.

@@ -2,11 +2,8 @@ import { asc, eq } from "drizzle-orm";
 import type { Item, PayerKind, PayerRoster, UserMin } from "@rch/contract";
 import { items, locationItems, payers, priceListItems, users } from "../../../db/schema/index.js";
 import type { Reader } from "../../../lib/db.js";
-import { loadLocations, loadRecipes } from "../../../lib/master.js";
+import { loadLocations } from "../../../lib/master.js";
 import { toWireItem, toWireUserMin } from "../../../lib/wire.js";
-
-/** The recipes are the same thing the rules read, so they are loaded the same way. */
-export const readRecipes = loadRecipes;
 
 // ---- item patch ----
 /**

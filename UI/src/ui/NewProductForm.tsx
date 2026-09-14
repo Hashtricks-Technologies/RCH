@@ -32,19 +32,19 @@ interface ScopeSpec {
 }
 
 const TRADED: ScopeSpec["types"] = [
-  { t: "RAW", label: "Raw material (RAW)", hint: "Bought in and consumed by a recipe" },
-  { t: "PACK", label: "Packaging (PACK)", hint: "Cups, boxes and wraps consumed by a recipe" },
+  { t: "RAW", label: "Raw material (RAW)", hint: "Bought in and used in the kitchen" },
+  { t: "PACK", label: "Packaging (PACK)", hint: "Cups, boxes and wraps" },
   { t: "MRP", label: "Printed price (MRP)", hint: "Bought in and resold as it is - the printed MRP caps its selling price" },
   { t: "FG", label: "Finished good (FG)", hint: "Made in the kitchen and held as stock" },
-  { t: "MTO", label: "Made to order (MTO)", hint: "Assembled at the counter from a recipe, never held as stock" },
+  { t: "MTO", label: "Made to order (MTO)", hint: "Made at the counter when it is sold, never held as stock" },
 ];
-/** Procurement buys goods; it does not invent what the kitchen makes or the counter assembles. */
+/** Procurement buys goods; it does not invent what the kitchen or the counter makes. */
 const PURCHASED: ScopeSpec["types"] = TRADED.filter((x) => isPurchased(x.t));
 /** The kitchen makes and holds. It never invents an MRP good - those are bought in by
  *  procurement and priced off a printed MRP the kitchen has no sight of. */
 const KITCHEN_TYPES: ScopeSpec["types"] = [
   { t: "FG", label: "Finished good (FG)", hint: "Made in the kitchen and sent out to the outlets" },
-  { t: "RAW", label: "Raw material (RAW)", hint: "Consumed by a recipe in the kitchen" },
+  { t: "RAW", label: "Raw material (RAW)", hint: "Bought in and used in the kitchen" },
 ];
 const ALL_UNITS = ["nos", "kg", "g", "L", "ml", "pkt", "box"];
 

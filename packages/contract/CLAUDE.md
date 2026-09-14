@@ -26,7 +26,7 @@ src/schemas/common.ts     closed unions, Qty/Money/Iso, error envelope, LocKey v
 src/schemas/documents.ts  every document shape (Item, Ticket, StockRequest, Bill, PO, …)
 src/schemas/writes.ts     request bodies, result shapes, CollectionSchema, writeResponse()
 src/schemas/snapshot.ts   SnapshotSchema and the narrow read responses; BILL_DAYS
-src/schemas/{auth,admin,events,reports,recipes}.ts
+src/schemas/{auth,admin,events,reports}.ts
 src/fixtures/*            the demo hospital: master data and seeded documents
 ```
 

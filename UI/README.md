@@ -50,7 +50,7 @@ per session and refetches whatever a write elsewhere changed, so two open tabs s
 without a reload.
 
 Against a real server today, a person can walk a kitchen order across the board, make a batch
-that draws its recipe out of the kitchen and stamps a best-before, dispatch it, hand it over on
+that books the finished units onto the kitchen rack and stamps a best-before, dispatch it, hand it over on
 a six-digit code and receive it at the counter - with another browser following along live - and
 cancel a ticket nobody came for, which puts the stock and the document behind it back where it
 stood. Buying, the same way: the store keeper raises a requisition at the central store; the
@@ -151,12 +151,12 @@ MRP. No price list, floor or role may sell above it - `savePrice` refuses and sa
 role may clear it either: an item that carries a printed MRP keeps one, and an emptied box on the
 edit form means "leave it as it is", not "take the ceiling away".
 
-**Recipe depletion.** Selling a made-to-order drink deducts its ingredients from that
-counter, not a finished unit. Finished goods made in the kitchen deduct by the unit.
+**What a sale takes off the shelf.** Traded goods and finished goods made in the kitchen deduct by
+the unit. A made-to-order drink is made at the counter and holds no stock, so selling one moves
+nothing.
 
-**Availability is computed.** Traded and finished goods switch off at zero; made-to-order
-items switch off when any ingredient runs out, naming the one that blocked it. The toggle is
-a manual override on top.
+**Availability is computed.** Traded and finished goods switch off at zero; a made-to-order
+item stays on until someone switches it off. The toggle is a manual override on top.
 
 ## Recent capabilities
 
@@ -171,8 +171,7 @@ month of it reads back by reason.
 
 **A bill can be taken back on the day it was billed.** The outlet manager gets a Bills screen -
 every outlet's, over the seven days the server answers for - and a Void button on any bill still
-dated today. It needs a typed reason, puts every line back on the shelf (a made-to-order drink
-goes back as the ingredients the sale actually took), returns a staff member's credit room for
+dated today. It needs a typed reason, puts every stocked line back on the shelf, returns a staff member's credit room for
 the month, and leaves the bill on every list badged VOIDED rather than disappearing from the day.
 Every figure that counts money or quantity sold skips it; the activity feed and the search still
 show it. After that day, the answer is an adjustment, and the refusal says so.

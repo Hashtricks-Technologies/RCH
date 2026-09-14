@@ -1,11 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { IT, LOC, MENU, PL, RCP, USERS, seedBills, seedPo, seedPrq, seedReq, seedStock, seedTkt } from "./index";
+import { IT, LOC, MENU, PL, USERS, seedBills, seedPo, seedPrq, seedReq, seedStock, seedTkt } from "./index";
 
 describe("fixtures", () => {
-  it("every menu, recipe, price and stock line names a real item", () => {
+  it("every menu, price and stock line names a real item", () => {
     const items = new Set(Object.keys(IT));
     for (const keys of Object.values(MENU)) for (const k of keys) expect(items.has(k), k).toBe(true);
-    for (const r of Object.values(RCP)) for (const [g] of r.l) expect(items.has(g), g).toBe(true);
     for (const list of Object.values(PL)) for (const k of Object.keys(list)) expect(items.has(k), k).toBe(true);
     for (const loc of Object.values(seedStock)) for (const k of Object.keys(loc)) expect(items.has(k), k).toBe(true);
   });

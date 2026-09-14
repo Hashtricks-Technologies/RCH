@@ -57,7 +57,7 @@ Development and test are unchanged. The rules themselves are one pure function,
 
 **`--bare` is the seed a real deployment starts from.** It writes the six locations, the document
 numbering and the one admin account (`RC-0001`, on `SEED_PASSWORD`), and nothing of the demo
-hospital - no items, recipes, prices, menus, stock, payers, vendors, documents or demo staff.
+hospital - no items, prices, menus, stock, payers, vendors, documents or demo staff.
 `deploy/compose/deploy.sh` passes it on a first run; local development, the test suites and CI's
 kind install keep the demo seed, because they are written against it. Both production guards apply
 to it exactly as to the demo seed, and `--bare --force` over a database that already holds the
@@ -71,8 +71,7 @@ dist/cli/seed.mjs --bare --force --yes-seed rch --yes-destroy rch          # in 
 
 What a bare hospital needs before it can sell anything, in the order the screens need it: the
 real staff accounts (`RC-0001` at `/admin`), the item master (the store's, buyer's or kitchen's
-**Add Product**), a recipe for every finished good and made-to-order item (the kitchen's and the
-manager's **Recipes** screen - until it existed a recipe could only arrive with the seed), shelf
+**Add Product**), shelf
 prices and menus (the manager's **Price Lists** and **Items & Stock**), the payer roster (§5), and
 stock (a goods receipt, or an adjustment count-up for an opening balance).
 
@@ -959,11 +958,10 @@ never transitions - so read it from the ledger too, keyed by `ref_type = 'batch'
 select * from stock_moves where ref_type = 'batch' and ref_id = 'BAT-20260904-01' order by id;
 ```
 
-The negative rows are the recipe - one `production_consume` move per ingredient, `qty` = the
-recipe's own quantity times what was *started* - and the positive row, if there is one, is the
-`production_yield` for what was *made*. A batch that yielded nothing (a tray dropped, `made =
-0`) posts no positive row at all: the recipe still came off, but nothing was created to book,
-so there is no move for it and no "carried at zero" row on the finished item either (M12). The
+A batch posts one row, the `production_yield` for what was *made*. It draws no raw materials
+down; a batch written before recipes were removed may also carry negative `production_consume`
+rows, one per ingredient. A batch that yielded nothing (a tray dropped, `made = 0`) posts no row
+at all, so there is no move for it and no "carried at zero" row on the finished item either (M12). The
 batch's own row (`select * from batches where id = 'BAT-20260904-01'`) is what records a lost
 tray - `started_qty` and `made_qty` disagree, and `note` usually says why.
 
@@ -2313,7 +2311,7 @@ in the same dependency order, and never reseeds a database that already has rows
 the cron line from `deploy/compose/README.md` once, for the nightly backup.
 
 A first run seeds `--bare` (§1): sign in as `RC-0001` with `SEED_PASSWORD`, choose a new
-password, create the real staff at `/admin`, enter items, recipes, prices and menus from the screens,
+password, create the real staff at `/admin`, enter items, prices and menus from the screens,
 and load the payer roster from a CSV (§5) - §1's last paragraph has the order.
 
 ### 16.4 What this trades away against the EKS path

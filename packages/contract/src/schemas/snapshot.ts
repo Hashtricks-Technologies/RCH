@@ -12,7 +12,6 @@ export const SnapshotSchema = z.object({
   user: D.UserSchema,
   items: z.record(z.string(), D.ItemSchema),
   locations: z.record(z.string(), D.LocationSchema),
-  recipes: z.record(z.string(), D.RecipeSchema),
   users: z.array(D.UserMinSchema),   // the directory, not a contact list - `user` above is the caller's own, whole
   roster: D.PayerRosterSchema,       // the other directory of people: who a bill may be charged to
   stock: byStockLoc(z.record(z.string(), Qty)),
@@ -40,7 +39,6 @@ export const SnapshotSchema = z.object({
 });
 export const ItemsResponseSchema = z.record(z.string(), D.ItemSchema);
 export const LocationsResponseSchema = z.record(z.string(), D.LocationSchema);
-export const RecipesResponseSchema = z.record(z.string(), D.RecipeSchema);
 export const PricesResponseSchema = SnapshotSchema.shape.prices;
 export const MenusResponseSchema = SnapshotSchema.shape.menu;
 export const StockResponseSchema = z.strictObject({ stock: SnapshotSchema.shape.stock, rsv: SnapshotSchema.shape.rsv, ovr: SnapshotSchema.shape.ovr });

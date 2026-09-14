@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { IT, LOC, RCP } from "../../data/master";
+import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
 import { avail, daysCover, menuOf, parOf, qty, resv, stateLabel, stateTone } from "../../lib/selectors";
 import { fq, money0, U } from "../../lib/fmt";
@@ -28,10 +28,8 @@ export default function Stock() {
 
   const held = new Set(Object.keys(s.stock[loc] ?? {}));
   const keys = new Set<string>(held);
-  menuOf(s, loc).forEach((it) => {
-    if (IT[it]?.t === "MTO") RCP[it]?.l.forEach(([g]) => keys.add(g));
-    else keys.add(it);
-  });
+  // A made-to-order item is made at the counter and never held, so it has no stock line to show.
+  menuOf(s, loc).forEach((it) => { if (IT[it]?.t !== "MTO") keys.add(it); });
 
   const all = Array.from(keys)
     .filter((it) => IT[it])

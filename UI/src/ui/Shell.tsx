@@ -298,7 +298,7 @@ const NOTE: Record<string, [string, string]> = {
   requisitions: ["Requisitions waiting on you", "Raised by the store keeper"],
   pool: ["Lines on the procurement list", "Approved and not yet claimed by a purchase order"],
   orders: ["New kitchen orders", "Received and not yet accepted"],
-  avail: ["Products that cannot be sold", "Switched off, out of stock, or short an ingredient"],
+  avail: ["Products that cannot be sold", "Switched off or out of stock"],
   inventory: ["Items below reorder", "Under the central store's reorder level"],
   stock: ["Items below reorder", "Under the central store's reorder level"],
   dash: ["Batches nearing best-before", "Made recently, due within the next 2 hours"],
@@ -356,7 +356,7 @@ function searchHits(s: SearchState, q: string): Hit[] {
 }
 
 /* ---------- counters ---------- */
-/** Listed but unsellable - a manual switch, an empty shelf or a missing ingredient. */
+/** Listed but unsellable - a manual switch or an empty shelf. */
 const offItems = (s: AppState, l: LocKey) => menuOf(s, l).filter((it) => !availOf(s, l, it).ok);
 
 /** The active items the central store carries under their own reorder level - the same test

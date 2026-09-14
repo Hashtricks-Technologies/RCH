@@ -10,13 +10,12 @@ import {
 import { emptyFor, sortRows, useSort, type SortValue } from "./useSort";
 import type { DatedDoc, LocKey, StockRequest } from "../../types";
 
-interface Off { n: number; manual: number; stock: number; recipe: number }
+interface Off { n: number; manual: number; stock: number }
 
 const why = (o: Off) =>
   [
     o.manual ? `${o.manual} switched off` : "",
     o.stock ? `${o.stock} out of stock` : "",
-    o.recipe ? `${o.recipe} missing an ingredient` : "",
   ].filter(Boolean).join(" · ");
 
 const PRIORITY = ["All", "Urgent", "Normal"] as const;
@@ -42,14 +41,13 @@ export default function Dashboard() {
   const outletSort = useSort("sales", "desc");
   const actSort = useSort("t", "desc");
 
-  /* A manual switch is only one of the three ways a product stops selling (H5). */
+  /* A manual switch is only one of the two ways a product stops selling (H5). */
   const offAt = (loc: LocKey): Off => {
     const bad = menuOf(s, loc).map((it) => availOf(s, loc, it)).filter((a) => !a.ok);
     return {
       n: bad.length,
       manual: bad.filter((a) => a.mode === "Manual").length,
       stock: bad.filter((a) => a.mode === "Stock").length,
-      recipe: bad.filter((a) => a.mode === "Recipe").length,
     };
   };
 
@@ -75,7 +73,6 @@ export default function Dashboard() {
     n: sum(outlets, (r) => r.off.n),
     manual: sum(outlets, (r) => r.off.manual),
     stock: sum(outlets, (r) => r.off.stock),
-    recipe: sum(outlets, (r) => r.off.recipe),
   };
   const offOutlets = outlets.filter((r) => r.off.n > 0);
 

@@ -26,7 +26,7 @@ pnpm --filter @rch/domain lint
   Zustand. Nothing here imports from `apps/api` or `UI`.
 - **The only dependency is `@rch/contract`**, for its types and a few constants.
 - **No module-level mutable state.** A function that needs the item master takes a `Master` argument (`items`,
-  `locations`, `recipes`). That lets the server call it inside a transaction, against the master that
+  `locations`). That lets the server call it inside a transaction, against the master that
   transaction commits.
 - **Dates use the hospital's calendar**, through `Intl.DateTimeFormat` with `timeZone: "Asia/Kolkata"`
   (`format.ts`'s `istDate`). A rule that needs "today" takes it as an argument instead of reading the clock.

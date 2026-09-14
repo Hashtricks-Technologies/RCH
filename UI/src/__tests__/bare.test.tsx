@@ -21,7 +21,7 @@ import { as, resetStore } from "./fixture";
  * A hospital with nothing in it - what `GET /snapshot` answers on a database seeded `--bare`,
  * which is how a real deployment starts (`deploy/compose/deploy.sh`). The six locations are there,
  * because `LocKey` is a closed union the whole app is written against; everything else is empty:
- * no item, recipe, price, menu, stock line, payer, vendor or document.
+ * no item, price, menu, stock line, payer, vendor or document.
  *
  * `screens.test.tsx` renders every screen over the demo hospital, which always has an item, a
  * menu and a bill to point at. A screen that reads `menu[loc].includes(...)`, `PRODS[0]` or a
@@ -38,7 +38,7 @@ function bareHospital() {
   // Exactly what the server's readers answer on an empty database: `readMenu` and `readPrices`
   // build their objects from rows, so with no rows there is no outlet key at all, and `readSales`
   // still answers a zero for every outlet on every day of its window.
-  hydrateMaster({ items: {}, locations: FX.LOC, recipes: {}, prices: { A: {}, B: {} }, menu: {}, users: FX.USERS });
+  hydrateMaster({ items: {}, locations: FX.LOC, prices: { A: {}, B: {} }, menu: {}, users: FX.USERS });
   hydrateRoster({ patients: [], staff: [], depts: [] });
   useApp.setState({
     stock: EMPTY_STOCK, rsv: {}, ovr: {}, prices: { A: {}, B: {} }, menu: {},

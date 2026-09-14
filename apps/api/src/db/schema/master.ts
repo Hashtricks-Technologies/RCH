@@ -75,17 +75,6 @@ export const items = pgTable("items", {
   updatedAt: ts("updated_at").notNull().defaultNow(),
 }, (t) => [uniqueIndex("items_name_ci_uq").on(sql`lower(${t.name})`)]);
 
-export const recipes = pgTable("recipes", {
-  itemKey: text("item_key").primaryKey().references(() => items.key),
-  overheadPct: numeric("overhead_pct", { precision: 5, scale: 2, mode: "number" }).notNull(),
-});
-export const recipeLines = pgTable("recipe_lines", {
-  itemKey: text("item_key").notNull().references(() => recipes.itemKey),
-  ingredientKey: text("ingredient_key").notNull().references(() => items.key),
-  qty: qty("qty").notNull(),
-  seq: integer("seq").notNull(),
-}, (t) => [primaryKey({ columns: [t.itemKey, t.ingredientKey] })]);
-
 export const locationItems = pgTable("location_items", {
   loc: text("loc").notNull().references(() => locations.key),
   itemKey: text("item_key").notNull().references(() => items.key),

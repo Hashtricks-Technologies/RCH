@@ -28,7 +28,7 @@ const FAQ = [
   ["Why can I not see another role's screens?",
    "The portal only shows what your role may use. A page you cannot reach is not hidden - it is not yours. Ask your manager if you need access changed."],
   ["My stock number looks wrong after a sale.",
-   "A made-to-order drink deducts its ingredients, not a finished unit, so milk and cups move rather than 'cappuccino'. A packaged item deducts one of itself."],
+   "A made-to-order drink is made at the counter and moves no stock; a packaged item deducts one of itself."],
   ["The counter says an item is off but there is stock on the shelf.",
    "Something is either reserved against an open pick ticket, or the item has been switched off by hand. Product Availability names which of the two it is."],
   ["Someone else's change did not show up on my screen.",

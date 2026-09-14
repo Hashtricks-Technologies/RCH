@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { IT, LOC, PL, RCP } from "@rch/contract/fixtures";
+import { IT, LOC, PL } from "@rch/contract/fixtures";
 import { priceOf } from "./pricing";
-const M = { items: IT, locations: LOC, recipes: RCP };
+const M = { items: IT, locations: LOC };
 describe("priceOf", () => {
   it("reads the location's list", () => { expect(priceOf(M, PL, "rest", "capp")).toEqual({ p: 60, listed: 60, capped: false }); expect(priceOf(M, PL, "coffee", "capp").p).toBe(75); });
   it("caps a traded item at its printed MRP", () => {

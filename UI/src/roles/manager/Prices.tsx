@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { IT, LOC, OUTLETS, RCP } from "../../data/master";
+import { IT, LOC, OUTLETS } from "../../data/master";
 import { useApp } from "../../store";
 import { costOf, menuOf, priceOf } from "../../lib/selectors";
 import { money, sum } from "../../lib/fmt";
@@ -56,7 +56,7 @@ export default function Prices() {
   };
 
   const priced = (loc: LocKey) => menuOf(s, loc).filter((it) => priceOf(s, loc, it).p > 0);
-  /* A made item costs what its recipe costs, so its margin is never 100% (H1). */
+  /* Margin is taken against each item's standard cost on the master. */
   const avgMargin = (loc: LocKey) => {
     const items = priced(loc);
     if (!items.length) return 0;
@@ -250,7 +250,7 @@ export default function Prices() {
                     <div>{IT[it]?.n ?? it}<small>{IT[it]?.c}</small></div>
                   </span>,
                   <Tag kind={tagKind(IT[it]?.t ?? "RAW")}>{IT[it]?.t}</Tag>,
-                  RCP[it] ? <>{money(cost)} <small className="dim">recipe</small></> : money(cost),
+                  money(cost),
                   money(pr.listed),
                   <>
                     <b>{money(pr.p)}</b>
@@ -286,7 +286,7 @@ export default function Prices() {
                         ? <>Takes it off the {LOC[shop].n} till at once. Add a product puts it back.</>
                         : mrp != null
                           ? <>Printed MRP ₹{mrp} is a hard ceiling - a higher price is refused.</>
-                          : <>No printed MRP on this item; price it against {RCP[it] ? "a recipe cost" : "a cost"} of {money(cost)}.</>}
+                          : <>No printed MRP on this item; price it against a cost of {money(cost)}.</>}
                     </div>
                   </>,
                 ],

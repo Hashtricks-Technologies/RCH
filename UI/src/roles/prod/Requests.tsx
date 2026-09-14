@@ -104,7 +104,7 @@ export default function Requests() {
       <PageHead
         crumbs={["Royal Care", "Central Kitchen", "Stock Requests"]}
         title="Stock requests to the central store"
-        sub="Ask the central store for ingredients and packaging."
+        sub="Ask the central store for raw materials and packaging."
         actions={<Btn variant="gh" onClick={addLine}>Add item</Btn>}
       />
 

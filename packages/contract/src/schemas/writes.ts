@@ -7,7 +7,7 @@ import { AdjustReasonSchema, GrnSchema, ItemSchema, PayerSchema, PordStatusSchem
  *  collection at a time from the same enum. `"items"` is here because `POST /items` changes the
  *  item master, which every screen reads out of one registry - without it the only honest
  *  `changed` a new product could name would be the whole snapshot. */
-export const CollectionSchema = z.enum(["stock", "rsv", "ovr", "prices", "menu", "bills", "req", "tkt", "prq", "po", "pord", "batch", "grn", "vendors", "contracts", "tickets", "productReqs", "shopAsks", "items", "roster", "adjustments", "accounts", "recipes"]);
+export const CollectionSchema = z.enum(["stock", "rsv", "ovr", "prices", "menu", "bills", "req", "tkt", "prq", "po", "pord", "batch", "grn", "vendors", "contracts", "tickets", "productReqs", "shopAsks", "items", "roster", "adjustments", "accounts"]);
 export const ChangedSchema = z.array(CollectionSchema);
 export type Changed = z.infer<typeof CollectionSchema>;
 
@@ -70,10 +70,9 @@ export const DispatchResultSchema = z.strictObject({ order: ProdOrderSchema, tic
 // service with a sentence that says where to go instead, because a stale tab pressing it needs
 // an answer it can read, not a 400 - a dispatch has its own endpoint.
 export const SetOrderStatusBodySchema = z.strictObject({ st: PordStatusSchema });
-// `started` is what went into the oven and `made` is what came out of it; the ingredients go
-// against the first and only the second reaches the rack (UA-14). A blank yield box means every
-// unit came good, so `made` is optional rather than defaulted - a default of 0 would read a
-// blank box as a lost tray.
+// `started` is what went into the oven and `made` is what came out of it; only the second reaches
+// the rack (UA-14). A blank yield box means every unit came good, so `made` is optional rather
+// than defaulted - a default of 0 would read a blank box as a lost tray.
 export const MakeBatchBodySchema = z.strictObject({
   it: z.string().min(1).max(64),
   started: QtySchema,

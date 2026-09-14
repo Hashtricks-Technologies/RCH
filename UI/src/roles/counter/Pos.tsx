@@ -161,7 +161,7 @@ export default function Pos() {
                     <b style={{ fontSize: 12.5, lineHeight: 1.3 }}>{item.n}</b>
                     <span><TypeTag t={item.t} /></span>
                     {a.ok
-                      ? <span className="mini">{a.left} left</span>
+                      ? <span className="mini">{a.left ? `${a.left} left` : "made to order"}</span>
                       : <span className="mini" style={{ color: "var(--crit)" }}>{a.why ?? "unavailable"}</span>}
                     <div className="sp" />
                     <span className="mono" style={{ fontSize: 13, fontWeight: 600 }}>
@@ -290,7 +290,7 @@ export default function Pos() {
           </Btn>
           <p className="mini mtop">
             Tender <b>{tender}</b>{payer ? <> · posted to <b>{payer.name}</b></> : need ? <> · pick a {need.label.toLowerCase()} to settle it</> : null}.
-            Stock and recipe ingredients are drawn down from {L.n} the moment the bill is printed.
+            Stock is drawn down from {L.n} the moment the bill is printed.
           </p>
         </Card>
       </Grid>

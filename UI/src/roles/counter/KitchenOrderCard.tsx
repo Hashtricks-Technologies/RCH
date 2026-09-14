@@ -35,7 +35,7 @@ export default function KitchenOrderCard({ loc }: { loc: LocKey }) {
   // "puffs, sandwiches or salads" was three product names written into the copy, and they went
   // stale the first time the master changed - a counter reading about a salad the hospital no
   // longer carries. Three real ones off `madeItems()` instead, pinned to `catalogVersion`
-  // because `IT` and `RCP` are registries replaced in place rather than store state.
+  // because `IT` is a registry replaced in place rather than store state.
   const examples = useMemo(() => {
     void catalogVersion;
     return orList(madeItems().slice(0, 3).map((k) => IT[k]?.n ?? k));

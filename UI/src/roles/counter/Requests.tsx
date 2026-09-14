@@ -12,7 +12,7 @@ import type { LocKey } from "../../types";
 // ---- prod-order raise ----
 import KitchenOrderCard from "./KitchenOrderCard";
 
-/** Anything a shop can be asked for - not raw ingredients, not made-to-order. */
+/** Anything a shop can be asked for - not raw materials, not made-to-order. */
 const sellable = () => activeItems()
   .filter((k) => IT[k].t === "MRP" || IT[k].t === "FG")
   .sort((a, b) => IT[a].n.localeCompare(IT[b].n));
