@@ -72,9 +72,11 @@ shelf). Void a mis-keyed bill on the day it was billed: every line goes back on 
 member's monthly credit room comes back, and the bill stays on the list badged rather than
 vanishing from the day. Correct a mis-typed MRP or retire a product nobody carries - each desk
 sees the fields it owns and the rest greyed out, and a line with stock on it or a menu still
-listing it cannot be retired until that is dealt with. And let a
-counter ask the kitchen to bake something, with a needed-by date, instead of waiting for an order
-nobody could raise.
+listing it cannot be retired until that is dealt with. Put a photo on a product - the manager on
+any item from its drawer, a counter on whatever its own outlet sells from the same Configure panel
+it already opens from the till - and it replaces the grey placeholder everywhere the screens show
+one. And let a counter ask the kitchen to bake something, with a needed-by date, instead of
+waiting for an order nobody could raise.
 
 **Live updates.** Every signed-in browser holds one connection to the server's change stream, so a
 request raised at the Coffee Shop appears on the manager's approvals screen without a reload - and

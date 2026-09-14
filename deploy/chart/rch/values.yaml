@@ -28,6 +28,11 @@ api:
     COOKIE_SECURE: "true"
     ACCESS_TOKEN_TTL: 15m
     REFRESH_TOKEN_TTL_DAYS: "30"
+    # Item photos (apps/api/src/lib/images.ts). A production process refuses to start without a
+    # bucket; the pod reads it with the IRSA role on serviceAccount.annotations.
+    IMAGE_STORE: s3
+    AWS_REGION: ap-south-1
+    IMAGE_BUCKET: ""      # FILL per environment
     # V8 sizes its old space from the machine's memory, not the cgroup's, so without a ceiling
     # the kernel OOM-kills the pod before Node ever decides a collection is due. 70% of
     # api.resources.limits.memory above (512Mi → 358), leaving the rest for the heap's own

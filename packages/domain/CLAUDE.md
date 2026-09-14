@@ -48,6 +48,14 @@ need more context than their names give:
 - `master.ts`'s `Prices` is `Record<string, Record<string, number>>` - every price list, keyed by its id, not
   a fixed pair. `pricing.ts`'s `priceOf` reads whichever id a location's own `list` names and caps it at MRP;
   it does not care how many lists exist.
+- `items.ts`'s photo section is the one place the 700 KB limit, the three accepted types and every photo
+  refusal sentence are written. `mayEditItemImage(role)` is `manager` or `counter` only - not an `ItemField`,
+  because a photo has a door of its own (`PUT /items/:it/image`), not one of the patch's nine boxes.
+  `sniffImageType` reads magic bytes only (JPEG, PNG, WebP; SVG and everything else is `null` - SVG is a
+  document that can carry script, not a picture), and `checkPhoto` checks size before type so both sides print
+  the same sentence. `imageRetiredMessage`, `imageOffMenuMessage` and `imageNoneMessage` are the three refusals
+  that name the item (and, for the off-menu one, the outlet); the server decides *which* rule applies (retired,
+  off-menu, no photo to remove), this package only supplies the sentence.
 
 ## Transition tables
 

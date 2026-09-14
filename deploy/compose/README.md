@@ -65,3 +65,7 @@ refresh tokens and idempotency keys - the same nightly job the EKS deploy ran as
 The dump carries the `audit` schema; database roles are not in it, so after restoring one run
 `migrate` and `audit-migrate` once to recreate `rch_app` and `rch_audit`. A daily whole-disk
 snapshot (kept 7 days) runs independently via the account's DLM policy.
+
+This dump does not carry item photos - only `items.image` (a hash). The bytes live in their own
+bucket, `IMAGE_BUCKET`, backed up by its own versioning rather than the nightly dump; see
+`deploy/RUNBOOK.md` §16.8 for the bucket, its IAM policy, and recovering a replaced photo.

@@ -29,6 +29,7 @@ src/schemas/writes.ts     request bodies, result shapes, CollectionSchema, write
 src/schemas/snapshot.ts   SnapshotSchema and the narrow read responses; BILL_DAYS
 src/schemas/{auth,admin,events,reports}.ts
 src/schemas/audit.ts      AuditEventSchema (the API → audit service event), AuditRow/Entry/Page/Query schemas
+src/schemas/images.ts     ITEM_IMAGE_PATH, itemImagePath() - the photo's own path, not a manifest route
 src/fixtures/*            the demo hospital: master data and seeded documents
 ```
 
@@ -76,6 +77,12 @@ allowMcp? })`. The manifest drives all three: `mount()` in `apps/api/src/routes.
 - **The event stream is not in the manifest.** `EVENTS_PATH` and `EventNoticeSchema` live in
   `schemas/events.ts`, because a stream has no JSON response. `routes.test.ts` pins that it never becomes a
   manifest entry.
+- **`setItemImage`** (`PUT /items/:it/image`) and **`removeItemImage`** (`DELETE /items/:it/image`) are ordinary
+  manifest entries, `access: ["manager", "counter"]`, both `response: writeResponse(ItemResultSchema)`.
+  `SetItemImageBodySchema` (`writes.ts`) takes only `{ data: string }`, base64, capped at 1 MB of wire text -
+  the 700 KB byte limit and the type check are `@rch/domain`'s `checkPhoto`, refused as a sentence, not a
+  schema shape. The photo itself is read at `ITEM_IMAGE_PATH` (`schemas/images.ts`), which is deliberately
+  **not** a manifest route the same way `EVENTS_PATH` isn't - see that file above.
 - **`voidBill`'s path parameter is percent-encoded.** Bill numbers contain a slash (`CF/1188` → `CF%2F1188`).
 
 ## Schema rules
@@ -104,6 +111,10 @@ allowMcp? })`. The manifest drives all three: `mount()` in `apps/api/src/routes.
   roster lists may be empty, because the server strips payer data for `store`, `prod` and `buyer`.
   `PayerSchema` (what a bill embeds) has no `active` field: the till only ever reads live payers.
 - **`TicketSchema.hist` is required.** Every ticket writes its first trail row when it is created.
+- **`ItemSchema.img` is an optional sha256** (`/^[0-9a-f]{64}$/`), absent when the item has no photo. It rides
+  the existing `items` collection, so `GET /items`, the snapshot, `refetch` and SSE all carry it with no new
+  collection to wire up. It is both the photo's version and its address (`itemImagePath`), so a changed photo
+  is a new URL and the old one stops being served.
 
 ## Constants
 

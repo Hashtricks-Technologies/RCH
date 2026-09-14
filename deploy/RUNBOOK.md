@@ -2562,7 +2562,9 @@ Region `ap-south-1`, account `830283280199`, the same default VPC (`vpc-01ca67a1
   box's own SSM agent register and take commands (§16.6). It reaches no other AWS resource.
 - **S3 bucket** `rch-backups-830283280199`, public access blocked, a 30-day expiration
   lifecycle rule on every object (so the nightly dumps do not accumulate forever) - `backup.sh`
-  writes to it under `db/`.
+  writes to it under `db/`. **This dump does not carry item photos** - `pg_dump` only ever held
+  `items.image`, the sha256 pointing at one, never the bytes. The bytes live in their own bucket,
+  `rch-images-830283280199` (§16.8), which is its own backup (versioning, not a nightly dump).
 - **DLM lifecycle policy** (`policy-0d0f10f7fc51be10e`): a daily EBS snapshot of every volume
   tagged `project=rch` (the instance's root volume is), at 21:30 UTC, 7 kept. This is the
   whole-box safety net beside `backup.sh`'s logical dump - a bad `apt upgrade` or a full-disk
@@ -2756,3 +2758,54 @@ routine: read the reason, fix the cause, and leave the row where it is.
 **Nothing edits this schema.** `audit.events` and `audit.dead_letters` refuse UPDATE, DELETE and
 TRUNCATE by trigger, for every role including `rch`. A mistake is corrected by the document the
 event describes, never by rewriting history.
+
+### 16.8 Item photos bucket
+
+**Bucket** `rch-images-830283280199`, `ap-south-1`, account `830283280199` - the same account and
+region as everything else in this section. Block Public Access on (all four settings), default
+encryption SSE-S3, bucket owner enforced. Versioning **on**, with a lifecycle rule
+`expire-old-photos`: noncurrent versions expire after 90 days, incomplete multipart uploads abort
+after 1 day. Tagged `project=rch`. Versioning is this bucket's own backup - there is no nightly
+dump of it, unlike the database (§16.2 above).
+
+**IAM.** The instance role `rch-box` (§16.2) carries a second inline policy, `rch-images`:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    { "Sid": "Photos", "Effect": "Allow", "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"], "Resource": "arn:aws:s3:::rch-images-830283280199/items/*" },
+    { "Sid": "MissingKeyIs404", "Effect": "Allow", "Action": "s3:ListBucket", "Resource": "arn:aws:s3:::rch-images-830283280199", "Condition": { "StringLike": { "s3:prefix": ["items/*"] } } }
+  ]
+}
+```
+
+The `ListBucket` statement is not decorative: without it, S3 answers a `GetObject` on a missing
+key with `AccessDenied` rather than `NoSuchKey`, and `apps/api/src/lib/images.ts`'s S3 driver
+could not tell "the object is gone" from "the credentials are wrong" - it would rethrow instead of
+answering `null`, and every stale hash would 500 instead of 404. Credentials come from IMDSv2, the
+same instance metadata service every other AWS call on this box uses; there is no access key
+anywhere. Nothing in this policy reaches outside `items/*` in this one bucket.
+
+**Configuration.** `IMAGE_BUCKET=rch-images-830283280199` in
+`/opt/rch/app/deploy/compose/.env`, alongside `IMAGE_STORE: s3` and `AWS_REGION: ap-south-1` in
+`compose.yml`'s `api_env` (`deploy/compose/.env.example` documents the one line an operator
+fills in). On the Helm path the same three keys are `api.env` in `deploy/chart/rch/values.yaml`,
+with `IMAGE_BUCKET` FILLed per environment in `values-<env>.yaml` - not provisioned today, since
+EKS is not live (§16 above).
+
+**Recovering a photo an upload replaced.** A photo is content-addressed and versioned, so nothing
+is ever truly gone until the 90-day lifecycle rule catches it. Find the noncurrent version and
+copy it back over the current object:
+
+```bash
+aws s3api list-object-versions --bucket rch-images-830283280199 --prefix items/<key>/
+aws s3api copy-object --copy-source "rch-images-830283280199/items/<key>/<hash>?versionId=<id>" \
+  --bucket rch-images-830283280199 --key items/<key>/<hash>
+```
+
+then set that item's `image` column back to `<hash>` (`update items set image = '<hash>' where
+key = '<key>';`) - `GET /items/:it/image/:hash` serves only the hash the row currently points at,
+so the row and the object have to agree. **The database dump holds only the hash; the bucket holds
+the bytes** - restoring `items` from a `pg_dump` (§6) never needs this, but replacing the wrong
+photo by mistake does.

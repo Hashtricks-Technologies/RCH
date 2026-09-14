@@ -20,6 +20,7 @@ render() {
   JWT_PRIVATE_KEY=x \
   JWT_PUBLIC_KEY=x \
   SEED_PASSWORD=x \
+  IMAGE_BUCKET=x \
   docker compose --env-file /dev/null -f compose.yml config "$@" 2>&1
 }
 
@@ -32,7 +33,7 @@ check() { jq -e "$1" >/dev/null <<<"$json" || { echo "FAIL: $2" >&2; exit 1; }; 
 # the API or the audit service as a role with an empty password.
 for v in APP_DB_PASSWORD AUDIT_DB_PASSWORD; do
   if missing=$(DOMAIN=example.test POSTGRES_PASSWORD=x APP_DB_PASSWORD=x AUDIT_DB_PASSWORD=x \
-      JWT_PRIVATE_KEY=x JWT_PUBLIC_KEY=x SEED_PASSWORD=x env -u "$v" docker compose --env-file /dev/null -f compose.yml config --quiet 2>&1); then
+      JWT_PRIVATE_KEY=x JWT_PUBLIC_KEY=x SEED_PASSWORD=x IMAGE_BUCKET=x env -u "$v" docker compose --env-file /dev/null -f compose.yml config --quiet 2>&1); then
     echo "FAIL: compose.yml rendered without $v" >&2; exit 1
   fi
   grep -q "$v" <<<"$missing" || { echo "FAIL: a missing $v must be refused by name; got: $missing" >&2; exit 1; }

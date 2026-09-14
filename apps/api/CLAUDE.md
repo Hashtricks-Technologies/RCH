@@ -29,8 +29,8 @@ src/app.ts        buildApp(): plugins in order, then registerModules
 src/server.ts     listen; SIGTERM drains (see Shutdown)
 src/config.ts     the Zod env schema - the only reader of process.env
 src/routes.ts     mount(): the only way a module registers a route
-src/plugins/*     logging, errors, metrics, health, security, db, auth, rbac, sse, idempotency, audit
-src/lib/*         ledger, reservations, tickets, ids, history, rules, events, claims, credit, master, audit, roles, …
+src/plugins/*     logging, errors, metrics, health, security, db, auth, rbac, sse, idempotency, audit, images
+src/lib/*         ledger, reservations, tickets, ids, history, rules, events, claims, credit, master, audit, roles, images, …
 src/modules/*     one folder per slice, registered in modules/index.ts; _template is the skeleton to copy
 src/db/*          schema/, client.ts, migrate.ts, seed.ts
 src/cli/*         migrate, seed, rebuild-balances, users, payers, keys, purge
@@ -298,6 +298,26 @@ drains it; this app only ever inserts. `lib/audit.ts` holds the code.
   attached by hand. Its gate is `roleGate("any", false, { admitAdmin: true })`, the only route that admits a
   super admin without being `access: "admin"`.
 
+## Item photos
+
+- **`src/lib/images.ts` is the one module that touches photo bytes at rest.** Two drivers behind one
+  `ImageStore` interface (`put`/`get`/`delete`, content-addressed by `imageKey(itemKey, hash)`):
+  `createS3Store` for every deployed process, `createDiskStore` for a laptop and the test suite - `config.ts`
+  refuses anything but `s3` in production (above). `get` answers `null` for "no such object", never a throw; a
+  throw is a real failure.
+- **`src/plugins/images.ts` decorates `app.images`** from `config.images`, or from an injected store
+  (`AppDeps.images`) when a test wants to own it. The S3 client takes its credentials from the default chain -
+  the instance role over IMDSv2 on the box, the pod's IRSA role on EKS - so no key is ever configured.
+- **The bytes go to the store before the transaction opens, in `catalog.setItemImage`.** The key is the
+  photo's own sha256, so a retry or two identical uploads write the same object, and a transaction that then
+  refuses leaves at most a few KB nobody points at. Only after commit, once the row points at the new hash, is
+  the previous object deleted - best effort (a failed delete is swallowed), since the bucket's versioning keeps
+  it another 90 days regardless (`deploy/RUNBOOK.md` §16.8).
+- **`GET /items/:it/image/:hash`** is registered directly in the catalog module's `routes.ts`, outside the
+  manifest the way `/events` is: an `<img>` sends no bearer token, and the answer is bytes, not JSON. It serves
+  only the hash `items.image` currently holds, so a replaced or removed photo stops being served the moment the
+  write commits.
+
 ## Errors
 
 | Class | Status |
@@ -323,7 +343,8 @@ The config pins `TZ=UTC`, a 30 s test timeout, and runs files in parallel.
 
 - **`buildTestApp({ schema: "<name>" })`** migrates into its own schema, `t_<name>_<pid>`, and drops it on
   `close()`. `schema` is mandatory whenever the database is used. `buildTestApp({ withDb: false })` skips
-  Postgres.
+  Postgres. It also gives every built app its own temp folder for `IMAGE_DIR`, so two test files' disk stores
+  never collide.
 - **Seeding and auth helpers:**
   - `seedTestDb(db)` seeds the fixtures.
   - `authHeaders(app, "u2")` mints a bearer token for a seeded user.
@@ -372,6 +393,10 @@ The config pins `TZ=UTC`, a 30 s test timeout, and runs files in parallel.
   `audit_outbox` `insert` alone. No `truncate`, and nothing in `audit` or `audit_drizzle`. The grants are
   re-applied on every run. When the two URLs name the same user, as locally and in the tests, the migrations
   run and nothing else does.
+- **Four config variables decide where photo bytes live**: `IMAGE_STORE` (`"disk" | "s3"`, default `disk`),
+  `IMAGE_DIR` (default `.data/images`, used by `disk`), `IMAGE_BUCKET` and `AWS_REGION` (both required when
+  `IMAGE_STORE=s3`). `NODE_ENV=production` with `IMAGE_STORE=disk` is a `ConfigError`: a second replica would
+  never see the first one's folder, so production must be `s3`.
 - **`db:seed` guards production.** Where `NODE_ENV=production`, it needs `--yes-seed <db name>`, and `--force`
   also needs `--yes-destroy <db name>`, each matching `current_database()`. The chart sets `NODE_ENV=production`
   in every pod, so an in-cluster seed always needs this form. The rules live in `lib/seed-guard.ts`.

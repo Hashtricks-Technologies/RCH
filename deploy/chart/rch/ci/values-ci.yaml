@@ -22,6 +22,7 @@ api:
     DATABASE_SSL: "false"
     COOKIE_SECURE: "false"
     NODE_OPTIONS: "--max-old-space-size=179"   # 70% of the 256Mi limit above; see values.yaml
+    IMAGE_BUCKET: rch-ci-images   # kind never writes a photo; the name only has to parse
 ui:
   replicas: 1
 audit:

@@ -331,6 +331,11 @@ grep -qE 'alb.ingress.kubernetes.io/certificate-arn: "?arn:aws:acm:y"?' <<<"$out
 # api container reads it - a rendered pod without it is one silently back on the code's default.
 grep -q 'name: DB_POOL_MAX' <<<"$out"
 
+# Item photos: the api container must read where its image store is and which bucket to use -
+# without either the process refuses to start in production (config.ts).
+grep -q 'name: IMAGE_STORE' <<<"$out"
+grep -q 'name: IMAGE_BUCKET' <<<"$out"
+
 # D-min: on the `secrets.create=true` path a missing key must fail the render, not produce a
 # Secret carrying "". values.yaml declares all seven as "" so the shape is documented, and an
 # empty string is not a missing key - the pod starts, config.ts refuses it and the migrate

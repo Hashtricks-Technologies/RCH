@@ -40,6 +40,11 @@ x-api-env: &api_env
   LOGIN_RATE_LIMIT_PER_EMP_PER_MINUTE: "5"
   TRUST_PROXY: "1"
   LOG_LEVEL: info
+  # Item photos live in a private S3 bucket; the API reaches it with the instance role over
+  # IMDSv2 (hop limit 2 on this instance), so there is no key here. RUNBOOK §16.8.
+  IMAGE_STORE: s3
+  IMAGE_BUCKET: ${IMAGE_BUCKET:?set IMAGE_BUCKET in .env - the item photo bucket}
+  AWS_REGION: ap-south-1
 
 x-audit-env: &audit_env
   # The audit service's runtime role. `audit-migrate` creates it from this URL's user and password.
