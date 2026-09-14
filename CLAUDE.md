@@ -174,7 +174,8 @@ back where it stood.
   reserved, free-to-promise, availability, price-at-MRP-cap, the procurement list and PO progress. Most of it
   delegates to `@rch/domain`. Don't mirror a derived value into the store.
 - **Browser-only state** is `cart`, `draft`, `prqDraft`, `poolVendor` (the buyer's vendor pick per
-  procurement-list item), `drawer`, `toast`, `authError`, `shopFilter`, `theme` and `catalogVersion`. Only the theme and a few UI preferences reach `localStorage`.
+  procurement-list item), `drawer`, `toast`, `authError`, `shopFilter`, `theme` and `catalogVersion`. Only the
+  theme, a few UI preferences and the bell's read record reach `localStorage`.
 
 ## Domain invariants
 

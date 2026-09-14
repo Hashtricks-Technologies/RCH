@@ -145,6 +145,9 @@ a background refresh and must not blank the screen.
   under `@media (prefers-color-scheme: dark)` guarded by `:root:not([data-theme="light"])`, and again under
   `[data-theme="dark"]`.
 - **Printing** uses three classes: `.print-slip` (the only thing on paper), `.no-print` and `.print-only`.
+- **The bell's rows are queues, not messages.** `navQueues` in `ui/Shell.tsx` returns the documents behind
+  each badge. Opening a row stores those ids through `ui/seen.ts` (`localStorage`, per account), which moves
+  the row under Earlier. Anything that joins the queue afterwards brings it back under New, in red.
 - **The toast is drawn once**, by `ui/Toast.tsx` in `App.tsx`, not by the shell. The sign-in and
   change-password forms don't toast a refusal at all: they show `authError` inline.
 

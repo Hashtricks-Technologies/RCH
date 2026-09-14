@@ -11,6 +11,7 @@ import type { LocKey, Role } from "../types";
 import { useStreamState, type StreamState } from "../api/events";
 import { Avatar, Icon, Pill, SearchIcon, Tag, ThemeButton } from "./kit";
 import { applyPrefs, readPrefs, usePhoto } from "./prefs";
+import { markSeen, useSeen } from "./seen";
 import Drawer from "./Drawer";
 import ErrorBoundary from "./ErrorBoundary";
 import mark from "../assets/eateszy-mark.png";
@@ -31,7 +32,7 @@ export default function Shell({ children }: { children: ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
   const user = useApp((s) => s.user)!;
   const logout = useApp((s) => s.logout);
-  // NOTE: navCounts builds a fresh object, so it must never be passed to useApp()
+  // NOTE: navQueues builds a fresh object, so it must never be passed to useApp()
   // as a selector — zustand v5 feeds the selector result to useSyncExternalStore and a
   // new identity on every call re-renders forever. Read the whole (stable) state instead.
   const state = useApp();
@@ -44,7 +45,7 @@ export default function Shell({ children }: { children: ReactNode }) {
     const id = setInterval(() => tick((n) => n + 1), 60_000);
     return () => clearInterval(id);
   }, []);
-  const counts = navCounts(state);
+  const queues = navQueues(state);
   const photo = usePhoto();
   const live = useStreamState();
   const nav = useNavigate();
@@ -76,7 +77,7 @@ export default function Shell({ children }: { children: ReactNode }) {
                 <NavLink key={it.k} to={"/" + it.k} onClick={() => setOpen(false)}
                   className={({ isActive }) => (isActive ? "on" : "")}>
                   <Icon name={it.icon} /><span>{it.label}</span>
-                  {counts[it.k] > 0 && <span className="ct hot">{counts[it.k]}</span>}
+                  {queues[it.k]?.length > 0 && <span className="ct hot">{queues[it.k].length}</span>}
                 </NavLink>
               ))}
             </div>
@@ -116,7 +117,7 @@ export default function Shell({ children }: { children: ReactNode }) {
           {/* Nothing is shown while the stream is live: a badge that is always there stops being read. */}
           {live === "reconnecting" && <Pill tone="wn">Reconnecting</Pill>}
           <ThemeButton />
-          <Bell counts={counts} />
+          <Bell uid={user.id} queues={queues} />
           <button className="avb" type="button" onClick={() => nav("/settings")}>
             <Avatar name={user.n} color={user.col} size={26} src={photo} />
             <span className="nmx"><b>{user.n.split(" ")[0]}</b><span>{user.rl}</span></span>
@@ -231,37 +232,54 @@ function Search() {
 }
 
 /* ---------- notifications (P4) ---------- */
-function Bell({ counts }: { counts: Record<string, number> }) {
+/** A row is read once it has been opened, and stays read until a document it has not shown
+ *  joins its queue. A read row is still listed, under Earlier — the queue has not gone anywhere. */
+function Bell({ uid, queues }: { uid: string; queues: Record<string, string[]> }) {
   const nav = useNavigate();
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement>(null);
   const close = useCallback(() => setOpen(false), []);
   useDismiss(open, close, box);
+  const seen = useSeen(uid);
 
-  const items = Object.entries(counts).filter(([k, n]) => n > 0 && NOTE[k]);
-  const total = items.reduce((a, [, n]) => a + n, 0);
+  const rows = Object.entries(queues)
+    .filter(([k, docs]) => docs.length > 0 && NOTE[k])
+    .map(([k, docs]) => {
+      const was = new Set(seen[k] ?? []);
+      return { k, docs, fresh: docs.filter((d) => !was.has(d)).length };
+    });
+  const fresh = rows.filter((r) => r.fresh > 0);
+  const earlier = rows.filter((r) => r.fresh === 0);
+  const unread = fresh.reduce((a, r) => a + r.fresh, 0);
+
+  const row = (r: (typeof rows)[number]) => (
+    <button key={r.k} type="button" role="menuitem" className={`po${r.fresh ? " nw" : ""}`}
+      onClick={() => { markSeen(uid, r.k, r.docs); setOpen(false); nav("/" + r.k); }}>
+      <span className="pb"><b>{NOTE[r.k][0]}</b><span>{NOTE[r.k][1]}</span></span>
+      <span className="pn">{r.fresh && r.fresh < r.docs.length ? `${r.fresh} new · ${r.docs.length}` : r.docs.length}</span>
+    </button>
+  );
 
   return (
     <div className="pw" ref={box}>
       <button className="ib" type="button" aria-haspopup="menu" aria-expanded={open}
-        aria-label={total > 0 ? `Notifications — ${total} waiting` : "Notifications — nothing waiting"}
+        aria-label={unread > 0 ? `Notifications — ${unread} unread` : "Notifications — nothing unread"}
         onClick={() => setOpen(!open)}>
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.5}>
           <path d="M8 2a4 4 0 0 0-4 4c0 3-1 4-1 4h10s-1-1-1-4a4 4 0 0 0-4-4ZM6.5 12.5a1.5 1.5 0 0 0 3 0" /></svg>
-        {total > 0 && <span className="bd">{total}</span>}
+        {unread > 0 && <span className="bd">{unread}</span>}
       </button>
       {open && (
-        <div className="pop" role="menu" aria-label="Notifications">
+        <div className="pop bell" role="menu" aria-label="Notifications">
           <div className="ph">Waiting on you</div>
-          {items.length ? (
+          {rows.length ? (
             <div className="pl">
-              {items.map(([k, n]) => (
-                <button key={k} type="button" role="menuitem" className="po"
-                  onClick={() => { setOpen(false); nav("/" + k); }}>
-                  <span className="pb"><b>{NOTE[k][0]}</b><span>{NOTE[k][1]}</span></span>
-                  <span className="pn">{n}</span>
-                </button>
-              ))}
+              {fresh.length > 0
+                ? <div role="group" aria-label="New"><div className="pk" aria-hidden="true">New</div>{fresh.map(row)}</div>
+                : <div className="pk">Nothing new since you last looked</div>}
+              {earlier.length > 0 && (
+                <div role="group" aria-label="Earlier"><div className="pk" aria-hidden="true">Earlier</div>{earlier.map(row)}</div>
+              )}
             </div>
           ) : <div className="pe">Nothing is waiting on you right now.</div>}
         </div>
@@ -339,12 +357,12 @@ function searchHits(s: SearchState, q: string): Hit[] {
 
 /* ---------- counters ---------- */
 /** Listed but unsellable — a manual switch, an empty shelf or a missing ingredient. */
-const offCount = (s: AppState, l: LocKey) => menuOf(s, l).filter((it) => !availOf(s, l, it).ok).length;
+const offItems = (s: AppState, l: LocKey) => menuOf(s, l).filter((it) => !availOf(s, l, it).ok);
 
-/** How many active items the central store carries under their own reorder level — the same
- *  test the buyer's Inventory screen and the store keeper's Stock screen already filter by. */
-const belowReorderCount = (s: AppState) =>
-  activeItems().filter((k) => IT[k].rl > 0 && qty(s, "store", k) < IT[k].rl).length;
+/** The active items the central store carries under their own reorder level — the same test
+ *  the buyer's Inventory screen and the store keeper's Stock screen already filter by. */
+const belowReorder = (s: AppState) =>
+  activeItems().filter((k) => IT[k].rl > 0 && qty(s, "store", k) < IT[k].rl);
 
 const APPROACHING_MS = 2 * 3_600_000;
 /** A batch is not tracked once its stock joins the shelf — the ledger only knows an item's
@@ -354,43 +372,49 @@ const APPROACHING_MS = 2 * 3_600_000;
  *  because only the printed "best before HH:MM" string survives onto the wire, not the
  *  instant. Counts a batch whose best-before is under two hours away and has not passed yet;
  *  the interval below (`useBadgeTick`) is what makes this true even when nothing else changes. */
-const approachingBestBeforeCount = (s: AppState) =>
+const approachingBestBefore = (s: AppState) =>
   s.batch.filter((b) => {
     const left = bestBeforeAt(new Date(b.iso), IT[b.it]?.sl).getTime() - Date.now();
     return left > 0 && left <= APPROACHING_MS;
-  }).length;
+  });
 
-function navCounts(s: AppState): Record<string, number> {
+const ids = <T extends { id: string }>(xs: T[]) => xs.map((x) => x.id);
+
+/** What each badge counts, as the documents themselves — the sidebar shows how many, and the bell
+ *  needs to know which, so it can tell a row it has already shown from one that has news in it. */
+function navQueues(s: AppState): Record<string, string[]> {
   const u = s.user;
   if (!u) return {};
-  const c: Record<string, number> = {};
+  const c: Record<string, string[]> = {};
   if (u.r === "counter") {
     // What is still coming, not what is merely unconfirmed: a withdrawn ticket has nowhere
     // left to go, and `!== "Received"` kept it on the badge for the rest of the day.
-    c.tickets = s.tkt.filter((t) => t.to === u.loc && isTicketOpen(t.st)).length;
-    c.requests = s.req.filter((r) => r.from === u.loc && r.st === "Request sent").length;
-    c.avail = offCount(s, u.loc);
+    c.tickets = ids(s.tkt.filter((t) => t.to === u.loc && isTicketOpen(t.st)));
+    c.requests = ids(s.req.filter((r) => r.from === u.loc && r.st === "Request sent"));
+    c.avail = offItems(s, u.loc);
   }
   if (u.r === "manager") {
-    c.approvals = s.req.filter((r) => r.st === "Request sent").length;
-    c.avail = OUTLETS.reduce((n, l) => n + offCount(s, l), 0);
+    c.approvals = ids(s.req.filter((r) => r.st === "Request sent"));
+    c.avail = OUTLETS.flatMap((l) => offItems(s, l).map((it) => `${l}:${it}`));
   }
   if (u.r === "store") {
-    c.issue = s.req.filter((r) => (r.st === "Manager approved" || r.st === "Partially approved") && !r.ticket).length
-      + s.tkt.filter((t) => t.from === "store" && t.st === "Issued").length;
-    c.procure = s.prq.filter((p) => p.st === "Sent").length;
-    c.stock = belowReorderCount(s);
+    c.issue = [
+      ...ids(s.req.filter((r) => (r.st === "Manager approved" || r.st === "Partially approved") && !r.ticket)),
+      ...ids(s.tkt.filter((t) => t.from === "store" && t.st === "Issued")),
+    ];
+    c.procure = ids(s.prq.filter((p) => p.st === "Sent"));
+    c.stock = belowReorder(s);
   }
   if (u.r === "prod") {
-    c.orders = s.pord.filter((o) => o.st === "New").length;
+    c.orders = ids(s.pord.filter((o) => o.st === "New"));
     c.avail = Object.keys(s.stock.kitchen)
-      .filter((k) => IT[k]?.t === "FG" && !availOf(s, "kitchen", k).ok).length;
-    c.dash = approachingBestBeforeCount(s);
+      .filter((k) => IT[k]?.t === "FG" && !availOf(s, "kitchen", k).ok);
+    c.dash = ids(approachingBestBefore(s));
   }
   if (u.r === "buyer") {
-    c.requisitions = s.prq.filter((p) => p.st === "Sent").length;
-    c.pool = procurementList(s).length;
-    c.inventory = belowReorderCount(s);
+    c.requisitions = ids(s.prq.filter((p) => p.st === "Sent"));
+    c.pool = procurementList(s).map((l) => `${l.prq}:${l.line}`);
+    c.inventory = belowReorder(s);
   }
   return c;
 }

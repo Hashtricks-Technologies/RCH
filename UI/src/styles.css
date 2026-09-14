@@ -318,6 +318,13 @@ td.n b{font-weight:600;color:var(--ink)}
 .pop .po .pn{flex:none;font-family:"IBM Plex Mono",monospace;font-size:10.5px;font-weight:600;padding:1px 7px;
  border-radius:9px;background:var(--crit-soft);color:var(--crit);border:1px solid var(--crit-line)}
 .pop .pe{padding:26px 16px;text-align:center;font-size:12px;color:var(--ink-3)}
+/* the bell: an unread row is red, a read one stays listed under Earlier and goes quiet */
+.bell .pk{padding:7px 9px 3px;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-4);font-weight:600}
+.bell .po.nw{background:var(--crit-soft)}
+.bell .po.nw:hover{background:var(--surface-3)}
+.bell .po.nw .pb b{color:var(--crit)}
+.bell .po:not(.nw) .pb b{font-weight:500;color:var(--ink-2)}
+.bell .po:not(.nw) .pn{background:var(--surface-3);color:var(--ink-3);border-color:var(--line)}
 /* compact tables — the one preference with teeth */
 :root[data-compact="true"] thead th{padding:5px 10px}
 :root[data-compact="true"] tbody td{padding:4px 10px}
