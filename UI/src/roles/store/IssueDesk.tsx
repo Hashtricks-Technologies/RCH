@@ -112,7 +112,7 @@ export default function IssueDesk() {
         tip="Hand over stock that has been approved."
       />
 
-      <Grid>
+      <Grid cols="g3">
       <Card
         title="Approved - awaiting ticket"
         tip="Manager approved and partially approved requests · open a row for the detail"
