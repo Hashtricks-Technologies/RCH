@@ -14,6 +14,7 @@ import Contracts from "../roles/store/Contracts";
 import MakeDistribute from "../roles/prod/MakeDistribute";
 import Drawer from "../ui/Drawer";
 import "../roles/buyer/PoReceiptDrawer";        // registers "bgrn" on the drawer registry
+import "../roles/buyer/NewProductDrawer";       // registers "bnewitem"
 import { useApp } from "../store";
 import { as, resetStore, S } from "./fixture";
 
@@ -249,6 +250,55 @@ describe("the goods receipt refuses rather than greys out", () => {
     act(() => { leave(rejected); });
     await settle(() => { ui.button("Book into the central store")!.click(); });
     await settleUntil(() => hit(`POST /api/v1/purchase-orders/${po.id}/receive`).length > 0);
+    ui.unmount();
+  });
+});
+
+describe("procurement adds a product with the store keeper's field set", () => {
+  /** The box a visible label names. `Field` wires the label's `htmlFor` to its control. */
+  const byLabel = <T extends HTMLElement>(host: HTMLElement, label: string): T => {
+    const l = [...host.querySelectorAll("label")].find((x) => x.textContent === label);
+    expect(l, `no field labelled ${label}`).toBeTruthy();
+    return document.getElementById(l!.htmlFor) as T;
+  };
+
+  it("offers only the types procurement buys", () => {
+    as("buyer");
+    useApp.setState({ drawer: { t: "bnewitem", id: "new" } });
+    const ui = mountNode(Drawer);
+    // FG is the kitchen's and MTO is assembled at the counter off a recipe; neither is bought.
+    const types = [...byLabel<HTMLSelectElement>(ui.host, "Type").options].map((o) => o.value);
+    expect(types).toEqual(["RAW", "PACK", "MRP"]);
+    // The group box suggests the groups already on the master, so one is not typed two ways.
+    const list = byLabel<HTMLInputElement>(ui.host, "Group").list!;
+    expect([...list.options].map((o) => o.value)).toContain("Packaging");
+    ui.unmount();
+  });
+
+  it("posts the code, group, HSN and GST it typed, not the defaults", async () => {
+    as("buyer");
+    const sheet = { c: "PK-2010", n: "Butter paper sheet", u: "nos", t: "PACK" as const, g: "Packaging", hsn: "4806", gst: 18, rl: 0, cost: 0.8 };
+    serve({
+      "POST /api/v1/items": () => json({ result: { key: "butterpapers", item: sheet }, changed: ["items"], message: "Butter paper sheet added to the catalogue" }),
+      "GET /api/v1/items": () => json({ ...FX.IT, butterpapers: sheet }),
+    });
+    useApp.setState({ drawer: { t: "bnewitem", id: "new" } });
+    const ui = mountNode(Drawer);
+
+    act(() => { type(byLabel(ui.host, "Product name"), "Butter paper sheet"); });
+    act(() => { type(byLabel(ui.host, "Item code"), "PK-2010"); });
+    act(() => { pick(byLabel(ui.host, "Type"), "PACK"); });
+    act(() => { type(byLabel(ui.host, "Group"), "Packaging"); });
+    act(() => { type(byLabel(ui.host, "HSN"), "4806"); });
+    act(() => { type(byLabel(ui.host, "GST %"), "18"); });
+    act(() => { type(byLabel(ui.host, "Cost a unit (₹)"), "0.8"); });
+
+    await settle(() => { ui.button("Add to the catalogue")!.click(); });
+    await settleUntil(() => hit("POST /api/v1/items").length > 0);
+    expect(hit("POST /api/v1/items")[0].body).toMatchObject({
+      name: "Butter paper sheet", code: "PK-2010", type: "PACK", grp: "Packaging", hsn: "4806", gst: 18,
+      cost: 0.8, loc: "store", opening: 0,
+    });
     ui.unmount();
   });
 });

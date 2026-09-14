@@ -271,8 +271,9 @@ trimmed requisition, and a search finds it. Their dashboard raises a DECLINED or
 every decision taken today (IST), with an Open button for the requisition.
 
 **New products.** An outlet manager asks for something not on the master; procurement is the
-one who sources it, so procurement is the one who adds it - a short form (name, type, unit,
-cost, MRP if applicable), with everything else defaulted. Stock arrives the normal way,
+one who sources it, so procurement is the one who adds it - the store keeper's form (name, code,
+type, group, unit, HSN, GST, reorder level, cost, MRP if applicable), limited to the types
+procurement buys (RAW, PACK, MRP) and with no opening stock. Stock arrives the normal way,
 through a purchase order, not as an opening balance typed in on the spot. Server-backed since
 Phase 5 (`POST /product-requests`, answered by `POST /product-requests/:id/answer`), and the
 store keeper and the kitchen can each add a product directly too - the kitchen for its own raw

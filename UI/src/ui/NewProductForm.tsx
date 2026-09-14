@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useId, useState } from "react";
+import { isPurchased } from "@rch/domain";
 import { IT, LOC } from "../data/master";
 import { useApp } from "../store";
 import { money } from "../lib/fmt";
@@ -37,6 +38,8 @@ const TRADED: ScopeSpec["types"] = [
   { t: "FG", label: "Finished good (FG)", hint: "Made in the kitchen and held as stock" },
   { t: "MTO", label: "Made to order (MTO)", hint: "Assembled at the counter from a recipe, never held as stock" },
 ];
+/** Procurement buys goods; it does not invent what the kitchen makes or the counter assembles. */
+const PURCHASED: ScopeSpec["types"] = TRADED.filter((x) => isPurchased(x.t));
 /** The kitchen makes and holds. It never invents an MRP good - those are bought in by
  *  procurement and priced off a printed MRP the kitchen has no sight of. */
 const KITCHEN_TYPES: ScopeSpec["types"] = [
@@ -54,13 +57,15 @@ const SCOPES: Record<ProductScope, ScopeSpec> = {
     defaults: { group: "Grocery", unit: "nos", hsn: "2106", gst: "5", type: "RAW" },
   },
   // Procurement answers a shop's product request. The stock arrives the normal way, through a
-  // purchase order, so there is no opening balance to book and no shelf to book it on.
+  // purchase order, so there is no opening balance to book and no shelf to book it on. Everything
+  // else is the store keeper's field set: the group picks the vendor the procurement list
+  // suggests, the GST rate taxes the counter bill, and the code can never be changed afterwards.
   buyer: {
     loc: "store",
-    types: TRADED,
+    types: PURCHASED,
     units: ALL_UNITS,
-    has: { code: false, group: false, tax: false, shelfLife: false, opening: false },
-    defaults: { group: "", unit: "nos", hsn: "", gst: "5", type: "RAW" },
+    has: { code: true, group: true, tax: true, shelfLife: false, opening: false },
+    defaults: { group: "Grocery", unit: "nos", hsn: "2106", gst: "5", type: "RAW" },
   },
   kitchen: {
     loc: "kitchen",
@@ -106,6 +111,9 @@ export function NewProductForm({ scope, title, sub, intro, initialName, onCreate
   const [shelf, setShelf] = useState("");
   const [opening, setOpening] = useState("");
   const [busy, setBusy] = useState(false);
+  const groupList = useId();
+  /** The groups already on the master, offered so the same group is not typed two ways. */
+  const groups = [...new Set(Object.values(IT).map((i) => i.g))].sort();
 
   const trimmed = name.trim();
   const costN = Number(cost) || 0;
@@ -187,7 +195,11 @@ export function NewProductForm({ scope, title, sub, intro, initialName, onCreate
         </Field>
         {spec.has.group && (
           <Field label="Group" hint="Groups the picker and the stock tables by.">
-            <input value={group} onChange={(e) => setGroup(e.target.value)} placeholder="Grocery" />
+            <input value={group} onChange={(e) => setGroup(e.target.value)} placeholder="Grocery"
+              list={groupList} />
+            <datalist id={groupList}>
+              {groups.map((g) => <option key={g} value={g} />)}
+            </datalist>
           </Field>
         )}
       </FormRow>
