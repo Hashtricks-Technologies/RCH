@@ -6,10 +6,10 @@ export { apportion, netReceived, round3 };
 import { PAR_FACTOR } from "@rch/domain";
 import { IT, LOC, MENU, PL, RCP } from "../data/master";
 import type {
-  Availability, Bill, LocKey, PoStatus, PordStatus, Price, PurchaseOrder, Requisition, ReqStatus,
+  Availability, Bill, DatedDoc, LocKey, PoStatus, PordStatus, Price, PurchaseOrder, Requisition, ReqStatus,
   StockLoc, StockRequest, Ticket, TktStatus, Tone,
 } from "../types";
-import { U } from "./fmt";
+import { U, isToday } from "./fmt";
 
 export interface StockShape {
   /** Quarantine included — the store keeper's screen reports the rejected-goods shelf. Every
@@ -209,6 +209,42 @@ export const awaitingApproval = (
  *  its trail opens on the decision, because nobody ever sent it. Every store keeper's ask opens
  *  on "Sent". */
 export const addedByProcurement = (p: Requisition) => p.hist[0]?.s === "Approved";
+
+/** The buyer's decision on a requisition: who took it, which way, the note left with it, and the
+ *  trail entry that records it (`entry`, an index into `hist`), so a screen can hang the note on
+ *  that entry. `null` while the requisition is still with procurement. */
+interface PrqDecision {
+  st: Exclude<Requisition["st"], "Sent">; by: string; note: string; at: string; iso: string; entry: number;
+}
+export function prqDecision(p: DatedDoc<Requisition>): PrqDecision | null {
+  if (p.st === "Sent") return null;
+  const entry = p.hist.findLastIndex((h) => h.s === p.st);
+  const h = p.hist[entry];
+  return { st: p.st, by: p.apprBy ?? h?.who ?? "—", note: (p.apprNote ?? "").trim(), at: h?.t ?? "", iso: h?.iso ?? "", entry };
+}
+
+/** The banner tone for each way a requisition can be decided, on the `Alert` kit's scale. */
+export const DECISION_TONE = { Declined: "c", "Partially approved": "w", Approved: "g" } as const;
+
+/** The decision as one sentence, reason included — the store keeper's panel, the buyer's panel
+ *  and the store dashboard all print this one. A direct add was never asked for, so it was added
+ *  rather than approved. */
+export function decisionSentence(p: Requisition, d: PrqDecision): string {
+  const did = d.st === "Declined" ? `declined ${p.id}`
+    : d.st === "Partially approved" ? `approved part of ${p.id}`
+      : addedByProcurement(p) ? `added ${p.id} to the procurement list` : `approved ${p.id} in full`;
+  return `${d.by} ${did} at ${d.at} — ${d.note || "No note was left with the decision."}`;
+}
+
+/** Today's decisions that leave the store keeper short — declined, or approved in part — newest
+ *  first. Today on the decision's own instant, in IST, not on when the requisition was raised. */
+export const shortDecisionsToday = (s: { prq: DatedDoc<Requisition>[] }) =>
+  s.prq
+    .flatMap((p) => {
+      const d = prqDecision(p);
+      return d && d.st !== "Approved" && d.iso && isToday(d.iso) ? [{ p, d }] : [];
+    })
+    .sort((a, b) => b.d.iso.localeCompare(a.d.iso));
 
 export interface PoolLine {
   prq: string; line: number; it: string;

@@ -121,7 +121,7 @@ a background refresh and must not blank the screen.
 - **`IT` includes retired items**, because old documents still name them. Pickers must read `activeItems()`,
   never `Object.keys(IT)`.
 - **`src/lib/selectors.ts` is the source of truth for everything derived.** That covers `qty`, `resv`,
-  `avail`, `freeToPromise`, `availOf`, `priceOf`, `procurementList`, `prqProgress`, `onOrder`,
+  `avail`, `freeToPromise`, `availOf`, `priceOf`, `procurementList`, `prqProgress`, `prqDecision`, `onOrder`,
   `awaitingApproval`, `inTransit`, `costOf` and the transition predicates (`canHandOver`, `canDispatch`,
   `canSendPo`, …). The predicates read the domain tables, so any button the UI draws is one the server
   accepts.

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
-import { qty } from "../../lib/selectors";
+import { DECISION_TONE, addedByProcurement, decisionSentence, prqDecision, qty } from "../../lib/selectors";
 import { U, fq, money, sum } from "../../lib/fmt";
 import { Alert, Btn, DataTable, Feed, Field, Section, StatusPill, TableFoot } from "../../ui/kit";
 import type { Row } from "../../ui/kit";
@@ -40,6 +40,7 @@ function RequisitionDrawer({ id }: DrawerProps) {
   }
 
   const open = p.st === "Sent";
+  const d = prqDecision(p);
   const decided = p.st === "Approved" || p.st === "Partially approved";
   const apprAt = (i: number) => {
     const v = appr[i];
@@ -133,11 +134,20 @@ function RequisitionDrawer({ id }: DrawerProps) {
         </>
       ) : undefined}
     >
-      <Section title="Requirement from the store keeper" sub={`${p.by} · ${LOC.store.n} · raised at ${p.at}`}>
-        <Alert tone={open ? "i" : p.st === "Declined" ? "c" : "g"} label={p.st.toUpperCase()}>
-          {p.note || "No note was left with this requisition."}
-        </Alert>
-      </Section>
+      {d && (
+        <Section title="Decision" sub={`${d.by} · ${d.st} at ${d.at}`}>
+          <Alert tone={DECISION_TONE[d.st]} label={d.st.toUpperCase()}>{decisionSentence(p, d)}</Alert>
+        </Section>
+      )}
+
+      {/* A direct add has no store keeper's ask behind it — its note is the reason in the decision. */}
+      {!addedByProcurement(p) && (
+        <Section title="Requirement from the store keeper" sub={`${p.by} · ${LOC.store.n} · raised at ${p.at}`}>
+          <Alert tone="i" label={open ? "SENT" : "ASKED"}>
+            {p.note || "No note was left with this requisition."}
+          </Alert>
+        </Section>
+      )}
 
       <Section
         title="Items"
@@ -208,25 +218,22 @@ function RequisitionDrawer({ id }: DrawerProps) {
         </Alert>
       )}
 
-      {open ? (
-        <Section title="Decision note" sub="Required to decline; kept on the requisition history either way.">
+      {open && (
+        <Section title="Decision note" sub="Required to decline. The store keeper sees it on the requisition either way.">
           <Field label="Note" hint={!note.trim()
             ? "A reason is required to decline. Optional when approving in full or in part."
-            : "Kept on the requisition history against your name."}>
+            : "Shown to the store keeper, and kept on the requisition history against your name."}>
             <textarea rows={3} value={note} onChange={(e) => setNote(e.target.value)}
               placeholder="Why you trimmed an item, or why nothing was approved…" />
           </Field>
-        </Section>
-      ) : (
-        <Section title="Decision" sub={`${p.apprBy ?? "—"} · ${p.st}`}>
-          <p className="mini">{p.apprNote || "No note was left with the decision."}</p>
         </Section>
       )}
 
       <Section title="History" sub="Every hand this requisition has passed through">
         <Feed
           items={p.hist.map((h, i) => ({
-            key: h.s + i, title: h.s, body: h.who, when: h.t, color: dotFor(h.s),
+            key: h.s + i, title: h.s, when: h.t, color: dotFor(h.s),
+            body: i === d?.entry && d.note ? <>{h.who} — {d.note}</> : h.who,
           }))}
         />
       </Section>

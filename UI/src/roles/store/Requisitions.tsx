@@ -4,7 +4,7 @@ import { IT } from "../../data/master";
 import { suggestVendor, vendorName } from "../../data/vendors";
 import { useApp } from "../../store";
 // ---- item patch ----
-import { activeItems, addedByProcurement, avail, awaitingApproval, onOrder, prqProgress, qty } from "../../lib/selectors";
+import { activeItems, addedByProcurement, avail, awaitingApproval, onOrder, prqDecision, prqProgress, qty } from "../../lib/selectors";
 import { U, fq, money, money0, sum, unitTotal } from "../../lib/fmt";
 import {
   Alert, Btn, BtnRow, Card, DataTable, DraftLineInput, Field, FilterBtn, FilterSelect, Grid,
@@ -143,6 +143,7 @@ export default function Requisitions() {
       || p.st.toLowerCase().includes(term)
       || label.toLowerCase().includes(term)
       || p.note.toLowerCase().includes(term)
+      || (p.apprNote ?? "").toLowerCase().includes(term)
       || p.lines.some((l) => (IT[l.it]?.n ?? l.it).toLowerCase().includes(term) || (IT[l.it]?.c ?? "").toLowerCase().includes(term))
       || pos.some((o) => o.id.toLowerCase().includes(term) || vendorName(s.vendors, o.vendor).toLowerCase().includes(term));
   });
@@ -338,6 +339,7 @@ export default function Requisitions() {
             rows={history.map((p) => {
               const g = progress.get(p.id)!;
               const pos = posFor(p.id);
+              const d = prqDecision(p);
               return {
                 key: p.id,
                 onClick: () => openDrawer("sprq", p.id),
@@ -371,10 +373,16 @@ export default function Requisitions() {
                   </>,
                   <>
                     <StatusPill status={g.label} />
-                    <div className="mini">
-                      {unitTotal(qtyBy(g.lines, "ordered")) || "nothing"} of{" "}
-                      {unitTotal(qtyBy(g.lines, "appr")) || "nothing"} approved ordered
-                    </div>
+                    {p.st !== "Declined" && (
+                      <div className="mini">
+                        {unitTotal(qtyBy(g.lines, "ordered")) || "nothing"} of{" "}
+                        {unitTotal(qtyBy(g.lines, "appr")) || "nothing"} approved ordered
+                      </div>
+                    )}
+                    {/* Why the store keeper got less than they asked, in procurement's words. */}
+                    {d && d.st !== "Approved" && (
+                      <div className="mini">{d.by}: {d.note || "no note was left"}</div>
+                    )}
                   </>,
                 ],
               };

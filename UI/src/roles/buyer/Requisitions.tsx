@@ -102,7 +102,10 @@ export default function Requisitions() {
         <>{apprQtyOf(p)} <small className="dim">of {qtyOf(p)}</small></>,
         p.st === "Approved"
           ? <Pill tone="ok">In full</Pill>
-          : <Pill tone="wn">Partial</Pill>,
+          : <>
+            <Pill tone="wn">Partial</Pill>
+            {p.apprNote && <div className="mini dim">{p.apprNote}</div>}
+          </>,
         <>
           <StatusPill status={r.label} />
           <div className="mini dim">{r.done} of {r.total} received</div>

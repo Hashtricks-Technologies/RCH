@@ -1,7 +1,9 @@
 import { IT, LOC } from "../../data/master";
 import { vendorName } from "../../data/vendors";
 import { useApp } from "../../store";
-import { apportion, netReceived, prqProgress, round3 } from "../../lib/selectors";
+import {
+  DECISION_TONE, addedByProcurement, apportion, decisionSentence, netReceived, prqDecision, prqProgress, round3,
+} from "../../lib/selectors";
 import { U, fq, money, money0, sum } from "../../lib/fmt";
 import {
   Alert, DataTable, Feed, Pill, Section, StatusPill, TableFoot,
@@ -12,6 +14,7 @@ import type { PurchaseOrder } from "../../types";
 
 const dotFor = (state: string) =>
   state === "Declined" ? "var(--crit)" : state === "Sent" ? "var(--warn)" : "var(--good)";
+
 
 /** What the store keeper asked for on one requisition line, set against what
  *  procurement actually did with it. One row per line, or per purchase order
@@ -25,7 +28,7 @@ interface Recon {
   recv: number;
   po: PurchaseOrder | null;
   rate: number;
-  status: "Not ordered" | "Ordered" | "Partially received" | "Received";
+  status: "Not approved" | "Not ordered" | "Ordered" | "Partially received" | "Received";
 }
 
 function RequisitionDetail({ id }: DrawerProps) {
@@ -44,6 +47,9 @@ function RequisitionDetail({ id }: DrawerProps) {
   }
 
   const g = prqProgress(s, p.id);
+  const d = prqDecision(p);
+  // Only a part-approval trims: a declined line is refused whole, not cut short.
+  const trimmed = p.st === "Partially approved" ? p.lines.filter((l) => (l.short ?? 0) > 0) : [];
   // A cancelled purchase order never bought anything, so it must not read as
   // an order against this requisition — the same exclusion prqProgress makes.
   const live = s.po.filter((o) => o.st !== "Cancelled");
@@ -63,7 +69,8 @@ function RequisitionDetail({ id }: DrawerProps) {
     if (!hits.length) {
       recon.push({
         key: `${i}`, it: l.it, asked: l.qty, appr: l.appr,
-        ordered: 0, recv: 0, po: null, rate: 0, status: "Not ordered",
+        ordered: 0, recv: 0, po: null, rate: 0,
+        status: d && l.appr === 0 ? "Not approved" : "Not ordered",
       });
       return;
     }
@@ -103,10 +110,25 @@ function RequisitionDetail({ id }: DrawerProps) {
           </span>
         </div>
         <div className="mtop">
-          <Alert tone={p.st === "Declined" ? "c" : p.st === "Sent" ? "w" : "g"} label={p.st.toUpperCase()}>
-            {p.note || "No note was left with this requisition."}
-          </Alert>
+          {d ? (
+            <Alert tone={DECISION_TONE[d.st]} label={d.st.toUpperCase()}>{decisionSentence(p, d)}</Alert>
+          ) : (
+            <Alert tone="w" label="SENT">{p.note || "No note was left with this requisition."}</Alert>
+          )}
         </div>
+        {/* The store keeper's own words, under their own label — they used to wear the decision's
+            banner, which read as though procurement had written them. A direct add has no ask
+            behind it: its note is the buyer's reason, already in the banner above. */}
+        {d && !addedByProcurement(p) && (
+          <p className="mini mtop">Note sent with it: {p.note || "none"}</p>
+        )}
+        {trimmed.length > 0 && (
+          <div className="mtop">
+            <Pill tone="wn">
+              Trimmed: {trimmed.map((l) => `${IT[l.it]?.n ?? l.it} short ${fq(l.short ?? 0, l.it)} ${U(l.it)}`).join(", ")}
+            </Pill>
+          </div>
+        )}
         {notOrdered.length > 0 && (
           <div className="mtop">
             <Alert tone="w" label="NOT ORDERED">
@@ -201,22 +223,11 @@ function RequisitionDetail({ id }: DrawerProps) {
         <TableFoot count={receipts.length} />
       </Section>
 
-      <Section title="Decision" sub={p.apprBy ? `${p.apprBy} · ${p.st}` : "Still with procurement"}>
-        <p className="mini">{p.apprNote || "No note was left with the decision."}</p>
-        {p.lines.some((l) => (l.short ?? 0) > 0) && (
-          <div className="mtop">
-            <Pill tone="wn">
-              Trimmed: {p.lines.filter((l) => (l.short ?? 0) > 0)
-                .map((l) => `${IT[l.it]?.n ?? l.it} short ${fq(l.short ?? 0, l.it)} ${U(l.it)}`).join(", ")}
-            </Pill>
-          </div>
-        )}
-      </Section>
-
       <Section title="History" sub="Every hand this requisition has passed through">
         <Feed
           items={p.hist.map((h, i) => ({
-            key: h.s + i, title: h.s, body: h.who, when: h.t, color: dotFor(h.s),
+            key: h.s + i, title: h.s, when: h.t, color: dotFor(h.s),
+            body: i === d?.entry && d.note ? <>{h.who} — {d.note}</> : h.who,
           }))}
         />
       </Section>

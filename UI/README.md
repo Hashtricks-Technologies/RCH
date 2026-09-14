@@ -238,6 +238,14 @@ keeper to ask. "Add items" on the Procurement List opens a drawer of raw, packin
 step. Its lines join the list beside every other approved line, a purchase order claims against
 them the same way, and both requisition screens mark it as added by procurement.
 
+**The buyer's decision reaches the store keeper.** A decline needs a reason, and a trim or an
+approval can carry a note. Both requisition panels open on the decision itself: who took it, which
+way and that note (`prqDecision` / `decisionSentence` in `lib/selectors.ts`). The store keeper's
+own words sit below it under their own label, and the note also appears on the history entry that
+recorded the decision. The store keeper's requisition list prints the reason beside a declined or
+trimmed requisition, and a search finds it. Their dashboard raises a DECLINED or TRIMMED alert for
+every decision taken today (IST), with an Open button for the requisition.
+
 **New products.** An outlet manager asks for something not on the master; procurement is the
 one who sources it, so procurement is the one who adds it — a short form (name, type, unit,
 cost, MRP if applicable), with everything else defaulted. Stock arrives the normal way,

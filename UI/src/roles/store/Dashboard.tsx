@@ -2,14 +2,20 @@ import { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
-import { avail, daysCover, prqProgress, qty, resv, stateLabel, stateTone, stockValue } from "../../lib/selectors";
+import {
+  DECISION_TONE, avail, daysCover, decisionSentence, prqProgress, qty, resv, shortDecisionsToday, stateLabel, stateTone, stockValue,
+} from "../../lib/selectors";
 import { U, fq, lakh, money0, sum, unitTotal } from "../../lib/fmt";
 import { Alert, Btn, Card, DataTable, Grid, Kpis, PageHead, Pill, TableFoot } from "../../ui/kit";
 
 export default function Dashboard() {
   const s = useApp();
   const nav = useNavigate();
+  const openDrawer = useApp((x) => x.openDrawer);
   const { prq, po } = s;
+  // Procurement's answer, when it is not what was asked for: the store keeper hears it here, with
+  // the buyer's reason, rather than finding it later in the requisition list.
+  const decisions = shortDecisionsToday({ prq });
 
   // Filtered before the map, not after it. A stock key the catalogue has never heard of — a
   // ledger row for a product this browser's snapshot did not carry — reached `IT[it].rl` here
@@ -123,6 +129,16 @@ export default function Dashboard() {
           until the collector quotes the OTP at the store window.
         </Alert>
       )}
+      {decisions.map(({ p, d }) => (
+        <Alert
+          key={p.id}
+          tone={DECISION_TONE[d.st]}
+          label={d.st === "Declined" ? "DECLINED" : "TRIMMED"}
+          action={<Btn size="sm" variant="gh" onClick={() => openDrawer("sprq", p.id)}>Open</Btn>}
+        >
+          {decisionSentence(p, d)}
+        </Alert>
+      ))}
       {low.length > 0 && (
         <Alert
           tone="c"
@@ -134,7 +150,7 @@ export default function Dashboard() {
           {low.length > 3 ? ` and ${low.length - 3} more` : ""}.
         </Alert>
       )}
-      {queued.length === 0 && issued.length === 0 && low.length === 0 && (
+      {queued.length === 0 && issued.length === 0 && low.length === 0 && decisions.length === 0 && (
         <Alert tone="g" label="CLEAR">
           Nothing waiting at the store window and every item is above its reorder level.
         </Alert>
