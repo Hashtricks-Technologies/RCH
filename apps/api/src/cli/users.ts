@@ -24,7 +24,7 @@ const needRole = (): Role => {
 const needLoc = (): LocKey => {
   const v = need("loc");
   const parsed = LocKeySchema.safeParse(v);
-  if (!parsed.success) { console.error(`--loc must be one of ${LocKeySchema.options.join("|")} (got "${v}")`); process.exit(2); }
+  if (!parsed.success) { console.error(`--loc must be a location key - store, kitchen or an outlet's key (got "${v}")`); process.exit(2); }
   return parsed.data;
 };
 /** What `createUser` will accept, said once here so the operator reads it before the refusal

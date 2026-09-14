@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { z } from "zod";
-import { AdjustReasonSchema, CreateAdjustmentBodySchema, DeskReplyBodySchema, CreatePoBodySchema, CreditParamsSchema, CreditResponseSchema, EVENTS_PATH, EventNoticeSchema, LocKeySchema, MakeBatchBodySchema, PatchContractBodySchema, PatchPayerBodySchema, PatchPoBodySchema, PatchVendorBodySchema, PO_APPROVAL_LIMIT, RaiseTicketBodySchema, RateTicketBodySchema, ReceivePoBodySchema, SetOrderStatusBodySchema, SetTicketStatusBodySchema, StockLedgerQuerySchema, StockLocSchema, TktStatusSchema, TransferBodySchema, ItemSchema, PatchItemBodySchema } from "./index";
+import { AdjustReasonSchema, CreateAdjustmentBodySchema, DeskReplyBodySchema, CreatePoBodySchema, CreditParamsSchema, CreditResponseSchema, EVENTS_PATH, EventNoticeSchema, KITCHEN, LocKeySchema, MakeBatchBodySchema, PatchContractBodySchema, PatchPayerBodySchema, PatchPoBodySchema, PatchVendorBodySchema, PO_APPROVAL_LIMIT, QUARANTINE, RaiseTicketBodySchema, RateTicketBodySchema, ReceivePoBodySchema, SetOrderStatusBodySchema, SetTicketStatusBodySchema, SnapshotSchema, StockLedgerQuerySchema, StockLocSchema, STORE, TktStatusSchema, ItemSchema, PatchItemBodySchema } from "./index";
 import { routes } from "./routes";
 
 /** One valid body per route that takes one. The coverage case below fails if a new route
@@ -133,13 +133,31 @@ describe("what buying puts on the wire", () => {
     expect(PatchItemBodySchema.parse({})).toEqual({});
     expect(PatchVendorBodySchema.parse({ terms: "45 days" })).toEqual({ terms: "45 days" });
   });
-  it("knows quarantine is somewhere stock can be, and nowhere an operator can act", () => {
-    expect(StockLocSchema.safeParse("quarantine").success).toBe(true);
-    expect(LocKeySchema.safeParse("quarantine").success).toBe(false);
-    expect(TransferBodySchema.safeParse({ from: "rest", to: "quarantine", it: "water", qty: 1 }).success).toBe(false);
-  });
   it("carries the finance slab as a rule's constant, not as seed data", () => {
     expect(PO_APPROVAL_LIMIT).toBe(25000);
+  });
+});
+
+describe("location keys", () => {
+  it("accepts a key the server minted for an outlet opened after release", () => {
+    expect(LocKeySchema.safeParse("juice-bar").success).toBe(true);
+    expect(StockLocSchema.safeParse("juice-bar-2").success).toBe(true);
+    expect(LocKeySchema.safeParse(STORE).success).toBe(true);
+    expect(LocKeySchema.safeParse(KITCHEN).success).toBe(true);
+  });
+  it("refuses quarantine as a place an operator acts, while still reporting stock there", () => {
+    expect(LocKeySchema.safeParse(QUARANTINE).success).toBe(false);
+    expect(StockLocSchema.safeParse(QUARANTINE).success).toBe(true);
+    // Only the whole word: a key that merely starts with it is an ordinary key.
+    expect(LocKeySchema.safeParse("quarantine-2").success).toBe(true);
+  });
+  it.each(["Rest", "7-eleven", "", "a".repeat(25), "juice bar", "-rest"])("refuses %j as a key", (k) => {
+    expect(StockLocSchema.safeParse(k).success).toBe(false);
+  });
+  it("reads a snapshot's menu and stock for a fourth outlet, and refuses a malformed key", () => {
+    expect(SnapshotSchema.shape.menu.safeParse({ "juice-bar": ["juice"] }).success).toBe(true);
+    expect(SnapshotSchema.shape.stock.safeParse({ "juice-bar": { juice: 4 }, quarantine: {} }).success).toBe(true);
+    expect(SnapshotSchema.shape.menu.safeParse({ Juice: [] }).success).toBe(false);
   });
 });
 
@@ -156,11 +174,12 @@ describe("what the two reports put on the wire", () => {
     expect(StockLedgerQuerySchema.safeParse({ days: 366 }).success).toBe(false);
     expect(StockLedgerQuerySchema.safeParse({ days: 1.5 }).success).toBe(false);
   });
-  it("reports a StockLoc, so quarantine has a ledger and a canteen does not", () => {
+  it("reports a StockLoc, so quarantine has a ledger and a malformed key does not", () => {
     // The rejected-goods shelf is the only view anyone has of what a goods receipt turned away,
-    // and this is a report, not a write body - `StockLocSchema`, never `LocKeySchema`.
+    // and this is a report, not a write body - `StockLocSchema`, never `LocKeySchema`. Whether
+    // the key names a real location is the service's question; the schema only checks shape.
     expect(StockLedgerQuerySchema.safeParse({ loc: "quarantine" }).success).toBe(true);
-    expect(StockLedgerQuerySchema.safeParse({ loc: "canteen" }).success).toBe(false);
+    expect(StockLedgerQuerySchema.safeParse({ loc: "Canteen" }).success).toBe(false);
     expect(StockLedgerQuerySchema.safeParse({ loc: "store", surprise: 1 }).success).toBe(false);
   });
   it("names a payer by a kind the roster has and an id that is not blank", () => {
@@ -258,7 +277,7 @@ describe("what an adjustment puts on the wire", () => {
     // at the door sits on that shelf until somebody destroys it or sends it back, and nothing
     // else in the system can take it off again.
     expect(CreateAdjustmentBodySchema.safeParse({ loc: "quarantine", reason: "returned_to_vendor", lines: [{ it: "milk", qty: -2 }] }).success).toBe(true);
-    expect(CreateAdjustmentBodySchema.safeParse({ loc: "canteen", reason: "other", lines: [{ it: "milk", qty: -2 }] }).success).toBe(false);
+    expect(CreateAdjustmentBodySchema.safeParse({ loc: "Canteen", reason: "other", lines: [{ it: "milk", qty: -2 }] }).success).toBe(false);
   });
   it("leaves a zero line to the service, so the operator reads a sentence and not a 400", () => {
     expect(CreateAdjustmentBodySchema.safeParse({ loc: "store", reason: "count", lines: [{ it: "milk", qty: 0 }] }).success).toBe(true);

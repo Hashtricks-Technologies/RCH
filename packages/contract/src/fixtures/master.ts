@@ -1,15 +1,15 @@
 import type { Item, Location, Recipe, StockLoc, User, Payer } from "../types.js";
 
 export const LOC: Record<StockLoc, Location> = {
-  store:   { n: "Central Store",   c: "WH-CS", type: "Store",   floor: "Basement", cc: "CC-STO" },
-  kitchen: { n: "Central Kitchen", c: "KT-CK", type: "Kitchen", floor: "Ground",   cc: "CC-KIT" },
-  rest:    { n: "Restaurant",      c: "OT-R1", type: "Outlet",  floor: "Floor 1",  cc: "CC-RST", list: "A" },
-  coffee:  { n: "Coffee Shop",     c: "OT-C3", type: "Outlet",  floor: "Floor 3",  cc: "CC-CF3", list: "B" },
-  kiosk:   { n: "Snack Kiosk",     c: "OT-GK", type: "Outlet",  floor: "Ground",   cc: "CC-KSK", list: "A" },
+  store:   { n: "Central Store",   c: "WH-CS", type: "Store",   floor: "Basement", cc: "CC-STO", active: true, par: 1 },
+  kitchen: { n: "Central Kitchen", c: "KT-CK", type: "Kitchen", floor: "Ground",   cc: "CC-KIT", active: true, par: 0.35 },
+  rest:    { n: "Restaurant",      c: "OT-R1", type: "Outlet",  floor: "Floor 1",  cc: "CC-RST", list: "A", active: true, par: 0.22 },
+  coffee:  { n: "Coffee Shop",     c: "OT-C3", type: "Outlet",  floor: "Floor 3",  cc: "CC-CF3", list: "B", active: true, par: 0.18 },
+  kiosk:   { n: "Snack Kiosk",     c: "OT-GK", type: "Outlet",  floor: "Ground",   cc: "CC-KSK", list: "A", active: true, par: 0.15 },
   // The rejected-goods shelf. Not in OUTLETS and not in ALL_LOCS: nothing is sold, issued,
   // transferred or distributed from here, so no screen that iterates the working locations
   // should grow a sixth column. The store's own stock screen reads it by name.
-  quarantine: { n: "Quarantine", c: "WH-QR", type: "Store", floor: "Basement", cc: "CC-STO" },
+  quarantine: { n: "Quarantine", c: "WH-QR", type: "Store", floor: "Basement", cc: "CC-STO", active: true, par: 1 },
 };
 
 /** Mutable on purpose: the central store can add a product that did not exist before.

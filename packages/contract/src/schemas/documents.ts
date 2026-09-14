@@ -31,6 +31,11 @@ export const ItemSchema = z.object({
 export const LocationSchema = z.object({
   n: z.string(), c: z.string(), type: z.enum(["Store", "Kitchen", "Outlet"]),
   floor: z.string(), cc: z.string(), list: PriceListSchema.optional(),
+  // ---- outlets. Whether the location still trades, and how much of an item's reorder level one
+  // par covers there (`parFactor` in @rch/domain). Absent reads as open and as a full day's cover,
+  // the way `Item.active` reads absent: the server always sends both.
+  active: z.boolean().optional(),
+  par: z.number().positive().optional(),
 });
 export const UserSchema = z.object({
   id: z.string(), n: z.string(), e: z.string(), r: RoleSchema, rl: z.string(),

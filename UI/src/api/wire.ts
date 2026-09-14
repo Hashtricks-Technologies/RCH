@@ -1,7 +1,6 @@
 import type { z } from "zod";
-import { StockLocSchema } from "@rch/contract";
 import type { SnapshotSchema, StockResponseSchema } from "@rch/contract";
-import { hydrateItems, hydrateMaster, hydrateMenus, hydratePrices, hydrateRecipes, hydrateRoster } from "../data/master";
+import { hydrateItems, hydrateMaster, hydrateMenus, hydratePrices, hydrateRecipes, hydrateRoster, LOC } from "../data/master";
 import { fromWireBestBefore, fromWireDate, fromWireTime } from "../lib/fmt";
 import { useApp } from "../store";
 import { basePrices } from "../lib/selectors";
@@ -34,18 +33,15 @@ const hist = (h: HistEntry[]): Dated<HistEntry>[] =>
 const billed = (b: Bill[]): Dated<Bill>[] =>
   b.map((x) => ({ ...x, t: t(x.t), iso: instant(x.t, (x as Partial<Dated<Bill>>).iso) }));
 
-/** Quarantine is here and nowhere else that an operator acts: stock is *reported* for the
- *  rejected-goods shelf, so the store keeper can see what was turned away at a goods receipt.
- *  Read off the schema rather than hand-listed, so a sixth reported location cannot be added to
- *  the contract and quietly missed here - `store/index.ts`'s `EMPTY_STOCK` reads the same list. */
-const ALL_LOC: StockLoc[] = [...StockLocSchema.options];
 /**
- * A counter operator's snapshot is scoped to its own location, so the server
- * omits the rest. The store's map is exhaustive - an absent location is empty,
- * not missing, or every `stock[loc][it]` read would throw.
+ * A counter operator's snapshot is scoped to its own location, so the server omits the rest. The
+ * store's map is exhaustive - an absent location is empty, not missing, or every `stock[loc][it]`
+ * read would throw - over every location the master names, quarantine included. Read off `LOC`,
+ * which `hydrateMaster` has just filled, rather than a list compiled into the bundle: an outlet the
+ * super admin opened this morning is a location like any other.
  */
 const stockOf = (s: Snapshot["stock"]): Record<StockLoc, Record<string, number>> =>
-  Object.fromEntries(ALL_LOC.map((l) => [l, s[l] ?? {}])) as Record<StockLoc, Record<string, number>>;
+  ({ ...Object.fromEntries(Object.keys(LOC).map((l) => [l, {}])), ...s });
 
 /** Server shape -> the store's shape. Times become "HH:MM", dates "DD-MMM-YYYY"; nothing else changes. */
 export function applySnapshot(s: Snapshot): void {

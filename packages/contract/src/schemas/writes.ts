@@ -6,8 +6,9 @@ import { AdjustReasonSchema, GrnSchema, ItemSchema, PayerKindSchema, PayerSchema
  *  of reloading the whole snapshot after each mutation. Extracted so `events.ts` can name one
  *  collection at a time from the same enum. `"items"` is here because `POST /items` changes the
  *  item master, which every screen reads out of one registry - without it the only honest
- *  `changed` a new product could name would be the whole snapshot. */
-export const CollectionSchema = z.enum(["stock", "rsv", "ovr", "prices", "menu", "bills", "req", "tkt", "prq", "po", "pord", "batch", "grn", "vendors", "contracts", "tickets", "productReqs", "shopAsks", "items", "roster", "payers", "adjustments", "accounts", "recipes"]);
+ *  `changed` a new product could name would be the whole snapshot. `"locations"` and `"outlets"`
+ *  are the location master as the operational screens and the admin page each read it. */
+export const CollectionSchema = z.enum(["stock", "rsv", "ovr", "prices", "menu", "bills", "req", "tkt", "prq", "po", "pord", "batch", "grn", "vendors", "contracts", "tickets", "productReqs", "shopAsks", "items", "roster", "payers", "adjustments", "accounts", "recipes", "locations", "outlets"]);
 export const ChangedSchema = z.array(CollectionSchema);
 export type Changed = z.infer<typeof CollectionSchema>;
 

@@ -7,7 +7,7 @@ import type * as Auth from "./schemas/auth.js";
 
 export type ItemType = z.infer<typeof C.ItemTypeSchema>;
 export type LocKey = z.infer<typeof C.LocKeySchema>;
-/** Everywhere stock is *reported*: the five an operator works at, plus the rejected-goods shelf. */
+/** Everywhere stock is *reported*: any location, the rejected-goods shelf included. */
 export type StockLoc = z.infer<typeof C.StockLocSchema>;
 export type Role = z.infer<typeof C.RoleSchema>;
 export type Tender = z.infer<typeof C.TenderSchema>;

@@ -1,4 +1,4 @@
-import type { LocKey } from "@rch/contract";
+import type { LocKey, Location } from "@rch/contract";
 
 /**
  * How much of a location's average daily issue one par level covers, per location (M11).
@@ -10,3 +10,7 @@ import type { LocKey } from "@rch/contract";
  * a rule, not a shape that crosses the wire.
  */
 export const PAR_FACTOR: Record<LocKey, number> = { store: 1, kitchen: 0.35, rest: 0.22, coffee: 0.18, kiosk: 0.15 };
+
+/** The same tuning read off the location itself - `locations.par_factor`, carried on the wire as
+ *  `par` - so an outlet opened after release has one without a release. Absent reads as a full day. */
+export const parFactor = (locations: Record<string, Location>, loc: string): number => locations[loc]?.par ?? 1;

@@ -170,8 +170,10 @@ describe("GET /reports/stock-ledger", () => {
     expect(res.statusCode).toBe(404);
   });
 
-  it("refuses a location that is not one", async () => {
-    const res = await app.inject({ method: "GET", url: "/api/v1/reports/stock-ledger?loc=canteen", headers: await authHeaders(app, "u3") });
+  it("refuses a malformed location key", async () => {
+    // A location's existence is the service's question, not the schema's - `StockLocSchema` only
+    // checks shape - so a well-shaped word that names nothing real is a different case entirely.
+    const res = await app.inject({ method: "GET", url: "/api/v1/reports/stock-ledger?loc=Canteen", headers: await authHeaders(app, "u3") });
     expect(res.statusCode).toBe(400);
   });
 
