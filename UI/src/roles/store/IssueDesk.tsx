@@ -4,7 +4,7 @@ import { useApp } from "../../store";
 import { canIssueTicket, freeToPromise } from "../../lib/selectors";
 import { U, fq, sum } from "../../lib/fmt";
 import {
-  Alert, Btn, Card, DataTable, FilterBtn, FilterSelect, Grid, PageHead, Pill, StatusPill, TableFoot, Toolbar,
+  Btn, Card, DataTable, FilterBtn, FilterSelect, Grid, PageHead, Pill, StatusPill, TableFoot, Toolbar,
 } from "../../ui/kit";
 import type { LocKey, StockRequest } from "../../types";
 import "./IssueDetail";
@@ -111,13 +111,6 @@ export default function IssueDesk() {
         title="Issue desk"
         sub="Hand over stock that has been approved."
       />
-
-      <Alert tone="i" label="HOW THIS WORKS">
-        The ticket is the collection authority. Approving a request reserves the stock in the central store; the
-        six-digit OTP quoted at the window is what actually moves it. The digits reach the collecting outlet's
-        own screen and never this desk - ask for them at the window. Open any row for the full detail: who
-        asked, what was approved and what is free to promise.
-      </Alert>
 
       <Grid>
       <Card

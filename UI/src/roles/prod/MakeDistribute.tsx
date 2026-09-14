@@ -321,11 +321,6 @@ export default function MakeDistribute() {
         />
       </Card>
 
-      <Alert tone="i" label="HOW THIS WORKS">
-        The ticket is the collection authority. Dispatching reserves the stock; the scan at the pass is what
-        takes it off the kitchen rack. Nothing counts as the counter's until they confirm receipt.
-      </Alert>
-
       <Card title="Dispatched" sub="Issued out of the kitchen - scan when the counter arrives" flush className="mtop">
         <Toolbar
           placeholder="Search ticket, order or product…"
