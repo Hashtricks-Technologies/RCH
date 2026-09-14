@@ -5,6 +5,7 @@ import {
   mayEditItemImage, sniffImageType, checkPhoto, imageRetiredMessage, imageOffMenuMessage, imageNoneMessage,
   IMAGE_MAX_BYTES, IMAGE_NOT_PHOTO,
 } from "./items.js";
+import { routes } from "@rch/contract";
 
 const ALL_FIELDS: ItemField[] = ["n", "mrp", "cost", "gst", "hsn", "rl", "grp", "sl", "active"];
 
@@ -99,5 +100,12 @@ describe("item photos", () => {
     expect(imageRetiredMessage("Veg sandwich")).toBe("Veg sandwich is retired, so it takes no photo");
     expect(imageOffMenuMessage("Veg sandwich", "Coffee Shop")).toBe("Veg sandwich is not on the Coffee Shop menu - its photo is the manager's to set");
     expect(imageNoneMessage("Veg sandwich")).toBe("Veg sandwich has no photo to remove");
+  });
+
+  it("agrees with the manifest about who reaches the photo doors", () => {
+    for (const role of ["counter", "manager", "store", "prod", "buyer"] as const) {
+      expect((routes.setItemImage.access as readonly string[]).includes(role)).toBe(mayEditItemImage(role));
+      expect((routes.removeItemImage.access as readonly string[]).includes(role)).toBe(mayEditItemImage(role));
+    }
   });
 });

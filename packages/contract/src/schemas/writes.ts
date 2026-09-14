@@ -225,6 +225,13 @@ export const PatchItemBodySchema = z.strictObject({
   active: z.boolean().optional(),
 });
 
+// ---- item photos ----
+/** One photo, base64. The ceiling here is only the transport's (the API's body limit is 1 MiB);
+ *  the 700 KB rule and the type check are `checkPhoto` in `@rch/domain`, refused as a sentence. */
+export const SetItemImageBodySchema = z.strictObject({
+  data: z.string().min(1).max(1_000_000).regex(/^[A-Za-z0-9+/]+={0,2}$/),
+});
+
 // ---- The support desk. Customer care for the portal itself: every role raises,
 // replies to, resolves and rates its own tickets, and nothing here moves stock.
 export const RaiseTicketBodySchema = z.strictObject({

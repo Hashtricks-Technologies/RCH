@@ -24,3 +24,13 @@ describe("PayerSchema", () => {
     expect(D.PayerSchema.safeParse({ kind: "staff", id: "S1", name: "A", extra: "x" }).success).toBe(false);
   });
 });
+
+describe("an item's photo", () => {
+  const base = { c: "JC-01", n: "Real Juice 200ml", u: "nos", t: "MRP", g: "Beverages", hsn: "2202", gst: 12, rl: 10, cost: 15 };
+  it("is optional, and when present is a sha256", () => {
+    expect(D.ItemSchema.safeParse(base).success).toBe(true);
+    expect(D.ItemSchema.safeParse({ ...base, img: "0".repeat(64) }).success).toBe(true);
+    expect(D.ItemSchema.safeParse({ ...base, img: "0".repeat(63) }).success).toBe(false);
+    expect(D.ItemSchema.safeParse({ ...base, img: "G".repeat(64) }).success).toBe(false);
+  });
+});

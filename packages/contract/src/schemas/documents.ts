@@ -27,6 +27,11 @@ export const ItemSchema = z.object({
   // absent reads as **true** - the pickers filter on `active === false`, the registry does not,
   // and a fixture that predates retiring an item is still a valid item.
   active: z.boolean().optional(),
+  // ---- item photos ----
+  // The sha256 of the photo's bytes, absent when the item has none. It is both the photo's
+  // version and its address (`itemImagePath`), so a changed photo is a new URL and the old one
+  // stops being served.
+  img: z.string().regex(/^[0-9a-f]{64}$/).optional(),
 });
 export const LocationSchema = z.object({
   n: z.string(), c: z.string(), type: z.enum(["Store", "Kitchen", "Outlet"]),
