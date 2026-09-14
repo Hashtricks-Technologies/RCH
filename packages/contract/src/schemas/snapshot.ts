@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { LocKeySchema, Qty, StockLocSchema } from "./common.js";
+import { LocKeySchema, Money, Qty, StockLocSchema } from "./common.js";
 import * as D from "./documents.js";
 
 // Not every caller sees every location - a counter operator's snapshot is scoped down to their
@@ -34,7 +34,9 @@ export const SnapshotSchema = z.object({
   tickets: z.array(D.SupportTicketSchema),
   productReqs: z.array(D.ProductRequestSchema),
   shopAsks: z.array(D.ShopAskSchema),
-  sales: z.array(z.array(z.number())),
+  // One record per day, oldest first and matching `dayLabels`, keyed by outlet - closed outlets
+  // included, since what a closed outlet took last week is still takings.
+  sales: z.array(z.record(LocKeySchema, Money)),
   dayLabels: z.array(z.string()),
   // ---- adjustments: the write-offs and count-ups behind the `adjustment` moves on the ledger.
   adjustments: z.array(D.AdjustmentSchema),

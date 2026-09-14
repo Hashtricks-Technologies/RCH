@@ -769,11 +769,11 @@ describe("POST /bills/:no/void - the manager takes a bill back", () => {
     expect(now.statusCode, now.body).toBe(200);
   });
 
-  it("leaves a voided bill out of the dashboard's sales columns", async () => {
+  it("leaves a voided bill out of the dashboard's takings", async () => {
     const takings = async () => {
       const r = await app.inject({ method: "GET", url: "/api/v1/snapshot", headers: await authHeaders(app, "u2") });
       expect(r.statusCode, r.body).toBe(200);
-      return (r.json().sales as number[][]).flat().reduce((a, b) => a + b, 0);
+      return (r.json().sales as Record<string, number>[]).reduce((sum, row) => sum + Object.values(row).reduce((a, b) => a + b, 0), 0);
     };
     const before = await takings();
     const sale = await pay("u1", { loc: "coffee", tender: "Cash", lines: [{ it: "water", qty: 5 }] });

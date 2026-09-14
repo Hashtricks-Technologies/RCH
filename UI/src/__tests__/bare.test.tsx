@@ -44,7 +44,7 @@ function bareHospital() {
     stock: EMPTY_STOCK, rsv: {}, ovr: {}, prices: { A: {}, B: {} }, menu: {},
     req: [], tkt: [], prq: [], po: [], pord: [], batch: [], bills: [], grn: [], vendors: [],
     contracts: [], productReqs: [], shopAsks: [], tickets: [], adjustments: [], payers: [],
-    sales: Array.from({ length: DAYS }, () => [0, 0, 0]),
+    sales: Array.from({ length: DAYS }, () => ({ rest: 0, coffee: 0, kiosk: 0 })),
     dayLabels: Array.from({ length: DAYS }, (_, i) => String(i + 1).padStart(2, "0")),
   });
 }

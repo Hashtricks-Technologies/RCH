@@ -43,7 +43,7 @@ export interface AppState extends ProcurementSlice, OpsSlice, AdminSlice, Recipe
   bills: Dated<Bill>[];
   grn: Dated<Grn>[];
   vendors: Vendor[];
-  sales: number[][];
+  sales: Record<string, number>[];
   dayLabels: string[];
   /** ---- adjustments. The register of write-offs and count-ups behind the `adjustment` moves
    *  on the ledger - a correction to a shelf, with a reason and a signature. Read-only here:

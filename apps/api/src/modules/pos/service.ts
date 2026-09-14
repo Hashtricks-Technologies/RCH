@@ -200,7 +200,7 @@ export function createPosService(db: Db) {
      * The honest minimum, and deliberately no more: the bill stays on the table exactly as it
      * was printed, one positive reversal per line of the sale puts the stock back where it came
      * off, and the two sums that count money - the staff-credit ceiling and the dashboard's
-     * sales columns - learn to skip it. A credit note for a bill from yesterday is a different
+     * takings - learn to skip it. A credit note for a bill from yesterday is a different
      * document with different paperwork, and it stays refused until somebody asks for it; the
      * refusal says so, and names the adjustment as the door that is open.
      */

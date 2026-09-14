@@ -55,13 +55,13 @@ describe("GET /snapshot", () => {
     expect(s.bills.every((b: { loc: string }) => b.loc === "coffee")).toBe(true);
     // master data is never scoped: prices for both lists, every item, every location
     expect(Object.keys(s.items).length).toBe(Object.keys(FX.IT).length);
-    // revenue is not master data: the counter gets its own column and nobody else's
+    // revenue is not master data: the counter gets its own outlet's takings and nobody else's
     const full = await get("u2");
     expect(s.dayLabels).toEqual(full.dayLabels);
     expect(s.sales.length).toBe(full.sales.length);
-    expect(s.sales.every((row: number[]) => row.length === 1)).toBe(true);
-    expect(s.sales.map((row: number[]) => row[0])).toEqual(full.sales.map((row: number[]) => row[1])); // coffee is column 1
-    expect(full.sales.some((row: number[]) => row.length > 1)).toBe(true);
+    expect(s.sales.every((row: Record<string, number>) => Object.keys(row).join() === "coffee")).toBe(true);
+    expect(s.sales.map((row: Record<string, number>) => row.coffee)).toEqual(full.sales.map((row: Record<string, number>) => row.coffee));
+    expect(full.sales.some((row: Record<string, number>) => Object.keys(row).length > 1)).toBe(true);
   });
   it("is fast enough on the seed", async () => {
     const h = await authHeaders(app, "u2");
