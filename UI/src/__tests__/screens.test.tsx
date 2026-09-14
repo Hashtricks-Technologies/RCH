@@ -7,6 +7,8 @@ import { NAV } from "../nav";
 import { DRAWERS } from "../drawers";
 import Settings from "../pages/Settings";
 import AdminUsers from "../pages/AdminUsers";
+import AdminDashboard from "../pages/AdminDashboard";
+import AdminSupport from "../pages/AdminSupport";
 import Issues from "../pages/Support";
 import Login from "../pages/Login";
 import { screens as counter } from "../roles/counter";
@@ -23,7 +25,7 @@ import { IT, LOC, OUTLETS } from "../data/master";
 import { activeItems, madeItems } from "../lib/selectors";
 import { Alert } from "../ui/kit";
 import type { PoolLine } from "../lib/selectors";
-import type { Bill, Dated, DatedDoc, Role, StockRequest, Ticket, Trailed } from "../types";
+import type { Bill, Dated, DatedDoc, Role, StockRequest, SupportTicket, Ticket, Trailed } from "../types";
 import { as, resetStore } from "./fixture";
 
 // Nothing in production code carries data any more: the registries are empty until a snapshot
@@ -1246,5 +1248,102 @@ describe("the account-management page", () => {
     expect(ui.text()).toContain("a-one-time-password");
     expect(ui.field("Employee id").value).toBe("");
     ui.unmount();
+  });
+});
+
+// ---- admin: the support desk
+describe("the admin's support desk", () => {
+  const ticket = (id: string, over: Partial<Dated<SupportTicket>>): Dated<SupportTicket> => ({
+    id, topic: "A number looks wrong", subject: `Subject of ${id}`, priority: "Normal", st: "Open",
+    by: "Kavitha Raman", role: "counter", loc: "coffee", at: "09:12", iso: "2026-09-04T03:42:00.000Z", screen: "Dashboard",
+    messages: [{ id: "m1", from: "user", who: "Kavitha Raman", at: "09:12", body: "Cash collected reads zero." }],
+    ...over,
+  });
+  const DESK = [
+    ticket("SUP-0101", { priority: "Urgent" }),
+    ticket("SUP-0102", { by: "Suresh Muthu", role: "store", loc: "store", st: "With support" }),
+    ticket("SUP-0103", { st: "Resolved", rating: 4 }),
+    ticket("SUP-0104", { st: "Closed" }),
+  ];
+  /** A textarea's own value setter, the way React hears typing into one. */
+  const typeArea = (el: HTMLTextAreaElement, v: string) => {
+    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(el, v);
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+  };
+  const rowOf = (host: HTMLElement, id: string) =>
+    [...host.querySelectorAll("tbody tr")].find((r) => (r.textContent ?? "").includes(id)) as HTMLElement | undefined;
+  const flagged = (extra: Record<string, unknown> = {}) => act(() => {
+    as("manager");
+    useApp.setState({ user: { ...useApp.getState().user!, admin: true }, deskTickets: DESK, ...extra });
+  });
+
+  it("lists what still needs support from every role, most pressing first, and the rest behind the status filter", () => {
+    flagged();
+    const ui = mount(AdminSupport);
+    const ids = [...ui.host.querySelectorAll("tbody tr")].map((r) => (r.textContent ?? "").match(/SUP-\d+/)?.[0]);
+    expect(ids).toEqual(["SUP-0101", "SUP-0102"]);
+    expect(ui.text()).toContain("Suresh Muthu");
+    expect(ui.text()).toContain("Store Keeper · Central Store");
+    expect(ui.text()).toContain("4.01 of 4 rated");
+    act(() => {
+      const sel = ui.host.querySelector<HTMLSelectElement>('select[aria-label="Status"]')!;
+      sel.value = "All";
+      sel.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    expect(ui.host.querySelectorAll("tbody tr")).toHaveLength(4);
+  });
+
+  it("offers on an open ticket every move the table has, and on a resolved one only what it still allows", () => {
+    flagged();
+    const ui = mount(AdminSupport);
+    act(() => { rowOf(ui.host, "SUP-0101")!.click(); });
+    expect(ui.text()).toContain("Cash collected reads zero.");
+    for (const b of ["Send", "Send & ask Kavitha", "Send & resolve", "Pick up", "Mark resolved", "Close ticket"]) {
+      expect(ui.button(b), b).toBeTruthy();
+    }
+
+    act(() => {
+      const sel = ui.host.querySelector<HTMLSelectElement>('select[aria-label="Status"]')!;
+      sel.value = "Resolved";
+      sel.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    act(() => { rowOf(ui.host, "SUP-0103")!.click(); });
+    expect(ui.button("Reopen")).toBeTruthy();
+    expect(ui.button("Close ticket")).toBeTruthy();
+    // Resolved -> Waiting on you is no edge, and a resolved ticket is not resolved again.
+    expect(ui.button("Send & ask")).toBeUndefined();
+    expect(ui.button("Send & resolve")).toBeUndefined();
+    expect(ui.button("Mark resolved")).toBeUndefined();
+  });
+
+  it("sends the reply with the status its button names, and empties the box only once the server took it", async () => {
+    const replyAsDesk = vi.fn(async () => false);
+    flagged({ replyAsDesk });
+    const ui = mount(AdminSupport);
+    act(() => { rowOf(ui.host, "SUP-0102")!.click(); });
+    const box = ui.host.querySelector("textarea")!;
+    typeArea(box, "Fixed on our side — reload and it saves.");
+    await settle(() => { ui.button("Send & resolve").click(); });
+    expect(replyAsDesk).toHaveBeenCalledWith("SUP-0102", "Fixed on our side — reload and it saves.", "Resolved");
+    // Refused: the words stay.
+    expect(ui.host.querySelector("textarea")!.value).toBe("Fixed on our side — reload and it saves.");
+
+    replyAsDesk.mockResolvedValue(true);
+    await settle(() => { ui.button("Send").click(); });
+    expect(replyAsDesk).toHaveBeenLastCalledWith("SUP-0102", "Fixed on our side — reload and it saves.", undefined);
+    expect(ui.host.querySelector("textarea")!.value).toBe("");
+  });
+
+  it("puts accounts and the desk on two tabs, with a count of what needs support, read on the way in", () => {
+    const loadDeskTickets = vi.fn(async () => {});
+    flagged({ loadDeskTickets, loadAccounts: vi.fn(async () => {}), loadAdminActions: vi.fn(async () => {}) });
+    const ui = mount(AdminDashboard);
+    expect(loadDeskTickets).toHaveBeenCalledTimes(1);
+    expect(ui.text()).toContain("Manage staff accounts");
+    const tab = ui.host.querySelector<HTMLButtonElement>('[role="tab"][aria-selected="false"]')!;
+    expect(tab.textContent).toBe("Support desk2");
+    act(() => { tab.click(); });
+    expect(ui.text()).toContain("Tickets from every role's Support screen.");
+    expect(ui.text()).not.toContain("Manage staff accounts");
   });
 });

@@ -198,8 +198,16 @@ looks wrong, printing, slow or frozen, training, or a feature request; a stock o
 problem goes to the screen that owns it instead. Raising one names a topic and a screen and
 requires a subject (not a body); it opens a message thread that moves Open → With support →
 Waiting on you → Resolved → Closed, and the raiser rates the fix 1–5 once it is resolved. Every
-role sees only the tickets it raised — there is no support-agent role, so "own tickets" is the
-whole scoping rule, for everyone.
+role sees only the tickets it raised; none of the five answers tickets.
+
+**The support desk, on `/admin`.** The admin-flagged account's second tab lists every ticket from
+every role, most pressing first (open, then with support; urgent before routine), filterable by
+status, priority, role and location. Picking one shows who raised it, from which screen, and the
+conversation. The admin replies as support under their own name — Send, Send & ask the reporter
+(Waiting on you) or Send & resolve — and can pick a ticket up, mark it resolved, reopen it or close
+it. Only the moves `SUPPORT_TRANSITIONS` allows are drawn. The reply reaches the reporter's
+Support screen over the change stream, and a new ticket or a reporter's reply lands on the desk
+the same way.
 
 **A six-digit code instead of a scanned one, and it is withheld from the desk that issues it.**
 A pick ticket carries a code minted when it is created. The collector reads it aloud to the

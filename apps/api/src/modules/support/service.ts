@@ -67,7 +67,7 @@ export function createSupportService(db: Db) {
         const result = (await supportRepo.one(tx, id))!;
         const changed = ["tickets"] as const;
         await emitChanged(tx, changed);
-        return { result, changed: [...changed], message: `${id} raised — support replies to urgent tickets within the hour` };
+        return { result, changed: [...changed], message: `${id} raised — the reply will appear on your Support screen` };
       });
     },
 

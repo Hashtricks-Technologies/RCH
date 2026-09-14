@@ -138,7 +138,8 @@ There are five roles (`counter`, `manager`, `store`, `prod`, `buyer`), each with
 - **`manager`** is hospital-wide, so its writes never scope to a location.
 - **`counter` and `prod`** are location-scoped. `store` and `buyer` each work one desk.
 - **Admin** is a boolean on `users`, not a sixth role. It is checked as `access: "admin"`. An admin-flagged
-  account sees only the standalone `/admin` page, never an operational shell. The flag can only be set with
+  account sees only the standalone `/admin` page, never an operational shell. There it manages staff accounts
+  and answers every role's support tickets as the support desk. The flag can only be set with
   `pnpm --filter @rch/api users set-admin`; no route can set it.
 
 ### The movement rule

@@ -19,27 +19,39 @@ function toWire(head: typeof s.supportTickets.$inferSelect, msgs: (typeof s.supp
   };
 }
 
+/** Heads -> whole tickets: three queries however many heads, run in sequence by the caller's
+ *  read transaction. Shared by the caller's own list and the desk's list of everybody's. */
+async function hydrate(db: Db | Tx, heads: (typeof s.supportTickets.$inferSelect)[]): Promise<SupportTicket[]> {
+  if (heads.length === 0) return [];
+  const ids = heads.map((h) => h.id);
+  const msgs = await db.select().from(s.supportMessages)
+    .where(inArray(s.supportMessages.ticketId, ids))
+    .orderBy(asc(s.supportMessages.at), asc(s.supportMessages.id));
+  const authors = await db.select({ id: s.users.id, name: s.users.name }).from(s.users)
+    .where(inArray(s.users.id, [...new Set(heads.map((h) => h.byUser))]));
+  const nameOf = new Map(authors.map((a) => [a.id, a.name]));
+  // Grouped inline. `readers/documents.ts:10` has a private `groupBy` that does exactly this,
+  // and it stays private: moving it into `lib/` would mean this wave-1 task editing the reader
+  // Task 4 owns in wave 2, for a three-line helper. A shared `lib/groupBy.ts` is the tidy, and
+  // it is recorded as one rather than smuggled in here.
+  const byTicket = new Map<string, typeof msgs>();
+  for (const m of msgs) {
+    const list = byTicket.get(m.ticketId);
+    if (list) list.push(m); else byTicket.set(m.ticketId, [m]);
+  }
+  return heads.map((h) => toWire(h, byTicket.get(h.id) ?? [], nameOf.get(h.byUser) ?? h.byUser));
+}
+
 export const supportRepo = {
   /** The caller's own tickets, newest first, each with its conversation oldest first. */
   async listFor(db: Db | Tx, userId: string): Promise<SupportTicket[]> {
-    const heads = await db.select().from(s.supportTickets).where(eq(s.supportTickets.byUser, userId))
-      .orderBy(desc(s.supportTickets.at), desc(s.supportTickets.id));
-    if (heads.length === 0) return [];
-    const ids = heads.map((h) => h.id);
-    const msgs = await db.select().from(s.supportMessages)
-      .where(inArray(s.supportMessages.ticketId, ids))
-      .orderBy(asc(s.supportMessages.at), asc(s.supportMessages.id));
-    const [me] = await db.select({ name: s.users.name }).from(s.users).where(eq(s.users.id, userId));
-    // Grouped inline. `readers/documents.ts:10` has a private `groupBy` that does exactly this,
-    // and it stays private: moving it into `lib/` would mean this wave-1 task editing the reader
-    // Task 4 owns in wave 2, for a three-line helper. A shared `lib/groupBy.ts` is the tidy, and
-    // it is recorded as one rather than smuggled in here.
-    const byTicket = new Map<string, typeof msgs>();
-    for (const m of msgs) {
-      const list = byTicket.get(m.ticketId);
-      if (list) list.push(m); else byTicket.set(m.ticketId, [m]);
-    }
-    return heads.map((h) => toWire(h, byTicket.get(h.id) ?? [], me?.name ?? userId));
+    return hydrate(db, await db.select().from(s.supportTickets).where(eq(s.supportTickets.byUser, userId))
+      .orderBy(desc(s.supportTickets.at), desc(s.supportTickets.id)));
+  },
+  /** The desk's list: every ticket, whoever raised it, in the same order and the same shape. */
+  async listAll(db: Db | Tx): Promise<SupportTicket[]> {
+    return hydrate(db, await db.select().from(s.supportTickets)
+      .orderBy(desc(s.supportTickets.at), desc(s.supportTickets.id)));
   },
 
   /** The ticket, locked. Every write here decides on a status, and a transition guard that reads

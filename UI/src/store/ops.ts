@@ -2,7 +2,7 @@ import { routes } from "@rch/contract";
 import { contractInWindow, istDate } from "@rch/domain";
 import { ApiError, call } from "../api/client";
 import { refetch } from "../api/refetch";
-import { applyPayers } from "../api/wire";
+import { applyDeskTickets, applyPayers } from "../api/wire";
 import type {
   AdjustReason, Dated, ItemType, LocKey, PayerKind, PayerRecord, ProductRequest, RateContract,
   ShopAsk, StockLoc, SupportTicket, TicketPriority, TicketStatus, TicketTopic,
@@ -43,6 +43,16 @@ export interface OpsSlice {
   replyToTicket: (id: string, body: string) => Promise<boolean>;
   setTicketStatus: (id: string, st: TicketStatus) => Promise<void>;
   rateTicket: (id: string, rating: 1 | 2 | 3 | 4 | 5) => Promise<void>;
+
+  /** The desk: every ticket, whoever raised it, read by the admin-flagged account on `/admin`.
+   *  Kept apart from `tickets` (the caller's own) so neither list is ever mistaken for the other. */
+  deskTickets: Dated<SupportTicket>[];
+  /** A first load, not a write's read-back: no toast on success, nothing refetched behind it. */
+  loadDeskTickets: () => Promise<void>;
+  /** Form-carrying: `true` only once the server has taken the reply, so a refusal keeps the words.
+   *  `st` is the status the reply is sent with (Send & ask user, Send & resolve). */
+  replyAsDesk: (id: string, body: string, st?: "Waiting on you" | "Resolved") => Promise<boolean>;
+  setDeskTicketStatus: (id: string, st: TicketStatus) => Promise<boolean>;
 
   /** A shop asking the central store to put a brand-new product on the master. */
   requestNewProduct: (p: { name: string; why: string; forLoc: LocKey }) => Promise<boolean>;
@@ -156,6 +166,33 @@ export const createOpsSlice = (get: Get): OpsSlice => ({
       get().notify(r.message);
       await refetch(r.changed, r.message);
     } catch (e) { fail(get, e, "record the rating"); }
+  },
+
+  /**
+   * The admin's side of the same desk (`/admin/support/tickets` and its two `:id` doors). Its
+   * writes name `tickets` too; `refetch` reads that collection through the desk's own GET when
+   * the session is the admin's, and through the caller's own list for everyone else.
+   */
+  deskTickets: [],
+  loadDeskTickets: async () => {
+    try { applyDeskTickets(await call(routes.deskTickets)); }
+    catch (e) { get().notify(e instanceof ApiError ? e.message : "Could not read the support tickets — check the connection and try again."); }
+  },
+  replyAsDesk: async (id, body, st) => {
+    try {
+      const r = await call(routes.replyAsDesk, { params: { id }, body: st ? { body, st } : { body } });
+      get().notify(r.message);
+      await refetch(r.changed, r.message);
+      return true;
+    } catch (e) { return fail(get, e, "send the reply"); }
+  },
+  setDeskTicketStatus: async (id, st) => {
+    try {
+      const r = await call(routes.setDeskTicketStatus, { params: { id }, body: { st } });
+      get().notify(r.message);
+      await refetch(r.changed, r.message);
+      return true;
+    } catch (e) { return fail(get, e, "change the ticket"); }
   },
 
   requestNewProduct: async ({ name, why, forLoc }) => {

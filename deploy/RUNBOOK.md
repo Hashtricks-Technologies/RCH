@@ -977,10 +977,12 @@ below, for tracing a `grn_accept` move back to its own paperwork by that id.
 **Support tickets keep no `document_history` row at all.** Their history *is* their
 conversation: `support_messages` (`SUP-0044/m1`, `.../m2`, …) already holds who said what and
 when, and `support_tickets.status` sits beside it as an ordinary column. `GET /support/tickets`
-answers a caller's own tickets only, by `by_user` in the JWT — there is no support-agent role in
-this system, so "own tickets, every role" is the whole scoping rule, and someone else's ticket
-answers `404`, not `403`: it is not that you may not act on it, it is that it is not yours to
-know about.
+answers a caller's own tickets only, by `by_user` in the JWT, and someone else's ticket answers
+`404`, not `403`: it is not that you may not act on it, it is that it is not yours to know about.
+The admin-flagged account answers every ticket from `/admin` (`GET /admin/support/tickets` and its
+`:id/messages` and `:id/status` doors). A desk reply is a `support_messages` row with
+`from = 'support'` and `who` = the admin's name, so the conversation still says who answered; a
+status the desk sets without a reply is not attributed to anyone.
 
 Connect with `psql` (or any Postgres client) against the target `DATABASE_URL` — locally
 that's `postgres://rch:rch@localhost:5439/rch`.

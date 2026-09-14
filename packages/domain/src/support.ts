@@ -5,10 +5,10 @@ import type { TransitionTable } from "./transitions.js";
  * Customer care for the portal, as five words. One table, two consumers — the server
  * refuses anything not listed and the drawer reads the same table to decide which button to draw.
  *
- * There is no support agent in this application (none of the five roles answers
- * tickets), so every edge here is one a *user* can take, plus the two the seeded desk's replies
- * arrive on. `Open -> With support` is what a first reply from the desk does; the app itself
- * only ever walks the user's edges.
+ * Two parties walk it. The person who raised a ticket, in any of the five roles, takes the
+ * user's edges (`mayUserSet`, `statusAfterReply`). The desk is the admin-flagged account, which
+ * answers every ticket from `/admin` and takes the rest (`mayDeskSet`, `deskStatusAfterReply`).
+ * `Open -> With support` is what a first reply from the desk does.
  */
 export const SUPPORT_TRANSITIONS: TransitionTable<TicketStatus> = {
   Open: ["With support", "Waiting on you", "Resolved", "Closed"],
@@ -38,3 +38,14 @@ export const mayRate = (st: TicketStatus): boolean => st === "Resolved" || st ==
  *  and the table never sees the case. One rule, two consumers — the service refuses on it and
  *  the drawer hides its reply box on it, so a box the server would refuse is never drawn. */
 export const mayReply = (st: TicketStatus): boolean => st !== "Closed";
+
+/** The desk's `setDeskTicketStatus`: any word but Open. A ticket is open only until the desk
+ *  first touches it, so putting one back there would make it look untouched when it was not. */
+export const mayDeskSet = (st: TicketStatus): boolean => st !== "Open";
+
+/** The desk's `replyAsDesk`: the status a ticket lands on. A reply sent with a status (Send & ask
+ *  user, Send & resolve) moves it there; a plain reply picks an open ticket up and leaves any
+ *  other where it stands, so a note on a resolved ticket does not reopen it. The server still
+ *  checks the result against `SUPPORT_TRANSITIONS`. */
+export const deskStatusAfterReply = (st: TicketStatus, sentWith?: TicketStatus): TicketStatus =>
+  sentWith ?? (st === "Open" ? "With support" : st);

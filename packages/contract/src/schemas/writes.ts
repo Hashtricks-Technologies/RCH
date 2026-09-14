@@ -228,6 +228,14 @@ export const ReplyToTicketBodySchema = z.strictObject({ body: z.string().max(400
  *  rule (a user may set Resolved/Closed only), because that is a sentence, not a 400. */
 export const SetTicketStatusBodySchema = z.strictObject({ st: TicketStatusSchema });
 export const RateTicketBodySchema = z.strictObject({ rating: z.number().int().min(1).max(5) });
+/** The admin answering as the desk. `st` is what the reply box's two other buttons send
+ *  (Send & ask user, Send & resolve); a plain Send leaves it out. Whether the ticket may move
+ *  there from where it stands is the service's sentence, not a 400. The desk's status moves
+ *  reuse `SetTicketStatusBodySchema`, and `mayDeskSet` decides which of the five it may send. */
+export const DeskReplyBodySchema = z.strictObject({
+  body: z.string().max(4000),
+  st: z.enum(["Waiting on you", "Resolved"]).optional(),
+});
 
 // ---- payers ----
 // Who a bill may be charged to. The three rosters are numbered independently by the hospital —

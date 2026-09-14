@@ -156,14 +156,14 @@ export default function Support() {
             <Btn variant="gh" onClick={() => { setSubject(""); setBody(""); }}>Clear</Btn>
           </BtnRow>
           <div className="mtop" />
-          {/* What stood here promised a 7 am to 10 pm desk, a night manager holding an
+          {/* What stood here once promised a 7 am to 10 pm desk, a night manager holding an
               escalation number and an on-call engineer paged by urgent tickets. None of the
-              three exists: the desk is whoever reads this list. Saying so is better than
-              leaving somebody at 11 pm waiting for a page that is never sent. */}
+              three exists. The desk is the portal's admin, reading the list on `/admin`; nobody
+              is paged, so this says so rather than leave somebody waiting on a call at 11 pm. */}
           <Alert tone="i" label="WHAT HAPPENS NEXT">
-            A ticket goes on this list the moment you send it, and you will see the reply here
-            and on any other screen you have open. There is no separate helpdesk number — if it
-            is stopping you serving customers, mark it urgent and tell your manager as well.
+            The portal's admin sees your ticket the moment you send it, and their reply appears
+            here and on any other screen you have open. Nobody is paged — if it is stopping you
+            serving customers, mark it urgent and tell your manager as well.
           </Alert>
         </Card>
 

@@ -83,6 +83,6 @@ export function resetStore() {
     // Same reason as `payers` above: nothing on the snapshot carries the account list or its
     // action log, and leaving either out of this reset would let one test's rows leak into the
     // next one's (`setState` merges, it does not replace).
-    accounts: [], adminActions: [],
+    accounts: [], adminActions: [], deskTickets: [],
   });
 }

@@ -1,11 +1,18 @@
-// Support: customer care for the portal itself. Every role, own tickets only.
+// Support: customer care for the portal itself. Every role, own tickets only; the admin-flagged
+// account answers all of them as the desk.
 import fp from "fastify-plugin";
 import { routes } from "@rch/contract";
 import { mount } from "../../routes.js";
+import { createDeskService } from "./desk.js";
 import { createSupportService } from "./service.js";
 
 export default fp(async (app) => {
   const svc = createSupportService(app.db);
+  const desk = createDeskService(app.db);
+  // `access: "admin"` on all three: the flag decides, never the account's nominal role.
+  mount(app, routes.deskTickets, async () => desk.list());
+  mount(app, routes.replyAsDesk, async (req) => desk.reply(req.user, req.params.id, req.body));
+  mount(app, routes.setDeskTicketStatus, async (req) => desk.setStatus(req.params.id, req.body));
   mount(app, routes.tickets, async (req) => svc.list(req.user));
   // No `requireLoc` on any of the four: a support ticket has no location to scope on beyond the
   // one it records, and ownership is the scope. `mount` attaches the idempotency preHandler to

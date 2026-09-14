@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { z } from "zod";
-import { AdjustReasonSchema, CreateAdjustmentBodySchema, CreatePoBodySchema, CreditParamsSchema, CreditResponseSchema, EVENTS_PATH, EventNoticeSchema, LocKeySchema, MakeBatchBodySchema, PatchContractBodySchema, PatchPayerBodySchema, PatchPoBodySchema, PatchVendorBodySchema, PO_APPROVAL_LIMIT, RaiseTicketBodySchema, RateTicketBodySchema, ReceivePoBodySchema, SetOrderStatusBodySchema, SetTicketStatusBodySchema, StockLedgerQuerySchema, StockLocSchema, TktStatusSchema, TransferBodySchema, ItemSchema, PatchItemBodySchema } from "./index";
+import { AdjustReasonSchema, CreateAdjustmentBodySchema, DeskReplyBodySchema, CreatePoBodySchema, CreditParamsSchema, CreditResponseSchema, EVENTS_PATH, EventNoticeSchema, LocKeySchema, MakeBatchBodySchema, PatchContractBodySchema, PatchPayerBodySchema, PatchPoBodySchema, PatchVendorBodySchema, PO_APPROVAL_LIMIT, RaiseTicketBodySchema, RateTicketBodySchema, ReceivePoBodySchema, SetOrderStatusBodySchema, SetTicketStatusBodySchema, StockLedgerQuerySchema, StockLocSchema, TktStatusSchema, TransferBodySchema, ItemSchema, PatchItemBodySchema } from "./index";
 import { routes } from "./routes";
 
 /** One valid body per route that takes one. The coverage case below fails if a new route
@@ -49,6 +49,9 @@ const SAMPLES: Record<string, Record<string, unknown>> = {
   replyToTicket:   { body: "Refreshed and it reads correctly now — thank you." },
   setTicketStatus: { st: "Resolved" },
   rateTicket:      { rating: 5 },
+  // ---- the admin's support desk
+  replyAsDesk:         { body: "Fixed on our side — reload the dashboard and it should read right.", st: "Resolved" },
+  setDeskTicketStatus: { st: "Waiting on you" },
   // ---- payers ----
   addPayer:        { kind: "staff", id: "E2291", name: "Kavitha Raman" },
   updatePayer:     { active: false },
@@ -193,6 +196,19 @@ describe("what the support desk puts on the wire", () => {
     expect(RateTicketBodySchema.safeParse({ rating: 0 }).success).toBe(false);
     expect(RateTicketBodySchema.safeParse({ rating: 6 }).success).toBe(false);
     expect(RateTicketBodySchema.safeParse({ rating: 4.5 }).success).toBe(false);
+  });
+
+  it("lets the desk send a reply alone, or with one of the two words its buttons send it with", () => {
+    expect(DeskReplyBodySchema.safeParse({ body: "Looking at it now." }).success).toBe(true);
+    expect(DeskReplyBodySchema.safeParse({ body: "Can you send the bill number?", st: "Waiting on you" }).success).toBe(true);
+    // Closing and picking up are status moves of their own, never what a reply is sent with.
+    expect(DeskReplyBodySchema.safeParse({ body: "x", st: "Closed" }).success).toBe(false);
+    expect(DeskReplyBodySchema.safeParse({ body: "x", st: "Open" }).success).toBe(false);
+  });
+
+  it("puts the desk behind the admin flag, and every user's own doors in front of every role", () => {
+    for (const k of ["deskTickets", "replyAsDesk", "setDeskTicketStatus"] as const) expect(routes[k].access).toBe("admin");
+    for (const k of ["tickets", "raiseTicket", "replyToTicket", "setTicketStatus", "rateTicket"] as const) expect(routes[k].access).toBe("any");
   });
 });
 

@@ -1,7 +1,7 @@
 import { routes, type Changed } from "@rch/contract";
 import { call } from "./client";
 import {
-  applyAccounts, applyAdjustments, applyBatches, applyBills, applyContracts, applyGrns, applyItems, applyMenus,
+  applyAccounts, applyAdjustments, applyBatches, applyBills, applyContracts, applyDeskTickets, applyGrns, applyItems, applyMenus,
   applyPayers, applyPos, applyPrices, applyProdOrders, applyProductRequests, applyRecipes, applyRequests,
   applyRequisitions, applyRoster, applyShopAsks, applyStock, applySupportTickets, applyTickets,
   applyVendors,
@@ -26,7 +26,11 @@ const NARROW: Partial<Record<Changed, () => Promise<void>>> = {
   contracts: () => call(routes.contracts).then(applyContracts),
   productReqs: () => call(routes.productRequests).then(applyProductRequests),
   items: () => call(routes.items).then(applyItems),
-  tickets: () => call(routes.tickets).then(applySupportTickets),
+  // The admin answers every ticket from the desk, and has no list of its own to read: the same
+  // `tickets` a reporter's write names is what puts a new ticket or a reply on the desk live.
+  tickets: () => useApp.getState().user?.admin
+    ? call(routes.deskTickets).then(applyDeskTickets)
+    : call(routes.tickets).then(applySupportTickets),
   prices: () => call(routes.prices).then(applyPrices),
   menu: () => call(routes.menus).then(applyMenus),
   // ---- payers ----

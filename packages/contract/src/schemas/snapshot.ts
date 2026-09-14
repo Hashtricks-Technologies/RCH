@@ -63,8 +63,9 @@ export const GrnsResponseSchema = z.array(D.GrnSchema);
 export const VendorsResponseSchema = z.array(D.VendorSchema);
 export const ContractsResponseSchema = z.array(D.RateContractSchema);
 export const ProductRequestsResponseSchema = z.array(D.ProductRequestSchema);
-/** The caller's own support tickets. Every role sees only what it raised — there is no support
- *  role among the five, so a list of other people's tickets would be rows nobody can act on. */
+/** A list of support tickets. `GET /support/tickets` answers with the caller's own: every role
+ *  sees only what it raised, because none of the five answers tickets. `GET /admin/support/tickets`
+ *  answers the admin, who does answer them, with everybody's, in the same shape. */
 export const SupportTicketsResponseSchema = z.array(D.SupportTicketSchema);
 
 // ---- payers ----

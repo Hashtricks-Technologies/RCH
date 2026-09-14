@@ -569,5 +569,13 @@ td.n b{font-weight:600;color:var(--ink)}
 .adm-brand i{width:26px;height:26px;border-radius:7px;background:#fff;border:1px solid var(--line);
   display:grid;place-items:center;flex:none}
 .adm-brand i img{width:19px;height:19px;display:block}
-.adm-who{flex:1;color:var(--ink-3);font-size:12.5px}
+.adm-who{flex:1;color:var(--ink-3);font-size:12.5px;text-align:right}
+.adm-tabs{display:flex;gap:4px;margin-left:10px}
+.adm-tabs button{display:inline-flex;align-items:center;gap:7px;padding:6px 11px;border-radius:7px;
+  font-size:13px;font-weight:600;color:var(--ink-3)}
+.adm-tabs button:hover{background:var(--surface-2);color:var(--ink)}
+.adm-tabs button.on{background:var(--accent-soft);color:var(--accent)}
+.adm-count{min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--crit);color:#fff;
+  font-size:11px;line-height:18px;text-align:center}
+@media(max-width:640px){.adm-who{display:none}.adm-brand{font-size:0;gap:0}.adm-tabs{margin-left:0;flex:1}}
 .adm-body{max-width:1180px;margin:0 auto;padding:20px 18px 46px}

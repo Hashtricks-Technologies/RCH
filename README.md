@@ -56,8 +56,9 @@ never sells and never issues, and closing an order short hands the undelivered b
 back onto the procurement list. A second browser follows every step of it live, the same as the
 rest of the system. And the last two pieces: raise a support ticket from any role's own
 Support screen, watch it move Open → With support → Waiting on you → Resolved → Closed as a
-reply lands or a status changes, and rate the fix once it is resolved — every role sees only
-its own tickets, because there is no support-agent role in this system, only five that ask.
+reply lands or a status changes, and rate the fix once it is resolved. Every role sees only its
+own tickets; the admin answers all of them from the support desk on `/admin`, and the reply
+reaches the person who raised it live.
 Read the two figures the browser could never assemble on its own: a location's stock ledger
 over a window, and a payer's credit taken so far this month. Nothing runs in the browser's own
 store any more — every mutation in the app is a server call, and `UI/src/data/seed.ts` is gone.

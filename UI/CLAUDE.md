@@ -30,6 +30,7 @@ pnpm --filter @rch/ui build       # tsc -b && vite build → UI/dist
 
 Routing is `BrowserRouter`, with plain paths (`/pos`, `/admin`). An admin-flagged account never gets a
 `<Shell>`: it only ever sees `pages/AdminDashboard.tsx` at `/admin`, and any other key bounces it back there.
+That page has two tabs: `AdminUsers` (staff accounts) and `AdminSupport` (the support desk: every role's tickets).
 
 `screens.test.tsx` and `app.test.tsx` render every `NAV` key for every role. A nav entry with no component fails
 the suite, on purpose.
@@ -95,7 +96,9 @@ try {
     refreshing again.
 - **`refetch.ts`** maps each `changed` collection to a narrow `GET` through `NARROW`. The `loadSnapshot`
   fallback exists only for a collection missing from `NARROW`, so **add a reader when you add a collection**.
-  If a read-back fails, the write's own sentence is kept and qualified, never replaced.
+  If a read-back fails, the write's own sentence is kept and qualified, never replaced. `tickets` is the one
+  reader that branches: an admin session reads the desk's list (`GET /admin/support/tickets` into
+  `deskTickets`), and everyone else reads their own tickets.
 - **`wire.ts`** holds the mappers from server shape to store shape.
   - An ISO time becomes `"HH:MM"` only here, and **`iso` is kept beside it** on every document and history
     entry (`Dated<T>`, `Trailed<T>` and `DatedDoc<T>` in `types.ts`).

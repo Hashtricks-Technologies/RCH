@@ -65,7 +65,7 @@ describe("POST /support/tickets", () => {
     expect(result.messages).toHaveLength(1);
     expect(result.messages[0].from).toBe("user");
     expect(changed).toEqual(["tickets"]);
-    expect(message).toBe(`${result.id} raised — support replies to urgent tickets within the hour`);
+    expect(message).toBe(`${result.id} raised — the reply will appear on your Support screen`);
     expect(await list("u1")).toHaveLength(before + 1);
   });
 
@@ -195,5 +195,138 @@ describe("POST /support/tickets/:id/rating", () => {
     const res = await post("u1", `/tickets/${id}/rating`, { rating: 5 });
     expect(res.statusCode).toBe(422);
     expect((res.json() as { error: { message: string } }).error.message).toBe(`${id} is not finished yet — rate it once support has resolved it`);
+  });
+});
+
+// ---- the admin's support desk. `u7` is the seed's one admin-flagged account (RC-0001, "System
+// Administrator"); everyone else is an ordinary account of one of the five roles.
+const ADMIN = "u7";
+const deskList = async (userId = ADMIN) =>
+  app.inject({ method: "GET", url: "/api/v1/admin/support/tickets", headers: await authHeaders(app, userId) });
+const desk = async (path: string, payload: Record<string, unknown>, userId = ADMIN) =>
+  app.inject({ method: "POST", url: `/api/v1/admin/support${path}`, headers: { ...(await authHeaders(app, userId)), "idempotency-key": randomUUID() }, payload });
+type Write = { result: SupportTicket; changed: string[]; message: string };
+const refusal = (res: { json: () => unknown }) => (res.json() as { error: { message: string } }).error.message;
+
+describe("GET /admin/support/tickets", () => {
+  it("answers the admin with every ticket, whoever raised it, each under its own author's name", async () => {
+    const a = await given.supportTicket(app.db, { by: "u1", subject: "Counter" });
+    const b = await given.supportTicket(app.db, { by: "u3", subject: "Store", messages: [{ from: "user", body: "The GRN will not save." }] });
+    const res = await deskList();
+    expect(res.statusCode).toBe(200);
+    const rows = res.json() as SupportTicket[];
+    expect(rows.find((t) => t.id === a)).toMatchObject({ by: "Kavitha Raman", role: "counter", loc: "coffee" });
+    expect(rows.find((t) => t.id === b)).toMatchObject({ by: "Suresh Muthu", role: "store" });
+    expect(rows.find((t) => t.id === b)!.messages.map((m) => m.body)).toEqual(["The GRN will not save."]);
+  });
+
+  it("is not there for an account without the flag, in any role", async () => {
+    for (const u of ["u1", "u2", "u3", "u4", "u5"]) {
+      const res = await deskList(u);
+      expect(res.statusCode).toBe(404);
+    }
+  });
+});
+
+describe("POST /admin/support/tickets/:id/messages", () => {
+  it("answers as support under the admin's own name, picks an open ticket up, and the reporter sees it", async () => {
+    const id = await given.supportTicket(app.db, { by: "u1", st: "Open" });
+    const res = await desk(`/tickets/${id}/messages`, { body: "Looking at it now." });
+    expect(res.statusCode, res.body).toBe(200);
+    const { result, changed, message } = res.json() as Write;
+    expect(result.st).toBe("With support");
+    expect(result.by).toBe("Kavitha Raman");
+    expect(result.messages.at(-1)).toMatchObject({ from: "support", who: "System Administrator", body: "Looking at it now." });
+    expect(changed).toEqual(["tickets"]);
+    expect(message).toBe(`Reply sent on ${id} — now with support`);
+    // The reporter's own list is where the reply has to land.
+    const mine = (await list("u1")).find((t) => t.id === id)!;
+    expect(mine.st).toBe("With support");
+    expect(mine.messages.at(-1)!.from).toBe("support");
+  });
+
+  it("sends a reply and a status in one write when the desk asks for one", async () => {
+    const asked = await given.supportTicket(app.db, { by: "u1", st: "Open" });
+    const a = (await desk(`/tickets/${asked}/messages`, { body: "Which bill number?", st: "Waiting on you" })).json() as Write;
+    expect(a.result.st).toBe("Waiting on you");
+    expect(a.message).toBe(`Reply sent on ${asked} — now waiting on Kavitha Raman`);
+
+    const fixed = await given.supportTicket(app.db, { by: "u3", st: "With support" });
+    const b = (await desk(`/tickets/${fixed}/messages`, { body: "Fixed — reload and it saves.", st: "Resolved" })).json() as Write;
+    expect(b.result.st).toBe("Resolved");
+    expect(b.message).toBe(`Reply sent on ${fixed} — now resolved`);
+  });
+
+  it("leaves a resolved ticket resolved on a plain note, and says nothing about a status it did not move", async () => {
+    const id = await given.supportTicket(app.db, { by: "u1", st: "Resolved" });
+    const { result, message } = (await desk(`/tickets/${id}/messages`, { body: "It should hold now." })).json() as Write;
+    expect(result.st).toBe("Resolved");
+    expect(message).toBe(`Reply sent on ${id}`);
+  });
+
+  it("refuses a status the table has no edge to, and writes no message with it", async () => {
+    const id = await given.supportTicket(app.db, { by: "u1", st: "Resolved" });
+    const res = await desk(`/tickets/${id}/messages`, { body: "Did it hold?", st: "Waiting on you" });
+    expect(res.statusCode).toBe(422);
+    expect(refusal(res)).toBe(`${id} is already resolved`);
+    expect((await list("u1")).find((t) => t.id === id)!.messages).toEqual([]);
+  });
+
+  it("refuses an empty reply and a closed ticket", async () => {
+    const id = await given.supportTicket(app.db, { by: "u1", st: "With support" });
+    const empty = await desk(`/tickets/${id}/messages`, { body: "   " });
+    expect(empty.statusCode).toBe(422);
+    expect(refusal(empty)).toBe("Write a reply first");
+    const closed = await given.supportTicket(app.db, { by: "u1", st: "Closed" });
+    const res = await desk(`/tickets/${closed}/messages`, { body: "Hello?" });
+    expect(res.statusCode).toBe(422);
+    expect(refusal(res)).toBe(`${closed} is closed — it takes no more replies`);
+  });
+
+  it("answers 404 for a ticket that does not exist, and for a caller without the flag", async () => {
+    const missing = await desk("/tickets/SUP-009999/messages", { body: "Anyone?" });
+    expect(missing.statusCode).toBe(404);
+    expect(refusal(missing)).toBe("There is no support ticket SUP-009999.");
+    const id = await given.supportTicket(app.db, { by: "u3" });
+    expect((await desk(`/tickets/${id}/messages`, { body: "Not mine to answer." }, "u1")).statusCode).toBe(404);
+  });
+
+  it("replays a repeated key without writing the reply twice", async () => {
+    const id = await given.supportTicket(app.db, { by: "u1", st: "Open" });
+    const headers = { ...(await authHeaders(app, ADMIN)), "idempotency-key": randomUUID() };
+    const url = `/api/v1/admin/support/tickets/${id}/messages`;
+    const first = await app.inject({ method: "POST", url, headers, payload: { body: "Once." } });
+    const second = await app.inject({ method: "POST", url, headers, payload: { body: "Once." } });
+    expect(second.json()).toEqual(first.json());
+    expect((await list("u1")).find((t) => t.id === id)!.messages).toHaveLength(1);
+  });
+});
+
+describe("POST /admin/support/tickets/:id/status", () => {
+  it("moves anybody's ticket through the desk's words, naming who it now waits on", async () => {
+    const id = await given.supportTicket(app.db, { by: "u4", st: "Open" });
+    const picked = (await desk(`/tickets/${id}/status`, { st: "With support" })).json() as Write;
+    expect(picked.result.st).toBe("With support");
+    expect(picked.message).toBe(`${id} is now with support`);
+    const asked = (await desk(`/tickets/${id}/status`, { st: "Waiting on you" })).json() as Write;
+    expect(asked.message).toBe(`${id} is now waiting on Vinoth Prakash`);
+    expect(asked.changed).toEqual(["tickets"]);
+    expect(((await desk(`/tickets/${id}/status`, { st: "Closed" })).json() as Write).result.st).toBe("Closed");
+  });
+
+  it("refuses to put a ticket back to open, and refuses a move the table does not have", async () => {
+    const id = await given.supportTicket(app.db, { by: "u1", st: "With support" });
+    const reopen = await desk(`/tickets/${id}/status`, { st: "Open" });
+    expect(reopen.statusCode).toBe(422);
+    expect(refusal(reopen)).toBe("A ticket cannot go back to open — it is open only until support first answers it");
+    const closed = await given.supportTicket(app.db, { by: "u1", st: "Closed" });
+    const res = await desk(`/tickets/${closed}/status`, { st: "Resolved" });
+    expect(res.statusCode).toBe(422);
+    expect(refusal(res)).toBe(`${closed} is already closed`);
+  });
+
+  it("is not there for a caller without the flag", async () => {
+    const id = await given.supportTicket(app.db, { by: "u1", st: "Open" });
+    expect((await desk(`/tickets/${id}/status`, { st: "Resolved" }, "u1")).statusCode).toBe(404);
   });
 });

@@ -1696,7 +1696,7 @@ describe("raiseTicket — POST /support/tickets", () => {
   it("sends what the form holds, pulls the desk back, and shows the server's sentence", async () => {
     as("counter");
     serve({
-      "POST /api/v1/support/tickets": () => json({ result: SUP, changed: ["tickets"], message: `${SUP.id} raised — support replies to urgent tickets within the hour` }),
+      "POST /api/v1/support/tickets": () => json({ result: SUP, changed: ["tickets"], message: `${SUP.id} raised — the reply will appear on your Support screen` }),
       "GET /api/v1/support/tickets": () => json([SUP]),
     });
 
@@ -1713,7 +1713,7 @@ describe("raiseTicket — POST /support/tickets", () => {
     // The wire carries ISO; the store holds what the screen prints.
     expect(S().tickets[0].at).toBe("09:12");
     expect(S().tickets[0].messages[0].at).toBe("09:12");
-    expect(S().toast).toBe(`${SUP.id} raised — support replies to urgent tickets within the hour`);
+    expect(S().toast).toBe(`${SUP.id} raised — the reply will appear on your Support screen`);
   });
 
   it("answers false and keeps nothing of its own when the server refuses", async () => {
@@ -2280,5 +2280,64 @@ describe("admin: account management", () => {
       "GET /api/v1/admin/users": () => json([]),
     });
     expect(await S().updateAccountRoleLoc("u1", { role: "counter", loc: "kiosk" })).toBe(true);
+  });
+});
+
+// ---- admin: the support desk
+describe("admin: the support desk", () => {
+  const OTHER = { ...SUP, id: "SUP-0045", by: "Suresh Muthu", role: "store", loc: "store", st: "With support" };
+
+  beforeEach(() => {
+    as("manager");
+    useApp.setState({ user: { ...S().user!, admin: true } });
+  });
+
+  it("loads every ticket, whoever raised it, into the desk's own list and not the caller's", async () => {
+    const own = S().tickets;
+    serve({ "GET /api/v1/admin/support/tickets": () => json([SUP, OTHER]) });
+    await S().loadDeskTickets();
+    expect(S().deskTickets.map((t) => t.id)).toEqual(["SUP-0044", "SUP-0045"]);
+    expect(S().deskTickets[0].at).toBe("09:12");
+    expect(S().deskTickets[0].iso).toBe(SUP.at);
+    expect(S().tickets).toBe(own);
+    expect(S().toast).toBeNull();
+  });
+
+  it("replies with the status the button sent, and reads the desk back rather than the caller's own list", async () => {
+    const replied = { ...SUP, st: "Waiting on you", messages: [...SUP.messages, { id: "m2", from: "support", who: "System Administrator", at: "2026-09-04T04:10:00.000Z", body: "Which bill?" }] };
+    serve({
+      "POST /api/v1/admin/support/tickets/SUP-0044/messages": () => json({ result: replied, changed: ["tickets"], message: "Reply sent on SUP-0044 — now waiting on Kavitha Raman" }),
+      "GET /api/v1/admin/support/tickets": () => json([replied]),
+    });
+    expect(await S().replyAsDesk("SUP-0044", "Which bill?", "Waiting on you")).toBe(true);
+    expect(hit("POST /api/v1/admin/support/tickets/SUP-0044/messages")[0].body).toEqual({ body: "Which bill?", st: "Waiting on you" });
+    expect(hit("GET /api/v1/admin/support/tickets")).toHaveLength(1);
+    expect(hit("GET /api/v1/support/tickets")).toHaveLength(0);
+    expect(S().deskTickets[0].st).toBe("Waiting on you");
+    expect(S().toast).toBe("Reply sent on SUP-0044 — now waiting on Kavitha Raman");
+  });
+
+  it("sends a plain reply with no status in the body, and answers false on a refusal", async () => {
+    serve({ "POST /api/v1/admin/support/tickets/SUP-0044/messages": () => refusal("SUP-0044 is closed — it takes no more replies") });
+    expect(await S().replyAsDesk("SUP-0044", "Hello?")).toBe(false);
+    expect(hit("POST /api/v1/admin/support/tickets/SUP-0044/messages")[0].body).toEqual({ body: "Hello?" });
+    expect(S().toast).toBe("SUP-0044 is closed — it takes no more replies");
+  });
+
+  it("moves a ticket through its own endpoint", async () => {
+    serve({
+      "POST /api/v1/admin/support/tickets/SUP-0045/status": () => json({ result: { ...OTHER, st: "Closed" }, changed: ["tickets"], message: "SUP-0045 is now closed" }),
+      "GET /api/v1/admin/support/tickets": () => json([{ ...OTHER, st: "Closed" }]),
+    });
+    expect(await S().setDeskTicketStatus("SUP-0045", "Closed")).toBe(true);
+    expect(hit("POST /api/v1/admin/support/tickets/SUP-0045/status")[0].body).toEqual({ st: "Closed" });
+    expect(S().toast).toBe("SUP-0045 is now closed");
+  });
+
+  it("puts a ticket an operator raised elsewhere onto the desk when the change stream names it", async () => {
+    serve({ "GET /api/v1/admin/support/tickets": () => json([OTHER]) });
+    await refetch(["tickets"]);
+    expect(S().deskTickets.map((t) => t.id)).toEqual(["SUP-0045"]);
+    expect(hit("GET /api/v1/support/tickets")).toHaveLength(0);
   });
 });

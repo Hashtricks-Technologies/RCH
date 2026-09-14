@@ -105,9 +105,18 @@ export function applyTickets(tkt: Snapshot["tkt"]): void {
   useApp.setState({ tkt: tkt.map((x) => ({ ...x, hist: hist(x.hist) })) });
 }
 
-/** GET /support/tickets -> the desk. Times as "HH:MM", on the ticket and on every message. */
+/** A support ticket as the store holds it: times as "HH:MM", on the ticket and on every message,
+ *  with the ticket's own instant kept beside its time. */
+const supportRow = (x: Snapshot["tickets"][number]) => ({ ...stamped(x), messages: x.messages.map((m) => ({ ...m, at: t(m.at) })) });
+
+/** GET /support/tickets -> the caller's own tickets. */
 export function applySupportTickets(rows: Snapshot["tickets"]): void {
-  useApp.setState({ tickets: rows.map((x) => ({ ...stamped(x), messages: x.messages.map((m) => ({ ...m, at: t(m.at) })) })) });
+  useApp.setState({ tickets: rows.map(supportRow) });
+}
+
+/** GET /admin/support/tickets -> the desk's list of everybody's, in the same shape. */
+export function applyDeskTickets(rows: Snapshot["tickets"]): void {
+  useApp.setState({ deskTickets: rows.map(supportRow) });
 }
 
 /** GET /shop-asks -> the shop-to-shop asks, times as "HH:MM". */
