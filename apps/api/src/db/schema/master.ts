@@ -16,8 +16,18 @@ export const locations = pgTable("locations", {
   costCentre: text("cost_centre").notNull(),
   priceList: priceListEnum("price_list"),
   sellable: boolean("sellable").notNull().default(false),
+  // ---- outlets. Outlets are closed, never deleted: a closed one keeps its row, its menu and every
+  // document that names it, and nothing new may name it (`lib/locations.ts`).
+  active: boolean("active").notNull().default(true),
+  /** How much of an item's reorder level one par covers here (`parFactor` in @rch/domain). */
+  parFactor: numeric("par_factor", { precision: 4, scale: 2, mode: "number" }).notNull().default(0.18),
   createdAt: ts("created_at").notNull().defaultNow(),
-});
+}, (t) => [
+  // Every picker matches a location on its printed name, so two with one name would be one entry;
+  // and the code is what the floor staff read off a label.
+  uniqueIndex("locations_name_uq").on(sql`lower(${t.name})`),
+  uniqueIndex("locations_code_uq").on(sql`upper(${t.code})`),
+]);
 
 export const users = pgTable("users", {
   id: text("id").primaryKey(),

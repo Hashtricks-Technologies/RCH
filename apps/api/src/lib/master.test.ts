@@ -26,6 +26,11 @@ describe("loadMaster", () => {
     expect(m.locations).toEqual(FX.LOC);
     expect(m.locations.quarantine).toMatchObject({ n: "Quarantine", type: "Store" });
   });
+  it("returns each location's open/closed flag and par factor", async () => {
+    const m = await loadMaster(t.db);
+    expect(m.locations.kiosk).toMatchObject({ active: true, par: 0.15 });
+    expect(m.locations.quarantine).toMatchObject({ active: true, par: 1 });
+  });
   it("returns the recipes with their lines in the order they were written", async () => {
     expect((await loadMaster(t.db)).recipes).toEqual(FX.RCP);
   });

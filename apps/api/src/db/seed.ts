@@ -122,7 +122,10 @@ const userRow = (u: (typeof FX.USERS)[number], passwordHash: string, mustChange:
 // so it arrives with the other five rather than being written out a second time here.
 async function seedLocations(tx: Tx) {
   await tx.insert(s.locations).values(
-    Object.entries(FX.LOC).map(([key, l]) => ({ key, name: l.n, code: l.c, type: l.type, floor: l.floor, costCentre: l.cc, priceList: l.list ?? null, sellable: l.type === "Outlet" })),
+    Object.entries(FX.LOC).map(([key, l]) => ({
+      key, name: l.n, code: l.c, type: l.type, floor: l.floor, costCentre: l.cc, priceList: l.list ?? null,
+      sellable: l.type === "Outlet", active: l.active ?? true, parFactor: l.par ?? 1,
+    })),
   );
 }
 
