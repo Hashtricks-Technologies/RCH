@@ -18,15 +18,21 @@ export const AdminUserSchema = z.strictObject({
  *  and this is the only schema it appears in. */
 export const AdminUserWithTempPasswordSchema = AdminUserSchema.extend({ tempPassword: z.string() });
 
+/** No `emp`: the server assigns the next employee number inside the create's own transaction
+ *  (`nextEmpNo` in `@rch/domain`), and the page only previews it. A strict body refuses one. */
 export const CreateAdminUserBodySchema = z.strictObject({
-  emp: z.string().trim().min(1).max(64), name: z.string().trim().min(1).max(120), email: z.email().max(254),
+  name: z.string().trim().min(1).max(120), email: z.email().max(254),
   role: RoleSchema, loc: LocKeySchema, phone: z.string().trim().max(40).optional(),
 });
 export const UpdateAdminUserBodySchema = z.strictObject({ role: RoleSchema, loc: LocKeySchema });
 export const AdminUserIdParamsSchema = z.strictObject({ id: z.string().min(1).max(40) });
 
+/** What a permanent delete hands back: the account as it was named, since there is no row left
+ *  to read it from afterwards. */
+export const AdminDeletedUserSchema = z.strictObject({ id: z.string(), emp: z.string(), n: z.string() });
+
 export const AdminActionSchema = z.strictObject({
   at: IsoTime,
-  actor: z.string(), action: z.enum(["create", "reset_password", "deactivate", "reactivate", "update_role_loc"]),
+  actor: z.string(), action: z.enum(["create", "reset_password", "deactivate", "reactivate", "update_role_loc", "delete"]),
   target: z.string(), details: z.record(z.string(), z.unknown()),
 });

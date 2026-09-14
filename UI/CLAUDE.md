@@ -76,8 +76,15 @@ try {
   `counter/Requests.tsx` (keyed per row) are the two patterns to copy.
 - **Actions whose screen needs the new id return `Promise<string | null>`**: `createPo` and `createItem`.
 - **Single-press buttons with no form are fire-and-forget**: `handover`, `setOrderStatus`, `dispatchOrder`.
-- **Some reads have no notify and no refetch**: `readStockLedger`, `readCredit` and `loadPayers`. They return
-  `null` on failure, never an empty list, so a screen can tell an outage from genuinely nothing.
+- **Some reads have no notify and no refetch**: `readStockLedger`, `readCredit`, `loadPayers` and
+  `loadSignInDirectory` (the sign-in picker's staff list). They return `null` on failure, never an empty list,
+  so a screen can tell an outage from genuinely nothing. `Login.tsx` falls back to a typed id on `null`.
+- **Account writes (`store/admin.ts`)**: `createAccount` sends no employee number (the server assigns it) and
+  returns `{ emp, password } | null`, the number actually given; `AdminUsers.tsx` previews it with
+  `nextEmpNo`. `deleteAccount(id)` is the ordinary `Promise<boolean>` write, behind an inline second press.
+- **An admin-flagged session loads no snapshot.** `loadSnapshot` sets `auth: "ready"` and returns for one,
+  because the server 404s every operational read for its token. Sign-in, restore, a password change and any
+  later refetch fallback all go through that one guard.
 - **Nothing is previewed as a decision.** `freeToPromise`, `availOf` and `priceOf` are previews while the
   operator types. The server makes the actual decision. When you preview, use the `@rch/domain` function the
   server uses, not a lookalike.
@@ -166,6 +173,10 @@ a background refresh and must not blank the screen.
 - **`screens.test.tsx` / `app.test.tsx`** cover every role × nav key, plus every registered drawer.
 - **`bare.test.tsx`** renders every screen against exactly what a `--bare` database serves: six locations and
   nothing else.
+- **`login-picker.test.tsx`** drives the sign-in employee picker (list, filter, keyboard, the administrator's
+  typed id, the fallback); **`admin-accounts.test.tsx`** drives the account page (next-id preview, the Super
+  Admin row, delete's second press). Both stub `fetch` by `"METHOD /path"`; the sign-in screen reads
+  `GET /auth/directory` as it mounts, so a case that queues a login response must answer by URL, not in order.
 - **`fixes.test.ts`** pins earlier defects by tag (C6, M3, M8, H4, UA-14…). Read the comment before changing
   what one covers.
 - **No production file under `src/` imports `@rch/contract/fixtures`.** Only tests do.

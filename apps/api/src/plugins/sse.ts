@@ -174,8 +174,9 @@ export default fp<{ config: Config; searchPath?: string }>(async (app, { config,
     // (a stream has no response schema), so it has to attach its own. "any" because every
     // signed-in role watches for changes, `false` because a must-change-password token must
     // not: the stream carries what every other write changed, which is more than the one
-    // screen that token is allowed to reach.
-    preHandler: [app.authenticate, app.roleGate("any", false)],
+    // screen that token is allowed to reach. `admitAdmin` because the admin's own page listens
+    // too, and a notice names a collection, never a row.
+    preHandler: [app.authenticate, app.roleGate("any", false, { admitAdmin: true })],
   }, async (req, reply) => {
     const who = req.user.sub;
     // Before the hijack, and only before it: once the response is hijacked there is no reply

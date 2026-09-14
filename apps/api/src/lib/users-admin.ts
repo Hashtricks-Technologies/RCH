@@ -1,10 +1,11 @@
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { MIN_PASSWORD_LENGTH, OUTLETS, type LocKey, type Role } from "@rch/contract";
+import { nextEmpNo } from "@rch/domain";
 import type { Db } from "../db/client.js";
-import { locations, refreshTokens, users } from "../db/schema/index.js";
-import { withTransaction, type Tx } from "./db.js";
+import { idempotencyKeys, locations, refreshTokens, users } from "../db/schema/index.js";
+import { isForeignKeyViolation, withTransaction, type Tx } from "./db.js";
 import { hashPassword } from "./password.js";
-import { ConflictError, ValidationError } from "./errors.js";
+import { ConflictError, RuleError, ValidationError } from "./errors.js";
 
 const ROLE_LABEL: Record<Role, string> = { counter: "Counter Operator", manager: "Outlet Manager", store: "Store Keeper", prod: "Kitchen In-charge", buyer: "Procurement Officer" };
 const PALETTE = ["#B45309", "#7C3AED", "#0F766E", "#15803D", "#BE123C", "#475569", "#1D4ED8", "#9333EA", "#0E7490", "#C2410C"];
@@ -56,20 +57,48 @@ const revokeAll = (tx: Tx, userId: string) =>
  * that a caller reading `admin_actions` afterward can trust actually happened together.
  */
 
-export async function createUserTx(tx: Tx, i: { emp: string; name: string; email: string; role: Role; loc: LocKey; phone?: string; colour?: string; password: string }): Promise<{ id: string }> {
+/** The `sequences` row account creation locks. Not an `IdKind` — a user id is never printed on
+ *  a document, so it has no `formatId` case and no `SEQUENCE_START`; `ensureSequences` never
+ *  inserts it, and `createUserTx` inserts it the first time it is needed. */
+const USER_SEQUENCE = "user";
+
+/**
+ * Takes the `user` row's lock — which serialises every account creation in the hospital, so two
+ * admins saving at once cannot both read the same highest employee number — and hands out the
+ * next user id. The counter only ever moves forward, and it starts past whatever ids are already
+ * on `users` (the seeds write `u1`…`u7` literally, and an environment may predate this row), so
+ * an id is **never given out twice**, even after the account holding the highest one is deleted.
+ * That matters more than tidiness: a deleted account's access token stays valid for up to fifteen
+ * minutes, and a reused `sub` would hand it a stranger's identity.
+ */
+async function allocateUserNumber(tx: Tx): Promise<number> {
+  await tx.execute(sql`insert into sequences (kind, next) values (${USER_SEQUENCE}, 1) on conflict do nothing`);
+  const r = await tx.execute(sql`
+    update sequences
+       set next = greatest(next, (select coalesce(max(substring(id from 2)::int), 0) + 1 from users where id ~ '^u[0-9]+$')) + 1
+     where kind = ${USER_SEQUENCE}
+    returning next - 1 as n`);
+  return Number((r.rows[0] as { n: number | string }).n);
+}
+
+/** `emp` is optional: left out (the admin page always leaves it out), the account is given the
+ *  next employee number after every one already on `users` — `nextEmpNo`, the same rule the page
+ *  previews with — read under the lock `allocateUserNumber` has just taken. */
+export async function createUserTx(tx: Tx, i: { emp?: string; name: string; email: string; role: Role; loc: LocKey; phone?: string; colour?: string; password: string }): Promise<{ id: string; emp: string }> {
   checkPassword(i.password);
-  if (await tx.select().from(users).where(eq(users.empNo, i.emp)).then((r) => r[0])) throw new ConflictError(`employee ${i.emp} already exists`);
   if (!(await tx.select().from(locations).where(eq(locations.key, i.loc)).then((r) => r[0]))) throw new ValidationError(`unknown location "${i.loc}"`);
   checkPairing(i.role, i.loc);
-  const [{ n }] = (await tx.execute(sql`select coalesce(max(substring(id from 2)::int), 0) + 1 as n from users where id ~ '^u[0-9]+$'`)).rows as [{ n: number }];
+  const n = await allocateUserNumber(tx);
+  const emp = i.emp ?? nextEmpNo((await tx.select({ emp: users.empNo }).from(users)).map((u) => u.emp));
+  if (await tx.select().from(users).where(eq(users.empNo, emp)).then((r) => r[0])) throw new ConflictError(`employee ${emp} already exists`);
   const id = `u${n}`;
   await tx.insert(users).values({
-    id, name: i.name, email: i.email, role: i.role, roleLabel: ROLE_LABEL[i.role], loc: i.loc, colour: i.colour ?? PALETTE[Number(n) % PALETTE.length],
-    empNo: i.emp, phone: i.phone ?? "", passwordHash: await hashPassword(i.password), mustChangePassword: true,
+    id, name: i.name, email: i.email, role: i.role, roleLabel: ROLE_LABEL[i.role], loc: i.loc, colour: i.colour ?? PALETTE[n % PALETTE.length],
+    empNo: emp, phone: i.phone ?? "", passwordHash: await hashPassword(i.password), mustChangePassword: true,
   });
-  return { id };
+  return { id, emp };
 }
-export const createUser = (db: Db, i: Parameters<typeof createUserTx>[1]): Promise<{ id: string }> => withTransaction(db, (tx) => createUserTx(tx, i));
+export const createUser = (db: Db, i: Parameters<typeof createUserTx>[1]): Promise<{ id: string; emp: string }> => withTransaction(db, (tx) => createUserTx(tx, i));
 
 export async function resetPasswordTx(tx: Tx, emp: string, temporary: string): Promise<void> {
   checkPassword(temporary);
@@ -93,6 +122,32 @@ export async function reactivateUserTx(tx: Tx, emp: string): Promise<void> {
   await tx.update(users).set({ active: true, updatedAt: new Date() }).where(eq(users.id, u.id));
 }
 export const reactivateUser = (db: Db, emp: string): Promise<void> => withTransaction(db, (tx) => reactivateUserTx(tx, emp));
+
+/**
+ * Permanent removal, for an account that never did anything — one created by mistake. The
+ * caller has already decided the account may go (not the caller's own, not admin-flagged, already
+ * deactivated); this is the part that decides whether it *can*.
+ *
+ * What an account leaves behind that is not history goes with it: its sessions and its
+ * idempotency records. Everything else that names a user — a bill, an approval, a stock move, a
+ * line in the admin log it wrote — is a foreign key with no `ON DELETE`, so Postgres refuses the
+ * `users` delete and that refusal is the rule: **an account with history can only be
+ * deactivated.** Nothing here lists those tables, so one added later is covered by its own
+ * reference. The one reference that does not block is `admin_actions.target_id`, which is
+ * `ON DELETE SET NULL` so the log keeps the line (by its stored `target_name`). The failed
+ * statement aborts the transaction, and the refusal thrown here rolls the token deletes back
+ * with it.
+ */
+export async function deleteUserTx(tx: Tx, u: { id: string; name: string; empNo: string }): Promise<void> {
+  await tx.delete(refreshTokens).where(eq(refreshTokens.userId, u.id));
+  await tx.delete(idempotencyKeys).where(eq(idempotencyKeys.userId, u.id));
+  try {
+    await tx.delete(users).where(eq(users.id, u.id));
+  } catch (e) {
+    if (isForeignKeyViolation(e)) throw new RuleError(`Refused — ${u.name} (${u.empNo}) has records in the hospital's history, so the account can only be deactivated, never deleted`);
+    throw e;
+  }
+}
 
 /**
  * Genuinely new capability, not previously reachable from anywhere: moving a live account to a

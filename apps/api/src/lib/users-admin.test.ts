@@ -21,9 +21,16 @@ describe("users-admin", () => {
     const [u] = await t.db.select().from(users).where(eq(users.id, id));
     expect(u.mustChangePassword).toBe(true); expect(u.roleLabel).toBe("Counter Operator"); expect(await verifyPassword(u.passwordHash, "temporary-pass-1")).toBe(true);
   });
+  it("assigns the next employee number when none is given, and says which", async () => {
+    const { id, emp } = await createUser(t.db, { name: "Gowri N", email: "gowri.n@royalcare.in", role: "counter", loc: "kiosk", password: "temporary-pass-1" });
+    // RC-9001 above is now the highest RC- number on `users`.
+    expect(emp).toBe("RC-9002");
+    const [u] = await t.db.select().from(users).where(eq(users.id, id));
+    expect(u.empNo).toBe("RC-9002");
+  });
   it("refuses a duplicate employee number and an unknown location", async () => {
     await expect(createUser(t.db, { emp: "RC-4471", name: "X", email: "x@x", role: "counter", loc: "rest", password: "temporary-pass-1" })).rejects.toThrow(/RC-4471/);
-    await expect(createUser(t.db, { emp: "RC-9002", name: "X", email: "x@x", role: "counter", loc: "attic" as never, password: "temporary-pass-1" })).rejects.toThrow(/location/);
+    await expect(createUser(t.db, { emp: "RC-9102", name: "X", email: "x@x", role: "counter", loc: "attic" as never, password: "temporary-pass-1" })).rejects.toThrow(/location/);
   });
   it("refuses a password weaker than the one the user could have chosen themselves", async () => {
     // MIN_PASSWORD_LENGTH (@rch/contract) is the same number ChangePasswordBodySchema enforces:

@@ -97,6 +97,25 @@ a{color:var(--accent);text-decoration:none}
 .inp{width:100%;padding:9px 12px;border:1px solid var(--line-strong);border-radius:7px;background:var(--surface);font-size:13px}
 .inp:focus{outline:0;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
 .lgn{margin-top:22px;padding-top:16px;border-top:1px solid var(--line);font-size:11.5px;color:var(--ink-4);line-height:1.55}
+/* sign-in employee picker: a combobox over the staff directory */
+.lgpick{position:relative}
+.lgpick-list{position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:5;margin:0;padding:4px;list-style:none;max-height:min(280px,45vh);overflow-y:auto;background:var(--surface);border:1px solid var(--line-strong);border-radius:8px;box-shadow:var(--sh3)}
+.lgpick-list li[role=option]{display:flex;align-items:baseline;gap:12px;padding:8px 10px;border-radius:6px;cursor:pointer;font-size:13px;color:var(--ink)}
+.lgpick-list li[role=option] .mono{flex:none;min-width:5.5em;font-size:12px;color:var(--ink-3)}
+.lgpick-list li[role=option] span:last-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lgpick-list li.on{background:var(--accent-soft)}
+.lgpick-list li.on .mono{color:var(--accent)}
+.lgpick-none{padding:10px;font-size:12.5px;color:var(--ink-3)}
+.lgpick-chosen{display:flex;align-items:center;gap:10px;padding:6px 6px 6px 12px;border:1px solid var(--line-strong);border-radius:7px;background:var(--surface-2);min-width:0}
+.lgpick-id{flex:none;width:6.5em;padding:0;border:0;background:transparent;font-size:13px;color:var(--ink-2)}
+.lgpick-id:focus{outline:0}
+.lgpick-name{flex:1;min-width:0;font-size:13px;font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lgpick-change,.lgpick-link{border:0;background:transparent;color:var(--accent);font:inherit;font-size:12px;font-weight:600;cursor:pointer;padding:5px 8px;border-radius:6px}
+.lgpick-change:hover,.lgpick-link:hover{background:var(--accent-soft)}
+.lgpick-change:focus-visible,.lgpick-link:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.lgpick-mode{margin:12px 0 0;text-align:center}
+.lgpick-note{margin:6px 0 0;font-size:11.5px;color:var(--ink-3);line-height:1.45}
+@media(max-width:480px){.lgpick-list li[role=option]{flex-direction:column;gap:1px}.lgpick-list li[role=option] .mono{min-width:0}}
 /* shell */
 #app{display:none;min-height:100vh}
 #app.on{display:grid;grid-template-columns:1fr}

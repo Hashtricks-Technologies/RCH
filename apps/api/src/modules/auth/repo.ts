@@ -1,4 +1,4 @@
-import { and, eq, isNull, lt, or, sql } from "drizzle-orm";
+import { and, asc, eq, isNull, lt, or, sql } from "drizzle-orm";
 import type { Db } from "../../db/client.js";
 import type { Tx } from "../../lib/db.js";
 import { refreshTokens, users } from "../../db/schema/index.js";
@@ -6,6 +6,13 @@ import { refreshTokens, users } from "../../db/schema/index.js";
 export const authRepo = {
   userByEmp: async (db: Db | Tx, emp: string) => (await db.select().from(users).where(eq(users.empNo, emp)))[0],
   userById: async (db: Db | Tx, id: string) => (await db.select().from(users).where(eq(users.id, id)))[0],
+  /** The sign-in picker: every account that can sign in at a counter or a desk — active, and not
+   *  admin-flagged, so the one account that manages the others is not advertised to whoever
+   *  opens the page — as a number and a name, in number order. */
+  signInDirectory: (db: Db | Tx) =>
+    db.select({ emp: users.empNo, n: users.name }).from(users)
+      .where(and(eq(users.active, true), eq(users.admin, false)))
+      .orderBy(asc(users.empNo)),
   insertRefresh: (tx: Tx, v: { userId: string; family: string; tokenHash: string; expiresAt: Date; userAgent?: string; ip?: string }) => tx.insert(refreshTokens).values(v),
   refreshByHash: async (db: Db | Tx, tokenHash: string) => (await db.select().from(refreshTokens).where(eq(refreshTokens.tokenHash, tokenHash)))[0],
   /** When the family's very first token was issued — undefined if the family has no rows yet

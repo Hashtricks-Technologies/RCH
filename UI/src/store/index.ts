@@ -8,7 +8,7 @@ import { LOC } from "../data/master";
 import type {
   Adjustment, Batch, Bill, CreditResponse, Dated, DatedDoc, DraftLine, DrawerState, Grn, LocKey,
   Payer, PordStatus, ProdOrder, PurchaseOrder, Requisition, StockLedgerRow, StockLoc,
-  StockRequest, Tender, Ticket, Trailed, User, Vendor,
+  SignInEntry, StockRequest, Tender, Ticket, Trailed, User, Vendor,
 } from "../types";
 import { applyTheme, nextTheme, readStoredTheme, storeTheme, type ThemePref } from "../lib/theme";
 import { createProcurementSlice, type ProcurementSlice } from "./procurement";
@@ -69,6 +69,10 @@ export interface AppState extends ProcurementSlice, OpsSlice, AdminSlice, Recipe
   theme: ThemePref;
 
   login: (emp: string, password: string) => Promise<boolean>;
+  /** The sign-in picker's list: every active staff account's number and name, read before
+   *  anybody has signed in. A read with no toast — `null` on failure, never an empty list, so
+   *  the form can tell "nobody to pick" from "could not ask" and fall back to a typed id. */
+  loadSignInDirectory: () => Promise<SignInEntry[] | null>;
   logout: () => Promise<void>;
   /** Boot: turn the refresh cookie back into a session. Silent when there is no cookie. */
   restore: () => Promise<void>;
@@ -219,6 +223,10 @@ export const useApp = create<AppState>((set, get) => ({
       return false;
     }
   },
+  loadSignInDirectory: async () => {
+    try { return await call(routes.signInDirectory); }
+    catch { return null; }
+  },
   restore: async () => {
     // A token in memory means this tab already has a live session.
     if (getAccessToken()) return;
@@ -244,6 +252,12 @@ export const useApp = create<AppState>((set, get) => ({
     // it, and blanking the hospital to "Loading…" threw away whatever was being read, closed
     // every open drawer and lost the operator their place. `LOC` empty is the one state where
     // there is genuinely nothing to keep: no item master, no locations, no screen that renders.
+    //
+    // An admin-flagged session has no hospital to load. It only ever sees `/admin`, and the
+    // server answers every operational read — this one included — with a 404 for its token.
+    // Guarded here rather than in each caller, so sign-in, restore, a password change and any
+    // later refresh all reach "ready" without asking for a snapshot that cannot come.
+    if (get().user?.admin) { set({ auth: "ready" }); return; }
     if (Object.keys(LOC).length === 0) set({ auth: "loading" });
     try { applySnapshot(await call(routes.snapshot)); set({ auth: "ready" }); }
     catch (e) {

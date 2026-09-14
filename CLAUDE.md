@@ -141,6 +141,12 @@ There are five roles (`counter`, `manager`, `store`, `prod`, `buyer`), each with
   account sees only the standalone `/admin` page, never an operational shell. There it manages staff accounts
   and answers every role's support tickets as the support desk. The flag can only be set with
   `pnpm --filter @rch/api users set-admin`; no route can set it.
+- **The super admin has no role in practice.** The `users` row still carries a placeholder role and location,
+  but the wire labels it `Super Admin`, the account page offers no role or location for it, and `rbac.ts`
+  answers an admin token with a **404** on every route that is not `access: "admin"` or a must-change-password
+  route (sign-in, password, `/me`). `GET /events` opts back in with `admitAdmin`, for the support desk.
+- **Staff pick themselves at sign-in.** `GET /auth/directory` is public and lists active, non-admin accounts
+  as number and name only. The super admin signs in through a typed id instead.
 
 ### The movement rule
 
@@ -200,6 +206,12 @@ The code enforces these and tests pin them. Breaking one is a bug.
   moves, frees the credit room it used, and badges the bill rather than erasing it.
 - **Items are retired, never deleted**, and not while any stock or menu listing remains. **Payers are
   deactivated, never deleted.**
+- **Employee numbers are assigned by the server**: `nextEmpNo` in `@rch/domain`, one past the highest
+  `RC-<digits>`, under the `user` row of `sequences`, which also hands out user ids that are never reused.
+- **A staff account is deleted only if it never did anything.** It must be deactivated first, and it can't be
+  the caller's own or a super admin. Anything that still references the user (a bill, an approval, a stock
+  move) makes the delete a refusal: an account with history can only be deactivated. `admin_actions` keeps the
+  target's name, so the log still reads after a delete.
 - **Dispatch is all-or-nothing.** An order that is short names every missing line and moves nothing.
 - **A delivery counts what the shelf accepted** (`netReceived`), not what arrived. A rejected quantity goes
   back on the procurement list.

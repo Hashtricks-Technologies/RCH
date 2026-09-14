@@ -110,6 +110,19 @@ describe("GET /events", () => {
     expect(body.error.message).toMatch(/password/i);
   });
 
+  it("opens a stream for a super admin, whose token reaches no other route outside account management", async () => {
+    // The admin's own screens refresh live too. The same token is a 404 on /snapshot (rbac.ts),
+    // so this is the gate's `admitAdmin`, not an admin passing as its placeholder role.
+    const token = await app.signAccess({ id: "u2", role: "manager", loc: "rest", mcp: false, admin: true });
+    const snap = await fetch(base + API_PREFIX + "/snapshot", { headers: { authorization: `Bearer ${token}` } });
+    expect(snap.status).toBe(404);
+    const ac = new AbortController();
+    const r = await fetch(base + API_PREFIX + EVENTS_PATH, { headers: { authorization: `Bearer ${token}`, accept: "text/event-stream" }, signal: ac.signal });
+    expect(r.status).toBe(200);
+    expect(r.headers.get("content-type")).toContain("text/event-stream");
+    ac.abort();
+  });
+
   it("opens with the streaming headers and a retry hint", async () => {
     const s = await open("u1");
     expect(s.res.headers.get("content-type")).toContain("text/event-stream");

@@ -8,14 +8,19 @@ import { iso } from "./time.js";
 const strip = <T extends object>(o: T): T => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)) as T;
 
 export type UserRow = typeof users.$inferSelect;
+/** What an admin-flagged account is called wherever a role label would stand. Its `role`/`loc`
+ *  columns are placeholders the schema needs and nothing acts on — its token reaches no
+ *  operational route (`plugins/rbac.ts`) — so the label says what the account actually is. */
+const SUPER_ADMIN_LABEL = "Super Admin";
+export const roleLabelOf = (u: Pick<UserRow, "admin" | "roleLabel">): string => (u.admin ? SUPER_ADMIN_LABEL : u.roleLabel);
 export const toWireUser = (u: UserRow): User => ({
-  id: u.id, n: u.name, e: u.email, r: u.role, rl: u.roleLabel, loc: u.loc as User["loc"], col: u.colour, emp: u.empNo, ph: u.phone,
+  id: u.id, n: u.name, e: u.email, r: u.role, rl: roleLabelOf(u), loc: u.loc as User["loc"], col: u.colour, emp: u.empNo, ph: u.phone,
   admin: u.admin,
 });
 /** What one colleague sees of another: a name badge. Contact details are the caller's own,
  *  and travel only in their own record (`snapshot.user`). */
 export const toWireUserMin = (u: UserRow): UserMin => ({
-  id: u.id, n: u.name, r: u.role, rl: u.roleLabel, loc: u.loc as UserMin["loc"], col: u.colour,
+  id: u.id, n: u.name, r: u.role, rl: roleLabelOf(u), loc: u.loc as UserMin["loc"], col: u.colour,
 });
 
 export type ItemRow = typeof items.$inferSelect;

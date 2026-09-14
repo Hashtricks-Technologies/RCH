@@ -13,7 +13,7 @@ pnpm --filter @rch/api db:generate          # drizzle-kit generate + strip the "
 pnpm --filter @rch/api db:migrate           # behind pg_advisory_lock
 pnpm --filter @rch/api db:seed [--force] [--bare]
 pnpm --filter @rch/api db:rebuild-balances  # recompute stock_balances from stock_moves
-pnpm --filter @rch/api users <create|reset-password|deactivate|set-admin> --emp RC-1234 ...
+pnpm --filter @rch/api users <create|reset-password|deactivate|set-admin> --emp RC-1234 ...   # create: --emp optional, next number assigned
 pnpm --filter @rch/api payers import --csv <file> [--replace-names]   # kind,id,name — one transaction
 pnpm --filter @rch/api keys:generate        # prints a fresh Ed25519 JWT_PRIVATE_KEY= / JWT_PUBLIC_KEY= pair
 pnpm --filter @rch/api loadcheck            # latency of /snapshot and /bills against a running API
@@ -105,6 +105,29 @@ For a uniqueness rule, the insert (or update) decides; a pre-check only gives th
 `rate_contracts_live_uq`, `items_name_ci_uq` and the `payers` primary key `(kind, id)` all work this way.
 `catalog.createItem` also takes a `pg_advisory_xact_lock` on the item's slug.
 
+## Accounts and the super admin
+
+- **A super admin reaches no operational route.** Its `role`/`loc` columns are placeholders the `users` row
+  needs. `plugins/rbac.ts` answers 404 to an admin-flagged token on every route that is not `access: "admin"`
+  and not `allowMcp` (sign-in, password, `/me`), so the placeholder role opens nothing. A hand-mounted route the
+  admin's page needs passes `{ admitAdmin: true }` to `roleGate`; `/events` is the only one. `lib/wire.ts`'s
+  `roleLabelOf` prints its role as `Super Admin`, and `PATCH /admin/users/:id` refuses to move one.
+- **The server assigns employee numbers.** `POST /admin/users` takes no `emp`. `createUserTx` locks the
+  `sequences` row of kind `user` (not an `IdKind`; inserted on first use, never by `ensureSequences`), then
+  gives the account `nextEmpNo` over every `users.emp_no`. The same row hands out user ids, which only move
+  forward (`greatest(next, max(id)+1)`), so a deleted account's id is never reused and its unexpired access
+  token can never resolve to someone else. The CLI's `create` still accepts an explicit `--emp`.
+- **`DELETE /admin/users/:id` removes only an account with no history.** The service refuses the caller's own
+  account, a super admin, and an active account. `deleteUserTx` then drops the account's `refresh_tokens` and
+  `idempotency_keys` and deletes the row. Every other reference to `users` has no `ON DELETE`, so Postgres's
+  foreign-key refusal (`isForeignKeyViolation`, 23503) is the rule, and becomes a `RuleError`. Don't enumerate
+  tables there: a new table that references `users` is covered by its own foreign key.
+- **`admin_actions` stores `target_name` on every line.** `target_id` is `ON DELETE SET NULL`, and
+  `recentActions` shows `coalesce(current name, target_name)`, so the log still names a deleted account.
+- **`GET /auth/directory` is public**: active, non-admin accounts as `{ emp, n }`, for the sign-in picker. It
+  has its own per-IP limit (120/min, `DIRECTORY_RATE_LIMIT_PER_MINUTE` in `modules/auth/routes.ts`), apart from
+  the login limit.
+
 ## Reads
 
 A read that makes more than one query runs inside `withReadTransaction` and awaits its queries **in
@@ -167,7 +190,8 @@ test files may insert, update or delete these six tables: `stock_moves`, `stock_
 - **`plugins/sse.ts` fans notices out to every open stream.** It holds one `LISTEN` client per pod and sends
   a `resync` after a reconnect.
 - **`GET /events` is the one route outside the manifest and `mount()`**, so its auth and role gates are
-  attached by hand.
+  attached by hand. Its gate is `roleGate("any", false, { admitAdmin: true })`, the only route that admits a
+  super admin without being `access: "admin"`.
 
 ## Errors
 

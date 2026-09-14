@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { RoleSchema } from "@rch/contract";
+import { nextEmpNo } from "@rch/domain";
 import { useApp } from "../store";
 import { OUTLETS } from "../data/master";
 import { Alert, Btn, Card, DataTable, Field, FormRow, PageHead, Pill, TableFoot } from "../ui/kit";
-import type { AdminUser, LocKey, Role } from "../types";
+import type { AdminAction, AdminUser, LocKey, Role } from "../types";
 
 /** Display labels only — the pairing itself, and every other rule this form previews, is the
  *  server's (`apps/api/src/lib/users-admin.ts`'s own `WORKS_AT`/`ROLE_LABEL`); a refusal from
@@ -18,7 +19,14 @@ const LOC_LABEL: Record<LocKey, string> = {
   store: "Central Store", kitchen: "Central Kitchen", rest: "Restaurant", coffee: "Coffee Shop", kiosk: "Snack Kiosk",
 };
 
-const emptyForm = { emp: "", name: "", email: "", phone: "", role: "counter" as Role, loc: "rest" as LocKey };
+/** How each logged action reads in the feed — "Ramesh Kumar deleted Anitha R". Keyed on the
+ *  closed union, so a new action fails `typecheck` here until it has words. */
+const DID: Record<AdminAction["action"], string> = {
+  create: "created", reset_password: "reset the password of", deactivate: "deactivated",
+  reactivate: "reactivated", update_role_loc: "moved", delete: "deleted",
+};
+
+const emptyForm = { name: "", email: "", phone: "", role: "counter" as Role, loc: "rest" as LocKey };
 
 export default function AdminUsers() {
   const accounts = useApp((s) => s.accounts);
@@ -29,6 +37,7 @@ export default function AdminUsers() {
   const resetAccountPassword = useApp((s) => s.resetAccountPassword);
   const setAccountActive = useApp((s) => s.setAccountActive);
   const updateAccountRoleLoc = useApp((s) => s.updateAccountRoleLoc);
+  const deleteAccount = useApp((s) => s.deleteAccount);
   const notify = useApp((s) => s.notify);
 
   // Nothing on the snapshot carries the account list or its action log — this is the one screen
@@ -40,22 +49,33 @@ export default function AdminUsers() {
   const [busy, setBusy] = useState<string | null>(null);
   const [shown, setShown] = useState<{ emp: string; password: string } | null>(null);
   const [edit, setEdit] = useState<Record<string, { role: Role; loc: LocKey }>>({});
+  /** The one row whose Delete has been pressed once and is waiting for the second press. */
+  const [confirming, setConfirming] = useState<string | null>(null);
+
+  // A preview only: the server assigns the number inside the create's own transaction, with the
+  // same `nextEmpNo`, and the password alert names the one it actually gave.
+  const nextEmp = nextEmpNo(accounts.map((a) => a.emp));
 
   const create = async () => {
-    if (!form.emp.trim() || !form.name.trim() || !form.email.trim()) {
-      notify("Give the account an employee id, a name and an email before saving");
+    if (!form.name.trim() || !form.email.trim()) {
+      notify("Give the account a name and an email before saving");
       return;
     }
     setBusy("create");
     try {
-      const pw = await createAccount({
-        emp: form.emp.trim(), name: form.name.trim(), email: form.email.trim(),
+      const made = await createAccount({
+        name: form.name.trim(), email: form.email.trim(),
         role: form.role, loc: form.loc, phone: form.phone.trim() || undefined,
       });
-      // A refusal (a duplicate employee number, most often) leaves the form exactly as typed,
+      // A refusal (the role/location pairing, most often) leaves the form exactly as typed,
       // so the operator corrects it rather than retyping the whole thing.
-      if (pw) { setShown({ emp: form.emp.trim(), password: pw }); setForm(emptyForm); }
+      if (made) { setShown(made); setForm(emptyForm); }
     } finally { setBusy(null); }
+  };
+
+  const remove = async (a: AdminUser) => {
+    setBusy(a.id);
+    try { if (await deleteAccount(a.id)) setConfirming(null); } finally { setBusy(null); }
   };
 
   const resetPassword = async (a: AdminUser) => {
@@ -87,7 +107,7 @@ export default function AdminUsers() {
       <PageHead
         crumbs={["Admin"]}
         title="Manage staff accounts"
-        sub="Create an account, reset a password, deactivate one, or move somebody to a different role or location."
+        sub="Staff accounts, their roles and locations."
       />
 
       <Alert tone="i" label="ACCOUNTS">
@@ -104,7 +124,9 @@ export default function AdminUsers() {
 
       <Card title="Create an account" sub="A real, ordinary account — the same as any other, with a temporary password to hand over">
         <FormRow cols="f3">
-          <Field label="Employee id"><input value={form.emp} onChange={(e) => setForm({ ...form, emp: e.target.value })} placeholder="RC-0000" /></Field>
+          <Field label="Employee id" hint="Assigned when you save — the next number after the last account">
+            <input className="mono" value={nextEmp} readOnly aria-readonly="true" />
+          </Field>
           <Field label="Name"><input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
           <Field label="Email"><input value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} type="email" /></Field>
         </FormRow>
@@ -141,8 +163,10 @@ export default function AdminUsers() {
               key: a.id,
               cells: [
                 <span className="mono">{a.emp}</span>,
-                <>{a.n}{a.admin && <Pill tone="in">Admin</Pill>}</>,
-                <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                a.n,
+                // The super admin has no role or location that means anything: it manages accounts
+                // and nothing else, and the server refuses to move it to either.
+                a.admin ? <Pill tone="in">Super Admin</Pill> : <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                   <select aria-label={`Role for ${a.emp}`} value={e.role} onChange={(ev) => {
                     const role = ev.target.value as Role;
                     setEdit({ ...edit, [a.id]: { role, loc: WORKS_AT[role].includes(e.loc) ? e.loc : WORKS_AT[role][0] } });
@@ -157,11 +181,29 @@ export default function AdminUsers() {
                 a.active
                   ? (a.mustChangePassword ? <Pill tone="wn">Must change password</Pill> : <Pill tone="ok">Active</Pill>)
                   : <Pill tone="mu">Deactivated</Pill>,
-                <div style={{ display: "flex", gap: 6 }}>
-                  <Btn size="xs" disabled={busy === a.id} onClick={() => void resetPassword(a)}>Reset password</Btn>
-                  {a.active
-                    ? <Btn size="xs" variant="dg" disabled={busy === a.id} onClick={() => void toggleActive(a)}>Deactivate</Btn>
-                    : <Btn size="xs" variant="ok" disabled={busy === a.id} onClick={() => void toggleActive(a)}>Reactivate</Btn>}
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  {confirming === a.id ? (
+                    // The second press, in place of the row's other actions: a permanent delete
+                    // is one step too final to sit one click away from Reactivate.
+                    <>
+                      <Btn size="xs" variant="dg" disabled={busy === a.id} onClick={() => void remove(a)}>
+                        {busy === a.id ? "Deleting…" : `Delete ${a.emp} permanently`}
+                      </Btn>
+                      <Btn size="xs" variant="gh" disabled={busy === a.id} onClick={() => setConfirming(null)}>Keep</Btn>
+                    </>
+                  ) : (
+                    <>
+                      <Btn size="xs" disabled={busy === a.id} onClick={() => void resetPassword(a)}>Reset password</Btn>
+                      {a.active
+                        ? <Btn size="xs" variant="dg" disabled={busy === a.id} onClick={() => void toggleActive(a)}>Deactivate</Btn>
+                        : <Btn size="xs" variant="ok" disabled={busy === a.id} onClick={() => void toggleActive(a)}>Reactivate</Btn>}
+                      {/* Only a deactivated ordinary account: the server also refuses one that has
+                          billed, approved or signed for anything, and says so. */}
+                      {!a.active && !a.admin && (
+                        <Btn size="xs" variant="gh" disabled={busy === a.id} onClick={() => setConfirming(a.id)}>Delete</Btn>
+                      )}
+                    </>
+                  )}
                 </div>,
               ],
             };
@@ -176,7 +218,7 @@ export default function AdminUsers() {
           <ul className="feed">
             {adminActions.map((a, i) => (
               <li key={i} className="mini">
-                <b>{a.actor}</b> {a.action.replace(/_/g, " ")} <b>{a.target}</b> · {a.at}
+                <b>{a.actor}</b> {DID[a.action]} <b>{a.target}</b> · {a.at}
               </li>
             ))}
           </ul>

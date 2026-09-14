@@ -41,15 +41,19 @@ export const users = pgTable("users", {
   updatedAt: ts("updated_at").notNull().defaultNow(),
 }, (t) => [uniqueIndex("users_emp_no_uq").on(t.empNo)]);
 
-// Insert-only: nothing in this module ever updates or deletes a row here. One line per admin
-// write — create, reset-password, deactivate, reactivate, update_role_loc — written in the same
-// transaction as the change it records, so a refused write leaves no row behind either.
+// Insert-only as far as the code goes: nothing ever updates or deletes a row here. One line per
+// admin write — create, reset-password, deactivate, reactivate, update_role_loc, delete — written
+// in the same transaction as the change it records, so a refused write leaves no row behind
+// either. The one change a row can see is Postgres's own: deleting an account sets `target_id`
+// to null on the lines about it (`ON DELETE SET NULL`), which is why every line also carries
+// `target_name`, the name as it stood when the line was written, for the log to fall back on.
 export const adminActions = pgTable("admin_actions", {
   id: text("id").primaryKey(),
   at: ts("at").notNull().defaultNow(),
   actorId: text("actor_id").notNull().references(() => users.id),
   action: text("action").notNull(),
-  targetId: text("target_id").notNull().references(() => users.id),
+  targetId: text("target_id").references(() => users.id, { onDelete: "set null" }),
+  targetName: text("target_name").notNull(),
   details: jsonb("details").notNull().default({}),
 });
 

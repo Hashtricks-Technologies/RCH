@@ -90,16 +90,24 @@ first sign-in.
 | `RC-1902` | Vinoth Prakash | Kitchen In-charge | kitchen |
 | `RC-1550` | Latha Narayanan | Procurement Officer | store |
 | `RC-4482` | Deepa Selvam | Counter Operator | kiosk |
-| `RC-0001` | System Administrator | Admin (a flag, not a role — see below) | — |
+| `RC-0001` | System Administrator | Super Admin (a flag, not a role — see below) | — |
 
-Sign in at `http://localhost:5173` with an employee id and the seed password.
+Sign in at `http://localhost:5173`: staff pick themselves from the employee list (read from the
+public `GET /auth/directory`, number and name only), then type the seed password. The super admin
+is not on that list; use "Sign in as administrator" and type `RC-0001`.
 
 `RC-0001` is the one seeded account carrying the admin flag — account management
-(create/reset/deactivate/reassign a colleague from its own standalone dashboard at `/admin`
-instead of this CLI) is a capability, not a role: signing in as it shows no operational sidebar
-at all, only that page. Its nominal role and location (`buyer`/`store` in the fixture) are the
-schema's own bookkeeping and are never shown — pick a role/location pairing for it the same way
-you would for any other account if you ever recreate it by hand.
+(create/reset/deactivate/reassign/delete a colleague from its own standalone dashboard at
+`/admin`) and the support desk are a capability, not a role: signing in as it shows no
+operational sidebar at all, only that page, and the API answers its token with a 404 on every
+operational route (`/events` excepted, for the desk). Its nominal role and location
+(`buyer`/`store` in the fixture) are the schema's own bookkeeping; the wire labels the account
+`Super Admin` and the page offers no role or location to change.
+
+A new account's employee number is assigned by the server (one past the highest `RC-<digits>`),
+never typed. **Delete** is offered only for a deactivated staff account, and the server refuses it
+for any account with history (a bill, an approval, a stock move): such an account can only stay
+deactivated. The recent-actions log keeps a deleted account's name.
 
 Granting or revoking the flag on **any** account — including moving it off `RC-0001` onto a real
 person's own account once one exists — is the one thing this page cannot do:
@@ -657,10 +665,13 @@ pnpm --filter @rch/api keys:generate   # prints new JWT_PRIVATE_KEY= / JWT_PUBLI
 
 ## 5. Accounts
 
-No UI for user administration — it is a CLI, run against a live database connection. Locally:
+Day to day, accounts are managed by the super admin on `/admin` (§1). The same operations, minus
+delete, are also a CLI, run against a live database connection — the way in when nobody can sign in
+as the admin. Locally:
 
 ```bash
-pnpm --filter @rch/api users create --emp RC-9001 --name "New Hire" --email new.hire@royalcare.in --role counter --loc coffee --password <temporary>
+pnpm --filter @rch/api users create --name "New Hire" --email new.hire@royalcare.in --role counter --loc coffee --password <temporary>   # prints the assigned number
+pnpm --filter @rch/api users create --emp RC-9001 --name "New Hire" --email new.hire@royalcare.in --role counter --loc coffee --password <temporary>   # or name one
 pnpm --filter @rch/api users reset-password --emp RC-9001 --password <temporary>
 pnpm --filter @rch/api users deactivate --emp RC-9001
 ```
@@ -674,8 +685,8 @@ kubectl exec deploy/rch-api -n rch -- /nodejs/bin/node dist/cli/users.mjs reset-
 kubectl exec deploy/rch-api -n rch -- /nodejs/bin/node dist/cli/users.mjs deactivate --emp RC-9001
 ```
 
-`create` accepts `--emp --name --email --role --loc --password` (required) and `--phone`
-(optional); the created account has `must_change_password = true`, so the temporary password
+`create` accepts `--name --email --role --loc --password` (required) and `--emp --phone`
+(optional; without `--emp` the next employee number is assigned); the created account has `must_change_password = true`, so the temporary password
 must be changed at first sign-in. That change revokes the employee's other sessions and hands
 the browser a fresh one in the same reply (a new access token and refresh cookie), so they
 land in the app rather than being bounced back to the sign-in screen. `reset-password` and

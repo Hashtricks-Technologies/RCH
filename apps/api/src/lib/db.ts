@@ -108,3 +108,10 @@ export const isUniqueViolation = (err: unknown, constraint: string): boolean => 
   const cause = (err as { cause?: unknown } | null)?.cause as { code?: string; constraint?: string } | undefined;
   return cause?.code === "23505" && cause?.constraint === constraint;
 };
+
+/** A statement refused because a row elsewhere still points at the one it touched — `code` 23503,
+ *  read off `.cause` for the same reason as above. Any constraint, on purpose: its one caller
+ *  (`lib/users-admin.ts`'s `deleteUserTx`) wants "does anything at all still refer to this row",
+ *  so a table added later with a reference to it is covered without anyone naming it. */
+export const isForeignKeyViolation = (err: unknown): boolean =>
+  ((err as { cause?: unknown } | null)?.cause as { code?: string } | undefined)?.code === "23503";

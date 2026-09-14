@@ -36,6 +36,32 @@ const login = (app: App, emp = "RC-4471", password = "changeme") =>
   app.inject({ method: "POST", url: "/api/v1/auth/login", payload: { emp, password } });
 const cookieOf = (r: { cookies: Array<{ name: string; value: string }> }) => r.cookies.find((c) => c.name === "rch_refresh")!;
 
+describe("GET /auth/directory", () => {
+  it("lists who can sign in — number and name only, in number order — to a caller with no token", async () => {
+    const res = await a.inject({ method: "GET", url: "/api/v1/auth/directory" });
+    expect(res.statusCode).toBe(200);
+    // The seed's six staff, and not RC-0001: the admin-flagged account is never advertised.
+    expect(res.json()).toEqual([
+      { emp: "RC-1550", n: "Latha Narayanan" },
+      { emp: "RC-1902", n: "Vinoth Prakash" },
+      { emp: "RC-2088", n: "Suresh Muthu" },
+      { emp: "RC-3120", n: "Ramesh Kumar" },
+      { emp: "RC-4471", n: "Kavitha Raman" },
+      { emp: "RC-4482", n: "Deepa Selvam" },
+    ]);
+  });
+  it("leaves out a deactivated account", async () => {
+    await a.db.update(users).set({ active: false }).where(eq(users.id, "u4"));
+    try {
+      const emps = (await a.inject({ method: "GET", url: "/api/v1/auth/directory" })).json().map((e: { emp: string }) => e.emp);
+      expect(emps).not.toContain("RC-1902");
+      expect(emps).toHaveLength(5);
+    } finally {
+      await a.db.update(users).set({ active: true }).where(eq(users.id, "u4"));
+    }
+  });
+});
+
 describe("login", () => {
   it("returns an access token and the wire user, and sets the refresh cookie", async () => {
     const r = await login(a);

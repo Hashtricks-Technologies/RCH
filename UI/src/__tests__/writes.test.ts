@@ -2228,19 +2228,43 @@ describe("admin: account management", () => {
       }),
       "GET /api/v1/admin/users": () => json([ROW]),
     });
-    const pw = await S().createAccount({ emp: "RC-9101", name: "Anitha R", email: "anitha.r@royalcare.in", role: "counter", loc: "rest" });
-    expect(pw).toBe("one-time-pass-1");
+    const made = await S().createAccount({ name: "Anitha R", email: "anitha.r@royalcare.in", role: "counter", loc: "rest" });
+    // The number the server gave, not one the browser chose: the body carries none.
+    expect(made).toEqual({ emp: "RC-9101", password: "one-time-pass-1" });
+    expect(hit("POST /api/v1/admin/users")[0].body).toEqual({ name: "Anitha R", email: "anitha.r@royalcare.in", role: "counter", loc: "rest" });
     expect(hit("GET /api/v1/admin/users")).toHaveLength(1);
     expect(S().accounts).toEqual([ROW]);
     expect(S().toast).toContain("Anitha R (RC-9101) created");
   });
 
-  it("returns null and repeats the refusal on a duplicate employee number", async () => {
-    serve({ "POST /api/v1/admin/users": () => refusal("employee RC-4471 already exists", 409) });
-    const pw = await S().createAccount({ emp: "RC-4471", name: "X", email: "x@x", role: "counter", loc: "rest" });
-    expect(pw).toBeNull();
+  it("returns null and repeats the refusal when the server will not create the account", async () => {
+    serve({ "POST /api/v1/admin/users": () => refusal("Kitchen In-charge works at kitchen, not at coffee", 400) });
+    const made = await S().createAccount({ name: "X", email: "x@x", role: "prod", loc: "coffee" });
+    expect(made).toBeNull();
     expect(hit("GET /api/v1/admin/users")).toHaveLength(0); // nothing to read back on a refusal
-    expect(S().toast).toBe("employee RC-4471 already exists");
+    expect(S().toast).toBe("Kitchen In-charge works at kitchen, not at coffee");
+  });
+
+  it("deletes an account for good, and repeats the refusal for one with history", async () => {
+    serve({
+      "DELETE /api/v1/admin/users/u6": () => json({ result: { id: "u6", emp: "RC-4482", n: "Deepa Selvam" }, changed: ["accounts"], message: "Deepa Selvam (RC-4482) deleted permanently" }),
+      "GET /api/v1/admin/users": () => json([]),
+    });
+    expect(await S().deleteAccount("u6")).toBe(true);
+    expect(S().toast).toBe("Deepa Selvam (RC-4482) deleted permanently");
+    expect(hit("GET /api/v1/admin/users")).toHaveLength(1);
+
+    serve({ "DELETE /api/v1/admin/users/u1": () => refusal("Refused — Kavitha Raman (RC-4471) has records in the ledger; an account with history can only be deactivated", 409) });
+    expect(await S().deleteAccount("u1")).toBe(false);
+    expect(S().toast).toContain("can only be deactivated");
+    // Still only the one read-back, from the delete that went through: a refusal reads nothing.
+    expect(hit("GET /api/v1/admin/users")).toHaveLength(1);
+  });
+
+  it("says the delete could not be sent when there is no answer at all", async () => {
+    fetchMock.mockRejectedValue(new TypeError("Failed to fetch"));
+    expect(await S().deleteAccount("u6")).toBe(false);
+    expect(S().toast).toBe("Could not delete the account — check the connection and try again.");
   });
 
   it("resets a password and hands back the new one-time value", async () => {
@@ -2280,6 +2304,33 @@ describe("admin: account management", () => {
       "GET /api/v1/admin/users": () => json([]),
     });
     expect(await S().updateAccountRoleLoc("u1", { role: "counter", loc: "kiosk" })).toBe(true);
+  });
+
+  it("brings a super admin's session to ready without asking for a snapshot it cannot have", async () => {
+    // The server 404s every operational read for an admin-flagged token, `/snapshot` included.
+    const user = { id: "u7", n: "System Administrator", e: "admin@royalcare.in", r: "buyer", rl: "Super Admin", loc: "store", col: "#334155", emp: "RC-0001", ph: "", admin: true };
+    setAccessToken(null);
+    useApp.setState({ user: null, auth: "signed-out" });
+    serve({ "POST /api/v1/auth/login": () => json({ accessToken: "admin-tok", user, mustChangePassword: false }) });
+    expect(await S().login("RC-0001", "a-long-enough-secret")).toBe(true);
+    expect(S().auth).toBe("ready");
+    expect(hit("GET /api/v1/snapshot")).toHaveLength(0);
+
+    // And a later refresh — an SSE resync, a read-back with no narrow reader — asks for nothing either.
+    await S().loadSnapshot();
+    expect(hit("GET /api/v1/snapshot")).toHaveLength(0);
+    expect(S().toast).toBeNull();
+  });
+
+  it("reads the sign-in directory, and answers null rather than an empty list when it cannot", async () => {
+    const DIR = [{ emp: "RC-4471", n: "Kavitha Raman" }, { emp: "RC-4482", n: "Deepa Selvam" }];
+    serve({ "GET /api/v1/auth/directory": () => json(DIR) });
+    expect(await S().loadSignInDirectory()).toEqual(DIR);
+
+    serve({ "GET /api/v1/auth/directory": () => json({ error: { code: "internal", message: "down" } }, 500) });
+    expect(await S().loadSignInDirectory()).toBeNull();
+    // A read before anybody signed in has nobody to toast at.
+    expect(S().toast).toBeNull();
   });
 });
 

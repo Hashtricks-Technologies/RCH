@@ -3,6 +3,7 @@ import type * as C from "./schemas/common.js";
 import type * as D from "./schemas/documents.js";
 import type * as R from "./schemas/reports.js";
 import type * as A from "./schemas/admin.js";
+import type * as Auth from "./schemas/auth.js";
 
 export type ItemType = z.infer<typeof C.ItemTypeSchema>;
 export type LocKey = z.infer<typeof C.LocKeySchema>;
@@ -80,3 +81,6 @@ export type AdminUserWithTempPassword = z.infer<typeof A.AdminUserWithTempPasswo
 export type CreateAdminUserBody = z.infer<typeof A.CreateAdminUserBodySchema>;
 export type UpdateAdminUserBody = z.infer<typeof A.UpdateAdminUserBodySchema>;
 export type AdminAction = z.infer<typeof A.AdminActionSchema>;
+export type AdminDeletedUser = z.infer<typeof A.AdminDeletedUserSchema>;
+/** One line of the public sign-in picker. */
+export type SignInEntry = z.infer<typeof Auth.SignInEntrySchema>;

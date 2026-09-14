@@ -132,7 +132,8 @@ pnpm --filter @rch/api db:seed
 pnpm dev                                                                    # API on :3000, UI on :5173
 ```
 
-Open `http://localhost:5173` and sign in with a seeded employee id and the seed password —
+Open `http://localhost:5173`, pick a seeded employee from the sign-in list (the super admin, `RC-0001`, uses
+"Sign in as administrator" and types the id), and enter the seed password —
 `SEED_PASSWORD` in `.env`, which is **required, at least twelve characters, and has no default**:
 copying `.env.example` leaves it empty, and the API will say so by name rather than start on a
 password everybody knows.
@@ -145,6 +146,10 @@ password everybody knows.
 | `RC-1902` | Vinoth Prakash | Kitchen In-charge |
 | `RC-1550` | Latha Narayanan | Procurement Officer |
 | `RC-4482` | Deepa Selvam | Counter Operator · Snack Kiosk |
+| `RC-0001` | System Administrator | Super Admin: staff accounts and the support desk, no role or location |
+
+The super admin creates staff accounts on `/admin`, where the server assigns each one the next employee
+number. An account can be deactivated, and deleted permanently only if it never did anything.
 
 A staging or production seed sets `must_change_password`, which routes a first sign-in through a
 change-password step. `deploy/RUNBOOK.md` §1 has the full local sequence and what each step does.

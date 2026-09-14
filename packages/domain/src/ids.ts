@@ -56,6 +56,30 @@ export function grnId(poId: string, instalment: number): string {
   return `GRN-${tail}-${pad(instalment, 2)}`;
 }
 
+const EMP_NO = /^RC-(\d+)$/;
+
+/**
+ * The employee number a new account is given: one past the highest `RC-<digits>` already on
+ * `users`, padded to at least four digits (`RC-0001` → `RC-0002`, `RC-4482` → `RC-4483`). An
+ * account whose number is not that shape — typed by hand through the users CLI — is skipped
+ * rather than parsed. Not a `sequences` series: the number follows whatever accounts exist, so
+ * the number a deleted account (never used, by rule) was holding is given out again.
+ *
+ * The server calls this under the create's own lock and the account page calls it to preview
+ * the same number, so the two cannot disagree about which one is next.
+ */
+export function nextEmpNo(existing: readonly string[]): string {
+  let max = 0;
+  let width = 4;
+  for (const e of existing) {
+    const m = EMP_NO.exec(e);
+    if (!m) continue;
+    max = Math.max(max, Number(m[1]));
+    width = Math.max(width, m[1].length);
+  }
+  return `RC-${pad(max + 1, width)}`;
+}
+
 /** The first number each series issues, continuing the seeded documents.
  *  Mirrors the UI store's `seq` and the lengths the ops slice counts from. */
 export const SEQUENCE_START: Record<IdKind, number> = {

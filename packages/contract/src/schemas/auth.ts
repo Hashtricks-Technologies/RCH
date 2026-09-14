@@ -4,7 +4,12 @@ import { UserSchema } from "./documents.js";
 /** Request bodies are strict: an unknown key is a client bug (a renamed field, a stale build),
  *  and silently dropping it hides the mistake until someone wonders why the value never saved. */
 export const LoginBodySchema = z.strictObject({ emp: z.string().trim().min(1).max(64), password: z.string().min(1).max(200) });
-export const AuthResponseSchema = z.object({ accessToken: z.string(), user: UserSchema, mustChangePassword: z.boolean() });
+/** One line of the sign-in screen's employee picker: the number and the name, nothing else. The
+ *  list is public (it is read before anybody has signed in), so it carries no role, location,
+ *  email or phone, and never an admin-flagged or deactivated account. */
+export const SignInEntrySchema = z.strictObject({ emp: z.string(), n: z.string() });
+export const SignInDirectorySchema = z.array(SignInEntrySchema);
+export const AuthResponseSchema =z.object({ accessToken: z.string(), user: UserSchema, mustChangePassword: z.boolean() });
 /** The floor every new password clears, wherever one is set: the change-password form below and
  *  the two administrator commands behind `pnpm --filter @rch/api users` (`createUser` and
  *  `resetPassword`, apps/api/src/lib/users-admin.ts). One number rather than two literals, so a

@@ -6,6 +6,12 @@ import { UnauthenticatedError } from "../../lib/errors.js";
 import { createAuthService } from "./service.js";
 import { clearRefreshCookie, REFRESH_COOKIE, setRefreshCookie } from "./cookies.js";
 
+/** Per client IP, per pod, like the login limit — but kept apart from it and far looser. The
+ *  sign-in screen reads the picker once each time it is opened, and a hospital's counters can
+ *  all sit behind one address, so a shift change is many honest reads at once; what this stops
+ *  is a script walking the page in a loop. The global limit still applies on top. */
+const DIRECTORY_RATE_LIMIT_PER_MINUTE = 120;
+
 export default fp(async (app) => {
   const svc = createAuthService(app.db, app.config);
   const meta = (req: { headers: Record<string, unknown>; ip: string }) => ({ userAgent: String(req.headers["user-agent"] ?? "").slice(0, 200), ip: req.ip });
@@ -15,6 +21,10 @@ export default fp(async (app) => {
   };
   mount(app, routes.login, async (req, reply) => respond(reply, await svc.login(req.body.emp, req.body.password, meta(req))),
     { config: { rateLimit: { max: app.config.loginRateLimitPerMinute, timeWindow: "1 minute" } } });
+  // Public, and deliberately so: it is read before anybody has signed in. It says who can sign
+  // in (a number and a name) and nothing a password could be guessed from.
+  mount(app, routes.signInDirectory, async () => svc.directory(),
+    { config: { rateLimit: { max: DIRECTORY_RATE_LIMIT_PER_MINUTE, timeWindow: "1 minute" } } });
   mount(app, routes.refresh, async (req, reply) => {
     try {
       return await respond(reply, await svc.refresh(req.cookies[REFRESH_COOKIE], meta(req)));

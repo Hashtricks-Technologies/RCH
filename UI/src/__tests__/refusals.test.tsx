@@ -46,9 +46,14 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllGlobals());
 
+/** The sign-in screen asks for the staff directory as it mounts. Answer that by URL, so the
+ *  response a case means for its sign-in is the one its sign-in actually reads. */
+const signInAnswers = (login: () => Promise<Response>) =>
+  fetchMock.mockImplementation((u: string) => (String(u).endsWith("/auth/directory") ? Promise.resolve(json([])) : login()));
+
 describe("a refused sign-in", () => {
   it("shows the server's sentence on the form, and keeps it there", async () => {
-    fetchMock.mockResolvedValueOnce(refused("That employee id and password do not match."));
+    signInAnswers(async () => refused("That employee id and password do not match."));
     const m = app("/login");
     await act(async () => { await useApp.getState().login("RC-4471", "nope"); });
     // Inline, on the form itself — not a toast that is gone in three seconds while the
@@ -64,7 +69,7 @@ describe("a refused sign-in", () => {
   });
 
   it("says when the server could not be reached, rather than nothing", async () => {
-    fetchMock.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+    signInAnswers(() => Promise.reject(new TypeError("Failed to fetch")));
     const m = app("/login");
     await act(async () => { await useApp.getState().login("RC-4471", "changeme"); });
     expect(m.q("form .al")?.textContent).toContain("Could not reach the server");

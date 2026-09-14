@@ -4,13 +4,27 @@ import type { Access, LocKey } from "@rch/contract";
 import { ForbiddenError, NotFoundError } from "../lib/errors.js";
 
 declare module "fastify" {
-  interface FastifyInstance { roleGate: (access: Access, allowMcp: boolean) => (req: import("fastify").FastifyRequest, reply: import("fastify").FastifyReply) => Promise<void> }
+  interface FastifyInstance { roleGate: (access: Access, allowMcp: boolean, opts?: GateOptions) => (req: import("fastify").FastifyRequest, reply: import("fastify").FastifyReply) => Promise<void> }
 }
+
+type GateOptions = {
+  /** Let an admin-flagged token through a route that is not `access: "admin"` — for a door the
+   *  account-management page genuinely uses that is not an account-management route. `/events`
+   *  (`plugins/sse.ts`) is the only one: the admin's own screens refresh live like every other. */
+  admitAdmin?: boolean;
+};
 
 /** Role decides whether the route exists for you (404, like the sidebar); location decides which rows (403). */
 export default fp(async (app) => {
-  app.decorate("roleGate", (access: Access, allowMcp: boolean) => async (req: FastifyRequest) => {
+  app.decorate("roleGate", (access: Access, allowMcp: boolean, opts: GateOptions = {}) => async (req: FastifyRequest) => {
     if (access === "public") return;
+    // A super admin has no role in practice (root CLAUDE.md). Its `role`/`loc` claims are
+    // placeholders the `users` row needs, so without this an admin-flagged token would pass the
+    // role check below as whatever role that placeholder happens to be — every buyer route, say —
+    // though no screen of its ever calls one. It reaches account management (`access: "admin"`),
+    // the doors a must-change-password token may also use (sign-in, password, `/me`), and any
+    // route that asks for it by name; everything else is the same 404 a missing module is.
+    if (req.user.admin && access !== "admin" && !allowMcp && !opts.admitAdmin) throw new NotFoundError(`There is nothing at ${req.method} ${req.url}.`);
     if (Array.isArray(access) && !access.includes(req.user.role)) throw new NotFoundError(`There is nothing at ${req.method} ${req.url}.`);
     // Same shape as the role check above, on a different claim: an ordinary account without the
     // flag gets the same "nothing here" a role lacking the module gets, never a 403 that would

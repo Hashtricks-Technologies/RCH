@@ -35,8 +35,10 @@ const { db, pool } = createDb(config.databaseUrl, config.databaseSsl, { max: 1 }
 try {
   switch (positionals[0]) {
     case "create": {
-      const { id } = await createUser(db, { emp: need("emp"), name: need("name"), email: need("email"), role: needRole(), loc: needLoc(), phone: values.phone, password: need("password") });
-      console.log(`created ${id} (${values.emp}) - must change password at first sign-in`); break;
+      // `--emp` is optional: left out, the account gets the next employee number, the same one
+      // the admin page would have given it.
+      const { id, emp } = await createUser(db, { emp: values.emp, name: need("name"), email: need("email"), role: needRole(), loc: needLoc(), phone: values.phone, password: need("password") });
+      console.log(`created ${id} (${emp}) - must change password at first sign-in`); break;
     }
     case "reset-password": await resetPassword(db, need("emp"), need("password")); console.log(`password reset for ${values.emp}; sessions revoked`); break;
     case "deactivate": await deactivateUser(db, need("emp")); console.log(`${values.emp} deactivated; sessions revoked`); break;
@@ -44,11 +46,14 @@ try {
       if (values.on === values.off) { console.error("pass exactly one of --on or --off"); process.exit(2); }
       const emp = need("emp");
       await setAdmin(db, emp, Boolean(values.on));
-      console.log(`${emp} admin flag set to ${Boolean(values.on)} — the account still signs in with its own role and location; only this flag changed`);
+      console.log(values.on
+        ? `${emp} is now a super admin — it signs in to account management only, and no longer reaches its role's screens or routes`
+        : `${emp} is no longer a super admin — it signs in with its own role and location again`);
       break;
     }
     default:
       console.error("usage: users <create|reset-password|deactivate|set-admin> --emp ... [--name --email --role --loc --phone --password] [--on|--off]");
+      console.error("  create      --emp is optional; left out, the next employee number is assigned (RC-0001 → RC-0002)");
       console.error(`  --password  at least ${MIN_PASSWORD_LENGTH} characters (the same floor the change-password screen puts on it)`);
       console.error(`  --role/--loc  ${PAIRINGS}`);
       process.exit(2);

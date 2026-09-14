@@ -329,10 +329,10 @@ describe("the manager's bills, and the void door", () => {
 });
 
 describe("sign-in", () => {
-  it("asks for an employee id and a password", () => {
+  it("asks for an employee and a password", () => {
     act(() => { useApp.setState({ user: null, auth: "signed-out" }); });
     const html = render(createElement(Login));
-    expect(html).toContain("Employee id");
+    expect(html).toContain("Employee");
     expect(html).toContain("Password");
     for (const u of USERS) expect(html).not.toContain(u.n);
   });
@@ -1232,21 +1232,20 @@ describe("the account-management page", () => {
     ui.unmount();
   });
 
-  it("shows a created account's one-time password once, and the create form again empty", async () => {
+  it("shows a created account's one-time password once, under the number the server gave, and the create form again empty", async () => {
+    const createAccount = vi.fn(async () => ({ emp: "RC-4472", password: "a-one-time-password" }));
     act(() => {
       as("manager");
-      useApp.setState({
-        user: { ...useApp.getState().user!, admin: true },
-        createAccount: async () => "a-one-time-password",
-      });
+      useApp.setState({ user: { ...useApp.getState().user!, admin: true }, createAccount });
     });
     const ui = mount(AdminUsers);
-    typeIn(ui.field("Employee id"), "RC-9101");
     typeIn(ui.field("Name"), "Anitha R");
     typeIn(ui.field("Email"), "anitha.r@royalcare.in");
     await settle(() => { ui.button("Create account").click(); });
-    expect(ui.text()).toContain("a-one-time-password");
-    expect(ui.field("Employee id").value).toBe("");
+    // No employee number in the body: the server assigns it.
+    expect(createAccount).toHaveBeenCalledWith({ name: "Anitha R", email: "anitha.r@royalcare.in", role: "counter", loc: "rest", phone: undefined });
+    expect(ui.text()).toContain("RC-4472's temporary password is a-one-time-password");
+    expect(ui.field("Name").value).toBe("");
     ui.unmount();
   });
 });

@@ -18,11 +18,17 @@ export interface AdminSlice {
    *  read-back. */
   loadAccounts: () => Promise<void>;
   loadAdminActions: () => Promise<void>;
-  /** Both hand back the one-time password the server generated, or `null` on a refusal — the
-   *  same `Promise<string | null>` shape `createPo`/`createItem` use for "the caller needs what
-   *  the server minted". Never stored: the page shows it once and it is gone. */
-  createAccount: (body: { emp: string; name: string; email: string; role: Role; loc: LocKey; phone?: string }) => Promise<string | null>;
+  /** Both hand back what the server minted, or `null` on a refusal — the same shape
+   *  `createPo`/`createItem` use for "the caller needs what the server minted". Never stored:
+   *  the page shows the password once and it is gone. A create carries no employee number —
+   *  the server assigns the next one (`nextEmpNo`) and this hands back the one it chose, so
+   *  the page names the number that was actually given rather than the one it previewed. */
+  createAccount: (body: { name: string; email: string; role: Role; loc: LocKey; phone?: string }) => Promise<{ emp: string; password: string } | null>;
   resetAccountPassword: (id: string) => Promise<string | null>;
+  /** Permanent, and only for an account the server agrees has nothing behind it (deactivated,
+   *  not admin-flagged, never signed for anything). A refusal is the server's own sentence;
+   *  `true` only once the row is gone. */
+  deleteAccount: (id: string) => Promise<boolean>;
   /** One action, both directions — the page's Deactivate and Reactivate buttons each call this
    *  with the direction they mean. Answers `true` only once the server has taken it, so a table
    *  row can lock itself while its own request is in flight. */
@@ -55,8 +61,16 @@ export const createAdminSlice = (get: Get): AdminSlice => ({
       const r = await call(routes.createAdminUser, { body });
       get().notify(r.message);
       await refetch(r.changed, r.message);
-      return r.result.tempPassword;
+      return { emp: r.result.emp, password: r.result.tempPassword };
     } catch (e) { fail(get, e, "create the account"); return null; }
+  },
+  deleteAccount: async (id) => {
+    try {
+      const r = await call(routes.deleteAdminUser, { params: { id } });
+      get().notify(r.message);
+      await refetch(r.changed, r.message);
+      return true;
+    } catch (e) { return fail(get, e, "delete the account"); }
   },
   resetAccountPassword: async (id) => {
     try {

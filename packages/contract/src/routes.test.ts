@@ -64,7 +64,7 @@ const SAMPLES: Record<string, Record<string, unknown>> = {
   // ---- prod-order raise ----
   createProdOrder: { lines: [{ it: "puff", qty: 40 }], need: "2026-09-11", note: "Lunch rush" },
   // ---- admin: account management (a capability, not a role — root CLAUDE.md)
-  createAdminUser: { emp: "RC-9101", name: "Anitha R", email: "anitha.r@royalcare.in", role: "counter", loc: "rest" },
+  createAdminUser: { name: "Anitha R", email: "anitha.r@royalcare.in", role: "counter", loc: "rest" },
   updateAdminUser: { role: "counter", loc: "kiosk" },
   // ---- recipes
   saveRecipe: { ov: 12, lines: [{ it: "milk", qty: 0.15 }, { it: "cup", qty: 1 }] },

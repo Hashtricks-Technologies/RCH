@@ -68,7 +68,15 @@ moves happen live, the same as the rest of the system.
 ## Sign in
 
 Real authentication — employee id and password, checked against the API. Each account lands
-somewhere different and sees a different sidebar. The seed password is `SEED_PASSWORD` from
+somewhere different and sees a different sidebar.
+
+Staff do not type their id: the form's employee picker is a searchable list of every active staff
+account, number and name, read from the public `GET /auth/directory` before anybody signs in. Pick
+yourself (by click, or arrows and Enter), then type the password. The super admin is deliberately
+not on that list — "Sign in as administrator" swaps the picker for a typed id field, and "Back to
+the staff list" swaps it back. If the list cannot be read, the typed field is shown with a line
+saying so, so nobody is locked out by it. A super admin lands on `/admin` and never loads the
+hospital's snapshot. The seed password is `SEED_PASSWORD` from
 `.env` — required, at least twelve characters, with no default, so whoever sets a host up chooses
 it; a staging/prod seed sets `must_change_password`, which routes first sign-in through a
 change-password step before anything else.
@@ -87,6 +95,13 @@ read by someone still looking at the keyboard.
 | `RC-1902` | Vinoth Prakash | Kitchen In-charge · Central Kitchen | Orders |
 | `RC-1550` | Latha Narayanan | Procurement Officer (not tied to one counter) | Requisitions |
 | `RC-4482` | Deepa Selvam | Counter Operator · Kiosk | Point of Sale |
+| `RC-0001` | System Administrator | Super Admin — no role or location (typed id, not on the picker) | Staff accounts |
+
+On the staff accounts page the employee id is not typed either: the form shows the next number,
+read-only (`nextEmpNo` from `@rch/domain`, one past the highest `RC-<digits>`), and the server
+assigns it on save. The super admin's own row reads "Super Admin" with no role or location
+pickers. A deactivated staff account gets a Delete button that asks a second time ("Delete
+RC-xxxx permanently" or "Keep"); the server still refuses one with any history, and says so.
 
 ## Layout
 
@@ -115,7 +130,8 @@ src/
   pages/                                  Login.tsx, ChangePassword.tsx, Settings.tsx, Support.tsx
   roles/<role>/                           counter/ manager/ store/ prod/ buyer/
   __tests__/                              store, procurement, fixes, screens/app, audit-screens, time,
-                                           drawer, api, session, events, writes, refusals, theme, po-board
+                                           drawer, api, session, events, writes, refusals, theme, po-board,
+                                           login-picker, admin-accounts
 ```
 
 Each role folder exports `screens: Record<string, ComponentType>`; `App.tsx` resolves the

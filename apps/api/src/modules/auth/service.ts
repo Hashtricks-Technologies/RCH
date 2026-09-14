@@ -1,5 +1,5 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
-import type { User } from "@rch/contract";
+import type { SignInEntry, User } from "@rch/contract";
 import type { Db } from "../../db/client.js";
 import type { Config } from "../../config.js";
 import { withTransaction } from "../../lib/db.js";
@@ -114,6 +114,10 @@ export function createAuthService(db: Db, config: Config) {
   }
 
   return {
+    /** The sign-in screen's employee picker — see `authRepo.signInDirectory` for who is on it. */
+    async directory(): Promise<SignInEntry[]> {
+      return authRepo.signInDirectory(db);
+    },
     async login(emp: string, password: string, meta: Meta): Promise<Session> {
       // Read the budget, then spend a slot on this attempt — before the ~50–100 ms of Argon2
       // below, so simultaneous guesses at one employee id cannot all pass a gate that has not

@@ -14,5 +14,6 @@ export default fp(async (app) => {
   mount(app, routes.deactivateAdminUser, async (req) => svc.deactivate(req.user, req.params.id));
   mount(app, routes.reactivateAdminUser, async (req) => svc.reactivate(req.user, req.params.id));
   mount(app, routes.updateAdminUser, async (req) => svc.updateRoleLoc(req.user, req.params.id, req.body));
+  mount(app, routes.deleteAdminUser, async (req) => svc.remove(req.user, req.params.id));
   mount(app, routes.adminActions, async () => svc.actions());
 }, { name: "module:admin", dependencies: ["auth", "rbac", "idempotency", "db"] });

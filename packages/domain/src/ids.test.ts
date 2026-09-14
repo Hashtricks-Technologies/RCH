@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatId, grnId, SEQUENCE_START } from "./ids";
+import { formatId, grnId, nextEmpNo, SEQUENCE_START } from "./ids";
 
 const at = new Date("2026-09-03T10:00:00+05:30");
 
@@ -59,5 +59,23 @@ describe("an adjustment's number", () => {
   });
   it("starts at one — nothing was ever written off through a document before", () => {
     expect(SEQUENCE_START.adj).toBe(1);
+  });
+});
+
+describe("the next employee number", () => {
+  it("is one past the highest, four digits at least", () => {
+    expect(nextEmpNo(["RC-0001"])).toBe("RC-0002");
+    expect(nextEmpNo(["RC-4471", "RC-0001", "RC-4482", "RC-3120"])).toBe("RC-4483");
+    expect(nextEmpNo(["RC-0009"])).toBe("RC-0010");
+  });
+  it("starts at RC-0001 when there is nobody yet", () => {
+    expect(nextEmpNo([])).toBe("RC-0001");
+  });
+  it("skips a number typed in another shape rather than parsing it", () => {
+    expect(nextEmpNo(["RC-0004", "E2291", "rc-9000", "RC-12a"])).toBe("RC-0005");
+  });
+  it("keeps a wider number's width once the series has grown past four digits", () => {
+    expect(nextEmpNo(["RC-9999"])).toBe("RC-10000");
+    expect(nextEmpNo(["RC-00120", "RC-0005"])).toBe("RC-00121");
   });
 });
