@@ -22,9 +22,14 @@ deploy/compose/deploy.sh
 
 ## A later deploy
 
+Automatic: when CI goes green on a push to `develop`, `.github/workflows/deploy-box.yml` runs
+`release.sh <sha>` on the box through SSM. That script backs up, fast-forwards, runs `deploy.sh` and
+checks `/readyz` (RUNBOOK §16.6). To redeploy or retry, run "Deploy (box)" from the Actions tab.
+By hand, only if GitHub is down:
+
 ```bash
-cd rch && git pull
-deploy/compose/deploy.sh
+cd /opt/rch/app && git fetch origin
+deploy/compose/release.sh <sha>
 ```
 
 `deploy.sh` builds, brings the stack up in dependency order (Postgres, then the migration,
@@ -38,7 +43,7 @@ stock) is entered from the screens; `deploy/RUNBOOK.md` §1 has the order.
 `crontab -e` on the box, once:
 
 ```
-30 21 * * * /home/ubuntu/rch/deploy/compose/backup.sh >> /home/ubuntu/backup.log 2>&1
+30 21 * * * /opt/rch/app/deploy/compose/backup.sh >> /home/ubuntu/backup.log 2>&1
 ```
 
 Dumps the database to the bucket named in `.env`'s `BACKUP_BUCKET` and purges expired

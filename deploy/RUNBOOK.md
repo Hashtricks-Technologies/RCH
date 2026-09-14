@@ -2273,13 +2273,14 @@ Region `ap-south-1`, account `830283280199`, the same default VPC (`vpc-01ca67a1
   80/tcp and 443/tcp from anywhere (Caddy needs 80 for the ACME HTTP-01 challenge as well as the
   plain-HTTP → HTTPS redirect). Widen or narrow the SSH rule with
   `aws ec2 authorize-security-group-ingress` / `revoke-security-group-ingress` as the operating
-  IP changes; there is no bastion and no SSM Session Manager wired up for this box.
+  IP changes; there is no bastion. The CI deploy does not use SSH at all - it reaches the box
+  through SSM (§16.6).
 - **Elastic IP** `65.2.95.154`, associated with the instance so a stop/start (unlike a
   terminate/relaunch) never changes the address DNS points at.
-- **IAM role + instance profile** `rch-box`, trusted by `ec2.amazonaws.com`, carrying exactly
-  one inline policy (`rch-backups-write`): `s3:PutObject` and `s3:ListBucket` on the backup
-  bucket below and nothing else - the box cannot reach any other AWS resource, including the
-  torn-down EKS account's own leftovers, with this role.
+- **IAM role + instance profile** `rch-box`, trusted by `ec2.amazonaws.com`, carrying one
+  inline policy (`rch-backups-write`: `s3:PutObject` and `s3:ListBucket` on the backup bucket
+  below) and, since 2026-09-14, the AWS-managed `AmazonSSMManagedInstanceCore`, which lets the
+  box's own SSM agent register and take commands (§16.6). It reaches no other AWS resource.
 - **S3 bucket** `rch-backups-830283280199`, public access blocked, a 30-day expiration
   lifecycle rule on every object (so the nightly dumps do not accumulate forever) - `backup.sh`
   writes to it under `db/`.
@@ -2309,9 +2310,9 @@ cp deploy/compose/.env.example deploy/compose/.env
 deploy/compose/deploy.sh
 ```
 
-A later deploy is `git pull && deploy/compose/deploy.sh` - it rebuilds only what changed, brings
-the stack up in the same dependency order, and never reseeds a database that already has rows
-in `users`. Add the cron line from `deploy/compose/README.md` once, for the nightly backup.
+Later deploys are automatic (§16.6). `deploy.sh` rebuilds only what changed, brings the stack up
+in the same dependency order, and never reseeds a database that already has rows in `users`. Add
+the cron line from `deploy/compose/README.md` once, for the nightly backup.
 
 A first run seeds `--bare` (§1): sign in as `RC-0001` with `SEED_PASSWORD`, choose a new
 password, create the real staff at `/admin`, and enter items, recipes, prices, menus and the payer
@@ -2353,3 +2354,64 @@ sign-in - but it hands the operator a password that was never written into `.env
 `RC-0001` and follow §16.3's last paragraph. The way back from a mistake is the dump: pipe
 `gunzip -c rch-<stamp>.sql.gz` into `docker compose … exec -T postgres psql -U rch -d rch` against
 a freshly emptied database (§6 has the restore itself).
+
+### 16.6 Continuous deploy from develop
+
+Since 2026-09-14, a push to `develop` deploys itself once CI is green on it.
+`.github/workflows/deploy-box.yml` does it in three steps:
+
+1. **It picks the commit.** That is `workflow_run.head_sha`, or for a manual run from the Actions tab
+   the commit typed in (blank means the tip of `develop`). A manual run is refused unless the commit is
+   on `develop` and CI has gone green on it.
+2. **It runs the release on the box through SSM.** The job assumes `rch-github-box-deploy` through
+   GitHub's OIDC provider. That role's trust policy admits only this repository's `dev` environment, in
+   both the immutable and the plain subject form (§15 explains why both). The `dev` environment in turn
+   deploys only from `develop`. The role's one inline policy, `box-release`, allows `ssm:SendCommand`
+   on the `rch-box` instance with the `AWS-RunShellScript` document, and reading the result back. The
+   command runs as root, and everything in it that touches the checkout runs as `ubuntu`. It fetches,
+   reads `deploy/compose/release.sh` out of the commit being released, and runs it. The full log is
+   kept on the box as `~ubuntu/deploys/<stamp>-<sha>.log`; the job prints its last 20,000 characters.
+3. **It checks `/readyz` and `/` from outside**, through Caddy, so the whole chain is proven.
+
+`release.sh <sha>` works in this order:
+
+- It refuses a commit that is not on `origin/develop`, a checkout that is not on `develop`, and a
+  checkout with local edits.
+- **If the box is already at a newer commit that contains `<sha>`, it does nothing.** A later deploy
+  won the race, and it is never rolled back.
+- It runs `backup.sh`: a dump to S3, taken before any migration, and the way back from a bad one.
+- It fast-forwards and runs `deploy.sh`.
+- It fails unless `https://<domain>/readyz` answers within two minutes. That check covers the
+  database and every migration in the journal.
+- It prunes build cache older than a week.
+
+A failure after the fast-forward is left for a person, the same as production's `--wait` without
+`--atomic` (§3): a migration that has committed is not undone by putting the previous image back.
+Read the log on the box and `docker compose … logs migrate api`, then fix forward with a new
+commit.
+
+**Concurrency.** The workflow's group is `deploy-box` with `cancel-in-progress: false`, so a
+deploy is never cancelled halfway. A commit that goes green while one is running waits. If a third
+arrives, the waiting one is dropped in its favour.
+
+**What was provisioned for it** (2026-09-14, by hand, like §16.2):
+
+- `AmazonSSMManagedInstanceCore` attached to the `rch-box` role. The instance's snap
+  `amazon-ssm-agent` was already running.
+- The IAM role `rch-github-box-deploy`.
+- Repository variables `BOX_INSTANCE_ID` and `BOX_DEPLOY_ROLE_ARN`, and `BOX_DEPLOY_ENABLED=true`.
+- A deployment branch policy on the `dev` environment: `develop` only.
+
+**Stopping it.** Set `BOX_DEPLOY_ENABLED` to `false`
+(`gh variable set BOX_DEPLOY_ENABLED --body false`). The job is then skipped; nothing else
+changes.
+
+**A deploy by hand**, if GitHub itself is down:
+
+```bash
+ssh -i ~/.ssh/rch-box.pem ubuntu@rch.hashtrickstechnologies.com
+cd /opt/rch/app && git fetch origin && deploy/compose/release.sh <sha>
+```
+
+This uses the same script as the automatic deploy, so it has the same guards. Run it only while no
+Deploy (box) run is in progress.

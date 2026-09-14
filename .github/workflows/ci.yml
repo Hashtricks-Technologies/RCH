@@ -121,11 +121,18 @@ jobs:
         env: { SEED_PASSWORD: ci-seed-password-1 }
         run: deploy/chart/rch/ci/install-test.sh
   chart:
-    name: Helm chart
+    name: Deploy files
     runs-on: ubuntu-latest
-    # A helm template render and a handful of greps. Anything past ten minutes is stuck.
+    # A helm template render, a compose config parse and two linters. Anything past ten minutes
+    # is stuck.
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
       - uses: azure/setup-helm@v4
       - run: deploy/chart/rch/tests/render.test.sh
+      # The live box runs these on every deploy (deploy-box.yml), so a broken one is found here
+      # rather than halfway through a release.
+      - run: deploy/compose/compose.test.sh
+      - run: shellcheck deploy/compose/*.sh
+      - name: actionlint
+        run: docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.12 -color

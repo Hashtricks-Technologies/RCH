@@ -1,0 +1,112 @@
+name: Deploy (box)
+# Deploys develop to the live box (https://rch.hashtrickstechnologies.com, one EC2 instance under
+# Docker Compose - deploy/RUNBOOK.md §16) once CI has gone green on the commit. deploy.yml is the
+# EKS path for staging and production, which are not provisioned.
+#
+# There is no SSH here. The job assumes a role through GitHub's OIDC provider that can do one
+# thing - send a shell command to this one instance through SSM - and that command runs
+# deploy/compose/release.sh as `ubuntu`, read out of the commit being released. The box takes
+# no inbound connection for it, and no long-lived key sits in this public repository's secrets.
+#
+# Like deploy.yml this is `workflow_run`, so GitHub always runs the copy of this file on the
+# default branch, and the commit comes from `workflow_run.head_sha`, never `github.sha`.
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [develop]
+  # A manual redeploy or retry, from the Actions tab. It still has to be a commit on develop
+  # with a green CI run.
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: "Commit on develop to deploy (blank: the tip of develop)"
+        required: false
+permissions: { id-token: write, contents: read, actions: read }
+# One deploy at a time, and never cancelled halfway through a migration. A newer commit that
+# goes green while one is running waits; if a third arrives, the waiting one is dropped for it.
+concurrency: { group: deploy-box, cancel-in-progress: false }
+jobs:
+  deploy:
+    name: Deploy develop to the box
+    # `event == 'push'`: a pull request's CI run also completes "on develop" when it was raised
+    # from develop, and an unmerged head must never reach the box.
+    if: >-
+      vars.BOX_DEPLOY_ENABLED == 'true' && (github.event_name == 'workflow_dispatch'
+      || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'))
+    runs-on: ubuntu-latest
+    # The box builds both images itself (a few minutes on a t4g.medium), migrates and restarts.
+    timeout-minutes: 45
+    environment: { name: dev, url: "https://rch.hashtrickstechnologies.com" }
+    env:
+      AWS_REGION: ap-south-1
+      INSTANCE: ${{ vars.BOX_INSTANCE_ID }}
+      SITE: https://rch.hashtrickstechnologies.com
+    steps:
+      - uses: actions/checkout@v7
+        with: { ref: develop, fetch-depth: 0 }
+      - name: Which commit
+        id: commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_SHA: ${{ github.event.workflow_run.head_sha }}
+          INPUT_SHA: ${{ inputs.sha }}
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_EVENT_NAME" = workflow_run ]; then
+            sha="$RUN_SHA"
+          else
+            # Resolved here and checked below, so the command sent to the box only ever carries
+            # a full 40-character hex id, never text someone typed.
+            sha=$(git rev-parse --verify "${INPUT_SHA:-origin/develop}^{commit}")
+            git merge-base --is-ancestor "$sha" origin/develop || { echo "::error::$sha is not on develop"; exit 1; }
+            green=$(gh run list --workflow CI --commit "$sha" --status success --json databaseId --jq length)
+            [ "$green" -gt 0 ] || { echo "::error::CI has not gone green on $sha"; exit 1; }
+          fi
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::not a commit id: $sha"; exit 1; }
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "Deploying $(git log --oneline -1 "$sha")"
+      - uses: aws-actions/configure-aws-credentials@v4
+        with: { role-to-assume: "${{ vars.BOX_DEPLOY_ROLE_ARN }}", aws-region: ap-south-1 }
+      - name: Release on the box
+        env:
+          SHA: ${{ steps.commit.outputs.sha }}
+        run: |
+          set -euo pipefail
+          # Runs as root under SSM; everything touching the checkout runs as its owner. The full
+          # log stays on the box under ~ubuntu/deploys (SSM keeps only the last 24,000 characters).
+          params=$(jq -n --arg sha "$SHA" '{
+            executionTimeout: ["2400"],
+            commands: [
+              "set -e",
+              "cd /opt/rch/app",
+              "install -d -o ubuntu -g ubuntu /home/ubuntu/deploys",
+              "log=/home/ubuntu/deploys/$(date -u +%Y%m%dT%H%M%SZ)-\($sha[0:7]).log",
+              "u() { runuser -u ubuntu -- env HOME=/home/ubuntu \"$@\"; }",
+              "u git fetch --quiet origin develop",
+              "u git show \($sha):deploy/compose/release.sh > /tmp/rch-release.sh",
+              "rc=0; u bash /tmp/rch-release.sh \($sha) > \"$log\" 2>&1 || rc=$?",
+              "chown ubuntu:ubuntu \"$log\"; tail -c 20000 \"$log\"; exit $rc"
+            ]
+          }')
+          id=$(aws ssm send-command --instance-ids "$INSTANCE" --document-name AWS-RunShellScript \
+            --comment "release ${SHA:0:7}" --parameters "$params" --query Command.CommandId --output text)
+          echo "SSM command $id"
+          status=Pending
+          for _ in $(seq 1 180); do
+            sleep 15
+            status=$(aws ssm get-command-invocation --command-id "$id" --instance-id "$INSTANCE" \
+              --query Status --output text 2>/dev/null || echo Pending)
+            case "$status" in Pending|InProgress|Delayed) continue ;; *) break ;; esac
+          done
+          aws ssm get-command-invocation --command-id "$id" --instance-id "$INSTANCE" \
+            --query StandardOutputContent --output text || true
+          err=$(aws ssm get-command-invocation --command-id "$id" --instance-id "$INSTANCE" \
+            --query StandardErrorContent --output text 2>/dev/null || true)
+          [ -z "$err" ] || { echo "--- stderr"; echo "$err"; }
+          [ "$status" = Success ] || { echo "::error::the release on the box ended $status"; exit 1; }
+      - name: The site answers from outside
+        run: |
+          curl -fsS -m 10 --retry 5 --retry-delay 3 --retry-all-errors "$SITE/readyz"
+          echo
+          curl -fsS -m 10 -o /dev/null "$SITE/"

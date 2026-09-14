@@ -1,4 +1,9 @@
 name: Deploy
+# The EKS path, for staging and production - neither is provisioned, so DEPLOY_ENABLED is false
+# and this only ever runs its skip job. develop deploys to the live box instead, through
+# deploy-box.yml; add develop back to `branches` below only if the EKS dev environment
+# (RUNBOOK §15) is ever stood up again.
+#
 # Deploys run only after CI has gone green on the very commit being deployed. The old
 # `on: push` fired this workflow alongside ci.yml, so a red typecheck, a failed test or a
 # CRITICAL in an image could reach a cluster while CI was still running - the two were
@@ -11,7 +16,7 @@ on:
   workflow_run:
     workflows: ["CI"]
     types: [completed]
-    branches: [develop, staging, production]
+    branches: [staging, production]
 permissions: { id-token: write, contents: read }
 concurrency: { group: "deploy-${{ github.event.workflow_run.head_branch }}", cancel-in-progress: false }
 jobs:

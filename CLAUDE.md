@@ -69,7 +69,8 @@ the only account a `--bare` seed creates. If port 3000 is taken, run the API wit
 6. the UI build
 7. It builds both images, scans them with Trivy at `CRITICAL,HIGH`, and does a real `helm install` into a
    throwaway kind cluster.
-8. A separate job renders the chart.
+8. A separate job (Deploy files) renders the chart, parses `deploy/compose/compose.yml`, and runs
+   `shellcheck` on `deploy/compose/*.sh` and `actionlint` on the workflows.
 
 Every change must pass all of it. Four things trip people up:
 
@@ -92,13 +93,18 @@ Every change must pass all of it. Four things trip people up:
   `git checkout staging && git merge --ff-only develop && git push`, then the same from `staging` into
   `production`.
 - A hotfix branches from `production` and is merged back into `staging` and `develop`.
-- `.github/workflows/deploy.yml` is `workflow_run` on CI's success. GitHub always runs it from the copy on the
-  **default branch**, so an edit to it takes effect the moment it lands on `develop`. Values in it come from
-  `github.event.workflow_run.head_sha` and `head_branch`, not `github.sha`. `DEPLOY_ENABLED` is `false`: the EKS
-  environment was torn down, and staging and production are not provisioned.
-- The live dev environment (https://rch.hashtrickstechnologies.com) is one EC2 box under Docker Compose,
-  deployed by hand with `git pull && deploy/compose/deploy.sh` (`deploy/RUNBOOK.md` §16). It was seeded bare
-  and holds real data. **Never run a demo seed against it.**
+- Both deploy workflows are `workflow_run` on CI's success. GitHub always runs them from the copy on the
+  **default branch**, so an edit to one takes effect the moment it lands on `develop`. Values in them come from
+  `github.event.workflow_run.head_sha` and `head_branch`, not `github.sha`.
+- **`develop` deploys itself.** The live dev environment (https://rch.hashtrickstechnologies.com) is one EC2
+  box under Docker Compose. When CI goes green on a push to `develop`, `.github/workflows/deploy-box.yml`
+  runs `deploy/compose/release.sh <sha>` on the box through SSM. That backs the database up to S3,
+  fast-forwards, runs `deploy.sh` and fails unless `/readyz` answers. It never rolls the box back past a
+  newer commit. Don't deploy by hand as well; to redeploy or retry, run the workflow from the Actions tab.
+  Setting the repository variable `BOX_DEPLOY_ENABLED` to anything but `true` stops it (`deploy/RUNBOOK.md`
+  §16.6). The box was seeded bare and holds real data. **Never run a demo seed against it.**
+- `.github/workflows/deploy.yml` is the EKS path for `staging` and `production`. `DEPLOY_ENABLED` is `false`:
+  the EKS environment was torn down, and neither is provisioned.
 
 ## Architecture
 
