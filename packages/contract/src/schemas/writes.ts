@@ -5,13 +5,13 @@ import { AdjustReasonSchema, GrnSchema, ItemSchema, PayerKindSchema, PayerSchema
 /** Every domain slice a write can touch, so a client can invalidate/refetch precisely instead
  *  of reloading the whole snapshot after each mutation. Extracted so `events.ts` can name one
  *  collection at a time from the same enum. `"items"` is here because `POST /items` changes the
- *  item master, which every screen reads out of one registry — without it the only honest
+ *  item master, which every screen reads out of one registry - without it the only honest
  *  `changed` a new product could name would be the whole snapshot. */
 export const CollectionSchema = z.enum(["stock", "rsv", "ovr", "prices", "menu", "bills", "req", "tkt", "prq", "po", "pord", "batch", "grn", "vendors", "contracts", "tickets", "productReqs", "shopAsks", "items", "roster", "payers", "adjustments", "accounts", "recipes"]);
 export const ChangedSchema = z.array(CollectionSchema);
 export type Changed = z.infer<typeof CollectionSchema>;
 
-/** Every write route answers with { result, changed, message } — the mutated record, the
+/** Every write route answers with { result, changed, message } - the mutated record, the
  *  slices to invalidate, and a human-readable summary for a toast. */
 export const writeResponse = <T extends z.ZodTypeAny>(result: T) => z.strictObject({ result, changed: ChangedSchema, message: z.string() });
 export type WriteResponse<T> = { result: T; changed: Changed[]; message: string };
@@ -21,13 +21,13 @@ export const PayBodySchema = z.strictObject({
   tender: TenderSchema,
   payer: PayerSchema.optional(),
   // Three decimals is the whole precision of a quantity anywhere in this system (`round3`), so
-  // a line that carries more is a client bug, not a sale — refuse it at the door rather than
+  // a line that carries more is a client bug, not a sale - refuse it at the door rather than
   // rounding it silently into the ledger.
   lines: z.array(z.strictObject({ it: z.string().min(1).max(64), qty: z.number().positive().multipleOf(0.001).max(10000) })).min(1).max(100),
 });
 export const ToggleAvailBodySchema = z.strictObject({ loc: LocKeySchema, it: z.string().min(1).max(64) });
 export const SavePriceParamsSchema = z.strictObject({ list: PriceListSchema, it: z.string().min(1).max(64) });
-/** A price of nothing is not a price — the manager's screen already says "Enter a price greater than zero". */
+/** A price of nothing is not a price - the manager's screen already says "Enter a price greater than zero". */
 export const SavePriceBodySchema = z.strictObject({ price: z.number().positive().max(100000) });
 export const MenuLocParamsSchema = z.strictObject({ loc: LocKeySchema });
 export const MenuItemParamsSchema = z.strictObject({ loc: LocKeySchema, it: z.string().min(1).max(64) });
@@ -37,7 +37,7 @@ export const PriceResultSchema = z.strictObject({ list: PriceListSchema, it: z.s
 export const MenuResultSchema = z.strictObject({ loc: LocKeySchema, items: z.array(z.string()) });
 
 // Three decimals is the whole precision of a quantity anywhere in this system (`round3`), so
-// `PayBodySchema` already refuses more; match it. Positivity is deliberately NOT here — a zero
+// `PayBodySchema` already refuses more; match it. Positivity is deliberately NOT here - a zero
 // must reach the operator as the store's own "Enter a quantity", not a generic 400.
 export const QtySchema = z.number().finite().multipleOf(0.001).max(100000);
 export const ReqLineInputSchema = z.strictObject({ it: z.string().min(1).max(64), qty: QtySchema });
@@ -66,13 +66,13 @@ export const DistributeBodySchema = z.strictObject({ it: z.string().min(1).max(6
 export const DispatchResultSchema = z.strictObject({ order: ProdOrderSchema, ticket: TicketSchema });
 
 // The board's own two words: a status the kitchen presses, and a batch it logs. `Dispatched` is
-// a member of PordStatusSchema and is accepted by the schema on purpose — it is refused in the
+// a member of PordStatusSchema and is accepted by the schema on purpose - it is refused in the
 // service with a sentence that says where to go instead, because a stale tab pressing it needs
-// an answer it can read, not a 400 — a dispatch has its own endpoint.
+// an answer it can read, not a 400 - a dispatch has its own endpoint.
 export const SetOrderStatusBodySchema = z.strictObject({ st: PordStatusSchema });
 // `started` is what went into the oven and `made` is what came out of it; the ingredients go
 // against the first and only the second reaches the rack (UA-14). A blank yield box means every
-// unit came good, so `made` is optional rather than defaulted — a default of 0 would read a
+// unit came good, so `made` is optional rather than defaulted - a default of 0 would read a
 // blank box as a lost tray.
 export const MakeBatchBodySchema = z.strictObject({
   it: z.string().min(1).max(64),
@@ -84,8 +84,8 @@ export const MakeBatchBodySchema = z.strictObject({
  *  carries no prose and it ends up in document_history rather than on the ticket. */
 export const CancelTicketBodySchema = z.strictObject({ reason: z.string().max(500) });
 
-/** A rate, an MRP or a price on the wire. Non-negative — a free-of-charge line is legal, a
- *  negative one is a client bug — and bounded, for the same reason `QtySchema` is. */
+/** A rate, an MRP or a price on the wire. Non-negative - a free-of-charge line is legal, a
+ *  negative one is a client bug - and bounded, for the same reason `QtySchema` is. */
 export const RateSchema = z.number().finite().min(0).max(1_000_000).multipleOf(0.01);
 
 // ---- requisitions (sendRequisition, approveRequisition, declineRequisition)
@@ -106,7 +106,7 @@ export const AddToProcurementListBodySchema = z.strictObject({
 // ---- purchase orders
 /** One pick off the procurement list: a requisition, one of its lines by index, a quantity.
  *  Two picks of the same line are legal on the wire and summed by the service before the
- *  pending check — checking them one at a time would let their total overrun the line. */
+ *  pending check - checking them one at a time would let their total overrun the line. */
 export const PickSchema = z.strictObject({ prq: z.string().min(1).max(40), line: z.number().int().min(0).max(49), qty: QtySchema });
 export const CreatePoBodySchema = z.strictObject({ vendorId: z.string().min(1).max(40), picks: z.array(PickSchema).max(100) });
 export const PoLineParamsSchema = z.strictObject({ id: z.string().min(1).max(40), n: z.coerce.number().int().min(0).max(99) });
@@ -115,13 +115,13 @@ export const UpdatePoLineBodySchema = z.strictObject({ qty: QtySchema.optional()
  *  status. One PATCH, because the drawer offers both in the same panel. */
 export const PatchPoBodySchema = z.strictObject({ vendorId: z.string().min(1).max(40).optional(), eta: IsoDate.optional() });
 export const CancelPoBodySchema = z.strictObject({ reason: z.string().max(500) });
-/** One instalment against one order. `lines` is positional against the order's own lines — the
- *  same shape `approve` takes for a request — and a length that does not match is refused with a
+/** One instalment against one order. `lines` is positional against the order's own lines - the
+ *  same shape `approve` takes for a request - and a length that does not match is refused with a
  *  sentence rather than read as "nothing arrived on the lines you left out". */
 export const ReceiptLineInputSchema = z.strictObject({
   recv: QtySchema, rejected: QtySchema.default(0), batch: z.string().max(60).default(""),
   mrp: RateSchema.default(0),
-  // A wire date or nothing at all — the shape `invDate` already uses. `GrnSchema.mfg`/`exp` are
+  // A wire date or nothing at all - the shape `invDate` already uses. `GrnSchema.mfg`/`exp` are
   // `IsoDate` and the columns behind them are `date NOT NULL`, so a loose `z.string()` would let
   // "08-09-2026" through two string comparisons that happen not to catch it and reach Postgres
   // as a 500. Empty is the not-supplied case, which the service refuses with the store's own
@@ -143,7 +143,7 @@ export const VendorBodySchema = z.strictObject({
 });
 /** Declared field by field rather than as `VendorBodySchema.partial()`: Zod carries a
  *  `.default()` through `.partial()`, so the partial of a defaulted schema parses `{}` into
- *  `{ lead: 0, groups: [] }` — which would make "Nothing to change" unreachable and would reset
+ *  `{ lead: 0, groups: [] }` - which would make "Nothing to change" unreachable and would reset
  *  a vendor's lead time and groups on every patch of any other field. Optional, never defaulted. */
 export const PatchVendorBodySchema = z.strictObject({
   n: z.string().max(120).optional(), gstin: z.string().max(20).optional(),
@@ -184,7 +184,7 @@ export const AnswerProductRequestBodySchema = z.strictObject({
 // beside the order, because the store keeper wants to read the batch numbers back in the same
 // breath (the precedent is `issue-ticket` handing over the OTP); and a new item answers with
 // the key the server chose, which is the one thing the caller cannot work out for itself. A
-// claim-moving write answers with the order alone and names "prq" in `changed` — the buyer's
+// claim-moving write answers with the order alone and names "prq" in `changed` - the buyer's
 // procurement list repaints from that refetch, so returning the requisitions too would be a
 // second channel for a fact one read already carries.
 export const ReceiptResultSchema = z.strictObject({ po: PurchaseOrderSchema, grns: z.array(GrnSchema) });
@@ -195,7 +195,7 @@ export const ItemResultSchema = z.strictObject({ key: z.string(), item: ItemSche
 
 // ---- item patch ----
 /** The item master is editable (`PATCH /items/:it`). Which of these nine fields a role may
- *  actually move is `ITEM_FIELD_ROLES` in `@rch/domain` — a sentence, not a 400 — so the schema
+ *  actually move is `ITEM_FIELD_ROLES` in `@rch/domain` - a sentence, not a 400 - so the schema
  *  takes all nine from anyone and the service refuses in the operator's own words. No
  *  `.default()` anywhere: `parse({})` must stay empty, or "Nothing to change" is unreachable
  *  and a patch of one field silently resets the other eight. */
@@ -238,32 +238,32 @@ export const DeskReplyBodySchema = z.strictObject({
 });
 
 // ---- payers ----
-// Who a bill may be charged to. The three rosters are numbered independently by the hospital —
-// an in-patient number, an employee number, a cost centre — so the id travels as the hospital's
+// Who a bill may be charged to. The three rosters are numbered independently by the hospital -
+// an in-patient number, an employee number, a cost centre - so the id travels as the hospital's
 // own and is never allocated here; `kind` and `id` together are the key.
 export const PayerBodySchema = z.strictObject({ kind: PayerKindSchema, id: z.string().min(1).max(40), name: z.string().max(120) });
 /** Declared field by field, and with no defaults: `.parse({})` must stay empty, or "Nothing to
  *  change" is unreachable and a rename would quietly reactivate a closed account. An empty name
- *  is the service's own sentence, not a 400 — the same split every other write here makes. */
+ *  is the service's own sentence, not a 400 - the same split every other write here makes. */
 export const PatchPayerBodySchema = z.strictObject({ name: z.string().max(120).optional(), active: z.boolean().optional() });
 export const PayerParamsSchema = z.strictObject({ kind: PayerKindSchema, id: z.string().min(1).max(40) });
 // ---- bill void. A mis-keyed bill, taken back on the day it was taken and no later.
 /** A bill number carries a slash (`CF/1188`), so this one param reaches the server
- *  percent-encoded — `UI/src/api/client.ts` encodes every path param and nginx forwards the
+ *  percent-encoded - `UI/src/api/client.ts` encodes every path param and nginx forwards the
  *  encoded form unchanged. The cap is a document id's, like `DocIdParamsSchema`. */
 export const BillNoParamsSchema = z.strictObject({ no: z.string().min(1).max(40) });
 /** Non-empty is a service rule, not a schema one: an empty box must reach the manager as the
  *  desk's own "Give a reason for voiding this bill", not a 400 with a Zod path in it. */
 export const VoidBillBodySchema = z.strictObject({ reason: z.string().max(500) });
 // ---- adjustments (write-off / count-up as a document)
-/** A signed quantity. Negative writes stock off — wastage, breakage, an expiry disposal, a
- *  consignment sent back to the vendor — and positive counts it up, which is what a physical
+/** A signed quantity. Negative writes stock off - wastage, breakage, an expiry disposal, a
+ *  consignment sent back to the vendor - and positive counts it up, which is what a physical
  *  count that found more than the books say comes to. Zero is deliberately left to the service:
  *  a repeated item is folded first and a line that folds to nothing is dropped, so an
  *  adjustment with nothing on it reads as the store's own sentence rather than as a 400 with a
  *  Zod path in it. Three decimals and the same ceiling `QtySchema` carries, in both directions. */
 export const SignedQtySchema = z.number().finite().multipleOf(0.001).min(-100000).max(100000);
-/** `loc` is `StockLocSchema` and not `LocKeySchema` — the one exception to the rule that a write
+/** `loc` is `StockLocSchema` and not `LocKeySchema` - the one exception to the rule that a write
  *  body names one of the five places an operator works. Every other body names two ends of a
  *  movement, and quarantine is neither end of anything. An adjustment is not a movement: it is a
  *  correction to one shelf, and quarantine is a shelf. What a goods receipt turned away has to
@@ -276,8 +276,8 @@ export const CreateAdjustmentBodySchema = z.strictObject({
 });
 // ---- prod-order raise ----
 /** An outlet (or the manager, on its behalf) asking the Central Kitchen to make something.
- *  `from` is the outlet the tray is for: a counter never sends it — the route pins it to the
- *  token — and the manager must, because one manager supervises every outlet and the server
+ *  `from` is the outlet the tray is for: a counter never sends it - the route pins it to the
+ *  token - and the manager must, because one manager supervises every outlet and the server
  *  cannot guess which one is short. Positivity is a service rule, not a schema rule, the way
  *  `ReqLineInputSchema` has always had it: a zero reaches the operator as "Enter a quantity on
  *  every line", not as a 400 with a Zod path in it. */

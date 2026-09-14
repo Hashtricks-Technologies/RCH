@@ -41,14 +41,14 @@ export default function Stock() {
   // On order and in transit are read off a map built in one pass, not worked out per row: the
   // per-item functions each walk every purchase order or every ticket, so a catalogue of a few
   // hundred lines was re-walking the whole of both on every keystroke in the search box.
-  // Memoised on the slices each reads — `[s]` would be a new object after any write at all.
+  // Memoised on the slices each reads - `[s]` would be a new object after any write at all.
   const onOrderOf = useMemo(() => onOrderIndex({ prq: s.prq, po: s.po }), [s.prq, s.po]);
   const inTransitOf = useMemo(() => inTransitIndex({ tkt: s.tkt }), [s.tkt]);
 
   // A product the central store has never carried still belongs on its stock
-  // list at zero — otherwise a newly added item is invisible until it is bought.
+  // list at zero - otherwise a newly added item is invisible until it is bought.
   // ---- item patch ----
-  // `activeItems()` rather than the whole registry, so a retired line drops off the list — but
+  // `activeItems()` rather than the whole registry, so a retired line drops off the list - but
   // the union with what the shelf is holding keeps one that still has stock on it, because that
   // is exactly the stock somebody has to write off before the retirement can finish. It reads
   // greyed, and it is never offered to a requisition.
@@ -89,7 +89,7 @@ export default function Stock() {
 
   // What a goods receipt turned away. Quarantine is a shelf stock is *reported* on, never one
   // an operator works at: there is no return-to-vendor document anywhere in this system, so
-  // nothing on this card is actionable — it is a record of what is not on the good shelf.
+  // nothing on this card is actionable - it is a record of what is not on the good shelf.
   const rejected = Object.keys(s.stock.quarantine ?? {})
     .filter((it) => IT[it] && (s.stock.quarantine[it] ?? 0) > 0)
     .sort((a, b) => IT[a].n.localeCompare(IT[b].n));
@@ -103,7 +103,7 @@ export default function Stock() {
     const open = onOrder(s, it) + awaitingApproval(s, it);
     if (open > 0) notify(`${IT[it].n} already has ${fq(open, it)} ${U(it)} on an open requisition`);
     if (!prqDraft.some((l) => l.it === it)) setPrqDraft([...prqDraft, { it, qty: 0 }]);
-    notify(`${IT[it].n} staged for requisition — enter the quantity you need`);
+    notify(`${IT[it].n} staged for requisition - enter the quantity you need`);
     nav("/procure");
   };
 
@@ -163,7 +163,7 @@ export default function Stock() {
               key: r.it,
               cells: [
                 // ---- item patch ----
-                // A retired line still on the shelf reads greyed and says so — the keeper is
+                // A retired line still on the shelf reads greyed and says so - the keeper is
                 // looking at stock they have to write off, not at something to reorder.
                 <>
                   {isRetired(r.it) ? <span className="dim">{i.n}</span> : i.n}
@@ -218,7 +218,7 @@ export default function Stock() {
 
       <Card
         title="Quarantine"
-        sub="Rejected at goods receipt — off the good shelf and out of every count above"
+        sub="Rejected at goods receipt - off the good shelf and out of every count above"
         flush
         className="mtop"
       >

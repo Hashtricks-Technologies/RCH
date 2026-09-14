@@ -21,7 +21,7 @@ export function expectedMigrationCount(): number {
 export async function runMigrations(db: Db, schemaName?: string): Promise<void> {
   await migrate(db, { migrationsFolder: migrationsFolder(), migrationsSchema: schemaName ?? "drizzle" });
 }
-/** How many migrations this database has applied — compared with the journal by /readyz. */
+/** How many migrations this database has applied - compared with the journal by /readyz. */
 export async function appliedMigrationCount(db: Db, schemaName = "drizzle"): Promise<number> {
   const r = await db.execute(sql.raw(`select count(*)::int as n from "${schemaName}"."__drizzle_migrations"`));
   return Number((r.rows[0] as { n: number }).n);

@@ -1,5 +1,5 @@
 // drizzle-kit always fully-qualifies CREATE TYPE/REFERENCES with the literal "public" schema.
-// Strip it so migrations resolve via search_path — that's what lets each test file build its own private schema.
+// Strip it so migrations resolve via search_path - that's what lets each test file build its own private schema.
 
 import { readdir, readFile, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";

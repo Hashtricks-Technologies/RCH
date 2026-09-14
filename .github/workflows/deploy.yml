@@ -1,7 +1,7 @@
 name: Deploy
 # Deploys run only after CI has gone green on the very commit being deployed. The old
 # `on: push` fired this workflow alongside ci.yml, so a red typecheck, a failed test or a
-# CRITICAL in an image could reach a cluster while CI was still running — the two were
+# CRITICAL in an image could reach a cluster while CI was still running - the two were
 # racing, not ordered. `workflow_run` inverts that: GitHub starts this only when the named
 # workflow finishes, and `head_sha`/`head_branch` below name the commit and branch it
 # finished on. Everything here is pinned to those two values; `github.sha` and
@@ -26,7 +26,7 @@ jobs:
       REF_NAME: ${{ github.event.workflow_run.head_branch }}
     steps:
       - uses: actions/checkout@v7
-        # fetch-depth: 0 for the merge-base below — it needs origin/develop and origin/staging,
+        # fetch-depth: 0 for the merge-base below - it needs origin/develop and origin/staging,
         # which a shallow checkout of one commit does not have.
         with: { ref: "${{ github.event.workflow_run.head_sha }}", fetch-depth: 0 }
       - name: staging must be an ancestor of develop; production of staging
@@ -38,7 +38,7 @@ jobs:
     name: Deploy ${{ github.event.workflow_run.head_branch }}
     needs: guard
     # Repeats guard's own `event == 'push'` clause: `needs: guard` only skips this job when
-    # guard's *result* is failure/cancelled, not when guard is itself skipped by its `if:` —
+    # guard's *result* is failure/cancelled, not when guard is itself skipped by its `if:` -
     # a workflow_run event guard's `if:` refuses is a skip, and a skipped dependency still lets
     # a dependent job run. Without this clause here too, a PR-triggered CI run (staging into
     # production, the hotfix flow) would reach this job and deploy an unmerged PR head.
@@ -80,7 +80,7 @@ jobs:
       - uses: docker/build-push-action@v6
         if: steps.images.outputs.exists != 'true'
         with: { context: ., file: UI/Dockerfile, push: true, platforms: linux/amd64, tags: "${{ secrets.ECR_REGISTRY }}/rch-ui:${{ github.event.workflow_run.head_sha }}", cache-from: type=gha, cache-to: "type=gha,mode=max" }
-      # ci.yml scans rch-api:ci / rch-ui:ci — the images it built itself, which are not the
+      # ci.yml scans rch-api:ci / rch-ui:ci - the images it built itself, which are not the
       # bytes that reach a cluster. These two steps scan the exact tags helm is about to
       # deploy, pulled back out of ECR (the ecr-login above left the credentials trivy needs),
       # and they run whether the builds above ran or were skipped as already-pushed. Same
@@ -109,7 +109,7 @@ jobs:
       # nothing about where the blank came from. Refuse here, by name, before anything moves.
       # production is exempt: it reads these four plus JWT_PREVIOUS_PUBLIC_KEY from AWS
       # Secrets Manager through the External Secrets Operator (values-prod.yaml), so these
-      # GitHub secrets are empty there on purpose — and production therefore gets NO pre-flight
+      # GitHub secrets are empty there on purpose - and production therefore gets NO pre-flight
       # here. RUNBOOK §11's ExternalSecret bullet carries the manual `jq -e` check instead.
       - name: Every secret the chart needs is present
         if: github.event.workflow_run.head_branch != 'production'
@@ -123,7 +123,7 @@ jobs:
           for v in DATABASE_URL JWT_PRIVATE_KEY JWT_PUBLIC_KEY SEED_PASSWORD; do
             [ -n "${!v}" ] || { echo "::error::$v is empty"; missing=1; }
           done
-          [ "$missing" = 0 ] || { echo "set the missing secrets on the $REF_NAME environment — see deploy/RUNBOOK.md"; exit 1; }
+          [ "$missing" = 0 ] || { echo "set the missing secrets on the $REF_NAME environment - see deploy/RUNBOOK.md"; exit 1; }
       - name: helm upgrade
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
@@ -132,7 +132,7 @@ jobs:
           SEED_PASSWORD: ${{ secrets.SEED_PASSWORD }}
         run: |
           # Secrets are passed through env: and read from quoted shell
-          # variables, never interpolated into the command text — GitHub
+          # variables, never interpolated into the command text - GitHub
           # substitutes its double-brace expressions textually before bash runs, which
           # would otherwise be a shell-injection vector (a secret containing
           # `;`, `$(...)` or quotes) and would land the PEM contents in argv.
@@ -161,7 +161,7 @@ jobs:
           #
           # production takes --wait alone, deliberately. --atomic deletes the failed release's
           # pods the instant it gives up, which takes with it the only two things RUNBOOK §3
-          # tells the operator to read — the pod events and the migrate initContainer's log —
+          # tells the operator to read - the pod events and the migrate initContainer's log -
           # and leaves "the rollout failed" with no way to learn why. Worse, a migration that
           # already committed is not undone by rolling the Deployment back: --atomic would put
           # the previous image in front of a schema it was never written for, which is a
@@ -182,7 +182,7 @@ jobs:
         if: failure()
         run: |
           # Two commands, not one. `get pods,events --sort-by=.lastTimestamp` sorts BOTH kinds by
-          # a field only Events have, so every Pod row sorts as if its timestamp were empty — and
+          # a field only Events have, so every Pod row sorts as if its timestamp were empty - and
           # then `| tail -80` cut the pod list off the top of the output, which is the half that
           # says *why* (ImagePullBackOff, Init:CrashLoopBackOff, Pending with no node). The pods
           # are listed whole and wide; only the events are tailed.
@@ -191,7 +191,7 @@ jobs:
           kubectl -n "$NS" logs -l app.kubernetes.io/component=api -c migrate --tail=200 || true
       # Only dev and staging, and only when the release is genuinely stuck. --atomic has
       # normally already rolled these back by now, and `helm rollback` with no revision goes
-      # back exactly one — running it after a successful atomic undo would re-apply the failed
+      # back exactly one - running it after a successful atomic undo would re-apply the failed
       # revision. So: act only on a pending-* or failed status, which is what is left when
       # --atomic itself could not finish (the job timed out mid-upgrade, or the rollback hit
       # the same wall the upgrade did).
@@ -199,7 +199,7 @@ jobs:
         if: failure() && github.event.workflow_run.head_branch != 'production'
         run: |
           # A release helm cannot find prints nothing at all, and jq turns nothing into
-          # nothing rather than into an error — hence the two defaults below rather than a
+          # nothing rather than into an error - hence the two defaults below rather than a
           # `|| echo`, which would never fire.
           status="$(helm status "$RELEASE" -n "$NS" -o json 2>/dev/null | jq -r '.info.status' 2>/dev/null)"
           revisions="$(helm history "$RELEASE" -n "$NS" -o json 2>/dev/null | jq 'length' 2>/dev/null)"
@@ -222,7 +222,7 @@ jobs:
           # Availability is the readiness probe's own verdict, read from the cluster: the api's
           # probe is GET /readyz, which checks the database and that the applied migration count
           # matches the journal, so an Available deployment is the same statement the old smoke
-          # pod made — without pulling an image from Docker Hub into the cluster to make it, and
+          # pod made - without pulling an image from Docker Hub into the cluster to make it, and
           # without a rate limit or an outage there being able to fail a good deploy.
           kubectl -n "$NS" wait --for=condition=Available deploy/rch-api --timeout=300s
           kubectl -n "$NS" wait --for=condition=Available deploy/rch-ui --timeout=300s

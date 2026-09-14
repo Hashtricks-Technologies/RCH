@@ -10,8 +10,8 @@ export const S = () => useApp.getState();
 
 /**
  * Sign in, the way `login()` leaves the store: a token in memory, the caller's own whole record,
- * and `auth: "ready"`. The store's own `signIn` hook is gone — it read the fixtures from inside
- * production code, which is exactly what this phase deleted — so the fixtures are imported here,
+ * and `auth: "ready"`. The store's own `signIn` hook is gone - it read the fixtures from inside
+ * production code, which is exactly what this phase deleted - so the fixtures are imported here,
  * in a test file, which is where they belong.
  */
 export const as = (role: Role) => {
@@ -27,7 +27,7 @@ export const signedOut = () => {
 
 /**
  * The store keeps the instant beside the printed time now (`Dated` in `types.ts`), and the
- * fixtures only ever carried the printed one — they were written for screens, not for a wire.
+ * fixtures only ever carried the printed one - they were written for screens, not for a wire.
  * So the reset stamps one: **today, moments ago**, offset by a millisecond per minute of the
  * clock face the fixture shows.
  *
@@ -51,7 +51,7 @@ type Trail = { hist: { s: string; who: string; t: string }[] };
  * times are already display strings (`"09:12"`, `"Yesterday"`, `"27-Aug"`) and `applySnapshot`
  * runs `fromWireTime` over everything it is handed; feeding it fixtures would turn every stamp
  * into garbage. Building the state directly is what `resetStore` has always done and it is still
- * right — what changed is only where the fixtures are imported from, and that each seed now
+ * right - what changed is only where the fixtures are imported from, and that each seed now
  * carries the instant the store expects beside the time it prints.
  */
 export function resetStore() {
@@ -72,12 +72,12 @@ export function resetStore() {
     contracts: FX.seedContracts(), productReqs: FX.seedProductRequests().map(dated), shopAsks: FX.seedShopAsks().map(dated),
     tickets: FX.seedTickets().map(dated),
     // ---- adjustments: nothing has ever been written off in the demo hospital, so the register
-    // starts empty — the same shape the fixtures give quarantine's shelf.
+    // starts empty - the same shape the fixtures give quarantine's shelf.
     adjustments: [],
     cart: {}, draft: [], prqDraft: [], poolVendor: {}, drawer: null, toast: null, shopFilter: null,
     // ---- payers ----
     // Empty, not seeded: the manager's register has no fixture, because nothing on the snapshot
-    // carries it — the screen asks `GET /payers` for it on the way in.
+    // carries it - the screen asks `GET /payers` for it on the way in.
     payers: [],
     // ---- admin: account management ----
     // Same reason as `payers` above: nothing on the snapshot carries the account list or its

@@ -10,7 +10,7 @@ import {
 import type { Item } from "../types";
 
 /**
- * The recipe book — the kitchen's and the outlet manager's, one screen for both, which is why it
+ * The recipe book - the kitchen's and the outlet manager's, one screen for both, which is why it
  * lives here rather than under either role.
  *
  * A recipe used to arrive only with the seed, so a hospital started clean could list a
@@ -23,14 +23,14 @@ import type { Item } from "../types";
 const TYPE_LABEL: Partial<Record<Item["t"], string>> = { FG: "Finished good", MTO: "Made to order" };
 type Line = { it: string; qty: number };
 
-/** The live master — what a rule is asked against, so a retired line reads as one the master no
+/** The live master - what a rule is asked against, so a retired line reads as one the master no
  *  longer has, exactly the way the server's `loadItems` answers it. */
 const liveItems = (): Record<string, Item> => Object.fromEntries(activeItems().map((k) => [k, IT[k]]));
 const byName = (items: Record<string, Item>) => (a: string, b: string) => items[a].n.localeCompare(items[b].n);
 
 export default function RecipeBook() {
   // `IT` and `RCP` are module-level registries replaced in place, so `catalogVersion` is the
-  // signal that either moved — a recipe saved here, or one saved in another browser over SSE.
+  // signal that either moved - a recipe saved here, or one saved in another browser over SSE.
   const catalogVersion = useApp((s) => s.catalogVersion);
   const [q, setQ] = useState("");
   const [sel, setSel] = useState<string | null>(null);
@@ -51,8 +51,8 @@ export default function RecipeBook() {
       />
 
       <Alert tone="i" label="RECIPES">
-        A <b>made-to-order</b> item is sold by its recipe — every sale draws these ingredients off the
-        counter's own shelf — and a <b>finished good</b> is batched from it in the kitchen. An item with
+        A <b>made-to-order</b> item is sold by its recipe - every sale draws these ingredients off the
+        counter's own shelf - and a <b>finished good</b> is batched from it in the kitchen. An item with
         no recipe cannot be sold or made until it has one.
       </Alert>
 
@@ -70,7 +70,7 @@ export default function RecipeBook() {
                     <>{live[k].n}<div className="mini mono">{live[k].c}</div></>,
                     TYPE_LABEL[live[k].t] ?? live[k].t,
                     r ? `${r.l.length} ingredient${r.l.length === 1 ? "" : "s"}` : <Pill tone="mu">No recipe</Pill>,
-                    r ? money(recipeCost(master, k)) : "—",
+                    r ? money(recipeCost(master, k)) : "-",
                     <Btn size="xs" title={`Recipe for ${live[k].n}`} onClick={() => setSel(k)}>{r ? "Edit" : "Write"}</Btn>,
                   ],
                 };
@@ -123,7 +123,7 @@ function RecipeEditor({ it, live, onClose }: { it: string; live: Record<string, 
   return (
     <Card
       title={item.n}
-      sub={had ? "Change the recipe — the next batch and the next sale use it" : "No recipe yet — write the first one"}
+      sub={had ? "Change the recipe - the next batch and the next sale use it" : "No recipe yet - write the first one"}
       right={<Btn size="xs" onClick={onClose}>Close</Btn>}
       className="mtop"
     >
@@ -151,7 +151,7 @@ function RecipeEditor({ it, live, onClose }: { it: string; live: Record<string, 
         empty={{ title: "No ingredients yet", sub: "Add the first one below." }}
       />
 
-      <Field label="Add an ingredient" hint="Anything a shelf holds — a made-to-order item has no stock to draw on.">
+      <Field label="Add an ingredient" hint="Anything a shelf holds - a made-to-order item has no stock to draw on.">
         <select
           aria-label={`Add an ingredient to ${item.n}`}
           value=""
@@ -164,7 +164,7 @@ function RecipeEditor({ it, live, onClose }: { it: string; live: Record<string, 
 
       <p>
         One {U(it)} costs <b>{money(unit)}</b>
-        <span className="mini"> — ingredients {money(raw)} plus {ov}% overhead</span>
+        <span className="mini"> - ingredients {money(raw)} plus {ov}% overhead</span>
       </p>
       {refusal && <div className="hint" role="status">{refusal}</div>}
       <Btn wide disabled={Boolean(refusal) || busy} onClick={() => void save()}>

@@ -1,8 +1,8 @@
 // Copy this folder to start a module.
 //
-// service.ts: the flow — transaction, rules, moves, history, id. Compose the helpers in
+// service.ts: the flow - transaction, rules, moves, history, id. Compose the helpers in
 // apps/api/src/lib/ (withTransaction, allocateId, postMoves, appendHistory, assertRule,
-// requireLoc); never reimplement them — cross-cutting behaviour is a plugin or a
+// requireLoc); never reimplement them - cross-cutting behaviour is a plugin or a
 // helper, never copied. Domain rules belong in packages/domain, not inlined here.
 import type { Db } from "../../db/client.js";
 import { withTransaction } from "../../lib/db.js";

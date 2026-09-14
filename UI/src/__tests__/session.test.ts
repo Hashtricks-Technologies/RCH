@@ -13,7 +13,7 @@ const USER: User = {
   rl: "Counter Operator", loc: "coffee", col: "#B45309", emp: "RC-4471", ph: "98430 22118", admin: false,
 };
 
-/** The smallest body `applySnapshot` will accept — this suite is about the session, not the data. */
+/** The smallest body `applySnapshot` will accept - this suite is about the session, not the data. */
 const SNAPSHOT = {
   user: USER, items: {}, locations: {}, recipes: {}, users: [USER],
   roster: { patients: [], staff: [], depts: [] },
@@ -25,7 +25,7 @@ const SNAPSHOT = {
   adjustments: [],
 };
 
-/** An empty item master — the state a browser is in before its first snapshot lands. */
+/** An empty item master - the state a browser is in before its first snapshot lands. */
 const EMPTY_MASTER: MasterData = {
   items: {}, locations: {}, recipes: {}, prices: { A: {}, B: {} }, menu: {}, users: [USER],
 };
@@ -76,7 +76,7 @@ describe("restoring the session at boot", () => {
     expect(useApp.getState().auth).toBe("failed");
     expect(useApp.getState().user?.id).toBe("u1");
 
-    // The failed page's other way out is Sign out, not just Retry — an operator stuck on a
+    // The failed page's other way out is Sign out, not just Retry - an operator stuck on a
     // broken snapshot (or signed in as the wrong person) must be able to reach the sign-in
     // form again. It is the same `logout()` the shell itself calls, so it lands on
     // `auth: "signed-out"` with no user, the two things `App.tsx` reads to render Login.
@@ -85,7 +85,7 @@ describe("restoring the session at boot", () => {
     expect(useApp.getState().auth).toBe("signed-out");
     expect(useApp.getState().user).toBeNull();
 
-    // Back on a failed snapshot, the Retry the shell offers is `loadSnapshot` again —
+    // Back on a failed snapshot, the Retry the shell offers is `loadSnapshot` again -
     // nothing else has to be re-done.
     useApp.setState({ user: USER, auth: "failed" });
     fetchMock.mockResolvedValueOnce(ok(SNAPSHOT));
@@ -127,7 +127,7 @@ describe("changing the password", () => {
 
   /**
    * Which of the two screens the change is made from decides whether the splash is right, and
-   * `loadSnapshot` already asks that question — "is the master empty?" — for every other caller.
+   * `loadSnapshot` already asks that question - "is the master empty?" - for every other caller.
    * `changePassword` used to answer it for itself with a flat `auth: "loading"`, which is right
    * on a first sign-in and wrong from Settings, where it threw the operator's whole screen away
    * and painted "Loading…" over a working hospital for the length of a snapshot.

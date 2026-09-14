@@ -158,7 +158,7 @@ export const Grid = ({ cols, children }: { cols?: "g2" | "g3" | "g21" | "g12"; c
 
 /* ---------- kpi ---------- */
 /** A headline figure with a label and, optionally, a line of context under it. No `spark`: the
- *  sparkline this used to carry was drawn by nothing — not one `Kpi` in the app ever set it —
+ *  sparkline this used to carry was drawn by nothing - not one `Kpi` in the app ever set it -
  *  and an optional field no caller fills is a shape future callers copy without meaning to. */
 export interface Kpi { l: string; v: ReactNode; d?: ReactNode }
 export function Kpis({ items }: { items: Kpi[] }) {
@@ -184,7 +184,7 @@ export interface SortState { key: string; dir: SortDir }
 /** `sort` names the key this column orders by; omit it and the header stays plain text. */
 export interface Col { h: string; r?: boolean; cls?: string; w?: string; sort?: string }
 export interface Row { key: string; cells: ReactNode[]; onClick?: () => void }
-/** A row can be clickable and still carry its own controls — a Receive button, a reason box, a
+/** A row can be clickable and still carry its own controls - a Receive button, a reason box, a
  *  status select. A click on one of those is about that control and nothing else, so it must not
  *  also open the row. Decided once here rather than by every cell remembering to stop the event:
  *  a screen that forgets is a screen where pressing Cancel also opens the drawer behind it. */
@@ -208,7 +208,7 @@ const SORT_BTN: CSSProperties = {
 
 export function DataTable({ cols, rows, empty, sort, onSort }: {
   cols: Col[]; rows: Row[]; empty?: { title: string; sub?: string; action?: ReactNode };
-  /** Current order — pass with `onSort` to make the flagged headers clickable. */
+  /** Current order - pass with `onSort` to make the flagged headers clickable. */
   sort?: SortState | null;
   onSort?: (key: string) => void;
 }) {
@@ -223,8 +223,8 @@ export function DataTable({ cols, rows, empty, sort, onSort }: {
               {c.sort && onSort ? (
                 <button type="button" style={{ ...SORT_BTN, flexDirection: c.r ? "row-reverse" : "row" }}
                   onClick={() => onSort(c.sort!)}
-                  title={dir === "asc" ? `${c.h}: low to high — click to reverse`
-                    : dir === "desc" ? `${c.h}: high to low — click to reverse`
+                  title={dir === "asc" ? `${c.h}: low to high - click to reverse`
+                    : dir === "desc" ? `${c.h}: high to low - click to reverse`
                       : `Sort by ${c.h}`}>
                   {c.h}<SortCaret dir={dir} />
                 </button>
@@ -259,7 +259,7 @@ export function DataTable({ cols, rows, empty, sort, onSort }: {
  * beside that.
  *
  * It used to end in a Prev / 1 / Next pager, disabled on every one of the sixty-two tables that
- * draw it, because no table in this app pages — `DataTable` renders every row it is handed.
+ * draw it, because no table in this app pages - `DataTable` renders every row it is handed.
  * Three dead controls on every screen is not a hint of a feature to come; it is a promise the
  * app does not keep, and an operator who presses Next on a long list and sees nothing happen has
  * been told the wrong thing about what they are looking at.
@@ -298,7 +298,7 @@ export function FilterBtn({ label, value, onClick, active }: {
 }
 
 /**
- * A real dropdown filter — a native `<select>` styled to match `.fsel`, so it
+ * A real dropdown filter - a native `<select>` styled to match `.fsel`, so it
  * opens a genuine option list (keyboard- and touch-friendly) instead of
  * cycling through values one click at a time.
  */
@@ -327,8 +327,8 @@ export function Alert({ tone = "i", label, children, action }: {
   tone?: "w" | "c" | "g" | "i"; label: string; children: ReactNode; action?: ReactNode;
 }) {
   return (
-    /* A critical alert is a refusal or a block — a sale that cannot be taken, a credit ceiling
-       reached, a password the server would not change — and a screen reader has to interrupt
+    /* A critical alert is a refusal or a block - a sale that cannot be taken, a credit ceiling
+       reached, a password the server would not change - and a screen reader has to interrupt
        for it rather than wait for a pause. Every other tone is a notice and can wait, which is
        what `status` means. Neither carried a role at all, so both were silent. */
     <div className={`al ${tone}`} role={tone === "c" ? "alert" : "status"}>
@@ -354,13 +354,13 @@ export const Feed = ({ items }: { items: FeedItem[] }) => (
   </div>
 );
 /**
- * A ticket's own trail — one row per hand it has passed through, coloured by `ticketDot`.
+ * A ticket's own trail - one row per hand it has passed through, coloured by `ticketDot`.
  *
  * Four screens drew this exact `Feed` from the same three fields with the same colour rule
  * (the counter's and the store's ticket drawers, the store's issue detail, and now the
  * kitchen's), which is four places to change when a trail reads wrong in one of them. It is
  * coloured by the *ticket* rule and not by any request's, because a ticket's trail says
- * "Handed over" and "Cancelled — …" — words no request status list has ever held.
+ * "Handed over" and "Cancelled - …" - words no request status list has ever held.
  */
 export const TicketTrail = ({ hist }: { hist: Ticket["hist"] }) => (
   <Feed items={hist.map((h, i) => ({ key: h.s + i, title: h.s, body: h.who, when: h.t, color: ticketDot(h.s) }))} />
@@ -369,10 +369,10 @@ export const TicketTrail = ({ hist }: { hist: Ticket["hist"] }) => (
  * A number box the operator may type freely in, whose value only leaves it on blur or Enter.
  *
  * A controlled `<input type="number">` wired straight to `Number(e.target.value)` cannot be
- * typed in: clearing the field to retype reads as 0, and "12.5" passes through 12, 12.5 — every
+ * typed in: clearing the field to retype reads as 0, and "12.5" passes through 12, 12.5 - every
  * intermediate value landing wherever the box writes to. Local state absorbs the typing; the
  * value is committed once, and only when it actually moved. If whatever holds the true value
- * changes underneath (or a commit was refused and it did not move), the field snaps back to it —
+ * changes underneath (or a commit was refused and it did not move), the field snaps back to it -
  * adjusted during render, React's own pattern for this, so a stale value is never painted first.
  *
  * `positiveOnly` refuses to commit a zero or a negative, for the boxes where nothing is a
@@ -380,10 +380,10 @@ export const TicketTrail = ({ hist }: { hist: Ticket["hist"] }) => (
  *
  * `id` and `max` are pure passthroughs, so a box that already had a `<label htmlFor>` beside it
  * or a browser-level ceiling keeps both on the way over, and `invalid` draws the same red border
- * a raw input got from a local `BAD` style — a line the operator still has to finish. `ariaLabel`
+ * a raw input got from a local `BAD` style - a line the operator still has to finish. `ariaLabel`
  * is required even where a real `<label>` is wired up, because `Field` only sets `htmlFor` on a
  * **direct DOM child**: a component child leaves the visible label decorative and the box unnamed.
- * `blankZero` draws a zero as an empty box, for a line whose quantity nobody has entered yet —
+ * `blankZero` draws a zero as an empty box, for a line whose quantity nobody has entered yet -
  * a "0" sitting in it reads as a figure somebody chose.
  *
  * Lives here rather than beside its first caller because six tables on three screens need the
@@ -394,22 +394,22 @@ export const TicketTrail = ({ hist }: { hist: Ticket["hist"] }) => (
  *
  * Three screens draw a table of draft lines with a Remove button on every row, and every one of
  * them needs the same thing: an identity that belongs to the *line*, not to its position and not
- * to its contents. `key={i}` hands row 2's mounted state — what is half-typed in its quantity
- * box, where the cursor is — to row 1 the moment row 1 is taken out. `key={line.it + ":" + i}`
+ * to its contents. `key={i}` hands row 2's mounted state - what is half-typed in its quantity
+ * box, where the cursor is - to row 1 the moment row 1 is taken out. `key={line.it + ":" + i}`
  * remounts the row as soon as the item picker moves, so the box beside it loses focus and
  * whatever was being typed mid-keystroke. A counter is neither: an id belongs to the line it was
  * minted for until that line is taken out.
  *
- * It lives in a ref rather than in state because it is written *during* render — `useState`
- * would mean setting state while rendering — and it cannot live on the line itself, because the
+ * It lives in a ref rather than in state because it is written *during* render - `useState`
+ * would mean setting state while rendering - and it cannot live on the line itself, because the
  * draft is store state shared with other screens and a key column would have to travel with it.
  * `react/refs` is suppressed here, once, rather than in each of the three callers: the rule is
  * right about what it warns of (a ref read during render can leave a component showing a value
- * nothing will re-render it for) and does not reach this, which renders none of it — the ledger
+ * nothing will re-render it for) and does not reach this, which renders none of it - the ledger
  * is never *shown*, only handed to React as identity.
  *
  * `drop(i)` is the other half and is not optional: the length check below only ever trims from
- * the **end**, so a Remove on row 0 without it leaves row 0's key on what used to be row 1 —
+ * the **end**, so a Remove on row 0 without it leaves row 0's key on what used to be row 1 -
  * which is the `key={i}` defect this hook exists to prevent, arrived at the long way round. Call
  * it beside the state update that takes the line out.
  */
@@ -441,7 +441,7 @@ export function DraftLineInput({
   const commit = () => {
     const n = Number(local);
     // A blur is not an edit. Tabbing across a line touches every cell on the way past, and each
-    // one would otherwise write — and where the write is a server call, toast a sentence about a
+    // one would otherwise write - and where the write is a server call, toast a sentence about a
     // value nobody changed. So only a number that actually moved is committed.
     if (Number.isFinite(n) && n !== value && (!positiveOnly || n > 0)) onCommit(n);
     // Whether or not the value was taken, resync the field to whatever is now true rather than
@@ -467,7 +467,7 @@ export function DraftLineInput({
 /**
  * A date box with the same shape as `DraftLineInput`, for the same reason and one more: a date
  * input fires `change` on every intermediate *valid* date, so a year typed digit by digit is
- * four writes — and each write's read-back snaps the box back under the operator's fingers.
+ * four writes - and each write's read-back snaps the box back under the operator's fingers.
  *
  * `value` is the display date the store keeps ("11-Sep-2026"); `toInputDate` converts it to the
  * only form an `<input type="date">` speaks, and the input's own ISO value goes straight out.
@@ -505,7 +505,7 @@ const LABELABLE = ["input", "select", "textarea"];
  * The label is tied to the first control it wraps, so every field is named (M13).
  *
  * **The limit, deliberately left in place.** Only the *direct* children are searched, and only
- * for a host element — `<input>`, `<select>`, `<textarea>`. A child that is a component renders
+ * for a host element - `<input>`, `<select>`, `<textarea>`. A child that is a component renders
  * its own control later, out of reach of anything this can clone into, and a child that wraps
  * one in a `<div>` is usually a group rather than a single control. Both cases exist here and
  * both are already named without this: `EtaInput` and `DraftLineInput` carry their own
@@ -554,7 +554,7 @@ export function Otp({ value, label = "Collection OTP" }: { value: string; label?
 }
 /**
  * A blank product-photo slot. This build has no photography and no upload
- * path — pulling images from the internet risks copyright and trademark
+ * path - pulling images from the internet risks copyright and trademark
  * problems, and there is no image-generation tool available here either.
  * "card" tops a menu tile; "sm" is the inline swatch next to a product name.
  */
@@ -585,7 +585,7 @@ export interface TileMenuItem {
   key: string; label: string; onClick: () => void; tone?: "default" | "danger";
 }
 /**
- * The overflow menu that sits on a product card's corner — a kebab trigger
+ * The overflow menu that sits on a product card's corner - a kebab trigger
  * that opens a small popover of actions (Configure, Turn on/off, …) rather
  * than a full drawer. Closes on an outside click or Escape.
  */

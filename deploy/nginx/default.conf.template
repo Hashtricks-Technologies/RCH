@@ -1,5 +1,5 @@
 # The browser mints its own X-Request-Id and reads the same id back off the response
-# (UI/src/api/client.ts), so what nginx forwards has to be the id it was handed — `$request_id`
+# (UI/src/api/client.ts), so what nginx forwards has to be the id it was handed - `$request_id`
 # on its own overwrites it, and the id in the access log then matches nothing anybody can quote.
 # `map` runs per request in http context: keep the client's id, and mint one only when the
 # request arrived without one (the empty-string branch).
@@ -32,7 +32,7 @@ server {
   # Two health endpoints, because the ALB's healthcheck-path is an INGRESS-level annotation: the
   # controller applies it to every target group the ingress creates, the ui's as well as the
   # api's. With only /healthz here, a check on /readyz fell through to the SPA catch-all at the
-  # bottom of this file and passed on index.html — a 200 that says nothing about nginx. nginx has
+  # bottom of this file and passed on index.html - a 200 that says nothing about nginx. nginx has
   # no draining state of its own to report, so both answer the same thing.
   location = /healthz { return 200 'ok'; add_header Content-Type text/plain; }
   location = /readyz { return 200 'ok'; add_header Content-Type text/plain; }

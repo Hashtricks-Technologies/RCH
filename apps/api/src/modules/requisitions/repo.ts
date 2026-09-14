@@ -1,4 +1,4 @@
-// Requisitions: SQL only. No rules, no transaction of its own — service.ts passes `tx` in.
+// Requisitions: SQL only. No rules, no transaction of its own - service.ts passes `tx` in.
 import { and, asc, eq, inArray } from "drizzle-orm";
 import type { PrqStatus, Requisition } from "@rch/contract";
 import type { Tx } from "../../lib/db.js";

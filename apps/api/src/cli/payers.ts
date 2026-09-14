@@ -31,7 +31,7 @@ try {
       if (errors.length > 0) {
         // Every bad row at once, and nothing written: a half-loaded ward list is one nobody can
         // reconcile, so the file is fixed and re-run rather than patched up afterwards.
-        console.error(`${file} was not loaded — ${errors.length} row${errors.length === 1 ? "" : "s"} to fix first:`);
+        console.error(`${file} was not loaded - ${errors.length} row${errors.length === 1 ? "" : "s"} to fix first:`);
         for (const e of errors) console.error(`  ${sayCsvError(e)}`);
         console.error(`  allowed kinds: ${PayerKindSchema.options.join("|")}`);
         process.exit(2);
@@ -41,7 +41,7 @@ try {
       // bill to rather than let "renamed 3" read as three people back on the payer picker.
       const renamed = r.renamedInactive > 0 ? `${r.renamed} renamed (${r.renamedInactive} still inactive)` : `${r.renamed} renamed`;
       console.log(`${file}: ${r.added} added, ${renamed}, ${r.skipped} already on the roster (${rows.length} rows read)`);
-      if (r.renamedInactive > 0) console.log("  a deactivated payer keeps its name and its switch — reopen it from the manager's Payers screen");
+      if (r.renamedInactive > 0) console.log("  a deactivated payer keeps its name and its switch - reopen it from the manager's Payers screen");
       if (r.skipped > 0 && values["replace-names"] !== true) console.log("  re-run with --replace-names to update the names of the rows that were skipped");
       break;
     }

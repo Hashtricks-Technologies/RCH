@@ -1,4 +1,4 @@
-// Reports: the two figures the browser cannot compute from its own snapshot — the central store's
+// Reports: the two figures the browser cannot compute from its own snapshot - the central store's
 // stock ledger, which needs the ledger's own moves, and a payer's credit for the calendar month,
 // which needs every outlet's bills and not the till's own seven days.
 //

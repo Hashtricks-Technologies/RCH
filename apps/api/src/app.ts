@@ -19,7 +19,7 @@ declare module "fastify" { interface FastifyInstance { config: Config } }
 
 export type App = FastifyInstance;
 /** A caller that brings its own database brings the pool behind it too, so /metrics can still report its depth.
- *  `logStream` is where the log goes when it is not stdout — a test reading its own lines back. */
+ *  `logStream` is where the log goes when it is not stdout - a test reading its own lines back. */
 export type AppDeps = { db?: Db; pool?: Pool; searchPath?: string; migrationsSchema?: string; logStream?: LogStream };
 
 export async function buildApp(config: Config, deps: AppDeps = {}): Promise<App> {

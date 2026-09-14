@@ -20,7 +20,7 @@ import type { Role } from "./types";
 const REGISTRY: Record<Role, Record<string, React.ComponentType>> = { counter, manager, store, prod, buyer };
 
 /** The sidebar name for a route key. Several keys are shared and named differently by the roles
- *  that hold them — `orders` is *Orders* to the kitchen and *Purchase Orders* to the buyer — so
+ *  that hold them - `orders` is *Orders* to the kitchen and *Purchase Orders* to the buyer - so
  *  the signed-in role's own sidebar is asked first, and any role's only when the key is not on
  *  it. Without that, which name a person is told depended on the order `NAV`'s keys happen to
  *  be declared in, and a kitchen sent back to its board could be told it was on Purchase Orders. */
@@ -35,18 +35,18 @@ function Denied({ k }: { k: string }) {
   const notify = useApp((s) => s.notify);
   useEffect(() => {
     const a = /^[AEIOU]/.test(user.rl) ? "an" : "a";
-    notify(`${labelOf(user.r, k)} is not available to ${a} ${user.rl} — you are back on ${labelOf(user.r, HOME[user.r])}`);
+    notify(`${labelOf(user.r, k)} is not available to ${a} ${user.rl} - you are back on ${labelOf(user.r, HOME[user.r])}`);
   }, [k, user, notify]);
   return <Navigate to={"/" + HOME[user.r]} replace />;
 }
 
 /** The admin-only equivalent of `<Denied>`: an admin-flagged account has no operational role to
- *  describe it by (a capability, not a role — root CLAUDE.md), so `labelOf` — which reads a
- *  role's own `NAV` — has nothing to answer with here. Says so in its own words instead, and
+ *  describe it by (a capability, not a role - root CLAUDE.md), so `labelOf` - which reads a
+ *  role's own `NAV` - has nothing to answer with here. Says so in its own words instead, and
  *  sends the account back to the one place it has. */
 function BackToAdmin() {
   const notify = useApp((s) => s.notify);
-  useEffect(() => { notify("That screen is not part of this account — you are back on account management."); }, [notify]);
+  useEffect(() => { notify("That screen is not part of this account - you are back on account management."); }, [notify]);
   return <Navigate to="/admin" replace />;
 }
 
@@ -55,7 +55,7 @@ function Screen() {
   const user = useApp((s) => s.user);
   if (!user) return <Navigate to="/login" replace />;
   // A capability, not a role (root CLAUDE.md): an admin-flagged account has no `NAV` entry, no
-  // sidebar and no operational home — `/admin` is the only key it can ever reach, checked here,
+  // sidebar and no operational home - `/admin` is the only key it can ever reach, checked here,
   // ahead of `canSee`, which only ever knows about the five operational roles.
   if (user.admin) return key === "admin" ? <AdminDashboard /> : <BackToAdmin />;
   if (!canSee(user.r, key)) return <Denied k={key} />;
@@ -103,13 +103,13 @@ function OfflineBanner() {
         pointerEvents: "none",
       }}
     >
-      No network — this terminal is offline
+      No network - this terminal is offline
     </div>
   );
 }
 
 export default function App() {
-  // The toast is drawn here, once, above every page — not by the shell. Sign-in,
+  // The toast is drawn here, once, above every page - not by the shell. Sign-in,
   // change-password, the loading gate and the failed page all render outside the shell, and a
   // sentence raised on any of them used to be set in the store and never shown.
   return (
@@ -137,13 +137,13 @@ function Page() {
     );
   }
   // Signed in, and the snapshot never arrived. There is no item master, no locations and no
-  // menus behind this, so there is no screen to fall back to — every one of them would read an
+  // menus behind this, so there is no screen to fall back to - every one of them would read an
   // empty registry and throw. One page, one sentence, a button that asks again, and a way out
   // for an operator who signed in as the wrong person rather than a bad connection.
   if (auth === "failed") {
     return (
       <div className="lgi" style={{ margin: "20vh auto" }}>
-        <h2>Could not load the hospital's data — check the connection</h2>
+        <h2>Could not load the hospital's data - check the connection</h2>
         <p className="sub">
           You are signed in, but the server did not send today's item master, stock or documents,
           and nothing can be shown without them.
@@ -159,7 +159,7 @@ function Page() {
       </div>
     );
   }
-  // Where a signed-in account lands: `/admin` for the capability, never `HOME[user.r]` — an
+  // Where a signed-in account lands: `/admin` for the capability, never `HOME[user.r]` - an
   // admin-flagged account's nominal role is bookkeeping the schema needs, not an identity this
   // app shows it (root CLAUDE.md).
   const home = user ? (user.admin ? "admin" : HOME[user.r]) : "login";

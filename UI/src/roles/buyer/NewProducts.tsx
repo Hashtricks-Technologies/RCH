@@ -12,7 +12,7 @@ const tone = (st: ProductReqStatus) => (st === "Requested" ? "wn" : st === "Crea
 /**
  * An outlet manager asks for something that is not on the item master.
  * Procurement is the one who sources it, so procurement is the one who adds
- * it — creating the catalogue entry, or declining with a reason.
+ * it - creating the catalogue entry, or declining with a reason.
  */
 export default function NewProducts() {
   const reqs = useApp((s) => s.productReqs);
@@ -23,7 +23,7 @@ export default function NewProducts() {
   const [stage, setStage] = useState<ProductReqStatus | "All">("Requested");
   const [reason, setReason] = useState<Record<string, string>>({});
   // One lock per row, and it has to be a set rather than "which row is busy": declining
-  // NPR-0012 must not grey out — or quietly swallow — the button on NPR-0013. Each decline is
+  // NPR-0012 must not grey out - or quietly swallow - the button on NPR-0013. Each decline is
   // its own write against its own request, so two of them at once is two writes, not a race.
   const [busy, setBusy] = useState<Record<string, boolean>>({});
   const isBusy = (id: string) => Boolean(busy[id]);
@@ -86,7 +86,7 @@ export default function NewProducts() {
             cells: [
               <>{r.name}<small>{r.id} · {r.at}</small></>,
               LOC[r.forLoc].n,
-              <span className="mini" style={{ whiteSpace: "normal" }}>{r.why || "—"}</span>,
+              <span className="mini" style={{ whiteSpace: "normal" }}>{r.why || "-"}</span>,
               r.by,
               <>
                 <Pill tone={tone(r.st)}>{r.st}</Pill>
@@ -107,7 +107,7 @@ export default function NewProducts() {
                     {isBusy(r.id) ? "Declining…" : "Decline"}
                   </Btn>
                 </div>
-              ) : <span className="dim">—</span>,
+              ) : <span className="dim">-</span>,
             ],
           }))}
           empty={{

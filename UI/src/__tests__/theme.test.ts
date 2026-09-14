@@ -3,7 +3,7 @@ import { useApp } from "../store";
 import { THEME_KEY, applyTheme, nextTheme, readStoredTheme, storeTheme } from "../lib/theme";
 import { signedOut } from "./fixture";
 
-/** A Storage that refuses every operation — a private window, or site data blocked. */
+/** A Storage that refuses every operation - a private window, or site data blocked. */
 const hostileStorage = (): Storage =>
   ({
     getItem() { throw new DOMException("denied"); },

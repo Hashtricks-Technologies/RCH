@@ -3,7 +3,7 @@ import { routes } from "@rch/contract";
 import { mount } from "../../routes.js";
 import { createRequisitionsService } from "./service.js";
 
-// The central store asks and procurement decides — or, with a reason, adds to its own list. Neither is location-scoped: there is one
+// The central store asks and procurement decides - or, with a reason, adds to its own list. Neither is location-scoped: there is one
 // central store and one buyer, and every requisition is raised against the same shelf.
 export default fp(async (app) => {
   const svc = createRequisitionsService(app.db);

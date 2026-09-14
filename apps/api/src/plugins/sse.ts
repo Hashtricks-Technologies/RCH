@@ -13,7 +13,7 @@ declare module "fastify" {
       publish(n: ChangeNotice): void;
       resync(): void;
       clients(): number;
-      /** LISTEN connections this pod is holding — one while it is healthy. A second would hear
+      /** LISTEN connections this pod is holding - one while it is healthy. A second would hear
        *  the same channel and deliver every notice twice, and a leaked one is invisible from
        *  outside the process, so the reconnect test counts them here. */
       listeners(): number;
@@ -33,7 +33,7 @@ const BACKOFF_MS = [250, 500, 1000, 2000, 5000, 10_000];
  * How many streams one signed-in person may hold open at once.
  *
  * A stream is a socket and a slot in every broadcast for as long as it lives, and the global
- * rate limiter cannot see it — the limiter is off for this route, because a request
+ * rate limiter cannot see it - the limiter is off for this route, because a request
  * that lasts an hour is the wrong shape for a per-minute budget. Eight is far above a real
  * counter (a till, a spare tab, a phone) and far below what a reconnect loop with a bug in it
  * would open in a minute, which is the failure this bounds.
@@ -65,7 +65,7 @@ export default fp<{ config: Config; searchPath?: string }>(async (app, { config,
 
   // ---- the one connection that hears Postgres ---------------------------------
   /** Every connection opened and not yet ended. There is only ever meant to be one; the set is
-   *  what makes a second one — which would double every notice — visible and closeable. */
+   *  what makes a second one - which would double every notice - visible and closeable. */
   const connections = new Set<Client>();
   let client: Client | null = null;
   let stopped = false;
@@ -86,7 +86,7 @@ export default fp<{ config: Config; searchPath?: string }>(async (app, { config,
     connecting = true;
     /** The connection this attempt opened, until it takes. Whatever is still here at the end
      *  never became the listener, and `scheduleReconnect` below is the one path that gives it
-     *  back — ending it here as well would call `end()` twice on the same client. */
+     *  back - ending it here as well would call `end()` twice on the same client. */
     let opened: Client | null = null;
     let failed = false;
     try {
@@ -95,7 +95,7 @@ export default fp<{ config: Config; searchPath?: string }>(async (app, { config,
         ssl: pgSsl(config.databaseSsl),
         options: searchPath ? `-c search_path=${searchPath}` : undefined,
         // The schema rides along so `pg_stat_activity` says which listener is which when
-        // several share one database — every test file does, and so would two releases
+        // several share one database - every test file does, and so would two releases
         // passing each other mid-rollout.
         application_name: searchPath ? `rch-api-events ${searchPath.split(",")[0]}` : "rch-api-events",
       });
@@ -198,7 +198,7 @@ export default fp<{ config: Config; searchPath?: string }>(async (app, { config,
       connection: "keep-alive",
       "x-accel-buffering": "no",
       // writeHead goes straight to the socket, past everything plugins/logging.ts's onRequest
-      // hook put on the reply — so the header a client correlates a report by is set again here.
+      // hook put on the reply - so the header a client correlates a report by is set again here.
       "x-request-id": String(req.id),
     });
     const stream: Stream = {
@@ -209,7 +209,7 @@ export default fp<{ config: Config; searchPath?: string }>(async (app, { config,
     perUser.set(who, (perUser.get(who) ?? 0) + 1);
     app.metrics.sseClients.set(streams.size);
     // The hijack takes this response out of `onResponse`, so plugins/logging.ts will never
-    // write its access line and plugins/metrics.ts will never time it — right for a request
+    // write its access line and plugins/metrics.ts will never time it - right for a request
     // that lasts an hour, but the operator should still see a stream open and close.
     req.log.info({ route: EVENTS_PATH, method: req.method, user: req.user.sub }, "stream open");
     const drop = () => {
@@ -233,7 +233,7 @@ export default fp<{ config: Config; searchPath?: string }>(async (app, { config,
 
   // ---- shutdown ------------------------------------------------------
   /** Let every open stream go, with a hint about when to come back, and stop listening.
-   *  Fastify's forceCloseConnections: "idle" will not touch a socket a stream is holding —
+   *  Fastify's forceCloseConnections: "idle" will not touch a socket a stream is holding -
    *  `server.close()` only reaps a connection once its response has ended, so ending them is
    *  what lets SIGTERM finish inside the grace period. */
   async function shutdown(): Promise<void> {
@@ -249,14 +249,14 @@ export default fp<{ config: Config; searchPath?: string }>(async (app, { config,
     // Every connection, not just the current one: a pod that goes down mid-reconnect must not
     // leave a backend behind holding a LISTEN. Bounded, because a graceful end on a socket
     // that is black-holed rather than closed never completes, and SIGTERM must not wait on it
-    // past the grace period — the process is going away, and the backend goes with it.
+    // past the grace period - the process is going away, and the backend goes with it.
     const ends = [...connections].map((c) => c.end().catch(() => {}));
     connections.clear();
     client = null;
     await Promise.race([Promise.all(ends), new Promise((r) => { setTimeout(r, 2000).unref(); })]);
   }
   // `preClose`, not `onClose`: Fastify registers its own close handler last (at preReady) and
-  // avvio runs them in reverse, so its handler — the one that calls `server.close()` — runs
+  // avvio runs them in reverse, so its handler - the one that calls `server.close()` - runs
   // *before* every plugin's `onClose`. A stream ended from `onClose` would be ended after the
   // server had already sat down to wait for it, and close() would hang on its own socket.
   // `preClose` hooks run inside that handler, ahead of the server closing.

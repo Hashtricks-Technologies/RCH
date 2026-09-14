@@ -36,22 +36,22 @@ describe("parsePayerCsv", () => {
     // And every bad one is named by the line an editor shows and the column that is wrong,
     // so one run tells the administrator everything to fix.
     expect(errors).toEqual([
-      { row: 3, column: "kind", message: '"patinet" is not a payer kind — use one of patient, staff, dept' },
-      { row: 7, column: "id", message: "an id is required — it is the hospital's own number, not one this tool invents" },
+      { row: 3, column: "kind", message: '"patinet" is not a payer kind - use one of patient, staff, dept' },
+      { row: 7, column: "id", message: "an id is required - it is the hospital's own number, not one this tool invents" },
     ]);
   });
 
   it("reads a file Excel saved as CSV UTF-8, byte-order mark and all", () => {
     // Excel's "CSV UTF-8" writes a BOM. Without stripping it the first cell reads "\ufeffkind",
     // so the header is not recognised and the file's first real payer is reported as a bad kind
-    // — naming a character the administrator cannot see in their editor.
+    // - naming a character the administrator cannot see in their editor.
     const { rows, errors } = parsePayerCsv("\ufeffkind,id,name\r\nstaff,E8301,Excel Export\r\n");
     expect(errors).toEqual([]);
     expect(rows).toEqual([{ kind: "staff", id: "E8301", name: "Excel Export" }]);
   });
 
   it("still finds the header under a comment or a blank line at the top of the file", () => {
-    // The header is the first line that carries anything, not literally line one — a file that
+    // The header is the first line that carries anything, not literally line one - a file that
     // opens with a note about where the export came from must not lose it.
     const { rows, errors } = parsePayerCsv([
       "# exported from payroll, 11-Sep-2026",

@@ -1,4 +1,4 @@
-// Pos: SQL only. No rules, no transaction of its own — service.ts passes `tx` in.
+// Pos: SQL only. No rules, no transaction of its own - service.ts passes `tx` in.
 import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import type { PayerKind } from "@rch/contract";
 import type { OvrMap, Prices, RsvMap, StockMap } from "@rch/domain";
@@ -63,7 +63,7 @@ export const posRepo = {
    *
    * `creditTakenThisMonth` (apps/api/src/lib/credit.ts) sums bills that are already committed,
    * so two tills reading in the same instant both see the room that existed before either of
-   * them wrote — and both fit under a ceiling only one of them fits under. There is no row to
+   * them wrote - and both fit under a ceiling only one of them fits under. There is no row to
    * lock instead: the read is a sum over bills that do not exist yet. A transaction-scoped
    * advisory lock on the payer is the narrowest thing that serialises exactly that pair, and
    * Postgres releases it when the transaction ends, whichever way it ends.
@@ -90,7 +90,7 @@ export const posRepo = {
     return rows.sort((a, b) => a.lineNo - b.lineNo);
   },
 
-  /** Read back after `postMoves` has taken the locks — the only number a sale may trust. */
+  /** Read back after `postMoves` has taken the locks - the only number a sale may trust. */
   async onHandAt(tx: Tx, loc: string, itemKeys: string[]): Promise<Record<string, number>> {
     if (itemKeys.length === 0) return {};
     const rows = await tx.select().from(stockBalances)
@@ -99,7 +99,7 @@ export const posRepo = {
   },
 
   // ---- bill void ----
-  /** The bill being decided, locked first — the document, ahead of every other lock this write
+  /** The bill being decided, locked first - the document, ahead of every other lock this write
    *  takes (the order every module keeps). Two managers pressing Void on the same bill queue
    *  here, and the second reads the `voided_at` the first wrote. */
   async headForUpdate(tx: Tx, no: string): Promise<BillRow | undefined> {
@@ -110,7 +110,7 @@ export const posRepo = {
   /**
    * The sale's own moves, the rows the void will reverse one for one.
    *
-   * A read of `stock_moves` from a repo, which is allowed — what `lib/ledger.ts` owns is writing
+   * A read of `stock_moves` from a repo, which is allowed - what `lib/ledger.ts` owns is writing
    * it. Reading is how a reversal knows where the stock came off: the move carries its own `loc`
    * and item, so a made-to-order bill explodes back into exactly the ingredients the sale took
    * rather than into a portion of a dish no shelf ever held. Ordered by id so the reversals are
@@ -123,7 +123,7 @@ export const posRepo = {
       .orderBy(asc(stockMoves.id));
   },
 
-  /** A bill's lines, in the order the counter scanned them — what `toWireBill` prints. Read
+  /** A bill's lines, in the order the counter scanned them - what `toWireBill` prints. Read
    *  back rather than kept, because a void answers with the whole bill, badged. */
   async billLines(tx: Tx, no: string): Promise<BillLineRow[]> {
     return tx.select().from(billLines).where(eq(billLines.billNo, no)).orderBy(asc(billLines.lineNo));

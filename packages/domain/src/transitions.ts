@@ -1,7 +1,7 @@
 import type { PoStatus, PordStatus, PrqStatus, ReqStatus, ShopAskStatus, TktStatus } from "@rch/contract";
 
 /**
- * Status transitions are data, shared by both sides. One table, two consumers —
+ * Status transitions are data, shared by both sides. One table, two consumers -
  * the server refuses anything not listed, and the frontend reads the same table to decide
  * which buttons to render. A transition the UI offers but the server refuses is impossible
  * by construction.
@@ -15,7 +15,7 @@ export const REQUEST_TRANSITIONS: TransitionTable<ReqStatus> = {
   "Partially approved": ["Ticket issued", "Cancelled"],
   "Ticket issued": ["Collected"],
   Collected: ["Closed"],
-  // No path puts a request in Received today — the ticket carries that word, the request goes
+  // No path puts a request in Received today - the ticket carries that word, the request goes
   // straight from Collected to Closed when the shelf confirms. Kept reachable to Closed so a
   // migrated or hand-corrected row is not stranded.
   Received: ["Closed"],
@@ -27,7 +27,7 @@ export const REQUEST_TRANSITIONS: TransitionTable<ReqStatus> = {
 export const TICKET_TRANSITIONS: TransitionTable<TktStatus> = {
   // A ticket that was never collected can be withdrawn, which releases the hold it placed.
   // Once it has been handed over the stock is in transit and the way back is a receipt and
-  // then a movement of its own — not an undo.
+  // then a movement of its own - not an undo.
   Issued: ["Collected", "Cancelled"],
   Collected: ["Received"],
   Received: [],
@@ -36,7 +36,7 @@ export const TICKET_TRANSITIONS: TransitionTable<TktStatus> = {
 
 /**
  * The kitchen's board. `Dispatched` is reachable from every open stage on purpose: the kitchen
- * sends an order out the moment it is ready to, whatever word the board is showing — the
+ * sends an order out the moment it is ready to, whatever word the board is showing - the
  * store's own `dispatchOrder` refuses only an order already gone or turned down. The rest is
  * the `setOrderStatus` walk, written down now so Phase 4's status endpoint and the
  * board's buttons read one table.
@@ -64,7 +64,7 @@ export const SHOP_ASK_TRANSITIONS: TransitionTable<ShopAskStatus> = {
 };
 
 /** A requisition is decided once, and everything after the decision happens on the purchase
- *  orders that claim against it — `ordered_qty` moves, the status does not. */
+ *  orders that claim against it - `ordered_qty` moves, the status does not. */
 export const REQUISITION_TRANSITIONS: TransitionTable<PrqStatus> = {
   Sent: ["Approved", "Partially approved", "Declined"],
   Approved: [],
@@ -75,7 +75,7 @@ export const REQUISITION_TRANSITIONS: TransitionTable<PrqStatus> = {
 /**
  * A purchase order's life. Two rows read oddly and are deliberate:
  *
- * `Partially received -> Partially received` is a real edge — a second instalment that still
+ * `Partially received -> Partially received` is a real edge - a second instalment that still
  * does not complete the order re-enters the status it was already in, and the status is computed
  * from the totals rather than from where it started.
  *

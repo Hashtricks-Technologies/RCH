@@ -1,4 +1,4 @@
-// Purchase orders: SQL only. No rules, no transaction of its own — service.ts passes `tx` in.
+// Purchase orders: SQL only. No rules, no transaction of its own - service.ts passes `tx` in.
 //
 // This module and `grn` split `po_lines` by column: everything here writes `qty`, `rate` and a
 // line's sources and never `received_qty`/`rejected_qty`; the receipt module writes those two
@@ -14,7 +14,7 @@ import { poLines, poLineSources, purchaseOrders, rateContracts, requisitionLines
 export type PoRow = typeof purchaseOrders.$inferSelect;
 export type NewPo = typeof purchaseOrders.$inferInsert;
 export type VendorRow = typeof vendors.$inferSelect;
-/** One line as every rule in this module reads it — what was ordered, at what rate, and what
+/** One line as every rule in this module reads it - what was ordered, at what rate, and what
  *  has already arrived against it (read-only here; `grn` is what moves it). */
 export type PoLineRow = { it: string; qty: number; rate: number; recv: number; rejected: number };
 export type PrqLines = { status: PrqStatus; lines: { it: string; appr: number; ordered: number }[] };
@@ -29,7 +29,7 @@ export const purchaseOrdersRepo = {
    * The head, read **for update**. Every write in this module but `create` opens here, so the
    * order's row is held to the end of the transaction: two buyers pressing Send together queue
    * on this line and the second reads the status the first committed. It is also the first half
-   * of the phase's document lock order — the order's row before any requisition's.
+   * of the phase's document lock order - the order's row before any requisition's.
    */
   async head(tx: Tx, id: string): Promise<PoRow | undefined> {
     const [o] = await tx.select().from(purchaseOrders).where(eq(purchaseOrders.id, id)).for("update");
@@ -41,7 +41,7 @@ export const purchaseOrdersRepo = {
     return rows.map((l) => ({ it: l.itemKey, qty: l.qty, rate: l.rate, recv: l.receivedQty, rejected: l.rejectedQty }));
   },
 
-  /** Each line's sources, in the order the buyer picked them — which is the order
+  /** Each line's sources, in the order the buyer picked them - which is the order
    *  `releaseClaim` walks backwards. */
   async sources(tx: Tx, id: string): Promise<Map<number, ClaimSrc[]>> {
     const rows = await tx.select().from(poLineSources).where(eq(poLineSources.poId, id))

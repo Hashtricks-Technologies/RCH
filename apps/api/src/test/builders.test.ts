@@ -108,7 +108,7 @@ describe("given", () => {
     const id = await given.supportTicket(t.db, { by: "u1", subject: "Cash reads zero", messages: [{ from: "user", body: "Since 09:00." }] });
     expect(id).toMatch(/^SUP-00\d+$/);
     // The fixtures stop at SUP-0043 and the sequence starts at 44; `nextId` pads to four, so the
-    // builder's band is SUP-000101+ — above both, and a builder-made ticket can collide with
+    // builder's band is SUP-000101+ - above both, and a builder-made ticket can collide with
     // neither a seeded one nor an allocated one. Read the number off the prefix, not off the
     // tail: the tail of the builder's 900th id is "000", which is not the number at all.
     expect(Number(id.slice("SUP-00".length))).toBeGreaterThan(100);

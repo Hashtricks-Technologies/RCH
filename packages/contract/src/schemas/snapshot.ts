@@ -5,7 +5,7 @@ import * as D from "./documents.js";
 // Not every caller sees every location - a counter operator's snapshot is scoped down to their
 // own (`scope()`), so this can't require all keys the way an exhaustive z.record(enum, ...) would.
 const byLoc = <T extends z.ZodTypeAny>(v: T) => z.partialRecord(LocKeySchema, v);
-/** Stock is reported for quarantine too — the store keeper has to see what was rejected — while
+/** Stock is reported for quarantine too - the store keeper has to see what was rejected - while
  *  `menu` and every write body stay on the five an operator may act on. */
 const byStockLoc = <T extends z.ZodTypeAny>(v: T) => z.partialRecord(StockLocSchema, v);
 export const SnapshotSchema = z.object({
@@ -13,7 +13,7 @@ export const SnapshotSchema = z.object({
   items: z.record(z.string(), D.ItemSchema),
   locations: z.record(z.string(), D.LocationSchema),
   recipes: z.record(z.string(), D.RecipeSchema),
-  users: z.array(D.UserMinSchema),   // the directory, not a contact list — `user` above is the caller's own, whole
+  users: z.array(D.UserMinSchema),   // the directory, not a contact list - `user` above is the caller's own, whole
   roster: D.PayerRosterSchema,       // the other directory of people: who a bill may be charged to
   stock: byStockLoc(z.record(z.string(), Qty)),
   rsv: z.record(z.string(), Qty),          // "loc:item" -> reserved
@@ -44,7 +44,7 @@ export const RecipesResponseSchema = z.record(z.string(), D.RecipeSchema);
 export const PricesResponseSchema = SnapshotSchema.shape.prices;
 export const MenusResponseSchema = SnapshotSchema.shape.menu;
 export const StockResponseSchema = z.strictObject({ stock: SnapshotSchema.shape.stock, rsv: SnapshotSchema.shape.rsv, ovr: SnapshotSchema.shape.ovr });
-/** How many days of bills a caller gets — the snapshot's window and `GET /bills`'s default,
+/** How many days of bills a caller gets - the snapshot's window and `GET /bills`'s default,
  *  one number so that `applyBills` replacing the store's list wholesale stays correct. */
 export const BILL_DAYS = 7;
 export const BillsResponseSchema = z.array(D.BillSchema);
@@ -74,8 +74,8 @@ export const SupportTicketsResponseSchema = z.array(D.SupportTicketSchema);
  *  the store and the buyer never open a payer picker and read an empty one (`scopeRoster`). */
 export const RosterResponseSchema = D.PayerRosterSchema;
 /** The **whole** register, active rows and closed ones together, for the one role that keeps it.
- *  `roster` above is what a till reads and carries live payers only — a closed account must
- *  never reach a payer picker — so a manager who wants to reopen one closed last week has
+ *  `roster` above is what a till reads and carries live payers only - a closed account must
+ *  never reach a payer picker - so a manager who wants to reopen one closed last week has
  *  nothing to open. Two reads rather than an `active` flag on the roster, because the till's
  *  list stopping at "active" is the whole point of it. */
 export const PayersResponseSchema = z.array(D.PayerRecordSchema);

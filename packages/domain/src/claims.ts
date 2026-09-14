@@ -4,7 +4,7 @@ import { round3 } from "./round.js";
 /**
  * A purchase-order line's claim on the requisition lines that funded it.
  *
- * The procurement list is derived — approved less ordered, `procurementList` in the frontend —
+ * The procurement list is derived - approved less ordered, `procurementList` in the frontend -
  * so there is no pool to keep in sync: moving `requisition_lines.ordered_qty` is the only thing
  * that adds to it or takes from it. These three functions are the whole of that arithmetic, and
  * both sides read them: the server settles the claim, the buyer's screen previews what a change
@@ -34,7 +34,7 @@ export function releaseClaim(src: readonly ClaimSrc[], give: number): { released
   return { released, left };
 }
 
-/** Every delta against the same requisition line, added up and sorted by (requisition, line) —
+/** Every delta against the same requisition line, added up and sorted by (requisition, line) -
  *  which is also the order a writer takes its row locks in. */
 export function foldClaims(src: readonly ClaimSrc[]): ClaimSrc[] {
   const by = new Map<string, ClaimSrc>();
@@ -47,7 +47,7 @@ export function foldClaims(src: readonly ClaimSrc[]): ClaimSrc[] {
   return [...by.values()].sort((a, b) => a.prq.localeCompare(b.prq) || a.line - b.line);
 }
 
-/** What never arrived, per line, released last source first — a close-short's whole answer.
+/** What never arrived, per line, released last source first - a close-short's whole answer.
  *  Measured against what was **accepted** (`netReceived`): a rejected quantity went to
  *  quarantine rather than onto the shelf, so it is still part of the balance the store keeper
  *  asked for and it goes back on the procurement list with the rest of the shortfall. */

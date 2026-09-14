@@ -25,7 +25,7 @@ function stream() {
 /**
  * The shell's connection pill, mounted for real. `useStreamState` is a subscription, so the
  * only honest way to read what the operator is being told is to render something that uses it
- * — reading the module's variable would prove the module talks to itself.
+ * - reading the module's variable would prove the module talks to itself.
  */
 function mountPill() {
   // Written in an effect, not during the render: what a committed render actually put on the

@@ -16,7 +16,7 @@ describe("users-admin", () => {
   it("creates a user who must change their password, with the next id in the series", async () => {
     const { id } = await createUser(t.db, { emp: "RC-9001", name: "Anitha R", email: "anitha.r@royalcare.in", role: "counter", loc: "rest", password: "temporary-pass-1" });
     // The seed now runs to u7 (the dedicated admin account, root CLAUDE.md), so the next id
-    // this series hands out is u8 — matching the fixture's own length, not a literal.
+    // this series hands out is u8 - matching the fixture's own length, not a literal.
     expect(id).toBe(`u${FX.USERS.length + 1}`);
     const [u] = await t.db.select().from(users).where(eq(users.id, id));
     expect(u.mustChangePassword).toBe(true); expect(u.roleLabel).toBe("Counter Operator"); expect(await verifyPassword(u.passwordHash, "temporary-pass-1")).toBe(true);
@@ -70,7 +70,7 @@ describe("users-admin", () => {
     await expect(deactivateUser(t.db, "RC-0000")).rejects.toThrow(/RC-0000/);
   });
 
-  it("every refusal is a proper AppError, not a bare Error — the right status for an HTTP caller", async () => {
+  it("every refusal is a proper AppError, not a bare Error - the right status for an HTTP caller", async () => {
     await expect(createUser(t.db, { emp: "RC-4471", name: "X", email: "x@x", role: "counter", loc: "rest", password: "temporary-pass-1" })).rejects.toThrow(ConflictError);
     await expect(createUser(t.db, { emp: "RC-9010", name: "X", email: "x@x", role: "counter", loc: "attic" as never, password: "temporary-pass-1" })).rejects.toThrow(ValidationError);
     await expect(createUser(t.db, { emp: "RC-9011", name: "X", email: "x@x", role: "prod", loc: "coffee", password: "temporary-pass-1" })).rejects.toThrow(ValidationError);

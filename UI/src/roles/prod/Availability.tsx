@@ -17,7 +17,7 @@ export default function Availability() {
   const [sw, setSw] = useState<SwitchF>("All");
 
   // What the kitchen makes, plus any other finished good it happens to be holding. The first
-  // half came off the master rather than a three-key literal — see `madeItems()`.
+  // half came off the master rather than a three-key literal - see `madeItems()`.
   const all = useMemo(() => {
     void s.catalogVersion;
     const made = madeItems();
@@ -48,7 +48,7 @@ export default function Availability() {
 
       <Alert tone="i" label="SCOPE">
         This switch is the kitchen's own. Turning a product off here means the Central Kitchen is not
-        making it and will not issue it today — outlets keep selling whatever they already hold, and each
+        making it and will not issue it today - outlets keep selling whatever they already hold, and each
         counter still has its own on/off switch.
       </Alert>
 
@@ -81,7 +81,7 @@ export default function Availability() {
               key: k,
               cells: [
                 <>{IT[k]?.n ?? k}<small>{IT[k]?.c ?? ""} · shelf life {IT[k]?.sl ?? 0} h</small></>,
-                <Tag kind="md">{IT[k]?.t ?? "—"}</Tag>,
+                <Tag kind="md">{IT[k]?.t ?? "-"}</Tag>,
                 <b>{fq(qty(s, "kitchen", k), k)}</b>,
                 a.ok
                   ? <Pill tone="ok">On · {a.left}</Pill>

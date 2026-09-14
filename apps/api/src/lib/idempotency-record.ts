@@ -6,16 +6,16 @@ import type { Tx } from "./db.js";
 /** How long a recorded outcome stays replayable. Defined here rather than in the plugin because
  *  both the record inside the transaction and `onSend`'s fallback push the same window out. */
 export const TTL_MS = 24 * 3600_000;
-/** `response` is `jsonb not null`, so an empty body has to be stored as the JSON literal `null` —
+/** `response` is `jsonb not null`, so an empty body has to be stored as the JSON literal `null` -
  *  handing drizzle a JS `null` would write an SQL NULL and break the constraint. */
 export const JSON_NULL = sql`'null'::jsonb`;
 
 /** What `mount()` says when a write's answer never reached its claim row and no more specific
- *  cause is known — the write ran no transaction at all. The cause-specific sentences are built
+ *  cause is known - the write ran no transaction at all. The cause-specific sentences are built
  *  by `recordIdempotent` below. */
 export const NOT_RECORDED = "a write's response was not recorded inside its own transaction";
 
-/** `{ ok: true }`, or why the response is not in the claim row — a sentence a log line or a
+/** `{ ok: true }`, or why the response is not in the claim row - a sentence a log line or a
  *  thrown error can carry as it stands. */
 export type RecordOutcome = { ok: true } | { ok: false; why: string };
 
@@ -25,8 +25,8 @@ export type RecordOutcome = { ok: true } | { ok: false; why: string };
  *
  * That placement is the whole point: the row is committed by the same COMMIT that commits the
  * bill, so there is no instant at which the write has happened and the key does not know it.
- * Everything that used to stand between the two — the pod staying alive, the pool handing out a
- * second connection, the response surviving its own serializer — is out of the picture.
+ * Everything that used to stand between the two - the pod staying alive, the pool handing out a
+ * second connection, the response surviving its own serializer - is out of the picture.
  *
  * The value is validated against the route's response schema first, and what is stored is the
  * *parsed* value, so a replay serialises byte-for-byte what the first attempt sent. A value the
@@ -37,7 +37,7 @@ export type RecordOutcome = { ok: true } | { ok: false; why: string };
  * The UPDATE is guarded `committed_at is null` for the takeover race. A request slow enough to
  * be declared abandoned (`CLAIM_STALE_MS`) has its claim taken over and the write re-run; if the
  * original then finishes, it must not overwrite the winner's committed answer with its own. Zero
- * rows updated says exactly that happened, and `false` comes back — which in development and test
+ * rows updated says exactly that happened, and `false` comes back - which in development and test
  * rolls the straggler's own write back, where it belongs.
  */
 export async function recordIdempotent(tx: Tx, ctx: IdemContext, value: unknown): Promise<RecordOutcome> {
@@ -45,7 +45,7 @@ export async function recordIdempotent(tx: Tx, ctx: IdemContext, value: unknown)
   if (!parsed.success) {
     const issue = parsed.error.issues[0];
     const where = issue?.path.join("/") || "the response";
-    return { ok: false, why: `a write's response failed its own schema: ${where} — ${issue?.message ?? "did not match"}` };
+    return { ok: false, why: `a write's response failed its own schema: ${where} - ${issue?.message ?? "did not match"}` };
   }
   const body = parsed.data as unknown;
   const done = await tx.update(idempotencyKeys)

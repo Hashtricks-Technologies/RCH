@@ -38,7 +38,7 @@ export function storeTheme(pref: ThemePref, storage?: Storage): void {
     if (pref === "system") s.removeItem(THEME_KEY);
     else s.setItem(THEME_KEY, pref);
   } catch {
-    /* nothing to persist to — the preference still applies for this session */
+    /* nothing to persist to - the preference still applies for this session */
   }
 }
 

@@ -18,7 +18,7 @@ function TicketDrawer({ id }: DrawerProps) {
   const [otp, setOtp] = useState("");
   const [override, setOverride] = useState(false);
   // A handover is a server call now, and the stock only leaves once. A second tap inside one
-  // round trip would post a second `ticket_out` — refused, but as an error the window reads as
+  // round trip would post a second `ticket_out` - refused, but as an error the window reads as
   // its own mistake. One tap, one handover.
   const [busy, setBusy] = useState(false);
   const handOver = async (otpOrNone?: string) => {
@@ -55,8 +55,8 @@ function TicketDrawer({ id }: DrawerProps) {
    *
    * It read the request's, where the words are different: a request says "Ticket issued", so
    * `when("Issued")` never matched and the first step on this panel has shown no time since the
-   * panel existed. A ticket's trail says "Issued", "Handed over" (or "Handed over — supervisor
-   * override") and "Received" — `document_history`, on the wire since Phase 6 — so the step's
+   * panel existed. A ticket's trail says "Issued", "Handed over" (or "Handed over - supervisor
+   * override") and "Received" - `document_history`, on the wire since Phase 6 - so the step's
    * name is matched against the ticket's word for it rather than against itself.
    */
   const STEP_WORD: Record<(typeof STEPS)[number], (h: string) => boolean> = {
@@ -67,7 +67,7 @@ function TicketDrawer({ id }: DrawerProps) {
   const when = (step: (typeof STEPS)[number]) => t.hist.find((h) => STEP_WORD[step](h.s))?.t;
   const body: Record<string, string> = {
     Issued: `Stock reserved in ${LOC[t.from].n} and the ticket printed at the window.`,
-    Collected: `OTP verified at the store window — quantities left ${LOC[t.from].n}.`,
+    Collected: `OTP verified at the store window - quantities left ${LOC[t.from].n}.`,
     Received: `${LOC[t.to].n} confirms the goods on the shelf and the request closes.`,
   };
 
@@ -86,7 +86,7 @@ function TicketDrawer({ id }: DrawerProps) {
           ) : (
             <span className="mini">
               {t.st === "Collected" ? "Waiting on the receiving counter"
-                : t.st === "Cancelled" ? "Withdrawn — nothing was collected against it" : "Closed"}
+                : t.st === "Cancelled" ? "Withdrawn - nothing was collected against it" : "Closed"}
             </span>
           )}
         </>
@@ -201,7 +201,7 @@ function TicketDrawer({ id }: DrawerProps) {
       {t.st === "Cancelled" ? (
         <div className="mtop">
           <Alert tone="w" label="CANCELLED">
-            This ticket was withdrawn before it was collected — the stock never left {LOC[t.from].n}
+            This ticket was withdrawn before it was collected - the stock never left {LOC[t.from].n}
             and the hold against it has been released.
           </Alert>
         </div>

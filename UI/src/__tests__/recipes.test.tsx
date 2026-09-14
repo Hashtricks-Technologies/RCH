@@ -36,12 +36,12 @@ const calls = () => fetchMock.mock.calls.map((c) => {
 beforeEach(() => { resetStore(); fetchMock.mockReset(); vi.stubGlobal("fetch", fetchMock); });
 afterEach(() => { vi.unstubAllGlobals(); });
 
-describe("saveRecipe — PUT /recipes/:it", () => {
+describe("saveRecipe - PUT /recipes/:it", () => {
   const SAVED = { ov: 10, l: [["milk", 0.2], ["cup", 1]] as [string, number][] };
 
   it("sends the whole recipe, reads the book back, and shows the server's sentence", async () => {
     as("prod");
-    const message = "Cappuccino's recipe changed — 2 ingredients, ₹12.12 a unit";
+    const message = "Cappuccino's recipe changed - 2 ingredients, ₹12.12 a unit";
     serve({
       "PUT /api/v1/recipes/capp": () => json({ result: { key: "capp", recipe: SAVED }, changed: ["recipes"], message }),
       "GET /api/v1/recipes": () => json({ ...FX.RCP, capp: SAVED }),
@@ -70,7 +70,7 @@ describe("saveRecipe — PUT /recipes/:it", () => {
     as("prod");
     fetchMock.mockRejectedValue(new TypeError("Failed to fetch"));
     expect(await S().saveRecipe("capp", { ov: 10, lines: [{ it: "milk", qty: 0.2 }] })).toBe(false);
-    expect(S().toast).toBe("Could not save the recipe — check the connection and try again.");
+    expect(S().toast).toBe("Could not save the recipe - check the connection and try again.");
   });
 });
 

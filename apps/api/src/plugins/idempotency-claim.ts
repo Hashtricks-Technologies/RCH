@@ -8,10 +8,10 @@ export type ClaimOutcome =
 /**
  * The one rule this loop exists to enforce: a request may proceed only while it holds a
  * claim row. `ops.tryInsert` either wins the row outright or (on conflict) `ops.lookup`
- * reads what is there — and if that finds nothing, the row was purged between the two
+ * reads what is there - and if that finds nothing, the row was purged between the two
  * statements (deleted by `onSend` for a 429/503, most commonly). That used to be treated as
  * "nobody's claiming it, run anyway"; that is exactly the bare-run hole this module closes.
- * Finding nothing is not a green light — it is a reason to retry the insert, because the
+ * Finding nothing is not a green light - it is a reason to retry the insert, because the
  * only way to hold a claim is to either insert it or take over a stale one.
  */
 export async function resolveClaim(ops: {

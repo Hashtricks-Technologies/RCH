@@ -10,12 +10,12 @@ import { IT } from "../data/master";
 import { as, resetStore, signedOut } from "./fixture";
 
 // The store starts empty now and the registries with it, so the roles this suite iterates come
-// from the fixtures — a test file is where they belong — and every case seeds the demo hospital
+// from the fixtures - a test file is where they belong - and every case seeds the demo hospital
 // before it renders anything.
 beforeEach(resetStore);
 
 /**
- * Renders the WHOLE app — router, Shell and screen together.
+ * Renders the WHOLE app - router, Shell and screen together.
  * The bare-screen tests miss anything that only breaks inside the shell.
  */
 function mountApp(route: string) {
@@ -33,7 +33,7 @@ function mountApp(route: string) {
 
 describe("the whole app mounts for every role on every route", () => {
   // Not the admin-flagged fixture account: it has no operational nav at all (a capability, not
-  // a role — root CLAUDE.md), so this loop would otherwise generate a duplicate `buyer/...`
+  // a role - root CLAUDE.md), so this loop would otherwise generate a duplicate `buyer/...`
   // case for it under a role it never actually renders. Its own routing is covered below.
   for (const u of USERS.filter((u) => !u.admin)) {
     for (const k of NAV[u.r].flatMap((g) => g.items.map((i) => i.k))) {
@@ -41,7 +41,7 @@ describe("the whole app mounts for every role on every route", () => {
         act(() => { as(u.r); });
         const html = mountApp("/" + k);
         // the shell itself must be present, not just the screen
-        expect(html, "sidebar missing — the shell did not render").toContain("Royal Care");
+        expect(html, "sidebar missing - the shell did not render").toContain("Royal Care");
         // every role can put the sidebar away, and get it back
         expect(html, "no way to hide the sidebar").toContain('aria-label="Hide the sidebar"');
         expect(html, "no way to bring the sidebar back").toContain('aria-label="Show the sidebar"');
@@ -79,11 +79,11 @@ describe("routing", () => {
     expect(html).toContain("Manage staff accounts is not available to an Outlet Manager");
   });
 
-  it("an admin-flagged account sees no operational shell at all — a capability, not a role", () => {
+  it("an admin-flagged account sees no operational shell at all - a capability, not a role", () => {
     act(() => { as("manager"); useApp.setState({ user: { ...useApp.getState().user!, admin: true } }); });
     const html = mountApp("/admin");
     expect(html).toContain("Create an account");
-    // No sidebar, no "Hide the sidebar" toggle — this account has no operational nav to hide.
+    // No sidebar, no "Hide the sidebar" toggle - this account has no operational nav to hide.
     expect(html).not.toContain('aria-label="Hide the sidebar"');
     expect(html).not.toContain("Approvals");
   });
@@ -128,7 +128,7 @@ describe("the header status dot and the offline banner", () => {
     // `background: var(--good)` in the stylesheet, so it read "all well" with the stream down.
     act(() => { as("counter"); });
     const { colour, label } = dot("/pos");
-    expect(colour).toBe("var(--ink-4)");          // "off" — no stream is running in a test
+    expect(colour).toBe("var(--ink-4)");          // "off" - no stream is running in a test
     expect(label).toContain("live updates");
   });
 
@@ -137,7 +137,7 @@ describe("the header status dot and the offline banner", () => {
     const online = Object.getOwnPropertyDescriptor(Navigator.prototype, "onLine");
     Object.defineProperty(navigator, "onLine", { value: false, configurable: true });
     try {
-      expect(mountApp("/pos")).toContain("No network — this terminal is offline");
+      expect(mountApp("/pos")).toContain("No network - this terminal is offline");
     } finally {
       Reflect.deleteProperty(navigator, "onLine");
       if (online) Object.defineProperty(Navigator.prototype, "onLine", online);
@@ -146,7 +146,7 @@ describe("the header status dot and the offline banner", () => {
 
   it("says nothing when the terminal is on the network", () => {
     act(() => { as("counter"); });
-    expect(mountApp("/pos")).not.toContain("No network — this terminal is offline");
+    expect(mountApp("/pos")).not.toContain("No network - this terminal is offline");
   });
 });
 
@@ -156,7 +156,7 @@ describe("the sidebar badge counts what is still coming", () => {
     act(() => { as("counter"); });
     expect(badge("/pos", "tickets")).toBe(1);
 
-    // Received and withdrawn are both nothing to go and collect — the badge counted the
+    // Received and withdrawn are both nothing to go and collect - the badge counted the
     // second for the rest of the day, because it only knew how to stop counting the first.
     act(() => { useApp.setState({ tkt: useApp.getState().tkt.map((t) => ({ ...t, st: "Received" as const })) }); });
     expect(badge("/pos", "tickets")).toBe(0);
@@ -164,7 +164,7 @@ describe("the sidebar badge counts what is still coming", () => {
     expect(badge("/pos", "tickets")).toBe(0);
   });
 
-  /** Every item that is ever reordered, carried well above its own reorder level — a clean
+  /** Every item that is ever reordered, carried well above its own reorder level - a clean
    *  zero baseline neither role's badge has to share with whatever the fixture happens to hold. */
   function clearReorder() {
     const store: Record<string, number> = {};
@@ -204,7 +204,7 @@ describe("the kitchen's approaching-best-before badge", () => {
   beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(t0); });
   afterEach(() => { vi.useRealTimers(); });
 
-  /** `puff`'s own shelf life is 12 hours (packages/contract/src/fixtures/master.ts) — a batch
+  /** `puff`'s own shelf life is 12 hours (packages/contract/src/fixtures/master.ts) - a batch
    *  made `hoursAgo` before `t0` is due `12 - hoursAgo` hours from `t0`. */
   const puffBatch = (id: string, hoursAgo: number) => ({
     id, it: "puff", qty: 10, made: 10, at: "10:00", bb: "note",
@@ -216,9 +216,9 @@ describe("the kitchen's approaching-best-before badge", () => {
     act(() => {
       useApp.setState({
         batch: [
-          puffBatch("B1", 0),     // due in 12h — not yet approaching
-          puffBatch("B2", 10.5),  // due in 1h30m — approaching
-          puffBatch("B3", 13),    // due 1h ago — already past
+          puffBatch("B1", 0),     // due in 12h - not yet approaching
+          puffBatch("B2", 10.5),  // due in 1h30m - approaching
+          puffBatch("B3", 13),    // due 1h ago - already past
         ],
       });
     });

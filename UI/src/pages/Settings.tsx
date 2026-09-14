@@ -6,7 +6,7 @@ import { Alert, Avatar, Btn, BtnRow, Card, Field, FormRow, Grid, PageHead, Switc
 import { applyPrefs, readPrefs, setPhoto, storePrefs, usePhoto, type Prefs } from "../ui/prefs";
 
 /* Only "compact" can act on its own. The other three are recorded honestly as a
-   stated preference — nothing on the server reads them yet, so nothing is sent. */
+   stated preference - nothing on the server reads them yet, so nothing is sent. */
 const PREFS: { k: keyof Prefs; t: string; d: string; live?: boolean }[] = [
   { k: "low", t: "Low stock alerts", d: "Items at your location that drop below par" },
   { k: "appr", t: "Approval notifications", d: "Documents that are waiting on your decision" },
@@ -28,8 +28,8 @@ export default function Settings() {
   const setTheme = useApp((s) => s.setTheme);
   const saveProfile = useApp((s) => s.saveProfile);
   const notify = useApp((s) => s.notify);
-  // An employee id is who the server thinks you are — it is the sign-in name, and `PATCH /me`
-  // does not take one — so it is shown and never offered as a box to retype.
+  // An employee id is who the server thinks you are - it is the sign-in name, and `PATCH /me`
+  // does not take one - so it is shown and never offered as a box to retype.
   const [form, setForm] = useState({ n: user.n, e: user.e, ph: user.ph });
   const [prefs, setPrefs] = useState<Prefs>(readPrefs);
   const photo = usePhoto();
@@ -43,7 +43,7 @@ export default function Settings() {
      it, and both are shown in the same place. The three boxes empty only once it has landed.
 
      `authError` is one field, written by `login` as well as by `changePassword`, and cleared
-     only on the *next* attempt at either — so a sign-in that was refused earlier in the shift is
+     only on the *next* attempt at either - so a sign-in that was refused earlier in the shift is
      still sitting in the store when this screen opens. `tried` is what keeps this card silent
      until it has actually asked for something: it is local, so leaving the screen and coming
      back puts the card back to saying nothing, and neither store action had to change. */
@@ -123,7 +123,7 @@ export default function Settings() {
             <Field label="Role" hint="Only an administrator can change a role."><input value={user.rl} readOnly /></Field>
             <Field label={user.r === "manager" || user.r === "buyer" ? "Scope" : "Home location"}>
               <input
-                value={homeLabel(user) ?? `${user.rl} — not tied to one counter`}
+                value={homeLabel(user) ?? `${user.rl} - not tied to one counter`}
                 readOnly
               />
             </Field>
@@ -165,7 +165,7 @@ export default function Settings() {
             </p>
           </Card>
           {/* No admin link here any more: an admin-flagged account never reaches Settings at
-              all now (App.tsx sends it to /admin regardless of the key it asked for) — a
+              all now (App.tsx sends it to /admin regardless of the key it asked for) - a
               capability, not a role (root CLAUDE.md), with its own standalone dashboard rather
               than a bonus tucked into an operational account's own screen. */}
           <div className="mtop" />
@@ -197,7 +197,7 @@ export default function Settings() {
               ))}
               <div className="hint" style={{ padding: "11px 15px 4px" }}>
                 Compact tables takes effect the moment you switch it on. The other three are kept on this
-                device and nothing sends from them yet — no alert or mail leaves the portal. Until they are
+                device and nothing sends from them yet - no alert or mail leaves the portal. Until they are
                 wired up, the screen that owns a figure is where you will see it change; raise it on the
                 support desk if something needs chasing.
               </div>

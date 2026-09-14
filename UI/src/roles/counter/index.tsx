@@ -14,7 +14,7 @@ import "./ConfigureDrawer";
 // ---- prod-order raise ----
 import "./KitchenOrderDrawer";
 
-// There is no standalone Product Availability screen for the counter — every
+// There is no standalone Product Availability screen for the counter - every
 // product's on/off state and switch live inline, on the POS tile and the
 // Stock in Hand card, behind the kebab menu.
 export const screens: Record<string, ComponentType> = {

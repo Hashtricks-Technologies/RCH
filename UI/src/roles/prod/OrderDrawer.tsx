@@ -25,7 +25,7 @@ function OrderDrawer({ id }: DrawerProps) {
     );
   }
 
-  // Free to promise, not on hand — the same measure the board's Dispatch control uses, so the
+  // Free to promise, not on hand - the same measure the board's Dispatch control uses, so the
   // two never disagree about whether this order can go out.
   const short = o.lines.filter((l) => avail(s, "kitchen", l.it) < l.qty);
 
@@ -42,7 +42,7 @@ function OrderDrawer({ id }: DrawerProps) {
         <Btn variant="ok" disabled={short.length > 0}
           title={short.length ? `Short of ${short.map((l) => IT[l.it].n).join(", ")}` : "Issue one pick ticket for the whole order"}
           onClick={() => dispatchOrder(o.id)}>
-          {short.length ? "Short — cannot dispatch" : "Dispatch to counter"}
+          {short.length ? "Short - cannot dispatch" : "Dispatch to counter"}
         </Btn>
       )}
     </>
@@ -62,7 +62,7 @@ function OrderDrawer({ id }: DrawerProps) {
       {short.length > 0 && (
         <div className="mtop">
           <Alert tone="w" label="SHORT">
-            The kitchen cannot cover {short.map((l) => IT[l.it].n).join(", ")} yet — make the balance
+            The kitchen cannot cover {short.map((l) => IT[l.it].n).join(", ")} yet - make the balance
             before dispatching.
           </Alert>
         </div>

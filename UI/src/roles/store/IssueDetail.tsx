@@ -23,7 +23,7 @@ const dotFor = (state: string) =>
 
 /**
  * One detail view behind every row on the issue desk. The id is a request id,
- * or a ticket id — a ticket is only ever a view of the request behind it, so
+ * or a ticket id - a ticket is only ever a view of the request behind it, so
  * either way the drawer resolves to the same request and reads the ticket off it.
  */
 function IssueDetail({ id }: DrawerProps) {
@@ -36,7 +36,7 @@ function IssueDetail({ id }: DrawerProps) {
   const [otp, setOtp] = useState("");
   const [override, setOverride] = useState(false);
   // A handover is a server call now, and the stock only leaves once. A second tap inside one
-  // round trip would post a second `ticket_out` — refused, but as an error the window reads as
+  // round trip would post a second `ticket_out` - refused, but as an error the window reads as
   // its own mistake. One tap, one handover.
   const [busy, setBusy] = useState(false);
   const handOver = async (tktId: string, otpOrNone?: string) => {
@@ -115,14 +115,14 @@ function IssueDetail({ id }: DrawerProps) {
           <div className="mtop">
             <Alert tone="w" label="TRIMMED">
               {shortLines.length} item{shortLines.length > 1 ? "s were" : " was"} cut back by the outlet
-              manager — {shortLines.map((l) => IT[l.it]?.n ?? l.it).join(", ")}.
+              manager - {shortLines.map((l) => IT[l.it]?.n ?? l.it).join(", ")}.
             </Alert>
           </div>
         )}
         {uncovered.length > 0 && (
           <div className="mtop">
             <Alert tone="c" label="SHORT">
-              {IT[uncovered[0].it]?.n ?? uncovered[0].it} is promised elsewhere — only{" "}
+              {IT[uncovered[0].it]?.n ?? uncovered[0].it} is promised elsewhere - only{" "}
               {fq(freeFor(uncovered[0].it, uncovered[0].appr), uncovered[0].it)} {U(uncovered[0].it)} is free to
               promise against the {fq(uncovered[0].appr, uncovered[0].it)} approved. No ticket can be raised
               until that clears.
@@ -195,7 +195,7 @@ function IssueDetail({ id }: DrawerProps) {
                   {ticket.lines.length} item{ticket.lines.length > 1 ? "s" : ""} · {sum(ticket.lines, (l) => l.qty)} units
                 </span>
                 <Btn size="xs" variant="gh" onClick={() => openDrawer("stkt", ticket.id)}>Open ticket</Btn>
-                {/* The issue desk prints the same slip the ticket window does — and the same
+                {/* The issue desk prints the same slip the ticket window does - and the same
                     way, without the six digits it was never sent. */}
                 <PrintSlipBtn />
               </div>
@@ -255,8 +255,8 @@ function IssueDetail({ id }: DrawerProps) {
 
       {ticket && (
         <Section title="Ticket history" sub={`Every hand ${ticket.id} has passed through`}>
-          {/* A ticket's trail says "Handed over" and "Cancelled — …", words the request's own
-              `dotFor` has never heard of, so it is coloured by the ticket rule — which is what
+          {/* A ticket's trail says "Handed over" and "Cancelled - …", words the request's own
+              `dotFor` has never heard of, so it is coloured by the ticket rule - which is what
               `TicketTrail` is, rather than a `Feed` each screen colours for itself. */}
           <TicketTrail hist={ticket.hist} />
         </Section>

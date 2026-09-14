@@ -138,7 +138,7 @@ describe("POST /availability/toggle", () => {
   });
 
   it("when both toggles read before either commits, the PK race is absorbed: one insert wins, the other is a no-op", async () => {
-    // Forced interleaving — the shape the HTTP race above cannot guarantee: both transactions
+    // Forced interleaving - the shape the HTTP race above cannot guarantee: both transactions
     // read "no override", then both insert. The second insert blocks on the primary key until
     // the first commits, then onConflictDoNothing hands back zero rows instead of a 23505.
     const db = app.testDb!.db;

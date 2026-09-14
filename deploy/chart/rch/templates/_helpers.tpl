@@ -1,7 +1,7 @@
 {{- define "rch.name" -}}{{ .Chart.Name }}{{- end -}}
 {{- /*
 rch.labels renders as a single comma-joined line (not one key per line) because
-every call site embeds it inside a flow-style `{ ... }` mapping — YAML flow
+every call site embeds it inside a flow-style `{ ... }` mapping - YAML flow
 mappings need commas between entries, not bare newlines.
 */ -}}
 {{- define "rch.labels" -}}
@@ -19,7 +19,7 @@ Secret reference for the non-secret settings.
 
 The five secret keys (DATABASE_URL, JWT_PRIVATE_KEY, JWT_PUBLIC_KEY,
 JWT_PREVIOUS_PUBLIC_KEY, SEED_PASSWORD) are ALWAYS wired via valueFrom.secretKeyRef against
-the rendered Secret named by rch.secretName — never inlined as plaintext
+the rendered Secret named by rch.secretName - never inlined as plaintext
 `value:` entries. .Values.secrets.create only decides whether secret.yaml
 renders that Secret from values (staging/dev); .Values.secrets.externalSecret.enabled
 decides whether externalsecret.yaml renders an ExternalSecret that has the
@@ -27,19 +27,19 @@ External Secrets Operator sync the same Secret name from the external store
 (prod). Either way the consuming containers read the same secretKeyRef, so
 which template produced the Secret is invisible to them. Both secret.yaml and
 externalsecret.yaml are plain release resources (no helm.sh/hook annotations)
-— see those templates for why turning them into hooks was tried and reverted.
+- see those templates for why turning them into hooks was tried and reverted.
 
 JWT_PREVIOUS_PUBLIC_KEY is the ONE optional: true key, because it is only
 populated during a key-rotation window; outside of that window the key
 legitimately does not exist in the Secret. Every other key in the list is
 required, and a pod that cannot find one must fail to start rather than come
-up half-configured — so the `if eq` below names exactly one key. Go's `eq` is
+up half-configured - so the `if eq` below names exactly one key. Go's `eq` is
 variadic (`eq $k "a" "b"` is true for either), so adding a second name there
 silently makes that key optional too; render.test.sh asserts SEED_PASSWORD
 never renders `optional`.
 
 SEED_PASSWORD has no default in apps/api/src/config.ts, so the api container
-will not start without it — it is a secret key rather than an api.env entry
+will not start without it - it is a secret key rather than an api.env entry
 because it is the password the six seeded accounts start on, and a published
 default would be the same password on every host that ever ran the seed. The
 seed itself is a CLI run by hand inside the container (RUNBOOK §11), never

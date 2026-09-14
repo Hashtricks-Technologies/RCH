@@ -60,14 +60,14 @@ export const USERS: User[] = [
   { id: "u5", n: "Latha Narayanan", e: "latha.n@royalcare.in",   r: "buyer",   rl: "Procurement Officer",  loc: "store",   col: "#BE123C", emp: "RC-1550", ph: "98940 30117", admin: false },
   // A second counter, so a shop-to-shop ask can be seen from both ends: the
   // Coffee Shop asks, the Snack Kiosk answers. She already appears throughout
-  // the seeded bills and requests — this gives her the login to match.
+  // the seeded bills and requests - this gives her the login to match.
   { id: "u6", n: "Deepa Selvam",    e: "deepa.s@royalcare.in",   r: "counter", rl: "Counter Operator",     loc: "kiosk",   col: "#475569", emp: "RC-4482", ph: "97890 41205", admin: false },
-  // The one seeded account carrying the admin flag — a capability, not a role (root CLAUDE.md).
+  // The one seeded account carrying the admin flag - a capability, not a role (root CLAUDE.md).
   // `role`/`loc` are the schema's own NOT NULL requirement and nothing more: this account never
-  // reaches any operational screen, so which of the five it nominally holds does not matter —
+  // reaches any operational screen, so which of the five it nominally holds does not matter -
   // `buyer` was picked only because that role is already "not tied to one outlet". Seeded (not
   // granted via `pnpm --filter @rch/api users set-admin` after the fact) so every environment
-  // that runs `db:seed` — local, CI's kind install, a fresh dev box — starts with one ready to sign
+  // that runs `db:seed` - local, CI's kind install, a fresh dev box - starts with one ready to sign
   // in, the same way the other six do; go-live still deactivates it like every other seeded
   // account (RUNBOOK §11) before a real one is created the ordinary way.
   { id: "u7", n: "System Administrator", e: "admin@royalcare.in", r: "buyer", rl: "Procurement Officer", loc: "store", col: "#334155", emp: "RC-0001", ph: "", admin: true },

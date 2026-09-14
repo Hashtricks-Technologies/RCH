@@ -67,7 +67,7 @@ const type = (el: HTMLInputElement, v: string) => {
   Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(el, v);
   el.dispatchEvent(new Event("input", { bubbles: true }));
 };
-/** Leaving a field — React maps `onBlur` onto the bubbling `focusout`. */
+/** Leaving a field - React maps `onBlur` onto the bubbling `focusout`. */
 const leave = (el: HTMLInputElement) => { el.dispatchEvent(new FocusEvent("focusout", { bubbles: true })); };
 /** Choosing from a `<select>`, the way React hears it. */
 const pick = (el: HTMLSelectElement, v: string) => {
@@ -112,7 +112,7 @@ describe("what the kitchen can make", () => {
   it("a fourth FG with a recipe appears on the Make tiles", () => {
     as("prod");
     // A finished good the kitchen batches onto its own rack, added to the master the way
-    // `applyItems` adds one — in place, with the catalogue signal bumped.
+    // `applyItems` adds one - in place, with the catalogue signal bumped.
     hydrateMaster({
       items: { ...FX.IT, bun: { c: "FG-4004", n: "Masala bun", u: "nos", t: "FG", g: "Bakery", hsn: "2106", gst: 5, rl: 0, cost: 14, sl: 10 } },
       locations: FX.LOC,
@@ -148,7 +148,7 @@ describe("a decimal quantity on a requisition line", () => {
     serve({
       "POST /api/v1/requisitions": () => json({
         result: { ...FX.seedPrq[0] }, changed: ["prq"],
-        message: "PRQ-2026-016 sent to procurement — 1 line",
+        message: "PRQ-2026-016 sent to procurement - 1 line",
       }),
       "GET /api/v1/requisitions": () => json(FX.seedPrq),
     });
@@ -156,7 +156,7 @@ describe("a decimal quantity on a requisition line", () => {
 
     const box = ui.field("Quantity of Milk 1L (toned)");
     // Every keystroke on the way to 12.5, exactly as the store keeper types it. Read one at a
-    // time, "1" and "12" and "12." would each have landed on the draft — and "12." is 12.
+    // time, "1" and "12" and "12." would each have landed on the draft - and "12." is 12.
     act(() => { type(box, "1"); });
     act(() => { type(box, "12"); });
     act(() => { type(box, "12."); });
@@ -236,12 +236,12 @@ describe("the goods receipt refuses rather than greys out", () => {
     act(() => { type(rejected, "9999"); });
     act(() => { leave(rejected); });
 
-    // The button is still live — a disabled one never receives the press that would commit the
+    // The button is still live - a disabled one never receives the press that would commit the
     // correction below, so it could never be re-enabled. It refuses with a sentence instead.
     const book = ui.button("Book into the central store")!;
     expect(book.disabled).toBe(false);
     await settle(() => { book.click(); });
-    expect(S().toast).toBe(`${named} — more was rejected than arrived on that line.`);
+    expect(S().toast).toBe(`${named} - more was rejected than arrived on that line.`);
     expect(hit(`POST /api/v1/purchase-orders/${po.id}/receive`)).toHaveLength(0);
 
     // Corrected and committed, the same button books.
@@ -255,7 +255,7 @@ describe("the goods receipt refuses rather than greys out", () => {
 
 describe("the indexed selectors", () => {
   /** Every key either registry knows about, so an item with no claim and no ticket is covered
-   *  too — the map has no entry for it and the reader has to answer 0. */
+   *  too - the map has no entry for it and the reader has to answer 0. */
   const everyItem = () => [...new Set([...Object.keys(IT), "ghost"])];
 
   it("onOrderIndex equals onOrder for every item", () => {

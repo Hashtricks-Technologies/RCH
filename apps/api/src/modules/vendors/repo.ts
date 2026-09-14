@@ -1,4 +1,4 @@
-// Vendors: SQL only. No rules, no transaction of its own — service.ts passes `tx` in.
+// Vendors: SQL only. No rules, no transaction of its own - service.ts passes `tx` in.
 import { eq } from "drizzle-orm";
 import { isUniqueViolation, type Tx } from "../../lib/db.js";
 import { vendors } from "../../db/schema/index.js";
@@ -19,7 +19,7 @@ export const vendorsRepo = {
   },
 
   /** `vendors_name_ci_uq` is the arbiter: a pre-check reads before this insert takes its lock,
-   *  so two callers can both pass it — `onConflictDoNothing` hands the loser no row back, and
+   *  so two callers can both pass it - `onConflictDoNothing` hands the loser no row back, and
    *  the loser reads the same "already on the vendor list" sentence the check would have given
    *  it a moment later (`addMenuItem`'s pattern). */
   async insertIfNew(tx: Tx, row: NewVendor): Promise<VendorRow | undefined> {
@@ -30,7 +30,7 @@ export const vendorsRepo = {
   /** `undefined` means the same thing here it means for `insertIfNew`: the row this call would
    *  have produced already exists under another id. A rename into a name another vendor holds
    *  hits `vendors_name_ci_uq` on the UPDATE itself, caught here rather than left to surface as
-   *  a raw 500 — the caller reads the same "already on the vendor list" sentence the insert's
+   *  a raw 500 - the caller reads the same "already on the vendor list" sentence the insert's
    *  arbiter gives a new vendor. Renaming a vendor to a case-only variant of its own current
    *  name is not a violation (the index only ever sees one row with that value) and succeeds. */
   async update(tx: Tx, id: string, patch: VendorPatch): Promise<VendorRow | undefined> {

@@ -25,8 +25,8 @@ const hdr = async (id: string) => ({ ...(await authHeaders(app, id)), "idempoten
 const post = async (user: string, payload: Record<string, unknown>) =>
   app.inject({ method: "POST", url: "/api/v1/adjustments", headers: await hdr(user), payload });
 
-/** The balance row itself, so quarantine — which no `GET /stock` cut hides, but which the
- *  fixtures leave empty — can be read the same way the five working shelves are. */
+/** The balance row itself, so quarantine - which no `GET /stock` cut hides, but which the
+ *  fixtures leave empty - can be read the same way the five working shelves are. */
 const balance = async (loc: string, it: string): Promise<number | undefined> => {
   const [row] = await app.testDb!.db.select().from(stockBalances)
     .where(and(eq(stockBalances.loc, loc), eq(stockBalances.itemKey, it)));
@@ -53,24 +53,24 @@ describe("POST /adjustments", () => {
     expect(b.result.note).toBe("Crate went over overnight");
     expect(b.result.by).toBe("Suresh Muthu");
     expect(await balance("store", "milk")).toBe(before! - 2.5);
-    expect(b.message).toBe(`${b.result.id} — 2.500 L written off at Central Store (wastage)`);
+    expect(b.message).toBe(`${b.result.id} - 2.500 L written off at Central Store (wastage)`);
   });
 
   it("counts up stock, creating the balance row when the location never carried the line", async () => {
     // Nothing has ever been turned away in the demo hospital, so quarantine carries no butter
-    // row at all — not a zero, no row. A count-up is the operator saying the shelf carries it.
+    // row at all - not a zero, no row. A count-up is the operator saying the shelf carries it.
     expect(await balance("quarantine", "butter")).toBeUndefined();
 
     const r = await post("u3", { loc: "quarantine", reason: "count", lines: [{ it: "butter", qty: 1.5 }] });
     expect(r.statusCode, r.body).toBe(200);
     expect(await balance("quarantine", "butter")).toBe(1.5);
-    expect(r.json().message).toBe(`${r.json().result.id} — 1.500 kg counted up at Quarantine`);
+    expect(r.json().message).toBe(`${r.json().result.id} - 1.500 kg counted up at Quarantine`);
   });
 
   it("numbers the document ADJ-yyyy-nnnn and steps the series by one", async () => {
     const a = (await post("u3", { loc: "store", reason: "breakage", lines: [{ it: "cup", qty: -10 }] })).json().result.id;
     const b = (await post("u3", { loc: "store", reason: "breakage", lines: [{ it: "cup", qty: -10 }] })).json().result.id;
-    // `sequences` survives truncation between files, so the literal number is not assertable —
+    // `sequences` survives truncation between files, so the literal number is not assertable -
     // the shape and the step of one are.
     expect(a).toMatch(/^ADJ-\d{4}-\d{4}$/);
     expect(b).toMatch(/^ADJ-\d{4}-\d{4}$/);
@@ -108,7 +108,7 @@ describe("POST /adjustments", () => {
 
   it("refuses a line naming an item the master does not have", async () => {
     // A stale tab holding a key that was withdrawn, or a client that made one up. It is a 404
-    // with the key in it, not a 500 halfway through the write — and nothing is written.
+    // with the key in it, not a 500 halfway through the write - and nothing is written.
     const r = await post("u3", { loc: "store", reason: "wastage", lines: [{ it: "milk", qty: -1 }, { it: "unicorn", qty: -1 }] });
     expect(r.statusCode).toBe(404);
     expect(r.json().error.message).toBe("There is no item unicorn.");
@@ -116,7 +116,7 @@ describe("POST /adjustments", () => {
     expect(await app.testDb!.db.select().from(stockMoves).where(eq(stockMoves.refType, "adjustment"))).toHaveLength(0);
   });
 
-  it("refuses a write-off of more than is free — stock a ticket is holding is not the store's to write off", async () => {
+  it("refuses a write-off of more than is free - stock a ticket is holding is not the store's to write off", async () => {
     // 4 kg of butter on the shelf, 3 of them held for a ticket the kitchen has not collected.
     // The books say four; only one is the store's to destroy.
     await given.ticket(app.testDb!.db, { from: "store", to: "kitchen", lines: [{ it: "butter", qty: 3 }] });
@@ -124,7 +124,7 @@ describe("POST /adjustments", () => {
 
     const r = await post("u3", { loc: "store", reason: "expired", lines: [{ it: "butter", qty: -2 }] });
     expect(r.statusCode).toBe(422);
-    expect(r.json().error.message).toBe("Cannot write off 2.000 kg of Butter, salted — Central Store has only 1.000 kg free");
+    expect(r.json().error.message).toBe("Cannot write off 2.000 kg of Butter, salted - Central Store has only 1.000 kg free");
     expect(await balance("store", "butter")).toBe(before);
   });
 
@@ -135,7 +135,7 @@ describe("POST /adjustments", () => {
     const r = await post("u3", { loc: "store", reason: "wastage", lines: [{ it: "milk", qty: -99 }, { it: "leaf", qty: -99 }] });
 
     expect(r.statusCode).toBe(422);
-    expect(r.json().error.message).toBe("Cannot write off 99.000 L of Milk 1L (toned) — Central Store has only 12.000 L free");
+    expect(r.json().error.message).toBe("Cannot write off 99.000 L of Milk 1L (toned) - Central Store has only 12.000 L free");
     expect(await balance("store", "milk")).toBe(before.milk);
     expect(await balance("store", "leaf")).toBe(before.leaf);
     expect(await app.testDb!.db.select().from(stockMoves).where(eq(stockMoves.refType, "adjustment"))).toHaveLength(0);
@@ -150,7 +150,7 @@ describe("POST /adjustments", () => {
     expect(moves.every((m) => m.kind === "adjustment")).toBe(true);
     expect(moves.map((m) => m.qty).sort((a, b) => a - b)).toEqual([-1, 3]);
     expect(moves.every((m) => m.byUser === "u3")).toBe(true);
-    // A count corrects a sum, not one named move — there is nothing for a reversal to point at,
+    // A count corrects a sum, not one named move - there is nothing for a reversal to point at,
     // and pointing at the most recent move would read as "this undid that", which is not what a
     // physical count found.
     expect(moves.every((m) => m.reversesId === null)).toBe(true);
@@ -176,14 +176,14 @@ describe("POST /adjustments", () => {
 
     const mgr = await post("u2", { loc: "quarantine", reason: "returned_to_vendor", lines: [{ it: "milk", qty: -1 }] });
     expect(mgr.statusCode).toBe(403);
-    expect(mgr.json().error.message).toBe("You can only adjust stock at an outlet — the central store writes off its own shelves");
+    expect(mgr.json().error.message).toBe("You can only adjust stock at an outlet - the central store writes off its own shelves");
 
     const kitchen = await post("u4", { loc: "quarantine", reason: "returned_to_vendor", lines: [{ it: "milk", qty: -1 }] });
     expect(kitchen.statusCode).toBe(403);
   });
 
   it("lets a manager adjust an outlet and refuses them the central store", async () => {
-    // A manager supervises the three shops, so it is any outlet and not only their own — the
+    // A manager supervises the three shops, so it is any outlet and not only their own - the
     // same hospital-wide reach an approval has.
     const before = await balance("kiosk", "water");
     const ok = await post("u2", { loc: "kiosk", reason: "breakage", lines: [{ it: "water", qty: -2 }] });
@@ -192,7 +192,7 @@ describe("POST /adjustments", () => {
 
     const store = await post("u2", { loc: "store", reason: "breakage", lines: [{ it: "water", qty: -2 }] });
     expect(store.statusCode).toBe(403);
-    expect(store.json().error.message).toBe("You can only adjust stock at an outlet — the central store writes off its own shelves");
+    expect(store.json().error.message).toBe("You can only adjust stock at an outlet - the central store writes off its own shelves");
   });
 
   it("lets the kitchen adjust the kitchen and nowhere else", async () => {
@@ -207,7 +207,7 @@ describe("POST /adjustments", () => {
   });
 
   it("is absent for a counter operator", async () => {
-    // Role decides whether the route exists for you, the same way the sidebar does — a counter
+    // Role decides whether the route exists for you, the same way the sidebar does - a counter
     // does not write stock off, they ask the shop or the store, so this is a 404 and not a 403.
     const r = await post("u1", { loc: "coffee", reason: "wastage", lines: [{ it: "cup", qty: -1 }] });
     expect(r.statusCode).toBe(404);
@@ -220,7 +220,7 @@ describe("POST /adjustments", () => {
     const rows = await app.testDb!.db.select().from(documentHistory)
       .where(and(eq(documentHistory.docType, "adjustment"), eq(documentHistory.docId, r.json().result.id)));
     expect(rows).toHaveLength(1);
-    // An adjustment has no lifecycle to walk — it happened once — so the word worth recording is
+    // An adjustment has no lifecycle to walk - it happened once - so the word worth recording is
     // why the shelf changed, not a status.
     expect(rows[0].status).toBe("Returned to vendor");
     expect(rows[0].who).toBe("Suresh Muthu");
@@ -250,8 +250,8 @@ describe("POST /adjustments", () => {
     await warmPool(app.testDb!, 2);
     // 1.2 kg of butter in the kitchen. Two write-offs of 1 kg, in flight together.
     //
-    // What this pins is the pair of balance guards together — `lockBalances` before the cover
-    // check, and the post-lock re-read after `postMoves` — not either one alone. Measured, not
+    // What this pins is the pair of balance guards together - `lockBalances` before the cover
+    // check, and the post-lock re-read after `postMoves` - not either one alone. Measured, not
     // assumed: deleting the `lockBalances` call on its own leaves the case green, because
     // `postMoves` takes the same row locks itself and the re-read then refuses the second
     // writer with the very same sentence. Disarm **both** and the case goes red with
@@ -259,7 +259,7 @@ describe("POST /adjustments", () => {
     //
     // It only has that much teeth because `allocateId` is taken late. While the id was the
     // first statement of the transaction, the second POST blocked on the `adj` sequence row
-    // before it ever read a balance — and this case passed with both balance guards deleted,
+    // before it ever read a balance - and this case passed with both balance guards deleted,
     // which is a race test proving nothing at all.
     const both = await Promise.all([
       post("u4", { loc: "kitchen", reason: "wastage", lines: [{ it: "butter", qty: -1 }] }),
@@ -268,7 +268,7 @@ describe("POST /adjustments", () => {
     const codes = both.map((r) => r.statusCode).sort();
     expect(codes).toEqual([200, 422]);
     expect(both.find((r) => r.statusCode === 422)!.json().error.message)
-      .toBe("Cannot write off 1.000 kg of Butter, salted — Central Kitchen has only 0.200 kg free");
+      .toBe("Cannot write off 1.000 kg of Butter, salted - Central Kitchen has only 0.200 kg free");
     expect(await balance("kitchen", "butter")).toBe(0.2);
   });
 });

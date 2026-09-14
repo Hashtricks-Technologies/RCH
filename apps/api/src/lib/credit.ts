@@ -9,22 +9,22 @@ import { monthStartIST } from "./time.js";
  * What one payer has put on credit inside the current calendar month, in the hospital's zone.
  *
  * Two callers, on purpose: `modules/pos` refuses a bill on it and `modules/reports`
- * prints it. A report that disagreed with the refusal would be worse than no report — and the
+ * prints it. A report that disagreed with the refusal would be worse than no report - and the
  * counter's own screen has been showing a different, smaller figure (its own outlet, its own
  * seven days) with an apology printed underneath it since Phase 3.
  *
  * Credit, and only credit: a bill the same person paid cash for in their own name is not credit
  * and must not eat their room. The payer kind is part of the filter as well as the tender,
  * because a "Staff credit" bill posted to a patient would otherwise be a balance no rule
- * measures — `pos` passes `"staff"` and nothing else, and the report passes whichever kind it
+ * measures - `pos` passes `"staff"` and nothing else, and the report passes whichever kind it
  * was asked about, which is structurally zero for `patient` and `dept`.
  *
  * `since` comes back with the number so a caller prints the window it actually settled over
  * rather than working it out a second time and getting a different answer either side of
  * midnight on the first.
  *
- * A voided bill is not credit either. It is left on the table with its lines intact — the void
- * reverses the stock, it does not erase the sale — so the filter has to say so: without
+ * A voided bill is not credit either. It is left on the table with its lines intact - the void
+ * reverses the stock, it does not erase the sale - so the filter has to say so: without
  * `voided_at is null` a mis-keyed ₹3,000 bill would go on eating that person's room for the rest
  * of the month even though the hospital has taken it back.
  */

@@ -40,7 +40,7 @@ export function storePrefs(p: Prefs): void {
   try {
     s.setItem(PREF_KEY, JSON.stringify(p));
   } catch {
-    /* nothing to persist to — the preference still applies for this session */
+    /* nothing to persist to - the preference still applies for this session */
   }
 }
 

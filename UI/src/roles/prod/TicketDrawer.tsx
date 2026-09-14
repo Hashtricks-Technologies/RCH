@@ -13,12 +13,12 @@ import { registerDrawer, type DrawerProps } from "../../drawers";
  *
  * Until this existed, every kitchen handover was a **supervisor override**: the board, the
  * distribute screen and the pick-ticket list all called `handover(id)` with no OTP, which the
- * server records in the trail as `Handed over — supervisor override`. The kitchen is the issuing
- * side of these tickets, so it never sees the six digits — but it is the side that has to ask for
+ * server records in the trail as `Handed over - supervisor override`. The kitchen is the issuing
+ * side of these tickets, so it never sees the six digits - but it is the side that has to ask for
  * them, exactly as the store's window does, and it had nowhere to type them.
  *
  * This is that window, and it is a drawer rather than an expander on one row so the three places
- * a kitchen hand can start a handover — the dashboard, Make & Distribute and Pick Tickets — all
+ * a kitchen hand can start a handover - the dashboard, Make & Distribute and Pick Tickets - all
  * arrive at the same one.
  */
 function TicketDrawer({ id }: DrawerProps) {
@@ -28,7 +28,7 @@ function TicketDrawer({ id }: DrawerProps) {
   const [otp, setOtp] = useState("");
   const [override, setOverride] = useState(false);
   // One tap, one handover: the stock leaves once, and a second tap inside the round trip would
-  // post a second `ticket_out` — refused, but the window would read the refusal as its own fault.
+  // post a second `ticket_out` - refused, but the window would read the refusal as its own fault.
   const [busy, setBusy] = useState(false);
   const handOver = async (otpOrNone?: string) => {
     setBusy(true);
@@ -59,7 +59,7 @@ function TicketDrawer({ id }: DrawerProps) {
         ) : (
           <span className="mini">
             {t.st === "Collected" ? `In transit to ${LOC[t.to].n}`
-              : t.st === "Cancelled" ? "Withdrawn — nothing was collected against it" : "Closed"}
+              : t.st === "Cancelled" ? "Withdrawn - nothing was collected against it" : "Closed"}
           </span>
         )}
       </>}
@@ -78,7 +78,7 @@ function TicketDrawer({ id }: DrawerProps) {
             <PrintSlipBtn />
           </div>
         </div>
-        {/* The kitchen is the issuing side, so the server sends it no digits at all — it has to
+        {/* The kitchen is the issuing side, so the server sends it no digits at all - it has to
             ask for them rather than be shown blanks it could read out to itself. */}
         <p className="mini" style={{ maxWidth: 210 }}>
           Ask {LOC[t.to].n} to read out the six digits on their own ticket.
@@ -134,7 +134,7 @@ function TicketDrawer({ id }: DrawerProps) {
           key: l.it,
           cells: [
             IT[l.it]?.n ?? l.it,
-            <span className="mono">{IT[l.it]?.c ?? "—"}</span>,
+            <span className="mono">{IT[l.it]?.c ?? "-"}</span>,
             fq(l.qty, l.it),
             <span className="mini">{U(l.it)}</span>,
           ],
@@ -145,7 +145,7 @@ function TicketDrawer({ id }: DrawerProps) {
       {t.st === "Cancelled" && (
         <div className="mtop">
           <Alert tone="w" label="CANCELLED">
-            This ticket was withdrawn before it was collected — nothing left the kitchen and the
+            This ticket was withdrawn before it was collected - nothing left the kitchen and the
             hold against it has been released.
           </Alert>
         </div>

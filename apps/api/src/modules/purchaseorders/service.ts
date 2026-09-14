@@ -1,7 +1,7 @@
-// Purchase orders: the flow — transaction, rules, ids, history. Composes the helpers in
+// Purchase orders: the flow - transaction, rules, ids, history. Composes the helpers in
 // apps/api/src/lib/; the arithmetic of a claim lives in packages/domain's claims.ts.
 //
-// The procurement list is derived, not stored — approved less ordered — so the only thing that
+// The procurement list is derived, not stored - approved less ordered - so the only thing that
 // adds to it or takes from it is `ordered_qty` on the requisition lines a purchase-order line
 // claims against. Five of the six writes below move that claim, and every one of them takes the
 // order's own row first and the requisition rows second, ascending. `create` is the single
@@ -39,7 +39,7 @@ export type CancelPoBody = z.infer<typeof CancelPoBodySchema>;
 type DraftLine = { it: string; qty: number; rate: number; src: ClaimSrc[] };
 
 export function createPurchaseOrdersService(db: Db) {
-  /** The order's lines with their sources attached, in `line_no` order — the shape every rule
+  /** The order's lines with their sources attached, in `line_no` order - the shape every rule
    *  below reads and the shape `writeLines` writes back. */
   const draftLines = async (tx: Tx, id: string): Promise<(DraftLine & { recv: number })[]> => {
     const [lines, src] = [await purchaseOrdersRepo.lines(tx, id), await purchaseOrdersRepo.sources(tx, id)];
@@ -50,7 +50,7 @@ export function createPurchaseOrdersService(db: Db) {
    * Give a set of claims back to the requisition lines that granted them.
    *
    * The order's own row is already locked by every caller (`head`), so this only has to take
-   * the requisition rows — ascending, which `foldClaims` guarantees — before it writes. Both
+   * the requisition rows - ascending, which `foldClaims` guarantees - before it writes. Both
    * halves of the phase's document lock order are then held, in the order the header records.
    */
   const returnClaims = async (tx: Tx, released: readonly ClaimSrc[]): Promise<void> => {
@@ -60,7 +60,7 @@ export function createPurchaseOrdersService(db: Db) {
     await addOrdered(tx, folded, -1);
   };
 
-  /** The order, read for update — the first lock every write but `create` takes. */
+  /** The order, read for update - the first lock every write but `create` takes. */
   const head = async (tx: Tx, id: string) => {
     const o = await purchaseOrdersRepo.head(tx, id);
     if (!o) throw new NotFoundError(`There is no purchase order ${id}.`);
@@ -70,14 +70,14 @@ export function createPurchaseOrdersService(db: Db) {
   return {
     /**
      * A draft, picked off the procurement list. Every pick claims against one approved
-     * requisition line, and the claim is what the list subtracts — there is no pool to keep.
+     * requisition line, and the claim is what the list subtracts - there is no pool to keep.
      */
     async create(claims: AccessClaims, body: CreatePoBody): Promise<WriteResponse<PurchaseOrder>> {
       return withTransaction(db, async (tx) => {
         assertRule(body.picks.length > 0, "Pick at least one line before raising an order");
         const v = await purchaseOrdersRepo.vendor(tx, body.vendorId);
         assertRule(v, "Choose a vendor for this order");
-        assertRule(v.active, `${v.name} is inactive — reactivate it or choose another vendor`);
+        assertRule(v.active, `${v.name} is inactive - reactivate it or choose another vendor`);
         assertRule(body.picks.every((p) => p.qty > 0), "Enter a quantity on every line you pick");
 
         const master = await loadMaster(tx);
@@ -100,13 +100,13 @@ export function createPurchaseOrdersService(db: Db) {
           const pending = p.status === "Approved" || p.status === "Partially approved"
             ? round3(l.appr - l.ordered) : 0;
           const item = master.items[l.it];
-          assertRule(f.qty <= pending, `${item?.n ?? "That line"} — only ${fq(pending, item?.u ?? "nos")} still pending on ${f.prq}`);
+          assertRule(f.qty <= pending, `${item?.n ?? "That line"} - only ${fq(pending, item?.u ?? "nos")} still pending on ${f.prq}`);
         }
 
         const at = new Date();
         const id = await allocateId(tx, "po", at);
         // Merge picks of the same item into one line carrying several sources, in the order the
-        // buyer picked them — which is the order `releaseClaim` later walks backwards.
+        // buyer picked them - which is the order `releaseClaim` later walks backwards.
         const merged: DraftLine[] = [];
         for (const p of picks) {
           const it = prq.get(p.prq)!.lines[p.line]!.it;
@@ -129,20 +129,20 @@ export function createPurchaseOrdersService(db: Db) {
         await emitChanged(tx, changed);
         return {
           result: await purchaseOrdersRepo.wire(tx, id), changed: [...changed],
-          message: `${id} drafted on ${v.name} — ${merged.length} line(s), review the rates before sending`,
+          message: `${id} drafted on ${v.name} - ${merged.length} line(s), review the rates before sending`,
         };
       });
     },
 
     /** A rate the buyer negotiated, a quantity they cut, or both in one press. Only the
      *  quantity moves a claim, so a rate on its own tells the procurement list nothing. */
-    // Editing a draft line writes no history row — the store never signed one either, and a
+    // Editing a draft line writes no history row - the store never signed one either, and a
     // draft is not a decision. The claims are taken all the same, so the route reads like its
     // siblings and a later audit trail has the caller to hand.
     async updateLine(_claims: AccessClaims, id: string, n: number, body: UpdatePoLineBody): Promise<WriteResponse<PurchaseOrder>> {
       return withTransaction(db, async (tx) => {
         const o = await head(tx, id);
-        assertRule(o.status === "Draft", `${id} is ${o.status.toLowerCase()} — only a draft can be changed`);
+        assertRule(o.status === "Draft", `${id} is ${o.status.toLowerCase()} - only a draft can be changed`);
         const lines = await draftLines(tx, id);
         const line = lines[n];
         if (!line) throw new NotFoundError(`There is no line ${n} on ${id}.`);
@@ -181,8 +181,8 @@ export function createPurchaseOrdersService(db: Db) {
           // <qty>" from this branch and "at <rate>" from the rate-only branch, so a buyer who
           // changed both reads one line naming both in the words each change already had.
           message: body.rate === undefined
-            ? `${name} cut to ${fq(want, unit)} — ${fq(back, unit)} back on the procurement list`
-            : `${name} cut to ${fq(want, unit)} at ${money(rate)} — ${fq(back, unit)} back on the procurement list`,
+            ? `${name} cut to ${fq(want, unit)} - ${fq(back, unit)} back on the procurement list`
+            : `${name} cut to ${fq(want, unit)} at ${money(rate)} - ${fq(back, unit)} back on the procurement list`,
         };
       });
     },
@@ -191,7 +191,7 @@ export function createPurchaseOrdersService(db: Db) {
     async removeLine(_claims: AccessClaims, id: string, n: number): Promise<WriteResponse<PurchaseOrder>> {
       return withTransaction(db, async (tx) => {
         const o = await head(tx, id);
-        assertRule(o.status === "Draft", `${id} is ${o.status.toLowerCase()} — only a draft can be changed`);
+        assertRule(o.status === "Draft", `${id} is ${o.status.toLowerCase()} - only a draft can be changed`);
         const lines = await draftLines(tx, id);
         const line = lines[n];
         if (!line) throw new NotFoundError(`There is no line ${n} on ${id}.`);
@@ -223,10 +223,10 @@ export function createPurchaseOrdersService(db: Db) {
 
         if (body.vendorId) {
           // A sent order is a promise to a vendor; moving it to another one is a new order.
-          assertRule(o.status === "Draft", `${id} is ${st} — its vendor cannot change`);
+          assertRule(o.status === "Draft", `${id} is ${st} - its vendor cannot change`);
           const v = await purchaseOrdersRepo.vendor(tx, body.vendorId);
           assertRule(v, "Choose a vendor for this order");
-          assertRule(v.active, `${v.name} is inactive — reactivate it or choose another vendor`);
+          assertRule(v.active, `${v.name} is inactive - reactivate it or choose another vendor`);
           const at = new Date();
           eta = body.eta ?? etaFrom(at, v.leadDays);
           const lines = await draftLines(tx, id);
@@ -247,31 +247,31 @@ export function createPurchaseOrdersService(db: Db) {
           moved = v.name;
         }
         if (body.eta) {
-          assertRule(o.status !== "Received" && o.status !== "Cancelled", `${id} is ${st} — nothing more is expected`);
+          assertRule(o.status !== "Received" && o.status !== "Cancelled", `${id} is ${st} - nothing more is expected`);
         }
         // One write for whatever changed: a vendor move recomputes `eta` above and an eta-only
         // patch keeps the one already read off the order, so `eta` is always the whole answer
-        // by the time this runs — two fields sent together must not cost the row two updates.
+        // by the time this runs - two fields sent together must not cost the row two updates.
         await purchaseOrdersRepo.setStatus(tx, id, { ...(vendorId ? { vendorId } : {}), eta });
 
         const changed = ["po"] as const;
         await emitChanged(tx, changed);
         return {
           result: await purchaseOrdersRepo.wire(tx, id), changed: [...changed],
-          message: moved ? `${id} moved to ${moved} — expected ${dmy(eta)}` : `${id} expected ${dmy(eta)}`,
+          message: moved ? `${id} moved to ${moved} - expected ${dmy(eta)}` : `${id} expected ${dmy(eta)}`,
         };
       });
     },
 
-    /** The draft goes out. Nothing moves on the list — the claim was taken when it was drafted. */
+    /** The draft goes out. Nothing moves on the list - the claim was taken when it was drafted. */
     async send(claims: AccessClaims, id: string): Promise<WriteResponse<PurchaseOrder>> {
       return withTransaction(db, async (tx) => {
         const o = await head(tx, id);
         const lines = await purchaseOrdersRepo.lines(tx, id);
-        assertRule(lines.length > 0, `${id} has no lines — add some from the procurement list`);
+        assertRule(lines.length > 0, `${id} has no lines - add some from the procurement list`);
         const v = await purchaseOrdersRepo.vendor(tx, o.vendorId);
         assertRule(v, "Choose a vendor before sending");
-        assertRule(v.active, `${v.name} is inactive — reactivate it or move this order to another vendor`);
+        assertRule(v.active, `${v.name} is inactive - reactivate it or move this order to another vendor`);
         assertTransition(PO_TRANSITIONS, o.status, "Ordered", id);
 
         const value = poValue(lines);
@@ -287,8 +287,8 @@ export function createPurchaseOrdersService(db: Db) {
         return {
           result: await purchaseOrdersRepo.wire(tx, id), changed: [...changed],
           message: over
-            ? `${id} raised on ${v.name} — ${money0(value)} is over the ${money0(PO_APPROVAL_LIMIT)} slab and needs finance approval`
-            : `${id} raised on ${v.name} — expected ${dmy(o.eta ?? "")}`,
+            ? `${id} raised on ${v.name} - ${money0(value)} is over the ${money0(PO_APPROVAL_LIMIT)} slab and needs finance approval`
+            : `${id} raised on ${v.name} - expected ${dmy(o.eta ?? "")}`,
         };
       });
     },
@@ -299,15 +299,15 @@ export function createPurchaseOrdersService(db: Db) {
         const o = await head(tx, id);
         const lines = await draftLines(tx, id);
         // Before the transition guard, on purpose: a partly-received order would otherwise fail
-        // the status check with "is already partially received" — true, and useless. This
+        // the status check with "is already partially received" - true, and useless. This
         // sentence tells the buyer what to do instead.
         //
         // `recv` here is deliberately the **gross** arrival, not the accepted figure the order's
         // status is computed from: a delivery that turned up and was turned away still produced
         // GRN documents, a quarantine balance and a paper trail with the vendor. An order with
-        // that behind it is closed short, with its reason recorded — never cancelled as though
+        // that behind it is closed short, with its reason recorded - never cancelled as though
         // the lorry had never come.
-        assertRule(lines.every((l) => l.recv === 0), `${id} already received against — close it short instead of cancelling`);
+        assertRule(lines.every((l) => l.recv === 0), `${id} already received against - close it short instead of cancelling`);
         assertTransition(PO_TRANSITIONS, o.status, "Cancelled", id);
         assertRule(body.reason.trim(), "Give a reason for cancelling this order");
 
@@ -320,7 +320,7 @@ export function createPurchaseOrdersService(db: Db) {
         await emitChanged(tx, changed);
         return {
           result: await purchaseOrdersRepo.wire(tx, id), changed: [...changed],
-          message: `${id} cancelled — ${lines.length} line(s) back on the procurement list`,
+          message: `${id} cancelled - ${lines.length} line(s) back on the procurement list`,
         };
       });
     },

@@ -16,7 +16,7 @@ import { as, resetStore, S } from "./fixture";
 /**
  * The buyer's decision note, delivered.
  *
- * The bug behind this file: a requisition declined — or approved in part — with a reason kept the
+ * The bug behind this file: a requisition declined - or approved in part - with a reason kept the
  * reason on the server and on the wire, but no screen put it in front of the store keeper. Their
  * panel's red DECLINED banner printed the store keeper's *own* note back at them, the buyer's
  * reason sat under two tables at the foot of the panel, the history said only who and when, their
@@ -140,7 +140,7 @@ describe("the store keeper's requisition panel", () => {
     const ui = openPanel("sprq", "PRQ-2026-014");
     const [first] = ui.alerts();
     expect(first.label).toBe("PARTIALLY APPROVED");
-    expect(first.text).toContain("Sugar trimmed — last lot is still moving.");
+    expect(first.text).toContain("Sugar trimmed - last lot is still moving.");
     expect(ui.text()).toMatch(/Trimmed: Sugar, refined short 10\.000 kg/);
     ui.unmount();
   });
@@ -215,7 +215,7 @@ describe("the store keeper's dashboard", () => {
     const a = ui.alerts().find((x) => x.label === "TRIMMED")!;
     expect(a, "a TRIMMED alert").toBeTruthy();
     expect(a.text).toContain("PRQ-2026-014");
-    expect(a.text).toContain("Sugar trimmed — last lot is still moving.");
+    expect(a.text).toContain("Sugar trimmed - last lot is still moving.");
     ui.unmount();
   });
 
@@ -235,7 +235,7 @@ describe("the buyer's requisition list", () => {
     as("buyer");
     const ui = mount(BuyerRequisitions);
     const row = [...ui.host.querySelectorAll("tr")].find((r) => r.textContent?.includes("PRQ-2026-014"))!;
-    expect(row.textContent).toContain("Sugar trimmed — last lot is still moving.");
+    expect(row.textContent).toContain("Sugar trimmed - last lot is still moving.");
     ui.unmount();
   });
 });

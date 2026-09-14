@@ -78,7 +78,7 @@ export default function Tickets() {
         <Alert tone="i" label="ARRIVING">
           {arriving.map((t) => t.id).join(", ")} {arriving.length === 1 ? "has" : "have"} been handed over and
           {arriving.length === 1 ? " is" : " are"} on the way. Confirm receipt once the goods are physically in the
-          kitchen — nothing counts as kitchen stock until you do.
+          kitchen - nothing counts as kitchen stock until you do.
         </Alert>
       )}
 
@@ -113,18 +113,18 @@ export default function Tickets() {
               <b>{sum(t.lines, (l) => l.qty)}</b>,
               // Inbound is where the six digits actually land: the server sends them to the
               // ticket's destination and nowhere else, so this is the one kitchen screen that
-              // can show them — and the COLLECT alert above tells the kitchen to quote them.
+              // can show them - and the COLLECT alert above tells the kitchen to quote them.
               t.otp !== ""
                 ? <Otp value={t.otp} />
                 : <span className="dim mini">
-                    {t.st === "Cancelled" ? "withdrawn — the OTP was never used" : "used at handover"}
+                    {t.st === "Cancelled" ? "withdrawn - the OTP was never used" : "used at handover"}
                   </span>,
               <StatusPill status={t.st} />,
               canReceiveTicket(t.st)
                 ? <Btn size="xs" onClick={() => receiveTicket(t.id)}>Receive</Btn>
                 : <span className="dim mini">
                     {t.st === "Issued" ? "not collected"
-                      : t.st === "Cancelled" ? "withdrawn — nothing was sent" : "on the rack"}
+                      : t.st === "Cancelled" ? "withdrawn - nothing was sent" : "on the rack"}
                   </span>,
             ],
           }))}
@@ -142,7 +142,7 @@ export default function Tickets() {
           extra={<>{toCollect.length} to collect · {arriving.length} in transit</>} />
       </Card>
 
-      <Card title="Issued out of the kitchen" sub="Take the OTP from the collector — it is on their screen, not this one" flush className="mtop">
+      <Card title="Issued out of the kitchen" sub="Take the OTP from the collector - it is on their screen, not this one" flush className="mtop">
         <Toolbar
           placeholder="Search ticket, order, destination, item…"
           value={out.q}
@@ -175,14 +175,14 @@ export default function Tickets() {
               canHandOver(t.st)
                 ? <span className="mini">Held by {LOC[t.to].n}</span>
                 : <span className="dim mini">
-                    {t.st === "Cancelled" ? "withdrawn — the OTP was never used" : "used at handover"}
+                    {t.st === "Cancelled" ? "withdrawn - the OTP was never used" : "used at handover"}
                   </span>,
               canHandOver(t.st)
                 ? <>
                     <StatusPill status={t.st} />
                     <div style={{ marginTop: 6 }}>
                       {/* Opens the ticket's own window, where the OTP is typed. It used to call
-                          `handover(t.id)` straight out, with no OTP — which the server records
+                          `handover(t.id)` straight out, with no OTP - which the server records
                           as a supervisor override, so every kitchen handover was one. */}
                       <Btn size="xs" variant="ok" onClick={() => s.openDrawer("ptkt", t.id)}>Hand over</Btn>{" "}
                       {cancelId === t.id ? (
@@ -207,7 +207,7 @@ export default function Tickets() {
                     <StatusPill status={t.st} />
                     <div className="mini">
                       {t.st === "Collected" ? `in transit to ${LOC[t.to].n}`
-                        : t.st === "Cancelled" ? "withdrawn — it never left the kitchen"
+                        : t.st === "Cancelled" ? "withdrawn - it never left the kitchen"
                           : `on the shelf at ${LOC[t.to].n}`}
                     </div>
                   </>,

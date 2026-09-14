@@ -7,12 +7,12 @@ import { DrawerFrame } from "../../ui/Drawer";
 import { registerDrawer, type DrawerProps } from "../../drawers";
 
 /**
- * The raiser's side of a production order — what the counter asked for and where the kitchen
+ * The raiser's side of a production order - what the counter asked for and where the kitchen
  * has got to with it. No buttons: every word on this document is the kitchen's to move, and the
  * pick ticket that eventually arrives is what the counter acts on.
  *
  * Its own drawer rather than the kitchen's (`pord`, `roles/prod/OrderDrawer.tsx`), which is
- * built around Accept / Start / Dispatch and reads the kitchen's shelves for cover — figures a
+ * built around Accept / Start / Dispatch and reads the kitchen's shelves for cover - figures a
  * counter is not sent and controls it may not press.
  */
 function KitchenOrderDrawer({ id }: DrawerProps) {
@@ -29,7 +29,7 @@ function KitchenOrderDrawer({ id }: DrawerProps) {
   }
 
   // The ticket it went out on, if it has. A cancelled-and-redispatched order carries two, so
-  // take the newest still standing — the same rule the kitchen's own board reads them by.
+  // take the newest still standing - the same rule the kitchen's own board reads them by.
   const raised = tkt.filter((t) => t.req === o.id);
   const ticket = raised.findLast((t) => t.st !== "Cancelled") ?? raised.at(-1);
 
@@ -49,7 +49,7 @@ function KitchenOrderDrawer({ id }: DrawerProps) {
             key: l.it,
             cells: [
               <>{IT[l.it]?.n ?? l.it}<small>{IT[l.it]?.g ?? ""}</small></>,
-              <span className="mono">{IT[l.it]?.c ?? "—"}</span>,
+              <span className="mono">{IT[l.it]?.c ?? "-"}</span>,
               <b>{fq(l.qty, l.it)}</b>,
             ],
           }))}
@@ -78,7 +78,7 @@ function KitchenOrderDrawer({ id }: DrawerProps) {
         <Alert tone="i" label="ON A TICKET">
           {ticket
             ? <>The kitchen has sent this out on {ticket.id}. Collect against that ticket and confirm receipt before the stock counts as this counter's.</>
-            : <>The kitchen has sent this out. It arrives on a pick ticket — collect against it and confirm receipt.</>}
+            : <>The kitchen has sent this out. It arrives on a pick ticket - collect against it and confirm receipt.</>}
         </Alert>
       ) : o.st === "Declined" ? (
         <Alert tone="c" label="DECLINED">

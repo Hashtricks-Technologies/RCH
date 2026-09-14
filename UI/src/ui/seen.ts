@@ -4,13 +4,13 @@ import { useSyncExternalStore } from "react";
 /* A bell row is a queue, not a message, so "read" is remembered as the documents the row held when
    it was opened, per queue key. Whatever joins the queue afterwards is new; whatever left it is
    forgotten at the next open, so the record never grows past the queues themselves. Per account
-   and per browser, like the other preferences — there is no server-side notion of a notification. */
+   and per browser, like the other preferences - there is no server-side notion of a notification. */
 
 type Seen = Record<string, string[]>;
 
 const KEY = (uid: string) => `rch-seen:${uid}`;
 
-/** Where the record lives when storage refuses — a private window, site data blocked. */
+/** Where the record lives when storage refuses - a private window, site data blocked. */
 const memory = new Map<string, string>();
 /** The last raw record parsed per key, so the snapshot is the same object until the record changes. */
 const parsed = new Map<string, { raw: string | null; val: Seen }>();
@@ -64,7 +64,7 @@ export function markSeen(uid: string, k: string, ids: string[]): void {
     s.setItem(key, text);
     memory.delete(key);
   } catch {
-    memory.set(key, text); // full or refused — still read for this session
+    memory.set(key, text); // full or refused - still read for this session
   }
   for (const f of subs) f();
 }

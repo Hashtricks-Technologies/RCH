@@ -15,7 +15,7 @@ import type { PoStatus, TktLine } from "../../types";
 
 const lineValue = (lines: TktLine[]) => sum(lines, (l) => l.qty * (IT[l.it]?.cost ?? 0));
 /** A purchase order still represents an open commitment until it is fully
- *  received or cancelled — a partial receipt does not close it. */
+ *  received or cancelled - a partial receipt does not close it. */
 const LIVE: PoStatus[] = ["Ordered", "Partially received"];
 
 const STATES = ["All", "Out", "Below reorder", "Healthy"];
@@ -39,7 +39,7 @@ export default function Dashboard() {
    *  Finished goods and made-to-order drinks are produced in-house, never purchased. */
   // ---- item patch ----
   // `activeItems()`, not `Object.keys(IT)`: the registry carries retired lines so past orders
-  // still name them, and a retired product reading "at zero — reorder" would send the buyer
+  // still name them, and a retired product reading "at zero - reorder" would send the buyer
   // out to buy something the hospital has deliberately stopped carrying.
   const BOUGHT: string[] = activeItems().filter((k) => isPurchased(IT[k].t));
 
@@ -115,7 +115,7 @@ export default function Dashboard() {
       <Pill tone={stateTone(a, IT[k].rl)}>{stateOf(a, IT[k].rl)}</Pill>,
       onLivePo(k) ? <Pill tone="in">On order</Pill>
         : poolItems.has(k) ? <Pill tone="wn">On the list</Pill>
-          : <span className="dim">—</span>,
+          : <span className="dim">-</span>,
     ],
   }));
 
@@ -160,7 +160,7 @@ export default function Dashboard() {
       // A received order prints the receipt date and must sort on it: `o.iso` is when the order
       // was *raised*, so an order placed a fortnight ago and delivered this morning sank to the
       // bottom of a feed that was showing its delivery. The trail's last entry is the last
-      // thing that happened to it — the same key manager/Dashboard gives a shop transfer.
+      // thing that happened to it - the same key manager/Dashboard gives a shop transfer.
       iso: o.hist.at(-1)?.iso ?? o.iso,
       color: o.st === "Received" ? "var(--good)" : "var(--c2)",
     })),
@@ -180,21 +180,21 @@ export default function Dashboard() {
       {waiting.map((p) => (
         <Alert key={p.id} tone="w" label="WAITING"
           action={<Btn size="xs" variant="gh" onClick={() => nav("/requisitions")}>Review &amp; order</Btn>}>
-          {p.by} raised <b>{p.id}</b> — {p.lines.length} item{p.lines.length > 1 ? "s" : ""},
+          {p.by} raised <b>{p.id}</b> - {p.lines.length} item{p.lines.length > 1 ? "s" : ""},
           about {money0(lineValue(p.lines))}.{p.note ? " " + p.note : ""}
         </Alert>
       ))}
       {partial.map((o) => (
         <Alert key={o.id} tone="w" label="PARTIAL"
           action={<Btn size="xs" variant="gh" onClick={() => nav("/orders")}>Review</Btn>}>
-          <b>{o.id}</b> with {vendorName(s.vendors, o.vendor)} is partially received —
+          <b>{o.id}</b> with {vendorName(s.vendors, o.vendor)} is partially received -
           {" "}{money0(poValue(o))} on order, the balance is still outstanding.
         </Alert>
       ))}
       {zero.map((k) => (
         <Alert key={k} tone="c" label="AT ZERO"
           action={<Btn size="xs" variant="gh" onClick={() => nav("/inventory")}>See item</Btn>}>
-          {IT[k].n} ({IT[k].c}) is at zero in the {LOC.store.n} — reorder level {fq(IT[k].rl, k)} {U(k)}.
+          {IT[k].n} ({IT[k].c}) is at zero in the {LOC.store.n} - reorder level {fq(IT[k].rl, k)} {U(k)}.
         </Alert>
       ))}
       {waiting.length === 0 && partial.length === 0 && zero.length === 0 && (

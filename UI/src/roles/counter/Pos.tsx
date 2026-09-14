@@ -8,12 +8,12 @@ import { money, money0 } from "../../lib/fmt";
 import { Alert, Avatar, Btn, Card, Field, Grid, ImagePlaceholder, PageHead, Tag, TileMenu } from "../../ui/kit";
 import type { CreditResponse, ItemType, Payer, Tender } from "../../types";
 
-/** The buttons are the contract's own list — the server refuses anything else outright, so the
+/** The buttons are the contract's own list - the server refuses anything else outright, so the
  *  till must not offer a seventh tender the schema has never heard of. */
 const TENDERS = TenderSchema.options;
 /** The three tenders that post to somebody's account, and the master each picks from (M1). The
  *  three lists are the snapshot's own `roster`, off the `payers` table the server validates a
- *  bill against — so a patient admitted this morning is billable without a new build. */
+ *  bill against - so a patient admitted this morning is billable without a new build. */
 const PAYERS: Partial<Record<Tender, { label: string; list: Payer[] }>> = {
   "Patient bill": { label: "Patient", list: PATIENTS },
   "Staff credit": { label: "Staff member", list: STAFF },
@@ -60,20 +60,20 @@ export default function Pos() {
     return !t || p.name.toLowerCase().includes(t) || p.id.toLowerCase().includes(t);
   }) ?? [];
   // The ceiling is settled over the calendar month across every counter, which this till cannot
-  // see — it holds seven days of its own outlet. Ask the server for the number it will refuse on
+  // see - it holds seven days of its own outlet. Ask the server for the number it will refuse on
   // (`GET /reports/credit/:kind/:id`, which sums the same bills as `creditTakenThisMonth` in
   // `apps/api/src/lib/credit.ts` does inside the sale's own transaction).
   const readCredit = useApp((x) => x.readCredit);
   const [credit, setCredit] = useState<CreditResponse | null>(null);
   /** Three states, not two. `credit === null` covers both "not asked yet" and "asked and got
-   *  nothing", and the line below said "Checking…" for either — so a till whose credit read was
+   *  nothing", and the line below said "Checking…" for either - so a till whose credit read was
    *  failing sat on that sentence for ever, promising a number that was never coming. */
   const [creditFailed, setCreditFailed] = useState(false);
-  /** Who the two figures above belong to — empty when no credit is being taken. Clearing them
+  /** Who the two figures above belong to - empty when no credit is being taken. Clearing them
    *  inside the effect was a setState the effect ran on every commit: the number a previous
    *  staff member had taken was painted under the new name for one frame, and a second render
    *  went by to rub it out. Adjusting during render is React's own answer and leaves no such
-   *  frame; the effect below is left doing the one thing an effect is for — the request. */
+   *  frame; the effect below is left doing the one thing an effect is for - the request. */
   const creditFor = tender === "Staff credit" && payer ? `${payer.kind}:${payer.id}` : "";
   const [creditShown, setCreditShown] = useState(creditFor);
   if (creditShown !== creditFor) {
@@ -93,15 +93,15 @@ export default function Pos() {
   const overLimit = tender === "Staff credit" && !!payer && !!credit && breachesCredit(taken, total, credit.limit);
 
   /**
-   * One tap, one bill — and the payer survives a refusal.
+   * One tap, one bill - and the payer survives a refusal.
    *
    * `pay` answers with the number the server chose, or `null`. Only a bill the server actually
    * numbered clears the payer, the search and the per-line edits; a refusal (a credit ceiling, a
    * cover check, a dropped connection) leaves the whole till exactly as the operator set it up,
    * so the fix is one press away rather than a staff member to find again.
    *
-   * Then the slip, for **that** number. It used to be guessed back out of the refetched list —
-   * the newest bill at this outlet by `iso` — which printed the wrong customer's slip in two
+   * Then the slip, for **that** number. It used to be guessed back out of the refetched list -
+   * the newest bill at this outlet by `iso` - which printed the wrong customer's slip in two
    * ordinary cases: a read-back that failed (the list is then the one from before the sale, so
    * the previous bill opens) and the till next door billing in the same instant.
    */
@@ -142,8 +142,8 @@ export default function Pos() {
                 <div key={it} className={`tile tile-pic${a.ok ? "" : " is-off"}`}>
                   <button type="button" className="tile-pic-hit" disabled={!a.ok}
                     onClick={() => s.addToCart(loc, it, 1)}
-                    aria-label={a.ok ? `Add ${item.n}` : `${item.n} — ${a.why ?? "unavailable"}`}
-                    title={a.ok ? `Add ${item.n}` : `${item.n} — ${a.why ?? "unavailable"}`} />
+                    aria-label={a.ok ? `Add ${item.n}` : `${item.n} - ${a.why ?? "unavailable"}`}
+                    title={a.ok ? `Add ${item.n}` : `${item.n} - ${a.why ?? "unavailable"}`} />
                   <ImagePlaceholder size="card" />
                   <TileMenu
                     className="tile-pic-kebab"
@@ -267,13 +267,13 @@ export default function Pos() {
               {credit
                 ? <>
                   Credit taken by {payer.name} this month <b className="mono">{money(taken)}</b> of{" "}
-                  <b className="mono">{money0(credit.limit)}</b> — this bill would take it to{" "}
+                  <b className="mono">{money0(credit.limit)}</b> - this bill would take it to{" "}
                   <b className="mono" style={overLimit ? { color: "var(--crit)" } : undefined}>{money(taken + total)}</b>.
                 </>
                 // Never a zero here: "₹0.00 taken" is the one thing this line must not say while
                 // it does not know, because it reads as "nothing owing" rather than "not asked yet".
                 : creditFailed
-                  ? <>Could not check this month&apos;s credit — the bill will be refused if the ceiling is reached.</>
+                  ? <>Could not check this month&apos;s credit - the bill will be refused if the ceiling is reached.</>
                   : <>Checking what {payer.name} has taken this month…</>}
             </p>
           )}

@@ -1,4 +1,4 @@
-// Availability: what a counter may sell — and what the kitchen is making — right now, and the
+// Availability: what a counter may sell - and what the kitchen is making - right now, and the
 // manual override behind both.
 import fp from "fastify-plugin";
 import { routes } from "@rch/contract";

@@ -15,7 +15,7 @@ const BASE_ENV: NodeJS.ProcessEnv = {
   CORS_ORIGIN: "http://localhost:5173",
   COOKIE_SECURE: "false", SEED_FORCE_PASSWORD_CHANGE: "false",
   // SEED_PASSWORD has no default any more (config.ts), so every built app has to name one.
-  // Nothing under test seeds through the app — `seedTestDb` carries its own — so this is only
+  // Nothing under test seeds through the app - `seedTestDb` carries its own - so this is only
   // here to satisfy the schema.
   SEED_PASSWORD: "test-seed-password-1",
 };
@@ -50,7 +50,7 @@ export async function buildTestApp(opts: BuildTestAppOpts): Promise<App> {
   const config = testConfig(opts.env);
   if (opts.withDb === false) return buildApp(config, { logStream: opts.logStream });
   const testDb: TestDb = await withTestSchema(opts.schema);
-  // The db plugin ignores `searchPath` when a `db` is injected, so it is inert there — it is
+  // The db plugin ignores `searchPath` when a `db` is injected, so it is inert there - it is
   // here for the SSE plugin's own LISTEN connection, which is not a pool member and must land
   // on the same schema, or it would compute a different channel name than the writes do.
   const app = await buildApp(config, { db: testDb.db, pool: testDb.pool, searchPath: `${testDb.schemaName},public`, migrationsSchema: testDb.schemaName, logStream: opts.logStream });

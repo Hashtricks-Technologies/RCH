@@ -18,7 +18,7 @@ import { createRecipesSlice, type RecipesSlice } from "./recipes";
 
 export interface AppState extends ProcurementSlice, OpsSlice, AdminSlice, RecipesSlice {
   user: User | null;
-  /** Where the session is: no token, asking for one, fetching the snapshot, usable — or signed
+  /** Where the session is: no token, asking for one, fetching the snapshot, usable - or signed
    *  in with nothing to show. `"failed"` is the last one: the credentials are good and the
    *  snapshot is not, so there is no item master, no locations and no menus, and every screen
    *  would read `LOC[loc].n` off an empty object. It is a state of its own rather than a toast
@@ -33,7 +33,7 @@ export interface AppState extends ProcurementSlice, OpsSlice, AdminSlice, Recipe
   prices: Record<"A" | "B", Record<string, number>>;
   menu: Record<string, string[]>;
   /** Every document keeps the instant it happened at (`iso`) beside the "HH:MM" it is printed
-   *  as — see `Dated` in `types.ts`. A ticket has no `at` of its own; only its trail is dated. */
+   *  as - see `Dated` in `types.ts`. A ticket has no `at` of its own; only its trail is dated. */
   req: DatedDoc<StockRequest>[];
   tkt: Trailed<Ticket>[];
   prq: DatedDoc<Requisition>[];
@@ -46,7 +46,7 @@ export interface AppState extends ProcurementSlice, OpsSlice, AdminSlice, Recipe
   sales: number[][];
   dayLabels: string[];
   /** ---- adjustments. The register of write-offs and count-ups behind the `adjustment` moves
-   *  on the ledger — a correction to a shelf, with a reason and a signature. Read-only here:
+   *  on the ledger - a correction to a shelf, with a reason and a signature. Read-only here:
    *  the write that adds to it lives in the ops slice, beside the other documents. `Dated`
    *  like every other document in this store: `at` is the clock face, `iso` the instant it
    *  was made from, so a register can be filtered to today and sorted across a midnight. */
@@ -63,14 +63,14 @@ export interface AppState extends ProcurementSlice, OpsSlice, AdminSlice, Recipe
   toast: string | null;
   /** The sentence a sign-in or a password change was refused with, for the form that asked.
    *  The two screens outside the shell show it inline and keep it there until the next attempt
-   *  — a toast is gone in seconds, and an operator looking at the keyboard never sees it. */
+   *  - a toast is gone in seconds, and an operator looking at the keyboard never sees it. */
   authError: string | null;
   shopFilter: LocKey | null;
   theme: ThemePref;
 
   login: (emp: string, password: string) => Promise<boolean>;
   /** The sign-in picker's list: every active staff account's number and name, read before
-   *  anybody has signed in. A read with no toast — `null` on failure, never an empty list, so
+   *  anybody has signed in. A read with no toast - `null` on failure, never an empty list, so
    *  the form can tell "nobody to pick" from "could not ask" and fall back to a typed id. */
   loadSignInDirectory: () => Promise<SignInEntry[] | null>;
   logout: () => Promise<void>;
@@ -86,11 +86,11 @@ export interface AppState extends ProcurementSlice, OpsSlice, AdminSlice, Recipe
 
   addToCart: (loc: LocKey, it: string, d?: number) => void;
   clearCart: (loc: LocKey) => void;
-  /** The bill number the server chose, or `null` when it refused — the `Promise<string | null>`
+  /** The bill number the server chose, or `null` when it refused - the `Promise<string | null>`
    *  variant `createPo` and `createItem` already use, because the till has to open the slip for
    *  the bill it just took and guessing it back off the refetched list picks the wrong one the
    *  moment that read-back fails. A credit-cap refusal must leave the payer and the tender
-   *  exactly where the operator put them — the cart is still full, and clearing the form behind
+   *  exactly where the operator put them - the cart is still full, and clearing the form behind
    *  a refusal is how the same bill gets rung up twice. */
   pay: (loc: LocKey, tender: Tender, payer?: Payer) => Promise<string | null>;
   // ---- bill void: the manager's door out of a mis-keyed bill, on the day it was billed.
@@ -142,11 +142,11 @@ export interface AppState extends ProcurementSlice, OpsSlice, AdminSlice, Recipe
   removeProduct: (loc: LocKey, it: string) => Promise<boolean>;
   addProduct: (loc: LocKey, it: string) => Promise<boolean>;
   /** The central store's ledger over a window, from the server's own sum of `stock_moves`.
-   *  Answers `null` and toasts when the read fails — never `[]`, which is a real answer meaning
-   *  the location carries no line — so the report can say which of the two happened rather than
+   *  Answers `null` and toasts when the read fails - never `[]`, which is a real answer meaning
+   *  the location carries no line - so the report can say which of the two happened rather than
    *  reporting an outage as an empty store. It leaves the screen usable either way. */
   readStockLedger: (loc: StockLoc, days: number) => Promise<StockLedgerRow[] | null>;
-  /** What one payer has put on credit this calendar month, hospital-wide — the number the
+  /** What one payer has put on credit this calendar month, hospital-wide - the number the
    *  server will refuse on. `null` when the read fails, so the till can say "checking…" rather
    *  than print a zero, which would read as "no credit taken". */
   readCredit: (payer: Payer) => Promise<CreditResponse | null>;
@@ -157,14 +157,14 @@ export interface AppState extends ProcurementSlice, OpsSlice, AdminSlice, Recipe
 
   // ---- prod-order raise ----
   /** An outlet asking the Central Kitchen to make something (POST /prod-orders). A counter
-   *  leaves `from` off — the server pins it to the token — and the manager names the outlet.
+   *  leaves `from` off - the server pins it to the token - and the manager names the outlet.
    *  Answers `true` only once the server has taken it, so a refused card keeps what was typed. */
   raiseProdOrder: (body: ProdOrderInput) => Promise<boolean>;
 }
 
 // ---- prod-order raise ----
 /** What the two cards that raise one hand over. `note` is optional because the schema defaults
- *  it, and `need` is a wire date (`yyyy-mm-dd`) or nothing at all — a blank date box is an
+ *  it, and `need` is a wire date (`yyyy-mm-dd`) or nothing at all - a blank date box is an
  *  order with no deadline, not an order due on the epoch. */
 export type ProdOrderInput = {
   from?: LocKey;
@@ -176,8 +176,8 @@ export type ProdOrderInput = {
 /** Every collection starts empty and is filled by `applySnapshot`. Nothing here is data: the
  *  screens do not render until `auth` reaches "ready", which only a snapshot can do. `stock` is
  *  exhaustive because every `stock[loc][it]` read would otherwise throw on a missing location. */
-/** The fallback for a failure with no envelope to read — a dropped connection, a gateway page. */
-const UNREACHABLE = "Could not reach the server — check the connection and try again.";
+/** The fallback for a failure with no envelope to read - a dropped connection, a gateway page. */
+const UNREACHABLE = "Could not reach the server - check the connection and try again.";
 /** A toast stays up for as long as its sentence takes to read: the first forty characters get
  *  the old 3.4 s, and every character past that buys 30 ms more, up to nine seconds. A refusal
  *  naming an item, a price and a list is twice the length of "Bill taken." and was gone before
@@ -185,7 +185,7 @@ const UNREACHABLE = "Could not reach the server — check the connection and try
 const toastMs = (m: string) => Math.min(9000, 3400 + Math.max(0, m.length - 40) * 30);
 /** The timer that will put the current toast away, so `notify` can cancel it rather than leave
  *  it running behind the next sentence. One toast is drawn at a time, so one timer is all there
- *  is to keep — and a toast that is already down cannot be put down twice. */
+ *  is to keep - and a toast that is already down cannot be put down twice. */
 let toastTimer: ReturnType<typeof setTimeout> | null = null;
 const EMPTY_STOCK = Object.fromEntries(StockLocSchema.options.map((l) => [l, {}])) as Record<StockLoc, Record<string, number>>;
 
@@ -241,20 +241,20 @@ export const useApp = create<AppState>((set, get) => ({
       // A first-time visitor has no cookie. That is not a session ending, so it
       // says nothing and simply shows the sign-in form.
       set({ auth: "signed-out", user: null });
-      // Anything else — the server down, a gateway page, a 500 — is not "no cookie", and an
+      // Anything else - the server down, a gateway page, a 500 - is not "no cookie", and an
       // operator who was signed in a minute ago must not be asked for a password in silence.
       if (!(e instanceof ApiError && e.status === 401)) get().notify(e instanceof ApiError ? e.message : UNREACHABLE);
     }
   },
   loadSnapshot: async () => {
-    // The splash is the *first* boot and nothing else. A snapshot taken again — an SSE
-    // `resync`, a read-back with no narrow reader — has the last one still on screen behind
+    // The splash is the *first* boot and nothing else. A snapshot taken again - an SSE
+    // `resync`, a read-back with no narrow reader - has the last one still on screen behind
     // it, and blanking the hospital to "Loading…" threw away whatever was being read, closed
     // every open drawer and lost the operator their place. `LOC` empty is the one state where
     // there is genuinely nothing to keep: no item master, no locations, no screen that renders.
     //
     // An admin-flagged session has no hospital to load. It only ever sees `/admin`, and the
-    // server answers every operational read — this one included — with a 404 for its token.
+    // server answers every operational read - this one included - with a 404 for its token.
     // Guarded here rather than in each caller, so sign-in, restore, a password change and any
     // later refresh all reach "ready" without asking for a snapshot that cannot come.
     if (get().user?.admin) { set({ auth: "ready" }); return; }
@@ -264,7 +264,7 @@ export const useApp = create<AppState>((set, get) => ({
       // A 401 here has already signed the user out via onSessionLost; do not
       // pull the app back to "ready" behind that.
       if (!get().user) {
-        get().notify(e instanceof ApiError ? e.message : "Could not reach the server — check the connection and try again.");
+        get().notify(e instanceof ApiError ? e.message : "Could not reach the server - check the connection and try again.");
         return;
       }
       // Whether there is anything left to show is the whole question. The registries start
@@ -273,10 +273,10 @@ export const useApp = create<AppState>((set, get) => ({
       // would throw straight into the error boundary. Say the app could not start and let the
       // shell offer the retry, rather than announcing data that does not exist.
       if (Object.keys(LOC).length === 0) { set({ auth: "failed" }); return; }
-      // The master is already hydrated, so the last snapshot is still on screen and usable —
+      // The master is already hydrated, so the last snapshot is still on screen and usable -
       // this was a refresh that did not land, not a start that did not happen.
       set({ auth: "ready" });
-      get().notify(e instanceof ApiError ? e.message : "Could not refresh — showing the last data loaded.");
+      get().notify(e instanceof ApiError ? e.message : "Could not refresh - showing the last data loaded.");
     }
   },
   logout: async () => {
@@ -290,7 +290,7 @@ export const useApp = create<AppState>((set, get) => ({
   changePassword: async (current, next) => {
     set({ authError: null });
     try {
-      // The change revokes every token the tab is holding — the access token (still stamped
+      // The change revokes every token the tab is holding - the access token (still stamped
       // "must change password") and the refresh cookie behind it. The reply carries their
       // replacements, so take them before anything else calls the server.
       const r = await call(routes.changePassword, { body: { current, next } });
@@ -302,7 +302,7 @@ export const useApp = create<AppState>((set, get) => ({
       // "Loading…" over the hospital for the length of a snapshot.
       set({ user: r.user, mustChangePassword: r.mustChangePassword });
       await get().loadSnapshot();
-      get().notify("Password changed — you are signed in.");
+      get().notify("Password changed - you are signed in.");
       return true;
     } catch (e) {
       set({ authError: e instanceof ApiError ? e.message : UNREACHABLE });
@@ -316,8 +316,8 @@ export const useApp = create<AppState>((set, get) => ({
    *
    * The timer is **cancelled and replaced**, not left running and told to compare messages. The
    * comparison it used to make was `get().toast === m`, which is the wrong question twice over:
-   * the same sentence said twice in a shift — a refusal an operator hits, corrects and hits
-   * again — left the first timer alive to put the *second* toast away early, and a sentence that
+   * the same sentence said twice in a shift - a refusal an operator hits, corrects and hits
+   * again - left the first timer alive to put the *second* toast away early, and a sentence that
    * differs by a comma left a timer with nothing to do but still to fire. One toast is drawn at a
    * time; one timer belongs to it.
    */
@@ -326,7 +326,7 @@ export const useApp = create<AppState>((set, get) => ({
     set({ toast: m });
     toastTimer = setTimeout(() => { toastTimer = null; set({ toast: null }); }, toastMs(m));
   },
-  /** Put it away on a click — and take its timer with it, so nothing is left running to fire at
+  /** Put it away on a click - and take its timer with it, so nothing is left running to fire at
    *  a toast that is already down, or at the next one if `notify` has not replaced it yet. */
   dismissToast: () => {
     if (toastTimer !== null) clearTimeout(toastTimer);
@@ -370,13 +370,13 @@ export const useApp = create<AppState>((set, get) => ({
       get().notify(r.message);
       await refetch(r.changed, r.message);
       // The number the server chose, off the write's own answer. The till used to guess it back
-      // out of the refetched list — the newest bill at this outlet by `iso` — which is the wrong
+      // out of the refetched list - the newest bill at this outlet by `iso` - which is the wrong
       // bill whenever the read-back fails (the list is then whatever it was before the sale) or
       // whenever the till beside this one billed in the same instant. `r.result.no` is the bill
       // this press created and nothing else can be.
       return r.result.no;
     } catch (e) {
-      get().notify(e instanceof ApiError ? e.message : "Could not take the bill — check the connection and try again.");
+      get().notify(e instanceof ApiError ? e.message : "Could not take the bill - check the connection and try again.");
       return null;
     }
   },
@@ -389,7 +389,7 @@ export const useApp = create<AppState>((set, get) => ({
       await refetch(r.changed, r.message);
       return true;
     } catch (e) {
-      get().notify(e instanceof ApiError ? e.message : "Could not void the bill — check the connection and try again.");
+      get().notify(e instanceof ApiError ? e.message : "Could not void the bill - check the connection and try again.");
       return false;
     }
   },
@@ -400,7 +400,7 @@ export const useApp = create<AppState>((set, get) => ({
       get().notify(r.message);
       await refetch(r.changed, r.message);
     } catch (e) {
-      get().notify(e instanceof ApiError ? e.message : "Could not change what is on sale — check the connection and try again.");
+      get().notify(e instanceof ApiError ? e.message : "Could not change what is on sale - check the connection and try again.");
     }
   },
 
@@ -408,7 +408,7 @@ export const useApp = create<AppState>((set, get) => ({
   /**
    * The request chain is the server's from here (Phase 3). Every action below builds a body,
    * posts it, repeats the sentence the server answered with, and refetches exactly what the
-   * write said it changed. No rule is previewed locally — a refusal is the server's words.
+   * write said it changed. No rule is previewed locally - a refusal is the server's words.
    */
   submitRequest: async (note, urgent) => {
     const s = get();
@@ -421,7 +421,7 @@ export const useApp = create<AppState>((set, get) => ({
       await refetch(r.changed, r.message);
       return true;
     } catch (e) {
-      get().notify(e instanceof ApiError ? e.message : "Could not send the request — check the connection and try again.");
+      get().notify(e instanceof ApiError ? e.message : "Could not send the request - check the connection and try again.");
       return false;
     }
   },
@@ -436,7 +436,7 @@ export const useApp = create<AppState>((set, get) => ({
       await refetch(r.changed, r.message);
       return true;
     } catch (e) {
-      get().notify(e instanceof ApiError ? e.message : "Could not send the request — check the connection and try again.");
+      get().notify(e instanceof ApiError ? e.message : "Could not send the request - check the connection and try again.");
       return false;
     }
   },
@@ -447,7 +447,7 @@ export const useApp = create<AppState>((set, get) => ({
       await refetch(r.changed, r.message);
       return true;
     } catch (e) {
-      get().notify(e instanceof ApiError ? e.message : "Could not cancel the request — check the connection and try again.");
+      get().notify(e instanceof ApiError ? e.message : "Could not cancel the request - check the connection and try again.");
       return false;
     }
   },
@@ -459,7 +459,7 @@ export const useApp = create<AppState>((set, get) => ({
       await refetch(r.changed, r.message);
       return true;
     } catch (e) {
-      get().notify(e instanceof ApiError ? e.message : "Could not save the approval — check the connection and try again.");
+      get().notify(e instanceof ApiError ? e.message : "Could not save the approval - check the connection and try again.");
       return false;
     }
   },
@@ -470,7 +470,7 @@ export const useApp = create<AppState>((set, get) => ({
       await refetch(r.changed, r.message);
       return true;
     } catch (e) {
-      get().notify(e instanceof ApiError ? e.message : "Could not save the rejection — check the connection and try again.");
+      get().notify(e instanceof ApiError ? e.message : "Could not save the rejection - check the connection and try again.");
       return false;
     }
   },
@@ -481,7 +481,7 @@ export const useApp = create<AppState>((set, get) => ({
       get().notify(r.message);
       await refetch(r.changed, r.message);
     } catch (e) {
-      get().notify(e instanceof ApiError ? e.message : "Could not issue the ticket — check the connection and try again.");
+      get().notify(e instanceof ApiError ? e.message : "Could not issue the ticket - check the connection and try again.");
     }
   },
   handover: async (tktId, otp) => {
@@ -492,7 +492,7 @@ export const useApp = create<AppState>((set, get) => ({
       get().notify(r.message);
       await refetch(r.changed, r.message);
     } catch (e) {
-      get().notify(e instanceof ApiError ? e.message : "Could not hand the ticket over — check the connection and try again.");
+      get().notify(e instanceof ApiError ? e.message : "Could not hand the ticket over - check the connection and try again.");
     }
   },
   receiveTicket: async (tktId) => {
@@ -502,7 +502,7 @@ export const useApp = create<AppState>((set, get) => ({
       get().notify(r.message);
       await refetch(r.changed, r.message);
     } catch (e) {
-      get().notify(e instanceof ApiError ? e.message : "Could not receive the ticket — check the connection and try again.");
+      get().notify(e instanceof ApiError ? e.message : "Could not receive the ticket - check the connection and try again.");
     }
   },
   /** A ticket withdrawn before anyone collected against it (POST /tickets/:id/cancel). The
@@ -515,7 +515,7 @@ export const useApp = create<AppState>((set, get) => ({
       await refetch(r.changed, r.message);
       return true;
     } catch (e) {
-      get().notify(e instanceof ApiError ? e.message : "Could not cancel the ticket — check the connection and try again.");
+      get().notify(e instanceof ApiError ? e.message : "Could not cancel the ticket - check the connection and try again.");
       return false;
     }
   },
@@ -540,7 +540,7 @@ export const useApp = create<AppState>((set, get) => ({
       await refetch(r.changed, r.message);
       return true;
     } catch (e) {
-      get().notify(e instanceof ApiError ? e.message : "Could not send the requisition — check the connection and try again.");
+      get().notify(e instanceof ApiError ? e.message : "Could not send the requisition - check the connection and try again.");
       return false;
     }
   },
@@ -553,10 +553,10 @@ export const useApp = create<AppState>((set, get) => ({
       get().notify(r.message);
       await refetch(r.changed, r.message);
     } catch (e) {
-      get().notify(e instanceof ApiError ? e.message : "Could not move the order on — check the connection and try again.");
+      get().notify(e instanceof ApiError ? e.message : "Could not move the order on - check the connection and try again.");
     }
   },
-  /** One order, one ticket, all or nothing — all of it the server's, on POST /prod-orders/:id/dispatch. */
+  /** One order, one ticket, all or nothing - all of it the server's, on POST /prod-orders/:id/dispatch. */
   dispatchOrder: async (id) => {
     try {
       const r = await call(routes.dispatchProdOrder, { params: { id } });
@@ -564,7 +564,7 @@ export const useApp = create<AppState>((set, get) => ({
       get().notify(r.message);
       await refetch(r.changed, r.message);
     } catch (e) {
-      get().notify(e instanceof ApiError ? e.message : "Could not dispatch the order — check the connection and try again.");
+      get().notify(e instanceof ApiError ? e.message : "Could not dispatch the order - check the connection and try again.");
     }
   },
   /**
@@ -582,7 +582,7 @@ export const useApp = create<AppState>((set, get) => ({
       await refetch(r.changed, r.message);
       return true;
     } catch (e) {
-      get().notify(e instanceof ApiError ? e.message : "Could not record the batch — check the connection and try again.");
+      get().notify(e instanceof ApiError ? e.message : "Could not record the batch - check the connection and try again.");
       return false;
     }
   },
@@ -594,7 +594,7 @@ export const useApp = create<AppState>((set, get) => ({
       await refetch(r.changed, r.message);
       return true;
     } catch (e) {
-      get().notify(e instanceof ApiError ? e.message : "Could not send it out — check the connection and try again.");
+      get().notify(e instanceof ApiError ? e.message : "Could not send it out - check the connection and try again.");
       return false;
     }
   },
@@ -607,7 +607,7 @@ export const useApp = create<AppState>((set, get) => ({
       await refetch(r.changed, r.message);
       return true;
     } catch (e) {
-      get().notify(e instanceof ApiError ? e.message : "Could not save the price — check the connection and try again.");
+      get().notify(e instanceof ApiError ? e.message : "Could not save the price - check the connection and try again.");
       return false;
     }
   },
@@ -618,7 +618,7 @@ export const useApp = create<AppState>((set, get) => ({
       await refetch(r.changed, r.message);
       return true;
     } catch (e) {
-      get().notify(e instanceof ApiError ? e.message : "Could not take the product off the menu — check the connection and try again.");
+      get().notify(e instanceof ApiError ? e.message : "Could not take the product off the menu - check the connection and try again.");
       return false;
     }
   },
@@ -629,13 +629,13 @@ export const useApp = create<AppState>((set, get) => ({
       await refetch(r.changed, r.message);
       return true;
     } catch (e) {
-      get().notify(e instanceof ApiError ? e.message : "Could not add the product to the menu — check the connection and try again.");
+      get().notify(e instanceof ApiError ? e.message : "Could not add the product to the menu - check the connection and try again.");
       return false;
     }
   },
   /**
    * The two figures the browser cannot compute for itself. Both are reads, not writes, so
-   * neither notifies a success nor refetches anything — they answer the caller and nothing else.
+   * neither notifies a success nor refetches anything - they answer the caller and nothing else.
    * They live here rather than in the screens because `.oxlintrc.json` makes `api/client` a
    * forbidden import under `roles/` and `pages/`: a screen that fetches for itself is a screen
    * that cannot be tested without a network.
@@ -660,8 +660,8 @@ export const useApp = create<AppState>((set, get) => ({
   cycleTheme: () => get().setTheme(nextTheme(get().theme)),
 
   // ---- prod-order raise ----
-  /** The outlet's ask of the kitchen (POST /prod-orders). Nothing is reserved by raising one —
-   *  the kitchen's shelves are untouched until it dispatches — so there is no cover check to
+  /** The outlet's ask of the kitchen (POST /prod-orders). Nothing is reserved by raising one -
+   *  the kitchen's shelves are untouched until it dispatches - so there is no cover check to
    *  preview here, only the ask and what the server says about it. */
   raiseProdOrder: async (body) => {
     try {
@@ -670,13 +670,13 @@ export const useApp = create<AppState>((set, get) => ({
       await refetch(r.changed, r.message);
       return true;
     } catch (e) {
-      get().notify(e instanceof ApiError ? e.message : "Could not send the order to the kitchen — check the connection and try again.");
+      get().notify(e instanceof ApiError ? e.message : "Could not send the order to the kitchen - check the connection and try again.");
       return false;
     }
   },
 
   ...createProcurementSlice(get),
-  // The ops slice writes nothing directly any more — every action of it posts and refetches —
+  // The ops slice writes nothing directly any more - every action of it posts and refetches -
   // so it takes only the reader.
   ...createOpsSlice(get),
   ...createAdminSlice(get),
@@ -687,5 +687,5 @@ export const useApp = create<AppState>((set, get) => ({
 // leave the screens showing data nobody is signed in to see.
 onSessionLost(() => {
   useApp.setState({ user: null, auth: "signed-out" });
-  useApp.getState().notify("Your session ended — sign in again.");
+  useApp.getState().notify("Your session ended - sign in again.");
 });

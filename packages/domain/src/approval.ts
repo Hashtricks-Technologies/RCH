@@ -23,7 +23,7 @@ export const prqStatus = (lines: readonly { qty: number; appr: number }[]): "Dec
 
 /**
  * The buyer's decision on a requisition. Never more than the store keeper asked for and never
- * more than the buyer typed — and, unlike a stock request's approval, **never netted against
+ * more than the buyer typed - and, unlike a stock request's approval, **never netted against
  * free to promise**: what the central store is holding has nothing to do with what a vendor can
  * supply. That is why this takes no `freeFor` callback and `planApproval` does.
  */
@@ -42,7 +42,7 @@ export function planPrqApproval(
  * What the manager may actually promise. Never more than the counter asked for, never more
  * than the manager typed, and never more than is still free to promise once open tickets and
  * other approvals are netted off (C6). `trimmed` says the store, not the manager, is what cut
- * the line — a manager who deliberately types a smaller number has trimmed nothing.
+ * the line - a manager who deliberately types a smaller number has trimmed nothing.
  */
 export function planApproval(
   lines: readonly { it: string; qty: number }[],

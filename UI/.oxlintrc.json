@@ -2,15 +2,15 @@
   "$schema": "./node_modules/oxlint/configuration_schema.json",
   // Named explicitly rather than left to oxlint's defaults, so a version bump cannot quietly add
   // or drop a plugin under a `--max-warnings 0` gate. `react-hooks` is not a plugin of its own in
-  // oxlint 1.x — `rules-of-hooks` and `exhaustive-deps` are `react/*` rules, enabled below — and
+  // oxlint 1.x - `rules-of-hooks` and `exhaustive-deps` are `react/*` rules, enabled below - and
   // `unicorn` was missing from this list entirely, which is why two of its findings sat unread.
   "plugins": ["react", "typescript", "unicorn", "oxc"],
   "rules": {
     "react/rules-of-hooks": "error",
     // An error, not a warning: a dependency array that lies is a screen that stops updating.
-    // The one honest exception in the tree — the kitchen dashboard's memo, narrowed to the three
+    // The one honest exception in the tree - the kitchen dashboard's memo, narrowed to the three
     // store slices `availOf` actually reads because `[s]` is a new object on every write anywhere
-    // — was fixed by narrowing the value passed in, not by narrowing the array.
+    // - was fixed by narrowing the value passed in, not by narrowing the array.
     "react/exhaustive-deps": "error",
     // Off, with a reason, for two deliberate patterns it cannot tell apart from an accident.
     //
@@ -20,7 +20,7 @@
     // That is the architecture, not an oversight, and "move your component to a separate file"
     // is advice about the opposite arrangement.
     //
-    // The other six export one constant or one pure function beside their component on purpose —
+    // The other six export one constant or one pure function beside their component on purpose -
     // `REPORTS` in `store/Reports.tsx` and `groupPool`/`picksFor`/`ordersFor` in
     // `buyer/ProcurementList.tsx` are exported *for the suite*, so a case about what a report
     // counts or how a pool folds can drive the arithmetic without rendering a screen.
@@ -47,12 +47,12 @@
       "rules": {
         // `DataTable` takes its rows as `{ key, cells: ReactNode[] }` and renders each cell into
         // its own `<td key={i}>` (`src/ui/kit.tsx`). Every one of the 252 findings this rule
-        // raised was such a cell array — a positional, fixed-length row keyed by the table, not a
-        // list React reconciles — and there is no second kind among them: each was checked against
+        // raised was such a cell array - a positional, fixed-length row keyed by the table, not a
+        // list React reconciles - and there is no second kind among them: each was checked against
         // the enclosing `cells: [ … ]`, the two that sit in a named `cells` variable
         // (`buyer/Vendors.tsx`, `prod/Stock.tsx`) included. Keeping it on would mean a meaningless
-        // `key` on 252 table cells, and the rule's one real finding — a genuine `.map()` that
-        // forgot one — buried under them.
+        // `key` on 252 table cells, and the rule's one real finding - a genuine `.map()` that
+        // forgot one - buried under them.
         "react/jsx-key": "off"
       }
     },

@@ -9,8 +9,8 @@ const strip = <T extends object>(o: T): T => Object.fromEntries(Object.entries(o
 
 export type UserRow = typeof users.$inferSelect;
 /** What an admin-flagged account is called wherever a role label would stand. Its `role`/`loc`
- *  columns are placeholders the schema needs and nothing acts on — its token reaches no
- *  operational route (`plugins/rbac.ts`) — so the label says what the account actually is. */
+ *  columns are placeholders the schema needs and nothing acts on - its token reaches no
+ *  operational route (`plugins/rbac.ts`) - so the label says what the account actually is. */
 const SUPER_ADMIN_LABEL = "Super Admin";
 export const roleLabelOf = (u: Pick<UserRow, "admin" | "roleLabel">): string => (u.admin ? SUPER_ADMIN_LABEL : u.roleLabel);
 export const toWireUser = (u: UserRow): User => ({
@@ -43,7 +43,7 @@ export type BillRow = typeof bills.$inferSelect;
 export type BillLineRow = typeof billLines.$inferSelect;
 /** The operator travels as a name and a colour, never an id: a bill is read on a screen, and
  *  the till that wrote it only ever shows as the badge beside the number. Lines arrive already
- *  in `line_no` order — the caller owns the query. */
+ *  in `line_no` order - the caller owns the query. */
 export const toWireBill = (b: BillRow, lines: BillLineRow[], operator: { name: string; colour: string }): Bill => strip({
   no: b.no, loc: b.loc as Bill["loc"], opr: operator.name, oprCol: operator.colour,
   tot: b.total, tax: b.tax, t: iso(b.at), pay: b.tender as Bill["pay"],
@@ -57,6 +57,6 @@ export const toWireBill = (b: BillRow, lines: BillLineRow[], operator: { name: s
 
 /** What the operator calls each kind of payer. One list, so the sentence the till says when the
  *  roster has never heard of a payer and the sentence the roster itself says when the manager
- *  patches one that is not there use the same word. Two modules read it — `pos` at the till and
- *  `payers` at the register — which is why it sits here rather than in either of them. */
+ *  patches one that is not there use the same word. Two modules read it - `pos` at the till and
+ *  `payers` at the register - which is why it sits here rather than in either of them. */
 export const PAYER_LABEL: Record<PayerKind, string> = { patient: "patient", staff: "staff member", dept: "department" };

@@ -59,7 +59,7 @@ export type RateContract = z.infer<typeof D.RateContractSchema>;
 export type ShopAsk = z.infer<typeof D.ShopAskSchema>;
 
 /** The two reports: the store's stock ledger and a payer's credit for the
- *  calendar month — the two figures a caller cannot compute from its own snapshot. */
+ *  calendar month - the two figures a caller cannot compute from its own snapshot. */
 export type StockLedgerQuery = z.infer<typeof R.StockLedgerQuerySchema>;
 export type StockLedgerRow = z.infer<typeof R.StockLedgerRowSchema>;
 export type StockLedgerResponse = z.infer<typeof R.StockLedgerResponseSchema>;
@@ -75,7 +75,7 @@ export type AdjustReason = z.infer<typeof D.AdjustReasonSchema>;
 export type AdjustmentLine = z.infer<typeof D.AdjustmentLineSchema>;
 export type Adjustment = z.infer<typeof D.AdjustmentSchema>;
 
-// ---- admin: account management (a capability, not a role — root CLAUDE.md).
+// ---- admin: account management (a capability, not a role - root CLAUDE.md).
 export type AdminUser = z.infer<typeof A.AdminUserSchema>;
 export type AdminUserWithTempPassword = z.infer<typeof A.AdminUserWithTempPasswordSchema>;
 export type CreateAdminUserBody = z.infer<typeof A.CreateAdminUserBodySchema>;

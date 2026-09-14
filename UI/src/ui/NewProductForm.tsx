@@ -9,9 +9,9 @@ import type { ItemType, LocKey } from "../types";
 /**
  * The one Add Product form.
  *
- * There were three, near enough identical and each with its own copy of the same four checks —
+ * There were three, near enough identical and each with its own copy of the same four checks -
  * the store keeper's drawer, the buyer's, and one inlined at the top of the kitchen's stock
- * screen — and they had already drifted: the same refusal was worded three ways, one of them
+ * screen - and they had already drifted: the same refusal was worded three ways, one of them
  * checked an MRP against cost and another did not, and the buyer's still carried a comment
  * calling itself a client walkthrough. What actually differs between them is the *field set* and
  * where the opening balance books, so that is what `scope` carries. The rules do not differ and
@@ -33,11 +33,11 @@ interface ScopeSpec {
 const TRADED: ScopeSpec["types"] = [
   { t: "RAW", label: "Raw material (RAW)", hint: "Bought in and consumed by a recipe" },
   { t: "PACK", label: "Packaging (PACK)", hint: "Cups, boxes and wraps consumed by a recipe" },
-  { t: "MRP", label: "Printed price (MRP)", hint: "Bought in and resold as it is — the printed MRP caps its selling price" },
+  { t: "MRP", label: "Printed price (MRP)", hint: "Bought in and resold as it is - the printed MRP caps its selling price" },
   { t: "FG", label: "Finished good (FG)", hint: "Made in the kitchen and held as stock" },
   { t: "MTO", label: "Made to order (MTO)", hint: "Assembled at the counter from a recipe, never held as stock" },
 ];
-/** The kitchen makes and holds. It never invents an MRP good — those are bought in by
+/** The kitchen makes and holds. It never invents an MRP good - those are bought in by
  *  procurement and priced off a printed MRP the kitchen has no sight of. */
 const KITCHEN_TYPES: ScopeSpec["types"] = [
   { t: "FG", label: "Finished good (FG)", hint: "Made in the kitchen and sent out to the outlets" },
@@ -80,7 +80,7 @@ export function NewProductForm({ scope, title, sub, intro, initialName, onCreate
   sub: string;
   /** The scope's own "what adding a product here means" note, above the fields. */
   intro?: React.ReactNode;
-  /** A name the desk already knows — the product a shop asked for. */
+  /** A name the desk already knows - the product a shop asked for. */
   initialName?: string;
   /**
    * What else has to happen once the master has taken the item, with the key the **server**
@@ -119,10 +119,10 @@ export function NewProductForm({ scope, title, sub, intro, initialName, onCreate
   const duplicate = trimmed.length > 0
     && Object.values(IT).some((i) => i.n.toLowerCase() === trimmed.toLowerCase());
   const nameErr = !trimmed ? "Give the product a name" : duplicate ? `${trimmed} is already in the catalogue` : "";
-  const costErr = !(costN > 0) ? "Cost must be above zero — stock value is read off it" : "";
+  const costErr = !(costN > 0) ? "Cost must be above zero - stock value is read off it" : "";
   const mrpErr = !isMrp ? ""
     : !(mrpN > 0) ? "An MRP item needs the price printed on its pack"
-      : mrpN < costN ? "The printed MRP is below cost — check the figures" : "";
+      : mrpN < costN ? "The printed MRP is below cost - check the figures" : "";
   const firstErr = nameErr || costErr || mrpErr;
   const ok = !firstErr;
 
@@ -192,7 +192,7 @@ export function NewProductForm({ scope, title, sub, intro, initialName, onCreate
         )}
       </FormRow>
 
-      <Section title="Measure and tax" sub="Everything downstream — requisitions, orders, GRNs — is quoted in this unit." />
+      <Section title="Measure and tax" sub="Everything downstream - requisitions, orders, GRNs - is quoted in this unit." />
       <FormRow cols={spec.has.tax ? "f3" : undefined}>
         <Field label="Unit">
           <select value={unit} onChange={(e) => setUnit(e.target.value)}>

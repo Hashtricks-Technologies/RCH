@@ -1,6 +1,6 @@
 export const iso = (d: Date): string => d.toISOString();
 
-/** Today's date in the hospital's zone at HH:MM local — for seeding "06:30"-style fixtures. */
+/** Today's date in the hospital's zone at HH:MM local - for seeding "06:30"-style fixtures. */
 export function todayAt(hhmm: string): Date {
   const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date());
   const get = (t: string) => parts.find((p) => p.type === t)!.value;

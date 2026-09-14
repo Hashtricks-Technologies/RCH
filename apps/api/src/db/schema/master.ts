@@ -33,7 +33,7 @@ export const users = pgTable("users", {
   mustChangePassword: boolean("must_change_password").notNull().default(true),
   active: boolean("active").notNull().default(true),
   // A capability, not a role: an ordinary account, with an ordinary role and location, that can
-  // additionally reach the account-management page. Never granted or revoked over the wire —
+  // additionally reach the account-management page. Never granted or revoked over the wire -
   // only `pnpm --filter @rch/api users set-admin` flips it, so a compromised admin session can
   // never mint a second one. Default false: nobody has it unless a CLI explicitly said so.
   admin: boolean("admin").notNull().default(false),
@@ -42,7 +42,7 @@ export const users = pgTable("users", {
 }, (t) => [uniqueIndex("users_emp_no_uq").on(t.empNo)]);
 
 // Insert-only as far as the code goes: nothing ever updates or deletes a row here. One line per
-// admin write — create, reset-password, deactivate, reactivate, update_role_loc, delete — written
+// admin write - create, reset-password, deactivate, reactivate, update_role_loc, delete - written
 // in the same transaction as the change it records, so a refused write leaves no row behind
 // either. The one change a row can see is Postgres's own: deleting an account sets `target_id`
 // to null on the lines about it (`ON DELETE SET NULL`), which is why every line also carries
@@ -129,14 +129,14 @@ export const rateContracts = pgTable("rate_contracts", {
   // check reads before the insert takes its lock, so two store keepers adding the same contract
   // at once would both pass it. The index is the arbiter: `on conflict do nothing … returning`
   // hands the loser no row, and it reads the same refusal the check would have given it a
-  // moment later — the pattern `addMenuItem` already uses.
+  // moment later - the pattern `addMenuItem` already uses.
   uniqueIndex("rate_contracts_live_uq").on(t.vendorId, t.itemKey).where(sql`${t.active}`),
 ]);
 
 /**
  * Who a non-cash bill may be posted to: the patient, payroll and cost-centre rosters the live
  * system would look up, standing here until Phase 6 gives them their own masters. The till
- * sends a name along with the id, but the name on the bill is read from this row — a payer the
+ * sends a name along with the id, but the name on the bill is read from this row - a payer the
  * counter typed is a second account with its own untouched credit ceiling, so the id has to be
  * one the hospital already knows. Keyed by kind and id together, because the three rosters are
  * numbered independently and a staff number may read like a cost centre.
@@ -149,8 +149,8 @@ export const payers = pgTable("payers", {
   // ---- payers ----
   // The roster is written by people now, not only by the seed, so it carries the same two
   // stamps every other master table does: when the account was opened, and when it was last
-  // renamed or switched off. Neither reaches the wire — `PayerRecordSchema` is the four fields
-  // the register shows — but an administrator asking "when was this closed?" has to have
+  // renamed or switched off. Neither reaches the wire - `PayerRecordSchema` is the four fields
+  // the register shows - but an administrator asking "when was this closed?" has to have
   // somewhere to look, and a CSV import that ran twice has to be tellable from one that did not.
   createdAt: ts("created_at").notNull().defaultNow(),
   updatedAt: ts("updated_at").notNull().defaultNow(),

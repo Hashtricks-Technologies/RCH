@@ -22,7 +22,7 @@ beforeEach(async () => { await truncateAll(app.testDb!.db); await seedTestDb(app
 afterAll(async () => { await app.close(); });
 
 const round2 = (v: number) => Math.round(v * 100) / 100;
-/** Pick payers out of the fixtures, never by naming a number — the seed moves. `kind` is
+/** Pick payers out of the fixtures, never by naming a number - the seed moves. `kind` is
  *  re-stated as a literal because the fixture lists are typed `Payer[]`, whose `kind` is the
  *  whole union; every row of `FX.STAFF` carries "staff" and the sale's payer takes only that. */
 const STAFF = { ...FX.STAFF[0], kind: "staff" as const };
@@ -49,13 +49,13 @@ const credit = async (p: { kind: "patient" | "staff" | "dept"; id: string }): Pr
  * The brief's first draft did this by selling 80 bottles of water five times over. It cannot:
  * the coffee shop's shelf holds twelve, so the sale is refused by the cover check with a
  * different sentence and no `details` on it, and the case would be pinning the wrong refusal.
- * A builder-made bill moves no stock, which is exactly what is wanted here — the ceiling is
+ * A builder-made bill moves no stock, which is exactly what is wanted here - the ceiling is
  * about money already spent, not about the shelf.
  */
 const sellPastTheCeiling = async (payer: { kind: "staff"; id: string; name: string }, room = 10) => {
   const taken = (await credit(payer)).taken;
   await given.bill(app.db, { loc: "coffee", tender: "Staff credit", payer, total: round2(STAFF_CREDIT_LIMIT - taken - room), lines: [{ it: "water", qty: 1, rate: 20 }] });
-  // One bottle of mineral water at the Coffee Shop is ₹20 on price list B — more than the room
+  // One bottle of mineral water at the Coffee Shop is ₹20 on price list B - more than the room
   // left, and one unit of a shelf that holds twelve, so nothing but the ceiling can refuse it.
   const res = await app.inject({
     method: "POST", url: "/api/v1/bills",
@@ -70,7 +70,7 @@ const sellPastTheCeiling = async (payer: { kind: "staff"; id: string; name: stri
 
 describe("GET /reports/stock-ledger", () => {
   it("opens at what the moves before the window sum to and closes at the balance", async () => {
-    // Pick the item by filtering rather than naming one: the seed moves. Ordered, though —
+    // Pick the item by filtering rather than naming one: the seed moves. Ordered, though -
     // `limit(1)` off an unordered select is whichever row Postgres happens to hand back first,
     // and the four literals below are that one item's numbers, so an unordered pick would make
     // this case pass or fail on the planner's mood.
@@ -83,10 +83,10 @@ describe("GET /reports/stock-ledger", () => {
 
     // db:rebuild-balances reproduces stock_balances exactly from stock_moves. The
     // report is the same sum by another route, so its closing column has to agree with the cache
-    // — and that is the whole reason this report is a server query and not browser arithmetic.
+    // - and that is the whole reason this report is a server query and not browser arithmetic.
     const [bal] = await app.db.select().from(s.stockBalances).where(and(eq(s.stockBalances.loc, "store"), eq(s.stockBalances.itemKey, it)));
     expect(row.closing).toBe(Number(bal.onHand));
-    // The seed's own numbers, not the formula that produced them — `ledgerRow` in @rch/domain
+    // The seed's own numbers, not the formula that produced them - `ledgerRow` in @rch/domain
     // defines `closing` as exactly this sum, so recomputing it here would prove nothing.
     expect(row.opening).toBe(0);
     expect(row.recd).toBe(18.4);
@@ -100,7 +100,7 @@ describe("GET /reports/stock-ledger", () => {
   it("splits on `at < from` and `at >= from`, so a move is on exactly one side of the edge", async () => {
     // The one boundary the SQL owns and that no domain test can catch (Task 2's report, concern
     // 3): `openingAt` takes `at < from` and `movedIn` takes `at >= from`. Rather than age a move
-    // — which would mean writing `stock_moves` from a test — take a real receipt's own instant
+    // - which would mean writing `stock_moves` from a test - take a real receipt's own instant
     // and walk the window's edge across it by one millisecond. The receipt has to be inside the
     // window when `from` is its own instant, and in the opening balance one millisecond later:
     // exactly five units move from one column to the other, and none is counted twice or lost.
@@ -134,7 +134,7 @@ describe("GET /reports/stock-ledger", () => {
     const before = { q: await ledger("quarantine"), store: await ledger("store") };
     const { id } = await orderedFor([{ it: "milk", qty: 40 }]);
     // Forty litres arrive, three of them are turned away: 37 onto the store's shelf, 3 onto
-    // quarantine's — the only view anyone has of what a goods receipt refused.
+    // quarantine's - the only view anyone has of what a goods receipt refused.
     const res = await receive("u3", id, [line(40, { rejected: 3 })]);
     expect(res.statusCode, res.body).toBe(200);
 
@@ -147,19 +147,19 @@ describe("GET /reports/stock-ledger", () => {
 
   it("counts a window, not everything", async () => {
     // Every seeded move is stamped `now()`, so a 365-day window and a 1-day window sum the same
-    // rows and this case cannot fail on the totals alone — what `days` actually changes is the
+    // rows and this case cannot fail on the totals alone - what `days` actually changes is the
     // window itself: a wider window opens earlier, and each window's own width is `days` long.
     const wide = await ledger("store", 365);
     const narrow = await ledger("store", 1);
     expect(new Date(wide.from).getTime()).toBeLessThan(new Date(narrow.from).getTime());
     expect(new Date(wide.to).getTime() - new Date(wide.from).getTime()).toBe(365 * 86_400_000);
     expect(new Date(narrow.to).getTime() - new Date(narrow.from).getTime()).toBe(1 * 86_400_000);
-    // Both windows close on the same "now" — the two requests land a few milliseconds apart,
+    // Both windows close on the same "now" - the two requests land a few milliseconds apart,
     // not on different days.
     expect(Math.abs(new Date(wide.to).getTime() - new Date(narrow.to).getTime())).toBeLessThan(5000);
   });
 
-  it("lists a shelf the window never touched — a zero row means the location carries the line", async () => {
+  it("lists a shelf the window never touched - a zero row means the location carries the line", async () => {
     const body = await ledger("store", 1);
     const carried = await app.db.select().from(s.stockBalances).where(eq(s.stockBalances.loc, "store"));
     for (const b of carried) expect(body.rows.map((r) => r.it)).toContain(b.itemKey);
@@ -185,12 +185,12 @@ describe("GET /reports/stock-ledger", () => {
 
 describe("GET /reports/credit/:kind/:id", () => {
   it("answers with exactly the number the till refuses on", async () => {
-    // `given.bill` takes the bill's `total` as well as its lines — it is what the credit sum
+    // `given.bill` takes the bill's `total` as well as its lines - it is what the credit sum
     // adds up, and the builder does not derive it.
     await given.bill(app.db, { loc: "coffee", tender: "Staff credit", payer: STAFF, total: 20, lines: [{ it: "water", qty: 1, rate: 20 }] });
     const body = await credit(STAFF);
     expect(body.taken).toBe(20);
-    // ₹3,000 limit less ₹20 taken — the seed's own number, not `creditRoom` re-run on it.
+    // ₹3,000 limit less ₹20 taken - the seed's own number, not `creditRoom` re-run on it.
     expect(body.room).toBe(2980);
     expect(body.limit).toBe(STAFF_CREDIT_LIMIT);
     expect(body.name).toBe(STAFF.name);
@@ -200,7 +200,7 @@ describe("GET /reports/credit/:kind/:id", () => {
     const refusal = await sellPastTheCeiling(STAFF);
     const after = await credit(STAFF);
     expect((refusal.json() as { error: { details: { taken: number } } }).error.details.taken).toBe(after.taken);
-    // `sellPastTheCeiling`'s default `room` of 10 — left exactly there by construction.
+    // `sellPastTheCeiling`'s default `room` of 10 - left exactly there by construction.
     expect(after.room).toBe(10);
   });
 
@@ -231,7 +231,7 @@ describe("GET /reports/credit/:kind/:id", () => {
   it("answers zero for a payer whose tender never creates credit", async () => {
     const body = await credit({ kind: "dept", id: DEPT.id });
     // Only the "Staff credit" tender runs up a balance, and it carries a staff payer. A
-    // department's report is structurally zero — the row exists so a screen can say so.
+    // department's report is structurally zero - the row exists so a screen can say so.
     expect(body.taken).toBe(0);
     expect(body.room).toBe(body.limit);
     expect(body.name).toBe(DEPT.name);
@@ -252,7 +252,7 @@ describe("GET /reports/credit/:kind/:id", () => {
   });
 });
 
-/** An order ready to receive against, with a live requisition claim behind it — the shape
+/** An order ready to receive against, with a live requisition claim behind it - the shape
  *  `grn.test.ts` uses. A rejection is the only way stock reaches quarantine, so it is the only
  *  way to prove the ledger reports a `StockLoc` and not merely a `LocKey`. */
 const orderedFor = async (lines: { it: string; qty: number }[]) => {

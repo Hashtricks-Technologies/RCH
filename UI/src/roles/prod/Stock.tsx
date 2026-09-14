@@ -10,7 +10,7 @@ import {
 import { NewProductForm } from "../../ui/NewProductForm";
 import { registerDrawer } from "../../drawers";
 
-/* The kitchen works to its own par levels — deliberately smaller than the reorder
+/* The kitchen works to its own par levels - deliberately smaller than the reorder
    levels the central store keeps for the same item. */
 const par = (k: string) => parOf("kitchen", k);
 /** Bring the item back to par, never less than one unit of it. */
@@ -27,8 +27,8 @@ type KindF = (typeof KINDS)[number];
 /**
  * The kitchen's own Add Product panel. It is the shared form (`ui/NewProductForm.tsx`) under
  * the `kitchen` scope, which is deliberately narrower than the store keeper's: the kitchen may
- * add what it makes (FG) and what it consumes (RAW), never an MRP good — those are bought in by
- * procurement and priced off a printed MRP the kitchen has no sight of — and it carries a shelf
+ * add what it makes (FG) and what it consumes (RAW), never an MRP good - those are bought in by
+ * procurement and priced off a printed MRP the kitchen has no sight of - and it carries a shelf
  * life, which is the one field no other desk fills in.
  */
 function NewProductDrawer() {
@@ -40,7 +40,7 @@ function NewProductDrawer() {
       intro={
         <Alert tone="i" label="SCOPE">
           A product added here joins the item master for everyone and books its opening stock at the
-          {" "}{LOC.kitchen.n}. The kitchen may add what it makes (FG) and what it consumes (RAW) — MRP
+          {" "}{LOC.kitchen.n}. The kitchen may add what it makes (FG) and what it consumes (RAW) - MRP
           goods are bought in and are added by the central store.
         </Alert>
       }
@@ -61,7 +61,7 @@ export default function Stock() {
   const [rq, setRq] = useState("");
   const [kind, setKind] = useState<KindF>("All");
   const [want, setWant] = useState<Record<string, string>>({});
-  /** Which item's request is in flight — the typed quantity is only dropped once it landed. */
+  /** Which item's request is in flight - the typed quantity is only dropped once it landed. */
   const [busy, setBusy] = useState<string | null>(null);
 
   const held = Object.keys(s.stock.kitchen);

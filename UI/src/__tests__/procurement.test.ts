@@ -14,14 +14,14 @@ import { clone, resetStore, S } from "./fixture";
 /**
  * What buying's screens *derive*, and nothing else.
  *
- * Every rule the store used to hold — the approval arithmetic, the claim walk, the 2 % receipt
- * tolerance, the expiry checks, the finance slab — is the server's from Phase 5, and its tests
+ * Every rule the store used to hold - the approval arithmetic, the claim walk, the 2 % receipt
+ * tolerance, the expiry checks, the finance slab - is the server's from Phase 5, and its tests
  * are `apps/api/src/modules/{requisitions,purchaseorders,grn,vendors,contracts,catalog,
  * productreqs}/*.test.ts`. `writes.test.ts` pins which route each action calls. What is left
  * here is the preview the browser still computes for itself: the pooled procurement list, a
  * requisition's progress, and the two halves of the M3 duplicate-order guard.
  *
- * Cases that used to reach their state by calling an action now set it directly — what each one
+ * Cases that used to reach their state by calling an action now set it directly - what each one
  * is about is the selector, not the write.
  */
 beforeEach(resetStore);
@@ -80,7 +80,7 @@ describe("rate contract preview honours the validity window", () => {
     });
     expect(S().contractRate("Aavin Dairy Depot", "milk")).toBeUndefined();
     // `contractFor` (`roles/buyer/lib.ts`, what `PoDrawer` and `ProcurementList` actually call)
-    // inherits the same refusal — it is a thin resolver over `contractRate`, not a second copy
+    // inherits the same refusal - it is a thin resolver over `contractRate`, not a second copy
     // of the rule.
     expect(contractFor(S(), "VN-001", "milk")).toBeUndefined();
   });
@@ -207,7 +207,7 @@ describe("the order's value", () => {
   it("is the domain's arithmetic, to the paise", () => {
     const o = S().po.find((x) => x.id === "PO-2026-0141")!;
     expect(poValue(o)).toBe(120 * 14.2 + 90 * 11.5);
-    // Rounded to two decimals rather than carried at full float precision — the server stamps
+    // Rounded to two decimals rather than carried at full float precision - the server stamps
     // `needsApproval` off the same function, and a slab comparison must not disagree by a tail.
     expect(poValue({ ...o, lines: [{ ...o.lines[0], qty: 3, rate: 0.615 }] })).toBe(1.85);
   });
@@ -249,7 +249,7 @@ describe("onOrder", () => {
 
   it("counts a Draft PO's claim, not only Ordered/Partially received", () => {
     // PO-2026-0140 is a Draft carrying 30 kg of sugar claimed from
-    // PRQ-2026-014 — creating the draft moved that claim out of the pool,
+    // PRQ-2026-014 - creating the draft moved that claim out of the pool,
     // before it was ever sent to a vendor. A selector that only recognised
     // Ordered/Partially received would report 0 here while 30 kg sits claimed
     // and unaccounted for.
@@ -259,8 +259,8 @@ describe("onOrder", () => {
   it("does not count a requisition still awaiting approval", () => {
     // PRQ-2026-013 (Sent) asks for 6 units of butter. PRQ-2026-012's butter
     // line is fully claimed (pool pending 0) and PO-2026-0142's butter line
-    // is fully received (undelivered balance 0), so onOrder alone — which
-    // only reflects an approved commitment — must stay at zero until
+    // is fully received (undelivered balance 0), so onOrder alone - which
+    // only reflects an approved commitment - must stay at zero until
     // PRQ-2026-013 is actually decided on.
     expect(onOrder(S(), "butter")).toBe(0);
   });

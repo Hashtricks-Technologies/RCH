@@ -1,4 +1,4 @@
-// Requests: SQL only. No rules, no transaction of its own — service.ts passes `tx` in.
+// Requests: SQL only. No rules, no transaction of its own - service.ts passes `tx` in.
 import { and, asc, eq, inArray } from "drizzle-orm";
 import type { LocKey, ReqStatus, StockRequest } from "@rch/contract";
 import type { Tx } from "../../lib/db.js";
@@ -58,7 +58,7 @@ export const requestsRepo = {
     }
   },
 
-  /** Every approval that has not yet become a ticket — exactly what `committed()` nets off.
+  /** Every approval that has not yet become a ticket - exactly what `committed()` nets off.
    *  Shaped for the domain function, so nothing here knows what it will be used for. */
   async openRequests(tx: Tx): Promise<Pick<StockRequest, "st" | "ticket" | "lines">[]> {
     const heads = await tx.select().from(stockRequests).where(inArray(stockRequests.status, ["Manager approved", "Partially approved"]));
@@ -72,7 +72,7 @@ export const requestsRepo = {
   },
 
   /** On hand at one location for the items a decision is about. A cell with no row is absent,
-   *  which the caller reads as zero — the same thing the stock screens show as a dash. */
+   *  which the caller reads as zero - the same thing the stock screens show as a dash. */
   async balancesAt(tx: Tx, loc: string, itemKeys: readonly string[]): Promise<Record<string, number>> {
     if (itemKeys.length === 0) return {};
     const rows = await tx.select().from(stockBalances)

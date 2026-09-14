@@ -48,11 +48,11 @@ const NARROW: Partial<Record<Changed, () => Promise<void>>> = {
  * Pull back exactly what a write said it changed.
  *
  * `stock`/`rsv`/`ovr` come from `GET /stock`, and every other collection the contract names
- * from its own GET — `bills`, `req`, `tkt`, `shopAsks`, `pord`, `batch`, `prq`, `po`, `grn`,
+ * from its own GET - `bills`, `req`, `tkt`, `shopAsks`, `pord`, `batch`, `prq`, `po`, `grn`,
  * `vendors`, `contracts`, `productReqs`, `items`, `tickets` (the support desk,
  * `GET /support/tickets`), `prices` and `menu` (the manager's two), `roster` (the till's live
  * payer list, `GET /roster`), `payers` (the manager's whole register, closed accounts
- * included, `GET /payers`) and `adjustments` (the write-off register, `GET /adjustments`) —
+ * included, `GET /payers`) and `adjustments` (the write-off register, `GET /adjustments`) -
  * each fetched at most once however many times the write named it,
  * which is what lets a payer write name both of its collections and still cost two reads.
  * Nothing costs a snapshot any more: taking one pulled the whole hospital back down and, until
@@ -79,7 +79,7 @@ export async function refetch(changed: readonly Changed[], after?: string): Prom
     // here would send the operator round to do it a second time, so this keeps what did
     // happen in front of them. (`loadSnapshot` reports its own failures and never throws.)
     useApp.getState().notify(after
-      ? `${after} — the screen could not be refreshed; reload to see the latest.`
-      : "Saved — but the screen could not be refreshed. Reload to see the latest.");
+      ? `${after} - the screen could not be refreshed; reload to see the latest.`
+      : "Saved - but the screen could not be refreshed. Reload to see the latest.");
   }
 }

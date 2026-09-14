@@ -20,7 +20,7 @@ const hits = (o: PurchaseOrder, vendors: Vendor[], q: string) => {
       || (IT[l.it]?.c ?? "").toLowerCase().includes(t));
 };
 
-/** Items still short of what was ordered — the only ones worth listing as a balance (M2).
+/** Items still short of what was ordered - the only ones worth listing as a balance (M2).
  *  Short means short of what was **accepted**: goods turned away at the door are in quarantine,
  *  not on the shelf, so the vendor still owes them. */
 const balanceOf = (o: PurchaseOrder) =>
@@ -39,7 +39,7 @@ const RECEIPT_ST: Record<Exclude<Receipt, "All">, PoStatus> = {
 };
 
 /** The board reads left to right, the way an order travels, the two closed outcomes included, so
- *  nothing an order can be is off the screen. Partially and fully received share one column —
+ *  nothing an order can be is off the screen. Partially and fully received share one column -
  *  each card there carries its own status, and the column's Show filter picks either. */
 const BOARD: { title: PoStatus; sts: PoStatus[]; sub: string; empty: string }[] = [
   { title: "Draft", sts: ["Draft"], sub: "Not yet sent to a vendor",
@@ -48,7 +48,7 @@ const BOARD: { title: PoStatus; sts: PoStatus[]; sub: string; empty: string }[] 
     empty: "Send a draft to a vendor to see it here." },
   { title: "Received", sts: ["Partially received", "Received"], sub: "Goods booked in, in part or in full",
     empty: "Orders land here once any of their items are receipted." },
-  { title: "Cancelled", sts: ["Cancelled"], sub: "Called off — kept for the record",
+  { title: "Cancelled", sts: ["Cancelled"], sub: "Called off - kept for the record",
     empty: "Cancelled orders are kept here for the record." },
 ];
 
@@ -58,7 +58,7 @@ const BOARD: { title: PoStatus; sts: PoStatus[]; sub: string; empty: string }[] 
 export const newestFirst = <T extends { iso: string }>(os: T[]): T[] =>
   os.slice().sort((a, b) => b.iso.localeCompare(a.iso));
 
-/** The order number on a card is a button, not a heading — it opens the order. The same inline
+/** The order number on a card is a button, not a heading - it opens the order. The same inline
  *  style the kitchen board uses, so it keeps `.kan-top b`'s own type. */
 const OPEN_BTN = {
   background: "none", border: 0, padding: 0, margin: 0, font: "inherit", color: "inherit",
@@ -88,13 +88,13 @@ export default function PurchaseOrders() {
   };
 
   const draftCount = s.po.filter((o) => o.st === "Draft").length;
-  // Matches buyer/Dashboard.tsx's "Value on order" KPI — computed from the
+  // Matches buyer/Dashboard.tsx's "Value on order" KPI - computed from the
   // same, unfiltered set so the two screens never disagree, and so typing in
   // the board's search box cannot change this number.
   const openOrders = s.po.filter((o) => o.st === "Ordered" || o.st === "Partially received");
   const orderedValue = sum(openOrders, poValue);
   const linesAwaiting = sum(openOrders, (o) => o.lines.filter((l) => l.qty - netReceived(l) > 0).length);
-  // Only orders still open count toward "needs a decision" — once an order is
+  // Only orders still open count toward "needs a decision" - once an order is
   // fully received or cancelled, a finance-slab flag stamped when it was
   // raised is history, not a live queue, and must stop being counted here.
   const overSlab = openOrders.filter((o) => o.needsApproval).length;
@@ -103,7 +103,7 @@ export default function PurchaseOrders() {
     const bal = o.st === "Partially received" ? balanceOf(o) : [];
     const grns = s.grn.filter((g) => g.po === o.id).length;
     return (
-      // The card carries the mouse shortcut and the order number is the real control — the card
+      // The card carries the mouse shortcut and the order number is the real control - the card
       // cannot itself be a button, because Receive and Edit & send sit inside it. `Btn` stops its
       // own click from bubbling, so Receive opens the receipt and not the order behind it.
       <div className="kan-card" key={o.id} onClick={() => openDrawer("bpo", o.id)}>
@@ -181,7 +181,7 @@ export default function PurchaseOrders() {
           const cards = inColumn(sts);
           const showing = sts.length > 1 && receipt !== "All";
           return (
-            <section className="kan-col" key={title} aria-label={`${title} — ${cards.length} orders`}>
+            <section className="kan-col" key={title} aria-label={`${title} - ${cards.length} orders`}>
               <div className="kan-h">
                 <StatusPill status={title} />
                 <div className="sp" />

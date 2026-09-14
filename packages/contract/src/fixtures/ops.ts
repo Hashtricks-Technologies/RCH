@@ -20,7 +20,7 @@ export const seedTickets = (): SupportTicket[] => [
       { id: "m1", from: "user", who: "Deepa Selvam", at: "Yesterday",
         body: "The coffee shop rang asking for biscuits. Do I have to go through the outlet manager?" },
       { id: "m2", from: "support", who: "Portal Support", at: "Yesterday",
-        body: "No — shops deal with each other directly now. Open Stock Requests and use Ask another shop, or answer their ask at the top of that screen. Granting reserves the stock here and gives them an OTP to quote when they collect. Does that cover it?" },
+        body: "No - shops deal with each other directly now. Open Stock Requests and use Ask another shop, or answer their ask at the top of that screen. Granting reserves the stock here and gives them an OTP to quote when they collect. Does that cover it?" },
     ],
   },
   {
@@ -57,12 +57,12 @@ export const seedContracts = (): RateContract[] => [
 
 /**
  * One ask already waiting in each direction, so the shop-to-shop flow is
- * visible from either counter the moment you sign in — the Coffee Shop has
+ * visible from either counter the moment you sign in - the Coffee Shop has
  * something to answer, and something of its own already answered.
  */
 export const seedShopAsks = (): ShopAsk[] => [
   {
-    // 6 of the Coffee Shop's 9 packets — grantable in full, so the flow can be
+    // 6 of the Coffee Shop's 9 packets - grantable in full, so the flow can be
     // walked end to end without first hitting the not-enough-stock guard.
     id: "ASK-0060", from: "kiosk", to: "coffee", it: "chips", qty: 6,
     st: "Asked", by: "Deepa Selvam", at: "10:24",

@@ -10,7 +10,7 @@ export type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
 export type Reader = Db | Tx;
 
 /**
- * All writes go through here so a service cannot forget the transaction — and so the
+ * All writes go through here so a service cannot forget the transaction - and so the
  * idempotency record cannot be forgotten either.
  *
  * When this transaction is running inside a write request (`mount()` put the request's claim
@@ -21,7 +21,7 @@ export type Reader = Db | Tx;
  * turned the client's retry into a second bill.
  *
  * A write may open more than one transaction, and only one of them returns the response, so a
- * value the route's schema refuses is not an error here — it means "not this one", and the next
+ * value the route's schema refuses is not an error here - it means "not this one", and the next
  * transaction is asked in turn. In development and test that leniency is switched off
  * (`ctx.strict`): the first transaction to produce an unrecordable response takes the write down
  * with it, so a write whose answer is not recorded shows up as a failure on the bench rather
@@ -30,7 +30,7 @@ export type Reader = Db | Tx;
  *
  * The record's own UPDATE is deliberately **not** wrapped in a try/catch: if writing the claim
  * row throws, the business write rolls back with it. That is the opposite of the `onSend` hook
- * below it, which warns and lets the response through — and it is the right way round here,
+ * below it, which warns and lets the response through - and it is the right way round here,
  * because a write that commits without its record is exactly the duplicate-charge hole this
  * whole arrangement closes. Atomicity over availability, on purpose.
  *
@@ -38,7 +38,7 @@ export type Reader = Db | Tx;
  * answer, and an answer that cannot be recorded is a bug the bench must not let past.
  *
  * `"optional"` is for the one shape that has to **commit something and then refuse**: a counter,
- * an audit row — something that must survive the refusal that follows it. Such a write returns a
+ * an audit row - something that must survive the refusal that follows it. Such a write returns a
  * marker its route's schema refuses, commits, and raises the refusal itself once the transaction
  * is closed. Under `"optional"` a value the schema refuses records nothing, leaves
  * `ctx.idem.recorded` false and throws nothing, and `onSend` then stores the 4xx exactly as it
@@ -47,7 +47,7 @@ export type Reader = Db | Tx;
  * untouched. `modules/tickets/service.ts`'s `handover` is the only caller: a wrong OTP is
  * counted, the count commits, and the sentence is thrown outside. What it costs is a pod that
  * dies between that commit and `onSend` leaving a bare claim, so the retry waits out
- * `CLAIM_STALE_MS` and then counts a second guess — acceptable for a counter, and exactly what
+ * `CLAIM_STALE_MS` and then counts a second guess - acceptable for a counter, and exactly what
  * `"required"` refuses to accept for a bill. Do not reach for `"optional"` to quieten a response
  * that simply does not match its schema; that is the bug `"required"` is there to catch.
  */
@@ -56,7 +56,7 @@ export const withTransaction = <T>(db: Db, fn: (tx: Tx) => Promise<T>, opts: { r
     const value = await fn(tx);
     const ctx = idemStore.getStore();
     if (ctx && !ctx.idem.recorded) {
-      // "not this transaction's answer, and the caller knows it" — see `opts.response` above.
+      // "not this transaction's answer, and the caller knows it" - see `opts.response` above.
       // Checked here rather than inside `recordIdempotent` so that its *other* `ok: false` (a
       // claim taken over by a retry mid-write) still takes the straggler down, whatever this
       // caller asked for.
@@ -81,7 +81,7 @@ export const withTransaction = <T>(db: Db, fn: (tx: Tx) => Promise<T>, opts: { r
  * `pg` checks a client out per query, so a read that fans out with `Promise.all` asks the pool
  * for one connection *per reader*: `GET /snapshot`'s twenty-four readers wanted about forty at
  * once, against a pool of ten. Thirty concurrent snapshots therefore queued hundreds of
- * acquisitions behind ten connections and p95 went to 2.9 s with `pg_pool_idle` pinned at 0 —
+ * acquisitions behind ten connections and p95 went to 2.9 s with `pg_pool_idle` pinned at 0 -
  * measured, not guessed (RUNBOOK §12). A transaction holds exactly one client from `begin` to
  * `commit`, so the fan-out costs one connection however many queries it makes.
  *
@@ -90,7 +90,7 @@ export const withTransaction = <T>(db: Db, fn: (tx: Tx) => Promise<T>, opts: { r
  *
  * Callers inside one of these `await` their queries **one after another** rather than wrapping
  * them in `Promise.all`. A transaction is a single client and a client runs one query at a
- * time, so `Promise.all` buys no parallelism here — `pg` queues the second query today and
+ * time, so `Promise.all` buys no parallelism here - `pg` queues the second query today and
  * will refuse it in pg 9 (the same note `lib/master.ts` has carried since Phase 2). Sequential
  * awaits say what actually happens.
  */
@@ -98,18 +98,18 @@ export const withReadTransaction = <T>(db: Db, fn: (tx: Tx) => Promise<T>): Prom
   db.transaction(fn, { accessMode: "read only" });
 
 /** Postgres reports a unique violation the same way whether the arbiter is a table constraint
- *  or (as for a partial unique index) a unique index — `code` 23505, `constraint` the index's
+ *  or (as for a partial unique index) a unique index - `code` 23505, `constraint` the index's
  *  own name. Drizzle wraps the raw `pg` error in a `DrizzleQueryError` and carries it as
  *  `.cause`, so that is where the code and constraint name are read from. `UPDATE` has no
  *  `onConflictDoNothing`, so this is how a repo makes a rename or a reactivation raced by a
- *  second writer resolve into a refusal instead of a 500 — one home for both callers
+ *  second writer resolve into a refusal instead of a 500 - one home for both callers
  *  (`modules/vendors/repo.ts`, `modules/contracts/repo.ts`). */
 export const isUniqueViolation = (err: unknown, constraint: string): boolean => {
   const cause = (err as { cause?: unknown } | null)?.cause as { code?: string; constraint?: string } | undefined;
   return cause?.code === "23505" && cause?.constraint === constraint;
 };
 
-/** A statement refused because a row elsewhere still points at the one it touched — `code` 23503,
+/** A statement refused because a row elsewhere still points at the one it touched - `code` 23503,
  *  read off `.cause` for the same reason as above. Any constraint, on purpose: its one caller
  *  (`lib/users-admin.ts`'s `deleteUserTx`) wants "does anything at all still refer to this row",
  *  so a table added later with a reference to it is covered without anyone naming it. */

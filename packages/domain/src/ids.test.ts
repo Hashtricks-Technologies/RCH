@@ -57,7 +57,7 @@ describe("an adjustment's number", () => {
     // is per year, so the wrong answer here would restart the numbering a day early.
     expect(formatId("adj", 1, new Date("2027-01-01T00:30:00+05:30"))).toBe("ADJ-2027-0001");
   });
-  it("starts at one — nothing was ever written off through a document before", () => {
+  it("starts at one - nothing was ever written off through a document before", () => {
     expect(SEQUENCE_START.adj).toBe(1);
   });
 });

@@ -11,14 +11,14 @@ import type { Bill, Dated } from "../../types";
 /**
  * The paper a bill is handed over on.
  *
- * "Pay & print" and "Reprint" both printed nothing — there was no `window.print()` in the app
+ * "Pay & print" and "Reprint" both printed nothing - there was no `window.print()` in the app
  * and no paper for one to put on a printer, so a counter that had taken money had no receipt
  * to give. `.print-slip` (the one `@media print` block at the end of `styles.css`) is the only
  * thing that reaches the page; the drawer, the shell and every button on them are hidden.
  *
  * Not a second rendering of the same numbers for its own sake: a screen is laid out for a
  * 720 px panel with its own scrollbar, and what a customer needs on 80 mm of till roll is the
- * number, the counter, the time, the lines and what was paid — in that order and nothing else.
+ * number, the counter, the time, the lines and what was paid - in that order and nothing else.
  */
 function BillSlip({ bill }: { bill: Dated<Bill> }) {
   const L = LOC[bill.loc];
@@ -30,8 +30,8 @@ function BillSlip({ bill }: { bill: Dated<Bill> }) {
       {/* The hospital's calendar day, not the host's and not the raw instant:
           `fromWireDate` is `dmy`, which only parses "YYYY-MM-DD". */}
       <div>{fromWireDay(bill.iso)} {bill.t} · {bill.opr}</div>
-      {/* A voided bill can still be reprinted — the paper has to say it is not a receipt. */}
-      {bill.voided && <div><b>VOIDED — {bill.voidReason || "no reason recorded"}</b></div>}
+      {/* A voided bill can still be reprinted - the paper has to say it is not a receipt. */}
+      {bill.voided && <div><b>VOIDED - {bill.voidReason || "no reason recorded"}</b></div>}
       <table>
         <thead>
           <tr><th>Item</th><th className="r">Qty</th><th className="r">Rate</th><th className="r">Amount</th></tr>
@@ -82,7 +82,7 @@ function BillDrawer({ id }: DrawerProps) {
   const st = billStatus(bill.pay);
   const taxable = bill.tot - bill.tax;
   // ---- bill void: same hospital day, not already taken back, and the manager alone. The
-  // server refuses all three again on its own read — this only decides whether to offer.
+  // server refuses all three again on its own read - this only decides whether to offer.
   const canVoid = user?.r === "manager" && voidableToday(bill);
   const doVoid = async () => {
     setBusy(true);
@@ -156,7 +156,7 @@ function BillDrawer({ id }: DrawerProps) {
           key: l.it,
           cells: [
             IT[l.it]?.n ?? l.it,
-            <span className="mono">{IT[l.it]?.c ?? "—"}</span>,
+            <span className="mono">{IT[l.it]?.c ?? "-"}</span>,
             l.qty,
             money(l.rate),
             (IT[l.it]?.gst ?? 0) + "%",

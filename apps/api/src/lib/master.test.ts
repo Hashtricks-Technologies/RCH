@@ -14,14 +14,14 @@ afterAll(async () => { await t.close(); });
 // ---- item patch ----
 /** The fixtures as the wire now carries them. `active` joined `ItemSchema` when the master
  *  became editable, and `toWireItem` carries it on every line rather than only on a retired one
- *  — every seeded product is live, so it reads `true` throughout. */
+ *  - every seeded product is live, so it reads `true` throughout. */
 const LIVE = Object.fromEntries(Object.entries(FX.IT).map(([k, i]) => [k, { ...i, active: true }]));
 
 describe("loadMaster", () => {
   it("returns the seeded item master, unchanged", async () => {
     expect((await loadMaster(t.db)).items).toEqual(LIVE);
   });
-  it("returns every location, quarantine included — the rules ignore it, they do not need it hidden", async () => {
+  it("returns every location, quarantine included - the rules ignore it, they do not need it hidden", async () => {
     const m = await loadMaster(t.db);
     expect(m.locations).toEqual(FX.LOC);
     expect(m.locations.quarantine).toMatchObject({ n: "Quarantine", type: "Store" });

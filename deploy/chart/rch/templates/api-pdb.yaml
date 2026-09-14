@@ -1,14 +1,14 @@
 {{- if gt (int .Values.api.replicas) 1 }}
 {{- /*
 maxUnavailable, not minAvailable. `minAvailable: N` is a floor a drain can never lower: at
-replicas == N — one HPA scale-down away in production, and the permanent state of any
-environment sized at N — `kubectl drain` blocks on a budget the cluster cannot satisfy, and a
+replicas == N - one HPA scale-down away in production, and the permanent state of any
+environment sized at N - `kubectl drain` blocks on a budget the cluster cannot satisfy, and a
 node replacement waits for ever. `maxUnavailable: 1` says the same thing from the other side
 (one pod at a time may go voluntarily) and stays satisfiable at every replica count above one.
 
 Rendered only above one replica for the same reason one step further on: over a single pod a
 budget of any shape means that pod may never be evicted, so the node under it may never be
-drained — and values-dev.yaml runs one api pod on one spot node, where that is every node. A
+drained - and values-dev.yaml runs one api pod on one spot node, where that is every node. A
 rollout is not what this protects: the Deployment's own maxUnavailable: 0 / maxSurge: 1 covers
 that. This is about eviction.
 */ -}}

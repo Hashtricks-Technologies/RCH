@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { CollectionSchema } from "./writes.js";
 
-/** `GET /events` is deliberately not a manifest route (see routes.ts) — it is a stream with no
+/** `GET /events` is deliberately not a manifest route (see routes.ts) - it is a stream with no
  *  JSON response to serialise. `apps/api/src/plugins/sse.ts` registers it directly, and both
  *  sides build its URL from `API_PREFIX + EVENTS_PATH`. */
 export const EVENTS_PATH = "/events";

@@ -6,7 +6,7 @@ import {
 import type { PayerKind, PayerRecord } from "../../types";
 
 /** The three rosters, in the order the sidebar's own label reads them. `one` is what the
- *  operator calls a member of each — the same three words the server's `PAYER_LABEL` uses, so
+ *  operator calls a member of each - the same three words the server's `PAYER_LABEL` uses, so
  *  the form's own prompt and the refusal that comes back say the same thing. */
 const TABS: { kind: PayerKind; label: string; one: string; idHint: string }[] = [
   { kind: "patient", label: "Patients", one: "patient", idHint: "The in-patient or out-patient number on the wristband, e.g. IP-4471." },
@@ -17,8 +17,8 @@ const TABS: { kind: PayerKind; label: string; one: string; idHint: string }[] = 
 export default function Roster() {
   /**
    * The register comes off `GET /payers`, not off the `PATIENTS`/`STAFF`/`DEPTS` registries the
-   * counter's payer picker reads. Those carry live payers only — a closed account must never
-   * reach a picker — and this is the one screen that has to draw a switched-off row, because it
+   * counter's payer picker reads. Those carry live payers only - a closed account must never
+   * reach a picker - and this is the one screen that has to draw a switched-off row, because it
    * is the only place that can switch it back on.
    */
   const payers = useApp((x) => x.payers);
@@ -85,7 +85,7 @@ export default function Roster() {
 
       <Alert tone="i" label="ROSTER">
         A bill on <b>Patient bill</b>, <b>Staff credit</b> or <b>Dept</b> has to name someone this
-        register already knows — the id is the hospital's own number, and a mistyped one is a
+        register already knows - the id is the hospital's own number, and a mistyped one is a
         second account with its own untouched credit ceiling. A payer is never deleted, only
         deactivated: the bills already posted to them stay exactly as they were, and this screen
         is where one is switched back on.
@@ -96,7 +96,7 @@ export default function Roster() {
           <Field label="Id" hint={active.idHint}>
             <input value={id} onChange={(e) => setId(e.target.value)} placeholder="Number the hospital already uses" />
           </Field>
-          <Field label="Name" hint="What the counter will read on the payer picker — a ward or a department after the name helps.">
+          <Field label="Name" hint="What the counter will read on the payer picker - a ward or a department after the name helps.">
             <input value={name} onChange={(e) => setName(e.target.value)} placeholder={`Name of the ${active.one}`} />
           </Field>
         </FormRow>
@@ -133,7 +133,7 @@ export default function Roster() {
               return {
                 key: k,
                 cells: [
-                  // A closed account is greyed rather than hidden — it is still somebody the
+                  // A closed account is greyed rather than hidden - it is still somebody the
                   // hospital billed last month, and this is the only screen that can reopen it.
                   <span className={off ? "mono dim" : "mono"}>{p.id}</span>,
                   <span className={off ? "dim" : undefined}>{p.name}</span>,
@@ -161,7 +161,7 @@ export default function Roster() {
             })}
             empty={term
               ? { title: `Nobody on the ${active.label.toLowerCase()} roster matches "${q.trim()}"`, sub: "Clear the search, or add them above." }
-              : { title: `No ${active.one} on the roster yet`, sub: "Add the first one above — a bill cannot be posted to somebody the register has never heard of." }}
+              : { title: `No ${active.one} on the roster yet`, sub: "Add the first one above - a bill cannot be posted to somebody the register has never heard of." }}
           />
         </div>
         <TableFoot count={rows.length} extra={<>{live} active{closed > 0 && <> · {closed} deactivated</>}</>} />

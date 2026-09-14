@@ -12,7 +12,7 @@ import { AddToProcurementListBodySchema, AnswerProductRequestBodySchema, AnswerS
 export type Method = "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
 /** "public" needs no token; "any" needs a token of any role; "admin" needs the `admin` claim
  *  (an ordinary account flagged for account management, `pnpm --filter @rch/api users
- *  set-admin` — never a role); a list names the roles whose sidebar has the module. */
+ *  set-admin` - never a role); a list names the roles whose sidebar has the module. */
 export type Access = "public" | "any" | "admin" | readonly Role[];
 
 export interface Route<P extends z.ZodTypeAny, Q extends z.ZodTypeAny, B extends z.ZodTypeAny, R extends z.ZodTypeAny> {
@@ -66,7 +66,7 @@ export const routes = {
   distribute:        defineRoute({ method: "POST", path: "/distributions",            access: ["prod"], body: DistributeBodySchema,  response: writeResponse(TicketSchema) }),
   setOrderStatus: defineRoute({ method: "POST", path: "/prod-orders/:id/status", access: ["prod"],           params: DocIdParamsSchema, body: SetOrderStatusBodySchema, response: writeResponse(ProdOrderSchema) }),
   makeBatch:      defineRoute({ method: "POST", path: "/batches",                access: ["prod"],           body: MakeBatchBodySchema,                                 response: writeResponse(BatchSchema) }),
-  // The store cancels the store's tickets, the kitchen the kitchen's, and — from Phase 6 — an
+  // The store cancels the store's tickets, the kitchen the kitchen's, and - from Phase 6 - an
   // outlet its own: a shop transfer and a granted shop ask both leave from an outlet, and until
   // now `requireLocOf` on the ticket's `from` put them out of everyone's reach rather than into
   // the counter's. The scoping is unchanged; only the door is wider.
@@ -102,7 +102,7 @@ export const routes = {
   // The five movement collections, each on its own, so a write that names "req", "tkt",
   // "shopAsks", "pord" or "batch" in `changed` refetches that slice and not the whole snapshot.
   // `ticketsList` rather than `tickets`, because `tickets` is the support-ticket collection and
-  // will be the Phase 6 route name — two manifest keys must not collide.
+  // will be the Phase 6 route name - two manifest keys must not collide.
   requests:    defineRoute({ method: "GET", path: "/requests",   access: "any", response: RequestsResponseSchema }),
   ticketsList: defineRoute({ method: "GET", path: "/tickets",    access: "any", response: TicketsResponseSchema }),
   shopAsks:    defineRoute({ method: "GET", path: "/shop-asks",  access: "any", response: ShopAsksResponseSchema }),
@@ -119,7 +119,7 @@ export const routes = {
   productRequests: defineRoute({ method: "GET", path: "/product-requests", access: "any", response: ProductRequestsResponseSchema }),
   // ---- The support desk. Every role, own tickets only: `access: "any"`
   // opens the module to all five, and the service scopes each row on `by_user = claims.sub`.
-  // A ticket somebody else raised is a 404, not a 403 — the same shape as a role's missing module.
+  // A ticket somebody else raised is a 404, not a 403 - the same shape as a role's missing module.
   raiseTicket:     defineRoute({ method: "POST", path: "/support/tickets",              access: "any", body: RaiseTicketBodySchema,     response: writeResponse(SupportTicketSchema) }),
   replyToTicket:   defineRoute({ method: "POST", path: "/support/tickets/:id/messages", access: "any", params: DocIdParamsSchema, body: ReplyToTicketBodySchema,   response: writeResponse(SupportTicketSchema) }),
   setTicketStatus: defineRoute({ method: "POST", path: "/support/tickets/:id/status",   access: "any", params: DocIdParamsSchema, body: SetTicketStatusBodySchema, response: writeResponse(SupportTicketSchema) }),
@@ -136,13 +136,13 @@ export const routes = {
   creditReport: defineRoute({ method: "GET", path: "/reports/credit/:kind/:id", access: ["counter", "manager"],                params: CreditParamsSchema,   response: CreditResponseSchema }),
   // ---- payers (the roster behind every non-cash tender). The outlet manager keeps the
   // register: `POST /payers` puts a patient, a staff member or a department on it, and the one
-  // PATCH covers both the rename and the on/off switch — a payer is never deleted, because the
+  // PATCH covers both the rename and the on/off switch - a payer is never deleted, because the
   // bills already posted to them have to stay readable. `GET /roster` is "any" and scoped like
   // the snapshot's own copy: a caller who never opens a payer picker reads an empty register.
   addPayer:    defineRoute({ method: "POST",  path: "/payers",            access: ["manager"], body: PayerBodySchema,   response: writeResponse(PayerRecordSchema) }),
   updatePayer: defineRoute({ method: "PATCH", path: "/payers/:kind/:id",  access: ["manager"], params: PayerParamsSchema, body: PatchPayerBodySchema, response: writeResponse(PayerRecordSchema) }),
   roster:      defineRoute({ method: "GET",   path: "/roster",            access: "any",       response: RosterResponseSchema }),
-  // The register whole, closed accounts included, for the role that keeps it — `/roster` is the
+  // The register whole, closed accounts included, for the role that keeps it - `/roster` is the
   // till's read and stops at the live rows, so without this a payer switched off last week is
   // one nobody can reopen. Both payer writes name **both** collections in `changed`.
   payers:      defineRoute({ method: "GET",   path: "/payers",            access: ["manager"], response: PayersResponseSchema }),
@@ -157,7 +157,7 @@ export const routes = {
   // yesterday reads a sentence naming the day it belongs to rather than a missing button.
   // `:no` is a bill number and carries a slash, so it arrives percent-encoded (`CF%2F1188`).
   voidBill:     defineRoute({ method: "POST", path: "/bills/:no/void",            access: ["manager"],                          params: BillNoParamsSchema, body: VoidBillBodySchema, response: writeResponse(BillSchema) }),
-  // ---- adjustments. A write-off or a count-up as a document, with a reason and a signature —
+  // ---- adjustments. A write-off or a count-up as a document, with a reason and a signature -
   // the three roles that hold stock they are answerable for. The scope of each is decided in the
   // handler, not here: the store keeper corrects any shelf including quarantine, a manager only
   // an outlet, and the kitchen only the kitchen.
@@ -166,10 +166,10 @@ export const routes = {
   // ---- prod-order raise ---- the other end of the kitchen's board. `dispatch` and the board's
   // statuses act on orders nobody could raise; this is how one arrives. A counter raises for its
   // own outlet (the route pins `from` to the token) and the manager raises for any of the three,
-  // naming it — the same split `createRequest` and `approveRequest` already draw between a desk
+  // naming it - the same split `createRequest` and `approveRequest` already draw between a desk
   // that owns one location and a role that supervises them all.
   createProdOrder: defineRoute({ method: "POST", path: "/prod-orders", access: ["counter", "manager"], body: CreateProdOrderBodySchema, response: writeResponse(ProdOrderSchema) }),
-  // ---- admin: account management. A capability, not a role — `access: "admin"` checks the
+  // ---- admin: account management. A capability, not a role - `access: "admin"` checks the
   // `admin` claim (root CLAUDE.md), never `req.user.role`, so every one of these is reachable
   // from an ordinary account of any role that has been flagged, and from none that has not.
   // Granting or revoking the flag itself is not among them: there is no
@@ -188,7 +188,7 @@ export const routes = {
   deskTickets:           defineRoute({ method: "GET",   path: "/admin/support/tickets",            access: "admin", response: SupportTicketsResponseSchema }),
   replyAsDesk:           defineRoute({ method: "POST",  path: "/admin/support/tickets/:id/messages", access: "admin", params: DocIdParamsSchema, body: DeskReplyBodySchema, response: writeResponse(SupportTicketSchema) }),
   setDeskTicketStatus:   defineRoute({ method: "POST",  path: "/admin/support/tickets/:id/status", access: "admin", params: DocIdParamsSchema, body: SetTicketStatusBodySchema, response: writeResponse(SupportTicketSchema) }),
-  // ---- recipes. An item's whole recipe, replaced in one write — the kitchen that makes from it
+  // ---- recipes. An item's whole recipe, replaced in one write - the kitchen that makes from it
   // and the manager who prices against it. Until this door existed a recipe could only arrive with
   // the seed, so a hospital started clean could list a made-to-order item and never sell one.
   saveRecipe: defineRoute({ method: "PUT", path: "/recipes/:it", access: ["prod", "manager"], params: ItemKeyParamsSchema, body: SaveRecipeBodySchema, response: writeResponse(RecipeResultSchema) }),

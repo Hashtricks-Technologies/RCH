@@ -9,7 +9,7 @@ import { Btn } from "./kit";
  *
  * One id is enough because one drawer is all there ever is: `drawer` in the store is a single
  * slot, not a stack. `DrawerFrame` is the only thing that may put it on a heading, so a screen
- * reader entering the dialog reads the drawer's own title and not "dialog" on its own — and
+ * reader entering the dialog reads the drawer's own title and not "dialog" on its own - and
  * `DrawerFrame` lives in this file, which is why this is not exported.
  */
 const DRAWER_TITLE_ID = "drawer-title";
@@ -33,7 +33,7 @@ const FOCUSABLE = [
 ].join(",");
 
 /**
- * Put the keyboard back inside the panel, at the first control it can actually use — the title
+ * Put the keyboard back inside the panel, at the first control it can actually use - the title
  * only if there is no control at all, and the panel itself only if there is no title either.
  *
  * A no-op when focus is already inside, which is what makes it safe to call from anything that
@@ -70,12 +70,12 @@ export default function Drawer() {
 
 /**
  * The dialog itself, mounted only while a drawer is open so that opening and closing are a
- * mount and an unmount — which is what makes the keyboard behave.
+ * mount and an unmount - which is what makes the keyboard behave.
  *
  * `role="dialog" aria-modal="true"` is a promise to a screen reader that nothing behind this is
  * reachable, and until this landed the markup said it while the keyboard did the opposite: Tab
  * walked straight out of the panel and into the table underneath, where every row is clickable
- * and the drawer's own scrim hid what had focus. Three pieces make the promise true — the
+ * and the drawer's own scrim hid what had focus. Three pieces make the promise true - the
  * keyboard goes in on open, wraps at both ends while it is there, and goes back where it came
  * from on close.
  */
@@ -88,7 +88,7 @@ function Panel({ at, onClose, children }: { at: string; onClose: () => void; chi
   // change and a guard still listening would catch its own restore and drag the keyboard back
   // into a panel that is going away.
   //
-  // Focus is restored only if that element is still on the page — a row that has since been
+  // Focus is restored only if that element is still on the page - a row that has since been
   // re-rendered away cannot be handed focus, and forcing it would send the caret to the top of
   // the document instead.
   useEffect(() => {
@@ -104,20 +104,20 @@ function Panel({ at, onClose, children }: { at: string; onClose: () => void; chi
 
     // The other way the keyboard gets out, and the one `focusin` cannot see: the control holding
     // it stops being focusable. There are **two** ways that happens and both drop focus to
-    // `<body>` firing no focus event at all, so nothing bubbles and no listener hears it — after
+    // `<body>` firing no focus event at all, so nothing bubbles and no listener hears it - after
     // which the next Tab starts at the top of the document and walks the page behind the scrim,
     // exactly what `aria-modal="true"` promises cannot happen.
     //
     //  - It is **unmounted**: `roles/store/TicketDrawer.tsx`'s "Supervisor override" replaces
     //    itself with a confirm block.
     //  - It is **disabled** while it stands there: every busy button in the app does this, and
-    //    the one the operator has just pressed is by definition the one holding the keyboard —
+    //    the one the operator has just pressed is by definition the one holding the keyboard -
     //    `roles/buyer/PoReceiptDrawer.tsx`'s Book button and `roles/store/TicketDrawer.tsx`'s
     //    hand-over button among them. `childList` alone never sees it, because nothing moved.
     //
     // A render-time check cannot cover either: the state that swaps or disables those controls
     // lives in the drawer's own body, so `Panel` never re-renders and no effect of `Panel`'s
-    // would run. The DOM is the only thing that reliably knows, so the DOM is what is watched —
+    // would run. The DOM is the only thing that reliably knows, so the DOM is what is watched -
     // `attributeFilter` keeps it to the one attribute that can take a control out of `FOCUSABLE`.
     const watcher = new MutationObserver(() => { pullInto(aside.current); });
     if (aside.current) {

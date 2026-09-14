@@ -1,4 +1,4 @@
-// Vendors: the flow — transaction, rules, ids. Composes the helpers in apps/api/src/lib/;
+// Vendors: the flow - transaction, rules, ids. Composes the helpers in apps/api/src/lib/;
 // the arithmetic of a decision lives in packages/domain. A vendor is never deleted: it is
 // deactivated so a purchase order raised against it months ago stays readable.
 import type { z } from "zod";
@@ -17,13 +17,13 @@ export type PatchVendorBody = z.infer<typeof PatchVendorBodySchema>;
 
 /** Two state digits, a ten-character PAN, an entity number, a literal Z, and a check character.
  *  Format only: this is not a checksum and does not prove the number is registered. Module-local
- *  — a validation of one field on one endpoint, with no second consumer (the shared-rule principle is
- *  about rules two sides enforce; `VendorDrawer.tsx` gains a hint, not a rule — Task 10). */
+ *  - a validation of one field on one endpoint, with no second consumer (the shared-rule principle is
+ *  about rules two sides enforce; `VendorDrawer.tsx` gains a hint, not a rule - Task 10). */
 const GSTIN_RE = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
 
-const GSTIN_MESSAGE = "That is not a GSTIN — 15 characters, like 33AAACA1234F1Z5";
+const GSTIN_MESSAGE = "That is not a GSTIN - 15 characters, like 33AAACA1234F1Z5";
 /** Checked and stored the same way: upper-cased first, so a lowercase entry that passes the
- *  check is not the row a later read finds — the format the regex names is what lands. */
+ *  check is not the row a later read finds - the format the regex names is what lands. */
 const normaliseGstin = (gstin: string): string => gstin.toUpperCase();
 const assertGstin = (gstin: string): void => assertRule(!gstin || GSTIN_RE.test(gstin), GSTIN_MESSAGE);
 
@@ -91,7 +91,7 @@ export function createVendorsService(db: Db) {
         const message = onlyActive
           ? (body.active
             ? `${row.name} is active again and can be picked on new orders`
-            : `${row.name} deactivated — existing orders keep it, new drafts cannot pick it`)
+            : `${row.name} deactivated - existing orders keep it, new drafts cannot pick it`)
           : `${row.name} updated`;
         return { result: toWire(row), changed: [...changed], message };
       });

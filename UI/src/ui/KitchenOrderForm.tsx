@@ -8,7 +8,7 @@ import type { LocKey } from "../types";
 
 /**
  * The form behind every way of asking the Central Kitchen to make something (`POST
- * /prod-orders`). Two screens open it — the counter's own card and the manager's drawer — so it
+ * /prod-orders`). Two screens open it - the counter's own card and the manager's drawer - so it
  * lives here rather than in either of them.
  *
  * `from` always goes on the wire, even for a counter whose token already decides it: the server
@@ -18,7 +18,7 @@ import type { LocKey } from "../types";
 
 /**
  * What the kitchen can be asked for at one outlet: a **finished good** that is on that outlet's
- * menu. Finished goods only, and made-to-order is the case worth naming — `capp` and `chai`
+ * menu. Finished goods only, and made-to-order is the case worth naming - `capp` and `chai`
  * carry a recipe and a menu listing, so they read as orderable, but nothing downstream could
  * fill the order: `makeBatch` refuses to stock a phantom shelf of an MTO item (C2), `distribute`
  * refuses to send one, and a dispatch would therefore have nothing to cover the line with. The
@@ -44,7 +44,7 @@ function QtyInput({ value, ariaLabel, onCommit }: {
 }) {
   const [local, setLocal] = useState(String(value));
   const [synced, setSynced] = useState(value);
-  // Reset whenever the line's own value moves out from under the box — adjusted during render
+  // Reset whenever the line's own value moves out from under the box - adjusted during render
   // (React's own pattern for this), so the field never paints a stale number first.
   if (value !== synced) {
     setSynced(value);
@@ -53,11 +53,11 @@ function QtyInput({ value, ariaLabel, onCommit }: {
 
   const commit = () => {
     const n = Number(local);
-    // A blank box is not a quantity of nothing — it is a box the operator is part-way through,
+    // A blank box is not a quantity of nothing - it is a box the operator is part-way through,
     // or one they cleared and tabbed out of. `Number("")` is 0, which would silently write a
     // zero line and grey out Send, so an empty string never commits and the resync below puts
     // the last good number back. (An `input type="number"` also reports "" for a half-typed
-    // "12.", because the control sanitises anything that is not yet a valid number — which is
+    // "12.", because the control sanitises anything that is not yet a valid number - which is
     // exactly why the value has to live in this buffer and not be read back off the DOM.)
     if (local.trim() !== "" && Number.isFinite(n) && n !== value) onCommit(n);
     // Then resync to what the line actually holds: if the commit moved it, the check above
@@ -82,7 +82,7 @@ export default function KitchenOrderForm({ loc, onDone }: { loc: LocKey; onDone?
   const s = useApp();
   const raiseProdOrder = useApp((x) => x.raiseProdOrder);
   // `IT` and `menu` are both filled in place after the snapshot lands, so the list is built
-  // during render and pinned to `catalogVersion` — the signal that the catalogue moved.
+  // during render and pinned to `catalogVersion` - the signal that the catalogue moved.
   void s.catalogVersion;
   const makeable = kitchenItemsAt(s, loc);
   const first = makeable[0] ?? "";
@@ -104,11 +104,11 @@ export default function KitchenOrderForm({ loc, onDone }: { loc: LocKey; onDone?
     setLines([{ it: first, qty: 1 }]);
   } else if (firstOf !== first) {
     setFirstOf(first);
-    // Only the lines whose product is no longer on offer — a half-typed order keeps the rest.
+    // Only the lines whose product is no longer on offer - a half-typed order keeps the rest.
     setLines(lines.map((l) => (makeable.includes(l.it) ? l : { ...l, it: first })));
   }
 
-  /** `key={i}` handed row 2's half-typed quantity to row 1 the moment row 1 was removed — see
+  /** `key={i}` handed row 2's half-typed quantity to row 1 the moment row 1 was removed - see
    *  `useLineKeys` (`ui/kit.tsx`), which the requisition and kitchen-request tables share. It is
    *  called **above** the early return below: a hook after one runs conditionally. */
   const [rowKeys, dropKey] = useLineKeys(lines.length);
@@ -117,7 +117,7 @@ export default function KitchenOrderForm({ loc, onDone }: { loc: LocKey; onDone?
     return (
       <Alert tone="w" label="NOTHING TO ASK FOR">
         Nothing on this menu is made in the kitchen. {LOC[loc]?.n ?? loc} sells only bought-in
-        lines and drinks made at the counter — ask the central store for the first, and the
+        lines and drinks made at the counter - ask the central store for the first, and the
         second are made as they are sold. The outlet manager adds a kitchen product to the menu
         before one can be ordered.
       </Alert>
@@ -132,7 +132,7 @@ export default function KitchenOrderForm({ loc, onDone }: { loc: LocKey; onDone?
     const ok = await raiseProdOrder({
       from: loc,
       // A line with no product, or with nothing asked for, is a row the operator added and did
-      // not fill in — the Send button is already greyed while *every* line is like that, but one
+      // not fill in - the Send button is already greyed while *every* line is like that, but one
       // blank among three used to travel and be refused by the server's own "Enter a quantity on
       // every line", taking the two good lines down with it.
       lines: lines.filter((l) => l.it && l.qty > 0).map((l) => ({ it: l.it, qty: l.qty })),
@@ -140,7 +140,7 @@ export default function KitchenOrderForm({ loc, onDone }: { loc: LocKey; onDone?
       note: note.trim(),
     });
     setBusy(false);
-    // A refusal leaves the form exactly as it was typed — the sentence is already on screen and
+    // A refusal leaves the form exactly as it was typed - the sentence is already on screen and
     // the operator's next move is to fix one number, not to key the whole order again.
     if (!ok) return;
     setLines([{ it: first, qty: 1 }]);

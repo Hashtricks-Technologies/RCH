@@ -5,9 +5,9 @@ import type { PoStatus, PurchaseOrder, RateContract, Requisition, Vendor } from 
 
 /**
  * A rate contract records its vendor by name, while a purchase order carries
- * the vendor's id — both are tried so a contract resolves whichever way the
+ * the vendor's id - both are tried so a contract resolves whichever way the
  * store keeper recorded it. `contractRate` is where the validity window is enforced
- * (`contractInWindow`, `@rch/domain`) — a lapsed-but-active contract never comes back here,
+ * (`contractInWindow`, `@rch/domain`) - a lapsed-but-active contract never comes back here,
  * the same as it never prices an order server-side.
  */
 export function contractFor(
@@ -53,8 +53,8 @@ export interface PrqLineRecon {
  * Every `PoLine` carries `src: { prq, line, qty }[]` naming the requisition
  * lines that funded it, so ordered quantity is read straight off those claims
  * rather than guessed by matching item codes. Receipts are split back over the
- * same sources with `apportion()` — the identical, order-of-`src` rule
- * `prqProgress()` uses — so the two never disagree. Cancelled orders release
+ * same sources with `apportion()` - the identical, order-of-`src` rule
+ * `prqProgress()` uses - so the two never disagree. Cancelled orders release
  * their claim, so they are skipped here too.
  */
 export function reconcile(

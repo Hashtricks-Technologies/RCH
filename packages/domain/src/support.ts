@@ -2,7 +2,7 @@ import type { TicketStatus } from "@rch/contract";
 import type { TransitionTable } from "./transitions.js";
 
 /**
- * Customer care for the portal, as five words. One table, two consumers — the server
+ * Customer care for the portal, as five words. One table, two consumers - the server
  * refuses anything not listed and the drawer reads the same table to decide which button to draw.
  *
  * Two parties walk it. The person who raised a ticket, in any of the five roles, takes the
@@ -35,7 +35,7 @@ export const mayRate = (st: TicketStatus): boolean => st === "Resolved" || st ==
 
 /** Whether a reply may still be added. Not an edge in the table above: a reply is refused
  *  *before* a message is written, so `statusAfterReply` is never asked about a closed ticket
- *  and the table never sees the case. One rule, two consumers — the service refuses on it and
+ *  and the table never sees the case. One rule, two consumers - the service refuses on it and
  *  the drawer hides its reply box on it, so a box the server would refuse is never drawn. */
 export const mayReply = (st: TicketStatus): boolean => st !== "Closed";
 

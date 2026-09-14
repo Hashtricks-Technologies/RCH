@@ -9,9 +9,9 @@ spec:
     metadata:
       labels: { {{- include "rch.labels" . | nindent 8 }}, app.kubernetes.io/component: api }
       # The configuration the containers actually read, hashed, so changing a value in api.env
-      # rolls the pods. It used to hash templates/configmap.yaml — a ConfigMap nothing mounted
+      # rolls the pods. It used to hash templates/configmap.yaml - a ConfigMap nothing mounted
       # or referenced, because rch.envList inlines every one of those values into each
-      # container's own env list — so the annotation moved when that template's rendering moved
+      # container's own env list - so the annotation moved when that template's rendering moved
       # and stood still when the configuration changed shape around it.
       annotations: { checksum/config: {{ toYaml .Values.api.env | sha256sum }} }
     spec:
@@ -20,10 +20,10 @@ spec:
       # a token that is never used is only a credential sitting in a filesystem.
       automountServiceAccountToken: false
       # 60, because the shutdown this grants is 55 seconds long: apps/api/src/server.ts waits 30s
-      # after flipping /readyz to 503 — long enough for this pod to leave the Service's Endpoints
+      # after flipping /readyz to 503 - long enough for this pod to leave the Service's Endpoints
       # (readiness probe every 5s, failureThreshold 3) and for the load-balancer controller to
       # reconcile that into the target group, and never shorter than the target group's own 30s
-      # deregistration delay, which may not outlast the wait — and then gives itself a 25s drain
+      # deregistration delay, which may not outlast the wait - and then gives itself a 25s drain
       # timer. At the old 30 the kubelet's SIGKILL arrived at the exact moment that timer fired,
       # so a slow request was cut rather than finished. Move any of these numbers and move the
       # others.

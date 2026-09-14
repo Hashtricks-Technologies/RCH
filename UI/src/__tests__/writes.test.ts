@@ -28,7 +28,7 @@ import { resetStore, S, as } from "./fixture";
  * The five writes the counter and the outlet manager make, as seen from the wire: which
  * route each store action calls, what it puts in the body, and which reads it pulls back
  * afterwards. The rules those routes enforce belong to the server's own suites
- * (pos.test.ts, availability.test.ts, catalog.test.ts) — nothing here re-asserts them.
+ * (pos.test.ts, availability.test.ts, catalog.test.ts) - nothing here re-asserts them.
  */
 
 const json = (body: unknown, status = 200) =>
@@ -36,7 +36,7 @@ const json = (body: unknown, status = 200) =>
 const refusal = (message: string, status = 422) => json({ error: { code: "rule", message } }, status);
 
 const fetchMock = vi.fn();
-/** Stub by "METHOD /path" — POST /bills and GET /bills are two different endpoints. */
+/** Stub by "METHOD /path" - POST /bills and GET /bills are two different endpoints. */
 type Stubs = Record<string, () => Response>;
 function serve(stubs: Stubs): void {
   fetchMock.mockImplementation((u: string, init: RequestInit) => {
@@ -81,7 +81,7 @@ beforeEach(() => {
 });
 afterEach(() => { vi.unstubAllGlobals(); setAccessToken(null); });
 
-describe("pay — POST /bills", () => {
+describe("pay - POST /bills", () => {
   it("sends the cart as lines, clears it, and reads stock and bills back", async () => {
     as("counter");
     S().addToCart("coffee", "juice", 2);
@@ -144,7 +144,7 @@ describe("pay — POST /bills", () => {
 
     expect(await S().pay("coffee", "Cash")).toBeNull();
 
-    expect(S().toast).toBe("Could not take the bill — check the connection and try again.");
+    expect(S().toast).toBe("Could not take the bill - check the connection and try again.");
     expect(S().cart.coffee).toEqual({ juice: 1 });
   });
 
@@ -164,11 +164,11 @@ describe("pay — POST /bills", () => {
     });
 
     // The number still comes back, because it came out of the write's own answer and not out of
-    // the list that failed to refresh — which is what lets the till open the right slip anyway.
+    // the list that failed to refresh - which is what lets the till open the right slip anyway.
     expect(await S().pay("coffee", "Cash")).toBe("CF/1188");
 
     // The bill was taken. Telling the operator it failed would send them round to take it twice.
-    expect(S().toast).toBe("Bill CF/1188 · ₹20.00 collected at Floor 3 Coffee Bar — the screen could not be refreshed; reload to see the latest.");
+    expect(S().toast).toBe("Bill CF/1188 · ₹20.00 collected at Floor 3 Coffee Bar - the screen could not be refreshed; reload to see the latest.");
     expect(S().cart.coffee).toEqual({});
   });
 });
@@ -238,7 +238,7 @@ describe("the till takes one bill per tap", () => {
     await act(async () => { ui.button("Vinoth Prakash")!.click(); });
     await act(async () => { await new Promise((r) => { setTimeout(r, 0); }); });
 
-    // Word for word what `POST /bills` refuses with — the browser previews the refusal, it does
+    // Word for word what `POST /bills` refuses with - the browser previews the refusal, it does
     // not invent a second wording for it.
     expect(ui.host.textContent).toContain(creditBreachMessage(2990, 20, "Vinoth Prakash · Kitchen"));
     // The ceiling and the running total are the server's numbers, not a constant compiled in.
@@ -274,7 +274,7 @@ describe("the till takes one bill per tap", () => {
   });
 });
 
-describe("toggleAvail — POST /availability/toggle", () => {
+describe("toggleAvail - POST /availability/toggle", () => {
   it("posts the location and item and reads only the balances back", async () => {
     as("counter");
     serve({
@@ -303,7 +303,7 @@ describe("toggleAvail — POST /availability/toggle", () => {
   });
 });
 
-describe("savePrice — PUT /prices/:list/:it", () => {
+describe("savePrice - PUT /prices/:list/:it", () => {
   it("puts the price on the named list and reads the price list back on its own", async () => {
     as("manager");
     serve({
@@ -326,19 +326,19 @@ describe("savePrice — PUT /prices/:list/:it", () => {
   it("hands the MRP refusal to the operator word for word and leaves the list alone", async () => {
     as("manager");
     const before = S().prices.B.juice;
-    serve({ "PUT /api/v1/prices/B/juice": () => refusal("Refused — printed MRP of ₹20 is a hard ceiling for Fresh Juice 200ml") });
+    serve({ "PUT /api/v1/prices/B/juice": () => refusal("Refused - printed MRP of ₹20 is a hard ceiling for Fresh Juice 200ml") });
 
     // The price screen keeps what was typed on a `false`, so the manager can read the ceiling
     // and correct the figure rather than hunt for the row again.
     expect(await S().savePrice("B", "juice", 99)).toBe(false);
 
-    expect(S().toast).toBe("Refused — printed MRP of ₹20 is a hard ceiling for Fresh Juice 200ml");
+    expect(S().toast).toBe("Refused - printed MRP of ₹20 is a hard ceiling for Fresh Juice 200ml");
     expect(S().prices.B.juice).toBe(before);
     expect(calls()).toHaveLength(1);
   });
 });
 
-describe("addProduct / removeProduct — the menu routes", () => {
+describe("addProduct / removeProduct - the menu routes", () => {
   it("posts a new listing to /menus/:loc/items", async () => {
     as("manager");
     serve({
@@ -382,7 +382,7 @@ describe("addProduct / removeProduct — the menu routes", () => {
   });
 });
 
-describe("refetch — what a write says it changed is what gets read", () => {
+describe("refetch - what a write says it changed is what gets read", () => {
   it("answers the three balance slices with one GET /stock", async () => {
     serve({ "GET /api/v1/stock": () => json(STOCK) });
     await refetch(["stock", "rsv", "ovr"]);
@@ -426,22 +426,22 @@ describe("refetch — what a write says it changed is what gets read", () => {
   it("says the refresh failed, not that the write did", async () => {
     serve({ "GET /api/v1/stock": () => json({ error: { code: "internal", message: "boom" } }, 500) });
     await refetch(["stock"]);
-    expect(S().toast).toBe("Saved — but the screen could not be refreshed. Reload to see the latest.");
+    expect(S().toast).toBe("Saved - but the screen could not be refreshed. Reload to see the latest.");
   });
 
   it("keeps the caller's own sentence in front when it is given one", async () => {
     serve({ "GET /api/v1/stock": () => json({ error: { code: "internal", message: "boom" } }, 500) });
     await refetch(["stock"], "Veg puffs switched off at Central Kitchen");
-    expect(S().toast).toBe("Veg puffs switched off at Central Kitchen — the screen could not be refreshed; reload to see the latest.");
+    expect(S().toast).toBe("Veg puffs switched off at Central Kitchen - the screen could not be refreshed; reload to see the latest.");
   });
 });
 
 /**
- * The splash is a *first boot*, not a refresh. Anything that takes a whole snapshot again —
- * an SSE `resync`, the fallback read-back — used to blank every screen in the hospital to
+ * The splash is a *first boot*, not a refresh. Anything that takes a whole snapshot again -
+ * an SSE `resync`, the fallback read-back - used to blank every screen in the hospital to
  * "Loading…" and throw away whatever the operator was halfway through reading.
  */
-describe("loadSnapshot — the splash is for the first boot only", () => {
+describe("loadSnapshot - the splash is for the first boot only", () => {
   const authStates = async (run: () => Promise<void>) => {
     const seen: string[] = [];
     const off = useApp.subscribe((s) => seen.push(s.auth));
@@ -478,23 +478,23 @@ describe("loadSnapshot — the splash is for the first boot only", () => {
  * The request chain, the tickets, the shop asks and the kitchen's two ticket paths, seen the
  * same way: route, body, the sentence that comes back, and which reads follow. The rules
  * themselves belong to requests.test.ts, tickets.test.ts, shopasks.test.ts and
- * production.test.ts — nothing here re-asserts one.
+ * production.test.ts - nothing here re-asserts one.
  */
 const REQ = {
   id: "REQ-2026-0913", from: "coffee", by: "Kavitha Raman", at: "2026-09-04T04:30:00.000Z",
   lines: [{ it: "milk", qty: 20, appr: 0 }], st: "Request sent", ticket: null, mgrNote: "", hist: [],
 };
-/** A ticket as the wire carries one. `otp` is the collecting location's own — every other
- *  caller reads "" — and `hist` is the trail the drawers render. */
+/** A ticket as the wire carries one. `otp` is the collecting location's own - every other
+ *  caller reads "" - and `hist` is the trail the drawers render. */
 const TKT = { id: "TKT-0441", req: "REQ-2026-0913", from: "store", to: "coffee", lines: [{ it: "milk", qty: 12 }], st: "Issued", otp: "989089", hist: [{ s: "Issued", who: "Suresh Muthu", t: "2026-09-04T03:42:00.000Z" }] };
 const ASK = { id: "ASK-063", from: "coffee", to: "kiosk", it: "water", qty: 24, st: "Asked", by: "Kavitha Raman", at: "2026-09-04T04:30:00.000Z", note: "Ran dry" };
 
-describe("the request chain — the twelve writes", () => {
+describe("the request chain - the twelve writes", () => {
   it("submitRequest posts the draft and reads the requests back", async () => {
     as("counter");
     S().setDraft([{ it: "milk", qty: 20 }, { it: "sugar", qty: 4 }]);
     serve({
-      "POST /api/v1/requests": () => json({ result: REQ, changed: ["req"], message: "REQ-2026-0913 sent to the outlet manager — 2 lines" }),
+      "POST /api/v1/requests": () => json({ result: REQ, changed: ["req"], message: "REQ-2026-0913 sent to the outlet manager - 2 lines" }),
       "GET /api/v1/requests": () => json([REQ]),
     });
 
@@ -503,7 +503,7 @@ describe("the request chain — the twelve writes", () => {
     expect(ok).toBe(true);                                    // the screen resets on this, not on the click
     expect(hit("POST /api/v1/requests")[0].body).toEqual({ lines: [{ it: "milk", qty: 20 }, { it: "sugar", qty: 4 }], note: "Counter runs dry by 4pm", urgent: true });
     expect(S().draft).toEqual([]);
-    expect(S().toast).toBe("REQ-2026-0913 sent to the outlet manager — 2 lines");
+    expect(S().toast).toBe("REQ-2026-0913 sent to the outlet manager - 2 lines");
     expect(hit("GET /api/v1/requests")).toHaveLength(1);
     expect(hit("GET /api/v1/snapshot")).toHaveLength(0);
     expect(S().req.at(-1)!.id).toBe("REQ-2026-0913");
@@ -512,7 +512,7 @@ describe("the request chain — the twelve writes", () => {
 
   it("requestFromStore names the screen it came from", async () => {
     as("counter");
-    serve({ "POST /api/v1/requests": () => json({ result: REQ, changed: ["req"], message: "REQ-2026-0913 raised for 20 Milk 1L — with the outlet manager now" }), "GET /api/v1/requests": () => json([REQ]) });
+    serve({ "POST /api/v1/requests": () => json({ result: REQ, changed: ["req"], message: "REQ-2026-0913 raised for 20 Milk 1L - with the outlet manager now" }), "GET /api/v1/requests": () => json([REQ]) });
     await S().requestFromStore("milk", 20);
     expect(hit("POST /api/v1/requests")[0].body).toEqual({ lines: [{ it: "milk", qty: 20 }], note: "Raised from Coffee Shop stock screen", urgent: false });
   });
@@ -537,21 +537,21 @@ describe("the request chain — the twelve writes", () => {
   it("approveRequest sends the manager's numbers and repeats the server's sentence", async () => {
     as("manager");
     serve({
-      "POST /api/v1/requests/REQ-2026-0911/approve": () => json({ result: { request: { ...REQ, id: "REQ-2026-0911", st: "Partially approved" }, trimmed: true }, changed: ["req"], message: "REQ-2026-0911 trimmed — the central store cannot cover the full quantity" }),
+      "POST /api/v1/requests/REQ-2026-0911/approve": () => json({ result: { request: { ...REQ, id: "REQ-2026-0911", st: "Partially approved" }, trimmed: true }, changed: ["req"], message: "REQ-2026-0911 trimmed - the central store cannot cover the full quantity" }),
       "GET /api/v1/requests": () => json([REQ]),
     });
     await S().approveRequest("REQ-2026-0911", [20], "Store only holds 12 L.");
     expect(hit("POST /api/v1/requests/REQ-2026-0911/approve")[0].body).toEqual({ appr: [20], note: "Store only holds 12 L." });
-    expect(S().toast).toBe("REQ-2026-0911 trimmed — the central store cannot cover the full quantity");
+    expect(S().toast).toBe("REQ-2026-0911 trimmed - the central store cannot cover the full quantity");
   });
 
   it("hands a rejection refusal to the manager word for word and changes nothing", async () => {
     as("manager");
     const before = S().req.find((r) => r.id === "REQ-2026-0912")!.st;
-    serve({ "POST /api/v1/requests/REQ-2026-0912/reject": () => refusal("Give a reason — the counter sees it on the request") });
+    serve({ "POST /api/v1/requests/REQ-2026-0912/reject": () => refusal("Give a reason - the counter sees it on the request") });
     const ok = await S().rejectRequest("REQ-2026-0912", "   ");
     expect(ok).toBe(false);                                   // so the drawer stays open, reason and trims intact
-    expect(S().toast).toBe("Give a reason — the counter sees it on the request");
+    expect(S().toast).toBe("Give a reason - the counter sees it on the request");
     expect(S().req.find((r) => r.id === "REQ-2026-0912")!.st).toBe(before);
     expect(calls()).toHaveLength(1);
   });
@@ -559,7 +559,7 @@ describe("the request chain — the twelve writes", () => {
   it("issueTicket reads requests, tickets and balances back", async () => {
     as("store");
     serve({
-      "POST /api/v1/requests/REQ-2026-0911/issue-ticket": () => json({ result: { request: { ...REQ, id: "REQ-2026-0911", st: "Ticket issued", ticket: "TKT-0441" }, ticket: TKT }, changed: ["req", "tkt", "rsv"], message: "TKT-0441 issued — Coffee Shop can collect against this ticket" }),
+      "POST /api/v1/requests/REQ-2026-0911/issue-ticket": () => json({ result: { request: { ...REQ, id: "REQ-2026-0911", st: "Ticket issued", ticket: "TKT-0441" }, ticket: TKT }, changed: ["req", "tkt", "rsv"], message: "TKT-0441 issued - Coffee Shop can collect against this ticket" }),
       "GET /api/v1/requests": () => json([REQ]), "GET /api/v1/tickets": () => json([TKT]), "GET /api/v1/stock": () => json(STOCK),
     });
     await S().issueTicket("REQ-2026-0911");
@@ -571,18 +571,18 @@ describe("the request chain — the twelve writes", () => {
   it("handover sends the OTP the store keeper typed", async () => {
     as("store");
     serve({
-      "POST /api/v1/tickets/TKT-0440/handover": () => json({ result: { ...TKT, id: "TKT-0440", st: "Collected" }, changed: ["tkt", "req", "rsv", "stock"], message: "TKT-0440 handed over — stock is in transit to Coffee Shop" }),
+      "POST /api/v1/tickets/TKT-0440/handover": () => json({ result: { ...TKT, id: "TKT-0440", st: "Collected" }, changed: ["tkt", "req", "rsv", "stock"], message: "TKT-0440 handed over - stock is in transit to Coffee Shop" }),
       "GET /api/v1/requests": () => json([REQ]), "GET /api/v1/tickets": () => json([TKT]), "GET /api/v1/stock": () => json(STOCK),
     });
     await S().handover("TKT-0440", " 418327 ");
     expect(hit("POST /api/v1/tickets/TKT-0440/handover")[0].body).toEqual({ otp: "418327" });
-    expect(S().toast).toBe("TKT-0440 handed over — stock is in transit to Coffee Shop");
+    expect(S().toast).toBe("TKT-0440 handed over - stock is in transit to Coffee Shop");
   });
 
   it("handover sends an empty body for the supervisor override", async () => {
     as("store");
     serve({
-      "POST /api/v1/tickets/TKT-0440/handover": () => json({ result: { ...TKT, id: "TKT-0440", st: "Collected" }, changed: ["tkt", "req", "rsv", "stock"], message: "TKT-0440 handed over on a supervisor override — stock is in transit to Coffee Shop" }),
+      "POST /api/v1/tickets/TKT-0440/handover": () => json({ result: { ...TKT, id: "TKT-0440", st: "Collected" }, changed: ["tkt", "req", "rsv", "stock"], message: "TKT-0440 handed over on a supervisor override - stock is in transit to Coffee Shop" }),
       "GET /api/v1/requests": () => json([REQ]), "GET /api/v1/tickets": () => json([TKT]), "GET /api/v1/stock": () => json(STOCK),
     });
     await S().handover("TKT-0440");
@@ -602,24 +602,24 @@ describe("the request chain — the twelve writes", () => {
     as("counter");
     S().openDrawer("tkt", "TKT-0440");
     serve({
-      "POST /api/v1/tickets/TKT-0440/receive": () => json({ result: { ...TKT, id: "TKT-0440", st: "Received" }, changed: ["tkt", "req", "stock"], message: "Received at Coffee Shop — stock is on the shelf" }),
+      "POST /api/v1/tickets/TKT-0440/receive": () => json({ result: { ...TKT, id: "TKT-0440", st: "Received" }, changed: ["tkt", "req", "stock"], message: "Received at Coffee Shop - stock is on the shelf" }),
       "GET /api/v1/requests": () => json([REQ]), "GET /api/v1/tickets": () => json([TKT]), "GET /api/v1/stock": () => json(STOCK),
     });
     await S().receiveTicket("TKT-0440");
     expect(S().drawer).toBeNull();
-    expect(S().toast).toBe("Received at Coffee Shop — stock is on the shelf");
+    expect(S().toast).toBe("Received at Coffee Shop - stock is on the shelf");
   });
 
   it("transferToOutlet posts both ends and the quantity", async () => {
     as("counter");
-    serve({ "POST /api/v1/transfers": () => json({ result: TKT, changed: ["tkt", "rsv"], message: "TKT-0441 issued — 6 nos reserved at Coffee Shop for Snack Kiosk" }), "GET /api/v1/tickets": () => json([TKT]), "GET /api/v1/stock": () => json(STOCK) });
+    serve({ "POST /api/v1/transfers": () => json({ result: TKT, changed: ["tkt", "rsv"], message: "TKT-0441 issued - 6 nos reserved at Coffee Shop for Snack Kiosk" }), "GET /api/v1/tickets": () => json([TKT]), "GET /api/v1/stock": () => json(STOCK) });
     await S().transferToOutlet("coffee", "kiosk", "chips", 6);
     expect(hit("POST /api/v1/transfers")[0].body).toEqual({ from: "coffee", to: "kiosk", it: "chips", qty: 6 });
   });
 
-  it("askShop names only the shop being asked — the sender's own is the token's", async () => {
+  it("askShop names only the shop being asked - the sender's own is the token's", async () => {
     as("counter");
-    serve({ "POST /api/v1/shop-asks": () => json({ result: ASK, changed: ["shopAsks"], message: "ASK-063 sent to Snack Kiosk — they decide, not the manager" }), "GET /api/v1/shop-asks": () => json([ASK]) });
+    serve({ "POST /api/v1/shop-asks": () => json({ result: ASK, changed: ["shopAsks"], message: "ASK-063 sent to Snack Kiosk - they decide, not the manager" }), "GET /api/v1/shop-asks": () => json([ASK]) });
     await S().askShop("kiosk", "water", 24, "  Ran dry  ");
     expect(hit("POST /api/v1/shop-asks")[0].body).toEqual({ to: "kiosk", it: "water", qty: 24, note: "Ran dry" });
     expect(hit("GET /api/v1/shop-asks")).toHaveLength(1);
@@ -629,13 +629,13 @@ describe("the request chain — the twelve writes", () => {
   it("answerShopAsk grants and raises the ticket in one call, not two", async () => {
     as("counter");
     serve({
-      "POST /api/v1/shop-asks/ASK-0060/answer": () => json({ result: { ask: { ...ASK, id: "ASK-0060", st: "Sent", grant: 6, ticket: "TKT-0441" }, ticket: TKT }, changed: ["shopAsks", "tkt", "rsv"], message: "ASK-0060 granted — TKT-0441 issued for 6 nos to Snack Kiosk" }),
+      "POST /api/v1/shop-asks/ASK-0060/answer": () => json({ result: { ask: { ...ASK, id: "ASK-0060", st: "Sent", grant: 6, ticket: "TKT-0441" }, ticket: TKT }, changed: ["shopAsks", "tkt", "rsv"], message: "ASK-0060 granted - TKT-0441 issued for 6 nos to Snack Kiosk" }),
       "GET /api/v1/shop-asks": () => json([ASK]), "GET /api/v1/tickets": () => json([TKT]), "GET /api/v1/stock": () => json(STOCK),
     });
     await S().answerShopAsk("ASK-0060", 6);
     expect(hit("POST /api/v1/shop-asks/ASK-0060/answer")[0].body).toEqual({ grant: 6 });
     expect(hit("POST /api/v1/transfers")).toHaveLength(0);       // one endpoint, one ticket
-    expect(S().toast).toBe("ASK-0060 granted — TKT-0441 issued for 6 nos to Snack Kiosk");
+    expect(S().toast).toBe("ASK-0060 granted - TKT-0441 issued for 6 nos to Snack Kiosk");
   });
 
   it("declineShopAsk trims the reason it sends", async () => {
@@ -651,7 +651,7 @@ describe("the kitchen's two ticket paths", () => {
     as("prod");
     S().openDrawer("pord", "PRD-2026-029");
     serve({
-      "POST /api/v1/prod-orders/PRD-2026-029/dispatch": () => json({ result: { order: { id: "PRD-2026-029" }, ticket: TKT }, changed: ["pord", "tkt", "rsv"], message: "TKT-0441 issued — all 2 items of PRD-2026-029 reserved for Snack Kiosk" }),
+      "POST /api/v1/prod-orders/PRD-2026-029/dispatch": () => json({ result: { order: { id: "PRD-2026-029" }, ticket: TKT }, changed: ["pord", "tkt", "rsv"], message: "TKT-0441 issued - all 2 items of PRD-2026-029 reserved for Snack Kiosk" }),
       "GET /api/v1/prod-orders": () => json([]),
       "GET /api/v1/tickets": () => json([TKT]),
       "GET /api/v1/stock": () => json(STOCK),
@@ -659,7 +659,7 @@ describe("the kitchen's two ticket paths", () => {
     await S().dispatchOrder("PRD-2026-029");
     expect(hit("POST /api/v1/prod-orders/PRD-2026-029/dispatch")[0].body).toBeUndefined();
     expect(S().drawer).toBeNull();
-    expect(S().toast).toBe("TKT-0441 issued — all 2 items of PRD-2026-029 reserved for Snack Kiosk");
+    expect(S().toast).toBe("TKT-0441 issued - all 2 items of PRD-2026-029 reserved for Snack Kiosk");
     // The board has its own reader since Phase 4, so all three slices come back narrow.
     expect(hit("GET /api/v1/prod-orders")).toHaveLength(1);
     expect(hit("GET /api/v1/snapshot")).toHaveLength(0);
@@ -668,12 +668,12 @@ describe("the kitchen's two ticket paths", () => {
   it("distribute names the item, the quantity and where it is going", async () => {
     as("prod");
     serve({
-      "POST /api/v1/distributions": () => json({ result: TKT, changed: ["tkt", "rsv"], message: "TKT-0441 issued — 5 Veg puff reserved for Snack Kiosk" }),
+      "POST /api/v1/distributions": () => json({ result: TKT, changed: ["tkt", "rsv"], message: "TKT-0441 issued - 5 Veg puff reserved for Snack Kiosk" }),
       "GET /api/v1/tickets": () => json([TKT]), "GET /api/v1/stock": () => json(STOCK),
     });
     await S().distribute("puff", 5, "kiosk");
     expect(hit("POST /api/v1/distributions")[0].body).toEqual({ it: "puff", qty: 5, to: "kiosk" });
-    expect(S().toast).toBe("TKT-0441 issued — 5 Veg puff reserved for Snack Kiosk");
+    expect(S().toast).toBe("TKT-0441 issued - 5 Veg puff reserved for Snack Kiosk");
     expect(hit("GET /api/v1/snapshot")).toHaveLength(0);
   });
 
@@ -694,11 +694,11 @@ const BATCH = {
   at: "2026-09-04T01:10:00.000Z", bb: "2026-09-04T13:10:00.000Z", note: "Oven tray dropped",
 };
 
-describe("setOrderStatus — POST /prod-orders/:id/status", () => {
+describe("setOrderStatus - POST /prod-orders/:id/status", () => {
   it("names the status in the body and pulls the board back", async () => {
     as("prod");
     serve({
-      [`POST /api/v1/prod-orders/${ORDER.id}/status`]: () => json({ result: ORDER, changed: ["pord"], message: `${ORDER.id} — accepted` }),
+      [`POST /api/v1/prod-orders/${ORDER.id}/status`]: () => json({ result: ORDER, changed: ["pord"], message: `${ORDER.id} - accepted` }),
       "GET /api/v1/prod-orders": () => json([ORDER]),
     });
 
@@ -707,26 +707,26 @@ describe("setOrderStatus — POST /prod-orders/:id/status", () => {
     expect(hit(`POST /api/v1/prod-orders/${ORDER.id}/status`)[0].body).toEqual({ st: "Accepted" });
     expect(hit("GET /api/v1/prod-orders")).toHaveLength(1);
     expect(S().pord.find((o) => o.id === ORDER.id)!.st).toBe("Accepted");
-    expect(S().toast).toBe(`${ORDER.id} — accepted`);
+    expect(S().toast).toBe(`${ORDER.id} - accepted`);
   });
 
   it("keeps a refusal's words and leaves the board where it was", async () => {
     as("prod");
     const before = S().pord.find((o) => o.id === ORDER.id)!.st;
-    serve({ [`POST /api/v1/prod-orders/${ORDER.id}/status`]: () => refusal(`${ORDER.id} is new — it cannot go straight to ready`) });
+    serve({ [`POST /api/v1/prod-orders/${ORDER.id}/status`]: () => refusal(`${ORDER.id} is new - it cannot go straight to ready`) });
 
     await S().setOrderStatus(ORDER.id, "Ready");
 
-    expect(S().toast).toBe(`${ORDER.id} is new — it cannot go straight to ready`);
+    expect(S().toast).toBe(`${ORDER.id} is new - it cannot go straight to ready`);
     expect(S().pord.find((o) => o.id === ORDER.id)!.st).toBe(before);
   });
 });
 
-describe("makeProduct — POST /batches", () => {
+describe("makeProduct - POST /batches", () => {
   it("sends what was started and what came good, and reads the batch log and stock back", async () => {
     as("prod");
     serve({
-      "POST /api/v1/batches": () => json({ result: BATCH, changed: ["batch", "stock"], message: "BAT-20260904-01 — 58 of 60 Veg puffs yielded (-3.3%), best before 18:40" }),
+      "POST /api/v1/batches": () => json({ result: BATCH, changed: ["batch", "stock"], message: "BAT-20260904-01 - 58 of 60 Veg puffs yielded (-3.3%), best before 18:40" }),
       "GET /api/v1/batches": () => json([BATCH]),
       "GET /api/v1/stock": () => json(STOCK),
     });
@@ -745,7 +745,7 @@ describe("makeProduct — POST /batches", () => {
   it("leaves the blank boxes out of the body", async () => {
     as("prod");
     serve({
-      "POST /api/v1/batches": () => json({ result: { ...BATCH, qty: 10, made: 10, note: undefined }, changed: ["batch", "stock"], message: "BAT-20260904-01 — 10 Veg puffs made, best before 18:40" }),
+      "POST /api/v1/batches": () => json({ result: { ...BATCH, qty: 10, made: 10, note: undefined }, changed: ["batch", "stock"], message: "BAT-20260904-01 - 10 Veg puffs made, best before 18:40" }),
       "GET /api/v1/batches": () => json([]),
       "GET /api/v1/stock": () => json(STOCK),
     });
@@ -758,22 +758,22 @@ describe("makeProduct — POST /batches", () => {
   it("answers false on a refusal, so the tile can keep what was typed", async () => {
     as("prod");
     const before = S().batch.length;
-    serve({ "POST /api/v1/batches": () => refusal("Kitchen is short of Veg filling mix — 1.200 kg left") });
+    serve({ "POST /api/v1/batches": () => refusal("Kitchen is short of Veg filling mix - 1.200 kg left") });
 
     expect(await S().makeProduct("puff", 200)).toBe(false);
 
-    expect(S().toast).toBe("Kitchen is short of Veg filling mix — 1.200 kg left");
+    expect(S().toast).toBe("Kitchen is short of Veg filling mix - 1.200 kg left");
     expect(S().batch).toHaveLength(before);
   });
 });
 
-describe("cancelTicket — POST /tickets/:id/cancel", () => {
+describe("cancelTicket - POST /tickets/:id/cancel", () => {
   const TKT = { ...FX.seedTkt[0], st: "Cancelled" };
 
   it("sends the reason and pulls the tickets, the holds and the request back", async () => {
     as("store");
     serve({
-      [`POST /api/v1/tickets/${TKT.id}/cancel`]: () => json({ result: TKT, changed: ["tkt", "rsv", "req"], message: `${TKT.id} cancelled — ${TKT.req} is approved again and can be issued a new ticket` }),
+      [`POST /api/v1/tickets/${TKT.id}/cancel`]: () => json({ result: TKT, changed: ["tkt", "rsv", "req"], message: `${TKT.id} cancelled - ${TKT.req} is approved again and can be issued a new ticket` }),
       "GET /api/v1/tickets": () => json([TKT]),
       "GET /api/v1/stock": () => json(STOCK),
       "GET /api/v1/requests": () => json([]),
@@ -788,15 +788,15 @@ describe("cancelTicket — POST /tickets/:id/cancel", () => {
 
   it("answers false on a refusal, so the drawer can keep the reason", async () => {
     as("store");
-    serve({ [`POST /api/v1/tickets/${TKT.id}/cancel`]: () => refusal(`${TKT.id} has already been handed over — the stock is on its way to Floor 3 Coffee Bar`) });
+    serve({ [`POST /api/v1/tickets/${TKT.id}/cancel`]: () => refusal(`${TKT.id} has already been handed over - the stock is on its way to Floor 3 Coffee Bar`) });
 
     expect(await S().cancelTicket(TKT.id, "Changed our minds")).toBe(false);
 
-    expect(S().toast).toBe(`${TKT.id} has already been handed over — the stock is on its way to Floor 3 Coffee Bar`);
+    expect(S().toast).toBe(`${TKT.id} has already been handed over - the stock is on its way to Floor 3 Coffee Bar`);
   });
 });
 
-describe("refetch — the movement slices have narrow readers now", () => {
+describe("refetch - the movement slices have narrow readers now", () => {
   it("answers req, tkt and shopAsks without a snapshot", async () => {
     serve({ "GET /api/v1/requests": () => json([REQ]), "GET /api/v1/tickets": () => json([TKT]), "GET /api/v1/shop-asks": () => json([ASK]) });
     await refetch(["req", "tkt", "shopAsks"]);
@@ -813,7 +813,7 @@ describe("refetch — the movement slices have narrow readers now", () => {
 
 /**
  * A write that is refused must leave the operator's typing where it is. The store says so with
- * its answer — `true` only once the server has taken the write — and the screens reset on that
+ * its answer - `true` only once the server has taken the write - and the screens reset on that
  * answer and nothing else.
  */
 /* ------------------------------------------------------------------ buying (Phase 5) */
@@ -822,7 +822,7 @@ const PRQ = { ...FX.seedPrq[3], st: "Approved" };            // PRQ-2026-013, de
 const PO = { ...FX.seedPo[2], st: "Ordered" };               // PO-2026-0140, sent
 const GRN = { ...FX.seedGrn[0], id: "GRN-140-01", po: PO.id };
 
-describe("sendRequisition — POST /requisitions", () => {
+describe("sendRequisition - POST /requisitions", () => {
   it("sends the draft's lines and the note, clears the draft, and pulls the desk back", async () => {
     as("store");
     S().setPrqDraft([{ it: "milk", qty: 60 }, { it: "butter", qty: 0 }]);
@@ -850,11 +850,11 @@ describe("sendRequisition — POST /requisitions", () => {
   });
 });
 
-describe("addToProcurementList — POST /requisitions/direct", () => {
+describe("addToProcurementList - POST /requisitions/direct", () => {
   it("sends only the lines with a quantity and the reason, and pulls the requisitions back", async () => {
     as("buyer");
     serve({
-      "POST /api/v1/requisitions/direct": () => json({ result: PRQ, changed: ["prq"], message: `${PRQ.id} added to the procurement list — 1 line(s)` }),
+      "POST /api/v1/requisitions/direct": () => json({ result: PRQ, changed: ["prq"], message: `${PRQ.id} added to the procurement list - 1 line(s)` }),
       "GET /api/v1/requisitions": () => json([PRQ]),
     });
 
@@ -863,18 +863,18 @@ describe("addToProcurementList — POST /requisitions/direct", () => {
     expect(hit("POST /api/v1/requisitions/direct")[0].body).toEqual({ lines: [{ it: "cup", qty: 500 }], note: "Festival week" });
     expect(hit("GET /api/v1/requisitions")).toHaveLength(1);
     expect(hit("GET /api/v1/snapshot")).toHaveLength(0);
-    expect(S().toast).toBe(`${PRQ.id} added to the procurement list — 1 line(s)`);
+    expect(S().toast).toBe(`${PRQ.id} added to the procurement list - 1 line(s)`);
   });
 
   it("answers false with the server's sentence on a refusal, and its own on a dead line", async () => {
     as("buyer");
-    serve({ "POST /api/v1/requisitions/direct": () => refusal("Veg puffs is made in-house — only raw, packing and MRP goods are bought") });
+    serve({ "POST /api/v1/requisitions/direct": () => refusal("Veg puffs is made in-house - only raw, packing and MRP goods are bought") });
     expect(await S().addToProcurementList([{ it: "puff", qty: 5 }], "Why not")).toBe(false);
-    expect(S().toast).toBe("Veg puffs is made in-house — only raw, packing and MRP goods are bought");
+    expect(S().toast).toBe("Veg puffs is made in-house - only raw, packing and MRP goods are bought");
 
     fetchMock.mockRejectedValue(new TypeError("Failed to fetch"));
     expect(await S().addToProcurementList([{ it: "cup", qty: 5 }], "Why not")).toBe(false);
-    expect(S().toast).toBe("Could not add to the procurement list — check the connection and try again.");
+    expect(S().toast).toBe("Could not add to the procurement list - check the connection and try again.");
   });
 });
 
@@ -882,7 +882,7 @@ describe("the requisition desk's two decisions", () => {
   it("posts the trimmed quantities and the note, and pulls the desk back", async () => {
     as("buyer");
     serve({
-      [`POST /api/v1/requisitions/${PRQ.id}/approve`]: () => json({ result: PRQ, changed: ["prq"], message: `${PRQ.id} approved — 2 line(s) on the procurement list` }),
+      [`POST /api/v1/requisitions/${PRQ.id}/approve`]: () => json({ result: PRQ, changed: ["prq"], message: `${PRQ.id} approved - 2 line(s) on the procurement list` }),
       [`POST /api/v1/requisitions/${PRQ.id}/decline`]: () => json({ result: PRQ, changed: ["prq"], message: `${PRQ.id} declined` }),
       "GET /api/v1/requisitions": () => json([PRQ]),
     });
@@ -895,17 +895,17 @@ describe("the requisition desk's two decisions", () => {
 
   it("answers false on a refusal so the drawer keeps the note", async () => {
     as("buyer");
-    serve({ [`POST /api/v1/requisitions/${PRQ.id}/decline`]: () => refusal("Give a reason — the store keeper sees it on the requisition") });
+    serve({ [`POST /api/v1/requisitions/${PRQ.id}/decline`]: () => refusal("Give a reason - the store keeper sees it on the requisition") });
     expect(await S().declineRequisition(PRQ.id, "  ")).toBe(false);
-    expect(S().toast).toBe("Give a reason — the store keeper sees it on the requisition");
+    expect(S().toast).toBe("Give a reason - the store keeper sees it on the requisition");
   });
 });
 
-describe("createPo — POST /purchase-orders", () => {
+describe("createPo - POST /purchase-orders", () => {
   it("sends the vendor and the picks, and answers with the new draft's id", async () => {
     as("buyer");
     serve({
-      "POST /api/v1/purchase-orders": () => json({ result: PO, changed: ["po", "prq"], message: `${PO.id} drafted on Anandha Provisions — 1 line(s), review the rates before sending` }),
+      "POST /api/v1/purchase-orders": () => json({ result: PO, changed: ["po", "prq"], message: `${PO.id} drafted on Anandha Provisions - 1 line(s), review the rates before sending` }),
       "GET /api/v1/purchase-orders": () => json([PO]),
       "GET /api/v1/requisitions": () => json([PRQ]),
     });
@@ -921,9 +921,9 @@ describe("createPo — POST /purchase-orders", () => {
 
   it("answers null on a refusal so the list can stay where it is", async () => {
     as("buyer");
-    serve({ "POST /api/v1/purchase-orders": () => refusal(`Milk 1L (toned) — only 20.000 still pending on ${PRQ.id}`) });
+    serve({ "POST /api/v1/purchase-orders": () => refusal(`Milk 1L (toned) - only 20.000 still pending on ${PRQ.id}`) });
     expect(await S().createPo("VN-003", [{ prq: PRQ.id, line: 0, qty: 30 }])).toBeNull();
-    expect(S().toast).toBe(`Milk 1L (toned) — only 20.000 still pending on ${PRQ.id}`);
+    expect(S().toast).toBe(`Milk 1L (toned) - only 20.000 still pending on ${PRQ.id}`);
   });
 });
 
@@ -935,10 +935,10 @@ describe("the purchase order's other doors", () => {
       [`PATCH /api/v1/purchase-orders/${PO.id}/lines/0`]: ok("Milk 1L (toned) at ₹58.00"),
       [`DELETE /api/v1/purchase-orders/${PO.id}/lines/0`]: ok("Milk 1L (toned) returned to the procurement list", ["po", "prq"]),
       [`PATCH /api/v1/purchase-orders/${PO.id}`]: ok(`${PO.id} expected 30-Sep-2026`),
-      [`POST /api/v1/purchase-orders/${PO.id}/send`]: ok(`${PO.id} raised on Anandha Provisions — expected 31-Aug-2026`),
-      [`POST /api/v1/purchase-orders/${PO.id}/cancel`]: ok(`${PO.id} cancelled — 1 line(s) back on the procurement list`, ["po", "prq"]),
-      [`POST /api/v1/purchase-orders/${PO.id}/receive`]: () => json({ result: { po: PO, grns: [GRN] }, changed: ["po", "grn", "stock"], message: "Booked into Central Store — 1 batch(es) against DC-88214" }),
-      [`POST /api/v1/purchase-orders/${PO.id}/close-short`]: ok(`${PO.id} closed short — the undelivered balance is back on the procurement list`, ["po", "prq"]),
+      [`POST /api/v1/purchase-orders/${PO.id}/send`]: ok(`${PO.id} raised on Anandha Provisions - expected 31-Aug-2026`),
+      [`POST /api/v1/purchase-orders/${PO.id}/cancel`]: ok(`${PO.id} cancelled - 1 line(s) back on the procurement list`, ["po", "prq"]),
+      [`POST /api/v1/purchase-orders/${PO.id}/receive`]: () => json({ result: { po: PO, grns: [GRN] }, changed: ["po", "grn", "stock"], message: "Booked into Central Store - 1 batch(es) against DC-88214" }),
+      [`POST /api/v1/purchase-orders/${PO.id}/close-short`]: ok(`${PO.id} closed short - the undelivered balance is back on the procurement list`, ["po", "prq"]),
       "GET /api/v1/purchase-orders": () => json([PO]),
       "GET /api/v1/requisitions": () => json([PRQ]),
       "GET /api/v1/grns": () => json([GRN]),
@@ -970,7 +970,7 @@ describe("the purchase order's other doors", () => {
   it("sends an order with no body of its own", async () => {
     await S().sendPo(PO.id);
     expect(hit(`POST /api/v1/purchase-orders/${PO.id}/send`)[0].body).toBeUndefined();
-    expect(S().toast).toBe(`${PO.id} raised on Anandha Provisions — expected 31-Aug-2026`);
+    expect(S().toast).toBe(`${PO.id} raised on Anandha Provisions - expected 31-Aug-2026`);
   });
 
   it("sends the receipt's paperwork and every line, and reads stock and the GRNs back", async () => {
@@ -990,9 +990,9 @@ describe("the purchase order's other doors", () => {
   });
 
   it("keeps a refusal's words and changes nothing", async () => {
-    serve({ [`POST /api/v1/purchase-orders/${PO.id}/cancel`]: () => refusal(`${PO.id} already received against — close it short instead of cancelling`) });
+    serve({ [`POST /api/v1/purchase-orders/${PO.id}/cancel`]: () => refusal(`${PO.id} already received against - close it short instead of cancelling`) });
     expect(await S().cancelPo(PO.id, "no reason")).toBe(false);
-    expect(S().toast).toBe(`${PO.id} already received against — close it short instead of cancelling`);
+    expect(S().toast).toBe(`${PO.id} already received against - close it short instead of cancelling`);
     expect(S().po.find((o) => o.id === PO.id)!.st).toBe(FX.seedPo[2].st);
   });
 });
@@ -1006,7 +1006,7 @@ describe("vendors, contracts and a new product", () => {
     as("buyer");
     serve({
       "POST /api/v1/vendors": () => json({ result: V, changed: ["vendors"], message: `Kumaran Traders added as ${V.id}` }),
-      [`PATCH /api/v1/vendors/${V.id}`]: () => json({ result: { ...V, active: false }, changed: ["vendors"], message: "Kumaran Traders deactivated — existing orders keep it, new drafts cannot pick it" }),
+      [`PATCH /api/v1/vendors/${V.id}`]: () => json({ result: { ...V, active: false }, changed: ["vendors"], message: "Kumaran Traders deactivated - existing orders keep it, new drafts cannot pick it" }),
       "GET /api/v1/vendors": () => json([V]),
     });
     expect(await S().addVendor({ n: "Kumaran Traders", gstin: "", contact: "", ph: "", terms: "", lead: 2, groups: ["Grocery"] })).toBe(true);
@@ -1030,17 +1030,17 @@ describe("vendors, contracts and a new product", () => {
     as("store");
     let live = true;
     serve({
-      "POST /api/v1/contracts": () => json({ result: C, changed: ["contracts"], message: `${C.id} — Bread loaf, white at ₹38 with Aavin Dairy Depot` }),
+      "POST /api/v1/contracts": () => json({ result: C, changed: ["contracts"], message: `${C.id} - Bread loaf, white at ₹38 with Aavin Dairy Depot` }),
       [`DELETE /api/v1/contracts/${C.id}`]: () => {
         live = false;
-        return json({ result: { ...C, active: false }, changed: ["contracts"], message: `${C.id} closed — it stays on record but no longer prices an order` });
+        return json({ result: { ...C, active: false }, changed: ["contracts"], message: `${C.id} closed - it stays on record but no longer prices an order` });
       },
-      // The register is whatever the read-back says it is — nothing is written locally.
+      // The register is whatever the read-back says it is - nothing is written locally.
       "GET /api/v1/contracts": () => json([{ ...C, active: live }]),
     });
     expect(await S().addContract({ vendorId: "VN-001", it: "bread", rate: 38, from: "2026-04-01", to: "2027-03-31", moq: 20 })).toBe(true);
     expect(hit("POST /api/v1/contracts")[0].body).toEqual({ vendorId: "VN-001", it: "bread", rate: 38, from: "2026-04-01", to: "2027-03-31", moq: 20 });
-    // Wire dates in, display dates on screen — the same convention the snapshot follows.
+    // Wire dates in, display dates on screen - the same convention the snapshot follows.
     expect(S().contracts.find((x) => x.id === C.id)!.from).toBe("01-Apr-2026");
     await S().removeContract(C.id);
     expect(S().contracts.find((x) => x.id === C.id)!.active).toBe(false);
@@ -1064,8 +1064,8 @@ describe("vendors, contracts and a new product", () => {
   it("raises a shop's ask and answers it, linking the item it became", async () => {
     as("manager");
     serve({
-      "POST /api/v1/product-requests": () => json({ result: NPR, changed: ["productReqs"], message: `${NPR.id} sent to the central store — they add it to the master` }),
-      [`POST /api/v1/product-requests/${NPR.id}/answer`]: () => json({ result: { ...NPR, st: "Created", itemKey: "bisc" }, changed: ["productReqs"], message: `${NPR.id} — product created on the master` }),
+      "POST /api/v1/product-requests": () => json({ result: NPR, changed: ["productReqs"], message: `${NPR.id} sent to the central store - they add it to the master` }),
+      [`POST /api/v1/product-requests/${NPR.id}/answer`]: () => json({ result: { ...NPR, st: "Created", itemKey: "bisc" }, changed: ["productReqs"], message: `${NPR.id} - product created on the master` }),
       "GET /api/v1/product-requests": () => json([NPR]),
     });
     expect(await S().requestNewProduct({ name: "Iced lemon tea 300ml", why: "Warm-weather demand", forLoc: "kiosk" })).toBe(true);
@@ -1084,7 +1084,7 @@ describe("a refusal keeps what the operator typed", () => {
     el.dispatchEvent(new Event("input", { bubbles: true }));
   };
   /** Leaving a field. React maps `onBlur` onto the bubbling `focusout`, which is what actually
-   *  fires when the operator tabs on — and tabbing on is the case these tests are about. */
+   *  fires when the operator tabs on - and tabbing on is the case these tests are about. */
   const leave = (el: HTMLInputElement) => { el.dispatchEvent(new FocusEvent("focusout", { bubbles: true })); };
   /** Render the counter's request screen the way the app runs it. */
   function mount() {
@@ -1119,16 +1119,16 @@ describe("a refusal keeps what the operator typed", () => {
   };
   /**
    * Drain the queue until `ok()` holds, rather than for exactly one turn. A write's read-back
-   * sits two awaits behind the click — the POST, then the GETs `refetch` fans out — so a single
+   * sits two awaits behind the click - the POST, then the GETs `refetch` fans out - so a single
    * `setTimeout(0)` was one turn short whenever the machine was loaded, which is what made the
    * make-tile and requisition cases flake. The ceiling is a ceiling, not a wait: it exits the
    * moment it can, and 200 turns of an empty macrotask queue costs nothing when it does. Past
-   * it, it gives up **loudly** — a silent fall-through leaves the assertion below to fail with
+   * it, it gives up **loudly** - a silent fall-through leaves the assertion below to fail with
    * a message about the wrong thing, which is how a flake gets read as a regression.
    */
   const settleUntil = async (ok: () => boolean, tries = 200, ms = 8000) => {
     // Two budgets, and it waits for whichever is larger. A turn count alone is not a wait: on a
-    // loaded host — four vitest projects running at once — a macrotask can be starved for
+    // loaded host - four vitest projects running at once - a macrotask can be starved for
     // milliseconds at a time, and 200 turns then expire before the fetch promise has even been
     // scheduled. That is the whole of the make-tile flake this file used to carry.
     const until = Date.now() + ms;
@@ -1142,20 +1142,20 @@ describe("a refusal keeps what the operator typed", () => {
    * Press a button whose screen drops the promise it starts, and wait for that promise.
    *
    * `onClick={send}` hands the store action's answer to nobody, so a render-level case had
-   * nothing to await and polled for the toast on a wall clock instead. Under `turbo test` —
-   * four packages sharing one machine — that budget is a coin toss, not a wait: the make-tile
+   * nothing to await and polled for the toast on a wall clock instead. Under `turbo test` -
+   * four packages sharing one machine - that budget is a coin toss, not a wait: the make-tile
    * case has taken 9.2 s against an 8 s ceiling and gone red on a green tree.
    *
    * `capture(key)` swaps the action for one that keeps its own promise, and `press(fire)` runs
    * the click **and** the wait inside a single `act`. Both halves matter. Awaiting the promise
    * is what makes the case deterministic: when it resolves the write has been refused, notified
-   * and read back, with no clock anywhere in it. Doing it in one `act` is what keeps it honest —
+   * and read back, with no clock anywhere in it. Doing it in one `act` is what keeps it honest -
    * split across two, the screen's own `await` resumes after act has closed, React warns that an
    * update escaped it, and on a loaded host the assertions run against a half-settled screen.
    *
    * `restore()` puts the real action back, because the store is a module singleton and
    * `resetStore` replaces only its data: an action left swapped follows this file into every
-   * case after it. Call it in a `finally` — a failed assertion must not leave the swap behind
+   * case after it. Call it in a `finally` - a failed assertion must not leave the swap behind
    * for the rest of the file to trip over.
    */
   const capture = (key: "makeProduct" | "sendRequisition") => {
@@ -1172,11 +1172,11 @@ describe("a refusal keeps what the operator typed", () => {
         await act(async () => {
           fire();
           // Said out loud, because the alternative is a case that passes by waiting for nothing.
-          // If the screen ever stops calling the action synchronously from its handler — an
-          // `await` before it, a guard that returns early, a disabled button — `pending` is still
+          // If the screen ever stops calling the action synchronously from its handler - an
+          // `await` before it, a guard that returns early, a disabled button - `pending` is still
           // `idle`, `await` resolves at once and every assertion below runs against a screen the
           // write never touched. That is a green nobody earned, so it fails here instead.
-          if (pending === idle) throw new Error(`${key} was not called by this press — the screen did not reach the store action, so there is nothing to await`);
+          if (pending === idle) throw new Error(`${key} was not called by this press - the screen did not reach the store action, so there is nothing to await`);
           await pending;
         });
       },
@@ -1188,15 +1188,15 @@ describe("a refusal keeps what the operator typed", () => {
 
   it("leaves the raise card open, with its note, when the server refuses", async () => {
     as("counter");
-    serve({ "POST /api/v1/requests": () => refusal("Refused — Coffee Shop already has REQ-2026-0911 open for Milk 1L") });
+    serve({ "POST /api/v1/requests": () => refusal("Refused - Coffee Shop already has REQ-2026-0911 open for Milk 1L") });
     const ui = mount();
     act(() => { ui.button("From inventory")!.click(); });
     act(() => { type(ui.note(), "Milk finished at 09:10"); });
 
     await settle(() => { ui.button("Submit request")!.click(); });
 
-    expect(S().toast).toBe("Refused — Coffee Shop already has REQ-2026-0911 open for Milk 1L");
-    // The card is still open and still carries the note — nothing to retype.
+    expect(S().toast).toBe("Refused - Coffee Shop already has REQ-2026-0911 open for Milk 1L");
+    // The card is still open and still carries the note - nothing to retype.
     expect(ui.button("Submit request")).toBeDefined();
     expect(ui.note().value).toBe("Milk finished at 09:10");
     ui.unmount();
@@ -1205,7 +1205,7 @@ describe("a refusal keeps what the operator typed", () => {
   it("clears the card only once the server has taken it", async () => {
     as("counter");
     serve({
-      "POST /api/v1/requests": () => json({ result: REQ, changed: ["req"], message: "REQ-2026-0913 sent to the outlet manager — 1 line" }),
+      "POST /api/v1/requests": () => json({ result: REQ, changed: ["req"], message: "REQ-2026-0913 sent to the outlet manager - 1 line" }),
       "GET /api/v1/requests": () => json([REQ]),
     });
     const ui = mount();
@@ -1214,7 +1214,7 @@ describe("a refusal keeps what the operator typed", () => {
 
     await settle(() => { ui.button("Submit request")!.click(); });
 
-    expect(S().toast).toBe("REQ-2026-0913 sent to the outlet manager — 1 line");
+    expect(S().toast).toBe("REQ-2026-0913 sent to the outlet manager - 1 line");
     expect(ui.button("Submit request")).toBeUndefined();   // the card closed behind the answer
     ui.unmount();
   });
@@ -1227,7 +1227,7 @@ describe("a refusal keeps what the operator typed", () => {
       const at = `${init.method} ${String(u).split("?")[0]}`;
       if (at === "POST /api/v1/requests") {
         await inFlight;
-        return json({ result: REQ, changed: ["req"], message: "REQ-2026-0913 sent to the outlet manager — 1 line" });
+        return json({ result: REQ, changed: ["req"], message: "REQ-2026-0913 sent to the outlet manager - 1 line" });
       }
       return json([REQ]);
     });
@@ -1249,7 +1249,7 @@ describe("a refusal keeps what the operator typed", () => {
 
   it("leaves the quantity on the make tile when the kitchen is short", async () => {
     as("prod");
-    serve({ "POST /api/v1/batches": () => refusal("Kitchen is short of Veg filling mix — 1.200 kg left") });
+    serve({ "POST /api/v1/batches": () => refusal("Kitchen is short of Veg filling mix - 1.200 kg left") });
     const make = capture("makeProduct");
     const ui = mountNode(MakeDistribute);
     act(() => { type(ui.field("Quantity of Veg puffs to start"), "200"); });
@@ -1260,7 +1260,7 @@ describe("a refusal keeps what the operator typed", () => {
       await make.press(() => { ui.button("Make")!.click(); });
 
       expect(hit("POST /api/v1/batches")[0].body).toEqual({ it: "puff", started: 200 });
-      expect(S().toast).toBe("Kitchen is short of Veg filling mix — 1.200 kg left");
+      expect(S().toast).toBe("Kitchen is short of Veg filling mix - 1.200 kg left");
       // Nothing to retype: the refusal landed on the kitchen's own typing.
       expect(ui.field("Quantity of Veg puffs to start").value).toBe("200");
     } finally { make.restore(); }
@@ -1275,7 +1275,7 @@ describe("a refusal keeps what the operator typed", () => {
       const at = `${init.method} ${String(u).split("?")[0]}`;
       if (at === "POST /api/v1/batches") {
         await inFlight;
-        return json({ result: BATCH, changed: ["batch", "stock"], message: "BAT-20260904-01 — 58 of 60 Veg puffs yielded (-3.3%), best before 18:40" });
+        return json({ result: BATCH, changed: ["batch", "stock"], message: "BAT-20260904-01 - 58 of 60 Veg puffs yielded (-3.3%), best before 18:40" });
       }
       return at === "GET /api/v1/batches" ? json([BATCH]) : json(STOCK);
     });
@@ -1353,8 +1353,8 @@ describe("a refusal keeps what the operator typed", () => {
     let refuse = true;
     serve({
       "POST /api/v1/requisitions/direct": () => (refuse
-        ? refusal("Give a reason — it is kept on the requisition for the store keeper")
-        : json({ result: PRQ, changed: ["prq"], message: `${PRQ.id} added to the procurement list — 1 line(s)` })),
+        ? refusal("Give a reason - it is kept on the requisition for the store keeper")
+        : json({ result: PRQ, changed: ["prq"], message: `${PRQ.id} added to the procurement list - 1 line(s)` })),
       "GET /api/v1/requisitions": () => json([PRQ]),
     });
     S().openDrawer("baddpool", "new");
@@ -1366,7 +1366,7 @@ describe("a refusal keeps what the operator typed", () => {
     act(() => { ui.button("Add item")!.click(); });
     const picked = ui.host.querySelector<HTMLSelectElement>('select[aria-label="Item on line 1"]')!.value;
     expect(IT[picked].t).toMatch(/^(RAW|PACK|MRP)$/);
-    // Only what procurement buys is offered — nothing the kitchen makes or the counter assembles.
+    // Only what procurement buys is offered - nothing the kitchen makes or the counter assembles.
     const offered = [...ui.host.querySelectorAll<HTMLOptionElement>('select[aria-label="Item on line 1"] option')].map((o) => IT[o.value].t);
     expect(offered.every((t) => t === "RAW" || t === "PACK" || t === "MRP")).toBe(true);
 
@@ -1378,7 +1378,7 @@ describe("a refusal keeps what the operator typed", () => {
     expect(add().disabled).toBe(false);
 
     await settle(() => { add().click(); });
-    await settleUntil(() => S().toast === "Give a reason — it is kept on the requisition for the store keeper");
+    await settleUntil(() => S().toast === "Give a reason - it is kept on the requisition for the store keeper");
     expect(hit("POST /api/v1/requisitions/direct")[0].body).toEqual({ lines: [{ it: picked, qty: 40 }], note: "Festival week" });
     // The drawer is still open over exactly what was typed.
     expect(S().drawer).toEqual({ t: "baddpool", id: "new" });
@@ -1437,7 +1437,7 @@ describe("a refusal keeps what the operator typed", () => {
     expect(wrote()).toHaveLength(1);
     expect(wrote()[0].body).toEqual({ eta: "2026-10-15" });
 
-    // The box resyncs to whatever the store holds — the stub's order never moved its date — so
+    // The box resyncs to whatever the store holds - the stub's order never moved its date - so
     // leaving it a second time is not a second write of a date the server already has.
     expect(eta().value).toBe("2026-08-31");
     await settle(() => { leave(eta()); });
@@ -1477,7 +1477,7 @@ describe("a refusal keeps what the operator typed", () => {
     await settleUntil(() => offered().some((t) => t.includes("Cardamom")));
 
     // The picker is built during render off `IT` and pinned to catalogVersion, so the refetch
-    // the write named is enough — nobody has to reload to buy what was just added.
+    // the write named is enough - nobody has to reload to buy what was just added.
     expect(offered().some((t) => t.includes("Cardamom"))).toBe(true);
     ui.unmount();
   });
@@ -1486,7 +1486,7 @@ describe("a refusal keeps what the operator typed", () => {
     as("store");
     const tkt = { ...FX.seedTkt[0], st: "Cancelled" };
     serve({
-      [`POST /api/v1/tickets/${tkt.id}/cancel`]: () => json({ result: tkt, changed: ["tkt", "rsv"], message: `${tkt.id} cancelled — the stock is free again at Central Store` }),
+      [`POST /api/v1/tickets/${tkt.id}/cancel`]: () => json({ result: tkt, changed: ["tkt", "rsv"], message: `${tkt.id} cancelled - the stock is free again at Central Store` }),
       "GET /api/v1/tickets": () => json([tkt]),
       "GET /api/v1/stock": () => json(STOCK),
     });
@@ -1502,7 +1502,7 @@ describe("a refusal keeps what the operator typed", () => {
 
     expect(hit(`POST /api/v1/tickets/${tkt.id}/cancel`)[0].body).toEqual({ reason: "The counter closed before the collector came" });
     expect(S().drawer).toBeNull();
-    expect(S().toast).toBe(`${tkt.id} cancelled — the stock is free again at Central Store`);
+    expect(S().toast).toBe(`${tkt.id} cancelled - the stock is free again at Central Store`);
     ui.unmount();
   });
 
@@ -1512,7 +1512,7 @@ describe("a refusal keeps what the operator typed", () => {
     as("counter");
     const sent = { id: "TKT-0450", req: "Shop transfer", from: "coffee", to: "kiosk", lines: [{ it: "chips", qty: 6 }], st: "Cancelled", otp: "", hist: [] };
     serve({
-      "POST /api/v1/tickets/TKT-0450/cancel": () => json({ result: sent, changed: ["tkt", "rsv"], message: "TKT-0450 cancelled — the stock is free again at Floor 3 Coffee Bar" }),
+      "POST /api/v1/tickets/TKT-0450/cancel": () => json({ result: sent, changed: ["tkt", "rsv"], message: "TKT-0450 cancelled - the stock is free again at Floor 3 Coffee Bar" }),
       "GET /api/v1/tickets": () => json([sent]),
       "GET /api/v1/stock": () => json(STOCK),
     });
@@ -1524,19 +1524,19 @@ describe("a refusal keeps what the operator typed", () => {
     expect(hit("GET /api/v1/stock")).toHaveLength(1);
     expect(hit("GET /api/v1/snapshot")).toHaveLength(0);        // `changed` was narrow; the read-back is too
     expect(S().tkt.find((t) => t.id === "TKT-0450")!.st).toBe("Cancelled");
-    expect(S().toast).toBe("TKT-0450 cancelled — the stock is free again at Floor 3 Coffee Bar");
+    expect(S().toast).toBe("TKT-0450 cancelled - the stock is free again at Floor 3 Coffee Bar");
   });
 
   it("gives the kitchen an OTP box, so its handover is not an override by default", async () => {
     // Every kitchen handover used to be a labelled supervisor override: the board, Make &
     // Distribute and the pick-ticket list all called `handover(id)` with no OTP at all. The
-    // kitchen never sees the six digits — it is the issuing side — but it has to be able to
+    // kitchen never sees the six digits - it is the issuing side - but it has to be able to
     // type in what the collector reads out, which is what `ptkt` is for.
     as("prod");
     const out = { id: "TKT-0460", req: "PRD-2026-029", from: "kitchen", to: "kiosk", lines: [{ it: "puff", qty: 12 }], st: "Issued", otp: "", hist: [{ s: "Issued", who: "Vinoth Prakash", t: "10:12" }] };
     const done = { ...out, st: "Collected" };
     serve({
-      "POST /api/v1/tickets/TKT-0460/handover": () => json({ result: done, changed: ["tkt", "rsv", "stock"], message: "TKT-0460 handed over — stock is in transit to Snack Kiosk" }),
+      "POST /api/v1/tickets/TKT-0460/handover": () => json({ result: done, changed: ["tkt", "rsv", "stock"], message: "TKT-0460 handed over - stock is in transit to Snack Kiosk" }),
       "GET /api/v1/tickets": () => json([done]),
       "GET /api/v1/stock": () => json(STOCK),
     });
@@ -1557,7 +1557,7 @@ describe("a refusal keeps what the operator typed", () => {
     as("prod");
     const out = { id: "TKT-0461", req: "PRD-2026-029", from: "kitchen", to: "kiosk", lines: [{ it: "puff", qty: 12 }], st: "Issued", otp: "", hist: [] };
     serve({
-      "POST /api/v1/tickets/TKT-0461/handover": () => json({ result: { ...out, st: "Collected" }, changed: ["tkt"], message: "TKT-0461 handed over on a supervisor override — stock is in transit to Snack Kiosk" }),
+      "POST /api/v1/tickets/TKT-0461/handover": () => json({ result: { ...out, st: "Collected" }, changed: ["tkt"], message: "TKT-0461 handed over on a supervisor override - stock is in transit to Snack Kiosk" }),
       "GET /api/v1/tickets": () => json([{ ...out, st: "Collected" }]),
     });
     act(() => { useApp.setState({ tkt: [out] as never }); });
@@ -1570,7 +1570,7 @@ describe("a refusal keeps what the operator typed", () => {
     await settle(() => { ui.button("Confirm override handover")!.click(); });
 
     expect(hit("POST /api/v1/tickets/TKT-0461/handover")[0].body).toEqual({});
-    expect(S().toast).toBe("TKT-0461 handed over on a supervisor override — stock is in transit to Snack Kiosk");
+    expect(S().toast).toBe("TKT-0461 handed over on a supervisor override - stock is in transit to Snack Kiosk");
     ui.unmount();
   });
 });
@@ -1578,96 +1578,96 @@ describe("a refusal keeps what the operator typed", () => {
 /** Every action's own sentence when the server cannot be reached at all. */
 const OFFLINE: [name: string, run: () => Promise<unknown>, sentence: string][] = [
   ["submitRequest", () => { S().setDraft([{ it: "milk", qty: 20 }]); return S().submitRequest("", false); },
-    "Could not send the request — check the connection and try again."],
+    "Could not send the request - check the connection and try again."],
   ["requestFromStore", () => S().requestFromStore("milk", 20),
-    "Could not send the request — check the connection and try again."],
+    "Could not send the request - check the connection and try again."],
   ["cancelRequest", () => S().cancelRequest("REQ-2026-0911"),
-    "Could not cancel the request — check the connection and try again."],
+    "Could not cancel the request - check the connection and try again."],
   ["approveRequest", () => S().approveRequest("REQ-2026-0911", [12], "Store is tight"),
-    "Could not save the approval — check the connection and try again."],
+    "Could not save the approval - check the connection and try again."],
   ["rejectRequest", () => S().rejectRequest("REQ-2026-0911", "Nothing to spare"),
-    "Could not save the rejection — check the connection and try again."],
+    "Could not save the rejection - check the connection and try again."],
   ["issueTicket", () => S().issueTicket("REQ-2026-0911"),
-    "Could not issue the ticket — check the connection and try again."],
+    "Could not issue the ticket - check the connection and try again."],
   ["handover", () => S().handover("TKT-0440", "418327"),
-    "Could not hand the ticket over — check the connection and try again."],
+    "Could not hand the ticket over - check the connection and try again."],
   ["receiveTicket", () => S().receiveTicket("TKT-0440"),
-    "Could not receive the ticket — check the connection and try again."],
+    "Could not receive the ticket - check the connection and try again."],
   ["transferToOutlet", () => S().transferToOutlet("coffee", "kiosk", "chips", 6),
-    "Could not send the transfer — check the connection and try again."],
+    "Could not send the transfer - check the connection and try again."],
   ["askShop", () => S().askShop("kiosk", "water", 24, "Ran dry"),
-    "Could not send the ask — check the connection and try again."],
+    "Could not send the ask - check the connection and try again."],
   ["answerShopAsk", () => S().answerShopAsk("ASK-0060", 6),
-    "Could not answer the ask — check the connection and try again."],
+    "Could not answer the ask - check the connection and try again."],
   ["declineShopAsk", () => S().declineShopAsk("ASK-0060", "We are short ourselves"),
-    "Could not decline the ask — check the connection and try again."],
+    "Could not decline the ask - check the connection and try again."],
   ["dispatchOrder", () => S().dispatchOrder("PRD-2026-029"),
-    "Could not dispatch the order — check the connection and try again."],
+    "Could not dispatch the order - check the connection and try again."],
   ["distribute", () => S().distribute("puff", 5, "kiosk"),
-    "Could not send it out — check the connection and try again."],
+    "Could not send it out - check the connection and try again."],
   ["setOrderStatus", () => S().setOrderStatus("PRD-2026-029", "Accepted"),
-    "Could not move the order on — check the connection and try again."],
+    "Could not move the order on - check the connection and try again."],
   ["makeProduct", () => S().makeProduct("puff", 10),
-    "Could not record the batch — check the connection and try again."],
+    "Could not record the batch - check the connection and try again."],
   ["cancelTicket", () => S().cancelTicket("TKT-0440", "Counter closed"),
-    "Could not cancel the ticket — check the connection and try again."],
+    "Could not cancel the ticket - check the connection and try again."],
   ["sendRequisition", () => S().sendRequisition("Weekly dairy"),
-    "Could not send the requisition — check the connection and try again."],
+    "Could not send the requisition - check the connection and try again."],
   ["addVendor", () => S().addVendor({ n: "Kumaran Traders", gstin: "", contact: "", ph: "", terms: "", lead: 2, groups: [] }),
-    "Could not save the vendor — check the connection and try again."],
+    "Could not save the vendor - check the connection and try again."],
   ["updateVendor", () => S().updateVendor("VN-001", { terms: "45 days" }),
-    "Could not save the vendor — check the connection and try again."],
+    "Could not save the vendor - check the connection and try again."],
   ["setVendorActive", () => S().setVendorActive("VN-001", false),
-    "Could not save the vendor — check the connection and try again."],
+    "Could not save the vendor - check the connection and try again."],
   ["approveRequisition", () => S().approveRequisition("PRQ-2026-013", [60, 6], ""),
-    "Could not save the decision — check the connection and try again."],
+    "Could not save the decision - check the connection and try again."],
   ["declineRequisition", () => S().declineRequisition("PRQ-2026-013", "Three weeks of cover"),
-    "Could not save the decision — check the connection and try again."],
+    "Could not save the decision - check the connection and try again."],
   ["createPo", () => S().createPo("VN-001", [{ prq: "PRQ-2026-013", line: 0, qty: 60 }]),
-    "Could not raise the order — check the connection and try again."],
+    "Could not raise the order - check the connection and try again."],
   ["updatePoLine", () => S().updatePoLine("PO-2026-0140", 0, { rate: 58 }),
-    "Could not change the line — check the connection and try again."],
+    "Could not change the line - check the connection and try again."],
   ["removePoLine", () => S().removePoLine("PO-2026-0140", 0),
-    "Could not remove the line — check the connection and try again."],
+    "Could not remove the line - check the connection and try again."],
   ["setPoVendor", () => S().setPoVendor("PO-2026-0140", "VN-002"),
-    "Could not change the order — check the connection and try again."],
+    "Could not change the order - check the connection and try again."],
   ["setPoEta", () => S().setPoEta("PO-2026-0140", "2026-09-30"),
-    "Could not change the order — check the connection and try again."],
+    "Could not change the order - check the connection and try again."],
   ["sendPo", () => S().sendPo("PO-2026-0140"),
-    "Could not send the order — check the connection and try again."],
+    "Could not send the order - check the connection and try again."],
   ["cancelPo", () => S().cancelPo("PO-2026-0140", "Vendor closed"),
-    "Could not cancel the order — check the connection and try again."],
+    "Could not cancel the order - check the connection and try again."],
   ["receivePo", () => S().receivePo("PO-2026-0141", { dc: "DC-1", invoice: "", invDate: "" }, []),
-    "Could not book the goods in — check the connection and try again."],
+    "Could not book the goods in - check the connection and try again."],
   ["closePoShort", () => S().closePoShort("PO-2026-0142", "Nothing more is coming"),
-    "Could not close the order short — check the connection and try again."],
+    "Could not close the order short - check the connection and try again."],
   ["addContract", () => S().addContract({ vendorId: "VN-001", it: "bread", rate: 38, from: "2026-04-01", to: "2027-03-31", moq: 20 }),
-    "Could not save the contract — check the connection and try again."],
+    "Could not save the contract - check the connection and try again."],
   ["updateContract", () => S().updateContract("RC-101", { rate: 54 }),
-    "Could not save the contract — check the connection and try again."],
+    "Could not save the contract - check the connection and try again."],
   ["removeContract", () => S().removeContract("RC-101"),
-    "Could not close the contract — check the connection and try again."],
+    "Could not close the contract - check the connection and try again."],
   ["requestNewProduct", () => S().requestNewProduct({ name: "Buttermilk 200ml", why: "", forLoc: "kiosk" }),
-    "Could not send the request — check the connection and try again."],
+    "Could not send the request - check the connection and try again."],
   ["answerProductRequest", () => S().answerProductRequest("NPR-0012", "Declined", "Not stocking this line"),
-    "Could not answer the request — check the connection and try again."],
+    "Could not answer the request - check the connection and try again."],
   ["createItem", () => S().createItem({ key: "", name: "Buttermilk 200ml", code: "", unit: "nos", type: "MRP", group: "", hsn: "", gst: 5, reorder: 0, cost: 18, mrp: 25 }, "store", 0),
-    "Could not add the product — check the connection and try again."],
+    "Could not add the product - check the connection and try again."],
   ["raiseTicket", () => S().raiseTicket({ topic: "Something else", subject: "x", body: "", priority: "Low", screen: "Dashboard" }),
-    "Could not raise the ticket — check the connection and try again."],
+    "Could not raise the ticket - check the connection and try again."],
   ["replyToTicket", () => S().replyToTicket("SUP-0044", "Still happening."),
-    "Could not send the reply — check the connection and try again."],
+    "Could not send the reply - check the connection and try again."],
   ["setTicketStatus", () => S().setTicketStatus("SUP-0044", "Resolved"),
-    "Could not change the ticket — check the connection and try again."],
+    "Could not change the ticket - check the connection and try again."],
   ["rateTicket", () => S().rateTicket("SUP-0044", 5),
-    "Could not record the rating — check the connection and try again."],
+    "Could not record the rating - check the connection and try again."],
   // ---- payers ----
   ["addPayer", () => S().addPayer({ kind: "staff", id: "E2291", name: "Kavitha Raman" }),
-    "Could not save the payer — check the connection and try again."],
+    "Could not save the payer - check the connection and try again."],
   ["updatePayer", () => S().updatePayer("staff", "RC-4471", { active: false }),
-    "Could not save the payer — check the connection and try again."],
+    "Could not save the payer - check the connection and try again."],
   ["loadPayers", () => S().loadPayers(),
-    "Could not read the payer register — check the connection and try again."],
+    "Could not read the payer register - check the connection and try again."],
 ];
 
 describe("a dropped connection names the write that did not land", () => {
@@ -1680,7 +1680,7 @@ describe("a dropped connection names the write that did not land", () => {
 });
 
 /**
- * The support desk, the payer roster and the two reports — the last things the browser did for
+ * The support desk, the payer roster and the two reports - the last things the browser did for
  * itself. Every rule they used to hold is the server's now (support.test.ts, reports.test.ts);
  * what these pin is the wire: which route each call reaches, what it puts in the body, and what
  * it reads back.
@@ -1692,11 +1692,11 @@ const SUP = {
   messages: [{ id: "m1", from: "user", who: "Kavitha Raman", at: "2026-09-04T03:42:00.000Z", body: "Since 09:00." }],
 };
 
-describe("raiseTicket — POST /support/tickets", () => {
+describe("raiseTicket - POST /support/tickets", () => {
   it("sends what the form holds, pulls the desk back, and shows the server's sentence", async () => {
     as("counter");
     serve({
-      "POST /api/v1/support/tickets": () => json({ result: SUP, changed: ["tickets"], message: `${SUP.id} raised — the reply will appear on your Support screen` }),
+      "POST /api/v1/support/tickets": () => json({ result: SUP, changed: ["tickets"], message: `${SUP.id} raised - the reply will appear on your Support screen` }),
       "GET /api/v1/support/tickets": () => json([SUP]),
     });
 
@@ -1713,7 +1713,7 @@ describe("raiseTicket — POST /support/tickets", () => {
     // The wire carries ISO; the store holds what the screen prints.
     expect(S().tickets[0].at).toBe("09:12");
     expect(S().tickets[0].messages[0].at).toBe("09:12");
-    expect(S().toast).toBe(`${SUP.id} raised — the reply will appear on your Support screen`);
+    expect(S().toast).toBe(`${SUP.id} raised - the reply will appear on your Support screen`);
   });
 
   it("answers false and keeps nothing of its own when the server refuses", async () => {
@@ -1745,20 +1745,20 @@ describe("replyToTicket / setTicketStatus / rateTicket", () => {
   it("marks it resolved through its own endpoint", async () => {
     as("counter");
     serve({
-      "POST /api/v1/support/tickets/SUP-0044/status": () => json({ result: { ...SUP, st: "Resolved" }, changed: ["tickets"], message: "SUP-0044 — resolved" }),
+      "POST /api/v1/support/tickets/SUP-0044/status": () => json({ result: { ...SUP, st: "Resolved" }, changed: ["tickets"], message: "SUP-0044 - resolved" }),
       "GET /api/v1/support/tickets": () => json([{ ...SUP, st: "Resolved" }]),
     });
     await S().setTicketStatus("SUP-0044", "Resolved");
     expect(hit("POST /api/v1/support/tickets/SUP-0044/status")[0].body).toEqual({ st: "Resolved" });
-    expect(S().toast).toBe("SUP-0044 — resolved");
+    expect(S().toast).toBe("SUP-0044 - resolved");
   });
 
   it("rates it, and repeats the refusal when the desk has not finished", async () => {
     as("counter");
-    serve({ "POST /api/v1/support/tickets/SUP-0044/rating": () => refusal("SUP-0044 is not finished yet — rate it once support has resolved it") });
+    serve({ "POST /api/v1/support/tickets/SUP-0044/rating": () => refusal("SUP-0044 is not finished yet - rate it once support has resolved it") });
     await S().rateTicket("SUP-0044", 5);
     expect(hit("POST /api/v1/support/tickets/SUP-0044/rating")[0].body).toEqual({ rating: 5 });
-    expect(S().toast).toBe("SUP-0044 is not finished yet — rate it once support has resolved it");
+    expect(S().toast).toBe("SUP-0044 is not finished yet - rate it once support has resolved it");
   });
 });
 
@@ -1779,7 +1779,7 @@ describe("what the browser no longer knows on its own", () => {
     expect(r.room).toBe(520);
   });
 
-  it("says nothing at all when the credit read fails — a toast per keystroke would bury the refusal", async () => {
+  it("says nothing at all when the credit read fails - a toast per keystroke would bury the refusal", async () => {
     as("counter");
     fetchMock.mockRejectedValue(new TypeError("Failed to fetch"));
     expect(await S().readCredit({ kind: "staff", id: "RC-1902", name: "Vinoth Prakash" })).toBeNull();
@@ -1837,7 +1837,7 @@ describe("editing and retiring a line on the item master", () => {
     serve({
       "PATCH /api/v1/items/chips": () => json({
         result: { key: "chips", item: retired }, changed: ["items"],
-        message: "Salted chips 52g retired — it stays on past documents and cannot be sold or ordered again",
+        message: "Salted chips 52g retired - it stays on past documents and cannot be sold or ordered again",
       }),
       "GET /api/v1/items": () => json({ ...FX.IT, chips: retired }),
     });
@@ -1854,10 +1854,10 @@ describe("editing and retiring a line on the item master", () => {
     as("store");
     const before = IT.water.n;
     serve({
-      "PATCH /api/v1/items/water": () => refusal("Mineral water 1L still has stock at Central Store — write it off before retiring it"),
+      "PATCH /api/v1/items/water": () => refusal("Mineral water 1L still has stock at Central Store - write it off before retiring it"),
     });
     expect(await S().updateItem("water", { active: false })).toBe(false);
-    expect(S().toast).toBe("Mineral water 1L still has stock at Central Store — write it off before retiring it");
+    expect(S().toast).toBe("Mineral water 1L still has stock at Central Store - write it off before retiring it");
     expect(IT.water.n).toBe(before);
     expect(activeItems()).toContain("water");
     // A refusal reads nothing back: the write did not land, so there is nothing to re-read.
@@ -1867,13 +1867,13 @@ describe("editing and retiring a line on the item master", () => {
 
 // ---- payers ----
 /**
- * The roster's own two writes. The register is not store state — it is the `PATIENTS`/`STAFF`/
- * `DEPTS` registries in `data/master.ts` — so what these pin is the wire and the read-back:
+ * The roster's own two writes. The register is not store state - it is the `PATIENTS`/`STAFF`/
+ * `DEPTS` registries in `data/master.ts` - so what these pin is the wire and the read-back:
  * which route each action reaches, what it puts in the body, and that `changed: ["roster"]`
  * costs one `GET /roster` rather than a whole snapshot. The rules are the server's
  * (`apps/api/src/modules/payers/payers.test.ts`) and nothing here re-asserts them.
  */
-describe("addPayer / updatePayer — the payer roster", () => {
+describe("addPayer / updatePayer - the payer roster", () => {
   const P = { kind: "staff", id: "E2291", name: "Kavitha Raman", active: true };
 
   it("posts the new payer and reads both registers back, not the whole snapshot", async () => {
@@ -1905,10 +1905,10 @@ describe("addPayer / updatePayer — the payer roster", () => {
     serve({
       "PATCH /api/v1/payers/staff/RC-4471": () => json({
         result: closed, changed: ["roster", "payers"],
-        message: "Kavitha Raman · F&B deactivated — bills already posted to them stay, new ones cannot",
+        message: "Kavitha Raman · F&B deactivated - bills already posted to them stay, new ones cannot",
       }),
       // The two reads differ, and that difference is the point: the till's roster carries live
-      // rows only, so the switched-off payer is simply not in it — while the manager's register
+      // rows only, so the switched-off payer is simply not in it - while the manager's register
       // still has it, `active: false`, which is what leaves a way to switch it back on.
       "GET /api/v1/roster": () => json({ patients: [], staff: [], depts: [] }),
       "GET /api/v1/payers": () => json([closed]),
@@ -1919,7 +1919,7 @@ describe("addPayer / updatePayer — the payer roster", () => {
     expect(hit("GET /api/v1/payers")).toHaveLength(1);
     expect(STAFF).toEqual([]);
     expect(S().payers).toEqual([closed]);
-    expect(S().toast).toBe("Kavitha Raman · F&B deactivated — bills already posted to them stay, new ones cannot");
+    expect(S().toast).toBe("Kavitha Raman · F&B deactivated - bills already posted to them stay, new ones cannot");
   });
 
   it("loads the whole register, closed accounts included, for the screen that reopens them", async () => {
@@ -1949,31 +1949,31 @@ describe("addPayer / updatePayer — the payer roster", () => {
 });
 
 // ---- bill void ----
-describe("voidBill — POST /bills/:no/void", () => {
-  const VOIDED = { ...BILL, voided: true, voidReason: "Wrong tender — customer paid cash" };
+describe("voidBill - POST /bills/:no/void", () => {
+  const VOIDED = { ...BILL, voided: true, voidReason: "Wrong tender - customer paid cash" };
 
   it("percent-encodes the bill number, reads stock and bills back, and says what the server said", async () => {
     as("manager");
     serve({
       "POST /api/v1/bills/CF%2F1188/void": () => json({
         result: VOIDED, changed: ["stock", "bills"],
-        message: "CF/1188 voided — 2 nos back on the shelf at Coffee Shop",
+        message: "CF/1188 voided - 2 nos back on the shelf at Coffee Shop",
       }),
       "GET /api/v1/stock": () => json(STOCK),
       "GET /api/v1/bills": () => json([VOIDED]),
     });
 
-    expect(await S().voidBill("CF/1188", "Wrong tender — customer paid cash")).toBe(true);
+    expect(await S().voidBill("CF/1188", "Wrong tender - customer paid cash")).toBe(true);
 
     // The slash is the whole point: a bare one would split the path and match no route.
-    expect(hit("POST /api/v1/bills/CF%2F1188/void")[0].body).toEqual({ reason: "Wrong tender — customer paid cash" });
+    expect(hit("POST /api/v1/bills/CF%2F1188/void")[0].body).toEqual({ reason: "Wrong tender - customer paid cash" });
     expect(hit("POST /api/v1/bills/CF/1188/void")).toHaveLength(0);
     // Two narrow reads, not a snapshot.
     expect(hit("GET /api/v1/stock")).toHaveLength(1);
     expect(hit("GET /api/v1/bills")).toHaveLength(1);
     expect(hit("GET /api/v1/snapshot")).toHaveLength(0);
-    expect(S().bills[0]).toMatchObject({ no: "CF/1188", voided: true, voidReason: "Wrong tender — customer paid cash" });
-    expect(S().toast).toBe("CF/1188 voided — 2 nos back on the shelf at Coffee Shop");
+    expect(S().bills[0]).toMatchObject({ no: "CF/1188", voided: true, voidReason: "Wrong tender - customer paid cash" });
+    expect(S().toast).toBe("CF/1188 voided - 2 nos back on the shelf at Coffee Shop");
   });
 
   it("answers false, repeats the refusal and leaves the list alone", async () => {
@@ -1981,14 +1981,14 @@ describe("voidBill — POST /bills/:no/void", () => {
     const before = S().bills;
     serve({
       "POST /api/v1/bills/CF%2F1188/void": () =>
-        refusal("CF/1188 was taken on 10-Sep-2026 — a bill can only be voided on the day it was billed; write the stock back on with an adjustment instead"),
+        refusal("CF/1188 was taken on 10-Sep-2026 - a bill can only be voided on the day it was billed; write the stock back on with an adjustment instead"),
     });
 
     expect(await S().voidBill("CF/1188", "Spotted it at the day-end count")).toBe(false);
 
     expect(S().bills).toBe(before);
     expect(calls()).toHaveLength(1);          // nothing refetched behind a refusal
-    expect(S().toast).toBe("CF/1188 was taken on 10-Sep-2026 — a bill can only be voided on the day it was billed; write the stock back on with an adjustment instead");
+    expect(S().toast).toBe("CF/1188 was taken on 10-Sep-2026 - a bill can only be voided on the day it was billed; write the stock back on with an adjustment instead");
   });
 
   it("keeps the instant beside the HH:MM, so a seven-day list can tell which day a bill is", async () => {
@@ -2001,7 +2001,7 @@ describe("voidBill — POST /bills/:no/void", () => {
 });
 
 // ---- adjustments
-describe("createAdjustment — POST /adjustments", () => {
+describe("createAdjustment - POST /adjustments", () => {
   const ADJ = {
     id: "ADJ-2026-0001", loc: "store", reason: "wastage", note: "Chiller failed overnight",
     by: "Suresh Muthu", at: "2026-09-04T04:30:00.000Z", lines: [{ it: "milk", qty: -2.5 }],
@@ -2010,7 +2010,7 @@ describe("createAdjustment — POST /adjustments", () => {
   it("sends the signed lines and reads the shelf and the register back", async () => {
     as("store");
     serve({
-      "POST /api/v1/adjustments": () => json({ result: ADJ, changed: ["stock", "adjustments"], message: "ADJ-2026-0001 — 2.500 L written off at Central Store (wastage)" }),
+      "POST /api/v1/adjustments": () => json({ result: ADJ, changed: ["stock", "adjustments"], message: "ADJ-2026-0001 - 2.500 L written off at Central Store (wastage)" }),
       "GET /api/v1/stock": () => json(STOCK),
       "GET /api/v1/adjustments": () => json([ADJ]),
     });
@@ -2022,7 +2022,7 @@ describe("createAdjustment — POST /adjustments", () => {
     expect(hit("POST /api/v1/adjustments")[0].body).toEqual({
       loc: "store", reason: "wastage", note: "Chiller failed overnight", lines: [{ it: "milk", qty: -2.5 }],
     });
-    expect(S().toast).toBe("ADJ-2026-0001 — 2.500 L written off at Central Store (wastage)");
+    expect(S().toast).toBe("ADJ-2026-0001 - 2.500 L written off at Central Store (wastage)");
     // Two narrow reads, not a snapshot: the document and the shelf it corrected.
     expect(hit("GET /api/v1/stock")).toHaveLength(1);
     expect(hit("GET /api/v1/adjustments")).toHaveLength(1);
@@ -2035,7 +2035,7 @@ describe("createAdjustment — POST /adjustments", () => {
     as("store");
     const up = { ...ADJ, loc: "quarantine", reason: "count", lines: [{ it: "butter", qty: 1.5 }] };
     serve({
-      "POST /api/v1/adjustments": () => json({ result: up, changed: ["stock", "adjustments"], message: "ADJ-2026-0002 — 1.500 kg counted up at Quarantine" }),
+      "POST /api/v1/adjustments": () => json({ result: up, changed: ["stock", "adjustments"], message: "ADJ-2026-0002 - 1.500 kg counted up at Quarantine" }),
       "GET /api/v1/stock": () => json(STOCK),
       "GET /api/v1/adjustments": () => json([up]),
     });
@@ -2046,17 +2046,17 @@ describe("createAdjustment — POST /adjustments", () => {
   it("repeats the server's refusal and leaves the register untouched", async () => {
     as("store");
     const before = S().adjustments;
-    serve({ "POST /api/v1/adjustments": () => refusal("Cannot write off 2.000 kg of Butter, salted — Central Store has only 1.000 kg free") });
+    serve({ "POST /api/v1/adjustments": () => refusal("Cannot write off 2.000 kg of Butter, salted - Central Store has only 1.000 kg free") });
 
     expect(await S().createAdjustment({ loc: "store", reason: "expired", note: "", lines: [{ it: "butter", qty: -2 }] })).toBe(false);
-    expect(S().toast).toBe("Cannot write off 2.000 kg of Butter, salted — Central Store has only 1.000 kg free");
+    expect(S().toast).toBe("Cannot write off 2.000 kg of Butter, salted - Central Store has only 1.000 kg free");
     expect(S().adjustments).toBe(before);
     expect(hit("GET /api/v1/adjustments")).toHaveLength(0);
   });
 });
 
 // ---- prod-order raise ----
-describe("raiseProdOrder — POST /prod-orders", () => {
+describe("raiseProdOrder - POST /prod-orders", () => {
   const RAISED = {
     id: "PRD-2026-031", from: "kiosk", by: "Deepa Selvam", at: "2026-09-11T04:10:00.000Z",
     lines: [{ it: "puff", qty: 40 }], st: "New", note: "Lunch rush", need: "2026-09-11",
@@ -2066,7 +2066,7 @@ describe("raiseProdOrder — POST /prod-orders", () => {
   it("sends the outlet, the lines and the date, and reads the board back", async () => {
     as("counter");
     serve({
-      "POST /api/v1/prod-orders": () => json({ result: RAISED, changed: ["pord"], message: "PRD-2026-031 raised for Snack Kiosk — 1 item, needed by 11-Sep-2026" }),
+      "POST /api/v1/prod-orders": () => json({ result: RAISED, changed: ["pord"], message: "PRD-2026-031 raised for Snack Kiosk - 1 item, needed by 11-Sep-2026" }),
       "GET /api/v1/prod-orders": () => json([RAISED]),
     });
 
@@ -2080,14 +2080,14 @@ describe("raiseProdOrder — POST /prod-orders", () => {
     expect(hit("GET /api/v1/snapshot")).toHaveLength(0);
     expect(S().pord.map((o) => o.id)).toContain("PRD-2026-031");
     expect(S().pord[0].need).toBe("2026-09-11");
-    expect(S().toast).toBe("PRD-2026-031 raised for Snack Kiosk — 1 item, needed by 11-Sep-2026");
+    expect(S().toast).toBe("PRD-2026-031 raised for Snack Kiosk - 1 item, needed by 11-Sep-2026");
   });
 
   it("leaves the date off the body when none was given", async () => {
     as("counter");
     const { need: _need, ...undated } = RAISED;
     serve({
-      "POST /api/v1/prod-orders": () => json({ result: undated, changed: ["pord"], message: "PRD-2026-031 raised for Snack Kiosk — 1 item" }),
+      "POST /api/v1/prod-orders": () => json({ result: undated, changed: ["pord"], message: "PRD-2026-031 raised for Snack Kiosk - 1 item" }),
       "GET /api/v1/prod-orders": () => json([undated]),
     });
 
@@ -2100,23 +2100,23 @@ describe("raiseProdOrder — POST /prod-orders", () => {
   it("answers false on a refusal, so the card keeps what was typed", async () => {
     as("counter");
     const before = S().pord.length;
-    serve({ "POST /api/v1/prod-orders": () => refusal("Veg sandwich is not listed at Snack Kiosk — add it to that menu first") });
+    serve({ "POST /api/v1/prod-orders": () => refusal("Veg sandwich is not listed at Snack Kiosk - add it to that menu first") });
 
     expect(await S().raiseProdOrder({ from: "kiosk", lines: [{ it: "sand", qty: 6 }], note: "" })).toBe(false);
 
-    expect(S().toast).toBe("Veg sandwich is not listed at Snack Kiosk — add it to that menu first");
+    expect(S().toast).toBe("Veg sandwich is not listed at Snack Kiosk - add it to that menu first");
     expect(S().pord).toHaveLength(before);
     expect(hit("GET /api/v1/prod-orders")).toHaveLength(0);
   });
 
   it("the counter's card sends what the operator typed and clears itself", async () => {
     as("counter");
-    // The Coffee Shop's own menu carries no finished good — two drinks made at the till and
-    // four bought-in lines — so the card would honestly offer nothing to order. Put a puff on
+    // The Coffee Shop's own menu carries no finished good - two drinks made at the till and
+    // four bought-in lines - so the card would honestly offer nothing to order. Put a puff on
     // its menu, which is what the outlet manager would do before the counter could ask for one.
     useApp.setState({ menu: { ...S().menu, coffee: [...S().menu.coffee, "puff"] } });
     serve({
-      "POST /api/v1/prod-orders": () => json({ result: RAISED, changed: ["pord"], message: "PRD-2026-031 raised for Coffee Shop — 1 item" }),
+      "POST /api/v1/prod-orders": () => json({ result: RAISED, changed: ["pord"], message: "PRD-2026-031 raised for Coffee Shop - 1 item" }),
       "GET /api/v1/prod-orders": () => json([RAISED]),
     });
 
@@ -2133,7 +2133,7 @@ describe("raiseProdOrder — POST /prod-orders", () => {
 
     const body = hit("POST /api/v1/prod-orders")[0].body as { from: string; lines: { it: string; qty: number }[] };
     // The outlet comes off the token, and the one finished good on that menu is what the
-    // picker opened on — never `capp` or `chai`, which are made at the till.
+    // picker opened on - never `capp` or `chai`, which are made at the till.
     expect(body.from).toBe("coffee");
     expect(body.lines).toEqual([{ it: "puff", qty: 1 }]);
     await act(async () => { root.unmount(); });
@@ -2152,7 +2152,7 @@ describe("raiseProdOrder — POST /prod-orders", () => {
     as("counter");
     useApp.setState({ menu: { ...S().menu, coffee: [...S().menu.coffee, "puff"] } });
     serve({
-      "POST /api/v1/prod-orders": () => json({ result: RAISED, changed: ["pord"], message: "PRD-2026-031 raised for Coffee Shop — 1 item" }),
+      "POST /api/v1/prod-orders": () => json({ result: RAISED, changed: ["pord"], message: "PRD-2026-031 raised for Coffee Shop - 1 item" }),
       "GET /api/v1/prod-orders": () => json([RAISED]),
     });
 
@@ -2168,7 +2168,7 @@ describe("raiseProdOrder — POST /prod-orders", () => {
 
     // Clearing the box is a real keystroke on the way to a new number. A controlled
     // `Number(e.target.value)` would have read it as 0 and forced a "0" back into the field
-    // under the operator's fingers — and greyed out Send while they were still typing.
+    // under the operator's fingers - and greyed out Send while they were still typing.
     await act(async () => { type(qty(), ""); });
     expect(qty().value).toBe("");
     expect(send().disabled).toBe(false);
@@ -2224,7 +2224,7 @@ describe("admin: account management", () => {
     serve({
       "POST /api/v1/admin/users": () => json({
         result: { ...ROW, tempPassword: "one-time-pass-1" }, changed: ["accounts"],
-        message: "Anitha R (RC-9101) created — the temporary password shown above is not stored anywhere and will not be shown again",
+        message: "Anitha R (RC-9101) created - the temporary password shown above is not stored anywhere and will not be shown again",
       }),
       "GET /api/v1/admin/users": () => json([ROW]),
     });
@@ -2254,7 +2254,7 @@ describe("admin: account management", () => {
     expect(S().toast).toBe("Deepa Selvam (RC-4482) deleted permanently");
     expect(hit("GET /api/v1/admin/users")).toHaveLength(1);
 
-    serve({ "DELETE /api/v1/admin/users/u1": () => refusal("Refused — Kavitha Raman (RC-4471) has records in the ledger; an account with history can only be deactivated", 409) });
+    serve({ "DELETE /api/v1/admin/users/u1": () => refusal("Refused - Kavitha Raman (RC-4471) has records in the ledger; an account with history can only be deactivated", 409) });
     expect(await S().deleteAccount("u1")).toBe(false);
     expect(S().toast).toContain("can only be deactivated");
     // Still only the one read-back, from the delete that went through: a refusal reads nothing.
@@ -2264,14 +2264,14 @@ describe("admin: account management", () => {
   it("says the delete could not be sent when there is no answer at all", async () => {
     fetchMock.mockRejectedValue(new TypeError("Failed to fetch"));
     expect(await S().deleteAccount("u6")).toBe(false);
-    expect(S().toast).toBe("Could not delete the account — check the connection and try again.");
+    expect(S().toast).toBe("Could not delete the account - check the connection and try again.");
   });
 
   it("resets a password and hands back the new one-time value", async () => {
     serve({
       "POST /api/v1/admin/users/u1/reset-password": () => json({
         result: { ...ROW, id: "u1", tempPassword: "fresh-temp-1" }, changed: ["accounts"],
-        message: "Password reset for Kavitha Raman (RC-4471) — shown above once, and their sessions are ended",
+        message: "Password reset for Kavitha Raman (RC-4471) - shown above once, and their sessions are ended",
       }),
       "GET /api/v1/admin/users": () => json([]),
     });
@@ -2316,7 +2316,7 @@ describe("admin: account management", () => {
     expect(S().auth).toBe("ready");
     expect(hit("GET /api/v1/snapshot")).toHaveLength(0);
 
-    // And a later refresh — an SSE resync, a read-back with no narrow reader — asks for nothing either.
+    // And a later refresh - an SSE resync, a read-back with no narrow reader - asks for nothing either.
     await S().loadSnapshot();
     expect(hit("GET /api/v1/snapshot")).toHaveLength(0);
     expect(S().toast).toBeNull();
@@ -2357,7 +2357,7 @@ describe("admin: the support desk", () => {
   it("replies with the status the button sent, and reads the desk back rather than the caller's own list", async () => {
     const replied = { ...SUP, st: "Waiting on you", messages: [...SUP.messages, { id: "m2", from: "support", who: "System Administrator", at: "2026-09-04T04:10:00.000Z", body: "Which bill?" }] };
     serve({
-      "POST /api/v1/admin/support/tickets/SUP-0044/messages": () => json({ result: replied, changed: ["tickets"], message: "Reply sent on SUP-0044 — now waiting on Kavitha Raman" }),
+      "POST /api/v1/admin/support/tickets/SUP-0044/messages": () => json({ result: replied, changed: ["tickets"], message: "Reply sent on SUP-0044 - now waiting on Kavitha Raman" }),
       "GET /api/v1/admin/support/tickets": () => json([replied]),
     });
     expect(await S().replyAsDesk("SUP-0044", "Which bill?", "Waiting on you")).toBe(true);
@@ -2365,14 +2365,14 @@ describe("admin: the support desk", () => {
     expect(hit("GET /api/v1/admin/support/tickets")).toHaveLength(1);
     expect(hit("GET /api/v1/support/tickets")).toHaveLength(0);
     expect(S().deskTickets[0].st).toBe("Waiting on you");
-    expect(S().toast).toBe("Reply sent on SUP-0044 — now waiting on Kavitha Raman");
+    expect(S().toast).toBe("Reply sent on SUP-0044 - now waiting on Kavitha Raman");
   });
 
   it("sends a plain reply with no status in the body, and answers false on a refusal", async () => {
-    serve({ "POST /api/v1/admin/support/tickets/SUP-0044/messages": () => refusal("SUP-0044 is closed — it takes no more replies") });
+    serve({ "POST /api/v1/admin/support/tickets/SUP-0044/messages": () => refusal("SUP-0044 is closed - it takes no more replies") });
     expect(await S().replyAsDesk("SUP-0044", "Hello?")).toBe(false);
     expect(hit("POST /api/v1/admin/support/tickets/SUP-0044/messages")[0].body).toEqual({ body: "Hello?" });
-    expect(S().toast).toBe("SUP-0044 is closed — it takes no more replies");
+    expect(S().toast).toBe("SUP-0044 is closed - it takes no more replies");
   });
 
   it("moves a ticket through its own endpoint", async () => {

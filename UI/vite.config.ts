@@ -18,13 +18,13 @@ export default defineConfig({
     testTimeout: 20_000,
     // The thresholds are set a point or two **under what the whole suite measures today**
     // (statements 74.21, branches 56.26, functions 65.78, lines 77.52 at the close of the audit
-    // fix wave, 2026-09-12; 71.07 / 52.74 / 62.37 / 74.42 before it) — the point is not to
+    // fix wave, 2026-09-12; 71.07 / 52.74 / 62.37 / 74.42 before it) - the point is not to
     // chase a number, it is that deleting a test or shipping an untested screen cannot pass CI
     // quietly. Raise them when the real figure rises; never lower one to make a red run green.
     //
     // `enabled` is deliberately **not** set here: `package.json`'s `test` script passes
     // `--coverage`, so `pnpm test` and CI's `turbo test` are gated, while `npx vitest run
-    // src/__tests__/<one>.test.ts` — the single-file loop this package's guide documents — is
+    // src/__tests__/<one>.test.ts` - the single-file loop this package's guide documents - is
     // not. A whole suite's threshold measured against one file is a failure about nothing.
     coverage: {
       provider: "v8",

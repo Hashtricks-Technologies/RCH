@@ -16,11 +16,11 @@ const marginOf = (p: number, cost: number) => (p > 0 ? ((p - cost) / p) * 100 : 
 
 /** Which outlets a list actually covers, read off the deployment rather than written into the
  *  prose. Naming the Restaurant and the Snack Kiosk in a sentence was right for three counters
- *  on two lists and wrong the day a fourth opened — and a manager reading "saving a price here
+ *  on two lists and wrong the day a fourth opened - and a manager reading "saving a price here
  *  changes it at both counters" over three is being told something false about their own money.
  *
  *  `LOC` is a registry filled in place when the snapshot lands, while `OUTLETS` is a deployment
- *  constant that is there from the first render — so between sign-in and the snapshot every
+ *  constant that is there from the first render - so between sign-in and the snapshot every
  *  `LOC[l]` here is `undefined`. `known()` is what stops that being a crash. */
 const known = () => OUTLETS.filter((l) => LOC[l] !== undefined);
 const listFor = (l: LocKey) => LOC[l]?.list ?? "A";
@@ -45,8 +45,8 @@ export default function Prices() {
   const [add, setAdd] = useState("");
   const psort = useSort("name");
   /** Which rows have a write in flight, one key per row. Every one of the four buttons on this
-   *  screen posts, and every one of them can be refused — an MRP ceiling, a product another
-   *  manager has just dropped — so none of them may clear what was typed or picked until the
+   *  screen posts, and every one of them can be refused - an MRP ceiling, a product another
+   *  manager has just dropped - so none of them may clear what was typed or picked until the
    *  server has actually taken it, and none may be pressed twice while it decides. */
   const [busy, setBusy] = useState<Record<string, boolean>>({});
   const lock = (k: string, on: boolean) => setBusy((b) => ({ ...b, [k]: on }));
@@ -77,7 +77,7 @@ export default function Prices() {
             ? "No outlet is configured yet."
             : "What each shop charges."}
         />
-        {/* Nothing at all before the snapshot lands, rather than "0 lists cover the 0 counters" —
+        {/* Nothing at all before the snapshot lands, rather than "0 lists cover the 0 counters" -
             which was both ungrammatical and a claim about a deployment nobody had read yet. */}
         {lists.length > 0 && (
           <Alert tone="i" label="LISTS">
@@ -156,7 +156,7 @@ export default function Prices() {
     lock(`save:${it}`, true);
     const ok = await savePrice(list, it, v);
     lock(`save:${it}`, false);
-    // Refused — an MRP ceiling, most often. The number the manager typed stays in the box so
+    // Refused - an MRP ceiling, most often. The number the manager typed stays in the box so
     // it can be corrected, rather than snapping back to the price that is still in force.
     if (ok) setEdit((e) => { const n = { ...e }; delete n[it]; return n; });
   };
@@ -184,7 +184,7 @@ export default function Prices() {
 
       <Alert tone="i" label="LIST">
         {shared.length > 1
-          ? <>List <b>{list}</b> is shared by <b>{listOf(shared.map((o) => LOC[o].n))}</b> — saving a price here changes it at {shared.length === 2 ? "both" : "all " + shared.length} counters.</>
+          ? <>List <b>{list}</b> is shared by <b>{listOf(shared.map((o) => LOC[o].n))}</b> - saving a price here changes it at {shared.length === 2 ? "both" : "all " + shared.length} counters.</>
           : <>{LOC[shop].n} is the only outlet on list <b>{list}</b>{others.length > 0 && <>, so {listOf(others.map((o) => LOC[o].n))} {others.length === 1 ? "is" : "are"} untouched by these edits</>}.</>}
       </Alert>
 
@@ -196,7 +196,7 @@ export default function Prices() {
                 <select value={add} onChange={(e) => setAdd(e.target.value)}>
                   <option value="">Pick a product…</option>
                   {missing.map((it) => (
-                    <option key={it} value={it}>{IT[it]?.n ?? it} — {money(s.prices[list][it])}</option>
+                    <option key={it} value={it}>{IT[it]?.n ?? it} - {money(s.prices[list][it])}</option>
                   ))}
                 </select>
               </Field>
@@ -285,7 +285,7 @@ export default function Prices() {
                       {drop === it
                         ? <>Takes it off the {LOC[shop].n} till at once. Add a product puts it back.</>
                         : mrp != null
-                          ? <>Printed MRP ₹{mrp} is a hard ceiling — a higher price is refused.</>
+                          ? <>Printed MRP ₹{mrp} is a hard ceiling - a higher price is refused.</>
                           : <>No printed MRP on this item; price it against {RCP[it] ? "a recipe cost" : "a cost"} of {money(cost)}.</>}
                     </div>
                   </>,

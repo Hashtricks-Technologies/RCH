@@ -15,7 +15,7 @@ let app: App;
 beforeAll(async () => { app = await buildTestApp({ schema: "snapshot" }); await seedTestDb(app.testDb!.db); await app.ready(); });
 afterAll(async () => { await app.close(); });
 // The cases below raise documents of their own, so the document half is put back between them.
-// The master half is seeded once, above — with the one exception noted on the roster case, which
+// The master half is seeded once, above - with the one exception noted on the roster case, which
 // is the only case here that writes a master table.
 beforeEach(async () => { await resetDocuments(app.testDb!.db); });
 const getAs = async (userId: string, url: string) => { const r = await app.inject({ method: "GET", url, headers: await authHeaders(app, userId) }); expect(r.statusCode, r.body).toBe(200); return r.json(); };
@@ -66,7 +66,7 @@ describe("GET /snapshot", () => {
   it("is fast enough on the seed", async () => {
     const h = await authHeaders(app, "u2");
     // Warm up once, then take the best of five. This pins the query shape (an N+1 over users
-    // once cost eight round trips), not the p95 SLO — that is measured by the
+    // once cost eight round trips), not the p95 SLO - that is measured by the
     // Phase 6 load check on a quiet box. 500 ms is loose enough for five suites sharing one
     // Postgres and still an order of magnitude under a regression.
     await app.inject({ method: "GET", url: "/api/v1/snapshot", headers: h });
@@ -81,7 +81,7 @@ describe("GET /snapshot", () => {
 });
 
 describe("the colleague directory is a name badge, not a contact list", () => {
-  it("carries only what a screen renders — no email, employee number or phone", async () => {
+  it("carries only what a screen renders - no email, employee number or phone", async () => {
     const s = await get("u2");
     expect(s.users.length).toBeGreaterThan(1);
     for (const u of s.users) {
@@ -89,7 +89,7 @@ describe("the colleague directory is a name badge, not a contact list", () => {
       expect(Object.keys(u).sort()).toEqual(["col", "id", "loc", "n", "r", "rl"]);
     }
   });
-  it("still hands the caller their own record whole — Settings prints the employee number", async () => {
+  it("still hands the caller their own record whole - Settings prints the employee number", async () => {
     const s = await get("u2");
     expect(s.user.emp).toBeTruthy();
     expect(s.user.e).toBeTruthy();
@@ -146,7 +146,7 @@ describe("the document reads the movement chain refetches", () => {
   it("GET /tickets gives a counter the tickets that touch their counter, either end", async () => {
     const mine = await app.inject({ method: "GET", url: "/api/v1/tickets", headers: await authHeaders(app, "u1") });
     expect(mine.statusCode).toBe(200);
-    // u1 is at coffee, which is where this ticket is going, and it is still Issued — the one
+    // u1 is at coffee, which is where this ticket is going, and it is still Issued - the one
     // caller who reads the six digits. The trail is the seeded one, replayed from the fixture.
     expect(mine.json()).toEqual([{
       id: "TKT-0440", req: "REQ-2026-0909", from: "store", to: "coffee", lines: [{ it: "cup", qty: 500 }],
@@ -189,7 +189,7 @@ describe("GET /prod-orders and GET /batches", () => {
 
   it("cut a counter down the same way the snapshot does", async () => {
     // u1 is the Coffee Shop. The seeded orders were raised by the Snack Kiosk, so the coffee
-    // counter sees none of them — and no counter sees the kitchen's batch log at all.
+    // counter sees none of them - and no counter sees the kitchen's batch log at all.
     const snap = (await app.inject({ method: "GET", url: "/api/v1/snapshot", headers: await authHeaders(app, "u1") })).json();
     const orders = (await app.inject({ method: "GET", url: "/api/v1/prod-orders", headers: await authHeaders(app, "u1") })).json();
     const batches = (await app.inject({ method: "GET", url: "/api/v1/batches", headers: await authHeaders(app, "u1") })).json();
@@ -197,7 +197,7 @@ describe("GET /prod-orders and GET /batches", () => {
     expect(orders.map((o: { id: string }) => o.id)).toEqual(snap.pord.map((o: { id: string }) => o.id));
     // Spelled out rather than left to `orders.every(...)`, which is true of an empty array and
     // would have gone on passing if the route stopped scoping by outlet altogether. The
-    // positive — a counter seeing its own orders and nobody else's — is the u6 case below.
+    // positive - a counter seeing its own orders and nobody else's - is the u6 case below.
     expect(orders).toEqual([]);
     expect(batches).toEqual([]);
     expect(snap.batch).toEqual([]);
@@ -242,7 +242,7 @@ describe("quarantine", () => {
   it("is a location the store keeper can see, with a shelf of its own", async () => {
     const snap = await getAs("u3", "/api/v1/snapshot");
     expect(snap.locations.quarantine).toMatchObject({ n: "Quarantine", type: "Store" });
-    // Empty on the seed — nothing has been rejected — but present, so a screen can read it.
+    // Empty on the seed - nothing has been rejected - but present, so a screen can read it.
     expect(snap.stock.quarantine).toEqual({});
     expect((await getAs("u3", "/api/v1/stock")).stock.quarantine).toEqual({});
   });
@@ -250,7 +250,7 @@ describe("quarantine", () => {
   it("is nowhere in a counter operator's world", async () => {
     const snap = await getAs("u1", "/api/v1/snapshot");
     expect(Object.keys(snap.stock)).toEqual(["coffee"]);
-    // Locations are master data and are never cut down — the counter sees the name, and has no
+    // Locations are master data and are never cut down - the counter sees the name, and has no
     // route that would let them name it.
     expect(snap.locations.quarantine).toBeDefined();
   });
@@ -281,7 +281,7 @@ describe("what a ticket carries, and to whom", () => {
   });
 
   it("withholds them from a role that never collects, even standing at the ticket's own `to`", async () => {
-    // The outlet manager's home location is an outlet — `rest` in the fixtures — so a check on
+    // The outlet manager's home location is an outlet - `rest` in the fixtures - so a check on
     // location alone handed them the digits for every Issued Restaurant-bound ticket in their
     // snapshot. They are not the collecting end of anything; a counter at the same location is.
     const id = await given.ticket(app.testDb!.db, { from: "store", to: "rest", lines: [{ it: "milk", qty: 4 }] });
@@ -299,8 +299,8 @@ describe("what a ticket carries, and to whom", () => {
   });
 
   it("keeps them out of the answer the issuing desk gets back, and only there", async () => {
-    // Every path that mints a ticket answers the location it leaves from — the store issuing
-    // against an approved request, the shop granting an ask, the kitchen dispatching — so the
+    // Every path that mints a ticket answers the location it leaves from - the store issuing
+    // against an approved request, the shop granting an ask, the kitchen dispatching - so the
     // write response is the one place the digits could still have travelled to `from`.
     const req = await given.request(app.testDb!.db, { from: "coffee", lines: [{ it: "milk", qty: 4, appr: 4 }], st: "Manager approved" });
     const issued = await app.inject({
@@ -323,7 +323,7 @@ describe("what a ticket carries, and to whom", () => {
   });
 
   it("gives the kitchen, the store and the buyer bills without the payer, and no roster", async () => {
-    // A patient bill names a patient — ward, in-patient number and all — and the register those
+    // A patient bill names a patient - ward, in-patient number and all - and the register those
     // names come out of was on every role's snapshot. What the kitchen, the store and the buyer
     // actually read a bill for is the ledger behind it, so the bills stay and only the name goes.
     const named = await given.bill(app.testDb!.db, {
@@ -400,7 +400,7 @@ describe("one request, one connection", () => {
   // `pg` checks a client out of the pool per query and emits `acquire` each time, so counting
   // that event over one injected request counts exactly what the pool was asked for. Before the
   // readers were folded into a single read-only transaction, `GET /snapshot` fanned out with
-  // `Promise.all` and this counted about forty against a pool of ten — which is the whole of
+  // `Promise.all` and this counted about forty against a pool of ten - which is the whole of
   // RUNBOOK §12's c=30 finding (`pg_pool_idle` 0, `pg_pool_waiting` peaking at 771, p95 2.9 s).
   // A number greater than one here is that defect coming back, whatever the latency looks like.
   const acquiresDuring = async (url: string, userId: string): Promise<number> => {
@@ -425,7 +425,7 @@ describe("one request, one connection", () => {
   it("does the same for every standalone read that fans out", async () => {
     // Each of these used to be its own `Promise.all`: /stock is three readers, /tickets three
     // queries, /bills two plus a follow-up, /requisitions four. `/recipes` belongs to the
-    // `master` module rather than this one and reads heads and lines separately — it is the last
+    // `master` module rather than this one and reads heads and lines separately - it is the last
     // multi-query read in the API that was still taking two connections, so it is pinned here
     // beside the rest rather than left as the exception to the guide's own sentence.
     expect(await acquiresDuring("/api/v1/stock", "u3")).toBe(1);
@@ -443,7 +443,7 @@ describe("one request, one connection", () => {
     //
     // `pg_pool_waiting` is deliberately not what this asserts. `pg-pool` queues a caller before
     // it looks for an idle client, so the gauge reads 1 for a moment even when every caller is
-    // served on the same tick — a real reading for an alert, too noisy for a zero-or-not
+    // served on the same tick - a real reading for an alert, too noisy for a zero-or-not
     // assertion. The acquisition count is exact.
     await warmPool(app.testDb!, 3);
     const headers = await authHeaders(app, "u2");

@@ -21,7 +21,7 @@ function NewProductDrawer({ id }: DrawerProps) {
       title={req ? `Add ${req.name}` : "Add a product"}
       sub={req ? `Requested by ${req.by} for ${req.forLoc}` : "Not tied to a request"}
       initialName={req?.name}
-      // `createItem` answers with the key the server chose — the one thing this screen could not
+      // `createItem` answers with the key the server chose - the one thing this screen could not
       // work out for itself, and what the request behind the drawer has to be linked to.
       onCreated={(key) => (req
         ? answerProductRequest(req.id, "Created", `Added as ${IT[key]?.c ?? key}`, key)

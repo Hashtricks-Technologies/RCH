@@ -30,7 +30,7 @@ function mount(node: Parameters<typeof createElement>[0]) {
   const root = createRoot(host);
   act(() => { root.render(createElement(MemoryRouter, null, createElement(node))); });
   const column = (st: PoStatus) =>
-    [...host.querySelectorAll<HTMLElement>("section.kan-col")].find((c) => c.getAttribute("aria-label")?.startsWith(`${st} — `));
+    [...host.querySelectorAll<HTMLElement>("section.kan-col")].find((c) => c.getAttribute("aria-label")?.startsWith(`${st} - `));
   return {
     host,
     column,
@@ -49,7 +49,7 @@ describe("the purchase orders board", () => {
   it("draws a column per stage, in the order an order travels", () => {
     as("buyer");
     const ui = mount(PurchaseOrders);
-    const labels = [...ui.host.querySelectorAll("section.kan-col")].map((c) => c.getAttribute("aria-label")!.split(" — ")[0]);
+    const labels = [...ui.host.querySelectorAll("section.kan-col")].map((c) => c.getAttribute("aria-label")!.split(" - ")[0]);
     expect(labels).toEqual(COLUMNS);
     // One board, the columns side by side in the one `.kan.fill` row.
     expect(ui.host.querySelectorAll(".kan.fill > section.kan-col")).toHaveLength(COLUMNS.length);

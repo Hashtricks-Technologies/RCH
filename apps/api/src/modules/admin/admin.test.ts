@@ -13,7 +13,7 @@ beforeAll(async () => { app = await buildTestApp({ schema: "admin" }); await app
 beforeEach(async () => {
   await truncateAll(app.testDb!.db);
   await seedTestDb(app.testDb!.db);
-  // u2 (RC-3120, Outlet Manager) is the flagged account throughout this file — an ordinary
+  // u2 (RC-3120, Outlet Manager) is the flagged account throughout this file - an ordinary
   // role, flagged, exactly the shape the design calls for. Nobody else in the seed carries it.
   await app.db.update(users).set({ admin: true }).where(eq(users.id, "u2"));
 });
@@ -33,7 +33,7 @@ describe("GET /admin/users", () => {
     expect(rows.find((r) => r.id === "u2")!.admin).toBe(true);
     expect(rows.find((r) => r.id === "u1")!.admin).toBe(false);
   });
-  it("refuses a caller without the flag — 404, the same as a role without a module", async () => {
+  it("refuses a caller without the flag - 404, the same as a role without a module", async () => {
     const res = await app.inject({ method: "GET", url: "/api/v1/admin/users", headers: await notAdmin() });
     expect(res.statusCode).toBe(404);
     expect(res.json().error.code).toBe("not_found");
@@ -57,7 +57,7 @@ describe("POST /admin/users", () => {
     expect(typeof j.result.tempPassword).toBe("string");
     expect(j.result.tempPassword.length).toBeGreaterThanOrEqual(10);
     expect(j.changed).toEqual(["accounts"]);
-    expect(j.message).toBe("Anitha R (RC-4483) created — the temporary password shown above is not stored anywhere and will not be shown again");
+    expect(j.message).toBe("Anitha R (RC-4483) created - the temporary password shown above is not stored anywhere and will not be shown again");
 
     const second = await create({ ...body, name: "Bala K", email: "bala.k@royalcare.in" });
     expect(second.json().result.emp).toBe("RC-4484");
@@ -65,7 +65,7 @@ describe("POST /admin/users", () => {
     const notAdminRes = await app.inject({ method: "POST", url: "/api/v1/admin/users", headers: { ...(await notAdmin()), "idempotency-key": randomUUID() }, payload: body });
     expect(notAdminRes.statusCode).toBe(404);
   });
-  it("refuses a body that names its own employee number — the server assigns it", async () => {
+  it("refuses a body that names its own employee number - the server assigns it", async () => {
     const res = await create({ ...body, emp: "RC-9101" });
     expect(res.statusCode).toBe(400);
     expect(await app.db.select().from(users).where(eq(users.empNo, "RC-9101"))).toHaveLength(0);
@@ -161,7 +161,7 @@ describe("DELETE /admin/users/:id", () => {
     app.inject({ method: "DELETE", url: `/api/v1/admin/users/${id}`, headers: { ...(await as()), "idempotency-key": randomUUID() } });
   const post = async (url: string, payload?: Record<string, unknown>) =>
     app.inject({ method: "POST", url, headers: { ...(await admin()), "idempotency-key": randomUUID() }, payload });
-  /** A fresh account that never did anything, already deactivated — the one shape a delete takes. */
+  /** A fresh account that never did anything, already deactivated - the one shape a delete takes. */
   const mistake = async (name = "Wrong Person") => {
     const made = (await post("/api/v1/admin/users", { name, email: "wrong@royalcare.in", role: "counter", loc: "kiosk" })).json().result as { id: string; emp: string };
     await post(`/api/v1/admin/users/${made.id}/deactivate`);
@@ -200,7 +200,7 @@ describe("DELETE /admin/users/:id", () => {
     await app.db.update(users).set({ admin: true, active: false }).where(eq(users.id, "u3"));
     const res = await del("u3");
     expect(res.statusCode).toBe(422);
-    expect(res.json().error.message).toBe("Refused — Suresh Muthu (RC-2088) is a super admin, and a super admin account is never deleted");
+    expect(res.json().error.message).toBe("Refused - Suresh Muthu (RC-2088) is a super admin, and a super admin account is never deleted");
   });
   it("refuses an account that is still active", async () => {
     const res = await del("u6");
@@ -208,13 +208,13 @@ describe("DELETE /admin/users/:id", () => {
     expect(res.json().error.message).toBe("Deactivate Deepa Selvam (RC-4482) before deleting the account");
     expect(await app.db.select().from(users).where(eq(users.id, "u6"))).toHaveLength(1);
   });
-  it("refuses an account with history, and leaves it — sessions included — exactly as it was", async () => {
+  it("refuses an account with history, and leaves it - sessions included - exactly as it was", async () => {
     // Kavitha Raman raised stock requests in the seed, so a row in the hospital's history names her.
     await post("/api/v1/admin/users/u1/deactivate");
     await app.db.insert(refreshTokens).values({ userId: "u1", family: "00000000-0000-4000-8000-000000000012", tokenHash: "h-hist", expiresAt: new Date(Date.now() + 100000) });
     const res = await del("u1");
     expect(res.statusCode).toBe(422);
-    expect(res.json().error.message).toBe("Refused — Kavitha Raman (RC-4471) has records in the hospital's history, so the account can only be deactivated, never deleted");
+    expect(res.json().error.message).toBe("Refused - Kavitha Raman (RC-4471) has records in the hospital's history, so the account can only be deactivated, never deleted");
     expect(await app.db.select().from(users).where(eq(users.id, "u1"))).toHaveLength(1);
     expect(await app.db.select().from(refreshTokens).where(eq(refreshTokens.userId, "u1"))).toHaveLength(1);
     const log = (await app.inject({ method: "GET", url: "/api/v1/admin/actions", headers: await admin() })).json() as Array<{ action: string }>;
@@ -249,7 +249,7 @@ describe("a super admin has no role in practice", () => {
 
     const res = await app.inject({ method: "PATCH", url: "/api/v1/admin/users/u3", headers: { ...(await admin()), "idempotency-key": randomUUID() }, payload: { role: "buyer", loc: "store" } });
     expect(res.statusCode).toBe(422);
-    expect(res.json().error.message).toBe("Refused — Suresh Muthu (RC-2088) is a super admin, and a super admin has no role or location to change");
+    expect(res.json().error.message).toBe("Refused - Suresh Muthu (RC-2088) is a super admin, and a super admin has no role or location to change");
     const [u] = await app.db.select().from(users).where(eq(users.id, "u3"));
     expect([u.role, u.loc]).toEqual(["store", "store"]);
   });

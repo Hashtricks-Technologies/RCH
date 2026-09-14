@@ -1,5 +1,5 @@
 // Production: everything the Central Kitchen does. The two ways it puts stock on a ticket both
-// reserve and neither moves — approval authorises, the scan moves (CLAUDE.md), and `handover`
+// reserve and neither moves - approval authorises, the scan moves (CLAUDE.md), and `handover`
 // is still what empties the shelf. The board's statuses move no stock at all. The batch is the
 // exception and the reason this module touches the ledger: it is the one write in the system
 // that creates stock, so it consumes the recipe and books the yield in a single postMoves call.
@@ -35,11 +35,11 @@ export function createProductionService(db: Db) {
   return {
     // ---- prod-order raise ----
     /**
-     * An outlet asking the kitchen to make something — the other end of the board, and the only
+     * An outlet asking the kitchen to make something - the other end of the board, and the only
      * way an order gets onto it now that the seed is not.
      *
      * No document lock: this mints its own row, so there is nothing yet for a second writer to
-     * be deciding. And **no `lockBalances`** — an order promises nothing off the kitchen's
+     * be deciding. And **no `lockBalances`** - an order promises nothing off the kitchen's
      * shelves. It is `dispatch` that reserves, and `handover` that moves. The reasoning is the
      * goods-receipt rule read the other way round (`grn`'s `receive` takes no balance lock
      * because both its moves are positive): a write that neither reads a balance nor promises
@@ -58,7 +58,7 @@ export function createProductionService(db: Db) {
         const fromName = master.locations[from]?.n ?? from;
         // The kitchen cannot order from itself and the central store carries, it does not sell.
         // Only an outlet has a menu for the tray to land on (M9), which is the next rule down.
-        assertRule(OUTLETS.includes(from), `${fromName} is not an outlet — a production order is raised for a counter`);
+        assertRule(OUTLETS.includes(from), `${fromName} is not an outlet - a production order is raised for a counter`);
 
         // Fold a repeated item into one line before anything is checked, the way `dispatch`
         // does: two lines of one product would be made twice, dispatched twice and covered
@@ -77,18 +77,18 @@ export function createProductionService(db: Db) {
           const item = master.items[l.it];
           if (!item) throw new NotFoundError(`There is no item ${l.it}.`);
           // Finished goods only. A made-to-order item carries a recipe and a menu listing, so it
-          // looks orderable — but nothing downstream can fill it: `makeBatch` refuses to stock a
+          // looks orderable - but nothing downstream can fill it: `makeBatch` refuses to stock a
           // phantom shelf of it (C2), `distribute` refuses to send one, and `dispatch` therefore
           // has nothing to cover the line with. An order for one would sit on the board until
           // somebody declined it, so it is refused here, at the door, in the words the kitchen's
           // own two refusals already use.
-          assertRule(item.t !== "MTO", `${item.n} is made to order at the counter — it is not ordered from the kitchen`);
+          assertRule(item.t !== "MTO", `${item.n} is made to order at the counter - it is not ordered from the kitchen`);
           // Everything else on an outlet's menu is bought in and comes off the central store's
-          // shelf — a request, not an order, and the sentence says which door to use.
-          assertRule(item.t === "FG", `${item.n} is not made in the kitchen — raise a stock request for it instead`);
+          // shelf - a request, not an order, and the sentence says which door to use.
+          assertRule(item.t === "FG", `${item.n} is not made in the kitchen - raise a stock request for it instead`);
           // Stock that lands where it cannot be sold is stock lost (M9). `distribute`'s own
           // words, because it is the same refusal one step later in the same journey.
-          assertRule(menu.has(l.it), `${item.n} is not listed at ${fromName} — add it to that menu first`);
+          assertRule(menu.has(l.it), `${item.n} is not listed at ${fromName} - add it to that menu first`);
         }
 
         const at = new Date();
@@ -105,7 +105,7 @@ export function createProductionService(db: Db) {
         return {
           result: await productionRepo.wire(tx, id),
           changed: [...changed],
-          message: `${id} raised for ${fromName} — ${lines.length} item${lines.length === 1 ? "" : "s"}${body.need ? `, needed by ${dmy(body.need)}` : ""}`,
+          message: `${id} raised for ${fromName} - ${lines.length} item${lines.length === 1 ? "" : "s"}${body.need ? `, needed by ${dmy(body.need)}` : ""}`,
         };
       });
     },
@@ -130,12 +130,12 @@ export function createProductionService(db: Db) {
         // data the board's Dispatch button is drawn from, so a stage the UI offers
         // and a stage the server accepts cannot drift apart. One order, one ticket: dispatching
         // twice would raise a second ticket for stock already promised, which is how half an
-        // order ends up in two places — so the refusal names where that stock already went.
+        // order ends up in two places - so the refusal names where that stock already went.
         assertRule(
           canTransition(PROD_ORDER_TRANSITIONS, o.status, "Dispatched"),
           o.status === "Declined"
-            ? `${id} was declined — it cannot be dispatched`
-            : `${id} has already gone out — it is on one ticket to ${toName}`,
+            ? `${id} was declined - it cannot be dispatched`
+            : `${id} has already gone out - it is on one ticket to ${toName}`,
         );
 
         // Fold a repeated item into a single line so the cover check is made against the whole
@@ -153,7 +153,7 @@ export function createProductionService(db: Db) {
         // All or nothing: a part-dispatched order leaves the outlet guessing what is still
         // coming, so every item short is named and nothing moves.
         const short = lines.filter((l) => round3((stock[l.it] ?? 0) - (held[`${KITCHEN}:${l.it}`] ?? 0)) < l.qty);
-        assertRule(short.length === 0, `Nothing dispatched — the kitchen is short of ${short.map((l) => master.items[l.it]?.n ?? l.it).join(", ")}`);
+        assertRule(short.length === 0, `Nothing dispatched - the kitchen is short of ${short.map((l) => master.items[l.it]?.n ?? l.it).join(", ")}`);
 
         const ticket = await writeTicket(tx, { refType: "prod_order", refId: id, from: KITCHEN, to: o.fromLoc, lines, by: claims.sub, at }, no);
         await productionRepo.setStatus(tx, id, "Dispatched");
@@ -165,7 +165,7 @@ export function createProductionService(db: Db) {
         return {
           result: { order: await productionRepo.wire(tx, id), ticket },
           changed: [...changed],
-          message: `${ticket.id} issued — all ${lines.length} item${lines.length === 1 ? "" : "s"} of ${id} reserved for ${toName}`,
+          message: `${ticket.id} issued - all ${lines.length} item${lines.length === 1 ? "" : "s"} of ${id} reserved for ${toName}`,
         };
       });
     },
@@ -177,7 +177,7 @@ export function createProductionService(db: Db) {
      * The table decides and the sentence only explains: PROD_ORDER_TRANSITIONS is the same
      * data the board draws its buttons from. The sentence is this endpoint's own
      * rather than `assertTransition`'s "is already <status>", which would answer a New order
-     * asked to jump to Ready with "is already new" — true of the wrong half of the sentence.
+     * asked to jump to Ready with "is already new" - true of the wrong half of the sentence.
      */
     async setStatus(claims: AccessClaims, id: string, st: PordStatus): Promise<WriteResponse<ProdOrder>> {
       return withTransaction(db, async (tx) => {
@@ -185,14 +185,14 @@ export function createProductionService(db: Db) {
         if (!o) throw new NotFoundError(`There is no production order ${id}.`);
         // Dispatch is a movement, not a word: it mints the ticket the outlet collects against
         // and reserves the stock behind it, so it has its own endpoint.
-        assertRule(st !== "Dispatched", `${id} goes out on a pick ticket — dispatch it from the order instead`);
+        assertRule(st !== "Dispatched", `${id} goes out on a pick ticket - dispatch it from the order instead`);
         // And the way back is a movement too. The table has Dispatched -> Ready so a cancelled
         // ticket can put the order back on the board; taking that edge here would leave the
         // ticket live and holding stock for an order the board says is still cooking.
-        assertRule(o.status !== "Dispatched", `${id} has already gone out — cancel its ticket to bring it back onto the board`);
+        assertRule(o.status !== "Dispatched", `${id} has already gone out - cancel its ticket to bring it back onto the board`);
         assertRule(
           canTransition(PROD_ORDER_TRANSITIONS, o.status, st),
-          `${id} is ${o.status.toLowerCase()} — it cannot go straight to ${st.toLowerCase()}`,
+          `${id} is ${o.status.toLowerCase()} - it cannot go straight to ${st.toLowerCase()}`,
         );
 
         const at = new Date();
@@ -202,7 +202,7 @@ export function createProductionService(db: Db) {
 
         const changed = ["pord"] as const;
         await emitChanged(tx, changed);
-        return { result: await productionRepo.wire(tx, id), changed: [...changed], message: `${id} — ${st.toLowerCase()}` };
+        return { result: await productionRepo.wire(tx, id), changed: [...changed], message: `${id} - ${st.toLowerCase()}` };
       });
     },
 
@@ -217,8 +217,8 @@ export function createProductionService(db: Db) {
      * records the difference.
      *
      * Lock order, as everywhere: ids before balances (`lib/ledger.ts`'s header). One call takes
-     * every cell this write will move — the ingredients, and the finished item when there is a
-     * yield to book — so the `postMoves` below re-takes only locks this transaction already
+     * every cell this write will move - the ingredients, and the finished item when there is a
+     * yield to book - so the `postMoves` below re-takes only locks this transaction already
      * holds. A make that locked the ingredients alone would reach for a fifth row while holding
      * four; one that locked the finished item with nothing to yield would create a balance row
      * it never moves, and a zero row reads as "this location carries the line" (M12).
@@ -238,11 +238,11 @@ export function createProductionService(db: Db) {
         const off = await productionRepo.overrideAt(tx, KITCHEN, body.it);
         assertRule(!off, `${item.n} is switched off in the kitchen`);
         // A made-to-order item is made at the till when it is sold, not stocked ahead of a sale
-        // (C2) — `capp`/`chai` carry a recipe and a menu listing, so the recipe check alone
+        // (C2) - `capp`/`chai` carry a recipe and a menu listing, so the recipe check alone
         // would let the kitchen batch a phantom shelf of them.
-        assertRule(item.t !== "MTO", `${item.n} is made to order at the counter — it is not batched`);
+        assertRule(item.t !== "MTO", `${item.n} is made to order at the counter - it is not batched`);
         const recipe = master.recipes[body.it];
-        assertRule(recipe, `${item.n} has no recipe — it cannot be produced`);
+        assertRule(recipe, `${item.n} has no recipe - it cannot be produced`);
 
         // No fold across the lines: `recipes` is keyed on (item_key, ingredient_key), so an
         // ingredient cannot appear twice in one recipe and there is nothing to add together.
@@ -262,13 +262,13 @@ export function createProductionService(db: Db) {
         // What another ticket is holding is not the kitchen's to bake with, so the measure is
         // free to promise and not what is on the shelf.
         const free = (g: string) => round3((onHand[g] ?? 0) - (held[`${KITCHEN}:${g}`] ?? 0));
-        /** The kitchen's own sentence for an ingredient that will not stretch — one helper for
+        /** The kitchen's own sentence for an ingredient that will not stretch - one helper for
          *  both the pre-check below and the post-lock invariant loop further down, so the two
          *  never drift into saying it two different ways. */
         const shortOf = (g: string, freeQty: number): string => {
           const ing = master.items[g];
           const unit = ing?.u ?? "nos";
-          return `Kitchen is short of ${ing?.n ?? g} — ${fq(freeQty, unit)} ${unit} left`;
+          return `Kitchen is short of ${ing?.n ?? g} - ${fq(freeQty, unit)} ${unit} left`;
         };
         // The first in recipe order, which is the one the kitchen's own screen names. Written as
         // an `if` rather than `assertRule(!short, short ? … : "")`: a refusal sentence computed
@@ -280,7 +280,7 @@ export function createProductionService(db: Db) {
           loc: KITCHEN, it: n.it, qty: -n.qty, kind: "production_consume", refType: "batch", refId: no.id, by: claims.sub, at,
         }));
         // A yield of nothing is not a movement. The batch row records the lost tray, and the
-        // kitchen's shelf list is left exactly as it was — no row is created for a line the
+        // kitchen's shelf list is left exactly as it was - no row is created for a line the
         // kitchen has never carried.
         if (made > 0) {
           moves.push({ loc: KITCHEN, it: body.it, qty: made, kind: "production_yield", refType: "batch", refId: no.id, by: claims.sub, at });
@@ -302,7 +302,7 @@ export function createProductionService(db: Db) {
           id: no.id, itemKey: body.it, startedQty: started, madeQty: made, at, bestBefore: bb,
           note: body.note ?? null, byUser: claims.sub,
         });
-        // The shape readers/documents.ts's readBatches produces, for the one batch just written —
+        // The shape readers/documents.ts's readBatches produces, for the one batch just written -
         // including its treatment of the column: a null note has nothing to show and is left off,
         // but a note written as "" is still a note the kitchen typed, so it stays on the wire.
         const result: Batch = {
@@ -317,8 +317,8 @@ export function createProductionService(db: Db) {
           result,
           changed: [...changed],
           message: made === started
-            ? `${no.id} — ${started} ${item.n} made, best before ${text}`
-            : `${no.id} — ${made} of ${started} ${item.n} yielded (${(((made - started) / started) * 100).toFixed(1)}%), best before ${text}`,
+            ? `${no.id} - ${started} ${item.n} made, best before ${text}`
+            : `${no.id} - ${made} of ${started} ${item.n} yielded (${(((made - started) / started) * 100).toFixed(1)}%), best before ${text}`,
         };
       });
     },
@@ -326,7 +326,7 @@ export function createProductionService(db: Db) {
     /**
      * A tray the kitchen decided to push out: no order behind it, so the ticket's reference is
      * the words "Direct issue" rather than a document id. Same lock order as a dispatch, same
-     * promise — the stock is held at the kitchen and moves when the collector's scan lands.
+     * promise - the stock is held at the kitchen and moves when the collector's scan lands.
      */
     async distribute(claims: AccessClaims, body: DistributeBody): Promise<WriteResponse<Ticket>> {
       return withTransaction(db, async (tx) => {
@@ -334,10 +334,10 @@ export function createProductionService(db: Db) {
         const master = await loadMaster(tx);
         const item = master.items[body.it];
         if (!item) throw new NotFoundError(`There is no item ${body.it}.`);
-        // A made-to-order item has nothing sitting on a kitchen shelf to send anywhere — it is
+        // A made-to-order item has nothing sitting on a kitchen shelf to send anywhere - it is
         // made at the till the moment it is sold (C2).
-        assertRule(item.t !== "MTO", `${item.n} is made to order at the counter — it is not distributed`);
-        // The destination is the caller's word, so it is looked up rather than assumed — a key
+        assertRule(item.t !== "MTO", `${item.n} is made to order at the counter - it is not distributed`);
+        // The destination is the caller's word, so it is looked up rather than assumed - a key
         // the schema accepts but the master no longer carries is a 404 the kitchen can read,
         // not a crash halfway through the write.
         const to = master.locations[body.to];
@@ -345,12 +345,12 @@ export function createProductionService(db: Db) {
         // The tray is already in the kitchen; sending it to the kitchen moves nothing and would
         // still mint a ticket and hold the stock against itself. The screen's own list of
         // destinations leaves the kitchen out, and so does the server.
-        assertRule(body.to !== KITCHEN, "A tray cannot be distributed to the kitchen it came from — choose the store or an outlet");
+        assertRule(body.to !== KITCHEN, "A tray cannot be distributed to the kitchen it came from - choose the store or an outlet");
         // Stock that lands where it cannot be sold is stock lost (M9). Only an outlet has a
         // menu to be on; the store and the kitchen carry whatever they are sent.
         if (to.type === "Outlet") {
           const menu = await productionRepo.menuAt(tx, body.to);
-          assertRule(menu.has(body.it), `${item.n} is not listed at ${to.n} — add it to that menu first`);
+          assertRule(menu.has(body.it), `${item.n} is not listed at ${to.n} - add it to that menu first`);
         }
 
         const at = new Date();
@@ -374,7 +374,7 @@ export function createProductionService(db: Db) {
         return {
           result: ticket,
           changed: [...changed],
-          message: `${ticket.id} issued — ${body.qty} ${item.n} reserved for ${to.n}`,
+          message: `${ticket.id} issued - ${body.qty} ${item.n} reserved for ${to.n}`,
         };
       });
     },

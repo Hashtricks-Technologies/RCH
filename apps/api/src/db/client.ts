@@ -15,14 +15,14 @@ export function pgSsl(ssl: boolean): ConnectionOptions | undefined {
 /**
  * One pool per process. RDS connections verify the AWS CA bundle baked into the image (Task 15).
  *
- * `max` is `DB_POOL_MAX` (config.ts), default **10** — one pod's share of the instance's own
+ * `max` is `DB_POOL_MAX` (config.ts), default **10** - one pod's share of the instance's own
  * `max_connections`. It is deliberately not the first knob to reach for when `/snapshot` is slow:
  * a request takes exactly one connection (`withReadTransaction`, `lib/db.ts`), so a pool at its
  * ceiling means genuinely that many requests in flight, not one request holding forty.
  */
 /**
  * `DATABASE_SSL` alone decides TLS. A `sslmode=` (or `ssl=`) query parameter on the URL makes the
- * driver build its own `ssl` setting from the string and ignore the `ssl` object below — so a
+ * driver build its own `ssl` setting from the string and ignore the `ssl` object below - so a
  * URL carrying `?sslmode=require` verified the RDS chain against the system store, not the RDS
  * bundle, and the migrate initContainer died with SELF_SIGNED_CERT_IN_CHAIN on the first dev
  * deploy. The parameters are removed here so the bundle is used whenever `ssl` is true.
@@ -36,7 +36,7 @@ export function withoutSslParams(url: string): string {
 /**
  * `statementTimeoutMs` is the ceiling on a single statement, 15 s by default because that is
  * longer than any request the API serves and short enough that a runaway query is cancelled
- * rather than held. Pass **0** — Postgres's own "no timeout" — from a CLI: a migration, a
+ * rather than held. Pass **0** - Postgres's own "no timeout" - from a CLI: a migration, a
  * balance rebuild, a seed and a purge are each allowed to take longer than a request may, and a
  * replica blocked on `pg_advisory_lock` during a rollout waits inside a statement, so the
  * default would cancel it and leave the initContainer in CrashLoopBackOff.

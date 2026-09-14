@@ -3,7 +3,7 @@ import type { Changed } from "@rch/contract";
 import type { Tx } from "./db.js";
 
 /**
- * LISTEN channels belong to the database, not to a schema — and every test file runs in its
+ * LISTEN channels belong to the database, not to a schema - and every test file runs in its
  * own schema inside one database. The channel therefore carries the schema, computed in SQL on
  * this side and from `select current_schema()` on the listening side, so neither end needs the
  * name plumbed through.
@@ -14,7 +14,7 @@ export type ChangeNotice = { collections: Changed[]; at: string };
 
 /**
  * Publish what a write changed. `pg_notify` inside a transaction is held by Postgres until
- * that transaction commits, which is exactly when a notice should go out — whenever a write commits touching
+ * that transaction commits, which is exactly when a notice should go out - whenever a write commits touching
  * that collection. A refusal that rolls the write back announces nothing.
  *
  * Call it last in the service, with the same array the response's `changed` carries.

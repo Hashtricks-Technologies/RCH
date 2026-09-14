@@ -17,14 +17,14 @@ afterAll(async () => { await app.close(); });
 beforeEach(async () => { await truncateAll(app.testDb!.db); await seedTestDb(app.testDb!.db); });
 
 const hdr = async (id: string) => ({ ...(await authHeaders(app, id)), "idempotency-key": randomUUID() });
-/** Cancel and issue-ticket carry no body, so the payload is optional — spread in rather than
+/** Cancel and issue-ticket carry no body, so the payload is optional - spread in rather than
  *  sent as `undefined`, which inject would still turn into an empty body. */
 const post = async (user: string, url: string, payload?: object) => {
   const opts: InjectOptions = { method: "POST", url: `/api/v1${url}`, headers: await hdr(user) };
   if (payload !== undefined) opts.payload = payload;
   return app.inject(opts);
 };
-/** Every balance row, as one comparable object — for the rebuild that must change nothing. */
+/** Every balance row, as one comparable object - for the rebuild that must change nothing. */
 const onHand = async (): Promise<Record<string, number>> =>
   Object.fromEntries((await app.testDb!.db.select().from(stockBalances)).map((b) => [`${b.loc}:${b.itemKey}`, b.onHand]));
 
@@ -40,7 +40,7 @@ describe("POST /requests", () => {
     expect(b.result.lines).toEqual([{ it: "milk", qty: 20, appr: 0 }, { it: "sugar", qty: 4, appr: 0 }]);
     expect(b.result.hist).toEqual([{ s: "Request sent", who: "Kavitha Raman", t: expect.any(String) }]);
     expect(b.changed).toEqual(["req"]);
-    expect(b.message).toBe(`${b.result.id} sent to the outlet manager — 2 lines`);
+    expect(b.message).toBe(`${b.result.id} sent to the outlet manager - 2 lines`);
   });
 
   it("issues the next number in the series each time", async () => {
@@ -52,7 +52,7 @@ describe("POST /requests", () => {
 
   it("names the item when only one line was asked for", async () => {
     const r = await post("u1", "/requests", { lines: [{ it: "milk", qty: 20 }] });
-    expect(r.json().message).toBe(`${r.json().result.id} raised for 20 Milk 1L (toned) — with the outlet manager now`);
+    expect(r.json().message).toBe(`${r.json().result.id} raised for 20 Milk 1L (toned) - with the outlet manager now`);
   });
 
   it("lets the kitchen raise one too, from the kitchen", async () => {
@@ -88,7 +88,7 @@ describe("POST /requests", () => {
   it("refuses without an Idempotency-Key, and replays one", async () => {
     const headers = await hdr("u1");
     const payload = { lines: [{ it: "milk", qty: 20 }] };
-    // The replay must return the first response byte for byte — including its id.
+    // The replay must return the first response byte for byte - including its id.
     expect((await app.inject({ method: "POST", url: "/api/v1/requests", headers: await authHeaders(app, "u1"), payload })).statusCode).toBe(400);
     const first = await app.inject({ method: "POST", url: "/api/v1/requests", headers, payload });
     const again = await app.inject({ method: "POST", url: "/api/v1/requests", headers, payload });
@@ -117,7 +117,7 @@ describe("POST /requests/:id/cancel", () => {
   });
 
   it("still refuses a counter cancelling another outlet's request", async () => {
-    // REQ-2026-0910 is kiosk's own, Manager approved and carrying no ticket — now cancellable in
+    // REQ-2026-0910 is kiosk's own, Manager approved and carrying no ticket - now cancellable in
     // principle, but only by kiosk itself or the manager, not a coffee-shop operator.
     const r = await post("u1", "/requests/REQ-2026-0910/cancel");
     expect(r.statusCode).toBe(403);
@@ -131,16 +131,16 @@ describe("POST /requests/:id/cancel", () => {
   });
 
   it("refuses to cancel a request that already has a ticket, and names the ticket", async () => {
-    // REQ-2026-0909 is already Ticket issued, against TKT-0440 — the ticket-naming sentence
+    // REQ-2026-0909 is already Ticket issued, against TKT-0440 - the ticket-naming sentence
     // fires before the transition table is ever consulted, so cancelling here reads as "go
     // cancel the ticket" rather than the generic "already ticket issued" refusal.
     const r = await post("u1", "/requests/REQ-2026-0909/cancel");
     expect(r.statusCode).toBe(422);
-    expect(r.json().error.message).toBe("REQ-2026-0909 already has ticket TKT-0440 — cancel the ticket instead");
+    expect(r.json().error.message).toBe("REQ-2026-0909 already has ticket TKT-0440 - cancel the ticket instead");
   });
 
   it("refuses to cancel a collected request in its own words, not the ticket's", async () => {
-    // `ticketId` is never cleared once a request has one, so a Collected row still carries it —
+    // `ticketId` is never cleared once a request has one, so a Collected row still carries it -
     // the ticket-naming sentence has to stay scoped to "Ticket issued" or this would answer
     // "cancel the ticket instead" about a ticket the collector already walked off with.
     const id = await given.request(app.testDb!.db, {
@@ -162,12 +162,12 @@ describe("POST /requests/:id/cancel", () => {
 
   it("withdraws a request the manager approved but the store never issued, and frees its promise", async () => {
     // REQ-2026-0910 (kiosk, Manager approved, no ticket) already commits 1 of the store's 4
-    // butter — a second request for the whole 4 would be trimmed to 3 until this is withdrawn.
+    // butter - a second request for the whole 4 would be trimmed to 3 until this is withdrawn.
     const r = await post("u2", "/requests/REQ-2026-0910/cancel");
     expect(r.statusCode).toBe(200);
     expect(r.json().result.st).toBe("Cancelled");
     expect(r.json().message).toBe("REQ-2026-0910 cancelled");
-    expect(r.json().result.hist).toContainEqual({ s: "Cancelled — never issued", who: "Ramesh Kumar", t: expect.any(String) });
+    expect(r.json().result.hist).toContainEqual({ s: "Cancelled - never issued", who: "Ramesh Kumar", t: expect.any(String) });
 
     const id = await given.request(app.testDb!.db, { from: "kiosk", lines: [{ it: "butter", qty: 4 }] });
     const approve = await post("u2", `/requests/${id}/approve`, { appr: [4], note: "" });
@@ -177,7 +177,7 @@ describe("POST /requests/:id/cancel", () => {
   });
 
   it("lets the manager withdraw their own approval, from any outlet", async () => {
-    // u2's own home location is "rest" — nowhere near kiosk — and a manager takes no requireLocOf.
+    // u2's own home location is "rest" - nowhere near kiosk - and a manager takes no requireLocOf.
     const r = await post("u2", "/requests/REQ-2026-0910/cancel");
     expect(r.statusCode).toBe(200);
     expect(r.json().result.st).toBe("Cancelled");
@@ -195,7 +195,7 @@ describe("POST /requests/:id/approve", () => {
     expect(b.result.request.ticket).toBeNull();
     expect(b.result.trimmed).toBe(true);
     expect(b.changed).toEqual(["req"]);
-    expect(b.message).toBe("REQ-2026-0911 trimmed — the central store cannot cover the full quantity");
+    expect(b.message).toBe("REQ-2026-0911 trimmed - the central store cannot cover the full quantity");
   });
 
   it("names the manager who approved, not the operator who raised (H6)", async () => {
@@ -211,19 +211,19 @@ describe("POST /requests/:id/approve", () => {
     const r = await post("u2", `/requests/${second}/approve`, { appr: [10], note: "" });
     expect(r.json().result.request.lines[0].appr).toBe(0);
     expect(r.json().result.request.st).toBe("Rejected");
-    // The store, not the manager, cut this to nothing — so the manager reads that the store
+    // The store, not the manager, cut this to nothing - so the manager reads that the store
     // could not cover it, exactly as the counter's own `approveRequest` reports it: `trimmed`
     // is tested before the status, and a decision trimmed all the way to zero is still trimmed.
     expect(r.json().result.trimmed).toBe(true);
-    expect(r.json().message).toBe(`${second} trimmed — the central store cannot cover the full quantity`);
+    expect(r.json().message).toBe(`${second} trimmed - the central store cannot cover the full quantity`);
   });
 
-  it("says rejected — no ticket — when the manager is the one who typed zero", async () => {
+  it("says rejected - no ticket - when the manager is the one who typed zero", async () => {
     const id = await given.request(app.testDb!.db, { from: "kiosk", lines: [{ it: "sugar", qty: 5 }] });
     const r = await post("u2", `/requests/${id}/approve`, { appr: [0], note: "Kiosk has plenty" });
     expect(r.json().result.request.st).toBe("Rejected");
     expect(r.json().result.trimmed).toBe(false);
-    expect(r.json().message).toBe(`${id} rejected — no ticket will be issued`);
+    expect(r.json().message).toBe(`${id} rejected - no ticket will be issued`);
   });
 
   it("nets the stock a live ticket is already holding (C6)", async () => {
@@ -251,7 +251,7 @@ describe("POST /requests/:id/approve", () => {
     // that is not there. A screen opened before the counter added a line is exactly how one
     // arrives, and the manager would never see what they had just refused.
     const id = await given.request(app.testDb!.db, { from: "kiosk", lines: [{ it: "sugar", qty: 5 }, { it: "milk", qty: 2 }] });
-    // An empty array never gets here — `ApproveRequestBodySchema` asks for at least one, so it
+    // An empty array never gets here - `ApproveRequestBodySchema` asks for at least one, so it
     // is a 400 at the door. One too few and one too many are the shapes a real screen sends.
     for (const appr of [[12], [12, 2, 1]]) {
       const r = await post("u2", `/requests/${id}/approve`, { appr, note: "" });
@@ -293,7 +293,7 @@ describe("POST /requests/:id/reject", () => {
   it("refuses to reject without a reason (H7)", async () => {
     const r = await post("u2", "/requests/REQ-2026-0912/reject", { note: "   " });
     expect(r.statusCode).toBe(422);
-    expect(r.json().error.message).toBe("Give a reason — the counter sees it on the request");
+    expect(r.json().error.message).toBe("Give a reason - the counter sees it on the request");
     const still = await app.inject({ method: "GET", url: "/api/v1/requests", headers: await authHeaders(app, "u2") });
     expect(still.json().find((x: { id: string }) => x.id === "REQ-2026-0912").st).toBe("Request sent");
   });
@@ -320,13 +320,13 @@ describe("POST /requests/:id/issue-ticket", () => {
     expect(b.result.ticket).toMatchObject({ id: "TKT-0441", req: "REQ-2026-0911", from: "store", to: "coffee", st: "Issued" });
     expect(b.result.ticket.lines).toEqual([{ it: "milk", qty: 12 }]);
     // The store keeper raising the ticket stands at the location it leaves from, so the six
-    // digits are not in the answer. They are on the row, and the coffee shop — the location
-    // collecting — is the only one that reads them, through its own snapshot.
+    // digits are not in the answer. They are on the row, and the coffee shop - the location
+    // collecting - is the only one that reads them, through its own snapshot.
     expect(b.result.ticket.otp).toBe("");
     expect(b.result.request.st).toBe("Ticket issued");
     expect(b.result.request.ticket).toBe("TKT-0441");
     expect(b.changed).toEqual(["req", "tkt", "rsv"]);
-    expect(b.message).toBe("TKT-0441 issued — Coffee Shop can collect against this ticket");
+    expect(b.message).toBe("TKT-0441 issued - Coffee Shop can collect against this ticket");
 
     // Approval authorises; the scan moves. Nothing left the store.
     expect((await app.testDb!.db.select().from(stockMoves)).length).toBe(movesBefore);
@@ -359,7 +359,7 @@ describe("POST /requests/:id/issue-ticket", () => {
   it("folds a repeated item into one cover check before promising it", async () => {
     // `POST /requests` refuses a repeat, so this is a row written before that rule. Checked
     // line by line, 8 and 8 each clear the store's 12 L and `writeTicket` would then reserve
-    // 16 — free-to-promise four litres in the red. The check has to see the folded 16.
+    // 16 - free-to-promise four litres in the red. The check has to see the folded 16.
     const id = await given.request(app.testDb!.db, {
       from: "coffee", st: "Manager approved", lines: [{ it: "milk", qty: 8, appr: 8 }, { it: "milk", qty: 8, appr: 8 }],
     });

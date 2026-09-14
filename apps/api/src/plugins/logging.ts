@@ -2,7 +2,7 @@ import fp from "fastify-plugin";
 import { randomUUID } from "node:crypto";
 
 /** Request id in, request id out; user id on every access line once auth has run; and on a
- *  refused request, what it was refused with (`refusal`, set by `plugins/errors.ts`) — so the
+ *  refused request, what it was refused with (`refusal`, set by `plugins/errors.ts`) - so the
  *  line for a 401 on `/auth/login` says whether the id was unknown, the password wrong or the
  *  account deactivated, which the response deliberately does not. */
 export default fp(async (app) => {
@@ -18,7 +18,7 @@ export default fp(async (app) => {
   });
 }, { name: "logging" });
 
-/** Anything with a `write(line)` — pino's own destination shape. A test hands one in to read
+/** Anything with a `write(line)` - pino's own destination shape. A test hands one in to read
  *  the lines back; production leaves it out and pino writes to stdout. */
 export type LogStream = { write: (line: string) => void };
 

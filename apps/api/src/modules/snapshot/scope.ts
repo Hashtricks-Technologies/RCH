@@ -28,13 +28,13 @@ export const scopeBills = (bills: Bill[], who: Who): Bill[] =>
  * that person is a patient: a name, a ward and an in-patient number, which is hospital data
  * before it is F&B data.
  *
- * Two roles need it. The counter reads it back off its own till roll — it is what a customer
- * asks about when a bill is queried an hour later — and the manager reads it across the outlets,
+ * Two roles need it. The counter reads it back off its own till roll - it is what a customer
+ * asks about when a bill is queried an hour later - and the manager reads it across the outlets,
  * because settling a credit account is their job. The kitchen, the central store and the buyer
  * do none of that. What they have always used bills for is the ledger behind them: `lines`,
  * which is untouched here, so every stock report still reads exactly what it did.
  *
- * So the bills travel whole minus the name. Not a filtered list — the store's reports count
+ * So the bills travel whole minus the name. Not a filtered list - the store's reports count
  * bills as well as lines, and a store keeper whose totals quietly stopped matching the till's
  * would be worse off than one who simply cannot see whose account a sale went to.
  */
@@ -43,7 +43,7 @@ export const scopePayers = (bills: Bill[], who: Who): Bill[] =>
   READS_PAYERS.has(who.role) ? bills : bills.map((b) => (b.payer ? { ...b, payer: undefined } : b));
 
 /**
- * And the roster is the register those names come out of — every patient on a ward, every
+ * And the roster is the register those names come out of - every patient on a ward, every
  * member of staff, every department, in one list. It is on the snapshot so that a till can offer
  * it while a bill is being taken; nobody who cannot take a bill has any use for it, and handing
  * the whole register to three roles that never open the payer picker was the larger half of the
@@ -65,7 +65,7 @@ export const scopeShopAsks = (asks: ShopAsk[], who: Who): ShopAsk[] =>
 export const scopeProdOrders = (pord: ProdOrder[], who: Who): ProdOrder[] =>
   who.role !== "counter" ? pord : pord.filter((o) => o.from === who.loc);
 /** The batch log is the kitchen's own record of what it made. A counter sells the output and
- *  has no window on the production behind it — the snapshot has always sent them none. */
+ *  has no window on the production behind it - the snapshot has always sent them none. */
 export const scopeBatches = (batch: Batch[], who: Who): Batch[] => (who.role !== "counter" ? batch : []);
 /** Buying is not a counter operator's business. A requisition, an order, a goods receipt, a
  *  vendor and a rate contract are all read by the store, the kitchen, the manager and the
@@ -77,20 +77,20 @@ export const scopeProductRequests = (rows: ProductRequest[], who: Who): ProductR
 
 /**
  * The six digits belong to whoever is collecting: they read them aloud and the sending location
- * types them in. Sending them to the sending location made the check theatre — the store's issue
- * desk printed the number three inches from the box that verifies it — and sending them to
+ * types them in. Sending them to the sending location made the check theatre - the store's issue
+ * desk printed the number three inches from the box that verifies it - and sending them to
  * anyone else is a credential in a snapshot for no reason at all.
  *
  * So: the OTP travels only while the ticket is still `Issued`, only to a caller standing at the
  * ticket's `to`, **and** only to a role that actually collects there. Everyone else reads "".
  * The way past a collector who is not there is the labelled supervisor override on `handover`,
- * which is refused to a counter and recorded in `document_history` — now visible on the ticket
+ * which is refused to a counter and recorded in `document_history` - now visible on the ticket
  * itself.
  *
  * The role test is the second half and is not redundant. Location alone is not identity: the
  * outlet manager's own home location is an outlet (`rest` in the fixtures), so a location-only
  * check handed the manager the digits for every Issued Restaurant-bound ticket in the
- * snapshot — a credential for a handover they will never stand at. `COLLECTS` is the three
+ * snapshot - a credential for a handover they will never stand at. `COLLECTS` is the three
  * roles that are ever the receiving end of a ticket; a buyer and a manager are neither end of
  * one, and read "" wherever they happen to sit.
  */
@@ -100,7 +100,7 @@ export const redactOtps = (tkt: Ticket[], who: Who): Ticket[] =>
 
 /**
  * Support is the one module all five roles share and every support write is
- * scoped "all (own)". The list is scoped the same way, by the user id in the token — `by` on the
+ * scoped "all (own)". The list is scoped the same way, by the user id in the token - `by` on the
  * wire is a display name and two people can share one.
  */
 const scopeSupportTickets = (rows: SupportTicket[], who: { sub: string }, byUser: Map<string, string>): SupportTicket[] =>
@@ -109,7 +109,7 @@ const scopeSupportTickets = (rows: SupportTicket[], who: { sub: string }, byUser
 // ---- adjustments
 /** The same cut `scopeStock` makes, on the document rather than on the balance: an adjustment is
  *  a correction to one shelf, so a counter operator sees the corrections to their own shelf and
- *  nobody else's. Everyone else sees the register whole — the store keeper writes off at the
+ *  nobody else's. Everyone else sees the register whole - the store keeper writes off at the
  *  central store and at the rejected-goods shelf, the kitchen at the kitchen, the manager across
  *  the outlets, and each of them has to be able to read what the others did to a line they share.
  *  A counter raises none of these (the route is not theirs); they read what was done to them. */
@@ -119,8 +119,8 @@ export const scopeAdjustments = (rows: Adjustment[], who: Who): Adjustment[] =>
 /** A counter operator's world is their counter. Master data is never cut down; documents and stock are. */
 export function scope(s: Snapshot, who: Who & { sub: string }, owners: Map<string, string>): Snapshot {
   // Four cuts apply to every role, not only to a counter: a support ticket is the caller's own,
-  // a ticket's OTP is the collector's, and who a bill was charged to — with the register those
-  // names come out of — belongs to the two roles that bill people.
+  // a ticket's OTP is the collector's, and who a bill was charged to - with the register those
+  // names come out of - belongs to the two roles that bill people.
   const base: Snapshot = {
     ...s, tickets: scopeSupportTickets(s.tickets, who, owners), tkt: redactOtps(s.tkt, who),
     bills: scopePayers(s.bills, who), roster: scopeRoster(s.roster, who),
@@ -129,7 +129,7 @@ export function scope(s: Snapshot, who: Who & { sub: string }, owners: Map<strin
   const L = who.loc;
   // `sales` is one column per outlet, so handing it over whole tells a counter operator the
   // whole hospital's takings. Keep the shape (a row per day, matching dayLabels, which stay)
-  // and keep only their own column — none at all if they are not on an outlet.
+  // and keep only their own column - none at all if they are not on an outlet.
   const col = OUTLETS.indexOf(L);
   return {
     ...base,

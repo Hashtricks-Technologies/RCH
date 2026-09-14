@@ -13,14 +13,14 @@ import type { LocKey, ProdOrder } from "../../types";
  * but the Central Kitchen making it. `POST /prod-orders` is the write; the board the kitchen
  * works is the other end of it.
  *
- * It is its own card rather than a third `reqaction` tile because it comes with a list — until
+ * It is its own card rather than a third `reqaction` tile because it comes with a list - until
  * now the counter had no window at all on the orders it raised, only the pick ticket that
  * eventually arrived.
  */
 
 const itemText = (o: ProdOrder) =>
   o.lines.map((l) => `${fq(l.qty, l.it)} × ${IT[l.it]?.n ?? l.it}`).join(" · ");
-/** "puffs, sandwiches or salads" — the last separator is a word, not another comma. */
+/** "puffs, sandwiches or salads" - the last separator is a word, not another comma. */
 const orList = (names: string[]) =>
   names.length < 2 ? names[0] ?? "" : `${names.slice(0, -1).join(", ")} or ${names[names.length - 1]}`;
 /** What is still coming: everything the kitchen has neither sent out nor turned down. */
@@ -33,7 +33,7 @@ export default function KitchenOrderCard({ loc }: { loc: LocKey }) {
   const [open, setOpen] = useState(false);
 
   // "puffs, sandwiches or salads" was three product names written into the copy, and they went
-  // stale the first time the master changed — a counter reading about a salad the hospital no
+  // stale the first time the master changed - a counter reading about a salad the hospital no
   // longer carries. Three real ones off `madeItems()` instead, pinned to `catalogVersion`
   // because `IT` and `RCP` are registries replaced in place rather than store state.
   const examples = useMemo(() => {
@@ -48,7 +48,7 @@ export default function KitchenOrderCard({ loc }: { loc: LocKey }) {
   // Newest first by **`iso`**, the server's own instant, which every document has carried since
   // the audit wave. Not `at`: that is the "HH:MM" the row prints (`api/wire.ts`), so sorting on
   // it puts yesterday's 23:40 order above this morning's 07:10 one. And not the id either, which
-  // this used to fall back to — `PRD-2026-099` sorts above `PRD-2026-100` as text, so the series
+  // this used to fall back to - `PRD-2026-099` sorts above `PRD-2026-100` as text, so the series
   // stops being monotonic at every power of ten. ISO-8601 is lexically ordered, so the same
   // string compare answers correctly.
   const mine = pord.filter((o) => o.from === loc).slice().sort((a, b) => b.iso.localeCompare(a.iso));
@@ -57,7 +57,7 @@ export default function KitchenOrderCard({ loc }: { loc: LocKey }) {
   return (
     <Card
       title="Ask the kitchen"
-      sub="Finished goods only — a drink made at the till is not ordered from the kitchen"
+      sub="Finished goods only - a drink made at the till is not ordered from the kitchen"
       right={waiting > 0 ? <Pill tone="wn">{waiting} on the board</Pill> : undefined}
       className="mtop"
     >
@@ -89,7 +89,7 @@ export default function KitchenOrderCard({ loc }: { loc: LocKey }) {
           cells: [
             <>{o.id}<small>{o.by}</small></>,
             itemText(o),
-            o.need ? dmy(o.need) : <span className="dim">—</span>,
+            o.need ? dmy(o.need) : <span className="dim">-</span>,
             o.at,
             <StatusPill status={o.st} />,
           ],

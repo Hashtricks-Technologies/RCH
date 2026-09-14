@@ -17,7 +17,7 @@ describe("rate limiting", () => {
 
     expect(last!.statusCode).toBe(429);
     expect(last!.json()).toEqual({
-      error: { code: "rate_limited", message: "Too many requests — wait a moment and try again." },
+      error: { code: "rate_limited", message: "Too many requests - wait a moment and try again." },
     });
     expect(last!.headers["x-request-id"]).toBeDefined();
 
@@ -36,7 +36,7 @@ describe("error envelope mapping", () => {
     const r = await app.inject({ method: "GET", url: "/__test/throws-rate-limited" });
     expect(r.statusCode).toBe(429);
     expect(r.json()).toEqual({
-      error: { code: "rate_limited", message: "Too many requests — wait a moment and try again." },
+      error: { code: "rate_limited", message: "Too many requests - wait a moment and try again." },
     });
 
     await app.close();
@@ -45,7 +45,7 @@ describe("error envelope mapping", () => {
   it("maps an overload-shaped 503 (as @fastify/under-pressure throws) to not_ready", async () => {
     const app = await buildTestApp({ withDb: false });
     app.get("/__test/throws-overloaded", { config: { rateLimit: false } }, async () => {
-      const err = new Error("The service is overloaded — try again shortly.");
+      const err = new Error("The service is overloaded - try again shortly.");
       (err as { statusCode?: number }).statusCode = 503;
       throw err;
     });
@@ -54,7 +54,7 @@ describe("error envelope mapping", () => {
     const r = await app.inject({ method: "GET", url: "/__test/throws-overloaded" });
     expect(r.statusCode).toBe(503);
     expect(r.json()).toEqual({
-      error: { code: "not_ready", message: "The service is overloaded — try again shortly." },
+      error: { code: "not_ready", message: "The service is overloaded - try again shortly." },
     });
 
     await app.close();
@@ -82,7 +82,7 @@ describe("error envelope mapping", () => {
       throw new RateLimitedError();
     });
     app.get("/__test/throws-overloaded", { config: { rateLimit: false } }, async () => {
-      const err = new Error("The service is overloaded — try again shortly.");
+      const err = new Error("The service is overloaded - try again shortly.");
       (err as { statusCode?: number }).statusCode = 503;
       throw err;
     });
@@ -113,7 +113,7 @@ describe("what a refused request leaves in the log", () => {
     return { lines, write: (s: string) => { for (const l of s.split("\n")) if (l) lines.push(JSON.parse(l) as Record<string, unknown>); } };
   };
 
-  it("carries the error code, the sentence, and the internal cause on the request's own line — and the cause never reaches the wire", async () => {
+  it("carries the error code, the sentence, and the internal cause on the request's own line - and the cause never reaches the wire", async () => {
     const log = capture();
     const app = await buildTestApp({ withDb: false, env: { LOG_LEVEL: "info" }, logStream: log });
     app.get("/__test/refuses", { config: { rateLimit: false } }, async () => {
@@ -126,7 +126,7 @@ describe("what a refused request leaves in the log", () => {
     // The operator's sentence and nothing else: the cause is for the log, never the browser.
     expect(r.json()).toEqual({ error: { code: "unauthenticated", message: "That employee id and password do not match." } });
 
-    // One line per request, and a refused one says why — an operator asking "why can't RC-4471
+    // One line per request, and a refused one says why - an operator asking "why can't RC-4471
     // sign in" reads it here rather than guessing between no such account, a wrong password and
     // a deactivated one.
     const line = log.lines.find((l) => l.msg === "request" && l.route === "/__test/refuses");

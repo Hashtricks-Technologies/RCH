@@ -44,12 +44,12 @@ describe("postMoves", () => {
     // A sale of one cup deducts millilitres of an ingredient, and a recipe quantity can round
     // to zero at three decimals. `stock_moves_qty_ck` (migration 0008) says a move of zero is
     // not a movement, so a row like this is what turns a perfectly ordinary bill into a 500 at
-    // the till. It is dropped here instead — and, on postMoves's own terms, its cell is never
+    // the till. It is dropped here instead - and, on postMoves's own terms, its cell is never
     // locked, because `lockBalances` creates the row it locks and a shelf that never moved
     // anything would read as "carried at zero" for ever after (M12). That guarantee is
     // postMoves's alone, not a sale's: a real sale's own `lockBalances` call
     // (`modules/pos/service.ts`) runs earlier, as part of the cover check, over every ingredient
-    // the recipe names — including one whose consumption rounds to zero — so that balance row
+    // the recipe names - including one whose consumption rounds to zero - so that balance row
     // already exists by the time postMoves would have dropped its move.
     await withTransaction(t.db, (tx) => postMoves(tx, [
       { loc: "coffee", it: "sugar", qty: 0.0004, kind: "sale", refType: "bill", refId: "CF/1188" },
@@ -95,7 +95,7 @@ describe("postMoves", () => {
   });
   it("survives 20 writers, four at a time (the test pool), touching the same pair of balances in alternating lock orders without deadlocking", async () => {
     // postMoves sorts the (loc, item) keys it locks into a fixed order, so writers that submit
-    // the pair in opposite orders still take their row locks in the same sequence — no deadlock.
+    // the pair in opposite orders still take their row locks in the same sequence - no deadlock.
     const writers = Array.from({ length: 20 }, (_, i) =>
       withTransaction(t.db, (tx) => postMoves(tx, i % 2 === 0
         ? [
@@ -119,7 +119,7 @@ describe("postMoves", () => {
   });
   it("rebuildBalances keeps a carried-but-dry row instead of dropping the line off the shelf", async () => {
     // A balance row with no moves behind it is how the seed says "this location stocks sugar,
-    // and today it has none" — the stock screens show a dash for a line with no row at all and
+    // and today it has none" - the stock screens show a dash for a line with no row at all and
     // a 0 for a dry one (M12). A rebuild that deleted first would quietly turn one into the
     // other, so the row has to survive at zero.
     await t.db.insert(stockBalances).values({ loc: "coffee", itemKey: "sugar", onHand: 0 });

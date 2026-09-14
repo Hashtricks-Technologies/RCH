@@ -11,7 +11,7 @@ export class ApiError extends Error {
   readonly code: string;
   readonly status: number;
   readonly details?: unknown;
-  /** The `x-request-id` this request carried — the browser's own, echoed by the server, so the
+  /** The `x-request-id` this request carried - the browser's own, echoed by the server, so the
    *  id in "Reference <id>" on screen is the id in the API's log line for the same request. */
   readonly requestId?: string;
   constructor(code: string, message: string, status: number, details?: unknown, requestId?: string) {
@@ -71,7 +71,7 @@ async function parse(res: Response, sent: string): Promise<unknown> {
 
 /** The refresh cookie belongs to the browser, not to a tab. Two tabs that refresh at the same
  *  instant present the same rotated token twice, which the server reads as a stolen token and
- *  answers by revoking the whole family — signing both of them out mid-shift. The lock makes
+ *  answers by revoking the whole family - signing both of them out mid-shift. The lock makes
  *  the second tab wait; the broadcast means it does not need to refresh at all when it wakes. */
 const REFRESH_LOCK = "rch-refresh";
 const SESSION_CHANNEL = "rch-session";
@@ -91,7 +91,7 @@ function sessionChannel(): BroadcastChannel | null {
   channel.onmessage = (e: MessageEvent) => {
     const t = (e.data as { accessToken?: unknown } | null)?.accessToken;
     // A broadcast **replaces** a token this tab already holds; it never hands one out. A tab on
-    // the sign-in screen, or one whose family was revoked, holds nothing — and on a shared
+    // the sign-in screen, or one whose family was revoked, holds nothing - and on a shared
     // terminal adopting here would let the next person at the keyboard walk into the session
     // of whoever is signed in in the tab beside it.
     if (typeof t === "string" && t && getAccessToken() !== null) setAccessToken(t);
@@ -106,7 +106,7 @@ export function closeSessionChannel(): void {
   channel = null;
   channelCtor = null;
 }
-// A refresh that failed is the end of the session — stop listening for other tabs' tokens
+// A refresh that failed is the end of the session - stop listening for other tabs' tokens
 // before this tab can be handed one it has no business holding.
 onSessionLost(closeSessionChannel);
 
@@ -120,7 +120,7 @@ let refreshing: Promise<boolean> | null = null;
 async function refreshInLock(had: string | null): Promise<boolean> {
   // Whoever else was in here may have finished the job. A token that is no longer the one this
   // caller's 401 was raised against is a *newer* token, so the right answer is "retry", not
-  // "refresh again" — the second refresh is exactly what revokes the family.
+  // "refresh again" - the second refresh is exactly what revokes the family.
   const now = getAccessToken();
   if (had !== null && now !== null && now !== had) return true;
   try {
@@ -134,7 +134,7 @@ async function refreshInLock(had: string | null): Promise<boolean> {
 }
 
 /** Exported for the event stream, which authenticates the same way `call()` does but cannot
- *  go through it — its response never ends. Single-flight within the tab, and serialised
+ *  go through it - its response never ends. Single-flight within the tab, and serialised
  *  across them by `navigator.locks` where the browser has it. `had` is the token the caller's
  *  401 was raised against, so a tab that waited can tell "nothing happened" from "tab 2 did it". */
 export async function refreshOnce(had: string | null = null): Promise<boolean> {
@@ -153,11 +153,11 @@ export async function refreshOnce(had: string | null = null): Promise<boolean> {
   return refreshing;
 }
 
-/** Call a manifest route. Adding an endpoint is one manifest entry — never a new function here. */
+/** Call a manifest route. Adding an endpoint is one manifest entry - never a new function here. */
 export async function call<R extends AnyRoute>(route: R, input: Input = {}): Promise<z.infer<R["response"]>> {
   sessionChannel();      // this tab listens from its first call, whether or not it ever refreshes
   // Minted once per call, not once per fetch: the retry after a refresh is the *same* write,
-  // and a second key would let the server run it twice — exactly what the header is for. The
+  // and a second key would let the server run it twice - exactly what the header is for. The
   // request id travels with it for the same reason: one id names one attempt end to end.
   const stamps: Stamps = { idempotencyKey: idempotencyKeyFor(route), requestId: crypto.randomUUID() };
   const had = getAccessToken();

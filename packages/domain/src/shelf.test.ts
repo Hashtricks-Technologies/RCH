@@ -32,7 +32,7 @@ describe("bestBeforeText (H9)", () => {
     expect(bestBeforeText(bestBeforeAt(made, 48), made)).toMatch(/^20:34 31 Aug$/);
   });
   // ^ This is a new exact-ICU assertion: no existing test pins `en-IN` + `{ day: "2-digit",
-  // month: "short" }`. Run it on Node 24 before keeping the anchor — if the runtime spells the
+  // month: "short" }`. Run it on Node 24 before keeping the anchor - if the runtime spells the
   // month differently, loosen to /^20:34 31 \w{3}\.?$/ rather than changing the formatter,
   // which has to keep matching what `fromWireBestBefore` has always printed.
 

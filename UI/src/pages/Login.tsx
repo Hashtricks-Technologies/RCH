@@ -110,7 +110,7 @@ export default function Login() {
         {typing ? (
           <div className="fg"><label htmlFor="emp">Employee id</label>
             <input className="inp mono" id="emp" name="username" autoComplete="username" autoFocus value={typed} onChange={(e) => setTyped(e.target.value)} placeholder="RC-0000" />
-            {typedOnly && <p className="lgpick-note">The staff list could not be loaded — type your employee ID instead.</p>}
+            {typedOnly && <p className="lgpick-note">The staff list could not be loaded - type your employee ID instead.</p>}
           </div>
         ) : chosen ? (
           <div className="fg"><label htmlFor="emp">Employee</label>
@@ -139,7 +139,7 @@ export default function Login() {
               placeholder={dir === undefined ? "Loading the staff list…" : "Search by name or employee ID"}
               value={query}
               onChange={(e) => { setQuery(e.target.value); setActive(0); setOpen(true); }}
-              // Opened by a click, a keystroke or an arrow — not by the autofocus on arrival, which
+              // Opened by a click, a keystroke or an arrow - not by the autofocus on arrival, which
               // would drop the whole list over the password box before anybody asked for it.
               onClick={() => setOpen(true)}
               onBlur={() => setOpen(false)}
@@ -174,7 +174,7 @@ export default function Login() {
 
         <div className="fg"><label htmlFor="pw">Password</label>
           <input ref={pwRef} className="inp mono" id="pw" type="password" autoComplete="current-password" value={pw} onChange={(e) => setPw(e.target.value)} /></div>
-        {/* The server's own sentence, or that it could not be reached — on the form, where it
+        {/* The server's own sentence, or that it could not be reached - on the form, where it
             stays until the next attempt, rather than in a toast that is gone in seconds. */}
         {refused && <Alert tone="c" label="REFUSED">{refused}</Alert>}
         <button className="btn wide" disabled={busy || !emp || !pw} type="submit">{busy ? "Signing in…" : "Sign in"}</button>
@@ -185,7 +185,7 @@ export default function Login() {
               : <button type="button" className="lgpick-link" onClick={toTyped}>Sign in as administrator</button>}
           </p>
         )}
-        <p className="lgn">Forgotten your password? Ask an administrator to reset it — you will be asked to choose a new one when you next sign in.</p>
+        <p className="lgn">Forgotten your password? Ask an administrator to reset it - you will be asked to choose a new one when you next sign in.</p>
       </form></div>
     </div>
   );

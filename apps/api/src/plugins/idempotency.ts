@@ -23,10 +23,10 @@ declare module "fastify" {
  *
  * `strict` is `config.env !== "production"`. In development and test a response the schema
  * refuses takes the whole write down with it (the transaction rolls back), because a write
- * whose answer can never reach the client — and can never be replayed — must not stand. In
+ * whose answer can never reach the client - and can never be replayed - must not stand. In
  * production the write is left alone and `onSend` records what actually went out, so a
  * response-shape bug degrades to the pre-existing behaviour instead of refusing the hospital's
- * sales — which is the path that actually ships, since the chart sets `NODE_ENV=production` in
+ * sales - which is the path that actually ships, since the chart sets `NODE_ENV=production` in
  * every namespace.
  *
  * `why` is how the production path stays diagnosable: `withTransaction` leaves the reason the
@@ -46,7 +46,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{1
 const CLAIM_STALE_MS = 120_000;
 /** `status_code = 0` is the claim marker: no real response ever carries it. */
 const CLAIMED = 0;
-const IN_FLIGHT = "That request is still being processed — try again in a moment.";
+const IN_FLIGHT = "That request is still being processed - try again in a moment.";
 const hashOf = (req: FastifyRequest) => createHash("sha256").update(`${req.method} ${req.url}\n${JSON.stringify(req.body ?? null)}`).digest("hex");
 
 /**
@@ -57,13 +57,13 @@ const hashOf = (req: FastifyRequest) => createHash("sha256").update(`${req.metho
  * arriving with the same key inside the same millisecond both found nothing and both executed
  * (two bills, one Idempotency-Key), and a crash between the write's COMMIT and the record left
  * no trace at all. The third is why `lib/idempotency-record.ts` exists: `onSend` runs on a
- * connection of its own, *after* the business transaction committed, so a pod that died — or a
+ * connection of its own, *after* the business transaction committed, so a pod that died - or a
  * pool that timed out, or a response that failed its own schema in the serializer and turned
- * into a 5xx — between COMMIT and the hook either left the row a bare claim or, worse, deleted
+ * into a 5xx - between COMMIT and the hook either left the row a bare claim or, worse, deleted
  * it, and the client's retry ran the write a second time. The record is now the last statement
  * before COMMIT: it either commits with the write or does not exist.
  *
- * So the preHandler inserts a claim row and only proceeds while it holds one — `resolveClaim`
+ * So the preHandler inserts a claim row and only proceeds while it holds one - `resolveClaim`
  * (idempotency-claim.ts) makes that call from three ops (insert / lookup / takeover) built
  * from Drizzle here:
  *
@@ -71,7 +71,7 @@ const hashOf = (req: FastifyRequest) => createHash("sha256").update(`${req.metho
  *                        row in and stamps `committed_at`.
  * - row has a response → replay it verbatim.
  * - row is a fresh claim → someone else is mid-write: 409, come back in a moment.
- * - row is a stale claim → the owner never returned: take it over and run — unless it carries
+ * - row is a stale claim → the owner never returned: take it over and run - unless it carries
  *   `committed_at`, which says the write did commit and only the response hooks were lost.
  * - row has a different hash → the key was reused for a different request: 409, as before.
  * - lookup finds nothing (purged from under us, e.g. `onSend` deleting a 429/503's claim) →
@@ -87,7 +87,7 @@ export default fp(async (app) => {
 
     // This preHandler runs before the global rate limiter (plugins/security.ts registers it
     // with `hook: "preHandler"`, keyed on `req.user.sub`, which this route's own preHandler
-    // array — auth → roleGate → idempotency — sits ahead of), so a request that ends up
+    // array - auth → roleGate → idempotency - sits ahead of), so a request that ends up
     // throttled still performs this claim INSERT first. That is accepted deliberately: undoing
     // the claim would mean reordering the limiter ahead of authentication, which would key it
     // on IP instead of user again (see security.ts's comment). The claim briefly exists, then
@@ -112,7 +112,7 @@ export default fp(async (app) => {
       },
       // Take the abandoned claim over, atomically: whoever re-stamps `created_at` owns it, and
       // a second would-be taker's WHERE no longer matches. A row carrying `committed_at` is
-      // never taken over however old it is — the write behind it committed, so re-running it
+      // never taken over however old it is - the write behind it committed, so re-running it
       // would be the second bill this whole plugin exists to prevent.
       tryTakeover: async () => {
         const taken = await app.db.update(idempotencyKeys)
@@ -138,13 +138,13 @@ export default fp(async (app) => {
 
 /**
  * The `onSend` body, reached through this object rather than called directly so a test can
- * replace it with a no-op — that is how "the pod died between COMMIT and the response hooks"
+ * replace it with a no-op - that is how "the pod died between COMMIT and the response hooks"
  * is staged (idempotency.test.ts). Spying the bare function export would not do it: the hook's
  * own call resolves the module's local binding, not the namespace the test can see.
  *
  * It is now the *fallback*, not the record. A write that recorded itself inside its own
  * transaction is left completely alone; what is left for this hook is the outcomes no
- * transaction produced — a refusal (4xx), a 5xx or a 429 whose claim must go, and (in
+ * transaction produced - a refusal (4xx), a 5xx or a 429 whose claim must go, and (in
  * production only) a write whose response was not recorded inside its transaction. Every
  * statement it makes is guarded `committed_at is null`, so it can never overwrite or delete a
  * committed outcome.
@@ -188,14 +188,14 @@ const PURGE_BATCH = 10_000;
 /**
  * The nightly sweep (cli/purge.ts), a bounded batch at a time. One skipped run is a day of keys,
  * so this can meet a very large backlog, and a single unbounded DELETE would hold one transaction
- * and one set of row locks over the whole of it — blocking the writes that are inserting claims
+ * and one set of row locks over the whole of it - blocking the writes that are inserting claims
  * behind it, and building a rollback record that gets longer the further it gets. A loop commits
  * each batch, so a job killed halfway has already done half the work and tomorrow's run finishes
  * it.
  *
  * `ctid in (select ctid … limit n)` is how to say "any n of the matching rows": ctid is the
  * physical address of a tuple, so the subquery walks the index on expires_at and the delete goes
- * straight at those tuples. The loop stops on a batch that comes back short — the one signal that
+ * straight at those tuples. The loop stops on a batch that comes back short - the one signal that
  * the previous statement emptied the set.
  *
  * `batch` is a parameter so a test can make it smaller than the work and prove the loop; nothing

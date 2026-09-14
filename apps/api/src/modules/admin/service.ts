@@ -1,10 +1,10 @@
 // service.ts: the flow. Every mutation composes the `*Tx` cores in `apps/api/src/lib/
-// users-admin.ts` — the same rules the CLI's own `createUser`/`resetPassword`/`deactivateUser`/
-// `updateUserRoleLoc` enforce — rather than restating any of them (duplicate employee number,
+// users-admin.ts` - the same rules the CLI's own `createUser`/`resetPassword`/`deactivateUser`/
+// `updateUserRoleLoc` enforce - rather than restating any of them (duplicate employee number,
 // the role/location pairing, the password floor) here.
 //
 // One `withTransaction` per write, composing the account mutation and the `admin_actions` row
-// that records it — genuinely atomic, the ordinary rule every write in this codebase follows.
+// that records it - genuinely atomic, the ordinary rule every write in this codebase follows.
 // `emitChanged`/SSE is deliberately not called: no other module subscribes to the `"accounts"`
 // collection, so a live cross-tab refresh would serve a benefit only a second open admin session
 // would ever notice. The tab that made the change refreshes its own list through the ordinary
@@ -29,7 +29,7 @@ const toAdminUser = (u: UserRow): AdminUser => ({
   active: u.active, mustChangePassword: u.mustChangePassword, admin: u.admin,
 });
 
-/** A fresh, high-entropy temporary password — well past `MIN_PASSWORD_LENGTH` (10), shown to
+/** A fresh, high-entropy temporary password - well past `MIN_PASSWORD_LENGTH` (10), shown to
  *  the caller exactly once and never stored anywhere in this form. */
 const generatePassword = (): string => randomBytes(15).toString("base64url");
 
@@ -66,7 +66,7 @@ export function createAdminService(db: Db) {
         const row = await requireTx(tx, id);
         return {
           result: { ...toAdminUser(row), tempPassword }, changed: ["accounts"],
-          message: `${body.name} (${emp}) created — the temporary password shown above is not stored anywhere and will not be shown again`,
+          message: `${body.name} (${emp}) created - the temporary password shown above is not stored anywhere and will not be shown again`,
         };
       });
     },
@@ -80,7 +80,7 @@ export function createAdminService(db: Db) {
         const fresh = await requireTx(tx, id);
         return {
           result: { ...toAdminUser(fresh), tempPassword }, changed: ["accounts"],
-          message: `Password reset for ${fresh.name} (${fresh.empNo}) — shown above once, and their sessions are ended`,
+          message: `Password reset for ${fresh.name} (${fresh.empNo}) - shown above once, and their sessions are ended`,
         };
       });
     },
@@ -110,7 +110,7 @@ export function createAdminService(db: Db) {
       refuseSelf(claims, id, "change the role or location of");
       return withTransaction(db, async (tx) => {
         const row = await requireTx(tx, id);
-        if (row.admin) throw new RuleError(`Refused — ${row.name} (${row.empNo}) is a super admin, and a super admin has no role or location to change`);
+        if (row.admin) throw new RuleError(`Refused - ${row.name} (${row.empNo}) is a super admin, and a super admin has no role or location to change`);
         await updateUserRoleLocTx(tx, row.empNo, { role: body.role, loc: body.loc });
         await log(tx, claims.sub, "update_role_loc", { id, name: row.name }, { role: body.role, loc: body.loc });
         const fresh = await requireTx(tx, id);
@@ -119,8 +119,8 @@ export function createAdminService(db: Db) {
     },
 
     /** Permanent, and only for an account that has nothing to answer for: not the caller's own,
-     *  not a super admin, deactivated first (so every session is already over), and — decided by
-     *  `deleteUserTx`, from the database's own references — with no history anywhere. The row is
+     *  not a super admin, deactivated first (so every session is already over), and - decided by
+     *  `deleteUserTx`, from the database's own references - with no history anywhere. The row is
      *  locked first, so a reactivate racing this delete either lands before it (and is refused
      *  here) or finds nothing left to reactivate. */
     async remove(claims: AccessClaims, id: string): Promise<WriteResponse<AdminDeletedUser>> {
@@ -128,7 +128,7 @@ export function createAdminService(db: Db) {
       return withTransaction(db, async (tx) => {
         const row = await adminRepo.byIdForUpdate(tx, id);
         if (!row) throw new NotFoundError(`There is no account ${id}.`);
-        if (row.admin) throw new RuleError(`Refused — ${row.name} (${row.empNo}) is a super admin, and a super admin account is never deleted`);
+        if (row.admin) throw new RuleError(`Refused - ${row.name} (${row.empNo}) is a super admin, and a super admin account is never deleted`);
         if (row.active) throw new RuleError(`Deactivate ${row.name} (${row.empNo}) before deleting the account`);
         await deleteUserTx(tx, row);
         await log(tx, claims.sub, "delete", { id: null, name: row.name }, { emp: row.empNo });

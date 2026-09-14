@@ -36,8 +36,8 @@ export const reservations = pgTable("reservations", {
   itemKey: text("item_key").notNull().references(() => items.key),
   qty: qty("qty").notNull(),
   // Declared here without `.references()`: `tickets` is defined in movement.ts and importing it
-  // would close a TypeScript import cycle. The constraint itself is real — migration 0008 adds
-  // `reservations_ticket_fk` in SQL — it just cannot be said in Drizzle's own words.
+  // would close a TypeScript import cycle. The constraint itself is real - migration 0008 adds
+  // `reservations_ticket_fk` in SQL - it just cannot be said in Drizzle's own words.
   ticketId: text("ticket_id").notNull(),
   createdAt: ts("created_at").notNull().defaultNow(),
   releasedAt: ts("released_at"),

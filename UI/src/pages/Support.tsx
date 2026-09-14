@@ -26,18 +26,18 @@ const prioTone = (p: TicketPriority) => (p === "Urgent" ? "cr" : p === "Normal" 
 
 const FAQ = [
   ["Why can I not see another role's screens?",
-   "The portal only shows what your role may use. A page you cannot reach is not hidden — it is not yours. Ask your manager if you need access changed."],
+   "The portal only shows what your role may use. A page you cannot reach is not hidden - it is not yours. Ask your manager if you need access changed."],
   ["My stock number looks wrong after a sale.",
    "A made-to-order drink deducts its ingredients, not a finished unit, so milk and cups move rather than 'cappuccino'. A packaged item deducts one of itself."],
   ["The counter says an item is off but there is stock on the shelf.",
    "Something is either reserved against an open pick ticket, or the item has been switched off by hand. Product Availability names which of the two it is."],
   ["Someone else's change did not show up on my screen.",
-   "It should, within a second, without a reload — the portal keeps a live connection open for exactly that. If the header's status dot is not green, the connection has dropped and is retrying; a reload brings everything back either way."],
+   "It should, within a second, without a reload - the portal keeps a live connection open for exactly that. If the header's status dot is not green, the connection has dropped and is retrying; a reload brings everything back either way."],
 ];
 
 /** Which words this person may set on their own ticket from here, and what each one is called.
- *  Both halves come from `@rch/domain` — `mayUserSet` says the desk's three words are not the
- *  reporter's to write, the table says which are reachable from where it stands — so a button
+ *  Both halves come from `@rch/domain` - `mayUserSet` says the desk's three words are not the
+ *  reporter's to write, the table says which are reachable from where it stands - so a button
  *  the server would refuse is never drawn. Reopening is not among them: a reply does that. */
 const SETTABLE: { st: TicketStatus; label: string }[] = [
   { st: "Resolved", label: "Mark resolved" },
@@ -46,7 +46,7 @@ const SETTABLE: { st: TicketStatus; label: string }[] = [
 const offers = (from: TicketStatus, to: TicketStatus) =>
   mayUserSet(to) && canTransition(SUPPORT_TRANSITIONS, from, to);
 
-/** Customer care for the portal — every role has this screen. */
+/** Customer care for the portal - every role has this screen. */
 export default function Support() {
   const user = useApp((s) => s.user)!;
   const tickets = useApp((s) => s.tickets);
@@ -106,8 +106,8 @@ export default function Support() {
         { l: "Your open tickets", v: String(tickets.filter((t) => t.st !== "Closed" && t.st !== "Resolved").length), d: "raised by you" },
         { l: "Waiting on your reply", v: String(waiting), d: waiting ? "support has asked you something" : "nothing pending" },
         { l: "Resolved and closed", v: String(done), d: "your history" },
-        // There was a "Typical first reply · 22 min" tile here. Nothing measures it — no
-        // response time is recorded anywhere in the system — so it was a service level the
+        // There was a "Typical first reply · 22 min" tile here. Nothing measures it - no
+        // response time is recorded anywhere in the system - so it was a service level the
         // portal invented and then held itself to in front of the person waiting on it.
         { l: "Tickets you have raised", v: String(tickets.length), d: "all time" },
       ]} />
@@ -141,7 +141,7 @@ export default function Support() {
           <div style={{ height: 12 }} />
           <Field label="Subject">
             <input value={subject} onChange={(e) => setSubject(e.target.value)}
-              placeholder="One line — cash collected has stayed at zero all morning" />
+              placeholder="One line - cash collected has stayed at zero all morning" />
           </Field>
           <div style={{ height: 12 }} />
           <Field label="What happened"
@@ -162,7 +162,7 @@ export default function Support() {
               is paged, so this says so rather than leave somebody waiting on a call at 11 pm. */}
           <Alert tone="i" label="WHAT HAPPENS NEXT">
             The portal's admin sees your ticket the moment you send it, and their reply appears
-            here and on any other screen you have open. Nobody is paged — if it is stopping you
+            here and on any other screen you have open. Nobody is paged - if it is stopping you
             serving customers, mark it urgent and tell your manager as well.
           </Alert>
         </Card>
@@ -192,7 +192,7 @@ export default function Support() {
               onClick: () => openDrawer("sup", t.id),
               cells: [
                 // Every row was raised by the person reading it, so the id is the only thing
-                // worth carrying under the subject — the time has a column of its own now.
+                // worth carrying under the subject - the time has a column of its own now.
                 <>{t.subject}<small>{t.id}</small></>,
                 t.topic,
                 <span className="mini">{t.screen}</span>,
@@ -291,7 +291,7 @@ function SupportDrawer({ id }: DrawerProps) {
 
       {mayReply(st) ? (
         <Section title="Reply"
-          sub={st === "Resolved" ? "Replying puts it back with support — say so if the fix did not land." : undefined}>
+          sub={st === "Resolved" ? "Replying puts it back with support - say so if the fix did not land." : undefined}>
           <Field label="Your message">
             <textarea rows={4} value={reply} onChange={(e) => setReply(e.target.value)}
               placeholder="Add anything that would help support reproduce it…" />

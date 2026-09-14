@@ -25,7 +25,7 @@ describe("POST /shop-asks", () => {
     const b = r.json();
     expect(b.result).toMatchObject({ id: "ASK-063", from: "coffee", to: "kiosk", it: "water", qty: 24, st: "Asked", by: "Kavitha Raman", note: "Ran dry over the morning clinic." });
     expect(b.changed).toEqual(["shopAsks"]);
-    expect(b.message).toBe("ASK-063 sent to Snack Kiosk — they decide, not the manager");
+    expect(b.message).toBe("ASK-063 sent to Snack Kiosk - they decide, not the manager");
   });
 
   it("refuses the asker's own shop, a location that is not a shop, and no quantity", async () => {
@@ -50,7 +50,7 @@ describe("POST /shop-asks/:id/answer", () => {
     expect(b.result.ticket).toMatchObject({ req: "ASK-0060", from: "coffee", to: "kiosk", st: "Issued" });
     expect(b.result.ticket.lines).toEqual([{ it: "chips", qty: 6 }]);
     expect(b.changed).toEqual(["shopAsks", "tkt", "rsv"]);
-    expect(b.message).toBe(`ASK-0060 granted — ${b.result.ticket.id} issued for 6 nos to Snack Kiosk`);
+    expect(b.message).toBe(`ASK-0060 granted - ${b.result.ticket.id} issued for 6 nos to Snack Kiosk`);
 
     const held = await app.testDb!.db.select().from(reservations).where(eq(reservations.ticketId, b.result.ticket.id));
     expect(held[0]).toMatchObject({ loc: "coffee", itemKey: "chips", qty: 6, releasedAt: null });
@@ -60,7 +60,7 @@ describe("POST /shop-asks/:id/answer", () => {
   it("refuses more than was asked for rather than quietly trimming it", async () => {
     const r = await post("u1", "/shop-asks/ASK-0060/answer", { grant: 99 });
     expect(r.statusCode).toBe(422);
-    expect(r.json().error.message).toBe("Snack Kiosk asked for 6 nos — grant that or less");
+    expect(r.json().error.message).toBe("Snack Kiosk asked for 6 nos - grant that or less");
     expect((await app.inject({ method: "GET", url: "/api/v1/shop-asks", headers: await authHeaders(app, "u1") })).json()
       .find((a: { id: string }) => a.id === "ASK-0060").st).toBe("Asked");
   });
@@ -96,10 +96,10 @@ describe("POST /shop-asks/:id/answer", () => {
 
   it("serialises two answers to the same ask through the row lock, so only one can grant it", async () => {
     // Two clients first, or the pool hands the second the first's connection back once it is
-    // idle and they run one after the other — proving the transition table, not the lock
+    // idle and they run one after the other - proving the transition table, not the lock
     // (apps/api/src/lib/reservations.test.ts, and the plan's warm-pool rule).
     await warmPool(app.testDb!, 2);
-    // Coffee holds 9 chips — enough to cover both grants at once, so the balance lock's cover
+    // Coffee holds 9 chips - enough to cover both grants at once, so the balance lock's cover
     // check cannot be what refuses the second answer; only the row lock on the ask can be.
     const race = await given.shopAsk(app.testDb!.db, { from: "kiosk", to: "coffee", it: "chips", qty: 4, by: "u6" });
     const [a, b] = await Promise.all([
@@ -122,7 +122,7 @@ describe("POST /shop-asks/:id/decline", () => {
   it("needs a reason the other shop can read", async () => {
     const r = await post("u1", "/shop-asks/ASK-0060/decline", { reason: "  " });
     expect(r.statusCode).toBe(422);
-    expect(r.json().error.message).toBe("Give a reason — the other shop sees it");
+    expect(r.json().error.message).toBe("Give a reason - the other shop sees it");
   });
 
   it("declines with the reason, and issues no ticket", async () => {

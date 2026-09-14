@@ -88,7 +88,7 @@ describe("the account page", () => {
       "POST /api/v1/admin/users": () => {
         const made = account({ id: "u8", emp: "RC-4483", n: "Anitha R", e: "anitha.r@royalcare.in", loc: "rest", mustChangePassword: true });
         list = [...list, made];
-        return json({ result: { ...made, tempPassword: "one-time-pass-1" }, changed: ["accounts"], message: "Anitha R (RC-4483) created — the temporary password shown above is not stored anywhere and will not be shown again" });
+        return json({ result: { ...made, tempPassword: "one-time-pass-1" }, changed: ["accounts"], message: "Anitha R (RC-4483) created - the temporary password shown above is not stored anywhere and will not be shown again" });
       },
     });
     page = await mountPage();
@@ -183,7 +183,7 @@ describe("the account page", () => {
     serve({
       "GET /api/v1/admin/users": () => json([SUPER, DEEPA]),
       "GET /api/v1/admin/actions": () => json([]),
-      "DELETE /api/v1/admin/users/u6": () => json({ error: { code: "conflict", message: "Refused — Deepa Selvam (RC-4482) has records in the ledger; an account with history can only be deactivated" } }, 409),
+      "DELETE /api/v1/admin/users/u6": () => json({ error: { code: "conflict", message: "Refused - Deepa Selvam (RC-4482) has records in the ledger; an account with history can only be deactivated" } }, 409),
     });
     page = await mountPage();
     await press(page.button("Delete", page.row("RC-4482")));

@@ -33,7 +33,7 @@ describe("document readers", () => {
   });
   it("tickets, requisitions, purchase orders, GRNs, production, batches", async () => {
     // `readTickets` reads `document_history` like every other reader here, and the seeder replays
-    // the fixture's trail for tickets alongside the four it always replayed — so `hist` is
+    // the fixture's trail for tickets alongside the four it always replayed - so `hist` is
     // compared whole rather than stripped, and this is the one document type below that needs
     // no exception at all.
     expect(noTimes(await D.readTickets(t.db))).toEqual(noTimes(FX.seedTkt));
@@ -58,7 +58,7 @@ describe("document readers", () => {
     expect(noTimes(sup.tickets)).toEqual(noTimes(FX.seedTickets()));
     expect(sup.tickets[0].messages[0].id).toBe(FX.seedTickets()[0].messages[0].id);
     // The owners map comes off the same read of the same rows, so it covers exactly the tickets
-    // the list carries — that is the whole point of returning the pair together.
+    // the list carries - that is the whole point of returning the pair together.
     expect([...sup.owners.keys()].sort()).toEqual(sup.tickets.map((x) => x.id).sort());
     expect(sup.owners.get(FX.seedTickets()[0].id)).toBeTruthy();
     expect(noTimes(await D.readProductRequests(t.db))).toEqual(noTimes(FX.seedProductRequests()));
@@ -75,7 +75,7 @@ describe("document readers", () => {
     const names = await D.userNames(t.db);
     expect(names.size).toBeGreaterThan(0);
     // Doctor every name: if a reader fetched its own copy instead of using the map it was
-    // handed, a real name would surface in its output. Checked per collection — one boolean
+    // handed, a real name would surface in its output. Checked per collection - one boolean
     // across all eight would stay green with seven readers reverted.
     const doctored: D.UserNames = new Map([...names].map(([id, v]) => [id, { ...v, name: `~${id}` }]));
     const [req, prq, grn, pord, bills, sup, prod, asks] = await Promise.all([
@@ -96,7 +96,7 @@ describe("document readers", () => {
     onlyDoctored("product requests", prod.map((p) => p.by));
     onlyDoctored("shop asks", asks.map((a) => a.by));
   });
-  it("reads only the windowed bills' lines — a bill outside the window brings none of its own", async () => {
+  it("reads only the windowed bills' lines - a bill outside the window brings none of its own", async () => {
     // bill_lines is the one table that grows with every sale forever. A month-old bill and its
     // lines must both stay out of a seven-day read, or a busy year of them rides along with a
     // week on screen.

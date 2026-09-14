@@ -1,8 +1,8 @@
-// Reports: the two figures the browser cannot compute from its own snapshot — the central store's
+// Reports: the two figures the browser cannot compute from its own snapshot - the central store's
 // stock ledger, which needs the ledger's own moves, and a payer's credit for the calendar month,
 // which needs every outlet's bills and not the till's own seven days.
 //
-// service.ts: the flow. Neither read is a write, so there is no lock and no `emitChanged` here —
+// service.ts: the flow. Neither read is a write, so there is no lock and no `emitChanged` here -
 // and the ledger's arithmetic is `ledgerRow` in @rch/domain, not a sum written out again in this
 // file. The SQL adds up; the domain decides what the columns mean.
 //
@@ -23,7 +23,7 @@ export function createReportsService(db: Db) {
      * One location's ledger over the last `days`: opening, received, issued, closing, per item.
      *
      * The browser had no stock moves at all, so its opening balance was today's closing worked
-     * backwards through goods receipts and collected tickets — arithmetic a withdrawn ticket
+     * backwards through goods receipts and collected tickets - arithmetic a withdrawn ticket
      * walked by exactly the quantity it never moved. This sums the moves either side of the
      * window instead, which makes the closing column the same number `stock_balances` carries
      * and the same number `db:rebuild-balances` arrives at from the other direction.
@@ -38,7 +38,7 @@ export function createReportsService(db: Db) {
       // It does **not** make the three agree with each other, and the caveat this comment has
       // always carried still stands: Postgres reads at READ COMMITTED, so each statement takes
       // its own snapshot and a write can still land between them. The worst case is a balance
-      // created in that gap — it lands in one of the three and not the others, and the row this
+      // created in that gap - it lands in one of the three and not the others, and the row this
       // builds for it comes out all zeros (opening, recd, issued and closing alike). That is a
       // correct answer, not a torn one, and this report holds no lock because it promises
       // nothing for anyone else to be torn against. `repeatable read` would close the gap; it is
@@ -50,7 +50,7 @@ export function createReportsService(db: Db) {
         carried: await reportsRepo.carriedAt(tx, q.loc),
       }));
       // Every item this location has ever carried, so a line that opened at 40 and moved nothing
-      // still appears — the shelf is there whether or not this window touched it.
+      // still appears - the shelf is there whether or not this window touched it.
       const keys = [...new Set([...before.keys(), ...inWindow.keys(), ...carried])].sort();
       const rows = keys.map((it) => {
         const w = inWindow.get(it) ?? { recd: 0, issued: 0 };
@@ -64,7 +64,7 @@ export function createReportsService(db: Db) {
     /**
      * What one payer has put on credit this calendar month, and how much room is left.
      *
-     * The number is `creditTakenThisMonth` — the same query `POST /bills` refuses on, in
+     * The number is `creditTakenThisMonth` - the same query `POST /bills` refuses on, in
      * `apps/api/src/lib/credit.ts` so there is one of it. No lock is taken: the sale's
      * `pg_advisory_xact_lock` belongs to the sale, and a report holding it would put every till
      * behind whoever opened the credit screen.

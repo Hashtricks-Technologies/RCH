@@ -21,7 +21,7 @@ describe("seedGuard", () => {
   it("refuses --allow-production on its own and names the flag that replaced it", () => {
     expect(at("production", ["--allow-production"])).toEqual({
       exit: 2,
-      message: "Refusing to seed rch: --allow-production is not enough on its own — the chart sets NODE_ENV=production in every pod, so pass --yes-seed rch to say which database you mean.",
+      message: "Refusing to seed rch: --allow-production is not enough on its own - the chart sets NODE_ENV=production in every pod, so pass --yes-seed rch to say which database you mean.",
     });
   });
 

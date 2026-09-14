@@ -12,8 +12,8 @@ export const billStatus = (pay: string): { label: string; tone: Tone } => {
 /**
  * Where the money for a bill actually ends up. Three places, not two:
  *  - `drawer`  cash notes the operator physically holds and hands over at shift end
- *  - `bank`    card and UPI — taken at the till, but settled to the hospital account
- *  - `account` patient, staff and department bills — billed value, nothing was collected
+ *  - `bank`    card and UPI - taken at the till, but settled to the hospital account
+ *  - `account` patient, staff and department bills - billed value, nothing was collected
  * Only `drawer` may be added to the opening float; the other two are billed, not banked
  * in the till, and mixing them is what makes a shift's cash figure read wrong.
  */
@@ -24,7 +24,7 @@ export const settlementOf = (pay: string): Settlement =>
 
 // ---- bill void ----
 /** The hospital's own calendar day a bill belongs to, or `""` when the row carries no instant
- *  to read it off — the fixtures the suites seed from hold display strings, not instants. */
+ *  to read it off - the fixtures the suites seed from hold display strings, not instants. */
 export const billDay = (b: Dated<Bill>): string => (b.iso ? istDate(new Date(b.iso)) : "");
 
 /** Whether the manager's Void button belongs on this bill. A preview of the server's rule and

@@ -1,6 +1,6 @@
 import { useState } from "react";
 // `lib/selectors`'s own `avail` narrows its location to a `LocKey`, which is exactly the five
-// places an operator works — and this form has to reach the sixth, the rejected-goods shelf,
+// places an operator works - and this form has to reach the sixth, the rejected-goods shelf,
 // because that is the one shelf nothing else in the system can ever take stock off again. So
 // the same domain function the selector delegates to is called here directly, unnarrowed.
 import { avail as freeAt, REASON_LABEL } from "@rch/domain";
@@ -14,16 +14,16 @@ import { registerDrawer, type DrawerProps } from "../drawers";
 import type { AdjustReason, StockLoc } from "../types";
 
 /** The picker's order, and the one line of help under each choice. The **words** come from
- *  `REASON_LABEL` in `@rch/domain` — the same table the server signs an adjustment's trail with,
+ *  `REASON_LABEL` in `@rch/domain` - the same table the server signs an adjustment's trail with,
  *  so the register and the document's history cannot end up describing it differently. Only the
  *  hints are the browser's, because a trail has nothing to explain. */
 export const REASONS: { r: AdjustReason; hint: string }[] = [
   { r: "wastage", hint: "Spoiled, went over, or was thrown away" },
   { r: "breakage", hint: "Dropped, spilt or damaged in handling" },
   { r: "expired", hint: "Past its best-before and taken off the shelf" },
-  { r: "count", hint: "A physical count found something else — correct the books to it" },
+  { r: "count", hint: "A physical count found something else - correct the books to it" },
   { r: "returned_to_vendor", hint: "Sent back against a goods receipt that was turned away" },
-  { r: "other", hint: "Anything else — say what happened in the note" },
+  { r: "other", hint: "Anything else - say what happened in the note" },
 ];
 
 /** A line as the form holds it: the item, the direction the operator chose, and the magnitude
@@ -37,8 +37,8 @@ const blankLine = (it: string): Line => ({ it, dir: "down", qty: "" });
  * The one form behind all three doors: the store keeper's own screen, the manager's drawer over
  * an outlet, and the kitchen's write-off button.
  *
- * It previews the free stock beside every line — what is on the shelf less what a ticket is
- * holding, which is the same measure the server refuses on — but it decides nothing. The cover
+ * It previews the free stock beside every line - what is on the shelf less what a ticket is
+ * holding, which is the same measure the server refuses on - but it decides nothing. The cover
  * check, the fold of a repeated item and the scope of the caller's role are all the server's,
  * and a refusal leaves everything typed exactly where it was.
  */
@@ -58,9 +58,9 @@ export default function AdjustmentForm({ locs, fixedLoc }: { locs: [StockLoc, ..
 
   const at = fixedLoc ?? loc;
   // `IT` is a registry replaced in place by a refetch, so the list is built during render and
-  // pinned to `catalogVersion` — the signal that says a product was added.
+  // pinned to `catalogVersion` - the signal that says a product was added.
   void catalogVersion;
-  // `held` keeps a retired line the shelf still carries — that stock is exactly the work the
+  // `held` keeps a retired line the shelf still carries - that stock is exactly the work the
   // retirement is waiting on, and writing it off is how the retirement finishes (`store/Stock.tsx`
   // makes the same call). `rest` is the picker of everything *else*, so it reads `activeItems()`:
   // offering to correct a shelf for a product the hospital stopped carrying, and that this
@@ -83,7 +83,7 @@ export default function AdjustmentForm({ locs, fixedLoc }: { locs: [StockLoc, ..
   const signed = (l: Line) => (l.dir === "down" ? -1 : 1) * (Number(l.qty) || 0);
   const wouldOverdraw = lines.filter((l) => l.dir === "down" && Number(l.qty) > free(l.it));
   // No length check in front: `every` is already `true` for an empty register, which is the
-  // same answer — there is nothing here to save.
+  // same answer - there is nothing here to save.
   const nothing = lines.every((l) => signed(l) === 0);
 
   const save = async () => {
@@ -94,7 +94,7 @@ export default function AdjustmentForm({ locs, fixedLoc }: { locs: [StockLoc, ..
       lines: lines.map((l) => ({ it: l.it, qty: signed(l) })),
     });
     setBusy(false);
-    // Cleared only once the server has taken it — a refusal has to land on what was typed.
+    // Cleared only once the server has taken it - a refusal has to land on what was typed.
     if (ok) { setLines([]); setNote(""); }
   };
 
@@ -102,7 +102,7 @@ export default function AdjustmentForm({ locs, fixedLoc }: { locs: [StockLoc, ..
     <>
       <Alert tone="i" label="ON THE RECORD">
         An adjustment moves stock without a movement: nothing goes anywhere, the shelf is simply
-        corrected. It is posted against this document, with your name and the reason on it — which
+        corrected. It is posted against this document, with your name and the reason on it - which
         is what makes it different from the hand-written correction it replaces.
       </Alert>
 
@@ -208,7 +208,7 @@ export default function AdjustmentForm({ locs, fixedLoc }: { locs: [StockLoc, ..
         <Alert tone="c" label="MORE THAN IS FREE">
           {wouldOverdraw.map((l) => `${IT[l.it]?.n ?? l.it} (${fq(free(l.it), l.it)} ${U(l.it)} free)`).join(", ")}
           {" "}will be refused. What a pick ticket is holding is somebody else's promise, not this
-          shelf's to write off — cancel the ticket first if the stock is genuinely gone.
+          shelf's to write off - cancel the ticket first if the stock is genuinely gone.
         </Alert>
       )}
 
@@ -224,8 +224,8 @@ export default function AdjustmentForm({ locs, fixedLoc }: { locs: [StockLoc, ..
  * The same form behind a drawer, pinned to one shelf: `openDrawer("adjstock", loc)` names the
  * location in the drawer's own id.
  *
- * Registered here rather than in either screen because two roles open it — the outlet manager
- * from Items & Stock and the kitchen from its own stock screen — and a second registration of
+ * Registered here rather than in either screen because two roles open it - the outlet manager
+ * from Items & Stock and the kitchen from its own stock screen - and a second registration of
  * one key is a second copy to keep in step. Each role's `index.tsx` imports this file for the
  * side effect, exactly as it imports its own drawer modules.
  */
@@ -233,7 +233,7 @@ function AdjustStockDrawer({ id }: DrawerProps) {
   const loc = id as StockLoc;
   return (
     <DrawerFrame
-      title={`Adjust stock — ${LOC[loc]?.n ?? loc}`}
+      title={`Adjust stock - ${LOC[loc]?.n ?? loc}`}
       sub={LOC[loc] ? `${LOC[loc].c} · ${LOC[loc].cc}` : undefined}
     >
       <AdjustmentForm locs={[loc]} fixedLoc={loc} />

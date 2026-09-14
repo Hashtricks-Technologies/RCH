@@ -7,7 +7,7 @@ export type * from "@rch/contract";
  * screens print.
  *
  * `api/wire.ts` turns every ISO stamp on the wire into the `"HH:MM"` the tables have always
- * shown, and for a long time that was all it kept — which left the browser unable to answer two
+ * shown, and for a long time that was all it kept - which left the browser unable to answer two
  * questions it asks on every screen. "Is this today?" became "is this in the last seven days?",
  * because `GET /bills` returns seven and nothing filtered them; and "which is the latest?"
  * became a comparison of `"22:00"` against `"09:00"`, which puts yesterday's last bill above
@@ -17,5 +17,5 @@ export type * from "@rch/contract";
 export type Dated<T> = T & { iso: string };
 /** The same, for a document's trail: each entry keeps its own instant. */
 export type Trailed<T extends { hist: HistEntry[] }> = Omit<T, "hist"> & { hist: Dated<HistEntry>[] };
-/** A document that is both — nearly every one of them. */
+/** A document that is both - nearly every one of them. */
 export type DatedDoc<T extends { hist: HistEntry[] }> = Dated<Trailed<T>>;

@@ -20,7 +20,7 @@ const hdr = async (id: string) => ({ ...(await authHeaders(app, id)), "idempoten
 const post = async (user: string, url: string, payload: Record<string, unknown>) =>
   app.inject({ method: "POST", url: `/api/v1${url}`, headers: await hdr(user), payload });
 
-/** The documents are read back through `GET /snapshot`, which has been there since Phase 1 —
+/** The documents are read back through `GET /snapshot`, which has been there since Phase 1 -
  *  the six standalone procurement GETs land with the reads task and are asserted in its suite. */
 const snap = async (user = "u5") => (await app.inject({ method: "GET", url: "/api/v1/snapshot", headers: await authHeaders(app, user) })).json();
 const prqs = async () => (await snap()).prq;
@@ -70,7 +70,7 @@ describe("POST /purchase-orders/:id/receive", () => {
     expect(b.result.grns[1].id).toBe(grnId(id, 2));
     expect(b.result.grns[0]).toMatchObject({ po: id, it: "milk", qty: 80, rejected: 0, batch: "AAV-8893", dc: "DC-88214", by: "Suresh Muthu" });
     expect(b.changed).toEqual(["po", "grn", "stock"]);
-    expect(b.message).toBe("Booked into Central Store — 2 batch(es) against DC-88214");
+    expect(b.message).toBe("Booked into Central Store - 2 batch(es) against DC-88214");
 
     expect(await onHand("store", "milk")).toBeCloseTo(before.milk + 80, 3);
     expect(await onHand("store", "butter")).toBeCloseTo(before.butter + 6, 3);
@@ -86,7 +86,7 @@ describe("POST /purchase-orders/:id/receive", () => {
     const b = (await post("u3", `/purchase-orders/${id}/receive`, { ...doc, lines: [good(120, { rejected: 12, mrp: 20 })] })).json();
     expect(b.result.grns[0]).toMatchObject({ qty: 108, rejected: 12 });
     expect(b.result.po.lines[0]).toMatchObject({ recv: 120, rejected: 12 });
-    expect(b.message).toBe("Booked into Central Store — 108 nos accepted, 12 nos rejected");
+    expect(b.message).toBe("Booked into Central Store - 108 nos accepted, 12 nos rejected");
 
     expect(await onHand("store", "water")).toBeCloseTo(store0 + 108, 3);
     expect(await quarantined("water")).toBeCloseTo(q0 + 12, 3);
@@ -100,12 +100,12 @@ describe("POST /purchase-orders/:id/receive", () => {
 
     const b = (await post("u3", `/purchase-orders/${id}/receive`, { ...doc, lines: [good(120, { rejected: 120, mrp: 20 })] })).json();
     expect(b.result.grns[0]).toMatchObject({ qty: 0, rejected: 120 });
-    expect(b.message).toBe("Booked into Central Store — 0 nos accepted, 120 nos rejected");
-    // Nothing was taken in, so the order is not filled — the vendor still owes all 120.
+    expect(b.message).toBe("Booked into Central Store - 0 nos accepted, 120 nos rejected");
+    // Nothing was taken in, so the order is not filled - the vendor still owes all 120.
     expect(b.result.po.st).toBe("Partially received");
 
     expect(await quarantined("water")).toBeCloseTo(q0 + 120, 3);
-    // No accept move for a line that took in nothing — a zero-qty move is not a movement.
+    // No accept move for a line that took in nothing - a zero-qty move is not a movement.
     const mine = await app.testDb!.db.select().from(stockMoves).where(eq(stockMoves.refId, b.result.grns[0].id));
     expect(mine.map((m) => [m.kind, m.loc, m.qty])).toEqual([["grn_reject", "quarantine", 120]]);
   });
@@ -117,7 +117,7 @@ describe("POST /purchase-orders/:id/receive", () => {
 
     const b = (await post("u3", `/purchase-orders/${id}/receive`, { ...doc, lines: [good(120, { rejected: 120, mrp: 20 })] })).json();
     expect(b.result.po.st).toBe("Partially received");
-    // The arrival is still on the line — the paperwork records what turned up at the door — but
+    // The arrival is still on the line - the paperwork records what turned up at the door - but
     // none of it reached the shelf, so none of it counts towards covering the order.
     expect(b.result.po.lines[0]).toMatchObject({ recv: 120, rejected: 120 });
     const mine = await app.testDb!.db.select().from(stockMoves).where(eq(stockMoves.refId, b.result.grns[0].id));
@@ -143,7 +143,7 @@ describe("POST /purchase-orders/:id/receive", () => {
     expect(first.result.po.st).toBe("Partially received");
     expect(first.result.po.lines[0]).toMatchObject({ recv: 120, rejected: 12 });
 
-    // 132 will have arrived in all — gross, that is past the 2% tolerance; net of the twelve
+    // 132 will have arrived in all - gross, that is past the 2% tolerance; net of the twelve
     // sent back it is exactly the 120 ordered, which is what the vendor is replacing.
     const second = (await post("u3", `/purchase-orders/${id}/receive`, { ...doc, dc: "DC-89001", lines: [good(12, { mrp: 20 })] }));
     expect(second.statusCode, second.body).toBe(200);
@@ -200,7 +200,7 @@ describe("POST /purchase-orders/:id/receive", () => {
     const count = await moveCount();
     const r = await post("u3", `/purchase-orders/${id}/receive`, { ...doc, lines: [good(123, { mrp: 20 })] });
     expect(r.statusCode).toBe(422);
-    expect(r.json().error.message).toBe("Real Juice 200ml — 123 exceeds the ordered 120 by more than 2%; hold it for purchase approval");
+    expect(r.json().error.message).toBe("Real Juice 200ml - 123 exceeds the ordered 120 by more than 2%; hold it for purchase approval");
     expect(await moveCount()).toBe(count);
     expect(await app.testDb!.db.select().from(grns).where(eq(grns.poId, id))).toHaveLength(0);
 
@@ -211,7 +211,7 @@ describe("POST /purchase-orders/:id/receive", () => {
     const { id } = await ordered([{ it: "juice", qty: 120 }]);
     await post("u3", `/purchase-orders/${id}/receive`, { ...doc, lines: [good(100, { mrp: 20 })] });
     expect((await post("u3", `/purchase-orders/${id}/receive`, { ...doc, lines: [good(23, { mrp: 20 })] })).json().error.message)
-      .toBe("Real Juice 200ml — 123 exceeds the ordered 120 by more than 2%; hold it for purchase approval");
+      .toBe("Real Juice 200ml - 123 exceeds the ordered 120 by more than 2%; hold it for purchase approval");
   });
 
   it("refuses a line without a batch, without dates, with them the wrong way round, or already expired", async () => {
@@ -219,12 +219,12 @@ describe("POST /purchase-orders/:id/receive", () => {
     const say = async (over: Record<string, unknown>) => (await post("u3", `/purchase-orders/${id}/receive`, { ...doc, lines: [good(10, over)] })).json().error.message;
     expect(await say({ batch: "  " })).toBe("Milk 1L (toned) needs its batch or lot number");
     expect(await say({ exp: "" })).toBe("Milk 1L (toned) needs a manufacturing and an expiry date");
-    expect(await say({ mfg: "2027-01-01", exp: "2026-12-01" })).toBe("Milk 1L (toned) — expiry cannot fall on or before the manufacturing date");
+    expect(await say({ mfg: "2027-01-01", exp: "2026-12-01" })).toBe("Milk 1L (toned) - expiry cannot fall on or before the manufacturing date");
     // Both dates are the hospital's, not the host's: vitest runs at TZ=UTC and IST is 5½ hours
     // ahead of it, so a "today" taken off toISOString() is yesterday to the server for the last
-    // five and a half hours of every UTC day — and the same-day case below would fail there.
+    // five and a half hours of every UTC day - and the same-day case below would fail there.
     const yesterday = istDate(new Date(Date.now() - 86400_000));
-    expect(await say({ mfg: "2020-01-01", exp: yesterday })).toBe(`Milk 1L (toned) — batch AAV-8893 has already expired; do not book it in`);
+    expect(await say({ mfg: "2020-01-01", exp: yesterday })).toBe(`Milk 1L (toned) - batch AAV-8893 has already expired; do not book it in`);
     // and a batch expiring today is still fit to sell
     expect((await post("u3", `/purchase-orders/${id}/receive`, { ...doc, lines: [good(10, { mfg: "2020-01-01", exp: istDate(new Date()) })] })).statusCode).toBe(200);
   });
@@ -232,9 +232,9 @@ describe("POST /purchase-orders/:id/receive", () => {
   it("refuses a printed MRP below the shelf price, and a rejection larger than the delivery", async () => {
     const { id } = await ordered([{ it: "juice", qty: 120 }]);
     expect((await post("u3", `/purchase-orders/${id}/receive`, { ...doc, lines: [good(120, { mrp: 15 })] })).json().error.message)
-      .toBe("Real Juice 200ml — printed MRP ₹15.00 is below the shelf price; reprice before selling");
+      .toBe("Real Juice 200ml - printed MRP ₹15.00 is below the shelf price; reprice before selling");
     expect((await post("u3", `/purchase-orders/${id}/receive`, { ...doc, lines: [good(120, { mrp: 20, rejected: 130 })] })).json().error.message)
-      .toBe("Real Juice 200ml — rejected quantity cannot exceed what arrived");
+      .toBe("Real Juice 200ml - rejected quantity cannot exceed what arrived");
   });
 
   it("refuses a receipt with no delivery note, with nothing on it, or against a closed order", async () => {
@@ -247,20 +247,20 @@ describe("POST /purchase-orders/:id/receive", () => {
       .toBe("Give a line for each of the 1 lines on this order");
     const draft = await given.po(app.testDb!.db, { lines: [{ it: "milk", qty: 80 }] });
     expect((await post("u3", `/purchase-orders/${draft}/receive`, { ...doc, lines: [good(10)] })).json().error.message)
-      .toBe(`${draft} is draft — nothing can be booked against it`);
+      .toBe(`${draft} is draft - nothing can be booked against it`);
   });
 
   it("refuses a rejection with nothing delivered against it, and books nothing", async () => {
     // A line with recv: 0 and rejected > 0 has no arrival for the rejection to be part of.
-    // Before this rule, both loops below skipped such a line on `recv > 0` — the second line
-    // here — and it booked nothing and said nothing, silently dropping what the store keeper
+    // Before this rule, both loops below skipped such a line on `recv > 0` - the second line
+    // here - and it booked nothing and said nothing, silently dropping what the store keeper
     // typed. The first line still arrives normally so the "enter what arrived" guard passes and
     // this rule is what actually catches it.
     const { id } = await ordered([{ it: "milk", qty: 80 }, { it: "butter", qty: 6 }]);
     const count = await moveCount();
     const r = await post("u3", `/purchase-orders/${id}/receive`, { ...doc, lines: [good(10), good(0, { rejected: 5 })] });
     expect(r.statusCode).toBe(422);
-    expect(r.json().error.message).toBe("Butter, salted — a rejected quantity needs an arrival to be rejected from");
+    expect(r.json().error.message).toBe("Butter, salted - a rejected quantity needs an arrival to be rejected from");
     expect(await moveCount()).toBe(count);
     expect(await app.testDb!.db.select().from(grns).where(eq(grns.poId, id))).toHaveLength(0);
   });
@@ -301,7 +301,7 @@ describe("POST /purchase-orders/:id/close-short", () => {
     expect(b.result).toMatchObject({ st: "Received", shortNote: "Vendor cannot deliver the balance" });
     expect(b.result.hist.at(-1)).toMatchObject({ s: "Closed short", who: "Latha Narayanan" });
     expect(b.changed).toEqual(["po", "prq"]);
-    expect(b.message).toBe(`${id} closed short — the undelivered balance is back on the procurement list`);
+    expect(b.message).toBe(`${id} closed short - the undelivered balance is back on the procurement list`);
     expect(await pending(prq, 0)).toBe(20);
   });
 
@@ -322,10 +322,10 @@ describe("POST /purchase-orders/:id/close-short", () => {
       .toBe("Give a reason for closing this order short");
     const draft = await given.po(app.testDb!.db, { lines: [{ it: "milk", qty: 80 }] });
     expect((await post("u5", `/purchase-orders/${draft}/close-short`, { reason: "x" })).json().error.message)
-      .toBe(`${draft} is draft — only a partly received order can be closed short`);
+      .toBe(`${draft} is draft - only a partly received order can be closed short`);
     await post("u5", `/purchase-orders/${id}/close-short`, { reason: "x" });
     expect((await post("u5", `/purchase-orders/${id}/close-short`, { reason: "x" })).json().error.message)
-      .toBe(`${id} is received — only a partly received order can be closed short`);
+      .toBe(`${id} is received - only a partly received order can be closed short`);
   });
 
   it("refuses to close an order short when nothing has been received against it yet", async () => {
@@ -334,7 +334,7 @@ describe("POST /purchase-orders/:id/close-short", () => {
       .where(and(eq(requisitionLines.requisitionId, prq), eq(requisitionLines.lineNo, 0)));
     const r = (await post("u5", `/purchase-orders/${id}/close-short`, { reason: "Vendor cannot deliver" }));
     expect(r.statusCode).toBe(422);
-    expect(r.json().error.message).toBe(`${id} is ordered — only a partly received order can be closed short`);
+    expect(r.json().error.message).toBe(`${id} is ordered - only a partly received order can be closed short`);
 
     const after = await app.testDb!.db.select().from(requisitionLines)
       .where(and(eq(requisitionLines.requisitionId, prq), eq(requisitionLines.lineNo, 0)));

@@ -13,12 +13,12 @@ beforeEach(async () => { await truncateAll(t.db); await seedDatabase(t.db, { pas
 describe("allocateTicket + writeTicket", () => {
   it("continues the visible series, keeps the code on the row alone, and reserves the lines", async () => {
     const tkt = await t.db.transaction(async (tx) => {
-      // Ids first, balance rows second — the caller would take the locks between these two.
+      // Ids first, balance rows second - the caller would take the locks between these two.
       const no = await allocateTicket(tx);
       return writeTicket(tx, { refType: "request", refId: "REQ-2026-0911", from: "store", to: "coffee", lines: [{ it: "milk", qty: 12 }], by: "u3" }, no);
     });
     expect(tkt.id).toBe("TKT-0441");                  // SEQUENCE_START.tkt is 441
-    // The code is drawn at random and its only home is the row — nothing derives it from the
+    // The code is drawn at random and its only home is the row - nothing derives it from the
     // ticket number, so the only way to learn it is to be shown it. What comes back to the
     // caller is blank, because the caller is the location the ticket leaves from.
     const [row] = await t.db.select().from(tickets).where(eq(tickets.id, "TKT-0441"));

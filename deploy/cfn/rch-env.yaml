@@ -1,12 +1,12 @@
 AWSTemplateFormatVersion: "2010-09-09"
 # One template, one stack per environment. The first environment (dev, imported from the
-# CLI-built resources) OWNS the resources that are account- or VPC-wide singletons — the DB
-# subnet group, both ECR repositories, the OIDC provider and the GitHub deploy role — because
+# CLI-built resources) OWNS the resources that are account- or VPC-wide singletons - the DB
+# subnet group, both ECR repositories, the OIDC provider and the GitHub deploy role - because
 # AWS itself will not let a second stack create a same-named role, repository, subnet group or
 # provider. A later environment's stack (staging, prod) does not recreate them; it imports their
 # identifiers with Fn::ImportValue from the exports this stack (Env=dev) publishes below.
-# Everything else — the DB instance and its parameter group, its own security group, the Secrets
-# Manager secret, the ACM certificate, the CAA record and the uptime health check — is genuinely
+# Everything else - the DB instance and its parameter group, its own security group, the Secrets
+# Manager secret, the ACM certificate, the CAA record and the uptime health check - is genuinely
 # per-environment and every stack creates its own.
 #
 # The DB SECURITY GROUP used to be on the shared list and no longer is. dev's `rch-rds` still
@@ -14,14 +14,14 @@ AWSTemplateFormatVersion: "2010-09-09"
 # admitting the EKS node group and nothing else, because a shared VPC-wide rule in front of a
 # hospital's billing database is not a rule.
 Description: >-
-  RCH environment resources — everything the account owner created by hand with the AWS CLI
+  RCH environment resources - everything the account owner created by hand with the AWS CLI
   before this template existed, plus what the audit added: the Postgres instance with its
   parameter group, subnet group and per-environment security group, the two ECR repositories and
   their lifecycle policies, the GitHub Actions OIDC provider and deploy role, the per-environment
   Secrets Manager secret, the ACM certificate and its CAA record, an optional ALB access-log
   bucket, and the uptime health check with its SNS topic. NOT here: the EKS cluster, its node
   groups and add-ons (deploy/eksctl/cluster.yaml), the load balancer controller, subnet tags or
-  any Kubernetes object — see deploy/cfn/README.md.
+  any Kubernetes object - see deploy/cfn/README.md.
 
 Parameters:
   GitHubRepoImmutable:
@@ -42,7 +42,7 @@ Parameters:
     Type: String
     AllowedValues: [dev, staging, prod]
     Description: >-
-      Which environment this stack is. Exactly one stack may be created with Env=dev — it is
+      Which environment this stack is. Exactly one stack may be created with Env=dev - it is
       the one that owns the shared account/VPC-wide resources (see the top-of-file note).
       staging and prod stacks import those from dev's exports instead of creating their own.
 
@@ -65,7 +65,7 @@ Parameters:
     Description: >-
       dev ONLY, and deliberately wide: the CIDR admitted to 5432 on dev's shared DB security
       group, normally the whole VPC (172.31.0.0/16). Everything else in that VPC can therefore
-      reach dev's database — an acceptable trade for dev, never for staging or production, which
+      reach dev's database - an acceptable trade for dev, never for staging or production, which
       build their own security group admitting NodeSecurityGroupId and nothing else. Leave empty
       on a staging or prod stack; nothing there reads it.
   NodeSecurityGroupId:
@@ -82,7 +82,7 @@ Parameters:
 
   SubnetIds:
     Type: List<AWS::EC2::Subnet::Id>
-    Description: Subnets for the DB subnet group (dev only — staging/prod import dev's subnet group).
+    Description: Subnets for the DB subnet group (dev only - staging/prod import dev's subnet group).
 
   DbInstanceClass:
     Type: String
@@ -94,7 +94,7 @@ Parameters:
     AllowedValues: ["true", "false"]
     Default: "false"
     Description: >-
-      RDS Multi-AZ. Taken directly from this parameter, not derived from Env — a Condition on
+      RDS Multi-AZ. Taken directly from this parameter, not derived from Env - a Condition on
       Env would bake in an assumption (e.g. "prod is always Multi-AZ") this template does not
       want to own; each environment's params file states its own choice explicitly.
 
@@ -102,7 +102,7 @@ Parameters:
     Type: String
     AllowedValues: ["true", "false"]
     Default: "false"
-    Description: RDS deletion protection. Same reasoning as DbMultiAZ — from the parameter, not from Env.
+    Description: RDS deletion protection. Same reasoning as DbMultiAZ - from the parameter, not from Env.
 
   DbBackupRetentionDays:
     Type: Number
@@ -116,7 +116,7 @@ Parameters:
     Description: >-
       Upper limit, in GiB, that RDS storage autoscaling may grow AllocatedStorage (20 GiB) to.
       0 omits the property entirely, which is autoscaling off and exactly what an instance that
-      has never had it set already looks like — that is what the imported dev stack passes so its
+      has never had it set already looks like - that is what the imported dev stack passes so its
       first verify change set stays empty. Any non-zero value must be at least AllocatedStorage;
       a ceiling equal to it is legal but buys no headroom, so give a real one (prod 100,
       staging 40) rather than 20.
@@ -127,7 +127,7 @@ Parameters:
     AllowedValues: [0, 1, 5, 10, 15, 30, 60]
     Description: >-
       RDS Enhanced Monitoring granularity, in seconds. 0 turns it off and leaves the monitoring
-      role uncreated; anything else creates the role and attaches it. 60 is the cheap end of on —
+      role uncreated; anything else creates the role and attaches it. 60 is the cheap end of on -
       per-second OS metrics on a burstable instance cost more in CloudWatch than they tell you.
 
   EnablePerformanceInsights:
@@ -150,10 +150,10 @@ Parameters:
     Description: >-
       Empty means this stack creates no access-log bucket and the chart's ingress writes no ALB
       access logs. A name creates the bucket, its 90-day lifecycle rule and the policy the load
-      balancer's log delivery needs, and publishes the name as an Output — which is the point at
+      balancer's log delivery needs, and publishes the name as an Output - which is the point at
       which deploy/chart/rch/values-prod.yaml may carry the access_logs.s3.* attributes again.
       The policy grants exactly AWSLogs/<this account>/*, AWS's documented shape, so the ingress
-      must NOT set access_logs.s3.prefix — a prefix moves every object to <prefix>/AWSLogs/... and
+      must NOT set access_logs.s3.prefix - a prefix moves every object to <prefix>/AWSLogs/... and
       the policy would have to name it too. S3 bucket names are global, so this needs a real,
       unused name (e.g. rch-alb-logs-<account>).
 
@@ -167,7 +167,7 @@ Parameters:
       bucket policy: AWS's current guidance is the service principal
       logdelivery.elasticloadbalancing.amazonaws.com, which the policy also grants, while the
       per-region account remains documented and supported for regions that existed before August
-      2022 — ap-south-1 among them. Both are granted because the failure mode is silent (an ALB
+      2022 - ap-south-1 among them. Both are granted because the failure mode is silent (an ALB
       that cannot write its logs reports nothing wrong and simply writes none), both are AWS-owned
       identities delivering the same objects, and both are scoped to the same AWSLogs prefix under
       this account. Change this id, not just the region, if the stack ever moves.
@@ -177,25 +177,25 @@ Parameters:
     Default: ""
     Description: >-
       Where the uptime alarm pages. Empty creates no SNS topic, no subscription and no alarm.
-      A real address creates all three and AWS emails a confirmation link that must be clicked —
+      A real address creates all three and AWS emails a confirmation link that must be clicked -
       an unconfirmed subscription is a topic that publishes into nothing.
 
   GitHubRepo:
     Type: String
     Default: Hashtricks-Technologies/RCH
-    Description: "owner/repo the GitHub Actions OIDC trust policy admits (environment claims only — see the trust policy's own comment)."
+    Description: "owner/repo the GitHub Actions OIDC trust policy admits (environment claims only - see the trust policy's own comment)."
 
   DbMasterPassword:
     Type: String
     NoEcho: true
     Description: >-
       RDS master password. CloudFormation's DBInstance import does not read back
-      MasterUserPassword — the property only needs to be present for the import to proceed, its
+      MasterUserPassword - the property only needs to be present for the import to proceed, its
       value is not compared against the live instance and is not applied to it. For the dev
       IMPORT, dev.params.json passes the literal placeholder "IMPORT" for exactly this reason
       (see deploy/cfn/README.md). For a fresh create (a future staging or prod stack), this is
       the real password that gets set, so that params file must carry the true value, never a
-      placeholder — NoEcho keeps it out of the console and CLI output either way, but it is
+      placeholder - NoEcho keeps it out of the console and CLI output either way, but it is
       still visible to anyone who can read the parameters file or call
       cloudformation:GetTemplateSummary/DescribeStacks with appropriate IAM rights, so treat the
       params file itself as a secret and do not commit it with a real password inside.
@@ -213,7 +213,7 @@ Conditions:
   HasAlertEmail: !Not [!Equals [!Ref AlertEmail, ""]]
   # Route 53 publishes AWS/Route53 HealthCheckStatus into us-east-1 and nowhere else, whatever
   # region the health check was created from. An alarm on it in ap-south-1 sits in
-  # INSUFFICIENT_DATA for ever, which is worse than no alarm — so the alarm is only declared when
+  # INSUFFICIENT_DATA for ever, which is worse than no alarm - so the alarm is only declared when
   # the stack itself is in us-east-1, and README.md carries the one-line put-metric-alarm for the
   # ordinary case, against the health check id this stack outputs.
   CreateUptimeAlarm: !And
@@ -222,7 +222,7 @@ Conditions:
 
 Resources:
   # ---------------------------------------------------------------------------------------
-  # Shared, VPC-wide — created once, by the dev stack only (Condition: IsDev). A staging or
+  # Shared, VPC-wide - created once, by the dev stack only (Condition: IsDev). A staging or
   # prod stack references these by Fn::ImportValue instead of declaring its own.
   # ---------------------------------------------------------------------------------------
 
@@ -246,7 +246,7 @@ Resources:
       # dev's rule is VPC-wide on purpose and is the reason this group is no longer shared:
       # staging and prod each build their own group admitting only the EKS node group (see
       # EnvDbSecurityGroup below) rather than importing this one. Narrowing dev the same way is a
-      # one-line change — swap this ingress for EnvDbSecurityGroup's — but dev is also where
+      # one-line change - swap this ingress for EnvDbSecurityGroup's - but dev is also where
       # someone port-forwards from a bastion or a laptop-in-the-VPC, which is why it stays open.
       SecurityGroupIngress:
         - IpProtocol: tcp
@@ -365,7 +365,7 @@ Resources:
       Description: GitHub Actions deploy role for RCH (ECR push, EKS deploy)
       MaxSessionDuration: 3600
       # Federated principal is built from account + partition rather than a GetAtt/Ref on
-      # GithubOidcProvider — the ARN is deterministic from the fixed URL, so this resolves the
+      # GithubOidcProvider - the ARN is deterministic from the fixed URL, so this resolves the
       # same way whether or not *this* stack is the one that created the provider.
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
@@ -380,7 +380,7 @@ Resources:
               StringLike:
                 token.actions.githubusercontent.com:sub:
                   # ENVIRONMENT claims only, deliberately. deploy.yml:27 puts an `environment:` on
-                  # every job that deploys, so a real deploy always presents one — and the
+                  # every job that deploys, so a real deploy always presents one - and the
                   # `production` environment is where the required reviewer lives. A
                   # `ref:refs/heads/production` subject beside it admits any workflow running on
                   # that branch that declares NO environment, which is exactly the approval gate
@@ -388,7 +388,7 @@ Resources:
                   # not already grant, and cost that.
                   # The organisation enforces GitHub's IMMUTABLE subject, so the token's sub reads
                   # repo:<org>@<org id>/<repo>@<repo id>:..., never the plain repo:<org>/<repo>:...
-                  # form — both are listed so a change of that setting cannot lock the deploy out.
+                  # form - both are listed so a change of that setting cannot lock the deploy out.
                   # CloudTrail's AssumeRoleWithWebIdentity event (userIdentity.userName) shows the
                   # exact sub a run presented, which is how this was found.
                   - !Sub "repo:${GitHubRepo}:environment:dev"
@@ -429,13 +429,13 @@ Resources:
                 Resource: "*"
 
   # ---------------------------------------------------------------------------------------
-  # Per-environment — every stack, dev/staging/prod alike, creates its own.
+  # Per-environment - every stack, dev/staging/prod alike, creates its own.
   # ---------------------------------------------------------------------------------------
 
   # staging and prod stopped importing dev's VPC-wide `rch-rds` group. A database admitting 5432
   # from 172.31.0.0/16 admits every instance anyone ever launches into the default VPC, and for
   # the one holding a hospital's billing that is not a rule, it is the absence of one. Each
-  # non-dev environment builds its own group admitting exactly the EKS node group — the only
+  # non-dev environment builds its own group admitting exactly the EKS node group - the only
   # thing that ever connects, since the API runs as pods on those nodes.
   EnvDbSecurityGroup:
     Type: AWS::EC2::SecurityGroup
@@ -458,7 +458,7 @@ Resources:
 
   # rds.force_ssl is a STATIC parameter: attaching this group to a running instance leaves it
   # pending-reboot until the instance is rebooted, so a stack update alone does not start
-  # enforcing TLS — README.md says so beside the command. log_min_duration_statement and
+  # enforcing TLS - README.md says so beside the command. log_min_duration_statement and
   # idle_in_transaction_session_timeout are dynamic and take effect as soon as they apply.
   DbParameterGroup:
     Type: AWS::RDS::DBParameterGroup
@@ -522,7 +522,7 @@ Resources:
       MaxAllocatedStorage: !If [StorageAutoscales, !Ref DbMaxAllocatedStorage, !Ref "AWS::NoValue"]
       # EngineVersion above pins 17.9. Leaving auto minor upgrade on lets AWS move the instance to
       # 17.10 in a maintenance window, and the very next change set then reads as drift on a
-      # property nobody edited — pin the version or let AWS choose it, not both.
+      # property nobody edited - pin the version or let AWS choose it, not both.
       AutoMinorVersionUpgrade: false
       EnableCloudwatchLogsExports:
         - postgresql
@@ -591,7 +591,7 @@ Resources:
   # ---------------------------------------------------------------------------------------
   # ALB access logs. Optional: empty AlbLogsBucketName creates none of this. The chart's
   # ingress may only carry access_logs.s3.enabled=true once a bucket with this exact policy
-  # exists — the load balancer controller reports a healthy ingress either way, and the ALB
+  # exists - the load balancer controller reports a healthy ingress either way, and the ALB
   # itself silently writes nothing, which is the worst of both.
   # ---------------------------------------------------------------------------------------
 
@@ -650,7 +650,7 @@ Resources:
               StringEquals:
                 aws:SourceAccount: !Ref "AWS::AccountId"
           # The legacy per-region ELB account, still documented and still supported for regions
-          # that existed before August 2022 — ap-south-1 is one. Granted alongside rather than
+          # that existed before August 2022 - ap-south-1 is one. Granted alongside rather than
           # instead of, because an ALB that cannot write its access logs reports nothing wrong and
           # writes none: a silent failure is not the thing to be minimal about. Both principals
           # are AWS-owned and both are scoped to the same prefix.
@@ -679,7 +679,7 @@ Resources:
 
   # /healthz is served at the root by the UI's nginx (deploy/nginx/default.conf.template), not
   # behind the ingress's /api rule, so this check exercises DNS, the ALB, the certificate and a
-  # UI pod in one request — everything between a phone on the ward and the app.
+  # UI pod in one request - everything between a phone on the ward and the app.
   # Gated on HasAlertEmail like the topic below it: a health check nobody is paged by is 50 cents
   # a month of nothing, and this file's style is that an empty parameter creates nothing.
   UptimeHealthCheck:
@@ -722,7 +722,7 @@ Resources:
       Protocol: email
       Endpoint: !Ref AlertEmail
 
-  # Only declared when this stack is in us-east-1 — see the CreateUptimeAlarm condition. In
+  # Only declared when this stack is in us-east-1 - see the CreateUptimeAlarm condition. In
   # ap-south-1 the health check above still exists and still reports in the Route 53 console;
   # README.md has the one put-metric-alarm that wires it to a topic from us-east-1.
   UptimeAlarm:
@@ -730,7 +730,7 @@ Resources:
     Condition: CreateUptimeAlarm
     Properties:
       AlarmName: !Sub "rch-${Env}-uptime"
-      AlarmDescription: !Sub "${HostName} failed its Route 53 health check — the app is unreachable from outside the cluster."
+      AlarmDescription: !Sub "${HostName} failed its Route 53 health check - the app is unreachable from outside the cluster."
       Namespace: AWS/Route53
       MetricName: HealthCheckStatus
       Dimensions:
@@ -758,7 +758,7 @@ Outputs:
     Value: !GetAtt Database.Endpoint.Port
 
   CertificateArn:
-    Description: ACM certificate ARN for HostName — feed to ingress.certificateArn in the Helm chart.
+    Description: ACM certificate ARN for HostName - feed to ingress.certificateArn in the Helm chart.
     Value: !Ref Certificate
 
   SecretArn:
@@ -774,7 +774,7 @@ Outputs:
     Value: !If [IsDev, !GetAtt EcrUi.RepositoryUri, !ImportValue rch-shared-ecr-ui-uri]
 
   GitHubDeployRoleArn:
-    Description: IAM role GitHub Actions assumes to deploy — feed to the AWS_ROLE_ARN repository secret.
+    Description: IAM role GitHub Actions assumes to deploy - feed to the AWS_ROLE_ARN repository secret.
     Value: !If [IsDev, !GetAtt GithubDeployRole.Arn, !ImportValue rch-shared-github-deploy-role-arn]
 
   OidcProviderArn:
@@ -785,7 +785,7 @@ Outputs:
     Description: >-
       The security group on THIS environment's database. dev's is the VPC-wide shared rch-rds
       group; staging and prod each carry their own, admitting the EKS node group only. No longer
-      exported for other stacks to import — that sharing is exactly what this stopped.
+      exported for other stacks to import - that sharing is exactly what this stopped.
     Value: !If [IsDev, !GetAtt DbSecurityGroup.GroupId, !GetAtt EnvDbSecurityGroup.GroupId]
 
   DbParameterGroupName:
@@ -795,7 +795,7 @@ Outputs:
   UptimeHealthCheckId:
     Condition: HasAlertEmail
     Description: >-
-      Route 53 health check id for HostName — the value the us-east-1 put-metric-alarm in
+      Route 53 health check id for HostName - the value the us-east-1 put-metric-alarm in
       deploy/cfn/README.md needs, since AWS/Route53 metrics are published only there.
     Value: !Ref UptimeHealthCheck
 
@@ -808,10 +808,10 @@ Outputs:
     Condition: CreateAlbLogsBucket
     Description: >-
       ALB access-log bucket. Until this exists, deploy/chart/rch/values-prod.yaml must NOT set
-      access_logs.s3.enabled — the ALB writes nothing and reports nothing wrong.
+      access_logs.s3.enabled - the ALB writes nothing and reports nothing wrong.
     Value: !Ref AlbLogsBucket
 
-  # Exports below exist only on the dev stack (Condition: IsDev) — they are what a later
+  # Exports below exist only on the dev stack (Condition: IsDev) - they are what a later
   # staging or prod stack's Fn::ImportValue calls above resolve against.
   DbSubnetGroupNameExport:
     Condition: IsDev

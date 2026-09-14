@@ -1,7 +1,7 @@
-# Values for the throwaway `helm install`/`helm upgrade` inside kind (CI only —
+# Values for the throwaway `helm install`/`helm upgrade` inside kind (CI only -
 # deploy/chart/rch/ci/install-test.sh). Points the chart at the in-cluster CI
 # Postgres (ci/postgres.yaml) and the two images the `images` job already
-# built and `kind load`ed as rch-api:ci / rch-ui:ci — no registry, no TLS, no
+# built and `kind load`ed as rch-api:ci / rch-ui:ci - no registry, no TLS, no
 # ingress controller or metrics stack available in a kind cluster.
 #
 # JWT_PRIVATE_KEY / JWT_PUBLIC_KEY are deliberately NOT set here: they are

@@ -9,10 +9,10 @@ import mark from "../assets/eateszy-mark.png";
 type Tab = "accounts" | "support";
 
 /**
- * The whole of an admin-flagged account's experience — a capability, not a role (root
+ * The whole of an admin-flagged account's experience - a capability, not a role (root
  * CLAUDE.md), so it gets no operational sidebar built from a `NAV[role]` that would not mean
  * anything for it. `App.tsx` sends such an account here regardless of what path it asked for,
- * and here is the only place it can ever reach — this file supplies the entire page, chrome
+ * and here is the only place it can ever reach - this file supplies the entire page, chrome
  * included, rather than being hosted inside `Shell`.
  *
  * Two tabs: staff accounts, and the support desk that answers every role's tickets.

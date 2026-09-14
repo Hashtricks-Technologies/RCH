@@ -7,7 +7,7 @@ export interface LedgerRow { it: string; opening: number; recd: number; issued: 
  * The ledger's one piece of arithmetic, written once because the server computes it and the
  * browser prints it.
  *
- * `before` is the sum of every signed move at this location before the window opened — the true
+ * `before` is the sum of every signed move at this location before the window opened - the true
  * opening balance, not a figure worked backwards from today's closing through receipts and
  * issues, which is what the browser had to do when it held no moves and what a cancelled ticket
  * or an adjustment quietly broke. `inWindow` is the window's signed moves: positive is received,

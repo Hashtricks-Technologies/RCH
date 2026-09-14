@@ -1,13 +1,13 @@
 # The RCH cluster, as eksctl builds it.
 #
-# WHAT THIS FILE IS THE SOURCE OF TRUTH FOR — and nothing else is:
+# WHAT THIS FILE IS THE SOURCE OF TRUTH FOR - and nothing else is:
 #   * the EKS cluster itself (name, region, version, the VPC and subnets it runs in, OIDC)
 #   * every managed node group: instance types, capacity type, sizes, labels, taints, volumes
 #   * every EKS add-on
 # The cluster was created with `eksctl create cluster -f` (RUNBOOK §15.1) and is still managed
 # that way. CloudFormation did not replace it.
 #
-# WHAT MOVED TO CLOUDFORMATION (deploy/cfn/rch-env.yaml, one stack per environment) — do not
+# WHAT MOVED TO CLOUDFORMATION (deploy/cfn/rch-env.yaml, one stack per environment) - do not
 # add any of it here:
 #   * RDS: the instance, its parameter group, subnet group and security group
 #   * both ECR repositories and their lifecycle policies
@@ -15,7 +15,7 @@
 #   * Secrets Manager, ACM, Route 53 records, the uptime health check, SNS, the ALB log bucket
 # RUNBOOK §15.5 says "environment resources are CloudFormation now" and means exactly that list.
 # The cluster is not an environment resource: one cluster serves every environment as a
-# namespace (`rch-dev`, `rch-staging`, `rch` — see the branch table in CLAUDE.md).
+# namespace (`rch-dev`, `rch-staging`, `rch` - see the branch table in CLAUDE.md).
 #
 # WHAT IS MANAGED BY NEITHER, and is a Helm install of its own (RUNBOOK §15.1): the AWS Load
 # Balancer Controller and its IRSA service account.
@@ -45,12 +45,12 @@ vpc:
 iam:
   withOIDC: true
 # The three EKS add-ons a cluster cannot run pods without. The first cluster came up without
-# coredns (eksctl's run was cut short after the control plane), and every pod's DNS — the API's
-# RDS lookup, the load balancer controller's AWS calls — failed until it was installed by hand.
+# coredns (eksctl's run was cut short after the control plane), and every pod's DNS - the API's
+# RDS lookup, the load balancer controller's AWS calls - failed until it was installed by hand.
 addons:
   # enableNetworkPolicy turns on the VPC CNI's network-policy agent, the enforcement the
   # chart's NetworkPolicies (deploy/chart/rch/templates/networkpolicy.yaml) need to be
-  # anything but inert — the exact key AWS documents for this add-on's configurationValues:
+  # anything but inert - the exact key AWS documents for this add-on's configurationValues:
   # https://docs.aws.amazon.com/eks/latest/userguide/cni-network-policy.html
   - name: vpc-cni
     configurationValues: '{"enableNetworkPolicy": "true"}'
@@ -59,12 +59,12 @@ addons:
   # metrics-server is not optional here even though nothing says so out loud: values-prod.yaml
   # turns on a HorizontalPodAutoscaler (api.hpa, 3→6 replicas on 70% CPU), and an HPA with no
   # metrics API to read reports `<unknown>/70%` and never scales at all. `kubectl top` is the
-  # other half of the same gap — RUNBOOK's first post-deploy checks cannot see a pod's CPU
+  # other half of the same gap - RUNBOOK's first post-deploy checks cannot see a pod's CPU
   # without it.
   - name: metrics-server
   # Container Insights: node, pod and container metrics plus container logs into CloudWatch.
   # The PrometheusRule the chart ships alerts on what the API says about itself; this is the
-  # layer underneath — a node running out of memory, a pod being OOMKilled, the logs of a pod
+  # layer underneath - a node running out of memory, a pod being OOMKilled, the logs of a pod
   # that has already been replaced. The agent needs to write to CloudWatch, hence the policy.
   - name: amazon-cloudwatch-observability
     attachPolicyARNs:
@@ -74,7 +74,7 @@ managedNodeGroups:
   # one UI pod with room to spare, and spot is ~70% off on-demand. A spot reclaim (two minutes'
   # notice) means a short outage in dev, which is the trade. dev and staging share this group;
   # neither values-dev.yaml nor values-staging.yaml sets a nodeSelector, so their pods land
-  # wherever there is room — including on ng-prod once it exists, which is fine, because it is
+  # wherever there is room - including on ng-prod once it exists, which is fine, because it is
   # the production pods that must not land HERE, not the other way round.
   - name: ng-spot
     instanceTypes: [t3.medium, t3a.medium]
@@ -98,15 +98,15 @@ managedNodeGroups:
   # hospital's billing on), three nodes, and one per availability zone so the spread constraint
   # has somewhere to spread to.
   #
-  # No taint. The label is what keeps production's pods here — values-prod.yaml sets
-  # `api.nodeSelector` and `ui.nodeSelector` to rch.io/tier: prod — and a taint would additionally
+  # No taint. The label is what keeps production's pods here - values-prod.yaml sets
+  # `api.nodeSelector` and `ui.nodeSelector` to rch.io/tier: prod - and a taint would additionally
   # keep everything ELSE off, including the DaemonSets (vpc-cni, kube-proxy, the CloudWatch
   # agent) that have to run on every node. A selector pins production in; a taint would have to
   # be tolerated by things that know nothing about this application.
   #
   # maxSize 6 is what the HPA's maxReplicas would need room for. Nothing autoscales the node
-  # group itself — there is no Cluster Autoscaler or Karpenter on this cluster (RUNBOOK §15.6
-  # says why not at dev's scale) — so growing past 3 nodes is `eksctl scale nodegroup` by hand.
+  # group itself - there is no Cluster Autoscaler or Karpenter on this cluster (RUNBOOK §15.6
+  # says why not at dev's scale) - so growing past 3 nodes is `eksctl scale nodegroup` by hand.
   - name: ng-prod
     instanceTypes: [t3.medium]
     spot: false

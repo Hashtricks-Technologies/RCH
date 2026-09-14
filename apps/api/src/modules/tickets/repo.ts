@@ -1,4 +1,4 @@
-// Tickets: SQL only. No rules, no transaction of its own — service.ts passes `tx` in.
+// Tickets: SQL only. No rules, no transaction of its own - service.ts passes `tx` in.
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import type { PordStatus, ReqStatus, ShopAskStatus, TktStatus } from "@rch/contract";
 import type { Tx } from "../../lib/db.js";
@@ -19,7 +19,7 @@ export const ticketsRepo = {
   /**
    * The transition guard's lock, not merely its read. Two windows pressing "Hand over" on one
    * ticket both see `Issued` without the `for update`, both pass `assertTransition` and both
-   * post `ticket_out` — the stock leaves twice. The lock is held to the end of the
+   * post `ticket_out` - the stock leaves twice. The lock is held to the end of the
    * transaction, so the second caller reads the status the first committed and is refused.
    *
    * The lines come along unlocked on purpose: they are written once when the ticket is issued
@@ -48,7 +48,7 @@ export const ticketsRepo = {
   /**
    * One more wrong code against this ticket. Written as `otp_attempts + 1` rather than from the
    * number the caller read, because the two are the same only while the row's own `for update`
-   * is held — and this is the one write on a handover that has to survive the refusal that
+   * is held - and this is the one write on a handover that has to survive the refusal that
    * follows it, so it must not depend on that being true a second time.
    */
   async countWrongOtp(tx: Tx, id: string): Promise<void> {
@@ -56,7 +56,7 @@ export const ticketsRepo = {
   },
 
   /**
-   * The request the ticket was raised against, locked the same way and for the same reason —
+   * The request the ticket was raised against, locked the same way and for the same reason -
    * the scan moves it on too. A shop transfer and a direct issue name a label rather than a
    * document, and a kitchen dispatch names a production order: none of them is a request, and
    * none of them has a row here.
@@ -99,7 +99,7 @@ export const ticketsRepo = {
   },
 
   /**
-   * The ask a shop-ask ticket was raised for, locked like every other document a write moves —
+   * The ask a shop-ask ticket was raised for, locked like every other document a write moves -
    * and taken *after* the ticket's own `for update` above, documents in one order, always. Only
    * called when the ticket's `ref_type` says there is one; `answer` (`modules/shopasks/service.ts`)
    * writes the ask's own id into `ref_id`.
@@ -123,7 +123,7 @@ export const ticketsRepo = {
     await tx.update(shopAsks).set({ status: "Asked", grantedQty: null, ticketId: null, updatedAt: new Date() }).where(eq(shopAsks.id, askId));
   },
 
-  /** Read back after `postMoves` has taken the locks — the only number a movement may trust. */
+  /** Read back after `postMoves` has taken the locks - the only number a movement may trust. */
   async balancesAt(tx: Tx, loc: string, itemKeys: readonly string[]): Promise<Record<string, number>> {
     if (itemKeys.length === 0) return {};
     const rows = await tx.select().from(stockBalances)

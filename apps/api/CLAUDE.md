@@ -1,4 +1,4 @@
-# apps/api — CLAUDE.md
+# apps/api - CLAUDE.md
 
 Repo-wide rules and the domain invariants are in the root `CLAUDE.md`. This file covers what is specific to the
 server.
@@ -14,7 +14,7 @@ pnpm --filter @rch/api db:migrate           # behind pg_advisory_lock
 pnpm --filter @rch/api db:seed [--force] [--bare]
 pnpm --filter @rch/api db:rebuild-balances  # recompute stock_balances from stock_moves
 pnpm --filter @rch/api users <create|reset-password|deactivate|set-admin> --emp RC-1234 ...   # create: --emp optional, next number assigned
-pnpm --filter @rch/api payers import --csv <file> [--replace-names]   # kind,id,name — one transaction
+pnpm --filter @rch/api payers import --csv <file> [--replace-names]   # kind,id,name - one transaction
 pnpm --filter @rch/api keys:generate        # prints a fresh Ed25519 JWT_PRIVATE_KEY= / JWT_PUBLIC_KEY= pair
 pnpm --filter @rch/api loadcheck            # latency of /snapshot and /bills against a running API
 ```
@@ -24,7 +24,7 @@ pnpm --filter @rch/api loadcheck            # latency of /snapshot and /bills ag
 ```
 src/app.ts        buildApp(): plugins in order, then registerModules
 src/server.ts     listen; SIGTERM drains (see Shutdown)
-src/config.ts     the Zod env schema — the only reader of process.env
+src/config.ts     the Zod env schema - the only reader of process.env
 src/routes.ts     mount(): the only way a module registers a route
 src/plugins/*     logging, errors, metrics, health, security, db, auth, rbac, sse, idempotency
 src/lib/*         ledger, reservations, tickets, ids, history, rules, events, claims, credit, master, …

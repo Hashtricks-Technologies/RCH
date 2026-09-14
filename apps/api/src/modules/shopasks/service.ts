@@ -1,7 +1,7 @@
-// Shopasks: the flow — transaction, rules, moves, id. Compose the helpers in apps/api/src/lib/;
+// Shopasks: the flow - transaction, rules, moves, id. Compose the helpers in apps/api/src/lib/;
 // domain rules belong in packages/domain. See modules/_template/service.ts.
 //
-// One shop asking another for stock it is holding. The shop being asked grants or declines —
+// One shop asking another for stock it is holding. The shop being asked grants or declines -
 // never the manager. A grant reserves at the shop that holds the stock and raises
 // the ticket the asker collects against, in the same transaction as the reservation.
 import type { z } from "zod";
@@ -31,7 +31,7 @@ export type ShopAskSentResult = z.infer<typeof ShopAskSentResultSchema>;
 export function createShopAsksService(db: Db) {
   return {
     /** Directly between the two shops: the asker's own counter is `from`, and only another
-     *  outlet can be asked — never the central store, the kitchen, or the asker's own shop. */
+     *  outlet can be asked - never the central store, the kitchen, or the asker's own shop. */
     async ask(claims: AccessClaims, body: ShopAskBody): Promise<WriteResponse<ShopAsk>> {
       return withTransaction(db, async (tx) => {
         const from = claims.loc;
@@ -54,13 +54,13 @@ export function createShopAsksService(db: Db) {
         return {
           result: await shopAsksRepo.wire(tx, id),
           changed: [...changed],
-          message: `${id} sent to ${master.locations[body.to]!.n} — they decide, not the manager`,
+          message: `${id} sent to ${master.locations[body.to]!.n} - they decide, not the manager`,
         };
       });
     },
 
     /**
-     * The shop being asked grants or declines — never the asker, never the manager. A grant
+     * The shop being asked grants or declines - never the asker, never the manager. A grant
      * reserves at the shop that holds the stock and raises the ticket the asker collects
      * against, in one transaction, so a grant nobody can cover is refused rather than
      * half-written.
@@ -69,7 +69,7 @@ export function createShopAsksService(db: Db) {
       return withTransaction(db, async (tx) => {
         const a = await shopAsksRepo.head(tx, id);
         if (!a) throw new NotFoundError(`There is no shop ask ${id}.`);
-        // The shop being asked is the one that decides — never the manager, never the asker.
+        // The shop being asked is the one that decides - never the manager, never the asker.
         requireLocOf(claims, a.toLoc, "your own counter");
         assertTransition(SHOP_ASK_TRANSITIONS, a.status, "Sent", id);
 
@@ -80,7 +80,7 @@ export function createShopAsksService(db: Db) {
         // the ask; the server says so instead, because a counter who typed 60 for a 6 meant
         // something, and sending 6 without a word is the wrong kind of helpful.
         assertRule(body.grant > 0, "Grant a quantity, or decline the ask");
-        assertRule(body.grant <= a.qty, `${master.locations[a.fromLoc]!.n} asked for ${fq(a.qty, item.u)} ${item.u} — grant that or less`);
+        assertRule(body.grant <= a.qty, `${master.locations[a.fromLoc]!.n} asked for ${fq(a.qty, item.u)} ${item.u} - grant that or less`);
         const give = round3(body.grant);
 
         // Ids before balance rows (lib/ledger.ts's header).
@@ -101,19 +101,19 @@ export function createShopAsksService(db: Db) {
         return {
           result: { ask: await shopAsksRepo.wire(tx, id), ticket },
           changed: [...changed],
-          message: `${id} granted — ${ticket.id} issued for ${fq(give, item.u)} ${item.u} to ${master.locations[a.fromLoc]!.n}`,
+          message: `${id} granted - ${ticket.id} issued for ${fq(give, item.u)} ${item.u} to ${master.locations[a.fromLoc]!.n}`,
         };
       });
     },
 
-    /** The shop being asked can also say no — with a reason the asker can read. No ticket, no
+    /** The shop being asked can also say no - with a reason the asker can read. No ticket, no
      *  reservation: nothing moves and nothing is held. */
     async decline(claims: AccessClaims, id: string, body: DeclineShopAskBody): Promise<WriteResponse<ShopAsk>> {
       return withTransaction(db, async (tx) => {
         const a = await shopAsksRepo.head(tx, id);
         if (!a) throw new NotFoundError(`There is no shop ask ${id}.`);
         requireLocOf(claims, a.toLoc, "your own counter");
-        assertRule(body.reason.trim().length > 0, "Give a reason — the other shop sees it");
+        assertRule(body.reason.trim().length > 0, "Give a reason - the other shop sees it");
         assertTransition(SHOP_ASK_TRANSITIONS, a.status, "Declined", id);
 
         await shopAsksRepo.setAnswer(tx, id, { status: "Declined", reason: body.reason.trim() });

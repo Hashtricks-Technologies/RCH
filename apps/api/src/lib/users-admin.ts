@@ -13,14 +13,14 @@ const PALETTE = ["#B45309", "#7C3AED", "#0F766E", "#15803D", "#BE123C", "#475569
 /**
  * A role and a location are not independent. The kitchen in-charge works in the kitchen; the
  * store keeper and the buyer work at the central store; a counter operator and an outlet manager
- * work at an outlet. Nothing downstream checks the pairing — `requireLoc` only ever compares a
- * request against whatever the token says — so an account created at the wrong one is not
+ * work at an outlet. Nothing downstream checks the pairing - `requireLoc` only ever compares a
+ * request against whatever the token says - so an account created at the wrong one is not
  * refused anywhere, it just quietly sees screens with nothing on them and can act at a location
  * its role was never meant to reach.
  */
 const WORKS_AT: Record<Role, LocKey[]> = { prod: ["kitchen"], store: ["store"], buyer: ["store"], counter: OUTLETS, manager: OUTLETS };
 
-/** The same floor `ChangePasswordBodySchema` puts on a password the user chooses — an
+/** The same floor `ChangePasswordBodySchema` puts on a password the user chooses - an
  *  administrator's temporary one must not be the weaker of the two. Every caller here only
  *  reads `.message` (the CLI prints it and exits; the admin HTTP module additionally reads
  *  `.status`/`.code`, which `ValidationError` gives it that a bare `Error` would not). */
@@ -43,28 +43,28 @@ const revokeAll = (tx: Tx, userId: string) =>
 
 /**
  * Every mutation below has two shapes: a `*Tx` core that takes an already-open transaction, and
- * a `Db`-taking wrapper that opens one with `withTransaction` — for the CLI, which has no
+ * a `Db`-taking wrapper that opens one with `withTransaction` - for the CLI, which has no
  * ambient transaction of its own to hand in.
  *
  * The split exists for a reason sharper than taste: `withTransaction` also feeds the write's own
  * idempotency record (`lib/db.ts`), reading whatever the *ambient* ids the request is running
  * under from `idemStore`'s `AsyncLocalStorage`. A second, unrelated `withTransaction` call
  * nested inside a write request would see that same context and try to record *its own* return
- * value as the request's answer — which fails to match the route's actual response schema and
+ * value as the request's answer - which fails to match the route's actual response schema and
  * throws. The admin HTTP module (`modules/admin/service.ts`) composes several of these `*Tx`
  * cores, plus its own audit-log insert, inside **one** `withTransaction` call of its own, which
  * is what keeps both correct at once: one transaction, one idempotency record, one atomic write
  * that a caller reading `admin_actions` afterward can trust actually happened together.
  */
 
-/** The `sequences` row account creation locks. Not an `IdKind` — a user id is never printed on
+/** The `sequences` row account creation locks. Not an `IdKind` - a user id is never printed on
  *  a document, so it has no `formatId` case and no `SEQUENCE_START`; `ensureSequences` never
  *  inserts it, and `createUserTx` inserts it the first time it is needed. */
 const USER_SEQUENCE = "user";
 
 /**
- * Takes the `user` row's lock — which serialises every account creation in the hospital, so two
- * admins saving at once cannot both read the same highest employee number — and hands out the
+ * Takes the `user` row's lock - which serialises every account creation in the hospital, so two
+ * admins saving at once cannot both read the same highest employee number - and hands out the
  * next user id. The counter only ever moves forward, and it starts past whatever ids are already
  * on `users` (the seeds write `u1`…`u7` literally, and an environment may predate this row), so
  * an id is **never given out twice**, even after the account holding the highest one is deleted.
@@ -82,8 +82,8 @@ async function allocateUserNumber(tx: Tx): Promise<number> {
 }
 
 /** `emp` is optional: left out (the admin page always leaves it out), the account is given the
- *  next employee number after every one already on `users` — `nextEmpNo`, the same rule the page
- *  previews with — read under the lock `allocateUserNumber` has just taken. */
+ *  next employee number after every one already on `users` - `nextEmpNo`, the same rule the page
+ *  previews with - read under the lock `allocateUserNumber` has just taken. */
 export async function createUserTx(tx: Tx, i: { emp?: string; name: string; email: string; role: Role; loc: LocKey; phone?: string; colour?: string; password: string }): Promise<{ id: string; emp: string }> {
   checkPassword(i.password);
   if (!(await tx.select().from(locations).where(eq(locations.key, i.loc)).then((r) => r[0]))) throw new ValidationError(`unknown location "${i.loc}"`);
@@ -115,7 +115,7 @@ export async function deactivateUserTx(tx: Tx, emp: string): Promise<void> {
 }
 export const deactivateUser = (db: Db, emp: string): Promise<void> => withTransaction(db, (tx) => deactivateUserTx(tx, emp));
 
-/** The way back from `deactivateUser` — no session to revoke, since a deactivated account has
+/** The way back from `deactivateUser` - no session to revoke, since a deactivated account has
  *  none: `deactivateUser` already ended every one of them. */
 export async function reactivateUserTx(tx: Tx, emp: string): Promise<void> {
   const u = await byEmp(tx, emp);
@@ -124,13 +124,13 @@ export async function reactivateUserTx(tx: Tx, emp: string): Promise<void> {
 export const reactivateUser = (db: Db, emp: string): Promise<void> => withTransaction(db, (tx) => reactivateUserTx(tx, emp));
 
 /**
- * Permanent removal, for an account that never did anything — one created by mistake. The
+ * Permanent removal, for an account that never did anything - one created by mistake. The
  * caller has already decided the account may go (not the caller's own, not admin-flagged, already
  * deactivated); this is the part that decides whether it *can*.
  *
  * What an account leaves behind that is not history goes with it: its sessions and its
- * idempotency records. Everything else that names a user — a bill, an approval, a stock move, a
- * line in the admin log it wrote — is a foreign key with no `ON DELETE`, so Postgres refuses the
+ * idempotency records. Everything else that names a user - a bill, an approval, a stock move, a
+ * line in the admin log it wrote - is a foreign key with no `ON DELETE`, so Postgres refuses the
  * `users` delete and that refusal is the rule: **an account with history can only be
  * deactivated.** Nothing here lists those tables, so one added later is covered by its own
  * reference. The one reference that does not block is `admin_actions.target_id`, which is
@@ -144,15 +144,15 @@ export async function deleteUserTx(tx: Tx, u: { id: string; name: string; empNo:
   try {
     await tx.delete(users).where(eq(users.id, u.id));
   } catch (e) {
-    if (isForeignKeyViolation(e)) throw new RuleError(`Refused — ${u.name} (${u.empNo}) has records in the hospital's history, so the account can only be deactivated, never deleted`);
+    if (isForeignKeyViolation(e)) throw new RuleError(`Refused - ${u.name} (${u.empNo}) has records in the hospital's history, so the account can only be deactivated, never deleted`);
     throw e;
   }
 }
 
 /**
  * Genuinely new capability, not previously reachable from anywhere: moving a live account to a
- * different role or location. Validated against the same pairing `createUser` enforces, and —
- * like `resetPassword`/`deactivateUser` — every session is revoked, because the account's old
+ * different role or location. Validated against the same pairing `createUser` enforces, and -
+ * like `resetPassword`/`deactivateUser` - every session is revoked, because the account's old
  * access token keeps asserting the old role and location, unrevoked, for up to fifteen minutes.
  */
 export async function updateUserRoleLocTx(tx: Tx, emp: string, next: { role: Role; loc: LocKey }): Promise<void> {
@@ -165,7 +165,7 @@ export async function updateUserRoleLocTx(tx: Tx, emp: string, next: { role: Rol
 export const updateUserRoleLoc = (db: Db, emp: string, next: { role: Role; loc: LocKey }): Promise<void> => withTransaction(db, (tx) => updateUserRoleLocTx(tx, emp, next));
 
 /**
- * The one door in or out of admin status — never reachable from the admin HTTP module
+ * The one door in or out of admin status - never reachable from the admin HTTP module
  * itself, only from this CLI, so a compromised or misused admin session can create ordinary
  * accounts and reset ordinary passwords but can never mint a second admin. No `*Tx` core: the
  * admin module has no reason to ever compose this, by design.

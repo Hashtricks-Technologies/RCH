@@ -89,7 +89,7 @@ export default function AdminSupport() {
         { l: "Urgent and unresolved", v: String(urgent), d: urgent ? "stopping someone serving" : "nothing urgent" },
         { l: "Waiting on the reporter", v: String(waiting), d: "support has asked them something" },
         {
-          l: "Average rating", v: rated.length ? (rated.reduce((s, t) => s + t.rating!, 0) / rated.length).toFixed(1) : "—",
+          l: "Average rating", v: rated.length ? (rated.reduce((s, t) => s + t.rating!, 0) / rated.length).toFixed(1) : "-",
           d: `${rated.length} of ${tickets.length} rated`,
         },
       ]} />

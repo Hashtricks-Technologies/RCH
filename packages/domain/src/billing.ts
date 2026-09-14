@@ -14,11 +14,11 @@ export type BillPlan = {
  * The arithmetic of a sale: price each cart line at the till price, total it,
  * derive GST from the inclusive prices, and explode a made-to-order line into
  * negative stock moves for its recipe. Does not check availability or payer
- * rules — those are `assertRule`s in the service, using `availOf`.
+ * rules - those are `assertRule`s in the service, using `availOf`.
  *
  * The MRP cap needs no separate report: `priceOf` applies it, so the line's own
  * `rate` is what the customer pays. A list price can never sit above the MRP in
- * the first place — `savePrice` refuses one — so the cap only ever bites when an
+ * the first place - `savePrice` refuses one - so the cap only ever bites when an
  * MRP is lowered after the item was priced, and the till simply charges the new
  * printed number.
  */

@@ -1,8 +1,8 @@
-// Reports: the two figures the browser cannot compute from its own snapshot — the central store's
+// Reports: the two figures the browser cannot compute from its own snapshot - the central store's
 // stock ledger, which needs the ledger's own moves, and a payer's credit for the calendar month,
 // which needs every outlet's bills and not the till's own seven days.
 //
-// repo.ts: SQL only. No rules and no transaction of its own — the service opens one read-only
+// repo.ts: SQL only. No rules and no transaction of its own - the service opens one read-only
 // transaction and hands each query the same client (`Reader`), so a report is one connection out
 // of the pool rather than one per query. The arithmetic these feed is `ledgerRow` in
 // @rch/domain. Nothing here decides anything.
@@ -13,7 +13,7 @@ import * as s from "../../db/schema/index.js";
 
 /**
  * Two aggregates for one location: what the moves before the window sum to per item, and the
- * window's own signed moves per item. Both hit `stock_moves_loc_item_at_idx` — `EXPLAIN` on
+ * window's own signed moves per item. Both hit `stock_moves_loc_item_at_idx` - `EXPLAIN` on
  * either must not show a sequential scan at production cardinality.
  *
  * The two halves partition the ledger on one boundary and only one: `openingAt` takes `at < from`

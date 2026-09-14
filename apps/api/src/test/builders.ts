@@ -1,5 +1,5 @@
 // Test builders live here. A suite that hand-builds a
-// document instead of asking for one here is rejected in review — the defaults belong in one
+// document instead of asking for one here is rejected in review - the defaults belong in one
 // place, so a case says only what it is about.
 import { eq } from "drizzle-orm";
 import type { AdjustReason, LocKey, PordStatus, PoStatus, PrqStatus, ProductReqStatus, ReqStatus, Role, ShopAskStatus, StockLoc, TicketPriority, TicketStatus, TicketTopic, TktStatus } from "@rch/contract";
@@ -11,7 +11,7 @@ import { reserve } from "../lib/reservations.js";
 import type { TicketRefType } from "../lib/tickets.js";
 
 /** One monotonic suffix per document family, so two builder calls in one file cannot draw the
- *  same id and nine calls of any kind cannot exhaust another family's band — a random draw
+ *  same id and nine calls of any kind cannot exhaust another family's band - a random draw
  *  collided often enough to matter. Each test file is its own module instance and its own
  *  schema, so the counters need not be unique across files. Bands sit above the fixtures and
  *  above each sequence's start; padStart keeps the printed width when a band runs past 999. */
@@ -69,7 +69,7 @@ export const given = {
       // An Issued ticket holds its stock; a Collected one has already released it.
       if (p.reserve ?? st === "Issued") await reserve(tx, p.lines.map((l) => ({ loc: p.from, it: l.it, qty: l.qty, ticketId: id })));
       // The trail starts where `writeTicket` starts it, signed by the same `issued_by` the row
-      // carries — a builder-made ticket that shipped an empty history would be the one ticket in
+      // carries - a builder-made ticket that shipped an empty history would be the one ticket in
       // the system without one.
       const [issuer] = await tx.select({ name: s.users.name }).from(s.users).where(eq(s.users.id, "u3"));
       await appendHistory(tx, "ticket", id, "Issued", issuer?.name ?? "u3");
@@ -205,8 +205,8 @@ export const given = {
   /** A support ticket, with as many messages as the case needs.
    *
    *  The band is `SUP-000101`+ and the four-digit padding is what puts it there. `formatId`
-   *  prints an allocated id **unpadded** — `SUP-00${n}`, so 44 is `SUP-0044` and 101 is
-   *  `SUP-00101` — while `nextId` pads its counter to four, so the builder's first id is
+   *  prints an allocated id **unpadded** - `SUP-00${n}`, so 44 is `SUP-0044` and 101 is
+   *  `SUP-00101` - while `nextId` pads its counter to four, so the builder's first id is
    *  `SUP-00` + `0101` = `SUP-000101`, a digit longer than anything `formatId` can produce from
    *  a three-digit `n`. That is deliberate and must stay: dropping the padding to "match"
    *  `formatId` would put the builder's 101st id on top of the sequence's own 101st. It is also

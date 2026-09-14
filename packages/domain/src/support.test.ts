@@ -32,7 +32,7 @@ describe("what a person at a screen may do to their own ticket", () => {
 });
 
 describe("what the admin, answering as the desk, may do to anybody's ticket", () => {
-  it("sets any status but open — a ticket is open only until the desk first touches it", () => {
+  it("sets any status but open - a ticket is open only until the desk first touches it", () => {
     expect(ALL.filter(mayDeskSet)).toEqual(["With support", "Waiting on you", "Resolved", "Closed"]);
   });
 

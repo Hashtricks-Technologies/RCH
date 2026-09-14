@@ -17,7 +17,7 @@ import { registerDrawer, type DrawerProps } from "../../drawers";
 import { contractFor } from "./lib";
 
 const warn = { color: "var(--warn)" };
-/** Under a number box the warning sits in a `td.n`, which never wraps — left alone, one long
+/** Under a number box the warning sits in a `td.n`, which never wraps - left alone, one long
  *  sentence widened Quantity until the table squeezed the Rate box too narrow to read. */
 const warnWrap = { ...warn, whiteSpace: "normal" as const };
 /** Wide enough for a five-digit quantity or a rate with paise beside the spinner. */
@@ -46,7 +46,7 @@ function PoDrawer({ id }: DrawerProps) {
   const [busy, setBusy] = useState(false);
 
   // A draft is priced off its vendor's live rate contract, and a hand-negotiated rate is never
-  // overwritten — both of them server-side now: `createPo` prices the draft when it is raised
+  // overwritten - both of them server-side now: `createPo` prices the draft when it is raised
   // and `PATCH /purchase-orders/:id` re-prices it when the vendor moves. The effect that used
   // to do it here is gone rather than awaited: it would have fired one network write per line
   // on every open of this drawer.
@@ -174,7 +174,7 @@ function PoDrawer({ id }: DrawerProps) {
           </>
         }
       >
-        <Section title="Items" sub="Rates default to the live rate contract for this vendor. Quantity can only be trimmed, not raised, from here — pick another item from the procurement list to add more.">
+        <Section title="Items" sub="Rates default to the live rate contract for this vendor. Quantity can only be trimmed, not raised, from here - pick another item from the procurement list to add more.">
           <div className="lgrid">
             <DataTable
               cols={[
@@ -190,7 +190,7 @@ function PoDrawer({ id }: DrawerProps) {
               rows={rows}
               empty={{
                 title: "No items on this order",
-                sub: "Every item was removed — cancel the order or pick another item from the procurement list.",
+                sub: "Every item was removed - cancel the order or pick another item from the procurement list.",
               }}
             />
           </div>
@@ -200,7 +200,7 @@ function PoDrawer({ id }: DrawerProps) {
         {deviating > 0 && (
           <Alert tone="w" label="OFF THE CONTRACT RATE">
             {deviating} item(s) are priced away from the rate agreed with {vendorLabel}. Each one names the
-            contract rate and the difference above — correct them, or be ready to justify the variance.
+            contract rate and the difference above - correct them, or be ready to justify the variance.
           </Alert>
         )}
         {belowMoq > 0 && (
@@ -211,17 +211,17 @@ function PoDrawer({ id }: DrawerProps) {
         )}
         {offContract > 0 && (
           <Alert tone="i" label="OFF CONTRACT">
-            {offContract} item(s) have no live rate contract with {vendorLabel} — those rates are yours to
+            {offContract} item(s) have no live rate contract with {vendorLabel} - those rates are yours to
             negotiate. Ask the store keeper to record a contract if this becomes a standing buy.
           </Alert>
         )}
 
-        <Section title="Order terms" sub="Vendor and expected delivery — editable while this order is a draft.">
+        <Section title="Order terms" sub="Vendor and expected delivery - editable while this order is a draft.">
           <FormRow cols="f2">
             <Field label="Vendor" hint="Changing the vendor re-prices every item off that vendor's contract, unless you typed the rate yourself.">
               <select value={po.vendor} onChange={(e) => { void setPoVendor(po.id, e.target.value); }}>
                 {/* The order's own vendor must always have a matching <option>, even when
-                    deactivated after this draft was raised — otherwise the browser silently
+                    deactivated after this draft was raised - otherwise the browser silently
                     selects the first option in the list, showing a vendor the order isn't on. */}
                 {s.vendors.filter((v) => v.active || v.id === po.vendor).map((v) => (
                   <option key={v.id} value={v.id}>{v.active ? v.n : `${v.n} (inactive)`}</option>
@@ -236,11 +236,11 @@ function PoDrawer({ id }: DrawerProps) {
 
         <Alert tone={overSlab ? "c" : "g"} label={overSlab ? "FINANCE APPROVAL" : "WITHIN LIMIT"}>
           {money0(value)} is {overSlab ? "over" : "under"} the {money0(PO_APPROVAL_LIMIT)} finance slab
-          {overSlab ? " — sending this order needs finance approval." : " — you can place this order yourself."}
+          {overSlab ? " - sending this order needs finance approval." : " - you can place this order yourself."}
         </Alert>
 
         {cancelling && (
-          <Section title="Cancel this order" sub="A reason is required — it is kept on the order history and any claimed procurement lines return to the pool.">
+          <Section title="Cancel this order" sub="A reason is required - it is kept on the order history and any claimed procurement lines return to the pool.">
             <Field label="Reason">
               <textarea
                 rows={2} value={reason} onChange={(e) => setReason(e.target.value)}
@@ -297,7 +297,7 @@ function PoDrawer({ id }: DrawerProps) {
                   <>{IT[l.it]?.n ?? l.it}<small>{IT[l.it]?.c ?? ""}</small></>,
                   <>{fq(l.qty, l.it)}</>,
                   <>{U(l.it)}</>,
-                  // What was taken in, not what turned up — which is why the column says
+                  // What was taken in, not what turned up - which is why the column says
                   // "Accepted": accepted plus balance comes to the ordered quantity, with
                   // quarantine on neither side of it.
                   <>{fq(netReceived(l), l.it)}</>,

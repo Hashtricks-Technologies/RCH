@@ -1,4 +1,4 @@
-// Catalog: SQL only. No rules, no transaction of its own — service.ts passes `tx` in.
+// Catalog: SQL only. No rules, no transaction of its own - service.ts passes `tx` in.
 import { and, asc, eq, like, ne, sql } from "drizzle-orm";
 import type { LocKey } from "@rch/contract";
 import { isUniqueViolation, type Tx } from "../../lib/db.js";
@@ -9,8 +9,8 @@ export type ItemRow = typeof items.$inferSelect;
 export type NewItemRow = typeof items.$inferInsert;
 // ---- item patch ----
 /** `mrp` is a `number`, never `null`: an item that carries a printed MRP keeps one, so there is
- *  no value this patch can take that removes a ceiling. The column stays nullable — an item may
- *  never have had one — but no write on this side sets it back to nothing. `shelfLifeHours` is
+ *  no value this patch can take that removes a ceiling. The column stays nullable - an item may
+ *  never have had one - but no write on this side sets it back to nothing. `shelfLifeHours` is
  *  the opposite: clearing it back to "no best-before" is exactly what a blank box has always
  *  meant on the create-item form, so this side does allow `null`. */
 export type ItemPatch = Partial<{
@@ -26,14 +26,14 @@ export const catalogRepo = {
   },
 
   /** Every existing key equal to the slug or the slug plus digits. A plain `like` also catches
-   *  an unrelated key that happens to start with the slug — harmless, since the caller only
+   *  an unrelated key that happens to start with the slug - harmless, since the caller only
    *  ever tests membership of the exact candidates it generates (`slug`, `slug2`, `slug3`, …). */
   async keysLike(tx: Tx, slug: string): Promise<Set<string>> {
     const rows = await tx.select({ key: items.key }).from(items).where(like(items.key, `${slug}%`));
     return new Set(rows.map((r) => r.key));
   },
 
-  /** `on conflict do nothing` covers both constraints a new row can hit — the primary key
+  /** `on conflict do nothing` covers both constraints a new row can hit - the primary key
    *  (which the slug's advisory lock has already made unreachable in practice) and
    *  `items_name_ci_uq`, which is the one this is actually here for: the case-insensitive
    *  name clash reads no row back, and the caller's own sentence is what the loser sees. */
@@ -43,7 +43,7 @@ export const catalogRepo = {
   },
 
   /** `onConflictDoUpdate` on the table's own primary key `(list, item_key)`. One clock reading
-   *  for both branches — inserted or updated, the row records the same moment. */
+   *  for both branches - inserted or updated, the row records the same moment. */
   upsertPrice: (tx: Tx, list: PriceList, itemKey: string, price: number) => {
     const now = new Date();
     return tx.insert(priceListItems).values({ list, itemKey, price, updatedAt: now })
@@ -55,7 +55,7 @@ export const catalogRepo = {
 
   /**
    * List the item, in one statement. `seq` is `coalesce(max(seq), 0) + 1` computed inside the
-   * INSERT — read in an earlier statement it could already be stale by the time this one ran —
+   * INSERT - read in an earlier statement it could already be stale by the time this one ran -
    * so the new row lands after every existing one for this location. `on conflict do nothing`
    * makes the second of two concurrent adds return no row at all, which is how service.ts
    * tells the loser it lost instead of raising a primary-key violation at it.
@@ -79,8 +79,8 @@ export const catalogRepo = {
    * Locking read on one item's own row, so two patches of the same line cannot both read the
    * row that is about to change under them.
    *
-   * **It deliberately does not filter `active`.** `loadItems` does — no rule may price something
-   * the master no longer sells — but a retired line has to stay reachable through this door or
+   * **It deliberately does not filter `active`.** `loadItems` does - no rule may price something
+   * the master no longer sells - but a retired line has to stay reachable through this door or
    * it could never be brought back, and "restore" would be the one edit retiring an item made
    * impossible.
    */
@@ -104,7 +104,7 @@ export const catalogRepo = {
       .from(priceListItems).where(eq(priceListItems.itemKey, key));
   },
 
-  /** The outlets still listing this item on their till — what a retirement has to be clear of. */
+  /** The outlets still listing this item on their till - what a retirement has to be clear of. */
   async menusOf(tx: Tx, key: string): Promise<string[]> {
     const rows = await tx.select({ loc: locationItems.loc }).from(locationItems)
       .where(eq(locationItems.itemKey, key)).orderBy(asc(locationItems.loc));
@@ -112,7 +112,7 @@ export const catalogRepo = {
   },
 
   /** The locations still carrying stock of it. A row at zero is "carried, empty" (M12) and is
-   *  not a reason to refuse a retirement — only a non-zero balance is stock to write off. */
+   *  not a reason to refuse a retirement - only a non-zero balance is stock to write off. */
   async balancesOf(tx: Tx, key: string): Promise<string[]> {
     const rows = await tx.select({ loc: stockBalances.loc }).from(stockBalances)
       .where(and(eq(stockBalances.itemKey, key), ne(stockBalances.onHand, 0)))
@@ -122,10 +122,10 @@ export const catalogRepo = {
 
   /** `undefined` means what it means for `insertItem`: the row this would have produced already
    *  exists under another key. A rename into a name another item holds hits `items_name_ci_uq`
-   *  on the UPDATE itself, caught here rather than surfacing as a raw 500 — the caller reads the
+   *  on the UPDATE itself, caught here rather than surfacing as a raw 500 - the caller reads the
    *  same "already in the catalogue" sentence the insert's arbiter gives a new product
    *  (`vendorsRepo.update`'s shape). Renaming an item to a case-only variant of its own current
-   *  name is not a violation — the index only ever sees one row with that value — and succeeds. */
+   *  name is not a violation - the index only ever sees one row with that value - and succeeds. */
   async update(tx: Tx, key: string, patch: ItemPatch): Promise<ItemRow | undefined> {
     try {
       const [row] = await tx.update(items).set({ ...patch, updatedAt: new Date() }).where(eq(items.key, key)).returning();

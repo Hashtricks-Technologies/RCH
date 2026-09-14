@@ -1,4 +1,4 @@
-// Catalog: the flow — transaction, rules, id. Compose the helpers in apps/api/src/lib/;
+// Catalog: the flow - transaction, rules, id. Compose the helpers in apps/api/src/lib/;
 // domain rules belong in packages/domain. See modules/_template/service.ts.
 import type { z } from "zod";
 import type { Changed, CreateItemBodySchema, Item, LocKey, PatchItemBodySchema } from "@rch/contract";
@@ -23,10 +23,10 @@ type Write<T> = { result: T; changed: Changed[]; message: string };
 // ---- item patch ----
 /** The two halves of the master, in the words of the desk that owns each (`ITEM_FIELD_ROLES`,
  *  `@rch/domain`). An operator who reached for the wrong box is told **whose** box it is, which
- *  is what they actually need — a per-field list would only repeat what the greyed-out input on
+ *  is what they actually need - a per-field list would only repeat what the greyed-out input on
  *  their own screen already showed them. */
-const COMMERCIAL_REFUSAL = "Only the outlet manager changes an item's price, cost or GST — ask them to make that change";
-const OPERATIONAL_REFUSAL = "The store, the buyer and the kitchen keep an item's name, group, HSN, reorder level and shelf life — ask one of them";
+const COMMERCIAL_REFUSAL = "Only the outlet manager changes an item's price, cost or GST - ask them to make that change";
+const OPERATIONAL_REFUSAL = "The store, the buyer and the kitchen keep an item's name, group, HSN, reorder level and shelf life - ask one of them";
 /** `active` is the one field every desk but the counter owns, so it never lands in a refusal;
  *  everything else is the manager's or the three desks', and nothing is in neither. */
 const COMMERCIAL: readonly ItemField[] = ["mrp", "cost", "gst"];
@@ -39,7 +39,7 @@ export function createCatalogService(db: Db) {
      * The key is slugged from the name and de-duplicated with a numeric suffix, exactly as the
      * store keeper's screen has always done it. Two different names can slug the same way, and
      * the suffix scan reads before the insert takes its lock, so the scan runs under an advisory
-     * lock on the slug — the device the staff-credit sum already uses. The **name** clash is a
+     * lock on the slug - the device the staff-credit sum already uses. The **name** clash is a
      * different question and is decided by `items_name_ci_uq`: the pre-check reads, the insert
      * arbitrates, and the loser reads the store's own sentence.
      */
@@ -50,7 +50,7 @@ export function createCatalogService(db: Db) {
         assertRule(body.cost > 0, "Cost must be more than zero");
         // Location decides which rows. The kitchen books what it makes at the kitchen;
         // the store keeper and the buyer book at the central store. Derived from the caller's
-        // role, not their loc — the two happen to agree today (see the task brief).
+        // role, not their loc - the two happen to agree today (see the task brief).
         const allowed: LocKey = claims.role === "prod" ? "kitchen" : "store";
         const locations = await loadLocations(tx);
         assertRule(body.loc === allowed, `A new product's opening stock is booked at ${locations[allowed]?.n ?? allowed}`);
@@ -73,7 +73,7 @@ export function createCatalogService(db: Db) {
 
         const opening = round3(body.opening);
         // A move of zero is not a movement, and a balance row's presence means "this location
-        // carries the line" (M12) — a product nobody has bought yet carries nowhere.
+        // carries the line" (M12) - a product nobody has bought yet carries nowhere.
         if (opening > 0) {
           await postMoves(tx, [{ loc: body.loc, it: key, qty: opening, kind: "opening", refType: "item", refId: key, by: claims.sub, at }]);
         }
@@ -95,18 +95,18 @@ export function createCatalogService(db: Db) {
      *
      * `POST /items` used to be the only write the master had: a mis-typed MRP, a wrong HSN or a
      * product the hospital stopped carrying stayed on every screen forever. This is the way
-     * back, and it is one endpoint with two permissions — `ITEM_FIELD_ROLES` (`@rch/domain`) is
+     * back, and it is one endpoint with two permissions - `ITEM_FIELD_ROLES` (`@rch/domain`) is
      * the whole of that split, and the drawer disables the same boxes this refuses.
      *
      * The order below is the order the operator would check it in themselves, and the order the
      * tests pin: whose item, is there anything to change, is it yours to change, is each new
-     * value a legal one, and only then — for a retirement — is the line actually finished with.
+     * value a legal one, and only then - for a retirement - is the line actually finished with.
      * **Stock is asked about before menus**: an item with stock on a shelf *and* a menu line has
      * to hear about the stock, because writing it off is the thing that takes longest.
      *
      * No balance lock is taken and none is needed: nothing here moves, promises or reads against
      * a balance. `balancesOf` is a plain read, and a retirement that races a sale is the same
-     * race a price change has always had — the sale's own cover check under its own locks is
+     * race a price change has always had - the sale's own cover check under its own locks is
      * what decides it.
      */
     async patchItem(claims: AccessClaims, it: string, body: PatchItemBody): Promise<Write<{ key: string; item: Item }>> {
@@ -125,7 +125,7 @@ export function createCatalogService(db: Db) {
         );
 
         const patch: ItemPatch = {};
-        // The name the operator will read in every sentence below — the new one when they are
+        // The name the operator will read in every sentence below - the new one when they are
         // renaming, so a refusal is about the product as they have just written it.
         let name = row.name;
         if (body.n !== undefined) {
@@ -145,9 +145,9 @@ export function createCatalogService(db: Db) {
           // number is the system's one hard ceiling (`priceOf`, `PUT /prices/:list/:it`) and the
           // floor a goods receipt judges a delivery against, and a blanked box would take both
           // away with nothing on the record to say it happened. A zero is what an empty input
-          // sends, which is exactly why it cannot be the way through — the drawer omits `mrp`
+          // sends, which is exactly why it cannot be the way through - the drawer omits `mrp`
           // altogether rather than sending one.
-          assertRule(body.mrp > 0, "Give the printed MRP a value — an item that carries one keeps it");
+          assertRule(body.mrp > 0, "Give the printed MRP a value - an item that carries one keeps it");
           const prices = await catalogRepo.pricesOf(tx, it);
           const shelf = prices.reduce((hi, p) => Math.max(hi, p.price), 0);
           const refusal = mrpBelowShelfPrice(name, body.mrp, shelf);
@@ -155,8 +155,8 @@ export function createCatalogService(db: Db) {
           patch.mrp = body.mrp;
         }
         if (body.gst !== undefined) patch.gst = body.gst;
-        // `QtySchema` carries no minimum — a zero has to reach the operator as a sentence, not a
-        // 400 — so the one figure here that cannot go below zero says so itself.
+        // `QtySchema` carries no minimum - a zero has to reach the operator as a sentence, not a
+        // 400 - so the one figure here that cannot go below zero says so itself.
         if (body.rl !== undefined) {
           assertRule(body.rl >= 0, "Reorder level cannot be negative");
           patch.reorderLevel = round3(body.rl);
@@ -176,9 +176,9 @@ export function createCatalogService(db: Db) {
           const locations = await loadLocations(tx);
           const nameOf = (l: string) => locations[l]?.n ?? l;
           const held = await catalogRepo.balancesOf(tx, it);
-          assertRule(held.length === 0, `${name} still has stock at ${held.map(nameOf).join(", ")} — write it off before retiring it`);
+          assertRule(held.length === 0, `${name} still has stock at ${held.map(nameOf).join(", ")} - write it off before retiring it`);
           const listed = await catalogRepo.menusOf(tx, it);
-          assertRule(listed.length === 0, `${name} is still listed at ${listed.map(nameOf).join(", ")} — take it off those menus before retiring it`);
+          assertRule(listed.length === 0, `${name} is still listed at ${listed.map(nameOf).join(", ")} - take it off those menus before retiring it`);
         }
         if (body.active !== undefined) patch.active = body.active;
 
@@ -186,7 +186,7 @@ export function createCatalogService(db: Db) {
         assertRule(updated, `${name} is already in the catalogue`);
 
         const at = new Date();
-        // "Retired" and "Restored" describe a line **crossing** — compared against the row this
+        // "Retired" and "Restored" describe a line **crossing** - compared against the row this
         // write locked, not against what the patch asked for. A patch that sets `active: true`
         // on a line that was already live has restored nothing, and a trail saying it did, or a
         // toast reading "back in the catalogue" for a product that never left, is a false record
@@ -201,7 +201,7 @@ export function createCatalogService(db: Db) {
           result: { key: it, item: toWireItem(updated) },
           changed: [...changed],
           message: word === "Retired"
-            ? `${updated.name} retired — it stays on past documents and cannot be sold or ordered again`
+            ? `${updated.name} retired - it stays on past documents and cannot be sold or ordered again`
             : word === "Restored"
               ? `${updated.name} is back in the catalogue`
               : `${updated.name} updated`,
@@ -215,7 +215,7 @@ export function createCatalogService(db: Db) {
       return withTransaction(db, async (tx) => {
         const item = (await loadItems(tx))[it];
         if (!item) throw new NotFoundError(`There is no item ${it}.`);
-        assertRule(!(item.mrp != null && price > item.mrp), `Refused — printed MRP of ₹${item.mrp} is a hard ceiling for ${item.n}`);
+        assertRule(!(item.mrp != null && price > item.mrp), `Refused - printed MRP of ₹${item.mrp} is a hard ceiling for ${item.n}`);
         await catalogRepo.upsertPrice(tx, list, it, price);
         // One array for the answer and the announcement, so a till showing the old price is
         // told to refetch exactly what the manager's own screen refetches.

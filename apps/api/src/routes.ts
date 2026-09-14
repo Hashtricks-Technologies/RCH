@@ -24,14 +24,14 @@ export type Handler<R extends AnyRoute> = (req: Req<R>, reply: FastifyReply) => 
  * never need one.
  *
  * A write's handler additionally runs inside `idemStore`, which is how `withTransaction`
- * (`lib/db.ts`) knows which claim row to fill in and which schema the response must satisfy —
+ * (`lib/db.ts`) knows which claim row to fill in and which schema the response must satisfy -
  * the record is then the last statement before the write's own COMMIT rather than a second
  * connection's work after it.
  *
  * The assertion afterwards is the bench check for the one shape that defeats all of it: a write
  * that builds its response *outside* any transaction (`me.patch` used to re-read the user after
- * committing). Off in production, where `onSend` still catches such a response — the pre-existing
- * behaviour — because a refused sale is worse than a narrow retry window.
+ * committing). Off in production, where `onSend` still catches such a response - the pre-existing
+ * behaviour - because a refused sale is worse than a narrow retry window.
  */
 export function mount<R extends AnyRoute>(app: App, route: R, handler: Handler<R>, extra: { config?: Record<string, unknown> } = {}): void {
   const isWrite = route.write ?? route.method !== "GET";
@@ -44,8 +44,8 @@ export function mount<R extends AnyRoute>(app: App, route: R, handler: Handler<R
     if (!idem) return handler(req, reply);
     const ctx: IdemContext = { idem, response: route.response, strict };
     const value = await idemStore.run(ctx, () => handler(req, reply));
-    // Only a handler that *returned* reaches the assertion below. A handler that threw — the
-    // refusal a `response: "optional"` write raises after its own commit, or any other 4xx —
+    // Only a handler that *returned* reaches the assertion below. A handler that threw - the
+    // refusal a `response: "optional"` write raises after its own commit, or any other 4xx -
     // rejects this await and leaves with the error, so the assertion never sees a write whose
     // answer was deliberately not recorded. That is the one shape `recorded === false` is
     // allowed to take, and the `await` is what keeps it out of here.
@@ -60,8 +60,8 @@ export function mount<R extends AnyRoute>(app: App, route: R, handler: Handler<R
     }
     return value;
   };
-  // Fastify warns (FSTWRN001) when a schema key is present but `undefined` — it cannot tell
-  // "no validation for this slot" from "the caller forgot one" — so a slot the manifest leaves
+  // Fastify warns (FSTWRN001) when a schema key is present but `undefined` - it cannot tell
+  // "no validation for this slot" from "the caller forgot one" - so a slot the manifest leaves
   // unset is left off the object entirely rather than set to `undefined`. No validation ran for
   // it either way; only the warning changes.
   const schema = {

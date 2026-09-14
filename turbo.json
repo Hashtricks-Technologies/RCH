@@ -7,7 +7,7 @@
     // cache: false, deliberately. turbo hashes source files and the env vars named below, and
     // none of that describes the database apps/api's suites actually run against. A green run
     // therefore replays on a cache hit even when the schema, the migrations applied to it or
-    // the seed behind it have moved underneath — the one thing these tests exist to notice.
+    // the seed behind it have moved underneath - the one thing these tests exist to notice.
     // The suite is minutes; a wrong green is a release.
     "test":      { "dependsOn": ["^typecheck"], "cache": false, "env": ["DATABASE_URL", "TEST_DATABASE_URL"] },
     "dev":       { "cache": false, "persistent": true }

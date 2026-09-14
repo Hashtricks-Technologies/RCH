@@ -22,7 +22,7 @@ export default fp<DbPluginOptions>(async (app, opts) => {
   // The message this check throws is what /readyz prints back (plugins/health.ts), so it is a
   // phrase written for an operator, never the driver's own: a DrizzleQueryError carries the
   // failing SQL and an fs error carries the image's own paths, and both are kept out of
-  // responses. Three reasons, and they are the three an operator has to act on differently — a
+  // responses. Three reasons, and they are the three an operator has to act on differently - a
   // database that cannot be reached, an image whose migration journal is not readable, and a
   // schema behind the image trying to serve from it. Nothing that can throw is left outside a
   // `try`: `expectedMigrationCount` reads `drizzle/meta/_journal.json` off disk and would

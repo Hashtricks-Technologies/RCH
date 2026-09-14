@@ -8,7 +8,7 @@ import { resetStore, S, as } from "./fixture";
 /**
  * `role="dialog" aria-modal="true"` is a promise, and the drawer used to break it three ways at
  * once: the keyboard stayed on whatever opened the drawer, Tab walked out of the panel into the
- * table underneath — which the scrim had covered, so nobody could see what had focus — and
+ * table underneath - which the scrim had covered, so nobody could see what had focus - and
  * nothing named the dialog. These are the four things that make the promise true: a name, the
  * keyboard going in, the keyboard staying in, and the keyboard coming back.
  *
@@ -51,15 +51,15 @@ registerDrawer("a11yvanish", VanishingDrawer);
 
 /**
  * A drawer with a control that **disables itself**, which is the shape every busy button in the
- * app uses — `roles/buyer/PoReceiptDrawer.tsx`'s Book button, `roles/store/TicketDrawer.tsx`'s
+ * app uses - `roles/buyer/PoReceiptDrawer.tsx`'s Book button, `roles/store/TicketDrawer.tsx`'s
  * hand-over button. The button holding the keyboard is by definition the one just pressed, and a
  * browser that disables a focused control drops focus to `<body>` with no focus event fired, the
- * same silence an unmount leaves — but nothing in the DOM *moved*, so a `childList` watcher never
+ * same silence an unmount leaves - but nothing in the DOM *moved*, so a `childList` watcher never
  * hears it either.
  *
  * The label is deliberately held constant, unlike the real buttons, which swap to "Booking in…"
  * as they disable. A changed label is a `childList` mutation inside the button and would wake the
- * watcher on its own — so the case would pass with `attributeFilter` removed and prove nothing.
+ * watcher on its own - so the case would pass with `attributeFilter` removed and prove nothing.
  */
 function BusyDrawer() {
   const [busy, setBusy] = useState(false);
@@ -95,7 +95,7 @@ describe("the drawer is a real dialog", () => {
   beforeEach(() => {
     resetStore();
     as("store");
-    // Whatever had the keyboard before the drawer opened — a row in the table behind it.
+    // Whatever had the keyboard before the drawer opened - a row in the table behind it.
     opener = document.createElement("button");
     opener.textContent = "TKT-2026-0451";
     document.body.appendChild(opener);
@@ -164,7 +164,7 @@ describe("the drawer is a real dialog", () => {
   /**
    * The case a `focusin` guard alone cannot see. Pressing "Supervisor override" replaces the
    * pressed button with a confirm block, so the element holding the keyboard stops existing and
-   * focus falls to `<body>` — outside the dialog, with no focus event fired. Left there, the next
+   * focus falls to `<body>` - outside the dialog, with no focus event fired. Left there, the next
    * Tab starts at the top of the document and walks the page behind the scrim, which is precisely
    * what `aria-modal="true"` promises cannot happen.
    */
@@ -174,7 +174,7 @@ describe("the drawer is a real dialog", () => {
     act(() => { override.focus(); });
     expect(document.activeElement).toBe(override);
 
-    // `await`, because the DOM watcher answers on a microtask — one turn in which focus sits on
+    // `await`, because the DOM watcher answers on a microtask - one turn in which focus sits on
     // `<body>`, and no input can happen. A browser gets the same turn.
     await act(async () => { override.click(); });
 

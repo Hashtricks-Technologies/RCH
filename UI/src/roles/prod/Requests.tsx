@@ -10,7 +10,7 @@ import {
 } from "../../ui/kit";
 import type { DraftLine, ReqLine } from "../../types";
 
-/* The kitchen asks the central store for what it consumes — raw materials and
+/* The kitchen asks the central store for what it consumes - raw materials and
    packaging. Finished goods it makes itself, and MRP goods never pass through it. */
 const requestable = () => activeItems()
   .filter((k) => IT[k].t === "RAW" || IT[k].t === "PACK")
@@ -24,8 +24,8 @@ const groupsOf = (keys: string[]) => keys.reduce<[string, string[]][]>((g, k) =>
 
 const BAD = { borderColor: "var(--crit)" };
 const lineErr = (l: DraftLine) =>
-  !l.it ? "Pick an item — this line will not be sent"
-    : l.qty > 0 ? "" : "Quantity must be above zero — this line will not be sent";
+  !l.it ? "Pick an item - this line will not be sent"
+    : l.qty > 0 ? "" : "Quantity must be above zero - this line will not be sent";
 const shortOf = (lines: ReqLine[]) =>
   lines.filter((l) => (l.short ?? 0) > 0).map((l) => ({ it: l.it, qty: l.short ?? 0 }));
 
@@ -38,7 +38,7 @@ export default function Requests() {
   const L = LOC.kitchen;
   // `IT` is empty until the snapshot lands and is replaced in place after that
   // (`hydrateMaster` / `hydrateItems`), so this list is built during render and pinned to
-  // `catalogVersion` — the signal that tells React the catalogue moved.
+  // `catalogVersion` - the signal that tells React the catalogue moved.
   void s.catalogVersion;
   const REQUESTABLE = requestable();
   const REQ_GROUPS = groupsOf(REQUESTABLE);
@@ -50,7 +50,7 @@ export default function Requests() {
   const [busy, setBusy] = useState(false);
 
   const draft = s.draft;
-  /** A key per draft row that belongs to the row rather than to its position — `useLineKeys`
+  /** A key per draft row that belongs to the row rather than to its position - `useLineKeys`
    *  (`ui/kit.tsx`) says why, for all three screens that draw an editable line table. */
   const [rowKeys, dropKey] = useLineKeys(draft.length);
 
@@ -62,7 +62,7 @@ export default function Requests() {
     s.setDraft(draft.filter((_, j) => j !== i));
   };
 
-  // The draft, the note and the priority survive a refusal — the store clears the draft only
+  // The draft, the note and the priority survive a refusal - the store clears the draft only
   // once the server has taken it, and this clears the rest on the same answer.
   const submit = async () => {
     setBusy(true);
@@ -111,14 +111,14 @@ export default function Requests() {
       {openCount > 0 && (
         <Alert tone="i" label="OPEN">
           {openCount} request{openCount === 1 ? "" : "s"} from {L.n} {openCount === 1 ? "is" : "are"} still open. A
-          request can be withdrawn any time before the store keeper issues a ticket against it —
+          request can be withdrawn any time before the store keeper issues a ticket against it -
           including after the outlet manager has approved it.
         </Alert>
       )}
       {backOrder.length > 0 && (
         <Alert tone="w" label="SHORT">
           {unitTotal(backOrder)} across {backOrder.length} item{backOrder.length === 1 ? "" : "s"} was asked for and
-          never approved. Nothing will be issued against the balance — raise a fresh request for what the kitchen
+          never approved. Nothing will be issued against the balance - raise a fresh request for what the kitchen
           still needs.
         </Alert>
       )}
@@ -141,7 +141,7 @@ export default function Requests() {
                 <tr><td colSpan={5}>
                   <div className="empty">
                     <b>No item on this request yet</b>
-                    <p>One request can carry as many items as the kitchen is short of — add the first to begin.</p>
+                    <p>One request can carry as many items as the kitchen is short of - add the first to begin.</p>
                     <Btn size="sm" onClick={addLine}>Add item</Btn>
                   </div>
                 </td></tr>
@@ -178,9 +178,9 @@ export default function Requests() {
                           onCommit={(n) => setLine(i, { qty: Math.max(0, n) })} />
                       </div>
                     </td>
-                    <td className="mini">{l.it ? U(l.it) : "—"}</td>
+                    <td className="mini">{l.it ? U(l.it) : "-"}</td>
                     <td className="mini">
-                      {l.it ? <>{fq(qty(s, "kitchen", l.it), l.it)} {U(l.it)}</> : <span className="dim">—</span>}
+                      {l.it ? <>{fq(qty(s, "kitchen", l.it), l.it)} {U(l.it)}</> : <span className="dim">-</span>}
                     </td>
                     <td className="rt">
                       <Btn size="xs" variant="gh" onClick={() => removeLine(i)}>Remove</Btn>
@@ -203,13 +203,13 @@ export default function Requests() {
           <Field label="Items ready"
             hint={skipped > 0
               ? <span style={{ color: "var(--crit)" }}>
-                {skipped} row{skipped === 1 ? "" : "s"} will be dropped — fix the row{skipped === 1 ? "" : "s"} marked in red above.
+                {skipped} row{skipped === 1 ? "" : "s"} will be dropped - fix the row{skipped === 1 ? "" : "s"} marked in red above.
               </span>
               : "Only rows with an item and a quantity above zero are sent."}>
             <input readOnly value={`${usable} of ${draft.length}`} style={skipped > 0 ? BAD : undefined} />
           </Field>
         </FormRow>
-        <Field label="Note to the outlet manager" hint="Say what the kitchen cannot make without it — the manager may trim quantities.">
+        <Field label="Note to the outlet manager" hint="Say what the kitchen cannot make without it - the manager may trim quantities.">
           <textarea rows={3} value={note} onChange={(e) => setNote(e.target.value)}
             placeholder="Maida down to 8 kg, tomorrow's puff batch needs 20 kg." />
         </Field>
@@ -250,19 +250,19 @@ export default function Requests() {
               <span className="mono">{r.at}</span>,
               <>{r.lines.length} item{r.lines.length === 1 ? "" : "s"} · {r.lines.map((l) => IT[l.it]?.n ?? l.it).join(", ")}</>,
               sum(r.lines, (l) => l.qty),
-              sum(r.lines, (l) => l.appr) || <span className="dim">—</span>,
+              sum(r.lines, (l) => l.appr) || <span className="dim">-</span>,
               <StatusPill status={r.st} />,
-              r.ticket ? <span className="mono">{r.ticket}</span> : <span className="dim">—</span>,
+              r.ticket ? <span className="mono">{r.ticket}</span> : <span className="dim">-</span>,
               isReqOpen(r.st)
                 ? <Btn size="xs" variant="dg" onClick={() => s.cancelRequest(r.id)}>Cancel</Btn>
-                : <span className="dim mini">—</span>,
+                : <span className="dim mini">-</span>,
             ],
           }))}
           empty={{
             title: filtering ? "Nothing matches those filters" : "No request raised from the kitchen yet",
             sub: filtering
               ? "Clear the search or switch Show back to All."
-              : "Add an item above and submit — one request can carry everything the kitchen is short of.",
+              : "Add an item above and submit - one request can carry everything the kitchen is short of.",
             action: <Btn size="sm" onClick={() => (filtering ? clearFilters() : addLine())}>
               {filtering ? "Clear filters" : "Add item"}
             </Btn>,

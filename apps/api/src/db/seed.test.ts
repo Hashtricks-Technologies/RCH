@@ -82,7 +82,7 @@ describe("seeded history trails", () => {
   // stamps behind for anything else reading this file's schema.
   afterEach(async () => { vi.useRealTimers(); await resetDocuments(t.db); });
   const seedAt = async (ist: string) => {
-    vi.useFakeTimers({ toFake: ["Date"] }); // Date only — pg's own timers have to keep running
+    vi.useFakeTimers({ toFake: ["Date"] }); // Date only - pg's own timers have to keep running
     vi.setSystemTime(new Date(ist));
     await resetDocuments(t.db);
     return readHistory(t.db, "request", "REQ-2026-0909");

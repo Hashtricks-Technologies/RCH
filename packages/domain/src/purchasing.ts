@@ -5,13 +5,13 @@ import { istDate } from "./format.js";
  * What buying an order costs, and when it is expected.
  *
  * The slab itself is not declared here: `needsApproval` takes its limit as an argument so the
- * rule and the number stay separable — the number is the contract's (`PO_APPROVAL_LIMIT`), and
+ * rule and the number stay separable - the number is the contract's (`PO_APPROVAL_LIMIT`), and
  * the caller that enforces the rule passes it in.
  */
 
 /** Procurement buys what the central store shelves: raw, packing and MRP goods. A finished good
  *  is made in the kitchen and a made-to-order item is assembled at the counter, so neither is
- *  ever put on the procurement list — the buyer's direct add refuses one, and its picker offers
+ *  ever put on the procurement list - the buyer's direct add refuses one, and its picker offers
  *  only what this answers `true` for. */
 export const isPurchased = (t: ItemType): boolean => t === "RAW" || t === "PACK" || t === "MRP";
 
@@ -33,7 +33,7 @@ export const etaFrom = (at: Date, leadDays: number): string =>
   istDate(new Date(Date.parse(`${istDate(at)}T00:00:00+05:30`) + Math.max(0, Math.round(leadDays)) * 86_400_000));
 
 /** Is this contract's validity window open on `today`? All three dates are ISO `YYYY-MM-DD`,
- *  which sorts the same as it compares, so a plain string comparison is exact — the same test
+ *  which sorts the same as it compares, so a plain string comparison is exact - the same test
  *  `purchaseOrdersRepo.activeContractRates` runs in SQL (`validFrom <= today <= validTo`) to
  *  price an order, so a preview never offers a rate the order will not get. A contract whose
  *  window has closed does not price an order, however active its flag says it is. */

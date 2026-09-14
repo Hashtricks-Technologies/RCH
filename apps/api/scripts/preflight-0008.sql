@@ -3,8 +3,8 @@
 --   psql "$DATABASE_URL" -f apps/api/scripts/preflight-0008.sql
 --
 -- 0008 adds a foreign key and nine CHECK constraints, and Postgres validates each of them
--- against the rows already in the table. On a database that already holds documents — dev does;
--- a fresh staging or production database has nothing to reject — one bad row refuses the whole
+-- against the rows already in the table. On a database that already holds documents - dev does;
+-- a fresh staging or production database has nothing to reject - one bad row refuses the whole
 -- migration. A refused migration is an initContainer that never completes, which presents as a
 -- deploy that hangs rather than as bad data, so probe first and read the summary.
 --
@@ -74,50 +74,50 @@ order by offending desc, constraint_name;
 -- Detail. Each returns nothing when its probe is clear.
 -- ---------------------------------------------------------------------------------------------
 
--- stock_moves_qty_ck — a move of zero is not a movement. It reads as "this location carries the
+-- stock_moves_qty_ck - a move of zero is not a movement. It reads as "this location carries the
 -- line" on every stock screen without anything ever having been carried (M12).
 select 'stock_moves_qty_ck' as refused_by, m.* from stock_moves m where m.qty = 0;
 
--- reservations_ticket_fk — a hold nothing can ever release, because the ticket that placed it is
+-- reservations_ticket_fk - a hold nothing can ever release, because the ticket that placed it is
 -- not there. Closing it will raise that location's free-to-promise, so tell them.
 select 'reservations_ticket_fk' as refused_by, r.*
 from reservations r left join tickets t on t.id = r.ticket_id
 where t.id is null;
 
--- tickets_from_to_ck — a ticket from a location to itself moves nothing and can never be received.
+-- tickets_from_to_ck - a ticket from a location to itself moves nothing and can never be received.
 select 'tickets_from_to_ck' as refused_by, t.* from tickets t where t.from_loc = t.to_loc;
 
--- po_lines_receipt_ck — `received_qty` is the gross that arrived and `rejected_qty` the part of it
+-- po_lines_receipt_ck - `received_qty` is the gross that arrived and `rejected_qty` the part of it
 -- turned away, so the second can never be the larger of the two.
 select 'po_lines_receipt_ck' as refused_by, l.*
 from po_lines l
 where l.rejected_qty < 0 or l.received_qty < 0 or l.rejected_qty > l.received_qty;
 
--- batches_made_ck — the ingredients went against what was started, so a yield above it would be
+-- batches_made_ck - the ingredients went against what was started, so a yield above it would be
 -- stock nothing was ever consumed for.
 select 'batches_made_ck' as refused_by, b.*
 from batches b
 where b.made_qty < 0 or b.made_qty > b.started_qty;
 
--- reservations_qty_ck — a hold for nothing is not a hold.
+-- reservations_qty_ck - a hold for nothing is not a hold.
 select 'reservations_qty_ck' as refused_by, r.* from reservations r where r.qty <= 0;
 
--- tickets_otp_digits_ck — six digits, spelled out. Note this one reads the same before and after
+-- tickets_otp_digits_ck - six digits, spelled out. Note this one reads the same before and after
 -- the `char(6)` → `varchar(6)` change in 0008: the cast drops the blank padding, so a code that
 -- was short is short on both sides of it.
 select 'tickets_otp_digits_ck' as refused_by, t.id, t.status, t.otp
 from tickets t
 where t.otp !~ '^[0-9]{6}$';
 
--- requisition_lines_ordered_ck — a purchase order can only claim what the buyer approved.
+-- requisition_lines_ordered_ck - a purchase order can only claim what the buyer approved.
 select 'requisition_lines_ordered_ck' as refused_by, l.*
 from requisition_lines l
 where l.ordered_qty < 0 or l.ordered_qty > l.approved_qty;
 
--- support_tickets_rating_ck — five stars or none.
+-- support_tickets_rating_ck - five stars or none.
 select 'support_tickets_rating_ck' as refused_by, s.id, s.status, s.rating
 from support_tickets s
 where s.rating is not null and (s.rating < 1 or s.rating > 5);
 
--- sequences_next_ck — a series that had run back to zero would re-issue a number already printed.
+-- sequences_next_ck - a series that had run back to zero would re-issue a number already printed.
 select 'sequences_next_ck' as refused_by, q.* from sequences q where q.next <= 0;

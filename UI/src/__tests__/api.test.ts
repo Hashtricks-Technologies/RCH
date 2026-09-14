@@ -38,7 +38,7 @@ describe("api client", () => {
     setAccessToken("tok");
     fetchMock.mockResolvedValueOnce(ok({ result: {}, changed: [], message: "CF/1188 voided" }));
     await call(routes.voidBill, { params: { no: "CF/1188" }, body: { reason: "Wrong tender" } });
-    // A bare slash would split into two path segments and match no route at all — the server's
+    // A bare slash would split into two path segments and match no route at all - the server's
     // own suite pins the 404 from the other side. nginx forwards the encoded form unchanged.
     expect(fetchMock.mock.calls[0][0]).toBe("/api/v1/bills/CF%2F1188/void");
   });
@@ -109,7 +109,7 @@ describe("api client", () => {
  * when a rotated token is presented twice. Without a cross-tab lock the second tab's refresh
  * loses the race and signs both of them out mid-shift.
  */
-describe("api client — one refresh across tabs", () => {
+describe("api client - one refresh across tabs", () => {
   const fetchMock = vi.fn();
   let seen: string[] = [];
 
@@ -212,8 +212,8 @@ describe("api client — one refresh across tabs", () => {
       const headers = init.headers as Record<string, string>;
       if (headers.authorization === "Bearer old") {
         // Another request's refresh lands while this one is still on the wire, so its own 401
-        // is already stale by the time it arrives. Single-flight does not cover this gap —
-        // `refreshing` is back to null — and refreshing again presents a rotated token twice.
+        // is already stale by the time it arrives. Single-flight does not cover this gap -
+        // `refreshing` is back to null - and refreshing again presents a rotated token twice.
         setAccessToken("new");
         return Promise.resolve(ok({ error: { code: "unauthenticated", message: "expired" } }, 401));
       }
@@ -243,7 +243,7 @@ describe("api client — one refresh across tabs", () => {
   // in the next tab and let the next person walk straight into their session.
   it("a signed-out tab ignores a token broadcast by another tab", async () => {
     setAccessToken(null);
-    // A tab sitting on the sign-in screen still opens the channel — its own sign-in POST is a
+    // A tab sitting on the sign-in screen still opens the channel - its own sign-in POST is a
     // `call()` like any other. /auth/ routes never refresh, so this is just the channel opening.
     fetchMock.mockResolvedValue(ok({ error: { code: "unauthenticated", message: "no" } }, 401));
     await call(routes.login, { body: { emp: "RC-4471", password: "wrong" } }).catch(() => undefined);
@@ -269,7 +269,7 @@ describe("api client — one refresh across tabs", () => {
     setAccessToken("old");
     // `locks.request` rejects outright on a document that is not fully active
     // (InvalidStateError) or where the API is unavailable. The documented fallback is today's
-    // behaviour — refresh anyway — not an unhandled rejection out of `call()`.
+    // behaviour - refresh anyway - not an unhandled rejection out of `call()`.
     locks.request.mockImplementation(() => Promise.reject(new Error("InvalidStateError")));
     serve("new");
 

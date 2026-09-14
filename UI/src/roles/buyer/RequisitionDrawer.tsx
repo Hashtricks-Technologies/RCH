@@ -15,7 +15,7 @@ const dotFor = (state: string) =>
 const stack = (parts: (string | number)[]) =>
   parts.length
     ? <>{parts.map((p, i) => <div key={i}>{p}</div>)}</>
-    : <span className="dim">—</span>;
+    : <span className="dim">-</span>;
 
 function RequisitionDrawer({ id }: DrawerProps) {
   const s = useApp();
@@ -53,7 +53,7 @@ function RequisitionDrawer({ id }: DrawerProps) {
   const approving = p.lines.filter((_, i) => apprAt(i) > 0).length;
 
   /** The server closes nothing: the decision leaves this panel open until it is taken, so a
-   *  refusal — a decline with no reason, a requisition somebody else already decided — lands
+   *  refusal - a decline with no reason, a requisition somebody else already decided - lands
    *  on the note the buyer just typed rather than on an empty screen. */
   const decide = async (run: () => Promise<boolean>) => {
     if (busy) return;
@@ -140,7 +140,7 @@ function RequisitionDrawer({ id }: DrawerProps) {
         </Section>
       )}
 
-      {/* A direct add has no store keeper's ask behind it — its note is the reason in the decision. */}
+      {/* A direct add has no store keeper's ask behind it - its note is the reason in the decision. */}
       {!addedByProcurement(p) && (
         <Section title="Requirement from the store keeper" sub={`${p.by} · ${LOC.store.n} · raised at ${p.at}`}>
           <Alert tone="i" label={open ? "SENT" : "ASKED"}>
@@ -152,7 +152,7 @@ function RequisitionDrawer({ id }: DrawerProps) {
       <Section
         title="Items"
         sub={open
-          ? "Approved defaults to what was asked. Trim an item if it should not be bought in full — you can never approve more than was asked."
+          ? "Approved defaults to what was asked. Trim an item if it should not be bought in full - you can never approve more than was asked."
           : "Quantities as they were approved."}
       >
         <div className="lgrid">
@@ -176,11 +176,11 @@ function RequisitionDrawer({ id }: DrawerProps) {
       {!open && (
         <Section
           title="What was ordered against this requisition"
-          sub="Traced through each purchase order line's source reference — quantity ordered, the order it went on, the vendor, the rate agreed and what has landed."
+          sub="Traced through each purchase order line's source reference - quantity ordered, the order it went on, the vendor, the rate agreed and what has landed."
         >
           <Alert tone={roll.label === "Received" ? "g" : roll.label === "Not ordered" ? "w" : "i"}
             label={roll.label.toUpperCase()}>
-            {roll.appr} approved · {roll.ordered} ordered · {roll.received} received —
+            {roll.appr} approved · {roll.ordered} ordered · {roll.received} received -
             {" "}{roll.done} of {roll.total} item(s) fully received.
           </Alert>
           <div className="lgrid">
@@ -233,7 +233,7 @@ function RequisitionDrawer({ id }: DrawerProps) {
         <Feed
           items={p.hist.map((h, i) => ({
             key: h.s + i, title: h.s, when: h.t, color: dotFor(h.s),
-            body: i === d?.entry && d.note ? <>{h.who} — {d.note}</> : h.who,
+            body: i === d?.entry && d.note ? <>{h.who} - {d.note}</> : h.who,
           }))}
         />
       </Section>

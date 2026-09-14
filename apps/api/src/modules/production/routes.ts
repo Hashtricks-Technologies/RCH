@@ -1,5 +1,5 @@
-// Production: everything the Central Kitchen does. The two ways it puts stock on a ticket — an
-// order it was asked for and a tray it decided to push out — and the two ways it works: the
+// Production: everything the Central Kitchen does. The two ways it puts stock on a ticket - an
+// order it was asked for and a tray it decided to push out - and the two ways it works: the
 // board's own statuses, and the batch that turns raw materials into finished units.
 import fp from "fastify-plugin";
 import { routes } from "@rch/contract";
@@ -18,7 +18,7 @@ export default fp(async (app) => {
   mount(app, routes.makeBatch, async (req) => svc.makeBatch(req.user, req.body));
   // ---- prod-order raise ---- the one route here that IS location-scoped, and the only one
   // open to a role other than `prod`. A counter raises for its own outlet and nowhere else, so
-  // `from` comes off the token — a body naming another shop is refused rather than quietly
+  // `from` comes off the token - a body naming another shop is refused rather than quietly
   // rewritten, because an operator who typed it meant it. A manager supervises all three, so
   // theirs is the body's and the service is what checks it is an outlet at all.
   mount(app, routes.createProdOrder, async (req) => {

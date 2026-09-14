@@ -18,7 +18,7 @@ import "./RequisitionDetail";
 const qtyBy = (lines: PrqProgressLine[], pick: "appr" | "ordered" | "received") =>
   lines.map((l) => ({ it: l.it, qty: l[pick] }));
 
-/** The progress labels prqProgress() can return, plus "All" — a real filter
+/** The progress labels prqProgress() can return, plus "All" - a real filter
  *  over what procurement has done, not over the raw requisition status. */
 const STAGES = [
   "All", "Awaiting approval", "Awaiting order", "Partly ordered", "Ordered",
@@ -57,7 +57,7 @@ export default function Requisitions() {
 
   const stage = STAGES[si];
 
-  /** A key per draft line that survives what is typed into it — `useLineKeys` (`ui/kit.tsx`)
+  /** A key per draft line that survives what is typed into it - `useLineKeys` (`ui/kit.tsx`)
    *  says why neither the index nor the line's own contents will do. */
   const [rowKeys, dropKey] = useLineKeys(prqDraft.length);
 
@@ -71,7 +71,7 @@ export default function Requisitions() {
   };
 
   /** Ordering something procurement is already sourcing doubles the cover
-   *  (M3). onOrder() alone only reflects an approved commitment — a
+   *  (M3). onOrder() alone only reflects an approved commitment - a
    *  requisition still awaiting a decision is the highest-risk window for a
    *  duplicate ask, so the guard adds awaitingApproval() in too. */
   const openQty = (it: string) => onOrder(s, it) + awaitingApproval(s, it);
@@ -103,7 +103,7 @@ export default function Requisitions() {
     notify(`${low.length} below-reorder item${low.length > 1 ? "s" : ""} staged on the requisition`);
   };
 
-  /** The draft and its note are cleared only once the server has taken the requisition —
+  /** The draft and its note are cleared only once the server has taken the requisition -
    *  a refusal has to land on what the store keeper just built, not on an empty card. */
   const send = async () => {
     if (busy) return;
@@ -118,14 +118,14 @@ export default function Requisitions() {
   const alreadyOpen = prqDraft.filter((l) => openQty(l.it) > 0);
 
   const term = q.trim().toLowerCase();
-  /** Every purchase order this requisition ended up on — the buyer's paperwork
+  /** Every purchase order this requisition ended up on - the buyer's paperwork
    *  is exactly what the client wants to search a previous requisition by. */
   const posFor = (id: string) =>
     po.filter((o) => o.st !== "Cancelled" && o.lines.some((l) => l.src.some((x) => x.prq === id)));
 
   /** Reconciled once per requisition, then read from the map: `prqProgress` walks every
    *  purchase order, the filter and the row both want the answer, and memoising it on the
-   *  two slices it reads — rather than on `s`, a new object after any write anywhere —
+   *  two slices it reads - rather than on `s`, a new object after any write anywhere -
    *  is what stops the whole of it re-running because a toast appeared. */
   const progress = useMemo(
     () => new Map(prq.map((p) => [p.id, prqProgress({ prq, po }, p.id)] as const)),
@@ -233,7 +233,7 @@ export default function Requisitions() {
                         <td className="n">
                           {/* Typed in freely and committed on the way out: reading
                               `Number(e.target.value)` on every keystroke meant 12.5 litres of
-                              milk went into the draft as 1, then 12, then 12.5 — and emptying
+                              milk went into the draft as 1, then 12, then 12.5 - and emptying
                               the box to retype set the line to nothing. */}
                           <DraftLineInput
                             value={l.qty}
@@ -278,8 +278,8 @@ export default function Requisitions() {
               label="Note to procurement"
               hint={
                 prqDraft.length
-                  ? `Likely vendors: ${[...new Set(prqDraft.map((l) => suggestVendor(s.vendors, IT[l.it]?.g ?? "")?.n ?? "—"))].join(", ")}`
-                  : "Say why the stock is needed — procurement uses this to pick a vendor and a delivery date."
+                  ? `Likely vendors: ${[...new Set(prqDraft.map((l) => suggestVendor(s.vendors, IT[l.it]?.g ?? "")?.n ?? "-"))].join(", ")}`
+                  : "Say why the stock is needed - procurement uses this to pick a vendor and a delivery date."
               }
             >
               <textarea

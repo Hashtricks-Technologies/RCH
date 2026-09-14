@@ -1,4 +1,4 @@
-// The recipe book: one write, the same shape every other server-backed action in this store has —
+// The recipe book: one write, the same shape every other server-backed action in this store has -
 // call, repeat the server's own sentence, refetch what it named.
 import { routes } from "@rch/contract";
 import { ApiError, call } from "../api/client";
@@ -21,7 +21,7 @@ export const createRecipesSlice = (get: Get): RecipesSlice => ({
       await refetch(r.changed, r.message);
       return true;
     } catch (e) {
-      get().notify(e instanceof ApiError ? e.message : "Could not save the recipe — check the connection and try again.");
+      get().notify(e instanceof ApiError ? e.message : "Could not save the recipe - check the connection and try again.");
       return false;
     }
   },

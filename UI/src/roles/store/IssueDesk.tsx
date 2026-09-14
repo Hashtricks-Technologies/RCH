@@ -27,7 +27,7 @@ const approver = (r: StockRequest) =>
   r.apprBy
   ?? [...r.hist].reverse().find((h) => h.s === "Manager approved" || h.s === "Partially approved")?.who;
 
-/** "All" plus every location a ticket or request can come from — the same
+/** "All" plus every location a ticket or request can come from - the same
  *  cycle drives all three filter buttons, so they read the same way. */
 const LOC_OPTS: (LocKey | null)[] = [null, ...ALL_LOCS.filter((l) => l !== "store")];
 const locLabel = (l: LocKey | null) => (l === null ? "All" : LOC[l].n);
@@ -115,13 +115,13 @@ export default function IssueDesk() {
       <Alert tone="i" label="HOW THIS WORKS">
         The ticket is the collection authority. Approving a request reserves the stock in the central store; the
         six-digit OTP quoted at the window is what actually moves it. The digits reach the collecting outlet's
-        own screen and never this desk — ask for them at the window. Open any row for the full detail: who
+        own screen and never this desk - ask for them at the window. Open any row for the full detail: who
         asked, what was approved and what is free to promise.
       </Alert>
 
       <Grid>
       <Card
-        title="Approved — awaiting ticket"
+        title="Approved - awaiting ticket"
         sub="Manager approved and partially approved requests · open a row for the detail"
         right={shortCount > 0 ? <Pill tone="wn">{shortCount} short on stock</Pill> : <Pill tone="ok">All covered</Pill>}
         flush
@@ -211,7 +211,7 @@ export default function IssueDesk() {
 
       <Card
         title="Tickets to hand over"
-        sub="Issued against the central store — open the ticket and take the OTP from the collector"
+        sub="Issued against the central store - open the ticket and take the OTP from the collector"
         flush
       >
         <Toolbar
@@ -266,7 +266,7 @@ export default function IssueDesk() {
 
       <Card
         title="In transit"
-        sub="Handed over — the receiving counter must now confirm"
+        sub="Handed over - the receiving counter must now confirm"
         flush
       >
         <Toolbar

@@ -16,7 +16,7 @@ export default fp(async (app) => {
   });
   app.setErrorHandler((err, req, reply) => {
     // A 4xx is the caller's to read and the operator's to look up later: the envelope carries
-    // the sentence, and the same sentence — plus the code and any internal cause — goes onto
+    // the sentence, and the same sentence - plus the code and any internal cause - goes onto
     // the request's log line. A 5xx is logged in full below instead.
     const refuse = (status: number, refusal: Refusal, envelope?: unknown) => {
       req.refusal = refusal;
@@ -36,7 +36,7 @@ export default fp(async (app) => {
       return reply.code(err.status).send(err.toEnvelope());   // a NotReadyError is expected, not unhandled
     }
     const status = (err as { statusCode?: number }).statusCode;
-    if (status === 429) return refuse(429, { code: "rate_limited", message: "Too many requests — wait a moment and try again." });
+    if (status === 429) return refuse(429, { code: "rate_limited", message: "Too many requests - wait a moment and try again." });
     if (status === 503) return reply.code(503).send({ error: { code: "not_ready", message: (err as Error).message } });
     if (status === 401) return refuse(401, { code: "unauthenticated", message: "Sign in to continue.", cause: (err as Error).message });
     if (status && status >= 400 && status < 500) return refuse(status, { code: "validation", message: (err as Error).message });

@@ -23,7 +23,7 @@ const variance = (c: RateContract) => {
  * The form's own shape, not a contract's. Two things differ deliberately: the vendor is held by
  * **id**, because "vendor and item exist" is a question only an id can answer, while the
  * register below still prints the name the contract carries; and `from`/`to` are held as wire
- * dates (`YYYY-MM-DD`), because that is what a date input speaks and what the body wants — the
+ * dates (`YYYY-MM-DD`), because that is what a date input speaks and what the body wants - the
  * conversion happens once, on the way into the form.
  */
 type Draft = { vendorId: string; it: string; rate: number; from: string; to: string; moq: number };
@@ -113,7 +113,7 @@ export default function Contracts() {
       vendorId: draft.vendorId, it: item, rate: draft.rate, from: draft.from, to: draft.to, moq: draft.moq,
     });
     setBusy(false);
-    // The form empties only once the register actually carries the contract — a refusal
+    // The form empties only once the register actually carries the contract - a refusal
     // ("already has a live contract with …") leaves every box as it was typed.
     if (ok) { setDraft(BLANK); setAdding(false); }
   };
@@ -171,7 +171,7 @@ export default function Contracts() {
       {above.length > 0 && (
         <Alert tone="w" label="RATE GAP">
           {above.length} live contract{above.length > 1 ? "s sit" : " sits"} above the item's moving-average
-          cost — {above.slice(0, 3).map((c) => `${IT[c.it]?.n ?? c.it} ${pct(variance(c).ratio, 1)}`).join(", ")}
+          cost - {above.slice(0, 3).map((c) => `${IT[c.it]?.n ?? c.it} ${pct(variance(c).ratio, 1)}`).join(", ")}
           {above.length > 3 ? ` and ${above.length - 3} more` : ""}. Reopen the rate with the vendor before the
           next order.
         </Alert>

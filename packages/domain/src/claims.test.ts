@@ -46,7 +46,7 @@ describe("foldClaims", () => {
       { prq: "A", line: 0, qty: 5 }, { prq: "A", line: 0, qty: 7 }, { prq: "A", line: 1, qty: 2 },
     ])).toEqual([{ prq: "A", line: 0, qty: 12 }, { prq: "A", line: 1, qty: 2 }]);
   });
-  it("sorts by requisition id, then line — the order every writer takes its locks in", () => {
+  it("sorts by requisition id, then line - the order every writer takes its locks in", () => {
     expect(foldClaims([{ prq: "B", line: 0, qty: 1 }, { prq: "A", line: 1, qty: 1 }, { prq: "A", line: 0, qty: 1 }])
       .map((x) => `${x.prq}#${x.line}`)).toEqual(["A#0", "A#1", "B#0"]);
   });
@@ -68,7 +68,7 @@ describe("shortfallClaims", () => {
     expect(shortfallClaims([{ qty: 105, recv: 105, rejected: 45, src }])).toEqual([
       { prq: "PRQ-2026-012", line: 0, qty: 45 },
     ]);
-    // Nothing at all was taken in — the whole claim goes back, newest source first.
+    // Nothing at all was taken in - the whole claim goes back, newest source first.
     expect(shortfallClaims([{ qty: 105, recv: 105, rejected: 105, src }])).toEqual([
       { prq: "PRQ-2026-012", line: 0, qty: 80 },
       { prq: "PRQ-2026-011", line: 0, qty: 25 },

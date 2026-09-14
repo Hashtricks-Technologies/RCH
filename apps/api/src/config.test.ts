@@ -17,7 +17,7 @@ describe("loadConfig", () => {
     expect(c.loginRateLimitPerMinute).toBe(10);
     expect(c.loginRateLimitPerEmpPerMinute).toBe(5);
     // One pod's share of the instance's connections. A request takes exactly one of them
-    // (`withReadTransaction`, lib/db.ts), so this is "how many requests at once" — the default
+    // (`withReadTransaction`, lib/db.ts), so this is "how many requests at once" - the default
     // is what the chart ships and what the load check was measured against.
     expect(c.dbPoolMax).toBe(10);
     // The heartbeat has to sit under every idle timer on the path (nginx 3600s, the ALB's

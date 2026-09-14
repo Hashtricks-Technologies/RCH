@@ -1,4 +1,4 @@
-// Rate contracts: SQL only. No rules, no transaction of its own — service.ts passes `tx` in.
+// Rate contracts: SQL only. No rules, no transaction of its own - service.ts passes `tx` in.
 import { and, eq, ne } from "drizzle-orm";
 import type { RateContract } from "@rch/contract";
 import { isUniqueViolation, type Tx } from "../../lib/db.js";
@@ -11,7 +11,7 @@ export type RateContractPatch = Partial<{
 }>;
 
 export const contractsRepo = {
-  /** A read-only lookup — the vendor's own row is never locked here, only the contract's is
+  /** A read-only lookup - the vendor's own row is never locked here, only the contract's is
    *  (below). Returns the display name a message or a wire row needs. */
   async vendorHead(tx: Tx, id: string): Promise<{ id: string; name: string } | undefined> {
     const [row] = await tx.select({ id: vendors.id, name: vendors.name }).from(vendors).where(eq(vendors.id, id));
@@ -26,7 +26,7 @@ export const contractsRepo = {
   },
 
   /** `rate_contracts_live_uq` is the arbiter: a pre-check reads before this insert takes its
-   *  lock, so two callers can both pass it — `onConflictDoNothing` hands the loser no row back,
+   *  lock, so two callers can both pass it - `onConflictDoNothing` hands the loser no row back,
    *  and the loser reads the same "already has a live contract" sentence the check would have
    *  given it a moment later (`addMenuItem`'s pattern). */
   async insertIfNew(tx: Tx, row: NewRateContract): Promise<RateContractRow | undefined> {
@@ -37,7 +37,7 @@ export const contractsRepo = {
   /** Is another live contract already covering this vendor and item? Read `for update` so two
    *  reactivations of two closed contracts for one pair cannot both find the coast clear.
    *  `onConflictDoNothing` is not available on an UPDATE, so this is the pre-check for a
-   *  reactivation — the partial unique index is still the backstop if a race slips past it. */
+   *  reactivation - the partial unique index is still the backstop if a race slips past it. */
   async liveFor(tx: Tx, vendorId: string, itemKey: string, exceptId: string): Promise<boolean> {
     const rows = await tx.select({ id: rateContracts.id }).from(rateContracts)
       .where(and(eq(rateContracts.vendorId, vendorId), eq(rateContracts.itemKey, itemKey),
@@ -49,7 +49,7 @@ export const contractsRepo = {
    *  contract would collide with a live one for the same (vendor, item) another writer just
    *  won. `liveFor`'s pre-check locks only rows that are already `active = true`, so two
    *  reactivations of two *closed* contracts for the same pair both find nothing to lock and
-   *  both reach this UPDATE — `rate_contracts_live_uq` is the backstop, caught here rather than
+   *  both reach this UPDATE - `rate_contracts_live_uq` is the backstop, caught here rather than
    *  left to surface as a raw 500, and the loser reads the same "already has a live contract"
    *  sentence the pre-check gives the ordinary case. A patch that never sets `active: true`
    *  cannot hit this index (it only constrains active rows), so `remove`'s `active: false` and
@@ -65,7 +65,7 @@ export const contractsRepo = {
     }
   },
 
-  /** The wire shape of one contract, re-read joined to its vendor's name — `RateContract.vendor`
+  /** The wire shape of one contract, re-read joined to its vendor's name - `RateContract.vendor`
    *  is the display name, not the id (readers/documents.ts's `readContracts` carries the same
    *  join). Re-selecting after a write means the id and any DB-side rounding come back exact. */
   async wire(tx: Tx, id: string): Promise<RateContract> {

@@ -7,9 +7,9 @@
 #   deploy/compose/deploy.sh
 #
 # What it does, in order: builds the api and ui images from this checkout's own Dockerfiles
-# (the same two Dockerfiles the EKS path builds — there is one image definition per service,
+# (the same two Dockerfiles the EKS path builds - there is one image definition per service,
 # not two), brings the stack up (`postgres` → `migrate` → `api`/`ui`/`caddy`, in that order,
-# via compose's own `depends_on` conditions — a fresh Postgres or a pending migration is never
+# via compose's own `depends_on` conditions - a fresh Postgres or a pending migration is never
 # raced), seeds the database only the first time it is empty, and reports the result. It is
 # safe to run again on an already-running stack: rebuilding and re-upping a service compose
 # finds unchanged is a no-op, and the seed step only ever fires once.
@@ -17,7 +17,7 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
 if [ ! -f .env ]; then
-  echo "Missing deploy/compose/.env — copy .env.example, fill it in, then run this again." >&2
+  echo "Missing deploy/compose/.env - copy .env.example, fill it in, then run this again." >&2
   exit 1
 fi
 
@@ -35,12 +35,12 @@ echo "== seeding, if this is a first run =="
 # or not this is a first deploy.
 users=$(compose exec -T postgres psql -U rch -d rch -tAc "select count(*) from users" 2>/dev/null || echo "")
 if [ "$users" = "0" ]; then
-  # `--bare`: the locations, the document numbering and the RC-0001 admin account — never the
+  # `--bare`: the locations, the document numbering and the RC-0001 admin account - never the
   # demo hospital. This box is a real deployment; the demo data is for local dev and CI only.
-  echo "   database is empty — seeding the locations and the admin account (no demo data)"
+  echo "   database is empty - seeding the locations and the admin account (no demo data)"
   compose run --rm --no-deps api dist/cli/seed.mjs --bare --yes-seed rch
 else
-  echo "   database already has ${users:-some} user(s) — not reseeding"
+  echo "   database already has ${users:-some} user(s) - not reseeding"
 fi
 
 echo "== waiting for the site to answer =="

@@ -12,7 +12,7 @@ import type { TktStatus } from "../../types";
 const STEPS: { st: TktStatus; title: string; body: string }[] = [
   { st: "Issued", title: "Issued", body: "The store keeper has generated this ticket and reserved the stock against it." },
   { st: "Collected", title: "Collected", body: "The goods have been handed over and are in transit to the counter." },
-  { st: "Received", title: "Received", body: "Confirmed at the counter — the stock is on the shelf and sellable." },
+  { st: "Received", title: "Received", body: "Confirmed at the counter - the stock is on the shelf and sellable." },
 ];
 const ORDER: TktStatus[] = ["Issued", "Collected", "Received"];
 
@@ -42,14 +42,14 @@ function TicketDrawer({ id }: DrawerProps) {
   const at = ORDER.indexOf(tkt.st);
   // Which way this ticket runs decides almost everything on this screen. A ticket *to* here is
   // one to collect and confirm; a ticket *from* here is stock this counter granted away, and the
-  // server refuses a receipt on it (`requireLocOf(claims, t.to)`) — so the button is not drawn.
+  // server refuses a receipt on it (`requireLocOf(claims, t.to)`) - so the button is not drawn.
   const sentFromHere = tkt.from === user.loc;
   const canReceive = tkt.to === user.loc && canReceiveTicket(tkt.st);
   // A transfer this counter granted out of its own stock is its own to withdraw while nobody
   // has collected it. A ticket bound *for* here is the store's or the kitchen's to withdraw.
   const canWithdraw = sentFromHere && canCancelTicket(tkt.st);
   // The server sends the six digits to the collecting location and to nobody else, so an empty
-  // string is not a missing OTP — it is one that was never this screen's to show.
+  // string is not a missing OTP - it is one that was never this screen's to show.
   const holdsOtp = tkt.otp !== "";
 
   return (
@@ -77,7 +77,7 @@ function TicketDrawer({ id }: DrawerProps) {
           <div style={{ marginTop: 8, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             <StatusPill status={tkt.st} />
             {/* The collector walks to the other counter with this in hand, not with the tablet.
-                The slip carries the six digits only where this browser actually has them —
+                The slip carries the six digits only where this browser actually has them -
                 a ticket this counter raised reads `""`, and the paper says whose code it is. */}
             <PrintSlipBtn />
           </div>
@@ -88,14 +88,14 @@ function TicketDrawer({ id }: DrawerProps) {
           one has digits that are spent. Direction first, then status. */}
       <p className="mini mtop">
         {sentFromHere
-          ? <>The six digits sit on {LOC[tkt.to].n}&apos;s own screen — this ticket was raised here, so the
+          ? <>The six digits sit on {LOC[tkt.to].n}&apos;s own screen - this ticket was raised here, so the
             collector reads them out to you at the window.</>
           : tkt.st === "Cancelled"
             ? <>This ticket was withdrawn before anyone collected against it, so its six digits were never used.</>
             : holdsOtp
               ? <>Nothing is scanned: whoever collects reads these six digits aloud to the store keeper at {LOC[tkt.from].n},
                 who types them in to release the goods.</>
-              : <>The six digits were used at handover — {LOC[tkt.from].n} released the goods against them and
+              : <>The six digits were used at handover - {LOC[tkt.from].n} released the goods against them and
                 there is nothing left to quote.</>}
       </p>
 
@@ -111,7 +111,7 @@ function TicketDrawer({ id }: DrawerProps) {
           key: l.it,
           cells: [
             IT[l.it]?.n ?? l.it,
-            <span className="mono">{IT[l.it]?.c ?? "—"}</span>,
+            <span className="mono">{IT[l.it]?.c ?? "-"}</span>,
             fq(l.qty, l.it),
             <span className="mini">{U(l.it)}</span>,
           ],
@@ -144,7 +144,7 @@ function TicketDrawer({ id }: DrawerProps) {
 
       {tkt.st === "Cancelled" && (
         <Alert tone="w" label="CANCELLED">
-          This ticket was withdrawn before it was collected — nothing was sent. Raise a new request
+          This ticket was withdrawn before it was collected - nothing was sent. Raise a new request
           if the stock is still needed.
         </Alert>
       )}
@@ -159,7 +159,7 @@ function TicketDrawer({ id }: DrawerProps) {
           />
           <Feed items={STEPS.map((step, i) => ({
             key: step.st,
-            title: <>{step.title}{i === at ? " — this is where it is now" : ""}</>,
+            title: <>{step.title}{i === at ? " - this is where it is now" : ""}</>,
             body: step.body,
             when: i < at ? "done" : i === at ? "current" : "pending",
             color: i < at ? "var(--good)" : i === at ? "var(--accent)" : "var(--ink-4)",
@@ -176,11 +176,11 @@ function TicketDrawer({ id }: DrawerProps) {
         Received means confirmed at the counter. {sentFromHere
           ? tkt.st === "Cancelled"
             ? "This one was withdrawn, so the stock never left this counter."
-            : LOC[tkt.to].n + " confirms receipt at their end — this counter's part ended at the handover."
+            : LOC[tkt.to].n + " confirms receipt at their end - this counter's part ended at the handover."
           : canReceive
             ? "Check the quantities physically, then confirm receipt to add them to this counter's stock."
             : tkt.st === "Issued"
-              ? "Collect the goods at " + LOC[tkt.from].n + " first — receipt can only be confirmed once handed over."
+              ? "Collect the goods at " + LOC[tkt.from].n + " first - receipt can only be confirmed once handed over."
               : tkt.st === "Cancelled"
                 ? "Nothing was collected against this one, so nothing reached this counter."
                 : "This ticket is closed; the stock is already counted at this counter."}

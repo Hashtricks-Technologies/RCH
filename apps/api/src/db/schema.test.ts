@@ -23,7 +23,7 @@ describe("schema", () => {
   // talk past it and leave a row the books can never balance again.
   it("refuses an update or delete on document_history", async () => {
     // Drizzle wraps the driver's error and carries it as `.cause`, so the sentence the trigger
-    // raises — the one an operator would read in a log — is read from there.
+    // raises - the one an operator would read in a log - is read from there.
     const refusal = async (q: ReturnType<typeof sql>): Promise<string> => {
       try { await t.db.execute(q); return "it was allowed"; } catch (e) { return String((e as { cause?: Error }).cause?.message); }
     };

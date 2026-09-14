@@ -32,9 +32,9 @@ describe("recipeRefusal", () => {
     expect(recipeRefusal(ITEMS, "ghost", ok)).toBe("There is no item ghost.");
   });
   it("refuses a recipe on something nobody makes, naming what it is", () => {
-    expect(recipeRefusal(ITEMS, "milk", ok)).toBe("Milk 1L (toned) is a raw material — only a finished good or a made-to-order item has a recipe");
-    expect(recipeRefusal(ITEMS, "cup", ok)).toBe("Paper cup 150ml is packaging — only a finished good or a made-to-order item has a recipe");
-    expect(recipeRefusal(ITEMS, "water", ok)).toBe("Mineral water 1L is a traded item with a printed MRP — only a finished good or a made-to-order item has a recipe");
+    expect(recipeRefusal(ITEMS, "milk", ok)).toBe("Milk 1L (toned) is a raw material - only a finished good or a made-to-order item has a recipe");
+    expect(recipeRefusal(ITEMS, "cup", ok)).toBe("Paper cup 150ml is packaging - only a finished good or a made-to-order item has a recipe");
+    expect(recipeRefusal(ITEMS, "water", ok)).toBe("Mineral water 1L is a traded item with a printed MRP - only a finished good or a made-to-order item has a recipe");
   });
   it("holds the overhead to 0–100%", () => {
     expect(recipeRefusal(ITEMS, "capp", { ...ok, ov: -1 })).toBe("Overhead must be between 0% and 100%");
@@ -47,8 +47,8 @@ describe("recipeRefusal", () => {
   it("names the first bad line, top down", () => {
     expect(recipeRefusal(ITEMS, "capp", { ov: 12, lines: [{ it: "capp", qty: 1 }] })).toBe("Cappuccino cannot be an ingredient of itself");
     expect(recipeRefusal(ITEMS, "capp", { ov: 12, lines: [{ it: "ghost", qty: 1 }] })).toBe("There is no item ghost to use as an ingredient.");
-    expect(recipeRefusal(ITEMS, "capp", { ov: 12, lines: [{ it: "chai", qty: 1 }] })).toBe("Masala tea is made to order at the counter — it has no stock for a recipe to draw on");
-    expect(recipeRefusal(ITEMS, "capp", { ov: 12, lines: [{ it: "milk", qty: 0.1 }, { it: "milk", qty: 0.05 }] })).toBe("Milk 1L (toned) is on the recipe twice — put it on one line");
+    expect(recipeRefusal(ITEMS, "capp", { ov: 12, lines: [{ it: "chai", qty: 1 }] })).toBe("Masala tea is made to order at the counter - it has no stock for a recipe to draw on");
+    expect(recipeRefusal(ITEMS, "capp", { ov: 12, lines: [{ it: "milk", qty: 0.1 }, { it: "milk", qty: 0.05 }] })).toBe("Milk 1L (toned) is on the recipe twice - put it on one line");
     expect(recipeRefusal(ITEMS, "capp", { ov: 12, lines: [{ it: "milk", qty: 0 }] })).toBe("Enter a quantity of Milk 1L (toned) above zero");
     expect(recipeRefusal(ITEMS, "capp", { ov: 12, lines: [{ it: "cup", qty: 1 }, { it: "milk", qty: -0.1 }] })).toBe("Enter a quantity of Milk 1L (toned) above zero");
   });

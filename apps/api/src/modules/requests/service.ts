@@ -1,9 +1,9 @@
-// Requests: the flow — transaction, rules, ids, reservations. Composes the helpers in
+// Requests: the flow - transaction, rules, ids, reservations. Composes the helpers in
 // apps/api/src/lib/; the arithmetic of a decision is `planApproval` in packages/domain.
 //
 // The movement rule, twice over (CLAUDE.md): approving a request writes approved quantities
 // and nothing else, and issuing its ticket writes a hold at the central store and nothing
-// else. No stock leaves a shelf here — that is the collector's scan, in the tickets module.
+// else. No stock leaves a shelf here - that is the collector's scan, in the tickets module.
 import type { z } from "zod";
 import type {
   ApprovalResultSchema, ApproveRequestBodySchema, CreateRequestBodySchema, IssueResultSchema,
@@ -38,19 +38,19 @@ export function createRequestsService(db: Db) {
   return {
     /**
      * One outlet's ask, in one transaction. The raiser's location is the token's, never the
-     * body's — a counter operator cannot raise from another counter by editing a payload.
+     * body's - a counter operator cannot raise from another counter by editing a payload.
      */
     async create(claims: AccessClaims, body: CreateRequestBody): Promise<WriteResponse<StockRequest>> {
       return withTransaction(db, async (tx) => {
         const master = await loadMaster(tx);
         for (const l of body.lines) if (!master.items[l.it]) throw new NotFoundError(`There is no item ${l.it}.`);
-        // A zero reaches the operator as the store's own sentence, not a schema's 400 — which
+        // A zero reaches the operator as the store's own sentence, not a schema's 400 - which
         // is why `QtySchema` in packages/contract leaves positivity to this line.
         assertRule(body.lines.every((l) => l.qty > 0), "Add at least one line with a quantity");
         // One item, one line. Two lines of the same item would be decided twice against the
         // same free-to-promise and shown as two shortfalls the counter cannot act on, and the
         // ticket would carry one folded line the request no longer matches. Refuse it where
-        // the operator can still fix it — the draft screen — rather than reconcile it later.
+        // the operator can still fix it - the draft screen - rather than reconcile it later.
         const repeated = body.lines.find((l, i) => body.lines.findIndex((x) => x.it === l.it) !== i);
         if (repeated) assertRule(false, `Combine the ${master.items[repeated.it]!.n} lines into one`);
 
@@ -70,8 +70,8 @@ export function createRequestsService(db: Db) {
         // that listed six items would be read by nobody.
         const n = body.lines.length;
         const message = n === 1
-          ? `${id} raised for ${body.lines[0].qty} ${master.items[body.lines[0].it]!.n} — with the outlet manager now`
-          : `${id} sent to the outlet manager — ${n} line${n > 1 ? "s" : ""}`;
+          ? `${id} raised for ${body.lines[0].qty} ${master.items[body.lines[0].it]!.n} - with the outlet manager now`
+          : `${id} sent to the outlet manager - ${n} line${n > 1 ? "s" : ""}`;
         return { result: await requestsRepo.wire(tx, id), changed: [...changed], message };
       });
     },
@@ -79,7 +79,7 @@ export function createRequestsService(db: Db) {
     /**
      * The counter's own withdrawal while the manager has not decided yet, or the manager
      * withdrawing their own approval before the store ever issues a ticket. A manager is
-     * hospital-wide — one manager supervises every outlet — so only counter/prod scope to
+     * hospital-wide - one manager supervises every outlet - so only counter/prod scope to
      * the raiser's own location; the manager does not.
      */
     async cancel(claims: AccessClaims, id: string): Promise<WriteResponse<StockRequest>> {
@@ -88,18 +88,18 @@ export function createRequestsService(db: Db) {
         if (!r) throw new NotFoundError(`There is no request ${id}.`);
         if (claims.role !== "manager") requireLocOf(claims, r.fromLoc, "your own counter");
         // The guard is at the door: widening REQUEST_TRANSITIONS to reach "Cancelled" from an
-        // approved status must not re-open cancel for a request already holding a live ticket —
+        // approved status must not re-open cancel for a request already holding a live ticket -
         // a ticket already reserved stock a cancellation here would silently un-promise. Scoped
         // to "Ticket issued" and not merely "ticketId is set", because the column is never
-        // cleared once a ticket exists — a Collected or Closed request still carries it, and
+        // cleared once a ticket exists - a Collected or Closed request still carries it, and
         // "cancel the ticket instead" is not advice either of those can act on. Every other
         // refused status falls straight through to assertTransition's own "is already <status>".
-        assertRule(r.status !== "Ticket issued", `${id} already has ticket ${r.ticketId} — cancel the ticket instead`);
+        assertRule(r.status !== "Ticket issued", `${id} already has ticket ${r.ticketId} - cancel the ticket instead`);
         assertTransition(REQUEST_TRANSITIONS, r.status, "Cancelled", id);
         const wasApproved = r.status === "Manager approved" || r.status === "Partially approved";
         await requestsRepo.setStatus(tx, id, { status: "Cancelled" });
         const who = await requestsRepo.userName(tx, claims.sub);
-        await appendHistory(tx, "request", id, wasApproved ? "Cancelled — never issued" : "Cancelled", who);
+        await appendHistory(tx, "request", id, wasApproved ? "Cancelled - never issued" : "Cancelled", who);
 
         const changed = ["req"] as const;
         await emitChanged(tx, changed);
@@ -110,7 +110,7 @@ export function createRequestsService(db: Db) {
     /**
      * The manager's decision. Never more than the counter asked for, never more than the
      * manager typed, and never more than the central store can still promise (C6).
-     * A manager is hospital-wide — one manager supervises every outlet — so this takes no
+     * A manager is hospital-wide - one manager supervises every outlet - so this takes no
      * location, deliberately; `reject`, below, is the same.
      */
     async approve(claims: AccessClaims, id: string, body: ApproveRequestBody): Promise<WriteResponse<ApprovalResult>> {
@@ -120,18 +120,18 @@ export function createRequestsService(db: Db) {
         const lines = await requestsRepo.lines(tx, id);
         // One decision per line, positionally. `planApproval` reads `appr[i]` beside `lines[i]`,
         // so a short array silently approves nothing on the lines it does not reach and a long
-        // one carries a decision about a line that is not there — either way the manager sees a
+        // one carries a decision about a line that is not there - either way the manager sees a
         // request they did not decide. A stale screen is exactly how that arrives, so it is
         // refused here rather than reconciled afterwards.
         assertRule(body.appr.length === lines.length, `Give a quantity for each of the ${lines.length} lines`);
         const keys = lines.map((l) => l.it);
         // What the store may still promise: on hand, less open reservations, less what other
         // approvals have already committed (C6). Read before any write, and never trusted at
-        // issue time — issue-ticket re-reads it under the balance locks.
+        // issue time - issue-ticket re-reads it under the balance locks.
         const stock = await requestsRepo.balancesAt(tx, STORE, keys);
         const held = await reservedAt(tx, STORE, keys);
         // The request being decided sits in "Request sent", which `committed()` does not
-        // count, so there is nothing to exclude — and the guard below makes a second decision
+        // count, so there is nothing to exclude - and the guard below makes a second decision
         // impossible anyway.
         const open = await requestsRepo.openRequests(tx);
         const plan = planApproval(lines, body.appr, (it) => round3(
@@ -149,20 +149,20 @@ export function createRequestsService(db: Db) {
         const changed = ["req"] as const;
         await emitChanged(tx, changed);
         const message = plan.trimmed
-          ? `${id} trimmed — the central store cannot cover the full quantity`
+          ? `${id} trimmed - the central store cannot cover the full quantity`
           : plan.st === "Rejected"
-            ? `${id} rejected — no ticket will be issued`
+            ? `${id} rejected - no ticket will be issued`
             : `${id} ${plan.st.toLowerCase()} and forwarded to the store keeper`;
         return { result: { request: await requestsRepo.wire(tx, id), trimmed: plan.trimmed }, changed: [...changed], message };
       });
     },
 
-    /** A refusal the counter can read. The reason is not optional — it is the whole message. */
+    /** A refusal the counter can read. The reason is not optional - it is the whole message. */
     async reject(claims: AccessClaims, id: string, body: RejectRequestBody): Promise<WriteResponse<StockRequest>> {
       return withTransaction(db, async (tx) => {
         const r = await requestsRepo.head(tx, id);
         if (!r) throw new NotFoundError(`There is no request ${id}.`);
-        assertRule(body.note.trim().length > 0, "Give a reason — the counter sees it on the request");
+        assertRule(body.note.trim().length > 0, "Give a reason - the counter sees it on the request");
         assertTransition(REQUEST_TRANSITIONS, r.status, "Rejected", id);
         await requestsRepo.setStatus(tx, id, { status: "Rejected", managerNote: body.note, approvedBy: claims.sub });
         const who = await requestsRepo.userName(tx, claims.sub);
@@ -176,14 +176,14 @@ export function createRequestsService(db: Db) {
 
     /**
      * The store keeper turns an approval into a ticket: a number, an OTP, and a hold on the
-     * shelf. Nothing moves — the collector's scan does that.
+     * shelf. Nothing moves - the collector's scan does that.
      */
     async issue(claims: AccessClaims, id: string): Promise<WriteResponse<IssueResult>> {
       return withTransaction(db, async (tx) => {
         const r = await requestsRepo.head(tx, id);
         if (!r) throw new NotFoundError(`There is no request ${id}.`);
         // Only "Manager approved" and "Partially approved" reach "Ticket issued", and neither
-        // carries a ticket — so this also refuses a request that already has one.
+        // carries a ticket - so this also refuses a request that already has one.
         assertTransition(REQUEST_TRANSITIONS, r.status, "Ticket issued", id);
 
         const master = await loadMaster(tx);
@@ -191,8 +191,8 @@ export function createRequestsService(db: Db) {
         assertRule(approved.length > 0, "Nothing approved on this request");
         // Fold before the cover check, not after it (CLAUDE.md, "Dispatch is all-or-nothing":
         // a repeated item is folded into one line before the cover check). `POST /requests`
-        // refuses a repeat outright, so only a row written before that rule — seeded, migrated,
-        // hand-corrected — can arrive with one, and for it the check has to see the total:
+        // refuses a repeat outright, so only a row written before that rule - seeded, migrated,
+        // hand-corrected - can arrive with one, and for it the check has to see the total:
         // `writeTicket` folds and reserves the sum, so two lines of 8 checked separately
         // against 12 on hand would hold 16. Same number checked, held and printed.
         const folded = new Map<string, number>();
@@ -218,7 +218,7 @@ export function createRequestsService(db: Db) {
 
         const changed = ["req", "tkt", "rsv"] as const;
         await emitChanged(tx, changed);
-        const message = `${ticket.id} issued — ${master.locations[r.fromLoc]?.n ?? r.fromLoc} can collect against this ticket`;
+        const message = `${ticket.id} issued - ${master.locations[r.fromLoc]?.n ?? r.fromLoc} can collect against this ticket`;
         return { result: { request: await requestsRepo.wire(tx, id), ticket }, changed: [...changed], message };
       });
     },

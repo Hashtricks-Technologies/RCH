@@ -17,7 +17,7 @@ const dotFor = (state: string) =>
 const QUICK = [
   "The Central Store cannot cover this today.",
   "Duplicate of a request already raised for this counter.",
-  "Not due yet — the counter is still holding enough.",
+  "Not due yet - the counter is still holding enough.",
   "Raise this against the Central Kitchen, not the store.",
 ];
 
@@ -29,7 +29,7 @@ const decidedBy = (r: StockRequest) => {
 };
 
 /**
- * C16. Everything below is derived **once**, from the request this drawer opened over —
+ * C16. Everything below is derived **once**, from the request this drawer opened over -
  * what the store can promise per line, which lines have been struck out, the reason boxes and
  * the manager's note. A `useState` initialiser runs on mount and never again, and this drawer
  * is one long-lived component instance that `openDrawer("mreq", other)` re-points at a second
@@ -37,8 +37,8 @@ const decidedBy = (r: StockRequest) => {
  * in the boxes of another, over lines that may not even have the same items.
  *
  * The key is the fix. `req.id` covers being pointed elsewhere; the **last trail entry's**
- * instant covers the same request coming back changed underneath — an SSE refetch after somebody
- * else decided it — and either one forces a fresh instance with freshly derived state.
+ * instant covers the same request coming back changed underneath - an SSE refetch after somebody
+ * else decided it - and either one forces a fresh instance with freshly derived state.
  *
  * It has to be `hist.at(-1)?.iso` and not `req.iso`: `req.iso` is the instant the counter
  * *raised* the request, which never changes for as long as the document exists, so keying on it
@@ -46,8 +46,8 @@ const decidedBy = (r: StockRequest) => {
  * that is the only field on the request that moves when one does. `req.iso` is the fallback for
  * a document whose trail has not been read yet, which is the one case where nothing has moved.
  *
- * `bodyKey` is exported so the key can be tested for what it promises — moving when the document
- * does and standing still when it has not — without a screen that happens to render it.
+ * `bodyKey` is exported so the key can be tested for what it promises - moving when the document
+ * does and standing still when it has not - without a screen that happens to render it.
  */
 export const bodyKey = (r: DatedDoc<StockRequest>) => `${r.id}:${r.hist.at(-1)?.iso ?? r.iso}`;
 
@@ -81,12 +81,12 @@ function ApprovalBody({ req }: { req: DatedDoc<StockRequest> }) {
   const [busy, setBusy] = useState<"approve" | "reject" | "withdraw" | null>(null);
 
   const open = req.st === "Request sent";
-  // A decision this manager made themselves, before the store keeper turns it into a ticket —
+  // A decision this manager made themselves, before the store keeper turns it into a ticket -
   // the one thing left to undo once "Approve & forward" has already gone through. A manager
   // is hospital-wide, so this is not scoped to the outlet that raised it.
   const canWithdraw = (req.st === "Manager approved" || req.st === "Partially approved") && !req.ticket;
   /** Clamped to what the counter asked for. The box itself is a `DraftLineInput`, so this is
-   *  reached once per edit rather than once per keystroke — reading a half-typed "12." as a
+   *  reached once per edit rather than once per keystroke - reading a half-typed "12." as a
    *  number is what turned a half-litre into 12 and then into 125 clamped back to the line. */
   const set = (i: number, n: number) => {
     const max = req.lines[i].qty;
@@ -118,12 +118,12 @@ function ApprovalBody({ req }: { req: DatedDoc<StockRequest> }) {
      one item and nothing else has no way to find out why. */
   const composed = () => {
     const perLine = killedIdx.map((i) => `${IT[req.lines[i].it]?.n ?? req.lines[i].it}: ${lineWhy[i].trim()}`);
-    return [reason, perLine.length ? `Not approved — ${perLine.join("; ")}` : ""]
+    return [reason, perLine.length ? `Not approved - ${perLine.join("; ")}` : ""]
       .filter(Boolean).join(" · ");
   };
 
-  // The drawer closes only once the server has taken the decision. A refusal — an empty
-  // reason, a request someone else has already decided, a dropped connection — leaves every
+  // The drawer closes only once the server has taken the decision. A refusal - an empty
+  // reason, a request someone else has already decided, a dropped connection - leaves every
   // per-line trim and the reason exactly where the manager typed them.
   const doApprove = async () => {
     if (!canApprove || busy) return;
@@ -159,7 +159,7 @@ function ApprovalBody({ req }: { req: DatedDoc<StockRequest> }) {
             <Btn
               variant="dg"
               disabled={!reason || busy !== null}
-              title={reason ? "Reject the whole request" : "Write the reason below — reject stays locked without one"}
+              title={reason ? "Reject the whole request" : "Write the reason below - reject stays locked without one"}
               onClick={doReject}
             >
               {busy === "reject" ? "Rejecting…" : "Reject the request"}
@@ -167,7 +167,7 @@ function ApprovalBody({ req }: { req: DatedDoc<StockRequest> }) {
             <Btn
               disabled={!canApprove || busy !== null}
               title={giving === 0
-                ? "Nothing is left to approve — use Reject the request"
+                ? "Nothing is left to approve - use Reject the request"
                 : missingWhy.length > 0 ? "Give a reason for every rejected item" : undefined}
               onClick={doApprove}
             >
@@ -200,7 +200,7 @@ function ApprovalBody({ req }: { req: DatedDoc<StockRequest> }) {
       {!open && req.st !== "Rejected" && decided && (
         <Alert tone="i" label="DECIDED">
           {decided.what} by <b>{decided.who}</b> at <b className="mono">{decided.at}</b>.
-          {canWithdraw && " The store keeper has not issued a ticket yet — this approval can still be withdrawn."}
+          {canWithdraw && " The store keeper has not issued a ticket yet - this approval can still be withdrawn."}
         </Alert>
       )}
 
@@ -328,7 +328,7 @@ function ApprovalBody({ req }: { req: DatedDoc<StockRequest> }) {
       )}
       {open && trimmed && giving > 0 && (
         <Alert tone="w" label="SHORT">
-          You are approving less than the counter asked for. The shortfall is recorded on {req.id} — there is no
+          You are approving less than the counter asked for. The shortfall is recorded on {req.id} - there is no
           back-order document, so the counter raises a fresh request once the Central Store is replenished.
         </Alert>
       )}
@@ -340,7 +340,7 @@ function ApprovalBody({ req }: { req: DatedDoc<StockRequest> }) {
       )}
       {open && giving === 0 && (
         <Alert tone="c" label="NOTHING LEFT">
-          Every item is at zero or rejected. Use <b>Reject the request</b> below — it records the decision against
+          Every item is at zero or rejected. Use <b>Reject the request</b> below - it records the decision against
           your name and sends the reason to {LOC[req.from].n}.
         </Alert>
       )}
@@ -365,10 +365,10 @@ function ApprovalBody({ req }: { req: DatedDoc<StockRequest> }) {
             <div className="hint" style={!reason ? { color: "var(--warn)" } : undefined}>
               {reason
                 ? "Kept on the request history against your name."
-                : "No reason, no reject — the counter must be told why. Approving without one is allowed."}
+                : "No reason, no reject - the counter must be told why. Approving without one is allowed."}
             </div>
           </div>
-          {/* The footer's own Reject / Approve pair is the canonical one — it is on screen
+          {/* The footer's own Reject / Approve pair is the canonical one - it is on screen
               wherever the drawer is scrolled to, it carries the busy labels, and it is the
               pair the tests press. A second copy here was a second door onto the same two
               calls, unlocked by a different set of conditions and with no busy state at all:

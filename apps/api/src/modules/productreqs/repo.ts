@@ -1,4 +1,4 @@
-// Product requests: SQL only. No rules, no transaction of its own — service.ts passes `tx` in.
+// Product requests: SQL only. No rules, no transaction of its own - service.ts passes `tx` in.
 import { eq } from "drizzle-orm";
 import type { LocKey, ProductRequest, ProductReqStatus } from "@rch/contract";
 import { items, productRequests, users } from "../../db/schema/index.js";
@@ -18,7 +18,7 @@ const strip = <T extends object>(o: T): T => Object.fromEntries(Object.entries(o
 
 export const productReqsRepo = {
   /** Locking read: `.for("update")` on the request's own row, so one ask cannot be answered
-   *  twice — the second caller waits behind this transaction and reads the status the first
+   *  twice - the second caller waits behind this transaction and reads the status the first
    *  one committed. */
   async head(tx: Tx, id: string): Promise<ProductRequestRow | undefined> {
     const [row] = await tx.select().from(productRequests).where(eq(productRequests.id, id)).for("update");

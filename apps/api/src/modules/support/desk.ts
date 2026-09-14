@@ -1,4 +1,4 @@
-// desk.ts: the other end of the support desk — the admin-flagged account answering every
+// desk.ts: the other end of the support desk - the admin-flagged account answering every
 // ticket, whoever raised it. The same flow as `service.ts` (transaction, lock, rules, write,
 // emit, return) on the same repo; the rules are `@rch/domain`'s `support.ts`. It is a second
 // service beside the first rather than a branch inside it, because the two differ in exactly
@@ -28,7 +28,7 @@ const standing = (st: TicketStatus, reporter: string): string =>
   st === "Waiting on you" ? `waiting on ${reporter}` : st.toLowerCase();
 
 export function createDeskService(db: Db) {
-  /** Any ticket, locked — the desk's scope is the whole list, so the only miss is one that
+  /** Any ticket, locked - the desk's scope is the whole list, so the only miss is one that
    *  does not exist. */
   const any = async (tx: Tx, id: string) => {
     const row = await supportRepo.head(tx, id);
@@ -46,7 +46,7 @@ export function createDeskService(db: Db) {
         const row = await any(tx, id);
         const text = body.body.trim();
         assertRule(text.length > 0, "Write a reply first");
-        assertRule(mayReply(row.status), `${id} is closed — it takes no more replies`);
+        assertRule(mayReply(row.status), `${id} is closed - it takes no more replies`);
         // The status is decided before the message is written, so a refused move writes nothing.
         const next = deskStatusAfterReply(row.status, body.st);
         if (next !== row.status) assertTransition(SUPPORT_TRANSITIONS, row.status, next, id);
@@ -59,7 +59,7 @@ export function createDeskService(db: Db) {
         await emitChanged(tx, changed);
         return {
           result, changed: [...changed],
-          message: next === row.status ? `Reply sent on ${id}` : `Reply sent on ${id} — now ${standing(next, result.by)}`,
+          message: next === row.status ? `Reply sent on ${id}` : `Reply sent on ${id} - now ${standing(next, result.by)}`,
         };
       });
     },
@@ -67,7 +67,7 @@ export function createDeskService(db: Db) {
     async setStatus(id: string, body: SetDeskStatusBody): Promise<WriteResponse<SupportTicket>> {
       return withTransaction(db, async (tx) => {
         const row = await any(tx, id);
-        assertRule(mayDeskSet(body.st), "A ticket cannot go back to open — it is open only until support first answers it");
+        assertRule(mayDeskSet(body.st), "A ticket cannot go back to open - it is open only until support first answers it");
         assertTransition(SUPPORT_TRANSITIONS, row.status, body.st, id);
         await supportRepo.setStatus(tx, id, body.st);
         const result = (await supportRepo.one(tx, id))!;

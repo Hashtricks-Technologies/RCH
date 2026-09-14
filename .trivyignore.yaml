@@ -3,8 +3,8 @@
 # expiry; the scan fails again the day one lapses.
 #
 # YAML, not the one-line-per-id .trivyignore this replaced: that file's `CVE-… exp:2026-09-30`
-# was invented syntax. Trivy's plain-text format has no expiry field at all — it parses the id
-# and ignores the rest of the line — so the expiry that was supposed to bring the exception
+# was invented syntax. Trivy's plain-text format has no expiry field at all - it parses the id
+# and ignores the rest of the line - so the expiry that was supposed to bring the exception
 # back for review was never going to fire. `expired_at` below is real, and Trivy starts
 # reporting the CVE again on that date.
 vulnerabilities:
@@ -15,8 +15,8 @@ vulnerabilities:
   # it (`trivy image <ref>` shows the version).
   #
   # EXPIRES 2026-09-30. On that date Trivy starts reporting this CVE again and **all four scans
-  # fail closed at once** — ci.yml's two image scans and deploy.yml's two re-scans of the exact
-  # ECR tags helm is about to deploy — so a deploy attempted after it lapses is blocked, not
+  # fail closed at once** - ci.yml's two image scans and deploy.yml's two re-scans of the exact
+  # ECR tags helm is about to deploy - so a deploy attempted after it lapses is blocked, not
   # warned about. That is the intended behaviour and the date is not to be pushed out to get
   # past a red run: either the distroless base has shipped openssl 3.0.19-1~deb12u2 by then, in
   # which case rebuild and delete this entry, or it has not, in which case renewing it is a
@@ -31,7 +31,7 @@ vulnerabilities:
   # carries 3.0.18-1~deb12u2 (read from /var/lib/dpkg/status.d/libssl3 on 2026-09-12). The
   # api process never loads that library: the Node binary in the image is the official build
   # with OpenSSL linked in statically (OpenSSL 3.5.5 in the binary's own version string, and
-  # no `libssl.so.3` or `libcrypto.so.3` among its dynamic dependencies — checked on the
+  # no `libssl.so.3` or `libcrypto.so.3` among its dynamic dependencies - checked on the
   # image's `/nodejs/bin/node` on 2026-09-12), so TLS to RDS, the JWT signatures and every use
   # of crypto run on Node's own copy. Debian's libssl3 is in the image only as a dependency the
   # distroless build lists, and a distroless image runs no second process that could load it.

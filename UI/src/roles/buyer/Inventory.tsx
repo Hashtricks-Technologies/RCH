@@ -29,7 +29,7 @@ export default function Inventory() {
   // is therefore built during render and pinned to `catalogVersion`, which is what tells React a
   // product was added.
   void s.catalogVersion;
-  /** Locations come from the master list, never a hardcoded set — and, like the item master, it
+  /** Locations come from the master list, never a hardcoded set - and, like the item master, it
    *  is empty until the snapshot lands, so the labels are read during render. */
   const PLACES = ["All", ...ALL_LOCS.map((l) => LOC[l].n)];
   const KEYS = Object.keys(IT);
@@ -97,12 +97,12 @@ export default function Inventory() {
         <>{it.gst}%</>,
         <>{money(it.cost)}</>,
         ...ALL_LOCS.map((l) => (
-          stocked(l, k) ? <>{fq(qty(s, l, k), k)}</> : <span className="dim">—</span>
+          stocked(l, k) ? <>{fq(qty(s, l, k), k)}</> : <span className="dim">-</span>
         )),
-        <>{anywhere(k) ? fq(all, k) : <span className="dim">—</span>}</>,
-        <>{tr > 0 ? fq(tr, k) : <span className="dim">{anywhere(k) ? fq(0, k) : "—"}</span>}</>,
+        <>{anywhere(k) ? fq(all, k) : <span className="dim">-</span>}</>,
+        <>{tr > 0 ? fq(tr, k) : <span className="dim">{anywhere(k) ? fq(0, k) : "-"}</span>}</>,
         <>{money0(all * it.cost)}</>,
-        <>{it.rl > 0 ? fq(it.rl, k) : <span className="dim">—</span>}</>,
+        <>{it.rl > 0 ? fq(it.rl, k) : <span className="dim">-</span>}</>,
         !stocked("store", k)
           ? <Pill tone="mu">Not stocked</Pill>
           : <Pill tone={stateTone(a, it.rl)}>
@@ -165,7 +165,7 @@ export default function Inventory() {
             }
             : {
               title: "No items on the master",
-              sub: "The catalogue is empty — the store keeper adds products to it.",
+              sub: "The catalogue is empty - the store keeper adds products to it.",
             }}
         />
         <TableFoot

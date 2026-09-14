@@ -24,7 +24,7 @@ const SALES_DAYS = 14;
  * It used to fan its readers out with `Promise.all`, and `pg` checks a client out per query: a
  * snapshot asked the pool for about forty connections at once, against a pool of ten. Thirty
  * concurrent snapshot readers therefore queued hundreds of acquisitions behind ten connections
- * — `pg_pool_idle` pinned at 0, `pg_pool_waiting` peaking at 771, p95 2.9 s (RUNBOOK §12). One
+ * - `pg_pool_idle` pinned at 0, `pg_pool_waiting` peaking at 771, p95 2.9 s (RUNBOOK §12). One
  * transaction holds one client from `begin` to `commit`, so the fan-out costs one connection
  * however many queries it makes, and a read that made a single query is wrapped too rather than
  * left as the one exception nobody would remember.
@@ -35,7 +35,7 @@ const SALES_DAYS = 14;
  *
  * What this deliberately does **not** buy is a consistent read. Postgres reads at READ COMMITTED,
  * so each statement below still takes its own snapshot and a document raised mid-read can still
- * land in one collection and not another — which is why `readSupportTickets` still returns its
+ * land in one collection and not another - which is why `readSupportTickets` still returns its
  * tickets and their owners off one query rather than trusting the transaction to hold them
  * together. `repeatable read` would close that, and is not taken: a snapshot is the widest read
  * in the system and holding an old MVCC snapshot open across every table for the whole of it is
@@ -47,7 +47,7 @@ export function createSnapshotService(db: Db) {
     async snapshot(claims: AccessClaims): Promise<Snapshot> {
       return read(async (tx) => {
         // One users lookup for the whole snapshot, not one per document reader that stamps a
-        // name onto a byUser id — fetched alongside the caller's own row, then threaded through.
+        // name onto a byUser id - fetched alongside the caller's own row, then threaded through.
         const u = await snapshotRepo.userById(tx, claims.sub);
         if (!u) throw new NotFoundError("That account no longer exists.");
         const names = await D.userNames(tx);
@@ -93,24 +93,24 @@ export function createSnapshotService(db: Db) {
       });
     },
     /** The till roll for a window the caller chooses; the snapshot carries the last week of it.
-     *  The same two cuts the snapshot makes, in the same order: whose bills, then whose names —
+     *  The same two cuts the snapshot makes, in the same order: whose bills, then whose names -
      *  without the second, a refetch after a sale hands the store and the kitchen the payer the
      *  snapshot had just withheld. */
     async bills(claims: AccessClaims, days: number): Promise<Bill[]> {
       return read(async (tx) => scopePayers(scopeBills(await D.readBills(tx, days), claims), claims));
     },
-    /** The request desk on its own — what a write naming "req" refetches. */
+    /** The request desk on its own - what a write naming "req" refetches. */
     async requests(claims: AccessClaims): Promise<StockRequest[]> { return read(async (tx) => scopeRequests(await D.readRequests(tx), claims)); },
     /** The same two cuts the snapshot makes, in the same order: whose tickets, then whose OTP.
      *  Without the second, the refetch after a handover puts the digits straight back on a
      *  screen the snapshot had just withheld them from. */
     async tickets(claims: AccessClaims): Promise<Ticket[]> { return read(async (tx) => redactOtps(scopeTickets(await D.readTickets(tx), claims), claims)); },
     async shopAsks(claims: AccessClaims): Promise<ShopAsk[]> { return read(async (tx) => scopeShopAsks(await D.readShopAsks(tx), claims)); },
-    /** The kitchen's board on its own — what a status change naming "pord" refetches. */
+    /** The kitchen's board on its own - what a status change naming "pord" refetches. */
     async prodOrders(claims: AccessClaims): Promise<ProdOrder[]> { return read(async (tx) => scopeProdOrders(await D.readProdOrders(tx), claims)); },
-    /** The batch log on its own — what a make naming "batch" refetches. */
+    /** The batch log on its own - what a make naming "batch" refetches. */
     async batches(claims: AccessClaims): Promise<Batch[]> { return read(async (tx) => scopeBatches(await D.readBatches(tx), claims)); },
-    /** The requisition desk on its own — what a write naming "prq" refetches. */
+    /** The requisition desk on its own - what a write naming "prq" refetches. */
     async requisitions(claims: AccessClaims): Promise<Requisition[]> { return read(async (tx) => scopeBuying(await D.readRequisitions(tx), claims)); },
     async purchaseOrders(claims: AccessClaims): Promise<PurchaseOrder[]> { return read(async (tx) => scopeBuying(await D.readPurchaseOrders(tx), claims)); },
     async grns(claims: AccessClaims): Promise<Grn[]> { return read(async (tx) => scopeBuying(await D.readGrns(tx), claims)); },
@@ -119,12 +119,12 @@ export function createSnapshotService(db: Db) {
     /** A shop sees the new-product asks it raised itself; everyone else sees the queue. */
     async productRequests(claims: AccessClaims): Promise<ProductRequest[]> { return read(async (tx) => scopeProductRequests(await D.readProductRequests(tx), claims)); },
     // ---- payers ----
-    /** The register on its own — what a payer write naming "roster" refetches. The same cut the
+    /** The register on its own - what a payer write naming "roster" refetches. The same cut the
      *  snapshot makes (`scopeRoster`): the kitchen, the store and the buyer never open a payer
      *  picker, so without it a refetch after a rename would hand them the register the snapshot
      *  had just withheld. */
     async roster(claims: AccessClaims): Promise<PayerRoster> { return read(async (tx) => scopeRoster(await M.readRoster(tx), claims)); },
-    // ---- adjustments: the register on its own — what a write naming "adjustments" refetches.
+    // ---- adjustments: the register on its own - what a write naming "adjustments" refetches.
     async adjustments(claims: AccessClaims): Promise<Adjustment[]> { return read(async (tx) => scopeAdjustments(await D.readAdjustments(tx), claims)); },
   };
 }

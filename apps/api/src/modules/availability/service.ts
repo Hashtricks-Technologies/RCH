@@ -1,4 +1,4 @@
-// Availability: the flow — transaction, rules, moves, history, id. Compose the helpers in
+// Availability: the flow - transaction, rules, moves, history, id. Compose the helpers in
 // apps/api/src/lib/; domain rules belong in packages/domain. See modules/_template/service.ts.
 import type { z } from "zod";
 import type { ToggleAvailBodySchema, ToggleResultSchema, WriteResponse } from "@rch/contract";
@@ -20,7 +20,7 @@ const REASON = "switched off manually";
 export function createAvailabilityService(db: Db) {
   return {
     /**
-     * Toggle whether `body.it` may be sold at `body.loc` — or, for the kitchen, made there —
+     * Toggle whether `body.it` may be sold at `body.loc` - or, for the kitchen, made there -
      * right now. Location scoping for a counter and for the kitchen is enforced by the caller
      * (it needs the request); a manager may reach any Outlet-type location, never a Store or
      * Kitchen. An existing override is removed (switched back on); otherwise one is recorded
@@ -34,20 +34,20 @@ export function createAvailabilityService(db: Db) {
         // Before the location-type check and before the listing check, so an unknown key or a
         // since-deactivated item (dropped from loadMaster's active-only items) 404s cleanly
         // instead of crashing on `item.n` below. Same for the location: LocKeySchema only ever
-        // admits the five seeded keys, so this is unreachable rather than user-facing — but a
+        // admits the five seeded keys, so this is unreachable rather than user-facing - but a
         // missing row would otherwise reach `loc.type` as a 500 instead of a plain answer.
         if (!loc) throw new NotFoundError(`There is no location ${body.loc}.`);
         if (!item) throw new NotFoundError(`There is no item ${body.it}.`);
-        // A manager reaches every outlet, so the request's location has to be checked here —
+        // A manager reaches every outlet, so the request's location has to be checked here -
         // it is the one role whose own `loc` does not decide. A counter and the kitchen were
         // already held to their own location by `requireLoc` in routes.ts, which 403s before
         // this service is called, so there is no second check for them to fail. The kitchen's
         // own `${loc.n} is not a kitchen` branch used to sit here and could never run for that
-        // reason; what it was really guarding — that a Kitchen In-charge is only ever posted to
-        // the kitchen in the first place — is now `WORKS_AT` in `lib/users-admin.ts`, enforced
+        // reason; what it was really guarding - that a Kitchen In-charge is only ever posted to
+        // the kitchen in the first place - is now `WORKS_AT` in `lib/users-admin.ts`, enforced
         // where the account is created rather than on every toggle it makes afterwards.
         if (claims.role === "manager") assertRule(loc.type === "Outlet", `${loc.n} is not an outlet`);
-        // A kitchen has no menu — what it can switch off is what it can make, so "listed"
+        // A kitchen has no menu - what it can switch off is what it can make, so "listed"
         // there means the item has a recipe. Everywhere else it is the location's menu.
         const listed = loc.type === "Kitchen"
           ? Boolean(master.recipes[body.it])
@@ -58,7 +58,7 @@ export function createAvailabilityService(db: Db) {
         // either commits; the insert/delete below is made deterministic at the database
         // level (onConflictDoNothing / a plain delete, both with `.returning()`) so the
         // loser of that race gets a normal idempotent result instead of a raw PK-violation
-        // 500 — the caller's intent (switch off / switch on) is satisfied either way.
+        // 500 - the caller's intent (switch off / switch on) is satisfied either way.
         // One array for the answer and the announcement, so the screen that flipped the switch
         // and every other screen watching are told to refetch the same slice.
         const changed = ["ovr"] as const;

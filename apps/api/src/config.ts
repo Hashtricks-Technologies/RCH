@@ -9,7 +9,7 @@ const Env = z.object({
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"]).default("info"),
   DATABASE_URL: z.url().startsWith("postgres"),
   TEST_DATABASE_URL: z.url().startsWith("postgres").optional(),
-  /** Left unset, production verifies the RDS chain and a laptop does not — see `databaseSsl`
+  /** Left unset, production verifies the RDS chain and a laptop does not - see `databaseSsl`
    *  below. Set it either way to overrule that. */
   DATABASE_SSL: bool.optional(),
   /** Connections this process's pool may hold. Ten is what one pod is sized for (RDS's own
@@ -33,7 +33,7 @@ const Env = z.object({
   LOGIN_RATE_LIMIT_PER_EMP_PER_MINUTE: int(1, 1000).default(5),
   SSE_HEARTBEAT_MS: int(10, 300_000).default(25_000),
   SSE_RETRY_MS: int(100, 60_000).default(1000),
-  /** "true"/"false", a hop count ("1", "2", …, translated to an equivalent trust function —
+  /** "true"/"false", a hop count ("1", "2", …, translated to an equivalent trust function -
    *  see `parseTrustProxy`), or a raw CIDR/IP (list) handed straight to `proxy-addr`. */
   TRUST_PROXY: z.string().min(1).default("1"),
 });
@@ -61,7 +61,7 @@ export type Config = Readonly<{
   sseHeartbeatMs: number;
   sseRetryMs: number;
   /** What Fastify's own `trustProxy` option accepts: `true`/`false`, a CIDR/IP (list) string,
-   *  or — for a hop count — a function, per the note on `parseTrustProxy` below. */
+   *  or - for a hop count - a function, per the note on `parseTrustProxy` below. */
   trustProxy: boolean | string | ((address: string, hop: number) => boolean);
 }>;
 
@@ -71,12 +71,12 @@ const pem = (b64: string) => Buffer.from(b64, "base64").toString("utf8");
  * "true"/"false" -> boolean; anything else that isn't a bare integer (a CIDR, an IP, a
  * comma-separated list of either) passed through as a string for `@fastify/proxy-addr` to
  * parse. A bare integer ("1", "2", …) is the interesting case: Fastify 5 treats a raw
- * `number` here as a no-op for security — see its `trustProxy` docs: "Hop-count-only trust is
+ * `number` here as a no-op for security - see its `trustProxy` docs: "Hop-count-only trust is
  * disabled because it cannot validate the immediate peer and lets direct clients spoof
- * X-Forwarded-* values" — and its TS type doesn't even accept `number`. So a hop count is
+ * X-Forwarded-* values" - and its TS type doesn't even accept `number`. So a hop count is
  * reproduced with an equivalent trust function instead: trust exactly the nearest `hops`
  * entries in the forwarded chain and take the address beyond them as the client. This is only
- * as safe as Fastify's own docs say hop-count trust ever is — it assumes the origin cannot be
+ * as safe as Fastify's own docs say hop-count trust ever is - it assumes the origin cannot be
  * reached except through that many trusted hops (e.g. a ClusterIP Service reachable only via
  * the ALB/ingress, or the local Vite dev proxy on one machine); it does not itself validate
  * *which* addresses those hops are.
@@ -106,7 +106,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): Config {
     testDatabaseUrl: e.TEST_DATABASE_URL,
     // Unset means "whatever this environment ought to be": production talks to RDS and verifies
     // the bundled CA, a laptop talks to a container on 5439 and does not. An explicit
-    // DATABASE_SSL still wins in both directions — a staging pod pointed at a local proxy can
+    // DATABASE_SSL still wins in both directions - a staging pod pointed at a local proxy can
     // turn it off, and a developer pointed at a real instance can turn it on.
     databaseSsl: e.DATABASE_SSL ?? e.NODE_ENV === "production",
     dbPoolMax: e.DB_POOL_MAX,

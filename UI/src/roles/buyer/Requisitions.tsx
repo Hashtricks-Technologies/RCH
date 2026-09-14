@@ -45,10 +45,10 @@ export default function Requisitions() {
 
   const DECLINERS = [
     "All",
-    ...[...new Set(s.prq.filter((p) => p.st === "Declined").map((p) => p.apprBy ?? "—"))].sort(),
+    ...[...new Set(s.prq.filter((p) => p.st === "Declined").map((p) => p.apprBy ?? "-"))].sort(),
   ];
 
-  // Reconciled once per requisition, then read from the map — the filter, the rows and the
+  // Reconciled once per requisition, then read from the map - the filter, the rows and the
   // footer all need the same numbers. Memoised on the two slices `reconcile` reads (and the
   // vendor names it puts on each claim), not on `s`, which is a new object after any write
   // anywhere in the app and so memoised nothing: this rebuilt every requisition's walk over
@@ -73,7 +73,7 @@ export default function Requisitions() {
     return progress === "All" || summaryOf(p).label === progress;
   });
   const declined = s.prq.filter((p) =>
-    p.st === "Declined" && hits(p, qd) && (declinedBy === "All" || (p.apprBy ?? "—") === declinedBy));
+    p.st === "Declined" && hits(p, qd) && (declinedBy === "All" || (p.apprBy ?? "-") === declinedBy));
 
   const apprNarrowed = qa.trim() !== "" || outcome !== "All" || progress !== "All";
   const declNarrowed = qd.trim() !== "" || declinedBy !== "All";
@@ -119,7 +119,7 @@ export default function Requisitions() {
     onClick: () => openDrawer("bprq", p.id),
     cells: [
       <>{p.id}<small>{p.apprBy ?? p.by} · {p.at}</small></>,
-      <span className="dim">{p.apprNote || "—"}</span>,
+      <span className="dim">{p.apprNote || "-"}</span>,
     ],
   }));
 
@@ -155,7 +155,7 @@ export default function Requisitions() {
       </Card>
 
       <Card
-        title="Approved — and what was ordered"
+        title="Approved - and what was ordered"
         sub="Approved quantity against what purchase orders actually claim, and what has landed so far"
         flush
       >
@@ -197,7 +197,7 @@ export default function Requisitions() {
         />
       </Card>
 
-      <Card title="Declined" sub="Nothing was approved — the store keeper sees your reason" flush>
+      <Card title="Declined" sub="Nothing was approved - the store keeper sees your reason" flush>
         <Toolbar
           placeholder="Search requisition, reason or item…"
           value={qd}

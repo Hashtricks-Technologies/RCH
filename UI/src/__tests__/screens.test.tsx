@@ -48,7 +48,7 @@ function render(el: ReactElement): string {
 }
 
 describe("every screen renders for its role", () => {
-  // Not the admin-flagged fixture account — it has no operational nav (root CLAUDE.md), so
+  // Not the admin-flagged fixture account - it has no operational nav (root CLAUDE.md), so
   // there is no `NAV[u.r]` screen of its own for this loop to render.
   for (const u of USERS.filter((u) => !u.admin)) {
     for (const k of NAV[u.r].flatMap((g) => g.items.map((i) => i.k))) {
@@ -97,7 +97,7 @@ describe("drawers render", () => {
   /**
    * What to open each registered drawer over: the id it reads, and the role whose session makes
    * that id reachable. The loop below iterates `DRAWERS` itself rather than this map, so a drawer
-   * registered without a row here fails the suite by name — the same coupling `NAV × screens` has,
+   * registered without a row here fails the suite by name - the same coupling `NAV × screens` has,
    * and the reason the hand-written list this replaced had drifted eight keys behind the registry
    * (`adjstock`, `bnewitem`, `item`, `pnew`, `sissue`, `sitem`, `sprq`, `sup` were all unrendered).
    *
@@ -152,7 +152,7 @@ describe("drawers render", () => {
   // *issued*, and the fixtures seed exactly one ticket, store -> coffee. So the row is set up
   // here instead. What it pins is the whole reason the drawer exists: before it, every kitchen
   // handover went through `handover(id)` with no OTP, which the server records as a supervisor
-  // override — the kitchen had a button but nowhere to type what the collector read out.
+  // override - the kitchen had a button but nowhere to type what the collector read out.
   it("ptkt gives the kitchen a box for the collector's OTP, and an override behind its own label", () => {
     act(() => {
       as("prod");
@@ -173,8 +173,8 @@ describe("drawers render", () => {
     expect(html).not.toContain("otp-v");
   });
 
-  // Not a row in `cases` above: PO-2026-0142 (milk, butter — neither has a printed MRP)
-  // shares the "bgrn" key with PO-2026-0141 (juice, water — both have one), and the shared
+  // Not a row in `cases` above: PO-2026-0142 (milk, butter - neither has a printed MRP)
+  // shares the "bgrn" key with PO-2026-0141 (juice, water - both have one), and the shared
   // loop titles each case by `key` alone, so a second "bgrn" row there would collide on
   // test title. Rendered directly instead, pinning both arms of the "Not printed" branch.
   it("bgrn shows 'Not printed' only for lines with no printed MRP", () => {
@@ -189,8 +189,8 @@ describe("drawers render", () => {
   // Not a row in `cases` above: id "new" opens the empty create-vendor form,
   // which shares the "bven" key with VN-001's edit form and would collide on
   // the shared loop's test title. Rendered directly instead, to pin the
-  // create-mode branch — no vendor loaded, so no Deactivate/Reactivate
-  // footer control — that VN-001's row never exercises.
+  // create-mode branch - no vendor loaded, so no Deactivate/Reactivate
+  // footer control - that VN-001's row never exercises.
   it("bven shows an empty create form for a new vendor, with no deactivate control", () => {
     act(() => { as("buyer"); });
     const html = render(createElement(DRAWERS.bven, { id: "new" }));
@@ -212,7 +212,7 @@ describe("drawers render", () => {
   });
 
   // C1: an approved request the store never issued a ticket against is no longer a dead end.
-  // REQ-2026-0910 is Manager approved with no ticket, REQ-2026-0909 is already Ticket issued —
+  // REQ-2026-0910 is Manager approved with no ticket, REQ-2026-0909 is already Ticket issued -
   // both fixture rows, not injected, since the raiser's own drawer draws its button straight
   // off REQUEST_TRANSITIONS and needed nothing else changed to pick up the widened table.
   it("creq offers Cancel request live for an approval still awaiting a ticket, disabled once one is issued", () => {
@@ -295,7 +295,7 @@ describe("the manager's bills, and the void door", () => {
     // ₹1,234 of takings at the Coffee Shop, not ₹6,234: the ₹5,000 was taken back.
     expect(html).toContain("₹1,234");
     expect(html).not.toContain("₹6,234");
-    // The feed is what happened, so the voided bill is still on it — saying so, because the
+    // The feed is what happened, so the voided bill is still on it - saying so, because the
     // amount beside it would otherwise read as money the hospital kept.
     expect(html).toContain("CF/2002");
     expect(html).toContain("VOIDED");
@@ -319,9 +319,9 @@ describe("the manager's bills, and the void door", () => {
   });
 
   it("says what happened on a bill already voided, instead of offering the door again", () => {
-    const html = drawer("manager", bill({ voided: true, voidReason: "Wrong tender — customer paid cash" }));
+    const html = drawer("manager", bill({ voided: true, voidReason: "Wrong tender - customer paid cash" }));
     expect(html).toContain("This bill was voided");
-    expect(html).toContain("Wrong tender — customer paid cash");
+    expect(html).toContain("Wrong tender - customer paid cash");
     expect(html).not.toContain("Void bill");
     // And the tender's own status word is gone: a bill that was taken back is not "Paid".
     expect(html).not.toContain(">Paid<");
@@ -344,7 +344,7 @@ describe("procurement list", () => {
     const html = render(createElement(buyer.pool));
     expect(html).toContain("Procurement list");
     expect(html).toMatch(/Maida/);
-    // The seeded pool: maida 20 from PRQ-2026-014, milk 25 from PRQ-2026-011 —
+    // The seeded pool: maida 20 from PRQ-2026-014, milk 25 from PRQ-2026-011 -
     // both must show up as their own source chip.
     expect(html).toContain("PRQ-2026-014");
     expect(html).toContain("PRQ-2026-011");
@@ -382,7 +382,7 @@ describe("procurement list", () => {
         { prq: "PRQ-2026-013", line: 0, it: "milk", asked: 60, pending: 60, by: "Suresh Muthu", at: "07:50" },
       ],
     };
-    // Taking less than the first source covers stays on that source alone —
+    // Taking less than the first source covers stays on that source alone -
     // this is the "take part now, the rest on a second pass" split.
     expect(picksFor(g, 10)).toEqual([{ prq: "PRQ-2026-011", line: 0, qty: 10 }]);
     // Spilling past the first source's pending draws the remainder from the next.
@@ -402,7 +402,7 @@ describe("procurement list", () => {
 describe("the kitchen order board", () => {
   it("names the ticket the outlet will actually collect against (I1)", () => {
     // An order withdrawn off its ticket goes back to Ready and can be dispatched again, so it
-    // ends the day carrying two — and the server hands them over oldest first. The card used
+    // ends the day carrying two - and the server hands them over oldest first. The card used
     // to print the first one it found, which is the withdrawn one.
     act(() => {
       as("prod");
@@ -425,7 +425,7 @@ describe("the kitchen order board", () => {
 /**
  * Where the six digits are drawn, and where they are not. The server sends a ticket's OTP to the
  * ticket's destination and to nobody else (`redactOtps`), so "which side am I on" is the only
- * question a screen may ask before rendering the panel — and it is the question both of these
+ * question a screen may ask before rendering the panel - and it is the question both of these
  * screens used to get wrong in opposite directions.
  */
 describe("the collection OTP reaches the collector's screen and no other", () => {
@@ -444,7 +444,7 @@ describe("the collection OTP reaches the collector's screen and no other", () =>
     expect(html).toContain("246 810");   // the panel spaces the two triples
   });
 
-  it("never draws it on a ticket the kitchen issued out — the server sends it none", () => {
+  it("never draws it on a ticket the kitchen issued out - the server sends it none", () => {
     act(() => {
       as("prod");
       // `otp: ""` is what the kitchen actually receives for its own outbound ticket; the row
@@ -468,20 +468,20 @@ describe("the collection OTP reaches the collector's screen and no other", () =>
 
   it("says the digits were never used on an inbound ticket somebody withdrew", () => {
     // A cancelled ticket comes back with `otp: ""` like a received one, and the empty cell used
-    // to read "used at handover" for both — which is a lie about a ticket nobody collected.
+    // to read "used at handover" for both - which is a lie about a ticket nobody collected.
     act(() => {
       as("prod");
       useApp.setState({ tkt: [tkt({ id: "TKT-0904", st: "Cancelled", otp: "" })] });
     });
     const html = render(createElement(prod.tickets));
     expect(html).not.toContain("otp-v");
-    expect(html).toContain("withdrawn — the OTP was never used");
+    expect(html).toContain("withdrawn - the OTP was never used");
     expect(html).not.toContain("used at handover");
   });
 });
 
 /** The counter's own ticket drawer opens on both directions, and almost every sentence on it
- *  turns on which one — including whether a receipt may be confirmed at all. */
+ *  turns on which one - including whether a receipt may be confirmed at all. */
 describe("the counter's ticket drawer reads its own direction", () => {
   const open = (t: Trailed<Ticket>) => {
     act(() => { as("counter"); useApp.setState({ tkt: [t] }); });
@@ -541,7 +541,7 @@ describe("the counter's ticket drawer reads its own direction", () => {
 // ---- item patch ----
 /**
  * One drawer, four desks. `ITEM_FIELD_ROLES` (`@rch/domain`) is the same table the server
- * refuses a patch with, so a box this greys out is exactly one the server would turn away —
+ * refuses a patch with, so a box this greys out is exactly one the server would turn away -
  * which is the whole point of driving the form off the rule rather than off a second list.
  */
 describe("the item drawer is the same table the server refuses with", () => {
@@ -582,7 +582,7 @@ describe("the item drawer is the same table the server refuses with", () => {
     expect(open("store", "nosuchitem")).toContain("Item not found");
   });
 
-  it("will not offer to clear a printed MRP — the box says leaving it alone changes nothing", () => {
+  it("will not offer to clear a printed MRP - the box says leaving it alone changes nothing", () => {
     // There is no clearing door: the server refuses `mrp: 0` outright, so the drawer must not
     // read an emptied box as a request to remove the ceiling.
     const html = open("manager");
@@ -624,7 +624,7 @@ describe("a retired product stops generating work", () => {
 
     retire("milk");
     const after = rowOf(render(createElement(store.stock)), "RM-1001");
-    // Still listed — twelve litres are on the shelf and somebody has to write them off — but
+    // Still listed - twelve litres are on the shelf and somebody has to write them off - but
     // nothing on the row asks for more of it.
     expect(after).toContain("Retired");
     expect(after).not.toContain("Add to requisition");
@@ -633,7 +633,7 @@ describe("a retired product stops generating work", () => {
 
   it("comes off the kitchen's makeable list", () => {
     // `madeItems()` is "every FG with a recipe", read by all three kitchen screens. A retired
-    // one still has both, so it kept its Make tile — and `POST /batches` reads `loadItems`,
+    // one still has both, so it kept its Make tile - and `POST /batches` reads `loadItems`,
     // which does filter `active`, so the tile could only ever answer "There is no item puff."
     expect(madeItems()).toContain("puff");
     retire("puff");
@@ -673,7 +673,7 @@ describe("a retired product stops generating work", () => {
 // ---- prod-order raise ----
 describe("the counter can ask the kitchen, and only for what the kitchen makes", () => {
   it("offers the finished goods on that outlet's menu and nothing else", () => {
-    // Through the manager's drawer, whose outlet picker opens on OUTLETS[0] — the Restaurant,
+    // Through the manager's drawer, whose outlet picker opens on OUTLETS[0] - the Restaurant,
     // the one shop with finished goods on its menu and the only way to reach one from a test
     // (the fixtures' two counters are the Coffee Shop and the Snack Kiosk).
     act(() => { as("manager"); });
@@ -685,7 +685,7 @@ describe("the counter can ask the kitchen, and only for what the kitchen makes",
     const options = [...host.querySelectorAll("select[aria-label='Product 1'] option")].map((o) => o.textContent);
     // The Restaurant's menu is capp, chai, puff, sand, salad, juice, water, chips. Only the
     // three finished goods may be ordered: the four bought-in lines come off the central
-    // store's shelf, and `capp`/`chai` are made at the till the moment they are sold — nothing
+    // store's shelf, and `capp`/`chai` are made at the till the moment they are sold - nothing
     // downstream could fill an order for one, so the picker must not offer them.
     expect(options).toEqual(["Garden salad", "Veg puffs", "Veg sandwich"]);
 
@@ -705,7 +705,7 @@ describe("the counter can ask the kitchen, and only for what the kitchen makes",
 
     const tile = [...host.querySelectorAll("button")].find((b) => b.textContent?.includes("From the kitchen"))!;
     act(() => { tile.click(); });
-    // The Coffee Shop sells capp, chai, juice, water, bisc, chips — two made at the till and
+    // The Coffee Shop sells capp, chai, juice, water, bisc, chips - two made at the till and
     // four bought in, and not one finished good. There is nothing to order, so the card says
     // that rather than offering an empty picker and a button the server would refuse.
     expect(host.innerHTML).toContain("Nothing on this menu is made in the kitchen");
@@ -860,15 +860,15 @@ describe("a form whose write the server refused", () => {
 /* ------------------------------------------------------------------------
  * "Pay & print" and "Reprint" printed nothing: there was no `window.print()`
  * anywhere in the app, and no paper for one to put on a printer. The slip is
- * the `.print-slip` block at the end of `styles.css` — everything else on the
+ * the `.print-slip` block at the end of `styles.css` - everything else on the
  * page is hidden while it prints.
  * ---------------------------------------------------------------------- */
 describe("what actually reaches the printer", () => {
-  // 11 Sep 2026, 23:30 at the hospital — and still the 11th in UTC only by five and a half
+  // 11 Sep 2026, 23:30 at the hospital - and still the 11th in UTC only by five and a half
   // hours' grace: 18:00Z is 23:30 IST, so a slip that converted with the host's day would print
   // the 11th here and the 10th for anything a minute later. `vite.config.ts` pins TZ=UTC, so a
   // date read straight off the instant's UTC day gets the evening shift wrong every night.
-  const LATE_IST = "2026-09-11T18:30:00.000Z";      // 12 Sep 00:00 IST — the far side of midnight
+  const LATE_IST = "2026-09-11T18:30:00.000Z";      // 12 Sep 00:00 IST - the far side of midnight
   const BILL: Dated<Bill> = {
     no: "CF/1188", loc: "coffee", opr: "Kavitha Raman", oprCol: "#B45309", tot: 40, tax: 4.29,
     t: "00:00", iso: LATE_IST, pay: "Cash",
@@ -932,7 +932,7 @@ describe("what actually reaches the printer", () => {
 
   // The number is the write's own answer, not a guess off the refetched list. The guess was
   // "the newest bill at this outlet by `iso`", which is the *previous* customer's slip whenever
-  // the read-back behind the sale fails — the sale is on the server, the list is not, and the
+  // the read-back behind the sale fails - the sale is on the server, the list is not, and the
   // till prints somebody else's bill.
   it("opens the bill the server numbered even when the read-back behind it failed", async () => {
     act(() => {
@@ -966,7 +966,7 @@ describe("what actually reaches the printer", () => {
     expect(held.button("Print slip")).toBeDefined();
 
     // The server redacts the code for everyone but the collector, so a blank one is not a
-    // fault — and the paper must not carry an empty box that reads like one.
+    // fault - and the paper must not carry an empty box that reads like one.
     act(() => { useApp.setState({ tkt: [t("")] }); });
     const blind = mount(() => createElement(DRAWERS.ctkt, { id: "TKT-2026-0442" }));
     const blank = blind.host.querySelector(".print-slip")!.textContent ?? "";
@@ -995,12 +995,12 @@ describe("the approval drawer", () => {
     const ui = mount(() => createElement(DRAWERS.mreq, { id: "REQ-2026-0951" }));
 
     // Reading the box on every keystroke turned "12.5" into 1, then 12, then 125 clamped
-    // back to the line's own 20 — the trailing point was never a number, so it was dropped.
+    // back to the line's own 20 - the trailing point was never a number, so it was dropped.
     act(() => { typeIn(box(ui), "12.5"); });
     expect(box(ui).value).toBe("12.5");
     act(() => { box(ui).dispatchEvent(new FocusEvent("focusout", { bubbles: true })); });
     expect(box(ui).value).toBe("12.5");
-    // `unitTotal`'s own three decimals — the point survived, which is the whole case.
+    // `unitTotal`'s own three decimals - the point survived, which is the whole case.
     expect(ui.text()).toContain("12.500 L");
   });
 
@@ -1011,7 +1011,7 @@ describe("the approval drawer", () => {
         req: [req({}), req({ id: "REQ-2026-0952", lines: [{ it: "milk", qty: 3, appr: 0 }] })],
       });
     });
-    // The same component instance, pointed at a second request — which is exactly what
+    // The same component instance, pointed at a second request - which is exactly what
     // `openDrawer("mreq", other)` does while one is already open.
     const host = document.createElement("div");
     document.body.appendChild(host);
@@ -1023,7 +1023,7 @@ describe("the approval drawer", () => {
     const read = () => host.querySelector<HTMLInputElement>('input[aria-label="Approved quantity for Milk 1L (toned)"]')!.value;
     const first = read();
     show("REQ-2026-0952");
-    // Whatever the store can promise, the second request only asked for 3 — the box must not
+    // Whatever the store can promise, the second request only asked for 3 - the box must not
     // still be offering the first request's quantity against the second request's line.
     expect(Number(read())).toBeLessThanOrEqual(3);
     expect(read()).not.toBe(first);
@@ -1031,14 +1031,14 @@ describe("the approval drawer", () => {
     host.remove();
   });
 
-  // Everything the drawer derives — the per-line quantities, the struck-out lines, the reason
-  // boxes — is a `useState` initialiser, so the key on `ApprovalBody` is the only thing that can
+  // Everything the drawer derives - the per-line quantities, the struck-out lines, the reason
+  // boxes - is a `useState` initialiser, so the key on `ApprovalBody` is the only thing that can
   // make any of it re-derive. What that key has to track is therefore the whole of this rule.
   it("keys its derived state on the trail, which moves, and not on the raise instant, which never does", async () => {
     const raised = req({});
     const decided = req({
       st: "Partially approved",
-      mgrNote: "Send 4 only — the rest is promised to the Kiosk",
+      mgrNote: "Send 4 only - the rest is promised to the Kiosk",
       lines: [{ it: "milk", qty: 20, appr: 4 }],
       hist: [
         ...raised.hist,
@@ -1047,7 +1047,7 @@ describe("the approval drawer", () => {
     });
 
     // The two are the same document either side of somebody else's decision, and their `iso`
-    // is identical — it is when the *counter raised it*, which nothing ever changes. Keying on
+    // is identical - it is when the *counter raised it*, which nothing ever changes. Keying on
     // that was keying on `req.id` twice, so an SSE refetch re-derived nothing.
     expect(decided.iso).toBe(raised.iso);
     expect(bodyKey(decided)).not.toBe(bodyKey(raised));
@@ -1098,10 +1098,10 @@ describe("the counter's stock requests", () => {
 
     expect(send().disabled).toBe(false);
     // The box is a `DraftLineInput`, so what is typed reaches the grant on the way out of the
-    // field, not on every keystroke — which is what lets 1.5 L be offered as 1.5 rather than 1.
+    // field, not on every keystroke - which is what lets 1.5 L be offered as 1.5 rather than 1.
     act(() => { typeIn(qty, "40"); });
     act(() => { qty.dispatchEvent(new FocusEvent("focusout", { bubbles: true })); });
-    // Forty is more than the shelf holds, so the server would refuse it — the button does not
+    // Forty is more than the shelf holds, so the server would refuse it - the button does not
     // offer to go and find that out. The cap used to be only `g > 0`.
     expect(send().disabled).toBe(true);
   });
@@ -1130,7 +1130,7 @@ describe("the counter's stock requests", () => {
     expect(first).toBeTruthy();
 
     // What an SSE resync after somebody retires an item looks like: the key the picker opened
-    // on is no longer in the catalogue, and `useState(LIST[0])` was frozen on it for ever —
+    // on is no longer in the catalogue, and `useState(LIST[0])` was frozen on it for ever -
     // so Submit posted a line for a product the server no longer sells.
     act(() => {
       IT[first] = { ...IT[first], active: false };
@@ -1153,7 +1153,7 @@ describe("the counter's stock requests", () => {
 describe("a refusal is shown where it was raised and nowhere else", () => {
   it("does not carry an earlier sign-in's refusal onto the settings password card", () => {
     // `authError` is one field shared by the two forms that write it, and it is cleared only on
-    // the *next* attempt — so a failed sign-in earlier in the shift was still sitting in the
+    // the *next* attempt - so a failed sign-in earlier in the shift was still sitting in the
     // store when Settings opened, and the card accused the operator of a refusal it had never
     // asked for. It speaks once this form has been used, and not before.
     act(() => { as("counter"); useApp.setState({ authError: "That is not your current password." }); });
@@ -1321,15 +1321,15 @@ describe("the admin's support desk", () => {
     const ui = mount(AdminSupport);
     act(() => { rowOf(ui.host, "SUP-0102")!.click(); });
     const box = ui.host.querySelector("textarea")!;
-    typeArea(box, "Fixed on our side — reload and it saves.");
+    typeArea(box, "Fixed on our side - reload and it saves.");
     await settle(() => { ui.button("Send & resolve").click(); });
-    expect(replyAsDesk).toHaveBeenCalledWith("SUP-0102", "Fixed on our side — reload and it saves.", "Resolved");
+    expect(replyAsDesk).toHaveBeenCalledWith("SUP-0102", "Fixed on our side - reload and it saves.", "Resolved");
     // Refused: the words stay.
-    expect(ui.host.querySelector("textarea")!.value).toBe("Fixed on our side — reload and it saves.");
+    expect(ui.host.querySelector("textarea")!.value).toBe("Fixed on our side - reload and it saves.");
 
     replyAsDesk.mockResolvedValue(true);
     await settle(() => { ui.button("Send").click(); });
-    expect(replyAsDesk).toHaveBeenLastCalledWith("SUP-0102", "Fixed on our side — reload and it saves.", undefined);
+    expect(replyAsDesk).toHaveBeenLastCalledWith("SUP-0102", "Fixed on our side - reload and it saves.", undefined);
     expect(ui.host.querySelector("textarea")!.value).toBe("");
   });
 

@@ -242,7 +242,7 @@ describe("the sign-in employee picker", () => {
     ui = await mountLogin();
     expect(ui.box().getAttribute("role")).toBeNull();
     expect(ui.box().placeholder).toBe("RC-0000");
-    expect(ui.text()).toContain("The staff list could not be loaded — type your employee ID instead.");
+    expect(ui.text()).toContain("The staff list could not be loaded - type your employee ID instead.");
     // There is no list to go back to, so no link offering one.
     expect(ui.button("Back to the staff list")).toBeUndefined();
     expect(ui.button("Sign in as administrator")).toBeUndefined();

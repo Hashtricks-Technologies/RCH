@@ -1,4 +1,4 @@
-// Recipes: SQL only. No rules, no transaction of its own — service.ts passes `tx` in.
+// Recipes: SQL only. No rules, no transaction of its own - service.ts passes `tx` in.
 import { eq } from "drizzle-orm";
 import type { Tx } from "../../lib/db.js";
 import { items, recipeLines, recipes, users } from "../../db/schema/index.js";
@@ -14,7 +14,7 @@ export const recipesRepo = {
     return row;
   },
 
-  /** Whether the item already had a recipe — the difference between "added" and "changed" in
+  /** Whether the item already had a recipe - the difference between "added" and "changed" in
    *  the trail and in the sentence the operator reads. */
   async hasRecipe(tx: Tx, it: string): Promise<boolean> {
     const [r] = await tx.select({ key: recipes.itemKey }).from(recipes).where(eq(recipes.itemKey, it));

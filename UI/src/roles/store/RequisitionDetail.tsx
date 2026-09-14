@@ -51,7 +51,7 @@ function RequisitionDetail({ id }: DrawerProps) {
   // Only a part-approval trims: a declined line is refused whole, not cut short.
   const trimmed = p.st === "Partially approved" ? p.lines.filter((l) => (l.short ?? 0) > 0) : [];
   // A cancelled purchase order never bought anything, so it must not read as
-  // an order against this requisition — the same exclusion prqProgress makes.
+  // an order against this requisition - the same exclusion prqProgress makes.
   const live = s.po.filter((o) => o.st !== "Cancelled");
 
   const recon: Recon[] = [];
@@ -116,7 +116,7 @@ function RequisitionDetail({ id }: DrawerProps) {
             <Alert tone="w" label="SENT">{p.note || "No note was left with this requisition."}</Alert>
           )}
         </div>
-        {/* The store keeper's own words, under their own label — they used to wear the decision's
+        {/* The store keeper's own words, under their own label - they used to wear the decision's
             banner, which read as though procurement had written them. A direct add has no ask
             behind it: its note is the buyer's reason, already in the banner above. */}
         {d && !addedByProcurement(p) && (
@@ -170,9 +170,9 @@ function RequisitionDetail({ id }: DrawerProps) {
               r.po
                 ? <span className="mono-id">{r.po.id}</span>
                 : <span className="dim">Not raised</span>,
-              r.po ? <>{vendorName(s.vendors, r.po.vendor)}</> : <span className="dim">—</span>,
-              r.po ? <>{money(r.rate)}</> : <span className="dim">—</span>,
-              r.po ? <span className="mono">{r.po.eta}</span> : <span className="dim">—</span>,
+              r.po ? <>{vendorName(s.vendors, r.po.vendor)}</> : <span className="dim">-</span>,
+              r.po ? <>{money(r.rate)}</> : <span className="dim">-</span>,
+              r.po ? <span className="mono">{r.po.eta}</span> : <span className="dim">-</span>,
               r.recv > 0
                 ? <b>{fq(r.recv, r.it)}</b>
                 : <span className="dim">{fq(0, r.it)}</span>,
@@ -227,7 +227,7 @@ function RequisitionDetail({ id }: DrawerProps) {
         <Feed
           items={p.hist.map((h, i) => ({
             key: h.s + i, title: h.s, when: h.t, color: dotFor(h.s),
-            body: i === d?.entry && d.note ? <>{h.who} — {d.note}</> : h.who,
+            body: i === d?.entry && d.note ? <>{h.who} - {d.note}</> : h.who,
           }))}
         />
       </Section>

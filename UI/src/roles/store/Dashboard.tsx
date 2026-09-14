@@ -17,8 +17,8 @@ export default function Dashboard() {
   // the buyer's reason, rather than finding it later in the requisition list.
   const decisions = shortDecisionsToday({ prq });
 
-  // Filtered before the map, not after it. A stock key the catalogue has never heard of — a
-  // ledger row for a product this browser's snapshot did not carry — reached `IT[it].rl` here
+  // Filtered before the map, not after it. A stock key the catalogue has never heard of - a
+  // ledger row for a product this browser's snapshot did not carry - reached `IT[it].rl` here
   // and took the whole dashboard down with it; the guard was one line too late.
   const rows = Object.keys(s.stock.store)
     .filter((it) => IT[it])
@@ -40,7 +40,7 @@ export default function Dashboard() {
   // its purchase order is fully received, not just while it is "Sent". Derive the same
   // open/closed distinction prqProgress uses rather than repeating the old two-status union.
   //
-  // Memoised on the two slices prqProgress actually reads — not on `s`, which is a new object
+  // Memoised on the two slices prqProgress actually reads - not on `s`, which is a new object
   // on every write anywhere in the app and would memoise nothing. It walks every purchase order
   // once per requisition, and this card re-ran the whole of it when a toast appeared.
   const withProc = useMemo(
@@ -125,7 +125,7 @@ export default function Dashboard() {
           label="HANDOVER"
           action={<Btn size="sm" variant="gh" onClick={() => nav("/issue")}>Open tickets</Btn>}
         >
-          {issued.length} ticket{issued.length > 1 ? "s" : ""} issued but not yet collected — stock stays reserved
+          {issued.length} ticket{issued.length > 1 ? "s" : ""} issued but not yet collected - stock stays reserved
           until the collector quotes the OTP at the store window.
         </Alert>
       )}
@@ -145,7 +145,7 @@ export default function Dashboard() {
           label="REORDER"
           action={<Btn size="sm" variant="gh" onClick={() => nav("/procure")}>Raise requisition</Btn>}
         >
-          {low.length} item{low.length > 1 ? "s are" : " is"} below reorder level in the central store —
+          {low.length} item{low.length > 1 ? "s are" : " is"} below reorder level in the central store -
           {" "}{low.slice(0, 3).map((r) => IT[r.it].n).join(", ")}
           {low.length > 3 ? ` and ${low.length - 3} more` : ""}.
         </Alert>

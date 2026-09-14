@@ -33,7 +33,7 @@ From the repo root:
 pnpm install
 pnpm db:up                      # postgres:17 in Docker, host port 5439 (pnpm db:down to stop)
 cp .env.example .env && pnpm --filter @rch/api keys:generate >> .env
-                                # then set SEED_PASSWORD: required, ≥ 12 chars, no default — nothing starts without it
+                                # then set SEED_PASSWORD: required, ≥ 12 chars, no default - nothing starts without it
 pnpm --filter @rch/api db:migrate
 pnpm --filter @rch/api db:seed  # demo hospital; --bare = six locations + RC-0001 admin only; --force re-seeds
 pnpm dev                        # API on :3000, UI on :5173 (Vite proxies /api)
@@ -189,7 +189,7 @@ back where it stood.
 The code enforces these and tests pin them. Breaking one is a bug.
 
 - **MRP is a hard ceiling.**
-  - No price list may exceed an item's printed MRP. `PUT /prices` refuses: `Refused — printed MRP of ₹<mrp> is
+  - No price list may exceed an item's printed MRP. `PUT /prices` refuses: `Refused - printed MRP of ₹<mrp> is
     a hard ceiling for <item>`.
   - An item that carries an MRP keeps one; it can't be cleared to zero.
 - **Staff credit is capped at ₹3,000 per person per calendar month**, counted hospital-wide in Asia/Kolkata

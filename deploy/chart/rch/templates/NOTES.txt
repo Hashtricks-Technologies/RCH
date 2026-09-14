@@ -10,7 +10,7 @@ Balancer Controller injects a pod readiness gate.
 
 The ingress uses target-type: ip, so the ALB registers each pod directly. Without the gate a new
 pod counts as Ready the moment its own probe passes, while the load balancer is still registering
-it — and the Deployment's maxUnavailable: 0 then retires an old pod that was still serving in
+it - and the Deployment's maxUnavailable: 0 then retires an old pod that was still serving in
 favour of a new one that is not yet receiving anything. With the gate, Ready means "registered
 and healthy in the target group", which is what a rollout should be waiting for.
 {{- end }}
@@ -21,6 +21,6 @@ and the monitoring namespace opened by name). They are enforced only if the CNI 
 on EKS that means the vpc-cni add-on must have `enableNetworkPolicy: true`. deploy/eksctl/cluster.yaml
 now configures that, but it only takes effect once the live cluster's add-on is updated to match
 (`eksctl update addon -f deploy/eksctl/cluster.yaml --name vpc-cni`). Until then, these objects
-are applied and inert — a deny that is not denying. Set `networkPolicy.enabled=false` to stop
+are applied and inert - a deny that is not denying. Set `networkPolicy.enabled=false` to stop
 rendering them entirely.
 {{- end }}

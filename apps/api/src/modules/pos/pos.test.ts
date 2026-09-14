@@ -34,7 +34,7 @@ const stockOf = async (userId: string) => {
 };
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-describe("POST /bills — the counter sale", () => {
+describe("POST /bills - the counter sale", () => {
   it("prices the cart, numbers the bill and answers with the record", async () => {
     const before = await stockOf("u1");
     const r = await pay("u1", { loc: "coffee", tender: "Cash", lines: [{ it: "juice", qty: 2 }, { it: "chips", qty: 2 }, { it: "bisc", qty: 1 }] });
@@ -61,7 +61,7 @@ describe("POST /bills — the counter sale", () => {
     expect(after.stock.coffee.bisc).toBe(before.stock.coffee.bisc - 1);
   });
 
-  it("wrote the bill, its lines and its moves — and no history, because a bill has none", async () => {
+  it("wrote the bill, its lines and its moves - and no history, because a bill has none", async () => {
     const [head] = await app.db.select().from(s.bills).where(eq(s.bills.no, "CF/1188"));
     expect(head).toBeTruthy();
     expect(head.loc).toBe("coffee");
@@ -91,7 +91,7 @@ describe("POST /bills — the counter sale", () => {
     expect(b.message).toBe(`Bill ${b.result.no} · ₹60.00 settled by card at Coffee Shop`);
   });
 
-  it("names the payer on a credit tender — with the name the roster carries", async () => {
+  it("names the payer on a credit tender - with the name the roster carries", async () => {
     const r = await pay("u1", { loc: "coffee", tender: "Patient bill", payer: { kind: "patient", id: "IP-4471", name: "Anitha, Room 312" }, lines: [{ it: "juice", qty: 1 }] });
     expect(r.statusCode, r.body).toBe(200);
     const b = r.json();
@@ -123,12 +123,12 @@ describe("the rules refuse before anything is written", () => {
     // measures: it counts staff payers, and this one would land on a patient's account.
     await rejects(
       { loc: "coffee", tender: "Staff credit", payer: { kind: "patient", id: "IP-4471", name: "Anitha, Room 312" }, lines: [{ it: "water", qty: 1 }] },
-      "Choose a staff member for a staff credit — Anitha, Room 312 is not one");
+      "Choose a staff member for a staff credit - Anitha, Room 312 is not one");
   });
   it("refuses a patient bill posted to a staff member", async () => {
     await rejects(
       { loc: "coffee", tender: "Patient bill", payer: { kind: "staff", id: "RC-2088", name: "Suresh Muthu · Stores" }, lines: [{ it: "water", qty: 1 }] },
-      "Choose a patient for a patient bill — Suresh Muthu · Stores is not one");
+      "Choose a patient for a patient bill - Suresh Muthu · Stores is not one");
   });
   it("refuses an item the counter does not list", async () => {
     await rejects({ loc: "coffee", tender: "Cash", lines: [{ it: "puff", qty: 1 }] }, "Veg puffs is not listed at Coffee Shop");
@@ -139,12 +139,12 @@ describe("the rules refuse before anything is written", () => {
     expect(r.json().error.message).toBe("There is no item nosuch.");
   });
   it("refuses a made-to-order item whose ingredient has run out, and names it", async () => {
-    await rejects({ loc: "coffee", tender: "Cash", lines: [{ it: "capp", qty: 1 }] }, "Cappuccino is not available at Coffee Shop — Milk 1L (toned) at 0.000 L");
+    await rejects({ loc: "coffee", tender: "Cash", lines: [{ it: "capp", qty: 1 }] }, "Cappuccino is not available at Coffee Shop - Milk 1L (toned) at 0.000 L");
   });
   it("refuses more of a traded item than the shelf holds", async () => {
     await rejects({ loc: "coffee", tender: "Cash", lines: [{ it: "water", qty: 99 }] }, "Only 9 nos of Mineral water 1L left at Coffee Shop");
   });
-  it("refuses a tender that is not one of the six — 400 at the door, not a rule", async () => {
+  it("refuses a tender that is not one of the six - 400 at the door, not a rule", async () => {
     // "staff credit" is not "Staff credit": a tender is a closed set on the wire, so a near
     // miss is a malformed request, never a bill settled under a name nothing else recognises.
     const r = await pay("u1", { loc: "coffee", tender: "staff credit", payer: { kind: "staff", id: "E-1", name: "Anitha" }, lines: [{ it: "juice", qty: 1 }] });
@@ -154,7 +154,7 @@ describe("the rules refuse before anything is written", () => {
 });
 
 describe("a made-to-order sale is a recipe, posted", () => {
-  // The Coffee Shop's milk is at zero in the seed — a delivery has to land before a cappuccino can be sold.
+  // The Coffee Shop's milk is at zero in the seed - a delivery has to land before a cappuccino can be sold.
   beforeAll(async () => {
     await app.db.transaction(async (tx) => {
       await postMoves(tx, [{ loc: "coffee", it: "milk", qty: 5, kind: "opening", refType: "test", refId: "milk-delivery" }]);
@@ -282,7 +282,7 @@ describe("the ledger, not the pre-check, is the guarantee", () => {
   it("a sale the post-lock re-read refuses does not burn a bill number", async () => {
     // Same shape as the case above, but about the counter rather than the shelf. A bill used to
     // take its number before the locks were taken, so the refusal below rolled back a number the
-    // series had already moved past — every one of them a gap in the till roll somebody has to
+    // series had already moved past - every one of them a gap in the till roll somebody has to
     // explain to an auditor. The number is taken last now, so the next real sale gets it.
     await app.db.transaction((tx) => postMoves(tx, [{ loc: "coffee", it: "bisc", qty: 4, kind: "adjustment", refType: "test", refId: "no-burn-topup" }]));
     await warmPool(app.testDb!, 2);
@@ -395,7 +395,7 @@ describe("the staff credit ceiling", () => {
   });
 
   it("counts the person, not the counter, and leaves other payers alone", async () => {
-    // Charged at the kiosk, not this till — the ceiling belongs to the staff member.
+    // Charged at the kiosk, not this till - the ceiling belongs to the staff member.
     await given.bill(app.db, { loc: "kiosk", total: 2995, payer: STAFF("RC-3120", "Ramesh Kumar · F&B") });
     expect((await pay("u1", oneWater(STAFF("RC-3120", "Ramesh Kumar · F&B")))).statusCode).toBe(422);
     // A different staff member has their own room.
@@ -424,7 +424,7 @@ describe("the staff credit ceiling", () => {
 
 describe("a sale cannot take stock another document is holding", () => {
   // The first case is caught by the *pre-check* (`coverOf` over `posRepo.rsvAt`), which already
-  // nets reservations — it pins that the two voices agree. The race below is what exercises the
+  // nets reservations - it pins that the two voices agree. The race below is what exercises the
   // post-lock re-read, because only a concurrent writer can take a hold after the pre-check read.
   it("pins the friendlier pre-check: more than on hand less reserved is refused, and takes nothing", async () => {
     // A shop transfer out of this counter holds all but two of its water; only what is left is sellable.
@@ -526,7 +526,7 @@ describe("the payer is somebody on the roster, not a word the till typed", () =>
 
   it("cannot be given a fresh ceiling by suffixing the id", async () => {
     // Vinoth is already at ₹2,990 of his ₹3,000 (the ceiling cases above), so his own id is
-    // refused. Before the roster check, "RC-1902-b" was simply a payer nobody had billed yet —
+    // refused. Before the roster check, "RC-1902-b" was simply a payer nobody had billed yet -
     // a whole second ceiling for the same person, one keystroke away.
     const real = await pay("u1", oneWater({ kind: "staff", id: "RC-1902", name: "Vinoth Prakash · Kitchen" }, "Staff credit"));
     expect(real.statusCode).toBe(422);
@@ -546,14 +546,14 @@ describe("the payer is somebody on the roster, not a word the till typed", () =>
 
 // ---- bill void ----
 /**
- * POST /bills/:no/void — the same-day door out of a mis-keyed bill.
+ * POST /bills/:no/void - the same-day door out of a mis-keyed bill.
  *
  * What the cases below are about is the shape of the undo, not the arithmetic of the sale: one
  * positive reversal per move the sale posted, each naming the row it cancels, the bill left on
- * the table with a stamp on it, and the two sums that count money — the staff-credit ceiling and
- * the dashboard's columns — learning to skip it.
+ * the table with a stamp on it, and the two sums that count money - the staff-credit ceiling and
+ * the dashboard's columns - learning to skip it.
  */
-describe("POST /bills/:no/void — the manager takes a bill back", () => {
+describe("POST /bills/:no/void - the manager takes a bill back", () => {
   const voidBill = async (userId: string, no: string, reason: string, key: string = randomUUID()) =>
     app.inject({
       method: "POST", url: `/api/v1/bills/${encodeURIComponent(no)}/void`,
@@ -581,24 +581,24 @@ describe("POST /bills/:no/void — the manager takes a bill back", () => {
     const no = sale.json().result.no as string;
     expect(await onHand("coffee", "water")).toBe(before.stock.coffee.water - 3);
 
-    const r = await voidBill("u2", no, "Wrong tender — customer paid cash");
+    const r = await voidBill("u2", no, "Wrong tender - customer paid cash");
     expect(r.statusCode, r.body).toBe(200);
     const b = r.json();
     expect(BillSchema.safeParse(b.result).success, JSON.stringify(b.result)).toBe(true);
     expect(b.result.no).toBe(no);
     expect(b.result.voided).toBe(true);
-    expect(b.result.voidReason).toBe("Wrong tender — customer paid cash");
+    expect(b.result.voidReason).toBe("Wrong tender - customer paid cash");
     // Nothing about the bill itself is rewritten: it is still the bill that was printed.
     expect(b.result.tot).toBe(100);
     expect(b.result.lines).toEqual([{ it: "water", qty: 3, rate: 20 }, { it: "juice", qty: 2, rate: 20 }]);
-    expect(b.message).toBe(`${no} voided — 5 nos back on the shelf at Coffee Shop`);
+    expect(b.message).toBe(`${no} voided - 5 nos back on the shelf at Coffee Shop`);
 
     expect(await onHand("coffee", "water")).toBe(before.stock.coffee.water);
     expect(await onHand("coffee", "juice")).toBe(before.stock.coffee.juice);
     const [head] = await app.db.select().from(s.bills).where(eq(s.bills.no, no));
     expect(head.voidedAt).toBeInstanceOf(Date);
     expect(head.voidedBy).toBe("u2");
-    expect(head.voidReason).toBe("Wrong tender — customer paid cash");
+    expect(head.voidReason).toBe("Wrong tender - customer paid cash");
   });
 
   it("posts one positive reversal per sale move, each pointing at the move it reverses", async () => {
@@ -694,7 +694,7 @@ describe("POST /bills/:no/void — the manager takes a bill back", () => {
    * half hours between 18:30 UTC and midnight UTC. A test that read the wall clock would prove
    * that on some hosts at some hours and nothing at all the rest of the time, so both cases
    * below pin an instant and pick values where **UTC-day equality and IST-day equality point
-   * opposite ways** — an implementation that compared UTC dates fails each of them on every host
+   * opposite ways** - an implementation that compared UTC dates fails each of them on every host
    * at every hour. Only `Date` is faked: the pool, the server and pg still run on real timers.
    */
   const atClock = async <T>(iso: string, run: () => Promise<T>): Promise<T> => {
@@ -704,7 +704,7 @@ describe("POST /bills/:no/void — the manager takes a bill back", () => {
   };
 
   it("voids a bill taken at 23:59 IST while it is still that IST day", async () => {
-    // 23:59:30 IST on 11-Sep — a minute and a half of the hospital's day left.
+    // 23:59:30 IST on 11-Sep - a minute and a half of the hospital's day left.
     await atClock("2026-09-11T18:29:30.000Z", async () => {
       // The last bill of the day is the one most likely to be wrong, and the till that took it
       // is still standing there. 23:59 IST, the same UTC day as now.
@@ -722,10 +722,10 @@ describe("POST /bills/:no/void — the manager takes a bill back", () => {
   });
 
   it("refuses a bill from yesterday, naming the day it belongs to", async () => {
-    // 00:05 IST on 12-Sep — five minutes into the new hospital day, still 11-Sep in UTC.
+    // 00:05 IST on 12-Sep - five minutes into the new hospital day, still 11-Sep in UTC.
     await atClock("2026-09-11T18:35:00.000Z", async () => {
       // 23:55 IST on 11-Sep: the same UTC day as now, and the hospital day before it. A
-      // UTC-day comparison would let this through — which is the whole point of the hour.
+      // UTC-day comparison would let this through - which is the whole point of the hour.
       const yday = new Date("2026-09-11T18:25:00.000Z");
       const no = await given.bill(app.db, { loc: "coffee", total: 40, tender: "Cash", at: yday });
       const r = await voidBill("u2", no, "Spotted it at the day-end count");
@@ -733,7 +733,7 @@ describe("POST /bills/:no/void — the manager takes a bill back", () => {
       expect(dmy(istDate(yday))).toBe("11-Sep-2026");
       expect(r.json().error).toMatchObject({
         code: "rule",
-        message: `${no} was taken on 11-Sep-2026 — a bill can only be voided on the day it was billed; write the stock back on with an adjustment instead`,
+        message: `${no} was taken on 11-Sep-2026 - a bill can only be voided on the day it was billed; write the stock back on with an adjustment instead`,
       });
       const [head] = await app.db.select().from(s.bills).where(eq(s.bills.no, no));
       expect(head.voidedAt).toBeNull();
@@ -751,7 +751,7 @@ describe("POST /bills/:no/void — the manager takes a bill back", () => {
     expect(head.voidedAt).toBeNull();
   });
 
-  it("frees a staff member's credit for the month — a sale that would have breached now lands", async () => {
+  it("frees a staff member's credit for the month - a sale that would have breached now lands", async () => {
     await app.db.insert(s.payers).values({ kind: "staff", id: "RC-9102", name: "Deepa Raman · Radiology" });
     const payer = { kind: "staff" as const, id: "RC-9102", name: "Deepa Raman · Radiology" };
     const mistake = await given.bill(app.db, { loc: "coffee", total: 2990, payer });
@@ -763,7 +763,7 @@ describe("POST /bills/:no/void — the manager takes a bill back", () => {
 
     const v = await voidBill("u2", mistake, "Charged to the wrong staff member");
     expect(v.statusCode, v.body).toBe(200);
-    expect(v.json().message).toBe(`${mistake} voided — ₹2,990.00 is back on Deepa Raman · Radiology's credit for the month`);
+    expect(v.json().message).toBe(`${mistake} voided - ₹2,990.00 is back on Deepa Raman · Radiology's credit for the month`);
 
     const now = await pay("u1", cart);
     expect(now.statusCode, now.body).toBe(200);
@@ -814,7 +814,7 @@ describe("POST /bills/:no/void — the manager takes a bill back", () => {
     const hist = await app.db.select().from(s.documentHistory).where(eq(s.documentHistory.docId, no));
     expect(hist).toHaveLength(1);
     expect(hist[0].docType).toBe("bill");
-    expect(hist[0].status).toBe("Voided — Double scan");
+    expect(hist[0].status).toBe("Voided - Double scan");
     expect(hist[0].who).toBe("Ramesh Kumar");
     // `BillSchema` has no `hist`: the badge and the reason are the whole story a bill can tell.
     expect(r.json().result).not.toHaveProperty("hist");
@@ -843,7 +843,7 @@ describe("POST /bills/:no/void — the manager takes a bill back", () => {
     expect(await movesOf(no, "reversal")).toHaveLength(1);
   });
 
-  it("takes no lockBalances of its own — every reversal is positive", async () => {
+  it("takes no lockBalances of its own - every reversal is positive", async () => {
     const sale = await pay("u1", { loc: "coffee", tender: "Cash", lines: [{ it: "water", qty: 2 }] });
     const no = sale.json().result.no as string;
     // Put every free unit of the shelf on hold. A write that promised against this balance would
@@ -894,7 +894,7 @@ describe("two tills cannot both fit under one ceiling", () => {
       message: "₹3,200.00 breaches the ₹3,000 staff credit limit for Priya Anand · Housekeeping. Take another tender or split the bill.",
       details: { taken: 1600, room: 1400 },
     });
-    // One bill, one bill's worth of credit — the refused one left nothing behind.
+    // One bill, one bill's worth of credit - the refused one left nothing behind.
     expect((await app.db.select().from(s.bills)).length).toBe(billsBefore + 1);
   });
 

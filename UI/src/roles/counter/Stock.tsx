@@ -151,17 +151,17 @@ export default function Stock() {
                     <div className="stkcard-stat">
                       <span className="k">On hand</span>
                       <span className={`v${r.held && r.a <= 0 ? " crit" : ""}`}>
-                        {r.held ? <>{fq(r.on, r.it)}<small>{U(r.it)}</small></> : <span className="muted">—</span>}
+                        {r.held ? <>{fq(r.on, r.it)}<small>{U(r.it)}</small></> : <span className="muted">-</span>}
                       </span>
                     </div>
                     <div className="stkcard-stat">
                       <span className="k">Par here</span>
-                      <span className="v muted">{r.rl > 0 ? fq(r.rl, r.it) : "—"}</span>
+                      <span className="v muted">{r.rl > 0 ? fq(r.rl, r.it) : "-"}</span>
                     </div>
                     <div className="stkcard-stat" style={{ gridColumn: "1 / -1" }}>
                       <span className="k">Days of cover</span>
                       <span className={`v${r.held && r.a <= 0 ? " crit" : ""}`}>
-                        {r.held ? <>{r.cover.toFixed(1)}<small>days</small></> : <span className="muted">—</span>}
+                        {r.held ? <>{r.cover.toFixed(1)}<small>days</small></> : <span className="muted">-</span>}
                       </span>
                       {r.held && (
                         <span className="covermeter">
@@ -192,7 +192,7 @@ export default function Stock() {
       </Card>
       <p className="mini mtop">
         This screen shows <b>{L.n} ({L.c})</b> and nothing else. Stock at the central store, the kitchen and the
-        other outlets is not visible from a counter terminal. <b>Par here</b> is this outlet's own reorder level — a
+        other outlets is not visible from a counter terminal. <b>Par here</b> is this outlet's own reorder level - a
         counter holds a day of stock, so it is far below the central store's par and only what falls under it reads low.
       </p>
     </>

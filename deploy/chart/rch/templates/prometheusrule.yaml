@@ -4,11 +4,11 @@
   p95 latency > 1 s, readiness failing, DB connections > 80 %, RDS free storage < 20 %.
 
   Three of the five read metrics this API publishes and ship here, beside the code that emits
-  them. The two RDS rules need CloudWatch metrics this cluster does not have — they are wired at
+  them. The two RDS rules need CloudWatch metrics this cluster does not have - they are wired at
   the observability-stack level and stay in the runbook, which says so. `sse_listener_up` is a
   sixth, added because a pod whose LISTEN connection is down serves every request correctly and
   quietly stops delivering live updates, which no other alert here would notice.
-  RchApiCrashLooping is a seventh, and the one rule that reads a metric from outside this API —
+  RchApiCrashLooping is a seventh, and the one rule that reads a metric from outside this API -
   see its own comment for why a restarting pod cannot be the thing that reports its restarts.
 
   Gated on serviceMonitor.enabled AND on the cluster actually serving monitoring.coreos.com/v1:
@@ -23,7 +23,7 @@
 
   The `job` selector matches what templates/servicemonitor.yaml actually produces: it sets no
   spec.jobLabel, so Prometheus Operator's default target-labelling gives every scraped series a
-  `job` label equal to the Service's own name, {{ .Release.Name }}-api — an exact match, not a
+  `job` label equal to the Service's own name, {{ .Release.Name }}-api - an exact match, not a
   regex, and the same expression deploy/RUNBOOK.md §9 already documents (`up{job="rch-api"}`).
 */}}
 apiVersion: monitoring.coreos.com/v1
@@ -56,7 +56,7 @@ spec:
             runbook_url: "{{ .Values.alerts.runbookUrl }}#9-alerts"
         - alert: RchApiDown
           # Prometheus Operator discovers targets from the Service's Endpoints, which lists only
-          # pods whose readiness probe passes — so a pod stuck failing /readyz leaves the target
+          # pods whose readiness probe passes - so a pod stuck failing /readyz leaves the target
           # set and this is what "readiness failing" looks like from outside.
           expr: up{job="{{ .Release.Name }}-api"} == 0
           for: 2m
@@ -79,7 +79,7 @@ spec:
           # that is restarting is a pod that is not scraping. kube-state-metrics ships with the
           # same kube-prometheus-stack whose CRDs gate this whole file, so if this rule is loaded
           # the metric is there. More than one restart inside a quarter of an hour is a pod that
-          # came up, failed and came up again — a bad migration, a missing secret, an OOM kill —
+          # came up, failed and came up again - a bad migration, a missing secret, an OOM kill -
           # where a single restart is what an ordinary node eviction leaves behind.
           expr: |
             increase(kube_pod_container_status_restarts_total{namespace="{{ .Release.Namespace }}",container="api"}[15m]) > 1
@@ -90,7 +90,7 @@ spec:
             description: "Two or more restarts in fifteen minutes. `kubectl logs --previous` on the pod says why before the next restart wipes it."
             runbook_url: "{{ .Values.alerts.runbookUrl }}#3-roll-back"
         - alert: RchSseListenerDown
-          # Not wired into /readyz, deliberately — see RUNBOOK §10. A pod whose listener is down
+          # Not wired into /readyz, deliberately - see RUNBOOK §10. A pod whose listener is down
           # answers every request correctly; what it has stopped doing is delivering other pods'
           # writes to its own browsers. Five minutes, because the plugin reconnects itself.
           expr: min(sse_listener_up{job="{{ .Release.Name }}-api"}) == 0

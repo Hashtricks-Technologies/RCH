@@ -41,7 +41,7 @@ export default function Vendors() {
   const liveFor = (v: Vendor) => liveContractsOf(s.contracts, v);
 
   // Active vendors first, alphabetically; inactive vendors sink to the bottom
-  // and render dimmed — kept resolvable, just steered away from new picks.
+  // and render dimmed - kept resolvable, just steered away from new picks.
   const sorted = [...s.vendors]
     .filter((v) => hits(v)
       && (status === "All" || (status === "Active" ? v.active : !v.active))
@@ -73,7 +73,7 @@ export default function Vendors() {
           <Pill tone="ok">{live.length} on contract</Pill>
           <div className="mini dim">{live.slice(0, 3).map((c) => IT[c.it]?.n ?? c.it).join(", ")}</div>
         </>
-        : <span className="dim">—</span>,
+        : <span className="dim">-</span>,
       <>{openPos.length}</>,
       <>{money0(sum(openPos, poValue))}</>,
       <Pill tone={v.active ? "ok" : "mu"}>{v.active ? "Active" : "Inactive"}</Pill>,

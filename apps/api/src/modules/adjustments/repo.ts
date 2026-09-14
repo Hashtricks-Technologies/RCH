@@ -1,4 +1,4 @@
-// Adjustments: SQL only. No rules, no transaction of its own — service.ts passes `tx` in.
+// Adjustments: SQL only. No rules, no transaction of its own - service.ts passes `tx` in.
 import { and, asc, eq, inArray } from "drizzle-orm";
 import { adjustmentLines, adjustments, stockBalances, users } from "../../db/schema/index.js";
 import type { Tx } from "../../lib/db.js";
@@ -8,7 +8,7 @@ export type NewAdjustment = typeof adjustments.$inferInsert;
 export type NewAdjustmentLine = typeof adjustmentLines.$inferInsert;
 
 export const adjustmentsRepo = {
-  /** On hand at one location for the items named — read only after `lockBalances` has taken
+  /** On hand at one location for the items named - read only after `lockBalances` has taken
    *  those rows, never before: a balance read outside the lock is a promise made from a number
    *  that can change under it. */
   async balancesAt(tx: Tx, loc: string, itemKeys: readonly string[]): Promise<Record<string, number>> {

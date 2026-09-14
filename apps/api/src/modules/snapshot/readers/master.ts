@@ -17,7 +17,7 @@ export const readRecipes = loadRecipes;
  * something the master no longer sells. A *screen* has the opposite need: a bill, a ticket or a
  * purchase order raised months ago still names the item, and a reader that dropped it would
  * leave the operator reading a raw key where a product name belongs. So the registry carries
- * everything and the pickers filter — `activeItems()` in `UI/src/lib/selectors.ts`.
+ * everything and the pickers filter - `activeItems()` in `UI/src/lib/selectors.ts`.
  */
 export const readItems = async (db: Reader): Promise<Record<string, Item>> =>
   Object.fromEntries((await db.select().from(items).orderBy(asc(items.key))).map((r) => [r.key, toWireItem(r)]));
@@ -31,13 +31,13 @@ export async function readUsers(db: Reader): Promise<UserMin[]> {
 }
 /**
  * Who a bill may be charged to. The till has validated its payer against this table since Phase 3
- * (`posRepo.payer`), while the browser read three arrays out of the fixtures — so a payer added
+ * (`posRepo.payer`), while the browser read three arrays out of the fixtures - so a payer added
  * to the database was invisible at the counter and a fixture removed from the browser was still
  * accepted by the server. One table, one list.
  *
  * The reader answers whole, like every other reader here; the cut is `scopeRoster` in `scope.ts`,
  * where every other cut is made. It is not "not scoped" any more: a counter bills every kind of
- * payer and a manager settles the accounts, so those two read the register — but it is a list of
+ * payer and a manager settles the accounts, so those two read the register - but it is a list of
  * every patient on a ward by name and number, and the kitchen, the store and the buyer never
  * open the payer picker at all. They get an empty one.
  */

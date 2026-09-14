@@ -1,4 +1,4 @@
-# UI — CLAUDE.md
+# UI - CLAUDE.md
 
 Repo-wide rules and the domain invariants are in the root `CLAUDE.md`. `UI/README.md` describes the app for a
 human reader. This file covers what is specific to `@rch/ui`.
@@ -64,7 +64,7 @@ try {
   await refetch(r.changed, r.message);                      // src/api/refetch.ts
   return true;
 } catch (e) {
-  get().notify(e instanceof ApiError ? e.message : "Could not … — check the connection and try again.");
+  get().notify(e instanceof ApiError ? e.message : "Could not … - check the connection and try again.");
   return false;
 }
 ```

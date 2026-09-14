@@ -25,7 +25,7 @@ export default function Bills() {
   // The page says "today" and the counter reads it as today: the server sends seven days of
   // bills, so without this filter Monday's screen carried last Tuesday's takings under that
   // word, and the footer's cash figure with them. Newest first, by the instant rather than the
-  // printed "HH:MM" — which sorted yesterday's 22:00 above this morning's 09:00.
+  // printed "HH:MM" - which sorted yesterday's 22:00 above this morning's 09:00.
   // `?? ""` rather than a bare compare: a row that somehow reaches the store without an instant
   // should sort to the bottom, not throw the whole screen into the error boundary.
   const mine = s.bills
@@ -48,8 +48,8 @@ export default function Bills() {
   const filtered = Boolean(q || tender || settle);
   const clearAll = () => { setQ(""); setTender(null); setSettle(null); };
 
-  // ---- bill void: a voided bill was taken back — the money was never kept and the stock went
-  // back on the shelf — so it stays on the list, badged, and out of both of these figures.
+  // ---- bill void: a voided bill was taken back - the money was never kept and the stock went
+  // back on the shelf - so it stays on the list, badged, and out of both of these figures.
   const live = rows.filter((b) => !b.voided);
   const billed = sum(live, (b) => b.tot);
   const cash = sum(live.filter((b) => settlementOf(b.pay) === "drawer"), (b) => b.tot);
@@ -128,9 +128,9 @@ export default function Bills() {
           extra={<>{L.n} · {L.c} · billed {money(billed)} · cash in drawer {money(cash)}</>} />
       </Card>
       <p className="mini mtop">
-        <b>Billed</b> is every tender raised at this counter, less anything voided — a voided bill went back on
+        <b>Billed</b> is every tender raised at this counter, less anything voided - a voided bill went back on
         the shelf and the money was never kept, so it stays on this list, badged, and out of both figures.
-        <b>Cash in drawer</b> is what is actually in the till — card and UPI are taken at the till but settle to
+        <b>Cash in drawer</b> is what is actually in the till - card and UPI are taken at the till but settle to
         the hospital account, and patient, staff and department bills collect nothing at the counter at all.
       </p>
     </>

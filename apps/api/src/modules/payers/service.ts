@@ -1,6 +1,6 @@
-// Payers: the flow — transaction, rules. Composes the helpers in apps/api/src/lib/. Master
+// Payers: the flow - transaction, rules. Composes the helpers in apps/api/src/lib/. Master
 // data, like vendors: a payer is never deleted, because the bills already posted to them have
-// to stay readable, and there is no `document_history` trail — this is a register, not a
+// to stay readable, and there is no `document_history` trail - this is a register, not a
 // document. There is no `allocateId` either: the id is the hospital's own number, read off a
 // wristband or a payroll record, and a number the till invented would be an account nobody can
 // settle. The three rosters are numbered independently, so `(kind, id)` is the key throughout.
@@ -22,7 +22,7 @@ const toWire = (row: PayerRow): PayerRecord => ({ kind: row.kind, id: row.id, na
 
 /**
  * Both writes name **both** collections. `roster` is the till's live list and `payers` the
- * manager's whole register, and every write here moves both of them — a rename shows on the
+ * manager's whole register, and every write here moves both of them - a rename shows on the
  * payer picker, a deactivation takes the row off that picker while leaving it on the register
  * greyed. Naming only one would leave whichever screen is open reading yesterday's answer.
  */
@@ -53,7 +53,7 @@ export function createPayersService(db: Db) {
 
     /** One PATCH covers the rename and the on/off switch, the way `updateVendor` does: a patch
      *  whose only key is `active` gets one of the two switch sentences, anything else gets
-     *  `<name> updated`. Deactivating is the only way off the roster — a payer with bills
+     *  `<name> updated`. Deactivating is the only way off the roster - a payer with bills
      *  against them cannot be deleted without taking the bills' own account with them. */
     async patch(_claims: AccessClaims, kind: PayerKind, id: string, body: PatchPayerBody): Promise<WriteResponse<PayerRecord>> {
       return withTransaction(db, async (tx) => {
@@ -79,14 +79,14 @@ export function createPayersService(db: Db) {
         const message = onlyActive
           ? (body.active
             ? `${row.name} is active again and can be billed to`
-            : `${row.name} deactivated — bills already posted to them stay, new ones cannot`)
+            : `${row.name} deactivated - bills already posted to them stay, new ones cannot`)
           : `${row.name} updated`;
         return { result: toWire(row), changed: [...CHANGED], message };
       });
     },
 
     /** The register whole, for the manager's own screen. A read, so no locks and no transaction
-     *  of its own beyond the read-only one every multi-query read takes — one query, one
+     *  of its own beyond the read-only one every multi-query read takes - one query, one
      *  connection, the same shape as `snapshot`'s standalone siblings. */
     async list(_claims: AccessClaims): Promise<PayerRecord[]> {
       return withReadTransaction(db, async (tx) => (await payersRepo.all(tx)).map(toWire));

@@ -78,7 +78,7 @@ export default function Approvals() {
 
   // The "Time" column sorts on `iso`, the instant, not on the "HH:MM" it prints. Comparing the
   // printed string put yesterday's 22:00 above this morning's 09:00 on a desk whose whole job
-  // is "oldest ask first" — and the default sort here is by time.
+  // is "oldest ask first" - and the default sort here is by time.
   const val = (r: DatedDoc<StockRequest>, k: string): SortValue =>
     k === "id" ? r.id
       : k === "outlet" ? LOC[r.from].n
@@ -104,14 +104,14 @@ export default function Approvals() {
         <Alert tone="w" label="QUEUE">
           <b>{allWaiting.length}</b> request{allWaiting.length > 1 ? "s" : ""} waiting on you
           {urgent > 0 ? <> · <b>{urgent}</b> urgent</> : null}. Open a row to trim the quantities, refuse one item,
-          or reject the whole request — a rejection needs a reason and the counter is shown it.
+          or reject the whole request - a rejection needs a reason and the counter is shown it.
         </Alert>
       ) : (
         <Alert tone="g" label="CLEAR">Nothing is waiting on your approval. New counter requests will land here.</Alert>
       )}
       {rejected.length > 0 && (
         <Alert tone="c" label="REJECTED">
-          <b>{rejected.length}</b> request{rejected.length > 1 ? "s were" : " was"} rejected —{" "}
+          <b>{rejected.length}</b> request{rejected.length > 1 ? "s were" : " was"} rejected -{" "}
           {rejected.slice(0, 3).map((r) => `${r.id} (${r.mgrNote || "no reason recorded"})`).join("; ")}
           {rejected.length > 3 ? ` and ${rejected.length - 3} more` : ""}. Filter the actioned list by Rejected to read them all.
         </Alert>
@@ -218,8 +218,8 @@ export default function Approvals() {
                   : <b>{approved(r)}</b>,
                 short.length
                   ? <span style={{ color: "var(--warn)" }}>{unitTotal(short)}</span>
-                  : <span className="dim">—</span>,
-                who || <span className="dim">—</span>,
+                  : <span className="dim">-</span>,
+                who || <span className="dim">-</span>,
                 <>
                   <StatusPill status={r.st} />
                   {r.st === "Rejected" && (

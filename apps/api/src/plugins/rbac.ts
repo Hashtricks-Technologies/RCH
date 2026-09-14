@@ -8,7 +8,7 @@ declare module "fastify" {
 }
 
 type GateOptions = {
-  /** Let an admin-flagged token through a route that is not `access: "admin"` — for a door the
+  /** Let an admin-flagged token through a route that is not `access: "admin"` - for a door the
    *  account-management page genuinely uses that is not an account-management route. `/events`
    *  (`plugins/sse.ts`) is the only one: the admin's own screens refresh live like every other. */
   admitAdmin?: boolean;
@@ -20,7 +20,7 @@ export default fp(async (app) => {
     if (access === "public") return;
     // A super admin has no role in practice (root CLAUDE.md). Its `role`/`loc` claims are
     // placeholders the `users` row needs, so without this an admin-flagged token would pass the
-    // role check below as whatever role that placeholder happens to be — every buyer route, say —
+    // role check below as whatever role that placeholder happens to be - every buyer route, say -
     // though no screen of its ever calls one. It reaches account management (`access: "admin"`),
     // the doors a must-change-password token may also use (sign-in, password, `/me`), and any
     // route that asks for it by name; everything else is the same 404 a missing module is.
@@ -42,7 +42,7 @@ export function requireLocOf(claims: { loc: string }, loc: string, what = "that 
 
 /**
  * For a location-scoped write whose location is in the request.
- * @public — consumed by Phase 2 write endpoints.
+ * @public - consumed by Phase 2 write endpoints.
  */
 export function requireLoc(req: FastifyRequest, loc: LocKey | string, what = "that location"): void {
   requireLocOf(req.user, loc, what);

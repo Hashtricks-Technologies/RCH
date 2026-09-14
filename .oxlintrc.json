@@ -1,11 +1,11 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  // This file is what `apps/api` and `packages/*` lint against — oxlint walks up from the
+  // This file is what `apps/api` and `packages/*` lint against - oxlint walks up from the
   // package it is run in, and only `UI` has a config of its own (`UI/.oxlintrc.json`). The set is
   // named rather than left to oxlint's defaults, so a version bump cannot quietly add a plugin
   // under `--max-warnings 0` or drop one the tree has been relying on. `react-hooks` is not a
   // plugin of its own in oxlint 1.x: `rules-of-hooks` and `exhaustive-deps` are `react/*` rules.
-  // React is here for the same reason as the rest — nothing under these packages renders today,
+  // React is here for the same reason as the rest - nothing under these packages renders today,
   // and the day something does, the two rules below should already have been on.
   "plugins": ["react", "typescript", "unicorn", "oxc"],
   "rules": {

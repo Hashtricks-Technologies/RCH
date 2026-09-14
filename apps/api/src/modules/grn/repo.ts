@@ -1,4 +1,4 @@
-// Goods receipt: SQL only. No rules, no transaction of its own — service.ts passes `tx` in.
+// Goods receipt: SQL only. No rules, no transaction of its own - service.ts passes `tx` in.
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import type { Grn, PoStatus, PurchaseOrder } from "@rch/contract";
 import type { ClaimSrc } from "@rch/domain";
@@ -12,7 +12,7 @@ export type NewGrn = typeof grns.$inferInsert;
 export type GrnRow = typeof grns.$inferSelect;
 /** One purchase-order line as a receipt reads it: what was ordered and what earlier
  *  instalments already booked in. `rate` rides along because the wire shape carries it, and
- *  `lineNo` is `po_lines.line_no` itself — carried through rather than re-derived from the
+ *  `lineNo` is `po_lines.line_no` itself - carried through rather than re-derived from the
  *  array's own position, which happens to agree with it today but is not the same fact. */
 export type PoLineRow = { it: string; qty: number; rate: number; recv: number; rejected: number; lineNo: number };
 
@@ -44,21 +44,21 @@ export const grnRepo = {
   },
 
   /** How many GRN rows this order already carries. A goods receipt is numbered by the
-   *  instalment count for its own order, not from a sequence — which is why `IdKind` has no
+   *  instalment count for its own order, not from a sequence - which is why `IdKind` has no
    *  "grn". Read under the order's `for update` lock, which is what serialises two receipts. */
   async grnCount(tx: Tx, poId: string): Promise<number> {
     const [row] = await tx.select({ n: sql<number>`count(*)::int` }).from(grns).where(eq(grns.poId, poId));
     return row?.n ?? 0;
   },
 
-  /** The receipt documents themselves. `.returning()` hands back what the database stored — the
-   *  defaulted `at` included — so the wire shape and the ledger's timestamps cannot drift. */
+  /** The receipt documents themselves. `.returning()` hands back what the database stored - the
+   *  defaulted `at` included - so the wire shape and the ledger's timestamps cannot drift. */
   async insertGrns(tx: Tx, rows: readonly NewGrn[]): Promise<GrnRow[]> {
     if (rows.length === 0) return [];
     return tx.insert(grns).values([...rows]).returning();
   },
 
-  /** What this line has now taken in, cumulative — the receipt hands the whole figure, not a delta. */
+  /** What this line has now taken in, cumulative - the receipt hands the whole figure, not a delta. */
   async setLineReceipt(tx: Tx, poId: string, lineNo: number, patch: { receivedQty: number; rejectedQty: number }): Promise<void> {
     await tx.update(poLines).set({ receivedQty: patch.receivedQty, rejectedQty: patch.rejectedQty })
       .where(and(eq(poLines.poId, poId), eq(poLines.lineNo, lineNo)));
@@ -102,7 +102,7 @@ export const grnRepo = {
     };
   },
 
-  /** The wire shape `readGrns` produces, for the instalment just written — in id order, which
+  /** The wire shape `readGrns` produces, for the instalment just written - in id order, which
    *  is instalment order, because the number carries the position. */
   async wireGrns(tx: Tx, ids: readonly string[]): Promise<Grn[]> {
     if (ids.length === 0) return [];

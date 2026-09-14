@@ -4,7 +4,7 @@ Ranged, not `toYaml`d, and an empty value is skipped. `toYaml .Values.ingress.an
 every key a values file declares, placeholders included, and an empty annotation is not the same
 thing as an absent one: the AWS Load Balancer Controller reads `wafv2-acl-arn: ""` as a WAF ARN
 it cannot resolve and leaves the ingress in a failed state, where the missing key falls back
-cleanly to "no WAF". `| quote` because every annotation value must be a string — `ssl-redirect:
+cleanly to "no WAF". `| quote` because every annotation value must be a string - `ssl-redirect:
 443` unquoted is a number and the API server rejects it.
 
 certificateArn is merged into the same map rather than appended below it, so one rule covers it

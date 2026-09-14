@@ -30,16 +30,16 @@ const fixtureHistoryTimes = (): string[] => [
  * A document's `document_history` trail must never read later than "now": a write appended
  * after the seed runs (a dispatch, an approval, …) always stamps its own entry with the real
  * clock, and a seed run between IST midnight and the latest fixture time (09:26, the last
- * requisition's "Sent") would otherwise leave a seeded entry reading later than that live one —
+ * requisition's "Sent") would otherwise leave a seeded entry reading later than that live one -
  * so `hist.at(-1)` would pick the seeded row instead of the one just appended. Rolling the
  * seeded entries back to yesterday's IST day fixes the ordering without moving the document's
- * own `at` (or `issuedAt`/`receivedAt`/…), which other reads — the sales report's "every bill
- * is timed today" chief among them — depend on staying on today's calendar day.
+ * own `at` (or `issuedAt`/`receivedAt`/…), which other reads - the sales report's "every bill
+ * is timed today" chief among them - depend on staying on today's calendar day.
  *
  * **One shift for the whole run, not one per row.** Deciding row by row inverted a document's
  * own trail: a seed at 08:20 IST left `08:05` on today and rolled `08:34` back to yesterday, so
  * a request's three entries read approved-then-sent. The shift is therefore taken from the
- * *latest* fixture instant — if that one would land in the future, every stamp moves with it —
+ * *latest* fixture instant - if that one would land in the future, every stamp moves with it -
  * which keeps a trail in fixture order and on a single calendar day whatever the clock says.
  * @internal exported for seed.test.ts
  */
@@ -61,7 +61,7 @@ const allTableNames = () => Object.values(s).filter((t) => is(t, PgTable)).map((
 
 /**
  * The PO line a GRN receives against. A GRN naming a PO/item pair that was never ordered is a
- * fixture error, not a "receive against line 0" — silently defaulting there would post the
+ * fixture error, not a "receive against line 0" - silently defaulting there would post the
  * receipt against the wrong line's ordered/received quantities.
  * @internal exported for seed.test.ts
  */
@@ -72,12 +72,12 @@ export function grnPoLineNo(po: { lines: { it: string }[] } | undefined, g: { id
 }
 
 /**
- * `bare` is the hospital with nothing in it — the shape a real deployment starts from (`deploy.sh`
+ * `bare` is the hospital with nothing in it - the shape a real deployment starts from (`deploy.sh`
  * passes `--bare`). It writes the six locations, the document numbering and the one admin account,
  * and none of the demo hospital: no items, recipes, prices, menus, stock, payers, vendors,
- * documents or demo staff. The locations are not demo data — `LocKey` is a closed union the whole
+ * documents or demo staff. The locations are not demo data - `LocKey` is a closed union the whole
  * codebase is written against, so the store, the kitchen, the three outlets and quarantine exist
- * in every deployment — and the admin account is what lets somebody sign in and create the real
+ * in every deployment - and the admin account is what lets somebody sign in and create the real
  * staff from `/admin`. Everything else is entered from the screens.
  *
  * With `force` over a database that already holds the demo hospital, the same truncate below
@@ -106,7 +106,7 @@ export async function seedDatabase(db: Db, opts: { password: string; forcePasswo
 
 /** The one account a bare hospital starts with: the admin-flagged fixture (`RC-0001`), the same
  *  row the demo seed writes, so both starts sign in the same way. It never reaches an operational
- *  screen — `App.tsx` sends it to `/admin`, where the real staff accounts are created. */
+ *  screen - `App.tsx` sends it to `/admin`, where the real staff accounts are created. */
 export function adminAccount(): (typeof FX.USERS)[number] {
   const admin = FX.USERS.find((u) => u.admin);
   if (!admin) throw new Error("the fixtures carry no admin-flagged account to start a bare hospital with");
@@ -127,7 +127,7 @@ async function seedLocations(tx: Tx) {
 }
 
 /**
- * Every document band — requests, tickets, procurement, production, bills, ops — and nothing
+ * Every document band - requests, tickets, procurement, production, bills, ops - and nothing
  * above it. The master half (items, locations, recipes, menus, price lists, users, payers) is
  * invariant across a suite, so a test file can seed it once and reset only this between cases.
  * `seedDatabase` calls it too, in place of the six calls it used to make in a row, so the full
@@ -135,9 +135,9 @@ async function seedLocations(tx: Tx) {
  *
  * `seedOpeningStock` is a ledger write, not a document, but it lives here rather than beside
  * `seedMaster`: `resetDocuments` (`apps/api/src/test/db.ts`) truncates `stock_moves` and
- * `stock_balances` directly — they are named in its own table list, not merely reachable by
+ * `stock_balances` directly - they are named in its own table list, not merely reachable by
  * cascade from a document table's foreign key (nothing in `stock_moves`/`stock_balances`
- * references a document row; both only reference `locations`/`items`) — so a per-case reset
+ * references a document row; both only reference `locations`/`items`) - so a per-case reset
  * would otherwise leave every shelf at zero after the first case. Nesting the opening balance
  * inside this function is what lets `resetDocuments`'s single call restore it.
  */
@@ -164,7 +164,7 @@ async function seedMaster(tx: Tx, passwordHash: string, mustChange: boolean) {
   await tx.insert(s.priceListItems).values((["A", "B"] as const).flatMap((list) => Object.entries(FX.PL[list]).map(([itemKey, price]) => ({ list, itemKey, price }))));
   await tx.insert(s.users).values(FX.USERS.map((u) => userRow(u, passwordHash, mustChange)));
   // The three rosters a non-cash bill may be posted to. They already carry `{kind, id, name}`
-  // in the fixtures, so the table is the same three lists in one place — which is what lets the
+  // in the fixtures, so the table is the same three lists in one place - which is what lets the
   // till's payer be checked against something rather than taken on trust.
   await tx.insert(s.payers).values([...FX.PATIENTS, ...FX.STAFF, ...FX.DEPTS].map((p) => ({ kind: p.kind, id: p.id, name: p.name })));
 }

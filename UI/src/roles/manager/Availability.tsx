@@ -25,7 +25,7 @@ export default function Availability() {
   const isOff = (loc: LocKey, it: string) => Boolean(s.ovr[loc + ":" + it]);
 
   /* Counted against the products this outlet actually lists, and against every
-     reason a product cannot be sold — not the manual switch alone (M10). */
+     reason a product cannot be sold - not the manual switch alone (M10). */
   const counts = OUTLETS.map((loc) => {
     const items = listed(loc);
     const bad = items.filter((it) => !availOf(s, loc, it).ok);
@@ -38,7 +38,7 @@ export default function Availability() {
   const outletNames = ["All", ...OUTLETS.map((l) => LOC[l].n)];
   const union = Object.keys(IT).filter((it) => OUTLETS.some((loc) => listed(loc).includes(it)));
 
-  /* Which outlets the state filter looks at — All, or just the one picked. */
+  /* Which outlets the state filter looks at - All, or just the one picked. */
   const scope: LocKey[] = outlet === 0 ? OUTLETS : [OUTLETS[outlet - 1]];
   const offCount = (it: string) => scope.filter((l) => listed(l).includes(it) && !availOf(s, l, it).ok).length;
   const manualCount = (it: string) => scope.filter((l) => listed(l).includes(it) && isOff(l, it)).length;
@@ -78,7 +78,7 @@ export default function Availability() {
       <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
         <Switch on={!off} onChange={() => toggleAvail(loc, it)} label={`${IT[it].n} at ${LOC[loc].n}`} />
         <span className="mini" style={{ color: off ? "var(--warn)" : a.ok ? undefined : "var(--crit)" }}>
-          {off ? "off — " + (a.why ?? "switched off") : a.ok ? (a.left ?? "available") + " left" : a.why}
+          {off ? "off - " + (a.why ?? "switched off") : a.ok ? (a.left ?? "available") + " left" : a.why}
         </span>
       </div>
     );
@@ -93,12 +93,12 @@ export default function Availability() {
       />
 
       <Alert tone="i" label="LIVE">
-        A product switched off here is immediately unsellable at that counter's point of sale — the operator sees
+        A product switched off here is immediately unsellable at that counter's point of sale - the operator sees
         the tile greyed out and cannot add it to a bill.
       </Alert>
       {totalOff > 0 && (
         <Alert tone="w" label="OFF">
-          <b>{totalOff}</b> product-counter combination{totalOff > 1 ? "s" : ""} cannot be sold right now —{" "}
+          <b>{totalOff}</b> product-counter combination{totalOff > 1 ? "s" : ""} cannot be sold right now -{" "}
           <b>{totalManual}</b> switched off here, <b>{totalOff - totalManual}</b> out of stock or short an ingredient.
         </Alert>
       )}

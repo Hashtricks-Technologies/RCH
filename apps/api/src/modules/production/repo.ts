@@ -1,4 +1,4 @@
-// Production: SQL only. No rules, no transaction of its own — service.ts passes `tx` in.
+// Production: SQL only. No rules, no transaction of its own - service.ts passes `tx` in.
 import { and, asc, eq, inArray } from "drizzle-orm";
 import type { LocKey, PordStatus, ProdOrder } from "@rch/contract";
 import { availabilityOverrides, batches, locationItems, prodOrderLines, prodOrders, stockBalances, users } from "../../db/schema/index.js";
@@ -30,7 +30,7 @@ export const productionRepo = {
     await tx.update(prodOrders).set({ status, updatedAt: new Date() }).where(eq(prodOrders.id, id));
   },
 
-  /** On hand at one location, for the items a write is about — read after `lockBalances`,
+  /** On hand at one location, for the items a write is about - read after `lockBalances`,
    *  because a promise made against an unlocked balance is a promise two writers can make. */
   async balancesAt(tx: Tx, loc: string, itemKeys: readonly string[]): Promise<Record<string, number>> {
     if (itemKeys.length === 0) return {};
@@ -48,15 +48,15 @@ export const productionRepo = {
 
   /** Whether the kitchen has switched this product off. Read inside the write's transaction, so
    *  a switch flipped a moment ago is seen. Returns the row itself, the way `availabilityRepo.find`
-   *  does — not its `reason` alone, which would let a blank reason read as no override at all. */
+   *  does - not its `reason` alone, which would let a blank reason read as no override at all. */
   async overrideAt(tx: Tx, loc: string, itemKey: string): Promise<{ reason: string } | undefined> {
     const [o] = await tx.select({ reason: availabilityOverrides.reason }).from(availabilityOverrides)
       .where(and(eq(availabilityOverrides.loc, loc), eq(availabilityOverrides.itemKey, itemKey)));
     return o;
   },
 
-  /** The batch document. `.returning()` hands back what the database stored — the defaulted
-   *  `at` included — so the wire shape and the ledger's timestamps cannot drift apart. */
+  /** The batch document. `.returning()` hands back what the database stored - the defaulted
+   *  `at` included - so the wire shape and the ledger's timestamps cannot drift apart. */
   async insertBatch(tx: Tx, v: typeof batches.$inferInsert): Promise<typeof batches.$inferSelect> {
     const [row] = await tx.insert(batches).values(v).returning();
     return row!;
@@ -75,7 +75,7 @@ export const productionRepo = {
     await tx.insert(prodOrders).values(v);
   },
 
-  /** Its lines, in the order the outlet typed them — `lineNo` is what `lines()` reads back by. */
+  /** Its lines, in the order the outlet typed them - `lineNo` is what `lines()` reads back by. */
   async insertLines(tx: Tx, id: string, lines: readonly { it: string; qty: number }[]): Promise<void> {
     await tx.insert(prodOrderLines).values(lines.map((l, lineNo) => ({ orderId: id, lineNo, itemKey: l.it, qty: l.qty })));
   },
@@ -88,7 +88,7 @@ export const productionRepo = {
     const by = await productionRepo.userName(tx, head.byUser);
     const hist = await readHistory(tx, "prod_order", id);
     // `need` is left off entirely when the column is null, the treatment `readProdOrders` gives
-    // it — so a write's own answer and the read-back after it are the same shape.
+    // it - so a write's own answer and the read-back after it are the same shape.
     return {
       id: head.id, from: head.fromLoc as LocKey, by, at: iso(head.at), lines, st: head.status, note: head.note,
       ...(head.needBy !== null ? { need: head.needBy } : {}), hist,

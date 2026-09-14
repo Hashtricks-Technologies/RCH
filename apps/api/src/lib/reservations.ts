@@ -14,7 +14,7 @@ export async function reserve(tx: Tx, rows: readonly ReservationRow[]): Promise<
   if (rows.length === 0) return;
   // The balance rows are locked here as well as by the caller. A caller that read on-hand and
   // reservations before deciding must already hold them (or its read was not worth having), and
-  // re-taking a lock this transaction holds costs nothing — but a caller that forgot would
+  // re-taking a lock this transaction holds costs nothing - but a caller that forgot would
   // otherwise let two holds on the last unit both commit, and no gate can see the omission.
   await lockBalances(tx, rows.map((r) => ({ loc: r.loc, it: r.it })));
   await tx.insert(reservations).values(rows.map((r) => ({ loc: r.loc, itemKey: r.it, qty: round3(r.qty), ticketId: r.ticketId })));
@@ -29,7 +29,7 @@ export async function releaseForTicket(tx: Tx, ticketId: string, at: Date = new 
   return released.length;
 }
 
-/** Open reservations at one location, keyed "loc:item" — the shape every domain rule reads. */
+/** Open reservations at one location, keyed "loc:item" - the shape every domain rule reads. */
 export async function reservedAt(tx: Tx, loc: string, itemKeys?: readonly string[]): Promise<RsvMap> {
   // `inArray` with an empty list is not a filter Drizzle can build, and the answer is known
   // anyway: nothing was asked for, so nothing is held.

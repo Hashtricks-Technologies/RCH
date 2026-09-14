@@ -31,7 +31,7 @@ const onHand = async (loc: string, it: string) => {
   const r = await app.inject({ method: "GET", url: "/api/v1/stock", headers: await authHeaders(app, "u2") });
   return r.json().stock[loc]?.[it] ?? 0;
 };
-/** On hand less what tickets are holding — the number a withdrawal actually gives back. The
+/** On hand less what tickets are holding - the number a withdrawal actually gives back. The
  *  shelf itself never moves when a ticket is cancelled, so asserting `onHand` would prove
  *  nothing about the release. */
 const freeAt = async (loc: string, it: string) => {
@@ -61,7 +61,7 @@ describe("POST /tickets/:id/handover", () => {
     const b = r.json();
     expect(b.result).toMatchObject({ id: "TKT-0440", st: "Collected", from: "store", to: "coffee" });
     expect(b.changed).toEqual(["tkt", "req", "rsv", "stock"]);
-    expect(b.message).toBe("TKT-0440 handed over — stock is in transit to Coffee Shop");
+    expect(b.message).toBe("TKT-0440 handed over - stock is in transit to Coffee Shop");
 
     expect(await onHand("store", "cup")).toBe(before - 500);
     expect(await onHand("coffee", "cup")).toBe(180);          // in transit: owned by neither (M8)
@@ -100,17 +100,17 @@ describe("POST /tickets/:id/handover", () => {
       expect(await attempts()).toBe(n);
     }
 
-    // Shut now, and shut to the right code as well — the digits are what has been guessed at.
+    // Shut now, and shut to the right code as well - the digits are what has been guessed at.
     const locked = await post("u3", "/tickets/TKT-0440/handover", { otp: "418327" });
     expect(locked.statusCode).toBe(422);
-    expect(locked.json().error.message).toBe("TKT-0440 is locked after five wrong codes — the store or the kitchen can hand it over with a supervisor override, or cancel it and issue a new one");
+    expect(locked.json().error.message).toBe("TKT-0440 is locked after five wrong codes - the store or the kitchen can hand it over with a supervisor override, or cancel it and issue a new one");
     expect(await attempts()).toBe(5);                                   // a refused guess past the limit is not a sixth guess
     expect(await app.testDb!.db.select().from(stockMoves).where(eq(stockMoves.refId, "TKT-0440"))).toHaveLength(0);
 
     // And the way out is still open: the store's labelled override, on the trail as always.
     const override = await post("u3", "/tickets/TKT-0440/handover", {});
     expect(override.statusCode, override.body).toBe(200);
-    expect(override.json().message).toBe("TKT-0440 handed over on a supervisor override — stock is in transit to Coffee Shop");
+    expect(override.json().message).toBe("TKT-0440 handed over on a supervisor override - stock is in transit to Coffee Shop");
   });
 
   it("a correct code after two wrong ones still hands over", async () => {
@@ -123,14 +123,14 @@ describe("POST /tickets/:id/handover", () => {
   it("lets the store hand over without an OTP, and says so, and records the override", async () => {
     const r = await post("u3", "/tickets/TKT-0440/handover", {});
     expect(r.statusCode).toBe(200);
-    expect(r.json().message).toBe("TKT-0440 handed over on a supervisor override — stock is in transit to Coffee Shop");
+    expect(r.json().message).toBe("TKT-0440 handed over on a supervisor override - stock is in transit to Coffee Shop");
     // The trail also carries the seeded "Issued" row, so the case narrows to the handover it is
     // about: one row for the act, with the override named on it rather than beside it.
     const rows = await app.testDb!.db.select().from(documentHistory)
       .where(and(eq(documentHistory.docType, "ticket"), eq(documentHistory.docId, "TKT-0440")));
     const audit = rows.filter((h) => h.status.startsWith("Handed over"));
     expect(audit).toHaveLength(1);
-    expect(audit[0]).toMatchObject({ status: "Handed over — supervisor override", who: "Suresh Muthu" });
+    expect(audit[0]).toMatchObject({ status: "Handed over - supervisor override", who: "Suresh Muthu" });
   });
 
   it("refuses the override to a counter", async () => {
@@ -163,7 +163,7 @@ describe("POST /tickets/:id/handover", () => {
 
   it("hands over exactly once when two windows press together", async () => {
     // Without this the second transaction waits for a socket instead of for the row lock, and
-    // begins after the first has committed — the race never happens and the case passes with
+    // begins after the first has committed - the race never happens and the case passes with
     // `for update` deleted.
     await warmPool(app.testDb!, 4);
     const both = await Promise.all([post("u3", "/tickets/TKT-0440/handover", { otp: "418327" }), post("u3", "/tickets/TKT-0440/handover", { otp: "418327" })]);
@@ -185,7 +185,7 @@ describe("POST /tickets/:id/receive", () => {
     expect(r.statusCode).toBe(200);
     expect(r.json().result.st).toBe("Received");
     expect(r.json().changed).toEqual(["tkt", "req", "stock"]);
-    expect(r.json().message).toBe("Received at Coffee Shop — stock is on the shelf");
+    expect(r.json().message).toBe("Received at Coffee Shop - stock is on the shelf");
     expect(await onHand("coffee", "cup")).toBe(180 + 500);
 
     const moves = await app.testDb!.db.select().from(stockMoves).where(eq(stockMoves.refId, "TKT-0440"));
@@ -224,7 +224,7 @@ describe("POST /tickets/:id/receive", () => {
   it("queues behind a writer holding the request, instead of deadlocking with it", async () => {
     // Documents locked before balances, server-wide (lib/ledger.ts's header). A receipt that
     // took the shelf first and reached for its request afterwards would sit holding one lock
-    // and waiting for the other while this transaction does the opposite — Postgres breaks that
+    // and waiting for the other while this transaction does the opposite - Postgres breaks that
     // by killing one of them, and the shelf that scanned in a delivery gets a 500. Taken in the
     // house order the receipt simply waits its turn. Fails with `linkedRequest` moved back
     // below `postMoves`: the pair deadlock and the receipt answers 500.
@@ -253,7 +253,7 @@ describe("POST /transfers", () => {
     expect(b.result).toMatchObject({ req: "Shop transfer", from: "coffee", to: "kiosk", st: "Issued" });
     expect(b.result.lines).toEqual([{ it: "chips", qty: 6 }]);
     expect(b.changed).toEqual(["tkt", "rsv"]);
-    expect(b.message).toBe(`${b.result.id} issued — 6 nos reserved at Coffee Shop for Snack Kiosk`);
+    expect(b.message).toBe(`${b.result.id} issued - 6 nos reserved at Coffee Shop for Snack Kiosk`);
     expect(await onHand("coffee", "chips")).toBe(before);     // reserved, not moved
     const held = await app.testDb!.db.select().from(reservations).where(eq(reservations.ticketId, b.result.id));
     expect(held[0]).toMatchObject({ loc: "coffee", itemKey: "chips", qty: 6, releasedAt: null });
@@ -292,7 +292,7 @@ describe("POST /transfers", () => {
     ]);
     // Coffee holds 9: one promise of 8 fits and the second cannot, so the same stock is never
     // promised twice. Unlike the two cases above, this one still passes with `lockBalances`
-    // commented out — every ticket-creating write takes the `tkt` sequence's row lock first
+    // commented out - every ticket-creating write takes the `tkt` sequence's row lock first
     // (ids before balance rows), and that already serialises two transfers. The balance lock
     // stays because it is the guarantee that does not depend on the allocation happening to
     // come first; what this case pins is the outcome, not which lock produced it.
@@ -303,7 +303,7 @@ describe("POST /transfers", () => {
 
 describe("POST /tickets/:id/cancel", () => {
   it("gives the stock back and puts the request where the manager left it", async () => {
-    // Approved in full, for whatever the store's shelf actually holds — issue-ticket re-checks
+    // Approved in full, for whatever the store's shelf actually holds - issue-ticket re-checks
     // free-to-promise under the balance locks, so a number typed into the case rather than read
     // off the fixture is a case about the seed, not about the cancellation.
     const whole = await onHand("store", "milk");
@@ -322,7 +322,7 @@ describe("POST /tickets/:id/cancel", () => {
     const b = r.json();
     expect(b.result).toMatchObject({ id: tkt, st: "Cancelled" });
     expect(b.changed).toEqual(["tkt", "rsv", "req"]);
-    expect(b.message).toBe(`${tkt} cancelled — ${req} is approved again and can be issued a new ticket`);
+    expect(b.message).toBe(`${tkt} cancelled - ${req} is approved again and can be issued a new ticket`);
 
     // The hold is gone and the shelf never moved: nothing had left it.
     const held = await app.testDb!.db.select().from(reservations).where(eq(reservations.ticketId, tkt));
@@ -332,7 +332,7 @@ describe("POST /tickets/:id/cancel", () => {
 
     // The reason is the only record there is, so it has to be findable.
     const hist = await readHistory(app.testDb!.db, "ticket", tkt);
-    expect(hist.at(-1)).toMatchObject({ s: "Cancelled — The counter closed before the collector came", who: "Suresh Muthu" });
+    expect(hist.at(-1)).toMatchObject({ s: "Cancelled - The counter closed before the collector came", who: "Suresh Muthu" });
   });
 
   it("lets the issue desk raise a fresh ticket afterwards", async () => {
@@ -369,7 +369,7 @@ describe("POST /tickets/:id/cancel", () => {
     const r = await post("u4", `/tickets/${tkt}/cancel`, { reason: "Kiosk shut early" });
     expect(r.statusCode, r.body).toBe(200);
     expect(r.json().changed).toEqual(["tkt", "rsv", "pord"]);
-    expect(r.json().message).toBe(`${tkt} cancelled — ${id} is back on the board, ready to dispatch again`);
+    expect(r.json().message).toBe(`${tkt} cancelled - ${id} is back on the board, ready to dispatch again`);
 
     // `GET /prod-orders` is Task 3's and lands in the same wave; the snapshot has carried the
     // board since Phase 1, so the board is read from there and the assertion is the same one.
@@ -385,7 +385,7 @@ describe("POST /tickets/:id/cancel", () => {
     const r = await post("u4", `/tickets/${tkt}/cancel`, { reason: "Sent to the wrong counter" });
     expect(r.statusCode, r.body).toBe(200);
     expect(r.json().changed).toEqual(["tkt", "rsv"]);
-    expect(r.json().message).toBe(`${tkt} cancelled — the stock is free again at Central Kitchen`);
+    expect(r.json().message).toBe(`${tkt} cancelled - the stock is free again at Central Kitchen`);
   });
 
   it("refuses a ticket already handed over, and one already cancelled", async () => {
@@ -394,7 +394,7 @@ describe("POST /tickets/:id/cancel", () => {
     await post("u3", `/tickets/${tkt}/handover`, { otp });
     const gone = await post("u3", `/tickets/${tkt}/cancel`, { reason: "Changed our minds" });
     expect(gone.statusCode).toBe(422);
-    expect(gone.json().error.message).toBe(`${tkt} has already been handed over — the stock is on its way to Coffee Shop`);
+    expect(gone.json().error.message).toBe(`${tkt} has already been handed over - the stock is on its way to Coffee Shop`);
 
     const other = await given.ticket(app.testDb!.db, { from: "store", to: "coffee", lines: [{ it: "milk", qty: 2 }] });
     expect((await post("u3", `/tickets/${other}/cancel`, { reason: "Not needed" })).statusCode).toBe(200);
@@ -416,7 +416,7 @@ describe("POST /tickets/:id/cancel", () => {
     // The kitchen may not cancel the store's ticket, nor the store the kitchen's.
     expect((await post("u4", `/tickets/${store}/cancel`, { reason: "no" })).statusCode).toBe(403);
     expect((await post("u3", `/tickets/${kitchen}/cancel`, { reason: "no" })).statusCode).toBe(403);
-    // A counter has the door now — for its own outlet's tickets, which the store's is not, so
+    // A counter has the door now - for its own outlet's tickets, which the store's is not, so
     // the role gate lets them knock and the location check refuses them. 403, not 404.
     expect((await post("u1", `/tickets/${store}/cancel`, { reason: "no" })).statusCode).toBe(403);
     // And for a manager and a buyer the door is not there at all.
@@ -507,11 +507,11 @@ describe("the counter's cancel door", () => {
 
     const res = await post("u1", `/tickets/${id}/cancel`, { reason: "Kiosk found some of their own" });
     expect(res.statusCode, res.body).toBe(200);
-    expect(res.json().message).toBe(`${id} cancelled — the stock is free again at Coffee Shop`);
+    expect(res.json().message).toBe(`${id} cancelled - the stock is free again at Coffee Shop`);
     expect(await freeAt("coffee", "juice")).toBe(before + 3);
   });
 
-  it("refuses a counter at the other end of it — the shop that is receiving cannot withdraw it", async () => {
+  it("refuses a counter at the other end of it - the shop that is receiving cannot withdraw it", async () => {
     const id = await given.ticket(app.testDb!.db, { refType: "shop_transfer", refId: "Shop transfer", from: "coffee", to: "kiosk", lines: [{ it: "juice", qty: 3 }] });
     const res = await post("u6", `/tickets/${id}/cancel`, { reason: "no" });     // Deepa, at the kiosk
     expect(res.statusCode).toBe(403);
@@ -559,7 +559,7 @@ describe("the counter's cancel door", () => {
     // Taken out, this case fails with two 200s and the hold released twice; `linkedShopAsk`'s
     // own lock can be taken out and this still passes, because one ask can only ever have one
     // live ticket against it, so the ticket lock has already serialised the pair by the time
-    // the ask is read. That lock stays because a transition reads its own row — what this case
+    // the ask is read. That lock stays because a transition reads its own row - what this case
     // pins is the outcome, not which lock produced it, the same way the transfer race above does.
     await warmPool(app.testDb!, 2);
 
@@ -591,12 +591,12 @@ describe("the ticket's own trail", () => {
     const id = await given.ticket(app.testDb!.db, { from: "store", to: "coffee", lines: [{ it: "milk", qty: 2 }] });
     const r = await post("u3", `/tickets/${id}/handover`, {});
     expect(r.statusCode, r.body).toBe(200);
-    expect(r.json().result.hist.map((h: { s: string }) => h.s)).toEqual(["Issued", "Handed over — supervisor override"]);
+    expect(r.json().result.hist.map((h: { s: string }) => h.s)).toEqual(["Issued", "Handed over - supervisor override"]);
   });
 
   it("ends a withdrawn ticket with the reason it was withdrawn for", async () => {
     const id = await given.ticket(app.testDb!.db, { from: "store", to: "coffee", lines: [{ it: "milk", qty: 2 }] });
     const r = await post("u3", `/tickets/${id}/cancel`, { reason: "Counter closed early" });
-    expect(r.json().result.hist.map((h: { s: string }) => h.s)).toEqual(["Issued", "Cancelled — Counter closed early"]);
+    expect(r.json().result.hist.map((h: { s: string }) => h.s)).toEqual(["Issued", "Cancelled - Counter closed early"]);
   });
 });

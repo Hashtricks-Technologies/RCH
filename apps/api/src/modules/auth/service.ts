@@ -14,14 +14,14 @@ export type Session = { user: User; mustChangePassword: boolean; refreshToken: s
 const sha256 = (v: string) => createHash("sha256").update(v).digest("hex");
 const newRaw = () => randomBytes(32).toString("base64url");
 const BAD_LOGIN = "That employee id and password do not match.";
-/** Any valid Argon2id string, produced once by `hashPassword("x")` — verified against on an
+/** Any valid Argon2id string, produced once by `hashPassword("x")` - verified against on an
  *  unknown employee id so "no such user" takes about as long as "wrong password". */
 const DUMMY_HASH = "$argon2id$v=19$m=65536,t=3,p=1$LOmzJu8PWUsCPtFBwcH39w$RNwG8DhqDVFkCZWhCIv2DvxlqKkAP91CtOmSexvaOVk";
 /** How many `begin()` calls between sweeps of keys whose window has gone quiet. */
 const SWEEP_EVERY = 1000;
 
 /**
- * Per-employee sliding window of sign-in attempts, in memory, and therefore per pod — as is the
+ * Per-employee sliding window of sign-in attempts, in memory, and therefore per pod - as is the
  * per-IP limit beside it, which `@fastify/rate-limit` also keeps in this process's own memory.
  * Neither is cluster-wide: the load balancer spreads requests across replicas, so the effective
  * budget is the configured number multiplied by however many pods are running. That is accepted
@@ -31,7 +31,7 @@ const SWEEP_EVERY = 1000;
  * **Within a pod the budget holds under concurrency**, which is the whole reason an attempt is
  * recorded by `begin` before it is verified rather than after it fails. Argon2 takes 50–100 ms,
  * so a counter that only ever saw *settled* failures would let any number of simultaneous
- * guesses past a gate reading zero — and burn a core per guess doing it. An attempt costs its
+ * guesses past a gate reading zero - and burn a core per guess doing it. An attempt costs its
  * slot from the instant it starts; `release` gives that one slot back if the password turns out
  * to be correct, so a correct password never contributes to the budget and a wrong one counts
  * immediately. `isLocked` and `begin` are both synchronous and are called back to back, so no
@@ -39,7 +39,7 @@ const SWEEP_EVERY = 1000;
  *
  * The key is an employee id off the wire, so the map is an attack surface of its own: without
  * a bound, a script posting a fresh `emp` every request grows it until the pod dies. Two
- * things keep it small — a key whose window has aged out is dropped instead of kept as an
+ * things keep it small - a key whose window has aged out is dropped instead of kept as an
  * empty array, and the map is capped, evicting the oldest key (Map preserves insertion order)
  * when a new one would push it past `cap`. Evicting the oldest can only ever forget attempts,
  * never invent them, and the schema caps `emp` at 64 characters so a key is cheap.
@@ -55,7 +55,7 @@ export class Attempts {
     this.windowMs = windowMs;
     this.cap = cap;
   }
-  /** Has this employee id already spent its budget for the window? A pure read — nothing is
+  /** Has this employee id already spent its budget for the window? A pure read - nothing is
    *  recorded here, so merely naming an id costs the person who owns it nothing. */
   isLocked(key: string): boolean {
     const now = Date.now();
@@ -114,12 +114,12 @@ export function createAuthService(db: Db, config: Config) {
   }
 
   return {
-    /** The sign-in screen's employee picker — see `authRepo.signInDirectory` for who is on it. */
+    /** The sign-in screen's employee picker - see `authRepo.signInDirectory` for who is on it. */
     async directory(): Promise<SignInEntry[]> {
       return authRepo.signInDirectory(db);
     },
     async login(emp: string, password: string, meta: Meta): Promise<Session> {
-      // Read the budget, then spend a slot on this attempt — before the ~50–100 ms of Argon2
+      // Read the budget, then spend a slot on this attempt - before the ~50–100 ms of Argon2
       // below, so simultaneous guesses at one employee id cannot all pass a gate that has not
       // seen any of them fail yet. The slot comes back only if the password was right, which is
       // what keeps a shift change from locking a till out: a correct sign-in leaves the budget
@@ -129,7 +129,7 @@ export function createAuthService(db: Db, config: Config) {
       const u = await authRepo.userByEmp(db, emp);
       const ok = u ? await verifyPassword(u.passwordHash, password) : (await verifyPassword(DUMMY_HASH, password), false);
       // One sentence for all three, so the wire gives nothing away; the cause is for the log
-      // alone. An id that matched nobody is not written down — what was typed into that box
+      // alone. An id that matched nobody is not written down - what was typed into that box
       // may well have been the password.
       if (!u) throw new UnauthenticatedError(BAD_LOGIN, "no such employee");
       if (!ok) throw new UnauthenticatedError(BAD_LOGIN, `wrong password for ${u.empNo}`);
@@ -179,7 +179,7 @@ export function createAuthService(db: Db, config: Config) {
     },
     /**
      * Changing the password hands back a whole new session, not an `{ ok: true }`. Every other
-     * token the user holds is revoked — including the caller's own refresh cookie, and the
+     * token the user holds is revoked - including the caller's own refresh cookie, and the
      * access token they authenticated this very request with, which still carries `mcp: true`
      * for the must-change case. Without a replacement the client would be left holding two dead
      * credentials: the access token is refused by `roleGate`, and the cookie that could renew it
@@ -188,7 +188,7 @@ export function createAuthService(db: Db, config: Config) {
     async changePassword(userId: string, current: string, next: string, meta: Meta): Promise<Session> {
       const u = await authRepo.userById(db, userId);
       // Verify (or dummy-verify, for timing parity with the active/found case) regardless of
-      // whether the account is active, then gate on both together — same message either way,
+      // whether the account is active, then gate on both together - same message either way,
       // so an inactive account and a wrong current password are indistinguishable to the caller.
       const ok = u ? await verifyPassword(u.passwordHash, current) : (await verifyPassword(DUMMY_HASH, current), false);
       if (!u || !ok || !u.active) throw new UnauthenticatedError("Your current password is not right.");
@@ -198,7 +198,7 @@ export function createAuthService(db: Db, config: Config) {
         await authRepo.setPassword(tx, userId, hash);
         await authRepo.revokeAllForUser(tx, userId);
         // Re-read inside the transaction so the session is minted from the row as it now
-        // stands — `must_change_password` cleared, so the fresh access token carries mcp: false.
+        // stands - `must_change_password` cleared, so the fresh access token carries mcp: false.
         const fresh = await authRepo.userById(tx, userId);
         if (!fresh) throw new UnauthenticatedError("That account no longer exists.");
         return issue(tx, fresh, randomUUID(), meta);
@@ -206,5 +206,5 @@ export function createAuthService(db: Db, config: Config) {
     },
   };
 }
-/** @public — consumed by Phase 2 write endpoints. */
+/** @public - consumed by Phase 2 write endpoints. */
 export type AuthService = ReturnType<typeof createAuthService>;

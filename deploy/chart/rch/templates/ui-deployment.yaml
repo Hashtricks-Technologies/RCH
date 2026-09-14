@@ -11,7 +11,7 @@ spec:
       automountServiceAccountToken: false
       # fsGroup: 101 matches nginxinc/nginx-unprivileged's built-in nginx
       # user/group (uid 101, gid 101) so kubelet chowns the emptyDir
-      # volumes below to a group the container can write — plain emptyDir
+      # volumes below to a group the container can write - plain emptyDir
       # volumes default to root ownership, which a non-root, read-only-root
       # container can't write into otherwise (confirmed empirically: the
       # equivalent `docker run --read-only --tmpfs ...` without a writable
@@ -41,7 +41,7 @@ spec:
           securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
           # nginx-unprivileged's envsubst entrypoint writes the rendered
           # config into /etc/nginx/conf.d, and nginx itself needs /tmp
-          # (pid file + proxy/client/fastcgi/uwsgi/scgi temp paths — see
+          # (pid file + proxy/client/fastcgi/uwsgi/scgi temp paths - see
           # nginx.conf in the base image) and /var/cache/nginx writable.
           # A read-only root filesystem requires all three to be mounted
           # from writable emptyDir volumes.

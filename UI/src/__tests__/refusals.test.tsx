@@ -12,7 +12,7 @@ import { as, resetStore, signedOut } from "./fixture";
  * Where a refusal is shown, and that it is shown at all.
  *
  * The bug behind this file: every store action toasts the server's sentence, but the toast was
- * rendered by the shell alone — so on the two screens outside it, sign-in and change-password,
+ * rendered by the shell alone - so on the two screens outside it, sign-in and change-password,
  * a refusal set `toast` and nothing drew it. The operator saw the button flip back to "Sign in"
  * and nothing else; the 401 was only visible in the browser's network tab.
  */
@@ -56,7 +56,7 @@ describe("a refused sign-in", () => {
     signInAnswers(async () => refused("That employee id and password do not match."));
     const m = app("/login");
     await act(async () => { await useApp.getState().login("RC-4471", "nope"); });
-    // Inline, on the form itself — not a toast that is gone in three seconds while the
+    // Inline, on the form itself - not a toast that is gone in three seconds while the
     // operator is still looking at the keyboard.
     expect(m.q("form .al")?.textContent).toContain("That employee id and password do not match.");
     expect(useApp.getState().authError).toBe("That employee id and password do not match.");
@@ -87,7 +87,7 @@ describe("a refused sign-in", () => {
     expect(useApp.getState().authError).toBeNull();
   });
 
-  it("is not raised as a toast as well — one sentence, one place", async () => {
+  it("is not raised as a toast as well - one sentence, one place", async () => {
     fetchMock.mockResolvedValueOnce(refused("That employee id and password do not match."));
     await useApp.getState().login("RC-4471", "nope");
     expect(useApp.getState().toast).toBeNull();
@@ -155,7 +155,7 @@ describe("the toast", () => {
     vi.useFakeTimers();
     try {
       const short = "Bill taken.";
-      const long = "Refused — printed MRP of ₹40.00 is a hard ceiling for Filter Coffee, and list B was asked for ₹45.00.";
+      const long = "Refused - printed MRP of ₹40.00 is a hard ceiling for Filter Coffee, and list B was asked for ₹45.00.";
       useApp.getState().notify(short);
       vi.advanceTimersByTime(3500);
       expect(useApp.getState().toast).toBeNull();
@@ -168,7 +168,7 @@ describe("the toast", () => {
   });
 
   /**
-   * The same refusal twice — the operator hits it, corrects something, hits it again — used to
+   * The same refusal twice - the operator hits it, corrects something, hits it again - used to
    * put itself away early: `notify` left the first timer running and had it compare the *message*
    * before clearing, so the first toast's timer matched the second toast's sentence and took it
    * down partway through. It is why one case in `writes.test.ts` flaked on a loaded host: two
@@ -201,7 +201,7 @@ describe("the toast", () => {
 });
 
 describe("restoring a session at boot", () => {
-  it("says so when the server cannot be reached — that is not 'no cookie'", async () => {
+  it("says so when the server cannot be reached - that is not 'no cookie'", async () => {
     fetchMock.mockRejectedValueOnce(new TypeError("Failed to fetch"));
     await useApp.getState().restore();
     expect(useApp.getState().auth).toBe("signed-out");

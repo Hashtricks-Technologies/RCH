@@ -13,16 +13,16 @@
  *        --duration (seconds, default 20), --warmup (seconds, default 3), --no-writes, --help.
  *
  * The password comes from LOADCHECK_PASSWORD, or SEED_PASSWORD if the API's own environment is
- * already loaded. There is no default — a guess would be wrong everywhere and would read as a
+ * already loaded. There is no default - a guess would be wrong everywhere and would read as a
  * broken deployment. `--password` still works and is still honoured before SEED_PASSWORD, but it
  * warns: a flag lands in the shell's history and in every `ps` on the box.
  *
  * The rate limiter keys an authenticated request on the caller's user id (RATE_LIMIT_PER_MINUTE,
- * default 300/min) — this script shares one bearer token across every concurrent worker, so raise
+ * default 300/min) - this script shares one bearer token across every concurrent worker, so raise
  * that limit, or point at a deployment where it already is, before trusting a FAIL.
  *
  * It sells one unit of one item per write, on the counter's own outlet, with a fresh
- * Idempotency-Key each time — so it moves real stock. Point it at a database you can reseed.
+ * Idempotency-Key each time - so it moves real stock. Point it at a database you can reseed.
  */
 import { performance } from "node:perf_hooks";
 import { randomUUID } from "node:crypto";
@@ -39,11 +39,11 @@ already loaded. There is no default. --password still works and is honoured betw
 it warns: a flag lands in the shell's history and in every \`ps\` on the box.
 
 The rate limiter keys an authenticated request on the caller's user id (RATE_LIMIT_PER_MINUTE,
-default 300/min) — this script shares one bearer token across every concurrent worker, so raise
+default 300/min) - this script shares one bearer token across every concurrent worker, so raise
 that limit, or point at a deployment where it already is, before trusting a FAIL.
 
 It sells one unit of one item per write, on the counter's own outlet, with a fresh
-Idempotency-Key each time — so it moves real stock. Point it at a database you can reseed.`;
+Idempotency-Key each time - so it moves real stock. Point it at a database you can reseed.`;
 
 /** A bad invocation stops here, saying which flag and what it wanted. The alternative is a NaN
  *  duration that runs the hammer for zero milliseconds and prints a confident PASS off n=0. */
@@ -81,14 +81,14 @@ if (PASSWORD_FLAG !== undefined) {
   console.warn("# --password is in your shell history and in `ps` for as long as this runs. Set LOADCHECK_PASSWORD instead.");
 }
 // No default. SEED_PASSWORD has none either (apps/api/src/config.ts), so there is no password
-// this script could guess that would be right anywhere — and one that was wrong everywhere would
+// this script could guess that would be right anywhere - and one that was wrong everywhere would
 // just look like a broken deployment. SEED_PASSWORD is read last so that running this from a
 // shell that already has the API's own environment loaded needs no extra argument at all.
 const PASSWORD = process.env.LOADCHECK_PASSWORD ?? PASSWORD_FLAG ?? process.env.SEED_PASSWORD;
 if (!PASSWORD) usage("no password: set LOADCHECK_PASSWORD (or SEED_PASSWORD, or pass --password)");
 const CONCURRENCY = num("concurrency", "10");
 const DURATION_MS = num("duration", "20") * 1000;
-// Zero is a legitimate warm-up — "I have already hammered this process" — so this one floors at 0.
+// Zero is a legitimate warm-up - "I have already hammered this process" - so this one floors at 0.
 const WARMUP_MS = num("warmup", "3", 0) * 1000;
 
 /** The two ceilings, in milliseconds. */
@@ -103,7 +103,7 @@ async function login() {
   });
   if (!res.ok) throw new Error(`login failed (${res.status}): ${await res.text()}`);
   const body = await res.json();
-  if (body.mustChangePassword) throw new Error("that account still has must_change_password set — change it, or seed with SEED_FORCE_PASSWORD_CHANGE=false");
+  if (body.mustChangePassword) throw new Error("that account still has must_change_password set - change it, or seed with SEED_FORCE_PASSWORD_CHANGE=false");
   return { token: body.accessToken, user: body.user };
 }
 
@@ -131,7 +131,7 @@ async function hammer(label, fire, deadline, samples) {
         await res.arrayBuffer().catch(() => {});
       } catch (e) {
         // A connection-level failure (ECONNRESET, refused, aborted) throws before there is a
-        // response to read — count it as an error and keep this worker going rather than losing
+        // response to read - count it as an error and keep this worker going rather than losing
         // every sample the whole hammer collected to one dropped socket.
         samples.errors.push(e?.code ?? "network");
       }
@@ -163,7 +163,7 @@ const it = flag("no-writes") ? null : await pickSellable(token, user.loc);
 const auth = { authorization: `Bearer ${token}` };
 
 console.log(`# ${CONCURRENCY} concurrent, ${DURATION_MS / 1000}s each, after ${WARMUP_MS / 1000}s warm-up, against ${BASE}`);
-console.log(`# node ${process.version} on ${process.platform}/${process.arch} — RECORD THE MACHINE with these numbers\n`);
+console.log(`# node ${process.version} on ${process.platform}/${process.arch} - RECORD THE MACHINE with these numbers\n`);
 
 // Warm-up is thrown away: the first requests pay for a cold pool, a cold plan cache and a JIT
 // that has not seen the route handler yet, and a p95 over twenty seconds is dominated by them.

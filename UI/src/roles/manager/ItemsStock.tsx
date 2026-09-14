@@ -43,7 +43,7 @@ export default function ItemsStock() {
   const [tto, setTto] = useState(0);
 
   // A deployment with no outlets at all is not a hypothetical: `OUTLETS` is empty until the
-  // snapshot lands, and `OUTLETS[0]` is `undefined` there — which `LOC[shop]` then dereferences
+  // snapshot lands, and `OUTLETS[0]` is `undefined` there - which `LOC[shop]` then dereferences
   // and takes the whole screen down with. `null` says "no shop to work on" and renders as such.
   const home = s.user && OUTLETS.includes(s.user.loc) ? s.user.loc : OUTLETS[0] ?? null;
   const [shop, setShop] = useState<LocKey | null>(home);
@@ -168,7 +168,7 @@ export default function ItemsStock() {
 
       <Alert tone="i" label="SHOP TO SHOP">
         When one shop needs an MRP product another shop is holding, the two settle it between themselves against
-        a ticket and its OTP — any of the {OUTLETS.length} counters to any other. You are informed, not in the
+        a ticket and its OTP - any of the {OUTLETS.length} counters to any other. You are informed, not in the
         middle: nothing below is yours to approve.
       </Alert>
 
@@ -221,15 +221,15 @@ export default function ItemsStock() {
                       : stage === "In transit" ? `Off the ${LOC[t.from].n} shelf, not yet on the ${LOC[t.to].n} one`
                         // A withdrawn transfer moved nothing: the stock never left the granting
                         // shop, so saying it is on the receiving one is simply false.
-                        : stage === "Cancelled" ? "Withdrawn — nothing moved"
+                        : stage === "Cancelled" ? "Withdrawn - nothing moved"
                           : `On the shelf at ${LOC[t.to].n}`}
                   </small>
                 </>,
-                // The six digits belong to the collecting counter alone — the manager reads who
+                // The six digits belong to the collecting counter alone - the manager reads who
                 // is holding the ticket, which is the question this column was really asking.
                 // A withdrawn one is held by nobody: its code was never used and never will be.
                 stage === "Cancelled"
-                  ? <span className="dim">—</span>
+                  ? <span className="dim">-</span>
                   : stage === "Received"
                     ? <span className="dim">used</span>
                     : <span>{LOC[t.to].n}</span>,
@@ -258,28 +258,28 @@ export default function ItemsStock() {
             <FormRow cols="f2">
               <Field label="Shop">
                 <select value={shop} onChange={(e) => { setShop(e.target.value as LocKey); setPick(""); }}>
-                  {OUTLETS.map((l) => <option key={l} value={l}>{LOC[l].n} — list {LOC[l].list}</option>)}
+                  {OUTLETS.map((l) => <option key={l} value={l}>{LOC[l].n} - list {LOC[l].list}</option>)}
                 </select>
               </Field>
               <Field label="Product" hint={`${listable.length} catalogue product${listable.length === 1 ? "" : "s"} not yet on this till.`}>
                 <select value={pick} onChange={(e) => setPick(e.target.value)}>
                   <option value="">Pick a product…</option>
                   {listable.map((k) => (
-                    <option key={k} value={k}>{IT[k].n} — {IT[k].t}</option>
+                    <option key={k} value={k}>{IT[k].n} - {IT[k].t}</option>
                   ))}
                 </select>
               </Field>
             </FormRow>
             {pick !== "" && pickPrice == null && (
               <Alert tone="w" label="NO PRICE">
-                {IT[pick].n} has no price on list {list}. Add it here, then set a price on the Price Lists screen —
+                {IT[pick].n} has no price on list {list}. Add it here, then set a price on the Price Lists screen -
                 until then the counter cannot bill it.
               </Alert>
             )}
             <div className="totrow"><span>Currently listed at {LOC[shop].n}</span><span>{listed.length}</span></div>
             <div className="totrow">
               <span>Price on list {list}</span>
-              <span>{pick === "" ? "—" : pickPrice == null ? "not priced" : money(pickPrice)}</span>
+              <span>{pick === "" ? "-" : pickPrice == null ? "not priced" : money(pickPrice)}</span>
             </div>
             <div className="mtop">
               <Btn wide disabled={!pick || listing} title={pick ? undefined : "Pick a product first"}
@@ -293,7 +293,7 @@ export default function ItemsStock() {
 
         <Card title="Request a new product from inventory" sub="For something the item master does not carry yet">
           <p className="mini" style={{ margin: "0 0 12px" }}>
-            You cannot create a catalogue item — the central store does. This raises a stock issue against them,
+            You cannot create a catalogue item - the central store does. This raises a stock issue against them,
             tracked on the Issues screen until they answer.
           </p>
           <FormRow cols="f2">
@@ -309,8 +309,8 @@ export default function ItemsStock() {
             <textarea rows={3} value={nDetail} onChange={(e) => setNDetail(e.target.value)}
               placeholder="Customers keep asking for it, the kiosk has run the trial, and so on…" />
           </Field>
-          {/* There was a Priority picker here. `POST /product-requests` has no priority field —
-              `CreateProductRequestBodySchema` never carried one — so every choice made on it was
+          {/* There was a Priority picker here. `POST /product-requests` has no priority field -
+              `CreateProductRequestBodySchema` never carried one - so every choice made on it was
               dropped on the way out, and a manager who marked something urgent had been told a
               thing that was not true. Say it in the reason instead, where it reaches the buyer. */}
           <Btn wide disabled={busy || !shop || !nName.trim()}

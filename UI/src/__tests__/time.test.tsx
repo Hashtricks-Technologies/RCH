@@ -15,14 +15,14 @@ import * as FX from "@rch/contract/fixtures";
 import type { Batch, Bill, Dated, DatedDoc, PurchaseOrder, Requisition } from "../types";
 
 /**
- * A1 — real instants on the wire.
+ * A1 - real instants on the wire.
  *
  * `api/wire.ts` used to collapse every ISO stamp to the "HH:MM" the screens print and keep
  * nothing else, which cost the browser two answers it needs on every counter screen:
  *
- *  - "is this today?" — `GET /bills` returns seven days and nothing filtered them, so every
+ *  - "is this today?" - `GET /bills` returns seven days and nothing filtered them, so every
  *    figure at the till labelled "today" was a week's takings;
- *  - "which is the latest?" — `"22:00"` sorts above `"09:00"` whichever day each belongs to,
+ *  - "which is the latest?" - `"22:00"` sorts above `"09:00"` whichever day each belongs to,
  *    so yesterday's last row led a list ordered newest-first.
  *
  * `vite.config.ts` pins `TZ=UTC`, so every instant below is chosen to sit on the far side of an
@@ -30,7 +30,7 @@ import type { Batch, Bill, Dated, DatedDoc, PurchaseOrder, Requisition } from ".
  * comparing UTC days would get each of these the wrong way round.
  */
 
-/** 11 Sep 2026, 10:30 in Asia/Kolkata — mid-morning at the counter, 05:00 UTC. */
+/** 11 Sep 2026, 10:30 in Asia/Kolkata - mid-morning at the counter, 05:00 UTC. */
 const NOW = "2026-09-11T05:00:00.000Z";
 /** 11 Sep 01:30 IST. Today at the hospital; still the 10th in UTC. */
 const TODAY_EARLY = "2026-09-10T20:00:00.000Z";
@@ -78,7 +78,7 @@ describe("isToday reads the hospital's day, not the host's", () => {
 
 describe("the clock a screen stamps itself with is the hospital's", () => {
   it("reads 10:30 at 05:00 UTC, not 05:00", () => {
-    // Without `timeZone` this ran five and a half hours behind on any host in UTC — against
+    // Without `timeZone` this ran five and a half hours behind on any host in UTC - against
     // times in the next column that did convert, so one table showed two clocks.
     expect(now()).toBe("10:30");
   });
@@ -144,7 +144,7 @@ describe("a list ordered newest-first is ordered by the instant", () => {
     const html = render(createElement(Approvals));
 
     // The desk opens sorted by time, descending. On the printed "HH:MM" the 23:30 row led,
-    // which is the oldest ask on the board — the exact opposite of what the sort promises.
+    // which is the oldest ask on the board - the exact opposite of what the sort promises.
     expect(html.indexOf("REQ-2026-0802")).toBeLessThan(html.indexOf("REQ-2026-0801"));
   });
 });
@@ -215,7 +215,7 @@ describe("the two dashboards read latest off the instant too", () => {
     });
     act(() => {
       as("buyer");
-      // Neither is "Sent", so nothing is drawn above the feed in requisition order — what is
+      // Neither is "Sent", so nothing is drawn above the feed in requisition order - what is
       // being read here is the feed's own sort and nothing else.
       useApp.setState({ prq: [prq("PRQ-2026-0071", "23:30", YESTERDAY_LATE), prq("PRQ-2026-0072", "01:30", TODAY_EARLY)], po: [] });
     });
@@ -231,7 +231,7 @@ describe("a document sorts on the thing the row beside it prints", () => {
     const po: DatedDoc<PurchaseOrder> = {
       id: "PO-2026-0150", vendor: "VN-001",
       // Raised a fortnight ago, delivered this morning. The row prints `recv`, so it has to
-      // sort on it: on `iso` — when the order was *raised* — the delivery the buyer is being
+      // sort on it: on `iso` - when the order was *raised* - the delivery the buyer is being
       // shown sank below every requisition of the last two weeks.
       at: "09:15", iso: "2026-08-28T03:45:00.000Z", eta: "11-Sep-2026", recv: "11-Sep-2026",
       st: "Received", lines: [{ it: "juice", qty: 10, rate: 14, recv: 10, rejected: 0,
@@ -255,7 +255,7 @@ describe("a document sorts on the thing the row beside it prints", () => {
 
 describe("what the kitchen made today", () => {
   /** Two batches of one product: one baked at 01:30 IST this morning, one at 23:30 IST last
-   *  night. Both carry the same UTC date, so a host-day filter counts them together — and a
+   *  night. Both carry the same UTC date, so a host-day filter counts them together - and a
    *  batch was the one document with no `iso` at all, so nothing could filter them apart. */
   const twoNights = (): Dated<Batch>[] => [
     { id: "BAT-20260911-01", it: "puff", qty: 30, made: 30, at: "01:30", iso: TODAY_EARLY, bb: "09:30" },

@@ -27,7 +27,7 @@ describe("request transitions", () => {
 });
 
 describe("ticket transitions", () => {
-  it("is issued, collected, received — in that order and no other", () => {
+  it("is issued, collected, received - in that order and no other", () => {
     expect(canTransition(TICKET_TRANSITIONS, "Issued", "Collected")).toBe(true);
     expect(canTransition(TICKET_TRANSITIONS, "Collected", "Received")).toBe(true);
     expect(canTransition(TICKET_TRANSITIONS, "Issued", "Received")).toBe(false);
@@ -46,7 +46,7 @@ describe("shop ask transitions", () => {
 
   it("lets a withdrawn grant put the ask back on the shop's desk", () => {
     // Phase 6 gives the counter a cancel door. Withdrawing the ticket a grant raised has to leave
-    // the ask somewhere the holding shop can answer it again — Sent with a cancelled ticket behind
+    // the ask somewhere the holding shop can answer it again - Sent with a cancelled ticket behind
     // it would be a lie on both screens.
     expect(canTransition(SHOP_ASK_TRANSITIONS, "Sent", "Asked")).toBe(true);
     expect(canTransition(SHOP_ASK_TRANSITIONS, "Declined", "Asked")).toBe(false);
@@ -92,7 +92,7 @@ describe("a ticket that was never collected", () => {
     expect(canTransition(PROD_ORDER_TRANSITIONS, "Dispatched", "Accepted")).toBe(false);
     expect(canTransition(PROD_ORDER_TRANSITIONS, "Dispatched", "Dispatched")).toBe(false);
   });
-  it("leaves the request table alone — a request comes back through the cancel endpoint's own guard", () => {
+  it("leaves the request table alone - a request comes back through the cancel endpoint's own guard", () => {
     expect(canTransition(REQUEST_TRANSITIONS, "Ticket issued", "Manager approved")).toBe(false);
     expect(canTransition(REQUEST_TRANSITIONS, "Ticket issued", "Collected")).toBe(true);
     expect(REQUEST_TRANSITIONS["Ticket issued"]).toEqual(["Collected"]);
@@ -105,7 +105,7 @@ describe("a requisition is decided once", () => {
     expect(canTransition(REQUISITION_TRANSITIONS, "Sent", "Partially approved")).toBe(true);
     expect(canTransition(REQUISITION_TRANSITIONS, "Sent", "Declined")).toBe(true);
   });
-  it("is finished the moment it is decided — what happens next happens on the orders", () => {
+  it("is finished the moment it is decided - what happens next happens on the orders", () => {
     for (const st of ["Approved", "Partially approved", "Declined"] as const) {
       expect(REQUISITION_TRANSITIONS[st]).toEqual([]);
     }

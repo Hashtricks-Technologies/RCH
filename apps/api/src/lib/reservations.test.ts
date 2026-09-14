@@ -13,8 +13,8 @@ beforeEach(async () => { await truncateAll(t.db); await seedDatabase(t.db, { pas
 /**
  * A hold needs a ticket to hang on: migration 0008 gave `reservations.ticket_id` the foreign key
  * the Drizzle schema could not declare (`tickets` lives in another module and the import would
- * close a cycle). That is how the server has always worked — `writeTicket` inserts the ticket row
- * and reserves against it in one transaction — so these cases say it out loud rather than holding
+ * close a cycle). That is how the server has always worked - `writeTicket` inserts the ticket row
+ * and reserves against it in one transaction - so these cases say it out loud rather than holding
  * stock for a ticket number nobody ever issued. `reserve: false` keeps the builder's own hold out
  * of the way: what is under test is the hold this file places.
  */

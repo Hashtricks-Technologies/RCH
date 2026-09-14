@@ -36,14 +36,14 @@ const put = (user: string, it: string, payload: Record<string, unknown>) => send
 const recipes = async () => (await app.inject({ method: "GET", url: "/api/v1/recipes", headers: await authHeaders(app, "u4") })).json();
 const settle = () => new Promise((r) => setTimeout(r, 150));
 
-// u4 is the kitchen in-charge, u2 the outlet manager — the two roles that keep recipes.
+// u4 is the kitchen in-charge, u2 the outlet manager - the two roles that keep recipes.
 describe("PUT /recipes/:it", () => {
   it("replaces a recipe whole, costs it, and names the item's own trail", async () => {
     heard = [];
     const r = await put("u4", "capp", { ov: 10, lines: [{ it: "milk", qty: 0.2 }, { it: "beans", qty: 0.015 }, { it: "cup", qty: 1 }] });
     expect(r.statusCode, r.body).toBe(200);
     // milk 0.2 × 52 + beans 0.015 × 640 + cup 1 × 0.62 = 10.4 + 9.6 + 0.62 = 20.62; +10% = 22.682
-    expect(r.json().message).toBe("Cappuccino's recipe changed — 3 ingredients, ₹22.68 a unit");
+    expect(r.json().message).toBe("Cappuccino's recipe changed - 3 ingredients, ₹22.68 a unit");
     expect(r.json().changed).toEqual(["recipes"]);
     expect(r.json().result).toEqual({ key: "capp", recipe: { ov: 10, l: [["milk", 0.2], ["beans", 0.015], ["cup", 1]] } });
 
@@ -58,7 +58,7 @@ describe("PUT /recipes/:it", () => {
   });
 
   it("gives a new made-to-order item its first recipe, which the till then sells by", async () => {
-    // A product the store adds carries no recipe at all — the case a clean hospital starts in.
+    // A product the store adds carries no recipe at all - the case a clean hospital starts in.
     // `POST /items` wants a standard cost above zero even for a made item; once a recipe exists it
     // is the recipe, not this figure, that `costOf` reads.
     const made = await send("POST", "u3", "/items", { name: "Filter coffee", type: "MTO", cost: 10, loc: "store" });
@@ -68,20 +68,20 @@ describe("PUT /recipes/:it", () => {
     const r = await put("u2", key, { ov: 12, lines: [{ it: "milk", qty: 0.1 }, { it: "beans", qty: 0.01 }] });
     expect(r.statusCode, r.body).toBe(200);
     // (0.1 × 52 + 0.01 × 640) × 1.12 = (5.2 + 6.4) × 1.12 = 12.992
-    expect(r.json().message).toBe("Filter coffee's recipe saved — 2 ingredients, ₹12.99 a unit");
+    expect(r.json().message).toBe("Filter coffee's recipe saved - 2 ingredients, ₹12.99 a unit");
     expect((await readHistory(app.testDb!.db, "item", key)).at(-1)).toMatchObject({ s: "Recipe added", who: "Ramesh Kumar" });
   });
 
   it("refuses in the rule's own words and changes nothing", async () => {
     const before = (await recipes()).chai;
     const cases: [string, Record<string, unknown>, string][] = [
-      ["milk", { ov: 12, lines: [{ it: "sugar", qty: 0.01 }] }, "Milk 1L (toned) is a raw material — only a finished good or a made-to-order item has a recipe"],
+      ["milk", { ov: 12, lines: [{ it: "sugar", qty: 0.01 }] }, "Milk 1L (toned) is a raw material - only a finished good or a made-to-order item has a recipe"],
       ["chai", { ov: 150, lines: [{ it: "milk", qty: 0.1 }] }, "Overhead must be between 0% and 100%"],
       ["chai", { ov: 12, lines: [] }, "Add at least one ingredient to Masala tea's recipe"],
       ["chai", { ov: 12, lines: [{ it: "chai", qty: 1 }] }, "Masala tea cannot be an ingredient of itself"],
       ["chai", { ov: 12, lines: [{ it: "ghost", qty: 1 }] }, "There is no item ghost to use as an ingredient."],
-      ["chai", { ov: 12, lines: [{ it: "capp", qty: 1 }] }, "Cappuccino is made to order at the counter — it has no stock for a recipe to draw on"],
-      ["chai", { ov: 12, lines: [{ it: "milk", qty: 0.1 }, { it: "milk", qty: 0.1 }] }, "Milk 1L (toned) is on the recipe twice — put it on one line"],
+      ["chai", { ov: 12, lines: [{ it: "capp", qty: 1 }] }, "Cappuccino is made to order at the counter - it has no stock for a recipe to draw on"],
+      ["chai", { ov: 12, lines: [{ it: "milk", qty: 0.1 }, { it: "milk", qty: 0.1 }] }, "Milk 1L (toned) is on the recipe twice - put it on one line"],
       ["chai", { ov: 12, lines: [{ it: "milk", qty: 0 }] }, "Enter a quantity of Milk 1L (toned) above zero"],
     ];
     for (const [it, body, sentence] of cases) {
@@ -102,7 +102,7 @@ describe("PUT /recipes/:it", () => {
     expect((await send("PATCH", "u3", `/items/${key}`, { active: false })).statusCode).toBe(200);
     const retired = await put("u4", key, { ov: 12, lines: [{ it: "milk", qty: 1 }] });
     expect(retired.statusCode).toBe(422);
-    expect(retired.json().error.message).toBe("Seasonal soup is retired — restore it before changing its recipe");
+    expect(retired.json().error.message).toBe("Seasonal soup is retired - restore it before changing its recipe");
   });
 
   it("is the kitchen's and the manager's door only", async () => {

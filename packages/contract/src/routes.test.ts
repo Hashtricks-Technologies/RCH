@@ -28,7 +28,7 @@ const SAMPLES: Record<string, Record<string, unknown>> = {
   createRequisition:    { lines: [{ it: "milk", qty: 60 }], note: "Milk at zero in the coffee shop" },
   approveRequisition:   { appr: [60, 6], note: "Approved in full." },
   declineRequisition:   { note: "Last lot is still moving." },
-  addToProcurementList: { lines: [{ it: "cup", qty: 500 }], note: "Festival week — the store keeper is on leave" },
+  addToProcurementList: { lines: [{ it: "cup", qty: 500 }], note: "Festival week - the store keeper is on leave" },
   createPo:             { vendorId: "VN-001", picks: [{ prq: "PRQ-2026-013", line: 0, qty: 60 }] },
   updatePoLine:         { qty: 40 },
   patchPo:              { eta: "2026-09-11" },
@@ -46,11 +46,11 @@ const SAMPLES: Record<string, Record<string, unknown>> = {
   raiseTicket:     { topic: "A number looks wrong", subject: "Cash collected shows zero all morning",
                      body: "Sales is climbing but cash collected has not moved since I opened.",
                      priority: "Urgent", screen: "Dashboard" },
-  replyToTicket:   { body: "Refreshed and it reads correctly now — thank you." },
+  replyToTicket:   { body: "Refreshed and it reads correctly now - thank you." },
   setTicketStatus: { st: "Resolved" },
   rateTicket:      { rating: 5 },
   // ---- the admin's support desk
-  replyAsDesk:         { body: "Fixed on our side — reload the dashboard and it should read right.", st: "Resolved" },
+  replyAsDesk:         { body: "Fixed on our side - reload the dashboard and it should read right.", st: "Resolved" },
   setDeskTicketStatus: { st: "Waiting on you" },
   // ---- payers ----
   addPayer:        { kind: "staff", id: "E2291", name: "Kavitha Raman" },
@@ -58,12 +58,12 @@ const SAMPLES: Record<string, Record<string, unknown>> = {
   // ---- item patch ----
   patchItem:       { rl: 12 },
   // ---- bill void
-  voidBill: { reason: "Wrong tender — customer paid cash" },
+  voidBill: { reason: "Wrong tender - customer paid cash" },
   // ---- adjustments
   createAdjustment: { loc: "store", reason: "wastage", note: "Dropped tray", lines: [{ it: "milk", qty: -2 }] },
   // ---- prod-order raise ----
   createProdOrder: { lines: [{ it: "puff", qty: 40 }], need: "2026-09-11", note: "Lunch rush" },
-  // ---- admin: account management (a capability, not a role — root CLAUDE.md)
+  // ---- admin: account management (a capability, not a role - root CLAUDE.md)
   createAdminUser: { name: "Anitha R", email: "anitha.r@royalcare.in", role: "counter", loc: "rest" },
   updateAdminUser: { role: "counter", loc: "kiosk" },
   // ---- recipes
@@ -89,7 +89,7 @@ describe("request bodies", () => {
 });
 
 describe("the event stream", () => {
-  it("is not a manifest route — it is a stream, not a JSON endpoint", () => {
+  it("is not a manifest route - it is a stream, not a JSON endpoint", () => {
     expect(Object.values(routes).some((r) => r.path === EVENTS_PATH)).toBe(false);
   });
   it("names one collection at a time, from the same enum `changed` draws on", () => {
@@ -100,7 +100,7 @@ describe("the event stream", () => {
 });
 
 describe("the kitchen's writes and a ticket taken back", () => {
-  it("takes a make with no yield and no reason — the blank boxes mean 'all of them, nothing to explain'", () => {
+  it("takes a make with no yield and no reason - the blank boxes mean 'all of them, nothing to explain'", () => {
     expect(MakeBatchBodySchema.safeParse({ it: "puff", started: 10 }).success).toBe(true);
   });
   it("refuses a status the board does not have", () => {
@@ -158,7 +158,7 @@ describe("what the two reports put on the wire", () => {
   });
   it("reports a StockLoc, so quarantine has a ledger and a canteen does not", () => {
     // The rejected-goods shelf is the only view anyone has of what a goods receipt turned away,
-    // and this is a report, not a write body — `StockLocSchema`, never `LocKeySchema`.
+    // and this is a report, not a write body - `StockLocSchema`, never `LocKeySchema`.
     expect(StockLedgerQuerySchema.safeParse({ loc: "quarantine" }).success).toBe(true);
     expect(StockLedgerQuerySchema.safeParse({ loc: "canteen" }).success).toBe(false);
     expect(StockLedgerQuerySchema.safeParse({ loc: "store", surprise: 1 }).success).toBe(false);
@@ -177,7 +177,7 @@ describe("what the two reports put on the wire", () => {
 });
 
 describe("what the support desk puts on the wire", () => {
-  it("takes a ticket with an empty body — the first message is optional, the subject is not", () => {
+  it("takes a ticket with an empty body - the first message is optional, the subject is not", () => {
     const base = { topic: "Something else", subject: "s", priority: "Low", screen: "Dashboard" } as const;
     expect(RaiseTicketBodySchema.safeParse({ ...base, body: "" }).success).toBe(true);
     // An empty subject is a service rule, not a schema rule: the operator reads the store's own
@@ -221,7 +221,7 @@ describe("what the item master puts on the wire once it can be edited", () => {
     expect(PatchItemBodySchema.safeParse({ surprise: 1 }).success).toBe(false);
   });
 
-  it("carries a shelf life the same way create-item does — an optional whole number of hours", () => {
+  it("carries a shelf life the same way create-item does - an optional whole number of hours", () => {
     expect(PatchItemBodySchema.parse({ sl: 6 })).toEqual({ sl: 6 });
     expect(PatchItemBodySchema.safeParse({ sl: 0 }).success).toBe(true);
     expect(PatchItemBodySchema.safeParse({ sl: 1.5 }).success).toBe(false);

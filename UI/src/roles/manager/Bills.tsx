@@ -7,12 +7,12 @@ import { billDay, billStatus } from "../counter/status";
 import type { LocKey } from "../../types";
 
 /**
- * Every outlet's bills for the last seven days — the window `GET /bills` answers for, so the
+ * Every outlet's bills for the last seven days - the window `GET /bills` answers for, so the
  * store already holds exactly what this lists and there is nothing here to filter by date.
  *
  * The counter has had a bill list since the first day; the manager has had none, and voiding a
  * bill is the manager's own door (`POST /bills/:no/void`). The table is the counter's, widened
- * by the one column a counter never needs — which outlet took it — and by the badge on a bill
+ * by the one column a counter never needs - which outlet took it - and by the badge on a bill
  * somebody has taken back. The void itself lives in the drawer this opens, where the reason is
  * typed; nothing is decided from this screen.
  */
@@ -98,7 +98,7 @@ export default function Bills() {
               onClick: () => openDrawer("cbill", b.no),
               cells: [
                 <><span className="mono">{b.no}</span><small>{b.lines.length} item{b.lines.length === 1 ? "" : "s"}</small></>,
-                <span className="mono">{day ? fromWireDate(day) : "—"}</span>,
+                <span className="mono">{day ? fromWireDate(day) : "-"}</span>,
                 <span className="mono">{b.t}</span>,
                 nameOf(b.loc),
                 <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
@@ -124,7 +124,7 @@ export default function Bills() {
         <TableFoot count={rows.length} extra={<>billed {money(billed)} · {voided.length} voided</>} />
       </Card>
       <p className="mini mtop">
-        <b>Billed</b> leaves out anything voided — the stock went back on the shelf and the money was
+        <b>Billed</b> leaves out anything voided - the stock went back on the shelf and the money was
         never kept, so a voided bill is not takings. A bill can only be voided on the day it was billed;
         after that, write the stock back on with an adjustment instead.
       </p>

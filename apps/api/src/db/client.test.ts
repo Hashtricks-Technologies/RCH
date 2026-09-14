@@ -13,7 +13,7 @@ describe("withoutSslParams", () => {
   });
 
   it("leaves the bundle in charge when the URL carries sslmode", () => {
-    // pgSsl reads the bundle from PG_CA_BUNDLE at call time; a stand-in file is enough here —
+    // pgSsl reads the bundle from PG_CA_BUNDLE at call time; a stand-in file is enough here -
     // the point is that the object built from it survives a URL that says sslmode=require.
     const bundle = join(mkdtempSync(join(tmpdir(), "rch-ca-")), "bundle.pem");
     writeFileSync(bundle, "-----BEGIN CERTIFICATE-----\nstand-in\n-----END CERTIFICATE-----\n");

@@ -13,7 +13,7 @@ export async function ensureSequences(tx: Tx): Promise<void> {
 /**
  * Serialised, and gapless through a rollback: the counter is a row, the lock UPDATE takes on it
  * holds until the caller's transaction ends, and a refusal undoes the increment with everything
- * else — so the next writer is handed the number the refused one was standing on. That is the
+ * else - so the next writer is handed the number the refused one was standing on. That is the
  * whole of what the lock buys, and it is not free: **every other writer in the series waits on
  * that row for as long as the allocating transaction runs**, so a write that can still be
  * refused, or that can still block on something else, takes its number as late as it can.

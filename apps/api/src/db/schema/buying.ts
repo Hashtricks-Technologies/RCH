@@ -23,7 +23,7 @@ export const requisitionLines = pgTable("requisition_lines", {
   shortQty: qty("short_qty"),
 }, (t) => [
   primaryKey({ columns: [t.requisitionId, t.lineNo] }),
-  // The claim a purchase order puts on this line can never exceed what the buyer approved —
+  // The claim a purchase order puts on this line can never exceed what the buyer approved -
   // lib/claims.ts is what keeps it there, and this is what proves it stayed there.
   check("requisition_lines_ordered_ck", sql`${t.orderedQty} >= 0 and ${t.orderedQty} <= ${t.approvedQty}`),
 ]);

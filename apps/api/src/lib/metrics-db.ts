@@ -1,12 +1,12 @@
 import { Counter, Gauge, type Registry } from "prom-client";
 
-/** Just the counters `pg.Pool` publishes — typed structurally so lib/ needs no Fastify or pg import. */
+/** Just the counters `pg.Pool` publishes - typed structurally so lib/ needs no Fastify or pg import. */
 type PoolCounts = { totalCount: number; idleCount: number; waitingCount: number };
 
 /**
  * The database side of /metrics, kept out of plugins/ so that lib/ can report on itself
  * without importing Fastify. `recordAllocation` is a no-op until an app calls `bindMetrics`,
- * which is what lets `allocateId` count unconditionally — a CLI or a test with no app still runs.
+ * which is what lets `allocateId` count unconditionally - a CLI or a test with no app still runs.
  */
 let allocations: Counter<"kind"> | undefined;
 

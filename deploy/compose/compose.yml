@@ -1,16 +1,16 @@
 name: rch
 
 # A single-instance deploy: one Postgres, one API, one UI, one Caddy in front doing automatic
-# HTTPS. No registry — both application images build from this checkout's own Dockerfiles, the
+# HTTPS. No registry - both application images build from this checkout's own Dockerfiles, the
 # same ones the EKS path used, so there is exactly one Dockerfile per service across both
 # deploy targets. `deploy.sh` in this directory is the one entry point that builds, migrates,
 # seeds once and brings the stack up; read it before running `docker compose` by hand.
 #
-# Caddy reaches `api` and `ui` directly by service name on the network compose creates —
+# Caddy reaches `api` and `ui` directly by service name on the network compose creates -
 # there is no second reverse-proxy hop the way the K8s ingress → ui-nginx → api chain has, so
 # `TRUST_PROXY=1` (one hop: Caddy) is correct here without change. `ui`'s own nginx still
 # carries its `/api/` proxy block (the same image the EKS build uses), it is simply never asked
-# to use it — Caddy's own `@api` route reaches the API container first.
+# to use it - Caddy's own `@api` route reaches the API container first.
 
 services:
   postgres:
@@ -44,13 +44,13 @@ services:
       DATABASE_SSL: "false"
       DB_POOL_MAX: "10"
       CORS_ORIGIN: https://${DOMAIN:?set DOMAIN in .env}
-      JWT_PRIVATE_KEY: ${JWT_PRIVATE_KEY:?set JWT_PRIVATE_KEY in .env — pnpm --filter @rch/api keys:generate}
+      JWT_PRIVATE_KEY: ${JWT_PRIVATE_KEY:?set JWT_PRIVATE_KEY in .env - pnpm --filter @rch/api keys:generate}
       JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY:?set JWT_PUBLIC_KEY in .env}
       JWT_PREVIOUS_PUBLIC_KEY: ${JWT_PREVIOUS_PUBLIC_KEY:-}
       ACCESS_TOKEN_TTL: 15m
       REFRESH_TOKEN_TTL_DAYS: "30"
       COOKIE_SECURE: "true"
-      SEED_PASSWORD: ${SEED_PASSWORD:?set SEED_PASSWORD in .env — at least 12 characters}
+      SEED_PASSWORD: ${SEED_PASSWORD:?set SEED_PASSWORD in .env - at least 12 characters}
       RATE_LIMIT_PER_MINUTE: "300"
       LOGIN_RATE_LIMIT_PER_MINUTE: "10"
       LOGIN_RATE_LIMIT_PER_EMP_PER_MINUTE: "5"
@@ -64,7 +64,7 @@ services:
       migrate: { condition: service_completed_successfully }
       postgres: { condition: service_healthy }
     environment: *api_env
-    # The runtime image is distroless (no shell, no curl) — a HEALTHCHECK that shells out cannot
+    # The runtime image is distroless (no shell, no curl) - a HEALTHCHECK that shells out cannot
     # run inside the container. `caddy`'s reverse_proxy retries a connection refused start, and
     # `restart: unless-stopped` recovers a crash; that is the health story for this one box.
 

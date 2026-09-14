@@ -7,7 +7,7 @@ export { ALL_LOCS, OUTLETS, PO_APPROVAL_LIMIT } from "@rch/contract";
 
 // Registries. Mutable on purpose: the store can add a product, and hydrateMaster()
 // replaces the contents with what the server returns. Screens import these directly,
-// so they must keep their identity — assign into them, never reassign them.
+// so they must keep their identity - assign into them, never reassign them.
 //
 // They start **empty**. Nothing here is data: the app renders no screen until `auth` reaches
 // "ready", which only a snapshot can do, and the snapshot is what fills every one of them.
@@ -18,12 +18,12 @@ export const RCP: Record<string, Recipe> = {};
 export const PL: { A: Record<string, number>; B: Record<string, number> } = { A: {}, B: {} };
 export const MENU: Record<string, string[]> = {};
 /** The directory the server sends: a name badge each. Nobody's contact details but your own
- *  travel over the wire, so this is `UserMin`, not `User` — the signed-in person's own full
+ *  travel over the wire, so this is `UserMin`, not `User` - the signed-in person's own full
  *  record lives in the store's `user`. */
 export const USERS: UserMin[] = [];
 
 /** Who a bill may be charged to. Mutable registries like IT and LOC, for the same reason: the
- *  counter's screen imports them directly, so they must keep their identity — assign into them,
+ *  counter's screen imports them directly, so they must keep their identity - assign into them,
  *  never reassign them. Filled by `hydrateRoster` from the snapshot's `roster`, which the server
  *  reads out of the `payers` table it has been validating the till against since Phase 3. */
 export const PATIENTS: Payer[] = [];
@@ -50,7 +50,7 @@ const replaceKeys = <T extends object>(target: T, next: T) => {
 };
 
 /** Just the item master, for a write that added one (`POST /items` names "items"). The registry
- *  keeps its identity — screens hold a reference to it — so the contents are replaced in place,
+ *  keeps its identity - screens hold a reference to it - so the contents are replaced in place,
  *  and `catalogVersion` in the store is what tells React the lists changed. */
 export function hydrateItems(items: MasterData["items"]): void { replaceKeys(IT, items); }
 

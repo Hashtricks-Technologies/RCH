@@ -3,7 +3,7 @@
 // so the decisions below are testable without a database, a process or an exit code.
 //
 // Why the production rule is what it is: the chart renders `NODE_ENV=production` into **every**
-// pod — the dev namespace and CI's kind cluster included — so `--allow-production` stopped
+// pod - the dev namespace and CI's kind cluster included - so `--allow-production` stopped
 // meaning "yes, the real hospital" the moment it became the routine in-cluster form. A flag
 // typed on every seed is a flag nobody reads. Naming the database instead is a sentence the
 // operator has to mean: `--yes-seed rch_dev` cannot be muscle memory for `rch`, which is the
@@ -29,7 +29,7 @@ const said = (v: string | undefined) => (v ? `"${v}"` : "nothing");
  * - `--yes-destroy <name>` as well for `--force` (the tables).
  *
  * `--allow-production` is kept as an alias for the first so an old runbook line fails loudly
- * rather than silently doing the wrong thing — on its own it is refused, and the refusal names
+ * rather than silently doing the wrong thing - on its own it is refused, and the refusal names
  * the flag that replaced it.
  */
 export function seedGuard({ env, argv, dbName }: SeedGuardInput): SeedGuardDecision {
@@ -40,7 +40,7 @@ export function seedGuard({ env, argv, dbName }: SeedGuardInput): SeedGuardDecis
     return {
       exit: 2,
       message: argv.includes("--allow-production") && yesSeed === undefined
-        ? `Refusing to seed ${dbName}: --allow-production is not enough on its own — the chart sets NODE_ENV=production in every pod, so pass --yes-seed ${dbName} to say which database you mean.`
+        ? `Refusing to seed ${dbName}: --allow-production is not enough on its own - the chart sets NODE_ENV=production in every pod, so pass --yes-seed ${dbName} to say which database you mean.`
         : `Refusing to seed ${dbName}: seeding rewrites every seeded account's password, so it needs --yes-seed ${dbName}, and you named ${said(yesSeed)}.`,
     };
   }

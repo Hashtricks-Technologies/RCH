@@ -38,7 +38,7 @@ export async function withTestSchema(name: string): Promise<TestDb> {
  *
  * `pg` gives a waiting caller an idle client instead of opening a second one, so two
  * transactions started in the same tick against a pool that has only ever needed one client
- * run back to back — the second does not even reach its BEGIN until the first has committed.
+ * run back to back - the second does not even reach its BEGIN until the first has committed.
  * A case about two writers racing for the same row then passes whether or not the lock under
  * test exists. Call this before racing anything.
  */

@@ -22,7 +22,7 @@ const BOARD: { st: PordStatus; sub: string }[] = [
 const itemText = (o: ProdOrder) => o.lines.map((l) => `${l.qty} × ${IT[l.it]?.n ?? l.it}`).join(" ");
 const totalQty = (o: ProdOrder) => sum(o.lines, (l) => l.qty);
 
-/** The order number on a card is a button, not a heading — it opens the order. Styled here
+/** The order number on a card is a button, not a heading - it opens the order. Styled here
  *  rather than in `styles.css` so it keeps `.kan-top b`'s own type and needs no new class. */
 const OPEN_BTN = {
   background: "none", border: 0, padding: 0, margin: 0, font: "inherit", color: "inherit",
@@ -73,7 +73,7 @@ export default function Orders() {
         <Btn size="xs" variant="ok" disabled={short.length > 0}
           title={short.length ? `Short of ${short.map((l) => IT[l.it].n).join(", ")}` : "Issue one pick ticket for the whole order"}
           onClick={() => dispatchOrder(o.id)}>
-          {short.length ? "Short — cannot dispatch" : "Dispatch all items"}
+          {short.length ? "Short - cannot dispatch" : "Dispatch all items"}
         </Btn>
       );
     }
@@ -86,7 +86,7 @@ export default function Orders() {
       // The card itself carries the mouse shortcut, and the order number is the real control.
       // It was a `role="button"` div with an Enter handler, which is half a button: a real one
       // answers Space as well, announces itself, and is reachable in the tab order for the same
-      // reason — and the card cannot *be* one, because it has Accept, Decline and Dispatch
+      // reason - and the card cannot *be* one, because it has Accept, Decline and Dispatch
       // inside it and a button may not contain a button.
       <div className="kan-card" key={o.id} onClick={() => openDrawer("pord", o.id)}>
         <div className="kan-top">
@@ -144,7 +144,7 @@ export default function Orders() {
 
       <Alert tone="i" label="NOTE">
         Dispatch issues a single pick ticket carrying every item on the order, addressed to the outlet
-        that raised it. It is all or nothing — if one item is short the whole order stays on the board.
+        that raised it. It is all or nothing - if one item is short the whole order stays on the board.
       </Alert>
 
       <div className="mtop" />
@@ -178,7 +178,7 @@ export default function Orders() {
         {BOARD.map(({ st, sub }) => {
           const cards = inColumn(st);
           return (
-            <section className="kan-col" key={st} aria-label={`${st} — ${cards.length} orders`}>
+            <section className="kan-col" key={st} aria-label={`${st} - ${cards.length} orders`}>
               <div className="kan-h">
                 <StatusPill status={st} />
                 <div className="sp" />
@@ -201,7 +201,7 @@ export default function Orders() {
         })}
       </div>
 
-      <Card title="Declined" sub="Sent back to the outlet — nothing will be made against these" flush className="mtop">
+      <Card title="Declined" sub="Sent back to the outlet - nothing will be made against these" flush className="mtop">
         <DataTable
           cols={[
             { h: "Order ID", cls: "nm", w: "18%" },

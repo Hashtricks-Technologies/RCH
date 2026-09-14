@@ -15,7 +15,7 @@
     "db:up": "docker compose up -d postgres",
     "db:down": "docker compose down"
   },
-  "//": "pnpm.overrides.esbuild: two dev-only advisories, both against esbuild's development server and neither reachable from anything shipped — GHSA-67mh-4wv8-2f99 reaches us through drizzle-kit's @esbuild-kit chain (esbuild <=0.24.2) and GHSA-g7r4-m6w7-qqqr through tsup (>=0.27.3 <0.28.1). Neither will bump on our timetable, and pnpm audit is a CI gate that fails on either, so the floor is pinned here instead of being re-triaged every week. Nothing in the tree needs an older esbuild.",
+  "//": "pnpm.overrides.esbuild: two dev-only advisories, both against esbuild's development server and neither reachable from anything shipped - GHSA-67mh-4wv8-2f99 reaches us through drizzle-kit's @esbuild-kit chain (esbuild <=0.24.2) and GHSA-g7r4-m6w7-qqqr through tsup (>=0.27.3 <0.28.1). Neither will bump on our timetable, and pnpm audit is a CI gate that fails on either, so the floor is pinned here instead of being re-triaged every week. Nothing in the tree needs an older esbuild.",
   "pnpm": { "overrides": { "esbuild": ">=0.28.1" } },
   "devDependencies": {
     "knip": "^6.34.0",

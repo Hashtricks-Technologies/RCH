@@ -1,5 +1,5 @@
 // The buyer's order: drafted off the procurement list, edited while it is a draft, sent to the
-// vendor, and cancelled back onto the list. Receipt is `grn`'s — it writes different columns of
+// vendor, and cancelled back onto the list. Receipt is `grn`'s - it writes different columns of
 // the same two tables and carries the store keeper on its role list as well as the buyer.
 import fp from "fastify-plugin";
 import { routes } from "@rch/contract";

@@ -22,12 +22,12 @@ export const StockLedgerResponseSchema = z.strictObject({
 export const CreditParamsSchema = z.strictObject({ kind: PayerKindSchema, id: z.string().min(1).max(64) });
 export const CreditResponseSchema = z.strictObject({
   kind: PayerKindSchema, id: z.string(), name: z.string(),
-  /** Midnight on the first of the month, in the hospital's zone — the window the ceiling is settled over. */
+  /** Midnight on the first of the month, in the hospital's zone - the window the ceiling is settled over. */
   since: IsoTime,
   taken: Money,
   /** The ceiling only binds `staff`: credit is what the "Staff credit" tender creates and that
    *  tender carries a staff payer. For `patient` and `dept` the same number is reported for
-   *  symmetry and `taken` is structurally 0 — the row exists so a screen can say so rather
+   *  symmetry and `taken` is structurally 0 - the row exists so a screen can say so rather
    *  than having to know which kinds have a ceiling. */
   limit: Money,
   room: Money,

@@ -10,7 +10,7 @@ spec:
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 3
   # A node rotation, a paused controller or a cluster upgrade can leave a scheduled run unstarted.
-  # Ten minutes late is still worth running; later than that, skip it — tomorrow's sweep deletes
+  # Ten minutes late is still worth running; later than that, skip it - tomorrow's sweep deletes
   # the same rows. Without a deadline the controller counts missed schedules and, past a hundred
   # of them, refuses to fire the CronJob ever again.
   startingDeadlineSeconds: 600
@@ -20,7 +20,7 @@ spec:
       # will not start reaching it on the sixth attempt, and the default backoffLimit of 6 buries
       # the first, informative failure under five more.
       backoffLimit: 2
-      # Half an hour is far longer than a night's sweep takes even after a long gap — the deletes
+      # Half an hour is far longer than a night's sweep takes even after a long gap - the deletes
       # are batched, so the job makes progress in bounded chunks rather than one enormous
       # statement. Past that something is wrong, and a job holding a connection open against the
       # production database until somebody notices is the thing to avoid.

@@ -14,7 +14,7 @@ afterAll(async () => { await app.close(); });
 const hdr = async (id: string) => ({ ...(await authHeaders(app, id)), "idempotency-key": randomUUID() });
 const post = async (u: string, url: string, payload: Record<string, unknown> = {}) =>
   app.inject({ method: "POST", url: `/api/v1${url}`, headers: await hdr(u), payload });
-/** The requisition desk, off `GET /snapshot` — `GET /requisitions` is Task 4's and lands in
+/** The requisition desk, off `GET /snapshot` - `GET /requisitions` is Task 4's and lands in
  *  this same wave, so nothing here may depend on it. */
 const list = async (u = "u5") => (await app.inject({ method: "GET", url: "/api/v1/snapshot", headers: await authHeaders(app, u) })).json().prq;
 const one = async (id: string) => (await list()).find((p: { id: string }) => p.id === id);
@@ -57,7 +57,7 @@ describe("POST /requisitions", () => {
 });
 
 describe("POST /requisitions/direct", () => {
-  const REASON = "Festival week — the store keeper is on leave";
+  const REASON = "Festival week - the store keeper is on leave";
 
   it("puts the buyer's own items straight on the procurement list, approved in full and signed", async () => {
     const r = await post("u5", "/requisitions/direct", { lines: [{ it: "cup", qty: 500 }, { it: "juice", qty: 48.0004 }], note: REASON });
@@ -73,7 +73,7 @@ describe("POST /requisitions/direct", () => {
     // Nobody sent it, so the trail is the one decision and not a Sent row the buyer never made.
     expect(b.result.hist.map((h: { s: string; who: string }) => [h.s, h.who])).toEqual([["Approved", "Latha Narayanan"]]);
     expect(b.changed).toEqual(["prq"]);
-    expect(b.message).toBe(`${b.result.id} added to the procurement list — 2 line(s)`);
+    expect(b.message).toBe(`${b.result.id} added to the procurement list - 2 line(s)`);
     expect((await one(b.result.id)).st).toBe("Approved");
   });
 
@@ -91,7 +91,7 @@ describe("POST /requisitions/direct", () => {
       return r.json().error.message;
     };
     expect(await refused({ lines: [{ it: "cup", qty: 10 }], note: "   " }))
-      .toBe("Give a reason — it is kept on the requisition for the store keeper");
+      .toBe("Give a reason - it is kept on the requisition for the store keeper");
     expect(await refused({ lines: [{ it: "cup", qty: 10 }, { it: "box", qty: 0 }], note: REASON }))
       .toBe("Enter a quantity on every line");
     expect(await refused({ lines: [{ it: "milk", qty: 10 }, { it: "milk", qty: 5 }], note: REASON }))
@@ -103,7 +103,7 @@ describe("POST /requisitions/direct", () => {
     for (const [it, n] of [["puff", "Veg puffs"], ["capp", "Cappuccino"]]) {
       const r = await post("u5", "/requisitions/direct", { lines: [{ it: "cup", qty: 10 }, { it, qty: 10 }], note: REASON });
       expect(r.statusCode).toBe(422);
-      expect(r.json().error.message).toBe(`${n} is made in-house — only raw, packing and MRP goods are bought`);
+      expect(r.json().error.message).toBe(`${n} is made in-house - only raw, packing and MRP goods are bought`);
     }
   });
 
@@ -125,7 +125,7 @@ describe("POST /requisitions/:id/approve", () => {
     expect(b.result.st).toBe("Approved");
     expect(b.result.lines.map((l: { appr: number; ordered: number }) => [l.appr, l.ordered])).toEqual([[60, 0], [6, 0]]);
     expect(b.result.apprBy).toBe("Latha Narayanan");
-    expect(b.message).toBe(`${id} approved — 2 line(s) on the procurement list`);
+    expect(b.message).toBe(`${id} approved - 2 line(s) on the procurement list`);
   });
 
   it("never approves more than was asked, and records the shortfall", async () => {
@@ -134,7 +134,7 @@ describe("POST /requisitions/:id/approve", () => {
     expect(b.result.st).toBe("Partially approved");
     expect(b.result.lines[0]).toMatchObject({ appr: 60, short: 0 });
     expect(b.result.lines[1]).toMatchObject({ appr: 4, short: 2 });
-    expect(b.message).toBe(`${id} partially approved — 2 line(s) on the procurement list`);
+    expect(b.message).toBe(`${id} partially approved - 2 line(s) on the procurement list`);
   });
 
   it("leaves a claim a live order already holds exactly where it is", async () => {
@@ -154,13 +154,13 @@ describe("POST /requisitions/:id/approve", () => {
     const id = await given.requisition(app.testDb!.db, { lines: [{ it: "milk", qty: 60 }] });
     const bare = await post("u5", `/requisitions/${id}/approve`, { appr: [0], note: "  " });
     expect(bare.statusCode).toBe(422);
-    expect(bare.json().error.message).toBe("Give a reason — the store keeper sees it on the requisition");
+    expect(bare.json().error.message).toBe("Give a reason - the store keeper sees it on the requisition");
     expect((await one(id)).st).toBe("Sent");
 
     const b = (await post("u5", `/requisitions/${id}/approve`, { appr: [0], note: "Vendor cannot supply" })).json();
     expect(b.result.st).toBe("Declined");
     expect(b.result.lines[0]).toMatchObject({ appr: 0, short: 60 });
-    expect(b.message).toBe(`${id} declined — nothing goes on the procurement list`);
+    expect(b.message).toBe(`${id} declined - nothing goes on the procurement list`);
   });
 
   it("refuses a decision that does not cover every line", async () => {
@@ -205,7 +205,7 @@ describe("POST /requisitions/:id/decline", () => {
   it("will not decline without one, and will not decide twice", async () => {
     const id = await given.requisition(app.testDb!.db, { lines: [{ it: "milk", qty: 60 }] });
     expect((await post("u5", `/requisitions/${id}/decline`, { note: "   " })).json().error.message)
-      .toBe("Give a reason — the store keeper sees it on the requisition");
+      .toBe("Give a reason - the store keeper sees it on the requisition");
     await post("u5", `/requisitions/${id}/decline`, { note: "No" });
     const again = await post("u5", `/requisitions/${id}/decline`, { note: "No" });
     expect(again.statusCode).toBe(422);

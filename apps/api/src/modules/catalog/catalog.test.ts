@@ -26,7 +26,7 @@ describe("catalog: prices", () => {
     const r = await put("/prices/A/juice", await hdr("u2"), { price: 25 });
     expect(r.statusCode).toBe(422);
     expect(r.json().error.code).toBe("rule");
-    expect(r.json().error.message).toBe("Refused — printed MRP of ₹20 is a hard ceiling for Real Juice 200ml");
+    expect(r.json().error.message).toBe("Refused - printed MRP of ₹20 is a hard ceiling for Real Juice 200ml");
   });
 
   it("saves a price at or under the MRP and it is visible on GET /prices", async () => {
@@ -50,7 +50,7 @@ describe("catalog: prices", () => {
     expect(r.json().error.message).toBe("There is no item doesnotexist.");
   });
 
-  it("refuses a price of nothing — 400 at the door, the same as the screen's own guard", async () => {
+  it("refuses a price of nothing - 400 at the door, the same as the screen's own guard", async () => {
     for (const price of [0, -1]) {
       const r = await put("/prices/A/juice", await hdr("u2"), { price });
       expect(r.statusCode, r.body).toBe(400);
@@ -103,7 +103,7 @@ describe("catalog: menus", () => {
   });
 
   it("lets exactly one of two concurrent adds list the item", async () => {
-    // Both read "not listed" before either inserts. The insert is what arbitrates — `on conflict
+    // Both read "not listed" before either inserts. The insert is what arbitrates - `on conflict
     // do nothing` gives the loser no row and it reads the ordinary refusal, not a 500.
     const [h1, h2] = await Promise.all([hdr("u2"), hdr("u2")]);
     const [a, b] = await Promise.all([
@@ -168,7 +168,7 @@ describe("catalog: a new product on the master", () => {
   });
 
   it("de-duplicates a key with a numeric suffix, and still refuses a duplicate name", async () => {
-    // Two different names that slug the same way inside twelve characters — which is exactly
+    // Two different names that slug the same way inside twelve characters - which is exactly
     // the case the advisory lock on the slug exists for.
     const one = (await post("/items", await hdr("u3"), { ...base, name: "Masala tea premix A" })).json();
     const two = (await post("/items", await hdr("u3"), { ...base, name: "Masala tea premix B" })).json();
@@ -207,7 +207,7 @@ describe("catalog: a new product on the master", () => {
 // ---- item patch ----
 describe("PATCH /items/:it", () => {
   const base = { unit: "nos", type: "MRP" as const, cost: 10, loc: "store" as const, opening: 0 };
-  /** A fresh line on the master for each case — this file seeds once and never resets, so a
+  /** A fresh line on the master for each case - this file seeds once and never resets, so a
    *  case that reused a name would be testing the previous case's leftovers. */
   const make = async (name: string, over: Record<string, unknown> = {}): Promise<string> => {
     const r = await post("/items", await hdr("u3"), { ...base, name, ...over });
@@ -247,10 +247,10 @@ describe("PATCH /items/:it", () => {
     const k = await make("Patch wrong desk");
     const m = await patch(`/items/${k}`, await hdr("u2"), { rl: 5 });
     expect(m.statusCode).toBe(422);
-    expect(m.json().error.message).toBe("The store, the buyer and the kitchen keep an item's name, group, HSN, reorder level and shelf life — ask one of them");
+    expect(m.json().error.message).toBe("The store, the buyer and the kitchen keep an item's name, group, HSN, reorder level and shelf life - ask one of them");
     const s = await patch(`/items/${k}`, await hdr("u3"), { cost: 99 });
     expect(s.statusCode).toBe(422);
-    expect(s.json().error.message).toBe("Only the outlet manager changes an item's price, cost or GST — ask them to make that change");
+    expect(s.json().error.message).toBe("Only the outlet manager changes an item's price, cost or GST - ask them to make that change");
     expect((await get("/items"))[k]).toMatchObject({ rl: 0, cost: 10 });
   });
 
@@ -281,7 +281,7 @@ describe("PATCH /items/:it", () => {
     // still a counter that cannot sell.
     const r = await patch(`/items/${k}`, await hdr("u2"), { mrp: 24 });
     expect(r.statusCode).toBe(422);
-    expect(r.json().error.message).toBe("Patch mrp floor — printed MRP ₹24.00 is below the shelf price; reprice before selling");
+    expect(r.json().error.message).toBe("Patch mrp floor - printed MRP ₹24.00 is below the shelf price; reprice before selling");
     expect((await get("/items"))[k].mrp).toBe(30);
   });
 
@@ -293,7 +293,7 @@ describe("PATCH /items/:it", () => {
     expect(r.json().result.item.mrp).toBe(40);
   });
 
-  it("refuses to clear an MRP — the ceiling has no clearing door", async () => {
+  it("refuses to clear an MRP - the ceiling has no clearing door", async () => {
     // Zero is what an emptied number box sends, and it would take away both the till's hard
     // ceiling and the floor a goods receipt judges a delivery against, with nothing on the
     // record to say it happened. The drawer never sends one; this is what happens if anything
@@ -301,7 +301,7 @@ describe("PATCH /items/:it", () => {
     const k = await make("Patch mrp clearing", { mrp: 30 });
     const r = await patch(`/items/${k}`, await hdr("u2"), { mrp: 0 });
     expect(r.statusCode).toBe(422);
-    expect(r.json().error.message).toBe("Give the printed MRP a value — an item that carries one keeps it");
+    expect(r.json().error.message).toBe("Give the printed MRP a value - an item that carries one keeps it");
     expect((await get("/items"))[k].mrp).toBe(30);
   });
 
@@ -319,7 +319,7 @@ describe("PATCH /items/:it", () => {
 
   it("does not say a line was retired or restored when it never crossed", async () => {
     // `active: true` on a line that was already live has restored nothing. A history row saying
-    // it did — and a toast reading "back in the catalogue" for a product that never left — is a
+    // it did - and a toast reading "back in the catalogue" for a product that never left - is a
     // record of an event that did not happen. The other fields still land, so it reads Updated.
     const k = await make("Patch no crossing");
     const r = await patch(`/items/${k}`, await hdr("u3"), { active: true, hsn: "2202" });
@@ -348,7 +348,7 @@ describe("PATCH /items/:it", () => {
     expect(r.json().result.item.n).toBe("PATCH CASE RENAME");
   });
 
-  it("changes only the field it names — a patch of one does not reset the rest", async () => {
+  it("changes only the field it names - a patch of one does not reset the rest", async () => {
     const k = await make("Patch one field", { unit: "kg", cost: 18, mrp: 25, grp: "Dairy", hsn: "0401", gst: 12, reorder: 7 });
     const before = (await get("/items"))[k];
     const r = await patch(`/items/${k}`, await hdr("u3"), { rl: 9 });
@@ -361,7 +361,7 @@ describe("PATCH /items/:it", () => {
     const r = await patch(`/items/${k}`, await hdr("u3"), { active: false });
     expect(r.statusCode, r.body).toBe(200);
     expect(r.json().result.item.active).toBe(false);
-    expect(r.json().message).toBe("Patch retire clean retired — it stays on past documents and cannot be sold or ordered again");
+    expect(r.json().message).toBe("Patch retire clean retired - it stays on past documents and cannot be sold or ordered again");
     // Still on the wire: a bill or a ticket raised before today still names it, and the screen
     // showing that document needs the name rather than the raw key.
     expect((await get("/items"))[k]).toMatchObject({ n: "Patch retire clean", active: false });
@@ -371,7 +371,7 @@ describe("PATCH /items/:it", () => {
     const k = await make("Patch retire stocked", { opening: 4 });
     const r = await patch(`/items/${k}`, await hdr("u3"), { active: false });
     expect(r.statusCode).toBe(422);
-    expect(r.json().error.message).toBe("Patch retire stocked still has stock at Central Store — write it off before retiring it");
+    expect(r.json().error.message).toBe("Patch retire stocked still has stock at Central Store - write it off before retiring it");
   });
 
   it("refuses to retire an item still listed at an outlet, naming the outlets", async () => {
@@ -380,7 +380,7 @@ describe("PATCH /items/:it", () => {
     await post("/menus/kiosk/items", await hdr("u2"), { it: k });
     const r = await patch(`/items/${k}`, await hdr("u3"), { active: false });
     expect(r.statusCode).toBe(422);
-    expect(r.json().error.message).toBe("Patch retire listed is still listed at Coffee Shop, Snack Kiosk — take it off those menus before retiring it");
+    expect(r.json().error.message).toBe("Patch retire listed is still listed at Coffee Shop, Snack Kiosk - take it off those menus before retiring it");
   });
 
   it("brings a retired item back, and GET /items carries it again", async () => {

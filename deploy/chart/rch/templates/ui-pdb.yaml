@@ -1,5 +1,5 @@
 {{- if gt (int .Values.ui.replicas) 1 }}
-{{- /* Same shape and same reasoning as api-pdb.yaml — see the comment there. The UI had no
+{{- /* Same shape and same reasoning as api-pdb.yaml - see the comment there. The UI had no
 budget at all, so a node drain could take every nginx pod at once and the site with it. */ -}}
 apiVersion: policy/v1
 kind: PodDisruptionBudget

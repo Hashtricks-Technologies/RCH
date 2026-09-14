@@ -12,9 +12,9 @@ export interface ProcurementSlice {
   setVendorActive: (id: string, active: boolean) => Promise<void>;
   approveRequisition: (prqId: string, appr: number[], note: string) => Promise<boolean>;
   declineRequisition: (prqId: string, note: string) => Promise<boolean>;
-  /** The buyer's own addition to the procurement list — a requisition approved as it is raised. */
+  /** The buyer's own addition to the procurement list - a requisition approved as it is raised. */
   addToProcurementList: (lines: { it: string; qty: number }[], note: string) => Promise<boolean>;
-  /** The new draft's id, or null when the server refused — the list needs it to navigate. */
+  /** The new draft's id, or null when the server refused - the list needs it to navigate. */
   createPo: (vendorId: string, picks: { prq: string; line: number; qty: number }[]) => Promise<string | null>;
   updatePoLine: (poId: string, lineIdx: number, patch: { qty?: number; rate?: number }) => Promise<boolean>;
   removePoLine: (poId: string, lineIdx: number) => Promise<void>;
@@ -30,17 +30,17 @@ export interface ProcurementSlice {
 /**
  * Buying, as seen from the browser. Every write below is the same three lines: post the body,
  * repeat the sentence the server answered with, refetch exactly what it said it changed. No
- * rule is decided here — the claim walk, the 2% receipt tolerance, the expiry checks, the
+ * rule is decided here - the claim walk, the 2% receipt tolerance, the expiry checks, the
  * value slab and the rate-contract pricing all live in `packages/domain` and are enforced by
  * `apps/api`. A refusal arrives as the server's own words, and the actions that carry a form
  * answer `false` so the screen can keep what the operator typed in front of them.
  */
 const fail = (get: Get, e: unknown, what: string): false => {
-  get().notify(e instanceof ApiError ? e.message : `Could not ${what} — check the connection and try again.`);
+  get().notify(e instanceof ApiError ? e.message : `Could not ${what} - check the connection and try again.`);
   return false;
 };
 
-/** Buying writes nothing into the store directly — every action posts and refetches — so this
+/** Buying writes nothing into the store directly - every action posts and refetches - so this
  *  factory needs only the reader, the same shape `createOpsSlice` takes. */
 export const createProcurementSlice = (get: Get): ProcurementSlice => ({
   addVendor: async (v) => {
@@ -99,7 +99,7 @@ export const createProcurementSlice = (get: Get): ProcurementSlice => ({
   },
 
   addToProcurementList: async (lines, note) => {
-    // A line left at zero is the drawer's noise, not something to send and have refused — the
+    // A line left at zero is the drawer's noise, not something to send and have refused - the
     // same drop `sendRequisition` makes. The drawer keeps what was typed until this answers true.
     const body = { lines: lines.filter((l) => l.it && l.qty > 0).map((l) => ({ it: l.it, qty: l.qty })), note };
     try {

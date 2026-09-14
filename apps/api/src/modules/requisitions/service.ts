@@ -1,4 +1,4 @@
-// Requisitions: the flow — transaction, rules, ids, history. Composes the helpers in
+// Requisitions: the flow - transaction, rules, ids, history. Composes the helpers in
 // apps/api/src/lib/; the arithmetic of a decision is `planPrqApproval` in packages/domain.
 //
 // Nothing here touches stock or `ordered_qty`. A requisition records what the central store
@@ -26,7 +26,7 @@ export type ApproveRequisitionBody = z.infer<typeof ApproveRequisitionBodySchema
 export type DeclineRequisitionBody = z.infer<typeof DeclineRequisitionBodySchema>;
 export type AddToProcurementListBody = z.infer<typeof AddToProcurementListBodySchema>;
 
-const REASON = "Give a reason — the store keeper sees it on the requisition";
+const REASON = "Give a reason - the store keeper sees it on the requisition";
 
 export function createRequisitionsService(db: Db) {
   return {
@@ -36,7 +36,7 @@ export function createRequisitionsService(db: Db) {
         const master = await loadMaster(tx);
         for (const l of body.lines) if (!master.items[l.it]) throw new NotFoundError(`There is no item ${l.it}.`);
         assertRule(body.lines.every((l) => l.qty > 0), "Add at least one line before sending");
-        // One item, one line — the same rule `POST /requests` keeps, and for the same reason:
+        // One item, one line - the same rule `POST /requests` keeps, and for the same reason:
         // two lines of one item would be decided twice, claimed twice and received twice, and
         // the store keeper can still fix it on the draft screen.
         const repeated = body.lines.find((l, i) => body.lines.findIndex((x) => x.it === l.it) !== i);
@@ -56,7 +56,7 @@ export function createRequisitionsService(db: Db) {
     },
 
     /**
-     * The buyer putting items on the procurement list directly — a festival week, a new vendor's
+     * The buyer putting items on the procurement list directly - a festival week, a new vendor's
      * trial lot, a shortage the store keeper has not raised yet.
      *
      * It is a requisition, raised and approved by the buyer in the one transaction, and not a
@@ -75,8 +75,8 @@ export function createRequisitionsService(db: Db) {
         const repeated = body.lines.find((l, i) => body.lines.findIndex((x) => x.it === l.it) !== i);
         if (repeated) assertRule(false, `Combine the ${master.items[repeated.it]!.n} lines into one`);
         const made = body.lines.find((l) => !isPurchased(master.items[l.it]!.t));
-        if (made) assertRule(false, `${master.items[made.it]!.n} is made in-house — only raw, packing and MRP goods are bought`);
-        assertRule(body.note.trim().length > 0, "Give a reason — it is kept on the requisition for the store keeper");
+        if (made) assertRule(false, `${master.items[made.it]!.n} is made in-house - only raw, packing and MRP goods are bought`);
+        assertRule(body.note.trim().length > 0, "Give a reason - it is kept on the requisition for the store keeper");
 
         const at = new Date();
         const id = await allocateId(tx, "prq", at);
@@ -93,14 +93,14 @@ export function createRequisitionsService(db: Db) {
         await emitChanged(tx, changed);
         return {
           result: await requisitionsRepo.wire(tx, id), changed: [...changed],
-          message: `${id} added to the procurement list — ${lines.length} line(s)`,
+          message: `${id} added to the procurement list - ${lines.length} line(s)`,
         };
       });
     },
 
     /**
      * The buyer's decision. Never more than the store keeper asked for and never more than the
-     * buyer typed — and never netted against the central store's own shelf, which has nothing to
+     * buyer typed - and never netted against the central store's own shelf, which has nothing to
      * do with what a vendor can supply. `ordered_qty` is untouched: the procurement list is
      * approved less ordered, and a decision that reset the claim would hand a live order's
      * quantity back to the list.
@@ -129,13 +129,13 @@ export function createRequisitionsService(db: Db) {
         await emitChanged(tx, changed);
         const n = plan.lines.filter((l) => l.appr > 0).length;
         const message = plan.st === "Declined"
-          ? `${id} declined — nothing goes on the procurement list`
-          : `${id} ${plan.st.toLowerCase()} — ${n} line(s) on the procurement list`;
+          ? `${id} declined - nothing goes on the procurement list`
+          : `${id} ${plan.st.toLowerCase()} - ${n} line(s) on the procurement list`;
         return { result: await requisitionsRepo.wire(tx, id), changed: [...changed], message };
       });
     },
 
-    /** A plain refusal. It approves nothing, so every line's shortfall is the full ask — the
+    /** A plain refusal. It approves nothing, so every line's shortfall is the full ask - the
      *  same rows an all-zero approval writes. */
     async decline(claims: AccessClaims, id: string, body: DeclineRequisitionBody): Promise<WriteResponse<Requisition>> {
       return withTransaction(db, async (tx) => {

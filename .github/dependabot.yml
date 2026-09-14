@@ -1,13 +1,13 @@
-# Royal Care Hospital — F&B inventory and billing
+# Royal Care Hospital - F&B inventory and billing
 #
 # Nothing here has ever told anyone a dependency moved. `pnpm audit` in ci.yml speaks up only
-# once a package is already a published advisory, which is late — and the two esbuild
+# once a package is already a published advisory, which is late - and the two esbuild
 # advisories pinned out in the root package.json arrived exactly that way, through transitive
 # dev tooling nobody was watching.
 #
 # Every workspace manifest is listed: pnpm keeps each workspace's dependencies in its own
 # package.json, and Dependabot reads manifests, not the workspace graph. Minor and patch bumps
-# are grouped into one pull request a week — twenty separate PRs for twenty patch releases is
+# are grouped into one pull request a week - twenty separate PRs for twenty patch releases is
 # how a team learns to close them unread. A major is left ungrouped on purpose, because a major
 # is a decision, not a bump.
 version: 2
@@ -27,7 +27,7 @@ updates:
         update-types: [minor, patch]
 
   # The actions in ci.yml and deploy.yml are each pinned to a tag; this is what moves them.
-  # One entry covers both files — the ecosystem reads .github/workflows, not a manifest.
+  # One entry covers both files - the ecosystem reads .github/workflows, not a manifest.
   - package-ecosystem: github-actions
     directory: /
     schedule:

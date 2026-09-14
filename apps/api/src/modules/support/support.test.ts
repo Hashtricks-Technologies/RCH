@@ -40,7 +40,7 @@ describe("GET /support/tickets", () => {
     expect(asStore.map((t) => t.id)).not.toContain(mine);
   });
 
-  it("is open to every role — support is the one module all five share", async () => {
+  it("is open to every role - support is the one module all five share", async () => {
     for (const u of ["u1", "u2", "u3", "u4", "u5"]) {
       const res = await app.inject({ method: "GET", url: "/api/v1/support/tickets", headers: await authHeaders(app, u) });
       expect(res.statusCode).toBe(200);
@@ -65,7 +65,7 @@ describe("POST /support/tickets", () => {
     expect(result.messages).toHaveLength(1);
     expect(result.messages[0].from).toBe("user");
     expect(changed).toEqual(["tickets"]);
-    expect(message).toBe(`${result.id} raised — the reply will appear on your Support screen`);
+    expect(message).toBe(`${result.id} raised - the reply will appear on your Support screen`);
     expect(await list("u1")).toHaveLength(before + 1);
   });
 
@@ -126,7 +126,7 @@ describe("POST /support/tickets/:id/messages", () => {
     const closed = await given.supportTicket(app.db, { by: "u1", st: "Closed" });
     const res = await post("u1", `/tickets/${closed}/messages`, { body: "Hello?" });
     expect(res.statusCode).toBe(422);
-    expect((res.json() as { error: { message: string } }).error.message).toBe(`${closed} is closed — raise a new ticket if it has come back`);
+    expect((res.json() as { error: { message: string } }).error.message).toBe(`${closed} is closed - raise a new ticket if it has come back`);
   });
 
   it("refuses somebody else's ticket as though it were not there", async () => {
@@ -150,7 +150,7 @@ describe("POST /support/tickets/:id/status", () => {
       const res = await post("u1", `/tickets/${id}/status`, { st });
       expect(res.statusCode).toBe(422);
       expect((res.json() as { error: { message: string } }).error.message)
-        .toBe(`Only support moves a ticket to ${st.toLowerCase()} — you can mark it resolved or close it`);
+        .toBe(`Only support moves a ticket to ${st.toLowerCase()} - you can mark it resolved or close it`);
     }
   });
 
@@ -161,13 +161,13 @@ describe("POST /support/tickets/:id/status", () => {
 
   it("writes one status, not two, when two taps race", async () => {
     const id = await given.supportTicket(app.db, { by: "u1", st: "With support" });
-    // `warmPool(app.testDb!, n)` — the shape every existing race case in this repo uses.
+    // `warmPool(app.testDb!, n)` - the shape every existing race case in this repo uses.
     await warmPool(app.testDb!, 2);
     // Both taps ask for the *same* word, which is the case `supportRepo.head`'s lock exists for
     // and the one the operator actually produces: a double-tap on "Mark resolved". It is also the
     // only pair that proves the lock whichever request wins it. Racing `Resolved` against
     // `Closed` does not: `Resolved -> Closed` is a legal edge, so if the `Resolved` tap took the
-    // lock first the second would pass its guard honestly and both would answer 200 — the
+    // lock first the second would pass its guard honestly and both would answer 200 - the
     // assertion below would then fail for a reason that has nothing to do with the lock.
     const [a, b] = await Promise.all([
       post("u1", `/tickets/${id}/status`, { st: "Resolved" }),
@@ -187,14 +187,14 @@ describe("POST /support/tickets/:id/rating", () => {
     const res = await post("u1", `/tickets/${id}/rating`, { rating: 5 });
     expect(res.statusCode).toBe(200);
     expect((res.json() as { result: SupportTicket }).result.rating).toBe(5);
-    expect((res.json() as { message: string }).message).toBe(`Thank you — 5 out of 5 recorded against ${id}`);
+    expect((res.json() as { message: string }).message).toBe(`Thank you - 5 out of 5 recorded against ${id}`);
   });
 
   it("refuses one on a ticket that is still running", async () => {
     const id = await given.supportTicket(app.db, { by: "u1", st: "With support" });
     const res = await post("u1", `/tickets/${id}/rating`, { rating: 5 });
     expect(res.statusCode).toBe(422);
-    expect((res.json() as { error: { message: string } }).error.message).toBe(`${id} is not finished yet — rate it once support has resolved it`);
+    expect((res.json() as { error: { message: string } }).error.message).toBe(`${id} is not finished yet - rate it once support has resolved it`);
   });
 });
 
@@ -238,7 +238,7 @@ describe("POST /admin/support/tickets/:id/messages", () => {
     expect(result.by).toBe("Kavitha Raman");
     expect(result.messages.at(-1)).toMatchObject({ from: "support", who: "System Administrator", body: "Looking at it now." });
     expect(changed).toEqual(["tickets"]);
-    expect(message).toBe(`Reply sent on ${id} — now with support`);
+    expect(message).toBe(`Reply sent on ${id} - now with support`);
     // The reporter's own list is where the reply has to land.
     const mine = (await list("u1")).find((t) => t.id === id)!;
     expect(mine.st).toBe("With support");
@@ -249,12 +249,12 @@ describe("POST /admin/support/tickets/:id/messages", () => {
     const asked = await given.supportTicket(app.db, { by: "u1", st: "Open" });
     const a = (await desk(`/tickets/${asked}/messages`, { body: "Which bill number?", st: "Waiting on you" })).json() as Write;
     expect(a.result.st).toBe("Waiting on you");
-    expect(a.message).toBe(`Reply sent on ${asked} — now waiting on Kavitha Raman`);
+    expect(a.message).toBe(`Reply sent on ${asked} - now waiting on Kavitha Raman`);
 
     const fixed = await given.supportTicket(app.db, { by: "u3", st: "With support" });
-    const b = (await desk(`/tickets/${fixed}/messages`, { body: "Fixed — reload and it saves.", st: "Resolved" })).json() as Write;
+    const b = (await desk(`/tickets/${fixed}/messages`, { body: "Fixed - reload and it saves.", st: "Resolved" })).json() as Write;
     expect(b.result.st).toBe("Resolved");
-    expect(b.message).toBe(`Reply sent on ${fixed} — now resolved`);
+    expect(b.message).toBe(`Reply sent on ${fixed} - now resolved`);
   });
 
   it("leaves a resolved ticket resolved on a plain note, and says nothing about a status it did not move", async () => {
@@ -280,7 +280,7 @@ describe("POST /admin/support/tickets/:id/messages", () => {
     const closed = await given.supportTicket(app.db, { by: "u1", st: "Closed" });
     const res = await desk(`/tickets/${closed}/messages`, { body: "Hello?" });
     expect(res.statusCode).toBe(422);
-    expect(refusal(res)).toBe(`${closed} is closed — it takes no more replies`);
+    expect(refusal(res)).toBe(`${closed} is closed - it takes no more replies`);
   });
 
   it("answers 404 for a ticket that does not exist, and for a caller without the flag", async () => {
@@ -318,7 +318,7 @@ describe("POST /admin/support/tickets/:id/status", () => {
     const id = await given.supportTicket(app.db, { by: "u1", st: "With support" });
     const reopen = await desk(`/tickets/${id}/status`, { st: "Open" });
     expect(reopen.statusCode).toBe(422);
-    expect(refusal(reopen)).toBe("A ticket cannot go back to open — it is open only until support first answers it");
+    expect(refusal(reopen)).toBe("A ticket cannot go back to open - it is open only until support first answers it");
     const closed = await given.supportTicket(app.db, { by: "u1", st: "Closed" });
     const res = await desk(`/tickets/${closed}/status`, { st: "Resolved" });
     expect(res.statusCode).toBe(422);

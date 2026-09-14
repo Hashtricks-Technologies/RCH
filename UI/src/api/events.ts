@@ -9,7 +9,7 @@ import { useApp } from "../store";
  * The server's change feed, read with `fetch` rather than `EventSource`.
  *
  * `EventSource` cannot send an `Authorization` header, so it would force the access token into
- * the query string — where it lands in nginx's access log, the ALB's, and the browser's own
+ * the query string - where it lands in nginx's access log, the ALB's, and the browser's own
  * history. Reading `res.body` costs about seventy lines of parser and reuses `client.ts`'s
  * token and its refresh-once path, so the stream authenticates exactly as every other call.
  */
@@ -49,7 +49,7 @@ function schedule(): void {
 }
 
 /** One `\n\n`-separated frame: `id:`, `event:` and one or more `data:` lines. A line starting
- *  with `:` is a comment — the heartbeat — and a frame we cannot read is dropped, not fatal. */
+ *  with `:` is a comment - the heartbeat - and a frame we cannot read is dropped, not fatal. */
 function onFrame(text: string): void {
   let event = "message";
   const data: string[] = [];
@@ -73,7 +73,7 @@ function onFrame(text: string): void {
   schedule();
 }
 
-/** The headers a connection opens with — the token as a header, and the last id seen so a
+/** The headers a connection opens with - the token as a header, and the last id seen so a
  *  reconnect is answered with a resync rather than a replay. */
 function open(ac: AbortController, token: string | null): Promise<Response> {
   const headers: Record<string, string> = { accept: "text/event-stream" };

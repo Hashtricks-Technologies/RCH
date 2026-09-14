@@ -1,7 +1,7 @@
 // The ledger, and the lock order every write in this server keeps.
 //
 // A write allocates its document id first (`allocateId`, which locks the `sequences` row) and
-// posts its moves second (`postMoves`, which locks balance rows) — never the other way round.
+// posts its moves second (`postMoves`, which locks balance rows) - never the other way round.
 // Two writes that need both therefore take those locks in the same sequence, so neither can sit
 // holding one while it waits for the other. `modules/tickets/service.ts`'s `transfer` is written
 // that way; every write added after it must be too.
@@ -16,8 +16,8 @@
 // Document rows come before both, and from Phase 5 they have an order of their own: **the
 // purchase-order row is locked before any requisition row, and requisition rows are locked in
 // ascending requisition_id order** (`foldClaims` in @rch/domain sorts them for you). A purchase
-// order and the requisitions it claims against are locked together whenever a claim moves —
-// creating, shrinking, removing, cancelling or closing short — and `createPo` is the single
+// order and the requisitions it claims against are locked together whenever a claim moves -
+// creating, shrinking, removing, cancelling or closing short - and `createPo` is the single
 // exception that proves the rule: it locks requisition rows while holding no purchase-order
 // lock, which is safe only because it is creating the order and can never afterwards reach for
 // an existing one. No cycle exists as long as nothing else does that.
@@ -28,7 +28,7 @@ import { stockBalances, stockMoves } from "../db/schema/index.js";
 import type { Tx } from "./db.js";
 
 export type MoveKind = (typeof stockMoves.$inferInsert)["kind"];
-/** `reverses` is the id of the move this one undoes — a same-day bill void posts one reversal
+/** `reverses` is the id of the move this one undoes - a same-day bill void posts one reversal
  *  per line of the sale it takes back, each pointing at the row it cancels out. The ledger is
  *  append-only (migration 0002 says so in the database), so an undo is another move, and this
  *  is the column that says which one it answers. Every other kind of move leaves it unset. */
@@ -37,7 +37,7 @@ export type Move = { loc: string; it: string; qty: number; kind: MoveKind; refTy
 /**
  * Take the balance row locks for these (loc, item) pairs, creating a zero row where none
  * exists, in one fixed order across every writer so two batches cannot deadlock. `postMoves`
- * calls it before appending; a path that only reserves — issuing a ticket, a shop transfer —
+ * calls it before appending; a path that only reserves - issuing a ticket, a shop transfer -
  * calls it before reading `on_hand`, because a reservation is a promise against a balance and
  * two promises made from the same read are the same stock promised twice.
  *
@@ -60,7 +60,7 @@ export async function lockBalances(tx: Tx, cells: readonly { loc: string; it: st
  * order so two writers cannot deadlock, appends the moves, then adds the deltas to the cache.
  *
  * A move whose quantity rounds away to nothing at three decimals is dropped before any of that.
- * A move of zero is not a movement — `stock_moves_qty_ck` (migration 0008) says so — and a
+ * A move of zero is not a movement - `stock_moves_qty_ck` (migration 0008) says so - and a
  * recipe measured in millilitres against a single cup is how one turns up: the sale is real, the
  * deduction rounds to 0.000, and without this the till would read a 500 with no words in it.
  * Dropped row by row rather than by cell, so a crumb never takes the real move beside it down;
@@ -96,10 +96,10 @@ export async function postMoves(tx: Tx, moves: Move[]): Promise<void> {
 /**
  * Recompute every balance from the moves. Proves the cache; also the recovery path.
  *
- * It zeroes the rows it finds and adds the moves back on top — it never deletes them. A row's
+ * It zeroes the rows it finds and adds the moves back on top - it never deletes them. A row's
  * presence is itself information: it means "this location carries the line", and the stock
  * screens read it that way, showing a dash where there is no row and 0 where there is a dry one
- * (M12 — `UI/src/roles/buyer/Inventory.tsx`, `manager/ItemsStock.tsx`, `counter/Stock.tsx`).
+ * (M12 - `UI/src/roles/buyer/Inventory.tsx`, `manager/ItemsStock.tsx`, `counter/Stock.tsx`).
  * That is why the seed writes a zero row directly for a listed-but-empty item
  * (`db/seed.ts`, `seedOpeningStock`), and why a rebuild that started from `delete` would quietly
  * drop those lines off the shelf list instead of showing them as empty.

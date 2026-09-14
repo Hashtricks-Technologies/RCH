@@ -25,7 +25,7 @@ export interface PoolGroup {
 }
 
 /**
- * Several requisitions asking for the same item must read as one row — that
+ * Several requisitions asking for the same item must read as one row - that
  * folding is the whole point of this screen, so it is a pure, testable step
  * rather than something buried in JSX.
  */
@@ -54,7 +54,7 @@ export interface Pick { prq: string; line: number; qty: number }
  * Spread a requested quantity across a group's sources, oldest pick first,
  * never taking more than a single source still has pending. Splitting one
  * pooled row across two vendors is just calling this twice on the same group
- * with two smaller quantities — no separate UI is needed for that.
+ * with two smaller quantities - no separate UI is needed for that.
  */
 export function picksFor(g: PoolGroup, wanted: number): Pick[] {
   let left = round3(Math.max(0, wanted));
@@ -72,7 +72,7 @@ export function picksFor(g: PoolGroup, wanted: number): Pick[] {
 
 /**
  * A purchase order is always to ONE vendor, so a selection spanning several
- * vendors becomes several orders — grouped here rather than forcing one vendor
+ * vendors becomes several orders - grouped here rather than forcing one vendor
  * across the whole selection, which is what lets a buyer clear a list whose
  * items come from different suppliers in a single pass.
  */
@@ -93,7 +93,7 @@ export default function ProcurementList() {
   const createPo = useApp((x) => x.createPo);
   const openDrawer = useApp((x) => x.openDrawer);
   const notify = useApp((x) => x.notify);
-  // Vendor is chosen PER LINE, not once for the whole order — the same item can
+  // Vendor is chosen PER LINE, not once for the whole order - the same item can
   // legitimately come from several suppliers, and the buyer picks which one on
   // the row itself. The pick lives in the store (`poolVendor`), not here: vendors
   // are usually set well before the order is raised, and the requisition approved
@@ -168,10 +168,10 @@ export default function ProcurementList() {
     setBusy(false);
     if (made.length === 0) return;      // every refusal already said why; stay where we are
     // Read back off the refetched list, not this render's: an item ordered in full has left it,
-    // and its pick goes with it. What is still pending — a partial pick, a refused order — keeps
+    // and its pick goes with it. What is still pending - a partial pick, a refused order - keeps
     // the vendor it had.
     prunePoolVendors(procurementList(useApp.getState()).map((l) => l.it));
-    // Each createPo toasts, and only the last would survive — so when the
+    // Each createPo toasts, and only the last would survive - so when the
     // selection fanned out across vendors, say so plainly instead.
     if (made.length > 1) notify(`${made.length} draft purchase orders raised across ${made.length} vendors`);
     nav("/orders");
@@ -280,7 +280,7 @@ export default function ProcurementList() {
             }
             : {
               title: "Nothing on the procurement list",
-              sub: "Approve a requisition and its items collect here — or add items yourself.",
+              sub: "Approve a requisition and its items collect here - or add items yourself.",
               action: <Btn size="sm" onClick={() => openDrawer("baddpool", "new")}>Add items</Btn>,
             }}
         />

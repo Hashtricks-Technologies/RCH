@@ -66,7 +66,7 @@ function AddToListDrawer() {
   return (
     <DrawerFrame
       title="Add items to the procurement list"
-      sub="For stock the store keeper has not asked for — it goes on the list approved, under your name."
+      sub="For stock the store keeper has not asked for - it goes on the list approved, under your name."
       foot={
         <BtnRow end>
           <Btn variant="gh" onClick={close}>Cancel</Btn>
@@ -78,7 +78,7 @@ function AddToListDrawer() {
         title="Items"
         sub={filled.length
           ? `${filled.length} item(s) · ${unitTotal(filled)} · ${money0(sum(filled, (l) => l.qty * costOf(l.it)))} at standard cost`
-          : "Raw, packing and MRP goods only — what the kitchen makes or the counter assembles is never bought."}
+          : "Raw, packing and MRP goods only - what the kitchen makes or the counter assembles is never bought."}
       >
         {BUYABLE.length === 0 ? (
           <div className="empty">
@@ -157,20 +157,20 @@ function AddToListDrawer() {
 
       {repeated && (
         <Alert tone="w" label="TWICE">
-          {IT[repeated.it]?.n ?? repeated.it} is on more than one line — combine them into one before adding.
+          {IT[repeated.it]?.n ?? repeated.it} is on more than one line - combine them into one before adding.
         </Alert>
       )}
       {alreadyOpen.length > 0 && (
         <Alert tone="w" label="ON ORDER">
           {alreadyOpen.map((l) => `${IT[l.it]?.n ?? l.it} (${fq(openQty(l.it), l.it)} ${U(l.it)})`).join(", ")}{" "}
-          {alreadyOpen.length > 1 ? "are" : "is"} already being sourced — check before buying more.
+          {alreadyOpen.length > 1 ? "are" : "is"} already being sourced - check before buying more.
         </Alert>
       )}
 
-      <Section title="Reason" sub="Required — kept on the requisition, where the store keeper sees it.">
+      <Section title="Reason" sub="Required - kept on the requisition, where the store keeper sees it.">
         <Field label="Why is this being bought?">
           <textarea rows={3} value={note} aria-label="Reason for adding these items"
-            placeholder="Festival week — double the usual cups and snack boxes."
+            placeholder="Festival week - double the usual cups and snack boxes."
             onChange={(e) => setNote(e.target.value)} />
         </Field>
       </Section>

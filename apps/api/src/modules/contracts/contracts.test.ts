@@ -24,9 +24,9 @@ const patch = async (user: string, url: string, payload?: Record<string, unknown
 const del = async (user: string, url: string) => app.inject({ method: "DELETE", url: `/api/v1${url}`, headers: await hdr(user) });
 // GET /contracts exists now (mounted alongside the rest of buying's reads in
 // modules/snapshot/routes.ts), but the snapshot's own slice is the same rows and this file
-// predates that route — read it off `GET /snapshot` rather than adding a second reader.
+// predates that route - read it off `GET /snapshot` rather than adding a second reader.
 const contractsList = async () => (await app.inject({ method: "GET", url: "/api/v1/snapshot", headers: await authHeaders(app, "u3") })).json().contracts;
-// GET /items is a Phase 1 route, so it is safe here — the item names in this file's assertions
+// GET /items is a Phase 1 route, so it is safe here - the item names in this file's assertions
 // come from the master, not from a number typed into the test.
 const getItems = async () => (await app.inject({ method: "GET", url: "/api/v1/items", headers: await authHeaders(app, "u3") })).json();
 
@@ -36,9 +36,9 @@ describe("POST /contracts", () => {
     expect(b.result).toMatchObject({ vendor: "Anandha Provisions", it: "bread", rate: 38, from: "2026-04-01", to: "2027-03-31", moq: 20, active: true });
     expect(b.result.id).toMatch(/^RC-\d+$/);
     expect(b.changed).toEqual(["contracts"]);
-    // The item's name comes from the master, so read it rather than typing it — the seed moves.
+    // The item's name comes from the master, so read it rather than typing it - the seed moves.
     const items = await getItems();
-    expect(b.message).toBe(`${b.result.id} — ${items.bread.n} at ₹38 with Anandha Provisions`);
+    expect(b.message).toBe(`${b.result.id} - ${items.bread.n} at ₹38 with Anandha Provisions`);
   });
 
   it("refuses a second live contract for the same vendor and item", async () => {
@@ -86,7 +86,7 @@ describe("PATCH and DELETE /contracts/:id", () => {
     const id = await given.contract(app.testDb!.db, { vendorId: "VN-005", it: "beans", rate: 900 });
     const b = (await del("u3", `/contracts/${id}`)).json();
     expect(b.result.active).toBe(false);
-    expect(b.message).toBe(`${id} closed — it stays on record but no longer prices an order`);
+    expect(b.message).toBe(`${id} closed - it stays on record but no longer prices an order`);
     expect((await contractsList()).some((c: { id: string }) => c.id === id)).toBe(true);
     expect((await patch("u3", `/contracts/${id}`, { active: true })).json().result.active).toBe(true);
   });
@@ -99,8 +99,8 @@ describe("PATCH and DELETE /contracts/:id", () => {
   });
 
   it("gives the live slot to exactly one screen when two closed contracts race to reopen it", async () => {
-    // Both start closed, so `liveFor`'s pre-check — which locks only rows already `active =
-    // true` — finds nothing to lock for either request and both pass it; `rate_contracts_live_uq`
+    // Both start closed, so `liveFor`'s pre-check - which locks only rows already `active =
+    // true` - finds nothing to lock for either request and both pass it; `rate_contracts_live_uq`
     // is the only thing left standing between them, and `contractsRepo.update`'s catch is what
     // turns the loser's 23505 into this sentence instead of a raw 500.
     const a = await given.contract(app.testDb!.db, { vendorId: "VN-001", it: "bread", rate: 36, active: false });

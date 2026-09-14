@@ -9,13 +9,13 @@ import { registerDrawer } from "../../drawers";
 import type { ItemFieldPatch } from "../../store/ops";
 
 /**
- * Editing an existing line on the item master — the way back from a write-once catalogue.
+ * Editing an existing line on the item master - the way back from a write-once catalogue.
  *
  * One drawer, four roles. `mayEditItemField` (`@rch/domain`) is the same table the server
  * refuses with, so the boxes this greys out are exactly the ones a patch would be turned away
  * for: the manager owns the printed MRP, the standard cost and the GST rate, and the store, the
  * buyer and the kitchen own the name, the group, the HSN and the reorder level. Nothing is
- * decided here — the MRP floor and whether a line is clear enough to retire are both the
+ * decided here - the MRP floor and whether a line is clear enough to retire are both the
  * server's, and reach the operator as a toast in its words.
  */
 function ItemDrawer({ id }: { id: string }) {
@@ -75,7 +75,7 @@ function ItemDrawer({ id }: { id: string }) {
     if (may("cost") && costN !== item.cost) p.cost = costN;
     if (may("gst") && Number(gst) !== item.gst) p.gst = Number(gst) || 0;
     if (may("mrp") && mrpGiven && mrpN !== item.mrp) p.mrp = mrpN;
-    // A blank box means "no best-before", the same as 0 — not "leave it as it is". Unlike the
+    // A blank box means "no best-before", the same as 0 - not "leave it as it is". Unlike the
     // MRP, there is no hazard in clearing it: the domain default (8 hours) is a safe fallback.
     if (may("sl") && (Number(sl) || 0) !== (item.sl ?? 0)) p.sl = Number(sl) || 0;
     return p;
@@ -102,8 +102,8 @@ function ItemDrawer({ id }: { id: string }) {
 
   const commercial = may("mrp");
   const whose = commercial
-    ? "The name, the group, the HSN code, the reorder level and the shelf life belong to the store, the buyer and the kitchen — they are shown here, greyed, so you can see what the pack says."
-    : "The printed MRP, the standard cost and the GST rate belong to the outlet manager — they are shown here, greyed, so you can see what a unit is worth.";
+    ? "The name, the group, the HSN code, the reorder level and the shelf life belong to the store, the buyer and the kitchen - they are shown here, greyed, so you can see what the pack says."
+    : "The printed MRP, the standard cost and the GST rate belong to the outlet manager - they are shown here, greyed, so you can see what a unit is worth.";
 
   return (
     <DrawerFrame
@@ -136,7 +136,7 @@ function ItemDrawer({ id }: { id: string }) {
         </Field>
       </FormRow>
       <FormRow cols="f3">
-        <Field label="Item code" hint="Fixed at creation — it is what the store keeper reads off the shelf.">
+        <Field label="Item code" hint="Fixed at creation - it is what the store keeper reads off the shelf.">
           <input value={item.c} disabled readOnly />
         </Field>
         <Field label="Type"><div className="mtop"><Tag>{item.t}</Tag></div></Field>
@@ -175,7 +175,7 @@ function ItemDrawer({ id }: { id: string }) {
         </Field>
         <Field label="Printed MRP (₹)" hint={may("mrp")
           ? (item.mrp == null
-            ? "This product carries none. Type the number printed on the pack to give it one — it becomes a hard ceiling at every till."
+            ? "This product carries none. Type the number printed on the pack to give it one - it becomes a hard ceiling at every till."
             : "Leave the box as it is to keep the current ceiling; emptying it changes nothing. It can never go below a shelf price already set.")
           : "The outlet manager changes this."}>
           <input type="number" min={0} step="any" value={mrp} disabled={!may("mrp")}

@@ -1,4 +1,4 @@
-// Recipes: the flow — transaction, rules. The rule itself is `recipeRefusal` in @rch/domain,
+// Recipes: the flow - transaction, rules. The rule itself is `recipeRefusal` in @rch/domain,
 // which the recipe screen previews with; this file only decides in what order it is asked.
 import type { z } from "zod";
 import type { Recipe, SaveRecipeBodySchema, WriteResponse } from "@rch/contract";
@@ -23,8 +23,8 @@ export function createRecipesService(db: Db) {
      * Replace an item's whole recipe.
      *
      * Lock order is the documents → ids → balances rule with only its first term: the item row
-     * is locked, nothing is numbered and nothing moves — a recipe is a promise about future
-     * batches and sales, not a movement — so there is no `lockBalances` here, for the same reason
+     * is locked, nothing is numbered and nothing moves - a recipe is a promise about future
+     * batches and sales, not a movement - so there is no `lockBalances` here, for the same reason
      * `patchItem` and `raise` take none (M12). The trail is the item's own (`document_history`,
      * doc type `item`), beside its `Updated`/`Retired`/`Restored` rows, because a costing that
      * moved is something a manager asking "why did this dish's margin change?" needs to find.
@@ -34,7 +34,7 @@ export function createRecipesService(db: Db) {
         const row = await recipesRepo.lockItem(tx, it);
         // The same sentence `savePrice` and `patchItem` give, word for word.
         if (!row) throw new NotFoundError(`There is no item ${it}.`);
-        assertRule(row.active, `${row.name} is retired — restore it before changing its recipe`);
+        assertRule(row.active, `${row.name} is retired - restore it before changing its recipe`);
 
         const lines = body.lines.map((l) => ({ it: l.it, qty: round3(l.qty) }));
         const items = await loadItems(tx);
@@ -52,7 +52,7 @@ export function createRecipesService(db: Db) {
         return {
           result: { key: it, recipe },
           changed: [...CHANGED],
-          message: `${row.name}'s recipe ${had ? "changed" : "saved"} — ${n} ingredient${n === 1 ? "" : "s"}, ${money(unit)} a unit`,
+          message: `${row.name}'s recipe ${had ? "changed" : "saved"} - ${n} ingredient${n === 1 ? "" : "s"}, ${money(unit)} a unit`,
         };
       });
     },

@@ -19,24 +19,24 @@ import mark from "../assets/eateszy-mark.png";
 /** What the header's dot says, per stream state. The colour is inline rather than a class
  *  because `.org .dt` paints one colour for all three, and this is the only place it varies. */
 const STREAM: Record<StreamState, { dot: string; why: string }> = {
-  live: { dot: "var(--good)", why: "Live — this screen is following changes made elsewhere" },
-  reconnecting: { dot: "var(--warn)", why: "Reconnecting — changes made elsewhere may not be on this screen yet" },
-  off: { dot: "var(--ink-4)", why: "Not connected for live updates — reload to see changes made elsewhere" },
+  live: { dot: "var(--good)", why: "Live - this screen is following changes made elsewhere" },
+  reconnecting: { dot: "var(--warn)", why: "Reconnecting - changes made elsewhere may not be on this screen yet" },
+  off: { dot: "var(--ink-4)", why: "Not connected for live updates - reload to see changes made elsewhere" },
 };
 
 export default function Shell({ children }: { children: ReactNode }) {
   // `open` is the mobile drawer; `collapsed` hides the rail on a wide screen.
-  // The burger is the way back in both cases — on desktop it only appears once
+  // The burger is the way back in both cases - on desktop it only appears once
   // the sidebar is collapsed, so there is never a state with no way to reopen.
   const [open, setOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const user = useApp((s) => s.user)!;
   const logout = useApp((s) => s.logout);
   // NOTE: navQueues builds a fresh object, so it must never be passed to useApp()
-  // as a selector — zustand v5 feeds the selector result to useSyncExternalStore and a
+  // as a selector - zustand v5 feeds the selector result to useSyncExternalStore and a
   // new identity on every call re-renders forever. Read the whole (stable) state instead.
   const state = useApp();
-  // Every other badge only has to change when a write changes it — this is the one exception.
+  // Every other badge only has to change when a write changes it - this is the one exception.
   // A batch quietly crosses into "due soon" with no write happening at all, so nothing here
   // would otherwise notice until some unrelated write forced a re-render. This tick is the one
   // thing on the page whose only job is to make the clock's own passage visible.
@@ -158,8 +158,8 @@ function Search() {
   const lid = useId();
   // The four slices `searchHits` actually reads, subscribed one at a time rather than through
   // `useApp()`. `[s, q]` was a dependency on the whole store, which is a new object after every
-  // write anywhere in the app, so the palette re-ran its whole walk — every request, ticket,
-  // bill and item — on a toast appearing. `catalogVersion` stands in for `IT`, which is a
+  // write anywhere in the app, so the palette re-ran its whole walk - every request, ticket,
+  // bill and item - on a toast appearing. `catalogVersion` stands in for `IT`, which is a
   // module registry replaced in place and so cannot be a dependency of its own.
   const user = useApp((x) => x.user);
   const req = useApp((x) => x.req);
@@ -233,7 +233,7 @@ function Search() {
 
 /* ---------- notifications (P4) ---------- */
 /** A row is read once it has been opened, and stays read until a document it has not shown
- *  joins its queue. A read row is still listed, under Earlier — the queue has not gone anywhere. */
+ *  joins its queue. A read row is still listed, under Earlier - the queue has not gone anywhere. */
 function Bell({ uid, queues }: { uid: string; queues: Record<string, string[]> }) {
   const nav = useNavigate();
   const [open, setOpen] = useState(false);
@@ -263,7 +263,7 @@ function Bell({ uid, queues }: { uid: string; queues: Record<string, string[]> }
   return (
     <div className="pw" ref={box}>
       <button className="ib" type="button" aria-haspopup="menu" aria-expanded={open}
-        aria-label={unread > 0 ? `Notifications — ${unread} unread` : "Notifications — nothing unread"}
+        aria-label={unread > 0 ? `Notifications - ${unread} unread` : "Notifications - nothing unread"}
         onClick={() => setOpen(!open)}>
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.5}>
           <path d="M8 2a4 4 0 0 0-4 4c0 3-1 4-1 4h10s-1-1-1-4a4 4 0 0 0-4-4ZM6.5 12.5a1.5 1.5 0 0 0 3 0" /></svg>
@@ -347,8 +347,8 @@ function searchHits(s: SearchState, q: string): Hit[] {
     .filter((b) => (!mine || b.loc === mine) && has(b.no, b.pay, b.opr, b.payer?.name))
     .map((b) => ({
       id: "b:" + b.no, to: "bills", t: b.no, kind: "Bill",
-      // ---- bill void: the palette finds a voided bill — it is exactly the one somebody goes
-      // looking for — and says so, rather than quoting an amount the hospital never kept.
+      // ---- bill void: the palette finds a voided bill - it is exactly the one somebody goes
+      // looking for - and says so, rather than quoting an amount the hospital never kept.
       s: `${b.pay} · ₹${b.tot.toFixed(2)} · ${b.t}${b.voided ? " · VOIDED" : ""}`,
     }));
 
@@ -356,17 +356,17 @@ function searchHits(s: SearchState, q: string): Hit[] {
 }
 
 /* ---------- counters ---------- */
-/** Listed but unsellable — a manual switch, an empty shelf or a missing ingredient. */
+/** Listed but unsellable - a manual switch, an empty shelf or a missing ingredient. */
 const offItems = (s: AppState, l: LocKey) => menuOf(s, l).filter((it) => !availOf(s, l, it).ok);
 
-/** The active items the central store carries under their own reorder level — the same test
+/** The active items the central store carries under their own reorder level - the same test
  *  the buyer's Inventory screen and the store keeper's Stock screen already filter by. */
 const belowReorder = (s: AppState) =>
   activeItems().filter((k) => IT[k].rl > 0 && qty(s, "store", k) < IT[k].rl);
 
 const APPROACHING_MS = 2 * 3_600_000;
-/** A batch is not tracked once its stock joins the shelf — the ledger only knows an item's
- *  total, not which batch it came from — so "approaching" has to work off the batch record
+/** A batch is not tracked once its stock joins the shelf - the ledger only knows an item's
+ *  total, not which batch it came from - so "approaching" has to work off the batch record
  *  itself. Its best-before instant is recomputed here with the same rule the server used to
  *  produce it (`bestBeforeAt`, off the batch's own made time and the item's shelf life),
  *  because only the printed "best before HH:MM" string survives onto the wire, not the
@@ -380,7 +380,7 @@ const approachingBestBefore = (s: AppState) =>
 
 const ids = <T extends { id: string }>(xs: T[]) => xs.map((x) => x.id);
 
-/** What each badge counts, as the documents themselves — the sidebar shows how many, and the bell
+/** What each badge counts, as the documents themselves - the sidebar shows how many, and the bell
  *  needs to know which, so it can tell a row it has already shown from one that has news in it. */
 function navQueues(s: AppState): Record<string, string[]> {
   const u = s.user;

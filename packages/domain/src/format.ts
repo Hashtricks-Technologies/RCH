@@ -2,9 +2,9 @@
  * The words and numbers both sides print.
  *
  * A refusal sentence and the screen showing the same figure must round and group it the same
- * way; a second formatter drifts from the first the moment either changes — which is
+ * way; a second formatter drifts from the first the moment either changes - which is
  * why `fq` moved here. Every function below is the browser's
- * own implementation, moved rather than rewritten — `UI/src/lib/fmt.ts` now delegates.
+ * own implementation, moved rather than rewritten - `UI/src/lib/fmt.ts` now delegates.
  */
 const TZ = "Asia/Kolkata";
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -12,7 +12,7 @@ const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "
 /** Rupees at two decimals, Indian grouping. */
 export const money = (v: number): string =>
   "₹" + (v || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-/** Rupees to the nearest whole one — what a slab or a day's takings is quoted in. */
+/** Rupees to the nearest whole one - what a slab or a day's takings is quoted in. */
 export const money0 = (v: number): string => "₹" + Math.round(v || 0).toLocaleString("en-IN");
 
 /** The hospital's calendar date for an instant, so "today" is not the host's opinion. */
@@ -26,8 +26,8 @@ export const istDate = (d: Date): string => {
  *  Anything that is not a wire date passes straight through, so a value already in this form
  *  survives a second pass.
  *
- *  A month table rather than `toLocaleDateString`, because the only caller that mattered —
- *  `fromWireDate` — needs a fixed three-letter English month, and an ICU that spelled it
+ *  A month table rather than `toLocaleDateString`, because the only caller that mattered -
+ *  `fromWireDate` - needs a fixed three-letter English month, and an ICU that spelled it
  *  differently would silently change every purchase order on screen. */
 export const dmy = (d: string): string => {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(d);

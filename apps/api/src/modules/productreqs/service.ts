@@ -1,8 +1,8 @@
-// Product requests: the flow — transaction, rules, ids. Composes the helpers in
+// Product requests: the flow - transaction, rules, ids. Composes the helpers in
 // apps/api/src/lib/; the arithmetic of a decision lives in packages/domain.
 //
 // A shop's ask for something not on the master, and the central store's answer to it. Neither
-// write moves stock or appends history — `product_requests` is not one of the four document
+// write moves stock or appends history - `product_requests` is not one of the four document
 // types that write `document_history`, and this phase does not change that.
 import type { z } from "zod";
 import { OUTLETS, type AnswerProductRequestBodySchema, type CreateProductRequestBodySchema, type ProductRequest, type WriteResponse } from "@rch/contract";
@@ -21,14 +21,14 @@ export type AnswerProductRequestBody = z.infer<typeof AnswerProductRequestBodySc
 
 export function createProductReqsService(db: Db) {
   return {
-    /** A shop's ask, sent to the central store — it does nothing to the master by itself. */
+    /** A shop's ask, sent to the central store - it does nothing to the master by itself. */
     async create(claims: AccessClaims, body: CreateProductRequestBody): Promise<WriteResponse<ProductRequest>> {
       return withTransaction(db, async (tx) => {
         const name = body.name.trim();
         assertRule(name.length > 0, "Name the product you want added");
         // A counter's own location was already checked against its token in routes.ts. A manager
         // may ask for any of the outlets they look after, but the central store and the kitchen
-        // are not shops and have no menu to add a product to — the same sentence `availability`
+        // are not shops and have no menu to add a product to - the same sentence `availability`
         // gives a manager reaching past the outlets.
         if (claims.role === "manager") {
           const loc = (await loadLocations(tx))[body.forLoc];
@@ -41,18 +41,18 @@ export function createProductReqsService(db: Db) {
 
         const changed = ["productReqs"] as const;
         await emitChanged(tx, changed);
-        return { result: await productReqsRepo.wire(tx, id), changed: [...changed], message: `${id} sent to the central store — they add it to the master` };
+        return { result: await productReqsRepo.wire(tx, id), changed: [...changed], message: `${id} sent to the central store - they add it to the master` };
       });
     },
 
     /**
-     * The central store's decision. Marking one `Created` needs the catalogue item it became —
-     * `POST /items` is the only way to get one — because that link is the whole point of asking.
+     * The central store's decision. Marking one `Created` needs the catalogue item it became -
+     * `POST /items` is the only way to get one - because that link is the whole point of asking.
      *
      * `_claims` is the answering desk, and nothing is written with it: `product_requests` has
      * `by_user` for the shop that asked and no column at all for who answered, and this module
      * writes no `document_history` either (see the header). It is on the signature because the
-     * decision belongs to a person, and the day a column exists this is where it comes from —
+     * decision belongs to a person, and the day a column exists this is where it comes from -
      * the underscore is only there because `noUnusedParameters` is on.
      */
     async answer(_claims: AccessClaims, id: string, body: AnswerProductRequestBody): Promise<WriteResponse<ProductRequest>> {
@@ -72,7 +72,7 @@ export function createProductReqsService(db: Db) {
         await emitChanged(tx, changed);
         return {
           result: await productReqsRepo.wire(tx, id), changed: [...changed],
-          message: body.st === "Created" ? `${id} — product created on the master` : `${id} declined`,
+          message: body.st === "Created" ? `${id} - product created on the master` : `${id} declined`,
         };
       });
     },

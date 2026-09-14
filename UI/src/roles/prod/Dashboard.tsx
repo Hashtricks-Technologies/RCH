@@ -14,7 +14,7 @@ export default function Dashboard() {
   const openDrawer = useApp((x) => x.openDrawer);
   const { pord, batch, tkt, stock, rsv, ovr } = s;
 
-  // The kitchen's own products, off the master rather than a literal — see `madeItems()`.
+  // The kitchen's own products, off the master rather than a literal - see `madeItems()`.
   const PRODS = useMemo(() => { void s.catalogVersion; return madeItems(); }, [s.catalogVersion]);
 
   const newOrders = useMemo(() => pord.filter((o) => o.st === "New"), [pord]);
@@ -25,14 +25,14 @@ export default function Dashboard() {
   const ready = useMemo(() => pord.filter((o) => o.st === "Ready"), [pord]);
   const raised = useMemo(() => tkt.filter((t) => t.from === "kitchen"), [tkt]);
   // What actually went out: still on its way, or already there. Same reading as Make &
-  // Distribute's "Out of the kitchen today", and for the same reason — a ticket that was
+  // Distribute's "Out of the kitchen today", and for the same reason - a ticket that was
   // taken back is not a dispatch, and counting it flattered the day's figure for ever.
   const dispatches = useMemo(() => raised.filter((t) => isTicketOpen(t.st) || hasLeft(t.st)), [raised]);
   const toHand = useMemo(() => dispatches.filter((t) => t.st === "Issued"), [dispatches]);
   // Still on its way: at the pass or in transit. A withdrawn ticket is neither.
   const moving = useMemo(() => dispatches.filter((t) => isTicketOpen(t.st)), [dispatches]);
   // A product the kitchen cannot make is as unavailable as one switched off by hand.
-  // Memoised on the three slices `availOf` actually reads — `[s]` was a new object on every
+  // Memoised on the three slices `availOf` actually reads - `[s]` was a new object on every
   // write anywhere in the app, so it memoised nothing at all. The three are destructured off `s`
   // at the top rather than trimmed off the dependency array, so the array names every value the
   // memo uses and `react-hooks/exhaustive-deps` can check it instead of being argued with.
@@ -65,7 +65,7 @@ export default function Dashboard() {
       ...pord.flatMap((o) =>
         o.hist.map((h, i) => ({
           key: `o-${o.id}-${i}`,
-          title: `${o.id} — ${h.s}`,
+          title: `${o.id} - ${h.s}`,
           body: `${LOC[o.from].n} · ${h.who}`,
           when: h.t,
           color: h.s === "Dispatched" ? "var(--c3)" : "var(--c1)",
@@ -112,14 +112,14 @@ export default function Dashboard() {
       )}
       {toHand.length > 0 && (
         <Alert tone="w" label="HAND OVER" action={<Btn size="sm" variant="gh" onClick={() => nav("/make")}>Open the pass</Btn>}>
-          {toHand.map((t) => t.id).join(", ")} {toHand.length > 1 ? "are" : "is"} issued and still on the rack —
+          {toHand.map((t) => t.id).join(", ")} {toHand.length > 1 ? "are" : "is"} issued and still on the rack -
           scan {toHand.length > 1 ? "them" : "it"} out when the counter arrives.
         </Alert>
       )}
       {off.length > 0 && (
         <Alert tone="c" label="OFF" action={<Btn size="sm" variant="gh" onClick={() => nav("/avail")}>Review</Btn>}>
           {off.map(({ k, a }) => `${IT[k]?.n ?? k} (${a.mode === "Manual" ? "switched off" : a.why})`).join(", ")}{" "}
-          — the kitchen cannot issue {off.length > 1 ? "these" : "this"} right now.
+          - the kitchen cannot issue {off.length > 1 ? "these" : "this"} right now.
         </Alert>
       )}
 
@@ -163,7 +163,7 @@ export default function Dashboard() {
               <StatusPill status={t.st} />,
               // Opens the ticket's own window, where the collector's six digits are typed in.
               // This used to call `handover(t.id)` with no OTP, which the server records as a
-              // supervisor override — so the quickest button on the kitchen's home screen was
+              // supervisor override - so the quickest button on the kitchen's home screen was
               // the one that skipped the check.
               canHandOver(t.st)
                 ? <Btn size="sm" variant="ok" onClick={() => openDrawer("ptkt", t.id)}>Hand over</Btn>

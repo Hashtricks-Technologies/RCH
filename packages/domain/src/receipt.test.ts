@@ -14,17 +14,17 @@ describe("checkReceiptLine", () => {
     expect(RECEIPT_TOLERANCE).toBe(1.02);
     expect(checkReceiptLine(line, { ...ok, recv: 122 }, TODAY)).toBeNull();          // 122 <= 122.4
     expect(checkReceiptLine(line, { ...ok, recv: 123 }, TODAY))
-      .toBe("Real Juice 200ml — 123 exceeds the ordered 120 by more than 2%; hold it for purchase approval");
+      .toBe("Real Juice 200ml - 123 exceeds the ordered 120 by more than 2%; hold it for purchase approval");
   });
 
   it("counts what earlier instalments already booked in", () => {
     expect(checkReceiptLine({ ...line, received: 100 }, { ...ok, recv: 23 }, TODAY))
-      .toBe("Real Juice 200ml — 123 exceeds the ordered 120 by more than 2%; hold it for purchase approval");
+      .toBe("Real Juice 200ml - 123 exceeds the ordered 120 by more than 2%; hold it for purchase approval");
   });
 
   it("refuses a rejection bigger than the delivery, and a negative one", () => {
-    expect(checkReceiptLine(line, { ...ok, rejected: 130 }, TODAY)).toBe("Real Juice 200ml — rejected quantity cannot exceed what arrived");
-    expect(checkReceiptLine(line, { ...ok, rejected: -1 }, TODAY)).toBe("Real Juice 200ml — rejected quantity cannot exceed what arrived");
+    expect(checkReceiptLine(line, { ...ok, rejected: 130 }, TODAY)).toBe("Real Juice 200ml - rejected quantity cannot exceed what arrived");
+    expect(checkReceiptLine(line, { ...ok, rejected: -1 }, TODAY)).toBe("Real Juice 200ml - rejected quantity cannot exceed what arrived");
   });
 
   it("will not book stock in without a batch behind it", () => {
@@ -35,18 +35,18 @@ describe("checkReceiptLine", () => {
     expect(checkReceiptLine(line, { ...ok, exp: "" }, TODAY)).toBe("Real Juice 200ml needs a manufacturing and an expiry date");
     expect(checkReceiptLine(line, { ...ok, mfg: "" }, TODAY)).toBe("Real Juice 200ml needs a manufacturing and an expiry date");
     expect(checkReceiptLine(line, { ...ok, mfg: "2026-12-01", exp: "2026-12-01" }, TODAY))
-      .toBe("Real Juice 200ml — expiry cannot fall on or before the manufacturing date");
+      .toBe("Real Juice 200ml - expiry cannot fall on or before the manufacturing date");
   });
 
   it("refuses stock that has already expired, and takes one expiring today", () => {
     expect(checkReceiptLine(line, { ...ok, exp: "2026-09-03" }, TODAY))
-      .toBe("Real Juice 200ml — batch SBD-771 has already expired; do not book it in");
+      .toBe("Real Juice 200ml - batch SBD-771 has already expired; do not book it in");
     expect(checkReceiptLine(line, { ...ok, exp: TODAY }, TODAY)).toBeNull();
   });
 
   it("refuses a printed MRP below the shelf price, and ignores MRP on an item that has none", () => {
     expect(checkReceiptLine(line, { ...ok, mrp: 15 }, TODAY))
-      .toBe("Real Juice 200ml — printed MRP ₹15.00 is below the shelf price; reprice before selling");
+      .toBe("Real Juice 200ml - printed MRP ₹15.00 is below the shelf price; reprice before selling");
     expect(checkReceiptLine({ ...line, mrp: null }, { ...ok, mrp: 15 }, TODAY)).toBeNull();
     expect(checkReceiptLine(line, { ...ok, mrp: 0 }, TODAY)).toBeNull();   // not printed on the pack
   });
@@ -55,7 +55,7 @@ describe("checkReceiptLine", () => {
     // Everything wrong at once must still name the tolerance, which is the one that stops the
     // delivery at the door. The order is what the browser has always produced.
     expect(checkReceiptLine(line, { recv: 200, rejected: 300, batch: "", mrp: 1, mfg: "", exp: "" }, TODAY))
-      .toBe("Real Juice 200ml — 200 exceeds the ordered 120 by more than 2%; hold it for purchase approval");
+      .toBe("Real Juice 200ml - 200 exceeds the ordered 120 by more than 2%; hold it for purchase approval");
   });
 });
 
@@ -68,8 +68,8 @@ describe("receiptStatus", () => {
 
   it("does not count rejected quantity towards covering a line", () => {
     // A delivery turned away whole never entered the hospital, so the vendor still owes every
-    // unit of it. `Received` is terminal — an order that reached it can be neither closed short
-    // nor cancelled — so a gross reading would strand the requisition's claim for good.
+    // unit of it. `Received` is terminal - an order that reached it can be neither closed short
+    // nor cancelled - so a gross reading would strand the requisition's claim for good.
     expect(receiptStatus([{ qty: 100, recv: 100, rejected: 100 }])).toBe("Partially received");
     expect(receiptStatus([{ qty: 120, recv: 120, rejected: 12 }])).toBe("Partially received");
     // The replacement instalment settles it: 132 arrived in all, 12 of them went back.

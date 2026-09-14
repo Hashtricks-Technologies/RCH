@@ -8,7 +8,7 @@ import { registerDrawer } from "../../drawers";
 import type { LocKey } from "../../types";
 
 /**
- * The manager ordering from the Central Kitchen on an outlet's behalf — the evening's cover
+ * The manager ordering from the Central Kitchen on an outlet's behalf - the evening's cover
  * booked from the dashboard rather than by ringing the counter and asking them to raise it.
  *
  * One manager supervises all three shops, so unlike the counter's card this one has to *name*
@@ -18,7 +18,7 @@ import type { LocKey } from "../../types";
  */
 function KitchenOrderDrawer() {
   const close = useApp((x) => x.closeDrawer);
-  // `OUTLETS` is re-exported from `@rch/contract` and is never empty in this hospital — but the
+  // `OUTLETS` is re-exported from `@rch/contract` and is never empty in this hospital - but the
   // index says `LocKey` whatever the array holds, so `OUTLETS[0]` on an empty one is `undefined`
   // typed as a real outlet, and every read of `LOC[loc]` below it is then reading `LOC[undefined]`.
   // `null` is a state this drawer can render a sentence for; a lie about the type is not.
@@ -52,7 +52,7 @@ function KitchenOrderDrawer() {
 
       <Alert tone="i" label="NOT YET HELD">
         Raising an order reserves nothing. The kitchen accepts it, makes it, and holds the stock
-        only when it dispatches — which is when the outlet gets its pick ticket.
+        only when it dispatches - which is when the outlet gets its pick ticket.
       </Alert>
     </DrawerFrame>
   );

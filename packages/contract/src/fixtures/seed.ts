@@ -44,7 +44,7 @@ export const seedPrq: Requisition[] = [
            { s: "Approved", who: "Latha Narayanan", t: "07:35" }] },
   { id: "PRQ-2026-014", by: "Suresh Muthu", at: "07:40", st: "Partially approved",
     note: "Grocery run before the weekend.",
-    apprBy: "Latha Narayanan", apprNote: "Sugar trimmed — last lot is still moving.",
+    apprBy: "Latha Narayanan", apprNote: "Sugar trimmed - last lot is still moving.",
     lines: [{ it: "sugar", qty: 40, appr: 30, ordered: 30, short: 10 },
             { it: "maida", qty: 20, appr: 20, ordered: 0, short: 0 }],
     hist: [{ s: "Sent", who: "Suresh Muthu", t: "07:40" },

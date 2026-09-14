@@ -27,13 +27,13 @@ interface Rep {
 export type LedgerState = { st: "loading" } | { st: "failed" } | { st: "rows"; rows: StockLedgerRow[] };
 
 /** Nine of the ten reports are arithmetic over collections the snapshot already holds whole, so
- *  they read only `s`. The ledger is the exception — its opening balance is a sum of stock moves
- *  the browser has never held — so every build is handed what the server answered with, and the
+ *  they read only `s`. The ledger is the exception - its opening balance is a sum of stock moves
+ *  the browser has never held - so every build is handed what the server answered with, and the
  *  other nine ignore it. */
 interface ReportDef { k: string; n: string; d: string; icon: string; build: (s: AppState, ledger: LedgerState) => Rep }
 
-const DASH = "—";
-/** The ledger's window, in days — the server's own default, said once here so the report's foot
+const DASH = "-";
+/** The ledger's window, in days - the server's own default, said once here so the report's foot
  *  and the query it makes cannot drift apart. */
 const LEDGER_DAYS = 30;
 const mins = (t: string) => {
@@ -45,7 +45,7 @@ const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "
  * "12 Sep" against today's IST calendar, as whole days ahead.
  *
  * `bestBeforeText` prints the day and the month and no year, so the year is the one that puts
- * the date on or after today — a best-before is never written in the past, and that is what
+ * the date on or after today - a best-before is never written in the past, and that is what
  * carries a batch made on New Year's Eve over into January. An unreadable suffix still means
  * "some other day", so it counts as one.
  */
@@ -62,7 +62,7 @@ const daysAhead = (dayMonth: string, todayIso: string): number => {
  * A best-before as minutes past this morning's midnight.
  *
  * `bestBeforeText` says "18:30" for today, "06:30 tomorrow" for the small hours and
- * "06:30 12 Sep" for anything further out (H9) — so the clock is only ever the first word, and
+ * "06:30 12 Sep" for anything further out (H9) - so the clock is only ever the first word, and
  * `mins("06:30 tomorrow")` read `Number("30 tomorrow")`, answered NaN and fell back to 0, which
  * made every overnight batch on this report read "Past best before" from the moment it was
  * made. The day the text names is added back on in whole days rather than dropped.
@@ -86,7 +86,7 @@ const dur = (m: number | null) =>
   m === null ? DASH : m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${m % 60} min`;
 /** How old a document is, measured from its **instant**. `gap` above compares two clock faces
  *  and wraps at midnight, which is right for two stamps on one day and wrong for a lot that has
- *  been on the rack since Tuesday — this is the one every batch row now uses. */
+ *  been on the rack since Tuesday - this is the one every batch row now uses. */
 const ageMins = (isoStr: string): number | null => {
   const at = Date.parse(isoStr);
   return Number.isNaN(at) ? null : Math.max(0, Math.round((Date.now() - at) / 60000));
@@ -122,7 +122,7 @@ const ledger = (_s: AppState, ledger: LedgerState): Rep => {
     money0(r.closing * costOf(r.it)),
   ]);
   // Totalled per unit, not as one number: the central store carries litres, kilos and countable
-  // things on the same ledger, and `ledgerTotals`' four scalars would add them together — which
+  // things on the same ledger, and `ledgerTotals`' four scalars would add them together - which
   // is the "510 units" defect the house rule about `unitTotal` exists to prevent.
   const col = (pick: (r: StockLedgerRow) => number) =>
     unitTotal(known.map((r) => ({ it: r.it, qty: pick(r) })));
@@ -137,14 +137,14 @@ const ledger = (_s: AppState, ledger: LedgerState): Rep => {
     foot: ledger.st === "loading"
       ? `Reading the last ${LEDGER_DAYS} days of movement from the central store's ledger…`
       : ledger.st === "failed"
-        ? "The ledger could not be read — every other report on this screen still works."
+        ? "The ledger could not be read - every other report on this screen still works."
         : `Opening ${col((r) => r.opening)} · received ${col((r) => r.recd)} · issued ${col((r) => r.issued)}`
           + ` · closing ${col((r) => r.closing)} worth ${money0(sum(known, (r) => r.closing * costOf(r.it)))}`
           + ` · the last ${LEDGER_DAYS} days, summed from the ledger itself`,
     empty: ledger.st === "loading"
       ? { title: "Reading the ledger", sub: `The central store's movement for the last ${LEDGER_DAYS} days is on its way.` }
       : ledger.st === "failed"
-        ? { title: "The ledger could not be read", sub: "The server did not answer. Try again below — the toast says what went wrong." }
+        ? { title: "The ledger could not be read", sub: "The server did not answer. Try again below - the toast says what went wrong." }
         : { title: "The central store carries no lines", sub: "Receive a purchase order and the ledger opens." },
   };
 };
@@ -172,7 +172,7 @@ const issreg = (s: AppState): Rep => {
     ],
     rows,
     facet: 0,
-    foot: `${out.length} ticket${out.length === 1 ? "" : "s"} standing against ${LOC.store.n} — withdrawn tickets are left out`,
+    foot: `${out.length} ticket${out.length === 1 ? "" : "s"} standing against ${LOC.store.n} - withdrawn tickets are left out`,
     empty: { title: "Nothing has been issued yet", sub: "Generate a ticket on the issue desk and it lands here." },
   };
 };
@@ -300,14 +300,14 @@ const ageing = (s: AppState): Rep => {
     }),
     ...s.batch.map((b) => {
       // A batch made this evening is good until the small hours, and the kitchen's own word for
-      // that is "06:30 tomorrow" — which is a time this report has to read, not discard.
+      // that is "06:30 tomorrow" - which is a time this report has to read, not discard.
       const bb = bbMins(b.bb, todayIso);
       const left = bb === null ? null : bb - clock;
       return [
         b.id, IT[b.it]?.n ?? b.it, LOC.kitchen.n, `${fq(b.qty, b.it)} ${U(b.it)}`,
         // The batch's own day, off its instant. Printing "today" beside every batch on file, and
         // ageing each of them by the clock face alone (`gap` wraps at 1440), meant yesterday's
-        // lot read as an hour old — the column this report exists for.
+        // lot read as an hour old - the column this report exists for.
         `${fromWireDay(b.iso)} ${b.at}`, b.bb.includes(" ") ? b.bb : `today ${b.bb}`, dur(ageMins(b.iso)),
         left === null ? DASH : left <= 0 ? "Past best before" : dur(left) + " left",
         money0(b.qty * costOf(b.it)),
@@ -329,13 +329,13 @@ const ageing = (s: AppState): Rep => {
 
 const movers = (s: AppState): Rep => {
   // "Issued from store" is stock that left the window, so it is measured the way the ledger
-  // measures it — a withdrawn ticket moved nothing and must not make an item look fast.
+  // measures it - a withdrawn ticket moved nothing and must not make an item look fast.
   const out = fromStore(s).filter((t) => hasLeft(t.st));
   const rows = storeKeys(s)
     .map((k) => ({
       k,
       iss: sum(out, (t) => sum(t.lines.filter((l) => l.it === k), (l) => l.qty)),
-      // ---- bill void: measured the way "Issued from store" above is — a voided bill put its
+      // ---- bill void: measured the way "Issued from store" above is - a voided bill put its
       // lines back on the shelf, so counting them would make an item look fast on stock that
       // never left.
       sold: sum(s.bills.filter((b) => !b.voided).flatMap((b) => b.lines).filter((l) => l.it === k), (l) => l.qty),
@@ -400,15 +400,15 @@ const disc = (s: AppState): Rep => {
       const done = t.st === "Received";
       return [
         t.id, t.req, LOC[t.to].n, IT[l.it]?.n ?? l.it, fq(appr, l.it), fq(l.qty, l.it),
-        done ? fq(l.qty, l.it) : t.st === "Cancelled" ? "Cancelled — never sent" : "Not yet confirmed",
+        done ? fq(l.qty, l.it) : t.st === "Cancelled" ? "Cancelled - never sent" : "Not yet confirmed",
         fq(Math.round((l.qty - appr) * 1000) / 1000, l.it), t.st,
       ];
     });
   });
   const open = fromStore(s).filter((t) => isTicketOpen(t.st)).length;
   return {
-    // "Confirmed less issued" is gone. An outlet confirms a ticket whole — there is no
-    // endpoint anywhere that takes a different quantity from the one on it — so the column
+    // "Confirmed less issued" is gone. An outlet confirms a ticket whole - there is no
+    // endpoint anywhere that takes a different quantity from the one on it - so the column
     // was zero on every confirmed row and a dash on every other one, and a column that can
     // only say one thing is a column the store keeper learns to read past.
     cols: [
@@ -433,7 +433,7 @@ export const REPORTS: ReportDef[] = [
   { k: "turn", n: "Ticket turnaround", icon: "rep", build: turn, d: "Time from manager approval to ticket, and from ticket to collection." },
   { k: "resage", n: "Reservation ageing", icon: "req", build: resage, d: "Stock reserved against tickets nobody has collected yet." },
   { k: "belowrl", n: "Below-reorder exceptions", icon: "need", build: belowrl, d: "Lines under reorder level, with the suggested requisition quantity." },
-  { k: "prqst", n: "Requisition status", icon: "order", build: prqst, d: "Requisitions raised on procurement — sent, approved, partially approved or declined." },
+  { k: "prqst", n: "Requisition status", icon: "order", build: prqst, d: "Requisitions raised on procurement - sent, approved, partially approved or declined." },
   { k: "ageing", n: "Stock ageing", icon: "item", build: ageing, d: "How long each lot has been sitting against its shelf life." },
   { k: "movers", n: "Fast and slow movers", icon: "dash", build: movers, d: "Issue velocity per item against counter sales." },
   { k: "resvav", n: "Reserved versus available", icon: "power", build: resvav, d: "Free-to-promise position per item after reservations and approvals." },
@@ -457,8 +457,8 @@ export default function Reports() {
   const readStockLedger = useApp((x) => x.readStockLedger);
   /**
    * Which attempt at reading the ledger is the current one. Bumped when the operator picks a
-   * different report and by the Try again button on the failed state — both events, not
-   * renders — so re-picking the report they are already on changes nothing and re-runs nothing.
+   * different report and by the Try again button on the failed state - both events, not
+   * renders - so re-picking the report they are already on changes nothing and re-runs nothing.
    */
   const [attempt, setAttempt] = useState(0);
   /** The answer, tagged with the attempt that produced it. */
@@ -518,7 +518,7 @@ export default function Reports() {
     a.click();
     a.remove();
     URL.revokeObjectURL(url);
-    notify(`${def.n} exported — ${rows.length} row${rows.length === 1 ? "" : "s"}`);
+    notify(`${def.n} exported - ${rows.length} row${rows.length === 1 ? "" : "s"}`);
   };
 
   return (
@@ -584,7 +584,7 @@ export default function Reports() {
               action: <Btn size="sm" variant="gh" onClick={() => { setQ(""); setFi(0); }}>Reset filters</Btn>,
             }
             // The one report that can fail is the one that asks the server, and the empty state
-            // is where its retry belongs — the builder is pure and has no setter to offer one.
+            // is where its retry belongs - the builder is pure and has no setter to offer one.
             : sel === "ledger" && ledgerState.st === "failed"
               ? { ...rep.empty, action: <Btn size="sm" onClick={() => setAttempt((n) => n + 1)}>Try again</Btn> }
               : rep.empty}

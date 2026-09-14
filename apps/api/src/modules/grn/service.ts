@@ -1,10 +1,10 @@
-// Goods receipt: the flow — transaction, rules, ids, history. Composes the helpers in
+// Goods receipt: the flow - transaction, rules, ids, history. Composes the helpers in
 // apps/api/src/lib/; the arithmetic of a decision lives in packages/domain.
 //
 // This is the one write in buying that touches the ledger, and it only ever adds: accepted
 // quantity onto the central store's shelf, rejected quantity onto quarantine's. Nothing here
 // reads a balance in order to promise against it, so there is no `lockBalances` call of its own
-// and no post-lock re-read — `postMoves` takes the locks it needs, in (loc, item) order.
+// and no post-lock re-read - `postMoves` takes the locks it needs, in (loc, item) order.
 import type { z } from "zod";
 import { QUARANTINE } from "@rch/contract";
 import type { CloseShortBodySchema, PurchaseOrder, ReceiptResultSchema, ReceivePoBodySchema, WriteResponse } from "@rch/contract";
@@ -39,7 +39,7 @@ export function createGrnService(db: Db) {
      * The one write in this phase that moves stock, and it only ever adds: `grn_accept` at the
      * central store for what passed inspection, `grn_reject` at quarantine for what did not.
      * Nothing is promised against a balance here, so there is no `lockBalances` call and no
-     * post-lock re-read — `postMoves` takes what it needs, in (loc, item) order.
+     * post-lock re-read - `postMoves` takes what it needs, in (loc, item) order.
      *
      * Every line is checked in full before anything is written. The transaction would roll a
      * half-write back anyway; checking first is what makes the **first** bad line the one the
@@ -50,7 +50,7 @@ export function createGrnService(db: Db) {
         const o = await grnRepo.head(tx, id);
         if (!o) throw new NotFoundError(`There is no purchase order ${id}.`);
         assertRule(o.status === "Ordered" || o.status === "Partially received",
-          `${id} is ${o.status.toLowerCase()} — nothing can be booked against it`);
+          `${id} is ${o.status.toLowerCase()} - nothing can be booked against it`);
         const dc = body.dc.trim();
         assertRule(dc.length > 0, "Record the vendor's delivery note number before booking goods in");
         const lines = await grnRepo.lines(tx, id);
@@ -61,13 +61,13 @@ export function createGrnService(db: Db) {
 
         const master = await loadMaster(tx);
         // A line with nothing received and something rejected is not a delivery a rejection can
-        // be taken out of — there is no arrival for it to be part of. Both loops below skip such
+        // be taken out of - there is no arrival for it to be part of. Both loops below skip such
         // a line on `recv > 0` and would otherwise book nothing and say nothing about it. Refuse
         // it here, by name, before either loop runs.
         for (const [i, l] of lines.entries()) {
           const r = body.lines[i]!;
           if (!(r.recv > 0) && r.rejected > 0) {
-            assertRule(false, `${master.items[l.it]?.n ?? l.it} — a rejected quantity needs an arrival to be rejected from`);
+            assertRule(false, `${master.items[l.it]?.n ?? l.it} - a rejected quantity needs an arrival to be rejected from`);
           }
         }
         const listA = await grnRepo.listAPrices(tx, lines.map((l) => l.it));
@@ -103,14 +103,14 @@ export function createGrnService(db: Db) {
             dcNo: dc, invoiceNo: body.invoice.trim(), invoiceDate: body.invDate || null, at, byUser: claims.sub,
           });
           // Accepted goods go straight onto the central store's shelf; rejected goods go to
-          // quarantine, which never sells and never issues. A move of zero is not a movement —
+          // quarantine, which never sells and never issues. A move of zero is not a movement -
           // and a lock on a cell nothing moves would create a phantom shelf line (M12). The
           // accepted total is pushed whatever `good` came to, a fully rejected line included,
           // so `unitTotal` prints "0 nos accepted" rather than nothing at all.
           accepted.push({ it: l.it, qty: good });
           if (good > 0) moves.push({ loc: STORE, it: l.it, qty: good, kind: "grn_accept", refType: "grn", refId: receiptId, by: claims.sub, at });
           if (r.rejected > 0) { rejected.push({ it: l.it, qty: round3(r.rejected) }); moves.push({ loc: QUARANTINE, it: l.it, qty: round3(r.rejected), kind: "grn_reject", refType: "grn", refId: receiptId, by: claims.sub, at }); }
-          // `received_qty` is the arrival record — every unit the vendor's notes add up to —
+          // `received_qty` is the arrival record - every unit the vendor's notes add up to -
           // and `rejected_qty` the running total that went to quarantine. Whether the order is
           // *filled* is asked of the difference, below, never of this figure.
           await grnRepo.setLineReceipt(tx, id, l.lineNo, { receivedQty: round3(l.recv + r.recv), rejectedQty: round3(l.rejected + r.rejected) });
@@ -119,7 +119,7 @@ export function createGrnService(db: Db) {
         await postMoves(tx, moves);
 
         // Where every line stands once this instalment is on it, gross and rejected both carried
-        // forward — `receiptStatus` covers a line by what was accepted, so a consignment turned
+        // forward - `receiptStatus` covers a line by what was accepted, so a consignment turned
         // away whole leaves the order open and its requisition claim still releasable.
         const after = lines.map((l, i) => {
           const r = body.lines[i]!;
@@ -144,8 +144,8 @@ export function createGrnService(db: Db) {
           result: { po: await grnRepo.wire(tx, id), grns: await grnRepo.wireGrns(tx, written.map((g) => g.id)) },
           changed: [...changed],
           message: rejected.length > 0
-            ? `Booked into ${master.locations[STORE]?.n ?? STORE} — ${unitTotal(accepted, unitOf)} accepted, ${unitTotal(rejected, unitOf)} rejected`
-            : `Booked into ${master.locations[STORE]?.n ?? STORE} — ${written.length} batch(es) against ${dc}`,
+            ? `Booked into ${master.locations[STORE]?.n ?? STORE} - ${unitTotal(accepted, unitOf)} accepted, ${unitTotal(rejected, unitOf)} rejected`
+            : `Booked into ${master.locations[STORE]?.n ?? STORE} - ${written.length} batch(es) against ${dc}`,
         };
       });
     },
@@ -156,22 +156,22 @@ export function createGrnService(db: Db) {
      * Documents before anything else, and the purchase-order row before any requisition row:
      * the head is locked here, the requisition heads are locked in ascending id order by
      * `lockRequisitions`, and `foldClaims` has already sorted them into that order. No stock
-     * moves — nothing arrived to move.
+     * moves - nothing arrived to move.
      */
     async closeShort(claims: AccessClaims, id: string, body: CloseShortBody): Promise<WriteResponse<PurchaseOrder>> {
       return withTransaction(db, async (tx) => {
         const o = await grnRepo.head(tx, id);
         if (!o) throw new NotFoundError(`There is no purchase order ${id}.`);
         assertRule(body.reason.trim().length > 0, "Give a reason for closing this order short");
-        // Only a partly received order can be closed short — an order nothing has been
+        // Only a partly received order can be closed short - an order nothing has been
         // delivered against has no GRN to close out, and `PO_TRANSITIONS.Ordered` allows
         // "Received" directly (an order can be fully received in one instalment), so
         // `canTransition` alone would let a buyer close-short an order nothing arrived on.
-        assertRule(o.status === "Partially received", `${id} is ${o.status.toLowerCase()} — only a partly received order can be closed short`);
+        assertRule(o.status === "Partially received", `${id} is ${o.status.toLowerCase()} - only a partly received order can be closed short`);
         const lines = await grnRepo.lines(tx, id);
         const src = await grnRepo.sources(tx, id);
         // The balance never arrived, so give the demand back to the store keeper rather than
-        // letting it vanish — last source first, the same direction a cut line releases in.
+        // letting it vanish - last source first, the same direction a cut line releases in.
         // Rejected quantity counts as never arrived: it sits in quarantine, not on the shelf,
         // so the store keeper is still owed it and it goes back on the list with the rest.
         const back = foldClaims(shortfallClaims(lines.map((l) => ({ qty: l.qty, recv: l.recv, rejected: l.rejected, src: src.get(l.lineNo) ?? [] }))));
@@ -189,7 +189,7 @@ export function createGrnService(db: Db) {
         return {
           result: await grnRepo.wire(tx, id),
           changed: [...changed],
-          message: `${id} closed short — the undelivered balance is back on the procurement list`,
+          message: `${id} closed short - the undelivered balance is back on the procurement list`,
         };
       });
     },

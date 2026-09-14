@@ -1,4 +1,4 @@
-# packages/domain — CLAUDE.md
+# packages/domain - CLAUDE.md
 
 Repo-wide rules are in the root `CLAUDE.md`. This file covers what is specific to `@rch/domain`.
 

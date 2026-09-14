@@ -1,4 +1,4 @@
-// Tickets: the scan that moves stock — handover at the window, receipt on the shelf — and the
+// Tickets: the scan that moves stock - handover at the window, receipt on the shelf - and the
 // shop-to-shop transfer that raises one without a request behind it.
 import fp from "fastify-plugin";
 import { routes } from "@rch/contract";

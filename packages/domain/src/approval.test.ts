@@ -81,7 +81,7 @@ describe("planPrqApproval", () => {
   it("reads a missing or negative entry as nothing approved", () => {
     expect(planPrqApproval(lines, [Number.NaN, -5]).st).toBe("Declined");
   });
-  it("does not consult free-to-promise — the store's shelf has nothing to do with what a vendor can supply", () => {
+  it("does not consult free-to-promise - the store's shelf has nothing to do with what a vendor can supply", () => {
     // planApproval takes a freeFor callback; this one deliberately does not have one.
     expect(planPrqApproval.length).toBe(2);
   });

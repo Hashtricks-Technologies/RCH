@@ -11,7 +11,7 @@ export const documentHistory = pgTable("document_history", {
   at: ts("at").notNull().defaultNow(),
 }, (t) => [index("document_history_doc_idx").on(t.docType, t.docId, t.at)]);
 
-/** Serialised numbering, gapless through a rollback — the counter is a row, and a refused write
+/** Serialised numbering, gapless through a rollback - the counter is a row, and a refused write
  *  undoes its increment with everything else. Allocated with UPDATE … RETURNING inside the
  *  write's transaction, which holds the row lock to the end of it: every other writer in the
  *  series queues there, so a number is taken as late as the write can take it (`lib/ids.ts`). */
@@ -32,7 +32,7 @@ export const idempotencyKeys = pgTable("idempotency_keys", {
   createdAt: ts("created_at").notNull().defaultNow(),
   expiresAt: ts("expires_at").notNull(),
   /** Stamped by the write's own transaction (`lib/idempotency-record.ts`), so it is set if and
-   *  only if the write committed. A row carrying it is never deleted and never taken over —
+   *  only if the write committed. A row carrying it is never deleted and never taken over -
    *  whatever the response hooks afterwards do or fail to do, the outcome is already the
    *  key's permanent answer. */
   committedAt: ts("committed_at"),

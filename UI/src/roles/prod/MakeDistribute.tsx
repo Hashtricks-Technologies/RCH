@@ -29,7 +29,7 @@ export default function MakeDistribute() {
   // What the kitchen can make is read off the master, not written down here: a fourth finished
   // good with a recipe used to be invisible on this screen until somebody edited a literal in
   // three files. `IT` is replaced in place by `hydrateItems`, so the list is pinned to
-  // `catalogVersion` — the signal that tells React the catalogue moved.
+  // `catalogVersion` - the signal that tells React the catalogue moved.
   const PRODS = useMemo(() => { void s.catalogVersion; return madeItems(); }, [s.catalogVersion]);
 
   const [mk, setMk] = useState<Record<string, string>>({});
@@ -98,7 +98,7 @@ export default function MakeDistribute() {
   };
 
   // Every figure and every word on this card says "today", so the log is cut to the hospital's
-  // own IST day before anything counts it — `GET /batches` returns more than one day's baking.
+  // own IST day before anything counts it - `GET /batches` returns more than one day's baking.
   const allBatches = useMemo(() => batch.filter((b) => isToday(b.iso)), [batch]);
   const bFiltering = Boolean(bq.trim() || bProd);
   const batches = allBatches
@@ -119,7 +119,7 @@ export default function MakeDistribute() {
   const allTransit = kt.filter((t) => t.st === "Collected");
   const allDone = kt.filter((t) => t.st === "Received");
   /** What went out of the kitchen today: still on its way, or already there. The pill beside
-   *  this number counts the open ones, so the total has to include them — what it must not
+   *  this number counts the open ones, so the total has to include them - what it must not
    *  include is a ticket that was withdrawn, which went nowhere at all. */
   const outToday = kt.filter((t) => isTicketOpen(t.st) || hasLeft(t.st));
   const toHand = allToHand.filter(match(tq, tDest));
@@ -147,7 +147,7 @@ export default function MakeDistribute() {
             {PRODS.map((k) => {
               const item = IT[k];
               const recipe = RCP[k];
-              // Both are guaranteed by `madeItems()` — it reads the master itself — but the
+              // Both are guaranteed by `madeItems()` - it reads the master itself - but the
               // master is replaced in place under a render, so a tile that cannot describe
               // itself is left out rather than taking the screen down.
               if (!item || !recipe) return null;
@@ -156,7 +156,7 @@ export default function MakeDistribute() {
               const want = Number(mk[k]) || 0;
               const got = yld[k] === "" || yld[k] == null ? null : Number(yld[k]);
               // A variance is a fraction of what was started, so it means nothing until
-              // something has been: 0 started used to print "NaN% variance — give a reason".
+              // something has been: 0 started used to print "NaN% variance - give a reason".
               const short = want > 0 && got != null && got < want;
               return (
                 <div className="tile" key={k}>
@@ -177,7 +177,7 @@ export default function MakeDistribute() {
                     </Field>
                     <Field label="Actual yield" hint={
                       short
-                        ? <span style={{ color: "var(--warn)" }}>{((((got ?? 0) - want) / want) * 100).toFixed(1)}% variance — give a reason</span>
+                        ? <span style={{ color: "var(--warn)" }}>{((((got ?? 0) - want) / want) * 100).toFixed(1)}% variance - give a reason</span>
                         : <>Leave blank if every unit came good</>
                     }>
                       <input
@@ -239,7 +239,7 @@ export default function MakeDistribute() {
               <select value={dTo} onChange={(e) => setDTo(e.target.value as LocKey)}>
                 {DESTS.map((l) => (
                   <option key={l} value={l} disabled={!listedAt(l, dSel)}>
-                    {LOC[l].n} — {LOC[l].floor}{listedAt(l, dSel) ? "" : " · not on this menu"}
+                    {LOC[l].n} - {LOC[l].floor}{listedAt(l, dSel) ? "" : " · not on this menu"}
                   </option>
                 ))}
               </select>
@@ -247,7 +247,7 @@ export default function MakeDistribute() {
           </FormRow>
           {dWant > dFree && (
             <Alert tone="w" label="SHORT">
-              Only {fq(dFree, dSel)} {U(dSel)} free to promise — the rest is already on an open ticket. Make
+              Only {fq(dFree, dSel)} {U(dSel)} free to promise - the rest is already on an open ticket. Make
               the balance first.
             </Alert>
           )}
@@ -326,7 +326,7 @@ export default function MakeDistribute() {
         takes it off the kitchen rack. Nothing counts as the counter's until they confirm receipt.
       </Alert>
 
-      <Card title="Dispatched" sub="Issued out of the kitchen — scan when the counter arrives" flush className="mtop">
+      <Card title="Dispatched" sub="Issued out of the kitchen - scan when the counter arrives" flush className="mtop">
         <Toolbar
           placeholder="Search ticket, order or product…"
           value={tq}
@@ -375,7 +375,7 @@ export default function MakeDistribute() {
         />
       </Card>
 
-      <Card title="In transit" sub="Handed over — the receiving counter must now confirm" flush className="mtop">
+      <Card title="In transit" sub="Handed over - the receiving counter must now confirm" flush className="mtop">
         <Toolbar
           placeholder="Search ticket, order or product…"
           value={cq}

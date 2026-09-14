@@ -1,7 +1,7 @@
-# Royal Care — F&B Inventory (React + Vite)
+# Royal Care - F&B Inventory (React + Vite)
 
 Frontend for the hospital's kitchen, restaurant and retail-counter operation. Five roles,
-one shared stock ledger, backed by the `apps/api` Fastify service — all six phases of the backend
+one shared stock ledger, backed by the `apps/api` Fastify service - all six phases of the backend
 are implemented, and the store is an API client end to end.
 
 ## Stack
@@ -12,11 +12,11 @@ are implemented, and the store is an API client end to end.
 | UI | React 19 + TypeScript 6, `strict` |
 | State | Zustand 5 |
 | Routing | React Router 7 (`HashRouter`, so a static build works from any host) |
-| Styling | Plain CSS with design tokens — no framework |
+| Styling | Plain CSS with design tokens - no framework |
 
 ## Run
 
-This app is part of the root pnpm + Turborepo workspace — run it from the repo root, not from
+This app is part of the root pnpm + Turborepo workspace - run it from the repo root, not from
 inside `UI/` (the API and a local Postgres need to be up too; see `deploy/RUNBOOK.md` for the
 full sequence):
 
@@ -40,8 +40,8 @@ pnpm --filter @rch/ui test
 
 The dev server proxies `/api` to the Fastify API on `:3000`. Master data, prices, menus, the
 payer roster and every open document are hydrated from `GET /snapshot` on load
-(`hydrateMaster`/`hydrateRoster`). Every mutation in the store — fifty-three actions, listed in
-`../CLAUDE.md`'s *One Zustand store* — is a server call: billing, availability, prices and
+(`hydrateMaster`/`hydrateRoster`). Every mutation in the store - fifty-three actions, listed in
+`../CLAUDE.md`'s *One Zustand store* - is a server call: billing, availability, prices and
 menus, the whole stock-request chain, shop transfers and shop asks, the whole of production, the
 whole of buying, the support desk and the two server-side reports, and the audit wave's own six:
 the bill void, the kitchen order, the item patch, the two payer writes and the adjustment. There is no
@@ -51,7 +51,7 @@ without a reload.
 
 Against a real server today, a person can walk a kitchen order across the board, make a batch
 that draws its recipe out of the kitchen and stamps a best-before, dispatch it, hand it over on
-a six-digit code and receive it at the counter — with another browser following along live — and
+a six-digit code and receive it at the counter - with another browser following along live - and
 cancel a ticket nobody came for, which puts the stock and the document behind it back where it
 stood. Buying, the same way: the store keeper raises a requisition at the central store; the
 buyer approves or trims it (or adds items to the procurement list directly, with a reason, from
@@ -60,28 +60,28 @@ rate contract, and sends it to the vendor; the order is received against a deliv
 instalments, with a rejection at the door landing in a quarantine shelf that never sells and
 never issues; and closing an order short hands the undelivered balance straight back onto the
 procurement list. And now: raise a support ticket from any role's own Support screen, watch it
-move through the desk's states as a reply lands, and rate the fix — every role sees only its own
-tickets — and read the two reports the browser could never assemble on its own, a location's
+move through the desk's states as a reply lands, and rate the fix - every role sees only its own
+tickets - and read the two reports the browser could never assemble on its own, a location's
 stock ledger and a payer's credit for the month. A second browser watches every one of these
 moves happen live, the same as the rest of the system.
 
 ## Sign in
 
-Real authentication — employee id and password, checked against the API. Each account lands
+Real authentication - employee id and password, checked against the API. Each account lands
 somewhere different and sees a different sidebar.
 
 Staff do not type their id: the form's employee picker is a searchable list of every active staff
 account, number and name, read from the public `GET /auth/directory` before anybody signs in. Pick
 yourself (by click, or arrows and Enter), then type the password. The super admin is deliberately
-not on that list — "Sign in as administrator" swaps the picker for a typed id field, and "Back to
+not on that list - "Sign in as administrator" swaps the picker for a typed id field, and "Back to
 the staff list" swaps it back. If the list cannot be read, the typed field is shown with a line
 saying so, so nobody is locked out by it. A super admin lands on `/admin` and never loads the
 hospital's snapshot. The seed password is `SEED_PASSWORD` from
-`.env` — required, at least twelve characters, with no default, so whoever sets a host up chooses
+`.env` - required, at least twelve characters, with no default, so whoever sets a host up chooses
 it; a staging/prod seed sets `must_change_password`, which routes first sign-in through a
 change-password step before anything else.
 
-A refused sign-in — an unknown id, a wrong password, a deactivated account — says so on the form
+A refused sign-in - an unknown id, a wrong password, a deactivated account - says so on the form
 itself, in the server's own one sentence for all three, and the sentence stays there until the
 next attempt. A browser that cannot reach the server at all says that instead. Neither is a
 toast: the sign-in screen is outside the shell, and a sentence that vanishes in seconds is never
@@ -95,7 +95,7 @@ read by someone still looking at the keyboard.
 | `RC-1902` | Vinoth Prakash | Kitchen In-charge · Central Kitchen | Orders |
 | `RC-1550` | Latha Narayanan | Procurement Officer (not tied to one counter) | Requisitions |
 | `RC-4482` | Deepa Selvam | Counter Operator · Kiosk | Point of Sale |
-| `RC-0001` | System Administrator | Super Admin — no role or location (typed id, not on the picker) | Staff accounts |
+| `RC-0001` | System Administrator | Super Admin - no role or location (typed id, not on the picker) | Staff accounts |
 
 On the staff accounts page the employee id is not typed either: the form shows the next number,
 read-only (`nextEmpNo` from `@rch/domain`, one past the highest `RC-<digits>`), and the server
@@ -108,10 +108,10 @@ RC-xxxx permanently" or "Keep"); the server still refuses one with any history, 
 ```
 src/
   types.ts, nav.ts, drawers.ts, App.tsx   entities · sidebar & route guard · drawer registry · router
-  api/                                    client.ts (the one generic client — routes, idempotency, 401-refresh
+  api/                                    client.ts (the one generic client - routes, idempotency, 401-refresh
                                            retry), session.ts (in-memory token), events.ts (SSE change stream),
                                            refetch.ts (pulls back what a write changed), wire.ts (mappers)
-  store/{index,procurement,ops}.ts        Zustand, all server-backed — index.ts holds most actions (billing,
+  store/{index,procurement,ops}.ts        Zustand, all server-backed - index.ts holds most actions (billing,
                                            availability, prices/menus, the request→ticket chain, production,
                                            the two report reads, the bill void, the kitchen order);
                                            procurement.ts (vendors, requisition approval, the PO lifecycle,
@@ -119,7 +119,7 @@ src/
                                            shop-to-shop transfers, the support desk, the item patch, the
                                            payer register, adjustments)
   data/                                   master.ts (empty registries, replaced in place by hydrateMaster() and
-                                           hydrateRoster()), vendors.ts — no seed.ts, no ops.ts; nothing here
+                                           hydrateRoster()), vendors.ts - no seed.ts, no ops.ts; nothing here
                                            imports the fixtures
   lib/                                    fmt.ts (money, quantity, time), selectors.ts (qty · resv · avail ·
                                            freeToPromise · availOf · priceOf · procurementList …), theme.ts
@@ -135,7 +135,7 @@ src/
 ```
 
 Each role folder exports `screens: Record<string, ComponentType>`; `App.tsx` resolves the
-route key against the signed-in role. A route the role cannot reach redirects — it is not
+route key against the signed-in role. A route the role cannot reach redirects - it is not
 merely hidden from the sidebar.
 
 ## Domain rules worth knowing
@@ -147,7 +147,7 @@ chain is server-side (`apps/api/src/modules/{requests,tickets}`); a trim beyond 
 central store can still promise is the server's own decision, not the browser's.
 
 **MRP is a hard ceiling, and there is no door that removes one.** Traded goods carry a printed
-MRP. No price list, floor or role may sell above it — `savePrice` refuses and says so — and no
+MRP. No price list, floor or role may sell above it - `savePrice` refuses and says so - and no
 role may clear it either: an item that carries a printed MRP keeps one, and an emptied box on the
 edit form means "leave it as it is", not "take the ceiling away".
 
@@ -161,7 +161,7 @@ a manual override on top.
 ## Recent capabilities
 
 **Correcting a shelf is a document.** A write-off or a stock count is raised from the shelf it
-corrects — the store keeper's Adjustments screen for any location including quarantine, an
+corrects - the store keeper's Adjustments screen for any location including quarantine, an
 Adjust stock drawer on the manager's outlet rows and on the kitchen's stock screen. It carries a
 reason (wastage, breakage, expired, stock count, returned to vendor, other), a note, a signature
 and any number of signed lines: negative writes off, positive counts up, and a positive line is
@@ -169,8 +169,8 @@ how a location that has never carried an item comes to carry one without a deliv
 may not take stock a pick ticket is holding, and the register on the same screen is where a
 month of it reads back by reason.
 
-**A bill can be taken back on the day it was billed.** The outlet manager gets a Bills screen —
-every outlet's, over the seven days the server answers for — and a Void button on any bill still
+**A bill can be taken back on the day it was billed.** The outlet manager gets a Bills screen -
+every outlet's, over the seven days the server answers for - and a Void button on any bill still
 dated today. It needs a typed reason, puts every line back on the shelf (a made-to-order drink
 goes back as the ingredients the sale actually took), returns a staff member's credit room for
 the month, and leaves the bill on every list badged VOIDED rather than disappearing from the day.
@@ -181,8 +181,8 @@ show it. After that day, the answer is an adjustment, and the refusal says so.
 master and stock screen, showing each role only the fields their desk owns: the manager the
 printed MRP, the standard cost and the GST rate; the store keeper, buyer and kitchen the name,
 the group, the HSN code and the reorder level. The other half is greyed out with a sentence
-saying whose it is. A product is **retired, never deleted** — refused while any location holds
-stock of it or any outlet still lists it, naming them — and a retired line keeps its name on
+saying whose it is. A product is **retired, never deleted** - refused while any location holds
+stock of it or any outlet still lists it, naming them - and a retired line keeps its name on
 every document that already carries it while dropping off the pickers that could sell, order or
 promise it again.
 
@@ -194,21 +194,21 @@ switching one off takes it off every till's picker and leaves every bill already
 exactly as it was.
 
 **An outlet can ask the kitchen to make something.** The counter's Stock Requests screen gained
-an "Ask the kitchen" card — which is also the first window a counter has ever had on the orders
-raised for it — and the manager's dashboard an equivalent button for any outlet. Finished goods
+an "Ask the kitchen" card - which is also the first window a counter has ever had on the orders
+raised for it - and the manager's dashboard an equivalent button for any outlet. Finished goods
 only, from that outlet's own menu, with an optional needed-by date the kitchen's board and drawer
 both print. Raising one reserves nothing: dispatching it is still what places the hold.
 
 **Pay & print actually prints.** The till opens the new bill's drawer on a successful sale, and
-the drawer prints a real slip — bill number, outlet, terminal, the hospital's own date, the
+the drawer prints a real slip - bill number, outlet, terminal, the hospital's own date, the
 operator, every line as qty × rate × amount, taxable value, tax, total, tender and the payer
 where there is one. Reprint calls the browser's print dialog instead of announcing that something
 was "sent again to the OT-C3 printer", which never happened. Pick tickets print the same way, and
 a ticket slip carries the six-digit code only when the reader is entitled to it. The counter's
-dashboard lost its invented shift, its hours and its ₹2,000 opening float at the same time —
+dashboard lost its invented shift, its hours and its ₹2,000 opening float at the same time -
 there are no shifts in this build, so every one of those figures was made up at render time.
 
-**Support, for every role, server-backed.** `/issues` — labelled Support in every sidebar — is
+**Support, for every role, server-backed.** `/issues` - labelled Support in every sidebar - is
 customer care for the portal itself: sign-in trouble, a screen that will not load, a number that
 looks wrong, printing, slow or frozen, training, or a feature request; a stock or kitchen
 problem goes to the screen that owns it instead. Raising one names a topic and a screen and
@@ -219,8 +219,8 @@ role sees only the tickets it raised; none of the five answers tickets.
 **The support desk, on `/admin`.** The admin-flagged account's second tab lists every ticket from
 every role, most pressing first (open, then with support; urgent before routine), filterable by
 status, priority, role and location. Picking one shows who raised it, from which screen, and the
-conversation. The admin replies as support under their own name — Send, Send & ask the reporter
-(Waiting on you) or Send & resolve — and can pick a ticket up, mark it resolved, reopen it or close
+conversation. The admin replies as support under their own name - Send, Send & ask the reporter
+(Waiting on you) or Send & resolve - and can pick a ticket up, mark it resolved, reopen it or close
 it. Only the moves `SUPPORT_TRANSITIONS` allows are drawn. The reply reaches the reporter's
 Support screen over the change stream, and a new ticket or a reporter's reply lands on the desk
 the same way.
@@ -229,13 +229,13 @@ the same way.
 A pick ticket carries a code minted when it is created. The collector reads it aloud to the
 store keeper (or the kitchen in-charge), who types it at handover; a wrong code is refused. The
 code reaches the wire only for a caller standing at the ticket's own destination while it is
-still `Issued` — the issuing desk's own screen, and everyone else's, never shows it. A
-supervisor override exists and is labelled as one — restricted to the store and the kitchen —
+still `Issued` - the issuing desk's own screen, and everyone else's, never shows it. A
+supervisor override exists and is labelled as one - restricted to the store and the kitchen -
 and is recorded on the ticket's own trail, now visible in the ticket drawer, as
-`Handed over — supervisor override`.
+`Handed over - supervisor override`.
 
-**The ticket's own history, on screen.** Every ticket now carries its full trail — `Issued`,
-`Handed over` (with the override named when used), `Received`, or `Cancelled — <reason>` — read
+**The ticket's own history, on screen.** Every ticket now carries its full trail - `Issued`,
+`Handed over` (with the override named when used), `Received`, or `Cancelled - <reason>` - read
 back through the same drawer that shows a request's history. A counter can also withdraw a
 shop-to-shop transfer it raised, from a "Sent from this counter" card, before anyone collects
 it.
@@ -271,11 +271,11 @@ trimmed requisition, and a search finds it. Their dashboard raises a DECLINED or
 every decision taken today (IST), with an Open button for the requisition.
 
 **New products.** An outlet manager asks for something not on the master; procurement is the
-one who sources it, so procurement is the one who adds it — a short form (name, type, unit,
+one who sources it, so procurement is the one who adds it - a short form (name, type, unit,
 cost, MRP if applicable), with everything else defaulted. Stock arrives the normal way,
 through a purchase order, not as an opening balance typed in on the spot. Server-backed since
 Phase 5 (`POST /product-requests`, answered by `POST /product-requests/:id/answer`), and the
-store keeper and the kitchen can each add a product directly too — the kitchen for its own raw
+store keeper and the kitchen can each add a product directly too - the kitchen for its own raw
 materials and finished goods, the store keeper at the central store.
 
 **Shop-to-shop transfer.** When one outlet needs an MRP product another is holding, the stock
@@ -284,17 +284,17 @@ destination. The outlet manager sees it happen rather than standing in the middl
 
 ## What is still client-side, and why
 
-The store holds no business rule of its own any more — every action is a call to the API, and a
+The store holds no business rule of its own any more - every action is a call to the API, and a
 refusal is the server's sentence, not a client-side check. What stays in the browser is only
 what has nothing on the server to be a client of: `cart`, `draft`, `prqDraft`, `poolVendor` (the
 vendor the buyer picked on each procurement-list row, kept until that item is ordered in full),
 `drawer`, `toast`, `shopFilter`, `theme`, `catalogVersion` (the signal that repaints a screen pinned to the
-catalogue after a live update) — plus the access token, held in memory and never in
+catalogue after a live update) - plus the access token, held in memory and never in
 `localStorage`, and the theme and a couple of UI preferences, which do reach `localStorage`
 because there is nothing for the server to say about which theme a browser prefers.
 
-`@rch/domain`'s functions run client-side too, but as **previews only** — a cart total before
-paying, whether an item shows as available, the Dispatch cover check — computed with the same
+`@rch/domain`'s functions run client-side too, but as **previews only** - a cart total before
+paying, whether an item shows as available, the Dispatch cover check - computed with the same
 functions the server enforces with, never a second copy of a rule. The refusal, when one
 happens, is always the server's.
 
@@ -306,7 +306,7 @@ happens, is always the server's.
 ## Out of scope
 
 Barcode scanning, patient-bill posting and GST output registers remain out of scope, along with
-a handful of features this document's original spec proposed and the team declined — a
+a handful of features this document's original spec proposed and the team declined - a
 purchase-return or debit-note document out of quarantine (the shelf itself can be corrected with
 an adjustment; recovering the money from the vendor cannot), a finance approval role, batch-wise
 MRP with FEFO issue, a credit note after the day is out (a bill is voided on the day it was

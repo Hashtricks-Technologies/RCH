@@ -6,7 +6,7 @@ import type { App } from "../app.js";
 
 /** `expectedMigrationCount` reads `drizzle/meta/_journal.json` off the image's own disk and has no
  *  env knob pointing it elsewhere, so the "journal unreadable" branch is reached by making that one
- *  function throw. Everything else in the module — `runMigrations`, which the harness itself uses —
+ *  function throw. Everything else in the module - `runMigrations`, which the harness itself uses -
  *  stays real. `vi.hoisted` because a `vi.mock` factory is lifted above the imports. */
 const journal = vi.hoisted(() => ({ fails: false }));
 vi.mock("../db/migrate.js", async (importOriginal) => {
@@ -37,7 +37,7 @@ describe("GET /readyz", () => {
       const r = await app.inject({ method: "GET", url: "/readyz" });
       expect(r.statusCode).toBe(503);
       expect(r.json()).toEqual({
-        error: { code: "not_ready", message: "Not ready: database — migration journal unreadable." },
+        error: { code: "not_ready", message: "Not ready: database - migration journal unreadable." },
       });
       // The whole point of the wrapper: the fs error's own message names a path inside the
       // container, and that class of detail belongs in the log rather than the body.
@@ -59,10 +59,10 @@ describe("GET /readyz", () => {
     // The count comes from the journal, not from a number typed in here: a seventh migration
     // must not turn this case red for a reason that has nothing to do with readiness.
     expect(r.json()).toEqual({
-      error: { code: "not_ready", message: `Not ready: database — schema at 0/${expectedMigrationCount()} migrations.` },
+      error: { code: "not_ready", message: `Not ready: database - schema at 0/${expectedMigrationCount()} migrations.` },
     });
     // The bare `catch` this replaced threw the reason away, and an operator watching a rollout
-    // that never goes Ready read only "Not ready: database." — true, and no use.
+    // that never goes Ready read only "Not ready: database." - true, and no use.
     expect(r.json().error.message).not.toBe("Not ready: database.");
   });
 });

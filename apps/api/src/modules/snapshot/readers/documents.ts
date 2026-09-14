@@ -16,16 +16,16 @@ export type UserNames = Map<string, { id: string; name: string; colour: string }
  * Every document reader below stamps a name (and sometimes a colour) onto a `byUser`/
  * `operatorId` id, so each used to fetch its own copy of the whole users table. `snapshot()`
  * now fetches this once and threads it through as the optional trailing `names` param; a
- * reader called on its own (`GET /bills`, tests) still works — it just fetches its own copy,
+ * reader called on its own (`GET /bills`, tests) still works - it just fetches its own copy,
  * same as before.
  *
  * Every reader here takes a `Reader` and awaits its queries **one after another**. They are
  * called inside one read-only transaction (`withReadTransaction`, `lib/db.ts`), so a request
  * takes one connection out of the pool rather than one per query. A transaction is a single pg
  * client and a client runs one query at a time, so a `Promise.all` in here would buy no
- * parallelism and would queue on that client — the note `lib/master.ts` has carried since
+ * parallelism and would queue on that client - the note `lib/master.ts` has carried since
  * Phase 2. Sequential awaits say what actually happens.
- * @public — consumed by service.ts.
+ * @public - consumed by service.ts.
  */
 export const userNames = async (db: Reader): Promise<UserNames> =>
   new Map((await db.select({ id: s.users.id, name: s.users.name, colour: s.users.colour }).from(s.users)).map((u) => [u.id, u]));
@@ -47,7 +47,7 @@ export async function readRequests(db: Reader, pre?: UserNames): Promise<StockRe
 export async function readTickets(db: Reader): Promise<Ticket[]> {
   // One query for every ticket's trail rather than one per ticket: `readHistories` is the same
   // helper the request and requisition readers use, and it is why the ticket drawer can show
-  // "Handed over — supervisor override" at all.
+  // "Handed over - supervisor override" at all.
   const heads = await db.select().from(s.tickets).orderBy(asc(s.tickets.issuedAt), asc(s.tickets.id));
   const lines = await db.select().from(s.ticketLines).orderBy(asc(s.ticketLines.lineNo));
   const h = await readHistories(db, "ticket");
@@ -114,7 +114,7 @@ export async function readBills(db: Reader, sinceDays: number, pre?: UserNames):
   // Lines for the window's bills only. Every other reader here loads a whole table because the
   // whole table is what a screen lists; bill lines are the one collection that grows with every
   // sale forever, so a week on screen must not drag years of them through memory. The primary
-  // key (bill_no, line_no) indexes the leading column, so this is an index read — and with no
+  // key (bill_no, line_no) indexes the leading column, so this is an index read - and with no
   // heads there is nothing to ask for, which is just as well: an empty `in ()` is not SQL.
   if (heads.length === 0) return [];
   const lines = await db.select().from(s.billLines).where(inArray(s.billLines.billNo, heads.map((h) => h.no))).orderBy(asc(s.billLines.lineNo));
@@ -126,7 +126,7 @@ export async function readBills(db: Reader, sinceDays: number, pre?: UserNames):
 export async function readVendors(db: Reader): Promise<Vendor[]> {
   return (await db.select().from(s.vendors).orderBy(asc(s.vendors.id))).map((v) => ({ id: v.id, n: v.name, gstin: v.gstin, contact: v.contact, ph: v.phone, terms: v.terms, lead: v.leadDays, groups: v.groups, active: v.active }));
 }
-/** RateContract.vendor is the vendor's display NAME on the wire, not its id — join vendors. */
+/** RateContract.vendor is the vendor's display NAME on the wire, not its id - join vendors. */
 export async function readContracts(db: Reader): Promise<RateContract[]> {
   const rows = await db.select({
     id: s.rateContracts.id, vendorName: s.vendors.name, itemKey: s.rateContracts.itemKey, rate: s.rateContracts.rate,
@@ -140,7 +140,7 @@ export async function readContracts(db: Reader): Promise<RateContract[]> {
  * The pair is returned together rather than fetched by two exported readers, because the second
  * read would be a second snapshot of a table the first has already left behind: a ticket raised
  * between them would arrive in `tickets` with no entry in `owners`, and `scope()` cuts on
- * `owners` — so the counter that had just raised it would not see it until the next refetch.
+ * `owners` - so the counter that had just raised it would not see it until the next refetch.
  *
  * `owners` maps ticket id to the **user id** that raised it. `SupportTicket.by` on the wire is a
  * display name and two people can share one, so the scope cannot cut on it; it has to cut on an
@@ -184,7 +184,7 @@ export async function readSales(db: Reader, days: number): Promise<{ sales: numb
 }
 
 // ---- adjustments
-/** The register of write-offs and count-ups, newest first — heads and every line in two
+/** The register of write-offs and count-ups, newest first - heads and every line in two
  *  queries, the shape every other document reader here uses. `loc` is a `StockLoc` rather than
  *  a `LocKey`: the rejected-goods shelf is a shelf that gets corrected, and it is the one
  *  location an adjustment can name that no operator works at. */

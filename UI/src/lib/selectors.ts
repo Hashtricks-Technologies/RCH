@@ -12,7 +12,7 @@ import type {
 import { U, isToday } from "./fmt";
 
 export interface StockShape {
-  /** Quarantine included — the store keeper's screen reports the rejected-goods shelf. Every
+  /** Quarantine included - the store keeper's screen reports the rejected-goods shelf. Every
    *  reader below still takes a `LocKey`: stock is shown there, never moved from there. */
   stock: Record<StockLoc, Record<string, number>>;
   rsv: Record<string, number>;
@@ -43,7 +43,7 @@ export function availOf(s: StockOnly, l: LocKey, it: string): Availability {
 export function recipeCost(it: string): number {
   return D.recipeCost(MASTER, it);
 }
-/** What a unit of this item actually costs — from its recipe if it has one. */
+/** What a unit of this item actually costs - from its recipe if it has one. */
 export const costOf = (it: string) => D.costOf(MASTER, it);
 
 /**
@@ -52,13 +52,13 @@ export const costOf = (it: string) => D.costOf(MASTER, it);
  * Written once because three kitchen screens read it and all three used to carry the same
  * three-key literal, so a fourth finished good with a recipe on the master was invisible to
  * the kitchen until somebody remembered to edit all of them. A made-to-order item has a recipe
- * too — it is assembled at the counter, never batched onto the rack — so the type is the test,
+ * too - it is assembled at the counter, never batched onto the rack - so the type is the test,
  * not the presence of a recipe.
  *
  * A **retired** line is out too, and for the same reason every other picker reads
  * `activeItems()`: `IT` carries the whole master now, retired lines included, so that a document
  * raised months ago still has a name to print. A tile for something the hospital has stopped
- * carrying is work the kitchen cannot be asked to do — `POST /batches` reads `loadItems`, which
+ * carrying is work the kitchen cannot be asked to do - `POST /batches` reads `loadItems`, which
  * still filters `active`, and would answer `There is no item <key>.`
  */
 export const madeItems = (): string[] =>
@@ -86,10 +86,10 @@ export const freeToPromise = (
 
 /** Purchase-order statuses that already hold a claim on procurement-list quantity.
  *  createPo() moves a requisition line's `ordered` claim out of the pool the instant
- *  a Draft is created — before it is ever sent to a vendor — so Draft must be counted
+ *  a Draft is created - before it is ever sent to a vendor - so Draft must be counted
  *  here or that claimed quantity is visible nowhere. Named CLAIMED, not LIVE, on
  *  purpose: buyer/Dashboard.tsx and buyer/Vendors.tsx each define their own LIVE
- *  constant meaning "open commitment to a vendor", which correctly excludes Draft —
+ *  constant meaning "open commitment to a vendor", which correctly excludes Draft -
  *  do not merge this with those. */
 const CLAIMED: PoStatus[] = ["Draft", "Ordered", "Partially received"];
 
@@ -113,7 +113,7 @@ export function prqProgress(
       const got = apportion(netReceived(l), l.src);
       return n + l.src.reduce((m, x, i) => m + (x.prq === prqId ? got[i] : 0), 0);
     }, 0), 0));
-  // The same walk again, this time kept back to the line that funded each claim — the identical
+  // The same walk again, this time kept back to the line that funded each claim - the identical
   // `apportion(netReceived(l), l.src)` split `reconcile()` uses, so the two never disagree.
   // Deliberately a second pass rather than a reshaped first one: `received` above is the number
   // every label and every existing test reads, and it stays the sum it has always been.
@@ -129,7 +129,7 @@ export function prqProgress(
     }
   }
 
-  // >= rather than === throughout: intentional float-safety, not a typo —
+  // >= rather than === throughout: intentional float-safety, not a typo -
   // received/ordered can round to a hair over appr and must still count as done.
   const label =
     p.st === "Sent" ? "Awaiting approval"
@@ -147,7 +147,7 @@ export function prqProgress(
 
 /** Approved but not yet on the shelf: what is still pending on the procurement
  *  list, plus the undelivered balance of every live purchase order (M3). A rejected
- *  quantity is part of that balance — it is in quarantine, and the vendor owes it again. */
+ *  quantity is part of that balance - it is in quarantine, and the vendor owes it again. */
 export const onOrder = (
   s: { prq: Requisition[]; po: PurchaseOrder[] }, it: string,
 ) => round3(
@@ -164,7 +164,7 @@ export const onOrder = (
  * `onOrder(s, it)` walks the whole procurement list and every purchase order, so a stock table
  * calling it per row is O(items × orders) on every keystroke in its search box. This builds the
  * answer for the whole catalogue once and a screen reads it off the map; `onOrder` stays for the
- * single-item callers — a duplicate-order guard asking about one line, one row of a report.
+ * single-item callers - a duplicate-order guard asking about one line, one row of a report.
  *
  * The two halves are accumulated separately, per order, and added only at the end, in the same
  * order and with the same rounding `onOrder` uses: float addition is not associative, and the
@@ -191,7 +191,7 @@ export function onOrderIndex(s: { prq: Requisition[]; po: PurchaseOrder[] }): Ma
 
 /** The other half of the M3 duplicate-order guard: quantity asked on a
  *  requisition still awaiting a procurement decision (status "Sent").
- *  onOrder() deliberately excludes this — it reports only what has actually
+ *  onOrder() deliberately excludes this - it reports only what has actually
  *  been approved, which is exactly the narrower meaning prqProgress() and
  *  the stock ledger need. But a requisition that has not even been decided
  *  on yet is the highest-risk window for a duplicate ask (nothing has been
@@ -220,23 +220,23 @@ export function prqDecision(p: DatedDoc<Requisition>): PrqDecision | null {
   if (p.st === "Sent") return null;
   const entry = p.hist.findLastIndex((h) => h.s === p.st);
   const h = p.hist[entry];
-  return { st: p.st, by: p.apprBy ?? h?.who ?? "—", note: (p.apprNote ?? "").trim(), at: h?.t ?? "", iso: h?.iso ?? "", entry };
+  return { st: p.st, by: p.apprBy ?? h?.who ?? "-", note: (p.apprNote ?? "").trim(), at: h?.t ?? "", iso: h?.iso ?? "", entry };
 }
 
 /** The banner tone for each way a requisition can be decided, on the `Alert` kit's scale. */
 export const DECISION_TONE = { Declined: "c", "Partially approved": "w", Approved: "g" } as const;
 
-/** The decision as one sentence, reason included — the store keeper's panel, the buyer's panel
+/** The decision as one sentence, reason included - the store keeper's panel, the buyer's panel
  *  and the store dashboard all print this one. A direct add was never asked for, so it was added
  *  rather than approved. */
 export function decisionSentence(p: Requisition, d: PrqDecision): string {
   const did = d.st === "Declined" ? `declined ${p.id}`
     : d.st === "Partially approved" ? `approved part of ${p.id}`
       : addedByProcurement(p) ? `added ${p.id} to the procurement list` : `approved ${p.id} in full`;
-  return `${d.by} ${did} at ${d.at} — ${d.note || "No note was left with the decision."}`;
+  return `${d.by} ${did} at ${d.at} - ${d.note || "No note was left with the decision."}`;
 }
 
-/** Today's decisions that leave the store keeper short — declined, or approved in part — newest
+/** Today's decisions that leave the store keeper short - declined, or approved in part - newest
  *  first. Today on the decision's own instant, in IST, not on when the requisition was raised. */
 export const shortDecisionsToday = (s: { prq: DatedDoc<Requisition>[] }) =>
   s.prq
@@ -251,7 +251,7 @@ export interface PoolLine {
   asked: number; pending: number; by: string; at: string;
 }
 
-/** Approved requisition lines not yet claimed by a purchase order. Derived —
+/** Approved requisition lines not yet claimed by a purchase order. Derived -
  *  there is no stored "procurement list" to keep in sync. */
 export const procurementList = (s: { prq: Requisition[] }): PoolLine[] =>
   s.prq
@@ -269,13 +269,13 @@ export const procurementList = (s: { prq: Requisition[] }): PoolLine[] =>
  *  `procurement.test.ts` already import it from here. */
 export const poValue = (o: PurchaseOrder) => D.poValue(o.lines);
 
-/** Handed over but not yet confirmed — owned by neither location (M8). */
+/** Handed over but not yet confirmed - owned by neither location (M8). */
 export const inTransit = (s: { tkt: Ticket[] }, it: string) =>
   s.tkt
     .filter((t) => t.st === "Collected")
     .reduce((n, t) => n + t.lines.filter((l) => l.it === it).reduce((q, l) => q + l.qty, 0), 0);
 
-/** The same figure for every item at once — see `onOrderIndex` above for why a table wants the
+/** The same figure for every item at once - see `onOrderIndex` above for why a table wants the
  *  map and a single guard still wants the function. Summed per ticket first, then into the
  *  running total, so the two answers are identical and not merely close. */
 export function inTransitIndex(s: { tkt: Ticket[] }): Map<string, number> {
@@ -334,7 +334,7 @@ export const canReceiveTicket = (st: TktStatus) => D.canTransition(D.TICKET_TRAN
 export const canDispatch = (st: PordStatus) => D.canTransition(D.PROD_ORDER_TRANSITIONS, st, "Dispatched");
 
 /**
- * Whether the board may move an order from one word to another — the same table the server
+ * Whether the board may move an order from one word to another - the same table the server
  * refuses through, so a button the kitchen can see is a press the server will take.
  *
  * The two guards either side of the table are `setStatus`'s own, in the same order it applies
@@ -350,21 +350,21 @@ export const canMoveOrder = (st: PordStatus, to: PordStatus) =>
 /** Whether a ticket can still be withdrawn: only one nobody has collected against. */
 export const canCancelTicket = (st: TktStatus) => D.canTransition(D.TICKET_TRANSITIONS, st, "Cancelled");
 
-/** Whether a draft may still go out to its vendor — one table, two consumers. */
+/** Whether a draft may still go out to its vendor - one table, two consumers. */
 export const canSendPo = (st: PoStatus) => D.canTransition(D.PO_TRANSITIONS, st, "Ordered");
 /**
  * Whether an order may still be cancelled. `Ordered -> Cancelled` is a real edge in the table,
- * but the endpoint refuses it outright once anything has arrived — with its own sentence telling
- * the buyer to close it short — so the button has to ask both questions, in that order.
+ * but the endpoint refuses it outright once anything has arrived - with its own sentence telling
+ * the buyer to close it short - so the button has to ask both questions, in that order.
  */
 export const canCancelPo = (st: PoStatus, anyReceived: boolean) =>
   !anyReceived && D.canTransition(D.PO_TRANSITIONS, st, "Cancelled");
-/** Closing short is not a transition to a new word — it is the only door out of a part-delivered
+/** Closing short is not a transition to a new word - it is the only door out of a part-delivered
  *  order, and it takes the order to `Received` with the balance handed back. */
 export const canCloseShort = (st: PoStatus) => st === "Partially received";
 
 /**
- * Whether a ticket is still on its way — the measure every "still open" count and every "where
+ * Whether a ticket is still on its way - the measure every "still open" count and every "where
  * is it" sentence reads. Derived from the table rather than written as `!== "Received"`: a
  * cancelled ticket has nowhere left to go either, and counting it as moving put stock on a
  * shelf it never reached.
@@ -372,7 +372,7 @@ export const canCloseShort = (st: PoStatus) => st === "Partially received";
 export const isTicketOpen = (st: TktStatus) => canHandOver(st) || canReceiveTicket(st);
 
 /**
- * Whether the stock on a ticket has actually left the location that raised it — the measure
+ * Whether the stock on a ticket has actually left the location that raised it - the measure
  * the store's ledger counts an issue by. Read from the table rather than written as
  * `!== "Issued"`: a ticket that can still be handed over has moved nothing, and a withdrawn
  * one never will, so counting one put stock off the shelf that is still standing on it and
@@ -382,15 +382,15 @@ export const hasLeft = (st: TktStatus) => st !== "Cancelled" && !canHandOver(st)
 
 // ---- item patch ----
 /**
- * The catalogue a picker may offer — every line on the master that has not been retired.
+ * The catalogue a picker may offer - every line on the master that has not been retired.
  *
  * `IT` deliberately carries retired lines too: a bill, a ticket or a purchase order raised
  * before an item was retired still names it, and the screen showing that document needs the
  * product's name rather than its raw key. So the registry stays complete and every *picker*
- * filters here instead, in one place. `active` absent means active — a line that predates
+ * filters here instead, in one place. `active` absent means active - a line that predates
  * retiring being possible at all.
  */
 export const activeItems = (): string[] => Object.keys(IT).filter((k) => IT[k].active !== false);
-/** Whether this line has been retired — what the master list greys a row on, and the one
+/** Whether this line has been retired - what the master list greys a row on, and the one
  *  condition under which it offers "Restore" instead of "Retire". */
 export const isRetired = (it: string): boolean => IT[it]?.active === false;

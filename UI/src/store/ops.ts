@@ -20,7 +20,7 @@ export interface NewItemInput {
 
 // ---- item patch ----
 /** Exactly what `PatchItemBodySchema` takes: every field optional, nothing defaulted. A field
- *  left out is a field left alone — sending it as `undefined` would be the same thing, but the
+ *  left out is a field left alone - sending it as `undefined` would be the same thing, but the
  *  drawer only ever puts in what the operator actually moved. */
 export interface ItemFieldPatch {
   n?: string; mrp?: number; cost?: number; gst?: number;
@@ -36,7 +36,7 @@ export interface OpsSlice {
   /** Bumped whenever the catalogue gains an item, so lists re-read it. */
   catalogVersion: number;
 
-  /** Customer care for the portal — a screen misbehaving, a number that looks wrong. The two
+  /** Customer care for the portal - a screen misbehaving, a number that looks wrong. The two
    *  that carry a form answer `true` only once the server has taken them, so a refusal lands on
    *  what the operator typed; the two that are a single press answer nothing but a toast. */
   raiseTicket: (p: { topic: TicketTopic; subject: string; body: string; priority: TicketPriority; screen: string }) => Promise<boolean>;
@@ -59,18 +59,18 @@ export interface OpsSlice {
   answerProductRequest: (id: string, st: "Created" | "Declined", note: string, itemKey?: string) => Promise<boolean>;
 
   /** Exactly what `ContractBodySchema` takes, and nothing else. The vendor travels as an **id**
-   *  — "vendor and item exist" is a question only an id can answer — while the register on
+   *  - "vendor and item exist" is a question only an id can answer - while the register on
    *  screen goes on printing the name the contract carries back. */
   addContract: (c: { vendorId: string; it: string; rate: number; from: string; to: string; moq: number }) => Promise<boolean>;
   updateContract: (id: string, patch: { rate?: number; from?: string; to?: string; moq?: number; active?: boolean }) => Promise<boolean>;
   removeContract: (id: string) => Promise<void>;
   contractRate: (vendor: string, it: string) => RateContract | undefined;
 
-  /** The key the server chose, or null — the drawers need it to link a product request. */
+  /** The key the server chose, or null - the drawers need it to link a product request. */
   createItem: (input: NewItemInput, loc: LocKey, opening: number) => Promise<string | null>;
   // ---- item patch ----
   /** An existing line on the master, edited or retired. Which of the eight fields the caller's
-   *  own role may move is `ITEM_FIELD_ROLES` (`@rch/domain`) — the drawer disables the boxes it
+   *  own role may move is `ITEM_FIELD_ROLES` (`@rch/domain`) - the drawer disables the boxes it
    *  answers `false` for and the server refuses them in the operator's own words, so the same
    *  table drives the form and the refusal. */
   updateItem: (it: string, patch: ItemFieldPatch) => Promise<boolean>;
@@ -90,14 +90,14 @@ export interface OpsSlice {
    * The register behind the non-cash tenders, and the one screen that keeps it.
    *
    * Two reads answer for one table, and both writes name both. `roster` is the till's live list
-   * and lands in the `PATIENTS`/`STAFF`/`DEPTS` registries (`applyRoster`) — not store state,
+   * and lands in the `PATIENTS`/`STAFF`/`DEPTS` registries (`applyRoster`) - not store state,
    * because the payer picker imports those directly. `payers` is the manager's own register,
    * closed accounts included, and *is* store state: the Roster screen has to draw a switched-off
    * row to offer a way to switch it back on, and the till's read can never carry one.
    */
   payers: PayerRecord[];
   /** Fills `payers` for the screen that renders it. A read, so no toast on success and no
-   *  refetch of its own — and `null`-free, because an empty register and a failed read look the
+   *  refetch of its own - and `null`-free, because an empty register and a failed read look the
    *  same on this screen: a table with an empty state and a toast beside it. */
   loadPayers: () => Promise<void>;
   /** Both carry a form, so both answer `true` only once the server has taken it and a refusal
@@ -107,16 +107,16 @@ export interface OpsSlice {
   // ---- adjustments
   /** A write-off or a count-up, as a document: some lines down, some up, one reason over the
    *  lot. Answers `true` only once the server has taken it, so a refusal leaves the form with
-   *  what the operator typed still on it. Every rule — what folds, what is free to write off,
-   *  which shelves this role may touch — is the server's; nothing is decided here. */
+   *  what the operator typed still on it. Every rule - what folds, what is free to write off,
+   *  which shelves this role may touch - is the server's; nothing is decided here. */
   createAdjustment: (body: { loc: StockLoc; reason: AdjustReason; note: string; lines: { it: string; qty: number }[] }) => Promise<boolean>;
 }
 
 /** Every action in this slice is the server's now: post the body, repeat the sentence that came
- *  back, refetch what the write named. Nothing here decides anything — the support desk's
+ *  back, refetch what the write named. Nothing here decides anything - the support desk's
  *  status words come from `@rch/domain`'s table and its refusals are the server's own. */
 const fail = (get: Get, e: unknown, what: string): false => {
-  get().notify(e instanceof ApiError ? e.message : `Could not ${what} — check the connection and try again.`);
+  get().notify(e instanceof ApiError ? e.message : `Could not ${what} - check the connection and try again.`);
   return false;
 };
 
@@ -131,7 +131,7 @@ export const createOpsSlice = (get: Get): OpsSlice => ({
   /**
    * The support desk (POST /support/tickets and its three `:id` doors). The subject rule, the
    * status a reply lands the ticket on, which words a person may set and when a rating is
-   * taken are all the server's, read from `@rch/domain`'s `support.ts` — nothing is decided
+   * taken are all the server's, read from `@rch/domain`'s `support.ts` - nothing is decided
    * here and no sentence is written here. Every one of the four names `changed: ["tickets"]`,
    * which has its own narrow reader, so a reply costs one GET rather than a whole snapshot.
    */
@@ -176,7 +176,7 @@ export const createOpsSlice = (get: Get): OpsSlice => ({
   deskTickets: [],
   loadDeskTickets: async () => {
     try { applyDeskTickets(await call(routes.deskTickets)); }
-    catch (e) { get().notify(e instanceof ApiError ? e.message : "Could not read the support tickets — check the connection and try again."); }
+    catch (e) { get().notify(e instanceof ApiError ? e.message : "Could not read the support tickets - check the connection and try again."); }
   },
   replyAsDesk: async (id, body, st) => {
     try {
@@ -242,7 +242,7 @@ export const createOpsSlice = (get: Get): OpsSlice => ({
   },
   // The same window test the server prices an order with (`purchaseOrdersRepo.activeContractRates`):
   // `from`/`to` here are DD-MMM-YYYY display strings, so they go through `toInputDate` before
-  // `contractInWindow` compares them as ISO dates against today's, in the hospital's calendar —
+  // `contractInWindow` compares them as ISO dates against today's, in the hospital's calendar -
   // a lapsed-but-still-`active` contract must not preview a rate the order will not get.
   contractRate: (vendor, it) => {
     const today = istDate(new Date());
@@ -253,7 +253,7 @@ export const createOpsSlice = (get: Get): OpsSlice => ({
 
   /** The catalogue is a module-level registry every screen reads directly, so nothing is
    *  written here: `changed` names "items" and `refetch`'s reader replaces its contents in
-   *  place, bumping `catalogVersion` — which is what tells React the lists moved. */
+   *  place, bumping `catalogVersion` - which is what tells React the lists moved. */
   createItem: async (input, loc, opening) => {
     try {
       const r = await call(routes.createItem, {
@@ -273,7 +273,7 @@ export const createOpsSlice = (get: Get): OpsSlice => ({
   // ---- item patch ----
   /** The same registry, the other way round: `changed` names "items", `refetch`'s narrow reader
    *  replaces its contents in place and bumps `catalogVersion`, and the drawer keeps whatever
-   *  was typed when the server refuses. Nothing is decided here — which fields this role owns,
+   *  was typed when the server refuses. Nothing is decided here - which fields this role owns,
    *  the MRP floor and whether a line is clear enough to retire are all the server's. */
   updateItem: async (it, patch) => {
     try {
@@ -286,7 +286,7 @@ export const createOpsSlice = (get: Get): OpsSlice => ({
 
   /**
    * Shop to shop is the server's from Phase 3. Each of the four posts its body, repeats the
-   * sentence that came back and refetches what the write named — the cover check, the
+   * sentence that came back and refetches what the write named - the cover check, the
    * outlet-to-outlet rule and the ticket's number are all decided there, not here.
    */
   transferToOutlet: async (from, to, it, qty) => {
@@ -296,7 +296,7 @@ export const createOpsSlice = (get: Get): OpsSlice => ({
       await refetch(r.changed, r.message);
       return true;
     } catch (e) {
-      get().notify(e instanceof ApiError ? e.message : "Could not send the transfer — check the connection and try again.");
+      get().notify(e instanceof ApiError ? e.message : "Could not send the transfer - check the connection and try again.");
       return false;
     }
   },
@@ -308,7 +308,7 @@ export const createOpsSlice = (get: Get): OpsSlice => ({
       await refetch(r.changed, r.message);
       return true;
     } catch (e) {
-      get().notify(e instanceof ApiError ? e.message : "Could not send the ask — check the connection and try again.");
+      get().notify(e instanceof ApiError ? e.message : "Could not send the ask - check the connection and try again.");
       return false;
     }
   },
@@ -322,7 +322,7 @@ export const createOpsSlice = (get: Get): OpsSlice => ({
       await refetch(r.changed, r.message);
       return true;
     } catch (e) {
-      get().notify(e instanceof ApiError ? e.message : "Could not answer the ask — check the connection and try again.");
+      get().notify(e instanceof ApiError ? e.message : "Could not answer the ask - check the connection and try again.");
       return false;
     }
   },
@@ -334,21 +334,21 @@ export const createOpsSlice = (get: Get): OpsSlice => ({
       await refetch(r.changed, r.message);
       return true;
     } catch (e) {
-      get().notify(e instanceof ApiError ? e.message : "Could not decline the ask — check the connection and try again.");
+      get().notify(e instanceof ApiError ? e.message : "Could not decline the ask - check the connection and try again.");
       return false;
     }
   },
 
   // ---- payers ----
-  // Both post the body as typed — trimming, the "already on the roster" rule and the sentence
-  // that comes back are the server's — and refetch the two slices they name. Each has its own
+  // Both post the body as typed - trimming, the "already on the roster" rule and the sentence
+  // that comes back are the server's - and refetch the two slices they name. Each has its own
   // narrow reader, so a rename costs two GETs rather than a whole snapshot.
   loadPayers: async () => {
     // The same reader `refetch`'s "payers" entry uses, called directly rather than through
-    // `refetch`: this is a first load, and `refetch`'s failure sentence ("Saved — but the screen
+    // `refetch`: this is a first load, and `refetch`'s failure sentence ("Saved - but the screen
     // could not be refreshed") is about a write that already landed.
     try { applyPayers(await call(routes.payers)); }
-    catch (e) { get().notify(e instanceof ApiError ? e.message : "Could not read the payer register — check the connection and try again."); }
+    catch (e) { get().notify(e instanceof ApiError ? e.message : "Could not read the payer register - check the connection and try again."); }
   },
   addPayer: async (body) => {
     try {

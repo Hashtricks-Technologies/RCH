@@ -36,7 +36,7 @@ const patch = async (user: string, url: string, payload?: Record<string, unknown
   return app.inject(opts);
 };
 /** The till's read: live payers only, split into the three lists a payer picker offers. `u2` is
- *  the outlet manager, the one role that keeps the register — and one of the two `scopeRoster`
+ *  the outlet manager, the one role that keeps the register - and one of the two `scopeRoster`
  *  lets read it at all. */
 const roster = async (user = "u2") =>
   (await app.inject({ method: "GET", url: "/api/v1/roster", headers: await authHeaders(app, user) })).json();
@@ -73,7 +73,7 @@ describe("POST /payers", () => {
     const r = await post("u2", "/payers", { kind: "patient", id: "IP-7002", name: "   " });
     expect(r.statusCode).toBe(422);
     expect(r.json().error.message).toBe("Give the patient a name before saving");
-    // And a blank id, which is the same kind of nothing — the hospital's number, not ours.
+    // And a blank id, which is the same kind of nothing - the hospital's number, not ours.
     expect((await post("u2", "/payers", { kind: "dept", id: " ", name: "Nowhere" })).json().error.message)
       .toBe("Give the department an id before saving");
   });
@@ -83,7 +83,7 @@ describe("POST /payers", () => {
     const again = await post("u2", "/payers", { kind: "staff", id: "E7100", name: "Twice" });
     expect(again.statusCode).toBe(422);
     expect(again.json().error.message).toBe("E7100 is already on the staff member roster");
-    // The three rosters are numbered independently — a payroll number may read like a cost
+    // The three rosters are numbered independently - a payroll number may read like a cost
     // centre, and only the (kind, id) pair is the key.
     expect((await post("u2", "/payers", { kind: "dept", id: "E7100", name: "A department that shares the number" })).statusCode).toBe(200);
   });
@@ -111,7 +111,7 @@ describe("PATCH /payers/:kind/:id", () => {
 
     const off = await patch("u2", "/payers/patient/IP-7010", { active: false });
     expect(off.json().result.active).toBe(false);
-    expect(off.json().message).toBe("Moved Ward 2 deactivated — bills already posted to them stay, new ones cannot");
+    expect(off.json().message).toBe("Moved Ward 2 deactivated - bills already posted to them stay, new ones cannot");
 
     const on = await patch("u2", "/payers/patient/IP-7010", { active: true });
     expect(on.json().message).toBe("Moved Ward 2 is active again and can be billed to");
@@ -119,7 +119,7 @@ describe("PATCH /payers/:kind/:id", () => {
     expect((await roster()).patients.map((x: { id: string }) => x.id)).toContain("IP-7010");
 
     // And it is still on the manager's own read while it is switched off, which is the whole
-    // reason that read exists — a payer nobody can see is a payer nobody can reopen.
+    // reason that read exists - a payer nobody can see is a payer nobody can reopen.
     await patch("u2", "/payers/patient/IP-7010", { active: false });
     expect((await roster()).patients.map((x: { id: string }) => x.id)).not.toContain("IP-7010");
     expect((await register()).json()).toContainEqual({ kind: "patient", id: "IP-7010", name: "Moved Ward 2", active: false });
@@ -129,7 +129,7 @@ describe("PATCH /payers/:kind/:id", () => {
     await post("u2", "/payers", { kind: "staff", id: "E7020", name: "Nothing To Change" });
     expect((await patch("u2", "/payers/staff/E7020", {})).json().error.message).toBe("Nothing to change on E7020");
 
-    // `PAYER_LABEL` is one list (lib/wire.ts) — the register says "staff member" because the
+    // `PAYER_LABEL` is one list (lib/wire.ts) - the register says "staff member" because the
     // till says "staff member" when a bill names a payer the roster has never heard of.
     const gone = await patch("u2", "/payers/staff/E9999", { name: "Nobody" });
     expect(gone.statusCode).toBe(404);
@@ -169,7 +169,7 @@ describe("GET /payers and GET /roster", () => {
     const staff = all.filter((x) => x.kind === "staff").map((x) => x.name);
     expect(staff).toEqual([...staff].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)));
 
-    // The whole register is the manager's alone — a closed account is not a counter's business,
+    // The whole register is the manager's alone - a closed account is not a counter's business,
     // and the three roles that never open a payer picker have no use for either read.
     for (const u of ["u1", "u3", "u4", "u5"]) expect((await register(u)).statusCode).toBe(404);
   });
@@ -182,7 +182,7 @@ describe("GET /payers and GET /roster", () => {
       expect((await post(u, "/payers", { kind: "staff", id: "E8000", name: "Nope" })).statusCode).toBe(404);
       expect((await patch(u, "/payers/staff/E7050", { name: "Nope" })).statusCode).toBe(404);
     }
-    // The row is untouched by four refused patches — a 404 is the door not existing, not a
+    // The row is untouched by four refused patches - a 404 is the door not existing, not a
     // write that half happened.
     expect((await register()).json()).toContainEqual({ kind: "staff", id: "E7050", name: "Role Gate", active: true });
 

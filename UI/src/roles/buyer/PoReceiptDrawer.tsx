@@ -28,7 +28,7 @@ function PoReceiptDrawer({ id }: DrawerProps) {
   const today = istDate(new Date());
 
   const [doc, setDoc] = useState<ReceiptDoc>({ dc: "", invoice: "", invDate: "" });
-  // recv defaults to the outstanding balance — this is one instalment, not the full order.
+  // recv defaults to the outstanding balance - this is one instalment, not the full order.
   // Whatever is rejected off it goes to quarantine rather than onto the shelf, so it is a
   // number the store keeper types here, not a placeholder.
   const [lines, setLines] = useState<ReceiptLine[]>(() =>
@@ -99,29 +99,29 @@ function PoReceiptDrawer({ id }: DrawerProps) {
    * What the screen already says in red, said once more where it can stop the write.
    *
    * Answers the sentence the store keeper should read, or `null` when there is nothing to say.
-   * Every one of these is the server's refusal too — pressing anyway cost a round trip and an
+   * Every one of these is the server's refusal too - pressing anyway cost a round trip and an
    * error toast for something the drawer could already see.
    */
   const refusal = (): string | null => {
-    if (!doc.dc.trim()) return "Nothing books in without the delivery note — record its number first.";
+    if (!doc.dc.trim()) return "Nothing books in without the delivery note - record its number first.";
     if (lines.every((l) => l.recv <= 0)) {
       return "Nothing was received on any line. Enter what actually arrived, or close the order short.";
     }
     const named = (i: number) => IT[po.lines[i].it]?.n ?? po.lines[i].it;
     const over = lines.findIndex((l) => l.rejected > l.recv);
-    if (over >= 0) return `${named(over)} — more was rejected than arrived on that line.`;
+    if (over >= 0) return `${named(over)} - more was rejected than arrived on that line.`;
     const dated = lines.findIndex((l) => Boolean(l.exp && l.mfg && l.exp <= l.mfg));
-    if (dated >= 0) return `${named(dated)} — the expiry falls on or before the manufacture date.`;
+    if (dated >= 0) return `${named(dated)} - the expiry falls on or before the manufacture date.`;
     return null;
   };
 
-  /** Both doors carry a form — a delivery note and every batch on one, a reason on the other —
+  /** Both doors carry a form - a delivery note and every batch on one, a reason on the other -
    *  so each waits for the server and closes only when it has taken it. A refused receipt
    *  leaves every batch number and date exactly where the store keeper typed it. */
   const book = async () => {
     if (busy) return;
     // Refused here rather than by greying the button out. These four read boxes that commit on
-    // blur, and a disabled button never receives the press that would blur one — so a line the
+    // blur, and a disabled button never receives the press that would blur one - so a line the
     // store keeper had just corrected could not re-enable the button its old value disabled.
     // A refusal in this app is a sentence saying what was refused and why, not a dead control.
     const no = refusal();
@@ -136,7 +136,7 @@ function PoReceiptDrawer({ id }: DrawerProps) {
    * Take whatever is being typed before the press is read.
    *
    * `mousedown` runs before `click` and before focus moves, so blurring here commits the box the
-   * store keeper is still standing in — otherwise typing a quantity and going straight for the
+   * store keeper is still standing in - otherwise typing a quantity and going straight for the
    * button books the value the line held before they touched it. The refusals above are the net
    * underneath this, not a substitute for it.
    */
@@ -159,7 +159,7 @@ function PoReceiptDrawer({ id }: DrawerProps) {
   ));
   const value = po.lines.reduce((t, l, i) => t + good[i] * l.rate, 0);
   /** What earlier instalments actually took in. A quantity sent to quarantine is still owed, so
-   *  it is not counted here — which is also how the server reads the line (`netReceived`). */
+   *  it is not counted here - which is also how the server reads the line (`netReceived`). */
   const already = po.lines.map((l) => netReceived(l));
   const balance = po.lines.map((l, i) => ({
     it: l.it,
@@ -258,15 +258,15 @@ function PoReceiptDrawer({ id }: DrawerProps) {
       <Section title="Delivery" sub="Record the vendor's paperwork before booking anything in.">
         <Alert tone="i" label="GOODS RECEIPT">
           Nothing enters stock without a batch behind it. Goods often arrive ahead of the invoice, so only the
-          delivery note is required here — add the invoice once it turns up.
+          delivery note is required here - add the invoice once it turns up.
         </Alert>
         <FormRow cols="f3">
-          <Field label="Delivery note" hint={!doc.dc.trim() ? "Required — nothing books in without it." : undefined}>
+          <Field label="Delivery note" hint={!doc.dc.trim() ? "Required - nothing books in without it." : undefined}>
             <input value={doc.dc} aria-label="Delivery note number" placeholder="DC number"
               onChange={(e) => setDoc((d) => ({ ...d, dc: e.target.value }))} />
           </Field>
           <Field label="Invoice no.">
-            <input value={doc.invoice} placeholder="Optional — add once it arrives"
+            <input value={doc.invoice} placeholder="Optional - add once it arrives"
               onChange={(e) => setDoc((d) => ({ ...d, invoice: e.target.value }))} />
           </Field>
           <Field label="Invoice date">
@@ -314,7 +314,7 @@ function PoReceiptDrawer({ id }: DrawerProps) {
       </Section>
 
       {closingShort && (
-        <Section title="Close this order short" sub="A reason is required — the undelivered balance returns to the procurement list.">
+        <Section title="Close this order short" sub="A reason is required - the undelivered balance returns to the procurement list.">
           <Field label="Reason">
             <textarea rows={2} value={reason} onChange={(e) => setReason(e.target.value)}
               placeholder="Why the balance is not coming…" />

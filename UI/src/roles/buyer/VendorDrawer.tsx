@@ -175,7 +175,7 @@ function VendorDrawer({ id }: DrawerProps) {
 
       {!isNew && !existing!.active && (
         <Alert tone="c" label="INACTIVE">
-          This vendor cannot be picked on a new draft order. Reactivate it to make it available again —
+          This vendor cannot be picked on a new draft order. Reactivate it to make it available again -
           orders already raised on it keep its name either way.
         </Alert>
       )}

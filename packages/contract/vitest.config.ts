@@ -8,7 +8,7 @@ export default defineConfig({
     environment: "node",
     include: ["src/**/*.test.ts"],
     env: { TZ: "UTC" },
-    // Almost everything here is declarative — Zod schemas, the route manifest, the fixtures —
+    // Almost everything here is declarative - Zod schemas, the route manifest, the fixtures -
     // so "covered" means "reached by a parse or an assertion", which is exactly what this
     // package's suites do. It measures statements 97.24, functions 66.66, lines 97.14 today.
     //

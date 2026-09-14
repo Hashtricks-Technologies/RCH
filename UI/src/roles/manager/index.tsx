@@ -9,8 +9,8 @@ import Roster from "./Roster";
 import "./ApprovalDrawer";
 // ---- item patch ----
 import "./ItemDrawer";
-// ---- bill void: the manager reads a bill in the same drawer the counter does — one bill, one
-// way of reading it — and the drawer grows the Void button for the manager alone.
+// ---- bill void: the manager reads a bill in the same drawer the counter does - one bill, one
+// way of reading it - and the drawer grows the Void button for the manager alone.
 import Bills from "./Bills";
 import "../counter/BillDrawer";
 // ---- adjustments: the "adjstock" drawer is shared with the kitchen, so it is registered

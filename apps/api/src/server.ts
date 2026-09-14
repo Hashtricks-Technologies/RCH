@@ -12,7 +12,7 @@ async function main() {
     app.readiness.setDraining();
     // Hold the door open while the load balancer stops sending here. /readyz is already 503
     // (setDraining, above); what has to happen next is that this pod leaves the Service's
-    // Endpoints — the readiness probe runs every 5s with failureThreshold 3, so 15s — and that
+    // Endpoints - the readiness probe runs every 5s with failureThreshold 3, so 15s - and that
     // the AWS Load Balancer Controller then reconciles that removal into the target group. Those
     // two are what this wait is buying. The ALB's own health check (every 15s, on /readyz) is the
     // backstop behind them, not the thing driving the timing. Five seconds was shorter than the
@@ -24,7 +24,7 @@ async function main() {
     // (alb.ingress.kubernetes.io/target-group-attributes), and that delay may never outlast this
     // wait. A pod that stops accepting while the target group is still draining connections into
     // it cuts exactly the requests the delay exists to let finish. **deregistration delay ≤
-    // pre-drain wait** — move one and move the other.
+    // pre-drain wait** - move one and move the other.
     //
     // The arithmetic, all of it: 30s wait + the 25s drain timer below = 55s, inside the 60s
     // terminationGracePeriodSeconds set in deploy/chart/rch/templates/api-deployment.yaml, after

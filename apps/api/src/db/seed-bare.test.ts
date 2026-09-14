@@ -9,8 +9,8 @@ import { seedDatabase } from "./seed.js";
 import * as s from "./schema/index.js";
 
 /**
- * `--bare --force` over the demo hospital — the exact shape of putting a host that was seeded with
- * demo data back to a clean start — and what is left afterwards: the six locations, the document
+ * `--bare --force` over the demo hospital - the exact shape of putting a host that was seeded with
+ * demo data back to a clean start - and what is left afterwards: the six locations, the document
  * numbering and one admin account, and not a row of anything else.
  */
 let b: TestDb;
@@ -30,7 +30,7 @@ describe("a bare seed", () => {
     expect(await count("locations")).toBe(Object.keys(FX.LOC).length);
   });
 
-  it("leaves every other table empty — no item, recipe, price, stock, payer, vendor or document", async () => {
+  it("leaves every other table empty - no item, recipe, price, stock, payer, vendor or document", async () => {
     const tables = Object.values(s).filter((t) => is(t, PgTable)).map((t) => getTableName(t)).filter((n) => !KEPT.includes(n));
     // Every table the schema has, so a table added later is covered without anyone listing it.
     expect(tables.length).toBeGreaterThan(30);
@@ -39,7 +39,7 @@ describe("a bare seed", () => {
     expect(nonEmpty).toEqual([]);
   });
 
-  it("keeps one account — the admin — and makes it choose its own password first", async () => {
+  it("keeps one account - the admin - and makes it choose its own password first", async () => {
     const rows = await b.db.select().from(s.users);
     expect(rows.map((u) => [u.empNo, u.name, u.admin, u.active, u.mustChangePassword])).toEqual([["RC-0001", "System Administrator", true, true, true]]);
   });

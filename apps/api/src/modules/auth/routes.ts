@@ -6,7 +6,7 @@ import { UnauthenticatedError } from "../../lib/errors.js";
 import { createAuthService } from "./service.js";
 import { clearRefreshCookie, REFRESH_COOKIE, setRefreshCookie } from "./cookies.js";
 
-/** Per client IP, per pod, like the login limit — but kept apart from it and far looser. The
+/** Per client IP, per pod, like the login limit - but kept apart from it and far looser. The
  *  sign-in screen reads the picker once each time it is opened, and a hospital's counters can
  *  all sit behind one address, so a shift change is many honest reads at once; what this stops
  *  is a script walking the page in a loop. The global limit still applies on top. */

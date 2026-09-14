@@ -54,8 +54,8 @@ export default function Dashboard() {
   };
 
   const outlets = OUTLETS.map((loc) => {
-    // ---- bill void: a voided bill was taken back — the money was never kept and the stock went
-    // back on the shelf — so it counts towards neither the outlet's bill count nor its takings.
+    // ---- bill void: a voided bill was taken back - the money was never kept and the stock went
+    // back on the shelf - so it counts towards neither the outlet's bill count nor its takings.
     // The server leaves it out of the `sales` columns below for the same reason (`readSales`).
     const bills = s.bills.filter((b) => b.loc === loc && !b.voided);
     const sales = sum(bills, (b) => b.tot);
@@ -117,7 +117,7 @@ export default function Dashboard() {
       kind: "Bills" as const,
       t: b.t,
       iso: b.iso,
-      // ---- bill void: the feed is what happened, so a voided bill stays on it — and says so,
+      // ---- bill void: the feed is what happened, so a voided bill stays on it - and says so,
       // because "Bill CF/1188 · ₹110.00 · Cash" on its own reads as money the hospital kept.
       what: `Bill ${b.no} · ${money(b.tot)} · ${b.pay}${b.voided ? " · VOIDED" : ""}`,
       where: LOC[b.loc].n,
@@ -129,18 +129,18 @@ export default function Dashboard() {
         kind: "Requests" as const,
         t: h.t,
         iso: h.iso,
-        what: `${r.id} — ${h.s} · ${unitTotal(r.lines)}`,
+        what: `${r.id} - ${h.s} · ${unitTotal(r.lines)}`,
         where: LOC[r.from].n,
         who: h.who,
       }))),
     ...transfers.map((t) => ({
       key: "t" + t.id,
       kind: "Shop transfers" as const,
-      // A movement ticket has no `at` of its own, only a trail — so the last thing that
+      // A movement ticket has no `at` of its own, only a trail - so the last thing that
       // happened to it is when it happened, and the column has always said so with a dash.
-      t: "—",
+      t: "-",
       iso: t.hist[t.hist.length - 1]?.iso ?? "",
-      what: `${t.id} — ${t.st.toLowerCase()} · ${unitTotal(t.lines)}`,
+      what: `${t.id} - ${t.st.toLowerCase()} · ${unitTotal(t.lines)}`,
       where: `${LOC[t.from].n} to ${LOC[t.to].n}`,
       who: "Shop to shop",
     })),
@@ -186,7 +186,7 @@ export default function Dashboard() {
           action={<Btn size="xs" variant="gh" onClick={() => nav("/approvals")}>Review now</Btn>}
         >
           <b>{waiting.length}</b> stock request{waiting.length > 1 ? "s are" : " is"} waiting on your approval
-          {urgent > 0 ? <> — <b>{urgent}</b> marked urgent by the counter</> : null}. Nothing moves out of the
+          {urgent > 0 ? <> - <b>{urgent}</b> marked urgent by the counter</> : null}. Nothing moves out of the
           Central Store until you approve the quantities.
         </Alert>
       ) : (
@@ -197,13 +197,13 @@ export default function Dashboard() {
       {offOutlets.length > 0 && (
         <Alert tone="c" label="OFF" action={<Btn size="xs" variant="gh" onClick={() => nav("/avail")}>Product on / off</Btn>}>
           <b>{offAll.n}</b> product{offAll.n > 1 ? "s" : ""} cannot be billed at{" "}
-          {offOutlets.map((r) => r.name).join(", ")} — {why(offAll)}.
+          {offOutlets.map((r) => r.name).join(", ")} - {why(offAll)}.
         </Alert>
       )}
       {moving.length > 0 && (
         <Alert tone="i" label="SHOP TO SHOP" action={<Btn size="xs" variant="gh" onClick={() => nav("/stock")}>See transfers</Btn>}>
           <b>{moving.length}</b> transfer{moving.length > 1 ? "s are" : " is"} moving directly from one shop to another.
-          The goods do not pass through you — this is on record so you know where the stock is.
+          The goods do not pass through you - this is on record so you know where the stock is.
         </Alert>
       )}
 

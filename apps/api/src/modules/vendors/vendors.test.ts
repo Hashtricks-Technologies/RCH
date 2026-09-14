@@ -21,7 +21,7 @@ const patch = async (user: string, url: string, payload?: Record<string, unknown
   const opts: InjectOptions = { method: "PATCH", url: `/api/v1${url}`, headers: await hdr(user), ...(payload === undefined ? {} : { payload }) };
   return app.inject(opts);
 };
-// GET /vendors is Task 4's and does not exist in this worktree — read the snapshot's own slice.
+// GET /vendors is Task 4's and does not exist in this worktree - read the snapshot's own slice.
 const vendorsList = async () => (await app.inject({ method: "GET", url: "/api/v1/snapshot", headers: await authHeaders(app, "u5") })).json().vendors;
 
 describe("POST /vendors", () => {
@@ -38,10 +38,10 @@ describe("POST /vendors", () => {
   it("refuses a vendor with no name, a malformed GSTIN, and a name already on the list", async () => {
     expect((await post("u5", "/vendors", { n: "   " })).json().error.message).toBe("Give the vendor a name before saving");
     expect((await post("u5", "/vendors", { n: "Bad GST Co", gstin: "33AAACA1234" })).json().error.message)
-      .toBe("That is not a GSTIN — 15 characters, like 33AAACA1234F1Z5");
+      .toBe("That is not a GSTIN - 15 characters, like 33AAACA1234F1Z5");
     expect((await post("u5", "/vendors", { n: "aavin dairy depot" })).json().error.message)
       .toBe("aavin dairy depot is already on the vendor list");
-    // and an empty GSTIN is fine — the store has always allowed one
+    // and an empty GSTIN is fine - the store has always allowed one
     expect((await post("u5", "/vendors", { n: "No GST Traders" })).statusCode).toBe(200);
   });
 
@@ -69,7 +69,7 @@ describe("PATCH /vendors/:id", () => {
 
     const off = (await patch("u5", `/vendors/${id}`, { active: false })).json();
     expect(off.result.active).toBe(false);
-    expect(off.message).toBe("Editable Traders deactivated — existing orders keep it, new drafts cannot pick it");
+    expect(off.message).toBe("Editable Traders deactivated - existing orders keep it, new drafts cannot pick it");
     const on = (await patch("u5", `/vendors/${id}`, { active: true })).json();
     expect(on.message).toBe("Editable Traders is active again and can be picked on new orders");
     // The record survives: history has to stay readable on the orders it already carries.
@@ -88,7 +88,7 @@ describe("PATCH /vendors/:id", () => {
     expect(b.result.gstin).toBe("29BBBCA5678G2Z6");
   });
 
-  it("changes only the field it names — a patch of one does not reset the rest", async () => {
+  it("changes only the field it names - a patch of one does not reset the rest", async () => {
     // The trap `PatchVendorBodySchema` is declared field-by-field to avoid: a partial of a
     // defaulted schema parses {} into { lead: 0, groups: [] }, and every edit would have
     // quietly wiped a vendor's lead time and the groups the procurement list suggests from.
@@ -116,7 +116,7 @@ describe("PATCH /vendors/:id", () => {
     expect((await vendorsList()).find((v: { id: string }) => v.id === a).n).toBe("Rename Source");
 
     // Renaming a vendor to a differently-cased spelling of its own current name is not a
-    // collision — the unique index never sees two rows sharing the value, only this one.
+    // collision - the unique index never sees two rows sharing the value, only this one.
     const same = await patch("u5", `/vendors/${b}`, { n: "RENAME TARGET" });
     expect(same.statusCode, same.body).toBe(200);
     expect(same.json().result.n).toBe("RENAME TARGET");

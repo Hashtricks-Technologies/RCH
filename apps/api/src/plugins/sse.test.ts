@@ -99,7 +99,7 @@ describe("GET /events", () => {
 
   it("refuses a stream to someone who still has to change their password", async () => {
     // This route is registered by hand rather than through `mount()`, so it carries its own
-    // role gate — without one it was the single authenticated route a must-change token could
+    // role gate - without one it was the single authenticated route a must-change token could
     // reach, and it carries what every write in the system changed.
     const token = await app.signAccess({ id: "u1", role: "counter", loc: "coffee", mcp: true, admin: false });
     const r = await fetch(base + API_PREFIX + EVENTS_PATH, { headers: { authorization: `Bearer ${token}` } });
@@ -282,7 +282,7 @@ describe("GET /events", () => {
  * A Postgres ErrorResponse, framed the way the server frames one. Written onto a socket the
  * relay then holds open, it is the black-holed connection the reconnect guard exists for: the
  * pod has been told its connection is dead, and cannot finish letting go of it.
- * `pg_terminate_backend` cannot produce that — it closes the socket in the same breath.
+ * `pg_terminate_backend` cannot produce that - it closes the socket in the same breath.
  */
 function pgFatal(code: string, message: string): Buffer {
   const fields = Buffer.from(`SFATAL\0VFATAL\0C${code}\0M${message}\0\0`, "utf8");
@@ -314,8 +314,8 @@ describe("the listener's own connection", () => {
 
   // This one holds the line for a case pg cannot currently reach: `Client.end()` force-destroys
   // the socket once an async error has made the client unqueryable (pg/lib/client.js), so today
-  // a replaced connection always lets go at once. If that ever changes — a graceful `end()` on a
-  // black-holed socket, finishing minutes later — this is the test that catches the second
+  // a replaced connection always lets go at once. If that ever changes - a graceful `end()` on a
+  // black-holed socket, finishing minutes later - this is the test that catches the second
   // listener it would otherwise start.
   it("does not start a second one when a connection it already replaced finally lets go", async () => {
     const upstream = new URL(PG_URL());

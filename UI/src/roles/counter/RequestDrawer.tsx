@@ -55,14 +55,14 @@ function RequestDrawer({ id }: DrawerProps) {
 
       {req.st === "Rejected" && (
         <Alert tone="c" label="REJECTED">
-          The outlet manager rejected this request. Nothing will be issued against it — raise a fresh request if the
+          The outlet manager rejected this request. Nothing will be issued against it - raise a fresh request if the
           counter still needs the stock.
         </Alert>
       )}
       {short.length > 0 && (
         <Alert tone="w" label="SHORT">
           <b>{unitTotal(short)}</b> across {short.length} item{short.length === 1 ? "" : "s"} was not approved
-          {req.apprBy ? ` by ${req.apprBy}` : ""} — {short.map((l) => `${IT[l.it]?.n ?? l.it} ${fq(l.qty, l.it)} ${U(l.it)}`).join(", ")}.
+          {req.apprBy ? ` by ${req.apprBy}` : ""} - {short.map((l) => `${IT[l.it]?.n ?? l.it} ${fq(l.qty, l.it)} ${U(l.it)}`).join(", ")}.
           Only the approved quantity reaches the pick ticket; raise a fresh request for the balance.
         </Alert>
       )}
@@ -86,14 +86,14 @@ function RequestDrawer({ id }: DrawerProps) {
           key: l.it,
           cells: [
             IT[l.it]?.n ?? l.it,
-            <span className="mono">{IT[l.it]?.c ?? "—"}</span>,
+            <span className="mono">{IT[l.it]?.c ?? "-"}</span>,
             fq(l.qty, l.it),
             l.appr > 0
               ? <b style={{ color: l.appr < l.qty ? "var(--warn)" : "var(--good)" }}>{fq(l.appr, l.it)}</b>
-              : <span className="dim">—</span>,
+              : <span className="dim">-</span>,
             (l.short ?? 0) > 0
               ? <b style={{ color: "var(--warn)" }}>{fq(l.short ?? 0, l.it)}</b>
-              : <span className="dim">—</span>,
+              : <span className="dim">-</span>,
             <span className="mini">{U(l.it)}</span>,
           ],
         }))}
@@ -116,7 +116,7 @@ function RequestDrawer({ id }: DrawerProps) {
 
       <p className="mini mtop">
         {open
-          ? "This request can still be cancelled — the store keeper has not issued a ticket against it yet."
+          ? "This request can still be cancelled - the store keeper has not issued a ticket against it yet."
           : "Cancelling is only possible before the store keeper issues a ticket against this request."}
       </p>
     </DrawerFrame>

@@ -1,4 +1,4 @@
-// service.ts: the flow — transaction, lock, rules, write, emit, return. The rules themselves
+// service.ts: the flow - transaction, lock, rules, write, emit, return. The rules themselves
 // (which status may follow which, what a person at a screen may choose, what a reply does to a
 // ticket) are `@rch/domain`'s `support.ts` and are never restated here.
 //
@@ -29,7 +29,7 @@ export type RateTicketBody = z.infer<typeof RateTicketBodySchema>;
 
 export function createSupportService(db: Db) {
   /** Every write below is "own ticket only". A ticket somebody else raised is a 404, not a
-   *  403: it is not that this person may not act on it, it is that it is not theirs to see — the
+   *  403: it is not that this person may not act on it, it is that it is not theirs to see - the
    *  same shape a role's missing module has, and it tells a fisherman nothing. */
   const mine = async (tx: Tx, id: string, sub: string) => {
     const row = await supportRepo.head(tx, id);
@@ -60,14 +60,14 @@ export function createSupportService(db: Db) {
           id, topic: body.topic, subject, priority: body.priority, status: "Open",
           byUser: claims.sub, role: claims.role, loc: claims.loc, screen: body.screen.trim(),
         });
-        // The browser has always taken a ticket with no detail — the Send button is disabled on an
-        // empty subject and nothing else — so a first message is written only if there is one.
+        // The browser has always taken a ticket with no detail - the Send button is disabled on an
+        // empty subject and nothing else - so a first message is written only if there is one.
         const detail = body.body.trim();
         if (detail) await supportRepo.appendMessage(tx, id, "user", me.name, detail);
         const result = (await supportRepo.one(tx, id))!;
         const changed = ["tickets"] as const;
         await emitChanged(tx, changed);
-        return { result, changed: [...changed], message: `${id} raised — the reply will appear on your Support screen` };
+        return { result, changed: [...changed], message: `${id} raised - the reply will appear on your Support screen` };
       });
     },
 
@@ -76,7 +76,7 @@ export function createSupportService(db: Db) {
         const row = await mine(tx, id, claims.sub);
         const text = body.body.trim();
         assertRule(text.length > 0, "Write a reply first");
-        assertRule(mayReply(row.status), `${id} is closed — raise a new ticket if it has come back`);
+        assertRule(mayReply(row.status), `${id} is closed - raise a new ticket if it has come back`);
         const me = await supportRepo.author(tx, claims.sub);
         await supportRepo.appendMessage(tx, id, "user", me.name, text);
         const next = statusAfterReply(row.status);
@@ -95,25 +95,25 @@ export function createSupportService(db: Db) {
       return withTransaction(db, async (tx) => {
         const row = await mine(tx, id, claims.sub);
         assertRule(mayUserSet(body.st),
-          `Only support moves a ticket to ${body.st.toLowerCase()} — you can mark it resolved or close it`);
+          `Only support moves a ticket to ${body.st.toLowerCase()} - you can mark it resolved or close it`);
         assertTransition(SUPPORT_TRANSITIONS, row.status, body.st, id);
         await supportRepo.setStatus(tx, id, body.st);
         const result = (await supportRepo.one(tx, id))!;
         const changed = ["tickets"] as const;
         await emitChanged(tx, changed);
-        return { result, changed: [...changed], message: `${id} — ${body.st.toLowerCase()}` };
+        return { result, changed: [...changed], message: `${id} - ${body.st.toLowerCase()}` };
       });
     },
 
     async rate(claims: AccessClaims, id: string, body: RateTicketBody): Promise<WriteResponse<SupportTicket>> {
       return withTransaction(db, async (tx) => {
         const row = await mine(tx, id, claims.sub);
-        assertRule(mayRate(row.status), `${id} is not finished yet — rate it once support has resolved it`);
+        assertRule(mayRate(row.status), `${id} is not finished yet - rate it once support has resolved it`);
         await supportRepo.setRating(tx, id, body.rating);
         const result = (await supportRepo.one(tx, id))!;
         const changed = ["tickets"] as const;
         await emitChanged(tx, changed);
-        return { result, changed: [...changed], message: `Thank you — ${body.rating} out of 5 recorded against ${id}` };
+        return { result, changed: [...changed], message: `Thank you - ${body.rating} out of 5 recorded against ${id}` };
       });
     },
   };

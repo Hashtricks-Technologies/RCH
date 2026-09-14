@@ -1,4 +1,4 @@
-// shopasks repo.ts: SQL only. No rules, no transaction of its own — service.ts opens the
+// shopasks repo.ts: SQL only. No rules, no transaction of its own - service.ts opens the
 // transaction and passes it in as `tx`.
 import { and, eq, inArray } from "drizzle-orm";
 import type { LocKey, ShopAsk, ShopAskStatus } from "@rch/contract";
@@ -15,7 +15,7 @@ export type ShopAskPatch = { status: ShopAskStatus; grantedQty?: number; ticketI
 
 export const shopAsksRepo = {
   /** Locking read: `.for("update")` on the ask's own row, so one ask cannot be answered (or
-   *  declined) twice — the second caller waits behind this transaction and then reads the
+   *  declined) twice - the second caller waits behind this transaction and then reads the
    *  status the first one committed. */
   async head(tx: Tx, id: string): Promise<ShopAskRow | undefined> {
     const [row] = await tx.select().from(shopAsks).where(eq(shopAsks.id, id)).for("update");
@@ -26,13 +26,13 @@ export const shopAsksRepo = {
     await tx.insert(shopAsks).values(row);
   },
 
-  /** Both `answer` and `decline` land here — a patch names only the columns its transition
+  /** Both `answer` and `decline` land here - a patch names only the columns its transition
    *  touches, so a decline leaves the grant and ticket columns untouched. */
   async setAnswer(tx: Tx, id: string, patch: ShopAskPatch): Promise<void> {
     await tx.update(shopAsks).set({ ...patch, updatedAt: new Date() }).where(eq(shopAsks.id, id));
   },
 
-  /** on_hand at one location, keyed by item — what the answer's cover check reads once the
+  /** on_hand at one location, keyed by item - what the answer's cover check reads once the
    *  balance locks are held. */
   async balancesAt(tx: Tx, loc: string, itemKeys: readonly string[]): Promise<Record<string, number>> {
     if (itemKeys.length === 0) return {};

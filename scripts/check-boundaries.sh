@@ -6,9 +6,9 @@
 # import statements. Runs from the repo root; see package.json's "check:boundaries".
 #
 # These checks are line-oriented: every pattern below is matched with `grep -E` against one
-# line at a time, so a call spread across lines — `db\n  .insert(stockMoves)` — is not caught.
+# line at a time, so a call spread across lines - `db\n  .insert(stockMoves)` - is not caught.
 # And they cannot tell code from prose: a module comment that names a protected table alongside
-# the words "update" or "delete" trips the same grep a real write would, on purpose — the fix
+# the words "update" or "delete" trips the same grep a real write would, on purpose - the fix
 # there is to reword the comment, not to weaken the pattern.
 #
 set -uo pipefail
@@ -28,7 +28,7 @@ fail_with() {
 # 1) Protected tables. stockMoves, stockBalances, sequences, documentHistory,
 #    idempotencyKeys and reservations may be written only from apps/api/src/lib/**,
 #    apps/api/src/db/**, apps/api/src/plugins/idempotency.ts, and test files (elsewhere
-#    they may be imported for reads only — oxlint cannot see call shape, so this is a
+#    they may be imported for reads only - oxlint cannot see call shape, so this is a
 #    grep). `reservations` joined the list with lib/reservations.ts: a reservation is a
 #    promise against a balance, and a module that wrote one itself would skip the lock.
 # ---------------------------------------------------------------------------
@@ -36,12 +36,12 @@ echo "== protected tables: writes stay behind lib/, db/, idempotency.ts =="
 
 allowed_path_re='src/lib/|src/db/|plugins/idempotency\.ts|\.test\.ts'
 
-# The two patterns below used to be literal lists — `insert\(stockMoves\)` and friends — which
+# The two patterns below used to be literal lists - `insert\(stockMoves\)` and friends - which
 # matched exactly the spelling lib/ledger.ts happens to use and nothing else. Every other way of
 # writing the same statement walked straight past the check whose whole job is to stop it:
 # `insert(schema.stockMoves)`, `insert( stockMoves )`, `insert into "stock_moves"`,
-# `merge into stock_moves`. They are now written as a shape — any qualifier chain, any spacing,
-# a quoted identifier, an optional schema prefix — and all six tables take all three verbs,
+# `merge into stock_moves`. They are now written as a shape - any qualifier chain, any spacing,
+# a quoted identifier, an optional schema prefix - and all six tables take all three verbs,
 # because "written only from lib/" is what the rule says and stock_moves is append-only even
 # there. document_history joins update and delete for the same reason: a trail somebody can
 # edit is not a trail.
@@ -72,13 +72,13 @@ fi
 
 # ---------------------------------------------------------------------------
 # 2) The ledger has one door. postMoves() in apps/api/src/lib/ledger.ts is the only
-#    place allowed to insert stock_moves — check 1 above already keeps every insert
+#    place allowed to insert stock_moves - check 1 above already keeps every insert
 #    behind lib/; this additionally proves there is exactly one such call site.
 # ---------------------------------------------------------------------------
 echo "== the ledger has exactly one door =="
 
 # Same shape as check 1's, narrowed to the one table and the one verb, plus the raw-SQL spelling
-# — a `sql` template that writes stock_moves from inside lib/ is exempt from check 1 by path and
+# - a `sql` template that writes stock_moves from inside lib/ is exempt from check 1 by path and
 # would otherwise be a second door this check could not see.
 ledger_orm='insert[[:space:]]*\([[:space:]]*'"$qualifier"'stockMoves[[:space:]]*\)'
 # shellcheck disable=SC2016  # as above: `$` anchors, it does not expand
@@ -103,12 +103,12 @@ for dir in apps/api/src/modules/*/; do
 
   for f in routes.ts service.ts repo.ts; do
     if [ ! -f "${dir}${f}" ]; then
-      fail_with "apps/api/src/modules/$name is missing $f (every module needs routes.ts, service.ts, repo.ts and a *.test.ts — see apps/api/src/modules/_template)"
+      fail_with "apps/api/src/modules/$name is missing $f (every module needs routes.ts, service.ts, repo.ts and a *.test.ts - see apps/api/src/modules/_template)"
     fi
   done
   # shellcheck disable=SC2086
   if ! ls ${dir}*.test.ts >/dev/null 2>&1; then
-    fail_with "apps/api/src/modules/$name has no *.test.ts (every module needs routes.ts, service.ts, repo.ts and a *.test.ts — see apps/api/src/modules/_template)"
+    fail_with "apps/api/src/modules/$name has no *.test.ts (every module needs routes.ts, service.ts, repo.ts and a *.test.ts - see apps/api/src/modules/_template)"
   fi
 done
 

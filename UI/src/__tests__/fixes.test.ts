@@ -13,7 +13,7 @@ beforeEach(resetStore);
 
 /* ---------------------------------------------------------------- C1
  * C1 · production consumes its ingredients. The server's since Phase 4:
- * apps/api/src/modules/production/production.test.ts pins all three halves — "consumes the
+ * apps/api/src/modules/production/production.test.ts pins all three halves - "consumes the
  * recipe for what was started and books only what came good (C1, UA-14)" for the depletion,
  * "names the ingredient that ran out, and moves nothing (C1)" for the refusal, and the batch
  * row's `qty`/`made` in the same first case. The store call that reaches that route is in
@@ -21,16 +21,16 @@ beforeEach(resetStore);
 
 /* ---------------------------------------------------------------- C2
  * C2 · kitchen tickets move like store tickets. Both halves are the server's since Phase 3:
- * apps/api/src/modules/production/production.test.ts pins the reservation — "puts every item
+ * apps/api/src/modules/production/production.test.ts pins the reservation - "puts every item
  * on one ticket addressed to the ordering outlet, and reserves rather than moves" and
- * "reserves at the kitchen and raises the ticket the outlet collects against" — and
+ * "reserves at the kitchen and raises the ticket the outlet collects against" - and
  * apps/api/src/modules/tickets/tickets.test.ts pins the movement, "lets the kitchen hand its
  * own ticket over (C2)" and "books the stock in and closes the request behind it". The store
  * calls that reach those routes are in writes.test.ts. */
 
 /* ---------------------------------------------------------------- C3
  * C3 · the kitchen can actually request from the store. POST /requests admits `prod` since
- * Phase 3: apps/api/src/modules/requests/requests.test.ts pins both halves — "lets the kitchen
+ * Phase 3: apps/api/src/modules/requests/requests.test.ts pins both halves - "lets the kitchen
  * raise one too, from the kitchen" and "refuses a line with no quantity, in the operator's
  * words (C3)". */
 
@@ -51,7 +51,7 @@ describe("C5 · open tickets from seed reserve their stock", () => {
     });
   });
 
-  // Handover frees the hold on the server now — tickets.test.ts "moves the stock out on the
+  // Handover frees the hold on the server now - tickets.test.ts "moves the stock out on the
   // OTP, releases the hold, and closes nothing else".
 });
 
@@ -78,7 +78,7 @@ describe("H1 · made items cost what their recipe costs", () => {
 
 /* ---------------------------------------------------------------- H3
  * H3 · a removed product can be put back. The menu is the server's since Phase 2:
- * apps/api/src/modules/catalog/catalog.test.ts pins both halves of this tag — "adds and
+ * apps/api/src/modules/catalog/catalog.test.ts pins both halves of this tag - "adds and
  * removes a menu item, preserving the order of the rest" and "422s adding an item already
  * on the menu". The store call that reaches those routes is in writes.test.ts. */
 
@@ -146,7 +146,7 @@ describe("H9 · best-before says which day it means", () => {
 
 /* ---------------------------------------------------------------- M1
  * M1 · non-cash tenders need a payer. The sale is POST /bills since Phase 2:
- * apps/api/src/modules/pos/pos.test.ts pins this tag — "wants a patient before it takes a
+ * apps/api/src/modules/pos/pos.test.ts pins this tag - "wants a patient before it takes a
  * patient bill", "wants a staff member before it takes a staff credit", "wants a department
  * before it takes a dept bill", and "names the payer on a credit tender". writes.test.ts
  * proves the payer this store sends reaches the body. */
@@ -155,7 +155,7 @@ describe("H9 · best-before says which day it means", () => {
 describe("M3 · what is already on order is visible", () => {
   it("counts quantities pending on the procurement pool", () => {
     // onOrder is derived from what is approved-and-pending plus live purchase
-    // orders (Task 11) — a requisition still "Sent" has not been approved and
+    // orders (Task 11) - a requisition still "Sent" has not been approved and
     // contributes nothing on its own, so this picks from the approved pool.
     const pool = seedPrq
       .filter((p) => p.st === "Approved" || p.st === "Partially approved")
@@ -165,7 +165,7 @@ describe("M3 · what is already on order is visible", () => {
     const pending = pool[0].appr - pool[0].ordered;
     // Exact, not >=: pool[0] (maida, off PRQ-2026-014) is the seed's only
     // pending line for this item and no purchase order references it, so
-    // onOrder must equal this line's pending amount exactly — a loose bound
+    // onOrder must equal this line's pending amount exactly - a loose bound
     // would still pass if onOrder over-counted.
     expect(onOrder(S(), it)).toBe(pending);
   });
@@ -174,7 +174,7 @@ describe("M3 · what is already on order is visible", () => {
 /* ---------------------------------------------------------------- M8 */
 describe("M8 · stock in transit is visible", () => {
   // `inTransit` is still a UI selector over whatever the tickets say, so the ticket's status
-  // is driven directly here — the moves that set it belong to tickets.test.ts.
+  // is driven directly here - the moves that set it belong to tickets.test.ts.
   it("reports quantity handed over but not yet received", () => {
     const t = seedTkt.find((x) => x.st === "Issued" && x.from === "store")!;
     const it = t.lines[0].it;
@@ -251,17 +251,17 @@ describe("countable units still show a fraction when there is one", () => {
  * item that is" and "refuses to raise a second ticket for an order already dispatched"; the
  * landing half is tickets.test.ts "books the stock in and closes the request behind it". */
 
-/* A rejection records who made the call — the server stamps `apprBy` from the token and
+/* A rejection records who made the call - the server stamps `apprBy` from the token and
  * refuses an empty reason: requests.test.ts "names the manager who approved, not the operator
  * who raised (H6)" and "refuses to reject without a reason (H7)". */
 
-/* Two shops deal with each other directly — the whole exchange is server-side since Phase 3:
+/* Two shops deal with each other directly - the whole exchange is server-side since Phase 3:
  * shopasks.test.ts "asks the other shop directly, not the manager", "grants it, reserves at
  * the shop that holds it, and raises the ticket the asker collects" and "needs a reason the
  * other shop can read"; tickets.test.ts "refuses a wrong OTP and moves nothing". */
 
 /* Support is customer care for the portal, and the whole desk is the server's from Phase 6:
- * apps/api/src/modules/support/support.test.ts pins every rule this block used to — "takes the
+ * apps/api/src/modules/support/support.test.ts pins every rule this block used to - "takes the
  * ticket, stamps the screen it was raised from, and threads the first message" for the raise,
  * "puts a ticket waiting on the reporter back with support" for the reply's status walk, and
  * "needs a subject support can read" for the refusal. The four store calls that reach those
@@ -271,7 +271,7 @@ describe("countable units still show a fraction when there is one", () => {
 describe("a new product a shop wants goes to procurement, not to support", () => {
   // The chain itself is the server's: productreqs.test.ts walks requested -> created with the
   // item it became, and catalog.test.ts pins the item. What is left here is the routing
-  // decision this tag was raised for — a product ask is not a support ticket.
+  // decision this tag was raised for - a product ask is not a support ticket.
   it("has a queue of its own, separate from the support desk", () => {
     expect(S().productReqs.length).toBeGreaterThan(0);
     expect(S().tickets.some((t) => t.subject.toLowerCase().includes("product"))).toBe(false);
@@ -308,7 +308,7 @@ describe("a shop-to-shop ask is answerable from the receiving counter", () => {
     expect(inbound!.qty).toBeLessThanOrEqual(qty(S(), "coffee", inbound!.it));
   });
 
-  // Granting it is one server call that both books the grant and raises the ticket —
+  // Granting it is one server call that both books the grant and raises the ticket -
   // shopasks.test.ts "grants it, reserves at the shop that holds it, and raises the ticket
   // the asker collects".
 
@@ -319,5 +319,5 @@ describe("a shop-to-shop ask is answerable from the receiving counter", () => {
   });
 });
 
-/* Declining an inbound ask takes two steps — shopasks.test.ts "needs a reason the other shop
+/* Declining an inbound ask takes two steps - shopasks.test.ts "needs a reason the other shop
  * can read" and "declines with the reason, and issues no ticket". */

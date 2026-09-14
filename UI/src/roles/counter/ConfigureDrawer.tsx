@@ -10,7 +10,7 @@ import { registerDrawer, type DrawerProps } from "../../drawers";
 import { TypeTag } from "./Pos";
 
 /**
- * Configure — the same panel opened from the POS tile menu and the Stock in
+ * Configure - the same panel opened from the POS tile menu and the Stock in
  * Hand card menu. Full detail plus the on/off switch for a sellable product;
  * a raw ingredient gets its details with a plain note, since there is
  * nothing to switch on or off.
@@ -50,10 +50,10 @@ function ConfigureDrawer({ id: it }: DrawerProps) {
       </div>
 
       <div className="stkcard-stats" style={{ marginBottom: 12 }}>
-        <div className="totrow"><span>On hand</span><span>{held ? <>{fq(on, it)} {U(it)}</> : "—"}</span></div>
-        <div className="totrow"><span>Par here</span><span className="dim">{rl > 0 ? fq(rl, it) : "—"}</span></div>
+        <div className="totrow"><span>On hand</span><span>{held ? <>{fq(on, it)} {U(it)}</> : "-"}</span></div>
+        <div className="totrow"><span>Par here</span><span className="dim">{rl > 0 ? fq(rl, it) : "-"}</span></div>
         <div className="totrow"><span>Days of cover</span>
-          <span style={held && a <= 0 ? { color: "var(--crit)" } : undefined}>{held ? `${cover.toFixed(1)} d` : "—"}</span>
+          <span style={held && a <= 0 ? { color: "var(--crit)" } : undefined}>{held ? `${cover.toFixed(1)} d` : "-"}</span>
         </div>
         <div className="totrow"><span>State</span>
           <span>{held
@@ -73,8 +73,8 @@ function ConfigureDrawer({ id: it }: DrawerProps) {
           </div>
           <div className="mtop">
             {computed.ok
-              ? <Alert tone="g" label="ON">{computed.left} — computed from stock, on top of the switch above.</Alert>
-              : <Alert tone="c" label="OFF">{computed.why ?? "unavailable"} — the switch cannot override this by itself.</Alert>}
+              ? <Alert tone="g" label="ON">{computed.left} - computed from stock, on top of the switch above.</Alert>
+              : <Alert tone="c" label="OFF">{computed.why ?? "unavailable"} - the switch cannot override this by itself.</Alert>}
           </div>
           <p className="mini mtop">
             Sells for {money(s.prices[LOC[loc].list ?? "A"]?.[it] ?? 0)} at this counter.
@@ -82,7 +82,7 @@ function ConfigureDrawer({ id: it }: DrawerProps) {
         </>
       ) : (
         <Alert tone="i" label="NOTE">
-          Not sold directly at {LOC[loc].n} — it is a recipe ingredient here, so there is nothing to switch on or off.
+          Not sold directly at {LOC[loc].n} - it is a recipe ingredient here, so there is nothing to switch on or off.
         </Alert>
       )}
     </DrawerFrame>

@@ -10,7 +10,7 @@ export const PordStatusSchema = z.enum(["New", "Accepted", "In kitchen", "Ready"
 export const PoStatusSchema = z.enum(["Draft", "Ordered", "Partially received", "Received", "Cancelled"]);
 export const ToneSchema = z.enum(["ok", "wn", "cr", "in", "ac", "mu"]);
 export const PayerKindSchema = z.enum(["patient", "staff", "dept"]);
-/** Customer care for the portal itself — not an operational problem in the kitchen. */
+/** Customer care for the portal itself - not an operational problem in the kitchen. */
 export const TicketTopicSchema = z.enum(["Sign in & access", "A screen will not load", "A number looks wrong", "Printing & receipts", "Slow or freezing", "Training & how do I", "Feature request", "Something else"]);
 export const TicketPrioritySchema = z.enum(["Low", "Normal", "Urgent"]);
 export const TicketStatusSchema = z.enum(["Open", "With support", "Waiting on you", "Resolved", "Closed"]);
@@ -24,7 +24,7 @@ export const ItemSchema = z.object({
   // ---- item patch ----
   // A retired line stays on the wire: a bill, a ticket or a purchase order raised months ago
   // still names its item, and the screen showing that document needs the name. Optional, and
-  // absent reads as **true** — the pickers filter on `active === false`, the registry does not,
+  // absent reads as **true** - the pickers filter on `active === false`, the registry does not,
   // and a fixture that predates retiring an item is still a valid item.
   active: z.boolean().optional(),
 });
@@ -35,7 +35,7 @@ export const LocationSchema = z.object({
 export const UserSchema = z.object({
   id: z.string(), n: z.string(), e: z.string(), r: RoleSchema, rl: z.string(),
   loc: LocKeySchema, col: z.string(), emp: z.string(), ph: z.string(),
-  // Whether this account can reach the account-management page — a capability, not a role
+  // Whether this account can reach the account-management page - a capability, not a role
   // (root CLAUDE.md). `UserSchema` describes only the signed-in caller's own record (login,
   // refresh, change-password, snapshot.user); a colleague is always `UserMinSchema`, which does
   // not carry this, so nobody sees whether anyone but themselves has it.
@@ -78,7 +78,7 @@ export const PurchaseOrderSchema = z.object({
 export const ProdOrderSchema = z.object({
   id: z.string(), from: LocKeySchema, by: z.string(), at: IsoTime, lines: z.array(TktLineSchema), st: PordStatusSchema, note: z.string(), hist: z.array(HistEntrySchema),
   // ---- prod-order raise ---- when the outlet said it needs the tray by. Optional because the
-  // column is nullable and an order with no date is the ordinary case — the reader leaves the
+  // column is nullable and an order with no date is the ordinary case - the reader leaves the
   // key off entirely rather than sending a blank one, the same `strip()` treatment `shortNote`
   // gets, so "no date" is one shape on the wire rather than two.
   need: IsoDate.optional(),
@@ -86,7 +86,7 @@ export const ProdOrderSchema = z.object({
 export const BatchSchema = z.object({ id: z.string(), it: z.string(), qty: Qty, made: Qty, at: IsoTime, bb: IsoTime, note: z.string().optional() });
 export const PayerSchema = z.strictObject({ kind: PayerKindSchema, id: z.string(), name: z.string() });
 // ---- payers ----
-/** A payer as the **roster** holds it, `active` and all — the register the outlet manager
+/** A payer as the **roster** holds it, `active` and all - the register the outlet manager
  *  maintains. `PayerSchema` above stays exactly the three fields a bill embeds: a bill taken
  *  last month must not start reading "inactive" because the account was closed since, and a
  *  bill is a record of what happened, not a live join onto the roster. */
@@ -110,8 +110,8 @@ export const BillSchema = z.object({
   lines: z.array(BillLineSchema), payer: PayerSchema.optional(),
   // ---- bill void. Optional because a bill is voided almost never: the mapper omits both keys
   // on the overwhelming majority of bills, which keeps a wire bill equal to the fixture it came
-  // from. A voided bill still carries its lines and its total — nothing is erased, the moves are
-  // reversed — so every screen that already prints it goes on printing it, with a badge.
+  // from. A voided bill still carries its lines and its total - nothing is erased, the moves are
+  // reversed - so every screen that already prints it goes on printing it, with a badge.
   voided: z.boolean().optional(), voidReason: z.string().optional(),
 });
 export const DraftLineSchema = z.object({ it: z.string(), qty: Qty });
@@ -143,15 +143,15 @@ export const ShopAskSchema = z.object({
 // ---- adjustments (write-off / count-up as a document)
 /** Why a shelf was corrected. Six words, not free text: the reason is what a month-end query
  *  groups by, and "spoilt", "spoiled" and "Spoilt" would be three answers to one question.
- *  `count` is the physical count — a correction to a sum, not a loss. */
+ *  `count` is the physical count - a correction to a sum, not a loss. */
 export const AdjustReasonSchema = z.enum(["wastage", "breakage", "expired", "count", "returned_to_vendor", "other"]);
 /** Signed: negative wrote stock off, positive counted it up. One line per item, folded by the
  *  service before anything is checked, so what is stored is what actually moved. */
 export const AdjustmentLineSchema = z.object({ it: z.string(), qty: Qty });
-/** The document behind an `adjustment` move — who corrected which shelf, why, and when. Before
+/** The document behind an `adjustment` move - who corrected which shelf, why, and when. Before
  *  this there was no document at all: the runbook's answer was hand-written SQL, which leaves
  *  the books balanced and the reason nowhere. `loc` is a `StockLoc` because quarantine is a
- *  shelf that has to be correctable — a consignment turned away and later destroyed or sent
+ *  shelf that has to be correctable - a consignment turned away and later destroyed or sent
  *  back to the vendor leaves quarantine, and nothing else can take it off. */
 export const AdjustmentSchema = z.object({
   id: z.string(), loc: StockLocSchema, reason: AdjustReasonSchema, note: z.string(),

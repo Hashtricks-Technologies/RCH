@@ -12,7 +12,7 @@ export type StockResponse = z.infer<typeof StockResponseSchema>;
 const t = fromWireTime;
 /**
  * The two things a document carries out of here: the `"HH:MM"` every table prints, and the
- * instant it was made from. Collapsing the instant on the way in was the whole of A1 — with
+ * instant it was made from. Collapsing the instant on the way in was the whole of A1 - with
  * only `"HH:MM"` left, "today" could not be told from "this week", and `"22:00"` sorted above
  * `"09:00"` whichever day each belonged to. `at`/`t` still read the way they always did;
  * `iso` is the raw stamp beside them, for `isToday` and for every sort.
@@ -37,11 +37,11 @@ const billed = (b: Bill[]): Dated<Bill>[] =>
 /** Quarantine is here and nowhere else that an operator acts: stock is *reported* for the
  *  rejected-goods shelf, so the store keeper can see what was turned away at a goods receipt.
  *  Read off the schema rather than hand-listed, so a sixth reported location cannot be added to
- *  the contract and quietly missed here — `store/index.ts`'s `EMPTY_STOCK` reads the same list. */
+ *  the contract and quietly missed here - `store/index.ts`'s `EMPTY_STOCK` reads the same list. */
 const ALL_LOC: StockLoc[] = [...StockLocSchema.options];
 /**
  * A counter operator's snapshot is scoped to its own location, so the server
- * omits the rest. The store's map is exhaustive — an absent location is empty,
+ * omits the rest. The store's map is exhaustive - an absent location is empty,
  * not missing, or every `stock[loc][it]` read would throw.
  */
 const stockOf = (s: Snapshot["stock"]): Record<StockLoc, Record<string, number>> =>
@@ -56,8 +56,8 @@ export function applySnapshot(s: Snapshot): void {
   useApp.setState((prev) => ({
     user: s.user,
     // The catalogue is a module-level registry, not store state, so a snapshot that replaces
-    // it changes nothing React can see. `applyItems` has always bumped this; a full snapshot —
-    // an SSE `resync`, or the fallback refetch — brings new items the same way and must too.
+    // it changes nothing React can see. `applyItems` has always bumped this; a full snapshot -
+    // an SSE `resync`, or the fallback refetch - brings new items the same way and must too.
     catalogVersion: prev.catalogVersion + 1,
     stock: stockOf(s.stock), rsv: s.rsv, ovr: s.ovr, prices: basePrices(), menu: s.menu,
     req: s.req.map((r) => ({ ...stamped(r), hist: hist(r.hist) })),
@@ -168,8 +168,8 @@ export function applyItems(items: Snapshot["items"]): void {
   useApp.setState((s) => ({ catalogVersion: s.catalogVersion + 1 }));
 }
 
-/** GET /prices -> both shelf lists. The registry and the store's copy are the same two lists —
- *  `basePrices()` is what every screen reads — so the registry is filled first and copied out. */
+/** GET /prices -> both shelf lists. The registry and the store's copy are the same two lists -
+ *  `basePrices()` is what every screen reads - so the registry is filled first and copied out. */
 export function applyPrices(prices: Snapshot["prices"]): void {
   hydratePrices(prices);
   useApp.setState((s) => ({ prices: basePrices(), catalogVersion: s.catalogVersion + 1 }));
@@ -193,7 +193,7 @@ export function applyRecipes(recipes: Snapshot["recipes"]): void {
 // ---- payers ----
 /** GET /roster -> the register the counter's payer picker reads. `PATIENTS`, `STAFF` and
  *  `DEPTS` are module-level registries like `IT` and `LOC`, not store state, so `catalogVersion`
- *  is what tells React the lists moved — the same signal `applyItems` bumps for the catalogue.
+ *  is what tells React the lists moved - the same signal `applyItems` bumps for the catalogue.
  *  The server only ever sends active rows, so a payer the manager switched off simply stops
  *  being offered at the till rather than needing a second filter here. */
 export function applyRoster(r: Snapshot["roster"]): void {
@@ -206,7 +206,7 @@ export function applyRoster(r: Snapshot["roster"]): void {
  *  module-level registry to keep the identity of and `catalogVersion` is not involved. */
 export function applyPayers(payers: PayerRecord[]): void { useApp.setState({ payers }); }
 
-// ---- admin: account management (a capability, not a role — root CLAUDE.md)
+// ---- admin: account management (a capability, not a role - root CLAUDE.md)
 /** GET /admin/users -> every account, ordinary store state: nothing outside the admin page
  *  reads it, the same shape `payers` already is for the same reason. */
 export function applyAccounts(accounts: AdminUser[]): void { useApp.setState({ accounts }); }
@@ -220,7 +220,7 @@ export function applyAdminActions(rows: AdminAction[]): void {
 /** GET /adjustments -> the register of write-offs and count-ups, times as "HH:MM" and the
  *  instant beside them, the way every other document here is stamped. Every adjustment names
  *  "adjustments" and "stock" in `changed`, so this and `applyStock` are what a write-off costs
- *  — the document and the shelf it corrected, not a whole snapshot. */
+ *  - the document and the shelf it corrected, not a whole snapshot. */
 export function applyAdjustments(rows: Snapshot["adjustments"]): void {
   useApp.setState({ adjustments: rows.map(stamped) });
 }

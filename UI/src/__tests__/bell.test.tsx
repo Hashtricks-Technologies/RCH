@@ -10,7 +10,7 @@ import { as, resetStore } from "./fixture";
  * The bell's read state.
  *
  * The bug behind this file: every row in the bell was a live count of a queue and nothing else,
- * so opening one changed nothing — it stayed on the badge, in the same colour, until somebody
+ * so opening one changed nothing - it stayed on the badge, in the same colour, until somebody
  * cleared the queue itself. A row the operator has opened is read now: it drops off the badge and
  * moves under "Earlier", and comes back as new only when a document it has not seen joins it.
  */

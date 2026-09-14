@@ -22,7 +22,7 @@ describe("POST /product-requests", () => {
     expect(b.result).toMatchObject({ name: "Sugar-free lemon iced tea 250ml", forLoc: "coffee", st: "Requested", by: "Ramesh Kumar" });
     expect(b.result.id).toMatch(/^NPR-00\d+$/);
     expect(b.changed).toEqual(["productReqs"]);
-    expect(b.message).toBe(`${b.result.id} sent to the central store — they add it to the master`);
+    expect(b.message).toBe(`${b.result.id} sent to the central store - they add it to the master`);
   });
 
   it("wants a name, and is open to a counter as well as a manager", async () => {
@@ -35,7 +35,7 @@ describe("POST /product-requests", () => {
   });
 
   it("takes a counter's outlet from its token, not from whatever the body says", async () => {
-    // u1 is the till at the Coffee Shop. Naming another outlet is a 403 — the same answer the
+    // u1 is the till at the Coffee Shop. Naming another outlet is a 403 - the same answer the
     // same operator gets for billing at somebody else's counter.
     const before = (await app.testDb!.db.query.productRequests.findMany()).length;
     const r = await post("u1", "/product-requests", { name: "Something", forLoc: "kiosk" });
@@ -60,7 +60,7 @@ describe("POST /product-requests/:id/answer", () => {
     const b = (await post("u5", `/product-requests/${id}/answer`, { st: "Created", note: "Added as MR-3005", itemKey: "bisc" })).json();
     expect(b.result).toMatchObject({ st: "Created", note: "Added as MR-3005", itemKey: "bisc" });
     expect(b.changed).toEqual(["productReqs"]);
-    expect(b.message).toBe(`${id} — product created on the master`);
+    expect(b.message).toBe(`${id} - product created on the master`);
   });
 
   it("declines with a note", async () => {

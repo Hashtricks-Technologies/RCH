@@ -12,11 +12,11 @@ import type { LocKey } from "../../types";
 // ---- prod-order raise ----
 import KitchenOrderCard from "./KitchenOrderCard";
 
-/** Anything a shop can be asked for — not raw ingredients, not made-to-order. */
+/** Anything a shop can be asked for - not raw ingredients, not made-to-order. */
 const sellable = () => activeItems()
   .filter((k) => IT[k].t === "MRP" || IT[k].t === "FG")
   .sort((a, b) => IT[a].n.localeCompare(IT[b].n));
-/** Anything the central store can send — everything except made-to-order, which
+/** Anything the central store can send - everything except made-to-order, which
  *  a counter assembles itself and never holds as stock. */
 const stockable = () => activeItems()
   .filter((k) => IT[k].t !== "MTO")
@@ -28,7 +28,7 @@ type Row = {
   direction: string; status: string; extra?: string;
 };
 
-/** The small preview every raise-card opens with — a product card, not a bare select. */
+/** The small preview every raise-card opens with - a product card, not a bare select. */
 function ProductPicker({ items, value, onChange, hint }: {
   items: string[]; value: string; onChange: (v: string) => void; hint?: string;
 }) {
@@ -54,7 +54,7 @@ export default function Requests() {
   const L = LOC[loc];
   // `IT` is empty until the snapshot lands and is replaced in place after that
   // (`hydrateMaster` / `hydrateItems`), so this list is built during render and pinned to
-  // `catalogVersion` — the signal that tells React the catalogue moved.
+  // `catalogVersion` - the signal that tells React the catalogue moved.
   void s.catalogVersion;
   const SELLABLE = sellable();
   const STOCKABLE = stockable();
@@ -67,7 +67,7 @@ export default function Requests() {
   const [invPriority, setInvPriority] = useState<"Normal" | "Urgent">("Normal");
   const [invNote, setInvNote] = useState("");
 
-  // Shop-ask card. `peers` is empty on a one-outlet deployment, and was read as `peers[0]` —
+  // Shop-ask card. `peers` is empty on a one-outlet deployment, and was read as `peers[0]` -
   // `undefined`, which `LOC[shopTo].n` then dereferenced and took the whole screen down with.
   const peers = OUTLETS.filter((o) => o !== loc);
   const [shopTo, setShopTo] = useState<LocKey | null>(peers[0] ?? null);
@@ -78,8 +78,8 @@ export default function Requests() {
 
   /**
    * Both pickers opened on `LIST[0]` at mount and stayed there for ever. `IT` is a module
-   * registry replaced in place, so an item retired in another browser — or a catalogue that
-   * had not landed when this screen first rendered — left the box pointing at a key the
+   * registry replaced in place, so an item retired in another browser - or a catalogue that
+   * had not landed when this screen first rendered - left the box pointing at a key the
    * server no longer sells, and Submit posted a line for it. Adjusted during render, keyed
    * on the same `catalogVersion` the two lists are built from, so the correction lands in
    * the render that saw the change rather than a frame later.
@@ -90,7 +90,7 @@ export default function Requests() {
 
   const [grant, setGrant] = useState<Record<string, number>>({});
   const [reason, setReason] = useState<Record<string, string>>({});
-  /** Which ask is mid-decline — the reason field only exists while one is. */
+  /** Which ask is mid-decline - the reason field only exists while one is. */
   const [declineFor, setDeclineFor] = useState<string | null>(null);
   /** What is in flight, so the control that sent it is locked and nothing is cleared
    *  until the server has actually taken it. A refusal leaves the card exactly as typed. */
@@ -121,7 +121,7 @@ export default function Requests() {
   const rows: Row[] = [
     ...s.req.filter((r) => r.from === loc).map((r): Row => ({
       key: r.id, kind: "inventory", it: r.lines[0]?.it ?? "", qty: r.lines.reduce((t, l) => t + l.qty, 0),
-      at: r.at, iso: r.iso, direction: `${r.lines.length > 1 ? `${r.lines.length} items` : IT[r.lines[0]?.it]?.n ?? "—"} · Central Store`,
+      at: r.at, iso: r.iso, direction: `${r.lines.length > 1 ? `${r.lines.length} items` : IT[r.lines[0]?.it]?.n ?? "-"} · Central Store`,
       status: r.st,
       extra: r.ticket ?? undefined,
     })),
@@ -187,7 +187,7 @@ export default function Requests() {
                 {short && free > 0 && (
                   <Alert tone="w" label="SHORT">
                     You hold {fq(free, a.it)} of the {fq(a.qty, a.it)} {U(a.it)} asked for. Sending what
-                    you have is fine — the rest stays their problem to source.
+                    you have is fine - the rest stays their problem to source.
                   </Alert>
                 )}
                 {free <= 0 && (
@@ -226,7 +226,7 @@ export default function Requests() {
                         onCommit={(n) => setGrant({ ...grant, [a.id]: n })} />
                     </div>
                     {/* The box is capped at `min(asked, free)`, but a number typed straight in
-                        walked past it — the button only checked that it was above zero, so a
+                        walked past it - the button only checked that it was above zero, so a
                         counter could offer to send forty of something it holds eight of and
                         find out from the server. It is capped at the same figure now. */}
                     <Btn size="sm" disabled={free <= 0 || g <= 0 || g > Math.min(a.qty, free) || busy !== null}
@@ -248,7 +248,7 @@ export default function Requests() {
 
       <div className="mtop" />
       <div className="reqactions">
-        {/* One outlet and no peer is a real deployment, not a hypothetical — and offering to
+        {/* One outlet and no peer is a real deployment, not a hypothetical - and offering to
             ask a shop that does not exist is worse than saying there is none. */}
         {shopTo ? (
           <button type="button" className={`reqaction${open === "shop" ? " on" : ""}`} onClick={() => toggle("shop")}>
@@ -333,7 +333,7 @@ export default function Requests() {
       )}
 
       {/* ---- prod-order raise ---- the third source of stock, beside the store and a peer shop:
-          the Central Kitchen making it. Its own card because it comes with its own list — the
+          the Central Kitchen making it. Its own card because it comes with its own list - the
           orders this counter has raised, which nothing here showed before. */}
       <KitchenOrderCard loc={loc} />
 
@@ -349,13 +349,13 @@ export default function Requests() {
             cells: [
               <span style={{ display: "flex", alignItems: "center", gap: 9 }}>
                 <ImagePlaceholder />
-                <span><b>{IT[r.it]?.n ?? "—"}</b><small>{r.key}</small></span>
+                <span><b>{IT[r.it]?.n ?? "-"}</b><small>{r.key}</small></span>
               </span>,
               r.direction,
               fq(r.qty, r.it),
               r.at,
               r.kind === "inventory" ? <StatusPill status={r.status} /> : <Pill tone={tone(r.status === "Ticket issued" ? "Sent" : r.status === "Request sent" ? "Asked" : "Declined")}>{r.status}</Pill>,
-              r.extra ? <span className="mini">{r.extra}</span> : <span className="dim">—</span>,
+              r.extra ? <span className="mini">{r.extra}</span> : <span className="dim">-</span>,
             ],
           }))}
           empty={{
@@ -367,7 +367,7 @@ export default function Requests() {
       <p className="mini mtop">
         {openCount} request{openCount === 1 ? "" : "s"} from {L.n} {openCount === 1 ? "is" : "are"} still open. A
         request to the central store can be cancelled from its detail any time before the store keeper issues a
-        ticket against it — including after the outlet manager has approved it.
+        ticket against it - including after the outlet manager has approved it.
       </p>
     </>
   );

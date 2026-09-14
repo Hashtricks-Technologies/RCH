@@ -10,7 +10,7 @@ import { items, locations, qty, ts, users } from "./master.js";
  * leaves the books balanced and the reason nowhere. `move_kind` has carried `'adjustment'`
  * since the first migration with nothing writing it.
  *
- * `loc` references `locations.key`, which includes the rejected-goods shelf — the one place
+ * `loc` references `locations.key`, which includes the rejected-goods shelf - the one place
  * stock is reported that no operator works at, and the one shelf nothing else can take stock
  * off again. The reason is an enum, not free text: it is what a month-end query groups by, and
  * "spoilt", "spoiled" and "Spoilt" would be three answers to one question.
@@ -23,7 +23,7 @@ export const adjustments = pgTable("adjustments", {
   byUser: text("by_user").references(() => users.id),
   at: ts("at").notNull().defaultNow(),
 }, (t) => [
-  // Both readers ask the same question: one shelf over a window — the register the store keeper
+  // Both readers ask the same question: one shelf over a window - the register the store keeper
   // reads back, and the month-end "what did this location lose, and why".
   index("adjustments_loc_at_idx").on(t.loc, t.at),
 ]);

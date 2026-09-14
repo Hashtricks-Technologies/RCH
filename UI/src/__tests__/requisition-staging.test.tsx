@@ -9,8 +9,8 @@ import { useApp } from "../store";
 import { as, resetStore, S } from "./fixture";
 
 /**
- * Staging an item on the store keeper's requisition from Stock in Hand puts no quantity on it —
- * the keeper types what they want — and the buyer's "Waiting on you" queue carries no search or
+ * Staging an item on the store keeper's requisition from Stock in Hand puts no quantity on it -
+ * the keeper types what they want - and the buyer's "Waiting on you" queue carries no search or
  * filter of its own.
  */
 

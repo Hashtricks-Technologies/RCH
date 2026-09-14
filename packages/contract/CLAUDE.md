@@ -1,4 +1,4 @@
-# packages/contract — CLAUDE.md
+# packages/contract - CLAUDE.md
 
 Repo-wide rules are in the root `CLAUDE.md`. This file covers what is specific to `@rch/contract`.
 
@@ -21,7 +21,7 @@ pnpm --filter @rch/contract lint
 
 ```
 src/routes.ts             defineRoute, the `routes` manifest, API_PREFIX (/api/v1)
-src/types.ts              z.infer aliases only — no type is declared by hand
+src/types.ts              z.infer aliases only - no type is declared by hand
 src/schemas/common.ts     closed unions, Qty/Money/Iso, error envelope, LocKey vs StockLoc, shared constants
 src/schemas/documents.ts  every document shape (Item, Ticket, StockRequest, Bill, PO, …)
 src/schemas/writes.ts     request bodies, result shapes, CollectionSchema, writeResponse()

@@ -1,4 +1,4 @@
-// Rate contracts: the flow — transaction, rules, ids. Composes the helpers in
+// Rate contracts: the flow - transaction, rules, ids. Composes the helpers in
 // apps/api/src/lib/; the arithmetic of a decision lives in packages/domain. A contract is
 // never deleted: it is closed so a purchase order it priced months ago stays readable.
 import type { z } from "zod";
@@ -44,7 +44,7 @@ export function createContractsService(db: Db) {
         return {
           result: await contractsRepo.wire(tx, id),
           changed: [...changed],
-          message: `${id} — ${item.n} at ₹${body.rate} with ${vendor.name}`,
+          message: `${id} - ${item.n} at ₹${body.rate} with ${vendor.name}`,
         };
       });
     },
@@ -61,11 +61,11 @@ export function createContractsService(db: Db) {
         if (body.rate !== undefined) assertRule(body.rate > 0, "A contract rate must be more than zero");
 
         // Reactivating one is refused when another live contract already covers this vendor
-        // and item — the index is the arbiter for the race two such reactivations can run;
+        // and item - the index is the arbiter for the race two such reactivations can run;
         // this pre-check is what turns the ordinary case into the store's own sentence. The
         // display names are read once, here, rather than again after a failed update: a unique
         // violation aborts the whole Postgres transaction, so a second query issued against
-        // `tx` after catching one — even a plain read — would itself fail with "current
+        // `tx` after catching one - even a plain read - would itself fail with "current
         // transaction is aborted", turning the intended 422 into a 500.
         const willBeActive = body.active ?? existing.active;
         const reactivating = willBeActive && !existing.active;
@@ -85,7 +85,7 @@ export function createContractsService(db: Db) {
         if (body.moq !== undefined) patch.moq = body.moq;
         if (body.active !== undefined) patch.active = body.active;
         // The pre-check above catches the ordinary case; this is the backstop for the race it
-        // cannot see — two reactivations of two closed contracts for the same pair, neither
+        // cannot see - two reactivations of two closed contracts for the same pair, neither
         // holding a lock the other would find. `update` returns `undefined` on exactly that
         // collision (`rate_contracts_live_uq`), and the loser reads the pre-check's own
         // sentence, already in hand from before the update ran.
@@ -111,7 +111,7 @@ export function createContractsService(db: Db) {
         return {
           result: await contractsRepo.wire(tx, id),
           changed: [...changed],
-          message: `${id} closed — it stays on record but no longer prices an order`,
+          message: `${id} closed - it stays on record but no longer prices an order`,
         };
       });
     },

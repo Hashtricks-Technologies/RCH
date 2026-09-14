@@ -13,14 +13,14 @@ type Get = () => AppState;
 export interface AdminSlice {
   accounts: AdminUser[];
   adminActions: Dated<AdminAction>[];
-  /** A read, not a write — no toast of its own, nothing refetched behind it, the same shape
+  /** A read, not a write - no toast of its own, nothing refetched behind it, the same shape
    *  `loadPayers` already has for the same reason: this is a first load, not a write's own
    *  read-back. */
   loadAccounts: () => Promise<void>;
   loadAdminActions: () => Promise<void>;
-  /** Both hand back what the server minted, or `null` on a refusal — the same shape
+  /** Both hand back what the server minted, or `null` on a refusal - the same shape
    *  `createPo`/`createItem` use for "the caller needs what the server minted". Never stored:
-   *  the page shows the password once and it is gone. A create carries no employee number —
+   *  the page shows the password once and it is gone. A create carries no employee number -
    *  the server assigns the next one (`nextEmpNo`) and this hands back the one it chose, so
    *  the page names the number that was actually given rather than the one it previewed. */
   createAccount: (body: { name: string; email: string; role: Role; loc: LocKey; phone?: string }) => Promise<{ emp: string; password: string } | null>;
@@ -29,7 +29,7 @@ export interface AdminSlice {
    *  not admin-flagged, never signed for anything). A refusal is the server's own sentence;
    *  `true` only once the row is gone. */
   deleteAccount: (id: string) => Promise<boolean>;
-  /** One action, both directions — the page's Deactivate and Reactivate buttons each call this
+  /** One action, both directions - the page's Deactivate and Reactivate buttons each call this
    *  with the direction they mean. Answers `true` only once the server has taken it, so a table
    *  row can lock itself while its own request is in flight. */
   setAccountActive: (id: string, active: boolean) => Promise<boolean>;
@@ -39,7 +39,7 @@ export interface AdminSlice {
 }
 
 const fail = (get: Get, e: unknown, what: string): false => {
-  get().notify(e instanceof ApiError ? e.message : `Could not ${what} — check the connection and try again.`);
+  get().notify(e instanceof ApiError ? e.message : `Could not ${what} - check the connection and try again.`);
   return false;
 };
 
@@ -49,11 +49,11 @@ export const createAdminSlice = (get: Get): AdminSlice => ({
 
   loadAccounts: async () => {
     try { applyAccounts(await call(routes.adminUsers)); }
-    catch (e) { get().notify(e instanceof ApiError ? e.message : "Could not read the account list — check the connection and try again."); }
+    catch (e) { get().notify(e instanceof ApiError ? e.message : "Could not read the account list - check the connection and try again."); }
   },
   loadAdminActions: async () => {
     try { applyAdminActions(await call(routes.adminActions)); }
-    catch (e) { get().notify(e instanceof ApiError ? e.message : "Could not read recent admin actions — check the connection and try again."); }
+    catch (e) { get().notify(e instanceof ApiError ? e.message : "Could not read recent admin actions - check the connection and try again."); }
   },
 
   createAccount: async (body) => {

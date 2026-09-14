@@ -47,7 +47,7 @@ export default function Dashboard() {
     .map((it) => ({ it, a: availOf(s, loc, it) }))
     .filter((r) => !r.a.ok);
 
-  // Requests are not a "today" figure — an ask raised on Friday is still open on Monday — so
+  // Requests are not a "today" figure - an ask raised on Friday is still open on Monday - so
   // the whole list stands. Only the order is by instant, newest first.
   const myReq = s.req.filter((r) => r.from === loc);
   const openReq = myReq.filter((r) => !SETTLED.includes(r.st));
@@ -62,7 +62,7 @@ export default function Dashboard() {
   const shortLines = myReq.flatMap((r) =>
     r.lines.filter((l) => (l.short ?? 0) > 0).map((l) => ({ it: l.it, qty: l.short ?? 0 })));
   const shortReqs = myReq.filter((r) => r.lines.some((l) => (l.short ?? 0) > 0)).length;
-  // `myReq` is unfiltered — a request from any day is still this counter's to chase — so this
+  // `myReq` is unfiltered - a request from any day is still this counter's to chase - so this
   // is the one sort here that can meet an older document. Undated sorts last rather than throwing.
   const recentReq = myReq.slice().sort((a, b) => (b.iso ?? "").localeCompare(a.iso ?? "")).slice(0, 5);
 
@@ -96,7 +96,7 @@ export default function Dashboard() {
       <Kpis items={[
         { l: "Billed today", v: money0(billed), d: <>{L.n} · every tender</> },
         { l: "Cash taken today", v: money0(cashTaken), d: <>{cashBills.length} of {mine.length} bill{mine.length === 1 ? "" : "s"}</> },
-        { l: "Bills raised", v: String(mine.length), d: <>last bill {latest[0]?.t ?? "—"}</> },
+        { l: "Bills raised", v: String(mine.length), d: <>last bill {latest[0]?.t ?? "-"}</> },
         { l: "Items sold", v: String(itemsSold), d: <>across {menu.length} listed products</> },
         { l: "Average bill", v: money0(avgBill), d: <>{mine.length ? money(avgBill) : "no bills yet"}</> },
         { l: "Products switched off", v: String(off.length), d: <>of {menu.length} on this menu</> },
@@ -104,13 +104,13 @@ export default function Dashboard() {
 
       {off.map((r) => (
         <Alert key={"off-" + r.it} tone="c" label="OFF">
-          <b>{IT[r.it].n}</b> is not sellable — {r.a.why ?? "unavailable"} ({r.a.mode.toLowerCase()} check).
+          <b>{IT[r.it].n}</b> is not sellable - {r.a.why ?? "unavailable"} ({r.a.mode.toLowerCase()} check).
         </Alert>
       ))}
       {waiting.map((t) => (
         <Alert key={t.id} tone="w" label="COLLECT"
           action={<Btn size="xs" variant="gh" onClick={() => nav("/tickets")}>Open tickets</Btn>}>
-          Ticket <b className="mono">{t.id}</b> is waiting at {LOC[t.from].n} — {t.lines.length} item{t.lines.length === 1 ? "" : "s"} against {t.req}.
+          Ticket <b className="mono">{t.id}</b> is waiting at {LOC[t.from].n} - {t.lines.length} item{t.lines.length === 1 ? "" : "s"} against {t.req}.
         </Alert>
       ))}
       {inTransit.map((t) => (
@@ -122,7 +122,7 @@ export default function Dashboard() {
       {rejected.map((r) => (
         <Alert key={r.id} tone="c" label="REJECTED"
           action={<Btn size="xs" variant="gh" onClick={() => nav("/requests")}>View request</Btn>}>
-          <b className="mono">{r.id}</b> was rejected by the outlet manager{r.mgrNote ? ` — "${r.mgrNote}"` : ""}.
+          <b className="mono">{r.id}</b> was rejected by the outlet manager{r.mgrNote ? ` - "${r.mgrNote}"` : ""}.
         </Alert>
       ))}
 
@@ -158,7 +158,7 @@ export default function Dashboard() {
             { h: "Status", w: "23%" },
           ]}
           rows={recentReq.map((r) => {
-            const first = IT[r.lines[0]?.it]?.n ?? "—";
+            const first = IT[r.lines[0]?.it]?.n ?? "-";
             const more = r.lines.length - 1;
             const appr = sum(r.lines, (l) => l.appr);
             return {
@@ -168,7 +168,7 @@ export default function Dashboard() {
                 <><span className="mono">{r.id}</span><small>{r.at} · by {r.by}</small></>,
                 <>{r.lines.length} item{r.lines.length === 1 ? "" : "s"} · {first}{more > 0 ? ` +${more} more` : ""}</>,
                 sum(r.lines, (l) => l.qty),
-                appr > 0 ? appr : <span className="dim">—</span>,
+                appr > 0 ? appr : <span className="dim">-</span>,
                 <StatusPill status={r.st} />,
               ],
             };
@@ -196,14 +196,14 @@ export default function Dashboard() {
                 key: it,
                 cells: [
                   IT[it]?.n ?? it,
-                  <span className="mono">{IT[it]?.c ?? "—"}</span>,
+                  <span className="mono">{IT[it]?.c ?? "-"}</span>,
                   v.qty,
                   money(v.amt),
                 ],
               }))}
               empty={{
                 title: "Nothing billed at this counter yet",
-                sub: "Open the till — the first bill of the day starts this table.",
+                sub: "Open the till - the first bill of the day starts this table.",
                 action: <Btn size="sm" onClick={() => nav("/pos")}>Open till</Btn>,
               }}
             />
@@ -217,7 +217,7 @@ export default function Dashboard() {
         </div>
 
         {/* This was "Your shift", and it printed a Shift 2, its hours and a ₹2,000 opening
-            float — none of which the system knows: shifts and float declarations were declined
+            float - none of which the system knows: shifts and float declarations were declined
             for this release, so every one of those figures was invented at render time and the
             drawer total built on top of them was wrong by whatever the real float was. What is
             left is what the bills actually say. */}
@@ -248,7 +248,7 @@ export default function Dashboard() {
             <dt>Total billed</dt><dd className="mono"><b>{money(billed)}</b></dd>
           </dl>
           <p className="mini mtop">
-            <b>Cash taken {money(cashTaken)}</b> is what the till has collected in notes today — add whatever float you
+            <b>Cash taken {money(cashTaken)}</b> is what the till has collected in notes today - add whatever float you
             were handed to get what should be counted out. Card and UPI are taken here but settle to the hospital
             account; patient, staff and department bills collect nothing at the counter at all. Neither is cash, which
             is why <b>total billed {money(billed)}</b> is the larger figure.

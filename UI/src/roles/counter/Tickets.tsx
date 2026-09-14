@@ -38,8 +38,8 @@ export default function Tickets() {
   const inTransit = mine.filter((t) => t.st === "Collected").length;
 
   /** The other direction: stock this counter granted to another shop. It is the only ticket a
-   *  counter can withdraw — the door the server opens for the location a ticket is issued
-   *  *from* — and until this list existed there was no way to reach one. */
+   *  counter can withdraw - the door the server opens for the location a ticket is issued
+   *  *from* - and until this list existed there was no way to reach one. */
   const sent = s.tkt.filter((t) => t.from === loc).slice().reverse();
   const uncollected = sent.filter((t) => canCancelTicket(t.st)).length;
 
@@ -57,7 +57,7 @@ export default function Tickets() {
 
       {toCollect > 0 && (
         <Alert tone="w" label="COLLECT">
-          {toCollect} ticket{toCollect === 1 ? "" : "s"} ready for pick-up. Send someone with the ticket ID — stock is
+          {toCollect} ticket{toCollect === 1 ? "" : "s"} ready for pick-up. Send someone with the ticket ID - stock is
           already reserved against it.
         </Alert>
       )}
@@ -96,7 +96,7 @@ export default function Tickets() {
             { h: "", w: "7%" },
           ]}
           rows={rows.map((t) => {
-            const first = IT[t.lines[0]?.it]?.n ?? "—";
+            const first = IT[t.lines[0]?.it]?.n ?? "-";
             const more = t.lines.length - 1;
             return {
               key: t.id,
@@ -146,7 +146,7 @@ export default function Tickets() {
                 { h: "", w: "12%" },
               ]}
               rows={sent.map((t) => {
-                const first = IT[t.lines[0]?.it]?.n ?? "—";
+                const first = IT[t.lines[0]?.it]?.n ?? "-";
                 const more = t.lines.length - 1;
                 return {
                   key: "out:" + t.id,
@@ -165,7 +165,7 @@ export default function Tickets() {
               })}
             empty={{
               title: "Nothing sent from this counter",
-              sub: `Grant another shop's ask on Stock Requests and the ticket they collect against appears here — ${L.n} can withdraw it until they do.`,
+              sub: `Grant another shop's ask on Stock Requests and the ticket they collect against appears here - ${L.n} can withdraw it until they do.`,
             }}
           />
           <TableFoot count={sent.length} extra={<>{uncollected} still at this counter&apos;s window</>} />

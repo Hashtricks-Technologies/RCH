@@ -1,5 +1,5 @@
 
-/* Slate + blue — one token set, three states.
+/* Slate + blue - one token set, three states.
    :root is light; the media query covers "system" on a dark OS;
    [data-theme] wins over the OS in both directions. */
 :root{
@@ -120,7 +120,7 @@ a{color:var(--accent);text-decoration:none}
 #app{display:none;min-height:100vh}
 #app.on{display:grid;grid-template-columns:1fr}
 @media(min-width:1000px){#app.on{grid-template-columns:230px minmax(0,1fr)}
- /* Collapsed: the rail goes, and the burger — hidden on desktop otherwise —
+ /* Collapsed: the rail goes, and the burger - hidden on desktop otherwise -
     comes back as the only way to bring it out again. */
  #app.on.sc{grid-template-columns:minmax(0,1fr)}
  #app.on.sc .side{display:none}
@@ -190,7 +190,7 @@ a{color:var(--accent);text-decoration:none}
 .btn.xs{padding:3px 8px;font-size:11px;border-radius:5px}
 /* Not a shrink like the other three: a finger's target. 40px is the smallest square
    a counter operator can hit reliably on a tablet, and the POS quantity steppers were
-   `xs` — a 20px box either side of the field they step. */
+   `xs` - a 20px box either side of the field they step. */
 .btn.touch{width:40px;height:40px;min-width:40px;padding:0;font-size:17px;line-height:1;border-radius:7px}
 .btn.wide{width:100%}
 .btnrow{display:flex;gap:7px;flex-wrap:wrap}
@@ -316,7 +316,7 @@ td.n b{font-weight:600;color:var(--ink)}
 .totrow.big{font-size:19px;font-weight:600;color:var(--ink);border-top:1px solid var(--line-strong);margin-top:7px;padding-top:9px}
 .paygrid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:12px 0}
 .av img{width:100%;height:100%;border-radius:inherit;object-fit:cover;display:block}
-/* popovers — global search and the notification bell */
+/* popovers - global search and the notification bell */
 .pw{position:relative;flex:none}
 .pop{position:absolute;top:calc(100% + 7px);right:0;z-index:80;width:min(340px,calc(100vw - 26px));
  display:flex;flex-direction:column;max-height:min(64vh,440px);overflow:hidden;
@@ -344,13 +344,13 @@ td.n b{font-weight:600;color:var(--ink)}
 .bell .po.nw .pb b{color:var(--crit)}
 .bell .po:not(.nw) .pb b{font-weight:500;color:var(--ink-2)}
 .bell .po:not(.nw) .pn{background:var(--surface-3);color:var(--ink-3);border-color:var(--line)}
-/* compact tables — the one preference with teeth */
+/* compact tables - the one preference with teeth */
 :root[data-compact="true"] thead th{padding:5px 10px}
 :root[data-compact="true"] tbody td{padding:4px 10px}
 :root[data-compact="true"] .lgrid td{padding:3px 6px}
 :root[data-compact="true"] .fi{padding:6px 0}
 
-/* collection OTP — replaces the old scannable block */
+/* collection OTP - replaces the old scannable block */
 .otp{display:inline-flex;flex-direction:column;gap:4px;padding:10px 14px;border-radius:10px;
   background:var(--accent-soft);border:1px dashed var(--accent);flex:none}
 .otp-l{font-size:9.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--accent);font-weight:600}
@@ -358,7 +358,7 @@ td.n b{font-weight:600;color:var(--ink)}
   color:var(--accent);line-height:1.05}
 .otp-in{font-family:"IBM Plex Mono",monospace;font-size:18px;letter-spacing:.22em;text-align:center}
 
-/* kanban — the kitchen order board (one column per stage, no drag and drop) */
+/* kanban - the kitchen order board (one column per stage, no drag and drop) */
 .kan{display:flex;gap:11px;align-items:flex-start;overflow-x:auto;padding:2px 2px 12px}
 .kan-col{flex:0 0 282px;width:282px;display:flex;flex-direction:column;gap:8px;
  background:var(--surface-2);border:1px solid var(--line);border-radius:var(--rl);padding:10px}
@@ -397,7 +397,7 @@ td.n b{font-weight:600;color:var(--ink)}
    the kitchen board's fixed 282px, and still scroll sideways inside `.kan` when the screen is narrow */
 .kan.fill .kan-col{flex:1 1 0;width:auto;min-width:196px}
 
-/* image placeholder — no real photography in this build (see ImagePlaceholder) */
+/* image placeholder - no real photography in this build (see ImagePlaceholder) */
 .imgph{display:flex;align-items:center;justify-content:center;flex:none;color:var(--ink-4);
   background:repeating-linear-gradient(45deg,var(--surface-3) 0 8px,var(--surface-2) 8px 16px);
   border:1px solid var(--line)}
@@ -405,7 +405,7 @@ td.n b{font-weight:600;color:var(--ink)}
 .imgph-card svg{width:15%;height:15%;max-width:34px;max-height:34px}
 .imgph-sm{width:30px;height:30px;border-radius:6px}
 .imgph-sm svg{width:15px;height:15px}
-/* the stock card's thumb — big enough to read as a photo slot, small enough
+/* the stock card's thumb - big enough to read as a photo slot, small enough
    that the numbers stay the subject of the card */
 .imgph-thumb{width:44px;height:44px;border-radius:9px}
 .imgph-thumb svg{width:19px;height:19px}
@@ -424,7 +424,7 @@ td.n b{font-weight:600;color:var(--ink)}
 .stkcard{position:relative;display:flex;flex-direction:column;overflow:visible;
   padding-left:3px;transition:border-color .12s,box-shadow .12s}
 .stkcard:hover{border-color:var(--line-strong);box-shadow:var(--sh2)}
-/* state stripe — form, not just colour on a pill */
+/* state stripe - form, not just colour on a pill */
 .stkcard::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;
   border-radius:var(--rl) 0 0 var(--rl);background:var(--line-strong)}
 .stkcard.is-ok::before{background:var(--good)}
@@ -450,7 +450,7 @@ td.n b{font-weight:600;color:var(--ink)}
 .stkcard-stat .v.crit{color:var(--crit)}
 .stkcard-stat .v.muted{color:var(--ink-3);font-weight:500}
 
-/* days of cover as a meter — a number alone hides how close to empty it is */
+/* days of cover as a meter - a number alone hides how close to empty it is */
 .covermeter{display:block;height:3px;border-radius:2px;background:var(--surface-3);overflow:hidden;margin-top:5px}
 .covermeter i{display:block;height:100%;border-radius:2px;background:var(--good)}
 .covermeter i.low{background:var(--warn)}
@@ -460,7 +460,7 @@ td.n b{font-weight:600;color:var(--ink)}
 .stkcard-foot .btn{width:100%}
 .stkcard-ok{display:block;text-align:center;font-size:11px;color:var(--ink-4);padding:7px 0}
 
-/* dropdown filter (FilterSelect) — a native select overlaid on the .fsel look */
+/* dropdown filter (FilterSelect) - a native select overlaid on the .fsel look */
 .fselect{position:relative;cursor:pointer}
 .fselect-txt{pointer-events:none}
 .fselect svg{pointer-events:none}
@@ -492,7 +492,7 @@ td.n b{font-weight:600;color:var(--ink)}
 .tile-pic-hit:disabled{cursor:not-allowed}
 .tilemenu.tile-pic-kebab{position:absolute;top:8px;right:8px;z-index:7}
 
-/* Stock Requests — the two raise-actions + the minimal raise card */
+/* Stock Requests - the two raise-actions + the minimal raise card */
 .reqactions{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-bottom:16px}
 .reqaction{display:flex;align-items:center;gap:12px;padding:14px 16px;border-radius:12px;
   border:1px solid var(--line);background:var(--surface);text-align:left;
@@ -550,8 +550,8 @@ td.n b{font-weight:600;color:var(--ink)}
 
 /* ---- printing ---------------------------------------------------------
    One rule for the whole app: printing a page prints the slip on it and
-   nothing else. `.print-slip` is the paper — a ticket slip, read at the
-   store window — `.no-print` is screen-only furniture, and `.print-only`
+   nothing else. `.print-slip` is the paper - a ticket slip, read at the
+   store window - `.no-print` is screen-only furniture, and `.print-only`
    is the reverse: what belongs on paper and would only clutter a screen.
    The shell's own chrome is named here rather than at each call site, so a
    new slip does not have to remember to hide the sidebar. */
@@ -561,7 +561,7 @@ td.n b{font-weight:600;color:var(--ink)}
   .side, .top, .drf, .toast, .scrim, .no-print { display: none !important }
   .print-only { display: block !important }
   /* A slip lives inside a drawer, which is a fixed 720px panel with its own scrollbar, so its
-     positioning and clipping are undone as well — otherwise the paper carries only whatever
+     positioning and clipping are undone as well - otherwise the paper carries only whatever
      happened to be scrolled into view. */
   .drawer { position: static !important; width: auto !important; box-shadow: none !important }
   .drb { overflow: visible !important; padding: 0 !important }

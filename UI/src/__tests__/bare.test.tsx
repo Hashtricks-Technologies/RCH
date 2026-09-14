@@ -18,14 +18,14 @@ import type { Role, StockLoc } from "../types";
 import { as, resetStore } from "./fixture";
 
 /**
- * A hospital with nothing in it — what `GET /snapshot` answers on a database seeded `--bare`,
+ * A hospital with nothing in it - what `GET /snapshot` answers on a database seeded `--bare`,
  * which is how a real deployment starts (`deploy/compose/deploy.sh`). The six locations are there,
  * because `LocKey` is a closed union the whole app is written against; everything else is empty:
  * no item, recipe, price, menu, stock line, payer, vendor or document.
  *
  * `screens.test.tsx` renders every screen over the demo hospital, which always has an item, a
  * menu and a bill to point at. A screen that reads `menu[loc].includes(...)`, `PRODS[0]` or a
- * first bill without checking is fine there and a white page here — on the very first morning
+ * first bill without checking is fine there and a white page here - on the very first morning
  * a real deployment is used. This file is the other half of that loop.
  */
 
@@ -74,7 +74,7 @@ describe("every screen renders on a hospital with nothing in it", () => {
 });
 
 // The drawers a first morning actually opens: the three Add Product forms, the manager's
-// kitchen order and a write-off — every other drawer opens over a document, and there are none.
+// kitchen order and a write-off - every other drawer opens over a document, and there are none.
 describe("the forms that fill an empty hospital render", () => {
   const OPEN: [key: string, id: string, role: Role][] = [
     ["sitem", "new", "store"], ["bnewitem", "new", "buyer"], ["pnew", "new", "prod"],

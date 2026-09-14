@@ -1,5 +1,5 @@
 // One ticket, wherever it came from. Every path that hands stock from one location to another
-// — an approved request, a shop transfer, a granted shop ask, a kitchen dispatch — mints its
+// - an approved request, a shop transfer, a granted shop ask, a kitchen dispatch - mints its
 // number here and writes it here, so the series, the OTP and the reservation are one rule.
 import { randomInt } from "node:crypto";
 import { asc, eq } from "drizzle-orm";
@@ -32,7 +32,7 @@ export type TicketNumber = { id: string; otp: string };
 
 /**
  * Take the ticket's number, and mint the six digits that will be quoted back at handover. The
- * code is drawn at random — `crypto.randomInt`, not a function of the ticket number — because
+ * code is drawn at random - `crypto.randomInt`, not a function of the ticket number - because
  * a code anyone can work out from the number printed on the box is not a check at all. It is
  * written to the row here and read back from the row on handover; nothing recomputes it.
  *
@@ -48,7 +48,7 @@ export async function allocateTicket(tx: Tx, at: Date = new Date()): Promise<Tic
 
 /**
  * One ticket, however it was asked for: a request the manager approved, a shop transfer, a
- * kitchen distribution. Writes head and lines and reserves the stock at `from` — the whole of
+ * kitchen distribution. Writes head and lines and reserves the stock at `from` - the whole of
  * "approval authorises" once the number is in hand.
  *
  * The caller must already have taken the balance locks (`lockBalances`) and checked that
@@ -58,18 +58,18 @@ export async function allocateTicket(tx: Tx, at: Date = new Date()): Promise<Tic
 export async function writeTicket(tx: Tx, draft: TicketDraft, no: TicketNumber): Promise<Ticket> {
   const at = draft.at ?? new Date();
   // Fold before anything else, so a repeated item is one line, one reservation and one cover
-  // check — the store's own rule for a dispatch (CLAUDE.md, "Dispatch is all-or-nothing").
+  // check - the store's own rule for a dispatch (CLAUDE.md, "Dispatch is all-or-nothing").
   const folded = new Map<string, number>();
   for (const l of draft.lines) folded.set(l.it, round3((folded.get(l.it) ?? 0) + l.qty));
   // A line that rounds away to nothing is dropped, the way `postMoves` drops a move that does
   // (`lib/ledger.ts`): a hold of zero is not a hold, and `reservations_qty_ck` (migration 0008)
-  // refuses one — so a document carrying a zero line, seeded or migrated in from before that
+  // refuses one - so a document carrying a zero line, seeded or migrated in from before that
   // constraint existed, would otherwise answer 500 with no words in it rather than a sentence.
   // The callers' own cover checks all read `< l.qty`, so a zero never fails one of those.
   const lines = [...folded].filter(([, qty]) => qty !== 0).map(([it, qty]) => ({ it, qty }));
   // And if nothing survives there is no ticket to raise: an empty one could never be handed
   // over, so the desk is told rather than handed a number for a box with nothing in it.
-  assertRule(lines.length > 0, `Nothing to send — every line on ${draft.refId} is for zero`);
+  assertRule(lines.length > 0, `Nothing to send - every line on ${draft.refId} is for zero`);
 
   const { id, otp } = no;
   await tx.insert(tickets).values({
@@ -85,8 +85,8 @@ export async function writeTicket(tx: Tx, draft: TicketDraft, no: TicketNumber):
   const who = await nameOf(tx, draft.by);
   await appendHistory(tx, "ticket", id, "Issued", who, at);
   // The OTP is not on the way out. Every caller of this function stands at the ticket's `from`
-  // — the store issuing against an approved request, the shop granting an ask, the kitchen
-  // dispatching or distributing — and `from` is exactly who must not read the six digits: the
+  // - the store issuing against an approved request, the shop granting an ask, the kitchen
+  // dispatching or distributing - and `from` is exactly who must not read the six digits: the
   // issue desk printing the number beside the box that checks it is not a check. The wire shape
   // requires the field, so it goes back blank, the same as it does through `GET /snapshot`.
   // Nothing needs the value here: `handover` compares what is typed against `ticketsRepo.head`'s
@@ -96,12 +96,12 @@ export async function writeTicket(tx: Tx, draft: TicketDraft, no: TicketNumber):
 
 /**
  * Put a ticket back. The hold it placed is released and the stock is free again exactly where
- * it stands — nothing moves, because nothing ever moved: a ticket that has not been handed
+ * it stands - nothing moves, because nothing ever moved: a ticket that has not been handed
  * over is a promise, and this is the promise being withdrawn.
  *
  * The reason is written to `document_history` because the ticket's row has nowhere to put it.
  * That makes a cancellation the second thing a ticket records there, after the supervisor
- * override — and for the same reason: an action that cannot be read back
+ * override - and for the same reason: an action that cannot be read back
  * afterwards cannot be audited. `by` is the operator's display name, as `appendHistory` wants.
  *
  * The caller has already locked the ticket's row and checked the transition; this is the write.
@@ -111,7 +111,7 @@ export async function writeTicket(tx: Tx, draft: TicketDraft, no: TicketNumber):
 export async function voidTicket(tx: Tx, id: string, reason: string, by: string, at: Date = new Date()): Promise<number> {
   const released = await releaseForTicket(tx, id, at);
   await tx.update(tickets).set({ status: "Cancelled" }).where(eq(tickets.id, id));
-  await appendHistory(tx, "ticket", id, `Cancelled — ${reason}`, by, at);
+  await appendHistory(tx, "ticket", id, `Cancelled - ${reason}`, by, at);
   return released;
 }
 
@@ -124,7 +124,7 @@ export async function readTicket(tx: Tx, id: string): Promise<Ticket | undefined
     id: head.id, req: head.refId, from: head.fromLoc as LocKey, to: head.toLoc as LocKey,
     lines: lines.map((l) => ({ it: l.itemKey, qty: l.qty })), st: head.status as TktStatus,
     // Never the six digits. This function is handed an id and no `who`, so it has nothing to
-    // check the reader's location against — and the wire shape needs the field, so it goes back
+    // check the reader's location against - and the wire shape needs the field, so it goes back
     // blank, exactly as `writeTicket` and `GET /snapshot` do for anyone but the receiving end.
     // A caller that one day needs the value reads the row itself, under the check `redactOtps`
     // makes in the snapshot.

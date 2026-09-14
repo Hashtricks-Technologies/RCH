@@ -40,7 +40,7 @@ export function formatId(kind: IdKind, n: number, at: Date = new Date()): string
  * sequence: `GRN-<yy><po number>-<nn>`, so the second instalment against `PO-2026-0143` is
  * `GRN-260143-02`.
  *
- * The original design said `GRN-<last 3 of PO>-<nn>`, which collides — `PO-2026-0143` and `PO-2027-0143`
+ * The original design said `GRN-<last 3 of PO>-<nn>`, which collides - `PO-2026-0143` and `PO-2027-0143`
  * share a three-character tail, and so do `PO-2026-0143` and `PO-2026-1143`. `grns.id` is a
  * primary key, so the collision surfaced as a failed insert in the middle of a receipt: a 500 at
  * the receiving door, not a duplicate number somebody notices later. Widening the tail to the
@@ -61,7 +61,7 @@ const EMP_NO = /^RC-(\d+)$/;
 /**
  * The employee number a new account is given: one past the highest `RC-<digits>` already on
  * `users`, padded to at least four digits (`RC-0001` → `RC-0002`, `RC-4482` → `RC-4483`). An
- * account whose number is not that shape — typed by hand through the users CLI — is skipped
+ * account whose number is not that shape - typed by hand through the users CLI - is skipped
  * rather than parsed. Not a `sequences` series: the number follows whatever accounts exist, so
  * the number a deleted account (never used, by rule) was holding is given out again.
  *

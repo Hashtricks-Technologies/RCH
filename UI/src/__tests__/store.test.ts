@@ -23,7 +23,7 @@ describe("counter operator", () => {
 
   it("holds the printed MRP as a ceiling on floor 3", () => {
     // Seeded lists now sit at or under MRP, so push a breaching price straight
-    // into state — the till must still refuse to charge above the printed MRP.
+    // into state - the till must still refuse to charge above the printed MRP.
     useApp.setState({ prices: { ...S().prices, B: { ...S().prices.B, juice: 25 } } });
     const p = priceOf(S(), "coffee", "juice");
     expect(p.p).toBe(20);
@@ -40,7 +40,7 @@ describe("availability", () => {
   });
   it("manual override wins over a stocked shelf and reverses", () => {
     // juice is stocked at the kiosk, so only the manual switch can take it off sale.
-    // `ovr` is the server's map, applied by applyStock — the screens read it through availOf.
+    // `ovr` is the server's map, applied by applyStock - the screens read it through availOf.
     expect(availOf(S(), "kiosk", "juice").ok).toBe(true);
     useApp.setState({ ovr: { "kiosk:juice": "switched off manually" } });
     expect(availOf(S(), "kiosk", "juice").ok).toBe(false);
@@ -89,14 +89,14 @@ describe("what a button may offer is what the server accepts", () => {
     expect(canMoveOrder("Ready", "Accepted")).toBe(false);
     expect(canMoveOrder("Declined", "Accepted")).toBe(false);
   });
-  it("draws no status button for a dispatched order — the way back is cancelling its ticket", () => {
+  it("draws no status button for a dispatched order - the way back is cancelling its ticket", () => {
     // The one line the table cannot express: PROD_ORDER_TRANSITIONS has Dispatched -> Ready so
     // a cancellation can put the order back, and `setStatus` refuses that source itself.
     expect(canMoveOrder("Dispatched", "Ready")).toBe(false);
     expect(canMoveOrder("Dispatched", "Accepted")).toBe(false);
     expect(canMoveOrder("Dispatched", "Declined")).toBe(false);
   });
-  it("never offers Dispatched as a word — a dispatch is a movement with its own endpoint", () => {
+  it("never offers Dispatched as a word - a dispatch is a movement with its own endpoint", () => {
     for (const st of ["New", "Accepted", "In kitchen", "Ready"] as const) {
       expect(canMoveOrder(st, "Dispatched")).toBe(false);
       // …and the control that does exist for those stages is the dispatch button's own.
@@ -127,8 +127,8 @@ describe("what a button may offer is what the server accepts", () => {
 
 /**
  * The store's reports are pure `AppState -> Rep` builds, so what a report counts can be driven
- * straight rather than read out of rendered HTML. TKT-0440 — 500 paper cups, store to the
- * Coffee Shop — is the only seeded ticket the store raised, which makes it the whole of both
+ * straight rather than read out of rendered HTML. TKT-0440 - 500 paper cups, store to the
+ * Coffee Shop - is the only seeded ticket the store raised, which makes it the whole of both
  * of these numbers.
  */
 describe("the store's reports read a withdrawn ticket as withdrawn", () => {
@@ -140,7 +140,7 @@ describe("the store's reports read a withdrawn ticket as withdrawn", () => {
   const setTicketStatus = (st: TktStatus) =>
     useApp.setState({ tkt: S().tkt.map((t) => (t.id === "TKT-0440" ? { ...t, st } : t)) });
 
-  // I3 — the stock ledger's opening balance — is no longer arithmetic this browser does. It is
+  // I3 - the stock ledger's opening balance - is no longer arithmetic this browser does. It is
   // the server's own sum over `stock_moves` (`GET /reports/stock-ledger`), pinned in
   // apps/api/src/modules/reports/reports.test.ts by "opens where the balance opened and closes
   // where it closes" and by the `at < from` boundary case beside it; the store call that reads
@@ -176,7 +176,7 @@ describe("the store's reports read a withdrawn ticket as withdrawn", () => {
 
   it("keeps a withdrawn ticket out of what the velocity report calls issued", () => {
     // "Issued from store" is the same measure under another heading, so it moves with the
-    // ledger — and a withdrawn ticket must not leave an item ranked as though it were fast.
+    // ledger - and a withdrawn ticket must not leave an item ranked as though it were fast.
     expect(cell("movers", "Paper cup 150ml", "Issued from store")).toBe("0");
     setTicketStatus("Collected");
     expect(cell("movers", "Paper cup 150ml", "Issued from store")).toBe("500");
@@ -191,10 +191,10 @@ describe("the store's reports read a withdrawn ticket as withdrawn", () => {
     expect(cell("issreg", "Coffee Shop", "At the window")).toBe("1");
 
     setTicketStatus("Cancelled");
-    // The three status columns can no longer account for it, so neither may the totals — the
+    // The three status columns can no longer account for it, so neither may the totals - the
     // Coffee Shop drops off the register altogether, because that ticket was all it had.
     expect(report("issreg").rows.find((r) => r[0] === "Coffee Shop")).toBeUndefined();
-    expect(report("issreg").foot).toBe("0 tickets standing against Central Store — withdrawn tickets are left out");
+    expect(report("issreg").foot).toBe("0 tickets standing against Central Store - withdrawn tickets are left out");
   });
 });
 
@@ -203,5 +203,5 @@ describe("production", () => {
   // board ("walks the board a stage at a time and signs each step") and the batch ("consumes
   // the recipe for what was started and books only what came good"); the two store calls that
   // reach those routes are in writes.test.ts. Dispatch and handover moved in Phase 3.
-  it.todo("nothing left in memory — see apps/api/src/modules/production/production.test.ts");
+  it.todo("nothing left in memory - see apps/api/src/modules/production/production.test.ts");
 });

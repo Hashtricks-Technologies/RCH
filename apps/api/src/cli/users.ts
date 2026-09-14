@@ -11,7 +11,7 @@ const { positionals, values } = parseArgs({
     on: { type: "boolean" }, off: { type: "boolean" },
   },
 });
-/** Only the string-valued options — `--on`/`--off` are booleans, read directly off `values`
+/** Only the string-valued options - `--on`/`--off` are booleans, read directly off `values`
  *  where `set-admin` needs them, and were never a `need("...")` shape to begin with. */
 type StringOption = "emp" | "name" | "email" | "role" | "loc" | "phone" | "password";
 const need = (k: StringOption): string => { const v = values[k]; if (!v) { console.error(`--${k} is required`); process.exit(2); } return v; };
@@ -47,8 +47,8 @@ try {
       const emp = need("emp");
       await setAdmin(db, emp, Boolean(values.on));
       console.log(values.on
-        ? `${emp} is now a super admin — it signs in to account management only, and no longer reaches its role's screens or routes`
-        : `${emp} is no longer a super admin — it signs in with its own role and location again`);
+        ? `${emp} is now a super admin - it signs in to account management only, and no longer reaches its role's screens or routes`
+        : `${emp} is no longer a super admin - it signs in with its own role and location again`);
       break;
     }
     default:

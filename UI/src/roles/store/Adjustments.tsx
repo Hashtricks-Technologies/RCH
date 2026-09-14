@@ -8,7 +8,7 @@ import { Card, DataTable, FilterSelect, PageHead, Pill, TableFoot, Toolbar } fro
 import AdjustmentForm, { REASONS } from "../../ui/AdjustmentForm";
 import type { StockLoc } from "../../types";
 
-/** Every shelf the store keeper answers for, which is all of them — the rejected-goods shelf
+/** Every shelf the store keeper answers for, which is all of them - the rejected-goods shelf
  *  included, and it is the reason this list is read off `StockLocSchema` rather than `ALL_LOCS`.
  *  What a goods receipt turned away sits there until somebody destroys it or sends it back, and
  *  nothing else in the system can take it off again.
@@ -85,7 +85,7 @@ export default function Adjustments() {
               key: a.id,
               cells: [
                 // The day as well as the clock face. This register is a permanent record, not a
-                // "today" list — `GET /adjustments` returns the lot — so a bare "14:20" said
+                // "today" list - `GET /adjustments` returns the lot - so a bare "14:20" said
                 // nothing about which day a write-off was on, and every row looked like today's.
                 <>{a.id}<small>{fromWireDay(a.iso)} {a.at}{a.note ? ` · ${a.note}` : ""}</small></>,
                 LOC[a.loc]?.n ?? a.loc,
@@ -102,7 +102,7 @@ export default function Adjustments() {
             title: filtering ? "Nothing matches those filters" : "Nothing has been written off yet",
             sub: filtering
               ? `${adjustments.length} adjustment${adjustments.length === 1 ? "" : "s"} are on record with the filters cleared.`
-              : "A tray that went over, a crate that was dropped, a count that came out short — record it above and the shelf and the reason move together.",
+              : "A tray that went over, a crate that was dropped, a count that came out short - record it above and the shelf and the reason move together.",
           }}
         />
         <TableFoot count={rows.length} extra={<>Written off to date <b>{money0(lost)}</b> at cost</>} />

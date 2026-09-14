@@ -4,7 +4,7 @@ import { availabilityOverrides, reservations, stockBalances } from "../../../db/
 import type { Reader } from "../../../lib/db.js";
 
 /** Every location stock is reported for, quarantine included: a store keeper has to see what a
- *  goods receipt rejected. Nothing is sold, issued or transferred from there — `LocKey`, which
+ *  goods receipt rejected. Nothing is sold, issued or transferred from there - `LocKey`, which
  *  every write body is typed against, still has five members. */
 const STOCK_LOCS: StockLoc[] = ["store", "kitchen", "rest", "coffee", "kiosk", "quarantine"];
 

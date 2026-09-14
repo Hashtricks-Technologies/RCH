@@ -6,7 +6,7 @@ import { OUTLETS } from "../data/master";
 import { Alert, Btn, Card, DataTable, Field, FormRow, PageHead, Pill, TableFoot } from "../ui/kit";
 import type { AdminAction, AdminUser, LocKey, Role } from "../types";
 
-/** Display labels only — the pairing itself, and every other rule this form previews, is the
+/** Display labels only - the pairing itself, and every other rule this form previews, is the
  *  server's (`apps/api/src/lib/users-admin.ts`'s own `WORKS_AT`/`ROLE_LABEL`); a refusal from
  *  there is what actually stops a bad combination, this only keeps the picker from offering one
  *  that would obviously be refused. */
@@ -19,7 +19,7 @@ const LOC_LABEL: Record<LocKey, string> = {
   store: "Central Store", kitchen: "Central Kitchen", rest: "Restaurant", coffee: "Coffee Shop", kiosk: "Snack Kiosk",
 };
 
-/** How each logged action reads in the feed — "Ramesh Kumar deleted Anitha R". Keyed on the
+/** How each logged action reads in the feed - "Ramesh Kumar deleted Anitha R". Keyed on the
  *  closed union, so a new action fails `typecheck` here until it has words. */
 const DID: Record<AdminAction["action"], string> = {
   create: "created", reset_password: "reset the password of", deactivate: "deactivated",
@@ -40,7 +40,7 @@ export default function AdminUsers() {
   const deleteAccount = useApp((s) => s.deleteAccount);
   const notify = useApp((s) => s.notify);
 
-  // Nothing on the snapshot carries the account list or its action log — this is the one screen
+  // Nothing on the snapshot carries the account list or its action log - this is the one screen
   // that reads either, so it asks for both on the way in, the same shape `Roster` already uses
   // for the payer register.
   useEffect(() => { void loadAccounts(); void loadAdminActions(); }, [loadAccounts, loadAdminActions]);
@@ -111,20 +111,20 @@ export default function AdminUsers() {
       />
 
       <Alert tone="i" label="ACCOUNTS">
-        A new or reset password is generated here and shown once, below — copy it before doing
+        A new or reset password is generated here and shown once, below - copy it before doing
         anything else, since it cannot be shown again and is not stored anywhere in this form.
         Every account created here must choose its own password at first sign-in.
       </Alert>
 
       {shown && (
         <Alert tone="g" label="PASSWORD" action={<Btn size="xs" variant="gh" onClick={() => setShown(null)}>Dismiss</Btn>}>
-          {shown.emp}'s temporary password is <b className="mono">{shown.password}</b> — shown once, copy it now.
+          {shown.emp}'s temporary password is <b className="mono">{shown.password}</b> - shown once, copy it now.
         </Alert>
       )}
 
-      <Card title="Create an account" sub="A real, ordinary account — the same as any other, with a temporary password to hand over">
+      <Card title="Create an account" sub="A real, ordinary account - the same as any other, with a temporary password to hand over">
         <FormRow cols="f3">
-          <Field label="Employee id" hint="Assigned when you save — the next number after the last account">
+          <Field label="Employee id" hint="Assigned when you save - the next number after the last account">
             <input className="mono" value={nextEmp} readOnly aria-readonly="true" />
           </Field>
           <Field label="Name"><input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
@@ -213,7 +213,7 @@ export default function AdminUsers() {
         <TableFoot count={accounts.length} />
       </Card>
 
-      <Card title="Recent actions" sub="The last fifty — who did what, to whom" className="mtop">
+      <Card title="Recent actions" sub="The last fifty - who did what, to whom" className="mtop">
         {adminActions.length === 0 ? <p className="mini">Nothing has happened here yet.</p> : (
           <ul className="feed">
             {adminActions.map((a, i) => (
