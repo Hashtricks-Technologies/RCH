@@ -55,7 +55,7 @@ export function createGrnService(db: Db) {
         assertRule(dc.length > 0, "Record the vendor's delivery note number before booking goods in");
         const lines = await grnRepo.lines(tx, id);
         // Positional, like an approval's `appr`: a short array would read as "nothing arrived on
-        // the lines you left out", which is not what a stale screen means to say (spec §16).
+        // the lines you left out", which is not what a stale screen means to say.
         assertRule(body.lines.length === lines.length, `Give a line for each of the ${lines.length} lines on this order`);
         assertRule(body.lines.some((r) => r.recv > 0), "Enter what arrived on at least one line");
 

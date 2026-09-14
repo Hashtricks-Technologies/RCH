@@ -31,10 +31,10 @@ jobs:
       # Not a turbo task: `pnpm lint` is oxlint per package plus knip, and knip is
       # repo-wide, so turbo never runs it. Keep it as its own step.
       - run: pnpm lint
-      # `pnpm lint` already runs this (spec §5.1's boundaries oxlint cannot see: protected
-      # tables, the ledger's one door, module skeletons); a separate named step just makes a
+      # `pnpm lint` already runs this (the boundaries oxlint cannot see: protected tables, the
+      # ledger's one door, module skeletons); a separate named step just makes a
       # boundary failure obvious in the CI log instead of buried at the end of `pnpm lint`.
-      - name: Check module and boundary rules (spec §5.1)
+      - name: Check module and boundary rules
         run: pnpm check:boundaries
       - name: pnpm audit (high and critical)
         # The registry's audit endpoint times out now and then, so a network failure is a
@@ -66,10 +66,8 @@ jobs:
     needs: check
     # Build + scan normally finish well inside this, but the kind install at the end of
     # this job (a real `helm install`/`helm upgrade` — see the last few steps) budgets 15m
-    # of its own on top of that. Raised from 20 to 30 when the Playwright smoke joined the
-    # install: downloading the browser is two to three minutes, and eight scenarios against a
-    # kind cluster are another three or four on top of the install that was already there.
-    timeout-minutes: 30
+    # of its own on top of that.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v3
@@ -92,8 +90,8 @@ jobs:
       - name: Scan ui
         uses: aquasecurity/trivy-action@v0.36.0
         with: { image-ref: rch-ui:ci, severity: "CRITICAL,HIGH", exit-code: "1", ignore-unfixed: true, trivyignores: .trivyignore.yaml }
-      # From here on: a real `helm install` against a throwaway kind cluster (spec §16,
-      # §14 Phase 1 exit amendment). Lives at the end of this job, not a separate one that
+      # From here on: a real `helm install` against a throwaway kind cluster. Lives at the
+      # end of this job, not a separate one that
       # `needs: images`, because the images above are only in this runner's local Docker
       # daemon (load: true) — a second job would have to rebuild or re-push/pull them.
       - uses: azure/setup-helm@v4
@@ -103,9 +101,8 @@ jobs:
       - name: Load images into kind
         run: kind load docker-image rch-api:ci rch-ui:ci --name rch
       - name: Generate a throwaway JWT signing key
-        # openssl, not `pnpm --filter @rch/api keys:generate` — the pnpm/Node setup below
-        # exists only for the smoke, and keying off openssl keeps this step independent of
-        # it and of an install succeeding. Masked because it's still a private key, even
+        # openssl, not `pnpm --filter @rch/api keys:generate` — this job has no Node toolchain
+        # and needs none just to mint a key. Masked because it's still a private key, even
         # though the cluster it signs tokens in is deleted at the end of this job.
         run: |
           openssl genpkey -algorithm ed25519 -out /tmp/jwt-priv.pem
@@ -116,37 +113,13 @@ jobs:
           echo "::add-mask::$PRIV_B64"
           echo "::add-mask::$PUB_B64"
           { echo "JWT_PRIVATE_KEY=$PRIV_B64"; echo "JWT_PUBLIC_KEY=$PUB_B64"; } >> "$GITHUB_ENV"
-      # The Node setup this job has deliberately not needed until now: the smoke at the end of
-      # install-test.sh is `pnpm test:e2e`, which needs the workspace installed and a browser.
-      - uses: pnpm/action-setup@v4
-        with: { version: 10.28.2 }
-      - uses: actions/setup-node@v7
-        with: { node-version-file: .nvmrc, cache: pnpm }
-      - run: pnpm install --frozen-lockfile
-      - name: Cache the browser the smoke drives
-        # The store path Playwright downloads into, keyed by the lockfile that pins the
-        # resolved version — a browser is ~150 MB and never changes between runs of one.
-        uses: actions/cache@v4
-        id: playwright-cache
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
-      - if: steps.playwright-cache.outputs.cache-hit != 'true'
-        run: pnpm --filter @rch/e2e exec playwright install --with-deps chromium
-      # A cache hit still needs the system libraries the browser links against.
-      - if: steps.playwright-cache.outputs.cache-hit == 'true'
-        run: pnpm --filter @rch/e2e exec playwright install-deps chromium
       - name: helm install into kind
-        # SEED_PASSWORD is the password the seed writes onto the six accounts AND the one the
-        # Playwright smoke signs in with: install-test.sh passes it to the chart and exports it
-        # for `pnpm test:e2e` (e2e/fixtures/roles.ts), so the two can never drift apart. It is
-        # not a secret — the cluster is deleted at the end of the job — but config.ts has no
-        # default for it any more, so it has to be named somewhere.
-        env: { E2E: "1", SEED_PASSWORD: ci-seed-password-1 }
+        # SEED_PASSWORD is the password the seed writes onto its accounts and the one
+        # install-test.sh's login check signs in with. It is not a secret — the cluster is
+        # deleted at the end of the job — but config.ts has no default for it any more, so it
+        # has to be named somewhere.
+        env: { SEED_PASSWORD: ci-seed-password-1 }
         run: deploy/chart/rch/ci/install-test.sh
-      - uses: actions/upload-artifact@v7
-        if: failure()
-        with: { name: playwright-report, path: e2e/playwright-report, retention-days: 7 }
   chart:
     name: Helm chart
     runs-on: ubuntu-latest

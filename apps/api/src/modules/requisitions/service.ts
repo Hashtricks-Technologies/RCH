@@ -67,7 +67,7 @@ export function createRequisitionsService(db: Db) {
         if (!p) throw new NotFoundError(`There is no requisition ${id}.`);
         const lines = await requisitionsRepo.lines(tx, id);
         // One decision per line, positionally: a short array silently declines the lines it does
-        // not reach, which is not a decision the buyer necessarily meant to make (spec §16).
+        // not reach, which is not a decision the buyer necessarily meant to make.
         assertRule(body.appr.length === lines.length, `Give a quantity for each of the ${lines.length} lines`);
         const plan = planPrqApproval(lines, body.appr);
         // Zeroing every line is a decline in all but name, and a decline always carries a reason.

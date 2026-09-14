@@ -35,7 +35,7 @@
         "patterns": [
           {
             "group": ["**/apps/**", "@rch/api"],
-            "message": "UI may not import from apps/api. Share code through @rch/contract or @rch/domain (see docs/superpowers/specs/2026-09-03-backend-design.md §5.1)."
+            "message": "UI may not import from apps/api. Share code through @rch/contract or @rch/domain."
           }
         ]
       }
@@ -65,7 +65,7 @@
             "patterns": [
               {
                 "group": ["**/apps/**", "@rch/api", "**/api/client"],
-                "message": "Screens read/write through useApp, not api/client directly (see docs/superpowers/specs/2026-09-03-backend-design.md §5.1). UI may not import from apps/api either."
+                "message": "Screens read/write through useApp, not api/client directly. UI may not import from apps/api either."
               }
             ]
           }

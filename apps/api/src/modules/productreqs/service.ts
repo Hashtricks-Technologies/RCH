@@ -3,7 +3,7 @@
 //
 // A shop's ask for something not on the master, and the central store's answer to it. Neither
 // write moves stock or appends history — `product_requests` is not one of the four document
-// types that write `document_history` (spec §16, Phase 1), and this phase does not change that.
+// types that write `document_history`, and this phase does not change that.
 import type { z } from "zod";
 import { OUTLETS, type AnswerProductRequestBodySchema, type CreateProductRequestBodySchema, type ProductRequest, type WriteResponse } from "@rch/contract";
 import type { Db } from "../../db/client.js";

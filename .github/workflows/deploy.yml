@@ -62,7 +62,7 @@ jobs:
       - uses: aws-actions/configure-aws-credentials@v4
         with: { role-to-assume: "${{ secrets.AWS_ROLE_ARN }}", aws-region: "${{ secrets.AWS_REGION }}" }
       - uses: aws-actions/amazon-ecr-login@v2
-      # The repositories refuse to overwrite a tag (immutable tags, spec §12), so a re-run of a
+      # The repositories refuse to overwrite a tag (immutable tags), so a re-run of a
       # commit whose images were already pushed skips the builds instead of failing on the push.
       - name: images already pushed for this commit?
         id: images

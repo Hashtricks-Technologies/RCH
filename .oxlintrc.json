@@ -1,6 +1,6 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  // This file is what `apps/api`, `packages/*` and `e2e` lint against — oxlint walks up from the
+  // This file is what `apps/api` and `packages/*` lint against — oxlint walks up from the
   // package it is run in, and only `UI` has a config of its own (`UI/.oxlintrc.json`). The set is
   // named rather than left to oxlint's defaults, so a version bump cannot quietly add a plugin
   // under `--max-warnings 0` or drop one the tree has been relying on. `react-hooks` is not a
@@ -22,7 +22,7 @@
             "patterns": [
               {
                 "group": ["**/UI/**", "@rch/ui"],
-                "message": "apps/api may not import from UI. Share code through @rch/contract or @rch/domain (see docs/superpowers/specs/2026-09-03-backend-design.md §5.1)."
+                "message": "apps/api may not import from UI. Share code through @rch/contract or @rch/domain."
               }
             ]
           }
@@ -38,7 +38,7 @@
             "patterns": [
               {
                 "group": ["**/apps/**", "@rch/api"],
-                "message": "UI may not import from apps/api. Share code through @rch/contract or @rch/domain (see docs/superpowers/specs/2026-09-03-backend-design.md §5.1)."
+                "message": "UI may not import from apps/api. Share code through @rch/contract or @rch/domain."
               }
             ]
           }
@@ -54,7 +54,7 @@
             "patterns": [
               {
                 "group": ["**/apps/**", "@rch/api", "**/api/client"],
-                "message": "Screens read/write through useApp, not api/client directly (see docs/superpowers/specs/2026-09-03-backend-design.md §5.1). UI may not import from apps/api either."
+                "message": "Screens read/write through useApp, not api/client directly. UI may not import from apps/api either."
               }
             ]
           }

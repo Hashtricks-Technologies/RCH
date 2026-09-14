@@ -411,7 +411,7 @@ describe("POST /batches", () => {
   it("leaves no phantom shelf line when a total loss is of something the kitchen never carried", async () => {
     // The kitchen carries no `tstscone` — it has a recipe but has never been made here. A batch
     // that yields nothing must not lock, and so must not create, its balance row: a zero row
-    // reads as "this location carries the line" on every stock screen (M12, spec §16).
+    // reads as "this location carries the line" on every stock screen (M12).
     await seedNoShelfLifeItem("tstscone");
     await bake("leaf", 1);
     expect((await app.testDb!.db.select().from(stockBalances)

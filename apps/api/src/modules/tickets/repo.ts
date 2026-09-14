@@ -40,7 +40,7 @@ export const ticketsRepo = {
     return { ...t, lines: lines.map((l) => ({ it: l.itemKey, qty: l.qty })) };
   },
 
-  /** The lifecycle is three timestamps on the row (spec §16), so the status never travels alone. */
+  /** The lifecycle is three timestamps on the row, so the status never travels alone. */
   async setStatus(tx: Tx, id: string, patch: { status: TktStatus; collectedAt?: Date; receivedAt?: Date }): Promise<void> {
     await tx.update(tickets).set(patch).where(eq(tickets.id, id));
   },

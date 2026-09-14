@@ -68,7 +68,7 @@ export const DispatchResultSchema = z.strictObject({ order: ProdOrderSchema, tic
 // The board's own two words: a status the kitchen presses, and a batch it logs. `Dispatched` is
 // a member of PordStatusSchema and is accepted by the schema on purpose — it is refused in the
 // service with a sentence that says where to go instead, because a stale tab pressing it needs
-// an answer it can read, not a 400 (spec §9.2: "Dispatched via its own endpoint").
+// an answer it can read, not a 400 — a dispatch has its own endpoint.
 export const SetOrderStatusBodySchema = z.strictObject({ st: PordStatusSchema });
 // `started` is what went into the oven and `made` is what came out of it; the ingredients go
 // against the first and only the second reaches the rack (UA-14). A blank yield box means every
@@ -88,7 +88,7 @@ export const CancelTicketBodySchema = z.strictObject({ reason: z.string().max(50
  *  negative one is a client bug — and bounded, for the same reason `QtySchema` is. */
 export const RateSchema = z.number().finite().min(0).max(1_000_000).multipleOf(0.01);
 
-// ---- requisitions (spec §9.2: sendRequisition, approveRequisition, declineRequisition)
+// ---- requisitions (sendRequisition, approveRequisition, declineRequisition)
 export const CreateRequisitionBodySchema = z.strictObject({
   lines: z.array(ReqLineInputSchema).min(1).max(50),
   note: z.string().max(500).default(""),
@@ -205,7 +205,7 @@ export const PatchItemBodySchema = z.strictObject({
   active: z.boolean().optional(),
 });
 
-// ---- The support desk (spec §9.2). Customer care for the portal itself: every role raises,
+// ---- The support desk. Customer care for the portal itself: every role raises,
 // replies to, resolves and rates its own tickets, and nothing here moves stock.
 export const RaiseTicketBodySchema = z.strictObject({
   topic: TicketTopicSchema,
@@ -218,7 +218,7 @@ export const RaiseTicketBodySchema = z.strictObject({
 });
 export const ReplyToTicketBodySchema = z.strictObject({ body: z.string().max(4000) });
 /** The schema takes any of the five words; which of them a *user* may choose is the service's
- *  rule (§9.2: "user may set Resolved/Closed only"), because that is a sentence, not a 400. */
+ *  rule (a user may set Resolved/Closed only), because that is a sentence, not a 400. */
 export const SetTicketStatusBodySchema = z.strictObject({ st: TicketStatusSchema });
 export const RateTicketBodySchema = z.strictObject({ rating: z.number().int().min(1).max(5) });
 

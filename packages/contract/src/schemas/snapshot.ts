@@ -56,7 +56,7 @@ export const ShopAsksResponseSchema = z.array(D.ShopAskSchema);
 export const ProdOrdersResponseSchema = z.array(D.ProdOrderSchema);
 export const BatchesResponseSchema = z.array(D.BatchSchema);
 /** The six buying collections on their own, so a write that names "prq", "po", "grn",
- *  "vendors", "contracts" or "productReqs" refetches its own slice (spec §9.1). */
+ *  "vendors", "contracts" or "productReqs" refetches its own slice. */
 export const RequisitionsResponseSchema = z.array(D.RequisitionSchema);
 export const PurchaseOrdersResponseSchema = z.array(D.PurchaseOrderSchema);
 export const GrnsResponseSchema = z.array(D.GrnSchema);
@@ -81,5 +81,5 @@ export const PayersResponseSchema = z.array(D.PayerRecordSchema);
 
 // ---- adjustments
 /** The adjustment register on its own, so a write naming "adjustments" refetches that slice
- *  rather than the whole snapshot (spec §9.1). Scoped like `stock`: a counter sees its own. */
+ *  rather than the whole snapshot. Scoped like `stock`: a counter sees its own. */
 export const AdjustmentsResponseSchema = z.array(D.AdjustmentSchema);

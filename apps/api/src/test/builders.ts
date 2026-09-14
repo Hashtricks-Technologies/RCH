@@ -1,4 +1,4 @@
-// Spec §5.1: "Test builders live in apps/api/src/test/builders.ts". A suite that hand-builds a
+// Test builders live here. A suite that hand-builds a
 // document instead of asking for one here is rejected in review — the defaults belong in one
 // place, so a case says only what it is about.
 import { eq } from "drizzle-orm";

@@ -16,7 +16,7 @@ export const adminRepo = {
   async byId(db: Reader, id: string): Promise<UserRow | undefined> {
     return (await db.select().from(users).where(eq(users.id, id)))[0];
   },
-  /** One line per write, in the same transaction as the change it records (§4 of the design).
+  /** One line per write, in the same transaction as the change it records.
    *  `id` is minted by the caller (a fresh UUID) — this table has no `sequences` row, on
    *  purpose: nothing ever reads its id back, so there is nothing for a gapless series to
    *  serve. */

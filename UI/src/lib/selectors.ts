@@ -224,7 +224,7 @@ export const procurementList = (s: { prq: Requisition[] }): PoolLine[] =>
 
 /** The order's value is `@rch/domain`'s arithmetic, not a second copy of it: the server stamps
  *  `needsApproval` from the same function, and two implementations of one number is exactly the
- *  §5.1 defect Phase 5 exists to remove. Kept as a one-line delegate because three screens and
+ *  defect Phase 5 exists to remove. Kept as a one-line delegate because three screens and
  *  `procurement.test.ts` already import it from here. */
 export const poValue = (o: PurchaseOrder) => D.poValue(o.lines);
 
@@ -309,7 +309,7 @@ export const canMoveOrder = (st: PordStatus, to: PordStatus) =>
 /** Whether a ticket can still be withdrawn: only one nobody has collected against. */
 export const canCancelTicket = (st: TktStatus) => D.canTransition(D.TICKET_TRANSITIONS, st, "Cancelled");
 
-/** Whether a draft may still go out to its vendor — one table, two consumers (spec §5.1). */
+/** Whether a draft may still go out to its vendor — one table, two consumers. */
 export const canSendPo = (st: PoStatus) => D.canTransition(D.PO_TRANSITIONS, st, "Ordered");
 /**
  * Whether an order may still be cancelled. `Ordered -> Cancelled` is a real edge in the table,

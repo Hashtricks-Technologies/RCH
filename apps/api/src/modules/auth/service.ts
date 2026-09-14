@@ -202,5 +202,5 @@ export function createAuthService(db: Db, config: Config) {
     },
   };
 }
-/** @public — consumed by Phase 2 write endpoints (spec §9.2). */
+/** @public — consumed by Phase 2 write endpoints. */
 export type AuthService = ReturnType<typeof createAuthService>;

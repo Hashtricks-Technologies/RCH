@@ -3,7 +3,7 @@
 The system Royal Care's kitchen, restaurant and floor shops run on: one item master and one stock
 ledger behind every counter in the building, from purchase requisition through production to the
 customer's bill. This repository is the whole thing — a React frontend, a Fastify API, the shared
-contract and rules packages, the Helm chart it deploys with, and the specs it was built against.
+contract and rules packages, and the Helm chart it deploys with.
 
 ## What the system does
 
@@ -110,7 +110,6 @@ apps/api/         the HTTP API (Fastify 5, Drizzle, PostgreSQL) and its migratio
 packages/contract/  Zod wire schemas, the route manifest, and the demo fixtures
 packages/domain/    pure business rules shared by the API and the UI
 deploy/           Helm chart, nginx config, and RUNBOOK.md (deploy, rollback, keys, restore)
-docs/             the product contract (HTML specs) and the design specs and plans
 scripts/          check-boundaries.sh, pg-init.sql
 ```
 
@@ -149,11 +148,6 @@ password everybody knows.
 A staging or production seed sets `must_change_password`, which routes a first sign-in through a
 change-password step. `deploy/RUNBOOK.md` §1 has the full local sequence and what each step does.
 
-Once it's up, `pnpm test:e2e` drives the running stack through a real browser — six files, nine
-scenarios, seventeen runtime tests (the sign-in loop is five of them), sign-in to a settled bill —
-and `e2e/README.md` explains what each one proves and the environment variables the stack needs
-first.
-
 **Going live.** Promotion to production is a release decision, not something this repository
 does on its own — `deploy/RUNBOOK.md` §11 is the ordered go-live checklist: the AWS values still
 marked `FILL`, generating and storing the production JWT keys, creating real staff accounts and
@@ -183,7 +177,6 @@ From the repository root:
 | `pnpm --filter @rch/api users …` | `create`, `reset-password` or `deactivate` an account |
 | `pnpm --filter @rch/api keys:generate` | Print a fresh JWT signing key pair |
 | `pnpm helm:test` | Render the Helm chart and check the output |
-| `pnpm test:e2e` | Playwright smoke against a running stack (`pnpm dev` first) — see `e2e/README.md` |
 | `pnpm --filter @rch/api loadcheck` | Measure `/snapshot` and `/bills` latency against a running API — see `deploy/RUNBOOK.md` §12 |
 
 ## Testing
@@ -232,14 +225,14 @@ in **[`deploy/RUNBOOK.md`](deploy/RUNBOOK.md)**.
 `pnpm lint`, the module and boundary checks, `pnpm audit` at high severity (three unreachable
 attempts fail the job — "we did not look" is not "no advisories"), and a production build of the UI. A
 second job builds the API and UI images, scans both with Trivy at **critical and high** severity
-against `.trivyignore.yaml`, and does a real `helm install` plus the Playwright smoke against a
+against `.trivyignore.yaml`, and does a real `helm install`, seed and sign-in against a
 throwaway kind cluster. A third renders the Helm chart on its own. Everything must be green to
 merge — and, since the deploy workflow is triggered by this one finishing green, everything must
 be green before anything reaches a cluster.
 
 ## Status
 
-The backend rolled out in six phases (spec §14); every one is **done** — each moved one role's
+The backend rolled out in six phases; every one is **done** — each moved one role's
 work onto the server and deleted its in-browser path, so nothing ever ran in two places at once.
 
 | Phase | Scope | Exit check it was gated on |
@@ -249,7 +242,7 @@ work onto the server and deleted its in-browser path, so nothing ever ran in two
 | 3 · Movement chain | The whole request chain, pick tickets with OTP handover, shop transfers and shop asks, the kitchen's two ticket-raising writes, and the live-update stream | The full request chain across two browsers with live updates and no reload; free-to-promise trims what a manager over-approves; a handover releases the reservation it authorised |
 | 4 · Production | The kitchen's board and its statuses, batches that consume a recipe and yield finished stock, and a ticket nobody collected can now be cancelled | A make consumes ingredients and yields stock in one transaction; a short dispatch is all-or-nothing; a cancelled ticket returns its stock and its document to where they stood |
 | 5 · Procurement | Vendors, rate contracts, requisitions, the purchase-order lifecycle, goods receipt with tolerance and quarantine, new products | A full requisition → PO → GRN → shelf run; the 2% tolerance and the expiry rules both refuse correctly; a cancelled or short-closed order gives its claim back to the requisition |
-| 6 · Ops and go-live | The support desk, the two server-side reports, the ticket's audit trail and its withheld OTP, the Playwright smoke, the load check, the chart's alerts, and the go-live checklist | §12's checklist verified against a local stack and the kind cluster CI installs — six items marked **when promoted**, because they need a production cluster that does not exist yet (spec §16); the smoke runs against `pnpm dev` locally and the kind cluster in CI, and is never pointed at production |
+| 6 · Ops and go-live | The support desk, the two server-side reports, the ticket's audit trail and its withheld OTP, the load check, the chart's alerts, and the go-live checklist | The production-readiness checklist verified against a local stack and the kind cluster CI installs — six items marked **when promoted**, because they need a production cluster that does not exist yet |
 
 Every mutation in the app is a server call now; nothing is left in the browser's own store.
 Phase 6 prepared the chart, the workflow and the go-live checklist for the first production
@@ -263,8 +256,7 @@ withdrawn, a wrong pick-ticket code counted with five of them locking the ticket
 withheld from the three roles that never bill anybody, and the ledger's own promises written into
 the database as constraints. Its last block is the exception: five capabilities the review found
 *missing* rather than broken — the write-off, the same-day bill void, the editable item master,
-the payer register and the kitchen order an outlet can raise, all described above. Every decision
-either block took is a row in spec §16, which is where to read before reopening one.
+the payer register and the kitchen order an outlet can raise, all described above.
 
 **`develop` is deployed.** A dev environment is live at **https://rch.hashtrickstechnologies.com**,
 on a single EC2 instance under Docker Compose (`deploy/RUNBOOK.md` §16) — `develop`'s own EKS/RDS
@@ -275,14 +267,10 @@ production are still exactly the release decision above: prepared, not provision
 
 ## Where the documents are
 
-- **`docs/ua-spec.html`**, **`docs/system-design.html`**, **`docs/user-flows.html`** — the product
-  contract, read in a browser: product classes and 24 acceptance scenarios, the building topology
-  and data model, and the role map with six end-to-end journeys.
-- **`docs/superpowers/specs/2026-09-03-backend-design.md`** — the backend design and the contract
-  for all server work. §2 records the decisions already taken, §14 the build order, and §16 every
-  amendment made while phases 1–6, the Phase 6 fix wave and the audit fix wave were executed.
-- **`docs/superpowers/plans/`** — the executed plan for each phase, kept for the record;
-  **`deploy/RUNBOOK.md`** — operations.
+- **`deploy/RUNBOOK.md`** — operations: deploy, roll back, keys, accounts, restore.
+- **`UI/README.md`** — the frontend in more detail.
+- **`CLAUDE.md`**, at the root and in each package — how the code is put together and the rules
+  it keeps.
 
 ---
 

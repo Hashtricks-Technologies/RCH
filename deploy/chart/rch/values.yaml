@@ -79,11 +79,11 @@ serviceAccount:
 # another Helm release name. Both templates are additionally gated on the cluster actually
 # serving monitoring.coreos.com/v1 — nothing here installs the operator.
 serviceMonitor: { enabled: false, interval: 30s, releaseLabel: kube-prometheus-stack }
-# Thresholds for the PrometheusRule (rendered only when serviceMonitor.enabled). Spec §12 sets
-# the first two; the last is the link an on-call engineer follows at three in the morning.
+# Thresholds for the PrometheusRule (rendered only when serviceMonitor.enabled). The first two
+# are the service targets; the last is the link an on-call engineer follows at three in the morning.
 alerts:
   errorRate: 0.01          # 5xx share of all requests, over 5 minutes
-  p95Seconds: 1            # §12's ceiling; the SLO underneath it is 150ms/200ms, measured by the load check
+  p95Seconds: 1            # the ceiling; the SLO underneath it is 150ms/200ms, measured by the load check
   runbookUrl: https://github.com/Hashtricks-Technologies/RCH/blob/production/deploy/RUNBOOK.md
 purge: { enabled: true, schedule: "15 2 * * *" }
 # Default-deny ingress for everything this release runs, with the three doors the chart actually

@@ -17,7 +17,7 @@ export type PatchVendorBody = z.infer<typeof PatchVendorBodySchema>;
 
 /** Two state digits, a ten-character PAN, an entity number, a literal Z, and a check character.
  *  Format only: this is not a checksum and does not prove the number is registered. Module-local
- *  — a validation of one field on one endpoint, with no second consumer (spec §5.1's rule is
+ *  — a validation of one field on one endpoint, with no second consumer (the shared-rule principle is
  *  about rules two sides enforce; `VendorDrawer.tsx` gains a hint, not a rule — Task 10). */
 const GSTIN_RE = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
 

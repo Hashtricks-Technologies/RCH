@@ -25,7 +25,7 @@ export const IsoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 export const STAFF_CREDIT_LIMIT = 3000;
 
 /** The rejected-goods shelf: a Store-type location that never sells and never issues, holding
- *  what quality control turned away at a goods receipt (spec §7.2). */
+ *  what quality control turned away at a goods receipt. */
 export const QUARANTINE = "quarantine";
 /**
  * Where stock is *reported*. `LocKeySchema` above — the five places an operator works — stays

@@ -31,7 +31,7 @@ export const payersRepo = {
   /** The composite primary key `(kind, id)` is the arbiter: a pre-check reads before this
    *  insert takes its lock, so two callers can both pass it — `onConflictDoNothing` hands the
    *  loser no row back, and it reads the same "already on the roster" sentence the check would
-   *  have given it a moment later (`addMenuItem`'s pattern, spec §16, Phase 2). It is also what
+   *  have given it a moment later (`addMenuItem`'s pattern). It is also what
    *  keeps the three rosters genuinely independent: the same number may be an in-patient and a
    *  cost centre, and only the pair collides. */
   async insertIfNew(tx: Tx, row: NewPayer): Promise<PayerRow | undefined> {

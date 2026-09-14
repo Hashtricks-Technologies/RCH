@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Enforces the reuse rules of docs/superpowers/specs/2026-09-03-backend-design.md §5.1
+# Enforces the repo's reuse rules
 # that oxlint cannot see because they depend on call shape (which Drizzle table a
 # statement writes to) or on directory contents (a module's file skeleton), not on
 # import statements. Runs from the repo root; see package.json's "check:boundaries".
@@ -114,8 +114,7 @@ done
 
 if [ "$fail" != "0" ]; then
   echo "" >&2
-  echo "One or more reuse-rule boundaries (spec §5.1, 'Reuse rules') were violated." >&2
-  echo "See docs/superpowers/specs/2026-09-03-backend-design.md." >&2
+  echo "One or more reuse-rule boundaries were violated." >&2
   exit 1
 fi
 

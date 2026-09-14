@@ -168,8 +168,8 @@ export function createPosService(db: Db) {
 
         // And once more with the moves actually posted. It can never fire today — the cover
         // check above ran under these same locks and nothing can have written behind it — and it
-        // is kept for the reason `makeBatch` keeps its own: spec §12 asks every negative-going
-        // move to re-read what it moved, and this is what would catch the next caller that reads
+        // is kept for the reason `makeBatch` keeps its own: every negative-going
+        // move re-reads what it moved, and this is what would catch the next caller that reads
         // a balance before it locks it.
         const settled = await posRepo.onHandAt(tx, loc, moved);
         const stillHeld = await reservedAt(tx, loc, moved);

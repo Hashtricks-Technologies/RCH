@@ -53,7 +53,7 @@ export const routes = {
   approveRequest: defineRoute({ method: "POST", path: "/requests/:id/approve",      access: ["manager"],                    params: DocIdParamsSchema, body: ApproveRequestBodySchema, response: writeResponse(ApprovalResultSchema) }),
   rejectRequest:  defineRoute({ method: "POST", path: "/requests/:id/reject",       access: ["manager"],                    params: DocIdParamsSchema, body: RejectRequestBodySchema,  response: writeResponse(StockRequestSchema) }),
   issueTicket:    defineRoute({ method: "POST", path: "/requests/:id/issue-ticket", access: ["store"],                      params: DocIdParamsSchema,       response: writeResponse(IssueResultSchema) }),
-  // `counter` is here for a shop transfer's own ticket (spec §9.2): the outlet that granted it
+  // `counter` is here for a shop transfer's own ticket: the outlet that granted it
   // hands it over. No counter screen calls it yet; the route exists so Phase 6 adds a button, not a route.
   handover:       defineRoute({ method: "POST", path: "/tickets/:id/handover",      access: ["store", "prod", "counter"],   params: DocIdParamsSchema, body: HandoverBodySchema,       response: writeResponse(TicketSchema) }),
   receiveTicket:  defineRoute({ method: "POST", path: "/tickets/:id/receive",       access: ["counter", "store", "prod"],   params: DocIdParamsSchema,       response: writeResponse(TicketSchema) }),
@@ -70,7 +70,7 @@ export const routes = {
   // now `requireLocOf` on the ticket's `from` put them out of everyone's reach rather than into
   // the counter's. The scoping is unchanged; only the door is wider.
   cancelTicket:   defineRoute({ method: "POST", path: "/tickets/:id/cancel",     access: ["store", "prod", "counter"],  params: DocIdParamsSchema, body: CancelTicketBodySchema,   response: writeResponse(TicketSchema) }),
-  // ---- Buying (spec §9.2, Phase 5). The store keeper asks, the buyer decides and orders, and
+  // ---- Buying. The store keeper asks, the buyer decides and orders, and
   // either of them books the goods in. Reads are declared beside their handlers, further down.
   createRequisition:    defineRoute({ method: "POST",   path: "/requisitions",                  access: ["store"],            body: CreateRequisitionBodySchema,  response: writeResponse(RequisitionSchema) }),
   approveRequisition:   defineRoute({ method: "POST",   path: "/requisitions/:id/approve",      access: ["buyer"],            params: DocIdParamsSchema, body: ApproveRequisitionBodySchema, response: writeResponse(RequisitionSchema) }),
@@ -91,7 +91,7 @@ export const routes = {
   updateContract:       defineRoute({ method: "PATCH",  path: "/contracts/:id",                 access: ["store"],            params: DocIdParamsSchema, body: PatchContractBodySchema, response: writeResponse(RateContractSchema) }),
   removeContract:       defineRoute({ method: "DELETE", path: "/contracts/:id",                 access: ["store"],            params: DocIdParamsSchema,          response: writeResponse(RateContractSchema) }),
   // Three screens add a product: the kitchen's own (FG and RAW, at the kitchen), the store's,
-  // and the buyer's answer to a shop's request. §8.3 named only the store keeper; §16 records it.
+  // and the buyer's answer to a shop's request.
   createItem:           defineRoute({ method: "POST",   path: "/items",                         access: ["store", "prod", "buyer"], body: CreateItemBodySchema,   response: writeResponse(ItemResultSchema) }),
   createProductRequest: defineRoute({ method: "POST",   path: "/product-requests",              access: ["counter", "manager"], body: CreateProductRequestBodySchema, response: writeResponse(ProductRequestSchema) }),
   answerProductRequest: defineRoute({ method: "POST",   path: "/product-requests/:id/answer",   access: ["store", "buyer"],   params: DocIdParamsSchema, body: AnswerProductRequestBodySchema, response: writeResponse(ProductRequestSchema) }),
@@ -103,17 +103,17 @@ export const routes = {
   ticketsList: defineRoute({ method: "GET", path: "/tickets",    access: "any", response: TicketsResponseSchema }),
   shopAsks:    defineRoute({ method: "GET", path: "/shop-asks",  access: "any", response: ShopAsksResponseSchema }),
   // The kitchen's two collections, likewise: a make names "batch" and "stock", a status change
-  // names "pord", and each refetches its own slice instead of the whole snapshot (spec §9.1).
+  // names "pord", and each refetches its own slice instead of the whole snapshot.
   prodOrders:  defineRoute({ method: "GET", path: "/prod-orders", access: "any", response: ProdOrdersResponseSchema }),
   batches:     defineRoute({ method: "GET", path: "/batches",     access: "any", response: BatchesResponseSchema }),
-  // Buying's six, each answering for one slice a write can name in `changed` (spec §9.1).
+  // Buying's six, each answering for one slice a write can name in `changed`.
   requisitions:    defineRoute({ method: "GET", path: "/requisitions",     access: "any", response: RequisitionsResponseSchema }),
   purchaseOrders:  defineRoute({ method: "GET", path: "/purchase-orders",  access: "any", response: PurchaseOrdersResponseSchema }),
   grns:            defineRoute({ method: "GET", path: "/grns",             access: "any", response: GrnsResponseSchema }),
   vendors:         defineRoute({ method: "GET", path: "/vendors",          access: "any", response: VendorsResponseSchema }),
   contracts:       defineRoute({ method: "GET", path: "/contracts",        access: "any", response: ContractsResponseSchema }),
   productRequests: defineRoute({ method: "GET", path: "/product-requests", access: "any", response: ProductRequestsResponseSchema }),
-  // ---- The support desk (spec §9.2, Phase 6). Every role, own tickets only: `access: "any"`
+  // ---- The support desk. Every role, own tickets only: `access: "any"`
   // opens the module to all five, and the service scopes each row on `by_user = claims.sub`.
   // A ticket somebody else raised is a 404, not a 403 — the same shape as a role's missing module.
   raiseTicket:     defineRoute({ method: "POST", path: "/support/tickets",              access: "any", body: RaiseTicketBodySchema,     response: writeResponse(SupportTicketSchema) }),
@@ -123,7 +123,7 @@ export const routes = {
   // `tickets`, not `supportTickets`: the name was reserved for this route when `ticketsList`
   // was named, so the manifest key matches the `changed` collection the writes above name.
   tickets:         defineRoute({ method: "GET",  path: "/support/tickets",              access: "any", response: SupportTicketsResponseSchema }),
-  // ---- Reports (spec §9.1, Phase 6). Two figures a caller cannot compute from its own snapshot:
+  // ---- Reports. Two figures a caller cannot compute from its own snapshot:
   // the ledger, which needs `stock_moves` and which the browser had to reconstruct backwards from
   // receipts and issues, and a payer's credit for the calendar month, which needs every outlet's
   // bills and which the till could only approximate from its own seven days. Every other report
@@ -168,7 +168,7 @@ export const routes = {
   // ---- admin: account management. A capability, not a role — `access: "admin"` checks the
   // `admin` claim (root CLAUDE.md), never `req.user.role`, so every one of these is reachable
   // from an ordinary account of any role that has been flagged, and from none that has not.
-  // Granting or revoking the flag itself is not among them (§7 of the design): there is no
+  // Granting or revoking the flag itself is not among them: there is no
   // route here for it, only `pnpm --filter @rch/api users set-admin`.
   adminUsers:            defineRoute({ method: "GET",   path: "/admin/users",                     access: "admin", response: z.array(AdminUserSchema) }),
   createAdminUser:       defineRoute({ method: "POST",  path: "/admin/users",                      access: "admin", body: CreateAdminUserBodySchema, response: writeResponse(AdminUserWithTempPasswordSchema) }),

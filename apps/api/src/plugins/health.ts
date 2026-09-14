@@ -14,8 +14,8 @@ declare module "fastify" {
  *
  * **A check's `Error` message is operator-facing.** It is appended to the 503's own sentence
  * (`Not ready: database — schema at 0/7 migrations.`) and logged whole, so a check writes a
- * phrase a person reads off a stuck rollout and never the driver's own message — spec §12 keeps
- * SQL and stack traces out of responses, and `plugins/db.ts` is where that curation happens for
+ * phrase a person reads off a stuck rollout and never the driver's own message — SQL and
+ * stack traces stay out of responses, and `plugins/db.ts` is where that curation happens for
  * the one check that exists. Without the reason, "Not ready: database." cannot tell a schema
  * behind from a database unreachable, which are the two states an operator has to act on
  * differently.

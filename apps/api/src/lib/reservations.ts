@@ -1,4 +1,4 @@
-// The one door to `reservations` (spec §5.1, and scripts/check-boundaries.sh keeps it shut):
+// The one door to `reservations` (scripts/check-boundaries.sh keeps it shut):
 // approval authorises, the scan moves, and what sits between the two is a row in this table.
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { round3, type RsvMap } from "@rch/domain";

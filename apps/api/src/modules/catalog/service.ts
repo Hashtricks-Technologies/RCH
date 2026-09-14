@@ -48,7 +48,7 @@ export function createCatalogService(db: Db) {
         const name = body.name.trim();
         assertRule(name.length > 0, "Give the product a name");
         assertRule(body.cost > 0, "Cost must be more than zero");
-        // §8.3: location decides which rows. The kitchen books what it makes at the kitchen;
+        // Location decides which rows. The kitchen books what it makes at the kitchen;
         // the store keeper and the buyer book at the central store. Derived from the caller's
         // role, not their loc — the two happen to agree today (see the task brief).
         const allowed: LocKey = claims.role === "prod" ? "kitchen" : "store";
@@ -209,7 +209,7 @@ export function createCatalogService(db: Db) {
       });
     },
 
-    /** MRP is a hard ceiling (spec §9.2): a priced item that also carries an MRP can never be
+    /** MRP is a hard ceiling: a priced item that also carries an MRP can never be
      *  sold above the number printed on its own pack. */
     async savePrice(list: "A" | "B", it: string, price: number): Promise<Write<{ list: "A" | "B"; it: string; price: number }>> {
       return withTransaction(db, async (tx) => {

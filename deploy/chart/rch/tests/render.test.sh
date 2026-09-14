@@ -122,7 +122,7 @@ refute bash -c 'grep -A2 "name: SEED_PASSWORD" <<<"$1" | grep -q "value:"' _ "$o
 # with no seed password at all — which is the whole thing this key exists to prevent.
 refute grep -q 'key: SEED_PASSWORD, optional' <<<"$out"
 
-# Phase 6: the five §12 alerts, the SSE listener and (B6) the crash loop ship with the chart, so
+# Phase 6: the five service alerts, the SSE listener and (B6) the crash loop ship with the chart, so
 # the alert text lives beside the metric it reads instead of only in the runbook.
 grep -q 'kind: PrometheusRule' <<<"$out_mon"
 for a in RchApiHigh5xxRate RchApiHighLatencyP95 RchApiDown RchApiPoolSaturated RchSseListenerDown RchApiCrashLooping; do

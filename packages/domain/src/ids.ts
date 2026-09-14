@@ -13,7 +13,7 @@ const ymd = (d: Date) => {
 };
 const year = (d: Date) => ymd(d).slice(0, 4);
 
-/** Document numbers exactly as the frontend has always printed them (spec §7.3). */
+/** Document numbers exactly as the frontend has always printed them. */
 export function formatId(kind: IdKind, n: number, at: Date = new Date()): string {
   switch (kind) {
     case "req":         return `REQ-${year(at)}-0${n}`;
@@ -40,12 +40,12 @@ export function formatId(kind: IdKind, n: number, at: Date = new Date()): string
  * sequence: `GRN-<yy><po number>-<nn>`, so the second instalment against `PO-2026-0143` is
  * `GRN-260143-02`.
  *
- * Spec §7.3 said `GRN-<last 3 of PO>-<nn>`, which collides — `PO-2026-0143` and `PO-2027-0143`
+ * The original design said `GRN-<last 3 of PO>-<nn>`, which collides — `PO-2026-0143` and `PO-2027-0143`
  * share a three-character tail, and so do `PO-2026-0143` and `PO-2026-1143`. `grns.id` is a
  * primary key, so the collision surfaced as a failed insert in the middle of a receipt: a 500 at
  * the receiving door, not a duplicate number somebody notices later. Widening the tail to the
  * year's last two digits plus the whole order number makes it unique for as long as PO numbers
- * are unique within a year, which they are (`sequences`). §16 records the change.
+ * are unique within a year, which they are (`sequences`).
  */
 export function grnId(poId: string, instalment: number): string {
   // "PO-2026-0143" -> ["PO", "2026", "0143"]. Anything that is not that shape falls back to the

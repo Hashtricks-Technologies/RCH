@@ -140,7 +140,7 @@ export const posRepo = {
   // What this staff member has already put on credit is `creditTakenThisMonth` in
   // apps/api/src/lib/credit.ts now. It moved because the credit report has to answer with the
   // same number this sale refuses on, and a second copy of the query is a report that can
-  // disagree with the refusal (spec §5.1). `lockStaffCredit` above stays here: the lock belongs
+  // disagree with the refusal. `lockStaffCredit` above stays here: the lock belongs
   // to the sale, not to the sum, and a report that took it would put every till behind whoever
   // opened the credit screen.
 };

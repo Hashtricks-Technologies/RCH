@@ -11,7 +11,7 @@ export { ALL_LOCS, OUTLETS, PO_APPROVAL_LIMIT } from "@rch/contract";
 //
 // They start **empty**. Nothing here is data: the app renders no screen until `auth` reaches
 // "ready", which only a snapshot can do, and the snapshot is what fills every one of them.
-// The demo hospital lives in `@rch/contract/fixtures` and is imported by tests alone (§5.1).
+// The demo hospital lives in `@rch/contract/fixtures` and is imported by tests alone.
 export const LOC: Record<string, Location> = {};
 export const IT: Record<string, Item> = {};
 export const RCP: Record<string, Recipe> = {};

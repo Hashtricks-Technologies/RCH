@@ -1,7 +1,7 @@
 import type { PoStatus, PordStatus, PrqStatus, ReqStatus, ShopAskStatus, TktStatus } from "@rch/contract";
 
 /**
- * Spec §5.1: "Status transitions are data, shared by both sides." One table, two consumers —
+ * Status transitions are data, shared by both sides. One table, two consumers —
  * the server refuses anything not listed, and the frontend reads the same table to decide
  * which buttons to render. A transition the UI offers but the server refuses is impossible
  * by construction.
@@ -38,7 +38,7 @@ export const TICKET_TRANSITIONS: TransitionTable<TktStatus> = {
  * The kitchen's board. `Dispatched` is reachable from every open stage on purpose: the kitchen
  * sends an order out the moment it is ready to, whatever word the board is showing — the
  * store's own `dispatchOrder` refuses only an order already gone or turned down. The rest is
- * spec §9.2's `setOrderStatus` walk, written down now so Phase 4's status endpoint and the
+ * the `setOrderStatus` walk, written down now so Phase 4's status endpoint and the
  * board's buttons read one table.
  */
 export const PROD_ORDER_TRANSITIONS: TransitionTable<PordStatus> = {

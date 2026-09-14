@@ -12,7 +12,7 @@ export const S = () => useApp.getState();
  * Sign in, the way `login()` leaves the store: a token in memory, the caller's own whole record,
  * and `auth: "ready"`. The store's own `signIn` hook is gone — it read the fixtures from inside
  * production code, which is exactly what this phase deleted — so the fixtures are imported here,
- * in a test file, where §5.1 says they belong.
+ * in a test file, which is where they belong.
  */
 export const as = (role: Role) => {
   setAccessToken("test-token");

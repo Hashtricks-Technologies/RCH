@@ -38,11 +38,6 @@ apps/api/dist/
 # Agent worktrees (Claude Code)
 .claude/worktrees/
 
-# Agent scratch (plans keep their ledger under docs/superpowers/plans)
+# Agent scratch
 .superpowers/
 .playwright-mcp/
-
-# Playwright smoke (e2e/): reports, traces and the browsers it downloads
-e2e/playwright-report/
-e2e/test-results/
-e2e/.playwright/

@@ -28,7 +28,7 @@ export const contractsRepo = {
   /** `rate_contracts_live_uq` is the arbiter: a pre-check reads before this insert takes its
    *  lock, so two callers can both pass it — `onConflictDoNothing` hands the loser no row back,
    *  and the loser reads the same "already has a live contract" sentence the check would have
-   *  given it a moment later (`addMenuItem`'s pattern, spec §16, Phase 2). */
+   *  given it a moment later (`addMenuItem`'s pattern). */
   async insertIfNew(tx: Tx, row: NewRateContract): Promise<RateContractRow | undefined> {
     const [c] = await tx.insert(rateContracts).values(row).onConflictDoNothing().returning();
     return c;

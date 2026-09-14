@@ -110,7 +110,7 @@ export async function updateUserRoleLocTx(tx: Tx, emp: string, next: { role: Rol
 export const updateUserRoleLoc = (db: Db, emp: string, next: { role: Role; loc: LocKey }): Promise<void> => withTransaction(db, (tx) => updateUserRoleLocTx(tx, emp, next));
 
 /**
- * The one door in or out of admin status (spec §7) — never reachable from the admin HTTP module
+ * The one door in or out of admin status — never reachable from the admin HTTP module
  * itself, only from this CLI, so a compromised or misused admin session can create ordinary
  * accounts and reset ordinary passwords but can never mint a second admin. No `*Tx` core: the
  * admin module has no reason to ever compose this, by design.

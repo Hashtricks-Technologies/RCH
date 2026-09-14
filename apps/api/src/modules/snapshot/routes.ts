@@ -13,7 +13,7 @@ export default fp(async (app) => {
   mount(app, routes.shopAsks, async (req) => svc.shopAsks(req.user));
   mount(app, routes.prodOrders, async (req) => svc.prodOrders(req.user));
   mount(app, routes.batches, async (req) => svc.batches(req.user));
-  // Buying's six, each answering for one slice a write can name in `changed` (spec §9.1).
+  // Buying's six, each answering for one slice a write can name in `changed`.
   mount(app, routes.requisitions, async (req) => svc.requisitions(req.user));
   mount(app, routes.purchaseOrders, async (req) => svc.purchaseOrders(req.user));
   mount(app, routes.grns, async (req) => svc.grns(req.user));

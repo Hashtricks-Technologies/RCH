@@ -10,7 +10,7 @@ export type ProdOrderHead = typeof prodOrders.$inferSelect;
 
 export const productionRepo = {
   /**
-   * A locking read. Every status transition reads its own row `for update` (spec §5.1): two
+   * A locking read. Every status transition reads its own row `for update`: two
    * screens pressing Dispatch together would otherwise both see the order open, both pass the
    * guard and both raise a ticket for stock that is only there once. The lock is held to the
    * end of the transaction, so the second caller reads what the first committed and is refused.

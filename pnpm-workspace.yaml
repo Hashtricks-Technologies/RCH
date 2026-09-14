@@ -2,4 +2,3 @@ packages:
   - packages/*
   - apps/*
   - UI
-  - e2e

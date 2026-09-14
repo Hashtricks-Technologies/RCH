@@ -57,7 +57,7 @@ export type ProductRequest = z.infer<typeof D.ProductRequestSchema>;
 export type RateContract = z.infer<typeof D.RateContractSchema>;
 export type ShopAsk = z.infer<typeof D.ShopAskSchema>;
 
-/** The two reports (spec §9.1, Phase 6): the store's stock ledger and a payer's credit for the
+/** The two reports: the store's stock ledger and a payer's credit for the
  *  calendar month — the two figures a caller cannot compute from its own snapshot. */
 export type StockLedgerQuery = z.infer<typeof R.StockLedgerQuerySchema>;
 export type StockLedgerRow = z.infer<typeof R.StockLedgerRowSchema>;

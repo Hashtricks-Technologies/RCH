@@ -28,7 +28,7 @@ export function requireLocOf(claims: { loc: string }, loc: string, what = "that 
 
 /**
  * For a location-scoped write whose location is in the request.
- * @public — consumed by Phase 2 write endpoints (spec §9.2).
+ * @public — consumed by Phase 2 write endpoints.
  */
 export function requireLoc(req: FastifyRequest, loc: LocKey | string, what = "that location"): void {
   requireLocOf(req.user, loc, what);

@@ -81,7 +81,7 @@ describe("GET /reports/stock-ledger", () => {
     const body = await ledger("store", 30);
     const row = body.rows.find((r) => r.it === it)!;
 
-    // Spec §12: "db:rebuild-balances reproduces stock_balances exactly from stock_moves." The
+    // db:rebuild-balances reproduces stock_balances exactly from stock_moves. The
     // report is the same sum by another route, so its closing column has to agree with the cache
     // — and that is the whole reason this report is a server query and not browser arithmetic.
     const [bal] = await app.db.select().from(s.stockBalances).where(and(eq(s.stockBalances.loc, "store"), eq(s.stockBalances.itemKey, it)));

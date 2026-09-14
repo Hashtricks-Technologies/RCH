@@ -33,7 +33,7 @@ const BACKOFF_MS = [250, 500, 1000, 2000, 5000, 10_000];
  * How many streams one signed-in person may hold open at once.
  *
  * A stream is a socket and a slot in every broadcast for as long as it lives, and the global
- * rate limiter cannot see it — spec §6 turns the limiter off for this route, because a request
+ * rate limiter cannot see it — the limiter is off for this route, because a request
  * that lasts an hour is the wrong shape for a per-minute budget. Eight is far above a real
  * counter (a till, a spare tab, a phone) and far below what a reconnect loop with a bug in it
  * would open in a minute, which is the failure this bounds.
@@ -230,7 +230,7 @@ export default fp<{ config: Config; searchPath?: string }>(async (app, { config,
     if (req.headers["last-event-id"]) stream.write(frame(nextId(), "resync", JSON.stringify({ at: new Date().toISOString() })));
   });
 
-  // ---- shutdown (spec §12) ------------------------------------------------------
+  // ---- shutdown ------------------------------------------------------
   /** Let every open stream go, with a hint about when to come back, and stop listening.
    *  Fastify's forceCloseConnections: "idle" will not touch a socket a stream is holding —
    *  `server.close()` only reaps a connection once its response has ended, so ending them is

@@ -28,7 +28,7 @@ export type SetTicketStatusBody = z.infer<typeof SetTicketStatusBodySchema>;
 export type RateTicketBody = z.infer<typeof RateTicketBodySchema>;
 
 export function createSupportService(db: Db) {
-  /** Every write below is "own ticket only" (§9.2). A ticket somebody else raised is a 404, not a
+  /** Every write below is "own ticket only". A ticket somebody else raised is a 404, not a
    *  403: it is not that this person may not act on it, it is that it is not theirs to see — the
    *  same shape a role's missing module has, and it tells a fisherman nothing. */
   const mine = async (tx: Tx, id: string, sub: string) => {
@@ -38,7 +38,7 @@ export function createSupportService(db: Db) {
   };
 
   return {
-    /** Spec §9.2 scopes every support write to the caller's own tickets, so the list is scoped
+    /** Every support write is scoped to the caller's own tickets, so the list is scoped
      *  the same way: a row nobody may act on is a row nobody should be shown. Keyed on the user
      *  id in the token, never on a display name.
      *

@@ -40,7 +40,7 @@ describe("GET /support/tickets", () => {
     expect(asStore.map((t) => t.id)).not.toContain(mine);
   });
 
-  it("is open to every role — support is the one module all five share (§8.3)", async () => {
+  it("is open to every role — support is the one module all five share", async () => {
     for (const u of ["u1", "u2", "u3", "u4", "u5"]) {
       const res = await app.inject({ method: "GET", url: "/api/v1/support/tickets", headers: await authHeaders(app, u) });
       expect(res.statusCode).toBe(200);

@@ -120,7 +120,7 @@ export function createAdjustmentsService(db: Db) {
         await postMoves(tx, moves);
 
         // The cover check above already ran under these locks, so this cannot fire today. It is
-        // the invariant spec §12 asks for on every negative-going move, and it is what catches
+        // the invariant every negative-going move must keep, and it is what catches
         // the next caller that reads a balance before locking it.
         const after = await adjustmentsRepo.balancesAt(tx, loc, down.map((l) => l.it));
         const heldAfter = await reservedAt(tx, loc, down.map((l) => l.it));

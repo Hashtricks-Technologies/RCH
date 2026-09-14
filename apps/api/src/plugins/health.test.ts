@@ -40,7 +40,7 @@ describe("GET /readyz", () => {
         error: { code: "not_ready", message: "Not ready: database — migration journal unreadable." },
       });
       // The whole point of the wrapper: the fs error's own message names a path inside the
-      // container, and spec §12 keeps that class of detail in the log rather than the body.
+      // container, and that class of detail belongs in the log rather than the body.
       expect(r.json().error.message).not.toContain("_journal.json");
     } finally {
       journal.fails = false;

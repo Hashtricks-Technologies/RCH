@@ -99,7 +99,7 @@ export const redactOtps = (tkt: Ticket[], who: Who): Ticket[] =>
   tkt.map((t) => (t.st === "Issued" && t.to === who.loc && COLLECTS.has(who.role) ? t : { ...t, otp: "" }));
 
 /**
- * Support is the one module all five roles share (§8.3) and every support write in §9.2 is
+ * Support is the one module all five roles share and every support write is
  * scoped "all (own)". The list is scoped the same way, by the user id in the token — `by` on the
  * wire is a display name and two people can share one.
  */

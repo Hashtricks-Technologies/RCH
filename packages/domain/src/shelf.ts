@@ -1,11 +1,11 @@
 /**
  * How long a made thing keeps, and how to say when it stops keeping.
  *
- * Spec §9.2: a batch's best-before is the item's `shelf_life_hours` after it was made, and an
+ * A batch's best-before is the item's `shelf_life_hours` after it was made, and an
  * item with none recorded keeps for the working day. The wording is H9's: a best-before that
  * lands on another day must say so, or an evening batch reads as though it expired this
  * morning. One implementation, because the server puts it in the toast and the browser puts
- * it in the batch log (spec §5.1).
+ * it in the batch log.
  */
 import { istDate } from "./format.js";
 

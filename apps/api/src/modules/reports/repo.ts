@@ -14,7 +14,7 @@ import * as s from "../../db/schema/index.js";
 /**
  * Two aggregates for one location: what the moves before the window sum to per item, and the
  * window's own signed moves per item. Both hit `stock_moves_loc_item_at_idx` — `EXPLAIN` on
- * either must not show a sequential scan at production cardinality (spec §12, Performance).
+ * either must not show a sequential scan at production cardinality.
  *
  * The two halves partition the ledger on one boundary and only one: `openingAt` takes `at < from`
  * and `movedIn` takes `at >= from`, so every move is on exactly one side of the window's edge.

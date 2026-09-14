@@ -127,7 +127,7 @@ export function createProductionService(db: Db) {
         // the order was raised must not turn a refusal the kitchen can read into a 500.
         const toName = master.locations[o.fromLoc]?.n ?? o.fromLoc;
         // The table decides; the sentence only explains. PROD_ORDER_TRANSITIONS is the same
-        // data the board's Dispatch button is drawn from (spec §5.1), so a stage the UI offers
+        // data the board's Dispatch button is drawn from, so a stage the UI offers
         // and a stage the server accepts cannot drift apart. One order, one ticket: dispatching
         // twice would raise a second ticket for stock already promised, which is how half an
         // order ends up in two places — so the refusal names where that stock already went.
@@ -175,7 +175,7 @@ export function createProductionService(db: Db) {
      * screens pressing Accept together cannot both find it New and both sign for it.
      *
      * The table decides and the sentence only explains: PROD_ORDER_TRANSITIONS is the same
-     * data the board draws its buttons from (spec §5.1). The sentence is this endpoint's own
+     * data the board draws its buttons from. The sentence is this endpoint's own
      * rather than `assertTransition`'s "is already <status>", which would answer a New order
      * asked to jump to Ready with "is already new" — true of the wrong half of the sentence.
      */
@@ -184,7 +184,7 @@ export function createProductionService(db: Db) {
         const o = await productionRepo.head(tx, id);
         if (!o) throw new NotFoundError(`There is no production order ${id}.`);
         // Dispatch is a movement, not a word: it mints the ticket the outlet collects against
-        // and reserves the stock behind it, so it has its own endpoint (spec §9.2).
+        // and reserves the stock behind it, so it has its own endpoint.
         assertRule(st !== "Dispatched", `${id} goes out on a pick ticket — dispatch it from the order instead`);
         // And the way back is a movement too. The table has Dispatched -> Ready so a cancelled
         // ticket can put the order back on the board; taking that edge here would leave the
@@ -221,7 +221,7 @@ export function createProductionService(db: Db) {
      * yield to book — so the `postMoves` below re-takes only locks this transaction already
      * holds. A make that locked the ingredients alone would reach for a fifth row while holding
      * four; one that locked the finished item with nothing to yield would create a balance row
-     * it never moves, and a zero row reads as "this location carries the line" (M12, spec §16).
+     * it never moves, and a zero row reads as "this location carries the line" (M12).
      */
     async makeBatch(claims: AccessClaims, body: MakeBatchBody): Promise<WriteResponse<Batch>> {
       return withTransaction(db, async (tx) => {
@@ -288,7 +288,7 @@ export function createProductionService(db: Db) {
         await postMoves(tx, moves);
 
         // The cover check above already ran under these locks, so this cannot fire today. It is
-        // the invariant §12 asks for on every negative-going move, and it is what catches the
+        // the invariant every negative-going move must keep, and it is what catches the
         // next caller that reads a balance before locking it.
         const after = await productionRepo.balancesAt(tx, KITCHEN, need.map((n) => n.it));
         const heldAfter = await reservedAt(tx, KITCHEN, need.map((n) => n.it));
@@ -368,7 +368,7 @@ export function createProductionService(db: Db) {
         }, no);
 
         // No history row: `document_history` carries requests, requisitions, purchase orders
-        // and production orders (spec §16), and a direct issue is none of those.
+        // and production orders, and a direct issue is none of those.
         const changed = ["tkt", "rsv"] as const;
         await emitChanged(tx, changed);
         return {

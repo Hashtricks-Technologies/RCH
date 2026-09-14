@@ -16,7 +16,7 @@ export const poValue = (lines: readonly { qty: number; rate: number }[]): number
 export const needsApproval = (value: number, limit: number): boolean => value > limit;
 
 /** A line is priced off the live rate contract wherever there is one, and off the item's own
- *  standard cost where there is not (spec §9.2, `createPo`). A contract with no rate on it is
+ *  standard cost where there is not. A contract with no rate on it is
  *  not a price. */
 export const rateFor = (contract: { rate: number } | undefined, itemCost: number): number =>
   contract && contract.rate > 0 ? contract.rate : itemCost;
@@ -29,6 +29,6 @@ export const etaFrom = (at: Date, leadDays: number): string =>
  *  which sorts the same as it compares, so a plain string comparison is exact — the same test
  *  `purchaseOrdersRepo.activeContractRates` runs in SQL (`validFrom <= today <= validTo`) to
  *  price an order, so a preview never offers a rate the order will not get. A contract whose
- *  window has closed does not price an order, however active its flag says it is (spec §9.2). */
+ *  window has closed does not price an order, however active its flag says it is. */
 export const contractInWindow = (c: { from: string; to: string }, today: string): boolean =>
   c.from <= today && today <= c.to;

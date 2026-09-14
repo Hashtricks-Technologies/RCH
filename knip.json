@@ -17,22 +17,10 @@
       "project": [
         "src/**/*.ts"
       ]
-    },
-    "e2e": {
-      // Playwright discovers specs itself; knip has to be told, or every scenario reads as dead
-      // code and every fixture as an unused export. `playwright.config.ts` is not listed:
-      // knip's own Playwright plugin already treats it as an entry and reports the duplicate
-      // as a redundant pattern.
-      "entry": [
-        "tests/**/*.spec.ts"
-      ],
-      "project": [
-        "**/*.ts"
-      ]
     }
   },
   "ignoreFiles": [
-    // Copy-paste module skeleton (spec §5.1); routes.ts is never imported on purpose — it
+    // Copy-paste module skeleton; routes.ts is never imported on purpose — it
     // is not registered in modules/index.ts. See apps/api/src/modules/_template/routes.ts.
     "apps/api/src/modules/_template/**"
   ],

@@ -1,7 +1,7 @@
 # Royal Care — F&B Inventory (React + Vite)
 
 Frontend for the hospital's kitchen, restaurant and retail-counter operation. Five roles,
-one shared stock ledger, backed by the `apps/api` Fastify service — all six phases of spec §14
+one shared stock ledger, backed by the `apps/api` Fastify service — all six phases of the backend
 are implemented, and the store is an API client end to end.
 
 ## Stack
@@ -250,14 +250,8 @@ happens, is always the server's.
 
 ## Try it end to end
 
-`pnpm test:e2e` (from the repo root, against a running `pnpm dev` stack) drives six files, nine
-scenarios, seventeen runtime tests (the sign-in loop is five of them) through a real browser — sign
-in, sell, raise and approve a request, make a kitchen batch, run a requisition through to a
-goods receipt, and work a support ticket end to end — and is the fastest way to see the whole
-system move. `../e2e/README.md` explains what each spec proves and the environment it needs.
-`apps/api/scripts/loadcheck.mjs`
-(`../deploy/RUNBOOK.md` §12) measures whether `/snapshot` and `/bills` meet spec §12's latency
-targets against a running API.
+`apps/api/scripts/loadcheck.mjs` (`../deploy/RUNBOOK.md` §12) measures whether `/snapshot` and
+`/bills` meet their latency targets against a running API.
 
 ## Out of scope
 
@@ -267,8 +261,5 @@ purchase-return or debit-note document out of quarantine (the shelf itself can b
 an adjustment; recovering the money from the vendor cannot), a finance approval role, batch-wise
 MRP with FEFO issue, a credit note after the day is out (a bill is voided on the day it was
 billed, or not at all), and the shift/day-close workflow: there are no shifts, no cash
-declaration, no tender variance and no day lock, and nothing writes stock off on a schedule —
-each recorded with its reason in
-`../docs/ua-spec.html` §09 and `../docs/superpowers/specs/2026-09-03-backend-design.md` §16. The
-backend design is `../docs/superpowers/specs/2026-09-03-backend-design.md`; the phase-by-phase
-status is the table in the root `../README.md`.
+declaration, no tender variance and no day lock, and nothing writes stock off on a schedule.
+The phase-by-phase status is the table in the root `../README.md`.

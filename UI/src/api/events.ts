@@ -14,7 +14,7 @@ import { useApp } from "../store";
  * token and its refresh-once path, so the stream authenticates exactly as every other call.
  */
 export type StreamState = "off" | "live" | "reconnecting";
-/** Spec §6: the client refetches the affected slice, debounced 250 ms. */
+/** The client refetches the affected slice, debounced 250 ms. */
 export const EVENT_DEBOUNCE_MS = 250;
 const BACKOFF_MS = [1000, 2000, 5000, 10_000, 30_000];
 const BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? "";

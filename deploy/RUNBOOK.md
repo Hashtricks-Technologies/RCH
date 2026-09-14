@@ -1,8 +1,7 @@
 # RCH — Operations Runbook
 
 Operational procedures for the Royal Care Hospital F&B backend (`apps/api`, `UI/`,
-`deploy/chart/rch`). See `docs/superpowers/specs/2026-09-03-backend-design.md` for the design
-this implements; this document is the "how to actually do it" companion.
+`deploy/chart/rch`) — how to actually run, deploy and recover it.
 
 ## 1. Local development
 
@@ -60,7 +59,7 @@ Development and test are unchanged. The rules themselves are one pure function,
 numbering and the one admin account (`RC-0001`, on `SEED_PASSWORD`), and nothing of the demo
 hospital — no items, recipes, prices, menus, stock, payers, vendors, documents or demo staff.
 `deploy/compose/deploy.sh` passes it on a first run; local development, the test suites and CI's
-e2e smoke keep the demo seed, because they are written against it. Both production guards apply
+kind install keep the demo seed, because they are written against it. Both production guards apply
 to it exactly as to the demo seed, and `--bare --force` over a database that already holds the
 demo hospital empties it first — which is how a host seeded with demo data is put back to a
 clean start (§16.5):
@@ -1065,7 +1064,7 @@ Phase 4.
 
 ## 9. Alerts
 
-Spec §12 names five; this build ships eight — the **six** below that the chart's
+The original requirement named five; this build ships eight — the **six** below that the chart's
 `PrometheusRule` renders, plus the two RDS rules that stay runbook-only. `/metrics` (Prometheus
 format, `apps/api/src/plugins/metrics.ts`) exposes `http_request_duration_seconds` (histogram,
 labelled `method`, `route`, `status`), `pg_pool_waiting`/`pg_pool_idle`, `sse_listener_up` and
@@ -1127,7 +1126,7 @@ paged, and by what, is a §11 go-live decision, not a chart value.
    ```
    This is the pool the app itself opens (`max: 10` per pod, `apps/api/src/db/client.ts`), not
    RDS's own connection count — see item 7 below for that. The app pool never exceeds 60
-   connections at max scale-out (10 per pod × 6 max pods, per spec §11.2) — plus one dedicated
+   connections at max scale-out (10 per pod × 6 max pods) — plus one dedicated
    `LISTEN` connection per pod for the SSE plugin (§10), so 66. Still well under any RDS
    instance's limit; this alert catches the pool running out locally, long before RDS itself is
    under any real pressure.
@@ -1217,7 +1216,7 @@ reaping an idle connection.
   backoff (250 ms → 500 ms → 1 s → 2 s → 5 s → 10 s) and sends every open stream an
   `event: resync` frame the moment it reconnects, so a browser that missed notices catches up
   with one `loadSnapshot()` rather than trusting a replay it can't have (there is no replay
-  buffer — spec §16 records why: it would not survive a pod being rescheduled). Alert on
+  buffer — it would not survive a pod being rescheduled). Alert on
   `min(sse_listener_up) == 0 for 5m` — a single pod recovering itself in under five minutes
   needs nobody paged; five minutes deaf on any one pod does.
 
@@ -1313,10 +1312,7 @@ from Phase 5's note; nothing in this phase touched the route.
 
 **`MAX_STREAMS_PER_USER` is 8** (`apps/api/src/plugins/sse.ts`) — a signed-in employee opening a
 ninth simultaneous stream is refused with `You already have 8 screens listening for updates.
-Close one and try again.` (a `429`). This is easier to reach than it sounds: five browser
-contexts open for one employee inside a single Playwright run (`e2e/tests/*.spec.ts`) is normal,
-and the smoke has driven it there without incident — sixteen stream opens and sixteen closes,
-zero 429s, across one CI run. If a real shift ever hits this limit it reads as several tabs left
+Close one and try again.` (a `429`). If a real shift ever hits this limit it reads as several tabs left
 open on one login, not a server problem; ask the operator to close some.
 
 ## 11. Go-live checklist
@@ -1342,7 +1338,7 @@ branch.
 
 **Where the branch stands.** `feat/phase-6-ops-go-live` is **36 commits** ahead of `develop`, and
 `origin/staging` is an ancestor of `origin/develop` — so every promotion below is a genuine
-fast-forward, as §11.3 of the design spec requires. Confirm both before starting:
+fast-forward, as the branch model requires. Confirm both before starting:
 
 ```bash
 git log --oneline develop..feat/phase-6-ops-go-live | wc -l              # 36
@@ -1424,7 +1420,7 @@ is this build in a hospital.**
 An ordered list. Each item is a command or a decision, and each decision names who makes it —
 the account owner, not the executor of this phase's tasks. Nothing on this list has been run
 against a real AWS account **for staging or production**; Phase 6 prepared the chart, the
-workflow and this checklist and stopped there (spec §16, Phase 6) — running it is a release
+workflow and this checklist and stopped there — running it is a release
 decision. The equivalent steps have been run for `dev` (§15), which is exactly why the account
 owner should not repeat them from the same starting point:
 
@@ -1464,7 +1460,7 @@ scoped to what a deploy needs, and needs no change.
    `migrations applied: 13 / 13`.
 2. **Create the environment's CloudFormation stack** — `deploy/cfn/rch-env.yaml` with
    `deploy/cfn/prod.params.json` (or `staging.params.json`). The template, not this list, is now
-   where spec §11.2's RDS settings live, so read **[`deploy/cfn/README.md`](cfn/README.md)**
+   where the RDS settings live, so read **[`deploy/cfn/README.md`](cfn/README.md)**
    before running anything: it carries the procedure, the `FILL` table, what an IMPORT change set
    will and will not accept, and why `staging`/`prod` must be a plain `create-stack` rather than
    the import `dev` went through. What the template delivers per environment, without a command
@@ -1488,7 +1484,7 @@ scoped to what a deploy needs, and needs no change.
      per-environment `DBSubnetGroup` replacing the shared import, and an outage to move an
      existing instance between subnet groups. What limits the exposure meanwhile is
      `PubliclyAccessible: false` plus the node-group-only security group above. **Do not read
-     "matches spec §11.2" as including this** — put it on the follow-up list below and decide it
+     "matches the production RDS settings" as including this** — put it on the follow-up list below and decide it
      deliberately.
    - **`rds.force_ssl` is a STATIC parameter.** Attaching the parameter group leaves it
      `pending-reboot`; a stack update alone does not start enforcing TLS. Reboot the instance
@@ -1684,7 +1680,7 @@ discovered later.
 
 ## 12. Load check
 
-`apps/api/scripts/loadcheck.mjs` measures the two latencies spec §12 sets a number for —
+`apps/api/scripts/loadcheck.mjs` measures the two latencies that have a target —
 `GET /snapshot` p95 ≤ 150 ms, `POST /bills` p95 ≤ 200 ms — by hand, against a port-forwarded
 staging pod, not in CI. A shared CI runner measures the runner, not the server; this is
 deliberately a by-hand step run once before go-live and recorded, not a gate every push runs.
@@ -1701,8 +1697,8 @@ warns when it is used, but the environment variable is the one to reach for. `--
 full flag list.
 
 **Never point this at production.** `POST /bills` is a real sale — it moves real stock and
-posts a real bill against whichever database `--base` resolves to, exactly as `pnpm test:e2e`'s
-smoke does (§13) and for the same reason: there is no dry-run flag, and a stray `--base` pointed
+posts a real bill against whichever database `--base` resolves to. There is no dry-run flag,
+and a stray `--base` pointed
 at the production API would sell real stock at the concurrency the run asks for.
 
 Before trusting a number, set up the run correctly — three things the wave-2 baseline run got
@@ -1787,44 +1783,10 @@ order:
 
 ## 13. The end-to-end smoke
 
-`pnpm test:e2e` (root) runs the Playwright suite in `e2e/` — six files, eight scenarios, twelve
-runtime tests (the sign-in loop is five of them) — one real browser driving a real running stack
-from sign-in to a settled write. It knows nothing about
-the workspace's internals: no import from `packages/contract` or the UI's own source, only
-employee numbers, URLs and the sentences the server actually sends. `e2e/README.md` is the fuller
-reference — what each spec proves, the local run sequence, and the "Known switches" table for any
-environment-gated assertion still landing.
-
-**Locally:** against `pnpm dev`'s stack (API `:3000`, UI `:5173`), seeded with
-`SEED_FORCE_PASSWORD_CHANGE=false` (six accounts sign in in one run; a forced password rotation
-on the first one strands every account after it on a password nothing else knows) and both login
-rate limits raised (`LOGIN_RATE_LIMIT_PER_MINUTE=200`, `LOGIN_RATE_LIMIT_PER_EMP_PER_MINUTE=100`
-— the run signs in roughly sixteen times through one dev-proxy IP, which the defaults of 10/min
-and 5/min-per-employee both refuse partway through).
-
-**Run twice on 2026-09-04, green both times:** 12 passed in **40.2 s**, then a
-`SEED_FORCE_PASSWORD_CHANGE=false pnpm --filter @rch/api db:seed --force` and 12 passed again in
-**38.5 s**, against `pnpm dev`'s stack with both login limits raised as below. The second run
-proves the suite does not depend on the first's leftovers — it reads its ids out of the toasts,
-and `sequences` survives a reseed. `kind` is not installed on the machine that ran them, so the
-cluster path below was **not** exercised locally; it is proved by CI.
-
-**In CI:** `E2E=1` is set on exactly one step, "helm install into kind"
-(`.github/workflows/ci.yml:127-129`), which runs `deploy/chart/rch/ci/install-test.sh` — that
-one script does both the `helm install` and the `helm upgrade` internally, and with `E2E=1` in
-its environment it appends the same three settings as `--set-string` overrides to both —
-`SEED_FORCE_PASSWORD_CHANGE=false`, `LOGIN_RATE_LIMIT_PER_MINUTE=200`,
-`LOGIN_RATE_LIMIT_PER_EMP_PER_MINUTE=100` — on top of the chart's own defaults, then runs
-`pnpm test:e2e` against the kind cluster's UI service once `/healthz` answers.
-
-**It writes real bills, real tickets, real support tickets — real documents against whatever
-database it is pointed at.** `pnpm test:e2e` and the CI job both point at a database seeded
-(or reseeded) for the purpose: local `pnpm dev`'s `rch` database, or the kind cluster's
-CI-only Postgres. **The end-to-end smoke must never be pointed at production, or at any database
-whose stock and bills matter.** There is no dry-run flag and no confirmation prompt — a stray
-`E2E_BASE_URL` pointed at a real hospital's till would sell six real juices and hand over a real
-ticket nobody asked for. `apps/api/scripts/loadcheck.mjs` (§12, above) carries the equivalent
-warning for the same reason.
+Removed on 2026-09-14, with the `e2e/` package it ran; no test drives the app through a browser
+any more. CI's kind install (`deploy/chart/rch/ci/install-test.sh`) still proves the images
+install, migrate and seed, that `/readyz` answers, that a seeded account signs in, and that the
+UI serves its `/healthz`. The section number is kept so the ones after it do not move.
 
 ## 14. Procurement and quarantine
 
@@ -1921,12 +1883,10 @@ id reads `GRN-143-01` is simply an older one, not something to correct by hand.
 
 **Quarantine:** `select * from stock_balances where loc = 'quarantine';` is what the store
 keeper's screen shows. Nothing issues, sells or transfers from there, and no purchase-return or
-debit-note document exists — that was considered and declined (spec §16, Phase 5;
-`docs/ua-spec.html` §09 records it by name), and it stays declined: recovering the money from a
+debit-note document exists — that was considered and declined, and it stays declined: recovering the money from a
 vendor is a conversation, not a screen.
 
-**The shelf itself does have an exit now, and it is not SQL.** Since the audit wave (spec §16,
-wave 4) the **store keeper** — and only the store keeper, of the five roles — can raise an
+**The shelf itself does have an exit now, and it is not SQL.** Since the audit wave's fourth block the **store keeper** — and only the store keeper, of the five roles — can raise an
 adjustment against `quarantine`, typically reason `returned_to_vendor` for a consignment going
 back, or `expired` / `breakage` for one that is not going anywhere. It is the one write body in
 the whole API that may name `quarantine` at all; a manager there reads *You can only adjust stock

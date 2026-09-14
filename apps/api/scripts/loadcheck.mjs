@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * Spec §12, Performance: "/snapshot for the full seed under 150 ms p95 on the staging instance;
- * write endpoints under 200 ms p95."
+ * The performance targets: /snapshot for the full seed under 150 ms p95 on the staging instance;
+ * write endpoints under 200 ms p95.
  *
  * This measures both against a running API and prints PASS or FAIL. It is deliberately not a CI
  * job: on a shared runner it would measure the runner, and a number nobody can attribute to a
@@ -27,7 +27,7 @@
 import { performance } from "node:perf_hooks";
 import { randomUUID } from "node:crypto";
 
-const HELP = `Measures GET /snapshot and POST /bills against §12's 150ms / 200ms p95 targets.
+const HELP = `Measures GET /snapshot and POST /bills against the 150ms / 200ms p95 targets.
 
   LOADCHECK_PASSWORD="$SEED_PASSWORD" node apps/api/scripts/loadcheck.mjs --base http://localhost:3000 --emp RC-4471
 
@@ -91,7 +91,7 @@ const DURATION_MS = num("duration", "20") * 1000;
 // Zero is a legitimate warm-up — "I have already hammered this process" — so this one floors at 0.
 const WARMUP_MS = num("warmup", "3", 0) * 1000;
 
-/** §12's two ceilings, in milliseconds. */
+/** The two ceilings, in milliseconds. */
 const TARGETS = { "GET /snapshot": 150, "POST /bills": 200 };
 
 const pct = (sorted, p) => (sorted.length === 0 ? NaN : sorted[Math.min(sorted.length - 1, Math.ceil((p / 100) * sorted.length) - 1)]);

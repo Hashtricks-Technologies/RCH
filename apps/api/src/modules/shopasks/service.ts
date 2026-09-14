@@ -2,7 +2,7 @@
 // domain rules belong in packages/domain. See modules/_template/service.ts.
 //
 // One shop asking another for stock it is holding. The shop being asked grants or declines —
-// never the manager (spec §9.2). A grant reserves at the shop that holds the stock and raises
+// never the manager. A grant reserves at the shop that holds the stock and raises
 // the ticket the asker collects against, in the same transaction as the reservation.
 import type { z } from "zod";
 import type {
@@ -76,7 +76,7 @@ export function createShopAsksService(db: Db) {
         const master = await loadMaster(tx);
         const item = master.items[a.itemKey];
         if (!item) throw new NotFoundError(`There is no item ${a.itemKey}.`);
-        // Spec §9.2: 0 < grant <= asked. The browser silently clamped a bigger number down to
+        // 0 < grant <= asked. The browser silently clamped a bigger number down to
         // the ask; the server says so instead, because a counter who typed 60 for a 6 meant
         // something, and sending 6 without a word is the wrong kind of helpful.
         assertRule(body.grant > 0, "Grant a quantity, or decline the ask");

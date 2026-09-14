@@ -67,7 +67,7 @@ export const USERS: User[] = [
   // reaches any operational screen, so which of the five it nominally holds does not matter —
   // `buyer` was picked only because that role is already "not tied to one outlet". Seeded (not
   // granted via `pnpm --filter @rch/api users set-admin` after the fact) so every environment
-  // that runs `db:seed` — local, CI's e2e run, a fresh dev box — starts with one ready to sign
+  // that runs `db:seed` — local, CI's kind install, a fresh dev box — starts with one ready to sign
   // in, the same way the other six do; go-live still deactivates it like every other seeded
   // account (RUNBOOK §11) before a real one is created the ordinary way.
   { id: "u7", n: "System Administrator", e: "admin@royalcare.in", r: "buyer", rl: "Procurement Officer", loc: "store", col: "#334155", emp: "RC-0001", ph: "", admin: true },

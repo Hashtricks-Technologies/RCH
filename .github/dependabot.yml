@@ -19,7 +19,6 @@ updates:
       - /UI
       - /packages/contract
       - /packages/domain
-      - /e2e
     schedule:
       interval: weekly
     groups:

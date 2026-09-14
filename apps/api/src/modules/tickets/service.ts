@@ -99,7 +99,7 @@ export function createTicketsService(db: Db) {
         assertTransition(TICKET_TRANSITIONS, t.st, "Collected", id);
 
         // The OTP is quoted by the collector and typed at the window. Omitting it is the
-        // labelled supervisor override — allowed to the store and the kitchen only (spec §8.3)
+        // labelled supervisor override — allowed to the store and the kitchen only
         // and written to document_history, because the ticket's own row carries no prose and
         // an override that left no trace could not be audited afterwards.
         const override = body.otp === undefined;

@@ -115,7 +115,7 @@ export function NewProductForm({ scope, title, sub, intro, initialName, onCreate
   const offersMrp = spec.types.some((x) => x.t === "MRP");
 
   // One validator, not three. A pre-check gives the operator the sentence; the server's own
-  // `items_name_ci_uq` is still the arbiter that catches the race (spec §5.1).
+  // `items_name_ci_uq` is still the arbiter that catches the race.
   const duplicate = trimmed.length > 0
     && Object.values(IT).some((i) => i.n.toLowerCase() === trimmed.toLowerCase());
   const nameErr = !trimmed ? "Give the product a name" : duplicate ? `${trimmed} is already in the catalogue` : "";

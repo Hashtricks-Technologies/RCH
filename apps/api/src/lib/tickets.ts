@@ -101,7 +101,7 @@ export async function writeTicket(tx: Tx, draft: TicketDraft, no: TicketNumber):
  *
  * The reason is written to `document_history` because the ticket's row has nowhere to put it.
  * That makes a cancellation the second thing a ticket records there, after the supervisor
- * override (spec §16, Phase 3) — and for the same reason: an action that cannot be read back
+ * override — and for the same reason: an action that cannot be read back
  * afterwards cannot be audited. `by` is the operator's display name, as `appendHistory` wants.
  *
  * The caller has already locked the ticket's row and checked the transition; this is the write.

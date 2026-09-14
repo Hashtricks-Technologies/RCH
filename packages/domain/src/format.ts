@@ -2,8 +2,8 @@
  * The words and numbers both sides print.
  *
  * A refusal sentence and the screen showing the same figure must round and group it the same
- * way; a second formatter drifts from the first the moment either changes (spec §5.1, and the
- * §16 row that moved `fq` here for exactly this reason). Every function below is the browser's
+ * way; a second formatter drifts from the first the moment either changes — which is
+ * why `fq` moved here. Every function below is the browser's
  * own implementation, moved rather than rewritten — `UI/src/lib/fmt.ts` now delegates.
  */
 const TZ = "Asia/Kolkata";

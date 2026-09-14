@@ -22,7 +22,7 @@ export default fp<{ config: Config }>(async (app, { config }) => {
     sign: { algorithm: "EdDSA", expiresIn: config.accessTokenTtl, iss: "rch-api" },
     verify: { algorithms: ["EdDSA"], allowedIss: "rch-api" },
   });
-  // A rotated-out key is still accepted for verification for a day (spec §8.2).
+  // A rotated-out key is still accepted for verification for a day.
   //
   // @fastify/jwt v10's `verify(token, { key })` override does not merge with the plugin's
   // configured `algorithms`/`allowedIss` - passing `key` replaces the whole verify-options

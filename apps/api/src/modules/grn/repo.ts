@@ -18,7 +18,7 @@ export type PoLineRow = { it: string; qty: number; rate: number; recv: number; r
 
 export const grnRepo = {
   /**
-   * A locking read. Every status transition reads its own row `for update` (spec §5.1), and
+   * A locking read. Every status transition reads its own row `for update`, and
    * here the lock does a second job: it is what serialises two receipts against one order, so
    * the instalment count `grnCount` reads cannot be read twice and numbered the same.
    */
@@ -43,7 +43,7 @@ export const grnRepo = {
     return by;
   },
 
-  /** How many GRN rows this order already carries. Spec §7.3 numbers a goods receipt by the
+  /** How many GRN rows this order already carries. A goods receipt is numbered by the
    *  instalment count for its own order, not from a sequence — which is why `IdKind` has no
    *  "grn". Read under the order's `for update` lock, which is what serialises two receipts. */
   async grnCount(tx: Tx, poId: string): Promise<number> {

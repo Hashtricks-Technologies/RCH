@@ -1,7 +1,7 @@
 {{- if and .Values.serviceMonitor.enabled (.Capabilities.APIVersions.Has "monitoring.coreos.com/v1") }}
 {{- /*
-  Spec §12, Operability: "Alerts (documented in deploy/RUNBOOK.md): 5xx rate > 1 % over 5 min,
-  p95 latency > 1 s, readiness failing, DB connections > 80 %, RDS free storage < 20 %."
+  The alerts (documented in deploy/RUNBOOK.md): 5xx rate > 1 % over 5 min,
+  p95 latency > 1 s, readiness failing, DB connections > 80 %, RDS free storage < 20 %.
 
   Three of the five read metrics this API publishes and ship here, beside the code that emits
   them. The two RDS rules need CloudWatch metrics this cluster does not have — they are wired at
@@ -52,7 +52,7 @@ spec:
           labels: { severity: warning }
           annotations:
             summary: "p95 latency is over {{ .Values.alerts.p95Seconds }}s"
-            description: "Spec §12 budgets 150ms for /snapshot and 200ms for a write; this fires an order of magnitude above that."
+            description: "The budget is 150ms for /snapshot and 200ms for a write; this fires an order of magnitude above that."
             runbook_url: "{{ .Values.alerts.runbookUrl }}#9-alerts"
         - alert: RchApiDown
           # Prometheus Operator discovers targets from the Service's Endpoints, which lists only
@@ -72,7 +72,7 @@ spec:
           labels: { severity: warning }
           annotations:
             summary: "Requests are queueing for a database connection"
-            description: "Ten connections per pod (spec §11.2). Sustained waiting means a slow query or a leaked transaction, not load."
+            description: "Ten connections per pod. Sustained waiting means a slow query or a leaked transaction, not load."
             runbook_url: "{{ .Values.alerts.runbookUrl }}#9-alerts"
         - alert: RchApiCrashLooping
           # The one rule here that does not read a metric this API publishes, and it cannot: a pod

@@ -8,7 +8,7 @@ import { monthStartIST } from "./time.js";
 /**
  * What one payer has put on credit inside the current calendar month, in the hospital's zone.
  *
- * Two callers, on purpose (spec §5.1): `modules/pos` refuses a bill on it and `modules/reports`
+ * Two callers, on purpose: `modules/pos` refuses a bill on it and `modules/reports`
  * prints it. A report that disagreed with the refusal would be worse than no report — and the
  * counter's own screen has been showing a different, smaller figure (its own outlet, its own
  * seven days) with an apology printed underneath it since Phase 3.

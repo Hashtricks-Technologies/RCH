@@ -14,8 +14,8 @@ export type ChangeNotice = { collections: Changed[]; at: string };
 
 /**
  * Publish what a write changed. `pg_notify` inside a transaction is held by Postgres until
- * that transaction commits, which is exactly the spec's "whenever a write commits touching
- * that collection" (§6): a refusal that rolls the write back announces nothing.
+ * that transaction commits, which is exactly when a notice should go out — whenever a write commits touching
+ * that collection. A refusal that rolls the write back announces nothing.
  *
  * Call it last in the service, with the same array the response's `changed` carries.
  */

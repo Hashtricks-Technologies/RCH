@@ -98,7 +98,7 @@ export function createContractsService(db: Db) {
       });
     },
 
-    /** A soft delete (spec §9.2): the contract stays on record, it just no longer prices an
+    /** A soft delete: the contract stays on record, it just no longer prices an
      *  order. `patch(id, { active: true })` reopens it, subject to the same live-pair rule. */
     async remove(_claims: AccessClaims, id: string): Promise<WriteResponse<RateContract>> {
       return withTransaction(db, async (tx) => {

@@ -21,7 +21,7 @@ export const vendorsRepo = {
   /** `vendors_name_ci_uq` is the arbiter: a pre-check reads before this insert takes its lock,
    *  so two callers can both pass it — `onConflictDoNothing` hands the loser no row back, and
    *  the loser reads the same "already on the vendor list" sentence the check would have given
-   *  it a moment later (`addMenuItem`'s pattern, spec §16, Phase 2). */
+   *  it a moment later (`addMenuItem`'s pattern). */
   async insertIfNew(tx: Tx, row: NewVendor): Promise<VendorRow | undefined> {
     const [v] = await tx.insert(vendors).values(row).onConflictDoNothing().returning();
     return v;

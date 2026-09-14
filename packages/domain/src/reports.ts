@@ -5,7 +5,7 @@ export interface LedgerRow { it: string; opening: number; recd: number; issued: 
 
 /**
  * The ledger's one piece of arithmetic, written once because the server computes it and the
- * browser prints it (spec §5.1).
+ * browser prints it.
  *
  * `before` is the sum of every signed move at this location before the window opened — the true
  * opening balance, not a figure worked backwards from today's closing through receipts and
