@@ -139,7 +139,7 @@ export default function Contracts() {
       <PageHead
         crumbs={["Royal Care", "Central Store", "Purchasing"]}
         title="Rate contracts"
-        sub="Agreed rates with each vendor — what a purchase order is priced against"
+        sub="Agreed vendor rates used to price orders."
         actions={
           <Btn onClick={() => { setAdding((v) => !v); setEditId(null); }}>
             {adding ? "Close the add form" : "Add contract"}

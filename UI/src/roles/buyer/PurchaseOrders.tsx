@@ -135,7 +135,7 @@ export default function PurchaseOrders() {
       <PageHead
         crumbs={["Royal Care", "Procurement", "Purchase Orders"]}
         title="Purchase orders"
-        sub="Every order procurement has raised — from draft, through the vendor, to the goods landing at the store."
+        sub="Every purchase order, by status."
       />
 
       <Kpis items={[

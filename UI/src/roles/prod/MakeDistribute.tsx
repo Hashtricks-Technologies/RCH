@@ -137,7 +137,7 @@ export default function MakeDistribute() {
       <PageHead
         crumbs={["Royal Care", "Central Kitchen", "Make & Distribute"]}
         title="Make and distribute"
-        sub="Choose a product, make a quantity, then send it out to the counters or back to the store."
+        sub="Make products and send them out."
         actions={<span className="mini">{sum(allBatches, (b) => b.qty)} units made today</span>}
       />
 

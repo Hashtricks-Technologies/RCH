@@ -51,7 +51,7 @@ export default function Tickets() {
       <PageHead
         crumbs={["Royal Care", L.n, "Pick Tickets"]}
         title="Pick tickets"
-        sub={`Tickets addressed to ${L.n} (${L.c}). Quote the ticket ID at the issuing location to collect.`}
+        sub="Stock this counter can collect."
         actions={<Btn variant="gh" onClick={() => nav("/requests")}>Stock requests</Btn>}
       />
 

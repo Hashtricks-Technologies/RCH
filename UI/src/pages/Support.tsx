@@ -99,7 +99,7 @@ export default function Support() {
       <PageHead
         crumbs={["Account", "Support"]}
         title="Support"
-        sub="Customer care for the portal itself — a screen that will not load, a figure that looks wrong, something you cannot find. For stock and kitchen problems, use the screen that owns them."
+        sub="Help with using the portal."
       />
 
       <Kpis items={[

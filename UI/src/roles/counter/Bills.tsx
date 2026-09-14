@@ -60,7 +60,7 @@ export default function Bills() {
       <PageHead
         crumbs={["Royal Care", L.n, "Bills"]}
         title="Bills"
-        sub={`Every bill raised at ${L.n} (${L.c}) today. Other outlets are not visible from this counter.`}
+        sub="Bills raised at this counter today."
         actions={<Btn onClick={() => nav("/pos")}>New bill</Btn>}
       />
       <Card flush>

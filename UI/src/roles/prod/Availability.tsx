@@ -40,7 +40,7 @@ export default function Availability() {
       <PageHead
         crumbs={["Royal Care", "Central Kitchen", "Product On / Off"]}
         title="Product turn-on and turn-off"
-        sub="Switch a product off and the kitchen stops making and issuing it for the day."
+        sub="Turn kitchen products on or off for the day."
         actions={<span className="mini">
           {all.filter((k) => !s.ovr["kitchen:" + k]).length} on · {all.filter((k) => s.ovr["kitchen:" + k]).length} off
         </span>}

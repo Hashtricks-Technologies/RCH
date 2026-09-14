@@ -27,8 +27,6 @@ const listFor = (l: LocKey) => LOC[l]?.list ?? "A";
 const sharers = (list: string) => known().filter((l) => listFor(l) === list);
 const listOf = (names: string[]) =>
   names.length <= 1 ? names[0] ?? "" : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
-/** "3 counters" / "1 counter" — a count and its noun, agreeing. */
-const count = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`;
 
 export default function Prices() {
   const s = useApp();
@@ -77,7 +75,7 @@ export default function Prices() {
           title="Shop price lists"
           sub={outlets.length === 0
             ? "No outlet is configured yet."
-            : `${count(lists.length, "list")} ${lists.length === 1 ? "covers" : "cover"} ${count(outlets.length, "counter")}. Pick a shop to see every product it sells and what it charges.`}
+            : "What each shop charges."}
         />
         {/* Nothing at all before the snapshot lands, rather than "0 lists cover the 0 counters" —
             which was both ungrammatical and a claim about a deployment nobody had read yet. */}
@@ -180,7 +178,7 @@ export default function Prices() {
       <PageHead
         crumbs={["Royal Care", "Outlets", "Price Lists", LOC[shop].n]}
         title={`${LOC[shop].n} prices`}
-        sub={`${LOC[shop].floor} · ${LOC[shop].c} · price list ${list}`}
+        sub="What this shop sells and charges."
         actions={<Btn variant="gh" onClick={() => go(null)}>Back to all shops</Btn>}
       />
 

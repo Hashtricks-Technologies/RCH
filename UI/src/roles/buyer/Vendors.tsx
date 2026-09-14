@@ -90,7 +90,7 @@ export default function Vendors() {
       <PageHead
         crumbs={["Royal Care", "Procurement", "Vendors"]}
         title="Vendors"
-        sub="Every supplier procurement can raise a purchase order against, and the rate contracts that price those orders."
+        sub="Suppliers and their rate contracts."
         actions={<Btn onClick={() => openDrawer("bven", "new")}>Add vendor</Btn>}
       />
 

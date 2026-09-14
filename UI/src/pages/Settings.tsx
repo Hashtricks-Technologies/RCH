@@ -89,7 +89,7 @@ export default function Settings() {
   return (
     <>
       <PageHead crumbs={["Account", "Settings"]} title="Settings"
-        sub="Your profile, sign-in details and preferences. Changes apply on this device immediately." />
+        sub="Your profile, sign-in and preferences." />
       <Grid cols="g2">
         <Card title="Profile" sub={user.rl}>
           <div style={{ display: "flex", gap: 14, alignItems: "center", marginBottom: 16 }}>

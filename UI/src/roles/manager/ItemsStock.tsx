@@ -163,7 +163,7 @@ export default function ItemsStock() {
       <PageHead
         crumbs={["Royal Care", "Outlets", "Items & Stock"]}
         title="Items and stock in hand"
-        sub={`Every item on the master with what each of the ${ALL_LOCS.length} locations is holding, plus the transfers running directly between the shops.`}
+        sub="Every item and where its stock is."
       />
 
       <Alert tone="i" label="SHOP TO SHOP">

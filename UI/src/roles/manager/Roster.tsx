@@ -80,7 +80,7 @@ export default function Roster() {
       <PageHead
         crumbs={["Royal Care", "Masters", "Payers"]}
         title="Payers"
-        sub="Who a bill may be charged to: every patient on a ward, every member of staff, every department."
+        sub="Who a bill can be charged to."
       />
 
       <Alert tone="i" label="ROSTER">

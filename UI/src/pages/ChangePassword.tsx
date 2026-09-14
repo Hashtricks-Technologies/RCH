@@ -24,7 +24,7 @@ export default function ChangePassword() {
     <div id="login" style={{ display: "grid" }}>
       <div className="lgf"><form className="lgi" onSubmit={submit}>
         <h2>Choose a new password</h2>
-        <p className="sub">You are using a temporary password. Pick your own before you carry on.</p>
+        <p className="sub">Replace your temporary password to continue.</p>
         <div className="fg"><label htmlFor="cur">Current password</label><input className="inp mono" id="cur" type="password" autoComplete="current-password" value={cur} onChange={(e) => setCur(e.target.value)} /></div>
         <div className="fg"><label htmlFor="new">New password</label><input className="inp mono" id="new" type="password" autoComplete="new-password" value={next} onChange={(e) => setNext(e.target.value)} /></div>
         <div className="fg"><label htmlFor="again">New password again</label><input className="inp mono" id="again" type="password" autoComplete="new-password" value={again} onChange={(e) => setAgain(e.target.value)} /></div>

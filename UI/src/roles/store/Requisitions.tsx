@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { isPurchased } from "@rch/domain";
-import { IT, LOC } from "../../data/master";
+import { IT } from "../../data/master";
 import { suggestVendor, vendorName } from "../../data/vendors";
 import { useApp } from "../../store";
 // ---- item patch ----
@@ -158,7 +158,7 @@ export default function Requisitions() {
       <PageHead
         crumbs={["Royal Care", "Central Store", "Purchasing"]}
         title="Stock requisitions"
-        sub={`Raised by the store keeper on the procurement team · ${LOC.store.n}`}
+        sub="Ask procurement to buy stock."
         actions={<Btn variant="gh" onClick={fillFromLow}>Fill from below-reorder items</Btn>}
       />
 

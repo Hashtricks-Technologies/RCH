@@ -86,7 +86,7 @@ export default function Dashboard() {
       <PageHead
         crumbs={["Royal Care", L.n, "Dashboard"]}
         title={`${L.n} counter`}
-        sub={`${L.c} · ${L.floor} · price list ${L.list ?? "—"} · figures are for today at this counter only`}
+        sub="Today's sales and stock at this counter."
         actions={<>
           <Btn variant="gh" onClick={() => nav("/requests")}>Raise a request</Btn>
           <Btn onClick={() => nav("/pos")}>Open till</Btn>

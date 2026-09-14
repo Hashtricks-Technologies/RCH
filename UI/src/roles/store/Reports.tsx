@@ -526,7 +526,7 @@ export default function Reports() {
       <PageHead
         crumbs={["Royal Care", "Central Store", "Insights"]}
         title="Store reports"
-        sub={`${LOC.store.n} · issue, reservation and replenishment reporting`}
+        sub="Issue, reservation and replenishment reports."
       />
 
       <Card title="Report library" sub="Ten reports for running the central store, built from live store data">

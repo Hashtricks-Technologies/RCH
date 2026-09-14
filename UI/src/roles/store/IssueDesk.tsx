@@ -109,7 +109,7 @@ export default function IssueDesk() {
       <PageHead
         crumbs={["Royal Care", "Central Store", "Issue"]}
         title="Issue desk"
-        sub={`${LOC.store.n} · hand over stock the outlet manager has already approved`}
+        sub="Hand over stock that has been approved."
       />
 
       <Alert tone="i" label="HOW THIS WORKS">

@@ -89,7 +89,7 @@ export default function Availability() {
       <PageHead
         crumbs={["Royal Care", "Outlets", "Product On / Off"]}
         title="Product availability master"
-        sub={`One switch per product per counter. This is the master all ${OUTLETS.length} points of sale read from.`}
+        sub="Which products each counter can sell."
       />
 
       <Alert tone="i" label="LIVE">

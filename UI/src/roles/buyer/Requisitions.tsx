@@ -134,7 +134,7 @@ export default function Requisitions() {
       <PageHead
         crumbs={["Royal Care", "Procurement", "Requisitions"]}
         title="Requisitions"
-        sub="Requirements raised by the Central Store. Approve what should be bought — approved items collect on the procurement list, and every one shows what was ordered against it."
+        sub="Purchase requests from the central store."
         actions={<Pill tone={waiting.length ? "wn" : "ok"}>{waiting.length} waiting on you</Pill>}
       />
 

@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { IT, LOC } from "../../data/master";
+import { IT } from "../../data/master";
 import { useApp } from "../../store";
 import {
   // ---- item patch ----
@@ -118,7 +118,7 @@ export default function Stock() {
       <PageHead
         crumbs={["Royal Care", "Central Store"]}
         title="Stock in hand"
-        sub={`${LOC.store.n} · ${LOC.store.c} · ${all.length} catalogue items worth ${money0(total)} at cost`}
+        sub="Stock held at the central store."
         actions={
           <>
             <Btn variant="gh" onClick={() => nav("/procure")}>Requisitions</Btn>

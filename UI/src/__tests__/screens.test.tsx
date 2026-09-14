@@ -1178,15 +1178,14 @@ describe("a refusal is shown where it was raised and nowhere else", () => {
 });
 
 describe("the price-list prose counts what is actually deployed", () => {
-  it("says counter, not counters, when there is one of them", () => {
+  it("says a list covers its one counter, not that it is shared", () => {
     const saved = [...OUTLETS];
     OUTLETS.splice(0, OUTLETS.length, "coffee");
     try {
       act(() => { as("manager"); useApp.setState({ shopFilter: null }); });
       const ui = mount(manager.prices);
-      expect(ui.text()).toContain("1 counter.");
-      expect(ui.text()).not.toContain("1 counters");
-      expect(ui.text()).not.toContain("1 lists");
+      expect(ui.text()).toContain(`covers ${LOC.coffee.n}`);
+      expect(ui.text()).not.toContain("is shared by");
     } finally {
       OUTLETS.splice(0, OUTLETS.length, ...saved);
     }

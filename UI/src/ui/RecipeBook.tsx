@@ -47,7 +47,7 @@ export default function RecipeBook() {
       <PageHead
         crumbs={["Royal Care", "Masters", "Recipes"]}
         title="Recipes"
-        sub="What one unit of every made item takes, and what it costs."
+        sub="What each made item takes and costs."
       />
 
       <Alert tone="i" label="RECIPES">

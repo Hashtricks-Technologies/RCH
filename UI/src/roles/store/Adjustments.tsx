@@ -52,7 +52,7 @@ export default function Adjustments() {
       <PageHead
         crumbs={["Royal Care", "Central Store", "Adjustments"]}
         title="Write-offs and stock counts"
-        sub="Stock corrected without a movement — wastage, breakage, an expiry, a physical count, or something sent back to the vendor. Every one of them is a document with a reason and a signature."
+        sub="Stock written off or corrected after a count."
         actions={<span className="mini">Written off to date {money0(lost)}</span>}
       />
 

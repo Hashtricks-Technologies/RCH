@@ -140,7 +140,7 @@ export default function Stock() {
       <PageHead
         crumbs={["Royal Care", "Central Kitchen", "Kitchen Stock"]}
         title="What the kitchen is holding"
-        sub={`${LOC.kitchen.n} · ${LOC.kitchen.c} · ${LOC.kitchen.cc} — this location only.`}
+        sub="Ingredients and finished goods in the kitchen."
         actions={<>
           <span className="mini">Stock value {money0(total)}</span>
           {/* ---- adjustments: a tray that went over or a bag that split leaves the kitchen

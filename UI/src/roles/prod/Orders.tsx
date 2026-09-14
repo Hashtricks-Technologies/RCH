@@ -136,7 +136,7 @@ export default function Orders() {
       <PageHead
         crumbs={["Royal Care", "Central Kitchen", "Orders"]}
         title="Kitchen order board"
-        sub="Every order from the outlets, one column per stage. Move a card right as the order progresses."
+        sub="Outlet orders, one column per stage."
         actions={<span className="mini">
           {onBoard.length} on the board{filtering ? ` of ${pord.filter((o) => o.st !== "Declined").length}` : ""}
         </span>}

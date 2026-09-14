@@ -170,7 +170,7 @@ export default function Dashboard() {
       <PageHead
         crumbs={["Royal Care", "Outlets", "Dashboard"]}
         title="What needs you today"
-        sub="Every selling counter — the decisions waiting on you, and where the stock is."
+        sub="Decisions waiting on you across the outlets."
         actions={<>
           {/* ---- prod-order raise ---- the manager booking a tray for one of the three shops,
               rather than ringing the counter and asking them to raise it themselves. */}

@@ -97,7 +97,7 @@ export default function Approvals() {
       <PageHead
         crumbs={["Royal Care", "Movement", "Approvals"]}
         title="Stock request approvals"
-        sub="Counter operators raise the quantity they want. Approve it, trim it, reject a single item, or reject the request with a reason."
+        sub="Stock requests waiting for your decision."
       />
 
       {allWaiting.length > 0 ? (

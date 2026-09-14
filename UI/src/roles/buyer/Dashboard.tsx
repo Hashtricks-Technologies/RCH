@@ -171,7 +171,7 @@ export default function Dashboard() {
       <PageHead
         crumbs={["Royal Care", "Procurement"]}
         title="Procurement dashboard"
-        sub={`What the central store needs, what you have on order, and how ${LOC.store.n} is covered.`}
+        sub="What the store needs and what is on order."
         actions={<Btn variant="gh" onClick={() => nav("/requisitions")}>Open requisitions</Btn>}
       />
       <Kpis items={kpis} />

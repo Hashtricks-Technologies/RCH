@@ -83,7 +83,7 @@ export default function Dashboard() {
       <PageHead
         crumbs={["Royal Care", "Central Kitchen"]}
         title="Kitchen dashboard"
-        sub="Orders from the outlets, what has been made today and what is on the kitchen rack."
+        sub="Today's orders, batches and kitchen stock."
         actions={<>
           <Btn variant="gh" onClick={() => nav("/orders")}>Orders</Btn>
           <Btn onClick={() => nav("/make")}>Make &amp; distribute</Btn>

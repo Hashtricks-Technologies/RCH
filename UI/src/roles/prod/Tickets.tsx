@@ -63,7 +63,7 @@ export default function Tickets() {
       <PageHead
         crumbs={["Royal Care", "Central Kitchen", "Pick Tickets"]}
         title="Pick tickets"
-        sub="Tickets addressed to the Central Kitchen, and the tickets the kitchen has issued out to the outlets."
+        sub="Stock coming into and going out of the kitchen."
         actions={<Btn variant="gh" onClick={() => nav("/requests")}>Stock requests</Btn>}
       />
 

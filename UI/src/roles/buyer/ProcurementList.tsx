@@ -233,7 +233,7 @@ export default function ProcurementList() {
       <PageHead
         crumbs={["Royal Care", "Procurement", "Procurement List"]}
         title="Procurement list"
-        sub="Every approved requisition item not yet claimed by an order, pooled by item — pick what to buy here and raise a purchase order."
+        sub="Approved items waiting to be ordered."
         actions={<Btn onClick={() => openDrawer("baddpool", "new")}>Add items</Btn>}
       />
 

@@ -78,7 +78,7 @@ export default function Stock() {
       <PageHead
         crumbs={["Royal Care", L.n, "Stock in Hand"]}
         title="Stock in hand"
-        sub={`${L.n} only (${L.c}, ${L.floor}). Recipe ingredients are listed even when they are at zero here.`}
+        sub="Stock held at this counter."
         actions={<Btn variant="gh" onClick={() => nav("/requests")}>Stock requests</Btn>}
       />
       <Card flush>

@@ -128,7 +128,7 @@ export default function Pos() {
       <PageHead
         crumbs={["Royal Care", L.n, "Point of Sale"]}
         title="Point of Sale"
-        sub={`Terminal ${L.c} · ${L.floor} · price list ${L.list ?? "—"} · prices are GST inclusive`}
+        sub="Bill a sale at this counter."
       />
       <Grid cols="g21">
         <Card title="Menu" sub={`${menu.length} products listed at ${L.n}`}>

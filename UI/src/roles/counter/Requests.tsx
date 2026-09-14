@@ -143,7 +143,7 @@ export default function Requests() {
       <PageHead
         crumbs={["Royal Care", L.n, "Stock Requests"]}
         title="Stock requests"
-        sub="Ask the central store, or ask another shop directly for something they are holding."
+        sub="Ask for stock from the store or another shop."
       />
 
       {inbound.length > 0 && (

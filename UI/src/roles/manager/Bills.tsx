@@ -57,7 +57,7 @@ export default function Bills() {
       <PageHead
         crumbs={["Royal Care", "Outlets", "Bills"]}
         title="Bills"
-        sub="Every bill raised across the outlets over the last seven days. Open one to read it, or to void it on the day it was billed."
+        sub="Bills from every outlet in the last seven days."
       />
       <Card flush>
         <Toolbar

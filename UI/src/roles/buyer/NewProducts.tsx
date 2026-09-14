@@ -51,7 +51,7 @@ export default function NewProducts() {
       <PageHead
         crumbs={["Purchasing", "New Products"]}
         title="New Products"
-        sub="Requests from the outlet managers for something not yet on the master. Create it, or decline with a reason."
+        sub="Items managers want added to the master."
         actions={<Btn onClick={() => openDrawer("bnewitem", "new")}>+ Add product</Btn>}
       />
 
