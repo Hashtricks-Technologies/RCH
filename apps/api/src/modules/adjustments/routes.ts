@@ -6,13 +6,12 @@
 //  · `store`   - every shelf there is, the rejected-goods one included. The central store is
 //                where a consignment that was turned away actually sits, and destroying it or
 //                sending it back to the vendor is the only way it ever leaves.
-//  · `manager` - the outlets, and nothing else. A manager supervises the three shops; the
+//  · `manager` - the outlets, and nothing else. A manager supervises the outlets; the
 //                central store keeps its own books.
 //  · `prod`    - the kitchen, through the same `requireLoc` every other kitchen write takes.
 import fp from "fastify-plugin";
-import { OUTLETS, routes } from "@rch/contract";
+import { routes } from "@rch/contract";
 import { mount } from "../../routes.js";
-import { ForbiddenError } from "../../lib/errors.js";
 import { requireLoc } from "../../plugins/rbac.js";
 import type { Req } from "../../routes.js";
 import { createAdjustmentsService } from "./service.js";
@@ -23,9 +22,7 @@ function scopeToRole(req: Req<typeof routes.createAdjustment>): void {
   const loc = req.body.loc;
   if (req.user.role === "store") return;
   if (req.user.role === "manager") {
-    if (!OUTLETS.some((o) => o === loc)) {
-      throw new ForbiddenError("You can only adjust stock at an outlet - the central store writes off its own shelves");
-    }
+    // A manager supervises the outlets and nothing else - held there by the service, from the location row.
     return;
   }
   requireLoc(req, loc, "the Central Kitchen");

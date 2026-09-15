@@ -11,6 +11,7 @@ import { NotFoundError } from "../../lib/errors.js";
 import { emitChanged } from "../../lib/events.js";
 import { appendHistory } from "../../lib/history.js";
 import { lockBalances, postMoves } from "../../lib/ledger.js";
+import { assertOpen, lockLocation } from "../../lib/locations.js";
 import { loadItems, loadLocations } from "../../lib/master.js";
 import { releaseForTicket, reservedAt } from "../../lib/reservations.js";
 import { assertRule, assertTransition } from "../../lib/rules.js";
@@ -293,12 +294,14 @@ export function createTicketsService(db: Db) {
         const items = await loadItems(tx);
         const item = items[body.it];
         if (!item) throw new NotFoundError(`There is no item ${body.it}.`);
-        const locations = await loadLocations(tx);
-        const from = locations[body.from];
-        const to = locations[body.to];
+        assertRule(body.from !== body.to, "A shop transfer runs between two different outlets");
+        const from = await lockLocation(tx, body.from);
+        const to = await lockLocation(tx, body.to);
         // The store and the kitchen supply through a request and a ticket the manager sees;
         // this is the shortcut between two shop floors, and nothing else may use it.
-        assertRule(body.from !== body.to && from?.type === "Outlet" && to?.type === "Outlet", "A shop transfer runs between two different outlets");
+        assertRule(from.type === "Outlet" && to.type === "Outlet", "A shop transfer runs between two different outlets");
+        assertOpen(from);
+        assertOpen(to);
 
         // Ids first, balance rows second (lib/ledger.ts's header): the number is taken before
         // the shelf is locked, so a sale and a transfer on the same shelf cannot sit each
@@ -314,7 +317,7 @@ export function createTicketsService(db: Db) {
         const onHand = await ticketsRepo.balancesAt(tx, body.from, [body.it]);
         const held = await reservedAt(tx, body.from, [body.it]);
         const free = round3((onHand[body.it] ?? 0) - (held[`${body.from}:${body.it}`] ?? 0));
-        assertRule(free >= body.qty, `${from.n} has only ${fq(free, item.u)} ${item.u} free to send`);
+        assertRule(free >= body.qty, `${from.name} has only ${fq(free, item.u)} ${item.u} free to send`);
 
         const result = await writeTicket(tx, {
           refType: "shop_transfer", refId: "Shop transfer", from: body.from, to: body.to,
@@ -323,7 +326,7 @@ export function createTicketsService(db: Db) {
 
         const changed = ["tkt", "rsv"] as const;
         await emitChanged(tx, changed);
-        return { result, changed: [...changed], message: `${result.id} issued - ${fq(body.qty, item.u)} ${item.u} reserved at ${from.n} for ${to.n}` };
+        return { result, changed: [...changed], message: `${result.id} issued - ${fq(body.qty, item.u)} ${item.u} reserved at ${from.name} for ${to.name}` };
       });
     },
   };

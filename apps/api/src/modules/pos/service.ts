@@ -11,6 +11,7 @@ import { emitChanged } from "../../lib/events.js";
 import { appendHistory } from "../../lib/history.js";
 import { allocateId } from "../../lib/ids.js";
 import { lockBalances, postMoves, type Move } from "../../lib/ledger.js";
+import { assertOpen, lockLocation } from "../../lib/locations.js";
 import { loadMaster } from "../../lib/master.js";
 import { reservedAt } from "../../lib/reservations.js";
 import { assertRule } from "../../lib/rules.js";
@@ -59,6 +60,9 @@ export function createPosService(db: Db) {
     async pay(claims: AccessClaims, body: PayBody): Promise<WriteResponse<Bill>> {
       return withTransaction(db, async (tx) => {
         const loc = body.loc;
+        // The outlet first - it is the documents tier - so a close waits for this sale to commit,
+        // or this sale reads the outlet closed.
+        assertOpen(await lockLocation(tx, loc));
         // A cart is a bag of scans: the same item read twice is one line of two, and the
         // cover check has to see the total, not each half.
         const cart: Record<string, number> = {};
@@ -221,6 +225,10 @@ export function createPosService(db: Db) {
         const at = new Date();
         assertRule(istDate(bill.at) === istDate(at),
           `${no} was taken on ${dmy(istDate(bill.at))} - a bill can only be voided on the day it was billed; write the stock back on with an adjustment instead`);
+
+        // A void posts the sale's stock back onto the shelf it came off, and a closed outlet's shelves
+        // were emptied to close it.
+        assertOpen(await lockLocation(tx, bill.loc), "reopen it before voiding its bills");
 
         // No `requireLocOf` here, on purpose: a manager is hospital-wide (their `loc` is a desk,
         // not a scope), and the route is already closed to every other role. The counter that

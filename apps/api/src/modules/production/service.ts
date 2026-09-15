@@ -4,7 +4,6 @@
 // exception and the reason this module touches the ledger: it is the one write in the system
 // that creates stock, so it consumes the recipe and books the yield in a single postMoves call.
 import type { z } from "zod";
-import { OUTLETS } from "@rch/contract";
 import type { Batch, CreateProdOrderBodySchema, DistributeBodySchema, MakeBatchBodySchema, PordStatus, ProdOrder, Ticket, WriteResponse } from "@rch/contract";
 import { bestBeforeAt, bestBeforeText, canTransition, dmy, fq, PROD_ORDER_TRANSITIONS, round3 } from "@rch/domain";
 import type { Db } from "../../db/client.js";
@@ -14,6 +13,7 @@ import { emitChanged } from "../../lib/events.js";
 import { appendHistory } from "../../lib/history.js";
 import { allocateId, allocateNumber } from "../../lib/ids.js";
 import { lockBalances, postMoves, type Move } from "../../lib/ledger.js";
+import { assertOpen, lockLocation } from "../../lib/locations.js";
 import { loadMaster } from "../../lib/master.js";
 import { reservedAt } from "../../lib/reservations.js";
 import { assertRule } from "../../lib/rules.js";
@@ -55,10 +55,12 @@ export function createProductionService(db: Db) {
         // and a manager supervises all three shops, so there is nothing for the server to guess.
         const from = body.from;
         assertRule(from, "Choose which outlet this order is for");
-        const fromName = master.locations[from]?.n ?? from;
         // The kitchen cannot order from itself and the central store carries, it does not sell.
         // Only an outlet has a menu for the tray to land on (M9), which is the next rule down.
-        assertRule(OUTLETS.includes(from), `${fromName} is not an outlet - a production order is raised for a counter`);
+        const outlet = await lockLocation(tx, from);
+        assertRule(outlet.type === "Outlet", `${outlet.name} is not an outlet - a production order is raised for a counter`);
+        assertOpen(outlet);
+        const fromName = outlet.name;
 
         // Fold a repeated item into one line before anything is checked, the way `dispatch`
         // does: two lines of one product would be made twice, dispatched twice and covered
@@ -340,8 +342,7 @@ export function createProductionService(db: Db) {
         // The destination is the caller's word, so it is looked up rather than assumed - a key
         // the schema accepts but the master no longer carries is a 404 the kitchen can read,
         // not a crash halfway through the write.
-        const to = master.locations[body.to];
-        if (!to) throw new NotFoundError(`There is no location ${body.to}.`);
+        const to = await lockLocation(tx, body.to);
         // The tray is already in the kitchen; sending it to the kitchen moves nothing and would
         // still mint a ticket and hold the stock against itself. The screen's own list of
         // destinations leaves the kitchen out, and so does the server.
@@ -349,8 +350,9 @@ export function createProductionService(db: Db) {
         // Stock that lands where it cannot be sold is stock lost (M9). Only an outlet has a
         // menu to be on; the store and the kitchen carry whatever they are sent.
         if (to.type === "Outlet") {
+          assertOpen(to);
           const menu = await productionRepo.menuAt(tx, body.to);
-          assertRule(menu.has(body.it), `${item.n} is not listed at ${to.n} - add it to that menu first`);
+          assertRule(menu.has(body.it), `${item.n} is not listed at ${to.name} - add it to that menu first`);
         }
 
         const at = new Date();
@@ -374,7 +376,7 @@ export function createProductionService(db: Db) {
         return {
           result: ticket,
           changed: [...changed],
-          message: `${ticket.id} issued - ${body.qty} ${item.n} reserved for ${to.n}`,
+          message: `${ticket.id} issued - ${body.qty} ${item.n} reserved for ${to.name}`,
         };
       });
     },
