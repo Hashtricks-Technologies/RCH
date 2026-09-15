@@ -1245,7 +1245,11 @@ describe("the account-management page", () => {
     const createAccount = vi.fn(async () => ({ emp: "RC-4472", password: "a-one-time-password" }));
     act(() => {
       as("manager");
-      useApp.setState({ user: { ...useApp.getState().user!, admin: true }, createAccount });
+      useApp.setState({
+        user: { ...useApp.getState().user!, admin: true }, createAccount,
+        loadAdminLocations: vi.fn(async () => {}),
+        adminLocations: [{ key: "rest", n: "Restaurant", c: "OT-R1", type: "Outlet", floor: "Floor 1", cc: "CC-RST", list: "A", active: true, staff: 1 }],
+      });
     });
     const ui = mount(AdminUsers);
     typeIn(ui.field("Name"), "Anitha R");
@@ -1280,9 +1284,16 @@ describe("the admin's support desk", () => {
   };
   const rowOf = (host: HTMLElement, id: string) =>
     [...host.querySelectorAll("tbody tr")].find((r) => (r.textContent ?? "").includes(id)) as HTMLElement | undefined;
+  const ADMIN_LOCS = [
+    { key: "store", n: "Central Store", c: "WH-CS", type: "Store" as const, floor: "Basement", cc: "CC-STO", active: true, staff: 2 },
+    { key: "coffee", n: "Coffee Shop", c: "OT-CS", type: "Outlet" as const, floor: "Ground", cc: "CC-CFE", list: "A" as const, active: true, staff: 1 },
+  ];
   const flagged = (extra: Record<string, unknown> = {}) => act(() => {
     as("manager");
-    useApp.setState({ user: { ...useApp.getState().user!, admin: true }, deskTickets: DESK, ...extra });
+    useApp.setState({
+      user: { ...useApp.getState().user!, admin: true }, deskTickets: DESK, adminLocations: ADMIN_LOCS,
+      loadAdminLocations: vi.fn(async () => {}), ...extra,
+    });
   });
 
   it("lists what still needs support from every role, most pressing first, and the rest behind the status filter", () => {
@@ -1342,13 +1353,15 @@ describe("the admin's support desk", () => {
     expect(ui.host.querySelector("textarea")!.value).toBe("");
   });
 
-  it("puts accounts and the desk on two tabs, with a count of what needs support, read on the way in", () => {
+  it("puts accounts, outlets and the desk on three tabs, with a count of what needs support, read on the way in", () => {
     const loadDeskTickets = vi.fn(async () => {});
     flagged({ loadDeskTickets, loadAccounts: vi.fn(async () => {}), loadAdminActions: vi.fn(async () => {}) });
     const ui = mount(AdminDashboard);
     expect(loadDeskTickets).toHaveBeenCalledTimes(1);
     expect(ui.text()).toContain("Manage staff accounts");
-    const tab = ui.host.querySelector<HTMLButtonElement>('[role="tab"][aria-selected="false"]')!;
+    const tabs = [...ui.host.querySelectorAll<HTMLButtonElement>('[role="tab"]')];
+    const tab = tabs.find((b) => b.textContent?.startsWith("Support desk"))!;
+    expect(tab.getAttribute("aria-selected")).toBe("false");
     expect(tab.textContent).toBe("Support desk2");
     act(() => { tab.click(); });
     expect(ui.text()).toContain("Tickets from every role's Support screen.");

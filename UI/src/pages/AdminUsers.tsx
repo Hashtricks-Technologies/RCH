@@ -1,22 +1,17 @@
 import { useEffect, useState } from "react";
 import { RoleSchema } from "@rch/contract";
-import { nextEmpNo } from "@rch/domain";
+import { nextEmpNo, placesFor } from "@rch/domain";
 import { useApp } from "../store";
-import { OUTLETS } from "../data/master";
 import { Alert, Btn, Card, DataTable, Field, FormRow, PageHead, Pill, TableFoot } from "../ui/kit";
 import type { AdminAction, AdminUser, LocKey, Role } from "../types";
 
 /** Display labels only - the pairing itself, and every other rule this form previews, is the
- *  server's (`apps/api/src/lib/users-admin.ts`'s own `WORKS_AT`/`ROLE_LABEL`); a refusal from
+ *  server's (`apps/api/src/lib/users-admin.ts`'s own `worksAt`/`ROLE_LABEL`); a refusal from
  *  there is what actually stops a bad combination, this only keeps the picker from offering one
  *  that would obviously be refused. */
 const ROLE_LABEL: Record<Role, string> = {
   counter: "Counter Operator", manager: "Outlet Manager", store: "Store Keeper",
   prod: "Kitchen In-charge", buyer: "Procurement Officer",
-};
-const WORKS_AT: Record<Role, LocKey[]> = { prod: ["kitchen"], store: ["store"], buyer: ["store"], counter: OUTLETS, manager: OUTLETS };
-const LOC_LABEL: Record<LocKey, string> = {
-  store: "Central Store", kitchen: "Central Kitchen", rest: "Restaurant", coffee: "Coffee Shop", kiosk: "Snack Kiosk",
 };
 
 /** How each logged action reads in the feed - "Ramesh Kumar deleted Anitha R". Keyed on the
@@ -27,13 +22,15 @@ const DID: Record<AdminAction["action"], string> = {
   outlet_create: "opened", outlet_update: "edited", outlet_close: "closed", outlet_reopen: "reopened",
 };
 
-const emptyForm = { name: "", email: "", phone: "", role: "counter" as Role, loc: "rest" as LocKey };
+const emptyForm = { name: "", email: "", phone: "", role: "counter" as Role, loc: "" as LocKey };
 
 export default function AdminUsers() {
   const accounts = useApp((s) => s.accounts);
   const adminActions = useApp((s) => s.adminActions);
+  const adminLocations = useApp((s) => s.adminLocations);
   const loadAccounts = useApp((s) => s.loadAccounts);
   const loadAdminActions = useApp((s) => s.loadAdminActions);
+  const loadAdminLocations = useApp((s) => s.loadAdminLocations);
   const createAccount = useApp((s) => s.createAccount);
   const resetAccountPassword = useApp((s) => s.resetAccountPassword);
   const setAccountActive = useApp((s) => s.setAccountActive);
@@ -41,10 +38,22 @@ export default function AdminUsers() {
   const deleteAccount = useApp((s) => s.deleteAccount);
   const notify = useApp((s) => s.notify);
 
-  // Nothing on the snapshot carries the account list or its action log - this is the one screen
-  // that reads either, so it asks for both on the way in, the same shape `Roster` already uses
-  // for the payer register.
-  useEffect(() => { void loadAccounts(); void loadAdminActions(); }, [loadAccounts, loadAdminActions]);
+  // Nothing on the snapshot carries the account list, its action log or the location list - this
+  // is the one screen that reads any of the three, so it asks for all of them on the way in, the
+  // same shape `Roster` already uses for the payer register.
+  useEffect(() => { void loadAccounts(); void loadAdminActions(); void loadAdminLocations(); }, [loadAccounts, loadAdminActions, loadAdminLocations]);
+
+  // Labels and pickers from the server's own list: a location the admin opened a minute ago is here,
+  // and a closed outlet reads as closed. The pairing itself is the server's (`worksAt`); this only
+  // keeps the picker from offering what would plainly be refused.
+  const LOCS = Object.fromEntries(adminLocations.map((l) => [l.key, { n: l.n, type: l.type, active: l.active }]));
+  const label = (key: string) => { const l = LOCS[key]; return !l ? key : l.active === false ? `${l.n} (closed)` : l.n; };
+  /** Where this role may be posted - and, for an account already somewhere it no longer may be
+   *  (a closed outlet), that place too, so its row still shows where it is. */
+  const places = (role: Role, current?: string) => {
+    const ok = placesFor(role, LOCS);
+    return current && !ok.includes(current) ? [current, ...ok] : ok;
+  };
 
   const [form, setForm] = useState(emptyForm);
   const [busy, setBusy] = useState<string | null>(null);
@@ -56,6 +65,9 @@ export default function AdminUsers() {
   // A preview only: the server assigns the number inside the create's own transaction, with the
   // same `nextEmpNo`, and the password alert names the one it actually gave.
   const nextEmp = nextEmpNo(accounts.map((a) => a.emp));
+  // The form starts with no location chosen - the first place its role may work, once the
+  // location list has landed, rather than a name compiled into the bundle.
+  const formLoc = form.loc || placesFor(form.role, LOCS)[0] || "";
 
   const create = async () => {
     if (!form.name.trim() || !form.email.trim()) {
@@ -66,7 +78,7 @@ export default function AdminUsers() {
     try {
       const made = await createAccount({
         name: form.name.trim(), email: form.email.trim(),
-        role: form.role, loc: form.loc, phone: form.phone.trim() || undefined,
+        role: form.role, loc: formLoc as LocKey, phone: form.phone.trim() || undefined,
       });
       // A refusal (the role/location pairing, most often) leaves the form exactly as typed,
       // so the operator corrects it rather than retyping the whole thing.
@@ -94,7 +106,7 @@ export default function AdminUsers() {
 
   const saveRoleLoc = async (a: AdminUser) => {
     const next = edit[a.id] ?? { role: a.r, loc: a.loc };
-    if (next.role === a.r && next.loc === a.loc) { notify(`${a.n} is already ${ROLE_LABEL[a.r]} at ${LOC_LABEL[a.loc]}`); return; }
+    if (next.role === a.r && next.loc === a.loc) { notify(`${a.n} is already ${ROLE_LABEL[a.r]} at ${label(a.loc)}`); return; }
     setBusy(a.id);
     try {
       if (await updateAccountRoleLoc(a.id, next)) setEdit((e) => { const n = { ...e }; delete n[a.id]; return n; });
@@ -136,14 +148,14 @@ export default function AdminUsers() {
           <Field label="Role">
             <select value={form.role} onChange={(e) => {
               const role = e.target.value as Role;
-              setForm({ ...form, role, loc: WORKS_AT[role].includes(form.loc) ? form.loc : WORKS_AT[role][0] });
+              setForm({ ...form, role, loc: (placesFor(role, LOCS).includes(form.loc) ? form.loc : placesFor(role, LOCS)[0] ?? "") as LocKey });
             }}>
               {RoleSchema.options.map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
             </select>
           </Field>
           <Field label="Location">
-            <select value={form.loc} onChange={(e) => setForm({ ...form, loc: e.target.value as LocKey })}>
-              {WORKS_AT[form.role].map((l) => <option key={l} value={l}>{LOC_LABEL[l]}</option>)}
+            <select value={formLoc} onChange={(e) => setForm({ ...form, loc: e.target.value as LocKey })}>
+              {placesFor(form.role, LOCS).map((l) => <option key={l} value={l}>{label(l)}</option>)}
             </select>
           </Field>
         </FormRow>
@@ -170,12 +182,12 @@ export default function AdminUsers() {
                 a.admin ? <Pill tone="in">Super Admin</Pill> : <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                   <select aria-label={`Role for ${a.emp}`} value={e.role} onChange={(ev) => {
                     const role = ev.target.value as Role;
-                    setEdit({ ...edit, [a.id]: { role, loc: WORKS_AT[role].includes(e.loc) ? e.loc : WORKS_AT[role][0] } });
+                    setEdit({ ...edit, [a.id]: { role, loc: (placesFor(role, LOCS).includes(e.loc) ? e.loc : placesFor(role, LOCS)[0] ?? "") as LocKey } });
                   }}>
                     {RoleSchema.options.map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
                   </select>
                   <select aria-label={`Location for ${a.emp}`} value={e.loc} onChange={(ev) => setEdit({ ...edit, [a.id]: { ...e, loc: ev.target.value as LocKey } })}>
-                    {WORKS_AT[e.role].map((l) => <option key={l} value={l}>{LOC_LABEL[l]}</option>)}
+                    {places(e.role, a.loc).map((l) => <option key={l} value={l}>{label(l)}</option>)}
                   </select>
                   <Btn size="xs" disabled={busy === a.id} onClick={() => void saveRoleLoc(a)}>Save</Btn>
                 </div>,

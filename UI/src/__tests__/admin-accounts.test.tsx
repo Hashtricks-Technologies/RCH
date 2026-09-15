@@ -5,7 +5,7 @@ import { MemoryRouter } from "react-router-dom";
 import AdminUsers from "../pages/AdminUsers";
 import { setAccessToken } from "../api/session";
 import { useApp } from "../store";
-import type { AdminUser } from "../types";
+import type { AdminLocation, AdminUser } from "../types";
 import { as, resetStore, S } from "./fixture";
 
 /**
@@ -24,6 +24,19 @@ const account = (over: Partial<AdminUser>): AdminUser => ({
 const SUPER = account({ id: "u7", emp: "RC-0001", n: "System Administrator", r: "buyer", rl: "Super Admin", loc: "store", admin: true });
 const KAVITHA = account({});
 const DEEPA = account({ id: "u6", emp: "RC-4482", n: "Deepa Selvam", loc: "kiosk", active: false });
+
+const row = (over: Partial<AdminLocation>): AdminLocation => ({
+  key: "rest", n: "Restaurant", c: "OT-R1", type: "Outlet", floor: "Floor 1", cc: "CC-RST", list: "A", active: true, staff: 1, ...over,
+});
+/** The six-location demo master, as `GET /admin/locations` answers it - every screen's role/loc
+ *  pickers read this rather than a list compiled into the bundle. */
+const LOCS: AdminLocation[] = [
+  row({ key: "store", n: "Central Store", c: "WH-CS", type: "Store", floor: "Basement", cc: "CC-STO", list: undefined, staff: 2 }),
+  row({ key: "kitchen", n: "Central Kitchen", c: "KT-CK", type: "Kitchen", floor: "Basement", cc: "CC-KIT", list: undefined, staff: 1 }),
+  row({ key: "rest", n: "Restaurant", c: "OT-R1", floor: "Floor 1", cc: "CC-RST", staff: 1 }),
+  row({ key: "coffee", n: "Coffee Shop", c: "OT-CS", floor: "Ground", cc: "CC-CFE", staff: 1 }),
+  row({ key: "kiosk", n: "Snack Kiosk", c: "OT-GK", floor: "Ground", cc: "CC-KSK", staff: 1 }),
+];
 
 const fetchMock = vi.fn();
 type Stubs = Record<string, () => Response>;
@@ -85,6 +98,7 @@ describe("the account page", () => {
     serve({
       "GET /api/v1/admin/users": () => json(list),
       "GET /api/v1/admin/actions": () => json([]),
+      "GET /api/v1/admin/locations": () => json(LOCS),
       "POST /api/v1/admin/users": () => {
         const made = account({ id: "u8", emp: "RC-4483", n: "Anitha R", e: "anitha.r@royalcare.in", loc: "rest", mustChangePassword: true });
         list = [...list, made];
@@ -106,14 +120,16 @@ describe("the account page", () => {
     });
     await press(page.button("Create account"));
     const [, init] = hit("POST /api/v1/admin/users")[0];
-    expect(JSON.parse(String((init as RequestInit).body))).toEqual({ name: "Anitha R", email: "anitha.r@royalcare.in", role: "counter", loc: "rest" });
+    // No location was picked by hand, so the form sent the first open outlet a counter may work
+    // at - read from the admin's own list, alphabetically, never a name compiled into the bundle.
+    expect(JSON.parse(String((init as RequestInit).body))).toEqual({ name: "Anitha R", email: "anitha.r@royalcare.in", role: "counter", loc: "coffee" });
     expect(page.text()).toContain("RC-4483's temporary password is one-time-pass-1");
     // The list came back with the new account in it, so the preview has moved on.
     expect(page.field("Employee id").value).toBe("RC-4484");
   });
 
   it("refuses to send a create with no name or email, and says what is missing", async () => {
-    serve({ "GET /api/v1/admin/users": () => json([SUPER]), "GET /api/v1/admin/actions": () => json([]) });
+    serve({ "GET /api/v1/admin/users": () => json([SUPER]), "GET /api/v1/admin/actions": () => json([]), "GET /api/v1/admin/locations": () => json(LOCS) });
     page = await mountPage();
     expect(page.field("Employee id").value).toBe("RC-0002");
     await press(page.button("Create account"));
@@ -122,7 +138,7 @@ describe("the account page", () => {
   });
 
   it("shows the super admin as Super Admin, with no role or location to change", async () => {
-    serve({ "GET /api/v1/admin/users": () => json([SUPER, KAVITHA]), "GET /api/v1/admin/actions": () => json([]) });
+    serve({ "GET /api/v1/admin/users": () => json([SUPER, KAVITHA]), "GET /api/v1/admin/actions": () => json([]), "GET /api/v1/admin/locations": () => json(LOCS) });
     page = await mountPage();
     const superRow = page.row("RC-0001");
     expect(superRow.textContent).toContain("Super Admin");
@@ -137,7 +153,7 @@ describe("the account page", () => {
 
   it("offers Delete only on a deactivated staff account", async () => {
     const closedSuper = { ...SUPER, id: "u9", emp: "RC-0002", active: false };
-    serve({ "GET /api/v1/admin/users": () => json([SUPER, closedSuper, KAVITHA, DEEPA]), "GET /api/v1/admin/actions": () => json([]) });
+    serve({ "GET /api/v1/admin/users": () => json([SUPER, closedSuper, KAVITHA, DEEPA]), "GET /api/v1/admin/actions": () => json([]), "GET /api/v1/admin/locations": () => json(LOCS) });
     page = await mountPage();
     expect(page.buttons("Delete", page.row("RC-4482"))).toHaveLength(1);
     expect(page.buttons("Delete", page.row("RC-4471"))).toHaveLength(0);     // still active
@@ -146,7 +162,7 @@ describe("the account page", () => {
   });
 
   it("asks a second time, and Keep sends nothing", async () => {
-    serve({ "GET /api/v1/admin/users": () => json([SUPER, DEEPA]), "GET /api/v1/admin/actions": () => json([]) });
+    serve({ "GET /api/v1/admin/users": () => json([SUPER, DEEPA]), "GET /api/v1/admin/actions": () => json([]), "GET /api/v1/admin/locations": () => json(LOCS) });
     page = await mountPage();
     await press(page.button("Delete", page.row("RC-4482")));
     const row = page.row("RC-4482");
@@ -166,6 +182,7 @@ describe("the account page", () => {
     serve({
       "GET /api/v1/admin/users": () => json(list),
       "GET /api/v1/admin/actions": () => json([]),
+      "GET /api/v1/admin/locations": () => json(LOCS),
       "DELETE /api/v1/admin/users/u6": () => {
         list = [SUPER];
         return json({ result: { id: "u6", emp: "RC-4482", n: "Deepa Selvam" }, changed: ["accounts"], message: "Deepa Selvam (RC-4482) deleted permanently" });
@@ -183,6 +200,7 @@ describe("the account page", () => {
     serve({
       "GET /api/v1/admin/users": () => json([SUPER, DEEPA]),
       "GET /api/v1/admin/actions": () => json([]),
+      "GET /api/v1/admin/locations": () => json(LOCS),
       "DELETE /api/v1/admin/users/u6": () => json({ error: { code: "conflict", message: "Refused - Deepa Selvam (RC-4482) has records in the ledger; an account with history can only be deactivated" } }, 409),
     });
     page = await mountPage();
@@ -200,9 +218,22 @@ describe("the account page", () => {
         { at: "2026-09-14T05:00:00.000Z", actor: "System Administrator", action: "delete", target: "Deepa Selvam", details: { emp: "RC-4482" } },
         { at: "2026-09-14T04:00:00.000Z", actor: "System Administrator", action: "reset_password", target: "Kavitha Raman", details: {} },
       ]),
+      "GET /api/v1/admin/locations": () => json(LOCS),
     });
     page = await mountPage();
     expect(page.text()).toContain("System Administrator deleted Deepa Selvam");
     expect(page.text()).toContain("System Administrator reset the password of Kavitha Raman");
+  });
+
+  it("offers a counter every open outlet the admin list carries, and no closed one", async () => {
+    serve({
+      "GET /api/v1/admin/users": () => json([SUPER]),
+      "GET /api/v1/admin/actions": () => json([]),
+      "GET /api/v1/admin/locations": () => json([...LOCS, row({ key: "juice-bar", n: "Juice Bar", c: "OT-JB" }), row({ key: "tea", n: "Tea Stall", c: "OT-TS", active: false })]),
+    });
+    page = await mountPage();
+    const options = [...page.field("Location").querySelectorAll("option")].map((o) => o.textContent);
+    expect(options).toContain("Juice Bar");
+    expect(options).not.toContain("Tea Stall");
   });
 });

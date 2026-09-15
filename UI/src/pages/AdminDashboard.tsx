@@ -2,11 +2,12 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useApp } from "../store";
 import { Btn } from "../ui/kit";
+import AdminOutlets from "./AdminOutlets";
 import AdminSupport from "./AdminSupport";
 import AdminUsers from "./AdminUsers";
 import mark from "../assets/eateszy-mark.png";
 
-type Tab = "accounts" | "support";
+type Tab = "accounts" | "outlets" | "support";
 
 /**
  * The whole of an admin-flagged account's experience - a capability, not a role (root
@@ -15,19 +16,23 @@ type Tab = "accounts" | "support";
  * and here is the only place it can ever reach - this file supplies the entire page, chrome
  * included, rather than being hosted inside `Shell`.
  *
- * Two tabs: staff accounts, and the support desk that answers every role's tickets.
+ * Three tabs: staff accounts, the hospital's retail outlets, and the support desk that answers
+ * every role's tickets.
  */
 export default function AdminDashboard() {
   const user = useApp((s) => s.user)!;
   const logout = useApp((s) => s.logout);
   const loadDeskTickets = useApp((s) => s.loadDeskTickets);
+  const loadAdminLocations = useApp((s) => s.loadAdminLocations);
   const waiting = useApp((s) => s.deskTickets.filter((t) => t.st === "Open" || t.st === "With support").length);
   const nav = useNavigate();
   const [tab, setTab] = useState<Tab>("accounts");
 
   // Read here rather than on the desk tab, so the count beside it is right before it is opened.
   // After this first read the change stream keeps the list current (`refetch`'s `tickets`).
-  useEffect(() => { void loadDeskTickets(); }, [loadDeskTickets]);
+  // The location list is read here too, so every tab has its labels the moment it is opened,
+  // not only the Outlets tab that manages them.
+  useEffect(() => { void loadDeskTickets(); void loadAdminLocations(); }, [loadDeskTickets, loadAdminLocations]);
 
   return (
     <div id="admin-dash">
@@ -36,6 +41,8 @@ export default function AdminDashboard() {
         <nav className="adm-tabs" role="tablist" aria-label="Admin">
           <button type="button" role="tab" aria-selected={tab === "accounts"} className={tab === "accounts" ? "on" : undefined}
             onClick={() => setTab("accounts")}>Accounts</button>
+          <button type="button" role="tab" aria-selected={tab === "outlets"} className={tab === "outlets" ? "on" : undefined}
+            onClick={() => setTab("outlets")}>Outlets</button>
           <button type="button" role="tab" aria-selected={tab === "support"} className={tab === "support" ? "on" : undefined}
             onClick={() => setTab("support")}>
             Support desk
@@ -46,7 +53,7 @@ export default function AdminDashboard() {
         <Btn variant="gh" size="sm" onClick={() => { void logout().then(() => nav("/login")); }}>Sign out</Btn>
       </header>
       <div className="adm-body" role="tabpanel">
-        {tab === "accounts" ? <AdminUsers /> : <AdminSupport />}
+        {tab === "accounts" ? <AdminUsers /> : tab === "outlets" ? <AdminOutlets /> : <AdminSupport />}
       </div>
     </div>
   );
