@@ -1,10 +1,11 @@
 import { create } from "zustand";
 import { routes, StockLocSchema } from "@rch/contract";
+import { sourceOf } from "@rch/domain";
 import { ApiError, call, closeSessionChannel } from "../api/client";
 import { getAccessToken, onSessionLost, setAccessToken } from "../api/session";
 import { refetch } from "../api/refetch";
 import { applySnapshot } from "../api/wire";
-import { LOC } from "../data/master";
+import { IT, LOC } from "../data/master";
 import type {
   Adjustment, Batch, Bill, CreditResponse, Dated, DatedDoc, DraftLine, DrawerState, Grn, LocKey,
   Payer, PordStatus, PriceList, ProdOrder, PurchaseOrder, Requisition, StockLedgerRow, StockLoc,
@@ -103,6 +104,12 @@ export interface AppState extends ProcurementSlice, OpsSlice, AdminSlice {
   /** The form-carrying writes answer `true` only once the server has taken them, so the screen
    *  can keep what the operator typed in front of them when it is refused. */
   submitRequest: (note: string, urgent: boolean) => Promise<boolean>;
+  /** The counter's one door for asking for stock: `draft`'s lines are split by each item's own
+   *  `sourceOf` (`@rch/domain`) into a central-store request and a kitchen order, and whichever
+   *  of the two is needed is raised - the operator never picks a source. Answers `true` only
+   *  once every line that needed to go somewhere has landed; a line whose call failed stays in
+   *  the draft so it is not silently dropped. */
+  submitStockRequest: (note: string, urgent: boolean) => Promise<boolean>;
   requestFromStore: (it: string, qty: number) => Promise<boolean>;
   cancelRequest: (id: string) => Promise<boolean>;
 
@@ -433,6 +440,45 @@ export const useApp = create<AppState>((set, get) => ({
       get().notify(e instanceof ApiError ? e.message : "Could not send the request - check the connection and try again.");
       return false;
     }
+  },
+  submitStockRequest: async (note, urgent) => {
+    const s = get();
+    const valid = s.draft.filter((l) => l.it && l.qty > 0);
+    if (!valid.length || !s.user) { get().notify("Add at least one line with a quantity"); return false; }
+    // The operator never picks a source: each item already carries one (`sourceOf`), set on
+    // the master by the store, the buyer or the kitchen - or its type's own default when none
+    // was set. One draft can carry both kinds of line at once, so up to two documents go out.
+    const storeLines = valid.filter((l) => sourceOf(IT[l.it]) === "store").map((l) => ({ it: l.it, qty: l.qty }));
+    const kitchenLines = valid.filter((l) => sourceOf(IT[l.it]) === "kitchen").map((l) => ({ it: l.it, qty: l.qty }));
+
+    let okStore = true;
+    if (storeLines.length > 0) {
+      try {
+        const r = await call(routes.createRequest, { body: { lines: storeLines, note, urgent } });
+        get().notify(r.message);
+        await refetch(r.changed, r.message);
+      } catch (e) {
+        okStore = false;
+        get().notify(e instanceof ApiError ? e.message : "Could not send the request - check the connection and try again.");
+      }
+    }
+    let okKitchen = true;
+    if (kitchenLines.length > 0) {
+      try {
+        const r = await call(routes.createProdOrder, {
+          body: { from: s.user.loc, lines: kitchenLines, note: urgent ? `[Urgent] ${note}`.trim() : note },
+        });
+        get().notify(r.message);
+        await refetch(r.changed, r.message);
+      } catch (e) {
+        okKitchen = false;
+        get().notify(e instanceof ApiError ? e.message : "Could not send the order to the kitchen - check the connection and try again.");
+      }
+    }
+    // Only what actually failed to land stays in the draft - a line already sent is not
+    // offered back to the operator to send a second time.
+    set({ draft: [...(okStore ? [] : storeLines), ...(okKitchen ? [] : kitchenLines)] });
+    return okStore && okKitchen;
   },
   requestFromStore: async (it, want) => {
     const s = get();

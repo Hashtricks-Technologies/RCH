@@ -600,6 +600,60 @@ describe("the request chain - the twelve writes", () => {
     expect(S().toast).toBe("Add at least one line with a quantity");
   });
 
+  it("submitStockRequest splits a mixed draft between the store and the kitchen at once", async () => {
+    as("counter");
+    useApp.setState({ menu: { ...S().menu, coffee: [...S().menu.coffee, "puff"] } });
+    S().setDraft([{ it: "milk", qty: 5 }, { it: "puff", qty: 3 }]);
+    serve({
+      "POST /api/v1/requests": () => json({ result: { ...REQ, lines: [{ it: "milk", qty: 5, appr: 0 }] }, changed: ["req"], message: "REQ-2026-0913 raised for 5 Milk 1L - with the outlet manager now" }),
+      "POST /api/v1/prod-orders": () => json({ result: { id: "PRD-2026-031", from: "coffee", by: "Kavitha Raman", at: "09:14", lines: [{ it: "puff", qty: 3 }], st: "New", note: "", hist: [] }, changed: ["pord"], message: "PRD-2026-031 raised for Coffee Shop - 1 item" }),
+      "GET /api/v1/requests": () => json([REQ]),
+      "GET /api/v1/prod-orders": () => json([]),
+    });
+
+    expect(await S().submitStockRequest("Short on both", false)).toBe(true);
+    expect(hit("POST /api/v1/requests")[0].body).toEqual({ lines: [{ it: "milk", qty: 5 }], note: "Short on both", urgent: false });
+    expect(hit("POST /api/v1/prod-orders")[0].body).toEqual({ from: "coffee", lines: [{ it: "puff", qty: 3 }], note: "Short on both" });
+    expect(S().draft).toEqual([]);
+  });
+
+  it("submitStockRequest prefixes the kitchen's note when the request is urgent, since a prod order has no priority of its own", async () => {
+    as("counter");
+    useApp.setState({ menu: { ...S().menu, coffee: [...S().menu.coffee, "puff"] } });
+    S().setDraft([{ it: "puff", qty: 3 }]);
+    serve({
+      "POST /api/v1/prod-orders": () => json({ result: { id: "PRD-2026-031", from: "coffee", by: "Kavitha Raman", at: "09:14", lines: [{ it: "puff", qty: 3 }], st: "New", note: "", hist: [] }, changed: ["pord"], message: "PRD-2026-031 raised for Coffee Shop - 1 item" }),
+      "GET /api/v1/prod-orders": () => json([]),
+    });
+    await S().submitStockRequest("Lunch rush", true);
+    expect(hit("POST /api/v1/prod-orders")[0].body).toEqual({ from: "coffee", lines: [{ it: "puff", qty: 3 }], note: "[Urgent] Lunch rush" });
+    expect(hit("POST /api/v1/requests")).toHaveLength(0);   // nothing store-routed on this draft
+  });
+
+  it("submitStockRequest keeps only the line whose call failed, once the other has already landed", async () => {
+    as("counter");
+    useApp.setState({ menu: { ...S().menu, coffee: [...S().menu.coffee, "puff"] } });
+    S().setDraft([{ it: "milk", qty: 5 }, { it: "puff", qty: 3 }]);
+    serve({
+      "POST /api/v1/requests": () => json({ result: { ...REQ, lines: [{ it: "milk", qty: 5, appr: 0 }] }, changed: ["req"], message: "REQ-2026-0913 raised for 5 Milk 1L - with the outlet manager now" }),
+      "POST /api/v1/prod-orders": () => refusal("Veg puffs is not listed at Coffee Shop - add it to that menu first"),
+      "GET /api/v1/requests": () => json([REQ]),
+    });
+
+    expect(await S().submitStockRequest("", false)).toBe(false);
+    expect(S().toast).toBe("Veg puffs is not listed at Coffee Shop - add it to that menu first");
+    // Milk landed and is gone from the draft; the refused puff line is still there to retry.
+    expect(S().draft).toEqual([{ it: "puff", qty: 3 }]);
+  });
+
+  it("submitStockRequest refuses an empty draft the same way submitRequest does", async () => {
+    as("counter");
+    S().setDraft([]);
+    expect(await S().submitStockRequest("", false)).toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(S().toast).toBe("Add at least one line with a quantity");
+  });
+
   it("cancelRequest names the request in the path and sends no body", async () => {
     as("counter");
     serve({ "POST /api/v1/requests/REQ-2026-0911/cancel": () => json({ result: REQ, changed: ["req"], message: "REQ-2026-0911 cancelled" }), "GET /api/v1/requests": () => json([REQ]) });
@@ -1282,7 +1336,7 @@ describe("a refusal keeps what the operator typed", () => {
     as("counter");
     serve({ "POST /api/v1/requests": () => refusal("Refused - Coffee Shop already has REQ-2026-0911 open for Milk 1L") });
     const ui = mount();
-    act(() => { ui.button("From inventory")!.click(); });
+    act(() => { S().setDraft([{ it: "milk", qty: 20 }]); });
     act(() => { type(ui.note(), "Milk finished at 09:10"); });
 
     await settle(() => { ui.button("Submit request")!.click(); });
@@ -1291,6 +1345,8 @@ describe("a refusal keeps what the operator typed", () => {
     // The card is still open and still carries the note - nothing to retype.
     expect(ui.button("Submit request")).toBeDefined();
     expect(ui.note().value).toBe("Milk finished at 09:10");
+    // The line that failed to land is not silently dropped either.
+    expect(S().draft).toEqual([{ it: "milk", qty: 20 }]);
     ui.unmount();
   });
 
@@ -1301,13 +1357,14 @@ describe("a refusal keeps what the operator typed", () => {
       "GET /api/v1/requests": () => json([REQ]),
     });
     const ui = mount();
-    act(() => { ui.button("From inventory")!.click(); });
+    act(() => { S().setDraft([{ it: "milk", qty: 20 }]); });
     act(() => { type(ui.note(), "Milk finished at 09:10"); });
 
     await settle(() => { ui.button("Submit request")!.click(); });
 
     expect(S().toast).toBe("REQ-2026-0913 sent to the outlet manager - 1 line");
-    expect(ui.button("Submit request")).toBeUndefined();   // the card closed behind the answer
+    expect(ui.note().value).toBe("");                      // the note cleared behind the answer
+    expect(S().draft).toEqual([]);
     ui.unmount();
   });
 
@@ -1324,7 +1381,7 @@ describe("a refusal keeps what the operator typed", () => {
       return json([REQ]);
     });
     const ui = mount();
-    act(() => { ui.button("From inventory")!.click(); });
+    act(() => { S().setDraft([{ it: "milk", qty: 20 }]); });
 
     act(() => { ui.button("Submit request")!.click(); });
 
@@ -2125,11 +2182,11 @@ describe("raiseProdOrder - POST /prod-orders", () => {
     expect(hit("GET /api/v1/prod-orders")).toHaveLength(0);
   });
 
-  it("the counter's card sends what the operator typed and clears itself", async () => {
+  it("a kitchen-sourced item on the unified request posts to the kitchen, from the counter's own outlet", async () => {
     as("counter");
     // The Coffee Shop's own menu carries no finished good - two drinks made at the till and
-    // four bought-in lines - so the card would honestly offer nothing to order. Put a puff on
-    // its menu, which is what the outlet manager would do before the counter could ask for one.
+    // four bought-in lines - so nothing routes to the kitchen from it yet. Put a puff on its
+    // menu, which is what the outlet manager would do before the counter could ask for one.
     useApp.setState({ menu: { ...S().menu, coffee: [...S().menu.coffee, "puff"] } });
     serve({
       "POST /api/v1/prod-orders": () => json({ result: RAISED, changed: ["pord"], message: "PRD-2026-031 raised for Coffee Shop - 1 item" }),
@@ -2141,15 +2198,13 @@ describe("raiseProdOrder - POST /prod-orders", () => {
     const root = createRoot(host);
     await act(async () => { root.render(createElement(MemoryRouter, null, createElement(CounterRequests))); });
 
-    // The card opens on its own action tile, and the form only exists once it is open.
-    const openIt = [...host.querySelectorAll("button")].find((b) => b.textContent?.includes("From the kitchen"))!;
-    await act(async () => { openIt.click(); });
-    const send = [...host.querySelectorAll("button")].find((b) => b.textContent === "Send to the kitchen")!;
+    // One line, a finished good, no source ever typed or picked.
+    await act(async () => { S().setDraft([{ it: "puff", qty: 1 }]); });
+    const send = [...host.querySelectorAll("button")].find((b) => b.textContent === "Submit request")!;
     await act(async () => { send.click(); });
 
     const body = hit("POST /api/v1/prod-orders")[0].body as { from: string; lines: { it: string; qty: number }[] };
-    // The outlet comes off the token, and the one finished good on that menu is what the
-    // picker opened on - never `capp` or `chai`, which are made at the till.
+    // The outlet comes off the token, never off anything the operator picked.
     expect(body.from).toBe("coffee");
     expect(body.lines).toEqual([{ it: "puff", qty: 1 }]);
     await act(async () => { root.unmount(); });
@@ -2176,23 +2231,17 @@ describe("raiseProdOrder - POST /prod-orders", () => {
     document.body.appendChild(host);
     const root = createRoot(host);
     await act(async () => { root.render(createElement(MemoryRouter, null, createElement(CounterRequests))); });
-    const openIt = [...host.querySelectorAll("button")].find((b) => b.textContent?.includes("From the kitchen"))!;
-    await act(async () => { openIt.click(); });
+    await act(async () => { S().setDraft([{ it: "puff", qty: 1 }]); });
 
-    const qty = () => host.querySelector<HTMLInputElement>("input[aria-label='Quantity 1']")!;
-    const send = () => [...host.querySelectorAll("button")].find((b) => b.textContent === "Send to the kitchen") as HTMLButtonElement;
+    const qty = () => host.querySelector<HTMLInputElement>("input[aria-label='Quantity of Veg puffs']")!;
+    const send = () => [...host.querySelectorAll("button")].find((b) => b.textContent === "Submit request") as HTMLButtonElement;
 
     // Clearing the box is a real keystroke on the way to a new number. A controlled
     // `Number(e.target.value)` would have read it as 0 and forced a "0" back into the field
-    // under the operator's fingers - and greyed out Send while they were still typing.
+    // under the operator's fingers - and greyed out Submit while they were still typing.
     await act(async () => { type(qty(), ""); });
     expect(qty().value).toBe("");
     expect(send().disabled).toBe(false);
-
-    // And tabbing out of an empty box writes nothing: the line keeps the last good number
-    // rather than becoming a zero line nobody typed.
-    await act(async () => { leave(qty()); });
-    expect(qty().value).toBe("1");
 
     await act(async () => { type(qty(), "12.5"); });
     await act(async () => { leave(qty()); });

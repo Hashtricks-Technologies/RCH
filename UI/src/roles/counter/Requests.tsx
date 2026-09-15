@@ -1,51 +1,22 @@
 import { useState } from "react";
-import { IT, LOC, OUTLETS } from "../../data/master";
+import { sourceOf } from "@rch/domain";
+import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
 // ---- item patch ----
-import { activeItems, avail, isReqOpen } from "../../lib/selectors";
+import { activeItems, isReqOpen, menuOf, qty } from "../../lib/selectors";
 import { fq, U } from "../../lib/fmt";
 import {
-  Alert, Btn, BtnRow, Card, DataTable, DraftLineInput, Field, ImagePlaceholder, Icon, PageHead,
-  Pill, StatusPill, Tip,
+  Btn, BtnRow, Card, DataTable, DraftLineInput, Field, FormRow, PageHead, Section, StatusPill,
+  useLineKeys,
 } from "../../ui/kit";
-import type { LocKey } from "../../types";
+import type { DraftLine } from "../../types";
 // ---- prod-order raise ----
 import KitchenOrderCard from "./KitchenOrderCard";
 
-/** Anything a shop can be asked for - not raw materials, not made-to-order. */
-const sellable = () => activeItems()
-  .filter((k) => IT[k].t === "MRP" || IT[k].t === "FG")
-  .sort((a, b) => IT[a].n.localeCompare(IT[b].n));
-/** Anything the central store can send - everything except made-to-order, which
- *  a counter assembles itself and never holds as stock. */
-const stockable = () => activeItems()
-  .filter((k) => IT[k].t !== "MTO")
-  .sort((a, b) => IT[a].g.localeCompare(IT[b].g) || IT[a].n.localeCompare(IT[b].n));
-
-const tone = (st: string) => (st === "Asked" ? "wn" : st === "Sent" ? "ok" : "cr");
-type Row = {
-  key: string; kind: "inventory" | "shop"; it: string; qty: number; at: string; iso: string;
-  direction: string; status: string; extra?: string;
-};
-
-/** The small preview every raise-card opens with - a product card, not a bare select. */
-function ProductPicker({ items, value, onChange, hint }: {
-  items: string[]; value: string; onChange: (v: string) => void; hint?: string;
-}) {
-  const item = IT[value];
-  return (
-    <div className="raisecard-product">
-      <ImagePlaceholder />
-      <div className="txt">
-        <b>{item?.n ?? "Choose a product"}</b>
-        <span>{item ? `${item.c} · ${item.g}` : hint}</span>
-        <select value={value} aria-label="Product" onChange={(e) => onChange(e.target.value)} style={{ marginTop: 6 }}>
-          {items.map((k) => <option key={k} value={k}>{IT[k].n}</option>)}
-        </select>
-      </div>
-    </div>
-  );
-}
+const BAD = { borderColor: "var(--crit)" };
+const lineErr = (l: DraftLine) =>
+  !l.it ? "Pick an item - this line will not be sent"
+    : l.qty > 0 ? "" : "Quantity must be above zero - this line will not be sent";
 
 export default function Requests() {
   const s = useApp();
@@ -56,320 +27,186 @@ export default function Requests() {
   // (`hydrateMaster` / `hydrateItems`), so this list is built during render and pinned to
   // `catalogVersion` - the signal that tells React the catalogue moved.
   void s.catalogVersion;
-  const SELLABLE = sellable();
-  const STOCKABLE = stockable();
+  // Anything the operator can be asked for, whichever desk actually supplies it: a store-sourced
+  // item goes on the picker whatever its type, and a kitchen-sourced one only when it is a
+  // finished good already on this till - the one thing the kitchen can be asked to make for it.
+  const listed = new Set(menuOf(s, loc));
+  const REQUESTABLE = activeItems()
+    .filter((k) => IT[k].t !== "MTO")
+    .filter((k) => sourceOf(IT[k]) === "store" || (IT[k].t === "FG" && listed.has(k)))
+    .sort((a, b) => IT[a].g.localeCompare(IT[b].g) || IT[a].n.localeCompare(IT[b].n));
 
-  const [open, setOpen] = useState<"inventory" | "shop" | null>(null);
+  const [note, setNote] = useState("");
+  const [priority, setPriority] = useState("Normal");
+  const [busy, setBusy] = useState(false);
 
-  // Inventory-request card
-  const [invItem, setInvItem] = useState(STOCKABLE[0]);
-  const [invQty, setInvQty] = useState(1);
-  const [invPriority, setInvPriority] = useState<"Normal" | "Urgent">("Normal");
-  const [invNote, setInvNote] = useState("");
+  const draft = s.draft;
+  /** A key per draft row that belongs to the row rather than to its position - `useLineKeys`
+   *  (`ui/kit.tsx`) says why, for every screen that draws an editable line table. */
+  const [rowKeys, dropKey] = useLineKeys(draft.length);
 
-  // Shop-ask card. `peers` is empty on a one-outlet deployment, and was read as `peers[0]` -
-  // `undefined`, which `LOC[shopTo].n` then dereferenced and took the whole screen down with.
-  const peers = OUTLETS.filter((o) => o !== loc);
-  const [shopTo, setShopTo] = useState<LocKey | null>(peers[0] ?? null);
-  const [shopItem, setShopItem] = useState(SELLABLE[0]);
-  const [shopQty, setShopQty] = useState(1);
-  const [shopPriority, setShopPriority] = useState<"Normal" | "Urgent">("Normal");
-  const [shopNote, setShopNote] = useState("");
-
-  /**
-   * Both pickers opened on `LIST[0]` at mount and stayed there for ever. `IT` is a module
-   * registry replaced in place, so an item retired in another browser - or a catalogue that
-   * had not landed when this screen first rendered - left the box pointing at a key the
-   * server no longer sells, and Submit posted a line for it. Adjusted during render, keyed
-   * on the same `catalogVersion` the two lists are built from, so the correction lands in
-   * the render that saw the change rather than a frame later.
-   */
-  if (STOCKABLE.length > 0 && !STOCKABLE.includes(invItem)) setInvItem(STOCKABLE[0]);
-  if (SELLABLE.length > 0 && !SELLABLE.includes(shopItem)) setShopItem(SELLABLE[0]);
-  if (peers.length > 0 && (shopTo === null || !peers.includes(shopTo))) setShopTo(peers[0]);
-
-  const [grant, setGrant] = useState<Record<string, number>>({});
-  const [reason, setReason] = useState<Record<string, string>>({});
-  /** Which ask is mid-decline - the reason field only exists while one is. */
-  const [declineFor, setDeclineFor] = useState<string | null>(null);
-  /** What is in flight, so the control that sent it is locked and nothing is cleared
-   *  until the server has actually taken it. A refusal leaves the card exactly as typed. */
-  const [busy, setBusy] = useState<string | null>(null);
-
-  const submitInventory = async () => {
-    s.setDraft([{ it: invItem, qty: invQty }]);
-    setBusy("inv");
-    const ok = await s.submitRequest(invNote.trim(), invPriority === "Urgent");
-    setBusy(null);
-    if (!ok) return;
-    setInvQty(1); setInvPriority("Normal"); setInvNote(""); setOpen(null);
-  };
-  const submitShopAsk = async () => {
-    if (!shopTo) return;
-    const note = shopPriority === "Urgent" ? `[Urgent] ${shopNote.trim()}`.trim() : shopNote.trim();
-    setBusy("shop");
-    const ok = await s.askShop(shopTo, shopItem, shopQty, note);
-    setBusy(null);
-    if (!ok) return;
-    setShopQty(1); setShopPriority("Normal"); setShopNote(""); setOpen(null);
+  const setLine = (i: number, patch: Partial<DraftLine>) =>
+    s.setDraft(draft.map((l, j) => (j === i ? { ...l, ...patch } : l)));
+  const addLine = () => s.setDraft([...draft, { it: "", qty: 0 }]);
+  const removeLine = (i: number) => {
+    dropKey(i);
+    s.setDraft(draft.filter((_, j) => j !== i));
   };
 
-  const toggle = (which: "inventory" | "shop") => setOpen(open === which ? null : which);
+  // The draft, the note and the priority survive a refusal - the store clears only the lines
+  // that actually landed, and this clears the rest on the same answer.
+  const submit = async () => {
+    setBusy(true);
+    const ok = await s.submitStockRequest(note.trim(), priority === "Urgent");
+    setBusy(false);
+    if (!ok) return;
+    setNote("");
+    setPriority("Normal");
+  };
+  const clearDraft = () => {
+    s.setDraft([]);
+    setNote("");
+    setPriority("Normal");
+    s.notify("Draft request cleared");
+  };
 
-  const inbound = s.shopAsks.filter((a) => a.to === loc && a.st === "Asked");
-
-  const rows: Row[] = [
-    ...s.req.filter((r) => r.from === loc).map((r): Row => ({
-      key: r.id, kind: "inventory", it: r.lines[0]?.it ?? "", qty: r.lines.reduce((t, l) => t + l.qty, 0),
-      at: r.at, iso: r.iso, direction: `${r.lines.length > 1 ? `${r.lines.length} items` : IT[r.lines[0]?.it]?.n ?? "-"} · Central Store`,
-      status: r.st,
-      extra: r.ticket ?? undefined,
-    })),
-    ...s.shopAsks.filter((a) => a.from === loc || a.to === loc).map((a): Row => ({
-      key: a.id, kind: "shop", it: a.it, qty: a.qty, at: a.at, iso: a.iso,
-      direction: a.from === loc ? `To ${LOC[a.to].n}` : `From ${LOC[a.from].n}`,
-      status: a.st === "Sent" ? "Ticket issued" : a.st === "Asked" ? "Request sent" : "Rejected",
-      extra: a.ticket ?? a.reason ?? undefined,
-    })),
-    // Newest first on the **instant**, never on the printed time: "22:00" sorts above "09:00"
-    // whatever day each belongs to, which put yesterday's last ask above this morning's first.
-  ].sort((x, y) => (y.iso ?? "").localeCompare(x.iso ?? ""));
-
-  const openCount = s.req.filter((r) => r.from === loc && isReqOpen(r.st)).length
-    + s.shopAsks.filter((a) => a.from === loc && a.st === "Asked").length;
+  const mine = s.req.filter((r) => r.from === loc).slice().sort((a, b) => b.iso.localeCompare(a.iso));
+  const openCount = mine.filter((r) => isReqOpen(r.st)).length;
+  const usable = draft.filter((l) => !lineErr(l)).length;
+  const skipped = draft.length - usable;
 
   return (
     <>
       <PageHead
         crumbs={["Royal Care", L.n, "Stock Requests"]}
         title="Stock requests"
-        tip="Ask for stock from the store or another shop."
+        tip="Ask for stock - it is routed to the central store or the kitchen automatically."
+        actions={<Btn variant="gh" onClick={addLine}>Add item</Btn>}
       />
 
-      {inbound.length > 0 && (
-        <Card
-          title="Another shop is asking you"
-          tip="You decide these, not the outlet manager"
-          right={<Pill tone="wn">{inbound.length} waiting</Pill>}
-          className="mtop"
-        >
-          {inbound.map((a) => {
-            const free = avail(s, loc, a.it);
-            const g = grant[a.id] ?? Math.min(a.qty, free);
-            const short = free < a.qty;
-            const declining = declineFor === a.id;
-            return (
-              <div key={a.id} className="askcard">
-                <div className="askcard-top">
-                  <ImagePlaceholder size="thumb" />
-                  <div className="askcard-id">
-                    <b>{IT[a.it].n}</b>
-                    <span className="mini">{a.id} · {LOC[a.from].n} · {a.at}</span>
+      <Card title="New request" sub={`From ${L.n} (${L.c}) · raised by ${user.n}`}
+        right={<Btn variant="gh" size="sm" onClick={addLine}>Add item</Btn>}>
+        <div className="tw">
+          <table className="lgrid">
+            <thead>
+              <tr>
+                <th style={{ width: "32%" }}>Item</th>
+                <th style={{ width: "14%" }}>Quantity</th>
+                <th style={{ width: "8%" }}>Unit</th>
+                <th style={{ width: "14%" }}>Here now</th>
+                <th style={{ width: "18%" }}>Goes to</th>
+                <th style={{ width: "14%" }} className="r">Remove</th>
+              </tr>
+            </thead>
+            <tbody>
+              {draft.length === 0 && (
+                <tr><td colSpan={6}>
+                  <div className="empty">
+                    <b>No item on this request yet</b>
+                    <p>One request can carry as many items as this counter is short of - add the first to begin.</p>
+                    <Btn size="sm" onClick={addLine}>Add item</Btn>
                   </div>
-                  <Pill tone="mu">{IT[a.it].c}</Pill>
-                </div>
+                </td></tr>
+              )}
+              {draft.map((l, i) => {
+                const err = lineErr(l);
+                return (
+                  <tr key={rowKeys[i]}>
+                    <td>
+                      <div className="fld">
+                        <select value={l.it} style={l.it ? undefined : BAD}
+                          aria-label={`Item on row ${i + 1}`}
+                          onChange={(e) => setLine(i, { it: e.target.value })}>
+                          <option value="">Choose an item…</option>
+                          {REQUESTABLE.map((k) => <option key={k} value={k}>{IT[k].n} · {IT[k].c}</option>)}
+                        </select>
+                      </div>
+                      {err && <div className="hint" style={{ color: "var(--crit)" }}>{err}</div>}
+                    </td>
+                    <td>
+                      <div className="fld">
+                        {/* Typed in freely and committed on the way out: `Number(e.target.value)`
+                            on every keystroke put 1.5 litres into the draft as 1, then 1.5, and
+                            emptying the box to retype set the line to nothing. */}
+                        <DraftLineInput
+                          value={l.qty} min={0} step={l.it && U(l.it) === "nos" ? 1 : 0.5}
+                          invalid={!!l.it && !(l.qty > 0)}
+                          ariaLabel={l.it ? `Quantity of ${IT[l.it].n}` : `Quantity on row ${i + 1}`}
+                          onCommit={(n) => setLine(i, { qty: Math.max(0, n) })} />
+                      </div>
+                    </td>
+                    <td className="mini">{l.it ? U(l.it) : "-"}</td>
+                    <td className="mini">
+                      {l.it ? <>{fq(qty(s, loc, l.it), l.it)} {U(l.it)}</> : <span className="dim">-</span>}
+                    </td>
+                    <td className="mini">
+                      {l.it ? (sourceOf(IT[l.it]) === "kitchen" ? "Central Kitchen" : "Central Store") : <span className="dim">-</span>}
+                    </td>
+                    <td className="rt">
+                      <Btn size="xs" variant="gh" onClick={() => removeLine(i)}>Remove</Btn>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
 
-                {a.note && <p className="askcard-note">{a.note}</p>}
-
-                <div className="askcard-stats">
-                  <div className="askcard-stat">
-                    <span className="k">They asked for</span>
-                    <span className="v">{fq(a.qty, a.it)}<small>{U(a.it)}</small></span>
-                  </div>
-                  <div className="askcard-stat">
-                    <span className="k">Free here</span>
-                    <span className={`v${short ? " short" : ""}`}>
-                      {fq(free, a.it)}<small>{U(a.it)}</small>
-                    </span>
-                  </div>
-                </div>
-
-                {short && free > 0 && (
-                  <Alert tone="w" label="SHORT">
-                    You hold {fq(free, a.it)} of the {fq(a.qty, a.it)} {U(a.it)} asked for. Sending what
-                    you have is fine - the rest stays their problem to source.
-                  </Alert>
-                )}
-                {free <= 0 && (
-                  <Alert tone="c" label="NONE">
-                    Nothing free at this counter to send. Decline with a reason so they can look elsewhere.
-                  </Alert>
-                )}
-
-                {declining ? (
-                  <div className="askcard-act askcard-decline">
-                    <Field label="Why are you declining" tip="The other counter sees this.">
-                      <input autoFocus placeholder="We need it for the evening rush"
-                        value={reason[a.id] ?? ""}
-                        onChange={(e) => setReason({ ...reason, [a.id]: e.target.value })} />
-                    </Field>
-                    <Btn size="sm" variant="dg" disabled={!(reason[a.id] ?? "").trim() || busy !== null}
-                      onClick={async () => {
-                        setBusy(`decline:${a.id}`);
-                        const ok = await s.declineShopAsk(a.id, reason[a.id] ?? "");
-                        setBusy(null);
-                        if (ok) setDeclineFor(null);
-                      }}>
-                      {busy === `decline:${a.id}` ? "Declining…" : "Confirm decline"}
-                    </Btn>
-                    <Btn size="sm" variant="gh" onClick={() => setDeclineFor(null)}>Cancel</Btn>
-                  </div>
-                ) : (
-                  <div className="askcard-act">
-                    <div className="askcard-qty">
-                      <label htmlFor={`g-${a.id}`}>Send</label>
-                      {/* Committed on the way out rather than on every keystroke: reading
-                          `Number(e.target.value)` as it was typed sent 1.5 L back as 1, then 1.5,
-                          and clearing the box to retype offered nothing. */}
-                      <DraftLineInput id={`g-${a.id}`} value={g} min={0} max={Math.min(a.qty, free)}
-                        step={U(a.it) === "nos" ? 1 : 0.5} ariaLabel="Send"
-                        onCommit={(n) => setGrant({ ...grant, [a.id]: n })} />
-                    </div>
-                    {/* The box is capped at `min(asked, free)`, but a number typed straight in
-                        walked past it - the button only checked that it was above zero, so a
-                        counter could offer to send forty of something it holds eight of and
-                        find out from the server. It is capped at the same figure now. */}
-                    <Btn size="sm" disabled={free <= 0 || g <= 0 || g > Math.min(a.qty, free) || busy !== null}
-                      onClick={async () => {
-                        setBusy(`answer:${a.id}`);
-                        try { await s.answerShopAsk(a.id, g); } finally { setBusy(null); }
-                      }}>
-                      {busy === `answer:${a.id}` ? "Sending…" : <>Send {fq(g, a.it)} {U(a.it)}</>}
-                    </Btn>
-                    <div className="askcard-spacer" />
-                    <Btn size="sm" variant="gh" onClick={() => setDeclineFor(a.id)}>Decline</Btn>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </Card>
-      )}
-
-      <div className="mtop" />
-      <div className="reqactions">
-        {/* One outlet and no peer is a real deployment, not a hypothetical - and offering to
-            ask a shop that does not exist is worse than saying there is none. */}
-        {shopTo ? (
-          <button type="button" className={`reqaction${open === "shop" ? " on" : ""}`} onClick={() => toggle("shop")}>
-            <span className="reqaction-ic"><Icon name="swap" size={18} /></span>
-            <span className="reqaction-tx"><b>From other shops</b><span>Ask a peer counter directly</span></span>
-          </button>
-        ) : (
-          <div className="reqaction" aria-disabled>
-            <span className="reqaction-ic"><Icon name="swap" size={18} /></span>
-            <span className="reqaction-tx"><b>No other outlet to ask</b><span>This is the only counter</span></span>
-          </div>
-        )}
-        <button type="button" className={`reqaction${open === "inventory" ? " on" : ""}`} onClick={() => toggle("inventory")}>
-          <span className="reqaction-ic"><Icon name="warehouse" size={18} /></span>
-          <span className="reqaction-tx"><b>From inventory</b><span>Ask the central store</span></span>
-        </button>
-      </div>
-
-      {open === "shop" && shopTo && (
-        <div className="raisecard">
-          <div className="raisecard-h"><b>Ask another shop</b><span className="mini">to {LOC[shopTo].n}</span></div>
-          <Field label="Shop">
-            <select value={shopTo} onChange={(e) => setShopTo(e.target.value as LocKey)}>
-              {peers.map((p) => <option key={p} value={p}>{LOC[p].n}</option>)}
+        <Section title="Details" tip="The outlet manager sees the priority and the note alongside every item." />
+        <FormRow cols="f2">
+          <Field label="Priority" tip="Urgent requests are flagged at the top of the manager's queue.">
+            <select value={priority} onChange={(e) => setPriority(e.target.value)}>
+              <option>Normal</option>
+              <option>Urgent</option>
             </select>
           </Field>
-          <div style={{ height: 10 }} />
-          <ProductPicker items={SELLABLE} value={shopItem} onChange={setShopItem} />
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
-            <Field label="Quantity">
-              {/* `DraftLineInput` rather than a raw box, so 1.5 L is asked for as 1.5 rather than
-                  going in as 1 on the way to it. It carries its own `ariaLabel` because `Field`
-                  wires `htmlFor` only to a direct DOM child, never to a component. */}
-              <DraftLineInput value={shopQty} min={1} step={U(shopItem) === "nos" ? 1 : 0.5}
-                ariaLabel="Quantity" onCommit={setShopQty} />
-            </Field>
-            <Field label="Priority">
-              <select value={shopPriority} onChange={(e) => setShopPriority(e.target.value as "Normal" | "Urgent")}>
-                <option>Normal</option><option>Urgent</option>
-              </select>
-            </Field>
-          </div>
-          <Field label="Notes">
-            <textarea rows={2} value={shopNote} onChange={(e) => setShopNote(e.target.value)}
-              placeholder="Out until the store opens" />
+          <Field label="Items ready"
+            tip="Only rows with an item and a quantity above zero are sent."
+            hint={skipped > 0 && <span style={{ color: "var(--crit)" }}>
+              {skipped} row{skipped === 1 ? "" : "s"} will be dropped - fix the row{skipped === 1 ? "" : "s"} marked in red above.
+            </span>}>
+            <input readOnly value={`${usable} of ${draft.length}`} style={skipped > 0 ? BAD : undefined} />
           </Field>
-          <BtnRow>
-            <Btn onClick={submitShopAsk} disabled={!(shopQty > 0) || busy !== null}>
-              {busy === "shop" ? "Asking…" : `Ask ${LOC[shopTo].n}`}
-            </Btn>
-            <Btn variant="gh" onClick={() => setOpen(null)}>Cancel</Btn>
-          </BtnRow>
-        </div>
-      )}
+        </FormRow>
+        <Field label="Notes" tip="Say what this is for - the outlet manager may trim quantities.">
+          <textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)}
+            placeholder="Milk finished at 09:10, cappuccino and tea are both off." />
+        </Field>
+        <BtnRow>
+          <Btn disabled={usable === 0 || busy} onClick={submit}>
+            {busy ? "Sending…" : "Submit request"}
+          </Btn>
+          <Btn variant="gh" disabled={draft.length === 0 && !note} onClick={clearDraft}>Clear</Btn>
+        </BtnRow>
+      </Card>
 
-      {open === "inventory" && (
-        <div className="raisecard">
-          <div className="raisecard-h">
-            <span className="tipped">
-              <b>Ask the central store</b>
-              <Tip text="goes to the outlet manager first" label="Ask the central store" />
-            </span>
-          </div>
-          <ProductPicker items={STOCKABLE} value={invItem} onChange={setInvItem} />
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
-            <Field label="Quantity">
-              <DraftLineInput value={invQty} min={1} step={U(invItem) === "nos" ? 1 : 0.5}
-                ariaLabel="Quantity" onCommit={setInvQty} />
-            </Field>
-            <Field label="Priority" tip="Urgent is flagged at the top of the manager's queue.">
-              <select value={invPriority} onChange={(e) => setInvPriority(e.target.value as "Normal" | "Urgent")}>
-                <option>Normal</option><option>Urgent</option>
-              </select>
-            </Field>
-          </div>
-          <Field label="Notes">
-            <textarea rows={2} value={invNote} onChange={(e) => setInvNote(e.target.value)}
-              placeholder="Milk finished at 09:10, cappuccino and tea are both off." />
-          </Field>
-          <BtnRow>
-            <Btn onClick={submitInventory} disabled={!(invQty > 0) || busy !== null}>
-              {busy === "inv" ? "Sending…" : "Submit request"}
-            </Btn>
-            <Btn variant="gh" onClick={() => setOpen(null)}>Cancel</Btn>
-          </BtnRow>
-        </div>
-      )}
-
-      {/* ---- prod-order raise ---- the third source of stock, beside the store and a peer shop:
-          the Central Kitchen making it. Its own card because it comes with its own list - the
-          orders this counter has raised, which nothing here showed before. */}
-      <KitchenOrderCard loc={loc} />
-
-      <Card title="All requests" sub={`${rows.length} from or to ${L.n}`} flush className="mtop"
-        tip="A request to the central store can be cancelled from its detail any time before the store keeper issues a ticket against it - including after the outlet manager has approved it.">
+      <Card title="Requests to the central store" sub={`${mine.length} from ${L.n}`} flush className="mtop"
+        tip="Can be cancelled from its detail any time before the store keeper issues a ticket against it - including after the outlet manager has approved it.">
         <DataTable
           cols={[
-            { h: "Product", cls: "nm" }, { h: "Route" }, { h: "Qty", r: true },
-            { h: "Raised" }, { h: "Status" }, { h: "" },
+            { h: "Product", cls: "nm" }, { h: "Items" }, { h: "Raised" }, { h: "Status" },
           ]}
-          rows={rows.map((r) => ({
-            key: r.key,
-            onClick: r.kind === "inventory" ? () => s.openDrawer("creq", r.key) : undefined,
+          rows={mine.map((r) => ({
+            key: r.id,
+            onClick: () => s.openDrawer("creq", r.id),
             cells: [
-              <span style={{ display: "flex", alignItems: "center", gap: 9 }}>
-                <ImagePlaceholder />
-                <span><b>{IT[r.it]?.n ?? "-"}</b><small>{r.key}</small></span>
-              </span>,
-              r.direction,
-              fq(r.qty, r.it),
+              <><b>{r.lines.length} item{r.lines.length === 1 ? "" : "s"}</b><small>{r.id}</small></>,
+              r.lines.map((l) => IT[l.it]?.n ?? l.it).join(", "),
               r.at,
-              r.kind === "inventory" ? <StatusPill status={r.status} /> : <Pill tone={tone(r.status === "Ticket issued" ? "Sent" : r.status === "Request sent" ? "Asked" : "Declined")}>{r.status}</Pill>,
-              r.extra ? <span className="mini">{r.extra}</span> : <span className="dim">-</span>,
+              <StatusPill status={r.st} />,
             ],
           }))}
           empty={{
             title: "No request raised from this counter yet",
-            sub: "Use one of the two actions above to raise the first one.",
+            sub: "Add an item above and submit - one request can carry everything this counter is short of.",
           }}
         />
       </Card>
+
+      {/* ---- prod-order raise ---- what the kitchen makes routes there automatically off the
+          same request above; this is only the board it lands on. */}
+      <KitchenOrderCard loc={loc} />
+
       <p className="mini mtop">
         {openCount} request{openCount === 1 ? "" : "s"} from {L.n} {openCount === 1 ? "is" : "are"} still open.
       </p>

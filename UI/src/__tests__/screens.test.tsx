@@ -22,7 +22,7 @@ import { bodyKey } from "../roles/manager/ApprovalDrawer";
 import { IT as FXIT, USERS, seedVendors } from "@rch/contract/fixtures";
 // ---- item patch ----
 import { IT, LOC, OUTLETS, PRICE_LISTS, hydratePriceLists } from "../data/master";
-import { activeItems, madeItems } from "../lib/selectors";
+import { madeItems } from "../lib/selectors";
 import { Alert } from "../ui/kit";
 import type { PoolLine } from "../lib/selectors";
 import type { Bill, Dated, DatedDoc, Role, StockRequest, SupportTicket, Ticket, Trailed } from "../types";
@@ -703,24 +703,29 @@ describe("the counter can ask the kitchen, and only for what the kitchen makes",
     host.remove();
   });
 
-  it("says so honestly when a menu has nothing the kitchen makes, and offers no Send", () => {
+  it("offers no kitchen-routed item on the unified request until one is on this counter's own menu", () => {
     act(() => { as("counter"); });                       // Kavitha, Coffee Shop
-    // The form only exists once the card's own action tile is pressed, so this renders into a
-    // host it keeps mounted rather than going through `render` above, which unmounts to return.
     const host = document.createElement("div");
     document.body.appendChild(host);
     const root = createRoot(host);
     act(() => { root.render(createElement(MemoryRouter, null, createElement(counter.requests))); });
-    expect(host.innerHTML).toContain("Ask the kitchen");
+    act(() => {
+      [...host.querySelectorAll("button")].find((b) => b.textContent === "Add item")!.click();
+    });
+    const options = () => [...host.querySelectorAll("select[aria-label='Item on row 1'] option")].map((o) => o.textContent);
 
-    const tile = [...host.querySelectorAll("button")].find((b) => b.textContent?.includes("From the kitchen"))!;
-    act(() => { tile.click(); });
     // The Coffee Shop sells capp, chai, juice, water, bisc, chips - two made at the till and
-    // four bought in, and not one finished good. There is nothing to order, so the card says
-    // that rather than offering an empty picker and a button the server would refuse.
-    expect(host.innerHTML).toContain("Nothing on this menu is made in the kitchen");
-    expect(host.querySelector("select[aria-label='Product 1']")).toBeNull();
-    expect([...host.querySelectorAll("button")].map((b) => b.textContent)).not.toContain("Send to the kitchen");
+    // four bought in, and not one finished good - so nothing on the picker routes to the
+    // kitchen. Every option offered still comes off the central store instead.
+    expect(options().some((t) => t?.startsWith("Veg puffs") || t?.startsWith("Veg sandwich") || t?.startsWith("Garden salad"))).toBe(false);
+
+    // Once the outlet manager lists a finished good there, it appears - and routes to the
+    // kitchen without the operator ever choosing that.
+    act(() => {
+      const menu = useApp.getState().menu;
+      useApp.setState({ menu: { ...menu, coffee: [...menu.coffee, "puff"] } });
+    });
+    expect(options().some((t) => t?.startsWith("Veg puffs"))).toBe(true);
 
     act(() => { root.unmount(); });
     host.remove();
@@ -1146,69 +1151,29 @@ describe("the approval drawer", () => {
  * what it does on a deployment or a catalogue it was not written against.
  * ---------------------------------------------------------------------- */
 describe("the counter's stock requests", () => {
-  it("will not send more of a shop's ask than this counter is holding free", () => {
+  it("routes each line to the desk its own item names, with no source ever picked", () => {
     act(() => {
-      as("counter");                                   // Kavitha, Coffee Shop
-      useApp.setState({
-        // The kiosk wants 40; the Coffee Shop has eight on the shelf.
-        shopAsks: [{
-          id: "ASK-2026-0021", from: "kiosk", to: "coffee", it: "juice", qty: 40,
-          st: "Asked", at: "09:20", iso: "2026-09-11T03:50:00.000Z", by: "Deepa Selvam", note: "",
-        }],
-      });
+      as("counter");                                    // Kavitha, Coffee Shop
+      const menu = useApp.getState().menu;
+      useApp.setState({ menu: { ...menu, coffee: [...menu.coffee, "puff"] } });
     });
     const ui = mount(counter.requests);
-    const qty = ui.host.querySelector<HTMLInputElement>("#g-ASK-2026-0021")!;
-    const send = () => [...ui.host.querySelectorAll("button")].find((b) => (b.textContent ?? "").startsWith("Send"))!;
+    act(() => { ui.button("Add item").click(); });
+    act(() => { ui.button("Add item").click(); });
 
-    expect(send().disabled).toBe(false);
-    // The box is a `DraftLineInput`, so what is typed reaches the grant on the way out of the
-    // field, not on every keystroke - which is what lets 1.5 L be offered as 1.5 rather than 1.
-    act(() => { typeIn(qty, "40"); });
-    act(() => { qty.dispatchEvent(new FocusEvent("focusout", { bubbles: true })); });
-    // Forty is more than the shelf holds, so the server would refuse it - the button does not
-    // offer to go and find that out. The cap used to be only `g > 0`.
-    expect(send().disabled).toBe(true);
-  });
+    const rowSelect = (i: number) => ui.host.querySelector<HTMLSelectElement>(`select[aria-label="Item on row ${i}"]`)!;
+    const pick = (el: HTMLSelectElement, v: string) => {
+      Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")!.set!.call(el, v);
+      el.dispatchEvent(new Event("change", { bubbles: true }));
+    };
+    const goesTo = (i: number) => ui.host.querySelectorAll("tbody tr")[i - 1]!.querySelectorAll("td")[4]!.textContent;
 
-  it("says there is nobody to ask on a one-outlet deployment", () => {
-    act(() => { as("counter"); });
-    // One counter and no peer: `peers[0]` was `undefined`, and `LOC[undefined].n` took the
-    // whole screen down before it could draw a single row.
-    const saved = [...OUTLETS];
-    OUTLETS.splice(0, OUTLETS.length, "coffee");
-    try {
-      const ui = mount(counter.requests);
-      expect(ui.text()).toContain("No other outlet to ask");
-      expect(ui.text()).toContain("Stock requests");     // and the rest of the screen is there
-    } finally {
-      OUTLETS.splice(0, OUTLETS.length, ...saved);
-    }
-  });
-
-  it("moves off a product the catalogue has stopped carrying", async () => {
-    act(() => { as("counter"); });
-    const ui = mount(counter.requests);
-    act(() => { ui.button("From inventory").click(); });
-    const picked = () => ui.host.querySelector<HTMLSelectElement>('select[aria-label="Product"]')!.value;
-    const first = picked();
-    expect(first).toBeTruthy();
-
-    // What an SSE resync after somebody retires an item looks like: the key the picker opened
-    // on is no longer in the catalogue, and `useState(LIST[0])` was frozen on it for ever -
-    // so Submit posted a line for a product the server no longer sells.
-    act(() => {
-      IT[first] = { ...IT[first], active: false };
-      useApp.setState({ catalogVersion: useApp.getState().catalogVersion + 1 });
-    });
-    expect(picked()).not.toBe(first);
-    expect(activeItems()).toContain(picked());
-
-    // And the *state* moved, not only what the browser falls back to painting for a `value`
-    // no option carries: what Submit posts is read off `invItem`, not off the select.
-    act(() => { useApp.setState({ submitRequest: async () => false }); });
-    await settle(() => { ui.button("Submit request").click(); });
-    expect(useApp.getState().draft[0]?.it).toBe(picked());
+    // "milk" (RAW, no `src` set) falls back to its type's default - the store; "puff" (FG,
+    // freshly listed on this till) falls back to the kitchen. Neither was chosen, only named.
+    act(() => { pick(rowSelect(1), "milk"); });
+    act(() => { pick(rowSelect(2), "puff"); });
+    expect(goesTo(1)).toBe("Central Store");
+    expect(goesTo(2)).toBe("Central Kitchen");
   });
 });
 
