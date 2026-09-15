@@ -15,20 +15,20 @@
   "dependencies": {
     "@rch/contract": "workspace:*",
     "@rch/domain": "workspace:*",
-    "react": "^19.2.8",
-    "react-dom": "^19.2.8",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
     "react-router-dom": "^7.18.2",
-    "zod": "^4.5.4",
+    "zod": "^4.6.2",
     "zustand": "^5.0.15"
   },
   "devDependencies": {
     "@types/node": "^24.13.3",
-    "@types/react": "^19.2.18",
-    "@types/react-dom": "^19.2.4",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.0",
     "@vitest/coverage-v8": "^4.1.11",
     "jsdom": "^30.0.1",
-    "vite": "^8.2.2",
+    "vite": "^8.3.0",
     "vitest": "^4.1.11"
   },
   "description": "Royal Care Hospital - F&B inventory and billing frontend"
