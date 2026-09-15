@@ -72,8 +72,9 @@ describe("loadConfig", () => {
     expect(loadConfig({ ...good, SEED_PASSWORD: "twelve-chars" }).seedPassword).toBe("twelve-chars");
   });
   it("turns TLS on by itself in production, and leaves the choice alone everywhere else", () => {
-    expect(loadConfig({ ...good, NODE_ENV: "production" }).databaseSsl).toBe(true);
-    expect(loadConfig({ ...good, NODE_ENV: "production", DATABASE_SSL: "false" }).databaseSsl).toBe(false);
+    const prodImages = { IMAGE_STORE: "s3", IMAGE_BUCKET: "b-1", AWS_REGION: "ap-south-1" };
+    expect(loadConfig({ ...good, ...prodImages, NODE_ENV: "production" }).databaseSsl).toBe(true);
+    expect(loadConfig({ ...good, ...prodImages, NODE_ENV: "production", DATABASE_SSL: "false" }).databaseSsl).toBe(false);
     expect(loadConfig({ ...good, NODE_ENV: "development" }).databaseSsl).toBe(false);
     expect(loadConfig({ ...good, NODE_ENV: "development", DATABASE_SSL: "true" }).databaseSsl).toBe(true);
   });
@@ -90,5 +91,22 @@ describe("loadConfig", () => {
     expect(two.databaseUrl).toBe("postgres://u:p@h:5432/d");
     expect(cliDatabaseUrl(two)).toBe("postgres://rch:owner@h:5432/d");
     expect(() => loadConfig({ ...good, MIGRATE_DATABASE_URL: "mysql://rch:owner@h/d" })).toThrow(ConfigError);
+  });
+
+  // ---- item photos ----
+  it("keeps photos in a local folder unless told otherwise", () => {
+    expect(loadConfig(good).images).toEqual({ store: "disk", dir: ".data/images" });
+    expect(loadConfig({ ...good, IMAGE_DIR: "/tmp/x" }).images).toEqual({ store: "disk", dir: "/tmp/x" });
+  });
+  it("reads the bucket and region for S3, and refuses S3 without either", () => {
+    expect(loadConfig({ ...good, IMAGE_STORE: "s3", IMAGE_BUCKET: "rch-images", AWS_REGION: "ap-south-1" }).images)
+      .toEqual({ store: "s3", bucket: "rch-images", region: "ap-south-1" });
+    expect(() => loadConfig({ ...good, IMAGE_STORE: "s3", AWS_REGION: "ap-south-1" })).toThrow(/IMAGE_BUCKET/);
+    expect(() => loadConfig({ ...good, IMAGE_STORE: "s3", IMAGE_BUCKET: "rch-images" })).toThrow(/AWS_REGION/);
+  });
+  it("refuses a production process that would keep photos on its own disk", () => {
+    expect(() => loadConfig({ ...good, NODE_ENV: "production" })).toThrow(ConfigError);
+    expect(() => loadConfig({ ...good, NODE_ENV: "production" })).toThrow(/IMAGE_STORE/);
+    expect(loadConfig({ ...good, NODE_ENV: "production", IMAGE_STORE: "s3", IMAGE_BUCKET: "b-1", AWS_REGION: "ap-south-1" }).images.store).toBe("s3");
   });
 });

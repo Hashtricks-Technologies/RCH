@@ -385,7 +385,7 @@ describe("a write that does not succeed leaves one event after its reply", () =>
 
   it("production's fallback: a write answered outside any transaction is logged done from what it sent", async () => {
     const route = defineRoute({ method: "POST", path: "/__test/audit-outside", access: "any", response: writeResponse(z.strictObject({ id: z.string() })) });
-    const a = await appWith((x) => mount(x, route, async () => ({ result: { id: "OUT-1" }, changed: ["items" as const], message: "Staged outside any transaction" })), { NODE_ENV: "production" });
+    const a = await appWith((x) => mount(x, route, async () => ({ result: { id: "OUT-1" }, changed: ["items" as const], message: "Staged outside any transaction" })), { NODE_ENV: "production", IMAGE_STORE: "s3", IMAGE_BUCKET: "b-1", AWS_REGION: "ap-south-1" });
     try {
       const mark = await lastId();
       const r = await write("u2", "POST", "/__test/audit-outside", undefined, randomUUID(), a);

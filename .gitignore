@@ -34,6 +34,7 @@ out/
 .turbo/
 # API build
 apps/api/dist/
+apps/api/.data/
 
 # Agent worktrees (Claude Code)
 .claude/worktrees/
