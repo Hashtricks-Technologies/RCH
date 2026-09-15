@@ -130,8 +130,11 @@ export const deactivateUser = (db: Db, emp: string): Promise<void> => withTransa
 export async function reactivateUserTx(tx: Tx, emp: string): Promise<void> {
   const u = await byEmp(tx, emp);
   // A deactivated account may be based at an outlet that has closed since; it comes back only
-  // somewhere it can work.
-  await checkPairing(tx, u.role, u.loc);
+  // somewhere it can work. A super admin is the exception, because its role and location are
+  // placeholders the `users` row needs and it reaches no operational route at all: the pairing has
+  // nothing to say about it, and a close - which does not count admins among an outlet's staff -
+  // must not be what keeps the hospital's one administrator deactivated.
+  if (!u.admin) await checkPairing(tx, u.role, u.loc);
   await tx.update(users).set({ active: true, updatedAt: new Date() }).where(eq(users.id, u.id));
 }
 export const reactivateUser = (db: Db, emp: string): Promise<void> => withTransaction(db, (tx) => reactivateUserTx(tx, emp));

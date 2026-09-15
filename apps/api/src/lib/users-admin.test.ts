@@ -118,6 +118,20 @@ describe("pairing against the locations table", () => {
     await t.db.update(locations).set({ active: false }).where(eq(locations.key, "kiosk"));
     await expect(reactivateUser(t.db, "RC-4482")).rejects.toThrow("Counter Operator works at an open outlet - Snack Kiosk is closed");
   });
+  it("reactivates a super admin whose placeholder location has closed since", async () => {
+    // A super admin's role and location are placeholders (root CLAUDE.md) - it reaches no
+    // operational route - and the close's staff blocker does not count admins, so an outlet can
+    // close under one. The pairing has nothing to say about an account that works nowhere, and it
+    // must not be what keeps the hospital's administrator locked out.
+    await setAdmin(t.db, "RC-4471", true);                        // Kavitha's row, Coffee Shop
+    await deactivateUser(t.db, "RC-4471");
+    await t.db.update(locations).set({ active: false }).where(eq(locations.key, "coffee"));
+    await reactivateUser(t.db, "RC-4471");
+    const [u] = await t.db.select().from(users).where(eq(users.empNo, "RC-4471"));
+    expect(u.active).toBe(true);
+    await setAdmin(t.db, "RC-4471", false);
+    await t.db.update(locations).set({ active: true }).where(eq(locations.key, "coffee"));
+  });
   it("names the place a role works, by its printed name", async () => {
     await expect(createUser(t.db, { name: "Arun P", email: "arun.p@royalcare.in", role: "prod", loc: "rest", password: "a-long-enough-password" }))
       .rejects.toThrow("Kitchen In-charge works at the Central Kitchen, not at Restaurant");
