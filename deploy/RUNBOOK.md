@@ -2493,6 +2493,18 @@ are tried as `/api/v1/admin/audit*` → `audit:3100`, `/readyz/audit` → the au
 simply never asked to use them here. `flush_interval -1` on the API route is what
 keeps `/api/v1/events` (server-sent events) streaming rather than buffered.
 
+**A changed Caddyfile reaches Caddy only because `deploy.sh` hands compose its checksum.** The file
+is a bind mount, so editing it changes nothing compose can see in the service definition, and this
+box runs Caddy with `admin off`, so there is no `caddy reload` either: a deploy that changes only
+the routes would otherwise leave a long-running Caddy serving the config it started with. The audit
+release hit exactly that - the new `/readyz/audit` and `/api/v1/admin/audit` routes sat on disk
+while a three-day-old Caddy went on sending both to the UI. `deploy.sh` now exports
+`CADDYFILE_SHA=$(sha256sum Caddyfile)`, `compose.yml` passes it into Caddy's environment, and a
+changed checksum is a changed service definition, so `up -d` recreates Caddy when the routes change
+and leaves it alone when they do not. `compose.test.sh` asserts both halves. To apply a Caddyfile
+edit by hand on the box, recreate rather than restart:
+`docker compose --env-file .env -f compose.yml up -d --force-recreate caddy`.
+
 **Neither Node runtime image has a shell** (both are distroless), so neither carries a
 `HEALTHCHECK` a container orchestrator could run; `restart: unless-stopped` recovers a crash.
 `deploy.sh`'s final step polls `https://<domain>/healthz` through Caddy, and `release.sh` then
@@ -2500,6 +2512,12 @@ requires `https://<domain>/readyz` (the API: its database and every migration in
 `https://<domain>/readyz/audit` (the audit service: its database, its migrations and a drain pass
 in the last 30 s). Before the audit service shipped, Caddy had no `/readyz` route, so the UI's
 nginx answered it with a static `ok` that checked nothing.
+
+Both checks read the body and require `{"ok":true}`, in `release.sh` and again in `deploy-box.yml`.
+A status code on its own is not evidence here: anything Caddy does not route falls through to the
+UI, which answers 200 with the SPA for every path it does not recognise, so a readiness endpoint
+that never reached its container still looks healthy. That is not hypothetical - the audit release
+passed a status-only check while `/readyz/audit` was being served the SPA.
 
 **`DATABASE_SSL=false` is set explicitly.** The API image always sets `NODE_ENV=production`, and
 `config.ts`'s `databaseSsl` defaults to `true` whenever it is unset in production - right for
@@ -2635,7 +2653,8 @@ Since 2026-09-14, a push to `develop` deploys itself once CI is green on it.
    reads `deploy/compose/release.sh` out of the commit being released, and runs it. The full log is
    kept on the box as `~ubuntu/deploys/<stamp>-<sha>.log`; the job prints its last 20,000 characters.
 3. **It checks `/readyz`, `/readyz/audit` and `/` from outside**, through Caddy, so the whole chain
-   is proven: the API's readiness, the audit service's, and the page.
+   is proven: the API's readiness, the audit service's, and the page. The two readiness checks
+   require `{"ok":true}` in the body, because an unrouted path still answers 200 from the UI.
 
 `release.sh <sha>` works in this order:
 

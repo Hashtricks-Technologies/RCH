@@ -142,6 +142,12 @@ services:
       - caddy_config:/config
     environment:
       DOMAIN: ${DOMAIN:?set DOMAIN in .env}
+      # Caddy never reads this. `deploy.sh` sets it to the Caddyfile's checksum so that a changed
+      # Caddyfile is a changed service definition. The config is a bind mount and this box runs
+      # Caddy with `admin off`, so compose sees nothing to recreate when only that file changes and
+      # there is no admin socket to reload through: without this, a new route would sit on disk,
+      # unserved, behind a Caddy still running the routes it started with days ago.
+      CADDYFILE_SHA: ${CADDYFILE_SHA:-unset}
     depends_on: [ui, api, audit]
 
 volumes:

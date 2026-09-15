@@ -81,4 +81,14 @@ caddy_check 'any(.path == "/api/v1/admin/audit*" and .dial == "audit:3100")' "th
 caddy_check 'any(.path == "/readyz" and .dial == "api:3000")' "/readyz must reach the API"
 caddy_check 'any(.path == "/readyz/audit" and .rewrite == "/readyz" and .dial == "audit:3100")' "/readyz/audit must reach the audit service's /readyz"
 
+# A correct Caddyfile is worth nothing if the running Caddy never reads it. The file is a bind
+# mount and the box runs Caddy with `admin off`, so neither compose nor a reload notices an edit:
+# `deploy.sh` passes the file's checksum in Caddy's environment, and that is what makes compose
+# recreate the container when the routes change. A deploy once left new audit routes on disk while
+# Caddy went on serving a three-day-old config; these two checks are that bug's fence.
+check '.services.caddy.environment | has("CADDYFILE_SHA")' \
+  "caddy must carry CADDYFILE_SHA, or a changed Caddyfile never reaches the running container"
+grep -q '^export CADDYFILE_SHA$' deploy.sh \
+  || { echo "FAIL: deploy.sh must export CADDYFILE_SHA from the Caddyfile's checksum" >&2; exit 1; }
+
 echo "compose.yml and the Caddyfile are well-formed"

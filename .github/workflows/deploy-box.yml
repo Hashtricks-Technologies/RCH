@@ -109,8 +109,12 @@ jobs:
       # this is the database, both sets of migrations and the drainer, seen from the internet.
       - name: The site answers from outside
         run: |
-          curl -fsS -m 10 --retry 5 --retry-delay 3 --retry-all-errors "$SITE/readyz"
-          echo
-          curl -fsS -m 10 --retry 5 --retry-delay 3 --retry-all-errors "$SITE/readyz/audit"
-          echo
+          for path in /readyz /readyz/audit; do
+            body=$(curl -fsS -m 10 --retry 5 --retry-delay 3 --retry-all-errors "$SITE$path")
+            echo "$path -> $body"
+            case "${body// /}" in
+              *'"ok":true'*) ;;
+              *) echo "::error::$path answered 200 but not ok - an unrouted path falls through to the UI, which serves the SPA for anything it does not recognise"; exit 1 ;;
+            esac
+          done
           curl -fsS -m 10 -o /dev/null "$SITE/"
