@@ -21,3 +21,4 @@ export { ledgerRow, type LedgerRow } from "./reports.js";
 export { ITEM_FIELD_ROLES, mayEditItemField, unauthorisedItemFields, type ItemField } from "./items.js";
 // ---- adjustments: the words a write-off's reason is printed in, on both sides.
 export { REASON_LABEL } from "./adjustments.js";
+export { HSN_CODES, gstForHsn, type HsnEntry } from "./hsn.js";

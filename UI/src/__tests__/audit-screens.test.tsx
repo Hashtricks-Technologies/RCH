@@ -273,6 +273,21 @@ describe("procurement adds a product with the store keeper's field set", () => {
     ui.unmount();
   });
 
+  it("fills in the GST rate when an HSN code is picked from the list", () => {
+    as("buyer");
+    useApp.setState({ drawer: { t: "bnewitem", id: "new" } });
+    const ui = mountNode(Drawer);
+
+    const hsnSelect = byLabel<HTMLSelectElement>(ui.host, "HSN");
+    act(() => { pick(hsnSelect, "2202"); }); // aerated and soft drinks, 28% GST
+    expect(byLabel<HTMLInputElement>(ui.host, "GST %").value).toBe("28");
+
+    // Still editable afterwards - the picker only fills in a starting value.
+    act(() => { type(byLabel(ui.host, "GST %"), "12"); });
+    expect(byLabel<HTMLInputElement>(ui.host, "GST %").value).toBe("12");
+    ui.unmount();
+  });
+
   it("posts the code, group, HSN and GST it typed, not the defaults", async () => {
     as("buyer");
     const sheet = { c: "PK-2010", n: "Butter paper sheet", u: "nos", t: "PACK" as const, g: "Packaging", hsn: "4806", gst: 18, rl: 0, cost: 0.8 };
@@ -287,6 +302,11 @@ describe("procurement adds a product with the store keeper's field set", () => {
     act(() => { type(byLabel(ui.host, "Item code"), "PK-2010"); });
     act(() => { pick(byLabel(ui.host, "Type"), "PACK"); });
     act(() => { type(byLabel(ui.host, "Group"), "Packaging"); });
+    // The paperboard grade this sheet is graded under is not on the curated list, so the
+    // operator switches the HSN field from the picker to typing the code by hand.
+    const notListed = [...ui.host.querySelectorAll("label")]
+      .find((l) => l.textContent === "Not on the list - type the code myself")!.querySelector("input")!;
+    act(() => { notListed.click(); });
     act(() => { type(byLabel(ui.host, "HSN"), "4806"); });
     act(() => { type(byLabel(ui.host, "GST %"), "18"); });
     act(() => { type(byLabel(ui.host, "Cost a unit (₹)"), "0.8"); });
