@@ -26,7 +26,7 @@ type Write<T> = { result: T; changed: Changed[]; message: string };
  *  is what they actually need - a per-field list would only repeat what the greyed-out input on
  *  their own screen already showed them. */
 const COMMERCIAL_REFUSAL = "Only the outlet manager changes an item's price, cost or GST - ask them to make that change";
-const OPERATIONAL_REFUSAL = "The store, the buyer and the kitchen keep an item's name, group, HSN, reorder level and shelf life - ask one of them";
+const OPERATIONAL_REFUSAL = "The store, the buyer and the kitchen keep an item's name, group, HSN, reorder level, shelf life and stock-request source - ask one of them";
 /** `active` is the one field every desk but the counter owns, so it never lands in a refusal;
  *  everything else is the manager's or the three desks', and nothing is in neither. */
 const COMMERCIAL: readonly ItemField[] = ["mrp", "cost", "gst"];
@@ -67,7 +67,9 @@ export function createCatalogService(db: Db) {
           type: body.type, grp: body.grp.trim() || "Other", hsn: body.hsn.trim() || "2106",
           gst: body.gst, reorderLevel: round3(body.reorder), cost: body.cost,
           mrp: body.mrp && body.mrp > 0 ? body.mrp : null,
-          shelfLifeHours: body.sl && body.sl > 0 ? body.sl : null, active: true, createdAt: at, updatedAt: at,
+          shelfLifeHours: body.sl && body.sl > 0 ? body.sl : null,
+          src: body.src ?? null,
+          active: true, createdAt: at, updatedAt: at,
         });
         assertRule(row, `${name} is already in the catalogue`);
 
@@ -168,6 +170,7 @@ export function createCatalogService(db: Db) {
         // Same reading `createItem` gives a blank shelf-life box: 0, like absent, means the
         // item carries no best-before at all, not a batch due the instant it is made.
         if (body.sl !== undefined) patch.shelfLifeHours = body.sl > 0 ? body.sl : null;
+        if (body.src !== undefined) patch.src = body.src;
 
         // Only a line actually **crossing** off the catalogue has to be clear of stock and
         // menus; asking it again of one already retired would refuse a no-op over stock that

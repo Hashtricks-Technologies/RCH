@@ -1,12 +1,13 @@
 import { useState } from "react";
-import { mayEditItemField, type ItemField } from "@rch/domain";
-import { IT } from "../../data/master";
+import { defaultSourceFor, mayEditItemField, type ItemField } from "@rch/domain";
+import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
 import { money } from "../../lib/fmt";
 import { Alert, Btn, BtnRow, Field, FormRow, Section, Tag } from "../../ui/kit";
 import { DrawerFrame } from "../../ui/Drawer";
 import { registerDrawer } from "../../drawers";
 import type { ItemFieldPatch } from "../../store/ops";
+import type { Source } from "../../types";
 
 /**
  * Editing an existing line on the item master - the way back from a write-once catalogue.
@@ -36,6 +37,7 @@ function ItemDrawer({ id }: { id: string }) {
   const [gst, setGst] = useState(String(item?.gst ?? 0));
   const [mrp, setMrp] = useState(item?.mrp == null ? "" : String(item.mrp));
   const [sl, setSl] = useState(item?.sl == null ? "" : String(item.sl));
+  const [src, setSrc] = useState<Source>(item?.src ?? defaultSourceFor(item?.t ?? "RAW"));
   const [busy, setBusy] = useState(false);
 
   if (!user || !item) {
@@ -78,6 +80,7 @@ function ItemDrawer({ id }: { id: string }) {
     // A blank box means "no best-before", the same as 0 - not "leave it as it is". Unlike the
     // MRP, there is no hazard in clearing it: the domain default (8 hours) is a safe fallback.
     if (may("sl") && (Number(sl) || 0) !== (item.sl ?? 0)) p.sl = Number(sl) || 0;
+    if (may("src") && item.t !== "MTO" && src !== (item.src ?? defaultSourceFor(item.t))) p.src = src;
     return p;
   };
   const patch = changes();
@@ -102,7 +105,7 @@ function ItemDrawer({ id }: { id: string }) {
 
   const commercial = may("mrp");
   const whose = commercial
-    ? "The name, the group, the HSN code, the reorder level and the shelf life belong to the store, the buyer and the kitchen - they are shown here, greyed, so you can see what the pack says."
+    ? "The name, the group, the HSN code, the reorder level, the shelf life and the stock-request source belong to the store, the buyer and the kitchen - they are shown here, greyed, so you can see what the pack says."
     : "The printed MRP, the standard cost and the GST rate belong to the outlet manager - they are shown here, greyed, so you can see what a unit is worth.";
 
   return (
@@ -163,6 +166,23 @@ function ItemDrawer({ id }: { id: string }) {
             onChange={(e) => setSl(e.target.value)} placeholder="none" />
         </Field>
       </FormRow>
+
+      {item.t !== "MTO" && (
+        <>
+          <Section title="Stock request routing"
+            tip="Where a counter's stock request for this item goes - the manager sees it there, unpicked, instead of choosing a source themselves." />
+          <FormRow>
+            <Field label="Default source" tip={may("src")
+              ? "The desk that supplies this item when an outlet asks for it."
+              : "The store, the buyer or the kitchen sets this."}>
+              <select value={src} disabled={!may("src")} onChange={(e) => setSrc(e.target.value as Source)}>
+                <option value="store">{LOC.store?.n ?? "Central Store"}</option>
+                <option value="kitchen">{LOC.kitchen?.n ?? "Central Kitchen"}</option>
+              </select>
+            </Field>
+          </FormRow>
+        </>
+      )}
 
       <Section title="Cost and printed price" tip="Stock value is read off the cost; the MRP is a hard ceiling on every till." />
       <FormRow cols="f2">

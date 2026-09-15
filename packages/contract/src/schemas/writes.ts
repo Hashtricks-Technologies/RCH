@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { IsoDate, ItemTypeSchema, LocKeySchema, PriceListIdSchema, StockLocSchema, TenderSchema } from "./common.js";
+import { IsoDate, ItemTypeSchema, LocKeySchema, PriceListIdSchema, SourceSchema, StockLocSchema, TenderSchema } from "./common.js";
 import { AdjustReasonSchema, GrnSchema, ItemSchema, PayerSchema, PordStatusSchema, ProdOrderSchema, PurchaseOrderSchema, ShopAskSchema, StockRequestSchema, TicketPrioritySchema, TicketSchema, TicketStatusSchema, TicketTopicSchema } from "./documents.js";
 
 /** Every domain slice a write can touch, so a client can invalidate/refetch precisely instead
@@ -181,7 +181,7 @@ export const CreateItemBodySchema = z.strictObject({
   unit: z.string().max(12).default("nos"), type: ItemTypeSchema, grp: z.string().max(40).default(""),
   hsn: z.string().max(12).default(""), gst: z.number().min(0).max(100).default(5),
   reorder: QtySchema.default(0), cost: RateSchema, mrp: RateSchema.optional(), sl: z.number().int().min(0).max(100000).optional(),
-  loc: LocKeySchema, opening: QtySchema.default(0),
+  loc: LocKeySchema, opening: QtySchema.default(0), src: SourceSchema.optional(),
 });
 
 // ---- new-product requests
@@ -220,6 +220,7 @@ export const PatchItemBodySchema = z.strictObject({
   grp: z.string().max(40).optional(),
   sl: z.number().int().min(0).max(100000).optional(),
   active: z.boolean().optional(),
+  src: SourceSchema.optional(),
 });
 
 // ---- The support desk. Customer care for the portal itself: every role raises,

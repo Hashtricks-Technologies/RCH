@@ -15,6 +15,7 @@ export type NewItemRow = typeof items.$inferInsert;
 export type ItemPatch = Partial<{
   name: string; grp: string; hsn: string; gst: number;
   reorderLevel: number; cost: number; mrp: number; shelfLifeHours: number | null; active: boolean;
+  src: "store" | "kitchen";
 }>;
 
 export const catalogRepo = {

@@ -6,6 +6,7 @@ import type * as A from "./schemas/admin.js";
 import type * as Auth from "./schemas/auth.js";
 
 export type ItemType = z.infer<typeof C.ItemTypeSchema>;
+export type Source = z.infer<typeof C.SourceSchema>;
 export type LocKey = z.infer<typeof C.LocKeySchema>;
 /** Everywhere stock is *reported*: the five an operator works at, plus the rejected-goods shelf. */
 export type StockLoc = z.infer<typeof C.StockLocSchema>;

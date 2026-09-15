@@ -3,6 +3,9 @@ import { pgEnum } from "drizzle-orm/pg-core";
 export const roleEnum = pgEnum("role", ["counter", "manager", "store", "prod", "buyer"]);
 export const locationTypeEnum = pgEnum("location_type", ["Store", "Kitchen", "Outlet"]);
 export const itemTypeEnum = pgEnum("item_type", ["RAW", "PACK", "MRP", "FG", "MTO"]);
+/** Which desk a counter's stock request for an item is auto-routed to. Nullable on the row - an
+ *  item with none falls back to its type (`sourceOf`, `@rch/domain`). */
+export const sourceEnum = pgEnum("source", ["store", "kitchen"]);
 export const moveKindEnum = pgEnum("move_kind", [
   "opening", "sale", "ticket_out", "ticket_in", "production_consume", "production_yield",
   "grn_accept", "grn_reject", "adjustment", "reversal",

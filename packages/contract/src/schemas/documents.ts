@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { IsoDate, IsoTime, ItemTypeSchema, LocKeySchema, Money, PriceListIdSchema, Qty, RoleSchema, StockLocSchema, TenderSchema } from "./common.js";
+import { IsoDate, IsoTime, ItemTypeSchema, LocKeySchema, Money, PriceListIdSchema, Qty, RoleSchema, SourceSchema, StockLocSchema, TenderSchema } from "./common.js";
 
 export const ReqStatusSchema = z.enum(["Draft", "Request sent", "Manager approved", "Partially approved", "Ticket issued", "Collected", "Received", "Closed", "Rejected", "Cancelled"]);
 // A ticket that was issued and never collected is withdrawn rather than left open: the hold it
@@ -27,6 +27,8 @@ export const ItemSchema = z.object({
   // absent reads as **true** - the pickers filter on `active === false`, the registry does not,
   // and a fixture that predates retiring an item is still a valid item.
   active: z.boolean().optional(),
+  // Absent reads through `sourceOf` (`@rch/domain`), which falls back to the item's type.
+  src: SourceSchema.optional(),
 });
 export const LocationSchema = z.object({
   n: z.string(), c: z.string(), type: z.enum(["Store", "Kitchen", "Outlet"]),

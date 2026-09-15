@@ -187,6 +187,13 @@ describe("catalog: a new product on the master", () => {
     expect(moves[0]).toMatchObject({ kind: "opening", loc: "kitchen", qty: 12, refType: "item" });
   });
 
+  it("carries no stock-request source unless one is given, and carries it when one is", async () => {
+    const none = (await post("/items", await hdr("u3"), { ...base, name: "No source given 1kg" })).json();
+    expect(none.result.item.src).toBeUndefined();
+    const given = (await post("/items", await hdr("u4"), { ...base, name: "Kitchen-sourced 1kg", loc: "kitchen", src: "kitchen" })).json();
+    expect(given.result.item.src).toBe("kitchen");
+  });
+
   it("leaves no balance row at all when nothing is booked in", async () => {
     // A row's presence means "this location carries the line" (M12); a new item nobody has
     // bought yet carries nowhere, and the store's list shows it because it unions the catalogue.
@@ -252,12 +259,12 @@ describe("PATCH /items/:it", () => {
     expect(b.message).toBe("Patch commercial updated");
   });
 
-  it("lets the store, the buyer and the kitchen change the name, group, HSN, reorder level and shelf life", async () => {
+  it("lets the store, the buyer and the kitchen change the name, group, HSN, reorder level, shelf life and stock-request source", async () => {
     for (const [u, who] of [["u3", "store"], ["u5", "buyer"], ["u4", "kitchen"]]) {
       const k = await make(`Patch operational ${who}`);
-      const r = await patch(`/items/${k}`, await hdr(u), { n: `Patch operational ${who} renamed`, grp: "Grocery", hsn: "2202", rl: 12.5, sl: 6 });
+      const r = await patch(`/items/${k}`, await hdr(u), { n: `Patch operational ${who} renamed`, grp: "Grocery", hsn: "2202", rl: 12.5, sl: 6, src: "kitchen" });
       expect(r.statusCode, r.body).toBe(200);
-      expect(r.json().result.item).toMatchObject({ n: `Patch operational ${who} renamed`, g: "Grocery", hsn: "2202", rl: 12.5, sl: 6 });
+      expect(r.json().result.item).toMatchObject({ n: `Patch operational ${who} renamed`, g: "Grocery", hsn: "2202", rl: 12.5, sl: 6, src: "kitchen" });
       expect(r.json().message).toBe(`Patch operational ${who} renamed updated`);
     }
   });
@@ -274,7 +281,7 @@ describe("PATCH /items/:it", () => {
     const k = await make("Patch wrong desk");
     const m = await patch(`/items/${k}`, await hdr("u2"), { rl: 5 });
     expect(m.statusCode).toBe(422);
-    expect(m.json().error.message).toBe("The store, the buyer and the kitchen keep an item's name, group, HSN, reorder level and shelf life - ask one of them");
+    expect(m.json().error.message).toBe("The store, the buyer and the kitchen keep an item's name, group, HSN, reorder level, shelf life and stock-request source - ask one of them");
     const s = await patch(`/items/${k}`, await hdr("u3"), { cost: 99 });
     expect(s.statusCode).toBe(422);
     expect(s.json().error.message).toBe("Only the outlet manager changes an item's price, cost or GST - ask them to make that change");

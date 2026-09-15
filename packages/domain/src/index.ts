@@ -22,3 +22,4 @@ export { ITEM_FIELD_ROLES, mayEditItemField, unauthorisedItemFields, type ItemFi
 // ---- adjustments: the words a write-off's reason is printed in, on both sides.
 export { REASON_LABEL } from "./adjustments.js";
 export { HSN_CODES, gstForHsn, type HsnEntry } from "./hsn.js";
+export { defaultSourceFor, sourceOf } from "./routing.js";

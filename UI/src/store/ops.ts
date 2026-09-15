@@ -5,7 +5,7 @@ import { refetch } from "../api/refetch";
 import { applyDeskTickets } from "../api/wire";
 import type {
   AdjustReason, Dated, ItemType, LocKey, ProductRequest, RateContract,
-  ShopAsk, StockLoc, SupportTicket, TicketPriority, TicketStatus, TicketTopic,
+  ShopAsk, Source, StockLoc, SupportTicket, TicketPriority, TicketStatus, TicketTopic,
 } from "../types";
 import { toInputDate } from "../lib/fmt";
 import type { AppState } from "./index";
@@ -24,7 +24,7 @@ export interface NewItemInput {
  *  drawer only ever puts in what the operator actually moved. */
 export interface ItemFieldPatch {
   n?: string; mrp?: number; cost?: number; gst?: number;
-  hsn?: string; rl?: number; grp?: string; sl?: number; active?: boolean;
+  hsn?: string; rl?: number; grp?: string; sl?: number; active?: boolean; src?: Source;
 }
 
 export interface OpsSlice {

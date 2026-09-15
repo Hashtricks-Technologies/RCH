@@ -1899,6 +1899,18 @@ describe("editing and retiring a line on the item master", () => {
     expect(IT.bisc.sl).toBe(6);
   });
 
+  it("sends a stock-request source change the same way as any other operational field", async () => {
+    as("buyer");
+    const routed = { ...FX.IT.bisc, src: "kitchen" as const };
+    serve({
+      "PATCH /api/v1/items/bisc": () => json({ result: { key: "bisc", item: routed }, changed: ["items"], message: "Marie biscuit updated" }),
+      "GET /api/v1/items": () => json({ ...FX.IT, bisc: routed }),
+    });
+    expect(await S().updateItem("bisc", { src: "kitchen" })).toBe(true);
+    expect(hit("PATCH /api/v1/items/bisc")[0].body).toEqual({ src: "kitchen" });
+    expect(IT.bisc.src).toBe("kitchen");
+  });
+
   it("retires a line, keeps it on the master, and takes it out of every picker", async () => {
     as("manager");
     const retired = { ...FX.IT.chips, active: false };

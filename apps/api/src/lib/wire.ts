@@ -32,6 +32,7 @@ export const toWireItem = (r: ItemRow): Item => strip({
   // before the line was retired still names it, and the screen showing that document needs its
   // name. Every picker filters on this; the registry behind them does not.
   active: r.active,
+  src: r.src ?? undefined,
 });
 
 export type LocationRow = typeof locations.$inferSelect;

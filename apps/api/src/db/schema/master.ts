@@ -1,6 +1,6 @@
 import { boolean, date, integer, jsonb, numeric, pgTable, primaryKey, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
-import { itemTypeEnum, locationTypeEnum, payerKindEnum, roleEnum } from "./enums.js";
+import { itemTypeEnum, locationTypeEnum, payerKindEnum, roleEnum, sourceEnum } from "./enums.js";
 
 const qty = (name: string) => numeric(name, { precision: 12, scale: 3, mode: "number" });
 const money = (name: string) => numeric(name, { precision: 12, scale: 2, mode: "number" });
@@ -79,6 +79,7 @@ export const items = pgTable("items", {
   cost: money("cost").notNull().default(0),
   mrp: money("mrp"),
   shelfLifeHours: integer("shelf_life_hours"),
+  src: sourceEnum("src"),
   active: boolean("active").notNull().default(true),
   createdAt: ts("created_at").notNull().defaultNow(),
   updatedAt: ts("updated_at").notNull().defaultNow(),

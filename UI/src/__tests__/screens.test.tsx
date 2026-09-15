@@ -554,7 +554,7 @@ describe("the item drawer is the same table the server refuses with", () => {
   it("tells the manager the operational fields are somebody else's", () => {
     const html = open("manager");
     expect(html).toContain("Edit Real Juice 200ml");
-    expect(html).toContain("The name, the group, the HSN code, the reorder level and the shelf life belong to the store, the buyer and the kitchen");
+    expect(html).toContain("The name, the group, the HSN code, the reorder level, the shelf life and the stock-request source belong to the store, the buyer and the kitchen");
   });
 
   it("tells the store, the buyer and the kitchen the commercial figures are the manager's", () => {
@@ -568,6 +568,15 @@ describe("the item drawer is the same table the server refuses with", () => {
     for (const role of ["store", "buyer", "prod"] as Role[]) {
       expect(open(role)).toContain("Blank or 0 if it does not carry a best-before.");
     }
+  });
+
+  it("greys the default-source picker for the manager, opens it for the others, and hides it for an MTO item", () => {
+    expect(open("manager")).toContain("The store, the buyer or the kitchen sets this.");
+    for (const role of ["store", "buyer", "prod"] as Role[]) {
+      expect(open(role)).toContain("The desk that supplies this item when an outlet asks for it.");
+    }
+    // "capp" is made to order - it holds no stock, so there is no routing to set for it.
+    expect(open("store", "capp")).not.toContain("Stock request routing");
   });
 
   it("offers Retire on a live line and Restore on a retired one", () => {
