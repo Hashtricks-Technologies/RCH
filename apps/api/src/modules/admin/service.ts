@@ -15,6 +15,7 @@ import type {
 } from "@rch/contract";
 import type { Db } from "../../db/client.js";
 import { withTransaction, type Tx } from "../../lib/db.js";
+import { auditBefore } from "../../lib/audit.js";
 import { NotFoundError, RuleError } from "../../lib/errors.js";
 import {
   createUserTx, deactivateUserTx, deleteUserTx, reactivateUserTx, resetPasswordTx, updateUserRoleLocTx,
@@ -75,6 +76,7 @@ export function createAdminService(db: Db) {
       const tempPassword = generatePassword();
       return withTransaction(db, async (tx) => {
         const row = await requireTx(tx, id);
+        auditBefore(toAdminUser(row));
         await resetPasswordTx(tx, row.empNo, tempPassword);
         await log(tx, claims.sub, "reset_password", { id, name: row.name });
         const fresh = await requireTx(tx, id);
@@ -89,6 +91,7 @@ export function createAdminService(db: Db) {
       refuseSelf(claims, id, "deactivate");
       return withTransaction(db, async (tx) => {
         const row = await requireTx(tx, id);
+        auditBefore(toAdminUser(row));
         await deactivateUserTx(tx, row.empNo);
         await log(tx, claims.sub, "deactivate", { id, name: row.name });
         const fresh = await requireTx(tx, id);
@@ -99,6 +102,7 @@ export function createAdminService(db: Db) {
     async reactivate(claims: AccessClaims, id: string): Promise<WriteResponse<AdminUser>> {
       return withTransaction(db, async (tx) => {
         const row = await requireTx(tx, id);
+        auditBefore(toAdminUser(row));
         await reactivateUserTx(tx, row.empNo);
         await log(tx, claims.sub, "reactivate", { id, name: row.name });
         const fresh = await requireTx(tx, id);
@@ -110,6 +114,7 @@ export function createAdminService(db: Db) {
       refuseSelf(claims, id, "change the role or location of");
       return withTransaction(db, async (tx) => {
         const row = await requireTx(tx, id);
+        auditBefore(toAdminUser(row));
         if (row.admin) throw new RuleError(`Refused - ${row.name} (${row.empNo}) is a super admin, and a super admin has no role or location to change`);
         await updateUserRoleLocTx(tx, row.empNo, { role: body.role, loc: body.loc });
         await log(tx, claims.sub, "update_role_loc", { id, name: row.name }, { role: body.role, loc: body.loc });
@@ -128,6 +133,8 @@ export function createAdminService(db: Db) {
       return withTransaction(db, async (tx) => {
         const row = await adminRepo.byIdForUpdate(tx, id);
         if (!row) throw new NotFoundError(`There is no account ${id}.`);
+        // The account as it was - the only record of its fields once the row is gone.
+        auditBefore(toAdminUser(row));
         if (row.admin) throw new RuleError(`Refused - ${row.name} (${row.empNo}) is a super admin, and a super admin account is never deleted`);
         if (row.active) throw new RuleError(`Deactivate ${row.name} (${row.empNo}) before deleting the account`);
         await deleteUserTx(tx, row);

@@ -5,6 +5,7 @@ import type { Changed, CreateItemBodySchema, Item, LocKey, PatchItemBodySchema }
 import { fq, mrpBelowShelfPrice, round3, unauthorisedItemFields, type ItemField } from "@rch/domain";
 import type { Db } from "../../db/client.js";
 import { withTransaction } from "../../lib/db.js";
+import { auditBefore } from "../../lib/audit.js";
 import { assertRule } from "../../lib/rules.js";
 import { NotFoundError } from "../../lib/errors.js";
 import { emitChanged } from "../../lib/events.js";
@@ -114,6 +115,9 @@ export function createCatalogService(db: Db) {
         const row = await catalogRepo.head(tx, it);
         // The same sentence `savePrice` gives, word for word: one missing item, one wording.
         if (!row) throw new NotFoundError(`There is no item ${it}.`);
+        // The line as the locked row has it, in the `{ key, item }` shape this write answers with,
+        // so the audit drawer can set the two side by side.
+        auditBefore({ key: it, item: toWireItem(row) });
 
         const keys = Object.keys(body) as ItemField[];
         assertRule(keys.length > 0, `Nothing to change on ${row.name}`);
@@ -215,6 +219,9 @@ export function createCatalogService(db: Db) {
       return withTransaction(db, async (tx) => {
         const item = (await loadItems(tx))[it];
         if (!item) throw new NotFoundError(`There is no item ${it}.`);
+        // `null` where this list has never priced the item: the upsert below inserts rather than changes.
+        const prior = (await catalogRepo.pricesOf(tx, it)).find((p) => p.list === list);
+        auditBefore({ list, it, price: prior?.price ?? null });
         assertRule(!(item.mrp != null && price > item.mrp), `Refused - printed MRP of ₹${item.mrp} is a hard ceiling for ${item.n}`);
         await catalogRepo.upsertPrice(tx, list, it, price);
         // One array for the answer and the announcement, so a till showing the old price is
@@ -234,6 +241,7 @@ export function createCatalogService(db: Db) {
         assertRule(location.type === "Outlet", `${location.n} is not an outlet`);
         const item = (await loadItems(tx))[it];
         if (!item) throw new NotFoundError(`There is no item ${it}.`);
+        auditBefore({ loc, items: await catalogRepo.menuItems(tx, loc) });
         const listed = await catalogRepo.isListed(tx, loc, it);
         assertRule(!listed, `${item.n} is already listed at ${location.n}`);
         // That check read before the insert took its lock, so two managers adding the same item
@@ -254,6 +262,7 @@ export function createCatalogService(db: Db) {
         if (!location) throw new NotFoundError(`There is no location ${loc}.`);
         const item = (await loadItems(tx))[it];
         if (!item) throw new NotFoundError(`There is no item ${it}.`);
+        auditBefore({ loc, items: await catalogRepo.menuItems(tx, loc) });
         const listed = await catalogRepo.isListed(tx, loc, it);
         assertRule(listed, `${item.n} is not listed at ${location.n}`);
         await catalogRepo.deleteMenuItem(tx, loc, it);
