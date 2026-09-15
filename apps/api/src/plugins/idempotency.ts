@@ -6,6 +6,7 @@ import type { FastifyReply, FastifyRequest } from "fastify";
 import type { z } from "zod";
 import type { Db } from "../db/client.js";
 import { idempotencyKeys } from "../db/schema/index.js";
+import type { AuditRequestContext } from "../lib/audit.js";
 import { ConflictError, ValidationError } from "../lib/errors.js";
 import { JSON_NULL, TTL_MS } from "../lib/idempotency-record.js";
 import { resolveClaim } from "./idempotency-claim.js";
@@ -31,8 +32,11 @@ declare module "fastify" {
  *
  * `why` is how the production path stays diagnosable: `withTransaction` leaves the reason the
  * record did not happen here, and `mount()` logs it beside the route and the key.
+ *
+ * `audit` is the request as the audit trail reads it (`lib/audit.ts`): the transaction that records
+ * the outcome stores the write's `done` event from it, in the same COMMIT.
  */
-export type IdemContext = { idem: NonNullable<FastifyRequest["idem"]>; response: z.ZodTypeAny; strict: boolean; why?: string };
+export type IdemContext = { idem: NonNullable<FastifyRequest["idem"]>; response: z.ZodTypeAny; strict: boolean; why?: string; audit: AuditRequestContext };
 
 /** Set by `mount()` around every write handler, read by `withTransaction` (`lib/db.ts`). An
  *  async-local rather than an argument, so the record lands inside the transaction without

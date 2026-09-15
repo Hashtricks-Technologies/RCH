@@ -1,8 +1,9 @@
 import { eq, sql } from "drizzle-orm";
 import type { FastifyRequest } from "fastify";
-import { API_PREFIX, AuditEventSchema, type AuditActor, type AuditEvent, type AuditOutcome } from "@rch/contract";
+import { API_PREFIX, AuditEventSchema, CollectionSchema, type AuditActor, type AuditEvent, type AuditOutcome, type Changed } from "@rch/contract";
 import type { Db } from "../db/client.js";
 import { auditOutbox, users } from "../db/schema/index.js";
+import { idemStore, type IdemContext } from "../plugins/idempotency.js";
 import type { Reader, Tx } from "./db.js";
 import { roleLabelOf } from "./wire.js";
 
@@ -158,4 +159,101 @@ export async function recordAuthEvent(db: Db, req: FastifyRequest, e: AuthEvent)
     before: null, result: null, changed: [],
     ip: req.ip, userAgent: userAgentOf(req.headers),
   });
+}
+
+/**
+ * What `mount()` knows about a non-public write before its handler runs. The same object is
+ * `req.audit` and the write's `IdemContext.audit`, handed to `idemStore` by reference, so the
+ * transaction that records the write (`lib/db.ts`) and the hook that records a refusal
+ * (`plugins/audit.ts`) read one account of the request.
+ *
+ * `pending` is set inside the transaction that inserted the write's `done` event and cleared once
+ * that transaction settles; `recorded` is set only when it committed. A request whose event was
+ * inserted but whose COMMIT then failed is therefore not `recorded`, and the hook stores its error event.
+ */
+export type AuditRequestContext = {
+  action: string; method: string; path: string;
+  requestId: string; ip: string; userAgent: string;
+  params: unknown; query: unknown; body: unknown;
+  actorId: string | null;
+  before: unknown | null;
+  pending: boolean;
+  recorded: boolean;
+};
+declare module "fastify" { interface FastifyRequest { audit?: AuditRequestContext } }
+
+/** The parts of a request an audit context is read from - a structural type, so `mount()`'s
+ *  route-typed `Req<R>` and the hook's plain `FastifyRequest` both fit without a cast. */
+type AuditedRequest = {
+  id: string; ip: string; headers: Record<string, string | string[] | undefined>;
+  params: unknown; query: unknown; body: unknown;
+  user?: { sub: string } | null;
+};
+
+/** A fresh context for one request. `user` is null until a token has been verified (`@fastify/jwt`
+ *  decorates it so), which is what leaves a refusal before sign-in without an actor. */
+export function auditContextOf(req: AuditedRequest, route: { action: string; method: string; path: string }): AuditRequestContext {
+  return {
+    action: route.action, method: route.method, path: route.path,
+    requestId: req.id, ip: req.ip, userAgent: userAgentOf(req.headers),
+    params: req.params ?? {}, query: req.query ?? {}, body: req.body ?? null,
+    actorId: req.user?.sub ?? null,
+    before: null, pending: false, recorded: false,
+  };
+}
+
+/** A reply read as a write's `{ result, changed, message }`. A response of another shape (`PATCH
+ *  /me` answers with the account itself) is all result, with no sentence and nothing changed; a
+ *  collection this build does not know is dropped, since the fallback path reads bytes nobody
+ *  parsed against the manifest. */
+export function writeOutcomeOf(body: unknown): { result: unknown; changed: Changed[]; message: string } {
+  if (body === null || typeof body !== "object" || !("result" in body) || !("message" in body)) return { result: body ?? null, changed: [], message: "" };
+  const w = body as { result: unknown; changed?: unknown; message: unknown };
+  const changed = Array.isArray(w.changed) ? w.changed.filter((c): c is Changed => CollectionSchema.safeParse(c).success) : [];
+  return { result: w.result ?? null, changed, message: typeof w.message === "string" ? w.message : "" };
+}
+
+/** One event from a request's context and how it ended. Masking happens here, once, for every
+ *  path that stores an event. */
+export async function auditEventOf(
+  db: Reader,
+  a: AuditRequestContext,
+  o: { outcome: AuditOutcome; status: number; message: string; cause: string | null; result: unknown; changed: Changed[] },
+): Promise<AuditEvent> {
+  const { target, targetLoc } = targetOf(a.action, a.params, a.body, o.result);
+  return {
+    at: new Date().toISOString(), requestId: a.requestId,
+    actor: await actorOf(db, a.actorId),
+    action: a.action, method: a.method, path: a.path, target, targetLoc,
+    outcome: o.outcome, status: o.status, message: o.message, cause: o.cause,
+    request: maskSecrets({ params: a.params, query: a.query, body: a.body }),
+    before: maskSecrets(a.before ?? null), result: maskSecrets(o.result ?? null), changed: o.changed,
+    ip: a.ip, userAgent: a.userAgent,
+  };
+}
+
+/**
+ * The `done` event of a write that succeeded, stored by the transaction that recorded the write's
+ * idempotency outcome, straight after that record (`withTransaction`, `lib/db.ts`). It commits with
+ * the write or not at all, and it is deliberately not wrapped in a try/catch: a write that cannot
+ * be audited does not commit, the same stance the idempotency record takes.
+ *
+ * `body` is the response as the route's schema parsed it - exactly what the key will replay.
+ */
+export async function recordAudit(tx: Tx, ctx: IdemContext, body: unknown): Promise<void> {
+  const w = writeOutcomeOf(body);
+  await insertAuditEvent(tx, await auditEventOf(tx, ctx.audit, { outcome: "done", status: 200, message: w.message, cause: null, result: w.result, changed: w.changed }));
+  ctx.audit.pending = true;
+}
+
+/**
+ * What an edit is about to change, as it stood: a service calls this once it has read the row it is
+ * about to update or remove and before it changes anything, with the wire-shaped fields the edit can
+ * alter. The value rides on the request's audit context, so the `done` event shows before → after -
+ * and a refused edit's event carries it too. The last call wins. Outside a write request (a CLI, the
+ * seed) there is no context, and nothing to keep.
+ */
+export function auditBefore(value: Record<string, unknown>): void {
+  const ctx = idemStore.getStore();
+  if (ctx) ctx.audit.before = value;
 }
