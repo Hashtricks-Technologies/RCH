@@ -4,6 +4,7 @@ import type { z } from "zod";
 import type { ToggleAvailBodySchema, ToggleResultSchema, WriteResponse } from "@rch/contract";
 import type { Db } from "../../db/client.js";
 import { withTransaction } from "../../lib/db.js";
+import { auditBefore } from "../../lib/audit.js";
 import { NotFoundError } from "../../lib/errors.js";
 import { emitChanged } from "../../lib/events.js";
 import { loadMaster } from "../../lib/master.js";
@@ -63,6 +64,11 @@ export function createAvailabilityService(db: Db) {
         // and every other screen watching are told to refetch the same slice.
         const changed = ["ovr"] as const;
         const existing = await availabilityRepo.find(tx, body.loc, body.it);
+        // The switch as it stood, in the shape the result gives: on (no override), or off with the
+        // reason the override carries.
+        auditBefore(existing
+          ? { loc: body.loc, it: body.it, off: true, reason: existing.reason }
+          : { loc: body.loc, it: body.it, off: false });
         if (existing) {
           await availabilityRepo.remove(tx, body.loc, body.it);
           await emitChanged(tx, changed);

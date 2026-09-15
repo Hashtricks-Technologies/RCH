@@ -19,6 +19,7 @@ import {
   rateFor, releaseClaim, round3, type ClaimSrc,
 } from "@rch/domain";
 import type { Db } from "../../db/client.js";
+import { auditBefore } from "../../lib/audit.js";
 import { addOrdered, lockRequisitions } from "../../lib/claims.js";
 import { withTransaction, type Tx } from "../../lib/db.js";
 import { NotFoundError } from "../../lib/errors.js";
@@ -142,6 +143,7 @@ export function createPurchaseOrdersService(db: Db) {
     async updateLine(_claims: AccessClaims, id: string, n: number, body: UpdatePoLineBody): Promise<WriteResponse<PurchaseOrder>> {
       return withTransaction(db, async (tx) => {
         const o = await head(tx, id);
+        auditBefore(await purchaseOrdersRepo.wire(tx, id));
         assertRule(o.status === "Draft", `${id} is ${o.status.toLowerCase()} - only a draft can be changed`);
         const lines = await draftLines(tx, id);
         const line = lines[n];
@@ -191,6 +193,7 @@ export function createPurchaseOrdersService(db: Db) {
     async removeLine(_claims: AccessClaims, id: string, n: number): Promise<WriteResponse<PurchaseOrder>> {
       return withTransaction(db, async (tx) => {
         const o = await head(tx, id);
+        auditBefore(await purchaseOrdersRepo.wire(tx, id));
         assertRule(o.status === "Draft", `${id} is ${o.status.toLowerCase()} - only a draft can be changed`);
         const lines = await draftLines(tx, id);
         const line = lines[n];
@@ -215,6 +218,7 @@ export function createPurchaseOrdersService(db: Db) {
     async patch(_claims: AccessClaims, id: string, body: PatchPoBody): Promise<WriteResponse<PurchaseOrder>> {
       return withTransaction(db, async (tx) => {
         const o = await head(tx, id);
+        auditBefore(await purchaseOrdersRepo.wire(tx, id));
         assertRule(body.vendorId || body.eta, `Nothing to change on ${id}`);
         const st = o.status.toLowerCase();
         let eta = body.eta ?? o.eta ?? "";
