@@ -24,7 +24,7 @@ describe("counter operator", () => {
   it("holds the printed MRP as a ceiling on floor 3", () => {
     // Seeded lists now sit at or under MRP, so push a breaching price straight
     // into state - the till must still refuse to charge above the printed MRP.
-    useApp.setState({ prices: { ...S().prices, B: { ...S().prices.B, juice: 25 } } });
+    useApp.setState({ prices: { ...S().prices, "PL-002": { ...S().prices["PL-002"], juice: 25 } } });
     const p = priceOf(S(), "coffee", "juice");
     expect(p.p).toBe(20);
     expect(p.capped).toBe(true);
@@ -32,11 +32,15 @@ describe("counter operator", () => {
 });
 
 describe("availability", () => {
-  it("switches a drink off when an ingredient hits zero and names it", () => {
-    const a = availOf(S(), "coffee", "capp");
-    expect(a.ok).toBe(false);
-    expect(a.mode).toBe("Recipe");
-    expect(a.why).toContain("Milk");
+  it("keeps a made-to-order drink on with no stock, until someone switches it off", () => {
+    expect(availOf(S(), "coffee", "capp")).toEqual({ ok: true, mode: "Manual" });
+    useApp.setState({ ovr: { "coffee:capp": "machine down" } });
+    expect(availOf(S(), "coffee", "capp")).toEqual({ ok: false, mode: "Manual", why: "machine down" });
+    useApp.setState({ ovr: {} });
+  });
+  it("switches a stocked item off at zero", () => {
+    const a = availOf(S(), "coffee", "milk");
+    expect(a).toEqual({ ok: false, mode: "Stock", why: "zero at this location" });
   });
   it("manual override wins over a stocked shelf and reverses", () => {
     // juice is stocked at the kiosk, so only the manual switch can take it off sale.
@@ -200,8 +204,8 @@ describe("the store's reports read a withdrawn ticket as withdrawn", () => {
 
 describe("production", () => {
   // The whole of the kitchen is the server's from Phase 4: production.test.ts covers the
-  // board ("walks the board a stage at a time and signs each step") and the batch ("consumes
-  // the recipe for what was started and books only what came good"); the two store calls that
+  // board ("walks the board a stage at a time and signs each step") and the batch, which books
+  // only what came good; the two store calls that
   // reach those routes are in writes.test.ts. Dispatch and handover moved in Phase 3.
   it.todo("nothing left in memory - see apps/api/src/modules/production/production.test.ts");
 });

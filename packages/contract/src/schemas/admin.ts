@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { IsoTime, LocKeySchema, PriceListSchema, RoleSchema } from "./common.js";
+import { IsoTime, LocKeySchema, RoleSchema } from "./common.js";
 import { LocationSchema } from "./documents.js";
 
 /**
@@ -47,10 +47,12 @@ export const AdminActionSchema = z.strictObject({
 /** A location as the admin page manages it: the wire `Location` plus its key, whether it still
  *  trades, and how many active accounts are based there - the number a close waits on. The store and
  *  the kitchen are listed too, because the Accounts tab labels every home location from this and an
- *  admin token reaches no other location read. Quarantine never is: nobody is based there. */
+ *  admin token reaches no other location read. Quarantine never is: nobody is based there. No price
+ *  list: a list is a named entity the outlet manager creates and attaches from the Prices screen, so
+ *  a new outlet is opened with none and the admin never picks one. */
 export const AdminLocationSchema = z.strictObject({
   key: LocKeySchema, n: z.string(), c: z.string(), type: LocationSchema.shape.type,
-  floor: z.string(), cc: z.string(), list: PriceListSchema.optional(), active: z.boolean(),
+  floor: z.string(), cc: z.string(), active: z.boolean(),
   staff: z.number().int().min(0),
 });
 const outletFields = {
@@ -59,7 +61,6 @@ const outletFields = {
   code: z.string().trim().toUpperCase().regex(/^[A-Z0-9-]{2,12}$/, "A code is 2-12 letters, digits or dashes"),
   floor: z.string().trim().min(1).max(40),
   cc: z.string().trim().min(1).max(40),
-  list: PriceListSchema,
 };
 /** No `key`: the server gives an outlet its key, from its name, once (`outletKeyFor`). */
 export const CreateOutletBodySchema = z.strictObject(outletFields);

@@ -87,9 +87,9 @@ describe("the clock a screen stamps itself with is the hospital's", () => {
 describe("every 'today' figure at the till is today's", () => {
   /** A counter's snapshot with two bills: one raised this morning, one late last night. */
   const twoDays = () => ({
-    user: FX.USERS.find((u) => u.r === "counter"), items: FX.IT, locations: FX.LOC, recipes: FX.RCP,
+    user: FX.USERS.find((u) => u.r === "counter"), items: FX.IT, locations: FX.LOC,
     users: FX.USERS, roster: { patients: FX.PATIENTS, staff: FX.STAFF, depts: FX.DEPTS },
-    stock: FX.seedStock, rsv: {}, ovr: {}, prices: FX.PL, menu: FX.MENU,
+    stock: FX.seedStock, rsv: {}, ovr: {}, prices: FX.PL, priceLists: FX.PRICE_LISTS, menu: FX.MENU,
     req: [], tkt: [], prq: [], po: [], pord: [], batch: [], grn: [], vendors: [],
     contracts: [], tickets: [], productReqs: [], shopAsks: [], sales: [], dayLabels: [],
     // ---- adjustments
@@ -151,9 +151,9 @@ describe("a list ordered newest-first is ordered by the instant", () => {
 
 describe("the wire keeps the instant beside the time it prints", () => {
   const snap = () => ({
-    user: FX.USERS.find((u) => u.r === "manager"), items: FX.IT, locations: FX.LOC, recipes: FX.RCP,
+    user: FX.USERS.find((u) => u.r === "manager"), items: FX.IT, locations: FX.LOC,
     users: FX.USERS, roster: { patients: FX.PATIENTS, staff: FX.STAFF, depts: FX.DEPTS },
-    stock: {}, rsv: {}, ovr: {}, prices: FX.PL, menu: FX.MENU,
+    stock: {}, rsv: {}, ovr: {}, prices: FX.PL, priceLists: FX.PRICE_LISTS, menu: FX.MENU,
     req: [{ id: "REQ-2026-0810", from: "coffee", by: "Kavitha Raman", at: TODAY_EARLY, lines: [{ it: "juice", qty: 4, appr: 0 }], st: "Request sent", ticket: null, mgrNote: "", hist: [{ s: "Request sent", who: "Kavitha Raman", t: TODAY_EARLY }] }],
     tkt: [], prq: [], po: [], pord: [], batch: [], bills: [], grn: [], vendors: [],
     contracts: [], tickets: [], productReqs: [], shopAsks: [], sales: [], dayLabels: [],

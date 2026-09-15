@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import { homeLabel } from "../data/master";
 import { useApp } from "../store";
 import type { ThemePref } from "../lib/theme";
-import { Alert, Avatar, Btn, BtnRow, Card, Field, FormRow, Grid, PageHead, Switch, Tag } from "../ui/kit";
+import { Alert, Avatar, Btn, BtnRow, Card, Field, FormRow, Grid, PageHead, Switch, Tag, Tip } from "../ui/kit";
 import { applyPrefs, readPrefs, setPhoto, storePrefs, usePhoto, type Prefs } from "../ui/prefs";
 
 /* Only "compact" can act on its own. The other three are recorded honestly as a
@@ -89,7 +89,7 @@ export default function Settings() {
   return (
     <>
       <PageHead crumbs={["Account", "Settings"]} title="Settings"
-        sub="Your profile, sign-in and preferences." />
+        tip="Your profile, sign-in and preferences." />
       <Grid cols="g2">
         <Card title="Profile" sub={user.rl}>
           <div style={{ display: "flex", gap: 14, alignItems: "center", marginBottom: 16 }}>
@@ -97,7 +97,6 @@ export default function Settings() {
             <div>
               <b style={{ fontSize: 15 }}>{user.n}</b>
               <div className="mini">{user.emp}{homeLabel(user) ? ` · ${homeLabel(user)}` : ""}</div>
-              <div className="hint">Kept on this device for this session only.</div>
             </div>
             <div className="sp" />
             <input ref={file} className="hide" type="file" accept="image/*"
@@ -107,11 +106,12 @@ export default function Settings() {
                 {photo ? "Replace photo" : "Change photo"}
               </Btn>
               {photo && <Btn variant="gh" size="sm" onClick={() => setPhoto(null)}>Remove</Btn>}
+              <Tip text="Kept on this device for this session only." label="Profile photo" />
             </BtnRow>
           </div>
           <FormRow cols="f2">
             <Field label="Full name"><input value={form.n} onChange={set("n")} /></Field>
-            <Field label="Employee ID" hint="Your sign-in name. Only an administrator can change it.">
+            <Field label="Employee ID" tip="Your sign-in name. Only an administrator can change it.">
               <input value={user.emp} readOnly />
             </Field>
           </FormRow>
@@ -120,7 +120,7 @@ export default function Settings() {
             <Field label="Mobile"><input value={form.ph} onChange={set("ph")} /></Field>
           </FormRow>
           <FormRow cols="f2">
-            <Field label="Role" hint="Only an administrator can change a role."><input value={user.rl} readOnly /></Field>
+            <Field label="Role" tip="Only an administrator can change a role."><input value={user.rl} readOnly /></Field>
             <Field label={user.r === "manager" || user.r === "buyer" ? "Scope" : "Home location"}>
               <input
                 value={homeLabel(user) ?? `${user.rl} - not tied to one counter`}
@@ -134,7 +134,8 @@ export default function Settings() {
           </BtnRow>
         </Card>
         <div>
-          <Card title="Sign-in & security" sub="Changed on the server, for every terminal">
+          <Card title="Sign-in & security" sub="Changed on the server, for every terminal"
+            tip="Every terminal you are signed in on is signed out of the old password the moment this goes through. Forgotten the current one? Ask an administrator to reset it.">
             <Field label="Current password">
               <input type="password" autoComplete="current-password" placeholder="Enter current password"
                 value={cur} onChange={(e) => setCur(e.target.value)} />
@@ -159,18 +160,15 @@ export default function Settings() {
             <Btn wide disabled={pwBusy || !cur || !next || !again} onClick={() => void updatePassword()}>
               {pwBusy ? "Changing…" : "Update password"}
             </Btn>
-            <p className="hint" style={{ marginTop: 10 }}>
-              Every terminal you are signed in on is signed out of the old password the moment this
-              goes through. Forgotten the current one? Ask an administrator to reset it.
-            </p>
           </Card>
           {/* No admin link here any more: an admin-flagged account never reaches Settings at
               all now (App.tsx sends it to /admin regardless of the key it asked for) - a
               capability, not a role (root CLAUDE.md), with its own standalone dashboard rather
               than a bonus tucked into an operational account's own screen. */}
           <div className="mtop" />
-          <Card title="Appearance" sub="Saved on this device">
-            <Field label="Theme" hint="The sun icon in the top bar cycles through the same three settings.">
+          <Card title="Appearance" sub="Saved on this device"
+            tip="The sun icon in the top bar cycles through the same three settings.">
+            <Field label="Theme" tip={`${THEMES.find((t) => t.k === theme)!.d}.`}>
               <div className="seg" role="group" aria-label="Theme">
                 {THEMES.map((t) => (
                   <button key={t.k} type="button" className={theme === t.k ? "on" : ""}
@@ -178,29 +176,21 @@ export default function Settings() {
                 ))}
               </div>
             </Field>
-            <div className="hint" style={{ marginTop: 8 }}>
-              {THEMES.find((t) => t.k === theme)!.d}.
-            </div>
           </Card>
           <div className="mtop" />
-          <Card title="Preferences" sub="Saved on this device" flush>
+          <Card title="Preferences" sub="Saved on this device" flush
+            tip="Compact tables takes effect the moment you switch it on. The other three are kept on this device and nothing sends from them yet - no alert or mail leaves the portal. Until they are wired up, the screen that owns a figure is where you will see it change; raise it on the support desk if something needs chasing.">
             <div style={{ padding: "4px 0" }}>
               {PREFS.map((p) => (
                 <div key={p.k} style={{ display: "flex", gap: 14, alignItems: "center", padding: "11px 15px", borderBottom: "1px solid var(--line-2)" }}>
                   <div style={{ flex: 1 }}>
                     <b style={{ fontSize: 12.5, color: "var(--ink)" }}>{p.t}</b>{" "}
+                    <Tip text={p.d} label={p.t} />{" "}
                     <Tag>{p.live ? "Applies now" : "Recorded only"}</Tag>
-                    <div className="mini" style={{ marginTop: 2 }}>{p.d}</div>
                   </div>
                   <Switch on={prefs[p.k]} label={p.t} onChange={() => toggle(p.k)} />
                 </div>
               ))}
-              <div className="hint" style={{ padding: "11px 15px 4px" }}>
-                Compact tables takes effect the moment you switch it on. The other three are kept on this
-                device and nothing sends from them yet - no alert or mail leaves the portal. Until they are
-                wired up, the screen that owns a figure is where you will see it change; raise it on the
-                support desk if something needs chasing.
-              </div>
             </div>
           </Card>
         </div>

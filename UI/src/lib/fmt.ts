@@ -8,8 +8,8 @@ const TZ = "Asia/Kolkata";
 export const U = (it: string) => IT[it]?.u ?? "nos";
 export const fq = (v: number, it: string) => {
   const n = v || 0;
-  // Countable things are whole on the shelf but fractional in a recipe - a
-  // sandwich takes a tenth of a loaf, which must not round away to "0".
+  // Countable things are whole on the shelf but may be fractional on a document -
+  // a tenth of a loaf must not round away to "0".
   if (U(it) === "nos") return Number.isInteger(n) ? String(n) : n.toFixed(3);
   return n.toFixed(3);
 };

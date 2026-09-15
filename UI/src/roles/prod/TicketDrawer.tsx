@@ -3,7 +3,7 @@ import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
 import { canHandOver } from "../../lib/selectors";
 import { U, fq, sum } from "../../lib/fmt";
-import { Alert, Btn, DataTable, Field, Section, StatusPill, TicketTrail } from "../../ui/kit";
+import { Alert, Btn, DataTable, Field, Section, StatusPill, TicketTrail, Tip } from "../../ui/kit";
 import { PrintSlipBtn, TicketSlip } from "../../ui/TicketSlip";
 import { DrawerFrame } from "../../ui/Drawer";
 import { registerDrawer, type DrawerProps } from "../../drawers";
@@ -30,9 +30,20 @@ function TicketDrawer({ id }: DrawerProps) {
   // One tap, one handover: the stock leaves once, and a second tap inside the round trip would
   // post a second `ticket_out` - refused, but the window would read the refusal as its own fault.
   const [busy, setBusy] = useState(false);
+  /** The server's own refusal, kept in front of the operator. The store toasts it too, but a
+   *  toast is gone in seconds and a wrong code is exactly the moment somebody looks away to
+   *  ask for the right one. Cleared the moment they start typing a different code. */
+  const [refused, setRefused] = useState("");
   const handOver = async (otpOrNone?: string) => {
     setBusy(true);
-    try { await handover(id, otpOrNone); } finally { setBusy(false); }
+    try {
+      const ok = await handover(id, otpOrNone);
+      // The store has already toasted the server's sentence either way; on a refusal it is
+      // held here too, because the toast is gone in seconds and a wrong code is exactly when
+      // somebody looks away to ask for the right one.
+      setRefused(ok ? "" : (useApp.getState().toast ?? "That OTP was refused."));
+      if (!ok) setOtp("");
+    } finally { setBusy(false); }
   };
 
   if (!t) {
@@ -66,7 +77,12 @@ function TicketDrawer({ id }: DrawerProps) {
     >
       <div className="tktbox">
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div className="mini">Collection authority</div>
+          {/* The kitchen is the issuing side, so the server sends it no digits at all - it has to
+              ask for them rather than be shown blanks it could read out to itself. */}
+          <div className="mini tipped">
+            <span>Collection authority</span>
+            <Tip text={`Ask ${LOC[t.to].n} to read out the six digits on their own ticket.`} label="Collection authority" />
+          </div>
           <div className="mono-id" style={{ fontSize: 26, letterSpacing: "0.04em" }}>{t.id}</div>
           <div className="mtop" style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             <StatusPill status={t.st} />
@@ -78,18 +94,18 @@ function TicketDrawer({ id }: DrawerProps) {
             <PrintSlipBtn />
           </div>
         </div>
-        {/* The kitchen is the issuing side, so the server sends it no digits at all - it has to
-            ask for them rather than be shown blanks it could read out to itself. */}
-        <p className="mini" style={{ maxWidth: 210 }}>
-          Ask {LOC[t.to].n} to read out the six digits on their own ticket.
-        </p>
       </div>
 
       {open && (
         <div className="mtop">
+          <Alert tone="i" label="WHERE">
+            The six digits are on {LOC[t.to].n}&apos;s own Pick Tickets screen, against {t.id}. Ask
+            whoever is collecting to read them out - the kitchen is never shown them, so that the
+            side handing the stock over cannot authorise itself.
+          </Alert>
           <Field
             label="OTP quoted by the collector"
-            hint="Six digits, read out at the pass. The server refuses a handover on the wrong OTP."
+            tip="Six digits, read out at the pass. The server refuses a handover on the wrong OTP, and locks the ticket after five."
           >
             <input
               className="otp-in"
@@ -97,9 +113,10 @@ function TicketDrawer({ id }: DrawerProps) {
               maxLength={6}
               placeholder="000000"
               value={otp}
-              onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+              onChange={(e) => { setOtp(e.target.value.replace(/\D/g, "").slice(0, 6)); setRefused(""); }}
             />
           </Field>
+          {refused && <Alert tone="c" label="REFUSED">{refused}</Alert>}
           <div className="mini">
             {override ? (
               <>
@@ -122,7 +139,7 @@ function TicketDrawer({ id }: DrawerProps) {
         </div>
       )}
 
-      <Section title="On this ticket" sub={`Exactly what ${LOC[t.to].n} may collect against it.`} />
+      <Section title="On this ticket" tip={`Exactly what ${LOC[t.to].n} may collect against it.`} />
       <DataTable
         cols={[
           { h: "Item", cls: "nm", w: "44%" },
@@ -151,7 +168,7 @@ function TicketDrawer({ id }: DrawerProps) {
         </div>
       )}
 
-      <Section title="History" sub={`Every hand ${t.id} has passed through`}>
+      <Section title="History" tip={`Every hand ${t.id} has passed through`}>
         <TicketTrail hist={t.hist} />
       </Section>
 

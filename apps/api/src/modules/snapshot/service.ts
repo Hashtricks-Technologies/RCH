@@ -53,9 +53,9 @@ export function createSnapshotService(db: Db) {
         const names = await D.userNames(tx);
         const items = await M.readItems(tx);
         const locations = await M.readLocations(tx);
-        const recipes = await M.readRecipes(tx);
         const users = await M.readUsers(tx);
         const prices = await M.readPrices(tx);
+        const priceLists = await M.readPriceLists(tx);
         const menu = await M.readMenu(tx);
         const roster = await M.readRoster(tx);
         const stock = await S.readStock(tx);
@@ -79,7 +79,7 @@ export function createSnapshotService(db: Db) {
         const adjustments = await D.readAdjustments(tx, names);
         // The desk and its owners come off one read: `scope()` cuts the list on `owners`, so a
         // ticket in one and not the other is a ticket its own author cannot see.
-        const full: Snapshot = { user: toWireUser(u), items, locations, recipes, users, prices, menu, stock, rsv, ovr, req, tkt, prq, po, pord, batch, bills, grn, vendors, contracts, tickets: support.tickets, productReqs, shopAsks, roster, sales: salesBlock.sales, dayLabels: salesBlock.dayLabels, adjustments };
+        const full: Snapshot = { user: toWireUser(u), items, locations, users, prices, priceLists, menu, stock, rsv, ovr, req, tkt, prq, po, pord, batch, bills, grn, vendors, contracts, tickets: support.tickets, productReqs, shopAsks, roster, sales: salesBlock.sales, dayLabels: salesBlock.dayLabels, adjustments };
         return scope(full, { role: claims.role, loc: claims.loc, sub: claims.sub }, support.owners);
       });
     },
@@ -119,10 +119,10 @@ export function createSnapshotService(db: Db) {
     /** A shop sees the new-product asks it raised itself; everyone else sees the queue. */
     async productRequests(claims: AccessClaims): Promise<ProductRequest[]> { return read(async (tx) => scopeProductRequests(await D.readProductRequests(tx), claims)); },
     // ---- payers ----
-    /** The register on its own - what a payer write naming "roster" refetches. The same cut the
+    /** The register on its own - what a notice naming "roster" refetches. The same cut the
      *  snapshot makes (`scopeRoster`): the kitchen, the store and the buyer never open a payer
-     *  picker, so without it a refetch after a rename would hand them the register the snapshot
-     *  had just withheld. */
+     *  picker, so without it a refetch would hand them the register the snapshot had just
+     *  withheld. */
     async roster(claims: AccessClaims): Promise<PayerRoster> { return read(async (tx) => scopeRoster(await M.readRoster(tx), claims)); },
     // ---- adjustments: the register on its own - what a write naming "adjustments" refetches.
     async adjustments(claims: AccessClaims): Promise<Adjustment[]> { return read(async (tx) => scopeAdjustments(await D.readAdjustments(tx), claims)); },

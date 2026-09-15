@@ -183,6 +183,11 @@ back where it stood.
   and the UI reads the same tables to decide which buttons to draw.
 - Every non-public write carries an `Idempotency-Key`. The outcome is recorded inside the write's own
   transaction, so a retry replays the answer instead of producing a second bill.
+- **A price list is a managed entity** (`price_lists`, id + name), not a fixed pair. A manager creates one
+  cloned from an outlet's current active list, edits any list at any time whether or not it is active, and
+  switches an outlet onto any list explicitly (`PUT /outlets/:loc/price-list`). Two outlets may still share one
+  active list, exactly as before. A list can be deleted only once no outlet is active on it. A newly opened
+  outlet is on none: the super admin's form has no price list, and the manager attaches one from Prices.
 
 ### Browser-side state
 
@@ -204,21 +209,22 @@ The code enforces these and tests pin them. Breaking one is a bug.
 - **Staff credit is capped at ₹3,000 per person per calendar month**, counted hospital-wide in Asia/Kolkata
   time and enforced inside the sale's own transaction.
 - **Nothing is created or destroyed without a document.**
-  - A batch consumes its recipe's ingredients and books the yield in one `postMoves` call.
+  - A batch books what the kitchen made onto its rack. It draws nothing down; kitchen raw stock is cleared
+    with an `ADJ-` document.
   - A write-off or a stock count is an `ADJ-` document with a reason, and it may not take stock a ticket is
     holding.
   - A goods receipt posts accepted goods to the central store and rejected goods to `quarantine`.
     `quarantine` is a location where stock is recorded; no operator can act there.
-- **Made-to-order (MTO) items are assembled at the counter.** Selling one deducts its recipe from stock. MTO
-  items are never batched, distributed, or ordered from the kitchen.
+- **Made-to-order (MTO) items are made at the counter and hold no stock.** Selling one moves no stock, and
+  only the manual switch turns one off. MTO items are never batched, distributed, or ordered from the kitchen.
 - **A bill is voided only on the IST day it was billed, and only by the manager.** The void posts reversal
   moves, frees the credit room it used, and badges the bill rather than erasing it.
 - **Items are retired, never deleted**, and not while any stock or menu listing remains. **Payers are
   deactivated, never deleted.**
 - **Outlets are closed, never deleted.** A close is refused while the outlet holds stock, an open ticket, stock
   request, kitchen order, shop ask or product request, or an active staff member, and the refusal names every
-  one. A closed outlet takes no sale, transfer, ask, stock request, kitchen order, adjustment, menu listing or
-  void, and no staff can be posted to it. A reopen restores it as it was.
+  one. A closed outlet takes no sale, transfer, ask, stock request, kitchen order, adjustment, menu listing,
+  price-list switch or void, and no staff can be posted to it. A reopen restores it as it was.
 - **Employee numbers are assigned by the server**: `nextEmpNo` in `@rch/domain`, one past the highest
   `RC-<digits>`, under the `user` row of `sequences`, which also hands out user ids that are never reused.
 - **A staff account is deleted only if it never did anything.** It must be deactivated first, and it can't be
@@ -246,6 +252,9 @@ The code enforces these and tests pin them. Breaking one is a bug.
   - The API and UI test suites pin `TZ=UTC`, so a host-day shortcut goes red.
 - **Toast copy is a full sentence in the operator's voice.** A refusal says what was refused and why. Where a
   rule already has a sentence (for example `creditBreachMessage`), both sides print it word for word.
+- **Screen explanations are tooltips.** A sentence that explains a page, a card, a field or a figure goes
+  in the kit's `tip` prop (`Tip` in `UI/src/ui/Tip.tsx`), shown on hover, focus or tap. Counts, errors,
+  warnings and `Alert`s stay visible. `UI/CLAUDE.md` has the details.
 - TypeScript is `strict` with `verbatimModuleSyntax` and `erasableSyntaxOnly`, so type-only imports need
   `import type`.
 

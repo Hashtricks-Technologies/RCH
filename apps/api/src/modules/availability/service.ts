@@ -48,9 +48,9 @@ export function createAvailabilityService(db: Db) {
         if (claims.role === "manager") assertRule(loc.type === "Outlet", `${loc.name} is not an outlet`);
         if (loc.type === "Outlet") assertOpen(loc);
         // A kitchen has no menu - what it can switch off is what it can make, so "listed"
-        // there means the item has a recipe. Everywhere else it is the location's menu.
+        // there means the item is a finished good. Everywhere else it is the location's menu.
         const listed = loc.type === "Kitchen"
-          ? Boolean(master.recipes[body.it])
+          ? item.t === "FG"
           : await availabilityRepo.isListed(tx, body.loc, body.it);
         assertRule(listed, loc.type === "Kitchen" ? `${item.n} is not made at ${loc.name}` : `${item.n} is not listed at ${loc.name}`);
 

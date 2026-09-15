@@ -2,7 +2,7 @@ import { routes, type Changed } from "@rch/contract";
 import { call } from "./client";
 import {
   applyAccounts, applyAdjustments, applyAdminLocations, applyBatches, applyBills, applyContracts, applyDeskTickets, applyGrns, applyItems, applyLocations, applyMenus,
-  applyPayers, applyPos, applyPrices, applyProdOrders, applyProductRequests, applyRecipes, applyRequests,
+  applyPos, applyPriceLists, applyPrices, applyProdOrders, applyProductRequests, applyRequests,
   applyRequisitions, applyRoster, applyShopAsks, applyStock, applySupportTickets, applyTickets,
   applyVendors,
 } from "./wire";
@@ -32,10 +32,10 @@ const NARROW: Partial<Record<Changed, () => Promise<void>>> = {
     ? call(routes.deskTickets).then(applyDeskTickets)
     : call(routes.tickets).then(applySupportTickets),
   prices: () => call(routes.prices).then(applyPrices),
+  priceLists: () => call(routes.priceLists).then(applyPriceLists),
   menu: () => call(routes.menus).then(applyMenus),
   // ---- payers ----
   roster: () => call(routes.roster).then(applyRoster),
-  payers: () => call(routes.payers).then(applyPayers),
   // ---- adjustments
   adjustments: () => call(routes.adjustments).then(applyAdjustments),
   // ---- admin: account management
@@ -45,8 +45,6 @@ const NARROW: Partial<Record<Changed, () => Promise<void>>> = {
   // own, pulls back the admin list. Each reader does nothing for the other session.
   locations: () => useApp.getState().user?.admin ? Promise.resolve() : call(routes.locations).then(applyLocations),
   outlets: () => useApp.getState().user?.admin ? call(routes.adminLocations).then(applyAdminLocations) : Promise.resolve(),
-  // ---- recipes
-  recipes: () => call(routes.recipes).then(applyRecipes),
 };
 
 /**
@@ -55,12 +53,12 @@ const NARROW: Partial<Record<Changed, () => Promise<void>>> = {
  * `stock`/`rsv`/`ovr` come from `GET /stock`, and every other collection the contract names
  * from its own GET - `bills`, `req`, `tkt`, `shopAsks`, `pord`, `batch`, `prq`, `po`, `grn`,
  * `vendors`, `contracts`, `productReqs`, `items`, `tickets` (the support desk,
- * `GET /support/tickets`), `prices` and `menu` (the manager's two), `roster` (the till's live
- * payer list, `GET /roster`), `payers` (the manager's whole register, closed accounts
- * included, `GET /payers`), `adjustments` (the write-off register, `GET /adjustments`), `locations`
- * (the location master, `GET /locations`) and `outlets` (the admin page's own list, `GET
- * /admin/locations`) - each fetched at most once however many times the write named it, which is
- * what lets a payer write name both of its collections and still cost two reads.
+ * `GET /support/tickets`), `prices`, `priceLists` and `menu` (the manager's three), `roster` (the
+ * till's live payer list, `GET /roster`), `adjustments` (the write-off register, `GET
+ * /adjustments`), `locations` (the location master, `GET /locations`) and `outlets` (the admin
+ * page's own list, `GET /admin/locations`) - each fetched at most once however many times the
+ * write named it, which is what lets an outlet write name both of its collections and still cost
+ * one read.
  * Nothing costs a snapshot any more: taking one pulled the whole hospital back down and, until
  * this wave, put every screen behind the loading splash to do it. The fallback below stays for
  * the next collection added to the enum and not to `NARROW`; a mixed set takes the snapshot

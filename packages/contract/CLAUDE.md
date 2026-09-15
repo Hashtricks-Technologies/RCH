@@ -26,7 +26,7 @@ src/schemas/common.ts     closed unions, Qty/Money/Iso, error envelope, LocKey v
 src/schemas/documents.ts  every document shape (Item, Ticket, StockRequest, Bill, PO, …)
 src/schemas/writes.ts     request bodies, result shapes, CollectionSchema, writeResponse()
 src/schemas/snapshot.ts   SnapshotSchema and the narrow read responses; BILL_DAYS
-src/schemas/{auth,admin,events,reports,recipes}.ts
+src/schemas/{auth,admin,events,reports}.ts
 src/fixtures/*            the demo hospital: master data and seeded documents
 ```
 
@@ -59,10 +59,12 @@ manifest drives both sides: `mount()` in `apps/api/src/routes.ts` and `call()` i
 ## Schema rules
 
 - **Closed enums, never widened.** `Role`, `Tender`, `PayerKind` and every status are `z.enum`s. A status enum
-  here and its Postgres enum in `apps/api/src/db/schema/enums.ts` change together or not at all. `LocKey` is
-  not one of them: it is a checked string (a lower-case slug, `quarantine` refused by a lookahead), because an
-  outlet is a row the super admin opens at runtime, not a fixed set. The service that reads a location resolves
-  its existence and its name (`apps/api/src/lib/locations.ts`); the schema only checks its shape.
+  here and its Postgres enum in `apps/api/src/db/schema/enums.ts` change together or not at all. Two are
+  deliberately not enums: `LocKey` is a checked string (a lower-case slug, `quarantine` refused by a lookahead),
+  because an outlet is a row the super admin opens at runtime, not a fixed set - the service that reads a
+  location resolves its existence and its name (`apps/api/src/lib/locations.ts`) and the schema only checks its
+  shape; and `PriceListIdSchema` is an open, bounded string, because a price list is a manager-created entity
+  with a server-issued id (`common.ts`) and as many can exist as a manager creates.
 - **Request bodies are `z.strictObject`.** An unknown key is a client bug. `routes.test.ts` checks that every
   body accepts its entry in `SAMPLES` and refuses an extra key. A new route without a sample fails.
 - **PATCH bodies declare every field as optional, one by one, with no defaults.** Never build one as
@@ -78,7 +80,7 @@ manifest drives both sides: `mount()` in `apps/api/src/routes.ts` and `call()` i
   shelf has to be correctable.
 - **Payer data is scoped by role, and the schemas allow for it.** `BillSchema.payer` is optional and the
   roster lists may be empty, because the server strips payer data for `store`, `prod` and `buyer`.
-  `PayerSchema` (what a bill embeds) has no `active` field; `PayerRecordSchema` (the manager's register) does.
+  `PayerSchema` (what a bill embeds) has no `active` field: the till only ever reads live payers.
 - **`TicketSchema.hist` is required.** Every ticket writes its first trail row when it is created.
 
 ## Constants

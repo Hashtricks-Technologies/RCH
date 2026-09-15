@@ -5,7 +5,7 @@ import { useApp, type AppState } from "../../store";
 import { committed, costOf, freeToPromise, hasLeft, isTicketOpen, onOrder, parOf, qty, resv } from "../../lib/selectors";
 import { U, fq, fromWireDay, money0, now, pct, sum, unitTotal } from "../../lib/fmt";
 import {
-  Btn, Card, DataTable, FilterSelect, Icon, PageHead, Pill, StatusPill, TableFoot, Toolbar,
+  Btn, Card, DataTable, FilterSelect, Icon, PageHead, Pill, StatusPill, TableFoot, Tip, Toolbar,
 } from "../../ui/kit";
 import type { Col } from "../../ui/kit";
 import type { StockLedgerRow } from "../../types";
@@ -198,14 +198,14 @@ const turn = (s: AppState): Rep => {
   return {
     cols: [
       { h: "Ticket", cls: "nm", w: "13%" }, { h: "Request", w: "14%" }, { h: "Outlet" },
-      { h: "Approved" }, { h: "Ticket raised" }, { h: "Approval to ticket", r: true },
+      { h: "Approved" }, { h: "Ticket raised" },
+      { h: "Approval to ticket", r: true, tip: "Slowest approval-to-ticket first. A dash means the ticket has not reached that step yet." },
       { h: "Collected" }, { h: "Ticket to collection", r: true }, { h: "Collection to confirmed", r: true },
       { h: "Status", w: "10%" },
     ],
     rows,
     pill: 9,
     facet: 9,
-    foot: "Slowest approval-to-ticket first. A dash means the ticket has not reached that step yet.",
     empty: { title: "No ticket has been raised yet", sub: "Turnaround is measured from the approval trail on each request." },
   };
 };
@@ -251,11 +251,14 @@ const belowrl = (s: AppState): Rep => {
       { h: "Item", cls: "nm", w: "17%" }, { h: "Code" }, { h: "Unit" },
       { h: "On hand", r: true }, { h: "Reserved", r: true }, { h: "Available", r: true },
       { h: "Reorder level", r: true }, { h: "Shortfall", r: true }, { h: "On order", r: true },
-      { h: "Suggested top-up", r: true }, { h: "Top-up value", r: true },
+      {
+        h: "Suggested top-up", r: true,
+        tip: `Reorder levels are the ${LOC.store.n} par, and the suggestion brings each line back to 1.6 times it`,
+      },
+      { h: "Top-up value", r: true },
     ],
     rows,
     facet: 2,
-    foot: `Reorder levels are the ${LOC.store.n} par, and the suggestion brings each line back to 1.6 times it`,
     empty: { title: "Every line is above its reorder level", sub: `Nothing in ${LOC.store.n} needs replenishing right now.` },
   };
 };
@@ -358,11 +361,10 @@ const movers = (s: AppState): Rep => {
       { h: "Item", cls: "nm", w: "18%" }, { h: "Code" }, { h: "Unit" },
       { h: "Issued from store", r: true }, { h: "Sold at outlets", r: true },
       { h: "Requested", r: true }, { h: "On hand", r: true }, { h: "Days of cover", r: true },
-      { h: "Movement", w: "16%" },
+      { h: "Movement", w: "16%", tip: "Ranked by what has left the store window and what the counters have billed" },
     ],
     rows,
     facet: 8,
-    foot: "Ranked by what has left the store window and what the counters have billed",
     empty: { title: "The central store carries no lines", sub: "Velocity is measured against issues and counter sales." },
   };
 };
@@ -382,12 +384,12 @@ const resvav = (s: AppState): Rep => {
     cols: [
       { h: "Item", cls: "nm", w: "18%" }, { h: "Code" }, { h: "Unit" },
       { h: "On hand", r: true }, { h: "Reserved on tickets", r: true },
-      { h: "Committed to approvals", r: true }, { h: "Free to promise", r: true },
+      { h: "Committed to approvals", r: true },
+      { h: "Free to promise", r: true, tip: "Free to promise is on hand less open ticket reservations less approvals that have no ticket yet" },
       { h: "Spoken for", r: true }, { h: "Free value", r: true },
     ],
     rows,
     facet: 2,
-    foot: "Free to promise is on hand less open ticket reservations less approvals that have no ticket yet",
     empty: { title: "The central store carries no lines", sub: "Nothing can be promised until stock is received." },
   };
 };
@@ -526,26 +528,34 @@ export default function Reports() {
       <PageHead
         crumbs={["Royal Care", "Central Store", "Insights"]}
         title="Store reports"
-        sub="Issue, reservation and replenishment reports."
+        tip="Issue, reservation and replenishment reports."
       />
 
-      <Card title="Report library" sub="Ten reports for running the central store, built from live store data">
+      <Card title="Report library" tip="Ten reports for running the central store, built from live store data">
         <div className="tilegrid">
           {REPORTS.map((r) => (
-            <button
-              key={r.k}
-              type="button"
-              className="tile"
-              aria-pressed={sel === r.k}
-              style={sel === r.k ? { borderColor: "var(--accent)", background: "var(--accent-soft)" } : undefined}
-              onClick={() => pick(r.k)}
-            >
-              <span style={{ display: "flex", alignItems: "center", gap: 7 }}>
-                <Icon name={r.icon} />
-                <b style={{ fontSize: 12.5 }}>{r.n}</b>
+            // The description sits in a tip beside the tile rather than inside it: a tip's hidden
+            // sentence inside the `<button>` would join the tile's own name.
+            <div key={r.k} style={{ position: "relative" }}>
+              <button
+                type="button"
+                className="tile"
+                aria-pressed={sel === r.k}
+                style={{
+                  minHeight: 0, height: "100%", paddingRight: 32,
+                  ...(sel === r.k ? { borderColor: "var(--accent)", background: "var(--accent-soft)" } : {}),
+                }}
+                onClick={() => pick(r.k)}
+              >
+                <span style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                  <Icon name={r.icon} />
+                  <b style={{ fontSize: 12.5 }}>{r.n}</b>
+                </span>
+              </button>
+              <span style={{ position: "absolute", top: 10, right: 8 }}>
+                <Tip text={r.d} label={r.n} />
               </span>
-              <span className="mini" style={{ lineHeight: 1.45 }}>{r.d}</span>
-            </button>
+            </div>
           ))}
         </div>
       </Card>
@@ -553,7 +563,7 @@ export default function Reports() {
       <div className="mtop">
       <Card
         title={def.n}
-        sub={def.d}
+        tip={def.d}
         right={<Pill tone={rep.rows.length ? "ac" : "mu"}>{rep.rows.length} row{rep.rows.length === 1 ? "" : "s"}</Pill>}
         flush
       >

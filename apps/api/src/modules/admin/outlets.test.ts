@@ -18,7 +18,7 @@ afterAll(async () => { await app.close(); });
 const as = async (id: string, method: "GET" | "POST" | "PATCH", url: string, payload?: Record<string, unknown>) =>
   app.inject({ method, url: `/api/v1${url}`, headers: { ...(await authHeaders(app, id)), ...(method === "GET" ? {} : { "idempotency-key": randomUUID() }) }, payload });
 const admin = (method: "GET" | "POST" | "PATCH", url: string, payload?: Record<string, unknown>) => as("u7", method, url, payload);
-const JUICE = { name: "Juice Bar", code: "ot-jb", floor: "Ground", cc: "CC-JB", list: "A" };
+const JUICE = { name: "Juice Bar", code: "ot-jb", floor: "Ground", cc: "CC-JB" };
 const open = async (body: Record<string, unknown> = JUICE) => {
   const r = await admin("POST", "/admin/outlets", body);
   expect(r.statusCode, r.body).toBe(200);
@@ -45,13 +45,13 @@ describe("POST /admin/outlets", () => {
     const r = await admin("POST", "/admin/outlets", JUICE);
     expect(r.statusCode, r.body).toBe(200);
     const j = r.json();
-    expect(j.result).toEqual({ key: "juice-bar", n: "Juice Bar", c: "OT-JB", type: "Outlet", floor: "Ground", cc: "CC-JB", list: "A", active: true, staff: 0 });
+    expect(j.result).toEqual({ key: "juice-bar", n: "Juice Bar", c: "OT-JB", type: "Outlet", floor: "Ground", cc: "CC-JB", active: true, staff: 0 });
     expect(j.changed).toEqual(["outlets", "locations"]);
-    expect(j.message).toBe("Opened Juice Bar (OT-JB) on price list A.");
+    expect(j.message).toBe("Opened Juice Bar (OT-JB).");
     const [row] = await app.db.select().from(locations).where(eq(locations.key, "juice-bar"));
     expect(row).toMatchObject({ parFactor: 0.18, sellable: true, active: true });
     const feed = (await admin("GET", "/admin/actions?kind=outlets")).json() as { action: string; target: string; details: Record<string, unknown> }[];
-    expect(feed[0]).toMatchObject({ action: "outlet_create", target: "Juice Bar", details: { key: "juice-bar", code: "OT-JB", list: "A" } });
+    expect(feed[0]).toMatchObject({ action: "outlet_create", target: "Juice Bar", details: { key: "juice-bar", code: "OT-JB" } });
     expect(((await admin("GET", "/admin/actions")).json() as { action: string }[]).some((a) => a.action.startsWith("outlet_"))).toBe(false);
   });
   it("refuses a name or a code another location already has, whatever the case", async () => {
@@ -73,14 +73,14 @@ describe("POST /admin/outlets", () => {
 });
 
 describe("PATCH /admin/outlets/:key", () => {
-  it("renames an outlet and moves its price list without touching its key, and logs what changed", async () => {
+  it("renames an outlet and moves its floor without touching its key, and logs what changed", async () => {
     await open();
-    const r = await admin("PATCH", "/admin/outlets/juice-bar", { name: "Juice Hut", list: "B" });
+    const r = await admin("PATCH", "/admin/outlets/juice-bar", { name: "Juice Hut", floor: "Floor 2" });
     expect(r.statusCode, r.body).toBe(200);
-    expect(r.json().result).toMatchObject({ key: "juice-bar", n: "Juice Hut", list: "B" });
+    expect(r.json().result).toMatchObject({ key: "juice-bar", n: "Juice Hut", floor: "Floor 2" });
     expect(r.json().message).toBe("Saved Juice Hut.");
     const [line] = await app.db.select().from(adminActions).where(eq(adminActions.action, "outlet_update"));
-    expect(line.details).toEqual({ key: "juice-bar", name: ["Juice Bar", "Juice Hut"], list: ["A", "B"] });
+    expect(line.details).toEqual({ key: "juice-bar", name: ["Juice Bar", "Juice Hut"], floor: ["Ground", "Floor 2"] });
   });
   it("refuses an edit that changes nothing", async () => {
     await open();

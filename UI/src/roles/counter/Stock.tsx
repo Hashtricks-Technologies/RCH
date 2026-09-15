@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { IT, LOC, RCP } from "../../data/master";
+import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
 import { avail, daysCover, menuOf, parOf, qty, resv, stateLabel, stateTone } from "../../lib/selectors";
 import { fq, money0, U } from "../../lib/fmt";
@@ -28,10 +28,8 @@ export default function Stock() {
 
   const held = new Set(Object.keys(s.stock[loc] ?? {}));
   const keys = new Set<string>(held);
-  menuOf(s, loc).forEach((it) => {
-    if (IT[it]?.t === "MTO") RCP[it]?.l.forEach(([g]) => keys.add(g));
-    else keys.add(it);
-  });
+  // A made-to-order item is made at the counter and never held, so it has no stock line to show.
+  menuOf(s, loc).forEach((it) => { if (IT[it]?.t !== "MTO") keys.add(it); });
 
   const all = Array.from(keys)
     .filter((it) => IT[it])
@@ -78,7 +76,12 @@ export default function Stock() {
       <PageHead
         crumbs={["Royal Care", L.n, "Stock in Hand"]}
         title="Stock in hand"
-        sub="Stock held at this counter."
+        tip={<>
+          Stock held at this counter.{" "}
+          This screen shows <b>{L.n} ({L.c})</b> and nothing else. Stock at the central store, the kitchen and the
+          other outlets is not visible from a counter terminal. <b>Par here</b> is this outlet's own reorder level - a
+          counter holds a day of stock, so it is far below the central store's par and only what falls under it reads low.
+        </>}
         actions={<Btn variant="gh" onClick={() => nav("/requests")}>Stock requests</Btn>}
       />
       <Card flush>
@@ -190,11 +193,6 @@ export default function Stock() {
           <span className="mini">{L.n} · {L.c} · {L.floor} · stock at cost {money0(value)}</span>
         </div>
       </Card>
-      <p className="mini mtop">
-        This screen shows <b>{L.n} ({L.c})</b> and nothing else. Stock at the central store, the kitchen and the
-        other outlets is not visible from a counter terminal. <b>Par here</b> is this outlet's own reorder level - a
-        counter holds a day of stock, so it is far below the central store's par and only what falls under it reads low.
-      </p>
     </>
   );
 }

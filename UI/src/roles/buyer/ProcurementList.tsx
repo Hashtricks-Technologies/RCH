@@ -241,7 +241,7 @@ export default function ProcurementList() {
       <PageHead
         crumbs={["Royal Care", "Procurement", "Procurement List"]}
         title="Procurement list"
-        sub="Approved items waiting to be ordered."
+        tip="Approved items waiting to be ordered."
         actions={<Btn onClick={() => openDrawer("baddpool", "new")}>Add items</Btn>}
       />
 
@@ -297,13 +297,9 @@ export default function ProcurementList() {
             sub={selected.length
               ? `${selected.length} item(s) · ${planned.length} order(s) to raise`
               : "Tick an item to start an order."}
+            tip="Pick the items you want to buy. Items sharing a vendor are combined into one order; items on different vendors become separate orders."
           >
-            {selected.length === 0 ? (
-              <p className="mini dim">
-                Pick the items you want to buy. Items sharing a vendor are combined into one
-                order; items on different vendors become separate orders.
-              </p>
-            ) : (
+            {selected.length > 0 && (
               <>
                 {planned.map((o) => (
                   <div key={o.vendor} className="mtop">

@@ -61,8 +61,7 @@ export async function lockBalances(tx: Tx, cells: readonly { loc: string; it: st
  *
  * A move whose quantity rounds away to nothing at three decimals is dropped before any of that.
  * A move of zero is not a movement - `stock_moves_qty_ck` (migration 0008) says so - and a
- * recipe measured in millilitres against a single cup is how one turns up: the sale is real, the
- * deduction rounds to 0.000, and without this the till would read a 500 with no words in it.
+ * fraction that rounds to 0.000 must not turn a real write into a 500 with no words in it.
  * Dropped row by row rather than by cell, so a crumb never takes the real move beside it down;
  * the fold below then runs over what is left, and a cell no surviving move touches is never
  * locked, because `lockBalances` creates the row it locks and a shelf that moved nothing would

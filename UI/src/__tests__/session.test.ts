@@ -15,9 +15,9 @@ const USER: User = {
 
 /** The smallest body `applySnapshot` will accept - this suite is about the session, not the data. */
 const SNAPSHOT = {
-  user: USER, items: {}, locations: {}, recipes: {}, users: [USER],
+  user: USER, items: {}, locations: {}, users: [USER],
   roster: { patients: [], staff: [], depts: [] },
-  stock: { coffee: {} }, rsv: {}, ovr: {}, prices: { A: {}, B: {} }, menu: {},
+  stock: { coffee: {} }, rsv: {}, ovr: {}, prices: {}, priceLists: [], menu: {},
   req: [], tkt: [], prq: [], po: [], pord: [], batch: [], bills: [], grn: [],
   vendors: [], contracts: [], tickets: [], productReqs: [], shopAsks: [],
   sales: [], dayLabels: [],
@@ -27,10 +27,10 @@ const SNAPSHOT = {
 
 /** An empty item master - the state a browser is in before its first snapshot lands. */
 const EMPTY_MASTER: MasterData = {
-  items: {}, locations: {}, recipes: {}, prices: { A: {}, B: {} }, menu: {}, users: [USER],
+  items: {}, locations: {}, prices: {}, priceLists: [], menu: {}, users: [USER],
 };
 const COFFEE: Location = {
-  n: "Floor 3 Coffee Bar", c: "Coffee Bar", type: "Outlet", floor: "3", cc: "CC-31", list: "A",
+  n: "Floor 3 Coffee Bar", c: "Coffee Bar", type: "Outlet", floor: "3", cc: "CC-31", list: "PL-001",
   active: true, par: 0.18,
 };
 

@@ -9,7 +9,7 @@ import { useApp, type AppState } from "../store";
 import { activeItems, availOf, isTicketOpen, menuOf, openOutlets, procurementList, qty } from "../lib/selectors";
 import type { LocKey, Role } from "../types";
 import { useStreamState, type StreamState } from "../api/events";
-import { Avatar, Icon, Pill, SearchIcon, Tag, ThemeButton } from "./kit";
+import { Avatar, Icon, Pill, SearchIcon, Tag, ThemeButton, Tip } from "./kit";
 import { applyPrefs, readPrefs, usePhoto } from "./prefs";
 import { markSeen, useSeen } from "./seen";
 import Drawer from "./Drawer";
@@ -109,10 +109,12 @@ export default function Shell({ children }: { children: ReactNode }) {
           {/* The header dot is the status light the Support FAQ tells an operator to look at,
               so it has to mean something: it follows the live-update stream. It was a <button>
               with no onClick and a green dot painted on, which read as "all well" with the
-              stream down. Not interactive, so not a button. */}
-          <div className="org" title={STREAM[live].why}>
+              stream down. Not interactive, so not a button; what the state means sits behind the
+              "i" beside it. */}
+          <div className="org">
             <span className="dt" role="img" aria-label={STREAM[live].why} style={{ background: STREAM[live].dot }} />
             <span className="lbl">Royal Care{homeLabel(user) ? ` · ${homeLabel(user)}` : ""}</span>
+            <Tip text={STREAM[live].why} label="Connection" />
           </div>
           {/* Nothing is shown while the stream is live: a badge that is always there stops being read. */}
           {live === "reconnecting" && <Pill tone="wn">Reconnecting</Pill>}
@@ -298,7 +300,7 @@ const NOTE: Record<string, [string, string]> = {
   requisitions: ["Requisitions waiting on you", "Raised by the store keeper"],
   pool: ["Lines on the procurement list", "Approved and not yet claimed by a purchase order"],
   orders: ["New kitchen orders", "Received and not yet accepted"],
-  avail: ["Products that cannot be sold", "Switched off, out of stock, or short an ingredient"],
+  avail: ["Products that cannot be sold", "Switched off or out of stock"],
   inventory: ["Items below reorder", "Under the central store's reorder level"],
   stock: ["Items below reorder", "Under the central store's reorder level"],
   dash: ["Batches nearing best-before", "Made recently, due within the next 2 hours"],
@@ -356,7 +358,7 @@ function searchHits(s: SearchState, q: string): Hit[] {
 }
 
 /* ---------- counters ---------- */
-/** Listed but unsellable - a manual switch, an empty shelf or a missing ingredient. */
+/** Listed but unsellable - a manual switch or an empty shelf. */
 const offItems = (s: AppState, l: LocKey) => menuOf(s, l).filter((it) => !availOf(s, l, it).ok);
 
 /** The active items the central store carries under their own reorder level - the same test

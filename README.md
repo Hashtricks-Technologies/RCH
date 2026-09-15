@@ -17,8 +17,8 @@ kinds of product move through them:
 | **Made in-house** | Puffs, sandwiches, salad, cappuccino, tea | The hospital sets the price; a costed, approved price list supplies the discipline |
 
 Stock is held per location, and every quantity in the system is the sum of an append-only ledger
-of stock movements - nothing is created or destroyed without a document. A sale deducts from that
-counter: a traded item by the unit, a made-to-order drink by its recipe.
+of stock movements - nothing is created or destroyed without a document. A sale deducts a stocked
+item from that counter by the unit; a made-to-order drink is made at the counter and moves no stock.
 
 Five roles each get their own dashboard, screens and permissions. A module a role cannot use is
 absent from its sidebar and refused on a direct link, with a message saying why.
@@ -26,7 +26,7 @@ absent from its sidebar and refused on a direct link, with a message saying why.
 | Role | Signs in as | Lands on | Owns |
 |---|---|---|---|
 | Counter Operator | Kavitha Raman | Point of Sale | Billing and printing, counter stock, product on/off, raising requests, asking the kitchen for a tray, collecting tickets |
-| Outlet Manager | Ramesh Kumar | Approvals | Approving and trimming counter requests, prices across all shops, the on/off master, every outlet's bills and the same-day void, the payer register, and an item's commercial figures |
+| Outlet Manager | Ramesh Kumar | Approvals | Approving and trimming counter requests, prices across all shops, the on/off master, every outlet's bills and the same-day void, and an item's commercial figures |
 | Store Keeper | Suresh Muthu | Issue Desk | Issuing approved stock against a ticket, central-store stock, write-offs and stock counts at any shelf, requisitions to procurement |
 | Kitchen In-charge | Vinoth Prakash | Orders | Accepting orders, making products, distributing to the store and counters |
 | Procurement Officer | Latha Narayanan | Requisitions | Acting on requisitions, raising purchase orders, receiving goods |
@@ -46,7 +46,7 @@ transfer, one shop asking a peer directly for stock it is holding, and the kitch
 production order or a tray out the door.
 
 **Against a real server today:** walk a kitchen order across the board (accepted → in kitchen →
-ready), make a batch that draws its recipe out of the kitchen and stamps a best-before, dispatch
+ready), make a batch that books the finished units onto the kitchen's rack with a best-before, dispatch
 it, hand it over on an OTP and receive it at the counter - with a second browser watching every
 step happen live - and cancel a ticket nobody came for, which puts the stock and the document
 behind it (the request or the production order) back where they stood. And now the whole of
@@ -64,7 +64,7 @@ Read the two figures the browser could never assemble on its own: a location's s
 over a window, and a payer's credit taken so far this month. Nothing runs in the browser's own
 store any more - every mutation in the app is a server call, and `UI/src/data/seed.ts` is gone.
 
-**And the five doors the audit wave added on 11 September 2026** - the only new capability since
+**And the four doors the audit wave added on 11 September 2026** - the only new capability since
 the six phases closed. Write off nine puffs that did not sell, or book in the four extra tins a
 count found, as a numbered document with a reason and a signature (a write-off may not take stock
 a pick ticket is holding, and the store keeper is the only one who can correct the quarantine
@@ -72,8 +72,7 @@ shelf). Void a mis-keyed bill on the day it was billed: every line goes back on 
 member's monthly credit room comes back, and the bill stays on the list badged rather than
 vanishing from the day. Correct a mis-typed MRP or retire a product nobody carries - each desk
 sees the fields it owns and the rest greyed out, and a line with stock on it or a menu still
-listing it cannot be retired until that is dealt with. Add a patient, a department or a new
-starter to the payer register from a screen, or load a whole ward list from a CSV. And let a
+listing it cannot be retired until that is dealt with. And let a
 counter ask the kitchen to bake something, with a needed-by date, instead of waiting for an order
 nobody could raise.
 
@@ -92,7 +91,7 @@ Browser (React 19, Vite) ──HTTPS──▶ API (Fastify 5, Node 24) ──▶
   manifest. The manifest drives both the server's route registration and the browser's single
   generic API client, so the two cannot drift.
 - **`packages/domain`** - the business rules as pure functions (the MRP cap, free-to-promise,
-  availability, bill planning, costing, the status transition tables). Written once: the server
+  availability, bill planning, the status transition tables). Written once: the server
   enforces them, the browser only previews with them while the operator types.
 - **`apps/api`** - Fastify 5 + Drizzle. Owns the ledger, the document numbers, the reservations
   and the change stream. Writes are transactional and idempotent: each carries an
@@ -249,7 +248,7 @@ work onto the server and deleted its in-browser path, so nothing ever ran in two
 | 1 · Foundation | The monorepo, the contract and domain packages, the API skeleton, the database schema and seed, real sign-in, and `GET /snapshot` - the browser stops inventing its own data | Sign in and see the seeded data, `helm upgrade` runs migrations, `/readyz` green, a real `helm install` against a throwaway kind cluster in CI |
 | 2 · Ledger + POS | The movement ledger and balances; counter billing, availability toggles, price lists and menus decided server-side | Sell against the server, balances move, `db:rebuild-balances` matches, the MRP cap refuses and caps, payer rules enforced |
 | 3 · Movement chain | The whole request chain, pick tickets with OTP handover, shop transfers and shop asks, the kitchen's two ticket-raising writes, and the live-update stream | The full request chain across two browsers with live updates and no reload; free-to-promise trims what a manager over-approves; a handover releases the reservation it authorised |
-| 4 · Production | The kitchen's board and its statuses, batches that consume a recipe and yield finished stock, and a ticket nobody collected can now be cancelled | A make consumes ingredients and yields stock in one transaction; a short dispatch is all-or-nothing; a cancelled ticket returns its stock and its document to where they stood |
+| 4 · Production | The kitchen's board and its statuses, batches that yield finished stock, and a ticket nobody collected can now be cancelled | A make yields stock in one transaction; a short dispatch is all-or-nothing; a cancelled ticket returns its stock and its document to where they stood |
 | 5 · Procurement | Vendors, rate contracts, requisitions, the purchase-order lifecycle, goods receipt with tolerance and quarantine, new products | A full requisition → PO → GRN → shelf run; the 2% tolerance and the expiry rules both refuse correctly; a cancelled or short-closed order gives its claim back to the requisition |
 | 6 · Ops and go-live | The support desk, the two server-side reports, the ticket's audit trail and its withheld OTP, the load check, the chart's alerts, and the go-live checklist | The production-readiness checklist verified against a local stack and the kind cluster CI installs - six items marked **when promoted**, because they need a production cluster that does not exist yet |
 
@@ -263,9 +262,9 @@ than a seventh phase. Most of it hardens what was already there - goods receipt 
 the shelf accepted rather than on what the lorry carried, an approved request that can be
 withdrawn, a wrong pick-ticket code counted with five of them locking the ticket, patient names
 withheld from the three roles that never bill anybody, and the ledger's own promises written into
-the database as constraints. Its last block is the exception: five capabilities the review found
-*missing* rather than broken - the write-off, the same-day bill void, the editable item master,
-the payer register and the kitchen order an outlet can raise, all described above.
+the database as constraints. Its last block is the exception: four capabilities the review found
+*missing* rather than broken - the write-off, the same-day bill void, the editable item master
+and the kitchen order an outlet can raise, all described above.
 
 **`develop` is deployed.** A dev environment is live at **https://rch.hashtrickstechnologies.com**,
 on a single EC2 instance under Docker Compose (`deploy/RUNBOOK.md` §16) - `develop`'s own EKS/RDS

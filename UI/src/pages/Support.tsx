@@ -28,7 +28,7 @@ const FAQ = [
   ["Why can I not see another role's screens?",
    "The portal only shows what your role may use. A page you cannot reach is not hidden - it is not yours. Ask your manager if you need access changed."],
   ["My stock number looks wrong after a sale.",
-   "A made-to-order drink deducts its ingredients, not a finished unit, so milk and cups move rather than 'cappuccino'. A packaged item deducts one of itself."],
+   "A made-to-order drink is made at the counter and moves no stock; a packaged item deducts one of itself."],
   ["The counter says an item is off but there is stock on the shelf.",
    "Something is either reserved against an open pick ticket, or the item has been switched off by hand. Product Availability names which of the two it is."],
   ["Someone else's change did not show up on my screen.",
@@ -99,17 +99,17 @@ export default function Support() {
       <PageHead
         crumbs={["Account", "Support"]}
         title="Support"
-        sub="Help with using the portal."
+        tip="Help with using the portal."
       />
 
       <Kpis items={[
-        { l: "Your open tickets", v: String(tickets.filter((t) => t.st !== "Closed" && t.st !== "Resolved").length), d: "raised by you" },
+        { l: "Your open tickets", v: String(tickets.filter((t) => t.st !== "Closed" && t.st !== "Resolved").length), tip: "raised by you" },
         { l: "Waiting on your reply", v: String(waiting), d: waiting ? "support has asked you something" : "nothing pending" },
-        { l: "Resolved and closed", v: String(done), d: "your history" },
+        { l: "Resolved and closed", v: String(done), tip: "your history" },
         // There was a "Typical first reply · 22 min" tile here. Nothing measures it - no
         // response time is recorded anywhere in the system - so it was a service level the
         // portal invented and then held itself to in front of the person waiting on it.
-        { l: "Tickets you have raised", v: String(tickets.length), d: "all time" },
+        { l: "Tickets you have raised", v: String(tickets.length), tip: "all time" },
       ]} />
 
       {waiting > 0 && (
@@ -127,7 +127,7 @@ export default function Support() {
                 {TOPICS.map((t) => <option key={t} value={t}>{t}</option>)}
               </select>
             </Field>
-            <Field label="How urgent" hint={priority === "Urgent" ? "Use urgent when it is stopping you serving customers." : undefined}>
+            <Field label="How urgent" tip={priority === "Urgent" ? "Use urgent when it is stopping you serving customers." : undefined}>
               <select value={priority} onChange={(e) => setPriority(e.target.value as TicketPriority)}>
                 {PRIOS.map((p) => <option key={p} value={p}>{p}</option>)}
               </select>
@@ -145,7 +145,7 @@ export default function Support() {
           </Field>
           <div style={{ height: 12 }} />
           <Field label="What happened"
-            hint="What you did, what you expected, and what you saw instead. A bill or ticket number helps us find it.">
+            tip="What you did, what you expected, and what you saw instead. A bill or ticket number helps us find it.">
             <textarea rows={5} value={body} onChange={(e) => setBody(e.target.value)} />
           </Field>
           <div style={{ height: 12 }} />
@@ -214,7 +214,7 @@ export default function Support() {
       </Grid>
 
       <div className="mtop">
-        <Card title="Before you raise one" sub="the four we are asked most often">
+        <Card title="Before you raise one" tip="the four we are asked most often">
           <Grid cols="g2">
             {FAQ.map(([q_, a]) => (
               <div key={q_}>
@@ -271,7 +271,7 @@ function SupportDrawer({ id }: DrawerProps) {
         <Pill tone="mu">{LOC[t.loc].n}</Pill>
       </div>
 
-      <Section title="Conversation" sub="Everything said about this ticket, oldest first.">
+      <Section title="Conversation" tip="Everything said about this ticket, oldest first.">
         {t.messages.length === 0 && <p className="mini">No detail was added when this was raised.</p>}
         {t.messages.map((m) => (
           <div key={m.id} className="card" style={{ boxShadow: "none", marginBottom: 10 }}>
@@ -304,7 +304,7 @@ function SupportDrawer({ id }: DrawerProps) {
       )}
 
       {mayRate(st) && (
-        <Section title="Was this sorted?" sub="Your rating tells the desk whether the fix actually landed.">
+        <Section title="Was this sorted?" tip="Your rating tells the desk whether the fix actually landed.">
           <BtnRow>
             {[1, 2, 3, 4, 5].map((n) => (
               <Btn key={n} size="sm" variant={t.rating === n ? "solid" : "gh"}

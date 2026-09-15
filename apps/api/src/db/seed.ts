@@ -1,4 +1,4 @@
-import { getTableName, is, sql } from "drizzle-orm";
+import { eq, getTableName, is, sql } from "drizzle-orm";
 import { PgTable } from "drizzle-orm/pg-core";
 import * as FX from "@rch/contract/fixtures";
 import type { Db } from "./client.js";
@@ -74,11 +74,11 @@ export function grnPoLineNo(po: { lines: { it: string }[] } | undefined, g: { id
 /**
  * `bare` is the hospital with nothing in it - the shape a real deployment starts from (`deploy.sh`
  * passes `--bare`). It writes the six locations, the document numbering and the one admin account,
- * and none of the demo hospital: no items, recipes, prices, menus, stock, payers, vendors,
- * documents or demo staff. The six locations are seeded so a bare hospital starts with the store,
- * the kitchen, the rejected-goods shelf and the three outlets it opened with; more are opened from
- * `/admin`, the same place the admin account signs in to create the real staff. Everything else is
- * entered from the screens.
+ * and none of the demo hospital: no items, prices, menus, stock, payers, vendors, documents or
+ * demo staff. The six locations are seeded so a bare hospital starts with the store, the kitchen,
+ * the rejected-goods shelf and the three outlets it opened with; more are opened from `/admin`,
+ * the same place the admin account signs in to create the real staff. Everything else is entered
+ * from the screens.
  *
  * With `force` over a database that already holds the demo hospital, the same truncate below
  * empties it first, which is how a host seeded with demo data is put back to a clean start.
@@ -119,11 +119,14 @@ const userRow = (u: (typeof FX.USERS)[number], passwordHash: string, mustChange:
 });
 
 // Quarantine is one of `FX.LOC`'s own rows from Phase 5 (it is a `StockLoc`, not a `LocKey`),
-// so it arrives with the other five rather than being written out a second time here.
+// so it arrives with the other five rather than being written out a second time here. No
+// `priceListId` here: a bare hospital has no price lists to point at (the FK would refuse an
+// id that does not exist yet), and the demo hospital's `seedMaster` sets each outlet's onto a
+// list only after `price_lists` itself is seeded, below.
 async function seedLocations(tx: Tx) {
   await tx.insert(s.locations).values(
     Object.entries(FX.LOC).map(([key, l]) => ({
-      key, name: l.n, code: l.c, type: l.type, floor: l.floor, costCentre: l.cc, priceList: l.list ?? null,
+      key, name: l.n, code: l.c, type: l.type, floor: l.floor, costCentre: l.cc,
       sellable: l.type === "Outlet", active: l.active, parFactor: l.par,
     })),
   );
@@ -131,7 +134,7 @@ async function seedLocations(tx: Tx) {
 
 /**
  * Every document band - requests, tickets, procurement, production, bills, ops - and nothing
- * above it. The master half (items, locations, recipes, menus, price lists, users, payers) is
+ * above it. The master half (items, locations, menus, price lists, users, payers) is
  * invariant across a suite, so a test file can seed it once and reset only this between cases.
  * `seedDatabase` calls it too, in place of the six calls it used to make in a row, so the full
  * seed and a per-case reset cannot drift into two different hospitals.
@@ -161,10 +164,14 @@ async function seedMaster(tx: Tx, passwordHash: string, mustChange: boolean) {
   await tx.insert(s.items).values(Object.entries(FX.IT).map(([key, i]) => ({
     key, code: i.c, name: i.n, unit: i.u, type: i.t, grp: i.g, hsn: i.hsn, gst: i.gst, reorderLevel: i.rl, cost: i.cost, mrp: i.mrp ?? null, shelfLifeHours: i.sl ?? null,
   })));
-  await tx.insert(s.recipes).values(Object.entries(FX.RCP).map(([itemKey, r]) => ({ itemKey, overheadPct: r.ov })));
-  await tx.insert(s.recipeLines).values(Object.entries(FX.RCP).flatMap(([itemKey, r]) => r.l.map(([ingredientKey, qty], seq) => ({ itemKey, ingredientKey, qty, seq }))));
   await tx.insert(s.locationItems).values(Object.entries(FX.MENU).flatMap(([loc, keys]) => keys.map((itemKey, seq) => ({ loc, itemKey, seq }))));
-  await tx.insert(s.priceListItems).values((["A", "B"] as const).flatMap((list) => Object.entries(FX.PL[list]).map(([itemKey, price]) => ({ list, itemKey, price }))));
+  await tx.insert(s.priceLists).values(FX.PRICE_LISTS.map((pl) => ({ id: pl.id, name: pl.name })));
+  await tx.insert(s.priceListItems).values(Object.entries(FX.PL).flatMap(([listId, prices]) => Object.entries(prices).map(([itemKey, price]) => ({ listId, itemKey, price }))));
+  // Each outlet's active list, now that `price_lists` exists for it to point at (the FK on
+  // `locations.price_list_id` would refuse this any earlier).
+  for (const [key, l] of Object.entries(FX.LOC)) {
+    if (l.list) await tx.update(s.locations).set({ priceListId: l.list }).where(eq(s.locations.key, key));
+  }
   await tx.insert(s.users).values(FX.USERS.map((u) => userRow(u, passwordHash, mustChange)));
   // The three rosters a non-cash bill may be posted to. They already carry `{kind, id, name}`
   // in the fixtures, so the table is the same three lists in one place - which is what lets the
@@ -210,7 +217,7 @@ async function seedRequestsAndTickets(tx: Tx, shiftMs: number) {
 }
 
 async function seedProcurement(tx: Tx, shiftMs: number) {
-  // Unlike the other master rosters (items, locations, recipes, menus, price lists, users,
+  // Unlike the other master rosters (items, locations, menus, price lists, users,
   // payers), vendors sit with the documents: `purchaseorders.test.ts` and its neighbours build
   // fresh vendors by name inside a case (`given.vendor`) and expect the roster clean again next
   // case, so a `resetDocuments` reset truncates `vendors` and this is what repopulates it.

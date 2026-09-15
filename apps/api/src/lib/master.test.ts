@@ -31,8 +31,8 @@ describe("loadMaster", () => {
     expect(m.locations.kiosk).toMatchObject({ active: true, par: 0.15 });
     expect(m.locations.quarantine).toMatchObject({ active: true, par: 1 });
   });
-  it("returns the recipes with their lines in the order they were written", async () => {
-    expect((await loadMaster(t.db)).recipes).toEqual(FX.RCP);
+  it("carries the items and the locations, and nothing else", async () => {
+    expect(Object.keys(await loadMaster(t.db)).sort()).toEqual(["items", "locations"]);
   });
   it("leaves a withdrawn item out, so no rule can price something the master no longer sells", async () => {
     await t.db.update(items).set({ active: false }).where(eq(items.key, "chips"));

@@ -9,7 +9,7 @@ import { emptyFor, sortRows, useSort, type SortValue } from "./useSort";
 import type { ItemType, LocKey } from "../../types";
 
 const TYPES: (ItemType | "All")[] = ["All", "MRP", "FG", "MTO"];
-const STATES = ["All", "Off somewhere", "Switched off by hand", "Out of stock or short", "Sellable everywhere"] as const;
+const STATES = ["All", "Off somewhere", "Switched off by hand", "Out of stock", "Sellable everywhere"] as const;
 const tagKind = (t: ItemType) => (t === "MRP" ? "tr" : t === "FG" || t === "MTO" ? "md" : undefined);
 
 export default function Availability() {
@@ -80,7 +80,7 @@ export default function Availability() {
       <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
         <Switch on={!off} onChange={() => toggleAvail(loc, it)} label={`${IT[it].n} at ${LOC[loc].n}`} />
         <span className="mini" style={{ color: off ? "var(--warn)" : a.ok ? undefined : "var(--crit)" }}>
-          {off ? "off - " + (a.why ?? "switched off") : a.ok ? (a.left ?? "available") + " left" : a.why}
+          {off ? "off - " + (a.why ?? "switched off") : a.ok ? (a.left ? a.left + " left" : "made to order") : a.why}
         </span>
       </div>
     );
@@ -91,7 +91,7 @@ export default function Availability() {
       <PageHead
         crumbs={["Royal Care", "Outlets", "Product On / Off"]}
         title="Product availability master"
-        sub="Which products each counter can sell."
+        tip="Which products each counter can sell."
       />
 
       <Alert tone="i" label="LIVE">
@@ -101,11 +101,11 @@ export default function Availability() {
       {totalOff > 0 && (
         <Alert tone="w" label="OFF">
           <b>{totalOff}</b> product-counter combination{totalOff > 1 ? "s" : ""} cannot be sold right now -{" "}
-          <b>{totalManual}</b> switched off here, <b>{totalOff - totalManual}</b> out of stock or short an ingredient.
+          <b>{totalManual}</b> switched off here, <b>{totalOff - totalManual}</b> out of stock.
         </Alert>
       )}
 
-      <Card title="Sellable by counter" sub="What each outlet lists, and why anything is off" flush>
+      <Card title="Sellable by counter" tip="What each outlet lists, and why anything is off" flush>
         <DataTable
           cols={[
             { h: "Counter", cls: "nm", w: "26%" },
@@ -113,7 +113,7 @@ export default function Availability() {
             { h: "Listed", r: true },
             { h: "Sellable", r: true },
             { h: "Switched off by hand", r: true },
-            { h: "Out of stock or short", r: true },
+            { h: "Out of stock", r: true },
           ]}
           rows={counts.map((c) => ({
             key: c.loc,

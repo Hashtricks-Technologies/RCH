@@ -6,6 +6,20 @@ import { basePrices } from "../lib/selectors";
 import type { Role } from "../types";
 
 export const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v));
+
+/**
+ * Every action the store was built with, captured once before any test can overwrite one.
+ *
+ * A test that stubs an action does it with `setState`, and `setState` merges - so the stub
+ * outlives the test and every later one in the file calls the mock instead of the real thing.
+ * That is invisible until a *different* test happens to depend on the action that was stubbed,
+ * which is how a `vi.fn()` for `openDrawer` in the price-list tests left the POS bill tests
+ * asserting against a drawer that never opened, three hundred lines away and passing in
+ * isolation. `resetStore` puts these back, so a stub lasts exactly one test.
+ */
+const ACTIONS = Object.fromEntries(
+  Object.entries(useApp.getState()).filter(([, v]) => typeof v === "function"),
+) as Partial<ReturnType<typeof useApp.getState>>;
 export const S = () => useApp.getState();
 
 /**
@@ -55,8 +69,9 @@ type Trail = { hist: { s: string; who: string; t: string }[] };
  * carries the instant the store expects beside the time it prints.
  */
 export function resetStore() {
-  hydrateMaster({ items: FX.IT, locations: FX.LOC, recipes: FX.RCP, prices: FX.PL, menu: FX.MENU, users: FX.USERS });
+  hydrateMaster({ items: FX.IT, locations: FX.LOC, prices: FX.PL, priceLists: FX.PRICE_LISTS, menu: FX.MENU, users: FX.USERS });
   hydrateRoster({ patients: FX.PATIENTS, staff: FX.STAFF, depts: FX.DEPTS });
+  useApp.setState(ACTIONS);
   const now = Date.now();
   const dated = <T extends { at: string }>(r: T) => ({ ...r, iso: isoOf(now, r.at) });
   const trailed = <T extends Trail>(r: T) => ({ ...r, hist: r.hist.map((h) => ({ ...h, iso: isoOf(now, h.t) })) });
@@ -75,12 +90,8 @@ export function resetStore() {
     // starts empty - the same shape the fixtures give quarantine's shelf.
     adjustments: [],
     cart: {}, draft: [], prqDraft: [], poolVendor: {}, drawer: null, toast: null, shopFilter: null,
-    // ---- payers ----
-    // Empty, not seeded: the manager's register has no fixture, because nothing on the snapshot
-    // carries it - the screen asks `GET /payers` for it on the way in.
-    payers: [],
     // ---- admin: account management ----
-    // Same reason as `payers` above: nothing on the snapshot carries the account list or its
+    // Empty, not seeded: nothing on the snapshot carries the account list or its
     // action log, and leaving either out of this reset would let one test's rows leak into the
     // next one's (`setState` merges, it does not replace).
     accounts: [], adminActions: [], deskTickets: [],

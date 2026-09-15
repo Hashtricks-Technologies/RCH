@@ -110,8 +110,22 @@
     {
       "idx": 15,
       "version": "7",
-      "when": 1789403830827,
-      "tag": "0015_outlets",
+      "when": 1789397959565,
+      "tag": "0015_drop_recipes",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1789430335547,
+      "tag": "0016_price_lists",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1789476774451,
+      "tag": "0017_outlets",
       "breakpoints": true
     }
   ]

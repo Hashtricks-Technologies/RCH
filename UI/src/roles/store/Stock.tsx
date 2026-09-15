@@ -112,7 +112,7 @@ export default function Stock() {
       <PageHead
         crumbs={["Royal Care", "Central Store"]}
         title="Stock in hand"
-        sub="Stock held at the central store."
+        tip="Stock held at the central store."
         actions={
           <>
             <Btn variant="gh" onClick={() => nav("/procure")}>Requisitions</Btn>
@@ -123,7 +123,7 @@ export default function Stock() {
 
       <Card
         title="Central store ledger"
-        sub="On hand, reserved, on order with procurement and in transit to the outlets"
+        tip="On hand, reserved, on order with procurement and in transit to the outlets"
         flush
       >
         <Toolbar
@@ -218,7 +218,7 @@ export default function Stock() {
 
       <Card
         title="Quarantine"
-        sub="Rejected at goods receipt - off the good shelf and out of every count above"
+        tip="Rejected at goods receipt - off the good shelf and out of every count above"
         flush
         className="mtop"
       >
@@ -226,7 +226,7 @@ export default function Stock() {
           cols={[
             { h: "Item", cls: "nm", w: "30%" },
             { h: "Type", w: "10%" },
-            { h: "Held", r: true },
+            { h: "Held", r: true, tip: "Held pending a decision with the vendor · nothing here is issuable" },
             { h: "At cost", r: true },
           ]}
           rows={rejected.map((it) => ({
@@ -243,12 +243,7 @@ export default function Stock() {
             sub: "A quantity turned away on a delivery lands here instead of on the shelf.",
           }}
         />
-        {rejected.length > 0 && (
-          <TableFoot
-            count={rejected.length}
-            extra={<>Held pending a decision with the vendor · nothing here is issuable</>}
-          />
-        )}
+        {rejected.length > 0 && <TableFoot count={rejected.length} />}
       </Card>
     </>
   );

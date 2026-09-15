@@ -19,9 +19,9 @@ import type { LocKey } from "../types";
 /**
  * What the kitchen can be asked for at one outlet: a **finished good** that is on that outlet's
  * menu. Finished goods only, and made-to-order is the case worth naming - `capp` and `chai`
- * carry a recipe and a menu listing, so they read as orderable, but nothing downstream could
- * fill the order: `makeBatch` refuses to stock a phantom shelf of an MTO item (C2), `distribute`
- * refuses to send one, and a dispatch would therefore have nothing to cover the line with. The
+ * carry a menu listing, so they read as orderable, but nothing downstream could fill the order:
+ * `makeBatch` refuses to stock a phantom shelf of an MTO item (C2), `distribute` refuses to send
+ * one, and a dispatch would therefore have nothing to cover the line with. The
  * server refuses both cases with its own sentences; the picker is what keeps the operator from
  * reading either one.
  */
@@ -180,7 +180,7 @@ export default function KitchenOrderForm({ loc, onDone }: { loc: LocKey; onDone?
       </BtnRow>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, margin: "12px 0" }}>
-        <Field label="Needed by" hint="Leave blank if there is no deadline.">
+        <Field label="Needed by" tip="Leave blank if there is no deadline.">
           <input type="date" value={need} aria-label="Needed by" onChange={(e) => setNeed(e.target.value)} />
         </Field>
         <Field label="For">

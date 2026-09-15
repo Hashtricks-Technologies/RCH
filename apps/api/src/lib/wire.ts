@@ -36,7 +36,7 @@ export const toWireItem = (r: ItemRow): Item => strip({
 
 export type LocationRow = typeof locations.$inferSelect;
 export const toWireLocation = (r: LocationRow): Location => strip({
-  n: r.name, c: r.code, type: r.type, floor: r.floor, cc: r.costCentre, list: r.priceList ?? undefined,
+  n: r.name, c: r.code, type: r.type, floor: r.floor, cc: r.costCentre, list: r.priceListId ?? undefined,
   active: r.active, par: r.parFactor,
 });
 

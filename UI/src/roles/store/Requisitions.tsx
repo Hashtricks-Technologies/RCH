@@ -8,7 +8,7 @@ import { activeItems, addedByProcurement, avail, awaitingApproval, onOrder, prqD
 import { U, fq, money, money0, sum, unitTotal } from "../../lib/fmt";
 import {
   Alert, Btn, BtnRow, Card, DataTable, DraftLineInput, Field, FilterBtn, FilterSelect, Grid,
-  PageHead, StatusPill, TableFoot, Toolbar, useLineKeys,
+  PageHead, StatusPill, TableFoot, Tip, Toolbar, useLineKeys,
 } from "../../ui/kit";
 import type { PrqProgressLine } from "../../lib/selectors";
 import type { DraftLine } from "../../types";
@@ -159,7 +159,7 @@ export default function Requisitions() {
       <PageHead
         crumbs={["Royal Care", "Central Store", "Purchasing"]}
         title="Stock requisitions"
-        sub="Ask procurement to buy stock."
+        tip="Ask procurement to buy stock."
         actions={<Btn variant="gh" onClick={fillFromLow}>Fill from below-reorder items</Btn>}
       />
 
@@ -248,7 +248,7 @@ export default function Requisitions() {
                         <td className="n">{fq(qty(s, "store", l.it), l.it)}</td>
                         <td className="n">
                           {open > 0
-                            ? <b style={{ color: "var(--warn)" }} title="Already on an open requisition">{fq(open, l.it)}</b>
+                            ? <Tip text="Already on an open requisition"><b style={{ color: "var(--warn)" }}>{fq(open, l.it)}</b></Tip>
                             : <span className="dim">{fq(0, l.it)}</span>}
                         </td>
                         <td className="n">{fq(it ? it.rl : 0, l.it)}</td>
@@ -279,8 +279,9 @@ export default function Requisitions() {
               hint={
                 prqDraft.length
                   ? `Likely vendors: ${[...new Set(prqDraft.map((l) => suggestVendor(s.vendors, IT[l.it]?.g ?? "")?.n ?? "-"))].join(", ")}`
-                  : "Say why the stock is needed - procurement uses this to pick a vendor and a delivery date."
+                  : undefined
               }
+              tip="Say why the stock is needed - procurement uses this to pick a vendor and a delivery date."
             >
               <textarea
                 rows={2}
@@ -309,7 +310,7 @@ export default function Requisitions() {
 
         <Card
           title="Previous requisitions"
-          sub="Raised by the central store on procurement · open a row to see what was actually ordered"
+          tip="Raised by the central store on procurement · open a row to see what was actually ordered"
           flush
         >
           <Toolbar

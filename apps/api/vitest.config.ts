@@ -16,8 +16,8 @@ export default defineConfig({
     testTimeout: 30_000, // Argon2 in the auth suites has crossed 20 s under a full parallel gate
     hookTimeout: 60_000,
     setupFiles: ["./src/test/env.ts"],
-    // Set a point or two under what the whole suite measures today (statements 93.59, branches
-    // 81.86, functions 97.78, lines 95.59): the number is not a target, it is a ratchet - a
+    // Set a point or two under what the whole suite measures today (statements 93.37, branches
+    // 81.62, functions 97.67, lines 95.38): the number is not a target, it is a ratchet - a
     // deleted test or an unexercised branch of a new refusal cannot pass quietly. Raise them
     // when the real figure rises; never lower one to clear a red run.
     //

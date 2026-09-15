@@ -138,8 +138,14 @@ describe("the rules refuse before anything is written", () => {
     expect(r.statusCode, r.body).toBe(404);
     expect(r.json().error.message).toBe("There is no item nosuch.");
   });
-  it("refuses a made-to-order item whose ingredient has run out, and names it", async () => {
-    await rejects({ loc: "coffee", tender: "Cash", lines: [{ it: "capp", qty: 1 }] }, "Cappuccino is not available at Coffee Shop - Milk 1L (toned) at 0.000 L");
+  it("refuses a made-to-order item the counter has switched off, in the switch's own words", async () => {
+    // Nothing on a shelf decides a made-to-order item, so the switch is the one thing that can.
+    await app.db.insert(s.availabilityOverrides).values({ loc: "coffee", itemKey: "chai", reason: "Tea urn is being descaled" });
+    try {
+      await rejects({ loc: "coffee", tender: "Cash", lines: [{ it: "chai", qty: 1 }] }, "Masala tea is not available at Coffee Shop - Tea urn is being descaled");
+    } finally {
+      await app.db.delete(s.availabilityOverrides).where(and(eq(s.availabilityOverrides.loc, "coffee"), eq(s.availabilityOverrides.itemKey, "chai")));
+    }
   });
   it("refuses more of a traded item than the shelf holds", async () => {
     await rejects({ loc: "coffee", tender: "Cash", lines: [{ it: "water", qty: 99 }] }, "Only 9 nos of Mineral water 1L left at Coffee Shop");
@@ -153,36 +159,25 @@ describe("the rules refuse before anything is written", () => {
   });
 });
 
-describe("a made-to-order sale is a recipe, posted", () => {
-  // The Coffee Shop's milk is at zero in the seed - a delivery has to land before a cappuccino can be sold.
-  beforeAll(async () => {
-    await app.db.transaction(async (tx) => {
-      await postMoves(tx, [{ loc: "coffee", it: "milk", qty: 5, kind: "opening", refType: "test", refId: "milk-delivery" }]);
-    });
-  });
-
-  it("counts portions, not units, when the cart asks for too many", async () => {
+describe("a made-to-order sale moves no stock", () => {
+  it("sells a cappuccino with the Coffee Shop's milk at zero, and posts no move for it", async () => {
+    // The seed leaves the Coffee Shop with no milk: a drink made at the till is sold regardless.
+    expect(await onHand("coffee", "milk")).toBe(0);
+    const cups = await onHand("coffee", "cup");
     const r = await pay("u1", { loc: "coffee", tender: "Cash", lines: [{ it: "capp", qty: 100 }] });
-    expect(r.statusCode, r.body).toBe(422);
-    // 5 L of milk at 0.15 L a cup is 33 cappuccinos; the other three ingredients go further.
-    expect(r.json().error.message).toBe("Only 33 nos of Cappuccino left at Coffee Shop");
-  });
-
-  it("explodes one cappuccino into four negative sale moves", async () => {
-    const milk = await onHand("coffee", "milk");
-    const r = await pay("u1", { loc: "coffee", tender: "Cash", lines: [{ it: "capp", qty: 1 }] });
     expect(r.statusCode, r.body).toBe(200);
     const b = r.json();
-    expect(b.result.tot).toBe(75);
-    expect(b.result.tax).toBe(3.57);
-    expect(b.result.lines).toEqual([{ it: "capp", qty: 1, rate: 75 }]);
+    expect(b.result.tot).toBe(7500);
+    expect(b.result.lines).toEqual([{ it: "capp", qty: 100, rate: 75 }]);
+    expect(b.message).toBe(`Bill ${b.result.no} · ₹7500.00 collected at Coffee Shop`);
 
     const moves = await app.db.select().from(s.stockMoves).where(and(eq(s.stockMoves.refType, "bill"), eq(s.stockMoves.refId, b.result.no)));
-    expect(Object.fromEntries(moves.map((m) => [m.itemKey, m.qty]))).toEqual({ milk: -0.15, beans: -0.012, sugar: -0.006, cup: -1 });
-    expect(moves.every((m) => m.kind === "sale" && m.qty < 0 && m.refId === b.result.no)).toBe(true);
-    // The finished drink is never stocked: only the ingredients move.
-    expect(moves.some((m) => m.itemKey === "capp")).toBe(false);
-    expect(await onHand("coffee", "milk")).toBe(milk - 0.15);
+    expect(moves).toEqual([]);
+    expect(await onHand("coffee", "milk")).toBe(0);
+    expect(await onHand("coffee", "cup")).toBe(cups);
+    // No shelf line is created for a drink no shelf carries.
+    const rows = await app.db.select().from(s.stockBalances).where(and(eq(s.stockBalances.loc, "coffee"), eq(s.stockBalances.itemKey, "capp")));
+    expect(rows).toHaveLength(0);
   });
 });
 
@@ -191,9 +186,9 @@ describe("the printed MRP is the ceiling at the till too", () => {
     // `savePrice` refuses a price above the MRP, so the only way a list sits above one is an
     // MRP lowered after the item was priced. Write it straight into the table to make that
     // history, then sell one: the bill charges what is printed on the pack, not what the list says.
-    const before = (await app.db.select().from(s.priceListItems).where(and(eq(s.priceListItems.list, "B"), eq(s.priceListItems.itemKey, "juice"))))[0];
+    const before = (await app.db.select().from(s.priceListItems).where(and(eq(s.priceListItems.listId, "PL-002"), eq(s.priceListItems.itemKey, "juice"))))[0];
     await app.db.update(s.priceListItems).set({ price: 25 })
-      .where(and(eq(s.priceListItems.list, "B"), eq(s.priceListItems.itemKey, "juice")));
+      .where(and(eq(s.priceListItems.listId, "PL-002"), eq(s.priceListItems.itemKey, "juice")));
     try {
       const r = await pay("u1", { loc: "coffee", tender: "Cash", lines: [{ it: "juice", qty: 1 }] });
       expect(r.statusCode, r.body).toBe(200);
@@ -203,7 +198,7 @@ describe("the printed MRP is the ceiling at the till too", () => {
       expect(b.message).toBe(`Bill ${b.result.no} · ₹20.00 collected at Coffee Shop`);
     } finally {
       await app.db.update(s.priceListItems).set({ price: before.price })
-        .where(and(eq(s.priceListItems.list, "B"), eq(s.priceListItems.itemKey, "juice")));
+        .where(and(eq(s.priceListItems.listId, "PL-002"), eq(s.priceListItems.itemKey, "juice")));
     }
   });
 });
@@ -565,12 +560,10 @@ describe("POST /bills/:no/void - the manager takes a bill back", () => {
       .orderBy(asc(s.stockMoves.id));
 
   // Every case here sells something first, and the shelves above have been drawn down all file.
-  // Milk is seeded at zero in the Coffee Shop, so the cappuccino case needs some put on too.
   beforeAll(async () => {
     await app.db.transaction((tx) => postMoves(tx, [
       { loc: "coffee", it: "water", qty: 400, kind: "adjustment", refType: "test", refId: "void-topup" },
       { loc: "coffee", it: "juice", qty: 200, kind: "adjustment", refType: "test", refId: "void-topup" },
-      { loc: "coffee", it: "milk", qty: 20, kind: "adjustment", refType: "test", refId: "void-topup" },
     ]));
   });
 
@@ -618,25 +611,36 @@ describe("POST /bills/:no/void - the manager takes a bill back", () => {
     expect(sold.every((m) => m.reversesId === null)).toBe(true);
   });
 
-  it("explodes an MTO bill back into the ingredients the sale actually took", async () => {
-    const milk = await onHand("coffee", "milk");
-    const cups = await onHand("coffee", "cup");
-    const sale = await pay("u1", { loc: "coffee", tender: "Cash", lines: [{ it: "capp", qty: 4 }] });
+  it("puts back only what the sale took - a made-to-order line took nothing", async () => {
+    const water = await onHand("coffee", "water");
+    const sale = await pay("u1", { loc: "coffee", tender: "Cash", lines: [{ it: "capp", qty: 4 }, { it: "water", qty: 1 }] });
     expect(sale.statusCode, sale.body).toBe(200);
     const no = sale.json().result.no as string;
-    expect(await onHand("coffee", "milk")).toBe(milk - 0.6);         // 4 × 0.15 L
+    expect((await movesOf(no, "sale")).map((m) => [m.itemKey, m.qty])).toEqual([["water", -1]]);
+    expect(await onHand("coffee", "water")).toBe(water - 1);
 
     const r = await voidBill("u2", no, "Customer changed their mind before it was poured");
     expect(r.statusCode, r.body).toBe(200);
+    expect(r.json().message).toBe(`${no} voided - 1 nos back on the shelf at Coffee Shop`);
 
     const back = await movesOf(no, "reversal");
-    // The recipe's four ingredients, not the dish: no shelf ever carried a cappuccino.
-    expect(back.map((m) => m.itemKey).sort()).toEqual(["beans", "cup", "milk", "sugar"]);
-    expect(back.some((m) => m.itemKey === "capp")).toBe(false);
-    expect(await onHand("coffee", "milk")).toBe(milk);
-    expect(await onHand("coffee", "cup")).toBe(cups);
-    // The bill on the wire still reads as the dish that was sold.
-    expect(r.json().result.lines).toEqual([{ it: "capp", qty: 4, rate: 75 }]);
+    expect(back.map((m) => [m.itemKey, m.qty])).toEqual([["water", 1]]);
+    expect(await onHand("coffee", "water")).toBe(water);
+    // The bill on the wire still reads as what was sold.
+    expect(r.json().result.lines).toEqual([{ it: "capp", qty: 4, rate: 75 }, { it: "water", qty: 1, rate: 20 }]);
+  });
+
+  it("voids a bill of made-to-order lines alone, posting nothing", async () => {
+    const sale = await pay("u1", { loc: "coffee", tender: "Cash", lines: [{ it: "chai", qty: 2 }] });
+    expect(sale.statusCode, sale.body).toBe(200);
+    const no = sale.json().result.no as string;
+    expect(await movesOf(no, "sale")).toEqual([]);
+
+    const r = await voidBill("u2", no, "Rang up at the wrong counter");
+    expect(r.statusCode, r.body).toBe(200);
+    expect(r.json().result.voided).toBe(true);
+    expect(r.json().message).toBe(`${no} voided`);
+    expect(await movesOf(no, "reversal")).toEqual([]);
   });
 
   it("needs the bill number percent-encoded, and 404s the bare slash form", async () => {

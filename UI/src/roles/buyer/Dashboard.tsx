@@ -66,15 +66,15 @@ export default function Dashboard() {
   const kpis = [
     {
       l: "Requisitions waiting on you", v: String(waiting.length),
-      d: <>from the central store</>,
+      tip: <>from the central store</>,
     },
     {
       l: "Items on the procurement list", v: String(pool.length),
-      d: <>approved, not yet claimed by an order</>,
+      tip: <>approved, not yet claimed by an order</>,
     },
     {
       l: "Drafts open", v: String(drafts.length),
-      d: <>awaiting your review before they go to a vendor</>,
+      tip: <>awaiting your review before they go to a vendor</>,
     },
     {
       l: "Value on order", v: lakh(liveValue),
@@ -82,7 +82,7 @@ export default function Dashboard() {
     },
     {
       l: `Stock value · ${LOC.store.n}`, v: lakh(stockValue(s, "store")),
-      d: <>received goods land here directly</>,
+      tip: <>received goods land here directly</>,
     },
     {
       l: "Below reorder · central store", v: String(below.length),
@@ -171,7 +171,7 @@ export default function Dashboard() {
       <PageHead
         crumbs={["Royal Care", "Procurement"]}
         title="Procurement dashboard"
-        sub="What the store needs and what is on order."
+        tip="What the store needs and what is on order."
         actions={<Btn variant="gh" onClick={() => nav("/requisitions")}>Open requisitions</Btn>}
       />
       <Kpis items={kpis} />
@@ -205,7 +205,7 @@ export default function Dashboard() {
       <div className="mtop" />
 
       <Grid cols="g21">
-        <Card title="Central store cover" sub="The eight matching items closest to running out"
+        <Card title="Central store cover" tip="The eight matching items closest to running out"
           right={<Btn variant="gh" size="sm" onClick={() => nav("/inventory")}>Full inventory</Btn>} flush>
           <Toolbar
             placeholder="Search item, code or group…"
@@ -240,7 +240,7 @@ export default function Dashboard() {
           <TableFoot count={coverRows.length} extra={<>{below.length} of {BOUGHT.length} below reorder</>} />
         </Card>
         <div>
-          <Card title="Open commitments" sub="By item, on live purchase orders" flush>
+          <Card title="Open commitments" tip="By item, on live purchase orders" flush>
             <DataTable
               cols={[
                 { h: "Item", cls: "nm", w: "44%" },
@@ -257,7 +257,7 @@ export default function Dashboard() {
             <TableFoot count={commitRows.length} extra={<>{money0(liveValue)} on live orders</>} />
           </Card>
           <div className="mtop" />
-          <Card title="Recent procurement activity" sub="Requisitions and purchase orders">
+          <Card title="Recent procurement activity" tip="Requisitions and purchase orders">
             {feed.length ? <Feed items={feed} /> : (
               <div className="empty"><b>No activity yet</b><p>Activity appears once the store keeper raises a requisition.</p></div>
             )}

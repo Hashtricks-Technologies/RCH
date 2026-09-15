@@ -8,12 +8,12 @@ import { IT, LOC } from "../data/master";
 import { useApp } from "../store";
 import { activeItems } from "../lib/selectors";
 import { fq, U } from "../lib/fmt";
-import { Alert, Btn, BtnRow, Field, FormRow, Section } from "./kit";
+import { Alert, Btn, BtnRow, Field, FormRow, Section, Tip } from "./kit";
 import { DrawerFrame } from "./Drawer";
 import { registerDrawer, type DrawerProps } from "../drawers";
 import type { AdjustReason, StockLoc } from "../types";
 
-/** The picker's order, and the one line of help under each choice. The **words** come from
+/** The picker's order, and the one line of help behind the Reason field's tip for each choice. The **words** come from
  *  `REASON_LABEL` in `@rch/domain` - the same table the server signs an adjustment's trail with,
  *  so the register and the document's history cannot end up describing it differently. Only the
  *  hints are the browser's, because a trail has nothing to explain. */
@@ -106,21 +106,21 @@ export default function AdjustmentForm({ locs, fixedLoc }: { locs: [StockLoc, ..
         is what makes it different from the hand-written correction it replaces.
       </Alert>
 
-      <Section title="What is being corrected" sub="One shelf, one reason, as many lines as the count found." />
+      <Section title="What is being corrected" tip="One shelf, one reason, as many lines as the count found." />
       <FormRow cols={fixedLoc ? "f2" : "f3"}>
         {!fixedLoc && (
-          <Field label="Location" hint="The shelf whose books are wrong.">
+          <Field label="Location" tip="The shelf whose books are wrong.">
             <select value={loc} onChange={(e) => { setLoc(e.target.value as StockLoc); setLines([]); }}>
               {locs.map((l) => <option key={l} value={l}>{LOC[l]?.n ?? l}</option>)}
             </select>
           </Field>
         )}
-        <Field label="Reason" hint={REASONS.find((r) => r.r === reason)?.hint}>
+        <Field label="Reason" tip={REASONS.find((r) => r.r === reason)?.hint}>
           <select value={reason} onChange={(e) => setReason(e.target.value as AdjustReason)}>
             {REASONS.map((r) => <option key={r.r} value={r.r}>{REASON_LABEL[r.r]}</option>)}
           </select>
         </Field>
-        <Field label="Note" hint="What happened, in your own words. Optional, and worth writing.">
+        <Field label="Note" tip="What happened, in your own words. Optional, and worth writing.">
           <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Chiller failed overnight" />
         </Field>
       </FormRow>
@@ -129,7 +129,7 @@ export default function AdjustmentForm({ locs, fixedLoc }: { locs: [StockLoc, ..
         <p className="hint">Booked against {LOC[fixedLoc]?.n ?? fixedLoc}.</p>
       )}
 
-      <Section title="Lines" sub="Write off what is gone; count up what the shelf turned out to be holding." />
+      <Section title="Lines" tip="Write off what is gone; count up what the shelf turned out to be holding." />
       <div className="tw">
         <table className="lgrid">
           <thead>
@@ -191,7 +191,7 @@ export default function AdjustmentForm({ locs, fixedLoc }: { locs: [StockLoc, ..
                   <td className="dim">{U(l.it)}</td>
                   <td className="n">
                     {over
-                      ? <b style={{ color: "var(--crit)" }} title="More than this shelf has free">{fq(free(l.it), l.it)}</b>
+                      ? <Tip text="More than this shelf has free"><b style={{ color: "var(--crit)" }}>{fq(free(l.it), l.it)}</b></Tip>
                       : <span className="dim">{fq(free(l.it), l.it)}</span>}
                   </td>
                   <td className="rt">

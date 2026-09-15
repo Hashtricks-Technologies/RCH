@@ -174,7 +174,7 @@ function PoDrawer({ id }: DrawerProps) {
           </>
         }
       >
-        <Section title="Items" sub="Rates default to the live rate contract for this vendor. Quantity can only be trimmed, not raised, from here - pick another item from the procurement list to add more.">
+        <Section title="Items" tip="Rates default to the live rate contract for this vendor. Quantity can only be trimmed, not raised, from here - pick another item from the procurement list to add more.">
           <div className="lgrid">
             <DataTable
               cols={[
@@ -216,9 +216,9 @@ function PoDrawer({ id }: DrawerProps) {
           </Alert>
         )}
 
-        <Section title="Order terms" sub="Vendor and expected delivery - editable while this order is a draft.">
+        <Section title="Order terms" tip="Vendor and expected delivery - editable while this order is a draft.">
           <FormRow cols="f2">
-            <Field label="Vendor" hint="Changing the vendor re-prices every item off that vendor's contract, unless you typed the rate yourself.">
+            <Field label="Vendor" tip="Changing the vendor re-prices every item off that vendor's contract, unless you typed the rate yourself.">
               <select value={po.vendor} onChange={(e) => { void setPoVendor(po.id, e.target.value); }}>
                 {/* The order's own vendor must always have a matching <option>, even when
                     deactivated after this draft was raised - otherwise the browser silently
@@ -275,7 +275,7 @@ function PoDrawer({ id }: DrawerProps) {
         <Alert tone="c" label={po.st === "Cancelled" ? "CANCELLED" : "SHORT"}>{po.shortNote}</Alert>
       )}
 
-      <Section title="Items" sub="Ordered, accepted and the balance still outstanding.">
+      <Section title="Items" tip="Ordered, accepted and the balance still outstanding.">
         <div className="lgrid">
           <DataTable
             cols={[
@@ -324,7 +324,7 @@ function PoDrawer({ id }: DrawerProps) {
         <TableFoot count={po.lines.length} extra={<>{money0(value)} order value</>} />
       </Section>
 
-      <Section title="Goods received" sub="GRNs booked against this order">
+      <Section title="Goods received" tip="GRNs booked against this order">
         <DataTable
           cols={[
             { h: "GRN", cls: "nm", w: "18%" },
@@ -349,7 +349,7 @@ function PoDrawer({ id }: DrawerProps) {
         />
       </Section>
 
-      <Section title="History" sub="Every step this order has been through">
+      <Section title="History" tip="Every step this order has been through">
         <Feed
           items={po.hist.map((h, i) => ({
             key: h.s + i, title: h.s, body: h.who, when: h.t, color: dotFor(h.s),

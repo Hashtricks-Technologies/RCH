@@ -104,7 +104,7 @@ describe("users-admin", () => {
 
 describe("pairing against the locations table", () => {
   it("creates a counter at an outlet opened after release", async () => {
-    await t.db.insert(locations).values({ key: "juice-bar", name: "Juice Bar", code: "OT-JB", type: "Outlet", floor: "Ground", costCentre: "CC-JB", priceList: "A" });
+    await t.db.insert(locations).values({ key: "juice-bar", name: "Juice Bar", code: "OT-JB", type: "Outlet", floor: "Ground", costCentre: "CC-JB" });
     const { emp } = await createUser(t.db, { name: "Arun P", email: "arun.p@royalcare.in", role: "counter", loc: "juice-bar", password: "a-long-enough-password" });
     expect(emp).toMatch(/^RC-\d+$/);
   });

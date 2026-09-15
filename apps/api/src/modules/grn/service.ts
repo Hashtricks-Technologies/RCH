@@ -70,7 +70,7 @@ export function createGrnService(db: Db) {
             assertRule(false, `${master.items[l.it]?.n ?? l.it} - a rejected quantity needs an arrival to be rejected from`);
           }
         }
-        const listA = await grnRepo.listAPrices(tx, lines.map((l) => l.it));
+        const shelf = await grnRepo.shelfPrices(tx, lines.map((l) => l.it));
         const today = istDate(new Date());
         for (const [i, l] of lines.entries()) {
           const r = body.lines[i]!;
@@ -81,7 +81,7 @@ export function createGrnService(db: Db) {
           // fit inside the tolerance rather than be read as a second delivery of the same goods.
           const bad = checkReceiptLine({
             name: item?.n ?? l.it, unit: item?.u ?? "nos", ordered: l.qty, received: netReceived(l),
-            mrp: item?.mrp ?? null, listA: listA[l.it] ?? 0,
+            mrp: item?.mrp ?? null, shelf: shelf[l.it] ?? 0,
           }, r, today);
           if (bad) assertRule(false, bad);
         }

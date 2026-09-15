@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { HOME } from "../nav";
 import { useApp } from "../store";
-import { Alert } from "../ui/kit";
+import { Alert, Tip } from "../ui/kit";
 import type { SignInEntry } from "../types";
 import mark from "../assets/eateszy-mark.png";
 
@@ -172,7 +172,12 @@ export default function Login() {
           </div>
         )}
 
-        <div className="fg"><label htmlFor="pw">Password</label>
+        <div className="fg">
+          {/* Beside the label, never inside it: the bubble's hidden sentence would join its name. */}
+          <div className="tipped" style={{ marginBottom: 5 }}>
+            <label htmlFor="pw" style={{ marginBottom: 0 }}>Password</label>
+            <Tip text="Forgotten your password? Ask an administrator to reset it - you will be asked to choose a new one when you next sign in." label="Password" />
+          </div>
           <input ref={pwRef} className="inp mono" id="pw" type="password" autoComplete="current-password" value={pw} onChange={(e) => setPw(e.target.value)} /></div>
         {/* The server's own sentence, or that it could not be reached - on the form, where it
             stays until the next attempt, rather than in a toast that is gone in seconds. */}
@@ -185,7 +190,6 @@ export default function Login() {
               : <button type="button" className="lgpick-link" onClick={toTyped}>Sign in as administrator</button>}
           </p>
         )}
-        <p className="lgn">Forgotten your password? Ask an administrator to reset it - you will be asked to choose a new one when you next sign in.</p>
       </form></div>
     </div>
   );

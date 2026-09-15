@@ -233,6 +233,11 @@ describe("POST /purchase-orders/:id/receive", () => {
     const { id } = await ordered([{ it: "juice", qty: 120 }]);
     expect((await post("u3", `/purchase-orders/${id}/receive`, { ...doc, lines: [good(120, { mrp: 15 })] })).json().error.message)
       .toBe("Real Juice 200ml - printed MRP ₹15.00 is below the shelf price; reprice before selling");
+    // The shelf price is the highest of every list, not just the first: juice is 18 on list A
+    // (rest, kiosk) and 20 on list B (coffee), so an MRP of 19 clears the till this order's
+    // fixture happens to sit at but is still below the true ceiling.
+    expect((await post("u3", `/purchase-orders/${id}/receive`, { ...doc, lines: [good(120, { mrp: 19 })] })).json().error.message)
+      .toBe("Real Juice 200ml - printed MRP ₹19.00 is below the shelf price; reprice before selling");
     expect((await post("u3", `/purchase-orders/${id}/receive`, { ...doc, lines: [good(120, { mrp: 20, rejected: 130 })] })).json().error.message)
       .toBe("Real Juice 200ml - rejected quantity cannot exceed what arrived");
   });

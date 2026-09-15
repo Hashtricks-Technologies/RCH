@@ -2,12 +2,11 @@ import { z } from "zod";
 import type { Role } from "./types.js";
 import { OkResponseSchema } from "./schemas/common.js";
 import { AuthResponseSchema, ChangePasswordBodySchema, LoginBodySchema, MeResponseSchema, PatchMeBodySchema, SignInDirectorySchema } from "./schemas/auth.js";
-import { AdjustmentsResponseSchema, BatchesResponseSchema, BILL_DAYS, BillsResponseSchema, ContractsResponseSchema, GrnsResponseSchema, ItemsResponseSchema, LocationsResponseSchema, MenusResponseSchema, PricesResponseSchema, ProdOrdersResponseSchema, ProductRequestsResponseSchema, PurchaseOrdersResponseSchema, RecipesResponseSchema, RequestsResponseSchema, PayersResponseSchema, RequisitionsResponseSchema, RosterResponseSchema, ShopAsksResponseSchema, SnapshotSchema, StockResponseSchema, SupportTicketsResponseSchema, TicketsResponseSchema, VendorsResponseSchema } from "./schemas/snapshot.js";
+import { AdjustmentsResponseSchema, BatchesResponseSchema, BILL_DAYS, BillsResponseSchema, ContractsResponseSchema, GrnsResponseSchema, ItemsResponseSchema, LocationsResponseSchema, MenusResponseSchema, PriceListsResponseSchema, PricesResponseSchema, ProdOrdersResponseSchema, ProductRequestsResponseSchema, PurchaseOrdersResponseSchema, RequestsResponseSchema, RequisitionsResponseSchema, RosterResponseSchema, ShopAsksResponseSchema, SnapshotSchema, StockResponseSchema, SupportTicketsResponseSchema, TicketsResponseSchema, VendorsResponseSchema } from "./schemas/snapshot.js";
 import { CreditParamsSchema, CreditResponseSchema, StockLedgerQuerySchema, StockLedgerResponseSchema } from "./schemas/reports.js";
 import { AdminActionSchema, AdminActionsQuerySchema, AdminDeletedUserSchema, AdminLocationSchema, AdminUserIdParamsSchema, AdminUserSchema, AdminUserWithTempPasswordSchema, CreateAdminUserBodySchema, CreateOutletBodySchema, OutletKeyParamsSchema, UpdateAdminUserBodySchema, UpdateOutletBodySchema } from "./schemas/admin.js";
-import { RecipeResultSchema, SaveRecipeBodySchema } from "./schemas/recipes.js";
-import { AdjustmentSchema, BatchSchema, BillSchema, PayerRecordSchema, ProdOrderSchema, ProductRequestSchema, PurchaseOrderSchema, RateContractSchema, RequisitionSchema, ShopAskSchema, StockRequestSchema, SupportTicketSchema, TicketSchema, VendorSchema } from "./schemas/documents.js";
-import { AddToProcurementListBodySchema, AnswerProductRequestBodySchema, AnswerShopAskBodySchema, ApproveRequestBodySchema, ApproveRequisitionBodySchema, ApprovalResultSchema, CancelPoBodySchema, CancelTicketBodySchema, CloseShortBodySchema, ContractBodySchema, CreateAdjustmentBodySchema, CreateItemBodySchema, CreatePoBodySchema, CreateProductRequestBodySchema, CreateRequestBodySchema, CreateRequisitionBodySchema, DeclineRequisitionBodySchema, DeclineShopAskBodySchema, DispatchResultSchema, DistributeBodySchema, DocIdParamsSchema, HandoverBodySchema, IssueResultSchema, MakeBatchBodySchema, MenuItemBodySchema, MenuItemParamsSchema, MenuLocParamsSchema, MenuResultSchema, PatchContractBodySchema, PatchPoBodySchema, PatchVendorBodySchema, PatchPayerBodySchema, PayBodySchema, PayerBodySchema, PayerParamsSchema, PoLineParamsSchema, PriceResultSchema, RaiseTicketBodySchema, RateTicketBodySchema, DeskReplyBodySchema, ReceiptResultSchema, ReceivePoBodySchema, RejectRequestBodySchema, ReplyToTicketBodySchema, SavePriceBodySchema, SavePriceParamsSchema, SetOrderStatusBodySchema, SetTicketStatusBodySchema, ShopAskBodySchema, ShopAskSentResultSchema, ToggleAvailBodySchema, ToggleResultSchema, TransferBodySchema, UpdatePoLineBodySchema, VendorBodySchema, writeResponse, ItemKeyParamsSchema, ItemResultSchema, PatchItemBodySchema, BillNoParamsSchema, VoidBillBodySchema, CreateProdOrderBodySchema } from "./schemas/writes.js";
+import { AdjustmentSchema, BatchSchema, BillSchema, PriceListSchema, ProdOrderSchema, ProductRequestSchema, PurchaseOrderSchema, RateContractSchema, RequisitionSchema, ShopAskSchema, StockRequestSchema, SupportTicketSchema, TicketSchema, VendorSchema } from "./schemas/documents.js";
+import { ActivatePriceListResultSchema, AddToProcurementListBodySchema, AnswerProductRequestBodySchema, AnswerShopAskBodySchema, ApproveRequestBodySchema, ApproveRequisitionBodySchema, ApprovalResultSchema, CancelPoBodySchema, CancelTicketBodySchema, CloseShortBodySchema, ContractBodySchema, CreateAdjustmentBodySchema, CreateItemBodySchema, CreatePoBodySchema, CreatePriceListBodySchema, CreateProductRequestBodySchema, CreateRequestBodySchema, CreateRequisitionBodySchema, DeclineRequisitionBodySchema, DeclineShopAskBodySchema, DeletedPriceListSchema, DispatchResultSchema, DistributeBodySchema, DocIdParamsSchema, HandoverBodySchema, IssueResultSchema, MakeBatchBodySchema, MenuItemBodySchema, MenuItemParamsSchema, MenuLocParamsSchema, MenuResultSchema, OutletParamsSchema, PatchContractBodySchema, PatchPoBodySchema, PatchVendorBodySchema, PayBodySchema, PoLineParamsSchema, PriceListIdParamsSchema, PriceResultSchema, RaiseTicketBodySchema, RateTicketBodySchema, DeskReplyBodySchema, ReceiptResultSchema, ReceivePoBodySchema, RejectRequestBodySchema, ReplyToTicketBodySchema, SavePriceBodySchema, SavePriceParamsSchema, SetOrderStatusBodySchema, SetOutletPriceListBodySchema, SetTicketStatusBodySchema, ShopAskBodySchema, ShopAskSentResultSchema, ToggleAvailBodySchema, ToggleResultSchema, TransferBodySchema, UpdatePoLineBodySchema, VendorBodySchema, writeResponse, ItemKeyParamsSchema, ItemResultSchema, PatchItemBodySchema, BillNoParamsSchema, VoidBillBodySchema, CreateProdOrderBodySchema } from "./schemas/writes.js";
 
 export type Method = "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
 /** "public" needs no token; "any" needs a token of any role; "admin" needs the `admin` claim
@@ -37,14 +36,23 @@ export const routes = {
   snapshot:       defineRoute({ method: "GET",   path: "/snapshot",             access: "any",    response: SnapshotSchema }),
   items:          defineRoute({ method: "GET",   path: "/items",                access: "any",    response: ItemsResponseSchema }),
   locations:      defineRoute({ method: "GET",   path: "/locations",            access: "any",    response: LocationsResponseSchema }),
-  recipes:        defineRoute({ method: "GET",   path: "/recipes",              access: "any",    response: RecipesResponseSchema }),
   prices:         defineRoute({ method: "GET",   path: "/prices",               access: "any",    response: PricesResponseSchema }),
+  // The price lists themselves, named and with their outlets - the manager's management screen.
+  // Every till already gets the flat item->price maps from `prices`; this is master data about
+  // the lists, not needed to price a sale.
+  priceLists:     defineRoute({ method: "GET",   path: "/price-lists",          access: ["manager"], response: PriceListsResponseSchema }),
   menus:          defineRoute({ method: "GET",   path: "/menus",                access: "any",    response: MenusResponseSchema }),
   pay:            defineRoute({ method: "POST",   path: "/bills",                      access: ["counter"],            body: PayBodySchema,        response: writeResponse(BillSchema) }),
   // `prod` is here for the kitchen's own switch: the Central Kitchen decides what it is making
   // today, exactly as a counter decides what it is selling. Scoping is per role in the handler.
   toggleAvail:    defineRoute({ method: "POST",   path: "/availability/toggle",        access: ["counter", "manager", "prod"], body: ToggleAvailBodySchema, response: writeResponse(ToggleResultSchema) }),
   savePrice:      defineRoute({ method: "PUT",    path: "/prices/:list/:it",           access: ["manager"],            params: SavePriceParamsSchema, body: SavePriceBodySchema, response: writeResponse(PriceResultSchema) }),
+  // ---- price lists ---- a list stays editable at any time, active or not, exactly like
+  // `savePrice` above; these three manage the list itself: create (cloned from an outlet),
+  // delete (only once no outlet points at it) and switch which list an outlet is active on.
+  createPriceList:    defineRoute({ method: "POST",   path: "/price-lists",              access: ["manager"], body: CreatePriceListBodySchema, response: writeResponse(PriceListSchema) }),
+  deletePriceList:    defineRoute({ method: "DELETE", path: "/price-lists/:id",          access: ["manager"], params: PriceListIdParamsSchema, response: writeResponse(DeletedPriceListSchema) }),
+  setOutletPriceList: defineRoute({ method: "PUT",    path: "/outlets/:loc/price-list",  access: ["manager"], params: OutletParamsSchema, body: SetOutletPriceListBodySchema, response: writeResponse(ActivatePriceListResultSchema) }),
   addMenuItem:    defineRoute({ method: "POST",   path: "/menus/:loc/items",           access: ["manager"],            params: MenuLocParamsSchema, body: MenuItemBodySchema, response: writeResponse(MenuResultSchema) }),
   removeMenuItem: defineRoute({ method: "DELETE", path: "/menus/:loc/items/:it",       access: ["manager"],            params: MenuItemParamsSchema, response: writeResponse(MenuResultSchema) }),
   stock:          defineRoute({ method: "GET",    path: "/stock",                      access: "any",                  response: StockResponseSchema }),
@@ -134,18 +142,11 @@ export const routes = {
   // and every dashboard reads a slice the snapshot already carries whole and stays in the browser.
   stockLedger:  defineRoute({ method: "GET", path: "/reports/stock-ledger",     access: ["store", "manager", "buyer", "prod"], query: StockLedgerQuerySchema, response: StockLedgerResponseSchema }),
   creditReport: defineRoute({ method: "GET", path: "/reports/credit/:kind/:id", access: ["counter", "manager"],                params: CreditParamsSchema,   response: CreditResponseSchema }),
-  // ---- payers (the roster behind every non-cash tender). The outlet manager keeps the
-  // register: `POST /payers` puts a patient, a staff member or a department on it, and the one
-  // PATCH covers both the rename and the on/off switch - a payer is never deleted, because the
-  // bills already posted to them have to stay readable. `GET /roster` is "any" and scoped like
-  // the snapshot's own copy: a caller who never opens a payer picker reads an empty register.
-  addPayer:    defineRoute({ method: "POST",  path: "/payers",            access: ["manager"], body: PayerBodySchema,   response: writeResponse(PayerRecordSchema) }),
-  updatePayer: defineRoute({ method: "PATCH", path: "/payers/:kind/:id",  access: ["manager"], params: PayerParamsSchema, body: PatchPayerBodySchema, response: writeResponse(PayerRecordSchema) }),
-  roster:      defineRoute({ method: "GET",   path: "/roster",            access: "any",       response: RosterResponseSchema }),
-  // The register whole, closed accounts included, for the role that keeps it - `/roster` is the
-  // till's read and stops at the live rows, so without this a payer switched off last week is
-  // one nobody can reopen. Both payer writes name **both** collections in `changed`.
-  payers:      defineRoute({ method: "GET",   path: "/payers",            access: ["manager"], response: PayersResponseSchema }),
+  // ---- payers (the roster behind every non-cash tender). No screen keeps it: the register is
+  // loaded from a CSV with the `payers import` CLI. `GET /roster` is the till's read, live payers
+  // only, "any" and scoped like the snapshot's own copy: a caller who never opens a payer picker
+  // reads an empty register.
+  roster: defineRoute({ method: "GET", path: "/roster", access: "any", response: RosterResponseSchema }),
   // ---- item patch ----
   // The item master stopped being write-once. All four desks that handle goods reach this door;
   // which of the eight fields each of them may actually move is `ITEM_FIELD_ROLES`
@@ -195,10 +196,6 @@ export const routes = {
   deskTickets:           defineRoute({ method: "GET",   path: "/admin/support/tickets",            access: "admin", response: SupportTicketsResponseSchema }),
   replyAsDesk:           defineRoute({ method: "POST",  path: "/admin/support/tickets/:id/messages", access: "admin", params: DocIdParamsSchema, body: DeskReplyBodySchema, response: writeResponse(SupportTicketSchema) }),
   setDeskTicketStatus:   defineRoute({ method: "POST",  path: "/admin/support/tickets/:id/status", access: "admin", params: DocIdParamsSchema, body: SetTicketStatusBodySchema, response: writeResponse(SupportTicketSchema) }),
-  // ---- recipes. An item's whole recipe, replaced in one write - the kitchen that makes from it
-  // and the manager who prices against it. Until this door existed a recipe could only arrive with
-  // the seed, so a hospital started clean could list a made-to-order item and never sell one.
-  saveRecipe: defineRoute({ method: "PUT", path: "/recipes/:it", access: ["prod", "manager"], params: ItemKeyParamsSchema, body: SaveRecipeBodySchema, response: writeResponse(RecipeResultSchema) }),
 } as const;
 export type RouteName = keyof typeof routes;
 export const API_PREFIX = "/api/v1";

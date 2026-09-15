@@ -35,8 +35,8 @@ deploy/compose/release.sh <sha>
 `deploy.sh` builds, brings the stack up in dependency order (Postgres, then the migration,
 then the API, UI and Caddy), seeds only an empty database - and then only `--bare`: the six
 locations and the `RC-0001` admin account (password `SEED_PASSWORD`), never the demo hospital -
-and waits for the site to answer. Everything else (staff, items, recipes, prices, menus, payers,
-stock) is entered from the screens; `deploy/RUNBOOK.md` §1 has the order.
+and waits for the site to answer. Everything else (staff, items, prices, menus,
+stock) is entered from the screens, and payers are loaded from a CSV; `deploy/RUNBOOK.md` §1 has the order.
 
 ## Nightly backup
 

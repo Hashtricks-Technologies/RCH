@@ -65,7 +65,7 @@ export default function Dashboard() {
       <PageHead
         crumbs={["Royal Care", "Central Store"]}
         title="Store keeper dashboard"
-        sub="Today's work at the central store."
+        tip="Today's work at the central store."
         actions={
           <>
             <Btn variant="gh" onClick={() => nav("/procure")}>Raise requisition</Btn>

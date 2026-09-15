@@ -1,12 +1,9 @@
 import { asc, eq } from "drizzle-orm";
-import type { Item, PayerKind, PayerRoster, UserMin } from "@rch/contract";
-import { items, locationItems, payers, priceListItems, users } from "../../../db/schema/index.js";
+import type { Item, LocKey, PayerKind, PayerRoster, PriceList, UserMin } from "@rch/contract";
+import { items, locationItems, locations, payers, priceListItems, priceLists, users } from "../../../db/schema/index.js";
 import type { Reader } from "../../../lib/db.js";
-import { loadLocations, loadRecipes } from "../../../lib/master.js";
+import { loadLocations } from "../../../lib/master.js";
 import { toWireItem, toWireUserMin } from "../../../lib/wire.js";
-
-/** The recipes are the same thing the rules read, so they are loaded the same way. */
-export const readRecipes = loadRecipes;
 
 // ---- item patch ----
 /**
@@ -46,11 +43,20 @@ export async function readRoster(db: Reader): Promise<PayerRoster> {
   const of = (kind: PayerKind) => rows.filter((p) => p.kind === kind).map((p) => ({ kind: p.kind, id: p.id, name: p.name }));
   return { patients: of("patient"), staff: of("staff"), depts: of("dept") };
 }
-export async function readPrices(db: Reader): Promise<{ A: Record<string, number>; B: Record<string, number> }> {
+export async function readPrices(db: Reader): Promise<Record<string, Record<string, number>>> {
   const rows = await db.select().from(priceListItems);
-  const out = { A: {} as Record<string, number>, B: {} as Record<string, number> };
-  for (const r of rows) out[r.list][r.itemKey] = r.price;
+  const out: Record<string, Record<string, number>> = {};
+  for (const r of rows) (out[r.listId] ??= {})[r.itemKey] = r.price;
   return out;
+}
+/** The lists themselves, named, with the outlets currently active on each - derived from
+ *  `locations.price_list_id` rather than stored, so it can never drift from what a switch
+ *  actually did. */
+export async function readPriceLists(db: Reader): Promise<PriceList[]> {
+  const lists = await db.select().from(priceLists).orderBy(asc(priceLists.id));
+  const locs = await db.select({ key: locations.key, listId: locations.priceListId }).from(locations).orderBy(asc(locations.key));
+  const outletsOf = (id: string) => locs.filter((l) => l.listId === id).map((l) => l.key as LocKey);
+  return lists.map((l) => ({ id: l.id, name: l.name, outlets: outletsOf(l.id) }));
 }
 export async function readMenu(db: Reader): Promise<Record<string, string[]>> {
   const rows = await db.select().from(locationItems).orderBy(asc(locationItems.loc), asc(locationItems.seq));

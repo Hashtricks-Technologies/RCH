@@ -5,7 +5,7 @@ import { DEPTS, IT, LOC, PATIENTS, STAFF } from "../../data/master";
 import { useApp } from "../../store";
 import { availOf, menuOf, priceOf } from "../../lib/selectors";
 import { money, money0 } from "../../lib/fmt";
-import { Alert, Avatar, Btn, Card, Field, Grid, ImagePlaceholder, PageHead, Tag, TileMenu } from "../../ui/kit";
+import { Alert, Avatar, Btn, Card, Field, Grid, ImagePlaceholder, PageHead, Tag, TileMenu, Tip } from "../../ui/kit";
 import type { CreditResponse, ItemType, Payer, Tender } from "../../types";
 
 /** The buttons are the contract's own list - the server refuses anything else outright, so the
@@ -128,7 +128,7 @@ export default function Pos() {
       <PageHead
         crumbs={["Royal Care", L.n, "Point of Sale"]}
         title="Point of Sale"
-        sub="Bill a sale at this counter."
+        tip="Bill a sale at this counter."
       />
       <Grid cols="g21">
         <Card title="Menu" sub={`${menu.length} products listed at ${L.n}`}>
@@ -161,7 +161,7 @@ export default function Pos() {
                     <b style={{ fontSize: 12.5, lineHeight: 1.3 }}>{item.n}</b>
                     <span><TypeTag t={item.t} /></span>
                     {a.ok
-                      ? <span className="mini">{a.left} left</span>
+                      ? <span className="mini">{a.left ? `${a.left} left` : "made to order"}</span>
                       : <span className="mini" style={{ color: "var(--crit)" }}>{a.why ?? "unavailable"}</span>}
                     <div className="sp" />
                     <span className="mono" style={{ fontSize: 13, fontWeight: 600 }}>
@@ -178,7 +178,7 @@ export default function Pos() {
           )}
         </Card>
 
-        <Card title="New bill" sub={L.c}
+        <Card title="New bill" sub={L.c} tip="Numbered by the server when it is paid"
           right={lines.length ? <Btn variant="gh" size="sm" onClick={() => s.clearCart(loc)}>Clear</Btn> : undefined}>
           <div style={{ display: "flex", gap: 10, alignItems: "center", paddingBottom: 11, borderBottom: "1px solid var(--line)" }}>
             <Avatar name={user.n} color={user.col} size={34} />
@@ -189,7 +189,6 @@ export default function Pos() {
             <div className="sp" />
             <div className="rt">
               <div style={{ fontSize: 12.5, fontWeight: 600 }}>{L.n}</div>
-              <div className="mini">Numbered by the server when it is paid</div>
             </div>
           </div>
 
@@ -244,7 +243,7 @@ export default function Pos() {
               </div>
             )
             : (
-              <Field label={need.label} hint={`A ${tender.toLowerCase()} cannot be raised without one.`}>
+              <Field label={need.label} tip={`A ${tender.toLowerCase()} cannot be raised without one.`}>
                 <input value={pq} onChange={(e) => setPq(e.target.value)}
                   placeholder={`Search ${need.label.toLowerCase()} or ID…`} />
                 <div style={{ marginTop: 6, maxHeight: 132, overflowY: "auto", border: "1px solid var(--line)", borderRadius: 7 }}>
@@ -289,8 +288,8 @@ export default function Pos() {
             {busy ? "Taking the bill…" : <>Pay · {money(total)}</>}
           </Btn>
           <p className="mini mtop">
-            Tender <b>{tender}</b>{payer ? <> · posted to <b>{payer.name}</b></> : need ? <> · pick a {need.label.toLowerCase()} to settle it</> : null}.
-            Stock and recipe ingredients are drawn down from {L.n} the moment the bill is printed.
+            Tender <b>{tender}</b>{payer ? <> · posted to <b>{payer.name}</b></> : need ? <> · pick a {need.label.toLowerCase()} to settle it</> : null}.{" "}
+            <Tip text={<>Stock is drawn down from {L.n} the moment the bill is printed.</>} label="When stock is drawn down" />
           </p>
         </Card>
       </Grid>

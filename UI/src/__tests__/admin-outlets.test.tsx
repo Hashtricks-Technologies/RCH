@@ -83,15 +83,15 @@ beforeEach(() => {
 afterEach(() => { page?.unmount(); page = undefined; vi.unstubAllGlobals(); setAccessToken(null); });
 
 const row = (over: Partial<AdminLocation>): AdminLocation => ({
-  key: "rest", n: "Restaurant", c: "OT-R1", type: "Outlet", floor: "Floor 1", cc: "CC-RST", list: "A", active: true, staff: 1, ...over,
+  key: "rest", n: "Restaurant", c: "OT-R1", type: "Outlet", floor: "Floor 1", cc: "CC-RST", active: true, staff: 1, ...over,
 });
-const STORE_ROW = row({ key: "store", n: "Central Store", c: "WH-CS", type: "Store", floor: "Basement", cc: "CC-STO", list: undefined, staff: 2 });
+const STORE_ROW = row({ key: "store", n: "Central Store", c: "WH-CS", type: "Store", floor: "Basement", cc: "CC-STO", staff: 2 });
 const REST = row({});
 const KIOSK = row({ key: "kiosk", n: "Snack Kiosk", c: "OT-GK", floor: "Ground", cc: "CC-KSK", active: false, staff: 0 });
 const ok = (result: AdminLocation, message: string) => () => json({ result, changed: ["outlets", "locations"], message });
 
 describe("the Outlets tab", () => {
-  it("lists outlets only - open ones first - with their code, list, staff and status", async () => {
+  it("lists outlets only - open ones first - with their code, staff and status", async () => {
     serve({ "GET /api/v1/admin/locations": () => json([STORE_ROW, KIOSK, REST]), "GET /api/v1/admin/actions": () => json([]) });
     page = await mountPage();
     const rows = [...document.querySelectorAll("tbody tr")].map((tr) => tr.textContent ?? "");
@@ -105,7 +105,7 @@ describe("the Outlets tab", () => {
     const JUICE = row({ key: "juice-bar", n: "Juice Bar", c: "OT-JB", floor: "Ground", cc: "CC-JB", staff: 0 });
     serve({
       "GET /api/v1/admin/locations": () => json([REST]), "GET /api/v1/admin/actions": () => json([]),
-      "POST /api/v1/admin/outlets": ok(JUICE, "Opened Juice Bar (OT-JB) on price list A."),
+      "POST /api/v1/admin/outlets": ok(JUICE, "Opened Juice Bar (OT-JB)."),
     });
     page = await mountPage();
     await typeInto(page.field("Name"), "Juice Bar");
@@ -115,7 +115,7 @@ describe("the Outlets tab", () => {
     expect(page.text()).toContain("juice-bar");
     await press(page.button("Open outlet"));
     const [, init] = hit("POST /api/v1/admin/outlets")[0];
-    expect(JSON.parse(String((init as RequestInit).body))).toEqual({ name: "Juice Bar", code: "ot-jb", floor: "Ground", cc: "CC-JB", list: "A" });
+    expect(JSON.parse(String((init as RequestInit).body))).toEqual({ name: "Juice Bar", code: "ot-jb", floor: "Ground", cc: "CC-JB" });
     expect(page.field("Name").value).toBe("");
   });
   it("keeps the form as typed when the server refuses", async () => {

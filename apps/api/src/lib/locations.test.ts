@@ -19,7 +19,7 @@ beforeAll(async () => { app = await buildTestApp({ schema: "locations_lib" }); a
 beforeEach(async () => { await truncateAll(app.testDb!.db); await seedTestDb(app.testDb!.db); });
 afterAll(async () => { await app.close(); });
 
-const send = async (userId: string, method: "POST" | "PATCH", url: string, payload: Record<string, unknown> = {}) =>
+const send = async (userId: string, method: "POST" | "PATCH" | "PUT", url: string, payload: Record<string, unknown> = {}) =>
   app.inject({ method, url: `/api/v1${url}`, headers: { ...(await authHeaders(app, userId)), "idempotency-key": randomUUID() }, payload });
 const setOpen = (key: string, active: boolean) => app.db.update(locations).set({ active }).where(eq(locations.key, key));
 const refusal = (r: { statusCode: number; body: string; json: () => { error: { message: string } } }) => {
@@ -70,6 +70,10 @@ describe("a closed outlet", () => {
     expect(refusal(await send("u2", "POST", "/menus/kiosk/items", { it: "capp" }))).toBe(CLOSED);
     expect(refusal(await send("u2", "POST", "/availability/toggle", { loc: "kiosk", it: "chips" }))).toBe(CLOSED);
   });
+  it("is switched onto no other price list, since that is what it would sell on the day it reopens", async () => {
+    await setOpen("kiosk", false);
+    expect(refusal(await send("u2", "PUT", "/outlets/kiosk/price-list", { listId: "PL-002" }))).toBe(CLOSED);
+  });
   it("leaves every other outlet trading", async () => {
     await setOpen("kiosk", false);
     expect((await send("u1", "POST", "/bills", { loc: "coffee", tender: "Cash", lines: [{ it: "chips", qty: 1 }] })).statusCode).toBe(200);
@@ -86,7 +90,7 @@ describe("a location key the master does not carry", () => {
 
 describe("GET /stock", () => {
   it("carries an empty map for a location with nothing on its shelves", async () => {
-    await app.db.insert(locations).values({ key: "juice-bar", name: "Juice Bar", code: "OT-JB", type: "Outlet", floor: "Ground", costCentre: "CC-JB", priceList: "A" });
+    await app.db.insert(locations).values({ key: "juice-bar", name: "Juice Bar", code: "OT-JB", type: "Outlet", floor: "Ground", costCentre: "CC-JB" });
     const r = await app.inject({ method: "GET", url: "/api/v1/stock", headers: await authHeaders(app, "u2") });
     expect(r.statusCode, r.body).toBe(200);
     expect(r.json().stock["juice-bar"]).toEqual({});

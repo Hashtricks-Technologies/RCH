@@ -1,10 +1,10 @@
-import { IT, LOC, RCP } from "../../data/master";
+import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
 import {
-  avail, availOf, daysCover, menuOf, parOf, qty, stateLabel, stateTone,
+  avail, availOf, daysCover, menuOf, parOf, priceOf, qty, stateLabel, stateTone,
 } from "../../lib/selectors";
 import { fq, money, U } from "../../lib/fmt";
-import { Alert, Btn, ImagePlaceholder, Pill, Switch } from "../../ui/kit";
+import { Alert, Btn, ImagePlaceholder, Pill, Switch, Tip } from "../../ui/kit";
 import { DrawerFrame } from "../../ui/Drawer";
 import { registerDrawer, type DrawerProps } from "../../drawers";
 import { TypeTag } from "./Pos";
@@ -12,8 +12,8 @@ import { TypeTag } from "./Pos";
 /**
  * Configure - the same panel opened from the POS tile menu and the Stock in
  * Hand card menu. Full detail plus the on/off switch for a sellable product;
- * a raw ingredient gets its details with a plain note, since there is
- * nothing to switch on or off.
+ * a line the counter holds but does not sell gets its details with a plain
+ * note, since there is nothing to switch on or off.
  */
 function ConfigureDrawer({ id: it }: DrawerProps) {
   const s = useApp();
@@ -24,8 +24,7 @@ function ConfigureDrawer({ id: it }: DrawerProps) {
   const item = IT[it];
   if (!item) return <DrawerFrame title="Not found"><p className="mini">That product is no longer on the master.</p></DrawerFrame>;
 
-  const held = Object.prototype.hasOwnProperty.call(s.stock[loc] ?? {}, it)
-    || (item.t === "MTO" && RCP[it]?.l.some(([g]) => Object.prototype.hasOwnProperty.call(s.stock[loc] ?? {}, g)));
+  const held = Object.prototype.hasOwnProperty.call(s.stock[loc] ?? {}, it);
   const on = qty(s, loc, it);
   const a = avail(s, loc, it);
   const rl = parOf(loc, it);
@@ -66,23 +65,25 @@ function ConfigureDrawer({ id: it }: DrawerProps) {
         <>
           <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 0", borderTop: "1px solid var(--line)", borderBottom: "1px solid var(--line)" }}>
             <Switch on={!manualOff} label={`${item.n} at ${LOC[loc].n}`} onChange={() => toggleAvail(loc, it)} />
-            <div>
+            <div className="tipped">
               <b style={{ fontSize: 12.5 }}>Available at {LOC[loc].n}</b>
-              <div className="mini">Turn this off when the machine is down or the product is spoiled.</div>
+              <Tip text="Turn this off when the machine is down or the product is spoiled." label={`Available at ${LOC[loc].n}`} />
             </div>
           </div>
           <div className="mtop">
             {computed.ok
-              ? <Alert tone="g" label="ON">{computed.left} - computed from stock, on top of the switch above.</Alert>
+              ? <Alert tone="g" label="ON">{computed.left
+                ? <>{computed.left} - computed from stock, on top of the switch above.</>
+                : <>Made to order - it holds no stock, so only the switch above turns it off.</>}</Alert>
               : <Alert tone="c" label="OFF">{computed.why ?? "unavailable"} - the switch cannot override this by itself.</Alert>}
           </div>
           <p className="mini mtop">
-            Sells for {money(s.prices[LOC[loc].list ?? "A"]?.[it] ?? 0)} at this counter.
+            Sells for {money(priceOf(s, loc, it).p)} at this counter.
           </p>
         </>
       ) : (
         <Alert tone="i" label="NOTE">
-          Not sold directly at {LOC[loc].n} - it is a recipe ingredient here, so there is nothing to switch on or off.
+          Not sold directly at {LOC[loc].n}, so there is nothing to switch on or off.
         </Alert>
       )}
     </DrawerFrame>

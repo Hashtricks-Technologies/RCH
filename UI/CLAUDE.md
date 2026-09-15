@@ -47,12 +47,12 @@ the suite, on purpose.
   document's id **and the last entry of its trail**. `manager/ApprovalDrawer.tsx`'s `bodyKey` is the example.
 
 Components shared by two or more roles live in `src/ui/`, because role folders don't import each other. That
-includes `TicketSlip`, `NewProductForm`, `AdjustmentForm`, `KitchenOrderForm` and `RecipeBook`.
+includes `TicketSlip`, `NewProductForm`, `AdjustmentForm` and `KitchenOrderForm`.
 
 ## The store is an API client
 
 `src/store/index.ts` holds the state and most actions. The other slices (`procurement.ts`, `ops.ts`,
-`recipes.ts`, `admin.ts`) are merged into the same `create()` and share one `AppState`. Components subscribe
+`admin.ts`) are merged into the same `create()` and share one `AppState`. Components subscribe
 narrowly, for example `useApp((s) => s.req)`.
 
 Every write action has this shape:
@@ -77,7 +77,7 @@ try {
   `counter/Requests.tsx` (keyed per row) are the two patterns to copy.
 - **Actions whose screen needs the new id return `Promise<string | null>`**: `createPo` and `createItem`.
 - **Single-press buttons with no form are fire-and-forget**: `handover`, `setOrderStatus`, `dispatchOrder`.
-- **Some reads have no notify and no refetch**: `readStockLedger`, `readCredit`, `loadPayers` and
+- **Some reads have no notify and no refetch**: `readStockLedger`, `readCredit` and
   `loadSignInDirectory` (the sign-in picker's staff list). They return `null` on failure, never an empty list,
   so a screen can tell an outage from genuinely nothing. `Login.tsx` falls back to a typed id on `null`.
 - **Account writes (`store/admin.ts`)**: `createAccount` sends no employee number (the server assigns it) and
@@ -117,6 +117,11 @@ try {
   session (then bumps `catalogVersion` so every screen re-renders) and does nothing for the super admin, whose
   token reaches no location read but its own; `outlets` pulls the admin's own list back through
   `GET /admin/locations` for that session alone, and does nothing for anyone else.
+  - **A manager-only collection (`priceLists`, `accounts`) is still broadcast to every open session** - the
+    server's `pg_notify` isn't per-role. A non-manager tab open when a price list changes gets a 403/404 on
+    its own `NARROW.priceLists()` call, which fails the whole `Promise.all` and shows that tab the generic
+    "the screen could not be refreshed" toast, even though nothing of theirs failed. Known, matches the
+    existing `accounts` behaviour; not fixed here.
 - **`wire.ts`** holds the mappers from server shape to store shape.
   - An ISO time becomes `"HH:MM"` only here, and **`iso` is kept beside it** on every document and history
     entry (`Dated<T>`, `Trailed<T>` and `DatedDoc<T>` in `types.ts`).
@@ -136,9 +141,13 @@ a background refresh and must not blank the screen.
 ## Master data and derived state
 
 - **Master data lives in shared registries.** `src/data/master.ts` exports mutable registries (`IT`, `LOC`,
-  `RCP`, `PL`, `MENU`, `USERS`, and the payer lists). They are empty at import, and `hydrateMaster()` /
+  `PL`, `PRICE_LISTS`, `MENU`, `USERS`, and the payer lists). They are empty at import, and `hydrateMaster()` /
   `hydrateRoster()` **fill them in place**, so assign into them and never reassign them. Anything that changes
   them bumps `catalogVersion`, which screens use as a memo key.
+- **`PL` is keyed by price-list id, not a fixed pair** - every list a manager has created, `PL[list][it]` its
+  item→price map. `PRICE_LISTS[list]` is the entity itself (`{ id, name, outlets }`), for a name to print and
+  for the manager's Prices screen to filter by outlet or by name. A `Location.list` names which id an outlet is
+  active on; it is never itself the price.
 - **`IT` includes retired items**, because old documents still name them. Pickers must read `activeItems()`,
   never `Object.keys(IT)`.
 - **`src/lib/selectors.ts` is the source of truth for everything derived.** That covers `qty`, `resv`,
@@ -166,6 +175,19 @@ a background refresh and must not blank the screen.
 
 - **Use `src/ui/kit.tsx`'s typed components instead of bespoke markup.** These include `Card`, `DataTable`,
   `PageHead`, `Btn`, `Pill`, `Alert`, `Field`, `FormRow`, `Toolbar`, `Kpis` and `Otp`.
+- **Explanations live in tooltips; what the operator must see stays on the page.** `Tip` (`ui/Tip.tsx`,
+  re-exported by the kit) is the one tooltip. It opens on mouse hover, on keyboard focus, and on a press or tap,
+  which pins it. Escape, a press elsewhere, or focus leaving closes it, and Escape never reaches the drawer
+  behind it.
+  - `PageHead`, `Card`, `Section`, `Field`, a `Kpi` and a `Col` each take a `tip`, drawn as an "i" beside
+    the heading or label. A sentence that explains a page, a card, a field or a figure goes there.
+  - `sub`, `hint` and a `Kpi`'s `d` stay visible, and only for things read every time: counts, names,
+    validation errors, live figures and warnings. An `Alert` is never a tooltip.
+  - `<Tip text="…">{value}</Tip>` explains a value in place, and `Btn`'s `tip` explains a button, even a
+    disabled one. `title` only names a symbol-only button. It never explains.
+  - The bubble is always in the DOM (`hidden` while closed), so tests still find a moved sentence by its text.
+    Never put a `Tip` inside a `<label>`, a heading or a `<button>`, where that hidden text would join
+    theirs.
 - **`DraftLineInput`** is the commit-on-blur number box. Every typed quantity uses it, because a controlled
   number input can't take a half-typed `12.`. Its `ariaLabel` is required even beside a `<label>`, because
   `Field` only wires `htmlFor` to a direct DOM child.

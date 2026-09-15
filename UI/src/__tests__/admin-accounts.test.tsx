@@ -26,13 +26,13 @@ const KAVITHA = account({});
 const DEEPA = account({ id: "u6", emp: "RC-4482", n: "Deepa Selvam", loc: "kiosk", active: false });
 
 const row = (over: Partial<AdminLocation>): AdminLocation => ({
-  key: "rest", n: "Restaurant", c: "OT-R1", type: "Outlet", floor: "Floor 1", cc: "CC-RST", list: "A", active: true, staff: 1, ...over,
+  key: "rest", n: "Restaurant", c: "OT-R1", type: "Outlet", floor: "Floor 1", cc: "CC-RST", active: true, staff: 1, ...over,
 });
 /** The six-location demo master, as `GET /admin/locations` answers it - every screen's role/loc
  *  pickers read this rather than a list compiled into the bundle. */
 const LOCS: AdminLocation[] = [
-  row({ key: "store", n: "Central Store", c: "WH-CS", type: "Store", floor: "Basement", cc: "CC-STO", list: undefined, staff: 2 }),
-  row({ key: "kitchen", n: "Central Kitchen", c: "KT-CK", type: "Kitchen", floor: "Basement", cc: "CC-KIT", list: undefined, staff: 1 }),
+  row({ key: "store", n: "Central Store", c: "WH-CS", type: "Store", floor: "Basement", cc: "CC-STO", staff: 2 }),
+  row({ key: "kitchen", n: "Central Kitchen", c: "KT-CK", type: "Kitchen", floor: "Basement", cc: "CC-KIT", staff: 1 }),
   row({ key: "rest", n: "Restaurant", c: "OT-R1", floor: "Floor 1", cc: "CC-RST", staff: 1 }),
   row({ key: "coffee", n: "Coffee Shop", c: "OT-CS", floor: "Ground", cc: "CC-CFE", staff: 1 }),
   row({ key: "kiosk", n: "Snack Kiosk", c: "OT-GK", floor: "Ground", cc: "CC-KSK", staff: 1 }),

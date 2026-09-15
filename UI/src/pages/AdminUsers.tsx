@@ -39,8 +39,7 @@ export default function AdminUsers() {
   const notify = useApp((s) => s.notify);
 
   // Nothing on the snapshot carries the account list, its action log or the location list - this
-  // is the one screen that reads any of the three, so it asks for all of them on the way in, the
-  // same shape `Roster` already uses for the payer register.
+  // is the one screen that reads any of the three, so it asks for all of them on the way in.
   useEffect(() => { void loadAccounts(); void loadAdminActions(); void loadAdminLocations(); }, [loadAccounts, loadAdminActions, loadAdminLocations]);
 
   // Labels and pickers from the server's own list: a location the admin opened a minute ago is here,
@@ -126,7 +125,7 @@ export default function AdminUsers() {
       <PageHead
         crumbs={["Admin"]}
         title="Manage staff accounts"
-        sub="Staff accounts, their roles and locations."
+        tip="Staff accounts, their roles and locations."
       />
 
       <Alert tone="i" label="ACCOUNTS">
@@ -141,9 +140,9 @@ export default function AdminUsers() {
         </Alert>
       )}
 
-      <Card title="Create an account" sub="A real, ordinary account - the same as any other, with a temporary password to hand over">
+      <Card title="Create an account" tip="A real, ordinary account - the same as any other, with a temporary password to hand over">
         <FormRow cols="f3">
-          <Field label="Employee id" hint="Assigned when you save - the next number after the last account">
+          <Field label="Employee id" tip="Assigned when you save - the next number after the last account">
             <input className="mono" value={nextEmp} readOnly aria-readonly="true" />
           </Field>
           <Field label="Name"><input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
@@ -232,7 +231,7 @@ export default function AdminUsers() {
         <TableFoot count={accounts.length} />
       </Card>
 
-      <Card title="Recent actions" sub="The last fifty - who did what, to whom" className="mtop">
+      <Card title="Recent actions" tip="The last fifty - who did what, to whom" className="mtop">
         {adminActions.length === 0 ? <p className="mini">Nothing has happened here yet.</p> : (
           <ul className="feed">
             {adminActions.map((a, i) => (

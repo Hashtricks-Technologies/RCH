@@ -4,7 +4,7 @@ import type { Master, OvrMap, RsvMap, StockMap } from "./master.js";
 
 const unitOf = (m: Master, it: string): string => m.items[it]?.u ?? "nos";
 
-/** Countable units are whole on the shelf but fractional in a recipe; other
+/** Countable units are whole on the shelf but may be fractional on a document; other
  *  units always show three decimals - the same wording the UI has always used.
  *  Exported so a server refusal ("Only 9 nos … left") speaks with the shelf's voice. */
 export const fq = (v: number, unit: string): string => {
@@ -15,25 +15,13 @@ export const fq = (v: number, unit: string): string => {
 
 /**
  * Whether an item can be sold at a location right now: a manual override wins
- * outright; a made-to-order item is off the moment a binding ingredient runs
- * short, and names that ingredient; a stocked item is off at zero.
+ * outright; a made-to-order item holds no stock, so the switch is the only thing
+ * that turns it off; a stocked item is off at zero.
  */
 export function availOf(m: Master, stock: StockMap, rsv: RsvMap, ovr: OvrMap, l: string, it: string): Availability {
   const o = ovr[`${l}:${it}`];
   if (o) return { ok: false, mode: "Manual", why: o };
-  if (m.items[it]?.t === "MTO") {
-    const r = m.recipes[it];
-    // Marked made-to-order but with nothing written down to make it by: the counter cannot
-    // sell what the kitchen has no recipe for, and saying so is kinder than a blank screen.
-    if (!r) return { ok: false, mode: "Recipe", why: "no recipe recorded" };
-    for (const [g, need] of r.l) {
-      const a = avail(stock, rsv, l, g);
-      if (a < need)
-        return { ok: false, mode: "Recipe", why: `${m.items[g]?.n} at ${fq(a, unitOf(m, g))} ${unitOf(m, g)}` };
-    }
-    const portions = Math.min(...r.l.map(([g, need]) => Math.floor(avail(stock, rsv, l, g) / need)));
-    return { ok: true, mode: "Recipe", left: `${portions} portions` };
-  }
+  if (m.items[it]?.t === "MTO") return { ok: true, mode: "Manual" };
   const have = avail(stock, rsv, l, it);
   return have >= 1
     ? { ok: true, mode: "Stock", left: `${fq(have, unitOf(m, it))} ${unitOf(m, it)}` }

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { LocKeySchema, Money, Qty, StockLocSchema } from "./common.js";
+import { LocKeySchema, Money, PriceListIdSchema, Qty, StockLocSchema } from "./common.js";
 import * as D from "./documents.js";
 
 // Not every caller sees every location - a counter operator's snapshot is scoped down to their
@@ -13,13 +13,15 @@ export const SnapshotSchema = z.object({
   user: D.UserSchema,
   items: z.record(z.string(), D.ItemSchema),
   locations: z.record(z.string(), D.LocationSchema),
-  recipes: z.record(z.string(), D.RecipeSchema),
   users: z.array(D.UserMinSchema),   // the directory, not a contact list - `user` above is the caller's own, whole
   roster: D.PayerRosterSchema,       // the other directory of people: who a bill may be charged to
   stock: byStockLoc(z.record(z.string(), Qty)),
   rsv: z.record(z.string(), Qty),          // "loc:item" -> reserved
   ovr: z.record(z.string(), z.string()),   // "loc:item" -> reason
-  prices: z.object({ A: z.record(z.string(), z.number()), B: z.record(z.string(), z.number()) }),
+  prices: z.record(PriceListIdSchema, z.record(z.string(), z.number())),
+  // The price lists themselves - name and which outlets are on each - alongside `prices`'
+  // flat item->price maps, for the manager's price-list management screen.
+  priceLists: z.array(D.PriceListSchema),
   menu: byLoc(z.array(z.string())),
   req: z.array(D.StockRequestSchema),
   tkt: z.array(D.TicketSchema),
@@ -43,8 +45,8 @@ export const SnapshotSchema = z.object({
 });
 export const ItemsResponseSchema = z.record(z.string(), D.ItemSchema);
 export const LocationsResponseSchema = z.record(z.string(), D.LocationSchema);
-export const RecipesResponseSchema = z.record(z.string(), D.RecipeSchema);
 export const PricesResponseSchema = SnapshotSchema.shape.prices;
+export const PriceListsResponseSchema = SnapshotSchema.shape.priceLists;
 export const MenusResponseSchema = SnapshotSchema.shape.menu;
 export const StockResponseSchema = z.strictObject({ stock: SnapshotSchema.shape.stock, rsv: SnapshotSchema.shape.rsv, ovr: SnapshotSchema.shape.ovr });
 /** How many days of bills a caller gets - the snapshot's window and `GET /bills`'s default,
@@ -72,17 +74,10 @@ export const ProductRequestsResponseSchema = z.array(D.ProductRequestSchema);
 export const SupportTicketsResponseSchema = z.array(D.SupportTicketSchema);
 
 // ---- payers ----
-/** The roster on its own, so a payer write that names "roster" refetches that register alone
- *  instead of the whole snapshot. Scoped exactly as the snapshot's own copy is: the kitchen,
+/** The roster on its own, so a notice naming "roster" refetches that register alone instead of
+ *  the whole snapshot. Scoped exactly as the snapshot's own copy is: the kitchen,
  *  the store and the buyer never open a payer picker and read an empty one (`scopeRoster`). */
 export const RosterResponseSchema = D.PayerRosterSchema;
-/** The **whole** register, active rows and closed ones together, for the one role that keeps it.
- *  `roster` above is what a till reads and carries live payers only - a closed account must
- *  never reach a payer picker - so a manager who wants to reopen one closed last week has
- *  nothing to open. Two reads rather than an `active` flag on the roster, because the till's
- *  list stopping at "active" is the whole point of it. */
-export const PayersResponseSchema = z.array(D.PayerRecordSchema);
-
 // ---- adjustments
 /** The adjustment register on its own, so a write naming "adjustments" refetches that slice
  *  rather than the whole snapshot. Scoped like `stock`: a counter sees its own. */

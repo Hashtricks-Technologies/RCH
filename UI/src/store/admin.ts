@@ -17,9 +17,8 @@ export interface AdminSlice {
    *  Accounts tab's location labels both read this. */
   adminLocations: AdminLocation[];
   outletActions: Dated<AdminAction>[];
-  /** A read, not a write - no toast of its own, nothing refetched behind it, the same shape
-   *  `loadPayers` already has for the same reason: this is a first load, not a write's own
-   *  read-back. */
+  /** A read, not a write - no toast of its own, nothing refetched behind it: this is a first
+   *  load, not a write's own read-back. */
   loadAccounts: () => Promise<void>;
   loadAdminLocations: () => Promise<void>;
   loadAdminActions: (kind?: "accounts" | "outlets") => Promise<void>;

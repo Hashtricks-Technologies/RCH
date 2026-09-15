@@ -3,7 +3,7 @@ import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
 import { costOf, freeToPromise, qty } from "../../lib/selectors";
 import { fq, money, sum, U, unitTotal } from "../../lib/fmt";
-import { Alert, Btn, DataTable, DraftLineInput, Feed, Pill, Section, StatusPill, Tag } from "../../ui/kit";
+import { Alert, Btn, DataTable, DraftLineInput, Feed, Pill, Section, StatusPill, Tag, Tip } from "../../ui/kit";
 import { DrawerFrame } from "../../ui/Drawer";
 import { registerDrawer, type DrawerProps } from "../../drawers";
 import type { DatedDoc, StockRequest } from "../../types";
@@ -159,14 +159,14 @@ function ApprovalBody({ req }: { req: DatedDoc<StockRequest> }) {
             <Btn
               variant="dg"
               disabled={!reason || busy !== null}
-              title={reason ? "Reject the whole request" : "Write the reason below - reject stays locked without one"}
+              tip={reason ? "Reject the whole request" : "Write the reason below - reject stays locked without one"}
               onClick={doReject}
             >
               {busy === "reject" ? "Rejecting…" : "Reject the request"}
             </Btn>
             <Btn
               disabled={!canApprove || busy !== null}
-              title={giving === 0
+              tip={giving === 0
                 ? "Nothing is left to approve - use Reject the request"
                 : missingWhy.length > 0 ? "Give a reason for every rejected item" : undefined}
               onClick={doApprove}
@@ -204,7 +204,7 @@ function ApprovalBody({ req }: { req: DatedDoc<StockRequest> }) {
         </Alert>
       )}
 
-      <Section title="Request" sub="Raised by the counter operator">
+      <Section title="Request" tip="Raised by the counter operator">
         <dl className="dl">
           <dt>Outlet</dt>
           <dd>{LOC[req.from].n} <span className="mini">{LOC[req.from].c} · {LOC[req.from].cc}</span></dd>
@@ -222,7 +222,7 @@ function ApprovalBody({ req }: { req: DatedDoc<StockRequest> }) {
 
       <Section
         title="Items"
-        sub={open
+        tip={open
           ? "Trim a quantity the Central Store cannot cover, or reject a single item and approve the rest. You cannot approve more than the counter asked for."
           : "Quantities as they were forwarded to the store keeper."}
       >
@@ -252,7 +252,7 @@ function ApprovalBody({ req }: { req: DatedDoc<StockRequest> }) {
                   <span key="ask">{fq(l.qty, l.it)} <small className="dim">{U(l.it)}</small></span>,
                   <span key="have">{fq(have, l.it)}</span>,
                   over
-                    ? <span key="free" style={{ color: "var(--warn)" }} title="Already promised elsewhere">{fq(free, l.it)}</span>
+                    ? <Tip key="free" text="Already promised elsewhere"><span style={{ color: "var(--warn)" }}>{fq(free, l.it)}</span></Tip>
                     : <span key="free">{fq(free, l.it)}</span>,
                   open ? (
                     dead
@@ -348,7 +348,7 @@ function ApprovalBody({ req }: { req: DatedDoc<StockRequest> }) {
       {open && (
         <Section
           title="Reason for the counter"
-          sub="Goes to the counter and to the store keeper with this request, against your name. Required to reject; worth writing whenever you trim."
+          tip="Goes to the counter and to the store keeper with this request, against your name. Required to reject; worth writing whenever you trim. Kept on the request history against your name."
         >
           <div className="btnrow" style={{ flexWrap: "wrap", marginBottom: 8 }}>
             {QUICK.map((r) => (
@@ -362,11 +362,11 @@ function ApprovalBody({ req }: { req: DatedDoc<StockRequest> }) {
               onChange={(e) => setNote(e.target.value)}
               placeholder="Why you trimmed or refused, and what the counter should do next…"
             />
-            <div className="hint" style={!reason ? { color: "var(--warn)" } : undefined}>
-              {reason
-                ? "Kept on the request history against your name."
-                : "No reason, no reject - the counter must be told why. Approving without one is allowed."}
-            </div>
+            {!reason && (
+              <div className="hint" style={{ color: "var(--warn)" }}>
+                No reason, no reject - the counter must be told why. Approving without one is allowed.
+              </div>
+            )}
           </div>
           {/* The footer's own Reject / Approve pair is the canonical one - it is on screen
               wherever the drawer is scrolled to, it carries the busy labels, and it is the
@@ -376,7 +376,7 @@ function ApprovalBody({ req }: { req: DatedDoc<StockRequest> }) {
         </Section>
       )}
 
-      <Section title="History" sub="Every hand this request has passed through">
+      <Section title="History" tip="Every hand this request has passed through">
         <Feed
           items={req.hist.map((h, i) => ({
             key: h.s + i,

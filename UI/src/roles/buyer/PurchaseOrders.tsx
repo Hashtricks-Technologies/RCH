@@ -5,7 +5,7 @@ import { useApp } from "../../store";
 import { netReceived, poValue, round3 } from "../../lib/selectors";
 import { money0, sum, unitTotal } from "../../lib/fmt";
 import {
-  Btn, Card, FilterSelect, Kpis, PageHead, Pill, StatusPill, Toolbar,
+  Btn, Card, FilterSelect, Kpis, PageHead, Pill, StatusPill, Tip, Toolbar,
 } from "../../ui/kit";
 import type { PoStatus, PurchaseOrder, Vendor } from "../../types";
 import "./PoDrawer";
@@ -148,13 +148,13 @@ export default function PurchaseOrders() {
       <PageHead
         crumbs={["Royal Care", "Procurement", "Purchase Orders"]}
         title="Purchase orders"
-        sub="Every purchase order, by status."
+        tip="Every purchase order, by status."
       />
 
       <Kpis items={[
-        { l: "Drafts open", v: String(draftCount), d: "awaiting your review before they go to a vendor" },
+        { l: "Drafts open", v: String(draftCount), tip: "awaiting your review before they go to a vendor" },
         { l: "Value on order", v: money0(orderedValue), d: `${openOrders.length} order(s) open with a vendor` },
-        { l: "Items awaiting delivery", v: String(linesAwaiting), d: "not yet fully received against an open order" },
+        { l: "Items awaiting delivery", v: String(linesAwaiting), tip: "not yet fully received against an open order" },
         { l: "Over the finance slab", v: String(overSlab), d: `above the ${money0(PO_APPROVAL_LIMIT)} approval limit` },
       ]} />
 
@@ -184,10 +184,10 @@ export default function PurchaseOrders() {
             <section className="kan-col" key={title} aria-label={`${title} - ${cards.length} orders`}>
               <div className="kan-h">
                 <StatusPill status={title} />
+                <Tip text={sub} label={title} />
                 <div className="sp" />
                 <span className="kan-n">{cards.length}</span>
               </div>
-              <p className="kan-sub">{sub}</p>
               {sts.length > 1 && (
                 <div>
                   <FilterSelect label="Show" value={receipt} options={RECEIPT}

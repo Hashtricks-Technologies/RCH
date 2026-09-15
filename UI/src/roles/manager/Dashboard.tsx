@@ -10,13 +10,12 @@ import {
 import { emptyFor, sortRows, useSort, type SortValue } from "./useSort";
 import type { DatedDoc, LocKey, StockRequest } from "../../types";
 
-interface Off { n: number; manual: number; stock: number; recipe: number }
+interface Off { n: number; manual: number; stock: number }
 
 const why = (o: Off) =>
   [
     o.manual ? `${o.manual} switched off` : "",
     o.stock ? `${o.stock} out of stock` : "",
-    o.recipe ? `${o.recipe} missing an ingredient` : "",
   ].filter(Boolean).join(" · ");
 
 const PRIORITY = ["All", "Urgent", "Normal"] as const;
@@ -42,14 +41,13 @@ export default function Dashboard() {
   const outletSort = useSort("sales", "desc");
   const actSort = useSort("t", "desc");
 
-  /* A manual switch is only one of the three ways a product stops selling (H5). */
+  /* A manual switch is only one of the two ways a product stops selling (H5). */
   const offAt = (loc: LocKey): Off => {
     const bad = menuOf(s, loc).map((it) => availOf(s, loc, it)).filter((a) => !a.ok);
     return {
       n: bad.length,
       manual: bad.filter((a) => a.mode === "Manual").length,
       stock: bad.filter((a) => a.mode === "Stock").length,
-      recipe: bad.filter((a) => a.mode === "Recipe").length,
     };
   };
 
@@ -75,7 +73,6 @@ export default function Dashboard() {
     n: sum(outlets, (r) => r.off.n),
     manual: sum(outlets, (r) => r.off.manual),
     stock: sum(outlets, (r) => r.off.stock),
-    recipe: sum(outlets, (r) => r.off.recipe),
   };
   const offOutlets = outlets.filter((r) => r.off.n > 0);
 
@@ -170,7 +167,7 @@ export default function Dashboard() {
       <PageHead
         crumbs={["Royal Care", "Outlets", "Dashboard"]}
         title="What needs you today"
-        sub="Decisions waiting on you across the outlets."
+        tip="Decisions waiting on you across the outlets."
         actions={<>
           {/* ---- prod-order raise ---- the manager booking a tray for one of the three shops,
               rather than ringing the counter and asking them to raise it themselves. */}
@@ -207,7 +204,7 @@ export default function Dashboard() {
         </Alert>
       )}
 
-      <Card title="Outlet summary" sub="Today's trade against the stock each counter is holding" flush>
+      <Card title="Outlet summary" tip="Today's trade against the stock each counter is holding" flush>
         <DataTable
           sort={outletSort.sort}
           onSort={outletSort.onSort}
@@ -292,7 +289,7 @@ export default function Dashboard() {
         <TableFoot count={queueRows.length} extra={<>{urgent} urgent in the full queue</>} />
       </Card>
 
-      <Card title="Recent activity" sub="Bills, request decisions and shop transfers" flush className="mtop">
+      <Card title="Recent activity" tip="Bills, request decisions and shop transfers" flush className="mtop">
         <Toolbar
           placeholder="Search activity, outlet or person…"
           value={aq}

@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { IsoDate, ItemTypeSchema, LocKeySchema, PriceListSchema, StockLocSchema, TenderSchema } from "./common.js";
-import { AdjustReasonSchema, GrnSchema, ItemSchema, PayerKindSchema, PayerSchema, PordStatusSchema, ProdOrderSchema, PurchaseOrderSchema, ShopAskSchema, StockRequestSchema, TicketPrioritySchema, TicketSchema, TicketStatusSchema, TicketTopicSchema } from "./documents.js";
+import { IsoDate, ItemTypeSchema, LocKeySchema, PriceListIdSchema, StockLocSchema, TenderSchema } from "./common.js";
+import { AdjustReasonSchema, GrnSchema, ItemSchema, PayerSchema, PordStatusSchema, ProdOrderSchema, PurchaseOrderSchema, ShopAskSchema, StockRequestSchema, TicketPrioritySchema, TicketSchema, TicketStatusSchema, TicketTopicSchema } from "./documents.js";
 
 /** Every domain slice a write can touch, so a client can invalidate/refetch precisely instead
  *  of reloading the whole snapshot after each mutation. Extracted so `events.ts` can name one
@@ -8,7 +8,7 @@ import { AdjustReasonSchema, GrnSchema, ItemSchema, PayerKindSchema, PayerSchema
  *  item master, which every screen reads out of one registry - without it the only honest
  *  `changed` a new product could name would be the whole snapshot. `"locations"` and `"outlets"`
  *  are the location master as the operational screens and the admin page each read it. */
-export const CollectionSchema = z.enum(["stock", "rsv", "ovr", "prices", "menu", "bills", "req", "tkt", "prq", "po", "pord", "batch", "grn", "vendors", "contracts", "tickets", "productReqs", "shopAsks", "items", "roster", "payers", "adjustments", "accounts", "recipes", "locations", "outlets"]);
+export const CollectionSchema = z.enum(["stock", "rsv", "ovr", "prices", "priceLists", "menu", "bills", "req", "tkt", "prq", "po", "pord", "batch", "grn", "vendors", "contracts", "tickets", "productReqs", "shopAsks", "items", "locations", "outlets", "roster", "adjustments", "accounts"]);
 export const ChangedSchema = z.array(CollectionSchema);
 export type Changed = z.infer<typeof CollectionSchema>;
 
@@ -27,15 +27,26 @@ export const PayBodySchema = z.strictObject({
   lines: z.array(z.strictObject({ it: z.string().min(1).max(64), qty: z.number().positive().multipleOf(0.001).max(10000) })).min(1).max(100),
 });
 export const ToggleAvailBodySchema = z.strictObject({ loc: LocKeySchema, it: z.string().min(1).max(64) });
-export const SavePriceParamsSchema = z.strictObject({ list: PriceListSchema, it: z.string().min(1).max(64) });
+export const SavePriceParamsSchema = z.strictObject({ list: PriceListIdSchema, it: z.string().min(1).max(64) });
 /** A price of nothing is not a price - the manager's screen already says "Enter a price greater than zero". */
 export const SavePriceBodySchema = z.strictObject({ price: z.number().positive().max(100000) });
 export const MenuLocParamsSchema = z.strictObject({ loc: LocKeySchema });
 export const MenuItemParamsSchema = z.strictObject({ loc: LocKeySchema, it: z.string().min(1).max(64) });
 export const MenuItemBodySchema = z.strictObject({ it: z.string().min(1).max(64) });
 export const ToggleResultSchema = z.strictObject({ loc: LocKeySchema, it: z.string(), off: z.boolean(), reason: z.string().optional() });
-export const PriceResultSchema = z.strictObject({ list: PriceListSchema, it: z.string(), price: z.number() });
+export const PriceResultSchema = z.strictObject({ list: PriceListIdSchema, it: z.string(), price: z.number() });
 export const MenuResultSchema = z.strictObject({ loc: LocKeySchema, items: z.array(z.string()) });
+
+// ---- price lists ----
+/** A new list is always cloned from one outlet's current active list, so the manager edits from
+ *  a known baseline rather than an empty table. It is created inactive - creating one never
+ *  switches any outlet onto it (`activatePriceList` is the separate, explicit step). */
+export const CreatePriceListBodySchema = z.strictObject({ name: z.string().min(1).max(80), cloneFrom: LocKeySchema });
+export const PriceListIdParamsSchema = z.strictObject({ id: PriceListIdSchema });
+export const OutletParamsSchema = z.strictObject({ loc: LocKeySchema });
+export const SetOutletPriceListBodySchema = z.strictObject({ listId: PriceListIdSchema });
+export const DeletedPriceListSchema = z.strictObject({ id: PriceListIdSchema });
+export const ActivatePriceListResultSchema = z.strictObject({ loc: LocKeySchema, listId: PriceListIdSchema });
 
 // Three decimals is the whole precision of a quantity anywhere in this system (`round3`), so
 // `PayBodySchema` already refuses more; match it. Positivity is deliberately NOT here - a zero
@@ -71,10 +82,9 @@ export const DispatchResultSchema = z.strictObject({ order: ProdOrderSchema, tic
 // service with a sentence that says where to go instead, because a stale tab pressing it needs
 // an answer it can read, not a 400 - a dispatch has its own endpoint.
 export const SetOrderStatusBodySchema = z.strictObject({ st: PordStatusSchema });
-// `started` is what went into the oven and `made` is what came out of it; the ingredients go
-// against the first and only the second reaches the rack (UA-14). A blank yield box means every
-// unit came good, so `made` is optional rather than defaulted - a default of 0 would read a
-// blank box as a lost tray.
+// `started` is what went into the oven and `made` is what came out of it; only the second reaches
+// the rack (UA-14). A blank yield box means every unit came good, so `made` is optional rather
+// than defaulted - a default of 0 would read a blank box as a lost tray.
 export const MakeBatchBodySchema = z.strictObject({
   it: z.string().min(1).max(64),
   started: QtySchema,
@@ -238,16 +248,6 @@ export const DeskReplyBodySchema = z.strictObject({
   st: z.enum(["Waiting on you", "Resolved"]).optional(),
 });
 
-// ---- payers ----
-// Who a bill may be charged to. The three rosters are numbered independently by the hospital -
-// an in-patient number, an employee number, a cost centre - so the id travels as the hospital's
-// own and is never allocated here; `kind` and `id` together are the key.
-export const PayerBodySchema = z.strictObject({ kind: PayerKindSchema, id: z.string().min(1).max(40), name: z.string().max(120) });
-/** Declared field by field, and with no defaults: `.parse({})` must stay empty, or "Nothing to
- *  change" is unreachable and a rename would quietly reactivate a closed account. An empty name
- *  is the service's own sentence, not a 400 - the same split every other write here makes. */
-export const PatchPayerBodySchema = z.strictObject({ name: z.string().max(120).optional(), active: z.boolean().optional() });
-export const PayerParamsSchema = z.strictObject({ kind: PayerKindSchema, id: z.string().min(1).max(40) });
 // ---- bill void. A mis-keyed bill, taken back on the day it was taken and no later.
 /** A bill number carries a slash (`CF/1188`), so this one param reaches the server
  *  percent-encoded - `UI/src/api/client.ts` encodes every path param and nginx forwards the

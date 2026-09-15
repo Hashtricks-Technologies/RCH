@@ -142,7 +142,7 @@ function RequisitionDetail({ id }: DrawerProps) {
 
       <Section
         title="What was ordered"
-        sub="Each approved item against the purchase order procurement actually raised for it"
+        tip="Each approved item against the purchase order procurement actually raised for it"
       >
         <DataTable
           cols={[
@@ -223,7 +223,7 @@ function RequisitionDetail({ id }: DrawerProps) {
         <TableFoot count={receipts.length} />
       </Section>
 
-      <Section title="History" sub="Every hand this requisition has passed through">
+      <Section title="History" tip="Every hand this requisition has passed through">
         <Feed
           items={p.hist.map((h, i) => ({
             key: h.s + i, title: h.s, when: h.t, color: dotFor(h.s),

@@ -60,7 +60,7 @@ function PoReceiptDrawer({ id }: DrawerProps) {
   if (po.st === "Received" || po.st === "Cancelled") {
     return (
       <DrawerFrame title={po.id} sub={`${vendorName(s.vendors, po.vendor)} · ${po.st}`}>
-        <Section title="Goods received" sub="GRNs booked against this order.">
+        <Section title="Goods received" tip="GRNs booked against this order.">
           <DataTable
             cols={[
               { h: "GRN", cls: "nm", w: "18%" },
@@ -255,7 +255,7 @@ function PoReceiptDrawer({ id }: DrawerProps) {
         </>
       }
     >
-      <Section title="Delivery" sub="Record the vendor's paperwork before booking anything in.">
+      <Section title="Delivery" tip="Record the vendor's paperwork before booking anything in.">
         <Alert tone="i" label="GOODS RECEIPT">
           Nothing enters stock without a batch behind it. Goods often arrive ahead of the invoice, so only the
           delivery note is required here - add the invoice once it turns up.
@@ -276,7 +276,7 @@ function PoReceiptDrawer({ id }: DrawerProps) {
         </FormRow>
       </Section>
 
-      <Section title="Quantities" sub="Receiving now defaults to what's still outstanding on this order. What you reject goes to Quarantine instead of the shelf, and there is no way back out of it.">
+      <Section title="Quantities" tip="Receiving now defaults to what's still outstanding on this order. What you reject goes to Quarantine instead of the shelf, and there is no way back out of it.">
         <div className="lgrid">
           <DataTable
             cols={[
@@ -297,7 +297,7 @@ function PoReceiptDrawer({ id }: DrawerProps) {
         <div className="totrow"><span>Balance outstanding</span><span>{unitTotal(balance)}</span></div>
       </Section>
 
-      <Section title="Batch and dates" sub="Printed MRP is captured only for items that carry one on the pack.">
+      <Section title="Batch and dates" tip="Printed MRP is captured only for items that carry one on the pack.">
         <div className="lgrid">
           <DataTable
             cols={[

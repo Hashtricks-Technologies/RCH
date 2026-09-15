@@ -140,7 +140,7 @@ export default function Stock() {
       <PageHead
         crumbs={["Royal Care", "Central Kitchen", "Kitchen Stock"]}
         title="What the kitchen is holding"
-        sub="Ingredients and finished goods in the kitchen."
+        tip="Raw materials and finished goods in the kitchen."
         actions={<>
           <span className="mini">Stock value {money0(total)}</span>
           {/* ---- adjustments: a tray that went over or a bag that split leaves the kitchen
@@ -157,7 +157,7 @@ export default function Stock() {
         </Alert>
       )}
 
-      <Card title="Products made here" sub="Finished goods on the kitchen rack" flush className="mtop">
+      <Card title="Products made here" tip="Finished goods on the kitchen rack" flush className="mtop">
         <Toolbar
           placeholder="Search item, code or group…"
           value={q}
@@ -188,7 +188,7 @@ export default function Stock() {
 
       <Card
         title="Raw materials and packaging held"
-        sub="Issued to the kitchen by the central store"
+        tip="Issued to the kitchen by the central store"
         flush
         className="mtop"
       >

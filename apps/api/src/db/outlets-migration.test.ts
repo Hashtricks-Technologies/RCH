@@ -16,9 +16,9 @@ beforeAll(async () => { t = await withTestSchema("outlets_migration"); await see
 afterAll(async () => { await t.close(); });
 
 const backfill = (): string => {
-  const file = readFileSync(new URL("../../drizzle/0015_outlets.sql", import.meta.url), "utf8");
+  const file = readFileSync(new URL("../../drizzle/0017_outlets.sql", import.meta.url), "utf8");
   const stmt = file.split("--> statement-breakpoint").map((s) => s.trim()).find((s) => s.includes(`UPDATE "locations" SET "par_factor"`));
-  if (!stmt) throw new Error("0015_outlets.sql carries no par_factor backfill");
+  if (!stmt) throw new Error("0017_outlets.sql carries no par_factor backfill");
   return stmt;
 };
 const insertOutlet = (key: string, name: string, code: string) =>
@@ -27,7 +27,7 @@ const refusalOf = async (p: Promise<unknown>): Promise<string | undefined> => {
   try { await p; return undefined; } catch (e) { return uniqueViolationOf(e); }
 };
 
-describe("0015_outlets", () => {
+describe("0017_outlets", () => {
   it("backfills today's par factors, so no par level moves", async () => {
     await t.db.execute(sql`update locations set par_factor = 0.18`);
     await t.db.execute(sql.raw(backfill()));

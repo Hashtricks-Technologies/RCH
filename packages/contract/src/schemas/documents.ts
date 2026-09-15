@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { IsoDate, IsoTime, ItemTypeSchema, LocKeySchema, Money, PriceListSchema, Qty, RoleSchema, StockLocSchema, TenderSchema } from "./common.js";
+import { IsoDate, IsoTime, ItemTypeSchema, LocKeySchema, Money, PriceListIdSchema, Qty, RoleSchema, StockLocSchema, TenderSchema } from "./common.js";
 
 export const ReqStatusSchema = z.enum(["Draft", "Request sent", "Manager approved", "Partially approved", "Ticket issued", "Collected", "Received", "Closed", "Rejected", "Cancelled"]);
 // A ticket that was issued and never collected is withdrawn rather than left open: the hold it
@@ -30,12 +30,18 @@ export const ItemSchema = z.object({
 });
 export const LocationSchema = z.object({
   n: z.string(), c: z.string(), type: z.enum(["Store", "Kitchen", "Outlet"]),
-  floor: z.string(), cc: z.string(), list: PriceListSchema.optional(),
+  floor: z.string(), cc: z.string(), list: PriceListIdSchema.optional(),
   // ---- outlets. Whether the location still trades, and how much of an item's reorder level one
   // par covers there (`parFactor` in @rch/domain). Required, unlike `Item.active`: every row in
   // `locations` carries both, so the server always sends both.
   active: z.boolean(),
   par: z.number().positive(),
+});
+/** A named price list, and the outlets currently active on it. `outlets` is derived at read
+ *  time (every `Location` whose `list` names this id) - never stored on the list itself, so it
+ *  can never drift from what `locations` actually says. */
+export const PriceListSchema = z.strictObject({
+  id: PriceListIdSchema, name: z.string().min(1).max(80), outlets: z.array(LocKeySchema),
 });
 export const UserSchema = z.object({
   id: z.string(), n: z.string(), e: z.string(), r: RoleSchema, rl: z.string(),
@@ -51,7 +57,6 @@ export const UserSchema = z.object({
 export const UserMinSchema = z.strictObject({
   id: z.string(), n: z.string(), r: RoleSchema, rl: z.string(), loc: LocKeySchema, col: z.string(),
 });
-export const RecipeSchema = z.object({ ov: z.number(), l: z.array(z.tuple([z.string(), Qty])) });
 export const ReqLineSchema = z.object({ it: z.string(), qty: Qty, appr: Qty, short: Qty.optional() });
 export const HistEntrySchema = z.object({ s: z.string(), who: z.string(), t: IsoTime });
 export const StockRequestSchema = z.object({
@@ -90,12 +95,6 @@ export const ProdOrderSchema = z.object({
 });
 export const BatchSchema = z.object({ id: z.string(), it: z.string(), qty: Qty, made: Qty, at: IsoTime, bb: IsoTime, note: z.string().optional() });
 export const PayerSchema = z.strictObject({ kind: PayerKindSchema, id: z.string(), name: z.string() });
-// ---- payers ----
-/** A payer as the **roster** holds it, `active` and all - the register the outlet manager
- *  maintains. `PayerSchema` above stays exactly the three fields a bill embeds: a bill taken
- *  last month must not start reading "inactive" because the account was closed since, and a
- *  bill is a record of what happened, not a live join onto the roster. */
-export const PayerRecordSchema = z.strictObject({ kind: PayerKindSchema, id: z.string(), name: z.string(), active: z.boolean() });
 /** Who a bill may be charged to. Served from the `payers` table, not from a fixture: the till
  *  has validated its payer against that table since Phase 3 and the two lists must be one. */
 export const PayerRosterSchema = z.strictObject({
@@ -120,7 +119,7 @@ export const BillSchema = z.object({
   voided: z.boolean().optional(), voidReason: z.string().optional(),
 });
 export const DraftLineSchema = z.object({ it: z.string(), qty: Qty });
-export const AvailabilitySchema = z.object({ ok: z.boolean(), mode: z.enum(["Manual", "Recipe", "Stock"]), why: z.string().optional(), left: z.string().optional() });
+export const AvailabilitySchema = z.object({ ok: z.boolean(), mode: z.enum(["Manual", "Stock"]), why: z.string().optional(), left: z.string().optional() });
 export const PriceSchema = z.object({ p: Money, listed: Money, capped: z.boolean() });
 export const DrawerStateSchema = z.object({ t: z.string(), id: z.string() });
 export const VendorSchema = z.object({

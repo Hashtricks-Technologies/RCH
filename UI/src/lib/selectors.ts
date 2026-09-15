@@ -4,7 +4,7 @@ export { apportion, netReceived, round3 };
 // The par factor is a rule's own tuning, read off the location master `hydrateMaster` fills
 // rather than compiled into the bundle (M11); the outlet lists below read the same master.
 import { operationalKeys, outletKeys, parFactor } from "@rch/domain";
-import { IT, LOC, MENU, PL, RCP } from "../data/master";
+import { IT, LOC, MENU, PL } from "../data/master";
 import type {
   Availability, Bill, DatedDoc, LocKey, PoStatus, PordStatus, Price, PurchaseOrder, Requisition, ReqStatus,
   StockLoc, StockRequest, Ticket, TktStatus, Tone,
@@ -17,12 +17,12 @@ export interface StockShape {
   stock: Record<StockLoc, Record<string, number>>;
   rsv: Record<string, number>;
   ovr: Record<string, string>;
-  prices: Record<"A" | "B", Record<string, number>>;
+  prices: Record<string, Record<string, number>>;
   menu: Record<string, string[]>;
 }
 
 /** The master data every domain rule below is parameterised by. */
-const MASTER: D.Master = { items: IT, locations: LOC, recipes: RCP };
+const MASTER: D.Master = { items: IT, locations: LOC };
 
 export const qty = (s: StockShape, l: LocKey, it: string) => D.qty(s.stock, l, it);
 export const resv = (s: StockShape, l: LocKey, it: string) => D.resv(s.rsv, l, it);
@@ -39,21 +39,16 @@ export function availOf(s: StockOnly, l: LocKey, it: string): Availability {
   return D.availOf(MASTER, s.stock, s.rsv, s.ovr, l, it);
 }
 
-/** Σ(ingredient × its cost) plus the recipe's overhead. 0 when there is no recipe (H1). */
-export function recipeCost(it: string): number {
-  return D.recipeCost(MASTER, it);
-}
-/** What a unit of this item actually costs - from its recipe if it has one. */
-export const costOf = (it: string) => D.costOf(MASTER, it);
+/** What a unit of this item costs: its standard cost on the item master, which the manager keeps. */
+export const costOf = (it: string) => IT[it]?.cost ?? 0;
 
 /**
- * What the kitchen can actually make: every item with a recipe that is held as stock.
+ * What the kitchen can actually make: every finished good on the master.
  *
  * Written once because three kitchen screens read it and all three used to carry the same
- * three-key literal, so a fourth finished good with a recipe on the master was invisible to
- * the kitchen until somebody remembered to edit all of them. A made-to-order item has a recipe
- * too - it is assembled at the counter, never batched onto the rack - so the type is the test,
- * not the presence of a recipe.
+ * three-key literal, so a fourth finished good on the master was invisible to the kitchen until
+ * somebody remembered to edit all of them. A made-to-order item is made at the counter, never
+ * batched onto the rack, so it is not one of them.
  *
  * A **retired** line is out too, and for the same reason every other picker reads
  * `activeItems()`: `IT` carries the whole master now, retired lines included, so that a document
@@ -62,7 +57,7 @@ export const costOf = (it: string) => D.costOf(MASTER, it);
  * still filters `active`, and would answer `There is no item <key>.`
  */
 export const madeItems = (): string[] =>
-  Object.keys(RCP).filter((k) => IT[k]?.t === "FG" && !isRetired(k));
+  Object.keys(IT).filter((k) => IT[k]?.t === "FG" && !isRetired(k));
 
 /** Reorder level for this item at this location (M11). */
 export const parOf = (l: LocKey, it: string) => {
@@ -335,7 +330,8 @@ export const ticketDot = (state: string): string =>
     : state === "Received" ? "var(--good)" : "var(--accent)";
 export const stateTone = (a: number, rl: number): Tone => (a <= 0 ? "cr" : rl > 0 && a < rl ? "wn" : "ok");
 export const stateLabel = (a: number, rl: number) => (a <= 0 ? "Out" : rl > 0 && a < rl ? "Low" : "Healthy");
-export const basePrices = () => ({ A: { ...PL.A }, B: { ...PL.B } });
+export const basePrices = (): Record<string, Record<string, number>> =>
+  Object.fromEntries(Object.entries(PL).map(([id, list]) => [id, { ...list }]));
 
 /**
  * What a button may offer is what the server accepts. Each of these reads the shared

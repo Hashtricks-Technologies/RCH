@@ -30,7 +30,7 @@ describe("a bare seed", () => {
     expect(await count("locations")).toBe(Object.keys(FX.LOC).length);
   });
 
-  it("leaves every other table empty - no item, recipe, price, stock, payer, vendor or document", async () => {
+  it("leaves every other table empty - no item, price, stock, payer, vendor or document", async () => {
     const tables = Object.values(s).filter((t) => is(t, PgTable)).map((t) => getTableName(t)).filter((n) => !KEPT.includes(n));
     // Every table the schema has, so a table added later is covered without anyone listing it.
     expect(tables.length).toBeGreaterThan(30);

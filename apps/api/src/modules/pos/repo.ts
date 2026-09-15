@@ -33,11 +33,11 @@ export const posRepo = {
     return Object.fromEntries(rows.map((r) => [`${loc}:${r.itemKey}`, r.reason]));
   },
 
-  /** Both lists: which one a location charges from is the master's business (`priceOf`). */
+  /** Every list: which one a location charges from is the master's business (`priceOf`). */
   async prices(tx: Tx): Promise<Prices> {
     const rows = await tx.select().from(priceListItems);
-    const out: Prices = { A: {}, B: {} };
-    for (const r of rows) out[r.list][r.itemKey] = r.price;
+    const out: Prices = {};
+    for (const r of rows) (out[r.listId] ??= {})[r.itemKey] = r.price;
     return out;
   },
 
@@ -112,9 +112,9 @@ export const posRepo = {
    *
    * A read of `stock_moves` from a repo, which is allowed - what `lib/ledger.ts` owns is writing
    * it. Reading is how a reversal knows where the stock came off: the move carries its own `loc`
-   * and item, so a made-to-order bill explodes back into exactly the ingredients the sale took
-   * rather than into a portion of a dish no shelf ever held. Ordered by id so the reversals are
-   * written in the order the sale was.
+   * and item, so the void puts back exactly what the sale took, and a made-to-order line - which
+   * took nothing - puts back nothing. Ordered by id so the reversals are written in the order the
+   * sale was.
    */
   async saleMoves(tx: Tx, no: string): Promise<{ id: number; loc: string; itemKey: string; qty: number }[]> {
     return tx.select({ id: stockMoves.id, loc: stockMoves.loc, itemKey: stockMoves.itemKey, qty: stockMoves.qty })

@@ -1,5 +1,5 @@
 {
-  "id": "80db0655-66ab-4e8f-b164-3e54102eea8d",
+  "id": "0f6f7d2c-3c94-48f0-b610-ea1a0b3ffe66",
   "prevId": "821a151b-9bfd-4f9e-8acb-65752788c62b",
   "version": "7",
   "dialect": "postgresql",
@@ -334,20 +334,6 @@
           "notNull": true,
           "default": false
         },
-        "active": {
-          "name": "active",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": true
-        },
-        "par_factor": {
-          "name": "par_factor",
-          "type": "numeric(4, 2)",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0.18
-        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -356,38 +342,7 @@
           "default": "now()"
         }
       },
-      "indexes": {
-        "locations_name_uq": {
-          "name": "locations_name_uq",
-          "columns": [
-            {
-              "expression": "lower(\"name\")",
-              "asc": true,
-              "isExpression": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "locations_code_uq": {
-          "name": "locations_code_uq",
-          "columns": [
-            {
-              "expression": "upper(\"code\")",
-              "asc": true,
-              "isExpression": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
+      "indexes": {},
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
@@ -627,117 +582,6 @@
         "rate_contracts_item_key_items_key_fk": {
           "name": "rate_contracts_item_key_items_key_fk",
           "tableFrom": "rate_contracts",
-          "tableTo": "items",
-          "columnsFrom": [
-            "item_key"
-          ],
-          "columnsTo": [
-            "key"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.recipe_lines": {
-      "name": "recipe_lines",
-      "schema": "",
-      "columns": {
-        "item_key": {
-          "name": "item_key",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "ingredient_key": {
-          "name": "ingredient_key",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "qty": {
-          "name": "qty",
-          "type": "numeric(12, 3)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "seq": {
-          "name": "seq",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "recipe_lines_item_key_recipes_item_key_fk": {
-          "name": "recipe_lines_item_key_recipes_item_key_fk",
-          "tableFrom": "recipe_lines",
-          "tableTo": "recipes",
-          "columnsFrom": [
-            "item_key"
-          ],
-          "columnsTo": [
-            "item_key"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "recipe_lines_ingredient_key_items_key_fk": {
-          "name": "recipe_lines_ingredient_key_items_key_fk",
-          "tableFrom": "recipe_lines",
-          "tableTo": "items",
-          "columnsFrom": [
-            "ingredient_key"
-          ],
-          "columnsTo": [
-            "key"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "recipe_lines_item_key_ingredient_key_pk": {
-          "name": "recipe_lines_item_key_ingredient_key_pk",
-          "columns": [
-            "item_key",
-            "ingredient_key"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.recipes": {
-      "name": "recipes",
-      "schema": "",
-      "columns": {
-        "item_key": {
-          "name": "item_key",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "overhead_pct": {
-          "name": "overhead_pct",
-          "type": "numeric(5, 2)",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "recipes_item_key_items_key_fk": {
-          "name": "recipes_item_key_items_key_fk",
-          "tableFrom": "recipes",
           "tableTo": "items",
           "columnsFrom": [
             "item_key"

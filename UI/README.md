@@ -40,17 +40,17 @@ pnpm --filter @rch/ui test
 
 The dev server proxies `/api` to the Fastify API on `:3000`. Master data, prices, menus, the
 payer roster and every open document are hydrated from `GET /snapshot` on load
-(`hydrateMaster`/`hydrateRoster`). Every mutation in the store - fifty-three actions, listed in
+(`hydrateMaster`/`hydrateRoster`). Every mutation in the store - fifty-one actions, listed in
 `../CLAUDE.md`'s *One Zustand store* - is a server call: billing, availability, prices and
 menus, the whole stock-request chain, shop transfers and shop asks, the whole of production, the
-whole of buying, the support desk and the two server-side reports, and the audit wave's own six:
-the bill void, the kitchen order, the item patch, the two payer writes and the adjustment. There is no
+whole of buying, the support desk and the two server-side reports, and the audit wave's own four:
+the bill void, the kitchen order, the item patch and the adjustment. There is no
 in-memory fallback for any of it. `UI/src/api/events.ts` opens one `fetch`-based SSE connection
 per session and refetches whatever a write elsewhere changed, so two open tabs stay in sync
 without a reload.
 
 Against a real server today, a person can walk a kitchen order across the board, make a batch
-that draws its recipe out of the kitchen and stamps a best-before, dispatch it, hand it over on
+that books the finished units onto the kitchen rack and stamps a best-before, dispatch it, hand it over on
 a six-digit code and receive it at the counter - with another browser following along live - and
 cancel a ticket nobody came for, which puts the stock and the document behind it back where it
 stood. Buying, the same way: the store keeper raises a requisition at the central store; the
@@ -116,14 +116,16 @@ src/
                                            the two report reads, the bill void, the kitchen order);
                                            procurement.ts (vendors, requisition approval, the PO lifecycle,
                                            goods receipt); ops.ts (rate contracts, new-product requests,
-                                           shop-to-shop transfers, the support desk, the item patch, the
-                                           payer register, adjustments)
+                                           shop-to-shop transfers, the support desk, the item patch,
+                                           adjustments)
   data/                                   master.ts (empty registries, replaced in place by hydrateMaster() and
                                            hydrateRoster()), vendors.ts - no seed.ts, no ops.ts; nothing here
                                            imports the fixtures
   lib/                                    fmt.ts (money, quantity, time), selectors.ts (qty · resv · avail ·
                                            freeToPromise · availOf · priceOf · procurementList …), theme.ts
   ui/                                     kit.tsx (~30 typed components incl. DraftLineInput and EtaInput),
+                                           Tip.tsx (the one tooltip: every explanation on a page, card,
+                                           field, figure or button opens on hover, focus or tap),
                                            Shell.tsx, Drawer.tsx, ErrorBoundary.tsx, prefs.ts, and four
                                            shared non-kit pieces two roles each need: TicketSlip.tsx,
                                            NewProductForm.tsx, AdjustmentForm.tsx, KitchenOrderForm.tsx
@@ -151,12 +153,12 @@ MRP. No price list, floor or role may sell above it - `savePrice` refuses and sa
 role may clear it either: an item that carries a printed MRP keeps one, and an emptied box on the
 edit form means "leave it as it is", not "take the ceiling away".
 
-**Recipe depletion.** Selling a made-to-order drink deducts its ingredients from that
-counter, not a finished unit. Finished goods made in the kitchen deduct by the unit.
+**What a sale takes off the shelf.** Traded goods and finished goods made in the kitchen deduct by
+the unit. A made-to-order drink is made at the counter and holds no stock, so selling one moves
+nothing.
 
-**Availability is computed.** Traded and finished goods switch off at zero; made-to-order
-items switch off when any ingredient runs out, naming the one that blocked it. The toggle is
-a manual override on top.
+**Availability is computed.** Traded and finished goods switch off at zero; a made-to-order
+item stays on until someone switches it off. The toggle is a manual override on top.
 
 ## Recent capabilities
 
@@ -171,8 +173,7 @@ month of it reads back by reason.
 
 **A bill can be taken back on the day it was billed.** The outlet manager gets a Bills screen -
 every outlet's, over the seven days the server answers for - and a Void button on any bill still
-dated today. It needs a typed reason, puts every line back on the shelf (a made-to-order drink
-goes back as the ingredients the sale actually took), returns a staff member's credit room for
+dated today. It needs a typed reason, puts every stocked line back on the shelf, returns a staff member's credit room for
 the month, and leaves the bill on every list badged VOIDED rather than disappearing from the day.
 Every figure that counts money or quantity sold skips it; the activity feed and the search still
 show it. After that day, the answer is an adjustment, and the refusal says so.
@@ -186,18 +187,24 @@ stock of it or any outlet still lists it, naming them - and a retired line keeps
 every document that already carries it while dropping off the pickers that could sell, order or
 promise it again.
 
-**The payer register is kept, not seeded.** The manager's Payers screen adds, renames,
-deactivates and reopens a patient, a staff member or a department, closed accounts included; a
-ward list of any size loads from a `kind,id,name` CSV
-(`pnpm --filter @rch/api payers import --csv`). A payer is deactivated rather than deleted, so
-switching one off takes it off every till's picker and leaves every bill already charged to it
+**The payer register is loaded, not kept on a screen.** Patients, staff members and departments
+reach the till's payer picker from a `kind,id,name` CSV
+(`pnpm --filter @rch/api payers import --csv`). A payer is deactivated rather than deleted, so a
+switched-off account leaves every till's picker and every bill already charged to it stays
 exactly as it was.
 
-**An outlet can ask the kitchen to make something.** The counter's Stock Requests screen gained
-an "Ask the kitchen" card - which is also the first window a counter has ever had on the orders
-raised for it - and the manager's dashboard an equivalent button for any outlet. Finished goods
-only, from that outlet's own menu, with an optional needed-by date the kitchen's board and drawer
-both print. Raising one reserves nothing: dispatching it is still what places the hold.
+**An outlet asks in two ways, and the screen decides which desk hears it.** The counter's Stock
+Requests screen offers exactly two tiles - **From inventory** and **From other shops**. From
+inventory is one picker over one list: everything the central store stocks *and* the finished
+goods on that outlet's own menu, interleaved by group, with as many lines as the ask needs. On
+send, the screen splits them - finished goods become a production order on the kitchen, the rest
+a stock request on the store - so the operator picks products, not departments. Made-to-order
+items are absent from the list: they hold no stock and the kitchen's route refuses them by name.
+A kitchen line brings a needed-by date with it, which the kitchen's board and drawer both print.
+The manager's dashboard keeps its equivalent button for any outlet. Raising either reserves
+nothing: dispatching it is still what places the hold. Below the tiles, "With the kitchen" is the
+counter's read-only window on the orders the split raised - a production order never appears
+under All requests.
 
 **Pay & print actually prints.** The till opens the new bill's drawer on a successful sale, and
 the drawer prints a real slip - bill number, outlet, terminal, the hospital's own date, the
@@ -217,9 +224,11 @@ Waiting on you → Resolved → Closed, and the raiser rates the fix 1–5 once 
 role sees only the tickets it raised; none of the five answers tickets.
 
 **Outlets, on `/admin`.** The admin-flagged account's Outlets tab lists every retail outlet - open ones
-first, then by name - with its code, floor, cost centre, price list and how many staff are posted there.
+first, then by name - with its code, floor, cost centre and how many staff are posted there.
 Opening one asks for a name, a code, a floor and a cost centre, and previews the key the server will
-actually assign from the name - given once, and kept even through a later rename. Each row edits in
+actually assign from the name - given once, and kept even through a later rename. A new outlet starts
+with no menu and no price list: the outlet manager lists and prices its products from their own Prices
+screen, which is also where a price list is created and attached. Each row edits in
 place with Save and Cancel, and closes behind a second press, refused in one sentence naming everything
 still open against it (stock on the shelf, a ticket, a stock request, a kitchen order, a shop ask, a
 product request, or a member of staff) if anything is. A closed outlet is never deleted: its bills,

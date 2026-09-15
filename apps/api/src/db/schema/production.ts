@@ -31,7 +31,7 @@ export const batches = pgTable("batches", {
   note: text("note"),
   byUser: text("by_user").references(() => users.id),
 }, (t) => [
-  // A batch yields some of what it started and never more: the ingredients went against what
-  // was started, so a yield above it would be stock nothing was ever consumed for.
+  // A batch yields some of what it started and never more: a yield above what went into the
+  // oven would be stock no tray ever held.
   check("batches_made_ck", sql`${t.madeQty} >= 0 and ${t.madeQty} <= ${t.startedQty}`),
 ]);

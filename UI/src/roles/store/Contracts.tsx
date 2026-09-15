@@ -139,7 +139,7 @@ export default function Contracts() {
       <PageHead
         crumbs={["Royal Care", "Central Store", "Purchasing"]}
         title="Rate contracts"
-        sub="Agreed vendor rates used to price orders."
+        tip="Agreed vendor rates used to price orders."
         actions={
           <Btn onClick={() => { setAdding((v) => !v); setEditId(null); }}>
             {adding ? "Close the add form" : "Add contract"}
@@ -153,12 +153,12 @@ export default function Contracts() {
           {
             l: "Above moving-average cost",
             v: String(above.length),
-            d: <>contracted rates a buyer should be arguing about</>,
+            tip: <>contracted rates a buyer should be arguing about</>,
           },
           {
             l: "Committed at minimum order",
             v: money0(exposure),
-            d: <>one minimum order against every live contract</>,
+            tip: <>one minimum order against every live contract</>,
           },
           {
             l: "Items under contract",
@@ -178,9 +178,9 @@ export default function Contracts() {
       )}
 
       {adding && (
-        <Card title="New rate contract" sub="One live contract per vendor and item">
+        <Card title="New rate contract" tip="One live contract per vendor and item">
           <FormRow cols="f3">
-            <Field label="Vendor" hint="The rate is agreed with this vendor.">
+            <Field label="Vendor" tip="The rate is agreed with this vendor.">
               <select value={draft.vendorId} onChange={(e) => setDraft({ ...draft, vendorId: e.target.value })}>
                 <option value="">Choose a vendor…</option>
                 {vendors.filter((v) => v.active).map((v) => (
@@ -199,7 +199,8 @@ export default function Contracts() {
               label="Contract rate (₹)"
               hint={draft.rate > 0 && IT[item]
                 ? `${draft.rate > costOf(item) ? "Above" : draft.rate < costOf(item) ? "Below" : "Level with"} the moving average by ${money(Math.abs(draft.rate - costOf(item)))}`
-                : "Per unit, exclusive of GST."}
+                : undefined}
+              tip="Per unit, exclusive of GST."
             >
               {/* `Number(e.target.value)` on every keystroke read "12." as 12 and "12.0" as 12,
                   so a rate typed digit by digit lost its paise the moment the next one arrived.
@@ -211,11 +212,11 @@ export default function Contracts() {
             </Field>
           </FormRow>
           <FormRow cols="f3">
-            <Field label="Valid from" hint="The day the rate starts applying.">
+            <Field label="Valid from" tip="The day the rate starts applying.">
               <input type="date" aria-label="Valid from" value={toInputDate(draft.from)}
                 onChange={(e) => setDraft({ ...draft, from: e.target.value })} />
             </Field>
-            <Field label="Valid to" hint="The last day it prices an order.">
+            <Field label="Valid to" tip="The last day it prices an order.">
               <input type="date" aria-label="Valid to" value={toInputDate(draft.to)}
                 onChange={(e) => setDraft({ ...draft, to: e.target.value })} />
             </Field>
@@ -234,7 +235,7 @@ export default function Contracts() {
       <div className={adding ? "mtop" : undefined}>
         <Card
           title="Contract register"
-          sub="Every rate on record, live and closed · edit a row in place"
+          tip="Every rate on record, live and closed · edit a row in place"
           right={<Pill tone={above.length ? "wn" : "ok"}>{live.length} live</Pill>}
           flush
         >
@@ -264,7 +265,7 @@ export default function Contracts() {
                 { h: "Valid to", w: "9%" },
                 { h: "Min. order", r: true, w: "8%" },
                 { h: "State", w: "8%" },
-                { h: "Action", w: "14%" },
+                { h: "Action", w: "14%", tip: "Closing a contract keeps it on record; it just stops pricing an order" },
               ]}
               rows={rows.map((c) => {
                 const v = variance(c);
@@ -357,10 +358,7 @@ export default function Contracts() {
                 }}
             />
           </div>
-          <TableFoot
-            count={rows.length}
-            extra={<>Closing a contract keeps it on record; it just stops pricing an order</>}
-          />
+          <TableFoot count={rows.length} />
         </Card>
       </div>
     </>

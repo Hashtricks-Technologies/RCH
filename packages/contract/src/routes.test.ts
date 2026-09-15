@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { z } from "zod";
-import { AdjustReasonSchema, CreateAdjustmentBodySchema, DeskReplyBodySchema, CreatePoBodySchema, CreditParamsSchema, CreditResponseSchema, EVENTS_PATH, EventNoticeSchema, KITCHEN, LocKeySchema, MakeBatchBodySchema, PatchContractBodySchema, PatchPayerBodySchema, PatchPoBodySchema, PatchVendorBodySchema, PO_APPROVAL_LIMIT, QUARANTINE, RaiseTicketBodySchema, RateTicketBodySchema, ReceivePoBodySchema, SetOrderStatusBodySchema, SetTicketStatusBodySchema, SnapshotSchema, StockLedgerQuerySchema, StockLocSchema, STORE, TktStatusSchema, ItemSchema, PatchItemBodySchema, UpdateOutletBodySchema } from "./index";
+import { AdjustReasonSchema, CreateAdjustmentBodySchema, DeskReplyBodySchema, CreatePoBodySchema, CreditParamsSchema, CreditResponseSchema, EVENTS_PATH, EventNoticeSchema, KITCHEN, LocKeySchema, MakeBatchBodySchema, PatchContractBodySchema, PatchPoBodySchema, PatchVendorBodySchema, PO_APPROVAL_LIMIT, QUARANTINE, RaiseTicketBodySchema, RateTicketBodySchema, ReceivePoBodySchema, SetOrderStatusBodySchema, SetTicketStatusBodySchema, SnapshotSchema, StockLedgerQuerySchema, StockLocSchema, STORE, TktStatusSchema, TransferBodySchema, ItemSchema, PatchItemBodySchema, UpdateOutletBodySchema } from "./index";
 import { routes } from "./routes";
 
 /** One valid body per route that takes one. The coverage case below fails if a new route
@@ -13,6 +13,8 @@ const SAMPLES: Record<string, Record<string, unknown>> = {
   toggleAvail: { loc: "kitchen", it: "SKU-1" },
   savePrice: { price: 100 },
   addMenuItem: { it: "SKU-1" },
+  createPriceList: { name: "Weekend Rates", cloneFrom: "coffee" },
+  setOutletPriceList: { listId: "PL-002" },
   createRequest: { lines: [{ it: "SKU-1", qty: 20 }], note: "Counter runs dry by 4pm", urgent: true },
   approveRequest: { appr: [12], note: "Store only holds 12 L." },
   rejectRequest: { note: "Kiosk is overstocked already" },
@@ -52,9 +54,6 @@ const SAMPLES: Record<string, Record<string, unknown>> = {
   // ---- the admin's support desk
   replyAsDesk:         { body: "Fixed on our side - reload the dashboard and it should read right.", st: "Resolved" },
   setDeskTicketStatus: { st: "Waiting on you" },
-  // ---- payers ----
-  addPayer:        { kind: "staff", id: "E2291", name: "Kavitha Raman" },
-  updatePayer:     { active: false },
   // ---- item patch ----
   patchItem:       { rl: 12 },
   // ---- bill void
@@ -67,10 +66,8 @@ const SAMPLES: Record<string, Record<string, unknown>> = {
   createAdminUser: { name: "Anitha R", email: "anitha.r@royalcare.in", role: "counter", loc: "rest" },
   updateAdminUser: { role: "counter", loc: "kiosk" },
   // ---- admin: outlets
-  createOutlet: { name: "Juice Bar", code: "OT-JB", floor: "Ground", cc: "CC-JB", list: "A" },
+  createOutlet: { name: "Juice Bar", code: "OT-JB", floor: "Ground", cc: "CC-JB" },
   updateOutlet: { name: "Juice Hut" },
-  // ---- recipes
-  saveRecipe: { ov: 12, lines: [{ it: "milk", qty: 0.15 }, { it: "cup", qty: 1 }] },
 };
 // `routes` is a const object, so `r.body` is a union of every literal schema type; the cast
 // keeps this loop about the shared `safeParse` and not about zod's generics.
@@ -131,7 +128,6 @@ describe("what buying puts on the wire", () => {
     // is unreachable and a patch of one field silently resets every other one.
     expect(PatchVendorBodySchema.parse({})).toEqual({});
     expect(PatchContractBodySchema.parse({})).toEqual({});
-    expect(PatchPayerBodySchema.parse({})).toEqual({});
     // ---- item patch ----
     expect(PatchItemBodySchema.parse({})).toEqual({});
     expect(PatchVendorBodySchema.parse({ terms: "45 days" })).toEqual({ terms: "45 days" });
@@ -151,6 +147,7 @@ describe("location keys", () => {
   it("refuses quarantine as a place an operator acts, while still reporting stock there", () => {
     expect(LocKeySchema.safeParse(QUARANTINE).success).toBe(false);
     expect(StockLocSchema.safeParse(QUARANTINE).success).toBe(true);
+    expect(TransferBodySchema.safeParse({ from: "rest", to: QUARANTINE, it: "water", qty: 1 }).success).toBe(false);
     // Only the whole word: a key that merely starts with it is an ordinary key.
     expect(LocKeySchema.safeParse("quarantine-2").success).toBe(true);
   });
@@ -271,7 +268,7 @@ describe("what the item master puts on the wire once it can be edited", () => {
 // ---- admin: outlets
 describe("what the outlet routes put on the wire", () => {
   it("takes a patch that names only one field, and adds nothing to an empty one", () => {
-    expect(UpdateOutletBodySchema.safeParse({ list: "B" }).success).toBe(true);
+    expect(UpdateOutletBodySchema.safeParse({ floor: "First" }).success).toBe(true);
     expect(UpdateOutletBodySchema.parse({})).toEqual({});
   });
 });

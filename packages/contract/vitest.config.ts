@@ -10,7 +10,7 @@ export default defineConfig({
     env: { TZ: "UTC" },
     // Almost everything here is declarative - Zod schemas, the route manifest, the fixtures -
     // so "covered" means "reached by a parse or an assertion", which is exactly what this
-    // package's suites do. It measures statements 97.24, functions 66.66, lines 97.14 today.
+    // package's suites do. It measures statements 97.45, functions 66.66, lines 97.36 today.
     //
     // **`branches` is deliberately not among the thresholds.** The whole package holds two
     // branch points and neither is exercised, so the figure is 0% and any threshold on it is

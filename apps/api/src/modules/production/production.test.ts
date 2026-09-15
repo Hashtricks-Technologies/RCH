@@ -8,7 +8,7 @@ import { authHeaders } from "../../test/auth.js";
 import { given } from "../../test/builders.js";
 import { truncateAll, warmPool } from "../../test/db.js";
 import { postMoves } from "../../lib/ledger.js";
-import { batches as batchesTable, items, recipeLines, recipes, reservations, stockBalances, stockMoves, tickets } from "../../db/schema/index.js";
+import { batches as batchesTable, items, reservations, stockBalances, stockMoves, tickets } from "../../db/schema/index.js";
 import type { InjectOptions } from "fastify";
 import type { App } from "../../app.js";
 
@@ -36,17 +36,14 @@ const getBatches = async () => (await app.inject({ method: "GET", url: "/api/v1/
 const bake = (it: string, n: number) =>
   app.testDb!.db.transaction((tx) => postMoves(tx, [{ loc: "kitchen", it, qty: n, kind: "production_yield", refType: "test", refId: "bake" }]));
 /**
- * A non-MTO item with a recipe and no shelf-life value. `capp`/`chai` used to be the fixtures'
- * only items shaped that way - a recipe, no `sl` - but C2 refuses a batch of either outright
- * now that both are MTO, so the two cases below that exercise `shelf.ts`'s no-shelf-life
+ * A finished good with no shelf-life value, which the kitchen has never carried. Every seeded
+ * finished good has an `sl`, so the two cases below that exercise `shelf.ts`'s no-shelf-life
  * fallback and the M12 phantom-row guard need an item of their own to still prove anything.
  */
 const seedNoShelfLifeItem = async (key: string) => {
   await app.testDb!.db.insert(items).values({
     key, code: `TST-${key}`, name: "Test scone", unit: "nos", type: "FG", grp: "Bakery", hsn: "1905", gst: 5, cost: 10,
   });
-  await app.testDb!.db.insert(recipes).values({ itemKey: key, overheadPct: 10 });
-  await app.testDb!.db.insert(recipeLines).values({ itemKey: key, ingredientKey: "leaf", qty: 0.008, seq: 0 });
 };
 /**
  * The seed's two orders sit at New and Accepted, so a case about the transition table has to
@@ -320,7 +317,7 @@ describe("POST /prod-orders/:id/status", () => {
 });
 
 describe("POST /batches", () => {
-  it("consumes the recipe for what was started and books only what came good (C1, UA-14)", async () => {
+  it("books only what came good onto the rack, and draws nothing else down (UA-14)", async () => {
     const before = {
       maida: await onHand("kitchen", "maida"), fill: await onHand("kitchen", "fill"),
       oil: await onHand("kitchen", "oil"), box: await onHand("kitchen", "box"),
@@ -337,19 +334,17 @@ describe("POST /batches", () => {
     // the next case, against the instant the row actually carries.
     expect(b.message).toMatch(new RegExp(`^${b.result.id} - 58 of 60 Veg puffs yielded \\(-3\\.3%\\), best before \\d{2}:\\d{2}`));
 
-    // Ingredients against what was started; only the yield onto the rack.
-    expect(await onHand("kitchen", "maida")).toBeCloseTo(before.maida - 0.035 * 60, 3);
-    expect(await onHand("kitchen", "fill")).toBeCloseTo(before.fill - 0.030 * 60, 3);
-    expect(await onHand("kitchen", "oil")).toBeCloseTo(before.oil - 0.008 * 60, 3);
-    expect(await onHand("kitchen", "box")).toBeCloseTo(before.box - 60, 3);
+    // The kitchen's raw materials are not touched; only the yield reaches the rack.
+    expect(await onHand("kitchen", "maida")).toBe(before.maida);
+    expect(await onHand("kitchen", "fill")).toBe(before.fill);
+    expect(await onHand("kitchen", "oil")).toBe(before.oil);
+    expect(await onHand("kitchen", "box")).toBe(before.box);
     expect(await onHand("kitchen", "puff")).toBeCloseTo(before.puff + 58, 3);
 
-    // One document behind every movement: five moves, all pointing at this batch.
+    // One document behind the movement: a single yield, pointing at this batch.
     const mine = await app.testDb!.db.select().from(stockMoves).where(eq(stockMoves.refId, b.result.id));
-    expect(mine).toHaveLength(5);
-    expect(mine.filter((m) => m.kind === "production_consume")).toHaveLength(4);
-    expect(mine.filter((m) => m.kind === "production_yield")).toHaveLength(1);
-    expect(mine.every((m) => m.refType === "batch" && m.loc === "kitchen")).toBe(true);
+    expect(mine).toHaveLength(1);
+    expect(mine[0]).toMatchObject({ kind: "production_yield", refType: "batch", loc: "kitchen", itemKey: "puff", qty: 58 });
   });
 
   it("carries a blank note the same way the write responded and the board reads it back", async () => {
@@ -377,10 +372,7 @@ describe("POST /batches", () => {
   });
 
   it("keeps a product with no shelf life recorded for the working day", async () => {
-    // The kitchen carries no tea leaf - it is the store that stocks it - so a make of this test
-    // item has to be given its ingredient before the shelf life is what the case is about.
     await seedNoShelfLifeItem("tstscone");
-    await bake("leaf", 1);
     const r = await post("u4", "/batches", { it: "tstscone", started: 4 });
     expect(r.statusCode, r.body).toBe(200);
     const row = (await allBatches()).find((x) => x.id === r.json().result.id)!;
@@ -395,25 +387,23 @@ describe("POST /batches", () => {
     expect(await onHand("kitchen", "puff")).toBeCloseTo(before + 10, 3);
   });
 
-  it("takes a whole tray lost: the ingredients go, nothing reaches the rack", async () => {
+  it("takes a whole tray lost: the batch row records it, and nothing moves", async () => {
     const before = await onHand("kitchen", "puff");
-    const maida = await onHand("kitchen", "maida");
+    const count = await moveCount();
     const r = await post("u4", "/batches", { it: "puff", started: 10, made: 0, note: "Oven failed mid-bake" });
     expect(r.statusCode, r.body).toBe(200);
     expect(r.json().result).toMatchObject({ qty: 10, made: 0 });
     expect(await onHand("kitchen", "puff")).toBeCloseTo(before, 3);
-    expect(await onHand("kitchen", "maida")).toBeCloseTo(maida - 0.035 * 10, 3);
     // A yield of nothing is not a movement; the batch row is what records it.
-    const mine = await app.testDb!.db.select().from(stockMoves).where(eq(stockMoves.refId, r.json().result.id));
-    expect(mine.filter((m) => m.kind === "production_yield")).toHaveLength(0);
+    expect(await moveCount()).toBe(count);
+    expect(await allBatches()).toHaveLength(2);   // the seeded one plus this one
   });
 
   it("leaves no phantom shelf line when a total loss is of something the kitchen never carried", async () => {
-    // The kitchen carries no `tstscone` - it has a recipe but has never been made here. A batch
-    // that yields nothing must not lock, and so must not create, its balance row: a zero row
-    // reads as "this location carries the line" on every stock screen (M12).
+    // The kitchen carries no `tstscone` - it has never been made here. A batch that yields
+    // nothing must not lock, and so must not create, its balance row: a zero row reads as
+    // "this location carries the line" on every stock screen (M12).
     await seedNoShelfLifeItem("tstscone");
-    await bake("leaf", 1);
     expect((await app.testDb!.db.select().from(stockBalances)
       .where(and(eq(stockBalances.loc, "kitchen"), eq(stockBalances.itemKey, "tstscone")))))
       .toHaveLength(0);
@@ -448,15 +438,21 @@ describe("POST /batches", () => {
     expect(r.json().error.message).toBe("Veg puffs is switched off in the kitchen");
   });
 
-  it("refuses a product with nothing written down to make it by", async () => {
-    const r = await post("u4", "/batches", { it: "water", started: 10 });
-    expect(r.statusCode).toBe(422);
-    expect(r.json().error.message).toBe("Mineral water 1L has no recipe - it cannot be produced");
+  it("refuses anything but a finished good, and writes nothing", async () => {
+    const count = await moveCount();
+    const water = await post("u4", "/batches", { it: "water", started: 10 });
+    expect(water.statusCode).toBe(422);
+    expect(water.json().error.message).toBe("Mineral water 1L is not a finished good - only a finished good is batched");
+    const milk = await post("u4", "/batches", { it: "milk", started: 10 });
+    expect(milk.statusCode).toBe(422);
+    expect(milk.json().error.message).toBe("Milk 1L (toned) is not a finished good - only a finished good is batched");
+    expect(await moveCount()).toBe(count);
+    expect(await allBatches()).toHaveLength(1);   // the seeded one, and no more
   });
 
   it("refuses to batch a made-to-order item - a cappuccino is made at the till, not stocked", async () => {
-    // `capp` carries both a recipe and a menu listing (t: "MTO"), so the recipe check alone
-    // would let the kitchen batch a phantom shelf of a drink that only ever exists at the till.
+    // `capp` carries a menu listing (t: "MTO"), so it is the case worth naming in its own words:
+    // a batch of it would be a phantom shelf of a drink that only ever exists at the till.
     const count = await moveCount();
     const r = await post("u4", "/batches", { it: "capp", started: 10 });
     expect(r.statusCode).toBe(422);
@@ -465,59 +461,35 @@ describe("POST /batches", () => {
     expect(await allBatches()).toHaveLength(1);   // the seeded one, and no more
   });
 
-  it("names the ingredient that ran out, and moves nothing (C1)", async () => {
-    const count = await moveCount();
-    const fill = await onHand("kitchen", "fill");
-    // 101 puffs need 3.03 kg of filling; the kitchen holds 3.
-    const r = await post("u4", "/batches", { it: "puff", started: 101 });
-    expect(r.statusCode).toBe(422);
-    expect(r.json().error.message).toBe(`Kitchen is short of Veg filling mix - ${fill.toFixed(3)} kg left`);
-    expect(await moveCount()).toBe(count);
-  });
-
-  it("counts what another ticket is already holding, not merely what is on the shelf", async () => {
-    const fill = await onHand("kitchen", "fill");
-    await given.ticket(app.testDb!.db, { from: "kitchen", to: "kiosk", lines: [{ it: "fill", qty: fill }] });
-    const r = await post("u4", "/batches", { it: "puff", started: 1 });
-    expect(r.statusCode).toBe(422);
-    expect(r.json().error.message).toBe("Kitchen is short of Veg filling mix - 0.000 kg left");
-  });
-
-  it("makes one of two races and refuses the other, leaving no ingredient below zero", async () => {
-    // The kitchen's filling covers 100 puffs. Two makes of 60 cannot both be right.
-    // What this does not pin: the `batch` sequence row serialises minting, so both calls queue
-    // there before either reads a balance - the balance lock itself is proven by the
-    // neighbouring batch-vs-distribution case below, which races a make against a distribution
-    // instead of a make against a make.
+  it("books both of two makes that land together - a yield takes nothing another could need", async () => {
+    // Nothing is drawn down, so there is nothing for two makes to contend for: both land, each
+    // with its own number, and the rack carries the two yields added together.
+    const before = await onHand("kitchen", "puff");
     await warmPool(app.testDb!, 2);
     const both = await Promise.all([
       post("u4", "/batches", { it: "puff", started: 60 }),
-      post("u4", "/batches", { it: "puff", started: 60 }),
+      post("u4", "/batches", { it: "puff", started: 40 }),
     ]);
-    expect(both.filter((r) => r.statusCode === 200)).toHaveLength(1);
-    expect(both.filter((r) => r.statusCode === 422)).toHaveLength(1);
-    expect(await onHand("kitchen", "fill")).toBeGreaterThanOrEqual(0);
-    expect(await allBatches()).toHaveLength(2);   // the seeded one plus the winner
+    expect(both.map((r) => r.statusCode)).toEqual([200, 200]);
+    expect(new Set(both.map((r) => r.json().result.id)).size).toBe(2);
+    expect(await onHand("kitchen", "puff")).toBeCloseTo(before + 100, 3);
+    expect(await allBatches()).toHaveLength(3);   // the seeded one plus both
   });
 
-  it("will not promise the same filling to a tray and a tray-load of puffs at once", async () => {
-    // The case above races two makes, and two makes cannot reach the shelf together whatever
-    // the balance locks do: both take the `batch` sequence row first, so the loser is still
-    // waiting for the winner's commit when it reads a balance. A distribution takes the ticket
-    // sequence instead, so it and a make arrive at the kitchen's filling at the same moment -
-    // and `lockBalances` (with the post-lock re-read behind it) is the only thing between them.
-    const fill = await onHand("kitchen", "fill");
+  it("leaves a distribution's hold standing when a make of the same product lands beside it", async () => {
+    // A make only ever adds to the rack, so a tray held for an outlet stays held and the rack
+    // still covers it, whichever of the two commits first.
+    const puff = await onHand("kitchen", "puff");
     await warmPool(app.testDb!, 2);
     const both = await Promise.all([
-      post("u4", "/batches", { it: "puff", started: 60 }),               // 1.8 kg of the 3
-      post("u4", "/distributions", { it: "fill", qty: fill, to: "store" }),  // and all 3 of it
+      post("u4", "/batches", { it: "puff", started: 20 }),
+      post("u4", "/distributions", { it: "puff", qty: puff, to: "kiosk" }),
     ]);
-    expect(both.filter((r) => r.statusCode === 200)).toHaveLength(1);
-    expect(both.filter((r) => r.statusCode === 422)).toHaveLength(1);
-    // Whichever won, what is left on the shelf still covers what is still promised off it.
+    expect(both.map((r) => r.statusCode)).toEqual([200, 200]);
     const [held] = await app.testDb!.db.select({ qty: sum(reservations.qty) }).from(reservations)
-      .where(and(eq(reservations.loc, "kitchen"), eq(reservations.itemKey, "fill"), isNull(reservations.releasedAt)));
-    expect(await onHand("kitchen", "fill")).toBeGreaterThanOrEqual(Number(held?.qty ?? 0));
+      .where(and(eq(reservations.loc, "kitchen"), eq(reservations.itemKey, "puff"), isNull(reservations.releasedAt)));
+    expect(Number(held?.qty ?? 0)).toBeCloseTo(puff, 3);
+    expect(await onHand("kitchen", "puff")).toBeCloseTo(puff + 20, 3);
   });
 
   it("404s an unknown item, and is absent for every other role", async () => {
@@ -587,7 +559,7 @@ describe("POST /prod-orders", () => {
   });
 
   it("refuses a made-to-order item - the counter makes it, the kitchen does not send it", async () => {
-    // `capp` has a recipe and is on the Restaurant's menu, so it reads as orderable - and
+    // `capp` is on the Restaurant's menu, so it reads as orderable - and
     // nothing downstream could fill it: `POST /batches` refuses to stock one (C2), `POST
     // /distributions` refuses to send one, so a dispatch would have nothing to cover the line
     // with. The order is refused at the door rather than left on the board to be declined.

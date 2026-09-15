@@ -86,7 +86,7 @@ export default function Dashboard() {
       <PageHead
         crumbs={["Royal Care", L.n, "Dashboard"]}
         title={`${L.n} counter`}
-        sub="Today's sales and stock at this counter."
+        tip="Today's sales and stock at this counter."
         actions={<>
           <Btn variant="gh" onClick={() => nav("/requests")}>Raise a request</Btn>
           <Btn onClick={() => nav("/pos")}>Open till</Btn>
@@ -129,17 +129,17 @@ export default function Dashboard() {
       <div className="mtop" />
       <Card
         title="Stock requests from this counter"
-        sub={`Everything ${L.n} has asked the central store for`}
+        tip={`Everything ${L.n} has asked the central store for`}
         right={<Btn variant="gh" size="sm" onClick={() => nav("/requests")}>All requests</Btn>}
       >
         <Kpis items={[
           // Not "today": a request raised on Friday is still open on Monday and is still this
           // counter's to chase, so the whole list is counted rather than one day of it.
           { l: "Requests raised", v: String(myReq.length), d: <>{openReq.length} still open</> },
-          { l: "With the outlet manager", v: String(withManager.length), d: <>awaiting approval</> },
-          { l: "Approved, no ticket yet", v: String(awaitingTicket.length), d: <>waiting on the store keeper</> },
-          { l: "Tickets to collect", v: String(waiting.length), d: <>stock reserved at the store</> },
-          { l: "In transit", v: String(inTransit.length), d: <>handed over, not yet received</> },
+          { l: "With the outlet manager", v: String(withManager.length), tip: <>awaiting approval</> },
+          { l: "Approved, no ticket yet", v: String(awaitingTicket.length), tip: <>waiting on the store keeper</> },
+          { l: "Tickets to collect", v: String(waiting.length), tip: <>stock reserved at the store</> },
+          { l: "In transit", v: String(inTransit.length), tip: <>handed over, not yet received</> },
           {
             l: "Quantity short",
             v: shortLines.length ? unitTotal(shortLines) : "None",
@@ -221,7 +221,12 @@ export default function Dashboard() {
             for this release, so every one of those figures was invented at render time and the
             drawer total built on top of them was wrong by whatever the real float was. What is
             left is what the bills actually say. */}
-        <Card title="Today at this counter" sub={L.floor}>
+        <Card title="Today at this counter" sub={L.floor} tip={<>
+          <b>Cash taken {money(cashTaken)}</b> is what the till has collected in notes today - add whatever float you
+          were handed to get what should be counted out. Card and UPI are taken here but settle to the hospital
+          account; patient, staff and department bills collect nothing at the counter at all. Neither is cash, which
+          is why <b>total billed {money(billed)}</b> is the larger figure.
+        </>}>
           <div style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 14 }}>
             <Avatar name={user.n} color={user.col} size={44} />
             <div>
@@ -247,12 +252,6 @@ export default function Dashboard() {
             </dd>
             <dt>Total billed</dt><dd className="mono"><b>{money(billed)}</b></dd>
           </dl>
-          <p className="mini mtop">
-            <b>Cash taken {money(cashTaken)}</b> is what the till has collected in notes today - add whatever float you
-            were handed to get what should be counted out. Card and UPI are taken here but settle to the hospital
-            account; patient, staff and department bills collect nothing at the counter at all. Neither is cash, which
-            is why <b>total billed {money(billed)}</b> is the larger figure.
-          </p>
         </Card>
       </Grid>
     </>

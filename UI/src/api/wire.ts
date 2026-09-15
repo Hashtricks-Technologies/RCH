@@ -1,10 +1,10 @@
 import type { z } from "zod";
 import type { SnapshotSchema, StockResponseSchema } from "@rch/contract";
-import { hydrateItems, hydrateLocations, hydrateMaster, hydrateMenus, hydratePrices, hydrateRecipes, hydrateRoster, LOC } from "../data/master";
+import { hydrateItems, hydrateLocations, hydrateMaster, hydrateMenus, hydratePriceLists, hydratePrices, hydrateRoster, LOC } from "../data/master";
 import { fromWireBestBefore, fromWireDate, fromWireTime } from "../lib/fmt";
 import { useApp } from "../store";
 import { basePrices } from "../lib/selectors";
-import type { AdminAction, AdminLocation, AdminUser, Bill, Dated, HistEntry, PayerRecord, StockLoc } from "../types";
+import type { AdminAction, AdminLocation, AdminUser, Bill, Dated, HistEntry, StockLoc } from "../types";
 
 export type Snapshot = z.infer<typeof SnapshotSchema>;
 export type StockResponse = z.infer<typeof StockResponseSchema>;
@@ -45,7 +45,7 @@ const stockOf = (s: Snapshot["stock"]): Record<StockLoc, Record<string, number>>
 
 /** Server shape -> the store's shape. Times become "HH:MM", dates "DD-MMM-YYYY"; nothing else changes. */
 export function applySnapshot(s: Snapshot): void {
-  hydrateMaster({ items: s.items, locations: s.locations, recipes: s.recipes, prices: s.prices, menu: s.menu, users: s.users });
+  hydrateMaster({ items: s.items, locations: s.locations, prices: s.prices, priceLists: s.priceLists, menu: s.menu, users: s.users });
   // Who a bill may be charged to comes off the `payers` table the till has been checked
   // against since Phase 3, so a patient admitted this morning is billable without a release.
   hydrateRoster(s.roster);
@@ -164,18 +164,28 @@ export function applyItems(items: Snapshot["items"]): void {
   useApp.setState((s) => ({ catalogVersion: s.catalogVersion + 1 }));
 }
 
-/** GET /locations -> the location master, in place, and a map for any location the stock does not
- *  carry yet. `catalogVersion` is what tells React the registry changed underneath it. */
-export function applyLocations(locations: Snapshot["locations"]): void {
-  hydrateLocations(locations);
-  useApp.setState((prev) => ({ catalogVersion: prev.catalogVersion + 1, stock: stockOf(prev.stock) }));
-}
-
-/** GET /prices -> both shelf lists. The registry and the store's copy are the same two lists -
+/** GET /prices -> every shelf list. The registry and the store's copy are the same lists -
  *  `basePrices()` is what every screen reads - so the registry is filled first and copied out. */
 export function applyPrices(prices: Snapshot["prices"]): void {
   hydratePrices(prices);
   useApp.setState((s) => ({ prices: basePrices(), catalogVersion: s.catalogVersion + 1 }));
+}
+
+/** GET /price-lists -> the lists themselves (name, outlets), for the manager's management
+ *  screen. Module-level like `PL`, so `catalogVersion` is the signal a screen reading
+ *  `PRICE_LISTS` directly needs. */
+export function applyPriceLists(priceLists: Snapshot["priceLists"]): void {
+  hydratePriceLists(priceLists);
+  useApp.setState((s) => ({ catalogVersion: s.catalogVersion + 1 }));
+}
+
+/** GET /locations -> the location master, in place, and a map for any location the stock does not
+ *  carry yet. Module-level like `IT`, so `catalogVersion` is what tells a screen reading `LOC`
+ *  directly - a newly opened outlet, a closed one, an outlet switched onto another price list -
+ *  that the registry moved underneath it. */
+export function applyLocations(locations: Snapshot["locations"]): void {
+  hydrateLocations(locations);
+  useApp.setState((prev) => ({ catalogVersion: prev.catalogVersion + 1, stock: stockOf(prev.stock) }));
 }
 
 /** GET /menus -> what each outlet lists. Like the catalogue, the registry is a module-level one
@@ -185,33 +195,20 @@ export function applyMenus(menu: Snapshot["menu"]): void {
   useApp.setState((s) => ({ menu, catalogVersion: s.catalogVersion + 1 }));
 }
 
-/** GET /recipes -> the recipe book. `RCP` is a module-level registry like the catalogue, so a
- *  saved recipe reaches the kitchen's makeable list, the till's availability and every cost
- *  column through the same `catalogVersion` bump. */
-export function applyRecipes(recipes: Snapshot["recipes"]): void {
-  hydrateRecipes(recipes);
-  useApp.setState((s) => ({ catalogVersion: s.catalogVersion + 1 }));
-}
-
 // ---- payers ----
 /** GET /roster -> the register the counter's payer picker reads. `PATIENTS`, `STAFF` and
  *  `DEPTS` are module-level registries like `IT` and `LOC`, not store state, so `catalogVersion`
  *  is what tells React the lists moved - the same signal `applyItems` bumps for the catalogue.
- *  The server only ever sends active rows, so a payer the manager switched off simply stops
- *  being offered at the till rather than needing a second filter here. */
+ *  The server only ever sends active rows, so a deactivated payer simply stops being offered at
+ *  the till rather than needing a second filter here. */
 export function applyRoster(r: Snapshot["roster"]): void {
   hydrateRoster(r);
   useApp.setState((s) => ({ catalogVersion: s.catalogVersion + 1 }));
 }
 
-/** GET /payers -> the manager's own register, closed accounts included. Ordinary store state,
- *  unlike the roster above: nothing outside the manager's Roster screen reads it, so there is no
- *  module-level registry to keep the identity of and `catalogVersion` is not involved. */
-export function applyPayers(payers: PayerRecord[]): void { useApp.setState({ payers }); }
-
 // ---- admin: account management (a capability, not a role - root CLAUDE.md)
 /** GET /admin/users -> every account, ordinary store state: nothing outside the admin page
- *  reads it, the same shape `payers` already is for the same reason. */
+ *  reads it, so there is no module-level registry to keep the identity of. */
 export function applyAccounts(accounts: AdminUser[]): void { useApp.setState({ accounts }); }
 /** GET /admin/locations -> the admin page's own list of every location but quarantine, with who
  *  is based at each. Nothing else reads this - an operational session reads `LOC` instead, kept

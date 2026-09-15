@@ -1,11 +1,11 @@
-import type { Item, Location, Recipe, StockLoc, User, Payer } from "../types.js";
+import type { Item, Location, PriceList, StockLoc, User, Payer } from "../types.js";
 
 export const LOC: Record<StockLoc, Location> = {
   store:   { n: "Central Store",   c: "WH-CS", type: "Store",   floor: "Basement", cc: "CC-STO", active: true, par: 1 },
   kitchen: { n: "Central Kitchen", c: "KT-CK", type: "Kitchen", floor: "Ground",   cc: "CC-KIT", active: true, par: 0.35 },
-  rest:    { n: "Restaurant",      c: "OT-R1", type: "Outlet",  floor: "Floor 1",  cc: "CC-RST", list: "A", active: true, par: 0.22 },
-  coffee:  { n: "Coffee Shop",     c: "OT-C3", type: "Outlet",  floor: "Floor 3",  cc: "CC-CF3", list: "B", active: true, par: 0.18 },
-  kiosk:   { n: "Snack Kiosk",     c: "OT-GK", type: "Outlet",  floor: "Ground",   cc: "CC-KSK", list: "A", active: true, par: 0.15 },
+  rest:    { n: "Restaurant",      c: "OT-R1", type: "Outlet",  floor: "Floor 1",  cc: "CC-RST", list: "PL-001", active: true, par: 0.22 },
+  coffee:  { n: "Coffee Shop",     c: "OT-C3", type: "Outlet",  floor: "Floor 3",  cc: "CC-CF3", list: "PL-002", active: true, par: 0.18 },
+  kiosk:   { n: "Snack Kiosk",     c: "OT-GK", type: "Outlet",  floor: "Ground",   cc: "CC-KSK", list: "PL-001", active: true, par: 0.15 },
   // The rejected-goods shelf. Nothing is sold, issued, transferred or distributed from here, so
   // no screen that lists the working locations shows it. The store's own stock screen reads it
   // by name.
@@ -33,20 +33,22 @@ export const IT: Record<string, Item> = {
   puff:   { c: "FG-4001", n: "Veg puffs",             u: "nos", t: "FG",     g: "Bakery",    hsn: "2106", gst: 5,  rl: 0,   cost: 17.8, sl: 12 },
   sand:   { c: "FG-4002", n: "Veg sandwich",          u: "nos", t: "FG",     g: "Bakery",    hsn: "2106", gst: 5,  rl: 0,   cost: 28.4, sl: 8 },
   salad:  { c: "FG-4003", n: "Garden salad",          u: "nos", t: "FG",     g: "Prepared",  hsn: "2106", gst: 5,  rl: 0,   cost: 32.5, sl: 6 },
-  capp:   { c: "MT-5001", n: "Cappuccino",            u: "nos", t: "MTO",    g: "Beverage",  hsn: "2106", gst: 5,  rl: 0,   cost: 0 },
-  chai:   { c: "MT-5002", n: "Masala tea",            u: "nos", t: "MTO",    g: "Beverage",  hsn: "2106", gst: 5,  rl: 0,   cost: 0 },
+  capp:   { c: "MT-5001", n: "Cappuccino",            u: "nos", t: "MTO",    g: "Beverage",  hsn: "2106", gst: 5,  rl: 0,   cost: 18.3 },
+  chai:   { c: "MT-5002", n: "Masala tea",            u: "nos", t: "MTO",    g: "Beverage",  hsn: "2106", gst: 5,  rl: 0,   cost: 10.7 },
 };
-export const RCP: Record<string, Recipe> = {
-  capp: { ov: 12, l: [["milk", 0.15], ["beans", 0.012], ["sugar", 0.006], ["cup", 1]] },
-  chai: { ov: 12, l: [["milk", 0.10], ["leaf", 0.008], ["sugar", 0.008], ["cup", 1]] },
-  puff: { ov: 15, l: [["maida", 0.035], ["fill", 0.030], ["oil", 0.008], ["box", 1]] },
-  sand: { ov: 15, l: [["bread", 0.10], ["butter", 0.008], ["fill", 0.040], ["box", 1]] },
-  salad: { ov: 15, l: [["fill", 0.060], ["oil", 0.005], ["box", 1]] },
+/** Ids match what `allocateId(tx, "price_list")` would format for the first two rows a fresh
+ *  database seeds - `formatId("price_list", 1) === "PL-001"` - so a bare seed's list ids agree
+ *  with these fixtures used across every test. */
+export const PL: Record<string, Record<string, number>> = {
+  "PL-001": { capp: 60, chai: 20, puff: 25, sand: 45, salad: 55, juice: 18, water: 18, bisc: 28, chips: 18 },
+  "PL-002": { capp: 75, chai: 25, puff: 30, sand: 55, salad: 65, juice: 20, water: 20, bisc: 30, chips: 20 },
 };
-export const PL: Record<"A" | "B", Record<string, number>> = {
-  A: { capp: 60, chai: 20, puff: 25, sand: 45, salad: 55, juice: 18, water: 18, bisc: 28, chips: 18 },
-  B: { capp: 75, chai: 25, puff: 30, sand: 55, salad: 65, juice: 20, water: 20, bisc: 30, chips: 20 },
-};
+/** The two lists themselves, named - `outlets` mirrors `LOC`'s own `list` tags above, in key
+ *  order to match `readPriceLists`. */
+export const PRICE_LISTS: PriceList[] = [
+  { id: "PL-001", name: "List A", outlets: ["kiosk", "rest"] },
+  { id: "PL-002", name: "List B", outlets: ["coffee"] },
+];
 export const MENU: Record<string, string[]> = {
   rest:   ["capp", "chai", "puff", "sand", "salad", "juice", "water", "chips"],
   coffee: ["capp", "chai", "juice", "water", "bisc", "chips"],

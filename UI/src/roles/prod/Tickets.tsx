@@ -12,6 +12,12 @@ import type { Ticket, TktStatus } from "../../types";
 const SHOW = ["All", "Issued", "Collected", "Received", "Cancelled"] as const;
 type Show = (typeof SHOW)[number];
 
+/** What each status means, behind the Status header of both tables. */
+const STATUS_TIP = <>
+  <b>Issued</b> means the ticket exists and the stock is reserved. <b>Collected</b> means it has been handed
+  over against the OTP and is in transit. <b>Received</b> means the receiving location has confirmed it.
+</>;
+
 const itemText = (t: Ticket) =>
   t.lines.map((l) => `${fq(l.qty, l.it)} × ${IT[l.it]?.n ?? l.it}`).join(" · ");
 
@@ -63,7 +69,7 @@ export default function Tickets() {
       <PageHead
         crumbs={["Royal Care", "Central Kitchen", "Pick Tickets"]}
         title="Pick tickets"
-        sub="Stock coming into and going out of the kitchen."
+        tip="Stock coming into and going out of the kitchen."
         actions={<Btn variant="gh" onClick={() => nav("/requests")}>Stock requests</Btn>}
       />
 
@@ -82,7 +88,7 @@ export default function Tickets() {
         </Alert>
       )}
 
-      <Card title="Coming into the kitchen" sub="Issued by the central store against a kitchen request" flush className="mtop">
+      <Card title="Coming into the kitchen" tip="Issued by the central store against a kitchen request" flush className="mtop">
         <Toolbar
           placeholder="Search ticket, request, item…"
           value={inb.q}
@@ -100,7 +106,7 @@ export default function Tickets() {
             { h: "Items" },
             { h: "Quantity", r: true, w: "10%" },
             { h: "Collection OTP", w: "16%" },
-            { h: "Status", w: "11%" },
+            { h: "Status", w: "11%", tip: STATUS_TIP },
             { h: "", w: "10%" },
           ]}
           rows={inRows.map((t) => ({
@@ -142,7 +148,7 @@ export default function Tickets() {
           extra={<>{toCollect.length} to collect · {arriving.length} in transit</>} />
       </Card>
 
-      <Card title="Issued out of the kitchen" sub="Take the OTP from the collector - it is on their screen, not this one" flush className="mtop">
+      <Card title="Issued out of the kitchen" tip="Take the OTP from the collector - it is on their screen, not this one" flush className="mtop">
         <Toolbar
           placeholder="Search ticket, order, destination, item…"
           value={out.q}
@@ -160,7 +166,7 @@ export default function Tickets() {
             { h: "Items" },
             { h: "Quantity", r: true, w: "10%" },
             { h: "Collection OTP", w: "17%" },
-            { h: "Status", w: "13%" },
+            { h: "Status", w: "13%", tip: STATUS_TIP },
           ]}
           rows={outRows.map((t) => ({
             key: t.id,
@@ -227,11 +233,6 @@ export default function Tickets() {
           extra={<>Reserved against tickets still at the pass{" "}
             <b>{sum(atPass, (t) => sum(t.lines, (l) => l.qty))}</b></>} />
       </Card>
-
-      <p className="mini mtop">
-        <b>Issued</b> means the ticket exists and the stock is reserved. <b>Collected</b> means it has been handed
-        over against the OTP and is in transit. <b>Received</b> means the receiving location has confirmed it.
-      </p>
     </>
   );
 }

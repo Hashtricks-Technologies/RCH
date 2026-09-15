@@ -94,10 +94,9 @@ holding a shelf.
 
 - **Lock only the cells you will move.** `lockBalances` creates the row it locks, and a stray row shows up as
   a phantom "carried at zero" shelf line (tag M12).
-- **Writes that move nothing** (`patchItem`, `production.raise`, the recipe editor) take no `lockBalances` at
-  all.
-- **Writes whose moves are all positive** (`grn.receive`, `pos.voidBill`) take neither `lockBalances` nor a
-  re-read. Nothing is promised against a balance there. Don't add them for symmetry.
+- **Writes that move nothing** (`patchItem`, `production.raise`) take no `lockBalances` at all.
+- **Writes whose moves are all positive** (`grn.receive`, `pos.voidBill`, `production.makeBatch`) take neither
+  `lockBalances` nor a re-read. Nothing is promised against a balance there. Don't add them for symmetry.
 - **Every write that moves stock down re-reads `on_hand − reserved` after `postMoves`**, and refuses if any
   cell went negative. There is deliberately no `on_hand >= 0` CHECK in the database: it would fire before the
   re-read and turn the operator's sentence into a bare 500.
@@ -109,6 +108,24 @@ holding a shelf.
 For a uniqueness rule, the insert (or update) decides; a pre-check only gives the sentence. `vendors_name_ci_uq`,
 `rate_contracts_live_uq`, `items_name_ci_uq` and the `payers` primary key `(kind, id)` all work this way.
 `catalog.createItem` also takes a `pg_advisory_xact_lock` on the item's slug.
+
+## Price lists
+
+`modules/pricelists/` owns the entity itself - create (cloned from an outlet's current active list),
+delete (only once unattached) and switching an outlet's active list. `modules/catalog` keeps `savePrice`,
+which edits a list's own item→price rows and never depends on which outlet (if any) it is active for.
+
+None of the three writes touch `stock_moves`, `stock_balances` or a document table, so the lock order above
+does not apply: each is a single `withTransaction` taking only `price_lists` and `locations` rows.
+`pricelistsRepo.head` locks the target `price_lists` row `FOR UPDATE`, and both `remove` and `activate` take
+it before doing anything else - so a delete and a switch of the same list serialise rather than race.
+`activate` names an outlet, so it reads it through `lockLocation` and refuses a closed one (`assertOpen`) like
+every other write that names a location: the list it switched to is what the outlet would sell the day it
+reopened. The FK
+(`locations.price_list_id` `ON DELETE RESTRICT`, `price_list_items.list_id` `ON DELETE CASCADE`) is the
+backstop for a future writer that doesn't take that lock, not the primary guard; `catalog.savePrice` is one
+such writer today - it reads whether the list exists unlocked, so its own insert is wrapped in a catch for the
+same violation.
 
 ## Accounts and the super admin
 
@@ -161,8 +178,8 @@ Two reads split deliberately:
 
 - **Items.** `loadItems` (`lib/master.ts`) is what rules read, and filters out retired items. `readItems` is
   what the wire carries: the whole master, because old documents still name retired items.
-- **Payers.** `GET /roster` returns live payers for the till. `GET /payers` returns every payer for the
-  manager's register.
+- **Payers.** `GET /roster` returns live payers for the till. No route writes the `payers` table; the
+  `payers import` CLI is the only way onto it.
 
 The snapshot redacts by role:
 
@@ -248,7 +265,7 @@ The config pins `TZ=UTC`, a 30 s test timeout, and runs files in parallel.
     don't touch master data.
 - **`given.*` in `src/test/builders.ts` is the only sanctioned way to make a document.** It allocates ids in
   bands above both the fixtures and the sequence starts. `given.adjustment` writes the document only, never a
-  ledger move. There is no `given.payer`: use `POST /payers`.
+  ledger move. There is no `given.payer`: insert into `payers` directly.
 - **`sequences` survives truncation**, so never assert a literal allocated id. Match the shape and assert the
   relative step instead.
 - **A test that proves a lock holds must call `warmPool(t, n)` first**, with **n ≤ 4** (the test pool's

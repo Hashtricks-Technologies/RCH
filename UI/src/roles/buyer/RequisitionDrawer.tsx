@@ -151,7 +151,7 @@ function RequisitionDrawer({ id }: DrawerProps) {
 
       <Section
         title="Items"
-        sub={open
+        tip={open
           ? "Approved defaults to what was asked. Trim an item if it should not be bought in full - you can never approve more than was asked."
           : "Quantities as they were approved."}
       >
@@ -176,7 +176,7 @@ function RequisitionDrawer({ id }: DrawerProps) {
       {!open && (
         <Section
           title="What was ordered against this requisition"
-          sub="Traced through each purchase order line's source reference - quantity ordered, the order it went on, the vendor, the rate agreed and what has landed."
+          tip="Traced through each purchase order line's source reference - quantity ordered, the order it went on, the vendor, the rate agreed and what has landed."
         >
           <Alert tone={roll.label === "Received" ? "g" : roll.label === "Not ordered" ? "w" : "i"}
             label={roll.label.toUpperCase()}>
@@ -219,17 +219,17 @@ function RequisitionDrawer({ id }: DrawerProps) {
       )}
 
       {open && (
-        <Section title="Decision note" sub="Required to decline. The store keeper sees it on the requisition either way.">
-          <Field label="Note" hint={!note.trim()
-            ? "A reason is required to decline. Optional when approving in full or in part."
-            : "Shown to the store keeper, and kept on the requisition history against your name."}>
+        <Section title="Decision note" tip="Required to decline. The store keeper sees it on the requisition either way.">
+          <Field label="Note"
+            hint={!note.trim() ? "A reason is required to decline. Optional when approving in full or in part." : undefined}
+            tip="Shown to the store keeper, and kept on the requisition history against your name.">
             <textarea rows={3} value={note} onChange={(e) => setNote(e.target.value)}
               placeholder="Why you trimmed an item, or why nothing was approved…" />
           </Field>
         </Section>
       )}
 
-      <Section title="History" sub="Every hand this requisition has passed through">
+      <Section title="History" tip="Every hand this requisition has passed through">
         <Feed
           items={p.hist.map((h, i) => ({
             key: h.s + i, title: h.s, when: h.t, color: dotFor(h.s),

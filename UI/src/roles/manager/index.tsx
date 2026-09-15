@@ -4,8 +4,6 @@ import Approvals from "./Approvals";
 import ItemsStock from "./ItemsStock";
 import Prices from "./Prices";
 import Availability from "./Availability";
-// ---- payers ----
-import Roster from "./Roster";
 import "./ApprovalDrawer";
 // ---- item patch ----
 import "./ItemDrawer";
@@ -18,13 +16,11 @@ import "../counter/BillDrawer";
 import "../../ui/AdjustmentForm";
 // ---- prod-order raise ----
 import "./KitchenOrderDrawer";
-// ---- recipes: the kitchen's screen too, so it lives in ui/ rather than under either role.
-import RecipeBook from "../../ui/RecipeBook";
+// ---- price-list settings: creating a list, and which list each outlet charges from - both
+// were inline on one outlet's page, where the sharing between outlets could not be seen.
+import "./PriceListSettingsDrawer";
 
 export const screens: Record<string, ComponentType> = {
   dash: Dashboard, approvals: Approvals, stock: ItemsStock, prices: Prices, avail: Availability,
-  // ---- payers ----
-  roster: Roster,
   bills: Bills,
-  recipes: RecipeBook,
 };

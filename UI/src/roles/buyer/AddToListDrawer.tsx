@@ -4,7 +4,7 @@ import { IT } from "../../data/master";
 import { useApp } from "../../store";
 import { activeItems, awaitingApproval, costOf, onOrder, qty } from "../../lib/selectors";
 import { U, fq, money0, sum, unitTotal } from "../../lib/fmt";
-import { Alert, Btn, BtnRow, DraftLineInput, Field, Section, useLineKeys } from "../../ui/kit";
+import { Alert, Btn, BtnRow, DraftLineInput, Field, Section, Tip, useLineKeys } from "../../ui/kit";
 import { DrawerFrame } from "../../ui/Drawer";
 import { registerDrawer } from "../../drawers";
 import type { DraftLine } from "../../types";
@@ -78,7 +78,8 @@ function AddToListDrawer() {
         title="Items"
         sub={filled.length
           ? `${filled.length} item(s) · ${unitTotal(filled)} · ${money0(sum(filled, (l) => l.qty * costOf(l.it)))} at standard cost`
-          : "Raw, packing and MRP goods only - what the kitchen makes or the counter assembles is never bought."}
+          : undefined}
+        tip="Raw, packing and MRP goods only - what the kitchen makes or the counter assembles is never bought."
       >
         {BUYABLE.length === 0 ? (
           <div className="empty">
@@ -137,7 +138,7 @@ function AddToListDrawer() {
                       <td className="n">{fq(qty(s, "store", l.it), l.it)}</td>
                       <td className="n">
                         {open > 0
-                          ? <b style={{ color: "var(--warn)" }} title="Already being sourced">{fq(open, l.it)}</b>
+                          ? <Tip text="Already being sourced"><b style={{ color: "var(--warn)" }}>{fq(open, l.it)}</b></Tip>
                           : <span className="dim">{fq(0, l.it)}</span>}
                       </td>
                       <td className="rt">
@@ -167,7 +168,7 @@ function AddToListDrawer() {
         </Alert>
       )}
 
-      <Section title="Reason" sub="Required - kept on the requisition, where the store keeper sees it.">
+      <Section title="Reason" tip="Required - kept on the requisition, where the store keeper sees it.">
         <Field label="Why is this being bought?">
           <textarea rows={3} value={note} aria-label="Reason for adding these items"
             placeholder="Festival week - double the usual cups and snack boxes."

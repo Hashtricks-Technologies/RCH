@@ -1,11 +1,20 @@
 import { boolean, date, integer, jsonb, numeric, pgTable, primaryKey, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
-import { itemTypeEnum, locationTypeEnum, payerKindEnum, priceListEnum, roleEnum } from "./enums.js";
+import { itemTypeEnum, locationTypeEnum, payerKindEnum, roleEnum } from "./enums.js";
 
 const qty = (name: string) => numeric(name, { precision: 12, scale: 3, mode: "number" });
 const money = (name: string) => numeric(name, { precision: 12, scale: 2, mode: "number" });
 const ts = (name: string) => timestamp(name, { withTimezone: true, mode: "date" });
 export { qty, money, ts };
+
+/** A named price list. `id` is server-issued (`allocateId(tx, "price_list")`, e.g. `"PL-006"`),
+ *  the same way a vendor's id is - not a bare serial. Which outlets are active on it is never
+ *  stored here: it is `locations.price_list_id` pointing back, read out by `pricelists.repo`. */
+export const priceLists = pgTable("price_lists", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  createdAt: ts("created_at").notNull().defaultNow(),
+});
 
 export const locations = pgTable("locations", {
   key: text("key").primaryKey(),
@@ -14,7 +23,7 @@ export const locations = pgTable("locations", {
   type: locationTypeEnum("type").notNull(),
   floor: text("floor").notNull(),
   costCentre: text("cost_centre").notNull(),
-  priceList: priceListEnum("price_list"),
+  priceListId: text("price_list_id").references(() => priceLists.id, { onDelete: "restrict" }),
   sellable: boolean("sellable").notNull().default(false),
   // ---- outlets. Outlets are closed, never deleted: a closed one keeps its row, its menu and every
   // document that names it, and nothing new may name it (`lib/locations.ts`).
@@ -85,17 +94,6 @@ export const items = pgTable("items", {
   updatedAt: ts("updated_at").notNull().defaultNow(),
 }, (t) => [uniqueIndex("items_name_ci_uq").on(sql`lower(${t.name})`)]);
 
-export const recipes = pgTable("recipes", {
-  itemKey: text("item_key").primaryKey().references(() => items.key),
-  overheadPct: numeric("overhead_pct", { precision: 5, scale: 2, mode: "number" }).notNull(),
-});
-export const recipeLines = pgTable("recipe_lines", {
-  itemKey: text("item_key").notNull().references(() => recipes.itemKey),
-  ingredientKey: text("ingredient_key").notNull().references(() => items.key),
-  qty: qty("qty").notNull(),
-  seq: integer("seq").notNull(),
-}, (t) => [primaryKey({ columns: [t.itemKey, t.ingredientKey] })]);
-
 export const locationItems = pgTable("location_items", {
   loc: text("loc").notNull().references(() => locations.key),
   itemKey: text("item_key").notNull().references(() => items.key),
@@ -103,11 +101,13 @@ export const locationItems = pgTable("location_items", {
 }, (t) => [primaryKey({ columns: [t.loc, t.itemKey] })]);
 
 export const priceListItems = pgTable("price_list_items", {
-  list: priceListEnum("list").notNull(),
+  // Deleting a price list (only ever allowed once no outlet is on it) takes its price sheet
+  // with it - there is no reason to keep item->price rows for a list nothing can read any more.
+  listId: text("list_id").notNull().references(() => priceLists.id, { onDelete: "cascade" }),
   itemKey: text("item_key").notNull().references(() => items.key),
   price: money("price").notNull(),
   updatedAt: ts("updated_at").notNull().defaultNow(),
-}, (t) => [primaryKey({ columns: [t.list, t.itemKey] })]);
+}, (t) => [primaryKey({ columns: [t.listId, t.itemKey] })]);
 
 export const vendors = pgTable("vendors", {
   id: text("id").primaryKey(),
@@ -157,11 +157,11 @@ export const payers = pgTable("payers", {
   name: text("name").notNull(),
   active: boolean("active").notNull().default(true),
   // ---- payers ----
-  // The roster is written by people now, not only by the seed, so it carries the same two
+  // The roster is written by the CSV import, not only by the seed, so it carries the same two
   // stamps every other master table does: when the account was opened, and when it was last
-  // renamed or switched off. Neither reaches the wire - `PayerRecordSchema` is the four fields
-  // the register shows - but an administrator asking "when was this closed?" has to have
-  // somewhere to look, and a CSV import that ran twice has to be tellable from one that did not.
+  // renamed or switched off. Neither reaches the wire, but an administrator asking "when was
+  // this closed?" has to have somewhere to look, and a CSV import that ran twice has to be
+  // tellable from one that did not.
   createdAt: ts("created_at").notNull().defaultNow(),
   updatedAt: ts("updated_at").notNull().defaultNow(),
 }, (t) => [primaryKey({ columns: [t.kind, t.id] })]);

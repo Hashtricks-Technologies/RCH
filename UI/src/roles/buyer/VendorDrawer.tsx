@@ -90,12 +90,12 @@ function VendorDrawer({ id }: DrawerProps) {
         </>
       }
     >
-      <Section title="Vendor details" sub="Name, tax registration and commercial terms.">
+      <Section title="Vendor details" tip="Name, tax registration and commercial terms.">
         <FormRow cols="f2">
           <Field label="Vendor name">
             <input value={n} onChange={(e) => setN(e.target.value)} placeholder="e.g. Aavin Dairy Depot" />
           </Field>
-          <Field label="GSTIN" hint="15 characters, like 33AAACA1234F1Z5. Leave it blank if you do not have it yet.">
+          <Field label="GSTIN" tip="15 characters, like 33AAACA1234F1Z5. Leave it blank if you do not have it yet.">
             <input value={gstin} onChange={(e) => setGstin(e.target.value)} placeholder="33AAACA1234F1Z5" />
           </Field>
         </FormRow>
@@ -122,7 +122,7 @@ function VendorDrawer({ id }: DrawerProps) {
 
       <Section
         title="Supply groups"
-        sub="Item groups this vendor is suggested for on the procurement list."
+        tip="Item groups this vendor is suggested for on the procurement list."
       >
         <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
           {GROUPS.map((g) => (
@@ -151,7 +151,7 @@ function VendorDrawer({ id }: DrawerProps) {
         return (
           <Section
             title="Rate contracts"
-            sub="Read-only here. A live contract prices every draft purchase order raised on this vendor; the store keeper adds, edits and closes them."
+            tip="Read-only here. A live contract prices every draft purchase order raised on this vendor; the store keeper adds, edits and closes them."
           >
             <DataTable
               cols={[

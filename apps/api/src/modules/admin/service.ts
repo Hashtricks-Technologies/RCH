@@ -41,7 +41,7 @@ const generatePassword = (): string => randomBytes(15).toString("base64url");
 
 const toAdminLocation = (r: LocationRow, staff: number): AdminLocation => ({
   key: r.key, n: r.name, c: r.code, type: r.type, floor: r.floor, cc: r.costCentre,
-  ...(r.priceList ? { list: r.priceList } : {}), active: r.active, staff,
+  active: r.active, staff,
 });
 
 /** The two unique indexes, as the sentence the admin reads. Caught rather than checked first, so
@@ -58,7 +58,7 @@ async function refuseClash<T>(write: () => Promise<T>, next: { name: string; cod
 }
 
 /** The fields an edit may change, as the body names them and as the row holds them. */
-const EDITABLE = [["name", "name"], ["code", "code"], ["floor", "floor"], ["cc", "costCentre"], ["list", "priceList"]] as const;
+const EDITABLE = [["name", "name"], ["code", "code"], ["floor", "floor"], ["cc", "costCentre"]] as const;
 const OUTLET_CHANGED = ["outlets", "locations"] as const;
 
 export function createAdminService(db: Db) {
@@ -184,12 +184,12 @@ export function createAdminService(db: Db) {
         const key = outletKeyFor(body.name, await adminRepo.locationKeys(tx));
         await refuseClash(() => adminRepo.insertOutlet(tx, {
           key, name: body.name, code: body.code, type: "Outlet", floor: body.floor, costCentre: body.cc,
-          priceList: body.list, sellable: true,
+          sellable: true,
         }), body);
-        await log(tx, claims.sub, "outlet_create", { id: null, name: body.name }, { key, code: body.code, list: body.list });
+        await log(tx, claims.sub, "outlet_create", { id: null, name: body.name }, { key, code: body.code });
         await emitChanged(tx, OUTLET_CHANGED);
         const row = await requireOutletTx(tx, key);
-        return { result: toAdminLocation(row, 0), changed: [...OUTLET_CHANGED], message: `Opened ${body.name} (${body.code}) on price list ${body.list}.` };
+        return { result: toAdminLocation(row, 0), changed: [...OUTLET_CHANGED], message: `Opened ${body.name} (${body.code}).` };
       });
     },
 
@@ -204,7 +204,7 @@ export function createAdminService(db: Db) {
         if (Object.keys(changes).length === 0) throw new RuleError(`Nothing to save - ${row.name} already reads that way`);
         const next = { name: body.name ?? row.name, code: body.code ?? row.code };
         await refuseClash(() => adminRepo.updateLocation(tx, key, {
-          name: next.name, code: next.code, floor: body.floor ?? row.floor, costCentre: body.cc ?? row.costCentre, priceList: body.list ?? row.priceList,
+          name: next.name, code: next.code, floor: body.floor ?? row.floor, costCentre: body.cc ?? row.costCentre,
         }), next);
         await log(tx, claims.sub, "outlet_update", { id: null, name: next.name }, { key, ...changes });
         await emitChanged(tx, OUTLET_CHANGED);

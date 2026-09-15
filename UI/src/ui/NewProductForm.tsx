@@ -32,19 +32,19 @@ interface ScopeSpec {
 }
 
 const TRADED: ScopeSpec["types"] = [
-  { t: "RAW", label: "Raw material (RAW)", hint: "Bought in and consumed by a recipe" },
-  { t: "PACK", label: "Packaging (PACK)", hint: "Cups, boxes and wraps consumed by a recipe" },
+  { t: "RAW", label: "Raw material (RAW)", hint: "Bought in and used in the kitchen" },
+  { t: "PACK", label: "Packaging (PACK)", hint: "Cups, boxes and wraps" },
   { t: "MRP", label: "Printed price (MRP)", hint: "Bought in and resold as it is - the printed MRP caps its selling price" },
   { t: "FG", label: "Finished good (FG)", hint: "Made in the kitchen and held as stock" },
-  { t: "MTO", label: "Made to order (MTO)", hint: "Assembled at the counter from a recipe, never held as stock" },
+  { t: "MTO", label: "Made to order (MTO)", hint: "Made at the counter when it is sold, never held as stock" },
 ];
-/** Procurement buys goods; it does not invent what the kitchen makes or the counter assembles. */
+/** Procurement buys goods; it does not invent what the kitchen or the counter makes. */
 const PURCHASED: ScopeSpec["types"] = TRADED.filter((x) => isPurchased(x.t));
 /** The kitchen makes and holds. It never invents an MRP good - those are bought in by
  *  procurement and priced off a printed MRP the kitchen has no sight of. */
 const KITCHEN_TYPES: ScopeSpec["types"] = [
   { t: "FG", label: "Finished good (FG)", hint: "Made in the kitchen and sent out to the outlets" },
-  { t: "RAW", label: "Raw material (RAW)", hint: "Consumed by a recipe in the kitchen" },
+  { t: "RAW", label: "Raw material (RAW)", hint: "Bought in and used in the kitchen" },
 ];
 const ALL_UNITS = ["nos", "kg", "g", "L", "ml", "pkt", "box"];
 
@@ -172,29 +172,28 @@ export function NewProductForm({ scope, title, sub, intro, initialName, onCreate
     >
       {intro}
 
-      <Section title="Identity" sub="The name is what every screen shows; the code is what the store keeper reads." />
+      <Section title="Identity" tip="The name is what every screen shows; the code is what the store keeper reads." />
       <FormRow cols={spec.has.code ? "f2" : undefined}>
-        <Field label="Product name" hint={nameErr
-          ? <span style={crit}>{nameErr}</span>
-          : "Say what it is, the way the desk says it."}>
+        <Field label="Product name" tip="Say what it is, the way the desk says it."
+          hint={nameErr ? <span style={crit}>{nameErr}</span> : undefined}>
           <input value={name} onChange={(e) => setName(e.target.value)}
             style={nameErr ? critBox : undefined}
             placeholder="Cold coffee premix 1kg" />
         </Field>
         {spec.has.code && (
-          <Field label="Item code" hint="Leave blank and one is generated from the name.">
+          <Field label="Item code" tip="Leave blank and one is generated from the name.">
             <input value={code} onChange={(e) => setCode(e.target.value)} placeholder="RM-1012" />
           </Field>
         )}
       </FormRow>
       <FormRow cols={spec.has.group ? "f2" : undefined}>
-        <Field label="Type" hint={spec.types.find((x) => x.t === type)?.hint}>
+        <Field label="Type" tip={spec.types.find((x) => x.t === type)?.hint}>
           <select value={type} onChange={(e) => setType(e.target.value as ItemType)}>
             {spec.types.map((x) => <option key={x.t} value={x.t}>{x.label}</option>)}
           </select>
         </Field>
         {spec.has.group && (
-          <Field label="Group" hint="Groups the picker and the stock tables by.">
+          <Field label="Group" tip="Groups the picker and the stock tables by.">
             <input value={group} onChange={(e) => setGroup(e.target.value)} placeholder="Grocery"
               list={groupList} />
             <datalist id={groupList}>
@@ -204,7 +203,7 @@ export function NewProductForm({ scope, title, sub, intro, initialName, onCreate
         )}
       </FormRow>
 
-      <Section title="Measure and tax" sub="Everything downstream - requisitions, orders, GRNs - is quoted in this unit." />
+      <Section title="Measure and tax" tip="Everything downstream - requisitions, orders, GRNs - is quoted in this unit." />
       <FormRow cols={spec.has.tax ? "f3" : undefined}>
         <Field label="Unit">
           <select value={unit} onChange={(e) => setUnit(e.target.value)}>
@@ -223,9 +222,9 @@ export function NewProductForm({ scope, title, sub, intro, initialName, onCreate
         )}
       </FormRow>
 
-      <Section title="Levels and cost" sub="The reorder level is the central store's; every outlet and kitchen par is derived from it." />
+      <Section title="Levels and cost" tip="The reorder level is the central store's; every outlet and kitchen par is derived from it." />
       <FormRow cols="f3">
-        <Field label="Reorder level" hint="0 if it is never reordered.">
+        <Field label="Reorder level" tip="0 if it is never reordered.">
           <input type="number" min={0} step="any" value={reorder} onChange={(e) => setReorder(e.target.value)} />
         </Field>
         <Field label="Cost a unit (₹)" hint={costErr
@@ -235,18 +234,16 @@ export function NewProductForm({ scope, title, sub, intro, initialName, onCreate
             style={costErr ? critBox : undefined} placeholder="0.00" />
         </Field>
         {offersMrp && (
-          <Field label="Printed MRP (₹)" hint={isMrp
-            ? (mrpErr
-              ? <span style={crit}>{mrpErr}</span>
-              : "A hard ceiling on the selling price at every counter.")
-            : "Only an MRP item carries one."}>
+          <Field label="Printed MRP (₹)"
+            tip={isMrp ? "A hard ceiling on the selling price at every counter." : "Only an MRP item carries one."}
+            hint={mrpErr ? <span style={crit}>{mrpErr}</span> : undefined}>
             <input type="number" min={0} step="any" value={mrp} disabled={!isMrp}
               onChange={(e) => setMrp(e.target.value)}
               style={mrpErr ? critBox : undefined} placeholder="0.00" />
           </Field>
         )}
         {spec.has.shelfLife && (
-          <Field label="Shelf life (hours)" hint="Blank if it does not carry a best-before.">
+          <Field label="Shelf life (hours)" tip="Blank if it does not carry a best-before.">
             <input type="number" min={0} step={1} value={shelf} onChange={(e) => setShelf(e.target.value)} />
           </Field>
         )}
@@ -254,9 +251,8 @@ export function NewProductForm({ scope, title, sub, intro, initialName, onCreate
 
       {spec.has.opening && (
         <Field label={`Opening stock at ${LOC[spec.loc]?.n ?? spec.loc}`}
-          hint={openingN > 0
-            ? <>{openingN} {unit} will be booked onto the shelf straight away.</>
-            : "Leave at zero and the product joins the catalogue with nothing on the shelf yet."}>
+          tip="Leave at zero and the product joins the catalogue with nothing on the shelf yet."
+          hint={openingN > 0 ? <>{openingN} {unit} will be booked onto the shelf straight away.</> : undefined}>
           <input type="number" min={0} step="any" value={opening}
             onChange={(e) => setOpening(e.target.value)} placeholder="0" />
         </Field>

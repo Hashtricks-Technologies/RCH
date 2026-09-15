@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { PriceListSchema } from "@rch/contract";
 import { outletKeyFor } from "@rch/domain";
 import { useApp } from "../store";
 import { Btn, Card, DataTable, Field, FormRow, PageHead, Pill, TableFoot } from "../ui/kit";
@@ -10,15 +9,18 @@ const DID: Partial<Record<AdminAction["action"], string>> = {
   outlet_create: "opened", outlet_update: "edited", outlet_close: "closed", outlet_reopen: "reopened",
 };
 
-const emptyForm: CreateOutletBody = { name: "", code: "", floor: "", cc: "", list: "A" };
-type Draft = { name: string; code: string; floor: string; cc: string; list: "A" | "B" };
-const draftOf = (l: AdminLocation): Draft => ({ name: l.n, code: l.c, floor: l.floor, cc: l.cc, list: l.list ?? "A" });
+const emptyForm: CreateOutletBody = { name: "", code: "", floor: "", cc: "" };
+type Draft = { name: string; code: string; floor: string; cc: string };
+const draftOf = (l: AdminLocation): Draft => ({ name: l.n, code: l.c, floor: l.floor, cc: l.cc });
 
 /**
  * The hospital's retail outlets - opened, edited, closed and reopened here and nowhere else. An outlet
  * is closed, never deleted: its bills, moves and reports stay, and the server refuses a close while
  * anything still depends on it, naming all of it at once. The store and the kitchen are fixed and are
  * not listed. Every rule is the server's; this page previews the key and repeats the server's words.
+ *
+ * A new outlet is opened with no price list: a list is a named entity the outlet manager creates and
+ * attaches from their own Prices screen, so it is not the super admin's to pick.
  */
 export default function AdminOutlets() {
   const locations = useApp((s) => s.adminLocations);
@@ -62,7 +64,6 @@ export default function AdminOutlets() {
     if (d.code !== was.code) body.code = d.code;
     if (d.floor !== was.floor) body.floor = d.floor;
     if (d.cc !== was.cc) body.cc = d.cc;
-    if (d.list !== was.list) body.list = d.list;
     setBusy(l.key);
     try {
       if (await updateOutlet(l.key, body)) setEditing((e) => { const n = { ...e }; delete n[l.key]; return n; });
@@ -76,32 +77,20 @@ export default function AdminOutlets() {
 
   const cell = (l: AdminLocation, field: keyof Draft, label: string) => {
     const d = editing[l.key];
-    if (!d) return field === "name" ? l.n : field === "code" ? <span className="mono">{l.c}</span> : field === "cc" ? l.cc : field === "list" ? `List ${l.list ?? "-"}` : l.floor;
-    if (field === "list") {
-      return (
-        <select aria-label={`${label} for ${l.c}`} value={d.list} onChange={(e) => setEditing({ ...editing, [l.key]: { ...d, list: e.target.value as Draft["list"] } })}>
-          {PriceListSchema.options.map((p) => <option key={p} value={p}>List {p}</option>)}
-        </select>
-      );
-    }
+    if (!d) return field === "name" ? l.n : field === "code" ? <span className="mono">{l.c}</span> : field === "cc" ? l.cc : l.floor;
     return <input aria-label={`${label} for ${l.c}`} value={d[field]} onChange={(e) => setEditing({ ...editing, [l.key]: { ...d, [field]: e.target.value } })} />;
   };
 
   return (
     <>
-      <PageHead crumbs={["Admin"]} title="Manage outlets" sub="The hospital's retail outlets, and whether each one is open." />
+      <PageHead crumbs={["Admin"]} title="Manage outlets" tip="The hospital's retail outlets, and whether each one is open." />
 
-      <Card title="Open an outlet" sub="It starts with an empty menu - the outlet manager lists its products, and staff are posted to it from Accounts">
-        <FormRow cols="f3">
+      <Card title="Open an outlet" tip="It starts with no menu and no price list - the outlet manager lists and prices its products, and staff are posted to it from Accounts">
+        <FormRow cols="f2">
           <Field label="Name" hint={keyPreview ? <>Key <span className="mono">{keyPreview}</span> - given once, and kept through a rename</> : undefined}>
             <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
           </Field>
           <Field label="Code"><input className="mono" value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} /></Field>
-          <Field label="Price list">
-            <select value={form.list} onChange={(e) => setForm({ ...form, list: e.target.value as CreateOutletBody["list"] })}>
-              {PriceListSchema.options.map((p) => <option key={p} value={p}>List {p}</option>)}
-            </select>
-          </Field>
         </FormRow>
         <FormRow cols="f2">
           <Field label="Floor"><input value={form.floor} onChange={(e) => setForm({ ...form, floor: e.target.value })} /></Field>
@@ -113,13 +102,13 @@ export default function AdminOutlets() {
       <Card title="Every outlet" sub={`${outlets.filter((l) => l.active).length} open`} flush className="mtop">
         <DataTable
           cols={[
-            { h: "Name", w: "18%" }, { h: "Code", w: "10%" }, { h: "Floor", w: "12%" }, { h: "Cost centre", w: "12%" },
-            { h: "List", w: "8%" }, { h: "Staff", w: "7%", r: true }, { h: "Status", w: "9%" }, { h: "Actions" },
+            { h: "Name", w: "20%" }, { h: "Code", w: "11%" }, { h: "Floor", w: "13%" }, { h: "Cost centre", w: "13%" },
+            { h: "Staff", w: "7%", r: true }, { h: "Status", w: "9%" }, { h: "Actions" },
           ]}
           rows={outlets.map((l) => ({
             key: l.key,
             cells: [
-              cell(l, "name", "Name"), cell(l, "code", "Code"), cell(l, "floor", "Floor"), cell(l, "cc", "Cost centre"), cell(l, "list", "Price list"),
+              cell(l, "name", "Name"), cell(l, "code", "Code"), cell(l, "floor", "Floor"), cell(l, "cc", "Cost centre"),
               <>{l.staff}</>,
               l.active ? <Pill tone="ok">Open</Pill> : <Pill tone="mu">Closed</Pill>,
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -151,7 +140,7 @@ export default function AdminOutlets() {
         <TableFoot count={outlets.length} />
       </Card>
 
-      <Card title="Recent actions" sub="The last fifty - who opened, edited, closed or reopened what" className="mtop">
+      <Card title="Recent actions" tip="The last fifty - who opened, edited, closed or reopened what" className="mtop">
         {actions.length === 0 ? <p className="mini">Nothing has happened here yet.</p> : (
           <ul className="feed">
             {actions.map((a, i) => (

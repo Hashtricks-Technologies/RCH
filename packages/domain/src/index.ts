@@ -8,7 +8,6 @@ export { parFactor } from "./par.js";
 export { closeRefusal, holding, HOLDS_OUTLET, operationalKeys, outletKeyFor, outletKeys, placesFor, worksAt, type OutletBlockers } from "./locations.js";
 export { availOf, fq } from "./availability.js";
 export { committed, freeToPromise } from "./promise.js";
-export { recipeCost, costOf } from "./costing.js";
 export { bestBeforeAt, bestBeforeText } from "./shelf.js";
 export { planBill, type BillPlan } from "./billing.js";
 export { REQUEST_TRANSITIONS, TICKET_TRANSITIONS, SHOP_ASK_TRANSITIONS, PROD_ORDER_TRANSITIONS, REQUISITION_TRANSITIONS, PO_TRANSITIONS, canTransition, type TransitionTable } from "./transitions.js";
@@ -24,5 +23,3 @@ export { ledgerRow, type LedgerRow } from "./reports.js";
 export { ITEM_FIELD_ROLES, mayEditItemField, unauthorisedItemFields, type ItemField } from "./items.js";
 // ---- adjustments: the words a write-off's reason is printed in, on both sides.
 export { REASON_LABEL } from "./adjustments.js";
-// ---- recipes: which items carry one, what may go into one, and whether one may be saved.
-export { canBeIngredient, carriesRecipe, recipeRefusal, type RecipeDraft } from "./recipes.js";

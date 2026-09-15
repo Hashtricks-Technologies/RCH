@@ -6,6 +6,7 @@ import snapshot from "./snapshot/routes.js";
 import pos from "./pos/routes.js";
 import availability from "./availability/routes.js";
 import catalog from "./catalog/routes.js";
+import pricelists from "./pricelists/routes.js";
 import requests from "./requests/routes.js";
 import tickets from "./tickets/routes.js";
 import shopasks from "./shopasks/routes.js";
@@ -18,14 +19,10 @@ import contracts from "./contracts/routes.js";
 import productreqs from "./productreqs/routes.js";
 import support from "./support/routes.js";
 import reports from "./reports/routes.js";
-// ---- payers ----
-import payers from "./payers/routes.js";
 // ---- adjustments
 import adjustments from "./adjustments/routes.js";
 // ---- admin account management
 import admin from "./admin/routes.js";
-// ---- recipes
-import recipes from "./recipes/routes.js";
 
 /** Every module, registered in one place. Adding a module = one import + one line here. */
 export async function registerModules(app: App): Promise<void> {
@@ -36,6 +33,7 @@ export async function registerModules(app: App): Promise<void> {
   await app.register(pos);
   await app.register(availability);
   await app.register(catalog);
+  await app.register(pricelists);
   await app.register(requests);
   await app.register(tickets);
   await app.register(shopasks);
@@ -48,12 +46,8 @@ export async function registerModules(app: App): Promise<void> {
   await app.register(productreqs);
   await app.register(support);
   await app.register(reports);
-  // ---- payers ----
-  await app.register(payers);
   // ---- adjustments
   await app.register(adjustments);
   // ---- admin account management
   await app.register(admin);
-  // ---- recipes
-  await app.register(recipes);
 }

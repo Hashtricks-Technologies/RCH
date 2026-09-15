@@ -1,8 +1,8 @@
 // Production: everything the Central Kitchen does. The two ways it puts stock on a ticket both
 // reserve and neither moves - approval authorises, the scan moves (CLAUDE.md), and `handover`
 // is still what empties the shelf. The board's statuses move no stock at all. The batch is the
-// exception and the reason this module touches the ledger: it is the one write in the system
-// that creates stock, so it consumes the recipe and books the yield in a single postMoves call.
+// exception and the reason this module touches the ledger: it books the kitchen's yield onto its
+// rack, with the batch row as the document the new stock stands on.
 import type { z } from "zod";
 import type { Batch, CreateProdOrderBodySchema, DistributeBodySchema, MakeBatchBodySchema, PordStatus, ProdOrder, Ticket, WriteResponse } from "@rch/contract";
 import { bestBeforeAt, bestBeforeText, canTransition, dmy, fq, PROD_ORDER_TRANSITIONS, round3 } from "@rch/domain";
@@ -12,7 +12,7 @@ import { NotFoundError } from "../../lib/errors.js";
 import { emitChanged } from "../../lib/events.js";
 import { appendHistory } from "../../lib/history.js";
 import { allocateId, allocateNumber } from "../../lib/ids.js";
-import { lockBalances, postMoves, type Move } from "../../lib/ledger.js";
+import { lockBalances, postMoves } from "../../lib/ledger.js";
 import { assertOpen, lockLocation } from "../../lib/locations.js";
 import { loadMaster } from "../../lib/master.js";
 import { reservedAt } from "../../lib/reservations.js";
@@ -78,8 +78,8 @@ export function createProductionService(db: Db) {
         for (const l of lines) {
           const item = master.items[l.it];
           if (!item) throw new NotFoundError(`There is no item ${l.it}.`);
-          // Finished goods only. A made-to-order item carries a recipe and a menu listing, so it
-          // looks orderable - but nothing downstream can fill it: `makeBatch` refuses to stock a
+          // Finished goods only. A made-to-order item carries a menu listing, so it looks
+          // orderable - but nothing downstream can fill it: `makeBatch` refuses to stock a
           // phantom shelf of it (C2), `distribute` refuses to send one, and `dispatch` therefore
           // has nothing to cover the line with. An order for one would sit on the board until
           // somebody declined it, so it is refused here, at the door, in the words the kitchen's
@@ -209,21 +209,17 @@ export function createProductionService(db: Db) {
     },
 
     /**
-     * A batch: the one write in this system that creates stock, and therefore the one that must
-     * not be able to create it out of nothing. The recipe comes out of the kitchen's raw
-     * materials and the finished units go onto its rack in the same `postMoves` call, so there
-     * is no instant at which the hospital's books show one without the other (C1).
+     * A batch: the kitchen's record of finished goods it made. The batch row is the document
+     * the new stock stands on, and the units that came good go onto the kitchen's rack in the
+     * same transaction, with a best-before stamped from the item's shelf life.
      *
-     * Ingredients go against what was **started**; only the units that came good reach the rack
-     * (UA-14). A tray dropped is stock consumed and nothing produced, and the batch row is what
-     * records the difference.
+     * Only the units that came good reach the rack (UA-14); a tray dropped is a batch row with
+     * nothing yielded, and the row is what records the difference.
      *
-     * Lock order, as everywhere: ids before balances (`lib/ledger.ts`'s header). One call takes
-     * every cell this write will move - the ingredients, and the finished item when there is a
-     * yield to book - so the `postMoves` below re-takes only locks this transaction already
-     * holds. A make that locked the ingredients alone would reach for a fifth row while holding
-     * four; one that locked the finished item with nothing to yield would create a balance row
-     * it never moves, and a zero row reads as "this location carries the line" (M12).
+     * The only move is positive, so - like `grn.receive` - there is no `lockBalances` and no
+     * re-read: nothing is promised against a balance that only goes up. A yield of nothing
+     * posts no move at all, so no balance row is created for a line the kitchen never carried
+     * (M12).
      */
     async makeBatch(claims: AccessClaims, body: MakeBatchBody): Promise<WriteResponse<Batch>> {
       return withTransaction(db, async (tx) => {
@@ -235,68 +231,21 @@ export function createProductionService(db: Db) {
         const master = await loadMaster(tx);
         const item = master.items[body.it];
         if (!item) throw new NotFoundError(`There is no item ${body.it}.`);
-        // The kitchen's own switch, in the kitchen's own words. Read before the recipe so the
-        // sentences arrive in the order the screen has always produced them.
+        // The kitchen's own switch, in the kitchen's own words, before what kind of item it is.
         const off = await productionRepo.overrideAt(tx, KITCHEN, body.it);
         assertRule(!off, `${item.n} is switched off in the kitchen`);
         // A made-to-order item is made at the till when it is sold, not stocked ahead of a sale
-        // (C2) - `capp`/`chai` carry a recipe and a menu listing, so the recipe check alone
-        // would let the kitchen batch a phantom shelf of them.
+        // (C2); it carries a menu listing, so it is the case worth naming in its own words.
         assertRule(item.t !== "MTO", `${item.n} is made to order at the counter - it is not batched`);
-        const recipe = master.recipes[body.it];
-        assertRule(recipe, `${item.n} has no recipe - it cannot be produced`);
+        assertRule(item.t === "FG", `${item.n} is not a finished good - only a finished good is batched`);
 
-        // No fold across the lines: `recipes` is keyed on (item_key, ingredient_key), so an
-        // ingredient cannot appear twice in one recipe and there is nothing to add together.
-        const need = recipe.l.map(([g, per]) => ({ it: g, qty: round3(per * started) }));
         const at = new Date();
         const no = await allocateNumber(tx, "batch", at);
-        // Every cell this write will move, and no others: the finished item joins only when
-        // there is a yield to book, because `lockBalances` creates the row it locks.
-        const cells = [
-          ...need.map((n) => ({ loc: KITCHEN, it: n.it })),
-          ...(made > 0 ? [{ loc: KITCHEN, it: body.it }] : []),
-        ];
-        await lockBalances(tx, cells);
-        const keys = cells.map((c) => c.it);
-        const onHand = await productionRepo.balancesAt(tx, KITCHEN, keys);
-        const held = await reservedAt(tx, KITCHEN, keys);
-        // What another ticket is holding is not the kitchen's to bake with, so the measure is
-        // free to promise and not what is on the shelf.
-        const free = (g: string) => round3((onHand[g] ?? 0) - (held[`${KITCHEN}:${g}`] ?? 0));
-        /** The kitchen's own sentence for an ingredient that will not stretch - one helper for
-         *  both the pre-check below and the post-lock invariant loop further down, so the two
-         *  never drift into saying it two different ways. */
-        const shortOf = (g: string, freeQty: number): string => {
-          const ing = master.items[g];
-          const unit = ing?.u ?? "nos";
-          return `Kitchen is short of ${ing?.n ?? g} - ${fq(freeQty, unit)} ${unit} left`;
-        };
-        // The first in recipe order, which is the one the kitchen's own screen names. Written as
-        // an `if` rather than `assertRule(!short, short ? … : "")`: a refusal sentence computed
-        // on the success path is a blank toast waiting for someone to drop the ternary.
-        const short = need.find((n) => free(n.it) < n.qty);
-        if (short) assertRule(false, shortOf(short.it, free(short.it)));
-
-        const moves: Move[] = need.map((n) => ({
-          loc: KITCHEN, it: n.it, qty: -n.qty, kind: "production_consume", refType: "batch", refId: no.id, by: claims.sub, at,
-        }));
         // A yield of nothing is not a movement. The batch row records the lost tray, and the
         // kitchen's shelf list is left exactly as it was - no row is created for a line the
         // kitchen has never carried.
         if (made > 0) {
-          moves.push({ loc: KITCHEN, it: body.it, qty: made, kind: "production_yield", refType: "batch", refId: no.id, by: claims.sub, at });
-        }
-        await postMoves(tx, moves);
-
-        // The cover check above already ran under these locks, so this cannot fire today. It is
-        // the invariant every negative-going move must keep, and it is what catches the
-        // next caller that reads a balance before locking it.
-        const after = await productionRepo.balancesAt(tx, KITCHEN, need.map((n) => n.it));
-        const heldAfter = await reservedAt(tx, KITCHEN, need.map((n) => n.it));
-        for (const n of need) {
-          const left = round3((after[n.it] ?? 0) - (heldAfter[`${KITCHEN}:${n.it}`] ?? 0));
-          assertRule(left >= 0, shortOf(n.it, Math.max(0, round3(left + n.qty))));
+          await postMoves(tx, [{ loc: KITCHEN, it: body.it, qty: made, kind: "production_yield", refType: "batch", refId: no.id, by: claims.sub, at }]);
         }
 
         const bb = bestBeforeAt(at, item.sl);

@@ -1,6 +1,6 @@
 # Outlet management - design
 
-Date: 2026-09-14 · Base: `origin/develop` 57256a9 · Branch: `feature/outlets`
+Date: 2026-09-14 · Base: `origin/develop` 57256a9, merged up to 9ac49b7 · Branch: `feature/outlets`
 
 ## Goal
 
@@ -75,8 +75,8 @@ rather than the three built into the code.
 
 ### 1.3 Database (one migration)
 
-Numbered as the next free entry in `drizzle/meta/_journal.json` at implementation time (0015 at the base commit;
-the parallel `feature/audit-log` and recipe-removal work may take it first).
+Numbered as the next free entry in `drizzle/meta/_journal.json` at implementation time. It landed as **0017**,
+after develop's `0015_drop_recipes` and `0016_price_lists`.
 
 - `locations.active boolean not null default true`.
 - `locations.par_factor numeric(4,2) not null default 0.18`, backfilled: `store` 1, `kitchen` 0.35, `rest`
@@ -117,6 +117,7 @@ outlet. That is:
 - adjustment at an outlet
 - menu add
 - availability toggle
+- an outlet's price-list switch (`PUT /outlets/:loc/price-list`)
 
 It replaces the existing `type === "Outlet"` reads and `OUTLETS.includes` checks.
 
@@ -134,9 +135,9 @@ bills` - because the void would post stock back onto a closed shelf.
 
 | Route | Body / result | Message |
 |---|---|---|
-| `GET /admin/locations` | Every location except quarantine: key, name, code, type, floor, cost centre, list, active, and `staff` (active accounts based there). The Accounts tab labels from this too, so `LOC_LABEL` goes. | - |
-| `POST /admin/outlets` | `{ name, code, floor, cc, list }` → the outlet | `Opened <name> (<code>) on price list <list>.` |
-| `PATCH /admin/outlets/:key` | any of `{ name, code, floor, cc, list }` → the outlet | `Saved <name>.` |
+| `GET /admin/locations` | Every location except quarantine: key, name, code, type, floor, cost centre, active, and `staff` (active accounts based there). The Accounts tab labels from this too, so `LOC_LABEL` goes. | - |
+| `POST /admin/outlets` | `{ name, code, floor, cc }` → the outlet | `Opened <name> (<code>).` |
+| `PATCH /admin/outlets/:key` | any of `{ name, code, floor, cc }` → the outlet | `Saved <name>.` |
 | `POST /admin/outlets/:key/close` | → the outlet | `Closed <name>. Its bills and reports are kept.` |
 | `POST /admin/outlets/:key/reopen` | → the outlet | `Reopened <name>.` |
 
@@ -145,7 +146,12 @@ Validation:
 - `name` must be 2-40 characters after trimming.
 - `code` must be 2-12 characters of `A-Z0-9-`, stored upper-cased.
 - `floor` and `cc` must each be 1-40 characters.
-- `list` is `A | B`.
+
+**No price list on this form.** A price list is a named entity the outlet manager creates and attaches from
+their own Prices screen (`PUT /outlets/:loc/price-list`), so a new outlet is opened with `price_list_id` null
+and the super admin never picks one. Switching a **closed** outlet onto another list is refused the way a menu
+add there is (`Refused - <name> is closed`): the list it moved to is what the outlet would sell the day it
+reopened.
 
 A duplicate name or code is a `conflict`, caught from the unique index so that a race is covered too: `Refused -
 a location named <name> already exists` or `Refused - code <code> is already in use`. "Location" rather than
@@ -178,7 +184,7 @@ already closed` / `<name> is already open`.
 A closed outlet:
 
 - keeps its menu, availability overrides and price list, so a reopen restores it as it was;
-- can't take a sale, transfer, ask, kitchen order, adjustment, menu add or bill void (§2.1);
+- can't take a sale, transfer, ask, kitchen order, adjustment, menu add, price-list switch or bill void (§2.1);
 - can't have staff created at it, moved to it or reactivated at it (`worksAt`).
 
 Each write runs in one `withTransaction`, writes one `admin_actions` row, and calls
@@ -225,13 +231,14 @@ refusal leaves the form exactly as it was.
 
 `AdminDashboard`'s `Tab` becomes `"accounts" | "outlets" | "support"`.
 
-- **PageHead** sub (one line): "The hospital's retail outlets, and whether each one is open."
+- **PageHead** tip (one line, the way the other two admin tabs read since `f736565`): "The hospital's
+  retail outlets, and whether each one is open."
 - **Add card**:
-  - name, code, floor, cost centre, and a price list select (A/B)
+  - name, code, floor, cost centre - and no price list (§2.3)
   - **Open outlet** button
   - a preview line of the key the server will assign, from `outletKeyFor`
 - **Table** (`DataTable`):
-  - Columns: name, code, floor, cost centre, list, staff, status (`Pill`: Open / Closed).
+  - Columns: name, code, floor, cost centre, staff, status (`Pill`: Open / Closed).
   - Open outlets are listed first, then by name.
   - Each row has **Edit**, which turns the row's fields into inputs with Save and Cancel, plus **Close** (with a
     second press, like Delete on Accounts) or **Reopen**.
@@ -291,12 +298,14 @@ Tests are written first, per package.
 
 - Built in the worktree `feature/outlets` off `origin/develop`, with its own Postgres on a separate port, so the
   shared tree's sessions and their database on 5439 are untouched.
-- Rebased on `origin/develop` before shipping. Two parallel changes overlap:
-  - The recipe removal touches the same contract, snapshot, seed and selector files.
-  - `feature/audit-log` adds a third admin tab and requires an `AUDIT_LABELS` entry for every write route. If it
-    lands first, the four outlet writes get labels ("Opened an outlet", "Edited an outlet", "Closed an outlet",
-    "Reopened an outlet").
-  - The migration is renumbered at rebase if needed.
+- `origin/develop` was **merged in** before shipping (a merge, not a rebase, so the twenty commits stay). Three
+  of develop's changes overlapped:
+  - The recipe removal (`8e6de95`) touched the same contract, snapshot, seed and selector files; develop's
+    removal wins and the outlet behaviour is re-applied on top of it.
+  - Named, per-outlet price lists (`256c31c`) replaced the fixed A/B pair, which is why this page's form carries
+    no price list (§2.3) and the migration renumbered to 0017.
+  - The tooltip and layout rework (`f736565`, `609befb`) touched most of the screens this feature edits;
+    develop's layout wins and the outlet lists are re-applied into it.
 - Every CI gate must pass: typecheck, tests with coverage floors, zero-warning lint, knip, boundaries, audit, UI
   build, image scan and kind install.
 - The migration only adds columns and indexes and backfills par factors. It is safe on the live box, which

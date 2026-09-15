@@ -41,13 +41,13 @@ function KitchenOrderDrawer() {
       title="Order from the kitchen"
       sub="Ask the Central Kitchen to make something for one of the three shops"
     >
-      <Field label="Which outlet is this for" hint="The tray is dispatched to this shop and shows on its own screen.">
+      <Field label="Which outlet is this for" tip="The tray is dispatched to this shop and shows on its own screen.">
         <select value={loc} aria-label="Outlet" onChange={(e) => setLoc(e.target.value as LocKey)}>
           {openOutlets().map((l) => <option key={l} value={l}>{LOC[l]?.n ?? l}</option>)}
         </select>
       </Field>
 
-      <Section title="What to make" sub="Finished goods the kitchen bakes and that outlet sells">
+      <Section title="What to make" tip="Finished goods the kitchen bakes and that outlet sells">
         <KitchenOrderForm loc={loc} onDone={close} />
       </Section>
 

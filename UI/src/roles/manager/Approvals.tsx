@@ -4,7 +4,7 @@ import { useApp } from "../../store";
 import { allOutlets, locName } from "../../lib/selectors";
 import { unitTotal } from "../../lib/fmt";
 import {
-  Alert, Btn, Card, DataTable, FilterSelect, PageHead, Pill, StatusPill, TableFoot, Toolbar,
+  Alert, Btn, Card, DataTable, FilterSelect, Grid, PageHead, Pill, StatusPill, TableFoot, Toolbar,
 } from "../../ui/kit";
 import { emptyFor, sortRows, useSort, type SortValue } from "./useSort";
 import type { DatedDoc, ReqLine, ReqStatus, StockRequest } from "../../types";
@@ -98,7 +98,7 @@ export default function Approvals() {
       <PageHead
         crumbs={["Royal Care", "Movement", "Approvals"]}
         title="Stock request approvals"
-        sub="Stock requests waiting for your decision."
+        tip="Stock requests waiting for your decision."
       />
 
       {allWaiting.length > 0 ? (
@@ -118,6 +118,7 @@ export default function Approvals() {
         </Alert>
       )}
 
+      <Grid cols="g2">
       <Card title="Waiting on you" sub={`${waiting.length} of ${allWaiting.length}`} flush>
         <Toolbar
           placeholder="Search request, outlet, operator or item…"
@@ -170,8 +171,8 @@ export default function Approvals() {
       <Card
         title="Already actioned"
         sub={`${actioned.length} of ${allActioned.length}`}
+        tip="Click any row to reopen the decision trail"
         flush
-        className="mtop"
       >
         <Toolbar
           placeholder="Search the actioned history, including the reason given…"
@@ -235,8 +236,9 @@ export default function Approvals() {
             sub: "Once you approve or reject a counter request it is listed here with its full history.",
           })}
         />
-        <TableFoot count={actioned.length} extra={<>Click any row to reopen the decision trail</>} />
+        <TableFoot count={actioned.length} />
       </Card>
+      </Grid>
     </>
   );
 }

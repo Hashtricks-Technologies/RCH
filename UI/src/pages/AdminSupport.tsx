@@ -83,13 +83,13 @@ export default function AdminSupport() {
       <PageHead
         crumbs={["Admin", "Support desk"]}
         title="Support desk"
-        sub="Tickets from every role's Support screen."
+        tip="Tickets from every role's Support screen."
       />
 
       <Kpis items={[
         { l: "Not yet answered", v: String(open), d: open ? "open, nobody has replied" : "every ticket has a reply" },
         { l: "Urgent and unresolved", v: String(urgent), d: urgent ? "stopping someone serving" : "nothing urgent" },
-        { l: "Waiting on the reporter", v: String(waiting), d: "support has asked them something" },
+        { l: "Waiting on the reporter", v: String(waiting), tip: "support has asked them something" },
         {
           l: "Average rating", v: rated.length ? (rated.reduce((s, t) => s + t.rating!, 0) / rated.length).toFixed(1) : "-",
           d: `${rated.length} of ${tickets.length} rated`,
@@ -205,7 +205,7 @@ function Conversation({ t, locLabel }: { t: Dated<SupportTicket>; locLabel: (key
       </Section>
 
       {mayReply(t.st) ? (
-        <Section title="Reply as support" sub={`${t.by} sees this on their Support screen as soon as it is sent.`}>
+        <Section title="Reply as support" tip={`${t.by} sees this on their Support screen as soon as it is sent.`}>
           <Field label="Your message">
             <textarea rows={4} value={reply} onChange={(e) => setReply(e.target.value)}
               placeholder="What you found, what you changed, or what you need from them…" />
@@ -227,7 +227,7 @@ function Conversation({ t, locLabel }: { t: Dated<SupportTicket>; locLabel: (key
         </Section>
       )}
 
-      <Section title="Status">
+      <Section title="Status" tip={t.st === "Closed" ? "Closed tickets stay here for the record." : undefined}>
         <BtnRow>
           {t.st === "Open" && deskOffers(t.st, "With support") && (
             <Btn size="sm" variant="gh" disabled={busy} onClick={() => void move("With support")}>Pick up</Btn>
@@ -242,7 +242,6 @@ function Conversation({ t, locLabel }: { t: Dated<SupportTicket>; locLabel: (key
             <Btn size="sm" variant="dg" disabled={busy} onClick={() => void move("Closed")}>Close ticket</Btn>
           )}
         </BtnRow>
-        {t.st === "Closed" && <p className="mini">Closed tickets stay here for the record.</p>}
       </Section>
     </Card>
   );

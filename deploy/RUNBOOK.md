@@ -57,7 +57,7 @@ Development and test are unchanged. The rules themselves are one pure function,
 
 **`--bare` is the seed a real deployment starts from.** It writes the six locations, the document
 numbering and the one admin account (`RC-0001`, on `SEED_PASSWORD`), and nothing of the demo
-hospital - no items, recipes, prices, menus, stock, payers, vendors, documents or demo staff.
+hospital - no items, prices, menus, stock, payers, vendors, documents or demo staff.
 `deploy/compose/deploy.sh` passes it on a first run; local development, the test suites and CI's
 kind install keep the demo seed, because they are written against it. Both production guards apply
 to it exactly as to the demo seed, and `--bare --force` over a database that already holds the
@@ -71,8 +71,7 @@ dist/cli/seed.mjs --bare --force --yes-seed rch --yes-destroy rch          # in 
 
 What a bare hospital needs before it can sell anything, in the order the screens need it: the
 real staff accounts (`RC-0001` at `/admin`), the item master (the store's, buyer's or kitchen's
-**Add Product**), a recipe for every finished good and made-to-order item (the kitchen's and the
-manager's **Recipes** screen - until it existed a recipe could only arrive with the seed), shelf
+**Add Product**), shelf
 prices and menus (the manager's **Price Lists** and **Items & Stock**), the payer roster (§5), and
 stock (a goods receipt, or an adjustment count-up for an opening balance).
 
@@ -702,16 +701,15 @@ against the `locations` table the same way every write that names a location is 
 the central store or the central kitchen for the roles pinned there, and any *open* outlet for `counter` and
 `manager`. A key with no row, or a closed outlet's key, is refused by name. Outlets themselves are opened,
 edited, closed and reopened only from `/admin` - never by this CLI and never by the seed beyond the three it
-starts with (§1's *Test users*). The migration behind that (`0015_outlets`) only adds columns and indexes and
+starts with (§1's *Test users*). The migration behind that (`0017_outlets`) only adds columns and indexes and
 backfills every existing location's par factor to what was hard-coded before, so it is safe to run against the
 live box, which holds real data, and an older image still reads the table afterwards.
 
 ### The payer roster
 
-Unlike user accounts, the roster **is** a screen - the outlet manager's **Payers** - and adding,
-renaming, deactivating and reopening a patient, a staff member or a department is an everyday
-task done there. The CLI exists for exactly one job the screen is wrong for: loading a ward list
-of a few hundred rows at go-live, or after a hospital-side change that produced a file.
+No screen keeps the roster. Patients, staff members and departments reach it through this CLI,
+from a file: a ward list of a few hundred rows at go-live, or whatever a hospital-side change
+produced since.
 
 ```bash
 pnpm --filter @rch/api payers import --csv ./wards.csv
@@ -735,8 +733,8 @@ Three behaviours to know before running it against a live database:
   touches an existing name.
 - **A rename never reopens a closed account.** `--replace-names` on a deactivated payer updates
   the name and leaves the switch alone; the summary counts those apart (`renamed 3 (1 still
-  inactive)`) so "renamed 3" cannot be read as three people back on the till's picker. Reopening
-  one is the manager's Payers screen.
+  inactive)`) so "renamed 3" cannot be read as three people back on the till's picker. Nothing in
+  the application reopens one.
 
 The import does not announce over SSE, so an open browser will not see the new rows until it is
 reloaded - the same as `users` and `db:seed`, and fine for a job that runs before anybody is
@@ -971,11 +969,10 @@ never transitions - so read it from the ledger too, keyed by `ref_type = 'batch'
 select * from stock_moves where ref_type = 'batch' and ref_id = 'BAT-20260904-01' order by id;
 ```
 
-The negative rows are the recipe - one `production_consume` move per ingredient, `qty` = the
-recipe's own quantity times what was *started* - and the positive row, if there is one, is the
-`production_yield` for what was *made*. A batch that yielded nothing (a tray dropped, `made =
-0`) posts no positive row at all: the recipe still came off, but nothing was created to book,
-so there is no move for it and no "carried at zero" row on the finished item either (M12). The
+A batch posts one row, the `production_yield` for what was *made*. It draws no raw materials
+down; a batch written before recipes were removed may also carry negative `production_consume`
+rows, one per ingredient. A batch that yielded nothing (a tray dropped, `made = 0`) posts no row
+at all, so there is no move for it and no "carried at zero" row on the finished item either (M12). The
 batch's own row (`select * from batches where id = 'BAT-20260904-01'`) is what records a lost
 tray - `started_qty` and `made_qty` disagree, and `note` usually says why.
 
@@ -1591,10 +1588,9 @@ scoped to what a deploy needs, and needs no change.
    ```
    `kubectl cp` the file in first, or run the CLI from a laptop against the same
    `DATABASE_URL`. One bad row aborts the whole file and names every one it found, which is the
-   behaviour you want on go-live morning rather than half a roster. Afterwards the **outlet
-   manager's Payers screen** is where a new patient or a new starter is added, one at a time,
-   with no CLI and no deploy - decide who that is and say so in the handover, because the ability
-   to add a payer is the ability to open a credit account.
+   behaviour you want on go-live morning rather than half a roster. Afterwards a new patient or a
+   new starter goes in the same way, one CSV at a time - decide who runs it and say so in the
+   handover, because the ability to add a payer is the ability to open a credit account.
 6. **Run the restore drill once against the real RDS instance** (§6, the RDS procedure below the
    local rehearsal) - not the rehearsal, the real one, before the first bill is ever posted for
    real.
@@ -2326,8 +2322,8 @@ in the same dependency order, and never reseeds a database that already has rows
 the cron line from `deploy/compose/README.md` once, for the nightly backup.
 
 A first run seeds `--bare` (§1): sign in as `RC-0001` with `SEED_PASSWORD`, choose a new
-password, create the real staff at `/admin`, and enter items, recipes, prices, menus and the payer
-roster from the screens - §1's last paragraph has the order.
+password, create the real staff at `/admin`, enter items, prices and menus from the screens,
+and load the payer roster from a CSV (§5) - §1's last paragraph has the order.
 
 ### 16.4 What this trades away against the EKS path
 

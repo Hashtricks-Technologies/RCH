@@ -25,9 +25,9 @@ export type ProductReqStatus = z.infer<typeof D.ProductReqStatusSchema>;
 export type ShopAskStatus = z.infer<typeof D.ShopAskStatusSchema>;
 export type Item = z.infer<typeof D.ItemSchema>;
 export type Location = z.infer<typeof D.LocationSchema>;
+export type PriceList = z.infer<typeof D.PriceListSchema>;
 export type User = z.infer<typeof D.UserSchema>;
 export type UserMin = z.infer<typeof D.UserMinSchema>;
-export type Recipe = z.infer<typeof D.RecipeSchema>;
 export type ReqLine = z.infer<typeof D.ReqLineSchema>;
 export type HistEntry = z.infer<typeof D.HistEntrySchema>;
 export type StockRequest = z.infer<typeof D.StockRequestSchema>;
@@ -65,10 +65,6 @@ export type StockLedgerRow = z.infer<typeof R.StockLedgerRowSchema>;
 export type StockLedgerResponse = z.infer<typeof R.StockLedgerResponseSchema>;
 export type CreditParams = z.infer<typeof R.CreditParamsSchema>;
 export type CreditResponse = z.infer<typeof R.CreditResponseSchema>;
-
-// ---- payers ----
-/** What `GET /roster` and the two payer writes carry: a roster row, `active` included. */
-export type PayerRecord = z.infer<typeof D.PayerRecordSchema>;
 
 // ---- adjustments: a write-off or a count-up as a document.
 export type AdjustReason = z.infer<typeof D.AdjustReasonSchema>;

@@ -83,13 +83,13 @@ describe("a change to the locations", () => {
 describe("the admin store's outlet writes", () => {
   beforeEach(() => { useApp.setState({ user: { ...FX.USERS.find((u) => u.admin)! } }); });
   it("opens an outlet, repeats the server's sentence and refetches its list", async () => {
-    const row = { key: "juice-bar", n: "Juice Bar", c: "OT-JB", type: "Outlet", floor: "Ground", cc: "CC-JB", list: "A", active: true, staff: 0 };
+    const row = { key: "juice-bar", n: "Juice Bar", c: "OT-JB", type: "Outlet", floor: "Ground", cc: "CC-JB", active: true, staff: 0 };
     serve({
-      "POST /api/v1/admin/outlets": () => json({ result: row, changed: ["outlets", "locations"], message: "Opened Juice Bar (OT-JB) on price list A." }),
+      "POST /api/v1/admin/outlets": () => json({ result: row, changed: ["outlets", "locations"], message: "Opened Juice Bar (OT-JB)." }),
       "GET /api/v1/admin/locations": () => json([row]),
     });
-    expect(await useApp.getState().createOutlet({ name: "Juice Bar", code: "OT-JB", floor: "Ground", cc: "CC-JB", list: "A" })).toEqual(row);
-    expect(useApp.getState().toast).toContain("Opened Juice Bar (OT-JB) on price list A.");
+    expect(await useApp.getState().createOutlet({ name: "Juice Bar", code: "OT-JB", floor: "Ground", cc: "CC-JB" })).toEqual(row);
+    expect(useApp.getState().toast).toContain("Opened Juice Bar (OT-JB).");
     expect(useApp.getState().adminLocations).toEqual([row]);
   });
   it("hands back the refusal as the toast and nothing else", async () => {

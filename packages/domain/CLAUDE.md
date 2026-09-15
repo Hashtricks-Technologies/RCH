@@ -26,7 +26,7 @@ pnpm --filter @rch/domain lint
   Zustand. Nothing here imports from `apps/api` or `UI`.
 - **The only dependency is `@rch/contract`**, for its types and a few constants.
 - **No module-level mutable state.** A function that needs the item master takes a `Master` argument (`items`,
-  `locations`, `recipes`). That lets the server call it inside a transaction, against the master that
+  `locations`). That lets the server call it inside a transaction, against the master that
   transaction commits.
 - **Dates use the hospital's calendar**, through `Intl.DateTimeFormat` with `timeZone: "Asia/Kolkata"`
   (`format.ts`'s `istDate`). A rule that needs "today" takes it as an argument instead of reading the clock.
@@ -45,6 +45,9 @@ need more context than their names give:
   `HOLDS_OUTLET` (which statuses of which documents still commit an outlet, exhaustive over each closed union),
   `holding` (reads the held statuses off one of those records) and `closeRefusal` (the one sentence naming
   every blocker at once). `parFactor` (`par.ts`) reads the same location row for its par level.
+- `master.ts`'s `Prices` is `Record<string, Record<string, number>>` - every price list, keyed by its id, not
+  a fixed pair. `pricing.ts`'s `priceOf` reads whichever id a location's own `list` names and caps it at MRP;
+  it does not care how many lists exist.
 
 ## Transition tables
 

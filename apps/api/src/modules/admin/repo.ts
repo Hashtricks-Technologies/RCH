@@ -88,7 +88,7 @@ export const adminRepo = {
   async insertOutlet(tx: Tx, row: typeof locations.$inferInsert): Promise<void> {
     await tx.insert(locations).values(row);
   },
-  async updateLocation(tx: Tx, key: string, set: Partial<Pick<LocationRow, "name" | "code" | "floor" | "costCentre" | "priceList" | "active">>): Promise<void> {
+  async updateLocation(tx: Tx, key: string, set: Partial<Pick<LocationRow, "name" | "code" | "floor" | "costCentre" | "active">>): Promise<void> {
     await tx.update(locations).set(set).where(eq(locations.key, key));
   },
   /**

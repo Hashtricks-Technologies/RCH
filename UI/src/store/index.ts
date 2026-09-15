@@ -7,16 +7,15 @@ import { applySnapshot } from "../api/wire";
 import { LOC } from "../data/master";
 import type {
   Adjustment, Batch, Bill, CreditResponse, Dated, DatedDoc, DraftLine, DrawerState, Grn, LocKey,
-  Payer, PordStatus, ProdOrder, PurchaseOrder, Requisition, StockLedgerRow, StockLoc,
+  Payer, PordStatus, PriceList, ProdOrder, PurchaseOrder, Requisition, StockLedgerRow, StockLoc,
   SignInEntry, StockRequest, Tender, Ticket, Trailed, User, Vendor,
 } from "../types";
 import { applyTheme, nextTheme, readStoredTheme, storeTheme, type ThemePref } from "../lib/theme";
 import { createProcurementSlice, type ProcurementSlice } from "./procurement";
 import { createOpsSlice, type OpsSlice } from "./ops";
 import { createAdminSlice, type AdminSlice } from "./admin";
-import { createRecipesSlice, type RecipesSlice } from "./recipes";
 
-export interface AppState extends ProcurementSlice, OpsSlice, AdminSlice, RecipesSlice {
+export interface AppState extends ProcurementSlice, OpsSlice, AdminSlice {
   user: User | null;
   /** Where the session is: no token, asking for one, fetching the snapshot, usable - or signed
    *  in with nothing to show. `"failed"` is the last one: the credentials are good and the
@@ -30,7 +29,7 @@ export interface AppState extends ProcurementSlice, OpsSlice, AdminSlice, Recipe
   stock: Record<StockLoc, Record<string, number>>;
   rsv: Record<string, number>;
   ovr: Record<string, string>;
-  prices: Record<"A" | "B", Record<string, number>>;
+  prices: Record<string, Record<string, number>>;
   menu: Record<string, string[]>;
   /** Every document keeps the instant it happened at (`iso`) beside the "HH:MM" it is printed
    *  as - see `Dated` in `types.ts`. A ticket has no `at` of its own; only its trail is dated. */
@@ -112,7 +111,9 @@ export interface AppState extends ProcurementSlice, OpsSlice, AdminSlice, Recipe
 
   issueTicket: (reqId: string) => Promise<void>;
   /** `otp` is required from the collecting side; omit it only for a supervisor override. */
-  handover: (tktId: string, otp?: string) => Promise<void>;
+  /** Answers `true` only once the server has taken it, so the window can keep a refused OTP
+   *  and its reason in front of the operator instead of relying on a toast they may miss. */
+  handover: (tktId: string, otp?: string) => Promise<boolean>;
   receiveTicket: (tktId: string) => Promise<void>;
 
   /** Withdraw a ticket nobody collected: the hold goes back and so does the document behind it.
@@ -138,9 +139,16 @@ export interface AppState extends ProcurementSlice, OpsSlice, AdminSlice, Recipe
   /** The three catalogue writes answer `true` only once the server has taken them, for the same
    *  reason every other form-carrying action does: an MRP refusal must leave the price the
    *  manager typed in the box, not drop it and show the old one back. */
-  savePrice: (list: "A" | "B", it: string, price: number) => Promise<boolean>;
+  savePrice: (list: string, it: string, price: number) => Promise<boolean>;
   removeProduct: (loc: LocKey, it: string) => Promise<boolean>;
   addProduct: (loc: LocKey, it: string) => Promise<boolean>;
+  /** Cloned from `cloneFrom`'s current active list, created inactive - `null` on refusal so the
+   *  drawer can keep the name the manager typed. */
+  createPriceList: (name: string, cloneFrom: LocKey) => Promise<PriceList | null>;
+  /** Only once no outlet is active on it - the server's own refusal names every outlet still on
+   *  it otherwise. */
+  deletePriceList: (id: string) => Promise<boolean>;
+  setOutletPriceList: (loc: LocKey, listId: string) => Promise<boolean>;
   /** The central store's ledger over a window, from the server's own sum of `stock_moves`.
    *  Answers `null` and toasts when the read fails - never `[]`, which is a real answer meaning
    *  the location carries no line - so the report can say which of the two happened rather than
@@ -356,7 +364,7 @@ export const useApp = create<AppState>((set, get) => ({
   clearCart: (loc) => set((s) => ({ cart: { ...s.cart, [loc]: {} } })),
 
   /**
-   * One counter sale. Pricing, the payer rule, the cover check and the recipe explosion all
+   * One counter sale. Pricing, the payer rule, the cover check and the stock moves all
    * live on the server now (POST /bills); the cart is cleared only once it has answered, so
    * a refusal leaves the operator's scan exactly as it was.
    */
@@ -492,8 +500,10 @@ export const useApp = create<AppState>((set, get) => ({
       const r = await call(routes.handover, { params: { id: tktId }, body: otp === undefined ? {} : { otp: otp.trim() } });
       get().notify(r.message);
       await refetch(r.changed, r.message);
+      return true;
     } catch (e) {
       get().notify(e instanceof ApiError ? e.message : "Could not hand the ticket over - check the connection and try again.");
+      return false;
     }
   },
   receiveTicket: async (tktId) => {
@@ -570,9 +580,8 @@ export const useApp = create<AppState>((set, get) => ({
   },
   /**
    * A batch (POST /batches). Every rule that used to live here is the server's: the quantity,
-   * the yield, the kitchen's switch, the recipe, and whether the rack can cover it. The
-   * ingredients come off and the finished units go on inside one transaction there (C1), so
-   * there is nothing left to do here but ask and report.
+   * the yield and the kitchen's switch. The finished units go onto the rack inside one
+   * transaction there, so there is nothing left to do here but ask and report.
    */
   makeProduct: async (it, started, made, note) => {
     try {
@@ -634,6 +643,39 @@ export const useApp = create<AppState>((set, get) => ({
       return false;
     }
   },
+  createPriceList: async (name, cloneFrom) => {
+    try {
+      const r = await call(routes.createPriceList, { body: { name, cloneFrom } });
+      get().notify(r.message);
+      await refetch(r.changed, r.message);
+      return r.result;
+    } catch (e) {
+      get().notify(e instanceof ApiError ? e.message : "Could not create the price list - check the connection and try again.");
+      return null;
+    }
+  },
+  deletePriceList: async (id) => {
+    try {
+      const r = await call(routes.deletePriceList, { params: { id } });
+      get().notify(r.message);
+      await refetch(r.changed, r.message);
+      return true;
+    } catch (e) {
+      get().notify(e instanceof ApiError ? e.message : "Could not delete the price list - check the connection and try again.");
+      return false;
+    }
+  },
+  setOutletPriceList: async (loc, listId) => {
+    try {
+      const r = await call(routes.setOutletPriceList, { params: { loc }, body: { listId } });
+      get().notify(r.message);
+      await refetch(r.changed, r.message);
+      return true;
+    } catch (e) {
+      get().notify(e instanceof ApiError ? e.message : "Could not switch the price list - check the connection and try again.");
+      return false;
+    }
+  },
   /**
    * The two figures the browser cannot compute for itself. Both are reads, not writes, so
    * neither notifies a success nor refetches anything - they answer the caller and nothing else.
@@ -681,7 +723,6 @@ export const useApp = create<AppState>((set, get) => ({
   // so it takes only the reader.
   ...createOpsSlice(get),
   ...createAdminSlice(get),
-  ...createRecipesSlice(get),
 }));
 
 // A refresh that fails is the end of the session: drop the user rather than
