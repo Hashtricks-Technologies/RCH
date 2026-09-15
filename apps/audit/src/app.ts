@@ -10,6 +10,8 @@ import health from "./plugins/health.js";
 import security from "./plugins/security.js";
 import db from "./plugins/db.js";
 import drainer from "./plugins/drainer.js";
+import auth from "./plugins/auth.js";
+import auditModule from "./modules/audit/routes.js";
 
 declare module "fastify" { interface FastifyInstance { config: AuditConfig } }
 
@@ -52,5 +54,7 @@ export async function buildApp(config: AuditConfig, deps: AppDeps = {}): Promise
   await app.register(security);
   await app.register(db, { url: config.databaseUrl, ssl: config.databaseSsl, max: config.dbPoolMax, searchPath: deps.searchPath ?? config.auditSchema, auditSchema: config.auditSchema, db: deps.db, pool: deps.pool });
   await app.register(drainer, { enabled: deps.drainer ?? true });
+  await app.register(auth);
+  await app.register(auditModule);
   return app;
 }
