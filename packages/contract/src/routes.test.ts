@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { z } from "zod";
-import { AdjustReasonSchema, CreateAdjustmentBodySchema, DeskReplyBodySchema, CreatePoBodySchema, CreditParamsSchema, CreditResponseSchema, EVENTS_PATH, EventNoticeSchema, LocKeySchema, MakeBatchBodySchema, PatchContractBodySchema, PatchPoBodySchema, PatchVendorBodySchema, PO_APPROVAL_LIMIT, RaiseTicketBodySchema, RateTicketBodySchema, ReceivePoBodySchema, SetOrderStatusBodySchema, SetTicketStatusBodySchema, StockLedgerQuerySchema, StockLocSchema, TktStatusSchema, TransferBodySchema, ItemSchema, PatchItemBodySchema } from "./index";
-import { routes } from "./routes";
+import { AdjustReasonSchema, CollectionSchema, CreateAdjustmentBodySchema, DeskReplyBodySchema, CreatePoBodySchema, CreditParamsSchema, CreditResponseSchema, EVENTS_PATH, EventNoticeSchema, LocKeySchema, MakeBatchBodySchema, PatchContractBodySchema, PatchPoBodySchema, PatchVendorBodySchema, PO_APPROVAL_LIMIT, RaiseTicketBodySchema, RateTicketBodySchema, ReceivePoBodySchema, SetOrderStatusBodySchema, SetTicketStatusBodySchema, StockLedgerQuerySchema, StockLocSchema, TktStatusSchema, TransferBodySchema, ItemSchema, PatchItemBodySchema } from "./index";
+import { isWriteRoute, routes, serviceOf } from "./routes";
 
 /** One valid body per route that takes one. The coverage case below fails if a new route
  *  arrives without a sample, so "every body schema" stays literally every body schema. */
@@ -267,5 +267,35 @@ describe("what an adjustment puts on the wire", () => {
     const withNote = (note: string) => ({ loc: "store", reason: "other", note, lines: [{ it: "milk", qty: -1 }] });
     expect(CreateAdjustmentBodySchema.safeParse(withNote("x".repeat(500))).success).toBe(true);
     expect(CreateAdjustmentBodySchema.safeParse(withNote("x".repeat(501))).success).toBe(false);
+  });
+});
+
+// ---- admin: the audit log
+describe("the audit log's routes", () => {
+  const audit = Object.entries(routes).filter(([, r]) => serviceOf(r) === "audit");
+
+  it("are answered by the audit service, and every other route by the API", () => {
+    expect(audit.map(([name]) => name).sort()).toEqual(["auditEntry", "auditLog"]);
+    expect(serviceOf(routes.pay)).toBe("api");
+    expect(serviceOf(routes.adminUsers)).toBe("api");
+  });
+
+  it("are reads behind the admin flag, so neither carries an Idempotency-Key nor lands in its own log", () => {
+    for (const [name, r] of audit) {
+      expect(r.access, name).toBe("admin");
+      expect(isWriteRoute(r), name).toBe(false);
+    }
+  });
+
+  it("reads a write the way mount() and call() do: the manifest's flag first, then the method", () => {
+    expect(isWriteRoute(routes.pay)).toBe(true);
+    expect(isWriteRoute(routes.patchMe)).toBe(true);
+    expect(isWriteRoute(routes.login)).toBe(false);
+    expect(isWriteRoute(routes.snapshot)).toBe(false);
+  });
+
+  it("names `audit` as a collection a change notice can carry", () => {
+    expect(CollectionSchema.safeParse("audit").success).toBe(true);
+    expect(EventNoticeSchema.safeParse({ collection: "audit", at: "2026-09-14T04:30:00.000Z" }).success).toBe(true);
   });
 });
