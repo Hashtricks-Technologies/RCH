@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildTestApp } from "../test/app.js";
-import { RateLimitedError, RuleError, UnauthenticatedError } from "../lib/errors.js";
+import { NotReadyError, RateLimitedError, RuleError, UnauthenticatedError } from "../lib/errors.js";
 
 describe("rate limiting", () => {
   it("answers the 11th request in a 10/minute window with the rate_limited envelope", async () => {
@@ -153,6 +153,26 @@ describe("what a refused request leaves in the log", () => {
     const fine = log.lines.find((l) => l.msg === "request" && l.route === "/__test/fine");
     expect(fine).toMatchObject({ status: 200 });
     expect(fine).not.toHaveProperty("refusal");
+
+    await app.close();
+  });
+
+  it("logs a 5xx AppError's underlying cause in full, not just the caller's sentence", async () => {
+    const log = capture();
+    const app = await buildTestApp({ withDb: false, env: { LOG_LEVEL: "info" }, logStream: log });
+    app.get("/__test/not-ready", { config: { rateLimit: false } }, async () => {
+      throw new NotReadyError("The photo could not be stored just now - try again", new Error("s3 down"));
+    });
+    await app.ready();
+
+    const r = await app.inject({ method: "GET", url: "/__test/not-ready" });
+    expect(r.statusCode).toBe(503);
+    // The caller reads only the operator's sentence, same as any other refusal.
+    expect(r.json()).toEqual({ error: { code: "not_ready", message: "The photo could not be stored just now - try again" } });
+
+    const line = log.lines.find((l) => l.msg === "service refused as not ready");
+    // pino's `err` serializer recurses into `.internal` since it's an enumerable own property.
+    expect((line!.err as { internal?: { message?: string } }).internal?.message).toBe("s3 down");
 
     await app.close();
   });

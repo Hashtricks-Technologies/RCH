@@ -33,7 +33,8 @@ export default fp(async (app) => {
     }
     if (err instanceof AppError) {
       if (err.status < 500) return refuse(err.status, { code: err.code, message: err.message, ...(err.cause === undefined ? {} : { cause: err.cause }) }, err.toEnvelope());
-      return reply.code(err.status).send(err.toEnvelope());   // a NotReadyError is expected, not unhandled
+      req.log.error({ err }, "service refused as not ready");   // a NotReadyError is expected, not unhandled - but its cause is not; pino's `err` serializer recurses into `.internal`
+      return reply.code(err.status).send(err.toEnvelope());
     }
     const status = (err as { statusCode?: number }).statusCode;
     if (status === 429) return refuse(429, { code: "rate_limited", message: "Too many requests - wait a moment and try again." });

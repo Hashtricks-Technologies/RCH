@@ -156,6 +156,9 @@ describe("GET /items/:it/image/:hash", () => {
     expect(r.headers["cache-control"]).toBe("public, max-age=31536000, immutable");
     expect(r.headers["x-content-type-options"]).toBe("nosniff");
     expect(r.headers["content-security-policy"]).toBe("default-src 'none'");
+    // @fastify/helmet's default, not set explicitly by this route (Ruling 1) - this is the
+    // regression guard: if helmet's default ever changes, this test catches it.
+    expect(r.headers["cross-origin-resource-policy"]).toBe("same-origin");
   });
 
   it("404s an old hash, a malformed hash and an unknown item", async () => {

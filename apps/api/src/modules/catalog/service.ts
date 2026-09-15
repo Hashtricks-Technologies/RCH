@@ -253,7 +253,7 @@ export function createCatalogService(db: Db, images: ImageStore) {
       try {
         await images.put(imageKey(it, hash), bytes, check.type);
       } catch (cause) {
-        throw Object.assign(new NotReadyError("The photo could not be stored just now - try again"), { cause });
+        throw new NotReadyError("The photo could not be stored just now - try again", cause);
       }
 
       let previous: string | null = null;
