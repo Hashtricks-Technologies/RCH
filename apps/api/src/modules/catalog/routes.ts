@@ -4,7 +4,7 @@ import { mount } from "../../routes.js";
 import { createCatalogService } from "./service.js";
 
 export default fp(async (app) => {
-  const svc = createCatalogService(app.db);
+  const svc = createCatalogService(app.db, app.images);
   mount(app, routes.savePrice, async (req) => svc.savePrice(req.params.list, req.params.it, req.body.price));
   mount(app, routes.addMenuItem, async (req) => svc.addMenuItem(req.params.loc, req.body.it));
   mount(app, routes.removeMenuItem, async (req) => svc.removeMenuItem(req.params.loc, req.params.it));
@@ -15,4 +15,7 @@ export default fp(async (app) => {
   // move is the service's rule, from `ITEM_FIELD_ROLES` - the manifest opens the door to all
   // four desks, and each of them reads a sentence when it reaches for the other's box.
   mount(app, routes.patchItem, async (req) => svc.patchItem(req.user, req.params.it, req.body));
-}, { name: "module:catalog", dependencies: ["auth", "rbac", "idempotency", "db"] });
+  // ---- item photos ----
+  mount(app, routes.setItemImage, async (req) => svc.setItemImage(req.user, req.params.it, req.body.data));
+  mount(app, routes.removeItemImage, async (req) => svc.removeItemImage(req.user, req.params.it));
+}, { name: "module:catalog", dependencies: ["auth", "rbac", "idempotency", "db", "images"] });
