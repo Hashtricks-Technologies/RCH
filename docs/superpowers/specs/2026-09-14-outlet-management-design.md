@@ -109,7 +109,8 @@ outlet. That is:
 
 - counter sale (`pos`)
 - shop transfer (`tickets`)
-- shop ask
+- shop ask (both ends)
+- stock request (`requests`, the requesting outlet)
 - kitchen order (`production`, `from`)
 - distribute (`to`)
 - product request (`forLoc`)

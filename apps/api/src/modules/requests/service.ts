@@ -17,6 +17,7 @@ import { emitChanged } from "../../lib/events.js";
 import { appendHistory } from "../../lib/history.js";
 import { allocateId } from "../../lib/ids.js";
 import { lockBalances } from "../../lib/ledger.js";
+import { assertOpen, lockLocation } from "../../lib/locations.js";
 import { loadMaster } from "../../lib/master.js";
 import { reservedAt } from "../../lib/reservations.js";
 import { assertRule, assertTransition } from "../../lib/rules.js";
@@ -42,6 +43,12 @@ export function createRequestsService(db: Db) {
      */
     async create(claims: AccessClaims, body: CreateRequestBody): Promise<WriteResponse<StockRequest>> {
       return withTransaction(db, async (tx) => {
+        // The raiser's own place, locked in the documents tier - before the id - because a closed
+        // outlet asks for nothing: the stock would be issued, collected and landed on a shelf no
+        // screen shows. The kitchen raises requests too, and is never closed, so the open check is
+        // the outlets'.
+        const from = await lockLocation(tx, claims.loc);
+        if (from.type === "Outlet") assertOpen(from);
         const master = await loadMaster(tx);
         for (const l of body.lines) if (!master.items[l.it]) throw new NotFoundError(`There is no item ${l.it}.`);
         // A zero reaches the operator as the store's own sentence, not a schema's 400 - which

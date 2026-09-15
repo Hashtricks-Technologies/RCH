@@ -217,8 +217,8 @@ The code enforces these and tests pin them. Breaking one is a bug.
   deactivated, never deleted.**
 - **Outlets are closed, never deleted.** A close is refused while the outlet holds stock, an open ticket, stock
   request, kitchen order, shop ask or product request, or an active staff member, and the refusal names every
-  one. A closed outlet takes no sale, transfer, ask, kitchen order, adjustment, menu listing or void, and no
-  staff can be posted to it. A reopen restores it as it was.
+  one. A closed outlet takes no sale, transfer, ask, stock request, kitchen order, adjustment, menu listing or
+  void, and no staff can be posted to it. A reopen restores it as it was.
 - **Employee numbers are assigned by the server**: `nextEmpNo` in `@rch/domain`, one past the highest
   `RC-<digits>`, under the `user` row of `sequences`, which also hands out user ids that are never reused.
 - **A staff account is deleted only if it never did anything.** It must be deactivated first, and it can't be

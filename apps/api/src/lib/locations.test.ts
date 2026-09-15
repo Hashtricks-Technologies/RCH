@@ -51,6 +51,13 @@ describe("a closed outlet", () => {
     await setOpen("kiosk", false);
     expect(refusal(await send("u1", "POST", "/shop-asks", { to: "kiosk", it: "chips", qty: 1 }))).toBe(CLOSED);
   });
+  it("raises no stock request, and asks no neighbour for stock either", async () => {
+    // Its own counter's access token keeps the closed outlet in it for up to fifteen minutes
+    // after the account was deactivated, so both of these arrive from a tab that is still open.
+    await setOpen("kiosk", false);
+    expect(refusal(await send("u6", "POST", "/requests", { lines: [{ it: "chips", qty: 1 }] }))).toBe(CLOSED);
+    expect(refusal(await send("u6", "POST", "/shop-asks", { to: "coffee", it: "chips", qty: 1 }))).toBe(CLOSED);
+  });
   it("orders nothing from the kitchen and is sent nothing from it", async () => {
     await setOpen("kiosk", false);
     expect(refusal(await send("u2", "POST", "/prod-orders", { from: "kiosk", lines: [{ it: "puff", qty: 1 }] }))).toBe(CLOSED);

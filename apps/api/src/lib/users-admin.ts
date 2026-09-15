@@ -2,11 +2,12 @@ import { and, eq, isNull, sql } from "drizzle-orm";
 import { MIN_PASSWORD_LENGTH, type LocKey, type Role } from "@rch/contract";
 import { nextEmpNo, worksAt } from "@rch/domain";
 import type { Db } from "../db/client.js";
-import { idempotencyKeys, locations, refreshTokens, users } from "../db/schema/index.js";
+import { idempotencyKeys, refreshTokens, users } from "../db/schema/index.js";
 import { isForeignKeyViolation, withTransaction, type Tx } from "./db.js";
+import { lockLocation } from "./locations.js";
 import { hashPassword } from "./password.js";
 import { toWireLocation } from "./wire.js";
-import { ConflictError, RuleError, ValidationError } from "./errors.js";
+import { ConflictError, NotFoundError, RuleError, ValidationError } from "./errors.js";
 
 const ROLE_LABEL: Record<Role, string> = { counter: "Counter Operator", manager: "Outlet Manager", store: "Store Keeper", prod: "Kitchen In-charge", buyer: "Procurement Officer" };
 const PALETTE = ["#B45309", "#7C3AED", "#0F766E", "#15803D", "#BE123C", "#475569", "#1D4ED8", "#9333EA", "#0E7490", "#C2410C"];
@@ -26,12 +27,16 @@ const PLACE: Record<Role, string> = {
 };
 
 /**
- * The pairing, against the location's row - read `FOR SHARE`, so an outlet cannot close between
- * this check and the account being written at it (the close takes the row `FOR UPDATE`).
+ * The pairing, against the location's row - through `lockLocation`, the one way anything here
+ * names a location, which reads it `FOR SHARE`, so an outlet cannot close between this check and
+ * the account being written at it (the close takes the row `FOR UPDATE`). An unknown key is a
+ * `400` naming the field the administrator typed, not the `404` a document write would give.
  */
 async function checkPairing(tx: Tx, role: Role, loc: string): Promise<void> {
-  const [row] = await tx.select().from(locations).where(eq(locations.key, loc)).for("share");
-  if (!row) throw new ValidationError(`unknown location "${loc}"`);
+  const row = await lockLocation(tx, loc).catch((e: unknown) => {
+    if (e instanceof NotFoundError) throw new ValidationError(`unknown location "${loc}"`);
+    throw e;
+  });
   if (worksAt(role, loc, toWireLocation(row))) return;
   const closedOutlet = (role === "counter" || role === "manager") && row.type === "Outlet" && !row.active;
   throw new ValidationError(closedOutlet

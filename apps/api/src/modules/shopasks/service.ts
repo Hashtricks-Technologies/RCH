@@ -40,6 +40,9 @@ export function createShopAsksService(db: Db) {
         const asker = await lockLocation(tx, from);
         const holder = await lockLocation(tx, body.to);
         assertRule(holder.type === "Outlet" && asker.type === "Outlet", "Only another shop can be asked directly");
+        // Both ends: a closed shop has nothing to collect with, and the ticket a grant raises
+        // would land its stock on a shelf no screen shows.
+        assertOpen(asker);
         assertOpen(holder);
         const master = await loadMaster(tx);
         assertRule(body.qty > 0, "Enter a quantity");
