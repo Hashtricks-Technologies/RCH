@@ -15,7 +15,7 @@ beforeAll(async () => { app = await buildTestApp({ schema: "admin_outlets" }); a
 beforeEach(async () => { await truncateAll(app.testDb!.db); await seedTestDb(app.testDb!.db); });
 afterAll(async () => { await app.close(); });
 
-const as = async (id: string, method: "GET" | "POST" | "PATCH", url: string, payload?: Record<string, unknown>) =>
+const as = async (id: string, method: "GET" | "POST" | "PATCH" | "PUT", url: string, payload?: Record<string, unknown>) =>
   app.inject({ method, url: `/api/v1${url}`, headers: { ...(await authHeaders(app, id)), ...(method === "GET" ? {} : { "idempotency-key": randomUUID() }) }, payload });
 const admin = (method: "GET" | "POST" | "PATCH", url: string, payload?: Record<string, unknown>) => as("u7", method, url, payload);
 const JUICE = { name: "Juice Bar", code: "ot-jb", floor: "Ground", cc: "CC-JB" };
@@ -142,6 +142,11 @@ describe("an outlet opened after release", () => {
     await app.db.update(users).set({ mustChangePassword: false }).where(eq(users.id, hire.id));
     expect((await as("u2", "POST", `/menus/${key}/items`, { it: "juice" })).statusCode).toBe(200);
     expect((await as("u2", "POST", "/adjustments", { loc: key, reason: "count", lines: [{ it: "juice", qty: 5 }] })).statusCode).toBe(200);
+    // The outlet opened on no price list at all (I1) - clone one from a counter that already
+    // prices juice and attach it, the way the manager's own Settings drawer would, before the
+    // till can sell anything.
+    const listId = (await as("u2", "POST", "/price-lists", { name: "Juice Bar prices", cloneFrom: "coffee" })).json().result.id;
+    expect((await as("u2", "PUT", `/outlets/${key}/price-list`, { listId })).statusCode).toBe(200);
     const sale = await as(hire.id, "POST", "/bills", { loc: key, tender: "Cash", lines: [{ it: "juice", qty: 2 }] });
     expect(sale.statusCode, sale.body).toBe(200);
     const manager = (await as("u2", "GET", "/snapshot")).json();
