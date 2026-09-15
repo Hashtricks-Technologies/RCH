@@ -28,8 +28,8 @@ const needLoc = (): LocKey => {
   return parsed.data;
 };
 /** What `createUser` will accept, said once here so the operator reads it before the refusal
- *  rather than after: `lib/users-admin.ts`'s WORKS_AT is the rule, this is its help text. */
-const PAIRINGS = "prod works at kitchen; store and buyer at store; counter and manager at one of rest|coffee|kiosk";
+ *  rather than after: `worksAt` in @rch/domain is the rule, this is its help text. */
+const PAIRINGS = "prod works at kitchen; store and buyer at store; counter and manager at an open outlet, by its key (e.g. rest)";
 const config = loadConfig(process.env);
 const { db, pool } = createDb(config.databaseUrl, config.databaseSsl, { max: 1 });
 try {

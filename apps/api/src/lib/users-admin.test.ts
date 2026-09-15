@@ -6,7 +6,7 @@ import { seedTestDb } from "../test/seed.js";
 import { createUser, deactivateUser, reactivateUser, resetPassword, setAdmin, updateUserRoleLoc } from "./users-admin.js";
 import { verifyPassword } from "./password.js";
 import { ConflictError, ValidationError } from "./errors.js";
-import { refreshTokens, users } from "../db/schema/index.js";
+import { locations, refreshTokens, users } from "../db/schema/index.js";
 
 let t: TestDb;
 beforeAll(async () => { t = await withTestSchema("users_admin"); await seedTestDb(t.db); });
@@ -43,9 +43,9 @@ describe("users-admin", () => {
   it("refuses a role at a location that role never works at", async () => {
     // Nothing downstream checks the pairing, so a Kitchen In-charge created at an outlet is an
     // account that can act where its role was never meant to reach.
-    await expect(createUser(t.db, { emp: "RC-9004", name: "X", email: "x@x", role: "prod", loc: "coffee", password: "temporary-pass-1" })).rejects.toThrow("Kitchen In-charge works at kitchen, not at coffee");
-    await expect(createUser(t.db, { emp: "RC-9005", name: "X", email: "x@x", role: "buyer", loc: "kiosk", password: "temporary-pass-1" })).rejects.toThrow("Procurement Officer works at store, not at kiosk");
-    await expect(createUser(t.db, { emp: "RC-9006", name: "X", email: "x@x", role: "manager", loc: "store", password: "temporary-pass-1" })).rejects.toThrow("Outlet Manager works at rest or coffee or kiosk, not at store");
+    await expect(createUser(t.db, { emp: "RC-9004", name: "X", email: "x@x", role: "prod", loc: "coffee", password: "temporary-pass-1" })).rejects.toThrow("Kitchen In-charge works at the Central Kitchen, not at Coffee Shop");
+    await expect(createUser(t.db, { emp: "RC-9005", name: "X", email: "x@x", role: "buyer", loc: "kiosk", password: "temporary-pass-1" })).rejects.toThrow("Procurement Officer works at the Central Store, not at Snack Kiosk");
+    await expect(createUser(t.db, { emp: "RC-9006", name: "X", email: "x@x", role: "manager", loc: "store", password: "temporary-pass-1" })).rejects.toThrow("Outlet Manager works at an open outlet, not at Central Store");
     // The pairings that are right are still accepted.
     const { id } = await createUser(t.db, { emp: "RC-9007", name: "Mani S", email: "mani.s@royalcare.in", role: "prod", loc: "kitchen", password: "temporary-pass-1" });
     const [u] = await t.db.select().from(users).where(eq(users.id, id));
@@ -95,10 +95,32 @@ describe("users-admin", () => {
     expect((await t.db.select().from(refreshTokens).where(eq(refreshTokens.userId, "u2"))).every((r: { revokedAt: Date | null }) => r.revokedAt)).toBe(true);
   });
   it("updateUserRoleLoc refuses a pairing that role never works at", async () => {
-    await expect(updateUserRoleLoc(t.db, "RC-3120", { role: "prod", loc: "coffee" })).rejects.toThrow(/Kitchen In-charge works at kitchen/);
+    await expect(updateUserRoleLoc(t.db, "RC-3120", { role: "prod", loc: "coffee" })).rejects.toThrow(/Kitchen In-charge works at the Central Kitchen/);
   });
   it("updateUserRoleLoc refuses an unknown employee number", async () => {
     await expect(updateUserRoleLoc(t.db, "RC-0000", { role: "counter", loc: "rest" })).rejects.toThrow(ValidationError);
+  });
+});
+
+describe("pairing against the locations table", () => {
+  it("creates a counter at an outlet opened after release", async () => {
+    await t.db.insert(locations).values({ key: "juice-bar", name: "Juice Bar", code: "OT-JB", type: "Outlet", floor: "Ground", costCentre: "CC-JB", priceList: "A" });
+    const { emp } = await createUser(t.db, { name: "Arun P", email: "arun.p@royalcare.in", role: "counter", loc: "juice-bar", password: "a-long-enough-password" });
+    expect(emp).toMatch(/^RC-\d+$/);
+  });
+  it("refuses a counter at a closed outlet, and names it", async () => {
+    await t.db.update(locations).set({ active: false }).where(eq(locations.key, "kiosk"));
+    await expect(createUser(t.db, { name: "Arun P", email: "arun.p@royalcare.in", role: "counter", loc: "kiosk", password: "a-long-enough-password" }))
+      .rejects.toThrow("Counter Operator works at an open outlet - Snack Kiosk is closed");
+  });
+  it("refuses to reactivate a counter whose outlet has closed since", async () => {
+    await deactivateUser(t.db, "RC-4482");                        // Deepa, Snack Kiosk
+    await t.db.update(locations).set({ active: false }).where(eq(locations.key, "kiosk"));
+    await expect(reactivateUser(t.db, "RC-4482")).rejects.toThrow("Counter Operator works at an open outlet - Snack Kiosk is closed");
+  });
+  it("names the place a role works, by its printed name", async () => {
+    await expect(createUser(t.db, { name: "Arun P", email: "arun.p@royalcare.in", role: "prod", loc: "rest", password: "a-long-enough-password" }))
+      .rejects.toThrow("Kitchen In-charge works at the Central Kitchen, not at Restaurant");
   });
 });
 

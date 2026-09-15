@@ -1,24 +1,15 @@
 import { and, eq, isNull, sql } from "drizzle-orm";
-import { MIN_PASSWORD_LENGTH, OUTLETS, type LocKey, type Role } from "@rch/contract";
-import { nextEmpNo } from "@rch/domain";
+import { MIN_PASSWORD_LENGTH, type LocKey, type Role } from "@rch/contract";
+import { nextEmpNo, worksAt } from "@rch/domain";
 import type { Db } from "../db/client.js";
 import { idempotencyKeys, locations, refreshTokens, users } from "../db/schema/index.js";
 import { isForeignKeyViolation, withTransaction, type Tx } from "./db.js";
 import { hashPassword } from "./password.js";
+import { toWireLocation } from "./wire.js";
 import { ConflictError, RuleError, ValidationError } from "./errors.js";
 
 const ROLE_LABEL: Record<Role, string> = { counter: "Counter Operator", manager: "Outlet Manager", store: "Store Keeper", prod: "Kitchen In-charge", buyer: "Procurement Officer" };
 const PALETTE = ["#B45309", "#7C3AED", "#0F766E", "#15803D", "#BE123C", "#475569", "#1D4ED8", "#9333EA", "#0E7490", "#C2410C"];
-
-/**
- * A role and a location are not independent. The kitchen in-charge works in the kitchen; the
- * store keeper and the buyer work at the central store; a counter operator and an outlet manager
- * work at an outlet. Nothing downstream checks the pairing - `requireLoc` only ever compares a
- * request against whatever the token says - so an account created at the wrong one is not
- * refused anywhere, it just quietly sees screens with nothing on them and can act at a location
- * its role was never meant to reach.
- */
-const WORKS_AT: Record<Role, LocKey[]> = { prod: ["kitchen"], store: ["store"], buyer: ["store"], counter: OUTLETS, manager: OUTLETS };
 
 /** The same floor `ChangePasswordBodySchema` puts on a password the user chooses - an
  *  administrator's temporary one must not be the weaker of the two. Every caller here only
@@ -28,9 +19,24 @@ function checkPassword(password: string): void {
   if (password.length < MIN_PASSWORD_LENGTH) throw new ValidationError(`password must be at least ${MIN_PASSWORD_LENGTH} characters`);
 }
 
-function checkPairing(role: Role, loc: LocKey): void {
-  const worksAt = WORKS_AT[role];
-  if (!worksAt.includes(loc)) throw new ValidationError(`${ROLE_LABEL[role]} works at ${worksAt.join(" or ")}, not at ${loc}`);
+/** Where each role works, as the refusal says it. The rule itself is `worksAt` in @rch/domain. */
+const PLACE: Record<Role, string> = {
+  prod: "the Central Kitchen", store: "the Central Store", buyer: "the Central Store",
+  counter: "an open outlet", manager: "an open outlet",
+};
+
+/**
+ * The pairing, against the location's row - read `FOR SHARE`, so an outlet cannot close between
+ * this check and the account being written at it (the close takes the row `FOR UPDATE`).
+ */
+async function checkPairing(tx: Tx, role: Role, loc: string): Promise<void> {
+  const [row] = await tx.select().from(locations).where(eq(locations.key, loc)).for("share");
+  if (!row) throw new ValidationError(`unknown location "${loc}"`);
+  if (worksAt(role, loc, toWireLocation(row))) return;
+  const closedOutlet = (role === "counter" || role === "manager") && row.type === "Outlet" && !row.active;
+  throw new ValidationError(closedOutlet
+    ? `${ROLE_LABEL[role]} works at ${PLACE[role]} - ${row.name} is closed`
+    : `${ROLE_LABEL[role]} works at ${PLACE[role]}, not at ${row.name}`);
 }
 
 async function byEmp(tx: Tx, emp: string) {
@@ -86,8 +92,7 @@ async function allocateUserNumber(tx: Tx): Promise<number> {
  *  previews with - read under the lock `allocateUserNumber` has just taken. */
 export async function createUserTx(tx: Tx, i: { emp?: string; name: string; email: string; role: Role; loc: LocKey; phone?: string; colour?: string; password: string }): Promise<{ id: string; emp: string }> {
   checkPassword(i.password);
-  if (!(await tx.select().from(locations).where(eq(locations.key, i.loc)).then((r) => r[0]))) throw new ValidationError(`unknown location "${i.loc}"`);
-  checkPairing(i.role, i.loc);
+  await checkPairing(tx, i.role, i.loc);
   const n = await allocateUserNumber(tx);
   const emp = i.emp ?? nextEmpNo((await tx.select({ emp: users.empNo }).from(users)).map((u) => u.emp));
   if (await tx.select().from(users).where(eq(users.empNo, emp)).then((r) => r[0])) throw new ConflictError(`employee ${emp} already exists`);
@@ -119,6 +124,9 @@ export const deactivateUser = (db: Db, emp: string): Promise<void> => withTransa
  *  none: `deactivateUser` already ended every one of them. */
 export async function reactivateUserTx(tx: Tx, emp: string): Promise<void> {
   const u = await byEmp(tx, emp);
+  // A deactivated account may be based at an outlet that has closed since; it comes back only
+  // somewhere it can work.
+  await checkPairing(tx, u.role, u.loc);
   await tx.update(users).set({ active: true, updatedAt: new Date() }).where(eq(users.id, u.id));
 }
 export const reactivateUser = (db: Db, emp: string): Promise<void> => withTransaction(db, (tx) => reactivateUserTx(tx, emp));
@@ -156,9 +164,8 @@ export async function deleteUserTx(tx: Tx, u: { id: string; name: string; empNo:
  * access token keeps asserting the old role and location, unrevoked, for up to fifteen minutes.
  */
 export async function updateUserRoleLocTx(tx: Tx, emp: string, next: { role: Role; loc: LocKey }): Promise<void> {
-  checkPairing(next.role, next.loc);
+  await checkPairing(tx, next.role, next.loc);
   const u = await byEmp(tx, emp);
-  if (!(await tx.select().from(locations).where(eq(locations.key, next.loc)).then((r) => r[0]))) throw new ValidationError(`unknown location "${next.loc}"`);
   await tx.update(users).set({ role: next.role, roleLabel: ROLE_LABEL[next.role], loc: next.loc, updatedAt: new Date() }).where(eq(users.id, u.id));
   await revokeAll(tx, u.id);
 }
