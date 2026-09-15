@@ -6,7 +6,7 @@ import { useApp } from "../../store";
 import { avail, canDispatch, canMoveOrder, qty } from "../../lib/selectors";
 import { fq, sum, U } from "../../lib/fmt";
 import {
-  Alert, Btn, Card, DataTable, FilterSelect, PageHead, Pill, StatusPill, TableFoot, Tip, Toolbar,
+  Alert, Btn, Card, DataTable, FilterSelect, Icon, PageHead, Pill, StatusPill, TableFoot, Tip, Toolbar,
 } from "../../ui/kit";
 import type { LocKey, PordStatus, ProdOrder } from "../../types";
 
@@ -137,9 +137,18 @@ export default function Orders() {
         crumbs={["Royal Care", "Central Kitchen", "Orders"]}
         title="Kitchen order board"
         tip="Outlet orders, one column per stage."
-        actions={<span className="mini">
-          {onBoard.length} on the board{filtering ? ` of ${pord.filter((o) => o.st !== "Declined").length}` : ""}
-        </span>}
+        actions={<>
+          <span className="mini">
+            {onBoard.length} on the board{filtering ? ` of ${pord.filter((o) => o.st !== "Declined").length}` : ""}
+          </span>
+          {/* The board is today's work; the history is the same collection with nothing cut out
+              of it. `title` names a button whose face is only a symbol; the tip says why. */}
+          <Btn size="sm" variant="gh" title="Order history"
+            tip={`Every order the kitchen has ever been sent - all ${pord.length} of them, newest first.`}
+            onClick={() => openDrawer("phist", "all")}>
+            <Icon name="rep" />
+          </Btn>
+        </>}
       />
 
       <Alert tone="i" label="NOTE">
