@@ -74,6 +74,12 @@ export default function AdminUsers() {
       notify("Give the account a name and an email before saving");
       return;
     }
+    // Empty when the location list hasn't loaded yet, or failed to - the server would refuse
+    // the same request as a 400 naming a schema, but this reads better and never leaves.
+    if (!formLoc) {
+      notify("Choose a location before saving - no open outlet is listed yet");
+      return;
+    }
     setBusy("create");
     try {
       const made = await createAccount({

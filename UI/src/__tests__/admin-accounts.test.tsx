@@ -137,6 +137,23 @@ describe("the account page", () => {
     expect(S().toast).toBe("Give the account a name and an email before saving");
   });
 
+  it("refuses to send a create with no location, when no outlet has been listed yet", async () => {
+    // An empty list is what a fresh deployment and a failed read look alike as, and the form's
+    // location is then the empty string - which the server would refuse as a 400 naming a schema.
+    serve({ "GET /api/v1/admin/users": () => json([SUPER]), "GET /api/v1/admin/actions": () => json([]), "GET /api/v1/admin/locations": () => json([]) });
+    page = await mountPage();
+    await act(async () => {
+      for (const [label, v] of [["Name", "Arun P"], ["Email", "arun.p@royalcare.in"]] as const) {
+        const el = page!.field(label);
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(el, v);
+        el.dispatchEvent(new Event("input", { bubbles: true }));
+      }
+    });
+    await press(page.button("Create account"));
+    expect(hit("POST /api/v1/admin/users")).toHaveLength(0);
+    expect(S().toast).toBe("Choose a location before saving - no open outlet is listed yet");
+  });
+
   it("shows the super admin as Super Admin, with no role or location to change", async () => {
     serve({ "GET /api/v1/admin/users": () => json([SUPER, KAVITHA]), "GET /api/v1/admin/actions": () => json([]), "GET /api/v1/admin/locations": () => json(LOCS) });
     page = await mountPage();
