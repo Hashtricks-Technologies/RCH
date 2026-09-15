@@ -72,12 +72,15 @@ export const grnRepo = {
     }).where(eq(purchaseOrders.id, id));
   },
 
-  /** The list-A shelf price for these items, for the printed-MRP check. */
-  async listAPrices(tx: Tx, itemKeys: readonly string[]): Promise<Record<string, number>> {
+  /** The highest price any list carries for these items, for the printed-MRP check - the same
+   *  ceiling `catalogRepo.pricesOf` reduces to for the item master's own MRP patch, so the two
+   *  doors judge a delivery and an edit by the same shelf price. */
+  async shelfPrices(tx: Tx, itemKeys: readonly string[]): Promise<Record<string, number>> {
     if (itemKeys.length === 0) return {};
-    const rows = await tx.select({ itemKey: priceListItems.itemKey, price: priceListItems.price })
-      .from(priceListItems).where(and(eq(priceListItems.list, "A"), inArray(priceListItems.itemKey, [...itemKeys])));
-    return Object.fromEntries(rows.map((r) => [r.itemKey, r.price]));
+    const rows = await tx.select({ itemKey: priceListItems.itemKey, price: sql<number>`max(${priceListItems.price})` })
+      .from(priceListItems).where(inArray(priceListItems.itemKey, [...itemKeys]))
+      .groupBy(priceListItems.itemKey);
+    return Object.fromEntries(rows.map((r) => [r.itemKey, Number(r.price)]));
   },
 
   /** Who signed it, for the history row and the receipt's `by`. */

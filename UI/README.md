@@ -199,11 +199,18 @@ reach the till's payer picker from a `kind,id,name` CSV
 switched-off account leaves every till's picker and every bill already charged to it stays
 exactly as it was.
 
-**An outlet can ask the kitchen to make something.** The counter's Stock Requests screen gained
-an "Ask the kitchen" card - which is also the first window a counter has ever had on the orders
-raised for it - and the manager's dashboard an equivalent button for any outlet. Finished goods
-only, from that outlet's own menu, with an optional needed-by date the kitchen's board and drawer
-both print. Raising one reserves nothing: dispatching it is still what places the hold.
+**An outlet asks in two ways, and the screen decides which desk hears it.** The counter's Stock
+Requests screen offers exactly two tiles - **From inventory** and **From other shops**. From
+inventory is one picker over one list: everything the central store stocks *and* the finished
+goods on that outlet's own menu, interleaved by group, with as many lines as the ask needs. On
+send, the screen splits them - finished goods become a production order on the kitchen, the rest
+a stock request on the store - so the operator picks products, not departments. Made-to-order
+items are absent from the list: they hold no stock and the kitchen's route refuses them by name.
+A kitchen line brings a needed-by date with it, which the kitchen's board and drawer both print.
+The manager's dashboard keeps its equivalent button for any outlet. Raising either reserves
+nothing: dispatching it is still what places the hold. Below the tiles, "With the kitchen" is the
+counter's read-only window on the orders the split raised - a production order never appears
+under All requests.
 
 **Pay & print actually prints.** The till opens the new bill's drawer on a successful sale, and
 the drawer prints a real slip - bill number, outlet, terminal, the hospital's own date, the

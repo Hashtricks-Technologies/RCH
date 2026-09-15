@@ -2,9 +2,8 @@
 import { and, asc, eq, like, ne, sql } from "drizzle-orm";
 import type { LocKey } from "@rch/contract";
 import { isUniqueViolation, type Tx } from "../../lib/db.js";
-import { items, locationItems, priceListItems, stockBalances } from "../../db/schema/index.js";
+import { items, locationItems, priceListItems, priceLists, stockBalances } from "../../db/schema/index.js";
 
-type PriceList = "A" | "B";
 export type ItemRow = typeof items.$inferSelect;
 export type NewItemRow = typeof items.$inferInsert;
 // ---- item patch ----
@@ -42,12 +41,19 @@ export const catalogRepo = {
     return inserted;
   },
 
-  /** `onConflictDoUpdate` on the table's own primary key `(list, item_key)`. One clock reading
+  /** Whether a price list id names a real list - checked before `upsertPrice`, so an unknown id
+   *  reaches the manager as "There is no price list …" rather than a raw foreign-key 500. */
+  async priceListExists(tx: Tx, id: string): Promise<boolean> {
+    const [row] = await tx.select({ id: priceLists.id }).from(priceLists).where(eq(priceLists.id, id));
+    return row !== undefined;
+  },
+
+  /** `onConflictDoUpdate` on the table's own primary key `(list_id, item_key)`. One clock reading
    *  for both branches - inserted or updated, the row records the same moment. */
-  upsertPrice: (tx: Tx, list: PriceList, itemKey: string, price: number) => {
+  upsertPrice: (tx: Tx, listId: string, itemKey: string, price: number) => {
     const now = new Date();
-    return tx.insert(priceListItems).values({ list, itemKey, price, updatedAt: now })
-      .onConflictDoUpdate({ target: [priceListItems.list, priceListItems.itemKey], set: { price, updatedAt: now } });
+    return tx.insert(priceListItems).values({ listId, itemKey, price, updatedAt: now })
+      .onConflictDoUpdate({ target: [priceListItems.listId, priceListItems.itemKey], set: { price, updatedAt: now } });
   },
 
   isListed: async (tx: Tx, loc: LocKey, itemKey: string): Promise<boolean> =>
@@ -98,9 +104,9 @@ export const catalogRepo = {
   },
 
   /** Every price list this item sits on. The MRP floor is checked against the highest of them:
-   *  a ceiling that clears list A but not list B is still one counter that cannot sell. */
-  async pricesOf(tx: Tx, key: string): Promise<{ list: PriceList; price: number }[]> {
-    return tx.select({ list: priceListItems.list, price: priceListItems.price })
+   *  a ceiling that clears one list but not another is still one counter that cannot sell. */
+  async pricesOf(tx: Tx, key: string): Promise<{ list: string; price: number }[]> {
+    return tx.select({ list: priceListItems.listId, price: priceListItems.price })
       .from(priceListItems).where(eq(priceListItems.itemKey, key));
   },
 

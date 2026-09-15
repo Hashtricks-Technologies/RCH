@@ -1,8 +1,8 @@
 import { routes, type Changed } from "@rch/contract";
 import { call } from "./client";
 import {
-  applyAccounts, applyAdjustments, applyBatches, applyBills, applyContracts, applyDeskTickets, applyGrns, applyItems, applyMenus,
-  applyPos, applyPrices, applyProdOrders, applyProductRequests, applyRequests,
+  applyAccounts, applyAdjustments, applyBatches, applyBills, applyContracts, applyDeskTickets, applyGrns, applyItems, applyLocations, applyMenus,
+  applyPos, applyPriceLists, applyPrices, applyProdOrders, applyProductRequests, applyRequests,
   applyRequisitions, applyRoster, applyShopAsks, applyStock, applySupportTickets, applyTickets,
   applyVendors,
 } from "./wire";
@@ -32,6 +32,8 @@ const NARROW: Partial<Record<Changed, () => Promise<void>>> = {
     ? call(routes.deskTickets).then(applyDeskTickets)
     : call(routes.tickets).then(applySupportTickets),
   prices: () => call(routes.prices).then(applyPrices),
+  priceLists: () => call(routes.priceLists).then(applyPriceLists),
+  locations: () => call(routes.locations).then(applyLocations),
   menu: () => call(routes.menus).then(applyMenus),
   // ---- payers ----
   roster: () => call(routes.roster).then(applyRoster),
@@ -54,9 +56,10 @@ const NARROW: Partial<Record<Changed, () => Promise<void>>> = {
  * `stock`/`rsv`/`ovr` come from `GET /stock`, and every other collection the contract names
  * from its own GET - `bills`, `req`, `tkt`, `shopAsks`, `pord`, `batch`, `prq`, `po`, `grn`,
  * `vendors`, `contracts`, `productReqs`, `items`, `tickets` (the support desk,
- * `GET /support/tickets`), `prices` and `menu` (the manager's two), `roster` (the till's live
- * payer list, `GET /roster`) and `adjustments` (the write-off register, `GET /adjustments`) -
- * each fetched at most once however many times the write named it.
+ * `GET /support/tickets`), `prices`, `priceLists` and `menu` (the manager's three), `locations`
+ * (an outlet's active list switching), `roster` (the till's live payer list, `GET /roster`) and
+ * `adjustments` (the write-off register, `GET /adjustments`) - each fetched at most once however
+ * many times the write named it.
  * Nothing costs a snapshot any more: taking one pulled the whole hospital back down and, until
  * this wave, put every screen behind the loading splash to do it. The fallback below stays for
  * the next collection added to the enum and not to `NARROW`; a mixed set takes the snapshot

@@ -37,12 +37,14 @@ const DAYS = 14;
 function bareHospital() {
   resetStore();
   // Exactly what the server's readers answer on an empty database: `readMenu` and `readPrices`
-  // build their objects from rows, so with no rows there is no outlet key at all, and `readSales`
-  // still answers a zero for every outlet on every day of its window.
-  hydrateMaster({ items: {}, locations: FX.LOC, prices: { A: {}, B: {} }, menu: {}, users: FX.USERS });
+  // build their objects from rows, so with no rows there is no outlet key at all, `readSales`
+  // still answers a zero for every outlet on every day of its window, and a bare seed's outlets
+  // carry no price list at all - there is nothing in `price_lists` yet for one to name.
+  const bareLoc = Object.fromEntries(Object.entries(FX.LOC).map(([k, l]) => [k, { ...l, list: undefined }]));
+  hydrateMaster({ items: {}, locations: bareLoc, prices: {}, priceLists: [], menu: {}, users: FX.USERS });
   hydrateRoster({ patients: [], staff: [], depts: [] });
   useApp.setState({
-    stock: EMPTY_STOCK, rsv: {}, ovr: {}, prices: { A: {}, B: {} }, menu: {},
+    stock: EMPTY_STOCK, rsv: {}, ovr: {}, prices: {}, menu: {},
     req: [], tkt: [], prq: [], po: [], pord: [], batch: [], bills: [], grn: [], vendors: [],
     contracts: [], productReqs: [], shopAsks: [], tickets: [], adjustments: [],
     sales: Array.from({ length: DAYS }, () => [0, 0, 0]),
@@ -80,6 +82,9 @@ describe("the forms that fill an empty hospital render", () => {
   const OPEN: [key: string, id: string, role: Role][] = [
     ["sitem", "new", "store"], ["bnewitem", "new", "buyer"], ["pnew", "new", "prod"],
     ["korder", "new", "manager"], ["adjstock", "coffee", "manager"],
+    // A bare hospital has three outlets and no price list at all, which is exactly the morning
+    // the manager opens this panel to make the first one.
+    ["plset", "prices", "manager"],
   ];
   for (const [key, id, role] of OPEN) {
     it(key, () => {

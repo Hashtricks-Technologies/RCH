@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { IsoDate, IsoTime, ItemTypeSchema, LocKeySchema, Money, PriceListSchema, Qty, RoleSchema, StockLocSchema, TenderSchema } from "./common.js";
+import { IsoDate, IsoTime, ItemTypeSchema, LocKeySchema, Money, PriceListIdSchema, Qty, RoleSchema, StockLocSchema, TenderSchema } from "./common.js";
 
 export const ReqStatusSchema = z.enum(["Draft", "Request sent", "Manager approved", "Partially approved", "Ticket issued", "Collected", "Received", "Closed", "Rejected", "Cancelled"]);
 // A ticket that was issued and never collected is withdrawn rather than left open: the hold it
@@ -30,7 +30,13 @@ export const ItemSchema = z.object({
 });
 export const LocationSchema = z.object({
   n: z.string(), c: z.string(), type: z.enum(["Store", "Kitchen", "Outlet"]),
-  floor: z.string(), cc: z.string(), list: PriceListSchema.optional(),
+  floor: z.string(), cc: z.string(), list: PriceListIdSchema.optional(),
+});
+/** A named price list, and the outlets currently active on it. `outlets` is derived at read
+ *  time (every `Location` whose `list` names this id) - never stored on the list itself, so it
+ *  can never drift from what `locations` actually says. */
+export const PriceListSchema = z.strictObject({
+  id: PriceListIdSchema, name: z.string().min(1).max(80), outlets: z.array(LocKeySchema),
 });
 export const UserSchema = z.object({
   id: z.string(), n: z.string(), e: z.string(), r: RoleSchema, rl: z.string(),

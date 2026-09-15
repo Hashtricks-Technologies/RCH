@@ -1,11 +1,11 @@
-import type { Item, Location, StockLoc, User, Payer } from "../types.js";
+import type { Item, Location, PriceList, StockLoc, User, Payer } from "../types.js";
 
 export const LOC: Record<StockLoc, Location> = {
   store:   { n: "Central Store",   c: "WH-CS", type: "Store",   floor: "Basement", cc: "CC-STO" },
   kitchen: { n: "Central Kitchen", c: "KT-CK", type: "Kitchen", floor: "Ground",   cc: "CC-KIT" },
-  rest:    { n: "Restaurant",      c: "OT-R1", type: "Outlet",  floor: "Floor 1",  cc: "CC-RST", list: "A" },
-  coffee:  { n: "Coffee Shop",     c: "OT-C3", type: "Outlet",  floor: "Floor 3",  cc: "CC-CF3", list: "B" },
-  kiosk:   { n: "Snack Kiosk",     c: "OT-GK", type: "Outlet",  floor: "Ground",   cc: "CC-KSK", list: "A" },
+  rest:    { n: "Restaurant",      c: "OT-R1", type: "Outlet",  floor: "Floor 1",  cc: "CC-RST", list: "PL-001" },
+  coffee:  { n: "Coffee Shop",     c: "OT-C3", type: "Outlet",  floor: "Floor 3",  cc: "CC-CF3", list: "PL-002" },
+  kiosk:   { n: "Snack Kiosk",     c: "OT-GK", type: "Outlet",  floor: "Ground",   cc: "CC-KSK", list: "PL-001" },
   // The rejected-goods shelf. Not in OUTLETS and not in ALL_LOCS: nothing is sold, issued,
   // transferred or distributed from here, so no screen that iterates the working locations
   // should grow a sixth column. The store's own stock screen reads it by name.
@@ -36,10 +36,19 @@ export const IT: Record<string, Item> = {
   capp:   { c: "MT-5001", n: "Cappuccino",            u: "nos", t: "MTO",    g: "Beverage",  hsn: "2106", gst: 5,  rl: 0,   cost: 18.3 },
   chai:   { c: "MT-5002", n: "Masala tea",            u: "nos", t: "MTO",    g: "Beverage",  hsn: "2106", gst: 5,  rl: 0,   cost: 10.7 },
 };
-export const PL: Record<"A" | "B", Record<string, number>> = {
-  A: { capp: 60, chai: 20, puff: 25, sand: 45, salad: 55, juice: 18, water: 18, bisc: 28, chips: 18 },
-  B: { capp: 75, chai: 25, puff: 30, sand: 55, salad: 65, juice: 20, water: 20, bisc: 30, chips: 20 },
+/** Ids match what `allocateId(tx, "price_list")` would format for the first two rows a fresh
+ *  database seeds - `formatId("price_list", 1) === "PL-001"` - so a bare seed's list ids agree
+ *  with these fixtures used across every test. */
+export const PL: Record<string, Record<string, number>> = {
+  "PL-001": { capp: 60, chai: 20, puff: 25, sand: 45, salad: 55, juice: 18, water: 18, bisc: 28, chips: 18 },
+  "PL-002": { capp: 75, chai: 25, puff: 30, sand: 55, salad: 65, juice: 20, water: 20, bisc: 30, chips: 20 },
 };
+/** The two lists themselves, named - `outlets` mirrors `LOC`'s own `list` tags above, in key
+ *  order to match `readPriceLists`. */
+export const PRICE_LISTS: PriceList[] = [
+  { id: "PL-001", name: "List A", outlets: ["kiosk", "rest"] },
+  { id: "PL-002", name: "List B", outlets: ["coffee"] },
+];
 export const MENU: Record<string, string[]> = {
   rest:   ["capp", "chai", "puff", "sand", "salad", "juice", "water", "chips"],
   coffee: ["capp", "chai", "juice", "water", "bisc", "chips"],

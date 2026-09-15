@@ -21,8 +21,9 @@ export type ReceiptCheckLine = {
    * replacement delivery that settles the line, which is the one delivery that has to get in.
    */
   ordered: number; received: number;
-  /** The item's own printed MRP, or null when it does not carry one, and its list-A shelf price. */
-  mrp: number | null; listA: number;
+  /** The item's own printed MRP, or null when it does not carry one, and its shelf price - the
+   *  highest of every price list it sits on. */
+  mrp: number | null; shelf: number;
 };
 export type ReceiptCheckInput = { recv: number; rejected: number; batch: string; mrp: number; mfg: string; exp: string };
 
@@ -34,7 +35,7 @@ export type ReceiptCheckInput = { recv: number; rejected: number; batch: string;
  * master's own `PATCH /items/:it`, where the manager may move an item's MRP down past a price
  * list instead of a delivery arriving with a lower number printed on it. Both refusals are the
  * same fact about the same item, so they are the same sentence, produced once. `listPrice` is
- * the highest list the item is on: a ceiling that clears list A but not list B is still a
+ * the highest list the item is on: a ceiling that clears one list but not another is still a
  * ceiling one counter cannot sell under.
  */
 export const mrpBelowShelfPrice = (name: string, mrp: number, listPrice: number): string | null =>
@@ -57,7 +58,7 @@ export function checkReceiptLine(l: ReceiptCheckLine, r: ReceiptCheckInput, toda
   if (!r.mfg || !r.exp) return `${l.name} needs a manufacturing and an expiry date`;
   if (r.exp <= r.mfg) return `${l.name} - expiry cannot fall on or before the manufacturing date`;
   if (r.exp < today) return `${l.name} - batch ${r.batch.trim()} has already expired; do not book it in`;
-  if (l.mrp != null && r.mrp > 0) return mrpBelowShelfPrice(l.name, r.mrp, l.listA);
+  if (l.mrp != null && r.mrp > 0) return mrpBelowShelfPrice(l.name, r.mrp, l.shelf);
   return null;
 }
 

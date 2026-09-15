@@ -16,6 +16,9 @@ import "../counter/BillDrawer";
 import "../../ui/AdjustmentForm";
 // ---- prod-order raise ----
 import "./KitchenOrderDrawer";
+// ---- price-list settings: creating a list, and which list each outlet charges from - both
+// were inline on one outlet's page, where the sharing between outlets could not be seen.
+import "./PriceListSettingsDrawer";
 
 export const screens: Record<string, ComponentType> = {
   dash: Dashboard, approvals: Approvals, stock: ItemsStock, prices: Prices, avail: Availability,

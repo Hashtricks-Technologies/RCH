@@ -117,6 +117,11 @@ try {
   `deskTickets`), and everyone else reads their own tickets. `audit`: an admin session calls `bumpAuditFresh()`,
   so the Audit log tab shows "New events - show" without moving its rows, and any other session does
   nothing. No write names `audit` in its `changed`; only the audit service's notice does.
+  - **A manager-only collection (`priceLists`, `accounts`) is still broadcast to every open session** - the
+    server's `pg_notify` isn't per-role. A non-manager tab open when a price list changes gets a 403/404 on
+    its own `NARROW.priceLists()` call, which fails the whole `Promise.all` and shows that tab the generic
+    "the screen could not be refreshed" toast, even though nothing of theirs failed. Known, matches the
+    existing `accounts` behaviour; not fixed here.
 - **`wire.ts`** holds the mappers from server shape to store shape.
   - An ISO time becomes `"HH:MM"` only here, and **`iso` is kept beside it** on every document and history
     entry (`Dated<T>`, `Trailed<T>` and `DatedDoc<T>` in `types.ts`).
@@ -136,9 +141,13 @@ a background refresh and must not blank the screen.
 ## Master data and derived state
 
 - **Master data lives in shared registries.** `src/data/master.ts` exports mutable registries (`IT`, `LOC`,
-  `PL`, `MENU`, `USERS`, and the payer lists). They are empty at import, and `hydrateMaster()` /
+  `PL`, `PRICE_LISTS`, `MENU`, `USERS`, and the payer lists). They are empty at import, and `hydrateMaster()` /
   `hydrateRoster()` **fill them in place**, so assign into them and never reassign them. Anything that changes
   them bumps `catalogVersion`, which screens use as a memo key.
+- **`PL` is keyed by price-list id, not a fixed pair** - every list a manager has created, `PL[list][it]` its
+  item→price map. `PRICE_LISTS[list]` is the entity itself (`{ id, name, outlets }`), for a name to print and
+  for the manager's Prices screen to filter by outlet or by name. A `Location.list` names which id an outlet is
+  active on; it is never itself the price.
 - **`IT` includes retired items**, because old documents still name them. Pickers must read `activeItems()`,
   never `Object.keys(IT)`.
 - **`src/lib/selectors.ts` is the source of truth for everything derived.** That covers `qty`, `resv`,

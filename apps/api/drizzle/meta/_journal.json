@@ -117,8 +117,15 @@
     {
       "idx": 16,
       "version": "7",
-      "when": 1789447469365,
-      "tag": "0016_audit_outbox",
+      "when": 1789430335547,
+      "tag": "0016_price_lists",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1789483404244,
+      "tag": "0017_audit_outbox",
       "breakpoints": true
     }
   ]

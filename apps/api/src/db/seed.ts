@@ -1,4 +1,4 @@
-import { getTableName, is, sql } from "drizzle-orm";
+import { eq, getTableName, is, sql } from "drizzle-orm";
 import { PgTable } from "drizzle-orm/pg-core";
 import * as FX from "@rch/contract/fixtures";
 import type { Db } from "./client.js";
@@ -119,10 +119,13 @@ const userRow = (u: (typeof FX.USERS)[number], passwordHash: string, mustChange:
 });
 
 // Quarantine is one of `FX.LOC`'s own rows from Phase 5 (it is a `StockLoc`, not a `LocKey`),
-// so it arrives with the other five rather than being written out a second time here.
+// so it arrives with the other five rather than being written out a second time here. No
+// `priceListId` here: a bare hospital has no price lists to point at (the FK would refuse an
+// id that does not exist yet), and the demo hospital's `seedMaster` sets each outlet's onto a
+// list only after `price_lists` itself is seeded, below.
 async function seedLocations(tx: Tx) {
   await tx.insert(s.locations).values(
-    Object.entries(FX.LOC).map(([key, l]) => ({ key, name: l.n, code: l.c, type: l.type, floor: l.floor, costCentre: l.cc, priceList: l.list ?? null, sellable: l.type === "Outlet" })),
+    Object.entries(FX.LOC).map(([key, l]) => ({ key, name: l.n, code: l.c, type: l.type, floor: l.floor, costCentre: l.cc, sellable: l.type === "Outlet" })),
   );
 }
 
@@ -159,7 +162,13 @@ async function seedMaster(tx: Tx, passwordHash: string, mustChange: boolean) {
     key, code: i.c, name: i.n, unit: i.u, type: i.t, grp: i.g, hsn: i.hsn, gst: i.gst, reorderLevel: i.rl, cost: i.cost, mrp: i.mrp ?? null, shelfLifeHours: i.sl ?? null,
   })));
   await tx.insert(s.locationItems).values(Object.entries(FX.MENU).flatMap(([loc, keys]) => keys.map((itemKey, seq) => ({ loc, itemKey, seq }))));
-  await tx.insert(s.priceListItems).values((["A", "B"] as const).flatMap((list) => Object.entries(FX.PL[list]).map(([itemKey, price]) => ({ list, itemKey, price }))));
+  await tx.insert(s.priceLists).values(FX.PRICE_LISTS.map((pl) => ({ id: pl.id, name: pl.name })));
+  await tx.insert(s.priceListItems).values(Object.entries(FX.PL).flatMap(([listId, prices]) => Object.entries(prices).map(([itemKey, price]) => ({ listId, itemKey, price }))));
+  // Each outlet's active list, now that `price_lists` exists for it to point at (the FK on
+  // `locations.price_list_id` would refuse this any earlier).
+  for (const [key, l] of Object.entries(FX.LOC)) {
+    if (l.list) await tx.update(s.locations).set({ priceListId: l.list }).where(eq(s.locations.key, key));
+  }
   await tx.insert(s.users).values(FX.USERS.map((u) => userRow(u, passwordHash, mustChange)));
   // The three rosters a non-cash bill may be posted to. They already carry `{kind, id, name}`
   // in the fixtures, so the table is the same three lists in one place - which is what lets the

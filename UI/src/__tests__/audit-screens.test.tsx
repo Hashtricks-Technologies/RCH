@@ -117,7 +117,7 @@ describe("what the kitchen can make", () => {
     hydrateMaster({
       items: { ...FX.IT, bun: { c: "FG-4004", n: "Masala bun", u: "nos", t: "FG", g: "Bakery", hsn: "2106", gst: 5, rl: 0, cost: 14, sl: 10 } },
       locations: FX.LOC,
-      prices: FX.PL, menu: FX.MENU, users: FX.USERS,
+      prices: FX.PL, priceLists: FX.PRICE_LISTS, menu: FX.MENU, users: FX.USERS,
     });
     useApp.setState((s) => ({ catalogVersion: s.catalogVersion + 1 }));
 

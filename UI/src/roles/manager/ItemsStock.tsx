@@ -96,8 +96,8 @@ export default function ItemsStock() {
   // ---- item patch ----
   // A retired line stays in `IT` so past bills still name it; it must not be offerable on a till.
   const listable = activeItems().filter((k) => !listed.includes(k) && IT[k].t !== "RAW" && IT[k].t !== "PACK");
-  const list = (shop && LOC[shop]?.list) ?? "A";
-  const pickPrice = pick ? s.prices[list]?.[pick] : undefined;
+  const list = shop ? LOC[shop]?.list : undefined;
+  const pickPrice = pick && list ? s.prices[list]?.[pick] : undefined;
   const listAtShop = async () => {
     if (!shop || !pick) return;
     setListing(true);

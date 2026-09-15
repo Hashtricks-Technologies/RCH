@@ -65,10 +65,10 @@ const BILL = {
 };
 /** A whole snapshot, built from the same fixtures the registries already hold, so the
  *  `hydrateMaster` inside `applySnapshot` restores exactly what was there. */
-const snapshot = (prices: { A: Record<string, number>; B: Record<string, number> } = FX.PL) => ({
+const snapshot = (prices: Record<string, Record<string, number>> = FX.PL) => ({
   user: FX.USERS.find((u) => u.r === "manager"), items: FX.IT, locations: FX.LOC,
   users: FX.USERS, roster: { patients: FX.PATIENTS, staff: FX.STAFF, depts: FX.DEPTS },
-  stock: {}, rsv: {}, ovr: {}, prices, menu: FX.MENU,
+  stock: {}, rsv: {}, ovr: {}, prices, priceLists: FX.PRICE_LISTS, menu: FX.MENU,
   req: [], tkt: [], prq: [], po: [], pord: [], batch: [], bills: [], grn: [], vendors: [],
   contracts: [], tickets: [], productReqs: [], shopAsks: [], sales: [], dayLabels: [],
   // ---- adjustments
@@ -309,33 +309,33 @@ describe("savePrice - PUT /prices/:list/:it", () => {
   it("puts the price on the named list and reads the price list back on its own", async () => {
     as("manager");
     serve({
-      "PUT /api/v1/prices/B/juice": () => json({ result: { list: "B", it: "juice", price: 18 }, changed: ["prices"], message: "Fresh Juice 200ml priced at ₹18 on list B" }),
-      "GET /api/v1/prices": () => json({ A: FX.PL.A, B: { ...FX.PL.B, juice: 18 } }),
+      "PUT /api/v1/prices/PL-002/juice": () => json({ result: { list: "PL-002", it: "juice", price: 18 }, changed: ["prices"], message: "Fresh Juice 200ml priced at ₹18 on list PL-002" }),
+      "GET /api/v1/prices": () => json({ ...FX.PL, "PL-002": { ...FX.PL["PL-002"], juice: 18 } }),
     });
 
-    expect(await S().savePrice("B", "juice", 18)).toBe(true);
+    expect(await S().savePrice("PL-002", "juice", 18)).toBe(true);
 
-    expect(hit("PUT /api/v1/prices/B/juice")[0].body).toEqual({ price: 18 });
-    expect(S().toast).toBe("Fresh Juice 200ml priced at ₹18 on list B");
+    expect(hit("PUT /api/v1/prices/PL-002/juice")[0].body).toEqual({ price: 18 });
+    expect(S().toast).toBe("Fresh Juice 200ml priced at ₹18 on list PL-002");
     // A price change is a price change, not a new day: GET /prices, never the whole snapshot,
     // which would put the app back behind the loading splash for every row the manager edits.
     expect(hit("GET /api/v1/prices")).toHaveLength(1);
     expect(hit("GET /api/v1/snapshot")).toHaveLength(0);
     expect(hit("GET /api/v1/stock")).toHaveLength(0);
-    expect(S().prices.B.juice).toBe(18);
+    expect(S().prices["PL-002"].juice).toBe(18);
   });
 
   it("hands the MRP refusal to the operator word for word and leaves the list alone", async () => {
     as("manager");
-    const before = S().prices.B.juice;
-    serve({ "PUT /api/v1/prices/B/juice": () => refusal("Refused - printed MRP of ₹20 is a hard ceiling for Fresh Juice 200ml") });
+    const before = S().prices["PL-002"].juice;
+    serve({ "PUT /api/v1/prices/PL-002/juice": () => refusal("Refused - printed MRP of ₹20 is a hard ceiling for Fresh Juice 200ml") });
 
     // The price screen keeps what was typed on a `false`, so the manager can read the ceiling
     // and correct the figure rather than hunt for the row again.
-    expect(await S().savePrice("B", "juice", 99)).toBe(false);
+    expect(await S().savePrice("PL-002", "juice", 99)).toBe(false);
 
     expect(S().toast).toBe("Refused - printed MRP of ₹20 is a hard ceiling for Fresh Juice 200ml");
-    expect(S().prices.B.juice).toBe(before);
+    expect(S().prices["PL-002"].juice).toBe(before);
     expect(calls()).toHaveLength(1);
   });
 });
@@ -380,6 +380,72 @@ describe("addProduct / removeProduct - the menu routes", () => {
     expect(await S().addProduct("coffee", "juice")).toBe(false);
 
     expect(S().toast).toBe("Fresh Juice 200ml is already listed at Floor 3 Coffee Bar");
+    expect(calls()).toHaveLength(1);
+  });
+});
+
+describe("createPriceList / deletePriceList / setOutletPriceList - the price-list routes", () => {
+  it("posts a clone request and reads the lists back on its own", async () => {
+    as("manager");
+    const created = { id: "PL-010", name: "Weekend Rates", outlets: [] };
+    serve({
+      "POST /api/v1/price-lists": () => json({ result: created, changed: ["priceLists", "prices"], message: "Weekend Rates created, cloned from Coffee Shop's prices" }),
+      "GET /api/v1/price-lists": () => json([created]),
+      "GET /api/v1/prices": () => json(FX.PL),
+    });
+
+    expect(await S().createPriceList("Weekend Rates", "coffee")).toEqual(created);
+
+    expect(hit("POST /api/v1/price-lists")[0].body).toEqual({ name: "Weekend Rates", cloneFrom: "coffee" });
+    expect(S().toast).toBe("Weekend Rates created, cloned from Coffee Shop's prices");
+    expect(hit("GET /api/v1/price-lists")).toHaveLength(1);
+    expect(hit("GET /api/v1/snapshot")).toHaveLength(0);
+  });
+
+  it("hands a create refusal to the operator and answers null", async () => {
+    as("manager");
+    serve({ "POST /api/v1/price-lists": () => refusal("Give the price list a name before saving") });
+
+    expect(await S().createPriceList("", "coffee")).toBeNull();
+    expect(S().toast).toBe("Give the price list a name before saving");
+  });
+
+  it("deletes with no body, and reads the lists back", async () => {
+    as("manager");
+    serve({
+      "DELETE /api/v1/price-lists/PL-010": () => json({ result: { id: "PL-010" }, changed: ["priceLists"], message: "Weekend Rates deleted" }),
+      "GET /api/v1/price-lists": () => json([]),
+    });
+
+    expect(await S().deletePriceList("PL-010")).toBe(true);
+
+    expect(hit("DELETE /api/v1/price-lists/PL-010")[0].body).toBeUndefined();
+    expect(S().toast).toBe("Weekend Rates deleted");
+  });
+
+  it("switches an outlet's active list, and reads prices, price lists and locations back", async () => {
+    as("manager");
+    serve({
+      "PUT /api/v1/outlets/coffee/price-list": () => json({ result: { loc: "coffee", listId: "PL-010" }, changed: ["priceLists", "prices", "locations"], message: "Coffee Shop switched to Weekend Rates" }),
+      "GET /api/v1/price-lists": () => json([]),
+      "GET /api/v1/prices": () => json(FX.PL),
+      "GET /api/v1/locations": () => json(FX.LOC),
+    });
+
+    expect(await S().setOutletPriceList("coffee", "PL-010")).toBe(true);
+
+    expect(hit("PUT /api/v1/outlets/coffee/price-list")[0].body).toEqual({ listId: "PL-010" });
+    expect(S().toast).toBe("Coffee Shop switched to Weekend Rates");
+    expect(hit("GET /api/v1/locations")).toHaveLength(1);
+    expect(hit("GET /api/v1/snapshot")).toHaveLength(0);
+  });
+
+  it("hands a switch refusal to the operator and answers false", async () => {
+    as("manager");
+    serve({ "PUT /api/v1/outlets/coffee/price-list": () => refusal("Nothing to save - Coffee Shop is already on List B") });
+
+    expect(await S().setOutletPriceList("coffee", "PL-002")).toBe(false);
+    expect(S().toast).toBe("Nothing to save - Coffee Shop is already on List B");
     expect(calls()).toHaveLength(1);
   });
 });
@@ -475,7 +541,7 @@ describe("loadSnapshot - the splash is for the first boot only", () => {
     as("manager");
     // No item master, no locations: every screen would read an empty registry and throw, so
     // there is genuinely nothing to hold on to while the snapshot is on its way.
-    hydrateMaster({ items: {}, locations: {}, prices: { A: {}, B: {} }, menu: {}, users: [] });
+    hydrateMaster({ items: {}, locations: {}, prices: {}, priceLists: [], menu: {}, users: [] });
     serve({ "GET /api/v1/snapshot": () => json(snapshot()) });
 
     const seen = await authStates(() => S().loadSnapshot());
@@ -585,7 +651,7 @@ describe("the request chain - the twelve writes", () => {
       "POST /api/v1/tickets/TKT-0440/handover": () => json({ result: { ...TKT, id: "TKT-0440", st: "Collected" }, changed: ["tkt", "req", "rsv", "stock"], message: "TKT-0440 handed over - stock is in transit to Coffee Shop" }),
       "GET /api/v1/requests": () => json([REQ]), "GET /api/v1/tickets": () => json([TKT]), "GET /api/v1/stock": () => json(STOCK),
     });
-    await S().handover("TKT-0440", " 418327 ");
+    expect(await S().handover("TKT-0440", " 418327 ")).toBe(true);
     expect(hit("POST /api/v1/tickets/TKT-0440/handover")[0].body).toEqual({ otp: "418327" });
     expect(S().toast).toBe("TKT-0440 handed over - stock is in transit to Coffee Shop");
   });
@@ -603,7 +669,9 @@ describe("the request chain - the twelve writes", () => {
   it("repeats a wrong-OTP refusal and moves nothing", async () => {
     as("store");
     serve({ "POST /api/v1/tickets/TKT-0440/handover": () => refusal("That OTP does not match TKT-0440. Ask the collector to read it again.") });
-    await S().handover("TKT-0440", "000000");
+    // `false` is what the kitchen's and the store's ticket windows read to keep the server's
+    // sentence on screen beside the OTP box; the toast alone is gone before they look back.
+    expect(await S().handover("TKT-0440", "000000")).toBe(false);
     expect(S().toast).toBe("That OTP does not match TKT-0440. Ask the collector to read it again.");
     expect(S().tkt.find((t) => t.id === "TKT-0440")!.st).toBe("Issued");
     expect(calls()).toHaveLength(1);
@@ -2030,11 +2098,18 @@ describe("raiseProdOrder - POST /prod-orders", () => {
     expect(hit("GET /api/v1/prod-orders")).toHaveLength(0);
   });
 
-  it("the counter's card sends what the operator typed and clears itself", async () => {
+  /** Pick a product on one line of the counter's inventory line builder. */
+  const pick = (host: HTMLElement, row: number, it: string) => {
+    const sel = host.querySelector<HTMLSelectElement>(`select[aria-label='Product ${row}']`)!;
+    Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")!.set!.call(sel, it);
+    sel.dispatchEvent(new Event("change", { bubbles: true }));
+  };
+
+  it("routes a finished good picked from inventory to the kitchen, not the store", async () => {
     as("counter");
     // The Coffee Shop's own menu carries no finished good - two drinks made at the till and
-    // four bought-in lines - so the card would honestly offer nothing to order. Put a puff on
-    // its menu, which is what the outlet manager would do before the counter could ask for one.
+    // four bought-in lines - so nothing on it would go to the kitchen. Put a puff on its menu,
+    // which is what the outlet manager would do before the counter could ask for one.
     useApp.setState({ menu: { ...S().menu, coffee: [...S().menu.coffee, "puff"] } });
     serve({
       "POST /api/v1/prod-orders": () => json({ result: RAISED, changed: ["pord"], message: "PRD-2026-031 raised for Coffee Shop - 1 item" }),
@@ -2046,17 +2121,170 @@ describe("raiseProdOrder - POST /prod-orders", () => {
     const root = createRoot(host);
     await act(async () => { root.render(createElement(MemoryRouter, null, createElement(CounterRequests))); });
 
-    // The card opens on its own action tile, and the form only exists once it is open.
-    const openIt = [...host.querySelectorAll("button")].find((b) => b.textContent?.includes("From the kitchen"))!;
+    // There is no kitchen tile any more: the one inventory list carries what the store stocks
+    // and what the kitchen makes, and the screen decides which desk the line goes to.
+    expect([...host.querySelectorAll("button")].some((b) => b.textContent?.includes("From the kitchen"))).toBe(false);
+    const openIt = [...host.querySelectorAll("button")].find((b) => b.textContent?.includes("From inventory"))!;
     await act(async () => { openIt.click(); });
-    const send = [...host.querySelectorAll("button")].find((b) => b.textContent === "Send to the kitchen")!;
+    // The finished good is in the same picker as the milk and the biscuits.
+    expect([...host.querySelectorAll("select[aria-label='Product 1'] option")].map((o) => o.textContent))
+      .toContain("Veg puffs");
+    await act(async () => { pick(host, 1, "puff"); });
+
+    const send = [...host.querySelectorAll("button")].find((b) => b.textContent === "Submit request")!;
     await act(async () => { send.click(); });
 
     const body = hit("POST /api/v1/prod-orders")[0].body as { from: string; lines: { it: string; qty: number }[] };
-    // The outlet comes off the token, and the one finished good on that menu is what the
-    // picker opened on - never `capp` or `chai`, which are made at the till.
+    // The outlet comes off the token as well, but the counter names it so that this screen and
+    // the manager's drawer are one code path.
     expect(body.from).toBe("coffee");
     expect(body.lines).toEqual([{ it: "puff", qty: 1 }]);
+    // And nothing was asked of the central store: the line is not its to fill.
+    expect(hit("POST /api/v1/requests")).toHaveLength(0);
+    await act(async () => { root.unmount(); });
+    host.remove();
+  });
+
+  it("splits a mixed ask into a stock request and a production order", async () => {
+    as("counter");
+    useApp.setState({ menu: { ...S().menu, coffee: [...S().menu.coffee, "puff"] } });
+    const REQ_DOC = {
+      id: "REQ-2026-0913", from: "coffee", by: "Kavitha Raman", at: "2026-09-11T04:10:00.000Z",
+      lines: [{ it: "milk", qty: 6 }], st: "Request sent", hist: [],
+    };
+    serve({
+      "POST /api/v1/requests": () => json({ result: REQ_DOC, changed: ["req"], message: "REQ-2026-0913 sent to the outlet manager - 1 line" }),
+      "GET /api/v1/requests": () => json([REQ_DOC]),
+      "POST /api/v1/prod-orders": () => json({ result: RAISED, changed: ["pord"], message: "PRD-2026-031 raised for Coffee Shop - 1 item" }),
+      "GET /api/v1/prod-orders": () => json([RAISED]),
+    });
+
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    await act(async () => { root.render(createElement(MemoryRouter, null, createElement(CounterRequests))); });
+    const openIt = [...host.querySelectorAll("button")].find((b) => b.textContent?.includes("From inventory"))!;
+    await act(async () => { openIt.click(); });
+
+    await act(async () => { pick(host, 1, "milk"); });
+    const add = [...host.querySelectorAll("button")].find((b) => b.textContent === "Add another item")!;
+    await act(async () => { add.click(); });
+    await act(async () => { pick(host, 2, "puff"); });
+
+    const send = [...host.querySelectorAll("button")].find((b) => b.textContent === "Submit request")!;
+    await act(async () => { send.click(); await new Promise((r) => { setTimeout(r, 0); }); });
+
+    // Two documents, one press: the shelf line to the store keeper's queue and the tray to the
+    // kitchen's board.
+    expect((hit("POST /api/v1/requests")[0].body as { lines: unknown[] }).lines).toEqual([{ it: "milk", qty: 1 }]);
+    expect((hit("POST /api/v1/prod-orders")[0].body as { lines: unknown[] }).lines).toEqual([{ it: "puff", qty: 1 }]);
+    // Only one sentence fits in the toast, so the page says what the toast could not.
+    expect(host.textContent).toContain("That ask went to both desks");
+    expect(S().toast).toBe("PRD-2026-031 raised for Coffee Shop - 1 item");
+    await act(async () => { root.unmount(); });
+    host.remove();
+  });
+
+  it("offers a needed-by date only once the ask has a line the kitchen would schedule", async () => {
+    as("counter");
+    useApp.setState({ menu: { ...S().menu, coffee: [...S().menu.coffee, "puff"] } });
+    serve({
+      "POST /api/v1/prod-orders": () => json({ result: RAISED, changed: ["pord"], message: "PRD-2026-031 raised for Coffee Shop - 1 item" }),
+      "GET /api/v1/prod-orders": () => json([RAISED]),
+    });
+
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    await act(async () => { root.render(createElement(MemoryRouter, null, createElement(CounterRequests))); });
+    const openIt = [...host.querySelectorAll("button")].find((b) => b.textContent?.includes("From inventory"))!;
+    await act(async () => { openIt.click(); });
+
+    // A shelf line has no deadline to give: `POST /requests` carries no `need`, so a date box
+    // over it would take something nothing would honour.
+    const need = () => host.querySelector<HTMLInputElement>("input[aria-label='Needed by']");
+    expect(need()).toBeNull();
+
+    await act(async () => { pick(host, 1, "puff"); });
+    expect(need()).not.toBeNull();
+    await act(async () => {
+      const el = need()!;
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(el, "2026-09-18");
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+
+    const send = [...host.querySelectorAll("button")].find((b) => b.textContent === "Submit request")!;
+    await act(async () => { send.click(); await new Promise((r) => { setTimeout(r, 0); }); });
+    expect((hit("POST /api/v1/prod-orders")[0].body as { need?: string }).need).toBe("2026-09-18");
+    await act(async () => { root.unmount(); });
+    host.remove();
+  });
+
+  it("never asks the kitchen once the store has refused its half of the same ask", async () => {
+    as("counter");
+    useApp.setState({ menu: { ...S().menu, coffee: [...S().menu.coffee, "puff"] } });
+    serve({
+      "POST /api/v1/requests": () => refusal("Coffee Shop already has REQ-2026-0911 open for Milk 1L"),
+      "POST /api/v1/prod-orders": () => json({ result: RAISED, changed: ["pord"], message: "PRD-2026-031 raised for Coffee Shop - 1 item" }),
+    });
+
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    await act(async () => { root.render(createElement(MemoryRouter, null, createElement(CounterRequests))); });
+    const openIt = [...host.querySelectorAll("button")].find((b) => b.textContent?.includes("From inventory"))!;
+    await act(async () => { openIt.click(); });
+    await act(async () => { pick(host, 1, "milk"); });
+    const add = [...host.querySelectorAll("button")].find((b) => b.textContent === "Add another item")!;
+    await act(async () => { add.click(); });
+    await act(async () => { pick(host, 2, "puff"); });
+
+    const send = [...host.querySelectorAll("button")].find((b) => b.textContent === "Submit request")!;
+    await act(async () => { send.click(); await new Promise((r) => { setTimeout(r, 0); }); });
+
+    // One refusal, one sentence to read, and nothing raised anywhere - not half an ask the
+    // operator would have to unpick before pressing again.
+    expect(hit("POST /api/v1/prod-orders")).toHaveLength(0);
+    expect(S().toast).toBe("Coffee Shop already has REQ-2026-0911 open for Milk 1L");
+    // Both lines are still in the card.
+    expect(host.querySelector("select[aria-label='Product 2']")).not.toBeNull();
+    await act(async () => { root.unmount(); });
+    host.remove();
+  });
+
+  it("keeps only the refused half in the card when the store took its own", async () => {
+    as("counter");
+    useApp.setState({ menu: { ...S().menu, coffee: [...S().menu.coffee, "puff"] } });
+    const REQ_DOC = {
+      id: "REQ-2026-0913", from: "coffee", by: "Kavitha Raman", at: "2026-09-11T04:10:00.000Z",
+      lines: [{ it: "milk", qty: 1 }], st: "Request sent", hist: [],
+    };
+    serve({
+      "POST /api/v1/requests": () => json({ result: REQ_DOC, changed: ["req"], message: "REQ-2026-0913 sent to the outlet manager - 1 line" }),
+      "GET /api/v1/requests": () => json([REQ_DOC]),
+      "POST /api/v1/prod-orders": () => refusal("Veg puffs is not listed at Coffee Shop - add it to that menu first"),
+    });
+
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    await act(async () => { root.render(createElement(MemoryRouter, null, createElement(CounterRequests))); });
+    const openIt = [...host.querySelectorAll("button")].find((b) => b.textContent?.includes("From inventory"))!;
+    await act(async () => { openIt.click(); });
+    await act(async () => { pick(host, 1, "milk"); });
+    const add = [...host.querySelectorAll("button")].find((b) => b.textContent === "Add another item")!;
+    await act(async () => { add.click(); });
+    await act(async () => { pick(host, 2, "puff"); });
+
+    const send = [...host.querySelectorAll("button")].find((b) => b.textContent === "Submit request")!;
+    await act(async () => { send.click(); await new Promise((r) => { setTimeout(r, 0); }); });
+
+    // The store's document exists, so pressing again must not raise a second one: the milk line
+    // is gone from the card and only the refused puff is left to fix.
+    expect(host.querySelector("select[aria-label='Product 2']")).toBeNull();
+    expect(host.querySelector<HTMLSelectElement>("select[aria-label='Product 1']")!.value).toBe("puff");
+    expect(host.textContent).toContain("is with Central Store");
+    expect(S().toast).toBe("Veg puffs is not listed at Coffee Shop - add it to that menu first");
     await act(async () => { root.unmount(); });
     host.remove();
   });
@@ -2081,11 +2309,12 @@ describe("raiseProdOrder - POST /prod-orders", () => {
     document.body.appendChild(host);
     const root = createRoot(host);
     await act(async () => { root.render(createElement(MemoryRouter, null, createElement(CounterRequests))); });
-    const openIt = [...host.querySelectorAll("button")].find((b) => b.textContent?.includes("From the kitchen"))!;
+    const openIt = [...host.querySelectorAll("button")].find((b) => b.textContent?.includes("From inventory"))!;
     await act(async () => { openIt.click(); });
+    await act(async () => { pick(host, 1, "puff"); });
 
     const qty = () => host.querySelector<HTMLInputElement>("input[aria-label='Quantity 1']")!;
-    const send = () => [...host.querySelectorAll("button")].find((b) => b.textContent === "Send to the kitchen") as HTMLButtonElement;
+    const send = () => [...host.querySelectorAll("button")].find((b) => b.textContent === "Submit request") as HTMLButtonElement;
 
     // Clearing the box is a real keystroke on the way to a new number. A controlled
     // `Number(e.target.value)` would have read it as 0 and forced a "0" back into the field

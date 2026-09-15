@@ -55,6 +55,7 @@ export function createSnapshotService(db: Db) {
         const locations = await M.readLocations(tx);
         const users = await M.readUsers(tx);
         const prices = await M.readPrices(tx);
+        const priceLists = await M.readPriceLists(tx);
         const menu = await M.readMenu(tx);
         const roster = await M.readRoster(tx);
         const stock = await S.readStock(tx);
@@ -78,7 +79,7 @@ export function createSnapshotService(db: Db) {
         const adjustments = await D.readAdjustments(tx, names);
         // The desk and its owners come off one read: `scope()` cuts the list on `owners`, so a
         // ticket in one and not the other is a ticket its own author cannot see.
-        const full: Snapshot = { user: toWireUser(u), items, locations, users, prices, menu, stock, rsv, ovr, req, tkt, prq, po, pord, batch, bills, grn, vendors, contracts, tickets: support.tickets, productReqs, shopAsks, roster, sales: salesBlock.sales, dayLabels: salesBlock.dayLabels, adjustments };
+        const full: Snapshot = { user: toWireUser(u), items, locations, users, prices, priceLists, menu, stock, rsv, ovr, req, tkt, prq, po, pord, batch, bills, grn, vendors, contracts, tickets: support.tickets, productReqs, shopAsks, roster, sales: salesBlock.sales, dayLabels: salesBlock.dayLabels, adjustments };
         return scope(full, { role: claims.role, loc: claims.loc, sub: claims.sub }, support.owners);
       });
     },

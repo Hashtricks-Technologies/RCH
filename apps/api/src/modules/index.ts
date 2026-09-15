@@ -6,6 +6,7 @@ import snapshot from "./snapshot/routes.js";
 import pos from "./pos/routes.js";
 import availability from "./availability/routes.js";
 import catalog from "./catalog/routes.js";
+import pricelists from "./pricelists/routes.js";
 import requests from "./requests/routes.js";
 import tickets from "./tickets/routes.js";
 import shopasks from "./shopasks/routes.js";
@@ -32,6 +33,7 @@ export async function registerModules(app: App): Promise<void> {
   await app.register(pos);
   await app.register(availability);
   await app.register(catalog);
+  await app.register(pricelists);
   await app.register(requests);
   await app.register(tickets);
   await app.register(shopasks);

@@ -5,4 +5,5 @@ import * as R from "./repo.js";
 export const createMasterService = (db: Db) => ({
   items: () => R.readItems(db), locations: () => R.readLocations(db),
   prices: () => R.readPrices(db), menus: () => R.readMenu(db),
+  priceLists: () => R.readPriceLists(db),
 });

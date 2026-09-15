@@ -1,7 +1,7 @@
 import type { z } from "zod";
 import { StockLocSchema } from "@rch/contract";
 import type { SnapshotSchema, StockResponseSchema } from "@rch/contract";
-import { hydrateItems, hydrateMaster, hydrateMenus, hydratePrices, hydrateRoster } from "../data/master";
+import { hydrateItems, hydrateLocations, hydrateMaster, hydrateMenus, hydratePriceLists, hydratePrices, hydrateRoster } from "../data/master";
 import { fromWireBestBefore, fromWireDate, fromWireTime } from "../lib/fmt";
 import { useApp } from "../store";
 import { basePrices } from "../lib/selectors";
@@ -49,7 +49,7 @@ const stockOf = (s: Snapshot["stock"]): Record<StockLoc, Record<string, number>>
 
 /** Server shape -> the store's shape. Times become "HH:MM", dates "DD-MMM-YYYY"; nothing else changes. */
 export function applySnapshot(s: Snapshot): void {
-  hydrateMaster({ items: s.items, locations: s.locations, prices: s.prices, menu: s.menu, users: s.users });
+  hydrateMaster({ items: s.items, locations: s.locations, prices: s.prices, priceLists: s.priceLists, menu: s.menu, users: s.users });
   // Who a bill may be charged to comes off the `payers` table the till has been checked
   // against since Phase 3, so a patient admitted this morning is billable without a release.
   hydrateRoster(s.roster);
@@ -168,11 +168,27 @@ export function applyItems(items: Snapshot["items"]): void {
   useApp.setState((s) => ({ catalogVersion: s.catalogVersion + 1 }));
 }
 
-/** GET /prices -> both shelf lists. The registry and the store's copy are the same two lists -
+/** GET /prices -> every shelf list. The registry and the store's copy are the same lists -
  *  `basePrices()` is what every screen reads - so the registry is filled first and copied out. */
 export function applyPrices(prices: Snapshot["prices"]): void {
   hydratePrices(prices);
   useApp.setState((s) => ({ prices: basePrices(), catalogVersion: s.catalogVersion + 1 }));
+}
+
+/** GET /price-lists -> the lists themselves (name, outlets), for the manager's management
+ *  screen. Module-level like `PL`, so `catalogVersion` is the signal a screen reading
+ *  `PRICE_LISTS` directly needs. */
+export function applyPriceLists(priceLists: Snapshot["priceLists"]): void {
+  hydratePriceLists(priceLists);
+  useApp.setState((s) => ({ catalogVersion: s.catalogVersion + 1 }));
+}
+
+/** GET /locations -> the location master. Module-level like `IT`, for the same reason: a write
+ *  naming "locations" (today, only switching an outlet's active price list) has to tell a
+ *  screen reading `LOC` directly that it moved. */
+export function applyLocations(locations: Snapshot["locations"]): void {
+  hydrateLocations(locations);
+  useApp.setState((s) => ({ catalogVersion: s.catalogVersion + 1 }));
 }
 
 /** GET /menus -> what each outlet lists. Like the catalogue, the registry is a module-level one

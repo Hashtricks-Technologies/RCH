@@ -194,6 +194,10 @@ back where it stood.
   and the UI reads the same tables to decide which buttons to draw.
 - Every non-public write carries an `Idempotency-Key`. The outcome is recorded inside the write's own
   transaction, so a retry replays the answer instead of producing a second bill.
+- **A price list is a managed entity** (`price_lists`, id + name), not a fixed pair. A manager creates one
+  cloned from an outlet's current active list, edits any list at any time whether or not it is active, and
+  switches an outlet onto any list explicitly (`PUT /outlets/:loc/price-list`). Two outlets may still share one
+  active list, exactly as before. A list can be deleted only once no outlet is active on it.
 - **The audit tables have one writer each.** In `apps/api`, only `src/lib/audit.ts` inserts into
   `audit_outbox`, and nothing selects, updates or deletes from it. In `apps/audit`, only `src/lib/drain.ts`
   deletes from the outbox or inserts into `audit.events` and `audit.dead_letters`, and nothing anywhere updates

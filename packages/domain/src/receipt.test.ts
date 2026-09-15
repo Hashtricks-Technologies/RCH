@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { RECEIPT_TOLERANCE, checkReceiptLine, netReceived, receiptStatus } from "./receipt.js";
 
-const line = { name: "Real Juice 200ml", unit: "nos", ordered: 120, received: 0, mrp: 20, listA: 18 };
+const line = { name: "Real Juice 200ml", unit: "nos", ordered: 120, received: 0, mrp: 20, shelf: 18 };
 const ok = { recv: 120, rejected: 0, batch: "SBD-771", mrp: 20, mfg: "2026-09-01", exp: "2026-12-01" };
 const TODAY = "2026-09-04";
 

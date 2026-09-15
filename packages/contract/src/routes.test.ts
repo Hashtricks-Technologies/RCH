@@ -13,6 +13,8 @@ const SAMPLES: Record<string, Record<string, unknown>> = {
   toggleAvail: { loc: "kitchen", it: "SKU-1" },
   savePrice: { price: 100 },
   addMenuItem: { it: "SKU-1" },
+  createPriceList: { name: "Weekend Rates", cloneFrom: "coffee" },
+  setOutletPriceList: { listId: "PL-002" },
   createRequest: { lines: [{ it: "SKU-1", qty: 20 }], note: "Counter runs dry by 4pm", urgent: true },
   approveRequest: { appr: [12], note: "Store only holds 12 L." },
   rejectRequest: { note: "Kiosk is overstocked already" },

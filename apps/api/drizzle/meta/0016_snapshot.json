@@ -1,5 +1,5 @@
 {
-  "id": "49904670-d5b5-4ace-b224-3d4aff31bbeb",
+  "id": "8c546d34-9c38-4148-874e-c3420cd98790",
   "prevId": "0f6f7d2c-3c94-48f0-b610-ea1a0b3ffe66",
   "version": "7",
   "dialect": "postgresql",
@@ -320,13 +320,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "price_list": {
-          "name": "price_list",
-          "type": "price_list",
-          "typeSchema": "public",
-          "primaryKey": false,
-          "notNull": false
-        },
         "sellable": {
           "name": "sellable",
           "type": "boolean",
@@ -340,10 +333,30 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
+        },
+        "price_list_id": {
+          "name": "price_list_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {},
-      "foreignKeys": {},
+      "foreignKeys": {
+        "locations_price_list_id_price_lists_id_fk": {
+          "name": "locations_price_list_id_price_lists_id_fk",
+          "tableFrom": "locations",
+          "tableTo": "price_lists",
+          "columnsFrom": [
+            "price_list_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
@@ -415,10 +428,9 @@
       "name": "price_list_items",
       "schema": "",
       "columns": {
-        "list": {
-          "name": "list",
-          "type": "price_list",
-          "typeSchema": "public",
+        "list_id": {
+          "name": "list_id",
+          "type": "text",
           "primaryKey": false,
           "notNull": true
         },
@@ -456,13 +468,26 @@
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
+        },
+        "price_list_items_list_id_price_lists_id_fk": {
+          "name": "price_list_items_list_id_price_lists_id_fk",
+          "tableFrom": "price_list_items",
+          "tableTo": "price_lists",
+          "columnsFrom": [
+            "list_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
-        "price_list_items_list_item_key_pk": {
-          "name": "price_list_items_list_item_key_pk",
+        "price_list_items_list_id_item_key_pk": {
+          "name": "price_list_items_list_id_item_key_pk",
           "columns": [
-            "list",
+            "list_id",
             "item_key"
           ]
         }
@@ -3422,49 +3447,6 @@
       },
       "isRLSEnabled": false
     },
-    "public.audit_outbox": {
-      "name": "audit_outbox",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "bigint",
-          "primaryKey": true,
-          "notNull": true,
-          "identity": {
-            "type": "always",
-            "name": "audit_outbox_id_seq",
-            "schema": "public",
-            "increment": "1",
-            "startWith": "1",
-            "minValue": "1",
-            "maxValue": "9223372036854775807",
-            "cache": "1",
-            "cycle": false
-          }
-        },
-        "at": {
-          "name": "at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "event": {
-          "name": "event",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
     "public.document_history": {
       "name": "document_history",
       "schema": "",
@@ -3991,6 +3973,38 @@
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
+    },
+    "public.price_lists": {
+      "name": "price_lists",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
     }
   },
   "enums": {
@@ -4068,14 +4082,6 @@
         "Partially received",
         "Received",
         "Cancelled"
-      ]
-    },
-    "public.price_list": {
-      "name": "price_list",
-      "schema": "public",
-      "values": [
-        "A",
-        "B"
       ]
     },
     "public.prod_order_status": {
