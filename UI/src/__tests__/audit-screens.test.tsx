@@ -17,6 +17,9 @@ import "../roles/buyer/PoReceiptDrawer";        // registers "bgrn" on the drawe
 import "../roles/buyer/NewProductDrawer";       // registers "bnewitem"
 import "../roles/buyer/ContractDrawer";         // registers "bcontract"
 import "../roles/manager/ApprovalDrawer";       // registers "mreq"
+import "../roles/counter/AdjustmentRequestForm"; // registers "creqadj"
+import "../roles/counter/AdjustmentRequestDrawer"; // registers "cadjreq"
+import "../roles/manager/AdjustmentRequestDrawer"; // registers "madjreq"
 import { useApp } from "../store";
 import { as, resetStore, S } from "./fixture";
 
@@ -72,6 +75,11 @@ const type = (el: HTMLInputElement, v: string) => {
 };
 /** Leaving a field - React maps `onBlur` onto the bubbling `focusout`. */
 const leave = (el: HTMLInputElement) => { el.dispatchEvent(new FocusEvent("focusout", { bubbles: true })); };
+/** A textarea's own value setter, the way React hears typing into one. */
+const typeArea = (el: HTMLTextAreaElement, v: string) => {
+  Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(el, v);
+  el.dispatchEvent(new Event("input", { bubbles: true }));
+};
 /** Choosing from a `<select>`, the way React hears it. */
 const pick = (el: HTMLSelectElement, v: string) => {
   Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")!.set!.call(el, v);
@@ -392,6 +400,83 @@ describe("the manager can redirect an undecided request to a peer outlet", () =>
     await settleUntil(() => hit("POST /api/v1/requests/REQ-2026-0911/redirect").length > 0);
     // "rest" is the first peer offered - "coffee" (the request's own outlet) is excluded.
     expect(hit("POST /api/v1/requests/REQ-2026-0911/redirect")[0].body).toEqual({ from: "rest" });
+    ui.unmount();
+  });
+});
+
+describe("a counter raises an adjustment request, and the outlet manager decides it", () => {
+  it("raises against its own outlet, with no location to pick", async () => {
+    as("counter");
+    serve({
+      "POST /api/v1/adjustment-requests": () => json({
+        result: {
+          id: "ADJREQ-2026-05", loc: "coffee", reason: "wastage", note: "", by: "Kavitha Raman",
+          at: "09:20", lines: [{ it: "cup", qty: -3 }], st: "Request sent",
+          hist: [{ s: "Request sent", who: "Kavitha Raman", t: "09:20" }],
+        },
+        changed: ["adjReq"], message: "ADJREQ-2026-05 sent to the outlet manager",
+      }),
+      "GET /api/v1/adjustment-requests": () => json([]),
+    });
+    useApp.setState({ drawer: { t: "creqadj", id: "new" } });
+    const ui = mountNode(Drawer);
+
+    expect(ui.text()).toContain("GOES TO THE OUTLET MANAGER");
+    await settle(() => { ui.button("Add line")!.click(); });
+    const itemKey = ui.host.querySelector<HTMLSelectElement>('select[aria-label="Item on line 1"]')!.value;
+    const qtyField = ui.field(`Quantity of ${IT[itemKey].n}`);
+    await settle(() => { type(qtyField, "3"); });
+    await settle(() => { ui.button("Send to the outlet manager")!.click(); });
+    await settleUntil(() => hit("POST /api/v1/adjustment-requests").length > 0);
+
+    expect(hit("POST /api/v1/adjustment-requests")[0].body).toEqual({
+      reason: "wastage", note: "", lines: [{ it: itemKey, qty: -3 }],
+    });
+    ui.unmount();
+  });
+
+  it("the outlet manager approves it, which writes the ADJ- document in the same step", async () => {
+    as("manager");
+    serve({
+      "POST /api/v1/adjustment-requests/ADJREQ-2026-01/approve": () => json({
+        result: {
+          request: { id: "ADJREQ-2026-01", loc: "coffee", reason: "wastage", note: "Fridge failed overnight", by: "Kavitha Raman", at: "09:10", lines: [{ it: "cup", qty: -20 }], st: "Approved", apprBy: "Ramesh Kumar", adjId: "ADJ-2026-0011", hist: [{ s: "Request sent", who: "Kavitha Raman", t: "09:10" }, { s: "Approved", who: "Ramesh Kumar", t: "09:30" }] },
+          adjustment: { id: "ADJ-2026-0011", loc: "coffee", reason: "wastage", note: "Fridge failed overnight", by: "Ramesh Kumar", at: "09:30", lines: [{ it: "cup", qty: -20 }] },
+        },
+        changed: ["adjReq", "stock", "adjustments"],
+        message: "ADJREQ-2026-01 approved - ADJ-2026-0011 - 20 nos written off at Coffee Shop (wastage)",
+      }),
+      "GET /api/v1/adjustment-requests": () => json([]),
+      "GET /api/v1/stock": () => json({ stock: {}, rsv: {}, ovr: {} }),
+      "GET /api/v1/adjustments": () => json([]),
+    });
+    useApp.setState({ drawer: { t: "madjreq", id: "ADJREQ-2026-01" } });
+    const ui = mountNode(Drawer);
+
+    await settle(() => { ui.button("Approve & correct the shelf")!.click(); });
+    await settleUntil(() => hit("POST /api/v1/adjustment-requests/ADJREQ-2026-01/approve").length > 0);
+    expect(S().toast).toBe("ADJREQ-2026-01 approved - ADJ-2026-0011 - 20 nos written off at Coffee Shop (wastage)");
+    ui.unmount();
+  });
+
+  it("the outlet manager rejects it with a reason, which stays locked without one", async () => {
+    as("manager");
+    serve({
+      "POST /api/v1/adjustment-requests/ADJREQ-2026-01/reject": () => json({
+        result: { id: "ADJREQ-2026-01", loc: "coffee", reason: "wastage", note: "Fridge failed overnight", by: "Kavitha Raman", at: "09:10", lines: [{ it: "cup", qty: -20 }], st: "Rejected", apprBy: "Ramesh Kumar", hist: [{ s: "Request sent", who: "Kavitha Raman", t: "09:10" }, { s: "Rejected", who: "Ramesh Kumar", t: "09:31" }] },
+        changed: ["adjReq"], message: "ADJREQ-2026-01 rejected",
+      }),
+      "GET /api/v1/adjustment-requests": () => json([]),
+    });
+    useApp.setState({ drawer: { t: "madjreq", id: "ADJREQ-2026-01" } });
+    const ui = mountNode(Drawer);
+
+    expect(ui.button("Reject")!.hasAttribute("disabled")).toBe(true);
+    const note = ui.host.querySelector<HTMLTextAreaElement>("textarea")!;
+    await settle(() => { typeArea(note, "Count it again before writing it off."); });
+    await settle(() => { ui.button("Reject")!.click(); });
+    await settleUntil(() => hit("POST /api/v1/adjustment-requests/ADJREQ-2026-01/reject").length > 0);
+    expect(hit("POST /api/v1/adjustment-requests/ADJREQ-2026-01/reject")[0].body).toEqual({ note: "Count it again before writing it off." });
     ui.unmount();
   });
 });

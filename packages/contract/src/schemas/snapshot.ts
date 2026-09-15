@@ -39,6 +39,8 @@ export const SnapshotSchema = z.object({
   dayLabels: z.array(z.string()),
   // ---- adjustments: the write-offs and count-ups behind the `adjustment` moves on the ledger.
   adjustments: z.array(D.AdjustmentSchema),
+  // ---- adjustment requests: a counter's asks, decided or still waiting on the outlet manager.
+  adjReq: z.array(D.AdjustmentRequestSchema),
 });
 export const ItemsResponseSchema = z.record(z.string(), D.ItemSchema);
 export const LocationsResponseSchema = z.record(z.string(), D.LocationSchema);
@@ -79,3 +81,7 @@ export const RosterResponseSchema = D.PayerRosterSchema;
 /** The adjustment register on its own, so a write naming "adjustments" refetches that slice
  *  rather than the whole snapshot. Scoped like `stock`: a counter sees its own. */
 export const AdjustmentsResponseSchema = z.array(D.AdjustmentSchema);
+// ---- adjustment requests
+/** The request queue on its own, so a write naming "adjReq" refetches that slice rather than
+ *  the whole snapshot. Scoped like `req`: a counter sees its own outlet's. */
+export const AdjustmentRequestsResponseSchema = z.array(D.AdjustmentRequestSchema);

@@ -158,3 +158,18 @@ export const AdjustmentSchema = z.object({
   id: z.string(), loc: StockLocSchema, reason: AdjustReasonSchema, note: z.string(),
   by: z.string(), at: IsoTime, lines: z.array(AdjustmentLineSchema),
 });
+
+// ---- adjustment requests (the counter raises, the outlet manager decides)
+/** A counter's ask to correct its own shelf, decided by the outlet manager rather than acted on
+ *  by the counter directly - the same authorise/act split every other movement keeps, except
+ *  there is no second step after "Approved": approving one *is* the correction (CLAUDE.md's
+ *  movement rule is written for a hand-off, and a write-off or a count-up has none). */
+export const AdjReqStatusSchema = z.enum(["Request sent", "Approved", "Rejected", "Cancelled"]);
+export const AdjustmentRequestSchema = z.object({
+  id: z.string(), loc: LocKeySchema, reason: AdjustReasonSchema, note: z.string(),
+  by: z.string(), at: IsoTime, lines: z.array(AdjustmentLineSchema), st: AdjReqStatusSchema,
+  hist: z.array(HistEntrySchema), apprBy: z.string().optional(),
+  // The document this became once the manager approved it - the register carries the movement
+  // under this id, not under the request's own.
+  adjId: z.string().optional(),
+});

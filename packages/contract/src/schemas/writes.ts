@@ -1,13 +1,13 @@
 import { z } from "zod";
 import { IsoDate, ItemTypeSchema, LocKeySchema, PriceListIdSchema, SourceSchema, StockLocSchema, TenderSchema } from "./common.js";
-import { AdjustReasonSchema, GrnSchema, ItemSchema, PayerSchema, PordStatusSchema, ProdOrderSchema, PurchaseOrderSchema, ShopAskSchema, StockRequestSchema, TicketPrioritySchema, TicketSchema, TicketStatusSchema, TicketTopicSchema } from "./documents.js";
+import { AdjustmentRequestSchema, AdjustmentSchema, AdjustReasonSchema, GrnSchema, ItemSchema, PayerSchema, PordStatusSchema, ProdOrderSchema, PurchaseOrderSchema, ShopAskSchema, StockRequestSchema, TicketPrioritySchema, TicketSchema, TicketStatusSchema, TicketTopicSchema } from "./documents.js";
 
 /** Every domain slice a write can touch, so a client can invalidate/refetch precisely instead
  *  of reloading the whole snapshot after each mutation. Extracted so `events.ts` can name one
  *  collection at a time from the same enum. `"items"` is here because `POST /items` changes the
  *  item master, which every screen reads out of one registry - without it the only honest
  *  `changed` a new product could name would be the whole snapshot. */
-export const CollectionSchema = z.enum(["stock", "rsv", "ovr", "prices", "priceLists", "menu", "bills", "req", "tkt", "prq", "po", "pord", "batch", "grn", "vendors", "contracts", "tickets", "productReqs", "shopAsks", "items", "locations", "roster", "adjustments", "accounts"]);
+export const CollectionSchema = z.enum(["stock", "rsv", "ovr", "prices", "priceLists", "menu", "bills", "req", "tkt", "prq", "po", "pord", "batch", "grn", "vendors", "contracts", "tickets", "productReqs", "shopAsks", "items", "locations", "roster", "adjustments", "adjReq", "accounts"]);
 export const ChangedSchema = z.array(CollectionSchema);
 export type Changed = z.infer<typeof CollectionSchema>;
 
@@ -291,3 +291,17 @@ export const CreateProdOrderBodySchema = z.strictObject({
   need: IsoDate.optional(),
   note: z.string().max(500).default(""),
 });
+
+// ---- adjustment requests (the counter raises, the outlet manager decides)
+/** What the counter sends to raise one - the same signed-line shape `CreateAdjustmentBodySchema`
+ *  takes, with no location: the route pins it to the token, exactly as `CreateRequestBodySchema` does. */
+export const CreateAdjustmentRequestBodySchema = z.strictObject({
+  reason: AdjustReasonSchema,
+  note: z.string().max(500).default(""),
+  lines: z.array(z.strictObject({ it: z.string().min(1).max(64), qty: SignedQtySchema })).min(1).max(100),
+});
+/** Non-empty is a service rule, not a schema one - the same shape `RejectRequestBodySchema` takes. */
+export const RejectAdjustmentRequestBodySchema = z.strictObject({ note: z.string().max(500) });
+/** Approving one both decides the request and writes the correction in the same breath, so the
+ *  manager reads the `ADJ-` number it became without a second round trip. */
+export const ApproveAdjustmentRequestResultSchema = z.strictObject({ request: AdjustmentRequestSchema, adjustment: AdjustmentSchema });

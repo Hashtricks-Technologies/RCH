@@ -24,4 +24,6 @@ export default fp(async (app) => {
   mount(app, routes.roster, async (req) => svc.roster(req.user));
   // ---- adjustments: the register, scoped the same way the ledger it corrects is.
   mount(app, routes.adjustments, async (req) => svc.adjustments(req.user));
+  // ---- adjustment requests: a counter's asks, scoped the same way `requests` is.
+  mount(app, routes.adjustmentRequests, async (req) => svc.adjustmentRequests(req.user));
 }, { name: "module:snapshot", dependencies: ["auth", "rbac", "db"] });

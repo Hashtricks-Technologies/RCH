@@ -34,17 +34,22 @@ interface Line { it: string; dir: "down" | "up"; qty: string }
 const blankLine = (it: string): Line => ({ it, dir: "down", qty: "" });
 
 /**
- * The one form behind all three doors: the store keeper's own screen, the manager's drawer over
- * an outlet, and the kitchen's write-off button.
+ * The one form behind every door that touches this shelf: the store keeper's own screen, the
+ * kitchen's write-off button, and - in `mode="request"` - a counter's ask, which the outlet
+ * manager decides rather than writing straight to the ledger. An outlet manager no longer opens
+ * this directly (`modules/adjustmentRequests` is the only door onto its own shelf now).
  *
  * It previews the free stock beside every line - what is on the shelf less what a ticket is
  * holding, which is the same measure the server refuses on - but it decides nothing. The cover
  * check, the fold of a repeated item and the scope of the caller's role are all the server's,
  * and a refusal leaves everything typed exactly where it was.
  */
-export default function AdjustmentForm({ locs, fixedLoc }: { locs: [StockLoc, ...StockLoc[]]; fixedLoc?: StockLoc }) {
+export default function AdjustmentForm({ locs, fixedLoc, mode = "direct" }: {
+  locs: [StockLoc, ...StockLoc[]]; fixedLoc?: StockLoc; mode?: "direct" | "request";
+}) {
   const s = useApp();
   const createAdjustment = useApp((x) => x.createAdjustment);
+  const requestAdjustment = useApp((x) => x.requestAdjustment);
   const catalogVersion = useApp((x) => x.catalogVersion);
 
   // `locs` is a non-empty tuple, so `locs[0]` is a `StockLoc` and not `StockLoc | undefined`:
@@ -89,10 +94,8 @@ export default function AdjustmentForm({ locs, fixedLoc }: { locs: [StockLoc, ..
   const save = async () => {
     if (busy || nothing) return;
     setBusy(true);
-    const ok = await createAdjustment({
-      loc: at, reason, note,
-      lines: lines.map((l) => ({ it: l.it, qty: signed(l) })),
-    });
+    const body = { reason, note, lines: lines.map((l) => ({ it: l.it, qty: signed(l) })) };
+    const ok = mode === "request" ? await requestAdjustment(body) : await createAdjustment({ loc: at, ...body });
     setBusy(false);
     // Cleared only once the server has taken it - a refusal has to land on what was typed.
     if (ok) { setLines([]); setNote(""); }
@@ -100,11 +103,18 @@ export default function AdjustmentForm({ locs, fixedLoc }: { locs: [StockLoc, ..
 
   return (
     <>
-      <Alert tone="i" label="ON THE RECORD">
-        An adjustment moves stock without a movement: nothing goes anywhere, the shelf is simply
-        corrected. It is posted against this document, with your name and the reason on it - which
-        is what makes it different from the hand-written correction it replaces.
-      </Alert>
+      {mode === "request" ? (
+        <Alert tone="i" label="GOES TO THE OUTLET MANAGER">
+          Raising this does not move any stock by itself - it is an ask. The outlet manager sees the same lines and
+          either approves it, which corrects the shelf there and then, or rejects it with a reason.
+        </Alert>
+      ) : (
+        <Alert tone="i" label="ON THE RECORD">
+          An adjustment moves stock without a movement: nothing goes anywhere, the shelf is simply
+          corrected. It is posted against this document, with your name and the reason on it - which
+          is what makes it different from the hand-written correction it replaces.
+        </Alert>
+      )}
 
       <Section title="What is being corrected" tip="One shelf, one reason, as many lines as the count found." />
       <FormRow cols={fixedLoc ? "f2" : "f3"}>
@@ -207,14 +217,17 @@ export default function AdjustmentForm({ locs, fixedLoc }: { locs: [StockLoc, ..
       {wouldOverdraw.length > 0 && (
         <Alert tone="c" label="MORE THAN IS FREE">
           {wouldOverdraw.map((l) => `${IT[l.it]?.n ?? l.it} (${fq(free(l.it), l.it)} ${U(l.it)} free)`).join(", ")}
-          {" "}will be refused. What a pick ticket is holding is somebody else's promise, not this
-          shelf's to write off - cancel the ticket first if the stock is genuinely gone.
+          {" "}will be refused{mode === "request" ? " if the outlet manager approves it as it stands" : ""}. What a
+          pick ticket is holding is somebody else's promise, not this shelf's to write off - cancel the ticket first
+          if the stock is genuinely gone.
         </Alert>
       )}
 
       <BtnRow>
         <Btn size="sm" variant="gh" onClick={addLine}>Add line</Btn>
-        <Btn disabled={nothing || busy} onClick={save}>{busy ? "Recording…" : "Record adjustment"}</Btn>
+        <Btn disabled={nothing || busy} onClick={save}>
+          {mode === "request" ? (busy ? "Sending…" : "Send to the outlet manager") : (busy ? "Recording…" : "Record adjustment")}
+        </Btn>
       </BtnRow>
     </>
   );
@@ -224,10 +237,9 @@ export default function AdjustmentForm({ locs, fixedLoc }: { locs: [StockLoc, ..
  * The same form behind a drawer, pinned to one shelf: `openDrawer("adjstock", loc)` names the
  * location in the drawer's own id.
  *
- * Registered here rather than in either screen because two roles open it - the outlet manager
- * from Items & Stock and the kitchen from its own stock screen - and a second registration of
- * one key is a second copy to keep in step. Each role's `index.tsx` imports this file for the
- * side effect, exactly as it imports its own drawer modules.
+ * Registered here for the kitchen's own write-off button - the one role left that opens it
+ * directly. Each role's `index.tsx` imports this file for the side effect, exactly as it
+ * imports its own drawer modules.
  */
 function AdjustStockDrawer({ id }: DrawerProps) {
   const loc = id as StockLoc;

@@ -1,5 +1,5 @@
-import { index, pgTable, primaryKey, smallint, text } from "drizzle-orm/pg-core";
-import { adjustReasonEnum } from "./enums.js";
+import { index, integer, pgTable, primaryKey, smallint, text } from "drizzle-orm/pg-core";
+import { adjReqStatusEnum, adjustReasonEnum } from "./enums.js";
 import { items, locations, qty, ts, users } from "./master.js";
 
 /**
@@ -37,3 +37,39 @@ export const adjustmentLines = pgTable("adjustment_lines", {
   itemKey: text("item_key").notNull().references(() => items.key),
   qty: qty("qty").notNull(),
 }, (t) => [primaryKey({ columns: [t.adjustmentId, t.lineNo] })]);
+
+/**
+ * A counter's ask to correct its own shelf, before the outlet manager has decided it. `loc` is a
+ * plain location key, not `StockLoc` the way `adjustments.loc` is: a counter works one of the
+ * three outlets, never quarantine and never the central store or kitchen, so there is no sixth
+ * shelf to name here.
+ *
+ * `adjustmentId` is set once, on approval - the `ADJ-` document the request became, written by
+ * the same `writeAdjustment` the store keeper's and the kitchen's own screens call. Nothing here
+ * reserves anything: an adjustment has no hand-off to scan, so approving one is the whole of the
+ * movement rather than the first half of it.
+ */
+export const adjustmentRequests = pgTable("adjustment_requests", {
+  id: text("id").primaryKey(),
+  loc: text("loc").notNull().references(() => locations.key),
+  reason: adjustReasonEnum("reason").notNull(),
+  note: text("note").notNull().default(""),
+  byUser: text("by_user").notNull().references(() => users.id),
+  at: ts("at").notNull().defaultNow(),
+  status: adjReqStatusEnum("status").notNull(),
+  approvedBy: text("approved_by").references(() => users.id),
+  adjustmentId: text("adjustment_id").references(() => adjustments.id),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+}, (t) => [
+  index("adjustment_requests_status_idx").on(t.status),
+  index("adjustment_requests_loc_idx").on(t.loc),
+]);
+
+/** Signed, exactly like `adjustmentLines`: the sign the counter picked survives untouched from
+ *  the ask through to the document the manager's approval writes. */
+export const adjustmentRequestLines = pgTable("adjustment_request_lines", {
+  requestId: text("request_id").notNull().references(() => adjustmentRequests.id),
+  lineNo: integer("line_no").notNull(),
+  itemKey: text("item_key").notNull().references(() => items.key),
+  qty: qty("qty").notNull(),
+}, (t) => [primaryKey({ columns: [t.requestId, t.lineNo] })]);

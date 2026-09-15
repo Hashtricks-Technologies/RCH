@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { REASON_LABEL } from "@rch/domain";
 import { IT, LOC, OUTLETS } from "../../data/master";
 import { useApp } from "../../store";
 import { unitTotal } from "../../lib/fmt";
@@ -28,6 +29,7 @@ const decidedBy = (r: StockRequest) =>
 
 export default function Approvals() {
   const req = useApp((s) => s.req);
+  const adjReq = useApp((s) => s.adjReq);
   const openDrawer = useApp((s) => s.openDrawer);
 
   const [wq, setWq] = useState("");
@@ -61,6 +63,10 @@ export default function Approvals() {
   const allActioned = req.filter((r) => r.st !== "Request sent");
   const urgent = allWaiting.filter((r) => r.urg).length;
   const rejected = allActioned.filter((r) => r.st === "Rejected");
+
+  // ---- adjustment requests
+  const adjWaiting = adjReq.filter((r) => r.st === "Request sent");
+  const adjSorted = adjReq.slice().sort((a, b) => b.iso.localeCompare(a.iso));
 
   const wTerm = wq.trim().toLowerCase();
   const waiting = allWaiting
@@ -238,6 +244,40 @@ export default function Approvals() {
         <TableFoot count={actioned.length} />
       </Card>
       </Grid>
+
+      <Card
+        title="Adjustment requests"
+        sub={`${adjWaiting.length} waiting of ${adjReq.length} raised`}
+        tip="A counter's ask to correct its own shelf. Approving one writes the ADJ- document and moves the shelf in the same step."
+        flush
+        className="mtop"
+      >
+        <DataTable
+          cols={[
+            { h: "Request", cls: "nm", w: "16%" }, { h: "Outlet" }, { h: "Raised by" }, { h: "Time", r: true },
+            { h: "Lines", r: true }, { h: "Reason" }, { h: "Status" }, { h: "Action", w: "9%" },
+          ]}
+          rows={adjSorted.map((r) => ({
+            key: r.id,
+            onClick: () => openDrawer("madjreq", r.id),
+            cells: [
+              <>{r.id}<small>{r.lines.map((l) => IT[l.it]?.n ?? l.it).join(", ")}</small></>,
+              LOC[r.loc].n,
+              r.by,
+              r.at,
+              r.lines.length,
+              REASON_LABEL[r.reason],
+              <StatusPill status={r.st} />,
+              r.st === "Request sent" ? <Btn size="xs" onClick={() => openDrawer("madjreq", r.id)}>Review</Btn> : null,
+            ],
+          }))}
+          empty={{
+            title: "No adjustment request yet",
+            sub: "A counter's ask to write off or count up its own shelf lands here.",
+          }}
+        />
+        <TableFoot count={adjReq.length} />
+      </Card>
     </>
   );
 }

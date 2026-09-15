@@ -64,6 +64,9 @@ every consumer of that table. So an edge that only one endpoint should take is g
   `requests/service.ts` shuts that door once a ticket exists.
 - `PO_TRANSITIONS["Partially received"]` includes itself, because a second partial delivery re-enters it.
   `Ordered → Cancelled` is guarded again at `cancel` once anything has been received.
+- `ADJUSTMENT_REQUEST_TRANSITIONS` has no edge back out of `Approved`: approving one both decides it and
+  writes the `ADJ-` document in the same step, so there is no ticket stage to withdraw the way a stock
+  request's is - `Cancelled` is reachable only from `Request sent`.
 
 ## Conventions
 

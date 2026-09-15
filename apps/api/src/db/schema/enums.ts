@@ -33,3 +33,7 @@ export const productReqStatusEnum = pgEnum("product_req_status", ["Requested", "
 // query groups by, and free text would make three answers out of one question. `count` is the
 // physical count - a correction to a sum, not a loss.
 export const adjustReasonEnum = pgEnum("adjust_reason", ["wastage", "breakage", "expired", "count", "returned_to_vendor", "other"]);
+// ---- adjustment requests. There is no "Ticket issued" stage here the way a stock request has
+// one: approving one both decides it and writes the correction in the same step, so "Approved"
+// is the end of the line rather than a hand-off to something else.
+export const adjReqStatusEnum = pgEnum("adj_req_status", ["Request sent", "Approved", "Rejected", "Cancelled"]);

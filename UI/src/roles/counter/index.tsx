@@ -13,6 +13,9 @@ import "./TicketDrawer";
 import "./ConfigureDrawer";
 // ---- prod-order raise ----
 import "./KitchenOrderDrawer";
+// ---- adjustment requests ----
+import "./AdjustmentRequestForm";
+import "./AdjustmentRequestDrawer";
 
 // There is no standalone Product Availability screen for the counter - every
 // product's on/off state and switch live inline, on the POS tile and the

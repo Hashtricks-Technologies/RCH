@@ -27,7 +27,7 @@ src/server.ts     listen; SIGTERM drains (see Shutdown)
 src/config.ts     the Zod env schema - the only reader of process.env
 src/routes.ts     mount(): the only way a module registers a route
 src/plugins/*     logging, errors, metrics, health, security, db, auth, rbac, sse, idempotency
-src/lib/*         ledger, reservations, tickets, ids, history, rules, events, claims, credit, master, …
+src/lib/*         ledger, reservations, tickets, adjustments, ids, history, rules, events, claims, credit, master, …
 src/modules/*     one folder per slice, registered in modules/index.ts; _template is the skeleton to copy
 src/db/*          schema/, client.ts, migrate.ts, seed.ts
 src/cli/*         migrate, seed, rebuild-balances, users, payers, keys, purge
@@ -240,7 +240,9 @@ The config pins `TZ=UTC`, a 30 s test timeout, and runs files in parallel.
     don't touch master data.
 - **`given.*` in `src/test/builders.ts` is the only sanctioned way to make a document.** It allocates ids in
   bands above both the fixtures and the sequence starts. `given.adjustment` writes the document only, never a
-  ledger move. There is no `given.payer`: insert into `payers` directly.
+  ledger move; `given.adjustmentRequest` likewise writes only the request, whatever status you hand it - it
+  never calls `writeAdjustment`, so a case about the queue does not accidentally exercise the write path too.
+  There is no `given.payer`: insert into `payers` directly.
 - **`sequences` survives truncation**, so never assert a literal allocated id. Match the shape and assert the
   relative step instead.
 - **A test that proves a lock holds must call `warmPool(t, n)` first**, with **n ≤ 4** (the test pool's

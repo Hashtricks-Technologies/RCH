@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { PO_TRANSITIONS, PROD_ORDER_TRANSITIONS, REQUEST_TRANSITIONS, REQUISITION_TRANSITIONS, SHOP_ASK_TRANSITIONS, TICKET_TRANSITIONS, canTransition } from "./transitions";
+import { ADJUSTMENT_REQUEST_TRANSITIONS, PO_TRANSITIONS, PROD_ORDER_TRANSITIONS, REQUEST_TRANSITIONS, REQUISITION_TRANSITIONS, SHOP_ASK_TRANSITIONS, TICKET_TRANSITIONS, canTransition } from "./transitions";
 
 describe("request transitions", () => {
   it("walks the chain the outlet actually walks", () => {
@@ -135,5 +135,23 @@ describe("a purchase order's life", () => {
     for (const st of ["Ordered", "Partially received", "Received", "Cancelled"] as const) {
       expect(canTransition(PO_TRANSITIONS, st, "Draft")).toBe(false);
     }
+  });
+});
+
+describe("a counter's adjustment request", () => {
+  it("the manager decides once - approve, reject, or the counter withdraws it first", () => {
+    expect(canTransition(ADJUSTMENT_REQUEST_TRANSITIONS, "Request sent", "Approved")).toBe(true);
+    expect(canTransition(ADJUSTMENT_REQUEST_TRANSITIONS, "Request sent", "Rejected")).toBe(true);
+    expect(canTransition(ADJUSTMENT_REQUEST_TRANSITIONS, "Request sent", "Cancelled")).toBe(true);
+  });
+  it("approving one is the whole of the movement - there is no ticket stage after it", () => {
+    for (const st of ["Approved", "Rejected", "Cancelled"] as const) {
+      expect(ADJUSTMENT_REQUEST_TRANSITIONS[st]).toEqual([]);
+    }
+  });
+  it("refuses a second decision on a request already decided", () => {
+    expect(canTransition(ADJUSTMENT_REQUEST_TRANSITIONS, "Approved", "Rejected")).toBe(false);
+    expect(canTransition(ADJUSTMENT_REQUEST_TRANSITIONS, "Rejected", "Approved")).toBe(false);
+    expect(canTransition(ADJUSTMENT_REQUEST_TRANSITIONS, "Cancelled", "Approved")).toBe(false);
   });
 });

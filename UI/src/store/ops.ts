@@ -91,6 +91,14 @@ export interface OpsSlice {
    *  what the operator typed still on it. Every rule - what folds, what is free to write off,
    *  which shelves this role may touch - is the server's; nothing is decided here. */
   createAdjustment: (body: { loc: StockLoc; reason: AdjustReason; note: string; lines: { it: string; qty: number }[] }) => Promise<boolean>;
+
+  // ---- adjustment requests: the counter raises, the outlet manager decides. No direct write for
+  // a counter - only the ask - and approving one both decides it and writes the `ADJ-` document
+  // in the same step, so there is nothing between "Approved" and the shelf actually moving.
+  requestAdjustment: (body: { reason: AdjustReason; note: string; lines: { it: string; qty: number }[] }) => Promise<boolean>;
+  cancelAdjustmentRequest: (id: string) => Promise<boolean>;
+  approveAdjustmentRequest: (id: string) => Promise<boolean>;
+  rejectAdjustmentRequest: (id: string, note: string) => Promise<boolean>;
 }
 
 /** Every action in this slice is the server's now: post the body, repeat the sentence that came
@@ -327,5 +335,39 @@ export const createOpsSlice = (get: Get): OpsSlice => ({
       await refetch(r.changed, r.message);
       return true;
     } catch (e) { return fail(get, e, "record the adjustment"); }
+  },
+
+  // ---- adjustment requests
+  requestAdjustment: async ({ reason, note, lines }) => {
+    try {
+      const r = await call(routes.createAdjustmentRequest, { body: { reason, note: note.trim(), lines } });
+      get().notify(r.message);
+      await refetch(r.changed, r.message);
+      return true;
+    } catch (e) { return fail(get, e, "send the adjustment request"); }
+  },
+  cancelAdjustmentRequest: async (id) => {
+    try {
+      const r = await call(routes.cancelAdjustmentRequest, { params: { id } });
+      get().notify(r.message);
+      await refetch(r.changed, r.message);
+      return true;
+    } catch (e) { return fail(get, e, "cancel the adjustment request"); }
+  },
+  approveAdjustmentRequest: async (id) => {
+    try {
+      const r = await call(routes.approveAdjustmentRequest, { params: { id } });
+      get().notify(r.message);
+      await refetch(r.changed, r.message);
+      return true;
+    } catch (e) { return fail(get, e, "approve the adjustment request"); }
+  },
+  rejectAdjustmentRequest: async (id, note) => {
+    try {
+      const r = await call(routes.rejectAdjustmentRequest, { params: { id }, body: { note } });
+      get().notify(r.message);
+      await refetch(r.changed, r.message);
+      return true;
+    } catch (e) { return fail(get, e, "reject the adjustment request"); }
   },
 });

@@ -77,6 +77,8 @@ export function applySnapshot(s: Snapshot): void {
     sales: s.sales, dayLabels: s.dayLabels,
     // ---- adjustments
     adjustments: s.adjustments.map(stamped),
+    // ---- adjustment requests
+    adjReq: s.adjReq.map((r) => ({ ...stamped(r), hist: hist(r.hist) })),
   }));
 }
 
@@ -226,4 +228,12 @@ export function applyAdminActions(rows: AdminAction[]): void {
  *  - the document and the shelf it corrected, not a whole snapshot. */
 export function applyAdjustments(rows: Snapshot["adjustments"]): void {
   useApp.setState({ adjustments: rows.map(stamped) });
+}
+
+// ---- adjustment requests
+/** GET /adjustment-requests -> a counter's asks, stamped like every other document with a
+ *  trail. Every write on this desk names "adjReq" in `changed`, and an approval also names
+ *  "stock" and "adjustments" - the shelf and the register it moved. */
+export function applyAdjustmentRequests(rows: Snapshot["adjReq"]): void {
+  useApp.setState({ adjReq: rows.map((r) => ({ ...stamped(r), hist: hist(r.hist) })) });
 }

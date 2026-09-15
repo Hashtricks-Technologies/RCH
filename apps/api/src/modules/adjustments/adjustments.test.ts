@@ -174,25 +174,13 @@ describe("POST /adjustments", () => {
     const ok = await post("u3", { loc: "quarantine", reason: "returned_to_vendor", lines: [{ it: "milk", qty: 2 }] });
     expect(ok.statusCode, ok.body).toBe(200);
 
-    const mgr = await post("u2", { loc: "quarantine", reason: "returned_to_vendor", lines: [{ it: "milk", qty: -1 }] });
-    expect(mgr.statusCode).toBe(403);
-    expect(mgr.json().error.message).toBe("You can only adjust stock at an outlet - the central store writes off its own shelves");
-
     const kitchen = await post("u4", { loc: "quarantine", reason: "returned_to_vendor", lines: [{ it: "milk", qty: -1 }] });
     expect(kitchen.statusCode).toBe(403);
   });
 
-  it("lets a manager adjust an outlet and refuses them the central store", async () => {
-    // A manager supervises the three shops, so it is any outlet and not only their own - the
-    // same hospital-wide reach an approval has.
-    const before = await balance("kiosk", "water");
-    const ok = await post("u2", { loc: "kiosk", reason: "breakage", lines: [{ it: "water", qty: -2 }] });
-    expect(ok.statusCode, ok.body).toBe(200);
-    expect(await balance("kiosk", "water")).toBe(before! - 2);
-
-    const store = await post("u2", { loc: "store", reason: "breakage", lines: [{ it: "water", qty: -2 }] });
-    expect(store.statusCode).toBe(403);
-    expect(store.json().error.message).toBe("You can only adjust stock at an outlet - the central store writes off its own shelves");
+  it("is absent for the manager - an outlet's shelf is only corrected through an adjustment request", async () => {
+    const r = await post("u2", { loc: "kiosk", reason: "breakage", lines: [{ it: "water", qty: -2 }] });
+    expect(r.statusCode).toBe(404);
   });
 
   it("lets the kitchen adjust the kitchen and nowhere else", async () => {

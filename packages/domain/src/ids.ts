@@ -3,6 +3,9 @@ export type IdKind =
   | "vendor" | "contract" | "support" | "product_req" | "shop_ask"
   // ---- adjustments: a write-off or a count-up is a numbered document like any other.
   | "adj"
+  // ---- adjustment requests: the counter's ask, before the manager decides it and it becomes
+  // (or does not become) an "adj" document of its own.
+  | "adj_req"
   // ---- price lists: a named entity like a vendor, not a document series.
   | "price_list";
 
@@ -34,6 +37,9 @@ export function formatId(kind: IdKind, n: number, at: Date = new Date()): string
     // the series starts at 1 and a bare `ADJ-2026-1` beside `ADJ-2026-10` sorts wrongly on every
     // screen that sorts a document list as text.
     case "adj":         return `ADJ-${year(at)}-${pad(n, 4)}`;
+    // ---- adjustment requests. Same shape as `req`: the series starts low and a bare number
+    // beside `req`'s own would not be told apart if it were not for the different prefix.
+    case "adj_req":     return `ADJREQ-${year(at)}-0${n}`;
     case "price_list":  return `PL-${pad(n, 3)}`;
   }
 }
@@ -91,6 +97,8 @@ export const SEQUENCE_START: Record<IdKind, number> = {
   // ---- adjustments: nothing was ever written off through a document before, so the series
   // starts at one rather than continuing a seeded run.
   adj: 1,
+  // ---- adjustment requests: likewise nothing to continue.
+  adj_req: 1,
   // ---- price lists: two seeded lists (the old A and B), so the series continues past them.
   price_list: 3,
 };

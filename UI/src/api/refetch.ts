@@ -1,7 +1,7 @@
 import { routes, type Changed } from "@rch/contract";
 import { call } from "./client";
 import {
-  applyAccounts, applyAdjustments, applyBatches, applyBills, applyContracts, applyDeskTickets, applyGrns, applyItems, applyLocations, applyMenus,
+  applyAccounts, applyAdjustmentRequests, applyAdjustments, applyBatches, applyBills, applyContracts, applyDeskTickets, applyGrns, applyItems, applyLocations, applyMenus,
   applyPos, applyPriceLists, applyPrices, applyProdOrders, applyProductRequests, applyRequests,
   applyRequisitions, applyRoster, applyShopAsks, applyStock, applySupportTickets, applyTickets,
   applyVendors,
@@ -39,6 +39,8 @@ const NARROW: Partial<Record<Changed, () => Promise<void>>> = {
   roster: () => call(routes.roster).then(applyRoster),
   // ---- adjustments
   adjustments: () => call(routes.adjustments).then(applyAdjustments),
+  // ---- adjustment requests
+  adjReq: () => call(routes.adjustmentRequests).then(applyAdjustmentRequests),
   // ---- admin: account management
   accounts: () => call(routes.adminUsers).then(applyAccounts),
 };

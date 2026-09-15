@@ -43,6 +43,15 @@ const isoOf = (now: number, display: unknown): string => {
 };
 type Trail = { hist: { s: string; who: string; t: string }[] };
 
+/** The one seed row for a feature the demo fixtures never carried: a counter's ask to correct
+ *  its own shelf, undecided. Not in `@rch/contract/fixtures` because nothing outside the UI's
+ *  own screen tests needs it yet - the API's own tests build one with `given.adjustmentRequest`. */
+const ADJREQ = {
+  id: "ADJREQ-2026-01", loc: "coffee", reason: "wastage", note: "Fridge failed overnight",
+  by: "Kavitha Raman", at: "09:10", lines: [{ it: "cup", qty: -20 }],
+  st: "Request sent", hist: [{ s: "Request sent", who: "Kavitha Raman", t: "09:10" }],
+};
+
 /**
  * The demo hospital, in the store. Master data goes through the same two hydrators the snapshot
  * uses, so a test sees exactly the registries a signed-in browser sees.
@@ -74,6 +83,9 @@ export function resetStore() {
     // ---- adjustments: nothing has ever been written off in the demo hospital, so the register
     // starts empty - the same shape the fixtures give quarantine's shelf.
     adjustments: [],
+    // ---- adjustment requests: one open ask, undecided, so a screen or a drawer test has a
+    // real document to open rather than an empty state.
+    adjReq: [ADJREQ].map(doc),
     cart: {}, draft: [], prqDraft: [], poolVendor: {}, drawer: null, toast: null, shopFilter: null,
     // ---- admin: account management ----
     // Empty, not seeded: nothing on the snapshot carries the account list or its

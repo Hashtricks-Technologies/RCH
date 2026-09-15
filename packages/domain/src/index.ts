@@ -8,7 +8,7 @@ export { availOf, fq } from "./availability.js";
 export { committed, freeToPromise } from "./promise.js";
 export { bestBeforeAt, bestBeforeText } from "./shelf.js";
 export { planBill, type BillPlan } from "./billing.js";
-export { REQUEST_TRANSITIONS, TICKET_TRANSITIONS, SHOP_ASK_TRANSITIONS, PROD_ORDER_TRANSITIONS, REQUISITION_TRANSITIONS, PO_TRANSITIONS, canTransition, type TransitionTable } from "./transitions.js";
+export { REQUEST_TRANSITIONS, TICKET_TRANSITIONS, SHOP_ASK_TRANSITIONS, PROD_ORDER_TRANSITIONS, REQUISITION_TRANSITIONS, PO_TRANSITIONS, ADJUSTMENT_REQUEST_TRANSITIONS, canTransition, type TransitionTable } from "./transitions.js";
 export { planApproval, approvedStatus, planPrqApproval, prqStatus, type ApprovalLine, type ApprovalPlan } from "./approval.js";
 export { STAFF_CREDIT_LIMIT, creditRoom, breachesCredit, creditBreachMessage } from "./credit.js";
 export { money, money0, dmy, istDate, unitTotal } from "./format.js";

@@ -21,6 +21,7 @@ import support from "./support/routes.js";
 import reports from "./reports/routes.js";
 // ---- adjustments
 import adjustments from "./adjustments/routes.js";
+import adjustmentRequests from "./adjustmentRequests/routes.js";
 // ---- admin account management
 import admin from "./admin/routes.js";
 
@@ -48,6 +49,7 @@ export async function registerModules(app: App): Promise<void> {
   await app.register(reports);
   // ---- adjustments
   await app.register(adjustments);
+  await app.register(adjustmentRequests);
   // ---- admin account management
   await app.register(admin);
 }

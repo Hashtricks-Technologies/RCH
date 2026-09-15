@@ -1,5 +1,14 @@
-// Adjustments: SQL only. No rules, no transaction of its own - service.ts passes `tx` in.
-import { and, asc, eq, inArray } from "drizzle-orm";
+// Adjustments: SQL only. No rules, no transaction of its own - the caller passes `tx` in.
+//
+// This module's own door (`service.ts`'s `create`) is now a thin wrapper around
+// apps/api/src/lib/adjustments.ts's `writeAdjustment`, once modules/adjustmentRequests needed
+// the same write from its own decision - two callers writing one shelf's document is two things
+// to keep in step. The queries below stayed here rather than moving into `lib/` with the rest:
+// they are plain reads and inserts with no rule attached, and `writeAdjustment` calls them from
+// there the same way it would call any other module's repo, rather than duplicating them.
+// Reading the register back is `readAdjustments` in modules/snapshot/readers/documents.ts,
+// beside every other document's reader, rather than a second read here.
+import { and, eq, inArray } from "drizzle-orm";
 import { adjustmentLines, adjustments, stockBalances, users } from "../../db/schema/index.js";
 import type { Tx } from "../../lib/db.js";
 
@@ -14,8 +23,7 @@ export const adjustmentsRepo = {
   async balancesAt(tx: Tx, loc: string, itemKeys: readonly string[]): Promise<Record<string, number>> {
     if (itemKeys.length === 0) return {};
     const rows = await tx.select().from(stockBalances)
-      .where(and(eq(stockBalances.loc, loc), inArray(stockBalances.itemKey, [...itemKeys])))
-      .orderBy(asc(stockBalances.itemKey));
+      .where(and(eq(stockBalances.loc, loc), inArray(stockBalances.itemKey, [...itemKeys])));
     return Object.fromEntries(rows.map((r) => [r.itemKey, r.onHand]));
   },
 
@@ -36,7 +44,3 @@ export const adjustmentsRepo = {
     return u?.name ?? id;
   },
 };
-
-// Reading the register back is `readAdjustments` in modules/snapshot/readers/documents.ts, beside
-// every other document's reader, rather than a second read here: `GET /adjustments` and the
-// snapshot's own `adjustments` are one query shape and have to stay one.

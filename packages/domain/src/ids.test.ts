@@ -64,6 +64,17 @@ describe("an adjustment's number", () => {
   });
 });
 
+// ---- adjustment requests
+describe("an adjustment request's number", () => {
+  it("carries the year, the same shape a stock request's does", () => {
+    expect(formatId("adj_req", 1, at)).toBe("ADJREQ-2026-01");
+    expect(formatId("adj_req", 12, at)).toBe("ADJREQ-2026-012");
+  });
+  it("starts at one - nothing was ever raised through this door before", () => {
+    expect(SEQUENCE_START.adj_req).toBe(1);
+  });
+});
+
 describe("the next employee number", () => {
   it("is one past the highest, four digits at least", () => {
     expect(nextEmpNo(["RC-0001"])).toBe("RC-0002");

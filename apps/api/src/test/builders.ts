@@ -2,7 +2,7 @@
 // document instead of asking for one here is rejected in review - the defaults belong in one
 // place, so a case says only what it is about.
 import { eq } from "drizzle-orm";
-import type { AdjustReason, LocKey, PordStatus, PoStatus, PrqStatus, ProductReqStatus, ReqStatus, Role, ShopAskStatus, StockLoc, TicketPriority, TicketStatus, TicketTopic, TktStatus } from "@rch/contract";
+import type { AdjReqStatus, AdjustReason, LocKey, PordStatus, PoStatus, PrqStatus, ProductReqStatus, ReqStatus, Role, ShopAskStatus, StockLoc, TicketPriority, TicketStatus, TicketTopic, TktStatus } from "@rch/contract";
 import { REASON_LABEL, round3 } from "@rch/domain";
 import type { Db } from "../db/client.js";
 import * as s from "../db/schema/index.js";
@@ -15,7 +15,7 @@ import type { TicketRefType } from "../lib/tickets.js";
  *  collided often enough to matter. Each test file is its own module instance and its own
  *  schema, so the counters need not be unique across files. Bands sit above the fixtures and
  *  above each sequence's start; padStart keeps the printed width when a band runs past 999. */
-const counters = { req: 0, tkt: 0, ask: 0, bill: 0, pord: 0, prq: 0, po: 0, vendor: 0, contract: 0, npr: 0, sup: 0, adj: 0 };
+const counters = { req: 0, tkt: 0, ask: 0, bill: 0, pord: 0, prq: 0, po: 0, vendor: 0, contract: 0, npr: 0, sup: 0, adj: 0, adjreq: 0 };
 const nextId = (prefix: string, base: number, family: keyof typeof counters): string =>
   `${prefix}${String(base + ++counters[family]).padStart(4, "0")}`;
 
@@ -266,6 +266,33 @@ export const given = {
       })));
       const [author] = await tx.select({ name: s.users.name }).from(s.users).where(eq(s.users.id, by));
       await appendHistory(tx, "adjustment", id, REASON_LABEL[p.reason ?? "wastage"], author?.name ?? by, p.at);
+    });
+    return id;
+  },
+
+  // ---- adjustment requests
+  /** A counter's ask, raised and not yet decided (or already decided, if `st` says so), for a
+   *  case about reading or deciding the queue rather than about raising into it.
+   *
+   *  The band is `ADJREQ-2026-9001`+, above both the fixtures (which seed none) and the
+   *  sequence's own start of 1. */
+  async adjustmentRequest(db: Db, p: {
+    id?: string; loc: LocKey; by?: string; reason?: AdjustReason; note?: string;
+    lines: { it: string; qty: number }[]; st?: AdjReqStatus; approvedBy?: string; adjId?: string; at?: Date;
+  }): Promise<string> {
+    const id = p.id ?? nextId("ADJREQ-2026-", 9000, "adjreq");
+    const st = p.st ?? "Request sent";
+    await db.transaction(async (tx) => {
+      await tx.insert(s.adjustmentRequests).values({
+        id, loc: p.loc, reason: p.reason ?? "wastage", note: p.note ?? "", byUser: p.by ?? "u1",
+        status: st, approvedBy: p.approvedBy ?? null, adjustmentId: p.adjId ?? null,
+        ...(p.at ? { at: p.at } : {}),
+      });
+      await tx.insert(s.adjustmentRequestLines).values(p.lines.map((l, lineNo) => ({
+        requestId: id, lineNo, itemKey: l.it, qty: round3(l.qty),
+      })));
+      const [author] = await tx.select({ name: s.users.name }).from(s.users).where(eq(s.users.id, p.by ?? "u1"));
+      await appendHistory(tx, "adjustment_request", id, "Request sent", author?.name ?? p.by ?? "u1", p.at);
     });
     return id;
   },

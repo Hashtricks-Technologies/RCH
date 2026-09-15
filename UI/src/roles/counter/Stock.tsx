@@ -5,7 +5,7 @@ import { useApp } from "../../store";
 import { avail, daysCover, menuOf, parOf, qty, resv, stateLabel, stateTone } from "../../lib/selectors";
 import { fq, money0, U } from "../../lib/fmt";
 import {
-  Btn, Card, FilterBtn, FilterSelect, ImagePlaceholder, PageHead, Pill, TileMenu, Toolbar,
+  Btn, Card, DataTable, FilterBtn, FilterSelect, ImagePlaceholder, PageHead, Pill, StatusPill, TileMenu, Toolbar,
 } from "../../ui/kit";
 import { TypeTag } from "./Pos";
 import "./ConfigureDrawer";
@@ -71,6 +71,8 @@ export default function Stock() {
     nav("/requests");
   };
 
+  const mine = s.adjReq.filter((r) => r.loc === loc).slice().sort((a, b) => b.iso.localeCompare(a.iso));
+
   return (
     <>
       <PageHead
@@ -82,7 +84,10 @@ export default function Stock() {
           other outlets is not visible from a counter terminal. <b>Par here</b> is this outlet's own reorder level - a
           counter holds a day of stock, so it is far below the central store's par and only what falls under it reads low.
         </>}
-        actions={<Btn variant="gh" onClick={() => nav("/requests")}>Stock requests</Btn>}
+        actions={<>
+          <Btn variant="gh" onClick={() => openDrawer("creqadj", "new")}>Request adjustment</Btn>
+          <Btn variant="gh" onClick={() => nav("/requests")}>Stock requests</Btn>
+        </>}
       />
       <Card flush>
         <Toolbar
@@ -192,6 +197,32 @@ export default function Stock() {
           <span>Showing <b className="mono">{rows.length}</b> of <b className="mono">{rows.length}</b></span>
           <span className="mini">{L.n} · {L.c} · {L.floor} · stock at cost {money0(value)}</span>
         </div>
+      </Card>
+
+      <Card
+        title="Adjustment requests"
+        sub={`${mine.length} raised from ${L.n}`}
+        tip="Wastage, breakage or a count that came out wrong at this counter - the outlet manager decides each one."
+        flush
+        className="mtop"
+      >
+        <DataTable
+          cols={[{ h: "Request", cls: "nm" }, { h: "Lines" }, { h: "Raised" }, { h: "Status" }]}
+          rows={mine.map((r) => ({
+            key: r.id,
+            onClick: () => openDrawer("cadjreq", r.id),
+            cells: [
+              r.id,
+              r.lines.map((l) => IT[l.it]?.n ?? l.it).join(", "),
+              r.at,
+              <StatusPill status={r.st} />,
+            ],
+          }))}
+          empty={{
+            title: "No adjustment request raised from this counter yet",
+            sub: "Request one above when the shelf and the books disagree.",
+          }}
+        />
       </Card>
     </>
   );

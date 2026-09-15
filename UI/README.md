@@ -117,7 +117,7 @@ src/
                                            procurement.ts (vendors, requisition approval, the PO lifecycle,
                                            goods receipt); ops.ts (rate contracts, new-product requests,
                                            shop-to-shop transfers, the support desk, the item patch,
-                                           adjustments)
+                                           adjustments, adjustment requests)
   data/                                   master.ts (empty registries, replaced in place by hydrateMaster() and
                                            hydrateRoster()), vendors.ts - no seed.ts, no ops.ts; nothing here
                                            imports the fixtures
@@ -127,8 +127,9 @@ src/
                                            Tip.tsx (the one tooltip: every explanation on a page, card,
                                            field, figure or button opens on hover, focus or tap),
                                            Shell.tsx, Drawer.tsx, ErrorBoundary.tsx, prefs.ts, and four
-                                           shared non-kit pieces two roles each need: TicketSlip.tsx,
-                                           NewProductForm.tsx, AdjustmentForm.tsx, KitchenOrderForm.tsx
+                                           shared non-kit pieces more than one role needs: TicketSlip.tsx,
+                                           NewProductForm.tsx, AdjustmentForm.tsx (store, kitchen, and - in
+                                           its request mode - the counter), KitchenOrderForm.tsx
   pages/                                  Login.tsx, ChangePassword.tsx, Settings.tsx, Support.tsx
   roles/<role>/                           counter/ manager/ store/ prod/ buyer/
   __tests__/                              store, procurement, fixes, screens/app, audit-screens, time,
@@ -163,13 +164,19 @@ item stays on until someone switches it off. The toggle is a manual override on 
 ## Recent capabilities
 
 **Correcting a shelf is a document.** A write-off or a stock count is raised from the shelf it
-corrects - the store keeper's Adjustments screen for any location including quarantine, an
-Adjust stock drawer on the manager's outlet rows and on the kitchen's stock screen. It carries a
-reason (wastage, breakage, expired, stock count, returned to vendor, other), a note, a signature
-and any number of signed lines: negative writes off, positive counts up, and a positive line is
-how a location that has never carried an item comes to carry one without a delivery. A write-off
-may not take stock a pick ticket is holding, and the register on the same screen is where a
-month of it reads back by reason.
+corrects - the store keeper's Adjustments screen for any location including quarantine, and an
+Adjust stock drawer on the kitchen's own stock screen. It carries a reason (wastage, breakage,
+expired, stock count, returned to vendor, other), a note, a signature and any number of signed
+lines: negative writes off, positive counts up, and a positive line is how a location that has
+never carried an item comes to carry one without a delivery. A write-off may not take stock a
+pick ticket is holding, and the register on the same screen is where a month of it reads back by
+reason. An outlet's own shelf is the one exception: the manager does not open that form directly
+any more, only a counter does, from a "Request adjustment" button on its own Stock in Hand
+screen - the same form, in `mode="request"`, which sends the ask to the outlet manager instead of
+writing the ledger. The manager decides it from a card on Approvals, alongside the stock-request
+queue: Approve writes the `ADJ-` document and moves the shelf in the same step (there is no ticket
+stage after it, since a write-off has nothing to hand over), or Reject with a reason the counter
+reads on its own copy of the request.
 
 **A bill can be taken back on the day it was billed.** The outlet manager gets a Bills screen -
 every outlet's, over the seven days the server answers for - and a Void button on any bill still

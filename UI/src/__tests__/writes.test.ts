@@ -70,7 +70,7 @@ const snapshot = (prices: Record<string, Record<string, number>> = FX.PL) => ({
   req: [], tkt: [], prq: [], po: [], pord: [], batch: [], bills: [], grn: [], vendors: [],
   contracts: [], tickets: [], productReqs: [], shopAsks: [], sales: [], dayLabels: [],
   // ---- adjustments
-  adjustments: [],
+  adjustments: [], adjReq: [],
 });
 
 beforeEach(() => {
@@ -2125,6 +2125,90 @@ describe("createAdjustment - POST /adjustments", () => {
     expect(S().toast).toBe("Cannot write off 2.000 kg of Butter, salted - Central Store has only 1.000 kg free");
     expect(S().adjustments).toBe(before);
     expect(hit("GET /api/v1/adjustments")).toHaveLength(0);
+  });
+});
+
+// ---- adjustment requests
+describe("adjustment requests - the counter raises, the outlet manager decides", () => {
+  const ADJREQ = {
+    id: "ADJREQ-2026-02", loc: "coffee", reason: "wastage", note: "Fridge failed overnight",
+    by: "Kavitha Raman", at: "2026-09-04T04:30:00.000Z", lines: [{ it: "cup", qty: -20 }],
+    st: "Request sent", hist: [{ s: "Request sent", who: "Kavitha Raman", t: "2026-09-04T04:30:00.000Z" }],
+  };
+
+  it("requestAdjustment posts the ask and reads the queue back", async () => {
+    as("counter");
+    serve({
+      "POST /api/v1/adjustment-requests": () => json({ result: ADJREQ, changed: ["adjReq"], message: "ADJREQ-2026-02 sent to the outlet manager" }),
+      "GET /api/v1/adjustment-requests": () => json([ADJREQ]),
+    });
+
+    expect(await S().requestAdjustment({
+      reason: "wastage", note: "  Fridge failed overnight  ", lines: [{ it: "cup", qty: -20 }],
+    })).toBe(true);
+
+    expect(hit("POST /api/v1/adjustment-requests")[0].body).toEqual({
+      reason: "wastage", note: "Fridge failed overnight", lines: [{ it: "cup", qty: -20 }],
+    });
+    expect(S().toast).toBe("ADJREQ-2026-02 sent to the outlet manager");
+    expect(hit("GET /api/v1/adjustment-requests")).toHaveLength(1);
+    expect(hit("GET /api/v1/snapshot")).toHaveLength(0);
+    expect(S().adjReq[0].id).toBe("ADJREQ-2026-02");
+  });
+
+  it("cancelAdjustmentRequest withdraws it and repeats the server's sentence", async () => {
+    as("counter");
+    const cancelled = { ...ADJREQ, st: "Cancelled" };
+    serve({
+      "POST /api/v1/adjustment-requests/ADJREQ-2026-02/cancel": () => json({ result: cancelled, changed: ["adjReq"], message: "ADJREQ-2026-02 cancelled" }),
+      "GET /api/v1/adjustment-requests": () => json([cancelled]),
+    });
+    expect(await S().cancelAdjustmentRequest("ADJREQ-2026-02")).toBe(true);
+    expect(S().toast).toBe("ADJREQ-2026-02 cancelled");
+  });
+
+  it("approveAdjustmentRequest posts the decision and refetches the shelf, the register and the queue", async () => {
+    as("manager");
+    const approved = { ...ADJREQ, st: "Approved", apprBy: "Ramesh Kumar", adjId: "ADJ-2026-0009" };
+    const ADJ = { id: "ADJ-2026-0009", loc: "coffee", reason: "wastage", note: "Fridge failed overnight", by: "Ramesh Kumar", at: ADJREQ.at, lines: ADJREQ.lines };
+    serve({
+      "POST /api/v1/adjustment-requests/ADJREQ-2026-02/approve": () => json({
+        result: { request: approved, adjustment: ADJ }, changed: ["adjReq", "stock", "adjustments"],
+        message: "ADJREQ-2026-02 approved - ADJ-2026-0009 - 20 nos written off at Coffee Shop (wastage)",
+      }),
+      "GET /api/v1/adjustment-requests": () => json([approved]),
+      "GET /api/v1/stock": () => json(STOCK),
+      "GET /api/v1/adjustments": () => json([ADJ]),
+    });
+
+    expect(await S().approveAdjustmentRequest("ADJREQ-2026-02")).toBe(true);
+    expect(S().toast).toBe("ADJREQ-2026-02 approved - ADJ-2026-0009 - 20 nos written off at Coffee Shop (wastage)");
+    expect(hit("GET /api/v1/adjustment-requests")).toHaveLength(1);
+    expect(hit("GET /api/v1/stock")).toHaveLength(1);
+    expect(hit("GET /api/v1/adjustments")).toHaveLength(1);
+    expect(hit("GET /api/v1/snapshot")).toHaveLength(0);
+  });
+
+  it("rejectAdjustmentRequest posts the reason and leaves the shelf untouched", async () => {
+    as("manager");
+    const rejected = { ...ADJREQ, st: "Rejected", apprBy: "Ramesh Kumar" };
+    serve({
+      "POST /api/v1/adjustment-requests/ADJREQ-2026-02/reject": () => json({ result: rejected, changed: ["adjReq"], message: "ADJREQ-2026-02 rejected" }),
+      "GET /api/v1/adjustment-requests": () => json([rejected]),
+    });
+    expect(await S().rejectAdjustmentRequest("ADJREQ-2026-02", "Count it again first")).toBe(true);
+    expect(hit("POST /api/v1/adjustment-requests/ADJREQ-2026-02/reject")[0].body).toEqual({ note: "Count it again first" });
+    expect(S().toast).toBe("ADJREQ-2026-02 rejected");
+  });
+
+  it("a refusal is toasted and nothing is refetched", async () => {
+    as("manager");
+    const before = S().adjReq;
+    serve({ "POST /api/v1/adjustment-requests/ADJREQ-2026-02/approve": () => refusal("Cannot write off 20 nos of Paper cup 150ml - Coffee Shop has only 5 nos free") });
+
+    expect(await S().approveAdjustmentRequest("ADJREQ-2026-02")).toBe(false);
+    expect(S().toast).toBe("Cannot write off 20 nos of Paper cup 150ml - Coffee Shop has only 5 nos free");
+    expect(S().adjReq).toBe(before);
   });
 });
 

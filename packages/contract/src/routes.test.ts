@@ -18,6 +18,7 @@ const SAMPLES: Record<string, Record<string, unknown>> = {
   createRequest: { lines: [{ it: "SKU-1", qty: 20 }], note: "Counter runs dry by 4pm", urgent: true },
   approveRequest: { appr: [12], note: "Store only holds 12 L." },
   rejectRequest: { note: "Kiosk is overstocked already" },
+  redirectRequest: { from: "rest" },
   handover: { otp: "418327" },
   transfer: { from: "coffee", to: "kiosk", it: "SKU-1", qty: 6 },
   askShop: { to: "kiosk", it: "SKU-1", qty: 6, note: "Lunch rush cleared us out" },
@@ -60,6 +61,9 @@ const SAMPLES: Record<string, Record<string, unknown>> = {
   voidBill: { reason: "Wrong tender - customer paid cash" },
   // ---- adjustments
   createAdjustment: { loc: "store", reason: "wastage", note: "Dropped tray", lines: [{ it: "milk", qty: -2 }] },
+  // ---- adjustment requests
+  createAdjustmentRequest: { reason: "wastage", note: "Fridge failed overnight", lines: [{ it: "cup", qty: -20 }] },
+  rejectAdjustmentRequest: { note: "Count it again before writing it off" },
   // ---- prod-order raise ----
   createProdOrder: { lines: [{ it: "puff", qty: 40 }], need: "2026-09-11", note: "Lunch rush" },
   // ---- admin: account management (a capability, not a role - root CLAUDE.md)

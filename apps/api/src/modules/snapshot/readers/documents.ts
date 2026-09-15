@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, gte, inArray, isNull, sql } from "drizzle-orm";
 import { OUTLETS } from "@rch/contract";
-import type { Adjustment, Batch, Bill, Grn, HistEntry, LocKey, ProdOrder, ProductRequest, PurchaseOrder, RateContract, Requisition, ShopAsk, StockLoc, StockRequest, SupportTicket, Ticket, Vendor } from "@rch/contract";
+import type { Adjustment, AdjustmentRequest, Batch, Bill, Grn, HistEntry, LocKey, ProdOrder, ProductRequest, PurchaseOrder, RateContract, Requisition, ShopAsk, StockLoc, StockRequest, SupportTicket, Ticket, Vendor } from "@rch/contract";
 import * as s from "../../../db/schema/index.js";
 import type { Reader } from "../../../lib/db.js";
 import { readHistories } from "../../../lib/history.js";
@@ -197,5 +197,24 @@ export async function readAdjustments(db: Reader, pre?: UserNames): Promise<Adju
     id: a.id, loc: a.loc as StockLoc, reason: a.reason, note: a.note,
     by: a.byUser ? names.get(a.byUser)?.name ?? a.byUser : "", at: iso(a.at),
     lines: (byAdj.get(a.id) ?? []).map((l) => ({ it: l.itemKey, qty: l.qty })),
+  }));
+}
+
+// ---- adjustment requests
+/** A counter's asks, newest first - the same shape `readRequests` uses, with no `ticket`/`appr`
+ *  columns: there is no ticket stage and nothing is ever partially approved here. */
+export async function readAdjustmentRequests(db: Reader, pre?: UserNames): Promise<AdjustmentRequest[]> {
+  const heads = await db.select().from(s.adjustmentRequests).orderBy(desc(s.adjustmentRequests.at), desc(s.adjustmentRequests.id));
+  const lines = await db.select().from(s.adjustmentRequestLines).orderBy(asc(s.adjustmentRequestLines.lineNo));
+  const h = await readHistories(db, "adjustment_request");
+  const names = pre ?? await userNames(db);
+  const byReq = groupBy(lines, (l) => l.requestId);
+  return heads.map((r) => strip({
+    id: r.id, loc: r.loc as LocKey, reason: r.reason, note: r.note,
+    by: names.get(r.byUser)?.name ?? r.byUser, at: iso(r.at),
+    lines: (byReq.get(r.id) ?? []).map((l) => ({ it: l.itemKey, qty: l.qty })),
+    st: r.status, hist: hist(h, r.id),
+    apprBy: r.approvedBy ? names.get(r.approvedBy)?.name ?? r.approvedBy : undefined,
+    adjId: r.adjustmentId ?? undefined,
   }));
 }

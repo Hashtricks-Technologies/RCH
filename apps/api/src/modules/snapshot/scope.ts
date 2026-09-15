@@ -1,5 +1,5 @@
 import { OUTLETS } from "@rch/contract";
-import type { Adjustment, Batch, Bill, LocKey, PayerRoster, ProdOrder, ProductRequest, Role, ShopAsk, StockRequest, SupportTicket, Ticket } from "@rch/contract";
+import type { Adjustment, AdjustmentRequest, Batch, Bill, LocKey, PayerRoster, ProdOrder, ProductRequest, Role, ShopAsk, StockRequest, SupportTicket, Ticket } from "@rch/contract";
 import type { Snapshot } from "./service.js";
 
 /** Who is asking. The snapshot and the two standalone reads all cut by the same two fields. */
@@ -116,6 +116,11 @@ const scopeSupportTickets = (rows: SupportTicket[], who: { sub: string }, byUser
 export const scopeAdjustments = (rows: Adjustment[], who: Who): Adjustment[] =>
   who.role !== "counter" ? rows : rows.filter((a) => a.loc === who.loc);
 
+/** A counter's own asks are their own outlet's; everyone else sees the queue, the same cut
+ *  `scopeRequests` makes. */
+export const scopeAdjustmentRequests = (rows: AdjustmentRequest[], who: Who): AdjustmentRequest[] =>
+  who.role !== "counter" ? rows : rows.filter((r) => r.loc === who.loc);
+
 /** A counter operator's world is their counter. Master data is never cut down; documents and stock are. */
 export function scope(s: Snapshot, who: Who & { sub: string }, owners: Map<string, string>): Snapshot {
   // Four cuts apply to every role, not only to a counter: a support ticket is the caller's own,
@@ -147,5 +152,7 @@ export function scope(s: Snapshot, who: Who & { sub: string }, owners: Map<strin
     vendors: scopeBuying(base.vendors, who), contracts: scopeBuying(base.contracts, who),
     // ---- adjustments
     adjustments: scopeAdjustments(base.adjustments, who),
+    // ---- adjustment requests
+    adjReq: scopeAdjustmentRequests(base.adjReq, who),
   };
 }

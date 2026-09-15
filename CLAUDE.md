@@ -208,7 +208,10 @@ The code enforces these and tests pin them. Breaking one is a bug.
   - A batch books what the kitchen made onto its rack. It draws nothing down; kitchen raw stock is cleared
     with an `ADJ-` document.
   - A write-off or a stock count is an `ADJ-` document with a reason, and it may not take stock a ticket is
-    holding.
+    holding. The store keeper and the kitchen write one directly against their own shelf; an outlet's is the
+    one exception - the manager does not adjust it directly, only by approving a counter's adjustment request,
+    which writes the `ADJ-` document as the one and only step of deciding it (there is no ticket stage after,
+    the way a stock request has one - a write-off has nothing to hand over).
   - A goods receipt posts accepted goods to the central store and rejected goods to `quarantine`.
     `quarantine` is a location where stock is recorded; no operator can act there.
 - **Made-to-order (MTO) items are made at the counter and hold no stock.** Selling one moves no stock, and

@@ -12,11 +12,12 @@ import "./ItemDrawer";
 // way of reading it - and the drawer grows the Void button for the manager alone.
 import Bills from "./Bills";
 import "../counter/BillDrawer";
-// ---- adjustments: the "adjstock" drawer is shared with the kitchen, so it is registered
-// beside the form both of them open rather than twice, once in each screen.
-import "../../ui/AdjustmentForm";
 // ---- prod-order raise ----
 import "./KitchenOrderDrawer";
+// ---- adjustment requests: the outlet manager decides a counter's ask; it no longer adjusts an
+// outlet's shelf directly, so this registers "madjreq" - the manager's own review drawer, not
+// the direct-adjust one the counter's "cadjreq" and the kitchen's "adjstock" are.
+import "./AdjustmentRequestDrawer";
 
 export const screens: Record<string, ComponentType> = {
   dash: Dashboard, approvals: Approvals, stock: ItemsStock, menu: MenuManagement,

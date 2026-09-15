@@ -7,7 +7,7 @@ import { refetch } from "../api/refetch";
 import { applySnapshot } from "../api/wire";
 import { IT, LOC } from "../data/master";
 import type {
-  Adjustment, Batch, Bill, CreditResponse, Dated, DatedDoc, DraftLine, DrawerState, Grn, LocKey,
+  Adjustment, AdjustmentRequest, Batch, Bill, CreditResponse, Dated, DatedDoc, DraftLine, DrawerState, Grn, LocKey,
   Payer, PordStatus, PriceList, ProdOrder, PurchaseOrder, Requisition, StockLedgerRow, StockLoc,
   SignInEntry, StockRequest, Tender, Ticket, Trailed, User, Vendor,
 } from "../types";
@@ -51,6 +51,9 @@ export interface AppState extends ProcurementSlice, OpsSlice, AdminSlice {
    *  like every other document in this store: `at` is the clock face, `iso` the instant it
    *  was made from, so a register can be filtered to today and sorted across a midnight. */
   adjustments: Dated<Adjustment>[];
+  /** ---- adjustment requests. A counter's asks to correct its own shelf, decided by the outlet
+   *  manager - the writes live in the ops slice beside `createAdjustment`. */
+  adjReq: DatedDoc<AdjustmentRequest>[];
   cart: Record<string, Record<string, number>>;
   draft: DraftLine[];
   prqDraft: DraftLine[];
@@ -214,6 +217,8 @@ export const useApp = create<AppState>((set, get) => ({
   sales: [], dayLabels: [],
   // ---- adjustments
   adjustments: [],
+  // ---- adjustment requests
+  adjReq: [],
   cart: {},
   draft: [],
   prqDraft: [],

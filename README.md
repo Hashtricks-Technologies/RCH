@@ -25,7 +25,7 @@ absent from its sidebar and refused on a direct link, with a message saying why.
 | Role | Signs in as | Lands on | Owns |
 |---|---|---|---|
 | Counter Operator | Kavitha Raman | Point of Sale | Billing and printing, counter stock, product on/off, raising requests, asking the kitchen for a tray, collecting tickets |
-| Outlet Manager | Ramesh Kumar | Approvals | Approving and trimming counter requests, prices across all shops, the on/off master, every outlet's bills and the same-day void, and an item's commercial figures |
+| Outlet Manager | Ramesh Kumar | Approvals | Approving and trimming counter requests, deciding a counter's adjustment requests, prices across all shops, the on/off master, every outlet's bills and the same-day void, and an item's commercial figures |
 | Store Keeper | Suresh Muthu | Issue Desk | Issuing approved stock against a ticket, central-store stock, write-offs and stock counts at any shelf, requisitions to procurement |
 | Kitchen In-charge | Vinoth Prakash | Orders | Accepting orders, making products, distributing to the store and counters |
 | Procurement Officer | Latha Narayanan | Requisitions | Acting on requisitions, raising purchase orders, receiving goods |
@@ -34,15 +34,19 @@ The store keeper, the buyer and the kitchen share the operational half of the it
 product's name, group, HSN code and reorder level - while the manager owns its commercial half.
 No role may clear a printed MRP, and a product is retired rather than deleted.
 
-**The request chain.** A counter operator raises a stock request against the central store; the
-outlet manager approves, trims or rejects it - never promising more than the store can still
-cover once open tickets and other approvals are netted off; the store keeper turns the approval
+**The request chain.** A counter operator raises one multi-line stock request without picking a
+source - each item's own master data says whether it comes from the central store or the central
+kitchen, and a single ask can carry both at once. A store-routed line goes to the outlet manager,
+who approves, trims or rejects it - never promising more than the store can still cover once open
+tickets and other approvals are netted off, or fulfils it straight from a peer outlet's own shelf
+instead, when they know one is already holding it; the store keeper turns an ordinary approval
 into a pick ticket, which reserves the stock but moves none of it; the collector quotes a
-six-digit OTP at the window and the handover scan moves the stock off the store's shelf; the
-receiving counter scans it in and it lands. Between the two scans it is in transit and belongs to
-neither location. Approval authorises; the scan moves. The same machinery carries a shop-to-shop
+six-digit OTP at the window and the handover scan moves the stock off the shelf; the receiving
+counter scans it in and it lands. Between the two scans it is in transit and belongs to neither
+location. Approval authorises; the scan moves. The same machinery carries a shop-to-shop
 transfer, one shop asking a peer directly for stock it is holding, and the kitchen pushing a
-production order or a tray out the door.
+production order or a tray out the door - including the one a kitchen-routed line on the same
+request raises for itself.
 
 **Against a real server today:** walk a kitchen order across the board (accepted → in kitchen →
 ready), make a batch that books the finished units onto the kitchen's rack with a best-before, dispatch
@@ -67,7 +71,10 @@ store any more - every mutation in the app is a server call, and `UI/src/data/se
 the six phases closed. Write off nine puffs that did not sell, or book in the four extra tins a
 count found, as a numbered document with a reason and a signature (a write-off may not take stock
 a pick ticket is holding, and the store keeper is the only one who can correct the quarantine
-shelf). Void a mis-keyed bill on the day it was billed: every line goes back on the shelf, a staff
+shelf). An outlet's own shelf is corrected the same way in substance but not in who presses the
+button: the counter raises an adjustment request against what it is holding, and the outlet
+manager approves it - which writes the `ADJ-` document there and then, since a write-off has
+nothing to hand over the way a stock request's ticket does - or rejects it with a reason. Void a mis-keyed bill on the day it was billed: every line goes back on the shelf, a staff
 member's monthly credit room comes back, and the bill stays on the list badged rather than
 vanishing from the day. Correct a mis-typed MRP or retire a product nobody carries - each desk
 sees the fields it owns and the rest greyed out, and a line with stock on it or a menu still

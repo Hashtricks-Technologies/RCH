@@ -1,4 +1,4 @@
-import type { PoStatus, PordStatus, PrqStatus, ReqStatus, ShopAskStatus, TktStatus } from "@rch/contract";
+import type { AdjReqStatus, PoStatus, PordStatus, PrqStatus, ReqStatus, ShopAskStatus, TktStatus } from "@rch/contract";
 
 /**
  * Status transitions are data, shared by both sides. One table, two consumers -
@@ -89,6 +89,16 @@ export const PO_TRANSITIONS: TransitionTable<PoStatus> = {
   Ordered: ["Partially received", "Received", "Cancelled"],
   "Partially received": ["Partially received", "Received"],
   Received: [],
+  Cancelled: [],
+};
+
+/** A counter's ask to correct its own shelf. Unlike `REQUEST_TRANSITIONS`, "Approved" is the end
+ *  of the line rather than a hand-off to a ticket - there is nothing physical to scan after a
+ *  write-off, so approving one is the whole of the movement, not the first half of it. */
+export const ADJUSTMENT_REQUEST_TRANSITIONS: TransitionTable<AdjReqStatus> = {
+  "Request sent": ["Approved", "Rejected", "Cancelled"],
+  Approved: [],
+  Rejected: [],
   Cancelled: [],
 };
 

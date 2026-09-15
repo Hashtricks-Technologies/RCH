@@ -23,6 +23,8 @@ const SNAPSHOT = {
   sales: [], dayLabels: [],
   // ---- adjustments
   adjustments: [],
+  // ---- adjustment requests
+  adjReq: [],
 };
 
 /** An empty item master - the state a browser is in before its first snapshot lands. */

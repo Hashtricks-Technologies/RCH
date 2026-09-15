@@ -71,6 +71,9 @@ export type CreditResponse = z.infer<typeof R.CreditResponseSchema>;
 export type AdjustReason = z.infer<typeof D.AdjustReasonSchema>;
 export type AdjustmentLine = z.infer<typeof D.AdjustmentLineSchema>;
 export type Adjustment = z.infer<typeof D.AdjustmentSchema>;
+// ---- adjustment requests: the counter raises, the outlet manager decides.
+export type AdjReqStatus = z.infer<typeof D.AdjReqStatusSchema>;
+export type AdjustmentRequest = z.infer<typeof D.AdjustmentRequestSchema>;
 
 // ---- admin: account management (a capability, not a role - root CLAUDE.md).
 export type AdminUser = z.infer<typeof A.AdminUserSchema>;

@@ -93,7 +93,7 @@ describe("every 'today' figure at the till is today's", () => {
     req: [], tkt: [], prq: [], po: [], pord: [], batch: [], grn: [], vendors: [],
     contracts: [], tickets: [], productReqs: [], shopAsks: [], sales: [], dayLabels: [],
     // ---- adjustments
-    adjustments: [],
+    adjustments: [], adjReq: [],
     bills: [
       { no: "CF/1190", loc: "coffee", opr: "Kavitha Raman", oprCol: "#0EA5E9", tot: 40, tax: 1.9, t: TODAY_EARLY, pay: "Cash", lines: [{ it: "juice", qty: 2, rate: 20 }] },
       { no: "CF/1189", loc: "coffee", opr: "Kavitha Raman", oprCol: "#0EA5E9", tot: 900, tax: 42, t: YESTERDAY_LATE, pay: "Cash", lines: [{ it: "juice", qty: 45, rate: 20 }] },
@@ -158,7 +158,7 @@ describe("the wire keeps the instant beside the time it prints", () => {
     tkt: [], prq: [], po: [], pord: [], batch: [], bills: [], grn: [], vendors: [],
     contracts: [], tickets: [], productReqs: [], shopAsks: [], sales: [], dayLabels: [],
     // ---- adjustments
-    adjustments: [],
+    adjustments: [], adjReq: [],
   });
 
   it("carries iso on every document and on every history entry", () => {
