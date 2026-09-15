@@ -14,6 +14,22 @@ export type Session = { user: User; mustChangePassword: boolean; refreshToken: s
 const sha256 = (v: string) => createHash("sha256").update(v).digest("hex");
 const newRaw = () => randomBytes(32).toString("base64url");
 const BAD_LOGIN = "That employee id and password do not match.";
+
+/**
+ * A refused sign-in - an unknown id, a wrong password or a deactivated account. The caller reads
+ * one sentence whichever it was (`BAD_LOGIN`); the reason (`cause`) goes onto the request's log
+ * line, and the account the id named, when it named one, goes into the audit trail
+ * (`modules/auth/routes.ts`). Neither reaches the wire: `toEnvelope()` carries only code and
+ * message.
+ */
+export class LoginRefused extends UnauthenticatedError {
+  readonly userId: string | null;
+  constructor(cause: string, userId: string | null) {
+    super(BAD_LOGIN, cause);
+    this.userId = userId;
+  }
+}
+
 /** Any valid Argon2id string, produced once by `hashPassword("x")` - verified against on an
  *  unknown employee id so "no such user" takes about as long as "wrong password". */
 const DUMMY_HASH = "$argon2id$v=19$m=65536,t=3,p=1$LOmzJu8PWUsCPtFBwcH39w$RNwG8DhqDVFkCZWhCIv2DvxlqKkAP91CtOmSexvaOVk";
@@ -131,9 +147,9 @@ export function createAuthService(db: Db, config: Config) {
       // One sentence for all three, so the wire gives nothing away; the cause is for the log
       // alone. An id that matched nobody is not written down - what was typed into that box
       // may well have been the password.
-      if (!u) throw new UnauthenticatedError(BAD_LOGIN, "no such employee");
-      if (!ok) throw new UnauthenticatedError(BAD_LOGIN, `wrong password for ${u.empNo}`);
-      if (!u.active) throw new UnauthenticatedError(BAD_LOGIN, `${u.empNo} is deactivated`);
+      if (!u) throw new LoginRefused("no such employee", null);
+      if (!ok) throw new LoginRefused(`wrong password for ${u.empNo}`, u.id);
+      if (!u.active) throw new LoginRefused(`${u.empNo} is deactivated`, u.id);
       attempts.release(emp, attempt);
       return withTransaction(db, (tx) => issue(tx, u, randomUUID(), meta));
     },
@@ -170,11 +186,16 @@ export function createAuthService(db: Db, config: Config) {
       if (!outcome.ok) throw new UnauthenticatedError(outcome.message);
       return outcome.session;
     },
-    async logout(raw: string | undefined): Promise<void> {
-      if (!raw) return;
-      await withTransaction(db, async (tx) => {
+    /** Answers whose session this ended - the account, when the cookie's family still had a live
+     *  token to revoke; `null` when it ended nothing (no cookie, an unknown one, or a family already
+     *  revoked), which is not a sign-out anybody made. */
+    async logout(raw: string | undefined): Promise<string | null> {
+      if (!raw) return null;
+      return withTransaction(db, async (tx) => {
         const t = await authRepo.refreshByHash(tx, sha256(raw));
-        if (t) await authRepo.revokeFamily(tx, t.family);
+        if (!t) return null;
+        const revoked = await authRepo.revokeFamily(tx, t.family);
+        return (revoked.rowCount ?? 0) > 0 ? t.userId : null;
       });
     },
     /**
@@ -191,7 +212,10 @@ export function createAuthService(db: Db, config: Config) {
       // whether the account is active, then gate on both together - same message either way,
       // so an inactive account and a wrong current password are indistinguishable to the caller.
       const ok = u ? await verifyPassword(u.passwordHash, current) : (await verifyPassword(DUMMY_HASH, current), false);
-      if (!u || !ok || !u.active) throw new UnauthenticatedError("Your current password is not right.");
+      // One sentence for all three, as at sign-in; the cause is for the log line and the audit trail.
+      if (!u || !ok || !u.active) {
+        throw new UnauthenticatedError("Your current password is not right.", !u ? "no such account" : !ok ? "wrong current password" : `${u.empNo} is deactivated`);
+      }
       if (next === current) throw new RuleError("Choose a different password from your current one.");
       const hash = await hashPassword(next);
       return withTransaction(db, async (tx) => {

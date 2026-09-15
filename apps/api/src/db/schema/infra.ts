@@ -57,3 +57,16 @@ export const refreshTokens = pgTable("refresh_tokens", {
   index("refresh_tokens_family_idx").on(t.family),
   index("refresh_tokens_user_idx").on(t.userId),
 ]);
+
+/**
+ * The audit trail's hand-off. The API adds one row per audited action - inside the write's own
+ * transaction for a write that succeeded (`lib/audit.ts`) - and the audit service (`apps/audit`)
+ * moves each row into its own append-only schema and removes it from here. Nothing in the API
+ * reads a row back: in production its database role holds INSERT on this table and nothing else,
+ * and `scripts/check-boundaries.sh` holds the insert to `lib/audit.ts`.
+ */
+export const auditOutbox = pgTable("audit_outbox", {
+  id: bigint("id", { mode: "number" }).primaryKey().generatedAlwaysAsIdentity(),
+  at: ts("at").notNull().defaultNow(),
+  event: jsonb("event").notNull(),
+});

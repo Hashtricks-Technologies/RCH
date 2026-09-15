@@ -112,6 +112,36 @@ for dir in apps/api/src/modules/*/; do
   fi
 done
 
+# ---------------------------------------------------------------------------
+# 4) The audit outbox. apps/api adds events to audit_outbox and never touches one again: the
+#    audit service moves each row into its own append-only schema, and a process that could
+#    read, rewrite or remove its own trail would not be leaving one. So outside test files only
+#    apps/api/src/lib/audit.ts inserts into it, and nothing outside a test file or src/test/
+#    selects, joins, updates, deletes or truncates it (lib/roles.test.ts proves the runtime role
+#    can do the first and none of the rest, so it has to spell them out). The runtime role (rch_app, INSERT only) enforces the same in production; this keeps it
+#    visible in review. Same shapes as check 1 and the same line-by-line caveat: a comment that
+#    says "from audit_outbox" trips it.
+# ---------------------------------------------------------------------------
+echo "== audit outbox: inserted only from lib/audit.ts, never read back =="
+
+outbox_insert_orm='insert[[:space:]]*\([[:space:]]*'"$qualifier"'auditOutbox[[:space:]]*\)'
+# shellcheck disable=SC2016  # the trailing `$` is grep's end-of-line anchor, not a shell expansion
+outbox_insert_sql='(insert|merge)[[:space:]]+into[[:space:]]+["`]?([A-Za-z_][A-Za-z0-9_]*["`]?[[:space:]]*\.[[:space:]]*["`]?)?audit_outbox([^A-Za-z0-9_]|$)'
+outbox_insert_hits="$(grep -rn -i -E "$outbox_insert_orm|$outbox_insert_sql" apps/api/src --include="*.ts" | grep -v -E '^apps/api/src/lib/audit\.ts:|\.test\.ts:' || true)"
+if [ -n "$outbox_insert_hits" ]; then
+  fail_with "audit_outbox is inserted into outside apps/api/src/lib/audit.ts or a test file:"
+  echo "$outbox_insert_hits" >&2
+fi
+
+outbox_touch_orm='(from|update|delete)[[:space:]]*\([[:space:]]*'"$qualifier"'auditOutbox[[:space:]]*\)'
+# shellcheck disable=SC2016  # as above: `$` anchors, it does not expand
+outbox_touch_sql='(from|join|update|truncate)[[:space:]]+(table[[:space:]]+)?["`]?([A-Za-z_][A-Za-z0-9_]*["`]?[[:space:]]*\.[[:space:]]*["`]?)?audit_outbox([^A-Za-z0-9_]|$)'
+outbox_touch_hits="$(grep -rn -i -E "$outbox_touch_orm|$outbox_touch_sql" apps/api/src --include="*.ts" | grep -v -E '\.test\.ts:|^apps/api/src/test/' || true)"
+if [ -n "$outbox_touch_hits" ]; then
+  fail_with "audit_outbox is read, updated or deleted in apps/api/src outside a test - the API only ever inserts into it:"
+  echo "$outbox_touch_hits" >&2
+fi
+
 if [ "$fail" != "0" ]; then
   echo "" >&2
   echo "One or more reuse-rule boundaries were violated." >&2
