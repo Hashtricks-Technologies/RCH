@@ -5,7 +5,14 @@ import react from "@vitejs/plugin-react";
 export default defineConfig({
   plugins: [react()],
   base: "./",
-  server: { proxy: { "/api": { target: "http://localhost:3000", changeOrigin: false } } },
+  server: {
+    proxy: {
+      // Listed first. Vite uses the first proxy key that matches, and `/api` would otherwise send
+      // the audit service's routes to the API, which refuses to mount them (spec 5.3).
+      "/api/v1/admin/audit": { target: "http://localhost:3100", changeOrigin: false },
+      "/api": { target: "http://localhost:3000", changeOrigin: false },
+    },
+  },
   test: {
     environment: "jsdom",
     // CI runs in UTC; pin it locally too so a day-boundary test cannot pass on an IST laptop

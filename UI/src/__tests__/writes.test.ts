@@ -4,7 +4,7 @@ import { createRoot } from "react-dom/client";
 import { MemoryRouter } from "react-router-dom";
 import * as FX from "@rch/contract/fixtures";
 import type { Changed } from "@rch/contract";
-import { creditBreachMessage } from "@rch/domain";
+import { creditBreachMessage, istDate } from "@rch/domain";
 import { refetch } from "../api/refetch";
 import { applySnapshot } from "../api/wire";
 import { setAccessToken } from "../api/session";
@@ -22,6 +22,8 @@ import "../roles/buyer/PoDrawer";                // registers "bpo"
 import "../roles/buyer/AddToListDrawer";         // registers "baddpool"
 import { useApp } from "../store";
 import type { AppState } from "../store";
+import type { AuditFilter } from "../store/audit";
+import type { AuditCounts, AuditEntry, AuditRow } from "../types";
 import { resetStore, S, as } from "./fixture";
 
 /**
@@ -2309,5 +2311,148 @@ describe("admin: the support desk", () => {
     await refetch(["tickets"]);
     expect(S().deskTickets.map((t) => t.id)).toEqual(["SUP-0045"]);
     expect(hit("GET /api/v1/support/tickets")).toHaveLength(0);
+  });
+});
+
+// ---- audit log
+describe("audit log reads", () => {
+  const LOG = "/api/v1/admin/audit";
+  const COUNTS: AuditCounts = { events: 3, people: 2, refused: 1, failedSignIns: 1 };
+  const TODAY: AuditFilter = { period: "today", from: "", to: "" };
+  const auditRow = (id: number): AuditRow => ({
+    id, at: "2026-09-14T04:12:09.000Z",
+    actor: { id: "u2", emp: "RC-3120", name: "Ramesh Kumar", role: "Outlet Manager", loc: "rest" },
+    action: "savePrice", target: "A:juice", targetLoc: "", outcome: "done", status: 200,
+    message: "Price saved", ip: "10.0.0.7", requestId: `req-${id}`,
+  });
+  /** Every query one path was read with, in order, as plain objects. */
+  const queried = (path: string) =>
+    fetchMock.mock.calls
+      .map(([u]) => new URL(String(u), "http://rch.test"))
+      .filter((u) => u.pathname === path)
+      .map((u) => Object.fromEntries(u.searchParams));
+  /** A log of `total` events, newest id first, paged the way the audit service pages it: rows
+   *  below `before`, `limit` at a time, and `next` the last id whenever more remain. */
+  const pagedLog = (total: number) => (u: string): Response => {
+    const params = new URL(u, "http://rch.test").searchParams;
+    const top = Math.min(Number(params.get("before") ?? total + 1) - 1, total);
+    const size = Math.max(0, Math.min(Number(params.get("limit") ?? 100), top));
+    const ids = Array.from({ length: size }, (_, i) => top - i);
+    const last = ids.at(-1);
+    return json({ rows: ids.map(auditRow), next: last !== undefined && last > 1 ? last : null, counts: COUNTS });
+  };
+
+  beforeEach(() => {
+    as("manager");
+    useApp.setState({ user: { ...S().user!, admin: true } });
+  });
+
+  it("sends only the filters that are set, as IST days, and keeps the page without a toast", async () => {
+    const PAGE = { rows: [auditRow(43), auditRow(42)], next: 42, counts: COUNTS };
+    serve({ "GET /api/v1/admin/audit": () => json(PAGE) });
+    const filter: AuditFilter = {
+      period: "custom", from: "2026-09-01", to: "2026-09-10",
+      actor: "u2", role: "", loc: "coffee", group: "sales", outcome: "refused", q: "  CF/11 ",
+    };
+    expect(await S().loadAudit(filter)).toEqual(PAGE);
+    expect(queried(LOG)).toEqual([{ from: "2026-09-01", to: "2026-09-10", actor: "u2", loc: "coffee", group: "sales", outcome: "refused", q: "CF/11" }]);
+    expect(S().audit).toEqual({ rows: PAGE.rows, next: 42, counts: COUNTS, filter, fresh: 0, status: "ready" });
+    expect(S().toast).toBeNull();
+
+    await S().loadAudit(TODAY);
+    const today = istDate(new Date());
+    expect(queried(LOG).at(-1)).toEqual({ from: today, to: today });
+  });
+
+  it("reads the next page before the last id it has, and appends it under the first page's counts", async () => {
+    fetchMock.mockImplementation((u: string) => Promise.resolve(json(new URL(u, "http://rch.test").searchParams.has("before")
+      ? { rows: [auditRow(41)], next: null, counts: { ...COUNTS, events: 99 } }
+      : { rows: [auditRow(43), auditRow(42)], next: 42, counts: COUNTS })));
+    await S().loadAudit(TODAY);
+    await S().loadMoreAudit();
+    expect(queried(LOG)[1]).toMatchObject({ before: "42" });
+    expect(S().audit.rows.map((r) => r.id)).toEqual([43, 42, 41]);
+    expect(S().audit.next).toBeNull();
+    expect(S().audit.counts).toEqual(COUNTS);
+    // Nothing further to ask for.
+    expect(await S().loadMoreAudit()).toBeNull();
+    expect(queried(LOG)).toHaveLength(2);
+  });
+
+  it("answers null on every failed read with no toast, and never turns an outage into an empty log", async () => {
+    serve({ "GET /api/v1/admin/audit": () => json({ rows: [auditRow(43)], next: 43, counts: COUNTS }) });
+    await S().loadAudit(TODAY);
+    serve({});                                                  // every read now answers 500
+    expect(await S().loadMoreAudit()).toBeNull();
+    expect(S().audit.rows.map((r) => r.id)).toEqual([43]);      // a failed next page keeps what is shown
+    expect(await S().loadAudit()).toBeNull();
+    expect(S().audit).toMatchObject({ rows: [], next: null, counts: null, status: "failed" });
+    expect(await S().readAuditEntry(43)).toBeNull();
+    expect(await S().exportAudit(TODAY)).toBeNull();
+    expect(S().toast).toBeNull();
+  });
+
+  it("reads one whole entry by id", async () => {
+    const entry: AuditEntry = {
+      ...auditRow(43), method: "PUT", path: "/prices/A/juice", cause: null,
+      request: { params: { list: "A", it: "juice" }, query: {}, body: { price: 45 } },
+      before: { price: 50 }, result: { list: "A", it: "juice", price: 45 }, changed: ["prices"], userAgent: "",
+    };
+    serve({ "GET /api/v1/admin/audit/43": () => json(entry) });
+    expect(await S().readAuditEntry(43)).toEqual(entry);
+  });
+
+  it("keeps the newest filter's answer when an older read lands after it", async () => {
+    const answers: ((r: Response) => void)[] = [];
+    fetchMock.mockImplementation(() => new Promise<Response>((resolve) => { answers.push(resolve); }));
+    const older = S().loadAudit(TODAY);
+    const newer = S().loadAudit({ period: "7d", from: "", to: "" });
+    await vi.waitFor(() => { expect(answers).toHaveLength(2); });
+    answers[1](json({ rows: [auditRow(9)], next: null, counts: COUNTS }));
+    await newer;
+    answers[0](json({ rows: [auditRow(1)], next: null, counts: COUNTS }));
+    await older;
+    expect(S().audit.rows.map((r) => r.id)).toEqual([9]);
+    expect(S().audit.filter.period).toBe("7d");
+    expect(S().audit.status).toBe("ready");
+  });
+
+  it("exports page by page, 500 at a time, until the log runs out", async () => {
+    fetchMock.mockImplementation((u: string) => Promise.resolve(pagedLog(1203)(u)));
+    const out = await S().exportAudit(TODAY);
+    expect(queried(LOG).map((q) => [q.before, q.limit])).toEqual([[undefined, "500"], ["704", "500"], ["204", "500"]]);
+    expect(out).toMatchObject({ rows: 1203, capped: false });
+    // The header, 1,203 lines, and the empty string after the last line break.
+    expect(out!.csv.split("\r\n")).toHaveLength(1205);
+    // An export is not the list on screen.
+    expect(S().audit.rows).toEqual([]);
+  });
+
+  it("stops at 50,000 rows and says it did, but not when the log is exactly that long", async () => {
+    fetchMock.mockImplementation((u: string) => Promise.resolve(pagedLog(60_000)(u)));
+    expect(await S().exportAudit(TODAY)).toMatchObject({ rows: 50_000, capped: true });
+    expect(queried(LOG)).toHaveLength(100);
+
+    fetchMock.mockReset();
+    fetchMock.mockImplementation((u: string) => Promise.resolve(pagedLog(50_000)(u)));
+    expect(await S().exportAudit(TODAY)).toMatchObject({ rows: 50_000, capped: false });
+    expect(queried(LOG)).toHaveLength(100);
+  });
+
+  it("counts an audit notice on an admin session without reading anything, ignores it elsewhere, and a load clears the count", async () => {
+    await refetch(["audit"]);
+    await refetch(["audit"]);
+    expect(S().audit.fresh).toBe(2);
+
+    useApp.setState({ user: { ...S().user!, admin: false } });
+    await refetch(["audit"]);
+    expect(S().audit.fresh).toBe(2);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(S().toast).toBeNull();
+
+    useApp.setState({ user: { ...S().user!, admin: true } });
+    serve({ "GET /api/v1/admin/audit": () => json({ rows: [], next: null, counts: COUNTS }) });
+    await S().loadAudit();
+    expect(S().audit.fresh).toBe(0);
   });
 });

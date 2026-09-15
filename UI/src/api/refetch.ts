@@ -39,6 +39,13 @@ const NARROW: Partial<Record<Changed, () => Promise<void>>> = {
   adjustments: () => call(routes.adjustments).then(applyAdjustments),
   // ---- admin: account management
   accounts: () => call(routes.adminUsers).then(applyAccounts),
+  // ---- audit log: nothing is read here. The Audit log tab's list never moves by itself (spec
+  // 5.2), so a notice only adds to the count behind the tab's "New events - show" pill.
+  // The server sends `audit` to admin streams alone; the guard keeps any other session from counting one.
+  audit: () => {
+    if (useApp.getState().user?.admin) useApp.getState().bumpAuditFresh();
+    return Promise.resolve();
+  },
 };
 
 /**

@@ -31,6 +31,28 @@ export const fromWireTime = (isoStr: string): string =>
     ? isoStr
     : new Date(isoStr).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: TZ });
 
+/* Each formatter is built once. An audit export formats up to fifty thousand instants, and building an
+   `Intl.DateTimeFormat` for every one costs more than all the rest of the row put together. */
+const SECONDS = new Intl.DateTimeFormat("en-IN", { hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23", timeZone: TZ });
+const STAMP = new Intl.DateTimeFormat("en-CA", {
+  year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23", timeZone: TZ,
+});
+
+/** An ISO instant as the hospital's "HH:MM:SS": the audit log's clock, to the second. */
+export const fromWireSeconds = (isoStr: string): string => {
+  const d = new Date(isoStr);
+  return Number.isNaN(d.getTime()) ? isoStr : SECONDS.format(d);
+};
+
+/** An ISO instant as "YYYY-MM-DD HH:MM:SS" in Asia/Kolkata. It is one cell a spreadsheet sorts
+ *  correctly, which a display date like "14-Sep-2026" is not. */
+export const fromWireStamp = (isoStr: string): string => {
+  const d = new Date(isoStr);
+  if (Number.isNaN(d.getTime())) return isoStr;
+  const p = Object.fromEntries(STAMP.formatToParts(d).map((x) => [x.type, x.value]));
+  return `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute}:${p.second}`;
+};
+
 /**
  * Did this happen today, the hospital's today?
  *

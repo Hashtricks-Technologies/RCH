@@ -3,6 +3,7 @@ import { useApp } from "../store";
 import { setAccessToken } from "../api/session";
 import { hydrateMaster, hydrateRoster } from "../data/master";
 import { basePrices } from "../lib/selectors";
+import { initialAudit } from "../store/audit";
 import type { Role } from "../types";
 
 export const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v));
@@ -80,5 +81,7 @@ export function resetStore() {
     // action log, and leaving either out of this reset would let one test's rows leak into the
     // next one's (`setState` merges, it does not replace).
     accounts: [], adminActions: [], deskTickets: [],
+    // ---- audit log: the tab's list, filter and pill count, back to a first visit's.
+    audit: initialAudit(),
   });
 }
