@@ -55,7 +55,7 @@ type Trail = { hist: { s: string; who: string; t: string }[] };
  * carries the instant the store expects beside the time it prints.
  */
 export function resetStore() {
-  hydrateMaster({ items: FX.IT, locations: FX.LOC, prices: FX.PL, menu: FX.MENU, users: FX.USERS });
+  hydrateMaster({ items: FX.IT, locations: FX.LOC, prices: FX.PL, priceLists: FX.PRICE_LISTS, menu: FX.MENU, users: FX.USERS });
   hydrateRoster({ patients: FX.PATIENTS, staff: FX.STAFF, depts: FX.DEPTS });
   const now = Date.now();
   const dated = <T extends { at: string }>(r: T) => ({ ...r, iso: isoOf(now, r.at) });

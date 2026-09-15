@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
-import { and, eq } from "drizzle-orm";
-import { documentHistory, locationItems, stockBalances, stockMoves } from "../../db/schema/index.js";
+import { and, eq, sql } from "drizzle-orm";
+import { documentHistory, locationItems, priceLists, stockBalances, stockMoves } from "../../db/schema/index.js";
 import { buildTestApp } from "../../test/app.js";
 import { seedTestDb } from "../../test/seed.js";
 import { authHeaders } from "../../test/auth.js";
@@ -20,42 +20,69 @@ const del = (url: string, headers: Hdrs) => app.inject({ method: "DELETE", url: 
 // ---- item patch ----
 const patch = (url: string, headers: Hdrs, payload: Record<string, unknown>) => app.inject({ method: "PATCH", url: `/api/v1${url}`, headers, payload });
 const get = async (url: string) => { const r = await app.inject({ method: "GET", url: `/api/v1${url}`, headers: await authHeaders(app, "u2") }); expect(r.statusCode).toBe(200); return r.json(); };
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 describe("catalog: prices", () => {
   it("refuses a price above the item's own printed MRP, with the exact refusal text", async () => {
-    const r = await put("/prices/A/juice", await hdr("u2"), { price: 25 });
+    const r = await put("/prices/PL-001/juice", await hdr("u2"), { price: 25 });
     expect(r.statusCode).toBe(422);
     expect(r.json().error.code).toBe("rule");
     expect(r.json().error.message).toBe("Refused - printed MRP of ₹20 is a hard ceiling for Real Juice 200ml");
   });
 
   it("saves a price at or under the MRP and it is visible on GET /prices", async () => {
-    const r = await put("/prices/A/juice", await hdr("u2"), { price: 19 });
+    const r = await put("/prices/PL-001/juice", await hdr("u2"), { price: 19 });
     expect(r.statusCode).toBe(200);
-    expect(r.json()).toEqual({ result: { list: "A", it: "juice", price: 19 }, changed: ["prices"], message: "Real Juice 200ml priced at ₹19 on list A" });
-    expect((await get("/prices")).A.juice).toBe(19);
+    expect(r.json()).toEqual({ result: { list: "PL-001", it: "juice", price: 19 }, changed: ["prices"], message: "Real Juice 200ml priced at ₹19 on list PL-001" });
+    expect((await get("/prices"))["PL-001"].juice).toBe(19);
   });
 
   it("upserts: saving the same list/item again overwrites the previous price", async () => {
-    await put("/prices/B/juice", await hdr("u2"), { price: 20 });
-    const r = await put("/prices/B/juice", await hdr("u2"), { price: 19 });
+    await put("/prices/PL-002/juice", await hdr("u2"), { price: 20 });
+    const r = await put("/prices/PL-002/juice", await hdr("u2"), { price: 19 });
     expect(r.statusCode).toBe(200);
     expect(r.json().result.price).toBe(19);
-    expect((await get("/prices")).B.juice).toBe(19);
+    expect((await get("/prices"))["PL-002"].juice).toBe(19);
   });
 
   it("404s on an unknown item key", async () => {
-    const r = await put("/prices/A/doesnotexist", await hdr("u2"), { price: 10 });
+    const r = await put("/prices/PL-001/doesnotexist", await hdr("u2"), { price: 10 });
     expect(r.statusCode).toBe(404);
     expect(r.json().error.message).toBe("There is no item doesnotexist.");
   });
 
   it("refuses a price of nothing - 400 at the door, the same as the screen's own guard", async () => {
     for (const price of [0, -1]) {
-      const r = await put("/prices/A/juice", await hdr("u2"), { price });
+      const r = await put("/prices/PL-001/juice", await hdr("u2"), { price });
       expect(r.statusCode, r.body).toBe(400);
       expect(r.json().error.code).toBe("validation");
     }
+  });
+
+  it("404s on an unknown price list", async () => {
+    const r = await put("/prices/PL-999/juice", await hdr("u2"), { price: 19 });
+    expect(r.statusCode).toBe(404);
+    expect(r.json().error.message).toBe("There is no price list PL-999.");
+  });
+
+  it("turns a list deleted mid-save into the same refusal, never a raw 500", async () => {
+    // `savePrice` checks the list exists unlocked, then inserts - a list stays editable at any
+    // time, active or not, so a manager can delete an unattached one in the moment between.
+    // The insert's own foreign key is what actually catches it; this proves it comes out as the
+    // operator's sentence, not `deleteUserTx`'s uncaught cousin.
+    await warmPool(app.testDb!, 2);
+    await app.db.insert(priceLists).values({ id: "PL-RACE", name: "Race List" });
+    const holder = app.db.transaction(async (tx) => {
+      await tx.execute(sql`select 1 from price_lists where id = 'PL-RACE' for update`);
+      await sleep(300);
+      await tx.execute(sql`delete from price_lists where id = 'PL-RACE'`);
+    });
+    await sleep(50);
+    const raced = put("/prices/PL-RACE/juice", await hdr("u2"), { price: 10 });
+    const [r] = await Promise.all([raced, holder]);
+
+    expect(r.statusCode, r.body).toBe(404);
+    expect(r.json().error.message).toBe("There is no price list PL-RACE.");
   });
 });
 
@@ -126,7 +153,7 @@ describe("catalog: menus", () => {
 
 describe("catalog: role gate", () => {
   it("hides all three writes from a counter operator (404, not 403)", async () => {
-    const price = await put("/prices/A/juice", await hdr("u1"), { price: 19 });
+    const price = await put("/prices/PL-001/juice", await hdr("u1"), { price: 19 });
     expect(price.statusCode).toBe(404);
     const add = await post("/menus/coffee/items", await hdr("u1"), { it: "sand" });
     expect(add.statusCode).toBe(404);
@@ -275,10 +302,10 @@ describe("PATCH /items/:it", () => {
 
   it("refuses an MRP below a list price, in the goods receipt's own sentence", async () => {
     const k = await make("Patch mrp floor", { mrp: 30 });
-    await put(`/prices/A/${k}`, await hdr("u2"), { price: 22 });
-    await put(`/prices/B/${k}`, await hdr("u2"), { price: 26 });
-    // The highest list, not list A: a ceiling that clears one counter and not the other is
-    // still a counter that cannot sell.
+    await put(`/prices/PL-001/${k}`, await hdr("u2"), { price: 22 });
+    await put(`/prices/PL-002/${k}`, await hdr("u2"), { price: 26 });
+    // The highest list, not the first one: a ceiling that clears one counter and not the other
+    // is still a counter that cannot sell.
     const r = await patch(`/items/${k}`, await hdr("u2"), { mrp: 24 });
     expect(r.statusCode).toBe(422);
     expect(r.json().error.message).toBe("Patch mrp floor - printed MRP ₹24.00 is below the shelf price; reprice before selling");
@@ -287,7 +314,7 @@ describe("PATCH /items/:it", () => {
 
   it("allows an MRP above every list price", async () => {
     const k = await make("Patch mrp headroom", { mrp: 30 });
-    await put(`/prices/A/${k}`, await hdr("u2"), { price: 22 });
+    await put(`/prices/PL-001/${k}`, await hdr("u2"), { price: 22 });
     const r = await patch(`/items/${k}`, await hdr("u2"), { mrp: 40 });
     expect(r.statusCode, r.body).toBe(200);
     expect(r.json().result.item.mrp).toBe(40);

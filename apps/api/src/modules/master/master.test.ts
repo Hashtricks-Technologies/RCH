@@ -25,3 +25,15 @@ describe("master GETs", () => {
     expect(Object.keys(await get("/menus")).sort()).toEqual(Object.keys(FX.MENU).sort());
   });
 });
+
+describe("GET /price-lists", () => {
+  it("names each list with the outlets currently active on it, manager-only", async () => {
+    const r = await app.inject({ method: "GET", url: "/api/v1/price-lists", headers: await authHeaders(app, "u2") });
+    expect(r.statusCode, r.body).toBe(200);
+    expect(r.json()).toEqual(FX.PRICE_LISTS);
+  });
+  it("is not reachable by a counter operator", async () => {
+    const r = await app.inject({ method: "GET", url: "/api/v1/price-lists", headers: await authHeaders(app, "u1") });
+    expect(r.statusCode).toBe(404);
+  });
+});

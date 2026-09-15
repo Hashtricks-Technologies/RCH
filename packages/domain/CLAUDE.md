@@ -39,6 +39,9 @@ need more context than their names give:
 - `transitions.ts` holds the status tables, which the server enforces and the UI's buttons read (see below).
 - `claims.ts`, `receipt.ts` and `purchasing.ts` hold buying's arithmetic. Only `ordered_qty` is stored; the
   procurement list itself is derived.
+- `master.ts`'s `Prices` is `Record<string, Record<string, number>>` - every price list, keyed by its id, not
+  a fixed pair. `pricing.ts`'s `priceOf` reads whichever id a location's own `list` names and caps it at MRP;
+  it does not care how many lists exist.
 
 ## Transition tables
 

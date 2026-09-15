@@ -15,7 +15,7 @@ describe("planBill", () => {
     expect(b.moves).toEqual([{ loc: "rest", it: "juice", qty: -1 }]);
   });
   it("charges the printed MRP when the list price sits above it - the cap is the rate", () => {
-    const b = planBill(M, { A: { ...PL.A, juice: 25 }, B: PL.B }, "rest", { juice: 1 });
+    const b = planBill(M, { ...PL, "PL-001": { ...PL["PL-001"], juice: 25 } }, "rest", { juice: 1 });
     expect(b.lines).toEqual([{ it: "juice", qty: 1, rate: 20 }]);  // MRP 20, not the 25 on the list
     expect(b.tot).toBe(20);
   });

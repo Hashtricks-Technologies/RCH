@@ -98,8 +98,8 @@ describe("H4 · only cash counts as collected", () => {
 /* ---------------------------------------------------------------- H8 */
 describe("H8 · no seeded price breaches its MRP", () => {
   it("keeps every listed price at or below the printed MRP", () => {
-    (["A", "B"] as const).forEach((list) => {
-      Object.entries(PL[list]).forEach(([it, price]) => {
+    Object.entries(PL).forEach(([list, prices]) => {
+      Object.entries(prices).forEach(([it, price]) => {
         const mrp = IT[it]?.mrp;
         if (mrp != null) expect(price, `${list}/${it}`).toBeLessThanOrEqual(mrp);
       });

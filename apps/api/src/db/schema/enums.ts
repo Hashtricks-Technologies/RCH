@@ -2,7 +2,6 @@ import { pgEnum } from "drizzle-orm/pg-core";
 
 export const roleEnum = pgEnum("role", ["counter", "manager", "store", "prod", "buyer"]);
 export const locationTypeEnum = pgEnum("location_type", ["Store", "Kitchen", "Outlet"]);
-export const priceListEnum = pgEnum("price_list", ["A", "B"]);
 export const itemTypeEnum = pgEnum("item_type", ["RAW", "PACK", "MRP", "FG", "MTO"]);
 export const moveKindEnum = pgEnum("move_kind", [
   "opening", "sale", "ticket_out", "ticket_in", "production_consume", "production_yield",

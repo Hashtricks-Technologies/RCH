@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { IsoDate, ItemTypeSchema, LocKeySchema, PriceListSchema, StockLocSchema, TenderSchema } from "./common.js";
+import { IsoDate, ItemTypeSchema, LocKeySchema, PriceListIdSchema, StockLocSchema, TenderSchema } from "./common.js";
 import { AdjustReasonSchema, GrnSchema, ItemSchema, PayerSchema, PordStatusSchema, ProdOrderSchema, PurchaseOrderSchema, ShopAskSchema, StockRequestSchema, TicketPrioritySchema, TicketSchema, TicketStatusSchema, TicketTopicSchema } from "./documents.js";
 
 /** Every domain slice a write can touch, so a client can invalidate/refetch precisely instead
@@ -7,7 +7,7 @@ import { AdjustReasonSchema, GrnSchema, ItemSchema, PayerSchema, PordStatusSchem
  *  collection at a time from the same enum. `"items"` is here because `POST /items` changes the
  *  item master, which every screen reads out of one registry - without it the only honest
  *  `changed` a new product could name would be the whole snapshot. */
-export const CollectionSchema = z.enum(["stock", "rsv", "ovr", "prices", "menu", "bills", "req", "tkt", "prq", "po", "pord", "batch", "grn", "vendors", "contracts", "tickets", "productReqs", "shopAsks", "items", "roster", "adjustments", "accounts"]);
+export const CollectionSchema = z.enum(["stock", "rsv", "ovr", "prices", "priceLists", "menu", "bills", "req", "tkt", "prq", "po", "pord", "batch", "grn", "vendors", "contracts", "tickets", "productReqs", "shopAsks", "items", "locations", "roster", "adjustments", "accounts"]);
 export const ChangedSchema = z.array(CollectionSchema);
 export type Changed = z.infer<typeof CollectionSchema>;
 
@@ -26,15 +26,26 @@ export const PayBodySchema = z.strictObject({
   lines: z.array(z.strictObject({ it: z.string().min(1).max(64), qty: z.number().positive().multipleOf(0.001).max(10000) })).min(1).max(100),
 });
 export const ToggleAvailBodySchema = z.strictObject({ loc: LocKeySchema, it: z.string().min(1).max(64) });
-export const SavePriceParamsSchema = z.strictObject({ list: PriceListSchema, it: z.string().min(1).max(64) });
+export const SavePriceParamsSchema = z.strictObject({ list: PriceListIdSchema, it: z.string().min(1).max(64) });
 /** A price of nothing is not a price - the manager's screen already says "Enter a price greater than zero". */
 export const SavePriceBodySchema = z.strictObject({ price: z.number().positive().max(100000) });
 export const MenuLocParamsSchema = z.strictObject({ loc: LocKeySchema });
 export const MenuItemParamsSchema = z.strictObject({ loc: LocKeySchema, it: z.string().min(1).max(64) });
 export const MenuItemBodySchema = z.strictObject({ it: z.string().min(1).max(64) });
 export const ToggleResultSchema = z.strictObject({ loc: LocKeySchema, it: z.string(), off: z.boolean(), reason: z.string().optional() });
-export const PriceResultSchema = z.strictObject({ list: PriceListSchema, it: z.string(), price: z.number() });
+export const PriceResultSchema = z.strictObject({ list: PriceListIdSchema, it: z.string(), price: z.number() });
 export const MenuResultSchema = z.strictObject({ loc: LocKeySchema, items: z.array(z.string()) });
+
+// ---- price lists ----
+/** A new list is always cloned from one outlet's current active list, so the manager edits from
+ *  a known baseline rather than an empty table. It is created inactive - creating one never
+ *  switches any outlet onto it (`activatePriceList` is the separate, explicit step). */
+export const CreatePriceListBodySchema = z.strictObject({ name: z.string().min(1).max(80), cloneFrom: LocKeySchema });
+export const PriceListIdParamsSchema = z.strictObject({ id: PriceListIdSchema });
+export const OutletParamsSchema = z.strictObject({ loc: LocKeySchema });
+export const SetOutletPriceListBodySchema = z.strictObject({ listId: PriceListIdSchema });
+export const DeletedPriceListSchema = z.strictObject({ id: PriceListIdSchema });
+export const ActivatePriceListResultSchema = z.strictObject({ loc: LocKeySchema, listId: PriceListIdSchema });
 
 // Three decimals is the whole precision of a quantity anywhere in this system (`round3`), so
 // `PayBodySchema` already refuses more; match it. Positivity is deliberately NOT here - a zero

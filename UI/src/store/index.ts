@@ -7,7 +7,7 @@ import { applySnapshot } from "../api/wire";
 import { LOC } from "../data/master";
 import type {
   Adjustment, Batch, Bill, CreditResponse, Dated, DatedDoc, DraftLine, DrawerState, Grn, LocKey,
-  Payer, PordStatus, ProdOrder, PurchaseOrder, Requisition, StockLedgerRow, StockLoc,
+  Payer, PordStatus, PriceList, ProdOrder, PurchaseOrder, Requisition, StockLedgerRow, StockLoc,
   SignInEntry, StockRequest, Tender, Ticket, Trailed, User, Vendor,
 } from "../types";
 import { applyTheme, nextTheme, readStoredTheme, storeTheme, type ThemePref } from "../lib/theme";
@@ -29,7 +29,7 @@ export interface AppState extends ProcurementSlice, OpsSlice, AdminSlice {
   stock: Record<StockLoc, Record<string, number>>;
   rsv: Record<string, number>;
   ovr: Record<string, string>;
-  prices: Record<"A" | "B", Record<string, number>>;
+  prices: Record<string, Record<string, number>>;
   menu: Record<string, string[]>;
   /** Every document keeps the instant it happened at (`iso`) beside the "HH:MM" it is printed
    *  as - see `Dated` in `types.ts`. A ticket has no `at` of its own; only its trail is dated. */
@@ -137,9 +137,16 @@ export interface AppState extends ProcurementSlice, OpsSlice, AdminSlice {
   /** The three catalogue writes answer `true` only once the server has taken them, for the same
    *  reason every other form-carrying action does: an MRP refusal must leave the price the
    *  manager typed in the box, not drop it and show the old one back. */
-  savePrice: (list: "A" | "B", it: string, price: number) => Promise<boolean>;
+  savePrice: (list: string, it: string, price: number) => Promise<boolean>;
   removeProduct: (loc: LocKey, it: string) => Promise<boolean>;
   addProduct: (loc: LocKey, it: string) => Promise<boolean>;
+  /** Cloned from `cloneFrom`'s current active list, created inactive - `null` on refusal so the
+   *  drawer can keep the name the manager typed. */
+  createPriceList: (name: string, cloneFrom: LocKey) => Promise<PriceList | null>;
+  /** Only once no outlet is active on it - the server's own refusal names every outlet still on
+   *  it otherwise. */
+  deletePriceList: (id: string) => Promise<boolean>;
+  setOutletPriceList: (loc: LocKey, listId: string) => Promise<boolean>;
   /** The central store's ledger over a window, from the server's own sum of `stock_moves`.
    *  Answers `null` and toasts when the read fails - never `[]`, which is a real answer meaning
    *  the location carries no line - so the report can say which of the two happened rather than
@@ -628,6 +635,39 @@ export const useApp = create<AppState>((set, get) => ({
       return true;
     } catch (e) {
       get().notify(e instanceof ApiError ? e.message : "Could not add the product to the menu - check the connection and try again.");
+      return false;
+    }
+  },
+  createPriceList: async (name, cloneFrom) => {
+    try {
+      const r = await call(routes.createPriceList, { body: { name, cloneFrom } });
+      get().notify(r.message);
+      await refetch(r.changed, r.message);
+      return r.result;
+    } catch (e) {
+      get().notify(e instanceof ApiError ? e.message : "Could not create the price list - check the connection and try again.");
+      return null;
+    }
+  },
+  deletePriceList: async (id) => {
+    try {
+      const r = await call(routes.deletePriceList, { params: { id } });
+      get().notify(r.message);
+      await refetch(r.changed, r.message);
+      return true;
+    } catch (e) {
+      get().notify(e instanceof ApiError ? e.message : "Could not delete the price list - check the connection and try again.");
+      return false;
+    }
+  },
+  setOutletPriceList: async (loc, listId) => {
+    try {
+      const r = await call(routes.setOutletPriceList, { params: { loc }, body: { listId } });
+      get().notify(r.message);
+      await refetch(r.changed, r.message);
+      return true;
+    } catch (e) {
+      get().notify(e instanceof ApiError ? e.message : "Could not switch the price list - check the connection and try again.");
       return false;
     }
   },

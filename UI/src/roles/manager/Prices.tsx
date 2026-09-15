@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { IT, LOC, OUTLETS } from "../../data/master";
+import { IT, LOC, OUTLETS, PL, PRICE_LISTS } from "../../data/master";
 import { useApp } from "../../store";
 import { costOf, menuOf, priceOf } from "../../lib/selectors";
 import { money, sum } from "../../lib/fmt";
@@ -23,10 +23,13 @@ const marginOf = (p: number, cost: number) => (p > 0 ? ((p - cost) / p) * 100 : 
  *  constant that is there from the first render - so between sign-in and the snapshot every
  *  `LOC[l]` here is `undefined`. `known()` is what stops that being a crash. */
 const known = () => OUTLETS.filter((l) => LOC[l] !== undefined);
-const listFor = (l: LocKey) => LOC[l]?.list ?? "A";
+const listFor = (l: LocKey) => LOC[l]?.list ?? "";
 const sharers = (list: string) => known().filter((l) => listFor(l) === list);
 const listOf = (names: string[]) =>
   names.length <= 1 ? names[0] ?? "" : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+/** A price list's name for prose, falling back to its raw id if the registry has not caught up
+ *  with a write yet (the moment between a create/switch landing and its own refetch resolving). */
+const nameOfList = (id: string) => PRICE_LISTS[id]?.name ?? id;
 
 export default function Prices() {
   const s = useApp();
@@ -34,6 +37,9 @@ export default function Prices() {
   const savePrice = useApp((x) => x.savePrice);
   const removeProduct = useApp((x) => x.removeProduct);
   const addProduct = useApp((x) => x.addProduct);
+  const createPriceList = useApp((x) => x.createPriceList);
+  const deletePriceList = useApp((x) => x.deletePriceList);
+  const setOutletPriceList = useApp((x) => x.setOutletPriceList);
   const notify = useApp((x) => x.notify);
 
   const shop = s.shopFilter;
@@ -44,6 +50,15 @@ export default function Prices() {
   const [drop, setDrop] = useState<string | null>(null);
   const [add, setAdd] = useState("");
   const psort = useSort("name");
+  /** The landing view's two tabs: the outlet cards (today's screen), or the price lists
+   *  themselves - every list that exists, whether or not an outlet is on it, with filters. */
+  const [tab, setTab] = useState<"outlets" | "lists">("outlets");
+  const [listQ, setListQ] = useState("");
+  const [listOutlet, setListOutlet] = useState("All");
+  const [newListName, setNewListName] = useState("");
+  const [dropList, setDropList] = useState<string | null>(null);
+  /** The drilled-in view's own new-list form, shown only once opened. */
+  const [creating, setCreating] = useState(false);
   /** Which rows have a write in flight, one key per row. Every one of the four buttons on this
    *  screen posts, and every one of them can be refused - an MRP ceiling, a product another
    *  manager has just dropped - so none of them may clear what was typed or picked until the
@@ -53,6 +68,26 @@ export default function Prices() {
 
   const go = (loc: LocKey | null) => {
     setQ(""); setType(0); setPstate(0); setDrop(null); setAdd(""); setShopFilter(loc);
+  };
+
+  /** Cloned from `cloneFrom`'s current active list, created inactive - the manager switches an
+   *  outlet onto it explicitly, from either tab. */
+  const createList = async (name: string, cloneFrom: LocKey, onDone: () => void) => {
+    lock("newList", true);
+    const created = await createPriceList(name, cloneFrom);
+    lock("newList", false);
+    if (created) onDone();
+  };
+  const deleteList = async (id: string) => {
+    lock(`dropList:${id}`, true);
+    const ok = await deletePriceList(id);
+    lock(`dropList:${id}`, false);
+    if (ok) setDropList(null);
+  };
+  const switchList = async (loc: LocKey, listId: string) => {
+    lock("switchList", true);
+    await setOutletPriceList(loc, listId);
+    lock("switchList", false);
   };
 
   const priced = (loc: LocKey) => menuOf(s, loc).filter((it) => priceOf(s, loc, it).p > 0);
@@ -68,6 +103,13 @@ export default function Prices() {
   const lists = [...new Set(outlets.map(listFor))].sort();
 
   if (!shop || !OUTLETS.includes(shop)) {
+    const allLists = Object.values(PRICE_LISTS).sort((a, b) => a.name.localeCompare(b.name));
+    const listTerm = listQ.trim().toLowerCase();
+    const filteredLists = allLists
+      .filter((pl) => listOutlet === "All"
+        || (listOutlet === "Unattached" ? pl.outlets.length === 0 : pl.outlets.some((l) => LOC[l]?.n === listOutlet)))
+      .filter((pl) => !listTerm || pl.name.toLowerCase().includes(listTerm));
+
     return (
       <>
         <PageHead
@@ -75,49 +117,114 @@ export default function Prices() {
           title="Shop price lists"
           sub={outlets.length === 0 ? "No outlet is configured yet." : undefined}
           tip="What each shop charges."
+          actions={
+            <div style={{ display: "flex", gap: 6 }}>
+              <Btn variant={tab === "outlets" ? "solid" : "gh"} size="sm" onClick={() => setTab("outlets")}>Outlets</Btn>
+              <Btn variant={tab === "lists" ? "solid" : "gh"} size="sm" onClick={() => setTab("lists")}>Price lists</Btn>
+            </div>
+          }
         />
-        {/* Nothing at all before the snapshot lands, rather than "0 lists cover the 0 counters" -
-            which was both ungrammatical and a claim about a deployment nobody had read yet. */}
-        {lists.length > 0 && (
-          <Alert tone="i" label="LISTS">
-            {lists.map((l, i) => (
-              <span key={l}>
-                {i > 0 ? "; " : ""}list <b>{l}</b>{" "}
-                {sharers(l).length > 1 ? "is shared by" : "covers"} {listOf(sharers(l).map((o) => LOC[o].n))}
-              </span>
-            ))}
-            . Editing a price on a list changes it at every counter on that list.
-          </Alert>
+        {tab === "outlets" ? (
+          <>
+            {/* Nothing at all before the snapshot lands, rather than "0 lists cover the 0
+                counters" - which was both ungrammatical and a claim about a deployment nobody
+                had read yet. */}
+            {lists.length > 0 && (
+              <Alert tone="i" label="LISTS">
+                {lists.map((l, i) => (
+                  <span key={l}>
+                    {i > 0 ? "; " : ""}<b>{nameOfList(l)}</b>{" "}
+                    {sharers(l).length > 1 ? "is shared by" : "covers"} {listOf(sharers(l).map((o) => LOC[o].n))}
+                  </span>
+                ))}
+                . Editing a price on a list changes it at every counter on that list.
+              </Alert>
+            )}
+            <Grid cols="g3">
+              {outlets.map((loc) => {
+                const items = priced(loc);
+                return (
+                  <Card
+                    key={loc}
+                    title={LOC[loc].n}
+                    sub={LOC[loc].floor}
+                    right={<Pill tone="ac">{nameOfList(listFor(loc))}</Pill>}
+                  >
+                    <div className="totrow"><span>Outlet code</span><span>{LOC[loc].c}</span></div>
+                    <div className="totrow"><span>Cost centre</span><span>{LOC[loc].cc}</span></div>
+                    <div className="totrow"><span>Price list</span><span>{nameOfList(listFor(loc))}</span></div>
+                    <div className="totrow"><span>Products priced</span><span>{items.length}</span></div>
+                    <div className="totrow big"><span>Avg margin</span><span>{avgMargin(loc).toFixed(1)}%</span></div>
+                    <div className="mtop">
+                      <Btn wide onClick={() => go(loc)}>Manage prices</Btn>
+                    </div>
+                  </Card>
+                );
+              })}
+            </Grid>
+          </>
+        ) : (
+          <Card title="Every price list" sub={`${filteredLists.length} of ${allLists.length}`} flush>
+            <Toolbar
+              placeholder="Search list name…"
+              value={listQ}
+              onSearch={setListQ}
+              filters={
+                <FilterSelect
+                  label="Outlet"
+                  value={listOutlet}
+                  options={["All", ...outlets.map((l) => LOC[l].n), "Unattached"]}
+                  onChange={setListOutlet}
+                />
+              }
+            />
+            <div className="lgrid">
+              <DataTable
+                cols={[
+                  { h: "Name", cls: "nm" },
+                  { h: "Outlets" },
+                  { h: "Items", r: true },
+                  { h: "Actions", w: "20%" },
+                ]}
+                rows={filteredLists.map((pl) => ({
+                  key: pl.id,
+                  cells: [
+                    pl.name,
+                    pl.outlets.length > 0 ? pl.outlets.map((l) => LOC[l]?.n ?? l).join(", ") : <span className="mini">Unattached</span>,
+                    Object.keys(PL[pl.id] ?? {}).length,
+                    dropList === pl.id ? (
+                      <div style={{ display: "flex", gap: 6 }}>
+                        <Btn size="xs" variant="dg" disabled={busy[`dropList:${pl.id}`]} onClick={() => void deleteList(pl.id)}>
+                          {busy[`dropList:${pl.id}`] ? "Deleting…" : "Confirm delete"}
+                        </Btn>
+                        <Btn size="xs" variant="gh" onClick={() => setDropList(null)}>Cancel</Btn>
+                      </div>
+                    ) : pl.outlets.length > 0 ? (
+                      <span className="tipped">
+                        <Btn size="xs" variant="dg" disabled>Delete</Btn>
+                        <Tip label="Delete" text={`Refused - ${pl.name} is still used by ${listOf(pl.outlets.map((l) => LOC[l]?.n ?? l))} - switch them to another list first`} />
+                      </span>
+                    ) : (
+                      <Btn size="xs" variant="dg" onClick={() => setDropList(pl.id)}>Delete</Btn>
+                    ),
+                  ],
+                }))}
+                empty={emptyFor(listTerm !== "" || listOutlet !== "All", {
+                  title: "No price list yet",
+                  sub: "Create one from an outlet's own page.",
+                })}
+              />
+            </div>
+          </Card>
         )}
-        <Grid cols="g3">
-          {outlets.map((loc) => {
-            const items = priced(loc);
-            return (
-              <Card
-                key={loc}
-                title={LOC[loc].n}
-                sub={LOC[loc].floor}
-                right={<Pill tone={LOC[loc].list === "A" ? "in" : "ac"}>List {LOC[loc].list}</Pill>}
-              >
-                <div className="totrow"><span>Outlet code</span><span>{LOC[loc].c}</span></div>
-                <div className="totrow"><span>Cost centre</span><span>{LOC[loc].cc}</span></div>
-                <div className="totrow"><span>Price list</span><span>List {LOC[loc].list}</span></div>
-                <div className="totrow"><span>Products priced</span><span>{items.length}</span></div>
-                <div className="totrow big"><span>Avg margin</span><span>{avgMargin(loc).toFixed(1)}%</span></div>
-                <div className="mtop">
-                  <Btn wide onClick={() => go(loc)}>Manage prices</Btn>
-                </div>
-              </Card>
-            );
-          })}
-        </Grid>
       </>
     );
   }
 
-  const list = LOC[shop].list ?? "A";
+  const list = listFor(shop);
   const shared = sharers(list);
   const others = OUTLETS.filter((l) => !shared.includes(l));
+  const otherLists = Object.values(PRICE_LISTS).filter((pl) => pl.id !== list).sort((a, b) => a.name.localeCompare(b.name));
   const term = q.trim().toLowerCase();
   const listed = menuOf(s, shop);
   const wantType = TYPES[type];
@@ -146,7 +253,7 @@ export default function Prices() {
             : k === "margin" ? marginOf(pr.p, costOf(it))
               : (IT[it]?.n ?? it);
   });
-  const missing = Object.keys(s.prices[list]).filter((it) => !listed.includes(it));
+  const missing = Object.keys(s.prices[list] ?? {}).filter((it) => !listed.includes(it));
 
   const save = async (it: string) => {
     const raw = edit[it];
@@ -183,19 +290,43 @@ export default function Prices() {
 
       <Alert tone="i" label="LIST">
         {shared.length > 1
-          ? <>List <b>{list}</b> is shared by <b>{listOf(shared.map((o) => LOC[o].n))}</b> - saving a price here changes it at {shared.length === 2 ? "both" : "all " + shared.length} counters.</>
-          : <>{LOC[shop].n} is the only outlet on list <b>{list}</b>{others.length > 0 && <>, so {listOf(others.map((o) => LOC[o].n))} {others.length === 1 ? "is" : "are"} untouched by these edits</>}.</>}
+          ? <>List <b>{nameOfList(list)}</b> is shared by <b>{listOf(shared.map((o) => LOC[o].n))}</b> - saving a price here changes it at {shared.length === 2 ? "both" : "all " + shared.length} counters.</>
+          : <>{LOC[shop].n} is the only outlet on list <b>{nameOfList(list)}</b>{others.length > 0 && <>, so {listOf(others.map((o) => LOC[o].n))} {others.length === 1 ? "is" : "are"} untouched by these edits</>}.</>}
       </Alert>
 
-      <Card title="Add a product" tip={`Priced on list ${list} but not listed at this counter`}>
+      <Card title="Price list" tip="Switch which list this outlet charges from, or start a new one cloned from its current prices.">
+        <FormRow>
+          <Field label="Active list">
+            <select value={list} disabled={busy.switchList} onChange={(e) => void switchList(shop, e.target.value)}>
+              <option value={list}>{nameOfList(list)}</option>
+              {otherLists.map((pl) => <option key={pl.id} value={pl.id}>{pl.name}</option>)}
+            </select>
+          </Field>
+          <Btn variant="gh" onClick={() => setCreating((c) => !c)}>
+            {creating ? "Cancel" : "Create a new list for this outlet"}
+          </Btn>
+        </FormRow>
+        {creating && (
+          <FormRow>
+            <Field label="New list name" tip="Starts as a copy of this outlet's current prices; nothing switches until you pick it above.">
+              <input value={newListName} onChange={(e) => setNewListName(e.target.value)} placeholder="e.g. Weekend Rates" />
+            </Field>
+            <Btn disabled={!newListName.trim() || busy.newList} onClick={() => void createList(newListName.trim(), shop, () => { setNewListName(""); setCreating(false); })}>
+              {busy.newList ? "Creating…" : "Create"}
+            </Btn>
+          </FormRow>
+        )}
+      </Card>
+
+      <Card title="Add a product" tip={`Priced on list ${nameOfList(list)} but not listed at this counter`}>
         {missing.length > 0 ? (
           <>
             <FormRow>
-              <Field label="Product" tip={`Only a product priced on list ${list} can be sold at this counter.`}>
+              <Field label="Product" tip={`Only a product priced on list ${nameOfList(list)} can be sold at this counter.`}>
                 <select value={add} onChange={(e) => setAdd(e.target.value)}>
                   <option value="">Pick a product…</option>
                   {missing.map((it) => (
-                    <option key={it} value={it}>{IT[it]?.n ?? it} - {money(s.prices[list][it])}</option>
+                    <option key={it} value={it}>{IT[it]?.n ?? it} - {money(s.prices[list]?.[it] ?? 0)}</option>
                   ))}
                 </select>
               </Field>
@@ -205,7 +336,7 @@ export default function Prices() {
             </Btn>
           </>
         ) : (
-          <p className="mini">Every product priced on list {list} is already listed at this counter.</p>
+          <p className="mini">Every product priced on list {nameOfList(list)} is already listed at this counter.</p>
         )}
       </Card>
 
@@ -300,7 +431,7 @@ export default function Prices() {
         </div>
         <TableFoot
           count={items.length}
-          extra={<>List {list} · average margin {avgMargin(shop).toFixed(1)}%</>}
+          extra={<>List {nameOfList(list)} · average margin {avgMargin(shop).toFixed(1)}%</>}
         />
       </Card>
     </>

@@ -1,4 +1,4 @@
-import type { Item, Location, Payer, PayerRoster, UserMin } from "../types";
+import type { Item, Location, Payer, PayerRoster, PriceList, UserMin } from "../types";
 
 // `STAFF_CREDIT_LIMIT` is deliberately not among these any more: the till reads the ceiling off
 // `GET /reports/credit/:kind/:id` (`credit.limit`), because the number that matters is the one
@@ -14,7 +14,10 @@ export { ALL_LOCS, OUTLETS, PO_APPROVAL_LIMIT } from "@rch/contract";
 // The demo hospital lives in `@rch/contract/fixtures` and is imported by tests alone.
 export const LOC: Record<string, Location> = {};
 export const IT: Record<string, Item> = {};
-export const PL: { A: Record<string, number>; B: Record<string, number> } = { A: {}, B: {} };
+export const PL: Record<string, Record<string, number>> = {};
+/** The price lists themselves - name and which outlets are on each - keyed by id, alongside
+ *  `PL`'s flat item->price maps. Filled by `hydratePriceLists`. */
+export const PRICE_LISTS: Record<string, PriceList> = {};
 export const MENU: Record<string, string[]> = {};
 /** The directory the server sends: a name badge each. Nobody's contact details but your own
  *  travel over the wire, so this is `UserMin`, not `User` - the signed-in person's own full
@@ -37,7 +40,8 @@ export function hydrateRoster(r: PayerRoster): void {
 export type MasterData = {
   items: Record<string, Item>;
   locations: Record<string, Location>;
-  prices: { A: Record<string, number>; B: Record<string, number> };
+  prices: Record<string, Record<string, number>>;
+  priceLists: PriceList[];
   menu: Record<string, string[]>;
   users: UserMin[];
 };
@@ -52,21 +56,30 @@ const replaceKeys = <T extends object>(target: T, next: T) => {
  *  and `catalogVersion` in the store is what tells React the lists changed. */
 export function hydrateItems(items: MasterData["items"]): void { replaceKeys(IT, items); }
 
-/** Just the two price lists, for a write that moved one (`PUT /prices/:list/:it` names "prices").
- *  Both lists are replaced together because the server answers with both. */
-export function hydratePrices(prices: MasterData["prices"]): void {
-  replaceKeys(PL.A, prices.A);
-  replaceKeys(PL.B, prices.B);
+/** Every price list's item->price map, for a write that moved one
+ *  (`PUT /prices/:list/:it` names "prices"). Every list is replaced together because the server
+ *  answers with all of them. */
+export function hydratePrices(prices: MasterData["prices"]): void { replaceKeys(PL, prices); }
+
+/** The price lists themselves, for a write that created, deleted or switched one
+ *  (`changed: ["priceLists"]`). */
+export function hydratePriceLists(priceLists: MasterData["priceLists"]): void {
+  replaceKeys(PRICE_LISTS, Object.fromEntries(priceLists.map((pl) => [pl.id, pl])));
 }
 
 /** Just the menus, for a write that listed or delisted a product (`changed: ["menu"]`). */
 export function hydrateMenus(menu: MasterData["menu"]): void { replaceKeys(MENU, menu); }
 
+/** Just the locations, for a write that moved one (`changed: ["locations"]`) - today, only an
+ *  outlet's active price list switching. */
+export function hydrateLocations(locations: MasterData["locations"]): void { replaceKeys(LOC, locations); }
+
 /** Replace every registry's contents with the server's master data (`applySnapshot` calls this). */
 export function hydrateMaster(m: MasterData): void {
   replaceKeys(IT, m.items);
-  replaceKeys(LOC, m.locations);
+  hydrateLocations(m.locations);
   hydratePrices(m.prices);
+  hydratePriceLists(m.priceLists);
   hydrateMenus(m.menu);
   USERS.splice(0, USERS.length, ...m.users);
 }

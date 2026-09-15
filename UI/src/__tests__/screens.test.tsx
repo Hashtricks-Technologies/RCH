@@ -21,7 +21,7 @@ import { REPORTS } from "../roles/store/Reports";
 import { bodyKey } from "../roles/manager/ApprovalDrawer";
 import { IT as FXIT, USERS, seedVendors } from "@rch/contract/fixtures";
 // ---- item patch ----
-import { IT, LOC, OUTLETS } from "../data/master";
+import { IT, LOC, OUTLETS, PRICE_LISTS, hydratePriceLists } from "../data/master";
 import { activeItems, madeItems } from "../lib/selectors";
 import { Alert } from "../ui/kit";
 import type { PoolLine } from "../lib/selectors";
@@ -852,8 +852,63 @@ describe("a form whose write the server refused", () => {
     const save = [...box.closest("tr")!.querySelectorAll("button")].find((b) => b.textContent === "Save")!;
     await settle(() => { save.click(); });
 
-    expect(savePrice).toHaveBeenCalledWith("B", "juice", 37);
+    expect(savePrice).toHaveBeenCalledWith("PL-002", "juice", 37);
     expect(ui.labelled("New price for Real Juice 200ml").value).toBe("37");
+  });
+});
+
+describe("the price lists tab", () => {
+  it("lists every price list, filtered by outlet and by name", () => {
+    act(() => { as("manager"); useApp.setState({ shopFilter: null }); });
+    const ui = mount(manager.prices);
+    act(() => { ui.button("Price lists").click(); });
+    expect(ui.text()).toContain("List A");
+    expect(ui.text()).toContain("List B");
+
+    const outletFilter = ui.host.querySelector<HTMLSelectElement>('select[aria-label="Outlet"]')!;
+    act(() => {
+      outletFilter.value = "Coffee Shop";
+      outletFilter.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    expect(ui.text()).toContain("List B");
+    expect(ui.text()).not.toContain("List A");
+  });
+
+  it("blocks deleting a list still active at an outlet, and allows an unattached one", () => {
+    hydratePriceLists([...Object.values(PRICE_LISTS), { id: "PL-999", name: "Spare", outlets: [] }]);
+    act(() => { as("manager"); useApp.setState((s) => ({ shopFilter: null, catalogVersion: s.catalogVersion + 1 })); });
+    const ui = mount(manager.prices);
+    act(() => { ui.button("Price lists").click(); });
+
+    const rowFor = (name: string) => [...ui.host.querySelectorAll("tr")].find((r) => (r.textContent ?? "").includes(name))!;
+    expect(rowFor("List A").querySelector("button")?.hasAttribute("disabled")).toBe(true);
+    expect([...rowFor("Spare").querySelectorAll("button")].some((b) => b.textContent === "Delete" && !b.hasAttribute("disabled"))).toBe(true);
+  });
+
+  it("creates a list cloned from the outlet it was opened from", async () => {
+    const createPriceList = vi.fn(async () => ({ id: "PL-010", name: "Weekend Rates", outlets: [] }));
+    act(() => { as("manager"); useApp.setState({ createPriceList, shopFilter: "coffee" }); });
+    const ui = mount(manager.prices);
+
+    act(() => { ui.button("Create a new list for this outlet").click(); });
+    typeIn(ui.field("New list name"), "Weekend Rates");
+    await settle(() => { ui.button("Create").click(); });
+
+    expect(createPriceList).toHaveBeenCalledWith("Weekend Rates", "coffee");
+  });
+
+  it("switching the active-list picker calls setOutletPriceList", async () => {
+    const setOutletPriceList = vi.fn(async () => true);
+    act(() => { as("manager"); useApp.setState({ setOutletPriceList, shopFilter: "coffee" }); });
+    const ui = mount(manager.prices);
+
+    const picker = ui.field("Active list") as unknown as HTMLSelectElement;
+    await settle(() => {
+      picker.value = "PL-001";
+      picker.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+
+    expect(setOutletPriceList).toHaveBeenCalledWith("coffee", "PL-001");
   });
 });
 

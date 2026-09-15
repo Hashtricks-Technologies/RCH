@@ -8,8 +8,8 @@ export type StockMap = Record<string, Record<string, number>>;
 export type RsvMap = Record<string, number>;
 /** Manual availability override reason, keyed "loc:item". */
 export type OvrMap = Record<string, string>;
-/** The two till price lists. */
-export type Prices = { A: Record<string, number>; B: Record<string, number> };
+/** Every till price list, by id - as many as a manager has created. */
+export type Prices = Record<string, Record<string, number>>;
 
 export const qty = (stock: StockMap, l: string, it: string): number => stock[l]?.[it] ?? 0;
 export const resv = (rsv: RsvMap, l: string, it: string): number => rsv[`${l}:${it}`] ?? 0;

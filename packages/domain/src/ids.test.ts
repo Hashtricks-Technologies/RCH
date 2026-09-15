@@ -17,6 +17,7 @@ describe("formatId", () => {
     expect(formatId("support", 45, at)).toBe("SUP-0045");
     expect(formatId("product_req", 13, at)).toBe("NPR-0013");
     expect(formatId("shop_ask", 62, at)).toBe("ASK-062");
+    expect(formatId("price_list", 6, at)).toBe("PL-006");
   });
   it("continues each seeded series rather than restarting it", () => {
     expect(SEQUENCE_START.req).toBe(913);
@@ -26,6 +27,7 @@ describe("formatId", () => {
     expect(SEQUENCE_START.product_req).toBe(13);
     expect(SEQUENCE_START.contract).toBe(109);
     expect(SEQUENCE_START.shop_ask).toBe(63);
+    expect(SEQUENCE_START.price_list).toBe(3);
   });
 });
 

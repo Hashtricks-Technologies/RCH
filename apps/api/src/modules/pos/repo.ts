@@ -33,11 +33,11 @@ export const posRepo = {
     return Object.fromEntries(rows.map((r) => [`${loc}:${r.itemKey}`, r.reason]));
   },
 
-  /** Both lists: which one a location charges from is the master's business (`priceOf`). */
+  /** Every list: which one a location charges from is the master's business (`priceOf`). */
   async prices(tx: Tx): Promise<Prices> {
     const rows = await tx.select().from(priceListItems);
-    const out: Prices = { A: {}, B: {} };
-    for (const r of rows) out[r.list][r.itemKey] = r.price;
+    const out: Prices = {};
+    for (const r of rows) (out[r.listId] ??= {})[r.itemKey] = r.price;
     return out;
   },
 
