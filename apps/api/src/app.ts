@@ -13,6 +13,7 @@ import auth from "./plugins/auth.js";
 import rbac from "./plugins/rbac.js";
 import sse from "./plugins/sse.js";
 import idempotency from "./plugins/idempotency.js";
+import audit from "./plugins/audit.js";
 import { registerModules } from "./modules/index.js";
 
 declare module "fastify" { interface FastifyInstance { config: Config } }
@@ -55,6 +56,9 @@ export async function buildApp(config: Config, deps: AppDeps = {}): Promise<App>
   await app.register(rbac);
   await app.register(sse, { config, searchPath: deps.searchPath });
   await app.register(idempotency);
+  // After idempotency, so its `onSend` has run by the time this one keeps the body, and before the
+  // modules, so every route `mount()` registers carries the hooks.
+  await app.register(audit);
   await registerModules(app);
   return app;
 }
