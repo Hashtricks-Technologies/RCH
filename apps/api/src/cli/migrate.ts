@@ -1,12 +1,14 @@
 import { sql } from "drizzle-orm";
-import { loadConfig } from "../config.js";
+import { cliDatabaseUrl, loadConfig } from "../config.js";
 import { createDb } from "../db/client.js";
 import { appliedMigrationCount, expectedMigrationCount, runMigrations } from "../db/migrate.js";
+import { applyAppRole } from "../lib/roles.js";
 
 const config = loadConfig(process.env);
 // statementTimeoutMs: 0 - a migration, and a replica waiting its turn on the advisory lock
-// below, are both allowed to take longer than the 15 s a request may.
-const { db, pool } = createDb(config.databaseUrl, config.databaseSsl, { max: 1, statementTimeoutMs: 0 });
+// below, are both allowed to take longer than the 15 s a request may. Connected as the migrate
+// user: the runtime role DATABASE_URL names can create nothing, and is what this step sets up.
+const { db, pool } = createDb(cliDatabaseUrl(config), config.databaseSsl, { max: 1, statementTimeoutMs: 0 });
 // This CLI runs as an initContainer on every api pod, so several replicas can start it at
 // once during a rollout; a Postgres advisory lock makes only one of them actually migrate
 // while the rest block here, then find nothing left to apply. `max: 1` above pins the pool
@@ -21,5 +23,11 @@ await db.execute(sql`set lock_timeout = 0`);
 await db.execute(sql`select pg_advisory_lock(727272)`);
 await runMigrations(db);
 console.log(`migrations applied: ${await appliedMigrationCount(db)} / ${expectedMigrationCount()}`);
+// Still inside the lock, and after the migrations, so every table the grants name exists and no
+// second replica is creating the role beside this one.
+const role = await applyAppRole(db, { runtime: config.databaseUrl, migrate: cliDatabaseUrl(config) }, { schema: "public", migrationsSchema: "drizzle" });
+console.log(role
+  ? `runtime role ${role}: login, password and grants set (insert-only on the audit outbox)`
+  : "runtime role: skipped - DATABASE_URL and MIGRATE_DATABASE_URL name the same user");
 await db.execute(sql`select pg_advisory_unlock(727272)`);
 await pool.end();

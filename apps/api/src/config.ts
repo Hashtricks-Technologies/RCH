@@ -8,6 +8,11 @@ const Env = z.object({
   PORT: int(0, 65535).default(3000),
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"]).default("info"),
   DATABASE_URL: z.url().startsWith("postgres"),
+  /** Who the migrate step and the operator CLIs connect as (`cliDatabaseUrl`). Unset, they use
+   *  DATABASE_URL - local development and the tests, where one user does everything. Set to a
+   *  different user, `db:migrate` also makes DATABASE_URL's user the API's least-privilege role
+   *  (`lib/roles.ts`). The server itself never reads it. */
+  MIGRATE_DATABASE_URL: z.url().startsWith("postgres").optional(),
   TEST_DATABASE_URL: z.url().startsWith("postgres").optional(),
   /** Left unset, production verifies the RDS chain and a laptop does not - see `databaseSsl`
    *  below. Set it either way to overrule that. */
@@ -45,6 +50,7 @@ export type Config = Readonly<{
   port: number;
   logLevel: z.infer<typeof Env>["LOG_LEVEL"];
   databaseUrl: string;
+  migrateDatabaseUrl: string | undefined;
   testDatabaseUrl?: string;
   databaseSsl: boolean;
   dbPoolMax: number;
@@ -103,6 +109,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): Config {
     port: e.PORT,
     logLevel: e.LOG_LEVEL,
     databaseUrl: e.DATABASE_URL,
+    migrateDatabaseUrl: e.MIGRATE_DATABASE_URL,
     testDatabaseUrl: e.TEST_DATABASE_URL,
     // Unset means "whatever this environment ought to be": production talks to RDS and verifies
     // the bundled CA, a laptop talks to a container on 5439 and does not. An explicit
@@ -129,3 +136,8 @@ export function loadConfig(env: NodeJS.ProcessEnv): Config {
     trustProxy: parseTrustProxy(e.TRUST_PROXY),
   });
 }
+
+/** The URL an operator CLI connects with: the migrate user where one is configured, the runtime
+ *  URL otherwise. `buildApp` never uses it - the server always connects with `databaseUrl`, which in
+ *  a deployment is the runtime role that cannot read or rewrite the audit outbox. */
+export const cliDatabaseUrl = (c: Config): string => c.migrateDatabaseUrl ?? c.databaseUrl;
