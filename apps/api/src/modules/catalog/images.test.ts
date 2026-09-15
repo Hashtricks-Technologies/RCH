@@ -142,3 +142,35 @@ describe("removing an item's photo", () => {
     expect(off.json().error.message).toBe("Cappuccino is not on the Snack Kiosk menu - its photo is the manager's to set");
   });
 });
+
+describe("GET /items/:it/image/:hash", () => {
+  const read = (url: string) => app.inject({ method: "GET", url: `/api/v1${url}` });
+
+  it("serves the current photo without a token, cached for a year and locked down", async () => {
+    const bytes = photo(20);
+    await setImg("capp", "u2", bytes);
+    const r = await read(`/items/capp/image/${sha(bytes)}`);
+    expect(r.statusCode).toBe(200);
+    expect(new Uint8Array(r.rawPayload)).toEqual(bytes);
+    expect(r.headers["content-type"]).toBe("image/jpeg");
+    expect(r.headers["cache-control"]).toBe("public, max-age=31536000, immutable");
+    expect(r.headers["x-content-type-options"]).toBe("nosniff");
+    expect(r.headers["content-security-policy"]).toBe("default-src 'none'");
+  });
+
+  it("404s an old hash, a malformed hash and an unknown item", async () => {
+    const old = photo(21), next = photo(22);
+    await setImg("chai", "u2", old);
+    await setImg("chai", "u2", next);
+    expect((await read(`/items/chai/image/${sha(old)}`)).statusCode).toBe(404);
+    expect((await read(`/items/chai/image/nothex`)).statusCode).toBe(404);
+    expect((await read(`/items/doesnotexist/image/${sha(next)}`)).statusCode).toBe(404);
+  });
+
+  it("404s when the row points at an object the store no longer has", async () => {
+    const bytes = photo(23);
+    await setImg("water", "u2", bytes);
+    await app.images.delete(imageKey("water", sha(bytes)));
+    expect((await read(`/items/water/image/${sha(bytes)}`)).statusCode).toBe(404);
+  });
+});
