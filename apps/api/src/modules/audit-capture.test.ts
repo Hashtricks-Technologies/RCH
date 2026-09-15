@@ -93,16 +93,16 @@ describe("a write that succeeds leaves exactly one done event", () => {
 
   it("a manager's price edit: the list and item as one target", async () => {
     const mark = await lastId();
-    const r = await write("u2", "PUT", "/prices/A/juice", { price: 19 });
+    const r = await write("u2", "PUT", "/prices/PL-001/juice", { price: 19 });
     expect(r.statusCode, r.body).toBe(200);
     const [e, ...more] = await eventsSince(mark);
     expect(more).toEqual([]);
     expect(e).toMatchObject({
       actor: { id: "u2", emp: "RC-3120", name: "Ramesh Kumar", role: "Outlet Manager", loc: "rest" },
-      action: "savePrice", method: "PUT", path: "/prices/:list/:it", target: "A:juice", targetLoc: "",
-      outcome: "done", status: 200, message: "Real Juice 200ml priced at ₹19 on list A", changed: ["prices"],
-      request: { params: { list: "A", it: "juice" }, query: {}, body: { price: 19 } },
-      result: { list: "A", it: "juice", price: 19 },
+      action: "savePrice", method: "PUT", path: "/prices/:list/:it", target: "PL-001:juice", targetLoc: "",
+      outcome: "done", status: 200, message: "Real Juice 200ml priced at ₹19 on list PL-001", changed: ["prices"],
+      request: { params: { list: "PL-001", it: "juice" }, query: {}, body: { price: 19 } },
+      result: { list: "PL-001", it: "juice", price: 19 },
     });
   });
 
@@ -252,15 +252,17 @@ describe("the event commits with the write or not at all", () => {
 describe("a write that does not succeed leaves one event after its reply", () => {
   it("a rule refusal: refused, with the sentence the operator read", async () => {
     const mark = await lastId();
-    const r = await write("u2", "PUT", "/prices/A/juice", { price: 25 });
+    const r = await write("u2", "PUT", "/prices/PL-001/juice", { price: 25 });
     expect(r.statusCode).toBe(422);
     expect(await eventsSince(mark)).toEqual([{
       at: expect.any(String), requestId: r.headers["x-request-id"],
       actor: { id: "u2", emp: "RC-3120", name: "Ramesh Kumar", role: "Outlet Manager", loc: "rest" },
-      action: "savePrice", method: "PUT", path: "/prices/:list/:it", target: "A:juice", targetLoc: "",
+      action: "savePrice", method: "PUT", path: "/prices/:list/:it", target: "PL-001:juice", targetLoc: "",
       outcome: "refused", status: 422, message: "Refused - printed MRP of ₹20 is a hard ceiling for Real Juice 200ml", cause: null,
-      request: { params: { list: "A", it: "juice" }, query: {}, body: { price: 25 } },
-      before: null, result: null, changed: [], ip: "127.0.0.1", userAgent: UA,
+      request: { params: { list: "PL-001", it: "juice" }, query: {}, body: { price: 25 } },
+      // savePrice's own auditBefore runs before the MRP check, so a refused edit still carries
+      // the price this list held before the refusal - here, the 19 the earlier case left it at.
+      before: { list: "PL-001", it: "juice", price: 19 }, result: null, changed: [], ip: "127.0.0.1", userAgent: UA,
     }]);
   });
 
@@ -275,16 +277,16 @@ describe("a write that does not succeed leaves one event after its reply", () =>
 
   it("a role-gate 404: the route that is not there for that role", async () => {
     const mark = await lastId();
-    const r = await write("u1", "PUT", "/prices/A/juice", { price: 18 });
+    const r = await write("u1", "PUT", "/prices/PL-001/juice", { price: 18 });
     expect(r.statusCode).toBe(404);
     const [e, ...more] = await eventsSince(mark);
     expect(more).toEqual([]);
-    expect(e).toMatchObject({ actor: { id: "u1", role: "Counter Operator" }, action: "savePrice", target: "A:juice", outcome: "refused", status: 404 });
+    expect(e).toMatchObject({ actor: { id: "u1", role: "Counter Operator" }, action: "savePrice", target: "PL-001:juice", outcome: "refused", status: 404 });
   });
 
   it("a validation 400 from a signed-in caller: still named, though the body was refused before the token was checked", async () => {
     const mark = await lastId();
-    const r = await write("u2", "PUT", "/prices/A/juice", { price: 0 });
+    const r = await write("u2", "PUT", "/prices/PL-001/juice", { price: 0 });
     expect(r.statusCode).toBe(400);
     const [e, ...more] = await eventsSince(mark);
     expect(more).toEqual([]);
@@ -296,9 +298,9 @@ describe("a write that does not succeed leaves one event after its reply", () =>
 
   it("a refusal nobody can be named for leaves nothing: no token, or one that does not verify", async () => {
     const mark = await lastId();
-    const bare = await app.inject({ method: "PUT", url: "/api/v1/prices/A/juice", headers: { "idempotency-key": randomUUID(), "user-agent": UA }, payload: { price: 0, note: "x".repeat(2000) } });
+    const bare = await app.inject({ method: "PUT", url: "/api/v1/prices/PL-001/juice", headers: { "idempotency-key": randomUUID(), "user-agent": UA }, payload: { price: 0, note: "x".repeat(2000) } });
     expect(bare.statusCode).toBe(400);
-    const forged = await app.inject({ method: "PUT", url: "/api/v1/prices/A/juice", headers: { authorization: "Bearer not-a-token", "idempotency-key": randomUUID() }, payload: { price: 0 } });
+    const forged = await app.inject({ method: "PUT", url: "/api/v1/prices/PL-001/juice", headers: { authorization: "Bearer not-a-token", "idempotency-key": randomUUID() }, payload: { price: 0 } });
     expect(forged.statusCode).toBe(400);
     expect(await eventsSince(mark)).toEqual([]);
   });
@@ -405,7 +407,7 @@ describe("a write that does not succeed leaves one event after its reply", () =>
     const a = await appWith(() => undefined, { LOG_LEVEL: "error" }, log);
     await app.db.execute(sql.raw("alter table audit_outbox add constraint audit_outbox_refuse_ck check (false) not valid"));
     try {
-      const r = await write("u1", "PUT", "/prices/A/juice", { price: 18 }, randomUUID(), a);
+      const r = await write("u1", "PUT", "/prices/PL-001/juice", { price: 18 }, randomUUID(), a);
       expect(r.statusCode).toBe(404);
       expect(r.json().error.code).toBe("not_found");
       await a.auditSettled();

@@ -46,13 +46,13 @@ const lastEvent = async (action: string): Promise<AuditEvent> => {
 
 describe("before values: prices, menus, the availability switch and the item master", () => {
   it("savePrice keeps the list's old price, and null where that list never priced the item", async () => {
-    expect((await read("/prices")).A.juice).toBe(18);
-    const first = await send("u2", "PUT", "/prices/A/juice", { price: 19 });
-    expect((await lastEvent("savePrice")).before).toEqual({ list: "A", it: "juice", price: 18 });
-    await send("u2", "PUT", "/prices/A/juice", { price: 17 });
+    expect((await read("/prices"))["PL-001"].juice).toBe(18);
+    const first = await send("u2", "PUT", "/prices/PL-001/juice", { price: 19 });
+    expect((await lastEvent("savePrice")).before).toEqual({ list: "PL-001", it: "juice", price: 18 });
+    await send("u2", "PUT", "/prices/PL-001/juice", { price: 17 });
     expect((await lastEvent("savePrice")).before).toEqual(maskSecrets(first.result));
-    await send("u2", "PUT", "/prices/A/box", { price: 3 });
-    expect((await lastEvent("savePrice")).before).toEqual({ list: "A", it: "box", price: null });
+    await send("u2", "PUT", "/prices/PL-001/box", { price: 3 });
+    expect((await lastEvent("savePrice")).before).toEqual({ list: "PL-001", it: "box", price: null });
   });
 
   it("addMenuItem and removeMenuItem keep the outlet's listing as it stood", async () => {
@@ -76,6 +76,23 @@ describe("before values: prices, menus, the availability switch and the item mas
     expect((await lastEvent("patchItem")).before).toEqual({ key: "bisc", item: was });
     await send("u3", "PATCH", "/items/bisc", { rl: 40 });
     expect((await lastEvent("patchItem")).before).toEqual(maskSecrets(first.result));
+  });
+});
+
+describe("before values: price lists", () => {
+  it("deletePriceList keeps the list as it stood, unattached", async () => {
+    const created = await send("u2", "POST", "/price-lists", { name: "Audit Probe List", cloneFrom: "rest" });
+    await send("u2", "DELETE", `/price-lists/${String(created.result.id)}`);
+    expect((await lastEvent("deletePriceList")).before).toEqual(maskSecrets(created.result));
+  });
+
+  it("setOutletPriceList keeps the outlet's previous list", async () => {
+    const created = await send("u2", "POST", "/price-lists", { name: "Audit Probe List 2", cloneFrom: "rest" });
+    await send("u2", "PUT", "/outlets/rest/price-list", { listId: created.result.id as string });
+    expect((await lastEvent("setOutletPriceList")).before).toEqual({ loc: "rest", listId: "PL-001" });
+    // Switch it back, so the outlet is left exactly as this suite found it.
+    await send("u2", "PUT", "/outlets/rest/price-list", { listId: "PL-001" });
+    expect((await lastEvent("setOutletPriceList")).before).toEqual({ loc: "rest", listId: created.result.id });
   });
 });
 
