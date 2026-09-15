@@ -1,9 +1,9 @@
 import * as D from "@rch/domain";
 import { apportion, netReceived, round3 } from "@rch/domain";
 export { apportion, netReceived, round3 };
-// A rule's own tuning rather than master data, so it comes from the domain package and not from
-// the registries `hydrateMaster` fills (M11).
-import { PAR_FACTOR } from "@rch/domain";
+// The par factor is a rule's own tuning, read off the location master `hydrateMaster` fills
+// rather than compiled into the bundle (M11); the outlet lists below read the same master.
+import { operationalKeys, outletKeys, parFactor } from "@rch/domain";
 import { IT, LOC, MENU, PL } from "../data/master";
 import type {
   Availability, Bill, DatedDoc, LocKey, PoStatus, PordStatus, Price, PurchaseOrder, Requisition, ReqStatus,
@@ -63,8 +63,23 @@ export const madeItems = (): string[] =>
 export const parOf = (l: LocKey, it: string) => {
   const base = IT[it]?.rl ?? 0;
   if (!base) return 0;
-  const f = PAR_FACTOR[l] ?? 1;
+  const f = parFactor(LOC, l);
   return U(it) === "nos" ? Math.round(base * f) : round3(base * f);
+};
+
+/** The outlets a new document may name - open ones, by name - read from the location master, never
+ *  from a list compiled into the bundle. A picker that *starts* something uses this. */
+export const openOutlets = (): LocKey[] => outletKeys(LOC, { open: true });
+/** Every outlet, closed ones too, for a filter over what already happened: a closed outlet's bills
+ *  are still bills. */
+export const allOutlets = (): LocKey[] => outletKeys(LOC);
+/** Where an operator works today: the store, the kitchen, the open outlets. */
+export const operationalLocs = (): LocKey[] => operationalKeys(LOC);
+/** A location as a filter or a table prints it - a closed outlet says so. */
+export const locName = (l: string): string => {
+  const at = LOC[l];
+  if (!at) return l;
+  return at.active === false ? `${at.n} (closed)` : at.n;
 };
 
 /** Quantity already promised by an approval that has not yet become a ticket. Every request is

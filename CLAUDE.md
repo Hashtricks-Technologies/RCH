@@ -5,8 +5,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## What this is
 
 Royal Care Hospital's F&B inventory and billing system. It runs one item master and one stock ledger behind a
-central store, a central kitchen and three retail outlets (Restaurant, Coffee Shop, Snack Kiosk), and covers
-purchase requisition → purchase order → goods receipt → production → issue → counter sale.
+central store, a central kitchen and three retail outlets (Restaurant, Coffee Shop, Snack Kiosk) the hospital
+opened with - the super admin opens, edits, closes and reopens outlets from `/admin` as the hospital grows - and
+covers purchase requisition → purchase order → goods receipt → production → issue → counter sale.
 
 It is a pnpm + Turborepo monorepo (Node 24, pnpm 10.28.2):
 
@@ -85,8 +86,8 @@ Every change must pass all of it. Four things trip people up:
 
 - **Lint is zero-warning.** Every package's `lint` is `oxlint --max-warnings 0`, so a warning fails the job
   just like an error does.
-- **Coverage floors are part of `test`.** The floors are UI lines 73 / branches 51, `apps/api` 94 / 79,
-  `apps/audit` 90 / 75, `packages/domain` 99 / 92, and `packages/contract` lines 96. Raise a floor when the real figure rises. Never
+- **Coverage floors are part of `test`.** The floors are UI lines 79 / branches 60, `apps/api` 94 / 80,
+  `apps/audit` 90 / 75, `packages/domain` 99 / 93, and `packages/contract` lines 96. Raise a floor when the real figure rises. Never
   lower one to turn a run green. The `--coverage` flag lives on each `test` script, which is why a single-file
   run isn't judged against the floor.
 - **`test` is uncached in `turbo.json`.** Turbo hashes source files, not the database, so a cache hit could
@@ -157,9 +158,10 @@ There are five roles (`counter`, `manager`, `store`, `prod`, `buyer`), each with
 - **`manager`** is hospital-wide, so its writes never scope to a location.
 - **`counter` and `prod`** are location-scoped. `store` and `buyer` each work one desk.
 - **Admin** is a boolean on `users`, not a sixth role. It is checked as `access: "admin"`. An admin-flagged
-  account sees only the standalone `/admin` page, never an operational shell. The page has three tabs:
-  Accounts (staff accounts), Support desk (every role's support tickets) and Audit log (every write and
-  sign-in). The flag can only be set with `pnpm --filter @rch/api users set-admin`; no route can set it.
+  account sees only the standalone `/admin` page, never an operational shell. The page has four tabs: Accounts
+  (staff accounts), Outlets (opens, edits, closes and reopens them), Support desk (every role's support
+  tickets) and Audit log (every write and sign-in). The flag can only be set with
+  `pnpm --filter @rch/api users set-admin`; no route can set it.
 - **The super admin has no role in practice.** The `users` row still carries a placeholder role and location,
   but the wire labels it `Super Admin`, the account page offers no role or location for it, and `rbac.ts`
   answers an admin token with a **404** on every route that is not `access: "admin"` or a must-change-password
@@ -189,7 +191,9 @@ back where it stood.
   grep.
 - **Lock order is documents → ids → balances**, server-wide. There are exactly two deliberate exceptions: the
   counter sale's bill number and the adjustment's `ADJ-` number are allocated after the balance locks. Don't
-  copy either one; `apps/api/CLAUDE.md` explains why each is safe.
+  copy either one; `apps/api/CLAUDE.md` explains why each is safe. A write naming a location takes its row `FOR
+  SHARE` through `lockLocation` in `apps/api/src/lib/locations.ts`, in the documents tier; a close takes it `FOR
+  UPDATE`.
 - Status changes go through the tables in `packages/domain/src/transitions.ts`. The server refuses with them,
   and the UI reads the same tables to decide which buttons to draw.
 - Every non-public write carries an `Idempotency-Key`. The outcome is recorded inside the write's own
@@ -197,7 +201,8 @@ back where it stood.
 - **A price list is a managed entity** (`price_lists`, id + name), not a fixed pair. A manager creates one
   cloned from an outlet's current active list, edits any list at any time whether or not it is active, and
   switches an outlet onto any list explicitly (`PUT /outlets/:loc/price-list`). Two outlets may still share one
-  active list, exactly as before. A list can be deleted only once no outlet is active on it.
+  active list, exactly as before. A list can be deleted only once no outlet is active on it. A newly opened
+  outlet is on none: the super admin's form has no price list, and the manager attaches one from Prices.
 - **The audit tables have one writer each.** In `apps/api`, only `src/lib/audit.ts` inserts into
   `audit_outbox`, and nothing selects, updates or deletes from it. In `apps/audit`, only `src/lib/drain.ts`
   deletes from the outbox or inserts into `audit.events` and `audit.dead_letters`, and nothing anywhere updates
@@ -270,6 +275,10 @@ The code enforces these and tests pin them. Breaking one is a bug.
   moves, frees the credit room it used, and badges the bill rather than erasing it.
 - **Items are retired, never deleted**, and not while any stock or menu listing remains. **Payers are
   deactivated, never deleted.**
+- **Outlets are closed, never deleted.** A close is refused while the outlet holds stock, an open ticket, stock
+  request, kitchen order, shop ask or product request, or an active staff member, and the refusal names every
+  one. A closed outlet takes no sale, transfer, ask, stock request, kitchen order, adjustment, menu listing,
+  price-list switch or void, and no staff can be posted to it. A reopen restores it as it was.
 - **Employee numbers are assigned by the server**: `nextEmpNo` in `@rch/domain`, one past the highest
   `RC-<digits>`, under the `user` row of `sequences`, which also hands out user ids that are never reused.
 - **A staff account is deleted only if it never did anything.** It must be deactivated first, and it can't be
@@ -287,7 +296,9 @@ The code enforces these and tests pin them. Breaking one is a bug.
 
 ## Conventions
 
-- `LocKey`, `Role` and every status are closed unions. Never widen one with `string`. The one deliberate
+- `Role` and every status are closed unions. Never widen one with `string`. A location key is data: the central
+  store and kitchen are `STORE` / `KITCHEN` from `@rch/contract`, and outlets are read from the location master
+  (`outletKeys` in `@rch/domain`, `openOutlets()` / `allOutlets()` in the UI), never listed. The one deliberate
   `string` is an audit row's stored `action`, so a removed route's history still reads.
 - Round quantities to three decimals with `round3`.
 - Never hand-format a number. Use `money` / `money0` / `lakh` for money, `fq(v, it)` with `U(it)` for

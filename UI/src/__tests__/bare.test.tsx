@@ -20,9 +20,9 @@ import { as, resetStore } from "./fixture";
 
 /**
  * A hospital with nothing in it - what `GET /snapshot` answers on a database seeded `--bare`,
- * which is how a real deployment starts (`deploy/compose/deploy.sh`). The six locations are there,
- * because `LocKey` is a closed union the whole app is written against; everything else is empty:
- * no item, price, menu, stock line, payer, vendor or document.
+ * which is how a real deployment starts (`deploy/compose/deploy.sh`). The six locations are there
+ * because `bare` seeds them itself, not because a `LocKey` is one of a fixed few; everything else
+ * is empty: no item, price, menu, stock line, payer, vendor or document.
  *
  * `screens.test.tsx` renders every screen over the demo hospital, which always has an item, a
  * menu and a bill to point at. A screen that reads `menu[loc].includes(...)`, `PRODS[0]` or a
@@ -47,7 +47,7 @@ function bareHospital() {
     stock: EMPTY_STOCK, rsv: {}, ovr: {}, prices: {}, menu: {},
     req: [], tkt: [], prq: [], po: [], pord: [], batch: [], bills: [], grn: [], vendors: [],
     contracts: [], productReqs: [], shopAsks: [], tickets: [], adjustments: [],
-    sales: Array.from({ length: DAYS }, () => [0, 0, 0]),
+    sales: Array.from({ length: DAYS }, () => ({ rest: 0, coffee: 0, kiosk: 0 })),
     dayLabels: Array.from({ length: DAYS }, (_, i) => String(i + 1).padStart(2, "0")),
   });
 }

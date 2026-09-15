@@ -21,8 +21,8 @@ import { REPORTS } from "../roles/store/Reports";
 import { bodyKey } from "../roles/manager/ApprovalDrawer";
 import { IT as FXIT, USERS, seedVendors } from "@rch/contract/fixtures";
 // ---- item patch ----
-import { IT, LOC, OUTLETS, PRICE_LISTS, hydratePriceLists } from "../data/master";
-import { activeItems, madeItems } from "../lib/selectors";
+import { IT, LOC, PRICE_LISTS, hydrateLocations, hydratePriceLists } from "../data/master";
+import { activeItems, allOutlets, madeItems } from "../lib/selectors";
 import { Alert } from "../ui/kit";
 import type { PoolLine } from "../lib/selectors";
 import type { Bill, Dated, DatedDoc, Role, StockRequest, SupportTicket, Ticket, Trailed } from "../types";
@@ -680,21 +680,36 @@ describe("a retired product stops generating work", () => {
 // ---- prod-order raise ----
 describe("the counter can ask the kitchen, and only for what the kitchen makes", () => {
   it("offers the finished goods on that outlet's menu and nothing else", () => {
-    // Through the manager's drawer, whose outlet picker opens on OUTLETS[0] - the Restaurant,
-    // the one shop with finished goods on its menu and the only way to reach one from a test
-    // (the fixtures' two counters are the Coffee Shop and the Snack Kiosk).
+    // Through the manager's drawer, whose outlet picker opens on the first open outlet by
+    // name - the Coffee Shop, reachable this way rather than through a counter session because
+    // the fixtures' two counter accounts are the Coffee Shop itself and the Snack Kiosk.
     act(() => { as("manager"); });
     const host = document.createElement("div");
     document.body.appendChild(host);
     const root = createRoot(host);
     act(() => { root.render(createElement(MemoryRouter, null, createElement(DRAWERS.korder, { id: "new" }))); });
 
-    const options = [...host.querySelectorAll("select[aria-label='Product 1'] option")].map((o) => o.textContent);
-    // The Restaurant's menu is capp, chai, puff, sand, salad, juice, water, chips. Only the
-    // three finished goods may be ordered: the four bought-in lines come off the central
-    // store's shelf, and `capp`/`chai` are made at the till the moment they are sold - nothing
-    // downstream could fill an order for one, so the picker must not offer them.
-    expect(options).toEqual(["Garden salad", "Veg puffs", "Veg sandwich"]);
+    // The drawer's own picker (the form's "For" field carries the same aria-label, read-only).
+    act(() => {
+      const sel = host.querySelector<HTMLSelectElement>("select[aria-label='Outlet']")!;
+      sel.value = "coffee";
+      sel.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    // The Coffee Shop's menu is capp, chai, juice, water, bisc, chips - not one finished good:
+    // capp and chai are made at the till the moment they are sold, and the rest come off the
+    // central store's shelf. Nothing downstream could fill an order for any of them, so the
+    // picker offers nothing at all rather than a product the kitchen cannot make for this outlet.
+    expect([...host.querySelectorAll("select[aria-label='Product 1'] option")].map((o) => o.textContent)).toEqual([]);
+
+    // Switching to the Restaurant proves the emptiness above is about the Coffee Shop's menu,
+    // not a picker that is broken outright: the Restaurant's puff/sand/salad are finished goods.
+    act(() => {
+      const sel = host.querySelector<HTMLSelectElement>("select[aria-label='Outlet']")!;
+      sel.value = "rest";
+      sel.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    const restOptions = [...host.querySelectorAll("select[aria-label='Product 1'] option")].map((o) => o.textContent);
+    expect(restOptions).toEqual(["Garden salad", "Veg puffs", "Veg sandwich"]);
 
     act(() => { root.unmount(); });
     host.remove();
@@ -914,6 +929,34 @@ describe("the price lists tab", () => {
 
     act(() => { ui.button("Settings").click(); });
     expect(openDrawer).toHaveBeenCalledWith("plset", "prices");
+  });
+});
+
+describe("an outlet on no price list yet (I2)", () => {
+  it("names it 'no list yet' on the landing banner rather than a blank list", () => {
+    hydrateLocations({ ...LOC, kiosk: { ...LOC.kiosk, list: undefined } });
+    act(() => { as("manager"); useApp.setState({ shopFilter: null }); });
+    const ui = mount(manager.prices);
+
+    expect(ui.text()).toContain("no list yet");
+    // Nothing else prints as a blank name for the outlet the fixture just took the list off.
+    expect(ui.host.querySelector("b")?.textContent).not.toBe("");
+  });
+
+  it("offers no price table to save to, and no path to a savePrice(\"\", …) call", () => {
+    hydrateLocations({ ...LOC, kiosk: { ...LOC.kiosk, list: undefined } });
+    const savePrice = vi.fn(async () => true);
+    act(() => { as("manager"); useApp.setState({ savePrice, shopFilter: "kiosk" }); });
+    const ui = mount(manager.prices);
+
+    expect(ui.text()).toContain("no list yet");
+    expect(ui.text()).toContain("attach one from Settings");
+    // The price table - and its Save button, whose click would post to `/api/prices//<it>` - is
+    // not rendered at all, so there is no button anywhere that can call `savePrice` with an
+    // empty list id.
+    expect([...ui.host.querySelectorAll("button")].map((b) => (b.textContent ?? "").trim())).not.toContain("Save");
+    expect(ui.host.querySelector('input[aria-label^="New price for"]')).toBeNull();
+    expect(savePrice).not.toHaveBeenCalled();
   });
 });
 
@@ -1267,15 +1310,20 @@ describe("the counter's stock requests", () => {
   it("says there is nobody to ask on a one-outlet deployment", () => {
     act(() => { as("counter"); });
     // One counter and no peer: `peers[0]` was `undefined`, and `LOC[undefined].n` took the
-    // whole screen down before it could draw a single row.
-    const saved = [...OUTLETS];
-    OUTLETS.splice(0, OUTLETS.length, "coffee");
+    // whole screen down before it could draw a single row. Closed rather than deleted - the
+    // fixtures' seeded shop-to-shop history still names the kiosk, and a document raised
+    // before a close still needs its location to resolve.
+    const savedRest = LOC.rest;
+    const savedKiosk = LOC.kiosk;
+    LOC.rest = { ...LOC.rest, active: false };
+    LOC.kiosk = { ...LOC.kiosk, active: false };
     try {
       const ui = mount(counter.requests);
       expect(ui.text()).toContain("No other outlet to ask");
       expect(ui.text()).toContain("Stock requests");     // and the rest of the screen is there
     } finally {
-      OUTLETS.splice(0, OUTLETS.length, ...saved);
+      LOC.rest = savedRest;
+      LOC.kiosk = savedKiosk;
     }
   });
 
@@ -1339,24 +1387,28 @@ describe("a refusal is shown where it was raised and nowhere else", () => {
 
 describe("the price-list prose counts what is actually deployed", () => {
   it("says a list covers its one counter, not that it is shared", () => {
-    const saved = [...OUTLETS];
-    OUTLETS.splice(0, OUTLETS.length, "coffee");
+    const savedRest = LOC.rest;
+    const savedKiosk = LOC.kiosk;
+    delete LOC.rest;
+    delete LOC.kiosk;
     try {
       act(() => { as("manager"); useApp.setState({ shopFilter: null }); });
       const ui = mount(manager.prices);
       expect(ui.text()).toContain(`covers ${LOC.coffee.n}`);
       expect(ui.text()).not.toContain("is shared by");
     } finally {
-      OUTLETS.splice(0, OUTLETS.length, ...saved);
+      LOC.rest = savedRest;
+      LOC.kiosk = savedKiosk;
     }
   });
 
   it("says nothing about lists before the locations have landed", () => {
-    // What the screen sees between sign-in and the snapshot: `OUTLETS` is a deployment constant
-    // and is already there, `LOC` is a registry filled in place and is not. `LOC[l].list` threw
+    // What the screen sees between sign-in and the snapshot: outlets are read straight off
+    // `LOC`, a registry filled in place, and are empty until it is. `LOC[l].list` threw
     // outright, and the header read "0 lists cover the 0 counters".
-    const saved = OUTLETS.map((l) => LOC[l]);
-    for (const l of OUTLETS) delete LOC[l];
+    const outlets = allOutlets();
+    const saved = outlets.map((l) => LOC[l]);
+    for (const l of outlets) delete LOC[l];
     try {
       act(() => { as("manager"); useApp.setState({ shopFilter: null }); });
       const ui = mount(manager.prices);
@@ -1364,7 +1416,7 @@ describe("the price-list prose counts what is actually deployed", () => {
       expect(ui.text()).not.toContain("0 lists");
       expect(ui.text()).not.toContain("0 counters");
     } finally {
-      OUTLETS.forEach((l, i) => { LOC[l] = saved[i]; });
+      outlets.forEach((l, i) => { LOC[l] = saved[i]; });
     }
   });
 });
@@ -1394,7 +1446,11 @@ describe("the account-management page", () => {
     const createAccount = vi.fn(async () => ({ emp: "RC-4472", password: "a-one-time-password" }));
     act(() => {
       as("manager");
-      useApp.setState({ user: { ...useApp.getState().user!, admin: true }, createAccount });
+      useApp.setState({
+        user: { ...useApp.getState().user!, admin: true }, createAccount,
+        loadAdminLocations: vi.fn(async () => {}),
+        adminLocations: [{ key: "rest", n: "Restaurant", c: "OT-R1", type: "Outlet", floor: "Floor 1", cc: "CC-RST", active: true, staff: 1 }],
+      });
     });
     const ui = mount(AdminUsers);
     typeIn(ui.field("Name"), "Anitha R");
@@ -1429,9 +1485,16 @@ describe("the admin's support desk", () => {
   };
   const rowOf = (host: HTMLElement, id: string) =>
     [...host.querySelectorAll("tbody tr")].find((r) => (r.textContent ?? "").includes(id)) as HTMLElement | undefined;
+  const ADMIN_LOCS = [
+    { key: "store", n: "Central Store", c: "WH-CS", type: "Store" as const, floor: "Basement", cc: "CC-STO", active: true, staff: 2 },
+    { key: "coffee", n: "Coffee Shop", c: "OT-CS", type: "Outlet" as const, floor: "Ground", cc: "CC-CFE", list: "A" as const, active: true, staff: 1 },
+  ];
   const flagged = (extra: Record<string, unknown> = {}) => act(() => {
     as("manager");
-    useApp.setState({ user: { ...useApp.getState().user!, admin: true }, deskTickets: DESK, ...extra });
+    useApp.setState({
+      user: { ...useApp.getState().user!, admin: true }, deskTickets: DESK, adminLocations: ADMIN_LOCS,
+      loadAdminLocations: vi.fn(async () => {}), ...extra,
+    });
   });
 
   it("lists what still needs support from every role, most pressing first, and the rest behind the status filter", () => {
@@ -1491,13 +1554,15 @@ describe("the admin's support desk", () => {
     expect(ui.host.querySelector("textarea")!.value).toBe("");
   });
 
-  it("puts accounts and the desk on two tabs, with a count of what needs support, read on the way in", () => {
+  it("puts accounts, outlets and the desk on three tabs, with a count of what needs support, read on the way in", () => {
     const loadDeskTickets = vi.fn(async () => {});
     flagged({ loadDeskTickets, loadAccounts: vi.fn(async () => {}), loadAdminActions: vi.fn(async () => {}) });
     const ui = mount(AdminDashboard);
     expect(loadDeskTickets).toHaveBeenCalledTimes(1);
     expect(ui.text()).toContain("Manage staff accounts");
-    const tab = ui.host.querySelector<HTMLButtonElement>('[role="tab"][aria-selected="false"]')!;
+    const tabs = [...ui.host.querySelectorAll<HTMLButtonElement>('[role="tab"]')];
+    const tab = tabs.find((b) => b.textContent?.startsWith("Support desk"))!;
+    expect(tab.getAttribute("aria-selected")).toBe("false");
     expect(tab.textContent).toBe("Support desk2");
     act(() => { tab.click(); });
     expect(ui.text()).toContain("Tickets from every role's Support screen.");

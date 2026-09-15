@@ -95,6 +95,10 @@ export const AUDIT_LABELS: Record<AuditAction, AuditLabel> = {
   removeContract:         { label: "Removed a rate contract", group: "master" },
   createProductRequest:   { label: "Asked for a new product", group: "master" },
   answerProductRequest:   { label: "Answered a new-product request", group: "master" },
+  createOutlet:           { label: "Opened an outlet", group: "master" },
+  updateOutlet:           { label: "Changed an outlet", group: "master" },
+  closeOutlet:            { label: "Closed an outlet", group: "master" },
+  reopenOutlet:           { label: "Reopened an outlet", group: "master" },
   // ---- support
   raiseTicket:            { label: "Raised a support ticket", group: "support" },
   replyToTicket:          { label: "Replied to a support ticket", group: "support" },

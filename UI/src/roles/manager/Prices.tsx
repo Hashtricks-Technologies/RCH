@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { IT, LOC, OUTLETS, PL, PRICE_LISTS } from "../../data/master";
+import { IT, LOC, PL, PRICE_LISTS } from "../../data/master";
 import { useApp } from "../../store";
-import { costOf, menuOf, priceOf } from "../../lib/selectors";
+import { costOf, menuOf, openOutlets, priceOf } from "../../lib/selectors";
 import { money, sum } from "../../lib/fmt";
 import {
   Alert, Btn, Card, DataTable, Field, FilterSelect, FormRow, Grid, Icon, ImagePlaceholder, PageHead, Pill, TableFoot, Tag, Tip, Toolbar,
@@ -18,21 +18,20 @@ const marginOf = (p: number, cost: number) => (p > 0 ? ((p - cost) / p) * 100 : 
  *  prose. Naming the Restaurant and the Snack Kiosk in a sentence was right for three counters
  *  on two lists and wrong the day a fourth opened - and a manager reading "saving a price here
  *  changes it at both counters" over three is being told something false about their own money.
- *
- *  `LOC` is a registry filled in place when the snapshot lands, while `OUTLETS` is a deployment
- *  constant that is there from the first render - so between sign-in and the snapshot every
- *  `LOC[l]` here is `undefined`. `knownOutlets()` is what stops that being a crash.
+ *  A closed outlet is not offered here either - there is no till left to change a price on, and
+ *  the prose is about live counters.
  *
  *  Exported because `PriceListSettingsDrawer` reads the same mappings out of the same two
  *  registries, and two copies of "which outlets share this list" would be two answers. */
-export const knownOutlets = () => OUTLETS.filter((l) => LOC[l] !== undefined);
 export const listFor = (l: LocKey) => LOC[l]?.list ?? "";
-export const sharers = (list: string) => knownOutlets().filter((l) => listFor(l) === list);
+export const sharers = (list: string) => openOutlets().filter((l) => listFor(l) === list);
 export const listOf = (names: string[]) =>
   names.length <= 1 ? names[0] ?? "" : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
 /** A price list's name for prose, falling back to its raw id if the registry has not caught up
- *  with a write yet (the moment between a create/switch landing and its own refetch resolving). */
-export const nameOfList = (id: string) => PRICE_LISTS[id]?.name ?? id;
+ *  with a write yet (the moment between a create/switch landing and its own refetch resolving).
+ *  An outlet's own `list` is `""` before a manager ever attaches one - `PriceListSettingsDrawer`'s
+ *  own wording for that state, so every screen that names a list reads the same sentence. */
+export const nameOfList = (id: string) => (id === "" ? "no list yet" : PRICE_LISTS[id]?.name ?? id);
 
 export default function Prices() {
   const s = useApp();
@@ -94,10 +93,10 @@ export default function Prices() {
   };
 
   /** The outlets this browser actually knows about, and the lists they are on. */
-  const outlets = knownOutlets();
+  const outlets = openOutlets();
   const lists = [...new Set(outlets.map(listFor))].sort();
 
-  if (!shop || !OUTLETS.includes(shop)) {
+  if (!shop || !outlets.includes(shop)) {
     const allLists = Object.values(PRICE_LISTS).sort((a, b) => a.name.localeCompare(b.name));
     const listTerm = listQ.trim().toLowerCase();
     const filteredLists = allLists
@@ -218,8 +217,31 @@ export default function Prices() {
   }
 
   const list = listFor(shop);
+  // A newly opened outlet starts on no list at all - nothing here is priced yet, and a save
+  // pressed on an empty table would post to `/api/prices//<it>`, a route nothing answers.
+  // Point the manager at Settings instead of rendering a table with nothing to save to.
+  if (list === "") {
+    return (
+      <>
+        <PageHead
+          crumbs={["Royal Care", "Outlets", "Price Lists", LOC[shop].n]}
+          title={`${LOC[shop].n} prices`}
+          tip="What this shop sells and charges."
+          actions={
+            <div style={{ display: "flex", gap: 6 }}>
+              {settings}
+              <Btn variant="gh" size="sm" onClick={() => go(null)}>Back to all shops</Btn>
+            </div>
+          }
+        />
+        <Alert tone="w" label="NO LIST">
+          {LOC[shop].n} is on {nameOfList(list)} - attach one from Settings before pricing or selling here.
+        </Alert>
+      </>
+    );
+  }
   const shared = sharers(list);
-  const others = OUTLETS.filter((l) => !shared.includes(l));
+  const others = openOutlets().filter((l) => !shared.includes(l));
   const term = q.trim().toLowerCase();
   const listed = menuOf(s, shop);
   const wantType = TYPES[type];

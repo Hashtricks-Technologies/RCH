@@ -7,7 +7,7 @@ server.
 
 ```bash
 pnpm --filter @rch/api dev                  # tsx watch, reads ../../.env, :3000
-pnpm --filter @rch/api test                 # vitest; Postgres on 5439 (pnpm db:up); floor lines 94 / branches 79
+pnpm --filter @rch/api test                 # vitest; Postgres on 5439 (pnpm db:up); floor lines 94 / branches 80
 pnpm --filter @rch/api build                # tsup → dist/server.mjs
 pnpm --filter @rch/api db:generate          # drizzle-kit generate + strip the "public". prefix; review + commit the SQL
 pnpm --filter @rch/api db:migrate           # behind pg_advisory_lock(727272); creates rch_app when DATABASE_URL names another user
@@ -80,6 +80,11 @@ To add one, copy `src/modules/_template/` and add one import and one `app.regist
 Lock order is **documents → ids → balances**. Take a ticket number before the balance locks, never while
 holding a shelf.
 
+- **`lib/locations.ts` is the one way a write names a location.** `lockLocation(tx, key)` takes the row `FOR
+  SHARE`, in the documents tier - before any id and before any balance - and refuses an unknown key as
+  `not_found`. `assertOpen(row, then?)` refuses a closed outlet. The admin's close (`modules/admin`) takes the
+  same row `FOR UPDATE`, so a sale already holding the shared lock commits before the close counts its
+  blockers, and one that starts after the close has committed reads the outlet closed.
 - **Purchase-order claims use a narrower order:** the PO row first, then the requisition rows in ascending
   order (`lib/claims.ts`). `createPo` is the one write that locks requisition rows without holding an order
   lock. That is safe only because it is minting that order.
@@ -117,7 +122,10 @@ which edits a list's own item→price rows and never depends on which outlet (if
 None of the three writes touch `stock_moves`, `stock_balances` or a document table, so the lock order above
 does not apply: each is a single `withTransaction` taking only `price_lists` and `locations` rows.
 `pricelistsRepo.head` locks the target `price_lists` row `FOR UPDATE`, and both `remove` and `activate` take
-it before doing anything else - so a delete and a switch of the same list serialise rather than race. The FK
+it before doing anything else - so a delete and a switch of the same list serialise rather than race.
+`activate` names an outlet, so it reads it through `lockLocation` and refuses a closed one (`assertOpen`) like
+every other write that names a location: the list it switched to is what the outlet would sell the day it
+reopened. The FK
 (`locations.price_list_id` `ON DELETE RESTRICT`, `price_list_items.list_id` `ON DELETE CASCADE`) is the
 backstop for a future writer that doesn't take that lock, not the primary guard; `catalog.savePrice` is one
 such writer today - it reads whether the list exists unlocked, so its own insert is wrapped in a catch for the
@@ -146,6 +154,23 @@ same violation.
 - **`GET /auth/directory` is public**: active, non-admin accounts as `{ emp, n }`, for the sign-in picker. It
   has its own per-IP limit (120/min, `DIRECTORY_RATE_LIMIT_PER_MINUTE` in `modules/auth/routes.ts`), apart from
   the login limit.
+
+## Outlets
+
+The admin module (`modules/admin`) owns outlets - opened, edited, closed and reopened at `/admin`, never
+deleted (root `CLAUDE.md`). Its close holds the outlet's row `FOR UPDATE` and counts everything still open
+against it in **one statement** (`repo.ts`'s `closeBlockers`), because a dispatch, an answer, a receive or a
+cancel moves a commitment from one counted category to another while naming no location at all - counted one
+statement at a time, at READ COMMITTED, such a write can be seen by neither count. It refuses in one sentence
+naming every blocker at once (`closeRefusal` in `@rch/domain`, over the statuses `HOLDS_OUTLET` marks as
+still committing the outlet - a
+dispatched kitchen order or a sent shop ask keeps an undo edge in its own transition table, but the ticket it
+raised is what holds the outlet from then on).
+
+Every outlet write runs inside one `withTransaction`, writes one `admin_actions` row, and calls
+`emitChanged(tx, ["outlets", "locations"])` - unlike an account write, which announces nothing. Every
+operational browser refetches the location master on `locations`; every open admin tab refetches its own list
+on `outlets`.
 
 ## Reads
 

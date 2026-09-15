@@ -1,4 +1,3 @@
-import { OUTLETS } from "@rch/contract";
 import type { Adjustment, Batch, Bill, LocKey, PayerRoster, ProdOrder, ProductRequest, Role, ShopAsk, StockRequest, SupportTicket, Ticket } from "@rch/contract";
 import type { Snapshot } from "./service.js";
 
@@ -127,10 +126,6 @@ export function scope(s: Snapshot, who: Who & { sub: string }, owners: Map<strin
   };
   if (who.role !== "counter") return base;
   const L = who.loc;
-  // `sales` is one column per outlet, so handing it over whole tells a counter operator the
-  // whole hospital's takings. Keep the shape (a row per day, matching dayLabels, which stay)
-  // and keep only their own column - none at all if they are not on an outlet.
-  const col = OUTLETS.indexOf(L);
   return {
     ...base,
     ...scopeStock(base, who),
@@ -142,7 +137,10 @@ export function scope(s: Snapshot, who: Who & { sub: string }, owners: Map<strin
     productReqs: scopeProductRequests(base.productReqs, who),
     pord: scopeProdOrders(base.pord, who),
     batch: scopeBatches(base.batch, who),
-    sales: base.sales.map((row) => (col === -1 ? [] : [row[col] ?? 0])),
+    // `sales` is keyed by outlet, so handing it over whole tells a counter operator the whole
+    // hospital's takings. Keep the shape (a record per day, matching dayLabels, which stay) and keep
+    // only their own outlet - nothing at all if they are not on one.
+    sales: base.sales.map((row) => (L in row ? { [L]: row[L] ?? 0 } : {})),
     prq: scopeBuying(base.prq, who), po: scopeBuying(base.po, who), grn: scopeBuying(base.grn, who),
     vendors: scopeBuying(base.vendors, who), contracts: scopeBuying(base.contracts, who),
     // ---- adjustments

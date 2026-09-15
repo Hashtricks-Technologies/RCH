@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { IT, LOC, OUTLETS } from "../../data/master";
+import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
-import { availOf, isTicketOpen, menuOf, stockValue } from "../../lib/selectors";
+import { allOutlets, availOf, isTicketOpen, menuOf, openOutlets, stockValue } from "../../lib/selectors";
 import { lakh, money, money0, sum, unitTotal } from "../../lib/fmt";
 import {
   Alert, Btn, Card, DataTable, FilterSelect, PageHead, Pill, TableFoot, Toolbar,
@@ -51,7 +51,7 @@ export default function Dashboard() {
     };
   };
 
-  const outlets = OUTLETS.map((loc) => {
+  const outlets = openOutlets().map((loc) => {
     // ---- bill void: a voided bill was taken back - the money was never kept and the stock went
     // back on the shelf - so it counts towards neither the outlet's bill count nor its takings.
     // The server leaves it out of the `sales` columns below for the same reason (`readSales`).
@@ -77,14 +77,14 @@ export default function Dashboard() {
   const offOutlets = outlets.filter((r) => r.off.n > 0);
 
   /* Shop to shop: the goods never pass through the manager, so this is oversight only. */
-  const transfers = s.tkt.filter((t) => OUTLETS.includes(t.from) && OUTLETS.includes(t.to));
+  const transfers = s.tkt.filter((t) => allOutlets().includes(t.from) && allOutlets().includes(t.to));
   const moving = transfers.filter((t) => isTicketOpen(t.st));
 
   const waiting = s.req.filter((r) => r.st === "Request sent");
   const urgent = waiting.filter((r) => r.urg).length;
 
   /* ---- queue table: search + outlet + priority, all wired ---- */
-  const outletNames = ["All", ...OUTLETS.map((l) => LOC[l].n)];
+  const outletNames = ["All", ...openOutlets().map((l) => LOC[l].n)];
   const rTerm = rq.trim().toLowerCase();
   const lineNames = (r: StockRequest) => r.lines.map((l) => IT[l.it]?.n ?? l.it).join(", ");
   const queueRows = waiting

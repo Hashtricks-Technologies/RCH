@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
-import { IT, LOC, OUTLETS } from "../../data/master";
+import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
-import { availOf, madeItems, menuOf, qty } from "../../lib/selectors";
+import { availOf, madeItems, menuOf, openOutlets, qty } from "../../lib/selectors";
 import { fq, unitTotal } from "../../lib/fmt";
 import {
   Alert, Btn, Card, DataTable, FilterSelect, PageHead, Pill, Switch, TableFoot, Tag, Toolbar,
@@ -75,7 +75,7 @@ export default function Availability() {
             const a = availOf(s, "kitchen", k);
             const on = !s.ovr["kitchen:" + k];
             // Only the outlets that actually carry the product have a say (M10).
-            const carries = OUTLETS.filter((l) => menuOf(s, l).includes(k));
+            const carries = openOutlets().filter((l) => menuOf(s, l).includes(k));
             const downstream = carries.map((l) => ({ l, a: availOf(s, l, k) })).filter((x) => !x.a.ok);
             return {
               key: k,

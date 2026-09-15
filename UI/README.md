@@ -229,7 +229,20 @@ requires a subject (not a body); it opens a message thread that moves Open → W
 Waiting on you → Resolved → Closed, and the raiser rates the fix 1–5 once it is resolved. Every
 role sees only the tickets it raised; none of the five answers tickets.
 
-**The support desk, on `/admin`.** The admin-flagged account's second tab lists every ticket from
+**Outlets, on `/admin`.** The admin-flagged account's Outlets tab lists every retail outlet - open ones
+first, then by name - with its code, floor, cost centre and how many staff are posted there.
+Opening one asks for a name, a code, a floor and a cost centre, and previews the key the server will
+actually assign from the name - given once, and kept even through a later rename. A new outlet starts
+with no menu and no price list: the outlet manager lists and prices its products from their own Prices
+screen, which is also where a price list is created and attached. Each row edits in
+place with Save and Cancel, and closes behind a second press, refused in one sentence naming everything
+still open against it (stock on the shelf, a ticket, a stock request, a kitchen order, a shop ask, a
+product request, or a member of staff) if anything is. A closed outlet is never deleted: its bills,
+moves and reports stay, its menu, availability overrides and price list are kept exactly as they were,
+and a reopen restores it. The store and the kitchen are fixed and are not listed here; a new outlet
+appears in every other picker - the Accounts tab's location select included - the moment it opens.
+
+**The support desk, on `/admin`.** The admin-flagged account's third tab lists every ticket from
 every role, most pressing first (open, then with support; urgent before routine), filterable by
 status, priority, role and location. Picking one shows who raised it, from which screen, and the
 conversation. The admin replies as support under their own name - Send, Send & ask the reporter

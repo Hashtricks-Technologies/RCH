@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { IsoTime, LocKeySchema, RoleSchema } from "./common.js";
+import { LocationSchema } from "./documents.js";
 
 /**
  * The account-management module's own wire shape for a colleague - deliberately not
@@ -33,6 +34,38 @@ export const AdminDeletedUserSchema = z.strictObject({ id: z.string(), emp: z.st
 
 export const AdminActionSchema = z.strictObject({
   at: IsoTime,
-  actor: z.string(), action: z.enum(["create", "reset_password", "deactivate", "reactivate", "update_role_loc", "delete"]),
+  actor: z.string(),
+  action: z.enum([
+    "create", "reset_password", "deactivate", "reactivate", "update_role_loc", "delete",
+    "outlet_create", "outlet_update", "outlet_close", "outlet_reopen",
+  ]),
   target: z.string(), details: z.record(z.string(), z.unknown()),
 });
+
+// ---- outlets. Opened, edited, closed and reopened by the super admin; never deleted.
+
+/** A location as the admin page manages it: the wire `Location` plus its key, whether it still
+ *  trades, and how many active accounts are based there - the number a close waits on. The store and
+ *  the kitchen are listed too, because the Accounts tab labels every home location from this and an
+ *  admin token reaches no other location read. Quarantine never is: nobody is based there. No price
+ *  list: a list is a named entity the outlet manager creates and attaches from the Prices screen, so
+ *  a new outlet is opened with none and the admin never picks one. */
+export const AdminLocationSchema = z.strictObject({
+  key: LocKeySchema, n: z.string(), c: z.string(), type: LocationSchema.shape.type,
+  floor: z.string(), cc: z.string(), active: z.boolean(),
+  staff: z.number().int().min(0),
+});
+const outletFields = {
+  name: z.string().trim().min(2).max(40),
+  /** Printed on labels and upper-cased on the way in, so `ot-jb` and `OT-JB` are one code. */
+  code: z.string().trim().toUpperCase().regex(/^[A-Z0-9-]{2,12}$/, "A code is 2-12 letters, digits or dashes"),
+  floor: z.string().trim().min(1).max(40),
+  cc: z.string().trim().min(1).max(40),
+};
+/** No `key`: the server gives an outlet its key, from its name, once (`outletKeyFor`). */
+export const CreateOutletBodySchema = z.strictObject(outletFields);
+/** Any of the same fields. One that changes nothing is refused by the service, in words. */
+export const UpdateOutletBodySchema = z.strictObject(outletFields).partial();
+export const OutletKeyParamsSchema = z.strictObject({ key: LocKeySchema });
+/** The account feed and the outlet feed are one log read two ways, so each tab shows its own fifty. */
+export const AdminActionsQuerySchema = z.strictObject({ kind: z.enum(["accounts", "outlets"]).default("accounts") });

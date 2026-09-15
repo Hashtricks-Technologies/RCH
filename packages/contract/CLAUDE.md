@@ -80,11 +80,13 @@ allowMcp? })`. The manifest drives all three: `mount()` in `apps/api/src/routes.
 
 ## Schema rules
 
-- **Closed enums, never widened.** `LocKey`, `Role`, `Tender`, `PayerKind` and every status are `z.enum`s. A
-  status enum here and its Postgres enum in `apps/api/src/db/schema/enums.ts` change together or not at all.
-  **`PriceListIdSchema` is the deliberate exception**: a price list is a manager-created entity with a
-  server-issued id (`common.ts`), so its id is an open, bounded string, not an enum - as many can exist as a
-  manager creates.
+- **Closed enums, never widened.** `Role`, `Tender`, `PayerKind` and every status are `z.enum`s. A status enum
+  here and its Postgres enum in `apps/api/src/db/schema/enums.ts` change together or not at all. Two are
+  deliberately not enums: `LocKey` is a checked string (a lower-case slug, `quarantine` refused by a lookahead),
+  because an outlet is a row the super admin opens at runtime, not a fixed set - the service that reads a
+  location resolves its existence and its name (`apps/api/src/lib/locations.ts`) and the schema only checks its
+  shape; and `PriceListIdSchema` is an open, bounded string, because a price list is a manager-created entity
+  with a server-issued id (`common.ts`) and as many can exist as a manager creates.
 - **Request bodies are `z.strictObject`.** An unknown key is a client bug. `routes.test.ts` checks that every
   body accepts its entry in `SAMPLES` and refuses an extra key. A new route without a sample fails.
 - **PATCH bodies declare every field as optional, one by one, with no defaults.** Never build one as
@@ -105,9 +107,10 @@ allowMcp? })`. The manifest drives all three: `mount()` in `apps/api/src/routes.
 
 ## Constants
 
-- **Declared here:** `STAFF_CREDIT_LIMIT` (₹3,000), `PO_APPROVAL_LIMIT` (₹25,000), `ALL_LOCS`, `OUTLETS` and
-  `BILL_DAYS` (7).
-- **Declared in `@rch/domain`:** id formats and sequence starts (`ids.ts`) and `PAR_FACTOR`, because they are
+- **Declared here:** `STAFF_CREDIT_LIMIT` (₹3,000), `PO_APPROVAL_LIMIT` (₹25,000), `BILL_DAYS` (7), and
+  `STORE` / `KITCHEN` / `QUARANTINE` - the three location keys the code itself is allowed to name. Every other
+  location key is an outlet, read from the `locations` table, never compiled in.
+- **Declared in `@rch/domain`:** id formats and sequence starts (`ids.ts`) and `parFactor`, because they are
   rules, not wire shapes.
 
 ## Fixtures

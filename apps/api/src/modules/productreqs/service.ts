@@ -5,13 +5,13 @@
 // write moves stock or appends history - `product_requests` is not one of the four document
 // types that write `document_history`, and this phase does not change that.
 import type { z } from "zod";
-import { OUTLETS, type AnswerProductRequestBodySchema, type CreateProductRequestBodySchema, type ProductRequest, type WriteResponse } from "@rch/contract";
+import type { AnswerProductRequestBodySchema, CreateProductRequestBodySchema, ProductRequest, WriteResponse } from "@rch/contract";
 import type { Db } from "../../db/client.js";
 import { withTransaction } from "../../lib/db.js";
 import { NotFoundError } from "../../lib/errors.js";
 import { emitChanged } from "../../lib/events.js";
 import { allocateId } from "../../lib/ids.js";
-import { loadLocations } from "../../lib/master.js";
+import { assertOpen, lockLocation } from "../../lib/locations.js";
 import { assertRule } from "../../lib/rules.js";
 import type { AccessClaims } from "../../plugins/auth.js";
 import { productReqsRepo } from "./repo.js";
@@ -27,13 +27,12 @@ export function createProductReqsService(db: Db) {
         const name = body.name.trim();
         assertRule(name.length > 0, "Name the product you want added");
         // A counter's own location was already checked against its token in routes.ts. A manager
-        // may ask for any of the outlets they look after, but the central store and the kitchen
-        // are not shops and have no menu to add a product to - the same sentence `availability`
-        // gives a manager reaching past the outlets.
-        if (claims.role === "manager") {
-          const loc = (await loadLocations(tx))[body.forLoc];
-          assertRule(OUTLETS.includes(body.forLoc), `${loc?.n ?? body.forLoc} is not an outlet`);
-        }
+        // may ask for any of the outlets, but the central store and the kitchen are not shops and
+        // have no menu to add a product to - the same sentence `availability` gives a manager
+        // reaching past the outlets.
+        const outlet = await lockLocation(tx, body.forLoc);
+        if (claims.role === "manager") assertRule(outlet.type === "Outlet", `${outlet.name} is not an outlet`);
+        assertOpen(outlet);
 
         const at = new Date();
         const id = await allocateId(tx, "product_req", at);

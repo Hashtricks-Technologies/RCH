@@ -7,8 +7,9 @@ contract and rules packages, and the Helm chart it deploys with.
 
 ## What the system does
 
-Royal Care runs one central store, one central kitchen and three retail outlets (Restaurant,
-Coffee Shop, Snack Kiosk). Two kinds of product move through them:
+Royal Care runs one central store, one central kitchen and the retail outlets it trades from - three to
+start (Restaurant, Coffee Shop, Snack Kiosk), and more as the super admin opens them from `/admin`. Two
+kinds of product move through them:
 
 | Class | Examples | Price authority |
 |---|---|---|
@@ -159,10 +160,12 @@ password everybody knows.
 | `RC-1902` | Vinoth Prakash | Kitchen In-charge |
 | `RC-1550` | Latha Narayanan | Procurement Officer |
 | `RC-4482` | Deepa Selvam | Counter Operator · Snack Kiosk |
-| `RC-0001` | System Administrator | Super Admin: staff accounts, the support desk and the audit log, no role or location |
+| `RC-0001` | System Administrator | Super Admin: staff accounts, the hospital's outlets, the support desk and the audit log, no role or location |
 
 The super admin creates staff accounts on `/admin`, where the server assigns each one the next employee
-number. An account can be deactivated, and deleted permanently only if it never did anything.
+number. An account can be deactivated, and deleted permanently only if it never did anything. The same page
+opens, edits, closes and reopens the hospital's retail outlets - closed, never deleted, and a close is refused
+while stock, an open document or a member of staff still depends on the outlet, naming every one at once.
 
 A staging or production seed sets `must_change_password`, which routes a first sign-in through a
 change-password step. `deploy/RUNBOOK.md` §1 has the full local sequence and what each step does.
@@ -217,9 +220,9 @@ Run one package with `pnpm --filter @rch/ui test` (or `@rch/api`, `@rch/audit`, 
 and UI suites both pin `TZ=UTC`, so timezone-sensitive assertions prove the same thing on every
 machine.
 
-Each package's `test` script carries a **coverage floor** - UI lines 73 / branches 51, `apps/api`
-94 / 79, `apps/audit` 90 / 75, `packages/domain` 99 / 92, `packages/contract` lines 96 - set at or
-a point or two under what that suite measures today, so deleting a test or shipping an untested screen fails rather than
+Each package's `test` script carries a **coverage floor** - UI lines 79 / branches 60, `apps/api`
+94 / 80, `apps/audit` 90 / 75, `packages/domain` 99 / 93, `packages/contract` lines 96 - set a
+point or two under what that suite measures today, so deleting a test or shipping an untested screen fails rather than
 drifting. Running one file (`npx vitest run src/__tests__/writes.test.ts` from inside the package)
 is deliberately not judged against it. **Lint is a zero-warning gate** in the same spirit: every
 package runs `oxlint --max-warnings 0`, and the handful of rules turned off carry their argument

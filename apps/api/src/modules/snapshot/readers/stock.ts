@@ -1,17 +1,16 @@
 import { isNull, sql } from "drizzle-orm";
 import type { StockLoc } from "@rch/contract";
-import { availabilityOverrides, reservations, stockBalances } from "../../../db/schema/index.js";
+import { availabilityOverrides, locations, reservations, stockBalances } from "../../../db/schema/index.js";
 import type { Reader } from "../../../lib/db.js";
 
-/** Every location stock is reported for, quarantine included: a store keeper has to see what a
- *  goods receipt rejected. Nothing is sold, issued or transferred from there - `LocKey`, which
- *  every write body is typed against, still has five members. */
-const STOCK_LOCS: StockLoc[] = ["store", "kitchen", "rest", "coffee", "kiosk", "quarantine"];
-
+/** One map per location row, quarantine included - a store keeper has to see what a goods receipt
+ *  rejected - so a location with nothing on its shelves, an outlet opened this morning, reads as
+ *  empty rather than missing. Every balance names a row (a foreign key), so none is dropped. */
 export async function readStock(db: Reader): Promise<Record<StockLoc, Record<string, number>>> {
+  const locs = await db.select({ key: locations.key }).from(locations);
   const rows = await db.select().from(stockBalances);
-  const out = Object.fromEntries(STOCK_LOCS.map((l) => [l, {} as Record<string, number>])) as Record<StockLoc, Record<string, number>>;
-  for (const r of rows) if ((STOCK_LOCS as string[]).includes(r.loc)) out[r.loc as StockLoc][r.itemKey] = r.onHand;
+  const out: Record<StockLoc, Record<string, number>> = Object.fromEntries(locs.map((l) => [l.key, {}]));
+  for (const r of rows) (out[r.loc] ??= {})[r.itemKey] = r.onHand;
   return out;
 }
 /** "loc:item" -> quantity held by open tickets, the UI's `rsv` map. */

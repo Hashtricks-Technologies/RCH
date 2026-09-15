@@ -21,11 +21,12 @@ import type { Adjustment, CreateAdjustmentBodySchema, WriteResponse } from "@rch
 import { fq, REASON_LABEL, round3, unitTotal } from "@rch/domain";
 import type { Db } from "../../db/client.js";
 import { withTransaction } from "../../lib/db.js";
-import { NotFoundError } from "../../lib/errors.js";
+import { ForbiddenError, NotFoundError } from "../../lib/errors.js";
 import { emitChanged } from "../../lib/events.js";
 import { appendHistory } from "../../lib/history.js";
 import { allocateId } from "../../lib/ids.js";
 import { lockBalances, postMoves, type Move } from "../../lib/ledger.js";
+import { assertOpen, lockLocation } from "../../lib/locations.js";
 import { loadMaster } from "../../lib/master.js";
 import { reservedAt } from "../../lib/reservations.js";
 import { assertRule } from "../../lib/rules.js";
@@ -53,6 +54,14 @@ export function createAdjustmentsService(db: Db) {
      */
     async create(claims: AccessClaims, body: CreateAdjustmentBody): Promise<WriteResponse<Adjustment>> {
       return withTransaction(db, async (tx) => {
+        // The shelf first - documents tier - and it decides the manager's scope: a manager adjusts
+        // at an outlet and nowhere else. A 403, as it was when this was a list in routes.ts.
+        const shelf = await lockLocation(tx, body.loc);
+        if (claims.role === "manager" && shelf.type !== "Outlet") {
+          throw new ForbiddenError("You can only adjust stock at an outlet - the central store writes off its own shelves");
+        }
+        if (shelf.type === "Outlet") assertOpen(shelf);
+
         const at = new Date();
 
         // One line per item before anything is checked: two lines naming the same item are two
@@ -68,7 +77,7 @@ export function createAdjustmentsService(db: Db) {
         const master = await loadMaster(tx);
         for (const l of lines) if (!master.items[l.it]) throw new NotFoundError(`There is no item ${l.it}.`);
         const loc = body.loc;
-        const locName = master.locations[loc]?.n ?? loc;
+        const locName = shelf.name;
         const unitOf = (it: string) => master.items[it]?.u ?? "nos";
 
         // Exactly the cells that move, and no others - `lockBalances` creates the row it locks,

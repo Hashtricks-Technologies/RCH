@@ -1,5 +1,5 @@
 {
-  "id": "b4383af9-7512-41c5-a1cc-496daf93732e",
+  "id": "f30c6fc0-b8f6-4cf2-80bc-47c0edf942ee",
   "prevId": "8c546d34-9c38-4148-874e-c3420cd98790",
   "version": "7",
   "dialect": "postgresql",
@@ -333,6 +333,20 @@
           "notNull": true,
           "default": false
         },
+        "active": {
+          "name": "active",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "par_factor": {
+          "name": "par_factor",
+          "type": "numeric(4, 2)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0.18
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -341,7 +355,38 @@
           "default": "now()"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "locations_name_uq": {
+          "name": "locations_name_uq",
+          "columns": [
+            {
+              "expression": "lower(\"name\")",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "locations_code_uq": {
+          "name": "locations_code_uq",
+          "columns": [
+            {
+              "expression": "upper(\"code\")",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "locations_price_list_id_price_lists_id_fk": {
           "name": "locations_price_list_id_price_lists_id_fk",
@@ -3477,49 +3522,6 @@
           "value": "\"support_tickets\".\"rating\" is null or \"support_tickets\".\"rating\" between 1 and 5"
         }
       },
-      "isRLSEnabled": false
-    },
-    "public.audit_outbox": {
-      "name": "audit_outbox",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "bigint",
-          "primaryKey": true,
-          "notNull": true,
-          "identity": {
-            "type": "always",
-            "name": "audit_outbox_id_seq",
-            "schema": "public",
-            "increment": "1",
-            "startWith": "1",
-            "minValue": "1",
-            "maxValue": "9223372036854775807",
-            "cache": "1",
-            "cycle": false
-          }
-        },
-        "at": {
-          "name": "at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "event": {
-          "name": "event",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.document_history": {

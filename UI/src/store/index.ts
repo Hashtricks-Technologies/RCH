@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { routes, StockLocSchema } from "@rch/contract";
+import { KITCHEN, QUARANTINE, routes, STORE } from "@rch/contract";
 import { ApiError, call, closeSessionChannel } from "../api/client";
 import { getAccessToken, onSessionLost, setAccessToken } from "../api/session";
 import { refetch } from "../api/refetch";
@@ -43,7 +43,7 @@ export interface AppState extends ProcurementSlice, OpsSlice, AdminSlice, AuditS
   bills: Dated<Bill>[];
   grn: Dated<Grn>[];
   vendors: Vendor[];
-  sales: number[][];
+  sales: Record<string, number>[];
   dayLabels: string[];
   /** ---- adjustments. The register of write-offs and count-ups behind the `adjustment` moves
    *  on the ledger - a correction to a shelf, with a reason and a signature. Read-only here:
@@ -196,7 +196,8 @@ const toastMs = (m: string) => Math.min(9000, 3400 + Math.max(0, m.length - 40) 
  *  it running behind the next sentence. One toast is drawn at a time, so one timer is all there
  *  is to keep - and a toast that is already down cannot be put down twice. */
 let toastTimer: ReturnType<typeof setTimeout> | null = null;
-const EMPTY_STOCK = Object.fromEntries(StockLocSchema.options.map((l) => [l, {}])) as Record<StockLoc, Record<string, number>>;
+/** The shelves every hospital has, empty, until a snapshot says which outlets there are. */
+const EMPTY_STOCK: Record<StockLoc, Record<string, number>> = { [STORE]: {}, [KITCHEN]: {}, [QUARANTINE]: {} };
 
 export const useApp = create<AppState>((set, get) => ({
   user: null,

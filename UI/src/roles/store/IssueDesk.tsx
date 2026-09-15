@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { ALL_LOCS, IT, LOC } from "../../data/master";
+import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
-import { canIssueTicket, freeToPromise } from "../../lib/selectors";
+import { canIssueTicket, freeToPromise, operationalLocs } from "../../lib/selectors";
 import { U, fq, sum } from "../../lib/fmt";
 import {
   Btn, Card, DataTable, FilterBtn, FilterSelect, Grid, PageHead, Pill, StatusPill, TableFoot, Toolbar,
@@ -27,17 +27,17 @@ const approver = (r: StockRequest) =>
   r.apprBy
   ?? [...r.hist].reverse().find((h) => h.s === "Manager approved" || h.s === "Partially approved")?.who;
 
-/** "All" plus every location a ticket or request can come from - the same
- *  cycle drives all three filter buttons, so they read the same way. */
-const LOC_OPTS: (LocKey | null)[] = [null, ...ALL_LOCS.filter((l) => l !== "store")];
 const locLabel = (l: LocKey | null) => (l === null ? "All" : LOC[l].n);
 
 export default function IssueDesk() {
   const s = useApp();
   const issueTicket = useApp((x) => x.issueTicket);
   const openDrawer = useApp((x) => x.openDrawer);
-  // `LOC` is empty until the snapshot lands and is replaced in place after that, so the filter's
-  // labels are read during render rather than frozen when this module was first imported.
+  // "All" plus every location a ticket or request can come from - the same cycle drives all three
+  // filter buttons, so they read the same way. `LOC` is empty until the snapshot lands and is
+  // replaced in place after that, so both the options and their labels are read during render
+  // rather than frozen when this module was first imported.
+  const LOC_OPTS: (LocKey | null)[] = [null, ...operationalLocs().filter((l) => l !== "store")];
   const LOC_LABELS = LOC_OPTS.map(locLabel);
 
   const [qa, setQa] = useState("");

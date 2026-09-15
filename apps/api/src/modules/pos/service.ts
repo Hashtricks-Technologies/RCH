@@ -2,7 +2,7 @@
 // the arithmetic of the sale is `planBill` in packages/domain.
 import type { z } from "zod";
 import type { Bill, PayBodySchema, PayerKind, Tender, VoidBillBodySchema, WriteResponse } from "@rch/contract";
-import { avail, availOf, breachesCredit, creditBreachMessage, creditRoom, dmy, fq, istDate, money as inr, planBill, round3, unitTotal, type Master } from "@rch/domain";
+import { avail, availOf, breachesCredit, creditBreachMessage, creditRoom, dmy, fq, istDate, money as inr, planBill, priceOf, round3, unitTotal, type Master } from "@rch/domain";
 import type { Db } from "../../db/client.js";
 import { withTransaction } from "../../lib/db.js";
 import { creditTakenThisMonth } from "../../lib/credit.js";
@@ -11,6 +11,7 @@ import { emitChanged } from "../../lib/events.js";
 import { appendHistory } from "../../lib/history.js";
 import { allocateId } from "../../lib/ids.js";
 import { lockBalances, postMoves, type Move } from "../../lib/ledger.js";
+import { assertOpen, lockLocation } from "../../lib/locations.js";
 import { loadMaster } from "../../lib/master.js";
 import { reservedAt } from "../../lib/reservations.js";
 import { assertRule } from "../../lib/rules.js";
@@ -59,6 +60,9 @@ export function createPosService(db: Db) {
     async pay(claims: AccessClaims, body: PayBody): Promise<WriteResponse<Bill>> {
       return withTransaction(db, async (tx) => {
         const loc = body.loc;
+        // The outlet first - it is the documents tier - so a close waits for this sale to commit,
+        // or this sale reads the outlet closed.
+        assertOpen(await lockLocation(tx, loc));
         // A cart is a bag of scans: the same item read twice is one line of two, and the
         // cover check has to see the total, not each half.
         const cart: Record<string, number> = {};
@@ -85,6 +89,11 @@ export function createPosService(db: Db) {
 
         const master = await loadMaster(tx);
         const locName = master.locations[loc]?.n ?? loc;
+        // A new outlet opens on no list at all (the manager attaches one from Prices), and
+        // `priceOf` reads that as ₹0 rather than crashing. Refuse the whole cart here, before the
+        // per-item loop and well before any lock or id, rather than let a ₹0 bill through while
+        // still taking the stock off the shelf.
+        assertRule(master.locations[loc]?.list, `Refused - ${locName} is on no price list; attach one from Prices before selling`);
         // One connection carries the transaction, so these queue behind each other anyway.
         const menu = await posRepo.menuAt(tx, loc);
         const stock = await posRepo.stockAt(tx, loc);
@@ -100,6 +109,9 @@ export function createPosService(db: Db) {
           assertRule(a.ok, `${item.n} is not available at ${locName} - ${a.why}`);
           const cover = coverOf(master, stock, rsv, loc, it);
           assertRule(cover >= cart[it], `Only ${fq(cover, item.u)} ${item.u} of ${item.n} left at ${locName}`);
+          // The outlet has a list (checked above); this item may still be missing from it - a
+          // product listed at the counter before the manager ever priced it there.
+          assertRule(priceOf(master, prices, loc, it).p > 0, `Refused - ${item.n} has no price at ${locName}`);
         }
 
         const plan = planBill(master, prices, loc, cart);
@@ -198,7 +210,7 @@ export function createPosService(db: Db) {
      * The honest minimum, and deliberately no more: the bill stays on the table exactly as it
      * was printed, one positive reversal per line of the sale puts the stock back where it came
      * off, and the two sums that count money - the staff-credit ceiling and the dashboard's
-     * sales columns - learn to skip it. A credit note for a bill from yesterday is a different
+     * takings - learn to skip it. A credit note for a bill from yesterday is a different
      * document with different paperwork, and it stays refused until somebody asks for it; the
      * refusal says so, and names the adjustment as the door that is open.
      */
@@ -219,6 +231,10 @@ export function createPosService(db: Db) {
         const at = new Date();
         assertRule(istDate(bill.at) === istDate(at),
           `${no} was taken on ${dmy(istDate(bill.at))} - a bill can only be voided on the day it was billed; write the stock back on with an adjustment instead`);
+
+        // A void posts the sale's stock back onto the shelf it came off, and a closed outlet's shelves
+        // were emptied to close it.
+        assertOpen(await lockLocation(tx, bill.loc), "reopen it before voiding its bills");
 
         // No `requireLocOf` here, on purpose: a manager is hospital-wide (their `loc` is a desk,
         // not a scope), and the route is already closed to every other role. The counter that

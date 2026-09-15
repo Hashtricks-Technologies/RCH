@@ -1,8 +1,12 @@
 import { useState } from "react";
-import { ALL_LOCS, IT, LOC, OUTLETS } from "../../data/master";
+import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
 // ---- item patch ----
-import { activeItems, costOf, isRetired, isTicketOpen, menuOf, qty, resv, stockValue } from "../../lib/selectors";
+import {
+  activeItems, allOutlets, costOf, isRetired, isTicketOpen, locName, menuOf, openOutlets, operationalLocs,
+  qty, resv, stockValue,
+} from "../../lib/selectors";
+import { listFor, nameOfList } from "./Prices";
 import { fq, lakh, money, money0, sum } from "../../lib/fmt";
 import {
   Alert, Btn, Card, DataTable, Field, FilterSelect, FormRow, Grid, PageHead,
@@ -42,10 +46,13 @@ export default function ItemsStock() {
   const [tfrom, setTfrom] = useState(0);
   const [tto, setTto] = useState(0);
 
-  // A deployment with no outlets at all is not a hypothetical: `OUTLETS` is empty until the
-  // snapshot lands, and `OUTLETS[0]` is `undefined` there - which `LOC[shop]` then dereferences
-  // and takes the whole screen down with. `null` says "no shop to work on" and renders as such.
-  const home = s.user && OUTLETS.includes(s.user.loc) ? s.user.loc : OUTLETS[0] ?? null;
+  // A deployment with no outlets at all is not a hypothetical: `LOC` is empty until the snapshot
+  // lands, and a closed outlet is never offered as a home to work from - `openOutlets()[0]` is
+  // `undefined` on either one, which `LOC[shop]` then dereferences and takes the whole screen down
+  // with. `null` says "no shop to work on" and renders as such.
+  const outlets = openOutlets();
+  const locs = operationalLocs();
+  const home = s.user && outlets.includes(s.user.loc) ? s.user.loc : outlets[0] ?? null;
   const [shop, setShop] = useState<LocKey | null>(home);
   const [pick, setPick] = useState("");
 
@@ -65,18 +72,20 @@ export default function ItemsStock() {
   /* A location either carries the item and holds a number, or does not carry it (M12). */
   const carries = (l: LocKey, k: string) => s.stock[l]?.[k] !== undefined;
 
-  const totalValue = sum(ALL_LOCS, (l) => stockValue(s, l));
-  const zeroSomewhere = stocked.filter((k) => ALL_LOCS.some((l) => carries(l, k) && qty(s, l, k) <= 0)).length;
+  const totalValue = sum(locs, (l) => stockValue(s, l));
+  const zeroSomewhere = stocked.filter((k) => locs.some((l) => carries(l, k) && qty(s, l, k) <= 0)).length;
   const belowReorder = stocked.filter((k) => IT[k].rl > 0 && qty(s, "store", k) <= IT[k].rl).length;
 
   /* ---------------- shop to shop, oversight only ---------------- */
-  const transfers = s.tkt.filter((t) => OUTLETS.includes(t.from) && OUTLETS.includes(t.to));
-  const shopNames = ["All", ...OUTLETS.map((l) => LOC[l].n)];
+  // A closed outlet's past transfer is still a shop transfer, so both the membership test and
+  // the from/to filter read off every outlet, not just the ones open today.
+  const transfers = s.tkt.filter((t) => allOutlets().includes(t.from) && allOutlets().includes(t.to));
+  const shopNames = ["All", ...allOutlets().map(locName)];
   const tTerm = tq.trim().toLowerCase();
   const tRows = transfers
     .filter((t) => tstate === 0 || stageOf(t.st) === TSTATES[tstate])
-    .filter((t) => tfrom === 0 || LOC[t.from].n === shopNames[tfrom])
-    .filter((t) => tto === 0 || LOC[t.to].n === shopNames[tto])
+    .filter((t) => tfrom === 0 || locName(t.from) === shopNames[tfrom])
+    .filter((t) => tto === 0 || locName(t.to) === shopNames[tto])
     .filter((t) => !tTerm
       || t.id.toLowerCase().includes(tTerm)
       || LOC[t.from].n.toLowerCase().includes(tTerm)
@@ -96,7 +105,7 @@ export default function ItemsStock() {
   // ---- item patch ----
   // A retired line stays in `IT` so past bills still name it; it must not be offerable on a till.
   const listable = activeItems().filter((k) => !listed.includes(k) && IT[k].t !== "RAW" && IT[k].t !== "PACK");
-  const list = shop ? LOC[shop]?.list : undefined;
+  const list = shop ? listFor(shop) : "";
   const pickPrice = pick && list ? s.prices[list]?.[pick] : undefined;
   const listAtShop = async () => {
     if (!shop || !pick) return;
@@ -107,22 +116,22 @@ export default function ItemsStock() {
   };
 
   /* ---------------- item master ---------------- */
-  const locNames = ["All", ...ALL_LOCS.map((l) => LOC[l].n)];
+  const locNames = ["All", ...locs.map((l) => LOC[l].n)];
   const term = q.trim().toLowerCase();
   const want = TYPES[type];
   const rows = keys
     .filter((k) => (want === "All" ? true : IT[k].t === want))
-    .filter((k) => loc === 0 || carries(ALL_LOCS[loc - 1], k))
+    .filter((k) => loc === 0 || carries(locs[loc - 1], k))
     .filter((k) => !term || IT[k].n.toLowerCase().includes(term) || IT[k].c.toLowerCase().includes(term)
       || IT[k].g.toLowerCase().includes(term))
     .map((k) => {
-      const per = ALL_LOCS.map((l) => qty(s, l, k));
+      const per = locs.map((l) => qty(s, l, k));
       const tot = sum(per, (v) => v);
       return {
         k, per, tot,
-        held: ALL_LOCS.some((l) => carries(l, k)),
+        held: locs.some((l) => carries(l, k)),
         value: tot * costOf(k),
-        zero: ALL_LOCS.some((l) => carries(l, k) && qty(s, l, k) <= 0),
+        zero: locs.some((l) => carries(l, k) && qty(s, l, k) <= 0),
         low: IT[k].rl > 0 && qty(s, "store", k) <= IT[k].rl,
       };
     })
@@ -130,7 +139,7 @@ export default function ItemsStock() {
       || (state === 1 ? r.low : state === 2 ? r.zero : !r.held));
 
   const sorted = sortRows(rows, items.sort, (r, k): SortValue => {
-    if (k.startsWith("loc:")) return r.per[ALL_LOCS.indexOf(k.slice(4) as LocKey)] ?? 0;
+    if (k.startsWith("loc:")) return r.per[locs.indexOf(k.slice(4) as LocKey)] ?? 0;
     return k === "type" ? IT[r.k].t
       : k === "unit" ? IT[r.k].u
         : k === "cost" ? costOf(r.k)
@@ -168,7 +177,7 @@ export default function ItemsStock() {
 
       <Alert tone="i" label="SHOP TO SHOP">
         When one shop needs an MRP product another shop is holding, the two settle it between themselves against
-        a ticket and its OTP - any of the {OUTLETS.length} counters to any other. You are informed, not in the
+        a ticket and its OTP - any of the {outlets.length} counters to any other. You are informed, not in the
         middle: nothing below is yours to approve.
       </Alert>
 
@@ -258,7 +267,7 @@ export default function ItemsStock() {
             <FormRow cols="f2">
               <Field label="Shop">
                 <select value={shop} onChange={(e) => { setShop(e.target.value as LocKey); setPick(""); }}>
-                  {OUTLETS.map((l) => <option key={l} value={l}>{LOC[l].n} - list {LOC[l].list}</option>)}
+                  {outlets.map((l) => <option key={l} value={l}>{LOC[l].n} - list {nameOfList(listFor(l))}</option>)}
                 </select>
               </Field>
               <Field label="Product" hint={`${listable.length} catalogue product${listable.length === 1 ? "" : "s"} not yet on this till.`}>
@@ -272,13 +281,13 @@ export default function ItemsStock() {
             </FormRow>
             {pick !== "" && pickPrice == null && (
               <Alert tone="w" label="NO PRICE">
-                {IT[pick].n} has no price on list {list}. Add it here, then set a price on the Price Lists screen -
+                {IT[pick].n} has no price on list {nameOfList(list)}. Add it here, then set a price on the Price Lists screen -
                 until then the counter cannot bill it.
               </Alert>
             )}
             <div className="totrow"><span>Currently listed at {LOC[shop].n}</span><span>{listed.length}</span></div>
             <div className="totrow">
-              <span>Price on list {list}</span>
+              <span>Price on list {nameOfList(list)}</span>
               <span>{pick === "" ? "-" : pickPrice == null ? "not priced" : money(pickPrice)}</span>
             </div>
             <div className="mtop">
@@ -333,7 +342,7 @@ export default function ItemsStock() {
             // ---- adjustments
             { h: "", r: true, w: "12%" },
           ]}
-          rows={ALL_LOCS.map((l) => {
+          rows={locs.map((l) => {
             const held = Object.keys(s.stock[l] ?? {});
             return {
               key: l,
@@ -346,7 +355,7 @@ export default function ItemsStock() {
                 // Wastage, breakage and a count that came out short are the shops' own, and so
                 // is correcting them. The central store and the kitchen write off their own
                 // shelves from their own screens, which is why there is no button on those rows.
-                OUTLETS.includes(l)
+                outlets.includes(l)
                   ? <Btn size="xs" variant="gh" onClick={() => openDrawer("adjstock", l)}>Adjust stock</Btn>
                   : <span className="dim mini">Writes off its own</span>,
               ],
@@ -355,7 +364,7 @@ export default function ItemsStock() {
           empty={{ title: "No locations configured" }}
         />
         <TableFoot
-          count={ALL_LOCS.length}
+          count={locs.length}
           extra={<>All locations {lakh(totalValue)} · {keys.length} items tracked · {belowReorder} below reorder in the Central Store · {zeroSomewhere} at zero somewhere</>}
         />
       </Card>
@@ -384,7 +393,7 @@ export default function ItemsStock() {
             { h: "Type", sort: "type" },
             { h: "Unit", sort: "unit" },
             { h: "Cost", r: true, sort: "cost" },
-            ...ALL_LOCS.map((l) => ({ h: LOC[l].n, r: true, sort: "loc:" + l })),
+            ...locs.map((l) => ({ h: LOC[l].n, r: true, sort: "loc:" + l })),
             { h: "Total", r: true, sort: "total" },
             { h: "Total value", r: true, sort: "value" },
             // ---- item patch ----
@@ -404,7 +413,7 @@ export default function ItemsStock() {
               <Tag kind={tagKind(IT[r.k].t)}>{IT[r.k].t}</Tag>,
               IT[r.k].u,
               money(costOf(r.k)),
-              ...ALL_LOCS.map((l, i) => {
+              ...locs.map((l, i) => {
                 const v = r.per[i];
                 if (!carries(l, r.k))
                   return <Tip text={`${LOC[l].n} does not carry this item`}><span className="dim">–</span></Tip>;

@@ -1,5 +1,4 @@
 import { and, asc, desc, eq, gte, inArray, isNull, sql } from "drizzle-orm";
-import { OUTLETS } from "@rch/contract";
 import type { Adjustment, Batch, Bill, Grn, HistEntry, LocKey, ProdOrder, ProductRequest, PurchaseOrder, RateContract, Requisition, ShopAsk, StockLoc, StockRequest, SupportTicket, Ticket, Vendor } from "@rch/contract";
 import * as s from "../../../db/schema/index.js";
 import type { Reader } from "../../../lib/db.js";
@@ -169,8 +168,9 @@ export async function readShopAsks(db: Reader, pre?: UserNames): Promise<ShopAsk
   return rows.map((a) => strip({ id: a.id, from: a.fromLoc as LocKey, to: a.toLoc as LocKey, it: a.itemKey, qty: a.qty, st: a.status, by: names.get(a.byUser)?.name ?? a.byUser, at: iso(a.at), note: a.note, grant: a.grantedQty ?? undefined, ticket: a.ticketId ?? undefined, reason: a.reason ?? undefined }));
 }
 
-/** Day rows (oldest first, today last) × outlet columns, in the hospital's calendar. */
-export async function readSales(db: Reader, days: number): Promise<{ sales: number[][]; dayLabels: string[] }> {
+/** Day records (oldest first, today last), each keyed by every outlet, in the hospital's calendar. */
+export async function readSales(db: Reader, days: number): Promise<{ sales: Record<string, number>[]; dayLabels: string[] }> {
+  const outlets = await db.select({ key: s.locations.key }).from(s.locations).where(eq(s.locations.type, "Outlet")).orderBy(asc(s.locations.key));
   const rows = await db.select({
     day: sql<string>`to_char(${s.bills.at} at time zone 'Asia/Kolkata', 'YYYY-MM-DD')`, loc: s.bills.loc, total: sql<string>`sum(${s.bills.total})`,
     // ---- bill void. A voided bill is not takings: the money was never kept and the stock went
@@ -179,7 +179,7 @@ export async function readSales(db: Reader, days: number): Promise<{ sales: numb
   }).from(s.bills).where(and(gte(s.bills.at, new Date(Date.now() - days * 86400_000)), isNull(s.bills.voidedAt))).groupBy(sql`1`, s.bills.loc);
   const fmt = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit" });
   const dayKeys = Array.from({ length: days }, (_, i) => fmt.format(new Date(Date.now() - (days - 1 - i) * 86400_000)));
-  const sales = dayKeys.map((d) => OUTLETS.map((loc) => Number(rows.find((r) => r.day === d && r.loc === loc)?.total ?? 0)));
+  const sales = dayKeys.map((d) => Object.fromEntries(outlets.map(({ key }) => [key, Number(rows.find((r) => r.day === d && r.loc === key)?.total ?? 0)])));
   return { sales, dayLabels: dayKeys.map((d) => d.slice(8)) };
 }
 

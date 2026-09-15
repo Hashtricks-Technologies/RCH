@@ -4,7 +4,8 @@ import { useApp } from "../../store";
 import { Alert, Btn, DataTable, Field, FormRow, Pill, Section, Tip } from "../../ui/kit";
 import { DrawerFrame } from "../../ui/Drawer";
 import { registerDrawer } from "../../drawers";
-import { knownOutlets, listFor, listOf, nameOfList, sharers } from "./Prices";
+import { openOutlets } from "../../lib/selectors";
+import { listFor, listOf, nameOfList, sharers } from "./Prices";
 import type { LocKey } from "../../types";
 
 /**
@@ -39,7 +40,7 @@ function PriceListSettings() {
   const [busy, setBusy] = useState<Record<string, boolean>>({});
   const lock = (k: string, on: boolean) => { setBusy((b) => ({ ...b, [k]: on })); };
 
-  const outlets = knownOutlets();
+  const outlets = openOutlets();
   // Falling back to the first outlet rather than holding `null` in state: the snapshot can land
   // after this drawer has mounted, and a clone source picked from an empty list would stay empty.
   const from = (pickedFrom !== null && outlets.includes(pickedFrom) ? pickedFrom : outlets[0]) ?? null;

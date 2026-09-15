@@ -203,6 +203,52 @@ describe("the printed MRP is the ceiling at the till too", () => {
   });
 });
 
+describe("a sale needs a price - an outlet on no list, or an item unpriced on its list, is refused, not billed at ₹0", () => {
+  it("refuses the whole cart when the outlet carries no price list at all", async () => {
+    // The admin opens a new outlet on no list; every sale there must wait for the manager to
+    // attach one, not price at ₹0 while still taking stock off the shelf.
+    await app.db.update(s.locations).set({ priceListId: null }).where(eq(s.locations.key, "kiosk"));
+    try {
+      const billsBefore = (await app.db.select().from(s.bills)).length;
+      const movesBefore = (await app.db.select().from(s.stockMoves)).length;
+
+      const r = await pay("u6", { loc: "kiosk", tender: "Cash", lines: [{ it: "juice", qty: 1 }] });
+
+      expect(r.statusCode, r.body).toBe(422);
+      expect(r.json().error).toMatchObject({ code: "rule", message: "Refused - Snack Kiosk is on no price list; attach one from Prices before selling" });
+      expect((await app.db.select().from(s.bills)).length).toBe(billsBefore);
+      expect((await app.db.select().from(s.stockMoves)).length).toBe(movesBefore);
+    } finally {
+      await app.db.update(s.locations).set({ priceListId: "PL-001" }).where(eq(s.locations.key, "kiosk"));
+    }
+  });
+
+  it("refuses one item that is listed at the counter but carries no price on the outlet's own list", async () => {
+    // The fixture prices every menu item on both lists, so make one gap in the kiosk's own list
+    // (PL-001) the way the MRP-drift case above makes one in the price - by editing the table
+    // directly, then putting it back.
+    const before = (await app.db.select().from(s.priceListItems).where(and(eq(s.priceListItems.listId, "PL-001"), eq(s.priceListItems.itemKey, "puff"))))[0];
+    await app.db.delete(s.priceListItems).where(and(eq(s.priceListItems.listId, "PL-001"), eq(s.priceListItems.itemKey, "puff")));
+    try {
+      const billsBefore = (await app.db.select().from(s.bills)).length;
+
+      const r = await pay("u6", { loc: "kiosk", tender: "Cash", lines: [{ it: "puff", qty: 1 }] });
+
+      expect(r.statusCode, r.body).toBe(422);
+      expect(r.json().error).toMatchObject({ code: "rule", message: "Refused - Veg puffs has no price at Snack Kiosk" });
+      expect((await app.db.select().from(s.bills)).length).toBe(billsBefore);
+    } finally {
+      await app.db.insert(s.priceListItems).values(before);
+    }
+  });
+
+  it("still sells normally at a listed, priced outlet", async () => {
+    const r = await pay("u6", { loc: "kiosk", tender: "Cash", lines: [{ it: "juice", qty: 1 }] });
+    expect(r.statusCode, r.body).toBe(200);
+    expect(r.json().result.lines).toEqual([{ it: "juice", qty: 1, rate: 18 }]);   // list A
+  });
+});
+
 describe("who may bill", () => {
   it("refuses a counter operator billing somebody else's counter", async () => {
     const r = await pay("u1", { loc: "kiosk", tender: "Cash", lines: [{ it: "juice", qty: 1 }] });
@@ -773,11 +819,11 @@ describe("POST /bills/:no/void - the manager takes a bill back", () => {
     expect(now.statusCode, now.body).toBe(200);
   });
 
-  it("leaves a voided bill out of the dashboard's sales columns", async () => {
+  it("leaves a voided bill out of the dashboard's takings", async () => {
     const takings = async () => {
       const r = await app.inject({ method: "GET", url: "/api/v1/snapshot", headers: await authHeaders(app, "u2") });
       expect(r.statusCode, r.body).toBe(200);
-      return (r.json().sales as number[][]).flat().reduce((a, b) => a + b, 0);
+      return (r.json().sales as Record<string, number>[]).reduce((sum, row) => sum + Object.values(row).reduce((a, b) => a + b, 0), 0);
     };
     const before = await takings();
     const sale = await pay("u1", { loc: "coffee", tender: "Cash", lines: [{ it: "water", qty: 5 }] });

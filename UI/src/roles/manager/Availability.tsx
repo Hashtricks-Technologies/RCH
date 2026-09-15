@@ -1,11 +1,12 @@
 import { useState } from "react";
-import { IT, LOC, OUTLETS } from "../../data/master";
+import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
-import { availOf, menuOf } from "../../lib/selectors";
+import { availOf, menuOf, openOutlets } from "../../lib/selectors";
 import {
   Alert, Card, DataTable, FilterSelect, ImagePlaceholder, PageHead, Pill, Switch, TableFoot, Tag, Toolbar,
 } from "../../ui/kit";
 import { emptyFor, sortRows, useSort, type SortValue } from "./useSort";
+import { listFor, nameOfList } from "./Prices";
 import type { ItemType, LocKey } from "../../types";
 
 const TYPES: (ItemType | "All")[] = ["All", "MRP", "FG", "MTO"];
@@ -24,9 +25,11 @@ export default function Availability() {
   const listed = (loc: LocKey) => menuOf(s, loc);
   const isOff = (loc: LocKey, it: string) => Boolean(s.ovr[loc + ":" + it]);
 
+  const outlets = openOutlets();
+
   /* Counted against the products this outlet actually lists, and against every
      reason a product cannot be sold - not the manual switch alone (M10). */
-  const counts = OUTLETS.map((loc) => {
+  const counts = outlets.map((loc) => {
     const items = listed(loc);
     const bad = items.filter((it) => !availOf(s, loc, it).ok);
     const manual = bad.filter((it) => isOff(loc, it)).length;
@@ -35,18 +38,18 @@ export default function Availability() {
   const totalOff = counts.reduce((t, c) => t + c.off, 0);
   const totalManual = counts.reduce((t, c) => t + c.manual, 0);
 
-  const outletNames = ["All", ...OUTLETS.map((l) => LOC[l].n)];
-  const union = Object.keys(IT).filter((it) => OUTLETS.some((loc) => listed(loc).includes(it)));
+  const outletNames = ["All", ...outlets.map((l) => LOC[l].n)];
+  const union = Object.keys(IT).filter((it) => outlets.some((loc) => listed(loc).includes(it)));
 
   /* Which outlets the state filter looks at - All, or just the one picked. */
-  const scope: LocKey[] = outlet === 0 ? OUTLETS : [OUTLETS[outlet - 1]];
+  const scope: LocKey[] = outlet === 0 ? outlets : [outlets[outlet - 1]];
   const offCount = (it: string) => scope.filter((l) => listed(l).includes(it) && !availOf(s, l, it).ok).length;
   const manualCount = (it: string) => scope.filter((l) => listed(l).includes(it) && isOff(l, it)).length;
 
   const term = q.trim().toLowerCase();
   const rows = union
     .filter((it) => TYPES[type] === "All" || IT[it].t === TYPES[type])
-    .filter((it) => outlet === 0 || listed(OUTLETS[outlet - 1]).includes(it))
+    .filter((it) => outlet === 0 || listed(outlets[outlet - 1]).includes(it))
     .filter((it) => {
       if (state === 0) return true;
       if (state === 1) return offCount(it) > 0;
@@ -116,7 +119,7 @@ export default function Availability() {
           rows={counts.map((c) => ({
             key: c.loc,
             cells: [
-              <>{LOC[c.loc].n}<small>{LOC[c.loc].c} · list {LOC[c.loc].list}</small></>,
+              <>{LOC[c.loc].n}<small>{LOC[c.loc].c} · list {nameOfList(listFor(c.loc))}</small></>,
               LOC[c.loc].floor,
               c.listed,
               <b>{c.on}</b>,
@@ -153,7 +156,7 @@ export default function Availability() {
             { h: "Type", sort: "type" },
             { h: "Group", sort: "group" },
             { h: "Off at", r: true, sort: "off" },
-            ...OUTLETS.map((loc) => ({ h: LOC[loc].n, w: "14%", sort: "loc:" + loc })),
+            ...outlets.map((loc) => ({ h: LOC[loc].n, w: "14%", sort: "loc:" + loc })),
           ]}
           rows={sorted.map((it) => ({
             key: it,
@@ -167,7 +170,7 @@ export default function Availability() {
               offCount(it) > 0
                 ? <Pill tone="wn">{offCount(it)}</Pill>
                 : <span className="dim">0</span>,
-              ...OUTLETS.map((loc) => cell(loc, it)),
+              ...outlets.map((loc) => cell(loc, it)),
             ],
           }))}
           empty={emptyFor(filtered, {

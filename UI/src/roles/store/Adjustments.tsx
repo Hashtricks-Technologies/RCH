@@ -1,22 +1,13 @@
 import { useState } from "react";
-import { StockLocSchema } from "@rch/contract";
+import { QUARANTINE } from "@rch/contract";
 import { REASON_LABEL } from "@rch/domain";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
+import { operationalLocs } from "../../lib/selectors";
 import { fq, fromWireDay, money0, sum, U } from "../../lib/fmt";
 import { Card, DataTable, FilterSelect, PageHead, Pill, TableFoot, Toolbar } from "../../ui/kit";
 import AdjustmentForm, { REASONS } from "../../ui/AdjustmentForm";
 import type { StockLoc } from "../../types";
-
-/** Every shelf the store keeper answers for, which is all of them - the rejected-goods shelf
- *  included, and it is the reason this list is read off `StockLocSchema` rather than `ALL_LOCS`.
- *  What a goods receipt turned away sits there until somebody destroys it or sends it back, and
- *  nothing else in the system can take it off again.
- *
- *  Destructured rather than spread so the tuple survives: `AdjustmentForm` takes a non-empty
- *  list, and `[...options]` would widen to a plain array that cannot satisfy it. */
-const [FIRST_SHELF, ...OTHER_SHELVES] = StockLocSchema.options;
-const SHELVES: [StockLoc, ...StockLoc[]] = [FIRST_SHELF, ...OTHER_SHELVES];
 
 const FILTERS = ["All", ...REASONS.map((r) => REASON_LABEL[r.r])] as const;
 
@@ -27,6 +18,15 @@ export default function Adjustments() {
   const adjustments = useApp((x) => x.adjustments);
   const [q, setQ] = useState("");
   const [reason, setReason] = useState(0);
+
+  // Every shelf the store keeper answers for, which is all of them - the rejected-goods shelf
+  // included. What a goods receipt turned away sits there until somebody destroys it or sends it
+  // back, and nothing else in the system can take it off again. Read off the master during render,
+  // never at module scope: the outlet set changes at runtime, and this module initialises before
+  // the location snapshot lands. A non-empty tuple, because `AdjustmentForm` takes one - the array
+  // always holds at least `QUARANTINE`.
+  const [first, ...rest] = [...operationalLocs(), QUARANTINE];
+  const SHELVES: [StockLoc, ...StockLoc[]] = [first ?? QUARANTINE, ...rest];
 
   const term = q.trim().toLowerCase();
   const rows = adjustments.filter((a) => {

@@ -11,6 +11,7 @@ import { NotFoundError } from "../../lib/errors.js";
 import { emitChanged } from "../../lib/events.js";
 import { appendHistory } from "../../lib/history.js";
 import { postMoves } from "../../lib/ledger.js";
+import { assertOpen, lockLocation } from "../../lib/locations.js";
 import { loadItems, loadLocations } from "../../lib/master.js";
 import { toWireItem } from "../../lib/wire.js";
 import type { AccessClaims } from "../../plugins/auth.js";
@@ -243,25 +244,23 @@ export function createCatalogService(db: Db) {
 
     async addMenuItem(loc: LocKey, it: string): Promise<Write<{ loc: LocKey; items: string[] }>> {
       return withTransaction(db, async (tx) => {
-        // A location key that fails this lookup never reaches here: LocKeySchema only ever
-        // accepts the five seeded keys, so the branch is unreachable, not user-facing.
-        const location = (await loadLocations(tx))[loc];
-        if (!location) throw new NotFoundError(`There is no location ${loc}.`);
-        assertRule(location.type === "Outlet", `${location.n} is not an outlet`);
+        const location = await lockLocation(tx, loc);
+        assertRule(location.type === "Outlet", `${location.name} is not an outlet`);
+        assertOpen(location);
         const item = (await loadItems(tx))[it];
         if (!item) throw new NotFoundError(`There is no item ${it}.`);
         auditBefore({ loc, items: await catalogRepo.menuItems(tx, loc) });
         const listed = await catalogRepo.isListed(tx, loc, it);
-        assertRule(!listed, `${item.n} is already listed at ${location.n}`);
+        assertRule(!listed, `${item.n} is already listed at ${location.name}`);
         // That check read before the insert took its lock, so two managers adding the same item
         // can both find it unlisted. The insert is the arbiter: it hands the loser no row back,
         // and the loser reads the same refusal the check would have given it a moment later.
         const inserted = await catalogRepo.insertMenuItem(tx, loc, it);
-        assertRule(inserted.length > 0, `${item.n} is already listed at ${location.n}`);
+        assertRule(inserted.length > 0, `${item.n} is already listed at ${location.name}`);
         const changed = ["menu"] as const;
         await emitChanged(tx, changed);
         const items = await catalogRepo.menuItems(tx, loc);
-        return { result: { loc, items }, changed: [...changed], message: `${item.n} listed at ${location.n}` };
+        return { result: { loc, items }, changed: [...changed], message: `${item.n} listed at ${location.name}` };
       });
     },
 

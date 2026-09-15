@@ -133,3 +133,10 @@ export const isUniqueViolation = (err: unknown, constraint: string): boolean => 
  *  so a table added later with a reference to it is covered without anyone naming it. */
 export const isForeignKeyViolation = (err: unknown): boolean =>
   ((err as { cause?: unknown } | null)?.cause as { code?: string } | undefined)?.code === "23503";
+
+/** The unique index a statement ran into, when that is why it failed - a refusal can then name the
+ *  field that clashed rather than the constraint. Undefined for any other failure. */
+export const uniqueViolationOf = (err: unknown): string | undefined => {
+  const cause = (err as { cause?: { code?: string; constraint?: string } } | null)?.cause;
+  return cause?.code === "23505" ? cause.constraint : undefined;
+};

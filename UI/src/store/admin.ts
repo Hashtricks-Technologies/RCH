@@ -4,8 +4,8 @@
 import { routes } from "@rch/contract";
 import { ApiError, call } from "../api/client";
 import { refetch } from "../api/refetch";
-import { applyAccounts, applyAdminActions } from "../api/wire";
-import type { AdminAction, AdminUser, Dated, LocKey, Role } from "../types";
+import { applyAccounts, applyAdminActions, applyAdminLocations } from "../api/wire";
+import type { AdminAction, AdminLocation, AdminUser, CreateOutletBody, Dated, LocKey, Role, UpdateOutletBody } from "../types";
 import type { AppState } from "./index";
 
 type Get = () => AppState;
@@ -13,10 +13,20 @@ type Get = () => AppState;
 export interface AdminSlice {
   accounts: AdminUser[];
   adminActions: Dated<AdminAction>[];
+  /** Every location but quarantine, with who is based at each - the Outlets tab's table and the
+   *  Accounts tab's location labels both read this. */
+  adminLocations: AdminLocation[];
+  outletActions: Dated<AdminAction>[];
   /** A read, not a write - no toast of its own, nothing refetched behind it: this is a first
    *  load, not a write's own read-back. */
   loadAccounts: () => Promise<void>;
-  loadAdminActions: () => Promise<void>;
+  loadAdminLocations: () => Promise<void>;
+  loadAdminActions: (kind?: "accounts" | "outlets") => Promise<void>;
+  /** The server's row for the new outlet, or `null` on a refusal - the form then stays as typed. */
+  createOutlet: (body: CreateOutletBody) => Promise<AdminLocation | null>;
+  updateOutlet: (key: string, body: UpdateOutletBody) => Promise<boolean>;
+  /** Close and reopen, one action both ways, like `setAccountActive`. */
+  setOutletOpen: (key: string, open: boolean) => Promise<boolean>;
   /** Both hand back what the server minted, or `null` on a refusal - the same shape
    *  `createPo`/`createItem` use for "the caller needs what the server minted". Never stored:
    *  the page shows the password once and it is gone. A create carries no employee number -
@@ -45,14 +55,47 @@ const fail = (get: Get, e: unknown, what: string): false => {
 export const createAdminSlice = (get: Get): AdminSlice => ({
   accounts: [],
   adminActions: [],
+  adminLocations: [],
+  outletActions: [],
 
   loadAccounts: async () => {
     try { applyAccounts(await call(routes.adminUsers)); }
     catch (e) { get().notify(e instanceof ApiError ? e.message : "Could not read the account list - check the connection and try again."); }
   },
-  loadAdminActions: async () => {
-    try { applyAdminActions(await call(routes.adminActions)); }
+  loadAdminLocations: async () => {
+    try { applyAdminLocations(await call(routes.adminLocations)); }
+    catch (e) { get().notify(e instanceof ApiError ? e.message : "Could not read the outlets - check the connection and try again."); }
+  },
+  loadAdminActions: async (kind = "accounts") => {
+    try { applyAdminActions(await call(routes.adminActions, { query: { kind } }), kind); }
     catch (e) { get().notify(e instanceof ApiError ? e.message : "Could not read recent admin actions - check the connection and try again."); }
+  },
+
+  createOutlet: async (body) => {
+    try {
+      const r = await call(routes.createOutlet, { body });
+      get().notify(r.message);
+      await refetch(r.changed, r.message);
+      return r.result;
+    } catch (e) { fail(get, e, "open the outlet"); return null; }
+  },
+  updateOutlet: async (key, body) => {
+    try {
+      const r = await call(routes.updateOutlet, { params: { key }, body });
+      get().notify(r.message);
+      await refetch(r.changed, r.message);
+      return true;
+    } catch (e) { return fail(get, e, "save the outlet"); }
+  },
+  setOutletOpen: async (key, open) => {
+    try {
+      const r = open
+        ? await call(routes.reopenOutlet, { params: { key } })
+        : await call(routes.closeOutlet, { params: { key } });
+      get().notify(r.message);
+      await refetch(r.changed, r.message);
+      return true;
+    } catch (e) { return fail(get, e, open ? "reopen the outlet" : "close the outlet"); }
   },
 
   createAccount: async (body) => {

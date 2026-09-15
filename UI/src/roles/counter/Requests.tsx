@@ -1,9 +1,9 @@
 import { useState } from "react";
 import type { ReactNode } from "react";
-import { IT, LOC, OUTLETS } from "../../data/master";
+import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
 // ---- item patch ----
-import { activeItems, avail, isReqOpen, menuOf } from "../../lib/selectors";
+import { activeItems, avail, isReqOpen, menuOf, openOutlets } from "../../lib/selectors";
 import type { StockShape } from "../../lib/selectors";
 import { fq, U } from "../../lib/fmt";
 import {
@@ -117,7 +117,7 @@ export default function Requests() {
 
   // Shop-ask card. `peers` is empty on a one-outlet deployment, and was read as `peers[0]` -
   // `undefined`, which `LOC[shopTo].n` then dereferenced and took the whole screen down with.
-  const peers = OUTLETS.filter((o) => o !== loc);
+  const peers = openOutlets().filter((o) => o !== loc);
   const [shopTo, setShopTo] = useState<LocKey | null>(peers[0] ?? null);
   const [shopItem, setShopItem] = useState(SELLABLE[0]);
   const [shopQty, setShopQty] = useState(1);
