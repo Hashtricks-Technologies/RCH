@@ -34,8 +34,8 @@
       {
         "patterns": [
           {
-            "group": ["**/apps/**", "@rch/api"],
-            "message": "UI may not import from apps/api. Share code through @rch/contract or @rch/domain."
+            "group": ["**/apps/**", "@rch/api", "@rch/audit"],
+            "message": "UI may not import from apps/api or apps/audit. Share code through @rch/contract or @rch/domain."
           }
         ]
       }
@@ -64,8 +64,8 @@
           {
             "patterns": [
               {
-                "group": ["**/apps/**", "@rch/api", "**/api/client"],
-                "message": "Screens read/write through useApp, not api/client directly. UI may not import from apps/api either."
+                "group": ["**/apps/**", "@rch/api", "@rch/audit", "**/api/client"],
+                "message": "Screens read/write through useApp, not api/client directly. UI may not import from apps/api or apps/audit either."
               }
             ]
           }

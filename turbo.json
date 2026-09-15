@@ -9,7 +9,11 @@
     // therefore replays on a cache hit even when the schema, the migrations applied to it or
     // the seed behind it have moved underneath - the one thing these tests exist to notice.
     // The suite is minutes; a wrong green is a release.
-    "test":      { "dependsOn": ["^typecheck"], "cache": false, "env": ["DATABASE_URL", "TEST_DATABASE_URL", "MIGRATE_DATABASE_URL"] },
+    //
+    // `env` is also the list of variables a test process can see at all: turbo 2 runs tasks in
+    // strict env mode, so anything not named here never reaches vitest. AUDIT_DATABASE_URL is the
+    // audit service's runtime URL and MIGRATE_DATABASE_URL the one both migrate CLIs connect with.
+    "test":      { "dependsOn": ["^typecheck"], "cache": false, "env": ["DATABASE_URL", "TEST_DATABASE_URL", "AUDIT_DATABASE_URL", "MIGRATE_DATABASE_URL"] },
     "dev":       { "cache": false, "persistent": true }
   }
 }
