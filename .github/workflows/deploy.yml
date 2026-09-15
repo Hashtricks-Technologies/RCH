@@ -49,7 +49,7 @@ jobs:
     # production, the hotfix flow) would reach this job and deploy an unmerged PR head.
     if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && vars.DEPLOY_ENABLED == 'true' }}
     runs-on: ubuntu-latest
-    # Two image builds, a 15m helm timeout and two rollouts. A job that runs past this is stuck,
+    # Three image builds, a 15m helm timeout and three rollouts. A job that runs past this is stuck,
     # not slow, and holding the concurrency group open costs the next push its deploy.
     timeout-minutes: 45
     permissions: { id-token: write, contents: write }
@@ -73,7 +73,7 @@ jobs:
         id: images
         run: |
           have=true
-          for repo in rch-api rch-ui; do
+          for repo in rch-api rch-ui rch-audit; do
             aws ecr describe-images --repository-name "$repo" --image-ids imageTag="$SHA" > /dev/null 2>&1 || have=false
           done
           echo "exists=$have" >> "$GITHUB_OUTPUT"
@@ -85,8 +85,11 @@ jobs:
       - uses: docker/build-push-action@v6
         if: steps.images.outputs.exists != 'true'
         with: { context: ., file: UI/Dockerfile, push: true, platforms: linux/amd64, tags: "${{ secrets.ECR_REGISTRY }}/rch-ui:${{ github.event.workflow_run.head_sha }}", cache-from: type=gha, cache-to: "type=gha,mode=max" }
-      # ci.yml scans rch-api:ci / rch-ui:ci - the images it built itself, which are not the
-      # bytes that reach a cluster. These two steps scan the exact tags helm is about to
+      - uses: docker/build-push-action@v6
+        if: steps.images.outputs.exists != 'true'
+        with: { context: ., file: apps/audit/Dockerfile, push: true, platforms: linux/amd64, tags: "${{ secrets.ECR_REGISTRY }}/rch-audit:${{ github.event.workflow_run.head_sha }}", cache-from: type=gha, cache-to: "type=gha,mode=max" }
+      # ci.yml scans rch-api:ci / rch-ui:ci / rch-audit:ci - the images it built itself, which are not the
+      # bytes that reach a cluster. These three steps scan the exact tags helm is about to
       # deploy, pulled back out of ECR (the ecr-login above left the credentials trivy needs),
       # and they run whether the builds above ran or were skipped as already-pushed. Same
       # action version and ignore file as ci.yml, so the two scans cannot drift apart.
@@ -106,13 +109,24 @@ jobs:
           exit-code: "1"
           ignore-unfixed: true
           trivyignores: .trivyignore.yaml
+      - name: Scan the audit image that is about to be deployed
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: "${{ secrets.ECR_REGISTRY }}/rch-audit:${{ github.event.workflow_run.head_sha }}"
+          severity: "CRITICAL,HIGH"
+          exit-code: "1"
+          ignore-unfixed: true
+          trivyignores: .trivyignore.yaml
       - uses: azure/setup-helm@v4
       - run: aws eks update-kubeconfig --name "$CLUSTER" --region "${{ secrets.AWS_REGION }}"
-      # dev and staging pass their four secrets to helm from the GitHub environment. An unset
+      # dev and staging pass their six secrets to helm from the GitHub environment. An unset
       # one is not an error helm reports: --set-string writes the empty string into the
       # Secret, the api container fails config validation minutes later, and the log says
       # nothing about where the blank came from. Refuse here, by name, before anything moves.
-      # production is exempt: it reads these four plus JWT_PREVIOUS_PUBLIC_KEY from AWS
+      # DATABASE_URL is the API's rch_app URL, MIGRATE_DATABASE_URL the superuser's (the two
+      # migrate initContainers and the purge CronJob) and AUDIT_DATABASE_URL the audit service's
+      # rch_audit URL; each migrate step creates its role from the password in that role's URL.
+      # production is exempt: it reads these six plus JWT_PREVIOUS_PUBLIC_KEY from AWS
       # Secrets Manager through the External Secrets Operator (values-prod.yaml), so these
       # GitHub secrets are empty there on purpose - and production therefore gets NO pre-flight
       # here. RUNBOOK §11's ExternalSecret bullet carries the manual `jq -e` check instead.
@@ -120,18 +134,22 @@ jobs:
         if: github.event.workflow_run.head_branch != 'production'
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          MIGRATE_DATABASE_URL: ${{ secrets.MIGRATE_DATABASE_URL }}
+          AUDIT_DATABASE_URL: ${{ secrets.AUDIT_DATABASE_URL }}
           JWT_PRIVATE_KEY: ${{ secrets.JWT_PRIVATE_KEY }}
           JWT_PUBLIC_KEY: ${{ secrets.JWT_PUBLIC_KEY }}
           SEED_PASSWORD: ${{ secrets.SEED_PASSWORD }}
         run: |
           missing=0
-          for v in DATABASE_URL JWT_PRIVATE_KEY JWT_PUBLIC_KEY SEED_PASSWORD; do
+          for v in DATABASE_URL MIGRATE_DATABASE_URL AUDIT_DATABASE_URL JWT_PRIVATE_KEY JWT_PUBLIC_KEY SEED_PASSWORD; do
             [ -n "${!v}" ] || { echo "::error::$v is empty"; missing=1; }
           done
           [ "$missing" = 0 ] || { echo "set the missing secrets on the $REF_NAME environment - see deploy/RUNBOOK.md"; exit 1; }
       - name: helm upgrade
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          MIGRATE_DATABASE_URL: ${{ secrets.MIGRATE_DATABASE_URL }}
+          AUDIT_DATABASE_URL: ${{ secrets.AUDIT_DATABASE_URL }}
           JWT_PRIVATE_KEY: ${{ secrets.JWT_PRIVATE_KEY }}
           JWT_PUBLIC_KEY: ${{ secrets.JWT_PUBLIC_KEY }}
           SEED_PASSWORD: ${{ secrets.SEED_PASSWORD }}
@@ -151,11 +169,14 @@ jobs:
           #
           # SEED_PASSWORD has no default in apps/api/src/config.ts, so the api container will not
           # start without one. It is the password the six seeded accounts start on and is only
-          # read by the seed CLI, but every container carries it because rch.envList builds one
-          # env list for all of them. The step above refuses an empty one before we get here.
+          # read by the seed CLI, but the api's containers carry it because config.ts requires it
+          # (the audit containers never see it - templates/_helpers.tpl). The step above refuses
+          # an empty one before we get here.
           if [ "$REF_NAME" != production ]; then
             EXTRA=(
               --set-string "secrets.values.DATABASE_URL=$DATABASE_URL"
+              --set-string "secrets.values.MIGRATE_DATABASE_URL=$MIGRATE_DATABASE_URL"
+              --set-string "secrets.values.AUDIT_DATABASE_URL=$AUDIT_DATABASE_URL"
               --set-string "secrets.values.JWT_PRIVATE_KEY=$JWT_PRIVATE_KEY"
               --set-string "secrets.values.JWT_PUBLIC_KEY=$JWT_PUBLIC_KEY"
               --set-string "secrets.values.SEED_PASSWORD=$SEED_PASSWORD"
@@ -194,6 +215,8 @@ jobs:
           kubectl -n "$NS" get pods -o wide || true
           kubectl -n "$NS" get events --sort-by=.lastTimestamp | tail -80 || true
           kubectl -n "$NS" logs -l app.kubernetes.io/component=api -c migrate --tail=200 || true
+          kubectl -n "$NS" logs -l app.kubernetes.io/component=audit -c audit-migrate --tail=200 || true
+          kubectl -n "$NS" logs -l app.kubernetes.io/component=audit -c audit --tail=200 || true
       # Only dev and staging, and only when the release is genuinely stuck. --atomic has
       # normally already rolled these back by now, and `helm rollback` with no revision goes
       # back exactly one - running it after a successful atomic undo would re-apply the failed
@@ -223,13 +246,16 @@ jobs:
       - name: Prove it came up
         run: |
           kubectl -n "$NS" rollout status deploy/rch-api --timeout=5m
+          kubectl -n "$NS" rollout status deploy/rch-audit --timeout=5m
           kubectl -n "$NS" rollout status deploy/rch-ui --timeout=5m
           # Availability is the readiness probe's own verdict, read from the cluster: the api's
           # probe is GET /readyz, which checks the database and that the applied migration count
           # matches the journal, so an Available deployment is the same statement the old smoke
           # pod made - without pulling an image from Docker Hub into the cluster to make it, and
-          # without a rate limit or an outage there being able to fail a good deploy.
+          # without a rate limit or an outage there being able to fail a good deploy. The audit
+          # service's probe is its own /readyz: the database, its migrations and a recent drain pass.
           kubectl -n "$NS" wait --for=condition=Available deploy/rch-api --timeout=300s
+          kubectl -n "$NS" wait --for=condition=Available deploy/rch-audit --timeout=300s
           kubectl -n "$NS" wait --for=condition=Available deploy/rch-ui --timeout=300s
       - name: Tag production
         if: github.event.workflow_run.head_branch == 'production' && success()

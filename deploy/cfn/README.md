@@ -1,7 +1,7 @@
 # `deploy/cfn` - RCH environment resources
 
 `rch-env.yaml` codifies everything the account owner created by hand with the AWS CLI: the
-Postgres instance, its parameter group, subnet group and security group, the two ECR
+Postgres instance, its parameter group, subnet group and security group, the three ECR
 repositories and their lifecycle policies, the GitHub Actions OIDC provider and deploy role, a
 per-environment Secrets Manager secret, an ACM certificate and its CAA record, an optional ALB
 access-log bucket, and the uptime health check with the SNS topic it pages. It does **not**
@@ -16,15 +16,16 @@ template names an `AWS::IAM::Role`.
 ## Why the resources are split "shared" vs "per-environment"
 
 A handful of the CLI-created resources are singletons AWS will not let a second stack recreate:
-the DB subnet group (`rch`) is one VPC-wide group serving every environment's database, both ECR
-repositories (`rch-api`, `rch-ui`) are one registry for every environment's images, and the
+the DB subnet group (`rch`) is one VPC-wide group serving every environment's database, the three
+ECR repositories (`rch-api`, `rch-ui`, `rch-audit`) are one registry for every environment's
+images, and the
 GitHub Actions OIDC provider is account-global outright - the role `rch-github-deploy`'s own
 trust policy already admits every environment in one document, so it is shared too.
 
 The template's `IsDev` condition (`Env == "dev"`) gates all four: only a stack with `Env=dev`
 declares them. A `staging` or `prod` stack skips them and instead reads their identifiers back
-with `Fn::ImportValue` from four fixed export names the `dev` stack publishes (`rch-shared-db-
-subnet-group-name`, `rch-shared-ecr-api-uri`, `rch-shared-ecr-ui-uri`,
+with `Fn::ImportValue` from five fixed export names the `dev` stack publishes (`rch-shared-db-
+subnet-group-name`, `rch-shared-ecr-api-uri`, `rch-shared-ecr-ui-uri`, `rch-shared-ecr-audit-uri`,
 `rch-shared-github-deploy-role-arn`). **This means the `dev` stack must exist before any
 `staging` or `prod` stack is created** - the import fails otherwise, plainly, with
 "No export named ... found."
@@ -138,7 +139,7 @@ change set stays empty - and `40` / `100` for staging and prod.
 
 ## ECR does not keep every image any more
 
-Both repositories carry a lifecycle policy: untagged images expire after 7 days (orphaned layers
+All three repositories carry a lifecycle policy: untagged images expire after 7 days (orphaned layers
 of an overwritten manifest, worth nothing after a week), and only the 30 most recent tagged
 images are kept. Thirty is far more history than `helm rollback` or `deploy.yml`'s release tag
 can reach back to. Before this, nothing ever deleted an image and every push of every branch
@@ -231,9 +232,13 @@ aws cloudformation create-change-set \
 
 aws cloudformation describe-change-set \
   --stack-name rch-dev --change-set-name rch-dev-import --region ap-south-1
-# Read every change before executing. Nine resources import; the CAA record for
+# Read every change before executing. Ten resources import; the CAA record for
 # rch.hashtrickstechnologies.com does not exist yet (see below) and shows as a plain CREATE
 # in the same change set - that is expected, not a mistake in the import file.
+# `rch-audit` (EcrAudit) joined the list with the audit service, after rch-dev was imported. On
+# that stack it is not imported at all: the next `aws cloudformation deploy` creates it. It is in
+# dev.import.json only so a re-import stays complete - and a re-import needs the repository to
+# exist first (`aws ecr create-repository --repository-name rch-audit`).
 
 aws cloudformation execute-change-set \
   --stack-name rch-dev --change-set-name rch-dev-import --region ap-south-1
@@ -355,7 +360,7 @@ Stand `staging` and `prod` up with `create-stack`, as above; the import path exi
 
 ## What's retained on delete
 
-`DeletionPolicy: Retain` on the DB instance, the Secrets Manager secret, both ECR repositories,
+`DeletionPolicy: Retain` on the DB instance, the Secrets Manager secret, the three ECR repositories,
 the OIDC provider and the ALB access-log bucket - deleting the stack leaves all five in place,
 and in the bucket's case that is the point: the logs are the record of what the ALB served, and a
 stack delete is not a decision to destroy them. Deliberately not on the `rch-github-deploy` role,

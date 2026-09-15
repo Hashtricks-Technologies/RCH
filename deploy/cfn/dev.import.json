@@ -35,6 +35,13 @@
     }
   },
   {
+    "ResourceType": "AWS::ECR::Repository",
+    "LogicalResourceId": "EcrAudit",
+    "ResourceIdentifier": {
+      "RepositoryName": "rch-audit"
+    }
+  },
+  {
     "ResourceType": "AWS::IAM::OIDCProvider",
     "LogicalResourceId": "GithubOidcProvider",
     "ResourceIdentifier": {
