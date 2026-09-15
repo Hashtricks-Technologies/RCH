@@ -7,15 +7,38 @@
 {$DOMAIN} {
 	encode gzip
 
-	# The API first, matched on path, so it never falls through to the UI container's own
-	# `/api/` proxy block - that block exists only for the image's other deploy target (the K8s
-	# ingress routes the same way, API path first). `flush_interval -1` streams every response
-	# immediately rather than buffering it, which is what `/api/v1/events` (server-sent events)
-	# needs to stay live; it costs nothing on the ordinary JSON responses beside it.
+	# Caddy sorts `handle` blocks that carry a single path matcher by how specific the path is,
+	# longest first, and puts a `handle` with no matcher last - so the order below is the order
+	# they are tried in whichever way the file is written, and it is written that way on purpose.
+	# They are mutually exclusive: the first that matches is the only one that runs.
+
+	# The audit service's two read routes, ahead of the API's catch-all `/api/*`. Nothing else
+	# lives under this path, so the API never sees an audit read.
+	handle /api/v1/admin/audit* {
+		reverse_proxy audit:3100
+	}
+
+	# The API, matched on path, so it never falls through to the UI container's own `/api/` proxy
+	# block - that block exists only for the image's other deploy target (the K8s ingress routes
+	# the same way, API path first). `flush_interval -1` streams every response immediately rather
+	# than buffering it, which is what `/api/v1/events` (server-sent events) needs to stay live; it
+	# costs nothing on the ordinary JSON responses beside it.
 	handle /api/* {
 		reverse_proxy api:3000 {
 			flush_interval -1
 		}
+	}
+
+	# Readiness, for release.sh and the deploy workflow. `/readyz` used to fall through to the UI's
+	# nginx, which answers a static `ok` - so a release "passed" without the database or a single
+	# migration being checked. The API's own `/readyz` checks both; the audit service's checks its
+	# database, its migrations and that the drainer has made a pass in the last 30 seconds.
+	handle /readyz {
+		reverse_proxy api:3000
+	}
+	handle /readyz/audit {
+		rewrite * /readyz
+		reverse_proxy audit:3100
 	}
 
 	handle {
