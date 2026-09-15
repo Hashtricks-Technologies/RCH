@@ -20,6 +20,7 @@ render() {
   JWT_PRIVATE_KEY=x \
   JWT_PUBLIC_KEY=x \
   SEED_PASSWORD=x \
+  IMAGE_BUCKET=x \
   docker compose --env-file /dev/null -f compose.yml config "$@" 2>&1
 }
 
@@ -32,7 +33,7 @@ check() { jq -e "$1" >/dev/null <<<"$json" || { echo "FAIL: $2" >&2; exit 1; }; 
 # the API or the audit service as a role with an empty password.
 for v in APP_DB_PASSWORD AUDIT_DB_PASSWORD; do
   if missing=$(DOMAIN=example.test POSTGRES_PASSWORD=x APP_DB_PASSWORD=x AUDIT_DB_PASSWORD=x \
-      JWT_PRIVATE_KEY=x JWT_PUBLIC_KEY=x SEED_PASSWORD=x env -u "$v" docker compose --env-file /dev/null -f compose.yml config --quiet 2>&1); then
+      JWT_PRIVATE_KEY=x JWT_PUBLIC_KEY=x SEED_PASSWORD=x IMAGE_BUCKET=x env -u "$v" docker compose --env-file /dev/null -f compose.yml config --quiet 2>&1); then
     echo "FAIL: compose.yml rendered without $v" >&2; exit 1
   fi
   grep -q "$v" <<<"$missing" || { echo "FAIL: a missing $v must be refused by name; got: $missing" >&2; exit 1; }
@@ -80,5 +81,15 @@ caddy_check() { jq -e "$routes | $1" >/dev/null <<<"$caddy_json" || { echo "FAIL
 caddy_check 'any(.path == "/api/v1/admin/audit*" and .dial == "audit:3100")' "the audit reads must reach audit:3100"
 caddy_check 'any(.path == "/readyz" and .dial == "api:3000")' "/readyz must reach the API"
 caddy_check 'any(.path == "/readyz/audit" and .rewrite == "/readyz" and .dial == "audit:3100")' "/readyz/audit must reach the audit service's /readyz"
+
+# A correct Caddyfile is worth nothing if the running Caddy never reads it. The file is a bind
+# mount and the box runs Caddy with `admin off`, so neither compose nor a reload notices an edit:
+# `deploy.sh` passes the file's checksum in Caddy's environment, and that is what makes compose
+# recreate the container when the routes change. A deploy once left new audit routes on disk while
+# Caddy went on serving a three-day-old config; these two checks are that bug's fence.
+check '.services.caddy.environment | has("CADDYFILE_SHA")' \
+  "caddy must carry CADDYFILE_SHA, or a changed Caddyfile never reaches the running container"
+grep -q '^export CADDYFILE_SHA$' deploy.sh \
+  || { echo "FAIL: deploy.sh must export CADDYFILE_SHA from the Caddyfile's checksum" >&2; exit 1; }
 
 echo "compose.yml and the Caddyfile are well-formed"

@@ -49,9 +49,12 @@ deploy/compose/deploy.sh
 
 echo "== checking /readyz and /readyz/audit =="
 domain=$(grep -E '^DOMAIN=' deploy/compose/.env | cut -d= -f2-)
+# The status code alone proves nothing here: every path Caddy does not route falls through to the
+# UI, which answers 200 with the SPA's HTML, so a readiness path that is not reaching its container
+# still looks healthy. Both services answer `{"ok":true}`; the UI never does.
+ready() { curl -fsS -m 5 "https://${domain}$1" 2>/dev/null | grep -q '"ok"[[:space:]]*:[[:space:]]*true'; }
 for _ in $(seq 1 60); do
-  if curl -fsS -m 5 "https://${domain}/readyz" >/dev/null 2>&1 \
-    && curl -fsS -m 5 "https://${domain}/readyz/audit" >/dev/null 2>&1; then
+  if ready /readyz && ready /readyz/audit; then
     # Every deploy leaves a build cache behind; a week of it is plenty to keep rebuilds fast.
     docker builder prune -f --filter until=168h >/dev/null
     echo "released $(git log --oneline -1 HEAD)"
@@ -60,7 +63,7 @@ for _ in $(seq 1 60); do
   sleep 2
 done
 
-echo "release: https://${domain}/readyz and /readyz/audit never both answered - the stack as it stands:" >&2
+echo "release: https://${domain}/readyz and /readyz/audit never both answered ok - the stack as it stands:" >&2
 docker compose --env-file deploy/compose/.env -f deploy/compose/compose.yml ps -a >&2 || true
 docker compose --env-file deploy/compose/.env -f deploy/compose/compose.yml logs --tail 60 migrate audit-migrate api audit >&2 || true
 exit 1

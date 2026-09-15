@@ -41,6 +41,8 @@ pnpm --filter @rch/api db:migrate
 pnpm --filter @rch/audit db:migrate   # the audit schema; run after the API's, whose audit_outbox it waits for
 pnpm --filter @rch/api db:seed  # demo hospital; --bare = six locations + RC-0001 admin only; --force re-seeds
 pnpm dev                        # API on :3000, audit service on :3100, UI on :5173 (Vite proxies /api)
+                                 # IMAGE_STORE defaults to disk (apps/api/.data/images) locally; set it to s3
+                                 # with IMAGE_BUCKET and AWS_REGION to test against a real bucket
 
 pnpm build
 pnpm typecheck
@@ -169,6 +171,8 @@ There are five roles (`counter`, `manager`, `store`, `prod`, `buyer`), each with
   audit log's new-events count. The audit service gives a token without `admin` the same **404**.
 - **Staff pick themselves at sign-in.** `GET /auth/directory` is public and lists active, non-admin accounts
   as number and name only. The super admin signs in through a typed id instead.
+- **`counter` sets a product photo only for items on its own outlet's menu** (403 otherwise); `manager` sets
+  any item's.
 
 ### The movement rule
 
@@ -203,6 +207,9 @@ back where it stood.
   switches an outlet onto any list explicitly (`PUT /outlets/:loc/price-list`). Two outlets may still share one
   active list, exactly as before. A list can be deleted only once no outlet is active on it. A newly opened
   outlet is on none: the super admin's form has no price list, and the manager attaches one from Prices.
+- `lib/images.ts` is the only code that touches photo bytes (S3 in production, a folder in dev/test).
+  `items.image` holds the sha256; `GET /items/:it/image/:hash` is public, outside the manifest like `/events`,
+  and serves only the current hash.
 - **The audit tables have one writer each.** In `apps/api`, only `src/lib/audit.ts` inserts into
   `audit_outbox`, and nothing selects, updates or deletes from it. In `apps/audit`, only `src/lib/drain.ts`
   deletes from the outbox or inserts into `audit.events` and `audit.dead_letters`, and nothing anywhere updates
@@ -282,6 +289,8 @@ The code enforces these and tests pin them. Breaking one is a bug.
   request, kitchen order, shop ask or product request, or an active staff member, and the refusal names every
   one. A closed outlet takes no sale, transfer, ask, stock request, kitchen order, adjustment, menu listing,
   price-list switch or void, and no staff can be posted to it. A reopen restores it as it was.
+- **An item carries at most one photo**: JPEG, PNG or WebP, at most 700 KB, checked by `checkPhoto` on both
+  sides. A retired item takes no new photo.
 - **Employee numbers are assigned by the server**: `nextEmpNo` in `@rch/domain`, one past the highest
   `RC-<digits>`, under the `user` row of `sequences`, which also hands out user ids that are never reused.
 - **A staff account is deleted only if it never did anything.** It must be deactivated first, and it can't be

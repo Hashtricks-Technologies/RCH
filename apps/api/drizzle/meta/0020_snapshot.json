@@ -1,6 +1,6 @@
 {
-  "id": "8fb29fee-11bc-492d-8426-716a6c7aaf44",
-  "prevId": "017542b3-8bce-44c9-b2d0-af37dd3dd6c3",
+  "id": "7b2a2c64-d477-41b8-a11e-9e0342d18ef3",
+  "prevId": "8fb29fee-11bc-492d-8426-716a6c7aaf44",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -164,6 +164,13 @@
         "shelf_life_hours": {
           "name": "shelf_life_hours",
           "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "src": {
+          "name": "src",
+          "type": "source",
+          "typeSchema": "public",
           "primaryKey": false,
           "notNull": false
         },
@@ -4004,6 +4011,240 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.adjustment_request_lines": {
+      "name": "adjustment_request_lines",
+      "schema": "",
+      "columns": {
+        "request_id": {
+          "name": "request_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "line_no": {
+          "name": "line_no",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "item_key": {
+          "name": "item_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "qty": {
+          "name": "qty",
+          "type": "numeric(12, 3)",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "adjustment_request_lines_request_id_adjustment_requests_id_fk": {
+          "name": "adjustment_request_lines_request_id_adjustment_requests_id_fk",
+          "tableFrom": "adjustment_request_lines",
+          "tableTo": "adjustment_requests",
+          "columnsFrom": [
+            "request_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "adjustment_request_lines_item_key_items_key_fk": {
+          "name": "adjustment_request_lines_item_key_items_key_fk",
+          "tableFrom": "adjustment_request_lines",
+          "tableTo": "items",
+          "columnsFrom": [
+            "item_key"
+          ],
+          "columnsTo": [
+            "key"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "adjustment_request_lines_request_id_line_no_pk": {
+          "name": "adjustment_request_lines_request_id_line_no_pk",
+          "columns": [
+            "request_id",
+            "line_no"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.adjustment_requests": {
+      "name": "adjustment_requests",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "loc": {
+          "name": "loc",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reason": {
+          "name": "reason",
+          "type": "adjust_reason",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "note": {
+          "name": "note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "by_user": {
+          "name": "by_user",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "at": {
+          "name": "at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "status": {
+          "name": "status",
+          "type": "adj_req_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "approved_by": {
+          "name": "approved_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "adjustment_id": {
+          "name": "adjustment_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "adjustment_requests_status_idx": {
+          "name": "adjustment_requests_status_idx",
+          "columns": [
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "adjustment_requests_loc_idx": {
+          "name": "adjustment_requests_loc_idx",
+          "columns": [
+            {
+              "expression": "loc",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "adjustment_requests_loc_locations_key_fk": {
+          "name": "adjustment_requests_loc_locations_key_fk",
+          "tableFrom": "adjustment_requests",
+          "tableTo": "locations",
+          "columnsFrom": [
+            "loc"
+          ],
+          "columnsTo": [
+            "key"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "adjustment_requests_by_user_users_id_fk": {
+          "name": "adjustment_requests_by_user_users_id_fk",
+          "tableFrom": "adjustment_requests",
+          "tableTo": "users",
+          "columnsFrom": [
+            "by_user"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "adjustment_requests_approved_by_users_id_fk": {
+          "name": "adjustment_requests_approved_by_users_id_fk",
+          "tableFrom": "adjustment_requests",
+          "tableTo": "users",
+          "columnsFrom": [
+            "approved_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "adjustment_requests_adjustment_id_adjustments_id_fk": {
+          "name": "adjustment_requests_adjustment_id_adjustments_id_fk",
+          "tableFrom": "adjustment_requests",
+          "tableTo": "adjustments",
+          "columnsFrom": [
+            "adjustment_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.adjustments": {
       "name": "adjustments",
       "schema": "",
@@ -4107,6 +4348,16 @@
     }
   },
   "enums": {
+    "public.adj_req_status": {
+      "name": "adj_req_status",
+      "schema": "public",
+      "values": [
+        "Request sent",
+        "Approved",
+        "Rejected",
+        "Cancelled"
+      ]
+    },
     "public.adjust_reason": {
       "name": "adjust_reason",
       "schema": "public",
@@ -4248,6 +4499,14 @@
         "Asked",
         "Sent",
         "Declined"
+      ]
+    },
+    "public.source": {
+      "name": "source",
+      "schema": "public",
+      "values": [
+        "store",
+        "kitchen"
       ]
     },
     "public.support_priority": {

@@ -50,3 +50,48 @@ export const mayEditItemField = (role: Role, f: ItemField): boolean => ITEM_FIEL
  */
 export const unauthorisedItemFields = (role: Role, fields: readonly ItemField[]): ItemField[] =>
   fields.filter((f) => !mayEditItemField(role, f));
+
+// ---- item photos ----
+/**
+ * Who may put a photo on an item. Not an `ItemField`: a photo is not one of the patch's nine
+ * boxes, it has a door of its own (`PUT /items/:it/image`), and it belongs to the two roles that
+ * present what is sold - the manager for any item, a counter for what its own outlet lists
+ * (the server's rule, not this table's).
+ */
+export const mayEditItemImage = (role: Role): boolean => role === "manager" || role === "counter";
+
+/** The largest photo the server keeps. The browser shrinks to well under it (~80-200 KB). */
+export const IMAGE_MAX_BYTES = 700_000;
+
+export type ImageType = "image/jpeg" | "image/png" | "image/webp";
+
+const at = (b: Uint8Array, sig: readonly number[], offset = 0): boolean =>
+  b.length >= offset + sig.length && sig.every((v, i) => b[offset + i] === v);
+
+/** The type a photo's own first bytes declare - never the file name, never a header. SVG is
+ *  refused on purpose: it is a document that can carry script, not a picture. */
+export function sniffImageType(b: Uint8Array): ImageType | null {
+  if (at(b, [0xff, 0xd8, 0xff])) return "image/jpeg";
+  if (at(b, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) return "image/png";
+  if (at(b, [0x52, 0x49, 0x46, 0x46]) && at(b, [0x57, 0x45, 0x42, 0x50], 8)) return "image/webp";
+  return null;
+}
+
+export const IMAGE_NOT_PHOTO = "That file is not a JPEG, PNG or WebP photo";
+
+export type PhotoCheck = { ok: true; type: ImageType } | { ok: false; refusal: string };
+
+/** Size first, then type - the browser asks this before sending and the server before storing,
+ *  so both print the same sentence. */
+export function checkPhoto(b: Uint8Array): PhotoCheck {
+  if (b.length > IMAGE_MAX_BYTES) {
+    return { ok: false, refusal: `The photo is ${Math.ceil(b.length / 1000)} KB - the limit is ${IMAGE_MAX_BYTES / 1000} KB` };
+  }
+  const type = sniffImageType(b);
+  return type ? { ok: true, type } : { ok: false, refusal: IMAGE_NOT_PHOTO };
+}
+
+export const imageRetiredMessage = (name: string) => `${name} is retired, so it takes no photo`;
+export const imageOffMenuMessage = (name: string, outlet: string) =>
+  `${name} is not on the ${outlet} menu - its photo is the manager's to set`;
+export const imageNoneMessage = (name: string) => `${name} has no photo to remove`;

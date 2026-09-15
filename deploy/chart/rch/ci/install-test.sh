@@ -42,9 +42,11 @@ API_PF_PID=""
 UI_PF_PID=""
 AUDIT_PF_PID=""
 kill_pf() {
-  [ -n "$API_PF_PID" ] && kill "$API_PF_PID" 2>/dev/null || true
-  [ -n "$UI_PF_PID" ] && kill "$UI_PF_PID" 2>/dev/null || true
-  [ -n "$AUDIT_PF_PID" ] && kill "$AUDIT_PF_PID" 2>/dev/null || true
+  for pid in "$API_PF_PID" "$UI_PF_PID" "$AUDIT_PF_PID"; do
+    if [ -n "$pid" ]; then
+      kill "$pid" 2>/dev/null || true
+    fi
+  done
   API_PF_PID=""
   UI_PF_PID=""
   AUDIT_PF_PID=""

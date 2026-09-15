@@ -87,6 +87,8 @@ export const AUDIT_LABELS: Record<AuditAction, AuditLabel> = {
   // ---- master data
   createItem:             { label: "Added a product", group: "master" },
   patchItem:              { label: "Changed a product", group: "master" },
+  setItemImage:           { label: "Set a product's photo", group: "master" },
+  removeItemImage:        { label: "Removed a product's photo", group: "master" },
   savePrice:              { label: "Changed a price", group: "master" },
   createPriceList:        { label: "Created a price list", group: "master" },
   deletePriceList:        { label: "Deleted a price list", group: "master" },

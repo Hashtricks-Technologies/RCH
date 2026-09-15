@@ -1,7 +1,7 @@
 // Catalog: SQL only. No rules, no transaction of its own - service.ts passes `tx` in.
 import { and, asc, eq, like, ne, sql } from "drizzle-orm";
 import type { LocKey } from "@rch/contract";
-import { isUniqueViolation, type Tx } from "../../lib/db.js";
+import { isUniqueViolation, type Reader, type Tx } from "../../lib/db.js";
 import { items, locationItems, priceListItems, priceLists, stockBalances } from "../../db/schema/index.js";
 
 export type ItemRow = typeof items.$inferSelect;
@@ -142,5 +142,28 @@ export const catalogRepo = {
       if (isUniqueViolation(err, "items_name_ci_uq")) return undefined;
       throw err;
     }
+  },
+
+  // ---- item photos ----
+  /** What the photo rules read before any byte is stored: the item and whether this outlet lists
+   *  it. A plain read, not a lock - the write asks the same questions again under `head`. */
+  async photoTarget(r: Reader, key: string, loc: LocKey): Promise<{ name: string; active: boolean; listed: boolean } | undefined> {
+    const [row] = await r.select({ name: items.name, active: items.active }).from(items).where(eq(items.key, key));
+    if (!row) return undefined;
+    const listed = await r.select({ k: locationItems.itemKey }).from(locationItems)
+      .where(and(eq(locationItems.loc, loc), eq(locationItems.itemKey, key)));
+    return { ...row, listed: listed.length > 0 };
+  },
+
+  /** The hash the item's photo is stored under: `undefined` for no such item, `null` for none. */
+  async imageOf(r: Reader, key: string): Promise<string | null | undefined> {
+    const [row] = await r.select({ image: items.image }).from(items).where(eq(items.key, key));
+    return row ? row.image : undefined;
+  },
+
+  async setImage(tx: Tx, key: string, image: string | null): Promise<ItemRow> {
+    const [row] = await tx.update(items).set({ image, updatedAt: new Date() }).where(eq(items.key, key)).returning();
+    if (!row) throw new Error(`item ${key} vanished inside its own transaction`);
+    return row;
   },
 };

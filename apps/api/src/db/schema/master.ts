@@ -1,4 +1,4 @@
-import { boolean, date, integer, jsonb, numeric, pgTable, primaryKey, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { boolean, check, date, integer, jsonb, numeric, pgTable, primaryKey, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { itemTypeEnum, locationTypeEnum, payerKindEnum, roleEnum, sourceEnum } from "./enums.js";
 
@@ -90,10 +90,16 @@ export const items = pgTable("items", {
   mrp: money("mrp"),
   shelfLifeHours: integer("shelf_life_hours"),
   src: sourceEnum("src"),
+  // ---- item photos ----
+  /** sha256 (hex) of the item's photo in the image store; null when it has none. */
+  image: text("image"),
   active: boolean("active").notNull().default(true),
   createdAt: ts("created_at").notNull().defaultNow(),
   updatedAt: ts("updated_at").notNull().defaultNow(),
-}, (t) => [uniqueIndex("items_name_ci_uq").on(sql`lower(${t.name})`)]);
+}, (t) => [
+  uniqueIndex("items_name_ci_uq").on(sql`lower(${t.name})`),
+  check("items_image_sha256_ck", sql`${t.image} is null or ${t.image} ~ '^[0-9a-f]{64}$'`),
+]);
 
 export const locationItems = pgTable("location_items", {
   loc: text("loc").notNull().references(() => locations.key),

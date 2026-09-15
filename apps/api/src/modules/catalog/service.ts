@@ -1,15 +1,20 @@
 // Catalog: the flow - transaction, rules, id. Compose the helpers in apps/api/src/lib/;
 // domain rules belong in packages/domain. See modules/_template/service.ts.
+import { createHash } from "node:crypto";
 import type { z } from "zod";
 import type { Changed, CreateItemBodySchema, Item, LocKey, PatchItemBodySchema } from "@rch/contract";
-import { fq, mrpBelowShelfPrice, round3, unauthorisedItemFields, type ItemField } from "@rch/domain";
+import {
+  checkPhoto, fq, imageNoneMessage, imageOffMenuMessage, imageRetiredMessage,
+  mrpBelowShelfPrice, round3, unauthorisedItemFields, type ItemField,
+} from "@rch/domain";
 import type { Db } from "../../db/client.js";
 import { isForeignKeyViolation, withTransaction } from "../../lib/db.js";
 import { auditBefore } from "../../lib/audit.js";
 import { assertRule } from "../../lib/rules.js";
-import { NotFoundError } from "../../lib/errors.js";
+import { ForbiddenError, NotFoundError, NotReadyError, RuleError } from "../../lib/errors.js";
 import { emitChanged } from "../../lib/events.js";
 import { appendHistory } from "../../lib/history.js";
+import { imageKey, type ImageStore, type StoredImage } from "../../lib/images.js";
 import { postMoves } from "../../lib/ledger.js";
 import { assertOpen, lockLocation } from "../../lib/locations.js";
 import { loadItems, loadLocations } from "../../lib/master.js";
@@ -33,7 +38,19 @@ const OPERATIONAL_REFUSAL = "The store, the buyer and the kitchen keep an item's
  *  everything else is the manager's or the three desks', and nothing is in neither. */
 const COMMERCIAL: readonly ItemField[] = ["mrp", "cost", "gst"];
 
-export function createCatalogService(db: Db) {
+// ---- item photos ----
+export type ReadImage = { found: true; photo: StoredImage } | { found: false; missingObject: boolean };
+const HASH = /^[0-9a-f]{64}$/;
+
+/** The photo rules, asked once before any byte is stored (so a refusal leaves nothing behind) and
+ *  again under the item's own lock (so a retirement or a delisting that lands in between still
+ *  wins). A counter's scope is its outlet's menu; the manager is hospital-wide. */
+function assertPhotoRules(claims: AccessClaims, t: { name: string; active: boolean; listed: boolean }, outlet: string, setting: boolean): void {
+  if (setting) assertRule(t.active, imageRetiredMessage(t.name));
+  if (claims.role === "counter" && !t.listed) throw new ForbiddenError(imageOffMenuMessage(t.name, outlet));
+}
+
+export function createCatalogService(db: Db, images: ImageStore) {
   return {
     /**
      * A new line on the item master.
@@ -215,6 +232,77 @@ export function createCatalogService(db: Db) {
               : `${updated.name} updated`,
         };
       });
+    },
+
+    // ---- item photos ----
+    /**
+     * Put a photo on an item, or replace the one it has.
+     *
+     * The bytes go to the image store **before** the transaction: the key is the photo's own
+     * hash, so a retry or two identical uploads write the same object, and a transaction that
+     * then refuses leaves at most a few KB nobody points at. Only once the row points at the new
+     * hash is the old object deleted - best effort, since the bucket keeps old versions anyway.
+     */
+    async setItemImage(claims: AccessClaims, it: string, data: string): Promise<Write<{ key: string; item: Item }>> {
+      const bytes = new Uint8Array(Buffer.from(data, "base64"));
+      const check = checkPhoto(bytes);
+      if (!check.ok) throw new RuleError(check.refusal);
+      const outlet = (await loadLocations(db))[claims.loc]?.n ?? claims.loc;
+      const target = await catalogRepo.photoTarget(db, it, claims.loc);
+      if (!target) throw new NotFoundError(`There is no item ${it}.`);
+      assertPhotoRules(claims, target, outlet, true);
+
+      const hash = createHash("sha256").update(bytes).digest("hex");
+      try {
+        await images.put(imageKey(it, hash), bytes, check.type);
+      } catch (cause) {
+        throw new NotReadyError("The photo could not be stored just now - try again", cause);
+      }
+
+      let previous: string | null = null;
+      const out = await withTransaction(db, async (tx) => {
+        const row = await catalogRepo.head(tx, it);
+        if (!row) throw new NotFoundError(`There is no item ${it}.`);
+        auditBefore({ key: it, item: toWireItem(row) });
+        assertPhotoRules(claims, { name: row.name, active: row.active, listed: await catalogRepo.isListed(tx, claims.loc, it) }, outlet, true);
+        previous = row.image;
+        const updated = await catalogRepo.setImage(tx, it, hash);
+        await appendHistory(tx, "item", it, "Updated", claims.sub, new Date());
+        const changed = ["items"] as const;
+        await emitChanged(tx, changed);
+        return { result: { key: it, item: toWireItem(updated) }, changed: [...changed], message: `Photo saved for ${updated.name}` };
+      });
+      if (previous && previous !== hash) await images.delete(imageKey(it, previous)).catch(() => undefined);
+      return out;
+    },
+
+    /** Take an item's photo off. Allowed on a retired item - a photo is the one thing about a
+     *  retired line anybody would still want to tidy away. */
+    async removeItemImage(claims: AccessClaims, it: string): Promise<Write<{ key: string; item: Item }>> {
+      const outlet = (await loadLocations(db))[claims.loc]?.n ?? claims.loc;
+      let previous: string | null = null;
+      const out = await withTransaction(db, async (tx) => {
+        const row = await catalogRepo.head(tx, it);
+        if (!row) throw new NotFoundError(`There is no item ${it}.`);
+        auditBefore({ key: it, item: toWireItem(row) });
+        assertPhotoRules(claims, { name: row.name, active: row.active, listed: await catalogRepo.isListed(tx, claims.loc, it) }, outlet, false);
+        assertRule(row.image, imageNoneMessage(row.name));
+        previous = row.image;
+        const updated = await catalogRepo.setImage(tx, it, null);
+        await appendHistory(tx, "item", it, "Updated", claims.sub, new Date());
+        const changed = ["items"] as const;
+        await emitChanged(tx, changed);
+        return { result: { key: it, item: toWireItem(updated) }, changed: [...changed], message: `Photo removed from ${updated.name}` };
+      });
+      if (previous) await images.delete(imageKey(it, previous)).catch(() => undefined);
+      return out;
+    },
+
+    /** The bytes behind `GET /items/:it/image/:hash` - only for the hash the item points at now. */
+    async readItemImage(it: string, hash: string): Promise<ReadImage> {
+      if (!HASH.test(hash) || (await catalogRepo.imageOf(db, it)) !== hash) return { found: false, missingObject: false };
+      const photo = await images.get(imageKey(it, hash));
+      return photo ? { found: true, photo } : { found: false, missingObject: true };
     },
 
     /** MRP is a hard ceiling: a priced item that also carries an MRP can never be

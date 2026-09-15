@@ -5,7 +5,7 @@ import { useApp } from "../../store";
 import { avail, daysCover, menuOf, parOf, qty, resv, stateLabel, stateTone } from "../../lib/selectors";
 import { fq, money0, U } from "../../lib/fmt";
 import {
-  Btn, Card, DataTable, FilterBtn, FilterSelect, ImagePlaceholder, PageHead, Pill, StatusPill, TileMenu, Toolbar,
+  Btn, Card, DataTable, FilterBtn, FilterSelect, ItemImage, PageHead, Pill, StatusPill, TileMenu, Toolbar,
 } from "../../ui/kit";
 import { TypeTag } from "./Pos";
 import "./ConfigureDrawer";
@@ -130,7 +130,7 @@ export default function Stock() {
               return (
                 <div className={`card stkcard is-${state}`} key={r.it}>
                   <div className="stkcard-head">
-                    <ImagePlaceholder size="thumb" />
+                    <ItemImage it={r.it} size="thumb" />
                     <div className="stkcard-id">
                       <b title={item.n}>{item.n}</b>
                       <span className="mini">{item.c} · {item.g}</span>

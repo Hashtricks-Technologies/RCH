@@ -198,7 +198,15 @@ the group, the HSN code and the reorder level. The other half is greyed out with
 saying whose it is. A product is **retired, never deleted** - refused while any location holds
 stock of it or any outlet still lists it, naming them - and a retired line keeps its name on
 every document that already carries it while dropping off the pickers that could sell, order or
-promise it again.
+promise it again. The manager's drawer also carries a `PhotoPicker` at the top, for one photo per
+item.
+
+**A product can carry a photo.** The manager sets one for any item, from its Edit drawer; a
+counter sets one for whatever its own outlet sells, from the same Configure panel the POS tile
+menu and the Stock in Hand card already open - a product not on that outlet's menu shows the
+photo with no buttons to change it. The photo is shrunk and checked in the browser before it is
+sent, replaces the grey placeholder everywhere a screen already reserved one for an item, and
+updates on every open browser over the change stream like everything else.
 
 **The payer register is loaded, not kept on a screen.** Patients, staff members and departments
 reach the till's payer picker from a `kind,id,name` CSV

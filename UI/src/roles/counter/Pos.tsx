@@ -5,7 +5,7 @@ import { DEPTS, IT, LOC, PATIENTS, STAFF } from "../../data/master";
 import { useApp } from "../../store";
 import { availOf, menuOf, priceOf } from "../../lib/selectors";
 import { money, money0 } from "../../lib/fmt";
-import { Alert, Avatar, Btn, Card, Field, Grid, ImagePlaceholder, PageHead, Tag, TileMenu, Tip } from "../../ui/kit";
+import { Alert, Avatar, Btn, Card, Field, Grid, ItemImage, PageHead, Tag, TileMenu, Tip } from "../../ui/kit";
 import type { CreditResponse, ItemType, Payer, Tender } from "../../types";
 
 /** The buttons are the contract's own list - the server refuses anything else outright, so the
@@ -144,7 +144,7 @@ export default function Pos() {
                     onClick={() => s.addToCart(loc, it, 1)}
                     aria-label={a.ok ? `Add ${item.n}` : `${item.n} - ${a.why ?? "unavailable"}`}
                     title={a.ok ? `Add ${item.n}` : `${item.n} - ${a.why ?? "unavailable"}`} />
-                  <ImagePlaceholder size="card" />
+                  <ItemImage it={it} size="card" />
                   <TileMenu
                     className="tile-pic-kebab"
                     items={[

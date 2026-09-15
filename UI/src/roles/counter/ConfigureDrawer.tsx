@@ -4,8 +4,9 @@ import {
   avail, availOf, daysCover, menuOf, parOf, priceOf, qty, stateLabel, stateTone,
 } from "../../lib/selectors";
 import { fq, money, U } from "../../lib/fmt";
-import { Alert, Btn, ImagePlaceholder, Pill, Switch, Tip } from "../../ui/kit";
+import { Alert, Btn, ItemImage, Pill, Switch, Tip } from "../../ui/kit";
 import { DrawerFrame } from "../../ui/Drawer";
+import { PhotoPicker } from "../../ui/PhotoPicker";
 import { registerDrawer, type DrawerProps } from "../../drawers";
 import { TypeTag } from "./Pos";
 
@@ -40,7 +41,7 @@ function ConfigureDrawer({ id: it }: DrawerProps) {
       sub={`${item.n} · ${LOC[loc].n}`}
       foot={<Btn variant="gh" onClick={close}>Close</Btn>}
     >
-      <ImagePlaceholder size="card" />
+      {sellableHere ? <PhotoPicker it={it} /> : <ItemImage it={it} size="card" />}
       <div style={{ height: 14 }} />
       <div style={{ display: "flex", alignItems: "baseline", gap: 9, flexWrap: "wrap", marginBottom: 12 }}>
         <b style={{ fontSize: 15 }}>{item.n}</b>

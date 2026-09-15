@@ -14,13 +14,17 @@ export class AppError extends Error {
    *  this is where the difference goes: onto the request's own log line (`plugins/logging.ts`),
    *  and nowhere in `toEnvelope()`. */
   override readonly cause?: string;
-  constructor(code: ErrorCode, status: number, message: string, details?: unknown, cause?: string) {
+  /** The underlying error a 5xx wraps, if any - never a string, never serialised to the caller,
+   *  logged in full by `plugins/errors.ts` alongside the sentence the caller got. */
+  readonly internal?: unknown;
+  constructor(code: ErrorCode, status: number, message: string, details?: unknown, cause?: string, internal?: unknown) {
     super(message);
     this.code = code;
     this.status = status;
     this.statusCode = status;
     this.details = details;
     this.cause = cause;
+    this.internal = internal;
     this.name = new.target.name;
   }
   toEnvelope() {
@@ -38,4 +42,4 @@ export class ConflictError extends AppError { constructor(message: string, detai
  */
 export class RuleError extends AppError { constructor(message: string, details?: unknown) { super("rule", 422, message, details); } }
 export class RateLimitedError extends AppError { constructor(message = "Too many requests - wait a moment and try again.") { super("rate_limited", 429, message); } }
-export class NotReadyError extends AppError { constructor(message: string) { super("not_ready", 503, message); } }
+export class NotReadyError extends AppError { constructor(message: string, internal?: unknown) { super("not_ready", 503, message, undefined, undefined, internal); } }

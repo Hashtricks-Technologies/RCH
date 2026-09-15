@@ -77,6 +77,17 @@ describe("before values: prices, menus, the availability switch and the item mas
     await send("u3", "PATCH", "/items/bisc", { rl: 40 });
     expect((await lastEvent("patchItem")).before).toEqual(maskSecrets(first.result));
   });
+
+  it("setItemImage and removeItemImage keep the line as it was, in the { key, item } shape they answer with", async () => {
+    const was = (await read("/items")).chai;
+    const bytes = new Uint8Array(64).fill(1);
+    bytes.set([0xff, 0xd8, 0xff, 0xe0]);
+    const data = Buffer.from(bytes).toString("base64");
+    const first = await send("u2", "PUT", "/items/chai/image", { data });
+    expect((await lastEvent("setItemImage")).before).toEqual({ key: "chai", item: was });
+    await send("u2", "DELETE", "/items/chai/image");
+    expect((await lastEvent("removeItemImage")).before).toEqual(maskSecrets(first.result));
+  });
 });
 
 describe("before values: price lists", () => {

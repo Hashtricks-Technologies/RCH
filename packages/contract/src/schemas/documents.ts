@@ -29,6 +29,11 @@ export const ItemSchema = z.object({
   active: z.boolean().optional(),
   // Absent reads through `sourceOf` (`@rch/domain`), which falls back to the item's type.
   src: SourceSchema.optional(),
+  // ---- item photos ----
+  // The sha256 of the photo's bytes, absent when the item has none. It is both the photo's
+  // version and its address (`itemImagePath`), so a changed photo is a new URL and the old one
+  // stops being served.
+  img: z.string().regex(/^[0-9a-f]{64}$/).optional(),
 });
 export const LocationSchema = z.object({
   n: z.string(), c: z.string(), type: z.enum(["Store", "Kitchen", "Outlet"]),

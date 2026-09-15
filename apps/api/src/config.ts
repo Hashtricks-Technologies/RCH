@@ -3,7 +3,7 @@ import { z } from "zod";
 const bool = z.enum(["true", "false"]).transform((v) => v === "true");
 const int = (min: number, max: number) => z.coerce.number().int().min(min).max(max);
 
-const Env = z.object({
+const EnvShape = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   PORT: int(0, 65535).default(3000),
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"]).default("info"),
@@ -41,6 +41,22 @@ const Env = z.object({
   /** "true"/"false", a hop count ("1", "2", …, translated to an equivalent trust function -
    *  see `parseTrustProxy`), or a raw CIDR/IP (list) handed straight to `proxy-addr`. */
   TRUST_PROXY: z.string().min(1).default("1"),
+  // ---- item photos ----
+  /** Where photo bytes live. `disk` is a laptop's and the test suite's; production refuses it,
+   *  because a second replica would not see the first one's folder. */
+  IMAGE_STORE: z.enum(["disk", "s3"]).default("disk"),
+  IMAGE_DIR: z.string().min(1).default(".data/images"),
+  IMAGE_BUCKET: z.string().min(3).optional(),
+  AWS_REGION: z.string().min(1).optional(),
+});
+
+const Env = EnvShape.superRefine((e, ctx) => {
+  if (e.IMAGE_STORE === "s3") {
+    if (!e.IMAGE_BUCKET) ctx.addIssue({ code: "custom", path: ["IMAGE_BUCKET"], message: "required when IMAGE_STORE=s3" });
+    if (!e.AWS_REGION) ctx.addIssue({ code: "custom", path: ["AWS_REGION"], message: "required when IMAGE_STORE=s3" });
+  } else if (e.NODE_ENV === "production") {
+    ctx.addIssue({ code: "custom", path: ["IMAGE_STORE"], message: "production keeps photos in S3 - set IMAGE_STORE=s3, IMAGE_BUCKET and AWS_REGION" });
+  }
 });
 
 export class ConfigError extends Error {}
@@ -69,6 +85,8 @@ export type Config = Readonly<{
   /** What Fastify's own `trustProxy` option accepts: `true`/`false`, a CIDR/IP (list) string,
    *  or - for a hop count - a function, per the note on `parseTrustProxy` below. */
   trustProxy: boolean | string | ((address: string, hop: number) => boolean);
+  // ---- item photos ----
+  images: { store: "disk"; dir: string } | { store: "s3"; bucket: string; region: string };
 }>;
 
 const pem = (b64: string) => Buffer.from(b64, "base64").toString("utf8");
@@ -134,6 +152,10 @@ export function loadConfig(env: NodeJS.ProcessEnv): Config {
     sseHeartbeatMs: e.SSE_HEARTBEAT_MS,
     sseRetryMs: e.SSE_RETRY_MS,
     trustProxy: parseTrustProxy(e.TRUST_PROXY),
+    // ---- item photos ----
+    images: e.IMAGE_STORE === "s3"
+      ? ({ store: "s3", bucket: e.IMAGE_BUCKET ?? "", region: e.AWS_REGION ?? "" } as const)
+      : ({ store: "disk", dir: e.IMAGE_DIR } as const),
   });
 }
 

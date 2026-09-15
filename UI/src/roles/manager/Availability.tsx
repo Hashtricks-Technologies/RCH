@@ -3,7 +3,7 @@ import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
 import { availOf, menuOf, openOutlets } from "../../lib/selectors";
 import {
-  Alert, Card, DataTable, FilterSelect, ImagePlaceholder, PageHead, Pill, Switch, TableFoot, Tag, Toolbar,
+  Alert, Card, DataTable, FilterSelect, ItemImage, PageHead, Pill, Switch, TableFoot, Tag, Toolbar,
 } from "../../ui/kit";
 import { emptyFor, sortRows, useSort, type SortValue } from "./useSort";
 import { listFor, nameOfList } from "./Prices";
@@ -162,7 +162,7 @@ export default function Availability() {
             key: it,
             cells: [
               <span className="nm-pic">
-                <ImagePlaceholder />
+                <ItemImage it={it} />
                 <div>{IT[it].n}<small>{IT[it].c} · HSN {IT[it].hsn}</small></div>
               </span>,
               <Tag kind={tagKind(IT[it].t)}>{IT[it].t}</Tag>,

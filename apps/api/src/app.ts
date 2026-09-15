@@ -3,6 +3,7 @@ import type { Pool } from "pg";
 import { serializerCompiler, validatorCompiler, type ZodTypeProvider } from "fastify-type-provider-zod";
 import type { Config } from "./config.js";
 import type { Db } from "./db/client.js";
+import type { ImageStore } from "./lib/images.js";
 import logging, { genReqId, loggerOptions, type LogStream } from "./plugins/logging.js";
 import security from "./plugins/security.js";
 import errors from "./plugins/errors.js";
@@ -14,6 +15,7 @@ import rbac from "./plugins/rbac.js";
 import sse from "./plugins/sse.js";
 import idempotency from "./plugins/idempotency.js";
 import audit from "./plugins/audit.js";
+import images from "./plugins/images.js";
 import { registerModules } from "./modules/index.js";
 
 declare module "fastify" { interface FastifyInstance { config: Config } }
@@ -21,7 +23,7 @@ declare module "fastify" { interface FastifyInstance { config: Config } }
 export type App = FastifyInstance;
 /** A caller that brings its own database brings the pool behind it too, so /metrics can still report its depth.
  *  `logStream` is where the log goes when it is not stdout - a test reading its own lines back. */
-export type AppDeps = { db?: Db; pool?: Pool; searchPath?: string; migrationsSchema?: string; logStream?: LogStream };
+export type AppDeps = { db?: Db; pool?: Pool; searchPath?: string; migrationsSchema?: string; logStream?: LogStream; images?: ImageStore };
 
 export async function buildApp(config: Config, deps: AppDeps = {}): Promise<App> {
   const app = Fastify({
@@ -52,6 +54,7 @@ export async function buildApp(config: Config, deps: AppDeps = {}): Promise<App>
   await app.register(health);
   await app.register(security, { config });
   await app.register(db, { url: config.databaseUrl, ssl: config.databaseSsl, max: config.dbPoolMax, searchPath: deps.searchPath, migrationsSchema: deps.migrationsSchema, db: deps.db, pool: deps.pool });
+  await app.register(images, { config, store: deps.images });
   await app.register(auth, { config });
   await app.register(rbac);
   await app.register(sse, { config, searchPath: deps.searchPath });

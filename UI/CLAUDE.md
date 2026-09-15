@@ -51,7 +51,7 @@ the suite, on purpose.
   document's id **and the last entry of its trail**. `manager/ApprovalDrawer.tsx`'s `bodyKey` is the example.
 
 Components shared by two or more roles live in `src/ui/`, because role folders don't import each other. That
-includes `TicketSlip`, `NewProductForm`, `AdjustmentForm` and `KitchenOrderForm`.
+includes `TicketSlip`, `NewProductForm`, `AdjustmentForm`, `KitchenOrderForm` and `PhotoPicker`.
 
 ## The store is an API client
 
@@ -81,6 +81,9 @@ try {
   `counter/Requests.tsx` (keyed per row) are the two patterns to copy.
 - **Actions whose screen needs the new id return `Promise<string | null>`**: `createPo` and `createItem`.
 - **Single-press buttons with no form are fire-and-forget**: `handover`, `setOrderStatus`, `dispatchOrder`.
+- **`setItemImage(it, bytes)` and `removeItemImage(it)`** are the ordinary `Promise<boolean>` write shape
+  above - the bytes arrive already shrunk and type-checked (`ui/PhotoPicker.tsx`, below), and the server checks
+  them again and decides, including whether a counter's outlet lists the item.
 - **Some reads have no notify and no refetch**: `readStockLedger`, `readCredit` and
   `loadSignInDirectory` (the sign-in picker's staff list). They return `null` on failure, never an empty list,
   so a screen can tell an outage from genuinely nothing. `Login.tsx` falls back to a typed id on `null`.
@@ -199,6 +202,16 @@ a background refresh and must not blank the screen.
   - The bubble is always in the DOM (`hidden` while closed), so tests still find a moved sentence by its text.
     Never put a `Tip` inside a `<label>`, a heading or a `<button>`, where that hidden text would join
     theirs.
+- **`ItemImage({ it, size })`** (also in `kit.tsx`) replaces `ImagePlaceholder` at every call site that has an
+  item in hand: it draws the item's own photo (`photoSrc`, keyed on its hash) when `IT[it].img` is present and
+  the image has not failed to load, and falls back to `ImagePlaceholder` otherwise - a call site with no item
+  in hand (nothing selected yet) keeps the bare placeholder. `src/lib/photo.ts` holds `photoSrc` (the URL under
+  `API_PREFIX`), `toBase64` (chunked, so a large photo doesn't overflow the call stack) and `shrinkPhoto` (an
+  `<input type=file>`'s `File` to at most 800 px on its long edge, JPEG re-encoded, which is also what strips
+  EXIF - GPS included). `ui/PhotoPicker.tsx` is the shared Add/Change/Remove control built on `ItemImage`,
+  `shrinkPhoto` and the store's `setItemImage`/`removeItemImage`: the manager's `ItemDrawer` and the counter's
+  `ConfigureDrawer` (when the item is on that counter's own menu) are its two call sites. A client-side refusal
+  (`checkPhoto` from `@rch/domain`) toasts the domain's own sentence and sends nothing.
 - **`DraftLineInput`** is the commit-on-blur number box. Every typed quantity uses it, because a controlled
   number input can't take a half-typed `12.`. Its `ariaLabel` is required even beside a `<label>`, because
   `Field` only wires `htmlFor` to a direct DOM child.

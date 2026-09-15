@@ -5,7 +5,9 @@ import {
 import type { Ticket, Tone } from "../types";
 import { ticketDot, toneFor } from "../lib/selectors";
 import { toInputDate } from "../lib/fmt";
+import { photoSrc } from "../lib/photo";
 import type { ThemePref } from "../lib/theme";
+import { IT } from "../data/master";
 import { useApp } from "../store";
 import { Tip, TipWrap } from "./Tip";
 
@@ -605,12 +607,10 @@ export function Otp({ value, label = "Collection OTP" }: { value: string; label?
   );
 }
 /**
- * A blank product-photo slot. This build has no photography and no upload
- * path - pulling images from the internet risks copyright and trademark
- * problems, and there is no image-generation tool available here either.
- * "card" tops a menu tile; "sm" is the inline swatch next to a product name.
+ * A blank product-photo slot, drawn by `ItemImage` for an item with no photo yet or one that
+ * failed to load. "card" tops a menu tile; "sm" is the inline swatch next to a product name.
  */
-export function ImagePlaceholder({ size = "sm" }: { size?: "sm" | "thumb" | "card" }) {
+function ImagePlaceholder({ size = "sm" }: { size?: "sm" | "thumb" | "card" }) {
   return (
     <div className={`imgph imgph-${size}`} aria-hidden="true">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round">
@@ -619,6 +619,18 @@ export function ImagePlaceholder({ size = "sm" }: { size?: "sm" | "thumb" | "car
         <path d="M20 15.5 15.5 11a1.5 1.5 0 0 0-2.1 0L5 19" />
       </svg>
     </div>
+  );
+}
+
+/** An item's own photo in the placeholder's box, or the placeholder when it has none - or when
+ *  the photo will not load, so a broken image never takes the place of the slot. */
+export function ItemImage({ it, size = "sm" }: { it: string | undefined; size?: "sm" | "thumb" | "card" }) {
+  const hash = it ? IT[it]?.img : undefined;
+  const [broken, setBroken] = useState<string | null>(null);
+  if (!it || !hash || broken === hash) return <ImagePlaceholder size={size} />;
+  return (
+    <img className={`imgph imgph-${size} itemimg`} src={photoSrc(it, hash)} alt="" loading="lazy" decoding="async"
+      onError={() => setBroken(hash)} />
   );
 }
 

@@ -6,7 +6,7 @@ import { useApp } from "../../store";
 import { activeItems, avail, isReqOpen, menuOf, qty } from "../../lib/selectors";
 import { fq, U } from "../../lib/fmt";
 import {
-  Alert, Btn, BtnRow, Card, DataTable, DraftLineInput, Field, FormRow, PageHead, Pill, Section,
+  Alert, Btn, BtnRow, Card, DataTable, DraftLineInput, Field, FormRow, ItemImage, PageHead, Pill, Section,
   StatusPill, useLineKeys,
 } from "../../ui/kit";
 import type { DraftLine } from "../../types";
@@ -116,6 +116,7 @@ export default function Requests() {
             return (
               <div key={a.id} className="askcard">
                 <div className="askcard-top">
+                  <ItemImage it={a.it} size="thumb" />
                   <div className="askcard-id">
                     <b>{IT[a.it]?.n ?? a.it}</b>
                     <span className="mini">{a.id} · {LOC[a.from].n} · {a.at}</span>
@@ -309,7 +310,10 @@ export default function Requests() {
             key: r.id,
             onClick: () => s.openDrawer("creq", r.id),
             cells: [
-              <><b>{r.lines.length} item{r.lines.length === 1 ? "" : "s"}</b><small>{r.id}</small></>,
+              <span style={{ display: "flex", alignItems: "center", gap: 9 }}>
+                <ItemImage it={r.lines[0]?.it} />
+                <span><b>{r.lines.length} item{r.lines.length === 1 ? "" : "s"}</b><small>{r.id}</small></span>
+              </span>,
               r.lines.map((l) => IT[l.it]?.n ?? l.it).join(", "),
               r.at,
               <StatusPill status={r.st} />,

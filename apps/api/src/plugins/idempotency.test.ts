@@ -373,7 +373,7 @@ describe("Idempotency-Key", () => {
     // The branch that actually ships: the chart sets NODE_ENV=production in every namespace, so
     // `strict` is off there and a response-shape bug must degrade to the behaviour this plugin
     // has always had rather than start refusing the hospital's writes.
-    const a = await appWith((x) => mount(x, badShapeRoute, badShapeHandler("18181 81818")), { NODE_ENV: "production" });
+    const a = await appWith((x) => mount(x, badShapeRoute, badShapeHandler("18181 81818")), { NODE_ENV: "production", IMAGE_STORE: "s3", IMAGE_BUCKET: "b-1", AWS_REGION: "ap-south-1" });
     try {
       const key = randomUUID();
       const headers = { ...(await authHeaders(a, "u2")), "idempotency-key": key };
@@ -401,7 +401,7 @@ describe("Idempotency-Key", () => {
     const log = capture();
     const a = await appWith(
       (x) => mount(x, optionalBadShapeRoute, optionalBadShapeHandler("17171 71717")),
-      { NODE_ENV: "production", LOG_LEVEL: "info" },
+      { NODE_ENV: "production", LOG_LEVEL: "info", IMAGE_STORE: "s3", IMAGE_BUCKET: "b-1", AWS_REGION: "ap-south-1" },
       log,
     );
     try {

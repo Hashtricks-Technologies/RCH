@@ -4,7 +4,7 @@ import { useApp } from "../../store";
 import { costOf, menuOf, openOutlets, priceOf } from "../../lib/selectors";
 import { money, sum } from "../../lib/fmt";
 import {
-  Alert, Btn, Card, DataTable, Field, FilterSelect, FormRow, Grid, Icon, ImagePlaceholder, PageHead, Pill, TableFoot, Tag, Tip, Toolbar,
+  Alert, Btn, Card, DataTable, Field, FilterSelect, FormRow, Grid, Icon, ItemImage, PageHead, Pill, TableFoot, Tag, Tip, Toolbar,
 } from "../../ui/kit";
 import { emptyFor, sortRows, useSort, type SortValue } from "./useSort";
 import type { ItemType, LocKey } from "../../types";
@@ -374,7 +374,7 @@ export default function Prices() {
                 key: it,
                 cells: [
                   <span className="nm-pic">
-                    <ImagePlaceholder />
+                    <ItemImage it={it} />
                     <div>{IT[it]?.n ?? it}<small>{IT[it]?.c}</small></div>
                   </span>,
                   <Tag kind={tagKind(IT[it]?.t ?? "RAW")}>{IT[it]?.t}</Tag>,

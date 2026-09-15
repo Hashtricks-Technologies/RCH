@@ -2736,3 +2736,49 @@ describe("audit log reads", () => {
     expect(S().audit.fresh).toBe(0);
   });
 });
+
+// ---- item photos ----
+describe("an item's photo", () => {
+  const H = "f".repeat(64);
+
+  it("sends the photo as base64, toasts the server's sentence and reads the catalogue back", async () => {
+    as("counter");
+    const withPhoto = { ...FX.IT.juice, img: H };
+    serve({
+      "PUT /api/v1/items/juice/image": () => json({ result: { key: "juice", item: withPhoto }, changed: ["items"], message: "Photo saved for Real Juice 200ml" }),
+      "GET /api/v1/items": () => json({ ...FX.IT, juice: withPhoto }),
+    });
+    expect(await S().setItemImage("juice", new Uint8Array([0xff, 0xd8, 0xff]))).toBe(true);
+    expect(hit("PUT /api/v1/items/juice/image")[0].body).toEqual({ data: "/9j/" });
+    expect(S().toast).toBe("Photo saved for Real Juice 200ml");
+    expect(hit("GET /api/v1/items")).toHaveLength(1);
+    expect(IT.juice.img).toBe(H);
+  });
+
+  it("removes a photo the same way", async () => {
+    as("manager");
+    const bare = { ...FX.IT.juice };
+    serve({
+      "DELETE /api/v1/items/juice/image": () => json({ result: { key: "juice", item: bare }, changed: ["items"], message: "Photo removed from Real Juice 200ml" }),
+      "GET /api/v1/items": () => json({ ...FX.IT, juice: bare }),
+    });
+    expect(await S().removeItemImage("juice")).toBe(true);
+    expect(S().toast).toBe("Photo removed from Real Juice 200ml");
+    expect(IT.juice.img).toBeUndefined();
+  });
+
+  it("toasts a refusal and reads nothing back", async () => {
+    as("counter");
+    serve({ "PUT /api/v1/items/sand/image": () => refusal("Veg sandwich is not on the Coffee Shop menu - its photo is the manager's to set", 403) });
+    expect(await S().setItemImage("sand", new Uint8Array([0xff, 0xd8, 0xff]))).toBe(false);
+    expect(S().toast).toBe("Veg sandwich is not on the Coffee Shop menu - its photo is the manager's to set");
+    expect(hit("GET /api/v1/items")).toHaveLength(0);
+  });
+
+  it("says the connection failed when there is no answer at all", async () => {
+    as("manager");
+    fetchMock.mockRejectedValue(new TypeError("Failed to fetch"));
+    expect(await S().removeItemImage("juice")).toBe(false);
+    expect(S().toast).toBe("Could not remove the photo - check the connection and try again.");
+  });
+});

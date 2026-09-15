@@ -27,6 +27,8 @@ export type ItemRow = typeof items.$inferSelect;
 export const toWireItem = (r: ItemRow): Item => strip({
   c: r.code, n: r.name, u: r.unit, t: r.type, g: r.grp, hsn: r.hsn, gst: r.gst, rl: r.reorderLevel, cost: r.cost,
   mrp: r.mrp ?? undefined, sl: r.shelfLifeHours ?? undefined,
+  // ---- item photos ----
+  img: r.image ?? undefined,
   // ---- item patch ----
   // Always on the wire, because `readItems` now carries retired lines too: a document raised
   // before the line was retired still names it, and the screen showing that document needs its

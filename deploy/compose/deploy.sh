@@ -10,8 +10,8 @@
 # Dockerfiles (the same three Dockerfiles the EKS path builds - there is one image definition per
 # service, not two), brings the stack up (`postgres` → `migrate` → `audit-migrate`, then
 # `api`/`audit`/`ui`/`caddy`, via compose's own `depends_on` conditions - a fresh Postgres or a
-# pending migration is never raced), seeds the database only the first time it is empty, and
-# reports the result. It is
+# pending migration is never raced), recreates Caddy when the Caddyfile itself changed, seeds the
+# database only the first time it is empty, and reports the result. It is
 # safe to run again on an already-running stack: rebuilding and re-upping a service compose
 # finds unchanged is a no-op, and the seed step only ever fires once.
 set -euo pipefail
@@ -23,6 +23,14 @@ if [ ! -f .env ]; then
 fi
 
 compose() { docker compose --env-file .env -f compose.yml "$@"; }
+
+# The Caddyfile is a bind mount and Caddy runs here with `admin off`, so a changed file reaches the
+# running container neither through compose (the service definition did not change) nor through a
+# reload (there is no admin socket). Handing compose the file's checksum closes that: a changed
+# Caddyfile becomes a changed environment, which recreates Caddy - and only then.
+CADDYFILE_SHA=$(sha256sum Caddyfile 2>/dev/null || shasum -a 256 Caddyfile)
+CADDYFILE_SHA=${CADDYFILE_SHA%% *}
+export CADDYFILE_SHA
 
 echo "== building images =="
 compose build

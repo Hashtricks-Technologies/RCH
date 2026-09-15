@@ -1,4 +1,7 @@
 import { generateKeyPairSync } from "node:crypto";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { buildApp, type App } from "../app.js";
 import type { LogStream } from "../plugins/logging.js";
 import { loadConfig, type Config } from "../config.js";
@@ -32,7 +35,9 @@ export function testConfig(overrides: Partial<NodeJS.ProcessEnv> = {}): Config {
       JWT_PUBLIC_KEY: b64(keys.publicKey.export({ type: "spki", format: "pem" }).toString()),
     };
   })() : {};
-  return loadConfig({ ...BASE_ENV, ...keyEnv, ...overrides });
+  // Every built app gets its own photo folder, so two test files never race to write or clean up
+  // the same directory - and Task 4's disk store never has to guess where "the" folder is.
+  return loadConfig({ ...BASE_ENV, IMAGE_DIR: mkdtempSync(join(tmpdir(), "rch-images-")), ...keyEnv, ...overrides });
 }
 
 /** `schema` is mandatory whenever a database is used: without a caller-chosen name, two

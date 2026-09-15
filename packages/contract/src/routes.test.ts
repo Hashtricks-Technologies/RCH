@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { z } from "zod";
-import { AdjustReasonSchema, CollectionSchema, CreateAdjustmentBodySchema, DeskReplyBodySchema, CreatePoBodySchema, CreditParamsSchema, CreditResponseSchema, EVENTS_PATH, EventNoticeSchema, KITCHEN, LocKeySchema, MakeBatchBodySchema, PatchContractBodySchema, PatchPoBodySchema, PatchVendorBodySchema, PO_APPROVAL_LIMIT, QUARANTINE, RaiseTicketBodySchema, RateTicketBodySchema, ReceivePoBodySchema, SetOrderStatusBodySchema, SetTicketStatusBodySchema, SnapshotSchema, StockLedgerQuerySchema, StockLocSchema, STORE, TktStatusSchema, TransferBodySchema, ItemSchema, PatchItemBodySchema, UpdateOutletBodySchema } from "./index";
+import { AdjustReasonSchema, CollectionSchema, CreateAdjustmentBodySchema, DeskReplyBodySchema, CreatePoBodySchema, CreditParamsSchema, CreditResponseSchema, EVENTS_PATH, EventNoticeSchema, KITCHEN, LocKeySchema, MakeBatchBodySchema, PatchContractBodySchema, PatchPoBodySchema, PatchVendorBodySchema, PO_APPROVAL_LIMIT, QUARANTINE, RaiseTicketBodySchema, RateTicketBodySchema, ReceivePoBodySchema, SetOrderStatusBodySchema, SetTicketStatusBodySchema, SnapshotSchema, StockLedgerQuerySchema, StockLocSchema, STORE, TktStatusSchema, TransferBodySchema, ItemSchema, PatchItemBodySchema, SetItemImageBodySchema, ITEM_IMAGE_PATH, itemImagePath, UpdateOutletBodySchema } from "./index";
 import { isWriteRoute, routes, serviceOf } from "./routes";
 
 /** One valid body per route that takes one. The coverage case below fails if a new route
@@ -45,6 +45,8 @@ const SAMPLES: Record<string, Record<string, unknown>> = {
   updateContract:       { rate: 54 },
   createItem:           { name: "Cold coffee premix 1kg", unit: "kg", type: "RAW", cost: 320, loc: "store", opening: 0 },
   createProductRequest: { name: "Sugar-free lemon iced tea 250ml", why: "Diabetic attenders ask daily", forLoc: "coffee" },
+  // ---- item photos ----
+  setItemImage:         { data: "/9j/4AAQSkZJRg==" },
   answerProductRequest: { st: "Declined", note: "Vendor cannot supply reliably" },
   raiseTicket:     { topic: "A number looks wrong", subject: "Cash collected shows zero all morning",
                      body: "Sales is climbing but cash collected has not moved since I opened.",
@@ -334,5 +336,28 @@ describe("the audit log's routes", () => {
   it("names `audit` as a collection a change notice can carry", () => {
     expect(CollectionSchema.safeParse("audit").success).toBe(true);
     expect(EventNoticeSchema.safeParse({ collection: "audit", at: "2026-09-14T04:30:00.000Z" }).success).toBe(true);
+  });
+});
+
+// ---- item photos
+describe("item photos", () => {
+  it("opens both photo doors to the manager and the counter only", () => {
+    expect(routes.setItemImage).toMatchObject({ method: "PUT", path: "/items/:it/image", access: ["manager", "counter"] });
+    expect(routes.removeItemImage).toMatchObject({ method: "DELETE", path: "/items/:it/image", access: ["manager", "counter"] });
+  });
+
+  it("takes base64 and nothing else, under the 1 MB body limit", () => {
+    expect(SetItemImageBodySchema.safeParse({ data: "/9j/4AAQSkZJRg==" }).success).toBe(true);
+    expect(SetItemImageBodySchema.safeParse({ data: "" }).success).toBe(false);
+    expect(SetItemImageBodySchema.safeParse({ data: "not base64!" }).success).toBe(false);
+    expect(SetItemImageBodySchema.safeParse({ data: "A".repeat(1_000_001) }).success).toBe(false);
+    expect(SetItemImageBodySchema.safeParse({ data: "AAAA", type: "image/svg+xml" }).success).toBe(false);
+  });
+
+  it("builds the photo's own path from the item key and the hash", () => {
+    const h = "a".repeat(64);
+    expect(ITEM_IMAGE_PATH).toBe("/items/:it/image/:hash");
+    expect(itemImagePath("juice", h)).toBe(`/items/juice/image/${h}`);
+    expect(itemImagePath("a/b c", h)).toBe(`/items/a%2Fb%20c/image/${h}`);
   });
 });
