@@ -14,13 +14,15 @@ It is a pnpm + Turborepo monorepo (Node 24, pnpm 10.28.2):
 |---|---|
 | `packages/contract` (`@rch/contract`) | Zod wire schemas, the one route manifest, the demo-hospital fixtures |
 | `packages/domain` (`@rch/domain`) | The business rules as pure functions, shared by server and browser |
-| `apps/api` (`@rch/api`) | Fastify 5 + Drizzle on PostgreSQL 17; owns the ledger, document numbers, reservations, change stream |
+| `apps/api` (`@rch/api`) | Fastify 5 + Drizzle on PostgreSQL 17; owns the ledger, document numbers, reservations, change stream and the audit outbox |
+| `apps/audit` (`@rch/audit`) | Fastify 5 on PostgreSQL 17; drains the API's audit outbox into its own append-only `audit` schema and serves the audit log |
 | `UI` (`@rch/ui`) | React 19 + Vite 8 + Zustand 5; an API client end to end |
 | `deploy/` | Helm chart (EKS), Docker Compose (single EC2 box), nginx, and `RUNBOOK.md` for every operational procedure |
 
-Dependencies flow one way only: **contract → domain → api / UI**. Nothing points back, and `apps/api` and `UI`
-never import each other. Screens go through the store (`useApp`), never through `api/client` directly. The
-oxlint import rules in `.oxlintrc.json` enforce all of this.
+Dependencies flow one way only: **contract → domain → api / UI**, and **contract → audit**. Nothing points back.
+`apps/api`, `apps/audit` and `UI` never import one another, and `apps/audit` imports nothing from the workspace
+but `@rch/contract`. Screens go through the store (`useApp`), never through `api/client` directly. The oxlint
+import rules in `.oxlintrc.json` enforce all of this.
 
 Each package has its own `CLAUDE.md` for what is specific to it. Claude Code reads it when working in that
 directory. This file holds the repo-wide rules.
@@ -35,13 +37,14 @@ pnpm db:up                      # postgres:17 in Docker, host port 5439 (pnpm db
 cp .env.example .env && pnpm --filter @rch/api keys:generate >> .env
                                 # then set SEED_PASSWORD: required, ≥ 12 chars, no default - nothing starts without it
 pnpm --filter @rch/api db:migrate
+pnpm --filter @rch/audit db:migrate   # the audit schema; run after the API's, whose audit_outbox it waits for
 pnpm --filter @rch/api db:seed  # demo hospital; --bare = six locations + RC-0001 admin only; --force re-seeds
-pnpm dev                        # API on :3000, UI on :5173 (Vite proxies /api)
+pnpm dev                        # API on :3000, audit service on :3100, UI on :5173 (Vite proxies /api)
 
 pnpm build
 pnpm typecheck
 pnpm lint                       # oxlint per package + knip (unused exports/files/deps) + scripts/check-boundaries.sh
-pnpm test                       # every package; apps/api needs Postgres reachable
+pnpm test                       # every package; apps/api and apps/audit need Postgres reachable
 pnpm helm:test                  # render the chart and check it
 pnpm compose:test               # check the Compose deployment files
 ```
@@ -51,7 +54,12 @@ To run one file or one case without the package's coverage gate:
 ```bash
 pnpm --filter @rch/ui exec vitest run src/__tests__/writes.test.ts
 pnpm --filter @rch/api exec vitest run src/modules/tickets/tickets.test.ts -t "handover"
+pnpm --filter @rch/audit exec vitest run src/modules/audit/audit.test.ts
 ```
+
+`.env.example` already names the audit service's connection, `AUDIT_DATABASE_URL`. Locally it, `DATABASE_URL` and
+the unset `MIGRATE_DATABASE_URL` all name the one `rch` user, so neither migrate step creates a database role
+(`deploy/RUNBOOK.md` §5, *The database roles*).
 
 Demo accounts (password is `SEED_PASSWORD`): `RC-4471` counter (Coffee Shop), `RC-4482` counter (Snack Kiosk),
 `RC-3120` manager, `RC-2088` store keeper, `RC-1902` kitchen, `RC-1550` buyer, and `RC-0001` admin. The admin is
@@ -67,8 +75,9 @@ the only account a `--bare` seed creates. If port 3000 is taken, run the API wit
 4. `pnpm check:boundaries`
 5. `pnpm audit`
 6. the UI build
-7. It builds both images, scans them with Trivy at `CRITICAL,HIGH`, and does a real `helm install` into a
-   throwaway kind cluster.
+7. It builds all three images (`rch-api`, `rch-ui`, `rch-audit`), scans them with Trivy at `CRITICAL,HIGH`,
+   and does a real `helm install` into a throwaway kind cluster. That install signs in and then finds the
+   sign-in in the audit log, which proves the outbox, the drainer and the read route on a real cluster.
 8. A separate job (Deploy files) renders the chart, parses `deploy/compose/compose.yml`, and runs
    `shellcheck` on `deploy/compose/*.sh` and `actionlint` on the workflows.
 
@@ -77,7 +86,7 @@ Every change must pass all of it. Four things trip people up:
 - **Lint is zero-warning.** Every package's `lint` is `oxlint --max-warnings 0`, so a warning fails the job
   just like an error does.
 - **Coverage floors are part of `test`.** The floors are UI lines 73 / branches 51, `apps/api` 94 / 79,
-  `packages/domain` 99 / 92, and `packages/contract` lines 96. Raise a floor when the real figure rises. Never
+  `apps/audit` 90 / 75, `packages/domain` 99 / 92, and `packages/contract` lines 96. Raise a floor when the real figure rises. Never
   lower one to turn a run green. The `--coverage` flag lives on each `test` script, which is why a single-file
   run isn't judged against the floor.
 - **`test` is uncached in `turbo.json`.** Turbo hashes source files, not the database, so a cache hit could
@@ -99,8 +108,9 @@ Every change must pass all of it. Four things trip people up:
 - **`develop` deploys itself.** The live dev environment (https://rch.hashtrickstechnologies.com) is one EC2
   box under Docker Compose. When CI goes green on a push to `develop`, `.github/workflows/deploy-box.yml`
   runs `deploy/compose/release.sh <sha>` on the box through SSM. That backs the database up to S3,
-  fast-forwards, runs `deploy.sh` and fails unless `/readyz` answers. It never rolls the box back past a
-  newer commit. Don't deploy by hand as well; to redeploy or retry, run the workflow from the Actions tab.
+  fast-forwards, runs `deploy.sh` and fails unless both `/readyz` (the API: its database and migrations) and
+  `/readyz/audit` (the audit service: its migrations and a recent drain pass) answer. It never rolls the box
+  back past a newer commit. Don't deploy by hand as well; to redeploy or retry, run the workflow from the Actions tab.
   Setting the repository variable `BOX_DEPLOY_ENABLED` to anything but `true` stops it (`deploy/RUNBOOK.md`
   §16.6). The box was seeded bare and holds real data. **Never run a demo seed against it.**
 - `.github/workflows/deploy.yml` is the EKS path for `staging` and `production`. `DEPLOY_ENABLED` is `false`:
@@ -110,13 +120,15 @@ Every change must pass all of it. Four things trip people up:
 
 ### One manifest drives both sides
 
-`packages/contract/src/routes.ts` declares every route with `defineRoute({ method, path, access, body?,
-response, … })`.
+`packages/contract/src/routes.ts` declares every route with `defineRoute({ method, path, access, service?,
+body?, response, … })`.
 
-- **Server:** `apps/api/src/routes.ts`'s `mount()` registers each route with its schemas, auth, role gate and
-  idempotency preHandler.
+- **Server:** `apps/api/src/routes.ts`'s `mount()` registers each `service: "api"` route (the default) with its
+  schemas, auth, role gate and idempotency preHandler. `apps/audit/src/routes.ts`'s `mount()` registers the
+  `service: "audit"` routes. Each `mount()` throws on a route tagged for the other service.
 - **Browser:** `UI/src/api/client.ts`'s `call(route, input)` builds the URL, mints the `Idempotency-Key`, and
-  refreshes the token once on a 401.
+  refreshes the token once on a 401. It doesn't know which service answers: Vite, Caddy, the UI's nginx and the
+  ingress each send `/api/v1/admin/audit` to the audit service, ahead of `/api`.
 
 There are no hand-written fetch wrappers. A new endpoint is one manifest entry plus a handler, landed in the
 same commit.
@@ -126,14 +138,15 @@ same commit.
 1. A UI store action calls `call(routes.x, …)`.
 2. The route handler parses the input and hands it to the service.
 3. The service runs inside `withTransaction`. It locks, applies the rules from `@rch/domain`, posts moves,
-   appends history, and calls `emitChanged` (a `pg_notify`, held until commit).
+   appends history, and calls `emitChanged` (a `pg_notify`, held until commit). Before COMMIT,
+   `withTransaction` records the idempotency outcome and inserts the write's audit event into `audit_outbox`.
 4. The route replies `{ result, changed, message }`. `message` is the operator's sentence; the UI toasts it
    verbatim and never writes its own success text.
 5. The UI's `refetch(changed)` pulls back only those collections, each through a narrow `GET`.
 6. Every other open browser receives the same `changed` over `GET /events` (SSE) and refetches too.
 
 A refusal is an error envelope whose `message` is the sentence toasted. Any cart or form is left exactly as it
-was.
+was. Its audit event is written after the reply, since the write's own transaction rolled back.
 
 ### Roles and scope
 
@@ -144,13 +157,14 @@ There are five roles (`counter`, `manager`, `store`, `prod`, `buyer`), each with
 - **`manager`** is hospital-wide, so its writes never scope to a location.
 - **`counter` and `prod`** are location-scoped. `store` and `buyer` each work one desk.
 - **Admin** is a boolean on `users`, not a sixth role. It is checked as `access: "admin"`. An admin-flagged
-  account sees only the standalone `/admin` page, never an operational shell. There it manages staff accounts
-  and answers every role's support tickets as the support desk. The flag can only be set with
-  `pnpm --filter @rch/api users set-admin`; no route can set it.
+  account sees only the standalone `/admin` page, never an operational shell. The page has three tabs:
+  Accounts (staff accounts), Support desk (every role's support tickets) and Audit log (every write and
+  sign-in). The flag can only be set with `pnpm --filter @rch/api users set-admin`; no route can set it.
 - **The super admin has no role in practice.** The `users` row still carries a placeholder role and location,
   but the wire labels it `Super Admin`, the account page offers no role or location for it, and `rbac.ts`
   answers an admin token with a **404** on every route that is not `access: "admin"` or a must-change-password
-  route (sign-in, password, `/me`). `GET /events` opts back in with `admitAdmin`, for the support desk.
+  route (sign-in, password, `/me`). `GET /events` opts back in with `admitAdmin`, for the support desk and the
+  audit log's new-events count. The audit service gives a token without `admin` the same **404**.
 - **Staff pick themselves at sign-in.** `GET /auth/directory` is public and lists active, non-admin accounts
   as number and name only. The super admin signs in through a typed id instead.
 
@@ -180,6 +194,45 @@ back where it stood.
   and the UI reads the same tables to decide which buttons to draw.
 - Every non-public write carries an `Idempotency-Key`. The outcome is recorded inside the write's own
   transaction, so a retry replays the answer instead of producing a second bill.
+- **The audit tables have one writer each.** In `apps/api`, only `src/lib/audit.ts` inserts into
+  `audit_outbox`, and nothing selects, updates or deletes from it. In `apps/audit`, only `src/lib/drain.ts`
+  deletes from the outbox or inserts into `audit.events` and `audit.dead_letters`, and nothing anywhere updates
+  `audit.*`. `scripts/check-boundaries.sh` enforces this by grep, and the database roles enforce it again.
+- **No long-running service connects as the superuser.** The API runs as `rch_app`: every API table, but only
+  `insert` on `audit_outbox`. The audit service runs as `rch_audit`: `select, delete` and a column
+  `update (at)` on the outbox, `select, insert` on the audit tables, nothing else. A trigger refuses every
+  UPDATE on `audit_outbox`, so that column grant only lets the drainer lock rows. Migrations and the operator
+  CLIs connect as `rch` through
+  `MIGRATE_DATABASE_URL`. Each migrate step creates its runtime role from the runtime URL and re-grants it on
+  every run; where the two URLs name the same user (locally, the test suites) it creates nothing.
+
+### The audit log
+
+**Every write and every sign-in leaves exactly one audit event.** The super admin reads them on `/admin`'s
+Audit log tab: who, when, from which IP and device, what was sent, the server's sentence, and for an edit the
+values before it.
+
+- **Capture is central, in the API.** `mount()` hands each non-public write's context to `withTransaction`,
+  which inserts a `done` event into `audit_outbox` in the write's own transaction. The event commits with the
+  write or not at all. `plugins/audit.ts`'s `onResponse` hook records a refusal (any 4xx but a 401), a 5xx, or
+  a success no transaction recorded, but only when a valid token identifies the caller: a write refused with no
+  verifiable token leaves no event. `modules/auth` records sign-in, failed sign-in, lock-out, sign-out and
+  password change itself. A 401, an idempotent replay, a token refresh and every read are not events.
+- **An edit records its before values.** A service that updates or removes an existing master row or account
+  calls `auditBefore(...)` right after reading that row (after locking it, where the service locks), before any
+  rule or change, so a refused edit carries its before too. A document status change doesn't; its trail
+  already carries the before.
+- **Secrets never reach the log.** `maskSecrets` replaces the value of every key named in `SECRET_KEYS`
+  (`password`, `newPassword`, `currentPassword`, `tempPassword`, `otp`, `token`, `accessToken`, `refreshToken`,
+  `secret`) with `••••`, in the request, the result and the before values. It matches whole names, so
+  `mustChangePassword` stays readable. A password change's event carries no request at all.
+- **A separate service keeps it.** `apps/audit` drains the outbox into `audit.events` exactly once (the delete
+  and the insert share one transaction, with `for update skip locked`), sets an event it can't store aside in
+  `audit.dead_letters`, and serves `GET /admin/audit` and `GET /admin/audit/:id`. A trigger refuses UPDATE,
+  DELETE and TRUNCATE on both tables for every role, and nothing is ever purged.
+- **Only the super admin reads it.** The audit service verifies the API's tokens with the public keys alone and
+  answers 404 to any token without `admin`. After storing events the drainer announces `audit` on the change
+  stream, and the API relays that notice to admin streams only.
 
 ### Browser-side state
 
@@ -225,10 +278,13 @@ The code enforces these and tests pin them. Breaking one is a bug.
 - **Everything on the procurement list is an approved requisition line.** The list is derived, never stored.
   The buyer's direct add (`POST /requisitions/direct`) is a requisition raised and approved in one step,
   with a required reason, and only for raw, packing and MRP goods (`isPurchased`).
+- **Every write and every sign-in leaves an audit event; nobody can edit or delete one.** A write whose event
+  can't be inserted doesn't commit. No password, temporary password, OTP or token is ever stored in one.
 
 ## Conventions
 
-- `LocKey`, `Role` and every status are closed unions. Never widen one with `string`.
+- `LocKey`, `Role` and every status are closed unions. Never widen one with `string`. The one deliberate
+  `string` is an audit row's stored `action`, so a removed route's history still reads.
 - Round quantities to three decimals with `round3`.
 - Never hand-format a number. Use `money` / `money0` / `lakh` for money, `fq(v, it)` with `U(it)` for
   quantities, and `unitTotal` for mixed-unit totals.

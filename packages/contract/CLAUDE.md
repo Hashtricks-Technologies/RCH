@@ -4,15 +4,15 @@ Repo-wide rules are in the root `CLAUDE.md`. This file covers what is specific t
 
 ## What this is
 
-This package is the wire contract. Every shape that crosses between `UI` and `apps/api` is a Zod schema
-declared here and nowhere else, and every route the API serves is one entry in one manifest. It imports nothing
-from `@rch/domain` or `apps/api`; its only runtime dependency is `zod`.
+This package is the wire contract. Every shape that crosses between `UI`, `apps/api` and `apps/audit` is a Zod
+schema declared here and nowhere else, and every route either service serves is one entry in one manifest. It
+imports nothing from `@rch/domain`, `apps/api` or `apps/audit`; its only runtime dependency is `zod`.
 
 There is no build step. `package.json` exports the TypeScript source directly: `@rch/contract` resolves to
 `src/index.ts`, and `@rch/contract/fixtures` to `src/fixtures/index.ts`.
 
 ```bash
-pnpm --filter @rch/contract test        # routes.test.ts, schemas/*.test.ts, fixtures.test.ts (floor: lines 96)
+pnpm --filter @rch/contract test        # routes.test.ts, audit.test.ts, schemas/*.test.ts, fixtures.test.ts (floor: lines 96)
 pnpm --filter @rch/contract typecheck
 pnpm --filter @rch/contract lint
 ```
@@ -20,20 +20,29 @@ pnpm --filter @rch/contract lint
 ## Layout
 
 ```
-src/routes.ts             defineRoute, the `routes` manifest, API_PREFIX (/api/v1)
+src/routes.ts             defineRoute, the `routes` manifest, API_PREFIX (/api/v1), serviceOf, isWriteRoute
+src/audit.ts              AUDIT_GROUPS, AUDIT_LABELS, auditLabelOf, actionsInGroup, AUDIT_PATH
 src/types.ts              z.infer aliases only - no type is declared by hand
 src/schemas/common.ts     closed unions, Qty/Money/Iso, error envelope, LocKey vs StockLoc, shared constants
 src/schemas/documents.ts  every document shape (Item, Ticket, StockRequest, Bill, PO, …)
 src/schemas/writes.ts     request bodies, result shapes, CollectionSchema, writeResponse()
 src/schemas/snapshot.ts   SnapshotSchema and the narrow read responses; BILL_DAYS
 src/schemas/{auth,admin,events,reports}.ts
+src/schemas/audit.ts      AuditEventSchema (the API → audit service event), AuditRow/Entry/Page/Query schemas
 src/fixtures/*            the demo hospital: master data and seeded documents
 ```
 
 ## The manifest
 
-Each route is `defineRoute({ method, path, access, params?, query?, body?, response, write?, allowMcp? })`. The
-manifest drives both sides: `mount()` in `apps/api/src/routes.ts` and `call()` in `UI/src/api/client.ts`.
+Each route is `defineRoute({ method, path, access, service?, params?, query?, body?, response, write?,
+allowMcp? })`. The manifest drives all three: `mount()` in `apps/api/src/routes.ts`, `mount()` in
+`apps/audit/src/routes.ts`, and `call()` in `UI/src/api/client.ts`.
+
+- **`service`** is `"api"` (the default, read through `serviceOf`) or `"audit"`. Each app's `mount()` throws on
+  a route tagged for the other, and each app has a test that it mounts every route tagged for it. `auditLog`
+  (`GET /admin/audit`) and `auditEntry` (`GET /admin/audit/:id`) are the audit service's two, both
+  `access: "admin"`. `call()` needs no change for them: every proxy in front sends `AUDIT_PATH` under
+  `API_PREFIX` to the audit service.
 
 - **`access`** is one of:
   - `"public"`: no token needed.
@@ -43,12 +52,25 @@ manifest drives both sides: `mount()` in `apps/api/src/routes.ts` and `call()` i
 
   A caller outside `access` gets a 404.
 - **`write`** defaults to `method !== "GET"`. A write carries an `Idempotency-Key`. The auth routes set
-  `write: false`.
+  `write: false`. `isWriteRoute(r)` is the one runtime reading of that rule, and `defineRoute` keeps `method`
+  and `write` as literal types so `AuditAction` can apply the same rule at the type level.
 - **`allowMcp: true`** marks the few routes a must-change-password token can still reach.
 - **A write's response is `writeResponse(Result)`**, which is `{ result, changed, message }`. `changed` is an
   array of `CollectionSchema` members, the closed list of slices the UI's `refetch` knows. **If you add a
   collection, also add a narrow reader for it in `UI/src/api/refetch.ts`.** Without one, every write naming it
   costs a full snapshot.
+- **Every write has an audit label.** `AUDIT_LABELS` is a `Record<AuditAction, AuditLabel>`, and `AuditAction`
+  is the name of every manifest write route plus `login`, `logout` and `changePassword`. A new write route
+  without a label fails `typecheck`. A label is past tense ("Changed a price"), names its `group` (a key of
+  `AUDIT_GROUPS`), and carries `refused` only where a refusal means something else (`login` → "Failed
+  sign-in"). A route removed from the manifest loses its label; `auditLabelOf` then prints the stored action
+  name, so old rows still read.
+- **`AuditEventSchema` is the wire between `apps/api` and `apps/audit`**, not a browser shape. The API inserts
+  one into `audit_outbox`; the audit service's drainer parses each row with it, and a row that fails lands in
+  `audit.dead_letters`. Its `action` is a plain `string` on purpose, so a removed route's history still reads.
+  Ship a change to it in both images at once.
+- **`audit` is the one collection no write response names.** Only the audit service's drainer announces it,
+  and `UI/src/api/refetch.ts`'s reader for it only bumps a counter.
 - **Add a GET together with the module that answers it.** `apps/api/src/contract.test.ts` probes every
   parameterless GET in the manifest and fails on a route with no handler.
 - **The event stream is not in the manifest.** `EVENTS_PATH` and `EventNoticeSchema` live in
