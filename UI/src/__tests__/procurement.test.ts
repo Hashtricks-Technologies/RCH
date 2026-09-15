@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ALL_LOCS, LOC } from "../data/master";
+import { LOC } from "../data/master";
 import { seedPrq, seedVendors } from "@rch/contract/fixtures";
 import { suggestVendor, vendorName } from "../data/vendors";
 import {
-  addedByProcurement, awaitingApproval, onOrder, poValue, prqProgress, procurementList,
+  addedByProcurement, awaitingApproval, onOrder, operationalLocs, poValue, prqProgress, procurementList,
 } from "../lib/selectors";
 import { useApp } from "../store";
 import { ordersFor } from "../roles/buyer/ProcurementList";
@@ -27,16 +27,12 @@ import { clone, resetStore, S } from "./fixture";
 beforeEach(resetStore);
 
 describe("stock locations", () => {
-  it("carries the five working locations and the rejected-goods shelf, and no transit room", () => {
-    // `ALL_LOCS` is deliberately still five: quarantine is somewhere stock can *be*, never
-    // somewhere an operator works, so no screen that iterates the working locations grows a
-    // sixth column. It has a name and a shelf, and that is all.
-    expect(ALL_LOCS).toEqual(["store", "kitchen", "rest", "coffee", "kiosk"]);
-    expect(Object.keys(LOC).sort()).toEqual([...ALL_LOCS, "quarantine"].sort());
-    expect(ALL_LOCS).toHaveLength(5);
-    expect(ALL_LOCS).not.toContain("quarantine");
-    // The shelf half of the same fact: stock is reported for quarantine, so the store keeper
-    // can see what a goods receipt turned away.
+  it("works at the store, the kitchen and the open outlets, and reports stock at quarantine too", () => {
+    // Quarantine is somewhere stock can *be*, never somewhere an operator works, so no screen that
+    // iterates the working locations grows a column for it.
+    expect(operationalLocs()).toEqual(["store", "kitchen", "coffee", "rest", "kiosk"]);
+    expect(operationalLocs()).not.toContain("quarantine");
+    expect(Object.keys(LOC).sort()).toEqual([...operationalLocs(), "quarantine"].sort());
     expect(Object.keys(S().stock)).toContain("quarantine");
   });
 });

@@ -75,10 +75,10 @@ export function grnPoLineNo(po: { lines: { it: string }[] } | undefined, g: { id
  * `bare` is the hospital with nothing in it - the shape a real deployment starts from (`deploy.sh`
  * passes `--bare`). It writes the six locations, the document numbering and the one admin account,
  * and none of the demo hospital: no items, recipes, prices, menus, stock, payers, vendors,
- * documents or demo staff. The locations are not demo data - `LocKey` is a closed union the whole
- * codebase is written against, so the store, the kitchen, the three outlets and quarantine exist
- * in every deployment - and the admin account is what lets somebody sign in and create the real
- * staff from `/admin`. Everything else is entered from the screens.
+ * documents or demo staff. The six locations are seeded so a bare hospital starts with the store,
+ * the kitchen, the rejected-goods shelf and the three outlets it opened with; more are opened from
+ * `/admin`, the same place the admin account signs in to create the real staff. Everything else is
+ * entered from the screens.
  *
  * With `force` over a database that already holds the demo hospital, the same truncate below
  * empties it first, which is how a host seeded with demo data is put back to a clean start.
@@ -124,7 +124,7 @@ async function seedLocations(tx: Tx) {
   await tx.insert(s.locations).values(
     Object.entries(FX.LOC).map(([key, l]) => ({
       key, name: l.n, code: l.c, type: l.type, floor: l.floor, costCentre: l.cc, priceList: l.list ?? null,
-      sellable: l.type === "Outlet", active: l.active ?? true, parFactor: l.par ?? 1,
+      sellable: l.type === "Outlet", active: l.active, parFactor: l.par,
     })),
   );
 }

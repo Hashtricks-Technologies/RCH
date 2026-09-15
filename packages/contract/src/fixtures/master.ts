@@ -6,9 +6,9 @@ export const LOC: Record<StockLoc, Location> = {
   rest:    { n: "Restaurant",      c: "OT-R1", type: "Outlet",  floor: "Floor 1",  cc: "CC-RST", list: "A", active: true, par: 0.22 },
   coffee:  { n: "Coffee Shop",     c: "OT-C3", type: "Outlet",  floor: "Floor 3",  cc: "CC-CF3", list: "B", active: true, par: 0.18 },
   kiosk:   { n: "Snack Kiosk",     c: "OT-GK", type: "Outlet",  floor: "Ground",   cc: "CC-KSK", list: "A", active: true, par: 0.15 },
-  // The rejected-goods shelf. Not in OUTLETS and not in ALL_LOCS: nothing is sold, issued,
-  // transferred or distributed from here, so no screen that iterates the working locations
-  // should grow a sixth column. The store's own stock screen reads it by name.
+  // The rejected-goods shelf. Nothing is sold, issued, transferred or distributed from here, so
+  // no screen that lists the working locations shows it. The store's own stock screen reads it
+  // by name.
   quarantine: { n: "Quarantine", c: "WH-QR", type: "Store", floor: "Basement", cc: "CC-STO", active: true, par: 1 },
 };
 
@@ -92,7 +92,7 @@ export const DEPTS: Payer[] = [
   { kind: "dept", id: "CC-ADM", name: "Administration" },
   { kind: "dept", id: "CC-OT", name: "Operating Theatre" },
 ];
-// Nothing but fixtures leaves this file. `STAFF_CREDIT_LIMIT`, `PO_APPROVAL_LIMIT`, `ALL_LOCS`
-// and `OUTLETS` are rules' constants and the shape of the deployment, not the demo hospital, so
-// they are read from `@rch/contract` itself; `PAR_FACTOR` is a rule's own tuning and lives in
-// `@rch/domain` beside the arithmetic that reads it.
+// Nothing but fixtures leaves this file. `STAFF_CREDIT_LIMIT` and `PO_APPROVAL_LIMIT` are rules'
+// constants, not the demo hospital, so they are read from `@rch/contract` itself. Which locations
+// exist, and which of them are outlets, is not a constant at all any more - it is `LOC` above,
+// read the way the server's own master is: from the rows, never from a compiled list.

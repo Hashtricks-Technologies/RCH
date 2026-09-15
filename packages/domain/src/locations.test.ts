@@ -19,8 +19,10 @@ describe("outletKeys", () => {
     expect(outletKeys({ b: { ...juice }, a: { ...juice } })).toEqual(["a", "b"]);
   });
   it("reads an outlet with no `active` as open", () => {
+    // Another test double: the wire never actually omits `active`, but `open()`'s fallback is
+    // insurance kept for whatever passes a location-shaped object without it.
     const { active: _, ...bare } = juice;
-    expect(outletKeys({ x: bare }, { open: true })).toEqual(["x"]);
+    expect(outletKeys({ x: bare as Location }, { open: true })).toEqual(["x"]);
   });
 });
 

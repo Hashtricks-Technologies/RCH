@@ -44,16 +44,6 @@ export const StockLocSchema = z.string().regex(/^[a-z][a-z0-9-]{0,23}$/, "Not a 
 export const STORE = "store";
 export const KITCHEN = "kitchen";
 
-// `LocKey` itself is declared in ../types.js, which imports *from* this file - naming it there
-// would be a cycle, so the two lists below take a local alias of the same inference.
-type LocKey = z.infer<typeof LocKeySchema>;
-/** The five places an operator works, in the order the sidebar and every stock screen list them.
- *  Spread out of `LocKeySchema` rather than typed out again, so the two can never disagree - and
- *  kept as `LocKey[]` rather than the schema's `readonly` tuple, because the call sites do
- *  `ALL_LOCS.includes(l)` with a `LocKey` and a narrowed tuple type refuses that. */
-export const ALL_LOCS: LocKey[] = ["store", "kitchen", "rest", "coffee", "kiosk"];
-/** The three that sell. `sales`'s columns are these, in this order (readers/documents.ts). */
-export const OUTLETS: LocKey[] = ["rest", "coffee", "kiosk"];
 /** The order value above which a purchase order needs finance approval, in rupees. The rule
  *  that reads it is `needsApproval` in @rch/domain; this is only the number. */
 export const PO_APPROVAL_LIMIT = 25000;

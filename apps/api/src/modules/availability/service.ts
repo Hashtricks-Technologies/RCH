@@ -42,8 +42,9 @@ export function createAvailabilityService(db: Db) {
         // this service is called, so there is no second check for them to fail. The kitchen's
         // own `${loc.name} is not a kitchen` branch used to sit here and could never run for that
         // reason; what it was really guarding - that a Kitchen In-charge is only ever posted to
-        // the kitchen in the first place - is now `WORKS_AT` in `lib/users-admin.ts`, enforced
-        // where the account is created rather than on every toggle it makes afterwards.
+        // the kitchen in the first place - is now `worksAt` (@rch/domain), called from
+        // `checkPairing` in `lib/users-admin.ts` and enforced where the account is created
+        // rather than on every toggle it makes afterwards.
         if (claims.role === "manager") assertRule(loc.type === "Outlet", `${loc.name} is not an outlet`);
         if (loc.type === "Outlet") assertOpen(loc);
         // A kitchen has no menu - what it can switch off is what it can make, so "listed"
