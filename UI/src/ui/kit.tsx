@@ -607,12 +607,10 @@ export function Otp({ value, label = "Collection OTP" }: { value: string; label?
   );
 }
 /**
- * A blank product-photo slot. This build has no photography and no upload
- * path - pulling images from the internet risks copyright and trademark
- * problems, and there is no image-generation tool available here either.
- * "card" tops a menu tile; "sm" is the inline swatch next to a product name.
+ * A blank product-photo slot, drawn by `ItemImage` for an item with no photo yet or one that
+ * failed to load. "card" tops a menu tile; "sm" is the inline swatch next to a product name.
  */
-export function ImagePlaceholder({ size = "sm" }: { size?: "sm" | "thumb" | "card" }) {
+function ImagePlaceholder({ size = "sm" }: { size?: "sm" | "thumb" | "card" }) {
   return (
     <div className={`imgph imgph-${size}`} aria-hidden="true">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round">
