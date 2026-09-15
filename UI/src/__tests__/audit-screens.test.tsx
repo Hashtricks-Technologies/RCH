@@ -10,11 +10,11 @@ import {
 } from "../lib/selectors";
 import StoreDashboard from "../roles/store/Dashboard";
 import StoreRequisitions from "../roles/store/Requisitions";
-import Contracts from "../roles/store/Contracts";
 import MakeDistribute from "../roles/prod/MakeDistribute";
 import Drawer from "../ui/Drawer";
 import "../roles/buyer/PoReceiptDrawer";        // registers "bgrn" on the drawer registry
 import "../roles/buyer/NewProductDrawer";       // registers "bnewitem"
+import "../roles/buyer/ContractDrawer";         // registers "bcontract"
 import { useApp } from "../store";
 import { as, resetStore, S } from "./fixture";
 
@@ -178,7 +178,7 @@ describe("a decimal quantity on a requisition line", () => {
   // the add-contract rate is stepped 0.01, and `Number(e.target.value)` on every keystroke read
   // "12." as 12 and "12.0" as 12, so a rate typed digit by digit was agreed at the rupee.
   it("typing \"12.05\" into the add-contract rate posts 12.05", async () => {
-    as("store");
+    as("buyer");
     const vendor = FX.seedVendors.find((v) => v.active)!;
     serve({
       "POST /api/v1/contracts": () => json({
@@ -187,18 +187,18 @@ describe("a decimal quantity on a requisition line", () => {
       }),
       "GET /api/v1/contracts": () => json(FX.seedContracts()),
     });
-    const ui = mountNode(Contracts);
-    act(() => { ui.button("Add contract")!.click(); });      // the header's toggle; it now reads "Close the add form"
+    useApp.setState({ drawer: { t: "bcontract", id: "new" } });
+    const ui = mountNode(Drawer);
 
     act(() => { pick(ui.host.querySelectorAll("select")[0], vendor.id); });
     act(() => { type(ui.host.querySelector<HTMLInputElement>('input[aria-label="Valid from"]')!, "2026-10-01"); });
     act(() => { type(ui.host.querySelector<HTMLInputElement>('input[aria-label="Valid to"]')!, "2027-03-31"); });
 
-    const box = ui.field("Contract rate (₹)");
+    const box = ui.field("Contract rate for item 1");
     for (const keyed of ["1", "12", "12.", "12.0", "12.05"]) act(() => { type(box, keyed); });
     act(() => { leave(box); });
 
-    await settle(() => { ui.button("Add contract")!.click(); });  // the form's own submit
+    await settle(() => { ui.button("Add 1 contract")!.click(); });
     await settleUntil(() => hit("POST /api/v1/contracts").length > 0);
     expect(hit("POST /api/v1/contracts")[0].body).toMatchObject({
       vendorId: vendor.id, rate: 12.05, from: "2026-10-01", to: "2027-03-31", moq: 0,

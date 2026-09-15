@@ -3,8 +3,8 @@ import { routes } from "@rch/contract";
 import { mount } from "../../routes.js";
 import { createContractsService } from "./service.js";
 
-// The store keeper records what each vendor has agreed to; the buyer's drafts are priced off
-// it. A delete is soft: history has to stay readable.
+// The buyer records what each vendor has agreed to; their own purchase-order drafts are priced
+// off it. A delete is soft: history has to stay readable.
 export default fp(async (app) => {
   const svc = createContractsService(app.db);
   mount(app, routes.addContract, async (req) => svc.create(req.user, req.body));

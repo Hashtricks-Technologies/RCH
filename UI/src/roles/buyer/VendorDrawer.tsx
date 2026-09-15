@@ -151,7 +151,7 @@ function VendorDrawer({ id }: DrawerProps) {
         return (
           <Section
             title="Rate contracts"
-            tip="Read-only here. A live contract prices every draft purchase order raised on this vendor; the store keeper adds, edits and closes them."
+            tip="Read-only here. A live contract prices every draft purchase order raised on this vendor; add, edit or close one on the Rate Contracts screen."
           >
             <DataTable
               cols={[

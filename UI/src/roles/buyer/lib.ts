@@ -6,7 +6,7 @@ import type { PoStatus, PurchaseOrder, RateContract, Requisition, Vendor } from 
 /**
  * A rate contract records its vendor by name, while a purchase order carries
  * the vendor's id - both are tried so a contract resolves whichever way the
- * store keeper recorded it. `contractRate` is where the validity window is enforced
+ * procurement officer recorded it. `contractRate` is where the validity window is enforced
  * (`contractInWindow`, `@rch/domain`) - a lapsed-but-active contract never comes back here,
  * the same as it never prices an order server-side.
  */

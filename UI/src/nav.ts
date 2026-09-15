@@ -31,8 +31,7 @@ export const NAV: Record<Role, NavGroup[]> = {
       { k: "stock", label: "Stock in Hand", icon: "stock" },
       { k: "adjust", label: "Adjustments", icon: "item" }] },
     { group: "Purchasing", items: [
-      { k: "procure", label: "Requisitions", icon: "need" },
-      { k: "contracts", label: "Rate Contracts", icon: "price" }] },
+      { k: "procure", label: "Requisitions", icon: "need" }] },
     { group: "Insights", items: [{ k: "reports", label: "Reports", icon: "rep" }] },
     { group: "Account", items: [{ k: "issues", label: "Support", icon: "req" }, { k: "settings", label: "Settings", icon: "set" }] },
   ],
@@ -50,7 +49,8 @@ export const NAV: Record<Role, NavGroup[]> = {
     { group: "Purchasing", items: [
       { k: "requisitions", label: "Requisitions", icon: "need" },
       { k: "pool", label: "Procurement List", icon: "req" },
-      { k: "orders", label: "Purchase Orders", icon: "order" }] },
+      { k: "orders", label: "Purchase Orders", icon: "order" },
+      { k: "contracts", label: "Rate Contracts", icon: "price" }] },
     { group: "Inventory", items: [
       { k: "inventory", label: "Inventory", icon: "item" },
       { k: "newproducts", label: "New Products", icon: "need" }] },

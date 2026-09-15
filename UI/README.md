@@ -250,10 +250,12 @@ the order's details in the drawer that slides in from the right; a card's own Re
 opens the goods receipt instead.
 
 **Rate contracts.** Vendor and item, rate, validity window and minimum order quantity, server-
-backed since Phase 5. The store keeper maintains them (`POST`/`PATCH`/`DELETE /contracts` all
-admit `store`); procurement prices an order from them (`createPo` picks a live contract's rate
-over the item's standard cost) and is warned on screen when a rate deviates or a quantity falls
-under the minimum. Only one live contract may exist for a given vendor and item at a time.
+backed since Phase 5. The procurement officer maintains them (`POST`/`PATCH`/`DELETE /contracts`
+all admit `buyer`, and the screen lives only on the buyer's own nav - the store keeper never sees
+it), adding several products to one vendor's contract at once from a sidebar drawer; procurement
+prices an order from them (`createPo` picks a live contract's rate over the item's standard cost)
+and is warned on screen when a rate deviates or a quantity falls under the minimum. Only one live
+contract may exist for a given vendor and item at a time.
 
 **Adding to the procurement list directly.** The buyer does not have to wait for the store
 keeper to ask. "Add items" on the Procurement List opens a drawer of raw, packing and MRP lines

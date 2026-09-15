@@ -99,9 +99,9 @@ export const routes = {
   addVendor:            defineRoute({ method: "POST",   path: "/vendors",                       access: ["buyer"],            body: VendorBodySchema,             response: writeResponse(VendorSchema) }),
   // One PATCH for both the edit and the on/off switch: `setVendorActive` is a patch of one field.
   updateVendor:         defineRoute({ method: "PATCH",  path: "/vendors/:id",                   access: ["buyer"],            params: DocIdParamsSchema, body: PatchVendorBodySchema, response: writeResponse(VendorSchema) }),
-  addContract:          defineRoute({ method: "POST",   path: "/contracts",                     access: ["store"],            body: ContractBodySchema,           response: writeResponse(RateContractSchema) }),
-  updateContract:       defineRoute({ method: "PATCH",  path: "/contracts/:id",                 access: ["store"],            params: DocIdParamsSchema, body: PatchContractBodySchema, response: writeResponse(RateContractSchema) }),
-  removeContract:       defineRoute({ method: "DELETE", path: "/contracts/:id",                 access: ["store"],            params: DocIdParamsSchema,          response: writeResponse(RateContractSchema) }),
+  addContract:          defineRoute({ method: "POST",   path: "/contracts",                     access: ["buyer"],            body: ContractBodySchema,           response: writeResponse(RateContractSchema) }),
+  updateContract:       defineRoute({ method: "PATCH",  path: "/contracts/:id",                 access: ["buyer"],            params: DocIdParamsSchema, body: PatchContractBodySchema, response: writeResponse(RateContractSchema) }),
+  removeContract:       defineRoute({ method: "DELETE", path: "/contracts/:id",                 access: ["buyer"],            params: DocIdParamsSchema,          response: writeResponse(RateContractSchema) }),
   // Three screens add a product: the kitchen's own (FG and RAW, at the kitchen), the store's,
   // and the buyer's answer to a shop's request.
   createItem:           defineRoute({ method: "POST",   path: "/items",                         access: ["store", "prod", "buyer"], body: CreateItemBodySchema,   response: writeResponse(ItemResultSchema) }),

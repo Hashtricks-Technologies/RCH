@@ -6,17 +6,19 @@ import PurchaseOrders from "./PurchaseOrders";
 import Inventory from "./Inventory";
 import Vendors from "./Vendors";
 import NewProducts from "./NewProducts";
+import Contracts from "./Contracts";
 import "./RequisitionDrawer";
 import "./AddToListDrawer";
 import "./PoDrawer";
 import "./PoReceiptDrawer";
 import "./VendorDrawer";
 import "./NewProductDrawer";
+import "./ContractDrawer";
 // ---- item patch ----
 import "../manager/ItemDrawer";
 
 export const screens: Record<string, ComponentType> = {
   dash: Dashboard, requisitions: Requisitions, pool: ProcurementList,
   orders: PurchaseOrders, vendors: Vendors, inventory: Inventory,
-  newproducts: NewProducts,
+  newproducts: NewProducts, contracts: Contracts,
 };

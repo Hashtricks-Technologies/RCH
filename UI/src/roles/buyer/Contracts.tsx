@@ -5,7 +5,7 @@ import { useApp } from "../../store";
 import { activeItems, costOf } from "../../lib/selectors";
 import { U, money, money0, pct, sum, toInputDate } from "../../lib/fmt";
 import {
-  Alert, Btn, BtnRow, Card, DataTable, DraftLineInput, Field, FilterBtn, FilterSelect, FormRow,
+  Alert, Btn, BtnRow, Card, DataTable, DraftLineInput, FilterBtn, FilterSelect,
   Kpis, PageHead, Pill, TableFoot, Toolbar,
 } from "../../ui/kit";
 import type { RateContract } from "../../types";
@@ -33,18 +33,15 @@ const BLANK: Draft = { vendorId: "", it: "", rate: 0, from: "", to: "", moq: 0 }
 export default function Contracts() {
   const contracts = useApp((s) => s.contracts);
   const vendors = useApp((s) => s.vendors);
-  const addContract = useApp((s) => s.addContract);
   const updateContract = useApp((s) => s.updateContract);
   const removeContract = useApp((s) => s.removeContract);
   const notify = useApp((s) => s.notify);
+  const openDrawer = useApp((s) => s.openDrawer);
 
   const [q, setQ] = useState("");
   const [vi, setVi] = useState(0);
   const [si, setSi] = useState(0);
   const [overOnly, setOverOnly] = useState(false);
-
-  const [adding, setAdding] = useState(false);
-  const [draft, setDraft] = useState<Draft>(BLANK);
 
   const [editId, setEditId] = useState<string | null>(null);
   const [edit, setEdit] = useState<Draft>(BLANK);
@@ -61,8 +58,6 @@ export default function Contracts() {
   const CONTRACTABLE = activeItems()
     .filter((k) => IT[k].t === "RAW" || IT[k].t === "PACK" || IT[k].t === "MRP")
     .sort((a, b) => IT[a].g.localeCompare(IT[b].g) || IT[a].n.localeCompare(IT[b].n));
-  /** A blank draft has no item chosen yet, so the picker falls back to the first buyable one. */
-  const item = draft.it || CONTRACTABLE[0] || "";
 
   const VENDOR_OPTS = ["All", ...new Set([
     ...vendors.filter((v) => v.active).map((v) => v.n),
@@ -104,20 +99,6 @@ export default function Contracts() {
     return null;
   };
 
-  const submitAdd = async () => {
-    if (busy) return;
-    const bad = !draft.vendorId ? "Pick the vendor this rate is agreed with" : incomplete({ ...draft, it: item });
-    if (bad) { notify(bad); return; }
-    setBusy(true);
-    const ok = await addContract({
-      vendorId: draft.vendorId, it: item, rate: draft.rate, from: draft.from, to: draft.to, moq: draft.moq,
-    });
-    setBusy(false);
-    // The form empties only once the register actually carries the contract - a refusal
-    // ("already has a live contract with …") leaves every box as it was typed.
-    if (ok) { setDraft(BLANK); setAdding(false); }
-  };
-
   const startEdit = (c: RateContract) => {
     setEditId(c.id);
     // In through `toInputDate`, out as the input's own ISO value: the register keeps printing
@@ -137,12 +118,12 @@ export default function Contracts() {
   return (
     <>
       <PageHead
-        crumbs={["Royal Care", "Central Store", "Purchasing"]}
+        crumbs={["Royal Care", "Procurement", "Rate Contracts"]}
         title="Rate contracts"
         tip="Agreed vendor rates used to price orders."
         actions={
-          <Btn onClick={() => { setAdding((v) => !v); setEditId(null); }}>
-            {adding ? "Close the add form" : "Add contract"}
+          <Btn onClick={() => { openDrawer("bcontract", "new"); setEditId(null); }}>
+            Add contract
           </Btn>
         }
       />
@@ -177,62 +158,7 @@ export default function Contracts() {
         </Alert>
       )}
 
-      {adding && (
-        <Card title="New rate contract" tip="One live contract per vendor and item">
-          <FormRow cols="f3">
-            <Field label="Vendor" tip="The rate is agreed with this vendor.">
-              <select value={draft.vendorId} onChange={(e) => setDraft({ ...draft, vendorId: e.target.value })}>
-                <option value="">Choose a vendor…</option>
-                {vendors.filter((v) => v.active).map((v) => (
-                  <option key={v.id} value={v.id}>{v.n} · {v.terms}</option>
-                ))}
-              </select>
-            </Field>
-            <Field label="Item" hint={IT[item] ? `Moving average ${money(costOf(item))} per ${U(item)}` : undefined}>
-              <select value={item} onChange={(e) => setDraft({ ...draft, it: e.target.value })}>
-                {CONTRACTABLE.map((k) => (
-                  <option key={k} value={k}>{IT[k].n} · {IT[k].c}</option>
-                ))}
-              </select>
-            </Field>
-            <Field
-              label="Contract rate (₹)"
-              hint={draft.rate > 0 && IT[item]
-                ? `${draft.rate > costOf(item) ? "Above" : draft.rate < costOf(item) ? "Below" : "Level with"} the moving average by ${money(Math.abs(draft.rate - costOf(item)))}`
-                : undefined}
-              tip="Per unit, exclusive of GST."
-            >
-              {/* `Number(e.target.value)` on every keystroke read "12." as 12 and "12.0" as 12,
-                  so a rate typed digit by digit lost its paise the moment the next one arrived.
-                  `DraftLineInput` keeps the string the operator is typing and commits on blur.
-                  It needs `ariaLabel` of its own: `Field` only wires `htmlFor` to a direct DOM
-                  child, so a component child leaves the visible label decorative. */}
-              <DraftLineInput value={draft.rate} min={0} step={0.01} ariaLabel="Contract rate (₹)"
-                onCommit={(n) => setDraft({ ...draft, rate: n })} />
-            </Field>
-          </FormRow>
-          <FormRow cols="f3">
-            <Field label="Valid from" tip="The day the rate starts applying.">
-              <input type="date" aria-label="Valid from" value={toInputDate(draft.from)}
-                onChange={(e) => setDraft({ ...draft, from: e.target.value })} />
-            </Field>
-            <Field label="Valid to" tip="The last day it prices an order.">
-              <input type="date" aria-label="Valid to" value={toInputDate(draft.to)}
-                onChange={(e) => setDraft({ ...draft, to: e.target.value })} />
-            </Field>
-            <Field label="Minimum order quantity" hint={`In ${U(item)}.`}>
-              <DraftLineInput value={draft.moq} min={0} step={1} ariaLabel="Minimum order quantity"
-                onCommit={(n) => setDraft({ ...draft, moq: n })} />
-            </Field>
-          </FormRow>
-          <BtnRow end>
-            <Btn variant="gh" onClick={() => { setDraft(BLANK); setAdding(false); }}>Discard</Btn>
-            <Btn disabled={busy} onClick={submitAdd}>{busy ? "Saving…" : "Add contract"}</Btn>
-          </BtnRow>
-        </Card>
-      )}
-
-      <div className={adding ? "mtop" : undefined}>
+      <div>
         <Card
           title="Contract register"
           tip="Every rate on record, live and closed · edit a row in place"
@@ -354,7 +280,7 @@ export default function Contracts() {
                 : {
                   title: "No rate contract on record",
                   sub: "Agree a rate with a vendor and record it here, so every purchase order prices against it.",
-                  action: <Btn size="sm" onClick={() => setAdding(true)}>Add contract</Btn>,
+                  action: <Btn size="sm" onClick={() => openDrawer("bcontract", "new")}>Add contract</Btn>,
                 }}
             />
           </div>

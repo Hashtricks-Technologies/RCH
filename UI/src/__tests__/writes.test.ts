@@ -1102,7 +1102,7 @@ describe("vendors, contracts and a new product", () => {
   });
 
   it("posts a contract by vendor id, not by the name on screen", async () => {
-    as("store");
+    as("buyer");
     let live = true;
     serve({
       "POST /api/v1/contracts": () => json({ result: C, changed: ["contracts"], message: `${C.id} - Bread loaf, white at ₹38 with Aavin Dairy Depot` }),
