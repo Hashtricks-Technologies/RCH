@@ -7,7 +7,7 @@ server.
 
 ```bash
 pnpm --filter @rch/api dev                  # tsx watch, reads ../../.env, :3000
-pnpm --filter @rch/api test                 # vitest; Postgres on 5439 (pnpm db:up); floor lines 94 / branches 79
+pnpm --filter @rch/api test                 # vitest; Postgres on 5439 (pnpm db:up); floor lines 94 / branches 80
 pnpm --filter @rch/api build                # tsup → dist/server.mjs
 pnpm --filter @rch/api db:generate          # drizzle-kit generate + strip the "public". prefix; review + commit the SQL
 pnpm --filter @rch/api db:migrate           # behind pg_advisory_lock

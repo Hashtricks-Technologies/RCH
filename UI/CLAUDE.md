@@ -7,7 +7,7 @@ human reader. This file covers what is specific to `@rch/ui`.
 
 ```bash
 pnpm --filter @rch/ui dev         # vite on :5173, proxying /api → http://localhost:3000
-pnpm --filter @rch/ui test        # vitest run --coverage (jsdom); floor lines 73 / branches 51
+pnpm --filter @rch/ui test        # vitest run --coverage (jsdom); floor lines 79 / branches 60
 pnpm --filter @rch/ui exec vitest run src/__tests__/writes.test.ts   # one file, no coverage gate
 pnpm --filter @rch/ui typecheck   # tsc --noEmit -p tsconfig.app.json
 pnpm --filter @rch/ui build       # tsc -b && vite build → UI/dist
@@ -148,10 +148,12 @@ a background refresh and must not blank the screen.
   accepts.
 - **Outlets are read from the location master, never from a list compiled into the bundle.** `openOutlets()`
   is for a picker that *starts* something - counter peers, the kitchen-order drawer, a price or an
-  availability list - open ones only. `allOutlets()` is for a filter over history - Bills, Approvals, Orders -
-  where a closed outlet still belongs, since a closed outlet's bills are still bills; it prints as
-  `<name> (closed)`. `operationalLocs()` is the store, the kitchen and the open outlets together, for anything
-  that lists every place an operator works today. `locName(key)` is the one place a location's display name is
+  availability list - open ones only. `allOutlets()` is for a filter over history - Approvals, Orders - where
+  a closed outlet still belongs, since a closed outlet's approvals are still approvals; it prints as
+  `<name> (closed)`. Bills builds its own outlet filter from the bills it holds rather than calling
+  `allOutlets()`, so a window with nothing billed at an outlet never offers it. `operationalLocs()` is the
+  store, the kitchen and the open outlets together, for anything that lists every place an operator works
+  today. `locName(key)` is the one place a location's display name is
   read - the bare key when `LOC` doesn't carry it yet.
 - **Delivered quantities on buyer and store screens use `netReceived`**, not gross `recv`.
 - **Never hand-format a number or a date.**

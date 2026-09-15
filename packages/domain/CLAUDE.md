@@ -15,7 +15,7 @@ nothing to preview in the browser, stays in that module. `GSTIN_RE` in the vendo
 There is no build step; `package.json` exports `src/index.ts` directly.
 
 ```bash
-pnpm --filter @rch/domain test        # vitest run --coverage (floor: lines 99 / branches 92)
+pnpm --filter @rch/domain test        # vitest run --coverage (floor: lines 99 / branches 95)
 pnpm --filter @rch/domain typecheck
 pnpm --filter @rch/domain lint
 ```
