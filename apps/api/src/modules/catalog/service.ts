@@ -260,6 +260,7 @@ export function createCatalogService(db: Db, images: ImageStore) {
       const out = await withTransaction(db, async (tx) => {
         const row = await catalogRepo.head(tx, it);
         if (!row) throw new NotFoundError(`There is no item ${it}.`);
+        auditBefore({ key: it, item: toWireItem(row) });
         assertPhotoRules(claims, { name: row.name, active: row.active, listed: await catalogRepo.isListed(tx, claims.loc, it) }, outlet, true);
         previous = row.image;
         const updated = await catalogRepo.setImage(tx, it, hash);
@@ -280,6 +281,7 @@ export function createCatalogService(db: Db, images: ImageStore) {
       const out = await withTransaction(db, async (tx) => {
         const row = await catalogRepo.head(tx, it);
         if (!row) throw new NotFoundError(`There is no item ${it}.`);
+        auditBefore({ key: it, item: toWireItem(row) });
         assertPhotoRules(claims, { name: row.name, active: row.active, listed: await catalogRepo.isListed(tx, claims.loc, it) }, outlet, false);
         assertRule(row.image, imageNoneMessage(row.name));
         previous = row.image;
