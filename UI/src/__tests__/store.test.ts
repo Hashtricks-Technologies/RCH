@@ -24,7 +24,7 @@ describe("counter operator", () => {
   it("holds the printed MRP as a ceiling on floor 3", () => {
     // Seeded lists now sit at or under MRP, so push a breaching price straight
     // into state - the till must still refuse to charge above the printed MRP.
-    useApp.setState({ prices: { ...S().prices, B: { ...S().prices.B, juice: 25 } } });
+    useApp.setState({ prices: { ...S().prices, "PL-002": { ...S().prices["PL-002"], juice: 25 } } });
     const p = priceOf(S(), "coffee", "juice");
     expect(p.p).toBe(20);
     expect(p.capped).toBe(true);

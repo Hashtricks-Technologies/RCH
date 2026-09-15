@@ -4,7 +4,7 @@ import type { z } from "zod";
 import type { Changed, CreateItemBodySchema, Item, LocKey, PatchItemBodySchema } from "@rch/contract";
 import { fq, mrpBelowShelfPrice, round3, unauthorisedItemFields, type ItemField } from "@rch/domain";
 import type { Db } from "../../db/client.js";
-import { withTransaction } from "../../lib/db.js";
+import { isForeignKeyViolation, withTransaction } from "../../lib/db.js";
 import { assertRule } from "../../lib/rules.js";
 import { NotFoundError } from "../../lib/errors.js";
 import { emitChanged } from "../../lib/events.js";
@@ -211,12 +211,21 @@ export function createCatalogService(db: Db) {
 
     /** MRP is a hard ceiling: a priced item that also carries an MRP can never be
      *  sold above the number printed on its own pack. */
-    async savePrice(list: "A" | "B", it: string, price: number): Promise<Write<{ list: "A" | "B"; it: string; price: number }>> {
+    async savePrice(list: string, it: string, price: number): Promise<Write<{ list: string; it: string; price: number }>> {
       return withTransaction(db, async (tx) => {
         const item = (await loadItems(tx))[it];
         if (!item) throw new NotFoundError(`There is no item ${it}.`);
+        if (!(await catalogRepo.priceListExists(tx, list))) throw new NotFoundError(`There is no price list ${list}.`);
         assertRule(!(item.mrp != null && price > item.mrp), `Refused - printed MRP of ₹${item.mrp} is a hard ceiling for ${item.n}`);
-        await catalogRepo.upsertPrice(tx, list, it, price);
+        // The check above ran unlocked; a list deleted between it and this insert - legal, since
+        // a list stays editable whether or not it is active anywhere - surfaces as this same
+        // foreign-key violation, caught the way `deleteUserTx` catches its own race.
+        try {
+          await catalogRepo.upsertPrice(tx, list, it, price);
+        } catch (e) {
+          if (isForeignKeyViolation(e)) throw new NotFoundError(`There is no price list ${list}.`);
+          throw e;
+        }
         // One array for the answer and the announcement, so a till showing the old price is
         // told to refetch exactly what the manager's own screen refetches.
         const changed = ["prices"] as const;

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { LocKeySchema, Qty, StockLocSchema } from "./common.js";
+import { LocKeySchema, PriceListIdSchema, Qty, StockLocSchema } from "./common.js";
 import * as D from "./documents.js";
 
 // Not every caller sees every location - a counter operator's snapshot is scoped down to their
@@ -17,7 +17,10 @@ export const SnapshotSchema = z.object({
   stock: byStockLoc(z.record(z.string(), Qty)),
   rsv: z.record(z.string(), Qty),          // "loc:item" -> reserved
   ovr: z.record(z.string(), z.string()),   // "loc:item" -> reason
-  prices: z.object({ A: z.record(z.string(), z.number()), B: z.record(z.string(), z.number()) }),
+  prices: z.record(PriceListIdSchema, z.record(z.string(), z.number())),
+  // The price lists themselves - name and which outlets are on each - alongside `prices`'
+  // flat item->price maps, for the manager's price-list management screen.
+  priceLists: z.array(D.PriceListSchema),
   menu: byLoc(z.array(z.string())),
   req: z.array(D.StockRequestSchema),
   tkt: z.array(D.TicketSchema),
@@ -40,6 +43,7 @@ export const SnapshotSchema = z.object({
 export const ItemsResponseSchema = z.record(z.string(), D.ItemSchema);
 export const LocationsResponseSchema = z.record(z.string(), D.LocationSchema);
 export const PricesResponseSchema = SnapshotSchema.shape.prices;
+export const PriceListsResponseSchema = SnapshotSchema.shape.priceLists;
 export const MenusResponseSchema = SnapshotSchema.shape.menu;
 export const StockResponseSchema = z.strictObject({ stock: SnapshotSchema.shape.stock, rsv: SnapshotSchema.shape.rsv, ovr: SnapshotSchema.shape.ovr });
 /** How many days of bills a caller gets - the snapshot's window and `GET /bills`'s default,

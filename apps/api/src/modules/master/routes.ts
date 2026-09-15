@@ -7,5 +7,6 @@ export default fp(async (app) => {
   mount(app, routes.items, async () => svc.items());
   mount(app, routes.locations, async () => svc.locations());
   mount(app, routes.prices, async () => svc.prices());
+  mount(app, routes.priceLists, async () => svc.priceLists());
   mount(app, routes.menus, async () => svc.menus());
 }, { name: "module:master", dependencies: ["auth", "rbac", "db"] });

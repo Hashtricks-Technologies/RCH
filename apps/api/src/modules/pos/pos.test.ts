@@ -186,9 +186,9 @@ describe("the printed MRP is the ceiling at the till too", () => {
     // `savePrice` refuses a price above the MRP, so the only way a list sits above one is an
     // MRP lowered after the item was priced. Write it straight into the table to make that
     // history, then sell one: the bill charges what is printed on the pack, not what the list says.
-    const before = (await app.db.select().from(s.priceListItems).where(and(eq(s.priceListItems.list, "B"), eq(s.priceListItems.itemKey, "juice"))))[0];
+    const before = (await app.db.select().from(s.priceListItems).where(and(eq(s.priceListItems.listId, "PL-002"), eq(s.priceListItems.itemKey, "juice"))))[0];
     await app.db.update(s.priceListItems).set({ price: 25 })
-      .where(and(eq(s.priceListItems.list, "B"), eq(s.priceListItems.itemKey, "juice")));
+      .where(and(eq(s.priceListItems.listId, "PL-002"), eq(s.priceListItems.itemKey, "juice")));
     try {
       const r = await pay("u1", { loc: "coffee", tender: "Cash", lines: [{ it: "juice", qty: 1 }] });
       expect(r.statusCode, r.body).toBe(200);
@@ -198,7 +198,7 @@ describe("the printed MRP is the ceiling at the till too", () => {
       expect(b.message).toBe(`Bill ${b.result.no} · ₹20.00 collected at Coffee Shop`);
     } finally {
       await app.db.update(s.priceListItems).set({ price: before.price })
-        .where(and(eq(s.priceListItems.list, "B"), eq(s.priceListItems.itemKey, "juice")));
+        .where(and(eq(s.priceListItems.listId, "PL-002"), eq(s.priceListItems.itemKey, "juice")));
     }
   });
 });

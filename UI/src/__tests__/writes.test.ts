@@ -63,10 +63,10 @@ const BILL = {
 };
 /** A whole snapshot, built from the same fixtures the registries already hold, so the
  *  `hydrateMaster` inside `applySnapshot` restores exactly what was there. */
-const snapshot = (prices: { A: Record<string, number>; B: Record<string, number> } = FX.PL) => ({
+const snapshot = (prices: Record<string, Record<string, number>> = FX.PL) => ({
   user: FX.USERS.find((u) => u.r === "manager"), items: FX.IT, locations: FX.LOC,
   users: FX.USERS, roster: { patients: FX.PATIENTS, staff: FX.STAFF, depts: FX.DEPTS },
-  stock: {}, rsv: {}, ovr: {}, prices, menu: FX.MENU,
+  stock: {}, rsv: {}, ovr: {}, prices, priceLists: FX.PRICE_LISTS, menu: FX.MENU,
   req: [], tkt: [], prq: [], po: [], pord: [], batch: [], bills: [], grn: [], vendors: [],
   contracts: [], tickets: [], productReqs: [], shopAsks: [], sales: [], dayLabels: [],
   // ---- adjustments
@@ -307,33 +307,33 @@ describe("savePrice - PUT /prices/:list/:it", () => {
   it("puts the price on the named list and reads the price list back on its own", async () => {
     as("manager");
     serve({
-      "PUT /api/v1/prices/B/juice": () => json({ result: { list: "B", it: "juice", price: 18 }, changed: ["prices"], message: "Fresh Juice 200ml priced at ₹18 on list B" }),
-      "GET /api/v1/prices": () => json({ A: FX.PL.A, B: { ...FX.PL.B, juice: 18 } }),
+      "PUT /api/v1/prices/PL-002/juice": () => json({ result: { list: "PL-002", it: "juice", price: 18 }, changed: ["prices"], message: "Fresh Juice 200ml priced at ₹18 on list PL-002" }),
+      "GET /api/v1/prices": () => json({ ...FX.PL, "PL-002": { ...FX.PL["PL-002"], juice: 18 } }),
     });
 
-    expect(await S().savePrice("B", "juice", 18)).toBe(true);
+    expect(await S().savePrice("PL-002", "juice", 18)).toBe(true);
 
-    expect(hit("PUT /api/v1/prices/B/juice")[0].body).toEqual({ price: 18 });
-    expect(S().toast).toBe("Fresh Juice 200ml priced at ₹18 on list B");
+    expect(hit("PUT /api/v1/prices/PL-002/juice")[0].body).toEqual({ price: 18 });
+    expect(S().toast).toBe("Fresh Juice 200ml priced at ₹18 on list PL-002");
     // A price change is a price change, not a new day: GET /prices, never the whole snapshot,
     // which would put the app back behind the loading splash for every row the manager edits.
     expect(hit("GET /api/v1/prices")).toHaveLength(1);
     expect(hit("GET /api/v1/snapshot")).toHaveLength(0);
     expect(hit("GET /api/v1/stock")).toHaveLength(0);
-    expect(S().prices.B.juice).toBe(18);
+    expect(S().prices["PL-002"].juice).toBe(18);
   });
 
   it("hands the MRP refusal to the operator word for word and leaves the list alone", async () => {
     as("manager");
-    const before = S().prices.B.juice;
-    serve({ "PUT /api/v1/prices/B/juice": () => refusal("Refused - printed MRP of ₹20 is a hard ceiling for Fresh Juice 200ml") });
+    const before = S().prices["PL-002"].juice;
+    serve({ "PUT /api/v1/prices/PL-002/juice": () => refusal("Refused - printed MRP of ₹20 is a hard ceiling for Fresh Juice 200ml") });
 
     // The price screen keeps what was typed on a `false`, so the manager can read the ceiling
     // and correct the figure rather than hunt for the row again.
-    expect(await S().savePrice("B", "juice", 99)).toBe(false);
+    expect(await S().savePrice("PL-002", "juice", 99)).toBe(false);
 
     expect(S().toast).toBe("Refused - printed MRP of ₹20 is a hard ceiling for Fresh Juice 200ml");
-    expect(S().prices.B.juice).toBe(before);
+    expect(S().prices["PL-002"].juice).toBe(before);
     expect(calls()).toHaveLength(1);
   });
 });
@@ -378,6 +378,72 @@ describe("addProduct / removeProduct - the menu routes", () => {
     expect(await S().addProduct("coffee", "juice")).toBe(false);
 
     expect(S().toast).toBe("Fresh Juice 200ml is already listed at Floor 3 Coffee Bar");
+    expect(calls()).toHaveLength(1);
+  });
+});
+
+describe("createPriceList / deletePriceList / setOutletPriceList - the price-list routes", () => {
+  it("posts a clone request and reads the lists back on its own", async () => {
+    as("manager");
+    const created = { id: "PL-010", name: "Weekend Rates", outlets: [] };
+    serve({
+      "POST /api/v1/price-lists": () => json({ result: created, changed: ["priceLists", "prices"], message: "Weekend Rates created, cloned from Coffee Shop's prices" }),
+      "GET /api/v1/price-lists": () => json([created]),
+      "GET /api/v1/prices": () => json(FX.PL),
+    });
+
+    expect(await S().createPriceList("Weekend Rates", "coffee")).toEqual(created);
+
+    expect(hit("POST /api/v1/price-lists")[0].body).toEqual({ name: "Weekend Rates", cloneFrom: "coffee" });
+    expect(S().toast).toBe("Weekend Rates created, cloned from Coffee Shop's prices");
+    expect(hit("GET /api/v1/price-lists")).toHaveLength(1);
+    expect(hit("GET /api/v1/snapshot")).toHaveLength(0);
+  });
+
+  it("hands a create refusal to the operator and answers null", async () => {
+    as("manager");
+    serve({ "POST /api/v1/price-lists": () => refusal("Give the price list a name before saving") });
+
+    expect(await S().createPriceList("", "coffee")).toBeNull();
+    expect(S().toast).toBe("Give the price list a name before saving");
+  });
+
+  it("deletes with no body, and reads the lists back", async () => {
+    as("manager");
+    serve({
+      "DELETE /api/v1/price-lists/PL-010": () => json({ result: { id: "PL-010" }, changed: ["priceLists"], message: "Weekend Rates deleted" }),
+      "GET /api/v1/price-lists": () => json([]),
+    });
+
+    expect(await S().deletePriceList("PL-010")).toBe(true);
+
+    expect(hit("DELETE /api/v1/price-lists/PL-010")[0].body).toBeUndefined();
+    expect(S().toast).toBe("Weekend Rates deleted");
+  });
+
+  it("switches an outlet's active list, and reads prices, price lists and locations back", async () => {
+    as("manager");
+    serve({
+      "PUT /api/v1/outlets/coffee/price-list": () => json({ result: { loc: "coffee", listId: "PL-010" }, changed: ["priceLists", "prices", "locations"], message: "Coffee Shop switched to Weekend Rates" }),
+      "GET /api/v1/price-lists": () => json([]),
+      "GET /api/v1/prices": () => json(FX.PL),
+      "GET /api/v1/locations": () => json(FX.LOC),
+    });
+
+    expect(await S().setOutletPriceList("coffee", "PL-010")).toBe(true);
+
+    expect(hit("PUT /api/v1/outlets/coffee/price-list")[0].body).toEqual({ listId: "PL-010" });
+    expect(S().toast).toBe("Coffee Shop switched to Weekend Rates");
+    expect(hit("GET /api/v1/locations")).toHaveLength(1);
+    expect(hit("GET /api/v1/snapshot")).toHaveLength(0);
+  });
+
+  it("hands a switch refusal to the operator and answers false", async () => {
+    as("manager");
+    serve({ "PUT /api/v1/outlets/coffee/price-list": () => refusal("Nothing to save - Coffee Shop is already on List B") });
+
+    expect(await S().setOutletPriceList("coffee", "PL-002")).toBe(false);
+    expect(S().toast).toBe("Nothing to save - Coffee Shop is already on List B");
     expect(calls()).toHaveLength(1);
   });
 });
@@ -473,7 +539,7 @@ describe("loadSnapshot - the splash is for the first boot only", () => {
     as("manager");
     // No item master, no locations: every screen would read an empty registry and throw, so
     // there is genuinely nothing to hold on to while the snapshot is on its way.
-    hydrateMaster({ items: {}, locations: {}, prices: { A: {}, B: {} }, menu: {}, users: [] });
+    hydrateMaster({ items: {}, locations: {}, prices: {}, priceLists: [], menu: {}, users: [] });
     serve({ "GET /api/v1/snapshot": () => json(snapshot()) });
 
     const seen = await authStates(() => S().loadSnapshot());

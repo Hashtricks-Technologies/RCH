@@ -1,11 +1,20 @@
 import { boolean, date, integer, jsonb, numeric, pgTable, primaryKey, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
-import { itemTypeEnum, locationTypeEnum, payerKindEnum, priceListEnum, roleEnum } from "./enums.js";
+import { itemTypeEnum, locationTypeEnum, payerKindEnum, roleEnum } from "./enums.js";
 
 const qty = (name: string) => numeric(name, { precision: 12, scale: 3, mode: "number" });
 const money = (name: string) => numeric(name, { precision: 12, scale: 2, mode: "number" });
 const ts = (name: string) => timestamp(name, { withTimezone: true, mode: "date" });
 export { qty, money, ts };
+
+/** A named price list. `id` is server-issued (`allocateId(tx, "price_list")`, e.g. `"PL-006"`),
+ *  the same way a vendor's id is - not a bare serial. Which outlets are active on it is never
+ *  stored here: it is `locations.price_list_id` pointing back, read out by `pricelists.repo`. */
+export const priceLists = pgTable("price_lists", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  createdAt: ts("created_at").notNull().defaultNow(),
+});
 
 export const locations = pgTable("locations", {
   key: text("key").primaryKey(),
@@ -14,7 +23,7 @@ export const locations = pgTable("locations", {
   type: locationTypeEnum("type").notNull(),
   floor: text("floor").notNull(),
   costCentre: text("cost_centre").notNull(),
-  priceList: priceListEnum("price_list"),
+  priceListId: text("price_list_id").references(() => priceLists.id, { onDelete: "restrict" }),
   sellable: boolean("sellable").notNull().default(false),
   createdAt: ts("created_at").notNull().defaultNow(),
 });
@@ -82,11 +91,13 @@ export const locationItems = pgTable("location_items", {
 }, (t) => [primaryKey({ columns: [t.loc, t.itemKey] })]);
 
 export const priceListItems = pgTable("price_list_items", {
-  list: priceListEnum("list").notNull(),
+  // Deleting a price list (only ever allowed once no outlet is on it) takes its price sheet
+  // with it - there is no reason to keep item->price rows for a list nothing can read any more.
+  listId: text("list_id").notNull().references(() => priceLists.id, { onDelete: "cascade" }),
   itemKey: text("item_key").notNull().references(() => items.key),
   price: money("price").notNull(),
   updatedAt: ts("updated_at").notNull().defaultNow(),
-}, (t) => [primaryKey({ columns: [t.list, t.itemKey] })]);
+}, (t) => [primaryKey({ columns: [t.listId, t.itemKey] })]);
 
 export const vendors = pgTable("vendors", {
   id: text("id").primaryKey(),

@@ -104,6 +104,21 @@ For a uniqueness rule, the insert (or update) decides; a pre-check only gives th
 `rate_contracts_live_uq`, `items_name_ci_uq` and the `payers` primary key `(kind, id)` all work this way.
 `catalog.createItem` also takes a `pg_advisory_xact_lock` on the item's slug.
 
+## Price lists
+
+`modules/pricelists/` owns the entity itself - create (cloned from an outlet's current active list),
+delete (only once unattached) and switching an outlet's active list. `modules/catalog` keeps `savePrice`,
+which edits a list's own item→price rows and never depends on which outlet (if any) it is active for.
+
+None of the three writes touch `stock_moves`, `stock_balances` or a document table, so the lock order above
+does not apply: each is a single `withTransaction` taking only `price_lists` and `locations` rows.
+`pricelistsRepo.head` locks the target `price_lists` row `FOR UPDATE`, and both `remove` and `activate` take
+it before doing anything else - so a delete and a switch of the same list serialise rather than race. The FK
+(`locations.price_list_id` `ON DELETE RESTRICT`, `price_list_items.list_id` `ON DELETE CASCADE`) is the
+backstop for a future writer that doesn't take that lock, not the primary guard; `catalog.savePrice` is one
+such writer today - it reads whether the list exists unlocked, so its own insert is wrapped in a catch for the
+same violation.
+
 ## Accounts and the super admin
 
 - **A super admin reaches no operational route.** Its `role`/`loc` columns are placeholders the `users` row

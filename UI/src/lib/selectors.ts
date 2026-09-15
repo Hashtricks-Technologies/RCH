@@ -17,7 +17,7 @@ export interface StockShape {
   stock: Record<StockLoc, Record<string, number>>;
   rsv: Record<string, number>;
   ovr: Record<string, string>;
-  prices: Record<"A" | "B", Record<string, number>>;
+  prices: Record<string, Record<string, number>>;
   menu: Record<string, string[]>;
 }
 
@@ -315,7 +315,8 @@ export const ticketDot = (state: string): string =>
     : state === "Received" ? "var(--good)" : "var(--accent)";
 export const stateTone = (a: number, rl: number): Tone => (a <= 0 ? "cr" : rl > 0 && a < rl ? "wn" : "ok");
 export const stateLabel = (a: number, rl: number) => (a <= 0 ? "Out" : rl > 0 && a < rl ? "Low" : "Healthy");
-export const basePrices = () => ({ A: { ...PL.A }, B: { ...PL.B } });
+export const basePrices = (): Record<string, Record<string, number>> =>
+  Object.fromEntries(Object.entries(PL).map(([id, list]) => [id, { ...list }]));
 
 /**
  * What a button may offer is what the server accepts. Each of these reads the shared

@@ -3,7 +3,9 @@ import { z } from "zod";
 export const LocKeySchema = z.enum(["store", "kitchen", "rest", "coffee", "kiosk"]);
 export const RoleSchema = z.enum(["counter", "manager", "store", "prod", "buyer"]);
 export const ItemTypeSchema = z.enum(["RAW", "PACK", "MRP", "FG", "MTO"]);
-export const PriceListSchema = z.enum(["A", "B"]);
+/** A price list's id on the wire - server-issued (`formatId("price_list", …)`, e.g. `"PL-006"`),
+ *  never a closed set: a manager may create as many named price lists as they want. */
+export const PriceListIdSchema = z.string().min(1).max(32);
 /** The six ways a bill is settled - a closed set, not free text. Three of them post to
  *  somebody's account rather than take money at the till (`NEEDS_PAYER` in the pos service),
  *  and the counter's own tender buttons are this list read straight off the schema. */

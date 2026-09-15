@@ -1,7 +1,7 @@
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
 import {
-  avail, availOf, daysCover, menuOf, parOf, qty, stateLabel, stateTone,
+  avail, availOf, daysCover, menuOf, parOf, priceOf, qty, stateLabel, stateTone,
 } from "../../lib/selectors";
 import { fq, money, U } from "../../lib/fmt";
 import { Alert, Btn, ImagePlaceholder, Pill, Switch, Tip } from "../../ui/kit";
@@ -78,7 +78,7 @@ function ConfigureDrawer({ id: it }: DrawerProps) {
               : <Alert tone="c" label="OFF">{computed.why ?? "unavailable"} - the switch cannot override this by itself.</Alert>}
           </div>
           <p className="mini mtop">
-            Sells for {money(s.prices[LOC[loc].list ?? "A"]?.[it] ?? 0)} at this counter.
+            Sells for {money(priceOf(s, loc, it).p)} at this counter.
           </p>
         </>
       ) : (

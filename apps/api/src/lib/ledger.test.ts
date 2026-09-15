@@ -12,7 +12,7 @@ beforeEach(async () => {
   await truncateAll(t.db);
   await t.db.insert(locations).values([
     { key: "store", name: "Central Store", code: "WH-CS", type: "Store", floor: "B", costCentre: "CC" },
-    { key: "coffee", name: "Coffee Shop", code: "OT-C3", type: "Outlet", floor: "3", costCentre: "CC", priceList: "B", sellable: true },
+    { key: "coffee", name: "Coffee Shop", code: "OT-C3", type: "Outlet", floor: "3", costCentre: "CC", sellable: true },
     { key: "kitchen", name: "Central Kitchen", code: "KT-CK", type: "Kitchen", floor: "G", costCentre: "CC" },
   ]);
   await t.db.insert(items).values({ key: "milk", code: "RM-1001", name: "Milk 1L", unit: "L", type: "RAW", grp: "Dairy", hsn: "0401", gst: 0 });

@@ -25,6 +25,7 @@ export type ProductReqStatus = z.infer<typeof D.ProductReqStatusSchema>;
 export type ShopAskStatus = z.infer<typeof D.ShopAskStatusSchema>;
 export type Item = z.infer<typeof D.ItemSchema>;
 export type Location = z.infer<typeof D.LocationSchema>;
+export type PriceList = z.infer<typeof D.PriceListSchema>;
 export type User = z.infer<typeof D.UserSchema>;
 export type UserMin = z.infer<typeof D.UserMinSchema>;
 export type ReqLine = z.infer<typeof D.ReqLineSchema>;

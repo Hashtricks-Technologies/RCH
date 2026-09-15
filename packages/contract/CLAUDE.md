@@ -60,6 +60,9 @@ manifest drives both sides: `mount()` in `apps/api/src/routes.ts` and `call()` i
 
 - **Closed enums, never widened.** `LocKey`, `Role`, `Tender`, `PayerKind` and every status are `z.enum`s. A
   status enum here and its Postgres enum in `apps/api/src/db/schema/enums.ts` change together or not at all.
+  **`PriceListIdSchema` is the deliberate exception**: a price list is a manager-created entity with a
+  server-issued id (`common.ts`), so its id is an open, bounded string, not an enum - as many can exist as a
+  manager creates.
 - **Request bodies are `z.strictObject`.** An unknown key is a client bug. `routes.test.ts` checks that every
   body accepts its entry in `SAMPLES` and refuses an extra key. A new route without a sample fails.
 - **PATCH bodies declare every field as optional, one by one, with no defaults.** Never build one as
