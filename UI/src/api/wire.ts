@@ -4,7 +4,7 @@ import { hydrateItems, hydrateLocations, hydrateMaster, hydrateMenus, hydratePri
 import { fromWireBestBefore, fromWireDate, fromWireTime } from "../lib/fmt";
 import { useApp } from "../store";
 import { basePrices } from "../lib/selectors";
-import type { AdminAction, AdminUser, Bill, Dated, HistEntry, PayerRecord, StockLoc } from "../types";
+import type { AdminAction, AdminLocation, AdminUser, Bill, Dated, HistEntry, PayerRecord, StockLoc } from "../types";
 
 export type Snapshot = z.infer<typeof SnapshotSchema>;
 export type StockResponse = z.infer<typeof StockResponseSchema>;
@@ -213,10 +213,15 @@ export function applyPayers(payers: PayerRecord[]): void { useApp.setState({ pay
 /** GET /admin/users -> every account, ordinary store state: nothing outside the admin page
  *  reads it, the same shape `payers` already is for the same reason. */
 export function applyAccounts(accounts: AdminUser[]): void { useApp.setState({ accounts }); }
+/** GET /admin/locations -> the admin page's own list of every location but quarantine, with who
+ *  is based at each. Nothing else reads this - an operational session reads `LOC` instead, kept
+ *  live through `applyLocations` above. */
+export function applyAdminLocations(adminLocations: AdminLocation[]): void { useApp.setState({ adminLocations }); }
 /** GET /admin/actions -> the last fifty, times as "HH:MM" and the instant beside them like every
- *  other document here is stamped. */
-export function applyAdminActions(rows: AdminAction[]): void {
-  useApp.setState({ adminActions: rows.map(stamped) });
+ *  other document here is stamped. `kind` picks which feed the rows land in: the account page's
+ *  own, or the Outlets tab's. */
+export function applyAdminActions(rows: AdminAction[], kind: "accounts" | "outlets" = "accounts"): void {
+  useApp.setState(kind === "outlets" ? { outletActions: rows.map(stamped) } : { adminActions: rows.map(stamped) });
 }
 
 // ---- adjustments

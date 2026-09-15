@@ -1,7 +1,7 @@
 import { routes, type Changed } from "@rch/contract";
 import { call } from "./client";
 import {
-  applyAccounts, applyAdjustments, applyBatches, applyBills, applyContracts, applyDeskTickets, applyGrns, applyItems, applyLocations, applyMenus,
+  applyAccounts, applyAdjustments, applyAdminLocations, applyBatches, applyBills, applyContracts, applyDeskTickets, applyGrns, applyItems, applyLocations, applyMenus,
   applyPayers, applyPos, applyPrices, applyProdOrders, applyProductRequests, applyRecipes, applyRequests,
   applyRequisitions, applyRoster, applyShopAsks, applyStock, applySupportTickets, applyTickets,
   applyVendors,
@@ -40,9 +40,11 @@ const NARROW: Partial<Record<Changed, () => Promise<void>>> = {
   adjustments: () => call(routes.adjustments).then(applyAdjustments),
   // ---- admin: account management
   accounts: () => call(routes.adminUsers).then(applyAccounts),
-  // ---- locations. An operational session pulls back the location master every screen lists
-  // outlets from; the super admin's session, whose token reaches no location read, reads nothing.
+  // ---- outlets. One change, read two ways: an operational session pulls back the location master
+  // every screen lists outlets from; the super admin, whose token reaches no location read but its
+  // own, pulls back the admin list. Each reader does nothing for the other session.
   locations: () => useApp.getState().user?.admin ? Promise.resolve() : call(routes.locations).then(applyLocations),
+  outlets: () => useApp.getState().user?.admin ? call(routes.adminLocations).then(applyAdminLocations) : Promise.resolve(),
   // ---- recipes
   recipes: () => call(routes.recipes).then(applyRecipes),
 };
@@ -55,10 +57,10 @@ const NARROW: Partial<Record<Changed, () => Promise<void>>> = {
  * `vendors`, `contracts`, `productReqs`, `items`, `tickets` (the support desk,
  * `GET /support/tickets`), `prices` and `menu` (the manager's two), `roster` (the till's live
  * payer list, `GET /roster`), `payers` (the manager's whole register, closed accounts
- * included, `GET /payers`), `adjustments` (the write-off register, `GET /adjustments`) and
- * `locations` (the location master, `GET /locations`) - each fetched at most once however many
- * times the write named it, which is what lets a payer write name both of its collections and
- * still cost two reads.
+ * included, `GET /payers`), `adjustments` (the write-off register, `GET /adjustments`), `locations`
+ * (the location master, `GET /locations`) and `outlets` (the admin page's own list, `GET
+ * /admin/locations`) - each fetched at most once however many times the write named it, which is
+ * what lets a payer write name both of its collections and still cost two reads.
  * Nothing costs a snapshot any more: taking one pulled the whole hospital back down and, until
  * this wave, put every screen behind the loading splash to do it. The fallback below stays for
  * the next collection added to the enum and not to `NARROW`; a mixed set takes the snapshot

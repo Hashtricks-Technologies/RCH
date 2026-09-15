@@ -68,4 +68,33 @@ describe("a change to the locations", () => {
     await refetch(["locations"]);
     expect(hit("GET /api/v1/locations")).toHaveLength(0);
   });
+  it("pulls the admin's own list back on `outlets`, and nobody else's session reads it", async () => {
+    useApp.setState({ user: { ...FX.USERS.find((u) => u.admin)! } });
+    serve({ "GET /api/v1/admin/locations": () => json([{ key: "juice-bar", n: "Juice Bar", c: "OT-JB", type: "Outlet", floor: "Ground", cc: "CC-JB", list: "A", active: true, staff: 0 }]) });
+    await refetch(["outlets"]);
+    expect(useApp.getState().adminLocations.map((l) => l.key)).toEqual(["juice-bar"]);
+    as("manager");
+    fetchMock.mockClear();
+    await refetch(["outlets"]);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("the admin store's outlet writes", () => {
+  beforeEach(() => { useApp.setState({ user: { ...FX.USERS.find((u) => u.admin)! } }); });
+  it("opens an outlet, repeats the server's sentence and refetches its list", async () => {
+    const row = { key: "juice-bar", n: "Juice Bar", c: "OT-JB", type: "Outlet", floor: "Ground", cc: "CC-JB", list: "A", active: true, staff: 0 };
+    serve({
+      "POST /api/v1/admin/outlets": () => json({ result: row, changed: ["outlets", "locations"], message: "Opened Juice Bar (OT-JB) on price list A." }),
+      "GET /api/v1/admin/locations": () => json([row]),
+    });
+    expect(await useApp.getState().createOutlet({ name: "Juice Bar", code: "OT-JB", floor: "Ground", cc: "CC-JB", list: "A" })).toEqual(row);
+    expect(useApp.getState().toast).toContain("Opened Juice Bar (OT-JB) on price list A.");
+    expect(useApp.getState().adminLocations).toEqual([row]);
+  });
+  it("hands back the refusal as the toast and nothing else", async () => {
+    serve({ "POST /api/v1/admin/outlets/kiosk/close": () => json({ error: { code: "rule", message: "Refused - Snack Kiosk still has 1 active staff (RC-4482)" } }, 422) });
+    expect(await useApp.getState().setOutletOpen("kiosk", false)).toBe(false);
+    expect(useApp.getState().toast).toContain("Refused - Snack Kiosk still has 1 active staff (RC-4482)");
+  });
 });
