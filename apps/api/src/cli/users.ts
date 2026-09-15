@@ -1,5 +1,5 @@
 import { parseArgs } from "node:util";
-import { loadConfig } from "../config.js";
+import { cliDatabaseUrl, loadConfig } from "../config.js";
 import { createDb } from "../db/client.js";
 import { createUser, deactivateUser, resetPassword, setAdmin } from "../lib/users-admin.js";
 import { LocKeySchema, MIN_PASSWORD_LENGTH, RoleSchema, type LocKey, type Role } from "@rch/contract";
@@ -31,7 +31,7 @@ const needLoc = (): LocKey => {
  *  rather than after: `lib/users-admin.ts`'s WORKS_AT is the rule, this is its help text. */
 const PAIRINGS = "prod works at kitchen; store and buyer at store; counter and manager at one of rest|coffee|kiosk";
 const config = loadConfig(process.env);
-const { db, pool } = createDb(config.databaseUrl, config.databaseSsl, { max: 1 });
+const { db, pool } = createDb(cliDatabaseUrl(config), config.databaseSsl, { max: 1 });
 try {
   switch (positionals[0]) {
     case "create": {

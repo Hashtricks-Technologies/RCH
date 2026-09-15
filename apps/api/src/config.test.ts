@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ConfigError, loadConfig } from "./config.js";
+import { cliDatabaseUrl, ConfigError, loadConfig } from "./config.js";
 
 const good = {
   NODE_ENV: "test", PORT: "3000", DATABASE_URL: "postgres://u:p@h:5432/d",
@@ -80,5 +80,15 @@ describe("loadConfig", () => {
   it("splits a comma-separated CORS list", () => {
     expect(loadConfig({ ...good, CORS_ORIGIN: "https://a.example, https://b.example" }).corsOrigins)
       .toEqual(["https://a.example", "https://b.example"]);
+  });
+  it("gives the operator CLIs MIGRATE_DATABASE_URL, and DATABASE_URL where there is none", () => {
+    const one = loadConfig(good);
+    expect(one.migrateDatabaseUrl).toBeUndefined();
+    expect(cliDatabaseUrl(one)).toBe("postgres://u:p@h:5432/d");
+    const two = loadConfig({ ...good, MIGRATE_DATABASE_URL: "postgres://rch:owner@h:5432/d" });
+    expect(two.migrateDatabaseUrl).toBe("postgres://rch:owner@h:5432/d");
+    expect(two.databaseUrl).toBe("postgres://u:p@h:5432/d");
+    expect(cliDatabaseUrl(two)).toBe("postgres://rch:owner@h:5432/d");
+    expect(() => loadConfig({ ...good, MIGRATE_DATABASE_URL: "mysql://rch:owner@h/d" })).toThrow(ConfigError);
   });
 });
