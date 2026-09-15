@@ -2,10 +2,10 @@ import { useState } from "react";
 import { ALL_LOCS, IT, LOC, OUTLETS } from "../../data/master";
 import { useApp } from "../../store";
 // ---- item patch ----
-import { activeItems, costOf, isRetired, isTicketOpen, menuOf, qty, resv, stockValue } from "../../lib/selectors";
+import { costOf, isRetired, isTicketOpen, qty, resv, stockValue } from "../../lib/selectors";
 import { fq, lakh, money, money0, sum } from "../../lib/fmt";
 import {
-  Alert, Btn, Card, DataTable, Field, FilterSelect, FormRow, Grid, PageHead,
+  Alert, Btn, Card, DataTable, FilterSelect, PageHead,
   StatusPill, TableFoot, Tag, Tip, Toolbar,
 } from "../../ui/kit";
 import type { ItemType, LocKey, TktStatus } from "../../types";
@@ -25,9 +25,6 @@ const stageOf = (st: TktStatus) =>
 
 export default function ItemsStock() {
   const s = useApp();
-  const addProduct = useApp((x) => x.addProduct);
-  const requestNewProduct = useApp((x) => x.requestNewProduct);
-  const notify = useApp((x) => x.notify);
   // ---- item patch, and the "Adjust stock" drawer opened over one outlet at a time: both
   // open through the same one handler.
   const openDrawer = useApp((x) => x.openDrawer);
@@ -41,21 +38,6 @@ export default function ItemsStock() {
   const [tstate, setTstate] = useState(0);
   const [tfrom, setTfrom] = useState(0);
   const [tto, setTto] = useState(0);
-
-  // A deployment with no outlets at all is not a hypothetical: `OUTLETS` is empty until the
-  // snapshot lands, and `OUTLETS[0]` is `undefined` there - which `LOC[shop]` then dereferences
-  // and takes the whole screen down with. `null` says "no shop to work on" and renders as such.
-  const home = s.user && OUTLETS.includes(s.user.loc) ? s.user.loc : OUTLETS[0] ?? null;
-  const [shop, setShop] = useState<LocKey | null>(home);
-  const [pick, setPick] = useState("");
-
-  const [nName, setNName] = useState("");
-  const [nDetail, setNDetail] = useState("");
-  const [nQty, setNQty] = useState("");
-  const [busy, setBusy] = useState(false);
-  // ---- item patch ---- listing a product is a server call too, and it can be refused (another
-  // manager listing the same product a second before). The picker empties only on a "yes".
-  const [listing, setListing] = useState(false);
 
   const items = useSort("name");
   const tsort = useSort("id", "desc");
@@ -91,21 +73,6 @@ export default function ItemsStock() {
               : t.id);
   const tFiltered = tTerm !== "" || tstate > 0 || tfrom > 0 || tto > 0;
 
-  /* ---------------- list an existing product at a shop ---------------- */
-  const listed = shop ? menuOf(s, shop) : [];
-  // ---- item patch ----
-  // A retired line stays in `IT` so past bills still name it; it must not be offerable on a till.
-  const listable = activeItems().filter((k) => !listed.includes(k) && IT[k].t !== "RAW" && IT[k].t !== "PACK");
-  const list = shop ? LOC[shop]?.list : undefined;
-  const pickPrice = pick && list ? s.prices[list]?.[pick] : undefined;
-  const listAtShop = async () => {
-    if (!shop || !pick) return;
-    setListing(true);
-    const ok = await addProduct(shop, pick);
-    setListing(false);
-    if (ok) setPick("");
-  };
-
   /* ---------------- item master ---------------- */
   const locNames = ["All", ...ALL_LOCS.map((l) => LOC[l].n)];
   const term = q.trim().toLowerCase();
@@ -140,23 +107,6 @@ export default function ItemsStock() {
   });
   const filtered = term !== "" || type > 0 || loc > 0 || state > 0;
   const shownValue = sum(rows, (r) => r.value);
-
-  const raiseNew = async () => {
-    if (busy || !shop) return;
-    const name = nName.trim();
-    if (!name) { notify("Name the product you want the central store to stock"); return; }
-    const opening = nQty.trim();
-    setBusy(true);
-    const ok = await requestNewProduct({
-      name,
-      why: [opening ? `Quantity wanted to start with: ${opening}.` : "", nDetail.trim()]
-        .filter(Boolean).join(" "),
-      forLoc: shop,
-    });
-    setBusy(false);
-    // Only a request the central store has actually taken empties the three boxes.
-    if (ok) { setNName(""); setNDetail(""); setNQty(""); }
-  };
 
   return (
     <>
@@ -246,81 +196,6 @@ export default function ItemsStock() {
           extra={<>{transfers.filter((t) => isTicketOpen(t.st)).length} still moving · read-only</>}
         />
       </Card>
-
-      <Grid cols="g2">
-        <Card title="List an existing product at a shop" tip="Puts a catalogue product on that counter's till">
-          {shop === null ? (
-            <p className="mini">
-              No outlet is configured, so there is no till to list a product on.
-            </p>
-          ) : (
-            <>
-            <FormRow cols="f2">
-              <Field label="Shop">
-                <select value={shop} onChange={(e) => { setShop(e.target.value as LocKey); setPick(""); }}>
-                  {OUTLETS.map((l) => <option key={l} value={l}>{LOC[l].n} - list {LOC[l].list}</option>)}
-                </select>
-              </Field>
-              <Field label="Product" hint={`${listable.length} catalogue product${listable.length === 1 ? "" : "s"} not yet on this till.`}>
-                <select value={pick} onChange={(e) => setPick(e.target.value)}>
-                  <option value="">Pick a product…</option>
-                  {listable.map((k) => (
-                    <option key={k} value={k}>{IT[k].n} - {IT[k].t}</option>
-                  ))}
-                </select>
-              </Field>
-            </FormRow>
-            {pick !== "" && pickPrice == null && (
-              <Alert tone="w" label="NO PRICE">
-                {IT[pick].n} has no price on list {list}. Add it here, then set a price on the Price Lists screen -
-                until then the counter cannot bill it.
-              </Alert>
-            )}
-            <div className="totrow"><span>Currently listed at {LOC[shop].n}</span><span>{listed.length}</span></div>
-            <div className="totrow">
-              <span>Price on list {list}</span>
-              <span>{pick === "" ? "-" : pickPrice == null ? "not priced" : money(pickPrice)}</span>
-            </div>
-            <div className="mtop">
-              <Btn wide disabled={!pick || listing} tip={pick ? undefined : "Pick a product first"}
-                onClick={() => void listAtShop()}>
-                {listing ? "Listing…" : `List at ${LOC[shop].n}`}
-              </Btn>
-            </div>
-            </>
-          )}
-        </Card>
-
-        <Card title="Request a new product from inventory" tip={<>
-          For something the item master does not carry yet<br />
-          You cannot create a catalogue item - the central store does. This raises a stock issue against them,
-          tracked on the Issues screen until they answer.
-        </>}>
-          <FormRow cols="f2">
-            <Field label="Product wanted" tip="Brand and pack size, as you would order it.">
-              <input value={nName} onChange={(e) => setNName(e.target.value)} placeholder="e.g. Buttermilk 200ml" />
-            </Field>
-            <Field label="Opening quantity" tip="What you would want to start with.">
-              <input value={nQty} onChange={(e) => setNQty(e.target.value)} placeholder="e.g. 48 nos" />
-            </Field>
-          </FormRow>
-          <Field label="Why it is needed"
-            hint={shop ? `Raised for ${LOC[shop].n}.` : "Raised against the central store."}
-            tip={shop ? "Change the shop on the left to switch it." : undefined}>
-            <textarea rows={3} value={nDetail} onChange={(e) => setNDetail(e.target.value)}
-              placeholder="Customers keep asking for it, the kiosk has run the trial, and so on…" />
-          </Field>
-          {/* There was a Priority picker here. `POST /product-requests` has no priority field -
-              `CreateProductRequestBodySchema` never carried one - so every choice made on it was
-              dropped on the way out, and a manager who marked something urgent had been told a
-              thing that was not true. Say it in the reason instead, where it reaches the buyer. */}
-          <Btn wide disabled={busy || !shop || !nName.trim()}
-            tip={shop ? (nName.trim() ? undefined : "Name the product first") : "No outlet to raise it for"}
-            onClick={raiseNew}>
-            {busy ? "Sending…" : "Raise new-product request"}
-          </Btn>
-        </Card>
-      </Grid>
 
       <Card title="Inventory at a glance" tip="Stock at cost, by location" flush className="mtop">
         <DataTable

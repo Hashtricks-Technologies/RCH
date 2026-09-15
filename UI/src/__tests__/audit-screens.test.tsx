@@ -10,6 +10,7 @@ import {
 } from "../lib/selectors";
 import StoreDashboard from "../roles/store/Dashboard";
 import StoreRequisitions from "../roles/store/Requisitions";
+import MenuManagement from "../roles/manager/MenuManagement";
 import MakeDistribute from "../roles/prod/MakeDistribute";
 import Drawer from "../ui/Drawer";
 import "../roles/buyer/PoReceiptDrawer";        // registers "bgrn" on the drawer registry
@@ -317,6 +318,51 @@ describe("procurement adds a product with the store keeper's field set", () => {
       name: "Butter paper sheet", code: "PK-2010", type: "PACK", grp: "Packaging", hsn: "4806", gst: 18,
       cost: 0.8, loc: "store", opening: 0,
     });
+    ui.unmount();
+  });
+});
+
+describe("menu management adds several products to a till at once", () => {
+  it("posts one call per product picked, and clears only the ones that saved", async () => {
+    as("manager");
+    // Mutated as each POST lands, so the GET readback - and so the picker built off it - moves
+    // the same way a real server's would once a product is actually on the till.
+    const menu = { ...FX.MENU, coffee: [...FX.MENU.coffee] };
+    let refuseSand = true;
+    serve({
+      "POST /api/v1/menus/coffee/items": (() => {
+        let n = 0;
+        return () => {
+          n++;
+          // "puff" (first picked, alphabetically before "sand") lists cleanly; "sand" is refused
+          // once, as if another manager had just listed it, and would be retried by hand.
+          if (n === 1) {
+            menu.coffee = [...menu.coffee, "puff"];
+            return json({ result: { loc: "coffee", items: menu.coffee }, changed: ["menu"], message: "Veg puffs listed at Coffee Shop" });
+          }
+          if (refuseSand) { refuseSand = false; return json({ error: { code: "conflict", message: "Veg sandwich is already on this till" } }, 409); }
+          menu.coffee = [...menu.coffee, "sand"];
+          return json({ result: { loc: "coffee", items: menu.coffee }, changed: ["menu"], message: "Veg sandwich listed at Coffee Shop" });
+        };
+      })(),
+      "GET /api/v1/menus": () => json(menu),
+    });
+    const ui = mountNode(MenuManagement);
+
+    act(() => { pick(ui.host.querySelector("select")!, "coffee"); });
+    act(() => { ui.host.querySelector<HTMLInputElement>('input[aria-label="Select Veg puffs"]')!.click(); });
+    act(() => { ui.host.querySelector<HTMLInputElement>('input[aria-label="Select Veg sandwich"]')!.click(); });
+
+    await settle(() => { ui.button("Add 2 products")!.click(); });
+    await settleUntil(() => hit("POST /api/v1/menus/coffee/items").length >= 2);
+    expect(hit("POST /api/v1/menus/coffee/items").map((c) => (c.body as { it: string }).it)).toEqual(["puff", "sand"]);
+
+    // Puff saved and dropped off the pick list; the refused sandwich stayed picked, ready to retry.
+    expect(ui.host.querySelector<HTMLInputElement>('input[aria-label="Select Veg sandwich"]')!.checked).toBe(true);
+    expect(ui.host.querySelector('input[aria-label="Select Veg puffs"]')).toBeNull();
+
+    await settle(() => { ui.button("Add 1 product")!.click(); });
+    await settleUntil(() => hit("POST /api/v1/menus/coffee/items").length >= 3);
     ui.unmount();
   });
 });

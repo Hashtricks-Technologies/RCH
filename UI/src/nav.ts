@@ -16,6 +16,7 @@ export const NAV: Record<Role, NavGroup[]> = {
     { group: "Movement", items: [{ k: "approvals", label: "Approvals", icon: "appr" }] },
     { group: "Outlets", items: [
       { k: "stock", label: "Items & Stock", icon: "item" },
+      { k: "menu", label: "Menu Management", icon: "order" },
       { k: "prices", label: "Price Lists", icon: "price" },
       { k: "avail", label: "Product On / Off", icon: "power" },
       // ---- bill void: the manager had no way to see a bill at all, and voiding one is the
