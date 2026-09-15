@@ -92,15 +92,20 @@ first sign-in.
 | `RC-4482` | Deepa Selvam | Counter Operator | kiosk |
 | `RC-0001` | System Administrator | Super Admin (a flag, not a role - see below) | - |
 
+`rest`, `coffee` and `kiosk` are what a demo or bare seed opens with, not a closed list: the super admin opens,
+edits, closes and reopens outlets from `/admin` (§5 below), and a new one gets its own key, minted from its
+name once.
+
 Sign in at `http://localhost:5173`: staff pick themselves from the employee list (read from the
 public `GET /auth/directory`, number and name only), then type the seed password. The super admin
 is not on that list; use "Sign in as administrator" and type `RC-0001`.
 
 `RC-0001` is the one seeded account carrying the admin flag - account management
 (create/reset/deactivate/reassign/delete a colleague from its own standalone dashboard at
-`/admin`) and the support desk are a capability, not a role: signing in as it shows no
-operational sidebar at all, only that page, and the API answers its token with a 404 on every
-operational route (`/events` excepted, for the desk). Its nominal role and location
+`/admin`), outlet management (open, edit, close, reopen - never delete) and the support desk are
+a capability, not a role: signing in as it shows no operational sidebar at all, only that page,
+and the API answers its token with a 404 on every operational route (`/events` excepted, for the
+desk). Its nominal role and location
 (`buyer`/`store` in the fixture) are the schema's own bookkeeping; the wire labels the account
 `Super Admin` and the page offers no role or location to change.
 
@@ -692,8 +697,14 @@ the browser a fresh one in the same reply (a new access token and refresh cookie
 land in the app rather than being bounced back to the sign-in screen. `reset-password` and
 `deactivate` both revoke every refresh token for that user (all of that employee's active
 sessions are signed out immediately).
-`--role` is one of `counter|manager|store|prod|buyer`; `--loc` is one of
-`store|kitchen|rest|coffee|kiosk`.
+`--role` is one of `counter|manager|store|prod|buyer`; `--loc` is no longer a closed list - it is checked
+against the `locations` table the same way every write that names a location is (`worksAt` in `@rch/domain`):
+the central store or the central kitchen for the roles pinned there, and any *open* outlet for `counter` and
+`manager`. A key with no row, or a closed outlet's key, is refused by name. Outlets themselves are opened,
+edited, closed and reopened only from `/admin` - never by this CLI and never by the seed beyond the three it
+starts with (§1's *Test users*). The migration behind that (`0015_outlets`) only adds columns and indexes and
+backfills every existing location's par factor to what was hard-coded before, so it is safe to run against the
+live box, which holds real data, and an older image still reads the table afterwards.
 
 ### The payer roster
 

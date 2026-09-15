@@ -76,6 +76,11 @@ To add one, copy `src/modules/_template/` and add one import and one `app.regist
 Lock order is **documents → ids → balances**. Take a ticket number before the balance locks, never while
 holding a shelf.
 
+- **`lib/locations.ts` is the one way a write names a location.** `lockLocation(tx, key)` takes the row `FOR
+  SHARE`, in the documents tier - before any id and before any balance - and refuses an unknown key as
+  `not_found`. `assertOpen(row, then?)` refuses a closed outlet. The admin's close (`modules/admin`) takes the
+  same row `FOR UPDATE`, so a sale already holding the shared lock commits before the close counts its
+  blockers, and one that starts after the close has committed reads the outlet closed.
 - **Purchase-order claims use a narrower order:** the PO row first, then the requisition rows in ascending
   order (`lib/claims.ts`). `createPo` is the one write that locks requisition rows without holding an order
   lock. That is safe only because it is minting that order.
@@ -127,6 +132,20 @@ For a uniqueness rule, the insert (or update) decides; a pre-check only gives th
 - **`GET /auth/directory` is public**: active, non-admin accounts as `{ emp, n }`, for the sign-in picker. It
   has its own per-IP limit (120/min, `DIRECTORY_RATE_LIMIT_PER_MINUTE` in `modules/auth/routes.ts`), apart from
   the login limit.
+
+## Outlets
+
+The admin module (`modules/admin`) owns outlets - opened, edited, closed and reopened at `/admin`, never
+deleted (root `CLAUDE.md`). Its close counts everything still open against the outlet under the close's own
+`FOR UPDATE` row lock (`repo.ts`'s `closeBlockers`) and refuses in one sentence naming every blocker at once
+(`closeRefusal` in `@rch/domain`, over the statuses `HOLDS_OUTLET` marks as still committing the outlet - a
+dispatched kitchen order or a sent shop ask keeps an undo edge in its own transition table, but the ticket it
+raised is what holds the outlet from then on).
+
+Every outlet write runs inside one `withTransaction`, writes one `admin_actions` row, and calls
+`emitChanged(tx, ["outlets", "locations"])` - unlike an account write, which announces nothing. Every
+operational browser refetches the location master on `locations`; every open admin tab refetches its own list
+on `outlets`.
 
 ## Reads
 

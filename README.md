@@ -7,8 +7,9 @@ contract and rules packages, and the Helm chart it deploys with.
 
 ## What the system does
 
-Royal Care runs one central store, one central kitchen and three retail outlets (Restaurant,
-Coffee Shop, Snack Kiosk). Two kinds of product move through them:
+Royal Care runs one central store, one central kitchen and the retail outlets it trades from - three to
+start (Restaurant, Coffee Shop, Snack Kiosk), and more as the super admin opens them from `/admin`. Two
+kinds of product move through them:
 
 | Class | Examples | Price authority |
 |---|---|---|
@@ -146,10 +147,12 @@ password everybody knows.
 | `RC-1902` | Vinoth Prakash | Kitchen In-charge |
 | `RC-1550` | Latha Narayanan | Procurement Officer |
 | `RC-4482` | Deepa Selvam | Counter Operator · Snack Kiosk |
-| `RC-0001` | System Administrator | Super Admin: staff accounts and the support desk, no role or location |
+| `RC-0001` | System Administrator | Super Admin: staff accounts, the hospital's outlets and the support desk, no role or location |
 
 The super admin creates staff accounts on `/admin`, where the server assigns each one the next employee
-number. An account can be deactivated, and deleted permanently only if it never did anything.
+number. An account can be deactivated, and deleted permanently only if it never did anything. The same page
+opens, edits, closes and reopens the hospital's retail outlets - closed, never deleted, and a close is refused
+while stock, an open document or a member of staff still depends on the outlet, naming every one at once.
 
 A staging or production seed sets `must_change_password`, which routes a first sign-in through a
 change-password step. `deploy/RUNBOOK.md` §1 has the full local sequence and what each step does.

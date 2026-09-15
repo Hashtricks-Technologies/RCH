@@ -30,7 +30,8 @@ pnpm --filter @rch/ui build       # tsc -b && vite build → UI/dist
 
 Routing is `BrowserRouter`, with plain paths (`/pos`, `/admin`). An admin-flagged account never gets a
 `<Shell>`: it only ever sees `pages/AdminDashboard.tsx` at `/admin`, and any other key bounces it back there.
-That page has two tabs: `AdminUsers` (staff accounts) and `AdminSupport` (the support desk: every role's tickets).
+That page has three tabs: `AdminUsers` (staff accounts), `AdminOutlets` (the hospital's retail outlets - opened,
+edited, closed and reopened; never deleted) and `AdminSupport` (the support desk: every role's tickets).
 
 `screens.test.tsx` and `app.test.tsx` render every `NAV` key for every role. A nav entry with no component fails
 the suite, on purpose.
@@ -82,6 +83,12 @@ try {
 - **Account writes (`store/admin.ts`)**: `createAccount` sends no employee number (the server assigns it) and
   returns `{ emp, password } | null`, the number actually given; `AdminUsers.tsx` previews it with
   `nextEmpNo`. `deleteAccount(id)` is the ordinary `Promise<boolean>` write, behind an inline second press.
+- **The admin slice's outlet state (`store/admin.ts`)**: `adminLocations` (every location but quarantine, with
+  who is based at each) and `outletActions` (the `kind=outlets` feed) are loaded by `loadAdminLocations` and
+  `loadAdminActions(kind)` - the Outlets tab's table and the Accounts tab's location labels both read
+  `adminLocations`. `createOutlet` returns the server's row or `null` on a refusal, the same shape as
+  `createAccount`, so the form stays as typed. `updateOutlet` and `setOutletOpen` (close and reopen, one action
+  both ways, like `setAccountActive`) are the ordinary `Promise<boolean>` writes.
 - **An admin-flagged session loads no snapshot.** `loadSnapshot` sets `auth: "ready"` and returns for one,
   because the server 404s every operational read for its token. Sign-in, restore, a password change and any
   later refetch fallback all go through that one guard.
@@ -103,9 +110,13 @@ try {
     refreshing again.
 - **`refetch.ts`** maps each `changed` collection to a narrow `GET` through `NARROW`. The `loadSnapshot`
   fallback exists only for a collection missing from `NARROW`, so **add a reader when you add a collection**.
-  If a read-back fails, the write's own sentence is kept and qualified, never replaced. `tickets` is the one
+  If a read-back fails, the write's own sentence is kept and qualified, never replaced. `tickets` is one
   reader that branches: an admin session reads the desk's list (`GET /admin/support/tickets` into
-  `deskTickets`), and everyone else reads their own tickets.
+  `deskTickets`), and everyone else reads their own tickets. `locations` and `outlets` are the other pair, read
+  the opposite way: `locations` pulls the location master back through `GET /locations` for an operational
+  session (then bumps `catalogVersion` so every screen re-renders) and does nothing for the super admin, whose
+  token reaches no location read but its own; `outlets` pulls the admin's own list back through
+  `GET /admin/locations` for that session alone, and does nothing for anyone else.
 - **`wire.ts`** holds the mappers from server shape to store shape.
   - An ISO time becomes `"HH:MM"` only here, and **`iso` is kept beside it** on every document and history
     entry (`Dated<T>`, `Trailed<T>` and `DatedDoc<T>` in `types.ts`).
@@ -135,6 +146,13 @@ a background refresh and must not blank the screen.
   `awaitingApproval`, `inTransit`, `costOf` and the transition predicates (`canHandOver`, `canDispatch`,
   `canSendPo`, …). The predicates read the domain tables, so any button the UI draws is one the server
   accepts.
+- **Outlets are read from the location master, never from a list compiled into the bundle.** `openOutlets()`
+  is for a picker that *starts* something - counter peers, the kitchen-order drawer, a price or an
+  availability list - open ones only. `allOutlets()` is for a filter over history - Bills, Approvals, Orders -
+  where a closed outlet still belongs, since a closed outlet's bills are still bills; it prints as
+  `<name> (closed)`. `operationalLocs()` is the store, the kitchen and the open outlets together, for anything
+  that lists every place an operator works today. `locName(key)` is the one place a location's display name is
+  read - the bare key when `LOC` doesn't carry it yet.
 - **Delivered quantities on buyer and store screens use `netReceived`**, not gross `recv`.
 - **Never hand-format a number or a date.**
   - Numbers: `money`, `money0`, `lakh`, `fq(v, it)` with `U(it)`, `unitTotal`.

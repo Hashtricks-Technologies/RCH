@@ -33,12 +33,18 @@ pnpm --filter @rch/domain lint
 
 ## Layout
 
-`src/index.ts` is the public surface. Each file holds one rule, with its `<name>.test.ts` beside it. Two files
+`src/index.ts` is the public surface. Each file holds one rule, with its `<name>.test.ts` beside it. Three files
 need more context than their names give:
 
 - `transitions.ts` holds the status tables, which the server enforces and the UI's buttons read (see below).
 - `claims.ts`, `receipt.ts` and `purchasing.ts` hold buying's arithmetic. Only `ordered_qty` is stored; the
   procurement list itself is derived.
+- `locations.ts` holds the outlet rules: `outletKeys` / `operationalKeys` (who is open, and in what order),
+  `worksAt` / `placesFor` (the one role-location pairing rule, replacing two hand-written copies), and
+  `outletKeyFor` (a new outlet's key, minted from its name once). The close's own machinery lives here too -
+  `HOLDS_OUTLET` (which statuses of which documents still commit an outlet, exhaustive over each closed union),
+  `holding` (reads the held statuses off one of those records) and `closeRefusal` (the one sentence naming
+  every blocker at once). `parFactor` (`par.ts`) reads the same location row for its par level.
 
 ## Transition tables
 

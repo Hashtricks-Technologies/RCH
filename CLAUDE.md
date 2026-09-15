@@ -5,8 +5,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## What this is
 
 Royal Care Hospital's F&B inventory and billing system. It runs one item master and one stock ledger behind a
-central store, a central kitchen and three retail outlets (Restaurant, Coffee Shop, Snack Kiosk), and covers
-purchase requisition → purchase order → goods receipt → production → issue → counter sale.
+central store, a central kitchen and three retail outlets (Restaurant, Coffee Shop, Snack Kiosk) the hospital
+opened with - the super admin opens, edits, closes and reopens outlets from `/admin` as the hospital grows - and
+covers purchase requisition → purchase order → goods receipt → production → issue → counter sale.
 
 It is a pnpm + Turborepo monorepo (Node 24, pnpm 10.28.2):
 
@@ -144,9 +145,9 @@ There are five roles (`counter`, `manager`, `store`, `prod`, `buyer`), each with
 - **`manager`** is hospital-wide, so its writes never scope to a location.
 - **`counter` and `prod`** are location-scoped. `store` and `buyer` each work one desk.
 - **Admin** is a boolean on `users`, not a sixth role. It is checked as `access: "admin"`. An admin-flagged
-  account sees only the standalone `/admin` page, never an operational shell. There it manages staff accounts
-  and answers every role's support tickets as the support desk. The flag can only be set with
-  `pnpm --filter @rch/api users set-admin`; no route can set it.
+  account sees only the standalone `/admin` page, never an operational shell. There it manages staff accounts,
+  opens, edits, closes and reopens outlets, and answers every role's support tickets as the support desk. The
+  flag can only be set with `pnpm --filter @rch/api users set-admin`; no route can set it.
 - **The super admin has no role in practice.** The `users` row still carries a placeholder role and location,
   but the wire labels it `Super Admin`, the account page offers no role or location for it, and `rbac.ts`
   answers an admin token with a **404** on every route that is not `access: "admin"` or a must-change-password
@@ -175,7 +176,9 @@ back where it stood.
   grep.
 - **Lock order is documents → ids → balances**, server-wide. There are exactly two deliberate exceptions: the
   counter sale's bill number and the adjustment's `ADJ-` number are allocated after the balance locks. Don't
-  copy either one; `apps/api/CLAUDE.md` explains why each is safe.
+  copy either one; `apps/api/CLAUDE.md` explains why each is safe. A write naming a location takes its row `FOR
+  SHARE` through `lockLocation` in `apps/api/src/lib/locations.ts`, in the documents tier; a close takes it `FOR
+  UPDATE`.
 - Status changes go through the tables in `packages/domain/src/transitions.ts`. The server refuses with them,
   and the UI reads the same tables to decide which buttons to draw.
 - Every non-public write carries an `Idempotency-Key`. The outcome is recorded inside the write's own
@@ -212,6 +215,10 @@ The code enforces these and tests pin them. Breaking one is a bug.
   moves, frees the credit room it used, and badges the bill rather than erasing it.
 - **Items are retired, never deleted**, and not while any stock or menu listing remains. **Payers are
   deactivated, never deleted.**
+- **Outlets are closed, never deleted.** A close is refused while the outlet holds stock, an open ticket, stock
+  request, kitchen order, shop ask or product request, or an active staff member, and the refusal names every
+  one. A closed outlet takes no sale, transfer, ask, kitchen order, adjustment, menu listing or void, and no
+  staff can be posted to it. A reopen restores it as it was.
 - **Employee numbers are assigned by the server**: `nextEmpNo` in `@rch/domain`, one past the highest
   `RC-<digits>`, under the `user` row of `sequences`, which also hands out user ids that are never reused.
 - **A staff account is deleted only if it never did anything.** It must be deactivated first, and it can't be
@@ -227,7 +234,9 @@ The code enforces these and tests pin them. Breaking one is a bug.
 
 ## Conventions
 
-- `LocKey`, `Role` and every status are closed unions. Never widen one with `string`.
+- `Role` and every status are closed unions. Never widen one with `string`. A location key is data: the central
+  store and kitchen are `STORE` / `KITCHEN` from `@rch/contract`, and outlets are read from the location master
+  (`outletKeys` in `@rch/domain`, `openOutlets()` / `allOutlets()` in the UI), never listed.
 - Round quantities to three decimals with `round3`.
 - Never hand-format a number. Use `money` / `money0` / `lakh` for money, `fq(v, it)` with `U(it)` for
   quantities, and `unitTotal` for mixed-unit totals.
