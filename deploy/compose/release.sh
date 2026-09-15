@@ -10,9 +10,11 @@
 # In order: refuse a commit that is not on develop, refuse a checkout with local edits, do nothing
 # if the box is already past the commit (a newer deploy won the race - never roll it back), dump
 # the database to S3 (the way back from a bad migration), fast-forward, run deploy.sh, and fail
-# unless /readyz answers - it checks the database and that every migration in the journal is
-# applied. A failure after the fast-forward is left for a person: a migration that already
-# committed is not undone by putting the previous image back, so nothing here tries to.
+# unless both readiness checks answer: /readyz is the API's (the database, and every migration in
+# its journal applied) and /readyz/audit the audit service's (the database, its own migrations,
+# and a drain pass in the last 30 seconds) - Caddy routes each to its container. A failure after
+# the fast-forward is left for a person: a migration that already committed is not undone by
+# putting the previous image back, so nothing here tries to.
 set -euo pipefail
 
 sha=${1:?usage: release.sh <commit sha>}
@@ -45,10 +47,11 @@ git merge --ff-only --quiet "$sha"
 
 deploy/compose/deploy.sh
 
-echo "== checking /readyz =="
+echo "== checking /readyz and /readyz/audit =="
 domain=$(grep -E '^DOMAIN=' deploy/compose/.env | cut -d= -f2-)
 for _ in $(seq 1 60); do
-  if curl -fsS -m 5 "https://${domain}/readyz" >/dev/null 2>&1; then
+  if curl -fsS -m 5 "https://${domain}/readyz" >/dev/null 2>&1 \
+    && curl -fsS -m 5 "https://${domain}/readyz/audit" >/dev/null 2>&1; then
     # Every deploy leaves a build cache behind; a week of it is plenty to keep rebuilds fast.
     docker builder prune -f --filter until=168h >/dev/null
     echo "released $(git log --oneline -1 HEAD)"
@@ -57,7 +60,7 @@ for _ in $(seq 1 60); do
   sleep 2
 done
 
-echo "release: https://${domain}/readyz never answered - the stack as it stands:" >&2
-docker compose --env-file deploy/compose/.env -f deploy/compose/compose.yml ps >&2 || true
-docker compose --env-file deploy/compose/.env -f deploy/compose/compose.yml logs --tail 60 migrate api >&2 || true
+echo "release: https://${domain}/readyz and /readyz/audit never both answered - the stack as it stands:" >&2
+docker compose --env-file deploy/compose/.env -f deploy/compose/compose.yml ps -a >&2 || true
+docker compose --env-file deploy/compose/.env -f deploy/compose/compose.yml logs --tail 60 migrate audit-migrate api audit >&2 || true
 exit 1

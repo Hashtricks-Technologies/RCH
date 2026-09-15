@@ -17,6 +17,14 @@
       "project": [
         "src/**/*.ts"
       ]
+    },
+    "apps/audit": {
+      "entry": [
+        "src/cli/*.ts"
+      ],
+      "project": [
+        "src/**/*.ts"
+      ]
     }
   },
   "ignoreFiles": [

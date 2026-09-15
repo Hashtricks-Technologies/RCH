@@ -9,7 +9,11 @@ cd "$(dirname "$0")/.."
 # it runs its argument list as a command and exits 1 itself if that command succeeds (a match).
 refute() { if "$@"; then echo "FAIL: unexpected match - $*" >&2; exit 1; fi; }
 
-helm lint . -f values-staging.yaml --set image.registry=r,image.tag=t,secrets.values.DATABASE_URL=x,secrets.values.JWT_PRIVATE_KEY=x,secrets.values.JWT_PUBLIC_KEY=x,secrets.values.SEED_PASSWORD=x
+# The six required keys of a values-built Secret (templates/secret.yaml), as dummies for every
+# staging and dev render below. JWT_PREVIOUS_PUBLIC_KEY is the seventh and may be empty.
+secret_set="secrets.values.DATABASE_URL=x,secrets.values.MIGRATE_DATABASE_URL=x,secrets.values.AUDIT_DATABASE_URL=x,secrets.values.JWT_PRIVATE_KEY=x,secrets.values.JWT_PUBLIC_KEY=x,secrets.values.SEED_PASSWORD=x"
+
+helm lint . -f values-staging.yaml --set "image.registry=r,image.tag=t,$secret_set"
 helm lint . -f values-prod.yaml --set image.registry=r,image.tag=t
 
 out=$(helm template rch . -f values-prod.yaml --set image.registry=r,image.tag=t)
@@ -26,7 +30,8 @@ grep -q 'kind: PrometheusRule' <<<"$out_mon"
 # B2: kube-prometheus-stack's Prometheus picks up ServiceMonitors AND PrometheusRules by a
 # `release` label. The ServiceMonitor has always carried it; a PrometheusRule without it is
 # applied happily and then loaded by nothing, which looks exactly like an alert that never fires.
-[ "$(grep -c 'release: kube-prometheus-stack' <<<"$out_mon")" -ge 2 ]
+# Two ServiceMonitors (api, audit) and the one PrometheusRule.
+[ "$(grep -c 'release: kube-prometheus-stack' <<<"$out_mon")" -ge 3 ]
 # ...and every runbook link must be a URL somebody woken at three in the morning can open, not
 # the chart's own <org>/<repo> placeholder.
 refute grep -Eq 'runbook_url: .*<' <<<"$out_mon"
@@ -34,8 +39,9 @@ grep -q 'kind: ExternalSecret' <<<"$out"
 refute grep -q 'kind: Secret$' <<<"$out"
 grep -q 'readOnlyRootFilesystem: true' <<<"$out"
 # I12: api Deployment's migrate initContainer and api container, the purge
-# CronJob and the ui Deployment must all run with a read-only root filesystem.
-[ "$(grep -c 'readOnlyRootFilesystem: true' <<<"$out")" -ge 4 ]
+# CronJob, the ui Deployment and the audit Deployment's audit-migrate initContainer and audit
+# container must all run with a read-only root filesystem.
+[ "$(grep -c 'readOnlyRootFilesystem: true' <<<"$out")" -ge 6 ]
 # N2/N3: secret.yaml and externalsecret.yaml must be plain release resources -
 # no helm.sh/hook annotations. A hook Secret/ExternalSecret is deleted at the
 # end of the first upgrade of a release installed from the previous chart
@@ -101,14 +107,52 @@ grep -A3 'kind: ServiceMonitor' <<<"$out_mon" | grep -q 'component: api'
 refute bash -c 'grep -A2 "name: JWT_PRIVATE_KEY" <<<"$1" | grep -q "value:"' _ "$out"
 refute bash -c 'grep -A2 "name: DATABASE_URL" <<<"$1" | grep -q "value:"' _ "$out"
 grep -q 'secretKeyRef' <<<"$out"
-# I: the api Deployment's migrate initContainer and its api container both
-# build their env from rch.envList (see _helpers.tpl) so they can never drift.
-# Guard the invariant directly: the secretKeyRef lines in each container's env
-# block must be identical, in the same order.
+# I: the api Deployment's migrate initContainer and its api container build their env from the
+# same rch.env helper (see _helpers.tpl), so they can never drift - with exactly one deliberate
+# difference. The initContainer carries MIGRATE_DATABASE_URL, the superuser it migrates and
+# creates rch_app with; the api container, which serves every request, must not. Guard both
+# halves: the api's secretKeyRef lines are the initContainer's minus that one, in the same order.
 init_secrets=$(sed -n '/name: migrate$/,/name: api$/p' <<<"$out" | grep 'secretKeyRef')
 api_secrets=$(sed -n '/name: api$/,/readinessProbe:/p' <<<"$out" | grep 'secretKeyRef')
 [ -n "$init_secrets" ]
-[ "$init_secrets" = "$api_secrets" ]
+[ "$(grep -c 'key: MIGRATE_DATABASE_URL' <<<"$init_secrets")" = 1 ] || { echo "the api migrate initContainer has no MIGRATE_DATABASE_URL secretKeyRef"; exit 1; }
+refute grep -q 'key: MIGRATE_DATABASE_URL' <<<"$api_secrets"
+[ "$(grep -v 'key: MIGRATE_DATABASE_URL' <<<"$init_secrets")" = "$api_secrets" ]
+grep -q 'key: DATABASE_URL' <<<"$api_secrets"
+# The purge CronJob is an operator CLI, so it connects as the superuser like the migrate step.
+cronjob_env=$(sed -n '/# Source: rch\/templates\/purge-cronjob.yaml/,/^---$/p' <<<"$out")
+grep -q 'key: MIGRATE_DATABASE_URL' <<<"$cronjob_env"
+
+# The audit service (apps/audit): its own image, its own migrate initContainer, its own port.
+audit_dep=$(sed -n '/# Source: rch\/templates\/audit-deployment.yaml/,/^---$/p' <<<"$out")
+[ -n "$audit_dep" ] || { echo "no audit Deployment rendered"; exit 1; }
+grep -q 'name: rch-audit,' <<<"$audit_dep"
+grep -q 'image: r/rch-audit:t' <<<"$audit_dep"
+grep -q 'name: audit-migrate$' <<<"$audit_dep"
+sed -n '/name: audit-migrate$/,/name: audit$/p' <<<"$audit_dep" | grep -q 'args: \["dist/cli/migrate.mjs"\]'
+grep -q 'containerPort: 3100' <<<"$audit_dep"
+grep -q 'automountServiceAccountToken: false' <<<"$audit_dep"
+grep -A4 '# Source: rch/templates/audit-service.yaml' <<<"$out" | grep -q 'component: audit'
+# ...and least privilege for it: the audit containers verify tokens with the public keys and read
+# their own role's URL. Neither ever holds the signing key, the seed password or the API's
+# DATABASE_URL, and only the initContainer holds the superuser URL.
+audit_init_env=$(sed -n '/name: audit-migrate$/,/name: audit$/p' <<<"$audit_dep")
+audit_env=$(sed -n '/name: audit$/,/readinessProbe:/p' <<<"$audit_dep")
+for k in MIGRATE_DATABASE_URL AUDIT_DATABASE_URL JWT_PUBLIC_KEY; do
+  grep -q "key: $k" <<<"$audit_init_env" || { echo "audit-migrate has no $k secretKeyRef"; exit 1; }
+done
+for k in AUDIT_DATABASE_URL JWT_PUBLIC_KEY; do
+  grep -q "key: $k" <<<"$audit_env" || { echo "the audit container has no $k secretKeyRef"; exit 1; }
+done
+grep -q 'key: JWT_PREVIOUS_PUBLIC_KEY, optional: true' <<<"$audit_env"
+for block in "$audit_init_env" "$audit_env"; do
+  refute grep -q 'JWT_PRIVATE_KEY' <<<"$block"
+  refute grep -q 'SEED_PASSWORD' <<<"$block"
+  refute grep -q 'key: DATABASE_URL' <<<"$block"
+done
+refute grep -q 'MIGRATE_DATABASE_URL' <<<"$audit_env"
+grep -q 'name: PORT' <<<"$audit_env"
+grep -A1 'name: PORT' <<<"$audit_env" | grep -q 'value: "3100"'
 
 # D1: SEED_PASSWORD is a Secret key, not an api.env entry. apps/api/src/config.ts has no default
 # for it, so a rendered pod that does not carry it cannot start at all - and it must arrive the
@@ -125,7 +169,7 @@ refute grep -q 'key: SEED_PASSWORD, optional' <<<"$out"
 # Phase 6: the five service alerts, the SSE listener and (B6) the crash loop ship with the chart, so
 # the alert text lives beside the metric it reads instead of only in the runbook.
 grep -q 'kind: PrometheusRule' <<<"$out_mon"
-for a in RchApiHigh5xxRate RchApiHighLatencyP95 RchApiDown RchApiPoolSaturated RchSseListenerDown RchApiCrashLooping; do
+for a in RchApiHigh5xxRate RchApiHighLatencyP95 RchApiDown RchApiPoolSaturated RchSseListenerDown RchApiCrashLooping AuditDrainLagging AuditDeadLetters; do
   grep -q "alert: $a" <<<"$out_mon" || { echo "missing alert: $a"; exit 1; }
 done
 # Every rule must name a metric the API actually publishes. `sse_listener_up` and
@@ -136,8 +180,13 @@ grep -q 'sse_listener_up' <<<"$out_mon"
 # ...with one deliberate exception, named as such: a pod that is restarting cannot report on
 # itself, so the crash-loop alert reads kube-state-metrics instead of this API's own registry.
 grep -q 'kube_pod_container_status_restarts_total' <<<"$out_mon"
+# The audit alerts read the audit service's own registry (apps/audit/src/plugins/metrics.ts),
+# scraped by its own ServiceMonitor under job rch-audit.
+grep -q 'audit_drain_lag_seconds{job="rch-audit"}' <<<"$out_mon"
+grep -q 'audit_dead_letters_total{job="rch-audit"}' <<<"$out_mon"
+grep -A3 'name: rch-audit, labels: { release:' <<<"$out_mon" | grep -q 'component: audit'
 # Every alert carries a runbook link, so whoever is woken has somewhere to go.
-[ "$(grep -c 'runbook_url:' <<<"$out_mon")" -ge 5 ]
+[ "$(grep -c 'runbook_url:' <<<"$out_mon")" -ge 8 ]
 
 # TLS must be wired, and must never render as an EMPTY annotation - the ALB controller reads
 # `certificate-arn: ""` and fails, where an absent annotation falls back cleanly. B5 merged the
@@ -173,9 +222,9 @@ refute grep -q 'OTEL_EXPORTER_OTLP_ENDPOINT' <<<"$out"
 # V8 sizes its old space from the machine's memory, not the cgroup's, so without a ceiling the
 # kernel OOM-kills the pod before Node ever decides a collection is due. 70% of the limit.
 grep -q 'max-old-space-size=716' <<<"$out"
-# Nothing in any of these three pods reads the Kubernetes API, so none of them needs a token
-# mounted into it: api Deployment, ui Deployment, purge CronJob.
-[ "$(grep -c 'automountServiceAccountToken: false' <<<"$out")" = 3 ]
+# Nothing in any of these four pods reads the Kubernetes API, so none of them needs a token
+# mounted into it: api Deployment, audit Deployment, ui Deployment, purge CronJob.
+[ "$(grep -c 'automountServiceAccountToken: false' <<<"$out")" = 4 ]
 # The nightly purge: bounded history, a deadline on a run that was missed (past 100 missed
 # schedules the controller stops firing the CronJob for good), a bounded retry, a hard stop, and
 # the same pod securityContext the api pod runs under.
@@ -188,8 +237,9 @@ cronjob=$(sed -n '/# Source: rch\/templates\/purge-cronjob.yaml/,/^---$/p' <<<"$
 [ -n "$cronjob" ]
 grep -q 'seccompProfile' <<<"$cronjob"
 grep -q 'fsGroup: 65532' <<<"$cronjob"
-# B6: default-deny ingress over everything this release runs, plus the two doors the chart needs.
-[ "$(grep -c 'kind: NetworkPolicy' <<<"$out")" = 3 ]
+# B6: default-deny ingress over everything this release runs, plus the three doors the chart
+# needs (api, audit, ui).
+[ "$(grep -c 'kind: NetworkPolicy' <<<"$out")" = 4 ]
 np=$(sed -n '/# Source: rch\/templates\/networkpolicy.yaml/,/# Source: rch\/templates\/[^n]/p' <<<"$out")
 [ -n "$np" ]
 # The deny is a deny: policyTypes names Ingress and the rule list is empty, which is how "nothing
@@ -203,11 +253,16 @@ grep -q 'ingress: \[\]' <<<"$np"
 grep -qE 'cidr: [0-9]' <<<"$np"
 grep -q 'port: 3000' <<<"$np"
 grep -q 'port: 8080' <<<"$np"
+grep -q 'port: 3100' <<<"$np"
 grep -q 'kubernetes.io/metadata.name: monitoring' <<<"$np"
 # The ui->api hop is allowed by selector, not only by the CIDR that happens to cover it today -
 # so the day albSourceCidr stops covering the pod network, nginx can still reach the API. The
 # leading `- ` is what distinguishes this `from:` entry from the ui policy's own target selector.
 grep -qE '^ +- podSelector: \{ matchLabels: \{ app\.kubernetes\.io/instance: rch, app\.kubernetes\.io/component: ui \} \}' <<<"$np"
+# ...and the ui->audit hop the same way: nginx proxies /api/v1/admin/audit to the audit Service.
+audit_np=$(sed -n '/name: rch-audit, labels:/,/^---$/p' <<<"$np")
+grep -qE '^ +- podSelector: \{ matchLabels: \{ app\.kubernetes\.io/instance: rch, app\.kubernetes\.io/component: ui \} \}' <<<"$audit_np"
+grep -q 'port: 3100' <<<"$audit_np"
 # Egress is left open on purpose: RDS is outside the cluster at an address this chart never sees.
 grep -q 'egress: \[{}\]' <<<"$np"
 out_nonp=$(helm template rch . -f values-prod.yaml --set image.registry=r,image.tag=t,networkPolicy.enabled=false)
@@ -215,9 +270,9 @@ refute grep -q 'kind: NetworkPolicy' <<<"$out_nonp"
 # Three replicas that land on one node make the PodDisruptionBudget decorative.
 grep -q 'topologySpreadConstraints' <<<"$out"
 # ...and so is the spread itself unless production's pods can only land on ng-prod, the
-# on-demand node group (deploy/eksctl/cluster.yaml). Both Deployments must carry the selector;
+# on-demand node group (deploy/eksctl/cluster.yaml). All three Deployments must carry the selector;
 # the group is deliberately untainted, so the label is the whole mechanism.
-[ "$(grep -c 'rch.io/tier: prod' <<<"$out")" = 2 ]
+[ "$(grep -c 'rch.io/tier: prod' <<<"$out")" = 3 ]
 # ...and the label the render asks for has to exist on a node group somebody can actually create.
 # Nothing in this chart creates one: `eksctl create nodegroup -f deploy/eksctl/cluster.yaml
 # --include=ng-prod` does, and RUNBOOK §11 has it as a numbered step before the promotion. The
@@ -232,12 +287,13 @@ prod_selector=$(sed -n 's/^ *\(rch\.io\/tier: [a-z0-9.-]*\) *$/\1/p' <<<"$out" |
 grep -qE "^[[:space:]]*labels:.*${prod_selector}" ../../eksctl/cluster.yaml \
   || { echo "no node group's labels: line in deploy/eksctl/cluster.yaml carries $prod_selector - production's pods would stay Pending"; exit 1; }
 
-# B3: both Deployments get a PodDisruptionBudget, and both say maxUnavailable rather than
+# B3: all three Deployments get a PodDisruptionBudget, and all say maxUnavailable rather than
 # minAvailable - `minAvailable: N` at N replicas is a budget a drain can never satisfy, so
 # `kubectl drain` waits on it for good, where `maxUnavailable: 1` stays satisfiable at every
 # replica count above one.
-[ "$(grep -c 'kind: PodDisruptionBudget' <<<"$out")" = 2 ]
+[ "$(grep -c 'kind: PodDisruptionBudget' <<<"$out")" = 3 ]
 grep -A4 '# Source: rch/templates/api-pdb.yaml' <<<"$out" | grep -q 'maxUnavailable: 1'
+grep -A4 '# Source: rch/templates/audit-pdb.yaml' <<<"$out" | grep -q 'maxUnavailable: 1'
 grep -A4 '# Source: rch/templates/ui-pdb.yaml' <<<"$out" | grep -q 'maxUnavailable: 1'
 refute grep -q 'minAvailable' <<<"$out"
 # Production resources must be its own, not staging's inherited defaults. `-A6` never reaches
@@ -247,10 +303,10 @@ sed -n '/name: api$/,/readinessProbe:/p' <<<"$out" | grep -q 'memory: 1Gi'
 
 # The alerts are off wherever the ServiceMonitor is off: a PrometheusRule with no Prometheus
 # Operator installed is a CRD apply that fails the whole release.
-out_staging_norule=$(helm template rch . -f values-staging.yaml --set image.registry=r,image.tag=t,secrets.values.DATABASE_URL=x,secrets.values.JWT_PRIVATE_KEY=x,secrets.values.JWT_PUBLIC_KEY=x,secrets.values.SEED_PASSWORD=x)
+out_staging_norule=$(helm template rch . -f values-staging.yaml --set "image.registry=r,image.tag=t,$secret_set")
 refute grep -q 'kind: PrometheusRule' <<<"$out_staging_norule"
 
-out=$(helm template rch . -f values-staging.yaml --set image.registry=r,image.tag=t,secrets.values.DATABASE_URL=x,secrets.values.JWT_PRIVATE_KEY=x,secrets.values.JWT_PUBLIC_KEY=x,secrets.values.SEED_PASSWORD=x)
+out=$(helm template rch . -f values-staging.yaml --set "image.registry=r,image.tag=t,$secret_set")
 grep -q 'kind: Secret' <<<"$out"
 refute grep -q 'helm.sh/hook:' <<<"$out"
 refute grep -q 'kind: Job' <<<"$out"
@@ -269,27 +325,27 @@ refute grep -q 'key: SEED_PASSWORD, optional' <<<"$out"
 # it empty: no annotation at all rather than `certificate-arn: ""`, which the ALB controller
 # rejects. Staging had no such key until the Phase 6 fix wave, which is why it needs its own line.
 refute grep -q 'certificate-arn: *$' <<<"$out"
-out_staging_tls=$(helm template rch . -f values-staging.yaml --set image.registry=r,image.tag=t,secrets.values.DATABASE_URL=x,secrets.values.JWT_PRIVATE_KEY=x,secrets.values.JWT_PUBLIC_KEY=x,secrets.values.SEED_PASSWORD=x,ingress.certificateArn=arn:aws:acm:y)
+out_staging_tls=$(helm template rch . -f values-staging.yaml --set "image.registry=r,image.tag=t,$secret_set,ingress.certificateArn=arn:aws:acm:y")
 grep -qE 'alb.ingress.kubernetes.io/certificate-arn: "?arn:aws:acm:y"?' <<<"$out_staging_tls"
 # The pool size is an env knob now, not a literal in db/client.ts. Both files set it, and the
 # api container reads it - a rendered pod without it is one silently back on the code's default.
 grep -q 'name: DB_POOL_MAX' <<<"$out"
 
 # D-min: on the `secrets.create=true` path a missing key must fail the render, not produce a
-# Secret carrying "". values.yaml declares all five as "" so the shape is documented, and an
+# Secret carrying "". values.yaml declares all seven as "" so the shape is documented, and an
 # empty string is not a missing key - the pod starts, config.ts refuses it and the migrate
 # initContainer crash-loops. Production upgrades without `--atomic` (RUNBOOK §3), so that leaves
-# the release in `pending-install`. Four of the five are required; JWT_PREVIOUS_PUBLIC_KEY is
+# the release in `pending-install`. Six of the seven are required; JWT_PREVIOUS_PUBLIC_KEY is
 # empty until the first rotation and must still render.
-for key in DATABASE_URL JWT_PRIVATE_KEY JWT_PUBLIC_KEY SEED_PASSWORD; do
-  args="image.registry=r,image.tag=t,secrets.values.DATABASE_URL=x,secrets.values.JWT_PRIVATE_KEY=x,secrets.values.JWT_PUBLIC_KEY=x,secrets.values.SEED_PASSWORD=x"
+for key in DATABASE_URL MIGRATE_DATABASE_URL AUDIT_DATABASE_URL JWT_PRIVATE_KEY JWT_PUBLIC_KEY SEED_PASSWORD; do
+  args="image.registry=r,image.tag=t,$secret_set"
   missing=$(helm template rch . -f values-staging.yaml --set "${args//secrets.values.$key=x/secrets.values.$key=}" 2>&1) && {
     echo "FAIL: the chart rendered a Secret with an empty $key"; exit 1; }
   grep -q "secrets.values.$key is empty" <<<"$missing" \
     || { echo "FAIL: an empty $key must be refused by name; got: $missing"; exit 1; }
 done
 # ...and the one that may be empty still renders.
-helm template rch . -f values-staging.yaml --set image.registry=r,image.tag=t,secrets.values.DATABASE_URL=x,secrets.values.JWT_PRIVATE_KEY=x,secrets.values.JWT_PUBLIC_KEY=x,secrets.values.SEED_PASSWORD=x,secrets.values.JWT_PREVIOUS_PUBLIC_KEY= >/dev/null
+helm template rch . -f values-staging.yaml --set "image.registry=r,image.tag=t,$secret_set,secrets.values.JWT_PREVIOUS_PUBLIC_KEY=" >/dev/null
 
 # ng-prod is production's alone: staging sets no nodeSelector, so its pods keep landing on the
 # spot node they share with dev, and `with` must render nothing rather than an empty map.
@@ -300,17 +356,37 @@ refute grep -q 'nodeSelector' <<<"$out"
 grep -q 'API_UPSTREAM' <<<"$out" || { echo "ui deployment lost API_UPSTREAM"; exit 1; }
 grep -q 'value: http://rch-api.default.svc.cluster.local:3000' <<<"$out" || { echo "API_UPSTREAM must be the API Service's FQDN (<release>-api.<namespace>.svc.cluster.local)"; exit 1; }
 refute grep -qE 'API_UPSTREAM, value: http://rch-api:3000' <<<"$out"
+# ...and the audit Service the same way, for nginx's /api/v1/admin/audit block.
+grep -q 'name: AUDIT_UPSTREAM, value: http://rch-audit.default.svc.cluster.local:3100' <<<"$out" \
+  || { echo "AUDIT_UPSTREAM must be the audit Service's FQDN (<release>-audit.<namespace>.svc.cluster.local)"; exit 1; }
+grep -q 'location /api/v1/admin/audit' ../../nginx/default.conf.template
+grep -q 'set \$audit_upstream \${AUDIT_UPSTREAM};' ../../nginx/default.conf.template
+audit_block=$(sed -n '/location \/api\/v1\/admin\/audit/,/^  }/p' ../../nginx/default.conf.template)
+grep -q 'proxy_set_header X-Request-Id \$req_id' <<<"$audit_block"
+grep -q 'proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for' <<<"$audit_block"
+# The image's own default. envsubst leaves an unset variable in the rendered config as a literal,
+# nginx starts anyway, and every audit read then fails - so the image has to carry one.
+grep -q '^ENV AUDIT_UPSTREAM=http://rch-audit:3100$' ../../../UI/Dockerfile
+# The ingress sends the audit reads to the audit Service, and lists them BEFORE /api: the load
+# balancer controller turns the paths into rules in order, and /api would otherwise win.
+ingress=$(helm template rch . -f values-staging.yaml --set "image.registry=r,image.tag=t,$secret_set" --show-only templates/ingress.yaml)
+audit_path=$(grep -n 'path: /api/v1/admin/audit, pathType: Prefix, backend: { service: { name: rch-audit, port: { number: 3100 }' <<<"$ingress" | cut -d: -f1)
+api_path=$(grep -n 'path: /api, pathType: Prefix' <<<"$ingress" | cut -d: -f1)
+if [ -z "$audit_path" ] || [ -z "$api_path" ] || [ "$audit_path" -ge "$api_path" ]; then
+  echo "the ingress must route /api/v1/admin/audit to rch-audit:3100 ahead of /api"; exit 1
+fi
 
 # B6: values-dev.yaml is the one environment that actually runs, and until now nothing linted or
 # rendered it. Everything below is the dev leg.
 dev_args=(--set image.registry=r --set image.tag=t
-  --set-string secrets.values.DATABASE_URL=x --set-string secrets.values.JWT_PRIVATE_KEY=x
+  --set-string secrets.values.DATABASE_URL=x --set-string secrets.values.MIGRATE_DATABASE_URL=x
+  --set-string secrets.values.AUDIT_DATABASE_URL=x --set-string secrets.values.JWT_PRIVATE_KEY=x
   --set-string secrets.values.JWT_PUBLIC_KEY=x --set-string secrets.values.SEED_PASSWORD=x)
 helm lint . -f values-dev.yaml "${dev_args[@]}"
 out_dev=$(helm template rch . -f values-dev.yaml "${dev_args[@]}")
-# B3: one api pod and one ui pod. A PodDisruptionBudget of any shape over a single pod means that
-# pod may never be evicted, so the node under it may never be drained - which on a one-node spot
-# cluster is every node.
+# B3: one api pod, one audit pod and one ui pod. A PodDisruptionBudget of any shape over a single
+# pod means that pod may never be evicted, so the node under it may never be drained - which on a
+# one-node spot cluster is every node.
 refute grep -q 'kind: PodDisruptionBudget' <<<"$out_dev"
 # B6: the heap ceiling is per values file, against that file's own memory limit - dev inherits
 # values.yaml's 512Mi, so 358.

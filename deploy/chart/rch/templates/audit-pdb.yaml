@@ -1,0 +1,7 @@
+{{- if gt (int .Values.audit.replicas) 1 }}
+{{- /* Same shape and same reasoning as api-pdb.yaml - see the comment there. */ -}}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: { name: {{ .Release.Name }}-audit }
+spec: { maxUnavailable: {{ .Values.audit.pdb.maxUnavailable }}, selector: { matchLabels: { app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: audit } } }
+{{- end }}

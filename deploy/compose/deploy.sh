@@ -6,11 +6,12 @@
 #
 #   deploy/compose/deploy.sh
 #
-# What it does, in order: builds the api and ui images from this checkout's own Dockerfiles
-# (the same two Dockerfiles the EKS path builds - there is one image definition per service,
-# not two), brings the stack up (`postgres` → `migrate` → `api`/`ui`/`caddy`, in that order,
-# via compose's own `depends_on` conditions - a fresh Postgres or a pending migration is never
-# raced), seeds the database only the first time it is empty, and reports the result. It is
+# What it does, in order: builds the api, audit and ui images from this checkout's own
+# Dockerfiles (the same three Dockerfiles the EKS path builds - there is one image definition per
+# service, not two), brings the stack up (`postgres` → `migrate` → `audit-migrate`, then
+# `api`/`audit`/`ui`/`caddy`, via compose's own `depends_on` conditions - a fresh Postgres or a
+# pending migration is never raced), seeds the database only the first time it is empty, and
+# reports the result. It is
 # safe to run again on an already-running stack: rebuilding and re-upping a service compose
 # finds unchanged is a no-op, and the seed step only ever fires once.
 set -euo pipefail
@@ -26,7 +27,7 @@ compose() { docker compose --env-file .env -f compose.yml "$@"; }
 echo "== building images =="
 compose build
 
-echo "== starting postgres, running the migration, then api / ui / caddy =="
+echo "== starting postgres, running both migrations, then api / audit / ui / caddy =="
 compose up -d
 
 echo "== seeding, if this is a first run =="
@@ -37,8 +38,10 @@ users=$(compose exec -T postgres psql -U rch -d rch -tAc "select count(*) from u
 if [ "$users" = "0" ]; then
   # `--bare`: the locations, the document numbering and the RC-0001 admin account - never the
   # demo hospital. This box is a real deployment; the demo data is for local dev and CI only.
+  # Through `migrate`, not `api`: operator CLIs connect as the superuser (MIGRATE_DATABASE_URL),
+  # and the `api` service holds only rch_app.
   echo "   database is empty - seeding the locations and the admin account (no demo data)"
-  compose run --rm --no-deps api dist/cli/seed.mjs --bare --yes-seed rch
+  compose run --rm --no-deps migrate dist/cli/seed.mjs --bare --yes-seed rch
 else
   echo "   database already has ${users:-some} user(s) - not reseeding"
 fi

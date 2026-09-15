@@ -38,8 +38,9 @@ spec:
             - name: purge
               image: {{ include "rch.image" (dict "registry" .Values.image.registry "name" .Values.image.api "tag" .Values.image.tag) }}
               args: ["dist/cli/purge.mjs"]
+              # An operator CLI, so it connects with MIGRATE_DATABASE_URL like the migrate step.
               env:
-                {{- include "rch.envList" . | nindent 16 }}
+                {{- include "rch.apiCliEnv" . | nindent 16 }}
               securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
               resources: { requests: { cpu: 100m, memory: 128Mi }, limits: { cpu: 500m, memory: 256Mi } }
 {{- end }}
