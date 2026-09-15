@@ -21,7 +21,9 @@ declare module "fastify" {
   }
 }
 
-type Stream = { write(frame: string): void; end(): void };
+/** `admin` is whether the token that opened the stream carries the admin claim - `publish` sends
+ *  the audit log's notices to those streams only. */
+type Stream = { write(frame: string): void; end(): void; admin: boolean };
 
 /** A LISTEN channel is an identifier; the schema name it carries is one already, but quote it
  *  anyway so a schema with an odd name cannot become syntax. */
@@ -57,8 +59,16 @@ export default fp<{ config: Config; searchPath?: string }>(async (app, { config,
   const nextId = () => ++seq;
 
   const broadcast = (text: string) => { for (const s of streams) s.write(text); };
+  /**
+   * Every collection to every stream, but one: `audit` is the super admin's log, which no other
+   * screen reads. Sent anywhere else it would wake every till to refetch nothing, and tell each of
+   * them how often somebody's actions are being written down.
+   */
   const publish = (n: ChangeNotice) => {
-    for (const collection of n.collections) broadcast(frame(nextId(), "changed", JSON.stringify({ collection, at: n.at })));
+    for (const collection of n.collections) {
+      const text = frame(nextId(), "changed", JSON.stringify({ collection, at: n.at }));
+      for (const s of streams) if (collection !== "audit" || s.admin) s.write(text);
+    }
   };
   /** Every open stream may have missed something: tell them to take the whole thing again. */
   const resync = () => broadcast(frame(nextId(), "resync", JSON.stringify({ at: new Date().toISOString() })));
@@ -204,6 +214,7 @@ export default fp<{ config: Config; searchPath?: string }>(async (app, { config,
     const stream: Stream = {
       write: (text) => { try { res.write(text); } catch { /* the socket went; the close handler below cleans up */ } },
       end: () => { try { res.end(); } catch { /* already gone */ } },
+      admin: req.user.admin,
     };
     streams.add(stream);
     perUser.set(who, (perUser.get(who) ?? 0) + 1);

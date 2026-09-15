@@ -198,6 +198,32 @@ describe("GET /events", () => {
     s.close();
   });
 
+  it("sends an audit notice to a super admin's stream and to nobody else's, while every other collection reaches both", async () => {
+    // u7 is the seeded super admin (RC-0001); its token carries `admin: true`, which the stream records.
+    const admin = await open("u7");
+    const counter = await open("u1");
+    await admin.until((x) => x.includes("retry:"));
+    await counter.until((x) => x.includes("retry:"));
+
+    // What the audit service's drainer sends once it has stored a batch (spec §3.3), on the
+    // channel this pod listens to.
+    const notice = JSON.stringify({ collections: ["audit"], at: new Date().toISOString() });
+    await app.db.execute(sql`select pg_notify('rch_events_' || current_schema(), ${notice})`);
+    const got = await admin.until((x) => x.includes('"collection":"audit"'));
+    const frame = got.split("\n\n").find((f) => f.includes('"collection":"audit"'))!;
+    expect(frame).toMatch(/^event: changed$/m);
+    expect(await counter.drain(500)).not.toContain('"collection":"audit"');
+
+    // The filter is on `audit` alone: an ordinary write still reaches both.
+    const adminMark = admin.seen().length;
+    const counterMark = counter.seen().length;
+    expect((await toggleJuice()).status).toBe(200);
+    await admin.until((x) => x.slice(adminMark).includes('"collection":"ovr"'));
+    await counter.until((x) => x.slice(counterMark).includes('"collection":"ovr"'));
+    admin.close(); counter.close();
+    await settle();
+  });
+
   it("caps one person's open streams, and refuses the ninth with a sentence and not a stream", async () => {
     // The route turns the global rate limiter off (a request that lasts an hour is the wrong
     // shape for a per-minute budget), so this cap is the only thing standing between a browser
