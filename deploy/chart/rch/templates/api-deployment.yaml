@@ -10,9 +10,9 @@ spec:
       labels: { {{- include "rch.labels" . | nindent 8 }}, app.kubernetes.io/component: api }
       # The configuration the containers actually read, hashed, so changing a value in api.env
       # rolls the pods. It used to hash templates/configmap.yaml - a ConfigMap nothing mounted
-      # or referenced, because rch.envList inlines every one of those values into each
-      # container's own env list - so the annotation moved when that template's rendering moved
-      # and stood still when the configuration changed shape around it.
+      # or referenced, because the env helpers in _helpers.tpl inline every one of those values
+      # into each container's own env list - so the annotation moved when that template's
+      # rendering moved and stood still when the configuration changed shape around it.
       annotations: { checksum/config: {{ toYaml .Values.api.env | sha256sum }} }
     spec:
       serviceAccountName: {{ include "rch.sa" . }}
@@ -57,8 +57,10 @@ spec:
           image: {{ include "rch.image" (dict "registry" .Values.image.registry "name" .Values.image.api "tag" .Values.image.tag) }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           args: ["dist/cli/migrate.mjs"]
+          # The superuser URL, for the migrations and the rch_app role setup; the runtime role's
+          # name and password come from DATABASE_URL beside it (templates/_helpers.tpl).
           env:
-            {{- include "rch.envList" . | nindent 12 }}
+            {{- include "rch.apiCliEnv" . | nindent 12 }}
           securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
           resources: { requests: { cpu: 100m, memory: 128Mi }, limits: { cpu: 500m, memory: 256Mi } }
       containers:
@@ -66,8 +68,10 @@ spec:
           image: {{ include "rch.image" (dict "registry" .Values.image.registry "name" .Values.image.api "tag" .Values.image.tag) }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports: [{ name: http, containerPort: 3000 }]
+          # rch_app only: no MIGRATE_DATABASE_URL, so nothing the serving process holds can alter
+          # a grant, a trigger or the audit log.
           env:
-            {{- include "rch.envList" . | nindent 12 }}
+            {{- include "rch.apiEnv" . | nindent 12 }}
           resources: {{- toYaml .Values.api.resources | nindent 12 }}
           readinessProbe: { httpGet: { path: /readyz, port: http }, periodSeconds: 5, failureThreshold: 3 }
           livenessProbe: { httpGet: { path: /healthz, port: http }, periodSeconds: 10, failureThreshold: 3 }

@@ -9,8 +9,8 @@ and inert. In CI, kind's kindnetd does not implement NetworkPolicy at all - whic
 the permissive albSourceCidr rules, is why ci/install-test.sh still passes. Read the rest as a
 policy that is correct and waiting.
 
-Three policies, because NetworkPolicies are additive: the first closes everything this release
-runs, the other two open exactly the doors the chart needs. A pod selected by no policy at all is
+Four policies, because NetworkPolicies are additive: the first closes everything this release
+runs, the other three (api, audit, ui) open exactly the doors the chart needs. A pod selected by no policy at all is
 wide open, so the deny has to select the release itself rather than name each component.
 
 Egress is deliberately left wide open. RDS sits outside the cluster at an address this chart does
@@ -24,9 +24,9 @@ are not a Kubernetes object any selector can name, and the kubelet's own probes 
 node. So the serving port of each component is open to networkPolicy.albSourceCidr, which
 defaults to 0.0.0.0/0 and should be narrowed to the VPC CIDR wherever that is known. What is
 bought by all this is real but modest: every OTHER port on these pods is shut, a pod of this
-release that is not the api or the ui is reachable by nothing, and the two rules that name a
-source - the ui talking to the api, and the monitoring namespace scraping it - are the record of
-who is supposed to be talking, so the day the ALB is given a security-group source (or /metrics
+release that is not the api, the audit service or the ui is reachable by nothing, and the rules
+that name a source - the ui talking to the api and to the audit service, and the monitoring
+namespace scraping both - are the record of who is supposed to be talking, so the day the ALB is given a security-group source (or /metrics
 is moved off port 3000 onto its own) the narrowing is one line.
 
 /metrics is served by the same Fastify instance on the same port as every other route
@@ -64,6 +64,26 @@ spec:
     - from:
         - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: {{ .Values.networkPolicy.monitoringNamespace | default "monitoring" }} } }
       ports: [{ port: 3000, protocol: TCP }]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: {{ .Release.Name }}-audit, labels: { {{- include "rch.labels" . | nindent 4 }}, app.kubernetes.io/component: audit } }
+spec:
+  podSelector: { matchLabels: { app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: audit } }
+  policyTypes: [Ingress]
+  ingress:
+    # The UI's nginx proxying /api/v1/admin/audit to the audit Service, in this namespace.
+    - from:
+        - podSelector: { matchLabels: { app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: ui } }
+      ports: [{ port: 3100, protocol: TCP }]
+    # The load balancer (the ingress routes /api/v1/admin/audit here directly) and the kubelet's probes.
+    - from:
+        - ipBlock: { cidr: {{ .Values.networkPolicy.albSourceCidr | default "0.0.0.0/0" }} }
+      ports: [{ port: 3100, protocol: TCP }]
+    # Prometheus scraping the audit service's /metrics (drain lag, outbox depth, dead letters).
+    - from:
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: {{ .Values.networkPolicy.monitoringNamespace | default "monitoring" }} } }
+      ports: [{ port: 3100, protocol: TCP }]
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy

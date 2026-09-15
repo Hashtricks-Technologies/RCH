@@ -11,6 +11,10 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
 
 FROM nginxinc/nginx-unprivileged:1.30-alpine-slim AS runtime
 ENV API_UPSTREAM=http://rch-api:3000
+# The audit service, for /api/v1/admin/audit (deploy/nginx/default.conf.template). Every variable
+# the template names needs a value: envsubst leaves an unset one in the rendered config as the
+# literal `${AUDIT_UPSTREAM}`, nginx still starts, and every audit read then fails.
+ENV AUDIT_UPSTREAM=http://rch-audit:3100
 # Populates $NGINX_LOCAL_RESOLVERS from /etc/resolv.conf before envsubst runs,
 # so the nginx template's `resolver` directive works under Docker and Kubernetes
 # without hardcoding a DNS server address.
