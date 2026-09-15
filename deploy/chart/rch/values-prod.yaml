@@ -43,6 +43,20 @@ ui:
   nodeSelector: { rch.io/tier: prod }
   resources: { requests: { cpu: 100m, memory: 128Mi }, limits: { cpu: 500m, memory: 256Mi } }
   pdb: { maxUnavailable: 1 }
+audit:
+  replicas: 2
+  nodeSelector: { rch.io/tier: prod }
+  resources: { requests: { cpu: 100m, memory: 256Mi }, limits: { cpu: "1", memory: 512Mi } }
+  pdb: { maxUnavailable: 1 }
+  env:
+    LOG_LEVEL: info
+    DATABASE_SSL: "true"
+    DB_POOL_MAX: "5"                              # two replicas × 5 beside the API's 30
+    TRUST_PROXY: "1"
+    AUDIT_SCHEMA: audit
+    EVENTS_SCHEMA: public
+    OUTBOX_SCHEMA: public
+    NODE_OPTIONS: "--max-old-space-size=358"      # 70% of the 512Mi limit above
 ingress:
   enabled: true
   className: alb
@@ -85,7 +99,7 @@ secrets:
     enabled: true
     storeName: aws-secrets-manager
     storeKind: ClusterSecretStore
-    remoteKey: rch/prod                           # a JSON secret with the five keys (SEED_PASSWORD included)
+    remoteKey: rch/prod                           # a JSON secret with the seven keys (both role URLs, MIGRATE_DATABASE_URL and SEED_PASSWORD included)
 serviceAccount:
   create: true
   annotations: {}                                 # FILL if the pod itself reads Secrets Manager (IRSA)

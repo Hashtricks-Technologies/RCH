@@ -3,9 +3,24 @@ import { useApp } from "../store";
 import { setAccessToken } from "../api/session";
 import { hydrateMaster, hydrateRoster } from "../data/master";
 import { basePrices } from "../lib/selectors";
-import type { Role } from "../types";
+import { initialAudit } from "../store/audit";
+import type { AdjustmentRequest, Role } from "../types";
 
 export const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v));
+
+/**
+ * Every action the store was built with, captured once before any test can overwrite one.
+ *
+ * A test that stubs an action does it with `setState`, and `setState` merges - so the stub
+ * outlives the test and every later one in the file calls the mock instead of the real thing.
+ * That is invisible until a *different* test happens to depend on the action that was stubbed,
+ * which is how a `vi.fn()` for `openDrawer` in the price-list tests left the POS bill tests
+ * asserting against a drawer that never opened, three hundred lines away and passing in
+ * isolation. `resetStore` puts these back, so a stub lasts exactly one test.
+ */
+const ACTIONS = Object.fromEntries(
+  Object.entries(useApp.getState()).filter(([, v]) => typeof v === "function"),
+) as Partial<ReturnType<typeof useApp.getState>>;
 export const S = () => useApp.getState();
 
 /**
@@ -46,7 +61,7 @@ type Trail = { hist: { s: string; who: string; t: string }[] };
 /** The one seed row for a feature the demo fixtures never carried: a counter's ask to correct
  *  its own shelf, undecided. Not in `@rch/contract/fixtures` because nothing outside the UI's
  *  own screen tests needs it yet - the API's own tests build one with `given.adjustmentRequest`. */
-const ADJREQ = {
+const ADJREQ: AdjustmentRequest = {
   id: "ADJREQ-2026-01", loc: "coffee", reason: "wastage", note: "Fridge failed overnight",
   by: "Kavitha Raman", at: "09:10", lines: [{ it: "cup", qty: -20 }],
   st: "Request sent", hist: [{ s: "Request sent", who: "Kavitha Raman", t: "09:10" }],
@@ -66,6 +81,7 @@ const ADJREQ = {
 export function resetStore() {
   hydrateMaster({ items: FX.IT, locations: FX.LOC, prices: FX.PL, priceLists: FX.PRICE_LISTS, menu: FX.MENU, users: FX.USERS });
   hydrateRoster({ patients: FX.PATIENTS, staff: FX.STAFF, depts: FX.DEPTS });
+  useApp.setState(ACTIONS);
   const now = Date.now();
   const dated = <T extends { at: string }>(r: T) => ({ ...r, iso: isoOf(now, r.at) });
   const trailed = <T extends Trail>(r: T) => ({ ...r, hist: r.hist.map((h) => ({ ...h, iso: isoOf(now, h.t) })) });
@@ -92,5 +108,7 @@ export function resetStore() {
     // action log, and leaving either out of this reset would let one test's rows leak into the
     // next one's (`setState` merges, it does not replace).
     accounts: [], adminActions: [], deskTickets: [],
+    // ---- audit log: the tab's list, filter and pill count, back to a first visit's.
+    audit: initialAudit(),
   });
 }

@@ -1,13 +1,14 @@
 import { z } from "zod";
-import { LocKeySchema, PriceListIdSchema, Qty, StockLocSchema } from "./common.js";
+import { LocKeySchema, Money, PriceListIdSchema, Qty, StockLocSchema } from "./common.js";
 import * as D from "./documents.js";
 
 // Not every caller sees every location - a counter operator's snapshot is scoped down to their
-// own (`scope()`), so this can't require all keys the way an exhaustive z.record(enum, ...) would.
-const byLoc = <T extends z.ZodTypeAny>(v: T) => z.partialRecord(LocKeySchema, v);
+// own (`scope()`) - and the set of locations is data, so these are records keyed by a checked key
+// rather than exhaustive records over a list.
+const byLoc = <T extends z.ZodTypeAny>(v: T) => z.record(LocKeySchema, v);
 /** Stock is reported for quarantine too - the store keeper has to see what was rejected - while
- *  `menu` and every write body stay on the five an operator may act on. */
-const byStockLoc = <T extends z.ZodTypeAny>(v: T) => z.partialRecord(StockLocSchema, v);
+ *  `menu` and every write body stay on locations an operator may act on. */
+const byStockLoc = <T extends z.ZodTypeAny>(v: T) => z.record(StockLocSchema, v);
 export const SnapshotSchema = z.object({
   user: D.UserSchema,
   items: z.record(z.string(), D.ItemSchema),
@@ -35,7 +36,9 @@ export const SnapshotSchema = z.object({
   tickets: z.array(D.SupportTicketSchema),
   productReqs: z.array(D.ProductRequestSchema),
   shopAsks: z.array(D.ShopAskSchema),
-  sales: z.array(z.array(z.number())),
+  // One record per day, oldest first and matching `dayLabels`, keyed by outlet - closed outlets
+  // included, since what a closed outlet took last week is still takings.
+  sales: z.array(z.record(LocKeySchema, Money)),
   dayLabels: z.array(z.string()),
   // ---- adjustments: the write-offs and count-ups behind the `adjustment` moves on the ledger.
   adjustments: z.array(D.AdjustmentSchema),

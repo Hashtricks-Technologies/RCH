@@ -24,12 +24,21 @@ api:
     NODE_OPTIONS: "--max-old-space-size=179"   # 70% of the 256Mi limit above; see values.yaml
 ui:
   replicas: 1
+audit:
+  replicas: 1
+  resources: { requests: { cpu: 50m, memory: 96Mi }, limits: { cpu: 500m, memory: 256Mi } }
+  env:
+    DATABASE_SSL: "false"
 ingress:
   enabled: false
 secrets:
   create: true
   values:
-    DATABASE_URL: postgres://rch:rch@postgres:5432/rch
+    # Three roles, as in every real environment: the migrate steps connect as the superuser and
+    # create rch_app and rch_audit from the users and passwords in the two runtime URLs.
+    MIGRATE_DATABASE_URL: postgres://rch:rch@postgres:5432/rch
+    DATABASE_URL: postgres://rch_app:ci-app-password@postgres:5432/rch
+    AUDIT_DATABASE_URL: postgres://rch_audit:ci-audit-password@postgres:5432/rch
     JWT_PREVIOUS_PUBLIC_KEY: ""
 serviceMonitor:
   enabled: false

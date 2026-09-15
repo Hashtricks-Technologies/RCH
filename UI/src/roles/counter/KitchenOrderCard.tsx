@@ -6,9 +6,17 @@ import { dmy } from "@rch/domain";
 import type { LocKey, ProdOrder } from "../../types";
 
 /**
- * The board for orders the kitchen is making for this counter - a finished good routes there
- * automatically (`sourceOf`, `@rch/domain`) the moment it is on the unified stock request above,
- * so there is nothing to raise from here any more, only to watch.
+ * The counter's window on what the Central Kitchen is making for it (`POST /prod-orders`); the
+ * board the kitchen works is the other end of it.
+ *
+ * It used to raise them too, from a tile of its own - the third way of asking for stock, beside
+ * the central store and a peer shop. It is no longer a way of asking: a finished good routes
+ * there automatically (`sourceOf`, `@rch/domain`) the moment it is on the one unified stock
+ * request in `Requests.tsx`, so there is nothing to raise from here any more, only to watch.
+ *
+ * The **board** stays, because nothing else shows it. A production order never appears in "All
+ * requests" - that table is stock requests only - so without this card the only trace of an
+ * order raised on the request above would be the pick ticket that eventually arrived.
  */
 
 const itemText = (o: ProdOrder) =>
@@ -35,11 +43,11 @@ export default function KitchenOrderCard({ loc }: { loc: LocKey }) {
 
   return (
     <Card
-      title="Kitchen orders"
-      tip="Finished goods this counter has asked the kitchen for, routed there automatically"
+      title="With the kitchen"
+      tip="A finished good on your stock request routes here automatically as a production order. Nothing is held for you until the kitchen dispatches it."
       right={waiting > 0 ? <Pill tone="wn">{waiting} on the board</Pill> : undefined}
-      className="mtop"
       flush
+      className="mtop"
     >
       <DataTable
         cols={[{ h: "Order", cls: "nm" }, { h: "Items" }, { h: "Needed by" }, { h: "Raised" }, { h: "Status" }]}
@@ -55,7 +63,7 @@ export default function KitchenOrderCard({ loc }: { loc: LocKey }) {
           ],
         }))}
         empty={{
-          title: "Nothing ordered from the kitchen yet",
+          title: "Nothing with the kitchen yet",
           sub: "A line for something the kitchen makes lands here once it is sent on the request above.",
         }}
       />

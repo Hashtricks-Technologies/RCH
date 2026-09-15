@@ -1,12 +1,13 @@
 import { useState } from "react";
-import { IT, LOC, OUTLETS } from "../../data/master";
+import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
-import { activeItems, menuOf } from "../../lib/selectors";
+import { activeItems, menuOf, openOutlets } from "../../lib/selectors";
 import { money } from "../../lib/fmt";
 import {
   Alert, Btn, BtnRow, Card, DataTable, Field, FormRow, Grid, PageHead, TableFoot, Tag,
 } from "../../ui/kit";
 import type { LocKey } from "../../types";
+import { listFor, nameOfList } from "./Prices";
 
 /**
  * What each outlet sells and what it is still waiting on from the central store, in one place.
@@ -22,10 +23,12 @@ export default function MenuManagement() {
   const catalogVersion = useApp((x) => x.catalogVersion);
   void catalogVersion;
 
-  // A deployment with no outlets at all is not a hypothetical: `OUTLETS` is empty until the
-  // snapshot lands, and `OUTLETS[0]` is `undefined` there - which `LOC[shop]` then dereferences
-  // and takes the whole screen down with. `null` says "no shop to work on" and renders as such.
-  const home = s.user && OUTLETS.includes(s.user.loc) ? s.user.loc : OUTLETS[0] ?? null;
+  // A deployment with no open outlets at all is not a hypothetical: `openOutlets()` is empty
+  // until the snapshot lands, or once every outlet has been closed, and `outlets[0]` is
+  // `undefined` there - which `LOC[shop]` then dereferences and takes the whole screen down
+  // with. `null` says "no shop to work on" and renders as such.
+  const outlets = openOutlets();
+  const home = s.user && outlets.includes(s.user.loc) ? s.user.loc : outlets[0] ?? null;
   const [shop, setShop] = useState<LocKey | null>(home);
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [adding, setAdding] = useState(false);
@@ -41,7 +44,7 @@ export default function MenuManagement() {
   // and neither is a raw material or a packing line - a till sells finished goods, not what a
   // kitchen buys to make them with.
   const listable = activeItems().filter((k) => !listed.includes(k) && IT[k].t !== "RAW" && IT[k].t !== "PACK");
-  const list = shop ? LOC[shop]?.list : undefined;
+  const list = shop ? listFor(shop) : "";
 
   const toggle = (k: string) => setPicked((set) => {
     const next = new Set(set);
@@ -98,7 +101,7 @@ export default function MenuManagement() {
         <>
           <Field label="Outlet">
             <select value={shop} onChange={(e) => { setShop(e.target.value as LocKey); setPicked(new Set()); }}>
-              {OUTLETS.map((l) => <option key={l} value={l}>{LOC[l].n} - list {LOC[l].list}</option>)}
+              {outlets.map((l) => <option key={l} value={l}>{LOC[l].n} - list {nameOfList(listFor(l))}</option>)}
             </select>
           </Field>
 
@@ -135,7 +138,7 @@ export default function MenuManagement() {
                         { h: "", w: "8%" },
                         { h: "Product", cls: "nm" },
                         { h: "Type", w: "14%" },
-                        { h: "Price on list " + (list ?? ""), r: true, w: "20%" },
+                        { h: "Price on list " + nameOfList(list), r: true, w: "20%" },
                       ]}
                       rows={listable.map((k) => {
                         const price = list ? s.prices[list]?.[k] : undefined;

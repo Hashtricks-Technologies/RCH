@@ -4,7 +4,7 @@ import { createRoot } from "react-dom/client";
 import { MemoryRouter } from "react-router-dom";
 import * as FX from "@rch/contract/fixtures";
 import type { Changed } from "@rch/contract";
-import { creditBreachMessage } from "@rch/domain";
+import { creditBreachMessage, istDate } from "@rch/domain";
 import { refetch } from "../api/refetch";
 import { applySnapshot } from "../api/wire";
 import { setAccessToken } from "../api/session";
@@ -22,6 +22,8 @@ import "../roles/buyer/PoDrawer";                // registers "bpo"
 import "../roles/buyer/AddToListDrawer";         // registers "baddpool"
 import { useApp } from "../store";
 import type { AppState } from "../store";
+import type { AuditFilter } from "../store/audit";
+import type { AuditCounts, AuditEntry, AuditRow } from "../types";
 import { resetStore, S, as } from "./fixture";
 
 /**
@@ -720,7 +722,7 @@ describe("the request chain - the twelve writes", () => {
       "POST /api/v1/tickets/TKT-0440/handover": () => json({ result: { ...TKT, id: "TKT-0440", st: "Collected" }, changed: ["tkt", "req", "rsv", "stock"], message: "TKT-0440 handed over - stock is in transit to Coffee Shop" }),
       "GET /api/v1/requests": () => json([REQ]), "GET /api/v1/tickets": () => json([TKT]), "GET /api/v1/stock": () => json(STOCK),
     });
-    await S().handover("TKT-0440", " 418327 ");
+    expect(await S().handover("TKT-0440", " 418327 ")).toBe(true);
     expect(hit("POST /api/v1/tickets/TKT-0440/handover")[0].body).toEqual({ otp: "418327" });
     expect(S().toast).toBe("TKT-0440 handed over - stock is in transit to Coffee Shop");
   });
@@ -738,7 +740,9 @@ describe("the request chain - the twelve writes", () => {
   it("repeats a wrong-OTP refusal and moves nothing", async () => {
     as("store");
     serve({ "POST /api/v1/tickets/TKT-0440/handover": () => refusal("That OTP does not match TKT-0440. Ask the collector to read it again.") });
-    await S().handover("TKT-0440", "000000");
+    // `false` is what the kitchen's and the store's ticket windows read to keep the server's
+    // sentence on screen beside the OTP box; the toast alone is gone before they look back.
+    expect(await S().handover("TKT-0440", "000000")).toBe(false);
     expect(S().toast).toBe("That OTP does not match TKT-0440. Ask the collector to read it again.");
     expect(S().tkt.find((t) => t.id === "TKT-0440")!.st).toBe("Issued");
     expect(calls()).toHaveLength(1);
@@ -2291,6 +2295,54 @@ describe("raiseProdOrder - POST /prod-orders", () => {
     // The outlet comes off the token, never off anything the operator picked.
     expect(body.from).toBe("coffee");
     expect(body.lines).toEqual([{ it: "puff", qty: 1 }]);
+    // And nothing was asked of the central store: the line is not its to fill.
+    expect(hit("POST /api/v1/requests")).toHaveLength(0);
+    await act(async () => { root.unmount(); });
+    host.remove();
+  });
+
+  it("offers a needed-by date on the unified request only once a line routes to the kitchen", async () => {
+    as("counter");
+    useApp.setState({ menu: { ...S().menu, coffee: [...S().menu.coffee, "puff"] } });
+    serve({
+      "POST /api/v1/prod-orders": () => json({ result: RAISED, changed: ["pord"], message: "PRD-2026-031 raised for Coffee Shop - 1 item" }),
+      "GET /api/v1/prod-orders": () => json([RAISED]),
+    });
+
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    await act(async () => { root.render(createElement(MemoryRouter, null, createElement(CounterRequests))); });
+
+    // A store-routed line has no deadline to give: `POST /requests` carries no `need`, so a
+    // date box over it would take something nothing would honour.
+    const need = () => host.querySelector<HTMLInputElement>("input[aria-label='Needed by']");
+    await act(async () => { [...host.querySelectorAll("button")].find((b) => b.textContent === "Add item")!.click(); });
+    const itemSelect = host.querySelector<HTMLSelectElement>("select[aria-label='Item on row 1']")!;
+    const pickItem = (v: string) => {
+      Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")!.set!.call(itemSelect, v);
+      itemSelect.dispatchEvent(new Event("change", { bubbles: true }));
+    };
+    await act(async () => { pickItem("milk"); });
+    expect(need()).toBeNull();
+
+    await act(async () => { pickItem("puff"); });
+    expect(need()).not.toBeNull();
+    await act(async () => {
+      const el = need()!;
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(el, "2026-09-18");
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    const qtyBox = host.querySelector<HTMLInputElement>("input[aria-label='Quantity of Veg puffs']")!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(qtyBox, "1");
+      qtyBox.dispatchEvent(new Event("input", { bubbles: true }));
+      qtyBox.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
+    });
+
+    const send = [...host.querySelectorAll("button")].find((b) => b.textContent === "Submit request")!;
+    await act(async () => { send.click(); await new Promise((r) => { setTimeout(r, 0); }); });
+    expect((hit("POST /api/v1/prod-orders")[0].body as { need?: string }).need).toBe("2026-09-18");
     await act(async () => { root.unmount(); });
     host.remove();
   });
@@ -2539,5 +2591,148 @@ describe("admin: the support desk", () => {
     await refetch(["tickets"]);
     expect(S().deskTickets.map((t) => t.id)).toEqual(["SUP-0045"]);
     expect(hit("GET /api/v1/support/tickets")).toHaveLength(0);
+  });
+});
+
+// ---- audit log
+describe("audit log reads", () => {
+  const LOG = "/api/v1/admin/audit";
+  const COUNTS: AuditCounts = { events: 3, people: 2, refused: 1, failedSignIns: 1 };
+  const TODAY: AuditFilter = { period: "today", from: "", to: "" };
+  const auditRow = (id: number): AuditRow => ({
+    id, at: "2026-09-14T04:12:09.000Z",
+    actor: { id: "u2", emp: "RC-3120", name: "Ramesh Kumar", role: "Outlet Manager", loc: "rest" },
+    action: "savePrice", target: "A:juice", targetLoc: "", outcome: "done", status: 200,
+    message: "Price saved", ip: "10.0.0.7", requestId: `req-${id}`,
+  });
+  /** Every query one path was read with, in order, as plain objects. */
+  const queried = (path: string) =>
+    fetchMock.mock.calls
+      .map(([u]) => new URL(String(u), "http://rch.test"))
+      .filter((u) => u.pathname === path)
+      .map((u) => Object.fromEntries(u.searchParams));
+  /** A log of `total` events, newest id first, paged the way the audit service pages it: rows
+   *  below `before`, `limit` at a time, and `next` the last id whenever more remain. */
+  const pagedLog = (total: number) => (u: string): Response => {
+    const params = new URL(u, "http://rch.test").searchParams;
+    const top = Math.min(Number(params.get("before") ?? total + 1) - 1, total);
+    const size = Math.max(0, Math.min(Number(params.get("limit") ?? 100), top));
+    const ids = Array.from({ length: size }, (_, i) => top - i);
+    const last = ids.at(-1);
+    return json({ rows: ids.map(auditRow), next: last !== undefined && last > 1 ? last : null, counts: COUNTS });
+  };
+
+  beforeEach(() => {
+    as("manager");
+    useApp.setState({ user: { ...S().user!, admin: true } });
+  });
+
+  it("sends only the filters that are set, as IST days, and keeps the page without a toast", async () => {
+    const PAGE = { rows: [auditRow(43), auditRow(42)], next: 42, counts: COUNTS };
+    serve({ "GET /api/v1/admin/audit": () => json(PAGE) });
+    const filter: AuditFilter = {
+      period: "custom", from: "2026-09-01", to: "2026-09-10",
+      actor: "u2", role: "", loc: "coffee", group: "sales", outcome: "refused", q: "  CF/11 ",
+    };
+    expect(await S().loadAudit(filter)).toEqual(PAGE);
+    expect(queried(LOG)).toEqual([{ from: "2026-09-01", to: "2026-09-10", actor: "u2", loc: "coffee", group: "sales", outcome: "refused", q: "CF/11" }]);
+    expect(S().audit).toEqual({ rows: PAGE.rows, next: 42, counts: COUNTS, filter, fresh: 0, status: "ready" });
+    expect(S().toast).toBeNull();
+
+    await S().loadAudit(TODAY);
+    const today = istDate(new Date());
+    expect(queried(LOG).at(-1)).toEqual({ from: today, to: today });
+  });
+
+  it("reads the next page before the last id it has, and appends it under the first page's counts", async () => {
+    fetchMock.mockImplementation((u: string) => Promise.resolve(json(new URL(u, "http://rch.test").searchParams.has("before")
+      ? { rows: [auditRow(41)], next: null, counts: { ...COUNTS, events: 99 } }
+      : { rows: [auditRow(43), auditRow(42)], next: 42, counts: COUNTS })));
+    await S().loadAudit(TODAY);
+    await S().loadMoreAudit();
+    expect(queried(LOG)[1]).toMatchObject({ before: "42" });
+    expect(S().audit.rows.map((r) => r.id)).toEqual([43, 42, 41]);
+    expect(S().audit.next).toBeNull();
+    expect(S().audit.counts).toEqual(COUNTS);
+    // Nothing further to ask for.
+    expect(await S().loadMoreAudit()).toBeNull();
+    expect(queried(LOG)).toHaveLength(2);
+  });
+
+  it("answers null on every failed read with no toast, and never turns an outage into an empty log", async () => {
+    serve({ "GET /api/v1/admin/audit": () => json({ rows: [auditRow(43)], next: 43, counts: COUNTS }) });
+    await S().loadAudit(TODAY);
+    serve({});                                                  // every read now answers 500
+    expect(await S().loadMoreAudit()).toBeNull();
+    expect(S().audit.rows.map((r) => r.id)).toEqual([43]);      // a failed next page keeps what is shown
+    expect(await S().loadAudit()).toBeNull();
+    expect(S().audit).toMatchObject({ rows: [], next: null, counts: null, status: "failed" });
+    expect(await S().readAuditEntry(43)).toBeNull();
+    expect(await S().exportAudit(TODAY)).toBeNull();
+    expect(S().toast).toBeNull();
+  });
+
+  it("reads one whole entry by id", async () => {
+    const entry: AuditEntry = {
+      ...auditRow(43), method: "PUT", path: "/prices/A/juice", cause: null,
+      request: { params: { list: "A", it: "juice" }, query: {}, body: { price: 45 } },
+      before: { price: 50 }, result: { list: "A", it: "juice", price: 45 }, changed: ["prices"], userAgent: "",
+    };
+    serve({ "GET /api/v1/admin/audit/43": () => json(entry) });
+    expect(await S().readAuditEntry(43)).toEqual(entry);
+  });
+
+  it("keeps the newest filter's answer when an older read lands after it", async () => {
+    const answers: ((r: Response) => void)[] = [];
+    fetchMock.mockImplementation(() => new Promise<Response>((resolve) => { answers.push(resolve); }));
+    const older = S().loadAudit(TODAY);
+    const newer = S().loadAudit({ period: "7d", from: "", to: "" });
+    await vi.waitFor(() => { expect(answers).toHaveLength(2); });
+    answers[1](json({ rows: [auditRow(9)], next: null, counts: COUNTS }));
+    await newer;
+    answers[0](json({ rows: [auditRow(1)], next: null, counts: COUNTS }));
+    await older;
+    expect(S().audit.rows.map((r) => r.id)).toEqual([9]);
+    expect(S().audit.filter.period).toBe("7d");
+    expect(S().audit.status).toBe("ready");
+  });
+
+  it("exports page by page, 500 at a time, until the log runs out", async () => {
+    fetchMock.mockImplementation((u: string) => Promise.resolve(pagedLog(1203)(u)));
+    const out = await S().exportAudit(TODAY);
+    expect(queried(LOG).map((q) => [q.before, q.limit])).toEqual([[undefined, "500"], ["704", "500"], ["204", "500"]]);
+    expect(out).toMatchObject({ rows: 1203, capped: false });
+    // The header, 1,203 lines, and the empty string after the last line break.
+    expect(out!.csv.split("\r\n")).toHaveLength(1205);
+    // An export is not the list on screen.
+    expect(S().audit.rows).toEqual([]);
+  });
+
+  it("stops at 50,000 rows and says it did, but not when the log is exactly that long", async () => {
+    fetchMock.mockImplementation((u: string) => Promise.resolve(pagedLog(60_000)(u)));
+    expect(await S().exportAudit(TODAY)).toMatchObject({ rows: 50_000, capped: true });
+    expect(queried(LOG)).toHaveLength(100);
+
+    fetchMock.mockReset();
+    fetchMock.mockImplementation((u: string) => Promise.resolve(pagedLog(50_000)(u)));
+    expect(await S().exportAudit(TODAY)).toMatchObject({ rows: 50_000, capped: false });
+    expect(queried(LOG)).toHaveLength(100);
+  });
+
+  it("counts an audit notice on an admin session without reading anything, ignores it elsewhere, and a load clears the count", async () => {
+    await refetch(["audit"]);
+    await refetch(["audit"]);
+    expect(S().audit.fresh).toBe(2);
+
+    useApp.setState({ user: { ...S().user!, admin: false } });
+    await refetch(["audit"]);
+    expect(S().audit.fresh).toBe(2);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(S().toast).toBeNull();
+
+    useApp.setState({ user: { ...S().user!, admin: true } });
+    serve({ "GET /api/v1/admin/audit": () => json({ rows: [], next: null, counts: COUNTS }) });
+    await S().loadAudit();
+    expect(S().audit.fresh).toBe(0);
   });
 });

@@ -4,5 +4,6 @@
 # account 830283280199, ap-south-1); the certificate below is DNS-validated in that zone.
 api: { replicas: 1, hpa: { enabled: false }, env: { LOG_LEVEL: debug, CORS_ORIGIN: https://rch.hashtrickstechnologies.com, DB_POOL_MAX: "10" } }
 ui: { replicas: 1 }
+audit: { replicas: 1 }
 ingress: { host: rch.hashtrickstechnologies.com, certificateArn: arn:aws:acm:ap-south-1:830283280199:certificate/68a3b4db-2bfe-449a-8b79-8201a30bde0c }
 secrets: { create: true }

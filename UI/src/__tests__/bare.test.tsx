@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { act, createElement, type ComponentType, type ReactElement } from "react";
 import { createRoot } from "react-dom/client";
 import { MemoryRouter } from "react-router-dom";
@@ -9,6 +9,7 @@ import { DRAWERS } from "../drawers";
 import { hydrateMaster, hydrateRoster } from "../data/master";
 import Settings from "../pages/Settings";
 import Issues from "../pages/Support";
+import AdminAudit from "../pages/AdminAudit";
 import { screens as counter } from "../roles/counter";
 import { screens as manager } from "../roles/manager";
 import { screens as store } from "../roles/store";
@@ -19,9 +20,9 @@ import { as, resetStore } from "./fixture";
 
 /**
  * A hospital with nothing in it - what `GET /snapshot` answers on a database seeded `--bare`,
- * which is how a real deployment starts (`deploy/compose/deploy.sh`). The six locations are there,
- * because `LocKey` is a closed union the whole app is written against; everything else is empty:
- * no item, price, menu, stock line, payer, vendor or document.
+ * which is how a real deployment starts (`deploy/compose/deploy.sh`). The six locations are there
+ * because `bare` seeds them itself, not because a `LocKey` is one of a fixed few; everything else
+ * is empty: no item, price, menu, stock line, payer, vendor or document.
  *
  * `screens.test.tsx` renders every screen over the demo hospital, which always has an item, a
  * menu and a bill to point at. A screen that reads `menu[loc].includes(...)`, `PRODS[0]` or a
@@ -46,7 +47,7 @@ function bareHospital() {
     stock: EMPTY_STOCK, rsv: {}, ovr: {}, prices: {}, menu: {},
     req: [], tkt: [], prq: [], po: [], pord: [], batch: [], bills: [], grn: [], vendors: [],
     contracts: [], productReqs: [], shopAsks: [], tickets: [], adjustments: [], adjReq: [],
-    sales: Array.from({ length: DAYS }, () => [0, 0, 0]),
+    sales: Array.from({ length: DAYS }, () => ({ rest: 0, coffee: 0, kiosk: 0 })),
     dayLabels: Array.from({ length: DAYS }, (_, i) => String(i + 1).padStart(2, "0")),
   });
 }
@@ -81,6 +82,9 @@ describe("the forms that fill an empty hospital render", () => {
   const OPEN: [key: string, id: string, role: Role][] = [
     ["sitem", "new", "store"], ["bnewitem", "new", "buyer"], ["pnew", "new", "prod"],
     ["korder", "new", "manager"], ["adjstock", "coffee", "manager"],
+    // A bare hospital has three outlets and no price list at all, which is exactly the morning
+    // the manager opens this panel to make the first one.
+    ["plset", "prices", "manager"],
   ];
   for (const [key, id, role] of OPEN) {
     it(key, () => {
@@ -89,4 +93,30 @@ describe("the forms that fill an empty hospital render", () => {
       expect(render(createElement(DRAWERS[key], { id })).length).toBeGreaterThan(200);
     });
   }
+});
+
+// The super admin's audit log on the first morning: the service has recorded nothing yet, and the
+// tab must say so rather than draw a broken table or an outage.
+describe("the audit log renders on a database that has recorded nothing", () => {
+  it("admin/audit", async () => {
+    const empty = { rows: [], next: null, counts: { events: 0, people: 0, refused: 0, failedSignIns: 0 } };
+    vi.stubGlobal("fetch", vi.fn(async (u: string) => new Response(
+      JSON.stringify(String(u).includes("/admin/audit") ? empty : []),
+      { status: 200, headers: { "content-type": "application/json" } },
+    )));
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    try {
+      act(() => { as("manager"); useApp.setState({ user: { ...useApp.getState().user!, admin: true } }); });
+      await act(async () => { root.render(createElement(MemoryRouter, null, createElement(AdminAudit))); });
+      await act(async () => { await new Promise((r) => { setTimeout(r, 0); }); });
+      expect(host.textContent).toContain("Nothing recorded in this period");
+      expect(host.innerHTML.length).toBeGreaterThan(200);
+    } finally {
+      act(() => { root.unmount(); });
+      host.remove();
+      vi.unstubAllGlobals();
+    }
+  });
 });

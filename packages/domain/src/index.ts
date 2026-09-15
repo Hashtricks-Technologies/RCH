@@ -3,7 +3,9 @@ export { apportion } from "./apportion.js";
 export { formatId, grnId, nextEmpNo, SEQUENCE_START, type IdKind } from "./ids.js";
 export { qty, resv, avail, type Master, type StockMap, type RsvMap, type OvrMap, type Prices } from "./master.js";
 export { priceOf } from "./pricing.js";
-export { PAR_FACTOR } from "./par.js";
+export { parFactor } from "./par.js";
+// ---- outlets: which locations are outlets, which are open, who may work where, and a new one's key.
+export { closeRefusal, holding, HOLDS_OUTLET, operationalKeys, outletKeyFor, outletKeys, placesFor, worksAt, type OutletBlockers } from "./locations.js";
 export { availOf, fq } from "./availability.js";
 export { committed, freeToPromise } from "./promise.js";
 export { bestBeforeAt, bestBeforeText } from "./shelf.js";

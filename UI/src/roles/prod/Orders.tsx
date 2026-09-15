@@ -1,12 +1,12 @@
 import { useState } from "react";
 // ---- prod-order raise ----
 import { dmy } from "@rch/domain";
-import { IT, LOC, OUTLETS } from "../../data/master";
+import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
-import { avail, canDispatch, canMoveOrder, qty } from "../../lib/selectors";
+import { allOutlets, avail, canDispatch, canMoveOrder, locName, qty } from "../../lib/selectors";
 import { fq, sum, U } from "../../lib/fmt";
 import {
-  Alert, Btn, Card, DataTable, FilterSelect, PageHead, Pill, StatusPill, TableFoot, Tip, Toolbar,
+  Alert, Btn, Card, DataTable, FilterSelect, Icon, PageHead, Pill, StatusPill, TableFoot, Tip, Toolbar,
 } from "../../ui/kit";
 import type { LocKey, PordStatus, ProdOrder } from "../../types";
 
@@ -59,7 +59,7 @@ export default function Orders() {
     return raised.findLast((t) => t.st !== "Cancelled") ?? raised.at(-1);
   };
 
-  const OUTLET_NAMES = ["All", ...OUTLETS.map((l) => LOC[l].n)];
+  const OUTLET_NAMES = ["All", ...allOutlets().map(locName)];
   const clearFilters = () => { setQ(""); setOutlet(null); };
 
   /** The one control that moves a card one column right. */
@@ -137,9 +137,18 @@ export default function Orders() {
         crumbs={["Royal Care", "Central Kitchen", "Orders"]}
         title="Kitchen order board"
         tip="Outlet orders, one column per stage."
-        actions={<span className="mini">
-          {onBoard.length} on the board{filtering ? ` of ${pord.filter((o) => o.st !== "Declined").length}` : ""}
-        </span>}
+        actions={<>
+          <span className="mini">
+            {onBoard.length} on the board{filtering ? ` of ${pord.filter((o) => o.st !== "Declined").length}` : ""}
+          </span>
+          {/* The board is today's work; the history is the same collection with nothing cut out
+              of it. `title` names a button whose face is only a symbol; the tip says why. */}
+          <Btn size="sm" variant="gh" title="Order history"
+            tip={`Every order the kitchen has ever been sent - all ${pord.length} of them, newest first.`}
+            onClick={() => openDrawer("phist", "all")}>
+            <Icon name="rep" />
+          </Btn>
+        </>}
       />
 
       <Alert tone="i" label="NOTE">
@@ -155,13 +164,13 @@ export default function Orders() {
           onSearch={setQ}
           filters={<FilterSelect
             label="Outlet"
-            value={outlet ? LOC[outlet].n : "All"}
+            value={outlet ? locName(outlet) : "All"}
             options={OUTLET_NAMES}
-            onChange={(name) => setOutlet(name === "All" ? null : OUTLETS.find((l) => LOC[l].n === name) ?? null)}
+            onChange={(name) => setOutlet(name === "All" ? null : allOutlets().find((l) => locName(l) === name) ?? null)}
           />}
           right={filtering
             ? <Btn size="sm" variant="gh" onClick={clearFilters}>Clear filters</Btn>
-            : <span className="mini">{OUTLETS.map((l) => LOC[l].n).join(" · ")}</span>}
+            : <span className="mini">{allOutlets().map(locName).join(" · ")}</span>}
         />
       </Card>
 

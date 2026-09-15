@@ -1,5 +1,6 @@
 import type { Db } from "../../db/client.js";
 import { withTransaction, type Reader } from "../../lib/db.js";
+import { auditBefore } from "../../lib/audit.js";
 import { NotFoundError } from "../../lib/errors.js";
 import { toWireUser } from "../../lib/wire.js";
 import { meRepo } from "./repo.js";
@@ -13,6 +14,8 @@ export function createMeService(db: Db) {
      *  it was the one response in the system built where no transaction could record it. */
     async patch(id: string, p: { n?: string; e?: string; ph?: string }) {
       return withTransaction(db, async (tx) => {
+        // The same `{ user, mustChangePassword }` this write answers with, read before it changes.
+        auditBefore(await load(tx, id));
         await meRepo.update(tx, id, { name: p.n, email: p.e, phone: p.ph });
         return load(tx, id);
       });

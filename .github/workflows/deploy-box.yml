@@ -35,7 +35,7 @@ jobs:
       vars.BOX_DEPLOY_ENABLED == 'true' && (github.event_name == 'workflow_dispatch'
       || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'))
     runs-on: ubuntu-latest
-    # The box builds both images itself (a few minutes on a t4g.medium), migrates and restarts.
+    # The box builds all three images itself (a few minutes on a t4g.medium), migrates and restarts.
     timeout-minutes: 45
     environment: { name: dev, url: "https://rch.hashtrickstechnologies.com" }
     env:
@@ -105,8 +105,12 @@ jobs:
             --query StandardErrorContent --output text 2>/dev/null || true)
           [ -z "$err" ] || { echo "--- stderr"; echo "$err"; }
           [ "$status" = Success ] || { echo "::error::the release on the box ended $status"; exit 1; }
+      # /readyz reaches the API and /readyz/audit the audit service (deploy/compose/Caddyfile), so
+      # this is the database, both sets of migrations and the drainer, seen from the internet.
       - name: The site answers from outside
         run: |
           curl -fsS -m 10 --retry 5 --retry-delay 3 --retry-all-errors "$SITE/readyz"
+          echo
+          curl -fsS -m 10 --retry 5 --retry-delay 3 --retry-all-errors "$SITE/readyz/audit"
           echo
           curl -fsS -m 10 -o /dev/null "$SITE/"

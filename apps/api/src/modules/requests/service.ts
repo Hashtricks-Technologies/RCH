@@ -9,8 +9,7 @@ import type {
   ApprovalResultSchema, ApproveRequestBodySchema, CreateRequestBodySchema, IssueResultSchema,
   RedirectRequestBodySchema, RejectRequestBodySchema, StockRequest, WriteResponse,
 } from "@rch/contract";
-import { committed, planApproval, REQUEST_TRANSITIONS, round3 } from "@rch/domain";
-import { OUTLETS } from "@rch/contract";
+import { committed, outletKeys, planApproval, REQUEST_TRANSITIONS, round3 } from "@rch/domain";
 import type { Db } from "../../db/client.js";
 import { withTransaction } from "../../lib/db.js";
 import { NotFoundError } from "../../lib/errors.js";
@@ -18,6 +17,7 @@ import { emitChanged } from "../../lib/events.js";
 import { appendHistory } from "../../lib/history.js";
 import { allocateId } from "../../lib/ids.js";
 import { lockBalances } from "../../lib/ledger.js";
+import { assertOpen, lockLocation } from "../../lib/locations.js";
 import { loadMaster } from "../../lib/master.js";
 import { reservedAt } from "../../lib/reservations.js";
 import { assertRule, assertTransition } from "../../lib/rules.js";
@@ -44,6 +44,12 @@ export function createRequestsService(db: Db) {
      */
     async create(claims: AccessClaims, body: CreateRequestBody): Promise<WriteResponse<StockRequest>> {
       return withTransaction(db, async (tx) => {
+        // The raiser's own place, locked in the documents tier - before the id - because a closed
+        // outlet asks for nothing: the stock would be issued, collected and landed on a shelf no
+        // screen shows. The kitchen raises requests too, and is never closed, so the open check is
+        // the outlets'.
+        const from = await lockLocation(tx, claims.loc);
+        if (from.type === "Outlet") assertOpen(from);
         const master = await loadMaster(tx);
         for (const l of body.lines) if (!master.items[l.it]) throw new NotFoundError(`There is no item ${l.it}.`);
         // A zero reaches the operator as the store's own sentence, not a schema's 400 - which
@@ -191,11 +197,14 @@ export function createRequestsService(db: Db) {
         const r = await requestsRepo.head(tx, id);
         if (!r) throw new NotFoundError(`There is no request ${id}.`);
         assertRule(r.status === "Request sent", `${id} has already been decided - redirect only applies before it is approved`);
-        assertRule(OUTLETS.includes(r.fromLoc as (typeof OUTLETS)[number]), `${id} was not raised by an outlet - there is no peer shop to redirect it to`);
-        assertRule(body.from !== r.fromLoc, "Pick a different outlet to redirect from");
-        assertRule(OUTLETS.includes(body.from), "A redirect only runs between two outlets");
-
         const master = await loadMaster(tx);
+        // Open outlets only - a closed one is not trading, so redirecting to (or from) it would
+        // issue a ticket nobody can collect against.
+        const outlets = outletKeys(master.locations, { open: true });
+        assertRule(outlets.includes(r.fromLoc), `${id} was not raised by an outlet - there is no peer shop to redirect it to`);
+        assertRule(body.from !== r.fromLoc, "Pick a different outlet to redirect from");
+        assertRule(outlets.includes(body.from), "A redirect only runs between two outlets");
+
         const lines = await requestsRepo.lines(tx, id);
         const keys = lines.map((l) => l.it);
 
@@ -210,7 +219,7 @@ export function createRequestsService(db: Db) {
         assertRule(short.length === 0, `${master.locations[body.from]?.n ?? body.from} has not got enough ${short.map((l) => master.items[l.it]?.n ?? l.it).join(", ")} free to cover this request`);
 
         const ticketLines = lines.map((l) => ({ it: l.it, qty: l.qty }));
-        const ticket = await writeTicket(tx, { refType: "shop_transfer", refId: id, from: body.from, to: r.fromLoc as (typeof OUTLETS)[number], lines: ticketLines, by: claims.sub, at }, no);
+        const ticket = await writeTicket(tx, { refType: "shop_transfer", refId: id, from: body.from, to: r.fromLoc, lines: ticketLines, by: claims.sub, at }, no);
         await requestsRepo.setLineApprovals(tx, id, lines.map((l) => ({ it: l.it, appr: l.qty, short: 0 })));
         await requestsRepo.setStatus(tx, id, { status: "Ticket issued", ticketId: ticket.id, approvedBy: claims.sub });
         const who = await requestsRepo.userName(tx, claims.sub);

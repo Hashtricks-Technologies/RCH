@@ -15,6 +15,7 @@ import { NotFoundError } from "../../lib/errors.js";
 import { emitChanged } from "../../lib/events.js";
 import { allocateId } from "../../lib/ids.js";
 import { lockBalances } from "../../lib/ledger.js";
+import { assertOpen, lockLocation } from "../../lib/locations.js";
 import { loadMaster } from "../../lib/master.js";
 import { reservedAt } from "../../lib/reservations.js";
 import { assertRule, assertTransition } from "../../lib/rules.js";
@@ -36,8 +37,14 @@ export function createShopAsksService(db: Db) {
       return withTransaction(db, async (tx) => {
         const from = claims.loc;
         assertRule(body.to !== from, "Pick a different shop");
+        const asker = await lockLocation(tx, from);
+        const holder = await lockLocation(tx, body.to);
+        assertRule(holder.type === "Outlet" && asker.type === "Outlet", "Only another shop can be asked directly");
+        // Both ends: a closed shop has nothing to collect with, and the ticket a grant raises
+        // would land its stock on a shelf no screen shows.
+        assertOpen(asker);
+        assertOpen(holder);
         const master = await loadMaster(tx);
-        assertRule(master.locations[body.to]?.type === "Outlet" && master.locations[from]?.type === "Outlet", "Only another shop can be asked directly");
         assertRule(body.qty > 0, "Enter a quantity");
         const item = master.items[body.it];
         if (!item) throw new NotFoundError(`There is no item ${body.it}.`);

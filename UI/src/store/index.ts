@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { routes, StockLocSchema } from "@rch/contract";
+import { KITCHEN, QUARANTINE, routes, STORE } from "@rch/contract";
 import { sourceOf } from "@rch/domain";
 import { ApiError, call, closeSessionChannel } from "../api/client";
 import { getAccessToken, onSessionLost, setAccessToken } from "../api/session";
@@ -15,8 +15,9 @@ import { applyTheme, nextTheme, readStoredTheme, storeTheme, type ThemePref } fr
 import { createProcurementSlice, type ProcurementSlice } from "./procurement";
 import { createOpsSlice, type OpsSlice } from "./ops";
 import { createAdminSlice, type AdminSlice } from "./admin";
+import { createAuditSlice, type AuditSlice } from "./audit";
 
-export interface AppState extends ProcurementSlice, OpsSlice, AdminSlice {
+export interface AppState extends ProcurementSlice, OpsSlice, AdminSlice, AuditSlice {
   user: User | null;
   /** Where the session is: no token, asking for one, fetching the snapshot, usable - or signed
    *  in with nothing to show. `"failed"` is the last one: the credentials are good and the
@@ -43,7 +44,7 @@ export interface AppState extends ProcurementSlice, OpsSlice, AdminSlice {
   bills: Dated<Bill>[];
   grn: Dated<Grn>[];
   vendors: Vendor[];
-  sales: number[][];
+  sales: Record<string, number>[];
   dayLabels: string[];
   /** ---- adjustments. The register of write-offs and count-ups behind the `adjustment` moves
    *  on the ledger - a correction to a shelf, with a reason and a signature. Read-only here:
@@ -109,10 +110,12 @@ export interface AppState extends ProcurementSlice, OpsSlice, AdminSlice {
   submitRequest: (note: string, urgent: boolean) => Promise<boolean>;
   /** The counter's one door for asking for stock: `draft`'s lines are split by each item's own
    *  `sourceOf` (`@rch/domain`) into a central-store request and a kitchen order, and whichever
-   *  of the two is needed is raised - the operator never picks a source. Answers `true` only
-   *  once every line that needed to go somewhere has landed; a line whose call failed stays in
-   *  the draft so it is not silently dropped. */
-  submitStockRequest: (note: string, urgent: boolean) => Promise<boolean>;
+   *  of the two is needed is raised - the operator never picks a source. `need` is a deadline
+   *  for the kitchen's half alone - a stock request has no field for one - and is dropped rather
+   *  than sent when there is nothing routed to the kitchen. Answers `true` only once every line
+   *  that needed to go somewhere has landed; a line whose call failed stays in the draft so it
+   *  is not silently dropped. */
+  submitStockRequest: (note: string, urgent: boolean, need?: string) => Promise<boolean>;
   requestFromStore: (it: string, qty: number) => Promise<boolean>;
   cancelRequest: (id: string) => Promise<boolean>;
 
@@ -124,7 +127,9 @@ export interface AppState extends ProcurementSlice, OpsSlice, AdminSlice {
 
   issueTicket: (reqId: string) => Promise<void>;
   /** `otp` is required from the collecting side; omit it only for a supervisor override. */
-  handover: (tktId: string, otp?: string) => Promise<void>;
+  /** Answers `true` only once the server has taken it, so the window can keep a refused OTP
+   *  and its reason in front of the operator instead of relying on a toast they may miss. */
+  handover: (tktId: string, otp?: string) => Promise<boolean>;
   receiveTicket: (tktId: string) => Promise<void>;
 
   /** Withdraw a ticket nobody collected: the hold goes back and so does the document behind it.
@@ -206,7 +211,8 @@ const toastMs = (m: string) => Math.min(9000, 3400 + Math.max(0, m.length - 40) 
  *  it running behind the next sentence. One toast is drawn at a time, so one timer is all there
  *  is to keep - and a toast that is already down cannot be put down twice. */
 let toastTimer: ReturnType<typeof setTimeout> | null = null;
-const EMPTY_STOCK = Object.fromEntries(StockLocSchema.options.map((l) => [l, {}])) as Record<StockLoc, Record<string, number>>;
+/** The shelves every hospital has, empty, until a snapshot says which outlets there are. */
+const EMPTY_STOCK: Record<StockLoc, Record<string, number>> = { [STORE]: {}, [KITCHEN]: {}, [QUARANTINE]: {} };
 
 export const useApp = create<AppState>((set, get) => ({
   user: null,
@@ -446,7 +452,7 @@ export const useApp = create<AppState>((set, get) => ({
       return false;
     }
   },
-  submitStockRequest: async (note, urgent) => {
+  submitStockRequest: async (note, urgent, need) => {
     const s = get();
     const valid = s.draft.filter((l) => l.it && l.qty > 0);
     if (!valid.length || !s.user) { get().notify("Add at least one line with a quantity"); return false; }
@@ -471,7 +477,11 @@ export const useApp = create<AppState>((set, get) => ({
     if (kitchenLines.length > 0) {
       try {
         const r = await call(routes.createProdOrder, {
-          body: { from: s.user.loc, lines: kitchenLines, note: urgent ? `[Urgent] ${note}`.trim() : note },
+          body: {
+            from: s.user.loc, lines: kitchenLines, note: urgent ? `[Urgent] ${note}`.trim() : note,
+            // A blank date box is an order with no deadline, not one due on the epoch.
+            ...(need ? { need } : {}),
+          },
         });
         get().notify(r.message);
         await refetch(r.changed, r.message);
@@ -562,8 +572,10 @@ export const useApp = create<AppState>((set, get) => ({
       const r = await call(routes.handover, { params: { id: tktId }, body: otp === undefined ? {} : { otp: otp.trim() } });
       get().notify(r.message);
       await refetch(r.changed, r.message);
+      return true;
     } catch (e) {
       get().notify(e instanceof ApiError ? e.message : "Could not hand the ticket over - check the connection and try again.");
+      return false;
     }
   },
   receiveTicket: async (tktId) => {
@@ -783,6 +795,8 @@ export const useApp = create<AppState>((set, get) => ({
   // so it takes only the reader.
   ...createOpsSlice(get),
   ...createAdminSlice(get),
+  // ---- audit log: the one slice that takes `set`, because it has no `wire.ts` mapper to write through.
+  ...createAuditSlice(set, get),
 }));
 
 // A refresh that fails is the end of the session: drop the user rather than

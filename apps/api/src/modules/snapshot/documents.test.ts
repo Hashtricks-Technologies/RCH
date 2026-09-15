@@ -118,12 +118,16 @@ describe("document readers", () => {
       await t.db.delete(s.bills).where(eq(s.bills.no, "CF/0001"));
     }
   });
-  it("sales are 14 day-rows of 3 outlet columns from bills, with day-of-month labels", async () => {
-    const { sales, dayLabels } = await D.readSales(t.db, 14);
-    expect(sales.length).toBe(14); expect(dayLabels.length).toBe(14);
-    expect(sales.every((row) => row.length === 3)).toBe(true);
-    const today = sales[13];
-    const fxToday = (loc: string) => FX.seedBills.filter((b) => b.loc === loc).reduce((s, b) => s + b.tot, 0);
-    expect(today).toEqual([fxToday("rest"), fxToday("coffee"), fxToday("kiosk")]);
+  it("sales are 14 day-records keyed by every outlet, closed ones included, with day-of-month labels", async () => {
+    await t.db.update(s.locations).set({ active: false }).where(eq(s.locations.key, "kiosk"));
+    try {
+      const { sales, dayLabels } = await D.readSales(t.db, 14);
+      expect(sales.length).toBe(14); expect(dayLabels.length).toBe(14);
+      expect(sales.every((row) => Object.keys(row).sort().join() === "coffee,kiosk,rest")).toBe(true);
+      const fxToday = (loc: string) => FX.seedBills.filter((b) => b.loc === loc).reduce((sum, b) => sum + b.tot, 0);
+      expect(sales[13]).toEqual({ rest: fxToday("rest"), coffee: fxToday("coffee"), kiosk: fxToday("kiosk") });
+    } finally {
+      await t.db.update(s.locations).set({ active: true }).where(eq(s.locations.key, "kiosk"));
+    }
   });
 });

@@ -1,10 +1,10 @@
 import { useState } from "react";
-import { IT, LOC, OUTLETS, PL, PRICE_LISTS } from "../../data/master";
+import { IT, LOC, PL, PRICE_LISTS } from "../../data/master";
 import { useApp } from "../../store";
-import { costOf, menuOf, priceOf } from "../../lib/selectors";
+import { costOf, menuOf, openOutlets, priceOf } from "../../lib/selectors";
 import { money, sum } from "../../lib/fmt";
 import {
-  Alert, Btn, Card, DataTable, Field, FilterSelect, FormRow, Grid, ImagePlaceholder, PageHead, Pill, TableFoot, Tag, Tip, Toolbar,
+  Alert, Btn, Card, DataTable, Field, FilterSelect, FormRow, Grid, Icon, ImagePlaceholder, PageHead, Pill, TableFoot, Tag, Tip, Toolbar,
 } from "../../ui/kit";
 import { emptyFor, sortRows, useSort, type SortValue } from "./useSort";
 import type { ItemType, LocKey } from "../../types";
@@ -18,18 +18,20 @@ const marginOf = (p: number, cost: number) => (p > 0 ? ((p - cost) / p) * 100 : 
  *  prose. Naming the Restaurant and the Snack Kiosk in a sentence was right for three counters
  *  on two lists and wrong the day a fourth opened - and a manager reading "saving a price here
  *  changes it at both counters" over three is being told something false about their own money.
+ *  A closed outlet is not offered here either - there is no till left to change a price on, and
+ *  the prose is about live counters.
  *
- *  `LOC` is a registry filled in place when the snapshot lands, while `OUTLETS` is a deployment
- *  constant that is there from the first render - so between sign-in and the snapshot every
- *  `LOC[l]` here is `undefined`. `known()` is what stops that being a crash. */
-const known = () => OUTLETS.filter((l) => LOC[l] !== undefined);
-const listFor = (l: LocKey) => LOC[l]?.list ?? "";
-const sharers = (list: string) => known().filter((l) => listFor(l) === list);
-const listOf = (names: string[]) =>
+ *  Exported because `PriceListSettingsDrawer` reads the same mappings out of the same two
+ *  registries, and two copies of "which outlets share this list" would be two answers. */
+export const listFor = (l: LocKey) => LOC[l]?.list ?? "";
+export const sharers = (list: string) => openOutlets().filter((l) => listFor(l) === list);
+export const listOf = (names: string[]) =>
   names.length <= 1 ? names[0] ?? "" : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
 /** A price list's name for prose, falling back to its raw id if the registry has not caught up
- *  with a write yet (the moment between a create/switch landing and its own refetch resolving). */
-const nameOfList = (id: string) => PRICE_LISTS[id]?.name ?? id;
+ *  with a write yet (the moment between a create/switch landing and its own refetch resolving).
+ *  An outlet's own `list` is `""` before a manager ever attaches one - `PriceListSettingsDrawer`'s
+ *  own wording for that state, so every screen that names a list reads the same sentence. */
+export const nameOfList = (id: string) => (id === "" ? "no list yet" : PRICE_LISTS[id]?.name ?? id);
 
 export default function Prices() {
   const s = useApp();
@@ -37,9 +39,8 @@ export default function Prices() {
   const savePrice = useApp((x) => x.savePrice);
   const removeProduct = useApp((x) => x.removeProduct);
   const addProduct = useApp((x) => x.addProduct);
-  const createPriceList = useApp((x) => x.createPriceList);
   const deletePriceList = useApp((x) => x.deletePriceList);
-  const setOutletPriceList = useApp((x) => x.setOutletPriceList);
+  const openDrawer = useApp((x) => x.openDrawer);
   const notify = useApp((x) => x.notify);
 
   const shop = s.shopFilter;
@@ -55,11 +56,8 @@ export default function Prices() {
   const [tab, setTab] = useState<"outlets" | "lists">("outlets");
   const [listQ, setListQ] = useState("");
   const [listOutlet, setListOutlet] = useState("All");
-  const [newListName, setNewListName] = useState("");
   const [dropList, setDropList] = useState<string | null>(null);
-  /** The drilled-in view's own new-list form, shown only once opened. */
-  const [creating, setCreating] = useState(false);
-  /** Which rows have a write in flight, one key per row. Every one of the four buttons on this
+  /** Which rows have a write in flight, one key per row. Every one of the buttons on this
    *  screen posts, and every one of them can be refused - an MRP ceiling, a product another
    *  manager has just dropped - so none of them may clear what was typed or picked until the
    *  server has actually taken it, and none may be pressed twice while it decides. */
@@ -70,25 +68,21 @@ export default function Prices() {
     setQ(""); setType(0); setPstate(0); setDrop(null); setAdd(""); setShopFilter(loc);
   };
 
-  /** Cloned from `cloneFrom`'s current active list, created inactive - the manager switches an
-   *  outlet onto it explicitly, from either tab. */
-  const createList = async (name: string, cloneFrom: LocKey, onDone: () => void) => {
-    lock("newList", true);
-    const created = await createPriceList(name, cloneFrom);
-    lock("newList", false);
-    if (created) onDone();
-  };
   const deleteList = async (id: string) => {
     lock(`dropList:${id}`, true);
     const ok = await deletePriceList(id);
     lock(`dropList:${id}`, false);
     if (ok) setDropList(null);
   };
-  const switchList = async (loc: LocKey, listId: string) => {
-    lock("switchList", true);
-    await setOutletPriceList(loc, listId);
-    lock("switchList", false);
-  };
+
+  /** Creating a list and attaching one to an outlet both live in the settings drawer, because
+   *  both are questions about every outlet at once rather than about the one being read. */
+  const settings = (
+    <Btn variant="gh" size="sm" tip="Create a price list, and see and change which list each outlet charges from."
+      onClick={() => { openDrawer("plset", "prices"); }}>
+      <Icon name="set" /> Settings
+    </Btn>
+  );
 
   const priced = (loc: LocKey) => menuOf(s, loc).filter((it) => priceOf(s, loc, it).p > 0);
   /* Margin is taken against each item's standard cost on the master. */
@@ -99,10 +93,10 @@ export default function Prices() {
   };
 
   /** The outlets this browser actually knows about, and the lists they are on. */
-  const outlets = known();
+  const outlets = openOutlets();
   const lists = [...new Set(outlets.map(listFor))].sort();
 
-  if (!shop || !OUTLETS.includes(shop)) {
+  if (!shop || !outlets.includes(shop)) {
     const allLists = Object.values(PRICE_LISTS).sort((a, b) => a.name.localeCompare(b.name));
     const listTerm = listQ.trim().toLowerCase();
     const filteredLists = allLists
@@ -121,6 +115,7 @@ export default function Prices() {
             <div style={{ display: "flex", gap: 6 }}>
               <Btn variant={tab === "outlets" ? "solid" : "gh"} size="sm" onClick={() => setTab("outlets")}>Outlets</Btn>
               <Btn variant={tab === "lists" ? "solid" : "gh"} size="sm" onClick={() => setTab("lists")}>Price lists</Btn>
+              {settings}
             </div>
           }
         />
@@ -222,9 +217,31 @@ export default function Prices() {
   }
 
   const list = listFor(shop);
+  // A newly opened outlet starts on no list at all - nothing here is priced yet, and a save
+  // pressed on an empty table would post to `/api/prices//<it>`, a route nothing answers.
+  // Point the manager at Settings instead of rendering a table with nothing to save to.
+  if (list === "") {
+    return (
+      <>
+        <PageHead
+          crumbs={["Royal Care", "Outlets", "Price Lists", LOC[shop].n]}
+          title={`${LOC[shop].n} prices`}
+          tip="What this shop sells and charges."
+          actions={
+            <div style={{ display: "flex", gap: 6 }}>
+              {settings}
+              <Btn variant="gh" size="sm" onClick={() => go(null)}>Back to all shops</Btn>
+            </div>
+          }
+        />
+        <Alert tone="w" label="NO LIST">
+          {LOC[shop].n} is on {nameOfList(list)} - attach one from Settings before pricing or selling here.
+        </Alert>
+      </>
+    );
+  }
   const shared = sharers(list);
-  const others = OUTLETS.filter((l) => !shared.includes(l));
-  const otherLists = Object.values(PRICE_LISTS).filter((pl) => pl.id !== list).sort((a, b) => a.name.localeCompare(b.name));
+  const others = openOutlets().filter((l) => !shared.includes(l));
   const term = q.trim().toLowerCase();
   const listed = menuOf(s, shop);
   const wantType = TYPES[type];
@@ -285,7 +302,12 @@ export default function Prices() {
         crumbs={["Royal Care", "Outlets", "Price Lists", LOC[shop].n]}
         title={`${LOC[shop].n} prices`}
         tip="What this shop sells and charges."
-        actions={<Btn variant="gh" onClick={() => go(null)}>Back to all shops</Btn>}
+        actions={
+          <div style={{ display: "flex", gap: 6 }}>
+            {settings}
+            <Btn variant="gh" size="sm" onClick={() => go(null)}>Back to all shops</Btn>
+          </div>
+        }
       />
 
       <Alert tone="i" label="LIST">
@@ -293,30 +315,6 @@ export default function Prices() {
           ? <>List <b>{nameOfList(list)}</b> is shared by <b>{listOf(shared.map((o) => LOC[o].n))}</b> - saving a price here changes it at {shared.length === 2 ? "both" : "all " + shared.length} counters.</>
           : <>{LOC[shop].n} is the only outlet on list <b>{nameOfList(list)}</b>{others.length > 0 && <>, so {listOf(others.map((o) => LOC[o].n))} {others.length === 1 ? "is" : "are"} untouched by these edits</>}.</>}
       </Alert>
-
-      <Card title="Price list" tip="Switch which list this outlet charges from, or start a new one cloned from its current prices.">
-        <FormRow>
-          <Field label="Active list">
-            <select value={list} disabled={busy.switchList} onChange={(e) => void switchList(shop, e.target.value)}>
-              <option value={list}>{nameOfList(list)}</option>
-              {otherLists.map((pl) => <option key={pl.id} value={pl.id}>{pl.name}</option>)}
-            </select>
-          </Field>
-          <Btn variant="gh" onClick={() => setCreating((c) => !c)}>
-            {creating ? "Cancel" : "Create a new list for this outlet"}
-          </Btn>
-        </FormRow>
-        {creating && (
-          <FormRow>
-            <Field label="New list name" tip="Starts as a copy of this outlet's current prices; nothing switches until you pick it above.">
-              <input value={newListName} onChange={(e) => setNewListName(e.target.value)} placeholder="e.g. Weekend Rates" />
-            </Field>
-            <Btn disabled={!newListName.trim() || busy.newList} onClick={() => void createList(newListName.trim(), shop, () => { setNewListName(""); setCreating(false); })}>
-              {busy.newList ? "Creating…" : "Create"}
-            </Btn>
-          </FormRow>
-        )}
-      </Card>
 
       <Card title="Add a product" tip={`Priced on list ${nameOfList(list)} but not listed at this counter`}>
         {missing.length > 0 ? (

@@ -9,13 +9,13 @@
 # reporting the CVE again on that date.
 vulnerabilities:
   # libssl3 heap buffer overflow when parsing a large X.509 certificate, on 32-bit builds
-  # only. Both runtime images are built and deployed as linux/amd64 (ci.yml / deploy.yml pin
-  # the platform), so the affected code path is not reachable. Fixed in openssl
+  # only. All three runtime images (api, audit, ui) are built and deployed as linux/amd64
+  # (ci.yml / deploy.yml pin the platform), so the affected code path is not reachable. Fixed in openssl
   # 3.0.19-1~deb12u2; drop this entry once gcr.io/distroless/nodejs24-debian12:nonroot ships
   # it (`trivy image <ref>` shows the version).
   #
-  # EXPIRES 2026-09-30. On that date Trivy starts reporting this CVE again and **all four scans
-  # fail closed at once** - ci.yml's two image scans and deploy.yml's two re-scans of the exact
+  # EXPIRES 2026-09-30. On that date Trivy starts reporting this CVE again and **all six scans
+  # fail closed at once** - ci.yml's three image scans and deploy.yml's three re-scans of the exact
   # ECR tags helm is about to deploy - so a deploy attempted after it lapses is blocked, not
   # warned about. That is the intended behaviour and the date is not to be pushed out to get
   # past a red run: either the distroless base has shipped openssl 3.0.19-1~deb12u2 by then, in
@@ -23,13 +23,14 @@ vulnerabilities:
   # decision with a fresh reason written here. RUNBOOK §11 step 7 checks these expiries on the
   # throwaway branch before a promotion, which is the one place a lapse is cheap to find.
   - id: CVE-2026-31789
-    statement: 32-bit only; both images are linux/amd64. Awaiting the distroless base bump.
+    statement: 32-bit only; all three images are linux/amd64. Awaiting the distroless base bump.
     expired_at: 2026-09-30
 
   # Five libssl3 findings in the same base image, all fixed in Debian (3.0.19-1~deb12u2 and
   # 3.0.20-1~deb12u2) and not yet in gcr.io/distroless/nodejs24-debian12:nonroot, which still
-  # carries 3.0.18-1~deb12u2 (read from /var/lib/dpkg/status.d/libssl3 on 2026-09-12). The
-  # api process never loads that library: the Node binary in the image is the official build
+  # carries 3.0.18-1~deb12u2 (read from /var/lib/dpkg/status.d/libssl3 on 2026-09-12). That base
+  # is shared by the api and audit images, and neither process loads that library: the Node
+  # binary in the image is the official build
   # with OpenSSL linked in statically (OpenSSL 3.5.5 in the binary's own version string, and
   # no `libssl.so.3` or `libcrypto.so.3` among its dynamic dependencies - checked on the
   # image's `/nodejs/bin/node` on 2026-09-12), so TLS to RDS, the JWT signatures and every use
@@ -38,17 +39,17 @@ vulnerabilities:
   # Same expiry as the entry above, on purpose: one date, one review, and the fix for all six
   # is the same rebuild once the base ships the newer package.
   - id: CVE-2026-28387
-    statement: Debian libssl3 is not loaded by the api; Node links its own OpenSSL. Awaiting the distroless base bump.
+    statement: Debian libssl3 is not loaded by the api or the audit service; Node links its own OpenSSL. Awaiting the distroless base bump.
     expired_at: 2026-09-30
   - id: CVE-2026-28388
-    statement: Debian libssl3 is not loaded by the api; Node links its own OpenSSL. Awaiting the distroless base bump.
+    statement: Debian libssl3 is not loaded by the api or the audit service; Node links its own OpenSSL. Awaiting the distroless base bump.
     expired_at: 2026-09-30
   - id: CVE-2026-28389
-    statement: Debian libssl3 is not loaded by the api; Node links its own OpenSSL. Awaiting the distroless base bump.
+    statement: Debian libssl3 is not loaded by the api or the audit service; Node links its own OpenSSL. Awaiting the distroless base bump.
     expired_at: 2026-09-30
   - id: CVE-2026-28390
-    statement: Debian libssl3 is not loaded by the api; Node links its own OpenSSL. Awaiting the distroless base bump.
+    statement: Debian libssl3 is not loaded by the api or the audit service; Node links its own OpenSSL. Awaiting the distroless base bump.
     expired_at: 2026-09-30
   - id: CVE-2026-45447
-    statement: Debian libssl3 is not loaded by the api; Node links its own OpenSSL. Awaiting the distroless base bump.
+    statement: Debian libssl3 is not loaded by the api or the audit service; Node links its own OpenSSL. Awaiting the distroless base bump.
     expired_at: 2026-09-30

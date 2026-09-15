@@ -15,6 +15,7 @@ import { NotFoundError } from "../../lib/errors.js";
 import { emitChanged } from "../../lib/events.js";
 import { appendHistory } from "../../lib/history.js";
 import { allocateId } from "../../lib/ids.js";
+import { assertOpen, lockLocation } from "../../lib/locations.js";
 import { loadMaster } from "../../lib/master.js";
 import { assertRule, assertTransition } from "../../lib/rules.js";
 import type { AccessClaims } from "../../plugins/auth.js";
@@ -31,6 +32,10 @@ export function createAdjustmentRequestsService(db: Db) {
      *  body's - a counter cannot raise against another counter's shelf by editing a payload. */
     async create(claims: AccessClaims, body: CreateAdjustmentRequestBody): Promise<WriteResponse<AdjustmentRequest>> {
       return withTransaction(db, async (tx) => {
+        // The raiser's own place, locked in the documents tier - before the id - the same guard
+        // `requests/service.ts`'s own `create()` takes: a closed outlet asks for nothing.
+        const from = await lockLocation(tx, claims.loc);
+        if (from.type === "Outlet") assertOpen(from);
         const master = await loadMaster(tx);
         for (const l of body.lines) if (!master.items[l.it]) throw new NotFoundError(`There is no item ${l.it}.`);
         // One item, one line - the same reason `createRequest` refuses a repeat outright rather

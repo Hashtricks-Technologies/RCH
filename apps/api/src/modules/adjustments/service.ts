@@ -14,7 +14,10 @@ export type CreateAdjustmentBody = z.infer<typeof CreateAdjustmentBodySchema>;
 
 export function createAdjustmentsService(db: Db) {
   return {
-    /** One correction to one shelf: some lines down, some up, one document over the lot. */
+    /** One correction to one shelf: some lines down, some up, one document over the lot. The
+     *  closed-outlet guard (`lockLocation`/`assertOpen`) lives inside `writeAdjustment`, so it
+     *  runs the same way for a direct write-off here and for the approval that writes one on a
+     *  counter's behalf (`modules/adjustmentRequests`). */
     async create(claims: AccessClaims, body: CreateAdjustmentBody): Promise<WriteResponse<Adjustment>> {
       return withTransaction(db, async (tx) => {
         const master = await loadMaster(tx);

@@ -30,7 +30,11 @@ spec:
   rules:
     - host: {{ .Values.ingress.host }}
       http:
+        # First match wins, in the order listed: the AWS Load Balancer Controller turns these into
+        # listener rules with ascending priorities. The audit service's two read routes live under
+        # /api, so they have to come before it or the API answers them with a 404.
         paths:
+          - { path: /api/v1/admin/audit, pathType: Prefix, backend: { service: { name: {{ .Release.Name }}-audit, port: { number: 3100 } } } }
           - { path: /api, pathType: Prefix, backend: { service: { name: {{ .Release.Name }}-api, port: { number: 3000 } } } }
           - { path: /, pathType: Prefix, backend: { service: { name: {{ .Release.Name }}-ui, port: { number: 8080 } } } }
 {{- end }}

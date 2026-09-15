@@ -1,6 +1,6 @@
 apiVersion: v2
 name: rch
-description: Royal Care Hospital F&B inventory and billing - API and UI
+description: Royal Care Hospital F&B inventory and billing - API, audit service and UI
 type: application
 version: 0.1.0
 appVersion: "0.1.0"

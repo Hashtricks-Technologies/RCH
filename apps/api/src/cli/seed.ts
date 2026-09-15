@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { loadConfig } from "../config.js";
+import { cliDatabaseUrl, loadConfig } from "../config.js";
 import { createDb } from "../db/client.js";
 import { adminAccount, seedDatabase } from "../db/seed.js";
 import { seedGuard } from "../lib/seed-guard.js";
@@ -13,7 +13,7 @@ const bare = argv.includes("--bare");
 
 // statementTimeoutMs: 0 - hashing a password and writing the whole fixture set is allowed to
 // take longer than the fifteen seconds a request may.
-const { db, pool } = createDb(config.databaseUrl, config.databaseSsl, { max: 2, statementTimeoutMs: 0 });
+const { db, pool } = createDb(cliDatabaseUrl(config), config.databaseSsl, { max: 2, statementTimeoutMs: 0 });
 try {
   // Both production guards ask for the database's own name back, so the connection has to be
   // open before either can be decided - which is why this sits inside the try rather than above

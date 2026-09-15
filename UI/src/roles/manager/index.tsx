@@ -18,6 +18,9 @@ import "./KitchenOrderDrawer";
 // outlet's shelf directly, so this registers "madjreq" - the manager's own review drawer, not
 // the direct-adjust one the counter's "cadjreq" and the kitchen's "adjstock" are.
 import "./AdjustmentRequestDrawer";
+// ---- price-list settings: creating a list, and which list each outlet charges from - both
+// were inline on one outlet's page, where the sharing between outlets could not be seen.
+import "./PriceListSettingsDrawer";
 
 export const screens: Record<string, ComponentType> = {
   dash: Dashboard, approvals: Approvals, stock: ItemsStock, menu: MenuManagement,

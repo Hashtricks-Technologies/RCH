@@ -4,7 +4,8 @@ import { OkResponseSchema } from "./schemas/common.js";
 import { AuthResponseSchema, ChangePasswordBodySchema, LoginBodySchema, MeResponseSchema, PatchMeBodySchema, SignInDirectorySchema } from "./schemas/auth.js";
 import { AdjustmentRequestsResponseSchema, AdjustmentsResponseSchema, BatchesResponseSchema, BILL_DAYS, BillsResponseSchema, ContractsResponseSchema, GrnsResponseSchema, ItemsResponseSchema, LocationsResponseSchema, MenusResponseSchema, PriceListsResponseSchema, PricesResponseSchema, ProdOrdersResponseSchema, ProductRequestsResponseSchema, PurchaseOrdersResponseSchema, RequestsResponseSchema, RequisitionsResponseSchema, RosterResponseSchema, ShopAsksResponseSchema, SnapshotSchema, StockResponseSchema, SupportTicketsResponseSchema, TicketsResponseSchema, VendorsResponseSchema } from "./schemas/snapshot.js";
 import { CreditParamsSchema, CreditResponseSchema, StockLedgerQuerySchema, StockLedgerResponseSchema } from "./schemas/reports.js";
-import { AdminActionSchema, AdminDeletedUserSchema, AdminUserIdParamsSchema, AdminUserSchema, AdminUserWithTempPasswordSchema, CreateAdminUserBodySchema, UpdateAdminUserBodySchema } from "./schemas/admin.js";
+import { AdminActionSchema, AdminActionsQuerySchema, AdminDeletedUserSchema, AdminLocationSchema, AdminUserIdParamsSchema, AdminUserSchema, AdminUserWithTempPasswordSchema, CreateAdminUserBodySchema, CreateOutletBodySchema, OutletKeyParamsSchema, UpdateAdminUserBodySchema, UpdateOutletBodySchema } from "./schemas/admin.js";
+import { AuditEntrySchema, AuditIdParamsSchema, AuditPageSchema, AuditQuerySchema } from "./schemas/audit.js";
 import { AdjustmentRequestSchema, AdjustmentSchema, BatchSchema, BillSchema, PriceListSchema, ProdOrderSchema, ProductRequestSchema, PurchaseOrderSchema, RateContractSchema, RequisitionSchema, ShopAskSchema, StockRequestSchema, SupportTicketSchema, TicketSchema, VendorSchema } from "./schemas/documents.js";
 import { ActivatePriceListResultSchema, AddToProcurementListBodySchema, AnswerProductRequestBodySchema, AnswerShopAskBodySchema, ApproveAdjustmentRequestResultSchema, ApproveRequestBodySchema, ApproveRequisitionBodySchema, ApprovalResultSchema, CancelPoBodySchema, CancelTicketBodySchema, CloseShortBodySchema, ContractBodySchema, CreateAdjustmentBodySchema, CreateAdjustmentRequestBodySchema, CreateItemBodySchema, CreatePoBodySchema, CreatePriceListBodySchema, CreateProductRequestBodySchema, CreateRequestBodySchema, CreateRequisitionBodySchema, DeclineRequisitionBodySchema, DeclineShopAskBodySchema, DeletedPriceListSchema, DispatchResultSchema, DistributeBodySchema, DocIdParamsSchema, HandoverBodySchema, IssueResultSchema, MakeBatchBodySchema, MenuItemBodySchema, MenuItemParamsSchema, MenuLocParamsSchema, MenuResultSchema, OutletParamsSchema, PatchContractBodySchema, PatchPoBodySchema, PatchVendorBodySchema, PayBodySchema, PoLineParamsSchema, PriceListIdParamsSchema, PriceResultSchema, RaiseTicketBodySchema, RateTicketBodySchema, DeskReplyBodySchema, ReceiptResultSchema, ReceivePoBodySchema, RedirectRequestBodySchema, RejectAdjustmentRequestBodySchema, RejectRequestBodySchema, ReplyToTicketBodySchema, SavePriceBodySchema, SavePriceParamsSchema, SetOrderStatusBodySchema, SetOutletPriceListBodySchema, SetTicketStatusBodySchema, ShopAskBodySchema, ShopAskSentResultSchema, ToggleAvailBodySchema, ToggleResultSchema, TransferBodySchema, UpdatePoLineBodySchema, VendorBodySchema, writeResponse, ItemKeyParamsSchema, ItemResultSchema, PatchItemBodySchema, BillNoParamsSchema, VoidBillBodySchema, CreateProdOrderBodySchema } from "./schemas/writes.js";
 
@@ -14,16 +15,28 @@ export type Method = "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
  *  set-admin` - never a role); a list names the roles whose sidebar has the module. */
 export type Access = "public" | "any" | "admin" | readonly Role[];
 
-export interface Route<P extends z.ZodTypeAny, Q extends z.ZodTypeAny, B extends z.ZodTypeAny, R extends z.ZodTypeAny> {
-  method: Method; path: string; access: Access;
+/** The deployable that answers a route. `apps/api` mounts only `"api"` routes and `apps/audit`
+ *  only `"audit"` ones; each refuses the other's at `mount()`. */
+export type Service = "api" | "audit";
+
+/** `M`, `W` and `S` default to the wide types, so `AnyRoute` is what it always was. `defineRoute`
+ *  infers them as literals, which is what lets `audit.ts` derive the write routes by type and
+ *  fail typecheck on a new write that has no audit label. */
+export interface Route<P extends z.ZodTypeAny, Q extends z.ZodTypeAny, B extends z.ZodTypeAny, R extends z.ZodTypeAny, M extends Method = Method, W extends boolean | undefined = boolean | undefined, S extends Service | undefined = Service | undefined> {
+  method: M; path: string; access: Access;
   params?: P; query?: Q; body?: B; response: R;
   /** Writes require an Idempotency-Key header (Task 10). Defaults to method !== "GET". */
-  write?: boolean;
+  write?: W;
   /** Reachable while must_change_password is set. Only auth and /me. */
   allowMcp?: boolean;
+  /** Which deployable answers the route. Absent means `"api"` (`serviceOf`). */
+  service?: S;
 }
 export type AnyRoute = Route<z.ZodTypeAny, z.ZodTypeAny, z.ZodTypeAny, z.ZodTypeAny>;
-export const defineRoute = <P extends z.ZodTypeAny = z.ZodNever, Q extends z.ZodTypeAny = z.ZodNever, B extends z.ZodTypeAny = z.ZodNever, R extends z.ZodTypeAny = z.ZodTypeAny>(r: Route<P, Q, B, R>) => r;
+export const defineRoute = <P extends z.ZodTypeAny = z.ZodNever, Q extends z.ZodTypeAny = z.ZodNever, B extends z.ZodTypeAny = z.ZodNever, R extends z.ZodTypeAny = z.ZodTypeAny, M extends Method = Method, W extends boolean | undefined = undefined, S extends Service | undefined = undefined>(r: Route<P, Q, B, R, M, W, S>) => r;
+/** The one reading of "is this a write": `write` when the manifest says, else anything but a GET. */
+export const isWriteRoute = (r: AnyRoute): boolean => r.write ?? r.method !== "GET";
+export const serviceOf = (r: AnyRoute): Service => r.service ?? "api";
 
 export const routes = {
   login:          defineRoute({ method: "POST",  path: "/auth/login",           access: "public", body: LoginBodySchema, response: AuthResponseSchema, write: false, allowMcp: true }),
@@ -192,13 +205,25 @@ export const routes = {
   reactivateAdminUser:   defineRoute({ method: "POST",  path: "/admin/users/:id/reactivate",       access: "admin", params: AdminUserIdParamsSchema, response: writeResponse(AdminUserSchema) }),
   updateAdminUser:       defineRoute({ method: "PATCH", path: "/admin/users/:id",                  access: "admin", params: AdminUserIdParamsSchema, body: UpdateAdminUserBodySchema, response: writeResponse(AdminUserSchema) }),
   deleteAdminUser:       defineRoute({ method: "DELETE", path: "/admin/users/:id",                 access: "admin", params: AdminUserIdParamsSchema, response: writeResponse(AdminDeletedUserSchema) }),
-  adminActions:          defineRoute({ method: "GET",   path: "/admin/actions",                    access: "admin", response: z.array(AdminActionSchema) }),
+  adminActions:          defineRoute({ method: "GET",   path: "/admin/actions",                    access: "admin", query: AdminActionsQuerySchema, response: z.array(AdminActionSchema) }),
+  // ---- admin: outlets. Opened, edited, closed and reopened here and nowhere else - never deleted
+  // (root CLAUDE.md). The store and the kitchen are fixed: the outlet routes answer 404 for either.
+  adminLocations:        defineRoute({ method: "GET",   path: "/admin/locations",                 access: "admin", response: z.array(AdminLocationSchema) }),
+  createOutlet:          defineRoute({ method: "POST",  path: "/admin/outlets",                    access: "admin", body: CreateOutletBodySchema, response: writeResponse(AdminLocationSchema) }),
+  updateOutlet:          defineRoute({ method: "PATCH", path: "/admin/outlets/:key",               access: "admin", params: OutletKeyParamsSchema, body: UpdateOutletBodySchema, response: writeResponse(AdminLocationSchema) }),
+  closeOutlet:           defineRoute({ method: "POST",  path: "/admin/outlets/:key/close",         access: "admin", params: OutletKeyParamsSchema, response: writeResponse(AdminLocationSchema) }),
+  reopenOutlet:          defineRoute({ method: "POST",  path: "/admin/outlets/:key/reopen",        access: "admin", params: OutletKeyParamsSchema, response: writeResponse(AdminLocationSchema) }),
   // ---- admin: the support desk. The other end of every role's own Support screen: the admin
   // reads every ticket, whoever raised it, and answers as support. Its writes name `tickets` in
   // `changed`, so the reporter's own screen refetches its list and sees the reply live.
   deskTickets:           defineRoute({ method: "GET",   path: "/admin/support/tickets",            access: "admin", response: SupportTicketsResponseSchema }),
   replyAsDesk:           defineRoute({ method: "POST",  path: "/admin/support/tickets/:id/messages", access: "admin", params: DocIdParamsSchema, body: DeskReplyBodySchema, response: writeResponse(SupportTicketSchema) }),
   setDeskTicketStatus:   defineRoute({ method: "POST",  path: "/admin/support/tickets/:id/status", access: "admin", params: DocIdParamsSchema, body: SetTicketStatusBodySchema, response: writeResponse(SupportTicketSchema) }),
+  // ---- admin: the audit log. Answered by `apps/audit`, not by the API: `service: "audit"` is what
+  // keeps these out of the API's `mount()` and in the audit service's. Both live under
+  // `AUDIT_PATH`, so every proxy in front of the two services routes them with one prefix rule.
+  auditLog:   defineRoute({ method: "GET", path: "/admin/audit",     access: "admin", service: "audit", query: AuditQuerySchema,     response: AuditPageSchema }),
+  auditEntry: defineRoute({ method: "GET", path: "/admin/audit/:id", access: "admin", service: "audit", params: AuditIdParamsSchema, response: AuditEntrySchema }),
 } as const;
 export type RouteName = keyof typeof routes;
 export const API_PREFIX = "/api/v1";

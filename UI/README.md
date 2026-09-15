@@ -26,8 +26,9 @@ pnpm db:up                                   # postgres:17 in Docker, host port 
 cp .env.example .env
 pnpm --filter @rch/api keys:generate >> .env
 pnpm --filter @rch/api db:migrate
+pnpm --filter @rch/audit db:migrate          # the audit log's schema, after the API's
 pnpm --filter @rch/api db:seed
-pnpm dev                                     # apps/api on :3000, this app on :5173
+pnpm dev                                     # apps/api on :3000, apps/audit on :3100, this app on :5173
 ```
 
 Just this package, once the API is already running elsewhere:
@@ -38,7 +39,8 @@ pnpm --filter @rch/ui build      # → dist/
 pnpm --filter @rch/ui test
 ```
 
-The dev server proxies `/api` to the Fastify API on `:3000`. Master data, prices, menus, the
+The dev server proxies `/api/v1/admin/audit` to the audit service on `:3100` and the rest of `/api`
+to the Fastify API on `:3000`. Master data, prices, menus, the
 payer roster and every open document are hydrated from `GET /snapshot` on load
 (`hydrateMaster`/`hydrateRoster`). Every mutation in the store - fifty-one actions, listed in
 `../CLAUDE.md`'s *One Zustand store* - is a server call: billing, availability, prices and
@@ -111,18 +113,20 @@ src/
   api/                                    client.ts (the one generic client - routes, idempotency, 401-refresh
                                            retry), session.ts (in-memory token), events.ts (SSE change stream),
                                            refetch.ts (pulls back what a write changed), wire.ts (mappers)
-  store/{index,procurement,ops}.ts        Zustand, all server-backed - index.ts holds most actions (billing,
+  store/{index,procurement,ops,audit}.ts  Zustand, all server-backed - index.ts holds most actions (billing,
                                            availability, prices/menus, the request→ticket chain, production,
                                            the two report reads, the bill void, the kitchen order);
                                            procurement.ts (vendors, requisition approval, the PO lifecycle,
                                            goods receipt); ops.ts (rate contracts, new-product requests,
                                            shop-to-shop transfers, the support desk, the item patch,
-                                           adjustments, adjustment requests)
+                                           adjustments, adjustment requests); audit.ts (the audit log's reads,
+                                           its new-events count and the CSV export)
   data/                                   master.ts (empty registries, replaced in place by hydrateMaster() and
                                            hydrateRoster()), vendors.ts - no seed.ts, no ops.ts; nothing here
                                            imports the fixtures
   lib/                                    fmt.ts (money, quantity, time), selectors.ts (qty · resv · avail ·
-                                           freeToPromise · availOf · priceOf · procurementList …), theme.ts
+                                           freeToPromise · availOf · priceOf · procurementList …), theme.ts,
+                                           audit.ts (deviceOf, diffFields, auditCsv, auditDayRange)
   ui/                                     kit.tsx (~30 typed components incl. DraftLineInput and EtaInput),
                                            Tip.tsx (the one tooltip: every explanation on a page, card,
                                            field, figure or button opens on hover, focus or tap),
@@ -130,11 +134,13 @@ src/
                                            shared non-kit pieces more than one role needs: TicketSlip.tsx,
                                            NewProductForm.tsx, AdjustmentForm.tsx (store, kitchen, and - in
                                            its request mode - the counter), KitchenOrderForm.tsx
-  pages/                                  Login.tsx, ChangePassword.tsx, Settings.tsx, Support.tsx
+  pages/                                  Login.tsx, ChangePassword.tsx, Settings.tsx, Support.tsx, and the
+                                           admin page: AdminDashboard.tsx, AdminUsers.tsx, AdminSupport.tsx,
+                                           AdminAudit.tsx, AuditEntryDrawer.tsx
   roles/<role>/                           counter/ manager/ store/ prod/ buyer/
   __tests__/                              store, procurement, fixes, screens/app, audit-screens, time,
                                            drawer, api, session, events, writes, refusals, theme, po-board,
-                                           login-picker, admin-accounts
+                                           login-picker, admin-accounts, admin-audit, audit-lib
 ```
 
 Each role folder exports `screens: Record<string, ComponentType>`; `App.tsx` resolves the
@@ -200,11 +206,18 @@ reach the till's payer picker from a `kind,id,name` CSV
 switched-off account leaves every till's picker and every bill already charged to it stays
 exactly as it was.
 
-**An outlet can ask the kitchen to make something.** The counter's Stock Requests screen gained
-an "Ask the kitchen" card - which is also the first window a counter has ever had on the orders
-raised for it - and the manager's dashboard an equivalent button for any outlet. Finished goods
-only, from that outlet's own menu, with an optional needed-by date the kitchen's board and drawer
-both print. Raising one reserves nothing: dispatching it is still what places the hold.
+**An outlet asks in two ways, and the screen decides which desk hears it.** The counter's Stock
+Requests screen offers exactly two tiles - **From inventory** and **From other shops**. From
+inventory is one picker over one list: everything the central store stocks *and* the finished
+goods on that outlet's own menu, interleaved by group, with as many lines as the ask needs. On
+send, the screen splits them - finished goods become a production order on the kitchen, the rest
+a stock request on the store - so the operator picks products, not departments. Made-to-order
+items are absent from the list: they hold no stock and the kitchen's route refuses them by name.
+A kitchen line brings a needed-by date with it, which the kitchen's board and drawer both print.
+The manager's dashboard keeps its equivalent button for any outlet. Raising either reserves
+nothing: dispatching it is still what places the hold. Below the tiles, "With the kitchen" is the
+counter's read-only window on the orders the split raised - a production order never appears
+under All requests.
 
 **Pay & print actually prints.** The till opens the new bill's drawer on a successful sale, and
 the drawer prints a real slip - bill number, outlet, terminal, the hospital's own date, the
@@ -223,7 +236,20 @@ requires a subject (not a body); it opens a message thread that moves Open → W
 Waiting on you → Resolved → Closed, and the raiser rates the fix 1–5 once it is resolved. Every
 role sees only the tickets it raised; none of the five answers tickets.
 
-**The support desk, on `/admin`.** The admin-flagged account's second tab lists every ticket from
+**Outlets, on `/admin`.** The admin-flagged account's Outlets tab lists every retail outlet - open ones
+first, then by name - with its code, floor, cost centre and how many staff are posted there.
+Opening one asks for a name, a code, a floor and a cost centre, and previews the key the server will
+actually assign from the name - given once, and kept even through a later rename. A new outlet starts
+with no menu and no price list: the outlet manager lists and prices its products from their own Prices
+screen, which is also where a price list is created and attached. Each row edits in
+place with Save and Cancel, and closes behind a second press, refused in one sentence naming everything
+still open against it (stock on the shelf, a ticket, a stock request, a kitchen order, a shop ask, a
+product request, or a member of staff) if anything is. A closed outlet is never deleted: its bills,
+moves and reports stay, its menu, availability overrides and price list are kept exactly as they were,
+and a reopen restores it. The store and the kitchen are fixed and are not listed here; a new outlet
+appears in every other picker - the Accounts tab's location select included - the moment it opens.
+
+**The support desk, on `/admin`.** The admin-flagged account's third tab lists every ticket from
 every role, most pressing first (open, then with support; urgent before routine), filterable by
 status, priority, role and location. Picking one shows who raised it, from which screen, and the
 conversation. The admin replies as support under their own name - Send, Send & ask the reporter
@@ -231,6 +257,21 @@ conversation. The admin replies as support under their own name - Send, Send & a
 it. Only the moves `SUPPORT_TRANSITIONS` allows are drawn. The reply reaches the reporter's
 Support screen over the change stream, and a new ticket or a reporter's reply lands on the desk
 the same way.
+
+**The audit log, on `/admin`.** The admin-flagged account's third tab answers who did what, when,
+from where and with what result, for every change anyone makes and every sign-in. "Every change
+and sign-in, with who made it and when." Filter by period (today, 7 days, 30 days or a custom
+range), person, role, location, area and outcome, or search; four counts over the whole filter
+read events, people, refused and failed sign-ins. Location finds the person's location or the
+target's. The list is newest first and never moves by itself: while it is open, new events raise a
+"New events - show" pill, and pressing it reloads.
+A row opens the entry - who (as the account stood then), when to the second, the IP and the device,
+the method and path, the server's sentence and a refusal's cause, what was sent, what came back,
+and for an edit only the fields that changed, before → after. From there, "Everything by this
+person" and "Everything on" the target narrow the list. Export CSV downloads the filtered log, up
+to 50,000 rows, and says so when it stops there. Passwords, codes and tokens are never in it. The
+log is kept by a separate service, `apps/audit`; when that service cannot be reached the tab says
+so rather than showing an empty log.
 
 **A six-digit code instead of a scanned one, and it is withheld from the desk that issues it.**
 A pick ticket carries a code minted when it is created. The collector reads it aloud to the

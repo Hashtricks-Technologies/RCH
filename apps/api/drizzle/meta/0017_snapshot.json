@@ -1,5 +1,5 @@
 {
-  "id": "eb4ae9c5-2981-4761-9219-49b536179f62",
+  "id": "f30c6fc0-b8f6-4cf2-80bc-47c0edf942ee",
   "prevId": "8c546d34-9c38-4148-874e-c3420cd98790",
   "version": "7",
   "dialect": "postgresql",
@@ -164,13 +164,6 @@
         "shelf_life_hours": {
           "name": "shelf_life_hours",
           "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "src": {
-          "name": "src",
-          "type": "source",
-          "typeSchema": "public",
           "primaryKey": false,
           "notNull": false
         },
@@ -340,6 +333,20 @@
           "notNull": true,
           "default": false
         },
+        "active": {
+          "name": "active",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "par_factor": {
+          "name": "par_factor",
+          "type": "numeric(4, 2)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0.18
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -348,7 +355,38 @@
           "default": "now()"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "locations_name_uq": {
+          "name": "locations_name_uq",
+          "columns": [
+            {
+              "expression": "lower(\"name\")",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "locations_code_uq": {
+          "name": "locations_code_uq",
+          "columns": [
+            {
+              "expression": "upper(\"code\")",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "locations_price_list_id_price_lists_id_fk": {
           "name": "locations_price_list_id_price_lists_id_fk",
@@ -4156,14 +4194,6 @@
         "Asked",
         "Sent",
         "Declined"
-      ]
-    },
-    "public.source": {
-      "name": "source",
-      "schema": "public",
-      "values": [
-        "store",
-        "kitchen"
       ]
     },
     "public.support_priority": {

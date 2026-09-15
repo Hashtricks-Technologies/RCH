@@ -1,5 +1,8 @@
 RCH is available at https://{{ .Values.ingress.host }}
-To create a user: kubectl exec deploy/{{ .Release.Name }}-api -- /nodejs/bin/node dist/cli/users.mjs create --email <email> --role <role>
+To create a user: kubectl exec deploy/{{ .Release.Name }}-api -c api -- /nodejs/bin/node dist/cli/users.mjs create --name <name> --email <email> --role <role> --loc <loc> --password <temporary>
+That runs as the api container's database role, rch_app, which is enough for users, payers and
+rebuild-balances. A seed, or anything with --force, needs the superuser: run it in a one-off pod
+built from this Deployment's migrate initContainer (deploy/RUNBOOK.md §5, "Operator CLIs in a cluster").
 To roll back this release: helm rollback {{ .Release.Name }}
 {{- if .Values.ingress.enabled }}
 
@@ -16,8 +19,8 @@ and healthy in the target group", which is what a rollout should be waiting for.
 {{- end }}
 {{- if .Values.networkPolicy.enabled }}
 
-This release ships NetworkPolicies (default-deny ingress, with the ui->api hop, the load balancer
-and the monitoring namespace opened by name). They are enforced only if the CNI enforces them:
+This release ships NetworkPolicies (default-deny ingress, with the ui->api and ui->audit hops, the
+load balancer and the monitoring namespace opened by name). They are enforced only if the CNI enforces them:
 on EKS that means the vpc-cni add-on must have `enableNetworkPolicy: true`. deploy/eksctl/cluster.yaml
 now configures that, but it only takes effect once the live cluster's add-on is updated to match
 (`eksctl update addon -f deploy/eksctl/cluster.yaml --name vpc-cni`). Until then, these objects

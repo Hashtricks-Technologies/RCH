@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { ALL_LOCS, IT, LOC, OUTLETS } from "../../data/master";
+import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
 // ---- item patch ----
-import { costOf, isRetired, isTicketOpen, qty, resv, stockValue } from "../../lib/selectors";
+import { allOutlets, costOf, isRetired, isTicketOpen, locName, openOutlets, operationalLocs, qty, resv, stockValue } from "../../lib/selectors";
 import { fq, lakh, money, money0, sum } from "../../lib/fmt";
 import {
   Alert, Btn, Card, DataTable, FilterSelect, PageHead,
@@ -46,26 +46,33 @@ export default function ItemsStock() {
   /* A location either carries the item and holds a number, or does not carry it (M12). */
   const carries = (l: LocKey, k: string) => s.stock[l]?.[k] !== undefined;
 
-  const totalValue = sum(ALL_LOCS, (l) => stockValue(s, l));
-  const zeroSomewhere = stocked.filter((k) => ALL_LOCS.some((l) => carries(l, k) && qty(s, l, k) <= 0)).length;
+  // Every location an operator works at, open outlets included - the outlet-management screen
+  // is the only place a closed one is offered, and this screen keeps reporting it (its stock
+  // does not vanish because it stopped trading).
+  const locs = operationalLocs();
+  const openOutletCount = openOutlets().length;
+  const totalValue = sum(locs, (l) => stockValue(s, l));
+  const zeroSomewhere = stocked.filter((k) => locs.some((l) => carries(l, k) && qty(s, l, k) <= 0)).length;
   const belowReorder = stocked.filter((k) => IT[k].rl > 0 && qty(s, "store", k) <= IT[k].rl).length;
 
   /* ---------------- shop to shop, oversight only ---------------- */
-  const transfers = s.tkt.filter((t) => OUTLETS.includes(t.from) && OUTLETS.includes(t.to));
-  const shopNames = ["All", ...OUTLETS.map((l) => LOC[l].n)];
+  // A closed outlet's past transfer is still a shop transfer, so both the membership test and
+  // the from/to filter read off every outlet ever opened, not just the ones open today.
+  const transfers = s.tkt.filter((t) => allOutlets().includes(t.from) && allOutlets().includes(t.to));
+  const shopNames = ["All", ...allOutlets().map(locName)];
   const tTerm = tq.trim().toLowerCase();
   const tRows = transfers
     .filter((t) => tstate === 0 || stageOf(t.st) === TSTATES[tstate])
-    .filter((t) => tfrom === 0 || LOC[t.from].n === shopNames[tfrom])
-    .filter((t) => tto === 0 || LOC[t.to].n === shopNames[tto])
+    .filter((t) => tfrom === 0 || locName(t.from) === shopNames[tfrom])
+    .filter((t) => tto === 0 || locName(t.to) === shopNames[tto])
     .filter((t) => !tTerm
       || t.id.toLowerCase().includes(tTerm)
-      || LOC[t.from].n.toLowerCase().includes(tTerm)
-      || LOC[t.to].n.toLowerCase().includes(tTerm)
+      || locName(t.from).toLowerCase().includes(tTerm)
+      || locName(t.to).toLowerCase().includes(tTerm)
       || t.lines.some((l) => (IT[l.it]?.n ?? l.it).toLowerCase().includes(tTerm)));
   const tSorted = sortRows(tRows, tsort.sort, (t, k): SortValue =>
-    k === "from" ? LOC[t.from].n
-      : k === "to" ? LOC[t.to].n
+    k === "from" ? locName(t.from)
+      : k === "to" ? locName(t.to)
         : k === "item" ? (IT[t.lines[0]?.it]?.n ?? "")
           : k === "qty" ? sum(t.lines, (l) => l.qty)
             : k === "stage" ? stageOf(t.st)
@@ -73,22 +80,22 @@ export default function ItemsStock() {
   const tFiltered = tTerm !== "" || tstate > 0 || tfrom > 0 || tto > 0;
 
   /* ---------------- item master ---------------- */
-  const locNames = ["All", ...ALL_LOCS.map((l) => LOC[l].n)];
+  const locNames = ["All", ...locs.map((l) => LOC[l].n)];
   const term = q.trim().toLowerCase();
   const want = TYPES[type];
   const rows = keys
     .filter((k) => (want === "All" ? true : IT[k].t === want))
-    .filter((k) => loc === 0 || carries(ALL_LOCS[loc - 1], k))
+    .filter((k) => loc === 0 || carries(locs[loc - 1], k))
     .filter((k) => !term || IT[k].n.toLowerCase().includes(term) || IT[k].c.toLowerCase().includes(term)
       || IT[k].g.toLowerCase().includes(term))
     .map((k) => {
-      const per = ALL_LOCS.map((l) => qty(s, l, k));
+      const per = locs.map((l) => qty(s, l, k));
       const tot = sum(per, (v) => v);
       return {
         k, per, tot,
-        held: ALL_LOCS.some((l) => carries(l, k)),
+        held: locs.some((l) => carries(l, k)),
         value: tot * costOf(k),
-        zero: ALL_LOCS.some((l) => carries(l, k) && qty(s, l, k) <= 0),
+        zero: locs.some((l) => carries(l, k) && qty(s, l, k) <= 0),
         low: IT[k].rl > 0 && qty(s, "store", k) <= IT[k].rl,
       };
     })
@@ -96,7 +103,7 @@ export default function ItemsStock() {
       || (state === 1 ? r.low : state === 2 ? r.zero : !r.held));
 
   const sorted = sortRows(rows, items.sort, (r, k): SortValue => {
-    if (k.startsWith("loc:")) return r.per[ALL_LOCS.indexOf(k.slice(4) as LocKey)] ?? 0;
+    if (k.startsWith("loc:")) return r.per[locs.indexOf(k.slice(4) as LocKey)] ?? 0;
     return k === "type" ? IT[r.k].t
       : k === "unit" ? IT[r.k].u
         : k === "cost" ? costOf(r.k)
@@ -117,7 +124,7 @@ export default function ItemsStock() {
 
       <Alert tone="i" label="SHOP TO SHOP">
         When one shop needs an MRP product another shop is holding, the two settle it between themselves against
-        a ticket and its OTP - any of the {OUTLETS.length} counters to any other. You are informed, not in the
+        a ticket and its OTP - any of the {openOutletCount} counters to any other. You are informed, not in the
         middle: nothing below is yours to approve.
       </Alert>
 
@@ -159,19 +166,19 @@ export default function ItemsStock() {
               key: t.id,
               cells: [
                 <>{t.id}<small>{t.req}</small></>,
-                LOC[t.from].n,
-                LOC[t.to].n,
+                locName(t.from),
+                locName(t.to),
                 t.lines.map((l) => IT[l.it]?.n ?? l.it).join(", "),
                 t.lines.map((l) => `${fq(l.qty, l.it)} ${IT[l.it]?.u ?? ""}`).join(" · "),
                 <>
                   <StatusPill status={t.st} />
                   <small className="dim" style={{ display: "block" }}>
-                    {stage === "Reserved" ? `Held back at ${LOC[t.from].n}`
-                      : stage === "In transit" ? `Off the ${LOC[t.from].n} shelf, not yet on the ${LOC[t.to].n} one`
+                    {stage === "Reserved" ? `Held back at ${locName(t.from)}`
+                      : stage === "In transit" ? `Off the ${locName(t.from)} shelf, not yet on the ${locName(t.to)} one`
                         // A withdrawn transfer moved nothing: the stock never left the granting
                         // shop, so saying it is on the receiving one is simply false.
                         : stage === "Cancelled" ? "Withdrawn - nothing moved"
-                          : `On the shelf at ${LOC[t.to].n}`}
+                          : `On the shelf at ${locName(t.to)}`}
                   </small>
                 </>,
                 // The six digits belong to the collecting counter alone - the manager reads who
@@ -181,7 +188,7 @@ export default function ItemsStock() {
                   ? <span className="dim">-</span>
                   : stage === "Received"
                     ? <span className="dim">used</span>
-                    : <span>{LOC[t.to].n}</span>,
+                    : <span>{locName(t.to)}</span>,
               ],
             };
           })}
@@ -205,7 +212,7 @@ export default function ItemsStock() {
             { h: "At zero", r: true },
             { h: "Stock value", r: true },
           ]}
-          rows={ALL_LOCS.map((l) => {
+          rows={locs.map((l) => {
             const held = Object.keys(s.stock[l] ?? {});
             return {
               key: l,
@@ -221,7 +228,7 @@ export default function ItemsStock() {
           empty={{ title: "No locations configured" }}
         />
         <TableFoot
-          count={ALL_LOCS.length}
+          count={locs.length}
           extra={<>All locations {lakh(totalValue)} · {keys.length} items tracked · {belowReorder} below reorder in the Central Store · {zeroSomewhere} at zero somewhere</>}
         />
       </Card>
@@ -250,7 +257,7 @@ export default function ItemsStock() {
             { h: "Type", sort: "type" },
             { h: "Unit", sort: "unit" },
             { h: "Cost", r: true, sort: "cost" },
-            ...ALL_LOCS.map((l) => ({ h: LOC[l].n, r: true, sort: "loc:" + l })),
+            ...locs.map((l) => ({ h: LOC[l].n, r: true, sort: "loc:" + l })),
             { h: "Total", r: true, sort: "total" },
             { h: "Total value", r: true, sort: "value" },
             // ---- item patch ----
@@ -270,7 +277,7 @@ export default function ItemsStock() {
               <Tag kind={tagKind(IT[r.k].t)}>{IT[r.k].t}</Tag>,
               IT[r.k].u,
               money(costOf(r.k)),
-              ...ALL_LOCS.map((l, i) => {
+              ...locs.map((l, i) => {
                 const v = r.per[i];
                 if (!carries(l, r.k))
                   return <Tip text={`${LOC[l].n} does not carry this item`}><span className="dim">–</span></Tip>;

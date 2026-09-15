@@ -5,10 +5,12 @@
 import type { z } from "zod";
 import type { CreatePriceListBodySchema, LocKey, PriceList, WriteResponse } from "@rch/contract";
 import type { Db } from "../../db/client.js";
+import { auditBefore } from "../../lib/audit.js";
 import { isForeignKeyViolation, withTransaction, type Tx } from "../../lib/db.js";
 import { NotFoundError } from "../../lib/errors.js";
 import { emitChanged } from "../../lib/events.js";
 import { allocateId } from "../../lib/ids.js";
+import { assertOpen, lockLocation } from "../../lib/locations.js";
 import { loadLocations } from "../../lib/master.js";
 import { assertRule } from "../../lib/rules.js";
 import type { AccessClaims } from "../../plugins/auth.js";
@@ -56,6 +58,8 @@ export function createPricelistsService(db: Db) {
         const row = await pricelistsRepo.head(tx, id);
         if (!row) throw new NotFoundError(`There is no price list ${id}.`);
         const outlets = await pricelistsRepo.outletsOf(tx, id);
+        // The list as it stood, in the same shape `create` answers with, before it is gone.
+        auditBefore(toWire(row, outlets as LocKey[]));
         if (outlets.length > 0) {
           const locations = await loadLocations(tx);
           const nameOf = (l: string) => locations[l]?.n ?? l;
@@ -75,9 +79,16 @@ export function createPricelistsService(db: Db) {
 
     async activate(_claims: AccessClaims, loc: LocKey, listId: string): Promise<WriteResponse<{ loc: LocKey; listId: string }>> {
       return withTransaction(db, async (tx) => {
-        const outlet = await loadOutlet(tx, loc);
+        // The outlet's own row, locked `FOR SHARE` like every other write that names a location:
+        // switching a closed outlet onto another list would change what it sells the day it
+        // reopens, so it is refused the same way a menu add there is.
+        const outlet = await lockLocation(tx, loc);
+        assertRule(outlet.type === "Outlet", `${outlet.name} is not an outlet`);
+        assertOpen(outlet);
         const list = await pricelistsRepo.head(tx, listId);
         if (!list) throw new NotFoundError(`There is no price list ${listId}.`);
+        // The outlet's own switch as it stood - the one field this write can change.
+        auditBefore({ loc, listId: outlet.priceListId });
         assertRule(outlet.priceListId !== listId, `Nothing to save - ${outlet.name} is already on ${list.name}`);
         await pricelistsRepo.setOutletList(tx, loc, listId);
         const changed = ["priceLists", "prices", "locations"] as const;

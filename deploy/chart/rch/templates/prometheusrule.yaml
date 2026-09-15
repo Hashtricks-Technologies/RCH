@@ -11,6 +11,10 @@
   RchApiCrashLooping is a seventh, and the one rule that reads a metric from outside this API -
   see its own comment for why a restarting pod cannot be the thing that reports its restarts.
 
+  A second group holds the audit service's two alerts, read off its own ServiceMonitor (job
+  {{ .Release.Name }}-audit): AuditDrainLagging, events waiting in the outbox for more than a
+  minute, and AuditDeadLetters, an event the drainer could not parse and stored aside.
+
   Gated on serviceMonitor.enabled AND on the cluster actually serving monitoring.coreos.com/v1:
   nothing in this repo installs the Prometheus Operator, so the CRD may simply not be there, and
   a `helm upgrade --atomic` that meets an unknown kind fails and rolls the whole release back.
@@ -99,4 +103,26 @@ spec:
           annotations:
             summary: "A pod's live-update stream has gone deaf"
             runbook_url: "{{ .Values.alerts.runbookUrl }}#10-server-sent-events-sse"
+    - name: {{ .Release.Name }}-audit
+      rules:
+        - alert: AuditDrainLagging
+          # The age of the oldest row still in the outbox. Every write that commits adds one and the
+          # drainer normally moves it within a second; a minute means no audit pod is draining - the
+          # listener is down and the poll is failing too - and the log is falling behind the writes.
+          expr: max(audit_drain_lag_seconds{job="{{ .Release.Name }}-audit"}) > 60
+          for: 5m
+          labels: { severity: warning }
+          annotations:
+            summary: "Audit events are waiting more than a minute to be stored"
+            description: "The outbox holds rows older than 60s. Writes still succeed; the Audit log tab is behind them until a drainer recovers."
+            runbook_url: "{{ .Values.alerts.runbookUrl }}#9-alerts"
+        - alert: AuditDeadLetters
+          # An outbox row that did not parse as an AuditEvent is kept in dead_letters, not dropped -
+          # but it is missing from the Audit log tab, so any at all is somebody's to read.
+          expr: sum(increase(audit_dead_letters_total{job="{{ .Release.Name }}-audit"}[15m])) > 0
+          labels: { severity: critical }
+          annotations:
+            summary: "An audit event could not be stored and was set aside"
+            description: "The drainer wrote to dead_letters in the last 15 minutes; each row carries the event and the first validation issue."
+            runbook_url: "{{ .Values.alerts.runbookUrl }}#9-alerts"
 {{- end }}

@@ -2,6 +2,10 @@
 # (deploy/chart/rch/ci/install-test.sh). Not part of the chart itself, not applied by
 # any real environment - emptyDir storage, single replica, plaintext creds scoped to
 # a cluster that is torn down at the end of the job.
+#
+# POSTGRES_USER makes `rch` this cluster's superuser. values-ci.yaml's MIGRATE_DATABASE_URL connects
+# as it, and the two migrate initContainers create the runtime roles rch_app and rch_audit from the
+# users and passwords in DATABASE_URL and AUDIT_DATABASE_URL - so nothing here creates them.
 apiVersion: apps/v1
 kind: Deployment
 metadata:

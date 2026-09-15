@@ -3,7 +3,7 @@ import type { Item, Location, Payer, PayerRoster, PriceList, UserMin } from "../
 // `STAFF_CREDIT_LIMIT` is deliberately not among these any more: the till reads the ceiling off
 // `GET /reports/credit/:kind/:id` (`credit.limit`), because the number that matters is the one
 // the server will refuse on, not a constant compiled into the bundle.
-export { ALL_LOCS, OUTLETS, PO_APPROVAL_LIMIT } from "@rch/contract";
+export { PO_APPROVAL_LIMIT } from "@rch/contract";
 
 // Registries. Mutable on purpose: the store can add a product, and hydrateMaster()
 // replaces the contents with what the server returns. Screens import these directly,
@@ -70,8 +70,9 @@ export function hydratePriceLists(priceLists: MasterData["priceLists"]): void {
 /** Just the menus, for a write that listed or delisted a product (`changed: ["menu"]`). */
 export function hydrateMenus(menu: MasterData["menu"]): void { replaceKeys(MENU, menu); }
 
-/** Just the locations, for a write that moved one (`changed: ["locations"]`) - today, only an
- *  outlet's active price list switching. */
+/** Just the location master, for a write that opened, edited, closed or reopened an outlet, or
+ *  switched one onto another price list (`changed: ["locations"]`). Screens hold `LOC` by
+ *  reference, so it is replaced in place. */
 export function hydrateLocations(locations: MasterData["locations"]): void { replaceKeys(LOC, locations); }
 
 /** Replace every registry's contents with the server's master data (`applySnapshot` calls this). */

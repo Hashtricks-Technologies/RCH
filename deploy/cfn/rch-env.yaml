@@ -1,7 +1,7 @@
 AWSTemplateFormatVersion: "2010-09-09"
 # One template, one stack per environment. The first environment (dev, imported from the
 # CLI-built resources) OWNS the resources that are account- or VPC-wide singletons - the DB
-# subnet group, both ECR repositories, the OIDC provider and the GitHub deploy role - because
+# subnet group, the three ECR repositories, the OIDC provider and the GitHub deploy role - because
 # AWS itself will not let a second stack create a same-named role, repository, subnet group or
 # provider. A later environment's stack (staging, prod) does not recreate them; it imports their
 # identifiers with Fn::ImportValue from the exports this stack (Env=dev) publishes below.
@@ -16,7 +16,7 @@ AWSTemplateFormatVersion: "2010-09-09"
 Description: >-
   RCH environment resources - everything the account owner created by hand with the AWS CLI
   before this template existed, plus what the audit added: the Postgres instance with its
-  parameter group, subnet group and per-environment security group, the two ECR repositories and
+  parameter group, subnet group and per-environment security group, the three ECR repositories and
   their lifecycle policies, the GitHub Actions OIDC provider and deploy role, the per-environment
   Secrets Manager secret, the ACM certificate and its CAA record, an optional ALB access-log
   bucket, and the uptime health check with its SNS topic. NOT here: the EKS cluster, its node
@@ -344,6 +344,51 @@ Resources:
             ]
           }
 
+  EcrAudit:
+    Type: AWS::ECR::Repository
+    Condition: IsDev
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      RepositoryName: rch-audit
+      ImageTagMutability: IMMUTABLE
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      EncryptionConfiguration:
+        EncryptionType: AES256
+      # Nothing ever deleted an image: every push of every branch since the first deploy is still
+      # billed for. Untagged layers are orphans of an overwritten manifest and are worth nothing
+      # after a week; tagged images are the rollback surface, and 30 of them is far more history
+      # than `helm rollback` or deploy.yml's release tag can ever reach back to.
+      LifecyclePolicy:
+        LifecyclePolicyText: |
+          {
+            "rules": [
+              {
+                "rulePriority": 1,
+                "description": "Expire untagged images after 7 days",
+                "selection": {
+                  "tagStatus": "untagged",
+                  "countType": "sinceImagePushed",
+                  "countUnit": "days",
+                  "countNumber": 7
+                },
+                "action": { "type": "expire" }
+              },
+              {
+                "rulePriority": 2,
+                "description": "Keep only the 30 most recent tagged images",
+                "selection": {
+                  "tagStatus": "tagged",
+                  "tagPatternList": ["*"],
+                  "countType": "imageCountMoreThan",
+                  "countNumber": 30
+                },
+                "action": { "type": "expire" }
+              }
+            ]
+          }
+
   GithubOidcProvider:
     Type: AWS::IAM::OIDCProvider
     Condition: IsDev
@@ -421,6 +466,7 @@ Resources:
                 Resource:
                   - !Sub "arn:${AWS::Partition}:ecr:${AWS::Region}:${AWS::AccountId}:repository/rch-api"
                   - !Sub "arn:${AWS::Partition}:ecr:${AWS::Region}:${AWS::AccountId}:repository/rch-ui"
+                  - !Sub "arn:${AWS::Partition}:ecr:${AWS::Region}:${AWS::AccountId}:repository/rch-audit"
               - Sid: EksRead
                 Effect: Allow
                 Action:
@@ -773,6 +819,10 @@ Outputs:
     Description: rch-ui repository URI.
     Value: !If [IsDev, !GetAtt EcrUi.RepositoryUri, !ImportValue rch-shared-ecr-ui-uri]
 
+  EcrAuditUri:
+    Description: rch-audit repository URI.
+    Value: !If [IsDev, !GetAtt EcrAudit.RepositoryUri, !ImportValue rch-shared-ecr-audit-uri]
+
   GitHubDeployRoleArn:
     Description: IAM role GitHub Actions assumes to deploy - feed to the AWS_ROLE_ARN repository secret.
     Value: !If [IsDev, !GetAtt GithubDeployRole.Arn, !ImportValue rch-shared-github-deploy-role-arn]
@@ -831,6 +881,12 @@ Outputs:
     Value: !GetAtt EcrUi.RepositoryUri
     Export:
       Name: rch-shared-ecr-ui-uri
+
+  EcrAuditUriExport:
+    Condition: IsDev
+    Value: !GetAtt EcrAudit.RepositoryUri
+    Export:
+      Name: rch-shared-ecr-audit-uri
 
   GithubDeployRoleArnExport:
     Condition: IsDev

@@ -7,10 +7,10 @@ server.
 
 ```bash
 pnpm --filter @rch/api dev                  # tsx watch, reads ../../.env, :3000
-pnpm --filter @rch/api test                 # vitest; Postgres on 5439 (pnpm db:up); floor lines 94 / branches 79
+pnpm --filter @rch/api test                 # vitest; Postgres on 5439 (pnpm db:up); floor lines 94 / branches 80
 pnpm --filter @rch/api build                # tsup → dist/server.mjs
 pnpm --filter @rch/api db:generate          # drizzle-kit generate + strip the "public". prefix; review + commit the SQL
-pnpm --filter @rch/api db:migrate           # behind pg_advisory_lock
+pnpm --filter @rch/api db:migrate           # behind pg_advisory_lock(727272); creates rch_app when DATABASE_URL names another user
 pnpm --filter @rch/api db:seed [--force] [--bare]
 pnpm --filter @rch/api db:rebuild-balances  # recompute stock_balances from stock_moves
 pnpm --filter @rch/api users <create|reset-password|deactivate|set-admin> --emp RC-1234 ...   # create: --emp optional, next number assigned
@@ -19,6 +19,9 @@ pnpm --filter @rch/api keys:generate        # prints a fresh Ed25519 JWT_PRIVATE
 pnpm --filter @rch/api loadcheck            # latency of /snapshot and /bills against a running API
 ```
 
+Every CLI connects with `MIGRATE_DATABASE_URL` when it is set and `DATABASE_URL` otherwise
+(`cliDatabaseUrl(config)` in `src/config.ts`). The server itself only ever uses `DATABASE_URL`.
+
 ## Layout
 
 ```
@@ -26,8 +29,8 @@ src/app.ts        buildApp(): plugins in order, then registerModules
 src/server.ts     listen; SIGTERM drains (see Shutdown)
 src/config.ts     the Zod env schema - the only reader of process.env
 src/routes.ts     mount(): the only way a module registers a route
-src/plugins/*     logging, errors, metrics, health, security, db, auth, rbac, sse, idempotency
-src/lib/*         ledger, reservations, tickets, adjustments, ids, history, rules, events, claims, credit, master, …
+src/plugins/*     logging, errors, metrics, health, security, db, auth, rbac, sse, idempotency, audit
+src/lib/*         ledger, reservations, tickets, adjustments, ids, history, rules, events, claims, credit, master, audit, roles, …
 src/modules/*     one folder per slice, registered in modules/index.ts; _template is the skeleton to copy
 src/db/*          schema/, client.ts, migrate.ts, seed.ts
 src/cli/*         migrate, seed, rebuild-balances, users, payers, keys, purge
@@ -65,17 +68,23 @@ To add one, copy `src/modules/_template/` and add one import and one `app.regist
 7. **Apply the rules** with `assertRule(cond, sentence)`, `assertTransition(TABLE, from, to, id)`, or a
    `NotFoundError`. Any arithmetic belongs in `@rch/domain`.
 8. **Change state:** `postMoves` when stock moves, `writeTicket` / `reserve` for a hold, and the repo's status
-   writes.
+   writes. An edit to an existing master row or account calls `auditBefore({ … })` first, with the wire-shaped
+   fields it can alter (see *Audit capture*).
 9. **Record it:** `appendHistory(tx, docType, docId, status, who, at)`, then `emitChanged(tx, changed)`.
 10. **Return `{ result, changed, message }` from inside the transaction.** `withTransaction` records the
-    idempotency outcome from that value as its last statement before COMMIT. A service that re-reads a row
-    after its transaction has closed puts its answer outside the protection.
+    idempotency outcome and then the audit event from that value, as its last statements before COMMIT. A
+    service that re-reads a row after its transaction has closed puts its answer outside the protection.
 
 ### Lock order
 
 Lock order is **documents → ids → balances**. Take a ticket number before the balance locks, never while
 holding a shelf.
 
+- **`lib/locations.ts` is the one way a write names a location.** `lockLocation(tx, key)` takes the row `FOR
+  SHARE`, in the documents tier - before any id and before any balance - and refuses an unknown key as
+  `not_found`. `assertOpen(row, then?)` refuses a closed outlet. The admin's close (`modules/admin`) takes the
+  same row `FOR UPDATE`, so a sale already holding the shared lock commits before the close counts its
+  blockers, and one that starts after the close has committed reads the outlet closed.
 - **Purchase-order claims use a narrower order:** the PO row first, then the requisition rows in ascending
   order (`lib/claims.ts`). `createPo` is the one write that locks requisition rows without holding an order
   lock. That is safe only because it is minting that order.
@@ -113,7 +122,10 @@ which edits a list's own item→price rows and never depends on which outlet (if
 None of the three writes touch `stock_moves`, `stock_balances` or a document table, so the lock order above
 does not apply: each is a single `withTransaction` taking only `price_lists` and `locations` rows.
 `pricelistsRepo.head` locks the target `price_lists` row `FOR UPDATE`, and both `remove` and `activate` take
-it before doing anything else - so a delete and a switch of the same list serialise rather than race. The FK
+it before doing anything else - so a delete and a switch of the same list serialise rather than race.
+`activate` names an outlet, so it reads it through `lockLocation` and refuses a closed one (`assertOpen`) like
+every other write that names a location: the list it switched to is what the outlet would sell the day it
+reopened. The FK
 (`locations.price_list_id` `ON DELETE RESTRICT`, `price_list_items.list_id` `ON DELETE CASCADE`) is the
 backstop for a future writer that doesn't take that lock, not the primary guard; `catalog.savePrice` is one
 such writer today - it reads whether the list exists unlocked, so its own insert is wrapped in a catch for the
@@ -135,12 +147,30 @@ same violation.
   account, a super admin, and an active account. `deleteUserTx` then drops the account's `refresh_tokens` and
   `idempotency_keys` and deletes the row. Every other reference to `users` has no `ON DELETE`, so Postgres's
   foreign-key refusal (`isForeignKeyViolation`, 23503) is the rule, and becomes a `RuleError`. Don't enumerate
-  tables there: a new table that references `users` is covered by its own foreign key.
+  tables there: a new table that references `users` is covered by its own foreign key. Audit events are not
+  history in this sense: `audit.events.actor_id` has no foreign key, so they never block a delete.
 - **`admin_actions` stores `target_name` on every line.** `target_id` is `ON DELETE SET NULL`, and
   `recentActions` shows `coalesce(current name, target_name)`, so the log still names a deleted account.
 - **`GET /auth/directory` is public**: active, non-admin accounts as `{ emp, n }`, for the sign-in picker. It
   has its own per-IP limit (120/min, `DIRECTORY_RATE_LIMIT_PER_MINUTE` in `modules/auth/routes.ts`), apart from
   the login limit.
+
+## Outlets
+
+The admin module (`modules/admin`) owns outlets - opened, edited, closed and reopened at `/admin`, never
+deleted (root `CLAUDE.md`). Its close holds the outlet's row `FOR UPDATE` and counts everything still open
+against it in **one statement** (`repo.ts`'s `closeBlockers`), because a dispatch, an answer, a receive or a
+cancel moves a commitment from one counted category to another while naming no location at all - counted one
+statement at a time, at READ COMMITTED, such a write can be seen by neither count. It refuses in one sentence
+naming every blocker at once (`closeRefusal` in `@rch/domain`, over the statuses `HOLDS_OUTLET` marks as
+still committing the outlet - a
+dispatched kitchen order or a sent shop ask keeps an undo edge in its own transition table, but the ticket it
+raised is what holds the outlet from then on).
+
+Every outlet write runs inside one `withTransaction`, writes one `admin_actions` row, and calls
+`emitChanged(tx, ["outlets", "locations"])` - unlike an account write, which announces nothing. Every
+operational browser refetches the location master on `locations`; every open admin tab refetches its own list
+on `outlets`.
 
 ## Reads
 
@@ -175,6 +205,9 @@ test files may insert, update or delete these six tables: `stock_moves`, `stock_
 - A **read** of a protected table from a module repo is fine. `posRepo.saleMoves` does one.
 - `stock_moves` and `document_history` are append-only in the database; triggers refuse UPDATE and DELETE. To
   correct a mistake, append a reversing move or a correcting entry.
+- **`audit_outbox` is narrower still.** Outside test files, only `src/lib/audit.ts` inserts into it, and nothing
+  selects, updates or deletes from it. The audit service is its only reader. Migration `0016_audit_outbox` also
+  puts a trigger on it (`audit_outbox_no_update`) that refuses every UPDATE, for every role.
 
 ## Idempotency
 
@@ -197,12 +230,70 @@ test files may insert, update or delete these six tables: `stock_moves`, `stock_
   refuse.** Its only caller is `tickets.handover`, where a wrong OTP is counted, the count commits, and the
   refusal is thrown afterwards. Don't use it to quieten a schema mismatch.
 
+## Audit capture
+
+Every write and every sign-in leaves exactly one event in `audit_outbox`. The audit service (`apps/audit`)
+drains it; this app only ever inserts. `lib/audit.ts` holds the code.
+
+| Where | What it records |
+|---|---|
+| `mount()` | Puts the audit context (route name, method, path, params, query, body, request id, IP, user agent, caller) on the `idemStore` context of every non-public write, and adds the route to `mountedWrites` |
+| `withTransaction` | Straight after `recordIdempotent` returns `ok: true`, in the same transaction: `recordAudit(tx, ctx, value)` inserts the `done` event |
+| `plugins/audit.ts` (`onResponse`) | A reply no transaction recorded, from a caller a valid token identifies: `refused` for a 4xx (with `req.refusal`'s cause), `error` for a 5xx, `done` for production's `onSend` fallback. Body validation runs before authentication, so the hook verifies the bearer token itself, quietly. Inserted on the pool; a failed insert is logged at `error` and doesn't change the reply |
+| `modules/auth` | `recordAuthEvent`: sign-in, failed sign-in (with its cause), lock-out, a sign-out that ended a live session, password change. A per-IP lock-out never reaches the handler (`@fastify/rate-limit` refuses in a `preHandler`), so an `onSend` hook in `modules/auth/routes.ts` records it |
+
+- **Not events:** a 401 (the client refreshes and retries, and the retry is the event), a reply carrying
+  `idempotency-replayed: true`, a refused write with no verifiable token, a token refresh, `GET /auth/directory`,
+  and every read. A failed sign-in is not a refused write: `modules/auth` records it.
+- **One event per write.** A write that opens several transactions gets its event from the one that records the
+  idempotency outcome, and the hook skips a request whose event already committed. A wrong handover OTP commits
+  its attempt counter with no recorded response, so its event is the hook's `refused`.
+- **The insert has no try/catch.** A write that can't be audited doesn't commit, the same stance as the
+  idempotency record.
+- **Every write that updates or removes an existing master row or account calls `auditBefore(value)`**, right
+  after the service reads the row it is about to change (after its lock, where the service locks) and checks its
+  404, before any rule or change, with
+  the wire-shaped fields the edit can alter. A refused edit therefore carries its before too, and the last call
+  wins. The Audit log's drawer diffs it against the result. A document state change (approve, dispatch,
+  handover, void) doesn't call it; the result's trail carries the before.
+- **`maskSecrets`** replaces the value of every key named in `SECRET_KEYS` with `MASK` (`"••••"`), in `request`,
+  `result` and `before`: `password`, `newPassword`, `currentPassword`, `tempPassword`, `otp`, `token`,
+  `accessToken`, `refreshToken` and `secret`. It matches whole names, not a pattern, so `mustChangePassword`
+  stays a readable before → after. A new field that carries a secret joins `SECRET_KEYS`.
+- **Every event sets `request`, `before` and `result`**, `null` where there is none; the drainer's schema sets
+  aside an event missing one. A response with no `result` key (`PATCH /me`'s `{ user, mustChangePassword }`) is
+  stored whole as `result`.
+- **`targetOf(action, params, body, result)`** names what a write was about: `params.id`, `params.no` or
+  `params.it`, else the result's `id`, `no` or `key`. Where one field is ambiguous the target is composite:
+  `savePrice` is `list:it`, `addMenuItem` / `removeMenuItem` / `toggleAvail` are `loc:it`, `updatePoLine` /
+  `removePoLine` are `id#n`. `targetLoc` is `params.loc`, `body.loc`, `body.from`, `result.loc` or
+  `result.from`, the first that is set: a request, a ticket, a shop ask or a transfer names its location as
+  `from`.
+- **The actor is stored as it stood.** `actorOf` reads the caller's `users` row (one primary-key read) for the
+  employee number, name, printed role label (`roleLabelOf`: "Counter Operator", "Outlet Manager", "Store
+  Keeper", "Kitchen In-charge", "Procurement Officer" or "Super Admin") and location (`""` for the super admin),
+  so an event still reads after the account is renamed or deleted. A sign-in with an unknown employee id has
+  `actor.id` null, and keeps the typed id as `emp` only when it matches `/^RC-\d+$/i`; anything else is stored
+  as `""`, so a password typed into the id box never reaches the log.
+- **The insert wakes the drainer.** `insertAuditEvent` follows each insert with
+  `pg_notify('rch_audit_outbox', current_schema())`. The payload names the outbox's schema, so a drainer wakes
+  only for its own outbox.
+- **Sign-in events pass their `request` explicitly**: `{ body: { emp } }` for `login`, `{}` for `logout` and
+  `changePassword`. The change-password body's keys (`current`, `next`) don't match the mask, so its body is
+  never handed to the event.
+- **Nothing in this app reads the outbox.** Not a module, not a lib; only tests. `rch_app` holds `insert` on it
+  and nothing else, so a `select` would fail in production anyway.
+- **A new write route needs its `AUDIT_LABELS` entry** (typecheck asks for it) and, if it edits an existing
+  row, an `auditBefore` call. `modules/audit-capture.test.ts` asserts `mountedWrites` equals every
+  `service: "api"` write in the manifest.
+
 ## Events
 
 - **`emitChanged` sends a `pg_notify` inside the transaction**, so a refused write announces nothing. The
   channel name includes `current_schema()`, because each test file runs in its own schema.
-- **`plugins/sse.ts` fans notices out to every open stream.** It holds one `LISTEN` client per pod and sends
-  a `resync` after a reconnect.
+- **`plugins/sse.ts` fans notices out to every open stream**, with one exception: it records whether each
+  stream's token is an admin's, and sends an `audit` notice (only the audit service's drainer emits one) to
+  admin streams alone. It holds one `LISTEN` client per pod and sends a `resync` after a reconnect.
 - **`GET /events` is the one route outside the manifest and `mount()`**, so its auth and role gates are
   attached by hand. Its gate is `roleGate("any", false, { admitAdmin: true })`, the only route that admits a
   super admin without being `access: "admin"`.
@@ -223,7 +314,7 @@ test files may insert, update or delete these six tables: `stock_moves`, `stock_
 - The wire shape is `{ error: { code, message, details? } }`. `message` is the toast the operator reads.
 - Every 4xx also lands on the request's log line as `refusal: { code, message, cause? }`. `cause` is an
   internal reason, for example which of the three login failures it was. It is never serialised to the
-  client.
+  client. It is stored as the audit event's `cause`, which only the super admin reads.
 - A 5xx sentence ends with the request id.
 
 ## Tests
@@ -245,6 +336,15 @@ The config pins `TZ=UTC`, a 30 s test timeout, and runs files in parallel.
   There is no `given.payer`: insert into `payers` directly.
 - **`sequences` survives truncation**, so never assert a literal allocated id. Match the shape and assert the
   relative step instead.
+- **`lib/roles.test.ts` creates role names suffixed with the process id** and drops them afterwards, so files
+  running in parallel never share a role. Roles belong to the server, not to a test file's schema.
+- **The audit tests read `audit_outbox` directly** to assert what a real route inserted:
+  `modules/audit-capture.test.ts` (completeness, done events, atomicity, refusals, masking),
+  `modules/audit-before.test.ts` (every `auditBefore` service) and `modules/auth/auth-audit.test.ts` (the
+  sign-in events). Test files are the only place in this app a read of the outbox is allowed.
+- **A test that reads a refusal's event awaits `app.auditSettled()` first.** The `onResponse` insert runs
+  after `inject` resolves; `done` events commit inside the write and need no wait, and neither do the sign-in
+  events.
 - **A test that proves a lock holds must call `warmPool(t, n)` first**, with **n ≤ 4** (the test pool's
   `max`). Without it, `pg` connects lazily and the two "concurrent" transactions run back to back. Asking for
   more than 4 hangs the file. Show the test fails with the lock removed; a race test that can't fail is worse
@@ -265,6 +365,15 @@ The config pins `TZ=UTC`, a 30 s test timeout, and runs files in parallel.
   emitted SQL must be empty, or only restate what you wrote. A second run must say "No schema changes".
 - **`SEED_PASSWORD` is required** (at least 12 characters, no default). `DATABASE_SSL` defaults to on in
   production. Queries time out after 15 s; the CLIs pass `0`.
+- **`DATABASE_URL` is the server's role; `MIGRATE_DATABASE_URL` (optional, `config.migrateDatabaseUrl`) is
+  what `db:migrate` and every CLI connect with.** When the two name different users, `db:migrate` takes the
+  role name and password from `DATABASE_URL`, creates the role if it is missing, sets its password (the literal
+  escaped with `pg`'s `escapeLiteral`, never logged), and runs `grantAppRole`: `usage` on the schema,
+  `select, insert, update, delete` on every API table and `usage, select` on their sequences (plus default
+  privileges for what `rch` creates later), `select` on `drizzle.__drizzle_migrations` for `/readyz`, and on
+  `audit_outbox` `insert` alone. No `truncate`, and nothing in `audit` or `audit_drizzle`. The grants are
+  re-applied on every run. When the two URLs name the same user, as locally and in the tests, the migrations
+  run and nothing else does.
 - **`db:seed` guards production.** Where `NODE_ENV=production`, it needs `--yes-seed <db name>`, and `--force`
   also needs `--yes-destroy <db name>`, each matching `current_database()`. The chart sets `NODE_ENV=production`
   in every pod, so an in-cluster seed always needs this form. The rules live in `lib/seed-guard.ts`.

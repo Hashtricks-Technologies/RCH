@@ -1,5 +1,6 @@
 import type { Db } from "../db/client.js";
 import { idemStore } from "../plugins/idempotency.js";
+import { recordAudit } from "./audit.js";
 import { recordIdempotent } from "./idempotency-record.js";
 
 export type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
@@ -50,29 +51,46 @@ export type Reader = Db | Tx;
  * `CLAIM_STALE_MS` and then counts a second guess - acceptable for a counter, and exactly what
  * `"required"` refuses to accept for a bill. Do not reach for `"optional"` to quieten a response
  * that simply does not match its schema; that is the bug `"required"` is there to catch.
+ *
+ * The write's audit event is the record's twin: `recordAudit` (`lib/audit.ts`) inserts it straight
+ * after a successful record, in the same transaction and unguarded for the same reason, so a write
+ * that cannot be audited does not commit either. Only the transaction that records the outcome
+ * stores an event, so a write that opens several transactions gets exactly one. `ctx.audit.recorded`
+ * is set once that transaction has **committed**, not before, because `plugins/audit.ts` reads it
+ * to decide whether the request still needs an event of its own (a refusal, a 5xx, or production's
+ * `onSend` fallback).
  */
-export const withTransaction = <T>(db: Db, fn: (tx: Tx) => Promise<T>, opts: { response?: "required" | "optional" } = {}): Promise<T> =>
-  db.transaction(async (tx) => {
-    const value = await fn(tx);
-    const ctx = idemStore.getStore();
-    if (ctx && !ctx.idem.recorded) {
-      // "not this transaction's answer, and the caller knows it" - see `opts.response` above.
-      // Checked here rather than inside `recordIdempotent` so that its *other* `ok: false` (a
-      // claim taken over by a retry mid-write) still takes the straggler down, whatever this
-      // caller asked for.
-      if (opts.response === "optional" && !ctx.response.safeParse(value).success) {
-        ctx.why = "a write's response failed its own schema and its caller asked for that to be tolerated";
-        return value;
+export const withTransaction = async <T>(db: Db, fn: (tx: Tx) => Promise<T>, opts: { response?: "required" | "optional" } = {}): Promise<T> => {
+  const ctx = idemStore.getStore();
+  try {
+    const value = await db.transaction(async (tx) => {
+      const answer = await fn(tx);
+      if (ctx && !ctx.idem.recorded) {
+        // "not this transaction's answer, and the caller knows it" - see `opts.response` above.
+        // Checked here rather than inside `recordIdempotent` so that its *other* `ok: false` (a
+        // claim taken over by a retry mid-write) still takes the straggler down, whatever this
+        // caller asked for.
+        if (opts.response === "optional" && !ctx.response.safeParse(answer).success) {
+          ctx.why = "a write's response failed its own schema and its caller asked for that to be tolerated";
+          return answer;
+        }
+        const outcome = await recordIdempotent(tx, ctx, answer);
+        if (outcome.ok) await recordAudit(tx, ctx, outcome.body);
+        ctx.idem.recorded = outcome.ok;
+        if (!outcome.ok) {
+          ctx.why = outcome.why;
+          if (ctx.strict) throw new Error(outcome.why);
+        }
       }
-      const outcome = await recordIdempotent(tx, ctx, value);
-      ctx.idem.recorded = outcome.ok;
-      if (!outcome.ok) {
-        ctx.why = outcome.why;
-        if (ctx.strict) throw new Error(outcome.why);
-      }
-    }
+      return answer;
+    });
+    // Reached only once COMMIT has returned: the event is durable now, and not a moment sooner.
+    if (ctx?.audit.pending) ctx.audit.recorded = true;
     return value;
-  });
+  } finally {
+    if (ctx) ctx.audit.pending = false;
+  }
+};
 
 /**
  * Every read that makes more than one query goes through here, so **one request takes one
@@ -115,3 +133,10 @@ export const isUniqueViolation = (err: unknown, constraint: string): boolean => 
  *  so a table added later with a reference to it is covered without anyone naming it. */
 export const isForeignKeyViolation = (err: unknown): boolean =>
   ((err as { cause?: unknown } | null)?.cause as { code?: string } | undefined)?.code === "23503";
+
+/** The unique index a statement ran into, when that is why it failed - a refusal can then name the
+ *  field that clashed rather than the constraint. Undefined for any other failure. */
+export const uniqueViolationOf = (err: unknown): string | undefined => {
+  const cause = (err as { cause?: { code?: string; constraint?: string } } | null)?.cause;
+  return cause?.code === "23505" ? cause.constraint : undefined;
+};

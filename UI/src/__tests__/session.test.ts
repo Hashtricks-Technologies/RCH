@@ -33,6 +33,7 @@ const EMPTY_MASTER: MasterData = {
 };
 const COFFEE: Location = {
   n: "Floor 3 Coffee Bar", c: "Coffee Bar", type: "Outlet", floor: "3", cc: "CC-31", list: "PL-001",
+  active: true, par: 0.18,
 };
 
 describe("restoring the session at boot", () => {

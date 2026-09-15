@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { parseArgs } from "node:util";
 import { PayerKindSchema } from "@rch/contract";
-import { loadConfig } from "../config.js";
+import { cliDatabaseUrl, loadConfig } from "../config.js";
 import { createDb } from "../db/client.js";
 import { importPayers, parsePayerCsv, sayCsvError, PAYER_CSV_COLUMNS } from "../lib/payers-admin.js";
 
@@ -22,7 +22,7 @@ const usage = () => {
 // `statementTimeoutMs: 0` and a pool of one, like every other CLI: a ward list of a few thousand
 // rows goes in as one transaction and is allowed to take longer than a request ever may.
 const config = loadConfig(process.env);
-const { db, pool } = createDb(config.databaseUrl, config.databaseSsl, { max: 1, statementTimeoutMs: 0 });
+const { db, pool } = createDb(cliDatabaseUrl(config), config.databaseSsl, { max: 1, statementTimeoutMs: 0 });
 try {
   switch (positionals[0]) {
     case "import": {

@@ -1,11 +1,10 @@
 import type { z } from "zod";
-import { StockLocSchema } from "@rch/contract";
 import type { SnapshotSchema, StockResponseSchema } from "@rch/contract";
-import { hydrateItems, hydrateLocations, hydrateMaster, hydrateMenus, hydratePriceLists, hydratePrices, hydrateRoster } from "../data/master";
+import { hydrateItems, hydrateLocations, hydrateMaster, hydrateMenus, hydratePriceLists, hydratePrices, hydrateRoster, LOC } from "../data/master";
 import { fromWireBestBefore, fromWireDate, fromWireTime } from "../lib/fmt";
 import { useApp } from "../store";
 import { basePrices } from "../lib/selectors";
-import type { AdminAction, AdminUser, Bill, Dated, HistEntry, StockLoc } from "../types";
+import type { AdminAction, AdminLocation, AdminUser, Bill, Dated, HistEntry, StockLoc } from "../types";
 
 export type Snapshot = z.infer<typeof SnapshotSchema>;
 export type StockResponse = z.infer<typeof StockResponseSchema>;
@@ -34,18 +33,15 @@ const hist = (h: HistEntry[]): Dated<HistEntry>[] =>
 const billed = (b: Bill[]): Dated<Bill>[] =>
   b.map((x) => ({ ...x, t: t(x.t), iso: instant(x.t, (x as Partial<Dated<Bill>>).iso) }));
 
-/** Quarantine is here and nowhere else that an operator acts: stock is *reported* for the
- *  rejected-goods shelf, so the store keeper can see what was turned away at a goods receipt.
- *  Read off the schema rather than hand-listed, so a sixth reported location cannot be added to
- *  the contract and quietly missed here - `store/index.ts`'s `EMPTY_STOCK` reads the same list. */
-const ALL_LOC: StockLoc[] = [...StockLocSchema.options];
 /**
- * A counter operator's snapshot is scoped to its own location, so the server
- * omits the rest. The store's map is exhaustive - an absent location is empty,
- * not missing, or every `stock[loc][it]` read would throw.
+ * A counter operator's snapshot is scoped to its own location, so the server omits the rest. The
+ * store's map is exhaustive - an absent location is empty, not missing, or every `stock[loc][it]`
+ * read would throw - over every location the master names, quarantine included. Read off `LOC`,
+ * which `hydrateMaster` has just filled, rather than a list compiled into the bundle: an outlet the
+ * super admin opened this morning is a location like any other.
  */
 const stockOf = (s: Snapshot["stock"]): Record<StockLoc, Record<string, number>> =>
-  Object.fromEntries(ALL_LOC.map((l) => [l, s[l] ?? {}])) as Record<StockLoc, Record<string, number>>;
+  ({ ...Object.fromEntries(Object.keys(LOC).map((l) => [l, {}])), ...s });
 
 /** Server shape -> the store's shape. Times become "HH:MM", dates "DD-MMM-YYYY"; nothing else changes. */
 export function applySnapshot(s: Snapshot): void {
@@ -185,12 +181,13 @@ export function applyPriceLists(priceLists: Snapshot["priceLists"]): void {
   useApp.setState((s) => ({ catalogVersion: s.catalogVersion + 1 }));
 }
 
-/** GET /locations -> the location master. Module-level like `IT`, for the same reason: a write
- *  naming "locations" (today, only switching an outlet's active price list) has to tell a
- *  screen reading `LOC` directly that it moved. */
+/** GET /locations -> the location master, in place, and a map for any location the stock does not
+ *  carry yet. Module-level like `IT`, so `catalogVersion` is what tells a screen reading `LOC`
+ *  directly - a newly opened outlet, a closed one, an outlet switched onto another price list -
+ *  that the registry moved underneath it. */
 export function applyLocations(locations: Snapshot["locations"]): void {
   hydrateLocations(locations);
-  useApp.setState((s) => ({ catalogVersion: s.catalogVersion + 1 }));
+  useApp.setState((prev) => ({ catalogVersion: prev.catalogVersion + 1, stock: stockOf(prev.stock) }));
 }
 
 /** GET /menus -> what each outlet lists. Like the catalogue, the registry is a module-level one
@@ -215,10 +212,15 @@ export function applyRoster(r: Snapshot["roster"]): void {
 /** GET /admin/users -> every account, ordinary store state: nothing outside the admin page
  *  reads it, so there is no module-level registry to keep the identity of. */
 export function applyAccounts(accounts: AdminUser[]): void { useApp.setState({ accounts }); }
+/** GET /admin/locations -> the admin page's own list of every location but quarantine, with who
+ *  is based at each. Nothing else reads this - an operational session reads `LOC` instead, kept
+ *  live through `applyLocations` above. */
+export function applyAdminLocations(adminLocations: AdminLocation[]): void { useApp.setState({ adminLocations }); }
 /** GET /admin/actions -> the last fifty, times as "HH:MM" and the instant beside them like every
- *  other document here is stamped. */
-export function applyAdminActions(rows: AdminAction[]): void {
-  useApp.setState({ adminActions: rows.map(stamped) });
+ *  other document here is stamped. `kind` picks which feed the rows land in: the account page's
+ *  own, or the Outlets tab's. */
+export function applyAdminActions(rows: AdminAction[], kind: "accounts" | "outlets" = "accounts"): void {
+  useApp.setState(kind === "outlets" ? { outletActions: rows.map(stamped) } : { adminActions: rows.map(stamped) });
 }
 
 // ---- adjustments

@@ -15,9 +15,10 @@ export const JSON_NULL = sql`'null'::jsonb`;
  *  by `recordIdempotent` below. */
 export const NOT_RECORDED = "a write's response was not recorded inside its own transaction";
 
-/** `{ ok: true }`, or why the response is not in the claim row - a sentence a log line or a
+/** `{ ok: true }` with the response as its schema parsed it (what was stored, and what the audit
+ *  event carries), or why the response is not in the claim row - a sentence a log line or a
  *  thrown error can carry as it stands. */
-export type RecordOutcome = { ok: true } | { ok: false; why: string };
+export type RecordOutcome = { ok: true; body: unknown } | { ok: false; why: string };
 
 /**
  * Write the response into the claim row **from inside the write's own transaction**, as the
@@ -58,5 +59,5 @@ export async function recordIdempotent(tx: Tx, ctx: IdemContext, value: unknown)
     .where(and(eq(idempotencyKeys.key, ctx.idem.key), eq(idempotencyKeys.userId, ctx.idem.userId), isNull(idempotencyKeys.committedAt)))
     .returning({ key: idempotencyKeys.key });
   if (done.length === 0) return { ok: false, why: "a write's claim row was taken over by a retry while the write was still running" };
-  return { ok: true };
+  return { ok: true, body };
 }

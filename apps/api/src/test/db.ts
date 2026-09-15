@@ -74,6 +74,8 @@ export async function resetDocuments(db: Db): Promise<void> {
     "vendors", "rate_contracts",
     "stock_moves", "stock_balances", "reservations", "availability_overrides",
     "document_history", "idempotency_keys",
+    // ---- audit log: every write now leaves an event, and a case counting them must not see the last case's
+    "audit_outbox",
     // ---- adjustments
     "adjustments", "adjustment_lines",
   ];

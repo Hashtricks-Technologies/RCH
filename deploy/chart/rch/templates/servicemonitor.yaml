@@ -5,4 +5,14 @@ metadata: { name: {{ .Release.Name }}-api, labels: { release: {{ .Values.service
 spec:
   selector: { matchLabels: { app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: api } }
   endpoints: [{ port: http, path: /metrics, interval: {{ .Values.serviceMonitor.interval }} }]
+---
+# The audit service publishes its own registry on its own port (apps/audit/src/plugins/metrics.ts):
+# audit_outbox_depth, audit_drain_lag_seconds, audit_events_stored_total, audit_dead_letters_total
+# and audit_listener_up. The Service's name, {{ .Release.Name }}-audit, becomes the series' `job`.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata: { name: {{ .Release.Name }}-audit, labels: { release: {{ .Values.serviceMonitor.releaseLabel | default "kube-prometheus-stack" }} } }
+spec:
+  selector: { matchLabels: { app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: audit } }
+  endpoints: [{ port: http, path: /metrics, interval: {{ .Values.serviceMonitor.interval }} }]
 {{- end }}

@@ -24,7 +24,8 @@ compose exec -T postgres pg_dump -U rch -d rch | gzip -9 > "$file"
 aws s3 cp "$file" "s3://$bucket/db/rch-$stamp.sql.gz" --only-show-errors
 
 # The nightly sweep of expired refresh tokens and idempotency keys - apps/api/src/cli/purge.ts,
-# the same one-off CronJob ran in the EKS deploy.
-compose run --rm --no-deps api dist/cli/purge.mjs
+# the same one-off CronJob ran in the EKS deploy. Through `migrate`, like every operator CLI: it
+# carries the superuser URL, and `api` holds only rch_app.
+compose run --rm --no-deps migrate dist/cli/purge.mjs
 
 echo "backed up rch-$stamp.sql.gz to s3://$bucket/db/ and purged expired rows"

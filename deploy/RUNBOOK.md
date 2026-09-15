@@ -11,8 +11,9 @@ cp .env.example .env
 # then edit .env: SEED_PASSWORD= needs a value of your own, at least 12 characters
 pnpm --filter @rch/api keys:generate >> .env   # appends JWT_PRIVATE_KEY= / JWT_PUBLIC_KEY=
 pnpm --filter @rch/api db:migrate
+pnpm --filter @rch/audit db:migrate            # the audit schema; waits for the API's audit_outbox
 pnpm --filter @rch/api db:seed
-pnpm dev                                       # turbo run dev --parallel: api on :3000, UI on :5173
+pnpm dev                                       # turbo run dev --parallel: api on :3000, audit on :3100, UI on :5173
 ```
 
 **`SEED_PASSWORD` has no default any more** and `apps/api/src/config.ts` requires at least twelve
@@ -25,6 +26,20 @@ only a new seed uses the new value.
 Local Postgres listens on host port **5439**, not 5432 - a native PostgreSQL install commonly
 already owns 5432 on a dev machine. `docker-compose.yml` maps `5439:5432`; `.env.example`'s
 `DATABASE_URL` / `TEST_DATABASE_URL` already point at 5439. `pnpm db:down` stops it.
+
+**The audit service runs beside the API**, on :3100, from the same `.env`. `AUDIT_DATABASE_URL`
+(already in `.env.example`) is its connection, and it reads `JWT_PUBLIC_KEY` to verify the API's
+tokens. Run its migrations after the API's: `pnpm --filter @rch/audit db:migrate` waits up to five
+minutes for the API's `audit_outbox` table, then creates the `audit` schema. Vite sends
+`/api/v1/admin/audit` to it and the rest of `/api` to the API. Without it running the application
+works as before - every write still commits, and its audit event waits in `audit_outbox` - and only
+the Audit log tab says it cannot reach the log.
+
+Locally `DATABASE_URL`, `AUDIT_DATABASE_URL` and the unset `MIGRATE_DATABASE_URL` all name the one
+`rch` user, so neither migrate step creates a role. To rehearse the deployed roles, set
+`MIGRATE_DATABASE_URL` to the `rch` URL and give `DATABASE_URL` and `AUDIT_DATABASE_URL` the users
+`rch_app` and `rch_audit` with passwords of your own: the two migrate steps create both roles and
+grant them (§5, *The database roles*).
 
 `keys:generate` prints a fresh Ed25519 pair as two `JWT_*=` lines - append them to `.env` (as
 above) for local dev, or paste them into the Kubernetes Secret / `values-*.yaml` for a cluster
@@ -66,7 +81,7 @@ clean start (§16.5):
 
 ```bash
 pnpm --filter @rch/api db:seed --bare                                      # locally
-dist/cli/seed.mjs --bare --force --yes-seed rch --yes-destroy rch          # in the api container, over a demo-seeded rch
+dist/cli/seed.mjs --bare --force --yes-seed rch --yes-destroy rch          # on the box, through the migrate service (§16.5)
 ```
 
 What a bare hospital needs before it can sell anything, in the order the screens need it: the
@@ -91,15 +106,20 @@ first sign-in.
 | `RC-4482` | Deepa Selvam | Counter Operator | kiosk |
 | `RC-0001` | System Administrator | Super Admin (a flag, not a role - see below) | - |
 
+`rest`, `coffee` and `kiosk` are what a demo or bare seed opens with, not a closed list: the super admin opens,
+edits, closes and reopens outlets from `/admin` (§5 below), and a new one gets its own key, minted from its
+name once.
+
 Sign in at `http://localhost:5173`: staff pick themselves from the employee list (read from the
 public `GET /auth/directory`, number and name only), then type the seed password. The super admin
 is not on that list; use "Sign in as administrator" and type `RC-0001`.
 
 `RC-0001` is the one seeded account carrying the admin flag - account management
 (create/reset/deactivate/reassign/delete a colleague from its own standalone dashboard at
-`/admin`) and the support desk are a capability, not a role: signing in as it shows no
-operational sidebar at all, only that page, and the API answers its token with a 404 on every
-operational route (`/events` excepted, for the desk). Its nominal role and location
+`/admin`), outlet management (open, edit, close, reopen - never delete), the support desk and the
+audit log are a capability, not a role: signing in as it shows no operational sidebar at all, only
+that page, and the API answers its token with a 404 on every operational route (`/events` excepted,
+for the desk). Its nominal role and location
 (`buyer`/`store` in the fixture) are the schema's own bookkeeping; the wire labels the account
 `Super Admin` and the page offers no role or location to change.
 
@@ -185,6 +205,14 @@ box may well have been the password. Every other 4xx carries the same `refusal` 
 `code` and the sentence the caller read); a 5xx is logged in full under `"msg":"unhandled"`,
 and the sentence the caller read ends with the request id to look it up by.
 
+**The audit log keeps these too, for good.** Every refused sign-in is also an audit event
+(`login`, `refused`) with the same `cause`, the caller's IP and device. For an id that matched
+nobody, the event keeps what was typed only when it has the shape of an employee number (`RC-`
+and digits), so a mistyped `RC-0000` shows who tried while a password typed into the id box is
+stored as an empty id and never reaches the log either. A locked-out attempt, under either
+budget, is an event too. The Audit log's failed sign-ins count reads them all; §16.7 has the same
+from `psql`.
+
 A forgotten password is reset with `users reset-password` (§5); the account then carries
 `must_change_password` and is asked to choose a new one at its next sign-in. A seeded account's
 password stops being the seed password the moment somebody signs in as it and goes through that
@@ -230,7 +258,7 @@ on that advisory lock behind another replica is the whole point of the initConta
 API's ordinary 15 s statement timeout was cancelling the wait mid-rollout, which presents as
 `Init:CrashLoopBackOff`.
 
-**Thirteen migrations exist** (`apps/api/drizzle/0000`–`0012`): `0000` is the initial schema, `0001` adds
+**The first thirteen migrations** (`apps/api/drizzle/0000`–`0012`): `0000` is the initial schema, `0001` adds
 the unique index on `refresh_tokens.token_hash`, `0002` installs the append-only trigger on
 `stock_moves` (§7), `0003` adds `bills_staff_credit_idx` - a partial btree index on
 `bills (payer_kind, payer_id, at) where payer_kind = 'staff'`, so the staff-credit ceiling's
@@ -259,11 +287,20 @@ well as schema. `0011_prod_orders_need_by` adds one nullable `date`. `0012_bills
 `bills.voided_at`, `voided_by` and `void_reason` plus the `voided_by` foreign key to `users`.
 None of the four validates an existing row, so none of them can refuse the way `0008` can.
 
-A fresh `db:migrate` against an empty database reports all thirteen applied; against an
-already-current one it reports `migrations applied: 13 / 13`, which is also what `/readyz`
-compares against. Both numbers were proved on a scratch database created and dropped for the
-purpose - a first migrate from empty, then a second run on the same database to prove the
-migrate is idempotent.
+Four more since. `0013_admin_accounts` adds the `admin_actions` table and the `users.admin` flag;
+`0014_admin_actions_target_name` keeps each admin action's target name, so the log still reads
+after an account is deleted; `0015_drop_recipes` drops `recipe_lines` and `recipes`; and
+`0016_audit_outbox` adds `audit_outbox`, the table every audit event is written into, with a trigger
+that refuses every UPDATE on it (§5, *The database roles*). The audit service's own migrations are separate:
+`apps/audit/drizzle`, recorded in `audit_drizzle` rather than `drizzle` and applied by
+`pnpm --filter @rch/audit db:migrate` (the `audit-migrate` step when deployed) behind
+`pg_advisory_lock(727273)`, so they never change the API's count.
+
+A fresh `db:migrate` against an empty database reports every journal entry applied; against an
+already-current one it reports `migrations applied: N / N`, N being the number of entries in
+`apps/api/drizzle/meta/_journal.json`, which is also what `/readyz` compares against. Both were
+proved, at thirteen, on a scratch database created and dropped for the purpose - a first migrate
+from empty, then a second run on the same database to prove the migrate is idempotent.
 
 **`0008` validates existing rows, so on any database with data in it, probe before you migrate.**
 The five likeliest, and what to do about each - `apps/api/scripts/preflight-0008.sql` probes all ten:
@@ -327,7 +364,7 @@ point at the default branch's tip, not at what CI just passed - so if you add a 
 branch and the commit from `head_branch`/`head_sha` like every other step does.
 
 It is still gated by the repository variable `DEPLOY_ENABLED=true` (the `skipped` job runs
-instead). It builds and pushes the `api` and `UI` images to ECR, **scans the two tags it is
+instead). It builds and pushes the `api`, `UI` and `audit` images to ECR, **scans the three tags it is
 about to deploy** (see below), then `helm upgrade --install rch deploy/chart/rch -f
 values-<env>.yaml --set image.tag=<sha> --namespace <namespace> --create-namespace --wait
 --timeout 15m`, with `--atomic` on dev and staging only. `develop` is `values-dev.yaml` /
@@ -354,23 +391,24 @@ tripped on the way. `staging`/`production` are `values-staging.yaml`/`values-pro
 
 ### What the workflow checks before it touches a cluster
 
-- **Trivy, on the exact tags helm is about to deploy.** `ci.yml` scans `rch-api:ci` / `rch-ui:ci` -
-  images it built itself, which are not the bytes that reach a cluster. Two steps in
-  `deploy.yml`, between the push and `helm upgrade`, scan
-  `<ECR_REGISTRY>/rch-{api,ui}:<head_sha>` pulled back out of ECR, at
+- **Trivy, on the exact tags helm is about to deploy.** `ci.yml` scans `rch-api:ci` / `rch-ui:ci` /
+  `rch-audit:ci` - images it built itself, which are not the bytes that reach a cluster. One step per
+  image in `deploy.yml`, between the push and `helm upgrade`, scans
+  `<ECR_REGISTRY>/rch-{api,ui,audit}:<head_sha>` pulled back out of ECR, at
   `severity: CRITICAL,HIGH`, `exit-code: 1`, `ignore-unfixed: true`,
   `trivyignores: .trivyignore.yaml` - the same action version and the same ignore file as
   ci.yml, so the two scans cannot drift apart. They run whether the builds ran or were skipped
   as already-pushed (the repositories refuse to overwrite a tag, so a re-run of a commit whose
   images are already in ECR skips the build rather than failing on the push).
 - **Every secret the chart needs is present.** A named step before `helm upgrade` refuses, by
-  name, when any of `DATABASE_URL`, `JWT_PRIVATE_KEY`, `JWT_PUBLIC_KEY`, `SEED_PASSWORD` is
-  empty - `--set-string` would otherwise write the empty string into the Secret and the api
-  container would fail config validation minutes later, with nothing in the log about where the
-  blank came from. It collects all four before exiting, so one run names every missing one. It
-  is **scoped to non-production** (`head_branch != 'production'`): production reads the same four
-  from AWS Secrets Manager through the External Secrets Operator, so those GitHub secrets are
-  empty there on purpose and an unconditional guard would refuse every production deploy.
+  name, when any of `DATABASE_URL`, `MIGRATE_DATABASE_URL`, `AUDIT_DATABASE_URL`,
+  `JWT_PRIVATE_KEY`, `JWT_PUBLIC_KEY`, `SEED_PASSWORD` is empty - `--set-string` would otherwise
+  write the empty string into the Secret and a container would fail config validation minutes
+  later, with nothing in the log about where the blank came from. It collects all six before
+  exiting, so one run names every missing one. It is **scoped to non-production**
+  (`head_branch != 'production'`): production reads the same six from AWS Secrets Manager through
+  the External Secrets Operator, so those GitHub secrets are empty there on purpose and an
+  unconditional guard would refuse every production deploy.
 
 ### `--atomic` on dev and staging, `--wait` alone on production
 
@@ -391,8 +429,9 @@ the right move is forward or back. Two steps make that workable:
 
 - **`What the cluster saw`** (`if: failure()`, every branch, before any rollback) prints
   `kubectl -n $NS get pods,events --sort-by=.lastTimestamp | tail -80` and `kubectl -n $NS logs
-  -l app.kubernetes.io/component=api -c migrate --tail=200` into the job log. Both `|| true`: a
-  first install that never made a pod must not turn a missing log into a second failure.
+  -l app.kubernetes.io/component=api -c migrate --tail=200` into the job log, and the audit pods'
+  `audit-migrate` and `audit` logs the same way. All `|| true`: a first install that never made a
+  pod must not turn a missing log into a second failure.
 - **`Unstick the release`** (`if: failure()`, **not** production) reads `helm status -o json`
   first and rolls back only from `pending-upgrade`, `pending-install`, `pending-rollback` or
   `failed`, and only when `helm history` shows at least two revisions. A bare `helm rollback`
@@ -418,35 +457,57 @@ migration (§3 explains why that's usually fine). A production push additionally
 GitHub environment approval before the deploy job runs, and a fast-forward guard checks
 `staging ⊂ develop` and `production ⊂ staging` so the branches can never diverge.
 
+The audit pods have the same shape: an `audit-migrate` initContainer (`dist/cli/migrate.mjs` from
+the `rch-audit` image, `deploy/chart/rch/templates/audit-deployment.yaml`) ahead of the `audit`
+container, behind its own `pg_advisory_lock(727273)`. It first waits up to five minutes for the
+API's `audit_outbox` table to exist, so the api and audit Deployments may roll out in either
+order; if the table never appears it exits 3, which almost always means the API's `migrate`
+failed first - read that log before this one. Its role and grant step also takes the API's
+727272, because both steps grant on `audit_outbox`. Both migrate steps connect with
+`MIGRATE_DATABASE_URL` (`rch`) and create their runtime role - `rch_app` from `DATABASE_URL`,
+`rch_audit` from `AUDIT_DATABASE_URL` - and re-grant it on every run (§5, *The database roles*).
+
 ### CI: a real `helm install`
 
 Every push to `develop`/`staging`/`production` and every pull request exercises the chart for
 real, not just `helm lint`/`helm template`: the `images` job in `.github/workflows/ci.yml`
-builds `rch-api:ci` and `rch-ui:ci`, spins up a throwaway [kind](https://kind.sigs.k8s.io/)
-cluster (`helm/kind-action`), loads both images into it, then runs
-`deploy/chart/rch/ci/install-test.sh`, which applies the CI-only single-replica Postgres
+builds `rch-api:ci`, `rch-ui:ci` and `rch-audit:ci`, spins up a throwaway
+[kind](https://kind.sigs.k8s.io/) cluster (`helm/kind-action`), loads all three images into it,
+then runs `deploy/chart/rch/ci/install-test.sh`, which applies the CI-only single-replica Postgres
 (`deploy/chart/rch/ci/postgres.yaml`) itself and waits for it before anything else:
 `helm install` with `deploy/chart/rch/ci/values-ci.yaml` (a freshly generated Ed25519 pair
-passed via `--set-string`, never committed), seed the database, confirm `/readyz` and a login
-as `RC-3120` succeed through a port-forward, confirm the UI's `/healthz` succeeds too, then
-`helm upgrade --install` with the same values and check `/readyz` again - proving the upgrade
-path keeps the rendered Secret in place and the `migrate` initContainer no-ops the second time.
-The cluster is deleted with the runner at the end of the job. Run it locally with `kind`
-installed: `deploy/chart/rch/ci/install-test.sh` against a cluster that already has
-`rch-api:ci`/`rch-ui:ci` loaded (`kind load docker-image`) and `JWT_PRIVATE_KEY`/
+passed via `--set-string`, never committed; `MIGRATE_DATABASE_URL` as `rch`, `DATABASE_URL` as
+`rch_app` and `AUDIT_DATABASE_URL` as `rch_audit`, so both migrate initContainers create their
+roles for real), then seed the database from a one-off pod built from the api Deployment's own
+`migrate` initContainer (the api container holds no superuser URL - §5, *Operator CLIs in a
+cluster*), with `SEED_FORCE_PASSWORD_CHANGE=false` so `RC-0001` signs in as a plain admin. It
+confirms `/readyz` and a login as `RC-3120` through a port-forward, and the UI's `/healthz`. Then
+the audit check: wait for `deploy/rch-audit`, require its `/readyz` through a port-forward, sign
+in as `RC-0001` through the API, and poll `GET /api/v1/admin/audit` from the audit service with
+that token for up to 15 s - the sign-in just made must appear, which proves outbox → drainer →
+read on a real cluster. Finally
+`helm upgrade --install` with the same values and check `/readyz` on both again - proving the
+upgrade path keeps the rendered Secret in place and both migrate initContainers apply nothing
+the second time. On a failure the diagnostics print the audit pod's `audit-migrate` and `audit`
+logs beside the API's. The cluster is deleted with the runner at the end of the job. Run it
+locally with `kind` installed: `deploy/chart/rch/ci/install-test.sh` against a cluster that
+already has `rch-api:ci`/`rch-ui:ci`/`rch-audit:ci` loaded (`kind load docker-image`) and `JWT_PRIVATE_KEY`/
 `JWT_PUBLIC_KEY` exported (the two lines `pnpm --filter @rch/api keys:generate` prints, already
 base64-encoded - export them as-is).
 
 Required repository secrets: `AWS_ROLE_ARN`, `AWS_REGION`, `ECR_REGISTRY`, `EKS_CLUSTER_DEV`,
 `EKS_CLUSTER_STAGING`, `EKS_CLUSTER_PROD` (all three cluster secrets name the one cluster, `rch` -
 every environment is a namespace on it, not a cluster of its own). Required GitHub
-**environment** secrets for `dev` and, later, `staging`: **four** - `DATABASE_URL`,
+**environment** secrets for `dev` and, later, `staging`: **six** - `DATABASE_URL` (the `rch_app`
+URL), `MIGRATE_DATABASE_URL` (the `rch` URL), `AUDIT_DATABASE_URL` (the `rch_audit` URL),
 `JWT_PRIVATE_KEY`, `JWT_PUBLIC_KEY` and **`SEED_PASSWORD`** (these populate `secrets.values.*`
-for the chart's in-cluster `Secret`, since both run with `secrets.create=true`). Production runs
-with `secrets.create=false` and `secrets.externalSecret.enabled=true`, pulling **five** -
-`DATABASE_URL`, `JWT_PRIVATE_KEY`, `JWT_PUBLIC_KEY`, `JWT_PREVIOUS_PUBLIC_KEY` (may be empty) and
-`SEED_PASSWORD` - from AWS Secrets Manager (`rch/prod`) via the External Secrets Operator; no
-database or key secrets live in GitHub for prod.
+for the chart's in-cluster `Secret`, since both run with `secrets.create=true`). The two role
+passwords are whatever those URLs carry: the migrate steps set them on the roles. Production runs
+with `secrets.create=false` and `secrets.externalSecret.enabled=true`, pulling **seven** -
+`DATABASE_URL`, `MIGRATE_DATABASE_URL`, `AUDIT_DATABASE_URL`, `JWT_PRIVATE_KEY`,
+`JWT_PUBLIC_KEY`, `JWT_PREVIOUS_PUBLIC_KEY` (may be empty) and `SEED_PASSWORD` - from AWS Secrets
+Manager (`rch/prod`) via the External Secrets Operator; no database or key secrets live in GitHub
+for prod.
 
 **`SEED_PASSWORD` is blocking, not optional.** It has been a required variable with no default
 since the audit fix wave (`apps/api/src/config.ts`), and `config.ts` is what the **migrate
@@ -483,7 +544,7 @@ kubectl label namespace rch         elbv2.k8s.aws/pod-readiness-gate-inject=enab
 ```
 
 - **`ng-prod` does not exist, and production's pods can land nowhere else.** The cluster was
-  created with one node group, `ng-spot`, and `values-prod.yaml` pins both Deployments to
+  created with one node group, `ng-spot`, and `values-prod.yaml` pins all three Deployments to
   `rch.io/tier: prod` - a label nothing carries. Create it **before the first production deploy**
   (§11 step 8 is where it sits in the order):
   ```bash
@@ -491,7 +552,7 @@ kubectl label namespace rch         elbv2.k8s.aws/pod-readiness-gate-inject=enab
   kubectl get nodes -l rch.io/tier=prod        # expect 3, one per availability zone
   ```
   Three on-demand nodes across `ap-south-1a/b/c`, deliberately untainted: the label is what pins
-  production in, and a taint would additionally keep the DaemonSets off. Skip it and both
+  production in, and a taint would additionally keep the DaemonSets off. Skip it and all three
   Deployments sit `Pending` for ever with no error anywhere - and production upgrades without
   `--atomic` (§3), so nothing rolls that back. `deploy/chart/rch/tests/render.test.sh` asserts
   that the label the prod render asks for is one `deploy/eksctl/cluster.yaml` actually applies.
@@ -518,8 +579,10 @@ kubectl label namespace rch         elbv2.k8s.aws/pod-readiness-gate-inject=enab
     `<unknown>/70%` and never scales.
   - **amazon-cloudwatch-observability**, with `CloudWatchAgentServerPolicy`.
   - **Network policy in the `vpc-cni` add-on.** `templates/networkpolicy.yaml` renders a
-    default-deny plus three named doors by default (`networkPolicy.enabled: true`), but a
-    NetworkPolicy is enforced by the CNI, and the VPC CNI's policy agent is off unless the
+    default-deny plus one ingress policy each for the api, the audit service and the ui
+    (`networkPolicy.enabled: true`). They restrict ingress only: egress stays open for every pod,
+    the audit service's included, because RDS sits outside the cluster at an address the chart
+    does not know. A NetworkPolicy is enforced by the CNI, and the VPC CNI's policy agent is off unless the
     add-on is configured for it. `deploy/eksctl/cluster.yaml` now sets it -
     `configurationValues: '{"enableNetworkPolicy": "true"}'` on `vpc-cni` - **but a config file
     only reaches a cluster that is asked to read it.** For `rch`, which already exists:
@@ -538,17 +601,21 @@ kubectl label namespace rch         elbv2.k8s.aws/pod-readiness-gate-inject=enab
 - **ExternalSecret store (prod only):** the `ClusterSecretStore` named `aws-secrets-manager`
   (referenced by `deploy/chart/rch/templates/externalsecret.yaml`) must already exist in the
   cluster - it is provisioned once by the External Secrets Operator install, not by this chart.
-  Create the AWS Secrets Manager secret `rch/prod` as one JSON object with **five** keys -
-  `DATABASE_URL`, `JWT_PRIVATE_KEY`, `JWT_PUBLIC_KEY`, `JWT_PREVIOUS_PUBLIC_KEY` (may be empty
-  until the first key rotation) and **`SEED_PASSWORD`** (may not) - and grant the ESO IRSA role
-  read access to it. Then prove the five keys are there, because nothing in `deploy.yml` will
-  (its secret pre-flight step is skipped for `production` - §2):
+  Create the AWS Secrets Manager secret `rch/prod` as one JSON object with **seven** keys -
+  `DATABASE_URL` (the `rch_app` URL), `MIGRATE_DATABASE_URL` (the RDS master user's URL),
+  `AUDIT_DATABASE_URL` (the `rch_audit` URL), `JWT_PRIVATE_KEY`, `JWT_PUBLIC_KEY`,
+  `JWT_PREVIOUS_PUBLIC_KEY` (may be empty until the first key rotation) and **`SEED_PASSWORD`**
+  (may not) - and grant the ESO IRSA role read access to it. Then prove the seven keys are there,
+  because nothing in `deploy.yml` will (its secret pre-flight step is skipped for `production` -
+  §2):
 
   ```bash
   aws secretsmanager get-secret-value --secret-id rch/prod --query SecretString --output text \
-    | jq -e '(.DATABASE_URL|length) > 0 and (.JWT_PRIVATE_KEY|length) > 0
-             and (.JWT_PUBLIC_KEY|length) > 0 and has("JWT_PREVIOUS_PUBLIC_KEY")
-             and (.SEED_PASSWORD|length) >= 12' >/dev/null && echo "rch/prod: all five keys present"
+    | jq -e '(.DATABASE_URL|length) > 0 and (.MIGRATE_DATABASE_URL|length) > 0
+             and (.AUDIT_DATABASE_URL|length) > 0
+             and (.JWT_PRIVATE_KEY|length) > 0 and (.JWT_PUBLIC_KEY|length) > 0
+             and has("JWT_PREVIOUS_PUBLIC_KEY")
+             and (.SEED_PASSWORD|length) >= 12' >/dev/null && echo "rch/prod: all seven keys present"
   ```
 
   `jq -e` exits non-zero on a missing or empty key (or a seed password under twelve characters,
@@ -653,12 +720,19 @@ pnpm --filter @rch/api keys:generate   # prints new JWT_PRIVATE_KEY= / JWT_PUBLI
      Secrets Manager with all four keys, then either wait for the `ExternalSecret`'s
      `refreshInterval: 1h` or force a sync, and restart the API pods to pick up the new
      in-cluster Secret (`ExternalSecret` updates the Secret object but does not itself restart
-     pods that already read it into env vars):
+     pods that already read it into env vars). Restart the audit service as well: it verifies
+     every token against `JWT_PUBLIC_KEY` / `JWT_PREVIOUS_PUBLIC_KEY`, and a pod still holding
+     the old pair turns tokens signed with the new key away, so the Audit log tab stops loading:
      ```bash
      kubectl rollout restart deployment/rch-api -n rch
+     kubectl rollout restart deployment/rch-audit -n rch
      ```
-4. The API accepts tokens signed with `JWT_PREVIOUS_PUBLIC_KEY` for 24 hours (`plugins/auth.ts`
-   verifies against it when the current key fails). After 24 hours, remove
+   - The box (§16): edit the `JWT_*` lines in `deploy/compose/.env` and run
+     `deploy/compose/deploy.sh`. Compose recreates every container whose environment changed,
+     `api` and `audit` among them.
+4. The API and the audit service accept tokens signed with `JWT_PREVIOUS_PUBLIC_KEY` for 24 hours
+   (`apps/api/src/plugins/auth.ts` and `apps/audit/src/plugins/auth.ts` each verify against it
+   when the current key fails). After 24 hours, remove
    `JWT_PREVIOUS_PUBLIC_KEY` (blank it out / delete the key from the Secrets Manager JSON) and
    roll out again.
 
@@ -684,6 +758,34 @@ kubectl exec deploy/rch-api -n rch -- /nodejs/bin/node dist/cli/users.mjs reset-
 kubectl exec deploy/rch-api -n rch -- /nodejs/bin/node dist/cli/users.mjs deactivate --emp RC-9001
 ```
 
+Every CLI connects with `MIGRATE_DATABASE_URL` when its environment carries one, and `DATABASE_URL`
+otherwise (`cliDatabaseUrl` in `apps/api/src/config.ts`).
+
+**Operator CLIs in a cluster.** The chart's api container carries no `MIGRATE_DATABASE_URL`, so the
+`kubectl exec` lines above run as `rch_app`. That is enough for `users`, `payers import` and
+`rebuild-balances`, which read and write rows. A CLI that needs the superuser - a seed, or
+anything with `--force` - runs in a one-off pod built from the api Deployment's own `migrate`
+initContainer, which carries the migrate secret: same image, same environment, nothing secret on a
+command line. `deploy/chart/rch/ci/install-test.sh` seeds CI's kind cluster exactly this way.
+
+```bash
+NS=rch                                              # or rch-staging / rch-dev
+CLI='["dist/cli/seed.mjs", "--yes-seed", "rch"]'    # the CLI and its arguments
+pod=$(kubectl -n "$NS" get deploy/rch-api -o json | jq -c --argjson args "$CLI" '{ spec: { containers: [
+  .spec.template.spec.initContainers[] | select(.name == "migrate") | .name = "rch-cli" | .args = $args ] } }')
+image=$(kubectl -n "$NS" get deploy/rch-api -o jsonpath='{.spec.template.spec.initContainers[?(@.name=="migrate")].image}')
+kubectl -n "$NS" run rch-cli --rm -i --quiet --restart=Never --image="$image" --overrides="$pod"
+```
+
+On the box (§16), run any CLI through the `migrate` service, which carries both URLs and so connects
+as `rch`; `api` connects as `rch_app`:
+
+```bash
+cd /opt/rch/app/deploy/compose
+docker compose --env-file .env -f compose.yml run --rm --no-deps migrate \
+  dist/cli/users.mjs reset-password --emp RC-9001 --password <temporary>
+```
+
 `create` accepts `--name --email --role --loc --password` (required) and `--emp --phone`
 (optional; without `--emp` the next employee number is assigned); the created account has `must_change_password = true`, so the temporary password
 must be changed at first sign-in. That change revokes the employee's other sessions and hands
@@ -691,8 +793,14 @@ the browser a fresh one in the same reply (a new access token and refresh cookie
 land in the app rather than being bounced back to the sign-in screen. `reset-password` and
 `deactivate` both revoke every refresh token for that user (all of that employee's active
 sessions are signed out immediately).
-`--role` is one of `counter|manager|store|prod|buyer`; `--loc` is one of
-`store|kitchen|rest|coffee|kiosk`.
+`--role` is one of `counter|manager|store|prod|buyer`; `--loc` is no longer a closed list - it is checked
+against the `locations` table the same way every write that names a location is (`worksAt` in `@rch/domain`):
+the central store or the central kitchen for the roles pinned there, and any *open* outlet for `counter` and
+`manager`. A key with no row, or a closed outlet's key, is refused by name. Outlets themselves are opened,
+edited, closed and reopened only from `/admin` - never by this CLI and never by the seed beyond the three it
+starts with (§1's *Test users*). The migration behind that (`0017_outlets`) only adds columns and indexes and
+backfills every existing location's par factor to what was hard-coded before, so it is safe to run against the
+live box, which holds real data, and an older image still reads the table afterwards.
 
 ### The payer roster
 
@@ -729,6 +837,42 @@ The import does not announce over SSE, so an open browser will not see the new r
 reloaded - the same as `users` and `db:seed`, and fine for a job that runs before anybody is
 signed in.
 
+### The database roles
+
+Three Postgres roles, and no long-running service connects as the superuser:
+
+| Role | Used by | What it can do |
+|---|---|---|
+| `rch` | Both migrate steps (`migrate`, `audit-migrate`) and every operator CLI, through `MIGRATE_DATABASE_URL` | Everything; it owns every table. The container Postgres's superuser on the box, the master user on RDS. |
+| `rch_app` | The API, through `DATABASE_URL` | `select, insert, update, delete` on every API table and `usage, select` on their sequences; `select` on `drizzle.__drizzle_migrations`, for `/readyz`; **`insert` only** on `audit_outbox`. No `truncate`, and nothing in the `audit` or `audit_drizzle` schemas. |
+| `rch_audit` | The audit service, through `AUDIT_DATABASE_URL` | `select, delete` and the column `update (at)` on `public.audit_outbox` (the column grant only lets the drainer lock rows: a trigger refuses every UPDATE on the outbox); `select, insert` on `audit.events` and `audit.dead_letters`; `select` on the `audit_drizzle` bookkeeping. No other API table. |
+
+- **The migrate steps create the roles.** `migrate` reads the role name and password out of
+  `DATABASE_URL`, `audit-migrate` out of `AUDIT_DATABASE_URL`. Each creates its role if it is
+  missing, sets the password (escaped, never logged), and re-grants on every run. Nobody creates a
+  role or a grant by hand.
+- **Append-only holds for every role, `rch` included.** Triggers refuse UPDATE and DELETE on
+  `stock_moves` and `document_history`, UPDATE on `audit_outbox`, and UPDATE, DELETE and TRUNCATE on
+  `audit.events` and `audit.dead_letters`.
+- **No credential a service holds can alter the audit log.** The API's can add to the outbox and
+  read nothing back; the audit service's can add to the log and never change it.
+- **Locally and in the test suites there is one user.** `DATABASE_URL`, `AUDIT_DATABASE_URL` and the
+  unset `MIGRATE_DATABASE_URL` all name `rch`, so both migrate steps skip role setup (§1).
+
+**Rotating a role's password, on the box.** Change `APP_DB_PASSWORD` or `AUDIT_DB_PASSWORD` in
+`deploy/compose/.env` and run `deploy/compose/deploy.sh`. Compose sees the changed URL, reruns
+`migrate` (or `audit-migrate`), which applies `alter role … password` with the new value, and only
+then recreates `api` (or `audit`) on it. `.env` is gitignored, so `release.sh`'s clean-checkout
+check never sees the edit. **In a cluster**, change the password inside `DATABASE_URL` or
+`AUDIT_DATABASE_URL` in the Secret (§2) and roll out: each new pod's initContainer applies it. Pods
+of the old ReplicaSet still hold the old password, so a new connection one of them opens fails
+until the rollout replaces it - rotate off-hours.
+
+`POSTGRES_PASSWORD`, `rch`'s own on the box, is different: the `postgres` image reads it only when
+the `pgdata` volume is first created. Change it inside the database first
+(`docker compose … exec postgres psql -U rch -d rch -c "alter role rch password '<new>'"`), then in
+`.env`, then run `deploy.sh`.
+
 ## 6. Restore drill
 
 Rehearse this against the local database first - the procedure below needs a scratch RDS
@@ -753,7 +897,27 @@ psql "postgres://rch:rch@localhost:5439/postgres" -c 'drop database rch_drill'
 automated-snapshot mechanism to restore from, so a logical dump is the nearest equivalent that
 proves the same thing: `db:rebuild-balances` run against a restored copy reproduces the
 original's balances exactly. This is the rehearsal; the real thing is against RDS, below, and is
-run before go-live and quarterly:
+run before go-live and quarterly.
+
+**Roles are not in a dump.** `pg_dump` carries the `audit` and `audit_drizzle` schemas and every
+grant, but not the `rch_app` and `rch_audit` roles those grants name: roles belong to the Postgres
+server, not to one database. Loading a dump into a server that has never had them prints
+`role "rch_app" does not exist` for each grant and carries on. So after loading a dump as `rch`,
+run both migrate steps before starting the services; they create the two roles and re-grant
+everything:
+
+```bash
+cd /opt/rch/app/deploy/compose
+docker compose --env-file .env -f compose.yml run --rm migrate
+docker compose --env-file .env -f compose.yml run --rm audit-migrate
+```
+
+Running them over roles that already exist is harmless: each step sets the password from `.env`
+again and re-grants. The local rehearsal above needs neither, because locally every URL names
+`rch`. An RDS snapshot restores the whole instance, roles included, so the RDS drill below needs
+neither either.
+
+The RDS drill:
 
 1. Restore the latest RDS automated snapshot to a scratch RDS instance.
 2. Point a one-off Job at the scratch instance's `DATABASE_URL` and run
@@ -1074,11 +1238,14 @@ Phase 4.
 
 ## 9. Alerts
 
-The original requirement named five; this build ships eight - the **six** below that the chart's
-`PrometheusRule` renders, plus the two RDS rules that stay runbook-only. `/metrics` (Prometheus
-format, `apps/api/src/plugins/metrics.ts`) exposes `http_request_duration_seconds` (histogram,
-labelled `method`, `route`, `status`), `pg_pool_waiting`/`pg_pool_idle`, `sse_listener_up` and
-the default Node process metrics. The first six below ship as a `PrometheusRule`
+The original requirement named five; this build ships ten - the **eight** below that the chart's
+`PrometheusRule` renders, plus the two RDS rules that stay runbook-only. The API's `/metrics`
+(Prometheus format, `apps/api/src/plugins/metrics.ts`) exposes `http_request_duration_seconds`
+(histogram, labelled `method`, `route`, `status`), `pg_pool_waiting`/`pg_pool_idle`,
+`sse_listener_up` and the default Node process metrics. The audit service's `/metrics`
+(`apps/audit/src/plugins/metrics.ts`, port 3100) exposes `audit_outbox_depth`,
+`audit_drain_lag_seconds` (the age of the oldest outbox row), `audit_events_stored_total`,
+`audit_dead_letters_total` and `audit_listener_up`. The first eight below ship as a `PrometheusRule`
 (`deploy/chart/rch/templates/prometheusrule.yaml`). **The two RDS rules stay runbook-only**,
 below, because they need the CloudWatch metrics exporter (or Grafana's native CloudWatch
 datasource) pointed at the RDS instance, which is not part of this chart and is wired at the
@@ -1086,7 +1253,7 @@ observability-stack level. A Grafana dashboard JSON does **not** ship with the c
 dashboard in a ConfigMap is an unversioned blob nothing renders in CI and nothing fails when it
 drifts, so build one from `/metrics` in Grafana directly rather than looking for one here.
 
-**Three things have to be true before any of the six fires**, and none of them is the chart's to
+**Three things have to be true before any of the eight fires**, and none of them is the chart's to
 guarantee (§2, *First-time cluster setup*, has the setup):
 
 1. `serviceMonitor.enabled` - on in `values-prod.yaml`, off elsewhere.
@@ -1135,7 +1302,7 @@ paged, and by what, is a §11 go-live decision, not a chart value.
    max(pg_pool_waiting{job="rch-api"}) > 0 and max(pg_pool_idle{job="rch-api"}) == 0
    ```
    This is the pool the app itself opens (`max: 10` per pod, `apps/api/src/db/client.ts`), not
-   RDS's own connection count - see item 7 below for that. The app pool never exceeds 60
+   RDS's own connection count - see item 9 below for that. The app pool never exceeds 60
    connections at max scale-out (10 per pod × 6 max pods) - plus one dedicated
    `LISTEN` connection per pod for the SSE plugin (§10), so 66. Still well under any RDS
    instance's limit; this alert catches the pool running out locally, long before RDS itself is
@@ -1155,14 +1322,51 @@ paged, and by what, is a §11 go-live decision, not a chart value.
    an OOM kill. **`kubectl logs --previous` on the pod says why, before the next restart wipes
    it.** The `namespace` label is the release's own namespace, so the rendered rule in
    `rch-staging` watches `rch-staging`.
-6. **`RchSseListenerDown` - the sixth chart-shipped alert and this build's eighth overall,
-   warning, sustained 5 minutes:**
+6. **`RchSseListenerDown` - warning, sustained 5 minutes:**
    ```promql
    min(sse_listener_up{job="rch-api"}) == 0
    ```
    Its rationale - what `sse_listener_up` means, why 5 minutes and not immediately, and why it
    is deliberately *not* wired into `/readyz` - is §10's, below, not repeated here.
-7. **DB connections > 80% of max - runbook-only, needs CloudWatch.** RDS CloudWatch
+7. **`AuditDrainLagging` - the oldest audit event has waited in the outbox over a minute,
+   warning, sustained 5 minutes:**
+   ```promql
+   max(audit_drain_lag_seconds{job="rch-audit"}) > 60
+   ```
+   Nothing is lost while it fires. The API keeps committing writes, each one's event waits in
+   `audit_outbox` until a drain pass moves it, and the Audit log tab simply shows nothing newer.
+   What to do, in order:
+   - **Are the audit pods running and ready?** `kubectl -n <namespace> get pods -l
+     app.kubernetes.io/component=audit`, then `kubectl logs` on one, and `kubectl logs <pod> -c
+     audit-migrate` if it never started. On the box: `docker compose … ps audit` and
+     `docker compose … logs --tail 100 audit-migrate audit`.
+   - **Is a pass failing?** The service logs each failure at `error`. A connection or permission
+     refusal for `rch_audit` means the role is missing or has lost its grants - after a restore,
+     typically - and running `audit-migrate` recreates and re-grants it (§6).
+   - **Is it draining, only slower than the outbox fills?** `audit_outbox_depth` and
+     `audit_events_stored_total` both climbing says so. More replicas help: `skip locked` lets them
+     drain side by side.
+   `audit_listener_up == 0` alone does not cause this alert: the drainer still polls every
+   `DRAIN_POLL_MS` (5 s). §16.7 has the outbox query for the box.
+8. **`AuditDeadLetters` - an event the audit service set aside, critical:**
+   ```promql
+   sum(increase(audit_dead_letters_total{job="rch-audit"}[15m])) > 0
+   ```
+   The event failed `AuditEventSchema`, or Postgres refused it (`database refused it: <reason>`),
+   and it was stored in `audit.dead_letters` instead of `audit.events`, with the first issue found;
+   the events either side of it moved normally. It is missing from the Audit log tab, so any at all
+   is somebody's to read. Read
+   it (§16.7 has the connection):
+   ```sql
+   select id, outbox_id, at, issue from audit.dead_letters order by id desc limit 20;
+   select event from audit.dead_letters where id = <id>;
+   ```
+   The likeliest cause is an API image and an audit image built from different commits, one of
+   which changed the event's shape (a new collection in `changed`, say). Deploy both from the same
+   commit. Nothing replays a dead letter: the row, with the whole event in `event`, stays where it
+   is, append-only like the log itself, so the Audit log has a gap there that `dead_letters`
+   explains.
+9. **DB connections > 80% of max - runbook-only, needs CloudWatch.** RDS CloudWatch
    `DatabaseConnections`, exposed as a gauge by the CloudWatch exporter (metric name depends on
    the exporter's naming, e.g. `aws_rds_database_connections_average`):
    ```promql
@@ -1172,11 +1376,11 @@ paged, and by what, is a §11 go-live decision, not a chart value.
    once and hardcode the threshold in the alert rule. This is a safety net for connections opened
    outside the app (a psql session left open, a burst of migrate initContainers opening a
    connection each during a large rollout) - the app's own pool is item 4, above.
-8. **RDS free storage < 20% - runbook-only, needs CloudWatch.**
-   ```promql
-   aws_rds_free_storage_space_average{dbinstance_identifier="rch-prod"}
-     / <allocated_storage_bytes> < 0.2
-   ```
+10. **RDS free storage < 20% - runbook-only, needs CloudWatch.**
+    ```promql
+    aws_rds_free_storage_space_average{dbinstance_identifier="rch-prod"}
+      / <allocated_storage_bytes> < 0.2
+    ```
 
 **The migrate initContainer dies with `SELF_SIGNED_CERT_IN_CHAIN` although the image ships the
 RDS bundle.** The `DATABASE_URL` carried `?sslmode=require`: the driver then builds its own TLS
@@ -1202,6 +1406,9 @@ search domains, so the value must be the API Service's full cluster name -
 `http://<release>-api.<namespace>.svc.cluster.local:3000`, which the chart sets. A short name
 (`http://rch-api:3000`, the image's Compose-only default) resolves under Docker's embedded DNS and
 never inside a pod. `kubectl exec deploy/<release>-ui -- printenv API_UPSTREAM` shows what it got.
+The same holds for `AUDIT_UPSTREAM`, which nginx's `location /api/v1/admin/audit` proxies to: the
+chart sets `http://<release>-audit.<namespace>.svc.cluster.local:3100`, and the image's short
+default (`http://rch-audit:3100`) never resolves inside a pod.
 
 ## 10. Server-sent events (SSE)
 
@@ -1238,6 +1445,16 @@ would mean a transient Postgres blip on the LISTEN connection pulls every pod ou
 Service's endpoints at once (they all lost the same connection at the same moment), which is a
 full outage traded for a live-update delay. The 5-minute alert above is the right response to
 this failure, not a readiness probe.
+
+**`audit` notices reach admin streams only.** After a drain pass that stored anything, the audit
+service's drainer sends a notice naming the `audit` collection on `rch_events_<schema>`, the
+channel the API's own writes use, and every API pod's listener picks it up like any other.
+`apps/api/src/plugins/sse.ts` records, per stream, whether its token is an admin's, and writes an
+`audit` frame only to those streams; every other collection still goes to every stream. An admin's
+browser does not refetch on it: it counts the notice, and the Audit log tab shows "New events -
+show" until the admin presses it. A lost `audit` notice costs only the pill - the rows are there on
+the next load. The audit service holds a `LISTEN` connection of its own, on `rch_audit_outbox`, to
+hear the API's inserts; `audit_listener_up` is its gauge (§9).
 
 **First, which hops are actually on the path.** In a cluster, **nginx is not on the `/api`
 path at all.** `templates/ingress.yaml` gives the ALB two rules - `/api` → the `<release>-api`
@@ -1407,8 +1624,8 @@ deploy workflow is inert without them.
 | Repository secret | `EKS_CLUSTER_STAGING` | |
 | Repository secret | `EKS_CLUSTER_PROD` | |
 | Repository secret | `SEED_PASSWORD` | **New, and blocking.** `deploy.yml` passes it as `--set-string secrets.values.SEED_PASSWORD`; `apps/api/src/config.ts` has no default for it, so an unset secret renders `SEED_PASSWORD: ""`, the api container refuses to start, and `--atomic` rolls the whole release back. At least twelve characters. Needed for **dev and staging** - both read repository/environment secrets - before the next push to either. |
-| `staging` environment | `DATABASE_URL`, `JWT_PRIVATE_KEY`, `JWT_PUBLIC_KEY` | Staging reads its secrets from the GitHub environment; production reads `rch/prod` out of AWS Secrets Manager through the `ClusterSecretStore`. |
-| AWS Secrets Manager `rch/prod` | `DATABASE_URL`, `JWT_PRIVATE_KEY`, `JWT_PUBLIC_KEY`, `JWT_PREVIOUS_PUBLIC_KEY`, **`SEED_PASSWORD`** | **Five keys now, not four.** `JWT_PREVIOUS_PUBLIC_KEY` may start empty; `SEED_PASSWORD` may not. The `ExternalSecret` uses `dataFrom: [{ extract: … }]`, which copies every key of the remote JSON - so there is no template entry to add, but a remote secret missing `SEED_PASSWORD` produces a pod that will not start. Mint the JWT pair with `pnpm --filter @rch/api keys:generate`, which prints two `JWT_*=` lines and never writes them anywhere. |
+| `staging` environment | `DATABASE_URL`, `MIGRATE_DATABASE_URL`, `AUDIT_DATABASE_URL`, `JWT_PRIVATE_KEY`, `JWT_PUBLIC_KEY` | Staging reads its secrets from the GitHub environment; production reads `rch/prod` out of AWS Secrets Manager through the `ClusterSecretStore`. `DATABASE_URL` is the `rch_app` URL, `MIGRATE_DATABASE_URL` the master user's, `AUDIT_DATABASE_URL` the `rch_audit` URL (§5, *The database roles*). |
+| AWS Secrets Manager `rch/prod` | `DATABASE_URL`, `MIGRATE_DATABASE_URL`, `AUDIT_DATABASE_URL`, `JWT_PRIVATE_KEY`, `JWT_PUBLIC_KEY`, `JWT_PREVIOUS_PUBLIC_KEY`, **`SEED_PASSWORD`** | **Seven keys.** `JWT_PREVIOUS_PUBLIC_KEY` may start empty; no other may. The `ExternalSecret` uses `dataFrom: [{ extract: … }]`, which copies every key of the remote JSON - so there is no template entry to add, but a remote secret missing one produces a pod that will not start. Mint the JWT pair with `pnpm --filter @rch/api keys:generate`, which prints two `JWT_*=` lines and never writes them anywhere. |
 
 **3. The promotion, in order, run by a person.**
 
@@ -1465,9 +1682,11 @@ scoped to what a deploy needs, and needs no change.
 
    **`0008` is still the only migration that can refuse.** `0009`–`0012` - the payer audit
    columns, the adjustment tables, the production order's needed-by date and the bill's three
-   void columns - add tables and nullable columns and validate no existing row, so a database
-   this script calls clear is one the whole set of thirteen will apply to. Expect
-   `migrations applied: 13 / 13`.
+   void columns - add tables and nullable columns and validate no existing row. `0013` adds a
+   table and a defaulted column, `0014` fills its new column from `users` before tightening it,
+   `0015_drop_recipes` drops two tables, and `0016_audit_outbox` adds an empty one. So a database
+   this script calls clear is one every migration will apply to. Expect `migrations applied: N / N`, N being the length of
+   `apps/api/drizzle/meta/_journal.json`.
 2. **Create the environment's CloudFormation stack** - `deploy/cfn/rch-env.yaml` with
    `deploy/cfn/prod.params.json` (or `staging.params.json`). The template, not this list, is now
    where the RDS settings live, so read **[`deploy/cfn/README.md`](cfn/README.md)**
@@ -1532,8 +1751,9 @@ scoped to what a deploy needs, and needs no change.
    pnpm --filter @rch/api keys:generate
    ```
    Put both lines into the AWS Secrets Manager secret `rch/prod` as `JWT_PRIVATE_KEY` /
-   `JWT_PUBLIC_KEY`, alongside `DATABASE_URL`, an empty `JWT_PREVIOUS_PUBLIC_KEY`, and
-   **`SEED_PASSWORD`** - five keys (§2's "First-time cluster setup" and the secrets table above).
+   `JWT_PUBLIC_KEY`, alongside `DATABASE_URL`, `MIGRATE_DATABASE_URL`, `AUDIT_DATABASE_URL`, an
+   empty `JWT_PREVIOUS_PUBLIC_KEY`, and **`SEED_PASSWORD`** - seven keys (§2's "First-time cluster
+   setup" and the secrets table above).
    Choose the seed password here and never reuse it between environments: it is the password the
    six seeded accounts start on, and step 4 deactivates all six anyway.
 4. **Create the real staff accounts, and deactivate every seeded one.**
@@ -1585,15 +1805,15 @@ scoped to what a deploy needs, and needs no change.
    real.
 7. **Create the repository variable, every secret, and the `production` GitHub environment** -
    `DEPLOY_ENABLED=true`, the six repository secrets (**`SEED_PASSWORD` is the new one, and
-   blocking**), the `staging` environment's three, and AWS Secrets Manager's `rch/prod` with its
-   **five** keys: the table under "The release, prepared and not performed" above lists each one
+   blocking**), the `staging` environment's five, and AWS Secrets Manager's `rch/prod` with its
+   **seven** keys: the table under "The release, prepared and not performed" above lists each one
    and what it populates, and §2 says where the workflow reads it - and run the `jq -e` check in
    the ExternalSecret bullet above, since production's secrets get no pre-flight from the
    workflow. Do this **before the next push
    to any environment**, including `dev`: the api container will not start without a seed
    password, and `--atomic` rolls the release back when it doesn't. A missing one is caught
    early now - `deploy.yml` has a named `Every secret the chart needs is present` step before
-   `helm upgrade` that refuses by name, on dev and staging (production reads the same four
+   `helm upgrade` that refuses by name, on dev and staging (production reads the same six
    through External Secrets, so the GitHub secrets are empty there on purpose).
 
    **The `production` environment itself is the approval gate, and it is a GitHub setting, not a
@@ -1633,8 +1853,8 @@ scoped to what a deploy needs, and needs no change.
    without it; what you get instead is a gap in the middle of every rollout.
 8. **Create `ng-prod`, the on-demand node group production's pods are pinned to.** It does not
    exist: the cluster has one spot node group, `ng-spot`, and `values-prod.yaml` sets
-   `api.nodeSelector` and `ui.nodeSelector` to `rch.io/tier: prod` - a label nothing in the
-   cluster carries. Promote without this and both Deployments sit `Pending` for ever with no
+   `api.nodeSelector`, `ui.nodeSelector` and `audit.nodeSelector` to `rch.io/tier: prod` - a label
+   nothing in the cluster carries. Promote without this and all three Deployments sit `Pending` for ever with no
    error anywhere; production upgrades **without `--atomic`** (§3), so nothing rolls it back.
    ```bash
    eksctl create nodegroup -f deploy/eksctl/cluster.yaml --include=ng-prod
@@ -1656,7 +1876,14 @@ scoped to what a deploy needs, and needs no change.
     # /readyz and /healthz are served at the root, outside API_PREFIX; only /api/v1/* goes
     # through the ingress's /api rule, so https://<host>/api/v1/readyz is not a route at all.
     ```
-    then sign in as a real account through the browser, take one real sale, and finally
+    then the audit service's readiness, and its log:
+    ```bash
+    kubectl -n <namespace> port-forward svc/rch-audit 3100:3100 &
+    curl -fsS http://localhost:3100/readyz
+    ```
+    sign in as the super admin and open the Audit log tab - that sign-in is its newest row, which
+    proves the outbox, the drainer and the read on this environment. Then sign in as a real account
+    through the browser, take one real sale, and finally
     ```bash
     kubectl exec deploy/rch-api -n <namespace> -- /nodejs/bin/node dist/cli/rebuild-balances.mjs
     ```
@@ -1673,7 +1900,7 @@ discovered later.
    above). The exposure is limited by `PubliclyAccessible: false` and a node-group-only security
    group, not by the network. Moving them needs private subnets, a NAT route, a per-environment
    `DBSubnetGroup` and an outage per instance.
-2. **Nothing routes an alert to a person.** The chart renders six `PrometheusRule` alerts (§9)
+2. **Nothing routes an alert to a person.** The chart renders eight `PrometheusRule` alerts (§9)
    and Alertmanager has no receiver configured for this cluster, so a rule that fires pages
    nobody. Who is on call, and by what channel, is the decision; the rules and their
    `runbook_url` anchors are already there.
@@ -1682,10 +1909,11 @@ discovered later.
    *First-time cluster setup*, has the `eksctl update addon` command and the check). The file
    being right does not make the running cluster right. Turning it on is a deliberate change
    with real blast radius - do it on staging first, and watch a rollout.
-4. **`/metrics` shares port 3000 with the API.** A NetworkPolicy decides on ports, not paths, so
-   the `monitoring`-namespace rule in the api policy is a record of the intended scraper rather
-   than a control, and `networkPolicy.albSourceCidr` cannot be narrowed below what the serving
-   port needs. Moving `/metrics` to its own listener port is what would make both real.
+4. **`/metrics` shares the serving port**: 3000 on the API, 3100 on the audit service. A
+   NetworkPolicy decides on ports, not paths, so the `monitoring`-namespace rules in the api and
+   audit policies are a record of the intended scraper rather than a control, and
+   `networkPolicy.albSourceCidr` cannot be narrowed below what each serving port needs. Moving
+   each `/metrics` to its own listener port is what would make both real.
 
 ## 12. Load check
 
@@ -1950,7 +2178,7 @@ with no peering and no NAT. Two managed node groups are declared:
   (`ap-south-1a`/`b`/`c`), labelled `rch.io/tier: prod`, 40 GB gp3. **It is declared and not yet
   created**: run `eksctl create nodegroup -f deploy/eksctl/cluster.yaml --include=ng-prod`
   (the `--include` matters - without it eksctl works on every group in the file) before the
-  first production deploy. `values-prod.yaml` pins both Deployments to it with
+  first production deploy. `values-prod.yaml` pins all three Deployments to it with
   `nodeSelector: { rch.io/tier: prod }`, which is what keeps production off the spot node - the
   group carries **no taint**, deliberately, because the DaemonSets (vpc-cni, kube-proxy, the
   CloudWatch agent) have to run on every node and know nothing about this application. Three
@@ -2013,6 +2241,12 @@ and is a **static** parameter: it stays `pending-reboot` until the instance is r
 point-in-time recovery and deletion protection are the production-only pieces this instance
 deliberately does not carry; §11 step 2 and `deploy/cfn/README.md` have the full production spec.
 
+**On RDS the migrate role is the master user**, which is `rds_superuser` rather than a true
+superuser. It holds `CREATEROLE`, which is what the two migrate steps need to create `rch_app` and
+`rch_audit` and set their passwords, and it owns every table it migrates, which is what they need
+to grant. `MIGRATE_DATABASE_URL` is its URL; `DATABASE_URL` and `AUDIT_DATABASE_URL` name the two
+runtime roles (§5, *The database roles*).
+
 ### 15.3 Secrets, and the GitHub side of the pipeline
 
 AWS Secrets Manager `rch/dev` is the source of truth - RDS master password, `DATABASE_URL`, the
@@ -2033,6 +2267,15 @@ release back. Production's `rch/prod` secret in Secrets Manager needs the same k
 `render.test.sh` asserts it is never a plaintext `value:` and never `optional: true` - Go's `eq`
 is variadic, so a second name in that template's `if eq` would silently make the key optional,
 which is exactly what "required" is trying to prevent.
+
+**The audit service added two more.** The chart now reads `MIGRATE_DATABASE_URL` (the master
+user's URL, for both migrate initContainers and the CLIs) and `AUDIT_DATABASE_URL` (the
+`rch_audit` URL), and `DATABASE_URL` became the `rch_app` URL. An environment stood back up needs
+six secrets in its GitHub environment and seven keys in `rch/prod` (§2, §11's secrets table).
+The env helpers in `_helpers.tpl` (`rch.apiEnv`, `rch.apiCliEnv`, `rch.auditEnv`, `rch.auditMigrateEnv`)
+name, per container, only the secrets that container uses: the api container holds no
+`MIGRATE_DATABASE_URL` (the migrate initContainer and the purge CronJob do), and the audit containers
+never see `JWT_PRIVATE_KEY` or `SEED_PASSWORD`.
 
 **What tripped: two failed deploy runs, both at `configure-aws-credentials`, for two unrelated
 reasons.** The first failed with "Request ARN is invalid" - `AWS_ROLE_ARN` had been set to the
@@ -2170,16 +2413,15 @@ nothing on any of the three instance classes in use.
 
 ### 15.7 First deploy and seed
 
-The workflow builds and pushes both images, then `helm upgrade --install rch deploy/chart/rch -f
+The workflow builds and pushes all three images, then `helm upgrade --install rch deploy/chart/rch -f
 values-dev.yaml --namespace rch-dev --create-namespace --wait --atomic` - the same shape §2
 describes for staging and production, with `dev`'s own values file and namespace. After the
-first deploy succeeds, seed the database once:
+first deploy succeeds, seed the database once. A seed needs the superuser, which the api
+container does not hold, so it runs in the one-off pod §5 (*Operator CLIs in a cluster*) builds
+from the `migrate` initContainer, with `NS=rch-dev` and
+`CLI='["dist/cli/seed.mjs", "--yes-seed", "rch"]'`.
 
-```bash
-kubectl -n rch-dev exec deploy/rch-api -- /nodejs/bin/node dist/cli/seed.mjs --yes-seed rch
-```
-
-**`--yes-seed <database name>` is not optional here, and dev is not an exception.** `rch.envList`
+**`--yes-seed <database name>` is not optional here, and dev is not an exception.** The chart
 renders `NODE_ENV=production` into every pod in every namespace, and `cli/seed.ts` refuses to seed
 there until the database is named back, because a seed rewrites every seeded account's password.
 `rch` is the name in every environment - `DBName` on the RDS instance is `rch` in `dev`, `staging`
@@ -2219,23 +2461,45 @@ runs.
 
 ### 16.1 What runs, and why it is shaped this way
 
-Four containers, one instance, one Docker network: `postgres`, a one-shot `migrate` (the same
-`dist/cli/migrate.mjs` the EKS `migrate` initContainer runs, ordered ahead of `api` by
-compose's own `depends_on: condition: service_completed_successfully`), `api` and `ui` (built
-from the identical `apps/api/Dockerfile` / `UI/Dockerfile` the EKS path builds - one image
-definition per service, two places to run it), and `caddy` in front for automatic HTTPS.
+Seven services, one instance, one Docker network:
 
-**Caddy reaches `api` and `ui` directly, with no second reverse-proxy hop.** The EKS path is
-ALB → (path routing) → `ui`'s nginx (which itself proxies `/api/` onward) or `api`; on one box,
-Caddy's own path routing (`handle /api/*` vs `handle`) reaches each container directly, so
-`TRUST_PROXY=1` (one hop) is correct unchanged - `ui`'s nginx still carries its `/api/` block
-(it is the same image), it is simply never asked to use it here. `flush_interval -1` on the API
-route is what keeps `/api/v1/events` (server-sent events) streaming rather than buffered.
+| Service | Image | Connects as | Starts after |
+|---|---|---|---|
+| `postgres` | `postgres:17` | - | - |
+| `migrate` (one-shot) | `rch-api:local`, `dist/cli/migrate.mjs` | `rch`, and creates `rch_app` from `DATABASE_URL` | `postgres` is healthy |
+| `audit-migrate` (one-shot) | `rch-audit:local`, `dist/cli/migrate.mjs` | `rch`, and creates `rch_audit` from `AUDIT_DATABASE_URL` | `migrate` completed |
+| `api` | `rch-api:local` | `rch_app` | `migrate` completed |
+| `audit` | `rch-audit:local` | `rch_audit` | `audit-migrate` completed |
+| `ui` | `rch-ui:local` | - | `api` |
+| `caddy` | `caddy:2.10-alpine` | - | `ui`, `api`, `audit` |
 
-**The API's distroless runtime image has no shell**, so it carries no `HEALTHCHECK` a container
-orchestrator could run; `restart: unless-stopped` recovers a crash, and `deploy.sh`'s own final
-step - polling `https://<domain>/healthz` through Caddy - is the health check that matters,
-since it proves the whole chain rather than one container in isolation.
+The two migrate steps are the same `dist/cli/migrate.mjs` files the EKS initContainers run,
+ordered by compose's own `depends_on: condition: service_completed_successfully`. The three
+application images build from the identical `apps/api/Dockerfile`, `apps/audit/Dockerfile` and
+`UI/Dockerfile` the EKS path builds - one image definition per service, two places to run it.
+`migrate` is also the door for every operator CLI (`run --rm --no-deps migrate dist/cli/<name>.mjs`),
+being the one service that connects as `rch`: `deploy.sh`'s first-run seed and `backup.sh`'s
+nightly purge go through it too. `.env` carries `APP_DB_PASSWORD` and `AUDIT_DB_PASSWORD` for the
+two runtime roles (§5, *The database roles*).
+
+**Caddy reaches `api`, `audit` and `ui` directly, with no second reverse-proxy hop.** The EKS path
+is ALB → (path routing) → `ui`'s nginx (which itself proxies `/api/` onward), `api` or `audit`; on
+one box, Caddy's own path routing reaches each container directly, so `TRUST_PROXY=1` (one hop) is
+correct unchanged. Caddy orders its routes by specificity, not by their place in the file, so they
+are tried as `/api/v1/admin/audit*` → `audit:3100`, `/readyz/audit` → the audit service's own
+`/readyz`, `/readyz` → `api:3000`, `/api/*` → `api:3000`, then everything else → `ui`
+(`compose.test.sh` asserts that order). `ui`'s nginx still carries its `/api/` and
+`/api/v1/admin/audit` blocks (it is the same image, and Compose gives it `AUDIT_UPSTREAM`), it is
+simply never asked to use them here. `flush_interval -1` on the API route is what
+keeps `/api/v1/events` (server-sent events) streaming rather than buffered.
+
+**Neither Node runtime image has a shell** (both are distroless), so neither carries a
+`HEALTHCHECK` a container orchestrator could run; `restart: unless-stopped` recovers a crash.
+`deploy.sh`'s final step polls `https://<domain>/healthz` through Caddy, and `release.sh` then
+requires `https://<domain>/readyz` (the API: its database and every migration in its journal) and
+`https://<domain>/readyz/audit` (the audit service: its database, its migrations and a drain pass
+in the last 30 s). Before the audit service shipped, Caddy had no `/readyz` route, so the UI's
+nginx answered it with a static `ok` that checked nothing.
 
 **`DATABASE_SSL=false` is set explicitly.** The API image always sets `NODE_ENV=production`, and
 `config.ts`'s `databaseSsl` defaults to `true` whenever it is unset in production - right for
@@ -2260,7 +2524,8 @@ Region `ap-south-1`, account `830283280199`, the same default VPC (`vpc-01ca67a1
   (`ami-004fef5ef59c0175f`, read from the `/aws/service/canonical/...` SSM parameter rather than
   pinned, so a rebuild picks up whatever is current), 30 GB gp3 root volume, encrypted,
   `IMDSv2` required (`HttpTokens=required`). User data installs Docker CE, the compose plugin,
-  a 2 GB swap file (a t4g.medium's 4 GiB is comfortably enough for four containers, and swap is
+  a 2 GB swap file (a t4g.medium's 4 GiB was comfortably enough for the first four containers -
+  check `free -m` on the box before adding another long-running one - and swap is
   the difference between a slow moment under `docker compose build` and an OOM-killed one),
   and the AWS CLI - the box needs the last one for its own nightly backup upload.
 - **Key pair** `rch-box` (Ed25519), private half at `~/.ssh/rch-box.pem` on the operator's own
@@ -2300,7 +2565,8 @@ future work if the box is ever rebuilt from scratch more than once.
 ssh -i ~/.ssh/rch-box.pem ubuntu@rch.hashtrickstechnologies.com
 git clone https://github.com/Hashtricks-Technologies/RCH.git rch && cd rch
 cp deploy/compose/.env.example deploy/compose/.env
-# fill in DOMAIN, POSTGRES_PASSWORD, JWT_PRIVATE_KEY / JWT_PUBLIC_KEY
+# fill in DOMAIN, POSTGRES_PASSWORD, APP_DB_PASSWORD and AUDIT_DB_PASSWORD (long and random -
+# the migrate steps set them on rch_app and rch_audit), JWT_PRIVATE_KEY / JWT_PUBLIC_KEY
 # (pnpm --filter @rch/api keys:generate, run anywhere with Node - the box itself needs none),
 # SEED_PASSWORD (12+ characters), BACKUP_BUCKET
 deploy/compose/deploy.sh
@@ -2316,7 +2582,7 @@ and load the payer roster from a CSV (§5) - §1's last paragraph has the order.
 
 ### 16.4 What this trades away against the EKS path
 
-One instance, so no rolling deploy - `deploy.sh` restarts `api` and `ui` in place, a handful of
+One instance, so no rolling deploy - `deploy.sh` restarts `api`, `audit` and `ui` in place, a handful of
 seconds of connection refused rather than the EKS path's zero-downtime rollout. No horizontal
 scaling - this shape suits the load a single hospital's F&B operation puts on it (§12's load
 check), not a multi-tenant deployment. The database's durability is a nightly logical dump plus
@@ -2339,9 +2605,9 @@ ssh -i ~/.ssh/rch-box.pem ubuntu@rch.hashtrickstechnologies.com
 cd /opt/rch/app && git pull && deploy/compose/deploy.sh      # the running image must know --bare
 cd deploy/compose
 ./backup.sh                                                   # a dump to S3 first - the way back
-docker compose --env-file .env -f compose.yml run --rm --no-deps api \
+docker compose --env-file .env -f compose.yml run --rm --no-deps migrate \
   dist/cli/seed.mjs --bare --force --yes-seed rch --yes-destroy rch
-docker compose --env-file .env -f compose.yml run --rm --no-deps api \
+docker compose --env-file .env -f compose.yml run --rm --no-deps migrate \
   dist/cli/users.mjs reset-password --emp RC-0001 --password '<a temporary one>'
 ```
 
@@ -2349,7 +2615,8 @@ The reset is optional - `RC-0001` already starts on `SEED_PASSWORD`, forced to c
 sign-in - but it hands the operator a password that was never written into `.env`. Sign in as
 `RC-0001` and follow §16.3's last paragraph. The way back from a mistake is the dump: pipe
 `gunzip -c rch-<stamp>.sql.gz` into `docker compose … exec -T postgres psql -U rch -d rch` against
-a freshly emptied database (§6 has the restore itself).
+a freshly emptied database, then run `migrate` and `audit-migrate` so `rch_app` and `rch_audit`
+exist and hold their grants (§6 has the restore itself and why).
 
 ### 16.6 Continuous deploy from develop
 
@@ -2367,7 +2634,8 @@ Since 2026-09-14, a push to `develop` deploys itself once CI is green on it.
    command runs as root, and everything in it that touches the checkout runs as `ubuntu`. It fetches,
    reads `deploy/compose/release.sh` out of the commit being released, and runs it. The full log is
    kept on the box as `~ubuntu/deploys/<stamp>-<sha>.log`; the job prints its last 20,000 characters.
-3. **It checks `/readyz` and `/` from outside**, through Caddy, so the whole chain is proven.
+3. **It checks `/readyz`, `/readyz/audit` and `/` from outside**, through Caddy, so the whole chain
+   is proven: the API's readiness, the audit service's, and the page.
 
 `release.sh <sha>` works in this order:
 
@@ -2377,14 +2645,16 @@ Since 2026-09-14, a push to `develop` deploys itself once CI is green on it.
   won the race, and it is never rolled back.
 - It runs `backup.sh`: a dump to S3, taken before any migration, and the way back from a bad one.
 - It fast-forwards and runs `deploy.sh`.
-- It fails unless `https://<domain>/readyz` answers within two minutes. That check covers the
-  database and every migration in the journal.
+- It fails unless both `https://<domain>/readyz` and `https://<domain>/readyz/audit` answer within
+  two minutes. The first covers the API's database and every migration in its journal; the second
+  the audit service's migrations and a drain pass in the last 30 s. On a failure it prints the logs
+  of `migrate`, `audit-migrate`, `api` and `audit`.
 - It prunes build cache older than a week.
 
 A failure after the fast-forward is left for a person, the same as production's `--wait` without
 `--atomic` (§3): a migration that has committed is not undone by putting the previous image back.
-Read the log on the box and `docker compose … logs migrate api`, then fix forward with a new
-commit.
+Read the log on the box and `docker compose … logs migrate audit-migrate api audit`, then fix
+forward with a new commit.
 
 **Concurrency.** The workflow's group is `deploy-box` with `cancel-in-progress: false`, so a
 deploy is never cancelled halfway. A commit that goes green while one is running waits. If a third
@@ -2411,3 +2681,59 @@ cd /opt/rch/app && git fetch origin && deploy/compose/release.sh <sha>
 
 This uses the same script as the automatic deploy, so it has the same guards. Run it only while no
 Deploy (box) run is in progress.
+
+### 16.7 Reading the audit log from the box
+
+The audit log is the super admin's screen (`/admin`, Audit log). Read it there first. These queries
+are for when the screen is not reachable, or when you need a count the screen does not show.
+
+Connect as `rch`, the only role that can read everything:
+
+```bash
+ssh -i ~/.ssh/rch-box.pem ubuntu@rch.hashtrickstechnologies.com
+cd /opt/rch/app/deploy/compose
+docker compose exec -T postgres psql -U rch -d rch
+```
+
+The fifty most recent events:
+
+```sql
+select id, at at time zone 'Asia/Kolkata' as ist, actor_emp, actor_name, action, target, outcome, message
+from audit.events order by id desc limit 50;
+```
+
+Everything one person did on one IST day:
+
+```sql
+select at at time zone 'Asia/Kolkata' as ist, action, target, outcome, message
+from audit.events
+where actor_emp = 'RC-3120'
+  and at >= timestamptz '2026-09-15 00:00+05:30' and at < timestamptz '2026-09-16 00:00+05:30'
+order by id;
+```
+
+**Is the drainer keeping up?** The outbox should be empty or nearly so:
+
+```sql
+select count(*) as queued, coalesce(extract(epoch from now() - min(at))::int, 0) as oldest_seconds
+from audit_outbox;
+```
+
+A queue that grows, or an oldest row older than a minute, means the audit container is down or
+cannot reach the database - the same thing `AuditDrainLagging` alerts on in the chart. Check it with
+`curl -s -o /dev/null -w '%{http_code}\n' https://rch.hashtrickstechnologies.com/readyz/audit` and
+`docker compose logs --tail 50 audit`.
+
+**Events the service could not store** are set aside rather than dropped, and `AuditDeadLetters`
+alerts on any new one:
+
+```sql
+select id, at, issue, event from audit.dead_letters order by id desc limit 20;
+```
+
+Each row keeps the event as it arrived and the reason it was refused. They are a bug report, not
+routine: read the reason, fix the cause, and leave the row where it is.
+
+**Nothing edits this schema.** `audit.events` and `audit.dead_letters` refuse UPDATE, DELETE and
+TRUNCATE by trigger, for every role including `rch`. A mistake is corrected by the document the
+event describes, never by rewriting history.

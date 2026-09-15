@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { REASON_LABEL } from "@rch/domain";
-import { IT, LOC, OUTLETS } from "../../data/master";
+import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
+import { allOutlets, locName } from "../../lib/selectors";
 import { unitTotal } from "../../lib/fmt";
 import {
   Alert, Btn, Card, DataTable, FilterSelect, Grid, PageHead, Pill, StatusPill, TableFoot, Toolbar,
@@ -42,7 +43,7 @@ export default function Approvals() {
   const wSort = useSort("at", "desc");
   const aSort = useSort("at", "desc");
 
-  const outletNames = ["All", ...OUTLETS.map((l) => LOC[l].n)];
+  const outletNames = ["All", ...allOutlets().map(locName)];
 
   const matches = (r: StockRequest, term: string) =>
     !term
@@ -70,14 +71,14 @@ export default function Approvals() {
 
   const wTerm = wq.trim().toLowerCase();
   const waiting = allWaiting
-    .filter((r) => wOutlet === 0 || LOC[r.from].n === outletNames[wOutlet])
+    .filter((r) => wOutlet === 0 || locName(r.from) === outletNames[wOutlet])
     .filter((r) => wPrio === 0 || (wPrio === 1 ? r.urg : !r.urg))
     .filter((r) => matches(r, wTerm));
   const wFiltered = wTerm !== "" || wOutlet > 0 || wPrio > 0;
 
   const aTerm = aq.trim().toLowerCase();
   const actioned = allActioned
-    .filter((r) => aOutlet === 0 || LOC[r.from].n === outletNames[aOutlet])
+    .filter((r) => aOutlet === 0 || locName(r.from) === outletNames[aOutlet])
     .filter((r) => aOutcome === 0 || outcomeOf(r.st) === OUTCOME[aOutcome])
     .filter((r) => matches(r, aTerm));
   const aFiltered = aTerm !== "" || aOutlet > 0 || aOutcome > 0;

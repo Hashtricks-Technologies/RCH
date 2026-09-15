@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { IT, LOC, OUTLETS } from "../../data/master";
+import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
-import { avail, costOf, freeToPromise, qty } from "../../lib/selectors";
+import { avail, costOf, freeToPromise, openOutlets, qty } from "../../lib/selectors";
 import { fq, money, sum, U, unitTotal } from "../../lib/fmt";
 import { Alert, Btn, DataTable, DraftLineInput, Feed, Field, Pill, Section, StatusPill, Tag, Tip } from "../../ui/kit";
 import { DrawerFrame } from "../../ui/Drawer";
@@ -83,8 +83,9 @@ function ApprovalBody({ req }: { req: DatedDoc<StockRequest> }) {
 
   const open = req.st === "Request sent";
   // A request the kitchen raised (`req.from === "kitchen"`) has no peer shop to redirect to -
-  // only an outlet's own request does. `peers` excludes the outlet that raised this one.
-  const peers = OUTLETS.filter((o) => o !== req.from);
+  // only an outlet's own request does. `peers` is every other *open* outlet: a closed one is
+  // not trading, so redirecting to it would issue a ticket nobody can collect against.
+  const peers = openOutlets().filter((o) => o !== req.from);
   const [redirectTo, setRedirectTo] = useState<LocKey | null>(peers[0] ?? null);
   // A decision this manager made themselves, before the store keeper turns it into a ticket -
   // the one thing left to undo once "Approve & forward" has already gone through. A manager

@@ -7,8 +7,9 @@ contract and rules packages, and the Helm chart it deploys with.
 
 ## What the system does
 
-Royal Care runs one central store, one central kitchen and three retail outlets (Restaurant,
-Coffee Shop, Snack Kiosk). Two kinds of product move through them:
+Royal Care runs one central store, one central kitchen and the retail outlets it trades from - three to
+start (Restaurant, Coffee Shop, Snack Kiosk), and more as the super admin opens them from `/admin`. Two
+kinds of product move through them:
 
 | Class | Examples | Price authority |
 |---|---|---|
@@ -86,11 +87,19 @@ nobody could raise.
 request raised at the Coffee Shop appears on the manager's approvals screen without a reload - and
 two tills can never both sell the last unit.
 
+**An audit log nobody can edit.** Every change anyone makes, done or refused, and every sign-in
+lands in a log kept by a separate service. The super admin reads it on `/admin`: who, when, from
+which IP and device, what was sent, the server's sentence, and for an edit what the values were
+before. Neither the API's database credential nor anyone signed in can change or delete a line
+of it.
+
 ## Architecture at a glance
 
 ```
-Browser (React 19, Vite) ──HTTPS──▶ API (Fastify 5, Node 24) ──▶ PostgreSQL 17
-                         ◀──SSE──── GET /events
+Browser (React 19, Vite) ──HTTPS──▶ API (Fastify 5, Node 24) ────────▶ PostgreSQL 17
+                         ◀──SSE──── GET /events                        ▲
+                         ──HTTPS──▶ Audit (Fastify 5, Node 24) ────────┘
+                                    GET /admin/audit
 ```
 
 - **`packages/contract`** - every shape that crosses the wire, as Zod schemas, plus one route
@@ -101,7 +110,11 @@ Browser (React 19, Vite) ──HTTPS──▶ API (Fastify 5, Node 24) ──▶
   enforces them, the browser only previews with them while the operator types.
 - **`apps/api`** - Fastify 5 + Drizzle. Owns the ledger, the document numbers, the reservations
   and the change stream. Writes are transactional and idempotent: each carries an
-  `Idempotency-Key`, so a retry cannot produce a second bill.
+  `Idempotency-Key`, so a retry cannot produce a second bill. Every write and every sign-in also
+  leaves an audit event in an outbox table, inside the write's own transaction.
+- **`apps/audit`** - a second, small Fastify service. It drains that outbox into its own
+  append-only `audit` schema, exactly once, and answers the super admin's audit log. It imports
+  only the contract, and runs under a database role that can add to the log but never change it.
 - **`UI`** - React 19 + Zustand. Signs in for real, hydrates from `GET /snapshot`, posts writes
   back, and refetches only the slices a write says it changed.
 - **Deployment** - a single EC2 instance under Docker Compose today (`deploy/RUNBOOK.md` §16);
@@ -114,19 +127,20 @@ Browser (React 19, Vite) ──HTTPS──▶ API (Fastify 5, Node 24) ──▶
 ```
 UI/               the web application (React 19, Vite 8, TypeScript, Zustand)
 apps/api/         the HTTP API (Fastify 5, Drizzle, PostgreSQL) and its migrations
+apps/audit/       the audit log service (Fastify 5, PostgreSQL) and its migrations
 packages/contract/  Zod wire schemas, the route manifest, and the demo fixtures
 packages/domain/    pure business rules shared by the API and the UI
 deploy/           Helm chart, nginx config, and RUNBOOK.md (deploy, rollback, keys, restore)
 scripts/          check-boundaries.sh, pg-init.sql
 ```
 
-`CLAUDE.md` at the root and in `apps/api`, `packages/contract`, `packages/domain` and `UI` are
+`CLAUDE.md` at the root and in `apps/api`, `apps/audit`, `packages/contract`, `packages/domain` and `UI` are
 working guides for AI coding agents, and a reasonable orientation for a human meeting a package
 for the first time. `UI/README.md` covers the frontend in more detail.
 
 ## Running it
 
-Six commands, clone to signed-in browser. You need **Node 24** (see `.nvmrc`), **pnpm 10.28.2**
+Seven commands, clone to signed-in browser. You need **Node 24** (see `.nvmrc`), **pnpm 10.28.2**
 (`corepack enable`) and **Docker**.
 
 ```bash
@@ -134,8 +148,9 @@ pnpm install
 pnpm db:up                                                                  # postgres:17 in Docker, host port 5439
 cp .env.example .env && pnpm --filter @rch/api keys:generate >> .env       # writes JWT_PRIVATE_KEY / JWT_PUBLIC_KEY
 pnpm --filter @rch/api db:migrate
+pnpm --filter @rch/audit db:migrate                                         # the audit log's schema, after the API's
 pnpm --filter @rch/api db:seed
-pnpm dev                                                                    # API on :3000, UI on :5173
+pnpm dev                                                                    # API on :3000, audit service on :3100, UI on :5173
 ```
 
 Open `http://localhost:5173`, pick a seeded employee from the sign-in list (the super admin, `RC-0001`, uses
@@ -152,10 +167,12 @@ password everybody knows.
 | `RC-1902` | Vinoth Prakash | Kitchen In-charge |
 | `RC-1550` | Latha Narayanan | Procurement Officer |
 | `RC-4482` | Deepa Selvam | Counter Operator · Snack Kiosk |
-| `RC-0001` | System Administrator | Super Admin: staff accounts and the support desk, no role or location |
+| `RC-0001` | System Administrator | Super Admin: staff accounts, the hospital's outlets, the support desk and the audit log, no role or location |
 
 The super admin creates staff accounts on `/admin`, where the server assigns each one the next employee
-number. An account can be deactivated, and deleted permanently only if it never did anything.
+number. An account can be deactivated, and deleted permanently only if it never did anything. The same page
+opens, edits, closes and reopens the hospital's retail outlets - closed, never deleted, and a close is refused
+while stock, an open document or a member of staff still depends on the outlet, naming every one at once.
 
 A staging or production seed sets `must_change_password`, which routes a first sign-in through a
 change-password step. `deploy/RUNBOOK.md` §1 has the full local sequence and what each step does.
@@ -176,13 +193,14 @@ From the repository root:
 
 | Command | What it does |
 |---|---|
-| `pnpm dev` | API on :3000 and the UI on :5173, in parallel (Vite proxies `/api`) |
+| `pnpm dev` | API on :3000, the audit service on :3100 and the UI on :5173, in parallel (Vite proxies `/api`, sending the audit log's routes to :3100) |
 | `pnpm build` | Build every package |
 | `pnpm typecheck` | `tsc --noEmit` across the workspace |
 | `pnpm lint` | oxlint per package at `--max-warnings 0`, then knip (unused exports) and the module/boundary checks |
-| `pnpm test` | Every package's test suite, coverage floors included (Postgres must be reachable for `apps/api`) |
+| `pnpm test` | Every package's test suite, coverage floors included (Postgres must be reachable for `apps/api` and `apps/audit`) |
 | `pnpm db:up` / `pnpm db:down` | Start or stop the local `postgres:17` container |
-| `pnpm --filter @rch/api db:migrate` | Apply migrations |
+| `pnpm --filter @rch/api db:migrate` | Apply the API's migrations |
+| `pnpm --filter @rch/audit db:migrate` | Apply the audit service's migrations (run after the API's: it waits for the API's outbox table) |
 | `pnpm --filter @rch/api db:seed [--force] [--bare]` | Load the demo hospital - or, with `--bare`, only the six locations and the `RC-0001` admin account, which is what a real deployment starts from (`deploy/compose/deploy.sh` uses it); `--force` re-seeds a non-empty database. Where `NODE_ENV=production` both paths need the database named back - `--yes-seed <name>`, and `--yes-destroy <name>` as well for `--force` |
 | `pnpm --filter @rch/api db:generate` | Generate a migration from the Drizzle schema - review and commit the SQL |
 | `pnpm --filter @rch/api db:rebuild-balances` | Recompute cached balances from the movement ledger |
@@ -193,20 +211,25 @@ From the repository root:
 
 ## Testing
 
-Four suites, all run by `pnpm test`: **`packages/domain`** proves the rules against literal
+Five suites, all run by `pnpm test`: **`packages/domain`** proves the rules against literal
 expected values; **`packages/contract`** proves every request body accepts its own shape and
-refuses an unknown key; **`apps/api`** tests endpoints against a real PostgreSQL, each file in its
-own schema, migrated on setup and dropped on close so files run in parallel without colliding;
-**`UI`** covers the store, the screens (every role × every sidebar entry renders), the API-backed
-actions against a stubbed `fetch`, and the live-update client.
+refuses an unknown key, and that every write route has an audit label; **`apps/api`** tests
+endpoints against a real PostgreSQL, each file in its own schema, migrated on setup and dropped
+on close so files run in parallel without colliding, and proves every write and sign-in leaves
+exactly one audit event with its secrets masked; **`apps/audit`** drains a real outbox into the
+audit tables and reads them back, each file with its own outbox and audit schemas, and proves
+two drainers never store an event twice; **`UI`** covers the store, the screens (every role ×
+every sidebar entry renders), the API-backed actions against a stubbed `fetch`, and the
+live-update client.
 
-Run one package with `pnpm --filter @rch/ui test` (or `@rch/api`, `@rch/domain`, `@rch/contract`);
-the API suite needs Postgres reachable, so `pnpm db:up` first. The API and UI suites both pin
-`TZ=UTC`, so timezone-sensitive assertions prove the same thing on every machine.
+Run one package with `pnpm --filter @rch/ui test` (or `@rch/api`, `@rch/audit`, `@rch/domain`,
+`@rch/contract`); the API and audit suites need Postgres reachable, so `pnpm db:up` first. The API
+and UI suites both pin `TZ=UTC`, so timezone-sensitive assertions prove the same thing on every
+machine.
 
-Each package's `test` script carries a **coverage floor** - UI lines 73 / branches 51, `apps/api`
-94 / 79, `packages/domain` 99 / 92, `packages/contract` lines 96 - set a point or two under what
-that suite measures today, so deleting a test or shipping an untested screen fails rather than
+Each package's `test` script carries a **coverage floor** - UI lines 79 / branches 60, `apps/api`
+94 / 80, `apps/audit` 90 / 75, `packages/domain` 99 / 93, `packages/contract` lines 96 - set a
+point or two under what that suite measures today, so deleting a test or shipping an untested screen fails rather than
 drifting. Running one file (`npx vitest run src/__tests__/writes.test.ts` from inside the package)
 is deliberately not judged against it. **Lint is a zero-warning gate** in the same spirit: every
 package runs `oxlint --max-warnings 0`, and the handful of rules turned off carry their argument
@@ -236,9 +259,10 @@ in **[`deploy/RUNBOOK.md`](deploy/RUNBOOK.md)**.
 `pnpm install --frozen-lockfile`, typecheck and test against a `postgres:17` service container,
 `pnpm lint`, the module and boundary checks, `pnpm audit` at high severity (three unreachable
 attempts fail the job - "we did not look" is not "no advisories"), and a production build of the UI. A
-second job builds the API and UI images, scans both with Trivy at **critical and high** severity
-against `.trivyignore.yaml`, and does a real `helm install`, seed and sign-in against a
-throwaway kind cluster. A third renders the Helm chart on its own. Everything must be green to
+second job builds the API, UI and audit images, scans all three with Trivy at **critical and
+high** severity against `.trivyignore.yaml`, and does a real `helm install`, seed and sign-in
+against a throwaway kind cluster, then finds that sign-in in the audit log through the audit
+service. A third renders the Helm chart on its own. Everything must be green to
 merge - and, since the deploy workflow is triggered by this one finishing green, everything must
 be green before anything reaches a cluster.
 
@@ -279,7 +303,8 @@ production are still exactly the release decision above: prepared, not provision
 
 ## Where the documents are
 
-- **`deploy/RUNBOOK.md`** - operations: deploy, roll back, keys, accounts, restore.
+- **`deploy/RUNBOOK.md`** - operations: deploy, roll back, keys, accounts and database roles,
+  restore, alerts, and reading the audit log from the box.
 - **`UI/README.md`** - the frontend in more detail.
 - **`CLAUDE.md`**, at the root and in each package - how the code is put together and the rules
   it keeps.

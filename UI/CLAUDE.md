@@ -6,8 +6,8 @@ human reader. This file covers what is specific to `@rch/ui`.
 ## Commands
 
 ```bash
-pnpm --filter @rch/ui dev         # vite on :5173, proxying /api → http://localhost:3000
-pnpm --filter @rch/ui test        # vitest run --coverage (jsdom); floor lines 73 / branches 51
+pnpm --filter @rch/ui dev         # vite on :5173, proxying /api/v1/admin/audit → http://localhost:3100 and the rest of /api → http://localhost:3000
+pnpm --filter @rch/ui test        # vitest run --coverage (jsdom); floor lines 79 / branches 60
 pnpm --filter @rch/ui exec vitest run src/__tests__/writes.test.ts   # one file, no coverage gate
 pnpm --filter @rch/ui typecheck   # tsc --noEmit -p tsconfig.app.json
 pnpm --filter @rch/ui build       # tsc -b && vite build → UI/dist
@@ -30,7 +30,10 @@ pnpm --filter @rch/ui build       # tsc -b && vite build → UI/dist
 
 Routing is `BrowserRouter`, with plain paths (`/pos`, `/admin`). An admin-flagged account never gets a
 `<Shell>`: it only ever sees `pages/AdminDashboard.tsx` at `/admin`, and any other key bounces it back there.
-That page has two tabs: `AdminUsers` (staff accounts) and `AdminSupport` (the support desk: every role's tickets).
+That page has four tabs: `AdminUsers` (staff accounts), `AdminOutlets` (the hospital's retail outlets - opened,
+edited, closed and reopened; never deleted), `AdminSupport` (the support desk: every role's tickets) and
+`AdminAudit` (the audit log: every write and sign-in, newest first, with filters, counts and a CSV export).
+With no `Shell` around it, `AdminDashboard.tsx` mounts the `<Drawer />` host itself.
 
 `screens.test.tsx` and `app.test.tsx` render every `NAV` key for every role. A nav entry with no component fails
 the suite, on purpose.
@@ -42,6 +45,8 @@ the suite, on purpose.
 - `ui/Drawer.tsx` and `DrawerFrame` supply the chrome and a real focus trap (`aria-modal`).
 - `screens.test.tsx`'s `OPEN_OVER` map needs a `key → [id, role]` row for every registered drawer, or the
   suite fails by name.
+- `pages/AuditEntryDrawer.tsx` registers `auditEntry`, opened with `openDrawer("auditEntry", String(id))`. It
+  reads its entry through `readAuditEntry` as it opens, because an audit entry is never kept in the store.
 - A drawer that derives state in `useState` and gets re-pointed without unmounting must key its body on the
   document's id **and the last entry of its trail**. `manager/ApprovalDrawer.tsx`'s `bodyKey` is the example.
 
@@ -51,7 +56,7 @@ includes `TicketSlip`, `NewProductForm`, `AdjustmentForm` and `KitchenOrderForm`
 ## The store is an API client
 
 `src/store/index.ts` holds the state and most actions. The other slices (`procurement.ts`, `ops.ts`,
-`admin.ts`) are merged into the same `create()` and share one `AppState`. Components subscribe
+`admin.ts`, `audit.ts`) are merged into the same `create()` and share one `AppState`. Components subscribe
 narrowly, for example `useApp((s) => s.req)`.
 
 Every write action has this shape:
@@ -82,6 +87,17 @@ try {
 - **Account writes (`store/admin.ts`)**: `createAccount` sends no employee number (the server assigns it) and
   returns `{ emp, password } | null`, the number actually given; `AdminUsers.tsx` previews it with
   `nextEmpNo`. `deleteAccount(id)` is the ordinary `Promise<boolean>` write, behind an inline second press.
+- **The admin slice's outlet state (`store/admin.ts`)**: `adminLocations` (every location but quarantine, with
+  who is based at each) and `outletActions` (the `kind=outlets` feed) are loaded by `loadAdminLocations` and
+  `loadAdminActions(kind)` - the Outlets tab's table and the Accounts tab's location labels both read
+  `adminLocations`. `createOutlet` returns the server's row or `null` on a refusal, the same shape as
+  `createAccount`, so the form stays as typed. `updateOutlet` and `setOutletOpen` (close and reopen, one action
+  both ways, like `setAccountActive`) are the ordinary `Promise<boolean>` writes.
+- **The audit log's reads (`store/audit.ts`) return `null` on failure**: `loadAudit` (replaces the rows),
+  `loadMoreAudit` (appends the page before `next`), `readAuditEntry` (one full entry, not kept in the store)
+  and `exportAudit` (pages at 500 rows until `next` is null or 50,000 rows, and says whether it hit the cap).
+  `AdminAudit.tsx` shows an outage line on `null`, never "no events". They have no refetch; an `audit` notice
+  only bumps `audit.fresh`.
 - **An admin-flagged session loads no snapshot.** `loadSnapshot` sets `auth: "ready"` and returns for one,
   because the server 404s every operational read for its token. Sign-in, restore, a password change and any
   later refetch fallback all go through that one guard.
@@ -103,9 +119,15 @@ try {
     refreshing again.
 - **`refetch.ts`** maps each `changed` collection to a narrow `GET` through `NARROW`. The `loadSnapshot`
   fallback exists only for a collection missing from `NARROW`, so **add a reader when you add a collection**.
-  If a read-back fails, the write's own sentence is kept and qualified, never replaced. `tickets` is the one
-  reader that branches: an admin session reads the desk's list (`GET /admin/support/tickets` into
-  `deskTickets`), and everyone else reads their own tickets.
+  If a read-back fails, the write's own sentence is kept and qualified, never replaced. Three readers branch on
+  an admin session. `tickets`: an admin session reads the desk's list (`GET /admin/support/tickets` into
+  `deskTickets`), and everyone else reads their own tickets. `locations` and `outlets` are read the opposite
+  way: `locations` pulls the location master back through `GET /locations` for an operational session (then
+  bumps `catalogVersion` so every screen re-renders) and does nothing for the super admin, whose token reaches
+  no location read but its own; `outlets` pulls the admin's own list back through `GET /admin/locations` for
+  that session alone. `audit`: an admin session calls `bumpAuditFresh()`, so the Audit log tab shows
+  "New events - show" without moving its rows, and any other session does nothing. No write names `audit` in
+  its `changed`; only the audit service's notice does.
   - **A manager-only collection (`priceLists`, `accounts`) is still broadcast to every open session** - the
     server's `pg_notify` isn't per-role. A non-manager tab open when a price list changes gets a 403/404 on
     its own `NARROW.priceLists()` call, which fails the whole `Promise.all` and shows that tab the generic
@@ -144,6 +166,15 @@ a background refresh and must not blank the screen.
   `awaitingApproval`, `inTransit`, `costOf` and the transition predicates (`canHandOver`, `canDispatch`,
   `canSendPo`, …). The predicates read the domain tables, so any button the UI draws is one the server
   accepts.
+- **Outlets are read from the location master, never from a list compiled into the bundle.** `openOutlets()`
+  is for a picker that *starts* something - counter peers, the kitchen-order drawer, a price or an
+  availability list - open ones only. `allOutlets()` is for a filter over history - Approvals, Orders - where
+  a closed outlet still belongs, since a closed outlet's approvals are still approvals; it prints as
+  `<name> (closed)`. Bills builds its own outlet filter from the bills it holds rather than calling
+  `allOutlets()`, so a window with nothing billed at an outlet never offers it. `operationalLocs()` is the
+  store, the kitchen and the open outlets together, for anything that lists every place an operator works
+  today. `locName(key)` is the one place a location's display name is
+  read - the bare key when `LOC` doesn't carry it yet.
 - **Delivered quantities on buyer and store screens use `netReceived`**, not gross `recv`.
 - **Never hand-format a number or a date.**
   - Numbers: `money`, `money0`, `lakh`, `fq(v, it)` with `U(it)`, `unitTotal`.
@@ -199,6 +230,12 @@ a background refresh and must not blank the screen.
   typed id, the fallback); **`admin-accounts.test.tsx`** drives the account page (next-id preview, the Super
   Admin row, delete's second press). Both stub `fetch` by `"METHOD /path"`; the sign-in screen reads
   `GET /auth/directory` as it mounts, so a case that queues a login response must answer by URL, not in order.
+- **`admin-audit.test.tsx`** drives the Audit log tab against a stubbed `GET /admin/audit`: rows and counts,
+  filters reaching the query string, "Load more" sending `before`, an `audit` notice showing the pill without
+  changing the rows, before → after listing only changed fields in the drawer, and the outage line against
+  the empty state. **`audit-lib.test.ts`** pins `lib/audit.ts`'s `auditDayRange`, `deviceOf`, `diffFields` (one
+  level into a nested object, arrays compared whole) and `auditCsv`. `writes.test.ts` covers the slice's reads
+  and `refetch`'s `audit` reader.
 - **`fixes.test.ts`** pins earlier defects by tag (C6, M3, M8, H4, UA-14…). Read the comment before changing
   what one covers.
 - **No production file under `src/` imports `@rch/contract/fixtures`.** Only tests do.

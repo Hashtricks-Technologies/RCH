@@ -133,10 +133,13 @@ export const seedBills: Bill[] = [
   { no: "CF/1183", loc: "kiosk", opr: "Ramesh Kumar", oprCol: "#7C3AED", tot: 185, tax: 8.81, t: "07:55", pay: "Cash",
     lines: [{ it: "salad", qty: 1, rate: 55 }, { it: "sand", qty: 2, rate: 45 }, { it: "chai", qty: 2, rate: 20 }] },
 ];
-export const seedSales: number[][] = [
-  [4120, 3860, 5210], [4480, 4010, 5580], [3920, 3640, 4980], [4760, 4290, 6010], [5240, 4680, 6420],
-  [6180, 5120, 7240], [5860, 4940, 6880], [4310, 3980, 5320], [4620, 4180, 5760], [4980, 4460, 6120],
-  [5310, 4720, 6480], [6420, 5380, 7510], [6180, 5240, 7180], [5720, 4860, 6640],
+/** Rows are oldest first, matching `DAY_LABELS`, keyed by outlet - the same shape `readSales` answers. */
+export const seedSales: Record<string, number>[] = [
+  { rest: 4120, coffee: 3860, kiosk: 5210 }, { rest: 4480, coffee: 4010, kiosk: 5580 }, { rest: 3920, coffee: 3640, kiosk: 4980 },
+  { rest: 4760, coffee: 4290, kiosk: 6010 }, { rest: 5240, coffee: 4680, kiosk: 6420 }, { rest: 6180, coffee: 5120, kiosk: 7240 },
+  { rest: 5860, coffee: 4940, kiosk: 6880 }, { rest: 4310, coffee: 3980, kiosk: 5320 }, { rest: 4620, coffee: 4180, kiosk: 5760 },
+  { rest: 4980, coffee: 4460, kiosk: 6120 }, { rest: 5310, coffee: 4720, kiosk: 6480 }, { rest: 6420, coffee: 5380, kiosk: 7510 },
+  { rest: 6180, coffee: 5240, kiosk: 7180 }, { rest: 5720, coffee: 4860, kiosk: 6640 },
 ];
 export const DAY_LABELS = ["12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25"];
 

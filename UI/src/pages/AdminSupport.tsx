@@ -2,21 +2,18 @@ import { useMemo, useState } from "react";
 import { SUPPORT_TRANSITIONS, canTransition, mayDeskSet, mayReply } from "@rch/domain";
 import { useApp } from "../store";
 import { fromWireDay } from "../lib/fmt";
-import type { Dated, LocKey, Role, SupportTicket, TicketPriority, TicketStatus } from "../types";
+import type { Dated, Role, SupportTicket, TicketPriority, TicketStatus } from "../types";
 import {
   Alert, Avatar, Btn, BtnRow, Card, DataTable, Field, FilterSelect, Grid, Kpis, PageHead, Pill, Section,
   TableFoot, Toolbar,
 } from "../ui/kit";
 
 /** Display labels only. An admin session loads no snapshot, so the master registries
- *  (`LOC` and the rest) are empty here, and this page names roles and places itself, the same
- *  way `AdminUsers` does. */
+ *  (`LOC` and the rest) are empty here, and this page names roles itself, the same way
+ *  `AdminUsers` does; a location's own name comes off `adminLocations` instead. */
 const ROLE_LABEL: Record<Role, string> = {
   counter: "Counter Operator", manager: "Outlet Manager", store: "Store Keeper",
   prod: "Kitchen In-charge", buyer: "Procurement Officer",
-};
-const LOC_LABEL: Record<LocKey, string> = {
-  store: "Central Store", kitchen: "Central Kitchen", rest: "Restaurant", coffee: "Coffee Shop", kiosk: "Snack Kiosk",
 };
 
 /** The desk's own words for the reporter's "Waiting on you". */
@@ -27,7 +24,6 @@ const NEEDS = "Needs support";
 const STATUS_FILTERS = [NEEDS, "All", ...(["Open", "With support", "Waiting on you", "Resolved", "Closed"] as const).map(label)];
 const PRIO_FILTERS: (TicketPriority | "All")[] = ["All", "Urgent", "Normal", "Low"];
 const ROLE_FILTERS = ["All", ...Object.values(ROLE_LABEL)];
-const LOC_FILTERS = ["All", ...Object.values(LOC_LABEL)];
 
 const tone = (st: TicketStatus) =>
   st === "Open" ? "wn" : st === "With support" ? "in"
@@ -46,12 +42,18 @@ const deskOffers = (from: TicketStatus, to: TicketStatus) => mayDeskSet(to) && c
 /** The support desk: every ticket from every role's Support screen, answered by the admin. */
 export default function AdminSupport() {
   const tickets = useApp((s) => s.deskTickets);
+  const adminLocations = useApp((s) => s.adminLocations);
   const [q, setQ] = useState("");
   const [status, setStatus] = useState(NEEDS);
   const [prio, setPrio] = useState<TicketPriority | "All">("All");
   const [role, setRole] = useState("All");
   const [loc, setLoc] = useState("All");
   const [picked, setPicked] = useState<string | null>(null);
+
+  // A support ticket raised from quarantine can't exist, so the admin's own list - every
+  // location but quarantine - is a complete set of names for one.
+  const locLabel = (key: string) => adminLocations.find((l) => l.key === key)?.n ?? key;
+  const LOC_FILTERS = ["All", ...adminLocations.map((l) => l.n)];
 
   // Most pressing first: what nobody has answered, then urgent before routine, then newest.
   const rows = useMemo(() => {
@@ -61,13 +63,13 @@ export default function AdminSupport() {
         if (status === NEEDS ? !needsSupport(t) : status !== "All" && label(t.st) !== status) return false;
         if (prio !== "All" && t.priority !== prio) return false;
         if (role !== "All" && ROLE_LABEL[t.role] !== role) return false;
-        if (loc !== "All" && LOC_LABEL[t.loc] !== loc) return false;
+        if (loc !== "All" && (adminLocations.find((l) => l.key === t.loc)?.n ?? t.loc) !== loc) return false;
         if (!needle) return true;
         return (t.id + t.subject + t.topic + t.by + t.screen + t.messages.map((m) => m.body).join(" "))
           .toLowerCase().includes(needle);
       })
       .sort((a, b) => RANK[a.st] - RANK[b.st] || PRIO_RANK[a.priority] - PRIO_RANK[b.priority] || b.iso.localeCompare(a.iso));
-  }, [tickets, q, status, prio, role, loc]);
+  }, [tickets, q, status, prio, role, loc, adminLocations]);
 
   const open = tickets.filter((t) => t.st === "Open").length;
   const urgent = tickets.filter((t) => t.priority === "Urgent" && needsSupport(t)).length;
@@ -127,7 +129,7 @@ export default function AdminSupport() {
               onClick: () => setPicked(t.id),
               cells: [
                 <>{t.id === picked ? <b>{t.subject}</b> : t.subject}<small>{t.id} · {t.topic}</small></>,
-                <>{t.by}<small>{ROLE_LABEL[t.role]} · {LOC_LABEL[t.loc]}</small></>,
+                <>{t.by}<small>{ROLE_LABEL[t.role]} · {locLabel(t.loc)}</small></>,
                 <Pill tone={prioTone(t.priority)}>{t.priority}</Pill>,
                 <span className="mono">{fromWireDay(t.iso)}<small>{t.at}</small></span>,
                 <Pill tone={tone(t.st)}>{label(t.st)}</Pill>,
@@ -145,7 +147,7 @@ export default function AdminSupport() {
 
         {current
           // Keyed on the ticket, so a half-typed reply never carries over to the next one picked.
-          ? <Conversation key={current.id} t={current} />
+          ? <Conversation key={current.id} t={current} locLabel={locLabel} />
           : (
             <Card title="Conversation">
               <p className="mini">Pick a ticket to read what was said and reply.</p>
@@ -156,7 +158,7 @@ export default function AdminSupport() {
   );
 }
 
-function Conversation({ t }: { t: Dated<SupportTicket> }) {
+function Conversation({ t, locLabel }: { t: Dated<SupportTicket>; locLabel: (key: string) => string }) {
   const replyAsDesk = useApp((s) => s.replyAsDesk);
   const setDeskTicketStatus = useApp((s) => s.setDeskTicketStatus);
   const [reply, setReply] = useState("");
@@ -180,7 +182,7 @@ function Conversation({ t }: { t: Dated<SupportTicket> }) {
         {t.rating && <Pill tone="ok">Rated {t.rating} of 5</Pill>}
       </div>
       <p className="mini" style={{ margin: "0 0 14px", lineHeight: 1.6 }}>
-        <b>{t.by}</b> · {ROLE_LABEL[t.role]} · {LOC_LABEL[t.loc]}<br />
+        <b>{t.by}</b> · {ROLE_LABEL[t.role]} · {locLabel(t.loc)}<br />
         {t.topic} · on {t.screen} · raised {fromWireDay(t.iso)} {t.at}
       </p>
 

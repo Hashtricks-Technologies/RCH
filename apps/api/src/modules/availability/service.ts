@@ -4,8 +4,10 @@ import type { z } from "zod";
 import type { ToggleAvailBodySchema, ToggleResultSchema, WriteResponse } from "@rch/contract";
 import type { Db } from "../../db/client.js";
 import { withTransaction } from "../../lib/db.js";
+import { auditBefore } from "../../lib/audit.js";
 import { NotFoundError } from "../../lib/errors.js";
 import { emitChanged } from "../../lib/events.js";
+import { assertOpen, lockLocation } from "../../lib/locations.js";
 import { loadMaster } from "../../lib/master.js";
 import { assertRule } from "../../lib/rules.js";
 import type { AccessClaims } from "../../plugins/auth.js";
@@ -28,31 +30,30 @@ export function createAvailabilityService(db: Db) {
      */
     async toggle(claims: AccessClaims, body: ToggleAvailBody): Promise<WriteResponse<ToggleResult>> {
       return withTransaction(db, async (tx) => {
+        const loc = await lockLocation(tx, body.loc);
         const master = await loadMaster(tx);
-        const loc = master.locations[body.loc];
         const item = master.items[body.it];
-        // Before the location-type check and before the listing check, so an unknown key or a
-        // since-deactivated item (dropped from loadMaster's active-only items) 404s cleanly
-        // instead of crashing on `item.n` below. Same for the location: LocKeySchema only ever
-        // admits the five seeded keys, so this is unreachable rather than user-facing - but a
-        // missing row would otherwise reach `loc.type` as a 500 instead of a plain answer.
-        if (!loc) throw new NotFoundError(`There is no location ${body.loc}.`);
+        // Before the location-type check and before the listing check, so a since-deactivated
+        // item (dropped from loadMaster's active-only items) 404s cleanly instead of crashing on
+        // `item.n` below.
         if (!item) throw new NotFoundError(`There is no item ${body.it}.`);
         // A manager reaches every outlet, so the request's location has to be checked here -
         // it is the one role whose own `loc` does not decide. A counter and the kitchen were
         // already held to their own location by `requireLoc` in routes.ts, which 403s before
         // this service is called, so there is no second check for them to fail. The kitchen's
-        // own `${loc.n} is not a kitchen` branch used to sit here and could never run for that
+        // own `${loc.name} is not a kitchen` branch used to sit here and could never run for that
         // reason; what it was really guarding - that a Kitchen In-charge is only ever posted to
-        // the kitchen in the first place - is now `WORKS_AT` in `lib/users-admin.ts`, enforced
-        // where the account is created rather than on every toggle it makes afterwards.
-        if (claims.role === "manager") assertRule(loc.type === "Outlet", `${loc.n} is not an outlet`);
+        // the kitchen in the first place - is now `worksAt` (@rch/domain), called from
+        // `checkPairing` in `lib/users-admin.ts` and enforced where the account is created
+        // rather than on every toggle it makes afterwards.
+        if (claims.role === "manager") assertRule(loc.type === "Outlet", `${loc.name} is not an outlet`);
+        if (loc.type === "Outlet") assertOpen(loc);
         // A kitchen has no menu - what it can switch off is what it can make, so "listed"
         // there means the item is a finished good. Everywhere else it is the location's menu.
         const listed = loc.type === "Kitchen"
           ? item.t === "FG"
           : await availabilityRepo.isListed(tx, body.loc, body.it);
-        assertRule(listed, loc.type === "Kitchen" ? `${item.n} is not made at ${loc.n}` : `${item.n} is not listed at ${loc.n}`);
+        assertRule(listed, loc.type === "Kitchen" ? `${item.n} is not made at ${loc.name}` : `${item.n} is not listed at ${loc.name}`);
 
         // Two concurrent "no override yet" toggles can both read `find` as empty before
         // either commits; the insert/delete below is made deterministic at the database
@@ -63,13 +64,18 @@ export function createAvailabilityService(db: Db) {
         // and every other screen watching are told to refetch the same slice.
         const changed = ["ovr"] as const;
         const existing = await availabilityRepo.find(tx, body.loc, body.it);
+        // The switch as it stood, in the shape the result gives: on (no override), or off with the
+        // reason the override carries.
+        auditBefore(existing
+          ? { loc: body.loc, it: body.it, off: true, reason: existing.reason }
+          : { loc: body.loc, it: body.it, off: false });
         if (existing) {
           await availabilityRepo.remove(tx, body.loc, body.it);
           await emitChanged(tx, changed);
           return {
             result: { loc: body.loc, it: body.it, off: false },
             changed: [...changed],
-            message: `${item.n} switched on at ${loc.n}`,
+            message: `${item.n} switched on at ${loc.name}`,
           };
         }
         await availabilityRepo.insert(tx, body.loc, body.it, REASON, claims.sub);
@@ -77,7 +83,7 @@ export function createAvailabilityService(db: Db) {
         return {
           result: { loc: body.loc, it: body.it, off: true, reason: REASON },
           changed: [...changed],
-          message: `${item.n} switched off at ${loc.n}`,
+          message: `${item.n} switched off at ${loc.name}`,
         };
       });
     },

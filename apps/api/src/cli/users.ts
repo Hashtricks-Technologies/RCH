@@ -1,5 +1,5 @@
 import { parseArgs } from "node:util";
-import { loadConfig } from "../config.js";
+import { cliDatabaseUrl, loadConfig } from "../config.js";
 import { createDb } from "../db/client.js";
 import { createUser, deactivateUser, resetPassword, setAdmin } from "../lib/users-admin.js";
 import { LocKeySchema, MIN_PASSWORD_LENGTH, RoleSchema, type LocKey, type Role } from "@rch/contract";
@@ -24,14 +24,14 @@ const needRole = (): Role => {
 const needLoc = (): LocKey => {
   const v = need("loc");
   const parsed = LocKeySchema.safeParse(v);
-  if (!parsed.success) { console.error(`--loc must be one of ${LocKeySchema.options.join("|")} (got "${v}")`); process.exit(2); }
+  if (!parsed.success) { console.error(`--loc must be a location key - store, kitchen or an outlet's key (got "${v}")`); process.exit(2); }
   return parsed.data;
 };
 /** What `createUser` will accept, said once here so the operator reads it before the refusal
- *  rather than after: `lib/users-admin.ts`'s WORKS_AT is the rule, this is its help text. */
-const PAIRINGS = "prod works at kitchen; store and buyer at store; counter and manager at one of rest|coffee|kiosk";
+ *  rather than after: `worksAt` in @rch/domain is the rule, this is its help text. */
+const PAIRINGS = "prod works at kitchen; store and buyer at store; counter and manager at an open outlet, by its key (e.g. rest)";
 const config = loadConfig(process.env);
-const { db, pool } = createDb(config.databaseUrl, config.databaseSsl, { max: 1 });
+const { db, pool } = createDb(cliDatabaseUrl(config), config.databaseSsl, { max: 1 });
 try {
   switch (positionals[0]) {
     case "create": {

@@ -5,6 +5,7 @@ import type { z } from "zod";
 import type { ContractBodySchema, PatchContractBodySchema, RateContract, WriteResponse } from "@rch/contract";
 import type { Db } from "../../db/client.js";
 import { withTransaction } from "../../lib/db.js";
+import { auditBefore } from "../../lib/audit.js";
 import { NotFoundError } from "../../lib/errors.js";
 import { emitChanged } from "../../lib/events.js";
 import { allocateId } from "../../lib/ids.js";
@@ -53,6 +54,7 @@ export function createContractsService(db: Db) {
       return withTransaction(db, async (tx) => {
         const existing = await contractsRepo.head(tx, id);
         if (!existing) throw new NotFoundError(`There is no rate contract ${id}.`);
+        auditBefore(await contractsRepo.wire(tx, id));
         assertRule(Object.keys(body).length > 0, `Nothing to change on ${id}`);
 
         const from = body.from ?? existing.validFrom;
@@ -104,6 +106,7 @@ export function createContractsService(db: Db) {
       return withTransaction(db, async (tx) => {
         const existing = await contractsRepo.head(tx, id);
         if (!existing) throw new NotFoundError(`There is no rate contract ${id}.`);
+        auditBefore(await contractsRepo.wire(tx, id));
         await contractsRepo.update(tx, id, { active: false });
 
         const changed = ["contracts"] as const;

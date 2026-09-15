@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: {{ .Release.Name }}-audit, labels: { {{- include "rch.labels" . | nindent 4 }}, app.kubernetes.io/component: audit } }
+spec:
+  replicas: {{ .Values.audit.replicas }}
+  strategy: { type: RollingUpdate, rollingUpdate: { maxUnavailable: 0, maxSurge: 1 } }
+  selector: { matchLabels: { app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: audit } }
+  template:
+    metadata:
+      labels: { {{- include "rch.labels" . | nindent 8 }}, app.kubernetes.io/component: audit }
+      # The same reasoning as api-deployment.yaml: hash what the containers read, so changing a
+      # value in audit.env rolls the pods.
+      annotations: { checksum/config: {{ toYaml .Values.audit.env | sha256sum }} }
+    spec:
+      serviceAccountName: {{ include "rch.sa" . }}
+      # Nothing in this pod reads the Kubernetes API.
+      automountServiceAccountToken: false
+      # The api pod's number, for the same load balancer: the target group's 30s deregistration
+      # delay has to fit inside the grace period with the process's own drain after it.
+      terminationGracePeriodSeconds: 60
+      securityContext: { runAsNonRoot: true, runAsUser: 65532, fsGroup: 65532, seccompProfile: { type: RuntimeDefault } }
+      {{- with .Values.audit.nodeSelector }}
+      # values-prod.yaml pins production to the on-demand ng-prod node group, as it does the api.
+      nodeSelector: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      # The audit schema's migrations and the rch_audit role, as an initContainer for the reasons
+      # api-deployment.yaml gives. Its migrations hold advisory lock 727273, so replicas serialise;
+      # its role and grant step also holds the API migrate step's 727272, so grants on audit_outbox
+      # never interleave with the API's. It waits for audit_outbox, which the api pod's own migrate
+      # step creates, so the two Deployments may start in either order (exit 3 if it never appears
+      # within 5 minutes, 2 on a bad environment).
+      initContainers:
+        - name: audit-migrate
+          image: {{ include "rch.image" (dict "registry" .Values.image.registry "name" .Values.image.audit "tag" .Values.image.tag) }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: ["dist/cli/migrate.mjs"]
+          env:
+            {{- include "rch.auditMigrateEnv" . | nindent 12 }}
+          securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
+          resources: { requests: { cpu: 50m, memory: 96Mi }, limits: { cpu: 500m, memory: 256Mi } }
+      containers:
+        - name: audit
+          image: {{ include "rch.image" (dict "registry" .Values.image.registry "name" .Values.image.audit "tag" .Values.image.tag) }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports: [{ name: http, containerPort: 3100 }]
+          env:
+            {{- include "rch.auditEnv" . | nindent 12 }}
+          resources: {{- toYaml .Values.audit.resources | nindent 12 }}
+          # /readyz answers 503 unless the database answers, every audit migration is applied and
+          # the drainer made a pass in the last 30 seconds.
+          readinessProbe: { httpGet: { path: /readyz, port: http }, periodSeconds: 5, failureThreshold: 3 }
+          livenessProbe: { httpGet: { path: /healthz, port: http }, periodSeconds: 10, failureThreshold: 3 }
+          startupProbe: { httpGet: { path: /healthz, port: http }, periodSeconds: 2, failureThreshold: 30 }
+          securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }

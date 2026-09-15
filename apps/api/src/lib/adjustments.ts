@@ -17,6 +17,7 @@ import { NotFoundError } from "./errors.js";
 import { appendHistory } from "./history.js";
 import { allocateId } from "./ids.js";
 import { lockBalances, postMoves, type Move } from "./ledger.js";
+import { assertOpen, lockLocation } from "./locations.js";
 import { reservedAt } from "./reservations.js";
 import { assertRule } from "./rules.js";
 import { iso } from "./time.js";
@@ -48,7 +49,13 @@ export type AdjustmentDraft = {
 export async function writeAdjustment(tx: Tx, master: Master, draft: AdjustmentDraft): Promise<{ adjustment: Adjustment; message: string }> {
   const at = draft.at ?? new Date();
   const loc = draft.loc;
-  const locName = master.locations[loc]?.n ?? loc;
+  // The shelf first - documents tier, before any of the balance locks below - so a closed
+  // outlet refuses here rather than corrected: nothing new may be posted against a shelf that
+  // is not trading. Quarantine and the two fixed desks are never closed, so only an Outlet row
+  // is actually checked.
+  const shelf = await lockLocation(tx, loc);
+  if (shelf.type === "Outlet") assertOpen(shelf);
+  const locName = shelf.name;
   const unitOf = (it: string) => master.items[it]?.u ?? "nos";
 
   const folded = new Map<string, number>();

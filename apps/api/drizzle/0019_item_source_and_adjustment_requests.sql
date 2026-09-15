@@ -1,4 +1,5 @@
 CREATE TYPE "adj_req_status" AS ENUM('Request sent', 'Approved', 'Rejected', 'Cancelled');--> statement-breakpoint
+CREATE TYPE "source" AS ENUM('store', 'kitchen');--> statement-breakpoint
 CREATE TABLE "adjustment_request_lines" (
 	"request_id" text NOT NULL,
 	"line_no" integer NOT NULL,
@@ -20,6 +21,7 @@ CREATE TABLE "adjustment_requests" (
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
+ALTER TABLE "items" ADD COLUMN "src" "source";--> statement-breakpoint
 ALTER TABLE "adjustment_request_lines" ADD CONSTRAINT "adjustment_request_lines_request_id_adjustment_requests_id_fk" FOREIGN KEY ("request_id") REFERENCES "adjustment_requests"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "adjustment_request_lines" ADD CONSTRAINT "adjustment_request_lines_item_key_items_key_fk" FOREIGN KEY ("item_key") REFERENCES "items"("key") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "adjustment_requests" ADD CONSTRAINT "adjustment_requests_loc_locations_key_fk" FOREIGN KEY ("loc") REFERENCES "locations"("key") ON DELETE no action ON UPDATE no action;--> statement-breakpoint

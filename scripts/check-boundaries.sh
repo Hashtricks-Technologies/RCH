@@ -92,25 +92,114 @@ fi
 
 # ---------------------------------------------------------------------------
 # 3) Module skeleton. Every apps/api/src/modules/<name> (except _template, the
-#    template itself) has routes.ts, service.ts, repo.ts and at least one *.test.ts.
+#    template itself) and every apps/audit/src/modules/<name> has routes.ts,
+#    service.ts, repo.ts and at least one *.test.ts.
 # ---------------------------------------------------------------------------
 echo "== module skeleton: routes.ts, service.ts, repo.ts, *.test.ts =="
 
-for dir in apps/api/src/modules/*/; do
-  [ -d "$dir" ] || continue
-  name="$(basename "$dir")"
-  [ "$name" = "_template" ] && continue
+check_skeleton() {
+  local modules="$1" dir name f
+  for dir in "$modules"/*/; do
+    [ -d "$dir" ] || continue
+    name="$(basename "$dir")"
+    [ "$name" = "_template" ] && continue
 
-  for f in routes.ts service.ts repo.ts; do
-    if [ ! -f "${dir}${f}" ]; then
-      fail_with "apps/api/src/modules/$name is missing $f (every module needs routes.ts, service.ts, repo.ts and a *.test.ts - see apps/api/src/modules/_template)"
+    for f in routes.ts service.ts repo.ts; do
+      if [ ! -f "${dir}${f}" ]; then
+        fail_with "$modules/$name is missing $f (every module needs routes.ts, service.ts, repo.ts and a *.test.ts - see apps/api/src/modules/_template)"
+      fi
+    done
+    # shellcheck disable=SC2086
+    if ! ls ${dir}*.test.ts >/dev/null 2>&1; then
+      fail_with "$modules/$name has no *.test.ts (every module needs routes.ts, service.ts, repo.ts and a *.test.ts - see apps/api/src/modules/_template)"
     fi
   done
-  # shellcheck disable=SC2086
-  if ! ls ${dir}*.test.ts >/dev/null 2>&1; then
-    fail_with "apps/api/src/modules/$name has no *.test.ts (every module needs routes.ts, service.ts, repo.ts and a *.test.ts - see apps/api/src/modules/_template)"
+}
+
+check_skeleton apps/api/src/modules
+check_skeleton apps/audit/src/modules
+
+# ---------------------------------------------------------------------------
+# 4) The audit outbox, from the API's side. apps/api appends to audit_outbox from exactly one
+#    file, lib/audit.ts - the one place that masks secrets and builds the event - and nothing in
+#    apps/api reads it back, updates it, deletes from it or truncates it. The role the API runs as
+#    (rch_app) holds INSERT alone on that table; this is the same rule, stated where a reviewer
+#    reads code rather than grants. Test files and apps/api/src/test/ are exempt: the suites read
+#    the outbox to assert what a write recorded.
+# ---------------------------------------------------------------------------
+echo "== audit outbox: apps/api appends from lib/audit.ts and never reads it back =="
+
+api_exempt_re='\.test\.ts|^apps/api/src/test/'
+# shellcheck disable=SC2016  # `$` anchors, it does not expand
+outbox_sql='["`]?([A-Za-z_][A-Za-z0-9_]*["`]?[[:space:]]*\.[[:space:]]*["`]?)?audit_outbox([^A-Za-z0-9_]|$)'
+outbox_orm="$qualifier"'auditOutbox[[:space:]]*\)'
+
+outbox_insert='insert[[:space:]]*\([[:space:]]*'"$outbox_orm"'|(insert|merge)[[:space:]]+into[[:space:]]+'"$outbox_sql"
+outbox_insert_files="$(grep -rl -i -E "$outbox_insert" apps/api/src --include="*.ts" | grep -v -E "$api_exempt_re" || true)"
+if [ "$outbox_insert_files" != "apps/api/src/lib/audit.ts" ]; then
+  fail_with "an insert into audit_outbox must appear in exactly one non-test file, apps/api/src/lib/audit.ts. Found in:"
+  echo "${outbox_insert_files:-<nowhere>}" >&2
+fi
+
+outbox_touch='(update|delete|from)[[:space:]]*\([[:space:]]*'"$outbox_orm"'|(update|delete[[:space:]]+from|from|join|truncate([[:space:]]+table)?)[[:space:]]+'"$outbox_sql"
+outbox_touch_hits="$(grep -rn -i -E "$outbox_touch" apps/api/src --include="*.ts" | grep -v -E "$api_exempt_re" || true)"
+if [ -n "$outbox_touch_hits" ]; then
+  fail_with "apps/api reads, updates, deletes from or truncates audit_outbox - the API only appends to it (lib/audit.ts):"
+  echo "$outbox_touch_hits" >&2
+fi
+
+# ---------------------------------------------------------------------------
+# 5) The audit service's one door. apps/audit moves an event exactly once: lib/drain.ts deletes
+#    it from the outbox and inserts it into events (or dead_letters) in one transaction, so that
+#    file is the only one that may do either - and nothing in apps/audit inserts into, updates or
+#    truncates the outbox, which is the API's to write. The outbox is matched loosely (any token
+#    containing `outbox`, any case) because the service names it through OUTBOX_SCHEMA as an
+#    interpolated quoted identifier - `delete from ${outbox}` or `"${schema}".audit_outbox` - not a
+#    literal the grep could anchor on; the statement's verb and its table still have to share a
+#    line. Test files and apps/audit/src/test/ are exempt: the suites fill the outbox themselves.
+# ---------------------------------------------------------------------------
+echo "== audit service: only lib/drain.ts moves events out of the outbox =="
+
+audit_exempt_re='\.test\.ts|^apps/audit/src/test/'
+drain_file="apps/audit/src/lib/drain.ts"
+if [ ! -d apps/audit/src ]; then
+  fail_with "apps/audit/src is missing - the audit service's boundaries cannot be checked"
+else
+  drain_delete='delete[[:space:]]+from[[:space:]]+[^[:space:]]*outbox|delete[[:space:]]*\([^)]*outbox'
+  drain_delete_files="$(grep -rl -i -E "$drain_delete" apps/audit/src --include="*.ts" | grep -v -E "$audit_exempt_re" || true)"
+  if [ "$drain_delete_files" != "$drain_file" ]; then
+    fail_with "a delete from the audit outbox must appear in exactly one non-test file, $drain_file. Found in:"
+    echo "${drain_delete_files:-<nowhere>}" >&2
   fi
-done
+
+  store_insert='insert[[:space:]]+into[[:space:]]+[^[:space:]]*(events|dead_letters)([^A-Za-z0-9_]|$)|insert[[:space:]]*\([^)]*(events|deadLetters)[[:space:]]*\)'
+  store_insert_files="$(grep -rl -i -E "$store_insert" apps/audit/src --include="*.ts" | grep -v -E "$audit_exempt_re" || true)"
+  if [ "$store_insert_files" != "$drain_file" ]; then
+    fail_with "an insert into events or dead_letters must appear in exactly one non-test file, $drain_file. Found in:"
+    echo "${store_insert_files:-<nowhere>}" >&2
+  fi
+
+  outbox_write='(insert|merge)[[:space:]]+into[[:space:]]+[^[:space:]]*outbox|update[[:space:]]+[^[:space:]]*outbox|truncate([[:space:]]+table)?[[:space:]]+[^[:space:]]*outbox|(insert|update)[[:space:]]*\([^)]*outbox'
+  outbox_write_hits="$(grep -rn -i -E "$outbox_write" apps/audit/src --include="*.ts" | grep -v -E "$audit_exempt_re" || true)"
+  if [ -n "$outbox_write_hits" ]; then
+    fail_with "apps/audit inserts into, updates or truncates the audit outbox - it only ever deletes what it drained (lib/drain.ts):"
+    echo "$outbox_write_hits" >&2
+  fi
+fi
+
+# ---------------------------------------------------------------------------
+# 6) The audit store is append-only. Nothing outside a test updates, deletes from or truncates
+#    events or dead_letters, in apps/audit or in apps/api. The triggers refuse it for every role;
+#    this refuses it before somebody writes a statement that could only ever fail in production.
+# ---------------------------------------------------------------------------
+echo "== audit store: events and dead_letters are never updated or deleted =="
+
+store_touch='(update|delete[[:space:]]+from|truncate([[:space:]]+table)?)[[:space:]]+[^[:space:]]*(events|dead_letters)([^A-Za-z0-9_]|$)|(update|delete)[[:space:]]*\([^)]*(events|deadLetters)[[:space:]]*\)'
+store_touch_hits="$(grep -rn -i -E "$store_touch" apps/api/src apps/audit/src --include="*.ts" 2>/dev/null | grep -v -E '\.test\.ts|^apps/(api|audit)/src/test/' || true)"
+if [ -n "$store_touch_hits" ]; then
+  fail_with "the audit store (events, dead_letters) is append-only - nothing may update, delete from or truncate it:"
+  echo "$store_touch_hits" >&2
+fi
 
 if [ "$fail" != "0" ]; then
   echo "" >&2
