@@ -136,9 +136,12 @@ For a uniqueness rule, the insert (or update) decides; a pre-check only gives th
 ## Outlets
 
 The admin module (`modules/admin`) owns outlets - opened, edited, closed and reopened at `/admin`, never
-deleted (root `CLAUDE.md`). Its close counts everything still open against the outlet under the close's own
-`FOR UPDATE` row lock (`repo.ts`'s `closeBlockers`) and refuses in one sentence naming every blocker at once
-(`closeRefusal` in `@rch/domain`, over the statuses `HOLDS_OUTLET` marks as still committing the outlet - a
+deleted (root `CLAUDE.md`). Its close holds the outlet's row `FOR UPDATE` and counts everything still open
+against it in **one statement** (`repo.ts`'s `closeBlockers`), because a dispatch, an answer, a receive or a
+cancel moves a commitment from one counted category to another while naming no location at all - counted one
+statement at a time, at READ COMMITTED, such a write can be seen by neither count. It refuses in one sentence
+naming every blocker at once (`closeRefusal` in `@rch/domain`, over the statuses `HOLDS_OUTLET` marks as
+still committing the outlet - a
 dispatched kitchen order or a sent shop ask keeps an undo edge in its own transition table, but the ticket it
 raised is what holds the outlet from then on).
 

@@ -213,9 +213,12 @@ export function createAdminService(db: Db) {
       });
     },
 
-    /** Closed, never deleted. The row is locked `FOR UPDATE` first: every write that names this
+    /** Closed, never deleted. The row is locked `FOR UPDATE` first: every write that *names* this
      *  outlet holds it `FOR SHARE` (`lib/locations.ts`), so a sale in flight commits before the
-     *  blockers are counted, and one that starts afterwards reads the outlet closed. */
+     *  blockers are counted, and one that starts afterwards reads the outlet closed. The lock is
+     *  not the whole guard, because a write that only moves a document the outlet already has -
+     *  a dispatch, an answer, a receive, a cancel - names no location: what covers those is that
+     *  `closeBlockers` counts every category in one statement, so they share one snapshot. */
     async closeOutlet(claims: AccessClaims, key: string): Promise<WriteResponse<AdminLocation>> {
       return withTransaction(db, async (tx) => {
         const row = await requireOutletTx(tx, key);
