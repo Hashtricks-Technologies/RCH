@@ -8,6 +8,7 @@ import type {
   ShopAsk, StockLoc, SupportTicket, TicketPriority, TicketStatus, TicketTopic,
 } from "../types";
 import { toInputDate } from "../lib/fmt";
+import { toBase64 } from "../lib/photo";
 import type { AppState } from "./index";
 
 type Get = () => AppState;
@@ -74,6 +75,11 @@ export interface OpsSlice {
    *  answers `false` for and the server refuses them in the operator's own words, so the same
    *  table drives the form and the refusal. */
   updateItem: (it: string, patch: ItemFieldPatch) => Promise<boolean>;
+  // ---- item photos ----
+  /** The bytes arrive already shrunk and checked (`ui/PhotoPicker.tsx`); the server checks them
+   *  again and decides - including whether this counter's outlet lists the item. */
+  setItemImage: (it: string, bytes: Uint8Array) => Promise<boolean>;
+  removeItemImage: (it: string) => Promise<boolean>;
   /** Shop to shop, no manager in the middle. Answers `true` only once the server took it, so
    *  a screen can hold on to what the operator typed when it is refused. */
   transferToOutlet: (from: LocKey, to: LocKey, it: string, qty: number) => Promise<boolean>;
@@ -262,6 +268,25 @@ export const createOpsSlice = (get: Get): OpsSlice => ({
       await refetch(r.changed, r.message);
       return true;
     } catch (e) { return fail(get, e, "save the product"); }
+  },
+
+  // ---- item photos ----
+  setItemImage: async (it, bytes) => {
+    try {
+      const r = await call(routes.setItemImage, { params: { it }, body: { data: toBase64(bytes) } });
+      get().notify(r.message);
+      await refetch(r.changed, r.message);
+      return true;
+    } catch (e) { return fail(get, e, "save the photo"); }
+  },
+
+  removeItemImage: async (it) => {
+    try {
+      const r = await call(routes.removeItemImage, { params: { it } });
+      get().notify(r.message);
+      await refetch(r.changed, r.message);
+      return true;
+    } catch (e) { return fail(get, e, "remove the photo"); }
   },
 
   /**

@@ -435,6 +435,8 @@ thead th .tip{margin-left:4px}
 .imgph-thumb svg{width:19px;height:19px}
 /* an item's real photo, in the placeholder's own box */
 .itemimg{object-fit:cover;background:var(--surface-2)}
+/* PhotoPicker: the image, then its buttons, stacked with a clear gap between them */
+.photopick{display:flex;flex-direction:column;gap:10px}
 .tile-pic{padding:0;gap:0;overflow:hidden}
 .tile-pic-body{display:flex;flex-direction:column;gap:4px;flex:1;min-width:0;padding:10px 12px 12px}
 .nm-pic{display:flex;align-items:center;gap:9px;min-width:0}

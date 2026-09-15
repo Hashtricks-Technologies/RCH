@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { mayEditItemField, type ItemField } from "@rch/domain";
+import { mayEditItemField, mayEditItemImage, type ItemField } from "@rch/domain";
 import { IT } from "../../data/master";
 import { useApp } from "../../store";
 import { money } from "../../lib/fmt";
 import { Alert, Btn, BtnRow, Field, FormRow, Section, Tag } from "../../ui/kit";
 import { DrawerFrame } from "../../ui/Drawer";
+import { PhotoPicker } from "../../ui/PhotoPicker";
 import { registerDrawer } from "../../drawers";
 import type { ItemFieldPatch } from "../../store/ops";
 
@@ -122,6 +123,13 @@ function ItemDrawer({ id }: { id: string }) {
         </Alert>
       )}
       <Alert tone="i" label="WHO CHANGES WHAT">{whose}</Alert>
+
+      {mayEditItemImage(role) && (
+        <>
+          <Section title="Photo" tip="What every till and screen shows for this product." />
+          <PhotoPicker it={id} />
+        </>
+      )}
 
       <Section title="Identity" tip="The name is what every screen and every document shows." />
       <FormRow cols="f2">
