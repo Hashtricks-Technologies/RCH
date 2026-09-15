@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { LOC, OUTLETS } from "../../data/master";
+import { LOC } from "../../data/master";
 import { useApp } from "../../store";
+import { openOutlets } from "../../lib/selectors";
 import { Alert, Field, Section } from "../../ui/kit";
 import { DrawerFrame } from "../../ui/Drawer";
 import KitchenOrderForm from "../../ui/KitchenOrderForm";
@@ -18,11 +19,11 @@ import type { LocKey } from "../../types";
  */
 function KitchenOrderDrawer() {
   const close = useApp((x) => x.closeDrawer);
-  // `OUTLETS` is re-exported from `@rch/contract` and is never empty in this hospital - but the
-  // index says `LocKey` whatever the array holds, so `OUTLETS[0]` on an empty one is `undefined`
-  // typed as a real outlet, and every read of `LOC[loc]` below it is then reading `LOC[undefined]`.
-  // `null` is a state this drawer can render a sentence for; a lie about the type is not.
-  const [loc, setLoc] = useState<LocKey | null>(OUTLETS[0] ?? null);
+  // `LOC` is empty until the snapshot lands, and a closed outlet is never offered here either -
+  // so `openOutlets()[0]` is `undefined` on either one, typed as a real outlet, and every read of
+  // `LOC[loc]` below it would then be reading `LOC[undefined]`. `null` is a state this drawer can
+  // render a sentence for; a lie about the type is not.
+  const [loc, setLoc] = useState<LocKey | null>(openOutlets()[0] ?? null);
 
   if (!loc) {
     return (
@@ -42,7 +43,7 @@ function KitchenOrderDrawer() {
     >
       <Field label="Which outlet is this for" hint="The tray is dispatched to this shop and shows on its own screen.">
         <select value={loc} aria-label="Outlet" onChange={(e) => setLoc(e.target.value as LocKey)}>
-          {OUTLETS.map((l) => <option key={l} value={l}>{LOC[l]?.n ?? l}</option>)}
+          {openOutlets().map((l) => <option key={l} value={l}>{LOC[l]?.n ?? l}</option>)}
         </select>
       </Field>
 

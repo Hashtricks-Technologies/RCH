@@ -104,7 +104,7 @@ describe("rate contract preview honours the validity window", () => {
 describe("kitchen distribution", () => {
   it("never lists the kitchen as its own destination", async () => {
     const mod = await import("../roles/prod/MakeDistribute");
-    expect(mod.DESTS).not.toContain("kitchen");
+    expect(mod.dests()).not.toContain("kitchen");
   });
 });
 

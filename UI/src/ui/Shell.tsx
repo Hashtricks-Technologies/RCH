@@ -3,10 +3,10 @@ import {
 } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { bestBeforeAt } from "@rch/domain";
-import { IT, LOC, OUTLETS, homeLabel } from "../data/master";
+import { IT, LOC, homeLabel } from "../data/master";
 import { NAV, canSee } from "../nav";
 import { useApp, type AppState } from "../store";
-import { activeItems, availOf, isTicketOpen, menuOf, procurementList, qty } from "../lib/selectors";
+import { activeItems, availOf, isTicketOpen, menuOf, openOutlets, procurementList, qty } from "../lib/selectors";
 import type { LocKey, Role } from "../types";
 import { useStreamState, type StreamState } from "../api/events";
 import { Avatar, Icon, Pill, SearchIcon, Tag, ThemeButton } from "./kit";
@@ -395,7 +395,7 @@ function navQueues(s: AppState): Record<string, string[]> {
   }
   if (u.r === "manager") {
     c.approvals = ids(s.req.filter((r) => r.st === "Request sent"));
-    c.avail = OUTLETS.flatMap((l) => offItems(s, l).map((it) => `${l}:${it}`));
+    c.avail = openOutlets().flatMap((l) => offItems(s, l).map((it) => `${l}:${it}`));
   }
   if (u.r === "store") {
     c.issue = [

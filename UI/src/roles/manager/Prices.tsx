@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { IT, LOC, OUTLETS, RCP } from "../../data/master";
+import { IT, LOC, RCP } from "../../data/master";
 import { useApp } from "../../store";
-import { costOf, menuOf, priceOf } from "../../lib/selectors";
+import { costOf, menuOf, openOutlets, priceOf } from "../../lib/selectors";
 import { money, sum } from "../../lib/fmt";
 import {
   Alert, Btn, Card, DataTable, Field, FilterSelect, FormRow, Grid, ImagePlaceholder, PageHead, Pill, TableFoot, Tag, Toolbar,
@@ -18,13 +18,9 @@ const marginOf = (p: number, cost: number) => (p > 0 ? ((p - cost) / p) * 100 : 
  *  prose. Naming the Restaurant and the Snack Kiosk in a sentence was right for three counters
  *  on two lists and wrong the day a fourth opened - and a manager reading "saving a price here
  *  changes it at both counters" over three is being told something false about their own money.
- *
- *  `LOC` is a registry filled in place when the snapshot lands, while `OUTLETS` is a deployment
- *  constant that is there from the first render - so between sign-in and the snapshot every
- *  `LOC[l]` here is `undefined`. `known()` is what stops that being a crash. */
-const known = () => OUTLETS.filter((l) => LOC[l] !== undefined);
+ *  A closed outlet is not offered here either - there is no till left to change a price on. */
 const listFor = (l: LocKey) => LOC[l]?.list ?? "A";
-const sharers = (list: string) => known().filter((l) => listFor(l) === list);
+const sharers = (list: string) => openOutlets().filter((l) => listFor(l) === list);
 const listOf = (names: string[]) =>
   names.length <= 1 ? names[0] ?? "" : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
 
@@ -64,10 +60,10 @@ export default function Prices() {
   };
 
   /** The outlets this browser actually knows about, and the lists they are on. */
-  const outlets = known();
+  const outlets = openOutlets();
   const lists = [...new Set(outlets.map(listFor))].sort();
 
-  if (!shop || !OUTLETS.includes(shop)) {
+  if (!shop || !openOutlets().includes(shop)) {
     return (
       <>
         <PageHead
@@ -118,7 +114,7 @@ export default function Prices() {
 
   const list = LOC[shop].list ?? "A";
   const shared = sharers(list);
-  const others = OUTLETS.filter((l) => !shared.includes(l));
+  const others = openOutlets().filter((l) => !shared.includes(l));
   const term = q.trim().toLowerCase();
   const listed = menuOf(s, shop);
   const wantType = TYPES[type];

@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react";
-import { ALL_LOCS, IT, LOC, RCP } from "../../data/master";
+import { IT, LOC, RCP } from "../../data/master";
 import { useApp } from "../../store";
 import {
-  avail, canHandOver, hasLeft, isTicketOpen, madeItems, menuOf, qty, recipeCost,
+  avail, canHandOver, hasLeft, isTicketOpen, madeItems, menuOf, operationalLocs, qty, recipeCost,
 } from "../../lib/selectors";
 import { fq, isToday, money, sum, U } from "../../lib/fmt";
 import {
@@ -11,7 +11,10 @@ import {
 } from "../../ui/kit";
 import type { LocKey, Ticket } from "../../types";
 
-export const DESTS: LocKey[] = ALL_LOCS.filter((l) => l !== "kitchen");
+/** Every place the kitchen may send finished stock - every operational location but itself. A
+ *  function, not a value: the outlet set changes at runtime, and this module initialises well
+ *  before the location snapshot lands. Exported because `procurement.test.ts` checks it directly. */
+export const dests = (): LocKey[] => operationalLocs().filter((l) => l !== "kitchen");
 
 /** A best-before that names another day reads better with the day on its own line (H9). */
 function BestBefore({ bb }: { bb: string }) {
@@ -31,6 +34,9 @@ export default function MakeDistribute() {
   // three files. `IT` is replaced in place by `hydrateItems`, so the list is pinned to
   // `catalogVersion` - the signal that tells React the catalogue moved.
   const PRODS = useMemo(() => { void s.catalogVersion; return madeItems(); }, [s.catalogVersion]);
+  // Read off the master on every render, same as `PRODS` above but without the memo: the list is
+  // three or four keys long, and computing it fresh is cheaper than a second `catalogVersion` hook.
+  const DESTS = dests();
 
   const [mk, setMk] = useState<Record<string, string>>({});
   const [yld, setYld] = useState<Record<string, string>>({});

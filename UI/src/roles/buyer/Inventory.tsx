@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { ALL_LOCS, IT, LOC } from "../../data/master";
+import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
 // ---- item patch ----
-import { avail, inTransit, isRetired, qty, stateTone, stockValue } from "../../lib/selectors";
+import { avail, inTransit, isRetired, operationalLocs, qty, stateTone, stockValue } from "../../lib/selectors";
 import { fq, lakh, money, money0, sum } from "../../lib/fmt";
 import {
   Btn, Card, DataTable, FilterSelect, Kpis, PageHead, Pill, Tag, TableFoot, Toolbar,
@@ -30,16 +30,19 @@ export default function Inventory() {
   // product was added.
   void s.catalogVersion;
   /** Locations come from the master list, never a hardcoded set - and, like the item master, it
-   *  is empty until the snapshot lands, so the labels are read during render. */
-  const PLACES = ["All", ...ALL_LOCS.map((l) => LOC[l].n)];
+   *  is empty until the snapshot lands, so the labels are read during render. Every place the
+   *  buyer works today: the store, the kitchen, the open outlets - a closed one was emptied to
+   *  close, so there is nothing there for procurement to track. */
+  const locs = operationalLocs();
+  const PLACES = ["All", ...locs.map((l) => LOC[l].n)];
   const KEYS = Object.keys(IT);
   const GROUPS: string[] = ["All", ...[...new Set(KEYS.map((k) => IT[k].g))].sort()];
 
-  const totalOf = (k: string) => sum(ALL_LOCS, (l) => qty(s, l, k));
+  const totalOf = (k: string) => sum(locs, (l) => qty(s, l, k));
   /** A dash means the location does not carry the line at all; zero means it is dry (M12). */
   const stocked = (l: LocKey, k: string) => k in (s.stock[l] ?? {});
-  const anywhere = (k: string) => ALL_LOCS.some((l) => stocked(l, k));
-  const netValue = sum(ALL_LOCS, (l) => stockValue(s, l));
+  const anywhere = (k: string) => locs.some((l) => stocked(l, k));
+  const netValue = sum(locs, (l) => stockValue(s, l));
   const below = KEYS.filter((k) => IT[k].rl > 0 && avail(s, "store", k) < IT[k].rl);
   const zero = KEYS.filter((k) => k in s.stock.store && avail(s, "store", k) <= 0);
 
@@ -48,7 +51,7 @@ export default function Inventory() {
     const a = avail(s, "store", k);
     return a <= 0 ? "Out" : IT[k].rl > 0 && a < IT[k].rl ? "Below reorder" : "Healthy";
   };
-  const placeKey = ALL_LOCS.find((l) => LOC[l].n === place);
+  const placeKey = locs.find((l) => LOC[l].n === place);
 
   const t = q.trim().toLowerCase();
   const keys = KEYS.filter((k) =>
@@ -71,7 +74,7 @@ export default function Inventory() {
     { h: "HSN" },
     { h: "GST", r: true },
     { h: "Cost", r: true },
-    ...ALL_LOCS.map((l) => ({ h: LOC[l].n, r: true })),
+    ...locs.map((l) => ({ h: LOC[l].n, r: true })),
     { h: "All locations", r: true },
     { h: "In transit", r: true },
     { h: "Value", r: true },
@@ -96,7 +99,7 @@ export default function Inventory() {
         <>{it.hsn}</>,
         <>{it.gst}%</>,
         <>{money(it.cost)}</>,
-        ...ALL_LOCS.map((l) => (
+        ...locs.map((l) => (
           stocked(l, k) ? <>{fq(qty(s, l, k), k)}</> : <span className="dim">-</span>
         )),
         <>{anywhere(k) ? fq(all, k) : <span className="dim">-</span>}</>,
@@ -128,7 +131,7 @@ export default function Inventory() {
       <Kpis items={[
         {
           l: "Inventory value · all locations", v: lakh(netValue),
-          d: <>{ALL_LOCS.length} locations valued at cost</>,
+          d: <>{locs.length} locations valued at cost</>,
         },
         { l: "Items on the master", v: String(KEYS.length), d: <>{GROUPS.length - 1} groups</> },
         {

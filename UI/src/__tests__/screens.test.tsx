@@ -21,8 +21,8 @@ import { REPORTS } from "../roles/store/Reports";
 import { bodyKey } from "../roles/manager/ApprovalDrawer";
 import { IT as FXIT, USERS, seedVendors } from "@rch/contract/fixtures";
 // ---- item patch ----
-import { IT, LOC, OUTLETS } from "../data/master";
-import { activeItems, madeItems } from "../lib/selectors";
+import { IT, LOC } from "../data/master";
+import { activeItems, allOutlets, madeItems } from "../lib/selectors";
 import { Alert } from "../ui/kit";
 import type { PoolLine } from "../lib/selectors";
 import type { Bill, Dated, DatedDoc, Role, StockRequest, SupportTicket, Ticket, Trailed } from "../types";
@@ -673,9 +673,9 @@ describe("a retired product stops generating work", () => {
 // ---- prod-order raise ----
 describe("the counter can ask the kitchen, and only for what the kitchen makes", () => {
   it("offers the finished goods on that outlet's menu and nothing else", () => {
-    // Through the manager's drawer, whose outlet picker opens on OUTLETS[0] - the Restaurant,
-    // the one shop with finished goods on its menu and the only way to reach one from a test
-    // (the fixtures' two counters are the Coffee Shop and the Snack Kiosk).
+    // Through the manager's drawer, whose outlet picker opens on the first open outlet by
+    // name - the Coffee Shop, reachable this way rather than through a counter session because
+    // the fixtures' two counter accounts are the Coffee Shop itself and the Snack Kiosk.
     act(() => { as("manager"); });
     const host = document.createElement("div");
     document.body.appendChild(host);
@@ -683,11 +683,11 @@ describe("the counter can ask the kitchen, and only for what the kitchen makes",
     act(() => { root.render(createElement(MemoryRouter, null, createElement(DRAWERS.korder, { id: "new" }))); });
 
     const options = [...host.querySelectorAll("select[aria-label='Product 1'] option")].map((o) => o.textContent);
-    // The Restaurant's menu is capp, chai, puff, sand, salad, juice, water, chips. Only the
-    // three finished goods may be ordered: the four bought-in lines come off the central
-    // store's shelf, and `capp`/`chai` are made at the till the moment they are sold - nothing
-    // downstream could fill an order for one, so the picker must not offer them.
-    expect(options).toEqual(["Garden salad", "Veg puffs", "Veg sandwich"]);
+    // The Coffee Shop's menu is capp, chai, juice, water, bisc, chips - not one finished good:
+    // capp and chai are made at the till the moment they are sold, and the rest come off the
+    // central store's shelf. Nothing downstream could fill an order for any of them, so the
+    // picker offers nothing at all rather than a product the kitchen cannot make for this outlet.
+    expect(options).toEqual([]);
 
     act(() => { root.unmount(); });
     host.remove();
@@ -1109,15 +1109,20 @@ describe("the counter's stock requests", () => {
   it("says there is nobody to ask on a one-outlet deployment", () => {
     act(() => { as("counter"); });
     // One counter and no peer: `peers[0]` was `undefined`, and `LOC[undefined].n` took the
-    // whole screen down before it could draw a single row.
-    const saved = [...OUTLETS];
-    OUTLETS.splice(0, OUTLETS.length, "coffee");
+    // whole screen down before it could draw a single row. Closed rather than deleted - the
+    // fixtures' seeded shop-to-shop history still names the kiosk, and a document raised
+    // before a close still needs its location to resolve.
+    const savedRest = LOC.rest;
+    const savedKiosk = LOC.kiosk;
+    LOC.rest = { ...LOC.rest, active: false };
+    LOC.kiosk = { ...LOC.kiosk, active: false };
     try {
       const ui = mount(counter.requests);
       expect(ui.text()).toContain("No other outlet to ask");
       expect(ui.text()).toContain("Stock requests");     // and the rest of the screen is there
     } finally {
-      OUTLETS.splice(0, OUTLETS.length, ...saved);
+      LOC.rest = savedRest;
+      LOC.kiosk = savedKiosk;
     }
   });
 
@@ -1181,24 +1186,28 @@ describe("a refusal is shown where it was raised and nowhere else", () => {
 
 describe("the price-list prose counts what is actually deployed", () => {
   it("says a list covers its one counter, not that it is shared", () => {
-    const saved = [...OUTLETS];
-    OUTLETS.splice(0, OUTLETS.length, "coffee");
+    const savedRest = LOC.rest;
+    const savedKiosk = LOC.kiosk;
+    delete LOC.rest;
+    delete LOC.kiosk;
     try {
       act(() => { as("manager"); useApp.setState({ shopFilter: null }); });
       const ui = mount(manager.prices);
       expect(ui.text()).toContain(`covers ${LOC.coffee.n}`);
       expect(ui.text()).not.toContain("is shared by");
     } finally {
-      OUTLETS.splice(0, OUTLETS.length, ...saved);
+      LOC.rest = savedRest;
+      LOC.kiosk = savedKiosk;
     }
   });
 
   it("says nothing about lists before the locations have landed", () => {
-    // What the screen sees between sign-in and the snapshot: `OUTLETS` is a deployment constant
-    // and is already there, `LOC` is a registry filled in place and is not. `LOC[l].list` threw
+    // What the screen sees between sign-in and the snapshot: outlets are read straight off
+    // `LOC`, a registry filled in place, and are empty until it is. `LOC[l].list` threw
     // outright, and the header read "0 lists cover the 0 counters".
-    const saved = OUTLETS.map((l) => LOC[l]);
-    for (const l of OUTLETS) delete LOC[l];
+    const outlets = allOutlets();
+    const saved = outlets.map((l) => LOC[l]);
+    for (const l of outlets) delete LOC[l];
     try {
       act(() => { as("manager"); useApp.setState({ shopFilter: null }); });
       const ui = mount(manager.prices);
@@ -1206,7 +1215,7 @@ describe("the price-list prose counts what is actually deployed", () => {
       expect(ui.text()).not.toContain("0 lists");
       expect(ui.text()).not.toContain("0 counters");
     } finally {
-      OUTLETS.forEach((l, i) => { LOC[l] = saved[i]; });
+      outlets.forEach((l, i) => { LOC[l] = saved[i]; });
     }
   });
 });
