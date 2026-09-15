@@ -81,6 +81,9 @@ describe("the forms that fill an empty hospital render", () => {
   const OPEN: [key: string, id: string, role: Role][] = [
     ["sitem", "new", "store"], ["bnewitem", "new", "buyer"], ["pnew", "new", "prod"],
     ["korder", "new", "manager"], ["adjstock", "coffee", "manager"],
+    // A bare hospital has three outlets and no price list at all, which is exactly the morning
+    // the manager opens this panel to make the first one.
+    ["plset", "prices", "manager"],
   ];
   for (const [key, id, role] of OPEN) {
     it(key, () => {

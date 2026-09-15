@@ -649,7 +649,7 @@ describe("the request chain - the twelve writes", () => {
       "POST /api/v1/tickets/TKT-0440/handover": () => json({ result: { ...TKT, id: "TKT-0440", st: "Collected" }, changed: ["tkt", "req", "rsv", "stock"], message: "TKT-0440 handed over - stock is in transit to Coffee Shop" }),
       "GET /api/v1/requests": () => json([REQ]), "GET /api/v1/tickets": () => json([TKT]), "GET /api/v1/stock": () => json(STOCK),
     });
-    await S().handover("TKT-0440", " 418327 ");
+    expect(await S().handover("TKT-0440", " 418327 ")).toBe(true);
     expect(hit("POST /api/v1/tickets/TKT-0440/handover")[0].body).toEqual({ otp: "418327" });
     expect(S().toast).toBe("TKT-0440 handed over - stock is in transit to Coffee Shop");
   });
@@ -667,7 +667,9 @@ describe("the request chain - the twelve writes", () => {
   it("repeats a wrong-OTP refusal and moves nothing", async () => {
     as("store");
     serve({ "POST /api/v1/tickets/TKT-0440/handover": () => refusal("That OTP does not match TKT-0440. Ask the collector to read it again.") });
-    await S().handover("TKT-0440", "000000");
+    // `false` is what the kitchen's and the store's ticket windows read to keep the server's
+    // sentence on screen beside the OTP box; the toast alone is gone before they look back.
+    expect(await S().handover("TKT-0440", "000000")).toBe(false);
     expect(S().toast).toBe("That OTP does not match TKT-0440. Ask the collector to read it again.");
     expect(S().tkt.find((t) => t.id === "TKT-0440")!.st).toBe("Issued");
     expect(calls()).toHaveLength(1);
@@ -2094,11 +2096,18 @@ describe("raiseProdOrder - POST /prod-orders", () => {
     expect(hit("GET /api/v1/prod-orders")).toHaveLength(0);
   });
 
-  it("the counter's card sends what the operator typed and clears itself", async () => {
+  /** Pick a product on one line of the counter's inventory line builder. */
+  const pick = (host: HTMLElement, row: number, it: string) => {
+    const sel = host.querySelector<HTMLSelectElement>(`select[aria-label='Product ${row}']`)!;
+    Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")!.set!.call(sel, it);
+    sel.dispatchEvent(new Event("change", { bubbles: true }));
+  };
+
+  it("routes a finished good picked from inventory to the kitchen, not the store", async () => {
     as("counter");
     // The Coffee Shop's own menu carries no finished good - two drinks made at the till and
-    // four bought-in lines - so the card would honestly offer nothing to order. Put a puff on
-    // its menu, which is what the outlet manager would do before the counter could ask for one.
+    // four bought-in lines - so nothing on it would go to the kitchen. Put a puff on its menu,
+    // which is what the outlet manager would do before the counter could ask for one.
     useApp.setState({ menu: { ...S().menu, coffee: [...S().menu.coffee, "puff"] } });
     serve({
       "POST /api/v1/prod-orders": () => json({ result: RAISED, changed: ["pord"], message: "PRD-2026-031 raised for Coffee Shop - 1 item" }),
@@ -2110,17 +2119,170 @@ describe("raiseProdOrder - POST /prod-orders", () => {
     const root = createRoot(host);
     await act(async () => { root.render(createElement(MemoryRouter, null, createElement(CounterRequests))); });
 
-    // The card opens on its own action tile, and the form only exists once it is open.
-    const openIt = [...host.querySelectorAll("button")].find((b) => b.textContent?.includes("From the kitchen"))!;
+    // There is no kitchen tile any more: the one inventory list carries what the store stocks
+    // and what the kitchen makes, and the screen decides which desk the line goes to.
+    expect([...host.querySelectorAll("button")].some((b) => b.textContent?.includes("From the kitchen"))).toBe(false);
+    const openIt = [...host.querySelectorAll("button")].find((b) => b.textContent?.includes("From inventory"))!;
     await act(async () => { openIt.click(); });
-    const send = [...host.querySelectorAll("button")].find((b) => b.textContent === "Send to the kitchen")!;
+    // The finished good is in the same picker as the milk and the biscuits.
+    expect([...host.querySelectorAll("select[aria-label='Product 1'] option")].map((o) => o.textContent))
+      .toContain("Veg puffs");
+    await act(async () => { pick(host, 1, "puff"); });
+
+    const send = [...host.querySelectorAll("button")].find((b) => b.textContent === "Submit request")!;
     await act(async () => { send.click(); });
 
     const body = hit("POST /api/v1/prod-orders")[0].body as { from: string; lines: { it: string; qty: number }[] };
-    // The outlet comes off the token, and the one finished good on that menu is what the
-    // picker opened on - never `capp` or `chai`, which are made at the till.
+    // The outlet comes off the token as well, but the counter names it so that this screen and
+    // the manager's drawer are one code path.
     expect(body.from).toBe("coffee");
     expect(body.lines).toEqual([{ it: "puff", qty: 1 }]);
+    // And nothing was asked of the central store: the line is not its to fill.
+    expect(hit("POST /api/v1/requests")).toHaveLength(0);
+    await act(async () => { root.unmount(); });
+    host.remove();
+  });
+
+  it("splits a mixed ask into a stock request and a production order", async () => {
+    as("counter");
+    useApp.setState({ menu: { ...S().menu, coffee: [...S().menu.coffee, "puff"] } });
+    const REQ_DOC = {
+      id: "REQ-2026-0913", from: "coffee", by: "Kavitha Raman", at: "2026-09-11T04:10:00.000Z",
+      lines: [{ it: "milk", qty: 6 }], st: "Request sent", hist: [],
+    };
+    serve({
+      "POST /api/v1/requests": () => json({ result: REQ_DOC, changed: ["req"], message: "REQ-2026-0913 sent to the outlet manager - 1 line" }),
+      "GET /api/v1/requests": () => json([REQ_DOC]),
+      "POST /api/v1/prod-orders": () => json({ result: RAISED, changed: ["pord"], message: "PRD-2026-031 raised for Coffee Shop - 1 item" }),
+      "GET /api/v1/prod-orders": () => json([RAISED]),
+    });
+
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    await act(async () => { root.render(createElement(MemoryRouter, null, createElement(CounterRequests))); });
+    const openIt = [...host.querySelectorAll("button")].find((b) => b.textContent?.includes("From inventory"))!;
+    await act(async () => { openIt.click(); });
+
+    await act(async () => { pick(host, 1, "milk"); });
+    const add = [...host.querySelectorAll("button")].find((b) => b.textContent === "Add another item")!;
+    await act(async () => { add.click(); });
+    await act(async () => { pick(host, 2, "puff"); });
+
+    const send = [...host.querySelectorAll("button")].find((b) => b.textContent === "Submit request")!;
+    await act(async () => { send.click(); await new Promise((r) => { setTimeout(r, 0); }); });
+
+    // Two documents, one press: the shelf line to the store keeper's queue and the tray to the
+    // kitchen's board.
+    expect((hit("POST /api/v1/requests")[0].body as { lines: unknown[] }).lines).toEqual([{ it: "milk", qty: 1 }]);
+    expect((hit("POST /api/v1/prod-orders")[0].body as { lines: unknown[] }).lines).toEqual([{ it: "puff", qty: 1 }]);
+    // Only one sentence fits in the toast, so the page says what the toast could not.
+    expect(host.textContent).toContain("That ask went to both desks");
+    expect(S().toast).toBe("PRD-2026-031 raised for Coffee Shop - 1 item");
+    await act(async () => { root.unmount(); });
+    host.remove();
+  });
+
+  it("offers a needed-by date only once the ask has a line the kitchen would schedule", async () => {
+    as("counter");
+    useApp.setState({ menu: { ...S().menu, coffee: [...S().menu.coffee, "puff"] } });
+    serve({
+      "POST /api/v1/prod-orders": () => json({ result: RAISED, changed: ["pord"], message: "PRD-2026-031 raised for Coffee Shop - 1 item" }),
+      "GET /api/v1/prod-orders": () => json([RAISED]),
+    });
+
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    await act(async () => { root.render(createElement(MemoryRouter, null, createElement(CounterRequests))); });
+    const openIt = [...host.querySelectorAll("button")].find((b) => b.textContent?.includes("From inventory"))!;
+    await act(async () => { openIt.click(); });
+
+    // A shelf line has no deadline to give: `POST /requests` carries no `need`, so a date box
+    // over it would take something nothing would honour.
+    const need = () => host.querySelector<HTMLInputElement>("input[aria-label='Needed by']");
+    expect(need()).toBeNull();
+
+    await act(async () => { pick(host, 1, "puff"); });
+    expect(need()).not.toBeNull();
+    await act(async () => {
+      const el = need()!;
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(el, "2026-09-18");
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+
+    const send = [...host.querySelectorAll("button")].find((b) => b.textContent === "Submit request")!;
+    await act(async () => { send.click(); await new Promise((r) => { setTimeout(r, 0); }); });
+    expect((hit("POST /api/v1/prod-orders")[0].body as { need?: string }).need).toBe("2026-09-18");
+    await act(async () => { root.unmount(); });
+    host.remove();
+  });
+
+  it("never asks the kitchen once the store has refused its half of the same ask", async () => {
+    as("counter");
+    useApp.setState({ menu: { ...S().menu, coffee: [...S().menu.coffee, "puff"] } });
+    serve({
+      "POST /api/v1/requests": () => refusal("Coffee Shop already has REQ-2026-0911 open for Milk 1L"),
+      "POST /api/v1/prod-orders": () => json({ result: RAISED, changed: ["pord"], message: "PRD-2026-031 raised for Coffee Shop - 1 item" }),
+    });
+
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    await act(async () => { root.render(createElement(MemoryRouter, null, createElement(CounterRequests))); });
+    const openIt = [...host.querySelectorAll("button")].find((b) => b.textContent?.includes("From inventory"))!;
+    await act(async () => { openIt.click(); });
+    await act(async () => { pick(host, 1, "milk"); });
+    const add = [...host.querySelectorAll("button")].find((b) => b.textContent === "Add another item")!;
+    await act(async () => { add.click(); });
+    await act(async () => { pick(host, 2, "puff"); });
+
+    const send = [...host.querySelectorAll("button")].find((b) => b.textContent === "Submit request")!;
+    await act(async () => { send.click(); await new Promise((r) => { setTimeout(r, 0); }); });
+
+    // One refusal, one sentence to read, and nothing raised anywhere - not half an ask the
+    // operator would have to unpick before pressing again.
+    expect(hit("POST /api/v1/prod-orders")).toHaveLength(0);
+    expect(S().toast).toBe("Coffee Shop already has REQ-2026-0911 open for Milk 1L");
+    // Both lines are still in the card.
+    expect(host.querySelector("select[aria-label='Product 2']")).not.toBeNull();
+    await act(async () => { root.unmount(); });
+    host.remove();
+  });
+
+  it("keeps only the refused half in the card when the store took its own", async () => {
+    as("counter");
+    useApp.setState({ menu: { ...S().menu, coffee: [...S().menu.coffee, "puff"] } });
+    const REQ_DOC = {
+      id: "REQ-2026-0913", from: "coffee", by: "Kavitha Raman", at: "2026-09-11T04:10:00.000Z",
+      lines: [{ it: "milk", qty: 1 }], st: "Request sent", hist: [],
+    };
+    serve({
+      "POST /api/v1/requests": () => json({ result: REQ_DOC, changed: ["req"], message: "REQ-2026-0913 sent to the outlet manager - 1 line" }),
+      "GET /api/v1/requests": () => json([REQ_DOC]),
+      "POST /api/v1/prod-orders": () => refusal("Veg puffs is not listed at Coffee Shop - add it to that menu first"),
+    });
+
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    await act(async () => { root.render(createElement(MemoryRouter, null, createElement(CounterRequests))); });
+    const openIt = [...host.querySelectorAll("button")].find((b) => b.textContent?.includes("From inventory"))!;
+    await act(async () => { openIt.click(); });
+    await act(async () => { pick(host, 1, "milk"); });
+    const add = [...host.querySelectorAll("button")].find((b) => b.textContent === "Add another item")!;
+    await act(async () => { add.click(); });
+    await act(async () => { pick(host, 2, "puff"); });
+
+    const send = [...host.querySelectorAll("button")].find((b) => b.textContent === "Submit request")!;
+    await act(async () => { send.click(); await new Promise((r) => { setTimeout(r, 0); }); });
+
+    // The store's document exists, so pressing again must not raise a second one: the milk line
+    // is gone from the card and only the refused puff is left to fix.
+    expect(host.querySelector("select[aria-label='Product 2']")).toBeNull();
+    expect(host.querySelector<HTMLSelectElement>("select[aria-label='Product 1']")!.value).toBe("puff");
+    expect(host.textContent).toContain("is with Central Store");
+    expect(S().toast).toBe("Veg puffs is not listed at Coffee Shop - add it to that menu first");
     await act(async () => { root.unmount(); });
     host.remove();
   });
@@ -2145,11 +2307,12 @@ describe("raiseProdOrder - POST /prod-orders", () => {
     document.body.appendChild(host);
     const root = createRoot(host);
     await act(async () => { root.render(createElement(MemoryRouter, null, createElement(CounterRequests))); });
-    const openIt = [...host.querySelectorAll("button")].find((b) => b.textContent?.includes("From the kitchen"))!;
+    const openIt = [...host.querySelectorAll("button")].find((b) => b.textContent?.includes("From inventory"))!;
     await act(async () => { openIt.click(); });
+    await act(async () => { pick(host, 1, "puff"); });
 
     const qty = () => host.querySelector<HTMLInputElement>("input[aria-label='Quantity 1']")!;
-    const send = () => [...host.querySelectorAll("button")].find((b) => b.textContent === "Send to the kitchen") as HTMLButtonElement;
+    const send = () => [...host.querySelectorAll("button")].find((b) => b.textContent === "Submit request") as HTMLButtonElement;
 
     // Clearing the box is a real keystroke on the way to a new number. A controlled
     // `Number(e.target.value)` would have read it as 0 and forced a "0" back into the field

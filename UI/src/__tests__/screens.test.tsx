@@ -122,6 +122,10 @@ describe("drawers render", () => {
     item: ["chips", "manager"],
     korder: ["new", "manager"],
     mreq: ["REQ-2026-0911", "manager"],
+    plset: ["prices", "manager"],
+    // The kitchen's order history is a list, not a document, so like `korder` its id is a
+    // placeholder - the drawer never reads it.
+    phist: ["all", "prod"],
     pnew: ["new", "prod"],
     pord: ["PRD-2026-029", "prod"],
     ptkt: ["TKT-0440", "prod"],
@@ -693,24 +697,34 @@ describe("the counter can ask the kitchen, and only for what the kitchen makes",
     host.remove();
   });
 
-  it("says so honestly when a menu has nothing the kitchen makes, and offers no Send", () => {
+  it("offers the counter one list of stocked and kitchen lines, and no made-to-order", () => {
     act(() => { as("counter"); });                       // Kavitha, Coffee Shop
-    // The form only exists once the card's own action tile is pressed, so this renders into a
-    // host it keeps mounted rather than going through `render` above, which unmounts to return.
+    // The form only exists once the action tile is pressed, so this renders into a host it keeps
+    // mounted rather than going through `render` above, which unmounts to return.
     const host = document.createElement("div");
     document.body.appendChild(host);
     const root = createRoot(host);
     act(() => { root.render(createElement(MemoryRouter, null, createElement(counter.requests))); });
-    expect(host.innerHTML).toContain("Ask the kitchen");
+    // Two ways to ask, and the kitchen is not a third one. The card below is the window on the
+    // orders the routing raises, not a way of raising one.
+    const tiles = [...host.querySelectorAll("button.reqaction")].map((b) => b.textContent);
+    expect(tiles.some((t) => t?.includes("From other shops"))).toBe(true);
+    expect(tiles.some((t) => t?.includes("From inventory"))).toBe(true);
+    expect(tiles.some((t) => t?.includes("From the kitchen"))).toBe(false);
 
-    const tile = [...host.querySelectorAll("button")].find((b) => b.textContent?.includes("From the kitchen"))!;
+    const tile = [...host.querySelectorAll("button")].find((b) => b.textContent?.includes("From inventory"))!;
     act(() => { tile.click(); });
-    // The Coffee Shop sells capp, chai, juice, water, bisc, chips - two made at the till and
-    // four bought in, and not one finished good. There is nothing to order, so the card says
-    // that rather than offering an empty picker and a button the server would refuse.
-    expect(host.innerHTML).toContain("Nothing on this menu is made in the kitchen");
-    expect(host.querySelector("select[aria-label='Product 1']")).toBeNull();
-    expect([...host.querySelectorAll("button")].map((b) => b.textContent)).not.toContain("Send to the kitchen");
+    const options = [...host.querySelectorAll("select[aria-label='Product 1'] option")].map((o) => o.textContent);
+    // Everything the central store stocks is there…
+    expect(options).toContain("Milk 1L (toned)");
+    expect(options).toContain("Marie biscuit 120g");
+    // …and nothing made at the till: `capp` and `chai` hold no stock for the store to issue and
+    // are refused by the kitchen's route by name, so offering one is only a way to read that.
+    expect(options).not.toContain("Cappuccino");
+    expect(options).not.toContain("Masala tea");
+    // The Coffee Shop's menu carries no finished good, so this list has none to add - not an
+    // empty picker, just the shelf. The Snack Kiosk's puff is covered in `writes.test.ts`.
+    expect(options).not.toContain("Veg puffs");
 
     act(() => { root.unmount(); });
     host.remove();
@@ -885,30 +899,116 @@ describe("the price lists tab", () => {
     expect([...rowFor("Spare").querySelectorAll("button")].some((b) => b.textContent === "Delete" && !b.hasAttribute("disabled"))).toBe(true);
   });
 
-  it("creates a list cloned from the outlet it was opened from", async () => {
-    const createPriceList = vi.fn(async () => ({ id: "PL-010", name: "Weekend Rates", outlets: [] }));
-    act(() => { as("manager"); useApp.setState({ createPriceList, shopFilter: "coffee" }); });
+  it("opens the settings drawer from the outlet page, which no longer carries the controls itself", () => {
+    const openDrawer = vi.fn();
+    act(() => { as("manager"); useApp.setState({ openDrawer, shopFilter: "coffee" }); });
     const ui = mount(manager.prices);
 
-    act(() => { ui.button("Create a new list for this outlet").click(); });
-    typeIn(ui.field("New list name"), "Weekend Rates");
-    await settle(() => { ui.button("Create").click(); });
+    // The two controls that used to sit above "Add a product". "Add a product" itself stays.
+    expect(ui.text()).not.toContain("Create a new list for this outlet");
+    expect([...ui.host.querySelectorAll("label")].map((l) => l.textContent)).not.toContain("Active list");
+    expect(ui.text()).toContain("Add a product");
+
+    act(() => { ui.button("Settings").click(); });
+    expect(openDrawer).toHaveBeenCalledWith("plset", "prices");
+  });
+});
+
+/* ------------------------------------------------------------------------
+ * The price-list settings drawer: creating a list, and the mapping of every
+ * outlet to the list it charges from, read in one place rather than one
+ * outlet at a time.
+ * ---------------------------------------------------------------------- */
+describe("the price list settings drawer", () => {
+  const openSettings = () => mount(() => createElement(DRAWERS.plset, { id: "prices" }));
+  const select = (ui: ReturnType<typeof mount>, aria: string) =>
+    ui.host.querySelector<HTMLSelectElement>(`select[aria-label="${aria}"]`)!;
+  const pick = async (el: HTMLSelectElement, v: string) => {
+    await settle(() => {
+      el.value = v;
+      el.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+  };
+  /** The drawer draws two tables - the outlet mappings, then every list - and a list's name
+   *  appears in both, so a row is looked up inside the one being asked about. */
+  const rowIn = (ui: ReturnType<typeof mount>, table: "mappings" | "lists", text: string) => {
+    const t = ui.host.querySelectorAll("table")[table === "mappings" ? 0 : 1];
+    return [...t.querySelectorAll("tbody tr")].find((r) => (r.textContent ?? "").includes(text))!;
+  };
+
+  it("creates a list cloned from the outlet picked on the form", async () => {
+    const createPriceList = vi.fn(async () => ({ id: "PL-010", name: "Weekend Rates", outlets: [] }));
+    act(() => { as("manager"); useApp.setState({ createPriceList }); });
+    const ui = openSettings();
+
+    typeIn(ui.field("List name"), "Weekend Rates");
+    await pick(select(ui, "Copy prices from"), "coffee");
+    await settle(() => { ui.button("Create price list").click(); });
 
     expect(createPriceList).toHaveBeenCalledWith("Weekend Rates", "coffee");
   });
 
-  it("switching the active-list picker calls setOutletPriceList", async () => {
-    const setOutletPriceList = vi.fn(async () => true);
-    act(() => { as("manager"); useApp.setState({ setOutletPriceList, shopFilter: "coffee" }); });
-    const ui = mount(manager.prices);
+  it("refuses an unnamed list in the browser, before the server is asked", async () => {
+    const createPriceList = vi.fn();
+    const notify = vi.fn();
+    act(() => { as("manager"); useApp.setState({ createPriceList, notify }); });
+    const ui = openSettings();
 
-    const picker = ui.field("Active list") as unknown as HTMLSelectElement;
-    await settle(() => {
-      picker.value = "PL-001";
-      picker.dispatchEvent(new Event("change", { bubbles: true }));
-    });
+    await settle(() => { ui.button("Create price list").click(); });
+
+    expect(createPriceList).not.toHaveBeenCalled();
+    expect(notify).toHaveBeenCalledWith("Enter a name for the new price list.");
+  });
+
+  it("maps every outlet at once and names who shares a list", () => {
+    act(() => { as("manager"); });
+    const ui = openSettings();
+    const row = (name: string) => rowIn(ui, "mappings", name);
+
+    // Restaurant and Snack Kiosk are both on List A in the fixtures; the Coffee Shop is alone
+    // on List B. The whole point of the panel is that this is legible without drilling in.
+    expect(row("Restaurant").textContent).toContain("List A");
+    expect(row("Restaurant").textContent).toContain("Snack Kiosk");
+    expect(row("Snack Kiosk").textContent).toContain("Restaurant");
+    expect(row("Coffee Shop").textContent).toContain("List B");
+    expect(row("Coffee Shop").textContent).toContain("This outlet only");
+  });
+
+  it("attaching a different list calls setOutletPriceList for that outlet", async () => {
+    const setOutletPriceList = vi.fn(async () => true);
+    act(() => { as("manager"); useApp.setState({ setOutletPriceList }); });
+    const ui = openSettings();
+
+    await pick(select(ui, "Price list for Coffee Shop"), "PL-001");
 
     expect(setOutletPriceList).toHaveBeenCalledWith("coffee", "PL-001");
+  });
+
+  it("blocks deleting a list an outlet still charges from, and allows an unattached one", () => {
+    hydratePriceLists([...Object.values(PRICE_LISTS), { id: "PL-999", name: "Spare", outlets: [] }]);
+    act(() => { as("manager"); useApp.setState((s) => ({ catalogVersion: s.catalogVersion + 1 })); });
+    const ui = openSettings();
+
+    const row = (name: string) => rowIn(ui, "lists", name);
+    const del = (name: string) => [...row(name).querySelectorAll("button")].find((b) => b.textContent === "Delete")!;
+    expect(del("List A").hasAttribute("disabled")).toBe(true);
+    // The reason is on the disabled control rather than waiting behind a click the server turns away.
+    expect(row("List A").textContent).toContain("Snack Kiosk and Restaurant");
+    expect(del("Spare").hasAttribute("disabled")).toBe(false);
+  });
+
+  it("deletes an unattached list behind a second press", async () => {
+    const deletePriceList = vi.fn(async () => true);
+    hydratePriceLists([...Object.values(PRICE_LISTS), { id: "PL-999", name: "Spare", outlets: [] }]);
+    act(() => { as("manager"); useApp.setState((s) => ({ deletePriceList, catalogVersion: s.catalogVersion + 1 })); });
+    const ui = openSettings();
+
+    const press = (label: string) =>
+      [...rowIn(ui, "lists", "Spare").querySelectorAll("button")].find((b) => b.textContent === label)!;
+    act(() => { press("Delete").click(); });
+    await settle(() => { press("Confirm delete").click(); });
+
+    expect(deletePriceList).toHaveBeenCalledWith("PL-999");
   });
 });
 
@@ -1180,7 +1280,7 @@ describe("the counter's stock requests", () => {
     act(() => { as("counter"); });
     const ui = mount(counter.requests);
     act(() => { ui.button("From inventory").click(); });
-    const picked = () => ui.host.querySelector<HTMLSelectElement>('select[aria-label="Product"]')!.value;
+    const picked = () => ui.host.querySelector<HTMLSelectElement>('select[aria-label="Product 1"]')!.value;
     const first = picked();
     expect(first).toBeTruthy();
 

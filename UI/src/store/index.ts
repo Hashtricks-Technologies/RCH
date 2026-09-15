@@ -111,7 +111,9 @@ export interface AppState extends ProcurementSlice, OpsSlice, AdminSlice {
 
   issueTicket: (reqId: string) => Promise<void>;
   /** `otp` is required from the collecting side; omit it only for a supervisor override. */
-  handover: (tktId: string, otp?: string) => Promise<void>;
+  /** Answers `true` only once the server has taken it, so the window can keep a refused OTP
+   *  and its reason in front of the operator instead of relying on a toast they may miss. */
+  handover: (tktId: string, otp?: string) => Promise<boolean>;
   receiveTicket: (tktId: string) => Promise<void>;
 
   /** Withdraw a ticket nobody collected: the hold goes back and so does the document behind it.
@@ -497,8 +499,10 @@ export const useApp = create<AppState>((set, get) => ({
       const r = await call(routes.handover, { params: { id: tktId }, body: otp === undefined ? {} : { otp: otp.trim() } });
       get().notify(r.message);
       await refetch(r.changed, r.message);
+      return true;
     } catch (e) {
       get().notify(e instanceof ApiError ? e.message : "Could not hand the ticket over - check the connection and try again.");
+      return false;
     }
   },
   receiveTicket: async (tktId) => {
