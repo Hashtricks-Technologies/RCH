@@ -1,4 +1,4 @@
-api: { replicas: 2, hpa: { minReplicas: 2, maxReplicas: 3 }, env: { LOG_LEVEL: debug, CORS_ORIGIN: https://rch-staging.hashtrickstechnologies.com, DB_POOL_MAX: "10", IMAGE_BUCKET: "rch-images-staging" } }   # FILL: the staging item-photo bucket, once staging is stood up
+api: { replicas: 2, hpa: { minReplicas: 2, maxReplicas: 3 }, env: { LOG_LEVEL: debug, CORS_ORIGIN: https://rch-staging.hashtrickstechnologies.com, DB_POOL_MAX: "10", IMAGE_BUCKET: "" } }   # FILL: the staging item-photo bucket, once staging is stood up - left blank so an unedited deploy refuses to boot rather than fail open
 ui: { replicas: 1 }
 audit: { replicas: 1 }
 # Staging runs at rch-staging.hashtrickstechnologies.com (Route 53 zone hashtrickstechnologies.com,

@@ -38,7 +38,7 @@ api:
     SSE_HEARTBEAT_MS: "25000"
     NODE_OPTIONS: "--max-old-space-size=716"      # 70% of the 1Gi limit above; see values.yaml
     SSE_RETRY_MS: "1000"
-    IMAGE_BUCKET: rch-images-prod                 # FILL
+    IMAGE_BUCKET: ""                              # FILL: the prod item-photo bucket - left blank so an unedited deploy refuses to boot rather than fail open on a bucket that doesn't exist
 ui:
   replicas: 3
   nodeSelector: { rch.io/tier: prod }
