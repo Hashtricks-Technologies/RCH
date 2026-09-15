@@ -2,7 +2,7 @@
 // the arithmetic of the sale is `planBill` in packages/domain.
 import type { z } from "zod";
 import type { Bill, PayBodySchema, PayerKind, Tender, VoidBillBodySchema, WriteResponse } from "@rch/contract";
-import { avail, availOf, breachesCredit, creditBreachMessage, creditRoom, dmy, fq, istDate, money as inr, planBill, round3, unitTotal, type Master } from "@rch/domain";
+import { avail, availOf, breachesCredit, creditBreachMessage, creditRoom, dmy, fq, istDate, money as inr, planBill, priceOf, round3, unitTotal, type Master } from "@rch/domain";
 import type { Db } from "../../db/client.js";
 import { withTransaction } from "../../lib/db.js";
 import { creditTakenThisMonth } from "../../lib/credit.js";
@@ -89,6 +89,11 @@ export function createPosService(db: Db) {
 
         const master = await loadMaster(tx);
         const locName = master.locations[loc]?.n ?? loc;
+        // A new outlet opens on no list at all (the manager attaches one from Prices), and
+        // `priceOf` reads that as ₹0 rather than crashing. Refuse the whole cart here, before the
+        // per-item loop and well before any lock or id, rather than let a ₹0 bill through while
+        // still taking the stock off the shelf.
+        assertRule(master.locations[loc]?.list, `Refused - ${locName} is on no price list; attach one from Prices before selling`);
         // One connection carries the transaction, so these queue behind each other anyway.
         const menu = await posRepo.menuAt(tx, loc);
         const stock = await posRepo.stockAt(tx, loc);
@@ -104,6 +109,9 @@ export function createPosService(db: Db) {
           assertRule(a.ok, `${item.n} is not available at ${locName} - ${a.why}`);
           const cover = coverOf(master, stock, rsv, loc, it);
           assertRule(cover >= cart[it], `Only ${fq(cover, item.u)} ${item.u} of ${item.n} left at ${locName}`);
+          // The outlet has a list (checked above); this item may still be missing from it - a
+          // product listed at the counter before the manager ever priced it there.
+          assertRule(priceOf(master, prices, loc, it).p > 0, `Refused - ${item.n} has no price at ${locName}`);
         }
 
         const plan = planBill(master, prices, loc, cart);
