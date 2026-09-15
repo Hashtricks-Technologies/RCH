@@ -108,6 +108,9 @@ export interface AppState extends ProcurementSlice, OpsSlice, AdminSlice {
 
   approveRequest: (id: string, appr: number[], note: string) => Promise<boolean>;
   rejectRequest: (id: string, note: string) => Promise<boolean>;
+  /** The manager's other door out of "Request sent": fulfil the whole thing from a peer
+   *  outlet's shelf instead of sending it to the central store at all. */
+  redirectRequest: (id: string, from: LocKey) => Promise<boolean>;
 
   issueTicket: (reqId: string) => Promise<void>;
   /** `otp` is required from the collecting side; omit it only for a supervisor override. */
@@ -477,6 +480,17 @@ export const useApp = create<AppState>((set, get) => ({
       return true;
     } catch (e) {
       get().notify(e instanceof ApiError ? e.message : "Could not save the rejection - check the connection and try again.");
+      return false;
+    }
+  },
+  redirectRequest: async (id, from) => {
+    try {
+      const r = await call(routes.redirectRequest, { params: { id }, body: { from } });
+      get().notify(r.message);
+      await refetch(r.changed, r.message);
+      return true;
+    } catch (e) {
+      get().notify(e instanceof ApiError ? e.message : "Could not redirect the request - check the connection and try again.");
       return false;
     }
   },

@@ -16,6 +16,7 @@ import Drawer from "../ui/Drawer";
 import "../roles/buyer/PoReceiptDrawer";        // registers "bgrn" on the drawer registry
 import "../roles/buyer/NewProductDrawer";       // registers "bnewitem"
 import "../roles/buyer/ContractDrawer";         // registers "bcontract"
+import "../roles/manager/ApprovalDrawer";       // registers "mreq"
 import { useApp } from "../store";
 import { as, resetStore, S } from "./fixture";
 
@@ -363,6 +364,34 @@ describe("menu management adds several products to a till at once", () => {
 
     await settle(() => { ui.button("Add 1 product")!.click(); });
     await settleUntil(() => hit("POST /api/v1/menus/coffee/items").length >= 3);
+    ui.unmount();
+  });
+});
+
+describe("the manager can redirect an undecided request to a peer outlet", () => {
+  it("posts the picked outlet and closes the drawer once it lands", async () => {
+    as("manager");
+    serve({
+      "POST /api/v1/requests/REQ-2026-0911/redirect": () => json({
+        result: {
+          request: { id: "REQ-2026-0911", from: "coffee", by: "Kavitha Raman", at: "09:14", lines: [{ it: "milk", qty: 20, appr: 20, short: 0 }], st: "Ticket issued", ticket: "TKT-0501", mgrNote: "", urg: true, hist: [{ s: "Request sent", who: "Kavitha Raman", t: "09:14" }, { s: "Redirected to The Restaurant", who: "Ramesh Kumar", t: "10:02" }] },
+          ticket: { id: "TKT-0501", req: "REQ-2026-0911", from: "rest", to: "coffee", lines: [{ it: "milk", qty: 20 }], st: "Issued", by: "Ramesh Kumar", at: "10:02", otp: "" },
+        },
+        changed: ["req", "tkt", "rsv"],
+        message: "TKT-0501 issued - The Restaurant covers this request instead of the central store",
+      }),
+      "GET /api/v1/requests": () => json([]),
+      "GET /api/v1/tickets": () => json([]),
+      "GET /api/v1/stock": () => json({ stock: {}, rsv: {}, ovr: {} }),
+    });
+    useApp.setState({ drawer: { t: "mreq", id: "REQ-2026-0911" } });
+    const ui = mountNode(Drawer);
+
+    expect(ui.text()).toContain("Fulfil from another outlet instead");
+    await settle(() => { ui.button("Redirect from")!.click(); });
+    await settleUntil(() => hit("POST /api/v1/requests/REQ-2026-0911/redirect").length > 0);
+    // "rest" is the first peer offered - "coffee" (the request's own outlet) is excluded.
+    expect(hit("POST /api/v1/requests/REQ-2026-0911/redirect")[0].body).toEqual({ from: "rest" });
     ui.unmount();
   });
 });

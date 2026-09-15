@@ -56,6 +56,9 @@ export const CreateRequestBodySchema = z.strictObject({ lines: z.array(ReqLineIn
 export const DocIdParamsSchema = z.strictObject({ id: z.string().min(1).max(40) });
 export const ApproveRequestBodySchema = z.strictObject({ appr: z.array(QtySchema).min(1).max(50), note: z.string().max(500).default("") });
 export const RejectRequestBodySchema = z.strictObject({ note: z.string().max(500) });
+/** The manager's alternative to the ordinary approve/reject: fulfil the whole request from a
+ *  peer outlet's own shelf instead of the central store, when they know one is holding it. */
+export const RedirectRequestBodySchema = z.strictObject({ from: LocKeySchema });
 export const HandoverBodySchema = z.strictObject({ otp: z.string().regex(/^\d{6}$/).optional() });
 export const TransferBodySchema = z.strictObject({ from: LocKeySchema, to: LocKeySchema, it: z.string().min(1).max(64), qty: QtySchema });
 export const ShopAskBodySchema = z.strictObject({ to: LocKeySchema, it: z.string().min(1).max(64), qty: QtySchema, note: z.string().max(500).default("") });

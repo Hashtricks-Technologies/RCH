@@ -7,9 +7,10 @@
 import type { z } from "zod";
 import type {
   ApprovalResultSchema, ApproveRequestBodySchema, CreateRequestBodySchema, IssueResultSchema,
-  RejectRequestBodySchema, StockRequest, WriteResponse,
+  RedirectRequestBodySchema, RejectRequestBodySchema, StockRequest, WriteResponse,
 } from "@rch/contract";
 import { committed, planApproval, REQUEST_TRANSITIONS, round3 } from "@rch/domain";
+import { OUTLETS } from "@rch/contract";
 import type { Db } from "../../db/client.js";
 import { withTransaction } from "../../lib/db.js";
 import { NotFoundError } from "../../lib/errors.js";
@@ -28,6 +29,7 @@ import { requestsRepo } from "./repo.js";
 export type CreateRequestBody = z.infer<typeof CreateRequestBodySchema>;
 export type ApproveRequestBody = z.infer<typeof ApproveRequestBodySchema>;
 export type RejectRequestBody = z.infer<typeof RejectRequestBodySchema>;
+export type RedirectRequestBody = z.infer<typeof RedirectRequestBodySchema>;
 export type ApprovalResult = z.infer<typeof ApprovalResultSchema>;
 export type IssueResult = z.infer<typeof IssueResultSchema>;
 
@@ -171,6 +173,53 @@ export function createRequestsService(db: Db) {
         const changed = ["req"] as const;
         await emitChanged(tx, changed);
         return { result: await requestsRepo.wire(tx, id), changed: [...changed], message: `${id} rejected` };
+      });
+    },
+
+    /**
+     * The manager's other door out of "Request sent": fulfil the whole thing from a peer
+     * outlet's own shelf, when they know one is holding what was asked for, instead of sending
+     * it to the central store at all. It reuses the same "Ticket issued" step the store keeper's
+     * own `issue()` writes to - a ticket, a hold, and nothing moved yet - so everything after
+     * this point (the collector's OTP, the handover, the receive) is the one path every other
+     * ticket already walks. Only ever available before anything has been decided: once a line is
+     * approved or rejected, the store or the counter has already been told something, and this
+     * is not the door to take that back through.
+     */
+    async redirect(claims: AccessClaims, id: string, body: RedirectRequestBody): Promise<WriteResponse<IssueResult>> {
+      return withTransaction(db, async (tx) => {
+        const r = await requestsRepo.head(tx, id);
+        if (!r) throw new NotFoundError(`There is no request ${id}.`);
+        assertRule(r.status === "Request sent", `${id} has already been decided - redirect only applies before it is approved`);
+        assertRule(OUTLETS.includes(r.fromLoc as (typeof OUTLETS)[number]), `${id} was not raised by an outlet - there is no peer shop to redirect it to`);
+        assertRule(body.from !== r.fromLoc, "Pick a different outlet to redirect from");
+        assertRule(OUTLETS.includes(body.from), "A redirect only runs between two outlets");
+
+        const master = await loadMaster(tx);
+        const lines = await requestsRepo.lines(tx, id);
+        const keys = lines.map((l) => l.it);
+
+        // Ids before balance rows (lib/ledger.ts's header), exactly as the store keeper's own
+        // `issue()` takes them.
+        const at = new Date();
+        const no = await allocateTicket(tx, at);
+        await lockBalances(tx, keys.map((it) => ({ loc: body.from, it })));
+        const stock = await requestsRepo.balancesAt(tx, body.from, keys);
+        const held = await reservedAt(tx, body.from, keys);
+        const short = lines.filter((l) => round3((stock[l.it] ?? 0) - (held[`${body.from}:${l.it}`] ?? 0)) < l.qty);
+        assertRule(short.length === 0, `${master.locations[body.from]?.n ?? body.from} has not got enough ${short.map((l) => master.items[l.it]?.n ?? l.it).join(", ")} free to cover this request`);
+
+        const ticketLines = lines.map((l) => ({ it: l.it, qty: l.qty }));
+        const ticket = await writeTicket(tx, { refType: "shop_transfer", refId: id, from: body.from, to: r.fromLoc as (typeof OUTLETS)[number], lines: ticketLines, by: claims.sub, at }, no);
+        await requestsRepo.setLineApprovals(tx, id, lines.map((l) => ({ it: l.it, appr: l.qty, short: 0 })));
+        await requestsRepo.setStatus(tx, id, { status: "Ticket issued", ticketId: ticket.id, approvedBy: claims.sub });
+        const who = await requestsRepo.userName(tx, claims.sub);
+        await appendHistory(tx, "request", id, `Redirected to ${master.locations[body.from]?.n ?? body.from}`, who, at);
+
+        const changed = ["req", "tkt", "rsv"] as const;
+        await emitChanged(tx, changed);
+        const message = `${ticket.id} issued - ${master.locations[body.from]?.n ?? body.from} covers this request instead of the central store`;
+        return { result: { request: await requestsRepo.wire(tx, id), ticket }, changed: [...changed], message };
       });
     },
 

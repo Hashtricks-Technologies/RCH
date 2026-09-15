@@ -412,3 +412,60 @@ describe("POST /requests/:id/issue-ticket", () => {
     for (const u of ["u1", "u2"]) expect((await post(u, "/requests/REQ-2026-0911/issue-ticket")).statusCode).toBe(404);
   });
 });
+
+describe("POST /requests/:id/redirect", () => {
+  it("fulfils the whole request from a peer outlet instead of the store, and reserves it there", async () => {
+    const id = await given.request(app.testDb!.db, { from: "coffee", lines: [{ it: "chips", qty: 5 }] });
+    const before = await onHand();
+
+    const r = await post("u2", `/requests/${id}/redirect`, { from: "kiosk" });
+    expect(r.statusCode, r.body).toBe(200);
+    const b = r.json();
+    expect(b.result.ticket).toMatchObject({ req: id, from: "kiosk", to: "coffee", st: "Issued" });
+    expect(b.result.ticket.lines).toEqual([{ it: "chips", qty: 5 }]);
+    expect(b.result.request).toMatchObject({ st: "Ticket issued", ticket: b.result.ticket.id });
+    expect(b.result.request.lines).toEqual([{ it: "chips", qty: 5, appr: 5, short: 0 }]);
+    expect(b.changed).toEqual(["req", "tkt", "rsv"]);
+    expect(b.message).toBe(`${b.result.ticket.id} issued - Snack Kiosk covers this request instead of the central store`);
+
+    // The movement rule: approval (the redirect, here) authorises, the scan moves. Nothing has
+    // left Snack Kiosk's shelf yet, only been held back on it.
+    expect(await onHand()).toEqual(before);
+    const held = await app.testDb!.db.select().from(reservations).where(eq(reservations.ticketId, b.result.ticket.id));
+    expect(held[0]).toMatchObject({ loc: "kiosk", itemKey: "chips", qty: 5, releasedAt: null });
+
+    const hist = b.result.request.hist as { s: string }[];
+    expect(hist.at(-1)?.s).toBe("Redirected to Snack Kiosk");
+  });
+
+  it("refuses a peer outlet that cannot cover the whole request", async () => {
+    const id = await given.request(app.testDb!.db, { from: "coffee", lines: [{ it: "chips", qty: 999 }] });
+    const r = await post("u2", `/requests/${id}/redirect`, { from: "kiosk" });
+    expect(r.statusCode).toBe(422);
+    expect(r.json().error.message).toBe("Snack Kiosk has not got enough Salted chips 52g free to cover this request");
+  });
+
+  it("refuses once the request has already been decided", async () => {
+    const id = await given.request(app.testDb!.db, { from: "coffee", st: "Manager approved", lines: [{ it: "chips", qty: 5, appr: 5 }] });
+    const r = await post("u2", `/requests/${id}/redirect`, { from: "kiosk" });
+    expect(r.statusCode).toBe(422);
+    expect(r.json().error.message).toBe(`${id} has already been decided - redirect only applies before it is approved`);
+  });
+
+  it("refuses the request's own outlet as the peer, and any outlet the request did not come from a shop to begin with", async () => {
+    const own = await given.request(app.testDb!.db, { from: "coffee", lines: [{ it: "chips", qty: 5 }] });
+    expect((await post("u2", `/requests/${own}/redirect`, { from: "coffee" })).json().error.message)
+      .toBe("Pick a different outlet to redirect from");
+
+    const kitchen = await given.request(app.testDb!.db, { from: "kitchen", by: "u4", lines: [{ it: "oil", qty: 2 }] });
+    expect((await post("u2", `/requests/${kitchen}/redirect`, { from: "coffee" })).json().error.message)
+      .toBe(`${kitchen} was not raised by an outlet - there is no peer shop to redirect it to`);
+  });
+
+  it("is absent for every role but the manager", async () => {
+    const id = await given.request(app.testDb!.db, { from: "coffee", lines: [{ it: "chips", qty: 5 }] });
+    for (const u of ["u1", "u3", "u4", "u5"]) {
+      expect((await post(u, `/requests/${id}/redirect`, { from: "kiosk" })).statusCode).toBe(404);
+    }
+  });
+});

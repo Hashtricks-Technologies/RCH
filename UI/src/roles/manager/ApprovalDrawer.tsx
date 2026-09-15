@@ -1,12 +1,12 @@
 import { useState } from "react";
-import { IT, LOC } from "../../data/master";
+import { IT, LOC, OUTLETS } from "../../data/master";
 import { useApp } from "../../store";
-import { costOf, freeToPromise, qty } from "../../lib/selectors";
+import { avail, costOf, freeToPromise, qty } from "../../lib/selectors";
 import { fq, money, sum, U, unitTotal } from "../../lib/fmt";
-import { Alert, Btn, DataTable, DraftLineInput, Feed, Pill, Section, StatusPill, Tag, Tip } from "../../ui/kit";
+import { Alert, Btn, DataTable, DraftLineInput, Feed, Field, Pill, Section, StatusPill, Tag, Tip } from "../../ui/kit";
 import { DrawerFrame } from "../../ui/Drawer";
 import { registerDrawer, type DrawerProps } from "../../drawers";
-import type { DatedDoc, StockRequest } from "../../types";
+import type { DatedDoc, LocKey, StockRequest } from "../../types";
 
 const dotFor = (state: string) =>
   state === "Rejected" || state === "Cancelled" ? "var(--crit)"
@@ -69,6 +69,7 @@ function ApprovalBody({ req }: { req: DatedDoc<StockRequest> }) {
   const approveRequest = useApp((x) => x.approveRequest);
   const rejectRequest = useApp((x) => x.rejectRequest);
   const cancelRequest = useApp((x) => x.cancelRequest);
+  const redirectRequest = useApp((x) => x.redirectRequest);
 
   const [appr, setAppr] = useState<number[]>(() =>
     req.lines.map((l) =>
@@ -78,9 +79,13 @@ function ApprovalBody({ req }: { req: DatedDoc<StockRequest> }) {
   const [killed, setKilled] = useState<boolean[]>(() => req.lines.map(() => false));
   const [lineWhy, setLineWhy] = useState<string[]>(() => req.lines.map(() => ""));
   const [note, setNote] = useState(req.st === "Request sent" ? "" : req.mgrNote ?? "");
-  const [busy, setBusy] = useState<"approve" | "reject" | "withdraw" | null>(null);
+  const [busy, setBusy] = useState<"approve" | "reject" | "withdraw" | "redirect" | null>(null);
 
   const open = req.st === "Request sent";
+  // A request the kitchen raised (`req.from === "kitchen"`) has no peer shop to redirect to -
+  // only an outlet's own request does. `peers` excludes the outlet that raised this one.
+  const peers = OUTLETS.filter((o) => o !== req.from);
+  const [redirectTo, setRedirectTo] = useState<LocKey | null>(peers[0] ?? null);
   // A decision this manager made themselves, before the store keeper turns it into a ticket -
   // the one thing left to undo once "Approve & forward" has already gone through. A manager
   // is hospital-wide, so this is not scoped to the outlet that raised it.
@@ -143,6 +148,13 @@ function ApprovalBody({ req }: { req: DatedDoc<StockRequest> }) {
     if (!canWithdraw || busy) return;
     setBusy("withdraw");
     const ok = await cancelRequest(req.id);
+    setBusy(null);
+    if (ok) close();
+  };
+  const doRedirect = async () => {
+    if (!redirectTo || busy) return;
+    setBusy("redirect");
+    const ok = await redirectRequest(req.id, redirectTo);
     setBusy(null);
     if (ok) close();
   };
@@ -343,6 +355,44 @@ function ApprovalBody({ req }: { req: DatedDoc<StockRequest> }) {
           Every item is at zero or rejected. Use <b>Reject the request</b> below - it records the decision against
           your name and sends the reason to {LOC[req.from].n}.
         </Alert>
+      )}
+
+      {open && peers.length > 0 && (
+        <Section
+          title="Fulfil from another outlet instead"
+          tip="If you know a peer shop is already holding this, send it from there instead of the central store - a ticket issues straight from that shop's shelf, for the full amount asked."
+        >
+          <div className="lgrid">
+            <DataTable
+              cols={[{ h: "Item", cls: "nm" }, { h: "Asked", r: true }, { h: `Free at ${redirectTo ? LOC[redirectTo].n : "-"}`, r: true }]}
+              rows={req.lines.map((l, i) => {
+                const free = redirectTo ? avail(s, redirectTo, l.it) : 0;
+                const short = free < l.qty;
+                return {
+                  key: l.it + i,
+                  cells: [
+                    IT[l.it]?.n ?? l.it,
+                    <span key="ask">{fq(l.qty, l.it)} <small className="dim">{U(l.it)}</small></span>,
+                    short
+                      ? <span key="free" style={{ color: "var(--warn)" }}>{fq(free, l.it)}</span>
+                      : <span key="free" style={{ color: "var(--good)" }}>{fq(free, l.it)}</span>,
+                  ],
+                };
+              })}
+              empty={{ title: "This request has no items" }}
+            />
+          </div>
+          <div className="mtop" style={{ display: "flex", gap: 12, alignItems: "flex-end" }}>
+            <Field label="Peer outlet">
+              <select value={redirectTo ?? ""} onChange={(e) => setRedirectTo(e.target.value as LocKey)}>
+                {peers.map((p) => <option key={p} value={p}>{LOC[p].n}</option>)}
+              </select>
+            </Field>
+            <Btn variant="sub" disabled={!redirectTo || busy !== null} onClick={doRedirect}>
+              {busy === "redirect" ? "Redirecting…" : `Redirect from ${redirectTo ? LOC[redirectTo].n : "-"}`}
+            </Btn>
+          </div>
+        </Section>
       )}
 
       {open && (

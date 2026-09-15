@@ -620,6 +620,23 @@ describe("the request chain - the twelve writes", () => {
     expect(S().toast).toBe("REQ-2026-0911 trimmed - the central store cannot cover the full quantity");
   });
 
+  it("redirectRequest posts the peer outlet and repeats the server's sentence", async () => {
+    as("manager");
+    serve({
+      "POST /api/v1/requests/REQ-2026-0911/redirect": () => json({
+        result: { request: { ...REQ, id: "REQ-2026-0911", st: "Ticket issued", ticket: "TKT-0501" }, ticket: { id: "TKT-0501", req: "REQ-2026-0911", from: "kiosk", to: "coffee", lines: [{ it: "milk", qty: 20 }], st: "Issued", by: "Ramesh Kumar", at: "10:02", otp: "" } },
+        changed: ["req", "tkt", "rsv"],
+        message: "TKT-0501 issued - Snack Kiosk covers this request instead of the central store",
+      }),
+      "GET /api/v1/requests": () => json([REQ]),
+      "GET /api/v1/tickets": () => json([]),
+      "GET /api/v1/stock": () => json({ stock: {}, rsv: {}, ovr: {} }),
+    });
+    expect(await S().redirectRequest("REQ-2026-0911", "kiosk")).toBe(true);
+    expect(hit("POST /api/v1/requests/REQ-2026-0911/redirect")[0].body).toEqual({ from: "kiosk" });
+    expect(S().toast).toBe("TKT-0501 issued - Snack Kiosk covers this request instead of the central store");
+  });
+
   it("hands a rejection refusal to the manager word for word and changes nothing", async () => {
     as("manager");
     const before = S().req.find((r) => r.id === "REQ-2026-0912")!.st;
@@ -1662,6 +1679,8 @@ const OFFLINE: [name: string, run: () => Promise<unknown>, sentence: string][] =
     "Could not save the approval - check the connection and try again."],
   ["rejectRequest", () => S().rejectRequest("REQ-2026-0911", "Nothing to spare"),
     "Could not save the rejection - check the connection and try again."],
+  ["redirectRequest", () => S().redirectRequest("REQ-2026-0911", "kiosk"),
+    "Could not redirect the request - check the connection and try again."],
   ["issueTicket", () => S().issueTicket("REQ-2026-0911"),
     "Could not issue the ticket - check the connection and try again."],
   ["handover", () => S().handover("TKT-0440", "418327"),

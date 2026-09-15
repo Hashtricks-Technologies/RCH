@@ -15,5 +15,6 @@ export default fp(async (app) => {
   mount(app, routes.cancelRequest, async (req) => svc.cancel(req.user, req.params.id));
   mount(app, routes.approveRequest, async (req) => svc.approve(req.user, req.params.id, req.body));
   mount(app, routes.rejectRequest, async (req) => svc.reject(req.user, req.params.id, req.body));
+  mount(app, routes.redirectRequest, async (req) => svc.redirect(req.user, req.params.id, req.body));
   mount(app, routes.issueTicket, async (req) => svc.issue(req.user, req.params.id));
 }, { name: "module:requests", dependencies: ["auth", "rbac", "idempotency", "db"] });
