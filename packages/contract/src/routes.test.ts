@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { z } from "zod";
-import { AdjustReasonSchema, CreateAdjustmentBodySchema, DeskReplyBodySchema, CreatePoBodySchema, CreditParamsSchema, CreditResponseSchema, EVENTS_PATH, EventNoticeSchema, KITCHEN, LocKeySchema, MakeBatchBodySchema, PatchContractBodySchema, PatchPayerBodySchema, PatchPoBodySchema, PatchVendorBodySchema, PO_APPROVAL_LIMIT, QUARANTINE, RaiseTicketBodySchema, RateTicketBodySchema, ReceivePoBodySchema, SetOrderStatusBodySchema, SetTicketStatusBodySchema, SnapshotSchema, StockLedgerQuerySchema, StockLocSchema, STORE, TktStatusSchema, ItemSchema, PatchItemBodySchema } from "./index";
+import { AdjustReasonSchema, CreateAdjustmentBodySchema, DeskReplyBodySchema, CreatePoBodySchema, CreditParamsSchema, CreditResponseSchema, EVENTS_PATH, EventNoticeSchema, KITCHEN, LocKeySchema, MakeBatchBodySchema, PatchContractBodySchema, PatchPayerBodySchema, PatchPoBodySchema, PatchVendorBodySchema, PO_APPROVAL_LIMIT, QUARANTINE, RaiseTicketBodySchema, RateTicketBodySchema, ReceivePoBodySchema, SetOrderStatusBodySchema, SetTicketStatusBodySchema, SnapshotSchema, StockLedgerQuerySchema, StockLocSchema, STORE, TktStatusSchema, ItemSchema, PatchItemBodySchema, UpdateOutletBodySchema } from "./index";
 import { routes } from "./routes";
 
 /** One valid body per route that takes one. The coverage case below fails if a new route
@@ -66,6 +66,9 @@ const SAMPLES: Record<string, Record<string, unknown>> = {
   // ---- admin: account management (a capability, not a role - root CLAUDE.md)
   createAdminUser: { name: "Anitha R", email: "anitha.r@royalcare.in", role: "counter", loc: "rest" },
   updateAdminUser: { role: "counter", loc: "kiosk" },
+  // ---- admin: outlets
+  createOutlet: { name: "Juice Bar", code: "OT-JB", floor: "Ground", cc: "CC-JB", list: "A" },
+  updateOutlet: { name: "Juice Hut" },
   // ---- recipes
   saveRecipe: { ov: 12, lines: [{ it: "milk", qty: 0.15 }, { it: "cup", qty: 1 }] },
 };
@@ -262,6 +265,14 @@ describe("what the item master puts on the wire once it can be edited", () => {
     expect(ItemSchema.safeParse({ ...item, active: false }).success).toBe(true);
     // Absent means active: every fixture and every document raised before retiring existed.
     expect(ItemSchema.parse(item).active).toBeUndefined();
+  });
+});
+
+// ---- admin: outlets
+describe("what the outlet routes put on the wire", () => {
+  it("takes a patch that names only one field, and adds nothing to an empty one", () => {
+    expect(UpdateOutletBodySchema.safeParse({ list: "B" }).success).toBe(true);
+    expect(UpdateOutletBodySchema.parse({})).toEqual({});
   });
 });
 

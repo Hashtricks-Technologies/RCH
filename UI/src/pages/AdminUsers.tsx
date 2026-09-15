@@ -24,6 +24,7 @@ const LOC_LABEL: Record<LocKey, string> = {
 const DID: Record<AdminAction["action"], string> = {
   create: "created", reset_password: "reset the password of", deactivate: "deactivated",
   reactivate: "reactivated", update_role_loc: "moved", delete: "deleted",
+  outlet_create: "opened", outlet_update: "edited", outlet_close: "closed", outlet_reopen: "reopened",
 };
 
 const emptyForm = { name: "", email: "", phone: "", role: "counter" as Role, loc: "rest" as LocKey };

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import * as FX from "@rch/contract/fixtures";
 import type { Location } from "@rch/contract";
-import { operationalKeys, outletKeyFor, outletKeys, placesFor, worksAt } from "./locations";
+import { closeRefusal, holding, HOLDS_OUTLET, operationalKeys, outletKeyFor, outletKeys, placesFor, worksAt } from "./locations";
 
 const juice: Location = { n: "Juice Bar", c: "OT-JB", type: "Outlet", floor: "G", cc: "CC-JB", list: "A", active: true, par: 0.18 };
 const closed = (l: Location): Location => ({ ...l, active: false });
@@ -70,5 +70,32 @@ describe("outletKeyFor", () => {
     expect(long.length).toBeLessThanOrEqual(20);
     expect(long).toMatch(/^[a-z][a-z0-9-]*[a-z0-9]$/);
     expect(outletKeyFor("The Very Long Name Of A Hospital Outlet", [long]).length).toBeLessThanOrEqual(24);
+  });
+});
+
+describe("HOLDS_OUTLET", () => {
+  it("counts a document as holding an outlet until it is settled", () => {
+    expect(holding(HOLDS_OUTLET.ticket)).toEqual(["Issued", "Collected"]);
+    expect(holding(HOLDS_OUTLET.request)).toEqual(["Draft", "Request sent", "Manager approved", "Partially approved", "Ticket issued", "Collected", "Received"]);
+    // A dispatched order and a sent ask each keep an undo edge in their transition tables, but the
+    // ticket they raised is what holds the outlet now - so neither is open here.
+    expect(holding(HOLDS_OUTLET.prodOrder)).toEqual(["New", "Accepted", "In kitchen", "Ready"]);
+    expect(holding(HOLDS_OUTLET.shopAsk)).toEqual(["Asked"]);
+    expect(holding(HOLDS_OUTLET.productReq)).toEqual(["Requested"]);
+  });
+});
+
+describe("closeRefusal", () => {
+  const none = { stock: 0, tickets: 0, requests: 0, kitchenOrders: 0, shopAsks: 0, productRequests: 0, staff: [] };
+  it("has nothing to say about an outlet nothing depends on", () => {
+    expect(closeRefusal("Juice Bar", none)).toBeNull();
+  });
+  it("names the one thing left", () => {
+    expect(closeRefusal("Juice Bar", { ...none, tickets: 2 })).toBe("Refused - Juice Bar still has 2 open tickets");
+    expect(closeRefusal("Juice Bar", { ...none, stock: 1 })).toBe("Refused - Juice Bar still has stock on hand (1 item)");
+  });
+  it("names every blocker at once, singular for one, the last joined with and", () => {
+    expect(closeRefusal("Juice Bar", { stock: 3, tickets: 1, requests: 1, kitchenOrders: 2, shopAsks: 1, productRequests: 1, staff: ["RC-4483", "RC-4484"] }))
+      .toBe("Refused - Juice Bar still has stock on hand (3 items), 1 open ticket, 1 open stock request, 2 open kitchen orders, 1 open shop ask, 1 open product request and 2 active staff (RC-4483, RC-4484)");
   });
 });

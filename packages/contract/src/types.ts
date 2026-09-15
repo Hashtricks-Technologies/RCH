@@ -82,5 +82,8 @@ export type CreateAdminUserBody = z.infer<typeof A.CreateAdminUserBodySchema>;
 export type UpdateAdminUserBody = z.infer<typeof A.UpdateAdminUserBodySchema>;
 export type AdminAction = z.infer<typeof A.AdminActionSchema>;
 export type AdminDeletedUser = z.infer<typeof A.AdminDeletedUserSchema>;
+export type AdminLocation = z.infer<typeof A.AdminLocationSchema>;
+export type CreateOutletBody = z.infer<typeof A.CreateOutletBodySchema>;
+export type UpdateOutletBody = z.infer<typeof A.UpdateOutletBodySchema>;
 /** One line of the public sign-in picker. */
 export type SignInEntry = z.infer<typeof Auth.SignInEntrySchema>;
