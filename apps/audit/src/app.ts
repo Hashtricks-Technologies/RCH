@@ -9,6 +9,7 @@ import metrics from "./plugins/metrics.js";
 import health from "./plugins/health.js";
 import security from "./plugins/security.js";
 import db from "./plugins/db.js";
+import drainer from "./plugins/drainer.js";
 
 declare module "fastify" { interface FastifyInstance { config: AuditConfig } }
 
@@ -17,8 +18,8 @@ export type AuditApp = FastifyInstance;
  * - `db` + `pool`: a handle the caller owns (the test harness); otherwise the db plugin opens one on
  *   `searchPath`, which defaults to `config.auditSchema`.
  * - `logStream`: where the log goes when it is not stdout - a test reading its own lines back.
- * - `drainer`: whether `plugins/drainer.ts` starts its LISTEN client and poll timer; a test that
- *   drives a pass by hand passes `false`.
+ * - `drainer`: whether `plugins/drainer.ts` starts its LISTEN client, poll timer and first pass
+ *   (default on); a test that drives a pass by hand passes `false`.
  * - `cleanup`: run once the app has closed, after every plugin's own `onClose` - the test harness
  *   drops its schemas there.
  */
@@ -50,5 +51,6 @@ export async function buildApp(config: AuditConfig, deps: AppDeps = {}): Promise
   await app.register(health);
   await app.register(security);
   await app.register(db, { url: config.databaseUrl, ssl: config.databaseSsl, max: config.dbPoolMax, searchPath: deps.searchPath ?? config.auditSchema, auditSchema: config.auditSchema, db: deps.db, pool: deps.pool });
+  await app.register(drainer, { enabled: deps.drainer ?? true });
   return app;
 }
