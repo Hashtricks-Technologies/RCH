@@ -5,7 +5,9 @@ import {
 import type { Ticket, Tone } from "../types";
 import { ticketDot, toneFor } from "../lib/selectors";
 import { toInputDate } from "../lib/fmt";
+import { photoSrc } from "../lib/photo";
 import type { ThemePref } from "../lib/theme";
+import { IT } from "../data/master";
 import { useApp } from "../store";
 import { Tip, TipWrap } from "./Tip";
 
@@ -619,6 +621,18 @@ export function ImagePlaceholder({ size = "sm" }: { size?: "sm" | "thumb" | "car
         <path d="M20 15.5 15.5 11a1.5 1.5 0 0 0-2.1 0L5 19" />
       </svg>
     </div>
+  );
+}
+
+/** An item's own photo in the placeholder's box, or the placeholder when it has none - or when
+ *  the photo will not load, so a broken image never takes the place of the slot. */
+export function ItemImage({ it, size = "sm" }: { it: string | undefined; size?: "sm" | "thumb" | "card" }) {
+  const hash = it ? IT[it]?.img : undefined;
+  const [broken, setBroken] = useState<string | null>(null);
+  if (!it || !hash || broken === hash) return <ImagePlaceholder size={size} />;
+  return (
+    <img className={`imgph imgph-${size} itemimg`} src={photoSrc(it, hash)} alt="" loading="lazy" decoding="async"
+      onError={() => setBroken(hash)} />
   );
 }
 

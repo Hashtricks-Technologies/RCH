@@ -3,7 +3,7 @@ import { IT, LOC } from "../data/master";
 import { useApp } from "../store";
 import { menuOf, type StockShape } from "../lib/selectors";
 import { U } from "../lib/fmt";
-import { Alert, Btn, BtnRow, Field, ImagePlaceholder, useLineKeys } from "./kit";
+import { Alert, Btn, BtnRow, Field, ItemImage, useLineKeys } from "./kit";
 import type { LocKey } from "../types";
 
 /**
@@ -155,7 +155,7 @@ export default function KitchenOrderForm({ loc, onDone }: { loc: LocKey; onDone?
     <>
       {lines.map((l, i) => (
         <div key={rowKeys[i]} className="raisecard-product">
-          <ImagePlaceholder />
+          <ItemImage it={l.it} />
           <div className="txt">
             <b>{IT[l.it]?.n ?? "Choose a product"}</b>
             <span>{IT[l.it] ? `${IT[l.it].c} · ${IT[l.it].g}` : "Made in the Central Kitchen"}</span>

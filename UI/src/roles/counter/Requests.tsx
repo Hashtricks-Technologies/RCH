@@ -7,7 +7,7 @@ import { activeItems, avail, isReqOpen, menuOf, openOutlets } from "../../lib/se
 import type { StockShape } from "../../lib/selectors";
 import { fq, U } from "../../lib/fmt";
 import {
-  Alert, Btn, BtnRow, Card, DataTable, DraftLineInput, Field, ImagePlaceholder, Icon, PageHead,
+  Alert, Btn, BtnRow, Card, DataTable, DraftLineInput, Field, ItemImage, Icon, PageHead,
   Pill, StatusPill, Tip, useLineKeys,
 } from "../../ui/kit";
 import type { LocKey } from "../../types";
@@ -71,7 +71,7 @@ function ProductPicker({ items, value, ariaLabel = "Product", onChange, hint, af
   );
   return (
     <div className="raisecard-product">
-      <ImagePlaceholder />
+      <ItemImage it={value} />
       <div className="txt">
         <b>{item?.n ?? "Choose a product"}</b>
         <span>{item ? `${item.c} · ${item.g}` : hint}</span>
@@ -282,7 +282,7 @@ export default function Requests() {
             return (
               <div key={a.id} className="askcard">
                 <div className="askcard-top">
-                  <ImagePlaceholder size="thumb" />
+                  <ItemImage it={a.it} size="thumb" />
                   <div className="askcard-id">
                     <b>{IT[a.it].n}</b>
                     <span className="mini">{a.id} · {LOC[a.from].n} · {a.at}</span>
@@ -545,7 +545,7 @@ export default function Requests() {
             onClick: r.kind === "inventory" ? () => s.openDrawer("creq", r.key) : undefined,
             cells: [
               <span style={{ display: "flex", alignItems: "center", gap: 9 }}>
-                <ImagePlaceholder />
+                <ItemImage it={r.it} />
                 <span><b>{IT[r.it]?.n ?? "-"}</b><small>{r.key}</small></span>
               </span>,
               r.direction,

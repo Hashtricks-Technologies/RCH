@@ -421,7 +421,7 @@ thead th .tip{margin-left:4px}
    the kitchen board's fixed 282px, and still scroll sideways inside `.kan` when the screen is narrow */
 .kan.fill .kan-col{flex:1 1 0;width:auto;min-width:196px}
 
-/* image placeholder - no real photography in this build (see ImagePlaceholder) */
+/* image placeholder - drawn for an item with no photo yet, or one that failed to load (see ImagePlaceholder, ItemImage) */
 .imgph{display:flex;align-items:center;justify-content:center;flex:none;color:var(--ink-4);
   background:repeating-linear-gradient(45deg,var(--surface-3) 0 8px,var(--surface-2) 8px 16px);
   border:1px solid var(--line)}
@@ -433,6 +433,8 @@ thead th .tip{margin-left:4px}
    that the numbers stay the subject of the card */
 .imgph-thumb{width:44px;height:44px;border-radius:9px}
 .imgph-thumb svg{width:19px;height:19px}
+/* an item's real photo, in the placeholder's own box */
+.itemimg{object-fit:cover;background:var(--surface-2)}
 .tile-pic{padding:0;gap:0;overflow:hidden}
 .tile-pic-body{display:flex;flex-direction:column;gap:4px;flex:1;min-width:0;padding:10px 12px 12px}
 .nm-pic{display:flex;align-items:center;gap:9px;min-width:0}
