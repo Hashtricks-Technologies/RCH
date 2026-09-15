@@ -201,7 +201,7 @@ the API suite needs Postgres reachable, so `pnpm db:up` first. The API and UI su
 `TZ=UTC`, so timezone-sensitive assertions prove the same thing on every machine.
 
 Each package's `test` script carries a **coverage floor** - UI lines 79 / branches 60, `apps/api`
-94 / 80, `packages/domain` 99 / 95, `packages/contract` lines 96 - set a point or two under what
+94 / 80, `packages/domain` 99 / 93, `packages/contract` lines 96 - set a point or two under what
 that suite measures today, so deleting a test or shipping an untested screen fails rather than
 drifting. Running one file (`npx vitest run src/__tests__/writes.test.ts` from inside the package)
 is deliberately not judged against it. **Lint is a zero-warning gate** in the same spirit: every
