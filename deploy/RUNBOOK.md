@@ -539,7 +539,7 @@ kubectl label namespace rch         elbv2.k8s.aws/pod-readiness-gate-inject=enab
 ```
 
 - **`ng-prod` does not exist, and production's pods can land nowhere else.** The cluster was
-  created with one node group, `ng-spot`, and `values-prod.yaml` pins both Deployments to
+  created with one node group, `ng-spot`, and `values-prod.yaml` pins all three Deployments to
   `rch.io/tier: prod` - a label nothing carries. Create it **before the first production deploy**
   (§11 step 8 is where it sits in the order):
   ```bash
@@ -547,7 +547,7 @@ kubectl label namespace rch         elbv2.k8s.aws/pod-readiness-gate-inject=enab
   kubectl get nodes -l rch.io/tier=prod        # expect 3, one per availability zone
   ```
   Three on-demand nodes across `ap-south-1a/b/c`, deliberately untainted: the label is what pins
-  production in, and a taint would additionally keep the DaemonSets off. Skip it and both
+  production in, and a taint would additionally keep the DaemonSets off. Skip it and all three
   Deployments sit `Pending` for ever with no error anywhere - and production upgrades without
   `--atomic` (§3), so nothing rolls that back. `deploy/chart/rch/tests/render.test.sh` asserts
   that the label the prod render asks for is one `deploy/eksctl/cluster.yaml` actually applies.
@@ -1613,8 +1613,8 @@ deploy workflow is inert without them.
 | Repository secret | `EKS_CLUSTER_STAGING` | |
 | Repository secret | `EKS_CLUSTER_PROD` | |
 | Repository secret | `SEED_PASSWORD` | **New, and blocking.** `deploy.yml` passes it as `--set-string secrets.values.SEED_PASSWORD`; `apps/api/src/config.ts` has no default for it, so an unset secret renders `SEED_PASSWORD: ""`, the api container refuses to start, and `--atomic` rolls the whole release back. At least twelve characters. Needed for **dev and staging** - both read repository/environment secrets - before the next push to either. |
-| `staging` environment | `DATABASE_URL`, `JWT_PRIVATE_KEY`, `JWT_PUBLIC_KEY` | Staging reads its secrets from the GitHub environment; production reads `rch/prod` out of AWS Secrets Manager through the `ClusterSecretStore`. |
-| AWS Secrets Manager `rch/prod` | `DATABASE_URL`, `JWT_PRIVATE_KEY`, `JWT_PUBLIC_KEY`, `JWT_PREVIOUS_PUBLIC_KEY`, **`SEED_PASSWORD`** | **Five keys now, not four.** `JWT_PREVIOUS_PUBLIC_KEY` may start empty; `SEED_PASSWORD` may not. The `ExternalSecret` uses `dataFrom: [{ extract: … }]`, which copies every key of the remote JSON - so there is no template entry to add, but a remote secret missing `SEED_PASSWORD` produces a pod that will not start. Mint the JWT pair with `pnpm --filter @rch/api keys:generate`, which prints two `JWT_*=` lines and never writes them anywhere. |
+| `staging` environment | `DATABASE_URL`, `MIGRATE_DATABASE_URL`, `AUDIT_DATABASE_URL`, `JWT_PRIVATE_KEY`, `JWT_PUBLIC_KEY` | Staging reads its secrets from the GitHub environment; production reads `rch/prod` out of AWS Secrets Manager through the `ClusterSecretStore`. `DATABASE_URL` is the `rch_app` URL, `MIGRATE_DATABASE_URL` the master user's, `AUDIT_DATABASE_URL` the `rch_audit` URL (§5, *The database roles*). |
+| AWS Secrets Manager `rch/prod` | `DATABASE_URL`, `MIGRATE_DATABASE_URL`, `AUDIT_DATABASE_URL`, `JWT_PRIVATE_KEY`, `JWT_PUBLIC_KEY`, `JWT_PREVIOUS_PUBLIC_KEY`, **`SEED_PASSWORD`** | **Seven keys.** `JWT_PREVIOUS_PUBLIC_KEY` may start empty; no other may. The `ExternalSecret` uses `dataFrom: [{ extract: … }]`, which copies every key of the remote JSON - so there is no template entry to add, but a remote secret missing one produces a pod that will not start. Mint the JWT pair with `pnpm --filter @rch/api keys:generate`, which prints two `JWT_*=` lines and never writes them anywhere. |
 
 **3. The promotion, in order, run by a person.**
 
