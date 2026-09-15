@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { act, createElement, type ComponentType, type ReactElement } from "react";
 import { createRoot } from "react-dom/client";
 import { MemoryRouter } from "react-router-dom";
@@ -9,6 +9,7 @@ import { DRAWERS } from "../drawers";
 import { hydrateMaster, hydrateRoster } from "../data/master";
 import Settings from "../pages/Settings";
 import Issues from "../pages/Support";
+import AdminAudit from "../pages/AdminAudit";
 import { screens as counter } from "../roles/counter";
 import { screens as manager } from "../roles/manager";
 import { screens as store } from "../roles/store";
@@ -87,4 +88,30 @@ describe("the forms that fill an empty hospital render", () => {
       expect(render(createElement(DRAWERS[key], { id })).length).toBeGreaterThan(200);
     });
   }
+});
+
+// The super admin's audit log on the first morning: the service has recorded nothing yet, and the
+// tab must say so rather than draw a broken table or an outage.
+describe("the audit log renders on a database that has recorded nothing", () => {
+  it("admin/audit", async () => {
+    const empty = { rows: [], next: null, counts: { events: 0, people: 0, refused: 0, failedSignIns: 0 } };
+    vi.stubGlobal("fetch", vi.fn(async (u: string) => new Response(
+      JSON.stringify(String(u).includes("/admin/audit") ? empty : []),
+      { status: 200, headers: { "content-type": "application/json" } },
+    )));
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    try {
+      act(() => { as("manager"); useApp.setState({ user: { ...useApp.getState().user!, admin: true } }); });
+      await act(async () => { root.render(createElement(MemoryRouter, null, createElement(AdminAudit))); });
+      await act(async () => { await new Promise((r) => { setTimeout(r, 0); }); });
+      expect(host.textContent).toContain("Nothing recorded in this period");
+      expect(host.innerHTML.length).toBeGreaterThan(200);
+    } finally {
+      act(() => { root.unmount(); });
+      host.remove();
+      vi.unstubAllGlobals();
+    }
+  });
 });

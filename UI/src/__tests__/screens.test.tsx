@@ -106,6 +106,9 @@ describe("drawers render", () => {
    */
   const OPEN_OVER: Record<string, [id: string, role: Role]> = {
     adjstock: ["coffee", "manager"],
+    // ---- audit log: opens on an event id. The read behind it goes to the audit service, which
+    // is not stubbed here, so this renders the drawer's own reading state.
+    auditEntry: ["43", "manager"],
     baddpool: ["new", "buyer"],
     bgrn: ["PO-2026-0141", "buyer"],
     bnewitem: ["new", "buyer"],

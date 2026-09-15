@@ -622,3 +622,14 @@ thead th .tip{margin-left:4px}
   font-size:11px;line-height:18px;text-align:center}
 @media(max-width:640px){.adm-who{display:none}.adm-brand{font-size:0;gap:0}.adm-tabs{margin-left:0;flex:1}}
 .adm-body{max-width:1180px;margin:0 auto;padding:20px 18px 46px}
+
+/* ---------- admin: audit log ---------- */
+td.aud-two small{display:block;font-weight:400;font-size:10.5px;color:var(--ink-3);font-family:"IBM Plex Mono",monospace;margin-top:1px}
+.aud-fresh{padding:0;border:0;background:none;cursor:pointer;border-radius:20px}
+.aud-day{padding:5px 8px;border:1px solid var(--line-strong);border-radius:7px;background:var(--surface);font-size:12px;color:var(--ink-2)}
+.aud-out{padding:13px}
+.aud-head{display:flex;align-items:center;gap:8px}
+.aud-body .dl dd{min-width:0}
+.aud-dl{grid-template-columns:minmax(72px,max-content) minmax(0,1fr);gap:5px 12px}
+.aud-lines,.aud-diff{border:1px solid var(--line);border-radius:7px;overflow:hidden;min-width:0}
+.aud-lines thead th,.aud-lines tbody td{padding:5px 8px}

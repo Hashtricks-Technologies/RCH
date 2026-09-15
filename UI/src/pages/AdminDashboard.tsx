@@ -2,11 +2,13 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useApp } from "../store";
 import { Btn } from "../ui/kit";
+import Drawer from "../ui/Drawer";
+import AdminAudit from "./AdminAudit";
 import AdminSupport from "./AdminSupport";
 import AdminUsers from "./AdminUsers";
 import mark from "../assets/eateszy-mark.png";
 
-type Tab = "accounts" | "support";
+type Tab = "accounts" | "support" | "audit";
 
 /**
  * The whole of an admin-flagged account's experience - a capability, not a role (root
@@ -15,7 +17,8 @@ type Tab = "accounts" | "support";
  * and here is the only place it can ever reach - this file supplies the entire page, chrome
  * included, rather than being hosted inside `Shell`.
  *
- * Two tabs: staff accounts, and the support desk that answers every role's tickets.
+ * Three tabs: staff accounts, the support desk that answers every role's tickets, and the audit
+ * log of every change and sign-in.
  */
 export default function AdminDashboard() {
   const user = useApp((s) => s.user)!;
@@ -41,13 +44,18 @@ export default function AdminDashboard() {
             Support desk
             {waiting > 0 && <span className="adm-count" aria-label={`${waiting} need support`}>{waiting}</span>}
           </button>
+          <button type="button" role="tab" aria-selected={tab === "audit"} className={tab === "audit" ? "on" : undefined}
+            onClick={() => setTab("audit")}>Audit log</button>
         </nav>
         <span className="adm-who">{user.n}</span>
         <Btn variant="gh" size="sm" onClick={() => { void logout().then(() => nav("/login")); }}>Sign out</Btn>
       </header>
       <div className="adm-body" role="tabpanel">
-        {tab === "accounts" ? <AdminUsers /> : <AdminSupport />}
+        {tab === "accounts" ? <AdminUsers /> : tab === "support" ? <AdminSupport /> : <AdminAudit />}
       </div>
+      {/* Every other screen gets its drawer host from `Shell`, which this page never renders, so it
+          mounts its own. The audit log opens each of its entries in a drawer. */}
+      <Drawer />
     </div>
   );
 }
