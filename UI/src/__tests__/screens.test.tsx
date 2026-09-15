@@ -682,12 +682,27 @@ describe("the counter can ask the kitchen, and only for what the kitchen makes",
     const root = createRoot(host);
     act(() => { root.render(createElement(MemoryRouter, null, createElement(DRAWERS.korder, { id: "new" }))); });
 
-    const options = [...host.querySelectorAll("select[aria-label='Product 1'] option")].map((o) => o.textContent);
+    // The drawer's own picker (the form's "For" field carries the same aria-label, read-only).
+    act(() => {
+      const sel = host.querySelector<HTMLSelectElement>("select[aria-label='Outlet']")!;
+      sel.value = "coffee";
+      sel.dispatchEvent(new Event("change", { bubbles: true }));
+    });
     // The Coffee Shop's menu is capp, chai, juice, water, bisc, chips - not one finished good:
     // capp and chai are made at the till the moment they are sold, and the rest come off the
     // central store's shelf. Nothing downstream could fill an order for any of them, so the
     // picker offers nothing at all rather than a product the kitchen cannot make for this outlet.
-    expect(options).toEqual([]);
+    expect([...host.querySelectorAll("select[aria-label='Product 1'] option")].map((o) => o.textContent)).toEqual([]);
+
+    // Switching to the Restaurant proves the emptiness above is about the Coffee Shop's menu,
+    // not a picker that is broken outright: the Restaurant's puff/sand/salad are finished goods.
+    act(() => {
+      const sel = host.querySelector<HTMLSelectElement>("select[aria-label='Outlet']")!;
+      sel.value = "rest";
+      sel.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    const restOptions = [...host.querySelectorAll("select[aria-label='Product 1'] option")].map((o) => o.textContent);
+    expect(restOptions).toEqual(["Garden salad", "Veg puffs", "Veg sandwich"]);
 
     act(() => { root.unmount(); });
     host.remove();
