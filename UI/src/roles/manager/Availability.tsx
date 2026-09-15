@@ -6,6 +6,7 @@ import {
   Alert, Card, DataTable, FilterSelect, ImagePlaceholder, PageHead, Pill, Switch, TableFoot, Tag, Toolbar,
 } from "../../ui/kit";
 import { emptyFor, sortRows, useSort, type SortValue } from "./useSort";
+import { listFor, nameOfList } from "./Prices";
 import type { ItemType, LocKey } from "../../types";
 
 const TYPES: (ItemType | "All")[] = ["All", "MRP", "FG", "MTO"];
@@ -118,7 +119,7 @@ export default function Availability() {
           rows={counts.map((c) => ({
             key: c.loc,
             cells: [
-              <>{LOC[c.loc].n}<small>{LOC[c.loc].c} · list {LOC[c.loc].list}</small></>,
+              <>{LOC[c.loc].n}<small>{LOC[c.loc].c} · list {nameOfList(listFor(c.loc))}</small></>,
               LOC[c.loc].floor,
               c.listed,
               <b>{c.on}</b>,

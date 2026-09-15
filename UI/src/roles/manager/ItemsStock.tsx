@@ -6,6 +6,7 @@ import {
   activeItems, allOutlets, costOf, isRetired, isTicketOpen, locName, menuOf, openOutlets, operationalLocs,
   qty, resv, stockValue,
 } from "../../lib/selectors";
+import { listFor, nameOfList } from "./Prices";
 import { fq, lakh, money, money0, sum } from "../../lib/fmt";
 import {
   Alert, Btn, Card, DataTable, Field, FilterSelect, FormRow, Grid, PageHead,
@@ -104,7 +105,7 @@ export default function ItemsStock() {
   // ---- item patch ----
   // A retired line stays in `IT` so past bills still name it; it must not be offerable on a till.
   const listable = activeItems().filter((k) => !listed.includes(k) && IT[k].t !== "RAW" && IT[k].t !== "PACK");
-  const list = shop ? LOC[shop]?.list : undefined;
+  const list = shop ? listFor(shop) : "";
   const pickPrice = pick && list ? s.prices[list]?.[pick] : undefined;
   const listAtShop = async () => {
     if (!shop || !pick) return;
@@ -266,7 +267,7 @@ export default function ItemsStock() {
             <FormRow cols="f2">
               <Field label="Shop">
                 <select value={shop} onChange={(e) => { setShop(e.target.value as LocKey); setPick(""); }}>
-                  {outlets.map((l) => <option key={l} value={l}>{LOC[l].n} - list {LOC[l].list}</option>)}
+                  {outlets.map((l) => <option key={l} value={l}>{LOC[l].n} - list {nameOfList(listFor(l))}</option>)}
                 </select>
               </Field>
               <Field label="Product" hint={`${listable.length} catalogue product${listable.length === 1 ? "" : "s"} not yet on this till.`}>
@@ -280,13 +281,13 @@ export default function ItemsStock() {
             </FormRow>
             {pick !== "" && pickPrice == null && (
               <Alert tone="w" label="NO PRICE">
-                {IT[pick].n} has no price on list {list}. Add it here, then set a price on the Price Lists screen -
+                {IT[pick].n} has no price on list {nameOfList(list)}. Add it here, then set a price on the Price Lists screen -
                 until then the counter cannot bill it.
               </Alert>
             )}
             <div className="totrow"><span>Currently listed at {LOC[shop].n}</span><span>{listed.length}</span></div>
             <div className="totrow">
-              <span>Price on list {list}</span>
+              <span>Price on list {nameOfList(list)}</span>
               <span>{pick === "" ? "-" : pickPrice == null ? "not priced" : money(pickPrice)}</span>
             </div>
             <div className="mtop">

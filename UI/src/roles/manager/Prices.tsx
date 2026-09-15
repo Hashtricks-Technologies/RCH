@@ -28,8 +28,10 @@ export const sharers = (list: string) => openOutlets().filter((l) => listFor(l) 
 export const listOf = (names: string[]) =>
   names.length <= 1 ? names[0] ?? "" : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
 /** A price list's name for prose, falling back to its raw id if the registry has not caught up
- *  with a write yet (the moment between a create/switch landing and its own refetch resolving). */
-export const nameOfList = (id: string) => PRICE_LISTS[id]?.name ?? id;
+ *  with a write yet (the moment between a create/switch landing and its own refetch resolving).
+ *  An outlet's own `list` is `""` before a manager ever attaches one - `PriceListSettingsDrawer`'s
+ *  own wording for that state, so every screen that names a list reads the same sentence. */
+export const nameOfList = (id: string) => (id === "" ? "no list yet" : PRICE_LISTS[id]?.name ?? id);
 
 export default function Prices() {
   const s = useApp();
@@ -215,6 +217,29 @@ export default function Prices() {
   }
 
   const list = listFor(shop);
+  // A newly opened outlet starts on no list at all - nothing here is priced yet, and a save
+  // pressed on an empty table would post to `/api/prices//<it>`, a route nothing answers.
+  // Point the manager at Settings instead of rendering a table with nothing to save to.
+  if (list === "") {
+    return (
+      <>
+        <PageHead
+          crumbs={["Royal Care", "Outlets", "Price Lists", LOC[shop].n]}
+          title={`${LOC[shop].n} prices`}
+          tip="What this shop sells and charges."
+          actions={
+            <div style={{ display: "flex", gap: 6 }}>
+              {settings}
+              <Btn variant="gh" size="sm" onClick={() => go(null)}>Back to all shops</Btn>
+            </div>
+          }
+        />
+        <Alert tone="w" label="NO LIST">
+          {LOC[shop].n} is on {nameOfList(list)} - attach one from Settings before pricing or selling here.
+        </Alert>
+      </>
+    );
+  }
   const shared = sharers(list);
   const others = openOutlets().filter((l) => !shared.includes(l));
   const term = q.trim().toLowerCase();

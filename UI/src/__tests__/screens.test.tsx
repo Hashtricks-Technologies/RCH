@@ -21,7 +21,7 @@ import { REPORTS } from "../roles/store/Reports";
 import { bodyKey } from "../roles/manager/ApprovalDrawer";
 import { IT as FXIT, USERS, seedVendors } from "@rch/contract/fixtures";
 // ---- item patch ----
-import { IT, LOC, PRICE_LISTS, hydratePriceLists } from "../data/master";
+import { IT, LOC, PRICE_LISTS, hydrateLocations, hydratePriceLists } from "../data/master";
 import { activeItems, allOutlets, madeItems } from "../lib/selectors";
 import { Alert } from "../ui/kit";
 import type { PoolLine } from "../lib/selectors";
@@ -926,6 +926,34 @@ describe("the price lists tab", () => {
 
     act(() => { ui.button("Settings").click(); });
     expect(openDrawer).toHaveBeenCalledWith("plset", "prices");
+  });
+});
+
+describe("an outlet on no price list yet (I2)", () => {
+  it("names it 'no list yet' on the landing banner rather than a blank list", () => {
+    hydrateLocations({ ...LOC, kiosk: { ...LOC.kiosk, list: undefined } });
+    act(() => { as("manager"); useApp.setState({ shopFilter: null }); });
+    const ui = mount(manager.prices);
+
+    expect(ui.text()).toContain("no list yet");
+    // Nothing else prints as a blank name for the outlet the fixture just took the list off.
+    expect(ui.host.querySelector("b")?.textContent).not.toBe("");
+  });
+
+  it("offers no price table to save to, and no path to a savePrice(\"\", …) call", () => {
+    hydrateLocations({ ...LOC, kiosk: { ...LOC.kiosk, list: undefined } });
+    const savePrice = vi.fn(async () => true);
+    act(() => { as("manager"); useApp.setState({ savePrice, shopFilter: "kiosk" }); });
+    const ui = mount(manager.prices);
+
+    expect(ui.text()).toContain("no list yet");
+    expect(ui.text()).toContain("attach one from Settings");
+    // The price table - and its Save button, whose click would post to `/api/prices//<it>` - is
+    // not rendered at all, so there is no button anywhere that can call `savePrice` with an
+    // empty list id.
+    expect([...ui.host.querySelectorAll("button")].map((b) => (b.textContent ?? "").trim())).not.toContain("Save");
+    expect(ui.host.querySelector('input[aria-label^="New price for"]')).toBeNull();
+    expect(savePrice).not.toHaveBeenCalled();
   });
 });
 
