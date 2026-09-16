@@ -95,7 +95,10 @@ export async function openBillsFor(
   return rows
     .map((r) => {
       const settled = money(r.settled);
-      return { no: r.no, loc: r.loc, at: r.at, total: r.total, settled, owed: Math.round((r.total - settled) * 100) / 100 };
+      // `at` through a `new Date`: a grouped select with a raw `sum` beside it hands the
+      // timestamp back as the string `pg` parsed it from, not as the `Date` the column's own
+      // mode would give, and everything downstream expects an instant it can format.
+      return { no: r.no, loc: r.loc, at: new Date(r.at), total: r.total, settled, owed: Math.round((r.total - settled) * 100) / 100 };
     })
     .filter((r) => r.owed > 0);
 }

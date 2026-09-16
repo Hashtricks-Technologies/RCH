@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { and, asc, eq, sql } from "drizzle-orm";
+import type { PayerKind } from "@rch/contract";
 import { BillSchema, StockResponseSchema } from "@rch/contract";
 import { dmy, istDate } from "@rch/domain";
 import * as s from "../../db/schema/index.js";
@@ -414,7 +415,7 @@ describe("the staff credit ceiling", () => {
   });
 
   const STAFF = (id: string, name: string) => ({ kind: "staff" as const, id, name });
-  const oneWater = (payer?: { kind: "patient" | "staff" | "dept"; id: string; name: string }) =>
+  const oneWater = (payer?: { kind: PayerKind; id: string; name: string }) =>
     ({ loc: "coffee", tender: payer ? "Staff credit" : "Cash", ...(payer ? { payer } : {}), lines: [{ it: "water", qty: 1 }] });
 
   it("lets a bill land exactly on the ceiling", async () => {
@@ -430,8 +431,8 @@ describe("the staff credit ceiling", () => {
     const r = await pay("u1", oneWater(STAFF("RC-1902", "Vinoth Prakash · Kitchen")));
 
     expect(r.statusCode).toBe(422);
-    expect(r.json().error.message).toBe("₹3,010.00 breaches the ₹3,000 staff credit limit for Vinoth Prakash · Kitchen. Take another tender or split the bill.");
-    expect(r.json().error.details).toEqual({ taken: 2990, room: 10 });
+    expect(r.json().error.message).toBe("₹3,010.00 breaches the ₹3,000 credit limit for Vinoth Prakash · Kitchen. Settle the account, take another tender, or split the bill.");
+    expect(r.json().error.details).toEqual({ outstanding: 2990, limit: 3000 });
     expect((await app.db.select().from(s.bills)).length).toBe(before);      // refused writes nothing
   });
 
@@ -443,10 +444,37 @@ describe("the staff credit ceiling", () => {
     expect((await pay("u1", oneWater(STAFF("RC-4471", "Kavitha Raman · F&B")))).statusCode).toBe(200);
   });
 
-  it("counts this month only", async () => {
+  it("counts last month too - a debt is not forgiven by the calendar turning", async () => {
+    // The rule this replaced measured a calendar month, because nothing but a same-day void
+    // could bring a balance down. Now the only thing that clears a debt is paying it, so an
+    // unsettled bill from six weeks ago is still exposure and the ceiling still counts it.
+    // Their own payer: every case in this describe shares one database, and a balance left on a
+    // fixture staff member is a ceiling the next case trips over for the wrong reason.
+    await app.db.insert(s.payers).values({ kind: "staff", id: "RC-9201", name: "Anitha Rao · Pharmacy" });
     const lastMonth = new Date(Date.now() - 45 * 24 * 60 * 60 * 1000);
-    await given.bill(app.db, { loc: "coffee", total: 2999, payer: STAFF("RC-4471", "Kavitha Raman · F&B"), at: lastMonth });
-    const r = await pay("u1", oneWater(STAFF("RC-4471", "Kavitha Raman · F&B")));
+    await given.bill(app.db, { loc: "coffee", total: 2999, payer: STAFF("RC-9201", "Anitha Rao · Pharmacy"), at: lastMonth });
+    const r = await pay("u1", oneWater(STAFF("RC-9201", "Anitha Rao · Pharmacy")));
+    expect(r.statusCode, r.body).toBe(422);
+  });
+
+  it("gives the room back once the balance is settled", async () => {
+    // The whole reason the ceiling stopped being a calendar month: paying is what clears a debt,
+    // and the room comes back the moment it is paid rather than on the first of next month.
+    await app.db.insert(s.payers).values({ kind: "staff", id: "RC-9202", name: "Mohan Das · Physiotherapy" });
+    const payer = STAFF("RC-9202", "Mohan Das · Physiotherapy");
+    await given.bill(app.db, { loc: "coffee", total: 2990, payer });
+    expect((await pay("u1", oneWater(payer))).statusCode).toBe(422);
+    await given.settlement(app.db, { kind: "staff", id: "RC-9202", name: "Mohan Das · Physiotherapy", amount: 2990 });
+    const r = await pay("u1", oneWater(payer));
+    expect(r.statusCode, r.body).toBe(200);
+  });
+
+  it("refuses nothing at all for a party the manager gave no ceiling", async () => {
+    // A department is seeded with no limit. `null` is not zero: nothing it is ever charged
+    // breaches anything, which is what "no limit" has to mean for it to be worth having.
+    const dept = { kind: "dept" as const, id: "CC-NUR", name: "Nursing" };
+    await given.bill(app.db, { loc: "coffee", total: 99_000, tender: "Dept", payer: dept });
+    const r = await pay("u1", { loc: "coffee", tender: "Dept", payer: dept, lines: [{ it: "water", qty: 1 }] });
     expect(r.statusCode, r.body).toBe(200);
   });
 
@@ -534,7 +562,7 @@ describe("the payer is somebody on the roster, not a word the till typed", () =>
   beforeAll(async () => {
     await app.db.transaction((tx) => postMoves(tx, [{ loc: "coffee", it: "water", qty: 400, kind: "adjustment", refType: "test", refId: "roster-topup" }]));
   });
-  const oneWater = (payer: { kind: "patient" | "staff" | "dept"; id: string; name: string }, tender: string) =>
+  const oneWater = (payer: { kind: PayerKind; id: string; name: string }, tender: string) =>
     ({ loc: "coffee", tender, payer, lines: [{ it: "water", qty: 1 }] });
 
   it("refuses an id nobody is on, and writes nothing", async () => {
@@ -552,6 +580,9 @@ describe("the payer is somebody on the roster, not a word the till typed", () =>
     const d = await pay("u1", oneWater({ kind: "dept", id: "CC-XX", name: "Nobody At All" }, "Dept"));
     expect(d.statusCode).toBe(422);
     expect(d.json().error.message).toBe("There is no department CC-XX on the roster");
+    const c = await pay("u1", oneWater({ kind: "doctor", id: "DR-000", name: "Nobody At All" }, "Doctor credit"));
+    expect(c.statusCode).toBe(422);
+    expect(c.json().error.message).toBe("There is no doctor DR-000 on the roster");
   });
 
   it("writes the roster's name on the bill, not the one the till sent", async () => {
@@ -571,7 +602,7 @@ describe("the payer is somebody on the roster, not a word the till typed", () =>
     // a whole second ceiling for the same person, one keystroke away.
     const real = await pay("u1", oneWater({ kind: "staff", id: "RC-1902", name: "Vinoth Prakash · Kitchen" }, "Staff credit"));
     expect(real.statusCode).toBe(422);
-    expect(real.json().error.message).toContain("staff credit limit");
+    expect(real.json().error.message).toContain("credit limit");
     const suffixed = await pay("u1", oneWater({ kind: "staff", id: "RC-1902-b", name: "Vinoth Prakash · Kitchen" }, "Staff credit"));
     expect(suffixed.statusCode).toBe(422);
     expect(suffixed.json().error.message).toBe("There is no staff member RC-1902-b on the roster");
@@ -801,7 +832,7 @@ describe("POST /bills/:no/void - the manager takes a bill back", () => {
     expect(head.voidedAt).toBeNull();
   });
 
-  it("frees a staff member's credit for the month - a sale that would have breached now lands", async () => {
+  it("takes a bill off a staff member's account - a sale that would have breached now lands", async () => {
     await app.db.insert(s.payers).values({ kind: "staff", id: "RC-9102", name: "Deepa Raman · Radiology" });
     const payer = { kind: "staff" as const, id: "RC-9102", name: "Deepa Raman · Radiology" };
     const mistake = await given.bill(app.db, { loc: "coffee", total: 2990, payer });
@@ -809,11 +840,11 @@ describe("POST /bills/:no/void - the manager takes a bill back", () => {
 
     const breached = await pay("u1", cart);
     expect(breached.statusCode).toBe(422);
-    expect(breached.json().error.message).toContain("staff credit limit");
+    expect(breached.json().error.message).toContain("credit limit");
 
     const v = await voidBill("u2", mistake, "Charged to the wrong staff member");
     expect(v.statusCode, v.body).toBe(200);
-    expect(v.json().message).toBe(`${mistake} voided - ₹2,990.00 is back on Deepa Raman · Radiology's credit for the month`);
+    expect(v.json().message).toBe(`${mistake} voided - ₹2,990.00 is off Deepa Raman · Radiology's account`);
 
     const now = await pay("u1", cart);
     expect(now.statusCode, now.body).toBe(200);
@@ -926,7 +957,7 @@ describe("two tills cannot both fit under one ceiling", () => {
 
   it("serialises the credit read per payer: one bill lands, the other is refused", async () => {
     // ₹1,600 each against a ₹3,000 ceiling: either alone fits and both together do not. The
-    // ceiling is a sum over bills that are already committed, so without `lockStaffCredit` both
+    // ceiling is a sum over bills that are already committed, so without `lockPayerCredit` both
     // tills read ₹0 taken before either has written, both pass, and the hospital carries ₹3,200
     // of credit it never agreed to. Proven by commenting the advisory lock out: both answer 200.
     await app.db.insert(s.payers).values({ kind: "staff", id: "RC-9001", name: "Priya Anand · Housekeeping" });
@@ -941,8 +972,8 @@ describe("two tills cannot both fit under one ceiling", () => {
     const loser = a.statusCode === 422 ? a : b;
     expect(loser.json().error).toMatchObject({
       code: "rule",
-      message: "₹3,200.00 breaches the ₹3,000 staff credit limit for Priya Anand · Housekeeping. Take another tender or split the bill.",
-      details: { taken: 1600, room: 1400 },
+      message: "₹3,200.00 breaches the ₹3,000 credit limit for Priya Anand · Housekeeping. Settle the account, take another tender, or split the bill.",
+      details: { outstanding: 1600, limit: 3000 },
     });
     // One bill, one bill's worth of credit - the refused one left nothing behind.
     expect((await app.db.select().from(s.bills)).length).toBe(billsBefore + 1);

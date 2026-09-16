@@ -16,8 +16,13 @@ import { BillPartySchema, PayerKindSchema, PayerSchema } from "./documents.js";
 
 /** A discount is a percentage of the bill, never a rupee amount: the outlets sell a few hundred
  *  products at prices the manager moves whenever a cost does, and a rupee concession would have
- *  to be re-set every time one did. Two decimals, because 12.5% is a real rate. */
-export const DiscountPctSchema = z.number().min(0).max(100).multipleOf(0.01);
+ *  to be re-set every time one did. Two decimals, because 12.5% is a real rate.
+ *
+ *  The 0-100 range is deliberately *not* here: it is a rule, and the manager has to hear the
+ *  service's own sentence ("120% is not a discount; give a rate between 0% and 100%") rather
+ *  than a generic 400 - the same stance `QtySchema` takes on a quantity of zero. What is here is
+ *  shape: a finite number, to the paise. */
+export const DiscountPctSchema = z.number().finite().multipleOf(0.01);
 /** What one category is charged, and how far it may run. `limit: null` is "no ceiling" and is
  *  the honest default for a consultant nobody wants the till arguing with - it is not the same
  *  as 0, which would refuse every credit sale. */

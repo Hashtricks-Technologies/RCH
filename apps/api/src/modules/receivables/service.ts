@@ -29,6 +29,11 @@ import { iso } from "../../lib/time.js";
 import type { AccessClaims } from "../../plugins/auth.js";
 import { receivablesRepo as repo, type SettlementRow } from "./repo.js";
 
+/** The allocation rows come back keyed by settlement so one read serves a whole page of them;
+ *  the wire shape is the pair alone, and `SettlementSchema` is strict about it. */
+const linesOf = (all: { settlementId: string; no: string; amount: number }[], id: string) =>
+  all.filter((l) => l.settlementId === id).map((l) => ({ no: l.no, amount: l.amount }));
+
 export type PayerParams = z.infer<typeof PayerParamsSchema>;
 export type RecordSettlementBody = z.infer<typeof RecordSettlementBodySchema>;
 export type VoidSettlementBody = z.infer<typeof VoidSettlementBodySchema>;
@@ -199,7 +204,7 @@ export function createReceivablesService(db: Db) {
           kind: p.kind, id: p.id, name: payer.name,
           outstanding, limit: terms.limit, pct: terms.pct,
           open: open.map((b) => ({ no: b.no, loc: b.loc, at: iso(b.at), total: b.total, settled: b.settled, owed: b.owed })),
-          settlements: rows.map((r) => toWireSettlement(r, names.get(r.by) ?? r.by, lines.filter((l) => l.settlementId === r.id))),
+          settlements: rows.map((r) => toWireSettlement(r, names.get(r.by) ?? r.by, linesOf(lines, r.id))),
         };
       });
     },
@@ -211,7 +216,7 @@ export function createReceivablesService(db: Db) {
         const rows = await repo.recentSettlements(tx, SETTLEMENT_FEED);
         const lines = await repo.linesOf(tx, rows.map((r) => r.id));
         const names = await repo.userNames(tx, [...new Set(rows.map((r) => r.by))]);
-        return rows.map((r) => toWireSettlement(r, names.get(r.by) ?? r.by, lines.filter((l) => l.settlementId === r.id)));
+        return rows.map((r) => toWireSettlement(r, names.get(r.by) ?? r.by, linesOf(lines, r.id)));
       });
     },
 

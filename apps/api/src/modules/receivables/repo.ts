@@ -65,12 +65,13 @@ export const receivablesRepo = {
       kind: bills.payerKind, id: bills.payerId,
       charged: sql<string>`coalesce(sum(${bills.total}), 0)`,
       bills: sql<number>`count(*)::int`,
-      oldest: sql<Date>`min(${bills.at})`,
+      oldest: sql<string>`min(${bills.at})`,
     }).from(bills)
       .where(and(inArray(bills.tender, [...ACCOUNT_TENDERS]), isNull(bills.voidedAt)))
       .groupBy(bills.payerKind, bills.payerId);
+    // `min(at)` comes back as the string `pg` parsed, like every other aggregate here.
     return rows.flatMap((r) => (r.kind && r.id
-      ? [{ kind: r.kind, id: r.id, charged: money(r.charged), bills: r.bills, oldest: r.oldest }]
+      ? [{ kind: r.kind, id: r.id, charged: money(r.charged), bills: r.bills, oldest: new Date(r.oldest) }]
       : []));
   },
   async settledByPayer(db: Reader): Promise<{ kind: PayerKind; id: string; settled: number }[]> {

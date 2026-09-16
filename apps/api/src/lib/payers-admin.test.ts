@@ -36,7 +36,7 @@ describe("parsePayerCsv", () => {
     // And every bad one is named by the line an editor shows and the column that is wrong,
     // so one run tells the administrator everything to fix.
     expect(errors).toEqual([
-      { row: 3, column: "kind", message: '"patinet" is not a payer kind - use one of patient, staff, dept' },
+      { row: 3, column: "kind", message: '"patinet" is not a payer kind - use one of patient, staff, dept, doctor' },
       { row: 7, column: "id", message: "an id is required - it is the hospital's own number, not one this tool invents" },
     ]);
   });

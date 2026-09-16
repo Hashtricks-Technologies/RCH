@@ -20,9 +20,9 @@ describe("seed", () => {
     expect(await count(locations)).toBe(Object.keys(FX.LOC).length); // quarantine is one of them
     expect(await count(items)).toBe(Object.keys(FX.IT).length);
     expect(await count(users)).toBe(FX.USERS.length);
-    // The three rosters a non-cash bill may be posted to, in one table. A patient the counter
+    // The four registers a non-cash bill may be posted to, in one table. A patient the counter
     // can pick but the server cannot find is a bill it would refuse, so the lists have to match.
-    expect(await count(payers)).toBe(FX.PATIENTS.length + FX.STAFF.length + FX.DEPTS.length);
+    expect(await count(payers)).toBe(FX.PATIENTS.length + FX.STAFF.length + FX.DEPTS.length + FX.DOCTORS.length);
     const staff = await t.db.select().from(payers).where(eq(payers.id, "RC-1902"));
     expect(staff.map((p) => [p.kind, p.name, p.active])).toEqual([["staff", "Vinoth Prakash · Kitchen", true]]);
   });

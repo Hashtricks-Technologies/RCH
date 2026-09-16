@@ -341,7 +341,7 @@ describe("what a ticket carries, and to whom", () => {
       // The ledger behind the bill is untouched: every stock report reads exactly what it did.
       expect(bill.lines, u).toEqual([{ it: "water", qty: 2, rate: 60 }]);
       expect(bill.tot, u).toBe(120);
-      expect(snap.roster, u).toEqual({ patients: [], staff: [], depts: [] });
+      expect(snap.roster, u).toEqual({ patients: [], staff: [], depts: [], doctors: [] });
       // And a refetch must not put back what the snapshot has just taken off.
       const listed = (await getAs(u, "/api/v1/bills")).find((b: { no: string }) => b.no === named);
       expect(listed.payer, u).toBeUndefined();

@@ -15,7 +15,7 @@ import type { TicketRefType } from "../lib/tickets.js";
  *  collided often enough to matter. Each test file is its own module instance and its own
  *  schema, so the counters need not be unique across files. Bands sit above the fixtures and
  *  above each sequence's start; padStart keeps the printed width when a band runs past 999. */
-const counters = { req: 0, tkt: 0, ask: 0, bill: 0, pord: 0, prq: 0, po: 0, vendor: 0, contract: 0, npr: 0, sup: 0, adj: 0, adjreq: 0 };
+const counters = { req: 0, tkt: 0, ask: 0, bill: 0, pord: 0, prq: 0, po: 0, vendor: 0, contract: 0, npr: 0, sup: 0, adj: 0, adjreq: 0, settlement: 0 };
 const nextId = (prefix: string, base: number, family: keyof typeof counters): string =>
   `${prefix}${String(base + ++counters[family]).padStart(4, "0")}`;
 
@@ -107,6 +107,32 @@ export const given = {
       await tx.insert(s.billLines).values(lines.map((l, lineNo) => ({ billNo: no, lineNo, itemKey: l.it, qty: l.qty, rate: l.rate })));
     });
     return no;
+  },
+  /**
+   * A payment against what somebody owes, written straight in - no allocation and no lines.
+   *
+   * A case about the *ceiling* needs a balance brought down and nothing else, and going through
+   * `POST /settlements` to get one would exercise the allocation on the way past: the same
+   * reasoning `given.adjustment` gives for writing the document without the ledger move. A case
+   * about the allocation itself calls the route.
+   *
+   * Ids sit at STL-2026-9NN, above the sequence start, for the reason every other family gives.
+   */
+  async settlement(db: Db, p: {
+    kind: PayerKind; id: string; name: string; amount: number;
+    mode?: string; at?: Date; by?: string; lines?: { no: string; amount: number }[];
+  }): Promise<string> {
+    const stl = `STL-2026-${String(900 + ++counters.settlement)}`;
+    await db.transaction(async (tx) => {
+      await tx.insert(s.settlements).values({
+        id: stl, kind: p.kind, payerId: p.id, payerName: p.name, amount: p.amount,
+        mode: p.mode ?? "Cash", at: p.at ?? new Date(), by: p.by ?? "u2",
+      });
+      if (p.lines?.length) {
+        await tx.insert(s.settlementLines).values(p.lines.map((l) => ({ settlementId: stl, billNo: l.no, amount: l.amount })));
+      }
+    });
+    return stl;
   },
   /** A production order the kitchen has not touched yet (or has, if `st` says so). Ids sit at
    *  PRD-2026-9NN, above the seeded 029/030 and the sequence start. */
