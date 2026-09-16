@@ -392,7 +392,7 @@ The config pins `TZ=UTC`, a 30 s test timeout, and runs files in parallel.
   running in parallel never share a role. Roles belong to the server, not to a test file's schema.
 - **The audit tests read `audit_outbox` directly** to assert what a real route inserted:
   `modules/audit-capture.test.ts` (completeness, done events, atomicity, refusals, masking),
-  `modules/audit-before.test.ts` (every `auditBefore` service) and `modules/auth/auth-audit.test.ts` (the
+  `modules/audit-before.test.ts` (every `auditBefore` service, the rate card and the payer register included) and `modules/auth/auth-audit.test.ts` (the
   sign-in events). Test files are the only place in this app a read of the outbox is allowed.
 - **A test that reads a refusal's event awaits `app.auditSettled()` first.** The `onResponse` insert runs
   after `inject` resolves; `done` events commit inside the write and need no wait, and neither do the sign-in

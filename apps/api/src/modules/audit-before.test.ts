@@ -202,3 +202,47 @@ describe("before values: staff accounts", () => {
     expect((await lastEvent("deleteAdminUser")).before).toEqual(maskSecrets(off.result));
   });
 });
+
+describe("before values: the payer register and what each party is charged", () => {
+  /** A consultant of this case's own, so no case moves somebody another case relies on. */
+  const doctor = async (): Promise<{ id: string; row: Record<string, unknown> }> => {
+    const id = `DR-${randomUUID().slice(0, 6).toUpperCase()}`;
+    const r = await send("u7", "POST", "/admin/payers", { kind: "doctor", id, name: `Audit Probe ${id}` });
+    return { id: String(r.result.id), row: r.result };
+  };
+
+  it("updatePayer keeps the payer as it was", async () => {
+    const { id, row } = await doctor();
+    const renamed = await send("u7", "PATCH", `/admin/payers/doctor/${id}`, { name: "Audit Probe Renamed" });
+    // The before is the wire shape the create answered with, field for field - which is the
+    // property the drawer's diff relies on.
+    expect((await lastEvent("updatePayer")).before).toEqual(maskSecrets({ kind: "doctor", id, name: row.name, active: true }));
+    // And the second edit's before is the first edit's result, less the two derived figures the
+    // register carries but a payer row does not.
+    await send("u7", "PATCH", `/admin/payers/doctor/${id}`, { active: false });
+    expect((await lastEvent("updatePayer")).before)
+      .toEqual(maskSecrets({ kind: "doctor", id, name: renamed.result.name, active: true }));
+  });
+
+  it("setPayerTerms keeps what that person was on, and says so even when they were on nothing", async () => {
+    const { id } = await doctor();
+    // Nobody has given them terms of their own yet, so both fields read `null` - "inherit",
+    // which is a third state and not the same as a rate of zero.
+    const first = await send("u2", "PUT", `/payer-terms/doctor/${id}`, { pct: 30, limit: 1200 });
+    expect((await lastEvent("setPayerTerms")).before)
+      .toEqual(maskSecrets({ kind: "doctor", id, name: first.result.name, pct: null, limit: null }));
+
+    await send("u2", "PUT", `/payer-terms/doctor/${id}`, { pct: 40, limit: null });
+    expect((await lastEvent("setPayerTerms")).before)
+      .toEqual(maskSecrets({ kind: "doctor", id, name: first.result.name, pct: 30, limit: 1200 }));
+  });
+
+  it("setClassTerms keeps the category's own rate and ceiling", async () => {
+    // `patient` rather than a category another case moves: every case here shares one database.
+    const first = await send("u2", "PUT", "/payer-terms/class/patient", { pct: 5, limit: 900 });
+    expect((await lastEvent("setClassTerms")).before).toEqual(maskSecrets({ cls: "patient", pct: 0, limit: null }));
+    await send("u2", "PUT", "/payer-terms/class/patient", { pct: 7, limit: null });
+    expect((await lastEvent("setClassTerms")).before)
+      .toEqual(maskSecrets({ cls: "patient", pct: first.result.pct, limit: first.result.limit }));
+  });
+});
