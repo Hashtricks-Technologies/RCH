@@ -87,8 +87,10 @@ dist/cli/seed.mjs --bare --force --yes-seed rch --yes-destroy rch          # on 
 What a bare hospital needs before it can sell anything, in the order the screens need it: the
 real staff accounts (`RC-0001` at `/admin`), the item master (the store's, buyer's or kitchen's
 **Add Product**), shelf
-prices and menus (the manager's **Price Lists** and **Items & Stock**), the payer roster (§5), and
-stock (a goods receipt, or an adjustment count-up for an opening balance).
+prices and menus (the manager's **Price Lists** and **Items & Stock**), the payer register
+(`/admin`'s **Payers** tab, or the CSV in §5), what each party is charged (the manager's **Credit
+& Settlements**: every category opens at 0% off, so nothing is given away until somebody sets it),
+and stock (a goods receipt, or an adjustment count-up for an opening balance).
 
 ### Test users
 
@@ -804,9 +806,13 @@ live box, which holds real data, and an older image still reads the table afterw
 
 ### The payer roster
 
-No screen keeps the roster. Patients, staff members and departments reach it through this CLI,
-from a file: a ward list of a few hundred rows at go-live, or whatever a hospital-side change
-produced since.
+The register itself is a screen now - `/admin`'s **Payers** tab, where the super admin opens,
+renames and switches one off - so a single consultant or cost centre is added there and reaches
+every till over the change stream. This CLI stays for the case a screen is the wrong tool: a ward
+list of a few hundred rows at go-live, or whatever a hospital-side export has produced since.
+
+What each of them is *charged* is neither of those: it is the outlet manager's **Credit &
+Settlements** screen, and nothing on this page sets it.
 
 ```bash
 pnpm --filter @rch/api payers import --csv ./wards.csv
@@ -816,8 +822,8 @@ pnpm --filter @rch/api payers import --csv ./wards.csv --replace-names
 The file is three columns, `kind,id,name`, one payer a line. A header row naming those columns is
 optional; blank lines and lines starting `#` are skipped; a field may be quoted so a name can
 carry a comma; a leading byte-order mark is stripped, so a file Excel saved as "CSV UTF-8" is
-read as-is. `kind` is one of `patient|staff|dept`. The `id` is the hospital's own number - there
-is no sequence behind a payer - and `(kind, id)` is what makes a row unique.
+read as-is. `kind` is one of `patient|staff|dept|doctor`. The `id` is the hospital's own number -
+there is no sequence behind a payer - and `(kind, id)` is what makes a row unique.
 
 Three behaviours to know before running it against a live database:
 
@@ -830,8 +836,8 @@ Three behaviours to know before running it against a live database:
   touches an existing name.
 - **A rename never reopens a closed account.** `--replace-names` on a deactivated payer updates
   the name and leaves the switch alone; the summary counts those apart (`renamed 3 (1 still
-  inactive)`) so "renamed 3" cannot be read as three people back on the till's picker. Nothing in
-  the application reopens one.
+  inactive)`) so "renamed 3" cannot be read as three people back on the till's picker. The
+  admin's own Payers tab is the one door that switches one back on.
 
 The import does not announce over SSE, so an open browser will not see the new rows until it is
 reloaded - the same as `users` and `db:seed`, and fine for a job that runs before anybody is
