@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { LocKeySchema, Money, PriceListIdSchema, Qty, StockLocSchema } from "./common.js";
 import * as D from "./documents.js";
+import * as R from "./receivables.js";
 
 // Not every caller sees every location - a counter operator's snapshot is scoped down to their
 // own (`scope()`) - and the set of locations is data, so these are records keyed by a checked key
@@ -15,6 +16,7 @@ export const SnapshotSchema = z.object({
   locations: z.record(z.string(), D.LocationSchema),
   users: z.array(D.UserMinSchema),   // the directory, not a contact list - `user` above is the caller's own, whole
   roster: D.PayerRosterSchema,       // the other directory of people: who a bill may be charged to
+  terms: R.TermsSchema,              // and what each of them is charged - the rate card the till prices against
   stock: byStockLoc(z.record(z.string(), Qty)),
   rsv: z.record(z.string(), Qty),          // "loc:item" -> reserved
   ovr: z.record(z.string(), z.string()),   // "loc:item" -> reason
@@ -80,6 +82,11 @@ export const SupportTicketsResponseSchema = z.array(D.SupportTicketSchema);
  *  the whole snapshot. Scoped exactly as the snapshot's own copy is: the kitchen,
  *  the store and the buyer never open a payer picker and read an empty one (`scopeRoster`). */
 export const RosterResponseSchema = D.PayerRosterSchema;
+/** The rate card on its own, so a notice naming "terms" refetches it alone. Scoped exactly as
+ *  the roster is - `access: "any"` with an empty body for the three desks that never take a
+ *  bill - so that a store keeper's open tab refetching a manager's write gets an empty answer
+ *  rather than a 403 that fails its whole `Promise.all`. */
+export const TermsResponseSchema = R.TermsSchema;
 // ---- adjustments
 /** The adjustment register on its own, so a write naming "adjustments" refetches that slice
  *  rather than the whole snapshot. Scoped like `stock`: a counter sees its own. */

@@ -7,7 +7,10 @@ export type IdKind =
   // (or does not become) an "adj" document of its own.
   | "adj_req"
   // ---- price lists: a named entity like a vendor, not a document series.
-  | "price_list";
+  | "price_list"
+  // ---- settlements: what somebody paid against what they owe. A numbered document, because a
+  // payment nobody can name is a payment nobody can dispute.
+  | "settlement";
 
 const pad = (n: number, w: number) => String(n).padStart(w, "0");
 const ymd = (d: Date) => {
@@ -41,6 +44,9 @@ export function formatId(kind: IdKind, n: number, at: Date = new Date()): string
     // beside `req`'s own would not be told apart if it were not for the different prefix.
     case "adj_req":     return `ADJREQ-${year(at)}-0${n}`;
     case "price_list":  return `PL-${pad(n, 3)}`;
+    // ---- settlements. Padded to four for the same reason `adj` is: the series starts at one,
+    // and `STL-2026-1` sorting beside `STL-2026-10` reads wrongly on every list that sorts as text.
+    case "settlement":  return `STL-${year(at)}-${pad(n, 4)}`;
   }
 }
 
@@ -101,4 +107,6 @@ export const SEQUENCE_START: Record<IdKind, number> = {
   adj_req: 1,
   // ---- price lists: two seeded lists (the old A and B), so the series continues past them.
   price_list: 3,
+  // ---- settlements: nothing was ever settled before, so the series starts at one.
+  settlement: 1,
 };

@@ -20,7 +20,10 @@ export const shopAskStatusEnum = pgEnum("shop_ask_status", ["Asked", "Sent", "De
 export const prodOrderStatusEnum = pgEnum("prod_order_status", ["New", "Accepted", "In kitchen", "Ready", "Dispatched", "Declined"]);
 export const prqStatusEnum = pgEnum("prq_status", ["Sent", "Approved", "Partially approved", "Declined"]);
 export const poStatusEnum = pgEnum("po_status", ["Draft", "Ordered", "Partially received", "Received", "Cancelled"]);
-export const payerKindEnum = pgEnum("payer_kind", ["patient", "staff", "dept"]);
+// ---- payers. `doctor` joined the other three in 0021, in a migration of its own: Postgres lets
+// `alter type ... add value` run inside a transaction, but not the statement that first uses the
+// value it added, so anything referring to a consultant has to be in a later file.
+export const payerKindEnum = pgEnum("payer_kind", ["patient", "staff", "dept", "doctor"]);
 export const supportTopicEnum = pgEnum("support_topic", [
   "Sign in & access", "A screen will not load", "A number looks wrong", "Printing & receipts",
   "Slow or freezing", "Training & how do I", "Feature request", "Something else",

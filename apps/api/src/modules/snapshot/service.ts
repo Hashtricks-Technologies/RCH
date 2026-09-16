@@ -1,14 +1,15 @@
 import type { z } from "zod";
 import { BILL_DAYS } from "@rch/contract";
-import type { Adjustment, AdjustmentRequest, Batch, Bill, Grn, PayerRoster, ProdOrder, ProductRequest, PurchaseOrder, RateContract, Requisition, ShopAsk, SnapshotSchema, StockRequest, StockResponseSchema, Ticket, Vendor } from "@rch/contract";
+import type { Adjustment, AdjustmentRequest, Batch, Bill, Grn, PayerRoster, ProdOrder, ProductRequest, PurchaseOrder, RateContract, Requisition, ShopAsk, SnapshotSchema, StockRequest, StockResponseSchema, Terms, Ticket, Vendor } from "@rch/contract";
 import type { Db } from "../../db/client.js";
 import type { Tx } from "../../lib/db.js";
 import { withReadTransaction } from "../../lib/db.js";
 import { NotFoundError } from "../../lib/errors.js";
+import { readTerms } from "../../lib/terms.js";
 import { toWireUser } from "../../lib/wire.js";
 import type { AccessClaims } from "../../plugins/auth.js";
 import { snapshotRepo } from "./repo.js";
-import { redactOtps, scope, scopeAdjustmentRequests, scopeAdjustments, scopeBatches, scopeBills, scopeBuying, scopePayers, scopeProdOrders, scopeProductRequests, scopeRequests, scopeRoster, scopeShopAsks, scopeStock, scopeTickets } from "./scope.js";
+import { redactOtps, scope, scopeAdjustmentRequests, scopeAdjustments, scopeBatches, scopeBills, scopeBuying, scopePayers, scopeProdOrders, scopeProductRequests, scopeRequests, scopeRoster, scopeShopAsks, scopeStock, scopeTerms, scopeTickets } from "./scope.js";
 import * as M from "./readers/master.js";
 import * as S from "./readers/stock.js";
 import * as D from "./readers/documents.js";
@@ -58,6 +59,7 @@ export function createSnapshotService(db: Db) {
         const priceLists = await M.readPriceLists(tx);
         const menu = await M.readMenu(tx);
         const roster = await M.readRoster(tx);
+        const terms = await readTerms(tx);
         const stock = await S.readStock(tx);
         const rsv = await S.readRsv(tx);
         const ovr = await S.readOvr(tx);
@@ -81,7 +83,7 @@ export function createSnapshotService(db: Db) {
         const adjReq = await D.readAdjustmentRequests(tx, names);
         // The desk and its owners come off one read: `scope()` cuts the list on `owners`, so a
         // ticket in one and not the other is a ticket its own author cannot see.
-        const full: Snapshot = { user: toWireUser(u), items, locations, users, prices, priceLists, menu, stock, rsv, ovr, req, tkt, prq, po, pord, batch, bills, grn, vendors, contracts, tickets: support.tickets, productReqs, shopAsks, roster, sales: salesBlock.sales, dayLabels: salesBlock.dayLabels, adjustments, adjReq };
+        const full: Snapshot = { user: toWireUser(u), items, locations, users, prices, priceLists, menu, stock, rsv, ovr, req, tkt, prq, po, pord, batch, bills, grn, vendors, contracts, tickets: support.tickets, productReqs, shopAsks, roster, terms, sales: salesBlock.sales, dayLabels: salesBlock.dayLabels, adjustments, adjReq };
         return scope(full, { role: claims.role, loc: claims.loc, sub: claims.sub }, support.owners);
       });
     },
@@ -126,6 +128,11 @@ export function createSnapshotService(db: Db) {
      *  picker, so without it a refetch would hand them the register the snapshot had just
      *  withheld. */
     async roster(claims: AccessClaims): Promise<PayerRoster> { return read(async (tx) => scopeRoster(await M.readRoster(tx), claims)); },
+    /** And the rate card on its own - what a manager's write naming "terms" refetches. Cut like
+     *  the roster, and "any" rather than manager-only for the same reason: the notice reaches
+     *  every open browser, and a route the store keeper's tab is forbidden would fail that tab's
+     *  whole refetch over a screen of theirs that never changed. */
+    async terms(claims: AccessClaims): Promise<Terms> { return read(async (tx) => scopeTerms(await readTerms(tx), claims)); },
     // ---- adjustments: the register on its own - what a write naming "adjustments" refetches.
     async adjustments(claims: AccessClaims): Promise<Adjustment[]> { return read(async (tx) => scopeAdjustments(await D.readAdjustments(tx), claims)); },
     // ---- adjustment requests: the queue on its own - what a write naming "adjReq" refetches.

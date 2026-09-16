@@ -9,7 +9,16 @@ export const PrqStatusSchema = z.enum(["Sent", "Approved", "Partially approved",
 export const PordStatusSchema = z.enum(["New", "Accepted", "In kitchen", "Ready", "Dispatched", "Declined"]);
 export const PoStatusSchema = z.enum(["Draft", "Ordered", "Partially received", "Received", "Cancelled"]);
 export const ToneSchema = z.enum(["ok", "wn", "cr", "in", "ac", "mu"]);
-export const PayerKindSchema = z.enum(["patient", "staff", "dept"]);
+/** Whose account a bill may be posted to. Four registers, numbered independently of one
+ *  another - a consultant, a member of staff, a ward or cost centre, and an in-patient. A
+ *  walk-in customer is not here: a customer is the *absence* of a payer, which is why
+ *  `BillParty` in @rch/domain is this set plus `"customer"`. */
+export const PayerKindSchema = z.enum(["patient", "staff", "dept", "doctor"]);
+/** Who the hospital is billing, for the purpose of what they are charged: the four registers
+ *  above plus the walk-in nobody looked up. A rate card is keyed by this rather than by
+ *  `PayerKind`, because "what a customer pays" is a rate the manager sets too - it just happens
+ *  to be 0% in every hospital that has ever been asked. */
+export const BillPartySchema = z.enum(["customer", "patient", "staff", "dept", "doctor"]);
 /** Customer care for the portal itself - not an operational problem in the kitchen. */
 export const TicketTopicSchema = z.enum(["Sign in & access", "A screen will not load", "A number looks wrong", "Printing & receipts", "Slow or freezing", "Training & how do I", "Feature request", "Something else"]);
 export const TicketPrioritySchema = z.enum(["Low", "Normal", "Urgent"]);
@@ -106,6 +115,7 @@ export const PayerSchema = z.strictObject({ kind: PayerKindSchema, id: z.string(
  *  has validated its payer against that table since Phase 3 and the two lists must be one. */
 export const PayerRosterSchema = z.strictObject({
   patients: z.array(PayerSchema), staff: z.array(PayerSchema), depts: z.array(PayerSchema),
+  doctors: z.array(PayerSchema),
 });
 /** What a store keeper recorded when the goods actually landed. */
 export const ReceiptLineSchema = z.object({ recv: Qty, batch: z.string(), mrp: Money, mfg: z.string(), exp: z.string(), rejected: Qty });
@@ -119,6 +129,12 @@ export const BillLineSchema = z.object({ it: z.string(), qty: Qty, rate: Money }
 export const BillSchema = z.object({
   no: z.string(), loc: LocKeySchema, opr: z.string(), oprCol: z.string(), tot: Money, tax: Money, t: IsoTime, pay: TenderSchema,
   lines: z.array(BillLineSchema), payer: PayerSchema.optional(),
+  // ---- party discount. `tot` stays what it has always been - what the bill is worth and what
+  // is owed - so every figure already counting money goes on counting the same number. `disc` is
+  // what was taken off on the way there, and gross is `tot + disc`, derived rather than stored.
+  // Both are optional and the mapper omits them at zero, so a bill nobody discounted is byte for
+  // byte the bill it was before this existed.
+  disc: Money.optional(), discPct: z.number().optional(),
   // ---- bill void. Optional because a bill is voided almost never: the mapper omits both keys
   // on the overwhelming majority of bills, which keeps a wire bill equal to the fixture it came
   // from. A voided bill still carries its lines and its total - nothing is erased, the moves are

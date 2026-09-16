@@ -19,6 +19,8 @@ import contracts from "./contracts/routes.js";
 import productreqs from "./productreqs/routes.js";
 import support from "./support/routes.js";
 import reports from "./reports/routes.js";
+// ---- what each party is charged, what they owe, and what settles it
+import receivables from "./receivables/routes.js";
 // ---- adjustments
 import adjustments from "./adjustments/routes.js";
 import adjustmentRequests from "./adjustmentRequests/routes.js";
@@ -47,6 +49,7 @@ export async function registerModules(app: App): Promise<void> {
   await app.register(productreqs);
   await app.register(support);
   await app.register(reports);
+  await app.register(receivables);
   // ---- adjustments
   await app.register(adjustments);
   await app.register(adjustmentRequests);

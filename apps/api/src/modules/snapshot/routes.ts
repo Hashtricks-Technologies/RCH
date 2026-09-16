@@ -22,6 +22,10 @@ export default fp(async (app) => {
   mount(app, routes.productRequests, async (req) => svc.productRequests(req.user));
   // ---- payers ----
   mount(app, routes.roster, async (req) => svc.roster(req.user));
+  // ---- the rate card, scoped the same way the register it is about is. The writes that change
+  // it are the outlet manager's and live in `modules/receivables`; this is the read every
+  // browser refetches on a "terms" notice.
+  mount(app, routes.payerTerms, async (req) => svc.terms(req.user));
   // ---- adjustments: the register, scoped the same way the ledger it corrects is.
   mount(app, routes.adjustments, async (req) => svc.adjustments(req.user));
   // ---- adjustment requests: a counter's asks, scoped the same way `requests` is.

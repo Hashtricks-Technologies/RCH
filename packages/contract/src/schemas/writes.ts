@@ -7,10 +7,14 @@ import { AdjustmentRequestSchema, AdjustmentSchema, AdjustReasonSchema, GrnSchem
  *  collection at a time from the same enum. `"items"` is here because `POST /items` changes the
  *  item master, which every screen reads out of one registry - without it the only honest
  *  `changed` a new product could name would be the whole snapshot. `"locations"` and `"outlets"`
- *  are the location master as the operational screens and the admin page each read it. `"audit"`
+ *  are the location master as the operational screens and the admin page each read it, and
+ *  `"roster"` and `"payers"` are the payer register the same way round - the till's live list
+ *  against the super admin's whole one. `"terms"` is the rate card. `"audit"`
  *  is never in a write's `changed`: it is the audit service's own notice that new events were
- *  stored, and the API's change stream sends it to admin streams only. */
-export const CollectionSchema = z.enum(["stock", "rsv", "ovr", "prices", "priceLists", "menu", "bills", "req", "tkt", "prq", "po", "pord", "batch", "grn", "vendors", "contracts", "tickets", "productReqs", "shopAsks", "items", "locations", "outlets", "roster", "adjustments", "adjReq", "accounts", "audit"]);
+ *  stored, and the API's change stream sends it to admin streams only. `"receivables"` is the
+ *  manager's Credit screen - who owes what and every payment behind it, derived at read time
+ *  rather than stored, which is why it is one collection over two narrow reads. */
+export const CollectionSchema = z.enum(["stock", "rsv", "ovr", "prices", "priceLists", "menu", "bills", "req", "tkt", "prq", "po", "pord", "batch", "grn", "vendors", "contracts", "tickets", "productReqs", "shopAsks", "items", "locations", "outlets", "roster", "payers", "terms", "receivables", "adjustments", "adjReq", "accounts", "audit"]);
 export const ChangedSchema = z.array(CollectionSchema);
 export type Changed = z.infer<typeof CollectionSchema>;
 

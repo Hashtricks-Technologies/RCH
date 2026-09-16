@@ -19,10 +19,11 @@ export const SourceSchema = z.enum(["store", "kitchen"]);
 /** A price list's id on the wire - server-issued (`formatId("price_list", …)`, e.g. `"PL-006"`),
  *  never a closed set: a manager may create as many named price lists as they want. */
 export const PriceListIdSchema = z.string().min(1).max(32);
-/** The six ways a bill is settled - a closed set, not free text. Three of them post to
- *  somebody's account rather than take money at the till (`NEEDS_PAYER` in the pos service),
- *  and the counter's own tender buttons are this list read straight off the schema. */
-export const TenderSchema = z.enum(["Cash", "UPI", "Card", "Patient bill", "Staff credit", "Dept"]);
+/** The seven ways a bill is settled - a closed set, not free text. Four of them post to
+ *  somebody's account rather than take money at the till (`payerKindForTender` in @rch/domain
+ *  is the one table pairing each with the kind of payer it means), and the counter's own tender
+ *  buttons are this list read straight off the schema. */
+export const TenderSchema = z.enum(["Cash", "UPI", "Card", "Patient bill", "Staff credit", "Doctor credit", "Dept"]);
 export const ErrorCodeSchema = z.enum(["validation", "unauthenticated", "forbidden", "not_found", "conflict", "rule", "rate_limited", "not_ready", "internal"]);
 export const ErrorEnvelopeSchema = z.object({
   error: z.object({ code: ErrorCodeSchema, message: z.string(), details: z.unknown().optional() }),
@@ -35,8 +36,13 @@ export const Money = z.number().finite();
 export const IsoTime = z.string();
 export const IsoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
-/** The ceiling one staff member may run up on credit inside one calendar month, in rupees.
- *  The rule that reads it is `breachesCredit` in @rch/domain; this is only the number. */
+/** What a member of staff may owe at once before the till refuses them, in rupees.
+ *
+ *  It is no longer a constant the rule reads: a credit ceiling is the outlet manager's to set,
+ *  per category and per person, and `null` means no ceiling at all. This is the number the
+ *  `staff` row of the rate card is *seeded* with, so a hospital that never opens the screen
+ *  behaves exactly as it always has. The rule that reads whatever the manager left there is
+ *  `breachesCredit` in @rch/domain. */
 export const STAFF_CREDIT_LIMIT = 3000;
 
 /** The rejected-goods shelf: a Store-type location that never sells and never issues, holding

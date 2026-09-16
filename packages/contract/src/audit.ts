@@ -46,6 +46,8 @@ export const AUDIT_LABELS: Record<AuditAction, AuditLabel> = {
   pay:                    { label: "Posted a bill", group: "sales" },
   voidBill:               { label: "Voided a bill", group: "sales" },
   toggleAvail:            { label: "Switched an item's availability", group: "sales" },
+  recordSettlement:       { label: "Recorded a settlement", group: "sales" },
+  voidSettlement:         { label: "Voided a settlement", group: "sales" },
   // ---- stock movement
   createRequest:          { label: "Raised a stock request", group: "stock" },
   cancelRequest:          { label: "Cancelled a stock request", group: "stock" },
@@ -106,6 +108,10 @@ export const AUDIT_LABELS: Record<AuditAction, AuditLabel> = {
   updateOutlet:           { label: "Changed an outlet", group: "master" },
   closeOutlet:            { label: "Closed an outlet", group: "master" },
   reopenOutlet:           { label: "Reopened an outlet", group: "master" },
+  createPayer:            { label: "Added a payer", group: "master" },
+  updatePayer:            { label: "Changed a payer", group: "master" },
+  setClassTerms:          { label: "Changed a category's discount and credit limit", group: "master" },
+  setPayerTerms:          { label: "Changed a payer's discount and credit limit", group: "master" },
   // ---- support
   raiseTicket:            { label: "Raised a support ticket", group: "support" },
   replyToTicket:          { label: "Replied to a support ticket", group: "support" },

@@ -20,15 +20,21 @@ export const StockLedgerResponseSchema = z.strictObject({
 });
 
 export const CreditParamsSchema = z.strictObject({ kind: PayerKindSchema, id: z.string().min(1).max(64) });
+/**
+ * What one party owes the hospital right now.
+ *
+ * It used to be a calendar-month figure, because there was nothing that could bring a balance
+ * down except voiding the bill on the day it was taken. Now that a settlement exists, the
+ * number that decides a sale is what is **unsettled** - charged less paid, over all time - so a
+ * doctor who clears their account on the 15th can go on buying coffee on the 16th. There is no
+ * window to report any more, which is why `since` is gone.
+ */
 export const CreditResponseSchema = z.strictObject({
   kind: PayerKindSchema, id: z.string(), name: z.string(),
-  /** Midnight on the first of the month, in the hospital's zone - the window the ceiling is settled over. */
-  since: IsoTime,
-  taken: Money,
-  /** The ceiling only binds `staff`: credit is what the "Staff credit" tender creates and that
-   *  tender carries a staff payer. For `patient` and `dept` the same number is reported for
-   *  symmetry and `taken` is structurally 0 - the row exists so a screen can say so rather
-   *  than having to know which kinds have a ceiling. */
-  limit: Money,
-  room: Money,
+  outstanding: Money,
+  /** The ceiling the outlet manager set for this party, or `null` for none - a consultant the
+   *  hospital does not want the till arguing with. `room` is `null` for exactly the same reason:
+   *  a screen prints "no limit" rather than a number nobody set. */
+  limit: Money.nullable(),
+  room: Money.nullable(),
 });

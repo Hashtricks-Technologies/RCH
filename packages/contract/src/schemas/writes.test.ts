@@ -5,8 +5,8 @@ import { PayBodySchema, SavePriceBodySchema } from "./writes";
 const body = (over: Record<string, unknown> = {}) => ({ loc: "coffee", tender: "Cash", lines: [{ it: "juice", qty: 1 }], ...over });
 
 describe("PayBodySchema", () => {
-  it("takes the six tenders the counter offers, and nothing else", () => {
-    expect(TenderSchema.options).toEqual(["Cash", "UPI", "Card", "Patient bill", "Staff credit", "Dept"]);
+  it("takes the seven tenders the counter offers, and nothing else", () => {
+    expect(TenderSchema.options).toEqual(["Cash", "UPI", "Card", "Patient bill", "Staff credit", "Doctor credit", "Dept"]);
     for (const tender of TenderSchema.options) expect(PayBodySchema.safeParse(body({ tender })).success, tender).toBe(true);
     // A tender is a closed set: a near miss is a validation error, not a bill settled by "staff credit".
     for (const tender of ["staff credit", "cash", "Cheque", ""]) expect(PayBodySchema.safeParse(body({ tender })).success, tender).toBe(false);

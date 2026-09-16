@@ -1,21 +1,25 @@
 // repo.ts: SQL only. No rules, no transaction of its own - service.ts opens the transaction
 // and passes it in as `tx`.
-import { and, asc, desc, eq, inArray, ne, notInArray, or, sql, type SQLWrapper } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, ne, notInArray, or, sql, type SQLWrapper } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
-import type { AdminAction } from "@rch/contract";
+import type { AdminAction, PayerKind } from "@rch/contract";
 import { AdminActionSchema, QUARANTINE } from "@rch/contract";
-import { HOLDS_OUTLET, holding, type OutletBlockers } from "@rch/domain";
+import { ACCOUNT_TENDERS, HOLDS_OUTLET, holding, type OutletBlockers } from "@rch/domain";
 import type { Reader, Tx } from "../../lib/db.js";
-import { adminActions, locations, prodOrders, productRequests, shopAsks, stockBalances, stockRequests, tickets, users } from "../../db/schema/index.js";
+import { adminActions, bills, locations, payers, prodOrders, productRequests, settlements, shopAsks, stockBalances, stockRequests, tickets, users } from "../../db/schema/index.js";
 
 export type UserRow = typeof users.$inferSelect;
 export type LocationRow = typeof locations.$inferSelect;
 
-/** The outlet half of the log's own closed union, read off the schema rather than typed out again,
- *  so an outlet action added later is in this filter the moment it is named. Matched by name and
- *  not by a `like 'outlet_%'` pattern: `_` is a single-character wildcard in `like`, and `_` is
- *  what every one of these names is spelled with. */
-const OUTLET_ACTIONS: AdminAction["action"][] = AdminActionSchema.shape.action.options.filter((a) => a.startsWith("outlet_"));
+/** The log is one table read three ways, and each tab's half of the closed union is read off the
+ *  schema rather than typed out again - so an action added later is in its own filter the moment
+ *  it is named. Matched by prefix and not by a `like 'outlet_%'` pattern: `_` is a
+ *  single-character wildcard in `like`, and `_` is what every one of these names is spelled with.
+ *  Accounts is what is left over, so a new account action needs no line here at all. */
+const ACTIONS = AdminActionSchema.shape.action.options;
+const OUTLET_ACTIONS: AdminAction["action"][] = ACTIONS.filter((a) => a.startsWith("outlet_"));
+const PAYER_ACTIONS: AdminAction["action"][] = ACTIONS.filter((a) => a.startsWith("payer_"));
+const NOT_ACCOUNT_ACTIONS: AdminAction["action"][] = [...OUTLET_ACTIONS, ...PAYER_ACTIONS];
 
 export const adminRepo = {
   /** Every account, active and inactive alike, employee number ascending. */
@@ -40,7 +44,7 @@ export const adminRepo = {
    *  target is a left join onto its current name, falling back to the name stored on the line:
    *  a deleted account has no row to join, and the log still says who it was. One feed serves
    *  two tabs: `kind` picks account actions or outlet actions, never both at once. */
-  async recentActions(db: Reader, kind: "accounts" | "outlets"): Promise<AdminAction[]> {
+  async recentActions(db: Reader, kind: "accounts" | "outlets" | "payers"): Promise<AdminAction[]> {
     const actor = alias(users, "actor");
     const target = alias(users, "target");
     const rows = await db.select({
@@ -50,7 +54,9 @@ export const adminRepo = {
       .from(adminActions)
       .innerJoin(actor, eq(actor.id, adminActions.actorId))
       .leftJoin(target, eq(target.id, adminActions.targetId))
-      .where(kind === "outlets" ? inArray(adminActions.action, OUTLET_ACTIONS) : notInArray(adminActions.action, OUTLET_ACTIONS))
+      .where(kind === "outlets" ? inArray(adminActions.action, OUTLET_ACTIONS)
+        : kind === "payers" ? inArray(adminActions.action, PAYER_ACTIONS)
+          : notInArray(adminActions.action, NOT_ACCOUNT_ACTIONS))
       .orderBy(desc(adminActions.at))
       .limit(50);
     return rows.map((r) => ({
@@ -122,5 +128,55 @@ export const adminRepo = {
       staff: sql<string[]>`(select coalesce(array_agg(${users.empNo} order by ${users.empNo}), '{}') from ${users} where ${and(eq(users.loc, key), eq(users.active, true), eq(users.admin, false))})`,
     }).from(locations).where(eq(locations.key, key));
     return b;
+  },
+
+  // ---- the payer register --------------------------------------------------------------
+
+  /** Every payer, active and inactive alike, with what they still owe and how many bills are
+   *  behind it - the two numbers that make switching one off a decision rather than a click.
+   *  Charged and settled are summed apart and subtracted here for the same reason
+   *  `lib/credit.ts` does it: joining bills to settlements on the payer multiplies each bill by
+   *  that payer's settlement count. */
+  async payers(db: Reader): Promise<Array<{ kind: PayerKind; id: string; name: string; active: boolean; outstanding: number; bills: number }>> {
+    const rows = await db.select().from(payers).orderBy(asc(payers.name), asc(payers.id));
+    const charged = await db.select({
+      kind: bills.payerKind, id: bills.payerId,
+      total: sql<string>`coalesce(sum(${bills.total}), 0)`, n: sql<number>`count(*)::int`,
+    }).from(bills)
+      .where(and(inArray(bills.tender, [...ACCOUNT_TENDERS]), isNull(bills.voidedAt)))
+      .groupBy(bills.payerKind, bills.payerId);
+    const settled = await db.select({
+      kind: settlements.kind, id: settlements.payerId, total: sql<string>`coalesce(sum(${settlements.amount}), 0)`,
+    }).from(settlements).where(isNull(settlements.voidedAt)).groupBy(settlements.kind, settlements.payerId);
+
+    const owed = new Map(charged.map((c) => [`${c.kind}:${c.id}`, { total: Number(c.total), n: c.n }]));
+    const paid = new Map(settled.map((s) => [`${s.kind}:${s.id}`, Number(s.total)]));
+    return rows.map((r) => {
+      const c = owed.get(`${r.kind}:${r.id}`);
+      const balance = (c?.total ?? 0) - (paid.get(`${r.kind}:${r.id}`) ?? 0);
+      return {
+        kind: r.kind, id: r.id, name: r.name, active: r.active,
+        outstanding: Math.max(0, Math.round(balance * 100) / 100), bills: c?.n ?? 0,
+      };
+    });
+  },
+  /** Locked, so two admins renaming one payer queue rather than overwrite each other. */
+  async payerForUpdate(tx: Tx, kind: PayerKind, id: string): Promise<typeof payers.$inferSelect | undefined> {
+    const [p] = await tx.select().from(payers).where(and(eq(payers.kind, kind), eq(payers.id, id))).for("update");
+    return p;
+  },
+  async insertPayer(tx: Tx, row: typeof payers.$inferInsert): Promise<void> {
+    await tx.insert(payers).values(row);
+  },
+  async updatePayer(tx: Tx, kind: PayerKind, id: string, patch: { name?: string; active?: boolean }): Promise<void> {
+    await tx.update(payers).set({ ...patch, updatedAt: new Date() }).where(and(eq(payers.kind, kind), eq(payers.id, id)));
+  },
+  /** What one payer owes right now, for the sentence a deactivation says. */
+  async payerBalance(tx: Tx, kind: PayerKind, id: string): Promise<number> {
+    const [c] = await tx.select({ total: sql<string>`coalesce(sum(${bills.total}), 0)` }).from(bills)
+      .where(and(inArray(bills.tender, [...ACCOUNT_TENDERS]), eq(bills.payerKind, kind), eq(bills.payerId, id), isNull(bills.voidedAt)));
+    const [s] = await tx.select({ total: sql<string>`coalesce(sum(${settlements.amount}), 0)` }).from(settlements)
+      .where(and(eq(settlements.kind, kind), eq(settlements.payerId, id), isNull(settlements.voidedAt)));
+    return Math.max(0, Math.round((Number(c?.total ?? 0) - Number(s?.total ?? 0)) * 100) / 100);
   },
 };

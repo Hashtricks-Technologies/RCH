@@ -3,6 +3,7 @@ import type * as C from "./schemas/common.js";
 import type * as D from "./schemas/documents.js";
 import type * as R from "./schemas/reports.js";
 import type * as A from "./schemas/admin.js";
+import type * as V from "./schemas/receivables.js";
 import type * as Auth from "./schemas/auth.js";
 
 export type ItemType = z.infer<typeof C.ItemTypeSchema>;
@@ -19,6 +20,8 @@ export type PordStatus = z.infer<typeof D.PordStatusSchema>;
 export type PoStatus = z.infer<typeof D.PoStatusSchema>;
 export type Tone = z.infer<typeof D.ToneSchema>;
 export type PayerKind = z.infer<typeof D.PayerKindSchema>;
+/** The four payer kinds plus the walk-in nobody looked up - what a rate card is keyed by. */
+export type BillParty = z.infer<typeof D.BillPartySchema>;
 export type TicketTopic = z.infer<typeof D.TicketTopicSchema>;
 export type TicketPriority = z.infer<typeof D.TicketPrioritySchema>;
 export type TicketStatus = z.infer<typeof D.TicketStatusSchema>;
@@ -59,8 +62,8 @@ export type ProductRequest = z.infer<typeof D.ProductRequestSchema>;
 export type RateContract = z.infer<typeof D.RateContractSchema>;
 export type ShopAsk = z.infer<typeof D.ShopAskSchema>;
 
-/** The two reports: the store's stock ledger and a payer's credit for the
- *  calendar month - the two figures a caller cannot compute from its own snapshot. */
+/** The two reports: the store's stock ledger and what a payer still owes - the two figures a
+ *  caller cannot compute from its own snapshot. */
 export type StockLedgerQuery = z.infer<typeof R.StockLedgerQuerySchema>;
 export type StockLedgerRow = z.infer<typeof R.StockLedgerRowSchema>;
 export type StockLedgerResponse = z.infer<typeof R.StockLedgerResponseSchema>;
@@ -85,5 +88,20 @@ export type AdminDeletedUser = z.infer<typeof A.AdminDeletedUserSchema>;
 export type AdminLocation = z.infer<typeof A.AdminLocationSchema>;
 export type CreateOutletBody = z.infer<typeof A.CreateOutletBodySchema>;
 export type UpdateOutletBody = z.infer<typeof A.UpdateOutletBodySchema>;
+export type AdminPayer = z.infer<typeof A.AdminPayerSchema>;
+export type CreatePayerBody = z.infer<typeof A.CreatePayerBodySchema>;
+export type UpdatePayerBody = z.infer<typeof A.UpdatePayerBodySchema>;
+
+// ---- what each party is charged, and what they owe.
+export type ClassTerms = z.infer<typeof V.ClassTermsSchema>;
+export type PayerTerms = z.infer<typeof V.PayerTermsSchema>;
+export type Terms = z.infer<typeof V.TermsSchema>;
+export type Receivable = z.infer<typeof V.ReceivableSchema>;
+export type StatementBill = z.infer<typeof V.StatementBillSchema>;
+export type SettlementMode = z.infer<typeof V.SettlementModeSchema>;
+export type SettlementLine = z.infer<typeof V.SettlementLineSchema>;
+export type Settlement = z.infer<typeof V.SettlementSchema>;
+export type Statement = z.infer<typeof V.StatementSchema>;
+export type RecordSettlementBody = z.infer<typeof V.RecordSettlementBodySchema>;
 /** One line of the public sign-in picker. */
 export type SignInEntry = z.infer<typeof Auth.SignInEntrySchema>;

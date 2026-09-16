@@ -176,7 +176,14 @@ async function seedMaster(tx: Tx, passwordHash: string, mustChange: boolean) {
   // The three rosters a non-cash bill may be posted to. They already carry `{kind, id, name}`
   // in the fixtures, so the table is the same three lists in one place - which is what lets the
   // till's payer be checked against something rather than taken on trust.
-  await tx.insert(s.payers).values([...FX.PATIENTS, ...FX.STAFF, ...FX.DEPTS].map((p) => ({ kind: p.kind, id: p.id, name: p.name })));
+  await tx.insert(s.payers).values([...FX.PATIENTS, ...FX.STAFF, ...FX.DEPTS, ...FX.DOCTORS].map((p) => ({ kind: p.kind, id: p.id, name: p.name })));
+  // The rate card. The five category rows already exist - migration 0022 seeds them, so a bare
+  // database can price a bill - so this is an update rather than an insert: the demo hospital
+  // puts real concessions on them, and the one consultant with terms of their own.
+  for (const t of FX.CLASS_TERMS) {
+    await tx.update(s.payerClassTerms).set({ discountPct: t.pct, creditLimit: t.limit }).where(eq(s.payerClassTerms.cls, t.cls));
+  }
+  await tx.insert(s.payerTerms).values(FX.PAYER_TERMS.map((t) => ({ kind: t.kind, payerId: t.id, discountPct: t.pct, creditLimit: t.limit })));
 }
 
 async function seedOpeningStock(tx: Tx) {

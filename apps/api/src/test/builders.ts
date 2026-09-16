@@ -2,7 +2,7 @@
 // document instead of asking for one here is rejected in review - the defaults belong in one
 // place, so a case says only what it is about.
 import { eq } from "drizzle-orm";
-import type { AdjReqStatus, AdjustReason, LocKey, PordStatus, PoStatus, PrqStatus, ProductReqStatus, ReqStatus, Role, ShopAskStatus, StockLoc, TicketPriority, TicketStatus, TicketTopic, TktStatus } from "@rch/contract";
+import type { AdjReqStatus, AdjustReason, LocKey, PayerKind, PordStatus, PoStatus, PrqStatus, ProductReqStatus, ReqStatus, Role, ShopAskStatus, StockLoc, TicketPriority, TicketStatus, TicketTopic, TktStatus } from "@rch/contract";
 import { REASON_LABEL, round3 } from "@rch/domain";
 import type { Db } from "../db/client.js";
 import * as s from "../db/schema/index.js";
@@ -90,7 +90,7 @@ export const given = {
    *  the document is whole; the staff-credit ceiling reads the head's total. */
   async bill(db: Db, p: {
     no?: string; loc: LocKey; operator?: string; total: number; tax?: number; tender?: string;
-    payer?: { kind: "patient" | "staff" | "dept"; id: string; name: string };
+    payer?: { kind: PayerKind; id: string; name: string };
     at?: Date; lines?: { it: string; qty: number; rate: number }[];
   }): Promise<string> {
     // Above the fixtures' own numbers and above the bill sequence's start, for the reason the

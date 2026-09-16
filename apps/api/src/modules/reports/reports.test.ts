@@ -36,7 +36,7 @@ const ledger = async (loc: string, days = 30): Promise<StockLedgerResponse> => {
 const total = (b: StockLedgerResponse, col: "opening" | "recd" | "issued" | "closing") =>
   round3(b.rows.reduce((t, r) => t + r[col], 0));
 
-const credit = async (p: { kind: "patient" | "staff" | "dept"; id: string }): Promise<CreditResponse> => {
+const credit = async (p: { kind: "patient" | "staff" | "dept" | "doctor"; id: string }): Promise<CreditResponse> => {
   const res = await app.inject({ method: "GET", url: `/api/v1/reports/credit/${p.kind}/${p.id}`, headers: await authHeaders(app, "u1") });
   expect(res.statusCode, res.body).toBe(200);
   return res.json() as CreditResponse;
@@ -53,8 +53,8 @@ const credit = async (p: { kind: "patient" | "staff" | "dept"; id: string }): Pr
  * about money already spent, not about the shelf.
  */
 const sellPastTheCeiling = async (payer: { kind: "staff"; id: string; name: string }, room = 10) => {
-  const taken = (await credit(payer)).taken;
-  await given.bill(app.db, { loc: "coffee", tender: "Staff credit", payer, total: round2(STAFF_CREDIT_LIMIT - taken - room), lines: [{ it: "water", qty: 1, rate: 20 }] });
+  const owed = (await credit(payer)).outstanding;
+  await given.bill(app.db, { loc: "coffee", tender: "Staff credit", payer, total: round2(STAFF_CREDIT_LIMIT - owed - room), lines: [{ it: "water", qty: 1, rate: 20 }] });
   // One bottle of mineral water at the Coffee Shop is ₹20 on price list B - more than the room
   // left, and one unit of a shelf that holds twelve, so nothing but the ceiling can refuse it.
   const res = await app.inject({
@@ -64,7 +64,7 @@ const sellPastTheCeiling = async (payer: { kind: "staff"; id: string; name: stri
   });
   expect(res.statusCode, res.body).toBe(422);
   // The counter's own wording (`creditBreachMessage` in @rch/domain), repeated word for word.
-  expect((res.json() as { error: { message: string } }).error.message).toContain("staff credit limit");
+  expect((res.json() as { error: { message: string } }).error.message).toContain("credit limit");
   return res;
 };
 
@@ -187,56 +187,65 @@ describe("GET /reports/stock-ledger", () => {
 
 describe("GET /reports/credit/:kind/:id", () => {
   it("answers with exactly the number the till refuses on", async () => {
-    // `given.bill` takes the bill's `total` as well as its lines - it is what the credit sum
+    // `given.bill` takes the bill's `total` as well as its lines - it is what the balance
     // adds up, and the builder does not derive it.
     await given.bill(app.db, { loc: "coffee", tender: "Staff credit", payer: STAFF, total: 20, lines: [{ it: "water", qty: 1, rate: 20 }] });
     const body = await credit(STAFF);
-    expect(body.taken).toBe(20);
-    // ₹3,000 limit less ₹20 taken - the seed's own number, not `creditRoom` re-run on it.
+    expect(body.outstanding).toBe(20);
+    // ₹3,000 limit less ₹20 owed - the rate card's seeded number, not `creditRoom` re-run on it.
     expect(body.room).toBe(2980);
     expect(body.limit).toBe(STAFF_CREDIT_LIMIT);
     expect(body.name).toBe(STAFF.name);
 
     // The other half of the same fact: sell past the ceiling, and the refusal's own
-    // `details.taken` must equal what the report says immediately afterwards.
+    // `details.outstanding` must equal what the report says immediately afterwards.
     const refusal = await sellPastTheCeiling(STAFF);
     const after = await credit(STAFF);
-    expect((refusal.json() as { error: { details: { taken: number } } }).error.details.taken).toBe(after.taken);
+    expect((refusal.json() as { error: { details: { outstanding: number } } }).error.details.outstanding).toBe(after.outstanding);
     // `sellPastTheCeiling`'s default `room` of 10 - left exactly there by construction.
     expect(after.room).toBe(10);
   });
 
-  it("counts the calendar month across every outlet, not one till's week", async () => {
+  it("counts every outlet, not one till's week", async () => {
     // A bill at the restaurant and a bill at the coffee shop both count against one person.
     await given.bill(app.db, { loc: "rest", tender: "Staff credit", payer: STAFF, total: 20, lines: [{ it: "water", qty: 1, rate: 20 }] });
-    const a = (await credit(STAFF)).taken;
+    const a = (await credit(STAFF)).outstanding;
     await given.bill(app.db, { loc: "coffee", tender: "Staff credit", payer: STAFF, total: 20, lines: [{ it: "water", qty: 1, rate: 20 }] });
-    expect((await credit(STAFF)).taken).toBe(round2(a + 20));
-    // `since` is midnight on the 1st in IST, i.e. 18:30 UTC on the last day of the previous month.
-    const since = new Date((await credit(STAFF)).since);
-    expect(since.toISOString()).toBe(monthStartIST().toISOString());
+    expect((await credit(STAFF)).outstanding).toBe(round2(a + 20));
   });
 
-  it("leaves last month's credit behind", async () => {
-    const before = (await credit(STAFF)).taken;
+  it("counts last month too - a balance is not forgiven by the calendar turning", async () => {
+    // This is the rule that changed when settlements arrived. The ceiling used to be a
+    // calendar-month figure, because nothing could bring a balance down except voiding the bill
+    // on the day it was taken; now the only thing that clears a debt is paying it.
+    const before = (await credit(STAFF)).outstanding;
     const lastMonth = new Date(monthStartIST().getTime() - 86_400_000);
     await given.bill(app.db, { loc: "coffee", tender: "Staff credit", payer: STAFF, total: 500, at: lastMonth, lines: [{ it: "water", qty: 1, rate: 20 }] });
-    expect((await credit(STAFF)).taken).toBe(before);
+    expect((await credit(STAFF)).outstanding).toBe(round2(before + 500));
   });
 
-  it("counts only what the credit tender created", async () => {
-    const before = (await credit(STAFF)).taken;
+  it("counts only what a credit tender created", async () => {
+    const before = (await credit(STAFF)).outstanding;
     await given.bill(app.db, { loc: "coffee", tender: "Cash", payer: STAFF, total: 20, lines: [{ it: "water", qty: 1, rate: 20 }] });
-    expect((await credit(STAFF)).taken).toBe(before);
+    expect((await credit(STAFF)).outstanding).toBe(before);
   });
 
-  it("answers zero for a payer whose tender never creates credit", async () => {
+  it("counts a department's own tender, which used to be structurally zero", async () => {
+    // Before settlements the report filtered on `tender = 'Staff credit'` alone, so a
+    // department's balance was always 0 however much it had been charged. Every account tender
+    // counts now, which is the whole point of a receivables screen.
+    await given.bill(app.db, { loc: "coffee", tender: "Dept", payer: DEPT, total: 340, lines: [{ it: "water", qty: 1, rate: 20 }] });
     const body = await credit({ kind: "dept", id: DEPT.id });
-    // Only the "Staff credit" tender runs up a balance, and it carries a staff payer. A
-    // department's report is structurally zero - the row exists so a screen can say so.
-    expect(body.taken).toBe(0);
-    expect(body.room).toBe(body.limit);
+    expect(body.outstanding).toBe(340);
     expect(body.name).toBe(DEPT.name);
+  });
+
+  it("reports no ceiling as null rather than as a number nobody set", async () => {
+    // A department is seeded with no limit, so nothing the till does can breach one, and the
+    // screen prints words instead of a figure.
+    const body = await credit({ kind: "dept", id: DEPT.id });
+    expect(body.limit).toBeNull();
+    expect(body.room).toBeNull();
   });
 
   it("is a 404 for a payer who is not on the roster", async () => {

@@ -148,6 +148,20 @@
       "when": 1789496814806,
       "tag": "0020_item_source_and_adjustment_requests",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1789496815806,
+      "tag": "0021_payer_kind_doctor",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1789496816806,
+      "tag": "0022_payer_terms_and_settlements",
+      "breakpoints": true
     }
   ]
 }

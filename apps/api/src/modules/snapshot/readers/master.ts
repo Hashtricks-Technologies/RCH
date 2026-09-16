@@ -41,7 +41,7 @@ export async function readUsers(db: Reader): Promise<UserMin[]> {
 export async function readRoster(db: Reader): Promise<PayerRoster> {
   const rows = await db.select().from(payers).where(eq(payers.active, true)).orderBy(asc(payers.name));
   const of = (kind: PayerKind) => rows.filter((p) => p.kind === kind).map((p) => ({ kind: p.kind, id: p.id, name: p.name }));
-  return { patients: of("patient"), staff: of("staff"), depts: of("dept") };
+  return { patients: of("patient"), staff: of("staff"), depts: of("dept"), doctors: of("doctor") };
 }
 export async function readPrices(db: Reader): Promise<Record<string, Record<string, number>>> {
   const rows = await db.select().from(priceListItems);

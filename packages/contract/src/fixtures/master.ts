@@ -1,4 +1,5 @@
-import type { Item, Location, PriceList, StockLoc, User, Payer } from "../types.js";
+import type { ClassTerms, Item, Location, PayerTerms, PriceList, StockLoc, User, Payer } from "../types.js";
+import { STAFF_CREDIT_LIMIT } from "../schemas/common.js";
 
 export const LOC: Record<StockLoc, Location> = {
   store:   { n: "Central Store",   c: "WH-CS", type: "Store",   floor: "Basement", cc: "CC-STO", active: true, par: 1 },
@@ -94,7 +95,41 @@ export const DEPTS: Payer[] = [
   { kind: "dept", id: "CC-ADM", name: "Administration" },
   { kind: "dept", id: "CC-OT", name: "Operating Theatre" },
 ];
-// Nothing but fixtures leaves this file. `STAFF_CREDIT_LIMIT` and `PO_APPROVAL_LIMIT` are rules'
-// constants, not the demo hospital, so they are read from `@rch/contract` itself. Which locations
+export const DOCTORS: Payer[] = [
+  { kind: "doctor", id: "DR-118", name: "Dr A. Rao · Cardiology" },
+  { kind: "doctor", id: "DR-204", name: "Dr S. Menon · Paediatrics" },
+  { kind: "doctor", id: "DR-311", name: "Dr K. Balaji · Orthopaedics" },
+];
+
+/**
+ * The rate card the demo hospital opens on: what each party is charged, and how much of it they
+ * may owe at once.
+ *
+ * Only the consultants are given a concession here, and deliberately so. What the hospital gives
+ * each category off is the outlet manager's first act on the Credit screen, not a number this
+ * package should pretend to know - and every category the demo *did* put a rate on would quietly
+ * change what a seeded bill totals, which is a fixture telling a story about a discount rather
+ * than about the sale it is there to describe. Doctors are new, no seeded document names one, so
+ * a rate on them shows the whole feature working without moving a single existing figure.
+ *
+ * Staff keeps its ceiling, because that is the one this system has always enforced
+ * (`STAFF_CREDIT_LIMIT`); the rest are `null`, which is no ceiling rather than a ceiling of zero.
+ */
+export const CLASS_TERMS: ClassTerms[] = [
+  { cls: "customer", pct: 0, limit: null },
+  { cls: "patient", pct: 0, limit: null },
+  { cls: "staff", pct: 0, limit: STAFF_CREDIT_LIMIT },
+  { cls: "doctor", pct: 20, limit: null },
+  { cls: "dept", pct: 0, limit: null },
+];
+/** And one consultant on terms of their own, so the demo has an exception to look at: a higher
+ *  discount than the category and a ceiling where the category has none. */
+export const PAYER_TERMS: Omit<PayerTerms, "name">[] = [
+  { kind: "doctor", id: "DR-118", pct: 25, limit: 5000 },
+];
+// Nothing but fixtures leaves this file. `PO_APPROVAL_LIMIT` is a rule's
+// constant, not the demo hospital, so it is read from `@rch/contract` itself; `STAFF_CREDIT_LIMIT`
+// is imported above for the one thing it still is - the number the staff row of the rate card is
+// seeded with, so a hospital that never opens the screen behaves as it always did. Which locations
 // exist, and which of them are outlets, is not a constant at all any more - it is `LOC` above,
 // read the way the server's own master is: from the rows, never from a compiled list.

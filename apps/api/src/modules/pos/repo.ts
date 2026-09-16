@@ -4,7 +4,7 @@ import type { PayerKind } from "@rch/contract";
 import type { OvrMap, Prices, RsvMap, StockMap } from "@rch/domain";
 import type { Tx } from "../../lib/db.js";
 import type { BillLineRow, BillRow } from "../../lib/wire.js";
-import { availabilityOverrides, billLines, bills, locationItems, payers, priceListItems, reservations, stockBalances, stockMoves, users } from "../../db/schema/index.js";
+import { availabilityOverrides, billLines, bills, locationItems, payers, priceListItems, reservations, settlementLines, settlements, stockBalances, stockMoves, users } from "../../db/schema/index.js";
 
 export type NewBill = typeof bills.$inferInsert;
 
@@ -58,18 +58,17 @@ export const posRepo = {
     return p;
   },
 
-  /**
-   * Queue every staff-credit sale for one person behind the one before it.
-   *
-   * `creditTakenThisMonth` (apps/api/src/lib/credit.ts) sums bills that are already committed,
-   * so two tills reading in the same instant both see the room that existed before either of
-   * them wrote - and both fit under a ceiling only one of them fits under. There is no row to
-   * lock instead: the read is a sum over bills that do not exist yet. A transaction-scoped
-   * advisory lock on the payer is the narrowest thing that serialises exactly that pair, and
-   * Postgres releases it when the transaction ends, whichever way it ends.
-   */
-  async lockStaffCredit(tx: Tx, payerId: string): Promise<void> {
-    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${"staff-credit:" + payerId}))`);
+
+  /** A settlement nobody voided that has already closed part of this bill, if there is one. The
+   *  void refuses on it: erasing the debt would leave that payment sitting against nothing. A
+   *  read of the settlement tables from a module repo, which is allowed - they are not among the
+   *  six protected tables, and this module never writes them. */
+  async liveSettlementOf(tx: Tx, billNo: string): Promise<{ id: string } | undefined> {
+    const [row] = await tx.select({ id: settlements.id }).from(settlementLines)
+      .innerJoin(settlements, eq(settlements.id, settlementLines.settlementId))
+      .where(and(eq(settlementLines.billNo, billNo), isNull(settlements.voidedAt)))
+      .limit(1);
+    return row;
   },
 
   async operator(tx: Tx, id: string): Promise<{ name: string; colour: string } | undefined> {

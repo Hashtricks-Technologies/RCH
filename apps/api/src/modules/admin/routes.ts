@@ -1,4 +1,4 @@
-// Admin: account management and outlets. Every route here checks the `admin` claim
+// Admin: account management, outlets and the payer register. Every route here checks the `admin` claim
 // (`access: "admin"` in the manifest), never a role; that gate lives in `roleGate`
 // itself rather than a bespoke check per handler.
 import fp from "fastify-plugin";
@@ -21,4 +21,8 @@ export default fp(async (app) => {
   mount(app, routes.updateOutlet, async (req) => svc.updateOutlet(req.user, req.params.key, req.body));
   mount(app, routes.closeOutlet, async (req) => svc.closeOutlet(req.user, req.params.key));
   mount(app, routes.reopenOutlet, async (req) => svc.reopenOutlet(req.user, req.params.key));
+  // ---- the payer register: who a bill may be posted to. Never deleted, only switched off.
+  mount(app, routes.adminPayers, async () => svc.payers());
+  mount(app, routes.createPayer, async (req) => svc.createPayer(req.user, req.body));
+  mount(app, routes.updatePayer, async (req) => svc.updatePayer(req.user, req.params.kind, req.params.id, req.body));
 }, { name: "module:admin", dependencies: ["auth", "rbac", "idempotency", "db"] });

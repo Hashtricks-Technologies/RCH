@@ -14,10 +14,11 @@
 // counter's open tab has to learn a new outlet, a rename or a close live, not on its next reload.
 import { randomBytes, randomUUID } from "node:crypto";
 import type {
-  AdminAction, AdminDeletedUser, AdminLocation, AdminUser, AdminUserWithTempPassword,
-  CreateAdminUserBody, CreateOutletBody, UpdateAdminUserBody, UpdateOutletBody, WriteResponse,
+  AdminAction, AdminDeletedUser, AdminLocation, AdminPayer, AdminUser, AdminUserWithTempPassword,
+  CreateAdminUserBody, CreateOutletBody, CreatePayerBody, PayerKind, UpdateAdminUserBody,
+  UpdateOutletBody, UpdatePayerBody, WriteResponse,
 } from "@rch/contract";
-import { closeRefusal, outletKeyFor } from "@rch/domain";
+import { closeRefusal, money as inr, outletKeyFor, PARTY_LABEL } from "@rch/domain";
 import type { Db } from "../../db/client.js";
 import { uniqueViolationOf, withTransaction, type Tx } from "../../lib/db.js";
 import { auditBefore } from "../../lib/audit.js";
@@ -61,6 +62,9 @@ async function refuseClash<T>(write: () => Promise<T>, next: { name: string; cod
 /** The fields an edit may change, as the body names them and as the row holds them. */
 const EDITABLE = [["name", "name"], ["code", "code"], ["floor", "floor"], ["cc", "costCentre"]] as const;
 const OUTLET_CHANGED = ["outlets", "locations"] as const;
+/** A payer write moves two lists: the super admin's own whole register, and the live one every
+ *  till reads its picker off - the same pairing `outlets`/`locations` are. */
+const PAYER_CHANGED = ["payers", "roster"] as const;
 
 export function createAdminService(db: Db) {
   const requireTx = async (tx: Tx, id: string): Promise<UserRow> => {
@@ -87,7 +91,7 @@ export function createAdminService(db: Db) {
     async list(): Promise<AdminUser[]> {
       return (await adminRepo.list(db)).map(toAdminUser);
     },
-    async actions(kind: "accounts" | "outlets"): Promise<AdminAction[]> {
+    async actions(kind: "accounts" | "outlets" | "payers"): Promise<AdminAction[]> {
       return adminRepo.recentActions(db, kind);
     },
 
@@ -250,6 +254,75 @@ export function createAdminService(db: Db) {
         await log(tx, claims.sub, "outlet_reopen", { id: null, name: row.name }, { key });
         await emitChanged(tx, OUTLET_CHANGED);
         return { result: toAdminLocation({ ...row, active: true }, 0), changed: [...OUTLET_CHANGED], message: `Reopened ${row.name}.` };
+      });
+    },
+
+    // ---- the payer register --------------------------------------------------------------
+    //
+    // Who a bill may be posted to. Opened, renamed and switched off here; never deleted, because
+    // a payer with a bill against them is somebody's balance and an id that vanishes is a debt
+    // nobody can find. What each of them is *charged* is the outlet manager's, at `/payer-terms`.
+    //
+    // Every one of these announces `"roster"` as well as `"payers"`: the till's picker reads the
+    // live register off the snapshot, so a consultant added here has to reach every open counter
+    // without a reload, exactly as a new outlet does.
+
+    async payers(): Promise<AdminPayer[]> {
+      return adminRepo.payers(db);
+    },
+
+    async createPayer(claims: AccessClaims, body: CreatePayerBody): Promise<WriteResponse<AdminPayer>> {
+      return withTransaction(db, async (tx) => {
+        // The insert decides, not the pre-check: the primary key `(kind, id)` is the rule, and a
+        // pre-check only supplies the sentence - the same stance `items_name_ci_uq` and the
+        // vendors' name index take. A duplicate is a `ConflictError`, not a 500.
+        const clash = await adminRepo.payerForUpdate(tx, body.kind, body.id);
+        if (clash) throw new ConflictError(`${body.id} is already on the register - ${clash.name}`);
+        await adminRepo.insertPayer(tx, { kind: body.kind, id: body.id, name: body.name });
+        await log(tx, claims.sub, "payer_create", { id: null, name: body.name }, { kind: body.kind, payer: body.id });
+        await emitChanged(tx, PAYER_CHANGED);
+        return {
+          result: { kind: body.kind, id: body.id, name: body.name, active: true, outstanding: 0, bills: 0 },
+          changed: [...PAYER_CHANGED],
+          message: `Added ${body.name} (${body.id}) to the ${PARTY_LABEL[body.kind]} register.`,
+        };
+      });
+    },
+
+    /**
+     * A rename or a switch, in one patch - the way an account's own switch is a patch rather than
+     * a route of its own.
+     *
+     * Deactivating one is allowed whatever they owe: switching somebody off is how the hospital
+     * stops new bills reaching an account it is still chasing, so refusing it while a balance
+     * stands would be exactly backwards. The message says the balance instead, because that is
+     * the thing the person pressing the button needs to know they have not just made disappear.
+     */
+    async updatePayer(claims: AccessClaims, kind: PayerKind, id: string, body: UpdatePayerBody): Promise<WriteResponse<AdminPayer>> {
+      return withTransaction(db, async (tx) => {
+        const row = await adminRepo.payerForUpdate(tx, kind, id);
+        if (!row) throw new NotFoundError(`There is no ${PARTY_LABEL[kind]} ${id} on the register.`);
+        auditBefore({ kind, id, name: row.name, active: row.active });
+
+        const name = body.name ?? row.name;
+        const active = body.active ?? row.active;
+        if (name === row.name && active === row.active) throw new RuleError(`Nothing to save - ${row.name} already reads that way`);
+
+        await adminRepo.updatePayer(tx, kind, id, { name, active });
+        const action = active === row.active ? "payer_update" : active ? "payer_reactivate" : "payer_deactivate";
+        await log(tx, claims.sub, action, { id: null, name }, { kind, payer: id, ...(name !== row.name ? { name: [row.name, name] } : {}) });
+        await emitChanged(tx, PAYER_CHANGED);
+
+        const owed = await adminRepo.payerBalance(tx, kind, id);
+        const bills = (await adminRepo.payers(tx)).find((p) => p.kind === kind && p.id === id)?.bills ?? 0;
+        const message = active === row.active
+          ? `Saved ${name}.`
+          : active
+            ? `${name} is back on the till's picker.`
+            : owed > 0
+              ? `${name} is switched off - no new bill may be posted to them, and the ${inr(owed)} they owe is still owed.`
+              : `${name} is switched off - no new bill may be posted to them.`;
+        return { result: { kind, id, name, active, outstanding: owed, bills }, changed: [...PAYER_CHANGED], message };
       });
     },
   };

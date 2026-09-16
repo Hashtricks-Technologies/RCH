@@ -1,4 +1,5 @@
-import type { Adjustment, AdjustmentRequest, Batch, Bill, LocKey, PayerRoster, ProdOrder, ProductRequest, Role, ShopAsk, StockRequest, SupportTicket, Ticket } from "@rch/contract";
+import type { Adjustment, AdjustmentRequest, Batch, Bill, LocKey, PayerRoster, ProdOrder, ProductRequest, Role, ShopAsk, StockRequest, SupportTicket, Terms, Ticket } from "@rch/contract";
+import { noTerms } from "../../lib/terms.js";
 import type { Snapshot } from "./service.js";
 
 /** Who is asking. The snapshot and the two standalone reads all cut by the same two fields. */
@@ -49,7 +50,14 @@ export const scopePayers = (bills: Bill[], who: Who): Bill[] =>
  * same leak.
  */
 export const scopeRoster = (roster: PayerRoster, who: Who): PayerRoster =>
-  READS_PAYERS.has(who.role) ? roster : { patients: [], staff: [], depts: [] };
+  READS_PAYERS.has(who.role) ? roster : { patients: [], staff: [], depts: [], doctors: [] };
+
+/** And the rate card those names are charged against, cut the same way and for the same reason:
+ *  what the hospital gives a consultant off is commercial information, and three of the five
+ *  roles never take a bill. `noTerms()` is the empty card, the same shape, so a screen that
+ *  reads it needs no special case. */
+export const scopeTerms = (terms: Terms, who: Who): Terms =>
+  READS_PAYERS.has(who.role) ? terms : noTerms();
 
 /** A counter's requests are their own outlet's; everyone else sees the desk they work. */
 export const scopeRequests = (req: StockRequest[], who: Who): StockRequest[] =>
@@ -122,12 +130,13 @@ export const scopeAdjustmentRequests = (rows: AdjustmentRequest[], who: Who): Ad
 
 /** A counter operator's world is their counter. Master data is never cut down; documents and stock are. */
 export function scope(s: Snapshot, who: Who & { sub: string }, owners: Map<string, string>): Snapshot {
-  // Four cuts apply to every role, not only to a counter: a support ticket is the caller's own,
+  // Five cuts apply to every role, not only to a counter: a support ticket is the caller's own,
   // a ticket's OTP is the collector's, and who a bill was charged to - with the register those
-  // names come out of - belongs to the two roles that bill people.
+  // names come out of and the rate card they are charged against - belongs to the two roles that
+  // bill people.
   const base: Snapshot = {
     ...s, tickets: scopeSupportTickets(s.tickets, who, owners), tkt: redactOtps(s.tkt, who),
-    bills: scopePayers(s.bills, who), roster: scopeRoster(s.roster, who),
+    bills: scopePayers(s.bills, who), roster: scopeRoster(s.roster, who), terms: scopeTerms(s.terms, who),
   };
   if (who.role !== "counter") return base;
   const L = who.loc;

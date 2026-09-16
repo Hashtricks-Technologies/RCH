@@ -1,6 +1,6 @@
 // Reports: the two figures the browser cannot compute from its own snapshot - the central store's
-// stock ledger, which needs the ledger's own moves, and a payer's credit for the calendar month,
-// which needs every outlet's bills and not the till's own seven days.
+// stock ledger, which needs the ledger's own moves, and what a payer still owes, which needs
+// every outlet's bills and every settlement against them, not the till's own seven days.
 //
 // service.ts: the flow. Neither read is a write, so there is no lock and no `emitChanged` here -
 // and the ledger's arithmetic is `ledgerRow` in @rch/domain, not a sum written out again in this
@@ -10,10 +10,11 @@
 // several queries and `pg` checks a client out per query, so without one a single report would
 // hold two or three of the pool's ten connections at once. One transaction, one connection.
 import type { CreditParams, CreditResponse, StockLedgerQuery, StockLedgerResponse } from "@rch/contract";
-import { creditRoom, ledgerRow, STAFF_CREDIT_LIMIT } from "@rch/domain";
+import { creditRoom, ledgerRow } from "@rch/domain";
 import type { Db } from "../../db/client.js";
 import { withReadTransaction } from "../../lib/db.js";
-import { creditTakenThisMonth } from "../../lib/credit.js";
+import { outstandingFor } from "../../lib/credit.js";
+import { termsFor } from "../../lib/terms.js";
 import { NotFoundError } from "../../lib/errors.js";
 import { reportsRepo } from "./repo.js";
 
@@ -62,19 +63,24 @@ export function createReportsService(db: Db) {
     },
 
     /**
-     * What one payer has put on credit this calendar month, and how much room is left.
+     * What one payer still owes, and how much room is left before their ceiling.
      *
-     * The number is `creditTakenThisMonth` - the same query `POST /bills` refuses on, in
-     * `apps/api/src/lib/credit.ts` so there is one of it. No lock is taken: the sale's
+     * Both numbers are the ones `POST /bills` refuses on - `outstandingFor` and the rate card
+     * in `apps/api/src/lib/credit.ts` and `terms.ts`, so there is one of each. A report that
+     * disagreed with the refusal would be worse than no report. No lock is taken: the sale's
      * `pg_advisory_xact_lock` belongs to the sale, and a report holding it would put every till
      * behind whoever opened the credit screen.
+     *
+     * `limit` and `room` come back `null` for a party the manager set no ceiling for, so the
+     * till prints "no limit" rather than a number nobody chose.
      */
     async credit(p: CreditParams): Promise<CreditResponse> {
       return withReadTransaction(db, async (tx) => {
         const payer = await reportsRepo.payer(tx, p.kind, p.id);
         if (!payer) throw new NotFoundError(`There is nobody on the roster with the number ${p.id}.`);
-        const { taken, since } = await creditTakenThisMonth(tx, p.kind, p.id);
-        return { kind: p.kind, id: p.id, name: payer.name, since: since.toISOString(), taken, limit: STAFF_CREDIT_LIMIT, room: creditRoom(taken) };
+        const { outstanding } = await outstandingFor(tx, p.kind, p.id);
+        const terms = await termsFor(tx, p.kind, { kind: p.kind, id: p.id });
+        return { kind: p.kind, id: p.id, name: payer.name, outstanding, limit: terms.limit, room: creditRoom(outstanding, terms.limit) };
       });
     },
   };

@@ -78,6 +78,11 @@ export async function resetDocuments(db: Db): Promise<void> {
     "audit_outbox",
     // ---- adjustments
     "adjustments", "adjustment_lines",
+    // ---- settlements. `settlement_lines` would go with the bills anyway (it points at them, so
+    // the cascade reaches it), but `settlements` itself points only at `payers`, which stays -
+    // so without this line a case's payments would outlive the bills they settled. The rate card
+    // is deliberately absent: it is master data the manager sets, like a price list.
+    "settlements", "settlement_lines",
   ];
   await db.execute(sql.raw(`truncate table ${names.map((n) => `"${n}"`).join(", ")} restart identity cascade`));
   await withTransaction(db, async (tx) => { await seedDocuments(tx); });

@@ -1,4 +1,4 @@
-import { boolean, check, date, integer, jsonb, numeric, pgTable, primaryKey, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { boolean, check, date, foreignKey, integer, jsonb, numeric, pgTable, primaryKey, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { itemTypeEnum, locationTypeEnum, payerKindEnum, roleEnum, sourceEnum } from "./enums.js";
 
@@ -172,3 +172,38 @@ export const payers = pgTable("payers", {
   createdAt: ts("created_at").notNull().defaultNow(),
   updatedAt: ts("updated_at").notNull().defaultNow(),
 }, (t) => [primaryKey({ columns: [t.kind, t.id] })]);
+
+/**
+ * The rate card: what each party is charged, and how much of it they may owe at once.
+ *
+ * Two tables rather than one, because the two questions are genuinely different. A **category**
+ * always has an answer - every consultant is on something, even if it is nothing - so this table
+ * has exactly five rows and neither column is nullable except the ceiling, where `null` means
+ * "no ceiling" rather than a ceiling of zero. A **person** usually has no answer at all, so that
+ * table holds only the exceptions and `null` there means "inherit", which is a third state a
+ * single merged table could not express.
+ *
+ * `cls` is plain text over `BillPartySchema` rather than `payer_kind`: a walk-in customer is not
+ * a payer - they are the absence of one - and they still have a rate.
+ */
+export const payerClassTerms = pgTable("payer_class_terms", {
+  cls: text("cls").primaryKey(),
+  discountPct: numeric("discount_pct", { precision: 5, scale: 2, mode: "number" }).notNull().default(0),
+  creditLimit: money("credit_limit"),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+  updatedBy: text("updated_by").references(() => users.id),
+});
+/** One person's exception to their category. Either column may be null, meaning "inherit" - a
+ *  doctor on the category's discount but with a ceiling of their own is the common case. The
+ *  foreign key is what stops an exception outliving the payer it is about. */
+export const payerTerms = pgTable("payer_terms", {
+  kind: payerKindEnum("kind").notNull(),
+  payerId: text("payer_id").notNull(),
+  discountPct: numeric("discount_pct", { precision: 5, scale: 2, mode: "number" }),
+  creditLimit: money("credit_limit"),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+  updatedBy: text("updated_by").references(() => users.id),
+}, (t) => [
+  primaryKey({ columns: [t.kind, t.payerId] }),
+  foreignKey({ columns: [t.kind, t.payerId], foreignColumns: [payers.kind, payers.id], name: "payer_terms_payer_fk" }),
+]);

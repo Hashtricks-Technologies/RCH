@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { IsoTime, LocKeySchema, RoleSchema } from "./common.js";
-import { LocationSchema } from "./documents.js";
+import { IsoTime, LocKeySchema, Money, RoleSchema } from "./common.js";
+import { LocationSchema, PayerKindSchema } from "./documents.js";
 
 /**
  * The account-management module's own wire shape for a colleague - deliberately not
@@ -38,6 +38,7 @@ export const AdminActionSchema = z.strictObject({
   action: z.enum([
     "create", "reset_password", "deactivate", "reactivate", "update_role_loc", "delete",
     "outlet_create", "outlet_update", "outlet_close", "outlet_reopen",
+    "payer_create", "payer_update", "payer_deactivate", "payer_reactivate",
   ]),
   target: z.string(), details: z.record(z.string(), z.unknown()),
 });
@@ -67,5 +68,32 @@ export const CreateOutletBodySchema = z.strictObject(outletFields);
 /** Any of the same fields. One that changes nothing is refused by the service, in words. */
 export const UpdateOutletBodySchema = z.strictObject(outletFields).partial();
 export const OutletKeyParamsSchema = z.strictObject({ key: LocKeySchema });
-/** The account feed and the outlet feed are one log read two ways, so each tab shows its own fifty. */
-export const AdminActionsQuerySchema = z.strictObject({ kind: z.enum(["accounts", "outlets"]).default("accounts") });
+/** Each tab reads the same log filtered to its own kind, so each shows its own fifty. */
+export const AdminActionsQuerySchema = z.strictObject({ kind: z.enum(["accounts", "outlets", "payers"]).default("accounts") });
+
+// ---- the payer register. Who a bill may be posted to: consultants, staff, wards and cost
+// centres, and in-patients. Opened, renamed and switched off by the super admin, never deleted -
+// a payer with a bill against them is a balance somebody has to be able to find. What each of
+// them is *charged* is the outlet manager's, and lives in `schemas/receivables.ts`.
+
+/** A payer as the admin page manages it: the till's three fields plus whether it still bills and
+ *  what it still owes. The balance is here because it is the one thing that makes "switch this
+ *  off" a decision rather than a click. */
+export const AdminPayerSchema = z.strictObject({
+  kind: PayerKindSchema, id: z.string(), name: z.string(), active: z.boolean(),
+  outstanding: Money, bills: z.number().int().min(0),
+});
+/** The id is the hospital's own - a payroll number, a ward code, a consultant's registration -
+ *  so the server never invents one. Upper-cased on the way in, because `rc-1902` and `RC-1902`
+ *  are one person and two credit accounts is the defect that follows from pretending otherwise. */
+export const CreatePayerBodySchema = z.strictObject({
+  kind: PayerKindSchema,
+  id: z.string().trim().toUpperCase().regex(/^[A-Z0-9][A-Z0-9/-]{0,39}$/, "An id is letters, digits, dashes or slashes"),
+  name: z.string().trim().min(2).max(120),
+});
+/** Either field, and one that changes nothing is refused by the service in words. Deactivating
+ *  is `active: false` here rather than its own route, the way an account's switch is a patch. */
+export const UpdatePayerBodySchema = z.strictObject({
+  name: z.string().trim().min(2).max(120), active: z.boolean(),
+}).partial();
+export const AdminPayerParamsSchema = z.strictObject({ kind: PayerKindSchema, id: z.string().min(1).max(64) });

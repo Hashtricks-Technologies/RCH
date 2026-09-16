@@ -2,9 +2,10 @@ import { z } from "zod";
 import type { Role } from "./types.js";
 import { OkResponseSchema } from "./schemas/common.js";
 import { AuthResponseSchema, ChangePasswordBodySchema, LoginBodySchema, MeResponseSchema, PatchMeBodySchema, SignInDirectorySchema } from "./schemas/auth.js";
-import { AdjustmentRequestsResponseSchema, AdjustmentsResponseSchema, BatchesResponseSchema, BILL_DAYS, BillsResponseSchema, ContractsResponseSchema, GrnsResponseSchema, ItemsResponseSchema, LocationsResponseSchema, MenusResponseSchema, PriceListsResponseSchema, PricesResponseSchema, ProdOrdersResponseSchema, ProductRequestsResponseSchema, PurchaseOrdersResponseSchema, RequestsResponseSchema, RequisitionsResponseSchema, RosterResponseSchema, ShopAsksResponseSchema, SnapshotSchema, StockResponseSchema, SupportTicketsResponseSchema, TicketsResponseSchema, VendorsResponseSchema } from "./schemas/snapshot.js";
+import { AdjustmentRequestsResponseSchema, AdjustmentsResponseSchema, BatchesResponseSchema, BILL_DAYS, BillsResponseSchema, ContractsResponseSchema, GrnsResponseSchema, ItemsResponseSchema, LocationsResponseSchema, MenusResponseSchema, PriceListsResponseSchema, PricesResponseSchema, ProdOrdersResponseSchema, ProductRequestsResponseSchema, PurchaseOrdersResponseSchema, RequestsResponseSchema, RequisitionsResponseSchema, RosterResponseSchema, ShopAsksResponseSchema, SnapshotSchema, TermsResponseSchema, StockResponseSchema, SupportTicketsResponseSchema, TicketsResponseSchema, VendorsResponseSchema } from "./schemas/snapshot.js";
 import { CreditParamsSchema, CreditResponseSchema, StockLedgerQuerySchema, StockLedgerResponseSchema } from "./schemas/reports.js";
-import { AdminActionSchema, AdminActionsQuerySchema, AdminDeletedUserSchema, AdminLocationSchema, AdminUserIdParamsSchema, AdminUserSchema, AdminUserWithTempPasswordSchema, CreateAdminUserBodySchema, CreateOutletBodySchema, OutletKeyParamsSchema, UpdateAdminUserBodySchema, UpdateOutletBodySchema } from "./schemas/admin.js";
+import { AdminActionSchema, AdminActionsQuerySchema, AdminDeletedUserSchema, AdminLocationSchema, AdminPayerParamsSchema, AdminPayerSchema, AdminUserIdParamsSchema, AdminUserSchema, AdminUserWithTempPasswordSchema, CreateAdminUserBodySchema, CreateOutletBodySchema, CreatePayerBodySchema, OutletKeyParamsSchema, UpdateAdminUserBodySchema, UpdateOutletBodySchema, UpdatePayerBodySchema } from "./schemas/admin.js";
+import { ClassParamsSchema, ClassTermsSchema, PayerParamsSchema, PayerTermsSchema, ReceivablesResponseSchema, RecordSettlementBodySchema, SetClassTermsBodySchema, SetPayerTermsBodySchema, SettlementIdParamsSchema, SettlementSchema, SettlementsResponseSchema, StatementSchema, VoidSettlementBodySchema } from "./schemas/receivables.js";
 import { AuditEntrySchema, AuditIdParamsSchema, AuditPageSchema, AuditQuerySchema } from "./schemas/audit.js";
 import { AdjustmentRequestSchema, AdjustmentSchema, BatchSchema, BillSchema, PriceListSchema, ProdOrderSchema, ProductRequestSchema, PurchaseOrderSchema, RateContractSchema, RequisitionSchema, ShopAskSchema, StockRequestSchema, SupportTicketSchema, TicketSchema, VendorSchema } from "./schemas/documents.js";
 import { ActivatePriceListResultSchema, AddToProcurementListBodySchema, AnswerProductRequestBodySchema, AnswerShopAskBodySchema, ApproveAdjustmentRequestResultSchema, ApproveRequestBodySchema, ApproveRequisitionBodySchema, ApprovalResultSchema, CancelPoBodySchema, CancelTicketBodySchema, CloseShortBodySchema, ContractBodySchema, CreateAdjustmentBodySchema, CreateAdjustmentRequestBodySchema, CreateItemBodySchema, CreatePoBodySchema, CreatePriceListBodySchema, CreateProductRequestBodySchema, CreateRequestBodySchema, CreateRequisitionBodySchema, DeclineRequisitionBodySchema, DeclineShopAskBodySchema, DeletedPriceListSchema, DispatchResultSchema, DistributeBodySchema, DocIdParamsSchema, HandoverBodySchema, IssueResultSchema, MakeBatchBodySchema, MenuItemBodySchema, MenuItemParamsSchema, MenuLocParamsSchema, MenuResultSchema, OutletParamsSchema, PatchContractBodySchema, PatchPoBodySchema, PatchVendorBodySchema, PayBodySchema, PoLineParamsSchema, PriceListIdParamsSchema, PriceResultSchema, RaiseTicketBodySchema, RateTicketBodySchema, DeskReplyBodySchema, ReceiptResultSchema, ReceivePoBodySchema, RedirectRequestBodySchema, RejectAdjustmentRequestBodySchema, RejectRequestBodySchema, ReplyToTicketBodySchema, SavePriceBodySchema, SavePriceParamsSchema, SetOrderStatusBodySchema, SetOutletPriceListBodySchema, SetTicketStatusBodySchema, ShopAskBodySchema, ShopAskSentResultSchema, ToggleAvailBodySchema, ToggleResultSchema, TransferBodySchema, UpdatePoLineBodySchema, VendorBodySchema, writeResponse, ItemKeyParamsSchema, ItemResultSchema, PatchItemBodySchema, SetItemImageBodySchema, BillNoParamsSchema, VoidBillBodySchema, CreateProdOrderBodySchema } from "./schemas/writes.js";
@@ -151,16 +152,39 @@ export const routes = {
   tickets:         defineRoute({ method: "GET",  path: "/support/tickets",              access: "any", response: SupportTicketsResponseSchema }),
   // ---- Reports. Two figures a caller cannot compute from its own snapshot:
   // the ledger, which needs `stock_moves` and which the browser had to reconstruct backwards from
-  // receipts and issues, and a payer's credit for the calendar month, which needs every outlet's
-  // bills and which the till could only approximate from its own seven days. Every other report
-  // and every dashboard reads a slice the snapshot already carries whole and stays in the browser.
+  // receipts and issues, and what a payer still owes, which needs every outlet's bills and every
+  // settlement against them and which the till could only approximate from its own seven days.
+  // Every other report and every dashboard reads a slice the snapshot already carries whole and
+  // stays in the browser.
   stockLedger:  defineRoute({ method: "GET", path: "/reports/stock-ledger",     access: ["store", "manager", "buyer", "prod"], query: StockLedgerQuerySchema, response: StockLedgerResponseSchema }),
   creditReport: defineRoute({ method: "GET", path: "/reports/credit/:kind/:id", access: ["counter", "manager"],                params: CreditParamsSchema,   response: CreditResponseSchema }),
-  // ---- payers (the roster behind every non-cash tender). No screen keeps it: the register is
-  // loaded from a CSV with the `payers import` CLI. `GET /roster` is the till's read, live payers
-  // only, "any" and scoped like the snapshot's own copy: a caller who never opens a payer picker
-  // reads an empty register.
+  // ---- payers (the roster behind every non-cash tender). The register itself is the super
+  // admin's (`/admin/payers`, below); the CSV import stays for a ward list nobody types twice.
+  // `GET /roster` is the till's read, live payers only, "any" and scoped like the snapshot's own
+  // copy: a caller who never opens a payer picker reads an empty register.
   roster: defineRoute({ method: "GET", path: "/roster", access: "any", response: RosterResponseSchema }),
+  // ---- what each party is charged, and what they owe.
+  //
+  // `GET /payer-terms` is "any" and scoped empty for the three desks that never take a bill,
+  // exactly like the roster above. That is deliberate rather than tidy: a manager's write
+  // announces "terms" to *every* open browser, and a route the store keeper's tab is forbidden
+  // would fail that tab's whole refetch with a toast about a screen of theirs that never changed.
+  // The four writes are the outlet manager's alone.
+  payerTerms:      defineRoute({ method: "GET", path: "/payer-terms",             access: "any",       response: TermsResponseSchema }),
+  setClassTerms:   defineRoute({ method: "PUT", path: "/payer-terms/class/:cls",  access: ["manager"], params: ClassParamsSchema, body: SetClassTermsBodySchema, response: writeResponse(ClassTermsSchema) }),
+  setPayerTerms:   defineRoute({ method: "PUT", path: "/payer-terms/:kind/:id",   access: ["manager"], params: PayerParamsSchema, body: SetPayerTermsBodySchema, response: writeResponse(PayerTermsSchema) }),
+  // The two lists behind the manager's Credit screen are "any" and answer `[]` to everybody
+  // else, for the same reason `/roster` and `/payer-terms` are: a settlement announces
+  // "receivables" to every open browser, and a route a store keeper's tab is forbidden would
+  // fail that tab's whole refetch over a screen of theirs that never changed. The service
+  // short-circuits before it queries anything, so an empty answer costs nothing.
+  receivables:     defineRoute({ method: "GET", path: "/receivables",             access: "any",       response: ReceivablesResponseSchema }),
+  settlements:     defineRoute({ method: "GET", path: "/settlements",             access: "any",       response: SettlementsResponseSchema }),
+  // One party's statement is opened by hand from a drawer and is never in a `changed`, so it can
+  // stay closed to everyone but the manager.
+  statement:       defineRoute({ method: "GET", path: "/receivables/:kind/:id",   access: ["manager"], params: PayerParamsSchema, response: StatementSchema }),
+  recordSettlement: defineRoute({ method: "POST", path: "/settlements",           access: ["manager"], body: RecordSettlementBodySchema, response: writeResponse(SettlementSchema) }),
+  voidSettlement:  defineRoute({ method: "POST", path: "/settlements/:id/void",   access: ["manager"], params: SettlementIdParamsSchema, body: VoidSettlementBodySchema, response: writeResponse(SettlementSchema) }),
   // ---- item patch ----
   // The item master stopped being write-once. All four desks that handle goods reach this door;
   // which of the eight fields each of them may actually move is `ITEM_FIELD_ROLES`
@@ -211,6 +235,13 @@ export const routes = {
   updateAdminUser:       defineRoute({ method: "PATCH", path: "/admin/users/:id",                  access: "admin", params: AdminUserIdParamsSchema, body: UpdateAdminUserBodySchema, response: writeResponse(AdminUserSchema) }),
   deleteAdminUser:       defineRoute({ method: "DELETE", path: "/admin/users/:id",                 access: "admin", params: AdminUserIdParamsSchema, response: writeResponse(AdminDeletedUserSchema) }),
   adminActions:          defineRoute({ method: "GET",   path: "/admin/actions",                    access: "admin", query: AdminActionsQuerySchema, response: z.array(AdminActionSchema) }),
+  // ---- admin: the payer register. Who a bill may be posted to - consultants, staff, wards and
+  // in-patients - opened, renamed and switched off here. There is no delete: a payer with a bill
+  // against them is somebody's balance, and an id that vanishes is a debt nobody can find. What
+  // each of them is charged is the outlet manager's, at `/payer-terms` above.
+  adminPayers:           defineRoute({ method: "GET",   path: "/admin/payers",                     access: "admin", response: z.array(AdminPayerSchema) }),
+  createPayer:           defineRoute({ method: "POST",  path: "/admin/payers",                     access: "admin", body: CreatePayerBodySchema, response: writeResponse(AdminPayerSchema) }),
+  updatePayer:           defineRoute({ method: "PATCH", path: "/admin/payers/:kind/:id",           access: "admin", params: AdminPayerParamsSchema, body: UpdatePayerBodySchema, response: writeResponse(AdminPayerSchema) }),
   // ---- admin: outlets. Opened, edited, closed and reopened here and nowhere else - never deleted
   // (root CLAUDE.md). The store and the kitchen are fixed: the outlet routes answer 404 for either.
   adminLocations:        defineRoute({ method: "GET",   path: "/admin/locations",                 access: "admin", response: z.array(AdminLocationSchema) }),

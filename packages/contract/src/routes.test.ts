@@ -74,6 +74,14 @@ const SAMPLES: Record<string, Record<string, unknown>> = {
   // ---- admin: outlets
   createOutlet: { name: "Juice Bar", code: "OT-JB", floor: "Ground", cc: "CC-JB" },
   updateOutlet: { name: "Juice Hut" },
+  // ---- admin: the payer register
+  createPayer: { kind: "doctor", id: "DR-118", name: "Dr A. Rao" },
+  updatePayer: { active: false },
+  // ---- what each party is charged, and what they owe
+  setClassTerms: { pct: 20, limit: 5000 },
+  setPayerTerms: { pct: 25, limit: null },
+  recordSettlement: { kind: "doctor", id: "DR-118", amount: 4200, mode: "UPI", note: "September account" },
+  voidSettlement: { reason: "Keyed against the wrong consultant" },
 };
 // `routes` is a const object, so `r.body` is a union of every literal schema type; the cast
 // keeps this loop about the shared `safeParse` and not about zod's generics.
@@ -193,11 +201,15 @@ describe("what the two reports put on the wire", () => {
     expect(CreditParamsSchema.safeParse({ kind: "supplier", id: "RC-4471" }).success).toBe(false);
     expect(CreditParamsSchema.safeParse({ kind: "staff", id: "" }).success).toBe(false);
   });
-  it("carries the window it settled the ceiling over, not just the number", () => {
-    const body = { kind: "staff", id: "RC-4471", name: "Kavitha Raman · F&B", since: "2026-09-01T00:00:00.000Z", taken: 240, limit: 3000, room: 2760 };
+  it("reports what is unsettled, and lets a party have no ceiling at all", () => {
+    const body = { kind: "staff", id: "RC-4471", name: "Kavitha Raman · F&B", outstanding: 240, limit: 3000, room: 2760 };
     expect(CreditResponseSchema.safeParse(body).success).toBe(true);
-    const { since: _since, ...withoutSince } = body;
-    expect(CreditResponseSchema.safeParse(withoutSince).success).toBe(false);
+    // `null` is a party the outlet manager set no limit for - a consultant the till is not
+    // meant to argue with. It is not 0, which would refuse every credit sale they ever made.
+    expect(CreditResponseSchema.safeParse({ ...body, limit: null, room: null }).success).toBe(true);
+    // And there is no window any more: a settlement can bring the balance down on any day, so
+    // there is no month to report.
+    expect(CreditResponseSchema.safeParse({ ...body, since: "2026-09-01T00:00:00.000Z" }).success).toBe(false);
   });
 });
 

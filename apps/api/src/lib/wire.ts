@@ -1,4 +1,5 @@
 import type { Bill, Item, Location, PayerKind, User, UserMin } from "@rch/contract";
+import { PARTY_LABEL } from "@rch/domain";
 import type { billLines, bills, items, locations, users } from "../db/schema/index.js";
 import { iso } from "./time.js";
 
@@ -53,14 +54,21 @@ export const toWireBill = (b: BillRow, lines: BillLineRow[], operator: { name: s
   tot: b.total, tax: b.tax, t: iso(b.at), pay: b.tender as Bill["pay"],
   lines: lines.map((l) => ({ it: l.itemKey, qty: l.qty, rate: l.rate })),
   payer: b.payerKind ? { kind: b.payerKind, id: b.payerId ?? "", name: b.payerName ?? "" } : undefined,
+  // ---- the party discount. Dropped by `strip` on a bill nobody discounted, so a wire bill is
+  // byte for byte the bill it was before this existed. `tot` above is the net, as it always was.
+  disc: b.discount > 0 ? b.discount : undefined,
+  discPct: b.discount > 0 ? b.discountPct : undefined,
   // ---- bill void. Both keys are dropped by `strip` on a bill nobody voided, which is nearly
   // every bill: a screen asks `if (b.voided)` and a fixture stays equal to what it was.
   voided: b.voidedAt ? true : undefined,
   voidReason: b.voidedAt ? b.voidReason ?? "" : undefined,
 });
 
-/** What the operator calls each kind of payer. One list, so the sentence the till says when the
- *  roster has never heard of a payer and the sentence the roster itself says when the manager
- *  patches one that is not there use the same word. Two modules read it - `pos` at the till and
- *  `payers` at the register - which is why it sits here rather than in either of them. */
-export const PAYER_LABEL: Record<PayerKind, string> = { patient: "patient", staff: "staff member", dept: "department" };
+/** What the operator calls each kind of payer. A thin view on `PARTY_LABEL` (`@rch/domain`),
+ *  which has the same words plus the walk-in customer: the sentence the till says when the
+ *  roster has never heard of somebody and the sentence the rate card says about the same
+ *  somebody have to use the same word, and a word written twice drifts. */
+export const PAYER_LABEL: Record<PayerKind, string> = {
+  patient: PARTY_LABEL.patient, staff: PARTY_LABEL.staff,
+  dept: PARTY_LABEL.dept, doctor: PARTY_LABEL.doctor,
+};

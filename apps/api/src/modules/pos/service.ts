@@ -1,11 +1,11 @@
 // Pos: the flow - transaction, rules, moves, id. Composes the helpers in apps/api/src/lib/;
 // the arithmetic of the sale is `planBill` in packages/domain.
 import type { z } from "zod";
-import type { Bill, PayBodySchema, PayerKind, Tender, VoidBillBodySchema, WriteResponse } from "@rch/contract";
-import { avail, availOf, breachesCredit, creditBreachMessage, creditRoom, dmy, fq, istDate, money as inr, planBill, priceOf, round3, unitTotal, type Master } from "@rch/domain";
+import type { Bill, PayBodySchema, Tender, VoidBillBodySchema, WriteResponse } from "@rch/contract";
+import { avail, availOf, breachesCredit, creditBreachMessage, dmy, fq, isAccountTender, istDate, money as inr, partyOf, payerKindForTender, PARTY_LABEL, planBill, priceOf, round3, unitTotal, type Master } from "@rch/domain";
 import type { Db } from "../../db/client.js";
 import { withTransaction } from "../../lib/db.js";
-import { creditTakenThisMonth } from "../../lib/credit.js";
+import { lockPayerCredit, outstandingFor } from "../../lib/credit.js";
 import { NotFoundError } from "../../lib/errors.js";
 import { emitChanged } from "../../lib/events.js";
 import { appendHistory } from "../../lib/history.js";
@@ -15,23 +15,13 @@ import { assertOpen, lockLocation } from "../../lib/locations.js";
 import { loadMaster } from "../../lib/master.js";
 import { reservedAt } from "../../lib/reservations.js";
 import { assertRule } from "../../lib/rules.js";
+import { termsFor } from "../../lib/terms.js";
 import { PAYER_LABEL, toWireBill } from "../../lib/wire.js";
 import type { AccessClaims } from "../../plugins/auth.js";
 import { posRepo } from "./repo.js";
 
 export type PayBody = z.infer<typeof PayBodySchema>;
 export type VoidBillBody = z.infer<typeof VoidBillBodySchema>;
-
-/** A tender that is not money changing hands has to name whose account it lands on: the word
- *  the operator reads, and the kind of payer that word means. One table for both, because a
- *  tender that accepts the wrong kind of payer is a bill nothing later counts - a staff credit
- *  posted to a patient is invisible to the ceiling below. Keyed by the closed set of tenders,
- *  so a new one added to `TenderSchema` has to be considered here. */
-const NEEDS_PAYER: Partial<Record<Tender, { label: string; kind: PayerKind }>> = {
-  "Patient bill": { label: PAYER_LABEL.patient, kind: "patient" },
-  "Staff credit": { label: PAYER_LABEL.staff, kind: "staff" },
-  Dept: { label: PAYER_LABEL.dept, kind: "dept" },
-};
 
 /** Money is stored and read at two decimals; `planBill` totals at full precision so the tax
  *  split is derived from the real amounts, not from a rounded one. */
@@ -71,13 +61,16 @@ export function createPosService(db: Db) {
         // nothing cannot reach here: there is no empty-cart rule to state a second time.
         const keys = Object.keys(cart);
 
-        const need = NEEDS_PAYER[body.tender];
-        assertRule(!(need && !body.payer), `Choose a ${need?.label} before taking a ${body.tender.toLowerCase()}`);
-        // And the payer has to be of the kind the tender means. Without this the two halves
-        // disagree - the ceiling below counts staff payers, so a staff credit posted to a
-        // patient would run up a balance no rule ever measures.
-        assertRule(!need || body.payer?.kind === need.kind,
-          `Choose a ${need?.label} for a ${body.tender.toLowerCase()} - ${body.payer?.name} is not one`);
+        // A tender that is not money changing hands has to name whose account it lands on, and
+        // the payer has to be of the kind the tender means (`payerKindForTender`, @rch/domain -
+        // one table, because a tender that accepts the wrong kind of payer is a bill nothing
+        // later counts: a staff credit posted to a patient is invisible to the ceiling below and
+        // to every receivables figure the manager reads).
+        const needKind = payerKindForTender(body.tender);
+        const needLabel = needKind ? PAYER_LABEL[needKind] : "";
+        assertRule(!(needKind && !body.payer), `Choose a ${needLabel} before taking a ${body.tender.toLowerCase()}`);
+        assertRule(!needKind || body.payer?.kind === needKind,
+          `Choose a ${needLabel} for a ${body.tender.toLowerCase()} - ${body.payer?.name} is not one`);
 
         // And the payer has to be somebody the hospital already knows. The till sends a name
         // along with the id, but the name written on the bill is the roster's: a mistyped id is
@@ -114,26 +107,33 @@ export function createPosService(db: Db) {
           assertRule(priceOf(master, prices, loc, it).p > 0, `Refused - ${item.n} has no price at ${locName}`);
         }
 
-        const plan = planBill(master, prices, loc, cart);
+        // What this party is charged. Read inside the transaction, so the bill is priced against
+        // the rate card this transaction commits against - a manager changing the doctors' rate
+        // in the same instant either lands before this sale or after it, never half way through
+        // it. The till previews the same number off the snapshot; the server decides it.
+        const party = partyOf(payer);
+        const terms = await termsFor(tx, party, payer);
+        const plan = planBill(master, prices, loc, cart, terms.pct);
         const at = new Date();
         // A tender that takes no money now runs up a balance somebody settles later. The ceiling
-        // is the person's, over the calendar month the hospital settles on, and it is checked
-        // here rather than only on the counter's screen - a second tab or a stale page would
-        // otherwise walk straight past a disabled button.
-        if (body.tender === "Staff credit" && payer) {
-          // Read the total under a lock on the person, not merely read it: two tills selling to
-          // one staff member in the same instant would otherwise both see the room that existed
+        // is on what is still **unsettled**, not on a calendar month: somebody who cleared their
+        // account yesterday has their room back today. Checked here rather than only on the
+        // counter's screen - a second tab or a stale page would otherwise walk straight past a
+        // disabled button.
+        if (payer) {
+          // Read the balance under a lock on the person, not merely read it: two tills selling
+          // to one person in the same instant would otherwise both see the room that existed
           // before either wrote, and both fit under a ceiling only one of them fits under.
-          await posRepo.lockStaffCredit(tx, payer.id);
-          // One query, two callers: this refusal and `GET /reports/credit/:kind/:id`
-          // (apps/api/src/lib/credit.ts). The sale still stamps the window from its own `at`,
-          // the same instant the bill is written with, so a sale at 00:00:00 on the first is
-          // measured against the month it lands in.
-          const { taken } = await creditTakenThisMonth(tx, "staff", payer.id, at);
+          await lockPayerCredit(tx, payer.kind, payer.id);
+          // One query, three callers: this refusal, `GET /reports/credit/:kind/:id` and the
+          // manager's receivables list (apps/api/src/lib/credit.ts).
+          const { outstanding } = await outstandingFor(tx, payer.kind, payer.id);
           assertRule(
-            !breachesCredit(taken, plan.tot),
-            creditBreachMessage(taken, plan.tot, payer.name),
-            { taken, room: creditRoom(taken) },
+            !breachesCredit(outstanding, plan.tot, terms.limit),
+            // Only reached when there is a limit, which is what `breachesCredit` answers `false`
+            // for when there is not - so the non-null assertion here is the same condition.
+            creditBreachMessage(outstanding, plan.tot, payer.name, terms.limit ?? 0),
+            { outstanding, limit: terms.limit },
           );
         }
         // What the sale will take off each shelf, folded the way postMoves folds it. A
@@ -173,6 +173,9 @@ export function createPosService(db: Db) {
         const head = await posRepo.insertBill(tx, {
           no, loc, operatorId: claims.sub, total: money(plan.tot), tax: money(plan.tax), at, tender: body.tender,
           payerKind: payer?.kind ?? null, payerId: payer?.id ?? null, payerName: payer?.name ?? null,
+          // The rate as well as the rupees: the rate card moves, and a bill has to be able to say
+          // what it was charged at long after somebody changed it.
+          discountPct: terms.pct, discount: money(plan.disc),
         });
         const lines = await posRepo.insertBillLines(tx, no, plan.lines);
         await postMoves(tx, plan.moves.map((m) => ({ ...m, kind: "sale" as const, refType: "bill", refId: no, by: claims.sub, at })));
@@ -193,9 +196,13 @@ export function createPosService(db: Db) {
         const operator = await posRepo.operator(tx, claims.sub);
         const result = toWireBill(head, lines, { name: operator?.name ?? claims.sub, colour: operator?.colour ?? "#64748B" });
         const total = money(plan.tot).toFixed(2);
+        // The concession is named where there was one, and named as the rate rather than only the
+        // rupees: "20% off" is the thing the operator has to be able to check at a glance against
+        // what the person in front of them expected.
+        const off = plan.disc > 0 ? ` · ${terms.pct}% ${PARTY_LABEL[party]} discount, ${inr(money(plan.disc))} off` : "";
         const message = payer
-          ? `Bill ${no} · ₹${total} posted to ${payer.name}`
-          : `Bill ${no} · ₹${total} ${body.tender === "Cash" ? "collected" : "settled by " + body.tender.toLowerCase()} at ${locName}`;
+          ? `Bill ${no} · ₹${total}${off} posted to ${payer.name}`
+          : `Bill ${no} · ₹${total}${off} ${body.tender === "Cash" ? "collected" : "settled by " + body.tender.toLowerCase()} at ${locName}`;
         // One array for the answer and the announcement, so the till that made the sale and
         // the tills watching it can never be told to refetch different slices.
         const changed = ["stock", "bills"] as const;
@@ -231,6 +238,15 @@ export function createPosService(db: Db) {
         const at = new Date();
         assertRule(istDate(bill.at) === istDate(at),
           `${no} was taken on ${dmy(istDate(bill.at))} - a bill can only be voided on the day it was billed; write the stock back on with an adjustment instead`);
+
+        // And nobody has paid it off yet. A void erases the debt the bill created, so voiding one
+        // a settlement has already closed would leave the payment sitting against nothing and the
+        // payer's balance short by exactly this bill. Rare - a void is same-day and a settlement
+        // is usually a month later - but the two can meet on the last day of a month, which is
+        // precisely when somebody is settling. The settlement is the document to take back first,
+        // and the refusal names it.
+        const paid = await posRepo.liveSettlementOf(tx, no);
+        assertRule(!paid, `${no} has been settled by ${paid?.id} - void that settlement first, then this bill`);
 
         // A void posts the sale's stock back onto the shelf it came off, and a closed outlet's shelves
         // were emptied to close it.
@@ -272,11 +288,11 @@ export function createPosService(db: Db) {
         const result = toWireBill(head, lines, { name: operator?.name ?? head.operatorId, colour: operator?.colour ?? "#64748B" });
         const back = reversals.map((r) => ({ it: r.it, qty: r.qty }));
         const unitOf = (it: string) => master.items[it]?.u ?? "nos";
-        // What the manager most needs told is what the void gave back. For a staff credit that is
-        // the person's room for the month, which is the thing a mis-keyed bill actually costs
+        // What the manager most needs told is what the void gave back. For a bill on somebody's
+        // account that is the room it frees, which is the thing a mis-keyed bill actually costs
         // them; otherwise it is the stock that went back on the shelf.
-        const message = head.payerKind === "staff" && head.tender === "Staff credit"
-          ? `${no} voided - ${inr(head.total)} is back on ${head.payerName ?? head.payerId}'s credit for the month`
+        const message = head.payerKind && isAccountTender(head.tender as Tender)
+          ? `${no} voided - ${inr(head.total)} is off ${head.payerName ?? head.payerId}'s account`
           : back.length > 0
             ? `${no} voided - ${unitTotal(back, unitOf)} back on the shelf at ${locName}`
             : `${no} voided`;
