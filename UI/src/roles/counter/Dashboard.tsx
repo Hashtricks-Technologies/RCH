@@ -4,7 +4,7 @@ import { useApp } from "../../store";
 import { availOf, menuOf } from "../../lib/selectors";
 import { isToday, money, money0, sum, unitTotal } from "../../lib/fmt";
 import {
-  Alert, Avatar, Btn, Card, DataTable, Feed, Grid, Kpis, PageHead, StatusPill,
+  Alert, AlertStack, Avatar, Btn, Card, DataTable, Feed, Grid, Kpis, PageHead, StatusPill,
 } from "../../ui/kit";
 import { settlementOf } from "./status";
 import type { ReqStatus } from "../../types";
@@ -102,29 +102,44 @@ export default function Dashboard() {
         { l: "Products switched off", v: String(off.length), d: <>of {menu.length} on this menu</> },
       ]} />
 
-      {off.map((r) => (
-        <Alert key={"off-" + r.it} tone="c" label="OFF">
-          <b>{IT[r.it].n}</b> is not sellable - {r.a.why ?? "unavailable"} ({r.a.mode.toLowerCase()} check).
-        </Alert>
-      ))}
-      {waiting.map((t) => (
-        <Alert key={t.id} tone="w" label="COLLECT"
-          action={<Btn size="xs" variant="gh" onClick={() => nav("/tickets")}>Open tickets</Btn>}>
-          Ticket <b className="mono">{t.id}</b> is waiting at {LOC[t.from].n} - {t.lines.length} item{t.lines.length === 1 ? "" : "s"} against {t.req}.
-        </Alert>
-      ))}
-      {inTransit.map((t) => (
-        <Alert key={t.id} tone="i" label="TRANSIT"
-          action={<Btn size="xs" variant="gh" onClick={() => nav("/tickets")}>Confirm receipt</Btn>}>
-          Ticket <b className="mono">{t.id}</b> has been handed over and is on its way here.
-        </Alert>
-      ))}
-      {rejected.map((r) => (
-        <Alert key={r.id} tone="c" label="REJECTED"
-          action={<Btn size="xs" variant="gh" onClick={() => nav("/requests")}>View request</Btn>}>
-          <b className="mono">{r.id}</b> was rejected by the outlet manager{r.mgrNote ? ` - "${r.mgrNote}"` : ""}.
-        </Alert>
-      ))}
+      {/* Four stacks, each capped: none of these lists is bounded by anything. `off` is as long
+          as the menu on a morning the shelf is empty, and `rejected` is every request ever turned
+          down at this counter - `myReq` is deliberately not filtered by date, because a Friday ask
+          is still Monday's to chase. The KPIs above still count the whole of each. */}
+      <AlertStack tone="c" label="OFF">
+        {off.map((r) => (
+          <Alert key={"off-" + r.it} tone="c" label="OFF">
+            <b>{IT[r.it].n}</b> is not sellable - {r.a.why ?? "unavailable"} ({r.a.mode.toLowerCase()} check).
+          </Alert>
+        ))}
+      </AlertStack>
+      <AlertStack tone="w" label="COLLECT"
+        action={<Btn size="xs" variant="gh" onClick={() => nav("/tickets")}>Open tickets</Btn>}>
+        {waiting.map((t) => (
+          <Alert key={t.id} tone="w" label="COLLECT"
+            action={<Btn size="xs" variant="gh" onClick={() => nav("/tickets")}>Open tickets</Btn>}>
+            Ticket <b className="mono">{t.id}</b> is waiting at {LOC[t.from].n} - {t.lines.length} item{t.lines.length === 1 ? "" : "s"} against {t.req}.
+          </Alert>
+        ))}
+      </AlertStack>
+      <AlertStack tone="i" label="TRANSIT"
+        action={<Btn size="xs" variant="gh" onClick={() => nav("/tickets")}>Confirm receipt</Btn>}>
+        {inTransit.map((t) => (
+          <Alert key={t.id} tone="i" label="TRANSIT"
+            action={<Btn size="xs" variant="gh" onClick={() => nav("/tickets")}>Confirm receipt</Btn>}>
+            Ticket <b className="mono">{t.id}</b> has been handed over and is on its way here.
+          </Alert>
+        ))}
+      </AlertStack>
+      <AlertStack tone="c" label="REJECTED"
+        action={<Btn size="xs" variant="gh" onClick={() => nav("/requests")}>View request</Btn>}>
+        {rejected.map((r) => (
+          <Alert key={r.id} tone="c" label="REJECTED"
+            action={<Btn size="xs" variant="gh" onClick={() => nav("/requests")}>View request</Btn>}>
+            <b className="mono">{r.id}</b> was rejected by the outlet manager{r.mgrNote ? ` - "${r.mgrNote}"` : ""}.
+          </Alert>
+        ))}
+      </AlertStack>
 
       <div className="mtop" />
       <Card

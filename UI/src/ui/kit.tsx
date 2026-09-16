@@ -2,6 +2,7 @@ import {
   Children, cloneElement, isValidElement, useEffect, useId, useRef, useState,
   type CSSProperties, type ReactElement, type ReactNode,
 } from "react";
+import { HSN_CODES, hsnGroups } from "@rch/domain";
 import type { Ticket, Tone } from "../types";
 import { ticketDot, toneFor } from "../lib/selectors";
 import { toInputDate } from "../lib/fmt";
@@ -159,8 +160,16 @@ export function PageHead({ crumbs, title, sub, tip, actions }: {
     </>
   );
 }
-export function Card({ title, sub, tip, right, children, flush, className }: {
+export function Card({ title, sub, tip, right, children, flush, scroll, className }: {
   title?: ReactNode; sub?: ReactNode; tip?: ReactNode; right?: ReactNode; children: ReactNode; flush?: boolean;
+  /**
+   * Cap the body and scroll it, rather than letting the card grow with whatever it is holding.
+   * A widget over an uncapped collection - every product the kitchen carries, every line on the
+   * procurement list - is a page the operator scrolls past to reach anything below it, and the
+   * card after it may as well not be on the screen. `true` takes the default cap; a number sets
+   * it in pixels for a card that earns more or less room than the rest.
+   */
+  scroll?: boolean | number;
   className?: string;
 }) {
   return (
@@ -172,7 +181,10 @@ export function Card({ title, sub, tip, right, children, flush, className }: {
           {right}
         </div>
       )}
-      <div className={`card-b${flush ? " flush" : ""}`}>{children}</div>
+      <div className={`card-b${flush ? " flush" : ""}${scroll ? " scroll" : ""}`}
+        style={typeof scroll === "number" ? ({ "--cardmax": scroll + "px" } as CSSProperties) : undefined}>
+        {children}
+      </div>
     </div>
   );
 }
@@ -377,6 +389,38 @@ export function Alert({ tone = "i", label, children, action }: {
     </div>
   );
 }
+/**
+ * A capped stack of `Alert`s, and one more saying how many were left out.
+ *
+ * Four of the five dashboards draw one alert per open document - a ticket to collect, an item at
+ * zero, a request the outlet manager rejected - as bare siblings of the cards, and not one of
+ * those lists is bounded by anything: a counter's rejected requests are never filtered by date,
+ * and the buyer's "at zero" list can be the whole purchased catalogue on a quiet morning. Thirty
+ * alerts push every card on the page below the fold, which is the opposite of what an alert is
+ * for. So the first few are drawn in full, the rest are counted, and the count carries the same
+ * button through to the screen that lists them all.
+ *
+ * It caps what is *drawn*, never what is counted: every KPI above these stacks is still read off
+ * the whole list.
+ */
+export function AlertStack({ children, max = 4, tone = "i", label = "MORE", action }: {
+  children: ReactNode;
+  /** How many to draw in full before the rest become a count. */
+  max?: number;
+  /** The summary alert's tone and label - normally the stack's own, so it reads as one block. */
+  tone?: "w" | "c" | "g" | "i"; label?: string;
+  /** The button on the summary alert, usually the same one every row above it carries. */
+  action?: ReactNode;
+}) {
+  const all = Children.toArray(children);
+  const hidden = all.length - max;
+  return (
+    <>
+      {hidden > 0 ? all.slice(0, max) : all}
+      {hidden > 0 && <Alert tone={tone} label={label} action={action}>…and {hidden} more.</Alert>}
+    </>
+  );
+}
 export interface FeedItem { key: string; title: ReactNode; body?: ReactNode; when?: string; color?: string }
 export const Feed = ({ items }: { items: FeedItem[] }) => (
   <div className="feed">
@@ -578,6 +622,56 @@ export function Field({ label, hint, tip, children }: {
 export const FormRow = ({ cols, children }: { cols?: "f2" | "f3" | "f4"; children: ReactNode }) => (
   <div className={`frow${cols ? " " + cols : ""}`}>{children}</div>
 );
+/** The checkbox under the HSN picker sits on one line with its box, and is not one of the
+ *  uppercase field labels `.fld label` draws. */
+const HSN_OTHER: CSSProperties = { display: "flex", alignItems: "center", gap: 6, marginTop: 6 };
+/**
+ * The HSN box, drawn the same way wherever an item's tax code is set: a picker grouped under the
+ * headings `hsnGroups` files the codes by, and a checkbox that swaps in a plain text box for a
+ * code that is not on the curated list.
+ *
+ * It is a whole `Field` rather than a bare control because that is what keeps the visible label
+ * wired to the box - `Field` only reaches a **direct** host child, so a component handed to it
+ * leaves the label decorative and the control unnamed.
+ *
+ * It reports the code and nothing else. What a code *implies* - a GST slab - is the caller's to
+ * act on, because the two forms may not do the same thing with it: `ITEM_FIELD_ROLES` gives
+ * `hsn` to the store, the buyer and the kitchen and `gst` to the outlet manager alone, so on the
+ * item drawer the picker must never write into a box its operator does not own. `picked` says
+ * the code came off the list rather than out of the keyboard, so a half-typed code that happens
+ * to pass through a listed one does not rewrite a rate the operator set by hand.
+ */
+export function HsnField({ value, disabled, tip, hint, onChange }: {
+  value: string; disabled?: boolean; tip?: ReactNode; hint?: ReactNode;
+  onChange: (hsn: string, picked: boolean) => void;
+}) {
+  // Seeded once from the code the field opened with, so a code already on the list opens on the
+  // picker and the common case never touches the escape hatch at all.
+  const [other, setOther] = useState(!HSN_CODES.some((e) => e.hsn === value));
+  return (
+    <Field label="HSN" tip={tip} hint={hint}>
+      {other ? (
+        <input value={value} disabled={disabled} placeholder="e.g. 2106"
+          onChange={(e) => onChange(e.target.value, false)} />
+      ) : (
+        <select value={value} disabled={disabled} onChange={(e) => onChange(e.target.value, true)}>
+          {hsnGroups().map((g) => (
+            <optgroup key={g.category} label={g.category}>
+              {g.entries.map((e) => (
+                <option key={e.hsn} value={e.hsn}>{e.hsn} - {e.label} ({e.gst}% GST)</option>
+              ))}
+            </optgroup>
+          ))}
+        </select>
+      )}
+      <label className="mini" style={HSN_OTHER}>
+        <input type="checkbox" checked={other} disabled={disabled}
+          onChange={(e) => setOther(e.target.checked)} />
+        Not on the list - type the code myself
+      </label>
+    </Field>
+  );
+}
 export const Section = ({ title, sub, tip, children }: {
   title: string; sub?: ReactNode; tip?: ReactNode; children?: ReactNode;
 }) => (

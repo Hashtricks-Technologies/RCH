@@ -204,7 +204,7 @@ export default function Dashboard() {
         </Alert>
       )}
 
-      <Card title="Outlet summary" tip="Today's trade against the stock each counter is holding" flush>
+      <Card title="Outlet summary" tip="Today's trade against the stock each counter is holding" flush scroll>
         <DataTable
           sort={outletSort.sort}
           onSort={outletSort.onSort}
@@ -239,7 +239,7 @@ export default function Dashboard() {
         />
       </Card>
 
-      <Card title="Requests awaiting your approval" sub={`${queueRows.length} of ${waiting.length}`} flush className="mtop">
+      <Card title="Requests awaiting your approval" sub={`${queueRows.length} of ${waiting.length}`} flush scroll className="mtop">
         <Toolbar
           placeholder="Search request, outlet, operator or item…"
           value={rq}
@@ -289,7 +289,7 @@ export default function Dashboard() {
         <TableFoot count={queueRows.length} extra={<>{urgent} urgent in the full queue</>} />
       </Card>
 
-      <Card title="Recent activity" tip="Bills, request decisions and shop transfers" flush className="mtop">
+      <Card title="Recent activity" tip="Bills, request decisions and shop transfers" flush scroll className="mtop">
         <Toolbar
           placeholder="Search activity, outlet or person…"
           value={aq}

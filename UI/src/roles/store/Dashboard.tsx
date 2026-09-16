@@ -6,7 +6,7 @@ import {
   DECISION_TONE, avail, daysCover, decisionSentence, prqProgress, qty, resv, shortDecisionsToday, stateLabel, stateTone, stockValue,
 } from "../../lib/selectors";
 import { U, fq, lakh, money0, sum, unitTotal } from "../../lib/fmt";
-import { Alert, Btn, Card, DataTable, Grid, Kpis, PageHead, Pill, TableFoot } from "../../ui/kit";
+import { Alert, AlertStack, Btn, Card, DataTable, Grid, Kpis, PageHead, Pill, TableFoot } from "../../ui/kit";
 
 export default function Dashboard() {
   const s = useApp();
@@ -129,16 +129,24 @@ export default function Dashboard() {
           until the collector quotes the OTP at the store window.
         </Alert>
       )}
-      {decisions.map(({ p, d }) => (
-        <Alert
-          key={p.id}
-          tone={DECISION_TONE[d.st]}
-          label={d.st === "Declined" ? "DECLINED" : "TRIMMED"}
-          action={<Btn size="sm" variant="gh" onClick={() => openDrawer("sprq", p.id)}>Open</Btn>}
-        >
-          {decisionSentence(p, d)}
-        </Alert>
-      ))}
+      {/* Capped: a buyer working through a backlog can decide a dozen requisitions in one pass,
+          and a dozen alerts would bury the reorder warning under them. */}
+      <AlertStack
+        tone="w"
+        label="DECISIONS"
+        action={<Btn size="sm" variant="gh" onClick={() => nav("/procure")}>Open requisitions</Btn>}
+      >
+        {decisions.map(({ p, d }) => (
+          <Alert
+            key={p.id}
+            tone={DECISION_TONE[d.st]}
+            label={d.st === "Declined" ? "DECLINED" : "TRIMMED"}
+            action={<Btn size="sm" variant="gh" onClick={() => openDrawer("sprq", p.id)}>Open</Btn>}
+          >
+            {decisionSentence(p, d)}
+          </Alert>
+        ))}
+      </AlertStack>
       {low.length > 0 && (
         <Alert
           tone="c"

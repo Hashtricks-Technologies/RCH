@@ -246,7 +246,7 @@ export default function ProcurementList() {
       />
 
       <Grid cols="g21">
-      <Card title="Pending lines" sub={`${shown.length} of ${groups.length} item(s) waiting on an order`} flush>
+      <Card title="Pending lines" sub={`${shown.length} of ${groups.length} item(s) waiting on an order`} flush scroll>
         <Toolbar
           placeholder="Search item name or code…"
           value={q}

@@ -1,9 +1,9 @@
 import { useState } from "react";
-import { defaultSourceFor, mayEditItemField, mayEditItemImage, type ItemField } from "@rch/domain";
+import { defaultSourceFor, gstForHsn, mayEditItemField, mayEditItemImage, type ItemField } from "@rch/domain";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
 import { money } from "../../lib/fmt";
-import { Alert, Btn, BtnRow, Field, FormRow, Section, Tag } from "../../ui/kit";
+import { Alert, Btn, BtnRow, Field, FormRow, HsnField, Section, Tag } from "../../ui/kit";
 import { DrawerFrame } from "../../ui/Drawer";
 import { PhotoPicker } from "../../ui/PhotoPicker";
 import { registerDrawer } from "../../drawers";
@@ -65,6 +65,14 @@ function ItemDrawer({ id }: { id: string }) {
   const nameErr = may("n") && !trimmed ? "Give the product a name" : "";
   const costErr = may("cost") && !(costN > 0) ? "Cost must be more than zero" : "";
   const ok = !nameErr && !costErr;
+
+  // What the code on the pack implies, said out loud for the desk that owns the HSN but not the
+  // rate. Nothing is filled in from it: the GST box belongs to the outlet manager, and a figure
+  // that changes itself in a box this operator may not save is a patch the server turns away.
+  const implied = may("gst") ? undefined : gstForHsn(hsn);
+  const slab = implied === undefined
+    ? undefined
+    : <>{hsn.trim()} is offered at {implied}% GST - the outlet manager sets the rate.</>;
 
   /** Only what this role owns **and** what the operator actually moved. A field left out is a
    *  field left alone; sending every box back would make "Nothing to change" unreachable and
@@ -158,9 +166,23 @@ function ItemDrawer({ id }: { id: string }) {
 
       <Section title="Tax and levels" tip="The store, the buyer and the kitchen keep the HSN code, the reorder level and the shelf life." />
       <FormRow cols="f4">
-        <Field label="HSN">
-          <input value={hsn} disabled={!may("hsn")} onChange={(e) => setHsn(e.target.value)} />
-        </Field>
+        <HsnField
+          value={hsn}
+          disabled={!may("hsn")}
+          tip={may("hsn")
+            ? "Pick the code off the list, or tick the box below it and type one the list does not carry."
+            : "The store, the buyer or the kitchen changes this."}
+          hint={slab}
+          onChange={(code, picked) => {
+            setHsn(code);
+            // Only fill in a rate this role actually owns. `ITEM_FIELD_ROLES` never gives one
+            // person both boxes - the HSN is the store's, the buyer's and the kitchen's, and the
+            // GST rate is the outlet manager's - so for whoever is holding this drawer the code
+            // it implies is a sentence to read, not a figure to have changed under them.
+            const rate = picked ? gstForHsn(code) : undefined;
+            if (may("gst") && rate !== undefined) setGst(String(rate));
+          }}
+        />
         <Field label="GST %" tip={may("gst") ? "What the bill's tax line is derived from." : "The outlet manager changes this."}>
           <input type="number" min={0} step="any" value={gst} disabled={!may("gst")}
             onChange={(e) => setGst(e.target.value)} />
