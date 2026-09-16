@@ -205,7 +205,12 @@ export function createPosService(db: Db) {
           : `Bill ${no} · ₹${total}${off} ${body.tender === "Cash" ? "collected" : "settled by " + body.tender.toLowerCase()} at ${locName}`;
         // One array for the answer and the announcement, so the till that made the sale and
         // the tills watching it can never be told to refetch different slices.
-        const changed = ["stock", "bills"] as const;
+        //
+        // `receivables` only where the bill actually landed on somebody's account. Naming it on
+        // every cash sale would put a report over every outlet's bills behind each one, for a
+        // balance that cannot have moved; naming it on none would leave the manager's Credit
+        // screen reading yesterday's figures while a counter bills against them.
+        const changed = payer ? ["stock", "bills", "receivables"] as const : ["stock", "bills"] as const;
         await emitChanged(tx, changed);
         return { result, changed: [...changed], message };
       });
@@ -296,7 +301,8 @@ export function createPosService(db: Db) {
           : back.length > 0
             ? `${no} voided - ${unitTotal(back, unitOf)} back on the shelf at ${locName}`
             : `${no} voided`;
-        const changed = ["stock", "bills"] as const;
+        // Same rule as the sale: a void takes the debt back off the account it was posted to.
+        const changed = head.payerKind ? ["stock", "bills", "receivables"] as const : ["stock", "bills"] as const;
         await emitChanged(tx, changed);
         return { result, changed: [...changed], message };
       });

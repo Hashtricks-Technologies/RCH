@@ -185,6 +185,18 @@ describe("what the till charges a party", () => {
     await sell(DOCTOR);
     expect(await owes("doctor", DOCTOR.id)).toBe(16);
   });
+
+  it("tells the manager's Credit screen about a sale that landed on an account, and nothing else", async () => {
+    // A report over every outlet's bills is not something to put behind every cash sale, and a
+    // balance that cannot have moved is not something to refetch.
+    const onAccount = await sell(DOCTOR);
+    expect(onAccount.json().changed).toEqual(["stock", "bills", "receivables"]);
+    const cash = await app.inject({
+      method: "POST", url: "/api/v1/bills", headers: await hdr("u1"),
+      payload: { loc: "coffee", tender: "Cash", lines: [{ it: "water", qty: 1 }] },
+    });
+    expect(cash.json().changed).toEqual(["stock", "bills"]);
+  });
 });
 
 describe("settling what is owed", () => {
