@@ -71,8 +71,10 @@ export async function outstandingFor(
  * (`allocateSettlement` in @rch/domain) and what a statement lists.
  *
  * `owed` is the bill's own total less whatever live settlements already closed off it, so a bill
- * a part payment reached comes back as the part that is left. A bill nothing is left on is not
- * here at all: the `having` is what keeps a fully settled bill out of the next allocation.
+ * a part payment reached comes back as the part that is left. A bill nothing is left on is
+ * dropped, which is what keeps a fully settled bill out of the next allocation - filtered here
+ * rather than in a `having`, because the subtraction is already being done in this loop and a
+ * second expression in SQL saying the same thing is a second thing to keep in step.
  */
 export async function openBillsFor(
   db: Db | Tx, kind: PayerKind, payerId: string,

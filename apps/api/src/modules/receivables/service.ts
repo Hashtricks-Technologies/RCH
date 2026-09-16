@@ -140,8 +140,8 @@ export function createReceivablesService(db: Db) {
      * the register lists them or they have ever been charged, because "who owes nothing" is half
      * of what this screen is for.
      *
-     * Five reads in sequence inside one read transaction, so the whole report costs one pool
-     * connection (`lib/db.ts`).
+     * Four reads in sequence inside one read transaction, so the whole report costs one pool
+     * connection rather than four (`lib/db.ts`).
      */
     async receivables(claims: AccessClaims): Promise<Receivable[]> {
       // Everybody but the manager reads an empty list, and reads it without touching the
