@@ -138,7 +138,8 @@ src/
                                            admin page: AdminDashboard.tsx, AdminUsers.tsx, AdminOutlets.tsx,
                                            AdminPayers.tsx, AdminSupport.tsx, AdminAudit.tsx,
                                            AuditEntryDrawer.tsx
-  roles/<role>/                           counter/ manager/ store/ prod/ buyer/
+  roles/<role>/                           counter/ manager/ store/ prod/ buyer/ - the manager's Credit.tsx is
+                                           the rate card, who owes what and the settlements, with StatementDrawer
   __tests__/                              store, procurement, fixes, screens/app, audit-screens, time,
                                            drawer, api, session, events, writes, refusals, theme, po-board,
                                            login-picker, admin-accounts, admin-outlets, admin-payers,

@@ -40,6 +40,10 @@ With no `Shell` around it, `AdminDashboard.tsx` mounts the `<Drawer />` host its
 `screens.test.tsx` and `app.test.tsx` render every `NAV` key for every role. A nav entry with no component fails
 the suite, on purpose.
 
+The manager's own group beyond the outlets is **Credit** (`credit`, `roles/manager/Credit.tsx`): three tabs -
+who owes what, the rate card (a discount and a credit limit per category, with per-person exceptions) and the
+settlement history. Its statement drawer is `stmt`.
+
 **Drawers are a bare registry** in `src/drawers.ts`:
 
 - A module calls `registerDrawer("key", C)` at the bottom of its file.
@@ -260,6 +264,11 @@ a background refresh and must not blank the screen.
   the empty state. **`audit-lib.test.ts`** pins `lib/audit.ts`'s `auditDayRange`, `deviceOf`, `diffFields` (one
   level into a nested object, arrays compared whole) and `auditCsv`. `writes.test.ts` covers the slice's reads
   and `refetch`'s `audit` reader.
+- **`manager-credit.test.tsx`** drives the Credit screen's three tabs against a stubbed `GET /receivables` and
+  `GET /settlements`: the outage line in place of "nobody owes anything", a category rate reaching the wire,
+  the oldest-first allocation preview, and Void offering itself only on today's payment.
+  **`admin-payers.test.tsx`** drives the register tab - every kind on the table, the add form surviving a
+  refusal, the switch, and that no delete control exists anywhere on the page.
 - **`fixes.test.ts`** pins earlier defects by tag (C6, M3, M8, H4, UA-14…). Read the comment before changing
   what one covers.
 - **No production file under `src/` imports `@rch/contract/fixtures`.** Only tests do.
