@@ -85,7 +85,8 @@ export default function Bills() {
               <b>Billed</b> is every tender raised at this counter, less anything voided - a voided bill went back on
               the shelf and the money was never kept, so it stays on this list, badged, and out of both figures.{" "}
               <b>Cash in drawer</b> is what is actually in the till - card and UPI are taken at the till but settle to
-              the hospital account, and patient, staff and department bills collect nothing at the counter at all.
+              the hospital account, and a bill posted to a patient, a staff member, a doctor or a department collects
+              nothing at the counter at all.
             </>} />
           </>}
         />
@@ -113,7 +114,9 @@ export default function Bills() {
                 </div>,
                 sum(b.lines, (l) => l.qty),
                 <>{b.pay}{b.payer && <span className="mini" style={{ display: "block" }}>{b.payer.name}</span>}</>,
-                money(b.tot),
+                // The net, with what came off it underneath: the till's own list is where a
+                // customer's "but it said ₹20" is answered, and the line rate alone would not.
+                <>{money(b.tot)}{b.disc ? <span className="mini" style={{ display: "block" }}>{b.discPct}% off {money(b.tot + b.disc)}</span> : null}</>,
                 // ---- bill void: the badge replaces the tender's own status word, because a
                 // bill that was taken back is not "Paid" whatever it was settled with.
                 b.voided ? <Pill tone="cr">VOIDED</Pill> : <Pill tone={st.tone}>{st.label}</Pill>,
