@@ -1,7 +1,7 @@
 import * as FX from "@rch/contract/fixtures";
 import { useApp } from "../store";
 import { setAccessToken } from "../api/session";
-import { hydrateMaster, hydrateRoster } from "../data/master";
+import { hydrateMaster, hydrateRoster, hydrateTerms } from "../data/master";
 import { basePrices } from "../lib/selectors";
 import { initialAudit } from "../store/audit";
 import type { AdjustmentRequest, Role } from "../types";
@@ -80,7 +80,16 @@ const ADJREQ: AdjustmentRequest = {
  */
 export function resetStore() {
   hydrateMaster({ items: FX.IT, locations: FX.LOC, prices: FX.PL, priceLists: FX.PRICE_LISTS, menu: FX.MENU, users: FX.USERS });
-  hydrateRoster({ patients: FX.PATIENTS, staff: FX.STAFF, depts: FX.DEPTS });
+  hydrateRoster({ patients: FX.PATIENTS, staff: FX.STAFF, depts: FX.DEPTS, doctors: FX.DOCTORS });
+  // The rate card the demo hospital opens on, so a preview in the browser is the rate the
+  // server would price against. The exceptions carry the payer's own name, exactly as
+  // `GET /payer-terms` sends them.
+  hydrateTerms({
+    classes: FX.CLASS_TERMS,
+    payers: FX.PAYER_TERMS.map((t) => ({
+      ...t, name: [...FX.PATIENTS, ...FX.STAFF, ...FX.DEPTS, ...FX.DOCTORS].find((p) => p.kind === t.kind && p.id === t.id)?.name ?? t.id,
+    })),
+  });
   useApp.setState(ACTIONS);
   const now = Date.now();
   const dated = <T extends { at: string }>(r: T) => ({ ...r, iso: isoOf(now, r.at) });

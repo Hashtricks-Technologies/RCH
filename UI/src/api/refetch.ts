@@ -1,10 +1,10 @@
 import { routes, type Changed } from "@rch/contract";
 import { call } from "./client";
 import {
-  applyAccounts, applyAdjustmentRequests, applyAdjustments, applyAdminLocations, applyBatches, applyBills, applyContracts, applyDeskTickets, applyGrns, applyItems, applyLocations, applyMenus,
+  applyAccounts, applyAdjustmentRequests, applyAdjustments, applyAdminLocations, applyAdminPayers, applyBatches, applyBills, applyContracts, applyDeskTickets, applyGrns, applyItems, applyLocations, applyMenus,
   applyPos, applyPriceLists, applyPrices, applyProdOrders, applyProductRequests, applyRequests,
   applyRequisitions, applyRoster, applyShopAsks, applyStock, applySupportTickets, applyTickets,
-  applyVendors,
+  applyTerms, applyVendors,
 } from "./wire";
 import { useApp } from "../store";
 
@@ -36,6 +36,20 @@ const NARROW: Partial<Record<Changed, () => Promise<void>>> = {
   menu: () => call(routes.menus).then(applyMenus),
   // ---- payers ----
   roster: () => call(routes.roster).then(applyRoster),
+  // The rate card, read by every session that takes a bill and answered empty for the rest -
+  // which is why this is safe to fire on every browser (`GET /payer-terms` is "any").
+  terms: () => call(routes.payerTerms).then(applyTerms),
+  // Who owes what, and every recent payment: two reads behind one collection, because they are
+  // two halves of one screen and a settlement moves both. The action answers `false` on a
+  // failure rather than throwing, so a manager's tab shows its own outage line and a tab with
+  // no Credit screen open is not told anything went wrong.
+  receivables: () => useApp.getState().user?.r === "manager"
+    ? useApp.getState().loadReceivables().then(() => undefined)
+    : Promise.resolve(),
+  // ---- admin: the payer register. Read two ways, like `locations`/`outlets`: the super admin
+  // pulls back its own whole list, and an operational session's copy comes back through
+  // `roster`, which every payer write names alongside this one.
+  payers: () => useApp.getState().user?.admin ? call(routes.adminPayers).then(applyAdminPayers) : Promise.resolve(),
   // ---- adjustments
   adjustments: () => call(routes.adjustments).then(applyAdjustments),
   // ---- adjustment requests

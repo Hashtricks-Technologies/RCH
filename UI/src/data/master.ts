@@ -1,4 +1,4 @@
-import type { Item, Location, Payer, PayerRoster, PriceList, UserMin } from "../types";
+import type { ClassTerms, Item, Location, Payer, PayerRoster, PayerTerms, PriceList, Terms, UserMin } from "../types";
 
 // `STAFF_CREDIT_LIMIT` is deliberately not among these any more: the till reads the ceiling off
 // `GET /reports/credit/:kind/:id` (`credit.limit`), because the number that matters is the one
@@ -31,10 +31,30 @@ export const USERS: UserMin[] = [];
 export const PATIENTS: Payer[] = [];
 export const STAFF: Payer[] = [];
 export const DEPTS: Payer[] = [];
+export const DOCTORS: Payer[] = [];
 export function hydrateRoster(r: PayerRoster): void {
   PATIENTS.splice(0, PATIENTS.length, ...r.patients);
   STAFF.splice(0, STAFF.length, ...r.staff);
   DEPTS.splice(0, DEPTS.length, ...r.depts);
+  DOCTORS.splice(0, DOCTORS.length, ...r.doctors);
+}
+
+/**
+ * And what each of them is charged: the rate card, keyed the way the server keys it.
+ *
+ * A registry like the rest, replaced in place, because the till reads it while a bill is being
+ * taken and the manager's Credit screen edits it. It is a **preview** wherever the till reads
+ * it: the server resolves the rate again inside the sale's own transaction and that is the rate
+ * the bill is actually priced at (root CLAUDE.md, *Nothing is previewed as a decision*).
+ *
+ * Empty for the three roles that never take a bill - the server sends them an empty card, the
+ * same shape - so a screen that reads it needs no special case.
+ */
+export const CLASS_TERMS: Record<string, ClassTerms> = {};
+export const PAYER_TERMS: Record<string, PayerTerms> = {};
+export function hydrateTerms(t: Terms): void {
+  replaceKeys(CLASS_TERMS, Object.fromEntries(t.classes.map((c) => [c.cls, c])));
+  replaceKeys(PAYER_TERMS, Object.fromEntries(t.payers.map((p) => [`${p.kind}:${p.id}`, p])));
 }
 
 export type MasterData = {

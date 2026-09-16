@@ -16,8 +16,9 @@ import { createProcurementSlice, type ProcurementSlice } from "./procurement";
 import { createOpsSlice, type OpsSlice } from "./ops";
 import { createAdminSlice, type AdminSlice } from "./admin";
 import { createAuditSlice, type AuditSlice } from "./audit";
+import { createReceivablesSlice, type ReceivablesSlice } from "./receivables";
 
-export interface AppState extends ProcurementSlice, OpsSlice, AdminSlice, AuditSlice {
+export interface AppState extends ProcurementSlice, OpsSlice, AdminSlice, AuditSlice, ReceivablesSlice {
   user: User | null;
   /** Where the session is: no token, asking for one, fetching the snapshot, usable - or signed
    *  in with nothing to show. `"failed"` is the last one: the credentials are good and the
@@ -797,6 +798,7 @@ export const useApp = create<AppState>((set, get) => ({
   ...createAdminSlice(get),
   // ---- audit log: the one slice that takes `set`, because it has no `wire.ts` mapper to write through.
   ...createAuditSlice(set, get),
+  ...createReceivablesSlice(set, get),
 }));
 
 // A refresh that fails is the end of the session: drop the user rather than

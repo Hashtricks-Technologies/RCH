@@ -4,8 +4,8 @@
 import { routes } from "@rch/contract";
 import { ApiError, call } from "../api/client";
 import { refetch } from "../api/refetch";
-import { applyAccounts, applyAdminActions, applyAdminLocations } from "../api/wire";
-import type { AdminAction, AdminLocation, AdminUser, CreateOutletBody, Dated, LocKey, Role, UpdateOutletBody } from "../types";
+import { applyAccounts, applyAdminActions, applyAdminLocations, applyAdminPayers } from "../api/wire";
+import type { AdminAction, AdminLocation, AdminPayer, AdminUser, CreateOutletBody, Dated, LocKey, PayerKind, Role, UpdateOutletBody } from "../types";
 import type { AppState } from "./index";
 
 type Get = () => AppState;
@@ -21,7 +21,7 @@ export interface AdminSlice {
    *  load, not a write's own read-back. */
   loadAccounts: () => Promise<void>;
   loadAdminLocations: () => Promise<void>;
-  loadAdminActions: (kind?: "accounts" | "outlets") => Promise<void>;
+  loadAdminActions: (kind?: "accounts" | "outlets" | "payers") => Promise<void>;
   /** The server's row for the new outlet, or `null` on a refusal - the form then stays as typed. */
   createOutlet: (body: CreateOutletBody) => Promise<AdminLocation | null>;
   updateOutlet: (key: string, body: UpdateOutletBody) => Promise<boolean>;
@@ -45,6 +45,18 @@ export interface AdminSlice {
   /** Form-carrying: a refusal (the role/location pairing, most often) leaves the picker exactly
    *  as the operator left it. */
   updateAccountRoleLoc: (id: string, next: { role: Role; loc: LocKey }) => Promise<boolean>;
+
+  // ---- the payer register
+  /** Every payer the hospital knows, inactive ones included, with what each still owes. */
+  adminPayers: AdminPayer[];
+  /** The register's own slice of the admin log (`kind=payers`). */
+  payerActions: Dated<AdminAction>[];
+  loadAdminPayers: () => Promise<void>;
+  /** Hands back the row the server wrote, or `null` on a refusal - the same shape `createAccount`
+   *  and `createOutlet` use, so the form stays exactly as it was typed. */
+  createPayer: (body: { kind: PayerKind; id: string; name: string }) => Promise<AdminPayer | null>;
+  /** A rename and the on/off switch in one patch, the way an account's switch is a patch. */
+  updatePayer: (kind: PayerKind, id: string, body: { name?: string; active?: boolean }) => Promise<boolean>;
 }
 
 const fail = (get: Get, e: unknown, what: string): false => {
@@ -57,6 +69,8 @@ export const createAdminSlice = (get: Get): AdminSlice => ({
   adminActions: [],
   adminLocations: [],
   outletActions: [],
+  adminPayers: [],
+  payerActions: [],
 
   loadAccounts: async () => {
     try { applyAccounts(await call(routes.adminUsers)); }
@@ -139,5 +153,30 @@ export const createAdminSlice = (get: Get): AdminSlice => ({
       await refetch(r.changed, r.message);
       return true;
     } catch (e) { return fail(get, e, "move the account"); }
+  },
+
+  // ---- the payer register: who a bill may be posted to. Opened, renamed and switched off here;
+  // never deleted, because a payer with a bill against them is somebody's balance and an id that
+  // vanishes is a debt nobody can find. What each of them is *charged* is the outlet manager's,
+  // in `store/receivables.ts`.
+  loadAdminPayers: async () => {
+    try { applyAdminPayers(await call(routes.adminPayers)); }
+    catch (e) { get().notify(e instanceof ApiError ? e.message : "Could not read the payer register - check the connection and try again."); }
+  },
+  createPayer: async (body) => {
+    try {
+      const r = await call(routes.createPayer, { body });
+      get().notify(r.message);
+      await refetch(r.changed, r.message);
+      return r.result;
+    } catch (e) { fail(get, e, "add that payer"); return null; }
+  },
+  updatePayer: async (kind, id, body) => {
+    try {
+      const r = await call(routes.updatePayer, { params: { kind, id }, body });
+      get().notify(r.message);
+      await refetch(r.changed, r.message);
+      return true;
+    } catch (e) { return fail(get, e, "save that payer"); }
   },
 });

@@ -1,10 +1,10 @@
 import type { z } from "zod";
 import type { SnapshotSchema, StockResponseSchema } from "@rch/contract";
-import { hydrateItems, hydrateLocations, hydrateMaster, hydrateMenus, hydratePriceLists, hydratePrices, hydrateRoster, LOC } from "../data/master";
+import { hydrateItems, hydrateLocations, hydrateMaster, hydrateMenus, hydratePriceLists, hydratePrices, hydrateRoster, hydrateTerms, LOC } from "../data/master";
 import { fromWireBestBefore, fromWireDate, fromWireTime } from "../lib/fmt";
 import { useApp } from "../store";
 import { basePrices } from "../lib/selectors";
-import type { AdminAction, AdminLocation, AdminUser, Bill, Dated, HistEntry, StockLoc } from "../types";
+import type { AdminAction, AdminLocation, AdminPayer, AdminUser, Bill, Dated, HistEntry, StockLoc } from "../types";
 
 export type Snapshot = z.infer<typeof SnapshotSchema>;
 export type StockResponse = z.infer<typeof StockResponseSchema>;
@@ -49,6 +49,7 @@ export function applySnapshot(s: Snapshot): void {
   // Who a bill may be charged to comes off the `payers` table the till has been checked
   // against since Phase 3, so a patient admitted this morning is billable without a release.
   hydrateRoster(s.roster);
+  hydrateTerms(s.terms);
   useApp.setState((prev) => ({
     user: s.user,
     // The catalogue is a module-level registry, not store state, so a snapshot that replaces
@@ -208,6 +209,13 @@ export function applyRoster(r: Snapshot["roster"]): void {
   useApp.setState((s) => ({ catalogVersion: s.catalogVersion + 1 }));
 }
 
+/** GET /payer-terms -> the rate card, into its registries. Bumps `catalogVersion` like every
+ *  other master registry, because the till's bill summary reads it while a cart is open. */
+export function applyTerms(t: Snapshot["terms"]): void {
+  hydrateTerms(t);
+  useApp.setState((s) => ({ catalogVersion: s.catalogVersion + 1 }));
+}
+
 // ---- admin: account management (a capability, not a role - root CLAUDE.md)
 /** GET /admin/users -> every account, ordinary store state: nothing outside the admin page
  *  reads it, so there is no module-level registry to keep the identity of. */
@@ -216,11 +224,17 @@ export function applyAccounts(accounts: AdminUser[]): void { useApp.setState({ a
  *  is based at each. Nothing else reads this - an operational session reads `LOC` instead, kept
  *  live through `applyLocations` above. */
 export function applyAdminLocations(adminLocations: AdminLocation[]): void { useApp.setState({ adminLocations }); }
+/** GET /admin/payers -> the register the super admin manages, every kind and inactive ones too,
+ *  with what each still owes. An operational session reads the live list out of `roster`
+ *  instead, which every payer write names alongside this one. */
+export function applyAdminPayers(adminPayers: AdminPayer[]): void { useApp.setState({ adminPayers }); }
 /** GET /admin/actions -> the last fifty, times as "HH:MM" and the instant beside them like every
  *  other document here is stamped. `kind` picks which feed the rows land in: the account page's
- *  own, or the Outlets tab's. */
-export function applyAdminActions(rows: AdminAction[], kind: "accounts" | "outlets" = "accounts"): void {
-  useApp.setState(kind === "outlets" ? { outletActions: rows.map(stamped) } : { adminActions: rows.map(stamped) });
+ *  own, the Outlets tab's, or the payer register's. */
+export function applyAdminActions(rows: AdminAction[], kind: "accounts" | "outlets" | "payers" = "accounts"): void {
+  useApp.setState(kind === "outlets" ? { outletActions: rows.map(stamped) }
+    : kind === "payers" ? { payerActions: rows.map(stamped) }
+      : { adminActions: rows.map(stamped) });
 }
 
 // ---- adjustments

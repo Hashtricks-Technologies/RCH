@@ -20,6 +20,7 @@ const DID: Record<AdminAction["action"], string> = {
   create: "created", reset_password: "reset the password of", deactivate: "deactivated",
   reactivate: "reactivated", update_role_loc: "moved", delete: "deleted",
   outlet_create: "opened", outlet_update: "edited", outlet_close: "closed", outlet_reopen: "reopened",
+  payer_create: "added", payer_update: "renamed", payer_deactivate: "switched off", payer_reactivate: "switched back on",
 };
 
 const emptyForm = { name: "", email: "", phone: "", role: "counter" as Role, loc: "" as LocKey };
