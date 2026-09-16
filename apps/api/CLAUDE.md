@@ -385,7 +385,9 @@ The config pins `TZ=UTC`, a 30 s test timeout, and runs files in parallel.
   bands above both the fixtures and the sequence starts. `given.adjustment` writes the document only, never a
   ledger move; `given.adjustmentRequest` likewise writes only the request, whatever status you hand it - it
   never calls `writeAdjustment`, so a case about the queue does not accidentally exercise the write path too.
-  There is no `given.payer`: insert into `payers` directly.
+  `given.settlement` writes the payment and its allocation and nothing else, for the same reason: a case about
+  the *ceiling* needs a balance brought down, and going through `POST /settlements` to get one would exercise
+  the oldest-first allocation on the way past. There is no `given.payer`: insert into `payers` directly.
 - **`sequences` survives truncation**, so never assert a literal allocated id. Match the shape and assert the
   relative step instead.
 - **`lib/roles.test.ts` creates role names suffixed with the process id** and drops them afterwards, so files
