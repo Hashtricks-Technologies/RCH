@@ -113,7 +113,11 @@ export default function Bills() {
                   <span>{b.opr}</span>
                 </div>,
                 <>{b.pay}{b.payer && <span className="mini" style={{ display: "block" }}>{b.payer.name}</span>}</>,
-                money(b.tot),
+                // The net, with what came off it underneath where there was a concession: this
+                // is the screen a manager reconciles a day's takings on, and a bill that reads
+                // ₹16 against a ₹20 shelf price with nothing to explain it is the question they
+                // would otherwise have to open the bill to answer.
+                <>{money(b.tot)}{b.disc ? <span className="mini" style={{ display: "block" }}>{b.discPct}% off {money(b.tot + b.disc)}</span> : null}</>,
                 b.voided
                   ? <><Pill tone="cr">VOIDED</Pill>{b.voidReason && <span className="mini" style={{ display: "block" }}>{b.voidReason}</span>}</>
                   : <Pill tone={st.tone}>{st.label}</Pill>,
