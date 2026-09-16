@@ -35,10 +35,15 @@ const NARROW: Partial<Record<Changed, () => Promise<void>>> = {
   priceLists: () => call(routes.priceLists).then(applyPriceLists),
   menu: () => call(routes.menus).then(applyMenus),
   // ---- payers ----
-  roster: () => call(routes.roster).then(applyRoster),
-  // The rate card, read by every session that takes a bill and answered empty for the rest -
-  // which is why this is safe to fire on every browser (`GET /payer-terms` is "any").
-  terms: () => call(routes.payerTerms).then(applyTerms),
+  // Both are `access: "any"` and answer an empty body to a caller who never takes a bill, so
+  // every *operational* session may read them. The super admin is the exception and has to be
+  // guarded here: `rbac.ts` answers an admin token 404 on every route that is not
+  // `access: "admin"`, and an admin's `/admin` tab is on the change stream like everyone else -
+  // so without this a manager saving a rate, or the admin's own payer write naming `roster`,
+  // would fail that tab's whole `Promise.all` and toast "the screen could not be refreshed"
+  // over a page of theirs that never changed. Same shape as `locations` below.
+  roster: () => useApp.getState().user?.admin ? Promise.resolve() : call(routes.roster).then(applyRoster),
+  terms: () => useApp.getState().user?.admin ? Promise.resolve() : call(routes.payerTerms).then(applyTerms),
   // Who owes what, and every recent payment: two reads behind one collection, because they are
   // two halves of one screen and a settlement moves both. The action answers `false` on a
   // failure rather than throwing, so a manager's tab shows its own outage line and a tab with

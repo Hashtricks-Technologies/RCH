@@ -530,12 +530,26 @@ describe("refetch - what a write says it changed is what gets read", () => {
   });
 
   it("replaces the till's payer registries with one GET /roster", async () => {
-    serve({ "GET /api/v1/roster": () => json({ patients: [], staff: [{ kind: "staff", id: "E2291", name: "Kavitha Raman" }], depts: [] }) });
+    serve({ "GET /api/v1/roster": () => json({ patients: [], staff: [{ kind: "staff", id: "E2291", name: "Kavitha Raman" }], depts: [], doctors: [] }) });
     await refetch(["roster"]);
     expect(calls().map((c) => c.at)).toEqual(["GET /api/v1/roster"]);
     expect(STAFF.map((x) => x.id)).toEqual(["E2291"]);
     expect(PATIENTS).toEqual([]);
     expect(DEPTS).toEqual([]);
+  });
+
+  it("reads neither the register nor the rate card on an admin session, and says nothing went wrong", async () => {
+    // Both routes are `access: "any"` and answer an empty body to a caller who never takes a
+    // bill - but `rbac.ts` answers an *admin* token 404 on every route that is not
+    // `access: "admin"`, and the admin's own page is on the change stream like everyone else.
+    // Without the guard, a manager saving a rate - or the admin's own payer write, which names
+    // `roster` - would fail this tab's whole `Promise.all` and toast "the screen could not be
+    // refreshed" over a page of theirs that never changed.
+    as("buyer");
+    useApp.setState({ user: { ...S().user!, admin: true } });   // the flag, not a sixth role
+    await refetch(["roster", "terms"], "Added Dr N. Iyer to the doctor register.");
+    expect(calls().map((c) => c.at)).toEqual([]);
+    expect(S().toast).toBeNull();
   });
 
   it("reads the balances and the price list side by side, without a snapshot", async () => {
