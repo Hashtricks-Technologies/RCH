@@ -109,7 +109,16 @@ allowMcp? })`. The manifest drives all three: `mount()` in `apps/api/src/routes.
   shelf has to be correctable.
 - **Payer data is scoped by role, and the schemas allow for it.** `BillSchema.payer` is optional and the
   roster lists may be empty, because the server strips payer data for `store`, `prod` and `buyer`.
-  `PayerSchema` (what a bill embeds) has no `active` field: the till only ever reads live payers.
+  `PayerSchema` (what a bill embeds) has no `active` field: the till only ever reads live payers. The rate
+  card (`TermsSchema`) and the receivables list are cut the same way and for the same reason, and both are
+  `access: "any"` rather than manager-only so that a manager's write does not 403 four of the five roles
+  mid-refetch.
+- **`BillParty` is `PayerKind` plus `"customer"`.** A walk-in is not a missing payer, it is a party of its
+  own, and the rate card is keyed by the wider union because "what a customer pays" is a rate the manager
+  sets too. `payer_class_terms.cls` is therefore plain text over `BillPartySchema`, not the `payer_kind` enum.
+- **`BillSchema.disc` / `discPct` are optional and omitted at zero**, the same trick `voided`/`voidReason`
+  use, so a bill nobody discounted is byte for byte the bill it was before this existed. `tot` is unchanged
+  and still the net - what the bill is worth and what is owed - and the gross is `tot + disc`, derived.
 - **`TicketSchema.hist` is required.** Every ticket writes its first trail row when it is created.
 - **`ItemSchema.img` is an optional sha256** (`/^[0-9a-f]{64}$/`), absent when the item has no photo. It rides
   the existing `items` collection, so `GET /items`, the snapshot, `refetch` and SSE all carry it with no new
@@ -118,7 +127,8 @@ allowMcp? })`. The manifest drives all three: `mount()` in `apps/api/src/routes.
 
 ## Constants
 
-- **Declared here:** `STAFF_CREDIT_LIMIT` (₹3,000), `PO_APPROVAL_LIMIT` (₹25,000), `BILL_DAYS` (7), and
+- **Declared here:** `STAFF_CREDIT_LIMIT` (₹3,000 - no longer the rule's constant, only the number the
+  `staff` row of the rate card is seeded with), `PO_APPROVAL_LIMIT` (₹25,000), `BILL_DAYS` (7), and
   `STORE` / `KITCHEN` / `QUARANTINE` - the three location keys the code itself is allowed to name. Every other
   location key is an outlet, read from the `locations` table, never compiled in.
 - **Declared in `@rch/domain`:** id formats and sequence starts (`ids.ts`) and `parFactor`, because they are

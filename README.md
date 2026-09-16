@@ -26,7 +26,7 @@ absent from its sidebar and refused on a direct link, with a message saying why.
 | Role | Signs in as | Lands on | Owns |
 |---|---|---|---|
 | Counter Operator | Kavitha Raman | Point of Sale | Billing and printing, counter stock, product on/off, raising requests, asking the kitchen for a tray, collecting tickets |
-| Outlet Manager | Ramesh Kumar | Approvals | Approving and trimming counter requests, deciding a counter's adjustment requests, prices across all shops, the on/off master, every outlet's bills and the same-day void, and an item's commercial figures |
+| Outlet Manager | Ramesh Kumar | Approvals | Approving and trimming counter requests, deciding a counter's adjustment requests, prices across all shops, the on/off master, every outlet's bills and the same-day void, an item's commercial figures, and what each party is charged - the rate card, who owes what, and taking the money |
 | Store Keeper | Suresh Muthu | Issue Desk | Issuing approved stock against a ticket, central-store stock, write-offs and stock counts at any shelf, requisitions to procurement |
 | Kitchen In-charge | Vinoth Prakash | Orders | Accepting orders, making products, distributing to the store and counters |
 | Procurement Officer | Latha Narayanan | Requisitions | Acting on requisitions, raising purchase orders, receiving goods |
@@ -65,7 +65,8 @@ reply lands or a status changes, and rate the fix once it is resolved. Every rol
 own tickets; the admin answers all of them from the support desk on `/admin`, and the reply
 reaches the person who raised it live.
 Read the two figures the browser could never assemble on its own: a location's stock ledger
-over a window, and a payer's credit taken so far this month. Nothing runs in the browser's own
+over a window, and what a payer still owes - every bill ever charged to them less every
+settlement against it. Nothing runs in the browser's own
 store any more - every mutation in the app is a server call, and `UI/src/data/seed.ts` is gone.
 
 **And the four doors the audit wave added on 11 September 2026** - the only new capability since
@@ -75,8 +76,8 @@ a pick ticket is holding, and the store keeper is the only one who can correct t
 shelf). An outlet's own shelf is corrected the same way in substance but not in who presses the
 button: the counter raises an adjustment request against what it is holding, and the outlet
 manager approves it - which writes the `ADJ-` document there and then, since a write-off has
-nothing to hand over the way a stock request's ticket does - or rejects it with a reason. Void a mis-keyed bill on the day it was billed: every line goes back on the shelf, a staff
-member's monthly credit room comes back, and the bill stays on the list badged rather than
+nothing to hand over the way a stock request's ticket does - or rejects it with a reason. Void a mis-keyed bill on the day it was billed: every line goes back on the shelf, the room it
+used comes back on that person's account, and the bill stays on the list badged rather than
 vanishing from the day. Correct a mis-typed MRP or retire a product nobody carries - each desk
 sees the fields it owns and the rest greyed out, and a line with stock on it or a menu still
 listing it cannot be retired until that is dealt with. Put a photo on a product - the manager on
@@ -84,6 +85,16 @@ any item from its drawer, a counter on whatever its own outlet sells from the sa
 it already opens from the till - and it replaces the grey placeholder everywhere the screens show
 one. And let a counter ask the kitchen to bake something, with a needed-by date, instead of
 waiting for an order nobody could raise.
+
+**Billing a hospital's own people.** A bill can be posted to a patient, a member of staff, a
+department or a consultant, and each is charged differently: the outlet manager sets one discount
+and one credit limit per category, with an exception for the individual on terms of their own. The
+till shows the gross, the concession and the net, and prints all three. What somebody may run up is
+capped on what is still **unsettled** rather than on a calendar month, so clearing an account frees
+the room the same day. The manager's Credit & Settlements screen lists who owes what and how old
+the oldest open bill is, and recording a payment closes that person's oldest bills first and
+records exactly which ones - refusing anything over the balance, and voidable on the day it was
+taken.
 
 **Live updates.** Every signed-in browser holds one connection to the server's change stream, so a
 request raised at the Coffee Shop appears on the manager's approvals screen without a reload - and

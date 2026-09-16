@@ -208,11 +208,28 @@ photo with no buttons to change it. The photo is shrunk and checked in the brows
 sent, replaces the grey placeholder everywhere a screen already reserved one for an item, and
 updates on every open browser over the change stream like everything else.
 
-**The payer register is loaded, not kept on a screen.** Patients, staff members and departments
-reach the till's payer picker from a `kind,id,name` CSV
-(`pnpm --filter @rch/api payers import --csv`). A payer is deactivated rather than deleted, so a
-switched-off account leaves every till's picker and every bill already charged to it stays
-exactly as it was.
+**The payer register is the super admin's.** Patients, staff members, departments and doctors are
+opened, renamed and switched off on `/admin`'s Payers tab, and reach the till's picker over the
+change stream without a reload; the `kind,id,name` CSV import
+(`pnpm --filter @rch/api payers import --csv`) stays for a ward list nobody types twice. A payer is
+deactivated rather than deleted - their balance has to stay findable - so a switched-off account
+leaves every till's picker and every bill already charged to it stays exactly as it was.
+
+**Who is billed decides what they pay.** The outlet manager's **Credit & Settlements** screen
+carries a rate card: one discount and one credit limit per category - customers, patients, staff,
+departments and doctors - with a per-person exception over it for the consultant on terms of their
+own. The till shows the gross, the concession and the net, and the printed slip carries all three;
+the rate on the screen is a preview, and the server resolves it again inside the sale's own
+transaction. The ceiling is on what is **unsettled** rather than on a calendar month, so somebody
+who clears their account on the 15th can buy coffee on the 16th, and a party the manager gave no
+limit is told so in words rather than shown a number nobody chose.
+
+**And the manager can see who owes what, and take the money.** The same screen lists every account
+with what it has been charged, what has been paid and how old the oldest open bill is. Recording a
+payment lays it over that person's open bills oldest first and stores which ones it closed, so a
+part-settled bill reads as the part that is left; more than is owed is refused, naming the balance.
+A payment keyed against the wrong consultant is voided on the day it was taken - badged, never
+erased - and the bills it closed reopen.
 
 **An outlet asks in two ways, and the screen decides which desk hears it.** The counter's Stock
 Requests screen offers exactly two tiles - **From inventory** and **From other shops**. From

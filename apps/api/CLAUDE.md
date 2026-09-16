@@ -15,6 +15,7 @@ pnpm --filter @rch/api db:seed [--force] [--bare]
 pnpm --filter @rch/api db:rebuild-balances  # recompute stock_balances from stock_moves
 pnpm --filter @rch/api users <create|reset-password|deactivate|set-admin> --emp RC-1234 ...   # create: --emp optional, next number assigned
 pnpm --filter @rch/api payers import --csv <file> [--replace-names]   # kind,id,name - one transaction
+                                            # kind is patient|staff|dept|doctor; the register is also on /admin
 pnpm --filter @rch/api keys:generate        # prints a fresh Ed25519 JWT_PRIVATE_KEY= / JWT_PUBLIC_KEY= pair
 pnpm --filter @rch/api loadcheck            # latency of /snapshot and /bills against a running API
 ```
@@ -113,6 +114,27 @@ For a uniqueness rule, the insert (or update) decides; a pre-check only gives th
 `rate_contracts_live_uq`, `items_name_ci_uq` and the `payers` primary key `(kind, id)` all work this way.
 `catalog.createItem` also takes a `pg_advisory_xact_lock` on the item's slug.
 
+## What a party is charged, and what they owe
+
+`lib/terms.ts` is the one place a rate is resolved - `termsFor(db, party, payer?)`, the person's exception
+over their category's row - and four callers read it: the sale that prices a bill, the till's credit
+report, the manager's screen and the receivables list. A screen showing a rate the sale would not apply is
+the whole defect it exists to prevent, so nobody else resolves one.
+
+`lib/credit.ts` holds the balance: `outstandingFor` (every account-tender bill less every live settlement),
+`openBillsFor` (what a settlement is laid over, oldest first) and `lockPayerCredit`, the advisory lock both
+a credit sale and a settlement take before they read. Neither a voided bill nor a voided settlement counts.
+
+`modules/receivables/` owns the rate card's two writes, the two lists and the settlement pair. None of them
+touches `stock_moves`, `stock_balances` or a balance, so the server-wide lock order has nothing to order
+here: each takes the one lock that matters for what it changes - the rate card row `FOR UPDATE`, or
+`lockPayerCredit` on the person whose balance is moving.
+
+**A settlement's allocation is stored, not derived.** It is a decision the server made at one instant
+against the bills open then (`allocateSettlement` in `@rch/domain`); re-deriving it a week later against a
+different set of open bills would answer differently. What a bill still owes is `settlement_lines`
+subtracted from its own total, counting only settlements nobody voided.
+
 ## Price lists
 
 `modules/pricelists/` owns the entity itself - create (cloned from an outlet's current active list),
@@ -183,8 +205,17 @@ Two reads split deliberately:
 
 - **Items.** `loadItems` (`lib/master.ts`) is what rules read, and filters out retired items. `readItems` is
   what the wire carries: the whole master, because old documents still name retired items.
-- **Payers.** `GET /roster` returns live payers for the till. No route writes the `payers` table; the
-  `payers import` CLI is the only way onto it.
+- **Payers.** `GET /roster` returns live payers for the till, scoped empty for the three roles that never
+  open a payer picker. The register itself is the super admin's (`modules/admin`: `GET`/`POST /admin/payers`,
+  `PATCH /admin/payers/:kind/:id`), which reads inactive ones too and carries what each still owes; the
+  `payers import` CLI stays for a ward list nobody types twice.
+- **The rate card and the receivables list are scoped, not gated.** `GET /payer-terms`, `GET /receivables`
+  and `GET /settlements` are all `access: "any"` and answer empty to a caller who is not a manager (the
+  last two short-circuit before they query anything). That is deliberate: a manager's write announces
+  `terms`/`receivables` to **every** open browser, and a route another role is forbidden would fail that
+  tab's whole refetch with a toast about a screen of theirs that never changed - the trap `UI/CLAUDE.md`
+  documents for `priceLists`. `GET /receivables/:kind/:id` is manager-only, because a statement is opened by
+  hand from a drawer and is never in a `changed`.
 
 The snapshot redacts by role:
 
@@ -381,7 +412,12 @@ The config pins `TZ=UTC`, a 30 s test timeout, and runs files in parallel.
 - **A hand-written journal entry needs a real `Date.now()` as its `when`**, larger than every earlier entry.
   The migrator silently skips a migration whose `when` is smaller.
 - **Some SQL is invisible to drizzle-kit.** Triggers, the `reservations_ticket_fk` foreign key and data
-  inserts into `sequences` never appear in a diff. That is not drift, so don't "fix" it.
+  inserts into `sequences` never appear in a diff. That is not drift, so don't "fix" it. Neither is the
+  `payer_class_terms` seed in `0022`: the rate card has to have its five rows before a bare database can
+  price a bill.
+- **A new value on a pg enum goes in a migration of its own.** Postgres runs `alter type ... add value`
+  inside a transaction but refuses any statement in that same transaction that *uses* the value it added,
+  so `0021` adds `doctor` and `0022` is everything that names one.
 - **After writing a migration by hand**, run `db:generate` once to reconcile the snapshots in `meta/`. The
   emitted SQL must be empty, or only restate what you wrote. A second run must say "No schema changes".
 - **`SEED_PASSWORD` is required** (at least 12 characters, no default). `DATABASE_SSL` defaults to on in

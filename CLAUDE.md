@@ -160,9 +160,10 @@ There are five roles (`counter`, `manager`, `store`, `prod`, `buyer`), each with
 - **`manager`** is hospital-wide, so its writes never scope to a location.
 - **`counter` and `prod`** are location-scoped. `store` and `buyer` each work one desk.
 - **Admin** is a boolean on `users`, not a sixth role. It is checked as `access: "admin"`. An admin-flagged
-  account sees only the standalone `/admin` page, never an operational shell. The page has four tabs: Accounts
-  (staff accounts), Outlets (opens, edits, closes and reopens them), Support desk (every role's support
-  tickets) and Audit log (every write and sign-in). The flag can only be set with
+  account sees only the standalone `/admin` page, never an operational shell. The page has five tabs: Accounts
+  (staff accounts), Outlets (opens, edits, closes and reopens them), Payers (the register a bill may be posted
+  to - patients, staff, departments and doctors, opened, renamed and switched off, never deleted), Support
+  desk (every role's support tickets) and Audit log (every write and sign-in). The flag can only be set with
   `pnpm --filter @rch/api users set-admin`; no route can set it.
 - **The super admin has no role in practice.** The `users` row still carries a placeholder role and location,
   but the wire labels it `Super Admin`, the account page offers no role or location for it, and `rbac.ts`
@@ -202,6 +203,12 @@ back where it stood.
   and the UI reads the same tables to decide which buttons to draw.
 - Every non-public write carries an `Idempotency-Key`. The outcome is recorded inside the write's own
   transaction, so a retry replays the answer instead of producing a second bill.
+- **Who exists and what they are charged are two different desks.** The super admin owns the payer register
+  (`/admin`, `POST`/`PATCH /admin/payers`); the outlet manager owns the rate card and the settlements
+  (`/payer-terms`, `/receivables`, `/settlements`). `pnpm --filter @rch/api payers import --csv` stays for a
+  ward list nobody types twice. Both `GET /payer-terms` and `GET /receivables` are `access: "any"` and answer
+  empty to a caller who never takes a bill, exactly as `GET /roster` does - a manager's write announces to
+  every open browser, and a route another role is forbidden would fail that tab's whole refetch.
 - **A price list is a managed entity** (`price_lists`, id + name), not a fixed pair. A manager creates one
   cloned from an outlet's current active list, edits any list at any time whether or not it is active, and
   switches an outlet onto any list explicitly (`PUT /outlets/:loc/price-list`). Two outlets may still share one
@@ -267,8 +274,21 @@ The code enforces these and tests pin them. Breaking one is a bug.
   - No price list may exceed an item's printed MRP. `PUT /prices` refuses: `Refused - printed MRP of ₹<mrp> is
     a hard ceiling for <item>`.
   - An item that carries an MRP keeps one; it can't be cleared to zero.
-- **Staff credit is capped at ₹3,000 per person per calendar month**, counted hospital-wide in Asia/Kolkata
-  time and enforced inside the sale's own transaction.
+- **What a party is charged is the outlet manager's, and the server decides it.** A rate card carries one
+  discount and one credit limit per category (`customer`, `patient`, `staff`, `dept`, `doctor`), with a
+  per-person exception over it; `null` on a person's row means "inherit". The till previews the rate off the
+  snapshot, and `POST /bills` resolves it again inside the sale's own transaction - a client sends no rate and
+  no discount. The concession comes off each **line**, so the GST split on a mixed cart stays right, and
+  `bills.total` is the net: what the bill is worth and what is owed.
+- **Credit is capped on what is unsettled, not on a calendar month.** The ceiling is the rate card's,
+  hospital-wide, enforced inside the sale's own transaction under `lockPayerCredit`. `null` is no ceiling at
+  all and is not the same as a ceiling of zero. The `staff` row is seeded at `STAFF_CREDIT_LIMIT` (₹3,000), so
+  a hospital that never opens the Credit screen behaves as it always did.
+- **A settlement is a numbered document** (`STL-`). The server lays it over that party's open bills oldest
+  first and **stores** the allocation, because it is a decision made against the bills open at one instant.
+  More than is owed is refused, naming the balance; nothing is ever parked as a credit balance. It is voided
+  only on the IST day it was recorded, and only by the manager - badged, never erased, so the bills it closed
+  reopen and the balance comes back.
 - **Nothing is created or destroyed without a document.**
   - A batch books what the kitchen made onto its rack. It draws nothing down; kitchen raw stock is cleared
     with an `ADJ-` document.
@@ -282,9 +302,12 @@ The code enforces these and tests pin them. Breaking one is a bug.
 - **Made-to-order (MTO) items are made at the counter and hold no stock.** Selling one moves no stock, and
   only the manual switch turns one off. MTO items are never batched, distributed, or ordered from the kitchen.
 - **A bill is voided only on the IST day it was billed, and only by the manager.** The void posts reversal
-  moves, frees the credit room it used, and badges the bill rather than erasing it.
+  moves, frees the credit room it used, and badges the bill rather than erasing it. A bill a live settlement
+  has already closed refuses its own void and names the settlement to take back first.
 - **Items are retired, never deleted**, and not while any stock or menu listing remains. **Payers are
-  deactivated, never deleted.**
+  deactivated, never deleted** - a payer with a bill against them is somebody's balance, and an id that
+  vanishes is a debt nobody can find. Deactivating one is allowed whatever they owe: it is how the hospital
+  stops new bills reaching an account it is still chasing.
 - **Outlets are closed, never deleted.** A close is refused while the outlet holds stock, an open ticket, stock
   request, kitchen order, shop ask or product request, or an active staff member, and the refusal names every
   one. A closed outlet takes no sale, transfer, ask, stock request, kitchen order, adjustment, menu listing,

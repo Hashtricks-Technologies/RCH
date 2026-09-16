@@ -96,6 +96,10 @@ try {
   `adminLocations`. `createOutlet` returns the server's row or `null` on a refusal, the same shape as
   `createAccount`, so the form stays as typed. `updateOutlet` and `setOutletOpen` (close and reopen, one action
   both ways, like `setAccountActive`) are the ordinary `Promise<boolean>` writes.
+- **The Credit screen's two lists (`store/receivables.ts`) are read, not kept.** `loadReceivables` answers
+  `false` rather than throwing and sets `receivablesFailed`, so the screen shows an outage line instead of
+  "nobody owes anything" - the distinction `AdminAudit.tsx` draws. `readStatement` answers `null` the way
+  `readAuditEntry` does: a statement is never kept in the store. The four writes are the ordinary shape.
 - **The audit log's reads (`store/audit.ts`) return `null` on failure**: `loadAudit` (replaces the rows),
   `loadMoreAudit` (appends the page before `next`), `readAuditEntry` (one full entry, not kept in the store)
   and `exportAudit` (pages at 500 rows until `next` is null or 50,000 rows, and says whether it hit the cap).
@@ -104,8 +108,8 @@ try {
 - **An admin-flagged session loads no snapshot.** `loadSnapshot` sets `auth: "ready"` and returns for one,
   because the server 404s every operational read for its token. Sign-in, restore, a password change and any
   later refetch fallback all go through that one guard.
-- **Nothing is previewed as a decision.** `freeToPromise`, `availOf` and `priceOf` are previews while the
-  operator types. The server makes the actual decision. When you preview, use the `@rch/domain` function the
+- **Nothing is previewed as a decision.** `freeToPromise`, `availOf`, `priceOf` and `partyRate` (what a
+  party is charged, off the snapshot's rate card) are previews while the operator types. The server makes the actual decision. When you preview, use the `@rch/domain` function the
   server uses, not a lookalike.
 
 ## src/api
@@ -155,7 +159,8 @@ a background refresh and must not blank the screen.
 ## Master data and derived state
 
 - **Master data lives in shared registries.** `src/data/master.ts` exports mutable registries (`IT`, `LOC`,
-  `PL`, `PRICE_LISTS`, `MENU`, `USERS`, and the payer lists). They are empty at import, and `hydrateMaster()` /
+  `PL`, `PRICE_LISTS`, `MENU`, `USERS`, the four payer lists and the rate card `CLASS_TERMS` /
+  `PAYER_TERMS`). They are empty at import, and `hydrateMaster()` /
   `hydrateRoster()` **fill them in place**, so assign into them and never reassign them. Anything that changes
   them bumps `catalogVersion`, which screens use as a memo key.
 - **`PL` is keyed by price-list id, not a fixed pair** - every list a manager has created, `PL[list][it]` its

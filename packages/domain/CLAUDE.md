@@ -48,6 +48,19 @@ need more context than their names give:
 - `master.ts`'s `Prices` is `Record<string, Record<string, number>>` - every price list, keyed by its id, not
   a fixed pair. `pricing.ts`'s `priceOf` reads whichever id a location's own `list` names and caps it at MRP;
   it does not care how many lists exist.
+- `party.ts` holds the one table pairing a tender with the kind of payer it means
+  (`payerKindForTender`, `isAccountTender`, `ACCOUNT_TENDERS`) and the words for each party
+  (`PARTY_LABEL`, `PARTY_TITLE`). The sale's refusal, the till's picker, the counter's
+  `settlementOf` and every receivables query read it, because a tender that accepted the wrong kind of
+  payer is a balance nobody can settle. `partyOf` answers `"customer"` for a bill with no payer: a walk-in
+  is a party of its own, not a missing one.
+- `discount.ts` and `credit.ts` are the two halves of what a party is charged.
+  `discountPctFor`/`creditLimitFor` resolve a person's exception over their category's row (`null` means
+  inherit); `discountOn` rounds once, so a bill's discount and the sum of its lines cannot disagree by a
+  rounding step. `breachesCredit` takes a **nullable** limit - `null` is no ceiling at all and refuses
+  nothing, which is emphatically not a ceiling of zero.
+- `settlement.ts`'s `allocateSettlement` lays a payment over the open bills oldest first. At most one line
+  is ever a part payment and it is always the last, and the lines always add back up to what was allocated.
 - `items.ts`'s photo section is the one place the 700 KB limit, the three accepted types and every photo
   refusal sentence are written. `mayEditItemImage(role)` is `manager` or `counter` only - not an `ItemField`,
   because a photo has a door of its own (`PUT /items/:it/image`), not one of the patch's nine boxes.
