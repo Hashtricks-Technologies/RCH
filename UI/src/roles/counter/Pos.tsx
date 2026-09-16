@@ -1,23 +1,27 @@
 import { useEffect, useState } from "react";
 import { TenderSchema } from "@rch/contract";
-import { breachesCredit } from "@rch/domain";
-import { DEPTS, IT, LOC, PATIENTS, STAFF } from "../../data/master";
+import { breachesCredit, creditBreachMessage, discountOn, isAccountTender, PARTY_LABEL, payerKindForTender } from "@rch/domain";
+import { DEPTS, DOCTORS, IT, LOC, PATIENTS, STAFF } from "../../data/master";
 import { useApp } from "../../store";
-import { availOf, menuOf, priceOf } from "../../lib/selectors";
+import { availOf, menuOf, partyRate, priceOf } from "../../lib/selectors";
 import { money, money0 } from "../../lib/fmt";
 import { Alert, Avatar, Btn, Card, Field, Grid, ItemImage, PageHead, Tag, TileMenu, Tip } from "../../ui/kit";
-import type { CreditResponse, ItemType, Payer, Tender } from "../../types";
+import type { CreditResponse, ItemType, Payer, PayerKind, Tender } from "../../types";
 
 /** The buttons are the contract's own list - the server refuses anything else outright, so the
- *  till must not offer a seventh tender the schema has never heard of. */
+ *  till must not offer an eighth tender the schema has never heard of. */
 const TENDERS = TenderSchema.options;
-/** The three tenders that post to somebody's account, and the master each picks from (M1). The
- *  three lists are the snapshot's own `roster`, off the `payers` table the server validates a
- *  bill against - so a patient admitted this morning is billable without a new build. */
-const PAYERS: Partial<Record<Tender, { label: string; list: Payer[] }>> = {
-  "Patient bill": { label: "Patient", list: PATIENTS },
-  "Staff credit": { label: "Staff member", list: STAFF },
-  Dept: { label: "Department", list: DEPTS },
+/** Which register each kind of payer is picked from. The lists are the snapshot's own `roster`,
+ *  off the `payers` table the server validates a bill against - so a consultant added this
+ *  morning is billable without a new build. Which *tender* needs which of them is
+ *  `payerKindForTender` in @rch/domain, the same table the sale refuses with; this is only where
+ *  the names come from. */
+const REGISTER: Record<PayerKind, Payer[]> = {
+  patient: PATIENTS, staff: STAFF, dept: DEPTS, doctor: DOCTORS,
+};
+/** What the picker calls each register, in the singular, as a form label. */
+const PICKER_LABEL: Record<PayerKind, string> = {
+  patient: "Patient", staff: "Staff member", dept: "Department", doctor: "Doctor",
 };
 
 export function TypeTag({ t }: { t: ItemType }) {
@@ -42,27 +46,36 @@ export default function Pos() {
 
   const menu = menuOf(s, loc);
   const cart = s.cart[loc] ?? {};
+  // What this party is charged. A preview off the rate card the snapshot carries - the server
+  // resolves it again inside the sale's own transaction and *that* is the rate the bill is
+  // priced at (root CLAUDE.md, "Nothing is previewed as a decision"). A cart with no payer on it
+  // is a walk-in customer, which is a party of its own and not a missing one.
+  const terms = partyRate(payer);
   const lines = Object.keys(cart).map((it) => {
     const { p } = priceOf(s, loc, it);
     const n = cart[it];
-    const amt = p * n;
+    const gross = p * n;
+    const amt = gross - discountOn(gross, terms.pct);
     const taxable = amt / (1 + IT[it].gst / 100);
-    return { it, n, p, amt, taxable };
+    return { it, n, p, gross, amt, taxable };
   });
 
+  const gross = lines.reduce((t, l) => t + l.gross, 0);
   const total = lines.reduce((t, l) => t + l.amt, 0);
+  const disc = lines.reduce((t, l) => t + (l.gross - l.amt), 0);
   const taxable = lines.reduce((t, l) => t + l.taxable, 0);
   const tax = total - taxable;
 
-  const need = PAYERS[tender];
-  const hits = need?.list.filter((p) => {
+  const needKind = payerKindForTender(tender);
+  const needLabel = needKind ? PICKER_LABEL[needKind] : "";
+  const hits = needKind ? REGISTER[needKind].filter((p) => {
     const t = pq.trim().toLowerCase();
     return !t || p.name.toLowerCase().includes(t) || p.id.toLowerCase().includes(t);
-  }) ?? [];
-  // The ceiling is settled over the calendar month across every counter, which this till cannot
-  // see - it holds seven days of its own outlet. Ask the server for the number it will refuse on
-  // (`GET /reports/credit/:kind/:id`, which sums the same bills as `creditTakenThisMonth` in
-  // `apps/api/src/lib/credit.ts` does inside the sale's own transaction).
+  }) : [];
+  // What this person still owes is every bill they have ever had less every payment against
+  // it, which this till cannot see - it holds seven days of its own outlet. Ask the server for
+  // the number it will refuse on (`GET /reports/credit/:kind/:id`, which reads the same
+  // `outstandingFor` the sale refuses with inside its own transaction).
   const readCredit = useApp((x) => x.readCredit);
   const [credit, setCredit] = useState<CreditResponse | null>(null);
   /** Three states, not two. `credit === null` covers both "not asked yet" and "asked and got
@@ -74,7 +87,7 @@ export default function Pos() {
    *  staff member had taken was painted under the new name for one frame, and a second render
    *  went by to rub it out. Adjusting during render is React's own answer and leaves no such
    *  frame; the effect below is left doing the one thing an effect is for - the request. */
-  const creditFor = tender === "Staff credit" && payer ? `${payer.kind}:${payer.id}` : "";
+  const creditFor = payer ? `${payer.kind}:${payer.id}` : "";
   const [creditShown, setCreditShown] = useState(creditFor);
   if (creditShown !== creditFor) {
     setCreditShown(creditFor);
@@ -82,15 +95,16 @@ export default function Pos() {
     setCreditFailed(false);
   }
   useEffect(() => {
-    if (tender !== "Staff credit" || !payer) return;
+    if (!payer) return;
     let live = true;
     void readCredit(payer).then((r) => { if (!live) return; setCredit(r); setCreditFailed(r === null); });
     return () => { live = false; };
-  }, [tender, payer, readCredit]);
-  const taken = credit?.taken ?? 0;
-  // Blocked only on a figure that actually arrived: refusing a legitimate sale because a read
-  // has not landed would be worse than letting the server say no, which it still will.
-  const overLimit = tender === "Staff credit" && !!payer && !!credit && breachesCredit(taken, total, credit.limit);
+  }, [payer, readCredit]);
+  const owed = credit?.outstanding ?? 0;
+  // Blocked only on a figure that actually arrived, and only where the manager set a ceiling at
+  // all: refusing a legitimate sale because a read has not landed - or because nobody set a
+  // limit - would be worse than letting the server say no, which it still will.
+  const overLimit = isAccountTender(tender) && !!payer && !!credit && breachesCredit(owed, total, credit.limit);
 
   /**
    * One tap, one bill - and the payer survives a refusal.
@@ -221,6 +235,19 @@ export default function Pos() {
             ))}
           </div>
 
+          {/* The concession is shown as its own two rows, and only when there is one: the
+              operator has to be able to check what the person in front of them expected against
+              what the till is about to charge, and a gross that silently equalled the net on
+              every cash bill would be a row nobody reads. */}
+          {disc > 0 && (
+            <>
+              <div className="totrow"><span>Gross</span><span>{money(gross)}</span></div>
+              <div className="totrow">
+                <span>{terms.pct}% {PARTY_LABEL[terms.party]} discount</span>
+                <span style={{ color: "var(--ok)" }}>-{money(disc)}</span>
+              </div>
+            </>
+          )}
           <div className="totrow"><span>Taxable value</span><span>{money(taxable)}</span></div>
           <div className="totrow"><span>CGST</span><span>{money(tax / 2)}</span></div>
           <div className="totrow"><span>SGST</span><span>{money(tax / 2)}</span></div>
@@ -232,20 +259,25 @@ export default function Pos() {
             ))}
           </div>
 
-          {need && (payer
+          {needKind && (payer
             ? (
               <div style={{ display: "flex", gap: 9, alignItems: "center", border: "1px solid var(--line-strong)", borderRadius: 8, padding: "8px 10px", marginBottom: 11 }}>
                 <span style={{ flex: 1, minWidth: 0 }}>
                   <b style={{ fontSize: 12.5 }}>{payer.name}</b>
-                  <span className="mini" style={{ display: "block" }}>{need.label} · <span className="mono">{payer.id}</span></span>
+                  <span className="mini" style={{ display: "block" }}>
+                    {needLabel} · <span className="mono">{payer.id}</span>
+                    {/* What they are on, beside who they are: a consultant on terms of their own
+                        is the case the operator most needs to see before pressing Pay. */}
+                    {terms.pct > 0 && <> · <b>{terms.pct}% off</b></>}
+                  </span>
                 </span>
                 <Btn variant="gh" size="xs" onClick={() => setPayer(null)}>Clear</Btn>
               </div>
             )
             : (
-              <Field label={need.label} tip={`A ${tender.toLowerCase()} cannot be raised without one.`}>
+              <Field label={needLabel} tip={`A ${tender.toLowerCase()} cannot be raised without one.`}>
                 <input value={pq} onChange={(e) => setPq(e.target.value)}
-                  placeholder={`Search ${need.label.toLowerCase()} or ID…`} />
+                  placeholder={`Search ${needLabel.toLowerCase()} or ID…`} />
                 <div style={{ marginTop: 6, maxHeight: 132, overflowY: "auto", border: "1px solid var(--line)", borderRadius: 7 }}>
                   {hits.map((p) => (
                     <button key={p.id} type="button" onClick={() => setPayer(p)}
@@ -261,34 +293,39 @@ export default function Pos() {
               </Field>
             ))}
 
-          {tender === "Staff credit" && payer && (
+          {isAccountTender(tender) && payer && (
             <p className="mini" style={{ margin: "0 0 11px" }}>
               {credit
                 ? <>
-                  Credit taken by {payer.name} this month <b className="mono">{money(taken)}</b> of{" "}
-                  <b className="mono">{money0(credit.limit)}</b> - this bill would take it to{" "}
-                  <b className="mono" style={overLimit ? { color: "var(--crit)" } : undefined}>{money(taken + total)}</b>.
+                  {payer.name} owes <b className="mono">{money(credit.outstanding)}</b>
+                  {/* A party the manager set no ceiling for is told so in words. Printing a
+                      number nobody chose - or a bare "of ₹0" - would read as an account that is
+                      already spent up. */}
+                  {credit.limit === null
+                    ? <> - no credit limit</>
+                    : <> of <b className="mono">{money0(credit.limit)}</b></>}
+                  {" "}- this bill would take it to{" "}
+                  <b className="mono" style={overLimit ? { color: "var(--crit)" } : undefined}>{money(owed + total)}</b>.
                 </>
-                // Never a zero here: "₹0.00 taken" is the one thing this line must not say while
+                // Never a zero here: "owes ₹0.00" is the one thing this line must not say while
                 // it does not know, because it reads as "nothing owing" rather than "not asked yet".
                 : creditFailed
-                  ? <>Could not check this month&apos;s credit - the bill will be refused if the ceiling is reached.</>
-                  : <>Checking what {payer.name} has taken this month…</>}
+                  ? <>Could not check what {payer.name} owes - the bill will be refused if the ceiling is reached.</>
+                  : <>Checking what {payer.name} owes…</>}
             </p>
           )}
-          {overLimit && credit && (
+          {overLimit && credit && credit.limit !== null && (
             <Alert tone="c" label="LIMIT">
-              {money(taken + total)} breaches the {money0(credit.limit)} staff credit limit for {payer?.name}.
-              Take another tender or split the bill.
+              {creditBreachMessage(owed, total, payer!.name, credit.limit)}
             </Alert>
           )}
 
-          <Btn wide disabled={!lines.length || (!!need && !payer) || overLimit || busy}
+          <Btn wide disabled={!lines.length || (!!needKind && !payer) || overLimit || busy}
             onClick={() => void takeBill()}>
             {busy ? "Taking the bill…" : <>Pay · {money(total)}</>}
           </Btn>
           <p className="mini mtop">
-            Tender <b>{tender}</b>{payer ? <> · posted to <b>{payer.name}</b></> : need ? <> · pick a {need.label.toLowerCase()} to settle it</> : null}.{" "}
+            Tender <b>{tender}</b>{payer ? <> · posted to <b>{payer.name}</b></> : needKind ? <> · pick a {needLabel.toLowerCase()} to settle it</> : null}.{" "}
             <Tip text={<>Stock is drawn down from {L.n} the moment the bill is printed.</>} label="When stock is drawn down" />
           </p>
         </Card>

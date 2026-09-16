@@ -47,6 +47,16 @@ function BillSlip({ bill }: { bill: Dated<Bill> }) {
               <td className="r">{money(l.rate * l.qty)}</td>
             </tr>
           ))}
+          {/* The concession is on the paper where there was one: `rate` above is the printed
+              price, so without these two rows the lines would not add up to the total and the
+              customer would have no way to see what they were given. `tot` is the net, and
+              gross is `tot + disc` - the same two numbers the server stores. */}
+          {bill.disc ? (
+            <>
+              <tr><td colSpan={3}>Gross</td><td className="r">{money(bill.tot + bill.disc)}</td></tr>
+              <tr><td colSpan={3}>Discount {bill.discPct ? `(${bill.discPct}%)` : ""}</td><td className="r">-{money(bill.disc)}</td></tr>
+            </>
+          ) : null}
           <tr><td colSpan={3}>Taxable value</td><td className="r">{money(taxable)}</td></tr>
           <tr><td colSpan={3}>CGST + SGST</td><td className="r">{money(bill.tax)}</td></tr>
           <tr><td colSpan={3}><b>Total</b></td><td className="r"><b>{money(bill.tot)}</b></td></tr>
@@ -167,6 +177,17 @@ function BillDrawer({ id }: DrawerProps) {
       />
 
       <div className="mtop">
+        {/* The same two rows the slip carries, for the same reason: the lines are priced at the
+            printed rate, so without them nothing on this screen explains the total. */}
+        {bill.disc ? (
+          <>
+            <div className="totrow"><span>Gross</span><span>{money(bill.tot + bill.disc)}</span></div>
+            <div className="totrow">
+              <span>Discount{bill.discPct ? ` (${bill.discPct}%)` : ""}</span>
+              <span style={{ color: "var(--ok)" }}>-{money(bill.disc)}</span>
+            </div>
+          </>
+        ) : null}
         <div className="totrow"><span>Taxable value</span><span>{money(taxable)}</span></div>
         <div className="totrow"><span>CGST</span><span>{money(bill.tax / 2)}</span></div>
         <div className="totrow"><span>SGST</span><span>{money(bill.tax / 2)}</span></div>

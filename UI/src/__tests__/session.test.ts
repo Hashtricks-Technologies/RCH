@@ -16,7 +16,7 @@ const USER: User = {
 /** The smallest body `applySnapshot` will accept - this suite is about the session, not the data. */
 const SNAPSHOT = {
   user: USER, items: {}, locations: {}, users: [USER],
-  roster: { patients: [], staff: [], depts: [] },
+  roster: { patients: [], staff: [], depts: [], doctors: [] }, terms: { classes: [], payers: [] },
   stock: { coffee: {} }, rsv: {}, ovr: {}, prices: {}, priceLists: [], menu: {},
   req: [], tkt: [], prq: [], po: [], pord: [], batch: [], bills: [], grn: [],
   vendors: [], contracts: [], tickets: [], productReqs: [], shopAsks: [],

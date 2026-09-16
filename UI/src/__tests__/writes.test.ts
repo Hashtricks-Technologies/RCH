@@ -67,7 +67,8 @@ const BILL = {
  *  `hydrateMaster` inside `applySnapshot` restores exactly what was there. */
 const snapshot = (prices: Record<string, Record<string, number>> = FX.PL) => ({
   user: FX.USERS.find((u) => u.r === "manager"), items: FX.IT, locations: FX.LOC,
-  users: FX.USERS, roster: { patients: FX.PATIENTS, staff: FX.STAFF, depts: FX.DEPTS },
+  users: FX.USERS, roster: { patients: FX.PATIENTS, staff: FX.STAFF, depts: FX.DEPTS, doctors: FX.DOCTORS },
+  terms: { classes: FX.CLASS_TERMS, payers: [] },
   stock: {}, rsv: {}, ovr: {}, prices, priceLists: FX.PRICE_LISTS, menu: FX.MENU,
   req: [], tkt: [], prq: [], po: [], pord: [], batch: [], bills: [], grn: [], vendors: [],
   contracts: [], tickets: [], productReqs: [], shopAsks: [], sales: [], dayLabels: [],
@@ -232,7 +233,7 @@ describe("the till takes one bill per tap", () => {
     S().addToCart("coffee", "juice", 1);                        // list B: ₹20
     serve({
       "GET /api/v1/reports/credit/staff/RC-1902": () =>
-        json({ kind: "staff", id: "RC-1902", name: "Vinoth Prakash", since: "2026-09-01T00:00:00.000Z", taken: 2990, limit: 3000, room: 10 }),
+        json({ kind: "staff", id: "RC-1902", name: "Vinoth Prakash", outstanding: 2990, limit: 3000, room: 10 }),
     });
 
     const ui = mount();
@@ -242,7 +243,7 @@ describe("the till takes one bill per tap", () => {
 
     // Word for word what `POST /bills` refuses with - the browser previews the refusal, it does
     // not invent a second wording for it.
-    expect(ui.host.textContent).toContain(creditBreachMessage(2990, 20, "Vinoth Prakash · Kitchen"));
+    expect(ui.host.textContent).toContain(creditBreachMessage(2990, 20, "Vinoth Prakash · Kitchen", 3000));
     // The ceiling and the running total are the server's numbers, not a constant compiled in.
     expect(ui.host.textContent).toContain("of ₹3,000");
     expect(ui.button("Pay")!.disabled).toBe(true);
@@ -259,7 +260,7 @@ describe("the till takes one bill per tap", () => {
     await act(async () => { ui.button("Vinoth Prakash")!.click(); });
     await act(async () => { await new Promise((r) => { setTimeout(r, 0); }); });
 
-    expect(ui.host.textContent).toContain("Could not check this month's credit");
+    expect(ui.host.textContent).toContain("Could not check what Vinoth Prakash · Kitchen owes");
     expect(ui.host.textContent).not.toContain("Checking what");
     // And the sale is not blocked on a number that never arrived: the server still refuses it.
     expect(ui.button("Pay")!.disabled).toBe(false);
@@ -272,6 +273,69 @@ describe("the till takes one bill per tap", () => {
     // The number is the server's; nothing local may put one on the card.
     expect(ui.host.textContent).toContain("New bill");
     expect(ui.host.textContent).not.toMatch(/CF\//);
+    ui.unmount();
+  });
+
+  it("offers a doctor's own register behind the doctor tender", async () => {
+    as("counter");
+    const ui = mount();
+    await act(async () => { ui.button("Doctor credit")!.click(); });
+    // The four registers are numbered independently, so the picker behind each tender has to be
+    // that tender's own: a staff member must not be pickable as a doctor.
+    expect(ui.host.textContent).toContain("Dr A. Rao · Cardiology");
+    expect(ui.host.textContent).not.toContain("Vinoth Prakash · Kitchen");
+    ui.unmount();
+  });
+
+  it("takes the party's rate off before the tax split, and shows what it took", async () => {
+    as("counter");
+    S().addToCart("coffee", "juice", 1);                        // list B: ₹20
+    serve({
+      "GET /api/v1/reports/credit/doctor/DR-204": () =>
+        json({ kind: "doctor", id: "DR-204", name: "Dr S. Menon · Paediatrics", outstanding: 0, limit: null, room: null }),
+    });
+
+    const ui = mount();
+    await act(async () => { ui.button("Doctor credit")!.click(); });
+    await act(async () => { ui.button("Dr S. Menon")!.click(); });
+    await act(async () => { await new Promise((r) => { setTimeout(r, 0); }); });
+
+    // The doctors are seeded at 20%: ₹20 gross, ₹4 off, ₹16 to pay - and the gross is on the
+    // screen too, because the line is priced at the printed ₹20 and nothing else would explain
+    // the total.
+    expect(ui.host.textContent).toContain("20% doctor discount");
+    expect(ui.host.textContent).toContain("Pay · ₹16.00");
+    // A party with no ceiling is told so in words rather than shown a number nobody set.
+    expect(ui.host.textContent).toContain("no credit limit");
+    ui.unmount();
+  });
+
+  it("gives a person their own rate over their category's", async () => {
+    as("counter");
+    S().addToCart("coffee", "juice", 1);
+    serve({
+      "GET /api/v1/reports/credit/doctor/DR-118": () =>
+        json({ kind: "doctor", id: "DR-118", name: "Dr A. Rao · Cardiology", outstanding: 0, limit: 5000, room: 5000 }),
+    });
+
+    const ui = mount();
+    await act(async () => { ui.button("Doctor credit")!.click(); });
+    await act(async () => { ui.button("Dr A. Rao")!.click(); });
+    await act(async () => { await new Promise((r) => { setTimeout(r, 0); }); });
+
+    // DR-118 is the seeded exception: 25% where the category is 20%.
+    expect(ui.host.textContent).toContain("25% doctor discount");
+    expect(ui.host.textContent).toContain("Pay · ₹15.00");
+    ui.unmount();
+  });
+
+  it("charges a walk-in the shelf price and says nothing about a discount", () => {
+    as("counter");
+    S().addToCart("coffee", "juice", 1);
+    const ui = mount();
+    expect(ui.host.textContent).toContain("Pay · ₹20.00");
+    expect(ui.host.textContent).not.toContain("discount");
+    expect(ui.host.textContent).not.toContain("Gross");
     ui.unmount();
   });
 });
@@ -1914,16 +1978,16 @@ describe("what the browser no longer knows on its own", () => {
   it("takes the payer roster from the snapshot, not from a fixture", () => {
     as("counter");
     // A patient the fixtures have never heard of, admitted this morning.
-    const roster = { patients: [{ kind: "patient", id: "IP-9999", name: "Admitted This Morning" }], staff: [], depts: [] };
+    const roster = { patients: [{ kind: "patient", id: "IP-9999", name: "Admitted This Morning" }], staff: [], depts: [], doctors: [] };
     applySnapshot({ ...snapshot(), roster } as never);
     expect(PATIENTS.map((p) => p.id)).toEqual(["IP-9999"]);
   });
 
-  it("asks the server what a staff member has taken, rather than adding up its own week", async () => {
+  it("asks the server what a staff member still owes, rather than adding up its own week", async () => {
     as("counter");
-    serve({ "GET /api/v1/reports/credit/staff/RC-1902": () => json({ kind: "staff", id: "RC-1902", name: "Vinoth Prakash", since: "2026-09-01T00:00:00.000Z", taken: 2480, limit: 3000, room: 520 }) });
+    serve({ "GET /api/v1/reports/credit/staff/RC-1902": () => json({ kind: "staff", id: "RC-1902", name: "Vinoth Prakash", outstanding: 2480, limit: 3000, room: 520 }) });
     const r = (await S().readCredit({ kind: "staff", id: "RC-1902", name: "Vinoth Prakash" }))!;
-    expect(r.taken).toBe(2480);
+    expect(r.outstanding).toBe(2480);
     expect(r.room).toBe(520);
   });
 

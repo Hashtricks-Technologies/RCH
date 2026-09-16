@@ -4,9 +4,9 @@ export { apportion, netReceived, round3 };
 // The par factor is a rule's own tuning, read off the location master `hydrateMaster` fills
 // rather than compiled into the bundle (M11); the outlet lists below read the same master.
 import { operationalKeys, outletKeys, parFactor } from "@rch/domain";
-import { IT, LOC, MENU, PL } from "../data/master";
+import { CLASS_TERMS, IT, LOC, MENU, PAYER_TERMS, PL } from "../data/master";
 import type {
-  Availability, Bill, DatedDoc, LocKey, PoStatus, PordStatus, Price, PurchaseOrder, Requisition, ReqStatus,
+  Availability, Bill, BillParty, DatedDoc, LocKey, PayerKind, PoStatus, PordStatus, Price, PurchaseOrder, Requisition, ReqStatus,
   StockLoc, StockRequest, Ticket, TktStatus, Tone,
 } from "../types";
 import { U, isToday } from "./fmt";
@@ -41,6 +41,29 @@ export function availOf(s: StockOnly, l: LocKey, it: string): Availability {
 
 /** What a unit of this item costs: its standard cost on the item master, which the manager keeps. */
 export const costOf = (it: string) => IT[it]?.cost ?? 0;
+
+/**
+ * What this party is charged, and how far they may run: the rate card resolved the way the
+ * server resolves it - the person's own exception over their category's rate.
+ *
+ * A **preview**, everywhere it is read. The server resolves it again inside the sale's own
+ * transaction and that is the rate the bill is actually priced at, so a manager moving the
+ * doctors' rate mid-cart changes what this says and the server decides regardless. It delegates
+ * to the same `@rch/domain` functions the server calls, rather than a lookalike.
+ *
+ * A bill with no payer is a walk-in customer - a party of its own, not a missing one - which is
+ * why this takes the payer and not a kind.
+ */
+export function partyRate(payer: { kind: PayerKind; id: string } | null | undefined): { party: BillParty; pct: number; limit: number | null } {
+  const party = D.partyOf(payer);
+  const cls = CLASS_TERMS[party];
+  const own = payer ? PAYER_TERMS[`${payer.kind}:${payer.id}`] : undefined;
+  return {
+    party,
+    pct: D.discountPctFor(cls?.pct ?? 0, own?.pct),
+    limit: D.creditLimitFor(cls?.limit ?? null, own?.limit),
+  };
+}
 
 /**
  * What the kitchen can actually make: every finished good on the master.
