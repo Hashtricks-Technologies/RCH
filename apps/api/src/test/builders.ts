@@ -119,13 +119,13 @@ export const given = {
    * Ids sit at STL-2026-9NN, above the sequence start, for the reason every other family gives.
    */
   async settlement(db: Db, p: {
-    kind: PayerKind; id: string; name: string; amount: number;
+    payer: { kind: PayerKind; id: string; name: string }; amount: number;
     mode?: string; at?: Date; by?: string; lines?: { no: string; amount: number }[];
   }): Promise<string> {
     const stl = `STL-2026-${String(900 + ++counters.settlement)}`;
     await db.transaction(async (tx) => {
       await tx.insert(s.settlements).values({
-        id: stl, kind: p.kind, payerId: p.id, payerName: p.name, amount: p.amount,
+        id: stl, kind: p.payer.kind, payerId: p.payer.id, payerName: p.payer.name, amount: p.amount,
         mode: p.mode ?? "Cash", at: p.at ?? new Date(), by: p.by ?? "u2",
       });
       if (p.lines?.length) {

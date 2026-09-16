@@ -464,7 +464,7 @@ describe("the staff credit ceiling", () => {
     const payer = STAFF("RC-9202", "Mohan Das · Physiotherapy");
     await given.bill(app.db, { loc: "coffee", total: 2990, payer });
     expect((await pay("u1", oneWater(payer))).statusCode).toBe(422);
-    await given.settlement(app.db, { kind: "staff", id: "RC-9202", name: "Mohan Das · Physiotherapy", amount: 2990 });
+    await given.settlement(app.db, { payer, amount: 2990 });
     const r = await pay("u1", oneWater(payer));
     expect(r.statusCode, r.body).toBe(200);
   });

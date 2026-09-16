@@ -312,7 +312,7 @@ describe("taking a payment back", () => {
     // Written straight in, dated yesterday: the route's own guard is what is being pinned, and
     // there is no door that records a settlement in the past.
     const id = await given.settlement(app.db, {
-      kind: "doctor", id: DOCTOR.id, name: DOCTOR.name, amount: 90,
+      payer: DOCTOR, amount: 90,
       at: new Date(Date.now() - 36 * 60 * 60 * 1000), lines: [{ no: bill, amount: 90 }],
     });
     const r = await write("POST", "u2", `/settlements/${id}/void`, { reason: "Too late" });
