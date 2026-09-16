@@ -21,8 +21,13 @@ import "./AdjustmentRequestDrawer";
 // ---- price-list settings: creating a list, and which list each outlet charges from - both
 // were inline on one outlet's page, where the sharing between outlets could not be seen.
 import "./PriceListSettingsDrawer";
+// ---- party billing: what each party is charged, what they still owe, and what settles it. The
+// statement drawer is registered here for its side effect like every other one, because the
+// screen opens it by key ("stmt") and never imports the module.
+import Credit from "./Credit";
+import "./StatementDrawer";
 
 export const screens: Record<string, ComponentType> = {
   dash: Dashboard, approvals: Approvals, stock: ItemsStock, menu: MenuManagement,
-  prices: Prices, avail: Availability, bills: Bills,
+  prices: Prices, avail: Availability, bills: Bills, credit: Credit,
 };

@@ -136,6 +136,10 @@ describe("drawers render", () => {
     pnew: ["new", "prod"],
     pord: ["PRD-2026-029", "prod"],
     ptkt: ["TKT-0440", "prod"],
+    // ---- party billing: a statement is keyed `<kind>:<id>`, and the read behind it is not
+    // stubbed here, so this renders the drawer's own reading state - the same arrangement
+    // `auditEntry` above is in.
+    stmt: ["doctor:DR-118", "manager"],
     sissue: ["REQ-2026-0910", "store"],
     sitem: ["new", "store"],
     sprq: ["PRQ-2026-013", "store"],

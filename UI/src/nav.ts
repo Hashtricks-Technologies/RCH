@@ -22,6 +22,11 @@ export const NAV: Record<Role, NavGroup[]> = {
       // ---- bill void: the manager had no way to see a bill at all, and voiding one is the
       // manager's own door. Every outlet's bills, which is the difference from the counter's.
       { k: "bills", label: "Bills", icon: "bill" }] },
+    // ---- party billing: a group of its own rather than a sixth entry under Outlets. What a
+    // doctor is charged and what a department still owes are hospital-wide questions, and the
+    // answer to both is one balance across every counter - not something that belongs beside a
+    // single outlet's menu or price list.
+    { group: "Credit", items: [{ k: "credit", label: "Credit & Settlements", icon: "rep" }] },
     { group: "Account", items: [{ k: "issues", label: "Support", icon: "req" }, { k: "settings", label: "Settings", icon: "set" }] },
   ],
   store: [
