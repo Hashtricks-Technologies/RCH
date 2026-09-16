@@ -32,5 +32,5 @@ export {
 } from "./items.js";
 // ---- adjustments: the words a write-off's reason is printed in, on both sides.
 export { REASON_LABEL } from "./adjustments.js";
-export { HSN_CODES, gstForHsn, type HsnEntry } from "./hsn.js";
+export { HSN_CODES, gstForHsn, hsnGroups, type HsnEntry } from "./hsn.js";
 export { defaultSourceFor, sourceOf } from "./routing.js";

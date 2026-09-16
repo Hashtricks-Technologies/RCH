@@ -265,12 +265,22 @@ export default function Prices() {
     const pr = priceOf(s, shop, it);
     return k === "type" ? (IT[it]?.t ?? "")
       : k === "cost" ? costOf(it)
-        : k === "listed" ? pr.listed
-          : k === "charged" ? pr.p
-            : k === "margin" ? marginOf(pr.p, costOf(it))
-              : (IT[it]?.n ?? it);
+        // An item with no printed MRP sorts as 0, at the bottom of a high-to-low pass: it has no
+        // ceiling at all, which is a different thing from a ceiling of nothing.
+        : k === "mrp" ? (IT[it]?.mrp ?? 0)
+          : k === "listed" ? pr.listed
+            : k === "charged" ? pr.p
+              : k === "margin" ? marginOf(pr.p, costOf(it))
+                : (IT[it]?.n ?? it);
   });
   const missing = Object.keys(s.prices[list] ?? {}).filter((it) => !listed.includes(it));
+  /** The product staged on the Add row, when the list prices it above its printed MRP. The
+   *  manager is one press from putting it on a till that will charge the lower figure - the cap
+   *  is applied at read time by `priceOf`, never stored - so the gap is said on the page rather
+   *  than found later on a bill. */
+  const addMrp = IT[add]?.mrp;
+  const addListed = s.prices[list]?.[add] ?? 0;
+  const addOver = addMrp != null && addListed > addMrp ? { mrp: addMrp, listed: addListed } : null;
 
   const save = async (it: string) => {
     const raw = edit[it];
@@ -320,7 +330,13 @@ export default function Prices() {
         {missing.length > 0 ? (
           <>
             <FormRow>
-              <Field label="Product" tip={`Only a product priced on list ${nameOfList(list)} can be sold at this counter.`}>
+              <Field label="Product" tip={`Only a product priced on list ${nameOfList(list)} can be sold at this counter.`}
+                hint={addOver != null && (
+                  <span style={{ color: "var(--crit)" }}>
+                    Above the printed MRP of {money(addOver.mrp)} - the till will charge {money(addOver.mrp)},
+                    not the {money(addOver.listed)} on the list.
+                  </span>
+                )}>
                 <select value={add} onChange={(e) => setAdd(e.target.value)}>
                   <option value="">Pick a product…</option>
                   {missing.map((it) => (
@@ -361,6 +377,9 @@ export default function Prices() {
               { h: "Item", cls: "nm", w: "22%", sort: "name" },
               { h: "Type", sort: "type" },
               { h: "Cost", r: true, sort: "cost" },
+              // The one figure that decides whether a price can be saved at all, printed beside
+              // the box it caps rather than left behind a tooltip on the row's input.
+              { h: "MRP", r: true, sort: "mrp", tip: "The price printed on the pack. No list may charge above it." },
               { h: "Listed price", r: true, sort: "listed" },
               { h: "Charged price", r: true, sort: "charged" },
               { h: "Margin %", r: true, sort: "margin" },
@@ -370,6 +389,10 @@ export default function Prices() {
               const pr = priceOf(s, shop, it);
               const cost = costOf(it);
               const mrp = IT[it]?.mrp;
+              // What is in the box right now, not what is saved: the warning has to appear while
+              // the manager is typing the number, not after the server has turned it away.
+              const typed = Number(edit[it] ?? pr.listed);
+              const over = mrp != null && Number.isFinite(typed) && typed > mrp ? mrp : null;
               return {
                 key: it,
                 cells: [
@@ -379,6 +402,7 @@ export default function Prices() {
                   </span>,
                   <Tag kind={tagKind(IT[it]?.t ?? "RAW")}>{IT[it]?.t}</Tag>,
                   money(cost),
+                  mrp != null ? money(mrp) : <span className="dim">—</span>,
                   money(pr.listed),
                   <>
                     <b>{money(pr.p)}</b>
@@ -412,6 +436,13 @@ export default function Prices() {
                         <Btn size="xs" variant="dg" onClick={() => setDrop(it)}>Remove</Btn>
                       )}
                     </div>
+                    {/* Visible, not a tooltip: a refusal the manager is one press away from is
+                        something they have to see without asking for it. */}
+                    {over != null && (
+                      <div className="hint" style={{ color: "var(--crit)" }}>
+                        Above the printed MRP of {money(over)} - this will be refused.
+                      </div>
+                    )}
                     {drop === it && (
                       <div className="hint" style={{ color: "var(--warn)" }}>
                         Takes it off the {LOC[shop].n} till at once. Add a product puts it back.

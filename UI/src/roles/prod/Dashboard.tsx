@@ -123,7 +123,7 @@ export default function Dashboard() {
         </Alert>
       )}
 
-      <Card title="What the kitchen is holding" tip="On the rack right now" className="mtop">
+      <Card title="What the kitchen is holding" tip="On the rack right now" scroll className="mtop">
         <div className="tilegrid">
           {PRODS.map((k) => {
             const on = !ovr["kitchen:" + k];
@@ -143,7 +143,7 @@ export default function Dashboard() {
         </div>
       </Card>
 
-      <Card title="Tickets out of the kitchen" tip="Issued and waiting at the pass, or handed over and in transit" flush className="mtop">
+      <Card title="Tickets out of the kitchen" tip="Issued and waiting at the pass, or handed over and in transit" flush scroll className="mtop">
         <DataTable
           cols={[
             { h: "Ticket ID", cls: "nm", w: "18%" },
@@ -183,7 +183,7 @@ export default function Dashboard() {
       </Card>
 
       <Grid cols="g21">
-        <Card title="Units made today" tip="By product, from the batch log" flush>
+        <Card title="Units made today" tip="By product, from the batch log" flush scroll>
           <DataTable
             cols={[
               { h: "Product", cls: "nm" },

@@ -220,6 +220,7 @@ export default function Stock() {
         title="Quarantine"
         tip="Rejected at goods receipt - off the good shelf and out of every count above"
         flush
+        scroll
         className="mtop"
       >
         <DataTable

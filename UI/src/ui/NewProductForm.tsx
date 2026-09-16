@@ -1,9 +1,9 @@
 import { useId, useState } from "react";
-import { gstForHsn, HSN_CODES, isPurchased } from "@rch/domain";
+import { gstForHsn, isPurchased } from "@rch/domain";
 import { IT, LOC } from "../data/master";
 import { useApp } from "../store";
 import { money } from "../lib/fmt";
-import { Alert, Btn, BtnRow, Field, FormRow, Section } from "./kit";
+import { Alert, Btn, BtnRow, Field, FormRow, HsnField, Section } from "./kit";
 import { DrawerFrame } from "./Drawer";
 import type { ItemType, LocKey } from "../types";
 
@@ -105,9 +105,6 @@ export function NewProductForm({ scope, title, sub, intro, initialName, onCreate
   const [unit, setUnit] = useState(spec.defaults.unit);
   const [hsn, setHsn] = useState(spec.defaults.hsn);
   const [gst, setGst] = useState(spec.defaults.gst);
-  // The default HSN is on the list, so the picker opens on it rather than on "Other" - the
-  // common case never has to touch the escape hatch at all.
-  const [hsnOther, setHsnOther] = useState(!HSN_CODES.some((e) => e.hsn === spec.defaults.hsn));
   const [reorder, setReorder] = useState("0");
   const [cost, setCost] = useState("");
   const [mrp, setMrp] = useState("");
@@ -215,27 +212,18 @@ export function NewProductForm({ scope, title, sub, intro, initialName, onCreate
         </Field>
         {spec.has.tax && (
           <>
-            <Field label="HSN" tip="Picking a code fills in its GST rate - still editable after.">
-              {hsnOther ? (
-                <input value={hsn} onChange={(e) => setHsn(e.target.value)} placeholder="e.g. 2106" />
-              ) : (
-                <select value={hsn} onChange={(e) => {
-                  const code = e.target.value;
-                  setHsn(code);
-                  const rate = gstForHsn(code);
-                  if (rate !== undefined) setGst(String(rate));
-                }}>
-                  {HSN_CODES.map((e) => (
-                    <option key={e.hsn} value={e.hsn}>{e.hsn} - {e.label} ({e.gst}% GST)</option>
-                  ))}
-                </select>
-              )}
-              <label className="mini" style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6 }}>
-                <input type="checkbox" checked={hsnOther}
-                  onChange={(e) => setHsnOther(e.target.checked)} />
-                Not on the list - type the code myself
-              </label>
-            </Field>
+            <HsnField
+              value={hsn}
+              tip="Picking a code fills in its GST rate - still editable after."
+              onChange={(code, picked) => {
+                setHsn(code);
+                // Only a code taken off the list fills the rate in. A code typed by hand passes
+                // through listed ones on its way - "2202" is "2", "22", "220", "2202" - and each
+                // of those would have overwritten a rate this desk had already set.
+                const rate = picked ? gstForHsn(code) : undefined;
+                if (rate !== undefined) setGst(String(rate));
+              }}
+            />
             <Field label="GST %">
               <input type="number" min={0} step="any" value={gst} onChange={(e) => setGst(e.target.value)} />
             </Field>

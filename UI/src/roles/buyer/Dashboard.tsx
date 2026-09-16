@@ -8,7 +8,7 @@ import { useApp } from "../../store";
 import { activeItems, avail, daysCover, netReceived, poValue, procurementList, stateTone, stockValue } from "../../lib/selectors";
 import { U, fq, lakh, money0, sum } from "../../lib/fmt";
 import {
-  Alert, Btn, Card, DataTable, Feed, FilterSelect, Grid, Kpis, PageHead, Pill, TableFoot, Toolbar,
+  Alert, AlertStack, Btn, Card, DataTable, Feed, FilterSelect, Grid, Kpis, PageHead, Pill, TableFoot, Toolbar,
 } from "../../ui/kit";
 import type { FeedItem, Row } from "../../ui/kit";
 import type { PoStatus, TktLine } from "../../types";
@@ -177,26 +177,38 @@ export default function Dashboard() {
       <Kpis items={kpis} />
       <div className="mtop" />
 
-      {waiting.map((p) => (
-        <Alert key={p.id} tone="w" label="WAITING"
-          action={<Btn size="xs" variant="gh" onClick={() => nav("/requisitions")}>Review &amp; order</Btn>}>
-          {p.by} raised <b>{p.id}</b> - {p.lines.length} item{p.lines.length > 1 ? "s" : ""},
-          about {money0(lineValue(p.lines))}.{p.note ? " " + p.note : ""}
-        </Alert>
-      ))}
-      {partial.map((o) => (
-        <Alert key={o.id} tone="w" label="PARTIAL"
-          action={<Btn size="xs" variant="gh" onClick={() => nav("/orders")}>Review</Btn>}>
-          <b>{o.id}</b> with {vendorName(s.vendors, o.vendor)} is partially received -
-          {" "}{money0(poValue(o))} on order, the balance is still outstanding.
-        </Alert>
-      ))}
-      {zero.map((k) => (
-        <Alert key={k} tone="c" label="AT ZERO"
-          action={<Btn size="xs" variant="gh" onClick={() => nav("/inventory")}>See item</Btn>}>
-          {IT[k].n} ({IT[k].c}) is at zero in the {LOC.store.n} - reorder level {fq(IT[k].rl, k)} {U(k)}.
-        </Alert>
-      ))}
+      {/* Capped, all three: `zero` is every purchased line the central store has run out of, which
+          on a morning after a big issue is most of the catalogue, and thirty alerts would push the
+          cover table and the commitments off the screen entirely. The KPIs above count the lot. */}
+      <AlertStack tone="w" label="WAITING"
+        action={<Btn size="xs" variant="gh" onClick={() => nav("/requisitions")}>Review &amp; order</Btn>}>
+        {waiting.map((p) => (
+          <Alert key={p.id} tone="w" label="WAITING"
+            action={<Btn size="xs" variant="gh" onClick={() => nav("/requisitions")}>Review &amp; order</Btn>}>
+            {p.by} raised <b>{p.id}</b> - {p.lines.length} item{p.lines.length > 1 ? "s" : ""},
+            about {money0(lineValue(p.lines))}.{p.note ? " " + p.note : ""}
+          </Alert>
+        ))}
+      </AlertStack>
+      <AlertStack tone="w" label="PARTIAL"
+        action={<Btn size="xs" variant="gh" onClick={() => nav("/orders")}>Review</Btn>}>
+        {partial.map((o) => (
+          <Alert key={o.id} tone="w" label="PARTIAL"
+            action={<Btn size="xs" variant="gh" onClick={() => nav("/orders")}>Review</Btn>}>
+            <b>{o.id}</b> with {vendorName(s.vendors, o.vendor)} is partially received -
+            {" "}{money0(poValue(o))} on order, the balance is still outstanding.
+          </Alert>
+        ))}
+      </AlertStack>
+      <AlertStack tone="c" label="AT ZERO"
+        action={<Btn size="xs" variant="gh" onClick={() => nav("/inventory")}>Full inventory</Btn>}>
+        {zero.map((k) => (
+          <Alert key={k} tone="c" label="AT ZERO"
+            action={<Btn size="xs" variant="gh" onClick={() => nav("/inventory")}>See item</Btn>}>
+            {IT[k].n} ({IT[k].c}) is at zero in the {LOC.store.n} - reorder level {fq(IT[k].rl, k)} {U(k)}.
+          </Alert>
+        ))}
+      </AlertStack>
       {waiting.length === 0 && partial.length === 0 && zero.length === 0 && (
         <Alert tone="g" label="CLEAR">
           Nothing is waiting on you. The {LOC.store.n} has raised no new requisition.

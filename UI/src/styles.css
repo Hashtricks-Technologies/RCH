@@ -212,6 +212,13 @@ a{color:var(--accent);text-decoration:none}
 .card-h h3{margin:0;font-size:13px;font-weight:700;flex:1;min-width:110px}
 .card-h .sh{font-size:11px;color:var(--ink-3);font-weight:400;font-family:"IBM Plex Mono",monospace;padding:0;border:0;display:inline}
 .card-b{padding:15px}.card-b.flush{padding:0}
+/* A widget over an uncapped collection scrolls inside its card instead of stretching the page
+   past everything below it (`Card`'s `scroll`). A flush card's body holds a `.tw`, which already
+   scrolls sideways, so it takes both axes. The sticky header stays opaque without saying so:
+   `thead th` sets its own background. */
+.card-b.scroll{max-height:var(--cardmax,420px);overflow-y:auto}
+.card-b.flush.scroll{overflow:auto}
+.card-b.scroll thead th{position:sticky;top:0;z-index:1}
 .grid{display:grid;gap:14px}
 @media(min-width:760px){.g2{grid-template-columns:1fr 1fr}}
 @media(min-width:900px){.g21{grid-template-columns:2fr 1fr}}
@@ -587,6 +594,9 @@ thead th .tip{margin-left:4px}
 .print-slip { display: none }
 @media print {
   .side, .top, .drf, .toast, .scrim, .no-print { display: none !important }
+  /* Paper has no scrollbar: a capped card prints everything it is holding, not the 420px of it
+     that happened to be in view. */
+  .card-b.scroll { max-height: none; overflow: visible }
   .print-only { display: block !important }
   /* A slip lives inside a drawer, which is a fixed 720px panel with its own scrollbar, so its
      positioning and clipping are undone as well - otherwise the paper carries only whatever
