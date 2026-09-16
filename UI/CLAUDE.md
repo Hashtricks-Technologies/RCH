@@ -30,8 +30,10 @@ pnpm --filter @rch/ui build       # tsc -b && vite build → UI/dist
 
 Routing is `BrowserRouter`, with plain paths (`/pos`, `/admin`). An admin-flagged account never gets a
 `<Shell>`: it only ever sees `pages/AdminDashboard.tsx` at `/admin`, and any other key bounces it back there.
-That page has four tabs: `AdminUsers` (staff accounts), `AdminOutlets` (the hospital's retail outlets - opened,
-edited, closed and reopened; never deleted), `AdminSupport` (the support desk: every role's tickets) and
+That page has five tabs: `AdminUsers` (staff accounts), `AdminOutlets` (the hospital's retail outlets - opened,
+edited, closed and reopened; never deleted), `AdminPayers` (the payer register: who a bill may be posted to -
+added, renamed and switched off, never deleted, so a balance always keeps an id somebody can find),
+`AdminSupport` (the support desk: every role's tickets) and
 `AdminAudit` (the audit log: every write and sign-in, newest first, with filters, counts and a CSV export).
 With no `Shell` around it, `AdminDashboard.tsx` mounts the `<Drawer />` host itself.
 
@@ -243,6 +245,10 @@ a background refresh and must not blank the screen.
   typed id, the fallback); **`admin-accounts.test.tsx`** drives the account page (next-id preview, the Super
   Admin row, delete's second press). Both stub `fetch` by `"METHOD /path"`; the sign-in screen reads
   `GET /auth/directory` as it mounts, so a case that queues a login response must answer by URL, not in order.
+- **`admin-payers.test.tsx`** drives the Payers tab the same way (every kind listed, the create's body and a
+  refusal leaving the form as typed, the switch sending `{ active: false }`, a switched-off payer who still
+  owes money still listed, and no delete button anywhere on the page). `AdminDashboard` reads the register as
+  it mounts, so any case that mounts that page must stub `GET /admin/payers` too.
 - **`admin-audit.test.tsx`** drives the Audit log tab against a stubbed `GET /admin/audit`: rows and counts,
   filters reaching the query string, "Load more" sending `before`, an `audit` notice showing the pill without
   changing the rows, before → after listing only changed fields in the drawer, and the outage line against

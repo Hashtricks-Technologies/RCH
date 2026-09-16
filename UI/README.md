@@ -135,12 +135,14 @@ src/
                                            NewProductForm.tsx, AdjustmentForm.tsx (store, kitchen, and - in
                                            its request mode - the counter), KitchenOrderForm.tsx
   pages/                                  Login.tsx, ChangePassword.tsx, Settings.tsx, Support.tsx, and the
-                                           admin page: AdminDashboard.tsx, AdminUsers.tsx, AdminSupport.tsx,
-                                           AdminAudit.tsx, AuditEntryDrawer.tsx
+                                           admin page: AdminDashboard.tsx, AdminUsers.tsx, AdminOutlets.tsx,
+                                           AdminPayers.tsx, AdminSupport.tsx, AdminAudit.tsx,
+                                           AuditEntryDrawer.tsx
   roles/<role>/                           counter/ manager/ store/ prod/ buyer/
   __tests__/                              store, procurement, fixes, screens/app, audit-screens, time,
                                            drawer, api, session, events, writes, refusals, theme, po-board,
-                                           login-picker, admin-accounts, admin-audit, audit-lib
+                                           login-picker, admin-accounts, admin-outlets, admin-payers,
+                                           admin-audit, audit-lib
 ```
 
 Each role folder exports `screens: Record<string, ComponentType>`; `App.tsx` resolves the
@@ -257,7 +259,20 @@ moves and reports stay, its menu, availability overrides and price list are kept
 and a reopen restores it. The store and the kitchen are fixed and are not listed here; a new outlet
 appears in every other picker - the Accounts tab's location select included - the moment it opens.
 
-**The support desk, on `/admin`.** The admin-flagged account's third tab lists every ticket from
+**Payers, on `/admin`.** The admin-flagged account's Payers tab is the register of everyone a bill may
+be posted to - patients, staff, departments and doctors - with, for each, whether the till may still
+bill to them, what they still owe and how many of their bills are open. Still-billing ones come first,
+then by name; a kind filter and a search over the id and the name narrow the list. Adding one asks for
+the kind, the hospital's own id (a payroll number, a ward code, a consultant's registration - the
+server upper-cases it and refuses one already on the register, by name) and a name. A row renames in
+place, and switches off and back on with one button: switching somebody off is allowed whatever they
+owe, since that is how the hospital stops new bills reaching an account it is still chasing, and the
+server's own sentence names the balance that is still owed. There is no delete on this page - a payer
+with a bill against them is somebody's balance, and an id that vanished would be a debt nobody could
+find. What each of them is *charged* is the outlet manager's, on their own screen; this page is
+identity only.
+
+**The support desk, on `/admin`.** The admin-flagged account's Support desk tab lists every ticket from
 every role, most pressing first (open, then with support; urgent before routine), filterable by
 status, priority, role and location. Picking one shows who raised it, from which screen, and the
 conversation. The admin replies as support under their own name - Send, Send & ask the reporter
@@ -266,7 +281,7 @@ it. Only the moves `SUPPORT_TRANSITIONS` allows are drawn. The reply reaches the
 Support screen over the change stream, and a new ticket or a reporter's reply lands on the desk
 the same way.
 
-**The audit log, on `/admin`.** The admin-flagged account's third tab answers who did what, when,
+**The audit log, on `/admin`.** The admin-flagged account's Audit log tab answers who did what, when,
 from where and with what result, for every change anyone makes and every sign-in. "Every change
 and sign-in, with who made it and when." Filter by period (today, 7 days, 30 days or a custom
 range), person, role, location, area and outcome, or search; four counts over the whole filter
