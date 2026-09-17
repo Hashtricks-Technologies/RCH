@@ -127,10 +127,12 @@ export interface AppState extends ProcurementSlice, OpsSlice, AdminSlice, AuditS
   redirectRequest: (id: string, from: LocKey) => Promise<boolean>;
 
   issueTicket: (reqId: string) => Promise<void>;
-  /** `otp` is required from the collecting side; omit it only for a supervisor override. */
-  /** Answers `true` only once the server has taken it, so the window can keep a refused OTP
+  /** The OTP the collector read out, and there is no longer any other way: the supervisor
+   *  override is gone, and the contract refuses a body without one.
+   *
+   *  Answers `true` only once the server has taken it, so the window can keep a refused OTP
    *  and its reason in front of the operator instead of relying on a toast they may miss. */
-  handover: (tktId: string, otp?: string) => Promise<boolean>;
+  handover: (tktId: string, otp: string) => Promise<boolean>;
   receiveTicket: (tktId: string) => Promise<void>;
 
   /** Withdraw a ticket nobody collected: the hold goes back and so does the document behind it.
@@ -568,9 +570,7 @@ export const useApp = create<AppState>((set, get) => ({
   },
   handover: async (tktId, otp) => {
     try {
-      // The body is a strict object either way: `{ otp }` when the collector read one out,
-      // `{}` for the labelled supervisor override. Omitting it entirely is a 400.
-      const r = await call(routes.handover, { params: { id: tktId }, body: otp === undefined ? {} : { otp: otp.trim() } });
+      const r = await call(routes.handover, { params: { id: tktId }, body: { otp: otp.trim() } });
       get().notify(r.message);
       await refetch(r.changed, r.message);
       return true;

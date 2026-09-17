@@ -805,14 +805,17 @@ describe("the request chain - the twelve writes", () => {
     expect(S().toast).toBe("TKT-0440 handed over - stock is in transit to Coffee Shop");
   });
 
-  it("handover sends an empty body for the supervisor override", async () => {
+  // The supervisor override is gone: there is no OTP-less handover to send a body for. The
+  // contract makes `otp` required, so a caller that tried would not compile, and the server
+  // would answer 400 before the handler ran.
+  it("handover always carries an OTP - there is no override body", async () => {
     as("store");
     serve({
-      "POST /api/v1/tickets/TKT-0440/handover": () => json({ result: { ...TKT, id: "TKT-0440", st: "Collected" }, changed: ["tkt", "req", "rsv", "stock"], message: "TKT-0440 handed over on a supervisor override - stock is in transit to Coffee Shop" }),
+      "POST /api/v1/tickets/TKT-0440/handover": () => json({ result: { ...TKT, id: "TKT-0440", st: "Collected" }, changed: ["tkt", "req", "rsv", "stock"], message: "TKT-0440 handed over - stock is in transit to Coffee Shop" }),
       "GET /api/v1/requests": () => json([REQ]), "GET /api/v1/tickets": () => json([TKT]), "GET /api/v1/stock": () => json(STOCK),
     });
-    await S().handover("TKT-0440");
-    expect(hit("POST /api/v1/tickets/TKT-0440/handover")[0].body).toEqual({});
+    expect(await S().handover("TKT-0440", "418327")).toBe(true);
+    expect(hit("POST /api/v1/tickets/TKT-0440/handover")[0].body).toEqual({ otp: "418327" });
   });
 
   it("repeats a wrong-OTP refusal and moves nothing", async () => {
@@ -1758,11 +1761,10 @@ describe("a refusal keeps what the operator typed", () => {
     expect(S().toast).toBe("TKT-0450 cancelled - the stock is free again at Floor 3 Coffee Bar");
   });
 
-  it("gives the kitchen an OTP box, so its handover is not an override by default", async () => {
-    // Every kitchen handover used to be a labelled supervisor override: the board, Make &
-    // Distribute and the pick-ticket list all called `handover(id)` with no OTP at all. The
-    // kitchen never sees the six digits - it is the issuing side - but it has to be able to
-    // type in what the collector reads out, which is what `ptkt` is for.
+  it("gives the kitchen an OTP box, which is the only way it hands anything over", async () => {
+    // The kitchen never sees the six digits - it is the issuing side - but it has to be able to
+    // type in what the collector reads out, which is what `ptkt` is for. Since the supervisor
+    // override was removed this box is the only way stock leaves the kitchen on a ticket.
     as("prod");
     const out = { id: "TKT-0460", req: "PRD-2026-029", from: "kitchen", to: "kiosk", lines: [{ it: "puff", qty: 12 }], st: "Issued", otp: "", hist: [{ s: "Issued", who: "Vinoth Prakash", t: "10:12" }] };
     const done = { ...out, st: "Collected" };
@@ -1784,24 +1786,19 @@ describe("a refusal keeps what the operator typed", () => {
     ui.unmount();
   });
 
-  it("keeps the kitchen's override, but only behind its own label", async () => {
+  it("offers the kitchen no way round the OTP at all", async () => {
+    // The override used to live here, behind a two-press label. It is gone: no button hands a
+    // ticket over without the code, and the window says what to do instead - cancel and reissue.
     as("prod");
     const out = { id: "TKT-0461", req: "PRD-2026-029", from: "kitchen", to: "kiosk", lines: [{ it: "puff", qty: 12 }], st: "Issued", otp: "", hist: [] };
-    serve({
-      "POST /api/v1/tickets/TKT-0461/handover": () => json({ result: { ...out, st: "Collected" }, changed: ["tkt"], message: "TKT-0461 handed over on a supervisor override - stock is in transit to Snack Kiosk" }),
-      "GET /api/v1/tickets": () => json([{ ...out, st: "Collected" }]),
-    });
     act(() => { useApp.setState({ tkt: [out] as never }); });
     S().openDrawer("ptkt", "TKT-0461");
     const ui = mountNode(Drawer);
 
-    // Two presses, not one: the override announces itself before it will do anything.
-    act(() => { ui.button("Hand over without the OTP")!.click(); });
-    expect(hit("POST /api/v1/tickets/TKT-0461/handover")).toHaveLength(0);
-    await settle(() => { ui.button("Confirm override handover")!.click(); });
-
-    expect(hit("POST /api/v1/tickets/TKT-0461/handover")[0].body).toEqual({});
-    expect(S().toast).toBe("TKT-0461 handed over on a supervisor override - stock is in transit to Snack Kiosk");
+    const labels = [...ui.host.querySelectorAll("button")].map((b) => b.textContent ?? "");
+    expect(labels.some((l) => /override/i.test(l))).toBe(false);
+    expect(labels.some((l) => /without the OTP/i.test(l))).toBe(false);
+    expect(ui.host.textContent).toContain("Cancel TKT-0461 and issue a new one");
     ui.unmount();
   });
 });

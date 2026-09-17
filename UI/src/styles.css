@@ -418,6 +418,9 @@ thead th .tip{margin-left:4px}
 .kan-st{grid-column:2;font-size:10.5px;font-family:"IBM Plex Mono",monospace}
 .kan-st.ok{color:var(--good)}
 .kan-st.short{color:var(--crit)}
+/* The shortfall button sits under the figure it closes, in the same column, so the eye reads
+   quantity -> what is free -> what to do about it down one edge. */
+.kan-make{grid-column:2;margin-top:2px}
 .kan-foot{display:flex;align-items:center;gap:6px;flex-wrap:wrap;
  padding-top:7px;border-top:1px solid var(--line-2)}
 .kan-empty{padding:20px 12px;text-align:center;border:1px dashed var(--line-strong);border-radius:9px;

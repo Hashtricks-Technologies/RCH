@@ -187,9 +187,8 @@ export default function Tickets() {
                 ? <>
                     <StatusPill status={t.st} />
                     <div style={{ marginTop: 6 }}>
-                      {/* Opens the ticket's own window, where the OTP is typed. It used to call
-                          `handover(t.id)` straight out, with no OTP - which the server records
-                          as a supervisor override, so every kitchen handover was one. */}
+                      {/* Opens the ticket's own window, where the OTP is typed. There is
+                          nowhere else to hand a ticket over from: the code is required. */}
                       <Btn size="xs" variant="ok" onClick={() => s.openDrawer("ptkt", t.id)}>Hand over</Btn>{" "}
                       {cancelId === t.id ? (
                         <>

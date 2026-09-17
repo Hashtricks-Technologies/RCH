@@ -162,9 +162,7 @@ export default function Dashboard() {
               <b>{sum(t.lines, (l) => l.qty)}</b>,
               <StatusPill status={t.st} />,
               // Opens the ticket's own window, where the collector's six digits are typed in.
-              // This used to call `handover(t.id)` with no OTP, which the server records as a
-              // supervisor override - so the quickest button on the kitchen's home screen was
-              // the one that skipped the check.
+              // Nothing hands a ticket over without them any more.
               canHandOver(t.st)
                 ? <Btn size="sm" variant="ok" onClick={() => openDrawer("ptkt", t.id)}>Hand over</Btn>
                 : <span className="mini dim">awaiting confirmation at {LOC[t.to].n}</span>,

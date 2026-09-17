@@ -11,11 +11,10 @@ import { registerDrawer, type DrawerProps } from "../../drawers";
 /**
  * The kitchen's own window on a ticket it issued out.
  *
- * Until this existed, every kitchen handover was a **supervisor override**: the board, the
- * distribute screen and the pick-ticket list all called `handover(id)` with no OTP, which the
- * server records in the trail as `Handed over - supervisor override`. The kitchen is the issuing
- * side of these tickets, so it never sees the six digits - but it is the side that has to ask for
- * them, exactly as the store's window does, and it had nowhere to type them.
+ * The kitchen is the issuing side of these tickets, so it never sees the six digits - but it is
+ * the side that has to ask for them, exactly as the store's window does, and it had nowhere to
+ * type them. There is no way round the code: the OTP-less supervisor override this window was
+ * built beside has since been removed, so a ticket moves on the collector's digits or not at all.
  *
  * This is that window, and it is a drawer rather than an expander on one row so the three places
  * a kitchen hand can start a handover - the dashboard, Make & Distribute and Pick Tickets - all
@@ -26,7 +25,6 @@ function TicketDrawer({ id }: DrawerProps) {
   const close = useApp((s) => s.closeDrawer);
   const handover = useApp((s) => s.handover);
   const [otp, setOtp] = useState("");
-  const [override, setOverride] = useState(false);
   // One tap, one handover: the stock leaves once, and a second tap inside the round trip would
   // post a second `ticket_out` - refused, but the window would read the refusal as its own fault.
   const [busy, setBusy] = useState(false);
@@ -34,10 +32,10 @@ function TicketDrawer({ id }: DrawerProps) {
    *  toast is gone in seconds and a wrong code is exactly the moment somebody looks away to
    *  ask for the right one. Cleared the moment they start typing a different code. */
   const [refused, setRefused] = useState("");
-  const handOver = async (otpOrNone?: string) => {
+  const handOver = async (typed: string) => {
     setBusy(true);
     try {
-      const ok = await handover(id, otpOrNone);
+      const ok = await handover(id, typed);
       // The store has already toasted the server's sentence either way; on a refusal it is
       // held here too, because the toast is gone in seconds and a wrong code is exactly when
       // somebody looks away to ask for the right one.
@@ -117,24 +115,11 @@ function TicketDrawer({ id }: DrawerProps) {
             />
           </Field>
           {refused && <Alert tone="c" label="REFUSED">{refused}</Alert>}
+          {/* There is no way round the code any more. A collector who cannot produce one gets a
+              new ticket, not a handover on somebody's say-so. */}
           <div className="mini">
-            {override ? (
-              <>
-                A supervisor override hands the stock over without an OTP, and is recorded against
-                your name on the ticket&apos;s trail.{" "}
-                <Btn size="xs" variant="dg" disabled={busy} onClick={() => handOver()}>
-                  {busy ? "Handing over…" : "Confirm override handover"}
-                </Btn>{" "}
-                <Btn size="xs" variant="gh" onClick={() => setOverride(false)}>Cancel override</Btn>
-              </>
-            ) : (
-              <>
-                Collector cannot produce the OTP?{" "}
-                <Btn size="xs" variant="gh" onClick={() => setOverride(true)}>
-                  Hand over without the OTP (supervisor override)
-                </Btn>
-              </>
-            )}
+            Collector cannot produce the OTP? Cancel {t.id} and issue a new one - it comes with
+            fresh digits, and the stock goes back on {LOC[t.from].n}&apos;s shelf until it does.
           </div>
         </div>
       )}

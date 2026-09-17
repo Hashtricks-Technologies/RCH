@@ -41,12 +41,11 @@ async function reread(tx: Tx, id: string): Promise<Ticket> {
  */
 const OTP_ATTEMPTS = 5;
 
-/** What is read to the collector when the guessing has to stop. The way past it is the labelled
- *  supervisor override, recorded in `document_history` - and it is refused to a counter, so the
- *  sentence names the other door too rather than sending a till operator to look for one that
- *  was never open to them: withdraw the ticket and issue a new one, with new digits. */
+/** What is read to the collector when the guessing has to stop. There is one way past it now
+ *  that the supervisor override is gone: withdraw the ticket and issue a new one, with new
+ *  digits. The sentence says so plainly rather than leaving the operator to find that out. */
 const lockedMessage = (id: string) =>
-  `${id} is locked after five wrong codes - the store or the kitchen can hand it over with a supervisor override, or cancel it and issue a new one`;
+  `${id} is locked after five wrong codes - cancel it and issue a new one, with fresh digits`;
 
 /**
  * The typed code against the row's own, in constant time. `===` on a secret leaks how much of it
@@ -99,23 +98,19 @@ export function createTicketsService(db: Db) {
         requireLocOf(claims, t.from, "the location the ticket is issued from");
         assertTransition(TICKET_TRANSITIONS, t.st, "Collected", id);
 
-        // The OTP is quoted by the collector and typed at the window. Omitting it is the
-        // labelled supervisor override - allowed to the store and the kitchen only
-        // and written to document_history, because the ticket's own row carries no prose and
-        // an override that left no trace could not be audited afterwards.
-        const override = body.otp === undefined;
-        if (body.otp !== undefined) {
-          // Five wrong codes and this door is shut for good: a ticket that took guesses for ever
-          // is a shelf anyone who can reach the endpoint can empty. The override below is
-          // deliberately *not* shut with it - a collector who has genuinely lost the slip still
-          // has a supervisor, and that way out is named, role-gated and written to the trail.
-          assertRule(t.otpAttempts < OTP_ATTEMPTS, lockedMessage(id));
-          if (!otpMatches(body.otp, t.otp)) {
-            // The one write this transaction is allowed to commit on the way to a refusal.
-            await ticketsRepo.countWrongOtp(tx, id);
-            return { refuse: `That OTP does not match ${id}. Ask the collector to read it again.` };
-          }
-        } else assertRule(claims.role === "store" || claims.role === "prod", "Only the store or the kitchen may hand over without the OTP");
+        // The OTP is quoted by the collector and typed at the window, and it is now the only way
+        // stock leaves on a ticket. There used to be a labelled supervisor override here - an
+        // OTP-less handover open to the store and the kitchen - and it is gone: the code the
+        // collecting side reads out is the whole of the authorisation.
+        //
+        // Five wrong codes and the ticket is shut. Nothing reopens it; it is cancelled and
+        // reissued with fresh digits, which is what `lockedMessage` tells the operator to do.
+        assertRule(t.otpAttempts < OTP_ATTEMPTS, lockedMessage(id));
+        if (!otpMatches(body.otp, t.otp)) {
+          // The one write this transaction is allowed to commit on the way to a refusal.
+          await ticketsRepo.countWrongOtp(tx, id);
+          return { refuse: `That OTP does not match ${id}. Ask the collector to read it again.` };
+        }
 
         const at = new Date();
         const items = await loadItems(tx);
@@ -138,9 +133,9 @@ export function createTicketsService(db: Db) {
         await ticketsRepo.setStatus(tx, id, { status: "Collected", collectedAt: at });
 
         const who = await ticketsRepo.userName(tx, claims.sub);
-        // One row either way, with the override named on it rather than beside it: the trail is
-        // read as a sequence, and a second row for the same act would read as a second handover.
-        await appendHistory(tx, "ticket", id, override ? "Handed over - supervisor override" : "Handed over", who, at);
+        // One row, one act: the trail is read as a sequence, and a second row for the same
+        // handover would read as a second handover.
+        await appendHistory(tx, "ticket", id, "Handed over", who, at);
         if (linked && canTransition(REQUEST_TRANSITIONS, linked.status, "Collected")) {
           await ticketsRepo.setRequestStatus(tx, linked.id, "Collected");
           await appendHistory(tx, "request", linked.id, "Collected", who, at);
@@ -153,9 +148,7 @@ export function createTicketsService(db: Db) {
         return {
           result: await reread(tx, id),
           changed: [...changed],
-          message: override
-            ? `${id} handed over on a supervisor override - stock is in transit to ${toName}`
-            : `${id} handed over - stock is in transit to ${toName}`,
+          message: `${id} handed over - stock is in transit to ${toName}`,
         };
       }, { response: "optional" });
       // The wrong code is on the row now, committed; this is the sentence that goes with it.

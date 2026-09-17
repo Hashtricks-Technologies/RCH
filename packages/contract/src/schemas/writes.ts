@@ -66,7 +66,11 @@ export const RejectRequestBodySchema = z.strictObject({ note: z.string().max(500
 /** The manager's alternative to the ordinary approve/reject: fulfil the whole request from a
  *  peer outlet's own shelf instead of the central store, when they know one is holding it. */
 export const RedirectRequestBodySchema = z.strictObject({ from: LocKeySchema });
-export const HandoverBodySchema = z.strictObject({ otp: z.string().regex(/^\d{6}$/).optional() });
+/** Six digits, and nothing else. The OTP used to be optional, and omitting it *was* the
+ *  supervisor override - an OTP-less handover the store and the kitchen could take. That door is
+ *  closed, so the field is required and the schema is what closes it: a body without an OTP is
+ *  now a 400 before any handler runs. */
+export const HandoverBodySchema = z.strictObject({ otp: z.string().regex(/^\d{6}$/) });
 export const TransferBodySchema = z.strictObject({ from: LocKeySchema, to: LocKeySchema, it: z.string().min(1).max(64), qty: QtySchema });
 export const ShopAskBodySchema = z.strictObject({ to: LocKeySchema, it: z.string().min(1).max(64), qty: QtySchema, note: z.string().max(500).default("") });
 export const AnswerShopAskBodySchema = z.strictObject({ grant: QtySchema });

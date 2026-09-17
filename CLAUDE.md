@@ -180,8 +180,9 @@ There are five roles (`counter`, `manager`, `store`, `prod`, `buyer`), each with
 **Approval authorises; the scan moves.**
 
 1. Approving a request, or dispatching a production order, only writes a reservation.
-2. On `handover`, stock leaves its location. The collector must quote the ticket's six-digit OTP; five wrong
-   codes lock the ticket.
+2. On `handover`, stock leaves its location. The collector must quote the ticket's six-digit OTP, and there
+   is no way round it - `HandoverBodySchema` requires the code, so an OTP-less body is a 400. Five wrong
+   codes lock the ticket for good; the only way on is to cancel it and issue a new one with fresh digits.
 3. On `receive`, the stock lands.
 
 In between, the stock is in transit and belongs to neither location. Any new movement must keep this two-step
