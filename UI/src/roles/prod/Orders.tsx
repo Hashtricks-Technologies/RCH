@@ -1,6 +1,6 @@
 import { useState } from "react";
 // ---- prod-order raise ----
-import { dmy } from "@rch/domain";
+import { dmy, round3 } from "@rch/domain";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
 import { allOutlets, avail, canDispatch, canMoveOrder, locName, qty } from "../../lib/selectors";
@@ -34,10 +34,25 @@ export default function Orders() {
   const setOrderStatus = useApp((x) => x.setOrderStatus);
   const dispatchOrder = useApp((x) => x.dispatchOrder);
   const openDrawer = useApp((x) => x.openDrawer);
+  const makeProduct = useApp((x) => x.makeProduct);
   const { pord, tkt } = s;
 
   const [q, setQ] = useState("");
   const [outlet, setOutlet] = useState<LocKey | null>(null);
+  /** Which line's batch is in flight, as `orderId:item`. One key rather than a boolean, so two
+   *  short lines on the same card can be closed one after the other without the second button
+   *  going dead while the first is still posting. */
+  const [making, setMaking] = useState("");
+
+  /**
+   * Book the shortfall as a batch, started and yielded alike: the kitchen is saying what came
+   * off the range, not what went onto it, so there is no loss to record. The server still rules
+   * on it - a switched-off item is refused - and the store toasts that sentence.
+   */
+  const makeShortfall = async (key: string, it: string, gap: number) => {
+    setMaking(key);
+    try { await makeProduct(it, gap, gap); } finally { setMaking(""); }
+  };
 
   const filtered = pord.filter((o) => {
     if (outlet && o.from !== outlet) return false;
@@ -106,14 +121,39 @@ export default function Orders() {
         </div>
         <ul className="kan-items">
           {o.lines.map((l) => {
-            const have = qty(s, "kitchen", l.it);
+            // Free to promise, not on-hand: it is what Dispatch below tests, and a line reading
+            // green off `qty` while the whole order refuses to dispatch is the card lying about
+            // the one number the kitchen is about to act on. Reserved trays belong to a ticket
+            // somebody else is collecting.
+            const free = avail(s, "kitchen", l.it);
+            const held = round3(qty(s, "kitchen", l.it) - free);
+            const gap = round3(l.qty - free);
+            const key = `${o.id}:${l.it}`;
             return (
               <li key={l.it}>
                 <span className="kan-q mono">{fq(l.qty, l.it)}</span>
                 <span className="kan-nm">{IT[l.it]?.n ?? l.it}</span>
-                <span className={`kan-st${have >= l.qty ? " ok" : " short"}`}>
-                  kitchen {fq(have, l.it)} {U(l.it)}
+                <span className={`kan-st${gap <= 0 ? " ok" : " short"}`}>
+                  <Tip text={held > 0
+                    ? `Free to promise. The kitchen holds ${fq(qty(s, "kitchen", l.it), l.it)} ${U(l.it)}, but ${fq(held, l.it)} is already reserved against another ticket.`
+                    : "Free to promise - what this order can actually be dispatched against."}>
+                    kitchen {fq(free, l.it)} {U(l.it)}
+                  </Tip>
                 </span>
+                {/* The shortfall, made from the card. Without it the only way to close a gap the
+                    board is already showing was to read the number off here, walk to Make &
+                    Distribute, find the item again and retype it - four steps to act on one the
+                    kitchen is already looking at. Every line on a production order is a finished
+                    good (the server refuses anything else onto one), so every gap is batchable. */}
+                {gap > 0 && (
+                  <span className="kan-make">
+                    <Btn size="xs" variant="gh" disabled={making === key}
+                      tip={`Book a batch of ${fq(gap, l.it)} ${U(l.it)} onto the kitchen's rack - the shortfall on this line, and nothing more.`}
+                      onClick={() => void makeShortfall(key, l.it, gap)}>
+                      {making === key ? "Making…" : `Make ${fq(gap, l.it)}`}
+                    </Btn>
+                  </span>
+                )}
               </li>
             );
           })}

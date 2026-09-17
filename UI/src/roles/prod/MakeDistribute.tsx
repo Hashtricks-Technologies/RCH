@@ -340,8 +340,7 @@ export default function MakeDistribute() {
               <b>{sum(t.lines, (l) => l.qty)}</b>,
               <StatusPill status={t.st} />,
               // Opens the ticket's own window, where the collector's six digits are typed in.
-              // It used to hand the stock over on the spot with no OTP at all, which the server
-              // records as a supervisor override.
+              // Nothing hands a ticket over without them any more.
               <Btn size="sm" variant="ok" onClick={() => openDrawer("ptkt", t.id)}>Hand over</Btn>,
             ],
           }))}

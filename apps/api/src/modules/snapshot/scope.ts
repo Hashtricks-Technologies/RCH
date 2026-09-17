@@ -90,9 +90,8 @@ export const scopeProductRequests = (rows: ProductRequest[], who: Who): ProductR
  *
  * So: the OTP travels only while the ticket is still `Issued`, only to a caller standing at the
  * ticket's `to`, **and** only to a role that actually collects there. Everyone else reads "".
- * The way past a collector who is not there is the labelled supervisor override on `handover`,
- * which is refused to a counter and recorded in `document_history` - now visible on the ticket
- * itself.
+ * There is no way past a collector who is not there: the supervisor override that once handed
+ * stock over without an OTP has been removed, so the ticket is cancelled and reissued instead.
  *
  * The role test is the second half and is not redundant. Location alone is not identity: the
  * outlet manager's own home location is an outlet (`rest` in the fixtures), so a location-only

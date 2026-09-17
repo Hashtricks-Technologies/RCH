@@ -51,7 +51,10 @@ in-memory fallback for any of it. `UI/src/api/events.ts` opens one `fetch`-based
 per session and refetches whatever a write elsewhere changed, so two open tabs stay in sync
 without a reload.
 
-Against a real server today, a person can walk a kitchen order across the board, make a batch
+Against a real server today, a person can walk a kitchen order across the board, close a short
+line from the card itself (each line shows what is free to promise, and a line the order is short
+of carries a **Make N** button that books exactly the gap as a batch, so the kitchen never has to
+copy the number over to Make & Distribute), make a batch
 that books the finished units onto the kitchen rack and stamps a best-before, dispatch it, hand it over on
 a six-digit code and receive it at the counter - with another browser following along live - and
 cancel a ticket nobody came for, which puts the stock and the document behind it back where it
@@ -318,13 +321,13 @@ so rather than showing an empty log.
 A pick ticket carries a code minted when it is created. The collector reads it aloud to the
 store keeper (or the kitchen in-charge), who types it at handover; a wrong code is refused. The
 code reaches the wire only for a caller standing at the ticket's own destination while it is
-still `Issued` - the issuing desk's own screen, and everyone else's, never shows it. A
-supervisor override exists and is labelled as one - restricted to the store and the kitchen -
-and is recorded on the ticket's own trail, now visible in the ticket drawer, as
-`Handed over - supervisor override`.
+still `Issued` - the issuing desk's own screen, and everyone else's, never shows it. There is no
+way round the code: a supervisor override once let the store and the kitchen hand stock over
+without one, and it has been removed. A collector who cannot produce the code gets a new ticket -
+the old one is cancelled, its hold goes back, and the new one carries fresh digits.
 
 **The ticket's own history, on screen.** Every ticket now carries its full trail - `Issued`,
-`Handed over` (with the override named when used), `Received`, or `Cancelled - <reason>` - read
+`Handed over`, `Received`, or `Cancelled - <reason>` - read
 back through the same drawer that shows a request's history. A counter can also withdraw a
 shop-to-shop transfer it raised, from a "Sent from this counter" card, before anyone collects
 it.

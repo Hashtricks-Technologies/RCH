@@ -87,7 +87,7 @@ describe("POST /tickets/:id/handover", () => {
     expect(await app.testDb!.db.select().from(stockMoves).where(eq(stockMoves.refId, "TKT-0440"))).toHaveLength(0);
   });
 
-  it("counts a wrong code and locks the ticket after five, leaving the supervisor override open", async () => {
+  it("counts a wrong code and locks the ticket after five, with no way back in", async () => {
     const attempts = async () => (await app.testDb!.db.select().from(tickets).where(eq(tickets.id, "TKT-0440")))[0]!.otpAttempts;
     const wrong = () => post("u3", "/tickets/TKT-0440/handover", { otp: "000000" });
 
@@ -103,14 +103,16 @@ describe("POST /tickets/:id/handover", () => {
     // Shut now, and shut to the right code as well - the digits are what has been guessed at.
     const locked = await post("u3", "/tickets/TKT-0440/handover", { otp: "418327" });
     expect(locked.statusCode).toBe(422);
-    expect(locked.json().error.message).toBe("TKT-0440 is locked after five wrong codes - the store or the kitchen can hand it over with a supervisor override, or cancel it and issue a new one");
+    expect(locked.json().error.message).toBe("TKT-0440 is locked after five wrong codes - cancel it and issue a new one, with fresh digits");
     expect(await attempts()).toBe(5);                                   // a refused guess past the limit is not a sixth guess
     expect(await app.testDb!.db.select().from(stockMoves).where(eq(stockMoves.refId, "TKT-0440"))).toHaveLength(0);
 
-    // And the way out is still open: the store's labelled override, on the trail as always.
-    const override = await post("u3", "/tickets/TKT-0440/handover", {});
-    expect(override.statusCode, override.body).toBe(200);
-    expect(override.json().message).toBe("TKT-0440 handed over on a supervisor override - stock is in transit to Coffee Shop");
+    // There is no door left. The override used to reopen a locked ticket for the store and the
+    // kitchen; now an OTP-less body is refused by the schema before the handler runs, and the
+    // only way on is a new ticket with new digits.
+    const noOtp = await post("u3", "/tickets/TKT-0440/handover", {});
+    expect(noOtp.statusCode).toBe(400);
+    expect(await app.testDb!.db.select().from(stockMoves).where(eq(stockMoves.refId, "TKT-0440"))).toHaveLength(0);
   });
 
   it("a correct code after two wrong ones still hands over", async () => {
@@ -120,24 +122,20 @@ describe("POST /tickets/:id/handover", () => {
     expect(r.json().result.st).toBe("Collected");
   });
 
-  it("lets the store hand over without an OTP, and says so, and records the override", async () => {
+  it("refuses an OTP-less handover to the store, which used to be the override", async () => {
     const r = await post("u3", "/tickets/TKT-0440/handover", {});
-    expect(r.statusCode).toBe(200);
-    expect(r.json().message).toBe("TKT-0440 handed over on a supervisor override - stock is in transit to Coffee Shop");
-    // The trail also carries the seeded "Issued" row, so the case narrows to the handover it is
-    // about: one row for the act, with the override named on it rather than beside it.
+    expect(r.statusCode).toBe(400);
+    // Nothing moved and nothing was written: the schema refuses the body before the handler runs.
+    expect(await app.testDb!.db.select().from(stockMoves).where(eq(stockMoves.refId, "TKT-0440"))).toHaveLength(0);
     const rows = await app.testDb!.db.select().from(documentHistory)
       .where(and(eq(documentHistory.docType, "ticket"), eq(documentHistory.docId, "TKT-0440")));
-    const audit = rows.filter((h) => h.status.startsWith("Handed over"));
-    expect(audit).toHaveLength(1);
-    expect(audit[0]).toMatchObject({ status: "Handed over - supervisor override", who: "Suresh Muthu" });
+    expect(rows.filter((h) => h.status.startsWith("Handed over"))).toHaveLength(0);
   });
 
-  it("refuses the override to a counter", async () => {
+  it("refuses an OTP-less handover to a counter too", async () => {
     const id = await given.ticket(app.testDb!.db, { refType: "shop_transfer", refId: "Shop transfer", from: "coffee", to: "kiosk", lines: [{ it: "chips", qty: 2 }] });
     const r = await post("u1", `/tickets/${id}/handover`, {});
-    expect(r.statusCode).toBe(422);
-    expect(r.json().error.message).toBe("Only the store or the kitchen may hand over without the OTP");
+    expect(r.statusCode).toBe(400);
   });
 
   it("lets the kitchen hand its own ticket over (C2)", async () => {
@@ -587,11 +585,11 @@ describe("the ticket's own trail", () => {
     expect(received.json().result.hist.map((h: { who: string }) => h.who)).toEqual(["Suresh Muthu", "Suresh Muthu", "Kavitha Raman"]);
   });
 
-  it("names the supervisor override on the row rather than beside it", async () => {
-    const id = await given.ticket(app.testDb!.db, { from: "store", to: "coffee", lines: [{ it: "milk", qty: 2 }] });
-    const r = await post("u3", `/tickets/${id}/handover`, {});
+  it("writes one plain \"Handed over\" row - there is no override to name", async () => {
+    const id = await given.ticket(app.testDb!.db, { from: "store", to: "coffee", lines: [{ it: "milk", qty: 2 }], otp: "246810" });
+    const r = await post("u3", `/tickets/${id}/handover`, { otp: "246810" });
     expect(r.statusCode, r.body).toBe(200);
-    expect(r.json().result.hist.map((h: { s: string }) => h.s)).toEqual(["Issued", "Handed over - supervisor override"]);
+    expect(r.json().result.hist.map((h: { s: string }) => h.s)).toEqual(["Issued", "Handed over"]);
   });
 
   it("ends a withdrawn ticket with the reason it was withdrawn for", async () => {

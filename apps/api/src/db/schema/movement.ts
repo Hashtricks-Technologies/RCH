@@ -36,7 +36,7 @@ export const tickets = pgTable("tickets", {
   // shape for six digits that are compared byte for byte. The CHECK is what keeps them digits.
   otp: varchar("otp", { length: 6 }).notNull(),
   // How many wrong codes have been quoted at this ticket. Five and the window stops taking
-  // guesses; the labelled supervisor override is what is left (modules/tickets/service.ts).
+  // guesses for good - the ticket is cancelled and reissued (modules/tickets/service.ts).
   otpAttempts: integer("otp_attempts").notNull().default(0),
   issuedBy: text("issued_by").references(() => users.id),
   issuedAt: ts("issued_at").notNull().defaultNow(),

@@ -34,14 +34,13 @@ function IssueDetail({ id }: DrawerProps) {
   const close = useApp((x) => x.closeDrawer);
 
   const [otp, setOtp] = useState("");
-  const [override, setOverride] = useState(false);
   // A handover is a server call now, and the stock only leaves once. A second tap inside one
   // round trip would post a second `ticket_out` - refused, but as an error the window reads as
   // its own mistake. One tap, one handover.
   const [busy, setBusy] = useState(false);
-  const handOver = async (tktId: string, otpOrNone?: string) => {
+  const handOver = async (tktId: string, typed: string) => {
     setBusy(true);
-    try { await handover(tktId, otpOrNone); } finally { setBusy(false); }
+    try { await handover(tktId, typed); } finally { setBusy(false); }
   };
 
   const byTicket = s.tkt.find((t) => t.id === id);
@@ -222,23 +221,10 @@ function IssueDetail({ id }: DrawerProps) {
                   onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
                 />
               </Field>
+              {/* The code is the whole of the authorisation now - there is no override behind it. */}
               <div className="mini">
-                {override ? (
-                  <>
-                    Supervisor override hands the stock over without an OTP. It is recorded against your name.
-                    {" "}
-                    <Btn size="xs" variant="dg" disabled={busy} onClick={() => handOver(ticket.id)}>
-                      {busy ? "Handing over…" : "Confirm override handover"}
-                    </Btn>
-                    {" "}
-                    <Btn size="xs" variant="gh" onClick={() => setOverride(false)}>Cancel override</Btn>
-                  </>
-                ) : (
-                  <>
-                    Collector cannot produce the OTP?{" "}
-                    <Btn size="xs" variant="gh" onClick={() => setOverride(true)}>Supervisor override</Btn>
-                  </>
-                )}
+                Collector cannot produce the OTP? Cancel this ticket and issue a new one, with
+                fresh digits. The hold goes back until it does.
               </div>
             </div>
           )}

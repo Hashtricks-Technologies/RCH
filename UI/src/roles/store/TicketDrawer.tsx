@@ -16,14 +16,13 @@ function TicketDrawer({ id }: DrawerProps) {
   const close = useApp((s) => s.closeDrawer);
   const handover = useApp((s) => s.handover);
   const [otp, setOtp] = useState("");
-  const [override, setOverride] = useState(false);
   // A handover is a server call now, and the stock only leaves once. A second tap inside one
   // round trip would post a second `ticket_out` - refused, but as an error the window reads as
   // its own mistake. One tap, one handover.
   const [busy, setBusy] = useState(false);
-  const handOver = async (otpOrNone?: string) => {
+  const handOver = async (typed: string) => {
     setBusy(true);
-    try { await handover(id, otpOrNone); } finally { setBusy(false); }
+    try { await handover(id, typed); } finally { setBusy(false); }
   };
   const cancelTicket = useApp((s) => s.cancelTicket);
   const [why, setWhy] = useState("");
@@ -130,23 +129,10 @@ function TicketDrawer({ id }: DrawerProps) {
               onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
             />
           </Field>
+          {/* The code is the whole of the authorisation now - there is no override behind it. */}
           <div className="mini">
-            {override ? (
-              <>
-                Supervisor override hands the stock over without an OTP. It is recorded against your name.
-                {" "}
-                <Btn size="xs" variant="dg" disabled={busy} onClick={() => handOver()}>
-                  {busy ? "Handing over…" : "Confirm override handover"}
-                </Btn>
-                {" "}
-                <Btn size="xs" variant="gh" onClick={() => setOverride(false)}>Cancel override</Btn>
-              </>
-            ) : (
-              <>
-                Collector cannot produce the OTP?{" "}
-                <Btn size="xs" variant="gh" onClick={() => setOverride(true)}>Supervisor override</Btn>
-              </>
-            )}
+            Collector cannot produce the OTP? Cancel this ticket and issue a new one, with fresh
+            digits. The hold goes back until it does.
           </div>
         </div>
       )}

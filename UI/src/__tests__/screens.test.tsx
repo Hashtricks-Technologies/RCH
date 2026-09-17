@@ -181,7 +181,9 @@ describe("drawers render", () => {
     expect(html).toContain("otp-in");
     expect(html).toContain("OTP quoted by the collector");
     expect(html).toContain("Hand over on OTP");
-    expect(html).toContain("Hand over without the OTP (supervisor override)");
+    // No override, and nothing that reads like one: the code is the whole authorisation.
+    expect(html).not.toContain("supervisor override");
+    expect(html).not.toContain("without the OTP");
     // The kitchen is the issuing side, so it is told whose screen the digits are on rather than
     // shown six blanks it could read out to itself.
     expect(html).toContain("Ask Snack Kiosk to read out the six digits");
