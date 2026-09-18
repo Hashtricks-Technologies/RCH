@@ -5,7 +5,7 @@ import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import Login from "../pages/Login";
 import { setAccessToken } from "../api/session";
 import { useApp } from "../store";
-import { resetStore } from "./fixture";
+import { resetStore, S } from "./fixture";
 
 /**
  * The sign-in screen's employee picker: staff choose themselves from `GET /auth/directory`
@@ -15,11 +15,20 @@ import { resetStore } from "./fixture";
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+/** `locs` is on the public directory because the screen asks which counter as soon as the person
+ *  is chosen - before the password, so before there is any token to ask with. */
+/** Each counter carries its own name and code: nothing on the sign-in screen can look one up,
+ *  because `data/master.ts` is filled by the snapshot and the snapshot needs a token. */
+const CS = { k: "coffee", n: "Coffee Shop", c: "OT-C3" };
+const KI = { k: "kiosk", n: "Snack Kiosk", c: "OT-GK" };
+const RE = { k: "rest", n: "Restaurant", c: "OT-R1" };
 const DIR = [
-  { emp: "RC-3120", n: "Ramesh Kumar" },
-  { emp: "RC-4471", n: "Kavitha Raman" },
-  { emp: "RC-4482", n: "Deepa Selvam" },
+  { emp: "RC-3120", n: "Ramesh Kumar", locs: [RE] },
+  { emp: "RC-4471", n: "Kavitha Raman", locs: [CS] },
+  { emp: "RC-4482", n: "Deepa Selvam", locs: [KI] },
 ];
+/** The same list, with the consultant who works three counters. */
+const DIR_MULTI = [DIR[0], { emp: "RC-4471", n: "Kavitha Raman", locs: [CS, KI, RE] }, DIR[2]];
 
 const fetchMock = vi.fn();
 type Stubs = Record<string, () => Response>;
@@ -84,7 +93,9 @@ beforeEach(() => {
   vi.stubGlobal("fetch", fetchMock);
   fetchMock.mockReset();
   setAccessToken(null);
-  useApp.setState({ user: null, auth: "signed-out", mustChangePassword: false, authError: null, toast: null });
+  // `postings` is not part of `resetStore`'s seed, and it decides whether the third step draws -
+  // so it is cleared here, or one case's two counters would be the next case's as well.
+  useApp.setState({ user: null, auth: "signed-out", mustChangePassword: false, authError: null, toast: null, postings: [] });
 });
 afterEach(() => { ui?.unmount(); ui = undefined; vi.unstubAllGlobals(); setAccessToken(null); });
 
@@ -272,5 +283,132 @@ describe("the sign-in employee picker", () => {
     expect(box.getAttribute("aria-activedescendant")).toBe("emp-opt-1");
     act(() => { box.dispatchEvent(new FocusEvent("focusout", { bubbles: true })); });
     expect(box.getAttribute("aria-expanded")).toBe("false");
+  });
+});
+
+/**
+ * The third step, for the one account shape that needs it: a consultant posted to more than one
+ * counter chooses which one they are signing in at, before the shell is allowed to mount. Every
+ * other account has one posting and never sees any of this.
+ */
+describe("the sign-in counter picker", () => {
+  const KAVITHA = {
+    id: "u1", n: "Kavitha Raman", e: "kavitha.r@royalcare.in", r: "counter", rl: "Counter Operator",
+    loc: "coffee", col: "#B45309", emp: "RC-4471", ph: "", admin: false,
+  };
+  const auth = (over: Record<string, unknown> = {}) =>
+    json({ accessToken: "tok", user: KAVITHA, mustChangePassword: false, postings: ["coffee"], ...over });
+  const logins = () =>
+    fetchMock.mock.calls
+      .filter(([u]) => String(u).endsWith("/auth/login"))
+      .map(([, init]) => JSON.parse(String((init as RequestInit).body)) as { emp: string; loc?: string });
+
+  /** The snapshot is not what these cases are about, and a real one would need the whole wire. */
+  const noSnapshot = () => {
+    useApp.setState({ loadSnapshot: async () => { useApp.setState({ auth: "ready" }); } });
+  };
+  /** Pick Kavitha out of the directory and type her password - the two steps that come first. */
+  const signIn = async (u: Ui) => {
+    click(u.box());
+    click(u.options()[1]);
+    typeIn(u.q<HTMLInputElement>("#pw")!, "a-long-enough-secret");
+    await submit(u);
+  };
+
+  it("asks nothing extra of an account with one posting, and sends it straight in", async () => {
+    noSnapshot();
+    serve({ "GET /api/v1/auth/directory": () => json(DIR), "POST /api/v1/auth/login": () => auth() });
+    ui = await mountLogin();
+    await signIn(ui);
+    expect(ui.q("#where")?.textContent).toBe("/pos");
+    // No counter on the body and no second call: an account that works one counter signs in over
+    // exactly the wire it always did.
+    expect(logins()).toEqual([{ emp: "RC-4471", password: "a-long-enough-secret" }]);
+  });
+
+  it("asks which counter as soon as the person is picked, before the password", async () => {
+    noSnapshot();
+    serve({
+      "GET /api/v1/auth/directory": () => json(DIR_MULTI),
+      "POST /api/v1/auth/login": () => auth({ user: { ...KAVITHA, loc: "kiosk" }, postings: ["coffee", "kiosk", "rest"] }),
+    });
+    ui = await mountLogin();
+    click(ui.box());
+    click(ui.options()[1]);                                 // Kavitha, who works three
+
+    // The question comes before the password, not after it: there is no password box yet.
+    expect(ui.text()).toContain("Which counter?");
+    expect(ui.q("#pw")).toBeNull();
+    expect(ui.options().map((o) => o.textContent)).toEqual(["OT-C3Coffee Shop", "OT-GKSnack Kiosk", "OT-R1Restaurant"]);
+
+    click(ui.options()[1]);                                 // the kiosk
+    expect(ui.q("#pw")).not.toBeNull();
+    expect(document.activeElement?.id).toBe("pw");
+
+    typeIn(ui.q<HTMLInputElement>("#pw")!, "a-long-enough-secret");
+    await submit(ui);
+
+    // One call, carrying the counter with it - the session is never opened anywhere else first.
+    expect(logins()).toEqual([{ emp: "RC-4471", password: "a-long-enough-secret", loc: "kiosk" }]);
+    expect(S().user!.loc).toBe("kiosk");
+    expect(ui.q("#where")?.textContent).toBe("/pos");
+  });
+
+  it("is driven from the keyboard, the same arrows and Enter as the employee list", async () => {
+    noSnapshot();
+    serve({
+      "GET /api/v1/auth/directory": () => json(DIR_MULTI),
+      "POST /api/v1/auth/login": () => auth({ user: { ...KAVITHA, loc: "rest" }, postings: ["coffee", "kiosk", "rest"] }),
+    });
+    ui = await mountLogin();
+    click(ui.box());
+    click(ui.options()[1]);
+
+    const list = ui.q<HTMLUListElement>("#loc-list")!;
+    expect(document.activeElement).toBe(list);
+    press(list, "ArrowDown");
+    press(list, "ArrowDown");
+    press(list, "ArrowDown");                                  // clamps at the last, never wraps
+    expect(list.getAttribute("aria-activedescendant")).toBe("loc-opt-2");
+    press(list, "Enter");
+
+    typeIn(ui.q<HTMLInputElement>("#pw")!, "a-long-enough-secret");
+    await submit(ui);
+    expect(logins()[0].loc).toBe("rest");
+  });
+
+  it("puts a counter the account is not posted to back on the form, as the server said it", async () => {
+    noSnapshot();
+    serve({
+      "GET /api/v1/auth/directory": () => json(DIR_MULTI),
+      "POST /api/v1/auth/login": () =>
+        json({ error: { code: "rule", message: "You are not posted to Central Store." } }, 422),
+    });
+    ui = await mountLogin();
+    click(ui.box());
+    click(ui.options()[1]);
+    click(ui.options()[0]);
+    typeIn(ui.q<HTMLInputElement>("#pw")!, "a-long-enough-secret");
+    await submit(ui);
+
+    // On the form and not in a toast, exactly as a wrong password is - this screen is outside
+    // the shell, and the sentence has to still be there when the operator looks up.
+    expect(ui.text()).toContain("You are not posted to Central Store.");
+    expect(ui.q("#where")).toBeNull();
+  });
+
+  it("asks for the new password first, and never the counter, on a first sign-in", async () => {
+    noSnapshot();
+    serve({
+      "GET /api/v1/auth/directory": () => json(DIR),
+      "POST /api/v1/auth/login": () => auth({ mustChangePassword: true, postings: ["coffee", "kiosk"] }),
+    });
+    ui = await mountLogin();
+    await signIn(ui);
+    expect(ui.q("#where")?.textContent).toBe("/change-password");
+    // The counter was never asked and never sent: the question belongs to the person picked, and
+    // this one works a single counter. A password still to change routes past everything else.
+    expect(ui.text()).not.toContain("Which counter?");
+    expect(logins()[0].loc).toBeUndefined();
   });
 });

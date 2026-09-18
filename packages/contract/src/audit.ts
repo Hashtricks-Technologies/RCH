@@ -41,7 +41,11 @@ export const AUDIT_LABELS: Record<AuditAction, AuditLabel> = {
   deactivateAdminUser:    { label: "Deactivated a staff account", group: "accounts" },
   reactivateAdminUser:    { label: "Reactivated a staff account", group: "accounts" },
   updateAdminUser:        { label: "Changed a staff account's role and location", group: "accounts" },
+  setAdminUserPostings:   { label: "Changed which counters a staff account may work", group: "accounts" },
   deleteAdminUser:        { label: "Deleted a staff account", group: "accounts" },
+  // ---- the register. Closing the day is an accountable act: the Z number, who took it and when
+  // are the whole point of the series, so it is labelled like any other write.
+  closeRegister:          { label: "Closed the register and took a Z-report", refused: "Failed to close the register", group: "sales" },
   // ---- sales
   pay:                    { label: "Posted a bill", group: "sales" },
   voidBill:               { label: "Voided a bill", group: "sales" },

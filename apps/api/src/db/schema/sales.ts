@@ -1,7 +1,47 @@
-import { foreignKey, index, integer, numeric, pgTable, primaryKey, text } from "drizzle-orm/pg-core";
+import { foreignKey, index, integer, jsonb, numeric, pgTable, primaryKey, text, uniqueIndex } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { payerKindEnum } from "./enums.js";
 import { items, locations, money, payers, qty, ts, users } from "./master.js";
+
+/**
+ * One outlet's register between two Z-reports.
+ *
+ * The business day is Z-to-Z, not midnight-to-midnight. That is the whole reason this table
+ * exists: a calendar day cannot say which takings a given Z accounted for, and a timestamp window
+ * (`at > previous_z`) cannot either - a sale whose transaction commits a moment after the close
+ * would fall outside both Zs and be lost. A bill therefore *belongs* to a session by foreign key,
+ * decided inside the sale's own transaction.
+ *
+ * The locking is the guarantee. A sale takes the open row `FOR SHARE`; the Z-close takes it
+ * `FOR UPDATE`. So a sale already in flight commits before the close can count it, and one that
+ * starts afterwards finds the session closed and opens the next - the same pairing `lib/locations.ts`
+ * uses to close an outlet while sales are running.
+ *
+ * `closedTotals` is the Z as printed, stored rather than re-derived. Re-deriving it next week
+ * against a changed set of bills would answer differently, which is the same reason a settlement's
+ * allocation is stored (`apps/api/CLAUDE.md`). Nothing may alter a bill once its session is
+ * closed - `voidBill` refuses - so the stored figures and the bills behind them can never drift.
+ */
+export const registerSessions = pgTable("register_sessions", {
+  id: text("id").primaryKey(),
+  loc: text("loc").notNull().references(() => locations.key),
+  // Null until the Z is taken: an open session has no number, because the number *is* the Z.
+  zNo: text("z_no"),
+  openedAt: ts("opened_at").notNull().defaultNow(),
+  // Null when the session opened itself on the first sale, which is the ordinary case.
+  openedBy: text("opened_by").references(() => users.id),
+  closedAt: ts("closed_at"),
+  closedBy: text("closed_by").references(() => users.id),
+  /** The Z as printed. Empty while the session is open. */
+  closedTotals: jsonb("closed_totals"),
+  createdAt: ts("created_at").notNull().defaultNow(),
+}, (t) => [
+  // At most one open session per outlet, enforced by the database rather than by a read: two
+  // concurrent first-sales would otherwise each open one and split the day's takings in half.
+  uniqueIndex("register_sessions_one_open_per_loc").on(t.loc).where(sql`${t.closedAt} is null`),
+  uniqueIndex("register_sessions_z_no_uq").on(t.zNo),
+  index("register_sessions_loc_closed_idx").on(t.loc, t.closedAt),
+]);
 
 export const bills = pgTable("bills", {
   no: text("no").primaryKey(),
@@ -11,6 +51,9 @@ export const bills = pgTable("bills", {
   tax: money("tax").notNull(),
   at: ts("at").notNull().defaultNow(),
   tender: text("tender").notNull(),
+  // ---- the register. Which Z accounted for this bill. Nullable because every bill taken before
+  // the register existed has no session and never will; those read as "before the register".
+  sessionId: text("session_id").references(() => registerSessions.id),
   payerKind: payerKindEnum("payer_kind"),
   payerId: text("payer_id"),
   payerName: text("payer_name"),

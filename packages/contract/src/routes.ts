@@ -3,8 +3,8 @@ import type { Role } from "./types.js";
 import { OkResponseSchema } from "./schemas/common.js";
 import { AuthResponseSchema, ChangePasswordBodySchema, LoginBodySchema, MeResponseSchema, PatchMeBodySchema, SignInDirectorySchema } from "./schemas/auth.js";
 import { AdjustmentRequestsResponseSchema, AdjustmentsResponseSchema, BatchesResponseSchema, BILL_DAYS, BillsResponseSchema, ContractsResponseSchema, GrnsResponseSchema, ItemsResponseSchema, LocationsResponseSchema, MenusResponseSchema, PriceListsResponseSchema, PricesResponseSchema, ProdOrdersResponseSchema, ProductRequestsResponseSchema, PurchaseOrdersResponseSchema, RequestsResponseSchema, RequisitionsResponseSchema, RosterResponseSchema, ShopAsksResponseSchema, SnapshotSchema, TermsResponseSchema, StockResponseSchema, SupportTicketsResponseSchema, TicketsResponseSchema, VendorsResponseSchema } from "./schemas/snapshot.js";
-import { CreditParamsSchema, CreditResponseSchema, StockLedgerQuerySchema, StockLedgerResponseSchema } from "./schemas/reports.js";
-import { AdminActionSchema, AdminActionsQuerySchema, AdminDeletedUserSchema, AdminLocationSchema, AdminPayerParamsSchema, AdminPayerSchema, AdminUserIdParamsSchema, AdminUserSchema, AdminUserWithTempPasswordSchema, CreateAdminUserBodySchema, CreateOutletBodySchema, CreatePayerBodySchema, OutletKeyParamsSchema, UpdateAdminUserBodySchema, UpdateOutletBodySchema, UpdatePayerBodySchema } from "./schemas/admin.js";
+import { CloseRegisterBodySchema, CreditParamsSchema, CreditResponseSchema, RegisterQuerySchema, RegisterReportSchema, RegisterReportsResponseSchema, StockLedgerQuerySchema, StockLedgerResponseSchema, ZReportsQuerySchema } from "./schemas/reports.js";
+import { AdminActionSchema, AdminActionsQuerySchema, AdminDeletedUserSchema, AdminLocationSchema, AdminPayerParamsSchema, AdminPayerSchema, AdminUserIdParamsSchema, AdminUserSchema, AdminUserWithTempPasswordSchema, CreateAdminUserBodySchema, CreateOutletBodySchema, CreatePayerBodySchema, OutletKeyParamsSchema, SetAdminUserPostingsBodySchema, UpdateAdminUserBodySchema, UpdateOutletBodySchema, UpdatePayerBodySchema } from "./schemas/admin.js";
 import { ClassParamsSchema, ClassTermsSchema, PayerParamsSchema, PayerTermsSchema, ReceivablesResponseSchema, RecordSettlementBodySchema, SetClassTermsBodySchema, SetPayerTermsBodySchema, SettlementIdParamsSchema, SettlementSchema, SettlementsResponseSchema, StatementSchema, VoidSettlementBodySchema } from "./schemas/receivables.js";
 import { AuditEntrySchema, AuditIdParamsSchema, AuditPageSchema, AuditQuerySchema } from "./schemas/audit.js";
 import { AdjustmentRequestSchema, AdjustmentSchema, BatchSchema, BillSchema, PriceListSchema, ProdOrderSchema, ProductRequestSchema, PurchaseOrderSchema, RateContractSchema, RequisitionSchema, ShopAskSchema, StockRequestSchema, SupportTicketSchema, TicketSchema, VendorSchema } from "./schemas/documents.js";
@@ -158,6 +158,14 @@ export const routes = {
   // stays in the browser.
   stockLedger:  defineRoute({ method: "GET", path: "/reports/stock-ledger",     access: ["store", "manager", "buyer", "prod"], query: StockLedgerQuerySchema, response: StockLedgerResponseSchema }),
   creditReport: defineRoute({ method: "GET", path: "/reports/credit/:kind/:id", access: ["counter", "manager"],                params: CreditParamsSchema,   response: CreditResponseSchema }),
+  // ---- the register. An X changes nothing and may be taken as often as anyone likes, so it is a
+  // GET; a Z closes the outlet's session and opens the next, so it is a write and carries an
+  // Idempotency-Key like every other write - a retried close must replay its Z, never mint a
+  // second one. Both are open to the counter and the manager: closing the day is the consultant's
+  // own act, and the manager can do it for any outlet.
+  xReport:      defineRoute({ method: "GET",  path: "/register/x",          access: ["counter", "manager"], query: RegisterQuerySchema,     response: RegisterReportSchema }),
+  closeRegister:defineRoute({ method: "POST", path: "/register/close",      access: ["counter", "manager"], body: CloseRegisterBodySchema,  response: writeResponse(RegisterReportSchema) }),
+  zReports:     defineRoute({ method: "GET",  path: "/register/z",          access: ["counter", "manager"], query: ZReportsQuerySchema,     response: RegisterReportsResponseSchema }),
   // ---- payers (the roster behind every non-cash tender). The register itself is the super
   // admin's (`/admin/payers`, below); the CSV import stays for a ward list nobody types twice.
   // `GET /roster` is the till's read, live payers only, "any" and scoped like the snapshot's own
@@ -233,6 +241,10 @@ export const routes = {
   deactivateAdminUser:   defineRoute({ method: "POST",  path: "/admin/users/:id/deactivate",       access: "admin", params: AdminUserIdParamsSchema, response: writeResponse(AdminUserSchema) }),
   reactivateAdminUser:   defineRoute({ method: "POST",  path: "/admin/users/:id/reactivate",       access: "admin", params: AdminUserIdParamsSchema, response: writeResponse(AdminUserSchema) }),
   updateAdminUser:       defineRoute({ method: "PATCH", path: "/admin/users/:id",                  access: "admin", params: AdminUserIdParamsSchema, body: UpdateAdminUserBodySchema, response: writeResponse(AdminUserSchema) }),
+  // ---- postings. Its own route rather than a third key on the PATCH body: the role-and-location
+  // move and the posting list are two different decisions, they are logged as two different
+  // actions, and changing the list revokes every session while a role move does not.
+  setAdminUserPostings: defineRoute({ method: "PUT",   path: "/admin/users/:id/postings",         access: "admin", params: AdminUserIdParamsSchema, body: SetAdminUserPostingsBodySchema, response: writeResponse(AdminUserSchema) }),
   deleteAdminUser:       defineRoute({ method: "DELETE", path: "/admin/users/:id",                 access: "admin", params: AdminUserIdParamsSchema, response: writeResponse(AdminDeletedUserSchema) }),
   adminActions:          defineRoute({ method: "GET",   path: "/admin/actions",                    access: "admin", query: AdminActionsQuerySchema, response: z.array(AdminActionSchema) }),
   // ---- admin: the payer register. Who a bill may be posted to - consultants, staff, wards and

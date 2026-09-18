@@ -6,7 +6,12 @@ export interface NavGroup { group: string; items: NavItem[] }
 export const NAV: Record<Role, NavGroup[]> = {
   counter: [
     { group: "Overview", items: [{ k: "dash", label: "Dashboard", icon: "dash" }] },
-    { group: "Sell", items: [{ k: "pos", label: "Point of Sale", icon: "pos" }, { k: "bills", label: "Bills", icon: "bill" }] },
+    // ---- the register: the X read mid-shift and the Z that closes the day. It belongs beside
+    // the till and the bills, because it is the end of the same piece of work.
+    { group: "Sell", items: [
+      { k: "pos", label: "Point of Sale", icon: "pos" },
+      { k: "bills", label: "Bills", icon: "bill" },
+      { k: "register", label: "Register", icon: "rep" }] },
     { group: "My counter", items: [{ k: "stock", label: "Stock in Hand", icon: "stock" }] },
     { group: "Movement", items: [{ k: "requests", label: "Stock Requests", icon: "req" }, { k: "tickets", label: "Pick Tickets", icon: "tkt" }] },
     { group: "Account", items: [{ k: "issues", label: "Support", icon: "req" }, { k: "settings", label: "Settings", icon: "set" }] },
@@ -21,7 +26,10 @@ export const NAV: Record<Role, NavGroup[]> = {
       { k: "avail", label: "Product On / Off", icon: "power" },
       // ---- bill void: the manager had no way to see a bill at all, and voiding one is the
       // manager's own door. Every outlet's bills, which is the difference from the counter's.
-      { k: "bills", label: "Bills", icon: "bill" }] },
+      { k: "bills", label: "Bills", icon: "bill" },
+      // ---- the register: the manager reads any outlet's X and closes any outlet's Z, which is
+      // the only difference from the counter's own copy of this screen.
+      { k: "register", label: "Register", icon: "rep" }] },
     // ---- party billing: a group of its own rather than a sixth entry under Outlets. What a
     // doctor is charged and what a department still owes are hospital-wide questions, and the
     // answer to both is one balance across every counter - not something that belongs beside a

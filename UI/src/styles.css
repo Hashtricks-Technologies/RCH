@@ -650,3 +650,11 @@ td.aud-two small{display:block;font-weight:400;font-size:10.5px;color:var(--ink-
 .aud-dl{grid-template-columns:minmax(72px,max-content) minmax(0,1fr);gap:5px 12px}
 .aud-lines,.aud-diff{border:1px solid var(--line);border-radius:7px;overflow:hidden;min-width:0}
 .aud-lines thead th,.aud-lines tbody td{padding:5px 8px}
+
+/* ---------- postings: a consultant who takes shifts at more than one counter ----------
+   Two controls, both built out of what is already here. The sign-in screen's third step reuses
+   the employee picker's list (`.lgpick-list`) drawn in flow rather than dropped over the form,
+   because there it is the whole of the step. The header's mid-shift switcher reuses the bell's
+   popover (`.pw`/`.pop`/`.po`) on the same plate as the `.org` badge beside it, made pressable. */
+.lgpick-list.lgpick-here{position:static;margin-bottom:0;max-height:min(300px,46vh)}
+.lgpick-list.lgpick-here:focus-visible{outline:2px solid var(--accent);outline-offset:1px}

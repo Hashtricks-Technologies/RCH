@@ -94,7 +94,9 @@ export async function seedDatabase(db: Db, opts: { password: string; forcePasswo
     }
     if (opts.bare) {
       await seedLocations(tx);
-      await tx.insert(s.users).values(userRow(adminAccount(), passwordHash, opts.forcePasswordChange));
+      const admin = adminAccount();
+      await tx.insert(s.users).values(userRow(admin, passwordHash, opts.forcePasswordChange));
+      await tx.insert(s.userPostings).values({ userId: admin.id, loc: admin.loc });
       await ensureSequences(tx);
       return;
     }
@@ -173,6 +175,14 @@ async function seedMaster(tx: Tx, passwordHash: string, mustChange: boolean) {
     if (l.list) await tx.update(s.locations).set({ priceListId: l.list }).where(eq(s.locations.key, key));
   }
   await tx.insert(s.users).values(FX.USERS.map((u) => userRow(u, passwordHash, mustChange)));
+  // Where each account may work. Every one of them gets its home row, which is what migration 0023
+  // backfills onto a hospital that predates the table, and Kavitha Raman gets the Snack Kiosk as
+  // well: the demo hospital needs one account that actually takes shifts at two counters, or the
+  // sign-in picker and the switch have nothing to show.
+  await tx.insert(s.userPostings).values([
+    ...FX.USERS.map((u) => ({ userId: u.id, loc: u.loc })),
+    { userId: "u1", loc: "kiosk" },
+  ]);
   // The three rosters a non-cash bill may be posted to. They already carry `{kind, id, name}`
   // in the fixtures, so the table is the same three lists in one place - which is what lets the
   // till's payer be checked against something rather than taken on trust.

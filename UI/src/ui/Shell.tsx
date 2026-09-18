@@ -46,6 +46,8 @@ export default function Shell({ children }: { children: ReactNode }) {
     return () => clearInterval(id);
   }, []);
   const queues = navQueues(state);
+  // Where this account may work. One is the ordinary case and nothing about the header changes
+  // for it; more than one earns the switcher below.
   const photo = usePhoto();
   const live = useStreamState();
   const nav = useNavigate();
@@ -113,6 +115,9 @@ export default function Shell({ children }: { children: ReactNode }) {
               "i" beside it. */}
           <div className="org">
             <span className="dt" role="img" aria-label={STREAM[live].why} style={{ background: STREAM[live].dot }} />
+            {/* Where this session is standing. Named, not offered: the counter is decided at
+                sign-in and does not move - somebody taking a shift at another till signs in
+                there. */}
             <span className="lbl">Royal Care{homeLabel(user) ? ` · ${homeLabel(user)}` : ""}</span>
             <Tip text={STREAM[live].why} label="Connection" />
           </div>

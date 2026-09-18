@@ -1,11 +1,11 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { randomUUID } from "node:crypto";
-import { eq, sql } from "drizzle-orm";
+import { createHash, randomUUID } from "node:crypto";
+import { and, eq, sql } from "drizzle-orm";
 import { buildTestApp } from "../../test/app.js";
 import { warmPool } from "../../test/db.js";
 import { seedTestDb } from "../../test/seed.js";
 import type { App } from "../../app.js";
-import { refreshTokens, users } from "../../db/schema/index.js";
+import { locations, refreshTokens, userPostings, users } from "../../db/schema/index.js";
 import { Attempts } from "./service.js";
 import { purgeRefreshTokens } from "./repo.js";
 
@@ -35,20 +35,42 @@ afterAll(async () => {
 const login = (app: App, emp = "RC-4471", password = "changeme") =>
   app.inject({ method: "POST", url: "/api/v1/auth/login", payload: { emp, password } });
 const cookieOf = (r: { cookies: Array<{ name: string; value: string }> }) => r.cookies.find((c) => c.name === "rch_refresh")!;
+/** Where a minted access token says this session is standing - the one claim every location guard
+ *  on the server reads, so this is the thing a switch has to actually move. */
+const claimLoc = (app: App, token: string) => (app.jwt.decode(token) as { loc: string }).loc;
 
 describe("GET /auth/directory", () => {
-  it("lists who can sign in - number and name only, in number order - to a caller with no token", async () => {
+  it("lists who can sign in - number, name and counters, in number order - to a caller with no token", async () => {
     const res = await a.inject({ method: "GET", url: "/api/v1/auth/directory" });
     expect(res.statusCode).toBe(200);
     // The seed's six staff, and not RC-0001: the admin-flagged account is never advertised.
+    // `locs` is here because the sign-in screen asks which counter the moment a person is picked,
+    // which is before there is any token to ask with. Kavitha works two; everyone else works one.
+    // Each counter carries its own name and code, because nothing on the sign-in screen can look
+    // one up: the registries that hold them are filled by the snapshot, which needs a token.
+    const named = (o: Record<string, unknown>) => expect.objectContaining(o);
     expect(res.json()).toEqual([
-      { emp: "RC-1550", n: "Latha Narayanan" },
-      { emp: "RC-1902", n: "Vinoth Prakash" },
-      { emp: "RC-2088", n: "Suresh Muthu" },
-      { emp: "RC-3120", n: "Ramesh Kumar" },
-      { emp: "RC-4471", n: "Kavitha Raman" },
-      { emp: "RC-4482", n: "Deepa Selvam" },
+      named({ emp: "RC-1550", n: "Latha Narayanan", locs: [named({ k: "store", n: "Central Store" })] }),
+      named({ emp: "RC-1902", n: "Vinoth Prakash", locs: [named({ k: "kitchen", n: "Central Kitchen" })] }),
+      named({ emp: "RC-2088", n: "Suresh Muthu", locs: [named({ k: "store" })] }),
+      named({ emp: "RC-3120", n: "Ramesh Kumar", locs: [named({ k: "rest", n: "Restaurant" })] }),
+      named({ emp: "RC-4471", n: "Kavitha Raman", locs: [named({ k: "coffee", n: "Coffee Shop" }), named({ k: "kiosk", n: "Snack Kiosk" })] }),
+      named({ emp: "RC-4482", n: "Deepa Selvam", locs: [named({ k: "kiosk" })] }),
     ]);
+  });
+
+  it("signs in at the counter the screen asked for, and refuses one the account does not work", async () => {
+    const at = async (loc?: string) => a.inject({
+      method: "POST", url: "/api/v1/auth/login",
+      payload: { emp: "RC-4471", password: "changeme", ...(loc ? { loc } : {}) },
+    });
+    // Kavitha is posted to the Coffee Shop (her home) and the Snack Kiosk.
+    expect((await at("kiosk")).json().user.loc).toBe("kiosk");
+    // Omitted, she stands at home - the wire every single-counter account still uses.
+    expect((await at()).json().user.loc).toBe("coffee");
+    const no = await at("store");
+    expect(no.statusCode).toBe(422);
+    expect(no.json().error.message).toBe("You are not posted to Central Store.");
   });
   it("leaves out a deactivated account", async () => {
     await a.db.update(users).set({ active: false }).where(eq(users.id, "u4"));
@@ -235,6 +257,97 @@ describe("logout", () => {
     expect(out.statusCode).toBe(200);
     expect(out.headers["set-cookie"]).toMatch(/rch_refresh=;/);
     expect((await a.inject({ method: "POST", url: "/api/v1/auth/refresh", cookies: { rch_refresh: c } })).statusCode).toBe(401);
+  });
+});
+
+/**
+ * `user_postings` is where an account **may** work; the token's `loc` claim is where it **is**
+ * working, and it stays exactly one location. Everything below is about keeping those two apart:
+ * the list travels on the sign-in response so the picker has something to offer, and the claim
+ * moves only when somebody asks it to - never on a silent refresh, which is the defect the
+ * refresh row's own `loc` column exists to prevent.
+ */
+describe("postings and switch-location", () => {
+  // `describe("login")` above leaves RC-4482 deactivated, and this file shares one app.
+  beforeAll(async () => { await a.db.update(users).set({ active: true }).where(eq(users.id, "u6")); });
+  /** The refresh row a cookie stands for. The column stores the hash, never the token. */
+  const hashOf = (raw: string) => createHash("sha256").update(raw).digest("hex");
+  const rowFor = async (app: App, cookie: string) =>
+    (await app.db.select().from(refreshTokens).where(eq(refreshTokens.tokenHash, hashOf(cookie))))[0];
+  /** Signing in at a named counter. There is no mid-shift move any more - a shift at another till
+   *  is a fresh sign-in there - so this is the only way a session stands anywhere but home. */
+  const signInAt = (app: App, loc: string, emp = "RC-4471") =>
+    app.inject({ method: "POST", url: "/api/v1/auth/login", payload: { emp, password: "changeme", loc } });
+  const refresh = (app: App, cookie: string) =>
+    app.inject({ method: "POST", url: "/api/v1/auth/refresh", cookies: { rch_refresh: cookie } });
+
+  it("signs in at the home counter and says which others the account may stand at", async () => {
+    const body = (await login(a, "RC-4471")).json();
+    // The demo hospital posts Kavitha Raman to her own Coffee Shop and to the Snack Kiosk.
+    expect(body.postings).toEqual(["coffee", "kiosk"]);
+    expect(body.user.loc).toBe("coffee");
+    expect(claimLoc(a, body.accessToken)).toBe("coffee");
+  });
+
+  it("leaves an account with one posting exactly as it was before any of this existed", async () => {
+    const body = (await login(a, "RC-1902")).json();          // the kitchen in-charge
+    expect(body.postings).toEqual(["kitchen"]);
+    expect(claimLoc(a, body.accessToken)).toBe("kitchen");
+  });
+
+  it("stands the session at the counter the sign-in named - claim, wire user and refresh row", async () => {
+    const r = await signInAt(a, "kiosk");
+    expect(r.statusCode, r.body).toBe(200);
+    const body = r.json();
+    expect(claimLoc(a, body.accessToken)).toBe("kiosk");
+    expect(body.user.loc).toBe("kiosk");
+    // The row is what a later refresh reads; without it the session would drift home.
+    expect((await rowFor(a, cookieOf(r).value)).loc).toBe("kiosk");
+  });
+
+  it("keeps that counter across a silent refresh, and across the one after that", async () => {
+    // The whole point of storing it: a token refresh must not walk a consultant back to their
+    // home till in the middle of a shift.
+    let cookie = cookieOf(await signInAt(a, "kiosk")).value;
+    for (const _ of [1, 2]) {
+      const r = await refresh(a, cookie);
+      expect(r.statusCode, r.body).toBe(200);
+      expect(claimLoc(a, r.json().accessToken)).toBe("kiosk");
+      expect(r.json().user.loc).toBe("kiosk");
+      cookie = cookieOf(r).value;
+    }
+  });
+
+  it("refuses a counter the account is not posted to, naming it", async () => {
+    const r = await signInAt(a, "store");
+    expect(r.statusCode).toBe(422);
+    expect(r.json().error.message).toBe("You are not posted to Central Store.");
+  });
+
+  it("refuses a closed outlet, even one the account is posted to", async () => {
+    await a.db.update(locations).set({ active: false }).where(eq(locations.key, "kiosk"));
+    try {
+      const r = await signInAt(a, "kiosk");
+      expect(r.statusCode).toBe(422);
+      expect(r.json().error.message).toContain("Snack Kiosk");
+    } finally {
+      await a.db.update(locations).set({ active: true }).where(eq(locations.key, "kiosk"));
+    }
+  });
+
+  it("answers 404 for a location the hospital does not have", async () => {
+    const r = await signInAt(a, "nowhere");
+    expect(r.statusCode).toBe(404);
+  });
+
+  it("offers a posting an administrator added at the very next sign-in", async () => {
+    await a.db.insert(userPostings).values({ userId: "u1", loc: "rest" }).onConflictDoNothing();
+    try {
+      expect((await login(a, "RC-4471")).json().postings).toEqual(["coffee", "kiosk", "rest"]);
+      expect(claimLoc(a, (await signInAt(a, "rest")).json().accessToken)).toBe("rest");
+    } finally {
+      await a.db.delete(userPostings).where(and(eq(userPostings.userId, "u1"), eq(userPostings.loc, "rest")));
+    }
   });
 });
 

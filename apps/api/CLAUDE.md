@@ -135,6 +135,31 @@ against the bills open then (`allocateSettlement` in `@rch/domain`); re-deriving
 different set of open bills would answer differently. What a bill still owes is `settlement_lines`
 subtracted from its own total, counting only settlements nobody voided.
 
+## The register: X and Z
+
+`modules/register/` owns the outlet's business day, and `lib/register.ts` owns the session row's
+locking, because `pos` and `register` both take it and a second copy of that lock would be a second
+chance to take it the wrong way round.
+
+**Lock order here is outlet → session → id.** `pay` and `closeRegister` take the two document-tier
+locks in the same order, so no cycle forms. `sessionFor` (the sale) finds or opens the session
+`FOR SHARE`; `takeOpenSession` (the close) takes it `FOR UPDATE`; `holdSession` (the void) takes it
+`FOR SHARE`, so a void in flight makes a concurrent Z wait and count it rather than printing a Z the
+void is about to invalidate.
+
+- **Two concurrent first sales are settled by the database**, not by a read: the partial unique
+  index `register_sessions_one_open_per_loc` means one insert wins and the loser re-reads. Same
+  principle as every other uniqueness rule here - the insert decides, the pre-check only supplies
+  the sentence.
+- **A Z's totals are stored on `closed_totals`**, for the reason a settlement's allocation is
+  stored: re-deriving next week against a changed set of bills would answer differently.
+- **`closeRegister` does not `assertOpen` the outlet.** Refusing a Z at an outlet the admin has
+  since closed would strand a day's money with no way to reconcile it. The outlet *close* names an
+  open register as a blocker instead.
+- **`oldBills` is hospital-wide inside the session's clock window.** `settlements` carries no `loc`
+  and no `session_id` - a balance is the hospital's, not one counter's - so a payment keyed at one
+  desk also appears on another outlet's Z if both were open. Narrowing it needs a column.
+
 ## Price lists
 
 `modules/pricelists/` owns the entity itself - create (cloned from an outlet's current active list),

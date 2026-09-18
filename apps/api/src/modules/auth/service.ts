@@ -1,15 +1,29 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
-import type { SignInEntry, User } from "@rch/contract";
+import type { LocKey, SignInEntry, User } from "@rch/contract";
 import type { Db } from "../../db/client.js";
+import type { Tx } from "../../lib/db.js";
 import type { Config } from "../../config.js";
 import { withTransaction } from "../../lib/db.js";
 import { RateLimitedError, RuleError, UnauthenticatedError } from "../../lib/errors.js";
+import { assertOpen, lockLocation } from "../../lib/locations.js";
 import { hashPassword, verifyPassword } from "../../lib/password.js";
-import { toWireUser } from "../../lib/wire.js";
+import { assertRule } from "../../lib/rules.js";
+import { toWireUser, type UserRow } from "../../lib/wire.js";
 import { authRepo } from "./repo.js";
 
 export type Meta = { userAgent?: string; ip?: string };
-export type Session = { user: User; mustChangePassword: boolean; refreshToken: string; expiresAt: Date; claims: { id: string; role: User["r"]; loc: User["loc"]; mcp: boolean; admin: boolean } };
+/**
+ * Who the caller is, where this session is standing, and every counter it may stand at.
+ *
+ * `postings` is *may work at*; `claims.loc` is *working at right now*, and it stays exactly one
+ * location, which is why nothing else on the server had to learn about any of this. `user.loc`
+ * carries the same one location as the claim rather than the home row's - for a consultant
+ * halfway through a shift at somebody else's till those are two different places, and the screen
+ * has to name the one they are standing at.
+ */
+export type Standing = { user: User; mustChangePassword: boolean; postings: LocKey[]; claims: { id: string; role: User["r"]; loc: User["loc"]; mcp: boolean; admin: boolean } };
+/** A standing that also opened a refresh family: a sign-in, a rotation or a password change. */
+export type Session = Standing & { refreshToken: string; expiresAt: Date };
 
 const sha256 = (v: string) => createHash("sha256").update(v).digest("hex");
 const newRaw = () => randomBytes(32).toString("base64url");
@@ -116,7 +130,35 @@ export function createAuthService(db: Db, config: Config) {
   const attempts = new Attempts(config.loginRateLimitPerEmpPerMinute);
   const expiry = () => new Date(Date.now() + config.refreshTokenTtlDays * 86400_000);
 
-  async function issue(tx: Parameters<Parameters<typeof withTransaction>[1]>[0], u: NonNullable<Awaited<ReturnType<typeof authRepo.userById>>>, family: string, meta: Meta, startedAt?: Date): Promise<Session> {
+  /** Who the caller is and where this session is standing, off the account row and the postings
+   *  table. `loc` is the session's, not the account's home. */
+  async function standing(tx: Tx, u: UserRow, loc: LocKey): Promise<Standing> {
+    return {
+      user: { ...toWireUser(u), loc },
+      mustChangePassword: u.mustChangePassword,
+      postings: (await authRepo.postingsFor(tx, u.id)) as LocKey[],
+      claims: { id: u.id, role: u.role, loc, mcp: u.mustChangePassword, admin: u.admin },
+    };
+  }
+
+  /** `loc` is where the new session stands - the account's home unless a rotation is carrying a
+   *  switched counter forward. It is written onto the refresh row as well as into the claim: a
+   *  silent refresh that re-read the home row would walk a consultant back to their own till in
+   *  the middle of somebody else's shift. */
+  /**
+   * May this account stand at this counter? The sign-in's gate: the outlet row `FOR SHARE` first
+   * (documents tier, so it cannot be closed out from under the answer), then the posting, then
+   * open. A session's counter is fixed at sign-in - there is no mid-shift move to share it with.
+   */
+  async function admitTo(tx: Tx, u: UserRow, loc: LocKey): Promise<void> {
+    const row = await lockLocation(tx, loc);
+    const postings = await authRepo.postingsFor(tx, u.id);
+    assertRule(postings.includes(loc), `You are not posted to ${row.name}.`);
+    assertOpen(row, `nothing may be sold there`);
+  }
+
+  async function issue(tx: Tx, u: UserRow, family: string, meta: Meta, startedAt?: Date, loc?: LocKey): Promise<Session> {
+    const at = loc ?? (u.loc as LocKey);
     const raw = newRaw();
     // A refresh family is only as long-lived as its first token: rotation resets the *idle*
     // clock (`expiry()`, from now) but must never push the family's absolute lifetime past 30
@@ -125,8 +167,8 @@ export function createAuthService(db: Db, config: Config) {
     const familyStartedAt = startedAt ?? (await authRepo.familyStartedAt(tx, family)) ?? new Date();
     const familyCap = new Date(familyStartedAt.getTime() + config.refreshTokenTtlDays * 86400_000);
     const expiresAt = new Date(Math.min(expiry().getTime(), familyCap.getTime()));
-    await authRepo.insertRefresh(tx, { userId: u.id, family, tokenHash: sha256(raw), expiresAt, userAgent: meta.userAgent, ip: meta.ip });
-    return { user: toWireUser(u), mustChangePassword: u.mustChangePassword, refreshToken: raw, expiresAt, claims: { id: u.id, role: u.role, loc: u.loc as User["loc"], mcp: u.mustChangePassword, admin: u.admin } };
+    await authRepo.insertRefresh(tx, { userId: u.id, family, tokenHash: sha256(raw), expiresAt, userAgent: meta.userAgent, ip: meta.ip, loc: at });
+    return { ...(await standing(tx, u, at)), refreshToken: raw, expiresAt };
   }
 
   return {
@@ -134,7 +176,7 @@ export function createAuthService(db: Db, config: Config) {
     async directory(): Promise<SignInEntry[]> {
       return authRepo.signInDirectory(db);
     },
-    async login(emp: string, password: string, meta: Meta): Promise<Session> {
+    async login(emp: string, password: string, meta: Meta, loc?: LocKey): Promise<Session> {
       // Read the budget, then spend a slot on this attempt - before the ~50–100 ms of Argon2
       // below, so simultaneous guesses at one employee id cannot all pass a gate that has not
       // seen any of them fail yet. The slot comes back only if the password was right, which is
@@ -151,7 +193,13 @@ export function createAuthService(db: Db, config: Config) {
       if (!ok) throw new LoginRefused(`wrong password for ${u.empNo}`, u.id);
       if (!u.active) throw new LoginRefused(`${u.empNo} is deactivated`, u.id);
       attempts.release(emp, attempt);
-      return withTransaction(db, (tx) => issue(tx, u, randomUUID(), meta));
+      // The counter the screen asked for, checked the same way a mid-shift move is. Refusing here
+      // rather than signing them in and moving them afterwards keeps a session from ever existing
+      // at a counter its own account is not posted to.
+      return withTransaction(db, async (tx) => {
+        if (loc) await admitTo(tx, u, loc);
+        return issue(tx, u, randomUUID(), meta, undefined, loc);
+      });
     },
     async refresh(raw: string | undefined, meta: Meta): Promise<Session> {
       if (!raw) throw new UnauthenticatedError("Your session has ended - sign in again.");
@@ -181,11 +229,26 @@ export function createAuthService(db: Db, config: Config) {
         // minted before the absolute cap existed): refuse, rather than mint an already-expired token.
         const startedAt = await authRepo.familyStartedAt(tx, t.family);
         if (startedAt && startedAt.getTime() + config.refreshTokenTtlDays * 86400_000 <= Date.now()) return { ok: false as const, message: "Your session has expired - sign in again." };
-        return { ok: true as const, session: await issue(tx, u, t.family, meta, startedAt) };
+        // The rotated token stands where the session it replaces stood. `t.loc` is null for every
+        // session opened before postings existed, and for those the home row is where it was all
+        // along - which is exactly what the claim carried then too.
+        return { ok: true as const, session: await issue(tx, u, t.family, meta, startedAt, (t.loc ?? u.loc) as LocKey) };
       });
       if (!outcome.ok) throw new UnauthenticatedError(outcome.message);
       return outcome.session;
     },
+    /**
+     * Standing at a different counter, at sign-in or mid-shift.
+     *
+     * The token's `loc` claim stays one location; what changes is which one. So a switch mints a
+     * fresh access token and moves the refresh row with it, and rotates nothing - the cookie the
+     * caller holds is still the same session, now standing somewhere else.
+     *
+     * Two refusals, in the order the operator meets them: somewhere they are not posted, and
+     * somewhere that is closed. Nothing here reads the role. Only a counter operator is posted to
+     * more than one place in practice, but it is the postings that decide, not the role - a rule
+     * written against `counter` would have to be written again the day a second role takes shifts.
+     */
     /** Answers whose session this ended - the account, when the cookie's family still had a live
      *  token to revoke; `null` when it ended nothing (no cookie, an unknown one, or a family already
      *  revoked), which is not a sign-out anybody made. */
