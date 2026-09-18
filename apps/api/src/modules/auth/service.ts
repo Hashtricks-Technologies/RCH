@@ -146,6 +146,18 @@ export function createAuthService(db: Db, config: Config) {
    *  switched counter forward. It is written onto the refresh row as well as into the claim: a
    *  silent refresh that re-read the home row would walk a consultant back to their own till in
    *  the middle of somebody else's shift. */
+  /**
+   * May this account stand at this counter? The same gate for the sign-in and for a move made
+   * mid-shift, so the two can never drift apart: the outlet row `FOR SHARE` first (documents
+   * tier, so it cannot be closed out from under the answer), then the posting, then open.
+   */
+  async function admitTo(tx: Tx, u: UserRow, loc: LocKey): Promise<void> {
+    const row = await lockLocation(tx, loc);
+    const postings = await authRepo.postingsFor(tx, u.id);
+    assertRule(postings.includes(loc), `You are not posted to ${row.name}.`);
+    assertOpen(row, `nothing may be sold there`);
+  }
+
   async function issue(tx: Tx, u: UserRow, family: string, meta: Meta, startedAt?: Date, loc?: LocKey): Promise<Session> {
     const at = loc ?? (u.loc as LocKey);
     const raw = newRaw();
@@ -165,7 +177,7 @@ export function createAuthService(db: Db, config: Config) {
     async directory(): Promise<SignInEntry[]> {
       return authRepo.signInDirectory(db);
     },
-    async login(emp: string, password: string, meta: Meta): Promise<Session> {
+    async login(emp: string, password: string, meta: Meta, loc?: LocKey): Promise<Session> {
       // Read the budget, then spend a slot on this attempt - before the ~50–100 ms of Argon2
       // below, so simultaneous guesses at one employee id cannot all pass a gate that has not
       // seen any of them fail yet. The slot comes back only if the password was right, which is
@@ -182,7 +194,13 @@ export function createAuthService(db: Db, config: Config) {
       if (!ok) throw new LoginRefused(`wrong password for ${u.empNo}`, u.id);
       if (!u.active) throw new LoginRefused(`${u.empNo} is deactivated`, u.id);
       attempts.release(emp, attempt);
-      return withTransaction(db, (tx) => issue(tx, u, randomUUID(), meta));
+      // The counter the screen asked for, checked the same way a mid-shift move is. Refusing here
+      // rather than signing them in and moving them afterwards keeps a session from ever existing
+      // at a counter its own account is not posted to.
+      return withTransaction(db, async (tx) => {
+        if (loc) await admitTo(tx, u, loc);
+        return issue(tx, u, randomUUID(), meta, undefined, loc);
+      });
     },
     async refresh(raw: string | undefined, meta: Meta): Promise<Session> {
       if (!raw) throw new UnauthenticatedError("Your session has ended - sign in again.");
@@ -236,12 +254,7 @@ export function createAuthService(db: Db, config: Config) {
       return withTransaction(db, async (tx) => {
         const u = await authRepo.userById(tx, claims.sub);
         if (!u || !u.active) throw new UnauthenticatedError("Your session has ended - sign in again.");
-        // The location row first, `FOR SHARE` in the documents tier, so the outlet cannot be
-        // closed between being read open and this session being moved onto it.
-        const row = await lockLocation(tx, loc);
-        const postings = await authRepo.postingsFor(tx, u.id);
-        assertRule(postings.includes(loc), `You are not posted to ${row.name}.`);
-        assertOpen(row, `nothing may be sold there`);
+        await admitTo(tx, u, loc);
         // No cookie (an API client holding only an access token) still gets its new claim; there
         // is simply no refresh row of this session's to carry it.
         if (raw) await authRepo.setRefreshLoc(tx, sha256(raw), loc);

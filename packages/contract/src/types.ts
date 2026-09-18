@@ -110,3 +110,4 @@ export type Statement = z.infer<typeof V.StatementSchema>;
 export type RecordSettlementBody = z.infer<typeof V.RecordSettlementBodySchema>;
 /** One line of the public sign-in picker. */
 export type SignInEntry = z.infer<typeof Auth.SignInEntrySchema>;
+export type SignInCounter = z.infer<typeof Auth.SignInCounterSchema>;

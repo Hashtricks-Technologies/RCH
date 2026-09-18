@@ -66,7 +66,7 @@ export default fp(async (app) => {
     const typedEmp = typedEmpOf(req.body.emp);
     const request = { body: { emp: typedEmp } };
     try {
-      const session = await svc.login(req.body.emp, req.body.password, meta(req));
+      const session = await svc.login(req.body.emp, req.body.password, meta(req), req.body.loc);
       const body = await respond(reply, session);
       await audit(req, { action: "login", outcome: "done", status: 200, message: SIGNED_IN, actorId: session.user.id, request });
       return body;

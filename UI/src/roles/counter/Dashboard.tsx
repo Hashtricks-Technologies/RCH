@@ -40,7 +40,7 @@ export default function Dashboard() {
 
   // No session, no takings: a register that could not be read is not a register that took
   // nothing, so the figures below print "-" rather than a zero somebody would act on.
-  const openedAt = session?.openedAt ?? null;
+  const openedAt = session?.sessionId ? session.openedAt : null;
   // ---- bill void: a bill somebody took back is not takings and the items on it were not sold.
   // It stays on the bill list, badged; every figure on this dashboard is drawn from `mine`.
   const mine = openedAt === null
@@ -96,11 +96,15 @@ export default function Dashboard() {
   /** How the session is described under every takings figure, in the counter's own terms: the Z
    *  it runs from, or the fact that nothing has closed this register yet. Never a date - the
    *  window is not a day. */
-  const since = session
-    ? session.previousZNo
-      ? `since ${session.previousZNo} at ${fromWireTime(session.openedAt)}`
-      : `since this register first opened, ${fromWireTime(session.openedAt)}`
-    : reading ? "reading the register…" : "the register could not be read";
+  const since = !session
+    ? reading ? "reading the register…" : "the register could not be read"
+    // An empty `sessionId` is the server saying nothing is open here. Printing a time for it
+    // would name a session that does not exist - the next sale is what opens one.
+    : !session.sessionId
+      ? session.previousZNo ? `nothing taken since ${session.previousZNo}` : "the register opens on the first sale"
+      : session.previousZNo
+        ? `since ${session.previousZNo} at ${fromWireTime(session.openedAt)}`
+        : `since this register first opened, ${fromWireTime(session.openedAt)}`;
   /** A takings figure only exists once the session does. */
   const takings = (v: string) => (openedAt === null ? "-" : v);
 

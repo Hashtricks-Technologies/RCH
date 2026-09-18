@@ -147,7 +147,7 @@ export default function Register() {
       <Kpis items={[
         {
           l: "Nett sales this session", v: t ? money0(t.nettSales) : "-",
-          d: x ? <>since {stamp(x.openedAt)}</> : reading ? <>reading…</> : <>not read</>,
+          d: !x ? (reading ? <>reading…</> : <>not read</>) : x.sessionId ? <>since {stamp(x.openedAt)}</> : <>nothing open</>,
           tip: "Gross sales less discount, for everything billed since the last Z closed this register.",
         },
         {
@@ -176,22 +176,28 @@ export default function Register() {
       <Card
         className="mtop"
         title="Take a reading"
-        sub={x ? `Session ${x.sessionId}` : undefined}
+        sub={x?.sessionId ? `Session ${x.sessionId}` : undefined}
         tip="An X leaves the register exactly as it is. A Z closes it and cannot be undone."
         right={<span className="no-print"><Btn variant="gh" disabled={busy || !slip} onClick={() => window.print()}>Print slip</Btn></span>}
       >
+        {/* An empty `sessionId` is the server saying no register is open here - not an open one
+            that happens to have taken nothing. Printing "Open since <now>" for it would name a
+            session that does not exist and offer a Z the server would refuse. */}
         <p className="mini">
-          {x
-            ? <>Open since {stamp(x.openedAt)}{x.previousZNo ? <> - this session follows <span className="mono">{x.previousZNo}</span></> : <> - the first session at this outlet</>}.</>
-            : <>The open session cannot be described until the register reads.</>}
+          {!x ? <>The open session cannot be described until the register reads.</>
+            : !x.sessionId
+              ? <>Nothing is open here{x.previousZNo ? <> since <span className="mono">{x.previousZNo}</span></> : <> - this outlet has never taken a sale</>}. The register opens by itself on the next sale, and there is nothing to close until then.</>
+              : <>Open since {stamp(x.openedAt)}{x.previousZNo ? <> - this session follows <span className="mono">{x.previousZNo}</span></> : <> - the first session at this outlet</>}.</>}
         </p>
         <div className="btnrow no-print" style={{ marginTop: 12 }}>
           <Btn wide disabled={busy || !loc} onClick={() => void takeX()}
             tip="Re-reads the takings and prints them. Nothing is closed and nothing is written.">
             Take X-report
           </Btn>
-          <Btn variant="gh" disabled={busy || !loc || !x || confirm} onClick={() => { setConfirm(true); }}
-            tip="Settles this session and closes the register. The next sale opens a new one.">
+          <Btn variant="gh" disabled={busy || !loc || !x?.sessionId || confirm} onClick={() => { setConfirm(true); }}
+            tip={x && !x.sessionId
+              ? "There is nothing to close - no sale has been taken since the last Z."
+              : "Settles this session and closes the register. The next sale opens a new one."}>
             Close register &amp; take Z
           </Btn>
         </div>

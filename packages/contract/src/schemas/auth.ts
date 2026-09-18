@@ -4,11 +4,31 @@ import { LocKeySchema } from "./common.js";
 
 /** Request bodies are strict: an unknown key is a client bug (a renamed field, a stale build),
  *  and silently dropping it hides the mistake until someone wonders why the value never saved. */
-export const LoginBodySchema = z.strictObject({ emp: z.string().trim().min(1).max(64), password: z.string().min(1).max(200) });
-/** One line of the sign-in screen's employee picker: the number and the name, nothing else. The
- *  list is public (it is read before anybody has signed in), so it carries no role, location,
- *  email or phone, and never an admin-flagged or deactivated account. */
-export const SignInEntrySchema = z.strictObject({ emp: z.string(), n: z.string() });
+export const LoginBodySchema = z.strictObject({
+  emp: z.string().trim().min(1).max(64), password: z.string().min(1).max(200),
+  /** The counter being signed in to, for an account posted to more than one. The sign-in screen
+   *  asks which before the password, so the operator arrives already standing where they meant
+   *  to be rather than at a home counter they then have to move off. Omitted - the ordinary case
+   *  - the claim is minted from the account's home location, exactly as it always was. */
+  loc: LocKeySchema.optional(),
+});
+/** One line of the sign-in screen's employee picker: the number, the name, and the counters the
+ *  account works. The list is public - it is read before anybody has signed in - so it carries no
+ *  role, email or phone, and never an admin-flagged or deactivated account. The counters are on it
+ *  because the screen asks which one before the password, and that question cannot wait for a
+ *  token; it is the same roster the outlet prints on its own wall. */
+/** One counter on the sign-in screen: the key the wire uses, and the name and code the operator
+ *  reads off the outlet itself. */
+export const SignInCounterSchema = z.strictObject({ k: LocKeySchema, n: z.string(), c: z.string() });
+export const SignInEntrySchema = z.strictObject({
+  emp: z.string(), n: z.string(),
+  /** Every counter this account works, each carrying its own printed name and code.
+   *
+   *  The name travels because nothing on the sign-in screen can look one up: `data/master.ts`'s
+   *  registries are filled by the snapshot, and the snapshot arrives *after* sign-in. A bare key
+   *  would put "kiosk" in front of an operator where the outlet's own sign says Snack Kiosk. */
+  locs: z.array(SignInCounterSchema).max(32).default([]),
+});
 export const SignInDirectorySchema = z.array(SignInEntrySchema);
 /**
  * Where this account may work, and where this session currently is.

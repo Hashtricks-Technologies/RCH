@@ -76,7 +76,9 @@ export interface AppState extends ProcurementSlice, OpsSlice, AdminSlice, AuditS
   shopFilter: LocKey | null;
   theme: ThemePref;
 
-  login: (emp: string, password: string) => Promise<boolean>;
+  /** `loc` is the counter the sign-in screen asked for, when the account works more than one.
+   *  Omitted, the session stands at the account's home location as it always did. */
+  login: (emp: string, password: string, loc?: LocKey) => Promise<boolean>;
   /** The sign-in picker's list: every active staff account's number and name, read before
    *  anybody has signed in. A read with no toast - `null` on failure, never an empty list, so
    *  the form can tell "nobody to pick" from "could not ask" and fall back to a typed id. */
@@ -251,10 +253,10 @@ export const useApp = create<AppState>((set, get) => ({
   shopFilter: null,
   theme: readStoredTheme(),
 
-  login: async (emp, password) => {
+  login: async (emp, password, loc) => {
     set({ auth: "signing-in", authError: null });
     try {
-      const r = await call(routes.login, { body: { emp, password } });
+      const r = await call(routes.login, { body: { emp, password, ...(loc ? { loc } : {}) } });
       setAccessToken(r.accessToken);
       // `postings` is every counter this account may stand at. One (the ordinary case) means the
       // sign-in screen shows no picker and this is the whole of it; more than one and `Login.tsx`

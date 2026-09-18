@@ -15,11 +15,20 @@ import { resetStore, S } from "./fixture";
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+/** `locs` is on the public directory because the screen asks which counter as soon as the person
+ *  is chosen - before the password, so before there is any token to ask with. */
+/** Each counter carries its own name and code: nothing on the sign-in screen can look one up,
+ *  because `data/master.ts` is filled by the snapshot and the snapshot needs a token. */
+const CS = { k: "coffee", n: "Coffee Shop", c: "OT-C3" };
+const KI = { k: "kiosk", n: "Snack Kiosk", c: "OT-GK" };
+const RE = { k: "rest", n: "Restaurant", c: "OT-R1" };
 const DIR = [
-  { emp: "RC-3120", n: "Ramesh Kumar" },
-  { emp: "RC-4471", n: "Kavitha Raman" },
-  { emp: "RC-4482", n: "Deepa Selvam" },
+  { emp: "RC-3120", n: "Ramesh Kumar", locs: [RE] },
+  { emp: "RC-4471", n: "Kavitha Raman", locs: [CS] },
+  { emp: "RC-4482", n: "Deepa Selvam", locs: [KI] },
 ];
+/** The same list, with the consultant who works three counters. */
+const DIR_MULTI = [DIR[0], { emp: "RC-4471", n: "Kavitha Raman", locs: [CS, KI, RE] }, DIR[2]];
 
 const fetchMock = vi.fn();
 type Stubs = Record<string, () => Response>;
@@ -289,10 +298,10 @@ describe("the sign-in counter picker", () => {
   };
   const auth = (over: Record<string, unknown> = {}) =>
     json({ accessToken: "tok", user: KAVITHA, mustChangePassword: false, postings: ["coffee"], ...over });
-  const switches = () =>
+  const logins = () =>
     fetchMock.mock.calls
-      .filter(([u]) => String(u).endsWith("/auth/switch-location"))
-      .map(([, init]) => JSON.parse(String((init as RequestInit).body)) as { loc: string });
+      .filter(([u]) => String(u).endsWith("/auth/login"))
+      .map(([, init]) => JSON.parse(String((init as RequestInit).body)) as { emp: string; loc?: string });
 
   /** The snapshot is not what these cases are about, and a real one would need the whole wire. */
   const noSnapshot = () => {
@@ -312,28 +321,35 @@ describe("the sign-in counter picker", () => {
     ui = await mountLogin();
     await signIn(ui);
     expect(ui.q("#where")?.textContent).toBe("/pos");
-    expect(switches()).toHaveLength(0);
+    // No counter on the body and no second call: an account that works one counter signs in over
+    // exactly the wire it always did.
+    expect(logins()).toEqual([{ emp: "RC-4471", password: "a-long-enough-secret" }]);
   });
 
-  it("asks which counter when there is more than one, and switches the session to the one picked", async () => {
+  it("asks which counter as soon as the person is picked, before the password", async () => {
     noSnapshot();
     serve({
-      "GET /api/v1/auth/directory": () => json(DIR),
-      "POST /api/v1/auth/login": () => auth({ postings: ["coffee", "kiosk"] }),
-      "POST /api/v1/auth/switch-location": () =>
-        json({ accessToken: "tok-2", user: { ...KAVITHA, loc: "kiosk" }, mustChangePassword: false, postings: ["coffee", "kiosk"] }),
+      "GET /api/v1/auth/directory": () => json(DIR_MULTI),
+      "POST /api/v1/auth/login": () => auth({ user: { ...KAVITHA, loc: "kiosk" }, postings: ["coffee", "kiosk", "rest"] }),
     });
     ui = await mountLogin();
-    await signIn(ui);
+    click(ui.box());
+    click(ui.options()[1]);                                 // Kavitha, who works three
 
-    // Nothing has routed anywhere: the shell does not mount until a counter is chosen.
-    expect(ui.q("#where")).toBeNull();
+    // The question comes before the password, not after it: there is no password box yet.
     expect(ui.text()).toContain("Which counter?");
-    expect(ui.options().map((o) => o.textContent)).toEqual(["OT-C3Coffee Shop", "OT-GKSnack Kiosk"]);
+    expect(ui.q("#pw")).toBeNull();
+    expect(ui.options().map((o) => o.textContent)).toEqual(["OT-C3Coffee Shop", "OT-GKSnack Kiosk", "OT-R1Restaurant"]);
 
-    click(ui.options()[1]);
-    await act(async () => { await new Promise((r) => { setTimeout(r, 0); }); });
-    expect(switches()).toEqual([{ loc: "kiosk" }]);
+    click(ui.options()[1]);                                 // the kiosk
+    expect(ui.q("#pw")).not.toBeNull();
+    expect(document.activeElement?.id).toBe("pw");
+
+    typeIn(ui.q<HTMLInputElement>("#pw")!, "a-long-enough-secret");
+    await submit(ui);
+
+    // One call, carrying the counter with it - the session is never opened anywhere else first.
+    expect(logins()).toEqual([{ emp: "RC-4471", password: "a-long-enough-secret", loc: "kiosk" }]);
     expect(S().user!.loc).toBe("kiosk");
     expect(ui.q("#where")?.textContent).toBe("/pos");
   });
@@ -341,61 +357,44 @@ describe("the sign-in counter picker", () => {
   it("is driven from the keyboard, the same arrows and Enter as the employee list", async () => {
     noSnapshot();
     serve({
-      "GET /api/v1/auth/directory": () => json(DIR),
-      "POST /api/v1/auth/login": () => auth({ postings: ["coffee", "kiosk", "rest"] }),
-      "POST /api/v1/auth/switch-location": () =>
-        json({ accessToken: "tok-2", user: { ...KAVITHA, loc: "rest" }, mustChangePassword: false, postings: ["coffee", "kiosk", "rest"] }),
+      "GET /api/v1/auth/directory": () => json(DIR_MULTI),
+      "POST /api/v1/auth/login": () => auth({ user: { ...KAVITHA, loc: "rest" }, postings: ["coffee", "kiosk", "rest"] }),
     });
     ui = await mountLogin();
-    await signIn(ui);
+    click(ui.box());
+    click(ui.options()[1]);
+
     const list = ui.q<HTMLUListElement>("#loc-list")!;
-    expect(list.getAttribute("aria-activedescendant")).toBe("loc-opt-0");
+    expect(document.activeElement).toBe(list);
     press(list, "ArrowDown");
     press(list, "ArrowDown");
-    press(list, "ArrowDown");                              // and stops at the last
+    press(list, "ArrowDown");                                  // clamps at the last, never wraps
     expect(list.getAttribute("aria-activedescendant")).toBe("loc-opt-2");
-    press(list, "ArrowUp");
-    expect(list.getAttribute("aria-activedescendant")).toBe("loc-opt-1");
-    press(list, "ArrowDown");
-    await act(async () => {
-      list.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
-      await new Promise((r) => { setTimeout(r, 0); });
-    });
-    expect(switches()).toEqual([{ loc: "rest" }]);
+    press(list, "Enter");
+
+    typeIn(ui.q<HTMLInputElement>("#pw")!, "a-long-enough-secret");
+    await submit(ui);
+    expect(logins()[0].loc).toBe("rest");
   });
 
-  it("keeps a refused switch on the picker, with the server's sentence on the form", async () => {
+  it("puts a counter the account is not posted to back on the form, as the server said it", async () => {
     noSnapshot();
     serve({
-      "GET /api/v1/auth/directory": () => json(DIR),
-      "POST /api/v1/auth/login": () => auth({ postings: ["coffee", "kiosk"] }),
-      "POST /api/v1/auth/switch-location": () =>
-        json({ error: { code: "conflict", message: "Refused - Snack Kiosk is closed; ask the administrator to reopen it." } }, 409),
+      "GET /api/v1/auth/directory": () => json(DIR_MULTI),
+      "POST /api/v1/auth/login": () =>
+        json({ error: { code: "rule", message: "You are not posted to Central Store." } }, 422),
     });
     ui = await mountLogin();
-    await signIn(ui);
+    click(ui.box());
     click(ui.options()[1]);
-    await act(async () => { await new Promise((r) => { setTimeout(r, 0); }); });
-
-    expect(switches()).toEqual([{ loc: "kiosk" }]);
-    // Still on the picker, still signed in nowhere.
-    expect(ui.q("#where")).toBeNull();
-    expect(ui.text()).toContain("Which counter?");
-    expect(ui.options()).toHaveLength(2);
-    // On the form, word for word - and taken off the toast, the way this screen treats every
-    // other refusal it shows.
-    expect(ui.q(".al")?.textContent).toContain("Refused - Snack Kiosk is closed");
-    expect(S().toast).toBeNull();
-
-    // The other counter is still there to take, and taking it lands.
-    serve({
-      "GET /api/v1/auth/directory": () => json(DIR),
-      "POST /api/v1/auth/switch-location": () =>
-        json({ accessToken: "tok-2", user: KAVITHA, mustChangePassword: false, postings: ["coffee", "kiosk"] }),
-    });
     click(ui.options()[0]);
-    await act(async () => { await new Promise((r) => { setTimeout(r, 0); }); });
-    expect(ui.q("#where")?.textContent).toBe("/pos");
+    typeIn(ui.q<HTMLInputElement>("#pw")!, "a-long-enough-secret");
+    await submit(ui);
+
+    // On the form and not in a toast, exactly as a wrong password is - this screen is outside
+    // the shell, and the sentence has to still be there when the operator looks up.
+    expect(ui.text()).toContain("You are not posted to Central Store.");
+    expect(ui.q("#where")).toBeNull();
   });
 
   it("asks for the new password first, and never the counter, on a first sign-in", async () => {
@@ -407,6 +406,9 @@ describe("the sign-in counter picker", () => {
     ui = await mountLogin();
     await signIn(ui);
     expect(ui.q("#where")?.textContent).toBe("/change-password");
-    expect(switches()).toHaveLength(0);
+    // The counter was never asked and never sent: the question belongs to the person picked, and
+    // this one works a single counter. A password still to change routes past everything else.
+    expect(ui.text()).not.toContain("Which counter?");
+    expect(logins()[0].loc).toBeUndefined();
   });
 });

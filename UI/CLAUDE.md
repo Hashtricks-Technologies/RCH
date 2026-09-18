@@ -120,9 +120,16 @@ try {
 
 ## Postings and the register
 
+- **The counter is asked at sign-in, before the password.** `GET /auth/directory` carries each
+  account's counters, so picking a person can ask "which counter?" straight away; the answer rides
+  on `POST /auth/login` as `loc` and the session opens there. One counter sends no `loc` at all -
+  the wire for everyone who works one desk is exactly what it always was.
+- **Nothing on the sign-in screen may read `data/master.ts`.** Those registries are filled by the
+  snapshot, and the snapshot needs a token, so before sign-in `LOC` is empty and `locName()`
+  answers the raw key. That is why each directory counter carries its own `n` and `c`.
 - **`postings` on the store is where the signed-in account may work**; `user.loc` is where it is
-  standing. One posting is the ordinary case and no picker is ever drawn. `login`, `restore` and
-  `switchLocation` all set it - forget one and the header switcher vanishes after a page reload.
+  standing. `login`, `restore` and `switchLocation` all set it - forget one and the header
+  switcher vanishes after a page reload.
 - **`switchLocation(loc)` reloads the whole snapshot**, because every location-scoped collection in
   it belonged to the counter just left.
 - **Takings are windowed on the open register session, not on `isToday`.** Both dashboards read

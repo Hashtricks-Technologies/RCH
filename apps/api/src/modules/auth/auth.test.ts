@@ -40,18 +40,37 @@ const cookieOf = (r: { cookies: Array<{ name: string; value: string }> }) => r.c
 const claimLoc = (app: App, token: string) => (app.jwt.decode(token) as { loc: string }).loc;
 
 describe("GET /auth/directory", () => {
-  it("lists who can sign in - number and name only, in number order - to a caller with no token", async () => {
+  it("lists who can sign in - number, name and counters, in number order - to a caller with no token", async () => {
     const res = await a.inject({ method: "GET", url: "/api/v1/auth/directory" });
     expect(res.statusCode).toBe(200);
     // The seed's six staff, and not RC-0001: the admin-flagged account is never advertised.
+    // `locs` is here because the sign-in screen asks which counter the moment a person is picked,
+    // which is before there is any token to ask with. Kavitha works two; everyone else works one.
+    // Each counter carries its own name and code, because nothing on the sign-in screen can look
+    // one up: the registries that hold them are filled by the snapshot, which needs a token.
+    const named = (o: Record<string, unknown>) => expect.objectContaining(o);
     expect(res.json()).toEqual([
-      { emp: "RC-1550", n: "Latha Narayanan" },
-      { emp: "RC-1902", n: "Vinoth Prakash" },
-      { emp: "RC-2088", n: "Suresh Muthu" },
-      { emp: "RC-3120", n: "Ramesh Kumar" },
-      { emp: "RC-4471", n: "Kavitha Raman" },
-      { emp: "RC-4482", n: "Deepa Selvam" },
+      named({ emp: "RC-1550", n: "Latha Narayanan", locs: [named({ k: "store", n: "Central Store" })] }),
+      named({ emp: "RC-1902", n: "Vinoth Prakash", locs: [named({ k: "kitchen", n: "Central Kitchen" })] }),
+      named({ emp: "RC-2088", n: "Suresh Muthu", locs: [named({ k: "store" })] }),
+      named({ emp: "RC-3120", n: "Ramesh Kumar", locs: [named({ k: "rest", n: "Restaurant" })] }),
+      named({ emp: "RC-4471", n: "Kavitha Raman", locs: [named({ k: "coffee", n: "Coffee Shop" }), named({ k: "kiosk", n: "Snack Kiosk" })] }),
+      named({ emp: "RC-4482", n: "Deepa Selvam", locs: [named({ k: "kiosk" })] }),
     ]);
+  });
+
+  it("signs in at the counter the screen asked for, and refuses one the account does not work", async () => {
+    const at = async (loc?: string) => a.inject({
+      method: "POST", url: "/api/v1/auth/login",
+      payload: { emp: "RC-4471", password: "changeme", ...(loc ? { loc } : {}) },
+    });
+    // Kavitha is posted to the Coffee Shop (her home) and the Snack Kiosk.
+    expect((await at("kiosk")).json().user.loc).toBe("kiosk");
+    // Omitted, she stands at home - the wire every single-counter account still uses.
+    expect((await at()).json().user.loc).toBe("coffee");
+    const no = await at("store");
+    expect(no.statusCode).toBe(422);
+    expect(no.json().error.message).toBe("You are not posted to Central Store.");
   });
   it("leaves out a deactivated account", async () => {
     await a.db.update(users).set({ active: false }).where(eq(users.id, "u4"));

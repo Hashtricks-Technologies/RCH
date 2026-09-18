@@ -162,8 +162,10 @@ There are five roles (`counter`, `manager`, `store`, `prod`, `buyer`), each with
 - **A counter operator may be posted to several outlets.** `user_postings` is where an account
   *may* work; the token's `loc` claim is where it *is* working, and it is still exactly one
   location - so every location guard is unchanged. An account with one posting signs in exactly as
-  before; with more, the sign-in screen asks which counter, and `POST /auth/switch-location` moves
-  a session mid-shift. The chosen location is stored on the refresh-token row, so a silent refresh
+  before, `loc` absent from the body; with more, the sign-in screen asks which counter as soon as
+  the person is picked - before the password - and `POST /auth/login` carries the answer. The
+  counters are on the public `GET /auth/directory` because that question cannot wait for a token.
+  `POST /auth/switch-location` moves a session mid-shift. The chosen location is stored on the refresh-token row, so a silent refresh
   does not move somebody back to their home counter. Changing an account's postings revokes its
   sessions, because a live token may assert a counter the new list has just removed.
 - **Admin** is a boolean on `users`, not a sixth role. It is checked as `access: "admin"`. An admin-flagged
