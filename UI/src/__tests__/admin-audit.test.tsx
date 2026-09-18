@@ -42,6 +42,7 @@ const queries = () =>
 const KAVITHA: AdminUser = {
   id: "u1", emp: "RC-4471", n: "Kavitha Raman", e: "kavitha.r@royalcare.in", ph: "", r: "counter",
   rl: "Counter Operator", loc: "coffee", col: "#B45309", active: true, mustChangePassword: false, admin: false,
+  postings: ["coffee"],
 };
 const MANAGER = { id: "u2", emp: "RC-3120", name: "Ramesh Kumar", role: "Outlet Manager", loc: "rest" };
 const COUNTS: AuditCounts = { events: 3, people: 2, refused: 1, failedSignIns: 1 };

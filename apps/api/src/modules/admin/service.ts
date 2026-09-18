@@ -15,7 +15,7 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import type {
   AdminAction, AdminDeletedUser, AdminLocation, AdminPayer, AdminUser, AdminUserWithTempPassword,
-  CreateAdminUserBody, CreateOutletBody, CreatePayerBody, PayerKind, UpdateAdminUserBody,
+  CreateAdminUserBody, CreateOutletBody, CreatePayerBody, LocKey, PayerKind, UpdateAdminUserBody,
   UpdateOutletBody, UpdatePayerBody, WriteResponse,
 } from "@rch/contract";
 import { closeRefusal, money as inr, outletKeyFor, PARTY_LABEL } from "@rch/domain";
@@ -25,16 +25,20 @@ import { auditBefore } from "../../lib/audit.js";
 import { ConflictError, NotFoundError, RuleError } from "../../lib/errors.js";
 import { emitChanged } from "../../lib/events.js";
 import {
-  createUserTx, deactivateUserTx, deleteUserTx, reactivateUserTx, resetPasswordTx, updateUserRoleLocTx,
+  createUserTx, deactivateUserTx, deleteUserTx, reactivateUserTx, resetPasswordTx, setUserPostingsTx,
+  updateUserRoleLocTx,
 } from "../../lib/users-admin.js";
 import type { AccessClaims } from "../../plugins/auth.js";
 import { roleLabelOf } from "../../lib/wire.js";
 import { adminRepo, type LocationRow, type UserRow } from "./repo.js";
 
-const toAdminUser = (u: UserRow): AdminUser => ({
+/** `postings` falls back to the home location: an account with no rows of its own is one that
+ *  has only ever worked one counter, which is exactly what a single-entry list means. */
+const toAdminUser = (u: UserRow, postings?: readonly string[]): AdminUser => ({
   id: u.id, emp: u.empNo, n: u.name, e: u.email, ph: u.phone,
   r: u.role, rl: roleLabelOf(u), loc: u.loc as AdminUser["loc"], col: u.colour,
   active: u.active, mustChangePassword: u.mustChangePassword, admin: u.admin,
+  postings: [...(postings?.length ? postings : [u.loc])],
 });
 
 /** A fresh, high-entropy temporary password - well past `MIN_PASSWORD_LENGTH` (10), shown to
@@ -89,7 +93,11 @@ export function createAdminService(db: Db) {
 
   return {
     async list(): Promise<AdminUser[]> {
-      return (await adminRepo.list(db)).map(toAdminUser);
+      // Two queries for the whole page, not one per account: the postings come back keyed by id
+      // and are matched up here.
+      const rows = await adminRepo.list(db);
+      const postings = await adminRepo.postingsByUser(db, rows.map((u) => u.id));
+      return rows.map((u) => toAdminUser(u, postings[u.id]));
     },
     async actions(kind: "accounts" | "outlets" | "payers"): Promise<AdminAction[]> {
       return adminRepo.recentActions(db, kind);
@@ -134,7 +142,7 @@ export function createAdminService(db: Db) {
         await deactivateUserTx(tx, row.empNo);
         await log(tx, claims.sub, "deactivate", { id, name: row.name });
         const fresh = await requireTx(tx, id);
-        return { result: toAdminUser(fresh), changed: ["accounts"], message: `${fresh.name} (${fresh.empNo}) deactivated` };
+        return { result: toAdminUser(fresh, (await adminRepo.postingsByUser(tx, [id]))[id]), changed: ["accounts"], message: `${fresh.name} (${fresh.empNo}) deactivated` };
       });
     },
 
@@ -145,7 +153,7 @@ export function createAdminService(db: Db) {
         await reactivateUserTx(tx, row.empNo);
         await log(tx, claims.sub, "reactivate", { id, name: row.name });
         const fresh = await requireTx(tx, id);
-        return { result: toAdminUser(fresh), changed: ["accounts"], message: `${fresh.name} (${fresh.empNo}) reactivated` };
+        return { result: toAdminUser(fresh, (await adminRepo.postingsByUser(tx, [id]))[id]), changed: ["accounts"], message: `${fresh.name} (${fresh.empNo}) reactivated` };
       });
     },
 
@@ -159,6 +167,36 @@ export function createAdminService(db: Db) {
         await log(tx, claims.sub, "update_role_loc", { id, name: row.name }, { role: body.role, loc: body.loc });
         const fresh = await requireTx(tx, id);
         return { result: toAdminUser(fresh), changed: ["accounts"], message: `${fresh.name} (${fresh.empNo}) moved to ${fresh.roleLabel} at ${body.loc}` };
+      });
+    },
+
+    /**
+     * Every counter this account may stand at, set as one list - the home location it was created
+     * with plus whatever else it takes shifts at. A move (`updateRoleLoc`) puts the list back to
+     * the home row alone, so this is the step that says a consultant works two tills, and the step
+     * that takes one away.
+     *
+     * The log line is an `update_role_loc`, the same action a move writes, with the new list in its
+     * `details`: `AdminActionSchema`'s action is a closed union in the contract and there is no
+     * `update_postings` on it, so a line of that name would be written and then refused by the
+     * log's own response schema on the way back out. See the note in this module's routes.ts about
+     * the contract entry this write is still waiting on.
+     */
+    async setPostings(claims: AccessClaims, id: string, locs: readonly LocKey[]): Promise<WriteResponse<AdminUser>> {
+      refuseSelf(claims, id, "change the postings of");
+      return withTransaction(db, async (tx) => {
+        const row = await requireTx(tx, id);
+        auditBefore(toAdminUser(row));
+        if (row.admin) throw new RuleError(`Refused - ${row.name} (${row.empNo}) is a super admin, and a super admin has no postings to change`);
+        const postings = await setUserPostingsTx(tx, row.empNo, locs);
+        await log(tx, claims.sub, "update_postings", { id, name: row.name }, { postings });
+        const fresh = await requireTx(tx, id);
+        return {
+          // The list this write just set, not the home-location fallback: the response is the
+          // account as it now stands, and its whole subject is the postings.
+          result: toAdminUser(fresh, postings), changed: ["accounts"],
+          message: `${fresh.name} (${fresh.empNo}) is posted to ${postings.join(", ")} - their sessions are ended`,
+        };
       });
     },
 

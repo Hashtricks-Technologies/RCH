@@ -5,6 +5,9 @@ import Bills from "./Bills";
 import Stock from "./Stock";
 import Requests from "./Requests";
 import Tickets from "./Tickets";
+// ---- the register: one screen for the counter and the manager, so it lives in `ui/` - role
+// folders never import one another.
+import Register from "../../ui/Register";
 
 // Drawer modules register themselves on import.
 import "./BillDrawer";
@@ -27,4 +30,5 @@ export const screens: Record<string, ComponentType> = {
   stock: Stock,
   requests: Requests,
   tickets: Tickets,
+  register: Register,
 };

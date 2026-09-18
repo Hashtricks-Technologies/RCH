@@ -23,7 +23,10 @@ afterAll(async () => { await b.close(); });
 
 const count = async (table: string) =>
   Number(((await b.db.execute(sql.raw(`select count(*)::int as n from "${table}"`))).rows[0] as { n: number }).n);
-const KEPT = ["locations", "users", "sequences"];
+// `user_postings` is kept for the same reason `users` is: the one admin account's home row, the
+// same row migration 0023 backfills onto a hospital that predates the table. One account, one
+// posting - counted in the account test below rather than left uncounted here.
+const KEPT = ["locations", "users", "sequences", "user_postings"];
 
 describe("a bare seed", () => {
   it("keeps the six locations", async () => {
@@ -42,6 +45,7 @@ describe("a bare seed", () => {
   it("keeps one account - the admin - and makes it choose its own password first", async () => {
     const rows = await b.db.select().from(s.users);
     expect(rows.map((u) => [u.empNo, u.name, u.admin, u.active, u.mustChangePassword])).toEqual([["RC-0001", "System Administrator", true, true, true]]);
+    expect(await count("user_postings")).toBe(1);
   });
 
   it("numbers every series from where it always has", async () => {

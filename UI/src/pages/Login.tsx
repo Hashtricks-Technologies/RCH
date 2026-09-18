@@ -2,15 +2,26 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { HOME } from "../nav";
 import { useApp } from "../store";
+import { locName } from "../lib/selectors";
+import { LOC } from "../data/master";
 import { Alert, Tip } from "../ui/kit";
-import type { SignInEntry } from "../types";
+import type { LocKey, SignInEntry } from "../types";
 import mark from "../assets/eateszy-mark.png";
+
+/** Only when `switchLocation` could not reach the server at all - it puts the server's own
+ *  sentence on the toast, and this screen reads that rather than writing its own. */
+const COUNTER_UNREACHABLE = "Could not move to that counter - check the connection and try again.";
 
 /**
  * Sign-in. Staff pick themselves from the directory (`GET /auth/directory`: number and name,
  * active staff only) rather than typing an employee id from memory; the super admin is not in
  * that list, on purpose, and signs in through the typed field behind "Sign in as administrator".
  * If the list cannot be read the typed field is all there is, so nobody is locked out by it.
+ *
+ * There is a third step for the one account shape that needs it: a consultant posted to more
+ * than one counter is asked which one they are signing in to, before anything behind the shell
+ * is drawn against the wrong outlet. `postings.length > 1` is the whole test - with one posting
+ * (every other account) the sign-in is exactly the two steps it always was, and this never draws.
  */
 export default function Login() {
   const [dir, setDir] = useState<SignInEntry[] | null | undefined>(undefined);
@@ -21,12 +32,22 @@ export default function Login() {
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
   const [pw, setPw] = useState("");
+  // ---- step 3, the counter picker. `picking` is only ever set for an account the server said
+  // has more than one posting, so nothing here costs a single-posting sign-in anything.
+  const [picking, setPicking] = useState(false);
+  const [locAt, setLocAt] = useState(0);
+  const [moving, setMoving] = useState(false);
+  const [locRefused, setLocRefused] = useState<string | null>(null);
   const pwRef = useRef<HTMLInputElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
+  const locRef = useRef<HTMLUListElement>(null);
   const loadSignInDirectory = useApp((s) => s.loadSignInDirectory);
   const login = useApp((s) => s.login);
   const auth = useApp((s) => s.auth);
   const refused = useApp((s) => s.authError);
+  const postings = useApp((s) => s.postings);
+  const switchLocation = useApp((s) => s.switchLocation);
+  const dismissToast = useApp((s) => s.dismissToast);
   const nav = useNavigate();
 
   useEffect(() => {
@@ -34,6 +55,10 @@ export default function Login() {
     void loadSignInDirectory().then((d) => { if (live) setDir(d); });
     return () => { live = false; };
   }, [loadSignInDirectory]);
+
+  // The list is the step, so it takes the keyboard the moment the step appears - the way the
+  // search box does on arrival and the password box does on a pick.
+  useEffect(() => { if (picking) locRef.current?.focus(); }, [picking]);
 
   // The list could not be read: the typed field is the only way in, and it says why.
   const typedOnly = dir === null;
@@ -46,13 +71,51 @@ export default function Login() {
   const emp = typing ? typed.trim() : (chosen?.emp ?? exact?.emp ?? "");
 
   const busy = auth === "signing-in" || auth === "loading";
+  /** Where the session belongs once there is nothing left to ask. */
+  const enter = () => {
+    const s = useApp.getState();
+    nav(s.mustChangePassword ? "/change-password" : "/" + (s.user!.admin ? "admin" : HOME[s.user!.r]));
+  };
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!emp || !pw) return;
     const ok = await login(emp, pw);
     if (!ok) return;
     const s = useApp.getState();
-    nav(s.mustChangePassword ? "/change-password" : "/" + (s.user!.admin ? "admin" : HOME[s.user!.r]));
+    // More than one posting: ask which counter before the app routes anywhere. A password still
+    // to change is asked for first - there is nothing to stand at until the account is usable.
+    if (!s.mustChangePassword && !s.user!.admin && s.postings.length > 1) { setPicking(true); return; }
+    enter();
+  };
+
+  /**
+   * Take the session to the counter chosen. `switchLocation` re-mints the token and reloads the
+   * whole snapshot; only once it has answered is the shell allowed to mount, so no screen is
+   * ever drawn against the counter the operator did not pick.
+   */
+  const chooseLoc = async (loc: LocKey) => {
+    setMoving(true);
+    setLocRefused(null);
+    try {
+      if (await switchLocation(loc)) { enter(); return; }
+      // The store toasts the server's own refusal. A toast is gone in seconds and this screen is
+      // outside the shell, so it is moved onto the form beside where `authError` sits, word for
+      // word, and stays there until the next attempt.
+      setLocRefused(useApp.getState().toast ?? COUNTER_UNREACHABLE);
+      dismissToast();
+    } finally { setMoving(false); }
+  };
+  const onLocKey = (e: React.KeyboardEvent<HTMLUListElement>) => {
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setLocAt((i) => Math.min(i + 1, postings.length - 1));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setLocAt((i) => Math.max(i - 1, 0));
+    } else if (e.key === "Enter" && !moving) {
+      e.preventDefault();
+      void chooseLoc(postings[locAt]);
+    }
   };
 
   const choose = (entry: SignInEntry) => {
@@ -88,6 +151,7 @@ export default function Login() {
   const toList = () => { setTypedMode(false); setTyped(""); };
 
   const optionId = (i: number) => `emp-opt-${i}`;
+  const locOptionId = (i: number) => `loc-opt-${i}`;
   const expanded = open && !typing && chosen === null && dir !== undefined;
 
   return (
@@ -102,7 +166,55 @@ export default function Login() {
               which arrives after. A wrong number is worse than none. */}
         </div>
       </div>
-      <div className="lgf"><form className="lgi" onSubmit={submit}>
+      <div className="lgf">{picking ? (
+        /* ---- step 3: which counter. The same plate, the same list, the same arrow-and-Enter
+           keyboard as the employee picker above - only the rows are counters. Not a <form>:
+           there is nothing left to submit, a counter is chosen the way a person was. */
+        <div className="lgi">
+          <div className="lgl"><img src={mark} alt="" /><span className="lgwm" role="img" aria-label="eaTesZy" /></div>
+          <h2>Which counter?</h2>
+          <p className="sub">You are posted to more than one. Choose the one you are signing in to.</p>
+          <div className="fg lgpick">
+            <div className="tipped" style={{ marginBottom: 5 }}>
+              {/* No `htmlFor`: a <ul> is not labelable, and the list is named by
+                  `aria-labelledby` instead. */}
+              <label id="loc-label" style={{ marginBottom: 0 }}>Counter</label>
+              <Tip text="Every screen behind this one - the till, the stock, the tickets - belongs to the counter you pick here. You can move to another of your counters later from the header, without signing out." label="Counter" />
+            </div>
+            <ul
+              ref={locRef}
+              id="loc-list"
+              role="listbox"
+              tabIndex={0}
+              aria-labelledby="loc-label"
+              aria-activedescendant={locOptionId(locAt)}
+              className="lgpick-list lgpick-here"
+              onKeyDown={onLocKey}
+            >
+              {postings.map((l, i) => (
+                <li
+                  key={l}
+                  id={locOptionId(i)}
+                  role="option"
+                  aria-selected={i === locAt}
+                  className={i === locAt ? "on" : undefined}
+                  onMouseEnter={() => setLocAt(i)}
+                  onClick={() => { if (!moving) void chooseLoc(l); }}
+                >
+                  <span className="mono">{LOC[l]?.c ?? l}</span>
+                  <span>{locName(l)}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+          {/* The server's own refusal, on the form rather than in a toast - the same rule the
+              two steps before this one keep for `authError`. */}
+          {locRefused && <Alert tone="c" label="REFUSED">{locRefused}</Alert>}
+          <button className="btn wide" disabled={moving} type="button" onClick={() => { if (!moving) void chooseLoc(postings[locAt]); }}>
+            {moving ? "Opening the counter…" : `Sign in at ${locName(postings[locAt])}`}
+          </button>
+        </div>
+      ) : (<form className="lgi" onSubmit={submit}>
         <div className="lgl"><img src={mark} alt="" /><span className="lgwm" role="img" aria-label="eaTesZy" /></div>
         <h2>Sign in</h2>
         <p className="sub">{typing ? "Enter your employee ID and password." : "Choose your employee ID, then enter your password."}</p>
@@ -190,7 +302,7 @@ export default function Login() {
               : <button type="button" className="lgpick-link" onClick={toTyped}>Sign in as administrator</button>}
           </p>
         )}
-      </form></div>
+      </form>)}</div>
     </div>
   );
 }

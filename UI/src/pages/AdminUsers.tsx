@@ -18,12 +18,45 @@ const ROLE_LABEL: Record<Role, string> = {
  *  closed union, so a new action fails `typecheck` here until it has words. */
 const DID: Record<AdminAction["action"], string> = {
   create: "created", reset_password: "reset the password of", deactivate: "deactivated",
-  reactivate: "reactivated", update_role_loc: "moved", delete: "deleted",
+  reactivate: "reactivated", update_role_loc: "moved", update_postings: "set the counters of",
+  delete: "deleted",
   outlet_create: "opened", outlet_update: "edited", outlet_close: "closed", outlet_reopen: "reopened",
   payer_create: "added", payer_update: "renamed", payer_deactivate: "switched off", payer_reactivate: "switched back on",
 };
 
-const emptyForm = { name: "", email: "", phone: "", role: "counter" as Role, loc: "" as LocKey };
+const emptyForm = { name: "", email: "", phone: "", role: "counter" as Role, loc: "" as LocKey, also: [] as string[] };
+
+/**
+ * The counters beyond the one the account is standing at - what the boxes below tick. `postings`
+ * always carries `loc` itself; an account the server has never been asked about carries an empty
+ * list, which reads as "only where it stands".
+ */
+const alsoOf = (a: AdminUser): string[] => a.postings.filter((l) => l !== a.loc);
+const sameSet = (a: string[], b: string[]) => a.length === b.length && a.every((x) => b.includes(x));
+
+/** The checkbox group both the create form and a table row draw: every place this role may be
+ *  posted, with the one it is standing at ticked and locked - an account always works where it
+ *  stands. Nothing is drawn at all for a role with only one place (store keeper, buyer, kitchen). */
+function AlsoAt({ places, at, also, name, disabled, onToggle }: {
+  places: string[]; at: string; also: string[]; name: (key: string) => string; disabled?: boolean;
+  onToggle: (key: string) => void;
+}) {
+  if (places.length < 2) return null;
+  return (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+      {places.map((l) => (
+        <label key={l} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <input
+            type="checkbox" disabled={disabled || l === at}
+            checked={l === at || also.includes(l)}
+            onChange={() => onToggle(l)}
+          />
+          {l === at ? <b>{name(l)}</b> : name(l)}
+        </label>
+      ))}
+    </div>
+  );
+}
 
 export default function AdminUsers() {
   const accounts = useApp((s) => s.accounts);
@@ -36,6 +69,7 @@ export default function AdminUsers() {
   const resetAccountPassword = useApp((s) => s.resetAccountPassword);
   const setAccountActive = useApp((s) => s.setAccountActive);
   const updateAccountRoleLoc = useApp((s) => s.updateAccountRoleLoc);
+  const setAccountPostings = useApp((s) => s.setAccountPostings);
   const deleteAccount = useApp((s) => s.deleteAccount);
   const notify = useApp((s) => s.notify);
 
@@ -58,7 +92,7 @@ export default function AdminUsers() {
   const [form, setForm] = useState(emptyForm);
   const [busy, setBusy] = useState<string | null>(null);
   const [shown, setShown] = useState<{ emp: string; password: string } | null>(null);
-  const [edit, setEdit] = useState<Record<string, { role: Role; loc: LocKey }>>({});
+  const [edit, setEdit] = useState<Record<string, { role: Role; loc: LocKey; also: string[] }>>({});
   /** The one row whose Delete has been pressed once and is waiting for the second press. */
   const [confirming, setConfirming] = useState<string | null>(null);
 
@@ -68,6 +102,8 @@ export default function AdminUsers() {
   // The form starts with no location chosen - the first place its role may work, once the
   // location list has landed, rather than a name compiled into the bundle.
   const formLoc = form.loc || placesFor(form.role, LOCS)[0] || "";
+  /** The other counters ticked on the create form, never the one it is already standing at. */
+  const formAlso = form.also.filter((l) => l !== formLoc && placesFor(form.role, LOCS).includes(l));
 
   const create = async () => {
     if (!form.name.trim() || !form.email.trim()) {
@@ -88,7 +124,17 @@ export default function AdminUsers() {
       });
       // A refusal (the role/location pairing, most often) leaves the form exactly as typed,
       // so the operator corrects it rather than retyping the whole thing.
-      if (made) { setShown(made); setForm(emptyForm); }
+      if (!made) return;
+      setShown(made);
+      // The create itself carries one location - the server assigns the number and the posting
+      // it stands at. Any further counter is a second write against the account that now exists,
+      // found by the number the server actually gave rather than the one previewed.
+      if (formAlso.length > 0) {
+        const row = useApp.getState().accounts.find((a) => a.emp === made.emp);
+        if (row) await setAccountPostings(row.id, [formLoc as LocKey, ...formAlso as LocKey[]]);
+        else notify(`${made.emp} was created at ${label(formLoc)} - add its other counters from its row below.`);
+      }
+      setForm(emptyForm);
     } finally { setBusy(null); }
   };
 
@@ -110,12 +156,22 @@ export default function AdminUsers() {
     try { await setAccountActive(a.id, !a.active); } finally { setBusy(null); }
   };
 
+  /** The row's pickers as they stand: what the server last sent, until the operator touches them. */
+  const editOf = (a: AdminUser) => edit[a.id] ?? { role: a.r, loc: a.loc, also: alsoOf(a) };
+
   const saveRoleLoc = async (a: AdminUser) => {
-    const next = edit[a.id] ?? { role: a.r, loc: a.loc };
-    if (next.role === a.r && next.loc === a.loc) { notify(`${a.n} is already ${ROLE_LABEL[a.r]} at ${label(a.loc)}`); return; }
+    const next = editOf(a);
+    const also = next.also.filter((l) => l !== next.loc && places(next.role, a.loc).includes(l));
+    const movedPlaces = !sameSet(also, alsoOf(a));
+    const movedRoleLoc = next.role !== a.r || next.loc !== a.loc;
+    if (!movedRoleLoc && !movedPlaces) { notify(`${a.n} is already ${ROLE_LABEL[a.r]} at ${label(a.loc)}`); return; }
     setBusy(a.id);
     try {
-      if (await updateAccountRoleLoc(a.id, next)) setEdit((e) => { const n = { ...e }; delete n[a.id]; return n; });
+      // Two writes, in this order, because the second one names the first one's location as the
+      // counter the account stands at. Either refusal leaves the row's pickers exactly as they are.
+      if (movedRoleLoc && !await updateAccountRoleLoc(a.id, { role: next.role, loc: next.loc })) return;
+      if (movedPlaces && !await setAccountPostings(a.id, [next.loc, ...also as LocKey[]])) return;
+      setEdit((e) => { const n = { ...e }; delete n[a.id]; return n; });
     } finally { setBusy(null); }
   };
 
@@ -165,6 +221,18 @@ export default function AdminUsers() {
             </select>
           </Field>
         </FormRow>
+        {/* Nothing is drawn for a role with one place to work. A counter operator or an outlet
+            manager may be posted to several: the location above is where the account starts, and
+            every other counter ticked here is one it may sign in at instead. */}
+        {placesFor(form.role, LOCS).length > 1 && (
+          <Field label="Counters this account works" tip="Tick every outlet this account may take a shift at. With more than one ticked, the sign-in screen asks which counter before the till opens, and the header offers the others mid-shift.">
+            <AlsoAt
+              places={placesFor(form.role, LOCS)} at={formLoc} also={formAlso} name={label}
+              disabled={busy === "create"}
+              onToggle={(l) => setForm({ ...form, also: form.also.includes(l) ? form.also.filter((x) => x !== l) : [...form.also, l] })}
+            />
+          </Field>
+        )}
         <Btn wide disabled={busy === "create"} onClick={() => void create()}>
           {busy === "create" ? "Creating…" : "Create account"}
         </Btn>
@@ -173,11 +241,11 @@ export default function AdminUsers() {
       <Card title="Every account" sub={`${accounts.filter((a) => a.active).length} active`} flush className="mtop">
         <DataTable
           cols={[
-            { h: "Employee id", w: "12%" }, { h: "Name", w: "18%" }, { h: "Role / Location", w: "22%" },
+            { h: "Employee id", w: "12%" }, { h: "Name", w: "18%" }, { h: "Role / Counters", w: "26%" },
             { h: "Status", w: "14%" }, { h: "Actions" },
           ]}
           rows={sorted.map((a) => {
-            const e = edit[a.id] ?? { role: a.r, loc: a.loc };
+            const e = editOf(a);
             return {
               key: a.id,
               cells: [
@@ -185,17 +253,27 @@ export default function AdminUsers() {
                 a.n,
                 // The super admin has no role or location that means anything: it manages accounts
                 // and nothing else, and the server refuses to move it to either.
-                a.admin ? <Pill tone="in">Super Admin</Pill> : <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                  <select aria-label={`Role for ${a.emp}`} value={e.role} onChange={(ev) => {
-                    const role = ev.target.value as Role;
-                    setEdit({ ...edit, [a.id]: { role, loc: (placesFor(role, LOCS).includes(e.loc) ? e.loc : placesFor(role, LOCS)[0] ?? "") as LocKey } });
-                  }}>
-                    {RoleSchema.options.map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
-                  </select>
-                  <select aria-label={`Location for ${a.emp}`} value={e.loc} onChange={(ev) => setEdit({ ...edit, [a.id]: { ...e, loc: ev.target.value as LocKey } })}>
-                    {places(e.role, a.loc).map((l) => <option key={l} value={l}>{label(l)}</option>)}
-                  </select>
-                  <Btn size="xs" disabled={busy === a.id} onClick={() => void saveRoleLoc(a)}>Save</Btn>
+                a.admin ? <Pill tone="in">Super Admin</Pill> : <div style={{ display: "grid", gap: 6 }}>
+                  <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                    <select aria-label={`Role for ${a.emp}`} value={e.role} onChange={(ev) => {
+                      const role = ev.target.value as Role;
+                      const loc = (placesFor(role, LOCS).includes(e.loc) ? e.loc : placesFor(role, LOCS)[0] ?? "") as LocKey;
+                      setEdit({ ...edit, [a.id]: { role, loc, also: e.also.filter((l) => l !== loc && placesFor(role, LOCS).includes(l)) } });
+                    }}>
+                      {RoleSchema.options.map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
+                    </select>
+                    <select aria-label={`Location for ${a.emp}`} value={e.loc} onChange={(ev) => setEdit({ ...edit, [a.id]: { ...e, loc: ev.target.value as LocKey } })}>
+                      {places(e.role, a.loc).map((l) => <option key={l} value={l}>{label(l)}</option>)}
+                    </select>
+                    <Btn size="xs" disabled={busy === a.id} onClick={() => void saveRoleLoc(a)}>Save</Btn>
+                  </div>
+                  {/* Which counters this account may stand at - the select above is the one it
+                      stands at now, and Save sends both. Never drawn for a role with one place. */}
+                  <AlsoAt
+                    places={places(e.role, a.loc)} at={e.loc} also={e.also} name={label}
+                    disabled={busy === a.id}
+                    onToggle={(l) => setEdit({ ...edit, [a.id]: { ...e, also: e.also.includes(l) ? e.also.filter((x) => x !== l) : [...e.also, l] } })}
+                  />
                 </div>,
                 a.active
                   ? (a.mustChangePassword ? <Pill tone="wn">Must change password</Pill> : <Pill tone="ok">Active</Pill>)

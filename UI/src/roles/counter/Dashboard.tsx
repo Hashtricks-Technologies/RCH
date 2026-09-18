@@ -1,31 +1,51 @@
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
 import { availOf, menuOf } from "../../lib/selectors";
-import { isToday, money, money0, sum, unitTotal } from "../../lib/fmt";
+import { fromWireTime, money, money0, sum, unitTotal } from "../../lib/fmt";
 import {
   Alert, AlertStack, Avatar, Btn, Card, DataTable, Feed, Grid, Kpis, PageHead, StatusPill,
 } from "../../ui/kit";
 import { settlementOf } from "./status";
-import type { ReqStatus } from "../../types";
+import type { RegisterReport, ReqStatus } from "../../types";
 
 const SETTLED: ReqStatus[] = ["Closed", "Cancelled", "Rejected", "Received"];
 
 export default function Dashboard() {
   const s = useApp();
   const user = useApp((x) => x.user)!;
+  const readXReport = useApp((x) => x.readXReport);
   const nav = useNavigate();
   const loc = user.loc;
   const L = LOC[loc];
 
-  // Every figure on this page is labelled "today", and `GET /bills` answers with seven days of
-  // them. Until this filter existed the word was simply untrue: a Monday-morning shift opened
-  // showing the previous week's takings. `isToday` reads the instant the store kept beside the
-  // printed time, and the day it compares against is the hospital's, not the terminal's.
+  // ---- the register: the counter settles Z to Z, not midnight to midnight, so every takings
+  // figure here is measured from the moment the last Z closed this register rather than from
+  // the hospital's midnight. `isToday` answered the wrong question - an overnight shift crossed
+  // a boundary nobody at the till cares about, and a morning shift that opened before the
+  // previous day's Z was taken counted none of what it was about to settle. The window comes
+  // from the open session's own `openedAt`, read off the X.
   //
+  // Three states, not two: not read yet (`undefined`), read and failed (`null`), and read. A
+  // failed read must never print as a session that took nothing.
+  const [session, setSession] = useState<RegisterReport | null | undefined>(undefined);
+  const reading = session === undefined;
+  useEffect(() => {
+    let live = true;
+    void readXReport(loc).then((r) => { if (live) setSession(r); });
+    return () => { live = false; };
+  }, [readXReport, loc]);
+  const retry = () => { setSession(undefined); void readXReport(loc).then(setSession); };
+
+  // No session, no takings: a register that could not be read is not a register that took
+  // nothing, so the figures below print "-" rather than a zero somebody would act on.
+  const openedAt = session?.openedAt ?? null;
   // ---- bill void: a bill somebody took back is not takings and the items on it were not sold.
   // It stays on the bill list, badged; every figure on this dashboard is drawn from `mine`.
-  const mine = s.bills.filter((b) => b.loc === loc && isToday(b.iso) && !b.voided);
+  const mine = openedAt === null
+    ? []
+    : s.bills.filter((b) => b.loc === loc && (b.iso ?? "") >= openedAt && !b.voided);
   // `?? ""` rather than a bare compare: a row that reaches the store without an instant should
   // sort to the bottom, not throw the whole dashboard into the error boundary.
   const latest = mine.slice().sort((a, b) => (b.iso ?? "").localeCompare(a.iso ?? ""));
@@ -73,6 +93,17 @@ export default function Dashboard() {
   }));
   const top = Object.entries(rev).sort((a, b) => b[1].amt - a[1].amt).slice(0, 5);
 
+  /** How the session is described under every takings figure, in the counter's own terms: the Z
+   *  it runs from, or the fact that nothing has closed this register yet. Never a date - the
+   *  window is not a day. */
+  const since = session
+    ? session.previousZNo
+      ? `since ${session.previousZNo} at ${fromWireTime(session.openedAt)}`
+      : `since this register first opened, ${fromWireTime(session.openedAt)}`
+    : reading ? "reading the register…" : "the register could not be read";
+  /** A takings figure only exists once the session does. */
+  const takings = (v: string) => (openedAt === null ? "-" : v);
+
   const feed = latest.slice(0, 5).map((b) => ({
     key: b.no,
     title: <>{b.no} · {money(b.tot)}</>,
@@ -86,19 +117,32 @@ export default function Dashboard() {
       <PageHead
         crumbs={["Royal Care", L.n, "Dashboard"]}
         title={`${L.n} counter`}
-        tip="Today's sales and stock at this counter."
+        tip="This session's sales, and the stock behind them, at this counter. The session runs from the last Z to the next one - not from midnight."
         actions={<>
           <Btn variant="gh" onClick={() => nav("/requests")}>Raise a request</Btn>
           <Btn onClick={() => nav("/pos")}>Open till</Btn>
         </>}
       />
 
+      {!reading && !session && (
+        <Alert
+          tone="c"
+          label="OUTAGE"
+          action={<Btn size="xs" variant="gh" onClick={retry}>Try again</Btn>}
+        >
+          The register could not be read, so this counter's open session is unknown and every takings figure
+          below is blank. <b>This is not a session that took nothing</b> - what the till holds cannot be told
+          until the register answers.
+        </Alert>
+      )}
+
       <Kpis items={[
-        { l: "Billed today", v: money0(billed), d: <>{L.n} · every tender</> },
-        { l: "Cash taken today", v: money0(cashTaken), d: <>{cashBills.length} of {mine.length} bill{mine.length === 1 ? "" : "s"}</> },
-        { l: "Bills raised", v: String(mine.length), d: <>last bill {latest[0]?.t ?? "-"}</> },
-        { l: "Items sold", v: String(itemsSold), d: <>across {menu.length} listed products</> },
-        { l: "Average bill", v: money0(avgBill), d: <>{mine.length ? money(avgBill) : "no bills yet"}</> },
+        { l: "Billed this session", v: takings(money0(billed)), d: <>{L.n} · {since}</> },
+        { l: "Cash taken this session", v: takings(money0(cashTaken)), d: <>{cashBills.length} of {mine.length} bill{mine.length === 1 ? "" : "s"}</> },
+        { l: "Bills raised", v: takings(String(mine.length)), d: <>last bill {latest[0]?.t ?? "-"}</> },
+        { l: "Items sold", v: takings(String(itemsSold)), d: <>across {menu.length} listed products</> },
+        { l: "Average bill", v: takings(money0(avgBill)), d: <>{mine.length ? money(avgBill) : "no bills yet"}</> },
+        // Not a takings figure and never was: a product is off the menu whatever the register says.
         { l: "Products switched off", v: String(off.length), d: <>of {menu.length} on this menu</> },
       ]} />
 
@@ -199,7 +243,7 @@ export default function Dashboard() {
       <div className="mtop" />
       <Grid cols="g21">
         <div>
-          <Card title="Top five sellers today" sub={`by revenue at ${L.n}`}>
+          <Card title="Top five sellers this session" sub={`by revenue at ${L.n}`}>
             <DataTable
               cols={[
                 { h: "Product", cls: "nm", w: "46%" },
@@ -218,7 +262,7 @@ export default function Dashboard() {
               }))}
               empty={{
                 title: "Nothing billed at this counter yet",
-                sub: "Open the till - the first bill of the day starts this table.",
+                sub: "Open the till - the first bill of the session starts this table.",
                 action: <Btn size="sm" onClick={() => nav("/pos")}>Open till</Btn>,
               }}
             />
@@ -226,7 +270,7 @@ export default function Dashboard() {
           <div className="mtop" />
           <Card title="Last five bills" sub="this counter" right={<Btn variant="gh" size="sm" onClick={() => nav("/bills")}>All bills</Btn>}>
             {feed.length ? <Feed items={feed} /> : (
-              <p className="mini">Nothing billed today. The first bill will appear here.</p>
+              <p className="mini">Nothing billed in this session. The first bill will appear here.</p>
             )}
           </Card>
         </div>
@@ -236,8 +280,10 @@ export default function Dashboard() {
             for this release, so every one of those figures was invented at render time and the
             drawer total built on top of them was wrong by whatever the real float was. What is
             left is what the bills actually say. */}
-        <Card title="Today at this counter" sub={L.floor} tip={<>
-          <b>Cash taken {money(cashTaken)}</b> is what the till has collected in notes today - add whatever float you
+        <Card title="This session at this counter" sub={since}
+          right={<Btn variant="gh" size="sm" onClick={() => nav("/register")}>Register</Btn>}
+          tip={<>
+          <b>Cash taken {money(cashTaken)}</b> is what the till has collected in notes since the last Z - add whatever float you
           were handed to get what should be counted out. Card and UPI are taken here but settle to the hospital
           account; patient, staff and department bills collect nothing at the counter at all. Neither is cash, which
           is why <b>total billed {money(billed)}</b> is the larger figure.

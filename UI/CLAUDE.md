@@ -118,6 +118,20 @@ try {
   party is charged, off the snapshot's rate card) are previews while the operator types. The server makes the actual decision. When you preview, use the `@rch/domain` function the
   server uses, not a lookalike.
 
+## Postings and the register
+
+- **`postings` on the store is where the signed-in account may work**; `user.loc` is where it is
+  standing. One posting is the ordinary case and no picker is ever drawn. `login`, `restore` and
+  `switchLocation` all set it - forget one and the header switcher vanishes after a page reload.
+- **`switchLocation(loc)` reloads the whole snapshot**, because every location-scoped collection in
+  it belonged to the counter just left.
+- **Takings are windowed on the open register session, not on `isToday`.** Both dashboards read
+  `readXReport` as they mount, so a test that renders one must stub it - unstubbed it reaches
+  `fetch`, and under `vi.useFakeTimers()` it never settles. `src/__tests__/time.test.tsx` stubs it
+  once in `beforeEach`.
+- **`readXReport` / `readZReports` answer `null` on failure**, never an empty report, so a screen
+  can say "could not be read" instead of "nothing taken" - the distinction `AdminAudit.tsx` draws.
+
 ## src/api
 
 - **`client.ts`** is the one generic client.

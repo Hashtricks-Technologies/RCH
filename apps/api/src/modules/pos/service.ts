@@ -13,6 +13,7 @@ import { allocateId } from "../../lib/ids.js";
 import { lockBalances, postMoves, type Move } from "../../lib/ledger.js";
 import { assertOpen, lockLocation } from "../../lib/locations.js";
 import { loadMaster } from "../../lib/master.js";
+import { holdSession, sessionFor } from "../../lib/register.js";
 import { reservedAt } from "../../lib/reservations.js";
 import { assertRule } from "../../lib/rules.js";
 import { termsFor } from "../../lib/terms.js";
@@ -53,6 +54,13 @@ export function createPosService(db: Db) {
         // The outlet first - it is the documents tier - so a close waits for this sale to commit,
         // or this sale reads the outlet closed.
         assertOpen(await lockLocation(tx, loc));
+        // Then the register's open session, opened here if the outlet has none - the first sale
+        // after a Z is what starts the next business day, and nothing else does. It is a
+        // document too, so it is taken in the documents tier: after the outlet's row and before
+        // the bill number and every shelf. Held `FOR SHARE`, so a Z-close waits for this sale to
+        // commit rather than counting half of it, and a sale that begins after the close reads
+        // no open session and opens the next (`lib/register.ts`).
+        const session = await sessionFor(tx, loc, claims.sub);
         // A cart is a bag of scans: the same item read twice is one line of two, and the
         // cover check has to see the total, not each half.
         const cart: Record<string, number> = {};
@@ -172,6 +180,10 @@ export function createPosService(db: Db) {
         const no = await allocateId(tx, "bill", at);
         const head = await posRepo.insertBill(tx, {
           no, loc, operatorId: claims.sub, total: money(plan.tot), tax: money(plan.tax), at, tender: body.tender,
+          // Which Z will account for this bill, decided here and not by a clock: the business
+          // day is Z-to-Z, and a sale that commits a moment either side of a close must fall
+          // inside exactly one of them.
+          sessionId: session.id,
           payerKind: payer?.kind ?? null, payerId: payer?.id ?? null, payerName: payer?.name ?? null,
           // The rate as well as the rupees: the rate card moves, and a bill has to be able to say
           // what it was charged at long after somebody changed it.
@@ -256,6 +268,19 @@ export function createPosService(db: Db) {
         // A void posts the sale's stock back onto the shelf it came off, and a closed outlet's shelves
         // were emptied to close it.
         assertOpen(await lockLocation(tx, bill.loc), "reopen it before voiding its bills");
+
+        // And the business day it belongs to has not been closed off yet. Same IST day is not
+        // enough on its own: a counter can take the Z at 22:00 and a manager can reach for Void
+        // at 22:05, still well inside the same day. A Z stores its figures as printed, precisely
+        // so a reprint a week later says what the slip said, and a bill unsold after its Z would
+        // leave those figures and the bills behind them disagreeing for good.
+        //
+        // The row is taken `FOR SHARE` before it is read, the same as a sale takes it: a close
+        // running in the same instant then waits for this void and counts it, instead of
+        // printing a Z this void is about to invalidate. A bill from before the register existed
+        // carries no session and is judged by the same-day rule alone.
+        const shut = bill.sessionId ? await holdSession(tx, bill.sessionId) : undefined;
+        assertRule(!shut?.closedAt, `${no} was closed off on ${shut?.zNo} and can no longer be voided.`);
 
         // No `requireLocOf` here, on purpose: a manager is hospital-wide (their `loc` is a desk,
         // not a scope), and the route is already closed to every other role. The counter that

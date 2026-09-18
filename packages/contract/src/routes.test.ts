@@ -84,6 +84,7 @@ const SAMPLES: Record<string, Record<string, unknown>> = {
   voidSettlement: { reason: "Keyed against the wrong consultant" },
   // ---- postings and the register
   switchLocation: { loc: "kiosk" },
+  setAdminUserPostings: { locs: ["coffee", "kiosk"] },
   closeRegister: { loc: "coffee", countedCash: 26885, note: "Drawer counted at the pass" },
 };
 // `routes` is a const object, so `r.body` is a union of every literal schema type; the cast

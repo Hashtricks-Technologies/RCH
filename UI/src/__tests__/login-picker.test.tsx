@@ -5,7 +5,7 @@ import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import Login from "../pages/Login";
 import { setAccessToken } from "../api/session";
 import { useApp } from "../store";
-import { resetStore } from "./fixture";
+import { resetStore, S } from "./fixture";
 
 /**
  * The sign-in screen's employee picker: staff choose themselves from `GET /auth/directory`
@@ -84,7 +84,9 @@ beforeEach(() => {
   vi.stubGlobal("fetch", fetchMock);
   fetchMock.mockReset();
   setAccessToken(null);
-  useApp.setState({ user: null, auth: "signed-out", mustChangePassword: false, authError: null, toast: null });
+  // `postings` is not part of `resetStore`'s seed, and it decides whether the third step draws -
+  // so it is cleared here, or one case's two counters would be the next case's as well.
+  useApp.setState({ user: null, auth: "signed-out", mustChangePassword: false, authError: null, toast: null, postings: [] });
 });
 afterEach(() => { ui?.unmount(); ui = undefined; vi.unstubAllGlobals(); setAccessToken(null); });
 
@@ -272,5 +274,139 @@ describe("the sign-in employee picker", () => {
     expect(box.getAttribute("aria-activedescendant")).toBe("emp-opt-1");
     act(() => { box.dispatchEvent(new FocusEvent("focusout", { bubbles: true })); });
     expect(box.getAttribute("aria-expanded")).toBe("false");
+  });
+});
+
+/**
+ * The third step, for the one account shape that needs it: a consultant posted to more than one
+ * counter chooses which one they are signing in at, before the shell is allowed to mount. Every
+ * other account has one posting and never sees any of this.
+ */
+describe("the sign-in counter picker", () => {
+  const KAVITHA = {
+    id: "u1", n: "Kavitha Raman", e: "kavitha.r@royalcare.in", r: "counter", rl: "Counter Operator",
+    loc: "coffee", col: "#B45309", emp: "RC-4471", ph: "", admin: false,
+  };
+  const auth = (over: Record<string, unknown> = {}) =>
+    json({ accessToken: "tok", user: KAVITHA, mustChangePassword: false, postings: ["coffee"], ...over });
+  const switches = () =>
+    fetchMock.mock.calls
+      .filter(([u]) => String(u).endsWith("/auth/switch-location"))
+      .map(([, init]) => JSON.parse(String((init as RequestInit).body)) as { loc: string });
+
+  /** The snapshot is not what these cases are about, and a real one would need the whole wire. */
+  const noSnapshot = () => {
+    useApp.setState({ loadSnapshot: async () => { useApp.setState({ auth: "ready" }); } });
+  };
+  /** Pick Kavitha out of the directory and type her password - the two steps that come first. */
+  const signIn = async (u: Ui) => {
+    click(u.box());
+    click(u.options()[1]);
+    typeIn(u.q<HTMLInputElement>("#pw")!, "a-long-enough-secret");
+    await submit(u);
+  };
+
+  it("asks nothing extra of an account with one posting, and sends it straight in", async () => {
+    noSnapshot();
+    serve({ "GET /api/v1/auth/directory": () => json(DIR), "POST /api/v1/auth/login": () => auth() });
+    ui = await mountLogin();
+    await signIn(ui);
+    expect(ui.q("#where")?.textContent).toBe("/pos");
+    expect(switches()).toHaveLength(0);
+  });
+
+  it("asks which counter when there is more than one, and switches the session to the one picked", async () => {
+    noSnapshot();
+    serve({
+      "GET /api/v1/auth/directory": () => json(DIR),
+      "POST /api/v1/auth/login": () => auth({ postings: ["coffee", "kiosk"] }),
+      "POST /api/v1/auth/switch-location": () =>
+        json({ accessToken: "tok-2", user: { ...KAVITHA, loc: "kiosk" }, mustChangePassword: false, postings: ["coffee", "kiosk"] }),
+    });
+    ui = await mountLogin();
+    await signIn(ui);
+
+    // Nothing has routed anywhere: the shell does not mount until a counter is chosen.
+    expect(ui.q("#where")).toBeNull();
+    expect(ui.text()).toContain("Which counter?");
+    expect(ui.options().map((o) => o.textContent)).toEqual(["OT-C3Coffee Shop", "OT-GKSnack Kiosk"]);
+
+    click(ui.options()[1]);
+    await act(async () => { await new Promise((r) => { setTimeout(r, 0); }); });
+    expect(switches()).toEqual([{ loc: "kiosk" }]);
+    expect(S().user!.loc).toBe("kiosk");
+    expect(ui.q("#where")?.textContent).toBe("/pos");
+  });
+
+  it("is driven from the keyboard, the same arrows and Enter as the employee list", async () => {
+    noSnapshot();
+    serve({
+      "GET /api/v1/auth/directory": () => json(DIR),
+      "POST /api/v1/auth/login": () => auth({ postings: ["coffee", "kiosk", "rest"] }),
+      "POST /api/v1/auth/switch-location": () =>
+        json({ accessToken: "tok-2", user: { ...KAVITHA, loc: "rest" }, mustChangePassword: false, postings: ["coffee", "kiosk", "rest"] }),
+    });
+    ui = await mountLogin();
+    await signIn(ui);
+    const list = ui.q<HTMLUListElement>("#loc-list")!;
+    expect(list.getAttribute("aria-activedescendant")).toBe("loc-opt-0");
+    press(list, "ArrowDown");
+    press(list, "ArrowDown");
+    press(list, "ArrowDown");                              // and stops at the last
+    expect(list.getAttribute("aria-activedescendant")).toBe("loc-opt-2");
+    press(list, "ArrowUp");
+    expect(list.getAttribute("aria-activedescendant")).toBe("loc-opt-1");
+    press(list, "ArrowDown");
+    await act(async () => {
+      list.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+      await new Promise((r) => { setTimeout(r, 0); });
+    });
+    expect(switches()).toEqual([{ loc: "rest" }]);
+  });
+
+  it("keeps a refused switch on the picker, with the server's sentence on the form", async () => {
+    noSnapshot();
+    serve({
+      "GET /api/v1/auth/directory": () => json(DIR),
+      "POST /api/v1/auth/login": () => auth({ postings: ["coffee", "kiosk"] }),
+      "POST /api/v1/auth/switch-location": () =>
+        json({ error: { code: "conflict", message: "Refused - Snack Kiosk is closed; ask the administrator to reopen it." } }, 409),
+    });
+    ui = await mountLogin();
+    await signIn(ui);
+    click(ui.options()[1]);
+    await act(async () => { await new Promise((r) => { setTimeout(r, 0); }); });
+
+    expect(switches()).toEqual([{ loc: "kiosk" }]);
+    // Still on the picker, still signed in nowhere.
+    expect(ui.q("#where")).toBeNull();
+    expect(ui.text()).toContain("Which counter?");
+    expect(ui.options()).toHaveLength(2);
+    // On the form, word for word - and taken off the toast, the way this screen treats every
+    // other refusal it shows.
+    expect(ui.q(".al")?.textContent).toContain("Refused - Snack Kiosk is closed");
+    expect(S().toast).toBeNull();
+
+    // The other counter is still there to take, and taking it lands.
+    serve({
+      "GET /api/v1/auth/directory": () => json(DIR),
+      "POST /api/v1/auth/switch-location": () =>
+        json({ accessToken: "tok-2", user: KAVITHA, mustChangePassword: false, postings: ["coffee", "kiosk"] }),
+    });
+    click(ui.options()[0]);
+    await act(async () => { await new Promise((r) => { setTimeout(r, 0); }); });
+    expect(ui.q("#where")?.textContent).toBe("/pos");
+  });
+
+  it("asks for the new password first, and never the counter, on a first sign-in", async () => {
+    noSnapshot();
+    serve({
+      "GET /api/v1/auth/directory": () => json(DIR),
+      "POST /api/v1/auth/login": () => auth({ mustChangePassword: true, postings: ["coffee", "kiosk"] }),
+    });
+    ui = await mountLogin();
+    await signIn(ui);
+    expect(ui.q("#where")?.textContent).toBe("/change-password");
+    expect(switches()).toHaveLength(0);
   });
 });

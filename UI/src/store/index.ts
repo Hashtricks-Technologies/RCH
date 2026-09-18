@@ -321,13 +321,16 @@ export const useApp = create<AppState>((set, get) => ({
     try {
       const r = await call(routes.refresh);
       setAccessToken(r.accessToken);
-      set({ user: r.user, mustChangePassword: r.mustChangePassword });
+      // `postings` too, not just the user: the refresh response carries them, and dropping them
+      // here left a consultant posted to several counters with no switcher in the header after
+      // any page reload - the session knew, and the browser had forgotten.
+      set({ user: r.user, postings: r.postings, mustChangePassword: r.mustChangePassword });
       if (r.mustChangePassword) set({ auth: "ready" });
       else await get().loadSnapshot();
     } catch (e) {
       // A first-time visitor has no cookie. That is not a session ending, so it
       // says nothing and simply shows the sign-in form.
-      set({ auth: "signed-out", user: null });
+      set({ auth: "signed-out", user: null, postings: [] });
       // Anything else - the server down, a gateway page, a 500 - is not "no cookie", and an
       // operator who was signed in a minute ago must not be asked for a password in silence.
       if (!(e instanceof ApiError && e.status === 401)) get().notify(e instanceof ApiError ? e.message : UNREACHABLE);

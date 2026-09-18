@@ -6,7 +6,9 @@ import { buildTestApp } from "../../test/app.js";
 import { truncateAll, warmPool } from "../../test/db.js";
 import { seedTestDb } from "../../test/seed.js";
 import { authHeaders } from "../../test/auth.js";
-import { users, refreshTokens } from "../../db/schema/index.js";
+import { locations, users, refreshTokens, userPostings } from "../../db/schema/index.js";
+import { createAdminService } from "./service.js";
+import type { AccessClaims } from "../../plugins/auth.js";
 
 let app: App;
 beforeAll(async () => { app = await buildTestApp({ schema: "admin" }); await app.ready(); });
@@ -143,6 +145,91 @@ describe("PATCH /admin/users/:id", () => {
     const res = await app.inject({ method: "PATCH", url: "/api/v1/admin/users/u2", headers: { ...(await admin()), "idempotency-key": randomUUID() }, payload: { role: "manager", loc: "coffee" } });
     expect(res.statusCode).toBe(422);
     expect(res.json().error.message).toContain("own");
+  });
+});
+
+/**
+ * `user_postings` is where an account may work. Every account is created with its home row, a move
+ * puts the list back to that one row, and the whole list is set in one deliberate step.
+ *
+ * `setPostings` is called on the service rather than over the wire because it has no route yet:
+ * the manifest carries no entry for it and `UpdateAdminUserBodySchema` is strict, so there is no
+ * way to reach it through `mount()` until `packages/contract` names it. Everything under it - the
+ * pairing check, the home-location rule, the session revoke, the log line - is exercised here.
+ */
+describe("postings", () => {
+  const postingsOf = async (userId: string) =>
+    (await app.db.select().from(userPostings).where(eq(userPostings.userId, userId))).map((p) => p.loc).sort();
+  /** u2 is the flagged account this file signs in as; the service takes the claim, not a token. */
+  const claims: AccessClaims = { sub: "u2", role: "manager", loc: "rest", mcp: false, admin: true };
+  const setPostings = (id: string, locs: string[]) =>
+    createAdminService(app.db).setPostings(claims, id, locs as never);
+
+  it("gives a new account its home location as its first posting", async () => {
+    const made = (await app.inject({
+      method: "POST", url: "/api/v1/admin/users", headers: { ...(await admin()), "idempotency-key": randomUUID() },
+      payload: { name: "Anitha R", email: "anitha.r@royalcare.in", role: "counter", loc: "rest" },
+    })).json().result as { id: string };
+    expect(await postingsOf(made.id)).toEqual(["rest"]);
+  });
+
+  it("sets the whole list at once, and ends every session the account was holding", async () => {
+    await app.db.insert(refreshTokens).values({ userId: "u1", family: "00000000-0000-4000-8000-000000000013", tokenHash: "h-post", expiresAt: new Date(Date.now() + 100000) });
+    const r = await setPostings("u1", ["kiosk", "coffee"]);
+    expect(r.changed).toEqual(["accounts"]);
+    expect(r.message).toBe("Kavitha Raman (RC-4471) is posted to coffee, kiosk - their sessions are ended");
+    expect(await postingsOf("u1")).toEqual(["coffee", "kiosk"]);
+    // An access token already minted carries a `loc` this list could have just taken away.
+    expect((await app.db.select().from(refreshTokens).where(eq(refreshTokens.userId, "u1")))[0].revokedAt).not.toBeNull();
+    // Taking one away is the same write, and it really removes the row.
+    await setPostings("u1", ["coffee"]);
+    expect(await postingsOf("u1")).toEqual(["coffee"]);
+  });
+
+  it("writes one log line naming the new list", async () => {
+    await setPostings("u1", ["coffee", "kiosk"]);
+    const log = (await app.inject({ method: "GET", url: "/api/v1/admin/actions", headers: await admin() })).json() as Array<{ action: string; target: string; details: Record<string, unknown> }>;
+    // Its own action, not a role-and-location move: the two are different decisions and the log
+    // has to tell them apart. `update_postings` joined the contract's closed union with the route.
+    expect(log[0]).toMatchObject({ action: "update_postings", target: "Kavitha Raman", details: { postings: ["coffee", "kiosk"] } });
+  });
+
+  it("refuses a location the account's role never works at, in the same words the create form uses", async () => {
+    await expect(setPostings("u1", ["coffee", "kitchen"])).rejects.toMatchObject({
+      status: 400, message: "Counter Operator works at an open outlet, not at Central Kitchen",
+    });
+    // The refused list is rolled back whole - the seed's two counters are still the two counters.
+    expect(await postingsOf("u1")).toEqual(["coffee", "kiosk"]);
+  });
+
+  it("refuses a list that leaves out the account's own location, and an empty one", async () => {
+    await expect(setPostings("u1", ["kiosk"])).rejects.toMatchObject({
+      status: 400, message: 'the postings must include RC-4471\'s own location "coffee"',
+    });
+    await expect(setPostings("u1", [])).rejects.toMatchObject({ status: 400, message: "RC-4471 needs at least one posting" });
+    expect(await postingsOf("u1")).toEqual(["coffee", "kiosk"]);
+  });
+
+  it("refuses a closed outlet, a super admin and the caller's own account", async () => {
+    // Closed straight on the row: the seeded Snack Kiosk holds stock and staff, so the admin's own
+    // close route refuses it, and what is under test here is the pairing check, not that refusal.
+    await app.db.update(locations).set({ active: false }).where(eq(locations.key, "kiosk"));
+    await expect(setPostings("u1", ["coffee", "kiosk"])).rejects.toMatchObject({
+      status: 400, message: "Counter Operator works at an open outlet - Snack Kiosk is closed",
+    });
+    await expect(setPostings("u2", ["rest"])).rejects.toMatchObject({ status: 422, message: "You cannot change the postings of your own account from here." });
+    await app.db.update(users).set({ admin: true }).where(eq(users.id, "u3"));
+    await expect(setPostings("u3", ["store"])).rejects.toMatchObject({
+      status: 422, message: "Refused - Suresh Muthu (RC-2088) is a super admin, and a super admin has no postings to change",
+    });
+  });
+
+  it("puts the list back to the one home row when the account is moved", async () => {
+    await setPostings("u1", ["coffee", "kiosk"]);
+    const res = await app.inject({ method: "PATCH", url: "/api/v1/admin/users/u1", headers: { ...(await admin()), "idempotency-key": randomUUID() }, payload: { role: "prod", loc: "kitchen" } });
+    expect(res.statusCode, res.body).toBe(200);
+    // The two outlets she stood at are not places a Kitchen In-charge works at all.
+    expect(await postingsOf("u1")).toEqual(["kitchen"]);
   });
 });
 

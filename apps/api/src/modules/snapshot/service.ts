@@ -83,7 +83,11 @@ export function createSnapshotService(db: Db) {
         const adjReq = await D.readAdjustmentRequests(tx, names);
         // The desk and its owners come off one read: `scope()` cuts the list on `owners`, so a
         // ticket in one and not the other is a ticket its own author cannot see.
-        const full: Snapshot = { user: toWireUser(u), items, locations, users, prices, priceLists, menu, stock, rsv, ovr, req, tkt, prq, po, pord, batch, bills, grn, vendors, contracts, tickets: support.tickets, productReqs, shopAsks, roster, terms, sales: salesBlock.sales, dayLabels: salesBlock.dayLabels, adjustments, adjReq };
+        // `claims.loc` and not `u.loc`: a consultant posted to several counters is standing at
+        // the one the token names, which may not be their home. Reading the home location here
+        // would hand the browser a different counter from the one its own token authorises, and
+        // the next snapshot load would quietly move them back mid-shift.
+        const full: Snapshot = { user: { ...toWireUser(u), loc: claims.loc }, items, locations, users, prices, priceLists, menu, stock, rsv, ovr, req, tkt, prq, po, pord, batch, bills, grn, vendors, contracts, tickets: support.tickets, productReqs, shopAsks, roster, terms, sales: salesBlock.sales, dayLabels: salesBlock.dayLabels, adjustments, adjReq };
         return scope(full, { role: claims.role, loc: claims.loc, sub: claims.sub }, support.owners);
       });
     },

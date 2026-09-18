@@ -1,11 +1,11 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { randomUUID } from "node:crypto";
-import { eq, sql } from "drizzle-orm";
+import { createHash, randomUUID } from "node:crypto";
+import { and, eq, sql } from "drizzle-orm";
 import { buildTestApp } from "../../test/app.js";
 import { warmPool } from "../../test/db.js";
 import { seedTestDb } from "../../test/seed.js";
 import type { App } from "../../app.js";
-import { refreshTokens, users } from "../../db/schema/index.js";
+import { locations, refreshTokens, userPostings, users } from "../../db/schema/index.js";
 import { Attempts } from "./service.js";
 import { purgeRefreshTokens } from "./repo.js";
 
@@ -35,6 +35,9 @@ afterAll(async () => {
 const login = (app: App, emp = "RC-4471", password = "changeme") =>
   app.inject({ method: "POST", url: "/api/v1/auth/login", payload: { emp, password } });
 const cookieOf = (r: { cookies: Array<{ name: string; value: string }> }) => r.cookies.find((c) => c.name === "rch_refresh")!;
+/** Where a minted access token says this session is standing - the one claim every location guard
+ *  on the server reads, so this is the thing a switch has to actually move. */
+const claimLoc = (app: App, token: string) => (app.jwt.decode(token) as { loc: string }).loc;
 
 describe("GET /auth/directory", () => {
   it("lists who can sign in - number and name only, in number order - to a caller with no token", async () => {
@@ -235,6 +238,139 @@ describe("logout", () => {
     expect(out.statusCode).toBe(200);
     expect(out.headers["set-cookie"]).toMatch(/rch_refresh=;/);
     expect((await a.inject({ method: "POST", url: "/api/v1/auth/refresh", cookies: { rch_refresh: c } })).statusCode).toBe(401);
+  });
+});
+
+/**
+ * `user_postings` is where an account **may** work; the token's `loc` claim is where it **is**
+ * working, and it stays exactly one location. Everything below is about keeping those two apart:
+ * the list travels on the sign-in response so the picker has something to offer, and the claim
+ * moves only when somebody asks it to - never on a silent refresh, which is the defect the
+ * refresh row's own `loc` column exists to prevent.
+ */
+describe("postings and switch-location", () => {
+  // `describe("login")` above leaves RC-4482 deactivated, and this file shares one app.
+  beforeAll(async () => { await a.db.update(users).set({ active: true }).where(eq(users.id, "u6")); });
+  /** The refresh row a cookie stands for. The column stores the hash, never the token. */
+  const hashOf = (raw: string) => createHash("sha256").update(raw).digest("hex");
+  const rowFor = async (app: App, cookie: string) =>
+    (await app.db.select().from(refreshTokens).where(eq(refreshTokens.tokenHash, hashOf(cookie))))[0];
+  const switchTo = (app: App, loc: string, accessToken: string, cookie?: string) =>
+    app.inject({
+      method: "POST", url: "/api/v1/auth/switch-location",
+      headers: { authorization: `Bearer ${accessToken}` },
+      ...(cookie ? { cookies: { rch_refresh: cookie } } : {}),
+      payload: { loc },
+    });
+  const refresh = (app: App, cookie: string) =>
+    app.inject({ method: "POST", url: "/api/v1/auth/refresh", cookies: { rch_refresh: cookie } });
+
+  it("signs in at the home counter and says which others the account may stand at", async () => {
+    const body = (await login(a, "RC-4471")).json();
+    // The demo hospital posts Kavitha Raman to her own Coffee Shop and to the Snack Kiosk.
+    expect(body.postings).toEqual(["coffee", "kiosk"]);
+    expect(body.user.loc).toBe("coffee");
+    expect(claimLoc(a, body.accessToken)).toBe("coffee");
+  });
+
+  it("leaves an account with one posting exactly as it was before any of this existed", async () => {
+    const body = (await login(a, "RC-4482")).json();
+    expect(body.postings).toEqual(["kiosk"]);
+    expect(body.user.loc).toBe("kiosk");
+    // There is nowhere for it to switch to, and asking is refused rather than quietly allowed.
+    const r = await switchTo(a, "coffee", body.accessToken);
+    expect(r.statusCode).toBe(422);
+    expect(r.json().error.message).toBe("You are not posted to Coffee Shop.");
+  });
+
+  it("moves the session: the claim, the wire user and the session's own refresh row all follow", async () => {
+    const l = await login(a, "RC-4471");
+    const c = cookieOf(l).value;
+    const r = await switchTo(a, "kiosk", l.json().accessToken, c);
+    expect(r.statusCode, r.body).toBe(200);
+    const body = r.json();
+    expect(claimLoc(a, body.accessToken)).toBe("kiosk");
+    expect(body.user.loc).toBe("kiosk");
+    expect(body.postings).toEqual(["coffee", "kiosk"]);
+    // Nothing is rotated: it is the same session, standing somewhere else, so no new cookie is set.
+    expect(r.cookies.find((x) => x.name === "rch_refresh")).toBeUndefined();
+    expect((await rowFor(a, c)).loc).toBe("kiosk");
+  });
+
+  it("keeps the switched counter across a silent refresh, and across the one after that", async () => {
+    // The defect this is here for: a token expires every fifteen minutes, so without the refresh
+    // row's own `loc` the next silent rotation re-reads `users.loc` and walks a consultant back to
+    // their home till in the middle of somebody else's shift.
+    const l = await login(a, "RC-4471");
+    const c1 = cookieOf(l).value;
+    expect((await switchTo(a, "kiosk", l.json().accessToken, c1)).statusCode).toBe(200);
+
+    const r2 = await refresh(a, c1);
+    expect(r2.statusCode).toBe(200);
+    expect(claimLoc(a, r2.json().accessToken)).toBe("kiosk");
+    expect(r2.json().user.loc).toBe("kiosk");
+
+    const c2 = cookieOf(r2).value;
+    expect((await rowFor(a, c2)).loc).toBe("kiosk");
+    const r3 = await refresh(a, c2);
+    expect(claimLoc(a, r3.json().accessToken)).toBe("kiosk");
+  });
+
+  it("stands a session opened before postings existed at its home counter", async () => {
+    const l = await login(a, "RC-4471");
+    const c = cookieOf(l).value;
+    // Null is every refresh row migration 0023 found already on the table.
+    await a.db.update(refreshTokens).set({ loc: null }).where(eq(refreshTokens.tokenHash, hashOf(c)));
+    const r = await refresh(a, c);
+    expect(r.statusCode).toBe(200);
+    expect(claimLoc(a, r.json().accessToken)).toBe("coffee");
+  });
+
+  it("refuses a counter the account is not posted to, naming it", async () => {
+    const l = await login(a, "RC-4471");
+    const c = cookieOf(l).value;
+    const r = await switchTo(a, "rest", l.json().accessToken, c);
+    expect(r.statusCode).toBe(422);
+    expect(r.json().error.message).toBe("You are not posted to Restaurant.");
+    // The refused switch moved nothing: the session is still at the counter it was at.
+    expect((await rowFor(a, c)).loc).toBe("coffee");
+    expect(claimLoc(a, (await refresh(a, c)).json().accessToken)).toBe("coffee");
+  });
+
+  it("refuses a closed outlet, even one the account is posted to", async () => {
+    const l = await login(a, "RC-4471");
+    const c = cookieOf(l).value;
+    await a.db.update(locations).set({ active: false }).where(eq(locations.key, "kiosk"));
+    try {
+      const r = await switchTo(a, "kiosk", l.json().accessToken, c);
+      expect(r.statusCode).toBe(422);
+      expect(r.json().error.message).toBe("Refused - Snack Kiosk is closed; nothing may be sold there");
+      expect((await rowFor(a, c)).loc).toBe("coffee");
+    } finally {
+      await a.db.update(locations).set({ active: true }).where(eq(locations.key, "kiosk"));
+    }
+  });
+
+  it("answers 404 for a location the hospital does not have", async () => {
+    const l = await login(a, "RC-4471");
+    const r = await switchTo(a, "nowhere", l.json().accessToken, cookieOf(l).value);
+    expect(r.statusCode).toBe(404);
+    expect(r.json().error.message).toBe("There is no location nowhere.");
+  });
+
+  it("offers a posting an administrator added at the very next sign-in", async () => {
+    // Read off `user_postings`, not off the account's own row: adding one here is the whole of
+    // what putting a consultant on a second till amounts to.
+    await a.db.insert(userPostings).values({ userId: "u6", loc: "coffee" });
+    try {
+      const l = await login(a, "RC-4482");
+      expect(l.json().postings).toEqual(["coffee", "kiosk"]);
+      const r = await switchTo(a, "coffee", l.json().accessToken, cookieOf(l).value);
+      expect(r.statusCode, r.body).toBe(200);
+      expect(claimLoc(a, r.json().accessToken)).toBe("coffee");
+    } finally {
+      await a.db.delete(userPostings).where(and(eq(userPostings.userId, "u6"), eq(userPostings.loc, "coffee")));
+    }
   });
 });
 

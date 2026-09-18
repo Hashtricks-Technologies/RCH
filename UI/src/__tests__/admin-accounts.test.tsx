@@ -17,10 +17,15 @@ import { as, resetStore, S } from "./fixture";
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
-const account = (over: Partial<AdminUser>): AdminUser => ({
-  id: "u1", emp: "RC-4471", n: "Kavitha Raman", e: "kavitha.r@royalcare.in", ph: "", r: "counter",
-  rl: "Counter Operator", loc: "coffee", col: "#B45309", active: true, mustChangePassword: false, admin: false, ...over,
-});
+const account = (over: Partial<AdminUser>): AdminUser => {
+  const a = {
+    id: "u1", emp: "RC-4471", n: "Kavitha Raman", e: "kavitha.r@royalcare.in", ph: "", r: "counter" as const,
+    rl: "Counter Operator", loc: "coffee", col: "#B45309", active: true, mustChangePassword: false, admin: false, ...over,
+  };
+  // One posting unless a case says otherwise - what the server sends for every account but a
+  // consultant taking shifts at more than one counter.
+  return { ...a, postings: over.postings ?? [a.loc] };
+};
 const SUPER = account({ id: "u7", emp: "RC-0001", n: "System Administrator", r: "buyer", rl: "Super Admin", loc: "store", admin: true });
 const KAVITHA = account({});
 const DEEPA = account({ id: "u6", emp: "RC-4482", n: "Deepa Selvam", loc: "kiosk", active: false });
@@ -69,6 +74,12 @@ async function mountPage() {
     },
     button: (label: string, scope: ParentNode = host) => buttons(scope, label)[0],
     buttons: (label: string, scope: ParentNode = host) => buttons(scope, label),
+    /** A posting's tick box, found by the location name printed beside it. */
+    check: (name: string, scope: ParentNode = host) =>
+      [...scope.querySelectorAll("label")]
+        .find((l) => (l.textContent ?? "").trim() === name)
+        ?.querySelector<HTMLInputElement>("input[type=checkbox]"),
+    checks: (scope: ParentNode = host) => [...scope.querySelectorAll<HTMLInputElement>("input[type=checkbox]")],
     unmount: () => { act(() => { root.unmount(); }); host.remove(); },
   };
 }
@@ -252,5 +263,133 @@ describe("the account page", () => {
     const options = [...page.field("Location").querySelectorAll("option")].map((o) => o.textContent);
     expect(options).toContain("Juice Bar");
     expect(options).not.toContain("Tea Stall");
+  });
+});
+
+/**
+ * More than one posting per account: a consultant takes shifts at several outlets. The location
+ * select stays what it always was - where the account stands - and the tick boxes beside it are
+ * every other counter it may sign in at. The write is `PUT /admin/users/:id/postings`, which
+ * takes the whole list rather than a diff and requires the home location to be in it.
+ */
+describe("an account posted to more than one counter", () => {
+  const type = async (p: Page, label: string, v: string) => {
+    await act(async () => {
+      const el = p.field(label);
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(el, v);
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+  };
+  const body = (at: string, i = 0) => JSON.parse(String((hit(at)[i][1] as RequestInit).body)) as Record<string, unknown>;
+
+  it("creates the account at one counter, then posts it to the others ticked", async () => {
+    let list = [SUPER];
+    const made = account({ id: "u8", emp: "RC-0002", n: "Anitha R", e: "anitha.r@royalcare.in", loc: "coffee", mustChangePassword: true });
+    serve({
+      "GET /api/v1/admin/users": () => json(list),
+      "GET /api/v1/admin/actions": () => json([]),
+      "GET /api/v1/admin/locations": () => json(LOCS),
+      "POST /api/v1/admin/users": () => {
+        list = [...list, made];
+        return json({ result: { ...made, tempPassword: "one-time-pass-1" }, changed: ["accounts"], message: "Anitha R (RC-0002) created" });
+      },
+      "PUT /api/v1/admin/users/u8/postings": () =>
+        json({ result: made, changed: ["accounts"], message: "Anitha R (RC-0002) now works Coffee Shop and Snack Kiosk" }),
+    });
+    page = await mountPage();
+    // The counter the account starts at is ticked and cannot be unticked - an account always
+    // works where it stands.
+    const here = page.check("Coffee Shop")!;
+    expect(here.checked).toBe(true);
+    expect(here.disabled).toBe(true);
+
+    await type(page, "Name", "Anitha R");
+    await type(page, "Email", "anitha.r@royalcare.in");
+    await act(async () => { page!.check("Snack Kiosk")!.click(); });
+    await press(page.button("Create account"));
+
+    // The create itself is unchanged: no employee number, and the one location it stands at.
+    expect(body("POST /api/v1/admin/users")).toEqual({ name: "Anitha R", email: "anitha.r@royalcare.in", role: "counter", loc: "coffee" });
+    // The other counters are a second write against the account that now exists, found by the
+    // number the server actually gave.
+    expect(body("PUT /api/v1/admin/users/u8/postings")).toEqual({ locs: ["coffee", "kiosk"] });
+    expect(S().toast).toBe("Anitha R (RC-0002) now works Coffee Shop and Snack Kiosk");
+    // The form is empty again, boxes included.
+    expect(page.field("Name").value).toBe("");
+    expect(page.check("Snack Kiosk")!.checked).toBe(false);
+  });
+
+  it("sends no postings write when no other counter is ticked", async () => {
+    let list = [SUPER];
+    serve({
+      "GET /api/v1/admin/users": () => json(list),
+      "GET /api/v1/admin/actions": () => json([]),
+      "GET /api/v1/admin/locations": () => json(LOCS),
+      "POST /api/v1/admin/users": () => {
+        const made = account({ id: "u8", emp: "RC-0002", n: "Arun P", loc: "coffee" });
+        list = [...list, made];
+        return json({ result: { ...made, tempPassword: "p" }, changed: ["accounts"], message: "Arun P (RC-0002) created" });
+      },
+    });
+    page = await mountPage();
+    await type(page, "Name", "Arun P");
+    await type(page, "Email", "arun.p@royalcare.in");
+    await press(page.button("Create account"));
+    expect(hit("POST /api/v1/admin/users")).toHaveLength(1);
+    expect(fetchMock.mock.calls.filter(([u]) => String(u).includes("/postings"))).toHaveLength(0);
+  });
+
+  it("adds a counter to an account already created, without moving where it stands", async () => {
+    serve({
+      "GET /api/v1/admin/users": () => json([SUPER, KAVITHA]),
+      "GET /api/v1/admin/actions": () => json([]),
+      "GET /api/v1/admin/locations": () => json(LOCS),
+      "PUT /api/v1/admin/users/u1/postings": () =>
+        json({ result: KAVITHA, changed: ["accounts"], message: "Kavitha Raman now works Coffee Shop and Restaurant" }),
+    });
+    page = await mountPage();
+    const row = page.row("RC-4471");
+    expect(page.check("Coffee Shop", row)!.disabled).toBe(true);     // where she stands
+    await act(async () => { page!.check("Restaurant", row)!.click(); });
+    await press(page.button("Save", page.row("RC-4471")));
+
+    expect(body("PUT /api/v1/admin/users/u1/postings")).toEqual({ locs: ["coffee", "rest"] });
+    // Where she stands did not change, so the role/location write was never sent.
+    expect(hit("PATCH /api/v1/admin/users/u1")).toHaveLength(0);
+    expect(S().toast).toBe("Kavitha Raman now works Coffee Shop and Restaurant");
+  });
+
+  it("keeps the boxes as ticked when the postings write is refused", async () => {
+    serve({
+      "GET /api/v1/admin/users": () => json([SUPER, KAVITHA]),
+      "GET /api/v1/admin/actions": () => json([]),
+      "GET /api/v1/admin/locations": () => json(LOCS),
+      "PUT /api/v1/admin/users/u1/postings": () =>
+        json({ error: { code: "conflict", message: "Refused - Restaurant is closed; a closed outlet takes no staff" } }, 409),
+    });
+    page = await mountPage();
+    await act(async () => { page!.check("Restaurant", page!.row("RC-4471"))!.click(); });
+    await press(page.button("Save", page.row("RC-4471")));
+    expect(S().toast).toContain("Restaurant is closed");
+    expect(page.check("Restaurant", page.row("RC-4471"))!.checked).toBe(true);
+  });
+
+  it("draws no counters at all for a role with one place to work", async () => {
+    const keeper = account({ id: "u2", emp: "RC-2088", n: "Suresh Babu", r: "store", rl: "Store Keeper", loc: "store" });
+    serve({
+      "GET /api/v1/admin/users": () => json([SUPER, keeper]),
+      "GET /api/v1/admin/actions": () => json([]),
+      "GET /api/v1/admin/locations": () => json(LOCS),
+    });
+    page = await mountPage();
+    expect(page.checks(page.row("RC-2088"))).toHaveLength(0);
+    expect(page.row("RC-0001").querySelectorAll("input[type=checkbox]")).toHaveLength(0);
+    // And the create form drops the whole field once the role has nowhere else to be.
+    await act(async () => {
+      const role = page!.field("Role") as unknown as HTMLSelectElement;
+      Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")!.set!.call(role, "store");
+      role.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    expect(page.text()).not.toContain("Counters this account works");
   });
 });

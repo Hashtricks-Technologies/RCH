@@ -2,7 +2,7 @@ import { and, eq, isNull, sql } from "drizzle-orm";
 import { MIN_PASSWORD_LENGTH, type LocKey, type Role } from "@rch/contract";
 import { nextEmpNo, worksAt } from "@rch/domain";
 import type { Db } from "../db/client.js";
-import { idempotencyKeys, refreshTokens, users } from "../db/schema/index.js";
+import { idempotencyKeys, refreshTokens, userPostings, users } from "../db/schema/index.js";
 import { isForeignKeyViolation, withTransaction, type Tx } from "./db.js";
 import { lockLocation } from "./locations.js";
 import { hashPassword } from "./password.js";
@@ -51,6 +51,13 @@ async function byEmp(tx: Tx, emp: string) {
 }
 const revokeAll = (tx: Tx, userId: string) =>
   tx.update(refreshTokens).set({ revokedAt: new Date() }).where(and(eq(refreshTokens.userId, userId), isNull(refreshTokens.revokedAt)));
+
+/** An account's home location is its first posting. `user_postings` is *where it may work* and
+ *  `users.loc` is where it is based, so the home row is always on the list - the sign-in claim is
+ *  minted from it, and a session standing somewhere its own account is not posted is the state
+ *  this table exists to make impossible. */
+const postAt = (tx: Tx, userId: string, locs: readonly string[]) =>
+  tx.insert(userPostings).values(locs.map((loc) => ({ userId, loc }))).onConflictDoNothing();
 
 /**
  * Every mutation below has two shapes: a `*Tx` core that takes an already-open transaction, and
@@ -106,6 +113,7 @@ export async function createUserTx(tx: Tx, i: { emp?: string; name: string; emai
     id, name: i.name, email: i.email, role: i.role, roleLabel: ROLE_LABEL[i.role], loc: i.loc, colour: i.colour ?? PALETTE[n % PALETTE.length],
     empNo: emp, phone: i.phone ?? "", passwordHash: await hashPassword(i.password), mustChangePassword: true,
   });
+  await postAt(tx, id, [i.loc]);
   return { id, emp };
 }
 export const createUser = (db: Db, i: Parameters<typeof createUserTx>[1]): Promise<{ id: string; emp: string }> => withTransaction(db, (tx) => createUserTx(tx, i));
@@ -175,9 +183,42 @@ export async function updateUserRoleLocTx(tx: Tx, emp: string, next: { role: Rol
   await checkPairing(tx, next.role, next.loc);
   const u = await byEmp(tx, emp);
   await tx.update(users).set({ role: next.role, roleLabel: ROLE_LABEL[next.role], loc: next.loc, updatedAt: new Date() }).where(eq(users.id, u.id));
+  // The posting list goes back to the one home row. A move is to a new desk and often a new role,
+  // and the counters the account used to stand at are not the counters the new role works at -
+  // keeping them would leave a kitchen in-charge posted to two outlets. Where the account really
+  // does take shifts elsewhere, `setUserPostingsTx` says so afterwards, in one deliberate step.
+  await tx.delete(userPostings).where(eq(userPostings.userId, u.id));
+  await postAt(tx, u.id, [next.loc]);
   await revokeAll(tx, u.id);
 }
 export const updateUserRoleLoc = (db: Db, emp: string, next: { role: Role; loc: LocKey }): Promise<void> => withTransaction(db, (tx) => updateUserRoleLocTx(tx, emp, next));
+
+/**
+ * The whole posting list at once - every counter this account may stand at, replacing whatever it
+ * was posted to before.
+ *
+ * Nothing here reads the role to decide how many postings are allowed. Only a counter operator
+ * takes shifts at more than one till in practice, but that is a fact about the hospital, not a
+ * rule: what each location on the list is checked against is `checkPairing`, one location at a
+ * time, exactly as the home row is - so a list naming somewhere the role does not work is refused
+ * in the same words the create form would have used.
+ *
+ * Two rules of its own. The account's own `users.loc` must be on the list, because the sign-in
+ * claim is minted from it. And every session is revoked: an access token already in somebody's
+ * browser carries a `loc` claim this list may have just taken away, and it would go on asserting
+ * it for another fifteen minutes.
+ */
+export async function setUserPostingsTx(tx: Tx, emp: string, locs: readonly LocKey[]): Promise<LocKey[]> {
+  const u = await byEmp(tx, emp);
+  const wanted = [...new Set(locs)].sort();
+  if (wanted.length === 0) throw new ValidationError(`${u.empNo} needs at least one posting`);
+  if (!wanted.includes(u.loc as LocKey)) throw new ValidationError(`the postings must include ${u.empNo}'s own location "${u.loc}"`);
+  for (const loc of wanted) await checkPairing(tx, u.role, loc);
+  await tx.delete(userPostings).where(eq(userPostings.userId, u.id));
+  await postAt(tx, u.id, wanted);
+  await revokeAll(tx, u.id);
+  return wanted;
+}
 
 /**
  * The one door in or out of admin status - never reachable from the admin HTTP module
