@@ -138,8 +138,6 @@ export interface AppState extends ProcurementSlice, OpsSlice, AdminSlice, AuditS
    *  Answers `true` only once the server has taken it, so the window can keep a refused OTP
    *  and its reason in front of the operator instead of relying on a toast they may miss. */
   handover: (tktId: string, otp: string) => Promise<boolean>;
-  /** Move this session to another of the account's postings; reloads the whole snapshot. */
-  switchLocation: (loc: LocKey) => Promise<boolean>;
   // ---- the register. Neither read is kept in the store: an X is a snapshot of a moment and a Z
   // is a document the server owns, so both answer `null` on failure the way `readStatement` and
   // `readAuditEntry` do - a screen can then say "could not be read" instead of "nothing taken".
@@ -258,9 +256,9 @@ export const useApp = create<AppState>((set, get) => ({
     try {
       const r = await call(routes.login, { body: { emp, password, ...(loc ? { loc } : {}) } });
       setAccessToken(r.accessToken);
-      // `postings` is every counter this account may stand at. One (the ordinary case) means the
-      // sign-in screen shows no picker and this is the whole of it; more than one and `Login.tsx`
-      // asks which counter before it lets the shell mount, then calls `switchLocation`.
+      // `postings` is every counter this account may stand at, kept for the screens that name
+      // where this session is standing. Which counter it *is* standing at was decided at sign-in
+      // and does not move: a shift at another till is a fresh sign-in there.
       set({ user: r.user, postings: r.postings, mustChangePassword: r.mustChangePassword, auth: r.mustChangePassword ? "ready" : "loading" });
       if (!r.mustChangePassword) await get().loadSnapshot();
       return true;
@@ -268,26 +266,6 @@ export const useApp = create<AppState>((set, get) => ({
       // On the form, not in a toast: the sign-in screen is outside the shell, and the sentence
       // has to still be there when the operator looks up from the keyboard.
       set({ auth: "signed-out", user: null, authError: e instanceof ApiError ? e.message : UNREACHABLE });
-      return false;
-    }
-  },
-  /**
-   * Stand at a different counter. Used twice: by the sign-in screen when an account has more than
-   * one posting, and again mid-shift when somebody moves. The server re-mints the access token
-   * with the new `loc` claim, having checked the counter is one of this account's own and open.
-   *
-   * The whole snapshot is reloaded on success, because every location-scoped collection in it -
-   * stock, bills, tickets, requests - belonged to the counter just left.
-   */
-  switchLocation: async (loc) => {
-    try {
-      const r = await call(routes.switchLocation, { body: { loc } });
-      setAccessToken(r.accessToken);
-      set({ user: r.user, postings: r.postings });
-      await get().loadSnapshot();
-      return true;
-    } catch (e) {
-      get().notify(e instanceof ApiError ? e.message : "Could not move to that counter - check the connection and try again.");
       return false;
     }
   },

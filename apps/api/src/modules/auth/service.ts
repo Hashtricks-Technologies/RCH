@@ -9,7 +9,6 @@ import { assertOpen, lockLocation } from "../../lib/locations.js";
 import { hashPassword, verifyPassword } from "../../lib/password.js";
 import { assertRule } from "../../lib/rules.js";
 import { toWireUser, type UserRow } from "../../lib/wire.js";
-import type { AccessClaims } from "../../plugins/auth.js";
 import { authRepo } from "./repo.js";
 
 export type Meta = { userAgent?: string; ip?: string };
@@ -147,9 +146,9 @@ export function createAuthService(db: Db, config: Config) {
    *  silent refresh that re-read the home row would walk a consultant back to their own till in
    *  the middle of somebody else's shift. */
   /**
-   * May this account stand at this counter? The same gate for the sign-in and for a move made
-   * mid-shift, so the two can never drift apart: the outlet row `FOR SHARE` first (documents
-   * tier, so it cannot be closed out from under the answer), then the posting, then open.
+   * May this account stand at this counter? The sign-in's gate: the outlet row `FOR SHARE` first
+   * (documents tier, so it cannot be closed out from under the answer), then the posting, then
+   * open. A session's counter is fixed at sign-in - there is no mid-shift move to share it with.
    */
   async function admitTo(tx: Tx, u: UserRow, loc: LocKey): Promise<void> {
     const row = await lockLocation(tx, loc);
@@ -250,17 +249,6 @@ export function createAuthService(db: Db, config: Config) {
      * more than one place in practice, but it is the postings that decide, not the role - a rule
      * written against `counter` would have to be written again the day a second role takes shifts.
      */
-    async switchLocation(claims: AccessClaims, loc: LocKey, raw: string | undefined): Promise<Standing> {
-      return withTransaction(db, async (tx) => {
-        const u = await authRepo.userById(tx, claims.sub);
-        if (!u || !u.active) throw new UnauthenticatedError("Your session has ended - sign in again.");
-        await admitTo(tx, u, loc);
-        // No cookie (an API client holding only an access token) still gets its new claim; there
-        // is simply no refresh row of this session's to carry it.
-        if (raw) await authRepo.setRefreshLoc(tx, sha256(raw), loc);
-        return standing(tx, u, loc);
-      });
-    },
     /** Answers whose session this ended - the account, when the cookie's family still had a live
      *  token to revoke; `null` when it ended nothing (no cookie, an unknown one, or a family already
      *  revoked), which is not a sign-out anybody made. */

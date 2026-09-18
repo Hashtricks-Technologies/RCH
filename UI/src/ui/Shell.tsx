@@ -4,12 +4,12 @@ import {
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { bestBeforeAt } from "@rch/domain";
 import { IT, LOC, homeLabel } from "../data/master";
-import { HOME, NAV, canSee } from "../nav";
+import { NAV, canSee } from "../nav";
 import { useApp, type AppState } from "../store";
-import { activeItems, availOf, isTicketOpen, locName, menuOf, openOutlets, procurementList, qty } from "../lib/selectors";
+import { activeItems, availOf, isTicketOpen, menuOf, openOutlets, procurementList, qty } from "../lib/selectors";
 import type { LocKey, Role } from "../types";
 import { useStreamState, type StreamState } from "../api/events";
-import { Avatar, Btn, BtnRow, Icon, Pill, SearchIcon, Tag, ThemeButton, Tip } from "./kit";
+import { Avatar, Icon, Pill, SearchIcon, Tag, ThemeButton, Tip } from "./kit";
 import { applyPrefs, readPrefs, usePhoto } from "./prefs";
 import { markSeen, useSeen } from "./seen";
 import Drawer from "./Drawer";
@@ -48,7 +48,6 @@ export default function Shell({ children }: { children: ReactNode }) {
   const queues = navQueues(state);
   // Where this account may work. One is the ordinary case and nothing about the header changes
   // for it; more than one earns the switcher below.
-  const multi = state.postings.length > 1;
   const photo = usePhoto();
   const live = useStreamState();
   const nav = useNavigate();
@@ -116,16 +115,12 @@ export default function Shell({ children }: { children: ReactNode }) {
               "i" beside it. */}
           <div className="org">
             <span className="dt" role="img" aria-label={STREAM[live].why} style={{ background: STREAM[live].dot }} />
-            {/* Where this session is standing. An account with one posting - every account but a
-                consultant taking shifts at more than one counter - reads exactly as it always
-                did; where there is a switcher beside this, the counter is named on that instead,
-                so the header says it once. */}
-            <span className="lbl">Royal Care{!multi && homeLabel(user) ? ` · ${homeLabel(user)}` : ""}</span>
+            {/* Where this session is standing. Named, not offered: the counter is decided at
+                sign-in and does not move - somebody taking a shift at another till signs in
+                there. */}
+            <span className="lbl">Royal Care{homeLabel(user) ? ` · ${homeLabel(user)}` : ""}</span>
             <Tip text={STREAM[live].why} label="Connection" />
           </div>
-          {/* More than one posting: name the counter and offer the others, so somebody moving
-              mid-shift does not have to sign out to do it. */}
-          {multi && <CounterSwitch />}
           {/* Nothing is shown while the stream is live: a badge that is always there stops being read. */}
           {live === "reconnecting" && <Pill tone="wn">Reconnecting</Pill>}
           <ThemeButton />
@@ -237,83 +232,6 @@ function Search() {
               ))}
             </ul>
           ) : <div className="pe">Nothing here matches “{q.trim()}”.</div>}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ---------- postings: the counter this session is standing at ---------- */
-/**
- * Only drawn for an account with more than one posting. It names the counter the token's `loc`
- * claim currently carries and offers the others, because a consultant who moves outlet mid-shift
- * should not have to sign out and back in to do it.
- *
- * The move is confirmed first, and deliberately: `switchLocation` re-mints the token and reloads
- * the whole snapshot, so every location-scoped thing on the screen - the cart half-rung up, the
- * ticket half-collected - belonged to the counter being left.
- */
-function CounterSwitch() {
-  const user = useApp((s) => s.user)!;
-  const postings = useApp((s) => s.postings);
-  const switchLocation = useApp((s) => s.switchLocation);
-  const nav = useNavigate();
-  const [open, setOpen] = useState(false);
-  const [ask, setAsk] = useState<LocKey | null>(null);
-  const [moving, setMoving] = useState(false);
-  const box = useRef<HTMLDivElement>(null);
-  const close = useCallback(() => { setOpen(false); setAsk(null); }, []);
-  useDismiss(open, close, box);
-
-  const go = async (loc: LocKey) => {
-    setMoving(true);
-    try {
-      // A refusal is the server's own sentence, which the store has already toasted; the
-      // question stays up behind it so the operator can try the other counter or stay put.
-      if (!await switchLocation(loc)) return;
-      close();
-      // The screen just left was that counter's. Home is the one place that is certainly this one's.
-      nav("/" + HOME[user.r]);
-    } finally { setMoving(false); }
-  };
-
-  return (
-    <div className="pw" ref={box}>
-      <button
-        className="org ctsw" type="button" aria-haspopup="menu" aria-expanded={open}
-        onClick={() => { setOpen(!open); setAsk(null); }}
-      >
-        <span className="ctnm">{locName(user.loc)}</span>
-        <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.7}>
-          <path d="m4 6 4 4 4-4" /></svg>
-      </button>
-      {open && (
-        <div className="pop" role="menu" aria-label="Your counters">
-          <div className="ph">Standing at</div>
-          <div className="pl">
-            {postings.map((l) => (
-              <button
-                key={l} type="button" role="menuitem" disabled={moving}
-                className={`po${l === user.loc ? " cur" : ""}`}
-                onClick={() => { if (l !== user.loc) setAsk(l); }}
-              >
-                <span className="pb"><b>{locName(l)}</b><span>{LOC[l]?.c ?? l}</span></span>
-                {l === user.loc && <Pill tone="ok">Here</Pill>}
-              </button>
-            ))}
-          </div>
-          {/* Visible, never a tooltip: it is the consequence of the press about to be made. */}
-          {ask && (
-            <div className="pcf">
-              Everything on this screen is left behind and reloaded for {locName(ask)}.
-              <BtnRow>
-                <Btn size="xs" disabled={moving} onClick={() => void go(ask)}>
-                  {moving ? "Moving…" : `Move to ${locName(ask)}`}
-                </Btn>
-                <Btn size="xs" variant="gh" disabled={moving} onClick={() => setAsk(null)}>Stay here</Btn>
-              </BtnRow>
-            </div>
-          )}
         </div>
       )}
     </div>

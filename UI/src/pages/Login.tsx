@@ -6,8 +6,6 @@ import { Alert, Tip } from "../ui/kit";
 import type { SignInCounter, SignInEntry } from "../types";
 import mark from "../assets/eateszy-mark.png";
 
-/** Only when `switchLocation` could not reach the server at all - it puts the server's own
- *  sentence on the toast, and this screen reads that rather than writing its own. */
 
 /**
  * Sign-in. Staff pick themselves from the directory (`GET /auth/directory`: number and name,

@@ -46,9 +46,6 @@ export const AuthResponseSchema = z.object({
   accessToken: z.string(), user: UserSchema, mustChangePassword: z.boolean(),
   postings: PostingsSchema.default([]),
 });
-/** Standing at a different counter: at sign-in, when the picker offers more than one, and again
- *  mid-shift when somebody moves. The server refuses a location that is not one of `postings`. */
-export const SwitchLocationBodySchema = z.strictObject({ loc: LocKeySchema });
 /** The floor every new password clears, wherever one is set: the change-password form below and
  *  the two administrator commands behind `pnpm --filter @rch/api users` (`createUser` and
  *  `resetPassword`, apps/api/src/lib/users-admin.ts). One number rather than two literals, so a

@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { Role } from "./types.js";
 import { OkResponseSchema } from "./schemas/common.js";
-import { AuthResponseSchema, ChangePasswordBodySchema, LoginBodySchema, MeResponseSchema, PatchMeBodySchema, SignInDirectorySchema, SwitchLocationBodySchema } from "./schemas/auth.js";
+import { AuthResponseSchema, ChangePasswordBodySchema, LoginBodySchema, MeResponseSchema, PatchMeBodySchema, SignInDirectorySchema } from "./schemas/auth.js";
 import { AdjustmentRequestsResponseSchema, AdjustmentsResponseSchema, BatchesResponseSchema, BILL_DAYS, BillsResponseSchema, ContractsResponseSchema, GrnsResponseSchema, ItemsResponseSchema, LocationsResponseSchema, MenusResponseSchema, PriceListsResponseSchema, PricesResponseSchema, ProdOrdersResponseSchema, ProductRequestsResponseSchema, PurchaseOrdersResponseSchema, RequestsResponseSchema, RequisitionsResponseSchema, RosterResponseSchema, ShopAsksResponseSchema, SnapshotSchema, TermsResponseSchema, StockResponseSchema, SupportTicketsResponseSchema, TicketsResponseSchema, VendorsResponseSchema } from "./schemas/snapshot.js";
 import { CloseRegisterBodySchema, CreditParamsSchema, CreditResponseSchema, RegisterQuerySchema, RegisterReportSchema, RegisterReportsResponseSchema, StockLedgerQuerySchema, StockLedgerResponseSchema, ZReportsQuerySchema } from "./schemas/reports.js";
 import { AdminActionSchema, AdminActionsQuerySchema, AdminDeletedUserSchema, AdminLocationSchema, AdminPayerParamsSchema, AdminPayerSchema, AdminUserIdParamsSchema, AdminUserSchema, AdminUserWithTempPasswordSchema, CreateAdminUserBodySchema, CreateOutletBodySchema, CreatePayerBodySchema, OutletKeyParamsSchema, SetAdminUserPostingsBodySchema, UpdateAdminUserBodySchema, UpdateOutletBodySchema, UpdatePayerBodySchema } from "./schemas/admin.js";
@@ -45,11 +45,6 @@ export const routes = {
   logout:         defineRoute({ method: "POST",  path: "/auth/logout",          access: "public", response: OkResponseSchema, write: false, allowMcp: true }),
   signInDirectory: defineRoute({ method: "GET",  path: "/auth/directory",       access: "public", response: SignInDirectorySchema }),
   changePassword: defineRoute({ method: "POST",  path: "/auth/change-password", access: "any",    body: ChangePasswordBodySchema, response: AuthResponseSchema, write: false, allowMcp: true }),
-  // ---- postings. Standing at a different counter: re-mints the access token with a new `loc`
-  // claim, having checked the target is one of the caller's own postings and that it is open.
-  // `write: false` for the same reason `changePassword` is - it mints a token rather than
-  // recording a document, and an Idempotency-Key on it would be replayed into a stale token.
-  switchLocation: defineRoute({ method: "POST",  path: "/auth/switch-location", access: "any",    body: SwitchLocationBodySchema, response: AuthResponseSchema, write: false }),
   me:             defineRoute({ method: "GET",   path: "/me",                   access: "any",    response: MeResponseSchema, allowMcp: true }),
   patchMe:        defineRoute({ method: "PATCH", path: "/me",                   access: "any",    body: PatchMeBodySchema, response: MeResponseSchema, allowMcp: true }),
   snapshot:       defineRoute({ method: "GET",   path: "/snapshot",             access: "any",    response: SnapshotSchema }),

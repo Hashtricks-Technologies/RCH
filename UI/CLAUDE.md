@@ -128,10 +128,8 @@ try {
   snapshot, and the snapshot needs a token, so before sign-in `LOC` is empty and `locName()`
   answers the raw key. That is why each directory counter carries its own `n` and `c`.
 - **`postings` on the store is where the signed-in account may work**; `user.loc` is where it is
-  standing. `login`, `restore` and `switchLocation` all set it - forget one and the header
-  switcher vanishes after a page reload.
-- **`switchLocation(loc)` reloads the whole snapshot**, because every location-scoped collection in
-  it belonged to the counter just left.
+  standing, and it does not change for the life of the session - the shell names the counter and
+  never offers to move it.
 - **Takings are windowed on the open register session, not on `isToday`.** Both dashboards read
   `readXReport` as they mount, so a test that renders one must stub it - unstubbed it reaches
   `fetch`, and under `vi.useFakeTimers()` it never settles. `src/__tests__/time.test.tsx` stubs it

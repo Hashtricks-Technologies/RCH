@@ -43,7 +43,7 @@ export default fp(async (app) => {
   const meta = (req: { headers: Record<string, unknown>; ip: string }) => ({ userAgent: String(req.headers["user-agent"] ?? "").slice(0, 200), ip: req.ip });
   /** The `AuthResponse` every one of these routes answers with: the access token minted from the
    *  session's own claim, the caller, and every counter they may stand at. */
-  const authResponse = async (s: Awaited<ReturnType<typeof svc.switchLocation>>) =>
+  const authResponse = async (s: Awaited<ReturnType<typeof svc.login>>) =>
     ({ accessToken: await app.signAccess(s.claims), user: s.user, mustChangePassword: s.mustChangePassword, postings: s.postings });
   const respond = async (reply: FastifyReply, s: Awaited<ReturnType<typeof svc.login>>) => {
     setRefreshCookie(reply, app.config, s.refreshToken, s.expiresAt);
@@ -98,11 +98,6 @@ export default fp(async (app) => {
       throw e;
     }
   });
-  // Moving this session to another of the caller's postings. `write: false` in the manifest, so
-  // it carries no idempotency key and leaves no audit event: nothing in the hospital's records
-  // changes - only which counter this one token speaks for.
-  mount(app, routes.switchLocation, async (req) =>
-    authResponse(await svc.switchLocation(req.user, req.body.loc, req.cookies[REFRESH_COOKIE])));
   mount(app, routes.logout, async (req, reply) => {
     const userId = await svc.logout(req.cookies[REFRESH_COOKIE]);
     clearRefreshCookie(reply, app.config);
