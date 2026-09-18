@@ -8,7 +8,7 @@ import { applySnapshot } from "../api/wire";
 import { IT, LOC } from "../data/master";
 import type {
   Adjustment, AdjustmentRequest, Batch, Bill, CreditResponse, Dated, DatedDoc, DraftLine, DrawerState, Grn, LocKey,
-  Payer, PordStatus, PriceList, ProdOrder, PurchaseOrder, Requisition, StockLedgerRow, StockLoc,
+  Payer, PordStatus, PriceList, ProdOrder, PurchaseOrder, RegisterReport, Requisition, StockLedgerRow, StockLoc,
   SignInEntry, StockRequest, Tender, Ticket, Trailed, User, Vendor,
 } from "../types";
 import { applyTheme, nextTheme, readStoredTheme, storeTheme, type ThemePref } from "../lib/theme";
@@ -20,6 +20,9 @@ import { createReceivablesSlice, type ReceivablesSlice } from "./receivables";
 
 export interface AppState extends ProcurementSlice, OpsSlice, AdminSlice, AuditSlice, ReceivablesSlice {
   user: User | null;
+  /** Every counter this account may stand at, from the sign-in response. One entry is the
+   *  ordinary case and means no picker is ever shown. `user.loc` is the one it is standing at. */
+  postings: LocKey[];
   /** Where the session is: no token, asking for one, fetching the snapshot, usable - or signed
    *  in with nothing to show. `"failed"` is the last one: the credentials are good and the
    *  snapshot is not, so there is no item master, no locations and no menus, and every screen
@@ -133,6 +136,15 @@ export interface AppState extends ProcurementSlice, OpsSlice, AdminSlice, AuditS
    *  Answers `true` only once the server has taken it, so the window can keep a refused OTP
    *  and its reason in front of the operator instead of relying on a toast they may miss. */
   handover: (tktId: string, otp: string) => Promise<boolean>;
+  /** Move this session to another of the account's postings; reloads the whole snapshot. */
+  switchLocation: (loc: LocKey) => Promise<boolean>;
+  // ---- the register. Neither read is kept in the store: an X is a snapshot of a moment and a Z
+  // is a document the server owns, so both answer `null` on failure the way `readStatement` and
+  // `readAuditEntry` do - a screen can then say "could not be read" instead of "nothing taken".
+  readXReport: (loc?: LocKey) => Promise<RegisterReport | null>;
+  readZReports: (loc?: LocKey, days?: number) => Promise<RegisterReport[] | null>;
+  /** Close the register and take the Z. Returns the report so the screen can print it at once. */
+  closeRegister: (loc: LocKey, countedCash?: number, note?: string) => Promise<RegisterReport | null>;
   receiveTicket: (tktId: string) => Promise<void>;
 
   /** Withdraw a ticket nobody collected: the hold goes back and so does the document behind it.
@@ -235,6 +247,7 @@ export const useApp = create<AppState>((set, get) => ({
   drawer: null,
   toast: null,
   authError: null,
+  postings: [],
   shopFilter: null,
   theme: readStoredTheme(),
 
@@ -243,7 +256,10 @@ export const useApp = create<AppState>((set, get) => ({
     try {
       const r = await call(routes.login, { body: { emp, password } });
       setAccessToken(r.accessToken);
-      set({ user: r.user, mustChangePassword: r.mustChangePassword, auth: r.mustChangePassword ? "ready" : "loading" });
+      // `postings` is every counter this account may stand at. One (the ordinary case) means the
+      // sign-in screen shows no picker and this is the whole of it; more than one and `Login.tsx`
+      // asks which counter before it lets the shell mount, then calls `switchLocation`.
+      set({ user: r.user, postings: r.postings, mustChangePassword: r.mustChangePassword, auth: r.mustChangePassword ? "ready" : "loading" });
       if (!r.mustChangePassword) await get().loadSnapshot();
       return true;
     } catch (e) {
@@ -251,6 +267,47 @@ export const useApp = create<AppState>((set, get) => ({
       // has to still be there when the operator looks up from the keyboard.
       set({ auth: "signed-out", user: null, authError: e instanceof ApiError ? e.message : UNREACHABLE });
       return false;
+    }
+  },
+  /**
+   * Stand at a different counter. Used twice: by the sign-in screen when an account has more than
+   * one posting, and again mid-shift when somebody moves. The server re-mints the access token
+   * with the new `loc` claim, having checked the counter is one of this account's own and open.
+   *
+   * The whole snapshot is reloaded on success, because every location-scoped collection in it -
+   * stock, bills, tickets, requests - belonged to the counter just left.
+   */
+  switchLocation: async (loc) => {
+    try {
+      const r = await call(routes.switchLocation, { body: { loc } });
+      setAccessToken(r.accessToken);
+      set({ user: r.user, postings: r.postings });
+      await get().loadSnapshot();
+      return true;
+    } catch (e) {
+      get().notify(e instanceof ApiError ? e.message : "Could not move to that counter - check the connection and try again.");
+      return false;
+    }
+  },
+  readXReport: async (loc) => {
+    try { return await call(routes.xReport, { query: loc ? { loc } : {} }); }
+    catch { return null; }
+  },
+  readZReports: async (loc, days) => {
+    try { return await call(routes.zReports, { query: { ...(loc ? { loc } : {}), ...(days === undefined ? {} : { days }) } }); }
+    catch { return null; }
+  },
+  closeRegister: async (loc, countedCash, note) => {
+    try {
+      const r = await call(routes.closeRegister, {
+        body: { loc, ...(countedCash === undefined ? {} : { countedCash }), ...(note ? { note } : {}) },
+      });
+      get().notify(r.message);
+      await refetch(r.changed, r.message);
+      return r.result;
+    } catch (e) {
+      get().notify(e instanceof ApiError ? e.message : "Could not close the register - check the connection and try again.");
+      return null;
     }
   },
   loadSignInDirectory: async () => {

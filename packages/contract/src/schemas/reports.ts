@@ -38,3 +38,65 @@ export const CreditResponseSchema = z.strictObject({
   limit: Money.nullable(),
   room: Money.nullable(),
 });
+
+// ---- the register: X and Z -------------------------------------------------------------------
+//
+// An X-report is the takings so far and changes nothing; a Z-report closes the outlet's session
+// and opens the next. Both answer the same shape, so one screen and one printed slip serve both
+// and the only difference a reader sees is the heading and whether there is a Z number on it.
+//
+// The figures are modelled on the hospital's own Z report. Where a line exists there that this
+// system does not yet produce a value for, it is carried here as a zero rather than left out: the
+// slip then matches the one the counters already read, and filling a line in later is a service
+// change rather than a new field on the wire. `nonChargeable` is the one line deliberately absent
+// - free issue to employees is a third of their gross and needs a model of its own first.
+
+/** What a tender took, named exactly as the till names it. */
+export const TenderLineSchema = z.object({ tender: z.string(), amount: Money, bills: z.number().int() });
+/** Money taken during this session against bills from an earlier one - the hospital's "Old Bills"
+ *  lines. It is collection, not sale, so it is never added to nett sales. */
+export const OldBillLineSchema = z.object({ mode: z.string(), amount: Money });
+
+export const RegisterTotalsSchema = z.object({
+  // ---- what was sold
+  grossSales: Money, discount: Money, nettSales: Money, creditSales: Money,
+  voidAmount: Money, voidBills: z.number().int(),
+  // ---- the lines the hospital's slip prints that we have no value for yet. Always zero today.
+  tip: Money, parcelCharge: Money, deliveryCharge: Money, additionalCharge: Money,
+  complimentary: Money, unCollected: Money, unCollectedDiscount: Money,
+  // ---- what was collected
+  tenders: z.array(TenderLineSchema), collected: Money,
+  oldBills: z.array(OldBillLineSchema), oldBillsTotal: Money,
+  // ---- tax, split the way a GST slip prints it
+  sgst: Money, cgst: Money, taxTotal: Money,
+  // ---- counts
+  billCount: z.number().int(),
+});
+
+export const RegisterReportSchema = z.strictObject({
+  kind: z.enum(["X", "Z"]),
+  /** Absent on an X: an open session has no number, because the number is the Z. */
+  zNo: z.string().nullable(),
+  sessionId: z.string(),
+  loc: StockLocSchema,
+  /** The session this one follows, so a reader can chain Z to Z without arithmetic on clocks. */
+  previousZNo: z.string().nullable(),
+  openedAt: IsoTime, closedAt: IsoTime.nullable(),
+  /** When the report was produced. On a Z this equals `closedAt`; on an X it is simply now. */
+  takenAt: IsoTime, takenBy: z.string(),
+  totals: RegisterTotalsSchema,
+});
+export const RegisterReportsResponseSchema = z.array(RegisterReportSchema);
+/** Which outlet's register. Omitted, it is the caller's own - the only choice a counter has. */
+export const RegisterQuerySchema = z.strictObject({ loc: StockLocSchema.optional() });
+export const CloseRegisterBodySchema = z.strictObject({
+  loc: StockLocSchema,
+  /** Counted cash in the drawer, if the counter counted it. The slip prints the difference
+   *  against what the till says was taken; neither figure is changed by the other. */
+  countedCash: Money.optional(),
+  note: z.string().max(500).default(""),
+});
+export const ZReportsQuerySchema = z.strictObject({
+  loc: StockLocSchema.optional(),
+  days: z.coerce.number().int().min(1).max(365).default(30),
+});

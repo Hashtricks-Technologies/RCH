@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { UserSchema } from "./documents.js";
+import { LocKeySchema } from "./common.js";
 
 /** Request bodies are strict: an unknown key is a client bug (a renamed field, a stale build),
  *  and silently dropping it hides the mistake until someone wonders why the value never saved. */
@@ -9,7 +10,25 @@ export const LoginBodySchema = z.strictObject({ emp: z.string().trim().min(1).ma
  *  email or phone, and never an admin-flagged or deactivated account. */
 export const SignInEntrySchema = z.strictObject({ emp: z.string(), n: z.string() });
 export const SignInDirectorySchema = z.array(SignInEntrySchema);
-export const AuthResponseSchema =z.object({ accessToken: z.string(), user: UserSchema, mustChangePassword: z.boolean() });
+/**
+ * Where this account may work, and where this session currently is.
+ *
+ * A counter operator takes shifts at more than one outlet, so `postings` is every counter they
+ * are allowed to stand at and `user.loc` is the one they are standing at now - which is what the
+ * token's `loc` claim carries and therefore what every location guard on the server tests. One
+ * posting is the ordinary case and means the sign-in screen shows no picker at all.
+ *
+ * It is on the authenticated response, never on the public directory: which counters a named
+ * employee works is not something to hand out before anybody has signed in.
+ */
+export const PostingsSchema = z.array(LocKeySchema).max(32);
+export const AuthResponseSchema = z.object({
+  accessToken: z.string(), user: UserSchema, mustChangePassword: z.boolean(),
+  postings: PostingsSchema.default([]),
+});
+/** Standing at a different counter: at sign-in, when the picker offers more than one, and again
+ *  mid-shift when somebody moves. The server refuses a location that is not one of `postings`. */
+export const SwitchLocationBodySchema = z.strictObject({ loc: LocKeySchema });
 /** The floor every new password clears, wherever one is set: the change-password form below and
  *  the two administrator commands behind `pnpm --filter @rch/api users` (`createUser` and
  *  `resetPassword`, apps/api/src/lib/users-admin.ts). One number rather than two literals, so a

@@ -1,9 +1,9 @@
 import { z } from "zod";
 import type { Role } from "./types.js";
 import { OkResponseSchema } from "./schemas/common.js";
-import { AuthResponseSchema, ChangePasswordBodySchema, LoginBodySchema, MeResponseSchema, PatchMeBodySchema, SignInDirectorySchema } from "./schemas/auth.js";
+import { AuthResponseSchema, ChangePasswordBodySchema, LoginBodySchema, MeResponseSchema, PatchMeBodySchema, SignInDirectorySchema, SwitchLocationBodySchema } from "./schemas/auth.js";
 import { AdjustmentRequestsResponseSchema, AdjustmentsResponseSchema, BatchesResponseSchema, BILL_DAYS, BillsResponseSchema, ContractsResponseSchema, GrnsResponseSchema, ItemsResponseSchema, LocationsResponseSchema, MenusResponseSchema, PriceListsResponseSchema, PricesResponseSchema, ProdOrdersResponseSchema, ProductRequestsResponseSchema, PurchaseOrdersResponseSchema, RequestsResponseSchema, RequisitionsResponseSchema, RosterResponseSchema, ShopAsksResponseSchema, SnapshotSchema, TermsResponseSchema, StockResponseSchema, SupportTicketsResponseSchema, TicketsResponseSchema, VendorsResponseSchema } from "./schemas/snapshot.js";
-import { CreditParamsSchema, CreditResponseSchema, StockLedgerQuerySchema, StockLedgerResponseSchema } from "./schemas/reports.js";
+import { CloseRegisterBodySchema, CreditParamsSchema, CreditResponseSchema, RegisterQuerySchema, RegisterReportSchema, RegisterReportsResponseSchema, StockLedgerQuerySchema, StockLedgerResponseSchema, ZReportsQuerySchema } from "./schemas/reports.js";
 import { AdminActionSchema, AdminActionsQuerySchema, AdminDeletedUserSchema, AdminLocationSchema, AdminPayerParamsSchema, AdminPayerSchema, AdminUserIdParamsSchema, AdminUserSchema, AdminUserWithTempPasswordSchema, CreateAdminUserBodySchema, CreateOutletBodySchema, CreatePayerBodySchema, OutletKeyParamsSchema, UpdateAdminUserBodySchema, UpdateOutletBodySchema, UpdatePayerBodySchema } from "./schemas/admin.js";
 import { ClassParamsSchema, ClassTermsSchema, PayerParamsSchema, PayerTermsSchema, ReceivablesResponseSchema, RecordSettlementBodySchema, SetClassTermsBodySchema, SetPayerTermsBodySchema, SettlementIdParamsSchema, SettlementSchema, SettlementsResponseSchema, StatementSchema, VoidSettlementBodySchema } from "./schemas/receivables.js";
 import { AuditEntrySchema, AuditIdParamsSchema, AuditPageSchema, AuditQuerySchema } from "./schemas/audit.js";
@@ -45,6 +45,11 @@ export const routes = {
   logout:         defineRoute({ method: "POST",  path: "/auth/logout",          access: "public", response: OkResponseSchema, write: false, allowMcp: true }),
   signInDirectory: defineRoute({ method: "GET",  path: "/auth/directory",       access: "public", response: SignInDirectorySchema }),
   changePassword: defineRoute({ method: "POST",  path: "/auth/change-password", access: "any",    body: ChangePasswordBodySchema, response: AuthResponseSchema, write: false, allowMcp: true }),
+  // ---- postings. Standing at a different counter: re-mints the access token with a new `loc`
+  // claim, having checked the target is one of the caller's own postings and that it is open.
+  // `write: false` for the same reason `changePassword` is - it mints a token rather than
+  // recording a document, and an Idempotency-Key on it would be replayed into a stale token.
+  switchLocation: defineRoute({ method: "POST",  path: "/auth/switch-location", access: "any",    body: SwitchLocationBodySchema, response: AuthResponseSchema, write: false }),
   me:             defineRoute({ method: "GET",   path: "/me",                   access: "any",    response: MeResponseSchema, allowMcp: true }),
   patchMe:        defineRoute({ method: "PATCH", path: "/me",                   access: "any",    body: PatchMeBodySchema, response: MeResponseSchema, allowMcp: true }),
   snapshot:       defineRoute({ method: "GET",   path: "/snapshot",             access: "any",    response: SnapshotSchema }),
@@ -158,6 +163,14 @@ export const routes = {
   // stays in the browser.
   stockLedger:  defineRoute({ method: "GET", path: "/reports/stock-ledger",     access: ["store", "manager", "buyer", "prod"], query: StockLedgerQuerySchema, response: StockLedgerResponseSchema }),
   creditReport: defineRoute({ method: "GET", path: "/reports/credit/:kind/:id", access: ["counter", "manager"],                params: CreditParamsSchema,   response: CreditResponseSchema }),
+  // ---- the register. An X changes nothing and may be taken as often as anyone likes, so it is a
+  // GET; a Z closes the outlet's session and opens the next, so it is a write and carries an
+  // Idempotency-Key like every other write - a retried close must replay its Z, never mint a
+  // second one. Both are open to the counter and the manager: closing the day is the consultant's
+  // own act, and the manager can do it for any outlet.
+  xReport:      defineRoute({ method: "GET",  path: "/register/x",          access: ["counter", "manager"], query: RegisterQuerySchema,     response: RegisterReportSchema }),
+  closeRegister:defineRoute({ method: "POST", path: "/register/close",      access: ["counter", "manager"], body: CloseRegisterBodySchema,  response: writeResponse(RegisterReportSchema) }),
+  zReports:     defineRoute({ method: "GET",  path: "/register/z",          access: ["counter", "manager"], query: ZReportsQuerySchema,     response: RegisterReportsResponseSchema }),
   // ---- payers (the roster behind every non-cash tender). The register itself is the super
   // admin's (`/admin/payers`, below); the CSV import stays for a ward list nobody types twice.
   // `GET /roster` is the till's read, live payers only, "any" and scoped like the snapshot's own

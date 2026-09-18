@@ -66,6 +66,11 @@ export type ShopAsk = z.infer<typeof D.ShopAskSchema>;
  *  caller cannot compute from its own snapshot. */
 export type StockLedgerQuery = z.infer<typeof R.StockLedgerQuerySchema>;
 export type StockLedgerRow = z.infer<typeof R.StockLedgerRowSchema>;
+// ---- the register
+export type RegisterReport = z.infer<typeof R.RegisterReportSchema>;
+export type RegisterTotals = z.infer<typeof R.RegisterTotalsSchema>;
+export type TenderLine = z.infer<typeof R.TenderLineSchema>;
+export type OldBillLine = z.infer<typeof R.OldBillLineSchema>;
 export type StockLedgerResponse = z.infer<typeof R.StockLedgerResponseSchema>;
 export type CreditParams = z.infer<typeof R.CreditParamsSchema>;
 export type CreditResponse = z.infer<typeof R.CreditResponseSchema>;
