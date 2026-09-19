@@ -20,10 +20,12 @@ export const shopAskStatusEnum = pgEnum("shop_ask_status", ["Asked", "Sent", "De
 export const prodOrderStatusEnum = pgEnum("prod_order_status", ["New", "Accepted", "In kitchen", "Ready", "Dispatched", "Declined"]);
 export const prqStatusEnum = pgEnum("prq_status", ["Sent", "Approved", "Partially approved", "Declined"]);
 export const poStatusEnum = pgEnum("po_status", ["Draft", "Ordered", "Partially received", "Received", "Cancelled"]);
-// ---- payers. `doctor` joined the other three in 0021, in a migration of its own: Postgres lets
+// ---- payers. `doctor` joined the others in 0021, in a migration of its own: Postgres lets
 // `alter type ... add value` run inside a transaction, but not the statement that first uses the
-// value it added, so anything referring to a consultant has to be in a later file.
-export const payerKindEnum = pgEnum("payer_kind", ["patient", "staff", "dept", "doctor"]);
+// value it added, so anything referring to a consultant has to be in a later file. `patient`
+// left in 0023, which had to rebuild the type from scratch - Postgres has no `drop value` - and
+// is why that migration swaps the type on all four columns that carry it.
+export const payerKindEnum = pgEnum("payer_kind", ["staff", "dept", "doctor"]);
 export const supportTopicEnum = pgEnum("support_topic", [
   "Sign in & access", "A screen will not load", "A number looks wrong", "Printing & receipts",
   "Slow or freezing", "Training & how do I", "Feature request", "Something else",

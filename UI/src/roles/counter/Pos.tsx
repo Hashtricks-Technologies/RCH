@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { TenderSchema } from "@rch/contract";
 import { breachesCredit, creditBreachMessage, discountOn, isAccountTender, PARTY_LABEL, payerKindForTender } from "@rch/domain";
-import { DEPTS, DOCTORS, IT, LOC, PATIENTS, STAFF } from "../../data/master";
+import { DEPTS, DOCTORS, IT, LOC, STAFF } from "../../data/master";
 import { useApp } from "../../store";
 import { availOf, menuOf, partyRate, priceOf } from "../../lib/selectors";
 import { money, money0 } from "../../lib/fmt";
@@ -9,7 +9,7 @@ import { Alert, Avatar, Btn, Card, Field, Grid, ItemImage, PageHead, Tag, TileMe
 import type { CreditResponse, ItemType, Payer, PayerKind, Tender } from "../../types";
 
 /** The buttons are the contract's own list - the server refuses anything else outright, so the
- *  till must not offer an eighth tender the schema has never heard of. */
+ *  till must not offer a seventh tender the schema has never heard of. */
 const TENDERS = TenderSchema.options;
 /** Which register each kind of payer is picked from. The lists are the snapshot's own `roster`,
  *  off the `payers` table the server validates a bill against - so a consultant added this
@@ -17,11 +17,11 @@ const TENDERS = TenderSchema.options;
  *  `payerKindForTender` in @rch/domain, the same table the sale refuses with; this is only where
  *  the names come from. */
 const REGISTER: Record<PayerKind, Payer[]> = {
-  patient: PATIENTS, staff: STAFF, dept: DEPTS, doctor: DOCTORS,
+  staff: STAFF, dept: DEPTS, doctor: DOCTORS,
 };
 /** What the picker calls each register, in the singular, as a form label. */
 const PICKER_LABEL: Record<PayerKind, string> = {
-  patient: "Patient", staff: "Staff member", dept: "Department", doctor: "Doctor",
+  staff: "Staff member", dept: "Department", doctor: "Doctor",
 };
 
 export function TypeTag({ t }: { t: ItemType }) {

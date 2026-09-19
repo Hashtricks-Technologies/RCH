@@ -42,7 +42,7 @@ function bareHospital() {
   // carry no price list at all - there is nothing in `price_lists` yet for one to name.
   const bareLoc = Object.fromEntries(Object.entries(FX.LOC).map(([k, l]) => [k, { ...l, list: undefined }]));
   hydrateMaster({ items: {}, locations: bareLoc, prices: {}, priceLists: [], menu: {}, users: FX.USERS });
-  hydrateRoster({ patients: [], staff: [], depts: [], doctors: [] });
+  hydrateRoster({ staff: [], depts: [], doctors: [] });
   useApp.setState({
     stock: EMPTY_STOCK, rsv: {}, ovr: {}, prices: {}, menu: {},
     req: [], tkt: [], prq: [], po: [], pord: [], batch: [], bills: [], grn: [], vendors: [],

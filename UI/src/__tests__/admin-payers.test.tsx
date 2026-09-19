@@ -32,9 +32,9 @@ const hit = (at: string) =>
 const bodyOf = (at: string, n = 0) => JSON.parse(String((hit(at)[n][1] as RequestInit).body)) as Record<string, unknown>;
 
 const payer = (over: Partial<AdminPayer>): AdminPayer =>
-  ({ kind: "patient", id: "IP-2291", name: "Anand Kumar", active: true, outstanding: 0, bills: 0, ...over });
+  ({ kind: "dept", id: "CC-2291", name: "Radiology", active: true, outstanding: 0, bills: 0, ...over });
 
-const PATIENT = payer({});
+const WARD = payer({});
 const STAFF = payer({ kind: "staff", id: "RC-4471", name: "Kavitha Raman", outstanding: 1240, bills: 3 });
 const DEPT = payer({ kind: "dept", id: "CC-ICU", name: "Intensive Care" });
 const DOCTOR = payer({ kind: "doctor", id: "DR-118", name: "Meera Iyer" });
@@ -44,7 +44,7 @@ const CHASED = payer({ kind: "staff", id: "RC-9001", name: "Suresh Muthu", activ
 /** What every payer write announces (`PAYER_CHANGED`), so a case that writes must answer both
  *  read-backs or the write's own sentence comes back qualified. */
 const CHANGED = ["payers", "roster"];
-const EMPTY_ROSTER = { patients: [], staff: [], depts: [], doctors: [] };
+const EMPTY_ROSTER = { staff: [], depts: [], doctors: [] };
 
 const tick = () => act(async () => { await new Promise((r) => { setTimeout(r, 0); }); });
 
@@ -103,25 +103,25 @@ afterEach(() => { page?.unmount(); page = undefined; vi.unstubAllGlobals(); setA
 describe("the payer register", () => {
   it("lists every kind of payer, still-billing ones first", async () => {
     serve({
-      "GET /api/v1/admin/payers": () => json([CHASED, DOCTOR, PATIENT, DEPT, STAFF]),
+      "GET /api/v1/admin/payers": () => json([CHASED, DOCTOR, WARD, DEPT, STAFF]),
       "GET /api/v1/admin/actions": () => json([]),
     });
     page = await mountPage();
     // Every kind the closed union carries has a row, named by the word the domain uses for it.
-    for (const p of [PATIENT, STAFF, DEPT, DOCTOR]) expect(page.row(p.id), `no row for ${p.id}`).toBeTruthy();
-    expect(PayerKindSchema.options).toHaveLength(4);
-    expect(page.row("IP-2291").textContent).toContain("patient");
+    for (const p of [STAFF, DEPT, DOCTOR]) expect(page.row(p.id), `no row for ${p.id}`).toBeTruthy();
+    expect(PayerKindSchema.options).toHaveLength(3);
+    expect(page.row("CC-2291").textContent).toContain("department");
     expect(page.row("CC-ICU").textContent).toContain("department");
     expect(page.row("DR-118").textContent).toContain("doctor");
     expect(page.row("RC-4471").textContent).toContain("staff member");
     // Still billing first, then by name; the one switched off is last whatever it is called.
     expect(page.rows().map((tr) => tr.querySelector(".mono")?.textContent))
-      .toEqual(["IP-2291", "CC-ICU", "RC-4471", "DR-118", "RC-9001"]);
+      .toEqual(["CC-ICU", "RC-4471", "DR-118", "CC-2291", "RC-9001"]);
   });
 
   it("offers no delete, anywhere on the page - a payer is switched off instead", async () => {
     serve({
-      "GET /api/v1/admin/payers": () => json([PATIENT, CHASED]),
+      "GET /api/v1/admin/payers": () => json([WARD, CHASED]),
       "GET /api/v1/admin/actions": () => json([]),
     });
     page = await mountPage();
@@ -129,7 +129,7 @@ describe("the payer register", () => {
     expect(page.buttons("Remove")).toHaveLength(0);
     expect(page.text()).not.toContain("permanently");
     // What it offers instead, in both directions.
-    expect(page.buttons("Switch off", page.row("IP-2291"))).toHaveLength(1);
+    expect(page.buttons("Switch off", page.row("CC-2291"))).toHaveLength(1);
     expect(page.buttons("Switch back on", page.row("RC-9001"))).toHaveLength(1);
   });
 
@@ -147,7 +147,7 @@ describe("the payer register", () => {
   });
 
   it("sends the kind, the id and the name, and empties only the two boxes it filled", async () => {
-    let list = [PATIENT];
+    let list = [WARD];
     serve({
       "GET /api/v1/admin/payers": () => json(list),
       "GET /api/v1/admin/actions": () => json([]),
@@ -178,24 +178,24 @@ describe("the payer register", () => {
 
   it("will not send a create with an empty box, and leaves every word typed when the server refuses", async () => {
     serve({
-      "GET /api/v1/admin/payers": () => json([PATIENT]),
+      "GET /api/v1/admin/payers": () => json([WARD]),
       "GET /api/v1/admin/actions": () => json([]),
       "POST /api/v1/admin/payers": () =>
-        json({ error: { code: "conflict", message: "IP-2291 is already on the register - Anand Kumar" } }, 409),
+        json({ error: { code: "conflict", message: "CC-2291 is already on the register - Radiology" } }, 409),
     });
     page = await mountPage();
     // Nothing typed: the button is shut rather than the request refused for us.
     expect(page.button("Add payer").disabled).toBe(true);
-    await typeInto(page.field("Id"), "IP-2291");
+    await typeInto(page.field("Id"), "CC-2291");
     expect(page.button("Add payer").disabled).toBe(true);
-    await typeInto(page.field("Name"), "Anand K");
+    await typeInto(page.field("Name"), "Radiology West");
     expect(page.button("Add payer").disabled).toBe(false);
 
     await press(page.button("Add payer"));
     expect(hit("POST /api/v1/admin/payers")).toHaveLength(1);
-    expect(S().toast).toBe("IP-2291 is already on the register - Anand Kumar");
-    expect(page.field("Id").value).toBe("IP-2291");
-    expect(page.field("Name").value).toBe("Anand K");
+    expect(S().toast).toBe("CC-2291 is already on the register - Radiology");
+    expect(page.field("Id").value).toBe("CC-2291");
+    expect(page.field("Name").value).toBe("Radiology West");
   });
 
   it("switches a payer off with one press, sending the switch and nothing else", async () => {
@@ -238,33 +238,33 @@ describe("the payer register", () => {
   it("renames in place, and a refusal leaves the box open with what was typed", async () => {
     let refuse = true;
     serve({
-      "GET /api/v1/admin/payers": () => json([PATIENT]),
+      "GET /api/v1/admin/payers": () => json([WARD]),
       "GET /api/v1/admin/actions": () => json([]),
       "GET /api/v1/roster": () => json(EMPTY_ROSTER),
-      "PATCH /api/v1/admin/payers/patient/IP-2291": () => refuse
-        ? json({ error: { code: "rule", message: "Nothing to save - Anand Kumar already reads that way" } }, 422)
-        : json({ result: { ...PATIENT, name: "Anand Kumar S" }, changed: CHANGED, message: "Saved Anand Kumar S." }),
+      "PATCH /api/v1/admin/payers/dept/CC-2291": () => refuse
+        ? json({ error: { code: "rule", message: "Nothing to save - Radiology already reads that way" } }, 422)
+        : json({ result: { ...WARD, name: "Radiology East" }, changed: CHANGED, message: "Saved Radiology East." }),
     });
     page = await mountPage();
-    await press(page.button("Rename", page.row("IP-2291")));
-    const box = page.row("IP-2291").querySelector<HTMLInputElement>("input")!;
-    expect(box.value).toBe("Anand Kumar");
-    await typeInto(box, "Anand Kumar S");
+    await press(page.button("Rename", page.row("CC-2291")));
+    const box = page.row("CC-2291").querySelector<HTMLInputElement>("input")!;
+    expect(box.value).toBe("Radiology");
+    await typeInto(box, "Radiology East");
 
-    await press(page.button("Save", page.row("IP-2291")));
-    expect(bodyOf("PATCH /api/v1/admin/payers/patient/IP-2291")).toEqual({ name: "Anand Kumar S" });
+    await press(page.button("Save", page.row("CC-2291")));
+    expect(bodyOf("PATCH /api/v1/admin/payers/dept/CC-2291")).toEqual({ name: "Radiology East" });
     expect(S().toast).toContain("already reads that way");
-    expect(page.row("IP-2291").querySelector<HTMLInputElement>("input")!.value).toBe("Anand Kumar S");
+    expect(page.row("CC-2291").querySelector<HTMLInputElement>("input")!.value).toBe("Radiology East");
 
     refuse = false;
-    await press(page.button("Save", page.row("IP-2291")));
-    expect(S().toast).toBe("Saved Anand Kumar S.");
-    expect(page.row("IP-2291").querySelector("input")).toBeNull();
+    await press(page.button("Save", page.row("CC-2291")));
+    expect(S().toast).toBe("Saved Radiology East.");
+    expect(page.row("CC-2291").querySelector("input")).toBeNull();
   });
 
   it("filters by kind and searches an id or a name", async () => {
     serve({
-      "GET /api/v1/admin/payers": () => json([PATIENT, STAFF, DEPT, DOCTOR]),
+      "GET /api/v1/admin/payers": () => json([WARD, STAFF, DEPT, DOCTOR]),
       "GET /api/v1/admin/actions": () => json([]),
     });
     page = await mountPage();

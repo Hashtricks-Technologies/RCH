@@ -28,12 +28,10 @@ export const USERS: UserMin[] = [];
  *  counter's screen imports them directly, so they must keep their identity - assign into them,
  *  never reassign them. Filled by `hydrateRoster` from the snapshot's `roster`, which the server
  *  reads out of the `payers` table it has been validating the till against since Phase 3. */
-export const PATIENTS: Payer[] = [];
 export const STAFF: Payer[] = [];
 export const DEPTS: Payer[] = [];
 export const DOCTORS: Payer[] = [];
 export function hydrateRoster(r: PayerRoster): void {
-  PATIENTS.splice(0, PATIENTS.length, ...r.patients);
   STAFF.splice(0, STAFF.length, ...r.staff);
   DEPTS.splice(0, DEPTS.length, ...r.depts);
   DOCTORS.splice(0, DOCTORS.length, ...r.doctors);

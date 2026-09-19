@@ -238,11 +238,11 @@ describe("before values: the payer register and what each party is charged", () 
   });
 
   it("setClassTerms keeps the category's own rate and ceiling", async () => {
-    // `patient` rather than a category another case moves: every case here shares one database.
-    const first = await send("u2", "PUT", "/payer-terms/class/patient", { pct: 5, limit: 900 });
-    expect((await lastEvent("setClassTerms")).before).toEqual(maskSecrets({ cls: "patient", pct: 0, limit: null }));
-    await send("u2", "PUT", "/payer-terms/class/patient", { pct: 7, limit: null });
+    // `customer` rather than a category another case moves: every case here shares one database.
+    const first = await send("u2", "PUT", "/payer-terms/class/customer", { pct: 5, limit: 900 });
+    expect((await lastEvent("setClassTerms")).before).toEqual(maskSecrets({ cls: "customer", pct: 0, limit: null }));
+    await send("u2", "PUT", "/payer-terms/class/customer", { pct: 7, limit: null });
     expect((await lastEvent("setClassTerms")).before)
-      .toEqual(maskSecrets({ cls: "patient", pct: first.result.pct, limit: first.result.limit }));
+      .toEqual(maskSecrets({ cls: "customer", pct: first.result.pct, limit: first.result.limit }));
   });
 });

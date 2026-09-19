@@ -151,8 +151,8 @@ export const rateContracts = pgTable("rate_contracts", {
 ]);
 
 /**
- * Who a non-cash bill may be posted to: the patient, payroll and cost-centre rosters the live
- * system would look up, standing here until Phase 6 gives them their own masters. The till
+ * Who a non-cash bill may be posted to: the payroll, cost-centre and consultant rosters the
+ * live system would look up, standing here until Phase 6 gives them their own masters. The till
  * sends a name along with the id, but the name on the bill is read from this row - a payer the
  * counter typed is a second account with its own untouched credit ceiling, so the id has to be
  * one the hospital already knows. Keyed by kind and id together, because the three rosters are

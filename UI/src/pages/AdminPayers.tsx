@@ -23,7 +23,7 @@ const KIND_OF: Record<string, PayerKind> = Object.fromEntries(KINDS.map((k) => [
 const keyOf = (p: { kind: PayerKind; id: string }) => `${p.kind}:${p.id}`;
 
 /**
- * The payer register - who a bill may be posted to. Patients, staff, departments and doctors are
+ * The payer register - who a bill may be posted to. Staff, departments and doctors are
  * opened, renamed and switched off here; there is no delete on this page and never will be,
  * because a payer with a bill against them is somebody's balance and an id that vanishes is a
  * debt nobody can find (root CLAUDE.md).

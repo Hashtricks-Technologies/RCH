@@ -9,16 +9,17 @@ export const PrqStatusSchema = z.enum(["Sent", "Approved", "Partially approved",
 export const PordStatusSchema = z.enum(["New", "Accepted", "In kitchen", "Ready", "Dispatched", "Declined"]);
 export const PoStatusSchema = z.enum(["Draft", "Ordered", "Partially received", "Received", "Cancelled"]);
 export const ToneSchema = z.enum(["ok", "wn", "cr", "in", "ac", "mu"]);
-/** Whose account a bill may be posted to. Four registers, numbered independently of one
- *  another - a consultant, a member of staff, a ward or cost centre, and an in-patient. A
- *  walk-in customer is not here: a customer is the *absence* of a payer, which is why
- *  `BillParty` in @rch/domain is this set plus `"customer"`. */
-export const PayerKindSchema = z.enum(["patient", "staff", "dept", "doctor"]);
-/** Who the hospital is billing, for the purpose of what they are charged: the four registers
+/** Whose account a bill may be posted to. Three registers, numbered independently of one
+ *  another - a consultant, a member of staff, and a ward or cost centre. A walk-in customer is
+ *  not here: a customer is the *absence* of a payer, which is why `BillParty` in @rch/domain is
+ *  this set plus `"customer"`. Nor is a patient: this hospital's F&B counters keep no patient
+ *  roster, so there is no account to post a bill to and nobody to chase it. */
+export const PayerKindSchema = z.enum(["staff", "dept", "doctor"]);
+/** Who the hospital is billing, for the purpose of what they are charged: the three registers
  *  above plus the walk-in nobody looked up. A rate card is keyed by this rather than by
  *  `PayerKind`, because "what a customer pays" is a rate the manager sets too - it just happens
  *  to be 0% in every hospital that has ever been asked. */
-export const BillPartySchema = z.enum(["customer", "patient", "staff", "dept", "doctor"]);
+export const BillPartySchema = z.enum(["customer", "staff", "dept", "doctor"]);
 /** Customer care for the portal itself - not an operational problem in the kitchen. */
 export const TicketTopicSchema = z.enum(["Sign in & access", "A screen will not load", "A number looks wrong", "Printing & receipts", "Slow or freezing", "Training & how do I", "Feature request", "Something else"]);
 export const TicketPrioritySchema = z.enum(["Low", "Normal", "Urgent"]);
@@ -114,8 +115,7 @@ export const PayerSchema = z.strictObject({ kind: PayerKindSchema, id: z.string(
 /** Who a bill may be charged to. Served from the `payers` table, not from a fixture: the till
  *  has validated its payer against that table since Phase 3 and the two lists must be one. */
 export const PayerRosterSchema = z.strictObject({
-  patients: z.array(PayerSchema), staff: z.array(PayerSchema), depts: z.array(PayerSchema),
-  doctors: z.array(PayerSchema),
+  staff: z.array(PayerSchema), depts: z.array(PayerSchema), doctors: z.array(PayerSchema),
 });
 /** What a store keeper recorded when the goods actually landed. */
 export const ReceiptLineSchema = z.object({ recv: Qty, batch: z.string(), mrp: Money, mfg: z.string(), exp: z.string(), rejected: Qty });

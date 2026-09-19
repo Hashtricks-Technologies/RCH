@@ -33,7 +33,7 @@ export default function Dashboard() {
   const itemsSold = sum(mine, (b) => sum(b.lines, (l) => l.qty));
   const avgBill = mine.length ? billed / mine.length : 0;
 
-  // Cash is the tender, not the total: a bill charged to a patient, to staff credit
+  // Cash is the tender, not the total: a bill charged to staff credit, to a doctor
   // or to a department is billed value and never reaches this drawer.
   const cashBills = mine.filter((b) => settlementOf(b.pay) === "drawer");
   const bankBills = mine.filter((b) => settlementOf(b.pay) === "bank");
@@ -239,7 +239,7 @@ export default function Dashboard() {
         <Card title="Today at this counter" sub={L.floor} tip={<>
           <b>Cash taken {money(cashTaken)}</b> is what the till has collected in notes today - add whatever float you
           were handed to get what should be counted out. Card and UPI are taken here but settle to the hospital
-          account; patient, staff and department bills collect nothing at the counter at all. Neither is cash, which
+          account; staff, doctor and department bills collect nothing at the counter at all. Neither is cash, which
           is why <b>total billed {money(billed)}</b> is the larger figure.
         </>}>
           <div style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 14 }}>

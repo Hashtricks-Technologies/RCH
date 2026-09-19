@@ -55,7 +55,7 @@ describe("the rate card", () => {
     const r = await get("u2", "/payer-terms");
     expect(r.statusCode, r.body).toBe(200);
     const t = r.json() as Terms;
-    expect(t.classes.map((c) => c.cls)).toEqual(["customer", "patient", "staff", "dept", "doctor"]);
+    expect(t.classes.map((c) => c.cls)).toEqual(["customer", "staff", "dept", "doctor"]);
     // The demo hospital's own seed: consultants at 20%, staff with the ceiling this system has
     // always enforced, and nobody else given a concession the fixtures have no business inventing.
     expect(t.classes.find((c) => c.cls === "doctor")).toEqual({ cls: "doctor", pct: 20, limit: null });
@@ -67,7 +67,7 @@ describe("the rate card", () => {
   it("is read by the two roles that bill people and is empty for the three that do not", async () => {
     for (const who of ["u1", "u2"]) {
       const t = (await get(who, "/payer-terms")).json() as Terms;
-      expect(t.classes.length, who).toBe(5);
+      expect(t.classes.length, who).toBe(4);
     }
     // Not a 403: a manager's write announces "terms" to every open browser, and a route the
     // store keeper's tab is forbidden would fail that tab's whole refetch over a screen of

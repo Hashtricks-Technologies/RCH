@@ -10,7 +10,7 @@ import { applySnapshot } from "../api/wire";
 import { setAccessToken } from "../api/session";
 // ---- item patch ----
 import { activeItems, qty } from "../lib/selectors";
-import { DEPTS, IT, PATIENTS, STAFF, hydrateMaster } from "../data/master";
+import { DEPTS, DOCTORS, IT, STAFF, hydrateMaster } from "../data/master";
 import Pos from "../roles/counter/Pos";
 import CounterRequests from "../roles/counter/Requests";
 import MakeDistribute from "../roles/prod/MakeDistribute";
@@ -67,7 +67,7 @@ const BILL = {
  *  `hydrateMaster` inside `applySnapshot` restores exactly what was there. */
 const snapshot = (prices: Record<string, Record<string, number>> = FX.PL) => ({
   user: FX.USERS.find((u) => u.r === "manager"), items: FX.IT, locations: FX.LOC,
-  users: FX.USERS, roster: { patients: FX.PATIENTS, staff: FX.STAFF, depts: FX.DEPTS, doctors: FX.DOCTORS },
+  users: FX.USERS, roster: { staff: FX.STAFF, depts: FX.DEPTS, doctors: FX.DOCTORS },
   terms: { classes: FX.CLASS_TERMS, payers: [] },
   stock: {}, rsv: {}, ovr: {}, prices, priceLists: FX.PRICE_LISTS, menu: FX.MENU,
   req: [], tkt: [], prq: [], po: [], pord: [], batch: [], bills: [], grn: [], vendors: [],
@@ -112,15 +112,15 @@ describe("pay - POST /bills", () => {
     as("counter");
     S().addToCart("coffee", "juice", 1);
     serve({
-      "POST /api/v1/bills": () => json({ result: BILL, changed: ["stock", "bills"], message: "Bill CF/1188 · ₹20.00 posted to Anand Kumar" }),
+      "POST /api/v1/bills": () => json({ result: BILL, changed: ["stock", "bills"], message: "Bill CF/1188 · ₹20.00 posted to Dr A. Rao" }),
       "GET /api/v1/stock": () => json(STOCK),
       "GET /api/v1/bills": () => json([BILL]),
     });
 
-    await S().pay("coffee", "Patient bill", { kind: "patient", id: "IP-4471", name: "Anand Kumar" });
+    await S().pay("coffee", "Doctor credit", { kind: "doctor", id: "DR-118", name: "Dr A. Rao" });
 
     expect(hit("POST /api/v1/bills")[0].body).toEqual({
-      loc: "coffee", tender: "Patient bill", payer: { kind: "patient", id: "IP-4471", name: "Anand Kumar" },
+      loc: "coffee", tender: "Doctor credit", payer: { kind: "doctor", id: "DR-118", name: "Dr A. Rao" },
       lines: [{ it: "juice", qty: 1 }],
     });
   });
@@ -530,11 +530,11 @@ describe("refetch - what a write says it changed is what gets read", () => {
   });
 
   it("replaces the till's payer registries with one GET /roster", async () => {
-    serve({ "GET /api/v1/roster": () => json({ patients: [], staff: [{ kind: "staff", id: "E2291", name: "Kavitha Raman" }], depts: [], doctors: [] }) });
+    serve({ "GET /api/v1/roster": () => json({ staff: [{ kind: "staff", id: "E2291", name: "Kavitha Raman" }], depts: [], doctors: [] }) });
     await refetch(["roster"]);
     expect(calls().map((c) => c.at)).toEqual(["GET /api/v1/roster"]);
     expect(STAFF.map((x) => x.id)).toEqual(["E2291"]);
-    expect(PATIENTS).toEqual([]);
+    expect(DOCTORS).toEqual([]);
     expect(DEPTS).toEqual([]);
   });
 
@@ -1988,10 +1988,10 @@ describe("replyToTicket / setTicketStatus / rateTicket", () => {
 describe("what the browser no longer knows on its own", () => {
   it("takes the payer roster from the snapshot, not from a fixture", () => {
     as("counter");
-    // A patient the fixtures have never heard of, admitted this morning.
-    const roster = { patients: [{ kind: "patient", id: "IP-9999", name: "Admitted This Morning" }], staff: [], depts: [], doctors: [] };
+    // A consultant the fixtures have never heard of, who joined this morning.
+    const roster = { staff: [], depts: [], doctors: [{ kind: "doctor", id: "DR-9999", name: "Joined This Morning" }] };
     applySnapshot({ ...snapshot(), roster } as never);
-    expect(PATIENTS.map((p) => p.id)).toEqual(["IP-9999"]);
+    expect(DOCTORS.map((p) => p.id)).toEqual(["DR-9999"]);
   });
 
   it("asks the server what a staff member still owes, rather than adding up its own week", async () => {

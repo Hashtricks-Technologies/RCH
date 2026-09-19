@@ -133,7 +133,10 @@ src/
   ui/                                     kit.tsx (~30 typed components incl. DraftLineInput and EtaInput),
                                            Tip.tsx (the one tooltip: every explanation on a page, card,
                                            field, figure or button opens on hover, focus or tap),
-                                           Shell.tsx, Drawer.tsx, ErrorBoundary.tsx, prefs.ts, and four
+                                           Shell.tsx, Drawer.tsx (a document beside the list it came from),
+                                           Modal.tsx (a dialog box for one short decision), focus.ts (the
+                                           keyboard half of aria-modal, shared by both),
+                                           ErrorBoundary.tsx, prefs.ts, and four
                                            shared non-kit pieces more than one role needs: TicketSlip.tsx,
                                            NewProductForm.tsx, AdjustmentForm.tsx (store, kitchen, and - in
                                            its request mode - the counter), KitchenOrderForm.tsx
@@ -175,6 +178,23 @@ item stays on until someone switches it off. The toggle is a manual override on 
 
 ## Recent capabilities
 
+**A menu is managed, not just added to.** Menu Management opens on the whole of the picked
+outlet's till - every product it sells, with its type, its group and what it is charged on that
+outlet's own price list - searchable, filterable by type and sortable on every column. Remove sits
+on each row behind a second press, and takes the product off that till alone; every other outlet
+keeps it, and the catalogue is untouched, so it can be added straight back. Under the table, the
+picker that adds several catalogue products at once and the form that asks the central store for
+something the item master does not carry yet. Two warnings stay visible rather than hiding in a
+tooltip: an outlet on no price list at all, and the count of listed products with no price on the
+list it is on - a till refuses a sale at nothing, so that is a figure the manager has to see.
+
+**A price list is created from a button, and may start empty.** **New price list** on the Prices
+screen opens a dialog: a name, and what it starts from - a copy of any outlet's current list, or
+no prices at all. Creating one used to be a section inside the Settings panel and always a copy,
+which made the *first* list on a hospital impossible to create: every outlet the form offered was
+on no list, so every attempt was refused. The panel keeps the job that is genuinely about every
+outlet at once - which list each one charges from, and who shares it with whom.
+
 **Correcting a shelf is a document.** A write-off or a stock count is raised from the shelf it
 corrects - the store keeper's Adjustments screen for any location including quarantine, and an
 Adjust stock drawer on the kitchen's own stock screen. It carries a reason (wastage, breakage,
@@ -214,7 +234,7 @@ photo with no buttons to change it. The photo is shrunk and checked in the brows
 sent, replaces the grey placeholder everywhere a screen already reserved one for an item, and
 updates on every open browser over the change stream like everything else.
 
-**The payer register is the super admin's.** Patients, staff members, departments and doctors are
+**The payer register is the super admin's.** Staff members, departments and doctors are
 opened, renamed and switched off on `/admin`'s Payers tab, and reach the till's picker over the
 change stream without a reload; the `kind,id,name` CSV import
 (`pnpm --filter @rch/api payers import --csv`) stays for a ward list nobody types twice. A payer is
@@ -222,7 +242,7 @@ deactivated rather than deleted - their balance has to stay findable - so a swit
 leaves every till's picker and every bill already charged to it stays exactly as it was.
 
 **Who is billed decides what they pay.** The outlet manager's **Credit & Settlements** screen
-carries a rate card: one discount and one credit limit per category - customers, patients, staff,
+carries a rate card: one discount and one credit limit per category - customers, staff,
 departments and doctors - with a per-person exception over it for the consultant on terms of their
 own. The till shows the gross, the concession and the net, and the printed slip carries all three;
 the rate on the screen is a preview, and the server resolves it again inside the sale's own
@@ -281,7 +301,7 @@ and a reopen restores it. The store and the kitchen are fixed and are not listed
 appears in every other picker - the Accounts tab's location select included - the moment it opens.
 
 **Payers, on `/admin`.** The admin-flagged account's Payers tab is the register of everyone a bill may
-be posted to - patients, staff, departments and doctors - with, for each, whether the till may still
+be posted to - staff, departments and doctors - with, for each, whether the till may still
 bill to them, what they still owe and how many of their bills are open. Still-billing ones come first,
 then by name; a kind filter and a search over the id and the name narrow the list. Adding one asks for
 the kind, the hospital's own id (a payroll number, a ward code, a consultant's registration - the
@@ -400,7 +420,8 @@ happens, is always the server's.
 
 ## Out of scope
 
-Barcode scanning, patient-bill posting and GST output registers remain out of scope, along with
+Barcode scanning, an in-patient roster to post bills against, and GST output registers remain out
+of scope, along with
 a handful of features this document's original spec proposed and the team declined - a
 purchase-return or debit-note document out of quarantine (the shelf itself can be corrected with
 an adjustment; recovering the money from the vendor cannot), a finance approval role, batch-wise

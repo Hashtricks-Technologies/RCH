@@ -93,11 +93,11 @@ describe("POST /bills - the counter sale", () => {
   });
 
   it("names the payer on a credit tender - with the name the roster carries", async () => {
-    const r = await pay("u1", { loc: "coffee", tender: "Patient bill", payer: { kind: "patient", id: "IP-4471", name: "Anitha, Room 312" }, lines: [{ it: "juice", qty: 1 }] });
+    const r = await pay("u1", { loc: "coffee", tender: "Doctor credit", payer: { kind: "doctor", id: "DR-204", name: "Dr Menon, OP" }, lines: [{ it: "juice", qty: 1 }] });
     expect(r.statusCode, r.body).toBe(200);
     const b = r.json();
-    expect(b.result.payer).toEqual({ kind: "patient", id: "IP-4471", name: "Anand Kumar · Ward 3B" });
-    expect(b.message).toBe(`Bill ${b.result.no} · ₹20.00 posted to Anand Kumar · Ward 3B`);
+    expect(b.result.payer).toEqual({ kind: "doctor", id: "DR-204", name: "Dr S. Menon · Paediatrics" });
+    expect(b.message).toBe(`Bill ${b.result.no} · ₹16.00 · 20% doctor discount, ₹4.00 off posted to Dr S. Menon · Paediatrics`);
   });
 });
 
@@ -110,8 +110,8 @@ describe("the rules refuse before anything is written", () => {
     expect((await app.db.select().from(s.bills)).length).toBe(before.length);
   };
 
-  it("wants a patient before it takes a patient bill", async () => {
-    await rejects({ loc: "coffee", tender: "Patient bill", lines: [{ it: "juice", qty: 1 }] }, "Choose a patient before taking a patient bill");
+  it("wants a doctor before it takes a doctor credit", async () => {
+    await rejects({ loc: "coffee", tender: "Doctor credit", lines: [{ it: "juice", qty: 1 }] }, "Choose a doctor before taking a doctor credit");
   });
   it("wants a staff member before it takes a staff credit", async () => {
     await rejects({ loc: "coffee", tender: "Staff credit", lines: [{ it: "juice", qty: 1 }] }, "Choose a staff member before taking a staff credit");
@@ -121,15 +121,15 @@ describe("the rules refuse before anything is written", () => {
   });
   it("refuses a staff credit posted to somebody who is not staff", async () => {
     // The tender and the payer have to agree, or the bill runs up a balance the ceiling never
-    // measures: it counts staff payers, and this one would land on a patient's account.
+    // measures: it counts staff payers, and this one would land on a consultant's account.
     await rejects(
-      { loc: "coffee", tender: "Staff credit", payer: { kind: "patient", id: "IP-4471", name: "Anitha, Room 312" }, lines: [{ it: "water", qty: 1 }] },
-      "Choose a staff member for a staff credit - Anitha, Room 312 is not one");
+      { loc: "coffee", tender: "Staff credit", payer: { kind: "doctor", id: "DR-118", name: "Dr A. Rao · Cardiology" }, lines: [{ it: "water", qty: 1 }] },
+      "Choose a staff member for a staff credit - Dr A. Rao · Cardiology is not one");
   });
-  it("refuses a patient bill posted to a staff member", async () => {
+  it("refuses a doctor credit posted to a staff member", async () => {
     await rejects(
-      { loc: "coffee", tender: "Patient bill", payer: { kind: "staff", id: "RC-2088", name: "Suresh Muthu · Stores" }, lines: [{ it: "water", qty: 1 }] },
-      "Choose a patient for a patient bill - Suresh Muthu · Stores is not one");
+      { loc: "coffee", tender: "Doctor credit", payer: { kind: "staff", id: "RC-2088", name: "Suresh Muthu · Stores" }, lines: [{ it: "water", qty: 1 }] },
+      "Choose a doctor for a doctor credit - Suresh Muthu · Stores is not one");
   });
   it("refuses an item the counter does not list", async () => {
     await rejects({ loc: "coffee", tender: "Cash", lines: [{ it: "puff", qty: 1 }] }, "Veg puffs is not listed at Coffee Shop");
@@ -574,9 +574,9 @@ describe("the payer is somebody on the roster, not a word the till typed", () =>
   });
 
   it("calls each kind what the tender's own refusal calls it", async () => {
-    const p = await pay("u1", oneWater({ kind: "patient", id: "IP-0000", name: "Nobody At All" }, "Patient bill"));
-    expect(p.statusCode).toBe(422);
-    expect(p.json().error.message).toBe("There is no patient IP-0000 on the roster");
+    const st = await pay("u1", oneWater({ kind: "staff", id: "RC-0000", name: "Nobody At All" }, "Staff credit"));
+    expect(st.statusCode).toBe(422);
+    expect(st.json().error.message).toBe("There is no staff member RC-0000 on the roster");
     const d = await pay("u1", oneWater({ kind: "dept", id: "CC-XX", name: "Nobody At All" }, "Dept"));
     expect(d.statusCode).toBe(422);
     expect(d.json().error.message).toBe("There is no department CC-XX on the roster");
@@ -586,14 +586,14 @@ describe("the payer is somebody on the roster, not a word the till typed", () =>
   });
 
   it("writes the roster's name on the bill, not the one the till sent", async () => {
-    const r = await pay("u1", oneWater({ kind: "patient", id: "IP-4488", name: "Whoever The Till Typed" }, "Patient bill"));
+    const r = await pay("u1", oneWater({ kind: "dept", id: "CC-NUR", name: "Whoever The Till Typed" }, "Dept"));
     expect(r.statusCode, r.body).toBe(200);
     const b = r.json();
-    expect(b.result.payer).toEqual({ kind: "patient", id: "IP-4488", name: "Meera Devi · Ward 2A" });
-    expect(b.message).toBe(`Bill ${b.result.no} · ₹20.00 posted to Meera Devi · Ward 2A`);
+    expect(b.result.payer).toEqual({ kind: "dept", id: "CC-NUR", name: "Nursing" });
+    expect(b.message).toBe(`Bill ${b.result.no} · ₹20.00 posted to Nursing`);
     // And in the table, because that is the name the ward is billed against months later.
     const [head] = await app.db.select().from(s.bills).where(eq(s.bills.no, b.result.no));
-    expect(head.payerName).toBe("Meera Devi · Ward 2A");
+    expect(head.payerName).toBe("Nursing");
   });
 
   it("cannot be given a fresh ceiling by suffixing the id", async () => {

@@ -3,6 +3,8 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { sql } from "drizzle-orm";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
+import { withTransaction } from "../lib/db.js";
+import { ensureSequences } from "../lib/ids.js";
 import type { Db } from "./client.js";
 
 // src/db/ is two levels below apps/api (apps/api/src/db); dist/ is one level below
@@ -18,8 +20,19 @@ export function expectedMigrationCount(): number {
   const j = JSON.parse(readFileSync(join(migrationsFolder(), "meta", "_journal.json"), "utf8")) as { entries: unknown[] };
   return j.entries.length;
 }
+/**
+ * Bring a database up to date: the SQL files, then every document series they need.
+ *
+ * `ensureSequences` is part of migrating, not part of seeding. A database is migrated on every
+ * deploy and seeded once, if ever - so a series introduced after a deployment was seeded had no
+ * row, and the first write of that kind died on "sequence ... is not initialised", a bare 500
+ * the operator read as "Record the payment does not work". `settlement`, `adj_req` and
+ * `price_list` were each introduced that way. It is `onConflictDoNothing`, so a series already
+ * running keeps the number it is standing on, and a later `db:seed` finds nothing left to do.
+ */
 export async function runMigrations(db: Db, schemaName?: string): Promise<void> {
   await migrate(db, { migrationsFolder: migrationsFolder(), migrationsSchema: schemaName ?? "drizzle" });
+  await withTransaction(db, (tx) => ensureSequences(tx));
 }
 /** How many migrations this database has applied - compared with the journal by /readyz. */
 export async function appliedMigrationCount(db: Db, schemaName = "drizzle"): Promise<number> {

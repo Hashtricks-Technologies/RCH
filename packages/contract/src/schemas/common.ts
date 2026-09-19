@@ -19,11 +19,11 @@ export const SourceSchema = z.enum(["store", "kitchen"]);
 /** A price list's id on the wire - server-issued (`formatId("price_list", …)`, e.g. `"PL-006"`),
  *  never a closed set: a manager may create as many named price lists as they want. */
 export const PriceListIdSchema = z.string().min(1).max(32);
-/** The seven ways a bill is settled - a closed set, not free text. Four of them post to
+/** The six ways a bill is settled - a closed set, not free text. Three of them post to
  *  somebody's account rather than take money at the till (`payerKindForTender` in @rch/domain
  *  is the one table pairing each with the kind of payer it means), and the counter's own tender
  *  buttons are this list read straight off the schema. */
-export const TenderSchema = z.enum(["Cash", "UPI", "Card", "Patient bill", "Staff credit", "Doctor credit", "Dept"]);
+export const TenderSchema = z.enum(["Cash", "UPI", "Card", "Staff credit", "Doctor credit", "Dept"]);
 export const ErrorCodeSchema = z.enum(["validation", "unauthenticated", "forbidden", "not_found", "conflict", "rule", "rate_limited", "not_ready", "internal"]);
 export const ErrorEnvelopeSchema = z.object({
   error: z.object({ code: ErrorCodeSchema, message: z.string(), details: z.unknown().optional() }),

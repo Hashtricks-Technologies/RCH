@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { LOC, PL, PRICE_LISTS } from "../../data/master";
 import { useApp } from "../../store";
-import { Alert, Btn, DataTable, Field, FormRow, Pill, Section, Tip } from "../../ui/kit";
+import { Alert, Btn, DataTable, Pill, Section, Tip } from "../../ui/kit";
 import { DrawerFrame } from "../../ui/Drawer";
 import { registerDrawer } from "../../drawers";
 import { openOutlets } from "../../lib/selectors";
@@ -9,31 +9,30 @@ import { listFor, listOf, nameOfList, sharers } from "./Prices";
 import type { LocKey } from "../../types";
 
 /**
- * Price-list administration, in one panel.
+ * Which list each outlet charges from, and every list there is.
  *
- * Both jobs used to sit inline on one outlet's own price page: a picker that switched *that*
- * outlet, and a button that cloned *that* outlet's list. Read one outlet at a time, the model
- * is invisible - a manager could not see that two counters were standing on the same list until
- * a price edited for the Restaurant turned up on the Coffee Shop's till. So the mappings are a
- * table of every outlet at once, and each row says out loud who else is on that list.
+ * The mapping used to sit inline on one outlet's own price page, as a picker that switched
+ * *that* outlet. Read one outlet at a time, the model is invisible - a manager could not see
+ * that two counters were standing on the same list until a price edited for the Restaurant
+ * turned up on the Coffee Shop's till. So it is a table of every outlet at once, and each row
+ * says out loud who else is on that list.
  *
- * Nothing here decides anything. The server owns every refusal - a duplicate name, a list an
- * outlet is still active on - and each one reaches the operator as the store's toast of the
- * server's own sentence. The one refusal spoken here is the empty name, which never leaves the
- * browser.
+ * **Creating a list is not here.** It is one short question with two answers, so it is a dialog
+ * raised from the New price list button on the Prices page itself (`NewListDialog`), where a
+ * manager looking for it looks - rather than a section inside a panel called Settings.
+ *
+ * Nothing here decides anything. The server owns every refusal - a list an outlet is still
+ * active on, an outlet already on the list picked - and each one reaches the operator as the
+ * store's toast of the server's own sentence.
  */
 function PriceListSettings() {
   // The registries are replaced in place by a refetch, so a component that reads them during
   // render is pinned to `catalogVersion` exactly as every other one is.
   const version = useApp((x) => x.catalogVersion);
   void version;
-  const createPriceList = useApp((x) => x.createPriceList);
   const deletePriceList = useApp((x) => x.deletePriceList);
   const setOutletPriceList = useApp((x) => x.setOutletPriceList);
-  const notify = useApp((x) => x.notify);
 
-  const [name, setName] = useState("");
-  const [pickedFrom, setPickedFrom] = useState<LocKey | null>(null);
   const [dropList, setDropList] = useState<string | null>(null);
   /** One key per control with a write in flight. Every write on this panel can be refused, so
    *  none of them may clear what was typed or picked until the server has actually taken it. */
@@ -41,33 +40,20 @@ function PriceListSettings() {
   const lock = (k: string, on: boolean) => { setBusy((b) => ({ ...b, [k]: on })); };
 
   const outlets = openOutlets();
-  // Falling back to the first outlet rather than holding `null` in state: the snapshot can land
-  // after this drawer has mounted, and a clone source picked from an empty list would stay empty.
-  const from = (pickedFrom !== null && outlets.includes(pickedFrom) ? pickedFrom : outlets[0]) ?? null;
   const allLists = Object.values(PRICE_LISTS).sort((a, b) => a.name.localeCompare(b.name));
   const outletNames = (ls: LocKey[]) => listOf(ls.map((l) => LOC[l]?.n ?? l));
 
-  if (outlets.length === 0 || from === null) {
+  if (outlets.length === 0) {
     return (
-      <DrawerFrame title="Price list settings" sub="No outlet is configured yet">
+      <DrawerFrame title="Price lists" sub="No outlet is configured yet">
         <Alert tone="w" label="NO OUTLET">
-          A price list is cloned from an outlet's current prices and attached to an outlet, so
-          there is nothing to create one from and nothing to attach one to on this deployment yet.
+          A price list is attached to an outlet, so there is nothing to attach one to on this
+          deployment yet.
         </Alert>
       </DrawerFrame>
     );
   }
 
-  const create = async () => {
-    const wanted = name.trim();
-    if (!wanted) { notify("Enter a name for the new price list."); return; }
-    lock("new", true);
-    const made = await createPriceList(wanted, from);
-    lock("new", false);
-    // Refused - a name already taken, most often. What was typed stays in the box so it can be
-    // corrected rather than retyped.
-    if (made) setName("");
-  };
   const attach = async (loc: LocKey, listId: string) => {
     lock(`attach:${loc}`, true);
     await setOutletPriceList(loc, listId);
@@ -81,33 +67,7 @@ function PriceListSettings() {
   };
 
   return (
-    <DrawerFrame title="Price list settings" sub="Create a price list, and choose which one each outlet charges from">
-      <Section
-        title="Create a new price list"
-        tip="It starts as a copy of one outlet's current prices, and is created inactive - no counter charges from it until you attach it below."
-      >
-        <FormRow>
-          <Field label="List name" tip="What the manager will pick it by - a season, a shift or a shop.">
-            <input value={name} onChange={(e) => { setName(e.target.value); }} placeholder="e.g. Weekend Rates" />
-          </Field>
-          <Field
-            label="Copy prices from"
-            tip="Every price on this outlet's current list is copied into the new one. Editing either afterwards leaves the other alone."
-          >
-            <select value={from} aria-label="Copy prices from" onChange={(e) => { setPickedFrom(e.target.value as LocKey); }}>
-              {outlets.map((l) => (
-                <option key={l} value={l}>
-                  {listFor(l) === "" ? `${LOC[l].n} - no list yet` : `${LOC[l].n} - ${nameOfList(listFor(l))}`}
-                </option>
-              ))}
-            </select>
-          </Field>
-        </FormRow>
-        <Btn disabled={busy.new} onClick={() => void create()}>
-          {busy.new ? "Creating…" : "Create price list"}
-        </Btn>
-      </Section>
-
+    <DrawerFrame title="Price lists" sub="Which list each outlet charges from">
       <Section
         title="Which list each outlet charges from"
         tip="One list can serve several outlets. Attaching a different one changes what that counter charges from the next sale."
@@ -171,6 +131,7 @@ function PriceListSettings() {
               { h: "Items", r: true },
               { h: "Actions", w: "30%" },
             ]}
+            empty={{ title: "No price list yet", sub: "Press New price list on the Prices page behind this panel." }}
             rows={allLists.map((pl) => ({
               key: pl.id,
               cells: [
@@ -199,7 +160,6 @@ function PriceListSettings() {
                 ),
               ],
             }))}
-            empty={{ title: "No price list yet", sub: "Create the first one above." }}
           />
         </div>
       </Section>

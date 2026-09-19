@@ -38,8 +38,8 @@ export async function lockPayerCredit(db: Tx, kind: PayerKind, payerId: string):
  *
  * Credit, and only credit: a bill the same person paid cash for in their own name is not credit
  * and must not eat their room, which is what the tender filter is for. The payer kind is part of
- * the filter as well as the tender, because a "Staff credit" posted to a patient would otherwise
- * be a balance no rule measures.
+ * the filter as well as the tender, because a "Staff credit" posted to a consultant would
+ * otherwise be a balance no rule measures.
  *
  * Neither a voided bill nor a voided settlement counts. A bill left on the table with its lines
  * intact is not a debt - the void reverses the sale, it does not erase it - and a settlement

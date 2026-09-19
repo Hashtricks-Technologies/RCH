@@ -36,7 +36,7 @@ const ledger = async (loc: string, days = 30): Promise<StockLedgerResponse> => {
 const total = (b: StockLedgerResponse, col: "opening" | "recd" | "issued" | "closing") =>
   round3(b.rows.reduce((t, r) => t + r[col], 0));
 
-const credit = async (p: { kind: "patient" | "staff" | "dept" | "doctor"; id: string }): Promise<CreditResponse> => {
+const credit = async (p: { kind: "staff" | "dept" | "doctor"; id: string }): Promise<CreditResponse> => {
   const res = await app.inject({ method: "GET", url: `/api/v1/reports/credit/${p.kind}/${p.id}`, headers: await authHeaders(app, "u1") });
   expect(res.statusCode, res.body).toBe(200);
   return res.json() as CreditResponse;

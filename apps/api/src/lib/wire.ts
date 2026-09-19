@@ -69,6 +69,5 @@ export const toWireBill = (b: BillRow, lines: BillLineRow[], operator: { name: s
  *  roster has never heard of somebody and the sentence the rate card says about the same
  *  somebody have to use the same word, and a word written twice drifts. */
 export const PAYER_LABEL: Record<PayerKind, string> = {
-  patient: PARTY_LABEL.patient, staff: PARTY_LABEL.staff,
-  dept: PARTY_LABEL.dept, doctor: PARTY_LABEL.doctor,
+  staff: PARTY_LABEL.staff, dept: PARTY_LABEL.dept, doctor: PARTY_LABEL.doctor,
 };

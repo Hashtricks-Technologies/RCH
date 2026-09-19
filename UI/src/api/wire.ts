@@ -47,7 +47,7 @@ const stockOf = (s: Snapshot["stock"]): Record<StockLoc, Record<string, number>>
 export function applySnapshot(s: Snapshot): void {
   hydrateMaster({ items: s.items, locations: s.locations, prices: s.prices, priceLists: s.priceLists, menu: s.menu, users: s.users });
   // Who a bill may be charged to comes off the `payers` table the till has been checked
-  // against since Phase 3, so a patient admitted this morning is billable without a release.
+  // against since Phase 3, so a consultant added this morning is billable without a release.
   hydrateRoster(s.roster);
   hydrateTerms(s.terms);
   useApp.setState((prev) => ({
@@ -199,8 +199,8 @@ export function applyMenus(menu: Snapshot["menu"]): void {
 }
 
 // ---- payers ----
-/** GET /roster -> the register the counter's payer picker reads. `PATIENTS`, `STAFF` and
- *  `DEPTS` are module-level registries like `IT` and `LOC`, not store state, so `catalogVersion`
+/** GET /roster -> the register the counter's payer picker reads. `STAFF`, `DEPTS` and
+ *  `DOCTORS` are module-level registries like `IT` and `LOC`, not store state, so `catalogVersion`
  *  is what tells React the lists moved - the same signal `applyItems` bumps for the catalogue.
  *  The server only ever sends active rows, so a deactivated payer simply stops being offered at
  *  the till rather than needing a second filter here. */

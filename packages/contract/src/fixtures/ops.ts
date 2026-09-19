@@ -39,7 +39,7 @@ export const seedTickets = (): SupportTicket[] => [
 
 export const seedProductRequests = (): ProductRequest[] => [
   {
-    id: "NPR-0012", name: "Sugar-free lemon iced tea 250ml", why: "Diabetic patients and attenders ask for it daily and we have nothing to offer.",
+    id: "NPR-0012", name: "Sugar-free lemon iced tea 250ml", why: "Visitors and attenders ask for it daily and we have nothing to offer.",
     forLoc: "coffee", by: "Ramesh Kumar", at: "Yesterday", st: "Requested",
   },
 ];

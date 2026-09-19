@@ -72,7 +72,7 @@ describe("H1 · a made item carries a real cost, never zero", () => {
 describe("H4 · only cash counts as collected", () => {
   it("separates settled cash from billed value", () => {
     expect(isCashTender("Cash")).toBe(true);
-    expect(isCashTender("Patient bill")).toBe(false);
+    expect(isCashTender("Doctor credit")).toBe(false);
     expect(isCashTender("Staff credit")).toBe(false);
     expect(isCashTender("Dept")).toBe(false);
     expect(isCashTender("UPI")).toBe(false);
@@ -80,7 +80,7 @@ describe("H4 · only cash counts as collected", () => {
 
   it("sums only the cash bills", () => {
     const bills = [
-      { pay: "Cash", tot: 100 }, { pay: "Patient bill", tot: 50 }, { pay: "UPI", tot: 25 },
+      { pay: "Cash", tot: 100 }, { pay: "Doctor credit", tot: 50 }, { pay: "UPI", tot: 25 },
     ] as Parameters<typeof cashCollected>[0];
     expect(cashCollected(bills)).toBe(100);
   });
@@ -132,8 +132,8 @@ describe("H9 · best-before says which day it means", () => {
 
 /* ---------------------------------------------------------------- M1
  * M1 · non-cash tenders need a payer. The sale is POST /bills since Phase 2:
- * apps/api/src/modules/pos/pos.test.ts pins this tag - "wants a patient before it takes a
- * patient bill", "wants a staff member before it takes a staff credit", "wants a department
+ * apps/api/src/modules/pos/pos.test.ts pins this tag - "wants a doctor before it takes a
+ * doctor credit", "wants a staff member before it takes a staff credit", "wants a department
  * before it takes a dept bill", and "names the payer on a credit tender". writes.test.ts
  * proves the payer this store sends reaches the body. */
 

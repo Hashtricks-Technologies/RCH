@@ -3,7 +3,6 @@ import type { Bill, Dated, Tender, Tone } from "../../types";
 
 /** How a bill reads on the counter's own list, derived from the tender it was settled with. */
 export const billStatus = (pay: string): { label: string; tone: Tone } => {
-  if (pay === "Patient bill") return { label: "Posted to IP", tone: "in" };
   if (pay === "Staff credit") return { label: "On credit", tone: "wn" };
   if (pay === "Doctor credit") return { label: "Doctor account", tone: "wn" };
   if (pay === "Dept") return { label: "Dept charge", tone: "ac" };
@@ -14,7 +13,7 @@ export const billStatus = (pay: string): { label: string; tone: Tone } => {
  * Where the money for a bill actually ends up. Three places, not two:
  *  - `drawer`  cash notes the operator physically holds and hands over at shift end
  *  - `bank`    card and UPI - taken at the till, but settled to the hospital account
- *  - `account` patient, staff and department bills - billed value, nothing was collected
+ *  - `account` staff, doctor and department bills - billed value, nothing was collected
  * Only `drawer` may be added to the opening float; the other two are billed, not banked
  * in the till, and mixing them is what makes a shift's cash figure read wrong.
  */

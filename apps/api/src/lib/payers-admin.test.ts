@@ -9,19 +9,19 @@ let t: TestDb;
 beforeAll(async () => { t = await withTestSchema("payers_admin"); await seedTestDb(t.db); });
 afterAll(async () => { await t.close(); });
 
-const nameOf = async (kind: "patient" | "staff" | "dept", id: string): Promise<string | undefined> => {
+const nameOf = async (kind: "staff" | "dept" | "doctor", id: string): Promise<string | undefined> => {
   const [row] = await t.db.select().from(payers).where(and(eq(payers.kind, kind), eq(payers.id, id)));
   return row?.name;
 };
-const close = (kind: "patient" | "staff" | "dept", id: string) =>
+const close = (kind: "staff" | "dept" | "doctor", id: string) =>
   t.db.update(payers).set({ active: false }).where(and(eq(payers.kind, kind), eq(payers.id, id)));
 
 describe("parsePayerCsv", () => {
   it("parses a CSV, names the row and the column on a bad kind", () => {
     const { rows, errors } = parsePayerCsv([
       "kind,id,name",
-      "patient,IP-8001,Anand Kumar · Ward 3B",
-      "patinet,IP-8002,Meera Devi · Ward 2A",
+      "doctor,DR-8001,Dr A. Rao · Cardiology",
+      "docotr,DR-8002,Dr S. Menon · Paediatrics",
       'dept,CC-PHY,"Physiotherapy, East Wing"',
       "",
       "# a comment line the loader skips",
@@ -30,13 +30,13 @@ describe("parsePayerCsv", () => {
 
     // The good rows come through whole, quoted commas and all.
     expect(rows).toEqual([
-      { kind: "patient", id: "IP-8001", name: "Anand Kumar · Ward 3B" },
+      { kind: "doctor", id: "DR-8001", name: "Dr A. Rao · Cardiology" },
       { kind: "dept", id: "CC-PHY", name: "Physiotherapy, East Wing" },
     ]);
     // And every bad one is named by the line an editor shows and the column that is wrong,
     // so one run tells the administrator everything to fix.
     expect(errors).toEqual([
-      { row: 3, column: "kind", message: '"patinet" is not a payer kind - use one of patient, staff, dept, doctor' },
+      { row: 3, column: "kind", message: '"docotr" is not a payer kind - use one of staff, dept, doctor' },
       { row: 7, column: "id", message: "an id is required - it is the hospital's own number, not one this tool invents" },
     ]);
   });
@@ -82,17 +82,17 @@ describe("importPayers", () => {
   });
 
   it("renames only with --replace-names", async () => {
-    await importPayers(t.db, [{ kind: "patient", id: "IP-8200", name: "Ward 1" }], {});
-    expect(await importPayers(t.db, [{ kind: "patient", id: "IP-8200", name: "Ward 2" }], {}))
+    await importPayers(t.db, [{ kind: "dept", id: "CC-8200", name: "Ward 1" }], {});
+    expect(await importPayers(t.db, [{ kind: "dept", id: "CC-8200", name: "Ward 2" }], {}))
       .toEqual({ added: 0, skipped: 1, renamed: 0, renamedInactive: 0 });
-    expect(await nameOf("patient", "IP-8200")).toBe("Ward 1");
+    expect(await nameOf("dept", "CC-8200")).toBe("Ward 1");
 
-    expect(await importPayers(t.db, [{ kind: "patient", id: "IP-8200", name: "Ward 2" }], { replaceNames: true }))
+    expect(await importPayers(t.db, [{ kind: "dept", id: "CC-8200", name: "Ward 2" }], { replaceNames: true }))
       .toEqual({ added: 0, skipped: 0, renamed: 1, renamedInactive: 0 });
-    expect(await nameOf("patient", "IP-8200")).toBe("Ward 2");
+    expect(await nameOf("dept", "CC-8200")).toBe("Ward 2");
 
     // "renamed" means renamed, not "touched": a row whose name already matches is a skip.
-    expect(await importPayers(t.db, [{ kind: "patient", id: "IP-8200", name: "Ward 2" }], { replaceNames: true }))
+    expect(await importPayers(t.db, [{ kind: "dept", id: "CC-8200", name: "Ward 2" }], { replaceNames: true }))
       .toEqual({ added: 0, skipped: 1, renamed: 0, renamedInactive: 0 });
   });
 

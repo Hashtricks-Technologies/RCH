@@ -31,22 +31,37 @@ async function loadOutlet(tx: Tx, loc: string): Promise<OutletRow> {
 
 export function createPricelistsService(db: Db) {
   return {
+    /**
+     * A new list, cloned from an outlet's current prices or empty.
+     *
+     * `cloneFrom` is optional on purpose. A hospital that has just opened its first outlet is
+     * on no list at all, so there is nothing to clone - and while a source was required, the
+     * *first* price list was the one list nobody could create. Named, the source outlet has to
+     * be an open outlet that is actually on a list; absent, the list starts with no prices and
+     * the manager types them on the outlet's own page.
+     *
+     * Either way it is created inactive: the manager reviews it, then switches an outlet onto
+     * it with `setOutletPriceList`.
+     */
     async create(_claims: AccessClaims, body: CreatePriceListBody): Promise<WriteResponse<PriceList>> {
       return withTransaction(db, async (tx) => {
         const name = body.name.trim();
         assertRule(name.length > 0, "Give the price list a name before saving");
-        const source = await loadOutlet(tx, body.cloneFrom);
-        assertRule(source.priceListId, `${source.name} has no price list to clone`);
+        const source = body.cloneFrom === undefined ? null : await loadOutlet(tx, body.cloneFrom);
+        if (source) assertRule(source.priceListId, `${source.name} has no price list to clone`);
 
         const id = await allocateId(tx, "price_list");
         const row = await pricelistsRepo.insert(tx, { id, name });
-        await pricelistsRepo.cloneItems(tx, source.priceListId, id);
+        if (source?.priceListId) await pricelistsRepo.cloneItems(tx, source.priceListId, id);
 
-        // Cloning never activates it anywhere - the manager reviews it, then switches an
-        // outlet on with `setOutletPriceList`.
         const changed = ["priceLists", "prices"] as const;
         await emitChanged(tx, changed);
-        return { result: toWire(row, []), changed: [...changed], message: `${name} created, cloned from ${source.name}'s prices` };
+        return {
+          result: toWire(row, []), changed: [...changed],
+          message: source
+            ? `${name} created, cloned from ${source.name}'s prices`
+            : `${name} created with no prices on it yet - price its products from an outlet's own page`,
+        };
       });
     },
 

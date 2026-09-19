@@ -298,6 +298,14 @@ td.n b{font-weight:600;color:var(--ink)}
 .drh p{margin:3px 0 0;font-size:11.5px;color:var(--ink-3);font-family:"IBM Plex Mono",monospace}
 .drb{flex:1;overflow-y:auto;padding:18px}
 .drf{padding:12px 18px;border-top:1px solid var(--line);background:var(--surface-2);display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
+/* A dialog box in the middle of the screen (ui/Modal.tsx). It borrows the drawer's own header,
+   body and footer rows, so the two read the same; only where it sits is different. The wrapper
+   is what centres it and keeps it off the edges on a phone, and it is `pointer-events:none` so
+   a press on the space around the box still reaches the scrim underneath and closes it. */
+.modal-wrap{position:fixed;inset:0;z-index:151;display:flex;align-items:center;justify-content:center;padding:16px;pointer-events:none}
+.modal{pointer-events:auto;width:min(560px,100%);max-height:min(88vh,100%);background:var(--surface);
+ border:1px solid var(--line);border-radius:12px;box-shadow:var(--sh3);display:flex;flex-direction:column;overflow:hidden}
+@media(prefers-reduced-motion:no-preference){.modal{animation:mp .18s cubic-bezier(.32,.72,0,1)}@keyframes mp{from{transform:translateY(8px) scale(.98);opacity:0}to{transform:none;opacity:1}}}
 .dl{display:grid;grid-template-columns:150px 1fr;gap:9px 14px;font-size:12.5px}
 .dl dt{color:var(--ink-3);font-size:11px;letter-spacing:.05em;text-transform:uppercase;font-weight:600}
 .dl dd{margin:0;color:var(--ink)}
@@ -596,7 +604,7 @@ thead th .tip{margin-left:4px}
 .print-only { display: none }
 .print-slip { display: none }
 @media print {
-  .side, .top, .drf, .toast, .scrim, .no-print { display: none !important }
+  .side, .top, .drf, .toast, .scrim, .modal-wrap, .no-print { display: none !important }
   /* Paper has no scrollbar: a capped card prints everything it is holding, not the 420px of it
      that happened to be in view. */
   .card-b.scroll { max-height: none; overflow: visible }
