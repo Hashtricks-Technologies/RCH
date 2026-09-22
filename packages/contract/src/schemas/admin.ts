@@ -78,8 +78,8 @@ export const OutletKeyParamsSchema = z.strictObject({ key: LocKeySchema });
 /** Each tab reads the same log filtered to its own kind, so each shows its own fifty. */
 export const AdminActionsQuerySchema = z.strictObject({ kind: z.enum(["accounts", "outlets", "payers"]).default("accounts") });
 
-// ---- the payer register. Who a bill may be posted to: consultants, staff, wards and cost
-// centres, and in-patients. Opened, renamed and switched off by the super admin, never deleted -
+// ---- the payer register. Who a bill may be posted to: consultants, staff, and wards or cost
+// centres. Opened, renamed and switched off by the super admin, never deleted -
 // a payer with a bill against them is a balance somebody has to be able to find. What each of
 // them is *charged* is the outlet manager's, and lives in `schemas/receivables.ts`.
 

@@ -77,13 +77,7 @@ export const USERS: User[] = [
 ];
 
 /* Payers for the non-cash tenders (M1). No backend, so these stand in for the
-   patient, payroll and cost-centre masters the live system would look up. */
-export const PATIENTS: Payer[] = [
-  { kind: "patient", id: "IP-4471", name: "Anand Kumar · Ward 3B" },
-  { kind: "patient", id: "IP-4488", name: "Meera Devi · Ward 2A" },
-  { kind: "patient", id: "IP-4502", name: "Rajesh Iyer · ICU 1" },
-  { kind: "patient", id: "OP-9910", name: "Sundar Rajan · OP" },
-];
+   payroll, cost-centre and consultant masters the live system would look up. */
 export const STAFF: Payer[] = [
   { kind: "staff", id: "RC-4471", name: "Kavitha Raman · F&B" },
   { kind: "staff", id: "RC-3120", name: "Ramesh Kumar · F&B" },
@@ -117,7 +111,6 @@ export const DOCTORS: Payer[] = [
  */
 export const CLASS_TERMS: ClassTerms[] = [
   { cls: "customer", pct: 0, limit: null },
-  { cls: "patient", pct: 0, limit: null },
   { cls: "staff", pct: 0, limit: STAFF_CREDIT_LIMIT },
   { cls: "doctor", pct: 20, limit: null },
   { cls: "dept", pct: 0, limit: null },

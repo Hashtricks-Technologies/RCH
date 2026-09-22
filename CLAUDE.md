@@ -173,7 +173,7 @@ There are five roles (`counter`, `manager`, `store`, `prod`, `buyer`), each with
 - **Admin** is a boolean on `users`, not a sixth role. It is checked as `access: "admin"`. An admin-flagged
   account sees only the standalone `/admin` page, never an operational shell. The page has five tabs: Accounts
   (staff accounts), Outlets (opens, edits, closes and reopens them), Payers (the register a bill may be posted
-  to - patients, staff, departments and doctors, opened, renamed and switched off, never deleted), Support
+  to - staff, departments and doctors, opened, renamed and switched off, never deleted), Support
   desk (every role's support tickets) and Audit log (every write and sign-in). The flag can only be set with
   `pnpm --filter @rch/api users set-admin`; no route can set it.
 - **The super admin has no role in practice.** The `users` row still carries a placeholder role and location,
@@ -221,11 +221,13 @@ back where it stood.
   ward list nobody types twice. Both `GET /payer-terms` and `GET /receivables` are `access: "any"` and answer
   empty to a caller who never takes a bill, exactly as `GET /roster` does - a manager's write announces to
   every open browser, and a route another role is forbidden would fail that tab's whole refetch.
-- **A price list is a managed entity** (`price_lists`, id + name), not a fixed pair. A manager creates one
-  cloned from an outlet's current active list, edits any list at any time whether or not it is active, and
-  switches an outlet onto any list explicitly (`PUT /outlets/:loc/price-list`). Two outlets may still share one
-  active list, exactly as before. A list can be deleted only once no outlet is active on it. A newly opened
-  outlet is on none: the super admin's form has no price list, and the manager attaches one from Prices.
+- **A price list is a managed entity** (`price_lists`, id + name), not a fixed pair. A manager creates one from
+  the **New price list** button on Prices - copied from an outlet's current active list, or **empty**, which
+  is the only way the first list on a hospital that has never had one gets made (`cloneFrom` is optional) -
+  edits any list at any time whether or not it is active, and switches an outlet onto any list explicitly
+  (`PUT /outlets/:loc/price-list`). Two outlets may still share one active list, exactly as before. A list can
+  be deleted only once no outlet is active on it. A newly opened outlet is on none: the super admin's form has
+  no price list, and the manager attaches one from Prices' Settings panel.
 - `lib/images.ts` is the only code that touches photo bytes (S3 in production, a folder in dev/test).
   `items.image` holds the sha256; `GET /items/:it/image/:hash` is public, outside the manifest like `/events`,
   and serves only the current hash.
@@ -287,7 +289,7 @@ The code enforces these and tests pin them. Breaking one is a bug.
     a hard ceiling for <item>`.
   - An item that carries an MRP keeps one; it can't be cleared to zero.
 - **What a party is charged is the outlet manager's, and the server decides it.** A rate card carries one
-  discount and one credit limit per category (`customer`, `patient`, `staff`, `dept`, `doctor`), with a
+  discount and one credit limit per category (`customer`, `staff`, `dept`, `doctor`), with a
   per-person exception over it; `null` on a person's row means "inherit". The till previews the rate off the
   snapshot, and `POST /bills` resolves it again inside the sale's own transaction - a client sends no rate and
   no discount. The concession comes off each **line**, so the GST split on a mixed cart stays right, and

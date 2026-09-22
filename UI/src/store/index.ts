@@ -173,9 +173,10 @@ export interface AppState extends ProcurementSlice, OpsSlice, AdminSlice, AuditS
   savePrice: (list: string, it: string, price: number) => Promise<boolean>;
   removeProduct: (loc: LocKey, it: string) => Promise<boolean>;
   addProduct: (loc: LocKey, it: string) => Promise<boolean>;
-  /** Cloned from `cloneFrom`'s current active list, created inactive - `null` on refusal so the
-   *  drawer can keep the name the manager typed. */
-  createPriceList: (name: string, cloneFrom: LocKey) => Promise<PriceList | null>;
+  /** Cloned from `cloneFrom`'s current active list, or empty where none is named - which is the
+   *  only way the first list on a hospital that has never had one gets made. Created inactive;
+   *  `null` on refusal, so the dialog can keep the name the manager typed. */
+  createPriceList: (name: string, cloneFrom?: LocKey) => Promise<PriceList | null>;
   /** Only once no outlet is active on it - the server's own refusal names every outlet still on
    *  it otherwise. */
   deletePriceList: (id: string) => Promise<boolean>;
@@ -758,7 +759,7 @@ export const useApp = create<AppState>((set, get) => ({
   },
   createPriceList: async (name, cloneFrom) => {
     try {
-      const r = await call(routes.createPriceList, { body: { name, cloneFrom } });
+      const r = await call(routes.createPriceList, { body: cloneFrom ? { name, cloneFrom } : { name } });
       get().notify(r.message);
       await refetch(r.changed, r.message);
       return r.result;

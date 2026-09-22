@@ -36,9 +36,3 @@ ALTER TABLE "refresh_tokens" ADD CONSTRAINT "refresh_tokens_loc_locations_key_fk
 INSERT INTO "user_postings" ("user_id", "loc")
 SELECT "id", "loc" FROM "users"
 ON CONFLICT DO NOTHING;
---> statement-breakpoint
--- The Z series, likewise invisible to a schema diff. `ensureSequences` only runs at seed time, so
--- without this row an already-migrated database would throw on the first Z ever taken rather than
--- on a fresh install where the seed would have covered it.
-INSERT INTO "sequences" ("kind", "next") VALUES ('z_report', 1)
-ON CONFLICT DO NOTHING;

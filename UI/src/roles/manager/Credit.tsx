@@ -4,7 +4,7 @@ import {
   PARTY_LABEL, PARTY_TITLE, creditLimitFor, creditLimitRefusal, creditRoom, discountPctFor,
   discountRefusal, istDate, validCreditLimit, validDiscountPct,
 } from "@rch/domain";
-import { CLASS_TERMS, DEPTS, DOCTORS, PATIENTS, PAYER_TERMS, STAFF } from "../../data/master";
+import { CLASS_TERMS, DEPTS, DOCTORS, PAYER_TERMS, STAFF } from "../../data/master";
 import { useApp } from "../../store";
 import { fromWireDay, fromWireTime, isToday, money, money0, sum } from "../../lib/fmt";
 import {
@@ -255,7 +255,7 @@ function Owed({ rows, failed, reading, onOpen, onRetry }: {
                 ? { title: "Reading the balances…" }
                 : emptyFor(filtered, {
                   title: "Nobody owes anything",
-                  sub: "A bill posted to a patient, a member of staff, a doctor or a department appears here until it is settled.",
+                  sub: "A bill posted to a member of staff, a doctor or a department appears here until it is settled.",
                 })}
             />
           </div>
@@ -283,7 +283,7 @@ function Terms({ version }: { version: number }) {
   }, [version]);
   const roster = useMemo(() => {
     void version;
-    return [...PATIENTS, ...STAFF, ...DEPTS, ...DOCTORS];
+    return [...STAFF, ...DEPTS, ...DOCTORS];
   }, [version]);
 
   const [edit, setEdit] = useState<Record<string, Draft>>({});

@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { formatId } from "@rch/domain";
+import { formatId, SEQUENCE_START, type IdKind } from "@rch/domain";
 import { withTestSchema, type TestDb } from "../test/db.js";
 import { allocateId, allocateNumber, ensureSequences } from "./ids.js";
 import { withTransaction } from "./db.js";
@@ -30,5 +30,24 @@ describe("allocateId", () => {
   it("does not consume a number when the transaction rolls back", async () => {
     await expect(withTransaction(t.db, async (tx) => { await allocateId(tx, "bill"); throw new Error("boom"); })).rejects.toThrow("boom");
     expect(await withTransaction(t.db, (tx) => allocateId(tx, "bill"))).toBe("CF/1188");
+  });
+});
+
+describe("migrating initialises every series", () => {
+  it("hands out a number for each IdKind on a database nobody has seeded", async () => {
+    // The regression this guards. A database is migrated on every deploy and seeded once, if
+    // ever, so `ensureSequences` living only in the seed meant a series introduced after a
+    // deployment was seeded had no row at all - and the first write of that kind died on
+    // "sequence ... is not initialised", a bare 500 rather than a sentence. `settlement`,
+    // `adj_req` and `price_list` were each introduced that way, which is why recording a
+    // payment on the live box did nothing. `runMigrations` now ensures them, so this schema is
+    // migrated and *not* seeded, and every kind still allocates.
+    const t2 = await withTestSchema("ids_migrated");
+    try {
+      for (const kind of Object.keys(SEQUENCE_START) as IdKind[]) {
+        const n = await withTransaction(t2.db, (tx) => allocateNumber(tx, kind));
+        expect(n.n, kind).toBe(SEQUENCE_START[kind]);
+      }
+    } finally { await t2.close(); }
   });
 });

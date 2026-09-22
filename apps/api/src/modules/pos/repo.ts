@@ -48,8 +48,9 @@ export const posRepo = {
   },
 
   /**
-   * The roster row a bill may be posted to. Only an active one answers: a discharged patient
-   * or a staff member who has left is not somebody a new balance may be run up against, and
+   * The roster row a bill may be posted to. Only an active one answers: a consultant who no
+   * longer visits or a staff member who has left is not somebody a new balance may be run up
+   * against, and
    * the row stays for the bills already posted to it rather than being deleted.
    */
   async payer(tx: Tx, kind: PayerKind, id: string): Promise<{ name: string } | undefined> {

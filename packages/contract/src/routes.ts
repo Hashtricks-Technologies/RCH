@@ -248,7 +248,7 @@ export const routes = {
   deleteAdminUser:       defineRoute({ method: "DELETE", path: "/admin/users/:id",                 access: "admin", params: AdminUserIdParamsSchema, response: writeResponse(AdminDeletedUserSchema) }),
   adminActions:          defineRoute({ method: "GET",   path: "/admin/actions",                    access: "admin", query: AdminActionsQuerySchema, response: z.array(AdminActionSchema) }),
   // ---- admin: the payer register. Who a bill may be posted to - consultants, staff, wards and
-  // in-patients - opened, renamed and switched off here. There is no delete: a payer with a bill
+  // cost centres - opened, renamed and switched off here. There is no delete: a payer with a bill
   // against them is somebody's balance, and an id that vanishes is a debt nobody can find. What
   // each of them is charged is the outlet manager's, at `/payer-terms` above.
   adminPayers:           defineRoute({ method: "GET",   path: "/admin/payers",                     access: "admin", response: z.array(AdminPayerSchema) }),

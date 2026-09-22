@@ -86,8 +86,8 @@ it already opens from the till - and it replaces the grey placeholder everywhere
 one. And let a counter ask the kitchen to bake something, with a needed-by date, instead of
 waiting for an order nobody could raise.
 
-**Billing a hospital's own people.** A bill can be posted to a patient, a member of staff, a
-department or a consultant, and each is charged differently: the outlet manager sets one discount
+**Billing a hospital's own people.** A bill can be posted to a member of staff, a department or a
+consultant, and each is charged differently: the outlet manager sets one discount
 and one credit limit per category, with an exception for the individual on terms of their own. The
 till shows the gross, the concession and the net, and prints all three. What somebody may run up is
 capped on what is still **unsettled** rather than on a calendar month, so clearing an account frees
@@ -301,7 +301,7 @@ account owner, made by following `deploy/RUNBOOK.md` §11.
 **The audit fix wave (11 September 2026)** is a whole-tree review of the finished build rather
 than a seventh phase. Most of it hardens what was already there - goods receipt decided on what
 the shelf accepted rather than on what the lorry carried, an approved request that can be
-withdrawn, a wrong pick-ticket code counted with five of them locking the ticket, patient names
+withdrawn, a wrong pick-ticket code counted with five of them locking the ticket, payer names
 withheld from the three roles that never bill anybody, and the ledger's own promises written into
 the database as constraints. Its last block is the exception: four capabilities the review found
 *missing* rather than broken - the write-off, the same-day bill void, the editable item master

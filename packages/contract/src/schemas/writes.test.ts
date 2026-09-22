@@ -6,7 +6,7 @@ const body = (over: Record<string, unknown> = {}) => ({ loc: "coffee", tender: "
 
 describe("PayBodySchema", () => {
   it("takes the seven tenders the counter offers, and nothing else", () => {
-    expect(TenderSchema.options).toEqual(["Cash", "UPI", "Card", "Patient bill", "Staff credit", "Doctor credit", "Dept"]);
+    expect(TenderSchema.options).toEqual(["Cash", "UPI", "Card", "Staff credit", "Doctor credit", "Dept"]);
     for (const tender of TenderSchema.options) expect(PayBodySchema.safeParse(body({ tender })).success, tender).toBe(true);
     // A tender is a closed set: a near miss is a validation error, not a bill settled by "staff credit".
     for (const tender of ["staff credit", "cash", "Cheque", ""]) expect(PayBodySchema.safeParse(body({ tender })).success, tender).toBe(false);

@@ -822,7 +822,7 @@ pnpm --filter @rch/api payers import --csv ./wards.csv --replace-names
 The file is three columns, `kind,id,name`, one payer a line. A header row naming those columns is
 optional; blank lines and lines starting `#` are skipped; a field may be quoted so a name can
 carry a comma; a leading byte-order mark is stripped, so a file Excel saved as "CSV UTF-8" is
-read as-is. `kind` is one of `patient|staff|dept|doctor`. The `id` is the hospital's own number -
+read as-is. `kind` is one of `staff|dept|doctor`. The `id` is the hospital's own number -
 there is no sequence behind a payer - and `(kind, id)` is what makes a row unique.
 
 Three behaviours to know before running it against a live database:
@@ -1803,8 +1803,8 @@ scoped to what a deploy needs, and needs no change.
    ```
    `kubectl cp` the file in first, or run the CLI from a laptop against the same
    `DATABASE_URL`. One bad row aborts the whole file and names every one it found, which is the
-   behaviour you want on go-live morning rather than half a roster. Afterwards a new patient or a
-   new starter goes in the same way, one CSV at a time - decide who runs it and say so in the
+   behaviour you want on go-live morning rather than half a roster. Afterwards a new consultant
+   or a new starter goes in the same way, one CSV at a time - decide who runs it and say so in the
    handover, because the ability to add a payer is the ability to open a credit account.
 6. **Run the restore drill once against the real RDS instance** (§6, the RDS procedure below the
    local rehearsal) - not the rehearsal, the real one, before the first bill is ever posted for
@@ -2815,3 +2815,69 @@ key = '<key>';`) - `GET /items/:it/image/:hash` serves only the hash the row cur
 so the row and the object have to agree. **The database dump holds only the hash; the bucket holds
 the bytes** - restoring `items` from a `pg_dump` (§6) never needs this, but replacing the wrong
 photo by mistake does.
+
+---
+
+## 17. Migration 0023 refused: patient balances still on the books
+
+Migration `0023_drop_patient_payer` removes `patient` as a kind of payer. It deletes the patient
+rows from the rate card and the payer register, then rebuilds the `payer_kind` type without the
+value - which Postgres can only do once no row anywhere still says `patient`. A payer with a bill
+against them is somebody's balance, and **no migration is allowed to delete a bill or re-file it
+under a different payer**, so where one is still open the whole migration refuses:
+
+```
+Refused - N patient bill(s), settlement(s) or payer(s) are still on the books; settle or void
+them before removing the patient category (deploy/RUNBOOK.md 17)
+```
+
+The migration runs in one transaction, so a refusal changes nothing: the database is exactly as
+it was and the previous release keeps serving (`deploy.sh` never brings the new API up until
+`migrate` has exited 0).
+
+**Check before promoting**, against the environment you are about to deploy to:
+
+```sql
+select no, payer_id, tender, at, voided_at from bills where payer_kind = 'patient' or tender = 'Patient bill';
+select id, payer_id, amount, voided_at from settlements where kind = 'patient';
+select id, name, active from payers where kind = 'patient';
+```
+
+Three of those outcomes and what each means:
+
+- **All three empty.** Nothing to do - the migration will run clean.
+- **Only `payers` has rows.** Also nothing to do: the migration deletes a patient payer that no
+  bill and no settlement points at, which is the ordinary case on a hospital that never billed
+  one.
+- **`bills` or `settlements` has rows.** A decision, not a cleanup. Read what they are first.
+  A real balance is settled the ordinary way, from the manager's Credit screen, *before* the
+  promotion - settling does not delete the bill, so the guard still refuses afterwards and the
+  rows have to go either way. Where they are test data nobody reconciles against anything (the
+  usual case on the dev box), delete them deliberately, as the operator, with the database backed
+  up first (§2's `backup.sh` runs on every deploy; take one by hand if you are doing this out of
+  band):
+
+  ```sql
+  begin;
+  delete from settlement_lines where settlement_id in (select id from settlements where kind = 'patient');
+  delete from settlements where kind = 'patient';
+  delete from bill_lines where bill_no in (select no from bills where payer_kind = 'patient' or tender = 'Patient bill');
+  delete from bills where payer_kind = 'patient' or tender = 'Patient bill';
+  -- read the counts back, then commit or roll back
+  commit;
+  ```
+
+  Connect as `rch` through `MIGRATE_DATABASE_URL` (§5, *The database roles*); `rch_app` has the
+  grants to do this and must not be used for it. Then re-run the deploy from the Actions tab -
+  never by hand on the box (§16.6).
+
+**A local database refuses the same way.** A laptop that ran `pnpm --filter @rch/api db:seed`
+before this release has the demo hospital's four patients and the one bill posted to one of them,
+so `db:migrate` refuses there too. Nothing on a demo database is anybody's balance: run the block
+above against `rch` on port 5439, or drop and recreate the database and seed it again.
+
+**The stock ledger is untouched either way.** A bill's `stock_moves` are separate rows that name
+no payer, so deleting a patient bill leaves the shelf figures exactly as they are. That is a
+reason to prefer the delete over any attempt to re-file the bill, not a reason to be casual about
+it: `stock_moves` is append-only, so a deleted bill's movements stay on the ledger with nothing
+left to explain them. Say in the handover that you did it.

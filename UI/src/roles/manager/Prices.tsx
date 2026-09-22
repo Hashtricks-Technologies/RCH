@@ -3,6 +3,7 @@ import { IT, LOC, PL, PRICE_LISTS } from "../../data/master";
 import { useApp } from "../../store";
 import { costOf, menuOf, openOutlets, priceOf } from "../../lib/selectors";
 import { money, sum } from "../../lib/fmt";
+import { Modal } from "../../ui/Modal";
 import {
   Alert, Btn, Card, DataTable, Field, FilterSelect, FormRow, Grid, Icon, ItemImage, PageHead, Pill, TableFoot, Tag, Tip, Toolbar,
 } from "../../ui/kit";
@@ -57,6 +58,9 @@ export default function Prices() {
   const [listQ, setListQ] = useState("");
   const [listOutlet, setListOutlet] = useState("All");
   const [dropList, setDropList] = useState<string | null>(null);
+  /** Whether the New price list dialog is open. Owned by this screen, not by the store's one
+   *  drawer slot: it is this page's own form, and it closes when the server has taken it. */
+  const [creating, setCreating] = useState(false);
   /** Which rows have a write in flight, one key per row. Every one of the buttons on this
    *  screen posts, and every one of them can be refused - an MRP ceiling, a product another
    *  manager has just dropped - so none of them may clear what was typed or picked until the
@@ -75,14 +79,23 @@ export default function Prices() {
     if (ok) setDropList(null);
   };
 
-  /** Creating a list and attaching one to an outlet both live in the settings drawer, because
-   *  both are questions about every outlet at once rather than about the one being read. */
+  /** Creating a list is one short question with two answers, so it is a dialog raised from a
+   *  button on this page rather than a section inside the settings panel - where a manager
+   *  looking for "new price list" had to go and find it. What stays in the panel is the other
+   *  job: which list each outlet charges from, which is a table of every outlet at once. */
+  const newList = (
+    <Btn size="sm" tip="Create a price list. It starts inactive - no counter charges from it until you attach it."
+      onClick={() => setCreating(true)}>
+      <Icon name="plus" /> New price list
+    </Btn>
+  );
   const settings = (
-    <Btn variant="gh" size="sm" tip="Create a price list, and see and change which list each outlet charges from."
+    <Btn variant="gh" size="sm" tip="See and change which list each outlet charges from."
       onClick={() => { openDrawer("plset", "prices"); }}>
       <Icon name="set" /> Settings
     </Btn>
   );
+  const dialog = creating ? <NewListDialog onClose={() => setCreating(false)} /> : null;
 
   const priced = (loc: LocKey) => menuOf(s, loc).filter((it) => priceOf(s, loc, it).p > 0);
   /* Margin is taken against each item's standard cost on the master. */
@@ -115,10 +128,12 @@ export default function Prices() {
             <div style={{ display: "flex", gap: 6 }}>
               <Btn variant={tab === "outlets" ? "solid" : "gh"} size="sm" onClick={() => setTab("outlets")}>Outlets</Btn>
               <Btn variant={tab === "lists" ? "solid" : "gh"} size="sm" onClick={() => setTab("lists")}>Price lists</Btn>
+              {newList}
               {settings}
             </div>
           }
         />
+        {dialog}
         {tab === "outlets" ? (
           <>
             {/* Nothing at all before the snapshot lands, rather than "0 lists cover the 0
@@ -206,7 +221,7 @@ export default function Prices() {
                 }))}
                 empty={emptyFor(listTerm !== "" || listOutlet !== "All", {
                   title: "No price list yet",
-                  sub: "Create one from an outlet's own page.",
+                  sub: "Press New price list above. It is created empty or copied from an outlet, and charges nothing until you attach an outlet to it.",
                 })}
               />
             </div>
@@ -229,13 +244,16 @@ export default function Prices() {
           tip="What this shop sells and charges."
           actions={
             <div style={{ display: "flex", gap: 6 }}>
+              {newList}
               {settings}
               <Btn variant="gh" size="sm" onClick={() => go(null)}>Back to all shops</Btn>
             </div>
           }
         />
+        {dialog}
         <Alert tone="w" label="NO LIST">
-          {LOC[shop].n} is on {nameOfList(list)} - attach one from Settings before pricing or selling here.
+          {LOC[shop].n} is on {nameOfList(list)} - create one with New price list, then attach it
+          from Settings, before pricing or selling here.
         </Alert>
       </>
     );
@@ -314,11 +332,13 @@ export default function Prices() {
         tip="What this shop sells and charges."
         actions={
           <div style={{ display: "flex", gap: 6 }}>
+            {newList}
             {settings}
             <Btn variant="gh" size="sm" onClick={() => go(null)}>Back to all shops</Btn>
           </div>
         }
       />
+      {dialog}
 
       <Alert tone="i" label="LIST">
         {shared.length > 1
@@ -464,5 +484,87 @@ export default function Prices() {
         />
       </Card>
     </>
+  );
+}
+
+/**
+ * Name a new price list, and say what it starts from.
+ *
+ * **It may start from nothing.** A hospital that has just opened its first outlet is on no
+ * list at all, so there is nothing to copy - and while a source was required, the first price
+ * list was the one list that could never be made: the form offered only outlets, every one of
+ * them answered "has no price list to clone", and nothing the manager pressed worked. Copying
+ * is still the ordinary case and still the default whenever there is anything to copy.
+ *
+ * Nothing here decides anything. The server owns every refusal - a duplicate name, an outlet
+ * with no list - and each one reaches the manager as the store's toast of the server's own
+ * sentence, with the dialog left open and the name still typed so it can be corrected.
+ */
+function NewListDialog({ onClose }: { onClose: () => void }) {
+  const createPriceList = useApp((x) => x.createPriceList);
+  // The registries are replaced in place by a refetch, so a component reading them during
+  // render is pinned to `catalogVersion` exactly as every other one is.
+  const version = useApp((x) => x.catalogVersion);
+  void version;
+
+  const [name, setName] = useState("");
+  const [from, setFrom] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  // Only an outlet that is actually on a list can be copied from, so an option the server would
+  // turn away is never offered. An empty list is the honest first row rather than a fallback.
+  const sources = openOutlets().filter((l) => listFor(l) !== "");
+
+  const create = async () => {
+    // An unnamed list never leaves the browser: the button below is shut until there is a name,
+    // rather than the request going out for the server to turn away.
+    const wanted = name.trim();
+    if (!wanted) return;
+    setBusy(true);
+    const made = await createPriceList(wanted, from === "" ? undefined : (from as LocKey));
+    setBusy(false);
+    // Refused - a name already taken, most often. The dialog stays open with the name in it, so
+    // it can be corrected rather than retyped.
+    if (made) onClose();
+  };
+
+  return (
+    <Modal
+      title="New price list"
+      sub="Created inactive - no counter charges from it until you attach an outlet"
+      onClose={onClose}
+      foot={<>
+        <Btn variant="gh" disabled={busy} onClick={onClose}>Cancel</Btn>
+        <div className="sp" />
+        <Btn disabled={busy || name.trim() === ""}
+          tip={name.trim() === "" ? "Name the list first." : undefined}
+          onClick={() => void create()}>
+          {busy ? "Creating…" : "Create price list"}
+        </Btn>
+      </>}
+    >
+      <FormRow>
+        <Field label="List name" tip="What you will pick it by later - a season, a shift or a shop.">
+          <input value={name} placeholder="e.g. Weekend Rates"
+            onChange={(e) => setName(e.target.value)} />
+        </Field>
+      </FormRow>
+      <FormRow>
+        <Field
+          label="Start from"
+          tip="Copying takes every price on that outlet's current list into the new one. Editing either afterwards leaves the other alone."
+          hint={sources.length === 0
+            ? "No outlet is on a list yet, so there is nothing to copy - this one starts empty."
+            : from === "" ? "Empty - you will type each price on the outlet's own page." : undefined}
+        >
+          <select value={from} aria-label="Start from" onChange={(e) => setFrom(e.target.value)}>
+            <option value="">No prices - start empty</option>
+            {sources.map((l) => (
+              <option key={l} value={l}>Copy {LOC[l].n} - {nameOfList(listFor(l))}</option>
+            ))}
+          </select>
+        </Field>
+      </FormRow>
+    </Modal>
   );
 }

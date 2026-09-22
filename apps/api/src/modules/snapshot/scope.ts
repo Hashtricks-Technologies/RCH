@@ -24,9 +24,8 @@ export const scopeBills = (bills: Bill[], who: Who): Bill[] =>
   who.role !== "counter" ? bills : bills.filter((b) => b.loc === who.loc);
 
 /**
- * Who a bill was charged to is the one field on it that names a person, and for a patient bill
- * that person is a patient: a name, a ward and an in-patient number, which is hospital data
- * before it is F&B data.
+ * Who a bill was charged to is the one field on it that names a person: a consultant, a member
+ * of staff or the ward carrying the cost, which is hospital data before it is F&B data.
  *
  * Two roles need it. The counter reads it back off its own till roll - it is what a customer
  * asks about when a bill is queried an hour later - and the manager reads it across the outlets,
@@ -43,14 +42,14 @@ export const scopePayers = (bills: Bill[], who: Who): Bill[] =>
   READS_PAYERS.has(who.role) ? bills : bills.map((b) => (b.payer ? { ...b, payer: undefined } : b));
 
 /**
- * And the roster is the register those names come out of - every patient on a ward, every
- * member of staff, every department, in one list. It is on the snapshot so that a till can offer
+ * And the roster is the register those names come out of - every consultant, every member of
+ * staff, every department, in one list. It is on the snapshot so that a till can offer
  * it while a bill is being taken; nobody who cannot take a bill has any use for it, and handing
  * the whole register to three roles that never open the payer picker was the larger half of the
  * same leak.
  */
 export const scopeRoster = (roster: PayerRoster, who: Who): PayerRoster =>
-  READS_PAYERS.has(who.role) ? roster : { patients: [], staff: [], depts: [], doctors: [] };
+  READS_PAYERS.has(who.role) ? roster : { staff: [], depts: [], doctors: [] };
 
 /** And the rate card those names are charged against, cut the same way and for the same reason:
  *  what the hospital gives a consultant off is commercial information, and three of the five

@@ -44,10 +44,16 @@ export const PriceResultSchema = z.strictObject({ list: PriceListIdSchema, it: z
 export const MenuResultSchema = z.strictObject({ loc: LocKeySchema, items: z.array(z.string()) });
 
 // ---- price lists ----
-/** A new list is always cloned from one outlet's current active list, so the manager edits from
- *  a known baseline rather than an empty table. It is created inactive - creating one never
- *  switches any outlet onto it (`activatePriceList` is the separate, explicit step). */
-export const CreatePriceListBodySchema = z.strictObject({ name: z.string().min(1).max(80), cloneFrom: LocKeySchema });
+/** A new list is cloned from one outlet's current active list where the manager names one, so
+ *  they edit from a known baseline rather than an empty table. `cloneFrom` is **optional**,
+ *  because a hospital that has just opened its first outlet has no list to clone from at all -
+ *  the very list this write exists to create - and a required source made the first one
+ *  impossible to make. Absent, the list starts empty and every price on it is typed. Either way
+ *  it is created inactive: creating one never switches any outlet onto it
+ *  (`setOutletPriceList` is the separate, explicit step). */
+export const CreatePriceListBodySchema = z.strictObject({
+  name: z.string().min(1).max(80), cloneFrom: LocKeySchema.optional(),
+});
 export const PriceListIdParamsSchema = z.strictObject({ id: PriceListIdSchema });
 export const OutletParamsSchema = z.strictObject({ loc: LocKeySchema });
 export const SetOutletPriceListBodySchema = z.strictObject({ listId: PriceListIdSchema });

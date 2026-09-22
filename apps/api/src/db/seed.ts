@@ -186,8 +186,8 @@ async function seedMaster(tx: Tx, passwordHash: string, mustChange: boolean) {
   // The three rosters a non-cash bill may be posted to. They already carry `{kind, id, name}`
   // in the fixtures, so the table is the same three lists in one place - which is what lets the
   // till's payer be checked against something rather than taken on trust.
-  await tx.insert(s.payers).values([...FX.PATIENTS, ...FX.STAFF, ...FX.DEPTS, ...FX.DOCTORS].map((p) => ({ kind: p.kind, id: p.id, name: p.name })));
-  // The rate card. Migration 0022 seeds the five category rows so that a bare database can
+  await tx.insert(s.payers).values([...FX.STAFF, ...FX.DEPTS, ...FX.DOCTORS].map((p) => ({ kind: p.kind, id: p.id, name: p.name })));
+  // The rate card. Migration 0022 seeds a row per category so that a bare database can
   // price a bill; this puts the demo hospital's own concessions on them. An upsert rather than
   // an update, because a `--force` reseed truncates every table first and the rows it would be
   // editing are gone by the time it runs.

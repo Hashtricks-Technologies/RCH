@@ -72,8 +72,8 @@ export function createPosService(db: Db) {
         // A tender that is not money changing hands has to name whose account it lands on, and
         // the payer has to be of the kind the tender means (`payerKindForTender`, @rch/domain -
         // one table, because a tender that accepts the wrong kind of payer is a bill nothing
-        // later counts: a staff credit posted to a patient is invisible to the ceiling below and
-        // to every receivables figure the manager reads).
+        // later counts: a staff credit posted to a consultant is invisible to the ceiling below
+        // and to every receivables figure the manager reads).
         const needKind = payerKindForTender(body.tender);
         const needLabel = needKind ? PAYER_LABEL[needKind] : "";
         assertRule(!(needKind && !body.payer), `Choose a ${needLabel} before taking a ${body.tender.toLowerCase()}`);

@@ -34,6 +34,7 @@ const P: Record<string, string> = {
   search: "M11.5 11.5 14 14",
   swap: "M2.5 5.5h9l-2-2M11.5 5.5l-2 2M13.5 10.5h-9l2-2M4.5 10.5l2 2",
   warehouse: "M2 6.5 8 2l6 4.5M3 6v7h10V6M6.5 13V9.5h3V13",
+  plus: "M8 3.5v9M3.5 8h9",
 };
 export function Icon({ name, size = 15 }: { name: string; size?: number }) {
   return (

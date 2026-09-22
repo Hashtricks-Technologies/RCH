@@ -14,14 +14,14 @@ import type { Tx } from "./db.js";
  * A screen that showed a rate the sale would not apply is the whole defect this exists to
  * prevent, so nobody else resolves a rate; they call `termsFor` below.
  *
- * Neither table is ever empty of the row a sale needs: migration 0022 seeds all five categories.
+ * Neither table is ever empty of the row a sale needs: migration 0022 seeds every category.
  * `FALLBACK` is what a caller gets if somebody has deleted one anyway, and it is the behaviour
  * this system had before a rate card existed - nothing off, and the staff ceiling it always
  * enforced - so a missing row is a silent no-op rather than a free coffee or a 500.
  */
 const FALLBACK: Record<BillParty, { pct: number; limit: number | null }> = {
-  customer: { pct: 0, limit: null }, patient: { pct: 0, limit: null },
-  staff: { pct: 0, limit: STAFF_CREDIT_LIMIT }, doctor: { pct: 0, limit: null }, dept: { pct: 0, limit: null },
+  customer: { pct: 0, limit: null }, staff: { pct: 0, limit: STAFF_CREDIT_LIMIT },
+  doctor: { pct: 0, limit: null }, dept: { pct: 0, limit: null },
 };
 
 /** What actually applies to one party, the person's own exception over their category's rate.

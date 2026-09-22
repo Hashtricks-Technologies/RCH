@@ -38,6 +38,21 @@ describe("POST /price-lists", () => {
     expect(row?.priceListId).toBe("PL-002");
   });
 
+  it("creates an empty list when no source is named - the only way a first list is ever made", async () => {
+    // A hospital that has just opened its first outlet is on no list, so there is nothing to
+    // clone. While `cloneFrom` was required, the *first* price list was the one list nobody
+    // could create: every outlet the form could offer answered "has no price list to clone".
+    const r = await post("u2", "/price-lists", { name: "Opening Prices" });
+    expect(r.statusCode, r.body).toBe(200);
+    const b = r.json();
+    expect(b.result).toEqual({ id: "PL-004", name: "Opening Prices", outlets: [] });
+    expect(b.message).toBe("Opening Prices created with no prices on it yet - price its products from an outlet's own page");
+    // Empty, not absent: the list exists and carries no price row at all.
+    const lists = (await get("u2", "/price-lists")).json() as { id: string }[];
+    expect(lists.map((l) => l.id)).toContain("PL-004");
+    expect((await get("u2", "/prices")).json()["PL-004"]).toBeUndefined();
+  });
+
   it("refuses a blank name, and a source outlet that is not an outlet", async () => {
     expect((await post("u2", "/price-lists", { name: "   ", cloneFrom: "rest" })).json().error.message)
       .toBe("Give the price list a name before saving");

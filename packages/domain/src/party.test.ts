@@ -4,7 +4,6 @@ import { ACCOUNT_TENDERS, isAccountTender, PARTY_LABEL, PARTY_TITLE, partyOf, pa
 
 describe("payerKindForTender", () => {
   it("pairs each account tender with the one kind of payer it means", () => {
-    expect(payerKindForTender("Patient bill")).toBe("patient");
     expect(payerKindForTender("Staff credit")).toBe("staff");
     expect(payerKindForTender("Doctor credit")).toBe("doctor");
     expect(payerKindForTender("Dept")).toBe("dept");
@@ -22,8 +21,8 @@ describe("payerKindForTender", () => {
 });
 
 describe("isAccountTender", () => {
-  it("is exactly the four that run up a balance", () => {
-    expect(ACCOUNT_TENDERS).toEqual(["Patient bill", "Staff credit", "Doctor credit", "Dept"]);
+  it("is exactly the three that run up a balance", () => {
+    expect(ACCOUNT_TENDERS).toEqual(["Staff credit", "Doctor credit", "Dept"]);
     expect(isAccountTender("Dept")).toBe(true);
     expect(isAccountTender("Cash")).toBe(false);
   });

@@ -323,12 +323,12 @@ describe("what a ticket carries, and to whom", () => {
   });
 
   it("gives the kitchen, the store and the buyer bills without the payer, and no roster", async () => {
-    // A patient bill names a patient - ward, in-patient number and all - and the register those
+    // A credit bill names a person - a consultant, a member of staff - and the register those
     // names come out of was on every role's snapshot. What the kitchen, the store and the buyer
     // actually read a bill for is the ledger behind it, so the bills stay and only the name goes.
     const named = await given.bill(app.testDb!.db, {
-      loc: "coffee", total: 120, tender: "Patient bill",
-      payer: { kind: "patient", id: "IP-4471", name: "Anand Kumar · Ward 3B" },
+      loc: "coffee", total: 120, tender: "Doctor credit",
+      payer: { kind: "doctor", id: "DR-118", name: "Dr A. Rao · Cardiology" },
       lines: [{ it: "water", qty: 2, rate: 60 }],
     });
     for (const u of ["u3", "u4", "u5"]) {
@@ -341,7 +341,7 @@ describe("what a ticket carries, and to whom", () => {
       // The ledger behind the bill is untouched: every stock report reads exactly what it did.
       expect(bill.lines, u).toEqual([{ it: "water", qty: 2, rate: 60 }]);
       expect(bill.tot, u).toBe(120);
-      expect(snap.roster, u).toEqual({ patients: [], staff: [], depts: [], doctors: [] });
+      expect(snap.roster, u).toEqual({ staff: [], depts: [], doctors: [] });
       // And a refetch must not put back what the snapshot has just taken off.
       const listed = (await getAs(u, "/api/v1/bills")).find((b: { no: string }) => b.no === named);
       expect(listed.payer, u).toBeUndefined();
@@ -351,14 +351,14 @@ describe("what a ticket carries, and to whom", () => {
 
   it("the manager and the counter still read the payer", async () => {
     const named = await given.bill(app.testDb!.db, {
-      loc: "coffee", total: 120, tender: "Patient bill",
-      payer: { kind: "patient", id: "IP-4471", name: "Anand Kumar · Ward 3B" },
+      loc: "coffee", total: 120, tender: "Doctor credit",
+      payer: { kind: "doctor", id: "DR-118", name: "Dr A. Rao · Cardiology" },
     });
-    const payer = { kind: "patient", id: "IP-4471", name: "Anand Kumar · Ward 3B" };
+    const payer = { kind: "doctor", id: "DR-118", name: "Dr A. Rao · Cardiology" };
     for (const u of ["u1", "u2"]) {
       const snap = await get(u);
       expect(snap.bills.find((b: { no: string }) => b.no === named).payer, u).toEqual(payer);
-      expect(snap.roster.patients.length, u).toBeGreaterThan(0);
+      expect(snap.roster.doctors.length, u).toBeGreaterThan(0);
       expect((await getAs(u, "/api/v1/bills")).find((b: { no: string }) => b.no === named).payer, u).toEqual(payer);
     }
   });
@@ -369,7 +369,7 @@ describe("what a ticket carries, and to whom", () => {
     await truncateAll(app.testDb!.db);
     await seedTestDb(app.testDb!.db);
     const snap = await get("u1");
-    expect(snap.roster.patients.length).toBeGreaterThan(0);
+    expect(snap.roster.doctors.length).toBeGreaterThan(0);
     expect(snap.roster.staff.length).toBeGreaterThan(0);
     expect(snap.roster.depts.length).toBeGreaterThan(0);
     expect(snap.roster.staff.every((p: { kind: string }) => p.kind === "staff")).toBe(true);

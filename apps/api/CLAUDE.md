@@ -15,7 +15,7 @@ pnpm --filter @rch/api db:seed [--force] [--bare]
 pnpm --filter @rch/api db:rebuild-balances  # recompute stock_balances from stock_moves
 pnpm --filter @rch/api users <create|reset-password|deactivate|set-admin> --emp RC-1234 ...   # create: --emp optional, next number assigned
 pnpm --filter @rch/api payers import --csv <file> [--replace-names]   # kind,id,name - one transaction
-                                            # kind is patient|staff|dept|doctor; the register is also on /admin
+                                            # kind is staff|dept|doctor; the register is also on /admin
 pnpm --filter @rch/api keys:generate        # prints a fresh Ed25519 JWT_PRIVATE_KEY= / JWT_PUBLIC_KEY= pair
 pnpm --filter @rch/api loadcheck            # latency of /snapshot and /bills against a running API
 ```
@@ -162,9 +162,14 @@ void is about to invalidate.
 
 ## Price lists
 
-`modules/pricelists/` owns the entity itself - create (cloned from an outlet's current active list),
-delete (only once unattached) and switching an outlet's active list. `modules/catalog` keeps `savePrice`,
-which edits a list's own item→price rows and never depends on which outlet (if any) it is active for.
+`modules/pricelists/` owns the entity itself - create, delete (only once unattached) and switching an
+outlet's active list. `modules/catalog` keeps `savePrice`, which edits a list's own item→price rows and
+never depends on which outlet (if any) it is active for.
+
+**`cloneFrom` on `POST /price-lists` is optional.** Named, the new list is a copy of that outlet's current
+active list and the source has to be an outlet that is actually on one. Absent, it starts empty. That is not
+a convenience: while a source was required, the *first* price list on a hospital was the one list nobody could
+create, because every outlet a form could offer answered `<outlet> has no price list to clone`.
 
 None of the three writes touch `stock_moves`, `stock_balances` or a document table, so the lock order above
 does not apply: each is a single `withTransaction` taking only `price_lists` and `locations` rows.
@@ -440,8 +445,19 @@ The config pins `TZ=UTC`, a 30 s test timeout, and runs files in parallel.
   The migrator silently skips a migration whose `when` is smaller.
 - **Some SQL is invisible to drizzle-kit.** Triggers, the `reservations_ticket_fk` foreign key and data
   inserts into `sequences` never appear in a diff. That is not drift, so don't "fix" it. Neither is the
-  `payer_class_terms` seed in `0022`: the rate card has to have its five rows before a bare database can
-  price a bill.
+  `payer_class_terms` seed in `0022`: the rate card has to have a row per category before a bare database
+  can price a bill.
+- **`runMigrations` ends by calling `ensureSequences`**, so a new `IdKind` needs no migration of its own and
+  a database that is migrated but never re-seeded still has its row. It used to live in the seed alone, and a
+  database is migrated on every deploy and seeded once, if ever - so `settlement`, `adj_req` and `price_list`,
+  each introduced after the live box was seeded, had no row at all, and the first write of each kind died on
+  `sequence "<kind>" is not initialised`: a bare 500 the operator read as "Record the payment does not work".
+  `src/lib/ids.test.ts` migrates a schema, seeds nothing, and allocates every kind.
+- **Dropping a value from a pg enum rebuilds the type.** Postgres has no `alter type ... drop value`, so
+  `0023` deletes every row that still says `patient`, refuses in one sentence if a bill or settlement does
+  (`deploy/RUNBOOK.md` §17), drops both composite foreign keys into `payers`, swaps all four columns through
+  `text` and back, and puts the keys on again. A key joining two columns cannot be left in place while one
+  side changes type.
 - **A new value on a pg enum goes in a migration of its own.** Postgres runs `alter type ... add value`
   inside a transaction but refuses any statement in that same transaction that *uses* the value it added,
   so `0021` adds `doctor` and `0022` is everything that names one.

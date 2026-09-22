@@ -964,7 +964,7 @@ describe("an outlet on no price list yet (I2)", () => {
     const ui = mount(manager.prices);
 
     expect(ui.text()).toContain("no list yet");
-    expect(ui.text()).toContain("attach one from Settings");
+    expect(ui.text()).toContain("create one with New price list, then attach it");
     // The price table - and its Save button, whose click would post to `/api/prices//<it>` - is
     // not rendered at all, so there is no button anywhere that can call `savePrice` with an
     // empty list id.
@@ -975,9 +975,65 @@ describe("an outlet on no price list yet (I2)", () => {
 });
 
 /* ------------------------------------------------------------------------
- * The price-list settings drawer: creating a list, and the mapping of every
- * outlet to the list it charges from, read in one place rather than one
- * outlet at a time.
+ * Creating a price list: a dialog raised from the Prices page's own button,
+ * not a section buried in Settings - and it can start from nothing, which is
+ * the only way the very first list on a hospital ever gets made.
+ * ---------------------------------------------------------------------- */
+describe("the New price list dialog", () => {
+  const openDialog = async () => {
+    const ui = mount(manager.prices);
+    await settle(() => { ui.button("New price list").click(); });
+    return ui;
+  };
+  const startFrom = async (ui: ReturnType<typeof mount>, v: string) => {
+    const el = ui.host.querySelector<HTMLSelectElement>('select[aria-label="Start from"]')!;
+    await settle(() => { el.value = v; el.dispatchEvent(new Event("change", { bubbles: true })); });
+  };
+
+  it("copies from the outlet picked on the form", async () => {
+    const createPriceList = vi.fn(async () => ({ id: "PL-010", name: "Weekend Rates", outlets: [] }));
+    act(() => { as("manager"); useApp.setState({ createPriceList, shopFilter: null }); });
+    const ui = await openDialog();
+
+    typeIn(ui.field("List name"), "Weekend Rates");
+    await startFrom(ui, "coffee");
+    await settle(() => { ui.button("Create price list").click(); });
+
+    expect(createPriceList).toHaveBeenCalledWith("Weekend Rates", "coffee");
+    // Taken, so the dialog closes; a refusal would have left it open with the name in it.
+    expect(ui.host.querySelector(".modal")).toBeNull();
+  });
+
+  it("sends no source at all when the list starts empty - the first list a hospital ever has", async () => {
+    // Every outlet is on no list, so there is nothing to copy from. While a source was
+    // required, this was the one list nobody could create: every option the form offered
+    // answered "has no price list to clone".
+    hydrateLocations(Object.fromEntries(Object.entries(LOC).map(([k, l]) => [k, { ...l, list: undefined }])));
+    const createPriceList = vi.fn(async () => ({ id: "PL-001", name: "Opening Prices", outlets: [] }));
+    act(() => { as("manager"); useApp.setState({ createPriceList, shopFilter: null }); });
+    const ui = await openDialog();
+
+    expect(ui.text()).toContain("No outlet is on a list yet");
+    typeIn(ui.field("List name"), "Opening Prices");
+    await settle(() => { ui.button("Create price list").click(); });
+
+    expect(createPriceList).toHaveBeenCalledWith("Opening Prices", undefined);
+  });
+
+  it("keeps an unnamed list in the browser - the button is shut, not the request refused", async () => {
+    const createPriceList = vi.fn();
+    act(() => { as("manager"); useApp.setState({ createPriceList, shopFilter: null }); });
+    const ui = await openDialog();
+
+    expect(ui.button("Create price list").disabled).toBe(true);
+    await settle(() => { ui.button("Create price list").click(); });
+    expect(createPriceList).not.toHaveBeenCalled();
+  });
+});
+
+/* ------------------------------------------------------------------------
+ * The price-list settings drawer: the mapping of every outlet to the list it
+ * charges from, read in one place rather than one outlet at a time.
  * ---------------------------------------------------------------------- */
 describe("the price list settings drawer", () => {
   const openSettings = () => mount(() => createElement(DRAWERS.plset, { id: "prices" }));
@@ -995,30 +1051,6 @@ describe("the price list settings drawer", () => {
     const t = ui.host.querySelectorAll("table")[table === "mappings" ? 0 : 1];
     return [...t.querySelectorAll("tbody tr")].find((r) => (r.textContent ?? "").includes(text))!;
   };
-
-  it("creates a list cloned from the outlet picked on the form", async () => {
-    const createPriceList = vi.fn(async () => ({ id: "PL-010", name: "Weekend Rates", outlets: [] }));
-    act(() => { as("manager"); useApp.setState({ createPriceList }); });
-    const ui = openSettings();
-
-    typeIn(ui.field("List name"), "Weekend Rates");
-    await pick(select(ui, "Copy prices from"), "coffee");
-    await settle(() => { ui.button("Create price list").click(); });
-
-    expect(createPriceList).toHaveBeenCalledWith("Weekend Rates", "coffee");
-  });
-
-  it("refuses an unnamed list in the browser, before the server is asked", async () => {
-    const createPriceList = vi.fn();
-    const notify = vi.fn();
-    act(() => { as("manager"); useApp.setState({ createPriceList, notify }); });
-    const ui = openSettings();
-
-    await settle(() => { ui.button("Create price list").click(); });
-
-    expect(createPriceList).not.toHaveBeenCalled();
-    expect(notify).toHaveBeenCalledWith("Enter a name for the new price list.");
-  });
 
   it("maps every outlet at once and names who shares a list", () => {
     act(() => { as("manager"); });

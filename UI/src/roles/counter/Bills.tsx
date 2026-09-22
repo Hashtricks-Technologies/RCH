@@ -85,7 +85,7 @@ export default function Bills() {
               <b>Billed</b> is every tender raised at this counter, less anything voided - a voided bill went back on
               the shelf and the money was never kept, so it stays on this list, badged, and out of both figures.{" "}
               <b>Cash in drawer</b> is what is actually in the till - card and UPI are taken at the till but settle to
-              the hospital account, and a bill posted to a patient, a staff member, a doctor or a department collects
+              the hospital account, and a bill posted to a staff member, a doctor or a department collects
               nothing at the counter at all.
             </>} />
           </>}

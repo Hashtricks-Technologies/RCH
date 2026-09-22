@@ -318,7 +318,7 @@ describe("the totals reconcile", () => {
 
     // Every tender the till has gets a line, whether or not it took anything.
     expect(t.tenders.map((x: { tender: string }) => x.tender))
-      .toEqual(["Cash", "UPI", "Card", "Patient bill", "Staff credit", "Doctor credit", "Dept"]);
+      .toEqual(["Cash", "UPI", "Card", "Staff credit", "Doctor credit", "Dept"]);
     expect(line("Cash")).toEqual({ tender: "Cash", amount: cash.tot, bills: 1 });
     expect(line("UPI")).toEqual({ tender: "UPI", amount: upi.tot, bills: 1 });
     expect(line("Staff credit")).toEqual({ tender: "Staff credit", amount: staff.tot, bills: 1 });

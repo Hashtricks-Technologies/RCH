@@ -42,7 +42,19 @@ the suite, on purpose.
 
 The manager's own group beyond the outlets is **Credit** (`credit`, `roles/manager/Credit.tsx`): three tabs -
 who owes what, the rate card (a discount and a credit limit per category, with per-person exceptions) and the
-settlement history. Its statement drawer is `stmt`.
+settlement history. Its statement drawer is `stmt`, which is where a payment is recorded.
+
+**Menu Management** (`menu`) carries all four of a menu's operations for the picked outlet: the whole till as a
+sortable, filterable table, Remove behind a second press on each row, the multi-select add, and the
+new-product request. **Prices** (`prices`) raises its own `NewListDialog` from a New price list button; the
+`plset` drawer keeps only the outlet→list mapping and the list of every list.
+
+**A drawer is a document; a modal is one decision.** `ui/Drawer.tsx` opens a document beside the list it came
+from - a ticket, a statement, an audit entry - and is the store's single `drawer` slot. `ui/Modal.tsx` is a
+dialog box in the middle of the screen for one short form with two answers (`NewListDialog` in
+`roles/manager/Prices.tsx` is the one today); it is owned by the screen that raised it, not by the store.
+Both get the keyboard half of `aria-modal="true"` from `ui/focus.ts`'s `useFocusTrap(ref, at, titleId)` -
+focus in on open, wrapped at both ends, and handed back on unmount - so neither implements it again.
 
 **Drawers are a bare registry** in `src/drawers.ts`:
 

@@ -3,9 +3,9 @@ import type { BillParty, PayerKind, Tender } from "@rch/contract";
 /**
  * Who a bill is being taken from, read off the tender it is settled with.
  *
- * Four of the seven tenders take no money at the till: they post the bill to somebody's account
+ * Three of the six tenders take no money at the till: they post the bill to somebody's account
  * and somebody settles it later. Each one means exactly one kind of payer, and that pairing has
- * to be written once. A "Staff credit" posted to a patient is a balance no rule ever measures
+ * to be written once. A "Staff credit" posted to a consultant is a balance no rule ever measures
  * and nobody can settle, because nobody can find whose it is - which is what this table exists
  * to make impossible.
  *
@@ -14,7 +14,6 @@ import type { BillParty, PayerKind, Tender } from "@rch/contract";
  */
 const PAYER_KIND: Record<Tender, PayerKind | null> = {
   Cash: null, UPI: null, Card: null,
-  "Patient bill": "patient",
   "Staff credit": "staff",
   "Doctor credit": "doctor",
   Dept: "dept",
@@ -33,7 +32,7 @@ export const ACCOUNT_TENDERS: readonly Tender[] =
 
 /**
  * Which rate card row prices this bill. A sale with no payer is a walk-in customer - not a
- * missing patient, and not an error: most bills in a hospital coffee shop are exactly that.
+ * missing account, and not an error: most bills in a hospital coffee shop are exactly that.
  */
 export const partyOf = (payer: { kind: PayerKind } | undefined | null): BillParty =>
   payer ? payer.kind : "customer";
@@ -42,11 +41,9 @@ export const partyOf = (payer: { kind: PayerKind } | undefined | null): BillPart
  *  sentence the till says when the roster has never heard of somebody and the sentence the
  *  rate card says about the same somebody have to use the same word. */
 export const PARTY_LABEL: Record<BillParty, string> = {
-  customer: "customer", patient: "patient", staff: "staff member",
-  doctor: "doctor", dept: "department",
+  customer: "customer", staff: "staff member", doctor: "doctor", dept: "department",
 };
 /** Title case, for a column heading or a filter chip rather than a sentence. */
 export const PARTY_TITLE: Record<BillParty, string> = {
-  customer: "Customers", patient: "Patients", staff: "Staff",
-  doctor: "Doctors", dept: "Departments",
+  customer: "Customers", staff: "Staff", doctor: "Doctors", dept: "Departments",
 };

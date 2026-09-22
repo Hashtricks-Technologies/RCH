@@ -376,6 +376,48 @@ describe("menu management adds several products to a till at once", () => {
   });
 });
 
+describe("menu management shows the whole menu and takes a product off it", () => {
+  /** The rows of the "On the … till" table, which is the first table on the page. */
+  const menuRows = (host: HTMLElement) =>
+    [...host.querySelectorAll("table")[0].querySelectorAll("tbody tr")];
+
+  it("lists what the outlet already sells, and removes one behind a second press", async () => {
+    as("manager");
+    // The screen could only ever *add*: what a till already sold was nowhere on it, so a
+    // product listed by mistake could not be found, let alone taken off.
+    const menu = { ...FX.MENU, coffee: [...FX.MENU.coffee] };
+    serve({
+      "DELETE /api/v1/menus/coffee/items/juice": () => {
+        menu.coffee = menu.coffee.filter((k) => k !== "juice");
+        return json({ result: { loc: "coffee", items: menu.coffee }, changed: ["menu"], message: "Real Juice 200ml removed from Coffee Shop" });
+      },
+      "GET /api/v1/menus": () => json(menu),
+    });
+    const ui = mountNode(MenuManagement);
+    act(() => { pick(ui.host.querySelector("select")!, "coffee"); });
+
+    // Every product on the till has a row, with what it is charged on the outlet's own list.
+    expect(menuRows(ui.host)).toHaveLength(FX.MENU.coffee.length);
+    const row = menuRows(ui.host).find((r) => (r.textContent ?? "").includes("Real Juice 200ml"))!;
+    expect(row.textContent).toContain("₹");
+
+    // One press arms it, and nothing has been sent yet: a till emptied by a mis-click is not
+    // something a confirm-less button may do.
+    const press = (within: Element, starts: string) =>
+      [...within.querySelectorAll("button")].find((b) => (b.textContent ?? "").startsWith(starts))!;
+    await settle(() => { press(row, "Remove").click(); });
+    expect(hit("DELETE /api/v1/menus/coffee/items/juice")).toHaveLength(0);
+
+    await settle(() => { press(menuRows(ui.host).find((r) => (r.textContent ?? "").includes("Real Juice 200ml"))!, "Confirm removal").click(); });
+    await settleUntil(() => !menu.coffee.includes("juice"));
+    expect(hit("DELETE /api/v1/menus/coffee/items/juice")).toHaveLength(1);
+    expect(S().toast).toBe("Real Juice 200ml removed from Coffee Shop");
+    // And the refetched menu is what the table redraws from, so the row is gone.
+    expect(menuRows(ui.host).some((r) => (r.textContent ?? "").includes("Real Juice 200ml"))).toBe(false);
+    ui.unmount();
+  });
+});
+
 describe("the manager can redirect an undecided request to a peer outlet", () => {
   it("posts the picked outlet and closes the drawer once it lands", async () => {
     as("manager");

@@ -161,7 +161,7 @@ export default function Register() {
         },
         {
           l: "Credit sales", v: t ? money0(t.creditSales) : "-",
-          tip: "Billed to a patient, a staff member, a department or a doctor - money owed, not money taken.",
+          tip: "Billed to a staff member, a department or a doctor - money owed, not money taken.",
         },
         {
           l: "Old bills collected", v: t ? money0(t.oldBillsTotal) : "-",
