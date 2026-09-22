@@ -13,6 +13,9 @@ export const AdminUserSchema = z.strictObject({
   id: z.string(), emp: z.string(), n: z.string(), e: z.string(), ph: z.string(),
   r: RoleSchema, rl: z.string(), loc: LocKeySchema, col: z.string(),
   active: z.boolean(), mustChangePassword: z.boolean(), admin: z.boolean(),
+  /** Every counter this account may work, `loc` included. A consultant takes shifts at more than
+   *  one outlet and picks which at sign-in; one entry is the ordinary case for everyone else. */
+  postings: z.array(LocKeySchema).max(32).default([]),
 });
 
 /** A generated password is on the wire exactly once - the create and reset-password responses -
@@ -26,6 +29,10 @@ export const CreateAdminUserBodySchema = z.strictObject({
   role: RoleSchema, loc: LocKeySchema, phone: z.string().trim().max(40).optional(),
 });
 export const UpdateAdminUserBodySchema = z.strictObject({ role: RoleSchema, loc: LocKeySchema });
+/** The whole list, not a diff: the administrator is looking at a set of tick-boxes and sends back
+ *  what they now read. The home location must be among them - the sign-in claim is minted from it,
+ *  and an account standing somewhere it is not posted is the state the table exists to prevent. */
+export const SetAdminUserPostingsBodySchema = z.strictObject({ locs: z.array(LocKeySchema).min(1).max(32) });
 export const AdminUserIdParamsSchema = z.strictObject({ id: z.string().min(1).max(40) });
 
 /** What a permanent delete hands back: the account as it was named, since there is no row left
@@ -36,7 +43,7 @@ export const AdminActionSchema = z.strictObject({
   at: IsoTime,
   actor: z.string(),
   action: z.enum([
-    "create", "reset_password", "deactivate", "reactivate", "update_role_loc", "delete",
+    "create", "reset_password", "deactivate", "reactivate", "update_role_loc", "update_postings", "delete",
     "outlet_create", "outlet_update", "outlet_close", "outlet_reopen",
     "payer_create", "payer_update", "payer_deactivate", "payer_reactivate",
   ]),

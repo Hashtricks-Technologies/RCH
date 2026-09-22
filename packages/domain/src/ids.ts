@@ -3,6 +3,10 @@ export type IdKind =
   | "vendor" | "contract" | "support" | "product_req" | "shop_ask"
   // ---- adjustments: a write-off or a count-up is a numbered document like any other.
   | "adj"
+  // ---- the register: a Z-report closes an outlet's session and is a numbered document, because
+  // the whole point of it is that the series is gapless - a missing Z number is a day nobody can
+  // account for. One series hospital-wide; each Z names the outlet it closed.
+  | "z_report"
   // ---- adjustment requests: the counter's ask, before the manager decides it and it becomes
   // (or does not become) an "adj" document of its own.
   | "adj_req"
@@ -47,6 +51,9 @@ export function formatId(kind: IdKind, n: number, at: Date = new Date()): string
     // ---- settlements. Padded to four for the same reason `adj` is: the series starts at one,
     // and `STL-2026-1` sorting beside `STL-2026-10` reads wrongly on every list that sorts as text.
     case "settlement":  return `STL-${year(at)}-${pad(n, 4)}`;
+    // ---- the register. Padded to four like `adj` and `settlement`, and carrying the year, so a
+    // Z number read out over the phone says which year's books it belongs to.
+    case "z_report":    return `Z-${year(at)}-${pad(n, 4)}`;
   }
 }
 
@@ -109,4 +116,6 @@ export const SEQUENCE_START: Record<IdKind, number> = {
   price_list: 3,
   // ---- settlements: nothing was ever settled before, so the series starts at one.
   settlement: 1,
+  // ---- the register: no day has ever been closed in this system, so the series starts at one.
+  z_report: 1,
 };

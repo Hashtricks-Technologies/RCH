@@ -159,6 +159,17 @@ There are five roles (`counter`, `manager`, `store`, `prod`, `buyer`), each with
 - **Wrong location:** a caller outside the location a document belongs to gets a **403**.
 - **`manager`** is hospital-wide, so its writes never scope to a location.
 - **`counter` and `prod`** are location-scoped. `store` and `buyer` each work one desk.
+- **A counter operator may be posted to several outlets.** `user_postings` is where an account
+  *may* work; the token's `loc` claim is where it *is* working, and it is still exactly one
+  location - so every location guard is unchanged. An account with one posting signs in exactly as
+  before, `loc` absent from the body; with more, the sign-in screen asks which counter as soon as
+  the person is picked - before the password - and `POST /auth/login` carries the answer. The
+  counters are on the public `GET /auth/directory` because that question cannot wait for a token.
+  **A session's counter is fixed at sign-in and does not move**: a shift at another till is a
+  fresh sign-in there, so there is no switcher in the shell and no route that moves a live
+  session. The chosen location is stored on the refresh-token row, so a silent refresh
+  does not move somebody back to their home counter. Changing an account's postings revokes its
+  sessions, because a live token may assert a counter the new list has just removed.
 - **Admin** is a boolean on `users`, not a sixth role. It is checked as `access: "admin"`. An admin-flagged
   account sees only the standalone `/admin` page, never an operational shell. The page has five tabs: Accounts
   (staff accounts), Outlets (opens, edits, closes and reopens them), Payers (the register a bill may be posted
@@ -304,7 +315,17 @@ The code enforces these and tests pin them. Breaking one is a bug.
     `quarantine` is a location where stock is recorded; no operator can act there.
 - **Made-to-order (MTO) items are made at the counter and hold no stock.** Selling one moves no stock, and
   only the manual switch turns one off. MTO items are never batched, distributed, or ordered from the kitchen.
-- **A bill is voided only on the IST day it was billed, and only by the manager.** The void posts reversal
+- **The business day is Z-to-Z, not midnight-to-midnight.** Each outlet has at most one open
+  `register_sessions` row (a partial unique index holds it), opened by its first sale and closed by
+  a Z-report. A bill belongs to a session by foreign key, decided inside the sale's own
+  transaction: a sale takes the session `FOR SHARE` and the close takes it `FOR UPDATE`, so a sale
+  in flight is counted before the Z can close, and one starting after joins the next session. An
+  X-report is the same figures read live and changes nothing. A Z's totals are **stored**, never
+  re-derived, and nothing may alter a bill once its session is closed. `Z-<year>-<nnnn>` is gapless
+  like every other document number. A Z is still allowed at a closed outlet - money already taken
+  must always be reconcilable - so an open register is a blocker on *closing* the outlet instead.
+- **A bill is voided only on the IST day it was billed, and only by the manager**, and only while
+  its register session is still open. The void posts reversal
   moves, frees the credit room it used, and badges the bill rather than erasing it. A bill a live settlement
   has already closed refuses its own void and names the settlement to take back first.
 - **Items are retired, never deleted**, and not while any stock or menu listing remains. **Payers are

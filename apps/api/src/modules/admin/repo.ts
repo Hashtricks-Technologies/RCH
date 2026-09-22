@@ -6,7 +6,7 @@ import type { AdminAction, PayerKind } from "@rch/contract";
 import { AdminActionSchema, QUARANTINE } from "@rch/contract";
 import { ACCOUNT_TENDERS, HOLDS_OUTLET, holding, type OutletBlockers } from "@rch/domain";
 import type { Reader, Tx } from "../../lib/db.js";
-import { adminActions, bills, locations, payers, prodOrders, productRequests, settlements, shopAsks, stockBalances, stockRequests, tickets, users } from "../../db/schema/index.js";
+import { adminActions, bills, locations, payers, prodOrders, productRequests, registerSessions, settlements, shopAsks, stockBalances, stockRequests, tickets, userPostings, users } from "../../db/schema/index.js";
 
 export type UserRow = typeof users.$inferSelect;
 export type LocationRow = typeof locations.$inferSelect;
@@ -25,6 +25,21 @@ export const adminRepo = {
   /** Every account, active and inactive alike, employee number ascending. */
   async list(db: Reader): Promise<UserRow[]> {
     return db.select().from(users).orderBy(asc(users.empNo));
+  },
+  /**
+   * Which counters each account may work, keyed by user id - one query for the whole page rather
+   * than one per row. An account with no rows yet reads as an empty list and the caller falls back
+   * to its home location, which is what every account looked like before postings existed.
+   */
+  async postingsByUser(db: Reader, ids?: readonly string[]): Promise<Record<string, string[]>> {
+    if (ids && ids.length === 0) return {};
+    const rows = await db.select({ userId: userPostings.userId, loc: userPostings.loc })
+      .from(userPostings)
+      .where(ids ? inArray(userPostings.userId, [...ids]) : undefined)
+      .orderBy(asc(userPostings.userId), asc(userPostings.loc));
+    const out: Record<string, string[]> = {};
+    for (const r of rows) (out[r.userId] ??= []).push(r.loc);
+    return out;
   },
   async byId(db: Reader, id: string): Promise<UserRow | undefined> {
     return (await db.select().from(users).where(eq(users.id, id)))[0];
@@ -126,6 +141,10 @@ export const adminRepo = {
       shopAsks: of(tx.select({ n: count }).from(shopAsks).where(and(or(eq(shopAsks.fromLoc, key), eq(shopAsks.toLoc, key)), inArray(shopAsks.status, holding(HOLDS_OUTLET.shopAsk))))),
       productRequests: of(tx.select({ n: count }).from(productRequests).where(and(eq(productRequests.forLoc, key), inArray(productRequests.status, holding(HOLDS_OUTLET.productReq))))),
       staff: sql<string[]>`(select coalesce(array_agg(${users.empNo} order by ${users.empNo}), '{}') from ${users} where ${and(eq(users.loc, key), eq(users.active, true), eq(users.admin, false))})`,
+      // A business day nobody has closed off. The Z is still allowed at a closed outlet - money
+      // already taken must always be reconcilable - but closing first and Z-ing afterwards is
+      // backwards, so the close says so and names it with everything else.
+      openRegister: sql<boolean>`exists(select 1 from ${registerSessions} where ${and(eq(registerSessions.loc, key), isNull(registerSessions.closedAt))})`,
     }).from(locations).where(eq(locations.key, key));
     return b;
   },

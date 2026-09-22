@@ -94,6 +94,11 @@ export type OutletBlockers = {
   stock: number; tickets: number; requests: number; kitchenOrders: number; shopAsks: number; productRequests: number;
   /** Employee numbers of the active accounts based there. */
   staff: string[];
+  /** Whether the outlet's register is still open - a business day nobody has taken a Z for. A
+   *  close is allowed to go through with one open only if the money has been accounted for, and
+   *  it has not: `closeRegister` deliberately still works at a closed outlet rather than stranding
+   *  the takings, but the honest order is to Z first and close after. */
+  openRegister: boolean;
 };
 
 /**
@@ -111,6 +116,7 @@ export function closeRefusal(name: string, b: OutletBlockers): string | null {
     b.shopAsks > 0 && count(b.shopAsks, "open shop ask"),
     b.productRequests > 0 && count(b.productRequests, "open product request"),
     b.staff.length > 0 && `${b.staff.length} active staff (${b.staff.join(", ")})`,
+    b.openRegister && "an open register (take its Z-report first)",
   ].filter((p): p is string => Boolean(p));
   if (parts.length === 0) return null;
   const list = parts.length === 1 ? parts[0] : `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`;

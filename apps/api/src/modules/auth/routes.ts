@@ -41,9 +41,13 @@ const sentenceOf = (payload: unknown): string => {
 export default fp(async (app) => {
   const svc = createAuthService(app.db, app.config);
   const meta = (req: { headers: Record<string, unknown>; ip: string }) => ({ userAgent: String(req.headers["user-agent"] ?? "").slice(0, 200), ip: req.ip });
+  /** The `AuthResponse` every one of these routes answers with: the access token minted from the
+   *  session's own claim, the caller, and every counter they may stand at. */
+  const authResponse = async (s: Awaited<ReturnType<typeof svc.login>>) =>
+    ({ accessToken: await app.signAccess(s.claims), user: s.user, mustChangePassword: s.mustChangePassword, postings: s.postings });
   const respond = async (reply: FastifyReply, s: Awaited<ReturnType<typeof svc.login>>) => {
     setRefreshCookie(reply, app.config, s.refreshToken, s.expiresAt);
-    return { accessToken: await app.signAccess(s.claims), user: s.user, mustChangePassword: s.mustChangePassword };
+    return authResponse(s);
   };
   /**
    * Sign-in events go to the outbox on the pool: there is no write transaction for them to ride
@@ -62,7 +66,7 @@ export default fp(async (app) => {
     const typedEmp = typedEmpOf(req.body.emp);
     const request = { body: { emp: typedEmp } };
     try {
-      const session = await svc.login(req.body.emp, req.body.password, meta(req));
+      const session = await svc.login(req.body.emp, req.body.password, meta(req), req.body.loc);
       const body = await respond(reply, session);
       await audit(req, { action: "login", outcome: "done", status: 200, message: SIGNED_IN, actorId: session.user.id, request });
       return body;

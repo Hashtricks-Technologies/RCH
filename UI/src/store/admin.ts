@@ -45,6 +45,16 @@ export interface AdminSlice {
   /** Form-carrying: a refusal (the role/location pairing, most often) leaves the picker exactly
    *  as the operator left it. */
   updateAccountRoleLoc: (id: string, next: { role: Role; loc: LocKey }) => Promise<boolean>;
+  /**
+   * Every counter this account may stand at - one for almost everybody, more for a consultant
+   * who takes shifts at more than one outlet. The whole list, not a diff, and the location the
+   * account stands at (`loc`, what `updateAccountRoleLoc` sets) must be among them; the server
+   * refuses a list without it. Its own write rather than a key on the role-and-location patch,
+   * because they are two decisions and are logged as two actions.
+   *
+   * Ordinary form-carrying write: `false` leaves the boxes ticked exactly as they were.
+   */
+  setAccountPostings: (id: string, locs: LocKey[]) => Promise<boolean>;
 
   // ---- the payer register
   /** Every payer the hospital knows, inactive ones included, with what each still owes. */
@@ -153,6 +163,14 @@ export const createAdminSlice = (get: Get): AdminSlice => ({
       await refetch(r.changed, r.message);
       return true;
     } catch (e) { return fail(get, e, "move the account"); }
+  },
+  setAccountPostings: async (id, locs) => {
+    try {
+      const r = await call(routes.setAdminUserPostings, { params: { id }, body: { locs } });
+      get().notify(r.message);
+      await refetch(r.changed, r.message);
+      return true;
+    } catch (e) { return fail(get, e, "save the counters this account works"); }
   },
 
   // ---- the payer register: who a bill may be posted to. Opened, renamed and switched off here;

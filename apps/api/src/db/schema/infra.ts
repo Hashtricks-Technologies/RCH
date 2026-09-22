@@ -1,6 +1,6 @@
 import { bigint, check, index, integer, jsonb, pgTable, primaryKey, text, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
-import { ts, users } from "./master.js";
+import { locations, ts, users } from "./master.js";
 
 export const documentHistory = pgTable("document_history", {
   id: bigint("id", { mode: "number" }).primaryKey().generatedAlwaysAsIdentity(),
@@ -48,6 +48,11 @@ export const refreshTokens = pgTable("refresh_tokens", {
   revokedAt: ts("revoked_at"),
   userAgent: text("user_agent"),
   ip: text("ip"),
+  // ---- postings. Which counter this session is standing at, for an account posted to more than
+  // one. Without it a silent token refresh would re-mint the claim from `users.loc` and move a
+  // consultant back to their home counter in the middle of a shift. Null means "use the home
+  // location", which is every session opened before postings existed.
+  loc: text("loc").references(() => locations.key),
   createdAt: ts("created_at").notNull().defaultNow(),
 }, (t) => [
   // Every refresh and logout looks a token up by its hash; without this index that is a

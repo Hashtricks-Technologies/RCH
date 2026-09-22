@@ -26,8 +26,11 @@ import "./PriceListSettingsDrawer";
 // screen opens it by key ("stmt") and never imports the module.
 import Credit from "./Credit";
 import "./StatementDrawer";
+// ---- the register: the same screen the counter reads, scoped to whichever outlet the manager
+// picks. It lives in `ui/` because role folders never import one another.
+import Register from "../../ui/Register";
 
 export const screens: Record<string, ComponentType> = {
   dash: Dashboard, approvals: Approvals, stock: ItemsStock, menu: MenuManagement,
-  prices: Prices, avail: Availability, bills: Bills, credit: Credit,
+  prices: Prices, avail: Availability, bills: Bills, credit: Credit, register: Register,
 };

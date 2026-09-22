@@ -1,4 +1,4 @@
-import { boolean, check, date, foreignKey, integer, jsonb, numeric, pgTable, primaryKey, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { boolean, check, date, foreignKey, index, integer, jsonb, numeric, pgTable, primaryKey, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { itemTypeEnum, locationTypeEnum, payerKindEnum, roleEnum, sourceEnum } from "./enums.js";
 
@@ -59,6 +59,28 @@ export const users = pgTable("users", {
   createdAt: ts("created_at").notNull().defaultNow(),
   updatedAt: ts("updated_at").notNull().defaultNow(),
 }, (t) => [uniqueIndex("users_emp_no_uq").on(t.empNo)]);
+
+/**
+ * Where an account is allowed to work, beyond its home `users.loc`.
+ *
+ * A counter operator is not tied to one till: they take a shift at the Coffee Shop on Monday and
+ * the Snack Kiosk on Tuesday. This table is *may work at*; `claims.loc` on the token is *working
+ * at right now*, and it is still exactly one location - which is why every location guard in the
+ * server (`requireLocOf`, and the thirteen places that read `claims.loc`) is untouched by any of
+ * this. Sign-in picks one of these rows and mints the claim from it.
+ *
+ * Every account has at least its home row, backfilled from `users.loc` by the migration, so an
+ * account that has never been posted anywhere else behaves exactly as it did before: one posting,
+ * no picker, straight in.
+ */
+export const userPostings = pgTable("user_postings", {
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  loc: text("loc").notNull().references(() => locations.key),
+  createdAt: ts("created_at").notNull().defaultNow(),
+}, (t) => [
+  primaryKey({ columns: [t.userId, t.loc] }),
+  index("user_postings_user_idx").on(t.userId),
+]);
 
 // Insert-only as far as the code goes: nothing ever updates or deletes a row here. One line per
 // admin write - create, reset-password, deactivate, reactivate, update_role_loc, delete - written

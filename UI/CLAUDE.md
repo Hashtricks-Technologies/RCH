@@ -130,6 +130,25 @@ try {
   party is charged, off the snapshot's rate card) are previews while the operator types. The server makes the actual decision. When you preview, use the `@rch/domain` function the
   server uses, not a lookalike.
 
+## Postings and the register
+
+- **The counter is asked at sign-in, before the password.** `GET /auth/directory` carries each
+  account's counters, so picking a person can ask "which counter?" straight away; the answer rides
+  on `POST /auth/login` as `loc` and the session opens there. One counter sends no `loc` at all -
+  the wire for everyone who works one desk is exactly what it always was.
+- **Nothing on the sign-in screen may read `data/master.ts`.** Those registries are filled by the
+  snapshot, and the snapshot needs a token, so before sign-in `LOC` is empty and `locName()`
+  answers the raw key. That is why each directory counter carries its own `n` and `c`.
+- **`postings` on the store is where the signed-in account may work**; `user.loc` is where it is
+  standing, and it does not change for the life of the session - the shell names the counter and
+  never offers to move it.
+- **Takings are windowed on the open register session, not on `isToday`.** Both dashboards read
+  `readXReport` as they mount, so a test that renders one must stub it - unstubbed it reaches
+  `fetch`, and under `vi.useFakeTimers()` it never settles. `src/__tests__/time.test.tsx` stubs it
+  once in `beforeEach`.
+- **`readXReport` / `readZReports` answer `null` on failure**, never an empty report, so a screen
+  can say "could not be read" instead of "nothing taken" - the distinction `AdminAudit.tsx` draws.
+
 ## src/api
 
 - **`client.ts`** is the one generic client.

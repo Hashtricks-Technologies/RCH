@@ -6,9 +6,16 @@ import { toWireUser } from "../../lib/wire.js";
 import { meRepo } from "./repo.js";
 
 export function createMeService(db: Db) {
-  const load = async (reader: Reader, id: string) => { const u = await meRepo.byId(reader, id); if (!u) throw new NotFoundError("That account no longer exists."); return { user: toWireUser(u), mustChangePassword: u.mustChangePassword }; };
+  /** `loc` is the counter this session is standing at, not the account's home: a consultant
+   *  posted to several works a shift at one of them, and the token is what says which. Passed in
+   *  rather than read off the row, so `/me` agrees with the token that asked for it. */
+  const load = async (reader: Reader, id: string, loc?: string) => {
+    const u = await meRepo.byId(reader, id);
+    if (!u) throw new NotFoundError("That account no longer exists.");
+    return { user: { ...toWireUser(u), ...(loc ? { loc } : {}) }, mustChangePassword: u.mustChangePassword };
+  };
   return {
-    get: (id: string) => load(db, id),
+    get: (id: string, loc?: string) => load(db, id, loc),
     /** The re-read is inside the transaction, so the response this write answers with is the
      *  one its own claim row records before COMMIT (`lib/db.ts`). Read back after committing,
      *  it was the one response in the system built where no transaction could record it. */

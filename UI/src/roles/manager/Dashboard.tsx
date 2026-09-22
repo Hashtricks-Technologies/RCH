@@ -1,14 +1,14 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
 import { allOutlets, availOf, isTicketOpen, menuOf, openOutlets, stockValue } from "../../lib/selectors";
-import { lakh, money, money0, sum, unitTotal } from "../../lib/fmt";
+import { fromWireTime, lakh, money, money0, sum, unitTotal } from "../../lib/fmt";
 import {
-  Alert, Btn, Card, DataTable, FilterSelect, PageHead, Pill, TableFoot, Toolbar,
+  Alert, Btn, Card, DataTable, FilterSelect, Kpis, PageHead, Pill, TableFoot, Toolbar,
 } from "../../ui/kit";
 import { emptyFor, sortRows, useSort, type SortValue } from "./useSort";
-import type { DatedDoc, LocKey, StockRequest } from "../../types";
+import type { DatedDoc, LocKey, RegisterReport, StockRequest } from "../../types";
 
 interface Off { n: number; manual: number; stock: number }
 
@@ -30,6 +30,8 @@ export default function Dashboard() {
   const s = useApp();
   const nav = useNavigate();
   const openDrawer = useApp((x) => x.openDrawer);
+  const catalogVersion = useApp((x) => x.catalogVersion);
+  const readXReport = useApp((x) => x.readXReport);
 
   const [rq, setRq] = useState("");
   const [outlet, setOutlet] = useState(0);
@@ -51,16 +53,47 @@ export default function Dashboard() {
     };
   };
 
-  const outlets = openOutlets().map((loc) => {
+  // ---- the register: an outlet's trading period is its own, from its own last Z to its next
+  // one. Three outlets close their registers at three different moments, so there is no one
+  // window this page can put over all of them - the sum below is the sum of three sessions that
+  // began at three different times, and the table says when each of them began. Nothing here is
+  // "today": the word would be a different period again, and the one nobody settles against.
+  const openKeys = useMemo(() => { void catalogVersion; return openOutlets(); }, [catalogVersion]);
+  //
+  // `null` is "not asked yet"; a `null` against one outlet's key inside the map is that outlet's
+  // register having failed to answer, which is not the same as its having sold nothing.
+  const [sessions, setSessions] = useState<Record<string, RegisterReport | null> | null>(null);
+  const reading = sessions === null;
+  useEffect(() => {
+    let live = true;
+    void Promise.all(openKeys.map((l) => readXReport(l))).then((rs) => {
+      if (live) setSessions(Object.fromEntries(openKeys.map((l, i) => [l, rs[i]])));
+    });
+    return () => { live = false; };
+  }, [openKeys, readXReport]);
+  const retry = () => {
+    setSessions(null);
+    void Promise.all(openKeys.map((l) => readXReport(l)))
+      .then((rs) => { setSessions(Object.fromEntries(openKeys.map((l, i) => [l, rs[i]]))); });
+  };
+
+  const outlets = openKeys.map((loc) => {
+    const session = sessions?.[loc] ?? null;
+    const openedAt = session?.openedAt ?? null;
     // ---- bill void: a voided bill was taken back - the money was never kept and the stock went
     // back on the shelf - so it counts towards neither the outlet's bill count nor its takings.
     // The server leaves it out of the `sales` columns below for the same reason (`readSales`).
-    const bills = s.bills.filter((b) => b.loc === loc && !b.voided);
+    // An outlet whose register did not answer contributes nothing rather than a zero, and the
+    // column says which of the two happened.
+    const bills = openedAt === null
+      ? []
+      : s.bills.filter((b) => b.loc === loc && (b.iso ?? "") >= openedAt && !b.voided);
     const sales = sum(bills, (b) => b.tot);
     return {
       loc,
       name: LOC[loc].n,
       floor: LOC[loc].floor,
+      session,
       bills: bills.length,
       sales,
       value: stockValue(s, loc),
@@ -69,6 +102,16 @@ export default function Dashboard() {
   });
 
   const total = sum(outlets, (r) => r.sales);
+  const billsTotal = sum(outlets, (r) => r.bills);
+  const reporting = outlets.filter((r) => r.session !== null);
+  const unread = outlets.filter((r) => r.session === null);
+  /** The window one outlet is being measured over, in that outlet's own terms. */
+  const windowOf = (r: (typeof outlets)[number]) =>
+    r.session
+      ? r.session.previousZNo
+        ? `since ${r.session.previousZNo}, ${fromWireTime(r.session.openedAt)}`
+        : `since it first opened, ${fromWireTime(r.session.openedAt)}`
+      : reading ? "reading…" : "register not read";
   const offAll: Off = {
     n: sum(outlets, (r) => r.off.n),
     manual: sum(outlets, (r) => r.off.manual),
@@ -160,7 +203,10 @@ export default function Dashboard() {
         : k === "bills" ? r.bills
           : k === "value" ? r.value
             : k === "off" ? r.off.n
-              : r.sales;
+              // The instant the session opened, not the clock face printed in the cell: an
+              // outlet still open from last night sorts above one that closed at midnight.
+              : k === "since" ? (r.session?.openedAt ?? "")
+                : r.sales;
 
   return (
     <>
@@ -204,14 +250,51 @@ export default function Dashboard() {
         </Alert>
       )}
 
-      <Card title="Outlet summary" tip="Today's trade against the stock each counter is holding" flush scroll>
+      {unread.length > 0 && !reading && (
+        <Alert
+          tone="c"
+          label="OUTAGE"
+          action={<Btn size="xs" variant="gh" onClick={retry}>Try again</Btn>}
+        >
+          The register could not be read at <b>{unread.map((r) => r.name).join(", ")}</b>, so no trading figure
+          below includes {unread.length === 1 ? "it" : "them"}. <b>That is not an outlet that sold nothing</b> -
+          what those tills hold is unknown until their registers answer.
+        </Alert>
+      )}
+
+      {/* The one honest label for this period: three outlets, three sessions, three start times.
+          Calling it "today" would name a fourth window, and the one nobody settles against. */}
+      <Kpis items={[
+        {
+          l: "Billed across open sessions", v: money0(total),
+          d: <>{reporting.length} of {outlets.length} register{outlets.length === 1 ? "" : "s"} reporting</>,
+          tip: "The sum of every outlet's currently-open session. Each outlet's window runs from its own last Z, so the windows are not the same length and did not all start at the same time.",
+        },
+        {
+          l: "Bills in those sessions", v: String(billsTotal),
+          d: <>average {money(billsTotal ? total / billsTotal : 0)}</>,
+        },
+        {
+          l: "Stock at the counters", v: lakh(sum(outlets, (r) => r.value)),
+          d: <>{outlets.length} open outlet{outlets.length === 1 ? "" : "s"}</>,
+        },
+      ]} />
+
+      <Card
+        title="Outlet summary"
+        tip="Each outlet's own open session against the stock that counter is holding. An outlet's session runs from its own last Z to its next one, so no two rows here measure the same window."
+        flush
+        scroll
+        className="mtop"
+      >
         <DataTable
           sort={outletSort.sort}
           onSort={outletSort.onSort}
           cols={[
             { h: "Outlet", cls: "nm", w: "22%", sort: "name" },
             { h: "Floor", sort: "floor" },
-            { h: "Today's sales", r: true, sort: "sales" },
+            { h: "Session sales", r: true, sort: "sales" },
+            { h: "Measured from", sort: "since" },
             { h: "Bills", r: true, sort: "bills" },
             { h: "Average bill", r: true },
             { h: "Stock value", r: true, sort: "value" },
@@ -222,9 +305,10 @@ export default function Dashboard() {
             cells: [
               <>{r.name}<small>{LOC[r.loc].c} · {LOC[r.loc].cc}</small></>,
               r.floor,
-              <b>{money0(r.sales)}</b>,
-              r.bills,
-              money(r.bills ? r.sales / r.bills : 0),
+              r.session ? <b>{money0(r.sales)}</b> : <span className="dim">-</span>,
+              <small className={r.session ? undefined : "dim"}>{windowOf(r)}</small>,
+              r.session ? r.bills : <span className="dim">-</span>,
+              r.session ? money(r.bills ? r.sales / r.bills : 0) : <span className="dim">-</span>,
               lakh(r.value),
               r.off.n > 0
                 ? <><Pill tone="wn">{r.off.n}</Pill><small className="dim" style={{ display: "block" }}>{why(r.off)}</small></>
@@ -235,7 +319,10 @@ export default function Dashboard() {
         />
         <TableFoot
           count={outlets.length}
-          extra={<>Sales {money0(total)} · stock at counters {lakh(sum(outlets, (r) => r.value))}</>}
+          extra={<>
+            Sales {money0(total)} across {reporting.length} open session{reporting.length === 1 ? "" : "s"},
+            each since its own Z · stock at counters {lakh(sum(outlets, (r) => r.value))}
+          </>}
         />
       </Card>
 

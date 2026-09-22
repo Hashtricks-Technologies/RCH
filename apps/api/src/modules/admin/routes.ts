@@ -14,6 +14,13 @@ export default fp(async (app) => {
   mount(app, routes.deactivateAdminUser, async (req) => svc.deactivate(req.user, req.params.id));
   mount(app, routes.reactivateAdminUser, async (req) => svc.reactivate(req.user, req.params.id));
   mount(app, routes.updateAdminUser, async (req) => svc.updateRoleLoc(req.user, req.params.id, req.body));
+  // ---- postings: which counters this account may work. Its own route, because it is its own
+  // decision - and because it revokes every session the account holds, which a role move does not.
+  mount(app, routes.setAdminUserPostings, async (req) => svc.setPostings(req.user, req.params.id, req.body.locs));
+  // `svc.setPostings` has no route yet, and cannot have one from here: the manifest carries no
+  // entry for it and `UpdateAdminUserBodySchema` is strict, so a `postings` key on the patch above
+  // is a 400 before any handler sees it. The service and the rule behind it are written and
+  // tested; mounting them is one `defineRoute` in packages/contract away.
   mount(app, routes.deleteAdminUser, async (req) => svc.remove(req.user, req.params.id));
   mount(app, routes.adminActions, async (req) => svc.actions(req.query.kind));
   mount(app, routes.adminLocations, async () => svc.locations());

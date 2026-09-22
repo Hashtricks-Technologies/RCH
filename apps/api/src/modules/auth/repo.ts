@@ -1,7 +1,8 @@
 import { and, asc, eq, isNull, lt, or, sql } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import type { Db } from "../../db/client.js";
 import type { Tx } from "../../lib/db.js";
-import { refreshTokens, users } from "../../db/schema/index.js";
+import { locations, refreshTokens, userPostings, users } from "../../db/schema/index.js";
 
 export const authRepo = {
   userByEmp: async (db: Db | Tx, emp: string) => (await db.select().from(users).where(eq(users.empNo, emp)))[0],
@@ -9,12 +10,41 @@ export const authRepo = {
   /** The sign-in picker: every account that can sign in at a counter or a desk - active, and not
    *  admin-flagged, so the one account that manages the others is not advertised to whoever
    *  opens the page - as a number and a name, in number order. */
-  signInDirectory: (db: Db | Tx) =>
-    db.select({ emp: users.empNo, n: users.name }).from(users)
+  signInDirectory: async (db: Db | Tx): Promise<{ emp: string; n: string; locs: { k: string; n: string; c: string }[] }[]> => {
+    // One query, not one per account: each posting comes back as an object in an aggregate, name
+    // and code included - nothing on the sign-in screen can look a location up, because the
+    // registries that hold them are filled by the snapshot and the snapshot needs a token.
+    //
+    // `left join` on the postings and not `join`: an account whose rows were removed by hand must
+    // still be able to sign in, and falls back to its home location below.
+    const home = alias(locations, "home_loc");
+    const rows = await db.select({
+      emp: users.empNo, n: users.name,
+      homeLoc: sql<{ k: string; n: string; c: string }>`json_build_object('k', ${home.key}, 'n', ${home.name}, 'c', ${home.code})`,
+      locs: sql<{ k: string; n: string; c: string }[]>`coalesce(json_agg(json_build_object('k', ${locations.key}, 'n', ${locations.name}, 'c', ${locations.code}) order by ${locations.key}) filter (where ${locations.key} is not null), '[]')`,
+    }).from(users)
+      .innerJoin(home, eq(home.key, users.loc))
+      .leftJoin(userPostings, eq(userPostings.userId, users.id))
+      .leftJoin(locations, eq(locations.key, userPostings.loc))
       .where(and(eq(users.active, true), eq(users.admin, false)))
-      .orderBy(asc(users.empNo)),
-  insertRefresh: (tx: Tx, v: { userId: string; family: string; tokenHash: string; expiresAt: Date; userAgent?: string; ip?: string }) => tx.insert(refreshTokens).values(v),
+      .groupBy(users.empNo, users.name, home.key, home.name, home.code)
+      .orderBy(asc(users.empNo));
+    return rows.map((r) => ({ emp: r.emp, n: r.n, locs: r.locs.length ? r.locs : [r.homeLoc] }));
+  },
+  /** Where this account may work, in key order - its home row and every counter it has been
+   *  posted to besides. One row is the ordinary case; the sign-in screen shows no picker for it.
+   *  Every account has at least its home row (`lib/users-admin.ts` writes it with the account,
+   *  migration 0023 backfilled it for every account that predates the table), so an empty answer
+   *  means the row was removed by hand, not that the account may work anywhere. */
+  postingsFor: async (db: Db | Tx, userId: string): Promise<string[]> =>
+    (await db.select({ loc: userPostings.loc }).from(userPostings).where(eq(userPostings.userId, userId)).orderBy(asc(userPostings.loc))).map((r) => r.loc),
+  insertRefresh: (tx: Tx, v: { userId: string; family: string; tokenHash: string; expiresAt: Date; userAgent?: string; ip?: string; loc: string }) => tx.insert(refreshTokens).values(v),
   refreshByHash: async (db: Db | Tx, tokenHash: string) => (await db.select().from(refreshTokens).where(eq(refreshTokens.tokenHash, tokenHash)))[0],
+  /** Moves a live session to another counter. Keyed on the token hash, which is unique, so it
+   *  moves the one session the caller is holding and none of that account's others - a consultant
+   *  signed in at two tills at once moves only the one they pressed the button on. */
+  setRefreshLoc: (tx: Tx, tokenHash: string, loc: string) =>
+    tx.update(refreshTokens).set({ loc }).where(and(eq(refreshTokens.tokenHash, tokenHash), isNull(refreshTokens.revokedAt))),
   /** When the family's very first token was issued - undefined if the family has no rows yet
    *  (a brand-new login, about to insert its own first row). Caps how long a refresh chain
    *  can be kept alive by rotation alone: see `issue()` in service.ts.

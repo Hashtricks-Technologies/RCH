@@ -25,7 +25,7 @@ import { IT, LOC, PRICE_LISTS, hydrateLocations, hydratePriceLists } from "../da
 import { allOutlets, madeItems } from "../lib/selectors";
 import { Alert } from "../ui/kit";
 import type { PoolLine } from "../lib/selectors";
-import type { Bill, Dated, DatedDoc, Role, StockRequest, SupportTicket, Ticket, Trailed } from "../types";
+import type { Bill, Dated, DatedDoc, RegisterReport, Role, StockRequest, SupportTicket, Ticket, Trailed } from "../types";
 import { as, resetStore } from "./fixture";
 
 // Nothing in production code carries data any more: the registries are empty until a snapshot
@@ -1430,7 +1430,7 @@ describe("the account-management page", () => {
         user: { ...useApp.getState().user!, admin: true },
         accounts: [{
           id: "u1", emp: "RC-4471", n: "Kavitha Raman", e: "kavitha.r@royalcare.in", ph: "98430 22118",
-          r: "counter", rl: "Counter Operator", loc: "coffee", col: "#B45309",
+          r: "counter", rl: "Counter Operator", loc: "coffee", col: "#B45309", postings: ["coffee"],
           active: true, mustChangePassword: false, admin: false,
         }],
       });
@@ -1568,5 +1568,213 @@ describe("the admin's support desk", () => {
     act(() => { tab.click(); });
     expect(ui.text()).toContain("Tickets from every role's Support screen.");
     expect(ui.text()).not.toContain("Manage staff accounts");
+  });
+});
+
+/* ----------------------------------------------------------------------
+ * The register: the X read mid-shift, and the Z that closes the day.
+ *
+ * One screen (`ui/Register.tsx`) serves the counter and the manager, so both are driven here
+ * through `REGISTRY`, which also proves the three files agree - `nav.ts`, each role's
+ * `index.tsx`, and `App.tsx`'s lookup.
+ * ---------------------------------------------------------------------- */
+
+/** Figures modelled on the hospital's own Z slip. Seven lines are zero on purpose. */
+const TOTALS: RegisterReport["totals"] = {
+  grossSales: 4820, discount: 120, nettSales: 4700, creditSales: 900,
+  voidAmount: 60, voidBills: 1,
+  tip: 0, parcelCharge: 0, deliveryCharge: 0, additionalCharge: 0,
+  complimentary: 0, unCollected: 0, unCollectedDiscount: 0,
+  tenders: [{ tender: "Cash", amount: 2600, bills: 18 }, { tender: "UPI", amount: 1200, bills: 7 }],
+  collected: 3800,
+  oldBills: [{ mode: "Cash", amount: 450 }], oldBillsTotal: 450,
+  sgst: 111.9, cgst: 111.9, taxTotal: 223.8,
+  billCount: 26,
+};
+const xReport = (over: Partial<RegisterReport> = {}): RegisterReport => ({
+  kind: "X", zNo: null, sessionId: "SES-coffee-12", loc: "coffee", previousZNo: "Z-0041",
+  openedAt: "2026-09-17T13:00:00.000Z", closedAt: null,
+  takenAt: "2026-09-18T05:30:00.000Z", takenBy: "Kavitha Raman", totals: TOTALS, ...over,
+});
+const zReport = (over: Partial<RegisterReport> = {}): RegisterReport => xReport({
+  kind: "Z", zNo: "Z-0042", closedAt: "2026-09-18T05:30:00.000Z", ...over,
+});
+
+const kpiValue = (host: HTMLElement, label: string) =>
+  [...host.querySelectorAll(".kpi")]
+    .find((k) => k.querySelector(".kl")?.textContent === label)
+    ?.querySelector(".kv")?.textContent ?? "";
+
+const aBill = (no: string, iso: string, tot: number): Dated<Bill> => ({
+  no, loc: "coffee", opr: "Kavitha Raman", oprCol: "#0EA5E9", tot, tax: 0,
+  t: "10:00", iso, pay: "Cash", lines: [{ it: "juice", qty: 2, rate: tot / 2 }],
+});
+
+describe("the register", () => {
+  let printed: ReturnType<typeof vi.fn>;
+  beforeEach(() => {
+    printed = vi.fn();
+    Object.defineProperty(window, "print", { value: printed, configurable: true, writable: true });
+  });
+
+  async function openRegister(role: Role, o: {
+    x?: () => Promise<RegisterReport | null>;
+    zs?: () => Promise<RegisterReport[] | null>;
+    close?: () => Promise<RegisterReport | null>;
+  } = {}) {
+    const readXReport = vi.fn(o.x ?? (async () => xReport()));
+    const readZReports = vi.fn(o.zs ?? (async () => [zReport()]));
+    const closeRegister = vi.fn(o.close ?? (async () => zReport()));
+    act(() => { as(role); useApp.setState({ readXReport, readZReports, closeRegister }); });
+    const ui = mount(REGISTRY[role].register);
+    await settle(() => { /* let the two reads land */ });
+    return { ui, readXReport, readZReports, closeRegister };
+  }
+
+  it("counter: reads its own outlet's open session and offers both readings", async () => {
+    const { ui, readXReport, readZReports } = await openRegister("counter");
+    expect(readXReport).toHaveBeenCalledWith("coffee");
+    expect(readZReports).toHaveBeenCalledWith("coffee");
+    expect(ui.text()).toContain("Take X-report");
+    expect(ui.text()).toContain("Close register & take Z");
+    // The session it follows, so the window is Z to Z and says so.
+    expect(ui.text()).toContain("Z-0041");
+    expect(kpiValue(ui.host, "Nett sales this session")).toBe("₹4,700");
+    // The Z already closed here is on the list, not in the takings.
+    expect(ui.text()).toContain("Z-0042");
+    // A counter has exactly one register: no outlet picker.
+    expect(ui.host.querySelector('select[aria-label="Outlet"]')).toBeNull();
+  });
+
+  it("manager: the same register, over any open outlet", async () => {
+    const { ui, readXReport } = await openRegister("manager");
+    expect(readXReport).toHaveBeenCalledTimes(1);
+    expect(ui.host.querySelector('select[aria-label="Outlet"]')).toBeTruthy();
+    expect(ui.text()).toContain("Take X-report");
+    expect(ui.text()).toContain("Close register & take Z");
+  });
+
+  it("an X re-reads and prints, and closes nothing", async () => {
+    const { ui, readXReport, readZReports, closeRegister } = await openRegister("counter");
+    expect(readXReport).toHaveBeenCalledTimes(1);
+    await settle(() => { ui.button("Take X-report").click(); });
+    // Read again, printed, and the register is exactly where it was: an X is not a document.
+    expect(readXReport).toHaveBeenCalledTimes(2);
+    expect(readZReports).toHaveBeenCalledTimes(2);
+    expect(printed).toHaveBeenCalled();
+    expect(closeRegister).not.toHaveBeenCalled();
+    expect(ui.text()).not.toContain("It cannot be undone");
+  });
+
+  it("will not close the register until the irreversibility has been confirmed", async () => {
+    const { ui, closeRegister } = await openRegister("counter");
+    act(() => { ui.button("Close register & take Z").click(); });
+    // One press is a question, not a Z.
+    expect(closeRegister).not.toHaveBeenCalled();
+    expect(ui.text()).toContain("It cannot be undone or taken again");
+    expect(ui.text()).toContain("the next sale opens a new one");
+    expect(ui.button("Keep it open")).toBeTruthy();
+
+    typeIn(ui.field("Counted cash"), "2600");
+    await settle(() => { ui.button("Yes, take the Z").click(); });
+    expect(closeRegister).toHaveBeenCalledWith("coffee", 2600);
+    // The Z the server answered with goes straight onto the paper.
+    expect(printed).toHaveBeenCalled();
+    expect(ui.host.querySelector(".print-slip")!.textContent).toContain("Z-0042");
+  });
+
+  it("prints every line the hospital's own slip carries, the zeros included, in its order", async () => {
+    const { ui } = await openRegister("counter");
+    const slip = ui.host.querySelector(".print-slip")!;
+    const text = slip.textContent ?? "";
+    for (const line of [
+      "Tip", "Parcel charge", "Delivery charge", "Additional charge", "Complimentary",
+      "Un-collected", "Un-collected discount",
+    ]) expect(text, `${line} is missing from the slip`).toContain(line);
+    // Those seven, and only those seven, are printed as a zero - on purpose, so the slip matches
+    // the one the counters already read.
+    expect([...slip.querySelectorAll("td")].filter((td) => td.textContent === "₹0.00")).toHaveLength(7);
+    // Sales -> collections -> old bills -> tax -> totals, the order the till report reads in.
+    expect(text.indexOf("Gross sales")).toBeLessThan(text.indexOf("Collections"));
+    expect(text.indexOf("Collections")).toBeLessThan(text.indexOf("Old bills"));
+    expect(text.indexOf("Old bills")).toBeLessThan(text.indexOf("SGST"));
+    expect(text.indexOf("SGST")).toBeLessThan(text.indexOf("Totals"));
+    // Old bills are collection against an earlier session, never sale.
+    expect(text).toContain("not part of nett sales");
+  });
+
+  it("says the register could not be read, never that nothing was taken", async () => {
+    const { ui } = await openRegister("counter", { x: async () => null, zs: async () => null });
+    expect(ui.text()).toContain("Could not read the register");
+    expect(ui.text()).toContain("This is not a session that took nothing");
+    expect(ui.text()).toContain("Could not read the closed sessions");
+    // Neither an empty till report nor an empty history: both would be a claim about the money.
+    expect(ui.text()).not.toContain("₹0.00");
+    expect(ui.text()).not.toContain("This register has never been closed");
+    expect(ui.host.querySelector(".print-slip")).toBeNull();
+  });
+
+  it("the counter's dashboard counts from the open session, not from midnight", async () => {
+    const now = Date.now();
+    const opened = new Date(now - 3 * 3600_000).toISOString();
+    const readXReport = vi.fn(async () => xReport({ openedAt: opened }));
+    act(() => {
+      as("counter");
+      useApp.setState({
+        readXReport,
+        bills: [
+          aBill("CF/2001", new Date(now - 3600_000).toISOString(), 40),
+          // Same hospital day, but before the last Z: it belongs to the session already settled.
+          aBill("CF/2000", new Date(now - 5 * 3600_000).toISOString(), 900),
+        ],
+      });
+    });
+    const ui = mount(REGISTRY.counter.dash);
+    await settle(() => { /* let the X land */ });
+    expect(kpiValue(ui.host, "Billed this session")).toBe("₹40");
+    expect(kpiValue(ui.host, "Bills raised")).toBe("1");
+    // The window is named by the Z it runs from, never by a date.
+    expect(ui.text()).toContain("since Z-0041");
+  });
+
+  it("the counter's dashboard blanks its takings rather than printing a zero it cannot stand behind", async () => {
+    act(() => {
+      as("counter");
+      useApp.setState({
+        readXReport: vi.fn(async () => null),
+        bills: [aBill("CF/2001", new Date().toISOString(), 40)],
+      });
+    });
+    const ui = mount(REGISTRY.counter.dash);
+    await settle(() => { /* let the failed read land */ });
+    expect(kpiValue(ui.host, "Billed this session")).toBe("-");
+    expect(ui.text()).toContain("This is not a session that took nothing");
+  });
+
+  it("the manager's dashboard sums every outlet's own open session and says the windows differ", async () => {
+    const now = Date.now();
+    const opened = new Date(now - 2 * 3600_000).toISOString();
+    const readXReport = vi.fn(async (loc?: string) =>
+      // The kiosk's register did not answer; the other outlets' did.
+      (loc === "kiosk" ? null : xReport({ loc: loc ?? "coffee", openedAt: opened })));
+    act(() => {
+      as("manager");
+      useApp.setState({
+        readXReport,
+        bills: [
+          aBill("CF/2001", new Date(now - 3600_000).toISOString(), 40),
+          aBill("CF/2000", new Date(now - 5 * 3600_000).toISOString(), 900),
+        ],
+      });
+    });
+    const ui = mount(REGISTRY.manager.dash);
+    await settle(() => { /* let every outlet's X land */ });
+    // One outlet's session, summed - not seven days of bills, and not "today".
+    expect(kpiValue(ui.host, "Billed across open sessions")).toBe("₹40");
+    expect(ui.text()).toContain("each since its own Z");
+    expect(ui.text()).toContain("since Z-0041");
+    // The outlet whose register failed is named, and is not reported as having sold nothing.
+    expect(ui.text()).toContain("register not read");
+    expect(ui.text()).toContain("That is not an outlet that sold nothing");
   });
 });

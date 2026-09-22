@@ -33,6 +33,28 @@ import type { Batch, Bill, Dated, DatedDoc, PurchaseOrder, Requisition } from ".
 /** 11 Sep 2026, 10:30 in Asia/Kolkata - mid-morning at the counter, 05:00 UTC. */
 const NOW = "2026-09-11T05:00:00.000Z";
 /** 11 Sep 01:30 IST. Today at the hospital; still the 10th in UTC. */
+/**
+ * A register session that opened between the two bills below - after last night's 23:30 and
+ * before this morning's 01:30 IST.
+ *
+ * The counter's takings used to be cut by `isToday`; they are cut by the open session now, so the
+ * boundary these cases pin has moved from IST midnight to the last Z. The defect is the same one
+ * either way: seven days of bills arriving from the server and every one of them counted.
+ */
+const sessionSince = (openedAt: string) => ({
+  kind: "X" as const, zNo: null, sessionId: "SES-coffee-01", loc: "coffee" as const,
+  previousZNo: "Z-2026-0041", openedAt, closedAt: null,
+  takenAt: openedAt, takenBy: "Kavitha Raman",
+  totals: {
+    grossSales: 0, discount: 0, nettSales: 0, creditSales: 0, voidAmount: 0, voidBills: 0,
+    tip: 0, parcelCharge: 0, deliveryCharge: 0, additionalCharge: 0,
+    complimentary: 0, unCollected: 0, unCollectedDiscount: 0,
+    tenders: [], collected: 0, oldBills: [], oldBillsTotal: 0,
+    sgst: 0, cgst: 0, taxTotal: 0, billCount: 0,
+  },
+});
+const SESSION_OPENED = "2026-09-10T19:00:00.000Z";
+
 const TODAY_EARLY = "2026-09-10T20:00:00.000Z";
 /** 10 Sep 23:30 IST. Yesterday at the hospital; also the 10th in UTC. */
 const YESTERDAY_LATE = "2026-09-10T18:00:00.000Z";
@@ -41,8 +63,31 @@ beforeEach(() => {
   resetStore();
   vi.useFakeTimers();
   vi.setSystemTime(new Date(NOW));
+  // The counter's and the manager's dashboards ask the server for the open register as they
+  // mount. Nothing in this file stubs `fetch`, so without this the real action hangs and every
+  // case that renders one times out. A session opened long ago is the neutral default: it counts
+  // everything, which is what these cases assumed back when `isToday` did the cutting.
+  useApp.setState({ readXReport: async () => sessionSince("2026-01-01T00:00:00.000Z") });
 });
 afterEach(() => { vi.useRealTimers(); });
+
+/**
+ * The counter dashboard asks the server for its open session as it mounts, so its takings are not
+ * on the page until that promise has settled. `render` is synchronous and returns the first paint,
+ * which for this screen is the loading state.
+ */
+async function renderSettled(el: React.ReactElement): Promise<string> {
+  const host = document.createElement("div");
+  document.body.appendChild(host);
+  const root = createRoot(host);
+  // `vi.useFakeTimers()` is on for this whole file, so a `setTimeout`-based flush would never
+  // fire. `act`'s async form drains the microtask queue, which is all a resolved promise needs.
+  await act(async () => { root.render(createElement(MemoryRouter, null, el)); });
+  const html = host.innerHTML;
+  act(() => { root.unmount(); });
+  host.remove();
+  return html;
+}
 
 function render(el: React.ReactElement): string {
   const host = document.createElement("div");
@@ -101,13 +146,16 @@ describe("every 'today' figure at the till is today's", () => {
     ],
   });
 
-  it("sums only the bills raised today, not the week the server sends", () => {
-    act(() => { applySnapshot(twoDays() as unknown as Parameters<typeof applySnapshot>[0]); as("counter"); });
+  it("sums only the bills in the open session, not the week the server sends", async () => {
+    act(() => {
+      applySnapshot(twoDays() as unknown as Parameters<typeof applySnapshot>[0]);
+      as("counter");
+      useApp.setState({ readXReport: async () => sessionSince(SESSION_OPENED) });
+    });
 
-    const html = render(createElement(counter.dash));
-
-    // ₹940 was what this tile read: seven days of takings under the word "today".
-    expect(kpi(html, "Billed today")).toBe("₹40");
+    // ₹940 was what this tile read: seven days of takings under one heading.
+    const html = await renderSettled(createElement(counter.dash));
+    expect(kpi(html, "Billed this session")).toBe("₹40");
     expect(kpi(html, "Bills raised")).toBe("1");
     expect(kpi(html, "Items sold")).toBe("2");
   });
@@ -121,11 +169,12 @@ describe("every 'today' figure at the till is today's", () => {
     expect(html).not.toContain("CF/1189");
   });
 
-  it("names this morning's bill as the last one, not last night's later clock face", () => {
+  it("names this morning's bill as the last one, not last night's later clock face", async () => {
     act(() => { applySnapshot(twoDays() as unknown as Parameters<typeof applySnapshot>[0]); as("counter"); });
 
     // Last night's 23:30 beats this morning's 01:30 on a string comparison, and did.
-    expect(kpi(render(createElement(counter.dash)), "Bills raised")).toBe("1");
+    act(() => { useApp.setState({ readXReport: async () => sessionSince(SESSION_OPENED) }); });
+    expect(kpi(await renderSettled(createElement(counter.dash)), "Bills raised")).toBe("1");
     expect(S().bills.map((b) => b.iso)).toEqual([TODAY_EARLY, YESTERDAY_LATE]);
   });
 });

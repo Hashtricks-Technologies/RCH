@@ -8,7 +8,7 @@ import { applySnapshot } from "../api/wire";
 import { IT, LOC } from "../data/master";
 import type {
   Adjustment, AdjustmentRequest, Batch, Bill, CreditResponse, Dated, DatedDoc, DraftLine, DrawerState, Grn, LocKey,
-  Payer, PordStatus, PriceList, ProdOrder, PurchaseOrder, Requisition, StockLedgerRow, StockLoc,
+  Payer, PordStatus, PriceList, ProdOrder, PurchaseOrder, RegisterReport, Requisition, StockLedgerRow, StockLoc,
   SignInEntry, StockRequest, Tender, Ticket, Trailed, User, Vendor,
 } from "../types";
 import { applyTheme, nextTheme, readStoredTheme, storeTheme, type ThemePref } from "../lib/theme";
@@ -20,6 +20,9 @@ import { createReceivablesSlice, type ReceivablesSlice } from "./receivables";
 
 export interface AppState extends ProcurementSlice, OpsSlice, AdminSlice, AuditSlice, ReceivablesSlice {
   user: User | null;
+  /** Every counter this account may stand at, from the sign-in response. One entry is the
+   *  ordinary case and means no picker is ever shown. `user.loc` is the one it is standing at. */
+  postings: LocKey[];
   /** Where the session is: no token, asking for one, fetching the snapshot, usable - or signed
    *  in with nothing to show. `"failed"` is the last one: the credentials are good and the
    *  snapshot is not, so there is no item master, no locations and no menus, and every screen
@@ -73,7 +76,9 @@ export interface AppState extends ProcurementSlice, OpsSlice, AdminSlice, AuditS
   shopFilter: LocKey | null;
   theme: ThemePref;
 
-  login: (emp: string, password: string) => Promise<boolean>;
+  /** `loc` is the counter the sign-in screen asked for, when the account works more than one.
+   *  Omitted, the session stands at the account's home location as it always did. */
+  login: (emp: string, password: string, loc?: LocKey) => Promise<boolean>;
   /** The sign-in picker's list: every active staff account's number and name, read before
    *  anybody has signed in. A read with no toast - `null` on failure, never an empty list, so
    *  the form can tell "nobody to pick" from "could not ask" and fall back to a typed id. */
@@ -133,6 +138,13 @@ export interface AppState extends ProcurementSlice, OpsSlice, AdminSlice, AuditS
    *  Answers `true` only once the server has taken it, so the window can keep a refused OTP
    *  and its reason in front of the operator instead of relying on a toast they may miss. */
   handover: (tktId: string, otp: string) => Promise<boolean>;
+  // ---- the register. Neither read is kept in the store: an X is a snapshot of a moment and a Z
+  // is a document the server owns, so both answer `null` on failure the way `readStatement` and
+  // `readAuditEntry` do - a screen can then say "could not be read" instead of "nothing taken".
+  readXReport: (loc?: LocKey) => Promise<RegisterReport | null>;
+  readZReports: (loc?: LocKey, days?: number) => Promise<RegisterReport[] | null>;
+  /** Close the register and take the Z. Returns the report so the screen can print it at once. */
+  closeRegister: (loc: LocKey, countedCash?: number, note?: string) => Promise<RegisterReport | null>;
   receiveTicket: (tktId: string) => Promise<void>;
 
   /** Withdraw a ticket nobody collected: the hold goes back and so does the document behind it.
@@ -236,15 +248,19 @@ export const useApp = create<AppState>((set, get) => ({
   drawer: null,
   toast: null,
   authError: null,
+  postings: [],
   shopFilter: null,
   theme: readStoredTheme(),
 
-  login: async (emp, password) => {
+  login: async (emp, password, loc) => {
     set({ auth: "signing-in", authError: null });
     try {
-      const r = await call(routes.login, { body: { emp, password } });
+      const r = await call(routes.login, { body: { emp, password, ...(loc ? { loc } : {}) } });
       setAccessToken(r.accessToken);
-      set({ user: r.user, mustChangePassword: r.mustChangePassword, auth: r.mustChangePassword ? "ready" : "loading" });
+      // `postings` is every counter this account may stand at, kept for the screens that name
+      // where this session is standing. Which counter it *is* standing at was decided at sign-in
+      // and does not move: a shift at another till is a fresh sign-in there.
+      set({ user: r.user, postings: r.postings, mustChangePassword: r.mustChangePassword, auth: r.mustChangePassword ? "ready" : "loading" });
       if (!r.mustChangePassword) await get().loadSnapshot();
       return true;
     } catch (e) {
@@ -252,6 +268,27 @@ export const useApp = create<AppState>((set, get) => ({
       // has to still be there when the operator looks up from the keyboard.
       set({ auth: "signed-out", user: null, authError: e instanceof ApiError ? e.message : UNREACHABLE });
       return false;
+    }
+  },
+  readXReport: async (loc) => {
+    try { return await call(routes.xReport, { query: loc ? { loc } : {} }); }
+    catch { return null; }
+  },
+  readZReports: async (loc, days) => {
+    try { return await call(routes.zReports, { query: { ...(loc ? { loc } : {}), ...(days === undefined ? {} : { days }) } }); }
+    catch { return null; }
+  },
+  closeRegister: async (loc, countedCash, note) => {
+    try {
+      const r = await call(routes.closeRegister, {
+        body: { loc, ...(countedCash === undefined ? {} : { countedCash }), ...(note ? { note } : {}) },
+      });
+      get().notify(r.message);
+      await refetch(r.changed, r.message);
+      return r.result;
+    } catch (e) {
+      get().notify(e instanceof ApiError ? e.message : "Could not close the register - check the connection and try again.");
+      return null;
     }
   },
   loadSignInDirectory: async () => {
@@ -265,13 +302,16 @@ export const useApp = create<AppState>((set, get) => ({
     try {
       const r = await call(routes.refresh);
       setAccessToken(r.accessToken);
-      set({ user: r.user, mustChangePassword: r.mustChangePassword });
+      // `postings` too, not just the user: the refresh response carries them, and dropping them
+      // here left a consultant posted to several counters with no switcher in the header after
+      // any page reload - the session knew, and the browser had forgotten.
+      set({ user: r.user, postings: r.postings, mustChangePassword: r.mustChangePassword });
       if (r.mustChangePassword) set({ auth: "ready" });
       else await get().loadSnapshot();
     } catch (e) {
       // A first-time visitor has no cookie. That is not a session ending, so it
       // says nothing and simply shows the sign-in form.
-      set({ auth: "signed-out", user: null });
+      set({ auth: "signed-out", user: null, postings: [] });
       // Anything else - the server down, a gateway page, a 500 - is not "no cookie", and an
       // operator who was signed in a minute ago must not be asked for a password in silence.
       if (!(e instanceof ApiError && e.status === 401)) get().notify(e instanceof ApiError ? e.message : UNREACHABLE);
