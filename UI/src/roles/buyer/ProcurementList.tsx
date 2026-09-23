@@ -4,15 +4,15 @@ import { IT, LOC } from "../../data/master";
 import { suggestVendor, vendorName } from "../../data/vendors";
 import { useApp } from "../../store";
 import { costOf, procurementList, qty, round3 } from "../../lib/selectors";
-import { fq, money, money0, sum, U } from "../../lib/fmt";
+import { fq, fromWireDay, money, money0, sum, U } from "../../lib/fmt";
 import {
   Alert, Btn, Card, DataTable, DraftLineInput, FilterSelect, Grid, PageHead, Tag, TableFoot,
-  Toolbar,
+  Toolbar, commitTyping,
 } from "../../ui/kit";
 import type { Row } from "../../ui/kit";
 import type { PoolLine } from "../../lib/selectors";
 import type { Vendor } from "../../types";
-import { contractFor } from "./lib";
+import { contractFor, lastPurchase } from "./lib";
 
 const NO_VENDOR = "No suggested vendor";
 const STOCK_STATES = ["All", "Below reorder", "At or above reorder"];
@@ -48,7 +48,7 @@ export function groupPool(pool: PoolLine[], vendors: Vendor[]): PoolGroup[] {
   return groups;
 }
 
-export interface Pick { prq: string; line: number; qty: number }
+export interface Pick { prq: string; line: number; qty: number; rate?: number }
 
 /**
  * Spread a requested quantity across a group's sources, oldest pick first,
@@ -56,14 +56,14 @@ export interface Pick { prq: string; line: number; qty: number }
  * pooled row across two vendors is just calling this twice on the same group
  * with two smaller quantities - no separate UI is needed for that.
  */
-export function picksFor(g: PoolGroup, wanted: number): Pick[] {
+export function picksFor(g: PoolGroup, wanted: number, rate?: number): Pick[] {
   let left = round3(Math.max(0, wanted));
   const picks: Pick[] = [];
   for (const src of g.sources) {
     if (left <= 0) break;
     const take = round3(Math.min(left, src.pending));
     if (take > 0) {
-      picks.push({ prq: src.prq, line: src.line, qty: take });
+      picks.push(rate === undefined ? { prq: src.prq, line: src.line, qty: take } : { prq: src.prq, line: src.line, qty: take, rate });
       left = round3(left - take);
     }
   }
@@ -77,11 +77,11 @@ export function picksFor(g: PoolGroup, wanted: number): Pick[] {
  * items come from different suppliers in a single pass.
  */
 export function ordersFor(
-  picked: { group: PoolGroup; vendor: string; qty: number }[],
+  picked: { group: PoolGroup; vendor: string; qty: number; rate?: number }[],
 ): { vendor: string; picks: Pick[] }[] {
   const byVendor = new Map<string, Pick[]>();
-  for (const { group, vendor, qty: want } of picked) {
-    const p = picksFor(group, want);
+  for (const { group, vendor, qty: want, rate } of picked) {
+    const p = picksFor(group, want, rate);
     if (!vendor || !p.length) continue;
     byVendor.set(vendor, [...(byVendor.get(vendor) ?? []), ...p]);
   }
@@ -109,6 +109,11 @@ export default function ProcurementList() {
   const [stockFilter, setStockFilter] = useState("All");
   const [sel, setSel] = useState<Record<string, boolean>>({});
   const [qtyOverride, setQtyOverride] = useState<Record<string, number>>({});
+  // A rate the buyer typed, per item. Until they type one the row shows what the order would
+  // be priced at anyway: the chosen vendor's live contract, else what the item was last bought
+  // at, else its standard cost. Whatever the row shows is what the order is raised at, and a
+  // rate away from a live contract moves the contract to it (the server's rule, not this one).
+  const [rateOverride, setRateOverride] = useState<Record<string, number>>({});
   const [busy, setBusy] = useState(false);
 
   const groups = groupPool(procurementList(s), s.vendors);
@@ -117,6 +122,21 @@ export default function ProcurementList() {
     setQtyOverride((m) => ({ ...m, [g.it]: Math.max(0, Math.min(v, g.pending)) }));
   const toggle = (it: string) => setSel((m) => ({ ...m, [it]: !m[it] }));
   const vendorOf = (g: PoolGroup) => vendorFor[g.it] ?? g.vendor?.id ?? "";
+  const contractOf = (g: PoolGroup) => {
+    const v = vendorOf(g);
+    return v ? contractFor(s, v, g.it) : undefined;
+  };
+  const rateOf = (g: PoolGroup) =>
+    rateOverride[g.it] ?? contractOf(g)?.rate ?? lastPurchase(s.po, g.it)?.rate ?? costOf(g.it);
+  const chooseVendor = (g: PoolGroup, v: string) => {
+    setPoolVendor(g.it, v);
+    // A rate typed against one vendor is not an offer from the next.
+    setRateOverride((m) => {
+      const next = { ...m };
+      delete next[g.it];
+      return next;
+    });
+  };
 
   const GROUPS = ["All", ...[...new Set(groups.map((g) => IT[g.it]?.g ?? ""))].sort()];
   const VENDOR_NAMES = ["All", ...[...new Set(groups.map((g) => g.vendor?.n ?? NO_VENDOR))].sort()];
@@ -145,17 +165,23 @@ export default function ProcurementList() {
   };
 
   const selected = groups.filter((g) => sel[g.it]);
-  const runningTotal = sum(selected, (g) => qtyFor(g) * costOf(g.it));
+  const runningTotal = sum(selected, (g) => qtyFor(g) * rateOf(g));
   const activeVendor = (id: string) => s.vendors.find((v) => v.id === id && v.active);
 
   const planned = ordersFor(
-    selected.map((g) => ({ group: g, vendor: vendorOf(g), qty: qtyFor(g) })),
+    selected.map((g) => ({ group: g, vendor: vendorOf(g), qty: qtyFor(g), rate: rateOf(g) > 0 ? rateOf(g) : undefined })),
   );
   const missingVendor = selected.filter((g) => !activeVendor(vendorOf(g)));
-  const canRaise = planned.length > 0 && missingVendor.length === 0;
 
   const raise = async () => {
     if (busy) return;
+    // Refused with a sentence rather than a greyed-out button: the quantity and rate boxes
+    // commit on blur, and a disabled button never receives the press that would commit one.
+    if (missingVendor.length > 0) {
+      notify(`Choose an active vendor for ${missingVendor.map((g) => IT[g.it]?.n ?? g.it).join(", ")} before raising the order.`);
+      return;
+    }
+    if (planned.length === 0) { notify("Enter a quantity on the items you ticked before raising the order."); return; }
     setBusy(true);
     // One at a time, never in parallel: two orders raised off the same procurement lines claim
     // against the same requisitions, and the second must see what the first took. createPo
@@ -200,7 +226,7 @@ export default function ProcurementList() {
         <>{fq(qty(s, "store", g.it), g.it)}</>,
         <select
           value={vendorOf(g)} aria-label={`Vendor for ${it?.n ?? g.it}`}
-          onChange={(e) => setPoolVendor(g.it, e.target.value)}
+          onChange={(e) => chooseVendor(g, e.target.value)}
         >
           <option value="">Choose a vendor…</option>
           {s.vendors.filter((v) => v.active).map((v) => (
@@ -208,8 +234,22 @@ export default function ProcurementList() {
           ))}
         </select>,
         (() => {
-          const chosen = vendorOf(g);
-          const c = chosen ? contractFor(s, chosen, g.it) : undefined;
+          const last = lastPurchase(s.po, g.it);
+          if (!last) return <span className="dim">Never bought</span>;
+          return (
+            <>
+              <b>{money(last.rate)}</b>
+              <div className="mini">{vendorName(s.vendors, last.vendor)} · {fromWireDay(last.iso)} · {last.po}</div>
+            </>
+          );
+        })(),
+        <DraftLineInput
+          value={rateOf(g)} min={0} step={0.01} positiveOnly
+          ariaLabel={`Rate for ${it?.n ?? g.it}`}
+          onCommit={(n) => setRateOverride((m) => ({ ...m, [g.it]: n }))}
+        />,
+        (() => {
+          const c = contractOf(g);
           if (!c) return <span className="dim">Off contract</span>;
           return (
             <>
@@ -267,9 +307,11 @@ export default function ProcurementList() {
             { h: "Pending", r: true },
             { h: "Pick qty", r: true, w: "10%" },
             { h: LOC.store.n, r: true },
-            { h: "Vendor", w: "18%" },
-            { h: "Contract rate", r: true, w: "13%" },
-            { h: "Sources", w: "14%" },
+            { h: "Vendor", w: "14%" },
+            { h: "Last purchased", r: true, w: "12%", tip: "The rate on the latest order sent to a vendor for this item" },
+            { h: "Rate", r: true, w: "9%", tip: "What the order is raised at. It starts at the vendor's contract rate, else the last purchased price, else the standard cost. A rate away from a live contract moves the contract to it." },
+            { h: "Contract rate", r: true, w: "11%" },
+            { h: "Sources", w: "10%" },
           ]}
           rows={rows}
           empty={narrowed
@@ -319,12 +361,13 @@ export default function ProcurementList() {
                   </div>
                 )}
                 <div className="totrow big mtop">
-                  <span>Total at standard cost</span><span>{money0(runningTotal)}</span>
+                  <span>Total at the rates set</span><span>{money0(runningTotal)}</span>
                 </div>
               </>
             )}
-            <div className="mtop">
-              <Btn disabled={busy || !canRaise} onClick={raise}>
+            {/* The press commits a quantity or a rate still being typed before `raise` reads it. */}
+            <div className="mtop" onMouseDown={commitTyping}>
+              <Btn disabled={busy || selected.length === 0} onClick={raise}>
                 {busy ? "Raising…" : planned.length > 1 ? `Raise ${planned.length} purchase orders` : "Raise purchase order"}
               </Btn>
             </div>

@@ -48,7 +48,7 @@ describe("AUDIT_GROUPS", () => {
 
   it("files sign-in with accounts and a bill with sales", () => {
     expect(actionsInGroup("accounts")).toEqual(expect.arrayContaining(["login", "logout", "changePassword", "createAdminUser"]));
-    expect(actionsInGroup("sales").sort()).toEqual(["closeRegister", "pay", "recordSettlement", "toggleAvail", "voidBill", "voidSettlement"]);
+    expect(actionsInGroup("sales").sort()).toEqual(["closeRegister", "closeShift", "pay", "recordSettlement", "toggleAvail", "voidBill", "voidSettlement"]);
   });
 });
 

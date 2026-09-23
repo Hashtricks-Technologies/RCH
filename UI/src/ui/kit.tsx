@@ -508,6 +508,21 @@ export function useLineKeys(n: number): readonly [number[], (i: number) => void]
   /* oxlint-enable react/refs */
 }
 
+/**
+ * Take whatever a `DraftLineInput` is still holding before a press is read.
+ *
+ * Put it on the `onMouseDown` of a wrapper round the button that reads the boxes. `mousedown`
+ * runs before `click` and before focus moves, so blurring here commits the box the operator is
+ * still standing in - otherwise typing a quantity and going straight for the button reads the
+ * value the line held before they touched it. A button that reads such boxes must also not be
+ * greyed out by them: a disabled button never receives the press, so the click that would have
+ * committed the box is lost and the button looks dead. Refuse with a sentence instead.
+ */
+export const commitTyping = (): void => {
+  const el = document.activeElement;
+  if (el instanceof HTMLInputElement) el.blur();
+};
+
 export function DraftLineInput({
   value, min, max, step, id, ariaLabel, positiveOnly, invalid, blankZero, onCommit,
 }: {

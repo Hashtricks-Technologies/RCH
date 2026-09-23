@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
-import { canCancelTicket, canReceiveTicket } from "../../lib/selectors";
+import { canCancelTicket, canReceiveTicket, counterNameOf } from "../../lib/selectors";
 import { fq, U } from "../../lib/fmt";
 import { DrawerFrame } from "../../ui/Drawer";
 import { registerDrawer, type DrawerProps } from "../../drawers";
@@ -109,7 +109,7 @@ function TicketDrawer({ id }: DrawerProps) {
             {/* The collector walks to the other counter with this in hand, not with the tablet.
                 The slip carries the six digits only where this browser actually has them -
                 a ticket this counter raised reads `""`, and the paper says whose code it is. */}
-            <PrintSlipBtn />
+            <PrintSlipBtn t={tkt} />
           </div>
         </div>
       </div>
@@ -125,7 +125,7 @@ function TicketDrawer({ id }: DrawerProps) {
         rows={tkt.lines.map((l) => ({
           key: l.it,
           cells: [
-            IT[l.it]?.n ?? l.it,
+            counterNameOf(l.it),
             <span className="mono">{IT[l.it]?.c ?? "-"}</span>,
             fq(l.qty, l.it),
             <span className="mini">{U(l.it)}</span>,

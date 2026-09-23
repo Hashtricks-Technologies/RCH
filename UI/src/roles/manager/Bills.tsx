@@ -33,13 +33,17 @@ export default function Bills() {
     if (tender && b.pay !== tender) return false;
     const t = q.trim().toLowerCase();
     if (!t) return true;
+    // A phone is matched on its digits, and only when what was typed reads as a number.
+    const digits = /^[+\d\s-]+$/.test(t) ? t.replace(/\D/g, "") : "";
     return b.no.toLowerCase().includes(t)
       || b.opr.toLowerCase().includes(t)
       || b.pay.toLowerCase().includes(t)
       || nameOf(b.loc).toLowerCase().includes(t)
       || (b.payer?.name.toLowerCase().includes(t) ?? false)
       || (b.payer?.id.toLowerCase().includes(t) ?? false)
-      || (b.voidReason?.toLowerCase().includes(t) ?? false);
+      || (b.voidReason?.toLowerCase().includes(t) ?? false)
+      || (b.customerName?.toLowerCase().includes(t) ?? false)
+      || (digits !== "" && (b.customerPhone?.includes(digits) ?? false));
   });
 
   const filtered = Boolean(q || outlet || tender);
@@ -61,7 +65,7 @@ export default function Bills() {
       />
       <Card flush>
         <Toolbar
-          placeholder="Search bill number, outlet, operator, tender, payer or void reason…"
+          placeholder="Search bill number, outlet, operator, tender, payer, customer or void reason…"
           value={q}
           onSearch={setQ}
           filters={<>

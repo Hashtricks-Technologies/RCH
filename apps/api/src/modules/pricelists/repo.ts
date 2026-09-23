@@ -1,10 +1,12 @@
 // Price lists: SQL only. No rules, no transaction of its own - service.ts passes `tx` in.
-import { asc, eq } from "drizzle-orm";
-import { locations, priceListItems, priceLists } from "../../db/schema/index.js";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import { items, locationItems, locations, priceListItems, priceLists } from "../../db/schema/index.js";
 import type { Tx } from "../../lib/db.js";
 
 export type PriceListRow = typeof priceLists.$inferSelect;
 export type OutletRow = { key: string; name: string; type: string; priceListId: string | null };
+export type LockedOutletRow = typeof locations.$inferSelect;
+export type GridItemRow = { key: string; name: string; type: string; active: boolean };
 
 export const pricelistsRepo = {
   async all(tx: Tx): Promise<PriceListRow[]> {
@@ -54,5 +56,48 @@ export const pricelistsRepo = {
 
   async setOutletList(tx: Tx, loc: string, listId: string): Promise<void> {
     await tx.update(locations).set({ priceListId: listId }).where(eq(locations.key, loc));
+  },
+
+  // ---- counter prices ----
+  /** The outlet's row locked `FOR UPDATE`: the grid may move it onto a list of its own, and two
+   *  saves over one counter must not both decide to fork it. Master data - the documents tier. */
+  async lockOutlet(tx: Tx, loc: string): Promise<LockedOutletRow | undefined> {
+    const [row] = await tx.select().from(locations).where(eq(locations.key, loc)).for("update");
+    return row;
+  },
+
+  /** Retired lines included, so the grid can say "retired" rather than "no such item". */
+  async itemsByKey(tx: Tx, keys: string[]): Promise<GridItemRow[]> {
+    return tx.select({ key: items.key, name: items.name, type: items.type, active: items.active })
+      .from(items).where(inArray(items.key, keys));
+  },
+
+  async pricesOn(tx: Tx, listId: string): Promise<Map<string, number>> {
+    const rows = await tx.select({ itemKey: priceListItems.itemKey, price: priceListItems.price })
+      .from(priceListItems).where(eq(priceListItems.listId, listId));
+    return new Map(rows.map((r) => [r.itemKey, r.price]));
+  },
+
+  async menuOf(tx: Tx, loc: string): Promise<Set<string>> {
+    const rows = await tx.select({ itemKey: locationItems.itemKey }).from(locationItems).where(eq(locationItems.loc, loc));
+    return new Set(rows.map((r) => r.itemKey));
+  },
+
+  upsertPrice: (tx: Tx, listId: string, itemKey: string, price: number) => {
+    const now = new Date();
+    return tx.insert(priceListItems).values({ listId, itemKey, price, updatedAt: now })
+      .onConflictDoUpdate({ target: [priceListItems.listId, priceListItems.itemKey], set: { price, updatedAt: now } });
+  },
+
+  /** `seq` computed inside the INSERT, after every existing line - `catalogRepo.insertMenuItem`'s shape. */
+  async listOnMenu(tx: Tx, loc: string, itemKey: string): Promise<void> {
+    await tx.execute(sql`
+      insert into location_items (loc, item_key, seq)
+      select ${loc}, ${itemKey}, coalesce(max(seq), 0) + 1 from location_items where loc = ${loc}
+      on conflict (loc, item_key) do nothing`);
+  },
+
+  async unlistFromMenu(tx: Tx, loc: string, itemKey: string): Promise<void> {
+    await tx.delete(locationItems).where(and(eq(locationItems.loc, loc), eq(locationItems.itemKey, itemKey)));
   },
 };

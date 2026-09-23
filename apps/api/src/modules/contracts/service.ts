@@ -3,9 +3,11 @@
 // never deleted: it is closed so a purchase order it priced months ago stays readable.
 import type { z } from "zod";
 import type { ContractBodySchema, PatchContractBodySchema, RateContract, WriteResponse } from "@rch/contract";
+import { money } from "@rch/domain";
 import type { Db } from "../../db/client.js";
 import { withTransaction } from "../../lib/db.js";
 import { auditBefore } from "../../lib/audit.js";
+import { logRateChange } from "../../lib/contract-rates.js";
 import { NotFoundError } from "../../lib/errors.js";
 import { emitChanged } from "../../lib/events.js";
 import { allocateId } from "../../lib/ids.js";
@@ -50,7 +52,7 @@ export function createContractsService(db: Db) {
       });
     },
 
-    async patch(_claims: AccessClaims, id: string, body: PatchContractBody): Promise<WriteResponse<RateContract>> {
+    async patch(claims: AccessClaims, id: string, body: PatchContractBody): Promise<WriteResponse<RateContract>> {
       return withTransaction(db, async (tx) => {
         const existing = await contractsRepo.head(tx, id);
         if (!existing) throw new NotFoundError(`There is no rate contract ${id}.`);
@@ -93,10 +95,17 @@ export function createContractsService(db: Db) {
         // sentence, already in hand from before the update ran.
         const row = await contractsRepo.update(tx, id, patch);
         if (!row) assertRule(false, clashMessage!);
+        // The trail beside the rate: a contract row keeps only its current rate, so the old one
+        // is written down here or nowhere. A patch that re-sends the same rate is not a change.
+        const repriced = body.rate !== undefined && Math.round(body.rate * 100) !== Math.round(existing.rate * 100);
+        if (repriced) await logRateChange(tx, { contractId: id, oldRate: existing.rate, newRate: body.rate!, by: claims.sub });
 
         const changed = ["contracts"] as const;
         await emitChanged(tx, changed);
-        return { result: await contractsRepo.wire(tx, id), changed: [...changed], message: `${id} updated` };
+        return {
+          result: await contractsRepo.wire(tx, id), changed: [...changed],
+          message: repriced ? `${id} updated - rate ${money(existing.rate)} to ${money(body.rate!)}` : `${id} updated`,
+        };
       });
     },
 

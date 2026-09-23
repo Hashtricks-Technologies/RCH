@@ -13,6 +13,9 @@ import Issues from "../pages/Support";
 import Login from "../pages/Login";
 import { screens as counter } from "../roles/counter";
 import { screens as manager } from "../roles/manager";
+// The price-list screen is hidden behind `PRICE_LISTS_ENABLED` (roles/manager/index.tsx); its
+// cases below mount it directly.
+import PriceLists from "../roles/manager/Prices";
 import { screens as store } from "../roles/store";
 import { screens as prod } from "../roles/prod";
 import { screens as buyer } from "../roles/buyer";
@@ -612,7 +615,7 @@ describe("the item drawer is the same table the server refuses with", () => {
     // There is no clearing door: the server refuses `mrp: 0` outright, so the drawer must not
     // read an emptied box as a request to remove the ceiling.
     const html = open("manager");
-    expect(html).toContain("Leave the box as it is to keep the current ceiling; emptying it changes nothing");
+    expect(html).toContain("Leave the box as it is to keep the current MRP; emptying it changes nothing");
   });
 });
 
@@ -891,7 +894,7 @@ describe("a form whose write the server refused", () => {
   it("a refused price save keeps the typed value", async () => {
     const savePrice = vi.fn(async () => false);
     act(() => { as("manager"); useApp.setState({ savePrice, shopFilter: "coffee" }); });
-    const ui = mount(manager.prices);
+    const ui = mount(PriceLists);
 
     const box = ui.labelled("New price for Real Juice 200ml");
     typeIn(box, "37");
@@ -906,7 +909,7 @@ describe("a form whose write the server refused", () => {
 describe("the price lists tab", () => {
   it("lists every price list, filtered by outlet and by name", () => {
     act(() => { as("manager"); useApp.setState({ shopFilter: null }); });
-    const ui = mount(manager.prices);
+    const ui = mount(PriceLists);
     act(() => { ui.button("Price lists").click(); });
     expect(ui.text()).toContain("List A");
     expect(ui.text()).toContain("List B");
@@ -923,7 +926,7 @@ describe("the price lists tab", () => {
   it("blocks deleting a list still active at an outlet, and allows an unattached one", () => {
     hydratePriceLists([...Object.values(PRICE_LISTS), { id: "PL-999", name: "Spare", outlets: [] }]);
     act(() => { as("manager"); useApp.setState((s) => ({ shopFilter: null, catalogVersion: s.catalogVersion + 1 })); });
-    const ui = mount(manager.prices);
+    const ui = mount(PriceLists);
     act(() => { ui.button("Price lists").click(); });
 
     const rowFor = (name: string) => [...ui.host.querySelectorAll("tr")].find((r) => (r.textContent ?? "").includes(name))!;
@@ -934,7 +937,7 @@ describe("the price lists tab", () => {
   it("opens the settings drawer from the outlet page, which no longer carries the controls itself", () => {
     const openDrawer = vi.fn();
     act(() => { as("manager"); useApp.setState({ openDrawer, shopFilter: "coffee" }); });
-    const ui = mount(manager.prices);
+    const ui = mount(PriceLists);
 
     // The two controls that used to sit above "Add a product". "Add a product" itself stays.
     expect(ui.text()).not.toContain("Create a new list for this outlet");
@@ -950,7 +953,7 @@ describe("an outlet on no price list yet (I2)", () => {
   it("names it 'no list yet' on the landing banner rather than a blank list", () => {
     hydrateLocations({ ...LOC, kiosk: { ...LOC.kiosk, list: undefined } });
     act(() => { as("manager"); useApp.setState({ shopFilter: null }); });
-    const ui = mount(manager.prices);
+    const ui = mount(PriceLists);
 
     expect(ui.text()).toContain("no list yet");
     // Nothing else prints as a blank name for the outlet the fixture just took the list off.
@@ -961,7 +964,7 @@ describe("an outlet on no price list yet (I2)", () => {
     hydrateLocations({ ...LOC, kiosk: { ...LOC.kiosk, list: undefined } });
     const savePrice = vi.fn(async () => true);
     act(() => { as("manager"); useApp.setState({ savePrice, shopFilter: "kiosk" }); });
-    const ui = mount(manager.prices);
+    const ui = mount(PriceLists);
 
     expect(ui.text()).toContain("no list yet");
     expect(ui.text()).toContain("create one with New price list, then attach it");
@@ -981,7 +984,7 @@ describe("an outlet on no price list yet (I2)", () => {
  * ---------------------------------------------------------------------- */
 describe("the New price list dialog", () => {
   const openDialog = async () => {
-    const ui = mount(manager.prices);
+    const ui = mount(PriceLists);
     await settle(() => { ui.button("New price list").click(); });
     return ui;
   };
@@ -1394,7 +1397,7 @@ describe("the price-list prose counts what is actually deployed", () => {
     delete LOC.kiosk;
     try {
       act(() => { as("manager"); useApp.setState({ shopFilter: null }); });
-      const ui = mount(manager.prices);
+      const ui = mount(PriceLists);
       expect(ui.text()).toContain(`covers ${LOC.coffee.n}`);
       expect(ui.text()).not.toContain("is shared by");
     } finally {
@@ -1412,7 +1415,7 @@ describe("the price-list prose counts what is actually deployed", () => {
     for (const l of outlets) delete LOC[l];
     try {
       act(() => { as("manager"); useApp.setState({ shopFilter: null }); });
-      const ui = mount(manager.prices);
+      const ui = mount(PriceLists);
       expect(ui.text()).toContain("No outlet is configured");
       expect(ui.text()).not.toContain("0 lists");
       expect(ui.text()).not.toContain("0 counters");

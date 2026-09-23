@@ -7,6 +7,7 @@ import { withTransaction } from "../../lib/db.js";
 import { RateLimitedError, RuleError, UnauthenticatedError } from "../../lib/errors.js";
 import { assertOpen, lockLocation } from "../../lib/locations.js";
 import { hashPassword, verifyPassword } from "../../lib/password.js";
+import { startShift } from "../../lib/shifts.js";
 import { assertRule } from "../../lib/rules.js";
 import { toWireUser, type UserRow } from "../../lib/wire.js";
 import { authRepo } from "./repo.js";
@@ -198,7 +199,11 @@ export function createAuthService(db: Db, config: Config) {
       // at a counter its own account is not posted to.
       return withTransaction(db, async (tx) => {
         if (loc) await admitTo(tx, u, loc);
-        return issue(tx, u, randomUUID(), meta, undefined, loc);
+        const session = await issue(tx, u, randomUUID(), meta, undefined, loc);
+        // A counter operator's shift starts with the sign-in at their counter (`lib/shifts.ts`).
+        // A refresh does not come through here, so it never opens one.
+        if (u.role === "counter" && !u.admin) await startShift(tx, u.id, session.claims.loc);
+        return session;
       });
     },
     async refresh(raw: string | undefined, meta: Meta): Promise<Session> {

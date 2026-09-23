@@ -33,6 +33,7 @@ const del = async (u: string, url: string) =>
  *  in this same wave, so this suite must not touch them. */
 const snap = async (u = "u5") => (await app.inject({ method: "GET", url: "/api/v1/snapshot", headers: await authHeaders(app, u) })).json();
 const prqs = async () => (await snap()).prq;
+const contract = async (id: string) => (await snap()).contracts.find((c: { id: string }) => c.id === id);
 const pos = async () => (await snap()).po;
 /** The item master, for a standard cost a case must not retype. `GET /items` is Phase 1's,
  *  unlike the six reads this wave adds. */
@@ -147,6 +148,47 @@ describe("POST /purchase-orders", () => {
   });
 });
 
+describe("a rate the buyer sets on the procurement list", () => {
+  it("prices the line at it and moves the vendor's live contract, with a trail naming the order", async () => {
+    const prq = await given.requisition(app.testDb!.db, { st: "Approved", lines: [{ it: "milk", qty: 80, appr: 80 }] });
+    const b = (await post("u5", "/purchase-orders", { vendorId: "VN-001", picks: [{ prq, line: 0, qty: 60, rate: 54.25 }] })).json();
+    expect(b.result.lines[0]).toMatchObject({ it: "milk", qty: 60, rate: 54.25 });
+    expect(b.changed).toEqual(["po", "prq", "contracts"]);
+    expect(b.message).toBe(`${b.result.id} drafted on Aavin Dairy Depot - 1 line(s), review the rates before sending - contract RC-101 now ₹54.25 (was ₹52.00)`);
+    const c = await contract("RC-101");
+    expect(c.rate).toBe(54.25);
+    expect(c.changes).toEqual([{ oldRate: 52, newRate: 54.25, po: b.result.id, by: "Latha Narayanan", at: expect.any(String) }]);
+  });
+
+  it("moves nothing on a contract when the rate is the contract's, or when there is no contract", async () => {
+    const prq = await given.requisition(app.testDb!.db, { st: "Approved", lines: [
+      { it: "milk", qty: 80, appr: 80 }, { it: "bisc", qty: 40, appr: 40 },
+    ] });
+    const b = (await post("u5", "/purchase-orders", { vendorId: "VN-001", picks: [
+      { prq, line: 0, qty: 10, rate: 52 }, { prq, line: 1, qty: 40, rate: 9.75 },
+    ] })).json();
+    expect(b.result.lines.map((l: { rate: number }) => l.rate)).toEqual([52, 9.75]);
+    expect(b.changed).toEqual(["po", "prq"]);
+    expect((await contract("RC-101")).changes).toBeUndefined();
+  });
+
+  it("never re-prices a lapsed or closed contract", async () => {
+    const lapsed = await given.contract(app.testDb!.db, { vendorId: "VN-001", it: "bread", rate: 30, from: "2025-01-01", to: "2025-12-31" });
+    const prq = await given.requisition(app.testDb!.db, { st: "Approved", lines: [{ it: "bread", qty: 10, appr: 10 }] });
+    const b = (await post("u5", "/purchase-orders", { vendorId: "VN-001", picks: [{ prq, line: 0, qty: 10, rate: 33 }] })).json();
+    expect(b.changed).toEqual(["po", "prq"]);
+    expect((await contract(lapsed)).rate).toBe(30);
+  });
+
+  it("refuses a rate of nothing and leaves the list as it was", async () => {
+    const prq = await given.requisition(app.testDb!.db, { st: "Approved", lines: [{ it: "milk", qty: 80, appr: 80 }] });
+    const r = await post("u5", "/purchase-orders", { vendorId: "VN-001", picks: [{ prq, line: 0, qty: 5, rate: 0 }] });
+    expect(r.statusCode).toBe(422);
+    expect(r.json().error.message).toBe("Milk 1L (toned) - enter a rate above zero");
+    expect(await pending(prq, 0)).toBe(80);
+  });
+});
+
 describe("PATCH and DELETE on a draft's lines", () => {
   const draft = async () => {
     const prq = await given.requisition(app.testDb!.db, { st: "Approved", lines: [{ it: "milk", qty: 80, appr: 80 }] });
@@ -189,19 +231,28 @@ describe("PATCH and DELETE on a draft's lines", () => {
 
   it("edits a rate without touching the claim, and does not tell the list to refetch", async () => {
     const { prq, id } = await draft();
+    // RC-101 is Aavin's live milk contract at 52: the rate typed here becomes the contract's.
     const b = (await patch("u5", `/purchase-orders/${id}/lines/0`, { rate: 58 })).json();
     expect(b.result.lines[0]).toMatchObject({ qty: 60, rate: 58 });
-    expect(b.changed).toEqual(["po"]);
-    expect(b.message).toBe("Milk 1L (toned) at ₹58.00");
+    expect(b.changed).toEqual(["po", "contracts"]);
+    expect(b.message).toBe("Milk 1L (toned) at ₹58.00 - contract RC-101 now ₹58.00 (was ₹52.00)");
     expect(await pending(prq, 0)).toBe(20);
+  });
+
+  it("leaves the contract alone when the rate typed is the contract's own", async () => {
+    const { id } = await draft();
+    const b = (await patch("u5", `/purchase-orders/${id}/lines/0`, { rate: 52 })).json();
+    expect(b.changed).toEqual(["po"]);
+    expect(b.message).toBe("Milk 1L (toned) at ₹52.00");
+    expect((await contract("RC-101")).changes).toBeUndefined();
   });
 
   it("applies a quantity and a rate sent together, and names both", async () => {
     const { prq, id } = await draft();
     const b = (await patch("u5", `/purchase-orders/${id}/lines/0`, { qty: 45, rate: 51.5 })).json();
     expect(b.result.lines[0]).toMatchObject({ qty: 45, rate: 51.5, src: [{ prq, line: 0, qty: 45 }] });
-    expect(b.changed).toEqual(["po", "prq"]);
-    expect(b.message).toBe("Milk 1L (toned) cut to 45.000 at ₹51.50 - 15.000 back on the procurement list");
+    expect(b.changed).toEqual(["po", "prq", "contracts"]);
+    expect(b.message).toBe("Milk 1L (toned) cut to 45.000 at ₹51.50 - 15.000 back on the procurement list - contract RC-101 now ₹51.50 (was ₹52.00)");
     expect(await pending(prq, 0)).toBe(35);
   });
 

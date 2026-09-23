@@ -89,7 +89,7 @@ function TicketDrawer({ id }: DrawerProps) {
             </span>
             {/* The pass wants the ticket on paper. The kitchen is the issuing side, so the slip
                 it prints names whose code it is rather than showing digits it never had. */}
-            <PrintSlipBtn />
+            <PrintSlipBtn t={t} />
           </div>
         </div>
       </div>

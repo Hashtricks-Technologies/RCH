@@ -10,7 +10,7 @@
 // header records the rule). Do not add a read of another purchase order to `create`.
 import type { z } from "zod";
 import type {
-  CancelPoBodySchema, CreatePoBodySchema, PatchPoBodySchema, PurchaseOrder,
+  CancelPoBodySchema, Changed, CreatePoBodySchema, PatchPoBodySchema, PurchaseOrder,
   UpdatePoLineBodySchema, WriteResponse,
 } from "@rch/contract";
 import { PO_APPROVAL_LIMIT } from "@rch/contract";
@@ -21,6 +21,7 @@ import {
 import type { Db } from "../../db/client.js";
 import { auditBefore } from "../../lib/audit.js";
 import { addOrdered, lockRequisitions } from "../../lib/claims.js";
+import { describeMoves, lockLiveContracts, syncContractRates } from "../../lib/contract-rates.js";
 import { withTransaction, type Tx } from "../../lib/db.js";
 import { NotFoundError } from "../../lib/errors.js";
 import { emitChanged } from "../../lib/events.js";
@@ -104,7 +105,17 @@ export function createPurchaseOrdersService(db: Db) {
           assertRule(f.qty <= pending, `${item?.n ?? "That line"} - only ${fq(pending, item?.u ?? "nos")} still pending on ${f.prq}`);
         }
 
+        // The rate the buyer set on the list, per item - the first pick of an item that carries one.
+        const given = new Map<string, number>();
+        for (const p of body.picks) {
+          const it = prq.get(p.prq)!.lines[p.line]!.it;
+          if (p.rate === undefined || given.has(it)) continue;
+          assertRule(p.rate > 0, `${master.items[it]?.n ?? it} - enter a rate above zero`);
+          given.set(it, p.rate);
+        }
         const at = new Date();
+        // A contract row is a document to this write: locked before the sequence row, ascending.
+        const live = await lockLiveContracts(tx, v.id, [...given.keys()], istDate(at));
         const id = await allocateId(tx, "po", at);
         // Merge picks of the same item into one line carrying several sources, in the order the
         // buyer picked them - which is the order `releaseClaim` later walks backwards.
@@ -116,7 +127,7 @@ export function createPurchaseOrdersService(db: Db) {
           else merged.push({ it, qty: p.qty, rate: 0, src: [{ ...p }] });
         }
         const rates = await purchaseOrdersRepo.activeContractRates(tx, v.id, merged.map((l) => l.it), istDate(at));
-        for (const l of merged) l.rate = rateFor(rates[l.it] === undefined ? undefined : { rate: rates[l.it]! }, master.items[l.it]?.cost ?? 0);
+        for (const l of merged) l.rate = given.get(l.it) ?? rateFor(rates[l.it] === undefined ? undefined : { rate: rates[l.it]! }, master.items[l.it]?.cost ?? 0);
 
         await purchaseOrdersRepo.insert(tx, {
           id, vendorId: v.id, at, status: "Draft", eta: etaFrom(at, v.leadDays), needsApproval: false,
@@ -125,12 +136,16 @@ export function createPurchaseOrdersService(db: Db) {
         await addOrdered(tx, foldClaims(picks), 1);
         const who = await purchaseOrdersRepo.userName(tx, claims.sub);
         await appendHistory(tx, "purchase_order", id, "Draft", who, at);
+        // A rate set away from a live contract re-prices the contract; with no contract, the
+        // line's rate is simply the next "last purchased" price and nothing else moves.
+        const moved = await syncContractRates(tx, live, given, id, claims.sub);
 
-        const changed = ["po", "prq"] as const;
+        const changed: Changed[] = moved.length ? ["po", "prq", "contracts"] : ["po", "prq"];
         await emitChanged(tx, changed);
         return {
-          result: await purchaseOrdersRepo.wire(tx, id), changed: [...changed],
-          message: `${id} drafted on ${v.name} - ${merged.length} line(s), review the rates before sending`,
+          result: await purchaseOrdersRepo.wire(tx, id), changed,
+          message: `${id} drafted on ${v.name} - ${merged.length} line(s), review the rates before sending`
+            + (moved.length ? ` - contract ${describeMoves(moved)}` : ""),
         };
       });
     },
@@ -140,7 +155,7 @@ export function createPurchaseOrdersService(db: Db) {
     // Editing a draft line writes no history row - the store never signed one either, and a
     // draft is not a decision. The claims are taken all the same, so the route reads like its
     // siblings and a later audit trail has the caller to hand.
-    async updateLine(_claims: AccessClaims, id: string, n: number, body: UpdatePoLineBody): Promise<WriteResponse<PurchaseOrder>> {
+    async updateLine(claims: AccessClaims, id: string, n: number, body: UpdatePoLineBody): Promise<WriteResponse<PurchaseOrder>> {
       return withTransaction(db, async (tx) => {
         const o = await head(tx, id);
         auditBefore(await purchaseOrdersRepo.wire(tx, id));
@@ -151,14 +166,23 @@ export function createPurchaseOrdersService(db: Db) {
         assertRule(body.qty !== undefined || body.rate !== undefined, "Nothing to change on this line");
         const master = await loadMaster(tx);
         const item = master.items[line.it];
+        // A rate typed on a draft is the price the buyer agreed: a live contract with this vendor
+        // for this item follows it, and the move is logged against this order.
+        const repriceContract = async () => {
+          if (body.rate === undefined) return "";
+          const live = await lockLiveContracts(tx, o.vendorId, [line.it], istDate(new Date()));
+          const moved = await syncContractRates(tx, live, new Map([[line.it, body.rate]]), id, claims.sub);
+          return moved.length ? ` - contract ${describeMoves(moved)}` : "";
+        };
         if (body.qty === undefined) {
           // A rate is a negotiation, not a claim: nothing moves on the procurement list, so
           // nothing tells the buyer's list to refetch.
           const next = lines.map((l, i) => (i === n ? { ...l, rate: body.rate! } : l));
           await purchaseOrdersRepo.writeLines(tx, id, next);
-          const changed = ["po"] as const;
+          const note = await repriceContract();
+          const changed: Changed[] = note ? ["po", "contracts"] : ["po"];
           await emitChanged(tx, changed);
-          return { result: await purchaseOrdersRepo.wire(tx, id), changed: [...changed], message: `${item?.n ?? line.it} at ${money(body.rate!)}` };
+          return { result: await purchaseOrdersRepo.wire(tx, id), changed, message: `${item?.n ?? line.it} at ${money(body.rate!)}${note}` };
         }
         const want = round3(body.qty);
         // A quantity of zero is not a delete: DELETE is the one explicit, toasted path for
@@ -172,19 +196,20 @@ export function createPurchaseOrdersService(db: Db) {
         const { released, left } = releaseClaim(line.src, round3(line.qty - want));
         await returnClaims(tx, released);
         await purchaseOrdersRepo.writeLines(tx, id, lines.map((l, i) => (i === n ? { ...l, qty: want, rate, src: left } : l)));
+        const note = await repriceContract();
         const back = round3(line.qty - want);
         const unit = item?.u ?? "nos";
         const name = item?.n ?? line.it;
-        const changed = ["po", "prq"] as const;
+        const changed: Changed[] = note ? ["po", "prq", "contracts"] : ["po", "prq"];
         await emitChanged(tx, changed);
         return {
-          result: await purchaseOrdersRepo.wire(tx, id), changed: [...changed],
+          result: await purchaseOrdersRepo.wire(tx, id), changed,
           // The two single-field sentences composed rather than a third invented one: "cut to
           // <qty>" from this branch and "at <rate>" from the rate-only branch, so a buyer who
           // changed both reads one line naming both in the words each change already had.
           message: body.rate === undefined
             ? `${name} cut to ${fq(want, unit)} - ${fq(back, unit)} back on the procurement list`
-            : `${name} cut to ${fq(want, unit)} at ${money(rate)} - ${fq(back, unit)} back on the procurement list`,
+            : `${name} cut to ${fq(want, unit)} at ${money(rate)} - ${fq(back, unit)} back on the procurement list${note}`,
         };
       });
     },

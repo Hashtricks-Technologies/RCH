@@ -31,6 +31,10 @@ export const ShopAskStatusSchema = z.enum(["Asked", "Sent", "Declined"]);
 export const ItemSchema = z.object({
   c: z.string(), n: z.string(), u: z.string(), t: ItemTypeSchema, g: z.string(),
   hsn: z.string(), gst: z.number(), rl: Qty, cost: Money, mrp: Money.optional(), sl: z.number().optional(),
+  // ---- display name. What the counters read on the till ("50/50-5" for "Britannia 50/50"),
+  // set by the manager; absent where there is none, and then the till reads `n`. Only a
+  // counter's own screens print it - every document and every other desk print `n`.
+  dn: z.string().optional(),
   // ---- item patch ----
   // A retired line stays on the wire: a bill, a ticket or a purchase order raised months ago
   // still names its item, and the screen showing that document needs the name. Optional, and
@@ -140,6 +144,9 @@ export const BillSchema = z.object({
   // from. A voided bill still carries its lines and its total - nothing is erased, the moves are
   // reversed - so every screen that already prints it goes on printing it, with a badge.
   voided: z.boolean().optional(), voidReason: z.string().optional(),
+  // ---- the walk-in customer the counter may name on the bill. Both optional, both absent when
+  // nobody typed one; the phone is stored as its ten digits.
+  customerName: z.string().optional(), customerPhone: z.string().optional(),
 });
 export const DraftLineSchema = z.object({ it: z.string(), qty: Qty });
 export const AvailabilitySchema = z.object({ ok: z.boolean(), mode: z.enum(["Manual", "Stock"]), why: z.string().optional(), left: z.string().optional() });
@@ -158,8 +165,14 @@ export const ProductRequestSchema = z.object({
   id: z.string(), name: z.string(), why: z.string(), forLoc: LocKeySchema, by: z.string(), at: IsoTime, st: ProductReqStatusSchema,
   note: z.string().optional(), itemKey: z.string().optional(),
 });
+/** One move of a contract's rate, old beside new. `po` names the draft order whose rate moved it;
+ *  it is absent when the buyer changed the rate on Rate Contracts. `by` is a display name. */
+export const RateChangeSchema = z.object({ oldRate: Money, newRate: Money, po: z.string().optional(), by: z.string(), at: IsoTime });
 export const RateContractSchema = z.object({
   id: z.string(), vendor: z.string(), it: z.string(), rate: Money, from: z.string(), to: z.string(), moq: Qty, active: z.boolean(),
+  // Oldest first. Omitted on a contract whose rate never moved, so a seeded contract is still
+  // byte for byte the fixture it came from.
+  changes: z.array(RateChangeSchema).optional(),
 });
 /** One shop asking another for stock it is holding. The manager sees it; it never routes through them. */
 export const ShopAskSchema = z.object({

@@ -47,3 +47,18 @@ export const PARTY_LABEL: Record<BillParty, string> = {
 export const PARTY_TITLE: Record<BillParty, string> = {
   customer: "Customers", staff: "Staff", doctor: "Doctors", dept: "Departments",
 };
+
+// ---- the walk-in customer's phone ----
+/**
+ * A phone number as its ten digits, or `null` where what was typed is not one. Spaces, hyphens,
+ * dots and brackets are ignored, and a `+91`, `91` or `0` in front is dropped; what is left must be
+ * ten digits not starting with 0. The till previews with this and the sale stores what it answers,
+ * so "+91 98430-22118" and "098430 22118" are one customer.
+ */
+export function normalizePhone(raw: string): string | null {
+  const m = /^(?:\+?91|0)?([1-9]\d{9})$/.exec(raw.replace(/[\s\-.()]/g, ""));
+  return m ? m[1] : null;
+}
+
+export const phoneRefusal = (raw: string) =>
+  `${raw.trim()} is not a phone number - give the customer's 10 digits, with or without +91`;

@@ -1,4 +1,4 @@
-import type { HistEntry } from "@rch/contract";
+import type { HistEntry, RateChange, RateContract } from "@rch/contract";
 
 export type * from "@rch/contract";
 
@@ -19,3 +19,6 @@ export type Dated<T> = T & { iso: string };
 export type Trailed<T extends { hist: HistEntry[] }> = Omit<T, "hist"> & { hist: Dated<HistEntry>[] };
 /** A document that is both - nearly every one of them. */
 export type DatedDoc<T extends { hist: HistEntry[] }> = Dated<Trailed<T>>;
+/** A rate contract as the store holds it: each change to its rate keeps its instant beside the
+ *  `"HH:MM"` printed, like a document's trail. */
+export type Contract = Omit<RateContract, "changes"> & { changes?: Dated<RateChange>[] };

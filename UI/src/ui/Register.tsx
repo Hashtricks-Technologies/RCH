@@ -6,6 +6,8 @@ import {
   Alert, Btn, Card, DataTable, Field, FilterSelect, Kpis, PageHead, Pill, TableFoot,
 } from "./kit";
 import { RegisterSlip } from "./RegisterSlip";
+import CloseShift from "./CloseShift";
+import ShiftReports from "./ShiftReports";
 import type { LocKey, RegisterReport } from "../types";
 
 /**
@@ -119,7 +121,7 @@ export default function Register() {
           the takings so far and changes nothing - take one as often as you like. A Z closes this
           outlet's register: the session is settled, and the next sale opens a new one.
         </>}
-        actions={anyOutlet && outlets.length > 0 ? (
+        actions={!anyOutlet ? <CloseShift /> : outlets.length > 0 ? (
           <FilterSelect
             label="Outlet"
             value={loc ? locName(loc) : ""}
@@ -283,6 +285,8 @@ export default function Register() {
           </>
         )}
       </Card>
+
+      {anyOutlet && <ShiftReports />}
 
       {slip && (
         <>

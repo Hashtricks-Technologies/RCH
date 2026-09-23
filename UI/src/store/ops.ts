@@ -4,7 +4,7 @@ import { ApiError, call } from "../api/client";
 import { refetch } from "../api/refetch";
 import { applyDeskTickets } from "../api/wire";
 import type {
-  AdjustReason, Dated, ItemType, LocKey, ProductRequest, RateContract,
+  AdjustReason, Contract, Dated, ItemType, LocKey, ProductRequest,
   ShopAsk, Source, StockLoc, SupportTicket, TicketPriority, TicketStatus, TicketTopic,
 } from "../types";
 import { toInputDate } from "../lib/fmt";
@@ -14,7 +14,7 @@ import type { AppState } from "./index";
 type Get = () => AppState;
 
 export interface NewItemInput {
-  key: string; name: string; code: string; unit: string; type: ItemType;
+  key: string; name: string; unit: string; type: ItemType;
   group: string; hsn: string; gst: number; reorder: number; cost: number;
   mrp?: number; shelfLife?: number;
 }
@@ -24,7 +24,7 @@ export interface NewItemInput {
  *  left out is a field left alone - sending it as `undefined` would be the same thing, but the
  *  drawer only ever puts in what the operator actually moved. */
 export interface ItemFieldPatch {
-  n?: string; mrp?: number; cost?: number; gst?: number;
+  n?: string; dn?: string; mrp?: number; cost?: number; gst?: number;
   hsn?: string; rl?: number; grp?: string; sl?: number; active?: boolean; src?: Source;
 }
 
@@ -33,7 +33,7 @@ export interface OpsSlice {
    *  it was made from, so "today" and "newest first" are answerable (`Dated` in `types.ts`). */
   tickets: Dated<SupportTicket>[];
   productReqs: Dated<ProductRequest>[];
-  contracts: RateContract[];
+  contracts: Contract[];
   /** Bumped whenever the catalogue gains an item, so lists re-read it. */
   catalogVersion: number;
 
@@ -65,7 +65,7 @@ export interface OpsSlice {
   addContract: (c: { vendorId: string; it: string; rate: number; from: string; to: string; moq: number }) => Promise<boolean>;
   updateContract: (id: string, patch: { rate?: number; from?: string; to?: string; moq?: number; active?: boolean }) => Promise<boolean>;
   removeContract: (id: string) => Promise<void>;
-  contractRate: (vendor: string, it: string) => RateContract | undefined;
+  contractRate: (vendor: string, it: string) => Contract | undefined;
 
   /** The key the server chose, or null - the drawers need it to link a product request. */
   createItem: (input: NewItemInput, loc: LocKey, opening: number) => Promise<string | null>;
@@ -252,7 +252,8 @@ export const createOpsSlice = (get: Get): OpsSlice => ({
     try {
       const r = await call(routes.createItem, {
         body: {
-          key: input.key.trim(), name: input.name.trim(), code: input.code.trim(),
+          // No code: the server assigns the next one in the type's series (`nextItemCode`).
+          key: input.key.trim(), name: input.name.trim(),
           unit: input.unit, type: input.type, grp: input.group, hsn: input.hsn,
           gst: input.gst, reorder: input.reorder, cost: input.cost,
           mrp: input.mrp, sl: input.shelfLife, loc, opening,

@@ -19,7 +19,7 @@ beforeAll(async () => { app = await buildTestApp({ schema: "pos" }); await seedT
 afterAll(async () => { await app.close(); });
 
 type PayLine = { it: string; qty: number };
-type PayBody = { loc: string; tender: string; payer?: { kind: string; id: string; name: string }; lines: PayLine[] };
+type PayBody = { loc: string; tender: string; payer?: { kind: string; id: string; name: string }; lines: PayLine[]; customerName?: string; customerPhone?: string };
 
 const pay = async (userId: string, body: PayBody, key: string = randomUUID()) =>
   app.inject({ method: "POST", url: "/api/v1/bills", headers: { ...(await authHeaders(app, userId)), "idempotency-key": key }, payload: body });
@@ -183,13 +183,16 @@ describe("a made-to-order sale moves no stock", () => {
 });
 
 describe("the printed MRP is the ceiling at the till too", () => {
-  it("charges the MRP when the list has drifted above it", async () => {
-    // `savePrice` refuses a price above the MRP, so the only way a list sits above one is an
-    // MRP lowered after the item was priced. Write it straight into the table to make that
-    // history, then sell one: the bill charges what is printed on the pack, not what the list says.
-    const before = (await app.db.select().from(s.priceListItems).where(and(eq(s.priceListItems.listId, "PL-002"), eq(s.priceListItems.itemKey, "juice"))))[0];
-    await app.db.update(s.priceListItems).set({ price: 25 })
-      .where(and(eq(s.priceListItems.listId, "PL-002"), eq(s.priceListItems.itemKey, "juice")));
+  const savePrice = async (price: number) => app.inject({
+    method: "PUT", url: "/api/v1/outlet-prices",
+    headers: { ...(await authHeaders(app, "u2")), "idempotency-key": randomUUID() },
+    payload: { changes: [{ loc: "coffee", it: "juice", price }] },
+  });
+
+  it("saves a list price above the MRP, and the till still charges the MRP", async () => {
+    const before = (await app.db.select().from(s.priceListItems).where(and(eq(s.priceListItems.listId, "PL-002"), eq(s.priceListItems.itemKey, "juice"))))[0]!;
+    const saved = await savePrice(25);
+    expect(saved.statusCode, saved.body).toBe(200);
     try {
       const r = await pay("u1", { loc: "coffee", tender: "Cash", lines: [{ it: "juice", qty: 1 }] });
       expect(r.statusCode, r.body).toBe(200);
@@ -198,8 +201,7 @@ describe("the printed MRP is the ceiling at the till too", () => {
       expect(b.result.tot).toBe(20);
       expect(b.message).toBe(`Bill ${b.result.no} · ₹20.00 collected at Coffee Shop`);
     } finally {
-      await app.db.update(s.priceListItems).set({ price: before.price })
-        .where(and(eq(s.priceListItems.listId, "PL-002"), eq(s.priceListItems.itemKey, "juice")));
+      expect((await savePrice(before.price)).statusCode).toBe(200);
     }
   });
 });
@@ -983,5 +985,49 @@ describe("two tills cannot both fit under one ceiling", () => {
     const before = Object.fromEntries((await app.db.select().from(s.stockBalances)).map((r) => [`${r.loc}:${r.itemKey}`, r.onHand]));
     await rebuildBalances(app.db);
     expect(Object.fromEntries((await app.db.select().from(s.stockBalances)).map((r) => [`${r.loc}:${r.itemKey}`, r.onHand]))).toEqual(before);
+  });
+});
+
+describe("POST /bills - the walk-in customer's name and phone", () => {
+  const billsAs = async (userId: string) => {
+    const r = await app.inject({ method: "GET", url: "/api/v1/bills", headers: await authHeaders(app, userId) });
+    expect(r.statusCode, r.body).toBe(200);
+    return r.json() as { no: string; customerName?: string; customerPhone?: string }[];
+  };
+
+  it("stores both, trimmed and the phone as its ten digits, and answers with them", async () => {
+    const r = await pay("u1", { loc: "coffee", tender: "Cash", lines: [{ it: "juice", qty: 1 }], customerName: "  Anitha S ", customerPhone: "+91 98430-22118" });
+    expect(r.statusCode, r.body).toBe(200);
+    const b = r.json().result;
+    expect(BillSchema.safeParse(b).success).toBe(true);
+    expect(b).toMatchObject({ customerName: "Anitha S", customerPhone: "9843022118" });
+    const [head] = await app.db.select().from(s.bills).where(eq(s.bills.no, b.no));
+    expect(head).toMatchObject({ customerName: "Anitha S", customerPhone: "9843022118" });
+    expect((await billsAs("u2")).find((x) => x.no === b.no)).toMatchObject({ customerName: "Anitha S", customerPhone: "9843022118" });
+    // The store reads bills for their lines; whose they were is not its business.
+    const store = (await billsAs("u3")).find((x) => x.no === b.no);
+    expect(store).toBeTruthy();
+    expect(store?.customerName).toBeUndefined();
+    expect(store?.customerPhone).toBeUndefined();
+  });
+
+  it("carries neither when neither is given, and treats blank boxes as none", async () => {
+    const r = await pay("u1", { loc: "coffee", tender: "UPI", lines: [{ it: "juice", qty: 1 }], customerName: "  ", customerPhone: " " });
+    expect(r.statusCode, r.body).toBe(200);
+    expect(r.json().result.customerName).toBeUndefined();
+    expect(r.json().result.customerPhone).toBeUndefined();
+  });
+
+  it("refuses a phone that is not one, in a sentence, and bills nothing", async () => {
+    const before = await onHand("coffee", "juice");
+    const r = await pay("u1", { loc: "coffee", tender: "Cash", lines: [{ it: "juice", qty: 1 }], customerPhone: "12345" });
+    expect(r.statusCode).toBe(422);
+    expect(r.json().error.message).toBe("12345 is not a phone number - give the customer's 10 digits, with or without +91");
+    expect(await onHand("coffee", "juice")).toBe(before);
+  });
+
+  it("refuses a name longer than 80 characters at the door", async () => {
+    const r = await pay("u1", { loc: "coffee", tender: "Cash", lines: [{ it: "juice", qty: 1 }], customerName: "x".repeat(81) });
+    expect(r.statusCode).toBe(400);
   });
 });

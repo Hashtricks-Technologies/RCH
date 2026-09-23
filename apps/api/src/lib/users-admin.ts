@@ -2,7 +2,7 @@ import { and, eq, isNull, sql } from "drizzle-orm";
 import { MIN_PASSWORD_LENGTH, type LocKey, type Role } from "@rch/contract";
 import { nextEmpNo, worksAt } from "@rch/domain";
 import type { Db } from "../db/client.js";
-import { idempotencyKeys, refreshTokens, userPostings, users } from "../db/schema/index.js";
+import { idempotencyKeys, refreshTokens, shifts, userPostings, users } from "../db/schema/index.js";
 import { isForeignKeyViolation, withTransaction, type Tx } from "./db.js";
 import { lockLocation } from "./locations.js";
 import { hashPassword } from "./password.js";
@@ -152,8 +152,11 @@ export const reactivateUser = (db: Db, emp: string): Promise<void> => withTransa
  * caller has already decided the account may go (not the caller's own, not admin-flagged, already
  * deactivated); this is the part that decides whether it *can*.
  *
- * What an account leaves behind that is not history goes with it: its sessions and its
- * idempotency records. Everything else that names a user - a bill, an approval, a stock move, a
+ * What an account leaves behind that is not history goes with it: its sessions, its
+ * idempotency records and its shifts. A shift is opened by signing in at a counter, not by doing
+ * anything there, so a mistaken account somebody signed in with once must not become
+ * undeletable over it; a shift that billed anything is still guarded, by the bills' own foreign
+ * key onto the account. Everything else that names a user - a bill, an approval, a stock move, a
  * line in the admin log it wrote - is a foreign key with no `ON DELETE`, so Postgres refuses the
  * `users` delete and that refusal is the rule: **an account with history can only be
  * deactivated.** Nothing here lists those tables, so one added later is covered by its own
@@ -165,6 +168,7 @@ export const reactivateUser = (db: Db, emp: string): Promise<void> => withTransa
 export async function deleteUserTx(tx: Tx, u: { id: string; name: string; empNo: string }): Promise<void> {
   await tx.delete(refreshTokens).where(eq(refreshTokens.userId, u.id));
   await tx.delete(idempotencyKeys).where(eq(idempotencyKeys.userId, u.id));
+  await tx.delete(shifts).where(eq(shifts.userId, u.id));
   try {
     await tx.delete(users).where(eq(users.id, u.id));
   } catch (e) {

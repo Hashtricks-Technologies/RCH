@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { RECEIPT_TOLERANCE, checkReceiptLine, netReceived, receiptStatus } from "./receipt.js";
 
-const line = { name: "Real Juice 200ml", unit: "nos", ordered: 120, received: 0, mrp: 20, shelf: 18 };
+const line = { name: "Real Juice 200ml", unit: "nos", ordered: 120, received: 0 };
 const ok = { recv: 120, rejected: 0, batch: "SBD-771", mrp: 20, mfg: "2026-09-01", exp: "2026-12-01" };
 const TODAY = "2026-09-04";
 
@@ -44,14 +44,12 @@ describe("checkReceiptLine", () => {
     expect(checkReceiptLine(line, { ...ok, exp: TODAY }, TODAY)).toBeNull();
   });
 
-  it("refuses a printed MRP below the shelf price, and ignores MRP on an item that has none", () => {
-    expect(checkReceiptLine(line, { ...ok, mrp: 15 }, TODAY))
-      .toBe("Real Juice 200ml - printed MRP ₹15.00 is below the shelf price; reprice before selling");
-    expect(checkReceiptLine({ ...line, mrp: null }, { ...ok, mrp: 15 }, TODAY)).toBeNull();
+  it("takes a printed MRP below the shelf price - the till charges at most the MRP anyway", () => {
+    expect(checkReceiptLine(line, { ...ok, mrp: 15 }, TODAY)).toBeNull();
     expect(checkReceiptLine(line, { ...ok, mrp: 0 }, TODAY)).toBeNull();   // not printed on the pack
   });
 
-  it("checks in the order the store keeper reads: tolerance, rejection, batch, dates, MRP", () => {
+  it("checks in the order the store keeper reads: tolerance, rejection, batch, dates", () => {
     // Everything wrong at once must still name the tolerance, which is the one that stops the
     // delivery at the door. The order is what the browser has always produced.
     expect(checkReceiptLine(line, { recv: 200, rejected: 300, batch: "", mrp: 1, mfg: "", exp: "" }, TODAY))

@@ -7,6 +7,7 @@ import { seedTestDb } from "../../test/seed.js";
 import { authHeaders } from "../../test/auth.js";
 import { warmPool } from "../../test/db.js";
 import type { App } from "../../app.js";
+import { nextItemCode } from "@rch/domain";
 
 let app: App;
 beforeAll(async () => { app = await buildTestApp({ schema: "catalog" }); await seedTestDb(app.testDb!.db); await app.ready(); });
@@ -23,11 +24,11 @@ const get = async (url: string) => { const r = await app.inject({ method: "GET",
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 describe("catalog: prices", () => {
-  it("refuses a price above the item's own printed MRP, with the exact refusal text", async () => {
+  it("saves a price above the item's own printed MRP - the till caps the charge, not the list", async () => {
     const r = await put("/prices/PL-001/juice", await hdr("u2"), { price: 25 });
-    expect(r.statusCode).toBe(422);
-    expect(r.json().error.code).toBe("rule");
-    expect(r.json().error.message).toBe("Refused - printed MRP of ₹20 is a hard ceiling for Real Juice 200ml");
+    expect(r.statusCode, r.body).toBe(200);
+    expect(r.json().message).toBe("Real Juice 200ml priced at ₹25 on list PL-001");
+    expect((await get("/prices"))["PL-001"].juice).toBe(25);
   });
 
   it("saves a price at or under the MRP and it is visible on GET /prices", async () => {
@@ -165,15 +166,20 @@ describe("catalog: role gate", () => {
 describe("catalog: a new product on the master", () => {
   const base = { name: "Cold coffee premix 1kg", unit: "kg", type: "RAW" as const, cost: 320, loc: "store" as const, opening: 0 };
 
+  /** The codes the master already holds, for predicting the one the server will give next. */
+  const codes = async (): Promise<string[]> => Object.values(await get("/items") as Record<string, { c: string }>).map((i) => i.c);
+
   it("adds an item, chooses its key, and applies the store's own defaults", async () => {
+    const expected = nextItemCode("RAW", await codes());
     const r = await post("/items", await hdr("u3"), base);
     expect(r.statusCode, r.body).toBe(200);
     const b = r.json();
     expect(b.result.key).toBe("coldcoffeepr");                // the name, slugged and cut to 12
-    expect(b.result.item).toMatchObject({ n: base.name, u: "kg", t: "RAW", g: "Other", hsn: "2106", gst: 5, cost: 320, c: "COLDCOFFEEPR" });
+    expect(b.result.item).toMatchObject({ n: base.name, u: "kg", t: "RAW", g: "Other", hsn: "2106", gst: 5, cost: 320, c: expected });
+    expect(expected).toMatch(/^RM-1\d{3}$/);
     expect(b.result.item.mrp).toBeUndefined();
     expect(b.changed).toEqual(["items"]);
-    expect(b.message).toBe("Cold coffee premix 1kg added to the catalogue");
+    expect(b.message).toBe(`Cold coffee premix 1kg added to the catalogue as ${expected}`);
     expect((await get("/items"))[b.result.key]).toMatchObject({ n: base.name });
   });
 
@@ -181,7 +187,7 @@ describe("catalog: a new product on the master", () => {
     const r = await post("/items", await hdr("u4"), { ...base, name: "Kitchen premix 2kg", loc: "kitchen", opening: 12 });
     const b = r.json();
     expect(b.changed).toEqual(["items", "stock"]);
-    expect(b.message).toBe("Kitchen premix 2kg added to the catalogue with 12.000 kg at Central Kitchen");
+    expect(b.message).toBe(`Kitchen premix 2kg added to the catalogue as ${b.result.item.c} with 12.000 kg at Central Kitchen`);
     const moves = await app.testDb!.db.select().from(stockMoves).where(eq(stockMoves.itemKey, b.result.key));
     expect(moves).toHaveLength(1);
     expect(moves[0]).toMatchObject({ kind: "opening", loc: "kitchen", qty: 12, refType: "item" });
@@ -227,6 +233,30 @@ describe("catalog: a new product on the master", () => {
     for (const u of ["u1", "u2"]) {
       expect((await post("/items", await hdr(u), { ...base, name: "Not yours" })).statusCode).toBe(404);
     }
+  });
+
+  it("assigns the code from the type's own series, and ignores a code the caller typed", async () => {
+    const before = await codes();
+    const pack = (await post("/items", await hdr("u3"), { ...base, name: "Code series pack", type: "PACK", code: "MINE-1" })).json();
+    expect(pack.result.item.c).toBe(nextItemCode("PACK", before));
+    expect(pack.result.item.c).toMatch(/^PK-2\d{3}$/);
+    const fg = (await post("/items", await hdr("u4"), { ...base, name: "Code series fg", type: "FG", loc: "kitchen" })).json();
+    expect(fg.result.item.c).toBe(nextItemCode("FG", before));
+    const pack2 = (await post("/items", await hdr("u5"), { ...base, name: "Code series pack two", type: "PACK" })).json();
+    expect(Number(pack2.result.item.c.slice(3))).toBe(Number(pack.result.item.c.slice(3)) + 1);
+  });
+
+  it("gives two products of one type created at once two different codes", async () => {
+    // Both read the same highest code unless the series lock makes the second wait for the first.
+    await warmPool(app.testDb!, 2);
+    const [h1, h2] = await Promise.all([hdr("u3"), hdr("u5")]);
+    const both = await Promise.all([
+      post("/items", h1, { ...base, name: "Race code one", type: "MTO" }),
+      post("/items", h2, { ...base, name: "Race code two", type: "MTO" }),
+    ]);
+    expect(both.map((r) => r.statusCode), both.map((r) => r.body).join(" | ")).toEqual([200, 200]);
+    const got = both.map((r) => r.json().result.item.c as string);
+    expect(new Set(got).size).toBe(2);
   });
 
   it("adds one item, not two, when the same name is submitted twice at once", async () => {
@@ -288,6 +318,22 @@ describe("PATCH /items/:it", () => {
     expect((await get("/items"))[k]).toMatchObject({ rl: 0, cost: 10 });
   });
 
+  it("lets the manager set a display name, clear it with a blank, and refuses it to every other desk", async () => {
+    const k = await make("Britannia 50/50 test");
+    const set = await patch(`/items/${k}`, await hdr("u2"), { dn: "  50/50-5 " });
+    expect(set.statusCode, set.body).toBe(200);
+    expect(set.json().result.item).toMatchObject({ n: "Britannia 50/50 test", dn: "50/50-5" });
+    expect((await get("/items"))[k]).toMatchObject({ dn: "50/50-5" });
+    for (const u of ["u3", "u4", "u5"]) {
+      const r = await patch(`/items/${k}`, await hdr(u), { dn: "Mine" });
+      expect(r.statusCode).toBe(422);
+      expect(r.json().error.message).toBe("Only the outlet manager sets the name the counters read on the till - ask them to make that change");
+    }
+    const cleared = await patch(`/items/${k}`, await hdr("u2"), { dn: "  " });
+    expect(cleared.statusCode, cleared.body).toBe(200);
+    expect(cleared.json().result.item.dn).toBeUndefined();
+  });
+
   it("is absent for a counter operator", async () => {
     // A till sells the master; it does not edit it. 404, like every module a role cannot see.
     expect((await patch("/items/juice", await hdr("u1"), { rl: 5 })).statusCode).toBe(404);
@@ -307,16 +353,13 @@ describe("PATCH /items/:it", () => {
     expect(r.json().error.message).toBe("There is no item doesnotexist.");
   });
 
-  it("refuses an MRP below a list price, in the goods receipt's own sentence", async () => {
+  it("allows an MRP below a list price - the till charges the new MRP instead", async () => {
     const k = await make("Patch mrp floor", { mrp: 30 });
     await put(`/prices/PL-001/${k}`, await hdr("u2"), { price: 22 });
     await put(`/prices/PL-002/${k}`, await hdr("u2"), { price: 26 });
-    // The highest list, not the first one: a ceiling that clears one counter and not the other
-    // is still a counter that cannot sell.
     const r = await patch(`/items/${k}`, await hdr("u2"), { mrp: 24 });
-    expect(r.statusCode).toBe(422);
-    expect(r.json().error.message).toBe("Patch mrp floor - printed MRP ₹24.00 is below the shelf price; reprice before selling");
-    expect((await get("/items"))[k].mrp).toBe(30);
+    expect(r.statusCode, r.body).toBe(200);
+    expect((await get("/items"))[k].mrp).toBe(24);
   });
 
   it("allows an MRP above every list price", async () => {

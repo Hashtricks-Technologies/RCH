@@ -1,6 +1,6 @@
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
-import { isReqOpen } from "../../lib/selectors";
+import { isReqOpen, counterNameOf } from "../../lib/selectors";
 import { fq, U, unitTotal } from "../../lib/fmt";
 import { DrawerFrame } from "../../ui/Drawer";
 import { registerDrawer, type DrawerProps } from "../../drawers";
@@ -67,7 +67,7 @@ function RequestDrawer({ id }: DrawerProps) {
       {short.length > 0 && (
         <Alert tone="w" label="SHORT">
           <b>{unitTotal(short)}</b> across {short.length} item{short.length === 1 ? "" : "s"} was not approved
-          {req.apprBy ? ` by ${req.apprBy}` : ""} - {short.map((l) => `${IT[l.it]?.n ?? l.it} ${fq(l.qty, l.it)} ${U(l.it)}`).join(", ")}.
+          {req.apprBy ? ` by ${req.apprBy}` : ""} - {short.map((l) => `${counterNameOf(l.it)} ${fq(l.qty, l.it)} ${U(l.it)}`).join(", ")}.
           Only the approved quantity reaches the pick ticket; raise a fresh request for the balance.
         </Alert>
       )}
@@ -90,7 +90,7 @@ function RequestDrawer({ id }: DrawerProps) {
         rows={req.lines.map((l) => ({
           key: l.it,
           cells: [
-            IT[l.it]?.n ?? l.it,
+            counterNameOf(l.it),
             <span className="mono">{IT[l.it]?.c ?? "-"}</span>,
             fq(l.qty, l.it),
             l.appr > 0

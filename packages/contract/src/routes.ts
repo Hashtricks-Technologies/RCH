@@ -6,8 +6,10 @@ import { AdjustmentRequestsResponseSchema, AdjustmentsResponseSchema, BatchesRes
 import { CloseRegisterBodySchema, CreditParamsSchema, CreditResponseSchema, RegisterQuerySchema, RegisterReportSchema, RegisterReportsResponseSchema, StockLedgerQuerySchema, StockLedgerResponseSchema, ZReportsQuerySchema } from "./schemas/reports.js";
 import { AdminActionSchema, AdminActionsQuerySchema, AdminDeletedUserSchema, AdminLocationSchema, AdminPayerParamsSchema, AdminPayerSchema, AdminUserIdParamsSchema, AdminUserSchema, AdminUserWithTempPasswordSchema, CreateAdminUserBodySchema, CreateOutletBodySchema, CreatePayerBodySchema, OutletKeyParamsSchema, SetAdminUserPostingsBodySchema, UpdateAdminUserBodySchema, UpdateOutletBodySchema, UpdatePayerBodySchema } from "./schemas/admin.js";
 import { ClassParamsSchema, ClassTermsSchema, PayerParamsSchema, PayerTermsSchema, ReceivablesResponseSchema, RecordSettlementBodySchema, SetClassTermsBodySchema, SetPayerTermsBodySchema, SettlementIdParamsSchema, SettlementSchema, SettlementsResponseSchema, StatementSchema, VoidSettlementBodySchema } from "./schemas/receivables.js";
+import { CurrentShiftResponseSchema, ShiftReportSchema, ShiftReportsResponseSchema, ShiftsQuerySchema } from "./schemas/reports.js";
 import { AuditEntrySchema, AuditIdParamsSchema, AuditPageSchema, AuditQuerySchema } from "./schemas/audit.js";
 import { AdjustmentRequestSchema, AdjustmentSchema, BatchSchema, BillSchema, PriceListSchema, ProdOrderSchema, ProductRequestSchema, PurchaseOrderSchema, RateContractSchema, RequisitionSchema, ShopAskSchema, StockRequestSchema, SupportTicketSchema, TicketSchema, VendorSchema } from "./schemas/documents.js";
+import { OutletPricesResultSchema, SaveOutletPricesBodySchema } from "./schemas/writes.js";
 import { ActivatePriceListResultSchema, AddToProcurementListBodySchema, AnswerProductRequestBodySchema, AnswerShopAskBodySchema, ApproveAdjustmentRequestResultSchema, ApproveRequestBodySchema, ApproveRequisitionBodySchema, ApprovalResultSchema, CancelPoBodySchema, CancelTicketBodySchema, CloseShortBodySchema, ContractBodySchema, CreateAdjustmentBodySchema, CreateAdjustmentRequestBodySchema, CreateItemBodySchema, CreatePoBodySchema, CreatePriceListBodySchema, CreateProductRequestBodySchema, CreateRequestBodySchema, CreateRequisitionBodySchema, DeclineRequisitionBodySchema, DeclineShopAskBodySchema, DeletedPriceListSchema, DispatchResultSchema, DistributeBodySchema, DocIdParamsSchema, HandoverBodySchema, IssueResultSchema, MakeBatchBodySchema, MenuItemBodySchema, MenuItemParamsSchema, MenuLocParamsSchema, MenuResultSchema, OutletParamsSchema, PatchContractBodySchema, PatchPoBodySchema, PatchVendorBodySchema, PayBodySchema, PoLineParamsSchema, PriceListIdParamsSchema, PriceResultSchema, RaiseTicketBodySchema, RateTicketBodySchema, DeskReplyBodySchema, ReceiptResultSchema, ReceivePoBodySchema, RedirectRequestBodySchema, RejectAdjustmentRequestBodySchema, RejectRequestBodySchema, ReplyToTicketBodySchema, SavePriceBodySchema, SavePriceParamsSchema, SetOrderStatusBodySchema, SetOutletPriceListBodySchema, SetTicketStatusBodySchema, ShopAskBodySchema, ShopAskSentResultSchema, ToggleAvailBodySchema, ToggleResultSchema, TransferBodySchema, UpdatePoLineBodySchema, VendorBodySchema, writeResponse, ItemKeyParamsSchema, ItemResultSchema, PatchItemBodySchema, SetItemImageBodySchema, BillNoParamsSchema, VoidBillBodySchema, CreateProdOrderBodySchema } from "./schemas/writes.js";
 
 export type Method = "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
@@ -67,6 +69,10 @@ export const routes = {
   createPriceList:    defineRoute({ method: "POST",   path: "/price-lists",              access: ["manager"], body: CreatePriceListBodySchema, response: writeResponse(PriceListSchema) }),
   deletePriceList:    defineRoute({ method: "DELETE", path: "/price-lists/:id",          access: ["manager"], params: PriceListIdParamsSchema, response: writeResponse(DeletedPriceListSchema) }),
   setOutletPriceList: defineRoute({ method: "PUT",    path: "/outlets/:loc/price-list",  access: ["manager"], params: OutletParamsSchema, body: SetOutletPriceListBodySchema, response: writeResponse(ActivatePriceListResultSchema) }),
+  // ---- counter prices ---- the manager's price grid: every sellable item against every open
+  // outlet, saved as one batch. Each outlet it touches gets a list of its own first, so a price
+  // typed for one counter never moves another's.
+  saveOutletPrices:   defineRoute({ method: "PUT",    path: "/outlet-prices",            access: ["manager"], body: SaveOutletPricesBodySchema, response: writeResponse(OutletPricesResultSchema) }),
   addMenuItem:    defineRoute({ method: "POST",   path: "/menus/:loc/items",           access: ["manager"],            params: MenuLocParamsSchema, body: MenuItemBodySchema, response: writeResponse(MenuResultSchema) }),
   removeMenuItem: defineRoute({ method: "DELETE", path: "/menus/:loc/items/:it",       access: ["manager"],            params: MenuItemParamsSchema, response: writeResponse(MenuResultSchema) }),
   stock:          defineRoute({ method: "GET",    path: "/stock",                      access: "any",                  response: StockResponseSchema }),
@@ -166,6 +172,13 @@ export const routes = {
   xReport:      defineRoute({ method: "GET",  path: "/register/x",          access: ["counter", "manager"], query: RegisterQuerySchema,     response: RegisterReportSchema }),
   closeRegister:defineRoute({ method: "POST", path: "/register/close",      access: ["counter", "manager"], body: CloseRegisterBodySchema,  response: writeResponse(RegisterReportSchema) }),
   zReports:     defineRoute({ method: "GET",  path: "/register/z",          access: ["counter", "manager"], query: ZReportsQuerySchema,     response: RegisterReportsResponseSchema }),
+  // ---- shifts: one operator's stint at one counter, opened by their sign-in there. The live
+  // report and the close are the operator's own; the list is "any" and scoped (a manager reads
+  // every outlet's, a counter its own, everyone else an empty list), because a close announces
+  // "shifts" to every open browser - the same reason `/receivables` is "any".
+  currentShift: defineRoute({ method: "GET",  path: "/shifts/current",      access: ["counter"],            response: CurrentShiftResponseSchema }),
+  closeShift:   defineRoute({ method: "POST", path: "/shifts/close",        access: ["counter"],            response: writeResponse(ShiftReportSchema) }),
+  shifts:       defineRoute({ method: "GET",  path: "/shifts",              access: "any",                  query: ShiftsQuerySchema,       response: ShiftReportsResponseSchema }),
   // ---- payers (the roster behind every non-cash tender). The register itself is the super
   // admin's (`/admin/payers`, below); the CSV import stays for a ward list nobody types twice.
   // `GET /roster` is the till's read, live payers only, "any" and scoped like the snapshot's own

@@ -33,13 +33,17 @@ export const scopeBills = (bills: Bill[], who: Who): Bill[] =>
  * do none of that. What they have always used bills for is the ledger behind them: `lines`,
  * which is untouched here, so every stock report still reads exactly what it did.
  *
+ * The walk-in customer's name and phone, where the counter typed them, go the same way.
+ *
  * So the bills travel whole minus the name. Not a filtered list - the store's reports count
  * bills as well as lines, and a store keeper whose totals quietly stopped matching the till's
  * would be worse off than one who simply cannot see whose account a sale went to.
  */
 const READS_PAYERS: ReadonlySet<Who["role"]> = new Set(["counter", "manager"]);
 export const scopePayers = (bills: Bill[], who: Who): Bill[] =>
-  READS_PAYERS.has(who.role) ? bills : bills.map((b) => (b.payer ? { ...b, payer: undefined } : b));
+  READS_PAYERS.has(who.role) ? bills : bills.map((b) => (b.payer || b.customerName || b.customerPhone
+    ? { ...b, payer: undefined, customerName: undefined, customerPhone: undefined }
+    : b));
 
 /**
  * And the roster is the register those names come out of - every consultant, every member of

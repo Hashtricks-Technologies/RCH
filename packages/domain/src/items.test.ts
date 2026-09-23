@@ -1,19 +1,20 @@
 import { describe, expect, it } from "vitest";
 import {
-  ITEM_FIELD_ROLES, mayEditItemField, unauthorisedItemFields, type ItemField,
+  ITEM_FIELD_ROLES, mayEditItemField, unauthorisedItemFields, type ItemField, counterName, itemCodePrefix, nextItemCode,
   // ---- item photos ----
   mayEditItemImage, sniffImageType, checkPhoto, imageRetiredMessage, imageOffMenuMessage, imageNoneMessage,
   IMAGE_MAX_BYTES, IMAGE_NOT_PHOTO,
 } from "./items.js";
 import { routes } from "@rch/contract";
 
-const ALL_FIELDS: ItemField[] = ["n", "mrp", "cost", "gst", "hsn", "rl", "grp", "sl", "active", "src"];
+const ALL_FIELDS: ItemField[] = ["n", "dn", "mrp", "cost", "gst", "hsn", "rl", "grp", "sl", "active", "src"];
 
 describe("who owns which field on the item master", () => {
   it("gives the manager the three commercial figures and nothing else", () => {
     expect(ITEM_FIELD_ROLES.mrp).toEqual(["manager"]);
     expect(ITEM_FIELD_ROLES.cost).toEqual(["manager"]);
     expect(ITEM_FIELD_ROLES.gst).toEqual(["manager"]);
+    expect(ITEM_FIELD_ROLES.dn).toEqual(["manager"]);
     expect(mayEditItemField("manager", "mrp")).toBe(true);
     expect(mayEditItemField("manager", "n")).toBe(false);
     expect(mayEditItemField("manager", "hsn")).toBe(false);
@@ -32,6 +33,7 @@ describe("who owns which field on the item master", () => {
       expect(mayEditItemField(role, "mrp")).toBe(false);
       expect(mayEditItemField(role, "cost")).toBe(false);
       expect(mayEditItemField(role, "gst")).toBe(false);
+      expect(mayEditItemField(role, "dn")).toBe(false);
     }
   });
 
@@ -53,7 +55,7 @@ describe("who owns which field on the item master", () => {
     // or the three desks', and `active` is the one line both halves share.
     const commercial = ALL_FIELDS.filter((f) => mayEditItemField("manager", f));
     const operational = ALL_FIELDS.filter((f) => mayEditItemField("store", f));
-    expect(commercial).toEqual(["mrp", "cost", "gst", "active"]);
+    expect(commercial).toEqual(["dn", "mrp", "cost", "gst", "active"]);
     expect(operational).toEqual(["n", "hsn", "rl", "grp", "sl", "active", "src"]);
     expect(commercial.filter((f) => operational.includes(f))).toEqual(["active"]);
   });
@@ -108,5 +110,35 @@ describe("item photos", () => {
       expect((routes.setItemImage.access as readonly string[]).includes(role)).toBe(mayEditItemImage(role));
       expect((routes.removeItemImage.access as readonly string[]).includes(role)).toBe(mayEditItemImage(role));
     }
+  });
+});
+
+describe("what a counter calls an item", () => {
+  it("reads the display name where there is one, and the name otherwise", () => {
+    expect(counterName({ n: "Britannia 50/50", dn: "50/50-5" })).toBe("50/50-5");
+    expect(counterName({ n: "Britannia 50/50" })).toBe("Britannia 50/50");
+    expect(counterName({ n: "Britannia 50/50", dn: "" })).toBe("Britannia 50/50");
+  });
+});
+
+describe("the next item code", () => {
+  it("is one past the highest code in the type's own series", () => {
+    expect(nextItemCode("RAW", ["RM-1001", "RM-1009", "PK-2003", "MR-3004"])).toBe("RM-1010");
+    expect(nextItemCode("PACK", ["RM-1001", "PK-2002"])).toBe("PK-2003");
+    expect(nextItemCode("MRP", ["MR-3004"])).toBe("MR-3005");
+    expect(nextItemCode("FG", ["FG-4003"])).toBe("FG-4004");
+    expect(nextItemCode("MTO", ["MT-5002"])).toBe("MT-5003");
+  });
+  it("names each series by its prefix", () => {
+    expect(["RAW", "PACK", "MRP", "FG", "MTO"].map((t) => itemCodePrefix(t as "RAW"))).toEqual(["RM", "PK", "MR", "FG", "MT"]);
+  });
+  it("starts each series at its first number", () => {
+    expect(nextItemCode("RAW", [])).toBe("RM-1001");
+    expect(nextItemCode("PACK", ["RM-1001"])).toBe("PK-2001");
+    expect(nextItemCode("MTO", [])).toBe("MT-5001");
+  });
+  it("skips a code typed in another shape, and a low one never pulls the series back", () => {
+    expect(nextItemCode("RAW", ["RM-10a", "rm-9000", "CHAI", "RM-12", "RM-1003"])).toBe("RM-1004");
+    expect(nextItemCode("FG", ["FG-9999"])).toBe("FG-10000");
   });
 });

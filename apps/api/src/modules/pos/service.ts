@@ -2,7 +2,7 @@
 // the arithmetic of the sale is `planBill` in packages/domain.
 import type { z } from "zod";
 import type { Bill, PayBodySchema, Tender, VoidBillBodySchema, WriteResponse } from "@rch/contract";
-import { avail, availOf, breachesCredit, creditBreachMessage, dmy, fq, isAccountTender, istDate, money as inr, partyOf, payerKindForTender, PARTY_LABEL, planBill, priceOf, round3, unitTotal, type Master } from "@rch/domain";
+import { avail, availOf, breachesCredit, creditBreachMessage, dmy, fq, isAccountTender, istDate, money as inr, normalizePhone, partyOf, phoneRefusal, payerKindForTender, PARTY_LABEL, planBill, priceOf, round3, unitTotal, type Master } from "@rch/domain";
 import type { Db } from "../../db/client.js";
 import { withTransaction } from "../../lib/db.js";
 import { lockPayerCredit, outstandingFor } from "../../lib/credit.js";
@@ -68,6 +68,13 @@ export function createPosService(db: Db) {
         // `PayBodySchema.lines` is `.min(1)` with a positive `qty`, so a cart that folded to
         // nothing cannot reach here: there is no empty-cart rule to state a second time.
         const keys = Object.keys(cart);
+
+        // The walk-in customer, both optional. A blank box is no customer rather than an empty
+        // string on the bill, and a phone is stored as its ten digits so one number is one person.
+        const customerName = body.customerName || null;
+        const rawPhone = body.customerPhone?.trim() ?? "";
+        const customerPhone = rawPhone ? normalizePhone(rawPhone) : null;
+        assertRule(!rawPhone || customerPhone, phoneRefusal(rawPhone));
 
         // A tender that is not money changing hands has to name whose account it lands on, and
         // the payer has to be of the kind the tender means (`payerKindForTender`, @rch/domain -
@@ -188,6 +195,7 @@ export function createPosService(db: Db) {
           // The rate as well as the rupees: the rate card moves, and a bill has to be able to say
           // what it was charged at long after somebody changed it.
           discountPct: terms.pct, discount: money(plan.disc),
+          customerName, customerPhone,
         });
         const lines = await posRepo.insertBillLines(tx, no, plan.lines);
         await postMoves(tx, plan.moves.map((m) => ({ ...m, kind: "sale" as const, refType: "bill", refId: no, by: claims.sub, at })));

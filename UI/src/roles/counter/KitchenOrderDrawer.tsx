@@ -1,5 +1,6 @@
 import { dmy } from "@rch/domain";
 import { IT, LOC } from "../../data/master";
+import { counterNameOf } from "../../lib/selectors";
 import { useApp } from "../../store";
 import { fq, sum } from "../../lib/fmt";
 import { Alert, DataTable, Feed, Section, StatusPill, TableFoot } from "../../ui/kit";
@@ -48,7 +49,7 @@ function KitchenOrderDrawer({ id }: DrawerProps) {
           rows={o.lines.map((l) => ({
             key: l.it,
             cells: [
-              <>{IT[l.it]?.n ?? l.it}<small>{IT[l.it]?.g ?? ""}</small></>,
+              <>{counterNameOf(l.it)}<small>{IT[l.it]?.g ?? ""}</small></>,
               <span className="mono">{IT[l.it]?.c ?? "-"}</span>,
               <b>{fq(l.qty, l.it)}</b>,
             ],

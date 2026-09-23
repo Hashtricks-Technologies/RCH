@@ -1,4 +1,4 @@
-import { IT } from "../../data/master";
+import { counterNameOf } from "../../lib/selectors";
 import { useApp } from "../../store";
 import { fq, U } from "../../lib/fmt";
 import { REASON_LABEL } from "@rch/domain";
@@ -62,7 +62,7 @@ function AdjustmentRequestDrawer({ id }: DrawerProps) {
         rows={r.lines.map((l) => ({
           key: l.it,
           cells: [
-            IT[l.it]?.n ?? l.it,
+            counterNameOf(l.it),
             <b style={{ color: l.qty < 0 ? "var(--crit)" : "var(--good)" }}>{l.qty < 0 ? "-" : "+"}{fq(Math.abs(l.qty), l.it)}</b>,
             <span className="mini">{U(l.it)}</span>,
           ],

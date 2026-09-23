@@ -13,7 +13,7 @@ export type NewItemRow = typeof items.$inferInsert;
  *  the opposite: clearing it back to "no best-before" is exactly what a blank box has always
  *  meant on the create-item form, so this side does allow `null`. */
 export type ItemPatch = Partial<{
-  name: string; grp: string; hsn: string; gst: number;
+  name: string; displayName: string | null; grp: string; hsn: string; gst: number;
   reorderLevel: number; cost: number; mrp: number; shelfLifeHours: number | null; active: boolean;
   src: "store" | "kitchen";
 }>;
@@ -31,6 +31,19 @@ export const catalogRepo = {
   async keysLike(tx: Tx, slug: string): Promise<Set<string>> {
     const rows = await tx.select({ key: items.key }).from(items).where(like(items.key, `${slug}%`));
     return new Set(rows.map((r) => r.key));
+  },
+
+  /** Serialise the code series of one item type, so two new products of the same type cannot
+   *  both read the same highest code and both take the next one. `items.code` carries no unique
+   *  index, so this lock is the whole guarantee. */
+  async lockCodeSeries(tx: Tx, prefix: string): Promise<void> {
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${"item-code:" + prefix}))`);
+  },
+
+  /** Every code in one series (`RM-…`), retired lines included - a retired code is never reissued. */
+  async codesLike(tx: Tx, prefix: string): Promise<string[]> {
+    const rows = await tx.select({ code: items.code }).from(items).where(like(items.code, `${prefix}-%`));
+    return rows.map((r) => r.code);
   },
 
   /** `on conflict do nothing` covers both constraints a new row can hit - the primary key

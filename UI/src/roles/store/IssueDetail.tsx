@@ -196,7 +196,7 @@ function IssueDetail({ id }: DrawerProps) {
                 <Btn size="xs" variant="gh" onClick={() => openDrawer("stkt", ticket.id)}>Open ticket</Btn>
                 {/* The issue desk prints the same slip the ticket window does - and the same
                     way, without the six digits it was never sent. */}
-                <PrintSlipBtn />
+                <PrintSlipBtn t={ticket} />
               </div>
             </div>
             {/* The digits are the collector's, not the issuing desk's: the server sends "" to

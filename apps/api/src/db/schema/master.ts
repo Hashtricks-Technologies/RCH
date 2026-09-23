@@ -1,4 +1,4 @@
-import { boolean, check, date, foreignKey, index, integer, jsonb, numeric, pgTable, primaryKey, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { boolean, check, date, foreignKey, index, integer, jsonb, numeric, pgTable, primaryKey, serial, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { itemTypeEnum, locationTypeEnum, payerKindEnum, roleEnum, sourceEnum } from "./enums.js";
 
@@ -102,6 +102,8 @@ export const items = pgTable("items", {
   key: text("key").primaryKey(),
   code: text("code").notNull(),
   name: text("name").notNull(),
+  /** What the counters read on the till - "50/50-5" for "Britannia 50/50". Null shows the name. */
+  displayName: text("display_name"),
   unit: text("unit").notNull(),
   type: itemTypeEnum("type").notNull(),
   grp: text("grp").notNull(),
@@ -170,6 +172,23 @@ export const rateContracts = pgTable("rate_contracts", {
   // hands the loser no row, and it reads the same refusal the check would have given it a
   // moment later - the pattern `addMenuItem` already uses.
   uniqueIndex("rate_contracts_live_uq").on(t.vendorId, t.itemKey).where(sql`${t.active}`),
+]);
+
+/**
+ * Every change to a contract's rate, old beside new. A contract row keeps only its current rate,
+ * so without this a buyer who re-priced it from a purchase order leaves no trace of what it was.
+ * `poId` is set when the change came from a draft order's rate, null when from Rate Contracts.
+ */
+export const rateContractChanges = pgTable("rate_contract_changes", {
+  id: serial("id").primaryKey(),
+  contractId: text("contract_id").notNull().references(() => rateContracts.id),
+  oldRate: money("old_rate").notNull(),
+  newRate: money("new_rate").notNull(),
+  poId: text("po_id"),
+  by: text("by").notNull().references(() => users.id),
+  at: ts("at").notNull().defaultNow(),
+}, (t) => [
+  index("rate_contract_changes_contract_idx").on(t.contractId, t.at),
 ]);
 
 /**

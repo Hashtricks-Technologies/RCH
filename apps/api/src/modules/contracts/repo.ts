@@ -1,6 +1,7 @@
 // Rate contracts: SQL only. No rules, no transaction of its own - service.ts passes `tx` in.
 import { and, eq, ne } from "drizzle-orm";
 import type { RateContract } from "@rch/contract";
+import { readRateChanges } from "../../lib/contract-rates.js";
 import { isUniqueViolation, type Tx } from "../../lib/db.js";
 import { rateContracts, vendors } from "../../db/schema/index.js";
 
@@ -74,6 +75,10 @@ export const contractsRepo = {
       validFrom: rateContracts.validFrom, validTo: rateContracts.validTo, moq: rateContracts.moq, active: rateContracts.active,
     }).from(rateContracts).innerJoin(vendors, eq(rateContracts.vendorId, vendors.id)).where(eq(rateContracts.id, id));
     if (!row) throw new Error(`rate contract ${id} vanished inside its own transaction`);
-    return { id: row.id, vendor: row.vendorName, it: row.itemKey, rate: row.rate, from: row.validFrom, to: row.validTo, moq: row.moq, active: row.active };
+    const changes = (await readRateChanges(tx, [id])).get(id);
+    return {
+      id: row.id, vendor: row.vendorName, it: row.itemKey, rate: row.rate, from: row.validFrom, to: row.validTo, moq: row.moq, active: row.active,
+      ...(changes ? { changes } : {}),
+    };
   },
 };

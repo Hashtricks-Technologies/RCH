@@ -4,7 +4,7 @@ import { IT } from "../../data/master";
 import { useApp } from "../../store";
 import { activeItems, awaitingApproval, costOf, onOrder, qty } from "../../lib/selectors";
 import { U, fq, money0, sum, unitTotal } from "../../lib/fmt";
-import { Alert, Btn, BtnRow, DraftLineInput, Field, Section, Tip, useLineKeys } from "../../ui/kit";
+import { Alert, Btn, BtnRow, DraftLineInput, Field, Section, Tip, commitTyping, useLineKeys } from "../../ui/kit";
 import { DrawerFrame } from "../../ui/Drawer";
 import { registerDrawer } from "../../drawers";
 import type { DraftLine } from "../../types";
@@ -21,6 +21,7 @@ function AddToListDrawer() {
   const s = useApp();
   const add = useApp((x) => x.addToProcurementList);
   const close = useApp((x) => x.closeDrawer);
+  const notify = useApp((x) => x.notify);
 
   const [lines, setLines] = useState<DraftLine[]>([]);
   const [note, setNote] = useState("");
@@ -53,10 +54,21 @@ function AddToListDrawer() {
   const filled = lines.filter((l) => l.qty > 0);
   const repeated = lines.find((l, i) => lines.findIndex((x) => x.it === l.it) !== i);
   const alreadyOpen = filled.filter((l) => openQty(l.it) > 0);
-  const canSave = !busy && filled.length > 0 && note.trim().length > 0;
+
+  /** Refused with a sentence, never by greying the button out: the quantity boxes commit on
+   *  blur, and a disabled button never receives the press that would blur one - so a quantity
+   *  typed last left the button dead under the buyer's click (`commitTyping`, `ui/kit.tsx`). */
+  const refusal = (): string | null => {
+    if (filled.length === 0) return "Enter a quantity on at least one item before adding to the procurement list.";
+    if (repeated) return `${IT[repeated.it]?.n ?? repeated.it} is on more than one line - combine them into one before adding.`;
+    if (!note.trim()) return "Give a reason for buying these items - the store keeper reads it on the requisition.";
+    return null;
+  };
 
   const save = async () => {
-    if (!canSave) return;
+    if (busy) return;
+    const no = refusal();
+    if (no) { notify(no); return; }
     setBusy(true);
     const ok = await add(lines, note.trim());
     setBusy(false);
@@ -70,7 +82,10 @@ function AddToListDrawer() {
       foot={
         <BtnRow end>
           <Btn variant="gh" onClick={close}>Cancel</Btn>
-          <Btn disabled={!canSave} onClick={save}>{busy ? "Adding…" : "Add to procurement list"}</Btn>
+          {/* The press commits whatever is still being typed before `save` reads the lines. */}
+          <span onMouseDown={commitTyping}>
+            <Btn disabled={busy} onClick={save}>{busy ? "Adding…" : "Add to procurement list"}</Btn>
+          </span>
         </BtnRow>
       }
     >
@@ -129,7 +144,7 @@ function AddToListDrawer() {
                       </td>
                       <td className="n">
                         <DraftLineInput
-                          value={l.qty} min={0} step={it?.u === "nos" ? 1 : 0.5}
+                          value={l.qty} min={0} step={it?.u === "nos" ? 1 : 0.5} blankZero
                           ariaLabel={`Quantity of ${it?.n ?? l.it}`}
                           onCommit={(n) => setLine(i, { qty: Math.max(0, n) })}
                         />

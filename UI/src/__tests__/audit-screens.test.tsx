@@ -298,7 +298,7 @@ describe("procurement adds a product with the store keeper's field set", () => {
     ui.unmount();
   });
 
-  it("posts the code, group, HSN and GST it typed, not the defaults", async () => {
+  it("posts the group, HSN and GST it typed, not the defaults, and no code - the server assigns it", async () => {
     as("buyer");
     const sheet = { c: "PK-2010", n: "Butter paper sheet", u: "nos", t: "PACK" as const, g: "Packaging", hsn: "4806", gst: 18, rl: 0, cost: 0.8 };
     serve({
@@ -309,8 +309,10 @@ describe("procurement adds a product with the store keeper's field set", () => {
     const ui = mountNode(Drawer);
 
     act(() => { type(byLabel(ui.host, "Product name"), "Butter paper sheet"); });
-    act(() => { type(byLabel(ui.host, "Item code"), "PK-2010"); });
     act(() => { pick(byLabel(ui.host, "Type"), "PACK"); });
+    // The code is previewed, read-only: one past the highest PK- code the master already holds.
+    expect(byLabel<HTMLInputElement>(ui.host, "Item code").value).toBe("PK-2003");
+    expect(byLabel<HTMLInputElement>(ui.host, "Item code").readOnly).toBe(true);
     act(() => { type(byLabel(ui.host, "Group"), "Packaging"); });
     // The paperboard grade this sheet is graded under is not on the curated list, so the
     // operator switches the HSN field from the picker to typing the code by hand.
@@ -324,9 +326,10 @@ describe("procurement adds a product with the store keeper's field set", () => {
     await settle(() => { ui.button("Add to the catalogue")!.click(); });
     await settleUntil(() => hit("POST /api/v1/items").length > 0);
     expect(hit("POST /api/v1/items")[0].body).toMatchObject({
-      name: "Butter paper sheet", code: "PK-2010", type: "PACK", grp: "Packaging", hsn: "4806", gst: 18,
+      name: "Butter paper sheet", type: "PACK", grp: "Packaging", hsn: "4806", gst: 18,
       cost: 0.8, loc: "store", opening: 0,
     });
+    expect(hit("POST /api/v1/items")[0].body).not.toHaveProperty("code");
     ui.unmount();
   });
 });

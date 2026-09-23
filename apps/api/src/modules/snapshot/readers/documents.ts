@@ -2,6 +2,7 @@ import { and, asc, desc, eq, gte, inArray, isNull, sql } from "drizzle-orm";
 import type { Adjustment, AdjustmentRequest, Batch, Bill, Grn, HistEntry, LocKey, ProdOrder, ProductRequest, PurchaseOrder, RateContract, Requisition, ShopAsk, StockLoc, StockRequest, SupportTicket, Ticket, Vendor } from "@rch/contract";
 import * as s from "../../../db/schema/index.js";
 import type { Reader } from "../../../lib/db.js";
+import { readRateChanges } from "../../../lib/contract-rates.js";
 import { readHistories } from "../../../lib/history.js";
 import { iso } from "../../../lib/time.js";
 import { toWireBill } from "../../../lib/wire.js";
@@ -131,7 +132,11 @@ export async function readContracts(db: Reader): Promise<RateContract[]> {
     id: s.rateContracts.id, vendorName: s.vendors.name, itemKey: s.rateContracts.itemKey, rate: s.rateContracts.rate,
     validFrom: s.rateContracts.validFrom, validTo: s.rateContracts.validTo, moq: s.rateContracts.moq, active: s.rateContracts.active,
   }).from(s.rateContracts).innerJoin(s.vendors, eq(s.rateContracts.vendorId, s.vendors.id)).orderBy(asc(s.rateContracts.id));
-  return rows.map((c) => ({ id: c.id, vendor: c.vendorName, it: c.itemKey, rate: c.rate, from: c.validFrom, to: c.validTo, moq: c.moq, active: c.active }));
+  const changes = await readRateChanges(db);
+  return rows.map((c) => strip({
+    id: c.id, vendor: c.vendorName, it: c.itemKey, rate: c.rate, from: c.validFrom, to: c.validTo, moq: c.moq, active: c.active,
+    changes: changes.get(c.id),
+  }));
 }
 /**
  * The support desk, and who owns each of its tickets, off **one** read of `support_tickets`.

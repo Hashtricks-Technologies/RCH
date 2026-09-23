@@ -46,13 +46,23 @@ settlement history. Its statement drawer is `stmt`, which is where a payment is 
 
 **Menu Management** (`menu`) carries all four of a menu's operations for the picked outlet: the whole till as a
 sortable, filterable table, Remove behind a second press on each row, the multi-select add, and the
-new-product request. **Prices** (`prices`) raises its own `NewListDialog` from a New price list button; the
-`plset` drawer keeps only the outlet→list mapping and the list of every list.
+new-product request. **Prices** (`prices`) is `roles/manager/CounterPrices.tsx`: every sellable item against
+every open outlet, each cell a `Switch` (sold at that till) and a price box. Edits are staged in component
+state (changed cells highlighted, old → new under them), a sticky bar offers **Save N changes**, and its
+`Modal` lists every change and enables Confirm only once `CONFIRM` is typed; Cancel keeps the staged edits.
+The store's `saveOutletPrices(changes)` is the ordinary `Promise<boolean>` write, and the staged edits clear
+only on `true`. No list is named anywhere on it. A price above the printed MRP is saveable: the cell shows a
+neutral "Till charges ₹… (MRP)" note, never a refusal. The grid's switch is the manager's only on/off - the
+manager's Product On / Off screen (`roles/manager/Availability.tsx`, key `avail`) is hidden behind
+`AVAILABILITY_SCREEN_ENABLED` in `src/nav.ts`, which drops both its sidebar entry and its `screens` entry (and
+the manager's `avail` bell queue); the counter's and the kitchen's switches are untouched. The old price-list screen (`Prices.tsx` with its
+`NewListDialog`, and the `plset` drawer) is hidden behind `PRICE_LISTS_ENABLED` in `roles/manager/index.tsx`
+- still registered, still tested by importing it directly, reachable again by flipping the flag.
 
 **A drawer is a document; a modal is one decision.** `ui/Drawer.tsx` opens a document beside the list it came
 from - a ticket, a statement, an audit entry - and is the store's single `drawer` slot. `ui/Modal.tsx` is a
-dialog box in the middle of the screen for one short form with two answers (`NewListDialog` in
-`roles/manager/Prices.tsx` is the one today); it is owned by the screen that raised it, not by the store.
+dialog box in the middle of the screen for one short form with two answers (the grid's save confirmation in
+`roles/manager/CounterPrices.tsx`, and the hidden `NewListDialog` in `roles/manager/Prices.tsx`); it is owned by the screen that raised it, not by the store.
 Both get the keyboard half of `aria-modal="true"` from `ui/focus.ts`'s `useFocusTrap(ref, at, titleId)` -
 focus in on open, wrapped at both ends, and handed back on unmount - so neither implements it again.
 
@@ -69,7 +79,7 @@ focus in on open, wrapped at both ends, and handed back on unmount - so neither 
   document's id **and the last entry of its trail**. `manager/ApprovalDrawer.tsx`'s `bodyKey` is the example.
 
 Components shared by two or more roles live in `src/ui/`, because role folders don't import each other. That
-includes `TicketSlip`, `NewProductForm`, `AdjustmentForm`, `KitchenOrderForm` and `PhotoPicker`.
+includes `TicketSlip`, `GrnPdf`, `NewProductForm`, `AdjustmentForm`, `KitchenOrderForm` and `PhotoPicker`.
 
 ## The store is an API client
 
@@ -98,6 +108,10 @@ try {
   clears the form only on `true`, so a refusal leaves what was typed. `counter/Pos.tsx` (a single `busy`) and
   `counter/Requests.tsx` (keyed per row) are the two patterns to copy.
 - **Actions whose screen needs the new id return `Promise<string | null>`**: `createPo` and `createItem`.
+  `pay(loc, tender, payer?, customer?)` is the third: it sends the walk-in customer's name and phone
+  only when typed, and `Pos.tsx` clears both boxes with the cart once a bill is numbered.
+  `createItem` sends no code - the server assigns it, and `NewProductForm` previews it read-only
+  with `nextItemCode`.
 - **Single-press buttons with no form are fire-and-forget**: `handover`, `setOrderStatus`, `dispatchOrder`.
 - **`setItemImage(it, bytes)` and `removeItemImage(it)`** are the ordinary `Promise<boolean>` write shape
   above - the bytes arrive already shrunk and type-checked (`ui/PhotoPicker.tsx`, below), and the server checks
@@ -148,6 +162,15 @@ try {
   once in `beforeEach`.
 - **`readXReport` / `readZReports` answer `null` on failure**, never an empty report, so a screen
   can say "could not be read" instead of "nothing taken" - the distinction `AdminAudit.tsx` draws.
+- **Shifts (`store/shifts.ts`).** `ui/CloseShift.tsx` is the counter's Close shift button and its `Modal`
+  (the shell's sidebar foot, the counter Dashboard and the Register screen): it reads `readCurrentShift`
+  as it opens (`null` an outage, `{ shift: null }` none open), `closeShift` is the ordinary write returning
+  the stored report, and on success it prints the final slip and calls `logout`. The manager's `shifts`
+  list is kept: the shell loads it for a manager (the bell's `shifts` row, which `GOES_TO` sends to
+  `register` so it never counts on a sidebar badge, and whose second line `bellDetail` makes the latest
+  close), `ui/ShiftReports.tsx` is the Register screen's card, and `NARROW.shifts` reloads it for a manager
+  only. `ui/ShiftSlip.tsx` is the paper; `printShiftSlip()` marks the body `print-shift` so a page's other
+  `.print-slip` stays off the paper.
 
 ## src/api
 
@@ -172,11 +195,11 @@ try {
   that session alone. `audit`: an admin session calls `bumpAuditFresh()`, so the Audit log tab shows
   "New events - show" without moving its rows, and any other session does nothing. No write names `audit` in
   its `changed`; only the audit service's notice does.
-  - **A manager-only collection (`priceLists`, `accounts`) is still broadcast to every open session** - the
-    server's `pg_notify` isn't per-role. A non-manager tab open when a price list changes gets a 403/404 on
-    its own `NARROW.priceLists()` call, which fails the whole `Promise.all` and shows that tab the generic
-    "the screen could not be refreshed" toast, even though nothing of theirs failed. Known, matches the
-    existing `accounts` behaviour; not fixed here.
+  - **A manager-only collection is still broadcast to every open session** - the server's `pg_notify`
+    isn't per-role. So `NARROW.priceLists` reads `GET /price-lists` for a manager session alone and does
+    nothing for anyone else; otherwise a counter's tab open when the Prices grid forks a list would fail its
+    whole `Promise.all` and toast "the screen could not be refreshed" over a page of theirs that never
+    changed. `accounts` is never announced on the stream - only the admin's own reply names it.
 - **`wire.ts`** holds the mappers from server shape to store shape.
   - An ISO time becomes `"HH:MM"` only here, and **`iso` is kept beside it** on every document and history
     entry (`Dated<T>`, `Trailed<T>` and `DatedDoc<T>` in `types.ts`).
@@ -202,8 +225,13 @@ a background refresh and must not blank the screen.
   them bumps `catalogVersion`, which screens use as a memo key.
 - **`PL` is keyed by price-list id, not a fixed pair** - every list a manager has created, `PL[list][it]` its
   item→price map. `PRICE_LISTS[list]` is the entity itself (`{ id, name, outlets }`), for a name to print and
-  for the manager's Prices screen to filter by outlet or by name. A `Location.list` names which id an outlet is
+  for the hidden price-list screen to filter by outlet or by name. A `Location.list` names which id an outlet is
   active on; it is never itself the price.
+- **A counter's own screens name an item with `counterNameOf(it)`** (`lib/selectors.ts`): the
+  manager's display name (`dn`) where there is one, the real name otherwise. Only files under
+  `roles/counter/` call it, and the bill drawer only for a counter session - the manager opens the
+  same drawer and reads the real name, and the printed slip always does. A counter search matches
+  with `itemMatches(it, term)`, which finds either name or the code.
 - **`IT` includes retired items**, because old documents still name them. Pickers must read `activeItems()`,
   never `Object.keys(IT)`.
 - **`src/lib/selectors.ts` is the source of truth for everything derived.** That covers `qty`, `resv`,
@@ -257,12 +285,32 @@ a background refresh and must not blank the screen.
 - **`DraftLineInput`** is the commit-on-blur number box. Every typed quantity uses it, because a controlled
   number input can't take a half-typed `12.`. Its `ariaLabel` is required even beside a `<label>`, because
   `Field` only wires `htmlFor` to a direct DOM child.
+  - **A button that reads those boxes is never greyed out by them.** Wrap it in
+    `<span onMouseDown={commitTyping}>` (kit) so the box still being typed in commits before `click`, and
+    refuse an incomplete form with a sentence in the handler. A disabled button never receives the press, so a
+    quantity typed last left Add items' button dead (`buyer-rates.test.tsx` pins it). `AddToListDrawer`,
+    `PoReceiptDrawer`, `PoDrawer`'s Send, the Procurement List's Raise and Rate Contracts' Update follow this.
+  - `PoDrawer` keeps its line edits' promises; Send waits for them and stops, with a sentence, if one was
+    refused.
 - **`useLineKeys(n)`** gives each row of an editable line table a stable key. Call its `drop(i)` next to the
   state update that removes a line.
 - **Styling is plain CSS** in `src/styles.css`, with no framework. It has one token set on `:root`, redefined
   under `@media (prefers-color-scheme: dark)` guarded by `:root:not([data-theme="light"])`, and again under
   `[data-theme="dark"]`.
 - **Printing** uses three classes: `.print-slip` (the only thing on paper), `.no-print` and `.print-only`.
+  A ticket's slip is `.print-slip.receipt`, a 72 mm column.
+- **PDFs are built in `src/lib/pdf.ts`, and jsPDF is imported at the press** (`await import("jspdf")`), so
+  Vite splits it into its own chunk and nobody downloads it until they ask for a file. Each document is a
+  plain model first - `ticketReceipt` (which `ui/TicketSlip.tsx`'s printed slip also draws, so paper and file
+  agree) and `grnReport` - then drawn. jsPDF's built-in fonts have no rupee glyph, so `pdfText` spells `₹` as
+  `Rs.` on the way in; format with `money` / `fq` as everywhere else.
+  - `PrintSlipBtn({ t })` is the ticket drawers' Include OTP box, Print slip and Download PDF (`<ticket>.pdf`).
+    The box is one module-local switch in `TicketSlip.tsx`, on by default, shared by slip and PDF; where
+    `t.otp` is `""` it is disabled with a tip naming the location that holds the code.
+  - `GrnPdfButtons({ po, named? })` (`ui/GrnPdf.tsx`) draws nothing until the order has a GRN. A delivery is
+    the GRN rows sharing one instant and delivery note (`grnInstalments`); with more than one it offers each
+    and the whole order. "To date" and "pending" are read as of each delivery, so an old GRN still says what
+    it said the day it was booked. A booked receipt opens the `bpo` drawer, where the new GRN waits.
 - **The bell's rows are queues, not messages.** `navQueues` in `ui/Shell.tsx` returns the documents behind
   each badge. Opening a row stores those ids through `ui/seen.ts` (`localStorage`, per account), which moves
   the row under Earlier. Anything that joins the queue afterwards brings it back under New, in red.
@@ -295,11 +343,23 @@ a background refresh and must not blank the screen.
   the empty state. **`audit-lib.test.ts`** pins `lib/audit.ts`'s `auditDayRange`, `deviceOf`, `diffFields` (one
   level into a nested object, arrays compared whole) and `auditCsv`. `writes.test.ts` covers the slice's reads
   and `refetch`'s `audit` reader.
+- **`shifts.test.tsx`** drives the shift slice on the wire, the Close Shift dialog (live report, print,
+  close, sign-out; a refusal keeping the session; none open; an outage), the manager's Shift reports card
+  and the bell row.
 - **`manager-credit.test.tsx`** drives the Credit screen's three tabs against a stubbed `GET /receivables` and
   `GET /settlements`: the outage line in place of "nobody owes anything", a category rate reaching the wire,
   the oldest-first allocation preview, and Void offering itself only on today's payment.
   **`admin-payers.test.tsx`** drives the register tab - every kind on the table, the add form surviving a
   refusal, the switch, and that no delete control exists anywhere on the page.
+- **`pdf.test.tsx`** mocks `jspdf` and `jspdf-autotable`, recording what is drawn and saved, and pins
+  the receipt and GRN models, the file names, the Include OTP box and the GRN buttons.
+- **`counter-prices.test.tsx`** drives the Prices grid: a column per open outlet and only sellable rows,
+  staged cells showing old → new, Confirm shut until `CONFIRM` is typed, Cancel and a refusal both keeping
+  the staged edits, the zero / unpriced previews shutting Save, an above-MRP price staying saveable with its
+  "Till charges" note, and the filters.
+- **`counter-names.test.tsx`** drives the walk-in customer (the body, the two boxes surviving a
+  refusal and clearing on a sale, both Bills searches) and the display name (the till's tiles and
+  cart, the counter's bill drawer against the manager's and the slip, the manager's item drawer).
 - **`fixes.test.ts`** pins earlier defects by tag (C6, M3, M8, H4, UA-14…). Read the comment before changing
   what one covers.
 - **No production file under `src/` imports `@rch/contract/fixtures`.** Only tests do.

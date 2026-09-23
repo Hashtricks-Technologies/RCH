@@ -1,4 +1,4 @@
-import type { Role } from "@rch/contract";
+import type { ItemType, Role } from "@rch/contract";
 
 /**
  * Who may change what on the item master.
@@ -11,7 +11,7 @@ import type { Role } from "@rch/contract";
  *
  * **Commercial** - the printed MRP, the standard cost and the GST rate - is the outlet manager's.
  * Those three are what a price, a stock value and a tax line are computed from, and the manager
- * is the role that already owns the price lists and the MRP ceiling above them.
+ * is the role that already owns the price lists and the MRP that caps the till.
  *
  * **Operational** - the name, the group, the HSN code, the reorder level, the shelf life and
  * where a counter's stock request for it is auto-routed - belongs to the three desks that
@@ -19,16 +19,21 @@ import type { Role } from "@rch/contract";
  * kitchen that consumes it. They are the ones who know what the pack says, and the kitchen is
  * the one who actually knows how long what it makes keeps - and which desk actually supplies it.
  *
+ * **`dn`**, the display name a counter reads on its till ("50/50-5" for "Britannia 50/50"), is the
+ * manager's too: what an outlet's staff see beside a price is a question about selling the line,
+ * not about the goods on the shelf.
+ *
  * **`active`** is everybody's: any of the four can retire a line nobody carries any more, and
  * bring it back. The counter is in neither list and so is in none of them - a till sells the
  * master, it does not edit it.
  */
-export type ItemField = "n" | "mrp" | "cost" | "gst" | "hsn" | "rl" | "grp" | "sl" | "active" | "src";
+export type ItemField = "n" | "dn" | "mrp" | "cost" | "gst" | "hsn" | "rl" | "grp" | "sl" | "active" | "src";
 
 export const ITEM_FIELD_ROLES: Readonly<Record<ItemField, readonly Role[]>> = {
   mrp: ["manager"],
   cost: ["manager"],
   gst: ["manager"],
+  dn: ["manager"],
   n: ["store", "buyer", "prod"],
   hsn: ["store", "buyer", "prod"],
   rl: ["store", "buyer", "prod"],
@@ -50,6 +55,43 @@ export const mayEditItemField = (role: Role, f: ItemField): boolean => ITEM_FIEL
  */
 export const unauthorisedItemFields = (role: Role, fields: readonly ItemField[]): ItemField[] =>
   fields.filter((f) => !mayEditItemField(role, f));
+
+/**
+ * What a counter's own screens call an item: its display name where the manager gave it one, its
+ * name otherwise. Only the counter's screens read it - a document, a slip and every other desk
+ * print the real name.
+ */
+export const counterName = (item: { n: string; dn?: string }): string => item.dn || item.n;
+
+// ---- item codes ----
+/** Each item type's own code series: `RM-1001`, `PK-2001`, `MR-3001`, `FG-4001`, `MT-5001`. */
+const ITEM_CODE_SERIES: Readonly<Record<ItemType, { prefix: string; first: number }>> = {
+  RAW: { prefix: "RM", first: 1001 },
+  PACK: { prefix: "PK", first: 2001 },
+  MRP: { prefix: "MR", first: 3001 },
+  FG: { prefix: "FG", first: 4001 },
+  MTO: { prefix: "MT", first: 5001 },
+};
+
+/** The two letters in front of this type's codes - what the server locks the series on. */
+export const itemCodePrefix = (type: ItemType): string => ITEM_CODE_SERIES[type].prefix;
+
+/**
+ * The code a new item of this type is given: one past the highest code already in its series, or
+ * the series' first number when there is none. A code typed in another shape is skipped rather
+ * than parsed. The server calls this under the create's own lock and the new-product form calls
+ * it to preview the same code, so the two cannot disagree about which one is next.
+ */
+export function nextItemCode(type: ItemType, existing: readonly string[]): string {
+  const { prefix, first } = ITEM_CODE_SERIES[type];
+  const shape = new RegExp(`^${prefix}-(\\d+)$`);
+  let next = first;
+  for (const c of existing) {
+    const m = shape.exec(c);
+    if (m) next = Math.max(next, Number(m[1]) + 1);
+  }
+  return `${prefix}-${next}`;
+}
 
 // ---- item photos ----
 /**

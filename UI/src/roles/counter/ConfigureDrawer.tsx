@@ -1,7 +1,7 @@
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
 import {
-  avail, availOf, daysCover, menuOf, parOf, priceOf, qty, stateLabel, stateTone,
+  avail, availOf, counterNameOf, daysCover, menuOf, parOf, priceOf, qty, stateLabel, stateTone,
 } from "../../lib/selectors";
 import { fq, money, U } from "../../lib/fmt";
 import { Alert, Btn, ItemImage, Pill, Switch, Tip } from "../../ui/kit";
@@ -38,13 +38,13 @@ function ConfigureDrawer({ id: it }: DrawerProps) {
   return (
     <DrawerFrame
       title="Configure"
-      sub={`${item.n} · ${LOC[loc].n}`}
+      sub={`${counterNameOf(it)} · ${LOC[loc].n}`}
       foot={<Btn variant="gh" onClick={close}>Close</Btn>}
     >
       {sellableHere ? <PhotoPicker it={it} /> : <ItemImage it={it} size="card" />}
       <div style={{ height: 14 }} />
       <div style={{ display: "flex", alignItems: "baseline", gap: 9, flexWrap: "wrap", marginBottom: 12 }}>
-        <b style={{ fontSize: 15 }}>{item.n}</b>
+        <b style={{ fontSize: 15 }}>{counterNameOf(it)}</b>
         <TypeTag t={item.t} />
         <span className="mini">{item.c} · {item.g}</span>
       </div>
@@ -65,7 +65,7 @@ function ConfigureDrawer({ id: it }: DrawerProps) {
       {sellableHere ? (
         <>
           <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 0", borderTop: "1px solid var(--line)", borderBottom: "1px solid var(--line)" }}>
-            <Switch on={!manualOff} label={`${item.n} at ${LOC[loc].n}`} onChange={() => toggleAvail(loc, it)} />
+            <Switch on={!manualOff} label={`${counterNameOf(it)} at ${LOC[loc].n}`} onChange={() => toggleAvail(loc, it)} />
             <div className="tipped">
               <b style={{ fontSize: 12.5 }}>Available at {LOC[loc].n}</b>
               <Tip text="Turn this off when the machine is down or the product is spoiled." label={`Available at ${LOC[loc].n}`} />

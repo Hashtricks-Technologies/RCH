@@ -100,3 +100,43 @@ export const ZReportsQuerySchema = z.strictObject({
   loc: StockLocSchema.optional(),
   days: z.coerce.number().int().min(1).max(365).default(30),
 });
+
+// ---- shifts: one operator's stint at one counter ----------------------------------------------
+//
+// A register session is the outlet's day (Z to Z); a shift is one person's hours inside it. It
+// opens when a counter operator signs in at a counter and closes when they press Close Shift (or,
+// automatically, when they next sign in at a different counter). The report is only what that
+// operator billed at that counter in that window - no counted cash, because the hand-over is of
+// the amounts billed, not of a drawer.
+
+export const ShiftTotalsSchema = z.object({
+  billCount: z.number().int(),
+  grossSales: Money, discount: Money, nettSales: Money, taxTotal: Money,
+  /** One line per tender the till has, in `TenderSchema`'s order, whether or not it took anything. */
+  tenders: z.array(TenderLineSchema),
+  collected: Money, creditSales: Money,
+  voidAmount: Money, voidBills: z.number().int(),
+});
+export const ShiftReportSchema = z.strictObject({
+  id: z.string(),
+  loc: StockLocSchema,
+  userId: z.string(),
+  /** The operator's name as it stood on the account when the report was read. */
+  operator: z.string(),
+  openedAt: IsoTime,
+  /** `null` while the shift is still open - the live report. */
+  closedAt: IsoTime.nullable(),
+  /** The end of the window the figures cover: `closedAt` once closed, the moment of reading before. */
+  takenAt: IsoTime,
+  /** Closed by the server rather than by the operator: they signed in at another counter with this one still open. */
+  auto: z.boolean(),
+  totals: ShiftTotalsSchema,
+});
+/** `shift` is `null` when this session has no open shift at its counter. */
+export const CurrentShiftResponseSchema = z.strictObject({ shift: ShiftReportSchema.nullable() });
+export const ShiftReportsResponseSchema = z.array(ShiftReportSchema);
+export const ShiftsQuerySchema = z.strictObject({
+  /** The manager's outlet filter. A counter always reads its own shifts, wherever they were. */
+  loc: StockLocSchema.optional(),
+  days: z.coerce.number().int().min(1).max(90).default(7),
+});

@@ -176,6 +176,13 @@
       "when": 1790071895026,
       "tag": "0024_postings_and_register_sessions",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1790164982133,
+      "tag": "0025_shifts_display_name_rate_changes",
+      "breakpoints": true
     }
   ]
 }

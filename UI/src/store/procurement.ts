@@ -15,7 +15,7 @@ export interface ProcurementSlice {
   /** The buyer's own addition to the procurement list - a requisition approved as it is raised. */
   addToProcurementList: (lines: { it: string; qty: number }[], note: string) => Promise<boolean>;
   /** The new draft's id, or null when the server refused - the list needs it to navigate. */
-  createPo: (vendorId: string, picks: { prq: string; line: number; qty: number }[]) => Promise<string | null>;
+  createPo: (vendorId: string, picks: { prq: string; line: number; qty: number; rate?: number }[]) => Promise<string | null>;
   updatePoLine: (poId: string, lineIdx: number, patch: { qty?: number; rate?: number }) => Promise<boolean>;
   removePoLine: (poId: string, lineIdx: number) => Promise<void>;
   setPoVendor: (poId: string, vendorId: string) => Promise<void>;
