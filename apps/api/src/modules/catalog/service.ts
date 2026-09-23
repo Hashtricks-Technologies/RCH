@@ -5,7 +5,7 @@ import type { z } from "zod";
 import type { Changed, CreateItemBodySchema, Item, LocKey, PatchItemBodySchema } from "@rch/contract";
 import {
   checkPhoto, fq, imageNoneMessage, imageOffMenuMessage, imageRetiredMessage,
-  mrpBelowShelfPrice, round3, unauthorisedItemFields, type ItemField,
+  itemCodePrefix, nextItemCode, round3, unauthorisedItemFields, type ItemField,
 } from "@rch/domain";
 import type { Db } from "../../db/client.js";
 import { isForeignKeyViolation, withTransaction } from "../../lib/db.js";
@@ -33,9 +33,11 @@ type Write<T> = { result: T; changed: Changed[]; message: string };
  *  is what they actually need - a per-field list would only repeat what the greyed-out input on
  *  their own screen already showed them. */
 const COMMERCIAL_REFUSAL = "Only the outlet manager changes an item's price, cost or GST - ask them to make that change";
+const DISPLAY_NAME_REFUSAL = "Only the outlet manager sets the name the counters read on the till - ask them to make that change";
 const OPERATIONAL_REFUSAL = "The store, the buyer and the kitchen keep an item's name, group, HSN, reorder level, shelf life and stock-request source - ask one of them";
 /** `active` is the one field every desk but the counter owns, so it never lands in a refusal;
- *  everything else is the manager's or the three desks', and nothing is in neither. */
+ *  everything else is the manager's or the three desks', and nothing is in neither. The display
+ *  name is the manager's too, but it is not a figure, so it has a sentence of its own. */
 const COMMERCIAL: readonly ItemField[] = ["mrp", "cost", "gst"];
 
 // ---- item photos ----
@@ -80,9 +82,16 @@ export function createCatalogService(db: Db, images: ImageStore) {
         let key = slug;
         for (let n = 2; taken.has(key); n += 1) key = `${slug}${n}`;
 
+        // The code is the server's, never the caller's: one past the highest in the type's own
+        // series (`nextItemCode`), read under a lock on that series so two new products of one
+        // type cannot both take the same number. `body.code` is accepted and ignored.
+        const prefix = itemCodePrefix(body.type);
+        await catalogRepo.lockCodeSeries(tx, prefix);
+        const code = nextItemCode(body.type, await catalogRepo.codesLike(tx, prefix));
+
         const at = new Date();
         const row = await catalogRepo.insertItem(tx, {
-          key, code: body.code.trim() || key.toUpperCase(), name, unit: body.unit || "nos",
+          key, code, name, unit: body.unit || "nos",
           type: body.type, grp: body.grp.trim() || "Other", hsn: body.hsn.trim() || "2106",
           gst: body.gst, reorderLevel: round3(body.reorder), cost: body.cost,
           mrp: body.mrp && body.mrp > 0 ? body.mrp : null,
@@ -104,8 +113,8 @@ export function createCatalogService(db: Db, images: ImageStore) {
         return {
           result: { key, item }, changed,
           message: opening > 0
-            ? `${name} added to the catalogue with ${fq(opening, item.u)} ${item.u} at ${locations[body.loc]?.n ?? body.loc}`
-            : `${name} added to the catalogue`,
+            ? `${name} added to the catalogue as ${code} with ${fq(opening, item.u)} ${item.u} at ${locations[body.loc]?.n ?? body.loc}`
+            : `${name} added to the catalogue as ${code}`,
         };
       });
     },
@@ -145,7 +154,8 @@ export function createCatalogService(db: Db, images: ImageStore) {
         const notYours = unauthorisedItemFields(claims.role, keys);
         assertRule(
           notYours.length === 0,
-          notYours.some((f) => COMMERCIAL.includes(f)) ? COMMERCIAL_REFUSAL : OPERATIONAL_REFUSAL,
+          notYours.some((f) => COMMERCIAL.includes(f)) ? COMMERCIAL_REFUSAL
+            : notYours.includes("dn") ? DISPLAY_NAME_REFUSAL : OPERATIONAL_REFUSAL,
         );
 
         const patch: ItemPatch = {};
@@ -160,22 +170,20 @@ export function createCatalogService(db: Db, images: ImageStore) {
           assertRule(!(await catalogRepo.nameTaken(tx, name, it)), `${name} is already in the catalogue`);
           patch.name = name;
         }
+        // A blank box clears it: the counters go back to reading the item's own name.
+        if (body.dn !== undefined) patch.displayName = body.dn.trim() || null;
         if (body.cost !== undefined) {
           assertRule(body.cost > 0, "Cost must be more than zero");
           patch.cost = body.cost;
         }
         if (body.mrp !== undefined) {
           // **There is no clearing door.** An item that carries a printed MRP keeps one: the
-          // number is the system's one hard ceiling (`priceOf`, `PUT /prices/:list/:it`) and the
-          // floor a goods receipt judges a delivery against, and a blanked box would take both
-          // away with nothing on the record to say it happened. A zero is what an empty input
-          // sends, which is exactly why it cannot be the way through - the drawer omits `mrp`
-          // altogether rather than sending one.
+          // number is the till's cap (`priceOf`) and the floor a goods receipt judges a delivery
+          // against, and a blanked box would take both away with nothing on the record to say it
+          // happened. A zero is what an empty input sends, which is exactly why it cannot be the
+          // way through - the drawer omits `mrp` altogether rather than sending one. A list price
+          // above the new number is not refused: the till charges the MRP instead.
           assertRule(body.mrp > 0, "Give the printed MRP a value - an item that carries one keeps it");
-          const prices = await catalogRepo.pricesOf(tx, it);
-          const shelf = prices.reduce((hi, p) => Math.max(hi, p.price), 0);
-          const refusal = mrpBelowShelfPrice(name, body.mrp, shelf);
-          assertRule(!refusal, refusal ?? "");
           patch.mrp = body.mrp;
         }
         if (body.gst !== undefined) patch.gst = body.gst;
@@ -305,8 +313,8 @@ export function createCatalogService(db: Db, images: ImageStore) {
       return photo ? { found: true, photo } : { found: false, missingObject: true };
     },
 
-    /** MRP is a hard ceiling: a priced item that also carries an MRP can never be
-     *  sold above the number printed on its own pack. */
+    /** A list price may sit above an item's printed MRP; the till caps the charge at the MRP
+     *  (`priceOf`), so what is saved here never decides what a customer pays above it. */
     async savePrice(list: string, it: string, price: number): Promise<Write<{ list: string; it: string; price: number }>> {
       return withTransaction(db, async (tx) => {
         const item = (await loadItems(tx))[it];
@@ -315,8 +323,7 @@ export function createCatalogService(db: Db, images: ImageStore) {
         // `null` where this list has never priced the item: the upsert below inserts rather than changes.
         const prior = (await catalogRepo.pricesOf(tx, it)).find((p) => p.list === list);
         auditBefore({ list, it, price: prior?.price ?? null });
-        assertRule(!(item.mrp != null && price > item.mrp), `Refused - printed MRP of ₹${item.mrp} is a hard ceiling for ${item.n}`);
-        // The check above ran unlocked; a list deleted between it and this insert - legal, since
+        // The existence check above ran unlocked; a list deleted between it and this insert - legal, since
         // a list stays editable whether or not it is active anywhere - surfaces as this same
         // foreign-key violation, caught the way `deleteUserTx` catches its own race.
         try {

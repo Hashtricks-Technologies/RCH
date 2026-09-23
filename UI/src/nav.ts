@@ -3,6 +3,14 @@ import type { Role } from "./types";
 export interface NavItem { k: string; label: string; icon: string }
 export interface NavGroup { group: string; items: NavItem[] }
 
+/**
+ * The manager's Product On / Off screen (`avail`), hidden, not deleted. A manager has one on/off,
+ * the Prices grid's switch (sold at this counter); a second screen answering the same question
+ * was two doors to one decision. The screen and its route stay - flip this to bring it back under
+ * the same sidebar entry. The counter's and the kitchen's own switches are untouched.
+ */
+export const AVAILABILITY_SCREEN_ENABLED = false;
+
 export const NAV: Record<Role, NavGroup[]> = {
   counter: [
     { group: "Overview", items: [{ k: "dash", label: "Dashboard", icon: "dash" }] },
@@ -22,8 +30,8 @@ export const NAV: Record<Role, NavGroup[]> = {
     { group: "Outlets", items: [
       { k: "stock", label: "Items & Stock", icon: "item" },
       { k: "menu", label: "Menu Management", icon: "order" },
-      { k: "prices", label: "Price Lists", icon: "price" },
-      { k: "avail", label: "Product On / Off", icon: "power" },
+      { k: "prices", label: "Prices", icon: "price" },
+      ...(AVAILABILITY_SCREEN_ENABLED ? [{ k: "avail", label: "Product On / Off", icon: "power" }] : []),
       // ---- bill void: the manager had no way to see a bill at all, and voiding one is the
       // manager's own door. Every outlet's bills, which is the difference from the counter's.
       { k: "bills", label: "Bills", icon: "bill" },

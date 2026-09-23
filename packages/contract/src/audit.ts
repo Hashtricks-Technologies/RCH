@@ -46,6 +46,7 @@ export const AUDIT_LABELS: Record<AuditAction, AuditLabel> = {
   // ---- the register. Closing the day is an accountable act: the Z number, who took it and when
   // are the whole point of the series, so it is labelled like any other write.
   closeRegister:          { label: "Closed the register and took a Z-report", refused: "Failed to close the register", group: "sales" },
+  closeShift:             { label: "Closed their shift", refused: "Failed to close their shift", group: "sales" },
   // ---- sales
   pay:                    { label: "Posted a bill", group: "sales" },
   voidBill:               { label: "Voided a bill", group: "sales" },
@@ -99,6 +100,7 @@ export const AUDIT_LABELS: Record<AuditAction, AuditLabel> = {
   createPriceList:        { label: "Created a price list", group: "master" },
   deletePriceList:        { label: "Deleted a price list", group: "master" },
   setOutletPriceList:     { label: "Switched an outlet's price list", group: "master" },
+  saveOutletPrices:       { label: "Saved counter prices", group: "master" },
   addMenuItem:            { label: "Added an item to a menu", group: "master" },
   removeMenuItem:         { label: "Removed an item from a menu", group: "master" },
   addVendor:              { label: "Added a vendor", group: "master" },

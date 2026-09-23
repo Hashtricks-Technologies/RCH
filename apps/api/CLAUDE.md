@@ -112,7 +112,9 @@ holding a shelf.
 
 For a uniqueness rule, the insert (or update) decides; a pre-check only gives the sentence. `vendors_name_ci_uq`,
 `rate_contracts_live_uq`, `items_name_ci_uq` and the `payers` primary key `(kind, id)` all work this way.
-`catalog.createItem` also takes a `pg_advisory_xact_lock` on the item's slug.
+`catalog.createItem` also takes a `pg_advisory_xact_lock` on the item's slug, and a second one on its
+type's code series (`item-code:<prefix>`) before it reads the highest code there: `items.code` has no
+unique index, so that lock is the whole guarantee two new products of one type never share a code.
 
 ## What a party is charged, and what they owe
 
@@ -160,11 +162,55 @@ void is about to invalidate.
   and no `session_id` - a balance is the hospital's, not one counter's - so a payment keyed at one
   desk also appears on another outlet's Z if both were open. Narrowing it needs a column.
 
+## Shifts
+
+`lib/shifts.ts` owns a counter operator's shift, because two modules move it: `modules/auth`'s `login` calls
+`startShift` for a `counter` account (keep the open shift at this counter, else auto-close the one elsewhere
+and open one here), and `modules/shifts` serves the live report (`GET /shifts/current`), Close Shift
+(`POST /shifts/close`) and the list (`GET /shifts`).
+
+- **Every shift write takes `lockShiftsOf(tx, userId)` first**, an advisory lock on the person, in the
+  documents tier before the `shift` id. Two racing sign-ins would otherwise both read "nothing open" and the
+  loser would die on `shifts_one_open_per_user` as a 500 at the sign-in screen.
+- **The window is a clock, not a foreign key**: that operator's bills at that counter with `at` between
+  `opened_at` and the close. A bill carries its register session but no shift, and `pos` takes no shift lock.
+- **A closed shift's figures are stored on `closed_totals`** (with `auto`), for the reason a Z's are, and the
+  list reads them back rather than re-deriving them.
+- **Close takes no `lockLocation`** and refuses (422) with no open shift, or one open at another counter than
+  the session's. It announces `shifts`; so does a sign-in that auto-closed one.
+- **`GET /shifts` is `access: "any"`**: a manager reads every outlet's (`loc` narrows), a counter its own,
+  every other desk `[]` without a query - the `/receivables` reasoning, since a close announces to every tab.
+- **`deleteUserTx` deletes the account's shifts** with its sessions. A shift is a sign-in record, not history;
+  one that billed anything is still guarded by `bills.operator_id`'s own foreign key.
+
+## Rate contracts and a purchase order's rate
+
+`lib/contract-rates.ts` is the one place a contract's rate moves on account of an order, and the one writer of
+`rate_contract_changes`. `createPo` reads each pick's optional `rate` (the first given per item; zero is refused)
+and `updateLine` a `PATCH`'s `rate`; both call `lockLiveContracts` - the vendor's active, in-window contracts for
+those items, `for update`, ascending id - then `syncContractRates`, which moves each one whose rate differs and
+logs the change against the order. In `createPo` the contract lock is taken after the requisitions and before
+`allocateId`; in `updateLine` after the order's row (and, when a quantity moves, the requisitions). A write that
+moved a contract adds `contracts` to `changed` and appends `contract RC-… now ₹new (was ₹old)` to its sentence.
+`contracts.patch` calls `logRateChange` itself when the rate actually moves (no order id). The vendor move on
+`PATCH /purchase-orders/:id` re-prices lines from the new vendor's contracts and moves no contract.
+`readRateChanges` puts the trail on each wire contract as `changes`, oldest first, omitted when empty.
+
 ## Price lists
 
 `modules/pricelists/` owns the entity itself - create, delete (only once unattached) and switching an
-outlet's active list. `modules/catalog` keeps `savePrice`, which edits a list's own item→price rows and
-never depends on which outlet (if any) it is active for.
+outlet's active list - and the manager's counter price grid, `saveOutletPrices` (`PUT /outlet-prices`). The
+grid is the only one of these the UI shows today (`PRICE_LISTS_ENABLED` is off); the other three stay mounted.
+
+**`saveOutletPrices` is copy-on-write.** It locks every outlet it names `FOR UPDATE` (sorted; it may move the
+row onto a new list), then every list an outlet it reprices is on (`head`, sorted), then allocates any new
+list id - documents before ids. An outlet on no list gets a new one; an outlet on a list another outlet
+shares gets a clone of it, and the last one left keeps the original. Prices are then upserted onto each
+outlet's own list and menu rows inserted or deleted. It writes one `auditBefore` of every cell as it stood,
+and announces `prices`/`menu`, plus `priceLists`/`locations` when a list was made. `modules/catalog` keeps `savePrice`, which edits a list's own item→price rows and
+never depends on which outlet (if any) it is active for. Neither refuses a price above the printed MRP, and
+`PATCH /items/:it` does not refuse an MRP below a list price: the cap is the till's alone (`priceOf`, applied by
+`POST /bills`).
 
 **`cloneFrom` on `POST /price-lists` is optional.** Named, the new list is a copy of that outlet's current
 active list and the source has to be an outlet that is actually on one. Absent, it starts empty. That is not
@@ -196,8 +242,8 @@ same violation.
   forward (`greatest(next, max(id)+1)`), so a deleted account's id is never reused and its unexpired access
   token can never resolve to someone else. The CLI's `create` still accepts an explicit `--emp`.
 - **`DELETE /admin/users/:id` removes only an account with no history.** The service refuses the caller's own
-  account, a super admin, and an active account. `deleteUserTx` then drops the account's `refresh_tokens` and
-  `idempotency_keys` and deletes the row. Every other reference to `users` has no `ON DELETE`, so Postgres's
+  account, a super admin, and an active account. `deleteUserTx` then drops the account's `refresh_tokens`,
+  `idempotency_keys` and `shifts` and deletes the row. Every other reference to `users` has no `ON DELETE`, so Postgres's
   foreign-key refusal (`isForeignKeyViolation`, 23503) is the rule, and becomes a `RuleError`. Don't enumerate
   tables there: a new table that references `users` is covered by its own foreign key. Audit events are not
   history in this sense: `audit.events.actor_id` has no foreign key, so they never block a delete.
@@ -249,7 +295,8 @@ Two reads split deliberately:
 
 The snapshot redacts by role:
 
-- `store`, `prod` and `buyer` get bills with `payer` stripped and an empty roster.
+- `store`, `prod` and `buyer` get bills with `payer`, `customerName` and `customerPhone` stripped, and an
+  empty roster.
 - A ticket's OTP reaches only a caller at the ticket's `to` location, while the ticket is `Issued`, whose role
   is `counter`, `prod` or `store`.
 - A write's own response always carries `otp: ""`.

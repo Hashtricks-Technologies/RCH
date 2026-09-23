@@ -4,7 +4,7 @@ import { setAccessToken } from "../api/session";
 import { hydrateMaster, hydrateRoster, hydrateTerms } from "../data/master";
 import { basePrices } from "../lib/selectors";
 import { initialAudit } from "../store/audit";
-import type { AdjustmentRequest, Role } from "../types";
+import type { AdjustmentRequest, Contract, Role } from "../types";
 
 export const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v));
 
@@ -103,7 +103,8 @@ export function resetStore() {
     po: clone(FX.seedPo).map(doc), pord: clone(FX.seedPord).map(doc), batch: clone(FX.seedBatch).map(dated),
     bills: clone(FX.seedBills).map((b) => ({ ...b, iso: isoOf(now, b.t) })),
     grn: clone(FX.seedGrn).map(dated), vendors: clone(FX.seedVendors), sales: clone(FX.seedSales), dayLabels: FX.DAY_LABELS,
-    contracts: FX.seedContracts(), productReqs: FX.seedProductRequests().map(dated), shopAsks: FX.seedShopAsks().map(dated),
+    // No seeded contract has moved its rate, so none carries a `changes` trail to stamp.
+    contracts: FX.seedContracts() as Contract[], productReqs: FX.seedProductRequests().map(dated), shopAsks: FX.seedShopAsks().map(dated),
     tickets: FX.seedTickets().map(dated),
     // ---- adjustments: nothing has ever been written off in the demo hospital, so the register
     // starts empty - the same shape the fixtures give quarantine's shelf.

@@ -6,7 +6,8 @@ import { bestBeforeAt } from "@rch/domain";
 import { IT, LOC, homeLabel } from "../data/master";
 import { NAV, canSee } from "../nav";
 import { useApp, type AppState } from "../store";
-import { activeItems, availOf, isTicketOpen, menuOf, openOutlets, procurementList, qty } from "../lib/selectors";
+import { isToday, money0 } from "../lib/fmt";
+import { activeItems, availOf, isTicketOpen, locName, menuOf, openOutlets, procurementList, qty } from "../lib/selectors";
 import type { LocKey, Role } from "../types";
 import { useStreamState, type StreamState } from "../api/events";
 import { Avatar, Icon, Pill, SearchIcon, Tag, ThemeButton, Tip } from "./kit";
@@ -14,6 +15,7 @@ import { applyPrefs, readPrefs, usePhoto } from "./prefs";
 import { markSeen, useSeen } from "./seen";
 import Drawer from "./Drawer";
 import ErrorBoundary from "./ErrorBoundary";
+import CloseShift from "./CloseShift";
 import mark from "../assets/eateszy-mark.png";
 
 /** What the header's dot says, per stream state. The colour is inline rather than a class
@@ -46,6 +48,11 @@ export default function Shell({ children }: { children: ReactNode }) {
     return () => clearInterval(id);
   }, []);
   const queues = navQueues(state);
+  // ---- shifts: the manager's bell names the latest hand-over, so the list is read as the shell
+  // mounts rather than when the Register screen happens to be opened.
+  const loadShifts = useApp((s) => s.loadShifts);
+  const manager = user.r === "manager";
+  useEffect(() => { if (manager) void loadShifts(); }, [manager, loadShifts]);
   // Where this account may work. One is the ordinary case and nothing about the header changes
   // for it; more than one earns the switcher below.
   const photo = usePhoto();
@@ -86,6 +93,8 @@ export default function Shell({ children }: { children: ReactNode }) {
           ))}
         </nav>
         <div className="sf">
+          {/* A counter operator's shift ends here: the live report, the close, and a sign-out. */}
+          {user.r === "counter" && <div style={{ marginBottom: 8 }}><CloseShift wide /></div>}
           {/* Navigate once the token and the cookie are actually gone, or the
               guard on /login bounces straight back to the screen just left. */}
           <button className="su" type="button" onClick={() => { void logout().then(() => nav("/login")); }}>
@@ -124,7 +133,7 @@ export default function Shell({ children }: { children: ReactNode }) {
           {/* Nothing is shown while the stream is live: a badge that is always there stops being read. */}
           {live === "reconnecting" && <Pill tone="wn">Reconnecting</Pill>}
           <ThemeButton />
-          <Bell uid={user.id} queues={queues} />
+          <Bell uid={user.id} queues={queues} detail={bellDetail(state)} />
           <button className="avb" type="button" onClick={() => nav("/settings")}>
             <Avatar name={user.n} color={user.col} size={26} src={photo} />
             <span className="nmx"><b>{user.n.split(" ")[0]}</b><span>{user.rl}</span></span>
@@ -241,8 +250,9 @@ function Search() {
 /* ---------- notifications (P4) ---------- */
 /** A row is read once it has been opened, and stays read until a document it has not shown
  *  joins its queue. A read row is still listed, under Earlier - the queue has not gone anywhere. */
-function Bell({ uid, queues }: { uid: string; queues: Record<string, string[]> }) {
+function Bell({ uid, queues, detail }: { uid: string; queues: Record<string, string[]>; detail: Record<string, string> }) {
   const nav = useNavigate();
+  const role = useApp((s) => s.user?.r);
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement>(null);
   const close = useCallback(() => setOpen(false), []);
@@ -261,8 +271,8 @@ function Bell({ uid, queues }: { uid: string; queues: Record<string, string[]> }
 
   const row = (r: (typeof rows)[number]) => (
     <button key={r.k} type="button" role="menuitem" className={`po${r.fresh ? " nw" : ""}`}
-      onClick={() => { markSeen(uid, r.k, r.docs); setOpen(false); nav("/" + r.k); }}>
-      <span className="pb"><b>{NOTE[r.k][0]}</b><span>{NOTE[r.k][1]}</span></span>
+      onClick={() => { markSeen(uid, r.k, r.docs); setOpen(false); nav("/" + ((role && GOES_TO_FOR[role]?.[r.k]) ?? GOES_TO[r.k] ?? r.k)); }}>
+      <span className="pb"><b>{NOTE[r.k][0]}</b><span>{detail[r.k] ?? NOTE[r.k][1]}</span></span>
       <span className="pn">{r.fresh && r.fresh < r.docs.length ? `${r.fresh} new · ${r.docs.length}` : r.docs.length}</span>
     </button>
   );
@@ -309,7 +319,22 @@ const NOTE: Record<string, [string, string]> = {
   inventory: ["Items below reorder", "Under the central store's reorder level"],
   stock: ["Items below reorder", "Under the central store's reorder level"],
   dash: ["Batches nearing best-before", "Made recently, due within the next 2 hours"],
+  shifts: ["Shifts closed today", "Counter hand-overs, on the Register screen"],
 };
+
+/** A bell row whose queue is not a sidebar entry of its own opens this screen instead. Keeping
+ *  the key off the sidebar keeps a closed shift - news, not work - from counting on a badge. */
+const GOES_TO: Record<string, string> = { shifts: "register" };
+/** Per role, where a queue opens when that role has no screen of the queue's own name: a counter's
+ *  products-off row opens its till, where each tile says why it cannot be sold. */
+const GOES_TO_FOR: Partial<Record<Role, Record<string, string>>> = { counter: { avail: "pos" } };
+
+/** A row's live second line, where the newest document says more than the queue's description:
+ *  the manager reads who closed a shift, where, and for how much. */
+function bellDetail(s: AppState): Record<string, string> {
+  const last = s.user?.r === "manager" ? s.shifts.find((r) => r.closedAt && isToday(r.closedAt)) : undefined;
+  return last ? { shifts: `${last.operator} closed their shift at ${locName(last.loc)} · ${money0(last.totals.nettSales)}` } : {};
+}
 
 /* ---------- search index ---------- */
 interface Hit { id: string; to: string; t: string; s: string; kind: string }
@@ -402,7 +427,8 @@ function navQueues(s: AppState): Record<string, string[]> {
   }
   if (u.r === "manager") {
     c.approvals = ids(s.req.filter((r) => r.st === "Request sent"));
-    c.avail = openOutlets().flatMap((l) => offItems(s, l).map((it) => `${l}:${it}`));
+    c.shifts = ids(s.shifts.filter((r) => r.closedAt && isToday(r.closedAt)));
+    if (canSee("manager", "avail")) c.avail = openOutlets().flatMap((l) => offItems(s, l).map((it) => `${l}:${it}`));
   }
   if (u.r === "store") {
     c.issue = [

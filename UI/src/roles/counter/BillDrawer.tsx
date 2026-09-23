@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { counterName } from "@rch/domain";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
 import { fromWireDay, money } from "../../lib/fmt";
@@ -63,6 +64,9 @@ function BillSlip({ bill }: { bill: Dated<Bill> }) {
         </tbody>
       </table>
       <div>Paid by {bill.pay}{bill.payer ? ` · posted to ${bill.payer.name} (${bill.payer.id})` : ""}</div>
+      {(bill.customerName || bill.customerPhone) && (
+        <div>Customer {[bill.customerName, bill.customerPhone].filter(Boolean).join(" · ")}</div>
+      )}
       <div className="print-only">
         GSTIN 33AACCR1234F1ZP · computer generated from terminal {L?.c ?? bill.loc} · prices are GST inclusive
       </div>
@@ -79,6 +83,8 @@ function BillDrawer({ id }: DrawerProps) {
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
   const bill = bills.find((b) => b.no === id);
+  // The counter reads its own till's names on screen; the manager and the paper read the real one.
+  const nameOf = (it: string) => (IT[it] ? (user?.r === "counter" ? counterName(IT[it]) : IT[it].n) : it);
 
   if (!bill) {
     return (
@@ -150,6 +156,8 @@ function BillDrawer({ id }: DrawerProps) {
         <dt>Time</dt><dd className="mono">{bill.t}</dd>
         <dt>Tender</dt><dd>{bill.pay}</dd>
         {bill.payer && <><dt>Posted to</dt><dd>{bill.payer.name} <span className="mini mono">({bill.payer.id})</span></dd></>}
+        {bill.customerName && <><dt>Customer</dt><dd>{bill.customerName}</dd></>}
+        {bill.customerPhone && <><dt>Phone</dt><dd className="mono">{bill.customerPhone}</dd></>}
       </dl>
 
       <Section title="Items on this bill" sub={`${bill.lines.length} item${bill.lines.length === 1 ? "" : "s"} · rates are GST inclusive`} />
@@ -165,7 +173,7 @@ function BillDrawer({ id }: DrawerProps) {
         rows={bill.lines.map((l) => ({
           key: l.it,
           cells: [
-            IT[l.it]?.n ?? l.it,
+            nameOf(l.it),
             <span className="mono">{IT[l.it]?.c ?? "-"}</span>,
             l.qty,
             money(l.rate),

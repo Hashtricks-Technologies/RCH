@@ -125,7 +125,9 @@ a{color:var(--accent);text-decoration:none}
  #app.on.sc{grid-template-columns:minmax(0,1fr)}
  #app.on.sc .side{display:none}
  #app.on.sc .burger{display:grid}}
-.side{background:var(--sidebar);border-right:1px solid var(--line);display:flex;flex-direction:column;position:sticky;top:0;height:100vh;overflow:hidden}
+/* `sticky` makes the sidebar its own stacking context, so a Modal raised from it (Close shift) is
+   layered inside it: the z-index lifts the whole sidebar over the page's tiles and headers. */
+.side{background:var(--sidebar);border-right:1px solid var(--line);display:flex;flex-direction:column;position:sticky;top:0;height:100vh;overflow:hidden;z-index:70}
 @media(max-width:999px){.side{position:fixed;left:0;top:0;bottom:0;width:230px;z-index:120;transform:translateX(-100%);transition:transform .2s;box-shadow:var(--sh3)}.side.open{transform:none}}
 .sh{padding:14px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px}
 .sh .sx{margin-left:auto;flex:none}
@@ -626,8 +628,29 @@ thead th .tip{margin-left:4px}
     text-align: left; font-size: 11px }
   .print-slip td.r, .print-slip th.r { text-align: right }
   .print-slip .print-only { margin-top: 8mm; font-size: 11px }
+  /* A shift hand-over is printed from over a page that may carry its own slip (the Register's X
+     or Z). While one is going to paper, `printShiftSlip` marks the body and every other slip
+     steps aside, so the two never print on top of each other. */
+  body.print-shift .print-slip:not(.shift-slip) { display: none !important }
+  /* A collection ticket is a till receipt: one 72 mm column, which an 80 mm roll prints edge to
+     edge and an A4 sheet prints down its left margin. */
+  .print-slip.receipt { width: 72mm; font-size: 11px; line-height: 1.35 }
+  .print-slip.receipt hr { border: 0; border-top: 1px dashed #000; margin: 2mm 0 }
+  .print-slip.receipt .rc-c { text-align: center }
+  .print-slip.receipt .rc-s { font-size: 9px }
+  .print-slip.receipt h2 { margin: 1mm 0; font-size: 18px; text-align: center }
+  .print-slip.receipt dl { display: grid; grid-template-columns: 20mm 1fr; gap: 0.6mm 2mm; margin: 0 }
+  .print-slip.receipt dt { font-weight: 600 }
+  .print-slip.receipt dd { margin: 0 }
+  .print-slip.receipt th, .print-slip.receipt td { padding: 1mm 0.5mm; border-bottom: 1px dashed #000; vertical-align: top }
+  .print-slip.receipt tfoot th { border-bottom: 0 }
+  .print-slip.receipt .rc-otp { margin-top: 4mm; font-size: 10px }
+  .print-slip.receipt .rc-otp b { display: block; font-size: 30px; letter-spacing: 0.25em; margin-top: 1mm }
+  .print-slip.receipt .rc-sign { margin-top: 9mm }
   @page { margin: 12mm }
 }
+.slip-ctl { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap }
+.slip-ctl label { display: inline-flex; align-items: center; gap: 4px; cursor: pointer }
 
 /* ---------- admin dashboard: no Shell, its own chrome ---------- */
 #admin-dash{min-height:100%;background:var(--ground)}
@@ -666,3 +689,12 @@ td.aud-two small{display:block;font-weight:400;font-size:10.5px;color:var(--ink-
    popover (`.pw`/`.pop`/`.po`) on the same plate as the `.org` badge beside it, made pressable. */
 .lgpick-list.lgpick-here{position:static;margin-bottom:0;max-height:min(300px,46vh)}
 .lgpick-list.lgpick-here:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+/* the manager's counter price grid (roles/manager/CounterPrices.tsx) */
+.cp-cell{padding:4px 6px;border-radius:6px;border:1px solid transparent}
+.cp-cell .hint{margin-top:3px}
+.cp-row{display:flex;align-items:center;gap:8px}
+.cp-row input{min-width:70px}
+.cp-unpriced{background:var(--warn-soft);border-color:var(--warn-line)}
+.cp-changed{background:var(--accent-soft);border-color:var(--accent-line)}
+.cp-bar{position:sticky;bottom:0;z-index:5;display:flex;align-items:center;gap:12px;margin-top:14px;padding:10px 14px;
+ background:var(--surface);border:1px solid var(--line-strong);border-radius:var(--rl);box-shadow:var(--sh2);font-size:13px}

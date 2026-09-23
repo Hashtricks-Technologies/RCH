@@ -14,7 +14,10 @@ export type IdKind =
   | "price_list"
   // ---- settlements: what somebody paid against what they owe. A numbered document, because a
   // payment nobody can name is a payment nobody can dispute.
-  | "settlement";
+  | "settlement"
+  // ---- shifts: one counter operator's stint at one counter, opened by their sign-in there and
+  // closed by Close Shift. Numbered so the manager's list and a printed hand-over name the same one.
+  | "shift";
 
 const pad = (n: number, w: number) => String(n).padStart(w, "0");
 const ymd = (d: Date) => {
@@ -54,6 +57,8 @@ export function formatId(kind: IdKind, n: number, at: Date = new Date()): string
     // ---- the register. Padded to four like `adj` and `settlement`, and carrying the year, so a
     // Z number read out over the phone says which year's books it belongs to.
     case "z_report":    return `Z-${year(at)}-${pad(n, 4)}`;
+    // ---- shifts. Padded to four for the same reason as `adj`.
+    case "shift":       return `SH-${year(at)}-${pad(n, 4)}`;
   }
 }
 
@@ -118,4 +123,6 @@ export const SEQUENCE_START: Record<IdKind, number> = {
   settlement: 1,
   // ---- the register: no day has ever been closed in this system, so the series starts at one.
   z_report: 1,
+  // ---- shifts: nobody has ever closed one, so the series starts at one.
+  shift: 1,
 };

@@ -62,7 +62,7 @@ export default function Prices() {
    *  drawer slot: it is this page's own form, and it closes when the server has taken it. */
   const [creating, setCreating] = useState(false);
   /** Which rows have a write in flight, one key per row. Every one of the buttons on this
-   *  screen posts, and every one of them can be refused - an MRP ceiling, a product another
+   *  screen posts, and every one of them can be refused - a closed outlet, a product another
    *  manager has just dropped - so none of them may clear what was typed or picked until the
    *  server has actually taken it, and none may be pressed twice while it decides. */
   const [busy, setBusy] = useState<Record<string, boolean>>({});
@@ -307,8 +307,7 @@ export default function Prices() {
     lock(`save:${it}`, true);
     const ok = await savePrice(list, it, v);
     lock(`save:${it}`, false);
-    // Refused - an MRP ceiling, most often. The number the manager typed stays in the box so
-    // it can be corrected, rather than snapping back to the price that is still in force.
+    // Refused - the number the manager typed stays in the box so it can be corrected, rather than snapping back to the price that is still in force.
     if (ok) setEdit((e) => { const n = { ...e }; delete n[it]; return n; });
   };
   const drops = async (it: string) => {
@@ -399,7 +398,7 @@ export default function Prices() {
               { h: "Cost", r: true, sort: "cost" },
               // The one figure that decides whether a price can be saved at all, printed beside
               // the box it caps rather than left behind a tooltip on the row's input.
-              { h: "MRP", r: true, sort: "mrp", tip: "The price printed on the pack. No list may charge above it." },
+              { h: "MRP", r: true, sort: "mrp", tip: "The price printed on the pack. No till charges above it." },
               { h: "Listed price", r: true, sort: "listed" },
               { h: "Charged price", r: true, sort: "charged" },
               { h: "Margin %", r: true, sort: "margin" },
@@ -409,8 +408,8 @@ export default function Prices() {
               const pr = priceOf(s, shop, it);
               const cost = costOf(it);
               const mrp = IT[it]?.mrp;
-              // What is in the box right now, not what is saved: the warning has to appear while
-              // the manager is typing the number, not after the server has turned it away.
+              // What is in the box right now, not what is saved: the note appears while the
+              // manager is typing the number, not after the till has charged the MRP instead.
               const typed = Number(edit[it] ?? pr.listed);
               const over = mrp != null && Number.isFinite(typed) && typed > mrp ? mrp : null;
               return {
@@ -440,7 +439,7 @@ export default function Prices() {
                         aria-label={`New price for ${IT[it]?.n ?? it}`}
                       />
                       <Tip label={`New price for ${IT[it]?.n ?? it}`} text={mrp != null
-                        ? <>Printed MRP ₹{mrp} is a hard ceiling - a higher price is refused.</>
+                        ? <>Printed MRP ₹{mrp} - a higher price saves, but the till charges the MRP.</>
                         : <>No printed MRP on this item; price it against a cost of {money(cost)}.</>} />
                       <Btn size="xs" disabled={busy[`save:${it}`]} onClick={() => void save(it)}>
                         {busy[`save:${it}`] ? "Saving…" : "Save"}
@@ -456,13 +455,7 @@ export default function Prices() {
                         <Btn size="xs" variant="dg" onClick={() => setDrop(it)}>Remove</Btn>
                       )}
                     </div>
-                    {/* Visible, not a tooltip: a refusal the manager is one press away from is
-                        something they have to see without asking for it. */}
-                    {over != null && (
-                      <div className="hint" style={{ color: "var(--crit)" }}>
-                        Above the printed MRP of {money(over)} - this will be refused.
-                      </div>
-                    )}
+                    {over != null && <div className="hint">Till charges {money(over)} (MRP)</div>}
                     {drop === it && (
                       <div className="hint" style={{ color: "var(--warn)" }}>
                         Takes it off the {LOC[shop].n} till at once. Add a product puts it back.

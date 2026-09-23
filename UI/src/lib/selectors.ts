@@ -424,6 +424,17 @@ export const hasLeft = (st: TktStatus) => st !== "Cancelled" && !canHandOver(st)
  * filters here instead, in one place. `active` absent means active - a line that predates
  * retiring being possible at all.
  */
+/**
+ * What a **counter's** own screens call an item: the manager's display name where there is one
+ * (`counterName`, `@rch/domain`), the item's name otherwise, the bare key for one the registry
+ * does not hold. Every other desk, every document and every slip print `IT[it].n`.
+ */
+export const counterNameOf = (it: string): string => (IT[it] ? D.counterName(IT[it]) : it);
+/** Whether a typed search (already lower-cased) finds this item by either of its names or its code. */
+export const itemMatches = (it: string, t: string): boolean => {
+  const i = IT[it];
+  return !!i && (i.n.toLowerCase().includes(t) || (i.dn?.toLowerCase().includes(t) ?? false) || i.c.toLowerCase().includes(t));
+};
 export const activeItems = (): string[] => Object.keys(IT).filter((k) => IT[k].active !== false);
 /** Whether this line has been retired - what the master list greys a row on, and the one
  *  condition under which it offers "Restore" instead of "Retire". */

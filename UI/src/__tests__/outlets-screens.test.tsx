@@ -36,13 +36,13 @@ function mount(C: ComponentType) {
 }
 
 describe("an outlet opened after release", () => {
-  it("is a column on the manager's availability board and an outlet whose till the manager can shape", () => {
+  it("is a column on the manager's price grid and an outlet whose till the manager can shape", () => {
     LOC["juice-bar"] = JUICE;
     act(() => {
       as("manager");
       useApp.setState((s) => ({ stock: { ...s.stock, "juice-bar": {} }, menu: { ...s.menu, "juice-bar": [] } }));
     });
-    expect(mount(manager.avail).text()).toContain("Juice Bar");
+    expect(mount(manager.prices).text()).toContain("Juice Bar");
 
     // Menu Management's outlet picker reads the same live location list - a freshly-opened
     // outlet is offered there the moment it exists, with nothing compiled in ahead of it.
@@ -55,7 +55,7 @@ describe("a closed outlet", () => {
   it("is offered nowhere new, but still filters the manager's approvals", () => {
     LOC.kiosk = { ...LOC.kiosk, active: false };
     act(() => { as("manager"); });
-    expect(mount(manager.avail).text()).not.toContain("Snack Kiosk");
+    expect(mount(manager.prices).text()).not.toContain("Snack Kiosk");
     expect(mount(manager.approvals).text()).toContain("Snack Kiosk (closed)");
   });
 });

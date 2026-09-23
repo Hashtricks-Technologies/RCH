@@ -60,6 +60,7 @@ export type TicketMessage = z.infer<typeof D.TicketMessageSchema>;
 export type SupportTicket = z.infer<typeof D.SupportTicketSchema>;
 export type ProductRequest = z.infer<typeof D.ProductRequestSchema>;
 export type RateContract = z.infer<typeof D.RateContractSchema>;
+export type RateChange = z.infer<typeof D.RateChangeSchema>;
 export type ShopAsk = z.infer<typeof D.ShopAskSchema>;
 
 /** The two reports: the store's stock ledger and what a payer still owes - the two figures a
@@ -71,6 +72,9 @@ export type RegisterReport = z.infer<typeof R.RegisterReportSchema>;
 export type RegisterTotals = z.infer<typeof R.RegisterTotalsSchema>;
 export type TenderLine = z.infer<typeof R.TenderLineSchema>;
 export type OldBillLine = z.infer<typeof R.OldBillLineSchema>;
+// ---- shifts
+export type ShiftReport = z.infer<typeof R.ShiftReportSchema>;
+export type ShiftTotals = z.infer<typeof R.ShiftTotalsSchema>;
 export type StockLedgerResponse = z.infer<typeof R.StockLedgerResponseSchema>;
 export type CreditParams = z.infer<typeof R.CreditParamsSchema>;
 export type CreditResponse = z.infer<typeof R.CreditResponseSchema>;

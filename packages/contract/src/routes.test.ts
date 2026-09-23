@@ -15,6 +15,7 @@ const SAMPLES: Record<string, Record<string, unknown>> = {
   addMenuItem: { it: "SKU-1" },
   createPriceList: { name: "Weekend Rates", cloneFrom: "coffee" },
   setOutletPriceList: { listId: "PL-002" },
+  saveOutletPrices: { changes: [{ loc: "coffee", it: "SKU-1", price: 40, listed: true }] },
   createRequest: { lines: [{ it: "SKU-1", qty: 20 }], note: "Counter runs dry by 4pm", urgent: true },
   approveRequest: { appr: [12], note: "Store only holds 12 L." },
   rejectRequest: { note: "Kiosk is overstocked already" },

@@ -238,7 +238,7 @@ export default function Dashboard() {
         </Alert>
       )}
       {offOutlets.length > 0 && (
-        <Alert tone="c" label="OFF" action={<Btn size="xs" variant="gh" onClick={() => nav("/avail")}>Product on / off</Btn>}>
+        <Alert tone="c" label="OFF" action={<Btn size="xs" variant="gh" onClick={() => nav("/prices")}>Prices</Btn>}>
           <b>{offAll.n}</b> product{offAll.n > 1 ? "s" : ""} cannot be billed at{" "}
           {offOutlets.map((r) => r.name).join(", ")} - {why(offAll)}.
         </Alert>

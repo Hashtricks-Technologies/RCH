@@ -2,7 +2,7 @@
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import type { Grn, PoStatus, PurchaseOrder } from "@rch/contract";
 import type { ClaimSrc } from "@rch/domain";
-import { grns, poLines, poLineSources, priceListItems, purchaseOrders, users } from "../../db/schema/index.js";
+import { grns, poLines, poLineSources, purchaseOrders, users } from "../../db/schema/index.js";
 import type { Tx } from "../../lib/db.js";
 import { readHistory } from "../../lib/history.js";
 import { iso } from "../../lib/time.js";
@@ -70,17 +70,6 @@ export const grnRepo = {
       ...(patch.receivedAt ? { receivedAt: patch.receivedAt } : {}),
       ...(patch.shortNote !== undefined ? { shortNote: patch.shortNote } : {}),
     }).where(eq(purchaseOrders.id, id));
-  },
-
-  /** The highest price any list carries for these items, for the printed-MRP check - the same
-   *  ceiling `catalogRepo.pricesOf` reduces to for the item master's own MRP patch, so the two
-   *  doors judge a delivery and an edit by the same shelf price. */
-  async shelfPrices(tx: Tx, itemKeys: readonly string[]): Promise<Record<string, number>> {
-    if (itemKeys.length === 0) return {};
-    const rows = await tx.select({ itemKey: priceListItems.itemKey, price: sql<number>`max(${priceListItems.price})` })
-      .from(priceListItems).where(inArray(priceListItems.itemKey, [...itemKeys]))
-      .groupBy(priceListItems.itemKey);
-    return Object.fromEntries(rows.map((r) => [r.itemKey, Number(r.price)]));
   },
 
   /** Who signed it, for the history row and the receipt's `by`. */

@@ -4,6 +4,7 @@ import Approvals from "./Approvals";
 import ItemsStock from "./ItemsStock";
 import MenuManagement from "./MenuManagement";
 import Prices from "./Prices";
+import CounterPrices from "./CounterPrices";
 import Availability from "./Availability";
 import "./ApprovalDrawer";
 // ---- item patch ----
@@ -29,8 +30,21 @@ import "./StatementDrawer";
 // ---- the register: the same screen the counter reads, scoped to whichever outlet the manager
 // picks. It lives in `ui/` because role folders never import one another.
 import Register from "../../ui/Register";
+import { AVAILABILITY_SCREEN_ENABLED } from "../../nav";
+
+/**
+ * Price lists as the manager once ran them - named lists, cloned, shared between outlets and
+ * switched - are hidden, not deleted. The screen, its drawer and every server route stay; with
+ * this off, the `prices` key opens the counter price grid instead, where each counter is priced
+ * on its own and no list is ever named. Turn it on to bring the old screen back under the same
+ * sidebar entry.
+ */
+const PRICE_LISTS_ENABLED = false;
 
 export const screens: Record<string, ComponentType> = {
   dash: Dashboard, approvals: Approvals, stock: ItemsStock, menu: MenuManagement,
-  prices: Prices, avail: Availability, bills: Bills, credit: Credit, register: Register,
+  prices: PRICE_LISTS_ENABLED ? Prices : CounterPrices, bills: Bills, credit: Credit, register: Register,
+  // Hidden with its sidebar entry (`AVAILABILITY_SCREEN_ENABLED` in `nav.ts`): the Prices grid's
+  // switch is the manager's one on/off.
+  ...(AVAILABILITY_SCREEN_ENABLED ? { avail: Availability } : {}),
 };

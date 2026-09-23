@@ -13,7 +13,7 @@ kinds of product move through them:
 
 | Class | Examples | Price authority |
 |---|---|---|
-| **Traded (MRP)** | Bottled juice, water, biscuits, chips | The printed MRP is a hard ceiling - no price list or approval may exceed it |
+| **Traded (MRP)** | Bottled juice, water, biscuits, chips | The printed MRP caps what the till charges - a list may carry more, a sale never does |
 | **Made in-house** | Puffs, sandwiches, salad, cappuccino, tea | The hospital sets the price; a costed, approved price list supplies the discipline |
 
 Stock is held per location, and every quantity in the system is the sum of an append-only ledger
@@ -25,14 +25,17 @@ absent from its sidebar and refused on a direct link, with a message saying why.
 
 | Role | Signs in as | Lands on | Owns |
 |---|---|---|---|
-| Counter Operator | Kavitha Raman | Point of Sale | Billing and printing, counter stock, product on/off, raising requests, asking the kitchen for a tray, collecting tickets |
-| Outlet Manager | Ramesh Kumar | Approvals | Approving and trimming counter requests, deciding a counter's adjustment requests, prices across all shops, the on/off master, every outlet's bills and the same-day void, an item's commercial figures, and what each party is charged - the rate card, who owes what, and taking the money |
+| Counter Operator | Kavitha Raman | Point of Sale | Billing and printing, counter stock, product on/off, raising requests, asking the kitchen for a tray, collecting tickets, closing their own shift |
+| Outlet Manager | Ramesh Kumar | Approvals | Approving and trimming counter requests, deciding a counter's adjustment requests, prices and what each till sells across all shops, every outlet's bills and the same-day void, an item's commercial figures, and what each party is charged - the rate card, who owes what, and taking the money |
 | Store Keeper | Suresh Muthu | Issue Desk | Issuing approved stock against a ticket, central-store stock, write-offs and stock counts at any shelf, requisitions to procurement |
 | Kitchen In-charge | Vinoth Prakash | Orders | Accepting orders, making products, distributing to the store and counters |
 | Procurement Officer | Latha Narayanan | Requisitions | Acting on requisitions, raising purchase orders, receiving goods |
 
 The store keeper, the buyer and the kitchen share the operational half of the item master - a
-product's name, group, HSN code and reorder level - while the manager owns its commercial half.
+product's name, group, HSN code and reorder level - while the manager owns its commercial half and
+the display name the counters read on the till ("50/50-5" for "Britannia 50/50"). A new product's
+code is assigned by the server from its type's series (`RM-1xxx`, `PK-2xxx`, `MR-3xxx`, `FG-4xxx`,
+`MT-5xxx`).
 No role may clear a printed MRP, and a product is retired rather than deleted.
 
 **The request chain.** A counter operator raises one multi-line stock request without picking a
@@ -55,7 +58,7 @@ it, hand it over on an OTP and receive it at the counter - with a second browser
 step happen live - and cancel a ticket nobody came for, which puts the stock and the document
 behind it (the request or the production order) back where they stood. And now the whole of
 buying: the store keeper raises a requisition, the buyer approves or trims it (or, with a reason,
-adds items to the procurement list directly), draws a purchase order off the procurement list priced from a live rate contract, sends it to the vendor, and
+adds items to the procurement list directly), draws a purchase order off the procurement list priced from a live rate contract (every rate editable until the order is sent, and a live contract follows the rate the buyer sets, with its history kept), sends it to the vendor, and
 receives it against a delivery note - a rejection at the door lands in a quarantine shelf that
 never sells and never issues, and closing an order short hands the undelivered balance straight
 back onto the procurement list. A second browser follows every step of it live, the same as the
@@ -86,6 +89,15 @@ it already opens from the till - and it replaces the grey placeholder everywhere
 one. And let a counter ask the kitchen to bake something, with a needed-by date, instead of
 waiting for an order nobody could raise.
 
+**One price grid for every counter.** The outlet manager's Prices screen is every sellable item
+against every open outlet: switch an item on or off at a till and type what that counter charges,
+then save the lot at once after typing CONFIRM. A price above the printed MRP saves, but the till
+still charges no more than the MRP; the cell says so. The grid's switch is the manager's one on/off -
+the separate Product On / Off screen is hidden behind a flag (`AVAILABILITY_SCREEN_ENABLED`). A price
+set for one counter never moves another's. Named price lists still exist underneath - each counter
+charges from one of its own - but no screen shows them any more; the old price-list screen is kept
+in the code behind a flag (`PRICE_LISTS_ENABLED`).
+
 **Billing a hospital's own people.** A bill can be posted to a member of staff, a department or a
 consultant, and each is charged differently: the outlet manager sets one discount
 and one credit limit per category, with an exception for the individual on terms of their own. The
@@ -95,6 +107,15 @@ the room the same day. The manager's Credit & Settlements screen lists who owes 
 the oldest open bill is, and recording a payment closes that person's oldest bills first and
 records exactly which ones - refusing anything over the balance, and voidable on the day it was
 taken.
+
+**Shifts, and the hand-over.** A counter operator's shift starts when they sign in at a counter and
+ends when they press **Close Shift**: a confirmation shows what they billed there since signing in -
+the bills, the amount per tender (cash, UPI, card and each account) and the total - with a Print;
+confirming stores those figures, prints the slip and signs them out, so the next shift starts with a
+fresh sign-in. Signing in at another counter with a shift still open closes that one automatically.
+Nobody counts a drawer on it; the Z still settles the outlet's day. The outlet manager's bell names
+each close ("Kavitha Raman closed their shift at Coffee Shop · ₹4,320"), and a Shift reports card on
+the Register screen lists every closed shift, by outlet, with its slip.
 
 **Live updates.** Every signed-in browser holds one connection to the server's change stream, so a
 request raised at the Coffee Shop appears on the manager's approvals screen without a reload - and
@@ -287,7 +308,7 @@ work onto the server and deleted its in-browser path, so nothing ever ran in two
 | Phase | Scope | Exit check it was gated on |
 |---|---|---|
 | 1 · Foundation | The monorepo, the contract and domain packages, the API skeleton, the database schema and seed, real sign-in, and `GET /snapshot` - the browser stops inventing its own data | Sign in and see the seeded data, `helm upgrade` runs migrations, `/readyz` green, a real `helm install` against a throwaway kind cluster in CI |
-| 2 · Ledger + POS | The movement ledger and balances; counter billing, availability toggles, price lists and menus decided server-side | Sell against the server, balances move, `db:rebuild-balances` matches, the MRP cap refuses and caps, payer rules enforced |
+| 2 · Ledger + POS | The movement ledger and balances; counter billing, availability toggles, price lists and menus decided server-side | Sell against the server, balances move, `db:rebuild-balances` matches, the MRP cap caps the sale, payer rules enforced |
 | 3 · Movement chain | The whole request chain, pick tickets with OTP handover, shop transfers and shop asks, the kitchen's two ticket-raising writes, and the live-update stream | The full request chain across two browsers with live updates and no reload; free-to-promise trims what a manager over-approves; a handover releases the reservation it authorised |
 | 4 · Production | The kitchen's board and its statuses, batches that yield finished stock, and a ticket nobody collected can now be cancelled | A make yields stock in one transaction; a short dispatch is all-or-nothing; a cancelled ticket returns its stock and its document to where they stood |
 | 5 · Procurement | Vendors, rate contracts, requisitions, the purchase-order lifecycle, goods receipt with tolerance and quarantine, new products | A full requisition → PO → GRN → shelf run; the 2% tolerance and the expiry rules both refuse correctly; a cancelled or short-closed order gives its claim back to the requisition |

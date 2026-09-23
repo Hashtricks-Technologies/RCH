@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
-import { avail, daysCover, menuOf, parOf, qty, resv, stateLabel, stateTone } from "../../lib/selectors";
+import { avail, daysCover, menuOf, parOf, qty, resv, stateLabel, stateTone, counterNameOf, itemMatches } from "../../lib/selectors";
 import { fq, money0, U } from "../../lib/fmt";
 import {
   Btn, Card, DataTable, FilterBtn, FilterSelect, ItemImage, PageHead, Pill, StatusPill, TileMenu, Toolbar,
@@ -45,7 +45,7 @@ export default function Stock() {
         low: a <= 0 || (rl > 0 && a < rl), suggested: Math.max(1, Math.ceil(target - a)),
       };
     })
-    .sort((x, y) => (Number(y.low) - Number(x.low)) || IT[x.it].n.localeCompare(IT[y.it].n));
+    .sort((x, y) => (Number(y.low) - Number(x.low)) || counterNameOf(x.it).localeCompare(counterNameOf(y.it)));
 
   const groups = Array.from(new Set(all.map((r) => IT[r.it].g))).sort();
 
@@ -55,7 +55,7 @@ export default function Stock() {
     if (view === "Not stocked" && r.held) return false;
     if (group && IT[r.it].g !== group) return false;
     const t = q.trim().toLowerCase();
-    return !t || IT[r.it].n.toLowerCase().includes(t) || IT[r.it].c.toLowerCase().includes(t)
+    return !t || itemMatches(r.it, t)
       || IT[r.it].g.toLowerCase().includes(t) || IT[r.it].t.toLowerCase().includes(t);
   });
 
@@ -67,7 +67,7 @@ export default function Stock() {
 
   const request = (it: string, n: number) => {
     s.setDraft([...s.draft.filter((l) => l.it !== it), { it, qty: n }]);
-    s.notify(`${IT[it].n} staged on a request from ${L.n}`);
+    s.notify(`${counterNameOf(it)} staged on a request from ${L.n}`);
     nav("/requests");
   };
 
@@ -132,7 +132,7 @@ export default function Stock() {
                   <div className="stkcard-head">
                     <ItemImage it={r.it} size="thumb" />
                     <div className="stkcard-id">
-                      <b title={item.n}>{item.n}</b>
+                      <b title={counterNameOf(r.it)}>{counterNameOf(r.it)}</b>
                       <span className="mini">{item.c} · {item.g}</span>
                     </div>
                     <TileMenu
@@ -213,7 +213,7 @@ export default function Stock() {
             onClick: () => openDrawer("cadjreq", r.id),
             cells: [
               r.id,
-              r.lines.map((l) => IT[l.it]?.n ?? l.it).join(", "),
+              r.lines.map((l) => counterNameOf(l.it)).join(", "),
               r.at,
               <StatusPill status={r.st} />,
             ],

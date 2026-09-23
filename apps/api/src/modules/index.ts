@@ -21,6 +21,8 @@ import support from "./support/routes.js";
 import reports from "./reports/routes.js";
 // ---- the register: the business day is Z-to-Z, and this is what closes it
 import register from "./register/routes.js";
+// ---- shifts: one counter operator's stint at one counter, opened by their sign-in
+import shifts from "./shifts/routes.js";
 // ---- what each party is charged, what they owe, and what settles it
 import receivables from "./receivables/routes.js";
 // ---- adjustments
@@ -53,6 +55,7 @@ export async function registerModules(app: App): Promise<void> {
   await app.register(reports);
   // ---- the register
   await app.register(register);
+  await app.register(shifts);
   await app.register(receivables);
   // ---- adjustments
   await app.register(adjustments);

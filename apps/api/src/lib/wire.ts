@@ -26,7 +26,7 @@ export const toWireUserMin = (u: UserRow): UserMin => ({
 
 export type ItemRow = typeof items.$inferSelect;
 export const toWireItem = (r: ItemRow): Item => strip({
-  c: r.code, n: r.name, u: r.unit, t: r.type, g: r.grp, hsn: r.hsn, gst: r.gst, rl: r.reorderLevel, cost: r.cost,
+  c: r.code, n: r.name, dn: r.displayName ?? undefined, u: r.unit, t: r.type, g: r.grp, hsn: r.hsn, gst: r.gst, rl: r.reorderLevel, cost: r.cost,
   mrp: r.mrp ?? undefined, sl: r.shelfLifeHours ?? undefined,
   // ---- item photos ----
   img: r.image ?? undefined,
@@ -62,6 +62,9 @@ export const toWireBill = (b: BillRow, lines: BillLineRow[], operator: { name: s
   // every bill: a screen asks `if (b.voided)` and a fixture stays equal to what it was.
   voided: b.voidedAt ? true : undefined,
   voidReason: b.voidedAt ? b.voidReason ?? "" : undefined,
+  // ---- the walk-in customer. Dropped by `strip` where nobody typed one.
+  customerName: b.customerName ?? undefined,
+  customerPhone: b.customerPhone ?? undefined,
 });
 
 /** What the operator calls each kind of payer. A thin view on `PARTY_LABEL` (`@rch/domain`),

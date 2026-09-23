@@ -92,3 +92,12 @@ describe("the next employee number", () => {
     expect(nextEmpNo(["RC-00120", "RC-0005"])).toBe("RC-00121");
   });
 });
+
+// ---- shifts
+describe("a shift's number", () => {
+  it("carries the year and four digits, and the series starts at one", () => {
+    expect(formatId("shift", 1, at)).toBe("SH-2026-0001");
+    expect(formatId("shift", 1043, at)).toBe("SH-2026-1043");
+    expect(SEQUENCE_START.shift).toBe(1);
+  });
+});

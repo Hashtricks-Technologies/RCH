@@ -17,8 +17,9 @@ import { createOpsSlice, type OpsSlice } from "./ops";
 import { createAdminSlice, type AdminSlice } from "./admin";
 import { createAuditSlice, type AuditSlice } from "./audit";
 import { createReceivablesSlice, type ReceivablesSlice } from "./receivables";
+import { createShiftsSlice, type ShiftsSlice } from "./shifts";
 
-export interface AppState extends ProcurementSlice, OpsSlice, AdminSlice, AuditSlice, ReceivablesSlice {
+export interface AppState extends ProcurementSlice, OpsSlice, AdminSlice, AuditSlice, ReceivablesSlice, ShiftsSlice {
   user: User | null;
   /** Every counter this account may stand at, from the sign-in response. One entry is the
    *  ordinary case and means no picker is ever shown. `user.loc` is the one it is standing at. */
@@ -102,7 +103,7 @@ export interface AppState extends ProcurementSlice, OpsSlice, AdminSlice, AuditS
    *  moment that read-back fails. A credit-cap refusal must leave the payer and the tender
    *  exactly where the operator put them - the cart is still full, and clearing the form behind
    *  a refusal is how the same bill gets rung up twice. */
-  pay: (loc: LocKey, tender: Tender, payer?: Payer) => Promise<string | null>;
+  pay: (loc: LocKey, tender: Tender, payer?: Payer, customer?: { name: string; phone: string }) => Promise<string | null>;
   // ---- bill void: the manager's door out of a mis-keyed bill, on the day it was billed.
   // Answers `true` only once the server has taken it, so a refusal leaves the typed reason
   // in front of them (the form-carrying pattern).
@@ -181,6 +182,9 @@ export interface AppState extends ProcurementSlice, OpsSlice, AdminSlice, AuditS
    *  it otherwise. */
   deletePriceList: (id: string) => Promise<boolean>;
   setOutletPriceList: (loc: LocKey, listId: string) => Promise<boolean>;
+  /** The counter price grid's one save: every staged cell, all or nothing. `true` only once the
+   *  server has taken the batch, so a refusal leaves every staged edit on the grid. */
+  saveOutletPrices: (changes: { loc: LocKey; it: string; price?: number; listed?: boolean }[]) => Promise<boolean>;
   /** The central store's ledger over a window, from the server's own sum of `stock_moves`.
    *  Answers `null` and toasts when the read fails - never `[]`, which is a real answer meaning
    *  the location carries no line - so the report can say which of the two happened rather than
@@ -430,13 +434,16 @@ export const useApp = create<AppState>((set, get) => ({
    * live on the server now (POST /bills); the cart is cleared only once it has answered, so
    * a refusal leaves the operator's scan exactly as it was.
    */
-  pay: async (loc, tender, payer) => {
+  pay: async (loc, tender, payer, customer) => {
     const s = get();
     const cart = s.cart[loc] ?? {};
     const lines = Object.entries(cart).map(([it, qty]) => ({ it, qty }));
     if (!lines.length || !s.user) return null;
+    // A blank box is no customer: the keys ride only when something was typed.
+    const customerName = customer?.name.trim() || undefined;
+    const customerPhone = customer?.phone.trim() || undefined;
     try {
-      const r = await call(routes.pay, { body: { loc, tender, payer, lines } });
+      const r = await call(routes.pay, { body: { loc, tender, payer, lines, customerName, customerPhone } });
       set((x) => ({ cart: { ...x.cart, [loc]: {} } }));
       get().notify(r.message);
       await refetch(r.changed, r.message);
@@ -723,7 +730,7 @@ export const useApp = create<AppState>((set, get) => ({
     }
   },
 
-  /** The MRP ceiling is the server's to hold (PUT /prices/:list/:it); its refusal is the toast. */
+  /** The server decides (PUT /prices/:list/:it); its refusal is the toast. */
   savePrice: async (list, it, price) => {
     try {
       const r = await call(routes.savePrice, { params: { list, it }, body: { price } });
@@ -790,6 +797,17 @@ export const useApp = create<AppState>((set, get) => ({
       return false;
     }
   },
+  saveOutletPrices: async (changes) => {
+    try {
+      const r = await call(routes.saveOutletPrices, { body: { changes } });
+      get().notify(r.message);
+      await refetch(r.changed, r.message);
+      return true;
+    } catch (e) {
+      get().notify(e instanceof ApiError ? e.message : "Could not save the prices - check the connection and try again.");
+      return false;
+    }
+  },
   /**
    * The two figures the browser cannot compute for itself. Both are reads, not writes, so
    * neither notifies a success nor refetches anything - they answer the caller and nothing else.
@@ -840,6 +858,7 @@ export const useApp = create<AppState>((set, get) => ({
   // ---- audit log: the one slice that takes `set`, because it has no `wire.ts` mapper to write through.
   ...createAuditSlice(set, get),
   ...createReceivablesSlice(set, get),
+  ...createShiftsSlice(set, get),
 }));
 
 // A refresh that fails is the end of the session: drop the user rather than

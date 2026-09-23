@@ -19,7 +19,7 @@ import type { DatedDoc, StockRequest } from "../types";
  *   was chosen from a list of forty in one place and remembered by heart in the other. Both draw
  *   `hsnGroups` now, and the drawer must never fill in a GST rate for a desk that does not own
  *   the box (`ITEM_FIELD_ROLES` gives `hsn` and `gst` to different people).
- * - **MRP.** A hard ceiling that only appeared on hover, on the one screen whose Save it refuses.
+ * - **MRP.** The till's cap only appeared on hover, on the one screen that prices against it.
  * - **Alerts.** One banner per open document, uncapped, on lists nothing bounds.
  */
 
@@ -127,15 +127,16 @@ describe("the printed MRP on the prices screen", () => {
     ui.unmount();
   });
 
-  it("warns on the page, not behind a tooltip, once the typed price is over the ceiling", () => {
+  it("says on the page what the till will charge once the typed price is over the MRP", () => {
     const ui = mount(Prices);
     const box = ui.host.querySelector<HTMLInputElement>('input[aria-label="New price for Real Juice 200ml"]')!;
-    expect(ui.text()).not.toContain("this will be refused");
+    expect(ui.text()).not.toContain("Till charges");
     act(() => { typeIn(box, "25"); });
-    expect(ui.text()).toContain("Above the printed MRP of ₹20.00 - this will be refused.");
-    // Back under the ceiling and the warning goes with it.
+    expect(ui.text()).toContain("Till charges ₹20.00 (MRP)");
+    expect(ui.text()).not.toContain("will be refused");
+    // Back under the MRP and the note goes with it.
     act(() => { typeIn(box, "19"); });
-    expect(ui.text()).not.toContain("this will be refused");
+    expect(ui.text()).not.toContain("Till charges");
     ui.unmount();
   });
 });

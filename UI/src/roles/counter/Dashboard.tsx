@@ -2,11 +2,12 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
-import { availOf, menuOf } from "../../lib/selectors";
+import { availOf, menuOf, counterNameOf } from "../../lib/selectors";
 import { fromWireTime, money, money0, sum, unitTotal } from "../../lib/fmt";
 import {
   Alert, AlertStack, Avatar, Btn, Card, DataTable, Feed, Grid, Kpis, PageHead, StatusPill,
 } from "../../ui/kit";
+import CloseShift from "../../ui/CloseShift";
 import { settlementOf } from "./status";
 import type { RegisterReport, ReqStatus } from "../../types";
 
@@ -123,6 +124,7 @@ export default function Dashboard() {
         title={`${L.n} counter`}
         tip="This session's sales, and the stock behind them, at this counter. The session runs from the last Z to the next one - not from midnight."
         actions={<>
+          <CloseShift />
           <Btn variant="gh" onClick={() => nav("/requests")}>Raise a request</Btn>
           <Btn onClick={() => nav("/pos")}>Open till</Btn>
         </>}
@@ -157,7 +159,7 @@ export default function Dashboard() {
       <AlertStack tone="c" label="OFF">
         {off.map((r) => (
           <Alert key={"off-" + r.it} tone="c" label="OFF">
-            <b>{IT[r.it].n}</b> is not sellable - {r.a.why ?? "unavailable"} ({r.a.mode.toLowerCase()} check).
+            <b>{counterNameOf(r.it)}</b> is not sellable - {r.a.why ?? "unavailable"} ({r.a.mode.toLowerCase()} check).
           </Alert>
         ))}
       </AlertStack>
@@ -258,7 +260,7 @@ export default function Dashboard() {
               rows={top.map(([it, v]) => ({
                 key: it,
                 cells: [
-                  IT[it]?.n ?? it,
+                  counterNameOf(it),
                   <span className="mono">{IT[it]?.c ?? "-"}</span>,
                   v.qty,
                   money(v.amt),

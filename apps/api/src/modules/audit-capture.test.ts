@@ -252,17 +252,18 @@ describe("the event commits with the write or not at all", () => {
 describe("a write that does not succeed leaves one event after its reply", () => {
   it("a rule refusal: refused, with the sentence the operator read", async () => {
     const mark = await lastId();
-    const r = await write("u2", "PUT", "/prices/PL-001/juice", { price: 25 });
+    const r = await write("u2", "PATCH", "/items/juice", { mrp: 0 });
     expect(r.statusCode).toBe(422);
     expect(await eventsSince(mark)).toEqual([{
       at: expect.any(String), requestId: r.headers["x-request-id"],
       actor: { id: "u2", emp: "RC-3120", name: "Ramesh Kumar", role: "Outlet Manager", loc: "rest" },
-      action: "savePrice", method: "PUT", path: "/prices/:list/:it", target: "PL-001:juice", targetLoc: "",
-      outcome: "refused", status: 422, message: "Refused - printed MRP of ₹20 is a hard ceiling for Real Juice 200ml", cause: null,
-      request: { params: { list: "PL-001", it: "juice" }, query: {}, body: { price: 25 } },
-      // savePrice's own auditBefore runs before the MRP check, so a refused edit still carries
-      // the price this list held before the refusal - here, the 19 the earlier case left it at.
-      before: { list: "PL-001", it: "juice", price: 19 }, result: null, changed: [], ip: "127.0.0.1", userAgent: UA,
+      action: "patchItem", method: "PATCH", path: "/items/:it", target: "juice", targetLoc: "",
+      outcome: "refused", status: 422, message: "Give the printed MRP a value - an item that carries one keeps it", cause: null,
+      request: { params: { it: "juice" }, query: {}, body: { mrp: 0 } },
+      // patchItem's own auditBefore runs before the MRP rule, so a refused edit still carries
+      // the item as it stood before the refusal.
+      before: { key: "juice", item: expect.objectContaining({ n: "Real Juice 200ml", mrp: 20 }) },
+      result: null, changed: [], ip: "127.0.0.1", userAgent: UA,
     }]);
   });
 

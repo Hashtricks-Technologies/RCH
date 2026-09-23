@@ -15,7 +15,7 @@ import type { Source } from "../../types";
  *
  * One drawer, four roles. `mayEditItemField` (`@rch/domain`) is the same table the server
  * refuses with, so the boxes this greys out are exactly the ones a patch would be turned away
- * for: the manager owns the printed MRP, the standard cost and the GST rate, and the store, the
+ * for: the manager owns the display name, the printed MRP, the standard cost and the GST rate, and the store, the
  * buyer and the kitchen own the name, the group, the HSN and the reorder level. Nothing is
  * decided here - the MRP floor and whether a line is clear enough to retire are both the
  * server's, and reach the operator as a toast in its words.
@@ -31,6 +31,7 @@ function ItemDrawer({ id }: { id: string }) {
   const item = IT[id];
 
   const [n, setN] = useState(item?.n ?? "");
+  const [dn, setDn] = useState(item?.dn ?? "");
   const [grp, setGrp] = useState(item?.g ?? "");
   const [hsn, setHsn] = useState(item?.hsn ?? "");
   const [rl, setRl] = useState(String(item?.rl ?? 0));
@@ -57,7 +58,7 @@ function ItemDrawer({ id }: { id: string }) {
   const trimmed = n.trim();
   const costN = Number(cost);
   // A blank or non-positive box means "leave the printed MRP as it is", never "clear it": the
-  // number is the one hard ceiling in the system and there is no door that removes it. The
+  // number is the till's cap on every sale and there is no door that removes it. The
   // server refuses `mrp: 0` outright; this is what keeps the drawer from ever sending one.
   const mrpN = Number(mrp);
   const mrpGiven = mrp.trim() !== "" && Number.isFinite(mrpN) && mrpN > 0;
@@ -80,6 +81,8 @@ function ItemDrawer({ id }: { id: string }) {
   const changes = (): ItemFieldPatch => {
     const p: ItemFieldPatch = {};
     if (may("n") && trimmed !== item.n) p.n = trimmed;
+    // A blank box clears it back to the product name, which is what the server stores as none.
+    if (may("dn") && dn.trim() !== (item.dn ?? "")) p.dn = dn.trim();
     if (may("grp") && grp.trim() !== item.g) p.grp = grp.trim();
     if (may("hsn") && hsn.trim() !== item.hsn) p.hsn = hsn.trim();
     if (may("rl") && Number(rl) !== item.rl) p.rl = Number(rl) || 0;
@@ -120,7 +123,7 @@ function ItemDrawer({ id }: { id: string }) {
   return (
     <DrawerFrame
       title={`Edit ${item.n}`}
-      sub={<>{item.c} · {item.t} · {item.u}{retired ? " · retired" : ""}</>}
+      sub={<>{item.c} · {item.t} · {item.u}{item.dn ? ` · counters read "${item.dn}"` : ""}{retired ? " · retired" : ""}</>}
       foot={<>
         <Btn variant="gh" onClick={close}>Cancel</Btn>
         <Btn disabled={!ok || !dirty || busy} tip={dirty ? undefined : "Nothing has changed yet"}
@@ -143,12 +146,18 @@ function ItemDrawer({ id }: { id: string }) {
       )}
 
       <Section title="Identity" tip="The name is what every screen and every document shows." />
-      <FormRow cols="f2">
+      <FormRow cols="f3">
         <Field label="Product name"
           hint={nameErr ? <span style={{ color: "var(--crit)" }}>{nameErr}</span> : undefined}
           tip={may("n") ? "Say what it is, the way the store says it." : "The store, the buyer or the kitchen changes this."}>
           <input value={n} disabled={!may("n")} onChange={(e) => setN(e.target.value)}
             style={nameErr ? { borderColor: "var(--crit)" } : undefined} />
+        </Field>
+        <Field label="Display name"
+          tip={may("dn")
+            ? "What the counters read on the till and their own screens, instead of the product name. Leave it blank to show the product name. Documents and slips always print the product name."
+            : "The outlet manager sets the name the counters read."}>
+          <input value={dn} disabled={!may("dn")} maxLength={60} onChange={(e) => setDn(e.target.value)} placeholder={item.n} />
         </Field>
         <Field label="Group" tip="Groups the picker and the stock tables by.">
           <input value={grp} disabled={!may("grp")} onChange={(e) => setGrp(e.target.value)} />
@@ -214,7 +223,7 @@ function ItemDrawer({ id }: { id: string }) {
         </>
       )}
 
-      <Section title="Cost and printed price" tip="Stock value is read off the cost; the MRP is a hard ceiling on every till." />
+      <Section title="Cost and printed price" tip="Stock value is read off the cost; no till charges more than the MRP." />
       <FormRow cols="f2">
         <Field label={`Cost a unit (₹)`} hint={costErr
           ? <span style={{ color: "var(--crit)" }}>{costErr}</span>
@@ -225,8 +234,8 @@ function ItemDrawer({ id }: { id: string }) {
         </Field>
         <Field label="Printed MRP (₹)" tip={may("mrp")
           ? (item.mrp == null
-            ? "This product carries none. Type the number printed on the pack to give it one - it becomes a hard ceiling at every till."
-            : "Leave the box as it is to keep the current ceiling; emptying it changes nothing. It can never go below a shelf price already set.")
+            ? "This product carries none. Type the number printed on the pack to give it one - no till charges more than it."
+            : "Leave the box as it is to keep the current MRP; emptying it changes nothing. A price list above it still saves - the till charges the MRP.")
           : "The outlet manager changes this."}>
           <input type="number" min={0} step="any" value={mrp} disabled={!may("mrp")}
             onChange={(e) => setMrp(e.target.value)} placeholder="none" />

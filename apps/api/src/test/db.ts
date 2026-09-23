@@ -87,6 +87,8 @@ export async function resetDocuments(db: Db): Promise<void> {
     // reaches it: without this line an open session outlives the reset and the next case's first
     // sale joins the last case's business day.
     "register_sessions",
+    // ---- shifts: nothing points at a shift, so no cascade reaches it either.
+    "shifts",
   ];
   await db.execute(sql.raw(`truncate table ${names.map((n) => `"${n}"`).join(", ")} restart identity cascade`));
   await withTransaction(db, async (tx) => { await seedDocuments(tx); });

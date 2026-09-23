@@ -1,4 +1,4 @@
-import { IT } from "../../data/master";
+import { counterNameOf } from "../../lib/selectors";
 import { useApp } from "../../store";
 import { fq } from "../../lib/fmt";
 import { Card, DataTable, Pill, StatusPill } from "../../ui/kit";
@@ -20,7 +20,7 @@ import type { LocKey, ProdOrder } from "../../types";
  */
 
 const itemText = (o: ProdOrder) =>
-  o.lines.map((l) => `${fq(l.qty, l.it)} × ${IT[l.it]?.n ?? l.it}`).join(" · ");
+  o.lines.map((l) => `${fq(l.qty, l.it)} × ${counterNameOf(l.it)}`).join(" · ");
 /** What is still coming: everything the kitchen has neither sent out nor turned down. */
 const isOpen = (st: ProdOrder["st"]) => st !== "Dispatched" && st !== "Declined";
 

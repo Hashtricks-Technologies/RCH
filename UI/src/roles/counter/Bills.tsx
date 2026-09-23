@@ -37,12 +37,16 @@ export default function Bills() {
     if (settle && settlementOf(b.pay) !== settle) return false;
     const t = q.trim().toLowerCase();
     if (!t) return true;
+    // A phone is matched on its digits, and only when what was typed reads as a number.
+    const digits = /^[+\d\s-]+$/.test(t) ? t.replace(/\D/g, "") : "";
     return b.no.toLowerCase().includes(t)
       || b.opr.toLowerCase().includes(t)
       || b.pay.toLowerCase().includes(t)
       || b.t.includes(t)
       || (b.payer?.name.toLowerCase().includes(t) ?? false)
-      || (b.payer?.id.toLowerCase().includes(t) ?? false);
+      || (b.payer?.id.toLowerCase().includes(t) ?? false)
+      || (b.customerName?.toLowerCase().includes(t) ?? false)
+      || (digits !== "" && (b.customerPhone?.includes(digits) ?? false));
   });
 
   const filtered = Boolean(q || tender || settle);
@@ -65,7 +69,7 @@ export default function Bills() {
       />
       <Card flush>
         <Toolbar
-          placeholder="Search bill number, operator, tender, time or payer…"
+          placeholder="Search bill number, operator, tender, time, payer or customer…"
           value={q}
           onSearch={setQ}
           filters={<>
@@ -113,7 +117,8 @@ export default function Bills() {
                   <span>{b.opr}</span>
                 </div>,
                 sum(b.lines, (l) => l.qty),
-                <>{b.pay}{b.payer && <span className="mini" style={{ display: "block" }}>{b.payer.name}</span>}</>,
+                <>{b.pay}{b.payer && <span className="mini" style={{ display: "block" }}>{b.payer.name}</span>}
+                  {b.customerName && <span className="mini" style={{ display: "block" }}>{b.customerName}</span>}</>,
                 // The net, with what came off it underneath: the till's own list is where a
                 // customer's "but it said ₹20" is answered, and the line rate alone would not.
                 <>{money(b.tot)}{b.disc ? <span className="mini" style={{ display: "block" }}>{b.discPct}% off {money(b.tot + b.disc)}</span> : null}</>,

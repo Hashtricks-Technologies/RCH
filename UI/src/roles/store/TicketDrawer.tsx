@@ -101,7 +101,7 @@ function TicketDrawer({ id }: DrawerProps) {
             {/* The store keeper wants the ticket in his hand at the window, not on the screen
                 behind him. The slip carries the six digits only where this browser has them,
                 which the issuing desk never does. */}
-            <PrintSlipBtn />
+            <PrintSlipBtn t={t} />
           </div>
           <div className="mini mtop">
             From <b>{LOC[t.from].n}</b> ({LOC[t.from].c}) → To <b>{LOC[t.to].n}</b> ({LOC[t.to].c}, {LOC[t.to].floor})

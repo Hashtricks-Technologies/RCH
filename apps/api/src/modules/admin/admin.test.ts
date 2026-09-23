@@ -6,7 +6,7 @@ import { buildTestApp } from "../../test/app.js";
 import { truncateAll, warmPool } from "../../test/db.js";
 import { seedTestDb } from "../../test/seed.js";
 import { authHeaders } from "../../test/auth.js";
-import { locations, users, refreshTokens, userPostings } from "../../db/schema/index.js";
+import { locations, users, refreshTokens, shifts, userPostings } from "../../db/schema/index.js";
 import { createAdminService } from "./service.js";
 import type { AccessClaims } from "../../plugins/auth.js";
 
@@ -269,6 +269,18 @@ describe("DELETE /admin/users/:id", () => {
     expect(log.map((l) => [l.action, l.target])).toEqual([["delete", "Wrong Person"], ["deactivate", "Wrong Person"], ["create", "Wrong Person"]]);
     expect(log[0].details).toEqual({ emp });
   });
+  it("removes an account whose only trace is a shift it signed in to, shift and all", async () => {
+    // Signing in at a counter opens a shift, so a mistaken counter account somebody signed in with
+    // once has a row naming it. That is a sign-in, not history: nothing was billed on it.
+    const { id } = await mistake("Signed In Once");
+    await app.db.insert(shifts).values([
+      { id: "SH-2026-9001", userId: id, loc: "kiosk", closedAt: new Date(), closedTotals: {} },
+      { id: "SH-2026-9002", userId: id, loc: "kiosk" },
+    ]);
+    const res = await del(id);
+    expect(res.statusCode, res.body).toBe(200);
+    expect(await app.db.select().from(shifts).where(eq(shifts.userId, id))).toHaveLength(0);
+  });
   it("never hands a deleted account's id to the next one, even when it held the highest", async () => {
     const gone = await mistake();
     expect((await del(gone.id)).statusCode).toBe(200);
@@ -299,11 +311,14 @@ describe("DELETE /admin/users/:id", () => {
     // Kavitha Raman raised stock requests in the seed, so a row in the hospital's history names her.
     await post("/api/v1/admin/users/u1/deactivate");
     await app.db.insert(refreshTokens).values({ userId: "u1", family: "00000000-0000-4000-8000-000000000012", tokenHash: "h-hist", expiresAt: new Date(Date.now() + 100000) });
+    await app.db.insert(shifts).values({ id: "SH-2026-9003", userId: "u1", loc: "coffee" });
     const res = await del("u1");
     expect(res.statusCode).toBe(422);
     expect(res.json().error.message).toBe("Refused - Kavitha Raman (RC-4471) has records in the hospital's history, so the account can only be deactivated, never deleted");
     expect(await app.db.select().from(users).where(eq(users.id, "u1"))).toHaveLength(1);
     expect(await app.db.select().from(refreshTokens).where(eq(refreshTokens.userId, "u1"))).toHaveLength(1);
+    // The refusal rolls the shift delete back with everything else.
+    expect(await app.db.select().from(shifts).where(eq(shifts.userId, "u1"))).toHaveLength(1);
     const log = (await app.inject({ method: "GET", url: "/api/v1/admin/actions", headers: await admin() })).json() as Array<{ action: string }>;
     expect(log.map((l) => l.action)).not.toContain("delete");
   });

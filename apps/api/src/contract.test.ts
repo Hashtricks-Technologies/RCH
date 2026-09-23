@@ -25,7 +25,10 @@ describe("every GET in the manifest answers with a body its own schema accepts",
   // to a 404 - dropped from a module, or renamed out from under the manifest - fails here.
   for (const [name, r] of gets) {
     it(name, async () => {
-      const headers = r.access === "public" ? {} : await authHeaders(app, "u2");
+      // `currentShift` is the one GET a manager cannot reach - a shift is a counter operator's -
+      // so a counter-only route is probed as u1, the seeded counter.
+      const who = Array.isArray(r.access) && !(r.access as readonly string[]).includes("manager") ? "u1" : "u2";
+      const headers = r.access === "public" ? {} : await authHeaders(app, who);
       const res = await app.inject({ method: "GET", url: API_PREFIX + r.path, headers });
       expect(res.statusCode, res.body).toBe(200);
       const parsed = r.response.safeParse(res.json());

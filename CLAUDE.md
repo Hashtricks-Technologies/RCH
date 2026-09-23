@@ -170,6 +170,13 @@ There are five roles (`counter`, `manager`, `store`, `prod`, `buyer`), each with
   session. The chosen location is stored on the refresh-token row, so a silent refresh
   does not move somebody back to their home counter. Changing an account's postings revokes its
   sessions, because a live token may assert a counter the new list has just removed.
+- **A counter operator's shift starts at sign-in.** `POST /auth/login` opens a `shifts` row (`SH-<year>-<nnnn>`)
+  for a `counter` account at the session's counter, keeps the one already open there, and closes one left
+  open at another counter automatically (its figures stored, marked `auto`). A refresh opens nothing. Close
+  Shift (`POST /shifts/close`) stores that operator's own bills at that counter since the shift opened - per
+  tender, gross, discount, nett, tax and voids, no counted cash - and the UI prints the slip and signs out.
+  The manager reads every closed shift (`GET /shifts`, `access: "any"`, empty for other desks) on the
+  Register screen and the bell. The outlet's X/Z is unchanged: a shift is one person's hours inside it.
 - **Admin** is a boolean on `users`, not a sixth role. It is checked as `access: "admin"`. An admin-flagged
   account sees only the standalone `/admin` page, never an operational shell. The page has five tabs: Accounts
   (staff accounts), Outlets (opens, edits, closes and reopens them), Payers (the register a bill may be posted
@@ -221,13 +228,24 @@ back where it stood.
   ward list nobody types twice. Both `GET /payer-terms` and `GET /receivables` are `access: "any"` and answer
   empty to a caller who never takes a bill, exactly as `GET /roster` does - a manager's write announces to
   every open browser, and a route another role is forbidden would fail that tab's whole refetch.
-- **A price list is a managed entity** (`price_lists`, id + name), not a fixed pair. A manager creates one from
-  the **New price list** button on Prices - copied from an outlet's current active list, or **empty**, which
-  is the only way the first list on a hospital that has never had one gets made (`cloneFrom` is optional) -
-  edits any list at any time whether or not it is active, and switches an outlet onto any list explicitly
-  (`PUT /outlets/:loc/price-list`). Two outlets may still share one active list, exactly as before. A list can
-  be deleted only once no outlet is active on it. A newly opened outlet is on none: the super admin's form has
-  no price list, and the manager attaches one from Prices' Settings panel.
+- **The manager prices each counter on its own, from one grid.** Prices (`prices`) is every active sellable
+  item (MRP, FG, MTO) against every open outlet; each cell is whether that till sells it (its menu listing)
+  and what it charges there. Edits are staged in the browser and saved as one batch, `PUT /outlet-prices`
+  (`{ changes: [{ loc, it, price?, listed? }] }`, at most 500), behind a dialog that lists every change and
+  wants `CONFIRM` typed. The batch is all or nothing: a price of zero, a counter switched on with no price
+  there, a closed outlet, a retired item or a raw/packing item refuses the whole of it. A price above the
+  printed MRP is **not** refused; the cell says what the till will charge instead. The grid's switch is the
+  manager's one on/off: the manager's Product On / Off screen (`avail`) is hidden behind
+  `AVAILABILITY_SCREEN_ENABLED` in `UI/src/nav.ts`. The counter's and the kitchen's own switches stay.
+- **A price list is still the storage, but no screen shows one.** Each outlet charges from its active list
+  (`price_lists`, `locations.price_list_id`), and the till still prices off it (`priceOf`). The grid keeps
+  counters independent by copy-on-write: an outlet it reprices that is on no list gets a new one, and one
+  on a list shared with another outlet gets a private copy (`<outlet> prices`) and is switched onto it
+  before the price lands - the last outlet left on a shared list keeps it. The old list screen
+  (`roles/manager/Prices.tsx`, its `plset` drawer and `NewListDialog`) and its routes (`POST`/`DELETE
+  /price-lists`, `PUT /outlets/:loc/price-list`, `PUT /prices/:list/:it`) are hidden, not deleted:
+  `PRICE_LISTS_ENABLED` in `UI/src/roles/manager/index.tsx` is `false`, and turning it on puts that screen
+  back under the same sidebar entry. A newly opened outlet is on no list until the grid first prices it.
 - `lib/images.ts` is the only code that touches photo bytes (S3 in production, a folder in dev/test).
   `items.image` holds the sha256; `GET /items/:it/image/:hash` is public, outside the manifest like `/events`,
   and serves only the current hash.
@@ -284,9 +302,11 @@ values before it.
 
 The code enforces these and tests pin them. Breaking one is a bug.
 
-- **MRP is a hard ceiling.**
-  - No price list may exceed an item's printed MRP. `PUT /prices` refuses: `Refused - printed MRP of ₹<mrp> is
-    a hard ceiling for <item>`.
+- **The printed MRP caps what the till charges.**
+  - A sale is charged at most the item's printed MRP: `priceOf` in `@rch/domain` caps the listed price, and
+    `POST /bills` prices with it inside the sale's own transaction. Selling above MRP is illegal in India.
+  - A price list may carry a figure above the MRP: `PUT /prices` and `PUT /outlet-prices` save it, and
+    `PATCH /items/:it` may lower an MRP below a list price. Neither changes what a sale charges.
   - An item that carries an MRP keeps one; it can't be cleared to zero.
 - **What a party is charged is the outlet manager's, and the server decides it.** A rate card carries one
   discount and one credit limit per category (`customer`, `staff`, `dept`, `doctor`), with a
@@ -338,10 +358,24 @@ The code enforces these and tests pin them. Breaking one is a bug.
   price-list switch or void, and no staff can be posted to it. A reopen restores it as it was.
 - **An item carries at most one photo**: JPEG, PNG or WebP, at most 700 KB, checked by `checkPhoto` on both
   sides. A retired item takes no new photo.
+- **Item codes are assigned by the server.** `POST /items` ignores any `code` it is sent and gives the
+  next number in the item type's own series (`nextItemCode` in `@rch/domain`: `RM-1xxx` raw, `PK-2xxx`
+  packing, `MR-3xxx` MRP, `FG-4xxx` finished, `MT-5xxx` made-to-order), one past the highest code with
+  that prefix, retired items included, under a per-series advisory lock. The new-product form previews
+  it read-only; the server decides.
+- **An item has at most one display name**, the manager's alone (`dn` in `ITEM_FIELD_ROLES`), set in
+  the item drawer; a blank clears it. It replaces the real name **only on the counter's own screens**
+  (`counterNameOf` in `UI/src/lib/selectors.ts`); every other desk, every document, the printed bill
+  slip and every PDF print the real name. A counter search matches either name.
+- **A counter bill may name its walk-in customer** - an optional name (≤ 80, trimmed) and phone,
+  stored on the bill. The phone is kept as its ten digits (`normalizePhone`), and one that is not a
+  phone is refused with `phoneRefusal`'s sentence. The store, the kitchen and the buyer read bills
+  with both stripped, as they are with the payer.
 - **Employee numbers are assigned by the server**: `nextEmpNo` in `@rch/domain`, one past the highest
   `RC-<digits>`, under the `user` row of `sequences`, which also hands out user ids that are never reused.
 - **A staff account is deleted only if it never did anything.** It must be deactivated first, and it can't be
-  the caller's own or a super admin. Anything that still references the user (a bill, an approval, a stock
+  the caller's own or a super admin. Its shifts go with it, like its sessions: a shift is opened by signing
+  in, not by doing anything, and a shift that billed anything is still guarded by the bills. Anything that still references the user (a bill, an approval, a stock
   move) makes the delete a refusal: an account with history can only be deactivated. `admin_actions` keeps the
   target's name, so the log still reads after a delete.
 - **Dispatch is all-or-nothing.** An order that is short names every missing line and moves nothing.
@@ -350,6 +384,14 @@ The code enforces these and tests pin them. Breaking one is a bug.
 - **Everything on the procurement list is an approved requisition line.** The list is derived, never stored.
   The buyer's direct add (`POST /requisitions/direct`) is a requisition raised and approved in one step,
   with a required reason, and only for raw, packing and MRP goods (`isPurchased`).
+- **A purchase order's rate is the buyer's until it is sent, and a live contract follows it.** The
+  procurement list carries a rate per row (the vendor's live contract, else the last purchased price, else the
+  standard cost) that `createPo` sends per pick; a draft's rate stays editable on `PATCH
+  /purchase-orders/:id/lines/:n`. A rate set away from a **live** contract for that vendor and item (active, in
+  its window) moves the contract to it and logs a `rate_contract_changes` row (old, new, the order, who, when);
+  with no live contract nothing else changes, and the line is simply the next "last purchased" price. An edit
+  of the rate on Rate Contracts logs the same row without an order. The trail rides on each contract as
+  `changes` (`GET /contracts` and the snapshot) and is never edited.
 - **Every write and every sign-in leaves an audit event; nobody can edit or delete one.** A write whose event
   can't be inserted doesn't commit. No password, temporary password, OTP or token is ever stored in one.
 

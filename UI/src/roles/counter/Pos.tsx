@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
 import { TenderSchema } from "@rch/contract";
-import { breachesCredit, creditBreachMessage, discountOn, isAccountTender, PARTY_LABEL, payerKindForTender } from "@rch/domain";
+import { breachesCredit, counterName, creditBreachMessage, discountOn, isAccountTender, normalizePhone, PARTY_LABEL, payerKindForTender } from "@rch/domain";
 import { DEPTS, DOCTORS, IT, LOC, STAFF } from "../../data/master";
 import { useApp } from "../../store";
 import { availOf, menuOf, partyRate, priceOf } from "../../lib/selectors";
 import { money, money0 } from "../../lib/fmt";
-import { Alert, Avatar, Btn, Card, Field, Grid, ItemImage, PageHead, Tag, TileMenu, Tip } from "../../ui/kit";
+import { Alert, Avatar, Btn, Card, Field, FormRow, Grid, ItemImage, PageHead, Tag, TileMenu, Tip } from "../../ui/kit";
 import type { CreditResponse, ItemType, Payer, PayerKind, Tender } from "../../types";
 
 /** The buttons are the contract's own list - the server refuses anything else outright, so the
@@ -40,6 +40,11 @@ export default function Pos() {
   const [payer, setPayer] = useState<Payer | null>(null);
   const [pq, setPq] = useState("");
   const [edit, setEdit] = useState<Record<string, string>>({});
+  // The walk-in customer, both optional. Cleared with the cart once a bill is numbered, kept on
+  // a refusal like everything else on the till.
+  const [custName, setCustName] = useState("");
+  const [custPhone, setCustPhone] = useState("");
+  const phoneOff = custPhone.trim() !== "" && normalizePhone(custPhone) === null;
   // The cart now survives until the server answers, so a second tap inside one round trip
   // would post a second bill under a second Idempotency-Key. One tap, one bill.
   const [busy, setBusy] = useState(false);
@@ -122,9 +127,9 @@ export default function Pos() {
   const takeBill = async () => {
     setBusy(true);
     let no: string | null = null;
-    try { no = await s.pay(loc, tender, payer ?? undefined); } finally { setBusy(false); }
+    try { no = await s.pay(loc, tender, payer ?? undefined, { name: custName, phone: custPhone }); } finally { setBusy(false); }
     if (!no) return;
-    setPayer(null); setPq(""); setEdit({});
+    setPayer(null); setPq(""); setEdit({}); setCustName(""); setCustPhone("");
     useApp.getState().openDrawer("cbill", no);
   };
 
@@ -156,8 +161,8 @@ export default function Pos() {
                 <div key={it} className={`tile tile-pic${a.ok ? "" : " is-off"}`}>
                   <button type="button" className="tile-pic-hit" disabled={!a.ok}
                     onClick={() => s.addToCart(loc, it, 1)}
-                    aria-label={a.ok ? `Add ${item.n}` : `${item.n} - ${a.why ?? "unavailable"}`}
-                    title={a.ok ? `Add ${item.n}` : `${item.n} - ${a.why ?? "unavailable"}`} />
+                    aria-label={a.ok ? `Add ${counterName(item)}` : `${counterName(item)} - ${a.why ?? "unavailable"}`}
+                    title={a.ok ? `Add ${counterName(item)}` : `${counterName(item)} - ${a.why ?? "unavailable"}`} />
                   <ItemImage it={it} size="card" />
                   <TileMenu
                     className="tile-pic-kebab"
@@ -172,7 +177,7 @@ export default function Pos() {
                     ]}
                   />
                   <div className="tile-pic-body">
-                    <b style={{ fontSize: 12.5, lineHeight: 1.3 }}>{item.n}</b>
+                    <b style={{ fontSize: 12.5, lineHeight: 1.3 }}>{counterName(item)}</b>
                     <span><TypeTag t={item.t} /></span>
                     {a.ok
                       ? <span className="mini">{a.left ? `${a.left} left` : "made to order"}</span>
@@ -215,7 +220,7 @@ export default function Pos() {
             {lines.map((l) => (
               <div className="cartline" style={{ alignItems: "center" }} key={l.it}>
                 <span style={{ flex: 1, minWidth: 0 }}>
-                  <b style={{ fontSize: 12.5 }}>{IT[l.it].n}</b>
+                  <b style={{ fontSize: 12.5 }}>{counterName(IT[l.it])}</b>
                   <span className="mini" style={{ display: "block" }}>{IT[l.it].c} · {money(l.p)} each</span>
                 </span>
                 <span style={{ display: "flex", gap: 3, alignItems: "center", flex: "none" }}>
@@ -223,7 +228,7 @@ export default function Pos() {
                       counter, and `xs` gave them a 20 px target sitting either side of the box
                       they are meant to step. */}
                   <Btn variant="gh" size="touch" onClick={() => s.addToCart(loc, l.it, -1)} title="One less">−</Btn>
-                  <input className="mono" inputMode="numeric" aria-label={`${IT[l.it].n} quantity`}
+                  <input className="mono" inputMode="numeric" aria-label={`${counterName(IT[l.it])} quantity`}
                     value={edit[l.it] ?? String(l.n)}
                     onChange={(e) => setQty(l.it, e.target.value)}
                     onBlur={() => setEdit({})}
@@ -252,6 +257,15 @@ export default function Pos() {
           <div className="totrow"><span>CGST</span><span>{money(tax / 2)}</span></div>
           <div className="totrow"><span>SGST</span><span>{money(tax / 2)}</span></div>
           <div className="totrow big"><span>Total</span><span>{money(total)}</span></div>
+
+          <FormRow cols="f2">
+            <Field label="Customer name" tip="Optional. Printed on the bill slip and found by the Bills search.">
+              <input value={custName} maxLength={80} onChange={(e) => setCustName(e.target.value)} placeholder="Optional" />
+            </Field>
+            <Field label="Phone" tip="Optional. Ten digits, with or without +91." hint={phoneOff ? "Not a phone number yet - ten digits" : undefined}>
+              <input value={custPhone} inputMode="tel" maxLength={20} onChange={(e) => setCustPhone(e.target.value)} placeholder="Optional" />
+            </Field>
+          </FormRow>
 
           <div className="paygrid">
             {TENDERS.map((t) => (

@@ -3,7 +3,7 @@ import { sourceOf } from "@rch/domain";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
 // ---- item patch ----
-import { activeItems, avail, isReqOpen, menuOf, qty } from "../../lib/selectors";
+import { activeItems, avail, isReqOpen, menuOf, qty, counterNameOf } from "../../lib/selectors";
 import { fq, U } from "../../lib/fmt";
 import {
   Alert, Btn, BtnRow, Card, DataTable, DraftLineInput, Field, FormRow, ItemImage, PageHead, Pill, Section,
@@ -34,7 +34,7 @@ export default function Requests() {
   const REQUESTABLE = activeItems()
     .filter((k) => IT[k].t !== "MTO")
     .filter((k) => sourceOf(IT[k]) === "store" || (IT[k].t === "FG" && listed.has(k)))
-    .sort((a, b) => IT[a].g.localeCompare(IT[b].g) || IT[a].n.localeCompare(IT[b].n));
+    .sort((a, b) => IT[a].g.localeCompare(IT[b].g) || counterNameOf(a).localeCompare(counterNameOf(b)));
 
   const [note, setNote] = useState("");
   const [priority, setPriority] = useState("Normal");
@@ -118,7 +118,7 @@ export default function Requests() {
                 <div className="askcard-top">
                   <ItemImage it={a.it} size="thumb" />
                   <div className="askcard-id">
-                    <b>{IT[a.it]?.n ?? a.it}</b>
+                    <b>{counterNameOf(a.it)}</b>
                     <span className="mini">{a.id} · {LOC[a.from].n} · {a.at}</span>
                   </div>
                   <Pill tone="mu">{IT[a.it]?.c}</Pill>
@@ -228,7 +228,7 @@ export default function Requests() {
                           aria-label={`Item on row ${i + 1}`}
                           onChange={(e) => setLine(i, { it: e.target.value })}>
                           <option value="">Choose an item…</option>
-                          {REQUESTABLE.map((k) => <option key={k} value={k}>{IT[k].n} · {IT[k].c}</option>)}
+                          {REQUESTABLE.map((k) => <option key={k} value={k}>{counterNameOf(k)} · {IT[k].c}</option>)}
                         </select>
                       </div>
                       {err && <div className="hint" style={{ color: "var(--crit)" }}>{err}</div>}
@@ -241,7 +241,7 @@ export default function Requests() {
                         <DraftLineInput
                           value={l.qty} min={0} step={l.it && U(l.it) === "nos" ? 1 : 0.5}
                           invalid={!!l.it && !(l.qty > 0)}
-                          ariaLabel={l.it ? `Quantity of ${IT[l.it].n}` : `Quantity on row ${i + 1}`}
+                          ariaLabel={l.it ? `Quantity of ${counterNameOf(l.it)}` : `Quantity on row ${i + 1}`}
                           onCommit={(n) => setLine(i, { qty: Math.max(0, n) })} />
                       </div>
                     </td>
@@ -314,7 +314,7 @@ export default function Requests() {
                 <ItemImage it={r.lines[0]?.it} />
                 <span><b>{r.lines.length} item{r.lines.length === 1 ? "" : "s"}</b><small>{r.id}</small></span>
               </span>,
-              r.lines.map((l) => IT[l.it]?.n ?? l.it).join(", "),
+              r.lines.map((l) => counterNameOf(l.it)).join(", "),
               r.at,
               <StatusPill status={r.st} />,
             ],

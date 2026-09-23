@@ -16,6 +16,13 @@ describe("PayBodySchema", () => {
     for (const qty of [1, 2.5, 0.001, 0.15, 12.345, 10000]) expect(PayBodySchema.safeParse(body({ lines: [{ it: "juice", qty }] })).success, String(qty)).toBe(true);
     for (const qty of [0.0005, 0.0001, 2.00001, 0, -1, 10001]) expect(PayBodySchema.safeParse(body({ lines: [{ it: "juice", qty }] })).success, String(qty)).toBe(false);
   });
+
+  it("takes an optional customer name, trimmed and at most 80 characters, and a phone left for the service to judge", () => {
+    expect(PayBodySchema.parse(body({ customerName: "  Anitha  ", customerPhone: "98430 22118" }))).toMatchObject({ customerName: "Anitha", customerPhone: "98430 22118" });
+    expect(PayBodySchema.parse(body())).not.toHaveProperty("customerName");
+    expect(PayBodySchema.safeParse(body({ customerName: "x".repeat(81) })).success).toBe(false);
+    expect(PayBodySchema.safeParse(body({ customerPhone: "9".repeat(21) })).success).toBe(false);
+  });
 });
 
 describe("SavePriceBodySchema", () => {

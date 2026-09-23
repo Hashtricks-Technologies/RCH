@@ -4,7 +4,7 @@ import { hydrateItems, hydrateLocations, hydrateMaster, hydrateMenus, hydratePri
 import { fromWireBestBefore, fromWireDate, fromWireTime } from "../lib/fmt";
 import { useApp } from "../store";
 import { basePrices } from "../lib/selectors";
-import type { AdminAction, AdminLocation, AdminPayer, AdminUser, Bill, Dated, HistEntry, StockLoc } from "../types";
+import type { AdminAction, AdminLocation, AdminPayer, AdminUser, Bill, Contract, Dated, HistEntry, RateContract, StockLoc } from "../types";
 
 export type Snapshot = z.infer<typeof SnapshotSchema>;
 export type StockResponse = z.infer<typeof StockResponseSchema>;
@@ -28,6 +28,10 @@ const t = fromWireTime;
 const SHOWN = /^\d{2}:\d{2}$/;
 const instant = (raw: string, had: string | undefined) => (SHOWN.test(raw) ? had ?? "" : raw);
 const stamped = <T extends { at: string; iso?: string }>(x: T) => ({ ...x, at: t(x.at), iso: instant(x.at, x.iso) });
+/** A contract's validity dates as DD-MMM-YYYY, and each change to its rate stamped like a trail. */
+const contract = ({ changes, ...c }: RateContract): Contract => ({
+  ...c, from: fromWireDate(c.from), to: fromWireDate(c.to), ...(changes ? { changes: changes.map(stamped) } : {}),
+});
 const hist = (h: HistEntry[]): Dated<HistEntry>[] =>
   h.map((x) => ({ ...x, t: t(x.t), iso: instant(x.t, (x as Partial<Dated<HistEntry>>).iso) }));
 const billed = (b: Bill[]): Dated<Bill>[] =>
@@ -67,7 +71,7 @@ export function applySnapshot(s: Snapshot): void {
     // `mfg`, `exp` and `invDate` are the vendor's printed dates and are shown raw.
     grn: s.grn.map(stamped),
     vendors: s.vendors,
-    contracts: s.contracts.map((c) => ({ ...c, from: fromWireDate(c.from), to: fromWireDate(c.to) })),
+    contracts: s.contracts.map(contract),
     tickets: s.tickets.map((x) => ({ ...stamped(x), messages: x.messages.map((m) => ({ ...m, at: t(m.at) })) })),
     productReqs: s.productReqs.map(stamped),
     shopAsks: s.shopAsks.map(stamped),
@@ -153,7 +157,7 @@ export function applyVendors(vendors: Snapshot["vendors"]): void { useApp.setSta
 
 /** GET /contracts -> the rate contracts, their two validity dates as DD-MMM-YYYY. */
 export function applyContracts(contracts: Snapshot["contracts"]): void {
-  useApp.setState({ contracts: contracts.map((c) => ({ ...c, from: fromWireDate(c.from), to: fromWireDate(c.to) })) });
+  useApp.setState({ contracts: contracts.map(contract) });
 }
 
 /** GET /product-requests -> the shops' asks for something not on the master yet. */

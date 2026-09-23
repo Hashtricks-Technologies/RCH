@@ -1,5 +1,5 @@
 import { useId, useState } from "react";
-import { gstForHsn, isPurchased } from "@rch/domain";
+import { gstForHsn, isPurchased, nextItemCode } from "@rch/domain";
 import { IT, LOC } from "../data/master";
 import { useApp } from "../store";
 import { money } from "../lib/fmt";
@@ -99,7 +99,6 @@ export function NewProductForm({ scope, title, sub, intro, initialName, onCreate
   const close = useApp((x) => x.closeDrawer);
 
   const [name, setName] = useState(initialName ?? "");
-  const [code, setCode] = useState("");
   const [type, setType] = useState<ItemType>(spec.defaults.type);
   const [group, setGroup] = useState(spec.defaults.group);
   const [unit, setUnit] = useState(spec.defaults.unit);
@@ -140,7 +139,6 @@ export function NewProductForm({ scope, title, sub, intro, initialName, onCreate
     const key = await createItem({
       key: "",
       name: trimmed,
-      code: code.trim(),
       unit,
       type,
       group: spec.has.group ? group.trim() || "Other" : spec.defaults.group,
@@ -172,7 +170,7 @@ export function NewProductForm({ scope, title, sub, intro, initialName, onCreate
     >
       {intro}
 
-      <Section title="Identity" tip="The name is what every screen shows; the code is what the store keeper reads." />
+      <Section title="Identity" tip="The name is what every screen shows; the code, assigned on save, is what the store keeper reads." />
       <FormRow cols={spec.has.code ? "f2" : undefined}>
         <Field label="Product name" tip="Say what it is, the way the desk says it."
           hint={nameErr ? <span style={crit}>{nameErr}</span> : undefined}>
@@ -181,8 +179,9 @@ export function NewProductForm({ scope, title, sub, intro, initialName, onCreate
             placeholder="Cold coffee premix 1kg" />
         </Field>
         {spec.has.code && (
-          <Field label="Item code" tip="Leave blank and one is generated from the name.">
-            <input value={code} onChange={(e) => setCode(e.target.value)} placeholder="RM-1012" />
+          <Field label="Item code" hint="Assigned on save"
+            tip="The server gives it the next number in this type's series when the product is saved - this is what that will most likely be.">
+            <input value={nextItemCode(type, Object.values(IT).map((i) => i.c))} readOnly disabled />
           </Field>
         )}
       </FormRow>
@@ -244,7 +243,7 @@ export function NewProductForm({ scope, title, sub, intro, initialName, onCreate
         </Field>
         {offersMrp && (
           <Field label="Printed MRP (₹)"
-            tip={isMrp ? "A hard ceiling on the selling price at every counter." : "Only an MRP item carries one."}
+            tip={isMrp ? "The price printed on the pack. No till charges more than it." : "Only an MRP item carries one."}
             hint={mrpErr ? <span style={crit}>{mrpErr}</span> : undefined}>
             <input type="number" min={0} step="any" value={mrp} disabled={!isMrp}
               onChange={(e) => setMrp(e.target.value)}

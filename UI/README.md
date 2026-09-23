@@ -164,10 +164,11 @@ receives. Approval reserves stock; the handover scan is what actually moves it. 
 chain is server-side (`apps/api/src/modules/{requests,tickets}`); a trim beyond what the
 central store can still promise is the server's own decision, not the browser's.
 
-**MRP is a hard ceiling, and there is no door that removes one.** Traded goods carry a printed
-MRP. No price list, floor or role may sell above it - `savePrice` refuses and says so - and no
-role may clear it either: an item that carries a printed MRP keeps one, and an emptied box on the
-edit form means "leave it as it is", not "take the ceiling away".
+**The till never charges above the printed MRP, and there is no door that removes one.** Traded
+goods carry a printed MRP. A price list may carry a higher figure - the manager can save one, and
+the grid says what the till will charge instead - but every sale is capped at the MRP. No role may
+clear it either: an item that carries a printed MRP keeps one, and an emptied box on the edit form
+means "leave it as it is", not "take the cap away".
 
 **What a sale takes off the shelf.** Traded goods and finished goods made in the kitchen deduct by
 the unit. A made-to-order drink is made at the counter and holds no stock, so selling one moves
@@ -177,6 +178,14 @@ nothing.
 item stays on until someone switches it off. The toggle is a manual override on top.
 
 ## Recent capabilities
+
+**Close Shift.** A counter operator's shift opens with their sign-in at a counter. **Close shift** - in
+the sidebar's foot, and on the counter's Dashboard and Register - opens a dialog over the live report:
+the window, the bills and the amount per tender, with a Print. Confirming closes the shift on the
+server, prints the final slip and signs the operator out. There is no counted cash: the hand-over is
+the amounts billed. The manager's bell carries a "Shifts closed today" row naming the latest close,
+and the Register screen carries a Shift reports card: every closed shift over the last seven days,
+filterable by outlet, each with its slip.
 
 **A menu is managed, not just added to.** Menu Management opens on the whole of the picked
 outlet's till - every product it sells, with its type, its group and what it is charged on that
@@ -188,12 +197,17 @@ something the item master does not carry yet. Two warnings stay visible rather t
 tooltip: an outlet on no price list at all, and the count of listed products with no price on the
 list it is on - a till refuses a sale at nothing, so that is a figure the manager has to see.
 
-**A price list is created from a button, and may start empty.** **New price list** on the Prices
-screen opens a dialog: a name, and what it starts from - a copy of any outlet's current list, or
-no prices at all. Creating one used to be a section inside the Settings panel and always a copy,
-which made the *first* list on a hospital impossible to create: every outlet the form offered was
-on no list, so every attempt was refused. The panel keeps the job that is genuinely about every
-outlet at once - which list each one charges from, and who shares it with whom.
+**Every counter is priced from one grid.** The manager's Prices screen lists every sellable item
+(traded, finished and made-to-order) against every open outlet, with its code, type, group, cost and
+printed MRP. Each cell carries a switch - does this till sell it - and that counter's own price, with
+a marker where the MRP caps what it charges and a highlight where the counter has no price at all.
+Search and filters narrow it by type, group, counter, "not priced" or "changed". Edits wait on the
+page, highlighted with old → new, until **Save N changes**; the dialog lists every one and saves
+only once CONFIRM is typed, and Cancel leaves them all staged. A price set for one counter never
+moves another's, even where two used to share a price list - no list is shown or chosen anywhere.
+A price above the MRP saves, with a note under the cell saying the till charges the MRP. The
+switch is the manager's one on/off: the separate Product On / Off screen is hidden behind
+`AVAILABILITY_SCREEN_ENABLED` in `src/nav.ts`.
 
 **Correcting a shelf is a document.** A write-off or a stock count is raised from the shelf it
 corrects - the store keeper's Adjustments screen for any location including quarantine, and an
@@ -210,6 +224,12 @@ queue: Approve writes the `ADJ-` document and moves the shelf in the same step (
 stage after it, since a write-off has nothing to hand over), or Reject with a reason the counter
 reads on its own copy of the request.
 
+**A counter bill can name its customer.** The New bill card carries two optional boxes, Customer
+name and Phone. They print on the bill slip, show in the bill drawer, and both Bills screens find a
+bill by either. The phone is stored as its ten digits (`+91` or a leading `0` is dropped), and one
+that is not a phone is refused in a sentence with the boxes left as typed; a numbered bill clears
+them with the cart.
+
 **A bill can be taken back on the day it was billed.** The outlet manager gets a Bills screen -
 every outlet's, over the seven days the server answers for - and a Void button on any bill still
 dated today. It needs a typed reason, puts every stocked line back on the shelf, returns a staff member's credit room for
@@ -219,9 +239,12 @@ show it. After that day, the answer is an adjustment, and the refusal says so.
 
 **The item master is editable, and editable by desk.** One Edit drawer, reachable from every
 master and stock screen, showing each role only the fields their desk owns: the manager the
-printed MRP, the standard cost and the GST rate; the store keeper, buyer and kitchen the name,
-the group, the HSN code and the reorder level. The other half is greyed out with a sentence
-saying whose it is. A product is **retired, never deleted** - refused while any location holds
+printed MRP, the standard cost, the GST rate and the display name; the store keeper, buyer and
+kitchen the name, the group, the HSN code and the reorder level. The other half is greyed out with
+a sentence saying whose it is. The display name ("50/50-5" for "Britannia 50/50") is what a
+counter's own screens show instead of the name - the till, the cart, its dashboard, bills, stock,
+requests and pick tickets - and a counter search finds either; every other desk, document and
+printed slip keeps the real name, and Items & Stock shows it beside the name. A product is **retired, never deleted** - refused while any location holds
 stock of it or any outlet still lists it, naming them - and a retired line keeps its name on
 every document that already carries it while dropping off the pickers that could sell, order or
 promise it again. The manager's drawer also carries a `PhotoPicker` at the top, for one photo per
@@ -274,8 +297,20 @@ under All requests.
 the drawer prints a real slip - bill number, outlet, terminal, the hospital's own date, the
 operator, every line as qty × rate × amount, taxable value, tax, total, tender and the payer
 where there is one. Reprint calls the browser's print dialog instead of announcing that something
-was "sent again to the OT-C3 printer", which never happened. Pick tickets print the same way, and
-a ticket slip carries the six-digit code only when the reader is entitled to it. The counter's
+was "sent again to the OT-C3 printer", which never happened. Pick tickets print the same way, as
+an 80 mm receipt (route, request, status, issued / collected / received stamps, every line with its
+code, a total per unit, and a "Received by" line), and every ticket drawer also downloads that
+receipt as `<ticket>.pdf`. An "Include OTP" box puts the six digits on both, large - but only where
+the reader is entitled to them: elsewhere the box is off and its tip names the location that holds
+the code.
+
+**Goods receipt notes download as PDFs.** Once anything is booked against a purchase order, the
+buyer's order and receipt drawers and the store keeper's requisition offer "Download GRN (PDF)" -
+one delivery, or every delivery on the order. It carries the vendor and GSTIN, delivery note,
+invoice, who received it and when, and per line the ordered, received, rejected (to quarantine),
+accepted, accepted-to-date and pending quantities, rate, value, batch and dates; then the totals,
+the order's status (closed short says so, with its reason) and three signature lines. Booking a
+receipt now lands on the order, where the new GRN is waiting to download. The counter's
 dashboard lost its invented shift, its hours and its ₹2,000 opening float at the same time -
 there are no shifts in this build, so every one of those figures was made up at render time.
 
@@ -291,8 +326,8 @@ role sees only the tickets it raised; none of the five answers tickets.
 first, then by name - with its code, floor, cost centre and how many staff are posted there.
 Opening one asks for a name, a code, a floor and a cost centre, and previews the key the server will
 actually assign from the name - given once, and kept even through a later rename. A new outlet starts
-with no menu and no price list: the outlet manager lists and prices its products from their own Prices
-screen, which is also where a price list is created and attached. Each row edits in
+with no menu and no prices: the outlet manager lists and prices its products from the Prices grid,
+where it appears as a new column. Each row edits in
 place with Save and Cancel, and closes behind a second press, refused in one sentence naming everything
 still open against it (stock on the shelf, a ticket, a stock request, a kitchen order, a shop ask, a
 product request, or a member of staff) if anything is. A closed outlet is never deleted: its bills,
@@ -369,6 +404,15 @@ prices an order from them (`createPo` picks a live contract's rate over the item
 and is warned on screen when a rate deviates or a quantity falls under the minimum. Only one live
 contract may exist for a given vendor and item at a time.
 
+**Prices on an order.** Each Procurement List row carries an editable Rate beside the Last
+purchased price (latest order sent to a vendor: rate, vendor, date, order) and the Contract rate;
+it starts at the chosen vendor's live contract, else the last purchased price, else the standard
+cost, and the order is raised at it. A draft order keeps its rates editable until Send to vendor,
+and shows each line's last purchase (and this vendor's, if different) and its contract rate with
+the difference in rupees and per cent. A rate set away from a live contract moves the contract to
+it; Rate Contracts shows every change (old → new, the difference, who, when, and the order it came
+from), and the order's drawer says "Contract RC-… changed ₹old → ₹new".
+
 **Adding to the procurement list directly.** The buyer does not have to wait for the store
 keeper to ask. "Add items" on the Procurement List opens a drawer of raw, packing and MRP lines
 (what the kitchen makes or the counter assembles is never offered) and a required reason, and
@@ -385,8 +429,9 @@ trimmed requisition, and a search finds it. Their dashboard raises a DECLINED or
 every decision taken today (IST), with an Open button for the requisition.
 
 **New products.** An outlet manager asks for something not on the master; procurement is the
-one who sources it, so procurement is the one who adds it - the store keeper's form (name, code,
-type, group, unit, HSN, GST, reorder level, cost, MRP if applicable), limited to the types
+one who sources it, so procurement is the one who adds it - the store keeper's form (name, type,
+group, unit, HSN, GST, reorder level, cost, MRP if applicable; the code is assigned on save, the
+next in the type's series, and previewed read-only), limited to the types
 procurement buys (RAW, PACK, MRP) and with no opening stock. Stock arrives the normal way,
 through a purchase order, not as an opening balance typed in on the spot. Server-backed since
 Phase 5 (`POST /product-requests`, answered by `POST /product-requests/:id/answer`), and the

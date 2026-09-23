@@ -2,7 +2,7 @@ import { useState } from "react";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
 // ---- item patch ----
-import { allOutlets, costOf, isRetired, isTicketOpen, locName, openOutlets, operationalLocs, qty, resv, stockValue } from "../../lib/selectors";
+import { allOutlets, costOf, isRetired, isTicketOpen, itemMatches, locName, openOutlets, operationalLocs, qty, resv, stockValue } from "../../lib/selectors";
 import { fq, lakh, money, money0, sum } from "../../lib/fmt";
 import {
   Alert, Btn, Card, DataTable, FilterSelect, PageHead,
@@ -86,8 +86,7 @@ export default function ItemsStock() {
   const rows = keys
     .filter((k) => (want === "All" ? true : IT[k].t === want))
     .filter((k) => loc === 0 || carries(locs[loc - 1], k))
-    .filter((k) => !term || IT[k].n.toLowerCase().includes(term) || IT[k].c.toLowerCase().includes(term)
-      || IT[k].g.toLowerCase().includes(term))
+    .filter((k) => !term || itemMatches(k, term) || IT[k].g.toLowerCase().includes(term))
     .map((k) => {
       const per = locs.map((l) => qty(s, l, k));
       const tot = sum(per, (v) => v);
@@ -272,7 +271,7 @@ export default function ItemsStock() {
               <>
                 {isRetired(r.k) ? <span className="dim">{IT[r.k].n}</span> : IT[r.k].n}
                 {isRetired(r.k) && <> <Tag>Retired</Tag></>}
-                <small>{IT[r.k].c} · HSN {IT[r.k].hsn}</small>
+                <small>{IT[r.k].c} · HSN {IT[r.k].hsn}{IT[r.k].dn ? <> · counters read “{IT[r.k].dn}”</> : null}</small>
               </>,
               <Tag kind={tagKind(IT[r.k].t)}>{IT[r.k].t}</Tag>,
               IT[r.k].u,

@@ -1,7 +1,7 @@
 import { vendorName } from "../../data/vendors";
 import { apportion, netReceived, round3 } from "../../lib/selectors";
 import type { AppState } from "../../store";
-import type { PoStatus, PurchaseOrder, RateContract, Requisition, Vendor } from "../../types";
+import type { Contract, PoStatus, PurchaseOrder, RateContract, Requisition, Vendor } from "../../types";
 
 /**
  * A rate contract records its vendor by name, while a purchase order carries
@@ -12,7 +12,7 @@ import type { PoStatus, PurchaseOrder, RateContract, Requisition, Vendor } from 
  */
 export function contractFor(
   s: Pick<AppState, "contractRate" | "vendors">, vendorId: string, it: string,
-): RateContract | undefined {
+): Contract | undefined {
   return s.contractRate(vendorName(s.vendors, vendorId), it) ?? s.contractRate(vendorId, it);
 }
 
@@ -24,6 +24,25 @@ export const contractsOf = (contracts: RateContract[], v: Vendor): RateContract[
 
 export const liveContractsOf = (contracts: RateContract[], v: Vendor): RateContract[] =>
   contractsOf(contracts, v).filter((c) => c.active);
+
+/** The price an item was last bought at: its line on the most recent order that went to a
+ *  vendor - a draft is not a purchase and a cancelled order bought nothing. */
+export interface LastBuy { po: string; vendor: string; rate: number; iso: string }
+
+/** `vendorId` narrows it to what that vendor last charged. Most recent by the order's own
+ *  instant, never by its printed time. */
+export function lastPurchase(
+  pos: readonly (Pick<PurchaseOrder, "id" | "vendor" | "st" | "lines"> & { iso: string })[], it: string, vendorId?: string,
+): LastBuy | undefined {
+  let best: LastBuy | undefined;
+  for (const o of pos) {
+    if (o.st === "Draft" || o.st === "Cancelled" || (vendorId && o.vendor !== vendorId)) continue;
+    if (best && o.iso <= best.iso) continue;
+    const line = o.lines.find((l) => l.it === it);
+    if (line) best = { po: o.id, vendor: o.vendor, rate: line.rate, iso: o.iso };
+  }
+  return best;
+}
 
 export type PrqLineStatus = "Not ordered" | "Ordered" | "Partially received" | "Received";
 

@@ -79,7 +79,17 @@ describe("PATCH and DELETE /contracts/:id", () => {
     const id = await given.contract(app.testDb!.db, { vendorId: "VN-005", it: "leaf", rate: 400 });
     const b = (await patch("u5", `/contracts/${id}`, { rate: 420, to: "2026-12-31" })).json();
     expect(b.result).toMatchObject({ rate: 420, to: "2026-12-31" });
-    expect(b.message).toBe(`${id} updated`);
+    expect(b.message).toBe(`${id} updated - rate ₹400.00 to ₹420.00`);
+    expect(b.changed).toEqual(["contracts"]);
+    expect(b.result.changes).toEqual([{ oldRate: 400, newRate: 420, by: "Latha Narayanan", at: expect.any(String) }]);
+  });
+
+  it("logs a change only when the rate actually moves", async () => {
+    const id = await given.contract(app.testDb!.db, { vendorId: "VN-005", it: "sugar", rate: 45 });
+    expect((await patch("u5", `/contracts/${id}`, { rate: 45, moq: 10 })).json().message).toBe(`${id} updated`);
+    expect((await patch("u5", `/contracts/${id}`, { rate: 47.5 })).json().result.changes).toHaveLength(1);
+    const listed = (await contractsList()).find((c: { id: string }) => c.id === id);
+    expect(listed.changes).toEqual([{ oldRate: 45, newRate: 47.5, by: "Latha Narayanan", at: expect.any(String) }]);
   });
 
   it("closes a contract without deleting it, and lets it be reopened", async () => {

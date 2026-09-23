@@ -32,7 +32,11 @@ const NARROW: Partial<Record<Changed, () => Promise<void>>> = {
     ? call(routes.deskTickets).then(applyDeskTickets)
     : call(routes.tickets).then(applySupportTickets),
   prices: () => call(routes.prices).then(applyPrices),
-  priceLists: () => call(routes.priceLists).then(applyPriceLists),
+  // `GET /price-lists` is the manager's alone, and the price grid's copy-on-write announces it
+  // to every open browser - a counter's tab reads the prices and outlets it needs instead.
+  priceLists: () => useApp.getState().user?.r === "manager" && !useApp.getState().user?.admin
+    ? call(routes.priceLists).then(applyPriceLists)
+    : Promise.resolve(),
   menu: () => call(routes.menus).then(applyMenus),
   // ---- payers ----
   // Both are `access: "any"` and answer an empty body to a caller who never takes a bill, so
@@ -55,6 +59,11 @@ const NARROW: Partial<Record<Changed, () => Promise<void>>> = {
   // pulls back its own whole list, and an operational session's copy comes back through
   // `roster`, which every payer write names alongside this one.
   payers: () => useApp.getState().user?.admin ? call(routes.adminPayers).then(applyAdminPayers) : Promise.resolve(),
+  // ---- shifts: the manager's list, behind the bell and the Register's Shift reports card. A
+  // counter's own Close Shift reads its result from the reply, so nobody else reads anything.
+  shifts: () => useApp.getState().user?.r === "manager" && !useApp.getState().user?.admin
+    ? useApp.getState().loadShifts().then(() => undefined)
+    : Promise.resolve(),
   // ---- adjustments
   adjustments: () => call(routes.adjustments).then(applyAdjustments),
   // ---- adjustment requests

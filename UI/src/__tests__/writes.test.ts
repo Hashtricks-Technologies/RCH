@@ -369,6 +369,42 @@ describe("toggleAvail - POST /availability/toggle", () => {
   });
 });
 
+describe("saveOutletPrices - PUT /outlet-prices", () => {
+  it("sends every staged cell in one body and reads back what the server names", async () => {
+    as("manager");
+    serve({
+      "PUT /api/v1/outlet-prices": () => json({ result: { changes: 2, outlets: ["kiosk"] }, changed: ["prices", "menu", "priceLists", "locations"], message: "2 changes saved at Snack Kiosk" }),
+      "GET /api/v1/prices": () => json(FX.PL),
+      "GET /api/v1/menus": () => json(FX.MENU),
+      "GET /api/v1/price-lists": () => json([]),
+      "GET /api/v1/locations": () => json(FX.LOC),
+    });
+
+    const changes = [{ loc: "kiosk", it: "juice", price: 15 }, { loc: "kiosk", it: "puff", listed: false }];
+    expect(await S().saveOutletPrices(changes)).toBe(true);
+
+    expect(hit("PUT /api/v1/outlet-prices")[0].body).toEqual({ changes });
+    expect(S().toast).toBe("2 changes saved at Snack Kiosk");
+    expect(hit("GET /api/v1/prices")).toHaveLength(1);
+    expect(hit("GET /api/v1/menus")).toHaveLength(1);
+    expect(hit("GET /api/v1/snapshot")).toHaveLength(0);
+  });
+
+  it("hands the refusal over word for word and answers false", async () => {
+    as("manager");
+    serve({ "PUT /api/v1/outlet-prices": () => refusal("Refused - Milk 1L (toned) is a raw material and is never sold at a counter") });
+    expect(await S().saveOutletPrices([{ loc: "kiosk", it: "milk", price: 60 }])).toBe(false);
+    expect(S().toast).toBe("Refused - Milk 1L (toned) is a raw material and is never sold at a counter");
+  });
+
+  it("says the connection failed when there is no envelope to read", async () => {
+    as("manager");
+    fetchMock.mockRejectedValue(new TypeError("Failed to fetch"));
+    expect(await S().saveOutletPrices([{ loc: "kiosk", it: "juice", price: 15 }])).toBe(false);
+    expect(S().toast).toBe("Could not save the prices - check the connection and try again.");
+  });
+});
+
 describe("savePrice - PUT /prices/:list/:it", () => {
   it("puts the price on the named list and reads the price list back on its own", async () => {
     as("manager");
@@ -389,16 +425,16 @@ describe("savePrice - PUT /prices/:list/:it", () => {
     expect(S().prices["PL-002"].juice).toBe(18);
   });
 
-  it("hands the MRP refusal to the operator word for word and leaves the list alone", async () => {
+  it("hands a refusal to the operator word for word and leaves the list alone", async () => {
     as("manager");
     const before = S().prices["PL-002"].juice;
-    serve({ "PUT /api/v1/prices/PL-002/juice": () => refusal("Refused - printed MRP of ₹20 is a hard ceiling for Fresh Juice 200ml") });
+    serve({ "PUT /api/v1/prices/PL-002/juice": () => refusal("There is no price list PL-002.", 404) });
 
-    // The price screen keeps what was typed on a `false`, so the manager can read the ceiling
-    // and correct the figure rather than hunt for the row again.
+    // The price screen keeps what was typed on a `false`, so the manager can read the refusal
+    // and correct it rather than hunt for the row again.
     expect(await S().savePrice("PL-002", "juice", 99)).toBe(false);
 
-    expect(S().toast).toBe("Refused - printed MRP of ₹20 is a hard ceiling for Fresh Juice 200ml");
+    expect(S().toast).toBe("There is no price list PL-002.");
     expect(S().prices["PL-002"].juice).toBe(before);
     expect(calls()).toHaveLength(1);
   });
@@ -1284,7 +1320,7 @@ describe("vendors, contracts and a new product", () => {
       "POST /api/v1/items": () => json({ result: { key: "icedlemontea", item: items.icedlemontea }, changed: ["items"], message: "Iced lemon tea 300ml added to the catalogue" }),
       "GET /api/v1/items": () => json(items),
     });
-    const key = await S().createItem({ key: "", name: "Iced lemon tea 300ml", code: "", unit: "nos", type: "MRP", group: "", hsn: "", gst: 5, reorder: 0, cost: 18, mrp: 25 }, "store", 0);
+    const key = await S().createItem({ key: "", name: "Iced lemon tea 300ml", unit: "nos", type: "MRP", group: "", hsn: "", gst: 5, reorder: 0, cost: 18, mrp: 25 }, "store", 0);
     expect(key).toBe("icedlemontea");
     expect(hit("POST /api/v1/items")[0].body).toMatchObject({ name: "Iced lemon tea 300ml", type: "MRP", cost: 18, mrp: 25, loc: "store", opening: 0 });
     // The registry every screen reads is refreshed, and catalogVersion is what tells React.
@@ -1595,8 +1631,11 @@ describe("a refusal keeps what the operator typed", () => {
     const ui = mountNode(Drawer);
     const add = () => ui.button("Add to procurement list")!;
 
-    // Nothing to send yet: no line, no reason.
-    expect(add().disabled).toBe(true);
+    // Nothing to send yet: no line, no reason. The button stays live and says so - greyed out,
+    // it swallowed the press that would have committed a quantity typed last (buyer-rates.test.tsx).
+    expect(add().disabled).toBe(false);
+    act(() => { add().click(); });
+    expect(S().toast).toBe("Enter a quantity on at least one item before adding to the procurement list.");
     act(() => { ui.button("Add item")!.click(); });
     const picked = ui.host.querySelector<HTMLSelectElement>('select[aria-label="Item on line 1"]')!.value;
     expect(IT[picked].t).toMatch(/^(RAW|PACK|MRP)$/);
@@ -1607,9 +1646,10 @@ describe("a refusal keeps what the operator typed", () => {
     const box = ui.field(`Quantity of ${IT[picked].n}`);
     act(() => { type(box, "40"); });
     await settle(() => { leave(box); });
-    expect(add().disabled).toBe(true);                    // still no reason
+    act(() => { add().click(); });                        // still no reason
+    expect(S().toast).toBe("Give a reason for buying these items - the store keeper reads it on the requisition.");
+    expect(hit("POST /api/v1/requisitions/direct")).toHaveLength(0);
     act(() => { type(ui.host.querySelector("textarea")!, "Festival week"); });
-    expect(add().disabled).toBe(false);
 
     await settle(() => { add().click(); });
     await settleUntil(() => S().toast === "Give a reason - it is kept on the requisition for the store keeper");
@@ -1706,7 +1746,7 @@ describe("a refusal keeps what the operator typed", () => {
     expect(offered().some((t) => t.includes("Cardamom"))).toBe(false);
 
     await settle(() => {
-      void S().createItem({ key: "", name: "Cardamom pods 100g", code: "", unit: "nos", type: "RAW", group: "Grocery", hsn: "2106", gst: 5, reorder: 0, cost: 240 }, "store", 0);
+      void S().createItem({ key: "", name: "Cardamom pods 100g", unit: "nos", type: "RAW", group: "Grocery", hsn: "2106", gst: 5, reorder: 0, cost: 240 }, "store", 0);
     });
     await settleUntil(() => offered().some((t) => t.includes("Cardamom")));
 
@@ -1881,7 +1921,7 @@ const OFFLINE: [name: string, run: () => Promise<unknown>, sentence: string][] =
     "Could not send the request - check the connection and try again."],
   ["answerProductRequest", () => S().answerProductRequest("NPR-0012", "Declined", "Not stocking this line"),
     "Could not answer the request - check the connection and try again."],
-  ["createItem", () => S().createItem({ key: "", name: "Buttermilk 200ml", code: "", unit: "nos", type: "MRP", group: "", hsn: "", gst: 5, reorder: 0, cost: 18, mrp: 25 }, "store", 0),
+  ["createItem", () => S().createItem({ key: "", name: "Buttermilk 200ml", unit: "nos", type: "MRP", group: "", hsn: "", gst: 5, reorder: 0, cost: 18, mrp: 25 }, "store", 0),
     "Could not add the product - check the connection and try again."],
   ["raiseTicket", () => S().raiseTicket({ topic: "Something else", subject: "x", body: "", priority: "Low", screen: "Dashboard" }),
     "Could not raise the ticket - check the connection and try again."],

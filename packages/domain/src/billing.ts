@@ -23,9 +23,8 @@ export type BillPlan = {
  * `availOf` - and does not decide the rate, which is the rate card's job.
  *
  * The MRP cap needs no separate report: `priceOf` applies it, so the line's own `rate` is the
- * printed price the customer is being charged before any concession. A list price can never sit
- * above the MRP in the first place - `savePrice` refuses one - so the cap only ever bites when
- * an MRP is lowered after the item was priced, and the till simply charges the new printed number.
+ * printed price the customer is being charged before any concession. A list price may sit above
+ * the MRP - the manager is allowed to save one - and the till simply charges the printed number.
  *
  * The discount is taken off the **line**, not off the bill total, and the tax is derived from
  * what is left. Doing it the other way round would put the whole concession on one GST slab and

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { IT, LOC } from "../../data/master";
 import { useApp } from "../../store";
-import { canCancelTicket, canReceiveTicket } from "../../lib/selectors";
+import { canCancelTicket, canReceiveTicket, itemMatches } from "../../lib/selectors";
 import { fq, sum } from "../../lib/fmt";
 import { Alert, Btn, Card, DataTable, FilterBtn, FilterSelect, PageHead, StatusPill, TableFoot, Toolbar } from "../../ui/kit";
 import type { LocKey, TktStatus } from "../../types";
@@ -28,8 +28,7 @@ export default function Tickets() {
       const k = q.trim().toLowerCase();
       return !k || t.id.toLowerCase().includes(k) || t.req.toLowerCase().includes(k)
         || t.otp.includes(k) || LOC[t.from].n.toLowerCase().includes(k)
-        || t.lines.some((l) => (IT[l.it]?.n ?? "").toLowerCase().includes(k)
-          || (IT[l.it]?.c ?? "").toLowerCase().includes(k));
+        || t.lines.some((l) => itemMatches(l.it, k));
     })
     .slice()
     .reverse();

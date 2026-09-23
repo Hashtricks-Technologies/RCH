@@ -10,6 +10,7 @@ import {
 } from "../../ui/kit";
 import type { Row } from "../../ui/kit";
 import { DrawerFrame } from "../../ui/Drawer";
+import { GrnPdfButtons } from "../../ui/GrnPdf";
 import { registerDrawer, type DrawerProps } from "../../drawers";
 import type { ReceiptDoc, ReceiptLine } from "../../types";
 
@@ -20,6 +21,7 @@ function PoReceiptDrawer({ id }: DrawerProps) {
   const receive = useApp((x) => x.receivePo);
   const closeShort = useApp((x) => x.closePoShort);
   const close = useApp((x) => x.closeDrawer);
+  const openDrawer = useApp((x) => x.openDrawer);
   const notify = useApp((x) => x.notify);
   const po = s.po.find((x) => x.id === id);
   /** The hospital's own calendar date, not the host's: a batch that expires tomorrow morning IST
@@ -87,6 +89,7 @@ function PoReceiptDrawer({ id }: DrawerProps) {
             }}
           />
           <TableFoot count={grns.length} />
+          <GrnPdfButtons po={po} />
         </Section>
       </DrawerFrame>
     );
@@ -129,7 +132,8 @@ function PoReceiptDrawer({ id }: DrawerProps) {
     setBusy(true);
     const ok = await receive(po.id, doc, lines);
     setBusy(false);
-    if (ok) close();
+    // On to the order itself, where the new GRN is listed with its PDF to download.
+    if (ok) openDrawer("bpo", po.id);
   };
 
   /**
@@ -312,6 +316,12 @@ function PoReceiptDrawer({ id }: DrawerProps) {
           />
         </div>
       </Section>
+
+      {grns.length > 0 && (
+        <Section title="Delivered so far" tip="Every delivery already booked against this order, as its goods receipt note.">
+          <GrnPdfButtons po={po} />
+        </Section>
+      )}
 
       {closingShort && (
         <Section title="Close this order short" sub="A reason is required - the undelivered balance returns to the procurement list.">

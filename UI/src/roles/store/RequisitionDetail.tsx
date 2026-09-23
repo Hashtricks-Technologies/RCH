@@ -9,6 +9,7 @@ import {
   Alert, DataTable, Feed, Pill, Section, StatusPill, TableFoot,
 } from "../../ui/kit";
 import { DrawerFrame } from "../../ui/Drawer";
+import { GrnPdfButtons } from "../../ui/GrnPdf";
 import { registerDrawer, type DrawerProps } from "../../drawers";
 import type { PurchaseOrder } from "../../types";
 
@@ -221,6 +222,7 @@ function RequisitionDetail({ id }: DrawerProps) {
           }}
         />
         <TableFoot count={receipts.length} />
+        {s.po.filter((o) => poIds.includes(o.id)).map((o) => <GrnPdfButtons key={o.id} po={o} named />)}
       </Section>
 
       <Section title="History" tip="Every hand this requisition has passed through">

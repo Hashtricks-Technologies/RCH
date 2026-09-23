@@ -14,18 +14,19 @@ export { REQUEST_TRANSITIONS, TICKET_TRANSITIONS, SHOP_ASK_TRANSITIONS, PROD_ORD
 export { planApproval, approvedStatus, planPrqApproval, prqStatus, type ApprovalLine, type ApprovalPlan } from "./approval.js";
 export { STAFF_CREDIT_LIMIT, creditRoom, breachesCredit, creditBreachMessage } from "./credit.js";
 // ---- who is being billed, what comes off their bill, and what settles what they owe.
-export { ACCOUNT_TENDERS, isAccountTender, PARTY_LABEL, PARTY_TITLE, partyOf, payerKindForTender } from "./party.js";
+export { ACCOUNT_TENDERS, isAccountTender, normalizePhone, PARTY_LABEL, PARTY_TITLE, partyOf, payerKindForTender, phoneRefusal } from "./party.js";
 export { MAX_DISCOUNT_PCT, creditLimitFor, creditLimitRefusal, discountOn, discountPctFor, discountRefusal, validCreditLimit, validDiscountPct } from "./discount.js";
 export { allocateSettlement, nothingOwedMessage, settlementOverpayMessage, type OpenBill, type SettlementAllocation } from "./settlement.js";
 export { money, money0, dmy, istDate, unitTotal } from "./format.js";
 export { foldClaims, releaseClaim, shortfallClaims, type ClaimSrc } from "./claims.js";
-export { checkReceiptLine, mrpBelowShelfPrice, netReceived, receiptStatus, RECEIPT_TOLERANCE, type ReceiptCheckInput, type ReceiptCheckLine } from "./receipt.js";
+export { checkReceiptLine, netReceived, receiptStatus, RECEIPT_TOLERANCE, type ReceiptCheckInput, type ReceiptCheckLine } from "./receipt.js";
 export { contractInWindow, etaFrom, isPurchased, needsApproval, poValue, rateFor } from "./purchasing.js";
 export { SUPPORT_TRANSITIONS, mayUserSet, statusAfterReply, mayRate, mayReply, mayDeskSet, deskStatusAfterReply } from "./support.js";
 export { ledgerRow, type LedgerRow } from "./reports.js";
 // ---- item patch ----
 export {
   ITEM_FIELD_ROLES, mayEditItemField, unauthorisedItemFields, type ItemField,
+  counterName, itemCodePrefix, nextItemCode,
   // ---- item photos ----
   IMAGE_MAX_BYTES, IMAGE_NOT_PHOTO, checkPhoto, imageNoneMessage, imageOffMenuMessage, imageRetiredMessage,
   mayEditItemImage, sniffImageType, type ImageType, type PhotoCheck,

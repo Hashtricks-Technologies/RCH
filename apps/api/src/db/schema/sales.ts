@@ -43,6 +43,26 @@ export const registerSessions = pgTable("register_sessions", {
   index("register_sessions_loc_closed_idx").on(t.loc, t.closedAt),
 ]);
 
+/**
+ * One operator's stint at one counter: opened when they sign in there, closed by Close Shift.
+ *
+ * A register session is the outlet's day (Z to Z); a shift is a person's hours inside it, so two
+ * operators on one till each read only their own bills. `closedTotals` is the shift report as it
+ * was handed over, stored for the same reason a Z's figures are.
+ */
+export const shifts = pgTable("shifts", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id),
+  loc: text("loc").notNull().references(() => locations.key),
+  openedAt: ts("opened_at").notNull().defaultNow(),
+  closedAt: ts("closed_at"),
+  closedTotals: jsonb("closed_totals"),
+}, (t) => [
+  // One open shift per person. Signing in at another counter closes the one left open there.
+  uniqueIndex("shifts_one_open_per_user").on(t.userId).where(sql`${t.closedAt} is null`),
+  index("shifts_loc_opened_idx").on(t.loc, t.openedAt),
+]);
+
 export const bills = pgTable("bills", {
   no: text("no").primaryKey(),
   loc: text("loc").notNull().references(() => locations.key),
@@ -57,6 +77,9 @@ export const bills = pgTable("bills", {
   payerKind: payerKindEnum("payer_kind"),
   payerId: text("payer_id"),
   payerName: text("payer_name"),
+  // ---- the walk-in customer, both optional: a name and a phone the counter may type on the bill.
+  customerName: text("customer_name"),
+  customerPhone: text("customer_phone"),
   // ---- the party discount. `total` above is unchanged and still means what it always did -
   // what the bill is worth and what is owed - so every sum in the system goes on reading the
   // same column. These two say how it got there: the rate that applied and the rupees it took

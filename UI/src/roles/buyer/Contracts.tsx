@@ -3,14 +3,40 @@ import { IT } from "../../data/master";
 import { useApp } from "../../store";
 // ---- item patch ----
 import { activeItems, costOf } from "../../lib/selectors";
-import { U, money, money0, pct, sum, toInputDate } from "../../lib/fmt";
+import { U, fromWireDay, money, money0, pct, sum, toInputDate } from "../../lib/fmt";
 import {
   Alert, Btn, BtnRow, Card, DataTable, DraftLineInput, FilterBtn, FilterSelect,
-  Kpis, PageHead, Pill, TableFoot, Toolbar,
+  Kpis, PageHead, Pill, TableFoot, Toolbar, commitTyping,
 } from "../../ui/kit";
-import type { RateContract } from "../../types";
+import type { Contract, RateContract } from "../../types";
 
 const STATE = ["All", "Live", "Closed"] as const;
+
+/** Every move of one contract's rate, newest first: old → new, the difference in rupees and as a
+ *  share of the old rate, who moved it, when, and the order whose rate moved it. */
+const RateHistory = ({ c }: { c: Contract }) => {
+  const changes = [...(c.changes ?? [])].reverse();
+  if (changes.length === 0) return <span className="dim">Never changed</span>;
+  return (
+    <details>
+      <summary className="mini">{changes.length} change{changes.length > 1 ? "s" : ""}</summary>
+      {changes.map((ch, i) => {
+        const gap = Math.round((ch.newRate - ch.oldRate) * 100) / 100;
+        return (
+          <div key={i} className="mini" style={{ marginTop: 4 }}>
+            <b>{money(ch.oldRate)} → {money(ch.newRate)}</b>{" "}
+            <span style={{ color: gap > 0 ? "var(--warn)" : "var(--good)" }}>
+              {gap > 0 ? "+" : "-"}{money(Math.abs(gap))} ({pct(ch.oldRate > 0 ? gap / ch.oldRate : 0, 1)})
+            </span>
+            <div className="dim">
+              {ch.by} · {fromWireDay(ch.iso)} {ch.at} · {ch.po ? `from ${ch.po}` : "on Rate Contracts"}
+            </div>
+          </div>
+        );
+      })}
+    </details>
+  );
+};
 
 /** A contract rate above the item's moving-average cost is the number a buyer
  *  argues about, so it is stated as both a rupee gap and a percentage. */
@@ -191,6 +217,7 @@ export default function Contracts() {
                 { h: "Valid to", w: "9%" },
                 { h: "Min. order", r: true, w: "8%" },
                 { h: "State", w: "8%" },
+                { h: "Rate history", w: "14%", tip: "Every change to the rate: old and new, the difference, who changed it, when, and the purchase order it came from" },
                 { h: "Action", w: "14%", tip: "Closing a contract keeps it on record; it just stops pricing an order" },
               ]}
               rows={rows.map((c) => {
@@ -249,11 +276,15 @@ export default function Contracts() {
                       <>{c.moq} <span className="dim">{U(c.it)}</span></>
                     ),
                     c.active ? <Pill tone="ok">Live</Pill> : <Pill tone="mu">Closed</Pill>,
+                    <RateHistory c={c} />,
                     editing ? (
                       <BtnRow>
-                        <Btn size="xs" disabled={busy} onClick={() => { void saveEdit(c.id); }}>
-                          {busy ? "Saving…" : "Update"}
-                        </Btn>
+                        {/* The press commits a rate still being typed before `saveEdit` reads it. */}
+                        <span onMouseDown={commitTyping}>
+                          <Btn size="xs" disabled={busy} onClick={() => { void saveEdit(c.id); }}>
+                            {busy ? "Saving…" : "Update"}
+                          </Btn>
+                        </span>
                         <Btn size="xs" variant="gh" onClick={() => setEditId(null)}>Cancel</Btn>
                       </BtnRow>
                     ) : (

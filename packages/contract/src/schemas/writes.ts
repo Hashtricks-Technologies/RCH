@@ -13,8 +13,9 @@ import { AdjustmentRequestSchema, AdjustmentSchema, AdjustReasonSchema, GrnSchem
  *  is never in a write's `changed`: it is the audit service's own notice that new events were
  *  stored, and the API's change stream sends it to admin streams only. `"receivables"` is the
  *  manager's Credit screen - who owes what and every payment behind it, derived at read time
- *  rather than stored, which is why it is one collection over two narrow reads. */
-export const CollectionSchema = z.enum(["stock", "rsv", "ovr", "prices", "priceLists", "menu", "bills", "req", "tkt", "prq", "po", "pord", "batch", "grn", "vendors", "contracts", "tickets", "productReqs", "shopAsks", "items", "locations", "outlets", "roster", "payers", "terms", "receivables", "adjustments", "adjReq", "accounts", "audit"]);
+ *  rather than stored, which is why it is one collection over two narrow reads. `"shifts"` is the
+ *  counter operators' closed shifts - the manager's Shift reports card and bell. */
+export const CollectionSchema = z.enum(["stock", "rsv", "ovr", "prices", "priceLists", "menu", "bills", "req", "tkt", "prq", "po", "pord", "batch", "grn", "vendors", "contracts", "tickets", "productReqs", "shopAsks", "items", "locations", "outlets", "roster", "payers", "terms", "receivables", "adjustments", "adjReq", "accounts", "audit", "shifts"]);
 export const ChangedSchema = z.array(CollectionSchema);
 export type Changed = z.infer<typeof CollectionSchema>;
 
@@ -31,6 +32,10 @@ export const PayBodySchema = z.strictObject({
   // a line that carries more is a client bug, not a sale - refuse it at the door rather than
   // rounding it silently into the ledger.
   lines: z.array(z.strictObject({ it: z.string().min(1).max(64), qty: z.number().positive().multipleOf(0.001).max(10000) })).min(1).max(100),
+  // The walk-in customer, both optional. The phone is not shaped here: a number that is not one
+  // reaches the counter as `phoneRefusal`'s sentence (`@rch/domain`), not as a bare 400.
+  customerName: z.string().trim().max(80).optional(),
+  customerPhone: z.string().max(20).optional(),
 });
 export const ToggleAvailBodySchema = z.strictObject({ loc: LocKeySchema, it: z.string().min(1).max(64) });
 export const SavePriceParamsSchema = z.strictObject({ list: PriceListIdSchema, it: z.string().min(1).max(64) });
@@ -59,6 +64,22 @@ export const OutletParamsSchema = z.strictObject({ loc: LocKeySchema });
 export const SetOutletPriceListBodySchema = z.strictObject({ listId: PriceListIdSchema });
 export const DeletedPriceListSchema = z.strictObject({ id: PriceListIdSchema });
 export const ActivatePriceListResultSchema = z.strictObject({ loc: LocKeySchema, listId: PriceListIdSchema });
+
+// ---- counter prices ----
+/** One cell of the manager's counter price grid: an item at one outlet, its price there and/or
+ *  whether that till sells it. A price of zero or less is not refused here but by the service,
+ *  so the manager reads the grid's own sentence naming the item and the counter. */
+const OutletPriceChangeSchema = z.strictObject({
+  loc: LocKeySchema,
+  it: z.string().min(1).max(64),
+  price: z.number().finite().max(100000).optional(),
+  listed: z.boolean().optional(),
+}).refine((c) => c.price !== undefined || c.listed !== undefined, { message: "A change must carry a price, an on/off, or both" });
+export const SaveOutletPricesBodySchema = z.strictObject({ changes: z.array(OutletPriceChangeSchema).min(1).max(500) });
+export const OutletPricesResultSchema = z.strictObject({
+  changes: z.number().int(),
+  outlets: z.array(LocKeySchema),
+});
 
 // Three decimals is the whole precision of a quantity anywhere in this system (`round3`), so
 // `PayBodySchema` already refuses more; match it. Positivity is deliberately NOT here - a zero
@@ -136,8 +157,10 @@ export const AddToProcurementListBodySchema = z.strictObject({
 // ---- purchase orders
 /** One pick off the procurement list: a requisition, one of its lines by index, a quantity.
  *  Two picks of the same line are legal on the wire and summed by the service before the
- *  pending check - checking them one at a time would let their total overrun the line. */
-export const PickSchema = z.strictObject({ prq: z.string().min(1).max(40), line: z.number().int().min(0).max(49), qty: QtySchema });
+ *  pending check - checking them one at a time would let their total overrun the line.
+ *  `rate` is the price the buyer set on the list; left out, the vendor's live contract (or the
+ *  standard cost) prices the line. Picks of one item become one line at the first rate given. */
+export const PickSchema = z.strictObject({ prq: z.string().min(1).max(40), line: z.number().int().min(0).max(49), qty: QtySchema, rate: RateSchema.optional() });
 export const CreatePoBodySchema = z.strictObject({ vendorId: z.string().min(1).max(40), picks: z.array(PickSchema).max(100) });
 export const PoLineParamsSchema = z.strictObject({ id: z.string().min(1).max(40), n: z.coerce.number().int().min(0).max(99) });
 export const UpdatePoLineBodySchema = z.strictObject({ qty: QtySchema.optional(), rate: RateSchema.optional() });
@@ -196,6 +219,8 @@ export const PatchContractBodySchema = z.strictObject({
 /** What the three new-product drawers send. `key`, `code`, `grp`, `hsn` and `gst` are optional
  *  because the buyer's drawer leaves all five blank and the server applies the same defaults the
  *  store has always applied (unit nos, hsn 2106, gst 5). */
+/** `code` is accepted and ignored: the server assigns the next code in the type's series
+ *  (`nextItemCode`, `@rch/domain`). It stays in the schema so an older client is not a 400. */
 export const CreateItemBodySchema = z.strictObject({
   key: z.string().max(64).default(""), name: z.string().max(120), code: z.string().max(40).default(""),
   unit: z.string().max(12).default("nos"), type: ItemTypeSchema, grp: z.string().max(40).default(""),
@@ -224,14 +249,16 @@ export const ReceiptResultSchema = z.strictObject({ po: PurchaseOrderSchema, grn
 export const ItemResultSchema = z.strictObject({ key: z.string(), item: ItemSchema });
 
 // ---- item patch ----
-/** The item master is editable (`PATCH /items/:it`). Which of these nine fields a role may
+/** The item master is editable (`PATCH /items/:it`). Which of these eleven fields a role may
  *  actually move is `ITEM_FIELD_ROLES` in `@rch/domain` - a sentence, not a 400 - so the schema
- *  takes all nine from anyone and the service refuses in the operator's own words. No
+ *  takes all eleven from anyone and the service refuses in the operator's own words. No
  *  `.default()` anywhere: `parse({})` must stay empty, or "Nothing to change" is unreachable
- *  and a patch of one field silently resets the other eight. */
+ *  and a patch of one field silently resets the other ten. */
 export const ItemKeyParamsSchema = z.strictObject({ it: z.string().min(1).max(64) });
 export const PatchItemBodySchema = z.strictObject({
   n: z.string().max(120).optional(),
+  /** The counter's name for it. A blank clears it back to the item's own name. */
+  dn: z.string().max(60).optional(),
   mrp: RateSchema.optional(),
   cost: RateSchema.optional(),
   gst: z.number().min(0).max(100).optional(),
