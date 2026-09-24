@@ -1,0 +1,178 @@
+/* The public QR ordering page (/order/...). Imported by OrderApp alone, so neither bundle carries
+   the other's styles; the colour tokens are the staff app's own (tokens.css), light and dark.
+   Phone first: 360px is the design width, nothing scrolls sideways at 320px, and from 640px the
+   page is one centred 560px column. Every target is at least 44px. */
+@import "../../tokens.css";
+
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%}
+body{background:var(--ground);color:var(--ink);font-family:Inter,"Helvetica Neue",Arial,sans-serif;
+ font-size:16px;line-height:1.45;-webkit-font-smoothing:antialiased;-webkit-text-size-adjust:100%}
+button,input{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:6px}
+
+.qo{min-height:100dvh;overflow-x:hidden}
+.qo-col{width:100%;max-width:560px;margin:0 auto;padding:0 16px}
+.qo-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.qo h1,.qo h2{margin:0;letter-spacing:-.015em}
+
+/* ---- header */
+.qo-head{position:sticky;top:0;z-index:20;background:var(--surface);border-bottom:1px solid var(--line);
+ padding:14px 0 12px;padding-top:max(14px,env(safe-area-inset-top))}
+.qo-head h1{font-size:21px;font-weight:700;line-height:1.2}
+.qo-where{margin:4px 0 0;display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;color:var(--ink-3);font-size:14px}
+.qo-chip{display:inline-flex;align-items:center;min-height:24px;padding:2px 10px;border-radius:999px;font-size:12.5px;font-weight:600}
+.qo-chip-pickup{background:var(--accent-soft);color:var(--accent)}
+.qo-chip-deliver{background:var(--good-soft);color:var(--good)}
+
+/* ---- menu */
+.qo-menu{padding-top:14px;padding-bottom:32px}
+.qo-menu.has-bar{padding-bottom:calc(110px + env(safe-area-inset-bottom))}
+.qo-banner{margin:0 0 14px;padding:12px 14px;border-radius:12px;background:var(--warn-soft);border:1px solid var(--warn-line);color:var(--ink)}
+.qo-banner strong{display:block;font-size:15px}
+.qo-banner p{margin:2px 0 0;font-size:14px;color:var(--ink-2)}
+.qo-banner-refund{background:var(--info-soft);border-color:var(--info-line);font-size:15px}
+.qo-search{position:relative;display:block}
+.qo-search svg{position:absolute;left:13px;top:50%;width:18px;height:18px;transform:translateY(-50%);fill:none;stroke:var(--ink-3);stroke-width:1.8;stroke-linecap:round}
+.qo-search input{width:100%;min-height:46px;padding:10px 14px 10px 40px;border:1px solid var(--line-strong);border-radius:12px;background:var(--surface);font-size:16px}
+.qo-search input:focus{outline:0;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.qo-live{margin:6px 2px 0;min-height:1.3em;font-size:13.5px;color:var(--warn)}
+.qo-live:empty{min-height:6px}
+.qo-empty{margin:24px 4px;color:var(--ink-3);text-align:center}
+.qo-items{list-style:none;margin:4px 0 0;padding:0;background:var(--surface);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.qo-item{display:flex;align-items:center;gap:12px;padding:12px;min-height:80px}
+.qo-item+.qo-item{border-top:1px solid var(--line-2)}
+.qo-thumb{flex:none;width:56px;height:56px;border-radius:10px;object-fit:cover;background:var(--surface-3);display:grid;place-items:center;color:var(--ink-4)}
+.qo-thumb-none svg{width:26px;height:26px}
+.qo-item-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.qo-item-name{font-weight:600;font-size:15.5px;line-height:1.3;overflow-wrap:anywhere}
+.qo-item-price{font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums;font-size:14.5px;color:var(--ink-2);display:flex;flex-wrap:wrap;gap:0 8px;align-items:baseline}
+.qo-item-price s{font-size:12.5px;color:var(--ink-4)}
+.qo-item-why{font-size:13px;color:var(--ink-3)}
+.qo-item.is-out .qo-item-name,.qo-item.is-out .qo-item-price,.qo-item.is-out .qo-thumb{opacity:.55}
+.qo-out{flex:none;font-size:13px;font-weight:600;color:var(--ink-3);padding:0 4px}
+.qo-foot{margin:14px 4px 0;font-size:13px;color:var(--ink-3)}
+
+/* ---- stepper */
+.qo-add{flex:none;min-width:76px;min-height:44px;padding:0 16px;border-radius:12px;border:1.5px solid var(--accent);background:var(--surface);color:var(--accent);font-weight:700;font-size:15px}
+.qo-add:disabled{border-color:var(--line-strong);color:var(--ink-4);cursor:not-allowed}
+.qo-step{flex:none;display:inline-flex;align-items:center;border-radius:12px;background:var(--accent);color:var(--on-accent)}
+.qo-step button{width:44px;height:44px;display:grid;place-items:center;border:0;background:transparent;color:inherit;border-radius:12px}
+.qo-step button:disabled{opacity:.45;cursor:not-allowed}
+.qo-step svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round}
+.qo-step output{min-width:22px;text-align:center;font-weight:700;font-variant-numeric:tabular-nums}
+
+/* ---- buttons */
+.qo-btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:48px;padding:0 20px;border-radius:12px;border:1px solid var(--line-strong);background:var(--surface);font-weight:600;font-size:16px}
+.qo-btn-primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.qo-btn-primary:disabled{opacity:.7;cursor:progress}
+.qo-btn-quiet{min-height:44px;padding:0 14px;font-size:14.5px}
+
+/* ---- the cart bar */
+.qo-bar{position:fixed;left:0;right:0;bottom:0;z-index:30;background:var(--surface);border-top:1px solid var(--line);box-shadow:var(--sh3);
+ padding:12px 0 calc(12px + env(safe-area-inset-bottom))}
+.qo-bar-in{display:flex;align-items:center;gap:12px}
+.qo-bar-sum{margin:0;flex:1;min-width:0;display:flex;flex-direction:column;line-height:1.25}
+.qo-bar-sum span{font-size:13.5px;color:var(--ink-3)}
+.qo-bar-sum strong{font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace;font-size:19px}
+.qo-bar .qo-btn{flex:none}
+
+/* ---- checkout: a bottom sheet on a phone, a dialog from 640px */
+.qo-scrim{position:fixed;inset:0;z-index:50;background:var(--scrim);display:flex;align-items:flex-end;justify-content:center}
+.qo-sheet{width:100%;max-width:560px;max-height:92dvh;overflow-y:auto;overscroll-behavior:contain;background:var(--surface);
+ border-radius:18px 18px 0 0;padding:6px 16px calc(18px + env(safe-area-inset-bottom));box-shadow:var(--sh3)}
+.qo-sheet-head{position:sticky;top:0;z-index:1;display:flex;align-items:center;justify-content:space-between;background:var(--surface);padding:10px 0 8px}
+.qo-sheet-head h2{font-size:19px;font-weight:700}
+.qo-sheet-head h2:focus{outline:0}
+.qo-x{width:44px;height:44px;display:grid;place-items:center;border:0;background:transparent;border-radius:12px;color:var(--ink-2)}
+.qo-x svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round}
+.qo-lines{list-style:none;margin:0;padding:0}
+.qo-lines li{display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"name amt" "step step";gap:6px 10px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line-2)}
+.qo-line-name{grid-area:name;font-weight:600;overflow-wrap:anywhere}
+.qo-line-name small,.qo-rcpt-lines small{display:block;font-weight:400;font-size:12.5px;color:var(--ink-3)}
+.qo-lines .qo-step,.qo-lines .qo-add{grid-area:step;justify-self:start}
+.qo-line-amt{grid-area:amt;font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums}
+@media(min-width:400px){.qo-lines li{grid-template-columns:minmax(0,1fr) auto auto;grid-template-areas:"name step amt"}.qo-line-amt{min-width:78px;text-align:right}}
+.qo-total{display:flex;justify-content:space-between;align-items:baseline;padding:14px 0 2px;font-weight:700;font-size:17px}
+.qo-total strong{font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace;font-size:20px}
+.qo-fine{margin:0 0 12px;font-size:13px;color:var(--ink-3)}
+.qo-form{display:flex;flex-direction:column;gap:12px}
+.qo-field label{display:block;font-size:14px;font-weight:600;margin-bottom:5px}
+.qo-field input{width:100%;min-height:48px;padding:10px 14px;border:1px solid var(--line-strong);border-radius:12px;background:var(--surface);font-size:16px}
+.qo-field input:focus{outline:0;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.qo-field input[aria-invalid=true]{border-color:var(--crit)}
+.qo-hint,.qo-err{margin:5px 2px 0;font-size:13px;color:var(--ink-3)}
+.qo-err{color:var(--crit)}
+.qo-alert{margin:0;padding:10px 12px;border-radius:10px;background:var(--crit-soft);border:1px solid var(--crit-line);color:var(--ink);font-size:14.5px}
+.qo-note{margin:0 0 12px;padding:10px 12px;border-radius:10px;background:var(--surface-2);border:1px solid var(--line);font-size:14.5px;color:var(--ink-2)}
+.qo-form .qo-note{margin:0}
+.qo-pay{width:100%;min-height:52px;font-size:17px}
+@media(min-width:640px){
+ .qo-scrim{align-items:center;padding:24px}
+ .qo-sheet{border-radius:18px;max-height:min(760px,90dvh);padding-bottom:20px}
+}
+
+/* ---- spinner */
+.qo-spin{display:inline-block;width:1em;height:1em;flex:none;border-radius:50%;border:2px solid currentColor;border-right-color:transparent;vertical-align:-.15em;animation:qo-spin .8s linear infinite}
+@keyframes qo-spin{to{transform:rotate(360deg)}}
+.qo-loading{min-height:60dvh;display:flex;align-items:center;justify-content:center;gap:10px;color:var(--ink-3)}
+.qo-dead{padding-top:18vh;text-align:center}
+.qo-dead h1{font-size:22px;margin-bottom:8px}
+.qo-dead p{color:var(--ink-3);max-width:34ch;margin:0 auto 18px}
+
+/* ---- status: the ticket is the one loud thing on the page */
+.qo-status{padding-top:max(20px,env(safe-area-inset-top));padding-bottom:40px;display:flex;flex-direction:column;gap:14px}
+.qo-ticket{position:relative;padding:20px 20px 22px;border-radius:16px;background:var(--accent);color:var(--on-accent);text-align:center}
+/* The tear line: a dashed rule with a notch bitten out of each side, like a canteen token torn
+   off a roll. The notches are the page's own ground, so they read as holes in either theme. */
+.qo-tear{position:relative;height:0;margin:0 -20px 14px;border-top:1.5px dashed color-mix(in srgb,currentColor 40%,transparent)}
+.qo-tear::before,.qo-tear::after{content:"";position:absolute;top:-12px;width:22px;height:22px;border-radius:50%;background:var(--ground)}
+.qo-tear::before{left:-11px}.qo-tear::after{right:-11px}
+.qo-ticket.is-off{background:var(--surface-3);color:var(--ink)}
+.qo-ticket h1{font-size:14px;font-weight:600;opacity:.85}
+.qo-no{margin:4px 0 10px;font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace;line-height:1;overflow-wrap:anywhere}
+.qo-no span{display:block;font-size:14px;opacity:.75;margin-bottom:4px}
+.qo-no strong{font-size:clamp(52px,17vw,76px);font-weight:600;letter-spacing:-.03em}
+.qo-status-words{margin:0 auto;max-width:32ch;font-size:17px;font-weight:600;display:flex;gap:8px;justify-content:center;align-items:center}
+.qo-where-words{margin:6px auto 0;max-width:34ch;font-size:14.5px;opacity:.9}
+.qo-steps{list-style:none;margin:0;padding:14px 16px;background:var(--surface);border:1px solid var(--line);border-radius:14px;display:grid;gap:0}
+.qo-steps li{position:relative;display:flex;align-items:center;gap:12px;min-height:40px;color:var(--ink-3)}
+.qo-steps li+li::before{content:"";position:absolute;left:6px;top:-12px;height:24px;width:2px;background:var(--line-strong)}
+.qo-steps li.is-done+li::before{background:var(--good)}
+.qo-dot{position:relative;z-index:1;width:14px;height:14px;flex:none;border-radius:50%;border:2px solid var(--line-strong);background:var(--surface)}
+.qo-steps li.is-done{color:var(--ink-2)}
+.qo-steps li.is-done .qo-dot{background:var(--good);border-color:var(--good)}
+.qo-steps li.is-now{color:var(--ink);font-weight:700}
+.qo-steps li.is-now .qo-dot{border-color:var(--accent);background:var(--accent);box-shadow:0 0 0 4px var(--accent-soft)}
+.qo-card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px 16px}
+.qo-rcpt-head{display:flex;align-items:center;justify-content:space-between}
+.qo-rcpt-head h2{font-size:17px}
+.qo-rcpt-meta{margin:2px 0 10px;display:flex;flex-wrap:wrap;gap:2px 14px;font-size:13px;color:var(--ink-3)}
+.qo-rcpt-lines{width:100%;border-collapse:collapse;font-size:14.5px}
+.qo-rcpt-lines th{font-size:12.5px;font-weight:600;color:var(--ink-3);text-align:left;padding:6px 0;border-bottom:1px solid var(--line)}
+.qo-rcpt-lines td{padding:8px 0;border-bottom:1px solid var(--line-2);vertical-align:top}
+.qo-rcpt-lines th:nth-child(n+2),.qo-rcpt-lines td:nth-child(n+2){text-align:right;padding-left:10px;white-space:nowrap}
+.qo-rcpt-lines td:nth-child(n+2){font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums}
+.qo-rcpt-sum{display:grid;grid-template-columns:1fr auto;gap:4px 0;margin:10px 0 0;font-size:14.5px}
+.qo-rcpt-sum dt{color:var(--ink-3)}
+.qo-rcpt-sum dd{margin:0;padding-left:12px;text-align:right;font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums}
+.qo-rcpt-sum .qo-rcpt-total{color:var(--ink);font-weight:700;font-size:17px;padding-top:6px;border-top:1px solid var(--line)}
+.qo-paid{margin:10px 0 0;color:var(--good);font-weight:600;font-size:14.5px}
+.qo-more{margin:4px 0 0;text-align:center}
+.qo-more a{display:inline-flex;align-items:center;min-height:44px;padding:0 12px;color:var(--accent);font-weight:600;text-decoration:none}
+
+@media(prefers-reduced-motion:reduce){.qo-spin{animation-duration:2.4s}*{scroll-behavior:auto}}
+@media(prefers-reduced-motion:no-preference){
+ .qo-sheet{animation:qo-up .22s cubic-bezier(.32,.72,0,1)}
+ @keyframes qo-up{from{transform:translateY(24px);opacity:.5}to{transform:none;opacity:1}}
+}
+
+/* ---- paper: the receipt alone, in black on white */
+@media print{
+ body{background:#fff;color:#000}
+ .qo-head,.qo-bar,.qo-steps,.qo-banner,.qo-note,.no-print{display:none!important}
+ .qo-ticket{background:none;color:#000;padding:0 0 8px;border-bottom:1px solid #000;border-radius:0}
+ .qo-tear{display:none}
+ .qo-card{border:0;padding:0}
+}

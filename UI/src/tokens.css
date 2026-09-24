@@ -1,0 +1,61 @@
+/* The colour tokens, shared by the staff app (styles.css) and the public QR ordering page
+ (pages/public/public.css). Each imports this file, so each bundle carries it once and the two
+ pages can never drift apart in either theme. */
+
+/* Slate + blue - one token set, three states.
+   :root is light; the media query covers "system" on a dark OS;
+   [data-theme] wins over the OS in both directions. */
+:root{
+ color-scheme:light;
+ --ground:#F5F6F8;--surface:#FFFFFF;--surface-2:#F8F9FB;--surface-3:#EDF0F4;--sidebar:#FBFCFD;
+ --line:#E2E5EB;--line-2:#EDEFF3;--line-strong:#C7CDD7;
+ --ink:#0C1220;--ink-2:#39414F;--ink-3:#697280;--ink-4:#98A0AC;
+ --accent:#2563EB;--accent-soft:#E6EDFD;--accent-line:#AAC5F8;--on-accent:#FFFFFF;
+ --brand:#1B3FA0;--on-brand:#FFFFFF;
+ --good:#16794A;--good-soft:#DFF3E7;--good-line:#9BD5B6;
+ --warn:#8A5B00;--warn-soft:#FBEED2;--warn-line:#E5C87C;
+ --crit:#C0332B;--crit-soft:#FBE3E0;--crit-line:#EFAFA8;
+ --info:#1F6FB2;--info-soft:#E1EDF8;--info-line:#A5C8E6;
+ --made:#B45309;--made-soft:#FBEBD8;
+ --c1:#2563EB;--c2:#B45309;--c3:#6D28D9;--c1-f:rgba(37,99,235,.14);
+ --scrim:rgba(12,18,32,.45);
+ --sh1:0 1px 2px rgba(12,18,32,.05);
+ --sh2:0 1px 2px rgba(12,18,32,.05),0 4px 14px -8px rgba(12,18,32,.2);
+ --sh3:0 12px 40px -12px rgba(12,18,32,.28);--r:7px;--rl:10px;
+}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){
+ color-scheme:dark;
+ --ground:#0A0C10;--surface:#14171D;--surface-2:#191D24;--surface-3:#222732;--sidebar:#101319;
+ --line:#262C36;--line-2:#1E232B;--line-strong:#3A4250;
+ --ink:#E8EBF0;--ink-2:#B3BAC6;--ink-3:#858D9A;--ink-4:#656C78;
+ --accent:#5B8DEF;--accent-soft:#152541;--accent-line:#2A4A78;--on-accent:#06122A;
+ --brand:#111927;--on-brand:#E8EBF0;
+ --good:#52BE8A;--good-soft:#0F2A1E;--good-line:#22553C;
+ --warn:#D9B155;--warn-soft:#2B2410;--warn-line:#574718;
+ --crit:#E3776B;--crit-soft:#331714;--crit-line:#63302A;
+ --info:#6BAFE0;--info-soft:#112536;--info-line:#27486A;
+ --made:#E0985A;--made-soft:#33230E;
+ --c1:#5B8DEF;--c2:#D18A3C;--c3:#A78BFA;--c1-f:rgba(91,141,239,.16);
+ --scrim:rgba(2,4,8,.62);
+ --sh1:0 1px 2px rgba(0,0,0,.4);
+ --sh2:0 1px 2px rgba(0,0,0,.4),0 6px 18px -10px rgba(0,0,0,.8);
+ --sh3:0 16px 50px -14px rgba(0,0,0,.85);
+}}
+:root[data-theme="dark"]{
+ color-scheme:dark;
+ --ground:#0A0C10;--surface:#14171D;--surface-2:#191D24;--surface-3:#222732;--sidebar:#101319;
+ --line:#262C36;--line-2:#1E232B;--line-strong:#3A4250;
+ --ink:#E8EBF0;--ink-2:#B3BAC6;--ink-3:#858D9A;--ink-4:#656C78;
+ --accent:#5B8DEF;--accent-soft:#152541;--accent-line:#2A4A78;--on-accent:#06122A;
+ --brand:#111927;--on-brand:#E8EBF0;
+ --good:#52BE8A;--good-soft:#0F2A1E;--good-line:#22553C;
+ --warn:#D9B155;--warn-soft:#2B2410;--warn-line:#574718;
+ --crit:#E3776B;--crit-soft:#331714;--crit-line:#63302A;
+ --info:#6BAFE0;--info-soft:#112536;--info-line:#27486A;
+ --made:#E0985A;--made-soft:#33230E;
+ --c1:#5B8DEF;--c2:#D18A3C;--c3:#A78BFA;--c1-f:rgba(91,141,239,.16);
+ --scrim:rgba(2,4,8,.62);
+ --sh1:0 1px 2px rgba(0,0,0,.4);
+ --sh2:0 1px 2px rgba(0,0,0,.4),0 6px 18px -10px rgba(0,0,0,.8);
+ --sh3:0 16px 50px -14px rgba(0,0,0,.85);
+}
