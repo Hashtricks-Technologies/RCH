@@ -241,7 +241,7 @@ export function loadRazorpay(): Promise<void> {
 /** The checkout's accent: the page's brand amber, the same in either theme. */
 const BRAND_AMBER = "#E07B00";
 /** Fifteen minutes, well inside the thirty an unpaid order is kept for. */
-export const CHECKOUT_TIMEOUT_S = 900;
+const CHECKOUT_TIMEOUT_S = 900;
 /** If the gateway never calls back at all (a sheet torn down under it), Pay comes back this long after its own timeout. */
 export const CHECKOUT_BACKSTOP_MS = (CHECKOUT_TIMEOUT_S + 30) * 1000;
 let backstop: ReturnType<typeof setTimeout> | undefined;
