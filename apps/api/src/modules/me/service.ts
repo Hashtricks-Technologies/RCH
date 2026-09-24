@@ -3,6 +3,7 @@ import { withTransaction, type Reader } from "../../lib/db.js";
 import { auditBefore } from "../../lib/audit.js";
 import { NotFoundError } from "../../lib/errors.js";
 import { toWireUser } from "../../lib/wire.js";
+import { loadAccess } from "../../lib/access.js";
 import { meRepo } from "./repo.js";
 
 export function createMeService(db: Db) {
@@ -12,7 +13,7 @@ export function createMeService(db: Db) {
   const load = async (reader: Reader, id: string, loc?: string) => {
     const u = await meRepo.byId(reader, id);
     if (!u) throw new NotFoundError("That account no longer exists.");
-    return { user: { ...toWireUser(u), ...(loc ? { loc } : {}) }, mustChangePassword: u.mustChangePassword };
+    return { user: { ...toWireUser(u, await loadAccess(reader, u.id)), ...(loc ? { loc } : {}) }, mustChangePassword: u.mustChangePassword };
   };
   return {
     get: (id: string, loc?: string) => load(db, id, loc),

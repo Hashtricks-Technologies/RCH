@@ -4,8 +4,8 @@
 import { routes } from "@rch/contract";
 import { ApiError, call } from "../api/client";
 import { refetch } from "../api/refetch";
-import { applyAccounts, applyAdminActions, applyAdminLocations, applyAdminPayers } from "../api/wire";
-import type { AdminAction, AdminLocation, AdminPayer, AdminUser, CreateOutletBody, Dated, LocKey, PayerKind, Role, UpdateOutletBody } from "../types";
+import { applyAccounts, applyAdminActions, applyAdminLocations, applyAdminPayers, applyAdminRoles } from "../api/wire";
+import type { AdminAction, AdminLocation, AdminPayer, AdminRole, AdminUser, CreateOutletBody, Dated, LocKey, PayerKind, UpdateOutletBody } from "../types";
 import type { AppState } from "./index";
 
 type Get = () => AppState;
@@ -17,6 +17,9 @@ export interface AdminSlice {
    *  Accounts tab's location labels both read this. */
   adminLocations: AdminLocation[];
   outletActions: Dated<AdminAction>[];
+  /** Every role, active or not - what the account form picks a role from. */
+  adminRoles: AdminRole[];
+  loadAdminRoles: () => Promise<void>;
   /** A read, not a write - no toast of its own, nothing refetched behind it: this is a first
    *  load, not a write's own read-back. */
   loadAccounts: () => Promise<void>;
@@ -32,7 +35,7 @@ export interface AdminSlice {
    *  the page shows the password once and it is gone. A create carries no employee number -
    *  the server assigns the next one (`nextEmpNo`) and this hands back the one it chose, so
    *  the page names the number that was actually given rather than the one it previewed. */
-  createAccount: (body: { name: string; email: string; role: Role; loc: LocKey; phone?: string }) => Promise<{ emp: string; password: string } | null>;
+  createAccount: (body: { name: string; email: string; roleId: string; loc: LocKey; phone?: string }) => Promise<{ emp: string; password: string } | null>;
   resetAccountPassword: (id: string) => Promise<string | null>;
   /** Permanent, and only for an account the server agrees has nothing behind it (deactivated,
    *  not admin-flagged, never signed for anything). A refusal is the server's own sentence;
@@ -44,7 +47,7 @@ export interface AdminSlice {
   setAccountActive: (id: string, active: boolean) => Promise<boolean>;
   /** Form-carrying: a refusal (the role/location pairing, most often) leaves the picker exactly
    *  as the operator left it. */
-  updateAccountRoleLoc: (id: string, next: { role: Role; loc: LocKey }) => Promise<boolean>;
+  updateAccountRoleLoc: (id: string, next: { roleId: string; loc: LocKey }) => Promise<boolean>;
   /**
    * Every counter this account may stand at - one for almost everybody, more for a consultant
    * who takes shifts at more than one outlet. The whole list, not a diff, and the location the
@@ -79,12 +82,17 @@ export const createAdminSlice = (get: Get): AdminSlice => ({
   adminActions: [],
   adminLocations: [],
   outletActions: [],
+  adminRoles: [],
   adminPayers: [],
   payerActions: [],
 
   loadAccounts: async () => {
     try { applyAccounts(await call(routes.adminUsers)); }
     catch (e) { get().notify(e instanceof ApiError ? e.message : "Could not read the account list - check the connection and try again."); }
+  },
+  loadAdminRoles: async () => {
+    try { applyAdminRoles(await call(routes.adminRoles)); }
+    catch (e) { get().notify(e instanceof ApiError ? e.message : "Could not read the roles - check the connection and try again."); }
   },
   loadAdminLocations: async () => {
     try { applyAdminLocations(await call(routes.adminLocations)); }

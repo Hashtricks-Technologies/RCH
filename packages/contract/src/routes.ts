@@ -4,7 +4,7 @@ import { OkResponseSchema } from "./schemas/common.js";
 import { AuthResponseSchema, ChangePasswordBodySchema, LoginBodySchema, MeResponseSchema, PatchMeBodySchema, SignInDirectorySchema } from "./schemas/auth.js";
 import { AdjustmentRequestsResponseSchema, AdjustmentsResponseSchema, BatchesResponseSchema, BILL_DAYS, BillsResponseSchema, ContractsResponseSchema, GrnsResponseSchema, ItemsResponseSchema, LocationsResponseSchema, MenusResponseSchema, PriceListsResponseSchema, PricesResponseSchema, ProdOrdersResponseSchema, ProductRequestsResponseSchema, PurchaseOrdersResponseSchema, RequestsResponseSchema, RequisitionsResponseSchema, RosterResponseSchema, ShopAsksResponseSchema, SnapshotSchema, TermsResponseSchema, StockResponseSchema, SupportTicketsResponseSchema, TicketsResponseSchema, VendorsResponseSchema } from "./schemas/snapshot.js";
 import { CloseRegisterBodySchema, CreditParamsSchema, CreditResponseSchema, RegisterQuerySchema, RegisterReportSchema, RegisterReportsResponseSchema, StockLedgerQuerySchema, StockLedgerResponseSchema, ZReportsQuerySchema } from "./schemas/reports.js";
-import { AdminActionSchema, AdminActionsQuerySchema, AdminDeletedUserSchema, AdminLocationSchema, AdminPayerParamsSchema, AdminPayerSchema, AdminUserIdParamsSchema, AdminUserSchema, AdminUserWithTempPasswordSchema, CreateAdminUserBodySchema, CreateOutletBodySchema, CreatePayerBodySchema, OutletKeyParamsSchema, SetAdminUserPostingsBodySchema, UpdateAdminUserBodySchema, UpdateOutletBodySchema, UpdatePayerBodySchema } from "./schemas/admin.js";
+import { AdminActionSchema, AdminActionsQuerySchema, AdminDeletedUserSchema, AdminLocationSchema, AdminPayerParamsSchema, AdminPayerSchema, AdminRoleSchema, AdminUserIdParamsSchema, AdminUserSchema, AdminUserWithTempPasswordSchema, CreateAdminUserBodySchema, CreateOutletBodySchema, CreatePayerBodySchema, CreateRoleBodySchema, OutletKeyParamsSchema, RoleIdParamsSchema, SetAdminUserPostingsBodySchema, UpdateAdminUserBodySchema, UpdateOutletBodySchema, UpdatePayerBodySchema, UpdateRoleBodySchema } from "./schemas/admin.js";
 import { ClassParamsSchema, ClassTermsSchema, PayerParamsSchema, PayerTermsSchema, ReceivablesResponseSchema, RecordSettlementBodySchema, SetClassTermsBodySchema, SetPayerTermsBodySchema, SettlementIdParamsSchema, SettlementSchema, SettlementsResponseSchema, StatementSchema, VoidSettlementBodySchema } from "./schemas/receivables.js";
 import { CurrentShiftResponseSchema, ShiftReportSchema, ShiftReportsResponseSchema, ShiftsQuerySchema } from "./schemas/reports.js";
 import { AuditEntrySchema, AuditIdParamsSchema, AuditPageSchema, AuditQuerySchema } from "./schemas/audit.js";
@@ -284,6 +284,16 @@ export const routes = {
   adminPayers:           defineRoute({ method: "GET",   path: "/admin/payers",                     access: "admin", response: z.array(AdminPayerSchema) }),
   createPayer:           defineRoute({ method: "POST",  path: "/admin/payers",                     access: "admin", body: CreatePayerBodySchema, response: writeResponse(AdminPayerSchema) }),
   updatePayer:           defineRoute({ method: "PATCH", path: "/admin/payers/:kind/:id",           access: "admin", params: AdminPayerParamsSchema, body: UpdatePayerBodySchema, response: writeResponse(AdminPayerSchema) }),
+  // ---- admin: roles & permissions. A role is a name, the desk it works at and what it may see and
+  // change; every account holds one. Deactivated only once nobody active holds it, and deleted only
+  // if nobody ever did. A change reaches its holders on their next request (`apps/api`'s
+  // permission cache), never through the token.
+  adminRoles:            defineRoute({ method: "GET",    path: "/admin/roles",                     access: "admin", response: z.array(AdminRoleSchema) }),
+  createRole:            defineRoute({ method: "POST",   path: "/admin/roles",                     access: "admin", body: CreateRoleBodySchema, response: writeResponse(AdminRoleSchema) }),
+  updateRole:            defineRoute({ method: "PATCH",  path: "/admin/roles/:id",                 access: "admin", params: RoleIdParamsSchema, body: UpdateRoleBodySchema, response: writeResponse(AdminRoleSchema) }),
+  deactivateRole:        defineRoute({ method: "POST",   path: "/admin/roles/:id/deactivate",      access: "admin", params: RoleIdParamsSchema, response: writeResponse(AdminRoleSchema) }),
+  reactivateRole:        defineRoute({ method: "POST",   path: "/admin/roles/:id/reactivate",      access: "admin", params: RoleIdParamsSchema, response: writeResponse(AdminRoleSchema) }),
+  deleteRole:            defineRoute({ method: "DELETE", path: "/admin/roles/:id",                 access: "admin", params: RoleIdParamsSchema, response: writeResponse(AdminRoleSchema) }),
   // ---- admin: outlets. Opened, edited, closed and reopened here and nowhere else - never deleted
   // (root CLAUDE.md). The store and the kitchen are fixed: the outlet routes answer 404 for either.
   adminLocations:        defineRoute({ method: "GET",   path: "/admin/locations",                 access: "admin", response: z.array(AdminLocationSchema) }),

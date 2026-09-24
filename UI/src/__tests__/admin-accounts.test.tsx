@@ -5,7 +5,8 @@ import { MemoryRouter } from "react-router-dom";
 import AdminUsers from "../pages/AdminUsers";
 import { setAccessToken } from "../api/session";
 import { useApp } from "../store";
-import type { AdminLocation, AdminUser } from "../types";
+import { DESK_DEFAULTS } from "@rch/domain";
+import type { AdminLocation, AdminRole, AdminUser } from "../types";
 import { as, resetStore, S } from "./fixture";
 
 /**
@@ -24,7 +25,9 @@ const account = (over: Partial<AdminUser>): AdminUser => {
   };
   // One posting unless a case says otherwise - what the server sends for every account but a
   // consultant taking shifts at more than one counter.
-  return { ...a, postings: over.postings ?? [a.loc] };
+  // The seeded role of the account's desk; the super admin holds none.
+  const rid = a.admin ? undefined : `ROLE-00${["counter", "manager", "store", "prod", "buyer"].indexOf(a.r) + 1}`;
+  return { ...a, ...(rid ? { rid } : {}), postings: over.postings ?? [a.loc] };
 };
 const SUPER = account({ id: "u7", emp: "RC-0001", n: "System Administrator", r: "buyer", rl: "Super Admin", loc: "store", admin: true });
 const KAVITHA = account({});
@@ -43,11 +46,18 @@ const LOCS: AdminLocation[] = [
   row({ key: "kiosk", n: "Snack Kiosk", c: "OT-GK", floor: "Ground", cc: "CC-KSK", staff: 1 }),
 ];
 
+/** The five seeded roles, as `GET /admin/roles` answers them - the form's role picker reads this. */
+const ROLES: AdminRole[] = (["counter", "manager", "store", "prod", "buyer"] as const).map((desk, i) => ({
+  id: `ROLE-00${i + 1}`, name: DESK_DEFAULTS[desk].name, desk, active: true, perms: DESK_DEFAULTS[desk].perms,
+  holders: 1, everAssigned: true, updatedAt: "2026-09-24T03:00:00.000Z",
+}));
+
 const fetchMock = vi.fn();
 type Stubs = Record<string, () => Response>;
 function serve(stubs: Stubs): void {
   fetchMock.mockImplementation((u: string, init: RequestInit) => {
-    const make = stubs[`${init.method} ${String(u).split("?")[0]}`];
+    const at = `${init.method} ${String(u).split("?")[0]}`;
+    const make = stubs[at] ?? (at === "GET /api/v1/admin/roles" ? () => json(ROLES) : undefined);
     return Promise.resolve(make ? make() : json({ error: { code: "internal", message: `no stub for ${init.method} ${u}` } }, 500));
   });
 }
@@ -133,7 +143,7 @@ describe("the account page", () => {
     const [, init] = hit("POST /api/v1/admin/users")[0];
     // No location was picked by hand, so the form sent the first open outlet a counter may work
     // at - read from the admin's own list, alphabetically, never a name compiled into the bundle.
-    expect(JSON.parse(String((init as RequestInit).body))).toEqual({ name: "Anitha R", email: "anitha.r@royalcare.in", role: "counter", loc: "coffee" });
+    expect(JSON.parse(String((init as RequestInit).body))).toEqual({ name: "Anitha R", email: "anitha.r@royalcare.in", roleId: "ROLE-001", loc: "coffee" });
     expect(page.text()).toContain("RC-4483's temporary password is one-time-pass-1");
     // The list came back with the new account in it, so the preview has moved on.
     expect(page.field("Employee id").value).toBe("RC-4484");
@@ -309,7 +319,7 @@ describe("an account posted to more than one counter", () => {
     await press(page.button("Create account"));
 
     // The create itself is unchanged: no employee number, and the one location it stands at.
-    expect(body("POST /api/v1/admin/users")).toEqual({ name: "Anitha R", email: "anitha.r@royalcare.in", role: "counter", loc: "coffee" });
+    expect(body("POST /api/v1/admin/users")).toEqual({ name: "Anitha R", email: "anitha.r@royalcare.in", roleId: "ROLE-001", loc: "coffee" });
     // The other counters are a second write against the account that now exists, found by the
     // number the server actually gave.
     expect(body("PUT /api/v1/admin/users/u8/postings")).toEqual({ locs: ["coffee", "kiosk"] });
@@ -387,7 +397,7 @@ describe("an account posted to more than one counter", () => {
     // And the create form drops the whole field once the role has nowhere else to be.
     await act(async () => {
       const role = page!.field("Role") as unknown as HTMLSelectElement;
-      Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")!.set!.call(role, "store");
+      Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")!.set!.call(role, "ROLE-003");
       role.dispatchEvent(new Event("change", { bubbles: true }));
     });
     expect(page.text()).not.toContain("Counters this account works");

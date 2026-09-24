@@ -1,15 +1,14 @@
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import { MIN_PASSWORD_LENGTH, type LocKey, type Role } from "@rch/contract";
 import { nextEmpNo, worksAt } from "@rch/domain";
 import type { Db } from "../db/client.js";
-import { idempotencyKeys, refreshTokens, shifts, userPostings, users } from "../db/schema/index.js";
+import { idempotencyKeys, refreshTokens, roles, shifts, userPostings, users } from "../db/schema/index.js";
 import { isForeignKeyViolation, withTransaction, type Tx } from "./db.js";
 import { lockLocation } from "./locations.js";
 import { hashPassword } from "./password.js";
 import { toWireLocation } from "./wire.js";
 import { ConflictError, NotFoundError, RuleError, ValidationError } from "./errors.js";
 
-const ROLE_LABEL: Record<Role, string> = { counter: "Counter Operator", manager: "Outlet Manager", store: "Store Keeper", prod: "Kitchen In-charge", buyer: "Procurement Officer" };
 const PALETTE = ["#B45309", "#7C3AED", "#0F766E", "#15803D", "#BE123C", "#475569", "#1D4ED8", "#9333EA", "#0E7490", "#C2410C"];
 
 /** The same floor `ChangePasswordBodySchema` puts on a password the user chooses - an
@@ -20,7 +19,7 @@ function checkPassword(password: string): void {
   if (password.length < MIN_PASSWORD_LENGTH) throw new ValidationError(`password must be at least ${MIN_PASSWORD_LENGTH} characters`);
 }
 
-/** Where each role works, as the refusal says it. The rule itself is `worksAt` in @rch/domain. */
+/** Where each desk works, as the refusal says it. The rule itself is `worksAt` in @rch/domain. */
 const PLACE: Record<Role, string> = {
   prod: "the Central Kitchen", store: "the Central Store", buyer: "the Central Store",
   counter: "an open outlet", manager: "an open outlet",
@@ -32,17 +31,41 @@ const PLACE: Record<Role, string> = {
  * the account being written at it (the close takes the row `FOR UPDATE`). An unknown key is a
  * `400` naming the field the administrator typed, not the `404` a document write would give.
  */
-async function checkPairing(tx: Tx, role: Role, loc: string): Promise<void> {
+async function checkPairing(tx: Tx, role: { desk: Role; name: string }, loc: string): Promise<void> {
   const row = await lockLocation(tx, loc).catch((e: unknown) => {
     if (e instanceof NotFoundError) throw new ValidationError(`unknown location "${loc}"`);
     throw e;
   });
-  if (worksAt(role, loc, toWireLocation(row))) return;
-  const closedOutlet = (role === "counter" || role === "manager") && row.type === "Outlet" && !row.active;
+  if (worksAt(role.desk, loc, toWireLocation(row))) return;
+  const closedOutlet = (role.desk === "counter" || role.desk === "manager") && row.type === "Outlet" && !row.active;
   throw new ValidationError(closedOutlet
-    ? `${ROLE_LABEL[role]} works at ${PLACE[role]} - ${row.name} is closed`
-    : `${ROLE_LABEL[role]} works at ${PLACE[role]}, not at ${row.name}`);
+    ? `${role.name} works at ${PLACE[role.desk]} - ${row.name} is closed`
+    : `${role.name} works at ${PLACE[role.desk]}, not at ${row.name}`);
 }
+
+type RoleRow = typeof roles.$inferSelect;
+/** Which role an account is given: by id (the admin page), or - for the CLI and the seed, which
+ *  speak in desks - the lowest-numbered active role on that desk. */
+export type RolePick = { roleId: string } | { role: Role };
+
+/**
+ * The role an account is about to be given, locked `FOR UPDATE` - before the location, the order
+ * every account write takes them in - so a deactivation cannot slip in between this check and the
+ * account being written. An unknown id is a `400` naming what the administrator picked; a
+ * deactivated role is refused in words.
+ */
+async function takeRole(tx: Tx, pick: RolePick): Promise<RoleRow> {
+  const [row] = "roleId" in pick
+    ? await tx.select().from(roles).where(eq(roles.id, pick.roleId)).for("update")
+    : await tx.select().from(roles).where(and(eq(roles.desk, pick.role), eq(roles.active, true))).orderBy(asc(roles.id)).limit(1).for("update");
+  if (!row) throw new ValidationError("roleId" in pick ? `unknown role "${pick.roleId}"` : `no active role works at the ${pick.role} desk`);
+  if (!row.active) throw new RuleError(`Refused - ${row.name} is deactivated, so it can't be given to anybody`);
+  return row;
+}
+/** From the first time anybody holds it, a role keeps its desk and can no longer be deleted. */
+const markAssigned = async (tx: Tx, role: RoleRow): Promise<void> => {
+  if (!role.everAssigned) await tx.update(roles).set({ everAssigned: true }).where(eq(roles.id, role.id));
+};
 
 async function byEmp(tx: Tx, emp: string) {
   const [u] = await tx.select().from(users).where(eq(users.empNo, emp));
@@ -102,17 +125,19 @@ async function allocateUserNumber(tx: Tx): Promise<number> {
 /** `emp` is optional: left out (the admin page always leaves it out), the account is given the
  *  next employee number after every one already on `users` - `nextEmpNo`, the same rule the page
  *  previews with - read under the lock `allocateUserNumber` has just taken. */
-export async function createUserTx(tx: Tx, i: { emp?: string; name: string; email: string; role: Role; loc: LocKey; phone?: string; colour?: string; password: string }): Promise<{ id: string; emp: string }> {
+export async function createUserTx(tx: Tx, i: RolePick & { emp?: string; name: string; email: string; loc: LocKey; phone?: string; colour?: string; password: string }): Promise<{ id: string; emp: string }> {
   checkPassword(i.password);
-  await checkPairing(tx, i.role, i.loc);
+  const role = await takeRole(tx, i);
+  await checkPairing(tx, role, i.loc);
   const n = await allocateUserNumber(tx);
   const emp = i.emp ?? nextEmpNo((await tx.select({ emp: users.empNo }).from(users)).map((u) => u.emp));
   if (await tx.select().from(users).where(eq(users.empNo, emp)).then((r) => r[0])) throw new ConflictError(`employee ${emp} already exists`);
   const id = `u${n}`;
   await tx.insert(users).values({
-    id, name: i.name, email: i.email, role: i.role, roleLabel: ROLE_LABEL[i.role], loc: i.loc, colour: i.colour ?? PALETTE[n % PALETTE.length],
+    id, name: i.name, email: i.email, role: role.desk, roleId: role.id, roleLabel: role.name, loc: i.loc, colour: i.colour ?? PALETTE[n % PALETTE.length],
     empNo: emp, phone: i.phone ?? "", passwordHash: await hashPassword(i.password), mustChangePassword: true,
   });
+  await markAssigned(tx, role);
   await postAt(tx, id, [i.loc]);
   return { id, emp };
 }
@@ -142,7 +167,14 @@ export async function reactivateUserTx(tx: Tx, emp: string): Promise<void> {
   // placeholders the `users` row needs and it reaches no operational route at all: the pairing has
   // nothing to say about it, and a close - which does not count admins among an outlet's staff -
   // must not be what keeps the hospital's one administrator deactivated.
-  if (!u.admin) await checkPairing(tx, u.role, u.loc);
+  //
+  // Nor does it come back onto a role that has since been switched off: the role would give it
+  // nothing to sign in to. Move it to another role first.
+  if (!u.admin) {
+    const [role] = u.roleId ? await tx.select().from(roles).where(eq(roles.id, u.roleId)).for("share") : [];
+    if (role && !role.active) throw new RuleError(`Refused - ${u.name}'s role, ${role.name}, is deactivated. Give them an active role first`);
+    await checkPairing(tx, { desk: u.role, name: role?.name ?? u.roleLabel }, u.loc);
+  }
   await tx.update(users).set({ active: true, updatedAt: new Date() }).where(eq(users.id, u.id));
 }
 export const reactivateUser = (db: Db, emp: string): Promise<void> => withTransaction(db, (tx) => reactivateUserTx(tx, emp));
@@ -178,15 +210,22 @@ export async function deleteUserTx(tx: Tx, u: { id: string; name: string; empNo:
 }
 
 /**
- * Genuinely new capability, not previously reachable from anywhere: moving a live account to a
- * different role or location. Validated against the same pairing `createUser` enforces, and -
- * like `resetPassword`/`deactivateUser` - every session is revoked, because the account's old
- * access token keeps asserting the old role and location, unrevoked, for up to fifteen minutes.
+ * Moving an account to a different role or location. Validated against the same pairing
+ * `createUser` enforces. The role is locked first, then the location (`checkPairing`).
+ *
+ * A move within the same desk and the same home location - one counter role for another - changes
+ * only what the account may do, which the server reads per request (`plugins/access.ts`), so its
+ * postings stay and its sessions go on. Anything else - a new desk or a new home - puts the posting
+ * list back to the home row and revokes every session, because the account's old access token
+ * keeps asserting the old desk and location, unrevoked, for up to fifteen minutes.
  */
-export async function updateUserRoleLocTx(tx: Tx, emp: string, next: { role: Role; loc: LocKey }): Promise<void> {
-  await checkPairing(tx, next.role, next.loc);
+export async function updateUserRoleLocTx(tx: Tx, emp: string, next: RolePick & { loc: LocKey }): Promise<RoleRow> {
+  const role = await takeRole(tx, next);
+  await checkPairing(tx, role, next.loc);
   const u = await byEmp(tx, emp);
-  await tx.update(users).set({ role: next.role, roleLabel: ROLE_LABEL[next.role], loc: next.loc, updatedAt: new Date() }).where(eq(users.id, u.id));
+  await tx.update(users).set({ role: role.desk, roleId: role.id, roleLabel: role.name, loc: next.loc, updatedAt: new Date() }).where(eq(users.id, u.id));
+  await markAssigned(tx, role);
+  if (role.desk === u.role && next.loc === u.loc) return role;
   // The posting list goes back to the one home row. A move is to a new desk and often a new role,
   // and the counters the account used to stand at are not the counters the new role works at -
   // keeping them would leave a kitchen in-charge posted to two outlets. Where the account really
@@ -194,8 +233,9 @@ export async function updateUserRoleLocTx(tx: Tx, emp: string, next: { role: Rol
   await tx.delete(userPostings).where(eq(userPostings.userId, u.id));
   await postAt(tx, u.id, [next.loc]);
   await revokeAll(tx, u.id);
+  return role;
 }
-export const updateUserRoleLoc = (db: Db, emp: string, next: { role: Role; loc: LocKey }): Promise<void> => withTransaction(db, (tx) => updateUserRoleLocTx(tx, emp, next));
+export const updateUserRoleLoc = async (db: Db, emp: string, next: RolePick & { loc: LocKey }): Promise<void> => { await withTransaction(db, (tx) => updateUserRoleLocTx(tx, emp, next)); };
 
 /**
  * The whole posting list at once - every counter this account may stand at, replacing whatever it
@@ -217,7 +257,7 @@ export async function setUserPostingsTx(tx: Tx, emp: string, locs: readonly LocK
   const wanted = [...new Set(locs)].sort();
   if (wanted.length === 0) throw new ValidationError(`${u.empNo} needs at least one posting`);
   if (!wanted.includes(u.loc as LocKey)) throw new ValidationError(`the postings must include ${u.empNo}'s own location "${u.loc}"`);
-  for (const loc of wanted) await checkPairing(tx, u.role, loc);
+  for (const loc of wanted) await checkPairing(tx, { desk: u.role, name: u.roleLabel }, loc);
   await tx.delete(userPostings).where(eq(userPostings.userId, u.id));
   await postAt(tx, u.id, wanted);
   await revokeAll(tx, u.id);
@@ -231,5 +271,16 @@ export async function setUserPostingsTx(tx: Tx, emp: string, locs: readonly LocK
  * admin module has no reason to ever compose this, by design.
  */
 export async function setAdmin(db: Db, emp: string, on: boolean): Promise<void> {
-  await withTransaction(db, async (tx) => { const u = await byEmp(tx, emp); await tx.update(users).set({ admin: on, updatedAt: new Date() }).where(eq(users.id, u.id)); });
+  await withTransaction(db, async (tx) => {
+    const u = await byEmp(tx, emp);
+    // A super admin holds no role. Taking the flag away gives the account back one: the lowest
+    // active role on the desk its `role` column still names.
+    if (on) {
+      await tx.update(users).set({ admin: true, roleId: null, updatedAt: new Date() }).where(eq(users.id, u.id));
+      return;
+    }
+    const role = u.roleId ? undefined : await takeRole(tx, { role: u.role });
+    await tx.update(users).set({ admin: false, ...(role ? { roleId: role.id, roleLabel: role.name } : {}), updatedAt: new Date() }).where(eq(users.id, u.id));
+    if (role) await markAssigned(tx, role);
+  });
 }

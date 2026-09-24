@@ -4,7 +4,7 @@ import type { AuditGroup, AuditOutcome } from "./schemas/audit.js";
 /** The Audit log's areas, as the filter prints them. */
 export const AUDIT_GROUPS: Record<AuditGroup, string> = {
   sales: "Sales", stock: "Stock movement", purchasing: "Purchasing", production: "Production",
-  master: "Master data", accounts: "Accounts & sign-in", support: "Support",
+  master: "Master data", accounts: "Accounts & sign-in", roles: "Roles & permissions", support: "Support",
 };
 
 // `defineRoute` keeps `method`, `write` and `service` as literals, so write-ness is readable off
@@ -43,6 +43,12 @@ export const AUDIT_LABELS: Record<AuditAction, AuditLabel> = {
   updateAdminUser:        { label: "Changed a staff account's role and location", group: "accounts" },
   setAdminUserPostings:   { label: "Changed which counters a staff account may work", group: "accounts" },
   deleteAdminUser:        { label: "Deleted a staff account", group: "accounts" },
+  // ---- roles & permissions
+  createRole:             { label: "Created a role", group: "roles" },
+  updateRole:             { label: "Changed a role", group: "roles" },
+  deactivateRole:         { label: "Deactivated a role", group: "roles" },
+  reactivateRole:         { label: "Reactivated a role", group: "roles" },
+  deleteRole:             { label: "Deleted a role", group: "roles" },
   // ---- the register. Closing the day is an accountable act: the Z number, who took it and when
   // are the whole point of the series, so it is labelled like any other write.
   closeRegister:          { label: "Closed the register and took a Z-report", refused: "Failed to close the register", group: "sales" },

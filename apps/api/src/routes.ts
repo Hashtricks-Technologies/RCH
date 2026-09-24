@@ -60,7 +60,7 @@ export function mount<R extends AnyRoute>(app: App, route: R, handler: Handler<R
   const audit = { action: (name ?? `${route.method} ${route.path}`).slice(0, 64), method: route.method, path: route.path };
   if (audited && name) mountedWrites.add(name);
   const pre: Array<(req: FastifyRequest, reply: FastifyReply) => Promise<void>> = [];
-  if (route.access !== "public") pre.push(app.authenticate, app.roleGate(route.access, route.allowMcp ?? false));
+  if (route.access !== "public") pre.push(app.authenticate, app.roleGate(route.access, route.allowMcp ?? false, { admitAdmin: route.admitAdmin ?? false }));
   if (audited) pre.push(app.idempotency);
   const strict = app.config.env !== "production";
   const wrapped: Handler<R> = async (req, reply) => {

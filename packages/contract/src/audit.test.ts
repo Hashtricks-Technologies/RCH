@@ -50,6 +50,11 @@ describe("AUDIT_GROUPS", () => {
     expect(actionsInGroup("accounts")).toEqual(expect.arrayContaining(["login", "logout", "changePassword", "createAdminUser"]));
     expect(actionsInGroup("sales").sort()).toEqual(["closeRegister", "closeShift", "pay", "recordSettlement", "toggleAvail", "voidBill", "voidSettlement"]);
   });
+
+  it("files every role write under roles & permissions", () => {
+    expect(actionsInGroup("roles").sort()).toEqual(["createRole", "deactivateRole", "deleteRole", "reactivateRole", "updateRole"]);
+    expect(AUDIT_GROUPS.roles).toBe("Roles & permissions");
+  });
 });
 
 describe("auditLabelOf", () => {

@@ -1454,6 +1454,8 @@ describe("the account-management page", () => {
         user: { ...useApp.getState().user!, admin: true }, createAccount,
         loadAdminLocations: vi.fn(async () => {}),
         adminLocations: [{ key: "rest", n: "Restaurant", c: "OT-R1", type: "Outlet", floor: "Floor 1", cc: "CC-RST", active: true, staff: 1 }],
+        loadAdminRoles: vi.fn(async () => {}),
+        adminRoles: [{ id: "ROLE-001", name: "Counter Operator", desk: "counter", active: true, perms: { f: {}, a: [] }, holders: 0, everAssigned: true, updatedAt: "2026-09-24T03:00:00.000Z" }],
       });
     });
     const ui = mount(AdminUsers);
@@ -1461,7 +1463,7 @@ describe("the account-management page", () => {
     typeIn(ui.field("Email"), "anitha.r@royalcare.in");
     await settle(() => { ui.button("Create account").click(); });
     // No employee number in the body: the server assigns it.
-    expect(createAccount).toHaveBeenCalledWith({ name: "Anitha R", email: "anitha.r@royalcare.in", role: "counter", loc: "rest", phone: undefined });
+    expect(createAccount).toHaveBeenCalledWith({ name: "Anitha R", email: "anitha.r@royalcare.in", roleId: "ROLE-001", loc: "rest", phone: undefined });
     expect(ui.text()).toContain("RC-4472's temporary password is a-one-time-password");
     expect(ui.field("Name").value).toBe("");
     ui.unmount();

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { z } from "zod";
-import { AdjustReasonSchema, CollectionSchema, CreateAdjustmentBodySchema, DeskReplyBodySchema, CreatePoBodySchema, CreditParamsSchema, CreditResponseSchema, EVENTS_PATH, EventNoticeSchema, KITCHEN, LocKeySchema, MakeBatchBodySchema, PatchContractBodySchema, PatchPoBodySchema, PatchVendorBodySchema, PO_APPROVAL_LIMIT, QUARANTINE, RaiseTicketBodySchema, RateTicketBodySchema, ReceivePoBodySchema, SetOrderStatusBodySchema, SetTicketStatusBodySchema, SnapshotSchema, StockLedgerQuerySchema, StockLocSchema, STORE, TktStatusSchema, TransferBodySchema, ItemSchema, PatchItemBodySchema, SetItemImageBodySchema, ITEM_IMAGE_PATH, itemImagePath, UpdateOutletBodySchema } from "./index";
+import { AdjustReasonSchema, CollectionSchema, CreateAdjustmentBodySchema, DeskReplyBodySchema, CreatePoBodySchema, CreditParamsSchema, CreditResponseSchema, EVENTS_PATH, EventNoticeSchema, KITCHEN, LocKeySchema, MakeBatchBodySchema, PatchContractBodySchema, PatchPoBodySchema, PatchVendorBodySchema, PO_APPROVAL_LIMIT, QUARANTINE, RaiseTicketBodySchema, RateTicketBodySchema, ReceivePoBodySchema, SetOrderStatusBodySchema, SetTicketStatusBodySchema, SnapshotSchema, StockLedgerQuerySchema, StockLocSchema, STORE, TktStatusSchema, TransferBodySchema, ItemSchema, PatchItemBodySchema, SetItemImageBodySchema, ITEM_IMAGE_PATH, itemImagePath, UpdateOutletBodySchema, CreateAdminUserBodySchema, UpdateAdminUserBodySchema } from "./index";
 import { isWriteRoute, routes, serviceOf } from "./routes";
 
 /** One valid body per route that takes one. The coverage case below fails if a new route
@@ -70,8 +70,10 @@ const SAMPLES: Record<string, Record<string, unknown>> = {
   // ---- prod-order raise ----
   createProdOrder: { lines: [{ it: "puff", qty: 40 }], need: "2026-09-11", note: "Lunch rush" },
   // ---- admin: account management (a capability, not a role - root CLAUDE.md)
-  createAdminUser: { name: "Anitha R", email: "anitha.r@royalcare.in", role: "counter", loc: "rest" },
-  updateAdminUser: { role: "counter", loc: "kiosk" },
+  createAdminUser: { name: "Anitha R", email: "anitha.r@royalcare.in", roleId: "ROLE-001", loc: "rest" },
+  updateAdminUser: { roleId: "ROLE-001", loc: "kiosk" },
+  createRole: { name: "Relief Cashier", desk: "counter", perms: { f: { billing: "edit", x_report: "view" }, a: [] } },
+  updateRole: { perms: { f: { billing: "view" }, a: ["void_bill"] } },
   // ---- admin: outlets
   createOutlet: { name: "Juice Bar", code: "OT-JB", floor: "Ground", cc: "CC-JB" },
   updateOutlet: { name: "Juice Hut" },
@@ -375,5 +377,16 @@ describe("item photos", () => {
     expect(ITEM_IMAGE_PATH).toBe("/items/:it/image/:hash");
     expect(itemImagePath("juice", h)).toBe(`/items/juice/image/${h}`);
     expect(itemImagePath("a/b c", h)).toBe(`/items/a%2Fb%20c/image/${h}`);
+  });
+});
+
+describe("the account bodies name a role, not a desk", () => {
+  it("takes a role id and refuses the old desk key", () => {
+    expect(CreateAdminUserBodySchema.safeParse({ name: "A", email: "a@royalcare.in", role: "counter", loc: "rest" }).success).toBe(false);
+    expect(UpdateAdminUserBodySchema.safeParse({ role: "counter", loc: "rest" }).success).toBe(false);
+    expect(UpdateAdminUserBodySchema.parse({ roleId: "ROLE-006", loc: "rest" })).toEqual({ roleId: "ROLE-006", loc: "rest" });
+  });
+  it("keeps every role route the super admin's", () => {
+    for (const name of ["adminRoles", "createRole", "updateRole", "deactivateRole", "reactivateRole", "deleteRole"] as const) expect(routes[name].access).toBe("admin");
   });
 });

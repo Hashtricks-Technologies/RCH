@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { buildTestApp } from "../../test/app.js";
 import { seedTestDb } from "../../test/seed.js";
 import { authHeaders } from "../../test/auth.js";
+import { DESK_DEFAULTS } from "@rch/domain";
 import type { App } from "../../app.js";
 
 let app: App;
@@ -13,7 +14,11 @@ describe("/me", () => {
   it("returns the caller in wire shape", async () => {
     const r = await app.inject({ method: "GET", url: "/api/v1/me", headers: await authHeaders(app, "u3") });
     expect(r.statusCode).toBe(200);
-    expect(r.json()).toEqual({ user: { id: "u3", n: "Suresh Muthu", e: "suresh.m@royalcare.in", r: "store", rl: "Store Keeper", loc: "store", col: "#0F766E", emp: "RC-2088", ph: "94430 51194", admin: false }, mustChangePassword: false });
+    expect(r.json()).toEqual({ user: {
+      id: "u3", n: "Suresh Muthu", e: "suresh.m@royalcare.in", r: "store", rl: "Store Keeper", loc: "store", col: "#0F766E", emp: "RC-2088", ph: "94430 51194", admin: false,
+      // The role and what it holds, read as the request is answered - never off the token.
+      rid: "ROLE-003", perms: DESK_DEFAULTS.store.perms,
+    }, mustChangePassword: false });
   });
   it("PATCH updates display fields only and refuses unknown keys", async () => {
     const h = { ...(await authHeaders(app, "u3")), "idempotency-key": randomUUID() };

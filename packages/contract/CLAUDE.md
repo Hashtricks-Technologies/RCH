@@ -89,6 +89,11 @@ allowMcp? })`. The manifest drives all three: `mount()` in `apps/api/src/routes.
   the 700 KB byte limit and the type check are `@rch/domain`'s `checkPhoto`, refused as a sentence, not a
   schema shape. The photo itself is read at `ITEM_IMAGE_PATH` (`schemas/images.ts`), which is deliberately
   **not** a manifest route the same way `EVENTS_PATH` isn't - see that file above.
+- **Roles are the super admin's**: `adminRoles` (`GET /admin/roles`), `createRole`, `updateRole` (PATCH, every
+  field optional, no defaults), `deactivateRole`, `reactivateRole` and `deleteRole`, all `access: "admin"`,
+  each write labelled in the `roles` audit group ("Roles & permissions"). `CreateAdminUserBodySchema` is
+  `{ name, email, roleId, loc, phone? }` and `UpdateAdminUserBodySchema` `{ roleId, loc }`: an account form
+  names a role, and the role's desk is the account's `r`.
 - **`voidBill`'s path parameter is percent-encoded.** Bill numbers contain a slash (`CF/1188` → `CF%2F1188`).
 
 ## Schema rules

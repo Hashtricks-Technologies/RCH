@@ -171,13 +171,13 @@ describe("before values: staff accounts", () => {
    *  the account as the next edit will find it. */
   const account = async (): Promise<Record<string, unknown>> => {
     const tag = randomUUID().slice(0, 8);
-    const r = await send("u7", "POST", "/admin/users", { name: `Audit Probe ${tag}`, email: `probe-${tag}@royalcare.in`, role: "counter", loc: "kiosk" });
+    const r = await send("u7", "POST", "/admin/users", { name: `Audit Probe ${tag}`, email: `probe-${tag}@royalcare.in`, roleId: "ROLE-001", loc: "kiosk" });
     return Object.fromEntries(Object.entries(r.result).filter(([k]) => k !== "tempPassword"));
   };
 
   it("updateAdminUser keeps the account as it was", async () => {
     const u = await account();
-    await send("u7", "PATCH", `/admin/users/${String(u.id)}`, { role: "counter", loc: "coffee" });
+    await send("u7", "PATCH", `/admin/users/${String(u.id)}`, { roleId: "ROLE-001", loc: "coffee" });
     expect((await lastEvent("updateAdminUser")).before).toEqual(maskSecrets(u));
   });
 
@@ -200,6 +200,34 @@ describe("before values: staff accounts", () => {
     const off = await send("u7", "POST", `/admin/users/${String(u.id)}/deactivate`);
     await send("u7", "DELETE", `/admin/users/${String(u.id)}`);
     expect((await lastEvent("deleteAdminUser")).before).toEqual(maskSecrets(off.result));
+  });
+});
+
+describe("before values: roles", () => {
+  /** A role of this case's own, never given to anybody, so it can be moved, switched off and deleted. */
+  const role = async (): Promise<Record<string, unknown>> =>
+    (await send("u7", "POST", "/admin/roles", { name: `Audit Probe ${randomUUID().slice(0, 8)}`, desk: "store", perms: { f: { store_stock: "view" }, a: [] } })).result;
+
+  it("updateRole keeps the role as it was, and the next edit's before is the last one's answer", async () => {
+    const r = await role();
+    const first = await send("u7", "PATCH", `/admin/roles/${String(r.id)}`, { perms: { f: { store_stock: "view", store_reports: "view" }, a: [] } });
+    expect((await lastEvent("updateRole")).before).toEqual(maskSecrets(r));
+    await send("u7", "PATCH", `/admin/roles/${String(r.id)}`, { name: `${String(r.name)} II` });
+    expect((await lastEvent("updateRole")).before).toEqual(maskSecrets(first.result));
+  });
+
+  it("deactivateRole and reactivateRole each keep the role as it was", async () => {
+    const r = await role();
+    const off = await send("u7", "POST", `/admin/roles/${String(r.id)}/deactivate`);
+    expect((await lastEvent("deactivateRole")).before).toEqual(maskSecrets(r));
+    await send("u7", "POST", `/admin/roles/${String(r.id)}/reactivate`);
+    expect((await lastEvent("reactivateRole")).before).toEqual(maskSecrets(off.result));
+  });
+
+  it("deleteRole keeps the role it removed", async () => {
+    const r = await role();
+    await send("u7", "DELETE", `/admin/roles/${String(r.id)}`);
+    expect((await lastEvent("deleteRole")).before).toEqual(maskSecrets(r));
   });
 });
 

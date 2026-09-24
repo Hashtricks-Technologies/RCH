@@ -6,7 +6,7 @@ import { seedTestDb } from "../test/seed.js";
 import { createUser, deactivateUser, reactivateUser, resetPassword, setAdmin, updateUserRoleLoc } from "./users-admin.js";
 import { verifyPassword } from "./password.js";
 import { ConflictError, ValidationError } from "./errors.js";
-import { locations, refreshTokens, users } from "../db/schema/index.js";
+import { locations, refreshTokens, roles, users } from "../db/schema/index.js";
 
 let t: TestDb;
 beforeAll(async () => { t = await withTestSchema("users_admin"); await seedTestDb(t.db); });
@@ -145,5 +145,35 @@ describe("setAdmin", () => {
     await setAdmin(t.db, "RC-1902", false);
     expect((await t.db.select().from(users).where(eq(users.empNo, "RC-1902")))[0].admin).toBe(false);
     await expect(setAdmin(t.db, "RC-0000", true)).rejects.toThrow(ValidationError);
+  });
+  it("takes the role away with the flag, and gives the desk's first active role back without it", async () => {
+    await setAdmin(t.db, "RC-1902", true);
+    expect((await t.db.select().from(users).where(eq(users.empNo, "RC-1902")))[0].roleId).toBeNull();
+    await setAdmin(t.db, "RC-1902", false);
+    const [u] = await t.db.select().from(users).where(eq(users.empNo, "RC-1902"));
+    expect([u.roleId, u.roleLabel]).toEqual(["ROLE-004", "Kitchen In-charge"]);
+  });
+});
+
+describe("roles", () => {
+  it("gives an account a role by id, and marks the role as given", async () => {
+    await t.db.insert(roles).values({ id: "ROLE-900", name: `Night Cashier ${process.pid}`, desk: "counter", perms: { f: { billing: "edit" }, a: [] } });
+    const { id } = await createUser(t.db, { name: "Night One", email: "night@royalcare.in", roleId: "ROLE-900", loc: "rest", password: "a-long-enough-password" });
+    const [u] = await t.db.select().from(users).where(eq(users.id, id));
+    expect([u.role, u.roleId, u.roleLabel]).toEqual(["counter", "ROLE-900", `Night Cashier ${process.pid}`]);
+    expect((await t.db.select().from(roles).where(eq(roles.id, "ROLE-900")))[0].everAssigned).toBe(true);
+  });
+  it("keeps the postings and sessions of a move within the desk and the home location", async () => {
+    await t.db.insert(refreshTokens).values({ userId: "u1", family: "00000000-0000-4000-8000-000000000031", tokenHash: "h31", expiresAt: new Date(Date.now() + 100000) });
+    const [before] = await t.db.select().from(users).where(eq(users.id, "u1"));
+    await updateUserRoleLoc(t.db, "RC-4471", { roleId: "ROLE-900", loc: before.loc as never });
+    const [row] = await t.db.select().from(refreshTokens).where(eq(refreshTokens.family, "00000000-0000-4000-8000-000000000031"));
+    expect(row.revokedAt).toBeNull();
+  });
+  it("refuses a role nobody has made, and a desk with no active role", async () => {
+    await expect(createUser(t.db, { name: "X", email: "x@x", roleId: "ROLE-999", loc: "rest", password: "a-long-enough-password" })).rejects.toThrow(`unknown role "ROLE-999"`);
+    await t.db.update(roles).set({ active: false }).where(eq(roles.desk, "buyer"));
+    await expect(createUser(t.db, { name: "X", email: "x@x", role: "buyer", loc: "store", password: "a-long-enough-password" })).rejects.toThrow("no active role works at the buyer desk");
+    await t.db.update(roles).set({ active: true }).where(eq(roles.desk, "buyer"));
   });
 });

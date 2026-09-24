@@ -122,6 +122,9 @@ export default fp<{ config: Config; searchPath?: string }>(async (app, { config,
         if (!m.payload) return;
         const parsed = ChangeNoticeSchema.safeParse(tryJson(m.payload));
         if (!parsed.success) { app.log.warn({ payload: m.payload }, "unreadable change notice"); return; }
+        // A role changed somewhere - on this pod or another - so what every account may do is
+        // read again from the next request on (plugins/access.ts).
+        if (parsed.data.collections.includes("roles")) app.access.clear();
         publish(parsed.data);
       });
       // A connection replaced without ever having emitted 'end' would go on hearing the
@@ -133,7 +136,8 @@ export default fp<{ config: Config; searchPath?: string }>(async (app, { config,
       app.metrics.sseListenerUp.set(1);
       // A reconnect means notices were missed while it was down. The streams stayed open, so
       // nothing else would tell them; a resync is the catch-up.
-      if (everConnected) resync();
+      // The permission cache is emptied for the same reason: a `roles` notice may be among them.
+      if (everConnected) { app.access.clear(); resync(); }
       everConnected = true;
       app.log.info("events listener connected");
     } catch (err) {
@@ -275,4 +279,4 @@ export default fp<{ config: Config; searchPath?: string }>(async (app, { config,
   // An app that never finished booting never registered the handler above, so `preClose` never
   // runs; this is the belt to its braces, and `stopped` makes the second call a no-op.
   app.addHook("onClose", shutdown);
-}, { name: "sse", dependencies: ["auth", "rbac", "metrics"] });
+}, { name: "sse", dependencies: ["auth", "rbac", "metrics", "access"] });

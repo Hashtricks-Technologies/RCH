@@ -1,4 +1,4 @@
-import { boolean, check, date, foreignKey, index, integer, jsonb, numeric, pgTable, primaryKey, serial, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { boolean, check, date, foreignKey, index, integer, jsonb, numeric, pgTable, primaryKey, serial, text, timestamp, unique, uniqueIndex } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { itemTypeEnum, locationTypeEnum, payerKindEnum, roleEnum, sourceEnum } from "./enums.js";
 
@@ -38,6 +38,31 @@ export const locations = pgTable("locations", {
   uniqueIndex("locations_code_uq").on(sql`upper(${t.code})`),
 ]);
 
+/**
+ * A role the super admin defines: a name, the desk it works at, and what it may see and change.
+ *
+ * `desk` is the old fixed role (`role` enum) - where the holder works, what their shift and
+ * postings follow. `perms` is `Permissions` from `@rch/contract` (`{ f, a }`), read per request
+ * through the permission cache (`lib/access.ts`), never carried on a token. `(id, desk)` is unique
+ * so `users` can point at both at once: an account's `role` column always equals its role's desk.
+ * `ever_assigned` turns true the first time an account is given the role, and from then on the
+ * role can be deactivated but never deleted, and its desk never changes.
+ */
+export const roles = pgTable("roles", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  desk: roleEnum("desk").notNull(),
+  perms: jsonb("perms").notNull(),
+  active: boolean("active").notNull().default(true),
+  everAssigned: boolean("ever_assigned").notNull().default(false),
+  version: integer("version").notNull().default(1),
+  createdAt: ts("created_at").notNull().defaultNow(),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+}, (t) => [
+  unique("roles_id_desk_uq").on(t.id, t.desk),
+  uniqueIndex("roles_name_uq").on(sql`lower(${t.name})`),
+]);
+
 export const users = pgTable("users", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
@@ -56,9 +81,16 @@ export const users = pgTable("users", {
   // only `pnpm --filter @rch/api users set-admin` flips it, so a compromised admin session can
   // never mint a second one. Default false: nobody has it unless a CLI explicitly said so.
   admin: boolean("admin").notNull().default(false),
+  /** The account's role (`roles`). Null only for a super admin, which has none. Its desk is
+   *  `role` above, held equal by the composite foreign key. */
+  roleId: text("role_id"),
   createdAt: ts("created_at").notNull().defaultNow(),
   updatedAt: ts("updated_at").notNull().defaultNow(),
-}, (t) => [uniqueIndex("users_emp_no_uq").on(t.empNo)]);
+}, (t) => [
+  uniqueIndex("users_emp_no_uq").on(t.empNo),
+  check("users_role_id_ck", sql`${t.admin} or ${t.roleId} is not null`),
+  foreignKey({ name: "users_role_desk_fk", columns: [t.roleId, t.role], foreignColumns: [roles.id, roles.desk] }),
+]);
 
 /**
  * Where an account is allowed to work, beyond its home `users.loc`.

@@ -47,12 +47,14 @@ export async function warmPool(t: TestDb, n = 2): Promise<void> {
   for (const c of held) c.release();
 }
 
-/** Empty every business table between tests; keep sequences and migrations. */
+/** Empty every business table between tests; keep sequences, roles and migrations. */
 export async function truncateAll(db: Db): Promise<void> {
   const names = Object.values(schema)
     .filter((t) => is(t, PgTable))
     .map((t) => getTableName(t))
-    .filter((n) => n !== "sequences");
+    // `roles` is the migration's, like `sequences`: the seed puts accounts back onto it, and
+    // nothing re-creates it.
+    .filter((n) => n !== "sequences" && n !== "roles");
   await db.execute(sql.raw(`truncate table ${names.map((n) => `"${n}"`).join(", ")} restart identity cascade`));
 }
 

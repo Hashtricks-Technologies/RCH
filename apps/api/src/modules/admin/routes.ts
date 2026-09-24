@@ -7,7 +7,7 @@ import { mount } from "../../routes.js";
 import { createAdminService } from "./service.js";
 
 export default fp(async (app) => {
-  const svc = createAdminService(app.db);
+  const svc = createAdminService(app.db, () => app.access.clear());
   mount(app, routes.adminUsers, async () => svc.list());
   mount(app, routes.createAdminUser, async (req) => svc.create(req.user, req.body));
   mount(app, routes.resetAdminUserPassword, async (req) => svc.resetPassword(req.user, req.params.id));
@@ -32,4 +32,4 @@ export default fp(async (app) => {
   mount(app, routes.adminPayers, async () => svc.payers());
   mount(app, routes.createPayer, async (req) => svc.createPayer(req.user, req.body));
   mount(app, routes.updatePayer, async (req) => svc.updatePayer(req.user, req.params.kind, req.params.id, req.body));
-}, { name: "module:admin", dependencies: ["auth", "rbac", "idempotency", "db"] });
+}, { name: "module:admin", dependencies: ["auth", "rbac", "idempotency", "db", "access"] });

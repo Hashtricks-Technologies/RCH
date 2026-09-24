@@ -1,6 +1,7 @@
-import { eq, getTableName, is, sql } from "drizzle-orm";
+import { asc, eq, getTableName, inArray, is, sql } from "drizzle-orm";
 import { PgTable } from "drizzle-orm/pg-core";
 import * as FX from "@rch/contract/fixtures";
+import type { Role } from "@rch/contract";
 import type { Db } from "./client.js";
 import * as s from "./schema/index.js";
 import { withTransaction, type Tx } from "../lib/db.js";
@@ -57,7 +58,10 @@ const vendorId = (name: string) => vendorIdByName.get(name) ?? name;
  *  already-collected ticket in the UI's demo data). shop_asks.ticket_id is a real FK here, so any
  *  reference to a ticket we did not seed falls back to null rather than failing the insert. */
 const seededTicketIds = new Set(FX.seedTkt.map((t) => t.id));
-const allTableNames = () => Object.values(s).filter((t) => is(t, PgTable)).map((t) => getTableName(t));
+/** Every table a `--force` reseed empties. Not `roles`: the five a hospital starts with are the
+ *  migration's (`0026_roles`), and any the super admin has made since belong to the hospital, not
+ *  to the demo - the reseeded staff are put back onto them by desk (`deskRoles`). */
+const allTableNames = () => Object.values(s).filter((t) => is(t, PgTable)).map((t) => getTableName(t)).filter((n) => n !== "roles");
 
 /**
  * The PO line a GRN receives against. A GRN naming a PO/item pair that was never ordered is a
@@ -95,7 +99,7 @@ export async function seedDatabase(db: Db, opts: { password: string; forcePasswo
     if (opts.bare) {
       await seedLocations(tx);
       const admin = adminAccount();
-      await tx.insert(s.users).values(userRow(admin, passwordHash, opts.forcePasswordChange));
+      await tx.insert(s.users).values(userRow(admin, passwordHash, opts.forcePasswordChange, await deskRoles(tx)));
       await tx.insert(s.userPostings).values({ userId: admin.id, loc: admin.loc });
       await ensureSequences(tx);
       return;
@@ -115,10 +119,25 @@ export function adminAccount(): (typeof FX.USERS)[number] {
   return admin;
 }
 
-const userRow = (u: (typeof FX.USERS)[number], passwordHash: string, mustChange: boolean) => ({
-  id: u.id, name: u.n, email: u.e, role: u.r, roleLabel: u.rl, loc: u.loc, colour: u.col, empNo: u.emp, phone: u.ph, passwordHash, mustChangePassword: mustChange,
-  admin: u.admin,
-});
+/** Each desk's role for a seeded account: the lowest-numbered active one, which on a hospital
+ *  nobody has touched is the migration's own `ROLE-001`…`ROLE-005`. */
+async function deskRoles(tx: Tx): Promise<Map<Role, { id: string; name: string }>> {
+  const rows = await tx.select({ id: s.roles.id, name: s.roles.name, desk: s.roles.desk }).from(s.roles)
+    .where(eq(s.roles.active, true)).orderBy(asc(s.roles.id));
+  const out = new Map<Role, { id: string; name: string }>();
+  for (const r of rows) if (!out.has(r.desk)) out.set(r.desk, { id: r.id, name: r.name });
+  return out;
+}
+
+/** A super admin holds no role (`role_id` null); every other account holds its desk's. */
+const userRow = (u: (typeof FX.USERS)[number], passwordHash: string, mustChange: boolean, roles: Map<Role, { id: string; name: string }>) => {
+  const role = u.admin ? undefined : roles.get(u.r);
+  if (!u.admin && !role) throw new Error(`no active role works at the ${u.r} desk to seed ${u.emp} onto`);
+  return {
+    id: u.id, name: u.n, email: u.e, role: u.r, roleId: role?.id ?? null, roleLabel: role?.name ?? u.rl, loc: u.loc, colour: u.col, empNo: u.emp, phone: u.ph,
+    passwordHash, mustChangePassword: mustChange, admin: u.admin,
+  };
+};
 
 // Quarantine is one of `FX.LOC`'s own rows from Phase 5 (it is a `StockLoc`, not a `LocKey`),
 // so it arrives with the other five rather than being written out a second time here. No
@@ -174,7 +193,9 @@ async function seedMaster(tx: Tx, passwordHash: string, mustChange: boolean) {
   for (const [key, l] of Object.entries(FX.LOC)) {
     if (l.list) await tx.update(s.locations).set({ priceListId: l.list }).where(eq(s.locations.key, key));
   }
-  await tx.insert(s.users).values(FX.USERS.map((u) => userRow(u, passwordHash, mustChange)));
+  const roles = await deskRoles(tx);
+  await tx.insert(s.users).values(FX.USERS.map((u) => userRow(u, passwordHash, mustChange, roles)));
+  await tx.update(s.roles).set({ everAssigned: true }).where(inArray(s.roles.id, [...new Set([...roles.values()].map((r) => r.id))]));
   // Where each account may work. Every one of them gets its home row, which is what migration 0023
   // backfills onto a hospital that predates the table, and Kavitha Raman gets the Snack Kiosk as
   // well: the demo hospital needs one account that actually takes shifts at two counters, or the

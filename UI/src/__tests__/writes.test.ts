@@ -647,11 +647,14 @@ describe("refetch - what a write says it changed is what gets read", () => {
     expect(S().user?.perms?.f.credit).toBe("edit");
   });
 
-  it("reads nothing on a roles notice for the super admin until its Roles tab exists", async () => {
+  it("reads the super admin's own role list on a roles notice, and never /me", async () => {
     as("buyer");
     useApp.setState({ user: { ...S().user!, admin: true } });
+    const list = [{ id: "ROLE-001", name: "Counter Operator", desk: "counter", active: true, perms: DESK_DEFAULTS.counter.perms, holders: 2, everAssigned: true, updatedAt: "2026-09-24T03:00:00.000Z" }];
+    serve({ "GET /api/v1/admin/roles": () => json(list) });
     await refetch(["roles"]);
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(calls().map((c) => c.at)).toEqual(["GET /api/v1/admin/roles"]);
+    expect(S().adminRoles).toEqual(list);
   });
 
   it("reads price lists, credit and shifts for whoever holds them, not by desk", async () => {
@@ -2598,10 +2601,10 @@ describe("admin: account management", () => {
       }),
       "GET /api/v1/admin/users": () => json([ROW]),
     });
-    const made = await S().createAccount({ name: "Anitha R", email: "anitha.r@royalcare.in", role: "counter", loc: "rest" });
+    const made = await S().createAccount({ name: "Anitha R", email: "anitha.r@royalcare.in", roleId: "ROLE-001", loc: "rest" });
     // The number the server gave, not one the browser chose: the body carries none.
     expect(made).toEqual({ emp: "RC-9101", password: "one-time-pass-1" });
-    expect(hit("POST /api/v1/admin/users")[0].body).toEqual({ name: "Anitha R", email: "anitha.r@royalcare.in", role: "counter", loc: "rest" });
+    expect(hit("POST /api/v1/admin/users")[0].body).toEqual({ name: "Anitha R", email: "anitha.r@royalcare.in", roleId: "ROLE-001", loc: "rest" });
     expect(hit("GET /api/v1/admin/users")).toHaveLength(1);
     expect(S().accounts).toEqual([ROW]);
     expect(S().toast).toContain("Anitha R (RC-9101) created");
@@ -2609,7 +2612,7 @@ describe("admin: account management", () => {
 
   it("returns null and repeats the refusal when the server will not create the account", async () => {
     serve({ "POST /api/v1/admin/users": () => refusal("Kitchen In-charge works at kitchen, not at coffee", 400) });
-    const made = await S().createAccount({ name: "X", email: "x@x", role: "prod", loc: "coffee" });
+    const made = await S().createAccount({ name: "X", email: "x@x", roleId: "ROLE-004", loc: "coffee" });
     expect(made).toBeNull();
     expect(hit("GET /api/v1/admin/users")).toHaveLength(0); // nothing to read back on a refusal
     expect(S().toast).toBe("Kitchen In-charge works at kitchen, not at coffee");
@@ -2666,14 +2669,14 @@ describe("admin: account management", () => {
 
   it("moves an account to a new role and location, leaving the caller with the refusal when the pairing is wrong", async () => {
     serve({ "PATCH /api/v1/admin/users/u1": () => refusal("Kitchen In-charge works at kitchen, not at coffee", 400) });
-    expect(await S().updateAccountRoleLoc("u1", { role: "prod", loc: "coffee" })).toBe(false);
+    expect(await S().updateAccountRoleLoc("u1", { roleId: "ROLE-004", loc: "coffee" })).toBe(false);
     expect(S().toast).toBe("Kitchen In-charge works at kitchen, not at coffee");
 
     serve({
       "PATCH /api/v1/admin/users/u1": () => json({ result: { ...ROW, id: "u1", r: "counter", loc: "kiosk" }, changed: ["accounts"], message: "Kavitha Raman (RC-4471) moved to Counter Operator at kiosk" }),
       "GET /api/v1/admin/users": () => json([]),
     });
-    expect(await S().updateAccountRoleLoc("u1", { role: "counter", loc: "kiosk" })).toBe(true);
+    expect(await S().updateAccountRoleLoc("u1", { roleId: "ROLE-001", loc: "kiosk" })).toBe(true);
   });
 
   it("brings a super admin's session to ready without asking for a snapshot it cannot have", async () => {

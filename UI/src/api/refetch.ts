@@ -1,7 +1,7 @@
 import { routes, type Changed, type Feature } from "@rch/contract";
 import { call } from "./client";
 import {
-  applyAccounts, applyAdjustmentRequests, applyAdjustments, applyAdminLocations, applyAdminPayers, applyBatches, applyBills, applyContracts, applyDeskTickets, applyGrns, applyItems, applyLocations, applyMenus,
+  applyAccounts, applyAdjustmentRequests, applyAdjustments, applyAdminLocations, applyAdminPayers, applyAdminRoles, applyBatches, applyBills, applyContracts, applyDeskTickets, applyGrns, applyItems, applyLocations, applyMenus,
   applyPos, applyPriceLists, applyPrices, applyProdOrders, applyProductRequests, applyRequests,
   applyRequisitions, applyRoster, applyShopAsks, applyStock, applySupportTickets, applyTickets,
   applyTerms, applyVendors,
@@ -16,9 +16,8 @@ const operatorCan = (f: Feature): boolean => {
   return !!u && !u.admin && userCan(u, f);
 };
 
-/** Wave 3F: the admin page's Roles tab reads `GET /admin/roles` here once the contract has the
- *  route. Until then an admin session has nothing of its own to pull back on a `roles` notice. */
-const readAdminRoles = (): Promise<void> => Promise.resolve();
+/** The super admin's own list of roles - the account form's role picker, and the Roles tab. */
+const readAdminRoles = (): Promise<void> => call(routes.adminRoles).then(applyAdminRoles);
 
 /** Who am I, again: a role write may have changed what this session holds. */
 async function rereadMe(): Promise<void> {

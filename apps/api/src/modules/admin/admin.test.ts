@@ -43,7 +43,7 @@ describe("GET /admin/users", () => {
 });
 
 describe("POST /admin/users", () => {
-  const body = { name: "Anitha R", email: "anitha.r@royalcare.in", role: "counter", loc: "rest" };
+  const body = { name: "Anitha R", email: "anitha.r@royalcare.in", roleId: "ROLE-001", loc: "rest" };
   const create = async (payload: Record<string, unknown> = body) =>
     app.inject({ method: "POST", url: "/api/v1/admin/users", headers: { ...(await admin()), "idempotency-key": randomUUID() }, payload });
 
@@ -58,7 +58,7 @@ describe("POST /admin/users", () => {
     expect(j.result.admin).toBe(false);
     expect(typeof j.result.tempPassword).toBe("string");
     expect(j.result.tempPassword.length).toBeGreaterThanOrEqual(10);
-    expect(j.changed).toEqual(["accounts"]);
+    expect(j.changed).toEqual(["accounts", "roles"]);
     expect(j.message).toBe("Anitha R (RC-4483) created - the temporary password shown above is not stored anywhere and will not be shown again");
 
     const second = await create({ ...body, name: "Bala K", email: "bala.k@royalcare.in" });
@@ -132,19 +132,36 @@ describe("POST /admin/users/:id/deactivate and /reactivate", () => {
 describe("PATCH /admin/users/:id", () => {
   it("changes the role and location together, and revokes sessions", async () => {
     await app.db.insert(refreshTokens).values({ userId: "u1", family: "00000000-0000-4000-8000-000000000010", tokenHash: "h2", expiresAt: new Date(Date.now() + 100000) });
-    const res = await app.inject({ method: "PATCH", url: "/api/v1/admin/users/u1", headers: { ...(await admin()), "idempotency-key": randomUUID() }, payload: { role: "counter", loc: "kiosk" } });
+    const res = await app.inject({ method: "PATCH", url: "/api/v1/admin/users/u1", headers: { ...(await admin()), "idempotency-key": randomUUID() }, payload: { roleId: "ROLE-001", loc: "kiosk" } });
     expect(res.statusCode).toBe(200);
     expect(res.json().result).toMatchObject({ r: "counter", loc: "kiosk" });
     expect((await app.db.select().from(refreshTokens).where(eq(refreshTokens.userId, "u1")))[0].revokedAt).not.toBeNull();
   });
   it("refuses a role/location pairing that role never works at", async () => {
-    const res = await app.inject({ method: "PATCH", url: "/api/v1/admin/users/u1", headers: { ...(await admin()), "idempotency-key": randomUUID() }, payload: { role: "prod", loc: "coffee" } });
+    const res = await app.inject({ method: "PATCH", url: "/api/v1/admin/users/u1", headers: { ...(await admin()), "idempotency-key": randomUUID() }, payload: { roleId: "ROLE-004", loc: "coffee" } });
     expect(res.statusCode).toBe(400);
   });
   it("refuses to change the caller's own role or location", async () => {
-    const res = await app.inject({ method: "PATCH", url: "/api/v1/admin/users/u2", headers: { ...(await admin()), "idempotency-key": randomUUID() }, payload: { role: "manager", loc: "coffee" } });
+    const res = await app.inject({ method: "PATCH", url: "/api/v1/admin/users/u2", headers: { ...(await admin()), "idempotency-key": randomUUID() }, payload: { roleId: "ROLE-002", loc: "coffee" } });
     expect(res.statusCode).toBe(422);
     expect(res.json().error.message).toContain("own");
+  });
+  it("moves an account onto another role on the same desk and at the same home without ending its sessions or postings", async () => {
+    const made = await app.inject({
+      method: "POST", url: "/api/v1/admin/roles", headers: { ...(await admin()), "idempotency-key": randomUUID() },
+      payload: { name: `Senior Cashier ${randomUUID().slice(0, 6)}`, desk: "counter", perms: { f: { billing: "edit", x_report: "view", z_report: "edit" }, a: [] } },
+    });
+    expect(made.statusCode, made.body).toBe(200);
+    const role = made.json().result as { id: string; name: string };
+    await app.db.insert(refreshTokens).values({ userId: "u1", family: "00000000-0000-4000-8000-000000000011", tokenHash: "h-keep", expiresAt: new Date(Date.now() + 100000) });
+    const res = await app.inject({ method: "PATCH", url: "/api/v1/admin/users/u1", headers: { ...(await admin()), "idempotency-key": randomUUID() }, payload: { roleId: role.id, loc: "coffee" } });
+    expect(res.statusCode, res.body).toBe(200);
+    expect(res.json().result).toMatchObject({ r: "counter", rl: role.name, rid: role.id, loc: "coffee", postings: ["coffee", "kiosk"] });
+    expect(res.json().changed).toEqual(["accounts", "roles"]);
+    expect(res.json().message).toBe(`Kavitha Raman (RC-4471) is now ${role.name} - it takes effect on their next action`);
+    expect((await app.db.select().from(refreshTokens).where(eq(refreshTokens.family, "00000000-0000-4000-8000-000000000011")))[0].revokedAt).toBeNull();
+    const [u] = await app.db.select().from(users).where(eq(users.id, "u1"));
+    expect(u.roleId).toBe(role.id);
   });
 });
 
@@ -168,7 +185,7 @@ describe("postings", () => {
   it("gives a new account its home location as its first posting", async () => {
     const made = (await app.inject({
       method: "POST", url: "/api/v1/admin/users", headers: { ...(await admin()), "idempotency-key": randomUUID() },
-      payload: { name: "Anitha R", email: "anitha.r@royalcare.in", role: "counter", loc: "rest" },
+      payload: { name: "Anitha R", email: "anitha.r@royalcare.in", roleId: "ROLE-001", loc: "rest" },
     })).json().result as { id: string };
     expect(await postingsOf(made.id)).toEqual(["rest"]);
   });
@@ -226,7 +243,7 @@ describe("postings", () => {
 
   it("puts the list back to the one home row when the account is moved", async () => {
     await setPostings("u1", ["coffee", "kiosk"]);
-    const res = await app.inject({ method: "PATCH", url: "/api/v1/admin/users/u1", headers: { ...(await admin()), "idempotency-key": randomUUID() }, payload: { role: "prod", loc: "kitchen" } });
+    const res = await app.inject({ method: "PATCH", url: "/api/v1/admin/users/u1", headers: { ...(await admin()), "idempotency-key": randomUUID() }, payload: { roleId: "ROLE-004", loc: "kitchen" } });
     expect(res.statusCode, res.body).toBe(200);
     // The two outlets she stood at are not places a Kitchen In-charge works at all.
     expect(await postingsOf("u1")).toEqual(["kitchen"]);
@@ -250,7 +267,7 @@ describe("DELETE /admin/users/:id", () => {
     app.inject({ method: "POST", url, headers: { ...(await admin()), "idempotency-key": randomUUID() }, payload });
   /** A fresh account that never did anything, already deactivated - the one shape a delete takes. */
   const mistake = async (name = "Wrong Person") => {
-    const made = (await post("/api/v1/admin/users", { name, email: "wrong@royalcare.in", role: "counter", loc: "kiosk" })).json().result as { id: string; emp: string };
+    const made = (await post("/api/v1/admin/users", { name, email: "wrong@royalcare.in", roleId: "ROLE-001", loc: "kiosk" })).json().result as { id: string; emp: string };
     await post(`/api/v1/admin/users/${made.id}/deactivate`);
     return made;
   };
@@ -284,7 +301,7 @@ describe("DELETE /admin/users/:id", () => {
   it("never hands a deleted account's id to the next one, even when it held the highest", async () => {
     const gone = await mistake();
     expect((await del(gone.id)).statusCode).toBe(200);
-    const next = (await post("/api/v1/admin/users", { name: "Right Person", email: "right@royalcare.in", role: "counter", loc: "kiosk" })).json().result as { id: string; emp: string };
+    const next = (await post("/api/v1/admin/users", { name: "Right Person", email: "right@royalcare.in", roleId: "ROLE-001", loc: "kiosk" })).json().result as { id: string; emp: string };
     expect(next.id).not.toBe(gone.id);
     expect(Number(next.id.slice(1))).toBeGreaterThan(Number(gone.id.slice(1)));
     // The employee number follows the accounts that exist, so the unused one is given out again.
@@ -349,7 +366,7 @@ describe("a super admin has no role in practice", () => {
     expect(list.find((u) => u.id === "u3")!.rl).toBe("Super Admin");
     expect(list.find((u) => u.id === "u1")!.rl).toBe("Counter Operator");
 
-    const res = await app.inject({ method: "PATCH", url: "/api/v1/admin/users/u3", headers: { ...(await admin()), "idempotency-key": randomUUID() }, payload: { role: "buyer", loc: "store" } });
+    const res = await app.inject({ method: "PATCH", url: "/api/v1/admin/users/u3", headers: { ...(await admin()), "idempotency-key": randomUUID() }, payload: { roleId: "ROLE-005", loc: "store" } });
     expect(res.statusCode).toBe(422);
     expect(res.json().error.message).toBe("Refused - Suresh Muthu (RC-2088) is a super admin, and a super admin has no role or location to change");
     const [u] = await app.db.select().from(users).where(eq(users.id, "u3"));

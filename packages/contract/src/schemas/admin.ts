@@ -25,13 +25,18 @@ export const AdminUserSchema = z.strictObject({
  *  and this is the only schema it appears in. */
 export const AdminUserWithTempPasswordSchema = AdminUserSchema.extend({ tempPassword: z.string() });
 
+/** A role's id as an account form sends it (`ROLE-001`). Checked against `roles` by the server,
+ *  which also refuses a deactivated one in words. */
+const RoleIdSchema = z.string().min(1).max(40);
 /** No `emp`: the server assigns the next employee number inside the create's own transaction
- *  (`nextEmpNo` in `@rch/domain`), and the page only previews it. A strict body refuses one. */
+ *  (`nextEmpNo` in `@rch/domain`), and the page only previews it. A strict body refuses one. No
+ *  desk either: the role decides it, and the account's `r` is the role's desk. */
 export const CreateAdminUserBodySchema = z.strictObject({
   name: z.string().trim().min(1).max(120), email: z.email().max(254),
-  role: RoleSchema, loc: LocKeySchema, phone: z.string().trim().max(40).optional(),
+  roleId: RoleIdSchema, loc: LocKeySchema, phone: z.string().trim().max(40).optional(),
 });
-export const UpdateAdminUserBodySchema = z.strictObject({ role: RoleSchema, loc: LocKeySchema });
+/** Both, always: a role and a home location are checked as a pair (`worksAt`). */
+export const UpdateAdminUserBodySchema = z.strictObject({ roleId: RoleIdSchema, loc: LocKeySchema });
 /** The whole list, not a diff: the administrator is looking at a set of tick-boxes and sends back
  *  what they now read. The home location must be among them - the sign-in claim is minted from it,
  *  and an account standing somewhere it is not posted is the state the table exists to prevent. */
@@ -128,4 +133,4 @@ export const CreateRoleBodySchema = z.strictObject({ name: roleName, desk: RoleS
 export const UpdateRoleBodySchema = z.strictObject({
   name: roleName.optional(), desk: RoleSchema.optional(), perms: PermissionsSchema.optional(),
 });
-export const RoleIdParamsSchema = z.strictObject({ id: z.string().min(1).max(40) });
+export const RoleIdParamsSchema = z.strictObject({ id: RoleIdSchema });

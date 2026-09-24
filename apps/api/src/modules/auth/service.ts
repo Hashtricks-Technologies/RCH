@@ -10,6 +10,7 @@ import { hashPassword, verifyPassword } from "../../lib/password.js";
 import { startShift } from "../../lib/shifts.js";
 import { assertRule } from "../../lib/rules.js";
 import { toWireUser, type UserRow } from "../../lib/wire.js";
+import { loadAccess } from "../../lib/access.js";
 import { authRepo } from "./repo.js";
 
 export type Meta = { userAgent?: string; ip?: string };
@@ -135,7 +136,7 @@ export function createAuthService(db: Db, config: Config) {
    *  table. `loc` is the session's, not the account's home. */
   async function standing(tx: Tx, u: UserRow, loc: LocKey): Promise<Standing> {
     return {
-      user: { ...toWireUser(u), loc },
+      user: { ...toWireUser(u, await loadAccess(tx, u.id)), loc },
       mustChangePassword: u.mustChangePassword,
       postings: (await authRepo.postingsFor(tx, u.id)) as LocKey[],
       claims: { id: u.id, role: u.role, loc, mcp: u.mustChangePassword, admin: u.admin },

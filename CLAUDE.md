@@ -183,11 +183,18 @@ There are five roles (`counter`, `manager`, `store`, `prod`, `buyer`), each with
   to - staff, departments and doctors, opened, renamed and switched off, never deleted), Support
   desk (every role's support tickets) and Audit log (every write and sign-in). The flag can only be set with
   `pnpm --filter @rch/api users set-admin`; no route can set it.
-- **The super admin has no role in practice.** The `users` row still carries a placeholder role and location,
-  but the wire labels it `Super Admin`, the account page offers no role or location for it, and `rbac.ts`
-  answers an admin token with a **404** on every route that is not `access: "admin"` or a must-change-password
-  route (sign-in, password, `/me`). `GET /events` opts back in with `admitAdmin`, for the support desk and the
-  audit log's new-events count. The audit service gives a token without `admin` the same **404**.
+- **The super admin has no role in practice.** The `users` row still carries a placeholder desk and location
+  and no role (`role_id` null), the wire labels it `Super Admin`, the account page offers no role or location
+  for it, and `rbac.ts` answers an admin token with a **404** on every route that is not `access: "admin"`, a
+  must-change-password route (sign-in, password, `/me`) or a route marked `admitAdmin`. `GET /events` opts back
+  in with `admitAdmin`, for the support desk and the audit log's new-events count. The audit service gives a
+  token without `admin` the same **404**.
+- **Every other account holds one configurable role** (`roles`, `ROLE-00n`): a name, a desk (one of the five
+  above - where the holder works) and a set of permissions. The super admin manages them at
+  `/admin/roles`; the account form picks a role, and its desk decides the places offered. A role's
+  permissions are read per request through a per-pod cache the `roles` change notice clears, so a change
+  reaches its holders' next request; an account whose role or desk changed under its token gets a **401**
+  and refreshes. `apps/api/CLAUDE.md` (*Roles and permissions*) has the details.
 - **Staff pick themselves at sign-in.** `GET /auth/directory` is public and lists active, non-admin accounts
   as number and name only. The super admin signs in through a typed id instead.
 - **`counter` sets a product photo only for items on its own outlet's menu** (403 otherwise); `manager` sets

@@ -11,7 +11,7 @@ export const AuditOutcomeSchema = z.enum(AUDIT_OUTCOMES);
 export type AuditOutcome = z.infer<typeof AuditOutcomeSchema>;
 
 /** The areas the Audit log's filter offers. Their printed names are `AUDIT_GROUPS` in `../audit.ts`. */
-export const AUDIT_GROUP_KEYS = ["sales", "stock", "purchasing", "production", "master", "accounts", "support"] as const;
+export const AUDIT_GROUP_KEYS = ["sales", "stock", "purchasing", "production", "master", "accounts", "roles", "support"] as const;
 export const AuditGroupSchema = z.enum(AUDIT_GROUP_KEYS);
 export type AuditGroup = z.infer<typeof AuditGroupSchema>;
 

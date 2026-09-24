@@ -1,6 +1,7 @@
 import type { Bill, Item, Location, PayerKind, User, UserMin } from "@rch/contract";
 import { PARTY_LABEL } from "@rch/domain";
 import type { billLines, bills, items, locations, users } from "../db/schema/index.js";
+import type { RoleAccess } from "./access.js";
 import { iso } from "./time.js";
 
 /** Row -> wire mappers that more than one module needs (modules never import each other). */
@@ -14,9 +15,14 @@ export type UserRow = typeof users.$inferSelect;
  *  operational route (`plugins/rbac.ts`) - so the label says what the account actually is. */
 const SUPER_ADMIN_LABEL = "Super Admin";
 export const roleLabelOf = (u: Pick<UserRow, "admin" | "roleLabel">): string => (u.admin ? SUPER_ADMIN_LABEL : u.roleLabel);
-export const toWireUser = (u: UserRow): User => ({
+/** The caller's own record. `role` is what `loadAccess` (`lib/access.ts`) read for the account in
+ *  the same breath - its role's id and permissions, which ride `/me`, sign-in, refresh and the
+ *  snapshot so the browser draws the screens the server will answer. Both keys are absent for the
+ *  super admin, which holds no role. `rl` is the role's name (`role_label`, kept equal to it). */
+export const toWireUser = (u: UserRow, role: Pick<RoleAccess, "roleId" | "perms"> | null): User => ({
   id: u.id, n: u.name, e: u.email, r: u.role, rl: roleLabelOf(u), loc: u.loc as User["loc"], col: u.colour, emp: u.empNo, ph: u.phone,
   admin: u.admin,
+  ...(role && !u.admin ? { rid: role.roleId, perms: role.perms } : {}),
 });
 /** What one colleague sees of another: a name badge. Contact details are the caller's own,
  *  and travel only in their own record (`snapshot.user`). */

@@ -30,6 +30,8 @@ import adjustments from "./adjustments/routes.js";
 import adjustmentRequests from "./adjustmentRequests/routes.js";
 // ---- admin account management
 import admin from "./admin/routes.js";
+// ---- roles & permissions
+import roles from "./roles/routes.js";
 
 /** Every module, registered in one place. Adding a module = one import + one line here. */
 export async function registerModules(app: App): Promise<void> {
@@ -62,4 +64,6 @@ export async function registerModules(app: App): Promise<void> {
   await app.register(adjustmentRequests);
   // ---- admin account management
   await app.register(admin);
+  // ---- roles & permissions
+  await app.register(roles);
 }

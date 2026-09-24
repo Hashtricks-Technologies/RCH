@@ -26,7 +26,8 @@ const count = async (table: string) =>
 // `user_postings` is kept for the same reason `users` is: the one admin account's home row, the
 // same row migration 0023 backfills onto a hospital that predates the table. One account, one
 // posting - counted in the account test below rather than left uncounted here.
-const KEPT = ["locations", "users", "sequences", "user_postings"];
+// `roles` is the migration's five, which a reseed never empties - checked in its own case below.
+const KEPT = ["locations", "users", "sequences", "user_postings", "roles"];
 
 describe("a bare seed", () => {
   it("keeps the six locations", async () => {
@@ -46,6 +47,12 @@ describe("a bare seed", () => {
     const rows = await b.db.select().from(s.users);
     expect(rows.map((u) => [u.empNo, u.name, u.admin, u.active, u.mustChangePassword])).toEqual([["RC-0001", "System Administrator", true, true, true]]);
     expect(await count("user_postings")).toBe(1);
+  });
+
+  it("keeps the five roles every hospital starts with, and the admin holds none", async () => {
+    const rows = await b.db.select().from(s.roles);
+    expect(rows.map((r) => [r.id, r.desk]).sort()).toEqual([["ROLE-001", "counter"], ["ROLE-002", "manager"], ["ROLE-003", "store"], ["ROLE-004", "prod"], ["ROLE-005", "buyer"]]);
+    expect((await b.db.select().from(s.users)).map((u) => u.roleId)).toEqual([null]);
   });
 
   it("numbers every series from where it always has", async () => {

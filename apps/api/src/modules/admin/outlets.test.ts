@@ -110,7 +110,7 @@ describe("closing and reopening", () => {
   });
   it("refuses to close while anything still depends on the outlet, naming all of it at once", async () => {
     const { key } = await open();
-    const hire = await admin("POST", "/admin/users", { name: "Arun P", email: "arun.p@royalcare.in", role: "counter", loc: key });
+    const hire = await admin("POST", "/admin/users", { name: "Arun P", email: "arun.p@royalcare.in", roleId: "ROLE-001", loc: key });
     expect(hire.statusCode, hire.body).toBe(200);
     const db = app.testDb!.db;
     // The outlet manager no longer adjusts a shelf directly (only a counter's own adjustment
@@ -132,7 +132,7 @@ describe("closing and reopening", () => {
   it("puts no new staff at a closed outlet", async () => {
     const { key } = await open({ ...JUICE, name: "Tea Stall", code: "OT-TS" });
     await admin("POST", `/admin/outlets/${key}/close`);
-    const r = await admin("POST", "/admin/users", { name: "Arun P", email: "arun.p@royalcare.in", role: "counter", loc: key });
+    const r = await admin("POST", "/admin/users", { name: "Arun P", email: "arun.p@royalcare.in", roleId: "ROLE-001", loc: key });
     expect(r.statusCode).toBe(400);
     expect(r.json().error.message).toBe("Counter Operator works at an open outlet - Tea Stall is closed");
   });
@@ -141,7 +141,7 @@ describe("closing and reopening", () => {
 describe("an outlet opened after release", () => {
   it("sells end to end, and its takings reach the manager's snapshot and its own counter's alone", async () => {
     const { key } = await open();
-    const hire = (await admin("POST", "/admin/users", { name: "Arun P", email: "arun.p@royalcare.in", role: "counter", loc: key })).json().result;
+    const hire = (await admin("POST", "/admin/users", { name: "Arun P", email: "arun.p@royalcare.in", roleId: "ROLE-001", loc: key })).json().result;
     await app.db.update(users).set({ mustChangePassword: false }).where(eq(users.id, hire.id));
     expect((await as("u2", "POST", `/menus/${key}/items`, { it: "juice" })).statusCode).toBe(200);
     // The outlet manager no longer adjusts a shelf directly - the counter raises the count and

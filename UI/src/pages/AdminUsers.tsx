@@ -1,18 +1,8 @@
 import { useEffect, useState } from "react";
-import { RoleSchema } from "@rch/contract";
 import { nextEmpNo, placesFor } from "@rch/domain";
 import { useApp } from "../store";
 import { Alert, Btn, Card, DataTable, Field, FormRow, PageHead, Pill, TableFoot } from "../ui/kit";
-import type { AdminAction, AdminUser, LocKey, Role } from "../types";
-
-/** Display labels only - the pairing itself, and every other rule this form previews, is the
- *  server's (`apps/api/src/lib/users-admin.ts`'s own `worksAt`/`ROLE_LABEL`); a refusal from
- *  there is what actually stops a bad combination, this only keeps the picker from offering one
- *  that would obviously be refused. */
-const ROLE_LABEL: Record<Role, string> = {
-  counter: "Counter Operator", manager: "Outlet Manager", store: "Store Keeper",
-  prod: "Kitchen In-charge", buyer: "Procurement Officer",
-};
+import type { AdminAction, AdminRole, AdminUser, LocKey, Role } from "../types";
 
 /** How each logged action reads in the feed - "Ramesh Kumar deleted Anitha R". Keyed on the
  *  closed union, so a new action fails `typecheck` here until it has words. */
@@ -26,7 +16,15 @@ const DID: Record<AdminAction["action"], string> = {
   role_reactivate: "switched back on the role", role_delete: "deleted the role",
 };
 
-const emptyForm = { name: "", email: "", phone: "", role: "counter" as Role, loc: "" as LocKey, also: [] as string[] };
+/** `roleId` empty means "the first role offered", once the role list has landed. */
+const emptyForm = { name: "", email: "", phone: "", roleId: "", loc: "" as LocKey, also: [] as string[] };
+
+/** The roles a form may give: the active ones, and - on an existing account's row - the one it
+ *  already holds, even switched off, so the picker still shows where the account stands. The
+ *  pairing is the server's (`worksAt`); the role's desk only decides which places are offered. */
+function RoleOptions({ roles, keep }: { roles: AdminRole[]; keep?: string }) {
+  return <>{roles.filter((r) => r.active || r.id === keep).map((r) => <option key={r.id} value={r.id}>{r.active ? r.name : `${r.name} (off)`}</option>)}</>;
+}
 
 /**
  * The counters beyond the one the account is standing at - what the boxes below tick. `postings`
@@ -67,6 +65,8 @@ export default function AdminUsers() {
   const loadAccounts = useApp((s) => s.loadAccounts);
   const loadAdminActions = useApp((s) => s.loadAdminActions);
   const loadAdminLocations = useApp((s) => s.loadAdminLocations);
+  const adminRoles = useApp((s) => s.adminRoles);
+  const loadAdminRoles = useApp((s) => s.loadAdminRoles);
   const createAccount = useApp((s) => s.createAccount);
   const resetAccountPassword = useApp((s) => s.resetAccountPassword);
   const setAccountActive = useApp((s) => s.setAccountActive);
@@ -77,7 +77,9 @@ export default function AdminUsers() {
 
   // Nothing on the snapshot carries the account list, its action log or the location list - this
   // is the one screen that reads any of the three, so it asks for all of them on the way in.
-  useEffect(() => { void loadAccounts(); void loadAdminActions(); void loadAdminLocations(); }, [loadAccounts, loadAdminActions, loadAdminLocations]);
+  useEffect(() => { void loadAccounts(); void loadAdminActions(); void loadAdminLocations(); void loadAdminRoles(); }, [loadAccounts, loadAdminActions, loadAdminLocations, loadAdminRoles]);
+  /** A role's desk, which decides where it may be posted; an unknown id falls back to `fallback`. */
+  const deskOf = (roleId: string, fallback: Role): Role => adminRoles.find((r) => r.id === roleId)?.desk ?? fallback;
 
   // Labels and pickers from the server's own list: a location the admin opened a minute ago is here,
   // and a closed outlet reads as closed. The pairing itself is the server's (`worksAt`); this only
@@ -94,7 +96,7 @@ export default function AdminUsers() {
   const [form, setForm] = useState(emptyForm);
   const [busy, setBusy] = useState<string | null>(null);
   const [shown, setShown] = useState<{ emp: string; password: string } | null>(null);
-  const [edit, setEdit] = useState<Record<string, { role: Role; loc: LocKey; also: string[] }>>({});
+  const [edit, setEdit] = useState<Record<string, { roleId: string; loc: LocKey; also: string[] }>>({});
   /** The one row whose Delete has been pressed once and is waiting for the second press. */
   const [confirming, setConfirming] = useState<string | null>(null);
 
@@ -103,9 +105,11 @@ export default function AdminUsers() {
   const nextEmp = nextEmpNo(accounts.map((a) => a.emp));
   // The form starts with no location chosen - the first place its role may work, once the
   // location list has landed, rather than a name compiled into the bundle.
-  const formLoc = form.loc || placesFor(form.role, LOCS)[0] || "";
+  const formRoleId = form.roleId || adminRoles.find((r) => r.active)?.id || "";
+  const formDesk = deskOf(formRoleId, "counter");
+  const formLoc = form.loc || placesFor(formDesk, LOCS)[0] || "";
   /** The other counters ticked on the create form, never the one it is already standing at. */
-  const formAlso = form.also.filter((l) => l !== formLoc && placesFor(form.role, LOCS).includes(l));
+  const formAlso = form.also.filter((l) => l !== formLoc && placesFor(formDesk, LOCS).includes(l));
 
   const create = async () => {
     if (!form.name.trim() || !form.email.trim()) {
@@ -114,6 +118,10 @@ export default function AdminUsers() {
     }
     // Empty when the location list hasn't loaded yet, or failed to - the server would refuse
     // the same request as a 400 naming a schema, but this reads better and never leaves.
+    if (!formRoleId) {
+      notify("Choose a role before saving - no active role is listed yet");
+      return;
+    }
     if (!formLoc) {
       notify("Choose a location before saving - no open outlet is listed yet");
       return;
@@ -122,7 +130,7 @@ export default function AdminUsers() {
     try {
       const made = await createAccount({
         name: form.name.trim(), email: form.email.trim(),
-        role: form.role, loc: formLoc as LocKey, phone: form.phone.trim() || undefined,
+        roleId: formRoleId, loc: formLoc as LocKey, phone: form.phone.trim() || undefined,
       });
       // A refusal (the role/location pairing, most often) leaves the form exactly as typed,
       // so the operator corrects it rather than retyping the whole thing.
@@ -159,19 +167,19 @@ export default function AdminUsers() {
   };
 
   /** The row's pickers as they stand: what the server last sent, until the operator touches them. */
-  const editOf = (a: AdminUser) => edit[a.id] ?? { role: a.r, loc: a.loc, also: alsoOf(a) };
+  const editOf = (a: AdminUser) => edit[a.id] ?? { roleId: a.rid ?? "", loc: a.loc, also: alsoOf(a) };
 
   const saveRoleLoc = async (a: AdminUser) => {
     const next = editOf(a);
-    const also = next.also.filter((l) => l !== next.loc && places(next.role, a.loc).includes(l));
+    const also = next.also.filter((l) => l !== next.loc && places(deskOf(next.roleId, a.r), a.loc).includes(l));
     const movedPlaces = !sameSet(also, alsoOf(a));
-    const movedRoleLoc = next.role !== a.r || next.loc !== a.loc;
-    if (!movedRoleLoc && !movedPlaces) { notify(`${a.n} is already ${ROLE_LABEL[a.r]} at ${label(a.loc)}`); return; }
+    const movedRoleLoc = next.roleId !== (a.rid ?? "") || next.loc !== a.loc;
+    if (!movedRoleLoc && !movedPlaces) { notify(`${a.n} is already ${a.rl} at ${label(a.loc)}`); return; }
     setBusy(a.id);
     try {
       // Two writes, in this order, because the second one names the first one's location as the
       // counter the account stands at. Either refusal leaves the row's pickers exactly as they are.
-      if (movedRoleLoc && !await updateAccountRoleLoc(a.id, { role: next.role, loc: next.loc })) return;
+      if (movedRoleLoc && !await updateAccountRoleLoc(a.id, { roleId: next.roleId, loc: next.loc })) return;
       if (movedPlaces && !await setAccountPostings(a.id, [next.loc, ...also as LocKey[]])) return;
       setEdit((e) => { const n = { ...e }; delete n[a.id]; return n; });
     } finally { setBusy(null); }
@@ -210,26 +218,27 @@ export default function AdminUsers() {
         <FormRow cols="f3">
           <Field label="Phone"><input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></Field>
           <Field label="Role">
-            <select value={form.role} onChange={(e) => {
-              const role = e.target.value as Role;
-              setForm({ ...form, role, loc: (placesFor(role, LOCS).includes(form.loc) ? form.loc : placesFor(role, LOCS)[0] ?? "") as LocKey });
+            <select value={formRoleId} onChange={(e) => {
+              const roleId = e.target.value;
+              const desk = deskOf(roleId, formDesk);
+              setForm({ ...form, roleId, loc: (placesFor(desk, LOCS).includes(form.loc) ? form.loc : placesFor(desk, LOCS)[0] ?? "") as LocKey });
             }}>
-              {RoleSchema.options.map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
+              <RoleOptions roles={adminRoles} />
             </select>
           </Field>
           <Field label="Location">
             <select value={formLoc} onChange={(e) => setForm({ ...form, loc: e.target.value as LocKey })}>
-              {placesFor(form.role, LOCS).map((l) => <option key={l} value={l}>{label(l)}</option>)}
+              {placesFor(formDesk, LOCS).map((l) => <option key={l} value={l}>{label(l)}</option>)}
             </select>
           </Field>
         </FormRow>
         {/* Nothing is drawn for a role with one place to work. A counter operator or an outlet
             manager may be posted to several: the location above is where the account starts, and
             every other counter ticked here is one it may sign in at instead. */}
-        {placesFor(form.role, LOCS).length > 1 && (
+        {placesFor(formDesk, LOCS).length > 1 && (
           <Field label="Counters this account works" tip="Tick every outlet this account may take a shift at. With more than one ticked, the sign-in screen asks which counter before the till opens, and the header offers the others mid-shift.">
             <AlsoAt
-              places={placesFor(form.role, LOCS)} at={formLoc} also={formAlso} name={label}
+              places={placesFor(formDesk, LOCS)} at={formLoc} also={formAlso} name={label}
               disabled={busy === "create"}
               onToggle={(l) => setForm({ ...form, also: form.also.includes(l) ? form.also.filter((x) => x !== l) : [...form.also, l] })}
             />
@@ -248,6 +257,7 @@ export default function AdminUsers() {
           ]}
           rows={sorted.map((a) => {
             const e = editOf(a);
+            const eDesk = deskOf(e.roleId, a.r);
             return {
               key: a.id,
               cells: [
@@ -257,22 +267,25 @@ export default function AdminUsers() {
                 // and nothing else, and the server refuses to move it to either.
                 a.admin ? <Pill tone="in">Super Admin</Pill> : <div style={{ display: "grid", gap: 6 }}>
                   <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                    <select aria-label={`Role for ${a.emp}`} value={e.role} onChange={(ev) => {
-                      const role = ev.target.value as Role;
-                      const loc = (placesFor(role, LOCS).includes(e.loc) ? e.loc : placesFor(role, LOCS)[0] ?? "") as LocKey;
-                      setEdit({ ...edit, [a.id]: { role, loc, also: e.also.filter((l) => l !== loc && placesFor(role, LOCS).includes(l)) } });
+                    <select aria-label={`Role for ${a.emp}`} value={e.roleId} onChange={(ev) => {
+                      const roleId = ev.target.value;
+                      const desk = deskOf(roleId, a.r);
+                      const loc = (placesFor(desk, LOCS).includes(e.loc) ? e.loc : placesFor(desk, LOCS)[0] ?? "") as LocKey;
+                      setEdit({ ...edit, [a.id]: { roleId, loc, also: e.also.filter((l) => l !== loc && placesFor(desk, LOCS).includes(l)) } });
                     }}>
-                      {RoleSchema.options.map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
+                      {/* Until the role list lands, the account's own role by the name it carries. */}
+                      {adminRoles.length === 0 && a.rid ? <option value={a.rid}>{a.rl}</option> : null}
+                      <RoleOptions roles={adminRoles} keep={a.rid} />
                     </select>
                     <select aria-label={`Location for ${a.emp}`} value={e.loc} onChange={(ev) => setEdit({ ...edit, [a.id]: { ...e, loc: ev.target.value as LocKey } })}>
-                      {places(e.role, a.loc).map((l) => <option key={l} value={l}>{label(l)}</option>)}
+                      {places(eDesk, a.loc).map((l) => <option key={l} value={l}>{label(l)}</option>)}
                     </select>
                     <Btn size="xs" disabled={busy === a.id} onClick={() => void saveRoleLoc(a)}>Save</Btn>
                   </div>
                   {/* Which counters this account may stand at - the select above is the one it
                       stands at now, and Save sends both. Never drawn for a role with one place. */}
                   <AlsoAt
-                    places={places(e.role, a.loc)} at={e.loc} also={e.also} name={label}
+                    places={places(eDesk, a.loc)} at={e.loc} also={e.also} name={label}
                     disabled={busy === a.id}
                     onToggle={(l) => setEdit({ ...edit, [a.id]: { ...e, also: e.also.includes(l) ? e.also.filter((x) => x !== l) : [...e.also, l] } })}
                   />

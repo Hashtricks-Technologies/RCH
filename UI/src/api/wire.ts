@@ -4,7 +4,7 @@ import { hydrateItems, hydrateLocations, hydrateMaster, hydrateMenus, hydratePri
 import { fromWireBestBefore, fromWireDate, fromWireTime } from "../lib/fmt";
 import { useApp } from "../store";
 import { basePrices } from "../lib/selectors";
-import type { AdminAction, AdminLocation, AdminPayer, AdminUser, Bill, Contract, Dated, HistEntry, RateContract, StockLoc } from "../types";
+import type { AdminAction, AdminLocation, AdminPayer, AdminRole, AdminUser, Bill, Contract, Dated, HistEntry, RateContract, StockLoc } from "../types";
 
 export type Snapshot = z.infer<typeof SnapshotSchema>;
 export type StockResponse = z.infer<typeof StockResponseSchema>;
@@ -232,6 +232,9 @@ export function applyAdminLocations(adminLocations: AdminLocation[]): void { use
  *  with what each still owes. An operational session reads the live list out of `roster`
  *  instead, which every payer write names alongside this one. */
 export function applyAdminPayers(adminPayers: AdminPayer[]): void { useApp.setState({ adminPayers }); }
+/** GET /admin/roles -> every role, active or not, with how many active accounts hold each. The
+ *  account form picks from the active ones; a row shows its account's role whatever its state. */
+export function applyAdminRoles(adminRoles: AdminRole[]): void { useApp.setState({ adminRoles }); }
 /** GET /admin/actions -> the last fifty, times as "HH:MM" and the instant beside them like every
  *  other document here is stamped. `kind` picks which feed the rows land in: the account page's
  *  own, the Outlets tab's, or the payer register's. */

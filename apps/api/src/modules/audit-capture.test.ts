@@ -121,14 +121,14 @@ describe("a write that succeeds leaves exactly one done event", () => {
 
   it("an admin's account create: the new account, with its temporary password masked", async () => {
     const mark = await lastId();
-    const r = await write("u7", "POST", "/admin/users", { name: "Anitha R", email: "anitha.r@royalcare.in", role: "counter", loc: "rest" });
+    const r = await write("u7", "POST", "/admin/users", { name: "Anitha R", email: "anitha.r@royalcare.in", roleId: "ROLE-001", loc: "rest" });
     expect(r.statusCode, r.body).toBe(200);
     const b = r.json();
     const [e, ...more] = await eventsSince(mark);
     expect(more).toEqual([]);
     expect(e).toMatchObject({
       actor: { id: "u7", emp: "RC-0001", name: "System Administrator", role: "Super Admin", loc: "" },
-      action: "createAdminUser", target: b.result.id, targetLoc: "rest", outcome: "done", message: b.message, changed: ["accounts"],
+      action: "createAdminUser", target: b.result.id, targetLoc: "rest", outcome: "done", message: b.message, changed: ["accounts", "roles"],
     });
     expect(e.result).toEqual({ ...b.result, tempPassword: MASK });
     expect(JSON.stringify(e)).not.toContain(b.result.tempPassword);

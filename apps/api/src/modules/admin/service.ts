@@ -39,6 +39,7 @@ const toAdminUser = (u: UserRow, postings?: readonly string[]): AdminUser => ({
   r: u.role, rl: roleLabelOf(u), loc: u.loc as AdminUser["loc"], col: u.colour,
   active: u.active, mustChangePassword: u.mustChangePassword, admin: u.admin,
   postings: [...(postings?.length ? postings : [u.loc])],
+  ...(u.roleId ? { rid: u.roleId } : {}),
 });
 
 /** A fresh, high-entropy temporary password - well past `MIN_PASSWORD_LENGTH` (10), shown to
@@ -69,8 +70,20 @@ const OUTLET_CHANGED = ["outlets", "locations"] as const;
 /** A payer write moves two lists: the super admin's own whole register, and the live one every
  *  till reads its picker off - the same pairing `outlets`/`locations` are. */
 const PAYER_CHANGED = ["payers", "roster"] as const;
+/** An account write that changes who holds a role - a create, a move, a switch off or on - also
+ *  moves the Roles tab's holder counts, and a move changes what the account may do, which every
+ *  pod's permission cache must hear (`plugins/access.ts`). So it announces `roles` - though still
+ *  not `accounts`, which only the admin tab that made the change reads. */
+const HOLDERS_CHANGED = ["accounts", "roles"] as const;
 
-export function createAdminService(db: Db) {
+/** `committed` runs once an account write that moves a role's holders has committed - the local
+ *  half of emptying the permission cache; the `roles` notice is the other, for every pod. */
+export function createAdminService(db: Db, committed: () => void = () => {}) {
+  const after = async <T>(write: Promise<T>): Promise<T> => {
+    const out = await write;
+    committed();
+    return out;
+  };
   const requireTx = async (tx: Tx, id: string): Promise<UserRow> => {
     const row = await adminRepo.byId(tx, id);
     if (!row) throw new NotFoundError(`There is no account ${id}.`);
@@ -105,18 +118,19 @@ export function createAdminService(db: Db) {
 
     async create(claims: AccessClaims, body: CreateAdminUserBody): Promise<WriteResponse<AdminUserWithTempPassword>> {
       const tempPassword = generatePassword();
-      return withTransaction(db, async (tx) => {
+      return after(withTransaction(db, async (tx) => {
         // No `emp`: `createUserTx` gives the account the next employee number under its own lock.
         const { id, emp } = await createUserTx(tx, {
-          name: body.name, email: body.email, role: body.role, loc: body.loc, phone: body.phone, password: tempPassword,
+          name: body.name, email: body.email, roleId: body.roleId, loc: body.loc, phone: body.phone, password: tempPassword,
         });
-        await log(tx, claims.sub, "create", { id, name: body.name }, { emp, role: body.role, loc: body.loc });
         const row = await requireTx(tx, id);
+        await log(tx, claims.sub, "create", { id, name: body.name }, { emp, role: row.roleId, desk: row.role, loc: body.loc });
+        await emitChanged(tx, ["roles"]);
         return {
-          result: { ...toAdminUser(row), tempPassword }, changed: ["accounts"],
+          result: { ...toAdminUser(row), tempPassword }, changed: [...HOLDERS_CHANGED],
           message: `${body.name} (${emp}) created - the temporary password shown above is not stored anywhere and will not be shown again`,
         };
-      });
+      }));
     },
 
     async resetPassword(claims: AccessClaims, id: string): Promise<WriteResponse<AdminUserWithTempPassword>> {
@@ -136,38 +150,47 @@ export function createAdminService(db: Db) {
 
     async deactivate(claims: AccessClaims, id: string): Promise<WriteResponse<AdminUser>> {
       refuseSelf(claims, id, "deactivate");
-      return withTransaction(db, async (tx) => {
+      return after(withTransaction(db, async (tx) => {
         const row = await requireTx(tx, id);
         auditBefore(toAdminUser(row));
         await deactivateUserTx(tx, row.empNo);
         await log(tx, claims.sub, "deactivate", { id, name: row.name });
+        await emitChanged(tx, ["roles"]);
         const fresh = await requireTx(tx, id);
-        return { result: toAdminUser(fresh, (await adminRepo.postingsByUser(tx, [id]))[id]), changed: ["accounts"], message: `${fresh.name} (${fresh.empNo}) deactivated` };
-      });
+        return { result: toAdminUser(fresh, (await adminRepo.postingsByUser(tx, [id]))[id]), changed: [...HOLDERS_CHANGED], message: `${fresh.name} (${fresh.empNo}) deactivated` };
+      }));
     },
 
     async reactivate(claims: AccessClaims, id: string): Promise<WriteResponse<AdminUser>> {
-      return withTransaction(db, async (tx) => {
+      return after(withTransaction(db, async (tx) => {
         const row = await requireTx(tx, id);
         auditBefore(toAdminUser(row));
         await reactivateUserTx(tx, row.empNo);
         await log(tx, claims.sub, "reactivate", { id, name: row.name });
+        await emitChanged(tx, ["roles"]);
         const fresh = await requireTx(tx, id);
-        return { result: toAdminUser(fresh, (await adminRepo.postingsByUser(tx, [id]))[id]), changed: ["accounts"], message: `${fresh.name} (${fresh.empNo}) reactivated` };
-      });
+        return { result: toAdminUser(fresh, (await adminRepo.postingsByUser(tx, [id]))[id]), changed: [...HOLDERS_CHANGED], message: `${fresh.name} (${fresh.empNo}) reactivated` };
+      }));
     },
 
     async updateRoleLoc(claims: AccessClaims, id: string, body: UpdateAdminUserBody): Promise<WriteResponse<AdminUser>> {
       refuseSelf(claims, id, "change the role or location of");
-      return withTransaction(db, async (tx) => {
+      return after(withTransaction(db, async (tx) => {
         const row = await requireTx(tx, id);
-        auditBefore(toAdminUser(row));
+        auditBefore(toAdminUser(row, (await adminRepo.postingsByUser(tx, [id]))[id]));
         if (row.admin) throw new RuleError(`Refused - ${row.name} (${row.empNo}) is a super admin, and a super admin has no role or location to change`);
-        await updateUserRoleLocTx(tx, row.empNo, { role: body.role, loc: body.loc });
-        await log(tx, claims.sub, "update_role_loc", { id, name: row.name }, { role: body.role, loc: body.loc });
+        const role = await updateUserRoleLocTx(tx, row.empNo, { roleId: body.roleId, loc: body.loc });
+        await log(tx, claims.sub, "update_role_loc", { id, name: row.name }, { role: role.id, desk: role.desk, loc: body.loc });
+        await emitChanged(tx, ["roles"]);
         const fresh = await requireTx(tx, id);
-        return { result: toAdminUser(fresh), changed: ["accounts"], message: `${fresh.name} (${fresh.empNo}) moved to ${fresh.roleLabel} at ${body.loc}` };
-      });
+        const kept = role.desk === row.role && body.loc === row.loc;
+        return {
+          result: toAdminUser(fresh, (await adminRepo.postingsByUser(tx, [id]))[id]), changed: [...HOLDERS_CHANGED],
+          message: kept
+            ? `${fresh.name} (${fresh.empNo}) is now ${fresh.roleLabel} - it takes effect on their next action`
+            : `${fresh.name} (${fresh.empNo}) moved to ${fresh.roleLabel} at ${body.loc}`,
+        };
+      }));
     },
 
     /**

@@ -13,7 +13,8 @@ pnpm --filter @rch/api db:generate          # drizzle-kit generate + strip the "
 pnpm --filter @rch/api db:migrate           # behind pg_advisory_lock(727272); creates rch_app when DATABASE_URL names another user
 pnpm --filter @rch/api db:seed [--force] [--bare]
 pnpm --filter @rch/api db:rebuild-balances  # recompute stock_balances from stock_moves
-pnpm --filter @rch/api users <create|reset-password|deactivate|set-admin> --emp RC-1234 ...   # create: --emp optional, next number assigned
+pnpm --filter @rch/api users <create|reset-password|deactivate|set-admin> --emp RC-1234 ...   # create: --emp optional, next number assigned;
+                                            # --role <desk> takes that desk's first active role, --role-id ROLE-006 names one
 pnpm --filter @rch/api payers import --csv <file> [--replace-names]   # kind,id,name - one transaction
                                             # kind is staff|dept|doctor; the register is also on /admin
 pnpm --filter @rch/api keys:generate        # prints a fresh Ed25519 JWT_PRIVATE_KEY= / JWT_PUBLIC_KEY= pair
@@ -30,8 +31,8 @@ src/app.ts        buildApp(): plugins in order, then registerModules
 src/server.ts     listen; SIGTERM drains (see Shutdown)
 src/config.ts     the Zod env schema - the only reader of process.env
 src/routes.ts     mount(): the only way a module registers a route
-src/plugins/*     logging, errors, metrics, health, security, db, auth, rbac, sse, idempotency, audit, images
-src/lib/*         ledger, reservations, tickets, adjustments, ids, history, rules, events, claims, credit, master, audit, roles, images, …
+src/plugins/*     logging, errors, metrics, health, security, db, auth, access, rbac, sse, idempotency, audit, images
+src/lib/*         ledger, reservations, tickets, adjustments, ids, history, rules, events, claims, credit, master, audit, access, roles, images, …
 src/modules/*     one folder per slice, registered in modules/index.ts; _template is the skeleton to copy
 src/db/*          schema/, client.ts, migrate.ts, seed.ts
 src/cli/*         migrate, seed, rebuild-balances, users, payers, keys, purge
@@ -229,13 +230,64 @@ backstop for a future writer that doesn't take that lock, not the primary guard;
 such writer today - it reads whether the list exists unlocked, so its own insert is wrapped in a catch for the
 same violation.
 
+## Roles and permissions
+
+A **role** (`roles`, `ROLE-00n`) is the super admin's: a name, a **desk** (the old fixed `role` enum - where the
+holder works, its postings, its shift) and `perms` (`Permissions` from `@rch/contract`). Every account but the
+super admin holds exactly one (`users.role_id`; `users_role_id_ck` allows null only with `admin`), and the
+composite foreign key `(role_id, role) → roles(id, desk)` keeps `users.role` equal to its role's desk.
+`users.role_label` is kept equal to the role's name (a rename rewrites it). Migration `0026_roles` seeds
+`ROLE-001`…`ROLE-005` from `DESK_DEFAULTS` (one per desk, in `RoleSchema` order) and backfills every account;
+`db:seed` (and `--force`, which never truncates `roles`) puts each seeded account on its desk's lowest active
+role; `truncateAll` in the test harness keeps `roles` too.
+
+- **Permissions are read per request, never from the token.** `lib/access.ts`'s `loadAccess` joins the account
+  to its role; `plugins/access.ts` decorates `app.access` with a per-pod cache of it (`of(userId)`, `clear()`,
+  60 s TTL). `clear()` bumps a generation, so a read in flight across a clear answers its own request but is
+  not kept. Three things clear it: a change notice naming `roles` (`plugins/sse.ts`, from any pod), a LISTEN
+  reconnect, and - locally, after commit - every role write and every account write that moves a role's
+  holders (the services take a `committed` callback).
+- **`plugins/rbac.ts`, in order:** public passes; `access: "admin"` wants the admin claim, else 404; an admin
+  token anywhere else is a 404 unless the route is `allowMcp` or admits it (`admitAdmin` - the manifest's own,
+  which `mount()` passes, or `/events`' by hand), and an admitted admin skips permissions; every other token
+  has its role resolved from `app.access`, and a missing role, a switched-off role or a desk other than the
+  token's `role` claim is a **401** "Your account was changed - sign in again." (the browser refreshes into a
+  token for the account as it stands). Then `admits` (`@rch/domain`) decides: a desk list is the legacy form
+  and reads the desk alone, exactly as before; `{ desk }` likewise; `{ needs }` is 404 with no need met, 403
+  with `permissionRefusal`'s sentence where the feature is held at view and edit was needed (or the parent
+  of a missing action is held). Finally the must-change-password 403.
+- **`req.actor`** (`Actor` in `plugins/rbac.ts`, declared on `FastifyRequest` the way `req.user` is) is set on
+  every non-public route: `{ ...claims, perms, wide }`. `wide` is `admits`' answer - the matched need is a
+  hospital-wide feature, or the role holds `all_outlets`; for `"any"` it is `all_outlets`; for a desk list
+  it is "not the counter desk, or `all_outlets`". A super admin's actor is `{ perms: { f: {}, a: [] }, wide:
+  true }`. Read permissions in a service with `can(req.actor.perms, f, l)` / `holds(req.actor.perms, a)`
+  from `@rch/domain`, passed down from `routes.ts` like `req.user`; never re-read the role.
+- **`modules/roles/`** serves `/admin/roles`. Each write locks the role `FOR UPDATE`, calls `auditBefore`,
+  applies the rules (a name clash - `roles_name_uq` decides; `grantRefusal`; no desk change once
+  `ever_assigned`; no deactivation while any active account holds it, naming them; no delete once
+  `ever_assigned`), bumps `version`, rewrites `role_label` on a rename, writes a `role_*` line in
+  `admin_actions` (`target_id` null, the role's name as `target_name`) and announces `roles`. `holders` is
+  the count of active, non-admin accounts on the role.
+- **An account write takes the role, then the location.** `createUserTx` / `updateUserRoleLocTx` lock the role
+  `FOR UPDATE` (by id, or - for the CLI and the seed - the desk's lowest active role), refuse a switched-off
+  one, then `checkPairing(role.desk, loc)` through `lockLocation`, write `role`/`role_id`/`role_label` from the
+  role and set `ever_assigned`. A move within the same desk and home location keeps the postings and
+  sessions (the new permissions reach the next request through the cache); anything else resets the
+  postings and revokes the sessions as before. `reactivateUserTx` refuses an account whose role is switched
+  off. `set-admin --on` clears `role_id`; `--off` gives the desk's first active role back. Account writes
+  that move a role's holders (create, move, deactivate, reactivate) announce `roles` and name `accounts` and
+  `roles` in `changed`.
+- **`toWireUser(u, role)`** carries `rid` and `perms` on sign-in, refresh, `/me` and `snapshot.user`, from a
+  `loadAccess` read in the same transaction (not the cache); both are absent for the super admin.
+
 ## Accounts and the super admin
 
 - **A super admin reaches no operational route.** Its `role`/`loc` columns are placeholders the `users` row
-  needs. `plugins/rbac.ts` answers 404 to an admin-flagged token on every route that is not `access: "admin"`
-  and not `allowMcp` (sign-in, password, `/me`), so the placeholder role opens nothing. A hand-mounted route the
-  admin's page needs passes `{ admitAdmin: true }` to `roleGate`; `/events` is the only one. `lib/wire.ts`'s
-  `roleLabelOf` prints its role as `Super Admin`, and `PATCH /admin/users/:id` refuses to move one.
+  needs, and it holds no role (`role_id` null). `plugins/rbac.ts` answers 404 to an admin-flagged token on
+  every route that is not `access: "admin"`, not `allowMcp` (sign-in, password, `/me`) and not `admitAdmin`,
+  so the placeholder opens nothing. `/events` passes `{ admitAdmin: true }` to `roleGate` by hand; a manifest
+  route says `admitAdmin: true` and `mount()` passes it. `lib/wire.ts`'s `roleLabelOf` prints its role as
+  `Super Admin`, and `PATCH /admin/users/:id` refuses to move one.
 - **The server assigns employee numbers.** `POST /admin/users` takes no `emp`. `createUserTx` locks the
   `sequences` row of kind `user` (not an `IdKind`; inserted on first use, never by `ensureSequences`), then
   gives the account `nextEmpNo` over every `users.emp_no`. The same row hands out user ids, which only move
@@ -266,7 +318,7 @@ dispatched kitchen order or a sent shop ask keeps an undo edge in its own transi
 raised is what holds the outlet from then on).
 
 Every outlet write runs inside one `withTransaction`, writes one `admin_actions` row, and calls
-`emitChanged(tx, ["outlets", "locations"])` - unlike an account write, which announces nothing. Every
+`emitChanged(tx, ["outlets", "locations"])` - unlike an account write, which announces only `roles`. Every
 operational browser refetches the location master on `locations`; every open admin tab refetches its own list
 on `outlets`.
 
