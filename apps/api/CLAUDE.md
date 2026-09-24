@@ -7,7 +7,7 @@ server.
 
 ```bash
 pnpm --filter @rch/api dev                  # tsx watch, reads ../../.env, :3000
-pnpm --filter @rch/api test                 # vitest; Postgres on 5439 (pnpm db:up); floor lines 94 / branches 80
+pnpm --filter @rch/api test                 # vitest; Postgres on 5439 (pnpm db:up); floor lines 95 / branches 82
 pnpm --filter @rch/api build                # tsup → dist/server.mjs
 pnpm --filter @rch/api db:generate          # drizzle-kit generate + strip the "public". prefix; review + commit the SQL
 pnpm --filter @rch/api db:migrate           # behind pg_advisory_lock(727272); creates rch_app when DATABASE_URL names another user
@@ -121,7 +121,7 @@ unique index, so that lock is the whole guarantee two new products of one type n
 
 `lib/terms.ts` is the one place a rate is resolved - `termsFor(db, party, payer?)`, the person's exception
 over their category's row - and four callers read it: the sale that prices a bill, the till's credit
-report, the manager's screen and the receivables list. A screen showing a rate the sale would not apply is
+report, the Credit screen and the receivables list. A screen showing a rate the sale would not apply is
 the whole defect it exists to prevent, so nobody else resolves one.
 
 `lib/credit.ts` holds the balance: `outstandingFor` (every account-tender bill less every live settlement),
@@ -184,7 +184,7 @@ and open one here), and `modules/shifts` serves the live report (`GET /shifts/cu
   list reads them back rather than re-deriving them.
 - **Close takes no `lockLocation`** and refuses (422) with no open shift, or one open at another counter than
   the session's. It announces `shifts`; so does a sign-in that auto-closed one.
-- **`GET /shifts` is `access: "any"`**: a role holding `shift_reports` (the seeded manager) reads every
+- **`GET /shifts` is `access: "any"`**: a role holding `shift_reports` (the seeded Outlet Manager) reads every
   outlet's (`loc` narrows), any other counter-desk role its own, everybody else `[]` without a query - the
   `/receivables` reasoning, since a close announces to every tab.
 - **`deleteUserTx` deletes the account's shifts** with its sessions. A shift is a sign-in record, not history;
@@ -206,7 +206,7 @@ moved a contract adds `contracts` to `changed` and appends `contract RC-… now 
 ## Price lists
 
 `modules/pricelists/` owns the entity itself - create, delete (only once unattached) and switching an
-outlet's active list - and the manager's counter price grid, `saveOutletPrices` (`PUT /outlet-prices`). The
+outlet's active list - and the counter price grid, `saveOutletPrices` (`PUT /outlet-prices`). The
 grid is the only one of these the UI shows today (`PRICE_LISTS_ENABLED` is off); the other three stay mounted.
 
 **`saveOutletPrices` is copy-on-write.** It locks every outlet it names `FOR UPDATE` (sorted; it may move the
@@ -329,7 +329,7 @@ dispatched kitchen order or a sent shop ask keeps an undo edge in its own transi
 raised is what holds the outlet from then on).
 
 Every outlet write runs inside one `withTransaction`, writes one `admin_actions` row, and calls
-`emitChanged(tx, ["outlets", "locations"])` - unlike an account write, which announces only `roles`. Every
+`emitChanged(tx, ["outlets", "locations"])` - unlike an account write, which announces at most `roles` (when it moves a role's holders). Every
 operational browser refetches the location master on `locations`; every open admin tab refetches its own list
 on `outlets`.
 
@@ -351,10 +351,10 @@ Two reads split deliberately:
 - **The rate card and the receivables list are scoped, not gated.** `GET /payer-terms`, `GET /receivables`
   and `GET /settlements` are all `access: "any"`. The rate card answers empty to a role holding neither
   `billing` nor `credit`; the last two answer empty, short-circuiting before they query anything, to a role
-  without `credit` (of the seeded roles, everybody but the manager). That is deliberate: a manager's write announces
+  without `credit` (of the seeded roles, everybody but the Outlet Manager). That is deliberate: a credit write announces
   `terms`/`receivables` to **every** open browser, and a route another role is forbidden would fail that
   tab's whole refetch with a toast about a screen of theirs that never changed - the trap `UI/CLAUDE.md`
-  documents for `priceLists`. `GET /receivables/:kind/:id` is manager-only, because a statement is opened by
+  documents for `priceLists`. `GET /receivables/:kind/:id` is gated (`need(credit, view)`), because a statement is opened by
   hand from a drawer and is never in a `changed`.
 
 The snapshot and every `access: "any"` GET that carries one of its collections (`/stock`, `/bills`,
@@ -461,8 +461,8 @@ drains it; this app only ever inserts. `lib/audit.ts` holds the code.
   `result.from`, the first that is set: a request, a ticket, a shop ask or a transfer names its location as
   `from`.
 - **The actor is stored as it stood.** `actorOf` reads the caller's `users` row (one primary-key read) for the
-  employee number, name, printed role label (`roleLabelOf`: "Counter Operator", "Outlet Manager", "Store
-  Keeper", "Kitchen In-charge", "Procurement Officer" or "Super Admin") and location (`""` for the super admin),
+  employee number, name, printed role label (`roleLabelOf`: the account's role name as it stood - "Counter Operator", "Outlet
+  Manager" and the rest for the seeded roles, whatever the super admin named any other - or "Super Admin") and location (`""` for the super admin),
   so an event still reads after the account is renamed or deleted. A sign-in with an unknown employee id has
   `actor.id` null, and keeps the typed id as `emp` only when it matches `/^RC-\d+$/i`; anything else is stored
   as `""`, so a password typed into the id box never reaches the log.

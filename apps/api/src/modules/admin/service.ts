@@ -6,10 +6,12 @@
 //
 // One `withTransaction` per write, composing the mutation and the `admin_actions` row that
 // records it - genuinely atomic, the ordinary rule every write in this codebase follows. Account
-// writes still don't announce themselves over `emitChanged`/SSE: no other module subscribes to
-// the `"accounts"` collection, so a live cross-tab refresh would serve a benefit only a second
-// open admin session would ever notice, and the tab that made the change refreshes its own list
-// through the ordinary `refetch(["accounts"])` the response's `changed` names. Outlet writes do
+// writes don't announce `accounts` over `emitChanged`/SSE: no other module subscribes to it, so a
+// live cross-tab refresh would serve a benefit only a second open admin session would ever notice,
+// and the tab that made the change refreshes its own list through the ordinary
+// `refetch(["accounts"])` the response's `changed` names. The ones that move a role's holders
+// (create, move, deactivate, reactivate) do announce `roles`: every pod's permission cache has to
+// drop the account, and the Roles tab's holder counts move. Outlet writes do
 // announce themselves: every operational screen reads the location master, so a manager's or a
 // counter's open tab has to learn a new outlet, a rename or a close live, not on its next reload.
 import { randomBytes, randomUUID } from "node:crypto";

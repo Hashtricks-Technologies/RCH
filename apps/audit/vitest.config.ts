@@ -14,9 +14,10 @@ export default defineConfig({
     hookTimeout: 60_000,
     setupFiles: ["./src/test/env.ts"],
     // `enabled` is not set: `package.json`'s `test` passes `--coverage`, so `pnpm test` and CI are
-    // gated while a one-file `vitest run` is not. The floor starts at the target the spec sets
-    // (lines 90 / branches 75); Task 20 sets it to the measured figures. Raise it when the real
-    // figure rises; never lower it to clear a red run.
+    // gated while a one-file `vitest run` is not. The floor started at the target the spec set
+    // (lines 90 / branches 75) and now sits a point or two under what the suite measures
+    // (statements 97.94, branches 91.14, functions 95.62, lines 99.57, 2026-09-24). Raise it when
+    // the real figure rises; never lower it to clear a red run.
     coverage: {
       provider: "v8",
       include: ["src/**"],
@@ -25,7 +26,7 @@ export default defineConfig({
       // tests call directly, and which the image's kind install exercises for real.
       exclude: ["src/**/*.test.ts", "src/test/**", "src/db/schema.ts", "src/server.ts", "src/cli/**"],
       reporter: ["text-summary"],
-      thresholds: { lines: 90, branches: 75 },
+      thresholds: { lines: 97, branches: 89 },
     },
   },
 });

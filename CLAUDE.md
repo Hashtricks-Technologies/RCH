@@ -88,8 +88,8 @@ Every change must pass all of it. Four things trip people up:
 
 - **Lint is zero-warning.** Every package's `lint` is `oxlint --max-warnings 0`, so a warning fails the job
   just like an error does.
-- **Coverage floors are part of `test`.** The floors are UI lines 79 / branches 60, `apps/api` 94 / 80,
-  `apps/audit` 90 / 75, `packages/domain` 99 / 93, and `packages/contract` lines 96. Raise a floor when the real figure rises. Never
+- **Coverage floors are part of `test`.** The floors are UI lines 82 / branches 66, `apps/api` 95 / 82,
+  `apps/audit` 97 / 89, `packages/domain` 99 / 94, and `packages/contract` lines 96. Raise a floor when the real figure rises. Never
   lower one to turn a run green. The `--coverage` flag lives on each `test` script, which is why a single-file
   run isn't judged against the floor.
 - **`test` is uncached in `turbo.json`.** Turbo hashes source files, not the database, so a cache hit could
@@ -153,13 +153,20 @@ was. Its audit event is written after the reply, since the write's own transacti
 
 ### Roles and scope
 
-There are five roles (`counter`, `manager`, `store`, `prod`, `buyer`), each with its own sidebar.
+There are five **desks** (`counter`, `manager`, `store`, `prod`, `buyer`) - `Role` in code - and any number of
+**roles** on top of them. A desk says where someone works; a role (below) says what they may do, and draws the
+sidebar. The five seeded roles - Counter Operator, Outlet Manager, Store Keeper, Kitchen In-charge and
+Procurement Officer (`DESK_DEFAULTS` in `@rch/domain`) - grant exactly what each desk had before roles, the Z
+excepted.
 
 - **Every operational route is gated by what a role holds**, never by a list of roles: the manifest's
   `access` is a permission (`need`/`act`/`anyOf`) or, for the few doors that are a desk's own (a counter's
   shift), a desk (`desk`). A role holding none of a route's needs gets a **404**, the same as a screen that
   doesn't exist for it; one holding the feature at view where edit is needed (or the feature an action hangs
-  off, but not the action) gets a **403** with `permissionRefusal`'s sentence.
+  off, but not the action) gets a **403** with `permissionRefusal`'s sentence. Inside a handler or a screen
+  the same holds: ask `can`/`holds` or `req.actor.wide`, never the desk. A desk check is only for where
+  someone sits (`worksAt`, `atOutlet`, the counter's shift at sign-in); `scripts/check-boundaries.sh` fails
+  on any equality against `"manager"` in `apps/api/src` or `UI/src` outside a test.
 - **Wrong location:** a caller outside the location a document belongs to gets a **403**.
 - **Hospital-wide or local is decided per request** (`req.actor.wide`): the need a caller matched is a
   hospital-wide feature, or its role holds `all_outlets`. A wide caller's writes never scope to a location
@@ -168,7 +175,8 @@ There are five roles (`counter`, `manager`, `store`, `prod`, `buyer`), each with
 - **The Z is the super admin's by default.** No seeded role holds `z_report`, so a seeded counter or
   manager gets a **404** on `GET /register/z` and `POST /register/close` until a role is given it. The X,
   the Z list and the close are `admitAdmin` in the manifest: the super admin reaches them for any outlet,
-  and must name it (`loc`) - a **400** otherwise, since it has no till of its own.
+  and must name it (`loc`) - a **400** otherwise, since it has no till of its own. `deploy/RUNBOOK.md` §18
+  covers the release that made this so.
 - **A counter operator may be posted to several outlets.** `user_postings` is where an account
   *may* work; the token's `loc` claim is where it *is* working, and it is still exactly one
   location - so every location guard is unchanged. An account with one posting signs in exactly as
@@ -185,8 +193,9 @@ There are five roles (`counter`, `manager`, `store`, `prod`, `buyer`), each with
   open at another counter automatically (its figures stored, marked `auto`). A refresh opens nothing. Close
   Shift (`POST /shifts/close`) stores that operator's own bills at that counter since the shift opened - per
   tender, gross, discount, nett, tax and voids, no counted cash - and the UI prints the slip and signs out.
-  The manager reads every closed shift (`GET /shifts`, `access: "any"`, empty for other desks) on the
-  Register screen and the bell. The outlet's X/Z is unchanged: a shift is one person's hours inside it.
+  A role holding Shift reports (`shift_reports`, the seeded Outlet Manager) reads every outlet's closed shifts
+  (`GET /shifts`, `access: "any"`) on the Register screen and the bell; any other counter-desk role reads its
+  own, and every other role an empty list. The outlet's X/Z is unchanged: a shift is one person's hours inside it.
 - **Admin** is a boolean on `users`, not a sixth role. It is checked as `access: "admin"`. An admin-flagged
   account sees only the standalone `/admin` page, never an operational shell. The page has seven tabs: Accounts
   (staff accounts, each given one role), Roles (what each role grants, as a permission matrix), Outlets (opens,
@@ -242,19 +251,20 @@ back where it stood.
 - Every non-public write carries an `Idempotency-Key`. The outcome is recorded inside the write's own
   transaction, so a retry replays the answer instead of producing a second bill.
 - **Who exists and what they are charged are two different desks.** The super admin owns the payer register
-  (`/admin`, `POST`/`PATCH /admin/payers`); the outlet manager owns the rate card and the settlements
-  (`/payer-terms`, `/receivables`, `/settlements`). `pnpm --filter @rch/api payers import --csv` stays for a
-  ward list nobody types twice. Both `GET /payer-terms` and `GET /receivables` are `access: "any"` and answer
-  empty to a caller who never takes a bill, exactly as `GET /roster` does - a manager's write announces to
+  (`/admin`, `POST`/`PATCH /admin/payers`); a role holding Credit & settlements (`credit`, the seeded Outlet Manager) owns the rate card
+  and the settlements (`/payer-terms`, `/receivables`, `/settlements`). `pnpm --filter @rch/api payers import --csv` stays for a
+  ward list nobody types twice. `GET /payer-terms` and `GET /roster` are `access: "any"` and
+  answer empty to a role holding neither Bills (`billing`) nor `credit`; `GET /receivables` and `GET
+  /settlements` are `access: "any"` and answer empty to a role without `credit` - a credit write announces to
   every open browser, and a route another role is forbidden would fail that tab's whole refetch.
-- **The manager prices each counter on its own, from one grid.** Prices (`prices`) is every active sellable
+- **A role holding Prices at edit (the seeded Outlet Manager) prices each counter on its own, from one grid.** Prices (`prices`) is every active sellable
   item (MRP, FG, MTO) against every open outlet; each cell is whether that till sells it (its menu listing)
   and what it charges there. Edits are staged in the browser and saved as one batch, `PUT /outlet-prices`
   (`{ changes: [{ loc, it, price?, listed? }] }`, at most 500), behind a dialog that lists every change and
   wants `CONFIRM` typed. The batch is all or nothing: a price of zero, a counter switched on with no price
   there, a closed outlet, a retired item or a raw/packing item refuses the whole of it. A price above the
   printed MRP is **not** refused; the cell says what the till will charge instead. The grid's switch is the
-  manager's one on/off: the manager's Product On / Off screen (`avail`) is hidden behind
+  Prices holder's one on/off: the manager's Product On / Off screen (`avail`) is hidden behind
   `AVAILABILITY_SCREEN_ENABLED` in `UI/src/screens.ts`. The counter's and the kitchen's own switches stay.
 - **A price list is still the storage, but no screen shows one.** Each outlet charges from its active list
   (`price_lists`, `locations.price_list_id`), and the till still prices off it (`priceOf`). The grid keeps
@@ -329,7 +339,7 @@ The code enforces these and tests pin them. Breaking one is a bug.
   - A price list may carry a figure above the MRP: `PUT /prices` and `PUT /outlet-prices` save it, and
     `PATCH /items/:it` may lower an MRP below a list price. Neither changes what a sale charges.
   - An item that carries an MRP keeps one; it can't be cleared to zero.
-- **What a party is charged is the outlet manager's, and the server decides it.** A rate card carries one
+- **What a party is charged is the rate card's - a `credit` holder's, the seeded Outlet Manager - and the server decides it.** A rate card carries one
   discount and one credit limit per category (`customer`, `staff`, `dept`, `doctor`), with a
   per-person exception over it; `null` on a person's row means "inherit". The till previews the rate off the
   snapshot, and `POST /bills` resolves it again inside the sale's own transaction - a client sends no rate and
@@ -349,8 +359,9 @@ The code enforces these and tests pin them. Breaking one is a bug.
   - A batch books what the kitchen made onto its rack. It draws nothing down; kitchen raw stock is cleared
     with an `ADJ-` document.
   - A write-off or a stock count is an `ADJ-` document with a reason, and it may not take stock a ticket is
-    holding. The store keeper and the kitchen write one directly against their own shelf; an outlet's is the
-    one exception - the manager does not adjust it directly, only by approving a counter's adjustment request,
+    holding. A role holding Adjustments (`adjustments`, grantable to the store and kitchen desks only) writes
+    one directly against its own shelf; an outlet's is the one exception - nobody adjusts it directly, only a
+    role holding Approvals (the seeded Outlet Manager) by approving a counter's adjustment request,
     which writes the `ADJ-` document as the one and only step of deciding it (there is no ticket stage after,
     the way a stock request has one - a write-off has nothing to hand over).
   - A goods receipt posts accepted goods to the central store and rejected goods to `quarantine`.
@@ -386,7 +397,8 @@ The code enforces these and tests pin them. Breaking one is a bug.
   packing, `MR-3xxx` MRP, `FG-4xxx` finished, `MT-5xxx` made-to-order), one past the highest code with
   that prefix, retired items included, under a per-series advisory lock. The new-product form previews
   it read-only; the server decides.
-- **An item has at most one display name**, the manager's alone (`dn` in `ITEM_FIELD_FEATURES` needs `items_stock` at edit), set in
+- **An item has at most one display name**, set only by a role holding `items_stock` at edit (`dn` in
+  `ITEM_FIELD_FEATURES`; the seeded Outlet Manager), in
   the item drawer; a blank clears it. It replaces the real name **only on the counter's own screens**
   (`counterNameOf` in `UI/src/lib/selectors.ts`); every other desk, every document, the printed bill
   slip and every PDF print the real name. A counter search matches either name.

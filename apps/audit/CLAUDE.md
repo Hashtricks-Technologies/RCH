@@ -19,7 +19,7 @@ is a slim copy, not an import.
 
 ```bash
 pnpm --filter @rch/audit dev          # PORT=3100 tsx watch, reads ../../.env
-pnpm --filter @rch/audit test         # vitest; Postgres on 5439 (pnpm db:up); floor lines 90 / branches 75
+pnpm --filter @rch/audit test         # vitest; Postgres on 5439 (pnpm db:up); floor lines 97 / branches 89
 pnpm --filter @rch/audit build        # tsup → dist/server.mjs, dist/cli/migrate.mjs
 pnpm --filter @rch/audit db:generate  # drizzle-kit generate + strip the "public". prefix; review + commit the SQL
 pnpm --filter @rch/audit db:migrate   # after the API's db:migrate; behind pg_advisory_lock(727273)

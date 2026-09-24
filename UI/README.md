@@ -1,7 +1,7 @@
 # Royal Care - F&B Inventory (React + Vite)
 
-Frontend for the hospital's kitchen, restaurant and retail-counter operation. Five roles,
-one shared stock ledger, backed by the `apps/api` Fastify service - all six phases of the backend
+Frontend for the hospital's kitchen, restaurant and retail-counter operation. Five desks,
+any number of roles the super admin defines on top of them, one shared stock ledger, backed by the `apps/api` Fastify service - all six phases of the backend
 are implemented, and the store is an API client end to end.
 
 ## Stack
@@ -431,8 +431,8 @@ opens the goods receipt instead.
 
 **Rate contracts.** Vendor and item, rate, validity window and minimum order quantity, server-
 backed since Phase 5. The procurement officer maintains them (`POST`/`PATCH`/`DELETE /contracts`
-all admit `buyer`, and the screen lives only on the buyer's own nav - the store keeper never sees
-it), adding several products to one vendor's contract at once from a sidebar drawer; procurement
+need Rate contracts at edit, and of the seeded roles only the Procurement Officer holds it - the
+store keeper never sees it), adding several products to one vendor's contract at once from a sidebar drawer; procurement
 prices an order from them (`createPo` picks a live contract's rate over the item's standard cost)
 and is warned on screen when a rate deviates or a quantity falls under the minimum. Only one live
 contract may exist for a given vendor and item at a time.

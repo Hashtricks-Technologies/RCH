@@ -7,7 +7,7 @@ human reader. This file covers what is specific to `@rch/ui`.
 
 ```bash
 pnpm --filter @rch/ui dev         # vite on :5173, proxying /api/v1/admin/audit → http://localhost:3100 and the rest of /api → http://localhost:3000
-pnpm --filter @rch/ui test        # vitest run --coverage (jsdom); floor lines 79 / branches 60
+pnpm --filter @rch/ui test        # vitest run --coverage (jsdom); floor lines 82 / branches 66
 pnpm --filter @rch/ui exec vitest run src/__tests__/writes.test.ts   # one file, no coverage gate
 pnpm --filter @rch/ui typecheck   # tsc --noEmit -p tsconfig.app.json
 pnpm --filter @rch/ui build       # tsc -b && vite build → UI/dist
@@ -45,7 +45,9 @@ screen's own `section` - joining a group of the same name - and Account last. `d
 sidebar its section in brackets - a store role holding Requisitions reads "Requisitions (purchasing)" beside
 its own "Requisitions". The guard is checked on every render, so a role narrowed under an open tab loses the screen
 at once. Gate on a permission with these, never on `user.r`; the desk (`user.r`) still decides where
-someone works - the counter's till, its Close shift and the counter-only display names stay on it.
+someone works - the counter's till, its Close shift and the counter-only display names stay on it, and
+`atOutlet(desk)` (`@rch/domain`) says whether a desk sits at an outlet. `scripts/check-boundaries.sh` fails on
+any equality against `"manager"` outside a test.
 
 **A screen held at `view` is read-only, and says so.** Its `PageHead` takes `readOnly={!may && "<feature>"}`,
 which draws a "View only" badge whose tip is `permissionRefusal(feature)` - the sentence the server refuses
@@ -302,12 +304,12 @@ a background refresh and must not blank the screen.
   `PAYER_TERMS`). They are empty at import, and `hydrateMaster()` /
   `hydrateRoster()` **fill them in place**, so assign into them and never reassign them. Anything that changes
   them bumps `catalogVersion`, which screens use as a memo key.
-- **`PL` is keyed by price-list id, not a fixed pair** - every list a manager has created, `PL[list][it]` its
+- **`PL` is keyed by price-list id, not a fixed pair** - every list a Prices holder has created, `PL[list][it]` its
   item→price map. `PRICE_LISTS[list]` is the entity itself (`{ id, name, outlets }`), for a name to print and
   for the hidden price-list screen to filter by outlet or by name. A `Location.list` names which id an outlet is
   active on; it is never itself the price.
 - **A counter's own screens name an item with `counterNameOf(it)`** (`lib/selectors.ts`): the
-  manager's display name (`dn`) where there is one, the real name otherwise. Only files under
+  display name (`dn`) where there is one, the real name otherwise. Only files under
   `roles/counter/` call it, and the bill drawer only for a counter session - the manager opens the
   same drawer and reads the real name, and the printed slip always does. A counter search matches
   with `itemMatches(it, term)`, which finds either name or the code.

@@ -2885,3 +2885,67 @@ no payer, so deleting a patient bill leaves the shelf figures exactly as they ar
 reason to prefer the delete over any attempt to re-file the bill, not a reason to be casual about
 it: `stock_moves` is append-only, so a deleted bill's movements stay on the ledger with nothing
 left to explain them. Say in the handover that you did it.
+
+## 18. Migration 0026: configurable roles, and who takes the Z
+
+Migration `0026_roles` turns the five fixed roles into data. It creates `roles` (`ROLE-00n`: a name,
+the **desk** its holders work at - the old `counter|manager|store|prod|buyer` - and its permissions as
+JSON), seeds `ROLE-001`…`ROLE-005` (Counter Operator, Outlet Manager, Store Keeper, Kitchen In-charge,
+Procurement Officer) with exactly what each desk could reach before, adds `users.role_id` and puts every
+account but the super admin onto its desk's seeded role. `users.role_label` is rewritten to the role's
+name at the same time, which is what it already said. Two constraints then hold it:
+`users_role_id_ck` (only the super admin may have no role) and `users_role_desk_fk` (`(role_id, role)`
+must match a role's `(id, desk)`, so an account's desk is always its role's). It runs in one
+transaction and needs nothing checked beforehand: every non-admin account has a desk, and every desk
+has a seeded role.
+
+The new `role` id series (`ROLE-006` onward) is inserted by `ensureSequences`, which runs at the end
+of every `db:migrate` (`src/db/migrate.ts`), so a deploy needs no seed step for it. The `rch_app`
+grants are re-issued on every migrate (§5, *The database roles*), which covers the new table.
+
+**What changes for the operators, the moment this release is up:**
+
+- **The seeded Counter Operator and Outlet Manager no longer take the Z.** No seeded role holds
+  *Z reports*. Both still see the live X on their Register screen, but not the past Z list and not
+  Close register & take Z - a direct request is a 404. Closing an outlet's day is the super admin's:
+  **Admin → Registers**, pick the outlet, **Close register & take Z**. To hand it back, the super
+  admin gives a role *Z reports* in **Admin → Roles** - at View for the Z list, at Edit to take one -
+  and every holder of that role gets it on their next request. Tell the outlets before promoting, or
+  the first evening after it nobody at a counter can close the day.
+- Everything else each desk could do, it still does: the parity tests pin every route and every
+  sidebar of the five seeded roles to what the desks had before (`permissions.test.ts`,
+  `nav-parity.test.ts`, `scope.test.ts`).
+- Sessions signed in across the deploy keep working. Permissions are not in the token: the API reads
+  them per request, through a per-pod cache (60 s at most) that any role or account change clears.
+
+**If a role has been locked out.** A role edited down to nothing leaves its holders with the
+dashboard, the support desk and their settings - every other screen gone and every other route a 404
+- from their next request. Nothing is lost; nothing about the stock or the bills changed. Recover in
+this order:
+
+1. **Put the permissions back from `/admin`.** Sign in as the super admin, **Admin → Roles**, open
+   the role, set the features back, **Save**. A seeded role's originals are `DESK_DEFAULTS` in
+   `@rch/domain` (the same literal is in `apps/api/drizzle/0026_roles.sql`), and a new role on the
+   same desk starts from them - the Roles tab's create card is a quick way to see them. The holders get it on their next click; a page that
+   already refused them needs a reload. This is audited like every other write - prefer it.
+2. **Or move the accounts.** **Admin → Accounts**, give each account a working role on the same
+   desk. A move within the desk and the home location keeps the account's sessions and postings.
+3. **A role cannot be switched off while an active account holds it**, and the refusal names them -
+   so "every holder lost their role" is not a state the admin page can reach. An account whose role
+   was switched off after it was deactivated cannot be reactivated until the role is switched back on
+   (**Admin → Roles → Reactivate**) or the account is given another role.
+4. **The super admin itself is never locked out by a role**: it holds none, and is checked by its
+   own flag. If the super admin cannot sign in, that is §5 (`users reset-password`, `users
+   set-admin`), not this section.
+5. **Only if the admin page itself is unusable**, as `rch` through `MIGRATE_DATABASE_URL`, restore a
+   seeded role's permissions from the migration's literal and restart the API so no pod serves a
+   cached copy for the remaining 60 s:
+
+   ```sql
+   -- copy the perms literal for the role from apps/api/drizzle/0026_roles.sql
+   update roles set perms = '<perms JSON>'::jsonb, version = version + 1, updated_at = now()
+    where id = 'ROLE-002';
+   ```
+
+   This bypasses the audit log - the one write here nobody will find on the Audit log tab - so say in
+   the handover that you did it, and why the admin page could not.

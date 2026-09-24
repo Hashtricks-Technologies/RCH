@@ -24,8 +24,9 @@ export default defineConfig({
     // same box) the default 5 s has timed out on a test that passes alone in a second.
     testTimeout: 20_000,
     // The thresholds are set a point or two **under what the whole suite measures today**
-    // (statements 77.90, branches 62.24, functions 70.30, lines 80.89 once outlet management
-    // met the named price lists, 2026-09-15; 74.21 / 56.26 / 65.78 / 77.52 at the close of the
+    // (statements 81.62, branches 68.31, functions 74.89, lines 84.39 once configurable roles
+    // landed, 2026-09-24; 77.90 / 62.24 / 70.30 / 80.89 once outlet management met the named
+    // price lists, 2026-09-15; 74.21 / 56.26 / 65.78 / 77.52 at the close of the
     // audit fix wave, 2026-09-12; 71.07 / 52.74 / 62.37 / 74.42 before it) - the point is not to
     // chase a number, it is that deleting a test or shipping an untested screen cannot pass CI
     // quietly. Raise them when the real figure rises; never lower one to make a red run green.
@@ -42,7 +43,7 @@ export default defineConfig({
       include: ["src/**"],
       exclude: ["src/__tests__/**", "src/main.tsx", "src/vite-env.d.ts"],
       reporter: ["text-summary"],
-      thresholds: { lines: 79, branches: 60 },
+      thresholds: { lines: 82, branches: 66 },
     },
   },
 });

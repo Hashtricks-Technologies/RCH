@@ -16,8 +16,9 @@ export default defineConfig({
     testTimeout: 30_000, // Argon2 in the auth suites has crossed 20 s under a full parallel gate
     hookTimeout: 60_000,
     setupFiles: ["./src/test/env.ts"],
-    // Set a point or two under what the whole suite measures today (statements 93.37, branches
-    // 81.62, functions 97.67, lines 95.38): the number is not a target, it is a ratchet - a
+    // Set a point or two under what the whole suite measures today (statements 94.34, branches
+    // 83.48, functions 97.53, lines 96.38 once configurable roles landed, 2026-09-24; 93.37 /
+    // 81.62 / 97.67 / 95.38 before): the number is not a target, it is a ratchet - a
     // deleted test or an unexercised branch of a new refusal cannot pass quietly. Raise them
     // when the real figure rises; never lower one to clear a red run.
     //
@@ -34,7 +35,7 @@ export default defineConfig({
       include: ["src/**"],
       exclude: ["src/**/*.test.ts", "src/test/**", "src/db/schema/**"],
       reporter: ["text-summary"],
-      thresholds: { lines: 94, branches: 80 },
+      thresholds: { lines: 95, branches: 82 },
     },
   },
 });

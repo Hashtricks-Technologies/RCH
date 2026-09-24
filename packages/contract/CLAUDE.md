@@ -119,14 +119,15 @@ allowMcp? })`. The manifest drives all three: `mount()` in `apps/api/src/routes.
   `CreateAdjustmentBodySchema.loc` takes `StockLocSchema`. An adjustment corrects a shelf, and the quarantine
   shelf has to be correctable.
 - **Payer data is scoped by role, and the schemas allow for it.** `BillSchema.payer` is optional and the
-  roster lists may be empty, because the server strips payer data for `store`, `prod` and `buyer`.
+  roster lists may be empty, because the server strips payer data for a role holding neither `billing` nor
+  `credit` (of the seeded roles: the store keeper, the kitchen and the buyer).
   `PayerSchema` (what a bill embeds) has no `active` field: the till only ever reads live payers. The rate
   card (`TermsSchema`) and the receivables list are cut the same way and for the same reason, and both are
-  `access: "any"` rather than manager-only so that a manager's write does not 403 four of the five roles
+  `access: "any"` rather than gated on `credit` so that a credit write does not 403 every other role
   mid-refetch.
 - **`BillParty` is `PayerKind` plus `"customer"`.** A walk-in is not a missing payer, it is a party of its
-  own, and the rate card is keyed by the wider union because "what a customer pays" is a rate the manager
-  sets too. `payer_class_terms.cls` is therefore plain text over `BillPartySchema`, not the `payer_kind` enum.
+  own, and the rate card is keyed by the wider union because "what a customer pays" is a rate the `credit`
+  holder sets too. `payer_class_terms.cls` is therefore plain text over `BillPartySchema`, not the `payer_kind` enum.
 - **`BillSchema.disc` / `discPct` are optional and omitted at zero**, the same trick `voided`/`voidReason`
   use, so a bill nobody discounted is byte for byte the bill it was before this existed. `tot` is unchanged
   and still the net - what the bill is worth and what is owed - and the gross is `tot + disc`, derived.

@@ -15,7 +15,7 @@ nothing to preview in the browser, stays in that module. `GSTIN_RE` in the vendo
 There is no build step; `package.json` exports `src/index.ts` directly.
 
 ```bash
-pnpm --filter @rch/domain test        # vitest run --coverage (floor: lines 99 / branches 93)
+pnpm --filter @rch/domain test        # vitest run --coverage (floor: lines 99 / branches 94)
 pnpm --filter @rch/domain typecheck
 pnpm --filter @rch/domain lint
 ```
@@ -40,7 +40,9 @@ need more context than their names give:
 - `claims.ts`, `receipt.ts` and `purchasing.ts` hold buying's arithmetic. Only `ordered_qty` is stored; the
   procurement list itself is derived.
 - `locations.ts` holds the outlet rules: `outletKeys` / `operationalKeys` (who is open, and in what order),
-  `worksAt` / `placesFor` (the one role-location pairing rule, replacing two hand-written copies), and
+  `worksAt` / `placesFor` (the one desk-location pairing rule, replacing two hand-written copies),
+  `atOutlet` (whether a desk sits at an outlet - the counter's and the manager's - which is how the API and
+  the UI ask that without naming `"manager"`, a comparison `scripts/check-boundaries.sh` refuses), and
   `outletKeyFor` (a new outlet's key, minted from its name once). The close's own machinery lives here too -
   `HOLDS_OUTLET` (which statuses of which documents still commit an outlet, exhaustive over each closed union),
   `holding` (reads the held statuses off one of those records) and `closeRefusal` (the one sentence naming

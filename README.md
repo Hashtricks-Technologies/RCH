@@ -20,8 +20,13 @@ Stock is held per location, and every quantity in the system is the sum of an ap
 of stock movements - nothing is created or destroyed without a document. A sale deducts a stocked
 item from that counter by the unit; a made-to-order drink is made at the counter and moves no stock.
 
-Five roles each get their own dashboard, screens and permissions. A module a role cannot use is
-absent from its sidebar and refused on a direct link, with a message saying why.
+Every account holds one role, and a role is a set of permissions the super admin edits on `/admin` -
+each feature at none, view or edit, plus the bill void, the settlement void and "works for every
+outlet". A screen a role cannot use is absent from its sidebar and refused on a direct link, with a
+message saying why; one it holds at view is drawn read-only. A role also sits at one of five desks,
+which decides where its holders work. The hospital starts with the five roles below, one per desk,
+each granting what that desk always had - except the Z, which is the super admin's until a role is
+given it.
 
 | Role | Signs in as | Lands on | Owns |
 |---|---|---|---|
@@ -113,7 +118,8 @@ ends when they press **Close Shift**: a confirmation shows what they billed ther
 the bills, the amount per tender (cash, UPI, card and each account) and the total - with a Print;
 confirming stores those figures, prints the slip and signs them out, so the next shift starts with a
 fresh sign-in. Signing in at another counter with a shift still open closes that one automatically.
-Nobody counts a drawer on it; the Z still settles the outlet's day. The outlet manager's bell names
+Nobody counts a drawer on it; the Z still settles the outlet's day - taken by the super admin from
+**Admin → Registers**, or by any role it has given Z reports. The outlet manager's bell names
 each close ("Kavitha Raman closed their shift at Coffee Shop · ₹4,320"), and a Shift reports card on
 the Register screen lists every closed shift, by outlet, with its slip.
 
@@ -201,10 +207,11 @@ password everybody knows.
 | `RC-1902` | Vinoth Prakash | Kitchen In-charge |
 | `RC-1550` | Latha Narayanan | Procurement Officer |
 | `RC-4482` | Deepa Selvam | Counter Operator · Snack Kiosk |
-| `RC-0001` | System Administrator | Super Admin: staff accounts, the hospital's outlets, the support desk and the audit log, no role or location |
+| `RC-0001` | System Administrator | Super Admin: staff accounts, roles and permissions, the hospital's outlets, every outlet's register and Z, payers, the support desk and the audit log, no role or location |
 
 The super admin creates staff accounts on `/admin`, where the server assigns each one the next employee
-number. An account can be deactivated, and deleted permanently only if it never did anything. The same page
+number and the account is given a role. Roles are made, edited and switched off on the same page's Roles
+tab; a change reaches the role's holders on their next request. An account can be deactivated, and deleted permanently only if it never did anything. The same page
 opens, edits, closes and reopens the hospital's retail outlets - closed, never deleted, and a close is refused
 while stock, an open document or a member of staff still depends on the outlet, naming every one at once.
 
@@ -261,8 +268,8 @@ Run one package with `pnpm --filter @rch/ui test` (or `@rch/api`, `@rch/audit`, 
 and UI suites both pin `TZ=UTC`, so timezone-sensitive assertions prove the same thing on every
 machine.
 
-Each package's `test` script carries a **coverage floor** - UI lines 79 / branches 60, `apps/api`
-94 / 80, `apps/audit` 90 / 75, `packages/domain` 99 / 93, `packages/contract` lines 96 - set a
+Each package's `test` script carries a **coverage floor** - UI lines 82 / branches 66, `apps/api`
+95 / 82, `apps/audit` 97 / 89, `packages/domain` 99 / 94, `packages/contract` lines 96 - set a
 point or two under what that suite measures today, so deleting a test or shipping an untested screen fails rather than
 drifting. Running one file (`npx vitest run src/__tests__/writes.test.ts` from inside the package)
 is deliberately not judged against it. **Lint is a zero-warning gate** in the same spirit: every
