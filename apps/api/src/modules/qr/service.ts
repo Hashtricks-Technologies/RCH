@@ -308,12 +308,15 @@ export function createQrService({ db, gateway, config, nudge }: QrServiceDeps) {
     return p.status === "captured" ? settleCapture(o.id, p, via) : null;
   }
 
-  /** What the gateway's webhook says a refund came to. A refund it names that we never sent (or
-   *  already finished) changes nothing. */
+  /** What the gateway (its webhook, or the worker asking) says a refund came to. A refund it names
+   *  that we never sent (or already finished) changes nothing - nor does news of an earlier
+   *  gateway refund for a row since retried and sent again under a new id: a late `refund.failed`
+   *  for the first send must not fail the second. */
   async function settleRefund(rzpRefundId: string, rid: string | undefined, outcome: "processed" | "failed", via: { method: string; path: string }): Promise<boolean> {
     return withTransaction(db, async (tx) => {
       const r = await qrRepo.refundForGateway(tx, rzpRefundId, rid);
       if (!r || (r.status !== "Pending" && r.status !== "Sent")) return false;
+      if (r.rzpRefundId !== null && r.rzpRefundId !== rzpRefundId) return false;
       const event = { subject: r.id, loc: (await qrRepo.order(tx, r.qrOrderId))?.loc, method: via.method, path: via.path };
       if (outcome === "processed") {
         if (r.status === "Pending") await moveRefund(tx, r.id, "Sent", { rzpRefundId });

@@ -48,7 +48,8 @@ export async function refundsOfOrder(db: Reader, qrOrderId: string): Promise<Ref
 /**
  * Move a refund along `REFUND_TRANSITIONS`, refusing any other move in words. `Sent` records the
  * gateway's refund id; `Processed` stamps when; `Failed` keeps the gateway's last answer; a
- * manager's retry (`Failed -> Pending`) starts the attempts again from nothing, due now.
+ * manager's retry (`Failed -> Pending`) starts the attempts again from nothing, due now, and
+ * clears the failed send's gateway id.
  */
 export async function moveRefund(tx: Tx, id: string, to: RefundStatus, patch: { rzpRefundId?: string; error?: string; at?: Date } = {}): Promise<RefundRow> {
   const row = await refundForUpdate(tx, id);
@@ -59,7 +60,9 @@ export async function moveRefund(tx: Tx, id: string, to: RefundStatus, patch: { 
     ...(patch.rzpRefundId ? { rzpRefundId: patch.rzpRefundId } : {}),
     ...(to === "Processed" ? { processedAt: at } : {}),
     ...(to === "Failed" ? { lastError: patch.error ?? row.lastError } : {}),
-    ...(to === "Pending" ? { attempts: 0, nextAttemptAt: at, lastError: null } : {}),
+    // A retry forgets the gateway refund that failed: the next send makes a new one, and news of
+    // the old one (a late `refund.failed`) no longer matches this row.
+    ...(to === "Pending" ? { attempts: 0, nextAttemptAt: at, lastError: null, rzpRefundId: null } : {}),
   }).where(eq(paymentRefunds.id, id)).returning();
   return next;
 }

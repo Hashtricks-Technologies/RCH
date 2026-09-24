@@ -6,7 +6,7 @@ import { customerPhoneRefusal, hoursRefusal, pausedRefusal, qrOpenAt } from "@rc
 import * as s from "../../db/schema/index.js";
 import { postMoves } from "../../lib/ledger.js";
 import { GatewayError } from "../../lib/payments.js";
-import { REFUND_BACKOFF_MS } from "../../lib/refunds.js";
+import { moveRefund, REFUND_BACKOFF_MS } from "../../lib/refunds.js";
 import { buildTestApp } from "../../test/app.js";
 import { BUILDER_QR_SECRET, given } from "../../test/builders.js";
 import { warmPool } from "../../test/db.js";
@@ -596,6 +596,32 @@ describe("the worker", () => {
     expect(w.statusCode).toBe(200);
     const [fb] = await app.db.select().from(s.paymentRefunds).where(eq(s.paymentRefunds.id, b.r.id));
     expect(fb.status).toBe("Failed");
+  });
+
+  it("ignores a late refund.failed for a first send once the refund was retried and sent again", async () => {
+    const { r } = await unfulfillable();
+    await only(r.id);
+    await app.qrWorker.tick(undefined, { reconcile: false });
+    const g1 = fake.refunds.find((x) => x.notes.rid === r.id)!;
+    const failed1 = () => {
+      const g = fake.refunds.find((x) => x.id === g1.id)!;
+      return { event: "refund.failed", payload: { refund: { entity: { id: g.id, payment_id: g.paymentId, notes: g.notes, status: "failed" } } } };
+    };
+    fake.settleRefund(g1.id, "failed");
+    expect((await webhook(failed1())).statusCode).toBe(200);
+    expect((await refundsOf(r.qrOrderId))[0]).toMatchObject({ status: "Failed", rzpRefundId: g1.id });
+
+    // The manager's retry (the route's own move) forgets the failed send.
+    await app.db.transaction((tx) => moveRefund(tx, r.id, "Pending"));
+    expect((await refundsOf(r.qrOrderId))[0]).toMatchObject({ status: "Pending", rzpRefundId: null });
+    await only(r.id);
+    await app.qrWorker.tick(undefined, { reconcile: false });
+    const g2 = fake.refunds.find((x) => x.notes.rid === r.id && x.id !== g1.id)!;
+    expect((await refundsOf(r.qrOrderId))[0]).toMatchObject({ status: "Sent", rzpRefundId: g2.id });
+
+    // R1's failure delivered again: the row is R2's now, and stays Sent.
+    expect((await webhook(failed1())).statusCode).toBe(200);
+    expect((await refundsOf(r.qrOrderId))[0]).toMatchObject({ status: "Sent", rzpRefundId: g2.id });
   });
 
   it("records a refund the gateway settled on the spot as processed, and leaves refunds alone with no gateway", async () => {
