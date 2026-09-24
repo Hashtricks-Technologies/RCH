@@ -361,9 +361,12 @@ export function createQrService({ db, gateway, config, nudge }: QrServiceDeps) {
         const hours = await qrRepo.hoursOf(tx, code.loc);
         const paused = (await qrRepo.paused(tx, [code.loc]))[code.loc];
         const o = qrOpenAt(hours, now);
-        const open = loc.active
-          ? { open: o.open, ...(o.why ? { why: o.why } : {}), today: o.today }
-          : { open: false, why: `${loc.name} is closed.`, today: null };
+        // A closed outlet first, then a gateway nobody has configured: either way the page shows
+        // the menu and no Place button, rather than a form that can only be refused.
+        const open = !loc.active
+          ? { open: false, why: `${loc.name} is closed.`, today: null }
+          : !gateway() ? { open: false, why: NOT_SET_UP, today: o.today }
+            : { open: o.open, ...(o.why ? { why: o.why } : {}), today: o.today };
         return {
           outlet: { loc: loc.key, name: loc.name }, qr: { label: code.label, mode: code.mode }, open, paused,
           items: menuOf(s).map((l) => {

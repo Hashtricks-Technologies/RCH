@@ -91,6 +91,16 @@ describe("GET /public/qr/:token - the menu a code opens", () => {
     expect(m.items.map((i) => i.it).sort()).toEqual(["bisc", "capp", "chai", "chips", "juice", "water"]);
   });
 
+  it("reads closed with the not-set-up sentence while no gateway is configured", async () => {
+    const saved = app.payments;
+    (app as { payments: unknown }).payments = null;
+    try {
+      const m = PublicMenuSchema.parse((await app.inject({ method: "GET", url: `${API_PREFIX}/public/qr/${coffee.token}` })).json());
+      expect(m.open).toMatchObject({ open: false, why: NOT_SET_UP });
+      expect(m.items.length).toBeGreaterThan(0);
+    } finally { (app as { payments: unknown }).payments = saved; }
+  });
+
   it("answers an unknown code and a switched-off one with the same 404 sentence", async () => {
     const off = await given.qrCode(app.db, { loc: "coffee", active: false });
     for (const token of ["NoSuchTokenAtAllxxxxxxxx", off.token]) {
