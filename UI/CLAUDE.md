@@ -61,14 +61,28 @@ and `kitchen-stock` were all `stock`; `kitchen-orders` and `purchase-orders` wer
 
 Routing is `BrowserRouter`, with plain paths (`/pos`, `/admin`). An admin-flagged account never gets a
 `<Shell>`: it only ever sees `pages/AdminDashboard.tsx` at `/admin`, and any other key bounces it back there.
-That page has six tabs: `AdminUsers` (staff accounts), `AdminOutlets` (the hospital's retail outlets - opened,
+That page has seven tabs: `AdminUsers` (staff accounts: the role picker lists the active roles in an
+`optgroup` per desk, the chosen role's desk drives `placesFor` and the extra counters, and each row shows its
+desk, its role and an "Inactive role" pill for one since switched off), `AdminRoles` (roles & permissions: a
+create card that starts from `DESK_DEFAULTS[desk].perms` and opens the matrix, the table - Edit, Deactivate /
+Reactivate with the server's refusal toasted as sent, and Delete behind a second press only while
+`!everAssigned` - and the `kind=roles` feed), `AdminOutlets` (the hospital's retail outlets - opened,
 edited, closed and reopened; never deleted), `AdminRegisters` (any outlet's register through
 `ui/RegisterPanel.tsx` with every flag on: every read and the close name `loc`, since the register routes
 admit the admin token only with one, and the outlet's name is passed in because `LOC` is empty for this
 session), `AdminPayers` (the payer register: who a bill may be posted to -
 added, renamed and switched off, never deleted, so a balance always keeps an id somebody can find),
-`AdminSupport` (the support desk: every role's tickets) and
+`AdminSupport` (the support desk: every role's tickets, each named by the reporter's desk - `lib/desks.ts`'s
+`DESK_LABEL`, since a ticket carries no role) and
 `AdminAudit` (the audit log: every write and sign-in, newest first, with filters, counts and a CSV export).
+The role matrix is the `role` drawer (`pages/RoleDrawer.tsx`): features grouped by `section`, one None / View
+/ Edit `seg` control each offering only the levels the feature has, a level the desk may not hold shut with
+`grantRefusal`'s sentence as its tip, a scope pill (hospital-wide or own location), Void a bill / Void a
+settlement nested under their parent and shut until it is held (dropped with it), the "Works for every
+outlet" `Switch` for counter and manager desks only, the rename, the desk (read-only once `everAssigned`; a
+move drops what the new desk may not hold), a "N accounts hold this role - changes apply at once." alert,
+and a "What changes" list before Save, which sends only the fields that changed. Its body is keyed on the
+role's `updatedAt`, so a save starts it again from what the server stored.
 With no `Shell` around it, `AdminDashboard.tsx` mounts the `<Drawer />` host itself.
 
 `screens.test.tsx` and `app.test.tsx` render every sidebar key for every seeded role, and `nav-parity.test.ts`
@@ -167,6 +181,10 @@ try {
 - **Account writes (`store/admin.ts`)**: `createAccount` sends no employee number (the server assigns it) and
   returns `{ emp, password } | null`, the number actually given; `AdminUsers.tsx` previews it with
   `nextEmpNo`. `deleteAccount(id)` is the ordinary `Promise<boolean>` write, behind an inline second press.
+- **Role writes (`store/admin.ts`)**: `createRole(body)` returns the server's row or `null` (the form stays
+  as typed, and the Roles tab opens the `role` drawer on the new id); `updateRole(id, body)` sends only the
+  fields that changed; `setRoleActive(id, active)` is one action both ways; `deleteRole(id)` sits behind an
+  inline second press. All four are the ordinary shape, and `roleActions` is the `kind=roles` feed.
 - **The admin slice's outlet state (`store/admin.ts`)**: `adminLocations` (every location but quarantine, with
   who is based at each) and `outletActions` (the `kind=outlets` feed) are loaded by `loadAdminLocations` and
   `loadAdminActions(kind)` - the Outlets tab's table and the Accounts tab's location labels both read
@@ -255,7 +273,7 @@ try {
     changed. `accounts` is never announced on the stream - only the admin's own reply names it.
   - **`roles`** re-reads `GET /me` for an operator: a changed name is simply taken, and a changed desk or
     permissions reloads the snapshot, after which the `Screen` guard takes away whatever the role no
-    longer grants. For the super admin it reads nothing yet - the Roles tab's own list is Wave 3F's.
+    longer grants. For the super admin it re-reads `GET /admin/roles`.
   - **The super admin's session reads back only `ADMIN_READS`** (`tickets`, `payers`, `roles`, `accounts`,
     `outlets`, `audit`); every other collection is a no-op for it. Its stream hears every collection, and
     a Z it takes on the Registers tab names `bills` - a read its token would be answered 404 on.
@@ -402,7 +420,12 @@ a background refresh and must not blank the screen.
   the empty state. **`audit-lib.test.ts`** pins `lib/audit.ts`'s `auditDayRange`, `deviceOf`, `diffFields` (one
   level into a nested object, arrays compared whole) and `auditCsv`. `writes.test.ts` covers the slice's reads
   and `refetch`'s `audit` reader.
-- **`admin-registers.test.tsx`** drives the
+- **`admin-roles.test.tsx`** drives the Roles tab and its matrix drawer: the create body and the drawer
+  opening on the new role, a refusal keeping the form, a level change reaching the "What changes" list and
+  the PATCH sending only `perms`, the rename alone, shut non-grantable levels with the refusal sentence, an
+  action shut until its parent is held and dropped with it, "Works for every outlet" on counter and
+  manager desks only, the holders alert and the fixed desk, the deactivate refusal toasted verbatim, and
+  Delete only on a never-assigned role behind a second press. **`admin-registers.test.tsx`** drives the
   Registers tab: outlets only (closed ones labelled), every read naming `loc`, another pick, an X printed
   under the outlet's name, the Z with its counted cash reading no `bills` back, and a past Z printed.
   `screens.test.tsx`'s register cases pin the operators' gating: a seeded counter or manager sees the X and

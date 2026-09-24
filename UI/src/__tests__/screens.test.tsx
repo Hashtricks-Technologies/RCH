@@ -133,6 +133,9 @@ describe("drawers render", () => {
     korder: ["new", "manager"],
     mreq: ["REQ-2026-0911", "manager"],
     plset: ["prices", "manager"],
+    // ---- admin: a role's permission matrix. The role list is the admin's own read and is empty
+    // here, so this renders the drawer's "not on the list" state.
+    role: ["ROLE-001", "manager"],
     // The kitchen's order history is a list, not a document, so like `korder` its id is a
     // placeholder - the drawer never reads it.
     phist: ["all", "prod"],
@@ -1510,7 +1513,7 @@ describe("the admin's support desk", () => {
     const ids = [...ui.host.querySelectorAll("tbody tr")].map((r) => (r.textContent ?? "").match(/SUP-\d+/)?.[0]);
     expect(ids).toEqual(["SUP-0101", "SUP-0102"]);
     expect(ui.text()).toContain("Suresh Muthu");
-    expect(ui.text()).toContain("Store Keeper · Central Store");
+    expect(ui.text()).toContain("Store desk · Central Store");
     expect(ui.text()).toContain("4.01 of 4 rated");
     act(() => {
       const sel = ui.host.querySelector<HTMLSelectElement>('select[aria-label="Status"]')!;

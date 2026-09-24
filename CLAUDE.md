@@ -178,8 +178,8 @@ There are five roles (`counter`, `manager`, `store`, `prod`, `buyer`), each with
   The manager reads every closed shift (`GET /shifts`, `access: "any"`, empty for other desks) on the
   Register screen and the bell. The outlet's X/Z is unchanged: a shift is one person's hours inside it.
 - **Admin** is a boolean on `users`, not a sixth role. It is checked as `access: "admin"`. An admin-flagged
-  account sees only the standalone `/admin` page, never an operational shell. The page has six tabs: Accounts
-  (staff accounts), Outlets (opens,
+  account sees only the standalone `/admin` page, never an operational shell. The page has seven tabs: Accounts
+  (staff accounts, each given one role), Roles (what each role grants, as a permission matrix), Outlets (opens,
   edits, closes and reopens them), Registers (every outlet's X, its Zs, and closing the day - no seeded role
   holds Z reports), Payers (the register a bill may be posted to - staff, departments and doctors, opened,
   renamed and switched off, never deleted), Support desk (every role's support tickets) and Audit log (every

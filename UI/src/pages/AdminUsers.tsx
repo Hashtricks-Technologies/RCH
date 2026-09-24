@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { nextEmpNo, placesFor } from "@rch/domain";
 import { useApp } from "../store";
 import { Alert, Btn, Card, DataTable, Field, FormRow, PageHead, Pill, TableFoot } from "../ui/kit";
+import { DESKS, DESK_LABEL } from "../lib/desks";
 import type { AdminAction, AdminRole, AdminUser, LocKey, Role } from "../types";
 
 /** How each logged action reads in the feed - "Ramesh Kumar deleted Anitha R". Keyed on the
@@ -19,11 +20,17 @@ const DID: Record<AdminAction["action"], string> = {
 /** `roleId` empty means "the first role offered", once the role list has landed. */
 const emptyForm = { name: "", email: "", phone: "", roleId: "", loc: "" as LocKey, also: [] as string[] };
 
-/** The roles a form may give: the active ones, and - on an existing account's row - the one it
- *  already holds, even switched off, so the picker still shows where the account stands. The
- *  pairing is the server's (`worksAt`); the role's desk only decides which places are offered. */
+/** The roles a form may give, grouped by the desk each works at: the active ones, and - on an
+ *  existing account's row - the one it already holds, even switched off, so the picker still shows
+ *  where the account stands. The pairing is the server's (`worksAt`); the chosen role's desk only
+ *  decides which places are offered. */
 function RoleOptions({ roles, keep }: { roles: AdminRole[]; keep?: string }) {
-  return <>{roles.filter((r) => r.active || r.id === keep).map((r) => <option key={r.id} value={r.id}>{r.active ? r.name : `${r.name} (off)`}</option>)}</>;
+  const offered = roles.filter((r) => r.active || r.id === keep);
+  return <>{DESKS.filter((d) => offered.some((r) => r.desk === d)).map((d) => (
+    <optgroup key={d} label={DESK_LABEL[d]}>
+      {offered.filter((r) => r.desk === d).map((r) => <option key={r.id} value={r.id}>{r.active ? r.name : `${r.name} (off)`}</option>)}
+    </optgroup>
+  ))}</>;
 }
 
 /**
@@ -105,7 +112,9 @@ export default function AdminUsers() {
   const nextEmp = nextEmpNo(accounts.map((a) => a.emp));
   // The form starts with no location chosen - the first place its role may work, once the
   // location list has landed, rather than a name compiled into the bundle.
-  const formRoleId = form.roleId || adminRoles.find((r) => r.active)?.id || "";
+  // The first active role in picker order - the counter desk's, on a hospital that has one.
+  const formRoleId = form.roleId
+    || [...adminRoles].filter((r) => r.active).sort((a, b) => DESKS.indexOf(a.desk) - DESKS.indexOf(b.desk))[0]?.id || "";
   const formDesk = deskOf(formRoleId, "counter");
   const formLoc = form.loc || placesFor(formDesk, LOCS)[0] || "";
   /** The other counters ticked on the create form, never the one it is already standing at. */
@@ -252,17 +261,27 @@ export default function AdminUsers() {
       <Card title="Every account" sub={`${accounts.filter((a) => a.active).length} active`} flush className="mtop">
         <DataTable
           cols={[
-            { h: "Employee id", w: "12%" }, { h: "Name", w: "18%" }, { h: "Role / Counters", w: "26%" },
-            { h: "Status", w: "14%" }, { h: "Actions" },
+            { h: "Employee id", w: "10%" }, { h: "Name", w: "14%" },
+            { h: "Desk", w: "10%", tip: "Where the account works - decided by its role." },
+            { h: "Role", w: "14%" }, { h: "Move / Counters", w: "24%" },
+            { h: "Status", w: "10%" }, { h: "Actions" },
           ]}
           rows={sorted.map((a) => {
             const e = editOf(a);
             const eDesk = deskOf(e.roleId, a.r);
+            const held = adminRoles.find((r) => r.id === a.rid);
             return {
               key: a.id,
               cells: [
                 <span className="mono">{a.emp}</span>,
                 a.n,
+                a.admin ? <span className="dim">-</span> : DESK_LABEL[a.r],
+                a.admin ? <span className="dim">-</span> : <>
+                  {held?.name ?? a.rl}
+                  {/* Still holding a role that has been switched off: it works as it did, but the
+                      account can't be reactivated on it and nobody new can be given it. */}
+                  {held && !held.active && <> <Pill tone="wn">Inactive role</Pill></>}
+                </>,
                 // The super admin has no role or location that means anything: it manages accounts
                 // and nothing else, and the server refuses to move it to either.
                 a.admin ? <Pill tone="in">Super Admin</Pill> : <div style={{ display: "grid", gap: 6 }}>

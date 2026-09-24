@@ -237,11 +237,12 @@ export function applyAdminPayers(adminPayers: AdminPayer[]): void { useApp.setSt
 export function applyAdminRoles(adminRoles: AdminRole[]): void { useApp.setState({ adminRoles }); }
 /** GET /admin/actions -> the last fifty, times as "HH:MM" and the instant beside them like every
  *  other document here is stamped. `kind` picks which feed the rows land in: the account page's
- *  own, the Outlets tab's, or the payer register's. */
-export function applyAdminActions(rows: AdminAction[], kind: "accounts" | "outlets" | "payers" = "accounts"): void {
+ *  own, the Outlets tab's, the payer register's, or the Roles tab's. */
+export function applyAdminActions(rows: AdminAction[], kind: "accounts" | "outlets" | "payers" | "roles" = "accounts"): void {
   useApp.setState(kind === "outlets" ? { outletActions: rows.map(stamped) }
     : kind === "payers" ? { payerActions: rows.map(stamped) }
-      : { adminActions: rows.map(stamped) });
+      : kind === "roles" ? { roleActions: rows.map(stamped) }
+        : { adminActions: rows.map(stamped) });
 }
 
 // ---- adjustments

@@ -5,7 +5,7 @@ import { routes } from "@rch/contract";
 import { ApiError, call } from "../api/client";
 import { refetch } from "../api/refetch";
 import { applyAccounts, applyAdminActions, applyAdminLocations, applyAdminPayers, applyAdminRoles } from "../api/wire";
-import type { AdminAction, AdminLocation, AdminPayer, AdminRole, AdminUser, CreateOutletBody, Dated, LocKey, PayerKind, UpdateOutletBody } from "../types";
+import type { AdminAction, AdminLocation, AdminPayer, AdminRole, AdminUser, CreateOutletBody, CreateRoleBody, Dated, LocKey, PayerKind, UpdateOutletBody, UpdateRoleBody } from "../types";
 import type { AppState } from "./index";
 
 type Get = () => AppState;
@@ -19,12 +19,25 @@ export interface AdminSlice {
   outletActions: Dated<AdminAction>[];
   /** Every role, active or not - what the account form picks a role from. */
   adminRoles: AdminRole[];
+  /** The Roles tab's own slice of the admin log (`kind=roles`). */
+  roleActions: Dated<AdminAction>[];
   loadAdminRoles: () => Promise<void>;
+  /** The server's row for the new role, or `null` on a refusal - the form then stays as typed,
+   *  the same shape as `createOutlet`. */
+  createRole: (body: CreateRoleBody) => Promise<AdminRole | null>;
+  /** Only the fields that changed; `true` once the server has taken them. A refusal (a name
+   *  clash, a grant the desk may not hold) leaves the drawer's matrix exactly as it was. */
+  updateRole: (id: string, body: UpdateRoleBody) => Promise<boolean>;
+  /** Deactivate and reactivate, one action both ways, like `setAccountActive`. The server refuses
+   *  a deactivation while any active account holds the role, and names them. */
+  setRoleActive: (id: string, active: boolean) => Promise<boolean>;
+  /** Only a role nobody was ever given; the server refuses any other, in words. */
+  deleteRole: (id: string) => Promise<boolean>;
   /** A read, not a write - no toast of its own, nothing refetched behind it: this is a first
    *  load, not a write's own read-back. */
   loadAccounts: () => Promise<void>;
   loadAdminLocations: () => Promise<void>;
-  loadAdminActions: (kind?: "accounts" | "outlets" | "payers") => Promise<void>;
+  loadAdminActions: (kind?: "accounts" | "outlets" | "payers" | "roles") => Promise<void>;
   /** The server's row for the new outlet, or `null` on a refusal - the form then stays as typed. */
   createOutlet: (body: CreateOutletBody) => Promise<AdminLocation | null>;
   updateOutlet: (key: string, body: UpdateOutletBody) => Promise<boolean>;
@@ -83,6 +96,7 @@ export const createAdminSlice = (get: Get): AdminSlice => ({
   adminLocations: [],
   outletActions: [],
   adminRoles: [],
+  roleActions: [],
   adminPayers: [],
   payerActions: [],
 
@@ -93,6 +107,40 @@ export const createAdminSlice = (get: Get): AdminSlice => ({
   loadAdminRoles: async () => {
     try { applyAdminRoles(await call(routes.adminRoles)); }
     catch (e) { get().notify(e instanceof ApiError ? e.message : "Could not read the roles - check the connection and try again."); }
+  },
+  createRole: async (body) => {
+    try {
+      const r = await call(routes.createRole, { body });
+      get().notify(r.message);
+      await refetch(r.changed, r.message);
+      return r.result;
+    } catch (e) { fail(get, e, "create the role"); return null; }
+  },
+  updateRole: async (id, body) => {
+    try {
+      const r = await call(routes.updateRole, { params: { id }, body });
+      get().notify(r.message);
+      await refetch(r.changed, r.message);
+      return true;
+    } catch (e) { return fail(get, e, "save the role"); }
+  },
+  setRoleActive: async (id, active) => {
+    try {
+      const r = active
+        ? await call(routes.reactivateRole, { params: { id } })
+        : await call(routes.deactivateRole, { params: { id } });
+      get().notify(r.message);
+      await refetch(r.changed, r.message);
+      return true;
+    } catch (e) { return fail(get, e, active ? "reactivate the role" : "deactivate the role"); }
+  },
+  deleteRole: async (id) => {
+    try {
+      const r = await call(routes.deleteRole, { params: { id } });
+      get().notify(r.message);
+      await refetch(r.changed, r.message);
+      return true;
+    } catch (e) { return fail(get, e, "delete the role"); }
   },
   loadAdminLocations: async () => {
     try { applyAdminLocations(await call(routes.adminLocations)); }

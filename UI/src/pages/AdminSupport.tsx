@@ -2,19 +2,17 @@ import { useMemo, useState } from "react";
 import { SUPPORT_TRANSITIONS, canTransition, mayDeskSet, mayReply } from "@rch/domain";
 import { useApp } from "../store";
 import { fromWireDay } from "../lib/fmt";
+import { DESKS, DESK_LABEL } from "../lib/desks";
 import type { Dated, Role, SupportTicket, TicketPriority, TicketStatus } from "../types";
 import {
   Alert, Avatar, Btn, BtnRow, Card, DataTable, Field, FilterSelect, Grid, Kpis, PageHead, Pill, Section,
   TableFoot, Toolbar,
 } from "../ui/kit";
 
-/** Display labels only. An admin session loads no snapshot, so the master registries
- *  (`LOC` and the rest) are empty here, and this page names roles itself, the same way
- *  `AdminUsers` does; a location's own name comes off `adminLocations` instead. */
-const ROLE_LABEL: Record<Role, string> = {
-  counter: "Counter Operator", manager: "Outlet Manager", store: "Store Keeper",
-  prod: "Kitchen In-charge", buyer: "Procurement Officer",
-};
+/** A ticket carries the reporter's desk, not the role they hold there, so it is named as a desk
+ *  (`lib/desks.ts`); a location's own name comes off `adminLocations`, since an admin session
+ *  loads no snapshot. */
+const deskOf = (r: Role) => `${DESK_LABEL[r]} desk`;
 
 /** The desk's own words for the reporter's "Waiting on you". */
 const label = (st: TicketStatus) => (st === "Waiting on you" ? "Waiting on reporter" : st);
@@ -23,7 +21,7 @@ const label = (st: TicketStatus) => (st === "Waiting on you" ? "Waiting on repor
 const NEEDS = "Needs support";
 const STATUS_FILTERS = [NEEDS, "All", ...(["Open", "With support", "Waiting on you", "Resolved", "Closed"] as const).map(label)];
 const PRIO_FILTERS: (TicketPriority | "All")[] = ["All", "Urgent", "Normal", "Low"];
-const ROLE_FILTERS = ["All", ...Object.values(ROLE_LABEL)];
+const DESK_FILTERS = ["All", ...DESKS.map(deskOf)];
 
 const tone = (st: TicketStatus) =>
   st === "Open" ? "wn" : st === "With support" ? "in"
@@ -62,7 +60,7 @@ export default function AdminSupport() {
       .filter((t) => {
         if (status === NEEDS ? !needsSupport(t) : status !== "All" && label(t.st) !== status) return false;
         if (prio !== "All" && t.priority !== prio) return false;
-        if (role !== "All" && ROLE_LABEL[t.role] !== role) return false;
+        if (role !== "All" && deskOf(t.role) !== role) return false;
         if (loc !== "All" && (adminLocations.find((l) => l.key === t.loc)?.n ?? t.loc) !== loc) return false;
         if (!needle) return true;
         return (t.id + t.subject + t.topic + t.by + t.screen + t.messages.map((m) => m.body).join(" "))
@@ -116,7 +114,7 @@ export default function AdminSupport() {
                 <FilterSelect label="Status" value={status} options={STATUS_FILTERS} onChange={setStatus} />
                 <FilterSelect label="Priority" value={prio} options={PRIO_FILTERS}
                   onChange={(v) => setPrio(v as TicketPriority | "All")} />
-                <FilterSelect label="Role" value={role} options={ROLE_FILTERS} onChange={setRole} />
+                <FilterSelect label="Desk" value={role} options={DESK_FILTERS} onChange={setRole} />
                 <FilterSelect label="Location" value={loc} options={LOC_FILTERS} onChange={setLoc} />
               </>}
             />
@@ -129,7 +127,7 @@ export default function AdminSupport() {
               onClick: () => setPicked(t.id),
               cells: [
                 <>{t.id === picked ? <b>{t.subject}</b> : t.subject}<small>{t.id} · {t.topic}</small></>,
-                <>{t.by}<small>{ROLE_LABEL[t.role]} · {locLabel(t.loc)}</small></>,
+                <>{t.by}<small>{deskOf(t.role)} · {locLabel(t.loc)}</small></>,
                 <Pill tone={prioTone(t.priority)}>{t.priority}</Pill>,
                 <span className="mono">{fromWireDay(t.iso)}<small>{t.at}</small></span>,
                 <Pill tone={tone(t.st)}>{label(t.st)}</Pill>,
@@ -182,7 +180,7 @@ function Conversation({ t, locLabel }: { t: Dated<SupportTicket>; locLabel: (key
         {t.rating && <Pill tone="ok">Rated {t.rating} of 5</Pill>}
       </div>
       <p className="mini" style={{ margin: "0 0 14px", lineHeight: 1.6 }}>
-        <b>{t.by}</b> · {ROLE_LABEL[t.role]} · {locLabel(t.loc)}<br />
+        <b>{t.by}</b> · {deskOf(t.role)} · {locLabel(t.loc)}<br />
         {t.topic} · on {t.screen} · raised {fromWireDay(t.iso)} {t.at}
       </p>
 

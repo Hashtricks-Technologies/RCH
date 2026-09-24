@@ -403,3 +403,71 @@ describe("an account posted to more than one counter", () => {
     expect(page.text()).not.toContain("Counters this account works");
   });
 });
+
+describe("roles on the account page", () => {
+  /** A second counter-desk role, and a manager-desk one switched off that Kavitha still holds. */
+  const NIGHT: AdminRole = { ...ROLES[0], id: "ROLE-006", name: "Night Cashier", holders: 0, everAssigned: false };
+  const RETIRED: AdminRole = { ...ROLES[1], id: "ROLE-007", name: "Relief Manager", active: false };
+  const withRoles = (extra: Stubs = {}, roles = [...ROLES, NIGHT, RETIRED]) => serve({
+    "GET /api/v1/admin/actions": () => json([]),
+    "GET /api/v1/admin/locations": () => json(LOCS),
+    "GET /api/v1/admin/roles": () => json(roles),
+    ...extra,
+  });
+  const select = (el: Element) => el as HTMLSelectElement;
+  const groups = (sel: HTMLSelectElement) =>
+    [...sel.querySelectorAll("optgroup")].map((g) => [g.label, [...g.querySelectorAll("option")].map((o) => o.textContent)]);
+
+  it("lists the active roles grouped by desk, and the chosen role's desk decides the places", async () => {
+    withRoles({ "GET /api/v1/admin/users": () => json([SUPER, KAVITHA]) });
+    page = await mountPage();
+    const role = select(page.field("Role"));
+    expect(groups(role)).toEqual([
+      ["Counter", ["Counter Operator", "Night Cashier"]],
+      ["Outlet manager", ["Outlet Manager"]],
+      ["Store", ["Store Keeper"]],
+      ["Kitchen", ["Kitchen In-charge"]],
+      ["Purchasing", ["Procurement Officer"]],
+    ]);
+    // A counter-desk role: the outlets. A store-desk one: the store alone.
+    const where = () => [...select(page!.field("Location")).options].map((o) => o.value);
+    expect(where()).toEqual(["coffee", "rest", "kiosk"]);
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")!.set!.call(role, "ROLE-003");
+      role.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    expect(where()).toEqual(["store"]);
+  });
+
+  it("shows each account's desk and role, and marks a role that has been switched off", async () => {
+    const held = { ...KAVITHA, r: "manager" as const, rid: "ROLE-007", rl: "Relief Manager" };
+    withRoles({ "GET /api/v1/admin/users": () => json([SUPER, held, DEEPA]) });
+    page = await mountPage();
+    const cols = [...page.row("RC-4471").querySelectorAll("td")].map((td) => td.textContent ?? "");
+    expect(cols[2]).toBe("Outlet manager");
+    expect(cols[3]).toContain("Relief Manager");
+    expect(cols[3]).toContain("Inactive role");
+    expect(page.row("RC-4482").textContent).not.toContain("Inactive role");
+    // The row's own picker keeps the switched-off role it holds, and offers no other off one.
+    const rowRole = select(page.row("RC-4471").querySelector('select[aria-label="Role for RC-4471"]')!);
+    expect(rowRole.value).toBe("ROLE-007");
+    expect([...rowRole.options].map((o) => o.textContent)).toContain("Relief Manager (off)");
+    expect([...select(page.row("RC-4482").querySelector("select")!).options].map((o) => o.textContent)).not.toContain("Relief Manager (off)");
+  });
+
+  it("moves an account to another role on the same row, sending the role id", async () => {
+    withRoles({
+      "GET /api/v1/admin/users": () => json([SUPER, KAVITHA]),
+      "PATCH /api/v1/admin/users/u1": () => json({ result: { ...KAVITHA, rid: "ROLE-006", rl: "Night Cashier" }, changed: ["accounts"], message: "Kavitha Raman (RC-4471) is now Night Cashier at Coffee Shop." }),
+    });
+    page = await mountPage();
+    const rowRole = select(page.row("RC-4471").querySelector('select[aria-label="Role for RC-4471"]')!);
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")!.set!.call(rowRole, "ROLE-006");
+      rowRole.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await press(page.button("Save", page.row("RC-4471")));
+    const [, init] = hit("PATCH /api/v1/admin/users/u1")[0];
+    expect(JSON.parse(String((init as RequestInit).body))).toEqual({ roleId: "ROLE-006", loc: "coffee" });
+  });
+});

@@ -345,6 +345,21 @@ moves and reports stay, its menu, availability overrides and price list are kept
 and a reopen restores it. The store and the kitchen are fixed and are not listed here; a new outlet
 appears in every other picker - the Accounts tab's location select included - the moment it opens.
 
+**Roles, on `/admin`.** The admin-flagged account's Roles tab lists every role - its name, the desk
+its holders work at, how many active accounts hold it, and whether it is switched on. A new role takes
+a name and a desk and starts from what that desk's seeded role holds; its permission matrix opens at
+once. The matrix lists every feature by section with a None / View / Edit control offering only the
+levels that feature has - a level the role's desk may not be given is shut, and its tip is the
+sentence the server would refuse it with. Void a bill and Void a settlement sit under Bills and Credit
+& settlements and stay shut until those are held; counter and outlet-manager roles also get a "Works
+for every outlet" switch. The drawer says how many accounts a change reaches ("changes apply at
+once"), lists every change before Save, and fixes the desk once the role has been given to anybody.
+A role is switched off only once no active account holds it - the server's refusal names them - and
+Delete is offered only on a role nobody was ever given, behind a second press. The Accounts tab picks
+an account's role from the active ones, grouped by desk, and the chosen role's desk decides which
+locations are offered; each row shows the account's desk and role, and marks a role that has since
+been switched off.
+
 **Registers, on `/admin`.** Closing the day is the super admin's by default: no seeded role holds Z
 reports. The Registers tab picks any outlet (a closed one is labelled so) and draws the same register
 panel the operators' Register screen does - the live X with Take X-report, the closed sessions with
@@ -368,7 +383,7 @@ identity only.
 
 **The support desk, on `/admin`.** The admin-flagged account's Support desk tab lists every ticket from
 every role, most pressing first (open, then with support; urgent before routine), filterable by
-status, priority, role and location. Picking one shows who raised it, from which screen, and the
+status, priority, desk and location. Picking one shows who raised it, from which screen, and the
 conversation. The admin replies as support under their own name - Send, Send & ask the reporter
 (Waiting on you) or Send & resolve - and can pick a ticket up, mark it resolved, reopen it or close
 it. Only the moves `SUPPORT_TRANSITIONS` allows are drawn. The reply reaches the reporter's
