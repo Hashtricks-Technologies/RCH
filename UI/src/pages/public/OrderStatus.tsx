@@ -82,7 +82,12 @@ function Receipt({ order }: { order: PublicQrOrder }) {
         <dt>GST included</dt><dd>{money(order.tax)}</dd>
         <dt className="qo-rcpt-total">Total</dt><dd className="qo-rcpt-total">{money(order.total)}</dd>
       </dl>
-      {order.paidAt && <p className="qo-paid">Paid online</p>}
+      {order.paidAt && (
+        <p className="qo-paid">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m3.5 8.5 3 3 6-7" /></svg>
+          Paid online
+        </p>
+      )}
     </section>
   );
 }
@@ -111,7 +116,13 @@ export default function OrderStatus({ token, id, hash }: { token: string; id: st
   if (orderState === "missing") return <Dead title="Order not found" body="This link does not match an order. Ask at the counter with your order number." />;
   if (!order) {
     if (orderState === "error") return <Dead title="Could not load your order" body="Check your connection - this page tries again when you reload it." />;
-    return <main className="qo-col qo-loading" aria-busy="true"><Spinner /><span>Loading your order…</span></main>;
+    return (
+      <main className="qo-col qo-status" aria-busy="true">
+        <span className="qo-sr" role="status">Loading your order…</span>
+        <span className="qo-sk qo-sk-ticket" aria-hidden="true" />
+        <span className="qo-sk qo-sk-card" aria-hidden="true" />
+      </main>
+    );
   }
 
   const refund = refundWords(order);

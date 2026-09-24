@@ -302,8 +302,20 @@ try {
 - **Every price on it is a preview.** The server quotes each line again on placing and on capture;
   the receipt prints what it answered. A refusal is shown verbatim in the sheet, and what was typed stays.
 - Styles are `pages/public/public.css` (`.qo-` prefixed), imported by `OrderApp` only: phone first, a
-  560 px column from 640 px, 44 px targets, the shared tokens in both themes, and a print block that
-  leaves the receipt. It uses no `kit.tsx` component, because the kit reads the staff registries.
+  560 px column from 640 px, 44 px targets, and a print block that leaves the receipt. It uses no
+  `kit.tsx` component, because the kit reads the staff registries.
+  - **Its palette is its own and scoped to `.qo`.** It imports `tokens.css`, then re-declares the shared
+    token names (`--ground`, `--ink`, `--accent`, …) under `.qo` - amber `#E07B00` on warm cream, dark
+    by `prefers-color-scheme` - plus `--qo-*` extras. `tokens.css` and `styles.css` stay the staff app's
+    slate and blue; never move a `.qo` value into them.
+  - **The AA rule for amber:** `#E07B00` is a fill, a ring and the brand, never body text on a light
+    surface (white on it is 3.0:1). Text on an amber fill is `#1A1A1A` (5.8:1); amber text on white or
+    cream is `--qo-amber-ink` (`#A35700`, ≥ 4.9:1), which dark mode swaps for `#F5A623`.
+  - Motion is 150-250 ms ease-out inside `prefers-reduced-motion: no-preference` only. The menu loads
+    as a cream skeleton (`MenuSkeleton` in `parts.tsx`), the header lifts on scroll (`is-lifted`, a
+    passive scroll listener in `Menu`), and `.qo` uses `overflow-x: clip`, not `hidden`, so the sticky
+    header sticks. Pay sits outside the checkout form (`form="qo-checkout"`) to stay pinned to the
+    sheet's foot.
 - Tests: `public-order.test.ts` (the store on the wire, the caps, nonce reuse, the stubbed Razorpay,
   verify, the poll under fake timers, storage that throws, the addresses) and
   `public-order-screens.test.tsx` (the menu, the sheet, every status), sharing `publicFixture.ts`.

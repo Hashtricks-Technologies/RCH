@@ -4,7 +4,7 @@ import type { PublicMenu } from "@rch/contract";
 import { cartCount, cartTotal, limitOf, orderable, usePublicOrder } from "../../store/publicOrder";
 import CartBar from "./CartBar";
 import CheckoutSheet from "./CheckoutSheet";
-import { Dead, Spinner, Stepper, Thumb } from "./parts";
+import { Dead, MenuSkeleton, Stepper, Thumb } from "./parts";
 
 /** What the mode chip says: where the order ends up. */
 const MODE_CHIP = { pickup: "Collect at the counter", deliver: "Brought to you here" } as const;
@@ -31,6 +31,14 @@ export default function Menu({ token }: { token: string }) {
   const clearNotice = usePublicOrder((s) => s.clearNotice);
   const [term, setTerm] = useState("");
   const [sheet, setSheet] = useState(false);
+  // The header lifts (a soft shadow) once the menu scrolls under it.
+  const [lifted, setLifted] = useState(false);
+  useEffect(() => {
+    const on = () => { setLifted(window.scrollY > 4); };
+    on();
+    window.addEventListener("scroll", on, { passive: true });
+    return () => { window.removeEventListener("scroll", on); };
+  }, []);
 
   useEffect(() => { void loadMenu(token); }, [loadMenu, token]);
   useEffect(() => { if (menu) document.title = `${menu.outlet.name} - order`; }, [menu]);
@@ -58,7 +66,7 @@ export default function Menu({ token }: { token: string }) {
         </main>
       );
     }
-    return <main className="qo-col qo-loading" aria-busy="true"><Spinner /><span>Loading the menu…</span></main>;
+    return <MenuSkeleton />;
   }
 
   const open = orderable(menu);
@@ -67,11 +75,11 @@ export default function Menu({ token }: { token: string }) {
 
   return (
     <>
-      <header className="qo-head">
+      <header className={`qo-head${lifted ? " is-lifted" : ""}`}>
         <div className="qo-col">
           <h1>{menu.outlet.name}</h1>
           <p className="qo-where">
-            <span>{menu.qr.label}</span>
+            <span className="qo-label">{menu.qr.label}</span>
             <span className={`qo-chip qo-chip-${menu.qr.mode}`}>{MODE_CHIP[menu.qr.mode]}</span>
           </p>
         </div>

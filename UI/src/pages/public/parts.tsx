@@ -28,6 +28,36 @@ export function Thumb({ it, image }: { it: string; image?: string | null }) {
   return <img className="qo-thumb" src={photoSrc(it, image)} alt="" loading="lazy" decoding="async" width={56} height={56} onError={() => setBroken(true)} />;
 }
 
+/** The menu's shape in shimmering cream while it loads, so nothing jumps when it arrives. */
+export function MenuSkeleton() {
+  return (
+    <div className="qo-sk-page" aria-busy="true">
+      <span className="qo-sr" role="status">Loading the menu…</span>
+      <div className="qo-head" aria-hidden="true">
+        <div className="qo-col">
+          <span className="qo-sk qo-sk-title" />
+          <span className="qo-sk qo-sk-chip" />
+        </div>
+      </div>
+      <div className="qo-col qo-menu" aria-hidden="true">
+        <span className="qo-sk qo-sk-search" />
+        <ul className="qo-items">
+          {[0, 1, 2, 3, 4].map((n) => (
+            <li key={n} className="qo-item">
+              <span className="qo-sk qo-sk-thumb" />
+              <span className="qo-item-main">
+                <span className="qo-sk qo-sk-line" />
+                <span className="qo-sk qo-sk-line is-short" />
+              </span>
+              <span className="qo-sk qo-sk-btn" />
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  );
+}
+
 export function Spinner() {
   return <span className="qo-spin" aria-hidden="true" />;
 }
@@ -42,6 +72,7 @@ export function Stepper({ name, qty, max, disabled, onAdd, onRemove }: {
   if (qty <= 0) {
     return (
       <button type="button" className="qo-add" onClick={onAdd} disabled={disabled || max <= 0} aria-label={`Add ${name}`}>
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8h9M8 3.5v9" /></svg>
         Add
       </button>
     );

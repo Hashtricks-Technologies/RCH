@@ -49,6 +49,7 @@ export default function CheckoutSheet({ onClose }: { onClose: () => void }) {
   return (
     <div className="qo-scrim" onMouseDown={(e) => { if (e.target === e.currentTarget && !busy) onClose(); }}>
       <div className="qo-sheet" role="dialog" aria-modal="true" aria-labelledby={TITLE} ref={panel} onKeyDown={onKey}>
+        <div className="qo-grab" aria-hidden="true" />
         <div className="qo-sheet-head">
           <h2 id={TITLE} tabIndex={-1}>Your order</h2>
           <button type="button" className="qo-x" onClick={onClose} disabled={busy} aria-label="Close">
@@ -70,7 +71,7 @@ export default function CheckoutSheet({ onClose }: { onClose: () => void }) {
         </div>
         <p className="qo-fine">Prices include GST. Your order is priced again when you pay, and your receipt shows the final amount.</p>
 
-        <form className="qo-form" onSubmit={submit} noValidate>
+        <form id="qo-checkout" className="qo-form" onSubmit={submit} noValidate>
           <div className="qo-field">
             <label htmlFor="qo-name">Your name</label>
             <input id="qo-name" value={customer.name} maxLength={80} autoComplete="name" disabled={busy}
@@ -97,10 +98,13 @@ export default function CheckoutSheet({ onClose }: { onClose: () => void }) {
           )}
           {error && <p className="qo-alert" role="alert">{error}</p>}
           {note && !error && <p className="qo-note" role="status">{note}</p>}
-          <button type="submit" className="qo-btn qo-btn-primary qo-pay" disabled={busy || lines.length === 0} aria-busy={busy}>
+        </form>
+        {/* Outside the form (joined to it by `form=`) so it can stay pinned to the sheet's foot. */}
+        <div className="qo-pay-bar">
+          <button type="submit" form="qo-checkout" className="qo-btn qo-btn-primary qo-pay" disabled={busy || lines.length === 0} aria-busy={busy}>
             {busy ? <><Spinner /> {placing ? "Placing your order…" : "Waiting for payment…"}</> : `Pay ${money(total)}`}
           </button>
-        </form>
+        </div>
       </div>
     </div>
   );
