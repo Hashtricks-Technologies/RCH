@@ -2963,3 +2963,189 @@ this order:
 
    This bypasses the audit log - the one write here nobody will find on the Audit log tab - so say in
    the handover that you did it, and why the admin page could not.
+
+## 19. QR ordering and online payments
+
+A customer scans a QR code placed at an outlet ("Table 4", "Ward 3B waiting area"), orders from
+their phone at `/order/…`, and pays online through Razorpay (UPI and cards). The moment the payment
+is captured the API makes an ordinary bill at that outlet - stock moves, GST, the outlet's open
+register session - with the tender **Online**, and the counter prepares and hands over the order.
+
+Nothing here is on until the three Razorpay keys are set. Without them the order page still shows
+the menu, and placing an order answers 503 "Online ordering is not set up yet - order at the
+counter." Everything else in the system is unaffected.
+
+### 19.1 What the release adds
+
+**Migration `0027_qr_orders`** creates `qr_codes`, `outlet_order_hours`, `qr_outlet_state`,
+`qr_orders`, `qr_order_lines`, `payment_refunds` and `rzp_webhook_events`; adds `bills.source`
+(`till|qr`) and `bills.qr_order_id`; adds `users.system` and relaxes `users_role_id_ck` to
+*admin, or system, or has a role*. It gives the new feature **QR orders** to the seeded
+**Counter Operator** role at Edit and the **Outlet Manager** at View, so the counters see the QR
+orders screen from the moment the release is up. A role you created yourself on `/admin` gets it
+only when the super admin adds it (**Admin → Roles**). The two new id series (`QO-<year>-<nnnn>`
+for orders, `QR-nnn` for codes) are inserted by `ensureSequences` at the end of `db:migrate`, like
+every other series (§18), so no seed step is needed.
+
+**The system account "QR Orders"** (user id `sys-qr`, `SYS-QR` where an employee number is shown)
+raises every QR bill. It is created the first time an
+order is settled, with `system = true` and a password hash no password can match. It never signs in
+(sign-in refuses it), never opens a shift - so QR bills are on no Close Shift slip - and is hidden
+from the sign-in directory, the Accounts tab, the users CLI and the outlet-close staff count. Do not
+try to deactivate, delete or reset it; the admin page and the CLI cannot see it on purpose. On the
+Audit log its writes (a paid order, a refund sent, processed or failed) carry it as the actor.
+
+**Configuration.** Three secrets and three tunables, all optional:
+
+| Variable | Default | What it is |
+|---|---|---|
+| `RAZORPAY_KEY_ID` | - | The API key id (`rzp_test_…` or `rzp_live_…`). Public: the order page hands it to Checkout. |
+| `RAZORPAY_KEY_SECRET` | - | The API key secret. Signs server calls and verifies the checkout signature. |
+| `RAZORPAY_WEBHOOK_SECRET` | - | The secret you type into the webhook in the Razorpay dashboard. Verifies every webhook. |
+| `QR_ORDER_MAX_RUPEES` | `5000` | The most one QR order may come to. |
+| `QR_ORDER_TTL_MIN` | `30` | Minutes an unpaid order waits for its payment before it expires. |
+| `QR_WORKER_INTERVAL_MS` | `30000` | How often the QR worker expires unpaid orders and sends queued refunds. `0` stops it - refunds then sit in Pending. Only the tests do that. |
+
+On the box they go in `/opt/rch/app/deploy/compose/.env` (`deploy/compose/.env.example` lists them);
+on the Helm path the three keys go in the Secret (`secrets.values`, or the `rch/prod` remote JSON)
+and a tunable, if changed, in `api.env`. The UI's nginx serves `/order/` with its own CSP, which
+admits Razorpay Checkout (`deploy/nginx/snippets/order-security-headers.conf`); every staff screen
+keeps the strict one.
+
+### 19.2 Test keys first
+
+1. Sign in to the Razorpay dashboard and switch to **Test Mode** (the toggle at the top).
+2. **Account & Settings → API Keys → Generate Test Key.** Copy the key id and the secret - the secret
+   is shown once. Lost, it is regenerated, and the old one stops working at once.
+3. **Account & Settings → Webhooks → Add New Webhook**, still in Test Mode:
+   - **Webhook URL:** `https://<host>/api/v1/public/razorpay/webhook` - on the box,
+     `https://rch.hashtrickstechnologies.com/api/v1/public/razorpay/webhook`. Caddy's `/api/*` route
+     already reaches the API with it, and the K8s ingress sends `/api` to the API the same way.
+   - **Secret:** a long random string of your own (`openssl rand -hex 32`). This is
+     `RAZORPAY_WEBHOOK_SECRET`. It is not the key secret.
+   - **Active events:** `payment.captured`, `order.paid`, `refund.processed`, `refund.failed`.
+     Nothing else - the API acknowledges an event it does not use and does nothing with it.
+4. Put the three values on the box, then redeploy (§19.3).
+5. Prove it end to end: print a code's poster (§19.4), scan it, order one item, pay with Razorpay's
+   test UPI id `success@razorpay` or a test card, and check the order reaches the counter's QR
+   orders screen as **Paid**, the bill carries **Online**, and **Admin → Audit log** shows the paid
+   order. In the dashboard, **Webhooks → the webhook → Deliveries** should show 2xx for each event.
+
+**Locally**, the same test keys go in `.env`. Razorpay cannot reach `localhost`, so no webhook
+arrives; the browser's own verify call settles the payment on its own, which is enough to work on
+everything but a refund's final status. A tunnel (`cloudflared`, `ngrok`) to the API is the way to
+receive webhooks locally, with a separate test-mode webhook pointing at it.
+
+### 19.3 Setting the keys on the box
+
+The box deploys itself (§16.6) - don't run `deploy.sh` or `docker compose up` by hand to pick up a
+changed `.env`.
+
+```bash
+ssh -i ~/.ssh/rch-box.pem ubuntu@rch.hashtrickstechnologies.com
+cd /opt/rch/app/deploy/compose
+cp .env .env.bak.$(date +%Y%m%d)      # .env is gitignored; this is its only copy besides the backup
+nano .env                             # fill RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET, RAZORPAY_WEBHOOK_SECRET
+chmod 600 .env
+```
+
+Then, from GitHub: **Actions → Deploy (box) → Run workflow**, commit left blank (the tip of
+`develop`). `release.sh` on a commit the box already runs does not skip: it backs up, runs
+`deploy.sh`, and compose recreates `api` because its environment changed. The job's readiness
+checks prove it came back. Placing a test order is the proof the keys are right - a wrong key id or
+secret fails at **Pay**, not at start-up.
+
+Set all three together. Two of three is the same as none: ordering stays 503.
+
+### 19.4 Printing QR posters
+
+The super admin makes the codes: **Admin → QR codes**, pick the outlet, set its ordering hours (one
+window per weekday, IST; a day with no window is closed), then add a code per spot, *pickup* or
+*deliver to this spot*. **Download poster** makes an A5 PDF.
+
+**The link in the poster is built from the address the admin's browser is on.** Print posters only
+while signed in at the live domain (`https://rch.hashtrickstechnologies.com/admin`). A poster printed
+from a laptop on `localhost`, a staging host or a raw IP points customers at that address, and
+nobody will notice until a customer scans it.
+
+**Regenerate** makes a new token for the code and the old printed poster stops working at once (the
+page says the code is not valid). Do it when a poster is lost or copied somewhere it should not be,
+and replace the poster the same day. Deactivating a code does the same without a new poster.
+
+The counter's **Pause** switch on its QR orders screen stops new orders at that outlet only, without
+touching the hours; it is the counter's to use when the kitchen is swamped or an item run is out.
+
+### 19.5 Refunds
+
+A refund is queued, never sent inside a sale or a void, in three cases:
+
+- **Unfulfillable** - the payment was captured but the order could not be billed when it was
+  settled (an item sold out or switched off, the outlet closed or paused, a price changed, the amount
+  did not match). No bill is made, the order is **Refunded**, and the whole payment goes back.
+- **Void** - the manager voided an Online bill (*Void a bill*, same IST day, register still open, as
+  for any bill). The bill is badged voided as always, the order becomes **Voided**, and the full
+  amount is queued.
+- **Duplicate** - a second payment captured against an order that already had one.
+
+The QR worker sends Pending refunds every pass. Before each send it asks Razorpay for the refunds
+already on that payment, matched by an id it wrote into the refund's notes, so a retry after a
+timeout never refunds twice. A refund goes **Pending → Sent → Processed** when Razorpay's
+`refund.processed` webhook arrives. A failed send is retried after 1 min, 5 min, 15 min, 1 h and
+6 h; after the sixth failure it is **Failed** and the worker stops trying.
+
+**A Failed refund** means Razorpay refused or never accepted it - most often the merchant balance
+could not cover it, the payment is too old to refund, or the keys changed. The customer has *not*
+had their money back. The bill drawer shows a red refund pill on that bill. To retry:
+
+1. Read the reason on the pill (Razorpay's last answer, stored on the refund), and fix what it names - top up the
+   balance in the dashboard, or put back the keys that made the payment.
+2. The manager (anyone holding *Void a bill*) opens the bill and presses **Retry** beside the pill
+   (`POST /qr-refunds/:id/retry`). That puts it back to Pending with a fresh set of attempts; the
+   next worker pass sends it.
+3. If it fails again, refund it by hand in the dashboard (below), and write down the bill number and
+   the Razorpay refund id in the handover - the refund row stays Failed in RCH.
+
+A `refund.failed` webhook for a refund already Sent moves it to Failed the same way.
+
+**Refunding a bill from an earlier day.** A void is only allowed on the IST day of the bill, while
+its register session is open, so RCH cannot refund a QR bill once its day has closed. Do it in
+the dashboard: **Transactions → Payments**, search the payment id (the QR order carries it, and the
+bill's receipt shows the order number), **Issue Refund**, full or partial, with the bill number in
+the notes. The bill stays a sale in RCH, and that day's Z does not change - a closed Z never does.
+Record it in the handover and in the next reconciliation (§19.6) as a refund outside RCH.
+
+### 19.6 Reconciling against the Z
+
+The Z report carries **Online** as its own tender: the gross of every QR bill in that register
+session, less voided ones. Sessions run Z-to-Z, not midnight to midnight, so match on the Z's
+opening and closing times, not on a calendar day.
+
+Razorpay settles to the bank about two working days after capture, as one amount net of its fee and
+the GST on the fee, less refunds processed in the window. Reconcile from **Reports → Settlement
+recon** (or the settlement's own breakup) against each Z:
+
+- Every captured payment in the window should be a QR bill in some Z's Online total - except those
+  refunded as **unfulfillable** or **duplicate**, which never became bills and appear in Razorpay as
+  a payment and its matching refund.
+- A **voided** Online bill is in the Z's voids, and its refund is in Razorpay.
+- A refund done **by hand** for an earlier day (§19.5) is in Razorpay and in no Z.
+- What is left over is the fee and its GST, which Razorpay shows per payment.
+
+A captured payment with no bill and no refund is a settlement that did not happen - most likely
+both the browser's verify and the webhook failed. Check **Webhooks → Deliveries** for failed
+deliveries and redeliver them (the API drops any event id it has already seen, so a redelivery is
+safe), then look for the order on the counter's QR orders screen.
+
+### 19.7 Going live
+
+1. The Razorpay account must be activated (KYC done) before live keys exist.
+2. Switch the dashboard to **Live Mode**, generate live API keys, and create a **new** webhook there -
+   test-mode and live-mode webhooks are separate, with their own secret. Same URL and events as
+   §19.2, a new secret.
+3. Replace all three values in the box's `.env` (§19.3) and redeploy through the workflow.
+4. Place one real, small order and void it the same day: that proves capture, the bill, the void and
+   a real refund arriving at `Processed`.
+5. Orders already paid in test mode stay test orders; a test-mode refund still queued after the
+   switch fails against the live keys. Let the test-mode queue drain before switching.
+
+Posters do not change: the codes are RCH's, not Razorpay's.
