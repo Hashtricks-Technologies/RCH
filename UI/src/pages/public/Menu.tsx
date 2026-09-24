@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { money, pausedRefusal } from "@rch/domain";
 import type { PublicMenu } from "@rch/contract";
-import { cartCount, cartTotal, limitOf, orderable, usePublicOrder } from "../../store/publicOrder";
+import { statusUrl } from "../../lib/orderPath";
+import { cartCount, cartTotal, dismissRemembered, go, limitOf, orderable, rememberedFor, usePublicOrder } from "../../store/publicOrder";
 import CartBar from "./CartBar";
 import CheckoutSheet from "./CheckoutSheet";
 import { Dead, MenuSkeleton, Stepper, Thumb } from "./parts";
@@ -31,6 +32,8 @@ export default function Menu({ token }: { token: string }) {
   const clearNotice = usePublicOrder((s) => s.clearNotice);
   const [term, setTerm] = useState("");
   const [sheet, setSheet] = useState(false);
+  // The order this phone placed here last, for a customer who closed its status page.
+  const [mine, setMine] = useState(() => rememberedFor(token));
   // The header lifts (a soft shadow) once the menu scrolls under it.
   const [lifted, setLifted] = useState(false);
   useEffect(() => {
@@ -85,6 +88,17 @@ export default function Menu({ token }: { token: string }) {
         </div>
       </header>
       <main className={`qo-col qo-menu${count > 0 ? " has-bar" : ""}`}>
+        {mine && (
+          <div className="qo-recover">
+            <a href={statusUrl(token, mine.orderId, mine.secret)} onClick={(e) => { e.preventDefault(); go(statusUrl(token, mine.orderId, mine.secret)); }}>
+              <span>Your order <strong>{mine.orderId}</strong> - see its status</span>
+              <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 3.5 4.5 4.5L6 12.5" /></svg>
+            </a>
+            <button type="button" className="qo-recover-x" aria-label={`Dismiss order ${mine.orderId}`} onClick={() => { dismissRemembered(mine.orderId); setMine(null); }}>
+              <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 4 8 8M12 4l-8 8" /></svg>
+            </button>
+          </div>
+        )}
         {banner && (
           <div className="qo-banner" role="status">
             <strong>{banner.title}</strong>

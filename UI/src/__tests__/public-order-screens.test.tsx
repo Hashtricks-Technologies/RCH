@@ -112,6 +112,36 @@ describe("the menu", () => {
     expect((ui.button("One more Plum Cake") as HTMLButtonElement).disabled).toBe(true);
   });
 
+  it("offers back the order this phone placed here, until dismissed", async () => {
+    localStorage.setItem("rch-qr-order", JSON.stringify({ orderId: "QO-2026-0042", secret: SECRET, token: TOKEN, at: new Date().toISOString(), status: "Preparing" }));
+    serve({ [MENU]: () => json(menuOf()) });
+    ui = await mount(`/order/${TOKEN}`);
+    const link = ui.q<HTMLAnchorElement>(".qo-recover a")!;
+    expect(link.textContent).toBe("Your order QO-2026-0042 - see its status");
+    expect(link.getAttribute("href")).toBe(`/order/${TOKEN}/o/QO-2026-0042#k=${SECRET}`);
+    click(ui.button("Dismiss order QO-2026-0042"));
+    expect(ui.q(".qo-recover")).toBeNull();
+    ui.unmount();
+    // Dismissed stays dismissed; the status page still finds its key.
+    ui = await mount(`/order/${TOKEN}`);
+    expect(ui.q(".qo-recover")).toBeNull();
+    expect(JSON.parse(localStorage.getItem("rch-qr-order")!)).toMatchObject({ orderId: "QO-2026-0042", secret: SECRET, dismissed: true });
+  });
+
+  it("opens the remembered order's status from the banner, and offers none for another code", async () => {
+    localStorage.setItem("rch-qr-order", JSON.stringify({ orderId: "QO-2026-0042", secret: SECRET, token: "tok_another_code_000000" }));
+    serve({ [MENU]: () => json(menuOf()), [STATUS]: () => json(orderOf()) });
+    ui = await mount(`/order/${TOKEN}`);
+    expect(ui.q(".qo-recover")).toBeNull();
+    ui.unmount();
+    localStorage.setItem("rch-qr-order", JSON.stringify({ orderId: "QO-2026-0042", secret: SECRET, token: TOKEN }));
+    ui = await mount(`/order/${TOKEN}`);
+    click(ui.q(".qo-recover a")!);
+    await settle();
+    expect(window.location.pathname).toBe(`/order/${TOKEN}/o/QO-2026-0042`);
+    expect(ui.text()).toContain(QR_STATUS_WORDS.Paid);
+  });
+
   it("says why it is closed, with today's hours, and takes nothing", async () => {
     const open = { open: false, why: "QR ordering opens at 08:00 today.", today: { opens: "08:00", closes: "20:00" } };
     serve({ [MENU]: () => json(menuOf({ open })) });

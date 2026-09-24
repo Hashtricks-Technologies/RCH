@@ -145,18 +145,62 @@ export function checkCustomer(c: Customer): CustomerErrors {
 
 // ---- the browser's side effects, each tolerant of a hostile environment
 
-/** Remember the last order so a reload of its status page (or a return to it) still works. */
-export function remember(entry: { orderId: string; secret: string; token: string }): void {
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(entry)); } catch { /* private mode: the fragment still has it */ }
-}
-/** The secret this phone was given for `orderId`, if it still has it. */
-export function recall(orderId: string): string | null {
+/**
+ * The last order this phone placed, so a reload of its status page (or a return to the menu) still
+ * finds it. One entry: a new order replaces it. `at` is when the order was placed and `status` the
+ * last one read, which together decide when the menu stops offering it (`rememberedFor`).
+ */
+export type Remembered = { orderId: string; secret: string; token: string; at?: string; status?: QrOrderStatus; dismissed?: boolean };
+const RECOVER_FOR_MS = 24 * 60 * 60_000;
+
+function readRemembered(): Remembered | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
-    const v = JSON.parse(raw) as { orderId?: unknown; secret?: unknown };
-    return v.orderId === orderId && typeof v.secret === "string" ? v.secret : null;
+    const v = JSON.parse(raw) as Partial<Remembered> | null;
+    return v && typeof v.orderId === "string" && typeof v.secret === "string" && typeof v.token === "string" ? (v as Remembered) : null;
   } catch { return null; }
+}
+function writeRemembered(v: Remembered | null): void {
+  try {
+    if (v) localStorage.setItem(STORAGE_KEY, JSON.stringify(v)); else localStorage.removeItem(STORAGE_KEY);
+  } catch { /* private mode: the fragment still has it */ }
+}
+
+/** Remember an order. The same order again keeps what is already known of it; another replaces it. */
+export function remember(entry: Remembered): void {
+  const had = readRemembered();
+  const same = had?.orderId === entry.orderId ? had : null;
+  writeRemembered({ ...same, ...entry, at: entry.at ?? same?.at ?? new Date().toISOString() });
+}
+/** The secret this phone was given for `orderId`, if it still has it. */
+export function recall(orderId: string): string | null {
+  const v = readRemembered();
+  return v?.orderId === orderId ? v.secret : null;
+}
+/** Note the status just read, if it is the remembered order's. */
+function noteStatus(order: PublicQrOrder): void {
+  const v = readRemembered();
+  if (v?.orderId === order.id && v.status !== order.status) writeRemembered({ ...v, status: order.status, at: order.at });
+}
+
+/**
+ * The order the menu at `token` should offer to reopen, or null. It is offered until the customer
+ * dismisses it or it is a day old and finished (an order a day old still awaiting payment has long
+ * expired) - and then it is forgotten.
+ */
+export function rememberedFor(token: string, now = Date.now()): Remembered | null {
+  const v = readRemembered();
+  if (!v || v.token !== token || v.dismissed) return null;
+  const finished = !v.status || v.status === "Awaiting payment" || QR_TERMINAL.has(v.status);
+  const age = v.at ? now - Date.parse(v.at) : 0;
+  if (finished && age >= RECOVER_FOR_MS) { writeRemembered(null); return null; }
+  return v;
+}
+/** Stop offering the remembered order on the menu; its status page still finds its key. */
+export function dismissRemembered(orderId: string): void {
+  const v = readRemembered();
+  if (v?.orderId === orderId) writeRemembered({ ...v, dismissed: true });
 }
 
 /** Move to another screen of the page without a reload. `OrderApp` listens for `popstate`. */
@@ -270,7 +314,7 @@ export const usePublicOrder = create<PublicOrderState>()((set, get) => {
         const r = await call(routes.createQrOrder, { params: { token: s.token }, body: { nonce, ...body } });
         const placed: Placed = { ...r.result, sig };
         set({ placing: false, placed, order: r.result.order, attempt: null });
-        remember({ orderId: r.result.order.id, secret: r.result.secret, token: s.token });
+        remember({ orderId: r.result.order.id, secret: r.result.secret, token: s.token, at: r.result.order.at, status: r.result.order.status });
         await get().openCheckout();
         return true;
       } catch (e) {
@@ -347,6 +391,7 @@ export const usePublicOrder = create<PublicOrderState>()((set, get) => {
       try {
         const order = await call(routes.publicQrOrder, { params: { id }, query: { k: secret } });
         set({ order, orderState: "ready", stale: false });
+        noteStatus(order);
       } catch (e) {
         if (e instanceof ApiError && e.status === 404) set({ order: null, orderState: "missing", stale: false });
         else if (get().order?.id === id) set({ stale: true });

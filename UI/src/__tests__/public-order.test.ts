@@ -5,7 +5,7 @@ import { setAccessToken } from "../api/session";
 import { isOrderPath, menuPath, parseOrderPath, secretFromHash, statusUrl } from "../lib/orderPath";
 import {
   CHECKOUT_FAILED, CHECKOUT_JS, NETWORK_MENU, NETWORK_PLACE, PAYMENT_DISMISSED, POLL_FAST_MS, POLL_SETTLED_FOR_MS, POLL_SETTLED_MS, POLL_SLOW_MS, VERIFY_PENDING, pollDelay,
-  CHECKOUT_BACKSTOP_MS, cartCount, cartTotal, checkCustomer, loadRazorpay, paymentFailedNote, recall, remember, resetPublicOrder, usePublicOrder,
+  CHECKOUT_BACKSTOP_MS, cartCount, cartTotal, checkCustomer, dismissRemembered, loadRazorpay, rememberedFor, paymentFailedNote, recall, remember, resetPublicOrder, usePublicOrder,
   type RazorpayFailure, type RazorpaySuccess,
 } from "../store/publicOrder";
 import { SECRET, TOKEN, created, json, menuOf, orderOf, refusal } from "./publicFixture";
@@ -292,6 +292,52 @@ describe("placing an order", () => {
     expect(recall("QO-1")).toBe(SECRET);
     expect(recall("QO-2")).toBeNull();
     localStorage.setItem("rch-qr-order", "{not json");
+    expect(recall("QO-1")).toBeNull();
+  });
+});
+
+describe("the order this phone remembers", () => {
+  const DAY = 24 * 60 * 60_000;
+  const now = Date.parse("2026-09-25T12:00:00.000Z");
+  const read = () => JSON.parse(localStorage.getItem("rch-qr-order")!) as Record<string, unknown>;
+
+  it("is the order just placed, with its time and status, and a new one replaces it", async () => {
+    await withMenu();
+    st().add("tea"); fillCustomer();
+    serve({ [PLACE]: () => json({ result: created(), changed: [], message: "Order placed." }) });
+    await st().placeOrder();
+    expect(read()).toMatchObject({ orderId: "QO-2026-0042", token: TOKEN, at: "2026-09-24T08:30:00.000Z", status: "Awaiting payment" });
+    dismissRemembered("QO-2026-0042");
+    expect(rememberedFor(TOKEN)).toBeNull();
+    remember({ orderId: "QO-2026-0043", secret: SECRET, token: TOKEN });
+    expect(rememberedFor(TOKEN)?.orderId).toBe("QO-2026-0043");
+    expect(read().dismissed).toBeUndefined();
+  });
+  it("keeps what it knew when the status page remembers the same order, and notes each status read", async () => {
+    remember({ orderId: "QO-2026-0042", secret: SECRET, token: TOKEN, at: "2026-09-24T08:30:00.000Z", status: "Awaiting payment" });
+    remember({ orderId: "QO-2026-0042", secret: SECRET, token: TOKEN });
+    expect(read()).toMatchObject({ at: "2026-09-24T08:30:00.000Z", status: "Awaiting payment" });
+    serve({ [STATUS]: () => json(orderOf({ status: "Ready" })) });
+    await st().loadOrder("QO-2026-0042", SECRET);
+    expect(read().status).toBe("Ready");
+    dismissRemembered("QO-9");
+    expect(read().dismissed).toBeUndefined();
+  });
+  it("is offered for a day after a finished order, then forgotten; an order still being made is kept", () => {
+    const at = new Date(now - DAY + 60_000).toISOString();
+    remember({ orderId: "QO-1", secret: SECRET, token: TOKEN, at, status: "Collected" });
+    expect(rememberedFor(TOKEN, now)?.orderId).toBe("QO-1");
+    expect(rememberedFor("tok_other_code_00000000", now)).toBeNull();
+    expect(rememberedFor(TOKEN, now + 60_000)).toBeNull();
+    expect(localStorage.getItem("rch-qr-order")).toBeNull();
+    remember({ orderId: "QO-2", secret: SECRET, token: TOKEN, at: new Date(now - 2 * DAY).toISOString(), status: "Preparing" });
+    expect(rememberedFor(TOKEN, now)?.orderId).toBe("QO-2");
+    // A day-old order that never got past payment has long expired.
+    remember({ orderId: "QO-3", secret: SECRET, token: TOKEN, at: new Date(now - 2 * DAY).toISOString(), status: "Awaiting payment" });
+    expect(rememberedFor(TOKEN, now)).toBeNull();
+    localStorage.setItem("rch-qr-order", JSON.stringify({ orderId: 4 }));
+    expect(rememberedFor(TOKEN, now)).toBeNull();
+    localStorage.setItem("rch-qr-order", "null");
     expect(recall("QO-1")).toBeNull();
   });
 });
