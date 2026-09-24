@@ -82,7 +82,7 @@ const NARROW: Partial<Record<Changed, () => Promise<void>>> = {
   // two halves of one screen and a settlement moves both. The action answers `false` on a
   // failure rather than throwing, so a manager's tab shows its own outage line and a tab with
   // no Credit screen open is not told anything went wrong.
-  receivables: () => operatorCan("credit")
+  receivables: () => operatorCan("settlements")
     ? useApp.getState().loadReceivables().then(() => undefined)
     : Promise.resolve(),
   // ---- admin: the payer register. Read two ways, like `locations`/`outlets`: the super admin

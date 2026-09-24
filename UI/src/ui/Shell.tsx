@@ -2,13 +2,13 @@ import {
   useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode, type RefObject,
 } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
-import { bestBeforeAt } from "@rch/domain";
+import { bestBeforeAt, type ReadCollection } from "@rch/domain";
 import { IT, LOC, homeLabel } from "../data/master";
 import { canSee, navFor } from "../nav";
 import { useApp, type AppState } from "../store";
 import { isToday, money0 } from "../lib/fmt";
 import {
-  activeItems, availOf, isTicketOpen, locName, menuOf, openOutlets, procurementList, qty, userCan, userWide,
+  activeItems, availOf, isTicketOpen, locName, menuOf, openOutlets, procurementList, qty, userCan, userReadsWide,
 } from "../lib/selectors";
 import type { LocKey, Role, User } from "../types";
 import type { ScreenKey } from "../screens";
@@ -357,8 +357,10 @@ function searchHits(s: SearchState, q: string): Hit[] {
   const n = q.trim().toLowerCase();
   if (!u || !n) return [];
   const has = (...v: (string | undefined)[]) => v.some((x) => x?.toLowerCase().includes(n));
-  // A session that reads one counter only ever sees that counter's paperwork.
-  const mine = userWide(u) ? null : u.loc;
+  // A session that reads a collection at one counter only ever finds that counter's paperwork -
+  // each collection by its own rule, as the server cuts it.
+  const mineOf = (c: ReadCollection) => (userReadsWide(u, c) ? null : u.loc);
+  const reqAt = mineOf("requests"), tktAt = mineOf("tickets"), billAt = mineOf("bills");
 
   const navs: Hit[] = navFor(u).flatMap((g) => g.items
     .filter((i) => has(i.label, g.group))
@@ -371,19 +373,19 @@ function searchHits(s: SearchState, q: string): Hit[] {
 
   const reqTo = dest(u, "outlet-requests", "kitchen-requests", "approvals", "issue");
   const reqs: Hit[] = !reqTo ? [] : s.req
-    .filter((r) => (!mine || r.from === mine) && has(r.id, r.st, r.by, LOC[r.from].n))
+    .filter((r) => (!reqAt || r.from === reqAt) && has(r.id, r.st, r.by, LOC[r.from].n))
     .map((r) => ({ id: "r:" + r.id, to: reqTo, t: r.id, s: `${LOC[r.from].n} · ${r.st}`, kind: "Request" }));
 
   const tktTo = dest(u, "outlet-tickets", "kitchen-tickets", "issue");
   const tkts: Hit[] = !tktTo ? [] : s.tkt
-    .filter((t) => (!mine || t.to === mine) && has(t.id, t.st, t.req, LOC[t.from].n, LOC[t.to].n))
+    .filter((t) => (!tktAt || t.to === tktAt) && has(t.id, t.st, t.req, LOC[t.from].n, LOC[t.to].n))
     .map((t) => ({
       id: "t:" + t.id, to: tktTo, t: t.id, kind: "Ticket",
       s: `${LOC[t.from].n} → ${LOC[t.to].n} · ${t.st}`,
     }));
 
   const bills: Hit[] = !canSee(u, "bills") ? [] : s.bills
-    .filter((b) => (!mine || b.loc === mine) && has(b.no, b.pay, b.opr, b.payer?.name))
+    .filter((b) => (!billAt || b.loc === billAt) && has(b.no, b.pay, b.opr, b.payer?.name))
     .map((b) => ({
       id: "b:" + b.no, to: "bills", t: b.no, kind: "Bill",
       // ---- bill void: the palette finds a voided bill - it is exactly the one somebody goes

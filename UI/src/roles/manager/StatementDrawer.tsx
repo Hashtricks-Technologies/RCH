@@ -47,7 +47,7 @@ function Body({ kind, payer }: { kind: PayerKind; payer: string }) {
   const readStatement = useApp((s) => s.readStatement);
   const recordSettlement = useApp((s) => s.recordSettlement);
   const close = useApp((s) => s.closeDrawer);
-  const mayRecord = useCan("credit");
+  const mayRecord = useCan("settlements");
 
   // `undefined` is "still reading", `null` is "could not be read". They are different facts and
   // the second must never print as an account that owes nothing.

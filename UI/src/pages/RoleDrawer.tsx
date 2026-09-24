@@ -6,15 +6,17 @@ import { DrawerFrame } from "../ui/Drawer";
 import { Alert, Btn, Field, Pill, Section, Switch, Tip } from "../ui/kit";
 import { TipWrap } from "../ui/Tip";
 import { DESKS, DESK_LABEL } from "../lib/desks";
-import type { Action, AdminRole, Feature, Level, Permissions, Role, UpdateRoleBody } from "../types";
+import type { Action, AdminRole, Feature, GrantLevel, Permissions, Role, UpdateRoleBody } from "../types";
 
-type Grant = "none" | Level;
+/** The editor's own control per feature: "none" takes the key away (`GrantLevel` in the contract). */
+type Grant = GrantLevel;
 const WORD: Record<Grant, string> = { none: "None", view: "View", edit: "Edit" };
 
 const FEATURE_KEYS = Object.keys(FEATURES) as Feature[];
 /** The editor's sections, in the catalogue's own order. */
 const SECTIONS = [...new Set(FEATURE_KEYS.map((f) => FEATURES[f].section))];
-/** The two actions that sit under a feature, drawn beneath it. `all_outlets` is the switch. */
+/** The actions that sit under a feature, drawn beneath it - Void a bill under Bills, Void a
+ *  settlement under Receivables & settlements. `all_outlets` is the switch. */
 const NESTED = (Object.keys(ACTIONS) as Action[]).filter((a) => ACTIONS[a].parent);
 
 const grantOf = (p: Permissions, f: Feature): Grant => p.f[f] ?? "none";
@@ -86,7 +88,7 @@ function LevelPicker({ f, desk, value, onChange }: {
 
 /** Scope, as a pill whose tip says what it means. */
 const ScopePill = ({ f }: { f: Feature }) => FEATURES[f].scope === "wide"
-  ? <Tip text="Hospital-wide: covers every outlet, whichever location the account stands at."><Pill tone="in">Hospital-wide</Pill></Tip>
+  ? <Tip text="Hospital-wide: covers every outlet, whichever location the account stands at, and reads the outlets' documents it works on. Only Works for every outlet opens other outlets' bills."><Pill tone="in">Hospital-wide</Pill></Tip>
   : <Tip text="Local: the account's own location only, unless the role works for every outlet."><Pill tone="mu">Own location</Pill></Tip>;
 
 function RoleBody({ role }: { role: AdminRole }) {
@@ -153,7 +155,7 @@ function RoleBody({ role }: { role: AdminRole }) {
         <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "10px 0" }}>
           <Switch on={perms.a.includes("all_outlets")} onChange={() => toggle("all_outlets")} label="Works for every outlet" />
           <span>Works for every outlet</span>
-          <Tip text="Bills, X and Z reports, Product on / off and photos reach every outlet, not only the one the account stands at." label="Works for every outlet" />
+          <Tip text="Bills, X and Z reports, Product on / off and photos reach every outlet, not only the one the account stands at - and the role reads every outlet's bills, stock, requests and tickets. Without it the bills and takings are the account's own outlet's only, whatever else the role holds; other documents widen only with the screen that works on them (Approvals, Items & stock, Menus, Prices, the ledger)." label="Works for every outlet" />
         </div>
       )}
 

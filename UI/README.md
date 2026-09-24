@@ -275,7 +275,8 @@ deactivated rather than deleted - their balance has to stay findable - so a swit
 leaves every till's picker and every bill already charged to it stays exactly as it was.
 
 **Who is billed decides what they pay.** The outlet manager's **Credit & Settlements** screen
-carries a rate card: one discount and one credit limit per category - customers, staff,
+(two permissions: Discounts & credit limits for the rate card, Receivables & settlements for the
+balances and payments - a role is shown the tabs it holds) carries a rate card: one discount and one credit limit per category - customers, staff,
 departments and doctors - with a per-person exception over it for the consultant on terms of their
 own. The till shows the gross, the concession and the net, and the printed slip carries all three;
 the rate on the screen is a preview, and the server resolves it again inside the sale's own
@@ -350,8 +351,8 @@ its holders work at, how many active accounts hold it, and whether it is switche
 a name and a desk and starts from what that desk's seeded role holds; its permission matrix opens at
 once. The matrix lists every feature by section with a None / View / Edit control offering only the
 levels that feature has - a level the role's desk may not be given is shut, and its tip is the
-sentence the server would refuse it with. Void a bill and Void a settlement sit under Bills and Credit
-& settlements and stay shut until those are held; counter and outlet-manager roles also get a "Works
+sentence the server would refuse it with. Void a bill and Void a settlement sit under Bills and
+Receivables & settlements and stay shut until those are held; counter and outlet-manager roles also get a "Works
 for every outlet" switch. The drawer says how many accounts a change reaches ("changes apply at
 once"), lists every change before Save, and fixes the desk once the role has been given to anybody.
 A role is switched off only once no active account holds it - the server's refusal names them - and

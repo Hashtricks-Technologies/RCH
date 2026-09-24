@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { USERS } from "@rch/contract/fixtures";
 import { canSee, homeFor, navFor } from "../nav";
 import { LEGACY_KEYS, SCREENS } from "../screens";
-import { userCan, userHolds, userWide } from "../lib/selectors";
+import { userCan, userHolds, userReadsWide } from "../lib/selectors";
 import { LOC, homeLabel } from "../data/master";
 import type { Role } from "../types";
 import { resetStore, userOf } from "./fixture";
@@ -132,14 +132,24 @@ describe("screen keys", () => {
 });
 
 describe("who reads hospital-wide", () => {
-  it("every desk but the counter, as seeded", () => {
-    for (const r of DESKS) expect(userWide(userOf(r))).toBe(r !== "counter");
+  it("every desk but the counter and the manager reads the bills wide as seeded; the manager by every outlet", () => {
+    for (const r of DESKS) expect(userReadsWide(userOf(r), "bills")).toBe(r !== "counter");
+    const manager = userOf("manager");
+    expect(userReadsWide({ ...manager, perms: { ...manager.perms!, a: [] } }, "bills")).toBe(false);
   });
-  it("a counter role given every outlet, or any hospital-wide feature", () => {
+  it("a counter role given every outlet reads everything wide; a hospital-wide feature widens only its own collections", () => {
     const counter = userOf("counter");
-    expect(userWide({ ...counter, perms: { ...counter.perms!, a: ["all_outlets"] } })).toBe(true);
-    expect(userWide({ ...counter, perms: { f: { ...counter.perms!.f, credit: "view" }, a: [] } })).toBe(true);
-    expect(homeLabel({ ...counter, perms: { ...counter.perms!, a: ["all_outlets"] } })).toBe("All outlets");
+    const every = { ...counter, perms: { ...counter.perms!, a: ["all_outlets" as const] } };
+    expect(userReadsWide(every, "bills")).toBe(true);
+    expect(userReadsWide(every, "requests")).toBe(true);
+    // Credit reads no outlet's documents, and nothing but every outlet widens the till roll.
+    const credit = { ...counter, perms: { f: { ...counter.perms!.f, credit: "view" as const }, a: [] } };
+    expect(userReadsWide(credit, "bills")).toBe(false);
+    const approvals = { ...counter, perms: { f: { ...counter.perms!.f, approvals: "view" as const }, a: [] } };
+    expect(userReadsWide(approvals, "requests")).toBe(true);
+    expect(userReadsWide(approvals, "bills")).toBe(false);
+    expect(homeLabel(every)).toBe("All outlets");
+    expect(homeLabel(credit)).toBe(LOC[counter.loc].n);
     expect(homeLabel(counter)).toBe(LOC[counter.loc].n);
   });
   it("a user record with no permissions holds its desk's seeded role", () => {

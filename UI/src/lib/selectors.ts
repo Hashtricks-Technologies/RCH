@@ -454,16 +454,17 @@ export const userCan = (u: Holder, f: Feature, l: Level = "view"): boolean => D.
 /** Whether this session holds the action `a`. */
 export const userHolds = (u: Holder, a: Action): boolean => D.holds(permsOf(u), a);
 /**
- * Whether this session reads every outlet's till roll rather than the one it signed in to
- * (`readsWide(desk, perms, "bills")` in @rch/domain): the three back-office desks, and a counter or
- * manager role given every outlet. The server scopes the bills by the same rule.
+ * Whether this session reads collection `c` across every outlet rather than at the location it
+ * signed in to (`readsWide` in @rch/domain): the three back-office desks always; a counter or
+ * manager role with every outlet, or with a feature whose screen reads `c` across the outlets.
+ * Only every outlet widens the bills. The server cuts the same reads by the same rule.
  */
-export const userWide = (u: Holder): boolean => D.readsWide(u.r, permsOf(u), "bills");
+export const userReadsWide = (u: Holder, c: D.ReadCollection): boolean => D.readsWide(u.r, permsOf(u), c);
 
 /** Whether the signed-in session holds `f` - at edit unless asked about view. False signed out. */
 export const useCan = (f: Feature, l: Level = "edit"): boolean =>
   useApp((s) => (s.user ? userCan(s.user, f, l) : false));
 /** Whether the signed-in session holds the action `a`. */
 export const useHolds = (a: Action): boolean => useApp((s) => (s.user ? userHolds(s.user, a) : false));
-/** Whether the signed-in session reads hospital-wide (`userWide`). */
-export const useWide = (): boolean => useApp((s) => (s.user ? userWide(s.user) : false));
+/** Whether the signed-in session reads `c` across every outlet (`userReadsWide`). */
+export const useReadsWide = (c: D.ReadCollection): boolean => useApp((s) => (s.user ? userReadsWide(s.user, c) : false));

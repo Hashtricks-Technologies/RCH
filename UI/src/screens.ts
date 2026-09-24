@@ -71,7 +71,7 @@ export const SCREENS: readonly ScreenMeta[] = [
   // every-outlet one. The counter's switches live on its till and shelf, never on this screen.
   { key: "avail", label: "Product On / Off", icon: "power", section: "Stock", needs: [{ f: "availability", l: "edit" }],
     desks: AVAILABILITY_SCREEN_ENABLED ? ["prod", "manager"] : ["prod"] },
-  { key: "credit", label: "Credit & Settlements", icon: "rep", section: "Credit", needs: v("credit") },
+  { key: "credit", label: "Credit & Settlements", icon: "rep", section: "Credit", needs: v("credit", "settlements") },
   // ---- the central store's
   { key: "issue", label: "Issue Desk", icon: "tkt", section: "Issue", needs: v("issue_desk") },
   { key: "store-stock", label: "Stock in Hand", icon: "stock", section: "Inventory", needs: v("store_stock") },

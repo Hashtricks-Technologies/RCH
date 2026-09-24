@@ -220,17 +220,24 @@ describe("the Roles tab", () => {
     serve({ "GET /api/v1/admin/roles": () => json(ROLES), "GET /api/v1/admin/actions": () => json([]) });
     page = await mountPage();
     await press(page.button("Edit", page.row("ROLE-006")));
-    // Bills is held at edit, so Void a bill may be given; Credit is not, so Void a settlement may not.
+    // Bills is held at edit, so Void a bill may be given; Receivables & settlements is not, so Void
+    // a settlement may not - it hangs off settlements now, not off the rate card.
     expect(page.box("Void a bill").disabled).toBe(false);
     expect(page.box("Void a settlement").disabled).toBe(true);
-    expect(page.drawer().textContent).toContain("\"Void a settlement\" needs at least view access to Credit & settlements.");
+    expect(page.drawer().textContent).toContain("\"Void a settlement\" needs at least view access to Receivables & settlements.");
     await press(page.box("Void a bill"));
     expect(page.box("Void a bill").checked).toBe(true);
     await press(page.levels("Bills").None);
     expect(page.box("Void a bill").checked).toBe(false);
     expect(page.box("Void a bill").disabled).toBe(true);
-    await press(page.levels("Credit & settlements").View);
+    // The rate card alone still leaves it shut.
+    await press(page.levels("Discounts & credit limits").View);
+    expect(page.box("Void a settlement").disabled).toBe(true);
+    await press(page.levels("Receivables & settlements").View);
     expect(page.box("Void a settlement").disabled).toBe(false);
+    // Nested under its parent's row, not the rate card's.
+    const row = page.drawer().querySelector('tr[data-action="void_settlement"]')!;
+    expect(row.previousElementSibling?.getAttribute("data-feature")).toBe("settlements");
   });
 
   it("offers Works for every outlet on the counter and manager desks only", async () => {

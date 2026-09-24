@@ -4,7 +4,7 @@ import { useApp } from "./store";
 import { canSee, homeFor, labelOf } from "./nav";
 import { LEGACY_KEYS, isScreenKey } from "./screens";
 import { screenFor } from "./registry";
-import { useWide } from "./lib/selectors";
+import { useReadsWide } from "./lib/selectors";
 import Shell from "./ui/Shell";
 import Toast from "./ui/Toast";
 import Login from "./pages/Login";
@@ -36,7 +36,8 @@ function BackToAdmin() {
 function Screen() {
   const { key = "" } = useParams();
   const user = useApp((s) => s.user);
-  const wide = useWide();
+  // Every outlet's Bills or the one counter's, by whether the till roll reads wide.
+  const wide = useReadsWide("bills");
   if (!user) return <Navigate to="/login" replace />;
   // A capability, not a role (root CLAUDE.md): an admin-flagged account has no sidebar and no
   // operational home - `/admin` is the only key it can ever reach, checked here, ahead of

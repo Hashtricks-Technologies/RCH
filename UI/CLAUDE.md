@@ -27,8 +27,8 @@ pnpm --filter @rch/ui build       # tsc -b && vite build → UI/dist
    landing key, and `LEGACY_KEYS[desk][oldKey]` the key each desk used before keys were made unique.
 2. `src/registry.tsx` maps each key to its component (`screenFor(viewer, key)`) and imports every drawer
    module for its side effect. `dash` resolves by desk, `avail` to the kitchen's board or the manager's, and
-   `bills` to the manager's every-outlet view for a session that reads hospital-wide and the counter's own
-   otherwise.
+   `bills` to the manager's every-outlet view for a session whose till roll reads wide
+   (`useReadsWide("bills")` - every outlet, or a back-office desk) and the counter's own otherwise.
 3. `src/nav.ts` builds from those: `navFor(user)` is the sidebar, `homeFor(user)` the landing key, and
    `canSee(user, key)` the guard. `src/App.tsx` resolves the one route, `/:key`: an old key redirects to its
    new name, and a key the session can't see redirects home **with a toast saying why**.
@@ -36,8 +36,10 @@ pnpm --filter @rch/ui build       # tsc -b && vite build → UI/dist
 **What a session sees follows its role's permissions, not its desk.** `user.perms` (`/me`, sign-in, the
 snapshot) says what the role holds; a user record without it holds its desk's seeded role
 (`DESK_DEFAULTS[user.r].perms`), which is exactly what the desk always had. `lib/selectors.ts` has the pure
-`permsOf`, `userCan(u, f, l = "view")`, `userHolds(u, a)` and `userWide(u)` (`readsWide(desk, perms, "bills")`), and the
-hooks `useCan(f, l = "edit")`, `useHolds(a)` and `useWide()`. `navFor` places the desk's own layout first
+`permsOf`, `userCan(u, f, l = "view")`, `userHolds(u, a)` and `userReadsWide(u, collection)` (`readsWide` in
+`@rch/domain`: each location-cut collection widened by its own features, the bills by every outlet alone), and the
+hooks `useCan(f, l = "edit")`, `useHolds(a)` and `useReadsWide(collection)`. The palette's search cuts requests,
+tickets and bills each by its own collection's rule. `navFor` places the desk's own layout first
 and exactly as it always was (`nav-parity.test.ts`), then any other screen the role holds under that
 screen's own `section` - joining a group of the same name - and Account last. `dash`, `issues` and
 `settings` are desk-bound and always shown; `register` shows with any of `x_report`, `z_report` or
@@ -84,9 +86,11 @@ added, renamed and switched off, never deleted, so a balance always keeps an id 
 `AdminAudit` (the audit log: every write and sign-in, newest first, with filters, counts and a CSV export).
 The role matrix is the `role` drawer (`pages/RoleDrawer.tsx`): features grouped by `section`, one None / View
 / Edit `seg` control each offering only the levels the feature has, a level the desk may not hold shut with
-`grantRefusal`'s sentence as its tip, a scope pill (hospital-wide or own location), Void a bill / Void a
-settlement nested under their parent and shut until it is held (dropped with it), the "Works for every
-outlet" `Switch` for counter and manager desks only, the rename, the desk (read-only once `everAssigned`; a
+`grantRefusal`'s sentence as its tip, a scope pill (hospital-wide or own location), Void a bill under Bills
+and Void a settlement under Receivables & settlements, each shut until its parent is held (dropped with it),
+the "Works for every outlet" `Switch` for counter and manager desks only (its tip: the Bills / X / Z /
+availability / photo doors at every outlet, and every outlet's documents read - without it the bills are the
+home outlet's alone), the rename, the desk (read-only once `everAssigned`; a
 move drops what the new desk may not hold), a "N accounts hold this role - changes apply at once." alert,
 and a "What changes" list before Save, which sends only the fields that changed. Its body is keyed on the
 role's `updatedAt`, so a save starts it again from what the server stored.
@@ -96,9 +100,12 @@ With no `Shell` around it, `AdminDashboard.tsx` mounts the `<Drawer />` host its
 pins each desk's sidebar - groups, labels, icons and order - to the literal it had before keys were renamed.
 Tests mount a desk's screens through `deskScreens(role)` in `fixture.ts`.
 
-The manager's own group beyond the outlets is **Credit** (`credit`, `roles/manager/Credit.tsx`): three tabs -
-who owes what, the rate card (a discount and a credit limit per category, with per-person exceptions) and the
-settlement history. Its statement drawer is `stmt`, which is where a payment is recorded.
+The manager's own group beyond the outlets is **Credit** (`credit`, `roles/manager/Credit.tsx`), shown for
+either of two features: three tabs - who owes what and the settlement history (`settlements`, Receivables &
+settlements) and the rate card between them (`credit`, Discounts & credit limits: a discount and a credit limit
+per category, with per-person exceptions). A role is offered only the tabs it holds, the "View only" badge
+names the feature of the tab on screen, and the balances are read only with `settlements`. Its statement
+drawer is `stmt`, where a payment is recorded with `settlements` at edit; Void is `void_settlement`.
 
 **Menu Management** (`menu`) carries all four of a menu's operations for the picked outlet: the whole till as a
 sortable, filterable table, Remove behind a second press on each row, the multi-select add, and the
@@ -281,7 +288,7 @@ try {
   its `changed`; only the audit service's notice does.
   - **A collection only some roles may read is still broadcast to every open session** - the server's
     `pg_notify` isn't per-role. So `NARROW.priceLists`, `receivables` and `shifts` read for an operator
-    holding Prices, Credit or Shift reports alone and do nothing for anyone else; otherwise a counter's tab open when the Prices grid forks a list would fail its
+    holding Prices, Receivables & settlements or Shift reports alone and do nothing for anyone else; otherwise a counter's tab open when the Prices grid forks a list would fail its
     whole `Promise.all` and toast "the screen could not be refreshed" over a page of theirs that never
     changed. `accounts` is never announced on the stream - only the admin's own reply names it.
   - **`roles`** re-reads `GET /me` for an operator: a changed name is simply taken, and a changed desk or

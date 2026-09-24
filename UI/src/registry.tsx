@@ -113,7 +113,7 @@ const COMPONENTS: Record<ScreenKey, Pick> = {
   issues: Support,
   settings: Settings,
   pos: Pos,
-  // Every outlet's bills for someone who reads hospital-wide; the one counter's otherwise.
+  // Every outlet's bills for a role whose till roll reads wide (every outlet); the one counter's otherwise.
   bills: { pick: (v) => (v.wide ? ManagerBills : CounterBills) },
   register: Register,
   credit: Credit,

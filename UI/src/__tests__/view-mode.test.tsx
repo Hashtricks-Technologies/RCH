@@ -77,7 +77,7 @@ const CASES: [string, Role, Feature, Target, string[]][] = [
   ["Items & stock", "manager", "items_stock", { screen: "items-stock" }, ["Edit"]],
   ["Menu management", "manager", "menu", { screen: "menu" },
     ["Remove", "Select all", "Raise new-product request"]],
-  ["Credit", "manager", "credit", { screen: "credit" }, []],
+  ["Credit (who owes what)", "manager", "settlements", { screen: "credit" }, []],
   // ---- the counter's
   ["Stock in hand", "counter", "outlet_stock", { screen: "outlet-stock" }, ["Request adjustment"]],
   ["an adjustment request", "counter", "outlet_stock", { drawer: "cadjreq", id: "ADJREQ-2026-01" }, ["Cancel request"]],
@@ -180,13 +180,13 @@ describe("inputs on a view-only screen are shut, with the reason behind them", (
     expect(view.host.textContent).toContain(permissionRefusal("credit"));
   });
 
-  it("a statement offers no payment to a role that only sees Credit", async () => {
+  it("a statement offers no payment to a role that only sees Receivables & settlements", async () => {
     useApp.setState({ readStatement: () => Promise.resolve({
       kind: "doctor", id: "DR-118", name: "Dr A. Rao", outstanding: 300, limit: null, pct: 0,
       open: [{ no: "CF/1101", loc: "rest", at: new Date().toISOString(), total: 300, settled: 0, owed: 300 }], settlements: [],
     }) });
     const read = async (level: Grant) => {
-      signIn("manager", "credit", level);
+      signIn("manager", "settlements", level);
       const ui = open("manager", { drawer: "stmt", id: "doctor:DR-118" });
       await settle();
       return ui;
@@ -199,6 +199,33 @@ describe("inputs on a view-only screen are shut, with the reason behind them", (
   });
 });
 
+describe("the Credit screen shows the half of it a role holds", () => {
+  const views = (ui: ReturnType<typeof open>) =>
+    [...ui.host.querySelectorAll('[aria-label="View"] button')].map((b) => b.textContent);
+
+  it("the rate card alone: Discounts & limits only, and no balances read", async () => {
+    let reads = 0;
+    useApp.setState({ loadReceivables: () => { reads += 1; return Promise.resolve(true); } });
+    signIn("manager", "settlements", "none");
+    const ui = open("manager", { screen: "credit" });
+    await settle();
+    expect(views(ui)).toEqual(["Discounts & limits"]);
+    expect(ui.inputs("Discount for").length).toBeGreaterThan(0);
+    expect(reads).toBe(0);
+  });
+
+  it("settlements alone: who owes what and the settlements, and no rate card", async () => {
+    let reads = 0;
+    useApp.setState({ loadReceivables: () => { reads += 1; return Promise.resolve(true); } });
+    signIn("manager", "credit", "none");
+    const ui = open("manager", { screen: "credit" });
+    await settle();
+    expect(views(ui)).toEqual(["Who owes what", "Settlements"]);
+    expect(ui.inputs("Discount for")).toHaveLength(0);
+    expect(reads).toBe(1);
+  });
+});
+
 describe("void_settlement gates the settlement's Void", () => {
   const TODAY: Settlement = {
     id: "STL-0007", payer: { kind: "doctor", id: "DR-118", name: "Dr A. Rao" }, amount: 1500,
@@ -206,7 +233,7 @@ describe("void_settlement gates the settlement's Void", () => {
   };
   const settlements = async (actions: Action[]) => {
     useApp.setState({ settlements: [TODAY], loadReceivables: () => Promise.resolve(true) });
-    signIn("manager", "credit", "edit", actions);
+    signIn("manager", "settlements", "edit", actions);
     const ui = open("manager", { screen: "credit" });
     await settle();
     ui.click("Settlements");
@@ -218,7 +245,7 @@ describe("void_settlement gates the settlement's Void", () => {
     expect(userHolds(useApp.getState().user!, "void_settlement")).toBe(true);
     expect(ui.has("Void")).toBe(true);
   });
-  it("is not offered to one that does not, even with Credit at edit", async () => {
+  it("is not offered to one that does not, even with Receivables & settlements at edit", async () => {
     const ui = await settlements(["void_bill", "all_outlets"]);
     expect(userHolds(useApp.getState().user!, "void_settlement")).toBe(false);
     expect(ui.has("Void")).toBe(false);

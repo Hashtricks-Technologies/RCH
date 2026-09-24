@@ -26,10 +26,12 @@ import { useCan, useHolds } from "../../lib/selectors";
  */
 
 type View = "owed" | "terms" | "paid";
-const VIEWS: { v: View; label: string }[] = [
-  { v: "owed", label: "Who owes what" },
-  { v: "terms", label: "Discounts & limits" },
-  { v: "paid", label: "Settlements" },
+/** Each view and the feature it is: the rate card is `credit`; what is owed and what settled it
+ *  is `settlements`. A role is shown the views whose feature it holds. */
+const VIEWS: { v: View; label: string; f: "credit" | "settlements" }[] = [
+  { v: "owed", label: "Who owes what", f: "settlements" },
+  { v: "terms", label: "Discounts & limits", f: "credit" },
+  { v: "paid", label: "Settlements", f: "settlements" },
 ];
 
 const EVERY = "Every category";
@@ -90,9 +92,17 @@ export default function Credit() {
   const catalogVersion = useApp((s) => s.catalogVersion);
   const loadReceivables = useApp((s) => s.loadReceivables);
   const openDrawer = useApp((s) => s.openDrawer);
-  const edit = useCan("credit");
+  const editTerms = useCan("credit");
+  const seesTerms = useCan("credit", "view");
+  const editSettlements = useCan("settlements");
+  const seesSettlements = useCan("settlements", "view");
+  const views = VIEWS.filter((x) => (x.f === "credit" ? seesTerms : seesSettlements));
 
-  const [view, setView] = useState<View>("owed");
+  const [pick, setView] = useState<View>("owed");
+  // The screen opens for either feature, so the view asked for may be one this role lacks.
+  const view = views.some((x) => x.v === pick) ? pick : views[0]?.v ?? "terms";
+  const feature = VIEWS.find((x) => x.v === view)!.f;
+  const may = feature === "credit" ? editTerms : editSettlements;
   // Three states, not two: nothing read yet, read and empty, and read and failed. Printing
   // "nobody owes anything" for either of the other two is the one thing this screen must not do.
   const [reading, setReading] = useState(true);
@@ -100,7 +110,11 @@ export default function Credit() {
   // Neither list is on the snapshot - a balance is every bill there has ever been - so the screen
   // asks for both on the way in. After that the change stream keeps them current: a settlement
   // anywhere names `receivables`, and `refetch` calls the same action again.
-  useEffect(() => { void loadReceivables().then(() => { setReading(false); }); }, [loadReceivables]);
+  // Only a role holding Receivables & settlements reads them; the server answers anyone else empty.
+  useEffect(() => {
+    if (!seesSettlements) return;
+    void loadReceivables().then(() => { setReading(false); });
+  }, [loadReceivables, seesSettlements]);
 
   return (
     <>
@@ -108,10 +122,10 @@ export default function Credit() {
         crumbs={["Royal Care", "Credit"]}
         title="Credit & settlements"
         tip="What each party is charged, what they still owe, and what has settled it."
-        readOnly={!edit && "credit"}
+        readOnly={!may && feature}
         actions={
           <div className="seg" role="group" aria-label="View">
-            {VIEWS.map(({ v, label }) => (
+            {views.map(({ v, label }) => (
               <button key={v} type="button" aria-pressed={view === v} className={view === v ? "on" : undefined}
                 onClick={() => setView(v)}>{label}</button>
             ))}
@@ -119,7 +133,7 @@ export default function Credit() {
         }
       />
       {view === "owed" ? <Owed rows={receivables} failed={failed} reading={reading} onOpen={openDrawer} onRetry={loadReceivables} />
-        : view === "terms" ? <Terms version={catalogVersion} edit={edit} />
+        : view === "terms" ? <Terms version={catalogVersion} edit={editTerms} />
           : <Settlements rows={settlements} failed={failed} reading={reading} onRetry={loadReceivables} />}
     </>
   );
