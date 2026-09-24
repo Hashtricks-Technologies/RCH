@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import * as FX from "@rch/contract/fixtures";
 import type { Location } from "@rch/contract";
-import { closeRefusal, holding, HOLDS_OUTLET, operationalKeys, outletKeyFor, outletKeys, placesFor, worksAt } from "./locations";
+import { atOutlet, closeRefusal, holding, HOLDS_OUTLET, operationalKeys, outletKeyFor, outletKeys, placesFor, worksAt } from "./locations";
 
 const juice: Location = { n: "Juice Bar", c: "OT-JB", type: "Outlet", floor: "G", cc: "CC-JB", list: "A", active: true, par: 0.18 };
 const closed = (l: Location): Location => ({ ...l, active: false });
@@ -51,6 +51,9 @@ describe("worksAt / placesFor", () => {
     expect(placesFor("buyer", locs)).toEqual(["store"]);
     expect(placesFor("counter", locs)).toEqual(["coffee", "rest"]);
     expect(placesFor("manager", locs)).toEqual(["coffee", "rest"]);
+  });
+  it("seats the counter and the manager at an outlet, and nobody else", () => {
+    expect((["counter", "manager", "store", "prod", "buyer"] as const).filter(atOutlet)).toEqual(["counter", "manager"]);
   });
 });
 

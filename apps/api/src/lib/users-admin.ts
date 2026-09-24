@@ -1,6 +1,6 @@
 import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import { MIN_PASSWORD_LENGTH, type LocKey, type Role } from "@rch/contract";
-import { nextEmpNo, worksAt } from "@rch/domain";
+import { atOutlet, nextEmpNo, worksAt } from "@rch/domain";
 import type { Db } from "../db/client.js";
 import { idempotencyKeys, refreshTokens, roles, shifts, userPostings, users } from "../db/schema/index.js";
 import { isForeignKeyViolation, withTransaction, type Tx } from "./db.js";
@@ -37,7 +37,7 @@ async function checkPairing(tx: Tx, role: { desk: Role; name: string }, loc: str
     throw e;
   });
   if (worksAt(role.desk, loc, toWireLocation(row))) return;
-  const closedOutlet = (role.desk === "counter" || role.desk === "manager") && row.type === "Outlet" && !row.active;
+  const closedOutlet = atOutlet(role.desk) && row.type === "Outlet" && !row.active;
   throw new ValidationError(closedOutlet
     ? `${role.name} works at ${PLACE[role.desk]} - ${row.name} is closed`
     : `${role.name} works at ${PLACE[role.desk]}, not at ${row.name}`);

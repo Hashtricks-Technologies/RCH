@@ -201,6 +201,26 @@ if [ -n "$store_touch_hits" ]; then
   echo "$store_touch_hits" >&2
 fi
 
+# ---------------------------------------------------------------------------
+# 7) A permission is never a desk. What a caller may do is its role's permissions - `can`,
+#    `holds`, `req.actor.wide`, a route's `need(...)` - which the super admin edits; the desk
+#    (`role` on a token, `r` on a user, `desk` on a role) says only where someone sits. The outlet
+#    manager's desk has no mechanics of its own - where it sits is `atOutlet` in @rch/domain,
+#    shared with the counter - so an equality against "manager" in the API or the UI is always a
+#    permission check wearing a desk's name, the kind the configurable roles replaced: a role given
+#    the manager's features would be refused, and a manager whose role lost them let through.
+#    Tests are exempt: they sign in as the seeded desks.
+# ---------------------------------------------------------------------------
+echo "== permissions: no desk-equality check against \"manager\" in apps/api or the UI =="
+
+desk_exempt_re='\.test\.tsx?:|/__tests__/|^apps/api/src/test/'
+manager_eq='[!=]==?[[:space:]]*["'\'']manager["'\'']|["'\'']manager["'\''][[:space:]]*[!=]==?|case[[:space:]]+["'\'']manager["'\'']'
+manager_hits="$(grep -rn -E "$manager_eq" apps/api/src UI/src --include="*.ts" --include="*.tsx" | grep -v -E "$desk_exempt_re" || true)"
+if [ -n "$manager_hits" ]; then
+  fail_with "a check compares a desk with \"manager\" - ask the role's permissions instead (can/holds from @rch/domain, req.actor.wide, a route's need), or atOutlet for where a desk sits:"
+  echo "$manager_hits" >&2
+fi
+
 if [ "$fail" != "0" ]; then
   echo "" >&2
   echo "One or more reuse-rule boundaries were violated." >&2

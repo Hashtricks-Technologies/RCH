@@ -1,4 +1,4 @@
-import { DESK_DEFAULTS, readsHospitalWide } from "@rch/domain";
+import { atOutlet, DESK_DEFAULTS, readsHospitalWide } from "@rch/domain";
 import type { ClassTerms, Item, Location, Payer, PayerRoster, PayerTerms, Permissions, PriceList, Terms, UserMin } from "../types";
 
 // `STAFF_CREDIT_LIMIT` is deliberately not among these any more: the till reads the ceiling off
@@ -113,6 +113,6 @@ export function hydrateMaster(m: MasterData): void {
  */
 export function homeLabel(u: UserMin & { perms?: Permissions }): string | null {
   if (u.r === "buyer") return null;
-  if ((u.r === "manager" || u.r === "counter") && readsHospitalWide(u.r, u.perms ?? DESK_DEFAULTS[u.r].perms)) return "All outlets";
+  if (atOutlet(u.r) && readsHospitalWide(u.r, u.perms ?? DESK_DEFAULTS[u.r].perms)) return "All outlets";
   return LOC[u.loc].n;
 }

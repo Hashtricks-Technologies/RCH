@@ -35,14 +35,18 @@ export const operationalKeys = (locations: Locations): string[] =>
  */
 export function worksAt(role: Role, key: string, location: Pick<Location, "type" | "active"> | undefined): boolean {
   if (!location) return false;
-  if (role === "prod") return key === KITCHEN;
-  if (role === "store" || role === "buyer") return key === STORE;
-  return location.type === "Outlet" && open(location);
+  if (atOutlet(role)) return location.type === "Outlet" && open(location);
+  return key === (role === "prod" ? KITCHEN : STORE);
 }
+
+/** The desks whose place is an outlet - the counter operator's and the outlet manager's - rather
+ *  than the kitchen or the central store. A question about where a desk sits, never about what a
+ *  role may do: that is a permission (`can`, `holds`). */
+export const atOutlet = (role: Role): boolean => role !== "prod" && role !== "store" && role !== "buyer";
 
 /** The same rule as a picker's list: every location `worksAt` would accept for this role. */
 export const placesFor = (role: Role, locations: Locations): string[] =>
-  role === "prod" ? [KITCHEN] : role === "store" || role === "buyer" ? [STORE] : outletKeys(locations, { open: true });
+  atOutlet(role) ? outletKeys(locations, { open: true }) : [role === "prod" ? KITCHEN : STORE];
 
 /** The keys the code itself names. An outlet called "Store" is fine; its key may not be `store`. */
 const RESERVED: ReadonlySet<string> = new Set([STORE, KITCHEN, QUARANTINE]);

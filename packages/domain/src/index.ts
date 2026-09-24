@@ -5,7 +5,7 @@ export { qty, resv, avail, type Master, type StockMap, type RsvMap, type OvrMap,
 export { priceOf } from "./pricing.js";
 export { parFactor } from "./par.js";
 // ---- outlets: which locations are outlets, which are open, who may work where, and a new one's key.
-export { closeRefusal, holding, HOLDS_OUTLET, operationalKeys, outletKeyFor, outletKeys, placesFor, worksAt, type OutletBlockers } from "./locations.js";
+export { atOutlet, closeRefusal, holding, HOLDS_OUTLET, operationalKeys, outletKeyFor, outletKeys, placesFor, worksAt, type OutletBlockers } from "./locations.js";
 export { availOf, fq } from "./availability.js";
 export { committed, freeToPromise } from "./promise.js";
 export { bestBeforeAt, bestBeforeText } from "./shelf.js";
