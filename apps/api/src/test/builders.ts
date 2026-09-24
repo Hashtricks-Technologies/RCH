@@ -366,4 +366,4 @@ export const given = {
 };
 
 /** The secret every builder-made QR order was placed with. */
-const BUILDER_QR_SECRET = "builder-qr-secret-0123456789abcdefghijklmnop";
+export const BUILDER_QR_SECRET = "builder-qr-secret-0123456789abcdefghijklmnop";
