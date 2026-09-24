@@ -3005,7 +3005,7 @@ Audit log its writes (an order placed, a paid order, a refund sent, processed or
 | `RAZORPAY_WEBHOOK_SECRET` | - | The secret you type into the webhook in the Razorpay dashboard. Verifies every webhook. |
 | `QR_ORDER_MAX_RUPEES` | `5000` | The most one QR order may come to. |
 | `QR_ORDER_TTL_MIN` | `30` | Minutes an unpaid order waits for its payment before it expires. |
-| `QR_WORKER_INTERVAL_MS` | `30000` | How often the QR worker expires unpaid orders and sends queued refunds. `0` stops it - refunds then sit in Pending. Only the tests do that. |
+| `QR_WORKER_INTERVAL_MS` | `30000` | How often the QR worker expires unpaid orders, sends queued refunds and (every couple of minutes at most) reconciles with Razorpay. `0` stops it - refunds then sit in Pending and nothing is reconciled. Only the tests do that. |
 | `QR_PENDING_PER_IP` | `20` | Unpaid orders one address may place in half an hour. |
 
 **Shared Wi-Fi and NAT.** Every phone on the hospital's guest Wi-Fi - and many on one mobile
