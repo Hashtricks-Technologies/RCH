@@ -616,7 +616,6 @@ export function createQrService({ db, gateway, config, nudge }: QrServiceDeps) {
   };
 }
 
-export type QrService = ReturnType<typeof createQrService>;
 
 // ---- the webhook's JSON, read defensively: only what the handlers use is trusted, and only once
 // its type is checked.
