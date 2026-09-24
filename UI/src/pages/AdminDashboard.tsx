@@ -6,13 +6,14 @@ import Drawer from "../ui/Drawer";
 import AdminAudit from "./AdminAudit";
 import AdminOutlets from "./AdminOutlets";
 import AdminPayers from "./AdminPayers";
+import AdminQrCodes from "./AdminQrCodes";
 import AdminRegisters from "./AdminRegisters";
 import AdminRoles from "./AdminRoles";
 import AdminSupport from "./AdminSupport";
 import AdminUsers from "./AdminUsers";
 import mark from "../assets/eateszy-mark.png";
 
-type Tab = "accounts" | "roles" | "outlets" | "registers" | "payers" | "support" | "audit";
+type Tab = "accounts" | "roles" | "outlets" | "qr" | "registers" | "payers" | "support" | "audit";
 
 /**
  * The whole of an admin-flagged account's experience - a capability, not a role (root
@@ -21,8 +22,8 @@ type Tab = "accounts" | "roles" | "outlets" | "registers" | "payers" | "support"
  * and here is the only place it can ever reach - this file supplies the entire page, chrome
  * included, rather than being hosted inside `Shell`.
  *
- * Seven tabs: staff accounts, the roles they hold and what each grants, the hospital's retail
- * outlets, every outlet's register (the X, the Zs, and closing the day), the payer register of
+ * Eight tabs: staff accounts, the roles they hold and what each grants, the hospital's retail
+ * outlets, the QR codes placed around them and each outlet's ordering hours, every outlet's register (the X, the Zs, and closing the day), the payer register of
  * everyone a bill may be posted to, the support desk that answers every role's tickets, and the
  * audit log of every change and sign-in.
  */
@@ -32,6 +33,7 @@ export default function AdminDashboard() {
   const loadDeskTickets = useApp((s) => s.loadDeskTickets);
   const loadAdminLocations = useApp((s) => s.loadAdminLocations);
   const loadAdminPayers = useApp((s) => s.loadAdminPayers);
+  const loadAdminQrCodes = useApp((s) => s.loadAdminQrCodes);
   const waiting = useApp((s) => s.deskTickets.filter((t) => t.st === "Open" || t.st === "With support").length);
   const nav = useNavigate();
   const [tab, setTab] = useState<Tab>("accounts");
@@ -39,10 +41,10 @@ export default function AdminDashboard() {
   // Read here rather than on the desk tab, so the count beside it is right before it is opened.
   // After this first read the change stream keeps the list current (`refetch`'s `tickets`).
   // The location list is read here too, so every tab has its labels the moment it is opened,
-  // not only the Outlets tab that manages them, and the payer register with it.
+  // not only the Outlets tab that manages them, and the payer register and the QR codes with it.
   useEffect(() => {
-    void loadDeskTickets(); void loadAdminLocations(); void loadAdminPayers();
-  }, [loadDeskTickets, loadAdminLocations, loadAdminPayers]);
+    void loadDeskTickets(); void loadAdminLocations(); void loadAdminPayers(); void loadAdminQrCodes();
+  }, [loadDeskTickets, loadAdminLocations, loadAdminPayers, loadAdminQrCodes]);
 
   return (
     <div id="admin-dash">
@@ -55,6 +57,8 @@ export default function AdminDashboard() {
             onClick={() => setTab("roles")}>Roles</button>
           <button type="button" role="tab" aria-selected={tab === "outlets"} className={tab === "outlets" ? "on" : undefined}
             onClick={() => setTab("outlets")}>Outlets</button>
+          <button type="button" role="tab" aria-selected={tab === "qr"} className={tab === "qr" ? "on" : undefined}
+            onClick={() => setTab("qr")}>QR codes</button>
           <button type="button" role="tab" aria-selected={tab === "registers"} className={tab === "registers" ? "on" : undefined}
             onClick={() => setTab("registers")}>Registers</button>
           <button type="button" role="tab" aria-selected={tab === "payers"} className={tab === "payers" ? "on" : undefined}
@@ -74,6 +78,7 @@ export default function AdminDashboard() {
         {tab === "accounts" ? <AdminUsers />
           : tab === "roles" ? <AdminRoles />
             : tab === "outlets" ? <AdminOutlets />
+              : tab === "qr" ? <AdminQrCodes />
               : tab === "registers" ? <AdminRegisters />
                 : tab === "payers" ? <AdminPayers />
                   : tab === "support" ? <AdminSupport /> : <AdminAudit />}

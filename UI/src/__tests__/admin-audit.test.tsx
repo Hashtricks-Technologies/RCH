@@ -58,7 +58,7 @@ const page = (rows: AuditRow[], next: number | null = null, counts: AuditCounts 
 const FIRST = page([row(43), FAILED_SIGN_IN], 42);
 
 /** The reads the page makes as it opens (the accounts tab, the desk count, the outlet list, the
- *  payer register, the role list, the Person picker), so no stray failure toast lands over the audit log. */
+ *  payer register, the QR codes, the role list, the Person picker), so no stray failure toast lands over the audit log. */
 const BASE: Stubs = {
   "GET /api/v1/admin/users": () => json([KAVITHA]),
   "GET /api/v1/admin/actions": () => json([]),
@@ -66,6 +66,7 @@ const BASE: Stubs = {
   "GET /api/v1/admin/locations": () => json([]),
   "GET /api/v1/admin/payers": () => json([]),
   "GET /api/v1/admin/roles": () => json([]),
+  "GET /api/v1/admin/qr-codes": () => json({ codes: [], hours: [] }),
 };
 
 const tick = (ms = 0) => act(async () => { await new Promise((r) => { setTimeout(r, ms); }); });

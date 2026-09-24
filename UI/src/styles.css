@@ -685,6 +685,8 @@ thead th .tip{margin-left:4px}
   font-size:11px;line-height:18px;text-align:center}
 @media(max-width:640px){.adm-who{display:none}.adm-brand{font-size:0;gap:0}.adm-tabs{margin-left:0;flex:1}}
 .adm-body{max-width:1180px;margin:0 auto;padding:20px 18px 46px}
+/* The QR codes tab: a closed outlet's codes stay listed, greyed, since they take no orders. */
+.qr-closed tbody{opacity:.55}
 
 /* ---------- admin: audit log ---------- */
 td.aud-two small{display:block;font-weight:400;font-size:10.5px;color:var(--ink-3);font-family:"IBM Plex Mono",monospace;margin-top:1px}
