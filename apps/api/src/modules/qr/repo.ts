@@ -99,10 +99,10 @@ export const qrRepo = {
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`qr-phone:${phone}`}))`);
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`qr-ip:${ip}`}))`);
   },
-  /** Unpaid orders this phone has open at this outlet - still inside their window. */
-  async pendingForPhone(tx: Tx, loc: string, phone: string, now: Date): Promise<number> {
+  /** Unpaid orders this phone has open at any outlet - still inside their window. */
+  async pendingForPhone(tx: Tx, phone: string, now: Date): Promise<number> {
     const [r] = await tx.select({ n: sql<number>`count(*)::int` }).from(qrOrders)
-      .where(and(eq(qrOrders.loc, loc), eq(qrOrders.customerPhone, phone), eq(qrOrders.status, "Awaiting payment"), gt(qrOrders.expiresAt, now)));
+      .where(and(eq(qrOrders.customerPhone, phone), eq(qrOrders.status, "Awaiting payment"), gt(qrOrders.expiresAt, now)));
     return r.n;
   },
   /** Unpaid orders placed from this address since `since`, at any outlet. */

@@ -407,9 +407,10 @@ export function createQrService({ db, gateway, config, nudge }: QrServiceDeps) {
           assertRule(!(await qrRepo.paused(tx, [code.loc]))[code.loc], pausedRefusal(loc.name));
 
           await qrRepo.lockCaps(tx, phone, meta.ip);
-          const pending = await qrRepo.pendingForPhone(tx, code.loc, phone, now);
+          // Hospital-wide: one phone's unpaid orders count wherever they were placed.
+          const pending = await qrRepo.pendingForPhone(tx, phone, now);
           assertRule(pending < QR_PENDING_PER_PHONE,
-            `You already have ${pending} unpaid orders at ${loc.name} - pay for one, or let it lapse, before placing another.`);
+            `You already have ${pending} unpaid orders - pay for one, or let it lapse, before placing another.`);
           if (await qrRepo.pendingForIp(tx, meta.ip, new Date(now.getTime() - IP_WINDOW_MS)) >= config.pendingPerIp) {
             throw new RateLimitedError("Too many unpaid orders from this connection - pay for one, or try again in a few minutes.");
           }

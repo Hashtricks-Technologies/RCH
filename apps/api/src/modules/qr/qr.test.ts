@@ -257,7 +257,12 @@ describe("POST /public/qr/:token/orders - placing an order", () => {
     for (let i = 0; i < 3; i++) expect((await place(coffee.token, [{ it: "capp", qty: 1 }], { phone })).statusCode).toBe(200);
     const fourth = await place(coffee.token, [{ it: "capp", qty: 1 }], { phone });
     expect(fourth.statusCode).toBe(422);
-    expect(fourth.json().error.message).toBe("You already have 3 unpaid orders at Coffee Shop - pay for one, or let it lapse, before placing another.");
+    expect(fourth.json().error.message).toBe("You already have 3 unpaid orders - pay for one, or let it lapse, before placing another.");
+    // Hospital-wide: the same phone at another outlet is refused too.
+    const rest = await given.qrCode(app.db, { loc: "rest", label: "Table 1" });
+    const elsewhere = await place(rest.token, [{ it: "capp", qty: 1 }], { phone });
+    expect(elsewhere.statusCode).toBe(422);
+    expect(elsewhere.json().error.message).toBe(fourth.json().error.message);
 
     const ip = nextIp();
     for (let i = 0; i < 5; i++) expect((await place(coffee.token, [{ it: "capp", qty: 1 }], { ip })).statusCode).toBe(200);
