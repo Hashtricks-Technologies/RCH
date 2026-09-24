@@ -109,4 +109,35 @@ describe("loadConfig", () => {
     expect(() => loadConfig({ ...good, NODE_ENV: "production" })).toThrow(/IMAGE_STORE/);
     expect(loadConfig({ ...good, NODE_ENV: "production", IMAGE_STORE: "s3", IMAGE_BUCKET: "b-1", AWS_REGION: "ap-south-1" }).images.store).toBe("s3");
   });
+
+  // ---- QR ordering ----
+  const keys = { RAZORPAY_KEY_ID: "rzp_test_abc", RAZORPAY_KEY_SECRET: "sk", RAZORPAY_WEBHOOK_SECRET: "wh" };
+  it("leaves the payment gateway off with no keys, and with the empty strings Compose passes", () => {
+    expect(loadConfig(good).razorpay).toBeNull();
+    expect(loadConfig({ ...good, RAZORPAY_KEY_ID: "", RAZORPAY_KEY_SECRET: "", RAZORPAY_WEBHOOK_SECRET: "" }).razorpay).toBeNull();
+  });
+  it("switches the gateway on with all three keys", () => {
+    expect(loadConfig({ ...good, ...keys }).razorpay).toEqual({ keyId: "rzp_test_abc", keySecret: "sk", webhookSecret: "wh" });
+  });
+  it("refuses some of the keys without the others, naming each one missing", () => {
+    expect(() => loadConfig({ ...good, RAZORPAY_KEY_ID: "rzp_test_abc" })).toThrow(ConfigError);
+    expect(() => loadConfig({ ...good, ...keys, RAZORPAY_WEBHOOK_SECRET: "" })).toThrow(/RAZORPAY_WEBHOOK_SECRET: set all three/);
+    let message = "";
+    try { loadConfig({ ...good, RAZORPAY_KEY_SECRET: "sk" }); } catch (e) { message = (e as Error).message; }
+    expect(message).toMatch(/RAZORPAY_KEY_ID/);
+    expect(message).toMatch(/RAZORPAY_WEBHOOK_SECRET/);
+    expect(message).not.toMatch(/RAZORPAY_KEY_SECRET:/);
+  });
+  it("defaults the QR tunables, and reads an empty value as the default rather than zero", () => {
+    const dflt = { maxRupees: 5000, ttlMin: 30, workerIntervalMs: 30_000 };
+    expect(loadConfig(good).qr).toEqual(dflt);
+    expect(loadConfig({ ...good, QR_ORDER_MAX_RUPEES: "", QR_ORDER_TTL_MIN: "", QR_WORKER_INTERVAL_MS: "" }).qr).toEqual(dflt);
+    expect(loadConfig({ ...good, QR_ORDER_MAX_RUPEES: "2500", QR_ORDER_TTL_MIN: "15", QR_WORKER_INTERVAL_MS: "0" }).qr)
+      .toEqual({ maxRupees: 2500, ttlMin: 15, workerIntervalMs: 0 });
+  });
+  it("refuses a QR tunable out of range or not a whole number", () => {
+    expect(() => loadConfig({ ...good, QR_ORDER_MAX_RUPEES: "0" })).toThrow(/QR_ORDER_MAX_RUPEES/);
+    expect(() => loadConfig({ ...good, QR_ORDER_TTL_MIN: "1.5" })).toThrow(/QR_ORDER_TTL_MIN/);
+    expect(() => loadConfig({ ...good, QR_WORKER_INTERVAL_MS: "-1" })).toThrow(/QR_WORKER_INTERVAL_MS/);
+  });
 });

@@ -1,7 +1,14 @@
 import { z } from "zod";
+import { QR_MAX_RUPEES } from "@rch/domain";
 
 const bool = z.enum(["true", "false"]).transform((v) => v === "true");
 const int = (min: number, max: number) => z.coerce.number().int().min(min).max(max);
+/** Compose hands every variable it names to the container, set or not - `${X:-}` is an empty
+ *  string, not an absent one - so for the optional QR settings an empty value means "unset": the
+ *  default for a number (never `0`, which `z.coerce` would make of it), and no key for a secret. */
+const blank = (v: unknown) => (v === "" ? undefined : v);
+const optionalSecret = z.preprocess(blank, z.string().min(1).optional());
+const intOr = (min: number, max: number, dflt: number) => z.preprocess(blank, int(min, max).default(dflt));
 
 const EnvShape = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
@@ -48,6 +55,17 @@ const EnvShape = z.object({
   IMAGE_DIR: z.string().min(1).default(".data/images"),
   IMAGE_BUCKET: z.string().min(3).optional(),
   AWS_REGION: z.string().min(1).optional(),
+  // ---- QR ordering (deploy/RUNBOOK.md §19). The three keys are all or nothing: with none, the
+  // gateway is off (`app.payments` is null) and placing a QR order answers 503.
+  RAZORPAY_KEY_ID: optionalSecret,
+  RAZORPAY_KEY_SECRET: optionalSecret,
+  RAZORPAY_WEBHOOK_SECRET: optionalSecret,
+  /** The most one QR order may come to, in rupees. */
+  QR_ORDER_MAX_RUPEES: intOr(1, 1_000_000, QR_MAX_RUPEES),
+  /** Minutes an unpaid QR order waits for its payment before the worker expires it. */
+  QR_ORDER_TTL_MIN: intOr(1, 24 * 60, 30),
+  /** Milliseconds between QR worker passes (expiry and refunds). `0` switches the worker off. */
+  QR_WORKER_INTERVAL_MS: intOr(0, 3_600_000, 30_000),
 });
 
 const Env = EnvShape.superRefine((e, ctx) => {
@@ -56,6 +74,14 @@ const Env = EnvShape.superRefine((e, ctx) => {
     if (!e.AWS_REGION) ctx.addIssue({ code: "custom", path: ["AWS_REGION"], message: "required when IMAGE_STORE=s3" });
   } else if (e.NODE_ENV === "production") {
     ctx.addIssue({ code: "custom", path: ["IMAGE_STORE"], message: "production keeps photos in S3 - set IMAGE_STORE=s3, IMAGE_BUCKET and AWS_REGION" });
+  }
+  // Some of the three keys and not the others is a half-finished setup, not a choice: refused at
+  // start-up rather than left to answer 503 to every customer while looking configured.
+  const keys = [e.RAZORPAY_KEY_ID, e.RAZORPAY_KEY_SECRET, e.RAZORPAY_WEBHOOK_SECRET];
+  if (keys.some(Boolean) && !keys.every(Boolean)) {
+    for (const [k, v] of [["RAZORPAY_KEY_ID", e.RAZORPAY_KEY_ID], ["RAZORPAY_KEY_SECRET", e.RAZORPAY_KEY_SECRET], ["RAZORPAY_WEBHOOK_SECRET", e.RAZORPAY_WEBHOOK_SECRET]] as const) {
+      if (!v) ctx.addIssue({ code: "custom", path: [k], message: "set all three Razorpay keys together, or none of them" });
+    }
   }
 });
 
@@ -87,6 +113,10 @@ export type Config = Readonly<{
   trustProxy: boolean | string | ((address: string, hop: number) => boolean);
   // ---- item photos ----
   images: { store: "disk"; dir: string } | { store: "s3"; bucket: string; region: string };
+  // ---- QR ordering ----
+  /** The payment gateway's keys, or null when none are set (the gateway is off). */
+  razorpay: { keyId: string; keySecret: string; webhookSecret: string } | null;
+  qr: { maxRupees: number; ttlMin: number; workerIntervalMs: number };
 }>;
 
 const pem = (b64: string) => Buffer.from(b64, "base64").toString("utf8");
@@ -156,6 +186,11 @@ export function loadConfig(env: NodeJS.ProcessEnv): Config {
     images: e.IMAGE_STORE === "s3"
       ? ({ store: "s3", bucket: e.IMAGE_BUCKET ?? "", region: e.AWS_REGION ?? "" } as const)
       : ({ store: "disk", dir: e.IMAGE_DIR } as const),
+    // ---- QR ordering ----
+    razorpay: e.RAZORPAY_KEY_ID && e.RAZORPAY_KEY_SECRET && e.RAZORPAY_WEBHOOK_SECRET
+      ? { keyId: e.RAZORPAY_KEY_ID, keySecret: e.RAZORPAY_KEY_SECRET, webhookSecret: e.RAZORPAY_WEBHOOK_SECRET }
+      : null,
+    qr: { maxRupees: e.QR_ORDER_MAX_RUPEES, ttlMin: e.QR_ORDER_TTL_MIN, workerIntervalMs: e.QR_WORKER_INTERVAL_MS },
   });
 }
 
