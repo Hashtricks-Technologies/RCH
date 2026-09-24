@@ -345,6 +345,14 @@ moves and reports stay, its menu, availability overrides and price list are kept
 and a reopen restores it. The store and the kitchen are fixed and are not listed here; a new outlet
 appears in every other picker - the Accounts tab's location select included - the moment it opens.
 
+**Registers, on `/admin`.** Closing the day is the super admin's by default: no seeded role holds Z
+reports. The Registers tab picks any outlet (a closed one is labelled so) and draws the same register
+panel the operators' Register screen does - the live X with Take X-report, the closed sessions with
+their slips, and Close register & take Z behind its confirm and the optional counted cash. The slip
+prints the outlet's name. On the operators' Register screen each part now follows the role: the X
+with X reports, the Z list with Z reports at view, the close with Z reports at edit, and the Shift
+reports card with Shift reports.
+
 **Payers, on `/admin`.** The admin-flagged account's Payers tab is the register of everyone a bill may
 be posted to - staff, departments and doctors - with, for each, whether the till may still
 bill to them, what they still owe and how many of their bills are open. Still-billing ones come first,

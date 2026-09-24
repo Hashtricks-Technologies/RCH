@@ -6,11 +6,12 @@ import Drawer from "../ui/Drawer";
 import AdminAudit from "./AdminAudit";
 import AdminOutlets from "./AdminOutlets";
 import AdminPayers from "./AdminPayers";
+import AdminRegisters from "./AdminRegisters";
 import AdminSupport from "./AdminSupport";
 import AdminUsers from "./AdminUsers";
 import mark from "../assets/eateszy-mark.png";
 
-type Tab = "accounts" | "outlets" | "payers" | "support" | "audit";
+type Tab = "accounts" | "outlets" | "registers" | "payers" | "support" | "audit";
 
 /**
  * The whole of an admin-flagged account's experience - a capability, not a role (root
@@ -19,9 +20,9 @@ type Tab = "accounts" | "outlets" | "payers" | "support" | "audit";
  * and here is the only place it can ever reach - this file supplies the entire page, chrome
  * included, rather than being hosted inside `Shell`.
  *
- * Five tabs: staff accounts, the hospital's retail outlets, the payer register of everyone a
- * bill may be posted to, the support desk that answers every role's tickets, and the audit log
- * of every change and sign-in.
+ * Six tabs: staff accounts, the hospital's retail outlets, every outlet's register (the X, the Zs, and closing the day), the payer register of
+ * everyone a bill may be posted to, the support desk that answers every role's tickets, and the
+ * audit log of every change and sign-in.
  */
 export default function AdminDashboard() {
   const user = useApp((s) => s.user)!;
@@ -50,6 +51,8 @@ export default function AdminDashboard() {
             onClick={() => setTab("accounts")}>Accounts</button>
           <button type="button" role="tab" aria-selected={tab === "outlets"} className={tab === "outlets" ? "on" : undefined}
             onClick={() => setTab("outlets")}>Outlets</button>
+          <button type="button" role="tab" aria-selected={tab === "registers"} className={tab === "registers" ? "on" : undefined}
+            onClick={() => setTab("registers")}>Registers</button>
           <button type="button" role="tab" aria-selected={tab === "payers"} className={tab === "payers" ? "on" : undefined}
             onClick={() => setTab("payers")}>Payers</button>
           <button type="button" role="tab" aria-selected={tab === "support"} className={tab === "support" ? "on" : undefined}
@@ -66,8 +69,9 @@ export default function AdminDashboard() {
       <div className="adm-body" role="tabpanel">
         {tab === "accounts" ? <AdminUsers />
           : tab === "outlets" ? <AdminOutlets />
-            : tab === "payers" ? <AdminPayers />
-              : tab === "support" ? <AdminSupport /> : <AdminAudit />}
+              : tab === "registers" ? <AdminRegisters />
+                : tab === "payers" ? <AdminPayers />
+                  : tab === "support" ? <AdminSupport /> : <AdminAudit />}
       </div>
       {/* Every other screen gets its drawer host from `Shell`, which this page never renders, so it
           mounts its own. The audit log opens each of its entries in a drawer. */}

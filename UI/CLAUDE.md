@@ -61,8 +61,11 @@ and `kitchen-stock` were all `stock`; `kitchen-orders` and `purchase-orders` wer
 
 Routing is `BrowserRouter`, with plain paths (`/pos`, `/admin`). An admin-flagged account never gets a
 `<Shell>`: it only ever sees `pages/AdminDashboard.tsx` at `/admin`, and any other key bounces it back there.
-That page has five tabs: `AdminUsers` (staff accounts), `AdminOutlets` (the hospital's retail outlets - opened,
-edited, closed and reopened; never deleted), `AdminPayers` (the payer register: who a bill may be posted to -
+That page has six tabs: `AdminUsers` (staff accounts), `AdminOutlets` (the hospital's retail outlets - opened,
+edited, closed and reopened; never deleted), `AdminRegisters` (any outlet's register through
+`ui/RegisterPanel.tsx` with every flag on: every read and the close name `loc`, since the register routes
+admit the admin token only with one, and the outlet's name is passed in because `LOC` is empty for this
+session), `AdminPayers` (the payer register: who a bill may be posted to -
 added, renamed and switched off, never deleted, so a balance always keeps an id somebody can find),
 `AdminSupport` (the support desk: every role's tickets) and
 `AdminAudit` (the audit log: every write and sign-in, newest first, with filters, counts and a CSV export).
@@ -202,6 +205,14 @@ try {
   `readXReport` as they mount, so a test that renders one must stub it - unstubbed it reaches
   `fetch`, and under `vi.useFakeTimers()` it never settles. `src/__tests__/time.test.tsx` stubs it
   once in `beforeEach`.
+- **The register is `ui/RegisterPanel.tsx`**, drawn by the operators' `ui/Register.tsx` and the admin's
+  `AdminRegisters.tsx` with `{ loc, locName, canX, canZ, canClose, showShifts? }`. `Register.tsx` passes
+  `useCan("x_report", "view")`, `useCan("z_report", "view")`, `useCan("z_report", "edit")` and
+  `shift_reports`: the X and its figures, the Past Z-reports list and the Close register & take Z control
+  are each drawn - and each read made - only for a role that holds them. No seeded role holds `z_report`,
+  so a seeded counter or manager sees the X and no Z. Close shift stays on the counter desk. The panel is
+  keyed on `loc`, so a new outlet starts its reads and its paper afresh, and `RegisterSlip` takes the
+  panel's `place` for its heading.
 - **`readXReport` / `readZReports` answer `null` on failure**, never an empty report, so a screen
   can say "could not be read" instead of "nothing taken" - the distinction `AdminAudit.tsx` draws.
 - **Shifts (`store/shifts.ts`).** `ui/CloseShift.tsx` is the counter's Close shift button and its `Modal`
@@ -245,6 +256,9 @@ try {
   - **`roles`** re-reads `GET /me` for an operator: a changed name is simply taken, and a changed desk or
     permissions reloads the snapshot, after which the `Screen` guard takes away whatever the role no
     longer grants. For the super admin it reads nothing yet - the Roles tab's own list is Wave 3F's.
+  - **The super admin's session reads back only `ADMIN_READS`** (`tickets`, `payers`, `roles`, `accounts`,
+    `outlets`, `audit`); every other collection is a no-op for it. Its stream hears every collection, and
+    a Z it takes on the Registers tab names `bills` - a read its token would be answered 404 on.
 - **`wire.ts`** holds the mappers from server shape to store shape.
   - An ISO time becomes `"HH:MM"` only here, and **`iso` is kept beside it** on every document and history
     entry (`Dated<T>`, `Trailed<T>` and `DatedDoc<T>` in `types.ts`).
@@ -388,6 +402,11 @@ a background refresh and must not blank the screen.
   the empty state. **`audit-lib.test.ts`** pins `lib/audit.ts`'s `auditDayRange`, `deviceOf`, `diffFields` (one
   level into a nested object, arrays compared whole) and `auditCsv`. `writes.test.ts` covers the slice's reads
   and `refetch`'s `audit` reader.
+- **`admin-registers.test.tsx`** drives the
+  Registers tab: outlets only (closed ones labelled), every read naming `loc`, another pick, an X printed
+  under the outlet's name, the Z with its counted cash reading no `bills` back, and a past Z printed.
+  `screens.test.tsx`'s register cases pin the operators' gating: a seeded counter or manager sees the X and
+  no Z list or close, `z_report` at view adds the list, at edit the close.
 - **`shifts.test.tsx`** drives the shift slice on the wire, the Close Shift dialog (live report, print,
   close, sign-out; a refusal keeping the session; none open; an outage), the manager's Shift reports card
   and the bell row.

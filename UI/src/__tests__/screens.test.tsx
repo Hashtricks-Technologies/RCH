@@ -24,6 +24,7 @@ import { allOutlets, madeItems } from "../lib/selectors";
 import { Alert } from "../ui/kit";
 import type { PoolLine } from "../lib/selectors";
 import type { Bill, Dated, DatedDoc, RegisterReport, Role, StockRequest, SupportTicket, Ticket, Trailed } from "../types";
+import { DESK_DEFAULTS } from "@rch/domain";
 import { as, deskScreens, resetStore, userOf } from "./fixture";
 
 // Nothing in production code carries data any more: the registries are empty until a snapshot
@@ -1622,45 +1623,72 @@ describe("the register", () => {
     Object.defineProperty(window, "print", { value: printed, configurable: true, writable: true });
   });
 
+  /** Z reports are held by no seeded role; `z` gives the session's role that much of them. */
   async function openRegister(role: Role, o: {
     x?: () => Promise<RegisterReport | null>;
     zs?: () => Promise<RegisterReport[] | null>;
     close?: () => Promise<RegisterReport | null>;
+    z?: "view" | "edit";
   } = {}) {
     const readXReport = vi.fn(o.x ?? (async () => xReport()));
     const readZReports = vi.fn(o.zs ?? (async () => [zReport()]));
     const closeRegister = vi.fn(o.close ?? (async () => zReport()));
-    act(() => { as(role); useApp.setState({ readXReport, readZReports, closeRegister }); });
+    act(() => {
+      as(role);
+      const seeded = DESK_DEFAULTS[role].perms;
+      if (o.z) useApp.setState({ user: { ...useApp.getState().user!, perms: { f: { ...seeded.f, z_report: o.z }, a: seeded.a } } });
+      useApp.setState({ readXReport, readZReports, closeRegister });
+    });
     const ui = mount(deskScreens(role).register);
-    await settle(() => { /* let the two reads land */ });
+    await settle(() => { /* let the reads land */ });
     return { ui, readXReport, readZReports, closeRegister };
   }
 
-  it("counter: reads its own outlet's open session and offers both readings", async () => {
+  it("counter: reads its own outlet's open session - the X, and no Z, as seeded", async () => {
     const { ui, readXReport, readZReports } = await openRegister("counter");
     expect(readXReport).toHaveBeenCalledWith("coffee");
-    expect(readZReports).toHaveBeenCalledWith("coffee");
     expect(ui.text()).toContain("Take X-report");
-    expect(ui.text()).toContain("Close register & take Z");
     // The session it follows, so the window is Z to Z and says so.
     expect(ui.text()).toContain("Z-0041");
     expect(kpiValue(ui.host, "Nett sales this session")).toBe("₹4,700");
-    // The Z already closed here is on the list, not in the takings.
-    expect(ui.text()).toContain("Z-0042");
+    // Closing the day is the super admin's until a role is given Z reports: no list, no close,
+    // and the list is never even asked for.
+    expect(readZReports).not.toHaveBeenCalled();
+    expect(ui.text()).not.toContain("Close register & take Z");
+    expect(ui.text()).not.toContain("Past Z-reports");
+    expect(ui.host.querySelector('input[inputmode="decimal"]')).toBeNull();
     // A counter has exactly one register: no outlet picker.
     expect(ui.host.querySelector('select[aria-label="Outlet"]')).toBeNull();
   });
 
-  it("manager: the same register, over any open outlet", async () => {
-    const { ui, readXReport } = await openRegister("manager");
+  it("manager: the same register, over any open outlet - the X, and no Z, as seeded", async () => {
+    const { ui, readXReport, readZReports } = await openRegister("manager");
     expect(readXReport).toHaveBeenCalledTimes(1);
     expect(ui.host.querySelector('select[aria-label="Outlet"]')).toBeTruthy();
     expect(ui.text()).toContain("Take X-report");
+    expect(readZReports).not.toHaveBeenCalled();
+    expect(ui.text()).not.toContain("Close register & take Z");
+    expect(ui.text()).not.toContain("Past Z-reports");
+  });
+
+  it("a role given Z reports at view lists the closed sessions but cannot close", async () => {
+    const { ui, readZReports } = await openRegister("manager", { z: "view" });
+    expect(readZReports).toHaveBeenCalledTimes(1);
+    expect(ui.text()).toContain("Past Z-reports");
+    expect(ui.text()).toContain("Z-0042");
+    expect(ui.text()).not.toContain("Close register & take Z");
+  });
+
+  it("a role given Z reports at edit lists them and takes the Z", async () => {
+    const { ui } = await openRegister("counter", { z: "edit" });
+    expect(ui.text()).toContain("Past Z-reports");
     expect(ui.text()).toContain("Close register & take Z");
+    // The counter desk keeps its own Close shift beside it.
+    expect(ui.text()).toContain("Close shift");
   });
 
   it("an X re-reads and prints, and closes nothing", async () => {
-    const { ui, readXReport, readZReports, closeRegister } = await openRegister("counter");
+    const { ui, readXReport, readZReports, closeRegister } = await openRegister("counter", { z: "edit" });
     expect(readXReport).toHaveBeenCalledTimes(1);
     await settle(() => { ui.button("Take X-report").click(); });
     // Read again, printed, and the register is exactly where it was: an X is not a document.
@@ -1672,7 +1700,7 @@ describe("the register", () => {
   });
 
   it("will not close the register until the irreversibility has been confirmed", async () => {
-    const { ui, closeRegister } = await openRegister("counter");
+    const { ui, closeRegister } = await openRegister("counter", { z: "edit" });
     act(() => { ui.button("Close register & take Z").click(); });
     // One press is a question, not a Z.
     expect(closeRegister).not.toHaveBeenCalled();
@@ -1709,7 +1737,7 @@ describe("the register", () => {
   });
 
   it("says the register could not be read, never that nothing was taken", async () => {
-    const { ui } = await openRegister("counter", { x: async () => null, zs: async () => null });
+    const { ui } = await openRegister("counter", { x: async () => null, zs: async () => null, z: "view" });
     expect(ui.text()).toContain("Could not read the register");
     expect(ui.text()).toContain("This is not a session that took nothing");
     expect(ui.text()).toContain("Could not read the closed sessions");

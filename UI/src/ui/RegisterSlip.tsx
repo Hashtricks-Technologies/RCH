@@ -20,7 +20,12 @@ import type { RegisterReport } from "../types";
  * to notice. `oldBills` is money taken in this session against bills from an earlier one, so it
  * is shown apart from the sale figures and is never added into nett sales.
  */
-export function RegisterSlip({ r, countedCash }: { r: RegisterReport; countedCash?: number }) {
+export function RegisterSlip({ r, countedCash, place }: {
+  r: RegisterReport; countedCash?: number;
+  /** The outlet's name, where the location master is not loaded - the super admin's session
+   *  reads no snapshot, so `locName` would print the bare key. */
+  place?: string;
+}) {
   const t = r.totals;
   // What the drawer itself should hold: the cash tender, not the takings. Card, UPI and anything
   // charged to an account never reach it, which is the whole point of counting it separately.
@@ -28,7 +33,7 @@ export function RegisterSlip({ r, countedCash }: { r: RegisterReport; countedCas
   const counted = countedCash ?? null;
   return (
     <div className="print-slip" aria-hidden>
-      <h2>{r.kind === "Z" ? "Z-report" : "X-report"} - {locName(r.loc)}</h2>
+      <h2>{r.kind === "Z" ? "Z-report" : "X-report"} - {place ?? locName(r.loc)}</h2>
       <div>
         {r.kind === "Z"
           ? <>Z number <b>{r.zNo ?? "-"}</b> - this session is closed.</>

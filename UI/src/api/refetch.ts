@@ -30,6 +30,14 @@ async function rereadMe(): Promise<void> {
   }
 }
 
+/**
+ * What the super admin's session reads back at all. Its token reaches no operational read, yet
+ * its stream hears every collection - and since the Registers tab it takes Zs itself, whose reply
+ * names `bills`. Anything else is a no-op for that session rather than a 404 that would qualify
+ * the write's own sentence with "the screen could not be refreshed".
+ */
+const ADMIN_READS: ReadonlySet<Changed> = new Set<Changed>(["tickets", "payers", "roles", "accounts", "outlets", "audit"]);
+
 /** The slices `GET /stock` answers for, in one call. */
 const STOCK: readonly Changed[] = ["stock", "rsv", "ovr"];
 
@@ -133,7 +141,8 @@ const NARROW: Partial<Record<Changed, () => Promise<void>>> = {
  * kept and qualified rather than replaced, so the operator still learns their bill was taken.
  */
 export async function refetch(changed: readonly Changed[], after?: string): Promise<void> {
-  const want = new Set<Changed>(changed);
+  const admin = useApp.getState().user?.admin === true;
+  const want = new Set<Changed>(admin ? changed.filter((c) => ADMIN_READS.has(c)) : changed);
   try {
     if ([...want].some((c) => !NARROW[c] && !STOCK.includes(c))) {
       await useApp.getState().loadSnapshot();
