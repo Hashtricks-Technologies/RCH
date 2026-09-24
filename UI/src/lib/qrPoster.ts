@@ -1,4 +1,5 @@
 import type { QrMode } from "../types";
+import { menuPath } from "./orderPath";
 
 /**
  * The poster a QR code is printed on, placed where the customer scans it: an A5 portrait page with
@@ -10,8 +11,24 @@ import type { QrMode } from "../types";
 const HOSPITAL = "Royal Care Hospital";
 
 /** The link a code encodes: the customer's ordering page for that token, on the host the admin
- *  is signed in to - so a poster for the live hospital is printed from the live domain. */
-export const qrOrderUrl = (token: string): string => `${window.location.origin}/order/${token}`;
+ *  is signed in to - so a poster for the live hospital is printed from the live domain. The token
+ *  is encoded exactly as the page's own `menuPath` does. */
+export const qrOrderUrl = (token: string): string => `${window.location.origin}${menuPath(token)}`;
+
+/** A host no customer's phone can reach, or reach safely: a loopback, a bare IP, a `.localhost`. */
+const LOCAL_HOST = /^(localhost|.*\.localhost|\d{1,3}(\.\d{1,3}){3}|\[[0-9a-f:.]+\])$/i;
+
+/**
+ * Why a poster printed from `origin` would not work on a customer's phone - an address that is not
+ * https, or is a loopback or a bare IP - or null when it is fine. The download still works; the
+ * admin is told before printing a stack of codes that point at a laptop.
+ */
+export function posterOriginWarning(origin: string = window.location.origin): string | null {
+  let u: URL;
+  try { u = new URL(origin); } catch { return `Posters printed from this address will point to ${origin} - print them from the live site.`; }
+  if (u.protocol === "https:" && !LOCAL_HOST.test(u.hostname)) return null;
+  return `Posters printed from this address will point to ${u.origin} - print them from the live site.`;
+}
 
 /** How each mode reads on the poster, under the code. */
 const MODE_LINE: Readonly<Record<QrMode, string>> = {

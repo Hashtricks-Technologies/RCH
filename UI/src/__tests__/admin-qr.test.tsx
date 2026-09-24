@@ -280,6 +280,16 @@ describe("the QR codes tab", () => {
     expect(S().toast).toBe("Could not build the poster for Table 4 - try again.");
   });
 
+  it("warns that posters printed from a local address point at it, and still downloads", async () => {
+    serve(base());
+    page = await mountTab();
+    // jsdom serves the suite from http://localhost - exactly the address a poster must not carry.
+    const warn = [...document.querySelectorAll(".al")].find((a) => a.textContent?.includes("Posters printed from this address"));
+    expect(warn?.textContent).toContain(`Posters printed from this address will point to ${window.location.origin} - print them from the live site.`);
+    await press(page.button("Download poster", page.row("QR-002")));
+    expect(poster.calls).toHaveLength(1);
+  });
+
   it("copies the ordering link, and says so when the browser will not", async () => {
     const writeText = vi.fn(() => Promise.resolve());
     Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });

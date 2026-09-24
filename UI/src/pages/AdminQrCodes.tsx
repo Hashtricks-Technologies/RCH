@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useApp } from "../store";
 import { fromWireDay, fromWireTime } from "../lib/fmt";
-import { downloadQrPoster, qrOrderUrl } from "../lib/qrPoster";
+import { downloadQrPoster, posterOriginWarning, qrOrderUrl } from "../lib/qrPoster";
 import { Alert, Btn, Card, DataTable, Field, FilterSelect, FormRow, PageHead, Pill, Switch, TableFoot } from "../ui/kit";
 import type { AdminLocation, AdminQrCode, LocKey, OrderHoursDay, QrMode, UpdateQrCodeBody } from "../types";
 
@@ -109,6 +109,8 @@ export default function AdminQrCodes() {
     .filter((l) => l.type === "Outlet")
     .sort((a, b) => Number(!a.active) - Number(!b.active) || a.n.localeCompare(b.n));
   const [pick, setPick] = useState<LocKey | null>(null);
+  // Read once per render: the address this page was opened on decides what every poster encodes.
+  const originWarning = posterOriginWarning();
   const at = outlets.find((l) => l.key === pick) ?? outlets[0];
 
   const [label, setLabel] = useState("");
@@ -232,6 +234,7 @@ export default function AdminQrCodes() {
       {!at.active && (
         <Alert tone="w" label="CLOSED">{at.n} is closed - its codes take no orders until it is reopened on the Outlets tab.</Alert>
       )}
+      {originWarning && <Alert tone="w" label="THIS ADDRESS">{originWarning}</Alert>}
 
       <Card title="New code" sub={at.n} tip="Label it by where it is placed. A pickup code tells the customer to collect at the counter; a deliver code brings the order to the spot the code is placed at.">
         <FormRow cols="f2">

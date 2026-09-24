@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { downloadQrPoster, posterFileName, qrOrderUrl } from "../lib/qrPoster";
+import { downloadQrPoster, posterFileName, posterOriginWarning, qrOrderUrl } from "../lib/qrPoster";
+import { menuPath } from "../lib/orderPath";
 
 /** What the poster was asked to draw, encode and save - neither jsPDF nor the encoder runs here. */
 const pdf = vi.hoisted(() => ({
@@ -30,6 +31,21 @@ beforeEach(() => {
 describe("the QR poster", () => {
   it("links a token to the ordering page on this host", () => {
     expect(qrOrderUrl("tok_AAAA")).toBe(`${window.location.origin}/order/tok_AAAA`);
+    // Encoded exactly as the ordering page's own address.
+    expect(qrOrderUrl("a b/c?")).toBe(`${window.location.origin}/order/a%20b%2Fc%3F`);
+    expect(qrOrderUrl("a b/c?")).toBe(`${window.location.origin}${menuPath("a b/c?")}`);
+  });
+
+  it("warns about an address a customer's phone cannot use, and is quiet on the live site", () => {
+    const warn = (o: string) => `Posters printed from this address will point to ${o} - print them from the live site.`;
+    expect(posterOriginWarning("https://rch.hashtrickstechnologies.com")).toBeNull();
+    expect(posterOriginWarning("http://rch.hashtrickstechnologies.com")).toBe(warn("http://rch.hashtrickstechnologies.com"));
+    expect(posterOriginWarning("https://localhost:5173")).toBe(warn("https://localhost:5173"));
+    expect(posterOriginWarning("https://app.localhost")).toBe(warn("https://app.localhost"));
+    expect(posterOriginWarning("https://192.168.1.20")).toBe(warn("https://192.168.1.20"));
+    expect(posterOriginWarning("https://[::1]:8443")).toBe(warn("https://[::1]:8443"));
+    expect(posterOriginWarning("null")).toBe(warn("null"));
+    expect(posterOriginWarning()).toBe(warn(window.location.origin));
   });
 
   it("names the file after the outlet and the label, safe for any disk", () => {
