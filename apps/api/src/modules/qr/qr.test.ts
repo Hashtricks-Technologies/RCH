@@ -22,7 +22,7 @@ const ALL_DAY = [0, 1, 2, 3, 4, 5, 6].map((dow) => ({ dow, opens: "00:00", close
 
 beforeAll(async () => {
   fake = createFakeGateway();
-  app = await buildTestApp({ schema: "qr", payments: fake, env: { QR_ORDER_MAX_RUPEES: "1000" } });
+  app = await buildTestApp({ schema: "qr", payments: fake, env: { QR_ORDER_MAX_RUPEES: "1000", QR_PENDING_PER_IP: "5" } });
   await seedTestDb(app.testDb!.db);
   await app.ready();
   // Open every day at the Coffee Shop and the Restaurant; the Snack Kiosk has no hours at all.
@@ -143,6 +143,17 @@ describe("POST /public/qr/:token/orders - placing an order", () => {
     expect((e.request as { params: { token: string } }).params.token).toBe("••••");
   });
 
+  it("limits the status poll per order and address, so phones sharing one Wi-Fi do not share a budget", async () => {
+    const a = await placed();
+    const b = await placed();
+    const poll = (c: QrOrderCreated, ip: string) => app.inject({ method: "GET", url: `${API_PREFIX}/public/orders/${c.order.id}?k=${c.secret}`, remoteAddress: ip });
+    const wifi = nextIp();
+    for (let i = 0; i < 30; i++) expect((await poll(a, wifi)).statusCode).toBe(200);
+    expect((await poll(a, wifi)).statusCode).toBe(429);
+    expect((await poll(b, wifi)).statusCode).toBe(200);
+    expect((await poll(a, nextIp())).statusCode).toBe(200);
+  });
+
   it("the status page reads it with its secret, and a wrong secret is the same 404 as no order", async () => {
     const c = await placed();
     const ok = await status(c.order.id, c.secret);
@@ -241,7 +252,7 @@ describe("POST /public/qr/:token/orders - placing an order", () => {
     expect(r.json().error.message).toMatch(/is not listed at Coffee Shop$/);
   });
 
-  it("lets one phone hold three unpaid orders at an outlet, and one address five in half an hour", async () => {
+  it("lets one phone hold three unpaid orders, and one address the deployment's QR_PENDING_PER_IP (five here) in half an hour", async () => {
     const phone = nextPhone();
     for (let i = 0; i < 3; i++) expect((await place(coffee.token, [{ it: "capp", qty: 1 }], { phone })).statusCode).toBe(200);
     const fourth = await place(coffee.token, [{ it: "capp", qty: 1 }], { phone });

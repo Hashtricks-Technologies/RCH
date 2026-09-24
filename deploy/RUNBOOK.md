@@ -2995,7 +2995,7 @@ from the sign-in directory, the Accounts tab, the users CLI and the outlet-close
 try to deactivate, delete or reset it; the admin page and the CLI cannot see it on purpose. On the
 Audit log its writes (an order placed, a paid order, a refund sent, processed or failed) carry it as the actor.
 
-**Configuration.** Three secrets and three tunables, all optional:
+**Configuration.** Three secrets and four tunables, all optional:
 
 | Variable | Default | What it is |
 |---|---|---|
@@ -3005,6 +3005,16 @@ Audit log its writes (an order placed, a paid order, a refund sent, processed or
 | `QR_ORDER_MAX_RUPEES` | `5000` | The most one QR order may come to. |
 | `QR_ORDER_TTL_MIN` | `30` | Minutes an unpaid order waits for its payment before it expires. |
 | `QR_WORKER_INTERVAL_MS` | `30000` | How often the QR worker expires unpaid orders and sends queued refunds. `0` stops it - refunds then sit in Pending. Only the tests do that. |
+| `QR_PENDING_PER_IP` | `20` | Unpaid orders one address may place in half an hour. |
+
+**Shared Wi-Fi and NAT.** Every phone on the hospital's guest Wi-Fi - and many on one mobile
+carrier - reaches the API from the same address, so nothing a customer does is limited per address
+alone except what a script would abuse. The menu allows 120 reads a minute per address; the order
+status page 30 a minute per order *and* address, so phones polling their own orders never share a
+budget; placing is 10 and paying 20 a minute per address. Unpaid orders are capped at 3 per phone
+number (hospital-wide) and `QR_PENDING_PER_IP` per address in half an hour. If a busy ward sees
+"Too many unpaid orders from this connection", raise `QR_PENDING_PER_IP`; the per-phone cap is the
+one that holds a single customer.
 
 On the box they go in `/opt/rch/app/deploy/compose/.env` (`deploy/compose/.env.example` lists them);
 on the Helm path the three keys go in the Secret (`secrets.values`, or the `rch/prod` remote JSON)

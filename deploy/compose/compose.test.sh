@@ -75,6 +75,7 @@ for k in RAZORPAY_KEY_ID RAZORPAY_KEY_SECRET RAZORPAY_WEBHOOK_SECRET; do
 done
 check '.services.api.environment.RAZORPAY_KEY_SECRET == ""' "an unset RAZORPAY_KEY_SECRET must render empty, not fail"
 check '.services.api.environment.QR_WORKER_INTERVAL_MS == "30000"' "an unset QR_WORKER_INTERVAL_MS must default to 30000"
+check '.services.api.environment.QR_PENDING_PER_IP == "20"' "an unset QR_PENDING_PER_IP must default to 20"
 
 # The Caddyfile, adapted by the same Caddy image the box runs: it must parse, and the routes must be
 # tried in the order the site depends on - the audit reads before the API's `/api/*`, and both

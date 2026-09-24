@@ -34,8 +34,9 @@ api:
     AWS_REGION: ap-south-1
     IMAGE_BUCKET: ""      # FILL per environment
     # QR ordering's tunables (RUNBOOK §19) are left to config.ts's defaults - QR_ORDER_MAX_RUPEES
-    # 5000, QR_ORDER_TTL_MIN 30, QR_WORKER_INTERVAL_MS 30000. Set one here only to change it; an
-    # interval of 0 stops the worker that expires unpaid orders and sends refunds.
+    # 5000, QR_ORDER_TTL_MIN 30, QR_WORKER_INTERVAL_MS 30000, QR_PENDING_PER_IP 20. Set one here
+    # only to change it; an interval of 0 stops the worker that expires unpaid orders and sends
+    # refunds.
     # V8 sizes its old space from the machine's memory, not the cgroup's, so without a ceiling
     # the kernel OOM-kills the pod before Node ever decides a collection is due. 70% of
     # api.resources.limits.memory above (512Mi → 358), leaving the rest for the heap's own

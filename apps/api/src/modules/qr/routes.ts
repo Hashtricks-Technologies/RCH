@@ -7,11 +7,15 @@ import { mount } from "../../routes.js";
 import { requireLoc } from "../../plugins/rbac.js";
 import { createQrService, type RequestMeta } from "./service.js";
 
-/** Per client IP, per pod, on top of the global limit: a phone reads the menu and polls its order
- *  often, and places and pays rarely. A hospital's guests can share one address (the ward's
- *  Wi-Fi), so the reads are generous; what these stop is a script. */
-const QR_RATE_LIMITS = { menu: 60, order: 10, verify: 20, status: 60 } as const;
-const perMinute = (max: number) => ({ config: { rateLimit: { max, timeWindow: "1 minute" } } });
+/** Per minute, per pod, on top of the global limit: a phone reads the menu and polls its order
+ *  often, and places and pays rarely. A hospital's guests share one address (the ward's Wi-Fi, a
+ *  carrier's NAT), so the menu's budget is per address and generous, and the status poll's is per
+ *  order and address - forty phones polling their own orders from one Wi-Fi never share one
+ *  budget. What these stop is a script. */
+const QR_RATE_LIMITS = { menu: 120, order: 10, verify: 20, status: 30 } as const;
+const perMinute = (max: number, keyGenerator?: (req: FastifyRequest) => string) =>
+  ({ config: { rateLimit: { max, timeWindow: "1 minute", ...(keyGenerator ? { keyGenerator } : {}) } } });
+const perOrderAndIp = (req: FastifyRequest): string => `qr-order:${(req.params as { id?: string }).id ?? ""}|${req.ip}`;
 
 const metaOf = (req: FastifyRequest): RequestMeta => ({
   requestId: req.id, ip: req.ip, device: String(req.headers["user-agent"] ?? "").slice(0, 512),
@@ -24,7 +28,7 @@ const header = (req: FastifyRequest, name: string): string | undefined => {
 export default fp(async (app) => {
   const svc = createQrService({
     db: app.db, gateway: () => app.payments,
-    config: { maxRupees: app.config.qr.maxRupees, ttlMin: app.config.qr.ttlMin },
+    config: { maxRupees: app.config.qr.maxRupees, ttlMin: app.config.qr.ttlMin, pendingPerIp: app.config.qr.pendingPerIp },
     nudge: () => app.qrWorker.nudge(),
   });
 
@@ -34,7 +38,7 @@ export default fp(async (app) => {
   mount(app, routes.createQrOrder, async (req) => svc.place(req.params.token, req.body, metaOf(req)), perMinute(QR_RATE_LIMITS.order));
   mount(app, routes.verifyQrPayment, async (req) => svc.verify(req.params.id, req.body, metaOf(req)), perMinute(QR_RATE_LIMITS.verify));
   // `?k=` is the order's secret; `plugins/logging.ts` scrubs it from every logged URL.
-  mount(app, routes.publicQrOrder, async (req) => svc.publicOrder(req.params.id, req.query.k), perMinute(QR_RATE_LIMITS.status));
+  mount(app, routes.publicQrOrder, async (req) => svc.publicOrder(req.params.id, req.query.k), perMinute(QR_RATE_LIMITS.status, perOrderAndIp));
 
   // ---- the counter's queue. A local role reads and moves its own outlet's; a role that works
   // for every outlet (`all_outlets`) any outlet's.

@@ -28,7 +28,7 @@ export default fp<{ config: Config }>(async (app, { config }) => {
   // a no-op: a refund the reconcile queues is sent later in the same pass.
   const settler = createQrService({
     db: app.db, gateway: () => app.payments,
-    config: { maxRupees: config.qr.maxRupees, ttlMin: config.qr.ttlMin }, nudge: () => undefined,
+    config: { maxRupees: config.qr.maxRupees, ttlMin: config.qr.ttlMin, pendingPerIp: config.qr.pendingPerIp }, nudge: () => undefined,
   });
   const worker = createQrWorker(app.db, () => app.payments, app.log, settler);
   const every = config.qr.workerIntervalMs;

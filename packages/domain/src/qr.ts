@@ -78,8 +78,10 @@ export const QR_MAX_QTY = 20;
 export const QR_MAX_RUPEES = 5000;
 /** Unpaid orders one phone number may have open at once. */
 export const QR_PENDING_PER_PHONE = 3;
-/** Unpaid orders one address may have placed in the last thirty minutes. */
-export const QR_PENDING_PER_IP = 5;
+/** Unpaid orders one address may have placed in the last thirty minutes, unless the deployment
+ *  sets its own (`QR_PENDING_PER_IP`). Generous on purpose: a ward's guest Wi-Fi or a mobile
+ *  carrier's NAT puts many phones behind one address. */
+export const QR_PENDING_PER_IP = 20;
 
 /** Rupees as the gateway counts them: whole paise. */
 export const paise = (rupees: number): number => Math.round(rupees * 100);

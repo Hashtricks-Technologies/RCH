@@ -77,7 +77,7 @@ describe("the refusals", () => {
 
 describe("the caps", () => {
   it("holds one order to thirty lines of twenty, five thousand rupees, and a few unpaid at once", () => {
-    expect([QR_MAX_LINES, QR_MAX_QTY, QR_MAX_RUPEES, QR_PENDING_PER_PHONE, QR_PENDING_PER_IP]).toEqual([30, 20, 5000, 3, 5]);
+    expect([QR_MAX_LINES, QR_MAX_QTY, QR_MAX_RUPEES, QR_PENDING_PER_PHONE, QR_PENDING_PER_IP]).toEqual([30, 20, 5000, 3, 20]);
   });
   it("agrees with the wire's own caps on lines and quantity", () => {
     const body = (lines: number, qty: number) => ({

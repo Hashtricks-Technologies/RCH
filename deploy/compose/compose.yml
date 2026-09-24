@@ -56,6 +56,7 @@ x-api-env: &api_env
   QR_ORDER_MAX_RUPEES: ${QR_ORDER_MAX_RUPEES:-5000}
   QR_ORDER_TTL_MIN: ${QR_ORDER_TTL_MIN:-30}
   QR_WORKER_INTERVAL_MS: ${QR_WORKER_INTERVAL_MS:-30000}
+  QR_PENDING_PER_IP: ${QR_PENDING_PER_IP:-20}
 
 x-audit-env: &audit_env
   # The audit service's runtime role. `audit-migrate` creates it from this URL's user and password.

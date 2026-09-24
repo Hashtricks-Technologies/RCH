@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { QR_MAX_RUPEES } from "@rch/domain";
+import { QR_MAX_RUPEES, QR_PENDING_PER_IP } from "@rch/domain";
 
 const bool = z.enum(["true", "false"]).transform((v) => v === "true");
 const int = (min: number, max: number) => z.coerce.number().int().min(min).max(max);
@@ -66,6 +66,9 @@ const EnvShape = z.object({
   QR_ORDER_TTL_MIN: intOr(1, 24 * 60, 30),
   /** Milliseconds between QR worker passes (expiry and refunds). `0` switches the worker off. */
   QR_WORKER_INTERVAL_MS: intOr(0, 3_600_000, 30_000),
+  /** Unpaid QR orders one address may place in half an hour. Many phones share one address on a
+   *  guest Wi-Fi or a carrier's NAT, so it is generous; the per-phone cap is the tight one. */
+  QR_PENDING_PER_IP: intOr(1, 10_000, QR_PENDING_PER_IP),
 });
 
 const Env = EnvShape.superRefine((e, ctx) => {
@@ -116,7 +119,7 @@ export type Config = Readonly<{
   // ---- QR ordering ----
   /** The payment gateway's keys, or null when none are set (the gateway is off). */
   razorpay: { keyId: string; keySecret: string; webhookSecret: string } | null;
-  qr: { maxRupees: number; ttlMin: number; workerIntervalMs: number };
+  qr: { maxRupees: number; ttlMin: number; workerIntervalMs: number; pendingPerIp: number };
 }>;
 
 const pem = (b64: string) => Buffer.from(b64, "base64").toString("utf8");
@@ -190,7 +193,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): Config {
     razorpay: e.RAZORPAY_KEY_ID && e.RAZORPAY_KEY_SECRET && e.RAZORPAY_WEBHOOK_SECRET
       ? { keyId: e.RAZORPAY_KEY_ID, keySecret: e.RAZORPAY_KEY_SECRET, webhookSecret: e.RAZORPAY_WEBHOOK_SECRET }
       : null,
-    qr: { maxRupees: e.QR_ORDER_MAX_RUPEES, ttlMin: e.QR_ORDER_TTL_MIN, workerIntervalMs: e.QR_WORKER_INTERVAL_MS },
+    qr: { maxRupees: e.QR_ORDER_MAX_RUPEES, ttlMin: e.QR_ORDER_TTL_MIN, workerIntervalMs: e.QR_WORKER_INTERVAL_MS, pendingPerIp: e.QR_PENDING_PER_IP },
   });
 }
 

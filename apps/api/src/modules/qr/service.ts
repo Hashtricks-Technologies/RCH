@@ -10,7 +10,7 @@ import {
 } from "@rch/contract";
 import {
   customerPhoneRefusal, hoursRefusal, istDate, money as inr, nextQrStep, normalizePhone, paise, pausedRefusal, planBill,
-  QR_MAX_QTY, QR_PENDING_PER_IP, QR_PENDING_PER_PHONE, qrOpenAt, qrStepsFor,
+  QR_MAX_QTY, QR_PENDING_PER_PHONE, qrOpenAt, qrStepsFor,
 } from "@rch/domain";
 import type { Db } from "../../db/client.js";
 import { auditBefore, recordSystemEvent } from "../../lib/audit.js";
@@ -145,7 +145,7 @@ export type QrServiceDeps = {
   db: Db;
   /** Read per call, not once: a test swaps the gateway, and `null` means QR ordering is off. */
   gateway: () => PaymentGateway | null;
-  config: { maxRupees: number; ttlMin: number };
+  config: { maxRupees: number; ttlMin: number; pendingPerIp: number };
   /** Wake the worker after a commit that queued a refund. */
   nudge: () => void;
 };
@@ -410,7 +410,7 @@ export function createQrService({ db, gateway, config, nudge }: QrServiceDeps) {
           const pending = await qrRepo.pendingForPhone(tx, code.loc, phone, now);
           assertRule(pending < QR_PENDING_PER_PHONE,
             `You already have ${pending} unpaid orders at ${loc.name} - pay for one, or let it lapse, before placing another.`);
-          if (await qrRepo.pendingForIp(tx, meta.ip, new Date(now.getTime() - IP_WINDOW_MS)) >= QR_PENDING_PER_IP) {
+          if (await qrRepo.pendingForIp(tx, meta.ip, new Date(now.getTime() - IP_WINDOW_MS)) >= config.pendingPerIp) {
             throw new RateLimitedError("Too many unpaid orders from this connection - pay for one, or try again in a few minutes.");
           }
 

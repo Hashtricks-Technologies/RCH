@@ -129,11 +129,11 @@ describe("loadConfig", () => {
     expect(message).not.toMatch(/RAZORPAY_KEY_SECRET:/);
   });
   it("defaults the QR tunables, and reads an empty value as the default rather than zero", () => {
-    const dflt = { maxRupees: 5000, ttlMin: 30, workerIntervalMs: 30_000 };
+    const dflt = { maxRupees: 5000, ttlMin: 30, workerIntervalMs: 30_000, pendingPerIp: 20 };
     expect(loadConfig(good).qr).toEqual(dflt);
-    expect(loadConfig({ ...good, QR_ORDER_MAX_RUPEES: "", QR_ORDER_TTL_MIN: "", QR_WORKER_INTERVAL_MS: "" }).qr).toEqual(dflt);
-    expect(loadConfig({ ...good, QR_ORDER_MAX_RUPEES: "2500", QR_ORDER_TTL_MIN: "15", QR_WORKER_INTERVAL_MS: "0" }).qr)
-      .toEqual({ maxRupees: 2500, ttlMin: 15, workerIntervalMs: 0 });
+    expect(loadConfig({ ...good, QR_ORDER_MAX_RUPEES: "", QR_ORDER_TTL_MIN: "", QR_WORKER_INTERVAL_MS: "", QR_PENDING_PER_IP: "" }).qr).toEqual(dflt);
+    expect(loadConfig({ ...good, QR_ORDER_MAX_RUPEES: "2500", QR_ORDER_TTL_MIN: "15", QR_WORKER_INTERVAL_MS: "0", QR_PENDING_PER_IP: "50" }).qr)
+      .toEqual({ maxRupees: 2500, ttlMin: 15, workerIntervalMs: 0, pendingPerIp: 50 });
   });
   it("refuses a QR tunable out of range or not a whole number", () => {
     expect(() => loadConfig({ ...good, QR_ORDER_MAX_RUPEES: "0" })).toThrow(/QR_ORDER_MAX_RUPEES/);

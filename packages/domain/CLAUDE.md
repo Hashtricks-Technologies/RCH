@@ -62,7 +62,7 @@ need more context than their names give:
   no row closed all day), `hoursRefusal`/`pausedRefusal`, `customerPhoneRefusal` (a phone that is not one, in
   the customer's voice - the till's `phoneRefusal` speaks to the operator), the caps (`QR_MAX_LINES` 30 and `QR_MAX_QTY` 20,
   which `CreateQrOrderBodySchema` repeats; `QR_MAX_RUPEES` 5000; `QR_PENDING_PER_PHONE` 3;
-  `QR_PENDING_PER_IP` 5), `paise` and `QR_STATUS_WORDS`. `party.ts`'s `TILL_TENDERS` is every tender but
+  `QR_PENDING_PER_IP` 20, the default the API's `QR_PENDING_PER_IP` setting overrides), `paise` and `QR_STATUS_WORDS`. `party.ts`'s `TILL_TENDERS` is every tender but
   `Online`, the till's buttons; `Online` is not an account tender. `HOLDS_OUTLET.qrOrder` marks a paid
   order not yet handed over as holding its outlet, and `closeRefusal` names them as open QR orders.
 - `discount.ts` and `credit.ts` are the two halves of what a party is charged.
