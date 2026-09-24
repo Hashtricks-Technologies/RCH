@@ -71,6 +71,10 @@ export const toWireBill = (b: BillRow, lines: BillLineRow[], operator: { name: s
   // ---- the walk-in customer. Dropped by `strip` where nobody typed one.
   customerName: b.customerName ?? undefined,
   customerPhone: b.customerPhone ?? undefined,
+  // ---- QR ordering. Dropped by `strip` on a till's bill, so it stays byte for byte what it was.
+  // The refund behind a voided QR bill is joined in by the reader that has it (Phase 2's).
+  src: b.source === "qr" ? "qr" : undefined,
+  qo: b.qrOrderId ?? undefined,
 });
 
 /** What the operator calls each kind of payer. A thin view on `PARTY_LABEL` (`@rch/domain`),

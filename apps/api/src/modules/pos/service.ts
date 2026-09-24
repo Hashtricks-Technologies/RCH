@@ -2,237 +2,44 @@
 // the arithmetic of the sale is `planBill` in packages/domain.
 import type { z } from "zod";
 import type { Bill, PayBodySchema, Tender, VoidBillBodySchema, WriteResponse } from "@rch/contract";
-import { avail, availOf, breachesCredit, creditBreachMessage, dmy, fq, isAccountTender, istDate, money as inr, normalizePhone, partyOf, phoneRefusal, payerKindForTender, PARTY_LABEL, planBill, priceOf, round3, unitTotal, type Master } from "@rch/domain";
+import { dmy, isAccountTender, istDate, money as inr, unitTotal } from "@rch/domain";
 import type { Db } from "../../db/client.js";
 import { withTransaction } from "../../lib/db.js";
-import { lockPayerCredit, outstandingFor } from "../../lib/credit.js";
 import { ForbiddenError, NotFoundError } from "../../lib/errors.js";
 import { emitChanged } from "../../lib/events.js";
 import { appendHistory } from "../../lib/history.js";
-import { allocateId } from "../../lib/ids.js";
-import { lockBalances, postMoves, type Move } from "../../lib/ledger.js";
+import { postMoves, type Move } from "../../lib/ledger.js";
 import { assertOpen, lockLocation } from "../../lib/locations.js";
 import { loadMaster } from "../../lib/master.js";
-import { holdSession, sessionFor } from "../../lib/register.js";
-import { reservedAt } from "../../lib/reservations.js";
+import { holdSession } from "../../lib/register.js";
 import { assertRule } from "../../lib/rules.js";
-import { termsFor } from "../../lib/terms.js";
-import { PAYER_LABEL, toWireBill } from "../../lib/wire.js";
+import { postSale } from "../../lib/sale.js";
+import { toWireBill } from "../../lib/wire.js";
 import type { AccessClaims } from "../../plugins/auth.js";
 import { posRepo } from "./repo.js";
 
 export type PayBody = z.infer<typeof PayBodySchema>;
 export type VoidBillBody = z.infer<typeof VoidBillBodySchema>;
 
-/** Money is stored and read at two decimals; `planBill` totals at full precision so the tax
- *  split is derived from the real amounts, not from a rounded one. */
-const money = (n: number): number => Math.round(n * 100) / 100;
-
-/** How many of `it` the location could sell right now: the free units of a stocked item. A
- *  made-to-order item holds no stock and moves none (`planBill`), so nothing caps it here -
- *  only its switch, which `availOf` reads. */
-function coverOf(m: Master, stock: Record<string, Record<string, number>>, rsv: Record<string, number>, loc: string, it: string): number {
-  if (m.items[it]?.t === "MTO") return Number.POSITIVE_INFINITY;
-  return avail(stock, rsv, loc, it);
-}
-
 export function createPosService(db: Db) {
   return {
     /**
-     * One counter sale, in one transaction: price it, lock the shelves it will move, refuse it
-     * if they cannot cover it, number it, write it, and post the moves. The friendly refusals
-     * read the balances before the locks - so they can name the item and the number left - and
-     * the read under the locks is the guarantee, because between the two a second till may have
-     * sold the same last unit. A refusal rolls the whole bill back.
-     *
-     * The number is taken last, after the balance locks rather than before them; the comment on
-     * `allocateId` below says why that inversion is safe here and what it buys.
+     * One counter sale, in one transaction. The sale itself is `postSale` (`lib/sale.ts`), which a
+     * QR order's capture calls too, so a till bill and a QR bill can never be priced, covered or
+     * numbered two different ways. What is the till's own is who rings it (the signed-in
+     * operator, at the session's counter - `requireLoc` in routes.ts), that it takes a till
+     * tender (`PayBodySchema`), and the announcement.
      */
     async pay(claims: AccessClaims, body: PayBody): Promise<WriteResponse<Bill>> {
       return withTransaction(db, async (tx) => {
-        const loc = body.loc;
-        // The outlet first - it is the documents tier - so a close waits for this sale to commit,
-        // or this sale reads the outlet closed.
-        assertOpen(await lockLocation(tx, loc));
-        // Then the register's open session, opened here if the outlet has none - the first sale
-        // after a Z is what starts the next business day, and nothing else does. It is a
-        // document too, so it is taken in the documents tier: after the outlet's row and before
-        // the bill number and every shelf. Held `FOR SHARE`, so a Z-close waits for this sale to
-        // commit rather than counting half of it, and a sale that begins after the close reads
-        // no open session and opens the next (`lib/register.ts`).
-        const session = await sessionFor(tx, loc, claims.sub);
-        // A cart is a bag of scans: the same item read twice is one line of two, and the
-        // cover check has to see the total, not each half.
-        const cart: Record<string, number> = {};
-        for (const l of body.lines) cart[l.it] = round3((cart[l.it] ?? 0) + l.qty);
-        // `PayBodySchema.lines` is `.min(1)` with a positive `qty`, so a cart that folded to
-        // nothing cannot reach here: there is no empty-cart rule to state a second time.
-        const keys = Object.keys(cart);
-
-        // The walk-in customer, both optional. A blank box is no customer rather than an empty
-        // string on the bill, and a phone is stored as its ten digits so one number is one person.
-        const customerName = body.customerName || null;
-        const rawPhone = body.customerPhone?.trim() ?? "";
-        const customerPhone = rawPhone ? normalizePhone(rawPhone) : null;
-        assertRule(!rawPhone || customerPhone, phoneRefusal(rawPhone));
-
-        // A tender that is not money changing hands has to name whose account it lands on, and
-        // the payer has to be of the kind the tender means (`payerKindForTender`, @rch/domain -
-        // one table, because a tender that accepts the wrong kind of payer is a bill nothing
-        // later counts: a staff credit posted to a consultant is invisible to the ceiling below
-        // and to every receivables figure the manager reads).
-        const needKind = payerKindForTender(body.tender);
-        const needLabel = needKind ? PAYER_LABEL[needKind] : "";
-        assertRule(!(needKind && !body.payer), `Choose a ${needLabel} before taking a ${body.tender.toLowerCase()}`);
-        assertRule(!needKind || body.payer?.kind === needKind,
-          `Choose a ${needLabel} for a ${body.tender.toLowerCase()} - ${body.payer?.name} is not one`);
-
-        // And the payer has to be somebody the hospital already knows. The till sends a name
-        // along with the id, but the name written on the bill is the roster's: a mistyped id is
-        // a second account with its own untouched credit ceiling, and a name the counter typed
-        // is a balance nobody can settle because nobody can find whose it is.
-        const roster = body.payer ? await posRepo.payer(tx, body.payer.kind, body.payer.id) : undefined;
-        if (body.payer) assertRule(roster, `There is no ${PAYER_LABEL[body.payer.kind]} ${body.payer.id} on the roster`);
-        const payer = body.payer && roster ? { kind: body.payer.kind, id: body.payer.id, name: roster.name } : undefined;
-
-        const master = await loadMaster(tx);
-        const locName = master.locations[loc]?.n ?? loc;
-        // A new outlet opens on no list at all (the manager attaches one from Prices), and
-        // `priceOf` reads that as ₹0 rather than crashing. Refuse the whole cart here, before the
-        // per-item loop and well before any lock or id, rather than let a ₹0 bill through while
-        // still taking the stock off the shelf.
-        assertRule(master.locations[loc]?.list, `Refused - ${locName} is on no price list; attach one from Prices before selling`);
-        // One connection carries the transaction, so these queue behind each other anyway.
-        const menu = await posRepo.menuAt(tx, loc);
-        const stock = await posRepo.stockAt(tx, loc);
-        const rsv = await posRepo.rsvAt(tx, loc);
-        const ovr = await posRepo.ovrAt(tx, loc);
-        const prices = await posRepo.prices(tx);
-
-        for (const it of keys) {
-          const item = master.items[it];
-          if (!item) throw new NotFoundError(`There is no item ${it}.`);
-          assertRule(menu.has(it), `${item.n} is not listed at ${locName}`);
-          const a = availOf(master, stock, rsv, ovr, loc, it);
-          assertRule(a.ok, `${item.n} is not available at ${locName} - ${a.why}`);
-          const cover = coverOf(master, stock, rsv, loc, it);
-          assertRule(cover >= cart[it], `Only ${fq(cover, item.u)} ${item.u} of ${item.n} left at ${locName}`);
-          // The outlet has a list (checked above); this item may still be missing from it - a
-          // product listed at the counter before the manager ever priced it there.
-          assertRule(priceOf(master, prices, loc, it).p > 0, `Refused - ${item.n} has no price at ${locName}`);
-        }
-
-        // What this party is charged. Read inside the transaction, so the bill is priced against
-        // the rate card this transaction commits against - a manager changing the doctors' rate
-        // in the same instant either lands before this sale or after it, never half way through
-        // it. The till previews the same number off the snapshot; the server decides it.
-        const party = partyOf(payer);
-        const terms = await termsFor(tx, party, payer);
-        const plan = planBill(master, prices, loc, cart, terms.pct);
-        const at = new Date();
-        // A tender that takes no money now runs up a balance somebody settles later. The ceiling
-        // is on what is still **unsettled**, not on a calendar month: somebody who cleared their
-        // account yesterday has their room back today. Checked here rather than only on the
-        // counter's screen - a second tab or a stale page would otherwise walk straight past a
-        // disabled button.
-        if (payer) {
-          // Read the balance under a lock on the person, not merely read it: two tills selling
-          // to one person in the same instant would otherwise both see the room that existed
-          // before either wrote, and both fit under a ceiling only one of them fits under.
-          await lockPayerCredit(tx, payer.kind, payer.id);
-          // One query, three callers: this refusal, `GET /reports/credit/:kind/:id` and the
-          // manager's receivables list (apps/api/src/lib/credit.ts).
-          const { outstanding } = await outstandingFor(tx, payer.kind, payer.id);
-          assertRule(
-            !breachesCredit(outstanding, plan.tot, terms.limit),
-            // Only reached when there is a limit, which is what `breachesCredit` answers `false`
-            // for when there is not - so the non-null assertion here is the same condition.
-            creditBreachMessage(outstanding, plan.tot, payer.name, terms.limit ?? 0),
-            { outstanding, limit: terms.limit },
-          );
-        }
-        // What the sale will take off each shelf, folded the way postMoves folds it. A
-        // made-to-order line moves nothing, so a bill of nothing else locks and reads no shelf.
-        // Same refusal as the pre-check above: that one is friendlier, this one is the guarantee.
-        //
-        // Phase 3 puts holds on outlet shelves too - a shop transfer or a granted shop ask keeps
-        // stock at a counter without moving it - so "short" means on hand less what is held, not
-        // merely negative. Both numbers are read again here rather than reused from the
-        // pre-check, and read *after* `lockBalances`: every path that holds stock takes those
-        // same locks first (see apps/api/src/lib/ledger.ts), so while this transaction holds
-        // them nothing new can be sold or held on these shelves and this read is the last word.
-        const took = new Map<string, number>();
-        for (const m of plan.moves) took.set(m.it, round3((took.get(m.it) ?? 0) + -m.qty));
-        const moved = [...took.keys()];
-        await lockBalances(tx, moved.map((it) => ({ loc, it })));
-        const onHand = await posRepo.onHandAt(tx, loc, moved);
-        const heldNow = await reservedAt(tx, loc, moved);
-        for (const [it, sold] of took) {
-          const item = master.items[it];
-          const unit = item?.u ?? "nos";
-          const free = round3((onHand[it] ?? 0) - (heldNow[`${loc}:${it}`] ?? 0));
-          assertRule(free >= sold, `Only ${fq(Math.max(0, free), unit)} ${unit} of ${item?.n ?? it} left at ${locName}`);
-        }
-
-        // The number, last - deliberately after the balance locks rather than before them, which
-        // is the one place in this server where an id is not taken ahead of a shelf.
-        //
-        // `allocateId(tx, "bill"` has exactly one caller, this line, so no second writer can ever
-        // take the `bill` sequence row before a balance row and meet this one head on: the cycle
-        // a lock order exists to prevent needs two writers taking the same two locks in opposite
-        // orders, and there is no other writer of this row at all. What taking it earlier did
-        // cost was real - a till queued behind a shelf sat on the one row every till in the
-        // hospital draws its bill number from, so one slow sale at one counter froze the rest.
-        // Keep this line where it is, and keep it the last thing before the bill is written.
-        const no = await allocateId(tx, "bill", at);
-        const head = await posRepo.insertBill(tx, {
-          no, loc, operatorId: claims.sub, total: money(plan.tot), tax: money(plan.tax), at, tender: body.tender,
-          // Which Z will account for this bill, decided here and not by a clock: the business
-          // day is Z-to-Z, and a sale that commits a moment either side of a close must fall
-          // inside exactly one of them.
-          sessionId: session.id,
-          payerKind: payer?.kind ?? null, payerId: payer?.id ?? null, payerName: payer?.name ?? null,
-          // The rate as well as the rupees: the rate card moves, and a bill has to be able to say
-          // what it was charged at long after somebody changed it.
-          discountPct: terms.pct, discount: money(plan.disc),
-          customerName, customerPhone,
+        const out = await postSale(tx, {
+          loc: body.loc, operatorId: claims.sub, lines: body.lines, tender: body.tender, payer: body.payer,
+          customer: { name: body.customerName, phone: body.customerPhone }, source: "till",
         });
-        const lines = await posRepo.insertBillLines(tx, no, plan.lines);
-        await postMoves(tx, plan.moves.map((m) => ({ ...m, kind: "sale" as const, refType: "bill", refId: no, by: claims.sub, at })));
-
-        // And once more with the moves actually posted. It can never fire today - the cover
-        // check above ran under these same locks and nothing can have written behind it - and it
-        // is kept because every negative-going move re-reads what it moved, and this is what
-        // would catch the next caller that reads a balance before it locks it.
-        const settled = await posRepo.onHandAt(tx, loc, moved);
-        const stillHeld = await reservedAt(tx, loc, moved);
-        for (const [it, sold] of took) {
-          const item = master.items[it];
-          const unit = item?.u ?? "nos";
-          const free = round3((settled[it] ?? 0) - (stillHeld[`${loc}:${it}`] ?? 0));
-          assertRule(free >= 0, `Only ${fq(Math.max(0, round3(free + sold)), unit)} ${unit} of ${item?.n ?? it} left at ${locName}`);
-        }
-
-        const operator = await posRepo.operator(tx, claims.sub);
-        const result = toWireBill(head, lines, { name: operator?.name ?? claims.sub, colour: operator?.colour ?? "#64748B" });
-        const total = money(plan.tot).toFixed(2);
-        // The concession is named where there was one, and named as the rate rather than only the
-        // rupees: "20% off" is the thing the operator has to be able to check at a glance against
-        // what the person in front of them expected.
-        const off = plan.disc > 0 ? ` · ${terms.pct}% ${PARTY_LABEL[party]} discount, ${inr(money(plan.disc))} off` : "";
-        const message = payer
-          ? `Bill ${no} · ₹${total}${off} posted to ${payer.name}`
-          : `Bill ${no} · ₹${total}${off} ${body.tender === "Cash" ? "collected" : "settled by " + body.tender.toLowerCase()} at ${locName}`;
-        // One array for the answer and the announcement, so the till that made the sale and
-        // the tills watching it can never be told to refetch different slices.
-        //
-        // `receivables` only where the bill actually landed on somebody's account. Naming it on
-        // every cash sale would put a report over every outlet's bills behind each one, for a
-        // balance that cannot have moved; naming it on none would leave the manager's Credit
-        // screen reading yesterday's figures while a counter bills against them.
-        const changed = payer ? ["stock", "bills", "receivables"] as const : ["stock", "bills"] as const;
-        await emitChanged(tx, changed);
-        return { result, changed: [...changed], message };
+        // One array for the answer and the announcement, so the till that made the sale and the
+        // tills watching it can never be told to refetch different slices.
+        await emitChanged(tx, out.changed);
+        return out;
       });
     },
 
