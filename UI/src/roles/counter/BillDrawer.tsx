@@ -8,6 +8,7 @@ import { DrawerFrame } from "../../ui/Drawer";
 import { registerDrawer, type DrawerProps } from "../../drawers";
 import { Alert, Avatar, Btn, DataTable, Field, Pill, Section } from "../../ui/kit";
 import { billStatus, voidableToday } from "./status";
+import { RefundPill } from "./QrOrders";
 import type { Bill, Dated } from "../../types";
 
 /**
@@ -85,6 +86,9 @@ function BillDrawer({ id }: DrawerProps) {
   const voidBill = useApp((s) => s.voidBill);
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
+  // ---- QR orders: a refund the gateway refused is sent again by whoever may void the bill.
+  const retryRefund = useApp((s) => s.retryQrRefund);
+  const [retrying, setRetrying] = useState(false);
   const bill = bills.find((b) => b.no === id);
   // The counter reads its own till's names on screen; the manager and the paper read the real one.
   const nameOf = (it: string) => (IT[it] ? (user?.r === "counter" ? counterName(IT[it]) : IT[it].n) : it);
@@ -111,6 +115,13 @@ function BillDrawer({ id }: DrawerProps) {
     if (ok) { setReason(""); close(); }
   };
 
+  const refund = bill.refund;
+  const retry = async () => {
+    if (!refund) return;
+    setRetrying(true);
+    try { await retryRefund(refund.id); } finally { setRetrying(false); }
+  };
+
   return (
     <DrawerFrame
       title={<span className="mono">{bill.no}</span>}
@@ -118,6 +129,10 @@ function BillDrawer({ id }: DrawerProps) {
       foot={<>
         <Btn variant="gh" onClick={close}>Close</Btn>
         <div className="sp" />
+        {mayVoid && refund?.status === "Failed" && (
+          <Btn variant="gh" disabled={retrying} onClick={() => void retry()}
+            tip="The gateway did not take this refund. Send it again - the customer is refunded once, however many times it is sent.">Retry refund</Btn>
+        )}
         {canVoid && <Btn variant="dg" disabled={busy || !reason.trim()} onClick={doVoid}>Void bill</Btn>}
         {/* It prints. It used to toast that it had been "sent again to the OT-C3 printer",
             which was a sentence about something that never happened. */}
@@ -128,7 +143,7 @@ function BillDrawer({ id }: DrawerProps) {
         <Avatar name={bill.opr} color={bill.oprCol} size={38} />
         <div>
           <b style={{ fontSize: 13 }}>{bill.opr}</b>
-          <div className="mini">Counter Operator · raised this bill at {bill.t}</div>
+          <div className="mini">{bill.src === "qr" ? `Paid online from a QR code at ${bill.t}` : `Counter Operator · raised this bill at ${bill.t}`}</div>
         </div>
         <div className="sp" />
         {bill.voided ? <Pill tone="cr">VOIDED</Pill> : <Pill tone={st.tone}>{st.label}</Pill>}
@@ -158,6 +173,8 @@ function BillDrawer({ id }: DrawerProps) {
         <dt>Cost centre</dt><dd className="mono">{L.cc}</dd>
         <dt>Time</dt><dd className="mono">{bill.t}</dd>
         <dt>Tender</dt><dd>{bill.pay}</dd>
+        {bill.src === "qr" && <><dt>QR order</dt><dd><span className="mono">{bill.qo ?? "-"}</span> <Pill tone="ac">QR</Pill></dd></>}
+        {refund && <><dt>Refund</dt><dd><span className="mono">{refund.id}</span> <RefundPill status={refund.status} /></dd></>}
         {bill.payer && <><dt>Posted to</dt><dd>{bill.payer.name} <span className="mini mono">({bill.payer.id})</span></dd></>}
         {bill.customerName && <><dt>Customer</dt><dd>{bill.customerName}</dd></>}
         {bill.customerPhone && <><dt>Phone</dt><dd className="mono">{bill.customerPhone}</dd></>}

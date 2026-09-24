@@ -112,7 +112,7 @@ export default function Bills() {
               key: b.no,
               onClick: () => s.openDrawer("cbill", b.no),
               cells: [
-                <><span className="mono">{b.no}</span><small>{b.lines.length} item{b.lines.length === 1 ? "" : "s"}</small></>,
+                <><span className="mono">{b.no}</span>{b.src === "qr" && <> <Pill tone="ac">QR</Pill></>}<small>{b.lines.length} item{b.lines.length === 1 ? "" : "s"}</small></>,
                 <span className="mono">{b.t}</span>,
                 <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                   <Avatar name={b.opr} color={b.oprCol} size={22} />
