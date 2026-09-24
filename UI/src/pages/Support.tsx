@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { SUPPORT_TRANSITIONS, canTransition, mayRate, mayReply, mayUserSet } from "@rch/domain";
 import { LOC, homeLabel } from "../data/master";
-import { NAV } from "../nav";
+import { navFor } from "../nav";
 import { useApp } from "../store";
 import type { TicketPriority, TicketStatus, TicketTopic } from "../types";
 import {
@@ -54,8 +54,8 @@ export default function Support() {
   const openDrawer = useApp((s) => s.openDrawer);
 
   const screens = useMemo(
-    () => ["Not screen-specific", ...NAV[user.r].flatMap((g) => g.items.map((i) => i.label))],
-    [user.r]
+    () => ["Not screen-specific", ...navFor(user).flatMap((g) => g.items.map((i) => i.label))],
+    [user]
   );
 
   const [topic, setTopic] = useState<TicketTopic>("A screen will not load");

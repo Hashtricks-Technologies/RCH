@@ -1,22 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { act, createElement, type ComponentType, type ReactElement } from "react";
+import { act, createElement, type ReactElement } from "react";
 import { createRoot } from "react-dom/client";
 import { MemoryRouter } from "react-router-dom";
 import * as FX from "@rch/contract/fixtures";
 import { useApp } from "../store";
-import { NAV } from "../nav";
+import { navFor } from "../nav";
 import { DRAWERS } from "../drawers";
 import { hydrateMaster, hydrateRoster } from "../data/master";
-import Settings from "../pages/Settings";
-import Issues from "../pages/Support";
 import AdminAudit from "../pages/AdminAudit";
-import { screens as counter } from "../roles/counter";
-import { screens as manager } from "../roles/manager";
-import { screens as store } from "../roles/store";
-import { screens as prod } from "../roles/prod";
-import { screens as buyer } from "../roles/buyer";
 import type { Role, StockLoc } from "../types";
-import { as, resetStore } from "./fixture";
+import { as, deskScreens, resetStore } from "./fixture";
 
 /**
  * A hospital with nothing in it - what `GET /snapshot` answers on a database seeded `--bare`,
@@ -30,7 +23,6 @@ import { as, resetStore } from "./fixture";
  * a real deployment is used. This file is the other half of that loop.
  */
 
-const REGISTRY: Record<Role, Record<string, ComponentType>> = { counter, manager, store, prod, buyer };
 const EMPTY_STOCK: Record<StockLoc, Record<string, number>> = { store: {}, kitchen: {}, rest: {}, coffee: {}, kiosk: {}, quarantine: {} };
 const DAYS = 14;
 
@@ -66,10 +58,10 @@ function render(el: ReactElement): string {
 
 describe("every screen renders on a hospital with nothing in it", () => {
   for (const u of FX.USERS.filter((x) => !x.admin)) {
-    for (const k of NAV[u.r].flatMap((g) => g.items.map((i) => i.k))) {
+    for (const k of navFor(u).flatMap((g) => g.items.map((i) => i.k))) {
       it(`${u.r}/${k}`, () => {
         act(() => { as(u.r); });
-        const C = k === "settings" ? Settings : k === "issues" ? Issues : REGISTRY[u.r][k];
+        const C = deskScreens(u.r)[k];
         expect(render(createElement(C)).length).toBeGreaterThan(200);
       });
     }

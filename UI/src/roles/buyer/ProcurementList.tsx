@@ -200,7 +200,7 @@ export default function ProcurementList() {
     // Each createPo toasts, and only the last would survive - so when the
     // selection fanned out across vendors, say so plainly instead.
     if (made.length > 1) notify(`${made.length} draft purchase orders raised across ${made.length} vendors`);
-    nav("/orders");
+    nav("/purchase-orders");
   };
 
   const rows: Row[] = shown.map((g) => {

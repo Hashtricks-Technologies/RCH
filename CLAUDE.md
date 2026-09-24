@@ -236,7 +236,7 @@ back where it stood.
   there, a closed outlet, a retired item or a raw/packing item refuses the whole of it. A price above the
   printed MRP is **not** refused; the cell says what the till will charge instead. The grid's switch is the
   manager's one on/off: the manager's Product On / Off screen (`avail`) is hidden behind
-  `AVAILABILITY_SCREEN_ENABLED` in `UI/src/nav.ts`. The counter's and the kitchen's own switches stay.
+  `AVAILABILITY_SCREEN_ENABLED` in `UI/src/screens.ts`. The counter's and the kitchen's own switches stay.
 - **A price list is still the storage, but no screen shows one.** Each outlet charges from its active list
   (`price_lists`, `locations.price_list_id`), and the till still prices off it (`priceOf`). The grid keeps
   counters independent by copy-on-write: an outlet it reprices that is on no list gets a new one, and one
@@ -244,7 +244,7 @@ back where it stood.
   before the price lands - the last outlet left on a shared list keeps it. The old list screen
   (`roles/manager/Prices.tsx`, its `plset` drawer and `NewListDialog`) and its routes (`POST`/`DELETE
   /price-lists`, `PUT /outlets/:loc/price-list`, `PUT /prices/:list/:it`) are hidden, not deleted:
-  `PRICE_LISTS_ENABLED` in `UI/src/roles/manager/index.tsx` is `false`, and turning it on puts that screen
+  `PRICE_LISTS_ENABLED` in `UI/src/registry.tsx` is `false`, and turning it on puts that screen
   back under the same sidebar entry. A newly opened outlet is on no list until the grid first prices it.
 - `lib/images.ts` is the only code that touches photo bytes (S3 in production, a folder in dev/test).
   `items.image` holds the sha256; `GET /items/:it/image/:hash` is public, outside the manifest like `/events`,

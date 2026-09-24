@@ -10,6 +10,7 @@ import type {
   StockLoc, StockRequest, Ticket, TktStatus, Tone,
 } from "../types";
 import { U, isToday } from "./fmt";
+import { useApp } from "../store";
 
 export interface StockShape {
   /** Quarantine included - the store keeper's screen reports the rejected-goods shelf. Every
@@ -439,3 +440,10 @@ export const activeItems = (): string[] => Object.keys(IT).filter((k) => IT[k].a
 /** Whether this line has been retired - what the master list greys a row on, and the one
  *  condition under which it offers "Restore" instead of "Retire". */
 export const isRetired = (it: string): boolean => IT[it]?.active === false;
+
+// ---- configurable roles ----
+/**
+ * Whether this session reads hospital-wide - every outlet's bills, requests and tickets - rather
+ * than the one counter it signed in to.
+ */
+export const useWide = (): boolean => useApp((s) => (s.user ? s.user.r !== "counter" : false));

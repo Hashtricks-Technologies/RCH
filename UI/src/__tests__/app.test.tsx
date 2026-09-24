@@ -5,7 +5,7 @@ import { MemoryRouter } from "react-router-dom";
 import App from "../App";
 import { useApp } from "../store";
 import { USERS } from "@rch/contract/fixtures";
-import { NAV, HOME } from "../nav";
+import { homeFor, navFor } from "../nav";
 import { IT } from "../data/master";
 import { as, resetStore, signedOut } from "./fixture";
 
@@ -36,7 +36,7 @@ describe("the whole app mounts for every role on every route", () => {
   // a role - root CLAUDE.md), so this loop would otherwise generate a duplicate `buyer/...`
   // case for it under a role it never actually renders. Its own routing is covered below.
   for (const u of USERS.filter((u) => !u.admin)) {
-    for (const k of NAV[u.r].flatMap((g) => g.items.map((i) => i.k))) {
+    for (const k of navFor(u).flatMap((g) => g.items.map((i) => i.k))) {
       it(`${u.r} at /${k}`, () => {
         act(() => { as(u.r); });
         const html = mountApp("/" + k);
@@ -62,10 +62,22 @@ describe("routing", () => {
     expect(html).not.toContain("Approval queue");
     expect(html).toContain("Royal Care");
   });
+  it("an old key lands on the screen it always meant, under its new name", () => {
+    act(() => { as("prod"); });
+    const kitchen = mountApp("/orders");
+    expect(kitchen).not.toContain("is not available");
+    expect(kitchen).toContain('href="/kitchen-orders" data-discover="true" aria-current="page"');
+    act(() => { as("buyer"); });
+    expect(mountApp("/orders")).toContain('href="/purchase-orders" data-discover="true" aria-current="page"');
+  });
+  it("an old key another desk used is refused by name, not redirected", () => {
+    act(() => { as("counter"); });
+    expect(mountApp("/orders")).toContain("orders is not available to a Counter Operator");
+  });
   it("each role lands on its own home screen", () => {
     for (const u of USERS.filter((u) => !u.admin)) {
       act(() => { as(u.r); });
-      expect(mountApp("/" + HOME[u.r]).length).toBeGreaterThan(1500);
+      expect(mountApp("/" + homeFor(u)).length).toBeGreaterThan(1500);
     }
   });
 
@@ -154,14 +166,14 @@ describe("the sidebar badge counts what is still coming", () => {
   it("stops counting a ticket once it has been withdrawn (I2)", () => {
     // TKT-0440 is the Coffee Shop's only ticket: 500 cups, still at the store's window.
     act(() => { as("counter"); });
-    expect(badge("/pos", "tickets")).toBe(1);
+    expect(badge("/pos", "outlet-tickets")).toBe(1);
 
     // Received and withdrawn are both nothing to go and collect - the badge counted the
     // second for the rest of the day, because it only knew how to stop counting the first.
     act(() => { useApp.setState({ tkt: useApp.getState().tkt.map((t) => ({ ...t, st: "Received" as const })) }); });
-    expect(badge("/pos", "tickets")).toBe(0);
+    expect(badge("/pos", "outlet-tickets")).toBe(0);
     act(() => { useApp.setState({ tkt: useApp.getState().tkt.map((t) => ({ ...t, st: "Cancelled" as const })) }); });
-    expect(badge("/pos", "tickets")).toBe(0);
+    expect(badge("/pos", "outlet-tickets")).toBe(0);
   });
 
   /** Every item that is ever reordered, carried well above its own reorder level - a clean
@@ -183,16 +195,16 @@ describe("the sidebar badge counts what is still coming", () => {
     expect(badge("/requisitions", "inventory")).toBe(0);
 
     act(() => { as("store"); clearReorder(); });
-    expect(badge("/issue", "stock")).toBe(0);
+    expect(badge("/issue", "store-stock")).toBe(0);
     act(() => { setStoreQty("juice", 10); });
-    expect(badge("/issue", "stock")).toBe(1);
+    expect(badge("/issue", "store-stock")).toBe(1);
   });
 
   it("does not count a low-stock badge for any other role", () => {
     act(() => { as("counter"); clearReorder(); setStoreQty("juice", 10); });
     expect(badge("/pos", "inventory")).toBe(0);
     act(() => { as("manager"); clearReorder(); setStoreQty("juice", 10); });
-    expect(badge("/approvals", "stock")).toBe(0);
+    expect(badge("/approvals", "items-stock")).toBe(0);
   });
 });
 
@@ -222,7 +234,7 @@ describe("the kitchen's approaching-best-before badge", () => {
         ],
       });
     });
-    expect(badge("/orders", "dash")).toBe(1);
+    expect(badge("/kitchen-orders", "dash")).toBe(1);
   });
 
   it("updates on its own as the clock moves toward a batch's best-before", () => {

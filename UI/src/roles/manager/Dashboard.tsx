@@ -244,7 +244,7 @@ export default function Dashboard() {
         </Alert>
       )}
       {moving.length > 0 && (
-        <Alert tone="i" label="SHOP TO SHOP" action={<Btn size="xs" variant="gh" onClick={() => nav("/stock")}>See transfers</Btn>}>
+        <Alert tone="i" label="SHOP TO SHOP" action={<Btn size="xs" variant="gh" onClick={() => nav("/items-stock")}>See transfers</Btn>}>
           <b>{moving.length}</b> transfer{moving.length > 1 ? "s are" : " is"} moving directly from one shop to another.
           The goods do not pass through you - this is on record so you know where the stock is.
         </Alert>

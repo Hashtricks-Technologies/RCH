@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { HOME } from "../nav";
+import { homeFor } from "../nav";
 import { useApp } from "../store";
 import { Alert, Tip } from "../ui/kit";
 import type { SignInCounter, SignInEntry } from "../types";
@@ -78,7 +78,7 @@ export default function Login() {
   /** Where the session belongs once there is nothing left to ask. */
   const enter = () => {
     const s = useApp.getState();
-    nav(s.mustChangePassword ? "/change-password" : "/" + (s.user!.admin ? "admin" : HOME[s.user!.r]));
+    nav(s.mustChangePassword ? "/change-password" : "/" + (s.user!.admin ? "admin" : homeFor(s.user!)));
   };
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();

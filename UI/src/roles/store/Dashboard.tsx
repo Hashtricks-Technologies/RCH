@@ -191,7 +191,7 @@ export default function Dashboard() {
                 <>{r.dc.toFixed(1)} d</>,
                 <Pill tone={stateTone(r.av, r.rl)}>{stateLabel(r.av, r.rl)}</Pill>,
               ],
-              onClick: () => nav("/stock"),
+              onClick: () => nav("/store-stock"),
             }))}
             empty={{ title: "No stock recorded", sub: "Raise a requisition to bring goods in.", action: <Btn size="sm" onClick={() => nav("/procure")}>Raise requisition</Btn> }}
           />
@@ -217,7 +217,7 @@ export default function Dashboard() {
                 <b>{money0(r.val)}</b>,
                 <>{value > 0 ? ((r.val / value) * 100).toFixed(1) : "0.0"}%</>,
               ],
-              onClick: () => nav("/stock"),
+              onClick: () => nav("/store-stock"),
             }))}
             empty={{ title: "No stock recorded", sub: "Receive a purchase order and the holdings open." }}
           />

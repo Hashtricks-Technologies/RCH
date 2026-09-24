@@ -5,9 +5,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LOC, hydrateLocations } from "../data/master";
 import { money } from "../lib/fmt";
 import { useApp } from "../store";
-import { screens as manager } from "../roles/manager";
-import { NAV } from "../nav";
-import { as, resetStore } from "./fixture";
+import { navFor } from "../nav";
+import { as, deskScreens, resetStore, userOf } from "./fixture";
+
+const manager = deskScreens("manager");
 
 /**
  * The manager's counter price grid (`roles/manager/CounterPrices.tsx`): staged edits, the typed
@@ -57,7 +58,7 @@ const confirmBox = (host: HTMLElement) => host.querySelector<HTMLInputElement>('
 
 describe("the manager's Prices entry", () => {
   it("is the counter grid, and the sidebar no longer offers price lists", () => {
-    const labels = NAV.manager.flatMap((g) => g.items.map((i) => i.label));
+    const labels = navFor(userOf("manager")).flatMap((g) => g.items.map((i) => i.label));
     expect(labels).toContain("Prices");
     expect(labels).not.toContain("Price Lists");
 

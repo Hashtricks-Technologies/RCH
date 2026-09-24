@@ -3,22 +3,17 @@ import { act, createElement, type ComponentType, type ReactElement } from "react
 import { createRoot } from "react-dom/client";
 import { MemoryRouter } from "react-router-dom";
 import { useApp } from "../store";
-import { NAV } from "../nav";
+import { navFor } from "../nav";
+import { DESK_NAV } from "../screens";
 import { DRAWERS } from "../drawers";
 import Settings from "../pages/Settings";
 import AdminUsers from "../pages/AdminUsers";
 import AdminDashboard from "../pages/AdminDashboard";
 import AdminSupport from "../pages/AdminSupport";
-import Issues from "../pages/Support";
 import Login from "../pages/Login";
-import { screens as counter } from "../roles/counter";
-import { screens as manager } from "../roles/manager";
 // The price-list screen is hidden behind `PRICE_LISTS_ENABLED` (roles/manager/index.tsx); its
 // cases below mount it directly.
 import PriceLists from "../roles/manager/Prices";
-import { screens as store } from "../roles/store";
-import { screens as prod } from "../roles/prod";
-import { screens as buyer } from "../roles/buyer";
 import { groupPool, picksFor, type PoolGroup } from "../roles/buyer/ProcurementList";
 import { REPORTS } from "../roles/store/Reports";
 import { bodyKey } from "../roles/manager/ApprovalDrawer";
@@ -29,14 +24,18 @@ import { allOutlets, madeItems } from "../lib/selectors";
 import { Alert } from "../ui/kit";
 import type { PoolLine } from "../lib/selectors";
 import type { Bill, Dated, DatedDoc, RegisterReport, Role, StockRequest, SupportTicket, Ticket, Trailed } from "../types";
-import { as, resetStore } from "./fixture";
+import { as, deskScreens, resetStore, userOf } from "./fixture";
 
 // Nothing in production code carries data any more: the registries are empty until a snapshot
 // lands, so the roles this suite iterates come from the fixtures (which is where a test reads
 // them, per spec 5.1) and each case seeds the demo hospital before it renders.
 beforeEach(resetStore);
 
-const REGISTRY: Record<Role, Record<string, ComponentType>> = { counter, manager, store, prod, buyer };
+const counter = deskScreens("counter");
+const manager = deskScreens("manager");
+const store = deskScreens("store");
+const prod = deskScreens("prod");
+const buyer = deskScreens("buyer");
 
 /** Render on the client, the way the app actually runs. */
 function render(el: ReactElement): string {
@@ -54,10 +53,10 @@ describe("every screen renders for its role", () => {
   // Not the admin-flagged fixture account - it has no operational nav (root CLAUDE.md), so
   // there is no `NAV[u.r]` screen of its own for this loop to render.
   for (const u of USERS.filter((u) => !u.admin)) {
-    for (const k of NAV[u.r].flatMap((g) => g.items.map((i) => i.k))) {
+    for (const k of navFor(u).flatMap((g) => g.items.map((i) => i.k))) {
       it(`${u.r}/${k}`, () => {
         act(() => { as(u.r); });
-        const C = k === "settings" ? Settings : k === "issues" ? Issues : REGISTRY[u.r][k];
+        const C = deskScreens(u.r)[k];
         expect(C, `no component registered for ${u.r}/${k}`).toBeTruthy();
         expect(render(createElement(C)).length).toBeGreaterThan(400);
       });
@@ -65,28 +64,28 @@ describe("every screen renders for its role", () => {
   }
 });
 
-describe("the sidebar matches the screen registry", () => {
+describe("the sidebar matches the desk's own layout", () => {
   for (const u of USERS.filter((u) => !u.admin)) {
     it(`${u.r}`, () => {
-      const navKeys = NAV[u.r].flatMap((g) => g.items.map((i) => i.k)).filter((k) => k !== "settings" && k !== "issues");
-      expect(navKeys.sort()).toEqual(Object.keys(REGISTRY[u.r]).sort());
+      const navKeys = navFor(u).flatMap((g) => g.items.map((i) => i.k));
+      expect(navKeys).toEqual(DESK_NAV[u.r].flatMap((g) => g.keys).filter((k) => navKeys.includes(k)));
     });
   }
 });
 
 describe("a role cannot reach another role's screens", () => {
   it("counter has no approvals, prices, issue or requisitions", () => {
-    const keys = NAV.counter.flatMap((g) => g.items.map((i) => i.k));
-    for (const forbidden of ["approvals", "prices", "issue", "procure", "requisitions", "orders", "make"])
+    const keys = navFor(userOf("counter")).flatMap((g) => g.items.map((i) => i.k));
+    for (const forbidden of ["approvals", "prices", "issue", "procure", "requisitions", "kitchen-orders", "purchase-orders", "make"])
       expect(keys).not.toContain(forbidden);
   });
   it("only the counter sells", () => {
     for (const r of ["manager", "store", "prod", "buyer"] as Role[])
-      expect(NAV[r].flatMap((g) => g.items.map((i) => i.k))).not.toContain("pos");
+      expect(navFor(userOf(r)).flatMap((g) => g.items.map((i) => i.k))).not.toContain("pos");
   });
   it("every role has settings", () => {
-    for (const r of Object.keys(NAV) as Role[])
-      expect(NAV[r].flatMap((g) => g.items.map((i) => i.k))).toContain("settings");
+    for (const r of Object.keys(DESK_NAV) as Role[])
+      expect(navFor(userOf(r)).flatMap((g) => g.items.map((i) => i.k))).toContain("settings");
   });
 });
 
@@ -436,7 +435,7 @@ describe("the kitchen order board", () => {
         ],
       });
     });
-    const html = render(createElement(prod.orders));
+    const html = render(createElement(prod["kitchen-orders"]));
     expect(html).toContain("TKT-0802");
     expect(html).not.toContain("TKT-0801");
   });
@@ -459,7 +458,7 @@ describe("the collection OTP reaches the collector's screen and no other", () =>
       as("prod");
       useApp.setState({ tkt: [tkt({ id: "TKT-0901" })] });
     });
-    const html = render(createElement(prod.tickets));
+    const html = render(createElement(prod["kitchen-tickets"]));
     expect(html).toContain("otp-v");            // the panel is drawn
     expect(html).toContain("246 810");   // the panel spaces the two triples
   });
@@ -471,7 +470,7 @@ describe("the collection OTP reaches the collector's screen and no other", () =>
       // must say who holds the digits rather than render six blanks.
       useApp.setState({ tkt: [tkt({ id: "TKT-0902", from: "kitchen", to: "kiosk", otp: "" })] });
     });
-    const html = render(createElement(prod.tickets));
+    const html = render(createElement(prod["kitchen-tickets"]));
     expect(html).not.toContain("otp-v");
     expect(html).toContain("Held by Snack Kiosk");
   });
@@ -481,7 +480,7 @@ describe("the collection OTP reaches the collector's screen and no other", () =>
       as("prod");
       useApp.setState({ tkt: [tkt({ id: "TKT-0903", st: "Received", otp: "" })] });
     });
-    const html = render(createElement(prod.tickets));
+    const html = render(createElement(prod["kitchen-tickets"]));
     expect(html).not.toContain("otp-v");
     expect(html).toContain("used at handover");
   });
@@ -493,7 +492,7 @@ describe("the collection OTP reaches the collector's screen and no other", () =>
       as("prod");
       useApp.setState({ tkt: [tkt({ id: "TKT-0904", st: "Cancelled", otp: "" })] });
     });
-    const html = render(createElement(prod.tickets));
+    const html = render(createElement(prod["kitchen-tickets"]));
     expect(html).not.toContain("otp-v");
     expect(html).toContain("withdrawn - the OTP was never used");
     expect(html).not.toContain("used at handover");
@@ -647,12 +646,12 @@ describe("a retired product stops generating work", () => {
     const rowOf = (html: string, code: string) =>
       html.split("<tr").find((chunk) => chunk.includes(code)) ?? "";
 
-    const before = rowOf(render(createElement(store.stock)), "RM-1001");
+    const before = rowOf(render(createElement(store["store-stock"])), "RM-1001");
     expect(before).toContain("Add to requisition");
     expect(before).not.toContain("Retired");
 
     retire("milk");
-    const after = rowOf(render(createElement(store.stock)), "RM-1001");
+    const after = rowOf(render(createElement(store["store-stock"])), "RM-1001");
     // Still listed - twelve litres are on the shelf and somebody has to write them off - but
     // nothing on the row asks for more of it.
     expect(after).toContain("Retired");
@@ -742,7 +741,7 @@ describe("the counter can ask the kitchen, and only for what the kitchen makes",
     const host = document.createElement("div");
     document.body.appendChild(host);
     const root = createRoot(host);
-    act(() => { root.render(createElement(MemoryRouter, null, createElement(counter.requests))); });
+    act(() => { root.render(createElement(MemoryRouter, null, createElement(counter["outlet-requests"]))); });
     act(() => {
       [...host.querySelectorAll("button")].find((b) => b.textContent === "Add item")!.click();
     });
@@ -779,7 +778,7 @@ describe("the counter can ask the kitchen, and only for what the kitchen makes",
         ],
       });
     });
-    const html = render(createElement(prod.orders));
+    const html = render(createElement(prod["kitchen-orders"]));
     expect(html).toContain("needed by 11-Sep-2026");
     expect(html.match(/needed by/g)).toHaveLength(1);
   });
@@ -1338,7 +1337,7 @@ describe("the counter's stock requests", () => {
       const menu = useApp.getState().menu;
       useApp.setState({ menu: { ...menu, coffee: [...menu.coffee, "puff"] } });
     });
-    const ui = mount(counter.requests);
+    const ui = mount(counter["outlet-requests"]);
     act(() => { ui.button("Add item").click(); });
     act(() => { ui.button("Add item").click(); });
 
@@ -1630,7 +1629,7 @@ describe("the register", () => {
     const readZReports = vi.fn(o.zs ?? (async () => [zReport()]));
     const closeRegister = vi.fn(o.close ?? (async () => zReport()));
     act(() => { as(role); useApp.setState({ readXReport, readZReports, closeRegister }); });
-    const ui = mount(REGISTRY[role].register);
+    const ui = mount(deskScreens(role).register);
     await settle(() => { /* let the two reads land */ });
     return { ui, readXReport, readZReports, closeRegister };
   }
@@ -1733,7 +1732,7 @@ describe("the register", () => {
         ],
       });
     });
-    const ui = mount(REGISTRY.counter.dash);
+    const ui = mount(counter.dash);
     await settle(() => { /* let the X land */ });
     expect(kpiValue(ui.host, "Billed this session")).toBe("₹40");
     expect(kpiValue(ui.host, "Bills raised")).toBe("1");
@@ -1749,7 +1748,7 @@ describe("the register", () => {
         bills: [aBill("CF/2001", new Date().toISOString(), 40)],
       });
     });
-    const ui = mount(REGISTRY.counter.dash);
+    const ui = mount(counter.dash);
     await settle(() => { /* let the failed read land */ });
     expect(kpiValue(ui.host, "Billed this session")).toBe("-");
     expect(ui.text()).toContain("This is not a session that took nothing");
@@ -1771,7 +1770,7 @@ describe("the register", () => {
         ],
       });
     });
-    const ui = mount(REGISTRY.manager.dash);
+    const ui = mount(manager.dash);
     await settle(() => { /* let every outlet's X land */ });
     // One outlet's session, summed - not seven days of bills, and not "today".
     expect(kpiValue(ui.host, "Billed across open sessions")).toBe("₹40");

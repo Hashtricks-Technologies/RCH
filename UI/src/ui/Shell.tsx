@@ -4,11 +4,12 @@ import {
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { bestBeforeAt } from "@rch/domain";
 import { IT, LOC, homeLabel } from "../data/master";
-import { NAV, canSee } from "../nav";
+import { canSee, navFor } from "../nav";
 import { useApp, type AppState } from "../store";
 import { isToday, money0 } from "../lib/fmt";
 import { activeItems, availOf, isTicketOpen, locName, menuOf, openOutlets, procurementList, qty } from "../lib/selectors";
-import type { LocKey, Role } from "../types";
+import type { LocKey, Role, User } from "../types";
+import type { ScreenKey } from "../screens";
 import { useStreamState, type StreamState } from "../api/events";
 import { Avatar, Icon, Pill, SearchIcon, Tag, ThemeButton, Tip } from "./kit";
 import { applyPrefs, readPrefs, usePhoto } from "./prefs";
@@ -51,8 +52,8 @@ export default function Shell({ children }: { children: ReactNode }) {
   // ---- shifts: the manager's bell names the latest hand-over, so the list is read as the shell
   // mounts rather than when the Register screen happens to be opened.
   const loadShifts = useApp((s) => s.loadShifts);
-  const manager = user.r === "manager";
-  useEffect(() => { if (manager) void loadShifts(); }, [manager, loadShifts]);
+  const shifts = readsShifts(user);
+  useEffect(() => { if (shifts) void loadShifts(); }, [shifts, loadShifts]);
   // Where this account may work. One is the ordinary case and nothing about the header changes
   // for it; more than one earns the switcher below.
   const photo = usePhoto();
@@ -79,7 +80,7 @@ export default function Shell({ children }: { children: ReactNode }) {
           </button>
         </div>
         <nav className="nav">
-          {NAV[user.r].map((g) => (
+          {navFor(user).map((g) => (
             <div key={g.group}>
               <div className="navg">{g.group}</div>
               {g.items.map((it) => (
@@ -305,19 +306,23 @@ function Bell({ uid, queues, detail }: { uid: string; queues: Record<string, str
   );
 }
 
-/** What each counted queue is, in the words of the person who has to clear it. */
+/** Whether the bell carries the shifts row - whoever reads every counter's closed shifts. */
+const readsShifts = (u: User) => u.r === "manager";
+
+/** What each counted queue is, in the words of the person who has to clear it. Keyed by the
+ *  screen that clears it, so the sidebar badge and the bell row are one count. */
 const NOTE: Record<string, [string, string]> = {
-  tickets: ["Pick tickets to collect", "Issued to your counter and not yet received"],
-  requests: ["Requests awaiting approval", "Sent to the outlet manager, no decision yet"],
+  "outlet-tickets": ["Pick tickets to collect", "Issued to your counter and not yet received"],
+  "outlet-requests": ["Requests awaiting approval", "Sent to the outlet manager, no decision yet"],
   approvals: ["Requests awaiting your approval", "Counters cannot move until you decide"],
   issue: ["Documents on the issue desk", "Approvals to ticket, and tickets to hand over"],
   procure: ["Requisitions with procurement", "Sent and not yet decided on"],
   requisitions: ["Requisitions waiting on you", "Raised by the store keeper"],
   pool: ["Lines on the procurement list", "Approved and not yet claimed by a purchase order"],
-  orders: ["New kitchen orders", "Received and not yet accepted"],
+  "kitchen-orders": ["New kitchen orders", "Received and not yet accepted"],
   avail: ["Products that cannot be sold", "Switched off or out of stock"],
   inventory: ["Items below reorder", "Under the central store's reorder level"],
-  stock: ["Items below reorder", "Under the central store's reorder level"],
+  "store-stock": ["Items below reorder", "Under the central store's reorder level"],
   dash: ["Batches nearing best-before", "Made recently, due within the next 2 hours"],
   shifts: ["Shifts closed today", "Counter hand-overs, on the Register screen"],
 };
@@ -325,22 +330,22 @@ const NOTE: Record<string, [string, string]> = {
 /** A bell row whose queue is not a sidebar entry of its own opens this screen instead. Keeping
  *  the key off the sidebar keeps a closed shift - news, not work - from counting on a badge. */
 const GOES_TO: Record<string, string> = { shifts: "register" };
-/** Per role, where a queue opens when that role has no screen of the queue's own name: a counter's
+/** Per desk, where a queue opens when that desk has no screen of the queue's own name: a counter's
  *  products-off row opens its till, where each tile says why it cannot be sold. */
 const GOES_TO_FOR: Partial<Record<Role, Record<string, string>>> = { counter: { avail: "pos" } };
 
 /** A row's live second line, where the newest document says more than the queue's description:
  *  the manager reads who closed a shift, where, and for how much. */
 function bellDetail(s: AppState): Record<string, string> {
-  const last = s.user?.r === "manager" ? s.shifts.find((r) => r.closedAt && isToday(r.closedAt)) : undefined;
+  const last = s.user && readsShifts(s.user) ? s.shifts.find((r) => r.closedAt && isToday(r.closedAt)) : undefined;
   return last ? { shifts: `${last.operator} closed their shift at ${locName(last.loc)} · ${money0(last.totals.nettSales)}` } : {};
 }
 
 /* ---------- search index ---------- */
 interface Hit { id: string; to: string; t: string; s: string; kind: string }
 
-/** The first of these destinations the role may actually open. */
-const dest = (r: Role, ...keys: string[]) => keys.find((k) => canSee(r, k));
+/** The first of these destinations the session may actually open. */
+const dest = (u: User, ...keys: ScreenKey[]) => keys.find((k) => canSee(u, k));
 
 /** Exactly what the palette reads, so `Search` can subscribe to those four and nothing else. */
 type SearchState = Pick<AppState, "user" | "req" | "tkt" | "bills">;
@@ -353,21 +358,21 @@ function searchHits(s: SearchState, q: string): Hit[] {
   // A counter operator only ever sees its own paperwork.
   const mine = u.r === "counter" ? u.loc : null;
 
-  const navs: Hit[] = NAV[u.r].flatMap((g) => g.items
+  const navs: Hit[] = navFor(u).flatMap((g) => g.items
     .filter((i) => has(i.label, g.group))
     .map((i) => ({ id: "n:" + i.k, to: i.k, t: i.label, s: g.group, kind: "Go to" })));
 
-  const itemTo = dest(u.r, "stock", "inventory");
+  const itemTo = dest(u, "outlet-stock", "items-stock", "store-stock", "kitchen-stock", "inventory");
   const items: Hit[] = !itemTo ? [] : Object.keys(IT)
     .filter((k) => has(IT[k].n, IT[k].c, IT[k].g))
     .map((k) => ({ id: "i:" + k, to: itemTo, t: IT[k].n, s: `${IT[k].c} · ${IT[k].g}`, kind: "Item" }));
 
-  const reqTo = dest(u.r, "requests", "approvals", "issue");
+  const reqTo = dest(u, "outlet-requests", "kitchen-requests", "approvals", "issue");
   const reqs: Hit[] = !reqTo ? [] : s.req
     .filter((r) => (!mine || r.from === mine) && has(r.id, r.st, r.by, LOC[r.from].n))
     .map((r) => ({ id: "r:" + r.id, to: reqTo, t: r.id, s: `${LOC[r.from].n} · ${r.st}`, kind: "Request" }));
 
-  const tktTo = dest(u.r, "tickets", "issue");
+  const tktTo = dest(u, "outlet-tickets", "kitchen-tickets", "issue");
   const tkts: Hit[] = !tktTo ? [] : s.tkt
     .filter((t) => (!mine || t.to === mine) && has(t.id, t.st, t.req, LOC[t.from].n, LOC[t.to].n))
     .map((t) => ({
@@ -375,7 +380,7 @@ function searchHits(s: SearchState, q: string): Hit[] {
       s: `${LOC[t.from].n} → ${LOC[t.to].n} · ${t.st}`,
     }));
 
-  const bills: Hit[] = !canSee(u.r, "bills") ? [] : s.bills
+  const bills: Hit[] = !canSee(u, "bills") ? [] : s.bills
     .filter((b) => (!mine || b.loc === mine) && has(b.no, b.pay, b.opr, b.payer?.name))
     .map((b) => ({
       id: "b:" + b.no, to: "bills", t: b.no, kind: "Bill",
@@ -418,36 +423,33 @@ function navQueues(s: AppState): Record<string, string[]> {
   const u = s.user;
   if (!u) return {};
   const c: Record<string, string[]> = {};
-  if (u.r === "counter") {
-    // What is still coming, not what is merely unconfirmed: a withdrawn ticket has nowhere
-    // left to go, and `!== "Received"` kept it on the badge for the rest of the day.
-    c.tickets = ids(s.tkt.filter((t) => t.to === u.loc && isTicketOpen(t.st)));
-    c.requests = ids(s.req.filter((r) => r.from === u.loc && r.st === "Request sent"));
-    c.avail = offItems(s, u.loc);
+  const sees = (k: ScreenKey) => canSee(u, k);
+  // What is still coming, not what is merely unconfirmed: a withdrawn ticket has nowhere
+  // left to go, and `!== "Received"` kept it on the badge for the rest of the day.
+  if (sees("outlet-tickets")) c["outlet-tickets"] = ids(s.tkt.filter((t) => t.to === u.loc && isTicketOpen(t.st)));
+  if (sees("outlet-requests")) c["outlet-requests"] = ids(s.req.filter((r) => r.from === u.loc && r.st === "Request sent"));
+  // The counter's own shelf, opened on its till (`GOES_TO_FOR`); the kitchen's board; and the
+  // manager's every-outlet board when `AVAILABILITY_SCREEN_ENABLED` puts it back.
+  if (u.r === "counter") c.avail = offItems(s, u.loc);
+  else if (sees("avail")) {
+    c.avail = u.r === "prod"
+      ? Object.keys(s.stock.kitchen).filter((k) => IT[k]?.t === "FG" && !availOf(s, "kitchen", k).ok)
+      : openOutlets().flatMap((l) => offItems(s, l).map((it) => `${l}:${it}`));
   }
-  if (u.r === "manager") {
-    c.approvals = ids(s.req.filter((r) => r.st === "Request sent"));
-    c.shifts = ids(s.shifts.filter((r) => r.closedAt && isToday(r.closedAt)));
-    if (canSee("manager", "avail")) c.avail = openOutlets().flatMap((l) => offItems(s, l).map((it) => `${l}:${it}`));
-  }
-  if (u.r === "store") {
+  if (sees("approvals")) c.approvals = ids(s.req.filter((r) => r.st === "Request sent"));
+  if (readsShifts(u)) c.shifts = ids(s.shifts.filter((r) => r.closedAt && isToday(r.closedAt)));
+  if (sees("issue")) {
     c.issue = [
       ...ids(s.req.filter((r) => (r.st === "Manager approved" || r.st === "Partially approved") && !r.ticket)),
       ...ids(s.tkt.filter((t) => t.from === "store" && t.st === "Issued")),
     ];
-    c.procure = ids(s.prq.filter((p) => p.st === "Sent"));
-    c.stock = belowReorder(s);
   }
-  if (u.r === "prod") {
-    c.orders = ids(s.pord.filter((o) => o.st === "New"));
-    c.avail = Object.keys(s.stock.kitchen)
-      .filter((k) => IT[k]?.t === "FG" && !availOf(s, "kitchen", k).ok);
-    c.dash = ids(approachingBestBefore(s));
-  }
-  if (u.r === "buyer") {
-    c.requisitions = ids(s.prq.filter((p) => p.st === "Sent"));
-    c.pool = procurementList(s).map((l) => `${l.prq}:${l.line}`);
-    c.inventory = belowReorder(s);
-  }
+  if (sees("procure")) c.procure = ids(s.prq.filter((p) => p.st === "Sent"));
+  if (sees("store-stock")) c["store-stock"] = belowReorder(s);
+  if (sees("kitchen-orders")) c["kitchen-orders"] = ids(s.pord.filter((o) => o.st === "New"));
+  if (u.r === "prod") c.dash = ids(approachingBestBefore(s));
+  if (sees("requisitions")) c.requisitions = ids(s.prq.filter((p) => p.st === "Sent"));
+  if (sees("pool")) c.pool = procurementList(s).map((l) => `${l.prq}:${l.line}`);
+  if (sees("inventory")) c.inventory = belowReorder(s);
   return c;
 }

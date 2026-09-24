@@ -1,33 +1,16 @@
-import { useEffect, useState } from "react";
+import { createElement, useEffect, useState } from "react";
 import { Navigate, Route, Routes, useNavigate, useParams } from "react-router-dom";
 import { useApp } from "./store";
-import { HOME, NAV, canSee } from "./nav";
+import { canSee, homeFor, labelOf } from "./nav";
+import { LEGACY_KEYS, isScreenKey } from "./screens";
+import { screenFor } from "./registry";
+import { useWide } from "./lib/selectors";
 import Shell from "./ui/Shell";
 import Toast from "./ui/Toast";
 import Login from "./pages/Login";
 import ChangePassword from "./pages/ChangePassword";
-import Settings from "./pages/Settings";
-import Support from "./pages/Support";
 import AdminDashboard from "./pages/AdminDashboard";
-import { Btn, PageHead, Card } from "./ui/kit";
-import { screens as counter } from "./roles/counter";
-import { screens as manager } from "./roles/manager";
-import { screens as store } from "./roles/store";
-import { screens as prod } from "./roles/prod";
-import { screens as buyer } from "./roles/buyer";
-import type { Role } from "./types";
-
-const REGISTRY: Record<Role, Record<string, React.ComponentType>> = { counter, manager, store, prod, buyer };
-
-/** The sidebar name for a route key. Several keys are shared and named differently by the roles
- *  that hold them - `orders` is *Orders* to the kitchen and *Purchase Orders* to the buyer - so
- *  the signed-in role's own sidebar is asked first, and any role's only when the key is not on
- *  it. Without that, which name a person is told depended on the order `NAV`'s keys happen to
- *  be declared in, and a kitchen sent back to its board could be told it was on Purchase Orders. */
-const labelIn = (role: Role, k: string) => NAV[role].flatMap((g) => g.items).find((i) => i.k === k)?.label;
-const labelOf = (role: Role, k: string) =>
-  labelIn(role, k) ?? Object.values(NAV).flat().flatMap((g) => g.items).find((i) => i.k === k)?.label
-  ?? (k === "admin" ? "Manage staff accounts" : k);
+import { Btn } from "./ui/kit";
 
 /** UA-01: a refused screen says so on the way out instead of bouncing in silence. */
 function Denied({ k }: { k: string }) {
@@ -35,14 +18,14 @@ function Denied({ k }: { k: string }) {
   const notify = useApp((s) => s.notify);
   useEffect(() => {
     const a = /^[AEIOU]/.test(user.rl) ? "an" : "a";
-    notify(`${labelOf(user.r, k)} is not available to ${a} ${user.rl} - you are back on ${labelOf(user.r, HOME[user.r])}`);
+    notify(`${labelOf(k)} is not available to ${a} ${user.rl} - you are back on ${labelOf(homeFor(user))}`);
   }, [k, user, notify]);
-  return <Navigate to={"/" + HOME[user.r]} replace />;
+  return <Navigate to={"/" + homeFor(user)} replace />;
 }
 
 /** The admin-only equivalent of `<Denied>`: an admin-flagged account has no operational role to
  *  describe it by (a capability, not a role - root CLAUDE.md), so `labelOf` - which reads a
- *  role's own `NAV` - has nothing to answer with here. Says so in its own words instead, and
+ *  session's own sidebar - has nothing to answer with here. Says so in its own words instead, and
  *  sends the account back to the one place it has. */
 function BackToAdmin() {
   const notify = useApp((s) => s.notify);
@@ -53,24 +36,22 @@ function BackToAdmin() {
 function Screen() {
   const { key = "" } = useParams();
   const user = useApp((s) => s.user);
+  const wide = useWide();
   if (!user) return <Navigate to="/login" replace />;
-  // A capability, not a role (root CLAUDE.md): an admin-flagged account has no `NAV` entry, no
-  // sidebar and no operational home - `/admin` is the only key it can ever reach, checked here,
-  // ahead of `canSee`, which only ever knows about the five operational roles.
+  // A capability, not a role (root CLAUDE.md): an admin-flagged account has no sidebar and no
+  // operational home - `/admin` is the only key it can ever reach, checked here, ahead of
+  // `canSee`, which only ever knows about operational sessions.
   if (user.admin) return key === "admin" ? <AdminDashboard /> : <BackToAdmin />;
-  if (!canSee(user.r, key)) return <Denied k={key} />;
-  if (key === "settings") return <Settings />;
-  if (key === "issues") return <Support />;
-  const C = REGISTRY[user.r][key];
-  if (!C) {
-    return (
-      <>
-        <PageHead crumbs={["Royal Care"]} title="Coming up" sub="This screen is not wired yet." />
-        <Card title="Placeholder"><p className="mini">Screen key: {key}</p></Card>
-      </>
-    );
-  }
-  return <C />;
+  // A key from before keys were made unique across desks - a bookmark, an old tab - lands on the
+  // screen it always meant, under its new name.
+  const renamed = isScreenKey(key) ? undefined : LEGACY_KEYS[user.r][key];
+  if (renamed) return <Navigate to={"/" + renamed} replace />;
+  // Checked on every render, not only on arrival: a role changed under an open tab takes the
+  // screen away the moment `/me` says so.
+  if (!isScreenKey(key) || !canSee(user, key)) return <Denied k={key} />;
+  // Every component `screenFor` answers is a module-level one, so this is the same type on every
+  // render and React keeps its state; `createElement` says so without a local capitalised binding.
+  return createElement(screenFor({ r: user.r, wide }, key));
 }
 
 /**
@@ -159,10 +140,10 @@ function Page() {
       </div>
     );
   }
-  // Where a signed-in account lands: `/admin` for the capability, never `HOME[user.r]` - an
+  // Where a signed-in account lands: `/admin` for the capability, never `homeFor(user)` - an
   // admin-flagged account's nominal role is bookkeeping the schema needs, not an identity this
   // app shows it (root CLAUDE.md).
-  const home = user ? (user.admin ? "admin" : HOME[user.r]) : "login";
+  const home = user ? (user.admin ? "admin" : homeFor(user)) : "login";
   return (
     <Routes>
       <Route path="/login" element={user ? <Navigate to={mcp ? "/change-password" : "/" + home} replace /> : <Login />} />

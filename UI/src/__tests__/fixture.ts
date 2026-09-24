@@ -4,7 +4,10 @@ import { setAccessToken } from "../api/session";
 import { hydrateMaster, hydrateRoster, hydrateTerms } from "../data/master";
 import { basePrices } from "../lib/selectors";
 import { initialAudit } from "../store/audit";
-import type { AdjustmentRequest, Contract, Role } from "../types";
+import type { AdjustmentRequest, Contract, Role, User } from "../types";
+import type { ComponentType } from "react";
+import { DESK_NAV, type ScreenKey } from "../screens";
+import { screenFor } from "../registry";
 
 export const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v));
 
@@ -29,10 +32,20 @@ export const S = () => useApp.getState();
  * production code, which is exactly what this phase deleted - so the fixtures are imported here,
  * in a test file, which is where they belong.
  */
+export const userOf = (role: Role): User => FX.USERS.find((u) => u.r === role && !u.admin)!;
 export const as = (role: Role) => {
   setAccessToken("test-token");
-  useApp.setState({ user: FX.USERS.find((u) => u.r === role)!, auth: "ready", mustChangePassword: false, drawer: null });
+  useApp.setState({ user: userOf(role), auth: "ready", mustChangePassword: false, drawer: null });
 };
+
+/**
+ * The screens a desk's seeded role sees, keyed by screen key, as its own sidebar resolves them -
+ * `bills` the manager's every-outlet view for a manager and the counter's own for a counter.
+ * For a suite that mounts one screen straight off a desk rather than through the router.
+ */
+export const deskScreens = (role: Role): Record<ScreenKey, ComponentType> => Object.fromEntries(
+  DESK_NAV[role].flatMap((g) => g.keys).map((k) => [k, screenFor({ r: role, wide: role !== "counter" }, k)]),
+) as Record<ScreenKey, ComponentType>;
 
 /** What `logout()` leaves behind. */
 export const signedOut = () => {

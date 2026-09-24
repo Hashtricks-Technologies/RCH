@@ -68,7 +68,7 @@ export default function Stock() {
   const request = (it: string, n: number) => {
     s.setDraft([...s.draft.filter((l) => l.it !== it), { it, qty: n }]);
     s.notify(`${counterNameOf(it)} staged on a request from ${L.n}`);
-    nav("/requests");
+    nav("/outlet-requests");
   };
 
   const mine = s.adjReq.filter((r) => r.loc === loc).slice().sort((a, b) => b.iso.localeCompare(a.iso));
@@ -86,7 +86,7 @@ export default function Stock() {
         </>}
         actions={<>
           <Btn variant="gh" onClick={() => openDrawer("creqadj", "new")}>Request adjustment</Btn>
-          <Btn variant="gh" onClick={() => nav("/requests")}>Stock requests</Btn>
+          <Btn variant="gh" onClick={() => nav("/outlet-requests")}>Stock requests</Btn>
         </>}
       />
       <Card flush>
@@ -115,7 +115,7 @@ export default function Stock() {
             </p>
             {filtered
               ? <Btn size="sm" onClick={clearAll}>Clear filters</Btn>
-              : <Btn size="sm" onClick={() => nav("/requests")}>Raise a request</Btn>}
+              : <Btn size="sm" onClick={() => nav("/outlet-requests")}>Raise a request</Btn>}
           </div>
         ) : (
           <div className="stkgrid" style={{ padding: 13 }}>

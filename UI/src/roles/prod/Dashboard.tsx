@@ -85,7 +85,7 @@ export default function Dashboard() {
         title="Kitchen dashboard"
         tip="Today's orders, batches and kitchen stock."
         actions={<>
-          <Btn variant="gh" onClick={() => nav("/orders")}>Orders</Btn>
+          <Btn variant="gh" onClick={() => nav("/kitchen-orders")}>Orders</Btn>
           <Btn onClick={() => nav("/make")}>Make &amp; distribute</Btn>
         </>}
       />
@@ -100,13 +100,13 @@ export default function Dashboard() {
       ]} />
 
       {newOrders.length > 0 && (
-        <Alert tone="w" label="ORDERS" action={<Btn size="sm" variant="gh" onClick={() => nav("/orders")}>Open orders</Btn>}>
+        <Alert tone="w" label="ORDERS" action={<Btn size="sm" variant="gh" onClick={() => nav("/kitchen-orders")}>Open orders</Btn>}>
           {newOrders.length} order{newOrders.length > 1 ? "s" : ""} from{" "}
           {[...new Set(newOrders.map((o) => LOC[o.from].n))].join(", ")} need your decision.
         </Alert>
       )}
       {ready.length > 0 && (
-        <Alert tone="g" label="READY" action={<Btn size="sm" variant="gh" onClick={() => nav("/orders")}>Dispatch</Btn>}>
+        <Alert tone="g" label="READY" action={<Btn size="sm" variant="gh" onClick={() => nav("/kitchen-orders")}>Dispatch</Btn>}>
           {ready.map((o) => o.id).join(", ")} {ready.length > 1 ? "are" : "is"} plated and waiting to go out.
         </Alert>
       )}

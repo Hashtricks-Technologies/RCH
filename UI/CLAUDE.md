@@ -22,11 +22,21 @@ pnpm --filter @rch/ui build       # tsc -b && vite build → UI/dist
 
 ## Screens: three files must agree
 
-1. `src/nav.ts`: `NAV[role]` is the sidebar, `HOME[role]` the landing key, and `canSee(role, key)` the guard.
-2. `src/roles/<role>/index.tsx` exports `screens: Record<key, Component>` and imports its drawer modules for
-   their side effects.
-3. `src/App.tsx` resolves the one route, `/:key`, to `REGISTRY[user.r][key]`. A key the role can't see
-   redirects home **with a toast saying why**.
+1. `src/screens.ts` is pure metadata. `SCREENS` lists every screen once (`key`, `label`, `icon`, `section`,
+   and `desks` for a desk-bound one); `DESK_NAV[desk]` is each desk's own sidebar layout, `DESK_HOME[desk]` its
+   landing key, and `LEGACY_KEYS[desk][oldKey]` the key each desk used before keys were made unique.
+2. `src/registry.tsx` maps each key to its component (`screenFor(viewer, key)`) and imports every drawer
+   module for its side effect. `dash` resolves by desk, `avail` to the kitchen's board or the manager's, and
+   `bills` to the manager's every-outlet view for a session that reads hospital-wide and the counter's own
+   otherwise.
+3. `src/nav.ts` builds from those: `navFor(user)` is the sidebar, `homeFor(user)` the landing key, and
+   `canSee(user, key)` the guard. `src/App.tsx` resolves the one route, `/:key`: an old key redirects to its
+   new name, and a key the session can't see redirects home **with a toast saying why**.
+
+A key names one screen for everybody, so no two desks share one: `outlet-stock`, `items-stock`, `store-stock`
+and `kitchen-stock` were all `stock`; `kitchen-orders` and `purchase-orders` were `orders`; `outlet-requests`
+/ `kitchen-requests` and `outlet-tickets` / `kitchen-tickets` were `requests` and `tickets`. Every
+`nav("/…")` in a screen uses the new key.
 
 Routing is `BrowserRouter`, with plain paths (`/pos`, `/admin`). An admin-flagged account never gets a
 `<Shell>`: it only ever sees `pages/AdminDashboard.tsx` at `/admin`, and any other key bounces it back there.
@@ -37,8 +47,9 @@ added, renamed and switched off, never deleted, so a balance always keeps an id 
 `AdminAudit` (the audit log: every write and sign-in, newest first, with filters, counts and a CSV export).
 With no `Shell` around it, `AdminDashboard.tsx` mounts the `<Drawer />` host itself.
 
-`screens.test.tsx` and `app.test.tsx` render every `NAV` key for every role. A nav entry with no component fails
-the suite, on purpose.
+`screens.test.tsx` and `app.test.tsx` render every sidebar key for every seeded role, and `nav-parity.test.ts`
+pins each desk's sidebar - groups, labels, icons and order - to the literal it had before keys were renamed.
+Tests mount a desk's screens through `deskScreens(role)` in `fixture.ts`.
 
 The manager's own group beyond the outlets is **Credit** (`credit`, `roles/manager/Credit.tsx`): three tabs -
 who owes what, the rate card (a discount and a credit limit per category, with per-person exceptions) and the
@@ -54,9 +65,9 @@ The store's `saveOutletPrices(changes)` is the ordinary `Promise<boolean>` write
 only on `true`. No list is named anywhere on it. A price above the printed MRP is saveable: the cell shows a
 neutral "Till charges ₹… (MRP)" note, never a refusal. The grid's switch is the manager's only on/off - the
 manager's Product On / Off screen (`roles/manager/Availability.tsx`, key `avail`) is hidden behind
-`AVAILABILITY_SCREEN_ENABLED` in `src/nav.ts`, which drops both its sidebar entry and its `screens` entry (and
-the manager's `avail` bell queue); the counter's and the kitchen's switches are untouched. The old price-list screen (`Prices.tsx` with its
-`NewListDialog`, and the `plset` drawer) is hidden behind `PRICE_LISTS_ENABLED` in `roles/manager/index.tsx`
+`AVAILABILITY_SCREEN_ENABLED` in `src/screens.ts`, which takes the manager's desk off the `avail` screen's
+`desks` (dropping its sidebar entry, its route and the manager's `avail` bell queue); the counter's and the kitchen's switches are untouched. The old price-list screen (`Prices.tsx` with its
+`NewListDialog`, and the `plset` drawer) is hidden behind `PRICE_LISTS_ENABLED` in `src/registry.tsx`
 - still registered, still tested by importing it directly, reachable again by flipping the flag.
 
 **A drawer is a document; a modal is one decision.** `ui/Drawer.tsx` opens a document beside the list it came

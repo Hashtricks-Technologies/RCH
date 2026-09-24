@@ -125,7 +125,7 @@ export default function Dashboard() {
         tip="This session's sales, and the stock behind them, at this counter. The session runs from the last Z to the next one - not from midnight."
         actions={<>
           <CloseShift />
-          <Btn variant="gh" onClick={() => nav("/requests")}>Raise a request</Btn>
+          <Btn variant="gh" onClick={() => nav("/outlet-requests")}>Raise a request</Btn>
           <Btn onClick={() => nav("/pos")}>Open till</Btn>
         </>}
       />
@@ -164,28 +164,28 @@ export default function Dashboard() {
         ))}
       </AlertStack>
       <AlertStack tone="w" label="COLLECT"
-        action={<Btn size="xs" variant="gh" onClick={() => nav("/tickets")}>Open tickets</Btn>}>
+        action={<Btn size="xs" variant="gh" onClick={() => nav("/outlet-tickets")}>Open tickets</Btn>}>
         {waiting.map((t) => (
           <Alert key={t.id} tone="w" label="COLLECT"
-            action={<Btn size="xs" variant="gh" onClick={() => nav("/tickets")}>Open tickets</Btn>}>
+            action={<Btn size="xs" variant="gh" onClick={() => nav("/outlet-tickets")}>Open tickets</Btn>}>
             Ticket <b className="mono">{t.id}</b> is waiting at {LOC[t.from].n} - {t.lines.length} item{t.lines.length === 1 ? "" : "s"} against {t.req}.
           </Alert>
         ))}
       </AlertStack>
       <AlertStack tone="i" label="TRANSIT"
-        action={<Btn size="xs" variant="gh" onClick={() => nav("/tickets")}>Confirm receipt</Btn>}>
+        action={<Btn size="xs" variant="gh" onClick={() => nav("/outlet-tickets")}>Confirm receipt</Btn>}>
         {inTransit.map((t) => (
           <Alert key={t.id} tone="i" label="TRANSIT"
-            action={<Btn size="xs" variant="gh" onClick={() => nav("/tickets")}>Confirm receipt</Btn>}>
+            action={<Btn size="xs" variant="gh" onClick={() => nav("/outlet-tickets")}>Confirm receipt</Btn>}>
             Ticket <b className="mono">{t.id}</b> has been handed over and is on its way here.
           </Alert>
         ))}
       </AlertStack>
       <AlertStack tone="c" label="REJECTED"
-        action={<Btn size="xs" variant="gh" onClick={() => nav("/requests")}>View request</Btn>}>
+        action={<Btn size="xs" variant="gh" onClick={() => nav("/outlet-requests")}>View request</Btn>}>
         {rejected.map((r) => (
           <Alert key={r.id} tone="c" label="REJECTED"
-            action={<Btn size="xs" variant="gh" onClick={() => nav("/requests")}>View request</Btn>}>
+            action={<Btn size="xs" variant="gh" onClick={() => nav("/outlet-requests")}>View request</Btn>}>
             <b className="mono">{r.id}</b> was rejected by the outlet manager{r.mgrNote ? ` - "${r.mgrNote}"` : ""}.
           </Alert>
         ))}
@@ -195,7 +195,7 @@ export default function Dashboard() {
       <Card
         title="Stock requests from this counter"
         tip={`Everything ${L.n} has asked the central store for`}
-        right={<Btn variant="gh" size="sm" onClick={() => nav("/requests")}>All requests</Btn>}
+        right={<Btn variant="gh" size="sm" onClick={() => nav("/outlet-requests")}>All requests</Btn>}
       >
         <Kpis items={[
           // Not "today": a request raised on Friday is still open on Monday and is still this
@@ -241,7 +241,7 @@ export default function Dashboard() {
           empty={{
             title: "No request raised from this counter yet",
             sub: "Raise one against the central store and it will be tracked here until the stock is on the shelf.",
-            action: <Btn size="sm" onClick={() => nav("/requests")}>Raise a request</Btn>,
+            action: <Btn size="sm" onClick={() => nav("/outlet-requests")}>Raise a request</Btn>,
           }}
         />
       </Card>

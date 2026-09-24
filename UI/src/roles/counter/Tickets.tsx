@@ -51,7 +51,7 @@ export default function Tickets() {
         crumbs={["Royal Care", L.n, "Pick Tickets"]}
         title="Pick tickets"
         tip="Stock this counter can collect."
-        actions={<Btn variant="gh" onClick={() => nav("/requests")}>Stock requests</Btn>}
+        actions={<Btn variant="gh" onClick={() => nav("/outlet-requests")}>Stock requests</Btn>}
       />
 
       {toCollect > 0 && (
@@ -126,7 +126,7 @@ export default function Tickets() {
             : {
               title: "No pick ticket for this counter",
               sub: "A ticket appears here once the store keeper issues one against an approved request.",
-              action: <Btn size="sm" onClick={() => nav("/requests")}>Raise a request</Btn>,
+              action: <Btn size="sm" onClick={() => nav("/outlet-requests")}>Raise a request</Btn>,
             }}
         />
         <TableFoot count={rows.length}

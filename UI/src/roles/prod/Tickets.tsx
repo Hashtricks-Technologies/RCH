@@ -70,7 +70,7 @@ export default function Tickets() {
         crumbs={["Royal Care", "Central Kitchen", "Pick Tickets"]}
         title="Pick tickets"
         tip="Stock coming into and going out of the kitchen."
-        actions={<Btn variant="gh" onClick={() => nav("/requests")}>Stock requests</Btn>}
+        actions={<Btn variant="gh" onClick={() => nav("/kitchen-requests")}>Stock requests</Btn>}
       />
 
       {toCollect.length > 0 && (
@@ -139,7 +139,7 @@ export default function Tickets() {
             sub: inb.filtering
               ? "Clear the search or switch Status back to All."
               : "A ticket appears here once the store keeper issues one against a kitchen stock request.",
-            action: <Btn size="sm" onClick={() => (inb.filtering ? inb.clear() : nav("/requests"))}>
+            action: <Btn size="sm" onClick={() => (inb.filtering ? inb.clear() : nav("/kitchen-requests"))}>
               {inb.filtering ? "Clear filters" : "Raise a request"}
             </Btn>,
           }}
@@ -223,7 +223,7 @@ export default function Tickets() {
             sub: out.filtering
               ? "Clear the search or switch Status back to All."
               : "Dispatch a ready order from the board, or send stock out from Make & Distribute.",
-            action: <Btn size="sm" onClick={() => (out.filtering ? out.clear() : nav("/orders"))}>
+            action: <Btn size="sm" onClick={() => (out.filtering ? out.clear() : nav("/kitchen-orders"))}>
               {out.filtering ? "Clear filters" : "Open the order board"}
             </Btn>,
           }}

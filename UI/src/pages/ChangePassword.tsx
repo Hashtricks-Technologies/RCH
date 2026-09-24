@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { HOME } from "../nav";
+import { homeFor } from "../nav";
 import { useApp } from "../store";
 import { Alert } from "../ui/kit";
 
@@ -17,7 +17,7 @@ export default function ChangePassword() {
     setOwn(null);
     if (next !== again) { setOwn("The two new passwords do not match."); return; }
     if (next.length < 10) { setOwn("Choose at least ten characters."); return; }
-    if (await changePassword(cur, next) && user) nav("/" + HOME[user.r]);
+    if (await changePassword(cur, next) && user) nav("/" + homeFor(user));
   };
   const shown = own ?? refused;
   return (

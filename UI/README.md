@@ -112,7 +112,9 @@ RC-xxxx permanently" or "Keep"); the server still refuses one with any history, 
 
 ```
 src/
-  types.ts, nav.ts, drawers.ts, App.tsx   entities · sidebar & route guard · drawer registry · router
+  types.ts, drawers.ts, App.tsx          entities · drawer registry · router
+  screens.ts, registry.tsx, nav.ts        every screen as data · key → component (and every drawer
+                                           import) · sidebar, landing and route guard
   api/                                    client.ts (the one generic client - routes, idempotency, 401-refresh
                                            retry), session.ts (in-memory token), events.ts (SSE change stream),
                                            refetch.ts (pulls back what a write changed), wire.ts (mappers)
@@ -207,7 +209,7 @@ only once CONFIRM is typed, and Cancel leaves them all staged. A price set for o
 moves another's, even where two used to share a price list - no list is shown or chosen anywhere.
 A price above the MRP saves, with a note under the cell saying the till charges the MRP. The
 switch is the manager's one on/off: the separate Product On / Off screen is hidden behind
-`AVAILABILITY_SCREEN_ENABLED` in `src/nav.ts`.
+`AVAILABILITY_SCREEN_ENABLED` in `src/screens.ts`.
 
 **Correcting a shelf is a document.** A write-off or a stock count is raised from the shelf it
 corrects - the store keeper's Adjustments screen for any location including quarantine, and an

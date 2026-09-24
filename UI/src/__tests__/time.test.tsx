@@ -2,15 +2,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { MemoryRouter } from "react-router-dom";
-import { screens as counter } from "../roles/counter";
-import { screens as prod } from "../roles/prod";
 import Approvals from "../roles/manager/Approvals";
 import ManagerDashboard from "../roles/manager/Dashboard";
 import BuyerDashboard from "../roles/buyer/Dashboard";
 import { isToday, now } from "../lib/fmt";
 import { applyRequests, applySnapshot } from "../api/wire";
 import { useApp } from "../store";
-import { as, resetStore, S } from "./fixture";
+import { as, deskScreens, resetStore, S } from "./fixture";
+
+const counter = deskScreens("counter");
+const prod = deskScreens("prod");
 import * as FX from "@rch/contract/fixtures";
 import type { Batch, Bill, Dated, DatedDoc, PurchaseOrder, Requisition } from "../types";
 

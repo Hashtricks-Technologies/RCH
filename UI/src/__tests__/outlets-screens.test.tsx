@@ -4,8 +4,10 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { LOC } from "../data/master";
 import { useApp } from "../store";
-import { screens as manager } from "../roles/manager";
-import { as, resetStore } from "./fixture";
+
+import { as, deskScreens, resetStore } from "./fixture";
+
+const manager = deskScreens("manager");
 
 const JUICE = {
   n: "Juice Bar", c: "OT-JB", type: "Outlet" as const, floor: "Ground", cc: "CC-JB",

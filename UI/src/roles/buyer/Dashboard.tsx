@@ -191,10 +191,10 @@ export default function Dashboard() {
         ))}
       </AlertStack>
       <AlertStack tone="w" label="PARTIAL"
-        action={<Btn size="xs" variant="gh" onClick={() => nav("/orders")}>Review</Btn>}>
+        action={<Btn size="xs" variant="gh" onClick={() => nav("/purchase-orders")}>Review</Btn>}>
         {partial.map((o) => (
           <Alert key={o.id} tone="w" label="PARTIAL"
-            action={<Btn size="xs" variant="gh" onClick={() => nav("/orders")}>Review</Btn>}>
+            action={<Btn size="xs" variant="gh" onClick={() => nav("/purchase-orders")}>Review</Btn>}>
             <b>{o.id}</b> with {vendorName(s.vendors, o.vendor)} is partially received -
             {" "}{money0(poValue(o))} on order, the balance is still outstanding.
           </Alert>
