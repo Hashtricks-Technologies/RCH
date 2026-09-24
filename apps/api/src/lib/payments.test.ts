@@ -80,8 +80,8 @@ describe("the Razorpay gateway", () => {
     const timeout = Object.assign(new Error("timed out"), { name: "TimeoutError" });
     const { impl } = stub({ status: 502, text: "<html>Bad gateway</html>" }, { status: 429, body: { error: { code: "TOO_MANY", description: "Slow down" } } }, new TypeError("fetch failed"), timeout);
     const g = createRazorpayGateway(cfg, impl);
-    const errs = [];
-    for (let i = 0; i < 4; i++) errs.push(await g.fetchPayment("pay_1").catch((x: unknown) => x as GatewayError));
+    const errs: GatewayError[] = [];
+    for (let i = 0; i < 4; i++) errs.push((await g.fetchPayment("pay_1").catch((x: unknown) => x)) as GatewayError);
     expect(errs.map((e) => [e.status, e.code, e.retryable, e.message])).toEqual([
       [502, "http_error", true, "The payment gateway answered 502"],
       [429, "TOO_MANY", true, "Slow down"],

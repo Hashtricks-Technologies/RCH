@@ -6,7 +6,7 @@ import type { AuditEvent } from "@rch/contract";
 import { auditOutbox } from "../db/schema/index.js";
 import { withTestSchema, type TestDb } from "../test/db.js";
 import { seedTestDb } from "../test/seed.js";
-import { AUDIT_OUTBOX_CHANNEL, MASK, SECRET_KEYS, actorOf, insertAuditEvent, maskSecrets, recordAuthEvent, targetOf } from "./audit.js";
+import { AUDIT_OUTBOX_CHANNEL, MASK, SECRET_KEYS, actorOf, insertAuditEvent, maskSecrets, recordAuthEvent, recordSystemEvent, targetOf } from "./audit.js";
 
 const BASE = process.env.TEST_DATABASE_URL ?? "postgres://rch:rch@localhost:5439/rch_test";
 
@@ -199,5 +199,41 @@ describe("recordAuthEvent", () => {
       actor: { id: "u1", emp: "RC-4471", name: "Kavitha Raman" }, outcome: "done", cause: null,
       request: { body: { emp: "RC-4471", password: MASK } },
     });
+  });
+});
+
+describe("recordSystemEvent", () => {
+  it("stores a done event with the QR Orders account as the actor, creating it if nobody has yet, masked", async () => {
+    await t.db.transaction(async (tx) => {
+      await recordSystemEvent(tx, {
+        action: "createQrOrder", subject: "QO-2026-0001", loc: "coffee", method: "POST", path: "/public/qr/:token/orders",
+        request: { params: { token: "abcdefghijklmnopqrstuvwx" }, body: { name: "Asha", phone: "9876543210" } },
+        result: { order: { id: "QO-2026-0001" }, secret: "s".repeat(43) },
+        message: "QR order QO-2026-0001 placed at Coffee Shop", changed: ["qrOrders"], ip: "10.0.0.9", device: "x".repeat(600),
+      });
+    });
+    const stored = (await rows()).at(-1)!.event as AuditEvent;
+    expect(stored).toMatchObject({
+      actor: { id: "sys-qr", emp: "SYS-QR", name: "QR Orders", role: "System", loc: "" },
+      action: "createQrOrder", method: "POST", path: "/public/qr/:token/orders", target: "QO-2026-0001", targetLoc: "coffee",
+      outcome: "done", status: 200, cause: null, before: null, changed: ["qrOrders"], ip: "10.0.0.9",
+      request: { params: { token: MASK } }, result: { secret: MASK },
+    });
+    expect(stored.userAgent).toHaveLength(512);
+    expect(stored.requestId).toMatch(/^system-[0-9a-f-]{36}$/);
+  });
+  it("records a worker's own step with no route, and rolls back with the transaction it is in", async () => {
+    await t.db.transaction(async (tx) => {
+      await recordSystemEvent(tx, { action: "qrRefundSent", subject: "QO-2026-0001-R1", message: "Refund QO-2026-0001-R1 sent", requestId: "worker-1" });
+    });
+    expect((await rows()).at(-1)!.event).toMatchObject({
+      action: "qrRefundSent", method: "", path: "", targetLoc: "", request: null, result: null, changed: [], ip: "", userAgent: "", requestId: "worker-1",
+    });
+    const before = (await rows()).length;
+    await expect(t.db.transaction(async (tx) => {
+      await recordSystemEvent(tx, { action: "qrRefundFailed", subject: "QO-2026-0001-R1", message: "Refund failed" });
+      throw new Error("the worker's write failed");
+    })).rejects.toThrow("the worker's write failed");
+    expect(await rows()).toHaveLength(before);
   });
 });

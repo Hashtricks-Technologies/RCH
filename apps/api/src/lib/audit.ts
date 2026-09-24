@@ -1,10 +1,12 @@
 import { eq, sql } from "drizzle-orm";
 import type { FastifyRequest } from "fastify";
-import { API_PREFIX, AuditEventSchema, CollectionSchema, type AuditActor, type AuditEvent, type AuditOutcome, type Changed } from "@rch/contract";
+import { randomUUID } from "node:crypto";
+import { API_PREFIX, AuditEventSchema, CollectionSchema, type AuditAction, type AuditActor, type AuditEvent, type AuditOutcome, type Changed } from "@rch/contract";
 import type { Db } from "../db/client.js";
 import { auditOutbox, users } from "../db/schema/index.js";
 import { idemStore, type IdemContext } from "../plugins/idempotency.js";
 import type { Reader, Tx } from "./db.js";
+import { systemOperator } from "./system-users.js";
 import { roleLabelOf } from "./wire.js";
 
 /**
@@ -158,6 +160,40 @@ export async function recordAuthEvent(db: Db, req: FastifyRequest, e: AuthEvent)
     request: maskSecrets(e.request ?? { params: req.params ?? {}, query: req.query ?? {} }),
     before: null, result: null, changed: [],
     ip: req.ip, userAgent: userAgentOf(req.headers),
+  });
+}
+
+/**
+ * Something the system did with nobody signed in behind it: a QR order a customer placed or paid
+ * for (a public route - `mount()` audits only non-public writes, so the QR module records the
+ * accepted ones itself), a capture billed or refunded by the webhook or the worker, a refund sent,
+ * processed or failed. The actor is the QR Orders account (`lib/system-users.ts`, created here if
+ * nobody has needed it yet), so the log names who acted even where no person did.
+ *
+ * Always `done`: a refused anonymous write leaves no event, so a stranger cannot flood the log.
+ * `subject` is the event's target (an order or refund id), `loc` its location. `method`/`path`
+ * name the public route where there was one (`path` without the API prefix, as every event
+ * stores it); a worker's own step has neither. Inside the caller's transaction, like a write's
+ * `done` event: it commits with what it records or not at all. Masked like every other event.
+ */
+export type SystemEvent = {
+  action: AuditAction; subject: string; loc?: string; message: string;
+  method?: string; path?: string;
+  request?: unknown; result?: unknown; before?: unknown; changed?: Changed[];
+  requestId?: string; ip?: string; device?: string;
+};
+
+export async function recordSystemEvent(tx: Tx, e: SystemEvent): Promise<void> {
+  const actorId = await systemOperator(tx);
+  await insertAuditEvent(tx, {
+    at: new Date().toISOString(), requestId: e.requestId ?? `system-${randomUUID()}`,
+    actor: await actorOf(tx, actorId),
+    action: e.action, method: e.method ?? "", path: e.path ?? "",
+    target: e.subject, targetLoc: e.loc ?? "",
+    outcome: "done", status: 200, message: e.message, cause: null,
+    request: maskSecrets(e.request ?? null), before: maskSecrets(e.before ?? null), result: maskSecrets(e.result ?? null),
+    changed: e.changed ?? [],
+    ip: e.ip ?? "", userAgent: (e.device ?? "").slice(0, 512),
   });
 }
 
