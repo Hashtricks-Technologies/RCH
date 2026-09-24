@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { money, pausedRefusal } from "@rch/domain";
+import { fromWireTime } from "../../lib/fmt";
 import type { PublicMenu } from "@rch/contract";
 import { statusUrl } from "../../lib/orderPath";
 import { MENU_REFRESH_MS, cartCount, cartTotal, dismissRemembered, go, limitOf, orderable, rememberedFor, usePublicOrder } from "../../store/publicOrder";
@@ -10,11 +11,18 @@ import { Dead, MenuSkeleton, Stepper, Thumb } from "./parts";
 /** What the mode chip says: where the order ends up. */
 const MODE_CHIP = { pickup: "Collect at the counter", deliver: "Brought to you here" } as const;
 
-/** Why the menu takes no orders right now, or null when it does. */
-export function closedBanner(menu: PublicMenu): { title: string; body: string } | null {
+/**
+ * Why the menu takes no orders right now, or null when it does. The server's `why` is printed as
+ * sent - the hours, or a reason that has nothing to do with them (online payment not set up) - and
+ * today's hours are added only when the clock is outside them, where they are the explanation.
+ */
+export function closedBanner(menu: PublicMenu, now: Date = new Date()): { title: string; body: string } | null {
   if (menu.paused) return { title: "Ordering is paused", body: pausedRefusal(menu.outlet.name) };
   if (!menu.open.open) {
-    const hours = menu.open.today ? ` Today's ordering hours are ${menu.open.today.opens} to ${menu.open.today.closes}.` : "";
+    const t = menu.open.today;
+    const at = fromWireTime(now.toISOString());
+    const outside = !!t && (at < t.opens || at >= t.closes);
+    const hours = t && outside ? ` Today's ordering hours are ${t.opens} to ${t.closes}.` : "";
     return { title: "Not taking orders right now", body: `${menu.open.why ?? "QR ordering is closed."}${hours}` };
   }
   return null;
@@ -145,7 +153,7 @@ export default function Menu({ token }: { token: string }) {
                   </div>
                   {i.available
                     ? <Stepper name={i.name} qty={qty} max={limitOf(i)} disabled={!open} onAdd={() => { add(i.it); }} onRemove={() => { remove(i.it); }} />
-                    : <span className="qo-out">Sold out</span>}
+                    : <span className="qo-out">Unavailable</span>}
                 </li>
               );
             })}

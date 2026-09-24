@@ -179,6 +179,8 @@ describe("the menu", () => {
   });
 
   it("says why it is closed, with today's hours, and takes nothing", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-09-24T01:30:00.000Z"));   // 07:00 IST, before the window
     const open = { open: false, why: "QR ordering opens at 08:00 today.", today: { opens: "08:00", closes: "20:00" } };
     serve({ [MENU]: () => json(menuOf({ open })) });
     ui = await mount(`/order/${TOKEN}`);
@@ -186,6 +188,25 @@ describe("the menu", () => {
     expect(ui.q(".qo-banner")?.textContent).toContain("QR ordering opens at 08:00 today. Today's ordering hours are 08:00 to 20:00.");
     expect((ui.button("Add Masala Tea") as HTMLButtonElement).disabled).toBe(true);
     expect(closedBanner(menuOf({ open: { open: false, today: null } }))?.body).toBe("QR ordering is closed.");
+  });
+
+  it("prints a reason that is not the hours as sent, without the hours, and an item's own reason", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-09-24T06:30:00.000Z"));   // 12:00 IST, inside the window
+    const why = "Online ordering is not set up yet - order at the counter.";
+    const items = [
+      { it: "tea", name: "Masala Tea", price: 20, available: false, why: "Not available right now.", max: 0, type: "MTO" as const, image: null },
+    ];
+    serve({ [MENU]: () => json(menuOf({ open: { open: false, why, today: { opens: "08:00", closes: "20:00" } }, items })) });
+    ui = await mount(`/order/${TOKEN}`);
+    expect(ui.q(".qo-banner")?.textContent).toBe(`Not taking orders right now${why}`);
+    const row = ui.q(".qo-item")!;
+    expect(row.textContent).toContain("Not available right now.");
+    expect(row.querySelector(".qo-out")?.textContent).toBe("Unavailable");
+    expect(ui.button("Add Masala Tea")).toBeUndefined();
+    // After closing time the hours are the explanation, so they are said.
+    expect(closedBanner(menuOf({ open: { open: false, why: "QR ordering closed at 20:00 today.", today: { opens: "08:00", closes: "20:00" } } }), new Date("2026-09-24T15:00:00.000Z"))?.body)
+      .toBe("QR ordering closed at 20:00 today. Today's ordering hours are 08:00 to 20:00.");
   });
 
   it("says the counter has paused it, in the domain's words", async () => {
