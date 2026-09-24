@@ -243,6 +243,8 @@ describe("the admin's codes and hours", () => {
     expect(r.statusCode, r.body).toBe(200);
     expect(r.json().result).toEqual({ loc: "rest", days: [{ dow: 1, opens: "08:00", closes: "20:00" }, { dow: 3, opens: "09:00", closes: "17:00" }] });
     expect(r.json().message).toBe("Ordering hours saved for Restaurant - QR orders 2 days a week");
+    // The counter's queue shows each outlet's hours, so it refetches too.
+    expect(r.json().changed).toEqual(["qrCodes", "qrOrders"]);
     const all = await as("u7", "PUT", "/admin/outlets/rest/order-hours", { days: ALL_DAY });
     expect(all.json().message).toBe("Ordering hours saved for Restaurant - QR orders every day");
     const none = await as("u7", "PUT", "/admin/outlets/rest/order-hours", { days: [] });

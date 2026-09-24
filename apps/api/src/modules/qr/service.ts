@@ -667,10 +667,11 @@ export function createQrService({ db, gateway, config, nudge }: QrServiceDeps) {
         auditBefore({ days: await qrRepo.hoursOf(tx, loc) });
         const sorted = [...days].sort((a, b) => a.dow - b.dow);
         await qrRepo.replaceHours(tx, loc, sorted);
-        await emitChanged(tx, ["qrCodes"]);
+        // The counter's queue carries each outlet's hours too, so it refetches as well.
+        await emitChanged(tx, ["qrCodes", "qrOrders"]);
         const n = sorted.length;
         return {
-          result: { loc, days: sorted }, changed: ["qrCodes"],
+          result: { loc, days: sorted }, changed: ["qrCodes", "qrOrders"],
           message: n === 0
             ? `Ordering hours saved for ${row.name} - it takes no QR orders on any day`
             : `Ordering hours saved for ${row.name} - QR orders ${n === 7 ? "every day" : `${n} day${n === 1 ? "" : "s"} a week`}`,
