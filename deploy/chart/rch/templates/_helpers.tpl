@@ -45,8 +45,10 @@ hooks was tried and reverted.
 The optional: true keys are exactly the ones listed in rch.optionalSecretKeys, below.
 JWT_PREVIOUS_PUBLIC_KEY is only populated during a key-rotation window; outside of that window the
 key legitimately does not exist in the Secret. The three RAZORPAY_* keys switch on QR ordering's
-online payment (RUNBOOK §19): a Secret without them is an environment that takes no QR orders, and
-the API answers 503 to placing one rather than refusing to start. Every other key is required, and
+online payment (RUNBOOK §19): a Secret without any of them is an environment that takes no QR
+orders, and the API answers 503 to placing one rather than refusing to start. They go together:
+one or two of them makes config.ts refuse to start the API, which secret.yaml turns into a render
+failure on the values path (the ExternalSecret path cannot see the keys). Every other key is required, and
 a pod that cannot find one must fail to start rather than come up half-configured - so a key is
 made optional only by naming it in that list, never by widening a comparison. render.test.sh
 asserts SEED_PASSWORD never renders `optional`, and that the list is exactly these four.

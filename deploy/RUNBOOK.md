@@ -2971,9 +2971,10 @@ their phone at `/order/…`, and pays online through Razorpay (UPI and cards). T
 is captured the API makes an ordinary bill at that outlet - stock moves, GST, the outlet's open
 register session - with the tender **Online**, and the counter prepares and hands over the order.
 
-Nothing here is on until the three Razorpay keys are set. Without them the order page still shows
-the menu, and placing an order answers 503 "Online ordering is not set up yet - order at the
-counter." Everything else in the system is unaffected.
+Nothing here is on until the three Razorpay keys are set. With none of them the order page still
+shows the menu (marked closed, "Online ordering is not set up yet - order at the counter."), and
+placing an order answers 503 with the same sentence. Everything else in the system is unaffected.
+One or two of the three is refused at start-up (§19.3).
 
 ### 19.1 What the release adds
 
@@ -3076,7 +3077,11 @@ Then, from GitHub: **Actions → Deploy (box) → Run workflow**, commit left bl
 checks prove it came back. Placing a test order is the proof the keys are right - a wrong key id or
 secret fails at **Pay**, not at start-up.
 
-Set all three together. Two of three is the same as none: ordering stays 503.
+Set all three together. One or two of the three is not "off": the API refuses to start with a
+partial set (`set all three Razorpay keys together, or none of them`), so the release's readiness
+check fails and the box keeps running the release before it. On the Helm path a values-built
+Secret with a partial set fails the render; an ExternalSecret cannot be checked before the pods
+start, so fill the remote JSON with all three at once.
 
 ### 19.4 Printing QR posters
 

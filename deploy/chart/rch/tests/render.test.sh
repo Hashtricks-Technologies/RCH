@@ -387,6 +387,14 @@ for k in RAZORPAY_KEY_ID RAZORPAY_KEY_SECRET RAZORPAY_WEBHOOK_SECRET; do
     || { echo "FAIL: the api migrate initContainer must read $k, optionally"; exit 1; }
 done
 refute bash -c 'sed -n "/# Source: rch\/templates\/audit-deployment.yaml/,/^---/p" <<<"$1" | grep -q RAZORPAY_' _ "$out"
+# ...and one or two of the three is refused at render time, naming what was set: the API refuses a
+# partial set at start-up (config.ts), so rendering it would only make a crash-looping pod.
+for partial in "RAZORPAY_KEY_ID=k" "RAZORPAY_KEY_ID=k,secrets.values.RAZORPAY_KEY_SECRET=s" "RAZORPAY_WEBHOOK_SECRET=w"; do
+  bad=$(helm template rch . -f values-staging.yaml --set "image.registry=r,image.tag=t,$secret_set,secrets.values.$partial" 2>&1) && {
+    echo "FAIL: the chart rendered a partial Razorpay key set ($partial)"; exit 1; }
+  grep -q "but not all three Razorpay keys" <<<"$bad" \
+    || { echo "FAIL: a partial Razorpay key set must be refused by name; got: $bad"; exit 1; }
+done
 # ...and those four are the only optional keys anywhere: a fifth would be a secret a pod may start
 # without, and every other one is required.
 [ "$(grep -o 'key: [A-Z_]*, optional: true' <<<"$out" | sort -u | sed 's/key: //; s/, optional: true//' | tr '\n' ' ')" \
