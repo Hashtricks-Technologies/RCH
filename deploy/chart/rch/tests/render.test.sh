@@ -129,20 +129,23 @@ refute bash -c 'grep -A2 "name: JWT_PRIVATE_KEY" <<<"$1" | grep -q "value:"' _ "
 refute bash -c 'grep -A2 "name: DATABASE_URL" <<<"$1" | grep -q "value:"' _ "$out"
 grep -q 'secretKeyRef' <<<"$out"
 # I: the api Deployment's migrate initContainer and its api container build their env from the
-# same rch.env helper (see _helpers.tpl), so they can never drift - with exactly one deliberate
-# difference. The initContainer carries MIGRATE_DATABASE_URL, the superuser it migrates and
-# creates rch_app with; the api container, which serves every request, must not. Guard both
-# halves: the api's secretKeyRef lines are the initContainer's minus that one, in the same order.
+# same rch.env helper (see _helpers.tpl), so they can never drift - with exactly two deliberate
+# differences. The initContainer carries MIGRATE_DATABASE_URL, the superuser it migrates and
+# creates rch_app with; the api container, which serves every request, must not. And only the api
+# container reads the three RAZORPAY_* keys: no CLI talks to the payment gateway. Guard both: the
+# api's secretKeyRef lines less the Razorpay ones are the initContainer's less MIGRATE_DATABASE_URL,
+# in the same order.
 init_secrets=$(sed -n '/name: migrate$/,/name: api$/p' <<<"$out" | grep 'secretKeyRef')
 api_secrets=$(sed -n '/name: api$/,/readinessProbe:/p' <<<"$out" | grep 'secretKeyRef')
 [ -n "$init_secrets" ]
 [ "$(grep -c 'key: MIGRATE_DATABASE_URL' <<<"$init_secrets")" = 1 ] || { echo "the api migrate initContainer has no MIGRATE_DATABASE_URL secretKeyRef"; exit 1; }
 refute grep -q 'key: MIGRATE_DATABASE_URL' <<<"$api_secrets"
-[ "$(grep -v 'key: MIGRATE_DATABASE_URL' <<<"$init_secrets")" = "$api_secrets" ]
+[ "$(grep -v 'key: MIGRATE_DATABASE_URL' <<<"$init_secrets")" = "$(grep -v 'key: RAZORPAY_' <<<"$api_secrets")" ]
 grep -q 'key: DATABASE_URL' <<<"$api_secrets"
 # The purge CronJob is an operator CLI, so it connects as the superuser like the migrate step.
 cronjob_env=$(sed -n '/# Source: rch\/templates\/purge-cronjob.yaml/,/^---$/p' <<<"$out")
 grep -q 'key: MIGRATE_DATABASE_URL' <<<"$cronjob_env"
+refute grep -q 'RAZORPAY_' <<<"$cronjob_env"
 
 # The audit service (apps/audit): its own image, its own migrate initContainer, its own port.
 audit_dep=$(sed -n '/# Source: rch\/templates\/audit-deployment.yaml/,/^---$/p' <<<"$out")
@@ -374,8 +377,8 @@ done
 helm template rch . -f values-staging.yaml --set "image.registry=r,image.tag=t,$secret_set,secrets.values.JWT_PREVIOUS_PUBLIC_KEY=" >/dev/null
 # QR ordering's three Razorpay keys are optional (RUNBOOK §19). Left empty the render passes and
 # keeps them out of the Secret, so their optional secretKeyRefs leave the variable unset rather
-# than an empty string; set, each is in the Secret. The api and its migrate initContainer read
-# them; neither audit container ever does.
+# than an empty string; set, each is in the Secret. Only the api container reads them - not its
+# migrate initContainer, not the purge CronJob, and neither audit container.
 rzp_secret=$(helm template rch . -f values-staging.yaml --set "image.registry=r,image.tag=t,$secret_set" --show-only templates/secret.yaml)
 refute grep -q 'RAZORPAY_' <<<"$rzp_secret"
 rzp_secret=$(helm template rch . -f values-staging.yaml --set "image.registry=r,image.tag=t,$secret_set,secrets.values.RAZORPAY_KEY_ID=k,secrets.values.RAZORPAY_KEY_SECRET=s,secrets.values.RAZORPAY_WEBHOOK_SECRET=w" --show-only templates/secret.yaml)
@@ -383,8 +386,7 @@ for k in RAZORPAY_KEY_ID RAZORPAY_KEY_SECRET RAZORPAY_WEBHOOK_SECRET; do
   grep -q "^  $k: " <<<"$rzp_secret" || { echo "FAIL: a filled $k must reach the Secret"; exit 1; }
   grep -q "key: $k, optional: true" <<<"$api_secrets" \
     || { echo "FAIL: the api container must read $k, optionally"; exit 1; }
-  grep -q "key: $k, optional: true" <<<"$init_secrets" \
-    || { echo "FAIL: the api migrate initContainer must read $k, optionally"; exit 1; }
+  refute grep -q "key: $k" <<<"$init_secrets"
 done
 refute bash -c 'sed -n "/# Source: rch\/templates\/audit-deployment.yaml/,/^---/p" <<<"$1" | grep -q RAZORPAY_' _ "$out"
 # ...and one or two of the three is refused at render time, naming what was set: the API refuses a

@@ -65,11 +65,12 @@ check '.services.api.depends_on.migrate.condition == "service_completed_successf
 check '.services.caddy.depends_on | has("audit") and has("api") and has("ui")' "caddy must depend on ui, api and audit"
 check '.services["audit-migrate"].command == ["dist/cli/migrate.mjs"]' "audit-migrate must run dist/cli/migrate.mjs"
 # QR ordering's Razorpay keys are optional: the render above sets none of them and must still pass,
-# the API must carry all three (empty) so .env alone switches online ordering on, and neither audit
-# container may see a payment secret. The worker interval defaults to a running worker, never 0.
+# the API must carry all three (empty) so .env alone switches online ordering on, and no other
+# container - not `migrate`, which the operator CLIs run through, nor either audit container - may
+# see a payment secret. The worker interval defaults to a running worker, never 0.
 for k in RAZORPAY_KEY_ID RAZORPAY_KEY_SECRET RAZORPAY_WEBHOOK_SECRET; do
   check ".services.api.environment | has(\"$k\")" "api must carry $k"
-  for s in audit audit-migrate; do
+  for s in migrate audit audit-migrate; do
     check ".services[\"$s\"].environment | has(\"$k\") | not" "$s must not carry $k"
   done
 done

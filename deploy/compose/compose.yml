@@ -45,19 +45,23 @@ x-api-env: &api_env
   IMAGE_STORE: s3
   IMAGE_BUCKET: ${IMAGE_BUCKET:?set IMAGE_BUCKET in .env - the item photo bucket}
   AWS_REGION: ap-south-1
-  # Outlet QR ordering with Razorpay (RUNBOOK §19). Optional, so `:-` rather than `:?`: unset,
-  # each is an empty string and config.ts reads an empty key as not set. With none, placing a QR
-  # order answers 503; with one or two, config.ts refuses to start the API - fill all three in
-  # .env together. The tunables default here to the same figures
-  # config.ts would use - an empty number would read as 0, and a 0 interval stops the worker that
-  # sends refunds.
-  RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID:-}
-  RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET:-}
-  RAZORPAY_WEBHOOK_SECRET: ${RAZORPAY_WEBHOOK_SECRET:-}
+  # QR ordering's tunables (RUNBOOK §19), defaulted here to the same figures config.ts would use
+  # - an empty number would read as 0, and a 0 interval stops the worker that sends refunds. The
+  # Razorpay keys themselves are in x-payment-env below: only the api container reads them.
   QR_ORDER_MAX_RUPEES: ${QR_ORDER_MAX_RUPEES:-5000}
   QR_ORDER_TTL_MIN: ${QR_ORDER_TTL_MIN:-30}
   QR_WORKER_INTERVAL_MS: ${QR_WORKER_INTERVAL_MS:-30000}
   QR_PENDING_PER_IP: ${QR_PENDING_PER_IP:-20}
+
+x-payment-env: &payment_env
+  # Outlet QR ordering with Razorpay (RUNBOOK §19). Optional, so `:-` rather than `:?`: unset,
+  # each is an empty string and config.ts reads an empty key as not set. With none, placing a QR
+  # order answers 503; with one or two, config.ts refuses to start the API - fill all three in
+  # .env together. Merged into `api` alone: `migrate` and the operator CLIs run through it never
+  # talk to the payment gateway, so they never hold its secrets.
+  RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID:-}
+  RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET:-}
+  RAZORPAY_WEBHOOK_SECRET: ${RAZORPAY_WEBHOOK_SECRET:-}
 
 x-audit-env: &audit_env
   # The audit service's runtime role. `audit-migrate` creates it from this URL's user and password.
@@ -126,7 +130,8 @@ services:
     depends_on:
       migrate: { condition: service_completed_successfully }
       postgres: { condition: service_healthy }
-    environment: *api_env
+    environment:
+      <<: [*api_env, *payment_env]
     # The runtime image is distroless (no shell, no curl) - a HEALTHCHECK that shells out cannot
     # run inside the container. `caddy`'s reverse_proxy retries a connection refused start, and
     # `restart: unless-stopped` recovers a crash; that is the health story for this one box.

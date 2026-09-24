@@ -23,7 +23,9 @@ read from a ConfigMap, so the pod's checksum/config annotation hashes what the c
                                                          SEED_PASSWORD, RAZORPAY_KEY_ID,
                                                          RAZORPAY_KEY_SECRET, RAZORPAY_WEBHOOK_SECRET
   rch.apiCliEnv       the api pod's migrate initContainer MIGRATE_DATABASE_URL (rch) + everything
-                      and the purge CronJob              rch.apiEnv names
+                      and the purge CronJob              rch.apiEnv names but the three
+                                                         RAZORPAY_* keys - no CLI talks to the
+                                                         payment gateway
   rch.auditEnv        the audit container                AUDIT_DATABASE_URL (rch_audit),
                                                          JWT_PUBLIC_KEY, JWT_PREVIOUS_PUBLIC_KEY
   rch.auditMigrateEnv the audit pod's audit-migrate      MIGRATE_DATABASE_URL (rch) + everything
@@ -81,7 +83,7 @@ shell history.
 {{ include "rch.env" (dict "root" . "port" 3000 "env" .Values.api.env "keys" (list "DATABASE_URL" "JWT_PRIVATE_KEY" "JWT_PUBLIC_KEY" "JWT_PREVIOUS_PUBLIC_KEY" "SEED_PASSWORD" "RAZORPAY_KEY_ID" "RAZORPAY_KEY_SECRET" "RAZORPAY_WEBHOOK_SECRET")) }}
 {{- end -}}
 {{- define "rch.apiCliEnv" -}}
-{{ include "rch.env" (dict "root" . "port" 3000 "env" .Values.api.env "keys" (list "MIGRATE_DATABASE_URL" "DATABASE_URL" "JWT_PRIVATE_KEY" "JWT_PUBLIC_KEY" "JWT_PREVIOUS_PUBLIC_KEY" "SEED_PASSWORD" "RAZORPAY_KEY_ID" "RAZORPAY_KEY_SECRET" "RAZORPAY_WEBHOOK_SECRET")) }}
+{{ include "rch.env" (dict "root" . "port" 3000 "env" .Values.api.env "keys" (list "MIGRATE_DATABASE_URL" "DATABASE_URL" "JWT_PRIVATE_KEY" "JWT_PUBLIC_KEY" "JWT_PREVIOUS_PUBLIC_KEY" "SEED_PASSWORD")) }}
 {{- end -}}
 {{- define "rch.auditEnv" -}}
 {{ include "rch.env" (dict "root" . "port" 3100 "env" .Values.audit.env "keys" (list "AUDIT_DATABASE_URL" "JWT_PUBLIC_KEY" "JWT_PREVIOUS_PUBLIC_KEY")) }}
