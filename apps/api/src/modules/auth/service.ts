@@ -186,7 +186,11 @@ export function createAuthService(db: Db, config: Config) {
       // exactly where it found it.
       if (attempts.isLocked(emp)) throw new RateLimitedError("Too many attempts for that employee id - wait a minute and try again.");
       const attempt = attempts.begin(emp);
-      const u = await authRepo.userByEmp(db, emp);
+      // A system account (`lib/system-users.ts`) is nobody to sign in as: it reads exactly as a
+      // number nobody holds - the dummy hash, the one sentence and the same audit event - so the
+      // sign-in screen cannot even tell it exists.
+      const found = await authRepo.userByEmp(db, emp);
+      const u = found?.system ? undefined : found;
       const ok = u ? await verifyPassword(u.passwordHash, password) : (await verifyPassword(DUMMY_HASH, password), false);
       // One sentence for all three, so the wire gives nothing away; the cause is for the log
       // alone. An id that matched nobody is not written down - what was typed into that box

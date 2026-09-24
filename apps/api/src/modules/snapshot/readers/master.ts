@@ -22,9 +22,10 @@ export const readItems = async (db: Reader): Promise<Record<string, Item>> =>
 /** Every location the hospital has, quarantine included: the store's screens name it, and
  *  `LocationSchema` is keyed by a plain string, so nothing about the wire shape changes. */
 export const readLocations = loadLocations;
-/** The directory, not a contact list: a colleague's email, employee number and phone are theirs. */
+/** The directory, not a contact list: a colleague's email, employee number and phone are theirs.
+ *  A system account is nobody's colleague and is left out (its bills carry its name themselves). */
 export async function readUsers(db: Reader): Promise<UserMin[]> {
-  return (await db.select().from(users).orderBy(asc(users.id))).filter((u) => u.active).map(toWireUserMin);
+  return (await db.select().from(users).orderBy(asc(users.id))).filter((u) => u.active && !u.system).map(toWireUserMin);
 }
 /**
  * Who a bill may be charged to. The till has validated its payer against this table since Phase 3

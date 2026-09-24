@@ -23,9 +23,11 @@ const ROLE_ACTIONS: AdminAction["action"][] = ACTIONS.filter((a) => a.startsWith
 const NOT_ACCOUNT_ACTIONS: AdminAction["action"][] = [...OUTLET_ACTIONS, ...PAYER_ACTIONS, ...ROLE_ACTIONS];
 
 export const adminRepo = {
-  /** Every account, active and inactive alike, employee number ascending. */
+  /** Every account, active and inactive alike, employee number ascending. A system account
+   *  (`lib/system-users.ts`) is nobody's to manage, so this module never sees one: not here, and
+   *  not by id below, where it is the same 404 as an account that does not exist. */
   async list(db: Reader): Promise<UserRow[]> {
-    return db.select().from(users).orderBy(asc(users.empNo));
+    return db.select().from(users).where(eq(users.system, false)).orderBy(asc(users.empNo));
   },
   /**
    * Which counters each account may work, keyed by user id - one query for the whole page rather
@@ -43,10 +45,10 @@ export const adminRepo = {
     return out;
   },
   async byId(db: Reader, id: string): Promise<UserRow | undefined> {
-    return (await db.select().from(users).where(eq(users.id, id)))[0];
+    return (await db.select().from(users).where(and(eq(users.id, id), eq(users.system, false))))[0];
   },
   async byIdForUpdate(tx: Tx, id: string): Promise<UserRow | undefined> {
-    return (await tx.select().from(users).where(eq(users.id, id)).for("update"))[0];
+    return (await tx.select().from(users).where(and(eq(users.id, id), eq(users.system, false))).for("update"))[0];
   },
   /** One line per write, in the same transaction as the change it records.
    *  `id` is minted by the caller (a fresh UUID) - this table has no `sequences` row, on
@@ -83,11 +85,12 @@ export const adminRepo = {
   },
 
   /** Every location but the rejected-goods shelf, by name, each with the active ordinary accounts
-   *  based there. The super admin's own row carries a placeholder location and is not counted. */
+   *  based there. The super admin's own row and a system account's carry a placeholder location
+   *  and are not counted. */
   async locations(db: Reader): Promise<Array<LocationRow & { staff: number }>> {
     const rows = await db.select().from(locations).where(ne(locations.key, QUARANTINE)).orderBy(asc(locations.name), asc(locations.key));
     const posted = await db.select({ loc: users.loc, n: sql<number>`count(*)::int` }).from(users)
-      .where(and(eq(users.active, true), eq(users.admin, false))).groupBy(users.loc);
+      .where(and(eq(users.active, true), eq(users.admin, false), eq(users.system, false))).groupBy(users.loc);
     const staff = new Map(posted.map((p) => [p.loc, Number(p.n)]));
     return rows.map((r) => ({ ...r, staff: staff.get(r.key) ?? 0 }));
   },
@@ -99,7 +102,7 @@ export const adminRepo = {
   },
   async staffAt(tx: Tx, key: string): Promise<string[]> {
     const rows = await tx.select({ emp: users.empNo }).from(users)
-      .where(and(eq(users.loc, key), eq(users.active, true), eq(users.admin, false))).orderBy(asc(users.empNo));
+      .where(and(eq(users.loc, key), eq(users.active, true), eq(users.admin, false), eq(users.system, false))).orderBy(asc(users.empNo));
     return rows.map((r) => r.emp);
   },
   /** Serialises outlet creation: the key is read from the table and then written to it, and two

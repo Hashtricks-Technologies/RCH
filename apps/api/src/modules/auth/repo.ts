@@ -7,9 +7,10 @@ import { locations, refreshTokens, userPostings, users } from "../../db/schema/i
 export const authRepo = {
   userByEmp: async (db: Db | Tx, emp: string) => (await db.select().from(users).where(eq(users.empNo, emp)))[0],
   userById: async (db: Db | Tx, id: string) => (await db.select().from(users).where(eq(users.id, id)))[0],
-  /** The sign-in picker: every account that can sign in at a counter or a desk - active, and not
+  /** The sign-in picker: every account that can sign in at a counter or a desk - active, not
    *  admin-flagged, so the one account that manages the others is not advertised to whoever
-   *  opens the page - as a number and a name, in number order. */
+   *  opens the page, and not a system account, which nobody signs in as - as a number and a
+   *  name, in number order. */
   signInDirectory: async (db: Db | Tx): Promise<{ emp: string; n: string; locs: { k: string; n: string; c: string }[] }[]> => {
     // One query, not one per account: each posting comes back as an object in an aggregate, name
     // and code included - nothing on the sign-in screen can look a location up, because the
@@ -26,7 +27,7 @@ export const authRepo = {
       .innerJoin(home, eq(home.key, users.loc))
       .leftJoin(userPostings, eq(userPostings.userId, users.id))
       .leftJoin(locations, eq(locations.key, userPostings.loc))
-      .where(and(eq(users.active, true), eq(users.admin, false)))
+      .where(and(eq(users.active, true), eq(users.admin, false), eq(users.system, false)))
       .groupBy(users.empNo, users.name, home.key, home.name, home.code)
       .orderBy(asc(users.empNo));
     return rows.map((r) => ({ emp: r.emp, n: r.n, locs: r.locs.length ? r.locs : [r.homeLoc] }));

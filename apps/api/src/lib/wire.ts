@@ -14,7 +14,10 @@ export type UserRow = typeof users.$inferSelect;
  *  columns are placeholders the schema needs and nothing acts on - its token reaches no
  *  operational route (`plugins/rbac.ts`) - so the label says what the account actually is. */
 const SUPER_ADMIN_LABEL = "Super Admin";
-export const roleLabelOf = (u: Pick<UserRow, "admin" | "roleLabel">): string => (u.admin ? SUPER_ADMIN_LABEL : u.roleLabel);
+/** A system account (`lib/system-users.ts`) acts for the server, never for a person or a role. */
+const SYSTEM_LABEL = "System";
+export const roleLabelOf = (u: Pick<UserRow, "admin" | "roleLabel" | "system">): string =>
+  u.admin ? SUPER_ADMIN_LABEL : u.system ? SYSTEM_LABEL : u.roleLabel;
 /** The caller's own record. `role` is what `loadAccess` (`lib/access.ts`) read for the account in
  *  the same breath - its role's id and permissions, which ride `/me`, sign-in, refresh and the
  *  snapshot so the browser draws the screens the server will answer. Both keys are absent for the

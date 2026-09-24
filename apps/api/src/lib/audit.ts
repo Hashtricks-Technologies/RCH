@@ -104,11 +104,11 @@ export async function actorOf(db: Reader, userId: string | null, typedEmp = ""):
   const emp = typedEmp.slice(0, 64);
   if (userId === null) return { id: null, emp, name: "", role: "", loc: "" };
   const [u] = await db
-    .select({ empNo: users.empNo, name: users.name, roleLabel: users.roleLabel, admin: users.admin, loc: users.loc })
+    .select({ empNo: users.empNo, name: users.name, roleLabel: users.roleLabel, admin: users.admin, system: users.system, loc: users.loc })
     .from(users)
     .where(eq(users.id, userId));
   if (!u) return { id: userId, emp, name: "", role: "", loc: "" };
-  return { id: userId, emp: u.empNo, name: u.name, role: roleLabelOf(u), loc: u.admin ? "" : u.loc };
+  return { id: userId, emp: u.empNo, name: u.name, role: roleLabelOf(u), loc: u.admin || u.system ? "" : u.loc };
 }
 
 /**

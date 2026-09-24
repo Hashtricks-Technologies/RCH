@@ -67,8 +67,10 @@ const markAssigned = async (tx: Tx, role: RoleRow): Promise<void> => {
   if (!role.everAssigned) await tx.update(roles).set({ everAssigned: true }).where(eq(roles.id, role.id));
 };
 
+/** An account by its employee number. A system account (`lib/system-users.ts`) is not one the
+ *  CLI or the admin page may reset, move, post, deactivate or promote, so it reads as unknown. */
 async function byEmp(tx: Tx, emp: string) {
-  const [u] = await tx.select().from(users).where(eq(users.empNo, emp));
+  const [u] = await tx.select().from(users).where(and(eq(users.empNo, emp), eq(users.system, false)));
   if (!u) throw new ValidationError(`no user with employee number ${emp}`);
   return u;
 }
