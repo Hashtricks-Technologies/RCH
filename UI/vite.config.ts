@@ -27,8 +27,8 @@ export default defineConfig({
     // same box) the default 5 s has timed out on a test that passes alone in a second.
     testTimeout: 20_000,
     // The thresholds are set a point or two **under what the whole suite measures today**
-    // (statements 82.39, branches 69.61, functions 75.80, lines 85.03 once the public QR ordering
-    // page landed, 2026-09-24; 81.62 / 68.31 / 74.89 / 84.39 once configurable roles landed, 2026-09-24; 77.90 / 62.24 / 70.30 / 80.89 once outlet management met the named
+    // (statements 82.99, branches 70.17, functions 76.63, lines 85.55 once the counter's QR orders
+    // queue landed, 2026-09-24; 82.39 / 69.61 / 75.80 / 85.03 once the public QR ordering page landed, 2026-09-24; 81.62 / 68.31 / 74.89 / 84.39 once configurable roles landed, 2026-09-24; 77.90 / 62.24 / 70.30 / 80.89 once outlet management met the named
     // price lists, 2026-09-15; 74.21 / 56.26 / 65.78 / 77.52 at the close of the
     // audit fix wave, 2026-09-12; 71.07 / 52.74 / 62.37 / 74.42 before it) - the point is not to
     // chase a number, it is that deleting a test or shipping an untested screen cannot pass CI
@@ -48,7 +48,7 @@ export default defineConfig({
       // the same reason: it mounts the real app against the real document.
       exclude: ["src/__tests__/**", "src/main.tsx", "src/staff.tsx", "src/vite-env.d.ts"],
       reporter: ["text-summary"],
-      thresholds: { lines: 83, branches: 67 },
+      thresholds: { lines: 84, branches: 68 },
     },
   },
 });
