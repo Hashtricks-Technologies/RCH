@@ -124,12 +124,26 @@ Nobody counts a drawer on it; the Z still settles the outlet's day - taken by th
 each close ("Kavitha Raman closed their shift at Coffee Shop · ₹4,320"), and a Shift reports card on
 the Register screen lists every closed shift, by outlet, with its slip.
 
+**QR ordering.** A customer scans a QR code the super admin printed for a spot at an outlet ("Table
+4", "Ward 3B waiting area"), orders from their phone on the public page `/order/<code>` - no
+account, the outlet's own menu and prices, inside the ordering hours the super admin set - and pays
+online through Razorpay (UPI or card). The capture raises an ordinary bill at that outlet, by the
+system's "QR Orders" account with the tender **Online**, and the counter prepares it and hands it
+over from its QR orders screen (or pauses new orders when it is swamped). An order that cannot be
+filled when the money arrives is refunded instead of billed, and voiding an Online bill refunds the
+customer automatically; the worker sends each refund, retries it, and reconciles with Razorpay a
+payment or refund whose confirmation never arrived. With no Razorpay keys set, the page shows the
+menu and takes no orders. Operating it - the keys, the webhook, posters, refunds and reconciling
+against the Z - is `deploy/RUNBOOK.md` §19.
+
 **Live updates.** Every signed-in browser holds one connection to the server's change stream, so a
 request raised at the Coffee Shop appears on the manager's approvals screen without a reload - and
 two tills can never both sell the last unit.
 
-**An audit log nobody can edit.** Every change anyone makes, done or refused, and every sign-in
-lands in a log kept by a separate service. The super admin reads it on `/admin`: who, when, from
+**An audit log nobody can edit.** Every change anyone signed in makes, done or refused, and every
+sign-in lands in a log kept by a separate service - as do an accepted QR order and what became of
+its payment, recorded under the system's QR Orders account. A customer's refused QR request, made
+with no account, leaves no line. The super admin reads it on `/admin`: who, when, from
 which IP and device, what was sent, the server's sentence, and for an edit what the values were
 before. Neither the API's database credential nor anyone signed in can change or delete a line
 of it.
@@ -151,8 +165,10 @@ Browser (React 19, Vite) ──HTTPS──▶ API (Fastify 5, Node 24) ───
   enforces them, the browser only previews with them while the operator types.
 - **`apps/api`** - Fastify 5 + Drizzle. Owns the ledger, the document numbers, the reservations
   and the change stream. Writes are transactional and idempotent: each carries an
-  `Idempotency-Key`, so a retry cannot produce a second bill. Every write and every sign-in also
-  leaves an audit event in an outbox table, inside the write's own transaction.
+  `Idempotency-Key`, so a retry cannot produce a second bill. Every staff write and every sign-in
+  also leaves an audit event in an outbox table, inside the write's own transaction; the public QR
+  routes record an accepted order or payment under the system's account, and a refused anonymous
+  request leaves none.
 - **`apps/audit`** - a second, small Fastify service. It drains that outbox into its own
   append-only `audit` schema, exactly once, and answers the super admin's audit log. It imports
   only the contract, and runs under a database role that can add to the log but never change it.
