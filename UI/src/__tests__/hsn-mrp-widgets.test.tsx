@@ -18,7 +18,7 @@ import type { DatedDoc, StockRequest } from "../types";
  * - **HSN.** The picker was flat on one form and a bare text box on the other, so the same code
  *   was chosen from a list of forty in one place and remembered by heart in the other. Both draw
  *   `hsnGroups` now, and the drawer must never fill in a GST rate for a desk that does not own
- *   the box (`ITEM_FIELD_ROLES` gives `hsn` and `gst` to different people).
+ *   the box (`ITEM_FIELD_FEATURES` gives `hsn` and `gst` to different features).
  * - **MRP.** The till's cap only appeared on hover, on the one screen that prices against it.
  * - **Alerts.** One banner per open document, uncapped, on lists nothing bounds.
  */

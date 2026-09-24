@@ -563,7 +563,7 @@ describe("the counter's ticket drawer reads its own direction", () => {
 
 // ---- item patch ----
 /**
- * One drawer, four desks. `ITEM_FIELD_ROLES` (`@rch/domain`) is the same table the server
+ * One drawer, four desks. `ITEM_FIELD_FEATURES` (`@rch/domain`) is the same table the server
  * refuses a patch with, so a box this greys out is exactly one the server would turn away -
  * which is the whole point of driving the form off the rule rather than off a second list.
  */

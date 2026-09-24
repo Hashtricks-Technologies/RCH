@@ -108,7 +108,8 @@ consultant, and each is charged differently: the outlet manager sets one discoun
 and one credit limit per category, with an exception for the individual on terms of their own. The
 till shows the gross, the concession and the net, and prints all three. What somebody may run up is
 capped on what is still **unsettled** rather than on a calendar month, so clearing an account frees
-the room the same day. The manager's Credit & Settlements screen lists who owes what and how old
+the room the same day. The Credit screen (rate card under Discounts & credit limits, balances under Receivables &
+settlements - two permissions a role may hold apart) lists who owes what and how old
 the oldest open bill is, and recording a payment closes that person's oldest bills first and
 records exactly which ones - refusing anything over the balance, and voidable on the day it was
 taken.
