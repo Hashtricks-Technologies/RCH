@@ -10,6 +10,7 @@ import Register from "./ui/Register";
 import CounterDashboard from "./roles/counter/Dashboard";
 import Pos from "./roles/counter/Pos";
 import CounterBills from "./roles/counter/Bills";
+import QrOrders from "./roles/counter/QrOrders";
 import OutletStock from "./roles/counter/Stock";
 import OutletRequests from "./roles/counter/Requests";
 import OutletTickets from "./roles/counter/Tickets";
@@ -113,6 +114,7 @@ const COMPONENTS: Record<ScreenKey, Pick> = {
   issues: Support,
   settings: Settings,
   pos: Pos,
+  "qr-orders": QrOrders,
   // Every outlet's bills for a role whose till roll reads wide (every outlet); the one counter's otherwise.
   bills: { pick: (v) => (v.wide ? ManagerBills : CounterBills) },
   register: Register,

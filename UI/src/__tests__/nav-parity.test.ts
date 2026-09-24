@@ -14,12 +14,16 @@ beforeEach(resetStore);
  * `UI/src/nav.ts` at a158b8b, copied here verbatim (the manager's hidden `avail` entry already
  * dropped, as `AVAILABILITY_SCREEN_ENABLED = false` dropped it). A seeded role must draw the same
  * groups, labels, icons and order; only the keys changed, and `LEGACY_KEYS` says to what.
+ *
+ * One screen has been added since, and only one: QR Orders (`qr-orders`), which the seeded
+ * counter works (edit) beside its till and the seeded manager reads (view) beside its Bills.
  */
 const LEGACY_NAV: Record<Role, { group: string; items: { k: string; label: string; icon: string }[] }[]> = {
   counter: [
     { group: "Overview", items: [{ k: "dash", label: "Dashboard", icon: "dash" }] },
     { group: "Sell", items: [
       { k: "pos", label: "Point of Sale", icon: "pos" },
+      { k: "qr-orders", label: "QR Orders", icon: "qr" },
       { k: "bills", label: "Bills", icon: "bill" },
       { k: "register", label: "Register", icon: "rep" }] },
     { group: "My counter", items: [{ k: "stock", label: "Stock in Hand", icon: "stock" }] },
@@ -34,6 +38,7 @@ const LEGACY_NAV: Record<Role, { group: string; items: { k: string; label: strin
       { k: "menu", label: "Menu Management", icon: "order" },
       { k: "prices", label: "Prices", icon: "price" },
       { k: "bills", label: "Bills", icon: "bill" },
+      { k: "qr-orders", label: "QR Orders", icon: "qr" },
       { k: "register", label: "Register", icon: "rep" }] },
     { group: "Credit", items: [{ k: "credit", label: "Credit & Settlements", icon: "rep" }] },
     { group: "Account", items: [{ k: "issues", label: "Support", icon: "req" }, { k: "settings", label: "Settings", icon: "set" }] },

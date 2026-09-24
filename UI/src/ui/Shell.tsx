@@ -56,6 +56,11 @@ export default function Shell({ children }: { children: ReactNode }) {
   const loadShifts = useApp((s) => s.loadShifts);
   const shifts = readsShifts(user);
   useEffect(() => { if (shifts) void loadShifts(); }, [shifts, loadShifts]);
+  // ---- QR orders: the counter's bell counts the paid orders nobody has started, so the queue
+  // is read as the shell mounts too - for whoever holds QR orders.
+  const loadQrOrders = useApp((s) => s.loadQrOrders);
+  const qr = userCan(user, "qr_orders");
+  useEffect(() => { if (qr) void loadQrOrders(); }, [qr, loadQrOrders]);
   // Where this account may work. One is the ordinary case and nothing about the header changes
   // for it; more than one earns the switcher below.
   const photo = usePhoto();
@@ -327,6 +332,7 @@ const NOTE: Record<string, [string, string]> = {
   "store-stock": ["Items below reorder", "Under the central store's reorder level"],
   dash: ["Batches nearing best-before", "Made recently, due within the next 2 hours"],
   shifts: ["Shifts closed today", "Counter hand-overs, on the Register screen"],
+  "qr-orders": ["New QR orders", "Paid online and not started yet"],
 };
 
 /** A bell row whose queue is not a sidebar entry of its own opens this screen instead. Keeping
@@ -441,6 +447,8 @@ function navQueues(s: AppState): Record<string, string[]> {
       : openOutlets().flatMap((l) => offItems(s, l).map((it) => `${l}:${it}`));
   }
   if (sees("approvals")) c.approvals = ids(s.req.filter((r) => r.st === "Request sent"));
+  // Paid online at this counter and nobody has started it: work for whoever may move it on.
+  if (sees("qr-orders") && userCan(u, "qr_orders", "edit")) c["qr-orders"] = ids(s.qrOrders.filter((o) => o.loc === u.loc && o.status === "Paid"));
   if (readsShifts(u)) c.shifts = ids(s.shifts.filter((r) => r.closedAt && isToday(r.closedAt)));
   if (sees("issue")) {
     c.issue = [

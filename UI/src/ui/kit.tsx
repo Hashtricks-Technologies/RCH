@@ -36,6 +36,7 @@ const P: Record<string, string> = {
   swap: "M2.5 5.5h9l-2-2M11.5 5.5l-2 2M13.5 10.5h-9l2-2M4.5 10.5l2 2",
   warehouse: "M2 6.5 8 2l6 4.5M3 6v7h10V6M6.5 13V9.5h3V13",
   plus: "M8 3.5v9M3.5 8h9",
+  qr: "M2.5 2.5h4v4h-4zM9.5 2.5h4v4h-4zM2.5 9.5h4v4h-4zM9.5 9.5h1.5v1.5h-1.5zM12 12h1.5v1.5H12zM9.5 13.5h1M13.5 9.5v1",
 };
 export function Icon({ name, size = 15 }: { name: string; size?: number }) {
   return (

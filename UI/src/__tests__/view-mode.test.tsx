@@ -85,6 +85,9 @@ const CASES: [string, Role, Feature, Target, string[]][] = [
     ["Add item", "Submit request", "Decline", "Send 6 nos"]],
   ["a stock request", "counter", "outlet_requests", { drawer: "creq", id: "REQ-2026-0911" }, ["Cancel request"]],
   ["Pick tickets", "counter", "outlet_tickets", { screen: "outlet-tickets" }, []],
+  // The step buttons are per order and the queue starts empty here; `qr-orders.test.tsx` pins
+  // them, and the pause switch shut at view.
+  ["QR orders", "counter", "qr_orders", { screen: "qr-orders" }, []],
   ["a pick ticket", "counter", "outlet_tickets", { drawer: "ctkt", id: "TKT-0440" }, ["Confirm receipt"]],
   // ---- the central store's
   ["the Issue desk", "store", "issue_desk", { screen: "issue" }, ["Generate ticket", "Take OTP"]],

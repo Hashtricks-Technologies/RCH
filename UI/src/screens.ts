@@ -21,7 +21,7 @@ export type ScreenKey =
   // every desk
   | "dash" | "issues" | "settings"
   // sales
-  | "pos" | "bills" | "register" | "credit"
+  | "pos" | "qr-orders" | "bills" | "register" | "credit"
   // outlets
   | "approvals" | "items-stock" | "menu" | "prices" | "avail"
   // my counter
@@ -55,6 +55,9 @@ export const SCREENS: readonly ScreenMeta[] = [
   { key: "dash", label: "Dashboard", icon: "dash", section: "Overview", needs: [], desks: EVERY_DESK },
   // ---- the counter's own
   { key: "pos", label: "Point of Sale", icon: "pos", section: "Sell", needs: [{ f: "billing", l: "edit" }] },
+  // Orders a customer placed and paid for from a QR code at the outlet: the counter works them,
+  // the manager reads them.
+  { key: "qr-orders", label: "QR Orders", icon: "qr", section: "Sell", needs: v("qr_orders") },
   // One key, two views: every outlet's bills for someone who reads hospital-wide, the one
   // counter's for everybody else (`registry.tsx`).
   { key: "bills", label: "Bills", icon: "bill", section: "Sell", needs: v("billing") },
@@ -115,7 +118,7 @@ export const DESK_NAV: Record<Role, readonly DeskGroup[]> = {
     { group: "Overview", keys: ["dash"] },
     // ---- the register: the X read mid-shift and the Z that closes the day. It belongs beside
     // the till and the bills, because it is the end of the same piece of work.
-    { group: "Sell", keys: ["pos", "bills", "register"] },
+    { group: "Sell", keys: ["pos", "qr-orders", "bills", "register"] },
     { group: "My counter", keys: ["outlet-stock"] },
     { group: "Movement", keys: ["outlet-requests", "outlet-tickets"] },
     { group: "Account", keys: ["issues", "settings"] },
@@ -125,7 +128,7 @@ export const DESK_NAV: Record<Role, readonly DeskGroup[]> = {
     { group: "Movement", keys: ["approvals"] },
     // ---- bill void and the register: every outlet's bills and any outlet's X and Z, the
     // manager's own doors onto the counter's two screens.
-    { group: "Outlets", keys: ["items-stock", "menu", "prices", "avail", "bills", "register"] },
+    { group: "Outlets", keys: ["items-stock", "menu", "prices", "avail", "bills", "qr-orders", "register"] },
     // ---- party billing: a group of its own rather than a sixth entry under Outlets. What a
     // doctor is charged and what a department still owes are hospital-wide questions, and the
     // answer to both is one balance across every counter - not something that belongs beside a

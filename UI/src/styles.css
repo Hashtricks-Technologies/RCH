@@ -658,3 +658,11 @@ td.aud-two small{display:block;font-weight:400;font-size:10.5px;color:var(--ink-
 .cp-changed{background:var(--accent-soft);border-color:var(--accent-line)}
 .cp-bar{position:sticky;bottom:0;z-index:5;display:flex;align-items:center;gap:12px;margin-top:14px;padding:10px 14px;
  background:var(--surface);border:1px solid var(--line-strong);border-radius:var(--rl);box-shadow:var(--sh2);font-size:13px}
+
+/* the counter's QR orders queue: the kitchen board's lanes, with nothing to open on a card - the
+   bill number is the one link - and a new paid order edged in the warning colour until started */
+.qr-card{cursor:default}
+.qr-card:hover{border-color:var(--line);transform:none}
+.qr-card.qr-new{border-color:var(--warn-line);background:var(--warn-soft)}
+.qr-bill{background:none;border:0;padding:0;font:inherit;font-size:11px;color:var(--accent);cursor:pointer;text-decoration:underline}
+.qr-done{width:auto;flex:none;background:none;border:0;padding:0}
