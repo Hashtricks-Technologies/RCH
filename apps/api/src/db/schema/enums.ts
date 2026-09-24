@@ -42,3 +42,13 @@ export const adjustReasonEnum = pgEnum("adjust_reason", ["wastage", "breakage", 
 // one: approving one both decides it and writes the correction in the same step, so "Approved"
 // is the end of the line rather than a hand-off to something else.
 export const adjReqStatusEnum = pgEnum("adj_req_status", ["Request sent", "Approved", "Rejected", "Cancelled"]);
+// ---- QR ordering. Each is `@rch/contract`'s enum of the same name, word for word
+// (`schemas/qr.ts`); a Postgres enum over those words changes with it or not at all.
+export const qrModeEnum = pgEnum("qr_mode", ["pickup", "deliver"]);
+export const qrOrderStatusEnum = pgEnum("qr_order_status", [
+  "Awaiting payment", "Paid", "Preparing", "Ready", "Out for delivery", "Collected", "Delivered", "Refunded", "Expired", "Voided",
+]);
+export const refundStatusEnum = pgEnum("refund_status", ["Pending", "Sent", "Processed", "Failed"]);
+export const refundReasonEnum = pgEnum("refund_reason", ["unfulfillable", "void", "duplicate"]);
+/** Where a bill was raised: at a till, or by a QR order's capture. */
+export const billSourceEnum = pgEnum("bill_source", ["till", "qr"]);

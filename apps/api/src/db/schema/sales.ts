@@ -1,7 +1,8 @@
-import { foreignKey, index, integer, jsonb, numeric, pgTable, primaryKey, text, uniqueIndex } from "drizzle-orm/pg-core";
+import { check, foreignKey, index, integer, jsonb, numeric, pgTable, primaryKey, text, uniqueIndex, type AnyPgColumn } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
-import { payerKindEnum } from "./enums.js";
+import { billSourceEnum, payerKindEnum } from "./enums.js";
 import { items, locations, money, payers, qty, ts, users } from "./master.js";
+import { qrOrders } from "./qr.js";
 
 /**
  * One outlet's register between two Z-reports.
@@ -95,8 +96,16 @@ export const bills = pgTable("bills", {
   voidedAt: ts("voided_at"),
   voidedBy: text("voided_by").references(() => users.id),
   voidReason: text("void_reason"),
+  // ---- QR ordering. Where the bill was raised, and the order a QR capture raised it for. A till
+  // bill is `till` with no order; every bill before this existed reads that way by default.
+  source: billSourceEnum("source").notNull().default("till"),
+  qrOrderId: text("qr_order_id").references((): AnyPgColumn => qrOrders.id),
 }, (t) => [
   index("bills_loc_at_idx").on(t.loc, t.at),
+  // One bill per order, whatever arrives twice: the browser's verify and the webhook race, and
+  // the insert decides.
+  uniqueIndex("bills_qr_order_uq").on(t.qrOrderId),
+  check("bills_source_ck", sql`(${t.source} = 'qr') = (${t.qrOrderId} is not null)`),
   // Every credit sale sums what its payer still owes, and the manager's receivables list does
   // the same for everybody at once; without this each of those is a sequential scan that grows
   // with the till's history. It replaced a narrower index partial on `payer_kind = 'staff'`,

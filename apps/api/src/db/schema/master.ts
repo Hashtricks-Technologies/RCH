@@ -84,11 +84,15 @@ export const users = pgTable("users", {
   /** The account's role (`roles`). Null only for a super admin, which has none. Its desk is
    *  `role` above, held equal by the composite foreign key. */
   roleId: text("role_id"),
+  /** An account the server acts as, never a person: the QR ordering account (`lib/system-users.ts`)
+   *  that raises a capture's bill. It holds no role, cannot sign in (its hash is `!`, and the
+   *  sign-in treats it as unknown), and every staff-facing list leaves it out. */
+  system: boolean("system").notNull().default(false),
   createdAt: ts("created_at").notNull().defaultNow(),
   updatedAt: ts("updated_at").notNull().defaultNow(),
 }, (t) => [
   uniqueIndex("users_emp_no_uq").on(t.empNo),
-  check("users_role_id_ck", sql`${t.admin} or ${t.roleId} is not null`),
+  check("users_role_id_ck", sql`${t.admin} or ${t.system} or ${t.roleId} is not null`),
   foreignKey({ name: "users_role_desk_fk", columns: [t.roleId, t.role], foreignColumns: [roles.id, roles.desk] }),
 ]);
 
