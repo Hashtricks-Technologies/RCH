@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PublicQrOrder } from "@rch/contract";
-import { phoneRefusal, QR_MAX_LINES, QR_MAX_QTY } from "@rch/domain";
+import { customerPhoneRefusal, QR_MAX_LINES, QR_MAX_QTY } from "@rch/domain";
 import { setAccessToken } from "../api/session";
 import { isOrderPath, menuPath, parseOrderPath, secretFromHash, statusUrl } from "../lib/orderPath";
 import {
@@ -188,7 +188,7 @@ describe("the cart", () => {
 describe("the customer's details", () => {
   it("wants a name and a phone, refused in the till's own words", () => {
     expect(checkCustomer({ name: " ", phone: "", detail: "" })).toEqual({ name: expect.any(String), phone: "Enter your phone number." });
-    expect(checkCustomer({ name: "Asha", phone: "12345", detail: "" })).toEqual({ phone: phoneRefusal("12345") });
+    expect(checkCustomer({ name: "Asha", phone: "12345", detail: "" })).toEqual({ phone: customerPhoneRefusal("12345") });
     expect(checkCustomer({ name: "Asha", phone: "098430 22118", detail: "" })).toEqual({});
   });
 });
@@ -208,7 +208,7 @@ describe("placing an order", () => {
     expect(rzp[0].opened).toBe(true);
     expect(rzp[0].options).toMatchObject({
       key: "rzp_test_key", order_id: "order_RZP1", amount: 4000, currency: "INR", name: "Coffee Shop",
-      description: "Order QO-2026-0042", prefill: { name: "Asha", contact: "9843022118" }, theme: { color: expect.any(String) },
+      description: "Order QO-2026-0042", prefill: { name: "Asha", contact: "9843022118" }, theme: { color: "#E07B00" }, timeout: 900,
     });
     expect(recall("QO-2026-0042")).toBe(SECRET);
   });
@@ -248,6 +248,16 @@ describe("placing an order", () => {
     serve({ [PLACE]: () => refusal("No.") });
     await st().placeOrder();
     st().add("tea");
+    await st().placeOrder();
+    const [a, b] = hit(PLACE).map((c) => c.body?.nonce);
+    expect(a).not.toBe(b);
+  });
+  it("mints a new nonce after a 409, since that attempt's order is settled or lapsed", async () => {
+    await withMenu();
+    st().add("tea"); fillCustomer();
+    serve({ [PLACE]: () => refusal("That order has already been paid - scan the code again for a new one.", 409) });
+    expect(await st().placeOrder()).toBe(false);
+    expect(st().attempt).toBeNull();
     await st().placeOrder();
     const [a, b] = hit(PLACE).map((c) => c.body?.nonce);
     expect(a).not.toBe(b);

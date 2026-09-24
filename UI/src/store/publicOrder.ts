@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { routes, type PublicMenu, type PublicMenuItem, type PublicQrOrder, type QrOrderCreated, type QrOrderStatus } from "@rch/contract";
-import { normalizePhone, phoneRefusal, QR_MAX_LINES, QR_MAX_QTY } from "@rch/domain";
+import { customerPhoneRefusal, normalizePhone, QR_MAX_LINES, QR_MAX_QTY } from "@rch/domain";
 import { ApiError, call } from "../api/client";
 import { statusUrl } from "../lib/orderPath";
 
@@ -40,6 +40,8 @@ export type RazorpaySuccess = { razorpay_order_id: string; razorpay_payment_id: 
 type RazorpayOptions = {
   key: string; order_id: string; amount: number; currency: string; name: string; description: string;
   prefill: { name: string; contact: string }; theme: { color: string };
+  /** Seconds before the gateway's sheet gives up - inside the server's unpaid-order window. */
+  timeout: number;
   handler: (r: RazorpaySuccess) => void; modal: { ondismiss: () => void };
 };
 type RazorpayCtor = new (o: RazorpayOptions) => { open: () => void };
@@ -115,7 +117,7 @@ export function checkCustomer(c: Customer): CustomerErrors {
   const e: CustomerErrors = {};
   if (!c.name.trim()) e.name = "Enter your name, so the counter can call it out.";
   if (!c.phone.trim()) e.phone = "Enter your phone number.";
-  else if (!normalizePhone(c.phone)) e.phone = phoneRefusal(c.phone);
+  else if (!normalizePhone(c.phone)) e.phone = customerPhoneRefusal(c.phone);
   return e;
 }
 
@@ -157,13 +159,10 @@ export function loadRazorpay(): Promise<void> {
   return checkoutLoading;
 }
 
-/** The checkout's accent: the page's own, so the gateway's sheet matches it in either theme. */
-function accentColour(): string {
-  try {
-    const v = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim();
-    return v || "#2563EB";
-  } catch { return "#2563EB"; }
-}
+/** The checkout's accent: the page's brand amber, the same in either theme. */
+const BRAND_AMBER = "#E07B00";
+/** Fifteen minutes, well inside the thirty an unpaid order is kept for. */
+const CHECKOUT_TIMEOUT_S = 900;
 
 const bodyOf = (s: PublicOrderState) => {
   const lines = cartLines(s.menu, s.cart).map((l) => ({ it: l.item.it, qty: l.qty }));
@@ -249,7 +248,9 @@ export const usePublicOrder = create<PublicOrderState>()((set, get) => {
         await get().openCheckout();
         return true;
       } catch (e) {
-        set({ placing: false, error: e instanceof ApiError ? e.message : NETWORK_PLACE });
+        // A 409 says this attempt's order is already settled or lapsed: the next Pay is a new order.
+        const settled = e instanceof ApiError && e.status === 409;
+        set({ placing: false, error: e instanceof ApiError ? e.message : NETWORK_PLACE, ...(settled ? { attempt: null } : {}) });
         return false;
       }
     },
@@ -269,7 +270,8 @@ export const usePublicOrder = create<PublicOrderState>()((set, get) => {
         name: get().menu?.outlet.name ?? p.order.outletName,
         description: `Order ${p.order.id}`,
         prefill: c.prefill,
-        theme: { color: accentColour() },
+        theme: { color: BRAND_AMBER },
+        timeout: CHECKOUT_TIMEOUT_S,
         handler: (r) => { void get().verify(r); },
         modal: { ondismiss: () => { set({ paying: false, note: PAYMENT_DISMISSED }); } },
       }).open();

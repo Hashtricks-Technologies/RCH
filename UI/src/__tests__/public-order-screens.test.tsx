@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import type { PublicQrOrder } from "@rch/contract";
-import { money, pausedRefusal, phoneRefusal, QR_STATUS_WORDS } from "@rch/domain";
+import { money, pausedRefusal, customerPhoneRefusal, QR_STATUS_WORDS } from "@rch/domain";
 import OrderApp from "../pages/public/OrderApp";
 import { closedBanner } from "../pages/public/Menu";
 import { istStamp, refundWords, whereWords } from "../pages/public/OrderStatus";
@@ -189,7 +189,7 @@ describe("the checkout sheet", () => {
     typeIn(phone, "12345");
     await act(async () => { d.querySelector("form")!.requestSubmit(); });
     await settle();
-    expect(u.text()).toContain(phoneRefusal("12345"));
+    expect(u.text()).toContain(customerPhoneRefusal("12345"));
     expect(u.text()).toContain("Enter your name");
     expect(document.activeElement?.id).toBe("qo-name");
     expect(fetchMock.mock.calls.filter(([x]) => String(x).includes("/orders"))).toHaveLength(0);
