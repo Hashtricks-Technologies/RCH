@@ -2989,11 +2989,11 @@ every other series (§18), so no seed step is needed.
 
 **The system account "QR Orders"** (user id `sys-qr`, `SYS-QR` where an employee number is shown)
 raises every QR bill. It is created the first time an
-order is settled, with `system = true` and a password hash no password can match. It never signs in
+order is placed, with `system = true` and a password hash no password can match. It never signs in
 (sign-in refuses it), never opens a shift - so QR bills are on no Close Shift slip - and is hidden
 from the sign-in directory, the Accounts tab, the users CLI and the outlet-close staff count. Do not
 try to deactivate, delete or reset it; the admin page and the CLI cannot see it on purpose. On the
-Audit log its writes (a paid order, a refund sent, processed or failed) carry it as the actor.
+Audit log its writes (an order placed, a paid order, a refund sent, processed or failed) carry it as the actor.
 
 **Configuration.** Three secrets and three tunables, all optional:
 
@@ -3030,6 +3030,10 @@ keeps the strict one.
    test UPI id `success@razorpay` or a test card, and check the order reaches the counter's QR
    orders screen as **Paid**, the bill carries **Online**, and **Admin → Audit log** shows the paid
    order. In the dashboard, **Webhooks → the webhook → Deliveries** should show 2xx for each event.
+   The API answers a delivery **200** (an event it does not use and a repeated delivery included),
+   **401** when the signature does not match - a wrong `RAZORPAY_WEBHOOK_SECRET`, most likely -
+   **400** for a body that is not JSON, and **503** while the three keys are not set. It answers a
+   5xx otherwise only when its database fails, which is the one case Razorpay should redeliver.
 
 **Locally**, the same test keys go in `.env`. Razorpay cannot reach `localhost`, so no webhook
 arrives; the browser's own verify call settles the payment on its own, which is enough to work on
@@ -3069,8 +3073,10 @@ from a laptop on `localhost`, a staging host or a raw IP points customers at tha
 nobody will notice until a customer scans it.
 
 **Regenerate** makes a new token for the code and the old printed poster stops working at once (the
-page says the code is not valid). Do it when a poster is lost or copied somewhere it should not be,
-and replace the poster the same day. Deactivating a code does the same without a new poster.
+page says "This QR code is no longer in use - please order at the counter."). Do it when a poster is
+lost or copied somewhere it should not be, and replace the poster the same day. Deactivating a code
+does the same without a new poster: its poster gets the same sentence as a regenerated or unknown
+one, and switching it back on brings the same poster back to life.
 
 The counter's **Pause** switch on its QR orders screen stops new orders at that outlet only, without
 touching the hours; it is the counter's to use when the kitchen is swamped or an item run is out.
@@ -3080,8 +3086,9 @@ touching the hours; it is the counter's to use when the kitchen is swamped or an
 A refund is queued, never sent inside a sale or a void, in three cases:
 
 - **Unfulfillable** - the payment was captured but the order could not be billed when it was
-  settled (an item sold out or switched off, the outlet closed or paused, a price changed, the amount
-  did not match). No bill is made, the order is **Refunded**, and the whole payment goes back.
+  settled (an item sold out or switched off, the outlet closed, a price changed, the amount did not
+  match). A counter's **Pause** is not one of them: it stops new orders, and an order already placed
+  and paid is still billed. No bill is made, the order is **Refunded**, and the whole payment goes back.
 - **Void** - the manager voided an Online bill (*Void a bill*, same IST day, register still open, as
   for any bill). The bill is badged voided as always, the order becomes **Voided**, and the full
   amount is queued.
@@ -3089,8 +3096,10 @@ A refund is queued, never sent inside a sale or a void, in three cases:
 
 The QR worker sends Pending refunds every pass. Before each send it asks Razorpay for the refunds
 already on that payment, matched by an id it wrote into the refund's notes, so a retry after a
-timeout never refunds twice. A refund goes **Pending → Sent → Processed** when Razorpay's
-`refund.processed` webhook arrives. A failed send is retried after 1 min, 5 min, 15 min, 1 h and
+timeout never refunds twice. A refund goes **Pending → Sent** when Razorpay accepts it and
+**→ Processed** when Razorpay's `refund.processed` webhook arrives (a test key often answers
+processed at once, and the worker records both steps then). The worker also runs straight after a
+void or a capture queues a refund, so a refund does not wait out the interval. A failed send is retried after 1 min, 5 min, 15 min, 1 h and
 6 h; after the sixth failure it is **Failed** and the worker stops trying.
 
 **A Failed refund** means Razorpay refused or never accepted it - most often the merchant balance
